@@ -1,0 +1,1849 @@
+{
+  "base": "cda6737a8f177a8bbd2f3bc7d195f8e3037bfa74",
+  "head": "2ce71d683f1cd3e51b657f45aafaabc34d3dd5f2",
+  "headTree": "3dee59f518a8ce6f2a7894138f4b867a7c7a6244",
+  "code": "3ce597e21496b98b7fc3e0e575396abef46d6ce0",
+  "codeTree": "6dd110761274923a946a9aca41ec95cdfeb98dfc",
+  "sourceDeploymentSha": "82344044b436a8dafecefbb85dfd724cecb05e3f",
+  "executionEvidence": "files/ops/self-hosted/populated-upgrade-evidence.md",
+  "executionIdentityPolicy": "Each evidence row retains its original candidate. This archive is not a test execution or release approval.",
+  "contracts": {
+    "reader": {
+      "old": {
+        "revision": "f00f94435d128ff8706ffadedabbee507f79781b",
+        "scopedFingerprint": "9960d9bf66d09e955bd98b2ae431fb09d3f266b21ab419711df6dd2acbc403d7",
+        "files": [
+          {
+            "path": "docs/design-docs/parameter-catalog-verification-upgrade-retirement-gates.md",
+            "mode": "100644",
+            "blob": "fb63c2c86b64ef9525944dc1b4e705d3acbd7c96",
+            "sha256": "d501f6783d99ecaaa4cfc78f0aceff516bdd807004da14c1c7d020a4f48fd974"
+          },
+          {
+            "path": "docs/zh-CN/design-docs/parameter-catalog-verification-upgrade-retirement-gates.md",
+            "mode": "100644",
+            "blob": "8fdc462d8ec23825af6f5b9b6a10a792b310757f",
+            "sha256": "6d7a323e827c5a76d37d27631f7d1e133557db0ac87150e37f455cf7bfe692d7"
+          },
+          {
+            "path": "server/migrations/0138_canonical_parameter_catalog_roles.sql",
+            "mode": "100644",
+            "blob": "1efaa50d25ed3d64e46ed15e9eac9990562c92eb",
+            "sha256": "a575205695852b11a536c7d41293f87634242b3c8d98f2345b3599e144aca8c5"
+          },
+          {
+            "path": "server/migrations/0139_parameter_catalog_verification_core.sql",
+            "mode": "100644",
+            "blob": "99e04ac596582465733c8cf9a2c1c5af60e89167",
+            "sha256": "36fdd85de86ab09309dd6531594feca16a5bce00b343fa858ac04f4cdbf49f31"
+          },
+          {
+            "path": "server/migrations/0140_parameter_catalog_runtime_reader.sql",
+            "mode": null,
+            "blob": null,
+            "sha256": null
+          },
+          {
+            "path": "server/modules/catalog-kernel/security/catalog-reader.md",
+            "mode": null,
+            "blob": null,
+            "sha256": null
+          },
+          {
+            "path": "server/modules/catalog-kernel/security/catalog-reader.zh-CN.md",
+            "mode": null,
+            "blob": null,
+            "sha256": null
+          },
+          {
+            "path": "server/modules/catalog-kernel/security/catalogReaderManifest.ts",
+            "mode": null,
+            "blob": null,
+            "sha256": null
+          }
+        ]
+      },
+      "new": {
+        "revision": "2ce71d683f1cd3e51b657f45aafaabc34d3dd5f2",
+        "scopedFingerprint": "cf87073abc4367f4debfac2037dadbd8fb17ea15e75e39bde7f1a501f3154df3",
+        "files": [
+          {
+            "path": "docs/design-docs/parameter-catalog-verification-upgrade-retirement-gates.md",
+            "mode": "100644",
+            "blob": "3648378444ac3865967db92ef216e399fd1bece2",
+            "sha256": "9d4e19cc360055d84894dc7aae6fb512c7582187bd4f1acd287f60ca4bf736bd"
+          },
+          {
+            "path": "docs/zh-CN/design-docs/parameter-catalog-verification-upgrade-retirement-gates.md",
+            "mode": "100644",
+            "blob": "ed3ad35e105f9d2834427b6f75f568b651bc6e76",
+            "sha256": "c1e33aefee6ecf12e2c718d130e3e6f2c9fe7a2c6c5f8a72264f5b7fd5f0b65a"
+          },
+          {
+            "path": "server/migrations/0138_canonical_parameter_catalog_roles.sql",
+            "mode": "100644",
+            "blob": "1efaa50d25ed3d64e46ed15e9eac9990562c92eb",
+            "sha256": "a575205695852b11a536c7d41293f87634242b3c8d98f2345b3599e144aca8c5"
+          },
+          {
+            "path": "server/migrations/0139_parameter_catalog_verification_core.sql",
+            "mode": "100644",
+            "blob": "99e04ac596582465733c8cf9a2c1c5af60e89167",
+            "sha256": "36fdd85de86ab09309dd6531594feca16a5bce00b343fa858ac04f4cdbf49f31"
+          },
+          {
+            "path": "server/migrations/0140_parameter_catalog_runtime_reader.sql",
+            "mode": "100644",
+            "blob": "5dc1e027e352ef32e2113c322ad9a343b3bbb461",
+            "sha256": "9fd18152c0dd25037a2b0b5acb706c95897c8f24bfb7b709cb17ff4312db3aee"
+          },
+          {
+            "path": "server/modules/catalog-kernel/security/catalog-reader.md",
+            "mode": "100644",
+            "blob": "78f03f50ac9954ffc19ebcfd6a61bd6d91c70ff2",
+            "sha256": "c559c0ac538af3ea12dcbe95571a7c596a21ce319a4008e337db88e9b9abcb74"
+          },
+          {
+            "path": "server/modules/catalog-kernel/security/catalog-reader.zh-CN.md",
+            "mode": "100644",
+            "blob": "0327416cd2d7e69a6915402e8e8b839148451d28",
+            "sha256": "6dbc62baa66aa8f6210a3ba752d49fcfa72c1b4507803937cb0ac0fc7fda4347"
+          },
+          {
+            "path": "server/modules/catalog-kernel/security/catalogReaderManifest.ts",
+            "mode": "100644",
+            "blob": "ce8cb986244d01c63a3f512bc67df5d5affa5a37",
+            "sha256": "84729f4ce06069fbdf3001b78f4685be0cbe4a7fc998f0814a4dcf9ebe2c99bf"
+          }
+        ]
+      }
+    },
+    "recovery": {
+      "old": {
+        "revision": "f00f94435d128ff8706ffadedabbee507f79781b",
+        "scopedFingerprint": "d84482d977522e743a2757c3797010f9428050c8344fac9e2a88470eec11cf89",
+        "files": [
+          {
+            "path": "docs/design-docs/parameter-catalog-cutover-archive-rollback.md",
+            "mode": "100644",
+            "blob": "acb290916ccfa1e395b3bf03ab48221175aaa698",
+            "sha256": "d59df442099bea170be46486a15f2803de2f047ae1f9da17860778f31fd13c4b"
+          },
+          {
+            "path": "docs/design-docs/parameter-catalog-verification-upgrade-retirement-gates.md",
+            "mode": "100644",
+            "blob": "fb63c2c86b64ef9525944dc1b4e705d3acbd7c96",
+            "sha256": "d501f6783d99ecaaa4cfc78f0aceff516bdd807004da14c1c7d020a4f48fd974"
+          },
+          {
+            "path": "docs/zh-CN/design-docs/parameter-catalog-cutover-archive-rollback.md",
+            "mode": "100644",
+            "blob": "80f9ab853726ac93dc41c35cf4c2e0b24e245804",
+            "sha256": "ad146f6494070daf97b36c6b633857e8fa133e27d5a2ea70068d889432893c4e"
+          },
+          {
+            "path": "docs/zh-CN/design-docs/parameter-catalog-verification-upgrade-retirement-gates.md",
+            "mode": "100644",
+            "blob": "8fdc462d8ec23825af6f5b9b6a10a792b310757f",
+            "sha256": "6d7a323e827c5a76d37d27631f7d1e133557db0ac87150e37f455cf7bfe692d7"
+          },
+          {
+            "path": "ops/self-hosted/storage/execution/README.md",
+            "mode": null,
+            "blob": null,
+            "sha256": null
+          },
+          {
+            "path": "ops/self-hosted/storage/execution/README.zh-CN.md",
+            "mode": null,
+            "blob": null,
+            "sha256": null
+          },
+          {
+            "path": "scripts/recovery-storage-boundary.ts",
+            "mode": null,
+            "blob": null,
+            "sha256": null
+          },
+          {
+            "path": "scripts/run-restore-drill.test.ts",
+            "mode": "100644",
+            "blob": "9401faeefc46d2207ca646e7869dec116653a540",
+            "sha256": "48b28d392dba4329f2d2eef42858fddb9184010c9b2bf7cd362b6a0d6176085f"
+          }
+        ]
+      },
+      "new": {
+        "revision": "2ce71d683f1cd3e51b657f45aafaabc34d3dd5f2",
+        "scopedFingerprint": "92ae6cfc5307583f242fe1e4260a8d786530ec501c65b5a079fb2bb955b63199",
+        "files": [
+          {
+            "path": "docs/design-docs/parameter-catalog-cutover-archive-rollback.md",
+            "mode": "100644",
+            "blob": "75c70cb5a01c95d40462aff2297c2f5562393292",
+            "sha256": "9ee2d24cae1acb1c500686ede45054d57b5ab56761510ef00fff40916fc64524"
+          },
+          {
+            "path": "docs/design-docs/parameter-catalog-verification-upgrade-retirement-gates.md",
+            "mode": "100644",
+            "blob": "3648378444ac3865967db92ef216e399fd1bece2",
+            "sha256": "9d4e19cc360055d84894dc7aae6fb512c7582187bd4f1acd287f60ca4bf736bd"
+          },
+          {
+            "path": "docs/zh-CN/design-docs/parameter-catalog-cutover-archive-rollback.md",
+            "mode": "100644",
+            "blob": "829b9924fe5c5c165d3ebfb1873de080a88dcc2c",
+            "sha256": "e8c124a54dc22418372e47924b37d5f7cdd38d92c5a621d9408fc7e31baca2ef"
+          },
+          {
+            "path": "docs/zh-CN/design-docs/parameter-catalog-verification-upgrade-retirement-gates.md",
+            "mode": "100644",
+            "blob": "ed3ad35e105f9d2834427b6f75f568b651bc6e76",
+            "sha256": "c1e33aefee6ecf12e2c718d130e3e6f2c9fe7a2c6c5f8a72264f5b7fd5f0b65a"
+          },
+          {
+            "path": "ops/self-hosted/storage/execution/README.md",
+            "mode": "100644",
+            "blob": "9145b91cfc7fbc786fbde7174bdafc988eeaf0f0",
+            "sha256": "d21e9ebc2d259d6a3b766204aa861c0e2b29642e3d6f1ddf326ae4e30ee5432f"
+          },
+          {
+            "path": "ops/self-hosted/storage/execution/README.zh-CN.md",
+            "mode": "100644",
+            "blob": "6fef158eaa71c545117d4102c352e193bb9d7638",
+            "sha256": "3f975d3fcdffa308816e4fa3c442956c296e489e6223e51ddcf1190ab79012de"
+          },
+          {
+            "path": "scripts/recovery-storage-boundary.ts",
+            "mode": "100644",
+            "blob": "dd113258bd9d24d3a2389fc408c08bf62a95c0bd",
+            "sha256": "5522e8821a6c68225e5f4cd439a9ec59fb3ce86269ffd9b8bb2a8c0b7fc44352"
+          },
+          {
+            "path": "scripts/run-restore-drill.test.ts",
+            "mode": "100644",
+            "blob": "0160e0592c610345d4a27d27316a8f2bc4923868",
+            "sha256": "7c48ee98228dc21c59151834101435b35fc5198e13cef098df293ac2e57502e1"
+          }
+        ]
+      }
+    }
+  },
+  "files": [
+    {
+      "path": ".dockerignore",
+      "mode": "100644",
+      "blob": "5740037c8c6c245a732e480723ffc543c301e9dd",
+      "sha256": "e6136fb6b2ead77ab74c94ef5ff1abfbf3a54b5a8306992ef1e3a2ee785dc470",
+      "bytes": 431,
+      "state": "present"
+    },
+    {
+      "path": ".github/workflows/ci.yml",
+      "mode": "100644",
+      "blob": "16a90414c30c82c796188194957ddee39a0ecfc6",
+      "sha256": "d1d5e9d5b81910f06a655b182af30b3bfc8a7a36f6d983b054c61a6546eee859",
+      "bytes": 24271,
+      "state": "present"
+    },
+    {
+      "path": "docs/design-docs/parameter-catalog-cutover-archive-rollback.md",
+      "mode": "100644",
+      "blob": "75c70cb5a01c95d40462aff2297c2f5562393292",
+      "sha256": "9ee2d24cae1acb1c500686ede45054d57b5ab56761510ef00fff40916fc64524",
+      "bytes": 101614,
+      "state": "present"
+    },
+    {
+      "path": "docs/design-docs/parameter-catalog-verification-upgrade-retirement-gates.md",
+      "mode": "100644",
+      "blob": "3648378444ac3865967db92ef216e399fd1bece2",
+      "sha256": "9d4e19cc360055d84894dc7aae6fb512c7582187bd4f1acd287f60ca4bf736bd",
+      "bytes": 107807,
+      "state": "present"
+    },
+    {
+      "path": "docs/exec-plans/active/2026-09-06-populated-upgrade.md",
+      "mode": "100644",
+      "blob": "d025f811f078ffbf88f0d9b871b2fe153178a356",
+      "sha256": "5aa7cf353ac9b281d010e9b7f7a1a39ffddeb4945bb76991b2569780f8b566a3",
+      "bytes": 23228,
+      "state": "present"
+    },
+    {
+      "path": "docs/generated/db-schema.md",
+      "mode": "100644",
+      "blob": "c44c0ce5a86242a8bd24de598b127b40b670f5ab",
+      "sha256": "1fae11f0bfaf20de7cc07ed1bb8bf755e63743eaae0caa7ccea4d3be50e5780b",
+      "bytes": 293767,
+      "state": "present"
+    },
+    {
+      "path": "docs/zh-CN/design-docs/parameter-catalog-cutover-archive-rollback.md",
+      "mode": "100644",
+      "blob": "829b9924fe5c5c165d3ebfb1873de080a88dcc2c",
+      "sha256": "e8c124a54dc22418372e47924b37d5f7cdd38d92c5a621d9408fc7e31baca2ef",
+      "bytes": 96818,
+      "state": "present"
+    },
+    {
+      "path": "docs/zh-CN/design-docs/parameter-catalog-verification-upgrade-retirement-gates.md",
+      "mode": "100644",
+      "blob": "ed3ad35e105f9d2834427b6f75f568b651bc6e76",
+      "sha256": "c1e33aefee6ecf12e2c718d130e3e6f2c9fe7a2c6c5f8a72264f5b7fd5f0b65a",
+      "bytes": 105614,
+      "state": "present"
+    },
+    {
+      "path": "docs/zh-CN/exec-plans/active/2026-09-06-populated-upgrade.md",
+      "mode": "100644",
+      "blob": "096a18727578e91bb80803c7f5522903744cb628",
+      "sha256": "b99f9cfbfa3954b2785081328bba8b4b9f9ca12439f35c5be2e6ef1960a8db43",
+      "bytes": 19231,
+      "state": "present"
+    },
+    {
+      "path": "ops/self-hosted/Dockerfile",
+      "mode": "100644",
+      "blob": "f508ac1a74774e4f366256557ad1cf7a67889be4",
+      "sha256": "0758857462b706cb98bf40c1c6f1d1da3ad0aa7e1ad659dd1fa8a8e590fb4d89",
+      "bytes": 4558,
+      "state": "present"
+    },
+    {
+      "path": "ops/self-hosted/compose.catalog.yaml",
+      "mode": "100644",
+      "blob": "43617bf9e01d53c73a60782592d010b80fa33bd2",
+      "sha256": "428dfe2bcfcdd544dd80ae0f9ea94a861f4c9865f166879664e95dc4fcee2412",
+      "bytes": 2463,
+      "state": "present"
+    },
+    {
+      "path": "ops/self-hosted/compose.yaml",
+      "mode": "100644",
+      "blob": "de506348d48012bccc9ec57f00bd433d043144f9",
+      "sha256": "6e9fe2687102b071a2d02f83d4b6c5df803fdf6d5bb508ba3c862bd131e15ffe",
+      "bytes": 9881,
+      "state": "present"
+    },
+    {
+      "path": "ops/self-hosted/populated-upgrade-evidence.md",
+      "mode": "100644",
+      "blob": "28f7b97aa9e39a2a94e35b8c57e6e42da9197e3c",
+      "sha256": "319925ef0a0f0e48044ac9f98274023143a80cdc94a699f95b88c7943077d78f",
+      "bytes": 60744,
+      "state": "present"
+    },
+    {
+      "path": "ops/self-hosted/populated-upgrade-evidence.zh-CN.md",
+      "mode": "100644",
+      "blob": "a3361455662b4c96d2f4dad498cf9f25e80c3fdc",
+      "sha256": "5b07d19546beec6ed2f6b1c109e30c831c50737491be5360c56dfe52e9358479",
+      "bytes": 53618,
+      "state": "present"
+    },
+    {
+      "path": "ops/self-hosted/populated-upgrade.md",
+      "mode": "100644",
+      "blob": "fd5a5f8b423e26787369df5618c5f2cb3ea7a2ec",
+      "sha256": "0f0f86d2ae2f50f4c9ac51c9dcf5e05d60cc82565d4c3efa89c13a246937b5ac",
+      "bytes": 20498,
+      "state": "present"
+    },
+    {
+      "path": "ops/self-hosted/populated-upgrade.zh-CN.md",
+      "mode": "100644",
+      "blob": "f43dd794ed1b29cd8bae6fd510f33feeeca9d1d0",
+      "sha256": "9b6818f1609f88dc4e7fb2dba2dfd6e18c9ec3253d5b1825a4778a2275421505",
+      "bytes": 17876,
+      "state": "present"
+    },
+    {
+      "path": "ops/self-hosted/scripts/build-network-lib.sh",
+      "mode": "100755",
+      "blob": "36b5046e77a06fb6368daf06dd33493a57f52a99",
+      "sha256": "db6c774984e170d4a4dd3b7c5e8e31a519f8669b0ef78bd9e9d15cdd9aca832a",
+      "bytes": 12233,
+      "state": "present"
+    },
+    {
+      "path": "ops/self-hosted/scripts/build-network-trust.test.ts",
+      "mode": "100644",
+      "blob": "c7ff4a2bba1a16844b62a7a67b952863f5f3df56",
+      "sha256": "8ab0ed798757bff91c6e8e933592ad33a06ea13c723c89240d0645af2e71bcd3",
+      "bytes": 5912,
+      "state": "present"
+    },
+    {
+      "path": "ops/self-hosted/scripts/build-network.sh",
+      "mode": "100755",
+      "blob": "67cfc64ecaf77074cebe5d9694e1d030a0c96c18",
+      "sha256": "b94ee3d00a7d47644f3e70991abc5f7bd36216f433ede041382f0eaee4135a23",
+      "bytes": 2108,
+      "state": "present"
+    },
+    {
+      "path": "ops/self-hosted/scripts/catalog-compose.test.ts",
+      "mode": "100644",
+      "blob": "4ab7332e6e8c0e78bbf30b892b2d9c2c4b414f72",
+      "sha256": "65bc5c8d1190d708cf3f653c1bad75ab13a280aec3517cadf37c3a4d0cfd1542",
+      "bytes": 4552,
+      "state": "present"
+    },
+    {
+      "path": "ops/self-hosted/scripts/parameter-catalog-upgrade/actions.test.ts",
+      "mode": "100644",
+      "blob": "ca5ddb718a50dfbed18ddd0bc7a809528d4b4e32",
+      "sha256": "86d21779246ffb129dabf8fa7c822ae8213525067e4c2cf1f8ead935eccc370c",
+      "bytes": 3703,
+      "state": "present"
+    },
+    {
+      "path": "ops/self-hosted/scripts/parameter-catalog-upgrade/actions.ts",
+      "mode": "100644",
+      "blob": "524efa34c85e2ac64619771baf647632771518a4",
+      "sha256": "e4e6bb8f4a291cd43879f5eab03aa8a5aecb35d3b3118f1f9bc298ae6c1438bc",
+      "bytes": 4335,
+      "state": "present"
+    },
+    {
+      "path": "ops/self-hosted/scripts/parameter-catalog-upgrade/bindingJournal.test.ts",
+      "mode": "100644",
+      "blob": "c64717edbf8d9f98763e3ec662fee47fd7d0a1a4",
+      "sha256": "ff9cd8795b64e371333486c34f318834301a3108f9e01930febf9c93f96a7e53",
+      "bytes": 6479,
+      "state": "present"
+    },
+    {
+      "path": "ops/self-hosted/scripts/parameter-catalog-upgrade/bindingJournal.ts",
+      "mode": "100644",
+      "blob": "e3f16173bbdc792f2c7d26fbe86aca7b76136ed4",
+      "sha256": "a3beb7055633bfde2e4cd130433e6a2c05689971cbbaa48fa3ce882d09d7e4a3",
+      "bytes": 7109,
+      "state": "present"
+    },
+    {
+      "path": "ops/self-hosted/scripts/parameter-catalog-upgrade/controller.test.ts",
+      "mode": "100644",
+      "blob": "6d5fd35d8f867186a748104057e915cce02fb9d1",
+      "sha256": "6d4fa83c7e87a2195e5088d9d7ed76d62c9269eec0adc7bf5172a4b951a04e30",
+      "bytes": 28279,
+      "state": "present"
+    },
+    {
+      "path": "ops/self-hosted/scripts/parameter-catalog-upgrade/controller.ts",
+      "mode": "100644",
+      "blob": "1820e6f18e98ed6749bae23784789e3d6e648068",
+      "sha256": "ab27ecc5335e810d7fa2ca8f407b83c35c6ebbd537568cfde0aa619622eae415",
+      "bytes": 16726,
+      "state": "present"
+    },
+    {
+      "path": "ops/self-hosted/scripts/parameter-catalog-upgrade/deploymentAuthority.README.md",
+      "mode": "100644",
+      "blob": "329a898835c7af44c93ccf66d7c7ffd1d86581ce",
+      "sha256": "c371ff429b71d5cc24011f50bcd22436d1735b8378bebda1a9e7c4f88912de38",
+      "bytes": 8817,
+      "state": "present"
+    },
+    {
+      "path": "ops/self-hosted/scripts/parameter-catalog-upgrade/deploymentAuthority.README.zh-CN.md",
+      "mode": "100644",
+      "blob": "375905f734e95ea1c11eec23b9202614dd03e44d",
+      "sha256": "82e0706319e2184e71bb2f6dea3d98514838380e06705d5272359487a13d1b2c",
+      "bytes": 7266,
+      "state": "present"
+    },
+    {
+      "path": "ops/self-hosted/scripts/parameter-catalog-upgrade/deploymentAuthority.integration.test.ts",
+      "mode": "100644",
+      "blob": "d40c760a808b59210c62a3d69cb277176150c81d",
+      "sha256": "17cd9e35fb2661daca072b58242a6c11d9168f420889670b2310d0a807cc779f",
+      "bytes": 40067,
+      "state": "present"
+    },
+    {
+      "path": "ops/self-hosted/scripts/parameter-catalog-upgrade/deploymentAuthority.test.ts",
+      "mode": "100644",
+      "blob": "7adca815784658ef5bc42eab8b5d5c96cb19ac64",
+      "sha256": "d53879cdf544eff5765b101df8b481f22b257220b611a5796e4e5df223776cb3",
+      "bytes": 5150,
+      "state": "present"
+    },
+    {
+      "path": "ops/self-hosted/scripts/parameter-catalog-upgrade/deploymentAuthority.ts",
+      "mode": "100644",
+      "blob": "7a71db3b1ffe17afd89854c49d610104484c10cb",
+      "sha256": "6f83da6ae8ff4543b07b85dd10753f6884925c9176375a4dfdb76763a42485dc",
+      "bytes": 22845,
+      "state": "present"
+    },
+    {
+      "path": "ops/self-hosted/scripts/parameter-catalog-upgrade/handoff.test.ts",
+      "mode": "100644",
+      "blob": "c8f2cd65fd2cf2a7d3621b499e6bbe1be78a5c05",
+      "sha256": "96d09ebb0639c6721ce0a62d76926985d2c084820603c97e3888650f14aa6e1a",
+      "bytes": 24805,
+      "state": "present"
+    },
+    {
+      "path": "ops/self-hosted/scripts/parameter-catalog-upgrade/handoff.ts",
+      "mode": "100644",
+      "blob": "6b9685e6c446b1accac650663805d9ab41ff91f2",
+      "sha256": "30bfffbeac8f72ff67e2746ce73217c86d01f688f27be72fbdc660490cbcdcdf",
+      "bytes": 24007,
+      "state": "present"
+    },
+    {
+      "path": "ops/self-hosted/scripts/parameter-catalog-upgrade/journal.test.ts",
+      "mode": "100644",
+      "blob": "c6967d376019a1dfa584eba7cf2b70bd3882cfed",
+      "sha256": "cd52a15d8341f7a6c1a860820701d7671bfc2d4810377a0ab529c68ea75aed65",
+      "bytes": 19800,
+      "state": "present"
+    },
+    {
+      "path": "ops/self-hosted/scripts/parameter-catalog-upgrade/journal.ts",
+      "mode": "100644",
+      "blob": "adc429d779791f492547f49a62af613adaaf5bce",
+      "sha256": "dc1446212df3b9904d4ad1e4c0a3772d8ac79ed89be00ed6f643acc050e5745b",
+      "bytes": 26861,
+      "state": "present"
+    },
+    {
+      "path": "ops/self-hosted/scripts/parameter-catalog-upgrade/managementJournal.test.ts",
+      "mode": "100644",
+      "blob": "9bbc032b7c29b4fa8abb125a1c3e9fafac8adfbe",
+      "sha256": "af43e77b907980fdf34d38dafa67f86064b853bde06170c5be242ffa21a12ed7",
+      "bytes": 13513,
+      "state": "present"
+    },
+    {
+      "path": "ops/self-hosted/scripts/parameter-catalog-upgrade/managementJournal.ts",
+      "mode": "100644",
+      "blob": "b2def9ad56966f4849c0f1171c1b4b4fcbeb82af",
+      "sha256": "aef67b59b7c226804a6448c3872d6ba8f94e6fc6fe60325c34c45679f845b501",
+      "bytes": 12305,
+      "state": "present"
+    },
+    {
+      "path": "ops/self-hosted/scripts/parameter-catalog-upgrade/managementPreparation.ts",
+      "mode": "100644",
+      "blob": "f54b2290151994b1dcaf1c0aa4e463e2a0c310cd",
+      "sha256": "2e167ad362d9efdb0fa516936a73e4e13e96b0d03f6d0e460e6be674d6c3c43c",
+      "bytes": 3434,
+      "state": "present"
+    },
+    {
+      "path": "ops/self-hosted/scripts/parameter-catalog-upgrade/recoveryApproval.README.md",
+      "mode": "100644",
+      "blob": "6e0d1a32e29c58614fa54d2739be2506320e3e18",
+      "sha256": "a8bd3fb0b5f68bb1b8788f24bb58ab46e60fc7faebdbd0b1a53908272e702e2d",
+      "bytes": 4523,
+      "state": "present"
+    },
+    {
+      "path": "ops/self-hosted/scripts/parameter-catalog-upgrade/recoveryApproval.README.zh-CN.md",
+      "mode": "100644",
+      "blob": "be963b659b222592d4ab6355daf23bc4bedbadac",
+      "sha256": "358fc1c640df048d326c90b99001b585d636a54505eeb023b8593341b8b334c1",
+      "bytes": 3804,
+      "state": "present"
+    },
+    {
+      "path": "ops/self-hosted/scripts/parameter-catalog-upgrade/recoveryApproval.test.ts",
+      "mode": "100644",
+      "blob": "82dd96ac6a11bdd8c50529ac4da1eaa804a46c7e",
+      "sha256": "3ceb3e4d60e7536637c53cac970fba97bd4acae9ea42a81bc5bceec5febcaea9",
+      "bytes": 1346,
+      "state": "present"
+    },
+    {
+      "path": "ops/self-hosted/scripts/parameter-catalog-upgrade/recoveryApproval.ts",
+      "mode": "100644",
+      "blob": "9a9f2b56f8bf499ca7d3239ccf70e99a774cd714",
+      "sha256": "9ca25b1497b33f85a8ce4b8278300b81b21adcf19e2e3fe58f588fe9b670a38b",
+      "bytes": 6701,
+      "state": "present"
+    },
+    {
+      "path": "ops/self-hosted/scripts/parameter-catalog-upgrade/recoveryCapture.test.ts",
+      "mode": "100644",
+      "blob": "116121e34c7d514c1900979fa02bd9b956a6c3a3",
+      "sha256": "6ac6e1a4fe916da44fe904c8382c1fa6a6d3bd9e996bf4b0b0bdf9a97c307382",
+      "bytes": 8873,
+      "state": "present"
+    },
+    {
+      "path": "ops/self-hosted/scripts/parameter-catalog-upgrade/recoveryCapture.ts",
+      "mode": "100644",
+      "blob": "0f3797694d06bb21bc8b2593601d6a3ceeee8b54",
+      "sha256": "583c503d95f5acfe1ed0edfac86e77acf47ff2ce9ce875c5a252ba20204b0e74",
+      "bytes": 8096,
+      "state": "present"
+    },
+    {
+      "path": "ops/self-hosted/scripts/parameter-catalog-upgrade/reportApprovalTarget.README.md",
+      "mode": "100644",
+      "blob": "3870b18b9b4232a4d1142a9c2ed6558e926060fd",
+      "sha256": "365bae9ab016d8f0b4f3a886a47d082ad3d76aabfed88585d1566790eebea6f6",
+      "bytes": 5204,
+      "state": "present"
+    },
+    {
+      "path": "ops/self-hosted/scripts/parameter-catalog-upgrade/reportApprovalTarget.README.zh-CN.md",
+      "mode": "100644",
+      "blob": "5f123c98829c9952fce8fc30f456f218f59ac944",
+      "sha256": "9d3d5224a86bb1f4bedf703e98421b95b078de4cb5d8d67846388ca7944c25e2",
+      "bytes": 4427,
+      "state": "present"
+    },
+    {
+      "path": "ops/self-hosted/scripts/parameter-catalog-upgrade/reportApprovalTarget.test.ts",
+      "mode": "100644",
+      "blob": "e70ebc49d71e59710625b2827b56fc2ad535d5e7",
+      "sha256": "82530a503e93b7cc95b7d5725a1ff806a7dde176bfc5a98a5744e57b9ad1d8f9",
+      "bytes": 992,
+      "state": "present"
+    },
+    {
+      "path": "ops/self-hosted/scripts/parameter-catalog-upgrade/reportApprovalTarget.ts",
+      "mode": "100644",
+      "blob": "fd1e9eb236e81f069988781fa417317cc195e625",
+      "sha256": "c76a15fb5d9123b98e13536d054de7c29159263bc53f7542a5ef66287dc6b352",
+      "bytes": 13765,
+      "state": "present"
+    },
+    {
+      "path": "ops/self-hosted/scripts/parameter-catalog-upgrade/stateMachine.ts",
+      "mode": "100644",
+      "blob": "ea443814f25f36f2f1f93df418f13eccf23784e3",
+      "sha256": "1b68292c831da10f0ea2ada0180ac450129c137eb7e787b2b6666c2e80b4dc5a",
+      "bytes": 5798,
+      "state": "present"
+    },
+    {
+      "path": "ops/self-hosted/scripts/upgrade-compatibility.test.ts",
+      "mode": "100644",
+      "blob": "3c0ad8e7e4bf3515a8e46f88f65eb4d4f1ce2634",
+      "sha256": "15680cb7dd6ca6b7ee858840fc3114b77e645939876db83d79d08822908b2a7a",
+      "bytes": 3309,
+      "state": "present"
+    },
+    {
+      "path": "ops/self-hosted/scripts/upgrade-lib.sh",
+      "mode": "100755",
+      "blob": "bc1e1cf57ee269638aa6a3e976b605b3a28c1838",
+      "sha256": "4b91949ceaa94cc8bed62c22e39bcc17c96ad1a4bacbc73382ac97653fd0ddad",
+      "bytes": 136827,
+      "state": "present"
+    },
+    {
+      "path": "ops/self-hosted/scripts/upgrade.sh",
+      "mode": "100755",
+      "blob": "3533d19d71f843711407e63e85861a1a830a1ba4",
+      "sha256": "686bd604bf06b5b0aa07457b8082dc628cfdfb4cdbd6d4d4eb5bbae7267848ac",
+      "bytes": 32386,
+      "state": "present"
+    },
+    {
+      "path": "ops/self-hosted/scripts/upgrade.sh.test.ts",
+      "mode": "100644",
+      "blob": "85d7fe111aad0127d9f8229e1f649fc39697ce86",
+      "sha256": "4e2cd688fe2155bfc7a30f84811d63f747a06e448299d35c2e36cba0e8f06f02",
+      "bytes": 188829,
+      "state": "present"
+    },
+    {
+      "path": "ops/self-hosted/storage/README.md",
+      "mode": "100644",
+      "blob": "2ed37ba15c75685b85f8b7bcfd59393df95bfbca",
+      "sha256": "6bf059345ee8cd32bc1f2f5c47e42af8f36eee4847621fd0d94569e0f84bac38",
+      "bytes": 1627,
+      "state": "present"
+    },
+    {
+      "path": "ops/self-hosted/storage/README.zh-CN.md",
+      "mode": "100644",
+      "blob": "4d952d0b9433b8c3fc4c4cbe69e8bed06b04032b",
+      "sha256": "bbd214629ea5774e78f1ad336179924b7c6b973572980235fe2c54127a64ebc0",
+      "bytes": 1550,
+      "state": "present"
+    },
+    {
+      "path": "ops/self-hosted/storage/controlledRecovery.docker.integration.test.ts",
+      "mode": "100644",
+      "blob": "f2d8867a6d39edf7af2f031754d7332f1c904ba6",
+      "sha256": "63f633685b0504f229ae74b9944d3006a916d861d6c1afea8e773d34009efcda",
+      "bytes": 36598,
+      "state": "present"
+    },
+    {
+      "path": "ops/self-hosted/storage/controlledRecovery.docker.ts",
+      "mode": "100644",
+      "blob": "563eafad4d97c2400c6ba876e661325b05631bf9",
+      "sha256": "c8d870b1b65c44df2468c68397fb01f3227d3a940016e6041a9fbb7244d6bba8",
+      "bytes": 4400,
+      "state": "present"
+    },
+    {
+      "path": "ops/self-hosted/storage/controlledRecovery.test.ts",
+      "mode": "100644",
+      "blob": "e57a8ec655654dac9567ed0409882a048ac73b93",
+      "sha256": "b9e678f6d6a20aab060d633267550c346603c3ac0813d90ab9ec1c34b445a5a1",
+      "bytes": 7575,
+      "state": "present"
+    },
+    {
+      "path": "ops/self-hosted/storage/controlledRecovery.ts",
+      "mode": "100644",
+      "blob": "c6569c0776802c3034d29f91fdaa3c21a905e681",
+      "sha256": "7067593af66ffb5824cfe22e338f08be737df44615d9e85faa37a4cecb2a56b6",
+      "bytes": 6207,
+      "state": "present"
+    },
+    {
+      "path": "ops/self-hosted/storage/dockerAccess.ts",
+      "mode": "100644",
+      "blob": "fa1e032b5565636528e1a80f563f7852eb8f3e41",
+      "sha256": "817bbf292659675c412755eb7e50477c8318162b663915625162ec8a4d7b7312",
+      "bytes": 20625,
+      "state": "present"
+    },
+    {
+      "path": "ops/self-hosted/storage/execution/README.md",
+      "mode": "100644",
+      "blob": "9145b91cfc7fbc786fbde7174bdafc988eeaf0f0",
+      "sha256": "d21e9ebc2d259d6a3b766204aa861c0e2b29642e3d6f1ddf326ae4e30ee5432f",
+      "bytes": 11424,
+      "state": "present"
+    },
+    {
+      "path": "ops/self-hosted/storage/execution/README.zh-CN.md",
+      "mode": "100644",
+      "blob": "6fef158eaa71c545117d4102c352e193bb9d7638",
+      "sha256": "3f975d3fcdffa308816e4fa3c442956c296e489e6223e51ddcf1190ab79012de",
+      "bytes": 9856,
+      "state": "present"
+    },
+    {
+      "path": "ops/self-hosted/storage/execution/authorization.fixture.ts",
+      "mode": "100644",
+      "blob": "fe48916cac507a32b3bd2337167094840757d475",
+      "sha256": "586a0d083b1aca64e06035320134985b846257dbcd22d94e9c02939f9c72db7a",
+      "bytes": 7854,
+      "state": "present"
+    },
+    {
+      "path": "ops/self-hosted/storage/execution/authorization.test.ts",
+      "mode": "100644",
+      "blob": "5299de9353ac6992480819af3f21d61e376ca42a",
+      "sha256": "fe658333f40b5e0141da71def530f00aabf3ac19951df0817fb56410ba1701a3",
+      "bytes": 16370,
+      "state": "present"
+    },
+    {
+      "path": "ops/self-hosted/storage/execution/authorization.ts",
+      "mode": "100644",
+      "blob": "b54315e2a93e6555c1ed16e11a3f41d96aeb0c93",
+      "sha256": "de3eccd077b98332a507f51cdf14fcc9dbe93b32b8d1afaadf8b140b31d289e1",
+      "bytes": 8189,
+      "state": "present"
+    },
+    {
+      "path": "ops/self-hosted/storage/execution/controlledRestore.ts",
+      "mode": "100644",
+      "blob": "9c09ea105a1047e611b67fca682636c4d177238d",
+      "sha256": "155ef35ebdca04cb68fb0fb7fcee53a7c87eb6d2b4c5c864e4997d55ce40accc",
+      "bytes": 3771,
+      "state": "present"
+    },
+    {
+      "path": "ops/self-hosted/storage/execution/dockerRestore.ts",
+      "mode": "100644",
+      "blob": "ff3ff867ba335eb69f5df6af4bac407be2b367af",
+      "sha256": "89fd7a7243f64e592012f5e471e4ce0ebf3a0f4632ebb2738594f598d31584b4",
+      "bytes": 7923,
+      "state": "present"
+    },
+    {
+      "path": "ops/self-hosted/storage/execution/packageRestore.ts",
+      "mode": "100644",
+      "blob": "d69a3a019a9602539a5673aabbec712f45c3a524",
+      "sha256": "e7549b781f3a834f9720ae4488c9df10b618441259204933f73cccadf9c8d117",
+      "bytes": 3297,
+      "state": "present"
+    },
+    {
+      "path": "ops/self-hosted/storage/recoveryPackage.test.ts",
+      "mode": "100644",
+      "blob": "ac1c8194373ee747622646775bed4874f82d5024",
+      "sha256": "e843069f406d6b8521cabb8d97e095ca45db4f7067c76370eaf07357456f8102",
+      "bytes": 21698,
+      "state": "present"
+    },
+    {
+      "path": "ops/self-hosted/storage/recoveryPackage.ts",
+      "mode": "100644",
+      "blob": "12ae34e01660a499359e0db6ed7de02df35169d0",
+      "sha256": "7239456cbcdf7b39830b3654c9341516835e303e1be1d7e14b06f5c4e4973a39",
+      "bytes": 21646,
+      "state": "present"
+    },
+    {
+      "path": "ops/self-hosted/upgrade.md",
+      "mode": "100644",
+      "blob": "cd848130e7c1e2c39b4ad4234db747ab8929fbbf",
+      "sha256": "a1ad340ad44b78a8029c2d7813d8c170ffb399aeb4350b3096157b41971dde53",
+      "bytes": 27078,
+      "state": "present"
+    },
+    {
+      "path": "ops/self-hosted/upgrade.zh-CN.md",
+      "mode": "100644",
+      "blob": "25f308025a594998cc1fe348109efb276e92c588",
+      "sha256": "dc8c9b1c2064c7600952608b510330a78c931962f628cc914a811b1b9f5a4cf9",
+      "bytes": 24181,
+      "state": "present"
+    },
+    {
+      "path": "package.json",
+      "mode": "100644",
+      "blob": "97b47af50387235b0dc8aeb831f428bd7b403df5",
+      "sha256": "3f5a6a8c4f201afc89507290612743fd757f4d7011e4e59a4d32c31730a2c6cb",
+      "bytes": 9252,
+      "state": "present"
+    },
+    {
+      "path": "scripts/check-parameter-catalog-boundaries.test.ts",
+      "mode": "100644",
+      "blob": "2c63eda9352727cd18363892f02aab85d2e02d28",
+      "sha256": "38e07728c0593908e5e7f470bd9f08f8f31176a541d92eb7eed90e790082ea64",
+      "bytes": 39877,
+      "state": "present"
+    },
+    {
+      "path": "scripts/disposable-post-cutover-runtime.test.ts",
+      "mode": "100644",
+      "blob": "a816f6010b4ee956d7c97ea1ea27842fb0cdd03d",
+      "sha256": "b59c28bfdca3eb3affa0a7bb0d4055e6fab69cf3604f897d5a7f75f0cccfb058",
+      "bytes": 9905,
+      "state": "present"
+    },
+    {
+      "path": "scripts/fixtures/upgrade-82344044-catalog-gate.sh",
+      "mode": "100644",
+      "blob": "4c8b7cd3739cc21910e8cecc581b451311848979",
+      "sha256": "29c28f2b5951bf4650984ec1be07ac121b8bb61c07e29388f70b7848e8952232",
+      "bytes": 351,
+      "state": "present"
+    },
+    {
+      "path": "scripts/inspect-populated-upgrade-source.integration.test.ts",
+      "mode": "100644",
+      "blob": "8a74c9f8028b70d53703a173593ed67818826a38",
+      "sha256": "2c708ec615d1baaa1d9c709ca4e840760bced319f88be882af7d2b6e290237e4",
+      "bytes": 8806,
+      "state": "present"
+    },
+    {
+      "path": "scripts/inspect-populated-upgrade-source.test.ts",
+      "mode": "100644",
+      "blob": "049584927c90888a4d6dce1a90fed1c1b29de227",
+      "sha256": "1749afeccefc0e7daaa00913a98371b656643b152759ebf20b4c933f981b2a85",
+      "bytes": 2227,
+      "state": "present"
+    },
+    {
+      "path": "scripts/inspect-populated-upgrade-source.ts",
+      "mode": "100644",
+      "blob": "da0a7f4a579a49acdeae806d1768a56cef87e163",
+      "sha256": "f6a346cd4c4eabc9fe8680e57c755de2310ad21e150a2b1e53b76622dbea412f",
+      "bytes": 6933,
+      "state": "present"
+    },
+    {
+      "path": "scripts/inspect-upgrade-runtime-identity.test.ts",
+      "mode": "100644",
+      "blob": "a6c19a4ed720f342da465780f3b3fea78e0357f9",
+      "sha256": "c8da36ee7dfa0ef55958c352b6daa4c01f1e623db794c338d78964ff0ff6a738",
+      "bytes": 6514,
+      "state": "present"
+    },
+    {
+      "path": "scripts/inspect-upgrade-runtime-identity.ts",
+      "mode": "100644",
+      "blob": "0daef545bfddf96f7494a504b28418f1880aad35",
+      "sha256": "31ea2292ef9c1aafb1b228f780a5b16884d3cb1ecf419664aaba6ddd7c291eb3",
+      "bytes": 5611,
+      "state": "present"
+    },
+    {
+      "path": "scripts/isolated-upgrade-docker.test.ts",
+      "mode": "100644",
+      "blob": "b3294dfcb3b5b9912f48431df51d701741650cec",
+      "sha256": "287cbf271b40968780070cf16ff46c3b87a6822f2fe903ae7f5721f83c60bea9",
+      "bytes": 3924,
+      "state": "present"
+    },
+    {
+      "path": "scripts/isolated-upgrade-docker.ts",
+      "mode": "100644",
+      "blob": "d4a93fbc1beac457c2ef06325a5131c70ea358cc",
+      "sha256": "af06e0475336638eba85240ede801506cb9b5d03e12b469ab76bd615f68067cb",
+      "bytes": 3176,
+      "state": "present"
+    },
+    {
+      "path": "scripts/migrate.test.ts",
+      "mode": "100644",
+      "blob": "8383265b047e9b0d634cf335f2f655ff9b225e8e",
+      "sha256": "3ffe171178fe20ec7e95962253501237302652d56f60fb54dd848ac41c7cd3ac",
+      "bytes": 8044,
+      "state": "present"
+    },
+    {
+      "path": "scripts/migrate.ts",
+      "mode": "100644",
+      "blob": "92ebb5666a6cc32f22f729b2a09c6f1a334c9606",
+      "sha256": "d65d22d86d060ccd38a5aa24f842eb6f7d7a869ef80e08bf63af5c39f14bc6fb",
+      "bytes": 19367,
+      "state": "present"
+    },
+    {
+      "path": "scripts/parameter-catalog-allowlist/exactRelocation.test.ts",
+      "mode": "100644",
+      "blob": "aa4e6ce4861f6659ebf2982a305e0409ccaf8d47",
+      "sha256": "045a6ea6a9e37afedce58d5548faf6fb35bab40f2af234efb8ca8efd8df6b319",
+      "bytes": 8418,
+      "state": "present"
+    },
+    {
+      "path": "scripts/parameter-catalog-allowlist/shards/s12-ops.json",
+      "mode": "100644",
+      "blob": "5873255fa8ef9b9a1db0724409b0da39aec36281",
+      "sha256": "faa252d4358ebd0ef934ccdd2c87c6bd2e53b69a0d507a4c795807dc05f08750",
+      "bytes": 298,
+      "state": "present"
+    },
+    {
+      "path": "scripts/reconcile-legacy-isolation.test.ts",
+      "mode": "100644",
+      "blob": "8b63c706a0c7996e71a1719c84e4aaf4a69f6b72",
+      "sha256": "36d08023bfb562d4ef16c16c23b487ac4dfde2a1d80ea5e7e3568b6f4dbe7fa6",
+      "bytes": 1475,
+      "state": "present"
+    },
+    {
+      "path": "scripts/reconcile-parameter-definitions.test.ts",
+      "mode": "100644",
+      "blob": "12364f463a1978be127740f9409e5d73da136e3f",
+      "sha256": "962ba867b7e29b0d255a322ff681af56f6db882221ba72c3d2a3ca89bbe3d0a6",
+      "bytes": 2322,
+      "state": "present"
+    },
+    {
+      "path": "scripts/reconcile-parameter-definitions.ts",
+      "mode": "100644",
+      "blob": "60d253931ea9db550dd6fde9d60add31e9b4e375",
+      "sha256": "31a14c9c43adff343fe462e3adb4bdd04595459be126ba592cb0e76f50ce2da5",
+      "bytes": 6909,
+      "state": "present"
+    },
+    {
+      "path": "scripts/reconcile-upgrade-cli.test.ts",
+      "mode": "100644",
+      "blob": "b660c652dfb6909e82fd4861778dc59efc856624",
+      "sha256": "5f1e951ef12a48e1e45e1dbe7593d00c896e2294576b0308f5b67f3b81bbed59",
+      "bytes": 2714,
+      "state": "present"
+    },
+    {
+      "path": "scripts/reconcile-upgrade-gate.test.ts",
+      "mode": "100644",
+      "blob": "ad7e94b6a7105f0dd6b6844072ce728c3ba6565d",
+      "sha256": "b81e02a02296c9e92e9c6ac091e8d486ebc63645624549b6c3a895772b2b93b1",
+      "bytes": 986,
+      "state": "present"
+    },
+    {
+      "path": "scripts/recovery-storage-boundary.test.ts",
+      "mode": "100644",
+      "blob": "f39d888d3da1ca8f3b2f377e52754028d618085c",
+      "sha256": "d1ae19da929481fa5508a5c91a368282974a2df0fb01816c0cf4c4d226f1e28e",
+      "bytes": 5667,
+      "state": "present"
+    },
+    {
+      "path": "scripts/recovery-storage-boundary.ts",
+      "mode": "100644",
+      "blob": "dd113258bd9d24d3a2389fc408c08bf62a95c0bd",
+      "sha256": "5522e8821a6c68225e5f4cd439a9ec59fb3ce86269ffd9b8bb2a8c0b7fc44352",
+      "bytes": 10108,
+      "state": "present"
+    },
+    {
+      "path": "scripts/rehearse-upgrade-recovery.test.ts",
+      "mode": "100644",
+      "blob": "972af101a2110cfeac52492210369be082ea604f",
+      "sha256": "772014aeeba9bff491947a540d7cc38a61b3f100d7923076215473879228fb72",
+      "bytes": 4081,
+      "state": "present"
+    },
+    {
+      "path": "scripts/rehearse-upgrade-recovery.ts",
+      "mode": "100644",
+      "blob": "2491e8b19201225f6156eabb80eb100ecd3d05ba",
+      "sha256": "c6e7407c556d47ea32f01bf994cb0dc650a0dad0053127ef525954a86458d8a3",
+      "bytes": 33873,
+      "state": "present"
+    },
+    {
+      "path": "scripts/run-restore-drill.test.ts",
+      "mode": "100644",
+      "blob": "0160e0592c610345d4a27d27316a8f2bc4923868",
+      "sha256": "7c48ee98228dc21c59151834101435b35fc5198e13cef098df293ac2e57502e1",
+      "bytes": 20355,
+      "state": "present"
+    },
+    {
+      "path": "scripts/run-self-hosted-release-gate.test.ts",
+      "mode": "100644",
+      "blob": "3c80319555d809ad30c11935101abe2cbe02c244",
+      "sha256": "180696b17d76c8db361dc990097022a4f6b8b22291a0c9198b186f509b20bbb6",
+      "bytes": 21922,
+      "state": "present"
+    },
+    {
+      "path": "scripts/run-self-hosted-release-gate.ts",
+      "mode": "100644",
+      "blob": "6084d75b86a149f5507006f0e4935d2dcc0a036b",
+      "sha256": "a0335c381472c72673df792fd1965c26a7a2f4f0840828f97e141828bd34c510",
+      "bytes": 27333,
+      "state": "present"
+    },
+    {
+      "path": "scripts/run-upgrade-component-tests.test.ts",
+      "mode": "100644",
+      "blob": "6f958142b6e2c058883d36b125e57643b72bca32",
+      "sha256": "10159eef86fcecdaf03fae7d3dff38c90e8234c480268c94c9dc7c0f6f5cb78a",
+      "bytes": 4327,
+      "state": "present"
+    },
+    {
+      "path": "scripts/run-upgrade-component-tests.ts",
+      "mode": "100644",
+      "blob": "cf2f1ad5721470cbe8cb445c991e4e691f3e5853",
+      "sha256": "5e196b5517a5d2c9578860ff9e9679d2f88507fc224e850678d415e8b089a246",
+      "bytes": 14189,
+      "state": "present"
+    },
+    {
+      "path": "scripts/upgrade-component-ci.test.ts",
+      "mode": "100644",
+      "blob": "324bafa9d8eb787821ea349d3822edabc06bff33",
+      "sha256": "f5a7a4c9904a5698a495426682273cfb2aee7b31633c5caa19cbae220385cf48",
+      "bytes": 2187,
+      "state": "present"
+    },
+    {
+      "path": "scripts/upgrade-hosted-admission.md",
+      "mode": "100644",
+      "blob": "7574a4d7e0d71ad13557928b8d0ac60db3be6e66",
+      "sha256": "b5610bc212549fbe63dc2a79abb1b45423b54813eae21a54e31d241eef6df7d9",
+      "bytes": 5211,
+      "state": "present"
+    },
+    {
+      "path": "scripts/upgrade-hosted-admission.test.ts",
+      "mode": "100644",
+      "blob": "bef08f5bc28fdc9f1c9603b1d453d5ce304e54c6",
+      "sha256": "3732bee4c4e1ff8148180a194781716cbf74ada3a6f87129a88e7887f9498960",
+      "bytes": 10666,
+      "state": "present"
+    },
+    {
+      "path": "scripts/upgrade-hosted-admission.ts",
+      "mode": "100644",
+      "blob": "1460469be62a3de3efc56bef52c0cc9c602353de",
+      "sha256": "1646374fe8c33432e2af06f115ee72425797dafb96534b0d2dce076f1fa55892",
+      "bytes": 8146,
+      "state": "present"
+    },
+    {
+      "path": "scripts/upgrade-hosted-admission.zh-CN.md",
+      "mode": "100644",
+      "blob": "77c76cc3740c8a6906d231ff6da77045af345e6e",
+      "sha256": "bd33e023644a41ea13d36da057b15892576c47a1a3b4b5610e0fb57b1752f18f",
+      "bytes": 4489,
+      "state": "present"
+    },
+    {
+      "path": "scripts/upgrade-test-target.test.ts",
+      "mode": "100644",
+      "blob": "503c2c94e5e5322c3f176361da352ab499a421c3",
+      "sha256": "76a57abc84477e4c716e53cc64bf5685d026cab1e8058c38a9cbc16d82207753",
+      "bytes": 3223,
+      "state": "present"
+    },
+    {
+      "path": "scripts/upgrade-test-target.ts",
+      "mode": "100644",
+      "blob": "f5db7542892d5d9acd2717dad5438f49f539bd8d",
+      "sha256": "c6bea33c24cb3864d93fe10d4ead3ebd9b1759558f683f1eca2d8c7d190df816",
+      "bytes": 2627,
+      "state": "present"
+    },
+    {
+      "path": "server/app.catalogRetirement.test.ts",
+      "mode": "100644",
+      "blob": "6d71260edb5148b4cc3c4a145184be3a1f568e2f",
+      "sha256": "3c6ff582d1a053d3ce10adada10e40db6e6418c9eb6baaca756486b36e3c7172",
+      "bytes": 5717,
+      "state": "present"
+    },
+    {
+      "path": "server/app.ts",
+      "mode": "100644",
+      "blob": "5ef62d7febf7b079386cb3ad8f0a206b6ce43cb4",
+      "sha256": "89e283e54627dc1bd0c9716b7416078e7736ba6c95f7c2fb52bafd09f076580b",
+      "bytes": 23262,
+      "state": "present"
+    },
+    {
+      "path": "server/config/env.ts",
+      "mode": "100644",
+      "blob": "ae41869f32fe425c7e77d4c148e008f8c16b6725",
+      "sha256": "b7299880e9fd83994fe6a2696aaefc948a0bce4314a06e0cb4d69afd07dd740b",
+      "bytes": 9085,
+      "state": "present"
+    },
+    {
+      "path": "server/index.ts",
+      "mode": "100644",
+      "blob": "55388b3b3154c7d0cf88acc5564ce4b7a9790029",
+      "sha256": "893f7b8a4a388befa6b50117c0caed2fb7ed4f1149451fd494eb006238ebac49",
+      "bytes": 11376,
+      "state": "present"
+    },
+    {
+      "path": "server/migrations/0140_parameter_catalog_runtime_reader.sql",
+      "mode": "100644",
+      "blob": "5dc1e027e352ef32e2113c322ad9a343b3bbb461",
+      "sha256": "9fd18152c0dd25037a2b0b5acb706c95897c8f24bfb7b709cb17ff4312db3aee",
+      "bytes": 10305,
+      "state": "present"
+    },
+    {
+      "path": "server/modules/agent/xiaoze/durableCheckpointer.ts",
+      "mode": "100644",
+      "blob": "265376f88b4c2e58151288e2beb7209bc072b0a4",
+      "sha256": "736060c035aa1f6a897d38569ae2ab4dc354e8e1a3d7ede1b35a76b62413cddc",
+      "bytes": 10916,
+      "state": "present"
+    },
+    {
+      "path": "server/modules/catalog-cutover/archive/adapter.integration.test.ts",
+      "mode": "100644",
+      "blob": "869ce0b5d26d0359ff68b70eedd42f1f051902f6",
+      "sha256": "d96be9711f69648f489ace5e317ca16a2937454532789c1510ae0dfb021225cf",
+      "bytes": 22611,
+      "state": "present"
+    },
+    {
+      "path": "server/modules/catalog-cutover/archive/adapter.test.ts",
+      "mode": "100644",
+      "blob": "1bea8183b026a470afce87e0cab8dc9fe65a1799",
+      "sha256": "6a5f6e5ad09fa3d561a76aef592641ec5a7454abc0bc5b96dfe2527b80dc0ea9",
+      "bytes": 5560,
+      "state": "present"
+    },
+    {
+      "path": "server/modules/catalog-cutover/archive/adapter.ts",
+      "mode": "100644",
+      "blob": "e9842bc5cac4039dc9d5c55aaeeaabca99af8ad6",
+      "sha256": "897e2c163df722ead9678fd52b398d698b4d0cc1e3443b32de25803b435b1f49",
+      "bytes": 20459,
+      "state": "present"
+    },
+    {
+      "path": "server/modules/catalog-cutover/archive/types.ts",
+      "mode": "100644",
+      "blob": "7c3414acc8d2ca08debb22c739048cda3460196b",
+      "sha256": "5883beceecdd0a00708a6a5c34e01906215dbe320282fc8da3035458c1e9f655",
+      "bytes": 3897,
+      "state": "present"
+    },
+    {
+      "path": "server/modules/catalog-cutover/bindingImportProducer.integration.test.ts",
+      "mode": "100644",
+      "blob": "14a10e36b8022bd0f7b2cb3c807f589ed13def73",
+      "sha256": "c036d3c317c54a4be00d3f495bd0ceab74b4292b9b787d49538eb05cc5ac45b0",
+      "bytes": 32216,
+      "state": "present"
+    },
+    {
+      "path": "server/modules/catalog-cutover/bindingImportProducer.ts",
+      "mode": "100644",
+      "blob": "ec78751d24f603d82285a143736b3745f9696c1f",
+      "sha256": "c28fe2c696c88f677bf5bcc0c0f6554f153f9bcd20f98f2c1058d44051868ed9",
+      "bytes": 18797,
+      "state": "present"
+    },
+    {
+      "path": "server/modules/catalog-cutover/conversionManifest.integration.test.ts",
+      "mode": "100644",
+      "blob": "0cebec0aa4c808ad9e7ecdef8181a18598744a71",
+      "sha256": "9565fd372629970e709fc99178a0a3c5833a920eac2fa0a2b8d4eec034773a6c",
+      "bytes": 12810,
+      "state": "present"
+    },
+    {
+      "path": "server/modules/catalog-cutover/conversionManifest.ts",
+      "mode": "100644",
+      "blob": "4288aec0091db9dd0e9a54ce1426ca8dadafb56f",
+      "sha256": "b85e83899cd6b5dc6d1c2c746c8bed923119cc427cc716790276852ce72d822a",
+      "bytes": 9279,
+      "state": "present"
+    },
+    {
+      "path": "server/modules/catalog-cutover/interface.ts",
+      "mode": "100644",
+      "blob": "1f75fcb413010dcbb56da65a8ff121a7a4dff34c",
+      "sha256": "6af41803e4e16ae2dbf95ed2430091f2f15123b5f9e3b837f4c97fa4ed13954d",
+      "bytes": 6833,
+      "state": "present"
+    },
+    {
+      "path": "server/modules/catalog-cutover/managementStructure.test.ts",
+      "mode": "100644",
+      "blob": "46d713655a1f69bfef3931027ab7d82784679370",
+      "sha256": "3cec12f0c28c81977923d3bbd32c2b7f8af3eee62fbc9c5e0340df17869b1074",
+      "bytes": 7019,
+      "state": "present"
+    },
+    {
+      "path": "server/modules/catalog-cutover/managementStructure.ts",
+      "mode": "100644",
+      "blob": "5cb024998cf9518c290b707f2e409d00897ad03c",
+      "sha256": "4c7010b16a3d4e73a9a430c4e946e91e3244b16843ee600a15e1bc132f82f219",
+      "bytes": 15784,
+      "state": "present"
+    },
+    {
+      "path": "server/modules/catalog-cutover/orchestrator.test.ts",
+      "mode": "100644",
+      "blob": "d6a8727a79cf164ca5411054f17bff60faad3bfe",
+      "sha256": "5ccb0c430177abca03183e7217dea9eab28e2201ed647af1e583ebb472d872bc",
+      "bytes": 17096,
+      "state": "present"
+    },
+    {
+      "path": "server/modules/catalog-cutover/orchestrator.ts",
+      "mode": "100644",
+      "blob": "e6a68fc56f25ecb178038622d694230c1cddc1af",
+      "sha256": "f54bcb24ed6a0b47660f913a48919b372d829ffdc94829187fd55738ca923b0e",
+      "bytes": 46025,
+      "state": "present"
+    },
+    {
+      "path": "server/modules/catalog-cutover/runtimeState.test.ts",
+      "mode": "100644",
+      "blob": "36a7fb20361f971d406108b0398eb8ee572cf9ce",
+      "sha256": "7f37a9553953866ec1a7eb98cc13d7026ed2d0b7c957cd223ef84bba6c0bee5a",
+      "bytes": 10695,
+      "state": "present"
+    },
+    {
+      "path": "server/modules/catalog-cutover/runtimeState.ts",
+      "mode": "100644",
+      "blob": "48f7b8b6d6f5cbe7f9e5ba12ff460861c2ac0e42",
+      "sha256": "30b670f601684441fec9f678643a9da1c66bcbad6abeab6f6360c11733e8f5ca",
+      "bytes": 8765,
+      "state": "present"
+    },
+    {
+      "path": "server/modules/catalog-cutover/sourceSnapshot.test.ts",
+      "mode": "100644",
+      "blob": "a1e66c8f1c60daf8dc9c566039452013fc7cd809",
+      "sha256": "8fe6bd553cfc740d2a86d9a04b8de23cbca127bfb31289053ec90f613c3680e3",
+      "bytes": 21335,
+      "state": "present"
+    },
+    {
+      "path": "server/modules/catalog-cutover/sourceSnapshot.ts",
+      "mode": "100644",
+      "blob": "cf0631f83dced9caac88addc023cfe25d12be964",
+      "sha256": "441f9581931f0b67f42a1cdd34ae4bd8aeda3232579588ec4598abc6c8a88c19",
+      "bytes": 14084,
+      "state": "present"
+    },
+    {
+      "path": "server/modules/catalog-kernel/security/catalog-reader.md",
+      "mode": "100644",
+      "blob": "78f03f50ac9954ffc19ebcfd6a61bd6d91c70ff2",
+      "sha256": "c559c0ac538af3ea12dcbe95571a7c596a21ce319a4008e337db88e9b9abcb74",
+      "bytes": 8075,
+      "state": "present"
+    },
+    {
+      "path": "server/modules/catalog-kernel/security/catalog-reader.zh-CN.md",
+      "mode": "100644",
+      "blob": "0327416cd2d7e69a6915402e8e8b839148451d28",
+      "sha256": "6dbc62baa66aa8f6210a3ba752d49fcfa72c1b4507803937cb0ac0fc7fda4347",
+      "bytes": 7101,
+      "state": "present"
+    },
+    {
+      "path": "server/modules/catalog-kernel/security/catalogReader.integration.test.ts",
+      "mode": "100644",
+      "blob": "6010861bb5b7b30a7e9e91a14e77f64cc36d9c42",
+      "sha256": "1f4f48dd5085dbc4d35104a3014281c186d7f609470c987d463e3f0687045efa",
+      "bytes": 22773,
+      "state": "present"
+    },
+    {
+      "path": "server/modules/catalog-kernel/security/catalogReaderManifest.ts",
+      "mode": "100644",
+      "blob": "ce8cb986244d01c63a3f512bc67df5d5affa5a37",
+      "sha256": "84729f4ce06069fbdf3001b78f4685be0cbe4a7fc998f0814a4dcf9ebe2c99bf",
+      "bytes": 1511,
+      "state": "present"
+    },
+    {
+      "path": "server/modules/catalog-kernel/security/catalogRoles.integration.test.ts",
+      "mode": "100644",
+      "blob": "1b2f0caffb4f8159e553b51e36ff058737698610",
+      "sha256": "dff88387fc271bcc8b479a1f61d69b87494713f180f1ef5901f2dae2f68e9ab2",
+      "bytes": 45552,
+      "state": "present"
+    },
+    {
+      "path": "server/modules/logs/workerRunner.ts",
+      "mode": "100644",
+      "blob": "f547fc0399f350fc3927cd0b70b43a1f1d5d6af0",
+      "sha256": "d2078821d9e472d6b5be642282b84c6f2fe657d8f9ef5d2b604e32cbdc8d1ee9",
+      "bytes": 8985,
+      "state": "present"
+    },
+    {
+      "path": "server/modules/logs/workerRunnerBootstrap.test.ts",
+      "mode": "100644",
+      "blob": "f9674f2a1087101b7e4e5fec8fe62c6f9dc98e43",
+      "sha256": "5c3c1edf71dd5836db73af81508725144d9b3785bfc3895592cf44946aa63bc9",
+      "bytes": 2286,
+      "state": "present"
+    },
+    {
+      "path": "server/modules/parameter-bindings/binding/repositories.ts",
+      "mode": "100644",
+      "blob": "504f9cfa619907db093d5188bf3726debe3950ff",
+      "sha256": "49151bdc174c6760d16647e1d59fbeee65bf9998cfc2973b01e5cdce9c5bf803",
+      "bytes": 6479,
+      "state": "present"
+    },
+    {
+      "path": "server/modules/parameter-bindings/cutoverImport/README.md",
+      "mode": "100644",
+      "blob": "9a0ee9c3c4236ad7e919b21abdf5695316c6424e",
+      "sha256": "a69acf4a8f6f27f23880564efe944b28719b82d52665adba91cee9549ed80c19",
+      "bytes": 7570,
+      "state": "present"
+    },
+    {
+      "path": "server/modules/parameter-bindings/cutoverImport/README.zh-CN.md",
+      "mode": "100644",
+      "blob": "7dea2d805f4ccbc9763d897e0a06a4711194971e",
+      "sha256": "c475983b57408e8011d92e8b8a5180c675e02f860a53ef32738fb96d3e960a12",
+      "bytes": 6708,
+      "state": "present"
+    },
+    {
+      "path": "server/modules/parameter-bindings/cutoverImport/import.integration.test.ts",
+      "mode": "100644",
+      "blob": "4032f73f76975539127cd249d2e7445bb8476d9d",
+      "sha256": "94359dcbfb93bd0192131961bd30d78edbab73eb90581192e7d2e8378e36f4fd",
+      "bytes": 25465,
+      "state": "present"
+    },
+    {
+      "path": "server/modules/parameter-bindings/cutoverImport/index.ts",
+      "mode": "100644",
+      "blob": "0aa6f25a9540e54d15dcc553aa7479f8d35828c4",
+      "sha256": "61321e8af03f219ad13c24b5cacdc9e1d326ca1feb8f0fee9b8673f5bba1b3f5",
+      "bytes": 25044,
+      "state": "present"
+    },
+    {
+      "path": "server/modules/parameter-bindings/cutoverImport/intent.ts",
+      "mode": "100644",
+      "blob": "91f70e6151de1ec7ec03e2d68578e25171f64dc9",
+      "sha256": "3e9d13518f6182070ae323d3fe954934bd69cad5fa5ffcbf020590f1b09d7f2f",
+      "bytes": 6159,
+      "state": "present"
+    },
+    {
+      "path": "server/modules/parameter-bindings/cutoverImport/sourceBoundary.ts",
+      "mode": "100644",
+      "blob": "5f7ee4bc8638bda4ada027bb23df4bc174ca5794",
+      "sha256": "fa45301ee610c246e7b0a132fefe43ef1a05d09c29a6d6bf5f1b03cb22c549a2",
+      "bytes": 4992,
+      "state": "present"
+    },
+    {
+      "path": "server/modules/parameter-bindings/values/repositories.ts",
+      "mode": "100644",
+      "blob": "ac0475d10a1049708a39a6c8256cd898fc8e4634",
+      "sha256": "ec8c966e8b350b9fcf80cf8da51b99eacfc39050616cf21ec429ecd54672d67b",
+      "bytes": 8933,
+      "state": "present"
+    },
+    {
+      "path": "server/modules/parameter-catalog-api/legacy/app-wiring.md",
+      "mode": "100644",
+      "blob": "b6e37a724bfddaa8225b4185cbf7b26ca0712556",
+      "sha256": "33b5acc42c5c11c26e998646ebe8a072b57789dde2eb5611124aed56a3810f93",
+      "bytes": 3215,
+      "state": "present"
+    },
+    {
+      "path": "server/modules/parameter-catalog-api/legacy/app-wiring.zh-CN.md",
+      "mode": "100644",
+      "blob": "86db19732be9b12f0e1a85da7a10204e442ccbf5",
+      "sha256": "28604199f32ba0b4374a66f9d591e88fedf82e7d11c1e51e9f5305cd2b157054",
+      "bytes": 2671,
+      "state": "present"
+    },
+    {
+      "path": "server/modules/parameter-catalog-api/legacy/routes.ts",
+      "mode": "100644",
+      "blob": "1a99129a255dff61dadac595bd10eaed7c68929d",
+      "sha256": "870be16e8ce41659698783a952123c1a93f5021d2b216e7b6193a786d631e48d",
+      "bytes": 13637,
+      "state": "present"
+    },
+    {
+      "path": "server/modules/parameter-catalog-api/productionWire.pools.test.ts",
+      "mode": "100644",
+      "blob": "879f9a8b9e5e855fae052db7e74c2eed07d7961a",
+      "sha256": "77d05c277cd72b3a2975dfc8cf73de27bf6ec5c676185a6b9c37d5ab11d6812b",
+      "bytes": 2792,
+      "state": "present"
+    },
+    {
+      "path": "server/modules/parameter-catalog-api/productionWire.ts",
+      "mode": "100644",
+      "blob": "da3619cb1b47376ac692586da8e67e5d4a91f57c",
+      "sha256": "96dd5d0d795510aea7a855513714e889326257edf824e8d13eb42f9849beec1a",
+      "bytes": 16207,
+      "state": "present"
+    },
+    {
+      "path": "server/modules/parameter-topology/legacyDependencyGuard.test.ts",
+      "mode": "100644",
+      "blob": "e64f85ad530d6b06e012f8dc3ba8fdcbf2832ea1",
+      "sha256": "959948b51dec96824c55bf6de120845ee02b887191d1f7e0c6c5ff4dec713c49",
+      "bytes": 8911,
+      "state": "present"
+    },
+    {
+      "path": "server/modules/release-verification/startup/README.md",
+      "mode": "100644",
+      "blob": "3285a42ccf0fd96b29b2d818524c92bce102d4b4",
+      "sha256": "730c3e51c8981ce34e48cb44ff93a564bf56683eeaa450cd91139175b803c3b8",
+      "bytes": 12118,
+      "state": "present"
+    },
+    {
+      "path": "server/modules/release-verification/startup/README.zh-CN.md",
+      "mode": "100644",
+      "blob": "3d3058789a2625d3328fa01ec120ed4d9d259251",
+      "sha256": "092414c29f5b52e2929e4b4bdcf31f80af906e3560f01c22a960eb5a0f3341b1",
+      "bytes": 10451,
+      "state": "present"
+    },
+    {
+      "path": "server/modules/release-verification/startup/interface.ts",
+      "mode": "100644",
+      "blob": "b0ac9c9952b3dc135ec0e52d1f3a2804b8e771e0",
+      "sha256": "8beade552009250b436a034875c2663fe50090eef1039888bce8bfc0c7f6f151",
+      "bytes": 1457,
+      "state": "present"
+    },
+    {
+      "path": "server/modules/release-verification/startup/publishedStartup.test.ts",
+      "mode": "100644",
+      "blob": "48d6f70fffd99b88dec390c781e76c670b236e85",
+      "sha256": "d5dfa02394aaf546461128bed1f23b0fe292c5038dcdec88f8e281639857ecdc",
+      "bytes": 7321,
+      "state": "present"
+    },
+    {
+      "path": "server/modules/release-verification/startup/publishedStartup.ts",
+      "mode": "100644",
+      "blob": "5b1c3300545380d9660b0568f4cfab4788ae1406",
+      "sha256": "0aefb5e37ba9dea230e706dcaf62a88fdb2ad6e0a0fac706415a008b2b7c7790",
+      "bytes": 6807,
+      "state": "present"
+    },
+    {
+      "path": "server/modules/release-verification/startup/reportConnection.integration.test.ts",
+      "mode": "100644",
+      "blob": "7492dcb4c4abb0414d0e3a998f11e2a307a1da4b",
+      "sha256": "30a63d8033e5ceda8474c1134123b09f8c2e1933ac66e77158c9e8a36c49d5e9",
+      "bytes": 19664,
+      "state": "present"
+    },
+    {
+      "path": "server/modules/release-verification/startup/reportConnection.test.ts",
+      "mode": "100644",
+      "blob": "dff3a2edc6f7bf201f09bf9c28c017ee430a5784",
+      "sha256": "6a7a1622ab4b498bce839fed8222882bdd7ddc53f48d4974e4627f72cf2adce2",
+      "bytes": 4833,
+      "state": "present"
+    },
+    {
+      "path": "server/modules/release-verification/startup/reportConnection.ts",
+      "mode": "100644",
+      "blob": "48a392b04e1cc36c2737ceeaf1d03e3712a43d44",
+      "sha256": "3ebb2ad37d0e3c332cb8048178d3f03a1e4ff4c978f47c3e53d197ae009e62a5",
+      "bytes": 10689,
+      "state": "present"
+    },
+    {
+      "path": "server/modules/release-verification/startup/verifyStartup.test.ts",
+      "mode": "100644",
+      "blob": "0ada7066357ac1047e2286baf875e0fbaa3b5ea0",
+      "sha256": "0c04f701e27ff19873be8431ef99ce4664a241d0d882ac367d3c8e0c91f9ab59",
+      "bytes": 5699,
+      "state": "present"
+    },
+    {
+      "path": "server/modules/release-verification/startup/verifyStartup.ts",
+      "mode": "100644",
+      "blob": "c66e78338a32d0c51c4ba090ed73f36a482a31c1",
+      "sha256": "36813e6a60a625af50d933ad30574ef96e26affa4d924b32b818471021a56f0c",
+      "bytes": 2458,
+      "state": "present"
+    },
+    {
+      "path": "server/shared/database/README.md",
+      "mode": "100644",
+      "blob": "39f39a38bb0192bf28c09b45d5797fd9076a4535",
+      "sha256": "1898b53a8b7df6930ce038bac8b8650df9b9cc3eb182d8a58797789cba67dfd1",
+      "bytes": 2480,
+      "state": "present"
+    },
+    {
+      "path": "server/shared/database/README.zh-CN.md",
+      "mode": "100644",
+      "blob": "9a2048faf364da4499be92f32d74343db1fd39d4",
+      "sha256": "561213de1dc14255bb7cf8d799766c59abeda637ea714a5ac65e60d92015cbbd",
+      "bytes": 2072,
+      "state": "present"
+    },
+    {
+      "path": "server/shared/database/client.ts",
+      "mode": "100644",
+      "blob": "3c3462480b45add90de78364e75450469a3a47b3",
+      "sha256": "647250a1fc5f8a908d03a47810c41680041fc81f266f398a642e35d67e067a08",
+      "bytes": 9689,
+      "state": "present"
+    },
+    {
+      "path": "server/shared/database/migrations.ts",
+      "mode": "100644",
+      "blob": "7ccbb53c9ad85766460d82330107e1f2a800e9b1",
+      "sha256": "cd0a58c4b6ffbf88eadf227ab4c301e3689a2836a15c368c3ae26cde72250039",
+      "bytes": 10250,
+      "state": "present"
+    },
+    {
+      "path": "server/shared/database/migrationsExpectedInventory.test.ts",
+      "mode": "100644",
+      "blob": "732f1e417f128de82b573e393c32c9ec7e10d98f",
+      "sha256": "99ba82a0e959699d4028f074534ea115ec9646d4a1120ca477f4a008ab3b9748",
+      "bytes": 2963,
+      "state": "present"
+    },
+    {
+      "path": "server/shared/database/runtimeConnection.integration.test.ts",
+      "mode": "100644",
+      "blob": "d26e0cecae22aaf699f69af1b26176838cad1020",
+      "sha256": "af7b279543be01457d8d021371ab9c709e10891955b60db5bc9bf5e9f462a917",
+      "bytes": 19611,
+      "state": "present"
+    },
+    {
+      "path": "server/shared/database/runtimeConnection.test.ts",
+      "mode": "100644",
+      "blob": "407d0b4e884c49afeb7532f80f929d4d4e7efb06",
+      "sha256": "e1fa903ecf368e277064d6397c2e2c5a9df127cbd14c062a7fcf44aa9711c526",
+      "bytes": 3689,
+      "state": "present"
+    },
+    {
+      "path": "server/shared/database/runtimeConnection.ts",
+      "mode": "100644",
+      "blob": "6f6cebd61a5ee866e5ea5fd57a3ed94aeb8ce717",
+      "sha256": "c1d572eb65e5b482c74f005beb3881add869e421362128f0a147ebbbcc8710e8",
+      "bytes": 4563,
+      "state": "present"
+    },
+    {
+      "path": "server/shared/database/verifiedCheckout.test.ts",
+      "mode": "100644",
+      "blob": "66d6a8ad48dc15a280780ae5707e916e1c3b35a8",
+      "sha256": "5274bb0315c91c68eacd7bdc373c1408ed60de668f6c0baa6eb5665337857d85",
+      "bytes": 7811,
+      "state": "present"
+    },
+    {
+      "path": "server/testing/selfHostedUpgrade/database.test.ts",
+      "mode": "100644",
+      "blob": "f443b4d1acc56c815fdbe953f752f66e758a7717",
+      "sha256": "d4fbd9e7a438fa8ba9bb514781621de93e4cb47cb0941d803530fbc381284ad2",
+      "bytes": 8179,
+      "state": "present"
+    },
+    {
+      "path": "server/testing/selfHostedUpgrade/database.ts",
+      "mode": "100644",
+      "blob": "a64320f662344291d852a2092abd56f8b9978696",
+      "sha256": "c970cd3586042a4276912ea521617a5fd24e552cd411c0a11c32edd0fe07aadb",
+      "bytes": 11531,
+      "state": "present"
+    },
+    {
+      "path": "server/testing/upgradeComponents.ts",
+      "mode": "100644",
+      "blob": "24b1619fdd5c0760702f602e4219224c24be6de2",
+      "sha256": "be794c20de55b74b613693be8613fd41b1f8b52ffe6cc86e4a2c4a467e7fd06b",
+      "bytes": 1274,
+      "state": "present"
+    },
+    {
+      "path": "tsconfig.node.json",
+      "mode": "100644",
+      "blob": "a5ab338a0c3edbc892d16f4cb4bd1aace70230b9",
+      "sha256": "19e50462405208425ffd7c500166437cddc0a2a96c2f65b50cd478fc8f0954b8",
+      "bytes": 1038,
+      "state": "present"
+    },
+    {
+      "path": "vitest.runtime-bootstrap.config.ts",
+      "mode": "100644",
+      "blob": "a0608678e99f21c44b98e9f00ec1c054c0eba2ca",
+      "sha256": "32ee8fac0e286fe01ef70e072c058f855d860d607278f91ff9035c8cbcc03630",
+      "bytes": 1181,
+      "state": "present"
+    },
+    {
+      "path": "vitest.scripts.config.ts",
+      "mode": "100644",
+      "blob": "c5854abed46ac99a2449ebf3b6fca5679782aeaf",
+      "sha256": "d928d217e7ecfbc0cf6cce7cd594a6bff2a932a38292d7266e731b4cdd393e9e",
+      "bytes": 1062,
+      "state": "present"
+    },
+    {
+      "path": "vitest.server.config.ts",
+      "mode": "100644",
+      "blob": "3f0ee25f77b48a5f03812ad600fdd1e5997ce542",
+      "sha256": "ddfd4c1b9ddc284fc207987a2f8f047f1181e9019f5b99f937dfde26a400f4f7",
+      "bytes": 2080,
+      "state": "present"
+    },
+    {
+      "path": "vitest.upgrade-cutover.config.ts",
+      "mode": "100644",
+      "blob": "fbe484c6d15c4109770e979f327f38500581f574",
+      "sha256": "a2c96e3b0c09960af42f6578e39cb82ae09057bd3a23230043409ee7d1d50d79",
+      "bytes": 767,
+      "state": "present"
+    }
+  ],
+  "logs": [
+    {
+      "path": "evidence/scripts-4394.log",
+      "executionIdentity": "4394ec9cbfd50c6ab55dd5572db8647d15edbf62 plus report-only Markdown WIP; 1630 passed, 1 source-lock timeout, 25 skipped; exit 1",
+      "originalSha256": "1fccb66c6500e5097082d116f7e148ced5a3bbeaf30cc986e4a850a2f676aa66",
+      "deliveredSha256": "9cbf30e5f9dd49db57f6db5f9a789036159e45832798dbd67fa6700b74b6365a",
+      "redaction": "ANSI formatting removed; local workspace/temp paths, retained private package locators and connection/bearer strings redacted. No execution is relabeled."
+    },
+    {
+      "path": "evidence/scripts-1708-failures.log",
+      "executionIdentity": "1708e99c80c29efa9cc31c1d128ace69b387d929; 1614 passed, 2 failed, 25 skipped plus one collection failure",
+      "originalSha256": "8ed5e3cb0d37748e8b640ac15ad398285eb82aed88730f229af43f8386bdd046",
+      "deliveredSha256": "3d718d235d12f1a6eb1a449cf333a42548e48237d57e09f3f1fe3a8fc5d83eea",
+      "redaction": "ANSI formatting removed; local workspace/temp paths, retained private package locators and connection/bearer strings redacted. No execution is relabeled."
+    },
+    {
+      "path": "evidence/scripts-two-repairs.log",
+      "executionIdentity": "1708e99c8 plus repair WIP committed as 3e80f165c; two selectors 28/28",
+      "originalSha256": "4fa1ab7902314e6c16495ee699ae41646aa1d4aa457da02525c68b0c5adf7ff6",
+      "deliveredSha256": "30c9c14a4c885823b2b838f7779d80afa696016407f5280bab0efa3e8d5405e2",
+      "redaction": "ANSI formatting removed; local workspace/temp paths, retained private package locators and connection/bearer strings redacted. No execution is relabeled."
+    },
+    {
+      "path": "evidence/server-69f1.log",
+      "executionIdentity": "69f1a713128ce8a6614b220bddde591d0b1a213b; 4161 passed, 0 failed, 11 skipped; exit 0",
+      "originalSha256": "e50aa9f75c8dacf9912fd77510b607fc5509a3eccec15a4f7fade3ccd116264d",
+      "deliveredSha256": "1bf7e31d4ef2700d004aedbf5d1a5b2c0427ab9253cc4525dda102f2f8117a7b",
+      "redaction": "ANSI formatting removed; local workspace/temp paths, retained private package locators and connection/bearer strings redacted. No execution is relabeled."
+    },
+    {
+      "path": "evidence/server-p12-prototype-failure.log",
+      "executionIdentity": "28c9902a4ea9cca600d7355e91276629f8c6647d; 3919 passed, 53 failed, 212 skipped; unapproved P12 schema subsequently separated",
+      "originalSha256": "0328b620ad6839d1f57d377eb849f093f5e3ddd50e57c1f17f9278207426f5b7",
+      "deliveredSha256": "05bca57a6d1ba5b212dd71521cdc2955a539f12e7259c5c6985d7ee9cbd7a635",
+      "redaction": "ANSI formatting removed; local workspace/temp paths, retained private package locators and connection/bearer strings redacted. No execution is relabeled."
+    },
+    {
+      "path": "evidence/reader-system-red.log",
+      "executionIdentity": "0edeb24fc plus reader negative WIP; 46 passed, 3 failed",
+      "originalSha256": "67b66e7e9e9af87547131252a5550e95a21cc6780205dbd9eb5b39909c4edaff",
+      "deliveredSha256": "6e04ad08426a912244519b146697a4d913bce9854d57aa49517f83f6a8a3ceef",
+      "redaction": "ANSI formatting removed; local workspace/temp paths, retained private package locators and connection/bearer strings redacted. No execution is relabeled."
+    },
+    {
+      "path": "evidence/reader-system-green.log",
+      "executionIdentity": "0edeb24fc plus reader implementation WIP committed as cb82fcb0a; 49/49 real restricted LOGIN Kernel tests",
+      "originalSha256": "5639fbe199a62e8815494401799f6a15157bdd35649b8c8199fbd3ab091f78e1",
+      "deliveredSha256": "af7717492789ac0f832c90c31ff0ea0450807d9b8fd526d0bf223bc37c48473a",
+      "redaction": "ANSI formatting removed; local workspace/temp paths, retained private package locators and connection/bearer strings redacted. No execution is relabeled."
+    },
+    {
+      "path": "evidence/authority-4394.log",
+      "executionIdentity": "4394ec9cbfd50c6ab55dd5572db8647d15edbf62 plus report-only Markdown WIP; 81/81; real PG16; exit 0",
+      "originalSha256": "a051d6b4895c8d31c1575e968d818575ea82e2c901b36f70c6d7bd57ad944c03",
+      "deliveredSha256": "0e959f6416b71999b0e5f3389a8192f3545271ca3fc5c4aab363a5e87c0b934a",
+      "redaction": "ANSI formatting removed; local workspace/temp paths, retained private package locators and connection/bearer strings redacted. No execution is relabeled."
+    },
+    {
+      "path": "evidence/build-4394.log",
+      "executionIdentity": "4394ec9cbfd50c6ab55dd5572db8647d15edbf62 plus report-only Markdown WIP; exit 0",
+      "originalSha256": "db03392c3dba6bcaef5e512ecb1d00b75e01c9fece3e477a4831709012ec094b",
+      "deliveredSha256": "3984633a6862afedcfb94210537060842a0b9a481ba9ebc4c50db7111537bc77",
+      "redaction": "ANSI formatting removed; local workspace/temp paths, retained private package locators and connection/bearer strings redacted. No execution is relabeled."
+    },
+    {
+      "path": "evidence/boundary-4394.log",
+      "executionIdentity": "4394ec9cbfd50c6ab55dd5572db8647d15edbf62; trusted base cda6737a8; 3509 matched; exit 0",
+      "originalSha256": "9dcef48dbc95e7872c283fd7bdd79db551ab816e53290438172958c52e88d9f4",
+      "deliveredSha256": "9dcef48dbc95e7872c283fd7bdd79db551ab816e53290438172958c52e88d9f4",
+      "redaction": "ANSI formatting removed; local workspace/temp paths, retained private package locators and connection/bearer strings redacted. No execution is relabeled."
+    },
+    {
+      "path": "evidence/contract-4394.log",
+      "executionIdentity": "4394ec9cbfd50c6ab55dd5572db8647d15edbf62; exit 0",
+      "originalSha256": "b360b9bd3abdfe68681a8d267d5287709d4444710f48e2e21afb069a384d9981",
+      "deliveredSha256": "b360b9bd3abdfe68681a8d267d5287709d4444710f48e2e21afb069a384d9981",
+      "redaction": "ANSI formatting removed; local workspace/temp paths, retained private package locators and connection/bearer strings redacted. No execution is relabeled."
+    },
+    {
+      "path": "evidence/selfhost-4394.log",
+      "executionIdentity": "4394ec9cbfd50c6ab55dd5572db8647d15edbf62; exit 0",
+      "originalSha256": "fb3bebbd4a67124cfc37061ec47e862690f238d75a55a572211b4ba5a2701f56",
+      "deliveredSha256": "fb3bebbd4a67124cfc37061ec47e862690f238d75a55a572211b4ba5a2701f56",
+      "redaction": "ANSI formatting removed; local workspace/temp paths, retained private package locators and connection/bearer strings redacted. No execution is relabeled."
+    },
+    {
+      "path": "evidence/executor-lock-red.log",
+      "executionIdentity": "d1c60c16c plus new tests against old execution admission; 26 passed, 2 failed",
+      "originalSha256": "2b30636ce9006cadc90be76e078375f66f20ade31d425c6930fcf4c35c3176e6",
+      "deliveredSha256": "7f576853e23a99d2df6c439c48662a4ceb8d91c17eadc86644726c68063f3256",
+      "redaction": "ANSI formatting removed; local workspace/temp paths, retained private package locators and connection/bearer strings redacted. No execution is relabeled."
+    },
+    {
+      "path": "evidence/executor-alias-red.log",
+      "executionIdentity": "d1c60c16c plus first exact-lock implementation and new ancestor-alias test; 1 failed, 7 selector-filtered",
+      "originalSha256": "871bd3f75faf652005ea125b203ddcb2f0d398617d991b4465685b50b66faad9",
+      "deliveredSha256": "52e3f30906c99f8f3bbaaf9e646a04f997c2c4c80f80511452efa0c41d3dbcd3",
+      "redaction": "ANSI formatting removed; local workspace/temp paths, retained private package locators and connection/bearer strings redacted. No execution is relabeled."
+    },
+    {
+      "path": "evidence/executor-lock-reviewed-green.log",
+      "executionIdentity": "d1c60c16c plus implementation WIP committed as aec10a5a5; 79 passed, 1 opt-in Docker skipped",
+      "originalSha256": "549b04669f4159ac3252a657562b2f53d33752681d5938521526822cbe641d36",
+      "deliveredSha256": "74230f6cb5b6404bafd4a277c51d4d2fa6df3b64ea4a81ee99e26b676ad5c86a",
+      "redaction": "ANSI formatting removed; local workspace/temp paths, retained private package locators and connection/bearer strings redacted. No execution is relabeled."
+    },
+    {
+      "path": "evidence/approval-latest-green.log",
+      "executionIdentity": "b2c77efa4 plus WIP committed as 35770b7e1; 101/101",
+      "originalSha256": "708a0e373e794d7cdb4d1f3d9b3ca43228ec25e5b7a1c32b717a6d06061d0603",
+      "deliveredSha256": "d11dc07b73e64f978f19078d0ea15f32256a05eb2d6a60418b320981b6144571",
+      "redaction": "ANSI formatting removed; local workspace/temp paths, retained private package locators and connection/bearer strings redacted. No execution is relabeled."
+    },
+    {
+      "path": "evidence/recovery-1708-failure.log",
+      "executionIdentity": "1708e99c80c29efa9cc31c1d128ace69b387d929; 0 passed, 4 failed before capture approval; nonempty package fixture",
+      "originalSha256": "c835f760da778b03bbff1d9a6b0ecde2cd3b63dd8937b32870c9d47576c3df6f",
+      "deliveredSha256": "5eb0302f935f56f87b92eef5342a4452d30d659abe6f8d61336227aab1be62e1",
+      "redaction": "ANSI formatting removed; local workspace/temp paths, retained private package locators and connection/bearer strings redacted. No execution is relabeled."
+    },
+    {
+      "path": "evidence/recovery-b837.log",
+      "executionIdentity": "b8378f9f4a09375c23b53093baadcb819c838599; authenticated package-only actual recovery; 4/4",
+      "originalSha256": "70ebd6bcd2c1a791dede24aa58dd3b1c2d64acb6573af06261c24b2ced650b8f",
+      "deliveredSha256": "661665762c32b4f9246338929418da87f6abf639da541b8b0cc2bedf51d61a1c",
+      "redaction": "ANSI formatting removed; local workspace/temp paths, retained private package locators and connection/bearer strings redacted. No execution is relabeled."
+    },
+    {
+      "path": "evidence/recovery-254141-failure.log",
+      "executionIdentity": "25414128c9de400749257dc3e2298668359e9654; 0 passed, 4 TCP startup setup failures, before capture/approval",
+      "originalSha256": "f36c08c3979cf58d662341ee0f238711b23961e66ef40469a41b4f0d7a712cb3",
+      "deliveredSha256": "c8addae57a5d3cffb54b4820b833a636b8d9c59cde184a02ff8b77d364484843",
+      "redaction": "ANSI formatting removed; local workspace/temp paths, retained private package locators and connection/bearer strings redacted. No execution is relabeled."
+    },
+    {
+      "path": "evidence/recovery-949110.log",
+      "executionIdentity": "949110778aa2d9b0f0ca72ef380c05a0434a25cb; actual owned PostgreSQL/MinIO/Redis AOF four scenarios; see original result, not parent checkout relabeling",
+      "originalSha256": "f94726621fbfcc46d8b4817679309e1e39bbefdc1ebc1a5a0fab3702601663ae",
+      "deliveredSha256": "7f9c54342a5ff174bb74ae22b0bd0bb4f344c683863f53ff1d1c95093b487f6e",
+      "redaction": "ANSI formatting removed; local workspace/temp paths, retained private package locators and connection/bearer strings redacted. No execution is relabeled."
+    },
+    {
+      "path": "evidence/recovery-254141-preflight.log",
+      "executionIdentity": "25414128c; exact blob comparison to parent 4394 and local image identity matrix; metadata only, no backup or credentials",
+      "originalSha256": "bf0c7d2eaf6b4665a06542b76b5759193d6a2ab91a66f6ea48b9df45cc2c2be6",
+      "deliveredSha256": "bf0c7d2eaf6b4665a06542b76b5759193d6a2ab91a66f6ea48b9df45cc2c2be6",
+      "redaction": "ANSI formatting removed; local workspace/temp paths, retained private package locators and connection/bearer strings redacted. No execution is relabeled."
+    },
+    {
+      "path": "evidence/recovery-949110-evidence.log",
+      "executionIdentity": "949110778; four-case outcome, private evidence hashes only, original comparison to parent 4394 before fixture probe integration",
+      "originalSha256": "071bbbc3179f203282db0829c1cd487b6cf1e8a6871501397a0e3911bd6ed11c",
+      "deliveredSha256": "071bbbc3179f203282db0829c1cd487b6cf1e8a6871501397a0e3911bd6ed11c",
+      "redaction": "ANSI formatting removed; local workspace/temp paths, retained private package locators and connection/bearer strings redacted. No execution is relabeled."
+    },
+    {
+      "path": "evidence/schema-doc-3ce597.log",
+      "executionIdentity": "3ce597e21496b98b7fc3e0e575396abef46d6ce0 plus six Markdown WIP; owned generator exit 0; generated artifact git diff exit 0",
+      "originalSha256": "4575bc715ea031ca98d04223f4fccb3ff0d0c30fc9fa3f69c8f3f68939895a41",
+      "deliveredSha256": "75839cb585c537b64bba69e0e69ffd50f811a281cd2660d7cef036de2dc30343",
+      "redaction": "ANSI formatting removed; local workspace/temp paths, retained private package locators and connection/bearer strings redacted. No execution is relabeled."
+    },
+    {
+      "path": "evidence/doc-governance-final.log",
+      "executionIdentity": "3ce597e21 plus report/operator/plan WIP; documentation governance exit 0, not a database check",
+      "originalSha256": "97b3c439b39fb590b1157fd33e41469ab70f5c342da32d7a10f1db1c39a8f234",
+      "deliveredSha256": "97b3c439b39fb590b1157fd33e41469ab70f5c342da32d7a10f1db1c39a8f234",
+      "redaction": "ANSI formatting removed; local workspace/temp paths, retained private package locators and connection/bearer strings redacted. No execution is relabeled."
+    }
+  ],
+  "excluded": [
+    "private configuration",
+    "credentials",
+    "database backups",
+    "object payloads",
+    "unreviewed runtime logs"
+  ],
+  "states": {
+    "pr": "Draft; unmerged",
+    "production": "not authorized; not executed",
+    "fullController": "not complete",
+    "productionStartupSuccess": "not demonstrated"
+  }
+}
