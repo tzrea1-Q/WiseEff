@@ -32,6 +32,15 @@ The existing migration runner transaction binds role creation, ACL grants and le
 
 ## Verification and ownership
 
+System schema placement is not installation provenance. The same definer audit
+also covers newly created system functions without an initdb `pg_init_privs`
+record; PUBLIC EXECUTE on restricted builtins is compared with their initdb ACL.
+The real-login regression demonstrates a system definer writing an otherwise
+forbidden canary table before migration admission refuses that state. This is a
+pre-seal correction to this PR's new 0140, not an edit to 0138/0139. A database
+that applied an earlier Scratch 0140 retains its old checksum and must fail drift
+verification; use a newly owned test database, never rewrite its ledger.
+
 The query manifest names every relation with its `parameter_catalog` schema. The legacy identity dependency scanner distinguishes exact `parameter_catalog.parameter_definitions` and `parameter_catalog.project_parameter_values` references from the retired flat identities with the same names. This is a per-occurrence source check, not SQL parsing or a file exemption: unqualified, `public`, other-schema, mixed, extended-identifier and disguised references remain refused. Other forbidden tokens, allowed paths and migration/grant contracts are unchanged. Quoted or whitespace-separated identifier variants remain conservatively refused.
 
 `catalogReader.integration.test.ts` runs in its own PostgreSQL 16 Alpine cluster, using the existing owned-target component runner and private receipt. It must not run against an ambient/shared Catalog lane: several negatives intentionally mutate cluster-global capability state inside rolled-back transactions. Run the dedicated terminal command from an isolated development worktree, with the daemon ID obtained by independent local Docker identity inspection:

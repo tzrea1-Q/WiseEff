@@ -83,6 +83,13 @@ begin
     or exists (select 1 from pg_parameter_acl p left join pg_settings s on s.name=p.parname,
       lateral aclexplode(p.paracl) acl where acl.grantee=0
         and (acl.privilege_type='ALTER SYSTEM' or coalesce(s.context,'unknown') <> 'user'))
+    or exists (select 1 from pg_proc p join pg_init_privs i
+      on i.classoid='pg_proc'::regclass and i.objoid=p.oid and i.objsubid=0 and i.privtype='i'
+      where p.pronamespace='pg_catalog'::regnamespace
+        and exists (select 1 from aclexplode(coalesce(p.proacl,acldefault('f',p.proowner))) acl
+          where acl.grantee=0 and acl.privilege_type='EXECUTE')
+        and not exists (select 1 from aclexplode(i.initprivs) acl
+          where acl.grantee=0 and acl.privilege_type='EXECUTE'))
   then raise exception using errcode='42501', message='PCAT-READER-PUBLIC-DRIFT'; end if;
 
   -- User-defined SECURITY DEFINER bodies may contain dynamic SQL, so body text
@@ -91,7 +98,9 @@ begin
   if exists (
     select 1 from pg_proc p join pg_namespace n on n.oid=p.pronamespace
       join pg_roles owner on owner.oid=p.proowner
-    where p.prosecdef and n.nspname not in ('pg_catalog','information_schema')
+    where p.prosecdef and (n.nspname not in ('pg_catalog','information_schema')
+      or not exists (select 1 from pg_init_privs i where i.classoid='pg_proc'::regclass
+        and i.objoid=p.oid and i.objsubid=0 and i.privtype='i'))
       and n.nspname !~ '^pg_(toast|temp)_'
       and has_function_privilege(reader,p.oid,'EXECUTE')
       and (owner.rolsuper or owner.rolbypassrls or owner.rolcreatedb or owner.rolcreaterole

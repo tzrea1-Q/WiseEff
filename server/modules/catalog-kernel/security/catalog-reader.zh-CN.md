@@ -32,6 +32,13 @@ reader 可能已在其他数据库拥有合法 SELECT。当前连接不能读取
 
 ## 验收与文件归属
 
+系统 schema 的位置不等于安装来源。新增系统函数没有 initdb 的 `pg_init_privs`
+记录时，同样执行 definer 能力审计；受限内建的 PUBLIC EXECUTE 与 initdb ACL
+比较。真实 LOGIN 反例先证明系统 definer 可以写入直接写被拒绝的 canary 表，
+再验证迁移准入拒绝该状态。这是本 PR 新增 0140 的封存前修复，不改 0138／0139。
+已应用早期 Scratch 0140 的实验数据库保留旧 checksum，必须因漂移拒绝；使用
+新建的独占测试数据库，不能改写 ledger。
+
 查询 manifest 为每个关系显式登记 `parameter_catalog` schema。旧身份依赖扫描器区分精确的 `parameter_catalog.parameter_definitions`、`parameter_catalog.project_parameter_values` 与同名的已退役平面身份。这是逐处源码检查，不是 SQL 解析或整个文件的豁免：未限定、`public`、其他 schema、混用、扩展标识符和伪装引用仍然拒绝。其他禁止 token、允许路径以及 migration／grant 合同均不变。引用标识符或以空白分隔的变体仍保守拒绝。
 
 `catalogReader.integration.test.ts` 使用既有 owned-target 组件入口及私有 receipt，在自己创建的 PostgreSQL 16 Alpine 集群执行。部分负测会在回滚事务中临时污染集群级能力，因此不能指向 ambient／共享 Catalog lane。在隔离开发工作树、独立核验本机 Docker daemon 后执行：

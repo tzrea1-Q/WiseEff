@@ -111,6 +111,8 @@ describe("authorized additive Catalog reader on owned PG16", () => {
     ["system parameter ACL", `grant set on parameter session_replication_role to ${CATALOG_READER_ROLE}`],
     ["PUBLIC system parameter ACL", "grant set on parameter session_replication_role to public"],
     ["PUBLIC privileged definer", "create function public.reader_leak() returns bigint language sql security definer as 'select count(*) from parameter_catalog.subject_placements'"],
+    ["PUBLIC unproven system definer", "create function pg_catalog.reader_system_leak() returns bigint language sql security definer as 'select count(*) from parameter_catalog.subject_placements'"],
+    ["PUBLIC restricted builtin", "grant execute on function pg_catalog.pg_read_file(text,bigint,bigint,boolean) to public"],
     ["PUBLIC privileged dynamic definer", "create function public.reader_leak_dynamic() returns bigint language plpgsql security definer as $$declare n bigint; begin execute 'select count(*) from parameter_catalog.' || 'subject_placements' into n; return n; end$$"],
     ["column-only definer owner", "create role reader_column_owner nologin; grant usage on schema parameter_catalog to reader_column_owner; grant select(id) on parameter_catalog.subject_placements to reader_column_owner; create function public.reader_column_leak() returns bigint language sql security definer as 'select count(id) from parameter_catalog.subject_placements'; alter function public.reader_column_leak() owner to reader_column_owner"],
     ["CREATE-only definer owner", "create role reader_schema_owner nologin; grant create on schema parameter_catalog to reader_schema_owner; create function public.reader_schema_leak() returns void language plpgsql security definer as $$begin execute 'create table parameter_catalog.reader_created(id integer)'; end$$; alter function public.reader_schema_leak() owner to reader_schema_owner"],
@@ -135,6 +137,23 @@ describe("authorized additive Catalog reader on owned PG16", () => {
       await tx.query(migration);
     })).rejects.toMatchObject({ code: "42501" });
     expect((await createCatalogKernel(reader).loadCurrentCatalog(chain.pinC)).ok).toBe(true);
+  });
+  it("rejects a PUBLIC system definer that a real restricted LOGIN can use to write", async () => {
+    await admin.query(`create table public.reader_system_canary(id integer primary key);
+      create function pg_catalog.reader_system_canary_write() returns void language sql security definer
+        set search_path=pg_catalog as 'insert into public.reader_system_canary values(1)'`);
+    try {
+      await expect(reader.query("insert into public.reader_system_canary values(2)")).rejects.toMatchObject({ code: "42501" });
+      await reader.query("select pg_catalog.reader_system_canary_write()");
+      expect((await admin.query("select id from public.reader_system_canary")).rows).toEqual([{ id: 1 }]);
+      expect((await admin.query(`select count(*)::int as n from pg_catalog.pg_init_privs
+        where classoid='pg_catalog.pg_proc'::regclass and objoid='pg_catalog.reader_system_canary_write()'::regprocedure`)).rows)
+        .toEqual([{ n: 0 }]);
+      const migration = await readFile(path.join(migrations, CATALOG_READER_MIGRATION), "utf8");
+      await expect(admin.transaction(tx => tx.query(migration))).rejects.toMatchObject({ code: "42501" });
+    } finally {
+      await admin.query("drop function pg_catalog.reader_system_canary_write(); drop table public.reader_system_canary");
+    }
   });
   it("reuses the audited cluster role in another database and makes committed retries no-op", async () => {
     const another = await createSelfHostedPg16Database("readerreuse");
