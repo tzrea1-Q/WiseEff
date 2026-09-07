@@ -1,0 +1,97 @@
+# 受控恢复执行层
+
+> English: [English](README.md)
+
+本分片落实用户在 PR #824 报告 `f00f94435d128ff8706ffadedabbee507f79781b`
+之后明确批准的独立执行合同，可单独审查。不授权生产连接、恢复、队列投递、代理开放或发布。
+
+## 合同差异
+
+旧 `scripts/run-restore-drill.test.ts` 对 storage 顶层 TypeScript 文件统一禁止
+恢复命令；已有采集和执行函数混在同一模块，实际 `pg_restore` 因而违反原合同。
+CI `34071070497` 与 `34067803219` 均命中此冲突，不是更早的 source-lock 超时。
+用户于 2026-09-07 明确批准真实模块分层及其直接相关的 ownership、依赖检查修订。
+
+新 `scripts/recovery-storage-boundary.ts` 逐项登记全部 storage 文件，包括嵌套模块、
+测试夹具及文档，职责如下：
+
+| 层 | 模块 | 允许行为 |
+| --- | --- | --- |
+| S11-RP 检查 | `recoveryPoint.ts`、`threatMatrix.ts`、`recoveryPackage.ts`、`controlledRecovery.ts`、`controlledRecovery.docker.ts`、`dockerAccess.ts`、`scripts/run-restore-drill.ts` | 采集、验证、restore-check、实际观察；不得导入、重新导出或调度执行层。 |
+| 恢复执行 | `execution/packageRestore.ts`、`execution/controlledRestore.ts`、`execution/dockerRestore.ts`、`execution/authorization.ts` | 明确执行恢复，仅接受独立观察身份及持久授权检查。 |
+| 测试 | 登记的 `.test.ts` 和 `execution/authorization.fixture.ts` | 合成夹具和故障注入；生产模块不得导入。 |
+
+检查递归追踪本地依赖，包括 storage 以外的 helper，拒绝漏登记、漏文件、无法解析
+的导入、动态加载／求值、测试模块依赖和检查层到执行层的路径。字符串常量求值覆盖
+拼接、模板和数组 join 规避；采集的可执行程序必须固定为 `pg_dump`。原有 S10-PER
+禁止重新实现断言及 `DROP DATABASE` 禁令继续覆盖两层生产模块。这是有界静态检查
+加实际行为验收，不宣称文本扫描可以证明任意 JavaScript 安全。
+
+## 授权与 journal 消费
+
+父 controller 必须依次写入既有 journal：
+
+1. `recovery-package-captured`：`inputDigest` 为
+   `recoveryExecutionRecordDigest(RecoveryCaptureRecord)`。
+2. `recovery-execution-authorized`：`inputDigest` 为
+   `recoveryExecutionRecordDigest(RecoveryExecutionApproval)`。
+
+`RecoveryCaptureRecord` 固定 run、包摘要、S11-RP 摘要、完整源身份和独立取得的
+停写边界摘要。`RecoveryExecutionApproval` 固定上述 capture 摘要、执行 attempt、
+完整目标身份、已认证批准引用及有效期。两条记录均须 committed，采集先于当前批准；
+撤销或后续不同批准使旧消费失效。这是有类型的内部 journal 事件，不是新增任意字符串
+controller 命令，也不允许技术测试自行作生产批准。
+
+执行层不导出批准写入器。`createRecoveryExecutionAuthorization` 消费既有私有
+`UpgradeJournal`、仍活跃的 `HostOperationLock`、采集／批准记录及 S11-RP restore
+token，重新读取 journal 和磁盘包，并调用原 S11-RP `restoreCheck`。token 只证明
+run／完整性绑定，不是认证秘密，不能代替来源和执行批准。
+
+`packageRestore.ts` 导出的 `createControlledRecoveryTarget` 只接受上述 factory
+实际发出的能力对象。根 `restoreRecoveryPackage` 在读包前拒绝未发行的目标；直接
+调用底层 builder 也不能取得根入口能力。每个存储执行前重新核对包、授权、锁和身份。
+唯一权威是既有追加式 upgrade journal，记录开始、各存储提交、完成或未知结果；旧的
+可截断包状态文件已删除。重新创建 adapter 不会恢复 started／unknown attempt 的
+重试资格；reconcile 由父 controller 负责，不得清空或重置记录。
+
+只读 bootstrap／空态预检保留 adapter 的真实 Docker 和数据库观察；授权时及每次
+存储写入调度前（包括空态检查后）重新计算完整目标身份。删除只读预检内部的重复
+全量观察，不会跨写入边界缓存身份。专门反例验证空态检查后发生漂移时首次写入被拒绝。
+
+隔离 Docker 目标保留 PG16 角色、owner／ACL、对象字节／content type／metadata、
+Redis AOF；拒绝非空和共享资源，复制后 Redis 仍停止。恢复返回
+`restore-executed-not-business-verified`，不代表候选启动、业务消费者或公开流量获准。
+
+## 验收与操作边界
+
+永久反例覆盖批准缺失、错误 token／run／目标、过期／撤销、跨存储期间包变化、锁丢失、
+部分失败及重放。真实 Docker 用例只创建独占 PG16 Alpine、源版 MinIO 2024-12-18、
+Redis 7 AOF，采集后停止源；独立子进程只接收包和私有目标输入。夹具通过实际 journal
+模块写合成记录，只证明消费者合同，不冒充真实领域批准或完整 controller 升级。
+形似队列的键只证明持久性，不代表完整业务消费者验收。
+
+执行机器：已独立核对为开发机的本机；用户／目录：开发账号、独立工作树；前置条件：
+依赖已安装。以下命令使用临时本地文件与锁，不连接生产、不停服：
+
+```bash
+./node_modules/.bin/vitest run --config vitest.scripts.config.ts \
+  scripts/recovery-storage-boundary.test.ts \
+  ops/self-hosted/storage/recoveryPackage.test.ts \
+  ops/self-hosted/storage/controlledRecovery.test.ts \
+  ops/self-hosted/storage/execution/authorization.test.ts
+```
+
+真实恢复验收还要求：用户已批准隔离合成执行、独立核验 Docker daemon 及资源归属，
+四个固定版本镜像已存在。以下命令实际写入／停止／清理它自己创建的合成容器和存储；
+环境变量仅选择测试，不能绕过身份防线：
+
+```bash
+UPG_CONTROLLED_RECOVERY_DOCKER_TEST=1 ./node_modules/.bin/vitest run \
+  --config vitest.scripts.config.ts \
+  ops/self-hosted/storage/controlledRecovery.docker.integration.test.ts --maxWorkers=1
+```
+
+预期：命令返回 0，用例分别报告两个 bootstrap 场景通过。失败即停止，保留拒绝／未知
+证据，不手工清理真实恢复目标或 journal。生产恢复命令尚不可执行，本文不提供。
+真实 controller 批准 producer 和完整业务验收仍是内部集成工作；真实备份、密钥／
+托管、企业网络证据及生产授权分别保留，不能用合成成功代替。

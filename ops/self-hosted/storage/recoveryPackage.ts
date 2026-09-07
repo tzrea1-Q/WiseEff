@@ -146,7 +146,7 @@ const validateRoles = (roles: RecoveryRole[]) => {
   };
   for (const role of roles) visit(role);
 };
-const storePorts = (manifest: Pick<Manifest, "postgres" | "objects" | "redis" | "roles" | "bootstrap">, target: RecoveryTargetIdentity): StoreSnapshotPort[] => [
+export const recoveryPackageStorePorts = (manifest: Pick<Manifest, "postgres" | "objects" | "redis" | "roles" | "bootstrap">, target: RecoveryTargetIdentity): StoreSnapshotPort[] => [
   ["postgres", target.postgresIdentity, { dump: manifest.postgres, roles: manifest.roles, ...(manifest.bootstrap ? { bootstrap: manifest.bootstrap } : {}) }],
   ["object-store", target.objectStoreIdentity, manifest.objects],
   ["redis", target.redisIdentity, manifest.redis],
@@ -174,7 +174,7 @@ export async function captureRecoveryPackage(directory: string, input: RecoveryP
   for (const file of input.redis.files) files.push({ name: file.name, ...await payload(file.bytes) });
   const content = { postgres, roles: input.roles, objects, redis: { appendonly: true as const, files }, ...(input.bootstrap ? { bootstrap: { ...input.bootstrap } } : {}) };
   const capture = await captureRecoveryPoint({ runId: input.runId, target: input.target, quiescence: input.quiescence,
-    maximumAgeMs: 24 * 60 * 60 * 1000, stores: storePorts(content, input.target) });
+    maximumAgeMs: 24 * 60 * 60 * 1000, stores: recoveryPackageStorePorts(content, input.target) });
   if (!capture.ok) throw invalid();
   const manifest: Manifest = { format: input.bootstrap ? "wiseeff-recovery-package-v3" : "wiseeff-recovery-package-v2", recovery: capture.value.manifest, ...content };
   const bytes = Buffer.from(JSON.stringify(manifest));
@@ -244,55 +244,13 @@ export async function verifyRecoveryPackage(directory: string, digest: string): 
       return match[1];
     });
     if (!references.length || references.length !== files.length - 1 || references.some(name => !files.some(f => f.name === name))) throw invalid();
-    const verification = await verifyRecoveryPoint({ manifest: manifest.recovery, stores: storePorts(manifest, manifest.recovery.target) });
+    const verification = await verifyRecoveryPoint({ manifest: manifest.recovery, stores: recoveryPackageStorePorts(manifest, manifest.recovery.target) });
     if (!verification.ok) throw invalid();
     if (Date.parse(manifest.recovery.capturedAt) > Date.now()) throw invalid();
     const regenerated = await captureRecoveryPoint({ runId: manifest.recovery.runId, target: manifest.recovery.target,
       quiescence: manifest.recovery.quiescence, maximumAgeMs: manifest.recovery.maximumAgeMs,
-      now: () => new Date(manifest.recovery.capturedAt), stores: storePorts(manifest, manifest.recovery.target) });
+      now: () => new Date(manifest.recovery.capturedAt), stores: recoveryPackageStorePorts(manifest, manifest.recovery.target) });
     if (!regenerated.ok || regenerated.value.manifest.recoveryPointDigest !== manifest.recovery.recoveryPointDigest) throw invalid();
     return { digest, manifest, postgres, roles: manifest.roles, objects, redis: { appendonly: true, files }, ...(manifest.bootstrap ? { bootstrap: manifest.bootstrap } : {}) };
   } catch { throw invalid(); }
-}
-
-export type RecoveryRestoreBinding = { runId: string; packageDigest: string; source: RecoveryTargetIdentity; target: RecoveryTargetIdentity };
-export type RecoveryPackageTarget = {
-  target: RecoveryTargetIdentity; journalPath: string;
-  /** Provided by the controller's approval adapter. It must validate the exact binding,
-   * principal and purpose; this storage module cannot mint an approval. */
-  authorize(binding: RecoveryRestoreBinding): Promise<void>;
-  /** Mandatory for v3: inspect an already provisioned bootstrap before a journal
-   * or restore write. Missing support must not fall back to v2 behavior. */
-  assertBootstrap?(bootstrap?: RecoveryBootstrapIdentity): Promise<void>;
-  assertEmptyAndIsolated(binding: RecoveryRestoreBinding): Promise<void>;
-  /** The implementation receives ONLY verified package material and external secret
-   * facilities in its closure, never a source connection or fixture oracle. */
-  restore(backup: VerifiedRecoveryPackage): Promise<void>;
-};
-export async function restoreRecoveryPackage(directory: string, digest: string, target: RecoveryPackageTarget) {
-  const backup = await verifyRecoveryPackage(directory, digest);
-  const binding = { runId: backup.manifest.recovery.runId, packageDigest: digest, source: backup.manifest.recovery.target, target: target.target };
-  for (const key of ["deploymentId", "postgresIdentity", "objectStoreIdentity", "redisIdentity"] as const) {
-    if (!target.target[key] || target.target[key] === binding.source[key]) throw new Error("recovery-target-not-independent");
-  }
-  if (backup.bootstrap || target.assertBootstrap) {
-    if (!target.assertBootstrap) throw new Error("recovery-bootstrap-target-unsupported");
-    await target.assertBootstrap(backup.bootstrap);
-  }
-  await target.authorize(binding);
-  await target.assertEmptyAndIsolated(binding);
-  const journal = await open(target.journalPath, "wx", 0o600).catch(() => { throw new Error("recovery-restore-journal-exists-or-unavailable"); });
-  try {
-    await journal.writeFile(JSON.stringify({ binding, status: "started-unknown-until-completed" })); await journal.sync();
-    const parent = await open(path.dirname(target.journalPath), "r");
-    try { await parent.sync(); } finally { await parent.close(); }
-    // No re-read of replaceable files: these are the previously authenticated bytes.
-    await target.assertEmptyAndIsolated(binding);
-    await target.restore(backup);
-    await journal.truncate(0);
-    await journal.write(Buffer.from(JSON.stringify({ binding, status: "restore-executed-not-business-verified" })), 0, undefined, 0);
-    await journal.sync();
-    return { status: "restore-executed-not-business-verified" as const, binding };
-  } catch { throw new Error("recovery-restore-outcome-unknown-target-must-remain-isolated"); }
-  finally { await journal.close(); }
 }

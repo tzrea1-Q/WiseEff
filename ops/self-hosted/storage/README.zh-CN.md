@@ -2,6 +2,9 @@
 
 > English: [English](README.md)
 
+[受控恢复执行合同](execution/README.zh-CN.md) 将 S11-RP 采集／验证／restore-check
+与实际恢复执行及其持久授权分开。
+
 这是自托管运维文档，说明 Linux 自托管部署、存储、发布和模板使用方式。
 
 ## 使用方式

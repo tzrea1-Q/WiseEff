@@ -1,9 +1,14 @@
+import { withHostOperationLock } from "../scripts/parameter-catalog-upgrade/handoff";
+import { createRecoveryExecutionAuthorization } from "./execution/authorization";
+import { recordSyntheticRecoveryConsumption } from "./execution/authorization.fixture";
+import { createControlledRecoveryTarget } from "./execution/packageRestore";
+import { restoreRecoveryPackage } from "./execution/packageRestore";
 import { mkdtemp, readdir, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { expect, it } from "vitest";
-import { captureControlledRecovery, createControlledRecoveryTarget, type ControlledRecoverySource } from "./controlledRecovery";
-import { restoreRecoveryPackage, verifyRecoveryPackage } from "./recoveryPackage";
+import { captureControlledRecovery, type ControlledRecoverySource } from "./controlledRecovery";
+import { verifyRecoveryPackage } from "./recoveryPackage";
 
 it("refuses a different run's writer boundary before exporting or publishing a package", async () => {
   const directory = await mkdtemp(path.join(os.tmpdir(), "controlled-recovery-test-"));
@@ -87,9 +92,11 @@ it("uses the existing authenticated package for target-only restore, refusing dr
     ]);
     const target = { ...sourceIdentity, deploymentId: "target", postgresIdentity: "pg-target", objectStoreIdentity: "objects-target", redisIdentity: "redis-target" };
     const actions: string[] = [];
-    const destination = createControlledRecoveryTarget({ target, journalPath: path.join(directory, "restore.json"), authorize: async binding => {
-      expect(binding.packageDigest).toBe(captured.packageDigest); expect(binding.source).toEqual(sourceIdentity);
-    } }, {
+    const consumption = await recordSyntheticRecoveryConsumption(directory, captured.packageDigest, target);
+    await withHostOperationLock(path.join(directory, "locks"), async lock => {
+    const destination = createControlledRecoveryTarget({ target,
+      authorization: createRecoveryExecutionAuthorization({ ...consumption, lock }),
+    }, {
       observe: async () => actions.length ? { ...target, redisIdentity: "changed" } : target,
       assertEmptyAndIsolated: async () => {},
       restorePostgres: async data => { expect(data.postgres.toString()).toBe("synthetic-dump"); actions.push("postgres"); },
@@ -98,5 +105,6 @@ it("uses the existing authenticated package for target-only restore, refusing dr
     await expect(restoreRecoveryPackage(directory, captured.packageDigest, destination)).rejects.toThrow("recovery-restore-outcome-unknown-target-must-remain-isolated");
     expect(actions).toEqual(["postgres"]);
     await expect(restoreRecoveryPackage(directory, captured.packageDigest, destination)).rejects.toThrow("controlled-recovery-restore-target-drift");
+    });
   } finally { await rm(directory, { recursive: true }); }
 });

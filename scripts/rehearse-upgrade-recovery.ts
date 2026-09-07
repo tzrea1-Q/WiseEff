@@ -1,3 +1,8 @@
+import { createRecoveryExecutionAuthorization, recoveryExecutionRecordDigest, RECOVERY_EXECUTION_EVENTS, type RecoveryCaptureRecord, type RecoveryExecutionApproval } from "../ops/self-hosted/storage/execution/authorization";
+import { withHostOperationLock } from "../ops/self-hosted/scripts/parameter-catalog-upgrade/handoff";
+import { openUpgradeJournal, loadUpgradeJournal, commitJournalTransition } from "../ops/self-hosted/scripts/parameter-catalog-upgrade/journal";
+import { mintRestoreToken } from "../ops/self-hosted/storage/recoveryPoint";
+import { createControlledRecoveryTarget, restoreRecoveryPackage } from "../ops/self-hosted/storage/execution/packageRestore";
 import { createHash, randomBytes } from "node:crypto";
 import { spawnSync } from "node:child_process";
 import { mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
@@ -8,7 +13,7 @@ import { pathToFileURL } from "node:url";
 import pg from "pg";
 import { createHttpObjectStorageTransport } from "../server/modules/logs/s3ObjectStore";
 import { createIsolatedUpgradeDocker } from "./isolated-upgrade-docker";
-import { captureRecoveryPackage, hasUnsupportedNonDumpCapabilities, RECOVERY_NON_DUMP_CAPABILITY_INVENTORY_SQL, restoreRecoveryPackage, type RecoveryRole } from "../ops/self-hosted/storage/recoveryPackage";
+import { captureRecoveryPackage, verifyRecoveryPackage, hasUnsupportedNonDumpCapabilities, RECOVERY_NON_DUMP_CAPABILITY_INVENTORY_SQL, type RecoveryRole } from "../ops/self-hosted/storage/recoveryPackage";
 
 const images = { postgres: "postgres:16-alpine", redis: "redis:7-alpine", objects: "minio/minio:RELEASE.2024-12-18T13-15-44Z", objectClient: "minio/mc:RELEASE.2024-11-21T17-21-54Z" };
 const hash = (bytes: Buffer) => createHash("sha256").update(bytes).digest("hex");
@@ -26,6 +31,7 @@ type SyntheticFault = "stale-target-aof" | "missing-object" | "wrong-target" | k
 type RestoreChild = {
   run: string; daemonId: string; directory: string; digest: string; password: string;
   pg: string; redis: string; objects: string; objectClient: string; network: string;
+  controllerJournal: string; capture: RecoveryCaptureRecord; approval: RecoveryExecutionApproval; restoreToken: string;
 };
 
 /** Private subprocess adapter: stdin carries ephemeral target credentials. No source
@@ -37,12 +43,17 @@ async function restoreSyntheticPackage(config: RestoreChild) {
   const exec = (id: string, args: string[], input?: Buffer) => { owned(id); return transport.command(["exec", "-i", id, ...args], input); };
   const target = { deploymentId: `restore-${config.run}`, hostFingerprint: config.daemonId, postgresIdentity: config.pg, objectStoreIdentity: config.objects, redisIdentity: config.redis };
   const endpoint = (id: string, port: string) => `127.0.0.1:${owned(id).NetworkSettings.Ports[`${port}/tcp`][0].HostPort}`;
-  await restoreRecoveryPackage(config.directory, config.digest, {
-    target, journalPath: path.join(config.directory, "restore-journal.json"),
-    async authorize(binding) {
-      // Synthetic scope only. Production must supply the real controller approval adapter.
-      if (binding.runId !== config.run || binding.packageDigest !== config.digest || binding.source.hostFingerprint !== config.daemonId) throw new Error("synthetic-package-binding-invalid");
-    },
+  const loaded = loadUpgradeJournal({ journalPath: config.controllerJournal, runId: config.run });
+  if (!loaded.ok) throw new Error("synthetic-execution-journal-unavailable");
+  await withHostOperationLock(path.join(config.directory, "execution-lock"), async lock => {
+    const authorization = createRecoveryExecutionAuthorization({ journal: loaded.value, directory: config.directory,
+      capture: config.capture, approval: config.approval, restoreToken: config.restoreToken, lock });
+    const destination = createControlledRecoveryTarget({ target, authorization }, {
+      async observe() {
+        if (transport.daemonId !== config.daemonId) throw new Error("synthetic-daemon-drift");
+        for (const id of [config.pg, config.redis, config.objects, config.objectClient]) owned(id);
+        return target;
+      },
     async assertEmptyAndIsolated() {
       const networkInfo = JSON.parse(transport.command(["network", "inspect", config.network]).toString())[0];
       if (networkInfo.Labels?.[label] !== config.run) throw new Error("synthetic-network-ownership-mismatch");
@@ -61,7 +72,7 @@ async function restoreSyntheticPackage(config: RestoreChild) {
       const buckets = transport.command(["exec", "-e", `MC_HOST_synthetic=http://synthetic:${config.password}@${ip}:9000`, config.objectClient, "mc", "ls", "--json", "synthetic"]).toString().trim();
       if (buckets) throw new Error("object-target-not-empty");
     },
-    async restore(backup) {
+    async restorePostgres(backup) {
       // Structured nonprivileged role restore; secrets come only from this process stdin.
       const roles = backup.roles.map(role => `create role "${role.name}" ${role.login ? `login password '${config.password}'` : "nologin"} ${role.inherit ? "inherit" : "noinherit"} nosuperuser nobypassrls nocreatedb nocreaterole noreplication;`).join("\n");
       const members = backup.roles.flatMap(role => role.members.flatMap(member => [
@@ -71,19 +82,25 @@ async function restoreSyntheticPackage(config: RestoreChild) {
       ])).join("\n");
       exec(config.pg, ["psql", "-U", "postgres", "-v", "ON_ERROR_STOP=1"], Buffer.from(`begin;\n${roles}\n${members}\ncommit;`));
       exec(config.pg, ["pg_restore", "-U", "postgres", "-d", "postgres", "--exit-on-error"], backup.postgres);
+    },
+    async restoreObjects(objects) {
       const targetStore = createHttpObjectStorageTransport({ endpoint: `http://${endpoint(config.objects, "9000")}`, accessKeyId: "synthetic", secretAccessKey: config.password });
       const ip = owned(config.objects).NetworkSettings.Networks[config.network].IPAddress;
       owned(config.objectClient);
       transport.command(["exec", "-e", `MC_HOST_synthetic=http://synthetic:${config.password}@${ip}:9000`, config.objectClient, "mc", "mb", "synthetic/synthetic-recovery"]);
-      for (const object of backup.objects) await targetStore.put({ bucket: "synthetic-recovery", ...object });
+      for (const object of objects) await targetStore.put({ bucket: "synthetic-recovery", ...object });
+    },
+    async restoreRedis(redis) {
       const redisDirectory = path.join(config.directory, "verified-redis-import");
       const { mkdir } = await import("node:fs/promises");
       await mkdir(redisDirectory, { mode: 0o700 });
-      for (const file of backup.redis.files) await writeFile(path.join(redisDirectory, file.name), file.bytes, { flag: "wx", mode: 0o600 });
+      for (const file of redis.files) await writeFile(path.join(redisDirectory, file.name), file.bytes, { flag: "wx", mode: 0o600 });
       owned(config.redis);
       transport.command(["cp", redisDirectory, `${config.redis}:/data/appendonlydir`]);
-      transport.command(["start", config.redis]);
+      // Starting the recovered queue belongs to the separate synthetic acceptance step.
     },
+    });
+    await restoreRecoveryPackage(config.directory, config.digest, destination);
   });
 }
 
@@ -285,15 +302,34 @@ export async function rehearseSyntheticRecovery(options: { fault?: SyntheticFaul
     await wait(async () => execute(targetPg, ["pg_isready", "-h", "127.0.0.1", "-U", "postgres"]));
     const targetStore = storage(targetObjects, targetPassword);
     await wait(async () => mc(targetObjects, ["ready", "synthetic"], targetPassword));
+    // This CLI only creates a fresh synthetic fixture. Its persisted events
+    // exercise execution consumption and never represent production approval.
+    const verifiedPackage = await verifyRecoveryPackage(directory, result.manifestDigest);
+    const openedJournal = openUpgradeJournal({ journalPath: path.join(directory, "synthetic-controller.json"), runId: run });
+    if (!openedJournal.ok) throw new Error("synthetic-controller-journal-unavailable");
+    const capture: RecoveryCaptureRecord = { runId: run, packageDigest: result.manifestDigest,
+      recoveryPointDigest: verifiedPackage.manifest.recovery.recoveryPointDigest,
+      source: verifiedPackage.manifest.recovery.target, boundaryDigest: hash(Buffer.from(run)) };
+    const approval: RecoveryExecutionApproval = { runId: run, attemptId: randomBytes(12).toString("hex"),
+      captureDigest: recoveryExecutionRecordDigest(capture), approvalReference: "synthetic-cli-created-owned-resources",
+      target: { deploymentId: `restore-${run}`, hostFingerprint: transport.daemonId, postgresIdentity: targetPg, objectStoreIdentity: targetObjects, redisIdentity: targetRedis },
+      expiresAt: new Date(Date.now() + 600000).toISOString() };
+    for (const [action, record] of [[RECOVERY_EXECUTION_EVENTS.captured, capture], [RECOVERY_EXECUTION_EVENTS.authorized, approval]] as const) {
+      const entry = commitJournalTransition(openedJournal.value, { action, inputDigest: recoveryExecutionRecordDigest(record),
+        toState: openedJournal.value.record.state, nextAction: openedJournal.value.record.nextAction });
+      if (!entry.ok) throw new Error("synthetic-controller-record-unavailable");
+    }
     if (options.fault === "missing-object") await rm(path.join(directory, "payload-1.bin"));
     const child = spawnSync(process.execPath, ["--import", "tsx", new URL(import.meta.url).pathname, "--synthetic-package-child"], {
-      input: JSON.stringify({ run: options.fault === "wrong-target" ? "0".repeat(24) : run, daemonId: transport.daemonId, directory, digest: result.manifestDigest, password: targetPassword, pg: targetPg, redis: targetRedis, objects: targetObjects, objectClient, network } satisfies RestoreChild),
+      input: JSON.stringify({ controllerJournal: openedJournal.value.journalPath, capture, approval, restoreToken: mintRestoreToken(run, capture.recoveryPointDigest), run: options.fault === "wrong-target" ? "0".repeat(24) : run, daemonId: transport.daemonId, directory, digest: result.manifestDigest, password: targetPassword, pg: targetPg, redis: targetRedis, objects: targetObjects, objectClient, network } satisfies RestoreChild),
       encoding: "utf8", timeout: 60000, env: { PATH: process.env.PATH, HOME: os.homedir() },
     });
     if (child.status !== 0) throw new Error("separate-package-restore-failed");
     result.separateRestoreProcess = true;
     result.restoreExecuted = true;
     result.reason = "restored-verification-failed";
+    start(targetRedis);
+    await wait(async () => execute(targetRedis, ["redis-cli", "PING"]));
     const login = new pg.Client({ connectionString: `postgres://sentinel_reader:${targetPassword}@${endpoint(targetPg, "5432")}/postgres` });
     await login.connect();
     try {

@@ -1,9 +1,13 @@
+import { withSyntheticRecoveryTarget } from "./execution/authorization.fixture";
+import { loadUpgradeJournal } from "../scripts/parameter-catalog-upgrade/journal";
+import { RECOVERY_EXECUTION_EVENTS } from "./execution/authorization";
+import { restoreRecoveryPackage } from "./execution/packageRestore";
 import { mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { expect, it } from "vitest";
 import { createHash } from "node:crypto";
-import { captureRecoveryPackage, hasUnsupportedNonDumpCapabilities, restoreRecoveryPackage, verifyRecoveryPackage, type RecoveryBootstrapIdentity, type RecoveryRole } from "./recoveryPackage";
+import { captureRecoveryPackage, hasUnsupportedNonDumpCapabilities, verifyRecoveryPackage, type RecoveryBootstrapIdentity, type RecoveryRole } from "./recoveryPackage";
 
 it("requires a complete zero non-dump capability inventory and never treats absent or unknown counts as clear", () => {
   const clear = { databaseOwner: 0, databaseAcl: 0, databaseSettings: 0, databaseProperties: 0, tablespaceOwner: 0, tablespaceAcl: 0, parameterAcl: 0, builtinFunctionOwner: 0, builtinFunctionAcl: 0, baselineUnavailable: 0 };
@@ -40,13 +44,12 @@ it.each(["privileged-role", "role-secret", "missing-inherit", "old-format", "mis
 it.each(["same-store", "approval-refused"])("never invokes restore for %s", async fault => {
   const directory = await mkdtemp(path.join(os.tmpdir(), "upg-package-test-"));
   try {
-    const digest = await fixture(directory);
-    let restored = false;
-    await expect(restoreRecoveryPackage(directory, digest, {
-      target: { deploymentId: "restore", hostFingerprint: "host", postgresIdentity: fault === "same-store" ? "pg" : "pg2", objectStoreIdentity: "s32", redisIdentity: "redis2" },
-      journalPath: path.join(directory, "journal"), authorize: async () => { throw new Error("approval-denied"); },
-      assertEmptyAndIsolated: async () => {}, restore: async () => { restored = true; },
-    })).rejects.toThrow(fault === "same-store" ? "target-not-independent" : "approval-denied");
+    const digest = await fixture(directory); let restored = false;
+    await expect(withSyntheticRecoveryTarget(directory, digest,
+      { deploymentId: "restore", hostFingerprint: "host", postgresIdentity: fault === "same-store" ? "pg" : "pg2", objectStoreIdentity: "s32", redisIdentity: "redis2" },
+      { assertEmptyAndIsolated: async () => {}, restorePostgres: async () => { restored = true; }, restoreObjects: async () => {}, restoreRedis: async () => {} },
+      port => restoreRecoveryPackage(directory, digest, port), fault !== "approval-refused",
+    )).rejects.toThrow(fault === "same-store" ? "target-not-independent" : "execution-authorization-unavailable");
     expect(restored).toBe(false);
   } finally { await rm(directory, { recursive: true }); }
 });
@@ -70,31 +73,35 @@ it("authenticates a v3 pre-existing bootstrap identity without making it a resto
     expect(backup.bootstrap).toEqual(bootstrap);
     expect(backup.roles).toEqual([{ name: "owner", login: false, inherit: false, members: [] }]);
     const events: string[] = [];
-    const result = await restoreRecoveryPackage(directory, digest, {
-      target: { deploymentId: "restore", hostFingerprint: "host", postgresIdentity: "pg2", objectStoreIdentity: "s32", redisIdentity: "redis2" },
-      journalPath: path.join(directory, "journal"),
-      assertBootstrap: async value => { expect(value).toEqual(bootstrap); events.push("bootstrap"); },
-      authorize: async () => { events.push("authorize"); }, assertEmptyAndIsolated: async () => { events.push("empty"); },
-      restore: async value => { expect(value.bootstrap).toEqual(bootstrap); expect(value.postgres.toString()).toBe("dump"); events.push("restore"); },
-    });
+    const result = await withSyntheticRecoveryTarget(directory, digest,
+      { deploymentId: "restore", hostFingerprint: "host", postgresIdentity: "pg2", objectStoreIdentity: "s32", redisIdentity: "redis2" },
+      { assertBootstrap: async value => { expect(value).toEqual(bootstrap); events.push("bootstrap"); },
+        assertEmptyAndIsolated: async () => { events.push("empty"); },
+        restorePostgres: async value => { expect(value.bootstrap).toEqual(bootstrap); expect(value.postgres.toString()).toBe("dump"); events.push("restore"); },
+        restoreObjects: async () => {}, restoreRedis: async () => {} },
+      port => restoreRecoveryPackage(directory, digest, port));
     expect(result.status).toBe("restore-executed-not-business-verified");
-    expect(events).toEqual(["bootstrap", "authorize", "empty", "empty", "restore"]);
+    expect(events).toEqual(["bootstrap", "empty", "restore"]);
   } finally { await rm(directory, { recursive: true }); }
 });
 
-it.each(["unsupported", "mismatch"])("refuses v3 bootstrap %s before creating a journal or restoring", async fault => {
+it.each(["unsupported", "mismatch"])("refuses v3 bootstrap %s before recording execution or restoring", async fault => {
   const directory = await mkdtemp(path.join(os.tmpdir(), "upg-package-test-"));
   try {
     const digest = await fixture(directory, undefined, { roleName: "wiseeff", roleOid: "10", postgresMajor: 16 });
     const events: string[] = [];
-    await expect(restoreRecoveryPackage(directory, digest, {
-      target: { deploymentId: "restore", hostFingerprint: "host", postgresIdentity: "pg2", objectStoreIdentity: "s32", redisIdentity: "redis2" },
-      journalPath: path.join(directory, "journal"),
-      ...(fault === "mismatch" ? { assertBootstrap: async () => { throw new Error("bootstrap-mismatch"); } } : {}),
-      authorize: async () => { events.push("authorize"); }, assertEmptyAndIsolated: async () => { events.push("empty"); }, restore: async () => { events.push("restore"); },
-    })).rejects.toThrow(fault === "mismatch" ? "bootstrap-mismatch" : "recovery-bootstrap-target-unsupported");
-    expect(events).toEqual([]);
-    await expect(readFile(path.join(directory, "journal"))).rejects.toMatchObject({ code: "ENOENT" });
+    await withSyntheticRecoveryTarget(directory, digest,
+      { deploymentId: "restore", hostFingerprint: "host", postgresIdentity: "pg2", objectStoreIdentity: "s32", redisIdentity: "redis2" },
+      { ...(fault === "mismatch" ? { assertBootstrap: async () => { throw new Error("bootstrap-mismatch"); } } : {}),
+        assertEmptyAndIsolated: async () => { events.push("empty"); }, restorePostgres: async () => { events.push("restore"); },
+        restoreObjects: async () => {}, restoreRedis: async () => {} },
+      async (port, consumption) => {
+        await expect(restoreRecoveryPackage(directory, digest, port)).rejects.toThrow(fault === "mismatch" ? "controlled-recovery-operation-failed" : "restore-bootstrap-unsupported");
+        expect(events).toEqual([]);
+        const loaded = loadUpgradeJournal({ journalPath: consumption.journal.journalPath, runId: consumption.capture.runId });
+        expect(loaded.ok).toBe(true);
+        if (loaded.ok) expect(loaded.value.record.entries.some(entry => entry.action === RECOVERY_EXECUTION_EVENTS.started)).toBe(false);
+      });
   } finally { await rm(directory, { recursive: true }); }
 });
 
@@ -153,23 +160,23 @@ it.each(["admin", "missing-set", "unknown-member", "duplicate-member", "cycle", 
   } finally { await rm(directory, { recursive: true }); }
 });
 
-it("restores verified immutable bytes despite replacement after authorization and persists refusal after unknown outcome", async () => {
+it("retains append-only unknown outcome and refuses a blind retry after a partial restore", async () => {
   const directory = await mkdtemp(path.join(os.tmpdir(), "upg-package-test-"));
   try {
-    const digest = await fixture(directory);
-    const target = {
-      target: { deploymentId: "restore", hostFingerprint: "host", postgresIdentity: "pg2", objectStoreIdentity: "s32", redisIdentity: "redis2" },
-      journalPath: path.join(directory, "journal"),
-      authorize: async (binding: { packageDigest: string; runId: string }) => {
-        expect(binding).toMatchObject({ packageDigest: digest, runId: "restore_run" });
-        await writeFile(path.join(directory, "payload-0.bin"), "evil");
-      }, assertEmptyAndIsolated: async () => {},
-      restore: async (backup: { postgres: Buffer }) => { expect(backup.postgres.toString()).toBe("dump"); throw new Error("unknown commit"); },
-    };
-    await expect(restoreRecoveryPackage(directory, digest, target)).rejects.toThrow("outcome-unknown");
-    expect(JSON.parse(await readFile(target.journalPath, "utf8")).status).toBe("started-unknown-until-completed");
-    await writeFile(path.join(directory, "payload-0.bin"), "dump");
-    await expect(restoreRecoveryPackage(directory, digest, { ...target, authorize: async () => {}, restore: async () => { throw new Error("must not retry"); } })).rejects.toThrow("journal-exists-or-unavailable");
+    const digest = await fixture(directory); let restores = 0;
+    await withSyntheticRecoveryTarget(directory, digest,
+      { deploymentId: "restore", hostFingerprint: "host", postgresIdentity: "pg2", objectStoreIdentity: "s32", redisIdentity: "redis2" },
+      { assertEmptyAndIsolated: async () => {},
+        restorePostgres: async backup => { restores++; expect(backup.postgres.toString()).toBe("dump"); throw new Error("unknown commit"); },
+        restoreObjects: async () => {}, restoreRedis: async () => {} },
+      async (port, consumption) => {
+        await expect(restoreRecoveryPackage(directory, digest, port)).rejects.toThrow("outcome-unknown");
+        const before = await readFile(consumption.journal.journalPath, "utf8");
+        expect(JSON.parse(before).entries.map((entry: { action: string }) => entry.action)).toContain(RECOVERY_EXECUTION_EVENTS.unknown);
+        await expect(restoreRecoveryPackage(directory, digest, port)).rejects.toThrow("execution-authorization-unavailable");
+        expect(await readFile(consumption.journal.journalPath, "utf8")).toBe(before);
+        expect(restores).toBe(1);
+      });
   } finally { await rm(directory, { recursive: true }); }
 });
 
@@ -194,12 +201,13 @@ it("restores only authenticated package bytes and refuses tampering before targe
       redis: { appendonly: true, files: [{ name: "appendonly.aof.manifest", bytes: Buffer.from("file appendonly.aof.1.incr.aof seq 1 type i\n") }, { name: "appendonly.aof.1.incr.aof", bytes: Buffer.from("aof") }] },
     });
     let mutated = false;
-    await writeFile(path.join(directory, "payload-0.bin"), "tampered");
-    await expect(restoreRecoveryPackage(directory, digest, {
-      target: { ...target, deploymentId: "restore" }, journalPath: path.join(directory, "restore.json"),
-      authorize: async () => {}, assertEmptyAndIsolated: async () => {},
-      restore: async () => { mutated = true; },
-    })).rejects.toThrow("recovery-package-invalid");
-    expect(mutated).toBe(false);
+    await withSyntheticRecoveryTarget(directory, digest,
+      { ...target, deploymentId: "restore", postgresIdentity: "pg2", objectStoreIdentity: "s32", redisIdentity: "redis2" },
+      { assertEmptyAndIsolated: async () => {}, restorePostgres: async () => { mutated = true; }, restoreObjects: async () => {}, restoreRedis: async () => {} },
+      async port => {
+        await writeFile(path.join(directory, "payload-0.bin"), "tampered");
+        await expect(restoreRecoveryPackage(directory, digest, port)).rejects.toThrow("recovery-package-invalid");
+        expect(mutated).toBe(false);
+      });
   } finally { await rm(directory, { recursive: true }); }
 });

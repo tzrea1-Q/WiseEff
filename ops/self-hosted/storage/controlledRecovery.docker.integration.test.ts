@@ -1,3 +1,9 @@
+import { withHostOperationLock } from "../scripts/parameter-catalog-upgrade/handoff";
+import { createRecoveryExecutionAuthorization } from "./execution/authorization";
+import { recordSyntheticRecoveryConsumption } from "./execution/authorization.fixture";
+import { createControlledRecoveryTarget } from "./execution/packageRestore";
+import { createDockerRecoveryDestination } from "./execution/dockerRestore";
+import { restoreRecoveryPackage } from "./execution/packageRestore";
 import { spawnSync } from "node:child_process";
 import { createHash, randomBytes } from "node:crypto";
 import { lstat, mkdtemp, rm, writeFile } from "node:fs/promises";
@@ -8,14 +14,24 @@ import pg from "pg";
 import { describe, expect, it } from "vitest";
 import { createIsolatedUpgradeDocker } from "../../../scripts/isolated-upgrade-docker";
 import { createHttpObjectStorageTransport } from "../../../server/modules/logs/s3ObjectStore";
-import { captureControlledRecovery, createControlledRecoveryTarget } from "./controlledRecovery";
-import { createDockerRecoveryDestination, createDockerRecoverySource, type DockerRecoveryResources, type DockerRecoverySecrets } from "./controlledRecovery.docker";
-import { restoreRecoveryPackage, verifyRecoveryPackage } from "./recoveryPackage";
+import { captureControlledRecovery } from "./controlledRecovery";
+import { createDockerRecoverySource, type DockerRecoveryResources, type DockerRecoverySecrets } from "./controlledRecovery.docker";
+import { verifyRecoveryPackage } from "./recoveryPackage";
 
 // Explicit opt-in uses only the owned Docker guard; no globalSetup or ambient DB URL.
 describe.skipIf(process.env.UPG_CONTROLLED_RECOVERY_DOCKER_TEST !== "1")("controlled three-store Docker adapter", () => {
-  it.each(["postgres", "wiseeff"])("captures live owned stores with %s bootstrap and restores package-only after source shutdown", async bootstrapName => {
-    const docker = createIsolatedUpgradeDocker();
+  it.for(["postgres", "wiseeff"])("captures live owned stores with %s bootstrap and restores package-only after source shutdown", async (bootstrapName, { signal, onTestFinished }) => {
+    const transport = createIsolatedUpgradeDocker();
+    let cleaning = false;
+    const docker = { ...transport, command(args: string[], input?: Buffer) {
+      if (!cleaning) signal.throwIfAborted();
+      return transport.command(args, input);
+    } };
+    let finish!: () => void;
+    const settled = new Promise<void>(resolve => { finish = resolve; });
+    // A test timeout is still a failure at the unchanged 180s limit. Await the
+    // interrupted body's owned-resource cleanup instead of exiting its worker
+    // with a live restored target. This bounded hook does not extend acceptance.
     const runId = randomBytes(12).toString("hex");
     const label = "wiseeff.controlled-recovery-run";
     const directory = await mkdtemp(path.join(os.tmpdir(), "controlled-recovery-live-"));
@@ -84,6 +100,7 @@ describe.skipIf(process.env.UPG_CONTROLLED_RECOVERY_DOCKER_TEST !== "1")("contro
       }
       return { resources, secrets, mc, store: createHttpObjectStorageTransport({ endpoint: `http://${endpoint(objects.id, 9000)}`, accessKeyId: secrets.objectAccessKey, secretAccessKey: secrets.objectSecretKey }) };
     };
+    onTestFinished(() => settled, 60000);
     try {
       const source = await timed("setup-source", () => setup("source"));
       start(source.resources.redis.id);
@@ -131,6 +148,7 @@ describe.skipIf(process.env.UPG_CONTROLLED_RECOVERY_DOCKER_TEST !== "1")("contro
           issued.set(receipt.digest, JSON.stringify(receipt)); return receipt;
         },
         verify: async (value: { digest: string }) => {
+          signal.throwIfAborted();
           expect(JSON.stringify(value)).toBe(issued.get(value.digest));
           const writers = JSON.parse(docker.command(["inspect", ...source.resources.writers.map(w => w.id)]).toString());
           expect(writers).toHaveLength(3);
@@ -205,14 +223,15 @@ describe.skipIf(process.env.UPG_CONTROLLED_RECOVERY_DOCKER_TEST !== "1")("contro
         try {
           await timed(`restore-nonempty-${fault.name}-refusal`, async () => {
             const journalPath = path.join(directory, `refused-${fault.name}.json`);
-            const port = createControlledRecoveryTarget({ target: destinationIdentity, journalPath, authorize: async binding => {
-              expect(binding.runId).toBe(runId); expect(binding.packageDigest).toBe(captured.packageDigest);
-              expect(binding.target).toEqual(destinationIdentity);
-            } }, destinationIo);
+            const consumption = await recordSyntheticRecoveryConsumption(directory, captured.packageDigest, destinationIdentity);
+            await withHostOperationLock(path.join(privateInputs, "locks"), async lock => {
+            const port = createControlledRecoveryTarget({ target: destinationIdentity,
+              authorization: createRecoveryExecutionAuthorization({ ...consumption, lock }) }, destinationIo);
             await expect(restoreRecoveryPackage(directory, captured.packageDigest, port)).rejects.toThrow("controlled-recovery-restore-database-not-empty");
             await expect(lstat(journalPath)).rejects.toMatchObject({ code: "ENOENT" });
             expect(targetSql(fault.read)).toBe(fault.expected);
             expect(targetSql("select count(*) from pg_roles where rolname in ('data_owner','read_capability','reader')")).toBe("0");
+            });
           });
         } finally {
           // Only the fixture removes its exact injected object. The restore
@@ -222,22 +241,30 @@ describe.skipIf(process.env.UPG_CONTROLLED_RECOVERY_DOCKER_TEST !== "1")("contro
       }
       // The restore child gets only destination identities/secrets and package
       // location/digest. It cannot read a source connection or fixture oracle.
+      const consumption = await recordSyntheticRecoveryConsumption(directory, captured.packageDigest, destinationIdentity);
       const childScript = `import { readFileSync } from 'node:fs';
-        import { createDockerRecoveryDestination } from ${JSON.stringify(path.resolve("ops/self-hosted/storage/controlledRecovery.docker.ts"))};
-        import { createControlledRecoveryTarget } from ${JSON.stringify(path.resolve("ops/self-hosted/storage/controlledRecovery.ts"))};
-        import { restoreRecoveryPackage } from ${JSON.stringify(path.resolve("ops/self-hosted/storage/recoveryPackage.ts"))};
+        import { createDockerRecoveryDestination } from ${JSON.stringify(path.resolve("ops/self-hosted/storage/execution/dockerRestore.ts"))};
+        import { createControlledRecoveryTarget } from ${JSON.stringify(path.resolve("ops/self-hosted/storage/execution/packageRestore.ts"))};
+        import { restoreRecoveryPackage } from ${JSON.stringify(path.resolve("ops/self-hosted/storage/execution/packageRestore.ts"))};
+        import { withHostOperationLock } from ${JSON.stringify(path.resolve("ops/self-hosted/scripts/parameter-catalog-upgrade/handoff.ts"))};
+        import { loadUpgradeJournal } from ${JSON.stringify(path.resolve("ops/self-hosted/scripts/parameter-catalog-upgrade/journal.ts"))};
+        import { createRecoveryExecutionAuthorization } from ${JSON.stringify(path.resolve("ops/self-hosted/storage/execution/authorization.ts"))};
         const c=JSON.parse(readFileSync(0,'utf8'));
         try { const r=structuredClone(c.resources),s=structuredClone(c.secrets);
           const io=createDockerRecoveryDestination(r,s);
           r.postgres.id=c.resources.objects.id; r.objects.id=c.resources.postgres.id; r.redis.id=c.resources.objectClient.id;
           r.database='wrong_database'; r.bucket='wrong-bucket'; s.postgresPassword='mutated'; s.objectSecretKey='mutated'; s.rolePasswords.reader='mutated';
           const target=await io.observe();
-          const port=createControlledRecoveryTarget({target,journalPath:c.journal,authorize:async binding=>{
-            if(binding.runId!==c.runId||binding.packageDigest!==c.digest) throw new Error('fixture-approval-refused');
-          }},io); await restoreRecoveryPackage(c.directory,c.digest,port); console.log('restored-package-only');
+          const loaded=loadUpgradeJournal({journalPath:c.controllerJournal,runId:c.runId}); if(!loaded.ok) throw new Error("journal-unavailable");
+          await withHostOperationLock(c.lockRoot,async lock=>{
+            const authorization=createRecoveryExecutionAuthorization({journal:loaded.value,directory:c.directory,capture:c.capture,approval:c.approval,restoreToken:c.restoreToken,lock});
+            const port=createControlledRecoveryTarget({target,authorization},io);
+            await restoreRecoveryPackage(c.directory,c.digest,port);
+          }); console.log('restored-package-only');
         } catch { console.log('restore-refused'); process.exitCode=1; }`;
       const child = await timed("restore-package-child", async () => spawnSync(process.execPath, ["--import", "tsx", "--input-type=module", "-e", childScript], {
-        input: JSON.stringify({ resources: destination.resources, secrets: destination.secrets, runId, digest: captured.packageDigest, directory, journal: path.join(directory, "restore.json") }),
+        input: JSON.stringify({ controllerJournal: consumption.journal.journalPath, capture: consumption.capture, approval: consumption.approval, restoreToken: consumption.restoreToken,
+          lockRoot: path.join(privateInputs, "locks"), resources: destination.resources, secrets: destination.secrets, runId, digest: captured.packageDigest, directory, journal: path.join(directory, "restore.json") }),
         encoding: "utf8", timeout: 90000, env: { PATH: process.env.PATH, HOME: os.homedir() },
       }));
       expect(child.status, child.stdout).toBe(0);
@@ -261,6 +288,8 @@ describe.skipIf(process.env.UPG_CONTROLLED_RECOVERY_DOCKER_TEST !== "1")("contro
       expect(exec(destination.resources.redis.id, ["redis-cli", "LRANGE", "bull:controlled:wait", "0", "-1"]).toString().trim()).toBe("job-a\njob-b");
       expect(exec(destination.resources.redis.id, ["redis-cli", "HGET", "bull:controlled:meta", "paused"]).toString().trim()).toBe("1");
     } finally {
+      cleaning = true;
+      try {
       // Only exact IDs/volumes created by this fixture may be disposed of.
       for (const id of containers.reverse()) { inspect(id); docker.command(["rm", "-f", id]); }
       for (const name of volumes.reverse()) {
@@ -273,6 +302,7 @@ describe.skipIf(process.env.UPG_CONTROLLED_RECOVERY_DOCKER_TEST !== "1")("contro
       }
       await rm(directory, { recursive: true, force: true });
       await rm(privateInputs, { recursive: true, force: true });
+      } finally { finish(); }
     }
   }, 180000);
 });
