@@ -144,6 +144,17 @@ it("does not fall back when the actual management session has changed role", asy
   expect(intents).toHaveLength(0);
 });
 
+it("refuses an unsafe actual management search path before identity observation or effect", async () => {
+  await manager!.query("set search_path=public,pg_catalog");
+  try {
+    expect((await manager!.query("select pg_catalog.current_schemas(true)::text[] as schemas")).rows[0].schemas[0]).toBe("public");
+    await expect(applyLegacySqlPrivilegeFence(command)).rejects.toMatchObject({ code: "RESOLUTION-UNSAFE" });
+    expect(await inspectLegacySqlPrivilegeFence({ client: manager!, selection: command.selection,
+      intentDigest: digestOf("absent-component-intent"), beforeEffect: command.beforeEffect })).toEqual({ outcome: "unknown" });
+    expect(intents).toHaveLength(0);
+  } finally { await manager!.query("reset search_path"); }
+});
+
 it("refuses the actual seventh-table competing lock before intent", async () => {
   const other = await pool!.connect();
   try {
