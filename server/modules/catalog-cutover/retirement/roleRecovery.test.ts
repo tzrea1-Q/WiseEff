@@ -2,6 +2,7 @@ import { expect, it } from "vitest";
 import { legacyRolesAreRecoverable, type RetiringRole } from "./roleRecovery";
 
 const actual = (): RetiringRole => ({ oid: "17000", name: "old_app", login: true, inherit: true, privileged: false,
+  callers: [{ oid: "17000", name: "old_app" }, { oid: "17001", name: "old_job" }],
   members: [{ name: "old_job", inherit: false, set: true, admin: false }] });
 const packaged = () => [{ name: "old_app", login: true, inherit: true, members: [{ name: "old_job", inherit: false, set: true }] }];
 it("requires the exact original LOGIN and PG16 membership capability in the package", () => {

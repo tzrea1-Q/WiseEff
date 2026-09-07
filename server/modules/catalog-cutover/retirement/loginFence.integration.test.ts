@@ -61,13 +61,31 @@ it("disables the real old LOGIN and SET ROLE entry while retaining source owner,
   } finally { await state.admin.query("rollback"); state.admin.release(); }
 });
 
-it.each(["wrong-target", "unlocked", "active-session", "changed-role", "missing-recovery", "foreign-database"])("refuses %s before changing LOGIN", async fault => {
+it.each(["wrong-target", "unlocked", "active-session", "member-session", "transitive-member-session", "changed-role", "missing-recovery", "foreign-database"])("refuses %s before changing LOGIN", async fault => {
   const state = await prepare(); let live: pg.Client | undefined;
   let other: Awaited<ReturnType<typeof createSelfHostedPg16Database>> | undefined;
   let otherDb: pg.Client | undefined;
   try {
     if (fault === "wrong-target") state.input.target = { ...state.input.target, systemIdentifier: "1" };
     if (fault === "active-session") live = await state.connect();
+    if (fault === "transitive-member-session") {
+      const middle = `mid_${randomBytes(7).toString("hex")}`;
+      await state.admin.query(`create role ${pg.escapeIdentifier(middle)} nologin noinherit;
+        revoke ${pg.escapeIdentifier(state.name)} from ${pg.escapeIdentifier(state.member)};
+        grant ${pg.escapeIdentifier(state.name)} to ${pg.escapeIdentifier(middle)} with inherit false,set true,admin false;
+        grant ${pg.escapeIdentifier(middle)} to ${pg.escapeIdentifier(state.member)} with inherit false,set true,admin false;`);
+      state.input.expectedRoles = (await state.admin.query<RetiringRole>(retiringRolesSql, [[state.name]])).rows;
+      state.input.recoveryRoles[0].members = [{ name: middle, inherit: false, set: true }];
+      state.input.recoveryRoles.push({ name: middle, login: false, inherit: false, members: [{ name: state.member, inherit: false, set: true }] });
+      live = await state.connect(state.member);
+      await live.query(`set role ${pg.escapeIdentifier(state.name)}`);
+      expect((await live.query("select session_user<>current_user as switched")).rows[0].switched).toBe(true);
+    }
+    if (fault === "member-session") {
+      live = await state.connect(state.member);
+      await live.query(`set role ${pg.escapeIdentifier(state.name)}`);
+      expect((await live.query("select session_user<>current_user as switched")).rows[0].switched).toBe(true);
+    }
     if (fault === "changed-role") state.input.expectedRoles[0].oid = "1";
     if (fault === "missing-recovery") state.input.recoveryRoles.length = 0;
     if (fault === "foreign-database") {

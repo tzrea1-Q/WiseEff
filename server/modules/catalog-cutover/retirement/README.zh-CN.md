@@ -53,7 +53,9 @@ run phase；返回 `legacy-logins-fenced-not-p13`。已有 intent 不是重试�
 
 专属 `loginFence.integration.test.ts` 用真实 LOGIN 调用同一管理作用函数，检查
 重连拒绝、成员移除及 owner／ACL／值保留，覆盖错误目标、锁、会话、角色、
-恢复材料和跨库关联。这七例仅属于数据库组件证据，不制造 P12 报告，也未执行
+恢复材料和跨库关联，并检查已经 SET ROLE 的直接及间接成员会话：NOLOGIN／REVOKE
+不会重置其他后端的有效角色，因此保留原始 caller OID 供提交后检查。这九例仅属于
+数据库组件证据，不制造 P12 报告，也未执行
 顶层 adapter。父协调者须精确将该文件接入新建自有 PG16 lane，并从共享 server
 suite 排除；缺少 receipt 时明确失败，不静默跳过。
 

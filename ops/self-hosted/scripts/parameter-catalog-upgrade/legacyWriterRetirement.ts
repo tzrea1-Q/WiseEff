@@ -244,10 +244,12 @@ async function inspect(input: LegacyLoginRetirementInput): Promise<{
       (events.length === 1 || (events.length === 2 && events[1].event_kind === "legacy-login-fence-applied" && isDeepStrictEqual(events[1].payload, events[0].payload)))) {
       const actual = (await client.query<Role>(rolesSql, [request.roles.map((role: Role) => role.name)])).rows;
       const original = request.roles as Role[];
-      const fenced = original.map(role => ({ ...role, login: false, members: [] }));
+      const fenced = original.map(role => ({ ...role, login: false, members: [], callers: [{ oid: role.oid, name: role.name }] }));
       if (events.length === 1 && isDeepStrictEqual(actual, original)) outcome = "pending";
       if (events.length === 2 && isDeepStrictEqual(actual, fenced)) {
-        await assertNoSharedLegacyRoleUse(client, actual, fixed.target);
+        // Preserve pre-revocation caller OIDs: an existing SET ROLE session
+        // retains its effective identity after membership has been removed.
+        await assertNoSharedLegacyRoleUse(client, original, fixed.target);
         outcome = "applied";
       }
     }

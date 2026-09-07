@@ -4,6 +4,7 @@ import type { RecoveryRole } from "../../../../ops/self-hosted/storage/recoveryP
 export type RetiringRole = {
   oid: string; name: string; login: boolean; inherit: boolean; privileged: boolean;
   members: { name: string; inherit: boolean; set: boolean; admin: boolean }[];
+  callers: { oid: string; name: string }[];
 };
 
 /** A precondition on actual SQL observations and an authenticated package, not

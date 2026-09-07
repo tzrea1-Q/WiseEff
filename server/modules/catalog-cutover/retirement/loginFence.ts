@@ -7,6 +7,9 @@ import { legacyRolesAreRecoverable, type RetiringRole } from "./roleRecovery";
 const requireFact = (value: unknown, reason: string): void => { if (!value) throw new Error(`legacy-login-fence-${reason}`); };
 export const retiringRolesSql = `select r.oid::text as oid,r.rolname as name,r.rolcanlogin as login,r.rolinherit as inherit,
   r.rolsuper or r.rolbypassrls or r.rolcreaterole or r.rolcreatedb or r.rolreplication as privileged,
+  (with recursive callers(oid) as (select r.oid union select a.member from pg_catalog.pg_auth_members a join callers c on c.oid=a.roleid)
+    select json_agg(json_build_object('oid',p.oid::text,'name',p.rolname) order by p.rolname)
+    from callers c join pg_catalog.pg_roles p on p.oid=c.oid) as callers,
   coalesce((select json_agg(json_build_object('name',m.rolname,'inherit',a.inherit_option,'set',a.set_option,'admin',a.admin_option) order by m.rolname)
     from pg_catalog.pg_auth_members a join pg_catalog.pg_roles m on m.oid=a.member where a.roleid=r.oid),'[]') as members
   from pg_catalog.pg_roles r where r.rolname=any($1::text[]) order by r.rolname`;
@@ -22,7 +25,8 @@ export async function assertNoSharedLegacyRoleUse(client: pg.PoolClient, roles: 
       and dbid<>$2::oid and not(dbid=0 and classid='pg_catalog.pg_database'::regclass and objid=$2::oid)) as shared,
     (select count(*)::int from pg_catalog.pg_roles where oid in(select oid from reachable)
       and (rolsuper or rolbypassrls or rolcreaterole or rolcreatedb or rolreplication)) as privileged,
-    (select count(*)::int from pg_catalog.pg_stat_activity where usesysid=any($1::oid[])) as sessions`, [roles.map(role => role.oid), target.databaseOid])).rows[0];
+    (select count(*)::int from pg_catalog.pg_stat_activity where usesysid=any($3::oid[])) as sessions`,
+    [roles.map(role => role.oid), target.databaseOid, roles.flatMap(role => role.callers.map(caller => caller.oid))])).rows[0];
   requireFact(conflicts?.shared === 0 && conflicts.privileged === 0 && conflicts.sessions === 0, "shared-role-or-live-session");
 }
 

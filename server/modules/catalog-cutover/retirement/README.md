@@ -66,7 +66,10 @@ internal integration work.
 The dedicated `loginFence.integration.test.ts` invokes the exact management
 effect with real LOGINs and checks reconnect rejection, membership removal and
 owner/ACL/value preservation, plus wrong target, lock, session, role, recovery and
-cross-database refusals. These seven cases are database-component evidence only;
+cross-database refusals. It includes already-switched direct and transitive
+member sessions: NOLOGIN/REVOKE does not reset another backend's effective role.
+The original caller OIDs remain recorded for post-commit inspection. These nine
+cases are database-component evidence only;
 they do not manufacture P12 reports or execute the top-level adapter. The parent
 must route this exact test to a newly owned PG16 cluster and exclude it from the
 shared server suite. Tests are not silently skipped when a receipt is missing.
