@@ -183,7 +183,7 @@ it("rechecks an expired report projection before the low-level effect can contin
   io.apply.mockImplementationOnce(async command => {
     // Simulate the formal projection becoming unavailable after the first
     // intent commit. This is root orchestration coverage, not a passed SQL report.
-    io.report.mockResolvedValue({ kind: "absent", reason: "retention-expired" });
+    io.report.mockResolvedValue({ kind: "absent", reason: "missing" });
     await command.beforeEffect();
     continued = true;
     return { outcome: "authentication-fenced-not-P13", intentDigest: "ignored" };
