@@ -9,6 +9,9 @@ import { createIsolatedUpgradeDocker } from "../../../scripts/isolated-upgrade-d
 import type { Database } from "../../shared/database/client";
 import type { ObjectStore } from "./objectStore";
 import { createLogAnalysisQueueRuntime, createLogAnalysisQueueTransport } from "./logAnalysisQueueRuntime";
+import { enqueueLogAnalysisJob } from "./logAnalysisQueue";
+import { enqueueNotificationOutbox } from "../notifications/notificationQueue";
+import { createBullMqDurableQueue } from "../jobs/bullmqQueue";
 
 function assertPrivateDiagnosticsAbsent(output: string, secrets: readonly string[]) {
   // Assertion libraries retain expected/actual values, even if a reporter hides
@@ -107,6 +110,52 @@ describe("owned Redis log worker lifecycle", () => {
       release(); await closing; await runtime.close();
       expect(processByJobId).toHaveBeenCalledOnce();
     } finally { release(); await runtime.close(); }
+  });
+
+  it("accepts the formal log producer's idempotency key and deduplicates delivery", async () => {
+    const processByJobId = vi.fn(async () => ({ status: "processed" as const }));
+    const runtime = await createLogAnalysisQueueRuntime({ ...options(), processByJobId });
+    const payload = { jobId: "synthetic-formal-job", organizationId: "org", logId: "log", runId: "run" };
+    try {
+      const [first, second] = await Promise.all([
+        enqueueLogAnalysisJob(runtime.queue, payload), enqueueLogAnalysisJob(runtime.queue, payload)
+      ]);
+      expect(second?.id).toBe(first?.id);
+      await vi.waitFor(() => expect(processByJobId).toHaveBeenCalledOnce());
+      const distinct = await enqueueLogAnalysisJob(runtime.queue, { ...payload, jobId: "synthetic-distinct-job" });
+      expect(distinct?.id).not.toBe(first?.id);
+      await enqueueLogAnalysisJob(runtime.queue, payload);
+      await vi.waitFor(() => expect(processByJobId).toHaveBeenCalledTimes(2));
+      await runtime.close();
+      expect(processByJobId).toHaveBeenCalledTimes(2);
+    } finally { await runtime.close(); }
+  });
+
+  it("persists formal notification keys and refuses unmarked Redis identity collisions", async () => {
+    const native = new Queue("notification-outbox", { connection: { url: redisUrl },
+      prefix: `owned-${randomBytes(8).toString("hex")}` });
+    native.on("error", () => {});
+    try {
+      await native.waitUntilReady();
+      const queue = createBullMqDurableQueue({ name: "notification-outbox", queue: native });
+      const payload = { organizationId: "org", outboxId: "synthetic-outbox" };
+      const [first, duplicate] = await Promise.all([
+        enqueueNotificationOutbox(queue, payload), enqueueNotificationOutbox(queue, payload)
+      ]);
+      expect(duplicate?.id).toBe(first?.id);
+      const persisted = await native.getJob(first!.id);
+      expect(persisted?.data.outboxId).toBe(payload.outboxId);
+      expect(persisted?.data.$wiseeffDurableKeyV1).toBe("notification-outbox:synthetic-outbox");
+      // A legitimate native add constructs an old unmarked job at a colliding
+      // physical ID; the adapter must not mistake it for its own encoded task.
+      const key = "notification-outbox:collision";
+      const collisionId = "wiseeff-durable-v1-" + Buffer.from(key, "utf16le").toString("base64url");
+      await native.add("old-unmarked", { outboxId: "foreign" }, { jobId: collisionId });
+      await expect(enqueueNotificationOutbox(queue, { organizationId: "org", outboxId: "collision" }))
+        .rejects.toThrow("durable-queue-key-collision");
+      expect((await native.getJob(collisionId))?.data).toEqual({ outboxId: "foreign" });
+      expect(await native.getJobCounts("waiting")).toMatchObject({ waiting: 2 });
+    } finally { await native.close(); }
   });
 
   it("rejects a native BullMQ close error event without leaking its private diagnostic", async () => {

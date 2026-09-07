@@ -13,6 +13,19 @@
 
 ## 关键阅读点
 
+### 传输身份兼容
+
+业务 job ID 和幂等 key 保持不变。锁定 BullMQ 拒绝正式日志、通知 producer 生成的
+两段冒号 key。适配器先按原 key 查询已持久任务，存在就保留，不重命名、删除或重新
+投递；否则仅将锁定传输拒绝的 ID 编码为 `wiseeff-durable-v1-` 加 UTF-16LE base64url。
+合法原 ID（含既有三段兼容 ID）不变，不制造三段 ID 规避检查。
+
+编码任务以保留 payload 字段 `$wiseeffDurableKeyV1` 保存原 key，业务 `jobId`／
+`outboxId` 不变。新原 key 占用保留前缀、调用者 payload 占用该字段均拒绝；既有
+编码 ID 缺少匹配 marker 视为碰撞，不当作有效重复。`add` 返回对象可能包含请求而非
+持久数据，必须读回核验。读回失败不证明投递未提交：保留原幂等 key 并 reconcile，
+不得清队列或新建业务任务强行推进。这不承诺 exactly-once，也不自动修复旧 HTTP 失败。
+
 - 先确认该文档属于哪个决策面：runbook。
 - 阅读英文版中的完整细节、表格和命令，再用本页确认中文语境下的执行边界。
 - 任何 target-environment readiness、pilot-ready、release-ready 结论都必须有真实目标环境证据，不能由本地 skip 代替。

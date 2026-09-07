@@ -365,9 +365,12 @@ describe("log analysis queue runtime", () => {
   });
 
   it("creates an API-side queue transport without starting a worker", async () => {
+    let stored: { id: string; data: Record<string, unknown> } | undefined;
     const queue = {
       ...connectionLifecycle(),
-      add: vi.fn(async () => ({ id: "bull-job-1" })),
+      getJob: vi.fn(async (id: string) => stored?.id === id ? stored : undefined),
+      add: vi.fn(async (_name: string, data: Record<string, unknown>, options: { jobId: string }) =>
+        (stored = { id: options.jobId, data })),
       pause: vi.fn(),
       resume: vi.fn(),
       getJobCounts: vi.fn(async () => ({ waiting: 1, active: 0, completed: 0, failed: 0, delayed: 0, paused: 0 })),

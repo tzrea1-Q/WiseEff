@@ -25,6 +25,7 @@ type BullMqQueueConstructor = new (
   on: (event: "error", listener: (error: Error) => void) => unknown;
   off: (event: "error", listener: (error: Error) => void) => unknown;
   waitUntilReady: () => Promise<RedisClient>;
+  getJob: (id: string) => Promise<{ id?: string | number; data?: Record<string, unknown> } | undefined>;
   add: (name: string, data: LogAnalysisQueuePayload, options: unknown) => Promise<{ id?: string | number }>;
   pause: () => Promise<void>;
   resume: () => Promise<void>;

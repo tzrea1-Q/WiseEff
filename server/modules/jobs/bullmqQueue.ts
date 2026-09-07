@@ -18,6 +18,7 @@ export type InMemoryDurableQueueOptions = {
 
 type BullMqJob = {
   id?: string | number;
+  data?: Record<string, unknown>;
 };
 
 type BullMqJobCounts = {
@@ -30,6 +31,7 @@ type BullMqJobCounts = {
 };
 
 type BullMqQueueLike<TPayload extends DurableQueueJobPayload> = {
+  getJob(id: string): Promise<BullMqJob | undefined>;
   add(
     name: string,
     payload: TPayload,
@@ -191,13 +193,40 @@ export function createBullMqDurableQueue<TPayload extends DurableQueueJobPayload
 
   return {
     async enqueue(input: DurableQueueEnqueueInput<TPayload>) {
-      const job = await options.queue.add(input.name, input.payload, {
-        jobId: input.idempotencyKey,
+      const key = input.idempotencyKey;
+      const marker = "$wiseeffDurableKeyV1";
+      const prefix = "wiseeff-durable-v1-";
+      if (!key || Object.hasOwn(input.payload, marker)) throw new Error("durable-queue-key-invalid");
+      const encoded = (key.includes(":") && key.split(":").length !== 3) ||
+        key.startsWith("0:") || String(Number.parseInt(key, 10)) === key;
+      // UTF-16 preserves even unpaired surrogate code units without collisions.
+      const id = encoded ? prefix + Buffer.from(key, "utf16le").toString("base64url") : key;
+      const previous = await options.queue.getJob(key);
+      if (previous && String(previous.id) !== key) throw new Error("durable-queue-key-collision");
+      if (previous?.data?.[marker] !== undefined && previous.data[marker] !== key) {
+        throw new Error("durable-queue-key-collision");
+      }
+      // Existing pre-encoding jobs keep their physical identity and state.
+      if (!previous && key.startsWith(prefix)) throw new Error("durable-queue-key-namespace-reserved");
+      const existing = previous ?? (encoded ? await options.queue.getJob(id) : undefined);
+      const matches = (job: BullMqJob) => String(job.id) === id && job.data !== undefined &&
+        Object.hasOwn(job.data, marker) && typeof job.data[marker] === "string" && job.data[marker] === key;
+      if (!previous && existing && !matches(existing)) throw new Error("durable-queue-key-collision");
+      const added = existing ?? await options.queue.add(input.name,
+        encoded ? { ...input.payload, [marker]: key } : input.payload, {
+        jobId: id,
         attempts: maxAttempts,
         backoff: { type: "exponential", delay: retryBackoffMs },
         removeOnComplete: false,
         removeOnFail: false
       });
+
+      // Queue.add may return a newly constructed Job even when Redis deduplicated
+      // against an existing job. Inspect persisted data before reporting success.
+      const job = !previous && encoded ? await options.queue.getJob(id) : added;
+      if (!job || (!previous && encoded && !matches(job))) {
+        throw new Error("durable-queue-key-collision");
+      }
 
       return {
         id: String(job.id ?? input.idempotencyKey),
