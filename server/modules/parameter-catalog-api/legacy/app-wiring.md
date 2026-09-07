@@ -18,6 +18,11 @@ their single route owner. The global router precedence, non-retired business
 operations and bounded legacy reads remain unchanged. The filter is derived
 from the existing frozen route manifest; it is not another retirement list.
 
+The adapter also matches that same frozen retirement manifest before resolving
+the current Catalog release. A database outage or missing query permission must
+not turn an unconditional retired-write response into a 500. Bounded reads still
+resolve their required Catalog state through the existing path.
+
 ## Scope and threat cases
 
 | Case | Required observation |
@@ -29,9 +34,12 @@ from the existing frozen route manifest; it is not another retirement list.
 | Candidate without an approved startup boundary | This routing filter grants no startup permission; runtime admission remains separate |
 
 `server/app.catalogRetirement.test.ts` exercises `createWiseEffServer` over real
-local HTTP and enumerates the frozen retirement routes. Its database boundary is
-synthetic and refuses access; the initial regression uses the real old service
-path to detect access to the old source. This is application route composition
+local HTTP and enumerates the frozen retirement routes. The matrix constructs a
+real branded `createPostgresDatabase` root, intercepts its pool's query/connect
+boundary with failures, checks zero access on both requests and closes every
+pool. This covers the production composition branch without opening a database
+connection. The initial regression uses the real old service path to detect
+access to the old source. This is application route composition
 evidence, not real database authorization, startup, P13 grant retirement or full
 controller evidence. The original source deployment checkout/image is not changed.
 
