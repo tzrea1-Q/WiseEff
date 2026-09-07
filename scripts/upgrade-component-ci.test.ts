@@ -28,11 +28,13 @@ it("routes the cluster-wide reader mutation test to the mandatory independently 
   expect(job).toContain("--suite authority-pg16 --github-hosted");
   expect(job).toContain("--suite bindings-pg16 --github-hosted");
   expect(job).toContain("--suite log-redis --github-hosted");
+  expect(job).toContain("--suite activation-existing-pg16 --github-hosted");
   expect(job).not.toContain("continue-on-error: true");
   expect(workflow.split("  required:\n")[1]).toContain("- upgrade-components");
   const server = readFileSync(new URL("../vitest.server.config.ts", import.meta.url), "utf8");
   const redisTest = "server/modules/logs/logAnalysisQueueRuntime.redis.integration.test.ts";
   expect(server).toContain(`"${redisTest}"`);
+  expect(server).toContain('"server/modules/catalog-cutover/activation/activation.integration.test.ts"');
   const redisConfig = readFileSync(new URL("../vitest.upgrade-redis.config.ts", import.meta.url), "utf8");
   expect(redisConfig).toContain(`include: ["${redisTest}"]`);
   expect(redisConfig).toContain("owned-redis-runner-required");

@@ -82,8 +82,17 @@ Redis authentication, actual job delivery, reconnect and close are real. This is
 not a PostgreSQL permission test, real log-analysis business acceptance, a
 production startup approval, or a complete upgrade/recovery rehearsal.
 
-The parent coordinator owns permanent test configuration and mandatory CI routing.
-Until that integration is present, the isolated suite's local execution is
-component evidence only; ordinary backend collection skips it unless explicitly
-enabled. Production commands are not supplied by this component. Never point this
-fixture at an existing Redis deployment or reuse its test credentials.
+The permanent entry is `npx tsx scripts/run-upgrade-component-tests.ts
+--expected-daemon-id <independently-recorded-development-daemon-id> --suite log-redis`,
+run as the developer in the fixed candidate checkout after verifying Docker Desktop
+and the daemon identity. It creates new owned resources and does not stop an
+existing deployment. A failed run exits nonzero and the supervising parent checks
+resource cleanup. A private receipt binds the child to the observed Redis run ID,
+image, container, volume, network and loopback endpoint. Missing receipt is a
+collection failure, not a skip. The parent owns cleanup even if the child is killed.
+
+The mandatory owned CI job runs this exact suite; general backend collection
+excludes the same file. Routing regression checks both sides. Local execution
+still provides component evidence only, and a queued or skipped CI job is not a
+pass. Production commands are not supplied. Never point the fixture at an existing
+Redis deployment or reuse its test credentials.

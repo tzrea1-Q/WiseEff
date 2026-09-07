@@ -67,6 +67,14 @@ AOF、仅 loopback 发布的端口及关闭出站 masquerade 的 bridge。
 关闭均为真实实现。这不代表 PostgreSQL 权限、真实日志分析业务、已获批准的生产
 启动或完整升级与恢复预演通过。
 
-永久测试配置和必需 CI 路由由父协调者负责。集成之前，本机运行仅为组件证据；
-普通 backend 收集未显式启用时会跳过该测试。本组件不提供生产执行命令。
-禁止将此夹具连接已有 Redis 部署，也不得复用测试凭据。
+永久入口为 `npx tsx scripts/run-upgrade-component-tests.ts
+--expected-daemon-id <独立记录的开发daemon身份> --suite log-redis`。
+执行者为开发用户，目录为固定候选 checkout；前置条件是已核验 Docker Desktop
+宿主及 daemon 身份。命令创建全新自有资源，不停止已有部署。失败退出非零，
+父进程核验清理。私有 receipt 将子进程绑定到实测 Redis run ID、镜像、容器、卷、
+网络及 loopback 端点；缺 receipt 是收集失败，不是跳过。子进程被终止时仍由父进程
+负责清理。
+
+必需的独立 owned CI Job 执行该文件，通用 backend 明确排除同一文件，永久路由
+回归同时核对两端。本地结果仍只是组件证据；排队或跳过的 CI 不能记通过。
+本组件不提供生产执行命令。禁止连接已有 Redis 部署或复用测试凭据。
