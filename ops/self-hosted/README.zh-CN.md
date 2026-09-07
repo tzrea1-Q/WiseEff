@@ -23,7 +23,7 @@
 - 页脚版权所有者、版本和联系方式属于构建期公开配置。可复制示例、重新构建要求和页面核对步骤见[配置应用页脚](../../docs/zh-CN/developer/environment-variables.md#配置应用页脚)。
 - 企业受限网络先用 `./scripts/build-network.sh init` 创建 `.build-network.env`，由部署用户编辑，再用 `./scripts/build-network.sh status` 查看无凭据摘要。setup 与 upgrade 共用这份代理、内部 npm 源、组织批准 CA 和构建 TLS 契约；无法安装 CA 的主机可使用文档化的仅构建期 `insecure` 策略，但每次构建都要单独授权，运行时 TLS 和包完整性/签名仍保持开启。详见[受限网络构建配置](upgrade.zh-CN.md#受限网络构建配置)。自托管 runtime 要求 Docker Compose v2。
 - stock 自托管拓扑只支持一个 API 副本。`./scripts/compose` 对 `up --scale api=...`、`up --scale=api=...` 和独立的 `scale api=...` 只允许精确的 `api=1`；其他所有 `api=*` 值都会在调用 Docker 前被拒绝，其他服务的 scale 值原样透传。wrapper 只在顶层命令为 `up` 或 `scale` 时检查 scale 语法；`exec`、`run` 和其他命令的参数无需补字面 `--`，都会原样透传。对于 `up`，`--` 结束选项检查；对于 `scale`，它只结束选项，之后的 API operand 仍会校验。直接调用 Compose 只能绕过 guard，不能形成受支持的多 API 拓扑。
-- 自托管 runtime 镜像通过 Alpine `dtc` 包内置 Device Tree Compiler，并在镜像构建时执行 `dtc --version`。因此 `./scripts/seed-demo-data.sh` 的 M1 阶段会在容器内真实编译三项目 overlay，不依赖宿主机安装。
+- 自托管 runtime 镜像从固定源构建 DTC，并安装匹配的 libfdt。标准可执行文件和库路径保证 login shell 重设 PATH、应用子进程移除 `LD_LIBRARY_PATH` 后仍可运行 `dtc`／`fdtoverlay`。镜像构建用最小环境执行这两项工具及 `dt-validate`，失败即停止构建；应用子进程的既有环境白名单保持不变。因此 `./scripts/seed-demo-data.sh` 的 M1 阶段在容器内真实编译三项目 overlay，不依赖宿主机安装。
 - 修改镜像或 DTS seed 后运行 `npm run selfhost:check`、`npm run dtc:check -- --required` 和 `npm run dtc:seed:compile`。
 
 ## 图形化监控
