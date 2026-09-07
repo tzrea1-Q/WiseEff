@@ -315,9 +315,17 @@ Permanent regression uses the existing admitted runner, with an independently ve
 
 ```bash
 node --import tsx scripts/run-upgrade-component-tests.ts --expected-daemon-id "$verified_development_daemon_id" --suite recovery-three-store
+node --import tsx scripts/run-upgrade-component-tests.ts --expected-daemon-id "$verified_development_daemon_id" --suite controlled-recovery
 ```
 
 Run only from the reviewed isolated development checkout, with the listed local images and an already verified daemon. It writes its own disposable stores and retains private evidence; it does not stop any deployment. The owned CI job runs the same complete file without opt-in skips. A failed admission, missing image, test or cleanup stops this lane.
+
+The second command runs the separate four-case source/destination adapter matrix:
+both bootstrap identities, source stopped before package consumption, and nonempty
+target refusal. At `b8fbae437` all four passed in 262.44s with cleanup verified.
+It retains the same 180-second limit per case and cannot authorize business queues
+or public traffic. Both commands require ownership receipts; ambient DB settings
+and an opt-in environment flag are insufficient.
 
 If the supervising process forcibly terminates the recovery child, its additional
 store cleanup is **unknown**, even if the runner's own PG was cleaned.

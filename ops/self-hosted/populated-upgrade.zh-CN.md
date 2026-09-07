@@ -268,9 +268,15 @@ capture 提交后 `backupRetained=true`：私有包、批准与 journal 在失�
 
 ```bash
 node --import tsx scripts/run-upgrade-component-tests.ts --expected-daemon-id "$verified_development_daemon_id" --suite recovery-three-store
+node --import tsx scripts/run-upgrade-component-tests.ts --expected-daemon-id "$verified_development_daemon_id" --suite controlled-recovery
 ```
 
 机器／用户／目录：已审隔离开发 checkout 及其开发用户；前置：上述本地镜像、已经核验的 daemon ID。此命令只写入自建测试存储，保留私有证据，不停止任何部署。预期整份测试无 opt-in 跳过，CI owned job 也强制执行；准入、镜像、测试或清理失败即停止。它不是生产维护命令。
+
+第二条命令执行独立的四场景源／目标adapter矩阵：两种bootstrap身份、停源后消费包、
+非空目标拒绝。`b8fbae437`实际4/4通过，262.44s，清理验证通过。每场景仍限180秒，
+不能批准业务队列或公开流量。两条命令均要求owned receipt，ambient数据库配置
+或opt-in环境开关不能代替准入。
 
 若监督进程强制终止恢复子进程，额外测试存储的清理结果为 **unknown**，不能因
 runner自身PG已清理就称整体已清理。`runnerResourcesCleanupVerified` 与

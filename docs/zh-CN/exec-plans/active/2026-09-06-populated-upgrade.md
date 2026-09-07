@@ -4,12 +4,29 @@
 
 ## 范围与状态
 
+续工 `b8fbae437` 已集成独立审查通过的 bootstrap journal 失锁处理、七表 V13
+能力子矩阵和强制 controlled recovery adapter 路由。Focused 274/274、真实
+adapter 4/4通过；build、原可信基线 boundary、contract、self-hosted检查均exit 0。
+此候选尚未运行Hosted；此前交付 `cf494324c` 的CI `34153386496` 已成功，
+local non-HDC与target synthetic两个Job跳过。
+
+| 当前增量／唯一写入者 | R3威胁／依赖 | 文档影响 |
+| --- | --- | --- |
+| Bootstrap journal／Raman，父串行集成 | 最后报告等待期间失锁；保留已提交证据，不重放 | 现有bootstrap双语文件与证据 |
+| V13能力／Lagrange，父串行集成 | 间接LOGIN权限与系统schema自建definer；仅七表子矩阵 | 现有gate双语文件与owned CI |
+| Adapter强制路由／父 | 普通路由排除与opt-in不得造成四项用例全漏；子进程失败清理仍unknown | 现有操作／证据双语文件 |
+| 运行角色来源／Fermat Scratch | 原配置FD、真实受限LOGIN及物理目标证明；不新增grant | Handoff/runtime双语说明，待集成 |
+
+完整P13效果与不可变generation producer、StartupTarget及真实API／worker正向
+启动仍是内部实现工作。A、B、C均未完成；不新增schema／能力或生产操作授权。
+以下检查点保留历史身份。
+
 以下四个有界增量已集成至 `2b5d5ed44`（tree
 `d97681435e034b7ee604efbe21295d7b434baa82`），强制真实恢复路由15/15通过并记录服务
 镜像证据。服务端代码 `6e519a3b4` 修复缺DB静态诊断的集成回归后，
 原断言保留，bootstrap240/240及owned backend4300/4300通过，build及严格owned文档／schema检查通过。各源提交
-组件执行与当前候选检查在证据中分别记录；新Hosted及完整startup／controller
-验收尚未建立。Raman下一独占Scratch在现有宿主journal补typed publication事件，
+组件执行与当前候选检查在证据中分别记录；其Hosted结果见上，完整startup／controller
+验收尚未建立。现有宿主journal已包含typed publication事件，但仅属于存储层，
 不新增schema／grant／报告格式；缺完整P13 producer时不得借caller retired标志或
 伪pin发行运行状态。
 

@@ -6,15 +6,34 @@
 
 ### Current continuation: real dependencies and activation
 
+Continuation `b8fbae437` integrates the independently reviewed bootstrap journal
+lock checks, the seven-table V13 capability submatrix, and mandatory controlled
+recovery adapter routing. Focused 274/274 and actual adapter 4/4 passed; build,
+unchanged trusted-base boundary, contract and self-hosted checks exited 0. This
+candidate has not run Hosted. Delivered `cf494324c` separately completed CI
+`34153386496`, with local non-HDC and target synthetic jobs skipped.
+
+| Current increment / sole writer | R3 threat / dependency | Documentation impact |
+| --- | --- | --- |
+| Bootstrap journal / Raman, parent integration | Lock loss during the last report await; retain committed evidence without replay | Existing bootstrap pair and evidence |
+| V13 capabilities / Lagrange, parent integration | Indirect LOGIN privileges and custom system-schema definers; seven-table scope only | Existing gate pair and owned CI |
+| Adapter mandatory route / parent | Neither generic exclusion nor opt-in may omit all four tests; failed child cleanup remains unknown | Existing operator/evidence pair |
+| Runtime role source / Fermat Scratch | Original configuration FD, actual restricted LOGIN and physical target proof; no new grants | Handoff/runtime pair, pending integration |
+
+Full P13 effects and its immutable generation producer, StartupTarget and real
+API/worker positive startup remain internal implementation work. A, B and C are
+not complete. No additional schema, capability or production action is authorized.
+The following checkpoint retains its historical identity.
+
 The four bounded increments below are integrated at `2b5d5ed44` (tree
 `d97681435e034b7ee604efbe21295d7b434baa82`). Its mandatory actual recovery route
 passed 15/15 with service image evidence. At server code `6e519a3b4`, bootstrap 240/240 and owned backend
 4300/4300 passed after fixing an integration regression in the static missing-DB
 diagnostic; the original assertion was retained. Build and strict owned documentation/schema checks passed. Exact prior-source
 component executions and current-candidate checks are separate in the evidence
-pair. New Hosted/complete startup/controller acceptance are not yet established.
-Raman's next exclusive Scratch owns typed publication events in the existing host
-journal; no new schema, grant or report format is authorized. A missing full P13
+pair. Its Hosted result is recorded above; complete startup/controller acceptance
+is not established. Typed publication events now exist in the host journal as
+storage only; no new schema, grant or report format is authorized. A missing full P13
 producer cannot be replaced by a caller-supplied retired flag or fabricated pin.
 
 Recovery composition now uses formal capture and independently authenticated

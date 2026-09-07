@@ -4,6 +4,35 @@
 
 ## Integrated candidate, 2026-09-08
 
+Execution `b8fbae437107194c19393651180b397ef7b2ae42`, tree
+`c3068db7f9a2e56eede19e22cf74ee5b14c5129a`, includes reviewed bootstrap durable
+steps, seven-table V13 capability fixes and mandatory controlled adapter routing.
+The seven-file selector passed 274/274, zero failed/skipped, 13.59s, exit 0
+(`upg824-b8fbae-focused-single.log`, SHA256
+`e7bc1d355a3450ea0a31c8508404653b5c7be171a714766e0414560f4d6995e2`).
+This single execution replaces a log path used by two concurrent selectors;
+their counts are not added. Build exited 0 with existing warnings, SHA256
+`054ef17679960b73505a99231f63a5accfadc7be56d4267aa082f5b5119a7836`.
+Boundary with unchanged trusted base `9b3ba7df7e21f5589684bc92c872da593ad4c246`
+passed 3509/3509 allowances, zero new/stale/growth. An initial invocation omitted
+the required base argument and exited 1 before scanning. Contract/selfhost exited
+0. This candidate has not yet run full scripts/backend/docs or Hosted.
+
+The owned `controlled-recovery` route executed all four existing bootstrap and
+stopped-source package/target-refusal scenarios: 4/4, zero failed/skipped, 262.44s,
+exit 0, nested and runner cleanup verified, private evidence retained. Log
+`upg824-controlled-owned.log` SHA256
+`e96878cad31b599bbc623f69dce00b1cdce6c6dfb696b1d5befb4fcf3f76dc85`.
+It used the local PG16 Alpine image listed below. This matrix does not itself
+prove actual BullMQ business consumption, complete controller upgrade, or a real
+backup copy. Exact mandatory routing and missing-receipt refusal replace opt-in;
+Lagrange Standards PASS, final Spec pending.
+
+Bootstrap source `6ff7d984` has independent Standards/Spec PASS; its 232/232 run
+was same-byte pre-seal WIP, not a fixed-SHA PG execution. V13 source `d28546fad`
+has both independent reviews and its own 24/24 real PG execution documented in
+the gate module. Neither establishes complete P13 or working StartupTarget.
+
 Local continuation `2d907209fb1f78aba6798270cc654fba187e36bf`, tree
 `3f3eb2074d0a4db1ddeb49dd12cb49a242127721`, adds the separately reviewed
 partial-restore observation and typed host publication storage. Its six-file

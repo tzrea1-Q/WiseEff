@@ -4,6 +4,31 @@
 
 ## 集成候选，2026-09-08
 
+执行 `b8fbae437107194c19393651180b397ef7b2ae42`，tree
+`c3068db7f9a2e56eede19e22cf74ee5b14c5129a`，已集成经过审查的bootstrap持久
+步骤、七表V13能力修复和controlled adapter强制路由。七文件selector274/274，
+零失败／跳过，13.59s，exit 0；`upg824-b8fbae-focused-single.log` SHA256
+`e7bc1d355a3450ea0a31c8508404653b5c7be171a714766e0414560f4d6995e2`。
+此次单一执行替代被两个并发selector复用的日志路径，不累加它们的计数。
+Build exit 0，保留原警告，日志SHA256
+`054ef17679960b73505a99231f63a5accfadc7be56d4267aa082f5b5119a7836`。
+Boundary使用原可信基线`9b3ba7df7e21f5589684bc92c872da593ad4c246`，
+3509/3509 allowance，零新增／stale／growth。首次命令漏传必需base参数，扫描前
+exit 1；修正命令后通过。Contract／selfhost exit 0。此候选尚未执行完整
+scripts／backend／docs或Hosted。
+
+Owned `controlled-recovery`执行原有四个bootstrap及停源包／目标拒绝场景：
+4/4，零失败／跳过，262.44s，exit 0，内外层清理验证通过，私有证据保留。
+`upg824-controlled-owned.log` SHA256
+`e96878cad31b599bbc623f69dce00b1cdce6c6dfb696b1d5befb4fcf3f76dc85`。
+使用下方本地PG16 Alpine镜像。此矩阵自身不证明真实BullMQ业务消费、完整controller
+升级或真实备份副本。精确强制路由及缺receipt拒绝替代opt-in；Lagrange独立
+Standards PASS，最终Spec待完成。
+
+Bootstrap源`6ff7d984`独立Standards／Spec PASS；其232/232是同字节封前WIP，
+不是固定SHA的PG执行。V13源`d28546fad`双审通过，实际PG24/24在gate模块另记。
+两者均不证明完整P13或可用StartupTarget。
+
 本地续工 `2d907209fb1f78aba6798270cc654fba187e36bf`，tree
 `3f3eb2074d0a4db1ddeb49dd12cb49a242127721`，集成分别双审的部分恢复观测与宿主
 publication存储。六文件根／journal selector为223/223，失败／跳过0，14.61s，退出0；
