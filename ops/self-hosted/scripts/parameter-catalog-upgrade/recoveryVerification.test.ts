@@ -35,7 +35,7 @@ async function fixture() {
   return { root, operationRoot, directory, journal: opened.value, target, source, boundary, loseFence: () => { live = false; } };
 }
 
-it.each(["valid", "missing-capture", "package-drift", "fence-lost", "plan-target", "reused-plan"])("binds the actual captured package and live fence: %s", async fault => {
+it.each(["valid", "missing-capture", "package-drift", "fence-lost", "plan-target", "reused-plan", "source-drift", "wrong-purpose", "late-fence-loss", "duplicate-gate"])("binds the actual captured package and live fence: %s", async fault => {
   const f = await fixture();
   await withHostOperationLock(f.operationRoot, async lock => {
     const capture = await recordControlledRecoveryCapture({ ...f, lock, attemptId: "capture" }, f.source, f.boundary);
@@ -55,14 +55,25 @@ it.each(["valid", "missing-capture", "package-drift", "fence-lost", "plan-target
     if (fault === "package-drift") await writeFile(path.join(f.directory, "payload-0.bin"), "changed");
     if (fault === "fence-lost") f.loseFence();
     if (fault === "plan-target") plan.pins.target = { ...plan.pins.target, deploymentId: "different" };
+    if (fault === "source-drift") f.target.redisIdentity = "replacement";
+    if (fault === "wrong-purpose") Object.assign(plan, { purpose: "public-release" });
     const results = [];
     for (const [gateId, adapter] of execution.adapters) results.push(await adapter({ gateId: gateId as never, plan }));
-    if (fault === "valid" || fault === "reused-plan") {
+    if (["valid", "reused-plan", "late-fence-loss", "duplicate-gate"].includes(fault)) {
       expect(results.map(result => result.status)).toEqual(["passed", "passed"]);
       const refs = await execution.readEvidence(plan);
       expect(refs.map(ref => ref.digest)).toEqual(results.map(result => result.evidenceDigest));
       expect(refs.every(ref => ref.phaseSnapshot === plan.lineage.phaseSnapshot)).toBe(true);
       if (fault === "reused-plan") await expect(execution.readEvidence({ ...plan, digest: "sha256:another" as never })).rejects.toThrow("PCAT-UPG-RECOVERY-EVIDENCE-UNAVAILABLE");
+      if (fault === "late-fence-loss") {
+        f.loseFence();
+        await expect(execution.readEvidence(plan)).rejects.toThrow("PCAT-UPG-RECOVERY-EVIDENCE-UNAVAILABLE");
+      }
+      if (fault === "duplicate-gate") {
+        const [gateId, adapter] = [...execution.adapters][0];
+        expect((await adapter({ gateId: gateId as never, plan })).status).toBe("failed");
+        await expect(execution.readEvidence(plan)).rejects.toThrow("PCAT-UPG-RECOVERY-EVIDENCE-UNAVAILABLE");
+      }
     } else {
       expect(results.every(result => result.status === "failed")).toBe(true);
       await expect(execution.readEvidence(plan)).rejects.toThrow("PCAT-UPG-RECOVERY-EVIDENCE-UNAVAILABLE");
