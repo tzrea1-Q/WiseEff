@@ -47,7 +47,7 @@ beforeEach(async () => {
   const oid = (await writer.query("select oid::text from pg_roles where rolname=session_user")).rows[0].oid;
   intents = [];
   command = { client: manager, selection: { runId: binding.intent.runId, attemptId: `sql-${nonce}`, target,
-    activationBindingDigest: binding.bindingDigest, rootRequestDigest: digestOf("unapproved-component-root"), recoveryPackageDigest: digestOf("component-not-a-recovery-package") },
+    activationBindingDigest: binding.bindingDigest, rootRequestDigest: digestOf("unapproved-component-root"), recoveryPackageDigest: digestOf("component-not-a-recovery-package").slice(7) },
     runtimeRoles: [{ oid, name: role }], recoveryRoles: [
       { name: role, login: true, inherit: false, members: [] }, { name: capability, login: false, inherit: true, members: [] },
     ], beforeEffect: async () => {

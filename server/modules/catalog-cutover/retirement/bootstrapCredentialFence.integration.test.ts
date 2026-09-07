@@ -1,6 +1,6 @@
 import { randomBytes } from "node:crypto";
 import { spawn } from "node:child_process";
-import { chmod, mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises";
+import { chmod, mkdtemp, readFile, realpath, rm, stat, writeFile } from "node:fs/promises";
 import { connect, createServer, type Socket } from "node:net";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -20,7 +20,7 @@ import { digestOf } from "../../release-verification/core/digest";
 import type { BootstrapRootBinding } from "./bootstrapCredentialFence";
 import { applyLegacySqlPrivilegeFence } from "./legacySqlPrivilegeFence";
 import { LEGACY_STRUCTURAL_TABLES } from "../../catalog-kernel/security/catalogRoleManifest";
-import { openUpgradeJournal, commitJournalTransition } from "../../../../ops/self-hosted/scripts/parameter-catalog-upgrade/journal";
+import { openUpgradeJournal, commitJournalTransition, canonicalJson, sha256Prefixed } from "../../../../ops/self-hosted/scripts/parameter-catalog-upgrade/journal";
 
 // Exclusive parent-owned PG cluster only. These tests authenticate actual
 // bootstrap sessions, not application startup or approved P12/P13 execution.
@@ -338,20 +338,26 @@ try {
 if (!process.exitCode && result) process.stdout.write(JSON.stringify(result) + '\\n');
 `;
 
-async function inspectInIndependentProcess(inputPath: string, code = bootstrapInspectionChild): Promise<{ outcome: string; intentDigest?: string }> {
+async function inspectInIndependentProcess(inputPath: string, code = bootstrapInspectionChild,
+  boundary?: () => Promise<void>): Promise<{ outcome: string; intentDigest?: string }> {
   // Fixed imports and code, inherited supervisor group, no credential argv/env.
   const child = spawn(process.execPath, ["--import", "tsx", "--input-type=module", "-e", code, inputPath],
-    { cwd: process.cwd(), env: { PATH: process.env.PATH, HOME: process.env.HOME }, stdio: ["ignore", "pipe", "pipe"] });
+    { cwd: process.cwd(), env: { PATH: process.env.PATH, HOME: process.env.HOME }, stdio: ["ignore", "pipe", "pipe", "ipc"] });
   let stdout = "", stderr = "", failed = false, timer: ReturnType<typeof setTimeout> | undefined;
   child.on("error", () => { failed = true; });
+  let boundaryWork: Promise<void> | undefined;
+  child.on("message", message => {
+    if (message !== "final-boundary" || !boundary || boundaryWork) { failed = true; child.kill("SIGKILL"); return; }
+    boundaryWork = boundary().then(() => { child.send("boundary-complete"); }, () => { failed = true; child.kill("SIGKILL"); });
+  });
   const closed = new Promise<{ code: number | null; signal: NodeJS.Signals | null }>(resolve => {
     child.once("close", (code, signal) => resolve({ code, signal }));
   });
-  child.stdout.on("data", chunk => {
+  child.stdout!.on("data", chunk => {
     stdout = (stdout + chunk.toString()).slice(0, 4097);
     if (stdout.length > 4096) { failed = true; child.kill("SIGKILL"); }
   });
-  child.stderr.on("data", chunk => {
+  child.stderr!.on("data", chunk => {
     stderr = (stderr + chunk.toString()).slice(0, 4097);
     if (stderr.length > 4096) { failed = true; child.kill("SIGKILL"); }
   });
@@ -369,7 +375,7 @@ async function inspectInIndependentProcess(inputPath: string, code = bootstrapIn
       throw new Error("bootstrap-independent-inspection-result-invalid");
     return result as { outcome: string; intentDigest?: string };
   } finally {
-    clearTimeout(timer); child.kill("SIGKILL"); await closed;
+    clearTimeout(timer); child.kill("SIGKILL"); await closed; await boundaryWork;
   }
 }
 
@@ -382,7 +388,7 @@ import { createPostgresDatabase } from './server/shared/database/client.ts';
 import { acquireObservedManagementClient } from './server/modules/catalog-cutover/retirement/managementCheckout.ts';
 import { inspectBootstrapCredentialFenceFromCustodyTransport } from './server/modules/catalog-cutover/retirement/bootstrapCredentialFence.ts';
 import { withHostOperationLock, assertHostOperationLock } from './ops/self-hosted/scripts/parameter-catalog-upgrade/handoff.ts';
-let pool, client, reports, result, ended = false;
+let pool, client, reports, result, ended = false, boundaryCalls = 0;
 try {
   const input = JSON.parse(await readFile(process.argv[1], 'utf8'));
   pool = new pg.Pool({ connectionString: input.guardUrl, max: 1, connectionTimeoutMillis: 2000, query_timeout: 5000 });
@@ -394,7 +400,14 @@ try {
     const activation = { managementPool: pool, reports, target: input.expectedRootBinding.target,
       boundary: { withLockedBoundary: unavailable, observe: unavailable,
         verify: async () => {
+          boundaryCalls++;
           await assertHostOperationLock(lock, input.expectedRootBinding.custodyDirectory);
+          if (input.fault === 'final-boundary' && boundaryCalls === 6) {
+            await new Promise((resolve, reject) => {
+              process.once('message', message => message === 'boundary-complete' ? resolve() : reject(new Error('boundary-refused')));
+              process.send('final-boundary');
+            });
+          }
           // This real activation boundary is reached only after the facade's
           // private OID10 connected. A graceful borrowed-session end must
           // cancel that live inspection, just as an error does.
@@ -430,7 +443,22 @@ finally {
 if (!process.exitCode && result) process.stdout.write(JSON.stringify(result) + '\\n');
 `;
 
-it("reopens the exact persisted custody in a separate process using only restricted management transport and rejects changed root selection", async () => {
+let successorCheck: ((mode: "baseline" | "host-association" | "final-boundary") => Promise<void>) | undefined;
+let closeSuccessor: (() => Promise<void>) | undefined;
+afterAll(async () => { await closeSuccessor?.(); });
+it("reopens the exact persisted custody in a separate process using only restricted management transport and rejects changed root selection", () => exerciseCustodyTransport());
+it("rejects copied successor host steps without the original cutover and credential capture association", async () => {
+  if (!successorCheck) throw new Error("successor-fixture-unavailable");
+  await successorCheck("host-association");
+});
+it("holds the SQL successor locks through the last actual activation boundary callback", async () => {
+  try {
+    if (!successorCheck) throw new Error("successor-fixture-unavailable");
+    await successorCheck("final-boundary");
+  } finally { await closeSuccessor?.(); }
+});
+
+async function exerciseCustodyTransport() {
   await closeInitialManager();
   const nonce = randomBytes(8).toString("hex"), role = `transport_guard_${nonce}`, writerRole = `transport_writer_${nonce}`;
   const managers = new pg.Pool({ connectionString: privateUrl.href, max: 3, connectionTimeoutMillis: 2000, query_timeout: 5000 });
@@ -460,7 +488,7 @@ it("reopens the exact persisted custody in a separate process using only restric
     const expectedRootBinding: BootstrapRootBinding = {
       contract: "pcat-bootstrap-application-authentication-v1", runId: binding.intent.runId,
       attemptId: `transport-${nonce}`, activationIntent: binding.intent, activationBindingDigest: binding.bindingDigest,
-      handoffDigest: digestOf("unapproved-component-handoff"), recoveryPackageDigest: digestOf("unapproved-component-package"),
+      handoffDigest: digestOf("unapproved-component-handoff"), recoveryPackageDigest: digestOf("unapproved-component-package").slice(7),
       recoveryPointDigest: digestOf("unapproved-component-recovery-point"), target,
       roleName: decodeURIComponent(privateUrl.username), custodyDirectory: directory,
     };
@@ -477,14 +505,14 @@ it("reopens the exact persisted custody in a separate process using only restric
     client.release(true); client = undefined; await endManagers();
     const old = new pg.Client({ connectionString: oldUrl, connectionTimeoutMillis: 2000 }); old.on("error", () => {});
     try { await expect(old.connect()).rejects.toMatchObject({ code: "28P01" }); } finally { await old.end(); }
-    for (const mode of ["exact", "cross-run", "package-drift", "guard-ended"] as const) {
+    for (const selectedMode of ["exact", "cross-run", "package-drift", "guard-ended"] as const) {
       const selected = { ...structuredClone(expectedRootBinding) };
-      if (mode === "cross-run") selected.runId = `wrong-${nonce}`;
-      if (mode === "package-drift") selected.recoveryPackageDigest = digestOf("different-package");
-      const inputPath = path.join(directory, `${nonce}-${mode}.transport-input`);
-      await writeFile(inputPath, JSON.stringify({ guardUrl: guardUrl.href, expectedRootBinding: selected, fault: mode }), { mode: 0o600, flag: "wx" });
+      if (selectedMode === "cross-run") selected.runId = `wrong-${nonce}`;
+      if (selectedMode === "package-drift") selected.recoveryPackageDigest = digestOf("different-package").slice(7);
+      const inputPath = path.join(directory, `${nonce}-${selectedMode}.transport-input`);
+      await writeFile(inputPath, JSON.stringify({ guardUrl: guardUrl.href, expectedRootBinding: selected, fault: selectedMode }), { mode: 0o600, flag: "wx" });
       expect(await inspectInIndependentProcess(inputPath, custodyTransportInspectionChild))
-        .toEqual(mode === "exact" ? fenced : { outcome: "unknown" });
+        .toEqual(selectedMode === "exact" ? fenced : { outcome: "unknown" });
     }
     // Real successor effect and host persistence, followed by another OS
     // process using only the original restricted transport/custody selection.
@@ -494,6 +522,31 @@ it("reopens the exact persisted custody in a separate process using only restric
       const opened = openUpgradeJournal({ journalPath, runId: hostRunId });
       if (!opened.ok) throw new Error("bootstrap-successor-journal-unavailable");
       const journal = opened.value;
+      // Typed storage records select the existing component request. They are
+      // not an actual captured package, approved P12 or whole-root fixture.
+      const save = (draft: Parameters<typeof commitJournalTransition>[1]) => {
+        const saved = commitJournalTransition(journal, draft);
+        if (!saved.ok || saved.value.replayed) throw new Error("bootstrap-successor-fixture-record-refused");
+      };
+      save({ action: "bind-cutover", inputDigest: "component-binding", cutoverRunId: binding.intent.runId,
+        planDigest: binding.intent.planDigest, toState: "idle", nextAction: "plan" });
+      const identity = await stat(directory);
+      const source = { deploymentId: "component", hostFingerprint: "component", postgresIdentity: "component", objectStoreIdentity: "component", redisIdentity: "component" };
+      const pending = { runId: hostRunId, attemptId: `capture-${nonce}`, outcome: "pending" as const, source,
+        directory: { path: directory, device: String(identity.dev), inode: String(identity.ino) } };
+      const capture = { runId: hostRunId, packageDigest: expectedRootBinding.recoveryPackageDigest,
+        recoveryPointDigest: expectedRootBinding.recoveryPointDigest, source, boundaryDigest: "c".repeat(64) };
+      const captureDigest = sha256Prefixed(canonicalJson(capture));
+      for (const event of [pending, { ...pending, outcome: "committed" as const, capture }])
+        save({ action: event.outcome === "pending" ? "recovery-capture-pending" : "recovery-package-captured",
+          inputDigest: sha256Prefixed(canonicalJson(event.outcome === "pending" ? event : capture)),
+          toState: "idle", nextAction: "plan", outcome: event.outcome === "pending" ? "crashed" : "committed", recoveryCapture: event });
+      const retirementIntent = { hostRunId, rootBinding: expectedRootBinding, captureDigest,
+        rootRequestDigest: digestOf(request), credentialVersion: request.credentials.version };
+      for (const event of [{ intent: retirementIntent, outcome: "pending" as const },
+        { intent: retirementIntent, outcome: "credential-step" as const, credentialIntentDigest: fenced.intentDigest }])
+        save({ action: `bootstrap-retirement-${event.outcome}`, inputDigest: sha256Prefixed(canonicalJson(event)),
+          toState: "idle", nextAction: "plan", outcome: event.outcome === "pending" ? "crashed" : "committed", bootstrapRetirement: event });
       const append = async (outcome: "pending" | "applied", intentDigest: string) => {
         await assertHostOperationLockForJournal(lock, journalPath);
         const saved = commitJournalTransition(journal, { action: `legacy-sql-privileges-${outcome}`,
@@ -519,10 +572,47 @@ it("reopens the exact persisted custody in a separate process using only restric
           .toEqual([{ count: 0 }]);
       });
     });
-    const successorInput = path.join(directory, `${nonce}.successor-input`);
+    successorCheck = async mode => {
+    const successorInput = path.join(directory, `${nonce}.${mode}.successor-input`);
+    if (mode === "host-association") {
+      await withHostOperationLock(directory, async lock => {
+        const original = openUpgradeJournal({ journalPath, runId: hostRunId });
+        if (!original.ok) throw new Error("host-association-fixture-unavailable");
+        for (const selectedRun of [binding.intent.runId, `different-${nonce}`]) {
+          const copiedPath = path.join(directory, `${selectedRun}.copied-journal`);
+          const copy = openUpgradeJournal({ journalPath: copiedPath, runId: hostRunId });
+          if (!copy.ok) throw new Error("host-association-fixture-unavailable");
+          for (const entry of original.value.record.entries.filter(entry => entry.action.startsWith("legacy-sql-privileges-"))) {
+            await assertHostOperationLockForJournal(lock, copiedPath);
+            if (!commitJournalTransition(copy.value, { action: entry.action, inputDigest: entry.inputDigest,
+              outcome: entry.outcome, cutoverRunId: selectedRun, planDigest: binding.intent.planDigest,
+              toState: "idle", nextAction: "plan" }).ok) throw new Error("host-association-copy-refused");
+          }
+        }
+      });
+      for (const selectedRun of [binding.intent.runId, `different-${nonce}`]) {
+        const file = path.join(directory, `${selectedRun}.copied-input`);
+        await writeFile(file, JSON.stringify({ guardUrl: guardUrl.href, expectedRootBinding,
+          sqlSuccessor: { journalPath: path.join(directory, `${selectedRun}.copied-journal`), hostRunId } }), { mode: 0o600, flag: "wx" });
+        expect(await inspectInIndependentProcess(file, custodyTransportInspectionChild)).toEqual({ outcome: "unknown" });
+      }
+      return;
+    }
     await writeFile(successorInput, JSON.stringify({ guardUrl: guardUrl.href, expectedRootBinding,
-      fault: "sql-successor", sqlSuccessor: { journalPath, hostRunId } }), { mode: 0o600, flag: "wx" });
-    expect(await inspectInIndependentProcess(successorInput, custodyTransportInspectionChild)).toEqual(fenced);
+      fault: mode === "final-boundary" ? mode : "sql-successor", sqlSuccessor: { journalPath, hostRunId } }), { mode: 0o600, flag: "wx" });
+    let grantBlocked: boolean | undefined;
+    const observed = await inspectInIndependentProcess(successorInput, custodyTransportInspectionChild, mode === "final-boundary" ? async () => {
+      // A real second management session, opened only in this boundary window
+      // and closed before auth's session inventory is checked again. No S7.
+      const other = new pg.Client({ connectionString: privateUrl.href, connectionTimeoutMillis: 2000 }); other.on("error", () => {});
+      try {
+        await other.connect(); await other.query("set lock_timeout='50ms'");
+        try { await other.query(`grant update on public.${pg.escapeIdentifier(LEGACY_STRUCTURAL_TABLES[1])} to ${writerRole}`); grantBlocked = false; }
+        catch (error) { if ((error as { code?: string }).code !== "55P03") throw new Error("successor-boundary-unexpected-failure"); grantBlocked = true; }
+      } finally { await other.end(); }
+    } : undefined);
+    expect(observed).toEqual(fenced);
+    if (mode === "final-boundary") { expect(grantBlocked).toBe(true); return; }
     // An additional grant is outside the recorded successor. A new relation
     // leaves the SQL pre/postimage valid but must still fail the original
     // authentication metadata baseline. Neither may be normalized away.
@@ -542,8 +632,11 @@ it("reopens the exact persisted custody in a separate process using only restric
           : `drop table public.${alteredTable}`));
       }
     }
+    };
+    await successorCheck("baseline");
   } catch (error) { failed = true; throw error; }
   finally {
+    const cleanup = async () => {
     const first = await Promise.allSettled([Promise.resolve().then(() => client?.release(true))]);
     const second = await Promise.allSettled([Promise.resolve().then(endManagers), Promise.resolve().then(() => custody?.close())]);
     const third = await Promise.allSettled([Promise.resolve().then(async () => {
@@ -553,8 +646,13 @@ it("reopens the exact persisted custody in a separate process using only restric
     })]);
     if ([...first, ...second, ...third].some(r => r.status === "rejected"))
       throw new Error(failed ? "bootstrap-transport-operation-and-cleanup-failed" : "bootstrap-transport-cleanup-failed");
+    };
+    if (failed) { successorCheck = undefined; await cleanup(); }
+    else {
+      closeSuccessor = async () => { await cleanup(); closeSuccessor = undefined; successorCheck = undefined; };
+    }
   }
-});
+}
 
 async function exerciseCommitFault(ordinal: 1 | 2, independentInspection: boolean) {
   await closeInitialManager();

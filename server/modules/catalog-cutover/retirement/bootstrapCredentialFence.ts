@@ -50,7 +50,8 @@ export async function inspectBootstrapCredentialFenceFromCustodyTransport(input:
     if (root.contract !== "pcat-bootstrap-application-authentication-v1" || root.runId !== root.activationIntent.runId ||
         !root.attemptId || root.attemptId.length > 160 || !root.roleName || !path.isAbsolute(root.custodyDirectory) ||
         !isDeepStrictEqual(root.target, root.activationIntent.target) || !isDeepStrictEqual(root.target, input.activation.target) ||
-        [root.activationBindingDigest, root.handoffDigest, root.recoveryPackageDigest, root.recoveryPointDigest]
+        !/^[a-f0-9]{64}$/.test(root.recoveryPackageDigest) ||
+        [root.activationBindingDigest, root.handoffDigest, root.recoveryPointDigest]
           .some(value => !/^sha256:[a-f0-9]{64}$/.test(value))) return { outcome: "unknown" };
     const { inputDigest: _digest, ...intent } = root.activationIntent;
     if (!isDeepStrictEqual(createActivationIntent(intent), root.activationIntent)) return { outcome: "unknown" };

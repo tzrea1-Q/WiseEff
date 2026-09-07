@@ -134,7 +134,8 @@ export async function applyLegacySqlPrivilegeFence(input: {
   const { client, beforeEffect, persistHostIntent, persistHostStep } = input;
   const selection = structuredClone(input.selection), roots = [...structuredClone(input.runtimeRoles)], recovered = structuredClone(input.recoveryRoles);
   need(/^[A-Za-z0-9_-]{1,160}$/.test(selection.runId) && /^[A-Za-z0-9_-]{1,160}$/.test(selection.attemptId) &&
-    [selection.activationBindingDigest, selection.rootRequestDigest, selection.recoveryPackageDigest].every(value => /^sha256:[a-f0-9]{64}$/.test(value)) &&
+    /^[a-f0-9]{64}$/.test(selection.recoveryPackageDigest) &&
+    [selection.activationBindingDigest, selection.rootRequestDigest].every(value => /^sha256:[a-f0-9]{64}$/.test(value)) &&
     roots.length > 0 && roots.every(role => /^[1-9][0-9]*$/.test(role.oid) && role.name.length > 0) &&
     new Set(roots.map(role => role.oid)).size === roots.length, "SELECTION-INVALID");
   let transaction = false, ending = false, intentCommitted = false, lost = false;
