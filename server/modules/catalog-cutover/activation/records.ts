@@ -11,7 +11,8 @@ const intentKeys = ["runId", "attemptId", "target", "planDigest", "predecessorBi
 
 export function createActivationIntent(input: Omit<ActivationIntent, "inputDigest">): ActivationIntent {
   if (!keys(input, intentKeys) || !identifier(input.runId) || !identifier(input.attemptId) ||
-      !keys(input.target, ["systemIdentifier", "databaseOid"]) || !/^\d+$/.test(input.target.systemIdentifier) || !/^\d+$/.test(input.target.databaseOid) ||
+      !keys(input.target, ["systemIdentifier", "databaseOid"]) || typeof input.target.systemIdentifier !== "string" || typeof input.target.databaseOid !== "string" ||
+      !/^\d+$/.test(input.target.systemIdentifier) || !/^\d+$/.test(input.target.databaseOid) ||
       !digest(input.planDigest) || !digest(input.reportDigest) || !digest(input.expectedObservationDigest) ||
       (input.predecessorBindingDigest !== null && !digest(input.predecessorBindingDigest))) refuse("INTENT-REJECTED");
   const fixed = structuredClone(input);

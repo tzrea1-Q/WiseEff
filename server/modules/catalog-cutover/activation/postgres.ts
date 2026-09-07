@@ -28,25 +28,27 @@ export async function physicalIdentity(client: pg.PoolClient): Promise<Activatio
 }
 
 export async function readActivationChain(client: pg.PoolClient, target: ActivationIdentity): Promise<ActivationBinding | null> {
-  const events = await client.query<{ cutover_run_id: string; payload: unknown }>(
-    "select cutover_run_id,payload from parameter_catalog.parameter_catalog_cutover_events where event_kind=$1", [ACTIVATION_EVENT]);
+  const events = await client.query<{ cutover_run_id: string; phase: string; payload: unknown }>(
+    "select cutover_run_id,phase,payload from parameter_catalog.parameter_catalog_cutover_events where event_kind=$1", [ACTIVATION_EVENT]);
   const checkpoints = await client.query<{ cutover_run_id: string; checkpoint_digest: string; payload: unknown }>(
     "select cutover_run_id,checkpoint_digest,payload from parameter_catalog.parameter_catalog_cutover_checkpoints where phase='P12'");
   if (events.rows.length !== checkpoints.rows.length) refuse("CHECKPOINT-INCONSISTENT");
   for (const event of events.rows) {
     const binding = decodeBinding(event.payload);
     const checkpoint = checkpoints.rows.filter(row => row.cutover_run_id === event.cutover_run_id);
-    if (binding.intent.runId !== event.cutover_run_id || !isDeepStrictEqual(binding.intent.target, target) || checkpoint.length !== 1 ||
+    if (event.phase !== "P12" || binding.intent.runId !== event.cutover_run_id || !isDeepStrictEqual(binding.intent.target, target) || checkpoint.length !== 1 ||
         checkpoint[0]!.checkpoint_digest !== binding.bindingDigest || !isDeepStrictEqual(checkpoint[0]!.payload, binding)) refuse("CHECKPOINT-INCONSISTENT");
-    const run = await client.query<{ current_phase: string; plan_digest: string }>(
-      "select current_phase,plan_digest from parameter_catalog.parameter_catalog_cutover_runs where id=$1", [binding.intent.runId]);
-    if (run.rowCount !== 1 || !/^P1[2-6]$/.test(run.rows[0]!.current_phase) || run.rows[0]!.plan_digest !== binding.intent.planDigest) refuse("CHECKPOINT-INCONSISTENT");
+    const run = await client.query<Pick<Run, "current_phase" | "plan_digest" | "source_snapshot_fingerprint" | "target_catalog_release_digest">>(
+      "select current_phase,plan_digest,source_snapshot_fingerprint,target_catalog_release_digest from parameter_catalog.parameter_catalog_cutover_runs where id=$1", [binding.intent.runId]);
+    if (run.rowCount !== 1 || !/^P1[2-6]$/.test(run.rows[0]!.current_phase) || run.rows[0]!.plan_digest !== binding.intent.planDigest ||
+      run.rows[0]!.source_snapshot_fingerprint !== binding.sourceSnapshotFingerprint || run.rows[0]!.target_catalog_release_digest !== binding.catalog.releaseDigest) refuse("CHECKPOINT-INCONSISTENT");
   }
   return activationHead(events.rows.map(row => row.payload));
 }
 
 export async function readFacts(client: pg.PoolClient, target: ActivationIdentity, runId: string, planDigest: string): Promise<ActivationFacts> {
-  if (!isDeepStrictEqual(await physicalIdentity(client), target)) refuse("TARGET-MISMATCH");
+  // Private: the transaction owner verifies this very session before role
+  // switch and again before completion; no system grant is added to the owner.
   const rows = await client.query<Run>(`select id,plan_digest,source_snapshot_fingerprint,target_artifact_sha,
     target_catalog_release_digest,migration_contract_version,current_phase,state,pointer_rollback_closed_at::text
     from parameter_catalog.parameter_catalog_cutover_runs where id=$1`, [runId]);
@@ -57,6 +59,12 @@ export async function readFacts(client: pg.PoolClient, target: ActivationIdentit
   for (const phase of PRE_ACTIVATION_PHASES) {
     const found = checkpoints.filter(row => row.phase === phase);
     if (found.length !== 1 || !found[0]!.checkpoint_digest || !found[0]!.payload) refuse("PREPARATION-INCOMPLETE");
+  }
+  const checkpointEvents = (await client.query<{ phase: string; payload: { checkpointDigest?: string } }>(
+    "select phase,payload from parameter_catalog.parameter_catalog_cutover_events where cutover_run_id=$1 and event_kind='checkpoint'", [runId])).rows;
+  for (const checkpoint of checkpoints.filter(row => (PRE_ACTIVATION_PHASES as readonly string[]).includes(row.phase))) {
+    const events = checkpointEvents.filter(event => event.phase === checkpoint.phase);
+    if (events.length !== 1 || events[0]!.payload.checkpointDigest !== checkpoint.checkpoint_digest) refuse("PREPARATION-INCOMPLETE");
   }
   const p0 = checkpoints.find(row => row.phase === "P0")!.payload;
   if (p0.sourceSnapshotFingerprint !== run.source_snapshot_fingerprint || !Number.isSafeInteger(p0.identityCount) || Number(p0.identityCount) <= 0) refuse("SOURCE-INCOMPLETE");
@@ -70,11 +78,13 @@ export async function readFacts(client: pg.PoolClient, target: ActivationIdentit
   const heads = (await client.query<{ legacy_identity_id: string; current_version_id: string; cas_version: string; version: unknown; identity: unknown }>(`select h.legacy_identity_id,h.current_version_id,h.cas_version::text,to_jsonb(v) as version,to_jsonb(i) as identity
     from parameter_catalog.legacy_mapping_heads h left join parameter_catalog.legacy_mapping_versions v
     on v.id=h.current_version_id and v.legacy_identity_id=h.legacy_identity_id
-    left join parameter_catalog.legacy_identities i on i.id=h.legacy_identity_id order by h.legacy_identity_id`)).rows;
+    left join parameter_catalog.legacy_identities i on i.id=h.legacy_identity_id order by h.legacy_identity_id collate "C"`)).rows;
   if (!heads.length || heads.some(row => !row.version || !row.identity) || new Set(heads.map(row => row.legacy_identity_id)).size !== heads.length) refuse("MAPPING-INCOMPLETE");
   const versions = (await client.query<{ id: string; version: unknown; identity: unknown }>(`select v.id,to_jsonb(v) as version,to_jsonb(i) as identity
-    from parameter_catalog.legacy_mapping_versions v left join parameter_catalog.legacy_identities i on i.id=v.legacy_identity_id order by v.id`)).rows;
+    from parameter_catalog.legacy_mapping_versions v left join parameter_catalog.legacy_identities i on i.id=v.legacy_identity_id order by v.id collate "C"`)).rows;
   if (!versions.length || versions.some(row => !row.identity) || new Set(versions.map(row => row.id)).size !== versions.length) refuse("MAPPING-INCOMPLETE");
+  const identities = (await client.query<{ id: string }>("select id from parameter_catalog.legacy_identities order by id")).rows;
+  if (identities.length !== heads.length || identities.some(identity => !heads.some(head => head.legacy_identity_id === identity.id))) refuse("MAPPING-INCOMPLETE");
   const headDigest = digestOf(heads);
   const versionInventoryDigest = digestOf(versions);
   const basis = { version: "pcat-activation-mapping-v1", target, runId, planDigest,

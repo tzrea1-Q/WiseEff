@@ -2,6 +2,7 @@ import { isDeepStrictEqual } from "node:util";
 import type pg from "pg";
 import { createVerificationReportService } from "../../release-verification/report/index";
 import { digestOf } from "../../release-verification/core/digest";
+import { assertBindingManagementLogin } from "../bindingImportProducer";
 import { ActivationRefusal, type ActivationBinding, type ActivationIntent, type ActivationObservation, type ActivationOptions } from "./interface";
 import { createActivationIntent, decodeBinding, refuse, validateIntent } from "./records";
 import { physicalIdentity, readFacts, persistMappingEpoch, persistActivation, inspectIntent, type ActivationFacts } from "./postgres";
@@ -21,24 +22,38 @@ async function withTransaction<T>(options: ActivationOptions, write: boolean, bo
       acquired.on("error", onError); resolve(acquired);
     });
   });
-  let open = false, closing = false;
+  let open = false, closing = false, failed = false;
   const assertLive = () => { if (lost) refuse("MANAGEMENT-UNAVAILABLE"); };
   try {
     assertLive();
+    await assertBindingManagementLogin(client); assertLive();
     // Wrong targets are rejected before BEGIN, role change, or any target lock.
     if (!isDeepStrictEqual(await physicalIdentity(client), options.target)) refuse("TARGET-MISMATCH");
     await options.boundary.verify(); assertLive();
+    // Match the existing S7 session lock, before BEGIN creates a snapshot.
+    // A snapshot taken before a competing controller's commit could otherwise
+    // observe a stale predecessor even after obtaining the same lock.
+    const lock = await client.query<{ acquired: boolean }>("select pg_catalog.pg_try_advisory_lock(hashtext('s7-orc-cutover-target'),hashtext(current_database())) as acquired");
+    if (lock.rows[0]?.acquired !== true) refuse("LOCK-UNAVAILABLE");
     await client.query(`begin isolation level repeatable read${write ? "" : " read only"}`); open = true;
     await client.query("set local search_path=pg_catalog,parameter_catalog,pg_temp");
-    const lock = await client.query<{ acquired: boolean }>("select pg_catalog.pg_try_advisory_xact_lock(hashtext('s7-orc-cutover-target'),hashtext(current_database())) as acquired");
-    if (lock.rows[0]?.acquired !== true) refuse("LOCK-UNAVAILABLE");
+    await client.query("set local timezone='UTC'");
     await client.query("set local role catalog_migration_owner");
+    // Mapping and installer writers do not all participate in the S7 advisory
+    // lock. Prevent their changes across the read/CAS boundary as well.
+    if (write) await client.query(`lock table parameter_catalog.catalog_state,
+      parameter_catalog.catalog_releases, parameter_catalog.catalog_materializations,
+      parameter_catalog.legacy_identities, parameter_catalog.legacy_mapping_heads,
+      parameter_catalog.legacy_mapping_versions in share mode nowait`);
     const value = await body(client);
     await options.boundary.verify(); assertLive();
+    await client.query("reset role");
+    if (!isDeepStrictEqual(await physicalIdentity(client), options.target)) refuse("TARGET-MISMATCH");
     closing = true;
     await client.query(write ? "commit" : "rollback"); open = false; closing = false;
     assertLive(); return value;
   } catch (error) {
+    failed = true;
     if (closing || lost) refuse("OUTCOME-UNKNOWN");
     if (open) {
       try { await client.query("rollback"); }
@@ -50,7 +65,7 @@ async function withTransaction<T>(options: ActivationOptions, write: boolean, bo
     // Do not return a lease with uncertain role/transaction/session state to a
     // shared pool. Keep its error listener attached until the socket has ended.
     client.once("end", () => client.removeListener("error", onError));
-    client.release(true);
+    try { client.release(true); } catch { if (!failed) refuse("MANAGEMENT-UNAVAILABLE"); }
   }
 }
 
@@ -71,19 +86,30 @@ async function approvedReport(options: ActivationOptions, observed: ActivationOb
   // This is the formal approval/retention projection, not a second verifier.
   // Root still owns the complete runCatalogReleaseAction admission boundary.
   const selected = await createVerificationReportService({ db: options.reports }).readReport(digest);
-  if (selected.kind === "absent") refuse(selected.reason === "missing" ? "REPORT-MISSING" : "REPORT-UNAPPROVED");
+  if (selected.kind === "absent") return refuse(selected.reason === "missing" ? "REPORT-MISSING" : "REPORT-UNAPPROVED");
   const report = selected.report;
   if (report.digest !== digest || report.purpose !== "pre-activation" || report.decision !== "passed" ||
       !isDeepStrictEqual(report.pins, observed.pins) || report.phaseSnapshot !== observed.phaseSnapshot ||
       !isDeepStrictEqual(report.predecessorReportDigests, observed.predecessorReportDigests) ||
       report.pointerRollbackStatus !== observed.pointerRollbackStatus || report.evidenceRefs.length === 0 ||
       report.evidenceRefs.some(ref => !isDeepStrictEqual(ref.subject, observed.subject))) refuse("REPORT-MISMATCH");
+  // The actual Comparison -> S10 evidence adapter is being integrated by the
+  // report owner. A syntactically valid caller digest is not evidence that the
+  // approved report covered that comparison artifact. Do not reach pending or
+  // SQL until the formal cross-report projection can verify that relationship.
+  return refuse("COMPARISON-ADAPTER-UNAVAILABLE");
 }
 
 export function createApplicationReadActivation(options: ActivationOptions) {
   const fixedTarget = options.target && structuredClone(options.target);
   const fixed = { ...options, target: fixedTarget };
-  const within = <T>(body: () => Promise<T>) => fixed.boundary.withLockedBoundary(body);
+  const within = async <T>(body: () => Promise<T>): Promise<T> => {
+    try { return await fixed.boundary.withLockedBoundary(body); }
+    catch (error) {
+      if (error instanceof ActivationRefusal) throw error;
+      return refuse("BOUNDARY-UNAVAILABLE");
+    }
+  };
   const read = async (client: pg.PoolClient, intent: ActivationIntent) => {
     if (!isDeepStrictEqual(intent.target, fixed.target)) refuse("TARGET-MISMATCH");
     const facts = await readFacts(client, fixed.target, intent.runId, intent.planDigest);
