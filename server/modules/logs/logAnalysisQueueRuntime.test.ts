@@ -5,6 +5,8 @@ import type { Database } from "../../shared/database/client";
 import type { ObjectStore } from "./objectStore";
 import { createLogAnalysisQueueRuntime, createLogAnalysisQueueTransport } from "./logAnalysisQueueRuntime";
 
+const connectionLifecycle = () => ({ on: vi.fn(), off: vi.fn(), waitUntilReady: vi.fn(async () => {}), run: vi.fn(async () => {}) });
+
 function createTraceRecorder() {
   const spans: Parameters<TraceExporter>[0][] = [];
   return {
@@ -28,11 +30,41 @@ describe("log analysis queue runtime", () => {
     LOG_ANALYSIS_QUEUE_CONCURRENCY: 1
   };
 
+  it("does not start consumption before both real connection readiness promises settle", async () => {
+    let releaseQueue!: () => void; let releaseWorker!: () => void;
+    const queueReady = new Promise<void>((resolve) => { releaseQueue = resolve; });
+    const workerReady = new Promise<void>((resolve) => { releaseWorker = resolve; });
+    const queue = { ...connectionLifecycle(), close: vi.fn(), waitUntilReady: () => queueReady };
+    const worker = { ...connectionLifecycle(), close: vi.fn(), waitUntilReady: () => workerReady };
+    const starting = createLogAnalysisQueueRuntime({ env: lifecycleEnv, db: {} as Database, objectStore: {} as ObjectStore,
+      QueueCtor: vi.fn(function () { return queue; }) as never, WorkerCtor: vi.fn(function () { return worker; }) as never });
+    expect(worker.run).not.toHaveBeenCalled();
+    releaseQueue(); await Promise.resolve();
+    expect(worker.run).not.toHaveBeenCalled();
+    releaseWorker();
+    const runtime = await starting;
+    expect(worker.run).toHaveBeenCalledOnce();
+    await runtime.close();
+  });
+
+  it("closes both resources on rejected readiness and preserves the static initialization refusal", async () => {
+    const queue = { ...connectionLifecycle(), close: vi.fn(async () => { throw new Error("private close failure"); }) };
+    const worker = { ...connectionLifecycle(), close: vi.fn(), waitUntilReady: vi.fn(async () => { throw new Error("private initialization failure"); }) };
+    await expect(createLogAnalysisQueueRuntime({ env: lifecycleEnv, db: {} as Database, objectStore: {} as ObjectStore,
+      QueueCtor: vi.fn(function () { return queue; }) as never, WorkerCtor: vi.fn(function () { return worker; }) as never }))
+      .rejects.toThrow("PCAT-LOG-QUEUE-INITIALIZATION-FAILED");
+    expect(worker.run).not.toHaveBeenCalled();
+    expect(worker.close).toHaveBeenCalledExactlyOnceWith(true);
+    expect(queue.close).toHaveBeenCalledOnce();
+    expect(worker.off).toHaveBeenCalledWith("error", expect.any(Function));
+    expect(queue.off).toHaveBeenCalledWith("error", expect.any(Function));
+  });
+
   it("awaits queue cleanup after worker construction fails and preserves the construction error", async () => {
     const constructionError = new Error("worker construction failed");
     let finishCleanup!: () => void;
     const cleanup = new Promise<void>((resolve) => { finishCleanup = resolve; });
-    const queue = { close: vi.fn(async () => { await cleanup; throw new Error("cleanup failed"); }) };
+    const queue = { ...connectionLifecycle(), close: vi.fn(async () => { await cleanup; throw new Error("cleanup failed"); }) };
     const start = Promise.resolve().then(() => createLogAnalysisQueueRuntime({
       env: lifecycleEnv, db: {} as Database, objectStore: {} as ObjectStore,
       QueueCtor: vi.fn(function () { return queue; }) as never,
@@ -50,8 +82,8 @@ describe("log analysis queue runtime", () => {
     const closeError = new Error("worker close failed");
     let finishCleanup!: () => void;
     const cleanup = new Promise<void>((resolve) => { finishCleanup = resolve; });
-    const queue = { close: vi.fn(async () => { await cleanup; }) };
-    const worker = { close: vi.fn(() => { throw closeError; }) };
+    const queue = { ...connectionLifecycle(), close: vi.fn(async () => { await cleanup; }) };
+    const worker = { ...connectionLifecycle(), close: vi.fn(() => { throw closeError; }) };
     const runtime = await createLogAnalysisQueueRuntime({
       env: lifecycleEnv, db: {} as Database, objectStore: {} as ObjectStore,
       QueueCtor: vi.fn(function () { return queue; }) as never,
@@ -74,8 +106,8 @@ describe("log analysis queue runtime", () => {
     const closeError = new Error("queue close failed");
     let finishWorker!: () => void;
     const draining = new Promise<void>((resolve) => { finishWorker = resolve; });
-    const worker = { close: vi.fn(async () => { await draining; }) };
-    const queue = { close: vi.fn(async () => { throw closeError; }) };
+    const worker = { ...connectionLifecycle(), close: vi.fn(async () => { await draining; }) };
+    const queue = { ...connectionLifecycle(), close: vi.fn(async () => { throw closeError; }) };
     const runtime = await createLogAnalysisQueueRuntime({
       env: lifecycleEnv, db: {} as Database, objectStore: {} as ObjectStore,
       QueueCtor: vi.fn(function () { return queue; }) as never,
@@ -95,6 +127,7 @@ describe("log analysis queue runtime", () => {
   it("creates a BullMQ queue and worker with Redis connection settings", async () => {
     const processByJobId = vi.fn(async () => ({ status: "processed" as const }));
     const queue = {
+      ...connectionLifecycle(),
       add: vi.fn(),
       pause: vi.fn(),
       resume: vi.fn(),
@@ -102,6 +135,7 @@ describe("log analysis queue runtime", () => {
       close: vi.fn()
     };
     const worker = {
+      ...connectionLifecycle(),
       close: vi.fn()
     };
     const QueueCtor = vi.fn(function () {
@@ -134,7 +168,7 @@ describe("log analysis queue runtime", () => {
     expect(QueueCtor).toHaveBeenCalledWith("log-analysis", {
       connection: { url: "redis://redis:6379" },
       prefix: "wiseeff"
-    });
+    }, expect.any(Function));
     expect(WorkerCtor).toHaveBeenCalledWith(
       "log-analysis",
       expect.any(Function),
@@ -142,8 +176,10 @@ describe("log analysis queue runtime", () => {
         connection: { url: "redis://redis:6379" },
         prefix: "wiseeff",
         concurrency: 3,
-        name: "wiseeff-log-worker"
-      }
+        name: "wiseeff-log-worker",
+        autorun: false
+      },
+      expect.any(Function)
     );
     await vi.waitFor(() => {
       expect(processByJobId).toHaveBeenCalledWith({
@@ -166,6 +202,7 @@ describe("log analysis queue runtime", () => {
   it("rejects BullMQ jobs without a jobId payload", async () => {
     const QueueCtor = vi.fn(function () {
       return {
+        ...connectionLifecycle(),
         add: vi.fn(),
         pause: vi.fn(),
         resume: vi.fn(),
@@ -176,7 +213,7 @@ describe("log analysis queue runtime", () => {
     let processor: ((job: { data: unknown }) => Promise<string>) | undefined;
     const WorkerCtor = vi.fn(function (_name: string, handler: (job: { data: unknown }) => Promise<string>) {
       processor = handler;
-      return { close: vi.fn() };
+      return { ...connectionLifecycle(), close: vi.fn() };
     });
 
     await createLogAnalysisQueueRuntime({
@@ -200,6 +237,7 @@ describe("log analysis queue runtime", () => {
   it("throws for database-scheduled retries so BullMQ redelivers the message", async () => {
     const QueueCtor = vi.fn(function () {
       return {
+        ...connectionLifecycle(),
         add: vi.fn(),
         pause: vi.fn(),
         resume: vi.fn(),
@@ -210,7 +248,7 @@ describe("log analysis queue runtime", () => {
     let processor: ((job: { data: { jobId: string } }) => Promise<string>) | undefined;
     const WorkerCtor = vi.fn(function (_name: string, handler: (job: { data: { jobId: string } }) => Promise<string>) {
       processor = handler;
-      return { close: vi.fn() };
+      return { ...connectionLifecycle(), close: vi.fn() };
     });
 
     await createLogAnalysisQueueRuntime({
@@ -236,6 +274,7 @@ describe("log analysis queue runtime", () => {
     let processor: ((job: { data: { jobId: string } }) => Promise<string>) | undefined;
     const QueueCtor = vi.fn(function () {
       return {
+        ...connectionLifecycle(),
         add: vi.fn(),
         pause: vi.fn(),
         resume: vi.fn(),
@@ -245,7 +284,7 @@ describe("log analysis queue runtime", () => {
     });
     const WorkerCtor = vi.fn(function (_name: string, handler: (job: { data: { jobId: string } }) => Promise<string>) {
       processor = handler;
-      return { close: vi.fn() };
+      return { ...connectionLifecycle(), close: vi.fn() };
     });
 
     await createLogAnalysisQueueRuntime({
@@ -283,6 +322,7 @@ describe("log analysis queue runtime", () => {
 
   it("creates an API-side queue transport without starting a worker", async () => {
     const queue = {
+      ...connectionLifecycle(),
       add: vi.fn(async () => ({ id: "bull-job-1" })),
       pause: vi.fn(),
       resume: vi.fn(),
