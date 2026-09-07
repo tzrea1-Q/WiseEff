@@ -186,3 +186,18 @@ it("returns a typed blocking result when the actual read-only verifier gets 4250
     await expectBlocked();
   } finally { await admin.query("grant select on pg_catalog.pg_class to public"); }
 });
+
+it("does not infer trusted builtin provenance for an executable definer in a system schema", async () => {
+  const fn = `v13_system_${nonce}`;
+  await admin.query(`create function pg_catalog.${fn}() returns void language plpgsql security definer as $$
+    begin execute format('update %I.%I set schema_namespace=%L', 'public', 'driver_schemas', 'system-definer'); end $$`);
+  try {
+    expect((await admin.query(`select exists(select 1 from pg_catalog.pg_init_privs
+      where classoid='pg_catalog.pg_proc'::regclass and objoid=$1::regprocedure and objsubid=0 and privtype='i') as initial`, [`pg_catalog.${fn}()`])).rows)
+      .toEqual([{ initial: false }]);
+    await writer.query(`select pg_catalog.${fn}()`);
+    expect((await admin.query("select schema_namespace from public.driver_schemas where id='v13-driver'")).rows)
+      .toEqual([{ schema_namespace: "system-definer" }]);
+    await expectBlocked();
+  } finally { await admin.query(`drop function pg_catalog.${fn}()`); }
+});
