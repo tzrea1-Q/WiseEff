@@ -108,6 +108,19 @@ describe("Catalog release invocation adapter (not complete gate execution eviden
     expect(await runCatalogReleaseAction(options)).toEqual({ ok: false, reason: "boundary-mismatch" });
     expect(options.target.activateP12).not.toHaveBeenCalled();
   });
+  it("rejects an observer mutating the same boundary object between reads", async () => {
+    const options = fixture(); reportStub(options);
+    vi.mocked(options.target.observeBoundary)
+      .mockResolvedValueOnce(options.current)
+      .mockImplementationOnce(async () => {
+        Object.assign(options.current, { trafficIsolationState: "public" });
+        return options.current;
+      });
+    expect(await runCatalogReleaseAction(options)).toEqual({ ok: false, reason: "boundary-mismatch" });
+    expect(options.target.activateP12).not.toHaveBeenCalled();
+    expect(options.target.startCandidate).not.toHaveBeenCalled();
+    expect(options.target.releasePublic).not.toHaveBeenCalled();
+  });
   it.each(["artifact", "database", "catalog", "mappingArchive", "cutover", "target", "recovery"] as const)("rejects another %s pin before effect", async (family) => {
     const options = fixture();
     reportStub(options, { pins: { ...options.current.pins, [family]: { ...options.current.pins[family], unexpected: "another-run" } } });

@@ -54,7 +54,9 @@ export async function runCatalogReleaseAction(options: {
   const purpose = action === "activate-p12" ? "pre-activation" : action === "start-candidate" ? "post-retirement-runtime" : "public-release";
   try {
     return await options.target.withExclusiveBoundary(async () => {
-      const current = await options.target.observeBoundary();
+      // Hold an independent first observation: a producer reusing and mutating
+      // its object must not make the final drift comparison compare one alias.
+      const current = structuredClone(await options.target.observeBoundary());
       if (current.trafficIsolationState !== "isolated") return { ok: false, reason: "not-isolated" };
       const reports = createVerificationReportService({ db: options.db });
       const read = action === "start-candidate"
