@@ -38,7 +38,7 @@ This is a valid combined-lifecycle Red, not an installer or timeout failure.
 
 The candidate shares the original SQL owner's locked readback between its
 ordinary inspector and a held-session inspector. The latter verifies actual
-backend, target, transaction and all seven relation/three shared-catalog locks;
+backend, target, transaction and all seven relation/ten catalog locks;
 no declared-held boolean is accepted. The private custody owner keeps those
 locks through authentication, exact baseline reconstruction and the final P12/
 root boundary checks. This inspection has no DML but requires a read/write
@@ -50,6 +50,29 @@ issued host lock and journal selection; the facade reads actual host steps.
 Extra grants, new relations and missing/wrong host selection have permanent
 real-IO counterexamples. Candidate Green and independent final reviews remain
 pending; the original SQL 19-case result does not cover this new inspection.
+
+Review exposed two additional real failures at `5c46be585`: copied generic host
+SQL steps without the original capture/credential chain were accepted, and a
+GRANT in the final boundary callback escaped the released locks (28 passed,
+2 failed). Moving that callback inside the transaction at `317aa226e` closed
+the host mismatch but still returned 29 passed/1 failed: an existing grantee's
+ACL update is not serialized by the relation lock or an unchanged shared
+dependency. Neither execution is a final Green.
+
+Every SQL-owner transaction now takes SHARE NOWAIT on the exact observed
+catalogs before its first snapshot: `pg_authid`, `pg_auth_members`, `pg_shdepend`,
+`pg_class`, `pg_attribute`, `pg_namespace`, `pg_proc`, `pg_type`, `pg_database`
+and `pg_default_acl`. Acquisition and held-session checks share this list.
+The first three and `pg_database` affect cluster metadata; the remaining locks
+temporarily exclude conflicting metadata writes in the current database. This
+can refuse concurrent DDL/ACL work; it is not only a seven-table lock. No grant,
+schema, timeout or baseline format changes. The last real boundary runs before
+SQL/authentication rechecks under these locks. Table/column GRANT and CREATE
+FUNCTION adversaries must receive 55P03 there and succeed after release.
+Host readback also requires the parser-validated capture and credential chain,
+exact root request/version/digest, cutover run and plan, before the SQL steps.
+Both owners accept the existing recovery package's bare 64-hex digest, matching
+the root's `backup.digest`; earlier synthetic prefixed values hid this mismatch.
 
 Exclusive paths are the existing bootstrap credential module/owned integration
 test and fixture, SQL fence module/test where needed for its own inspection,

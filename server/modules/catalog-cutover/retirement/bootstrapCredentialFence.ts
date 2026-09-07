@@ -219,7 +219,7 @@ export async function inspectBootstrapCredentialFenceFromCustodyTransport(input:
       if (!isDeepStrictEqual(await readRoot(manager), request) ||
           !isDeepStrictEqual(await inspectLegacySqlPrivilegeFenceOnHeldSession(selected), successor)) failFence("sql-successor-drift");
       // The final real P12/report boundary may await external work. Keep all
-      // ten locks until it completes, then recheck the SQL effect and original
+      // SQL-owner locks until it completes, then recheck the SQL effect and original
       // authentication baseline. No boundary callback runs after rollback.
       await inspectHeldBinding();
       if (!isDeepStrictEqual(await inspectLegacySqlPrivilegeFenceOnHeldSession(selected), successor) ||

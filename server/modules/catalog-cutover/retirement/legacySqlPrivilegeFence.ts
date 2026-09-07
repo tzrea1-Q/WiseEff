@@ -6,6 +6,11 @@ import { readBindingDatabaseIdentity, type BindingDatabaseIdentity } from "../..
 import { digestOf } from "../../release-verification/core/digest";
 import type { RecoveryRole } from "../../../../ops/self-hosted/storage/recoveryPackage";
 
+// Exact catalogs consumed by the SQL inventory and original authentication
+// baseline. Shared catalogs affect the cluster; the others affect this database.
+// This is not a blanket catalog lock or new privilege.
+const inspectionCatalogs = ["pg_authid", "pg_auth_members", "pg_shdepend", "pg_class", "pg_attribute",
+  "pg_namespace", "pg_proc", "pg_type", "pg_database", "pg_default_acl"].map(name => `pg_catalog.${name}`);
 const relations = [...LEGACY_STRUCTURAL_TABLES, "driver_schemas", "driver_schema_versions", "dts_property_specs"];
 const mutation = new Set(["INSERT", "UPDATE", "DELETE", "TRUNCATE"]);
 const intentKind = "legacy-sql-privileges-intent", appliedKind = "legacy-sql-privileges-applied";
@@ -114,7 +119,9 @@ async function begin(client: pg.PoolClient) {
   // Identity, membership and cross-database dependencies are cluster-wide
   // metadata. These short NOWAIT locks freeze competing GRANT/ALTER/DDL writes;
   // they change no role or privilege and are released at transaction end.
-  await client.query("lock table pg_catalog.pg_authid,pg_catalog.pg_auth_members,pg_catalog.pg_shdepend in share mode nowait");
+  // Relation locks alone do not serialize GRANT against an existing grantee,
+  // nor changes to other metadata included by the authentication baseline.
+  await client.query(`lock table ${inspectionCatalogs.join(",")} in share mode nowait`);
   // The seven legacy tables are not the six separate P12 inventory tables.
   // Lock before the first snapshot, covering concurrent DML, DDL and ACL changes.
   await client.query(`lock table ${relations.map(name => `public.${pg.escapeIdentifier(name)}`).join(",")} in access exclusive mode nowait`);
@@ -276,9 +283,9 @@ export async function inspectLegacySqlPrivilegeFenceOnHeldSession(input: {
             and l.database=case when c.relisshared then 0::oid else $1::oid end
           where (c.oid=any($2::regclass[]) and l.mode='ShareLock')
             or (c.oid=any($3::regclass[]) and l.mode='AccessExclusiveLock')) as count`,
-      [selection.target.databaseOid, ["pg_catalog.pg_authid", "pg_catalog.pg_auth_members", "pg_catalog.pg_shdepend"],
+      [selection.target.databaseOid, inspectionCatalogs,
         relations.map(name => `public.${name}`)])).rows[0];
-      need(held?.isolated === true && held.count === 10, "INSPECTION-LOCKS-UNAVAILABLE");
+      need(held?.isolated === true && held.count === inspectionCatalogs.length + relations.length, "INSPECTION-LOCKS-UNAVAILABLE");
       const probe = pg.escapeIdentifier(`sql_held_${randomUUID().replaceAll("-", "")}`);
       await client.query(`savepoint ${probe}`); await client.query(`release savepoint ${probe}`);
     };

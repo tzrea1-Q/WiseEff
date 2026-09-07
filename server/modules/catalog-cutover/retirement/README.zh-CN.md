@@ -29,13 +29,29 @@ inspection。错 run/target、缺失或不符的宿主步骤、额外 ACL 变化
 这是有效组合生命周期Red，不是installer或timeout失败。
 
 候选将原SQL owner读回复用于原inspection与持事务inspection；后者核真实
-backend、target、事务以及七表/三张共享catalog锁，不接受declared-held布尔。
+backend、target、事务以及七表/十张catalog锁，不接受declared-held布尔。
 私有custody owner持锁直到认证、原baseline精确重建及最终P12/root边界复验。
 该inspection没有DML，但ACCESS EXCLUSIVE锁需要read/write事务。输出仍为
 原有界认证结果。原baseline格式没有column ACL字段；列ACL继续由SQL owner
 完整前后库存核验，不改变原格式。根传原issued宿主锁和journal选择，facade
 实读宿主步骤。额外grant、新relation、缺失/错宿主选择有永久真实I/O反例。
 候选Green及最终独立双审仍待完成，原SQL19项结果不覆盖此新inspection。
+
+审查新增的真实反例在 `5c46be585` 得到28过/2失败：只有复制的宿主SQL步骤、
+缺原capture/credential关联仍被接受；最终边界回调的GRANT逃过已释放的锁。
+`317aa226e` 将回调移入事务并修宿主关联后仍为29过/1失败：已有grantee的ACL
+更新并不由relation锁或未变化的shared dependency串行化。这两次均非最终Green。
+
+现在SQL owner每次事务首快照前，对精确实读catalog取得SHARE NOWAIT：
+`pg_authid`、`pg_auth_members`、`pg_shdepend`、`pg_class`、`pg_attribute`、
+`pg_namespace`、`pg_proc`、`pg_type`、`pg_database`和`pg_default_acl`。
+获取与持锁检查共用同一清单。前三张及`pg_database`影响集群元数据，其余锁
+短时排除当前数据库的冲突元数据写；可能拒绝并发DDL/ACL，不再称仅锁七表。
+没有修改grant、schema、timeout或baseline格式。最后真实边界在锁内完成，
+之后再核SQL和认证；实际表/列GRANT与CREATE FUNCTION须在该窗口得到55P03，
+释放后成功。宿主读回还须具备parser核过的capture/credential前驱、精确root
+request/version/digest、cutover run和plan，之后才是SQL步骤。两个owner改按
+现有根`backup.digest`接受裸64位hex包摘要；此前合成带前缀值掩盖了该接线错误。
 
 唯一写入范围为原 bootstrap credential 模块、owned integration test 与夹具，
 必要的 SQL fence 自身 inspection 模块/测试，原退休根/测试及本双语 README。

@@ -605,19 +605,45 @@ async function exerciseCustodyTransport() {
     }
     await writeFile(successorInput, JSON.stringify({ guardUrl: guardUrl.href, expectedRootBinding,
       fault: mode === "final-boundary" ? mode : "sql-successor", sqlSuccessor: { journalPath, hostRunId } }), { mode: 0o600, flag: "wx" });
-    let grantBlocked: boolean | undefined;
+    const blockedGrants: string[] = [];
+    const grantCommands = [
+      `grant update on public.${pg.escapeIdentifier(LEGACY_STRUCTURAL_TABLES[1])} to ${writerRole}`,
+      `grant update(specification_key) on public.${pg.escapeIdentifier(LEGACY_STRUCTURAL_TABLES[1])} to ${writerRole}`,
+      `create function public.successor_metadata_${nonce}() returns integer language sql as 'select 1'`,
+    ];
     const observed = await inspectInIndependentProcess(successorInput, custodyTransportInspectionChild, mode === "final-boundary" ? async () => {
       // A real second management session, opened only in this boundary window
       // and closed before auth's session inventory is checked again. No S7.
       const other = new pg.Client({ connectionString: privateUrl.href, connectionTimeoutMillis: 2000 }); other.on("error", () => {});
       try {
         await other.connect(); await other.query("set lock_timeout='50ms'");
-        try { await other.query(`grant update on public.${pg.escapeIdentifier(LEGACY_STRUCTURAL_TABLES[1])} to ${writerRole}`); grantBlocked = false; }
-        catch (error) { if ((error as { code?: string }).code !== "55P03") throw new Error("successor-boundary-unexpected-failure"); grantBlocked = true; }
+        for (const sql of grantCommands) {
+          try { await other.query(sql); }
+          catch (error) { if ((error as { code?: string }).code !== "55P03") throw new Error("successor-boundary-unexpected-failure"); blockedGrants.push(sql); }
+        }
       } finally { await other.end(); }
     } : undefined);
     expect(observed).toEqual(fenced);
-    if (mode === "final-boundary") { expect(grantBlocked).toBe(true); return; }
+    if (mode === "final-boundary") {
+      expect(blockedGrants).toEqual(grantCommands);
+      await withFreshManager(async fresh => {
+        expect((await fresh.query(`select pg_catalog.has_table_privilege($1,$2,'UPDATE') as relation,
+          pg_catalog.has_column_privilege($1,$2,'specification_key','UPDATE') as attribute`,
+        [writerRole, `public.${LEGACY_STRUCTURAL_TABLES[1]}`])).rows).toEqual([{ relation: false, attribute: false }]);
+        // Both real GRANTs work after the inspection transaction ends. The
+        // denial above was held metadata locks, not missing management rights.
+        try {
+          for (const sql of grantCommands) await fresh.query(sql);
+          expect((await fresh.query(`select pg_catalog.has_table_privilege($1,$2,'UPDATE') as relation,
+            pg_catalog.has_column_privilege($1,$2,'specification_key','UPDATE') as attribute`,
+          [writerRole, `public.${LEGACY_STRUCTURAL_TABLES[1]}`])).rows).toEqual([{ relation: true, attribute: true }]);
+        } finally {
+          await fresh.query(`revoke update,update(specification_key) on public.${pg.escapeIdentifier(LEGACY_STRUCTURAL_TABLES[1])} from ${writerRole}`);
+          await fresh.query(`drop function if exists public.successor_metadata_${nonce}()`);
+        }
+      });
+      return;
+    }
     // An additional grant is outside the recorded successor. A new relation
     // leaves the SQL pre/postimage valid but must still fail the original
     // authentication metadata baseline. Neither may be normalized away.
