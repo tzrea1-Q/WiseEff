@@ -102,3 +102,38 @@ it.each(["direct", "inherited", "set-only"])("detects %s table mutation capabili
     if (mode !== "direct") await admin.query(`revoke ${capabilityName} from ${writerName}`);
   }
 });
+
+it("does not infer a runtime writer from an unreachable NOLOGIN owner, but detects an actual member", async () => {
+  await admin.query(`alter table public.driver_schemas owner to ${capabilityName}`);
+  try {
+    expect(await runGate()).toMatchObject({ status: "passed" });
+    await admin.query(`grant ${capabilityName} to ${writerName} with inherit false,set true,admin false`);
+    await writer.query(`set role ${capabilityName}`);
+    expect((await writer.query("update public.driver_schemas set schema_namespace='owned' where false")).rowCount).toBe(0);
+    await expectBlocked();
+  } finally {
+    await writer.query("reset role");
+    await admin.query(`revoke ${capabilityName} from ${writerName}; alter table public.driver_schemas owner to postgres`);
+  }
+});
+
+it("blocks an executable opaque SECURITY DEFINER instead of treating absent SQL text as no writer", async () => {
+  const fn = `v13_opaque_${nonce}`;
+  await admin.query(`create function public.${fn}() returns void language plpgsql security definer as $$
+    begin execute format('update %I.%I set schema_namespace=%L', 'public', 'driver_schemas', 'opaque'); end $$`);
+  try {
+    await writer.query(`select public.${fn}()`);
+    expect((await admin.query("select schema_namespace from public.driver_schemas where id='v13-driver'")).rows)
+      .toEqual([{ schema_namespace: "opaque" }]);
+    await expectBlocked();
+  } finally { await admin.query(`drop function public.${fn}()`); }
+});
+
+it.each(["INSERT", "DELETE", "TRUNCATE", "TRIGGER", "REFERENCES"])("detects effective table %s without executing the destructive operation", async permission => {
+  await admin.query(`grant ${permission} on public.driver_schemas to public`);
+  try {
+    expect((await writer.query("select pg_catalog.has_table_privilege(current_user,'public.driver_schemas',$1) as allowed", [permission])).rows)
+      .toEqual([{ allowed: true }]);
+    await expectBlocked();
+  } finally { await admin.query(`revoke ${permission} on public.driver_schemas from public`); }
+});
