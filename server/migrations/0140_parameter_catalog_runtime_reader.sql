@@ -119,7 +119,8 @@ begin
       where c.relkind in ('v','m') and n.nspname not in ('pg_catalog','information_schema')
         and n.nspname !~ '^pg_(toast|temp)_'
         and has_schema_privilege(reader,n.oid,'USAGE')
-        and has_table_privilege(reader,c.oid,'SELECT,INSERT,UPDATE,DELETE')
+        and (has_table_privilege(reader,c.oid,'SELECT,INSERT,UPDATE,DELETE')
+          or has_any_column_privilege(reader,c.oid,'SELECT,INSERT,UPDATE,REFERENCES'))
       union
       select child.oid, parent.owner_rights or not coalesce(child.reloptions @> array['security_invoker=true'],false)
       from reachable_views parent join pg_rewrite r on r.ev_class=parent.oid

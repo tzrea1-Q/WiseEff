@@ -117,6 +117,7 @@ describe("authorized additive Catalog reader on owned PG16", () => {
     ["EXECUTE-only definer owner", "create role reader_function_owner nologin; grant usage on schema parameter_catalog to reader_function_owner; grant execute on function parameter_catalog.acquire_current_pointer_lock_exclusive() to reader_function_owner; create function public.reader_function_leak() returns void language sql security definer as 'select parameter_catalog.acquire_current_pointer_lock_exclusive()'; alter function public.reader_function_leak() owner to reader_function_owner"],
     ["private definer through parsed PUBLIC view", "create schema reader_private; revoke all on schema reader_private from public; create function reader_private.leak() returns bigint language sql security definer as 'select count(*) from parameter_catalog.subject_placements'; create view public.reader_private_leak_view as select reader_private.leak() as n; grant select on public.reader_private_leak_view to public"],
     ["PUBLIC owner-rights view", "create view public.reader_leak_view as select * from parameter_catalog.subject_placements; grant select on public.reader_leak_view to public"],
+    ["PUBLIC column-only owner-rights view", "create view public.reader_column_leak_view as select count(*) as n from parameter_catalog.subject_placements; grant select(n) on public.reader_column_leak_view to public"],
     ["PUBLIC nested owner-rights view", "create view public.reader_hidden_view as select * from parameter_catalog.subject_placements; create view public.reader_leak_view as select * from public.reader_hidden_view; grant select on public.reader_leak_view to public"],
     ["PUBLIC materialized Catalog view", "create materialized view public.reader_leak_materialized as select * from parameter_catalog.subject_placements; grant select on public.reader_leak_materialized to public"],
     ["temporary system-catalog shadow", `create temporary table pg_roles as select * from pg_catalog.pg_roles; alter role ${CATALOG_READER_ROLE} bypassrls`],
@@ -171,6 +172,24 @@ describe("authorized additive Catalog reader on owned PG16", () => {
       await admin.query(`drop view public.reader_private_probe_view;
         drop function reader_private_probe.leak(); drop schema reader_private_probe;`);
     }
+  });
+  it("proves a real LOGIN can read an owner-view column without table SELECT, then refuses that state", async () => {
+    await admin.query(`create view public.reader_column_probe as
+      select count(*) as n, 'synthetic-ungranted'::text as extra from parameter_catalog.subject_placements;
+      grant select(n) on public.reader_column_probe to public;`);
+    try {
+      expect((await reader.query(`select session_user as login,
+        has_table_privilege(current_user,'public.reader_column_probe','SELECT') as table_select,
+        has_column_privilege(current_user,'public.reader_column_probe','n','SELECT') as column_select`)).rows)
+        .toEqual([{ login: "reader_login", table_select: false, column_select: true }]);
+      await expect(reader.query("select * from parameter_catalog.subject_placements")).rejects.toMatchObject({ code: "42501" });
+      await expect(reader.query("select extra from public.reader_column_probe")).rejects.toMatchObject({ code: "42501" });
+      expect((await reader.query("select n from public.reader_column_probe")).rows)
+        .toEqual((await admin.query("select count(*) as n from parameter_catalog.subject_placements")).rows);
+      await expect(admin.transaction(async tx => {
+        await tx.query(await readFile(path.join(migrations,CATALOG_READER_MIGRATION),"utf8"));
+      })).rejects.toMatchObject({ code: "42501", message: "PCAT-READER-VIEW-DRIFT" });
+    } finally { await admin.query("drop view public.reader_column_probe"); }
   });
   it("cannot SET ROLE to reader or any management/synchronizer/verifier writer", async () => {
     for (const role of [CATALOG_READER_ROLE, "catalog_migration_owner", "catalog_synchronizer_role", "catalog_verification_writer_role", "parameter_governance_writer_role"]) {
