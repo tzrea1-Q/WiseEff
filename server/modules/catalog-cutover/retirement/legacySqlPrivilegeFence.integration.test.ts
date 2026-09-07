@@ -207,7 +207,7 @@ it("freezes actual role membership until the final host acknowledgment and relea
 it("freezes cross-database ACL dependencies until acknowledgment without touching the other database's grants", async () => {
   const second = await createSelfHostedPg16Database("sql_shared_dependency");
   const other = new pg.Client({ connectionString: second.url, connectionTimeoutMillis: 2000, query_timeout: 5000 });
-  other.on("error", () => {}); let operationFailed = false, cleanupFailed = false;
+  other.on("error", () => {}); let operationError: unknown, cleanupFailed = false;
   try {
     await other.connect();
     const identity = await readBindingDatabaseIdentity(other);
@@ -228,11 +228,15 @@ it("freezes cross-database ACL dependencies until acknowledgment without touchin
     // not revoked by the production effect; its owner cleans up this fixture.
     await other.query(`grant select on public.other_business to ${pg.escapeIdentifier(role)}`);
     expect(await dependency()).toBe(true);
-  } catch (error) { operationFailed = true; throw error; }
+  } catch (error) { operationError = error; throw error; }
   finally {
     for (const close of [() => other.end(), () => second.close()]) {
       try { await close(); } catch { cleanupFailed = true; }
     }
-    if (cleanupFailed) throw new Error(operationFailed ? "sql-dependency-operation-and-cleanup-failed" : "sql-dependency-cleanup-failed");
+    if (cleanupFailed) {
+      const cleanupError = new Error("sql-dependency-cleanup-failed");
+      if (operationError) throw new AggregateError([operationError, cleanupError], "sql-dependency-operation-and-cleanup-failed");
+      throw cleanupError;
+    }
   }
 });
