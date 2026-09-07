@@ -371,7 +371,7 @@ export async function runUpgradeComponentTests(args: string[], observation?: {
     process.off("SIGINT", interrupt); process.off("SIGTERM", interrupt);
   }
   console.log(JSON.stringify({ scope: "isolated-components-only", suite: args[3], imageReference: suite.image, imageId: image.Id, platform: `${image.Os}/${image.Architecture}`, containerId: id, networkId: net, exitCode, cleanupVerified: !retainPrivateDirectory, privateEvidenceRetained: retainPrivateDirectory, releaseApproved: false }));
-  return { exitCode, reason: "isolated-components-only" };
+  return { exitCode, reason: "isolated-components-only", childProcessId: child?.pid };
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
