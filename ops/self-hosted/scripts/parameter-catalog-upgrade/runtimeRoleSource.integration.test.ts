@@ -3,14 +3,14 @@ import { lstat, mkdtemp, readFile, realpath, rename, rm, writeFile } from "node:
 import os from "node:os";
 import path from "node:path";
 import pg from "pg";
-import { afterAll, beforeAll, expect, it } from "vitest";
+import { afterAll, beforeAll, expect, it, vi } from "vitest";
 import { assertOwnedUpgradeTestTarget } from "../../../../scripts/upgrade-test-target";
 import { createIsolatedUpgradeDocker } from "../../../../scripts/isolated-upgrade-docker";
 import { createMigratedSelfHostedPg16Database } from "../../../../server/testing/selfHostedUpgrade/database";
 import { createPostgresDatabase, type RootDatabase } from "../../../../server/shared/database/client";
 import { canonicalJson, sha256Prefixed } from "./journal";
 import { withHostOperationLock, type HandoffPlan } from "./handoff";
-import { observeRuntimeRoles, openRuntimeRoleSource } from "./runtimeRoleSource";
+import { observeRuntimeRoles, openRuntimeRoleSource, RuntimeRoleSourceError, type RuntimeRoleSource } from "./runtimeRoleSource";
 
 // These are actual LOGIN/config/session proofs on a parent-owned cluster. The
 // scoped handoff fixture is not prepareHandoff/P12/report/startup approval.
@@ -42,12 +42,12 @@ afterAll(async () => {
   if (results.some(result => result.status === "rejected")) throw new Error("runtime-role-fixture-cleanup-failed");
 });
 
-async function fixture(options: { api?: string; worker?: string; governance?: boolean } = {}) {
+async function fixture(options: { api?: string; worker?: string; management?: string; governance?: boolean } = {}) {
   const directory = await realpath(await mkdtemp(path.join(os.tmpdir(), "runtime-roles-pg-")));
   const contents = {
     main: `WISEEFF_API_ENV_FILE=${directory}/api\nWISEEFF_WORKER_ENV_FILE=${directory}/worker\nWISEEFF_MANAGEMENT_ENV_FILE=${directory}/management\n`,
     api: `NODE_ENV=production\nDATABASE_URL=${options.api ?? connection("api")}\n${options.governance ? `CATALOG_GOVERNANCE_DATABASE_URL=${connection("governance")}\n` : ""}`,
-    worker: `NODE_ENV=production\nDATABASE_URL=${options.worker ?? connection("worker")}\n`, management: `DATABASE_URL=${connection("manager")}\n`,
+    worker: `NODE_ENV=production\nDATABASE_URL=${options.worker ?? connection("worker")}\n`, management: `DATABASE_URL=${options.management ?? connection("manager")}\n`,
   };
   const pins: Record<string, { path: string; device: string; inode: string; digest: string }> = {};
   for (const [name, bytes] of Object.entries(contents)) {
@@ -165,4 +165,115 @@ it("observes a runtime privilege change after issuance instead of trusting cache
       await source.close(); await admin.query(`alter role ${pg.escapeIdentifier(roles.worker)} nocreatedb`);
     }
   });
+});
+
+// This observer delegates the unmodified public Pool.connect call to actual pg.
+// It observes real acquire events and can request a real administrative backend
+// termination. It never supplies a fake client, query result or admission.
+function observePools(onAcquire?: (kind: keyof typeof roles) => void) {
+  const pools = new Map<pg.Pool, keyof typeof roles>();
+  const acquired = new Set<keyof typeof roles>();
+  const original = pg.Pool.prototype.connect;
+  const observer = vi.spyOn(pg.Pool.prototype, "connect").mockImplementation(function(this: pg.Pool, callback) {
+    const value = this.options.connectionString;
+    const kind = value ? (Object.keys(roles) as (keyof typeof roles)[]).find(key => new URL(value).username === roles[key]) : undefined;
+    if (kind && !pools.has(this)) {
+      pools.set(this, kind);
+      this.on("acquire", () => { acquired.add(kind); onAcquire?.(kind); });
+    }
+    return original.call(this, callback);
+  });
+  return { pools, acquired, async cleanup() {
+    observer.mockRestore();
+    // Regression failure must not strand the observed real pool. Assertions
+    // below run before this fallback and cannot mistake it for module cleanup.
+    const results = await Promise.allSettled([...pools.keys()].filter(pool => !pool.ended).map(pool => pool.end()));
+    if (results.some(result => result.status === "rejected")) throw new Error("runtime-role-observer-cleanup-failed");
+  } };
+}
+async function assertReleased(observed: ReturnType<typeof observePools>) {
+  expect([...observed.pools.keys()].every(pool => pool.ended && pool.totalCount === 0 && pool.waitingCount === 0)).toBe(true);
+  const sessions = await admin.query<{ count: number }>(`select count(*)::int as count from pg_catalog.pg_stat_activity
+    where datname=current_database() and usename=any($1::text[]) and backend_type='client backend'`, [Object.values(roles)]);
+  expect(sessions.rows[0]?.count).toBe(0);
+}
+async function staticFailure(action: () => Promise<unknown>, extraSecret?: string) {
+  let rejected = false, typed = false, code: string | undefined, leaked = false;
+  let value: unknown;
+  try { value = await action(); }
+  catch (error) {
+    rejected = true; typed = error instanceof RuntimeRoleSourceError;
+    if (error instanceof RuntimeRoleSourceError) code = error.code;
+    const text = String(error);
+    leaked = [...Object.values(secrets), ...(extraSecret ? [extraSecret] : [])].some(secret => text.includes(secret)) || text.includes("postgres://") || text.includes("postgresql://");
+  }
+  if (value && typeof value === "object" && "close" in value && typeof value.close === "function") await value.close();
+  // Never print the original Error, client or an expected/actual secret.
+  expect(rejected).toBe(true); expect(typed).toBe(true); expect(leaked).toBe(false);
+  return code;
+}
+const terminateLogin = (kind: keyof typeof roles) => admin.query<{ terminated: boolean }>(`select pg_catalog.pg_terminate_backend(pid) as terminated
+  from pg_catalog.pg_stat_activity where datname=current_database() and usename=$1 and backend_type='client backend'`, [roles[kind]]);
+
+it.each(["manager", "worker"] as const)("rejects the actual wrong %s password and releases every prior pool", async kind => {
+  const wrong = new URL(connection(kind)); const badPassword = randomBytes(24).toString("hex"); wrong.password = badPassword;
+  const probe = new pg.Client({ connectionString: wrong.href }); probe.on("error", () => {});
+  let actualCode: string | undefined;
+  try { await probe.connect(); }
+  catch (error) { if (error && typeof error === "object" && "code" in error && typeof error.code === "string") actualCode = error.code; }
+  finally { await probe.end(); }
+  expect(actualCode).toBe("28P01");
+  const observed = observePools();
+  try {
+    await within(kind === "manager" ? { management: wrong.href } : { worker: wrong.href }, async (f, lock) => {
+      expect(await staticFailure(() => openRuntimeRoleSource({ handoff: f.plan, expectedHandoffDigest: f.plan.digest, lock }), badPassword))
+        .toBe("CONNECTION-UNAVAILABLE");
+      expect([...observed.acquired].sort()).toEqual(kind === "manager" ? [] : ["api", "manager"]);
+      expect(observed.pools.size).toBe(kind === "manager" ? 1 : 3);
+      await assertReleased(observed);
+    });
+  } finally { await observed.cleanup(); }
+});
+
+it.each(["manager", "worker"] as const)("refuses an issued observation after actual %s backend termination and closes all pools", async kind => {
+  const observed = observePools();
+  try {
+    await within({}, async (f, lock) => {
+      const source = await openRuntimeRoleSource({ handoff: f.plan, expectedHandoffDigest: f.plan.digest, lock });
+      try {
+        expect((await observeRuntimeRoles(source)).roles.length).toBe(2);
+        expect([...observed.acquired].sort()).toEqual(["api", "manager", "worker"]);
+        const terminated = await terminateLogin(kind);
+        expect(terminated.rows).toEqual([{ terminated: true }]);
+        const code = await staticFailure(() => observeRuntimeRoles(source));
+        expect(["CLOSED-OR-LOST", "SESSION-ENDPOINT-MISMATCH", "OBSERVATION-UNAVAILABLE"]).toContain(code);
+      } finally { await source.close(); }
+      await assertReleased(observed);
+      await source.close(); await assertReleased(observed);
+    });
+  } finally { await observed.cleanup(); }
+});
+
+it("settles initialization and releases pools when the actual management backend is terminated at checkout", async () => {
+  let termination: ReturnType<typeof terminateLogin> | undefined;
+  const observed = observePools(kind => {
+    if (kind === "manager" && !termination) {
+      termination = terminateLogin(kind);
+      // Keep any administration failure handled until the explicit assertion.
+      void termination.catch(() => undefined);
+    }
+  });
+  try {
+    await within({}, async (f, lock) => {
+      let unexpected: RuntimeRoleSource | undefined;
+      try {
+        const code = await staticFailure(async () => { unexpected = await openRuntimeRoleSource({ handoff: f.plan, expectedHandoffDigest: f.plan.digest, lock }); });
+        expect(["CONNECTION-LOST", "OPEN-UNAVAILABLE", "SESSION-ENDPOINT-MISMATCH", "OBSERVATION-UNAVAILABLE"]).toContain(code);
+      } finally { await unexpected?.close(); }
+      expect(termination !== undefined).toBe(true);
+      expect((await termination)?.rows).toEqual([{ terminated: true }]);
+      expect(observed.acquired.has("manager")).toBe(true);
+      await assertReleased(observed);
+    });
+  } finally { await observed.cleanup(); }
 });
