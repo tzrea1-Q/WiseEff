@@ -18,6 +18,7 @@ import {
 import path from "node:path";
 import type { BindingPhaseAttempt } from "../../../../server/modules/catalog-cutover/interface";
 import { digestOf as activationRecordDigest } from "../../../../server/modules/release-verification/core/digest";
+import type { StartupBoundary } from "../../../../server/modules/release-verification/startup/interface";
 
 import {
   failClosed,
@@ -92,6 +93,25 @@ export type ActivationJournalEvent = {
   readonly binding?: ActivationBindingRecord;
 };
 
+/** Persistence, not approval. The runtime generation is issued by the P13
+ * owner; generation below is only this host journal's publication sequence.
+ * A stored boundary is never a substitute for a current runtime observation. */
+export type StartupPublicationIntent = {
+  readonly hostRunId: string;
+  readonly cutoverRunId: string;
+  readonly attemptId: string;
+  readonly target: ActivationIntentRecord["target"];
+  readonly activationBindingDigest: string;
+  readonly generation: number;
+  readonly predecessorDigest: string | null;
+  readonly boundary: StartupBoundary;
+  readonly intentDigest: string;
+};
+export type StartupPublicationEvent = {
+  readonly intent: StartupPublicationIntent;
+  readonly outcome: "pending" | "committed" | "unknown";
+};
+
 // Persistence types live with the journal, never in the execution layer: check
 // modules must not acquire an indirect import of restore mechanisms.
 export type RecoveryCaptureRecord = {
@@ -131,6 +151,7 @@ export type JournalEntry = {
   readonly lastFailureCode: string | null;
   readonly bindingPhase?: BindingPhaseEvent;
   readonly activation?: ActivationJournalEvent;
+  readonly publication?: StartupPublicationEvent;
   readonly recoveryCapture?: RecoveryCaptureEvent;
   readonly recoveryApproval?: RecoveryApprovalEvent;
 };
@@ -183,6 +204,7 @@ export type JournalTransitionDraft = {
   readonly lastFailureCode?: string | null;
   readonly bindingPhase?: BindingPhaseEvent;
   readonly activation?: ActivationJournalEvent;
+  readonly publication?: StartupPublicationEvent;
   readonly recoveryCapture?: RecoveryCaptureEvent;
   readonly recoveryApproval?: RecoveryApprovalEvent;
 };
@@ -281,6 +303,7 @@ const parseRecord = (value: unknown): ControllerResult<JournalRecord> => {
   const candidate = value as JournalRecord;
   const captures = new Map<string, RecoveryCaptureEvent>();
   let activation: ActivationJournalEvent | undefined;
+  let publication: StartupPublicationEvent | undefined;
   for (const [index, entry] of candidate.entries.entries()) {
     if (!entry || entry.seq !== index + 1 || typeof entry.action !== "string" ||
         typeof entry.inputDigest !== "string" || !["committed", "crashed"].includes(entry.outcome) ||
@@ -304,6 +327,12 @@ const parseRecord = (value: unknown): ControllerResult<JournalRecord> => {
         return failClosed("PCAT-UPG-ILLEGAL-ACTION", "upgrade journal activation event is invalid");
       }
       activation = entry.activation;
+    }
+    if (entry.publication || entry.action.startsWith("startup-publication-")) {
+      if (!validPublicationEvent(entry, candidate, index, publication)) {
+        return failClosed("PCAT-UPG-ILLEGAL-ACTION", "upgrade journal publication event is invalid");
+      }
+      publication = entry.publication;
     }
     if (entry.recoveryCapture) {
       const event = entry.recoveryCapture;
@@ -344,6 +373,60 @@ const exactKeys = (value: unknown, keys: readonly string[]): boolean => typeof v
   !Array.isArray(value) && Object.keys(value).sort().join(",") === [...keys].sort().join(",");
 const activationDigest = (value: unknown): value is string => typeof value === "string" && /^sha256:[a-f0-9]{64}$/.test(value);
 const activationToken = (value: unknown): value is string => typeof value === "string" && /^[A-Za-z0-9][A-Za-z0-9_.:-]{0,255}$/.test(value);
+const pinFields = {
+  artifact: ["gitSha", "releaseTag", "packageManifestDigest", "apiImageDigest", "workerImageDigest", "webImageDigest"],
+  catalog: ["releaseId", "releaseDigest", "compiledModelDigest", "materializationFingerprint"],
+  database: ["targetIdentity", "schemaVersion", "migrationInventoryDigest"],
+  cutover: ["planDigest", "contractVersion", "sourceSnapshotFingerprint"],
+  mappingArchive: ["mappingEpoch", "mappingHeadDigest", "archiveManifestDigest"],
+  recovery: ["recoveryPointId", "recoveryPointDigest"],
+  acceptance: ["openApiDigest", "browserBundleSha"],
+  target: ["deploymentId", "hostFingerprint"],
+  verification: ["contractVersion", "verifierRole"],
+} as const;
+const publicationText = (value: unknown): value is string => typeof value === "string" && value.length > 0 &&
+  value.length <= 2048 && value.trim() === value && !/[\u0000-\u001f\u007f]/.test(value);
+
+export function validStartupPublicationIntent(value: StartupPublicationIntent): boolean {
+  if (!exactKeys(value, ["hostRunId", "cutoverRunId", "attemptId", "target", "activationBindingDigest", "generation", "predecessorDigest", "boundary", "intentDigest"]) ||
+    ![value.hostRunId, value.cutoverRunId, value.attemptId].every(activationToken) ||
+    !exactKeys(value.target, ["systemIdentifier", "databaseOid"]) ||
+    !Object.values(value.target).every(part => typeof part === "string" && /^[0-9]{1,24}$/.test(part)) ||
+    !activationDigest(value.activationBindingDigest) || !Number.isSafeInteger(value.generation) || value.generation < 1 ||
+    value.predecessorDigest !== null && !activationDigest(value.predecessorDigest)) return false;
+  const b = value.boundary;
+  if (!exactKeys(b, ["p13State", "writerRetirementFingerprint", "runtimePinGeneration", "pins", "subject", "reportDigest", "phaseSnapshot",
+    "predecessorReportDigests", "pointerRollbackStatus", "trafficIsolationState"]) ||
+    b.p13State !== "retired" || !activationDigest(b.writerRetirementFingerprint) || !publicationText(b.runtimePinGeneration) ||
+    !activationDigest(b.reportDigest) || !publicationText(b.phaseSnapshot) || b.trafficIsolationState !== "isolated" ||
+    !["open", "closed"].includes(b.pointerRollbackStatus) || !Array.isArray(b.predecessorReportDigests) ||
+    b.predecessorReportDigests.length !== 1 || !b.predecessorReportDigests.every(activationDigest) ||
+    !exactKeys(b.subject, ["targetId", "deploymentClass", "environmentId"]) || !Object.values(b.subject).every(publicationText) ||
+    !exactKeys(b.pins, Object.keys(pinFields))) return false;
+  for (const key of Object.keys(pinFields) as (keyof typeof pinFields)[]) {
+    if (!exactKeys(b.pins[key], pinFields[key]) || !Object.values(b.pins[key]).every(publicationText)) return false;
+  }
+  const { intentDigest, ...body } = value;
+  return intentDigest === sha256Prefixed(canonicalJson(body));
+}
+function validPublicationEvent(entry: JournalEntry, record: JournalRecord, index: number, previous?: StartupPublicationEvent): boolean {
+  const event = entry.publication;
+  if (!event || !exactKeys(event, ["intent", "outcome"]) || !validStartupPublicationIntent(event.intent) ||
+    !["pending", "committed", "unknown"].includes(event.outcome) || event.intent.hostRunId !== record.runId ||
+    event.intent.cutoverRunId !== record.cutoverRunId || event.intent.boundary.pins.cutover.planDigest !== record.planDigest ||
+    entry.action !== `startup-publication-${event.outcome}` || entry.inputDigest !== sha256Prefixed(canonicalJson(event)) ||
+    entry.outcome !== (event.outcome === "committed" ? "committed" : "crashed") || entry.fromState !== entry.toState ||
+    entry.nextAction !== (record.entries[index - 1]?.nextAction ?? "plan") ||
+    entry.planDigest !== (record.entries[index - 1]?.planDigest ?? null)) return false;
+  if (event.outcome !== "pending") {
+    return previous?.outcome === "pending" && canonicalJson(previous.intent) === canonicalJson(event.intent);
+  }
+  if (!previous) return event.intent.generation === 1 && event.intent.predecessorDigest === null;
+  return previous.outcome === "committed" && event.intent.generation === previous.intent.generation + 1 &&
+    event.intent.predecessorDigest === previous.intent.intentDigest &&
+    canonicalJson(event.intent.target) === canonicalJson(previous.intent.target) &&
+    !record.entries.slice(0, index).some(item => item.publication?.intent.attemptId === event.intent.attemptId);
+}
 export function validActivationIntent(value: ActivationIntentRecord): boolean {
   if (!exactKeys(value, ["runId", "attemptId", "target", "planDigest", "predecessorBindingDigest", "reportDigest", "expectedObservationDigest", "inputDigest"]) ||
     !activationToken(value.runId) || !activationToken(value.attemptId) || !exactKeys(value.target, ["systemIdentifier", "databaseOid"]) ||
@@ -592,13 +675,20 @@ const appendTransition = (
   draft: JournalTransitionDraft,
   now: () => Date,
 ): ControllerResult<JournalCommit> => {
-  if ((draft.recoveryCapture || draft.recoveryApproval || draft.activation) && (draft.toState !== journal.record.state || draft.nextAction !== journal.record.nextAction ||
+  if ((draft.recoveryCapture || draft.recoveryApproval || draft.activation || draft.publication) && (draft.toState !== journal.record.state || draft.nextAction !== journal.record.nextAction ||
     draft.lastFailureCode !== undefined && draft.lastFailureCode !== journal.record.lastFailureCode ||
     (["planDigest", "cutoverRunId", "verificationPlanDigest", "verificationAttemptDigest"] as const)
       .some(key => draft[key] !== undefined && draft[key] !== journal.record[key]))) {
     return failClosed("PCAT-UPG-ILLEGAL-ACTION", "recovery evidence cannot change controller state or pins");
   }
   if (isReplay(journal.record, draft)) {
+    if (draft.publication || draft.action.startsWith("startup-publication-")) {
+      const latest = journal.record.entries.filter(entry => entry.publication).at(-1);
+      if (!draft.publication || latest?.action !== draft.action || latest.inputDigest !== draft.inputDigest ||
+        latest.outcome !== "committed" || canonicalJson(latest.publication) !== canonicalJson(draft.publication)) {
+        return failClosed("PCAT-UPG-ILLEGAL-ACTION", "publication replay requires the current exact typed record");
+      }
+    }
     if (draft.activation || draft.action.startsWith("activation-")) {
       const latest = journal.record.entries.filter(entry => entry.activation).at(-1);
       if (!draft.activation || latest?.action !== draft.action || latest.inputDigest !== draft.inputDigest ||
@@ -637,6 +727,7 @@ const appendTransition = (
     lastFailureCode: draft.lastFailureCode ?? null,
     ...(draft.bindingPhase ? { bindingPhase: draft.bindingPhase } : {}),
     ...(draft.activation ? { activation: structuredClone(draft.activation) } : {}),
+    ...(draft.publication ? { publication: structuredClone(draft.publication) } : {}),
     ...(draft.recoveryCapture ? { recoveryCapture: structuredClone(draft.recoveryCapture) } : {}),
     ...(draft.recoveryApproval ? { recoveryApproval: structuredClone(draft.recoveryApproval) } : {}),
   };
@@ -655,7 +746,7 @@ const appendTransition = (
     updatedAt: at,
     entries: [...journal.record.entries, entry],
   });
-  if (draft.recoveryCapture || draft.recoveryApproval || draft.activation || draft.action.startsWith("activation-") || draft.action === "recovery-capture-pending" || draft.action === "recovery-capture-unknown") {
+  if (draft.recoveryCapture || draft.recoveryApproval || draft.activation || draft.publication || draft.action.startsWith("startup-publication-") || draft.action.startsWith("activation-") || draft.action === "recovery-capture-pending" || draft.action === "recovery-capture-unknown") {
     const parsed = parseRecord(record);
     if (!parsed.ok) return parsed;
   }
