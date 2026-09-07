@@ -520,13 +520,20 @@ async function withRootGuardFixture(body: (f: {
 
 it("holds the actual restricted root inventory guard across both authentication commits and readback", async () => {
   await withRootGuardFixture(async f => {
+    const beforeCapability = (await f.client.query(`select proacl::text as acl,
+      has_function_privilege($1,oid,'EXECUTE') as executable from pg_proc where oid='pg_catalog.pg_control_system()'::regprocedure`, [f.role])).rows;
     const guard = await f.acquire();
     const observer = await acquireObservedManagementClient(f.guards, () => {});
     try {
       expect((await observer.query(`select session_user=$1 and not (rolsuper or rolbypassrls or rolcreatedb or rolcreaterole or rolinherit)
         as restricted from pg_roles where rolname=session_user`, [f.role])).rows).toEqual([{ restricted: true }]);
-      // The actual restricted LOGIN has no newly granted system identity seam.
-      await expect(observer.query("select * from pg_catalog.pg_control_system()")).rejects.toMatchObject({ code: "42501" });
+      // The PostgreSQL image's existing PUBLIC/default permission is observed,
+      // not presumed negative. Root guard acquisition must not alter its ACL or
+      // this actual restricted LOGIN's effective capability.
+      expect((await observer.query(`select proacl::text as acl,
+        has_function_privilege(session_user,oid,'EXECUTE') as executable from pg_proc where oid='pg_catalog.pg_control_system()'::regprocedure`)).rows)
+        .toEqual(beforeCapability);
+      expect(beforeCapability).toHaveLength(1);
     } finally { observer.release(true); }
     let commits = 0;
     const original = f.client.query;
