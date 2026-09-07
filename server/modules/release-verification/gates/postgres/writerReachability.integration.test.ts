@@ -201,3 +201,24 @@ it("does not infer trusted builtin provenance for an executable definer in a sys
     await expectBlocked();
   } finally { await admin.query(`drop function pg_catalog.${fn}()`); }
 });
+
+it("blocks actual trigger dispatch from a writable unscoped table into a legacy relation", async () => {
+  const table = `v13_dispatch_${nonce}`, fn = `v13_trigger_${nonce}`;
+  await admin.query(`create table public.${table}(id integer);
+    create function public.${fn}() returns trigger language plpgsql security definer as $$
+      begin execute format('update %I.%I set schema_namespace=%L where id=%L',
+        'public', 'driver_schemas', 'trigger-dispatched', 'v13-driver'); return new; end $$;
+    create trigger dispatch after insert on public.${table} for each row execute function public.${fn}();
+    revoke all on function public.${fn}() from public;
+    grant insert on public.${table} to ${writerName}`);
+  try {
+    expect((await writer.query(`select pg_catalog.has_function_privilege(current_user,'public.${fn}()','EXECUTE') as allowed`)).rows)
+      .toEqual([{ allowed: false }]);
+    expect((await writer.query(`insert into public.${table}(id) values (1)`)).rowCount).toBe(1);
+    expect((await admin.query("select schema_namespace from public.driver_schemas where id='v13-driver'")).rows)
+      .toEqual([{ schema_namespace: "trigger-dispatched" }]);
+    await expectBlocked();
+  } finally {
+    await admin.query(`drop table public.${table}; drop function public.${fn}()`);
+  }
+});
