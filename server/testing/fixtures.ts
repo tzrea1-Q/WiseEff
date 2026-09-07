@@ -157,7 +157,7 @@ export type ProjectParameterBindingFixture = {
 };
 
 export type SpecBindingGraphFixture = {
-  organizationId: string;
+  organizationId: string | null;
   specs?: ParameterSpecFixture[];
   modules?: ParameterModuleFixture[];
   configSets?: ConfigSetFixture[];

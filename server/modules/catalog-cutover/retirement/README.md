@@ -2,6 +2,80 @@
 
 > Chinese: [Chinese](README.zh-CN.md)
 
+## Private custody transport inspection
+
+`inspectBootstrapCredentialFenceFromCustodyTransport` returns only the existing
+authentication inspection outcome. It borrows an actual restricted management
+LOGIN and reads the unique existing `bootstrap-application-authentication-intent`
+for the complete non-secret root binding. It recomputes the request digest and
+compares every root field before reopening that exact custody receipt. It never
+chooses the latest attempt, prepares another secret, retries ALTER or falls back
+to the old password. No password, URL, client or administrator callback escapes.
+
+The supported transport is an already-connected plain TCP socket with actual
+peer `127.0.0.1` and its observed port. TLS, Unix sockets and other peers are
+refused. Loopback is a transport limit, not authority: the enclosing root must
+independently prove this endpoint through its stopped handoff/Docker observation.
+The facade verifies the login and physical database before reading the secret;
+a random actual session-lock challenge and target identity bind the new private
+OID10 connection back to the reader. Mutable client host/port fields and ambient
+connection variables are not used as routes.
+
+The borrowed session must start in autocommit. Its own transaction obtains the
+six existing activation inventory SHARE locks before a snapshot, then becomes
+READ ONLY. SET LOCAL and rollback restore the caller's login. The new OID10
+session takes S7 and invokes the actual activation owner's same-session inspector
+before and after authentication inspection. The guard stays held throughout,
+preventing non-S7 mapping writers from producing an ABA between snapshots. Root
+records are also re-read through fresh OID10 transactions. All owned pools/FDs
+are closed before returning; the borrowed client is never released or ended.
+
+The root still owns host lock, stopped source/endpoint, package, applicable
+approved report and current P12 checks. This facade is not P13 or runtime
+approval. After a first-COMMIT interruption before ALTER, the prepared new secret
+cannot connect; unknown preserves that version and does not retry the effect.
+
+The new test-only fixture reuses actual shared fixture writes, S7 P0–P10 and existing
+epoch/storage transactions. Its P12 reference, handoff and package identities
+are explicitly unapproved component inputs, never release evidence. The child
+receives only a restricted guard URL and complete non-secret selection after
+the original custody and OID10 connections close. It checks exact inspection
+and cross-run/package drift refusal. Actual `9d26ab1c2` collected 28, passed the
+original 27 and failed fixture planning before the facade; it is not a valid
+transport Red. `e518f7047` also passed the original 27 and failed preparation:
+the actual 0081 constraint rejected a structural key in a DTS property surface.
+Neither failure reached the facade. The correction uses `seedSpecBindingGraph`'s
+existing optional-property path, without creating or deleting a DTS property.
+It reads back the residual definition/version before requiring actual R10
+classification. This older no-Binding P2 path is not application quiescence.
+The corrected fixture and implementation have separate execution evidence below.
+
+Further isolated preparation `6424d31f5` and `90f8dbbfc` each collected 28 with
+27 passed and one preparation failure; both cleaned their owned resources.
+P0–P6 actually completed. P7 rejected the organization-owned source because the
+archive plaintext detector treats its long organization ID as private payload,
+while the same owner ID is required in archive metadata. This is an internal
+archive compatibility gap, not missing production authorization. No detector,
+ID length, owner metadata or safety check is weakened here. The transport fixture
+instead uses the already-supported platform source shape. The shared fixture's
+`organizationId` type now expresses its existing SQL NULL behavior; its SQL and
+constraints are unchanged. This slice does not validate organization archives.
+
+Actual owned PG16 Red `84a17cd477b3dce72057dde76d8697e7b67ee04a`
+passed preparation and all original 27 cases; the new independent-process exact
+selection returned the stub's `unknown` instead of the existing fence digest
+(28 collected, 27 passed, 1 failed, 6.21s). Green
+`312400172a4c0b43f4c6cc5efcd58ef72c30882b` passed all 28 in 8.59s,
+including exact selection, cross-run/package drift and actual borrowed-client
+`end` refusal. Both runs verified owned-resource cleanup. The latter also proves
+the six-lock/READ ONLY statement order is accepted by actual PostgreSQL 16.
+Logs `/tmp/pr824-custody-transport-platform-red.log` and
+`/tmp/pr824-custody-transport-platform-green.log` have SHA-256
+`3bb3fc37665a92382b614231b921421e79be6eda7a993471a497a617d3f9f681`
+and `ebb3c4cf4d075ed003fb9b67fe5e98547de4cbbacef285b898e449e54d8ccf4c`.
+These are local component observations on those exact checkouts, not execution
+of this evidence-only update, Hosted or a formally approved whole-root P12/P13.
+
 This R3 work remains Scratch. Its database operation disables the exact former
 application LOGINs and removes their incoming membership edges. It does not
 erase owners, ACLs, roles, passwords or source data. The original capabilities

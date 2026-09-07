@@ -3,10 +3,171 @@ import { constants, type BigIntStats } from "node:fs";
 import { lstat, open, realpath, type FileHandle } from "node:fs/promises";
 import path from "node:path";
 import { isDeepStrictEqual } from "node:util";
-import { isIP } from "node:net";
+import { isIP, Socket } from "node:net";
+import { TLSSocket } from "node:tls";
 import pg from "pg";
 import { readBindingDatabaseIdentity, type BindingDatabaseIdentity } from "../../parameter-bindings/cutoverImport/sourceBoundary";
 import { digestOf } from "../../release-verification/core/digest";
+import { createApplicationReadActivation, createActivationIntent, type ActivationIntent, type ActivationOptions } from "../activation/index";
+import { assertBindingManagementLogin } from "../bindingImportProducer";
+import { acquireObservedManagementClient } from "./managementCheckout";
+
+/** Exact non-secret portion of the root's persisted authentication intent.
+ * This selects evidence; it is not authorization to rotate credentials. */
+export type BootstrapRootBinding = Readonly<{
+  contract: "pcat-bootstrap-application-authentication-v1";
+  runId: string; attemptId: string; activationIntent: ActivationIntent;
+  activationBindingDigest: string; handoffDigest: string;
+  recoveryPackageDigest: string; recoveryPointDigest: string;
+  target: BindingDatabaseIdentity; roleName: string; custodyDirectory: string;
+}>;
+
+/** Inspection-only custody transport. Never returns credentials or a client. */
+export async function inspectBootstrapCredentialFenceFromCustodyTransport(input: {
+  managementClient: pg.PoolClient; expectedRootBinding: BootstrapRootBinding;
+  activation: ActivationOptions;
+}): Promise<{ outcome: "not-applied" | "authentication-fenced-not-P13" | "unknown"; intentDigest?: string }> {
+  const reader = input.managementClient;
+  let root: BootstrapRootBinding, activation: ReturnType<typeof createApplicationReadActivation>;
+  let stream: Socket, host: string, port: number;
+  // Client.host/port and caller objects are mutable. Use the actual connected
+  // socket, then independently verify its database before reading any secret.
+  try {
+    root = structuredClone(input.expectedRootBinding);
+    if (!(reader instanceof pg.Client)) return { outcome: "unknown" };
+    const connected = reader.connection.stream;
+    if (!(connected instanceof Socket) || connected instanceof TLSSocket ||
+        connected.destroyed || connected.remoteAddress !== "127.0.0.1" || !connected.remotePort) return { outcome: "unknown" };
+    stream = connected;
+    host = connected.remoteAddress; port = connected.remotePort;
+    if (root.contract !== "pcat-bootstrap-application-authentication-v1" || root.runId !== root.activationIntent.runId ||
+        !root.attemptId || root.attemptId.length > 160 || !root.roleName || !path.isAbsolute(root.custodyDirectory) ||
+        !isDeepStrictEqual(root.target, root.activationIntent.target) || !isDeepStrictEqual(root.target, input.activation.target) ||
+        [root.activationBindingDigest, root.handoffDigest, root.recoveryPackageDigest, root.recoveryPointDigest]
+          .some(value => !/^sha256:[a-f0-9]{64}$/.test(value))) return { outcome: "unknown" };
+    const { inputDigest: _digest, ...intent } = root.activationIntent;
+    if (!isDeepStrictEqual(createActivationIntent(intent), root.activationIntent)) return { outcome: "unknown" };
+    activation = createApplicationReadActivation({ ...input.activation, target: root.target,
+      boundary: { ...input.activation.boundary }, journal: { ...input.activation.journal } });
+  } catch { return { outcome: "unknown" }; }
+  let lost = false, readerTransaction = false, managerTransaction = false;
+  let custody: BootstrapCredentialCustody | undefined, pool: pg.Pool | undefined, manager: pg.PoolClient | undefined;
+  let managerReleased = false;
+  let result: Awaited<ReturnType<typeof inspectBootstrapCredentialFence>> = { outcome: "unknown" };
+  const releaseManager = () => { if (manager && !managerReleased) { managerReleased = true; manager.release(true); } };
+  const onLoss = () => { lost = true; try { releaseManager(); } catch { /* Result remains unknown. */ } };
+  const live = () => {
+    if (lost || stream.destroyed || reader.connection.stream !== stream || stream.remoteAddress !== host || stream.remotePort !== port)
+      failFence("custody-transport-lost");
+  };
+  reader.on("error", onLoss);
+  reader.on("end", onLoss);
+  try {
+    live();
+    // A SAVEPOINT is a transaction-existence probe. Never roll back or commit
+    // an external transaction, even when rejecting it.
+    const probe = pg.escapeIdentifier(`transport_${randomBytes(8).toString("hex")}`);
+    try { await reader.query(`savepoint ${probe}`); await reader.query(`release savepoint ${probe}`); failFence("external-transaction"); }
+    catch (error) { if (!(error instanceof Error && "code" in error && error.code === "25P01")) throw error; }
+    await assertBuiltinResolution(reader);
+    await assertBindingManagementLogin(reader);
+    if (!isDeepStrictEqual(await readBindingDatabaseIdentity(reader), root.target)) failFence("target-unproven");
+    const connection = (await reader.query<{ database: string; pid: number; same: boolean; role: string }>(`select
+      pg_catalog.current_database() as database,pg_catalog.pg_backend_pid() as pid,session_user=current_user as same,
+      (select rolname from pg_catalog.pg_roles where oid=10) as role`)).rows[0];
+    if (!connection?.same || connection.role !== root.roleName) failFence("management-client-unavailable");
+    live();
+    // SHARE needs a management transaction. Make it READ ONLY immediately
+    // after acquiring the inventory locks and before the first snapshot query.
+    // Only this transaction belongs to the facade; SET LOCAL restores the
+    // borrowed login after rollback, and its pool/client are never closed here.
+    await reader.query("begin isolation level serializable"); readerTransaction = true;
+    await reader.query("set local role catalog_migration_owner");
+    await reader.query("set local search_path=pg_catalog,parameter_catalog,pg_temp");
+    await reader.query(`lock table parameter_catalog.catalog_state,
+      parameter_catalog.catalog_releases, parameter_catalog.catalog_materializations,
+      parameter_catalog.legacy_identities, parameter_catalog.legacy_mapping_heads,
+      parameter_catalog.legacy_mapping_versions in share mode nowait`);
+    await reader.query("set transaction read only");
+    const readRoot = async (client: pg.PoolClient) => {
+      const rows = (await client.query<{ payload: { request?: BootstrapRootBinding & { credentials: BootstrapCredentialReceipt }; requestDigest?: string } }>(
+        `select payload from parameter_catalog.parameter_catalog_cutover_events
+         where cutover_run_id=$1 and event_kind='bootstrap-application-authentication-intent' order by sequence_number`, [root.runId])).rows;
+      const retained = rows[0]?.payload;
+      if (rows.length !== 1 || !retained?.request || retained.requestDigest !== digestOf(retained.request)) failFence("root-intent-unavailable");
+      const { credentials, ...binding } = retained.request;
+      if (!isDeepStrictEqual(binding, root)) failFence("root-intent-mismatch");
+      return structuredClone(retained.request);
+    };
+    const request = await readRoot(reader);
+    const challenge = randomBytes(8), key1 = challenge.readInt32BE(0), key2 = challenge.readInt32BE(4);
+    if ((await reader.query("select pg_catalog.pg_try_advisory_xact_lock($1,$2) as held", [key1, key2])).rows[0]?.held !== true)
+      failFence("management-challenge-unavailable");
+    const verifyReader = async () => {
+      live();
+      await assertBindingManagementLogin(reader);
+      if (!isDeepStrictEqual(await readBindingDatabaseIdentity(reader), root.target)) failFence("target-unproven");
+      const state = (await reader.query(`select pg_catalog.pg_backend_pid()=$1 as same_pid,
+        current_user='catalog_migration_owner' as owner,pg_catalog.current_setting('transaction_read_only')='on' as readonly,
+        (select count(*)=6 from pg_catalog.pg_locks where pid=pg_catalog.pg_backend_pid() and granted and mode='ShareLock'
+          and relation=any(array['parameter_catalog.catalog_state'::regclass,'parameter_catalog.catalog_releases'::regclass,
+            'parameter_catalog.catalog_materializations'::regclass,'parameter_catalog.legacy_identities'::regclass,
+            'parameter_catalog.legacy_mapping_heads'::regclass,'parameter_catalog.legacy_mapping_versions'::regclass])) as inventory`, [connection.pid])).rows[0];
+      if (!state?.same_pid || !state.owner || !state.readonly || !state.inventory) failFence("management-guard-unavailable");
+      live();
+    };
+    await verifyReader();
+    custody = await reopenBootstrapCredentialCustody({ directory: root.custodyDirectory, custodianUid: process.getuid!(), receipt: request.credentials });
+    const held = heldCustodies.get(custody)!;
+    await checkCustody(held); await verifyReader();
+    // No URL or ambient host/options fallback, and no old-password retry. A
+    // pre-ALTER unknown attempt cannot use this new-only transport.
+    pool = new pg.Pool({ host, port, database: connection.database, user: root.roleName,
+      password: held.newSecret.toString("utf8"), ssl: false,
+      options: "-c search_path=pg_catalog,parameter_catalog,pg_temp", application_name: "bootstrap-custody-inspection",
+      max: 1, connectionTimeoutMillis: 2000, query_timeout: 5000 });
+    pool.on("error", onLoss);
+    manager = await acquireObservedManagementClient(pool, onLoss);
+    const sameEndpoint = (await manager.query(`select session_user=current_user and
+      (select oid=10 from pg_catalog.pg_roles where rolname=session_user) as bootstrap,
+      exists(select 1 from pg_catalog.pg_locks l join pg_catalog.pg_stat_activity a on a.pid=l.pid
+        where l.pid=$1 and l.locktype='advisory' and l.granted and l.mode='ExclusiveLock'
+          and l.objsubid=2 and l.classid=$2::oid and l.objid=$3::oid and a.datid=$4::oid) as same_reader`,
+    [connection.pid, key1 >>> 0, key2 >>> 0, root.target.databaseOid])).rows[0];
+    if (!sameEndpoint?.bootstrap || !sameEndpoint.same_reader ||
+        !isDeepStrictEqual(await readBindingDatabaseIdentity(manager), root.target)) failFence("target-unproven");
+    if ((await manager.query("select pg_catalog.pg_try_advisory_lock(hashtext('s7-orc-cutover-target'),hashtext(current_database())) as held")).rows[0]?.held !== true)
+      failFence("management-lock-unavailable");
+    const currentBinding = async () => {
+      await verifyReader();
+      await manager!.query("begin isolation level repeatable read read only"); managerTransaction = true;
+      await manager!.query("set local timezone='UTC'");
+      const selected = await activation.inspectOnHeldManagementSession(root.activationIntent, manager!);
+      if (selected.kind !== "applied" || selected.currentHeadDigest !== root.activationBindingDigest ||
+          selected.binding.bindingDigest !== root.activationBindingDigest) failFence("activation-binding-mismatch");
+      await manager!.query("rollback"); managerTransaction = false;
+    };
+    await currentBinding();
+    if (!isDeepStrictEqual(await readRoot(manager), request)) failFence("root-intent-drift");
+    result = await inspectBootstrapCredentialFence({ client: manager, target: root.target,
+      runId: root.runId, attemptId: root.attemptId, custody });
+    await currentBinding();
+    if (!isDeepStrictEqual(await readRoot(manager), request)) failFence("root-intent-drift");
+    await checkCustody(held); await verifyReader();
+  } catch { result = { outcome: "unknown" }; }
+  finally {
+    const rollbacks = await Promise.allSettled([
+      Promise.resolve().then(async () => { if (managerTransaction && manager && !managerReleased) await manager.query("rollback"); }),
+      Promise.resolve().then(async () => { if (readerTransaction) await reader.query("rollback"); }),
+    ]);
+    const released = await Promise.allSettled([Promise.resolve().then(releaseManager)]);
+    const closed = await Promise.allSettled([Promise.resolve().then(() => pool?.end()), Promise.resolve().then(() => custody?.close())]);
+    if (lost || [...rollbacks, ...released, ...closed].some(item => item.status === "rejected")) result = { outcome: "unknown" };
+    reader.removeListener("error", onLoss);
+    reader.removeListener("end", onLoss);
+  }
+  return result;
+}
 
 type FileIdentity = { dev: string; ino: string; size: string; mtimeNs: string; ctimeNs: string };
 export type BootstrapCredentialReceipt = {

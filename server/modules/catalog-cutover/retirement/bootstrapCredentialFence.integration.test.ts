@@ -15,6 +15,9 @@ import { applyBootstrapCredentialFence, inspectBootstrapCredentialFence, prepare
 import { acquireObservedManagementClient } from "./managementCheckout";
 import { acquireBootstrapInventoryGuard } from "../../../../ops/self-hosted/scripts/parameter-catalog-upgrade/legacyWriterRetirement";
 import { assertHostOperationLockForJournal, withHostOperationLock } from "../../../../ops/self-hosted/scripts/parameter-catalog-upgrade/handoff";
+import { prepareUnapprovedBootstrapTransportBinding } from "./bootstrapCredentialFence.fixture";
+import { digestOf } from "../../release-verification/core/digest";
+import type { BootstrapRootBinding } from "./bootstrapCredentialFence";
 
 // Exclusive parent-owned PG cluster only. These tests authenticate actual
 // bootstrap sessions, not application startup or approved P12/P13 execution.
@@ -332,9 +335,9 @@ try {
 if (!process.exitCode && result) process.stdout.write(JSON.stringify(result) + '\\n');
 `;
 
-async function inspectInIndependentProcess(inputPath: string): Promise<{ outcome: string; intentDigest?: string }> {
+async function inspectInIndependentProcess(inputPath: string, code = bootstrapInspectionChild): Promise<{ outcome: string; intentDigest?: string }> {
   // Fixed imports and code, inherited supervisor group, no credential argv/env.
-  const child = spawn(process.execPath, ["--import", "tsx", "--input-type=module", "-e", bootstrapInspectionChild, inputPath],
+  const child = spawn(process.execPath, ["--import", "tsx", "--input-type=module", "-e", code, inputPath],
     { cwd: process.cwd(), env: { PATH: process.env.PATH, HOME: process.env.HOME }, stdio: ["ignore", "pipe", "pipe"] });
   let stdout = "", stderr = "", failed = false, timer: ReturnType<typeof setTimeout> | undefined;
   child.on("error", () => { failed = true; });
@@ -366,6 +369,114 @@ async function inspectInIndependentProcess(inputPath: string): Promise<{ outcome
     clearTimeout(timer); child.kill("SIGKILL"); await closed;
   }
 }
+
+// Static child code. Input contains a restricted management transport and the
+// root's complete non-secret selection, never a bootstrap password or receipt.
+const custodyTransportInspectionChild = `
+import { readFile } from 'node:fs/promises';
+import pg from 'pg';
+import { createPostgresDatabase } from './server/shared/database/client.ts';
+import { acquireObservedManagementClient } from './server/modules/catalog-cutover/retirement/managementCheckout.ts';
+import { inspectBootstrapCredentialFenceFromCustodyTransport } from './server/modules/catalog-cutover/retirement/bootstrapCredentialFence.ts';
+import { withHostOperationLock, assertHostOperationLock } from './ops/self-hosted/scripts/parameter-catalog-upgrade/handoff.ts';
+let pool, client, reports, result, ended = false;
+try {
+  const input = JSON.parse(await readFile(process.argv[1], 'utf8'));
+  pool = new pg.Pool({ connectionString: input.guardUrl, max: 1, connectionTimeoutMillis: 2000, query_timeout: 5000 });
+  pool.on('error', () => {});
+  client = await acquireObservedManagementClient(pool, () => {});
+  reports = createPostgresDatabase(input.guardUrl);
+  const unavailable = async () => { throw new Error('unapproved-storage-only'); };
+  result = await withHostOperationLock(input.expectedRootBinding.custodyDirectory, async lock => {
+    const activation = { managementPool: pool, reports, target: input.expectedRootBinding.target,
+      boundary: { withLockedBoundary: unavailable, observe: unavailable,
+        verify: async () => {
+          await assertHostOperationLock(lock, input.expectedRootBinding.custodyDirectory);
+          // This real activation boundary is reached only after the facade's
+          // private OID10 connected. A graceful borrowed-session end must
+          // cancel that live inspection, just as an error does.
+          if (input.fault === 'guard-ended' && !ended) { ended = true; await client.end(); }
+        } },
+      journal: { pending: unavailable, committed: unavailable, unknown: unavailable } };
+    const selected = await inspectBootstrapCredentialFenceFromCustodyTransport({ managementClient: client,
+      expectedRootBinding: input.expectedRootBinding, activation });
+    // The facade borrows the lease and must restore its role/transaction state.
+    if (input.fault === 'guard-ended') {
+      if (!ended || selected.outcome !== 'unknown') throw new Error('ended-guard-was-not-observed');
+    } else {
+      const stillOwned = (await client.query("select session_user=current_user as same, pg_current_xact_id_if_assigned() is null as idle")).rows[0];
+      if (!stillOwned.same || !stillOwned.idle) throw new Error('borrowed-management-state-changed');
+    }
+    return selected;
+  });
+} catch { process.exitCode = 30; process.stderr.write('custody-transport-inspection-refused\\n'); }
+finally {
+  const released = await Promise.allSettled([Promise.resolve().then(() => client?.release(true))]);
+  const closed = await Promise.allSettled([Promise.resolve().then(() => pool?.end()), Promise.resolve().then(() => reports?.close())]);
+  if ([...released, ...closed].some(r => r.status === 'rejected')) process.exitCode = 31;
+}
+if (!process.exitCode && result) process.stdout.write(JSON.stringify(result) + '\\n');
+`;
+
+it("reopens the exact persisted custody in a separate process using only restricted management transport and rejects changed root selection", async () => {
+  await closeInitialManager();
+  const nonce = randomBytes(8).toString("hex"), role = `transport_guard_${nonce}`;
+  const managers = new pg.Pool({ connectionString: privateUrl.href, max: 3, connectionTimeoutMillis: 2000, query_timeout: 5000 });
+  managers.on("error", () => {});
+  let client: pg.PoolClient | undefined, custody: Awaited<ReturnType<typeof prepareBootstrapCredentialCustody>> | undefined;
+  let created = false, failed = false, ended = false;
+  const endManagers = async () => { if (!ended) { ended = true; await managers.end(); } };
+  try {
+    // Actual S7 P0–P10, mapping inventory and storage binding. No report or
+    // approved P12 is generated; this is not whole-root retirement acceptance.
+    const binding = await prepareUnapprovedBootstrapTransportBinding({ pool: managers, target, directory });
+    client = await acquireObservedManagementClient(managers, () => {});
+    const guardUrl = new URL(privateUrl.href); guardUrl.username = role; guardUrl.password = randomBytes(32).toString("hex");
+    await client.query(`create role ${role} login noinherit password ${pg.escapeLiteral(decodeURIComponent(guardUrl.password))}`);
+    created = true;
+    await client.query(`grant catalog_migration_owner to ${role} with inherit false, set true, admin false`);
+    await client.query("select pg_advisory_lock(hashtext('s7-orc-cutover-target'),hashtext(current_database()))");
+    custody = await prepareBootstrapCredentialCustody({ directory, custodianUid: process.getuid!(), oldSecret: decodeURIComponent(privateUrl.password) });
+    const expectedRootBinding: BootstrapRootBinding = {
+      contract: "pcat-bootstrap-application-authentication-v1", runId: binding.intent.runId,
+      attemptId: `transport-${nonce}`, activationIntent: binding.intent, activationBindingDigest: binding.bindingDigest,
+      handoffDigest: digestOf("unapproved-component-handoff"), recoveryPackageDigest: digestOf("unapproved-component-package"),
+      recoveryPointDigest: digestOf("unapproved-component-recovery-point"), target,
+      roleName: decodeURIComponent(privateUrl.username), custodyDirectory: directory,
+    };
+    const request = { ...expectedRootBinding, credentials: custody.receipt };
+    await client.query(`insert into parameter_catalog.parameter_catalog_cutover_events(id,cutover_run_id,sequence_number,phase,event_kind,payload)
+      select $1,$2,coalesce(max(sequence_number),0)+1,'P13','bootstrap-application-authentication-intent',$3::jsonb
+      from parameter_catalog.parameter_catalog_cutover_events where cutover_run_id=$2`,
+    [nonce, binding.intent.runId, JSON.stringify({ request, requestDigest: digestOf(request) })]);
+    const fenced = await applyBootstrapCredentialFence({ client, target, runId: binding.intent.runId,
+      attemptId: expectedRootBinding.attemptId, custody });
+    const oldUrl = privateUrl.href;
+    privateUrl.password = await readFile(path.join(directory, `${custody.receipt.version}.new`), "utf8");
+    await custody.close(); custody = undefined;
+    client.release(true); client = undefined; await endManagers();
+    const old = new pg.Client({ connectionString: oldUrl, connectionTimeoutMillis: 2000 }); old.on("error", () => {});
+    try { await expect(old.connect()).rejects.toMatchObject({ code: "28P01" }); } finally { await old.end(); }
+    for (const mode of ["exact", "cross-run", "package-drift", "guard-ended"] as const) {
+      const selected = { ...structuredClone(expectedRootBinding) };
+      if (mode === "cross-run") selected.runId = `wrong-${nonce}`;
+      if (mode === "package-drift") selected.recoveryPackageDigest = digestOf("different-package");
+      const inputPath = path.join(directory, `${nonce}-${mode}.transport-input`);
+      await writeFile(inputPath, JSON.stringify({ guardUrl: guardUrl.href, expectedRootBinding: selected, fault: mode }), { mode: 0o600, flag: "wx" });
+      expect(await inspectInIndependentProcess(inputPath, custodyTransportInspectionChild))
+        .toEqual(mode === "exact" ? fenced : { outcome: "unknown" });
+    }
+  } catch (error) { failed = true; throw error; }
+  finally {
+    const first = await Promise.allSettled([Promise.resolve().then(() => client?.release(true))]);
+    const second = await Promise.allSettled([Promise.resolve().then(endManagers), Promise.resolve().then(() => custody?.close())]);
+    const third = await Promise.allSettled([Promise.resolve().then(async () => {
+      if (created) await withFreshManager(cleanup => cleanup.query(`drop role ${role}`));
+    })]);
+    if ([...first, ...second, ...third].some(r => r.status === "rejected"))
+      throw new Error(failed ? "bootstrap-transport-operation-and-cleanup-failed" : "bootstrap-transport-cleanup-failed");
+  }
+});
 
 async function exerciseCommitFault(ordinal: 1 | 2, independentInspection: boolean) {
   await closeInitialManager();

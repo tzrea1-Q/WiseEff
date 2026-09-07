@@ -2,6 +2,62 @@
 
 > English: [English](README.md)
 
+## 私有凭据保管连接检查
+
+`inspectBootstrapCredentialFenceFromCustodyTransport` 仅返回既有认证检查结果。
+它借用真实受限管理 LOGIN，按完整非秘密根绑定读取唯一既存的
+`bootstrap-application-authentication-intent`，重算请求摘要并逐字段比对后，
+才重新打开该记录中的原凭据 receipt。不选最新 attempt、不生成新秘密、不重试
+ALTER，也不回落旧密码；不返回密码、URL、连接或任意管理回调。
+
+当前仅支持已连接的明文 TCP socket，使用实际对端 `127.0.0.1` 和观测端口；
+TLS、Unix socket 与其他对端均拒绝。回环地址只是传输限制，不是权限依据：
+外层根仍须用停止后的 handoff/Docker 观测独立证明端点。读取秘密前先核管理
+身份及物理数据库，新私有 OID10 连接再以真实随机会话锁挑战及目标身份核对
+原 reader；不从可变 client host/port 或环境变量取得路由。
+
+借入会话必须处于 autocommit。组件自有事务在首快照前取得既有六表 SHARE 锁，
+随后设为 READ ONLY；SET LOCAL 与 rollback 恢复调用者身份。新 OID10 会话
+持 S7，在认证检查前后调用实际 activation owner 的同会话检查。库存锁全程
+保持，阻止不参与 S7 的 mapping writer 在两快照间造成 ABA；根记录另以新鲜
+OID10 事务重新读取。返回前关闭所有自有 pool/FD，不 release/end 借入会话。
+
+外层根仍负责 host lock、停止的源及端点、恢复包、当前适用批准报告和 P12。
+本接口不代表 P13 或 runtime 批准。若在首 COMMIT 后、ALTER 前中断，新秘密
+无法连接，结果保持 unknown 和原版本，不自动重试实际动作。
+
+新 test-only fixture 复用既有共享 fixture 真实写入、S7 P0–P10 和既有 epoch/storage
+事务；其 P12 引用、handoff 与包标识均为明确未批准的组件输入，不能作为发布
+证据。父进程关闭原 custody 与 OID10 连接后，子进程只接收受限 guard URL 和
+完整非秘密选择，验证精确检查及跨 run/包漂移拒绝。实际 `9d26ab1c2` 收集 28、
+原 27 通过，新例在 facade 前的 fixture plan 阶段失败，不是有效 transport Red；
+`e518f7047` 同样原 27 通过、准备失败：实际 0081 约束拒绝 DTS property 中的
+结构键，两次均未触及 facade。修正复用 `seedSpecBindingGraph` 的既有可选
+property 路径，不创建或删除 DTS property，并在要求实际 R10 分类前读回残留
+定义和版本。该旧 no-Binding P2 路径不证明实际应用停写。修正 fixture 与实际
+实现的独立执行证据如下。
+
+后续隔离准备 `6424d31f5`、`90f8dbbfc` 各收集 28、27 通过、新例准备失败，
+自有资源均清理成功。P0–P6 实际完成，P7 拒绝组织源：archive 明文检测把较长
+organization ID 当作私密 payload，而归档 metadata 又必须保留同一 owner ID。
+这是内部归档兼容缺口，不是生产授权缺失。本片不放宽检测、不缩短 ID、不删
+owner metadata 或安全检查，改用既已支持的 platform 源形态。共享 fixture
+的 `organizationId` 类型只补上既有 SQL NULL 语义，SQL 和约束均不改；
+本片不证明组织归档通过。
+
+实际 owned PG16 Red `84a17cd477b3dce72057dde76d8697e7b67ee04a`
+已通过准备与原 27 例；新独立进程的精确选择返回 stub 的 `unknown`，而非既存
+fence 摘要（收集 28、通过 27、失败 1，6.21 秒）。Green
+`312400172a4c0b43f4c6cc5efcd58ef72c30882b` 全部 28 例通过，8.59 秒，
+包含精确选择、跨 run／包漂移及借入连接真实 `end` 后拒绝。两轮均核验自有
+资源清理成功；后者也证明六表锁与 READ ONLY 的语句顺序可在实际 PG16 执行。
+日志 `/tmp/pr824-custody-transport-platform-red.log` 和
+`/tmp/pr824-custody-transport-platform-green.log` 的 SHA-256 分别为
+`3bb3fc37665a92382b614231b921421e79be6eda7a993471a497a617d3f9f681`、
+`ebb3c4cf4d075ed003fb9b67fe5e98547de4cbbacef285b898e449e54d8ccf4c`。
+这是上述精确 checkout 的本地组件证据，不是本次仅证据更新的执行、Hosted，
+也不是正式获批的完整根 P12／P13。
+
 本 R3 分片仍处于 Scratch。数据库动作禁用精确的旧应用 LOGIN，并移除指向它们的
 成员关系；不删除 owner、ACL、角色、密码或源数据。原有能力必须仍由同一已验证
 恢复包完整表达，不授予新权限。管理连接必须与被退休角色分开。
