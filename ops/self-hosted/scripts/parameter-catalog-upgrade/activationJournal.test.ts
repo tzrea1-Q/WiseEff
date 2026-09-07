@@ -3,23 +3,41 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, expect, it, vi } from "vitest";
 import { createActivationJournal } from "./activationJournal";
+import { createActivationIntent } from "../../../../server/modules/catalog-cutover/activation/index";
+import { digestOf as activationRecordDigest } from "../../../../server/modules/release-verification/core/digest";
 import { canonicalJson, commitJournalTransition, journalBytes, loadUpgradeJournal, openUpgradeJournal, sha256Prefixed,
-  type ActivationIntentRecord, type ActivationBindingRecord } from "./journal";
+  validActivationIntent, validActivationBinding, type ActivationIntentRecord, type ActivationBindingRecord } from "./journal";
 
 const roots: string[] = [];
 afterEach(() => { for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }); });
 const digest = (value: unknown) => sha256Prefixed(canonicalJson(value));
 const pin = `sha256:${"a".repeat(64)}`;
+it("accepts the formal domain intent rather than a self-consistent host-only fixture", () => {
+  const { inputDigest: _old, ...body } = intent();
+  const official = createActivationIntent(body);
+  expect(official.inputDigest).not.toBe(digest(body));
+  expect(validActivationIntent(official)).toBe(true);
+  expect(validActivationIntent({ ...official, inputDigest: digest(body) })).toBe(false);
+});
+it("keeps the domain binding digest distinct from host event serialization", () => {
+  const official = binding();
+  const { bindingDigest: _old, ...body } = official;
+  expect(validActivationBinding(official)).toBe(true);
+  expect(validActivationBinding({ ...official, bindingDigest: digest(body) })).toBe(false);
+  const { inputDigest: _input, ...intentBody } = official.intent;
+  const hostOnly = { ...body, intent: { ...intentBody, inputDigest: digest(intentBody) } };
+  expect(validActivationBinding({ ...hostOnly, bindingDigest: activationRecordDigest(hostOnly) })).toBe(false);
+});
 function intent(attemptId = "attempt"): ActivationIntentRecord {
   const body = { runId: "cutover", attemptId, target: { systemIdentifier: "123", databaseOid: "456" }, planDigest: pin,
     predecessorBindingDigest: null, reportDigest: pin, expectedObservationDigest: pin };
-  return { ...body, inputDigest: digest(body) };
+  return createActivationIntent(body);
 }
 function binding(request = intent()): ActivationBindingRecord {
   const body = { version: "pcat-activation-v1" as const, intent: request, mode: "canonical" as const,
     sourceSnapshotFingerprint: pin, catalog: { releaseId: "release", releaseDigest: pin, compiledFingerprint: pin, databaseFingerprint: pin },
     mapping: { epoch: pin, headDigest: pin }, comparisonReportDigest: pin };
-  return { ...body, bindingDigest: digest(body) };
+  return { ...body, bindingDigest: activationRecordDigest(body) };
 }
 function fixture() {
   const root = mkdtempSync(path.join(tmpdir(), "activation-journal-")); roots.push(root);
@@ -68,7 +86,7 @@ it.each(["run", "target", "plan", "predecessor", "report", "observation", "numer
   if (fault === "numeric-id") changed.attemptId = 123;
   if (fault === "extra") changed.approved = true;
   const { inputDigest: _previous, ...body } = changed;
-  changed.inputDigest = digest(body);
+  changed.inputDigest = activationRecordDigest(body);
   const bytes = journalBytes(f.journal.journalPath);
   await expect(f.adapter.committed(binding(changed as unknown as ActivationIntentRecord))).rejects.toThrow("PCAT-UPG-ACTIVATION");
   expect(journalBytes(f.journal.journalPath)).toEqual(bytes);
@@ -79,7 +97,7 @@ it("keeps an immutable exact acknowledgment replay and rejects a different bindi
   const bytes = journalBytes(f.journal.journalPath);
   await f.adapter.committed(binding());
   const changed = { ...binding(), catalog: { ...binding().catalog, releaseId: "different" } };
-  const { bindingDigest: _old, ...body } = changed; changed.bindingDigest = digest(body);
+  const { bindingDigest: _old, ...body } = changed; changed.bindingDigest = activationRecordDigest(body);
   await expect(f.adapter.committed(changed)).rejects.toThrow("PCAT-UPG-ACTIVATION");
   await expect(f.adapter.pending(intent("other"))).rejects.toThrow("PCAT-UPG-ACTIVATION");
   expect(journalBytes(f.journal.journalPath)).toEqual(bytes);
@@ -179,7 +197,7 @@ it("redacts a non-cloneable malformed request without writing intent", async () 
 it("rejects a non-digest mapping epoch even when the binding hash matches", async () => {
   const f = fixture(); await f.adapter.pending(intent());
   const invalid = { ...binding(), mapping: { ...binding().mapping, epoch: "caller-epoch" } };
-  const { bindingDigest: _old, ...body } = invalid; invalid.bindingDigest = digest(body);
+  const { bindingDigest: _old, ...body } = invalid; invalid.bindingDigest = activationRecordDigest(body);
   await expect(f.adapter.committed(invalid)).rejects.toThrow("PCAT-UPG-ACTIVATION");
 });
 

@@ -193,6 +193,11 @@ Compose 必须支持 `!override`、`!reset`；版本不支持时失败，不能�
 结果。每次以新 nonce 与真实锁持有进程交互验证锁存活。这不证明真实旧应用启动、
 候选替换、Redis 停止后的恢复或完整报告链，仍没有可执行的生产交接命令。
 
+Activation intent／binding 的内层摘要使用正式领域合同序列化；外层宿主事件和 journal
+仍使用既有宿主序列化，两者摘要范围不同。旧的仅按宿主算法构造的合成 activation
+夹具并非合法领域记录，现予拒绝。不得改写 journal 的 hash 或推断未知 SQL 没有提交；
+必须在原锁下对精确领域 attempt reconcile。此修复不签发 P12、runtime 或公开批准。
+
 管理迁移CLI现在仅解析DATABASE_URL和XIAOZE_CHECKPOINTER，不要求运行期认证、
 provider或对象存储秘密。checkpoint模式仍默认memory；隔离管理阶段需要准备
 checkpoint时必须显式postgres。父已在专属新PG数据库用仅这些输入及production模式

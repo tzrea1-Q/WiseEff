@@ -23,6 +23,7 @@ import {
   type RecoveryCaptureEvent,
 } from "./journal";
 import { openCatalogUpgradeController } from "./controller";
+import { createActivationIntent } from "../../../../server/modules/catalog-cutover/activation/index";
 
 const tempJournal = (): string =>
   path.join(mkdtempSync(path.join(tmpdir(), "s11-upg-journal-")), "journal.json");
@@ -47,7 +48,7 @@ describe("S11-UPG journal", () => {
     const body = { runId: "cutover", attemptId: "activation", target: { systemIdentifier: "123", databaseOid: "456" },
       planDigest: `sha256:${"a".repeat(64)}`, predecessorBindingDigest: null,
       reportDigest: `sha256:${"b".repeat(64)}`, expectedObservationDigest: `sha256:${"c".repeat(64)}` };
-    const activation = { hostRunId: "host", outcome: "pending", intent: { ...body, inputDigest: sha256Prefixed(canonicalJson(body)) } };
+    const activation = { hostRunId: "host", outcome: "pending", intent: createActivationIntent(body) };
     expect(commitJournalTransition(journal, { action: "activation-pending", inputDigest: sha256Prefixed(canonicalJson(activation)),
       toState: "idle", nextAction: "plan", outcome: "crashed", activation } as Parameters<typeof commitJournalTransition>[1]).ok).toBe(true);
     const loaded = loadUpgradeJournal({ journalPath: journal.journalPath, runId: "host" });
@@ -63,7 +64,7 @@ describe("S11-UPG journal", () => {
     const body = { runId: "cutover", attemptId: "activation", target: { systemIdentifier: "123", databaseOid: "456" },
       planDigest: `sha256:${"a".repeat(64)}`, predecessorBindingDigest: null,
       reportDigest: `sha256:${"b".repeat(64)}`, expectedObservationDigest: `sha256:${"c".repeat(64)}` };
-    const activation = { hostRunId: "host", outcome: "pending" as const, intent: { ...body, inputDigest: sha256Prefixed(canonicalJson(body)) } };
+    const activation = { hostRunId: "host", outcome: "pending" as const, intent: createActivationIntent(body) };
     faults.directoryInode = statSync(path.dirname(journalPath)).ino;
     try {
       expect(commitJournalTransition(journal, { action: "activation-pending", inputDigest: sha256Prefixed(canonicalJson(activation)),

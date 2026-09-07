@@ -17,6 +17,7 @@ import {
 } from "node:fs";
 import path from "node:path";
 import type { BindingPhaseAttempt } from "../../../../server/modules/catalog-cutover/interface";
+import { digestOf as activationRecordDigest } from "../../../../server/modules/release-verification/core/digest";
 
 import {
   failClosed,
@@ -350,7 +351,9 @@ export function validActivationIntent(value: ActivationIntentRecord): boolean {
     ![value.planDigest, value.reportDigest, value.expectedObservationDigest, value.inputDigest].every(activationDigest) ||
     value.predecessorBindingDigest !== null && !activationDigest(value.predecessorBindingDigest)) return false;
   const { inputDigest, ...body } = value;
-  return inputDigest === sha256Prefixed(canonicalJson(body));
+  // Inner activation records use their domain owner's contract serialization.
+  // Host events and the journal envelope retain canonicalJson and their format.
+  return inputDigest === activationRecordDigest(body);
 }
 export function validActivationBinding(value: ActivationBindingRecord): boolean {
   if (!exactKeys(value, ["version", "intent", "mode", "sourceSnapshotFingerprint", "catalog", "mapping", "comparisonReportDigest", "bindingDigest"]) ||
@@ -361,7 +364,7 @@ export function validActivationBinding(value: ActivationBindingRecord): boolean 
     ![value.sourceSnapshotFingerprint, value.catalog.releaseDigest, value.catalog.compiledFingerprint, value.catalog.databaseFingerprint,
       value.mapping.headDigest, value.comparisonReportDigest, value.bindingDigest].every(activationDigest)) return false;
   const { bindingDigest, ...body } = value;
-  return bindingDigest === sha256Prefixed(canonicalJson(body));
+  return bindingDigest === activationRecordDigest(body);
 }
 function validActivationEvent(entry: JournalEntry, record: JournalRecord, index: number, previous?: ActivationJournalEvent): boolean {
   const event = entry.activation;

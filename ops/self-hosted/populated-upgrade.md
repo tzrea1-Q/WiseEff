@@ -218,6 +218,14 @@ actual lock holder. This is not full old-application startup, candidate
 replacement, stopped-Redis resume or a complete report lineage. There is no
 production handoff command yet.
 
+Activation intent/binding digests use the formal domain contract serializer.
+Their enclosing host events and journal retain the existing host serialization;
+these are different digest scopes. Earlier host-only synthetic activation
+fixtures were not valid domain records and are now rejected. Do not rewrite
+journal hashes or infer that an unknown SQL outcome did not commit. Reconcile
+the exact domain attempt under the original lock. This correction issues no P12,
+runtime or public approval.
+
 The management migration CLI now reads only `DATABASE_URL` and
 `XIAOZE_CHECKPOINTER`; it does not require runtime auth/provider/storage secrets.
 Checkpoint mode defaults to `memory` as before. The isolated management stage must
