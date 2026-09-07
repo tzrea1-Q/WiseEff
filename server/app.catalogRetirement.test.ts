@@ -1,6 +1,8 @@
 import { expect, it, vi } from "vitest";
 import { buildWiseEffRouter, createWiseEffServer } from "./app";
 import * as application from "./app";
+import * as parameterSpecRoutes from "./modules/parameter-specs/routes";
+import type { HttpMethod } from "./shared/http/router";
 import { parameterCatalogLegacyWriteRouteIds } from "./modules/contracts/dtoSchemas/parameterCatalog";
 import { routeManifest } from "./modules/contracts/routeManifest";
 import { createPostgresDatabase, getRootPostgresPool, type Database, type QueryResult } from "./shared/database/client";
@@ -37,17 +39,60 @@ const retiredRoutes = parameterCatalogLegacyWriteRouteIds.map(id => {
 
 it("reads retired HTTP control evidence only from the actual application registration owner", () => {
   const { router } = buildWiseEffRouter();
-  const observe = (application as typeof application & {
-    observeCatalogHttpWriterControls(router: typeof router): {
-      kind: string; routes: Array<{ id: string; method: string; path: string; disposition: string }>;
-      registrationDigest: string;
-    };
-  }).observeCatalogHttpWriterControls;
+  const observe = application.observeCatalogHttpWriterControls;
   const actual = observe(router);
   expect(actual.kind).toBe("legacy-http-writes-retired");
-  expect(actual.routes).toEqual(retiredRoutes.map(({ id, method, path }) => ({ id, method, path, disposition: "gone-410" })));
+  expect(actual.routes.toSorted((a, b) => a.id.localeCompare(b.id))).toEqual(retiredRoutes
+    .map(({ id, method, path }) => ({ id, method, path, disposition: "gone-410" }))
+    .toSorted((a, b) => a.id.localeCompare(b.id)));
   expect(actual.registrationDigest).toMatch(/^sha256:[a-f0-9]{64}$/);
   expect(() => observe({ ...router })).toThrow("PCAT-HTTP-WRITER-CONTROLS-UNISSUED");
+});
+
+it.each(["registration", "dispatch", "method"])("refuses later %s changes to the issued router", fault => {
+  const { router } = buildWiseEffRouter();
+  const before = application.observeCatalogHttpWriterControls(router);
+  if (fault === "registration") router.post("/api/v2/parameter-specs", async () => ({ status: 201, body: {} }));
+  if (fault === "dispatch") router.handle = async () => ({ status: 201, body: {} });
+  if (fault === "method") router.post = () => {};
+  expect(() => application.observeCatalogHttpWriterControls(router)).toThrow("PCAT-HTTP-WRITER-CONTROLS-CHANGED");
+  expect(before.routes).toHaveLength(retiredRoutes.length);
+});
+
+it.each(["static", "alias", "slashes"])("refuses an actually reachable early %s competitor instead of issuing control evidence", async fault => {
+  const retired = retiredRoutes.find(route => route.method === "POST" && route.path.includes(":"))!;
+  const actualPath = retired.path.replace(/:[^/]+/g, "shadow");
+  const competingPattern = fault === "static" ? actualPath : fault === "alias"
+    ? retired.path.replace(/:[^/]+/g, ":differentName") : retired.path.replaceAll("/", "//") + "/";
+  const original = parameterSpecRoutes.registerParameterSpecRoutes;
+  let calls = 0;
+  const registration = vi.spyOn(parameterSpecRoutes, "registerParameterSpecRoutes").mockImplementation((router, options) => {
+    original(router, options);
+    router.post(competingPattern, async () => { calls++; return { status: 202, body: { fixture: "live competitor" } }; });
+  });
+  try {
+    const { router } = buildWiseEffRouter();
+    expect(() => application.observeCatalogHttpWriterControls(router)).toThrow("PCAT-HTTP-WRITER-CONTROLS-UNPROVEN");
+    expect(calls).toBe(0); // Observation must never probe unknown handlers.
+    const response = await router.handle({ method: retired.method as HttpMethod, path: actualPath, params: {}, query: {},
+      headers: {}, requestId: "http-controls-adversary", body: {} });
+    expect(response.status).toBe(202); expect(calls).toBe(1);
+  } finally { registration.mockRestore(); }
+});
+
+it("keeps returned records isolated and follows the router's literal asterisk semantics", async () => {
+  const original = parameterSpecRoutes.registerParameterSpecRoutes;
+  const register = vi.spyOn(parameterSpecRoutes, "registerParameterSpecRoutes").mockImplementation((router, options) => {
+    original(router, options); router.post("/api/v2/*", async () => ({ status: 202, body: {} }));
+  });
+  try {
+    const { router } = buildWiseEffRouter();
+    const first = application.observeCatalogHttpWriterControls(router);
+    first.routes.length = 0;
+    expect(application.observeCatalogHttpWriterControls(router).routes).toHaveLength(retiredRoutes.length);
+    expect(router.matchRoutePattern("POST", "/api/v2/parameter-specs")).toBe("/api/v2/parameter-specs");
+    expect(router.matchRoutePattern("POST", "/api/v2/*")).toBe("/api/v2/*");
+  } finally { register.mockRestore(); }
 });
 
 it("a real branded database root cannot make retirement depend on a Catalog query", async () => {

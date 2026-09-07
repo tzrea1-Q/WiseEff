@@ -63,10 +63,12 @@ function addRoute(
 }
 
 const retiredWriteRouter = createRouter();
+/** The registration owner uses this identity to distinguish an actual fixed
+ * refusal from a route name or an arbitrary handler that reports success. */
+export const retiredCatalogWriteHandler: Parameters<WiseEffRouter["get"]>[1] = async request =>
+  catalogLegacyGoneResult(request.requestId, LEGACY_WRITE_GONE_MESSAGE);
 for (const route of writeRoutes) {
-  addRoute(retiredWriteRouter, route.method, route.path, async (request) =>
-    catalogLegacyGoneResult(request.requestId, LEGACY_WRITE_GONE_MESSAGE),
-  );
+  addRoute(retiredWriteRouter, route.method, route.path, retiredCatalogWriteHandler);
 }
 
 const headerValue = (
@@ -424,7 +426,7 @@ export function registerCatalogLegacyRoutes(
     addRoute(router, route.method, route.path, handler);
   }
   for (const route of writeRoutes) {
-    addRoute(router, route.method, route.path, handler);
+    addRoute(router, route.method, route.path, retiredCatalogWriteHandler);
   }
   for (const route of eligibleRoutes) {
     addRoute(router, route.method, route.path, handler);
