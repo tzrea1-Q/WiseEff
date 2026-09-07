@@ -116,7 +116,7 @@ describe.skipIf(process.env.UPG_HANDOFF_DOCKER_TEST !== "1")("actual isolated Co
       await wait(() => exec("postgres", ["pg_isready", "-U", "postgres"]));
       await wait(() => exec("mc", ["mc", "mb", "fixture/isolated"]));
       const configFile = path.join(source, "ops/self-hosted/.handoff-private.env");
-      const lockRoot = path.join(directory, "state");
+      const lockRoot = path.join(privateRoot, "state");
       // The new custodian reader requires a private journal directory. Prepare
       // this fixture's newly owned directory; never relax the runtime check.
       await mkdir(lockRoot, { mode: 0o700 });
@@ -227,6 +227,13 @@ describe.skipIf(process.env.UPG_HANDOFF_DOCKER_TEST !== "1")("actual isolated Co
           return { ...await observer.observeDataIdentity(), redis: "different-observed-redis" };
         } };
         expect(await refusal(verifyStoppedHandoff(plan, plan.digest, changed, lock))).toBe("handoff-target-changed-after-plan");
+        const sharedObserver = { ...observer, async observeDataIdentity() {
+          const actual = await observer.observeDataIdentity();
+          const shared = { ...actual, redis: "observed-drift" };
+          setImmediate(() => { shared.redis = actual.redis; });
+          return shared;
+        } };
+        expect(await refusal(verifyStoppedHandoff(plan, plan.digest, sharedObserver, lock))).toBe("handoff-target-changed-after-plan");
       });
       expect((await executeHandoff(plan, plan.digest, { action: "inspect" }, { ...observer, openController, withOperationLock: withHostOperationLock })).ok).toBe(true);
       expect(await refusal(executeHandoff(plan, plan.digest, { action: "resume" }, { ...observer, openController, withOperationLock: withHostOperationLock }))).toBe("handoff-source-running-artifact-mismatch");
