@@ -54,6 +54,20 @@ export function superviseComponentProcess(child: ReturnType<typeof spawn>, limit
   return { stop, wait };
 }
 
+/** Observe executable source, including migrations discovered by directory scan. */
+export function observeCleanUpgradeCheckout(directory: string): string {
+  const options = { cwd: directory, encoding: "utf8" as const,
+    env: { PATH: process.env.PATH, HOME: process.env.HOME }, timeout: 10000 };
+  const git = spawnSync("git", ["rev-parse", "HEAD"], options);
+  const clean = spawnSync("git", ["diff-index", "--quiet", "HEAD", "--"], options);
+  const untracked = spawnSync("git", ["ls-files", "--others", "--exclude-standard"], options);
+  if (git.status !== 0 || git.error || clean.status !== 0 || clean.error ||
+      untracked.status !== 0 || untracked.error || untracked.stdout.length !== 0) {
+    throw new Error("upgrade-hosted-checkout-unavailable");
+  }
+  return git.stdout.trim();
+}
+
 /** Developer component runner, never a deployment upgrade or release approval.
  * Owns a fresh cluster/network/credential; accepts no database URL or backup. */
 export async function runUpgradeComponentTests(args: string[]) {
@@ -66,12 +80,7 @@ export async function runUpgradeComponentTests(args: string[]) {
     return { exitCode: 2, reason: "explicit-development-daemon-required" };
   }
   const observeHosted = () => {
-    const git = spawnSync("git", ["rev-parse", "HEAD"], { cwd: root, encoding: "utf8",
-      env: { PATH: process.env.PATH, HOME: process.env.HOME }, timeout: 10000 });
-    const clean = spawnSync("git", ["diff-index", "--quiet", "HEAD", "--"], { cwd: root,
-      env: { PATH: process.env.PATH, HOME: process.env.HOME }, timeout: 10000 });
-    if (git.status !== 0 || git.error || clean.status !== 0 || clean.error) throw new Error("upgrade-hosted-checkout-unavailable");
-    return { checkoutSha: git.stdout.trim(), daemonId: docker.command(["info", "--format", "{{.ID}}"] ).toString().trim(),
+    return { checkoutSha: observeCleanUpgradeCheckout(root), daemonId: docker.command(["info", "--format", "{{.ID}}"] ).toString().trim(),
       workflowRef: process.env.GITHUB_WORKFLOW_REF ?? "", runId: process.env.GITHUB_RUN_ID ?? "", runAttempt: process.env.GITHUB_RUN_ATTEMPT ?? "" };
   };
   let admission: HostedUpgradeAdmission | undefined;

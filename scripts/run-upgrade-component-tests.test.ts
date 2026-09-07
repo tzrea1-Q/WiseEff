@@ -1,7 +1,34 @@
 import { expect, it } from "vitest";
 import { spawn } from "node:child_process";
 import { setTimeout } from "node:timers/promises";
-import { runUpgradeComponentTests, superviseComponentProcess } from "./run-upgrade-component-tests";
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { execFileSync } from "node:child_process";
+import { observeCleanUpgradeCheckout, runUpgradeComponentTests, superviseComponentProcess } from "./run-upgrade-component-tests";
+
+it.each(["untracked migration", "tracked edit", "staged edit", "ignored output"])("binds the real checkout including %s", kind => {
+  const directory = mkdtempSync(join(tmpdir(), "upgrade-checkout-"));
+  const git = (...args: string[]) => execFileSync("git", args, { cwd: directory, env: { PATH: process.env.PATH, HOME: process.env.HOME }, stdio: "pipe" });
+  try {
+    git("init");
+    writeFileSync(join(directory, ".gitignore"), "output/\n");
+    writeFileSync(join(directory, "migration.sql"), "SELECT 1;\n");
+    git("add", ".");
+    git("-c", "user.name=isolated test", "-c", "user.email=isolated@example.invalid", "commit", "-m", "fixture");
+    expect(observeCleanUpgradeCheckout(directory)).toBe(git("rev-parse", "HEAD").toString().trim());
+    if (kind === "untracked migration") writeFileSync(join(directory, "0141_untracked.sql"), "SELECT 2;\n");
+    else if (kind === "ignored output") {
+      mkdirSync(join(directory, "output"));
+      writeFileSync(join(directory, "output", "build.js"), "build");
+    } else {
+      writeFileSync(join(directory, "migration.sql"), "SELECT 2;\n");
+      if (kind === "staged edit") git("add", "migration.sql");
+    }
+    if (kind === "ignored output") expect(observeCleanUpgradeCheckout(directory)).toBe(git("rev-parse", "HEAD").toString().trim());
+    else expect(() => observeCleanUpgradeCheckout(directory)).toThrow("upgrade-hosted-checkout-unavailable");
+  } finally { rmSync(directory, { recursive: true, force: true }); }
+});
 
 it.each(["toString", "__proto__", "constructor"])("rejects inherited suite name %s", async suite => {
   expect(await runUpgradeComponentTests(["--expected-daemon-id", "owned", "--suite", suite])).toMatchObject({ exitCode: 2 });
