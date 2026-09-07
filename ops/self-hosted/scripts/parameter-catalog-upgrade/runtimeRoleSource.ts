@@ -84,7 +84,7 @@ export async function openRuntimeRoleSource(input: { handoff: HandoffPlan; expec
       });
     });
     requireFact(!closed && !lost, "CONNECTION-LOST");
-    const schemas = (await client.query<{ schemas: string[] }>("select pg_catalog.current_schemas(true) as schemas")).rows[0]?.schemas;
+    const schemas = (await client.query<{ schemas: string[] }>("select pg_catalog.current_schemas(true)::text[] as schemas")).rows[0]?.schemas;
     requireFact(Array.isArray(schemas) && schemas[0] === "pg_catalog", "RESOLUTION-UNSAFE");
     return client;
   };
