@@ -98,6 +98,7 @@ const parseStoredEvidence = (value: unknown): StoredReviewEvidenceBody | null =>
 const loadEvidence = async (
   client: pg.PoolClient,
   organizationId: string,
+  requireValidEvidence = false,
 ): Promise<ReviewEvidenceRecord[]> => {
   const result = await client.query<EvidenceRow>(
     `select id, organization_id, reason, candidate_safe_digest, r_class, source_graph_ref, evidence
@@ -108,7 +109,10 @@ const loadEvidence = async (
   const records: ReviewEvidenceRecord[] = [];
   for (const row of result.rows) {
     const evidence = parseStoredEvidence(row.evidence);
-    if (!evidence) continue;
+    if (!evidence) {
+      if (requireValidEvidence) throw projectionUnavailable();
+      continue;
+    }
     records.push({
       id: row.id,
       organizationId: row.organization_id,
@@ -329,4 +333,86 @@ export const getReviewItem = async (
 export const createReviewQueueReader = (pool: pg.Pool): ReviewQueueReader => ({
   list: (query) => listReviewQueue(pool, query),
   get: (query) => getReviewItem(pool, query),
+});
+
+// This is a storage availability error, not a new member of the frozen command
+// failure union. Neither SQL details nor stored evidence are carried by it.
+const projectionUnavailable = (): Error => Object.assign(
+  new Error("review-queue-projection-unavailable"),
+  { name: "ReviewQueueProjectionUnavailable", code: "review-queue-projection-unavailable" },
+);
+
+const readPersistedQueue = async (
+  pool: pg.Pool,
+  query: ListReviewQueueQuery,
+): Promise<Result<ReviewQueueList, ReviewQueueFailure>> => {
+  const authorized = authorizeReviewQueueRead(query);
+  if (!authorized.ok) return authorized;
+  const pin = validatePin(query.capturedRelease);
+  if (!pin.ok) return pin;
+  const current = await assertCurrentPin(pool, pin.value);
+  if (!current.ok) return current;
+
+  let client: pg.PoolClient;
+  try { client = await pool.connect(); }
+  catch { throw projectionUnavailable(); }
+  let destroy = false;
+  let failed = false;
+  let result: Result<ReviewQueueList, ReviewQueueFailure>;
+  try {
+    await client.query("begin isolation level repeatable read read only");
+    const records = await loadEvidence(client, query.organizationId, true);
+    const open = await loadOpenItems(client, query.organizationId);
+    const grouped = groupReviewEvidence(records, pin.value, { existingOpenItems: open.existing });
+    if (!grouped.ok) {
+      result = grouped;
+    } else {
+      const byId = new Map(open.records.map(row => [row.id, row]));
+      for (const group of grouped.value) {
+        const row = group.existingItemId ? byId.get(group.existingItemId) : undefined;
+        if (!row || row.evidence_fingerprint !== group.groupingFingerprint ||
+          row.matcher_revision !== group.matcherRevision || row.catalog_release_id !== group.catalogReleaseId ||
+          row.reason !== group.reason || row.status !== "open" ||
+          !/^[1-9][0-9]*$/.test(row.etag_version) || !Number.isSafeInteger(Number(row.etag_version))) {
+          throw projectionUnavailable();
+        }
+      }
+      const represented = new Set(grouped.value.map(group => group.existingItemId));
+      if (open.records.some(row => row.catalog_release_id === pin.value.id && !represented.has(row.id))) {
+        throw projectionUnavailable();
+      }
+      const items = projectGroups(grouped.value, pin.value, open.records);
+      result = { ok: true, value: { items, catalogRelease: pin.value,
+        ...(items.length === 0 ? { emptyReason: "no-review-work" as const } : {}) } };
+    }
+    await client.query("commit");
+  } catch {
+    failed = true;
+    try { await client.query("rollback"); } catch { destroy = true; }
+    throw projectionUnavailable();
+  } finally {
+    try { client.release(destroy); }
+    catch { if (!failed) throw projectionUnavailable(); }
+  }
+  // The Kernel owns its separate read transaction. Release our checkout first,
+  // so even a one-connection pool can revalidate without a nested-checkout wait.
+  const stillCurrent = await assertCurrentPin(pool, pin.value);
+  if (!stillCurrent.ok) return stillCurrent;
+  return result;
+};
+
+/** Pure projection of already-persisted open items. Unlike the existing lazy
+ * grouping reader, this never creates missing ReviewItems or their ETags. */
+export const createPersistedReviewQueueReader = (pool: pg.Pool): ReviewQueueReader => ({
+  list: query => readPersistedQueue(pool, structuredClone(query)),
+  async get(query) {
+    const fixed = structuredClone(query);
+    if (!isUsableToken(fixed.reviewItemId)) return invalid("reviewItemId");
+    const result = await readPersistedQueue(pool, fixed);
+    if (!result.ok) return result;
+    const item = result.value.items.find(entry => entry.id === fixed.reviewItemId);
+    return item ? { ok: true, value: item } : {
+      ok: false, error: { kind: "review-item-not-found", reviewItemId: fixed.reviewItemId },
+    };
+  },
 });
