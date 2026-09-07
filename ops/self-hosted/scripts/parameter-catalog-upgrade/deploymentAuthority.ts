@@ -115,6 +115,18 @@ select pg_catalog.current_database() as "databaseName", (select oid::text from p
    where p.prosecdef and pg_catalog.has_function_privilege(session_user,p.oid,'EXECUTE')) as definers,
  (select count(*)::int from pg_catalog.pg_proc p cross join lateral pg_catalog.aclexplode(p.proacl) a
    where a.grantee in(select oid from reachable)) as explicit_functions,
+ -- Restricted built-ins have an initdb ACL, distinct from the ordinary
+ -- PUBLIC EXECUTE default. Compare against that immutable installation record.
+ (select count(*)::int from pg_catalog.pg_proc p join pg_catalog.pg_namespace n on n.oid=p.pronamespace
+   join pg_catalog.pg_init_privs i on i.classoid='pg_catalog.pg_proc'::pg_catalog.regclass
+     and i.objoid=p.oid and i.objsubid=0 and i.privtype='i'
+   where n.nspname='pg_catalog'
+     and exists(select 1 from pg_catalog.aclexplode(coalesce(p.proacl,pg_catalog.acldefault('f',p.proowner))) a where a.grantee=0 and a.privilege_type='EXECUTE')
+     and not exists(select 1 from pg_catalog.aclexplode(i.initprivs) a where a.grantee=0 and a.privilege_type='EXECUTE')) as public_builtins,
+ (select count(*)::int from pg_catalog.pg_parameter_acl p cross join lateral pg_catalog.aclexplode(p.paracl) a
+   left join pg_catalog.pg_settings s on s.name=p.parname
+   where (a.grantee=0 or a.grantee in(select oid from reachable))
+     and (a.privilege_type='ALTER SYSTEM' or s.context is distinct from 'user')) as unsafe_parameters,
  ((select count(*)::int from app_relations c cross join lateral pg_catalog.aclexplode(c.relacl) a
    where a.is_grantable and (a.grantee=0 or a.grantee in(select oid from reachable))) +
   (select count(*)::int from pg_catalog.pg_attribute c cross join lateral pg_catalog.aclexplode(c.attacl) a
@@ -157,11 +169,11 @@ export async function openDeploymentAuthority(input: DeploymentAuthorityOptions)
       if (observed.binding !== pinned.binding) refuse("ASSIGNMENT-REJECTED");
       const assignment = observed.assignment;
       const result = await session.query<AuthDatabaseIdentity & { same_identity: boolean; elevated: number; owners: number; memberships: number;
-        missing_reads: number; extra_relations: number; ddl: number; definers: number; explicit_functions: number; grant_options: number; future_grants: number }>(authIdentitySql);
+        missing_reads: number; extra_relations: number; ddl: number; definers: number; explicit_functions: number; public_builtins: number; unsafe_parameters: number; grant_options: number; future_grants: number }>(authIdentitySql);
       const row = result.rows[0];
       const identity = row && { databaseName: row.databaseName, databaseOid: row.databaseOid, serverAddress: row.serverAddress, serverPort: row.serverPort };
       if (result.rowCount !== 1 || !row || row.same_identity !== true || row.elevated !== 0 || row.owners !== 0 || row.memberships !== 0
-        || [row.missing_reads,row.extra_relations,row.ddl,row.definers,row.explicit_functions,row.grant_options,row.future_grants].some(count => count !== 0)
+        || [row.missing_reads,row.extra_relations,row.ddl,row.definers,row.explicit_functions,row.public_builtins,row.unsafe_parameters,row.grant_options,row.future_grants].some(count => count !== 0)
         || !same(identity, assignment.authentication)
         || (row.databaseName === options.sourceDatabase.databaseName && row.databaseOid === options.sourceDatabase.databaseOid)) refuse("AUTHENTICATION-DATABASE-REJECTED");
       return assignment;

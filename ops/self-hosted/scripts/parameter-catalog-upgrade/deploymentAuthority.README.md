@@ -52,7 +52,10 @@ retain their existing public-table contract, with an explicit per-lease
 Effective relation and column privileges include PUBLIC grants. Out-of-manifest
 reads/writes, sequence capabilities, DDL, grant options, future relation grants,
 explicit function grants and executable user-schema SECURITY DEFINER functions
-refuse. Authentication requires no such user definer. This document does not
+refuse. PUBLIC execution newly granted to restricted PostgreSQL built-ins is
+checked against the PostgreSQL 16 initdb ACL in `pg_init_privs`. Effective parameter
+grants for ALTER SYSTEM or SET of superuser/unknown parameters also refuse.
+Authentication requires no such user definer. This document does not
 provision those grants or expand any runtime pool.
 
 Local-session resolution updates `last_used_at`; this write belongs to the
@@ -68,7 +71,9 @@ not provision or claim that infrastructure.
 `prepareReportApproval` authenticates the requested Operator/Platform-owner role
 and exact assigned purpose/report digest, producing an opaque command carrying
 the actual user. Request values are snapshotted before asynchronous authentication.
-It is not a stored approval. The existing `VerificationReportService.approveReport`
+It is not a stored approval. The consumer must revalidate the command's current assignment, expiry, target and
+phase before persisting it; this component does not yet provide that consumer.
+The existing `VerificationReportService.approveReport`
 remains the sole writer of report approvals. In this component `approveReport`
 explicitly refuses with `REPORT-TARGET-ADAPTER-UNAVAILABLE`: a real RootDatabase,
 database name/OID or network address does not prove the report store's physical

@@ -35,7 +35,9 @@ server-owned user invocation 保留真实用户及组织；普通 bearer 凭据�
 `organizations`、`user_role_bindings`、`user_password_credentials`；以及只更新
 `auth_sessions.last_used_at`。有效表／列权限包含 PUBLIC；清单外读写、序列能力、
 DDL、grant option、未来表授权、显式函数授权以及用户 schema 中可执行的
-SECURITY DEFINER 都拒绝。认证不需要此类用户 definer。本组件不执行这些 grant，
+SECURITY DEFINER 都拒绝。通过 PostgreSQL 16 的 `pg_init_privs` 初始化 ACL 基线拒绝
+PUBLIC 新获得的受限系统函数执行能力；有效参数授权中的 ALTER SYSTEM 以及
+superuser／未知参数 SET 也拒绝。认证不需要此类用户 definer。本组件不执行这些 grant，
 不扩大运行 pool 权限。
 
 本地会话解析会更新 last_used_at，只能写独立管理认证库，不能写冻结源。本组件真实
@@ -47,6 +49,7 @@ SECURITY DEFINER 都拒绝。认证不需要此类用户 definer。本组件不�
 
 `prepareReportApproval` 验证真实 Operator／Platform-owner 与被指派的精确摘要／purpose，
 返回携带真实用户的 opaque command，异步认证前固定请求字段；这不是已持久批准。
+消费方持久批准前必须重新核验当前指派、有效期、目标与阶段，本组件尚未实现该消费方。
 既有 `VerificationReportService.approveReport` 仍是正式批准写入口。本组件中的
 `approveReport` 明确以 `REPORT-TARGET-ADAPTER-UNAVAILABLE` 拒绝：真实 RootDatabase、
 库名／OID 或网络地址均不足以证明报告库物理目标。现有受限报告登录不能查询高权

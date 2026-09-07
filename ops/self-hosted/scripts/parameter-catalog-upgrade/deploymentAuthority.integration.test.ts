@@ -172,6 +172,24 @@ it.each(["session-insert", "session-column-insert", "password-column-update", "p
   finally { await admin.query(revoke); }
 });
 
+it.each(["builtin-execute", "alter-system", "superuser-set", "unknown-set"])("refuses PUBLIC system authority through %s", async fault => {
+  const permissions: Record<string, [string, string, string]> = {
+    "builtin-execute": ["grant execute on function pg_catalog.pg_read_file(text) to public", "revoke execute on function pg_catalog.pg_read_file(text) from public", "select pg_catalog.pg_read_file('PG_VERSION') as value"],
+    "alter-system": ["grant alter system on parameter log_statement to public", "revoke alter system on parameter log_statement from public", "select pg_catalog.has_parameter_privilege(current_user,'log_statement','ALTER SYSTEM') as value"],
+    "superuser-set": ["grant set on parameter log_statement to public", "revoke set on parameter log_statement from public", "select pg_catalog.set_config('log_statement','all',false) as value"],
+    "unknown-set": ["grant set on parameter authority.unavailable to public", "revoke set on parameter authority.unavailable from public", "select pg_catalog.has_parameter_privilege(current_user,'authority.unavailable','SET') as value"],
+  };
+  const [grant, revoke, observe] = permissions[fault];
+  await admin.query(grant);
+  const restricted = createPostgresDatabase(options.authConnectionString);
+  try {
+    const result = (await restricted.query(observe)).rows[0].value;
+    if (fault === "builtin-execute") expect(String(result).trim()).toBe("16");
+    else expect(result).toBe(fault === "superuser-set" ? "all" : true);
+    await expect(authority.confirmRestore(request())).rejects.toMatchObject({ code: "PCAT-DEPLOYMENT-AUTHORITY-AUTHENTICATION-DATABASE-REJECTED" });
+  } finally { await restricted.close(); await admin.query(revoke); }
+});
+
 it.each(["superuser", "bypassrls", "createdb", "createrole", "replication"])("refuses actual %s drift on the next lease", async flag => {
   await admin.query(`alter role ${loginRole} ${flag}`);
   try { await expect(authority.confirmRestore(request())).rejects.toMatchObject({ code: "PCAT-DEPLOYMENT-AUTHORITY-AUTHENTICATION-DATABASE-REJECTED" }); }
