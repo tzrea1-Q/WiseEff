@@ -224,7 +224,7 @@ export async function openDeploymentAuthority(input: DeploymentAuthorityOptions)
           reportCommands.add(result);
           reportCommandChecks.set(result, physical => safe(async () => {
             const current = await verify();
-            if (Date.parse(result.expiresAt) <= Date.now() || !same(current.reportDatabase, physical)
+            if (Date.parse(result.expiresAt) <= Date.now() || !current.reportDatabase || !same(current.reportDatabase, physical)
               || !same(current.target, result.target) || current.runId !== result.runId
               || !current.principals.some(grant => grant.kind === result.command.principalKind && identityKey(grant) === identityKey(principal))
               || !current.reports.some(report => report.purpose === result.command.purpose && report.reportDigest === result.reportDigest)) refuse("REPORT-SCOPE-REJECTED");
