@@ -53,10 +53,23 @@ endpoint 的实测地址，或实际自有网络内唯一指向该容器的 alia
 现有 controlled-recovery ownership nonce 和关闭 IP masquerade 的 bridge；
 不支持的部署在 effect 前拒绝。
 
-endpoint 回归创建两台自有 PostgreSQL 容器及使用同一固定 PostgreSQL 镜像的
-psql 探针；从网络内查询原 URL，再通过发布端口独立比较 system identity，
+Docker 配置本身不够：通过 `docker cp` 读取已停止容器的真实 `/etc/hosts`、
+`/etc/resolv.conf`、`/etc/nsswitch.conf`。使用现有宿主 tar 工具，只将指定成员
+解到有界 stdout，不向宿主文件系统解压。文件缺失或 resolver 规则不支持时拒绝。
+本 profile 要求 `hosts: files dns`、Docker DNS `127.0.0.11`、`ndots:0`；真实 hosts
+内容不得把原主机重定向到其他地址，容器 hostname 与数据库 alias 冲突也拒绝。
+三个文件的摘要参与反复的 endpoint 观察。
+不支持容器环境中的 `RES_OPTIONS`、`LOCALDOMAIN`、`HOSTALIASES` 覆盖。每份
+Docker tar 必须精确列出一个所请求名称的普通文件；链接、重复成员及多文件
+拼接均拒绝。
+
+endpoint 拓扑由父监督器创建两台自有 PostgreSQL 容器及使用同一固定 PostgreSQL
+镜像的 psql 探针，再通过私有 receipt 交给测试子进程。子进程不创建资源，不能
+依赖自己的 afterAll 处理强制终止后的清理。从网络内查询原 URL，再通过发布端口独立比较 system identity，
 随后停止探针。指向另一数据库的 URL、错误发布端口和实际重复 alias 均拒绝。
-探针不是旧 API／worker 镜像；其一次性 trust 认证数据库只证明网络映射，
+另先证明真实 hosts 文件覆盖使原 URL 访问第二数据库，再停止探针并验证观察器
+拒绝；Docker hostname 冲突也被拒绝。探针不是旧 API／worker 镜像，其一次性
+数据库使用仅通过私有 receipt／stdin 传递的随机密码，只证明网络映射，
 原 LOGIN 围栏用例另行验证真实受限凭据。
 
 adapter 绑定完整 `activationIntent` 与领域 `bindingDigest`，读取正式已获批的

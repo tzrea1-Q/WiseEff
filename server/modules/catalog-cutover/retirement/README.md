@@ -65,12 +65,29 @@ credentials alone are not evidence about the original connection target.
 This profile requires the existing controlled-recovery ownership nonce and
 bridge with IP masquerade disabled. Unsupported deployments fail before effects.
 
-The endpoint regression creates two owned PostgreSQL containers and a psql-only
-probe with the same fixed PostgreSQL image. It queries the original URL inside
+Docker configuration alone is insufficient: the stopped container's actual
+`/etc/hosts`, `/etc/resolv.conf` and `/etc/nsswitch.conf` are read with `docker cp`.
+The existing host `tar` utility extracts only the named member to bounded stdout,
+never to the host filesystem. Unknown/missing files or unsupported resolver rules
+refuse. This profile requires `hosts: files dns`, Docker DNS at `127.0.0.11` and
+`ndots:0`; actual hosts entries cannot redirect the original hostname, and a
+container hostname equal to the database alias is rejected. The three file
+digests participate in the repeated endpoint observation.
+`RES_OPTIONS`, `LOCALDOMAIN` and `HOSTALIASES` container environment overrides
+are unsupported. Each Docker tar must list exactly one ordinary file with the
+requested name; links, duplicate members and multi-file concatenation refuse.
+
+The parent supervisor creates two owned PostgreSQL containers and psql-only
+probes with the same fixed PostgreSQL image, then supplies a private receipt.
+The test child creates no resources and cannot rely on its own afterAll to clean
+up after termination. It queries the original URL inside
 the network and independently compares system identity through the published
 port, then stops the probe. Wrong-database URLs, wrong published ports and an
-actual duplicated network alias are refused. The probe is not an old API or
-worker image. Its trust-authenticated throwaway databases prove routing only;
+actual duplicated network alias are refused. A real hosts-file override is first
+shown to redirect the original URL to the second database, then rejected after
+the probe stops. Docker's own hostname collision is also refused. The probe is
+not an old API or worker image. Its throwaway databases use private random
+passwords supplied only through the receipt and stdin; they prove routing only;
 the original LOGIN-fence cases separately exercise actual restricted credentials.
 
 The adapter binds the full `activationIntent` and the domain's `bindingDigest`,

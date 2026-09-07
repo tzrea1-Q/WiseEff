@@ -1,4 +1,5 @@
 import { randomBytes } from "node:crypto";
+import { readFileSync } from "node:fs";
 import pg from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createSelfHostedPg16Database } from "../../../testing/selfHostedUpgrade/database";
@@ -24,74 +25,63 @@ beforeAll(async () => {
 afterAll(async () => { await foreignDb?.end(); await foreignFixture?.close(); await pool?.end(); await fixture?.close(); });
 
 describe("owned Docker source endpoint observation, not an old API/worker startup", () => {
-  const ownerRunId = randomBytes(12).toString("hex"), label = "wiseeff.controlled-recovery-run";
-  let docker: ReturnType<typeof createIsolatedUpgradeDocker>, network: string, first: string, second: string, app: string;
-  let firstUrl: string, secondUrl: string;
-  const created: string[] = [];
-  let imageId: string;
+  let docker: ReturnType<typeof createIsolatedUpgradeDocker>, network: string, first: string, second: string, app: string, hostnameApp: string;
+  let firstUrl: string, secondUrl: string, originalUrl: string, ownerRunId: string, imageId: string, secondSystem: string;
+  let registeredIds: string[];
+  const label = "wiseeff.controlled-recovery-run";
+  const originalQuery = (probe: string) => {
+    const privateUrl = new URL(originalUrl), password = decodeURIComponent(privateUrl.password);
+    privateUrl.password = "";
+    return docker.command(["exec", "-i", probe, "sh", "-c",
+      'IFS= read -r PGPASSWORD; export PGPASSWORD; exec psql "$1" -Atc "$2"', "--", privateUrl.href,
+      "select system_identifier from pg_control_system()"], Buffer.from(password + "\n")).toString().trim();
+  };
   beforeAll(async () => {
-    // The outer fixture has already verified the mandatory owned PG receipt.
-    // All additional resources here are newly created and carry this nonce.
+    // The outer fixture validates the same parent-issued private receipt.
+    // The supervisor, not this child, creates and cleans the endpoint topology.
+    const receipt = JSON.parse(readFileSync(process.env.UPG_TEST_TARGET_RECEIPT!, "utf8"));
+    const endpoints = receipt.retirementEndpoints;
+    if (!endpoints || endpoints.label !== label || !/^[a-f0-9]{24}$/.test(endpoints.ownerRunId) ||
+        !/^sha256:[a-f0-9]{64}$/.test(endpoints.imageId) ||
+        ![endpoints.networkId, endpoints.firstId, endpoints.secondId, endpoints.probeId, endpoints.hostnameProbeId]
+          .every(id => typeof id === "string" && /^[a-f0-9]{64}$/.test(id))) throw new Error("owned-retirement-endpoints-required");
+    ({ ownerRunId, imageId, networkId: network, firstId: first, secondId: second, probeId: app,
+      hostnameProbeId: hostnameApp, firstUrl, secondUrl } = endpoints);
+    registeredIds = [first, second, app, hostnameApp];
+    if (new Set(registeredIds).size !== 4) throw new Error("owned-retirement-endpoint-alias");
     docker = createIsolatedUpgradeDocker();
-    imageId = JSON.parse(docker.command(["image", "inspect", "postgres:16-alpine"]).toString())[0].Id;
-    network = docker.command(["network", "create", "--driver", "bridge", "--opt", "com.docker.network.bridge.enable_ip_masquerade=false",
-      "--label", `${label}=${ownerRunId}`, `retirement-endpoint-${ownerRunId}`]).toString().trim();
-    const create = (alias: string, database: boolean) => {
-      const args = ["create", "--network", network, "--network-alias", alias, "--label", `${label}=${ownerRunId}`];
-      if (database) args.push("--publish", "127.0.0.1::5432", "--tmpfs", "/var/lib/postgresql/data:rw,size=268435456", "--env", "POSTGRES_HOST_AUTH_METHOD=trust");
-      else args.push("--entrypoint", "sleep");
-      args.push(imageId);
-      if (!database) args.push("300");
-      const id = docker.command(args).toString().trim(); created.push(id);
-      docker.command(["start", id]); return id;
-    };
-    first = create("postgres", true); second = create("other", true); app = create("api", false);
-    const endpoint = (id: string) => {
-      const info = docker.assertOwned(id, label, ownerRunId);
-      return `postgres://postgres@127.0.0.1:${info.NetworkSettings.Ports["5432/tcp"][0].HostPort}/postgres`;
-    };
-    firstUrl = endpoint(first); secondUrl = endpoint(second);
-    for (const id of created) expect(docker.assertOwned(id, label, ownerRunId).Image).toBe(imageId);
+    expect(docker.daemonId).toBe(receipt.daemonId);
+    for (const id of registeredIds) expect(docker.assertOwned(id, label, ownerRunId).Image).toBe(imageId);
+    const networkInfo = JSON.parse(docker.command(["network", "inspect", network]).toString())[0];
+    expect(networkInfo.Id).toBe(network); expect(networkInfo.Labels[label]).toBe(ownerRunId);
+    for (const [id, url] of [[first, firstUrl], [second, secondUrl]]) {
+      const parsed = new URL(url), info = docker.assertOwned(id, label, ownerRunId);
+      if (parsed.hostname !== "127.0.0.1" || parsed.port !== info.NetworkSettings.Ports["5432/tcp"][0].HostPort)
+        throw new Error("owned-retirement-private-endpoint-mismatch");
+    }
+    const original = new URL(firstUrl); original.hostname = "postgres"; original.port = "5432"; originalUrl = original.href;
+    const originalSystem = originalQuery(app);
+    const identities: string[] = [];
     for (const url of [firstUrl, secondUrl]) {
-      let ready = false;
-      for (let attempt = 0; attempt < 40 && !ready; attempt++) {
-        const client = new pg.Client({ connectionString: url, connectionTimeoutMillis: 1000 });
-        try { await client.connect(); await client.query("select 1"); ready = true; }
-        catch { await new Promise(resolve => setTimeout(resolve, 100)); }
-        finally { await client.end(); }
-      }
-      if (!ready) throw new Error("owned-endpoint-postgres-not-ready");
+      const client = new pg.Client({ connectionString: url, connectionTimeoutMillis: 1000 });
+      try { await client.connect(); identities.push((await client.query("select system_identifier::text as id from pg_control_system()")).rows[0].id); }
+      finally { await client.end(); }
     }
-    // Use the ORIGINAL URL inside the actual shared network, then independently
-    // read the system identity through Docker's published port before stopping
-    // this psql-only probe. It is not an old application image or authz proof.
-    const original = docker.command(["exec", app, "psql", "postgres://postgres@postgres/postgres", "-Atc", "select system_identifier from pg_control_system()"]).toString().trim();
-    const client = new pg.Client({ connectionString: firstUrl });
-    try { await client.connect(); expect((await client.query("select system_identifier::text as id from pg_control_system()")).rows[0].id).toBe(original); }
-    finally { await client.end(); }
-    docker.command(["stop", "--time", "1", app]);
+    expect(identities[0]).toBe(originalSystem);
+    expect(identities[1]).not.toBe(originalSystem); secondSystem = identities[1];
+    docker.command(["stop", "--time", "1", app, hostnameApp]);
     console.info("RETIREMENT_ENDPOINT_COMPONENT", JSON.stringify({ ownerRunId, networkId: network, imageId,
-      postgresIds: [first, second], probeId: app, scope: "database-probe-not-api-worker" }));
-  }, 30_000);
-  afterAll(() => {
-    for (const id of [...created].reverse()) { docker.assertOwned(id, label, ownerRunId); docker.command(["rm", "-f", id]); }
-    if (network) {
-      const info = JSON.parse(docker.command(["network", "inspect", network]).toString())[0];
-      expect(info.Id).toBe(network); expect(info.Labels[label]).toBe(ownerRunId);
-      docker.command(["network", "rm", network]);
-    }
-    expect(docker.command(["ps", "-a", "-q", "--filter", `label=${label}=${ownerRunId}`]).toString().trim()).toBe("");
-    expect(docker.command(["network", "ls", "-q", "--filter", `label=${label}=${ownerRunId}`]).toString().trim()).toBe("");
-    console.info("RETIREMENT_ENDPOINT_CLEANUP", JSON.stringify({ ownerRunId, cleanupVerified: true }));
+      postgresIds: [first, second], probeIds: [app, hostnameApp], scope: "database-probe-not-api-worker", resourceOwner: "parent-supervisor" }));
   });
-  const observe = (sourceUrl = "postgres://postgres@postgres/postgres", administrativeUrl = firstUrl) =>
-    observeLegacySourceEndpoint({ docker, sourceUrl, administrativeUrl, applicationId: app, postgresId: first,
-      registeredIds: [app, first, second], ownerRunId });
+  const observe = (sourceUrl = originalUrl, administrativeUrl = firstUrl, applicationId = app) =>
+    observeLegacySourceEndpoint({ docker, sourceUrl, administrativeUrl, applicationId, postgresId: first,
+      registeredIds, ownerRunId });
   it("accepts only the actual original alias and the same container's published port", () => {
     expect(observe()).toMatchObject({ postgresId: first, sourceHost: "postgres" });
   });
   it("rejects a same-username URL for the other real owned database before connecting", () => {
-    expect(() => observe("postgres://postgres@other/postgres")).toThrow("SOURCE-ENDPOINT-UNPROVEN");
+    const other = new URL(originalUrl); other.hostname = "other";
+    expect(() => observe(other.href)).toThrow("SOURCE-ENDPOINT-UNPROVEN");
     expect(() => observe(undefined, secondUrl)).toThrow("SOURCE-ENDPOINT-UNPROVEN");
   });
   it("rejects an actual duplicate network alias", () => {
@@ -104,8 +94,32 @@ describe("owned Docker source endpoint observation, not an old API/worker startu
       docker.command(["network", "connect", "--alias", "other", network, second]);
     }
   });
+  it("rejects the stopped source after its real hosts file redirected the original URL to the second database", () => {
+    docker.command(["start", app]);
+    const originalHosts = docker.command(["exec", app, "cat", "/etc/hosts"]);
+    try {
+      const other = docker.assertOwned(second, label, ownerRunId);
+      const address = (Object.values(other.NetworkSettings.Networks)[0] as { IPAddress: string }).IPAddress;
+      docker.command(["exec", app, "sh", "-c", 'printf "%s postgres\\n" "$1" >> /etc/hosts', "--", address]);
+      expect(originalQuery(app)).toBe(secondSystem);
+      const info = docker.assertOwned(app, label, ownerRunId);
+      expect(info.HostConfig.ExtraHosts ?? []).toHaveLength(0);
+      expect(info.Mounts.some((mount: { Destination: string }) => mount.Destination === "/etc/hosts")).toBe(false);
+      docker.command(["stop", "--time", "1", app]);
+      expect(() => observe()).toThrow("SOURCE-ENDPOINT-UNPROVEN");
+    } finally {
+      docker.command(["start", app]);
+      docker.command(["exec", "-i", app, "sh", "-c", "cat > /etc/hosts"], originalHosts);
+      docker.command(["stop", "--time", "1", app]);
+    }
+  });
+  it("rejects Docker's own hosts entry for a source hostname matching the database alias", () => {
+    docker.command(["start", hostnameApp]);
+    try { expect(() => originalQuery(hostnameApp)).toThrow("isolated-docker-operation-failed"); }
+    finally { docker.command(["stop", "--time", "1", hostnameApp]); }
+    expect(() => observe(undefined, undefined, hostnameApp)).toThrow("SOURCE-ENDPOINT-UNPROVEN");
+  });
 });
-
 async function prepare() {
   const nonce = randomBytes(7).toString("hex"), password = randomBytes(24).toString("hex");
   const name = `old_${nonce}`, member = `job_${nonce}`, table = `fence_${nonce}`;
