@@ -15,7 +15,14 @@ test-only `cfb199cbcae3eaf74c2f92e947dbd78839eb25f4`、tree
 `beade877fabf61b7797730c741e66ea7dfb9170d` 的真实受限 LOGIN 向七表外表 INSERT，
 通过已撤销 EXECUTE 的触发器实际更新 `driver_schemas`；正式 V13 仍通过。
 实际 25 收集、24 过、1 失败、0 跳过，5.25 秒，exit 1，自有资源清理已验证。
-修复及新增合法触发器回归尚待固定版本真实执行，不将 Red 视为退休通过。
+固定修复 `ee9bedf01ceb31656e282ed8635766adb2e72075`、tree
+`94a525766f9c3489598705e7a1cfec8da5da4f0a` 实际 29/29，5.59 秒，exit 0、
+0 跳过、清理已验证；包含原 24 项、trigger Red、私有内部 writer，以及只读 owner、
+禁用和无分派权限三项合法回归。严格 targeted types 退出 0；原 trusted baseline 扫描
+仍 3509 已允许、0 新增／过期／不匹配／增长。PG16 镜像及平台沿用本文件原记录。
+Red 日志 SHA256：`3fce56fd49c80283228f6bc8135d97eff7665cc87e2b001255a1aa605621a813`；
+Green：`d0d7d2a977daea0eaaa7b610f3ee8723f5e32c6f97ece5a1979bd3ba6fe4dffc`。
+以上是精确自有组件执行，不等于完整 P13 或启动证明。
 原生外键级联、rewrite rules、event triggers 与全部 HTTP／Agent／review／jobs／scripts
 写入者清单仍不属于这项 SECURITY DEFINER 子矩阵证明，不签发完整 P13 fingerprint。
 

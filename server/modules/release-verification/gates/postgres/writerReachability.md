@@ -61,8 +61,16 @@ Test-only `cfb199cbcae3eaf74c2f92e947dbd78839eb25f4`, tree
 INSERT on an unscoped table changing `driver_schemas` through a trigger whose
 EXECUTE grant had been revoked. The formal V13 adapter still passed: 25 collected,
 24 passed, one failed, zero skipped, 5.25 seconds, exit 1, owned cleanup verified.
-The implementation and its additional legitimate-trigger regressions await their
-own fixed real execution; the Red is not a successful retirement.
+The fixed implementation `ee9bedf01ceb31656e282ed8635766adb2e72075`, tree
+`94a525766f9c3489598705e7a1cfec8da5da4f0a`, ran 29/29 in 5.59 seconds,
+exit 0, zero skipped, cleanup verified. This includes the original 24 cases,
+the trigger Red, a private inner writer, and read-only-owner, disabled and
+no-dispatch-grant cases. Targeted strict types exited 0. The unchanged trusted
+baseline scan retained 3509 allowed occurrences with no new/stale/mismatched
+entries or allowance growth. The original PG16 image/platform above is unchanged.
+Red log SHA256: `3fce56fd49c80283228f6bc8135d97eff7665cc87e2b001255a1aa605621a813`;
+Green: `d0d7d2a977daea0eaaa7b610f3ee8723f5e32c6f97ece5a1979bd3ba6fe4dffc`.
+These are exact owned component executions, not full P13 or startup proof.
 
 The inherited `postgres` and `current_user` exclusions are compatibility behavior,
 not a trusted production-role manifest. Controller-proven production identities,
