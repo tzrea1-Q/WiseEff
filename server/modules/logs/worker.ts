@@ -553,27 +553,30 @@ export async function processLogAnalysisJobById({
   return traceLogAnalysisJob(tracing, "queue", process);
 }
 
-export function startLogWorkerLoop(options: ProcessLogWorkerOptions, intervalMs = 1000): () => void {
+export function startLogWorkerLoop(options: ProcessLogWorkerOptions, intervalMs = 1000): () => Promise<void> {
   let stopped = false;
   let running = false;
+  let activeRun: Promise<unknown> | undefined;
 
   const tick = () => {
     if (stopped || running) return;
     running = true;
-    void processNextLogAnalysisJob(options)
+    activeRun = processNextLogAnalysisJob(options)
       .catch(() => {
         // Intentionally swallow unexpected loop-level failures after they have been surfaced by the worker tests.
       })
       .finally(() => {
         running = false;
+        activeRun = undefined;
       });
   };
 
   const interval = setInterval(tick, intervalMs);
   tick();
 
-  return () => {
+  return async () => {
     stopped = true;
     clearInterval(interval);
+    await activeRun;
   };
 }

@@ -37,7 +37,7 @@ type LogWorkerRuntimeOptions = {
   db: Database;
   objectStore: ObjectStore;
   analyzer?: LogAnalysisAdapter;
-  startLoop?: (options: ProcessLogWorkerOptions, intervalMs?: number) => () => void;
+  startLoop?: (options: ProcessLogWorkerOptions, intervalMs?: number) => () => void | Promise<void>;
   startRetentionLoop?: LogWebhookDeliveryRetentionLoopStarter;
   retention?: { enabled: boolean; keepPerDomain: number };
   createDurableRuntime?: typeof createLogAnalysisQueueRuntime;
@@ -125,7 +125,7 @@ export function createLogWorkerRuntime({
   webhooks
 }: LogWorkerRuntimeOptions) {
   return {
-    start() {
+    async start() {
       let stopWorker: () => void | Promise<void>;
       if (queueMode === "durable") {
         if (!env) {
@@ -149,15 +149,23 @@ export function createLogWorkerRuntime({
         );
       }
 
-      const stopRetention = retention?.enabled
-        ? startRetentionLoop({ db, keepPerDomain: retention.keepPerDomain })
-        : undefined;
-
-      return async () => {
-        const retentionShutdown = stopRetention?.();
-        const workerShutdown = stopWorker();
-        await Promise.all([retentionShutdown, workerShutdown]);
-      };
+      try {
+        const stopRetention = retention?.enabled
+          ? startRetentionLoop({ db, keepPerDomain: retention.keepPerDomain })
+          : undefined;
+        let shutdown: Promise<void> | undefined;
+        return () => shutdown ??= (async () => {
+          // Invoke both callbacks even if one throws synchronously; settle both
+          // before the owner can close the database they may still be using.
+          const stop = async (callback?: () => void | Promise<void>) => callback?.();
+          const results = await Promise.allSettled([stop(stopRetention), stop(stopWorker)]);
+          const failed = results.find(result => result.status === "rejected");
+          if (failed?.status === "rejected") throw failed.reason;
+        })();
+      } catch (error) {
+        try { await stopWorker(); } catch { /* Preserve the initialization failure. */ }
+        throw error;
+      }
     }
   };
 }
@@ -220,29 +228,69 @@ async function initializeLogWorkerRuntime(
     metrics
   });
 
-  return { ...runtime, metrics, observability };
+  let started: ReturnType<typeof runtime.start> | undefined;
+  let shutdown: Promise<void> | undefined;
+  const close = () => shutdown ??= (async () => {
+    let stop: Awaited<ReturnType<typeof runtime.start>> | undefined;
+    try { stop = await started; } catch { /* start reports its original refusal. */ }
+    let failed = false;
+    try { await stop?.(); } catch { failed = true; }
+    try { await db.close(); } catch { failed = true; }
+    if (failed) throw new Error("PCAT-RUNTIME-WORKER-SHUTDOWN-FAILED");
+  })();
+  return { metrics, observability, close, async start() {
+    if (started || shutdown) throw new Error("PCAT-RUNTIME-WORKER-START-FAILED");
+    started = runtime.start();
+    try { await started; return close; }
+    catch {
+      await close().catch(() => undefined);
+      throw new Error("PCAT-RUNTIME-WORKER-START-FAILED");
+    }
+  } };
+}
+
+/** Own the real listener and the admitted runtime together. No consumer starts
+ * before the private observability endpoint has bound successfully. */
+export async function startLogWorkerProcess(raw: NodeJS.ProcessEnv = process.env) {
+  const runtime = await createLogWorkerRuntimeFromEnv(raw);
+  const observabilityServer = createLogWorkerObservabilityServer({ metrics: runtime.metrics });
+  let shutdown: Promise<void> | undefined;
+  const stop = () => shutdown ??= (async () => {
+    const results = await Promise.allSettled([runtime.close(), new Promise<void>((resolve, reject) => {
+      observabilityServer.close(error => error && (error as NodeJS.ErrnoException).code !== "ERR_SERVER_NOT_RUNNING" ? reject(error) : resolve());
+    })]);
+    if (results.some(result => result.status === "rejected")) throw new Error("PCAT-RUNTIME-WORKER-SHUTDOWN-FAILED");
+  })();
+  let failed = false;
+  observabilityServer.on("error", () => { failed = true; void stop().catch(() => undefined); });
+  try {
+    await new Promise<void>((resolve, reject) => {
+      const onError = () => reject(new Error("PCAT-RUNTIME-WORKER-START-FAILED"));
+      observabilityServer.once("error", onError);
+      observabilityServer.listen(runtime.observability.port, runtime.observability.host, () => {
+        observabilityServer.off("error", onError); resolve();
+      });
+    });
+    await runtime.start();
+    if (failed) throw new Error("PCAT-RUNTIME-WORKER-START-FAILED");
+    return { stop, observabilityServer, observability: runtime.observability };
+  } catch {
+    await stop().catch(() => undefined);
+    throw new Error("PCAT-RUNTIME-WORKER-START-FAILED");
+  }
 }
 
 if (import.meta.url === `file://${process.argv[1]?.replace(/\\/g, "/")}`) {
-  const runtime = await createLogWorkerRuntimeFromEnv();
-  const stop = runtime.start();
-  const observabilityServer = createLogWorkerObservabilityServer({ metrics: runtime.metrics });
-  observabilityServer.listen(runtime.observability.port, runtime.observability.host, () => {
-    console.log(
-      `WiseEff log worker observability listening on http://${runtime.observability.host}:${runtime.observability.port}`
-    );
-  });
-
-  let shuttingDown = false;
-  const shutdown = async () => {
-    if (shuttingDown) {
-      return;
-    }
-    shuttingDown = true;
-    await stop();
-    observabilityServer.close(() => process.exit(0));
-  };
-
-  process.on("SIGINT", () => void shutdown());
-  process.on("SIGTERM", () => void shutdown());
+  try {
+    const service = await startLogWorkerProcess();
+    console.log(`WiseEff log worker observability listening on http://${service.observability.host}:${service.observability.port}`);
+    const shutdown = () => { void service.stop().catch(() => {
+      console.error("PCAT-RUNTIME-WORKER-SHUTDOWN-FAILED"); process.exitCode = 1;
+    }).finally(() => { process.off("SIGINT", shutdown); process.off("SIGTERM", shutdown); }); };
+    service.observabilityServer.on("error", () => { console.error("PCAT-RUNTIME-WORKER-START-FAILED"); process.exitCode = 1; shutdown(); });
+    process.on("SIGINT", shutdown); process.on("SIGTERM", shutdown);
+  } catch (error) {
+    console.error(error instanceof Error && /^PCAT-[A-Z0-9-]+$/.test(error.message) ? error.message : "PCAT-RUNTIME-WORKER-START-FAILED");
+    process.exitCode = 1;
+  }
 }

@@ -9,6 +9,25 @@ import { createMetricsRegistry } from "../../observability/metrics";
 import type { LogWebhookDeliveryRetentionLoopStarter } from "./webhookRetention";
 
 describe("log worker runner", () => {
+  it("stops an already started worker when retention initialization fails", async () => {
+    const stop=vi.fn(async()=>{});
+    const failure=new Error("retention-start-failed");
+    const runtime=createLogWorkerRuntime({db:{query:vi.fn(),transaction:vi.fn()},objectStore:{put:vi.fn(),get:vi.fn()},startLoop:()=>stop,startRetentionLoop:()=>{throw failure;},retention:{enabled:true,keepPerDomain:100}});
+    await expect(Promise.resolve().then(()=>runtime.start())).rejects.toBe(failure);
+    expect(stop).toHaveBeenCalledOnce();
+  });
+
+  it("awaits worker shutdown even when the retention stop throws synchronously",async()=>{
+    let finish!:()=>void;const stopped=new Promise<void>(resolve=>{finish=resolve;});
+    const stop=vi.fn(()=>stopped);const failure=new Error("retention-stop-failed");
+    const runtime=createLogWorkerRuntime({db:{query:vi.fn(),transaction:vi.fn()},objectStore:{put:vi.fn(),get:vi.fn()},startLoop:()=>stop,startRetentionLoop:()=>()=>{throw failure;},retention:{enabled:true,keepPerDomain:100}});
+    const close=await runtime.start();let settled=false;
+    const pending=Promise.resolve().then(()=>close()).finally(()=>{settled=true;});
+    void pending.catch(()=>{});
+    await Promise.resolve();await Promise.resolve();
+    const stoppedEarly=settled;finish();await expect(pending).rejects.toBe(failure);
+    expect(stop).toHaveBeenCalledOnce();expect(stoppedEarly).toBe(false);
+  });
   it("exposes private worker liveness and Prometheus metrics", async () => {
     const metrics = createMetricsRegistry({ serviceName: "wiseeff-log-worker" });
     const server = createLogWorkerObservabilityServer({ metrics });
@@ -205,7 +224,7 @@ describe("log worker runner", () => {
       leaseTtlMs: 30000,
       intervalMs: 250
     });
-    const returnedStop = runtime.start();
+    const returnedStop = await runtime.start();
 
     let shutdownFinished = false;
     const shutdown = Promise.resolve(returnedStop()).then(() => {
@@ -225,7 +244,7 @@ describe("log worker runner", () => {
     expect(shutdownFinished).toBe(true);
   });
 
-  it("keeps retention disabled when the rollback switch is false", () => {
+  it("keeps retention disabled when the rollback switch is false", async () => {
     const startRetentionLoop = vi.fn<LogWebhookDeliveryRetentionLoopStarter>(
       () => async () => undefined
     );
@@ -237,7 +256,7 @@ describe("log worker runner", () => {
       retention: { enabled: false, keepPerDomain: 10_000 }
     });
 
-    runtime.start()();
+    await (await runtime.start())();
 
     expect(startRetentionLoop).not.toHaveBeenCalled();
   });
@@ -285,7 +304,7 @@ describe("log worker runner", () => {
         LOG_ANALYSIS_QUEUE_CONCURRENCY: 2
       }
     });
-    const stop = runtime.start();
+    const stop = await runtime.start();
     let shutdownFinished = false;
     const shutdown = Promise.resolve(stop()).then(() => {
       shutdownFinished = true;
