@@ -2,6 +2,56 @@
 
 > English: [English](README.md)
 
+## 有界旧 SQL 权限效果提案
+
+本 Scratch 单元尚未实现或验证。已约定的测试入口是现有退休根与
+`legacySqlPrivilegeFence.ts`。它撤销独立可达的旧结构 SQL 授权，不产生
+P13 completed checkpoint、runtime generation、启动 pin 或批准。
+
+固定库存为 `public` 下原 `LEGACY_STRUCTURAL_TABLES` 四表，加
+`public.driver_schemas`、`public.driver_schema_versions`、
+`public.dts_property_specs`。可撤范围仅表级 INSERT、UPDATE、DELETE、
+TRUNCATE 与列级 INSERT、UPDATE。SELECT、owner、其他表、schema、函数及
+角色成员关系保持。剩余 REFERENCES/TRIGGER、owner、superuser 或不透明
+可执行写入路径阻止本步骤通过，不构成扩大 REVOKE 或宣布全部退休的理由。
+不使用 CASCADE、不删角色、不增加授权。
+
+根复用原已实际认证且由显式私有配置提供的管理 lease 与 S7 锁，先核每项
+ACL 的实际角色、owner、grantor 权能。Catalog 管理角色名或 0137 INSERT
+权限并不等于 public 表撤权权能；受限连接失败后不得回落管理员连接。
+私有 custody facade 不为本操作导出 client。
+
+候选身份来自真实 runtime-role source；原应用身份仍由已停止源边界分别
+认证。调用者角色名或候选配置不能独自确定 ACL 范围。必须观察实际对象和
+角色 OID、PUBLIC、列授权及 INHERIT/SET 路径。跨数据库或共享使用、身份
+不明、不支持的授权链、恢复材料关联不完整，均在首个 REVOKE 前拒绝；
+不能顺带清理无关业务权限。
+
+原核验过的 PostgreSQL 恢复包仍是恢复权威。另保留效果前的精确库存：对象、
+列、owner OID，原始可空 ACL 与默认值区别，grantor/grantee、grant option
+及成员边。库存绑定同一目标、源、P12 intent/binding、已批准报告、原包及
+capture、host run 和 attempt。它是证据，不是新增的 GRANT 恢复接口；
+新传入 ACL JSON 的摘要不能证明属于原恢复边界。效果后回读必须证明仅
+选定授权发生变化。
+
+REVOKE 前须已耐久保存现有 host pending 边界与专属 0137 P13 step intent。
+每次写与 COMMIT 保留根最后一次 await 后的真实锁、报告、包及数据库检查。
+步骤结果要求实际提交确认及精确回读；未知提交保留 intent，只可精确检查，
+不能盲目重放 REVOKE。不另夺 S7 或递归借用 max-one pool；清理保留原首错。
+
+永久 Red/Green 覆盖真实根调用、直接及列级/PUBLIC/INHERIT/SET 写入、
+SELECT/owner/无关业务权限保留、grantor 权限不足、共享或未知使用、授权
+依赖、intent 落盘失败时零 REVOKE，以及提交或宿主锁丢失后禁止重放。
+owned PG 夹具只证明合成组件，不冒充正式获批的完整 P12/P13 根证据。
+实现前先完成独立 Spec 威胁审查。
+
+唯一写入路径为本 README 双语文件、`legacySqlPrivilegeFence.ts` 及其
+`.test.ts`/`.integration.test.ts`、同目录
+`vitest.legacy-sql-privilege.integration.config.ts`，以及原根
+`legacyWriterRetirement.ts`/`.test.ts`。mandatory 路由与普通套件精确排除
+由父任务负责。本单元不改 migration、权限 manifest、共享 journal 类型、
+报告格式或冻结 baseline。
+
 根 `inspectLegacyApplicationLoginFence` 现已在构造旧密码管理pool之前调用此
 transport，把借入的实际TCP socket绑定两份已核验源端点，保留锁／包／报告／P12
 检查，并先归还lease再做max-one pool的最终P12读取。根 `44d63de87` 的95项调度

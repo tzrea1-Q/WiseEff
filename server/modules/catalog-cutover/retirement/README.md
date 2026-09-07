@@ -2,6 +2,66 @@
 
 > Chinese: [Chinese](README.zh-CN.md)
 
+## Proposed bounded legacy SQL privilege effect
+
+This next Scratch unit is not implemented or validated yet. Its agreed seams
+are the existing retirement root and `legacySqlPrivilegeFence.ts`. It removes
+independently reachable legacy SQL grants; it produces no P13 completed
+checkpoint, runtime generation, startup pin or approval.
+
+The fixed inventory is the four existing `LEGACY_STRUCTURAL_TABLES` in `public`,
+plus `public.driver_schemas`, `public.driver_schema_versions` and
+`public.dts_property_specs`. Only table INSERT, UPDATE, DELETE and TRUNCATE and
+column INSERT and UPDATE are eligible for revocation. SELECT, owners, other
+relations, schemas, functions and role memberships remain unchanged. Remaining
+REFERENCES/TRIGGER, owner, superuser or opaque executable mutation paths block
+completion of this step; they do not authorize broader REVOKE or full retirement.
+No CASCADE, role deletion or new grant is introduced.
+
+The root reuses its already authenticated, explicitly configured management
+lease and S7 lock. It checks actual role/owner/grantor authority before selecting
+ACL changes; a Catalog management role name or 0137 INSERT privilege alone is
+insufficient. A denied restricted connection never triggers administrator
+fallback. The private custody facade never exports a client for this operation.
+
+Candidate identities come from the actual runtime-role source, while original
+source identities remain separately authenticated through the stopped-source
+boundary. Neither caller role names nor candidate configuration alone identify
+the ACL scope. Actual object/role OIDs, PUBLIC, column grants and INHERIT/SET
+paths must be observed. Cross-database/shared use, unidentified principals,
+unsupported grant chains or incomplete recovery association refuse before any
+REVOKE; unrelated business permissions are not collateral cleanup targets.
+
+The original verified PostgreSQL package remains the restoration authority. An
+exact pre-effect inventory retains object/column/owner OIDs, nullable raw ACLs
+versus defaults, grantor/grantee identities, grant options and membership edges.
+It binds the same target, source, P12 intent/binding, approved report, retained
+package/capture, host run and attempt. This inventory is evidence, not a new
+GRANT-based restore interface. A newly supplied ACL JSON digest cannot prove
+that it belongs to the original recovery boundary. Post-effect readback must
+prove that only the selected grants changed.
+
+The existing host pending boundary and a dedicated 0137 P13 step intent must be
+durable before REVOKE. Every write and COMMIT retains the root's last-await lock,
+report, package and live database checks. Actual acknowledgment and exact
+readback are required for the step result. An uncertain commit preserves its
+intent for exact inspection, never blind REVOKE replay. No second S7 lock or
+recursive max-one-pool checkout is allowed; cleanup must retain the first error.
+
+Permanent Red/Green cases will cover real root dispatch; actual direct, column,
+PUBLIC and INHERIT/SET writes; preserved SELECT/owner/unrelated business access;
+insufficient grantor authority; shared/unidentified use and grant dependencies;
+intent persistence failure with zero REVOKE; and commit/host-lock loss without
+replay. Owned PG fixtures remain synthetic components, not approved whole-root
+P12/P13 evidence. Independent Spec threat review precedes implementation.
+
+Exclusive paths: this README pair; `legacySqlPrivilegeFence.ts`, its `.test.ts`
+and `.integration.test.ts`; adjacent
+`vitest.legacy-sql-privilege.integration.config.ts`; and the existing root
+`legacyWriterRetirement.ts`/`.test.ts`. The parent owns mandatory routing and
+generic-suite exclusion. No migration, permission manifest, shared journal type,
+report format or frozen baseline changes belong to this unit.
+
 The root `inspectLegacyApplicationLoginFence` now dispatches this transport before
 constructing any old-secret administrative pool. It binds the borrowed actual TCP
 socket to both already verified source endpoints, retains lock/package/report/P12
