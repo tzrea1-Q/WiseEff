@@ -19,7 +19,7 @@ type ApplicationPackage = {
   sourceArchiveDigest: string; buildContextDigest: string;
   recipe: { originalDockerfile: string; resolvedDockerfile: string; originalDigest: string; resolvedDigest: string; rule: "first-from-immutable-digest-v1" };
   services: { api: ApplicationImage; worker: ApplicationImage; web: ApplicationImage };
-  buildTrust: { tlsPolicy: "verify"; transportFingerprint: string; caDigest: string; baseLoadedImageId: string;
+  buildTrust: { tlsPolicy: "verify"; transportFingerprint: string; caDigest: string; baseLoadedImageId: string; requestedPlatform: string;
     baseManifestDigest: string; baseConfigDigest: string; baseArchiveDigest: string; composeBuildDigest: string; buildLogDigest: string };
 };
 const issuedArtifacts = new WeakMap<ApplicationArtifact, ArtifactRecord>();
@@ -258,8 +258,11 @@ async function buildActual(input: ApplicationBuildInput): Promise<ApplicationArt
     const metadataBytes = await readFile(metadataPath);
     requireFact(sha(metadataBytes) === metadataDigest, "BUILD-RESULT-MISMATCH");
     const metadata = JSON.parse(metadataBytes.toString());
+    const buildDescriptor = metadata["containerimage.descriptor"] as Descriptor;
     requireFact(await fileDigest(metadataPath) === metadataDigest && digestPattern.test(metadata["containerimage.digest"])
-      && digestPattern.test(metadata["containerimage.config.digest"]), "BUILD-RESULT-UNAVAILABLE");
+      && buildDescriptor?.digest === metadata["containerimage.digest"] && [indexType, imageType].includes(buildDescriptor.mediaType)
+      && Number.isSafeInteger(buildDescriptor.size) && buildDescriptor.size > 0
+      && (!Object.hasOwn(metadata, "containerimage.config.digest") || digestPattern.test(metadata["containerimage.config.digest"])), "BUILD-RESULT-UNAVAILABLE");
     // BuildKit's own result chooses the immutable object. The mutable output
     // tag is only a later drift check, never the origin of build identity.
     const before = JSON.parse(docker.command(["image", "inspect", metadata["containerimage.digest"]]).toString())[0];
@@ -267,10 +270,11 @@ async function buildActual(input: ApplicationBuildInput): Promise<ApplicationArt
     await save(before.Id, "image.tar");
     const current = JSON.parse(docker.command(["image", "inspect", `${imageName}:candidate`]).toString())[0];
     const loadedPlatform = [before?.Os, before?.Architecture, before?.Variant].filter(Boolean).join("/");
-    requireFact(before?.Id === current?.Id && loadedPlatform === platform, "LOADED-IMAGE-CHANGED");
+    requireFact(before?.Id === current?.Id && before?.Os === baseBefore.Os && before?.Architecture === baseBefore.Architecture
+      && (!before?.Variant || !baseBefore.Variant || before.Variant === baseBefore.Variant), "LOADED-IMAGE-CHANGED");
     const archive = path.join(directory, "image.tar");
-    const image = await inspectApplicationOciArchive(archive, { loadedImageId: before.Id, platform: loadedPlatform, gitSha: selection.gitSha, gitTree });
-    requireFact(image.configDigest === metadata["containerimage.config.digest"], "BUILD-RESULT-MISMATCH");
+    const image = await inspectArchive(archive, { loadedImageId: before.Id, platform: loadedPlatform, gitSha: selection.gitSha, gitTree }, true, buildDescriptor);
+    requireFact(!Object.hasOwn(metadata, "containerimage.config.digest") || image.configDigest === metadata["containerimage.config.digest"], "BUILD-RESULT-MISMATCH");
     requireFact(await fileDigest(path.join(directory, "build-ca.pem")) === `sha256:${ca}`, "BUILD-TRUST-CHANGED");
     // Do not publish an offline oracle for proxy credentials. The public build
     // model binds presence only; private resolved Compose remains in this dir.
@@ -284,7 +288,7 @@ async function buildActual(input: ApplicationBuildInput): Promise<ApplicationArt
       version: "wiseeff-application-package-v1", gitSha: selection.gitSha, gitTree,
       sourceArchiveDigest: sourceDigest, buildContextDigest: sha(resolved.archive), recipe: resolved.recipe,
       services: { api: image, worker: image, web: image },
-      buildTrust: { tlsPolicy: "verify", transportFingerprint: `sha256:${transport}`, caDigest: `sha256:${ca}`, baseLoadedImageId: baseBefore.Id,
+      buildTrust: { tlsPolicy: "verify", transportFingerprint: `sha256:${transport}`, caDigest: `sha256:${ca}`, baseLoadedImageId: baseBefore.Id, requestedPlatform: platform,
         baseManifestDigest: base.manifestDigest, baseConfigDigest: base.configDigest, baseArchiveDigest: base.archiveDigest, composeBuildDigest: digestOf(publicBuild), buildLogDigest: await fileDigest(path.join(directory, "build.log")) },
     };
     for (const filename of [archive, sourceArchive, path.join(directory, "build.log"), path.join(directory, "build-ca.pem")]) {
@@ -364,7 +368,7 @@ const layerTypes = new Set(["application/vnd.oci.image.layer.v1.tar", "applicati
 export async function inspectApplicationOciArchive(filename: string, input: ApplicationImageExpectation): Promise<ApplicationImage> {
   return inspectArchive(filename, input, true);
 }
-async function inspectArchive(filename: string, input: ApplicationImageExpectation, requireApplicationLabels: boolean): Promise<ApplicationImage> {
+async function inspectArchive(filename: string, input: ApplicationImageExpectation, requireApplicationLabels: boolean, buildDescriptor?: Descriptor): Promise<ApplicationImage> {
   const expected = structuredClone(input);
   requireFact(digestPattern.test(expected.loadedImageId) && /^[a-f0-9]{40}$/.test(expected.gitSha) && /^[a-f0-9]{40}$/.test(expected.gitTree)
     && /^linux\/(amd64|arm64)(\/v[0-9]+)?$/.test(expected.platform), "EXPECTED-IDENTITY-INVALID");
@@ -417,10 +421,16 @@ async function inspectArchive(filename: string, input: ApplicationImageExpectati
       const value = JSON.parse(bytes.toString("utf8"));
       requireFact(value && typeof value === "object" && !Array.isArray(value), "OCI-JSON-INVALID"); return value;
     };
+    let buildDescriptorMatched = false;
     const blob = (value: Descriptor) => {
       requireFact(value && digestPattern.test(value.digest) && Number.isSafeInteger(value.size) && value.size >= 0 && !Object.hasOwn(value, "urls"), "OCI-DESCRIPTOR-INVALID");
       const name = `blobs/sha256/${value.digest.slice(7)}`, entry = entries.get(name);
-      requireFact(entry && entry.size === value.size && entry.digest === value.digest, "OCI-BLOB-MISMATCH"); return name;
+      requireFact(entry && entry.size === value.size && entry.digest === value.digest, "OCI-BLOB-MISMATCH");
+      if (buildDescriptor && value.digest === buildDescriptor.digest) {
+        requireFact(value.mediaType === buildDescriptor.mediaType && value.size === buildDescriptor.size, "BUILD-RESULT-MISMATCH");
+        buildDescriptorMatched = true;
+      }
+      return name;
     };
     requireFact((await json("oci-layout")).imageLayoutVersion === "1.0.0", "OCI-LAYOUT-UNSUPPORTED");
     const candidates: { descriptor: Descriptor; body: any; ancestors: string[] }[] = [];
@@ -451,6 +461,7 @@ async function inspectArchive(filename: string, input: ApplicationImageExpectati
     };
     await visit(await json("index.json"), 0, []);
     requireFact(candidates.length === 1, "OCI-RUNNABLE-AMBIGUOUS-OR-MISSING");
+    requireFact(!buildDescriptor || buildDescriptorMatched, "BUILD-RESULT-MISMATCH");
     const { descriptor, body, ancestors } = candidates[0];
     // The containerd store may identify the loaded image by its index. Classic
     // stores identify configs. Authenticate the actual ID in this exact graph;
