@@ -14,6 +14,8 @@ const suites: Record<string, { image: string; files: readonly string[]; config: 
   bindings: { image: "pgvector/pgvector:pg16", files: bindingFiles, config: "vitest.upgrade-cutover.config.ts" },
   "bindings-pg16": { image: "postgres:16-alpine", files: bindingFiles, config: "vitest.upgrade-cutover.config.ts" },
   "reader-pg16": { image: "postgres:16-alpine", files: ["server/modules/catalog-kernel/security/catalogReader.integration.test.ts"], config: "vitest.upgrade-cutover.config.ts" },
+  "report-pg16": { image: "postgres:16-alpine", files: ["server/modules/release-verification/startup/reportConnection.integration.test.ts"], config: "vitest.upgrade-cutover.config.ts" },
+  "activation-pg16": { image: "postgres:16-alpine", files: ["server/modules/catalog-cutover/activation/activation.integration.test.ts"], config: "vitest.upgrade-cutover.config.ts" },
   "scripts-pgvector": { image: "pgvector/pgvector:pg16", files: [], config: "vitest.scripts.config.ts" },
   "server-pgvector": { image: "pgvector/pgvector:pg16", files: [], config: "vitest.server.config.ts" },
   "schema-doc": { image: "pgvector/pgvector:pg16", files: [], config: "", command: "schema-doc" },

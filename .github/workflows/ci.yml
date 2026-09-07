@@ -231,7 +231,7 @@ jobs:
         run: npm run logs:eval
 
   upgrade-components:
-    name: Owned Catalog reader PostgreSQL
+    name: Owned Catalog and report reader PostgreSQL
     needs: detect
     if: needs.detect.outputs.run_l1 == 'true'
     runs-on: ubuntu-latest
@@ -258,6 +258,8 @@ jobs:
           daemon_id="$(docker info --format '{{.ID}}')"
           npx tsx scripts/run-upgrade-component-tests.ts \
             --expected-daemon-id "$daemon_id" --suite reader-pg16 --github-hosted
+          npx tsx scripts/run-upgrade-component-tests.ts \
+            --expected-daemon-id "$daemon_id" --suite report-pg16 --github-hosted
 
   acceptance-quality:
     name: Acceptance quality
@@ -685,6 +687,6 @@ jobs:
               print("detect must report success")
               sys.exit(1)
           if "${{ needs.detect.outputs.run_l1 }}" == "true" and results["upgrade-components"] != "success":
-              print("owned reader PostgreSQL evidence is required for L1")
+              print("owned Catalog and report reader PostgreSQL evidence is required for L1")
               sys.exit(1)
           PY

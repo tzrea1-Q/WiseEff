@@ -18,6 +18,7 @@ export default defineConfig({
       "server/config/env.test.ts",
       "server/modules/release-verification/startup/verifyStartup.test.ts",
       "server/modules/release-verification/startup/publishedStartup.test.ts",
+      "server/modules/release-verification/startup/reportConnection.test.ts",
     ],
     testTimeout: 30000,
     hookTimeout: 30000,
