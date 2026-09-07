@@ -5,6 +5,25 @@ import * as componentRunner from "./run-upgrade-component-tests";
 
 const workflow = readFileSync(new URL("../.github/workflows/ci.yml", import.meta.url), "utf8");
 
+it("requires actual legacy SQL privilege effects in the owned PG16 job", () => {
+  const file = "server/modules/catalog-cutover/retirement/legacySqlPrivilegeFence.integration.test.ts";
+  const configPath = "server/modules/catalog-cutover/retirement/vitest.legacy-sql-privilege.integration.config.ts";
+  expect(componentRunner.componentTestCommands("legacy-sql-privileges-pg16")[0].slice(1)).toEqual([
+    "run", "--config", configPath, file,
+  ]);
+  const config = readFileSync(new URL(`../${configPath}`, import.meta.url), "utf8");
+  expect(config).toContain("assertOwnedUpgradeTestTarget();");
+  expect(config).toContain("passWithNoTests: false");
+  expect(config).toContain(`"${file}"`);
+  expect(config).toContain("fileParallelism: false");
+  expect(config).not.toContain("testTimeout:");
+  const server = readFileSync(new URL("../vitest.server.config.ts", import.meta.url), "utf8");
+  expect(server.slice(server.indexOf("exclude:"), server.indexOf("setupFiles:"))).toContain(`"${file}"`);
+  const job = workflow.split("\n  upgrade-components:\n")[1]?.split("\n  acceptance-quality:")[0];
+  expect(job).toContain("--suite legacy-sql-privileges-pg16 --github-hosted");
+  expect(job).not.toContain("continue-on-error: true");
+});
+
 it("requires actual runtime role source LOGIN proofs in its owned PG16 lane", () => {
   const file = "ops/self-hosted/scripts/parameter-catalog-upgrade/runtimeRoleSource.integration.test.ts";
   expect(componentRunner.componentTestCommands("runtime-role-source-pg16")[0].slice(1)).toEqual([
