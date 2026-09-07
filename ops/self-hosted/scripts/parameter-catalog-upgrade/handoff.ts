@@ -172,7 +172,9 @@ const observe = async (input: HandoffInputs, deps: HandoffObserver, applicationR
     if (volume.Name !== store.volumeName || volume.Labels?.["com.docker.compose.project"] !== input.source.project) fail("source-volume-owner-mismatch");
     return { service: store.service, id: info.Id as string, imageId: info.Image as string, mount: mounts[0], volume };
   });
-  const identities = await deps.observeDataIdentity(input);
+  // Freeze the actual port result before file or lock awaits. A producer may
+  // reuse its own object; later mutation cannot erase an observed drift.
+  const identities = structuredClone(await deps.observeDataIdentity(input));
   if (Object.keys(identities).sort().join(",") !== "objectStore,postgres,redis" || Object.values(identities).some(value => typeof value !== "string" || !value)) fail("data-identity-unavailable");
   return { daemonId: deps.docker.daemonId, hostFingerprint: bytesDigest(Buffer.from(`${os.hostname()}\0${os.platform()}\0${os.arch()}`)), sourceRoot, candidateRoot, composeFile, applications, stores, identities,
     privateConfigDigest: privateConfigurations.binding.main.digest, privateConfigurations: privateConfigurations.binding,
