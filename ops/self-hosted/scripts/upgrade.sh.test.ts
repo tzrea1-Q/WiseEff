@@ -3932,8 +3932,9 @@ describe("S11-APL catalog apply on real PostgreSQL", { timeout: 180_000 }, () =>
   }, 180_000);
 
   afterAll(async () => {
-    await freshDb?.close().catch(() => undefined);
-    await populatedDb?.close().catch(() => undefined);
+    const results = await Promise.allSettled([freshDb?.close(), populatedDb?.close()]);
+    const failure = results.find(result => result.status === "rejected");
+    if (failure?.status === "rejected") throw failure.reason;
   });
 
   it("T4 fresh empty inventory yields exact zero-mode apply then P11a", async () => {
