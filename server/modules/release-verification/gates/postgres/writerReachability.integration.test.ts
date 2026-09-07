@@ -137,3 +137,52 @@ it.each(["INSERT", "DELETE", "TRUNCATE", "TRIGGER", "REFERENCES"])("detects effe
     await expectBlocked();
   } finally { await admin.query(`revoke ${permission} on public.driver_schemas from public`); }
 });
+
+it("blocks a public definer delegating through a private executable definer", async () => {
+  const inner = `v13_inner_${nonce}`, outer = `v13_outer_${nonce}`;
+  await admin.query(`create function public.${inner}() returns void language plpgsql security definer as $$
+    begin execute format('update %I.%I set schema_namespace=%L', 'public', 'driver_schemas', 'delegated'); end $$;
+    revoke all on function public.${inner}() from public;
+    grant execute on function public.${inner}() to ${capabilityName};
+    create function public.${outer}() returns void language plpgsql security definer as $$
+    begin perform public.${inner}(); end $$;
+    alter function public.${outer}() owner to ${capabilityName}`);
+  try {
+    expect((await writer.query(`select pg_catalog.has_function_privilege(current_user,'public.${inner}()','EXECUTE') as allowed`)).rows)
+      .toEqual([{ allowed: false }]);
+    await writer.query(`select public.${outer}()`);
+    expect((await admin.query("select schema_namespace from public.driver_schemas where id='v13-driver'")).rows)
+      .toEqual([{ schema_namespace: "delegated" }]);
+    await expectBlocked();
+  } finally { await admin.query(`drop function public.${outer}(); drop function public.${inner}()`); }
+});
+
+it("allows a restricted-owner read-only definer without inferring mutation from SECURITY DEFINER alone", async () => {
+  const fn = `v13_readonly_${nonce}`;
+  await admin.query(`grant select(schema_namespace) on public.driver_schemas to ${capabilityName};
+    create function public.${fn}() returns text language sql security definer as $$
+      select schema_namespace from public.driver_schemas limit 1 $$;
+    alter function public.${fn}() owner to ${capabilityName}`);
+  try {
+    expect((await writer.query(`select public.${fn}() as value`)).rows[0].value).toEqual(expect.any(String));
+    expect(await runGate()).toMatchObject({ status: "passed" });
+  } finally {
+    await admin.query(`drop function public.${fn}(); revoke select(schema_namespace) on public.driver_schemas from ${capabilityName}`);
+  }
+});
+
+it("fails closed when a scoped relation is missing in the pre-retirement observation window", async () => {
+  await admin.query("alter table public.driver_schema_versions rename to v13_temporarily_absent");
+  try { await expectBlocked(); }
+  finally { await admin.query("alter table public.v13_temporarily_absent rename to driver_schema_versions"); }
+});
+
+it("returns a typed blocking result when the actual read-only verifier gets 42501", async () => {
+  expect((await admin.query(`select pg_catalog.has_table_privilege($1,'pg_catalog.pg_class','SELECT') as allowed`, [observerName])).rows)
+    .toEqual([{ allowed: true }]);
+  await admin.query("revoke select on pg_catalog.pg_class from public");
+  try {
+    await expect(verifier.query("select oid from pg_catalog.pg_class limit 1")).rejects.toMatchObject({ code: "42501" });
+    await expectBlocked();
+  } finally { await admin.query("grant select on pg_catalog.pg_class to public"); }
+});
