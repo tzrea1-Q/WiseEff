@@ -16,7 +16,10 @@ local scripts timeout or the two skipped acceptance jobs. Its checkout remains
 | Durable Redis / lifecycle Scratch | Actual BullMQ connection, error events, draining and recovery; independent review | Queue module contract and this plan/evidence pair |
 | P12 existing-storage / activation Scratch | Existing 0137 storage, real approval and PG effects, explicit unknown outcome | Activation bilingual module contract |
 | Host activation journal / journal Scratch | Durable intent, full-record CAS, scope and independent readback | Journal contract and operator pair |
-| Startup producer, roots, runner routing / parent | Independent current facts and real restricted production processes | Existing operator/evidence pair |
+| Startup producer, roots and integration / parent | Independent current facts and real restricted production processes | Existing operator/evidence pair |
+| P13 stopped-source resolver / Raman | Actual stopped-container hosts/resolver files, original endpoint and two-PG counterexample | Retirement/source module contract pair |
+| P13 endpoint resource supervisor and owned routing / Fermat | Parent-issued private receipt, durable planned/observed IDs, child kill and exact cleanup | Runner contract and mandatory CI route |
+| P13 integration Spec / Lagrange | Independent fixed-SHA cross-layer review, no implementation edits | Review evidence in this plan/evidence pair |
 
 API request/background-work drain at `b404b615b` has independent Standards and
 Spec PASS for that exact increment. Its focused execution is 61/61, and build
@@ -67,6 +70,26 @@ metadata drift under the real boundary. Existing two authorized contracts remain
 in force. No new schema/grants, S6/Policy decision, production operation or release
 authorization is included. A/B remain internal work; C retains separate external
 requirements. Parent integrates changes serially and does not self-certify review.
+
+The P13 source Scratch `64c613980` is not integrated. Its 13 real PG/endpoint
+cases pass, but independent review still found two P2 boundaries: inspecting only
+Docker resolver configuration misses effective `/etc/hosts` content; child-owned
+endpoint containers can outlive a killed test process. The next executable cases
+are an original hostname resolving to the second real PG, and a killed child
+followed by parent-owned resource readback/cleanup. The parent supervisor owns all
+resource creation and persistent receipts; the source consumer may only observe.
+Unknown create/commit/cleanup outcomes retain evidence and fail. Neither these
+endpoint probes nor login fencing alone is full P13 retirement or old app startup.
+
+The source-lock scheduling and strict owned database-documentation increments
+received independent Standards/Spec review. Complete scripts passed on `734b10dae`
+with 1722 collected/1697 passed/0 failed/25 skipped, including all four frozen
+source-lock cases. Owned strict docs passed on `6be8e08ef` with real schema
+comparison and no skip. The existing evidence pair preserves command identities,
+hashes and earlier failures. A verified-TLS build of the actual fixed old source
+Dockerfile now supplies a local source image; successful build is not startup,
+enterprise-network trust or controller evidence. Documentation update gate remains
+required after final integration; this plan is not complete.
 
 ### Attributed CI and existing-schema activation increment
 

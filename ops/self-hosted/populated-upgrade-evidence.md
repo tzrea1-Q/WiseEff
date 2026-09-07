@@ -25,6 +25,26 @@ This is not Hosted evidence for the following continuation.
 | Clean `801e0a8b31c3c7f00d861c294b0c511889a8da4f`, tree `bf0fe5ec209886b34d957faf6afc7d67f45ce0cf` | Owned `log-redis`: 9 collected/passed, 0 skipped, 2.75s, exit 0, cleanup verified. Prior assertion Red: 8 passed/1 failed, exit 1; only boolean failure output | Green `182278a3c613f5f1d2b08f572cfe3e65e2304382c9474a024a7baaa7ae27013e`; Red `62c9727c18b26a301ceb5f12f152bf284f25d0b3823d3422e8f8c451bc626e2d` |
 | Clean `7d8d9567255608948d2ad8b97c68ac3839b1d688` (only operator/evidence Markdown differs from `801e0a8b3`) | Owned `server-pgvector`: 4237 collected, 4226 passed, 0 failed, 11 skipped; 179.56s, exit 0, cleanup verified. The eleven opt-in runtime bootstrap cases remain skipped | `4c5e70c0b4bdebc90d076189cc5b7954da91df365ab37471598bfc37f16fa832` |
 
+Subsequent complete scripts execution on clean `734b10dae3f6901f46108a3b00ea775813a9ba8d`
+(tree `09ce523108dcac46268204fa56355feafa235f8e`) ran the unchanged four source-lock
+cases first: 4 passed, 45.61s. The ordinary scripts phase then collected 1718,
+passed 1693, failed 0 and skipped 25, 102.85s. Combined on this SHA only:
+1722 collected/1697 passed/0 failed/25 skipped, exit 0, owned cleanup verified.
+Log `upg824-full-scripts-734.log` SHA256:
+`989d50e86d4b1a0da6a055e5f91cf1d476465d738b2c19cca7872b78eca980b7`.
+The serial route changes scheduling, not source-lock bytes, trusted base or the
+60000ms limit; earlier timeout records remain failures on their original trees.
+
+Clean `6be8e08ef9d3d6b1eb50ebafd16e1ef3c5d2396c`, tree
+`0efb9c071ad571750798024a3a5d1558ca5fd6cb`, ran owned `docs-check`, executing
+`npm run docs:check -- --require-database` against its newly owned pgvector cluster.
+Documentation governance and actual generated database schema comparison passed,
+exit 0, cleanup verified; no database skip occurred and the tracked artifact did
+not change. Log `upg824-owned-docs-6be.log` SHA256:
+`6587bcd237a80c084eef04ab08a6f0a51c860a7566e63238a675cbb518a1dd61`.
+Strict mode fails on a missing dedicated URL or unavailable vector extension;
+ordinary developer mode retains its explicitly reported skip behavior.
+
 These runs use Node 22.22.3/Vitest 4.1.5 on the independently confirmed development
 Docker Desktop, linux/arm64 images: Redis `sha256:ff02b58f971e7d7d156a1267e283fcbbeee91773b6aa36c49dac28ecfe28eadf`,
 PG16 Alpine `sha256:16bc17c64a573ef34162af9298258d1aec548232985b33ed7b1eac33ba35c229`,
@@ -45,9 +65,23 @@ P13, complete producer/report chain, root controller success, full consumer orac
 business recovery/queue/browser/growth acceptance remain internal work. A/B are not
 complete. Real backup, enterprise-network trust, Policy #815 and production approval
 remain separate C dependencies; no production operation occurred. Current continuation
-Hosted and final integrated review are not yet recorded as passed. Documentation
-governance alone passed at `7d8d95672`; the separate generated PostgreSQL schema
-check has not yet been recorded for this continuation.
+Hosted and final integrated review are not yet recorded as passed.
+
+The real old-source Dockerfile was built from immutable source `82344044b`, tree
+`6dd92c36c4eb41bcaaba5a7a756befb9239d9120`, using the existing build-network library
+with TLS verification. Source archive SHA256 is
+`08f183a7efd41c947dc7c42b35c65e06434a4e44e3d6749c3aa06672b21dec9b`;
+transport fingerprint is `0d8146b81c294106f716b9aca8f616030a470eceb917803c45b3d565621f1f75`.
+The resulting local linux/arm64 image ID is
+`sha256:a7c1fd128b60ea545d483b285ab88d349de26a491d1e6a826a413a075cd4737d`.
+This is a newly built synthetic source artifact, not the user's old production
+image or a registry-published manifest. The build used six cached steps; it does
+not prove fresh downloads of every dependency or enterprise-network trust.
+Build exited 0; log `upg824-old-source-image-build-attempt2.log` SHA256 is
+`9696f468d718952ade63b8a4e2b47ae2ee0a7f4ed9442e48d9e07b4007f7db8b`.
+The first attempt stopped before Docker build on an unset optional registry shell
+variable; the corrected invocation preserves the existing default registry.
+No old API/worker was started by this build, and no controller upgrade was run.
 
 ## Authorized contract implementation checkpoint, 2026-09-07
 

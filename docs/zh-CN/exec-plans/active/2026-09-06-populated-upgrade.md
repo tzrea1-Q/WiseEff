@@ -16,7 +16,10 @@
 | Durable Redis／生命周期 Scratch | 真实 BullMQ 连接、错误事件、排空与恢复，独立审查 | 队列模块合同及现有计划／证据对 |
 | 既有存储 P12／activation Scratch | 0137、真实批准及 PG 副作用、明确未知结果 | activation 模块双语合同 |
 | 宿主激活 journal／journal Scratch | 持久 intent、完整记录 CAS、范围与独立读回 | journal 合同及操作手册对 |
-| startup producer、组合根、runner 路由／父协调者 | 独立当前事实和真实受限 production 进程 | 现有操作／证据文档对 |
+| startup producer、组合根及集成／父协调者 | 独立当前事实和真实受限 production 进程 | 现有操作／证据文档对 |
+| P13 停止源解析／Raman | 停止容器真实 hosts／resolver 文件、原 endpoint 及双 PG 反例 | retirement／source 模块合同双文件 |
+| P13 endpoint 资源监管及 owned 路由／Fermat | 父发行私有 receipt、持久计划／实际 ID、强杀 child 与精确清理 | runner 合同及必需 CI 路由 |
+| P13 集成 Spec／Lagrange | 固定 SHA 的独立跨层审查，不编辑实现 | 现有计划／证据双文件审查记录 |
 
 API 请求／后台活动排空增量 `b404b615b` 已取得独立 Standards 和 Spec PASS；
 该固定代码 focused 61/61，build 通过。真实 HTTP 客户端断开反例在修复前失败：
@@ -55,6 +58,20 @@ Controller 恢复点／停写证据 `920b3f1d9` 已获独立 Standards／Spec PA
 启动中信号、不可信激活事实、SQL／文件提交不确定、跨 run 重放及真实边界内元数据漂移。
 两项已授权合同继续有效，不含新 schema／grant、S6／Policy 决策、生产操作或发布授权。
 A/B 仍由内部实现承担，C 外部条件单列。父协调者串行集成，不以自审替代独立审查。
+
+P13 源 Scratch `64c613980` 尚未集成。其13例真实 PG／endpoint 通过，但独立审查
+仍指出两个P2：仅检查Docker解析配置不能证明实际 `/etc/hosts` 内容；child拥有的
+endpoint容器可能在测试被强杀后遗留。下一项实际反例是原hostname解析到第二个真实
+PG，以及child强杀后由父核对并清理自有资源。父supervisor拥有全部资源创建和持久
+receipt；source消费者只观察。创建／提交／清理结果未知时保留证据并失败。这些endpoint
+probe或单独登录fence均不代表完整P13退休，也不是旧应用启动。
+
+source-lock调度及严格owned数据库文档增量已经独立Standards／Spec审查。
+`734b10dae` 完整scripts收集1722／通过1697／失败0／跳过25，包括全部四个冻结
+source-lock用例；`6be8e08ef` owned严格docs实际schema比对通过且未跳过。
+既有证据双文件保留命令身份、hash及早前失败。已用验证TLS路径从固定旧源真实
+Dockerfile构建本地源镜像；构建成功不代表启动、企业网络信任或controller证据。
+最终集成后仍需文档更新门禁，本计划尚未完成。
 
 ### CI 归因与既有 schema 激活增量
 

@@ -23,6 +23,23 @@ job 跳过。这不是下列续工代码的 Hosted 证据。
 | clean `801e0a8b31c3c7f00d861c294b0c511889a8da4f`，tree `bf0fe5ec209886b34d957faf6afc7d67f45ce0cf` | owned `log-redis`：收集／通过9，跳过0，2.75秒，退出0，清理已核验。此前断言Red通过8／失败1、退出1，只输出布尔失败 | Green `182278a3c613f5f1d2b08f572cfe3e65e2304382c9474a024a7baaa7ae27013e`；Red `62c9727c18b26a301ceb5f12f152bf284f25d0b3823d3422e8f8c451bc626e2d` |
 | clean `7d8d9567255608948d2ad8b97c68ac3839b1d688`（与 `801e0a8b3` 仅操作／证据Markdown不同） | owned `server-pgvector`：收集4237、通过4226、失败0、跳过11；179.56秒，退出0，清理已核验。11例显式启用的runtime bootstrap仍跳过 | `4c5e70c0b4bdebc90d076189cc5b7954da91df365ab37471598bfc37f16fa832` |
 
+随后 clean `734b10dae3f6901f46108a3b00ea775813a9ba8d`（tree
+`09ce523108dcac46268204fa56355feafa235f8e`）完整 scripts 执行先运行未改动的四个
+source-lock 用例：4通过，45.61秒；再运行普通 scripts：收集1718、通过1693、
+失败0、跳过25，102.85秒。仅在该 SHA 内合计收集1722／通过1697／失败0／跳过25，
+退出0，自有资源清理已核验。日志 `upg824-full-scripts-734.log` SHA256：
+`989d50e86d4b1a0da6a055e5f91cf1d476465d738b2c19cca7872b78eca980b7`。
+串行路由改变调度，不修改 source-lock 字节、trusted base 或60000ms上限；
+先前超时仍保留为对应原 tree 的失败。
+
+Clean `6be8e08ef9d3d6b1eb50ebafd16e1ef3c5d2396c`，tree
+`0efb9c071ad571750798024a3a5d1558ca5fd6cb`，执行 owned `docs-check`，在新建的
+自有 pgvector 集群实际运行 `npm run docs:check -- --require-database`。
+文档治理和真实数据库生成 schema 比对通过，退出0，清理已核验；没有数据库跳过，
+跟踪产物未变化。日志 `upg824-owned-docs-6be.log` SHA256：
+`6587bcd237a80c084eef04ab08a6f0a51c860a7566e63238a675cbb518a1dd61`。
+严格模式在缺少专用 URL 或 vector 扩展不可用时失败；普通开发模式仍明确报告原跳过行为。
+
 以上环境为 Node22.22.3／Vitest4.1.5、独立核验的开发 Docker Desktop。
 linux/arm64 image ID：Redis `sha256:ff02b58f971e7d7d156a1267e283fcbbeee91773b6aa36c49dac28ecfe28eadf`；
 PG16 Alpine `sha256:16bc17c64a573ef34162af9298258d1aec548232985b33ed7b1eac33ba35c229`；
@@ -39,7 +56,19 @@ Durable源 `2381aaff1`、父API `b404b615b`、activation journal `e0ce5aa42`、C
 producer／报告链、根controller成功、全量消费者oracle、业务恢复／队列／浏览器／增长
 验收仍属内部工作，A／B未完成。真实备份、企业网络信任、Policy #815、生产批准是独立
 C依赖，未执行生产操作。续工候选Hosted和最终集成审查尚未记为通过。
-`7d8d95672` 的文档治理检查通过；单独的PostgreSQL生成schema检查尚无本轮通过记录。
+
+已经用固定旧源 `82344044b` 的真实 Dockerfile 构建镜像，source tree 为
+`6dd92c36c4eb41bcaaba5a7a756befb9239d9120`，复用既有 build-network 库并验证 TLS。
+源归档 SHA256：`08f183a7efd41c947dc7c42b35c65e06434a4e44e3d6749c3aa06672b21dec9b`；
+传输指纹：`0d8146b81c294106f716b9aca8f616030a470eceb917803c45b3d565621f1f75`。
+所得本地 linux/arm64 image ID：
+`sha256:a7c1fd128b60ea545d483b285ab88d349de26a491d1e6a826a413a075cd4737d`。
+这是新构建的合成源环境 artifact，不是用户旧生产镜像，也不是已发布 registry manifest。
+构建使用六个缓存步骤，不证明所有依赖重新下载或企业网络信任。构建退出0；日志
+`upg824-old-source-image-build-attempt2.log` SHA256：
+`9696f468d718952ade63b8a4e2b47ae2ee0a7f4ed9442e48d9e07b4007f7db8b`。
+首次尝试在 Docker build 前因可选 registry shell 变量未定义停止；修正调用保留既有默认
+registry。本次构建没有启动旧 API／worker，也没有执行 controller 升级。
 
 ## 已授权契约实现检查点，2026-09-07
 
