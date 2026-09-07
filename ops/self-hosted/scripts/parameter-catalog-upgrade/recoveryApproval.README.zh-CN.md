@@ -2,6 +2,10 @@
 
 英文：[English](recoveryApproval.README.md)
 
+`tsconfig.node.json` 显式包含本 producer、`deploymentAuthority.ts` 和
+`reportApprovalTarget.ts`；即使最终终端 controller 尚未导入，普通构建也必须检查
+这些管理模块的类型。
+
 `recordRecoveryExecutionApproval` 是 controller 侧批准 producer，连接既有私有
 deployment authority、typed capture journal、Recovery Point／包验证器及宿主操作锁。
 它不恢复存储、不重启进程、不恢复队列、不开放代理，也不增加发布 purpose 或数据库

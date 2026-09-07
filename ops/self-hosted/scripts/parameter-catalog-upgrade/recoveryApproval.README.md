@@ -2,6 +2,10 @@
 
 Chinese: [Chinese](recoveryApproval.README.zh-CN.md)
 
+`tsconfig.node.json` explicitly includes this producer, `deploymentAuthority.ts`
+and `reportApprovalTarget.ts`; the ordinary build must typecheck these management
+modules even before the final terminal controller imports them.
+
 `recordRecoveryExecutionApproval` is a controller-side approval producer. It
 joins the existing private deployment authority, typed capture journal, Recovery
 Point/package verifier and host operation lock. It does not restore any store,
