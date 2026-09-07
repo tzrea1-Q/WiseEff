@@ -66,11 +66,18 @@ admin mapping. Parent remains sole writer of journal, handoff and controller;
 Scratch cannot add those seams independently. Documentation impact is this plan
 pair, recovery execution contract pair and the existing operator/evidence pairs.
 
-Parent owns the database foundation and composition roots. Activation Scratch owns
-additive 0141 and `catalog-cutover/activation/`: management-only mapping epochs
-and P12 CAS, separate from P5 and actual consumer routing. No runtime grants or
-historical migration edits. Explicit preparation may persist an epoch; inspect
-remains read-only. Reports cannot supply their own current-state facts.
+Parent owns the database foundation and composition roots. Activation Scratch
+`codex/pr824-p12-contract-scratch` preserves additive 0141 and
+`catalog-cutover/activation/` at `9b7af682c`: management-only mapping epochs and
+P12 CAS, separate from P5 and actual consumer routing. Full server integration
+showed that these three tables require a separate S2/S2-RBAC/S2-PGH decision;
+the existing S7 ownership does not authorize changing frozen schema contracts.
+Parent appended explicit reverts `68304f9bf` and `d4640da40` to separate this
+unsealed prototype from the two authorized contract changes. No history was
+reset and no historical migration was changed. Its independent acceptance lane
+is absent with its implementation, not skipped to claim acceptance. After a
+bounded schema decision, restore the prototype and its lane together, verify the
+historical and current schema separately, and repeat affected acceptance.
 
 The parent will add an opt-in per-checkout observation hook so the management
 owner's target challenge covers the actual session used by Kernel. A before/after

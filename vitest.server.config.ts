@@ -25,7 +25,6 @@ export default defineConfig({
     // cannot isolate these mutations from the shared server suite.
     exclude: ["node_modules/**", ...siblingWorktreeExclude,
       "server/modules/catalog-kernel/security/catalogReader.integration.test.ts",
-      "server/modules/catalog-cutover/activation/activation.integration.test.ts",
       "server/modules/release-verification/startup/reportConnection.integration.test.ts"],
     setupFiles: ["./server/testing/vitest.setup.ts"],
     // Pre-builds the PG template database so no suite pays the build in its test budget.

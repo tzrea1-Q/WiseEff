@@ -89,10 +89,14 @@ host lock；这不证明完整停写 producer，也不授予恢复。Recovery Sc
 不新增产品 role 或默认 admin 映射。journal、handoff、controller 仍由父单写。
 文档影响为本计划伴随对、恢复执行合同伴随对及既有运维／证据伴随对。
 
-父协调者拥有数据库基础层及组合根。activation Scratch 拥有追加 0141 和
-`catalog-cutover/activation/`：仅管理阶段的 mapping epoch 与 P12 CAS，
-与 P5 和实际消费路由分开。零 runtime grant，不改历史迁移。显式准备可持久化
-epoch，inspect 保持只读；报告不能提供自身的当前状态事实。
+父协调者拥有数据库基础层及组合根。`codex/pr824-p12-contract-scratch` 在
+`9b7af682c` 保留追加 0141 和 `catalog-cutover/activation/`：仅管理阶段的
+mapping epoch 与 P12 CAS，与 P5 和实际消费路由分开。完整 server 集成证明
+新增三表需要另行 S2／S2-RBAC／S2-PGH 决策；S7 现有归属不授权更改冻结 schema。
+父追加显式 revert `68304f9bf`、`d4640da40`，将未封存原型从两项已获批变更
+分离；未 reset 历史、未更改历史迁移。原型与其独占验收通道一并分离，不是
+跳过已有实现测试来声称通过。限定 schema 决策后，应一起恢复实现和通道，
+分别验证历史／当前 schema，并重新执行受影响验收。
 
 父协调者新增可选的逐次连接借出核验，使管理 owner 的目标挑战覆盖 Kernel
 实际使用的 session。在另一连接上前后探测并不足够。hook 只接收借出的查询

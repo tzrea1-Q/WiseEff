@@ -25,13 +25,13 @@ This candidate provides protective interception, bounded canonical conversion an
 | Ordinary stack apply | Legacy stack lifecycle; canonical targets now refused before build/no-op |
 | Catalog apply fresh/populated | Frozen plan/execute/P11a only; no public service authorization |
 | Release Verification | Purpose, pins, report, approval and runtime-pin module; production startup integration missing |
-| P12 | Management activation module and append-only 0141 state; complete approved P11 → P12 execution remains unproven |
+| P12 | Management prototype retained on `codex/pr824-p12-contract-scratch`; its additional frozen schema decision is pending, so it is absent from this executable candidate |
 | P13/P11b/P14/P15 | Complete executable integration remains unfinished |
 
 ## Developer commands
 
 The component runner owns separate `reader-pg16`, `report-pg16`,
-`activation-pg16`, `authority-pg16`, `scripts-pgvector`, `server-pgvector` and
+`authority-pg16`, `scripts-pgvector`, `server-pgvector` and
 `schema-doc` lanes. After independently confirming the
 development Docker Desktop daemon and its owned resources, pass its actual ID
 with `--expected-daemon-id` and the selected `--suite` to
@@ -44,7 +44,7 @@ an ambient deployment database or use these component results as a release.
 The GitHub-only `--github-hosted` option requires fresh, verified GitHub OIDC
 claims, the actual clean checkout (including non-ignored untracked files) and
 the pinned local daemon. It does not accept a caller token or a CI boolean.
-The mandatory reader, report, activation and authority jobs each use a separate
+The mandatory reader, report and authority jobs each use a separate
 cluster because role mutation tests cannot share the server suite's cluster. See the
 [Hosted admission contract](../../scripts/upgrade-hosted-admission.md).
 

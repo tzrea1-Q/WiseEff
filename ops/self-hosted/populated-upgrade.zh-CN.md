@@ -22,12 +22,12 @@ Binding/ProjectValue 授权或发布。Policy #815 仍需独立决定。
 | 普通 stack apply | 旧 stack 生命周期；canonical 目标在构建/no-op前拒绝 |
 | Catalog apply fresh/populated | 冻结 plan/execute/P11a；不授权对外服务 |
 | Release Verification | purpose/pins/report/approval/runtime pin 模块存在，实际启动尚未接线 |
-| P12 | 管理激活模块和追加式 0141 状态已实现；完整获批 P11 → P12 执行尚无成功证据 |
+| P12 | 管理原型保存在 `codex/pr824-p12-contract-scratch`；新增冻结 schema 决策待定，已从当前可执行候选分离 |
 | P13/P11b/P14/P15 | 完整可执行集成仍未完成 |
 
 ## 开发环境
 
-组件入口提供 `reader-pg16`、`report-pg16`、`activation-pg16`、
+组件入口提供 `reader-pg16`、`report-pg16`、
 `authority-pg16`、`scripts-pgvector`、`server-pgvector` 和 `schema-doc`
 独占测试通道。执行机器必须是已独立核验的开发 Docker Desktop；
 用户为开发者，目录为审阅候选仓库。先确认 daemon 及资源归属，再用仓库的
@@ -39,7 +39,7 @@ Binding/ProjectValue 授权或发布。Policy #815 仍需独立决定。
 
 仅 GitHub 使用的 `--github-hosted` 要求实时签名 OIDC、实际干净 checkout
 （含非 ignored 未跟踪文件）和固定本地 daemon；不能用调用者 token 或 CI 布尔值代替。
-reader、report、activation 和 authority job 均为必需门禁，各用独占集群，
+reader、report 和 authority job 均为必需门禁，各用独占集群，
 避免角色反例污染 server 测试。
 参见[Hosted 准入合同](../../scripts/upgrade-hosted-admission.zh-CN.md)。
 以上均为开发组件验证，不能当作生产维护命令或发布批准。
