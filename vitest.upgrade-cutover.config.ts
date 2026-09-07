@@ -10,6 +10,7 @@ export default defineConfig({ test: {
     "server/modules/parameter-bindings/cutoverImport/*.test.ts",
     "server/modules/catalog-kernel/security/catalogReader.integration.test.ts",
     "server/modules/release-verification/startup/reportConnection.integration.test.ts",
+    "ops/self-hosted/scripts/parameter-catalog-upgrade/deploymentAuthority.integration.test.ts",
   ],
   testTimeout: 30000,
   hookTimeout: 30000,
