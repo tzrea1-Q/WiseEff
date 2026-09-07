@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, realpath, rm, symlink, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { expect, it, onTestFinished } from "vitest";
@@ -6,7 +6,7 @@ import { purposeProfile } from "../../../../server/modules/release-verification/
 import { validPrepare } from "../../../../server/modules/release-verification/report/fixtures";
 import type { VerificationPlan } from "../../../../server/modules/release-verification/core/types";
 import { verifyRecoveryPackage } from "../../storage/recoveryPackage";
-import { openUpgradeJournal, journalBytes } from "./journal";
+import { openUpgradeJournal, journalBytes, canonicalJson, sha256Prefixed, commitJournalTransition } from "./journal";
 import { withHostOperationLock } from "./handoff";
 import { recordControlledRecoveryCapture } from "./recoveryCapture";
 import { createControlledBoundaryEvidenceExecution } from "./recoveryVerification";
@@ -35,7 +35,7 @@ async function fixture() {
   return { root, operationRoot, directory, journal: opened.value, target, source, boundary, loseFence: () => { live = false; } };
 }
 
-it.each(["valid", "missing-capture", "package-drift", "fence-lost", "plan-target", "reused-plan", "source-drift", "wrong-purpose", "late-fence-loss", "duplicate-gate"])("binds the actual captured package and live fence: %s", async fault => {
+it.each(["valid", "missing-capture", "package-drift", "fence-lost", "plan-target", "reused-plan", "source-drift", "wrong-purpose", "late-fence-loss", "duplicate-gate", "dotdot-journal", "symlink-parent", "new-pending-capture"])("binds the actual captured package and live fence: %s", async fault => {
   const f = await fixture();
   await withHostOperationLock(f.operationRoot, async lock => {
     const capture = await recordControlledRecoveryCapture({ ...f, lock, attemptId: "capture" }, f.source, f.boundary);
@@ -48,7 +48,21 @@ it.each(["valid", "missing-capture", "package-drift", "fence-lost", "plan-target
         recovery: { recoveryPointId: backup.manifest.recovery.recoveryPointId, recoveryPointDigest: capture.recoveryPointDigest } },
       evidenceRequirements: { ...prepared.evidenceRequirements, recoveryPointDigest: capture.recoveryPointDigest },
     } as VerificationPlan;
-    const execution = createControlledBoundaryEvidenceExecution({ journalPath: f.journal.journalPath, runId: "unit-run", operationRoot: f.operationRoot,
+    let journalPath = f.journal.journalPath;
+    if (fault === "new-pending-capture") {
+      const original = f.journal.record.entries.find(entry => entry.recoveryCapture?.outcome === "pending")!.recoveryCapture!;
+      const event = { ...original, attemptId: "new-unfinished-capture" };
+      const result = commitJournalTransition(f.journal, { action: "recovery-capture-pending", inputDigest: sha256Prefixed(canonicalJson(event)),
+        toState: f.journal.record.state, nextAction: f.journal.record.nextAction, outcome: "crashed", recoveryCapture: event });
+      expect(result.ok).toBe(true);
+    }
+    if (["dotdot-journal", "symlink-parent"].includes(fault)) {
+      const outside = path.join(f.root, "outside"); await mkdir(outside, { mode: 0o700 });
+      await writeFile(path.join(outside, "run.json"), journalBytes(f.journal.journalPath), { mode: 0o600 });
+      if (fault === "dotdot-journal") journalPath = `${f.operationRoot}/../outside/run.json`;
+      else { await symlink(outside, path.join(f.operationRoot, "linked")); journalPath = path.join(f.operationRoot, "linked/run.json"); }
+    }
+    const execution = createControlledBoundaryEvidenceExecution({ journalPath, runId: "unit-run", operationRoot: f.operationRoot,
       target: f.target, lock, boundary: f.boundary, source: f.source });
     const original = journalBytes(f.journal.journalPath);
     if (fault === "missing-capture") plan.pins.recovery = { ...plan.pins.recovery, recoveryPointId: "missing" };

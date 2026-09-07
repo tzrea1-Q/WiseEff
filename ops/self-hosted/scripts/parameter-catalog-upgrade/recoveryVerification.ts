@@ -7,11 +7,28 @@ import { VerificationGateId, type GateAdapter, type TypedEvidenceRef, type Verif
 import { verifyRecoveryPackage } from "../../storage/recoveryPackage";
 import type { ControlledRecoveryBoundary, ControlledRecoverySource } from "../../storage/controlledRecovery";
 import type { RecoveryTargetIdentity } from "../../storage/recoveryPoint";
-import { assertHostOperationLock, type HostOperationLock } from "./handoff";
+import { assertHostOperationLock, assertHostOperationLockForJournal, type HostOperationLock } from "./handoff";
 import { loadUpgradeJournal } from "./journal";
 
 const gateIds = ["PCAT-RP-RECOVERY-POINT", "PCAT-WRITER-PRE-SWITCH-FENCE"] as const;
 const refuse = (): never => { throw new Error("PCAT-UPG-RECOVERY-EVIDENCE-UNAVAILABLE"); };
+
+async function withJournalCustody<T>(input: { journalPath: string; operationRoot: string; lock: HostOperationLock },
+  body: (verify: () => Promise<void>) => Promise<T>): Promise<T> {
+  if (path.dirname(input.journalPath) !== input.operationRoot) refuse();
+  await assertHostOperationLockForJournal(input.lock, input.journalPath);
+  const directory = await open(input.operationRoot, constants.O_RDONLY | constants.O_DIRECTORY | constants.O_NOFOLLOW);
+  try {
+    const initial = await directory.stat();
+    const verify = async () => {
+      await assertHostOperationLockForJournal(input.lock, input.journalPath);
+      const named = await lstat(input.operationRoot), held = await directory.stat();
+      if (named.dev !== initial.dev || named.ino !== initial.ino || held.dev !== initial.dev || held.ino !== initial.ino) refuse();
+    };
+    await verify();
+    return await body(verify);
+  } finally { await directory.close(); }
+}
 
 /** Invocation adapter for the existing S11-RP checks and owning writer fence.
  * It creates no backup, approval, restore token, SQL effect, queue or proxy act.
@@ -29,7 +46,7 @@ export function createControlledBoundaryEvidenceExecution(options: {
   let firstObservation: unknown;
   const refs = new Map<string, TypedEvidenceRef>();
   const executed = new Set<string>();
-  const observe = async (plan: VerificationPlan) => {
+  const observe = async (plan: VerificationPlan) => withJournalCustody(fixed, async verifyJournalCustody => {
     if (plan.purpose !== "pre-activation" || plan.lineage.trafficIsolationState !== "isolated" ||
         plan.lineage.p12State !== "not-started" || plan.lineage.p13State !== "not-started" ||
         plan.lineage.pointerRollbackStatus !== "open" || plan.lineage.predecessorReportDigests.length ||
@@ -42,6 +59,8 @@ export function createControlledBoundaryEvidenceExecution(options: {
     const captures = loaded.value.record.entries.filter(entry => entry.recoveryCapture?.outcome === "committed");
     if (captures.length !== 1 || loaded.value.record.entries.some(entry => entry.action === "recovery-capture-unknown" || entry.action.startsWith("recovery-execution-"))) refuse();
     const event = captures[0].recoveryCapture!;
+    if (loaded.value.record.entries.some(entry => entry.seq > captures[0].seq &&
+        ["recovery-capture-pending", "recovery-capture-unknown"].includes(entry.action))) refuse();
     const capture = event.capture;
     if (!capture || capture.runId !== fixed.runId || event.runId !== fixed.runId ||
         !isDeepStrictEqual(capture.source, fixed.target) || !isDeepStrictEqual(event.source, fixed.target)) return refuse();
@@ -61,6 +80,7 @@ export function createControlledBoundaryEvidenceExecution(options: {
       };
       const receipt = structuredClone(await fixed.boundary.acquire({ runId: fixed.runId, target: structuredClone(fixed.target) }));
       const verify = async () => {
+        await verifyJournalCustody();
         await assertHostOperationLock(fixed.lock, fixed.operationRoot);
         await verifyDirectory();
         if (receipt.runId !== fixed.runId || !isDeepStrictEqual(receipt.target, fixed.target) || receipt.digest !== capture.boundaryDigest ||
@@ -84,10 +104,11 @@ export function createControlledBoundaryEvidenceExecution(options: {
       firstObservation ??= structuredClone(observation);
       return observation;
     } finally { await handle.close(); }
-  };
+  });
   const adapters = new Map<string, GateAdapter>();
   for (const id of gateIds) adapters.set(id, async ({ gateId, plan }) => {
     try {
+      plan = structuredClone(plan);
       if (executed.has(id) || gateId !== id || plan.applicabilityProfile.find(entry => entry.gateId === id)?.applicability.status !== "required-now") refuse();
       executed.add(id);
       const observation = await observe(plan);
@@ -105,6 +126,7 @@ export function createControlledBoundaryEvidenceExecution(options: {
   });
   return { adapters, async readEvidence(plan: VerificationPlan): Promise<readonly TypedEvidenceRef[]> {
     try {
+      plan = structuredClone(plan);
       await observe(plan);
       if (refs.size !== gateIds.length) refuse();
       return structuredClone(gateIds.map(id => refs.get(id)!));
