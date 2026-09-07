@@ -38,7 +38,7 @@ This is a valid combined-lifecycle Red, not an installer or timeout failure.
 
 The candidate shares the original SQL owner's locked readback between its
 ordinary inspector and a held-session inspector. The latter verifies actual
-backend, target, transaction and all seven relation/ten catalog locks;
+backend, target, transaction and all seven relation/eleven catalog locks;
 no declared-held boolean is accepted. The private custody owner keeps those
 locks through authentication, exact baseline reconstruction and the final P12/
 root boundary checks. This inspection has no DML but requires a read/write
@@ -62,17 +62,21 @@ dependency. Neither execution is a final Green.
 Every SQL-owner transaction now takes SHARE NOWAIT on the exact observed
 catalogs before its first snapshot: `pg_authid`, `pg_auth_members`, `pg_shdepend`,
 `pg_class`, `pg_attribute`, `pg_namespace`, `pg_proc`, `pg_type`, `pg_database`
-and `pg_default_acl`. Acquisition and held-session checks share this list.
-The first three and `pg_database` affect cluster metadata; the remaining locks
+`pg_default_acl` and `pg_db_role_setting`. The last is an actual dependency of
+the original `pg_roles.rolconfig` baseline field. Acquisition and held-session
+checks share this list. The first three, `pg_database` and `pg_db_role_setting` affect cluster metadata; the remaining locks
 temporarily exclude conflicting metadata writes in the current database. This
 can refuse concurrent DDL/ACL work; it is not only a seven-table lock. No grant,
 schema, timeout or baseline format changes. The last real boundary runs before
 SQL/authentication rechecks under these locks. Table/column GRANT and CREATE
-FUNCTION adversaries must receive 55P03 there and succeed after release.
+FUNCTION / ALTER ROLE SET adversaries must receive 55P03 there and succeed after release.
 Host readback also requires the parser-validated capture and credential chain,
 exact root request/version/digest, cutover run and plan, before the SQL steps.
 Both owners accept the existing recovery package's bare 64-hex digest, matching
 the root's `backup.digest`; earlier synthetic prefixed values hid this mismatch.
+This freezes the exact original metadata baseline, not every management
+precondition: sessions/locks, replication state, runtime settings and HBA files
+remain separately observed facts, not an atomic full-writer/P13 inventory.
 
 Exclusive paths are the existing bootstrap credential module/owned integration
 test and fixture, SQL fence module/test where needed for its own inspection,

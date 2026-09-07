@@ -10,7 +10,7 @@ import type { RecoveryRole } from "../../../../ops/self-hosted/storage/recoveryP
 // baseline. Shared catalogs affect the cluster; the others affect this database.
 // This is not a blanket catalog lock or new privilege.
 const inspectionCatalogs = ["pg_authid", "pg_auth_members", "pg_shdepend", "pg_class", "pg_attribute",
-  "pg_namespace", "pg_proc", "pg_type", "pg_database", "pg_default_acl"].map(name => `pg_catalog.${name}`);
+  "pg_namespace", "pg_proc", "pg_type", "pg_database", "pg_default_acl", "pg_db_role_setting"].map(name => `pg_catalog.${name}`);
 const relations = [...LEGACY_STRUCTURAL_TABLES, "driver_schemas", "driver_schema_versions", "dts_property_specs"];
 const mutation = new Set(["INSERT", "UPDATE", "DELETE", "TRUNCATE"]);
 const intentKind = "legacy-sql-privileges-intent", appliedKind = "legacy-sql-privileges-applied";

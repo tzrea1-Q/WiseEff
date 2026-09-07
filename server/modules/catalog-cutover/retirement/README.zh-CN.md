@@ -29,7 +29,7 @@ inspection。错 run/target、缺失或不符的宿主步骤、额外 ACL 变化
 这是有效组合生命周期Red，不是installer或timeout失败。
 
 候选将原SQL owner读回复用于原inspection与持事务inspection；后者核真实
-backend、target、事务以及七表/十张catalog锁，不接受declared-held布尔。
+backend、target、事务以及七表/十一张catalog锁，不接受declared-held布尔。
 私有custody owner持锁直到认证、原baseline精确重建及最终P12/root边界复验。
 该inspection没有DML，但ACCESS EXCLUSIVE锁需要read/write事务。输出仍为
 原有界认证结果。原baseline格式没有column ACL字段；列ACL继续由SQL owner
@@ -44,14 +44,17 @@ backend、target、事务以及七表/十张catalog锁，不接受declared-held�
 
 现在SQL owner每次事务首快照前，对精确实读catalog取得SHARE NOWAIT：
 `pg_authid`、`pg_auth_members`、`pg_shdepend`、`pg_class`、`pg_attribute`、
-`pg_namespace`、`pg_proc`、`pg_type`、`pg_database`和`pg_default_acl`。
-获取与持锁检查共用同一清单。前三张及`pg_database`影响集群元数据，其余锁
+`pg_namespace`、`pg_proc`、`pg_type`、`pg_database`、`pg_default_acl`和
+`pg_db_role_setting`；最后一项是原`pg_roles.rolconfig`基线字段的真实依赖。
+获取与持锁检查共用同一清单。前三张及`pg_database`、`pg_db_role_setting`影响集群元数据，其余锁
 短时排除当前数据库的冲突元数据写；可能拒绝并发DDL/ACL，不再称仅锁七表。
 没有修改grant、schema、timeout或baseline格式。最后真实边界在锁内完成，
-之后再核SQL和认证；实际表/列GRANT与CREATE FUNCTION须在该窗口得到55P03，
+之后再核SQL和认证；实际表/列GRANT、CREATE FUNCTION及ALTER ROLE SET须在该窗口得到55P03，
 释放后成功。宿主读回还须具备parser核过的capture/credential前驱、精确root
 request/version/digest、cutover run和plan，之后才是SQL步骤。两个owner改按
 现有根`backup.digest`接受裸64位hex包摘要；此前合成带前缀值掩盖了该接线错误。
+这只冻结原元数据基线，不是所有管理前置条件：session/lock、replication状态、
+运行设置和HBA文件仍分别观察，不能称原子冻结的完整writer/P13库存。
 
 唯一写入范围为原 bootstrap credential 模块、owned integration test 与夹具，
 必要的 SQL fence 自身 inspection 模块/测试，原退休根/测试及本双语 README。
