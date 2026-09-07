@@ -246,8 +246,10 @@ async function buildActual(input: ApplicationBuildInput): Promise<ApplicationArt
       requireFact(allowedArgs.has(key) && (value === null || typeof value === "string"), "COMPOSE-BUILD-OPTION-UNSUPPORTED");
       if (value !== null) { buildEnvironment[key] = value as string; args.push("--build-arg", key); }
     }
-    const builder = JSON.parse(docker.command(["buildx", "inspect", "default", "--format", "{{json .}}"] ).toString());
-    requireFact(builder.Driver === "docker", "BUILDER-UNSUPPORTED");
+    const builders = docker.command(["buildx", "ls", "--format", "{{json .}}"]).toString().trim().split("\n")
+      .map(line => JSON.parse(line)).filter(builder => builder.Name === "default");
+    requireFact(builders.length > 0 && builders.every(builder => builder.Driver === "docker"
+      && builder.Nodes?.length === 1 && builder.Nodes[0].Endpoint === "default"), "BUILDER-UNSUPPORTED");
     await runOwned("bash", ["-c", 'source "$1"; wiseeff_upgrade_export_application_artifact "${@:2}"', "application-artifact",
       path.join(toolRoot, "ops/self-hosted/scripts/upgrade-lib.sh"), docker.endpoint, docker.daemonId, directory, ...args, "-"], buildEnvironment, resolved.archive);
     await checkDirectory();
