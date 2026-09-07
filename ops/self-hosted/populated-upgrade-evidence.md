@@ -2,7 +2,81 @@
 
 > Chinese: [Chinese](populated-upgrade-evidence.zh-CN.md)
 
-## Current execution checkpoint, 2026-09-07
+## Current execution checkpoint, 2026-09-08
+
+Code `8ed7ac196b34caf351e7331f6e2be15ea7f8a5d3`, tree
+`b1f545978bf06ee8b1e86b158cb8e10d1d5eae61`, retains base `cda6737a8`.
+The real CGH router replaces constant readiness and empty query ports. The new
+persisted Review reader uses a read-only transaction; the original lazy grouping
+command remains separate. Production query composition now consumes this reader.
+No migration, grant, timeout, comparison format or trusted boundary base changed.
+The increments have independent Standards/Spec review, including the final
+bootstrap-fixture correction. This does not establish full integration acceptance.
+
+Clean code passed the mandatory `read-projections-pg16` lane: 10 collected,
+10 passed, 0 failed/skipped, 11.62s, exit 0 and verified cleanup. Five cases use
+the real Catalog router, including an actual 0140-only LOGIN and GET `/catalog`
+200. Five exercise persisted Review projection. The Review positive uses existing
+synchronizer/governance capabilities in a read-only transaction; it is not the
+final application login. A separate 0140-only login cannot read Review or create
+groups. Neither result is `server/index.ts` or worker startup evidence.
+
+The two preceding WIP runs remain failed: first 4 passed/1 failed/5 skipped
+(incorrect compiler result access and nonexistent ACL-test relation); second
+5 passed/0 assertion failures/5 skipped with a failed setup (successor bundle
+used for bootstrap). The final run uses the existing predecessor-free release
+and the actual registration relation. No installer or permission assertion was
+relaxed. The previous two fresh comparison positives below depended on fake empty
+canonical projections; their executed counts remain historical, but they are not
+valid fresh-upgrade evidence. Current unknown canonical inventory is rejected.
+
+Clean-code backend passed 4289/4300 with 11 skipped, 99.37s, exit 0 and verified
+cleanup. Build, contract, selfhost and boundary passed; boundary used the unchanged
+`9b3ba7df7e21f5589684bc92c872da593ad4c246`. Its first invocation omitted the
+mandatory trusted-base argument and exited 1 before scanning; this is not a
+boundary finding. Complete scripts passed: preceding source-lock 4/4 (41.25s),
+then 1826 passed/25 skipped (1851 collected, 82.79s), exit 0 and verified cleanup.
+The run began on clean `8ed7ac196`; only this report's Markdown changed during it.
+Current-candidate Hosted remains pending.
+Owned strict `docs:check` also passed, including the actual pgvector schema
+artifact check, exit 0 and verified cleanup; no missing-database skip. Fermat's
+final integration Spec review passed outside his authored CGH increment, whose
+independent Raman/Lagrange reviews remain separately recorded. This is a limited
+code integration review, not the full controller acceptance.
+Lagrange's final Standards integration review also passed, excluding his own TCP
+increment (independently reviewed by Raman/Fermat). The persisted Review factory
+is integrated here; CGH's synthetic inventory authorization, required capabilities
+and full per-consumer semantics remain incomplete, not that factory itself.
+
+| Current log | Original SHA256 |
+| --- | --- |
+| `read-projections-lineage-fixed` | `36731b5a567b4d53018a606d2eebac166f72d39b4c35d112e62f3fedd1d86488` |
+| `backend-8ed7` | `a3b084bd4354acd136a7cc0080af23c26b3b5ca05c667bf02a4b23a14e61e0d2` |
+| `scripts-8ed7` | `3ccf2abc283345a6b27a051b0c776948f9e8b339995936d530fa7602fcb94453` |
+| `build-8ed7` | `e1d55e4d70407e4b5b5f0e7515c12945cce513f94cd3d5b52f8de36222d30266` |
+
+The full-file delivery manifest records redacted delivered bytes separately from
+these original local log hashes; the logs contain no production execution.
+
+Latest completed Hosted is `34138417314`, report head `c04d42703188432a2c98026ebfa6c683ae1526c8`,
+actual merge `df274d9412a83ec5bb0be53e1b629c112feb25c3`: main job succeeded
+(scripts preceding 4/4, ordinary 1806 passed/41 skipped; backend 4260 passed/11
+skipped; boundary, bridge, contract and log-eval ran successfully). Owned bootstrap
+failed 2 of 22 at the unchanged 2000ms COMMIT-observation deadline. Earlier owned
+stages and smoke/quality passed; local non-HDC and target synthetic skipped;
+Merge bar failed. This run does not contain the current increments. The actual
+Linux TCP proxy experiment isolated Nagle delay; both native sockets now use
+`setNoDelay(true)`, preserving bytes, fault ordinals and deadlines. The integrated
+local PG bootstrap run passed 22/22 on `ec53a3592` plus root-composition WIP,
+not on the later clean code. New Linux Hosted execution is still required.
+
+API/worker startup producer and full controller P12/P13/report/business/restore
+integration remain internal work. A/B/C remain incomplete; no production command
+or production operation is authorized by these results. See the existing operator
+manual and decision records for separate S6, Policy, comparison-format, real-backup
+and enterprise-network dependencies.
+
+## Previous execution checkpoint, 2026-09-07 (historical)
 
 Code `e5c76c9ce4f828df8866f2b26888661a75aa9919`, tree
 `dd12fd3b8a15f168a05487f7dbf16a3e245b72cd`, base `cda6737a8`, integrates the

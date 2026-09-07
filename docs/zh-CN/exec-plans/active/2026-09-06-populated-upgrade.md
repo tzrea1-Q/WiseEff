@@ -4,6 +4,23 @@
 
 ## 范围与状态
 
+代码 `8ed7ac196b34caf351e7331f6e2be15ea7f8a5d3` 已集成独立审查通过的真实CGH
+路由、持久Review查询、生产查询组合根和强制owned PG路由。实际PG16 projection
+10/10，backend4289通过/11跳过，完整scripts前置4/4及主体1826通过/25跳过，
+build/boundary/contract/selfhost通过。
+这些是路由/查询结果，不是获批API/worker根入口启动。失败、WIP身份和CI实际checkout
+见现有证据双语文件。
+
+最新结束Hosted `34138417314` 在 `c04d42703` 主Job成功，owned bootstrap两项
+COMMIT故障反例失败。已审的原生socket no-delay修复保留2000ms时限，新Hosted待运行。
+A/B/C未完成。父协调者独占根集成、runner、共享journal及计划/证据；Raman在独立
+Scratch负责legacy retirement/bootstrap接线，该增量独立审查者不写实现文件。
+R3风险为借用凭据、观察漂移、未知提交、能力泄漏及假空库存。Documentation Impact
+Matrix仍限现有计划/证据/手册及直接相关的双语模块合同，Documentation Update Gate
+要求执行owned严格docs/schema检查。
+
+下方检查点保留历史身份。
+
 当前已验证代码 `e5c76c9ce4f828df8866f2b26888661a75aa9919`，tree
 `dd12fd3b8a15f168a05487f7dbf16a3e245b72cd`，base 仍为 `cda6737a8`。
 各集成增量已经独立审查。Owned Binding PG16 92/92、backend 4260通过／11跳过、

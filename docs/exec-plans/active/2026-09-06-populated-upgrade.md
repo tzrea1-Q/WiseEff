@@ -6,6 +6,27 @@
 
 ### Current continuation: real dependencies and activation
 
+Code `8ed7ac196b34caf351e7331f6e2be15ea7f8a5d3` integrates the independently
+reviewed formal CGH router, persisted Review query, production query composition
+and mandatory owned PG route. Real PG16 projection tests passed 10/10, backend
+4289 passed/11 skipped, full scripts 4/4 then 1826 passed/25 skipped, and
+build/boundary/contract/selfhost passed. These are actual
+route/query results, not approved API/worker root startup. Exact failures, WIP
+identities and CI checkout are recorded in the existing evidence pair.
+
+The latest completed Hosted `34138417314` on `c04d42703` passed the main job but
+failed two owned bootstrap COMMIT fault cases. The reviewed native-socket no-delay
+fix preserves the 2000ms deadline; new Hosted verification is pending. A/B/C
+remain incomplete. Parent owns root integration, runner, shared journal and this
+plan/evidence; Raman owns the separate legacy retirement/bootstrap integration;
+independent reviewers own no implementation files in that increment. R3 risks are
+borrowed credentials, unstable observations, unknown commit outcome, capability
+leakage and fake empty inventories. Documentation Impact Matrix remains the
+existing plan/evidence/operator and directly affected bilingual module contracts;
+the Documentation Update Gate requires the owned strict docs/schema check.
+
+The following checkpoint is historical.
+
 Current checked code is `e5c76c9ce4f828df8866f2b26888661a75aa9919`, tree
 `dd12fd3b8a15f168a05487f7dbf16a3e245b72cd`, on unchanged base `cda6737a8`.
 The integrated increments have independent reviews. Owned Binding PG16 92/92,

@@ -2,7 +2,63 @@
 
 > English: [English](populated-upgrade-evidence.md)
 
-## 当前执行检查点，2026-09-07
+## 当前执行检查点，2026-09-08
+
+代码 `8ed7ac196b34caf351e7331f6e2be15ea7f8a5d3`，tree
+`b1f545978bf06ee8b1e86b158cb8e10d1d5eae61`，base仍为 `cda6737a8`。
+CGH已使用真实路由，替换恒定readiness和假空查询。新增持久Review读取使用只读事务，
+保留原惰性分组命令；生产查询组合根已使用该读取器。未改migration、grant、timeout、
+比较格式或boundary可信基线。各增量及最终bootstrap夹具修复均获独立Standards/Spec
+审查；这不是整体集成验收通过。
+
+干净代码的强制 `read-projections-pg16` lane收集10、通过10、失败/跳过0，11.62s，
+退出0、清理已验证。五项覆盖真实Catalog路由，包括实际仅持0140能力的LOGIN访问
+GET `/catalog` 返回200。另五项覆盖持久Review读取；该正例使用既有同步/治理能力
+和只读事务，不是最终应用登录身份。独立0140-only登录仍不能读Review或创建分组。
+这些结果均不代表 `server/index.ts` 或worker启动。
+
+前两轮WIP失败保留：首次4通过/1失败/5跳过，原因是compiler结果取值错误和ACL负测
+表名不存在；第二次5通过/0断言失败/5跳过，但setup因将后继bundle用于bootstrap而
+失败。最终复用既有无前序release和正式注册表；未放宽installer或权限断言。
+下方历史两个fresh比较正例依赖假空canonical projection，保留原执行计数，但不能
+作为有效fresh升级证据。当前未知canonical库存明确拒绝。
+
+干净代码backend收集4300、通过4289、跳过11，99.37s，退出0、清理已验证。
+Build、contract、selfhost及boundary通过，可信基线仍为
+`9b3ba7df7e21f5589684bc92c872da593ad4c246`。首次boundary调用漏传必需参数，
+扫描前退出1；这不是boundary发现。完整scripts前置source-lock 4/4（41.25s），
+主体收集1851、通过1826、跳过25（82.79s），退出0、清理已验证。执行开始于干净
+`8ed7ac196`，期间仅修改本报告Markdown。当前候选Hosted仍待运行。
+Owned严格 `docs:check` 包含实际pgvector schema产物检查，退出0、清理已验证，
+没有missing-database跳过。Fermat的最终集成Spec审查在排除本人CGH实现后通过；
+CGH仍由Raman/Lagrange独立双审覆盖。这是限定代码集成审查，不是完整controller验收。
+Lagrange最终Standards集成审查也通过，排除本人TCP增量，由Raman/Fermat独立审查
+覆盖。持久Review factory已经集成；仍缺的是CGH合成库存认证、必要能力和完整消费方
+语义，不能再写成该factory尚未实现。
+
+| 当前日志 | 原始SHA256 |
+| --- | --- |
+| `read-projections-lineage-fixed` | `36731b5a567b4d53018a606d2eebac166f72d39b4c35d112e62f3fedd1d86488` |
+| `backend-8ed7` | `a3b084bd4354acd136a7cc0080af23c26b3b5ca05c667bf02a4b23a14e61e0d2` |
+| `scripts-8ed7` | `3ccf2abc283345a6b27a051b0c776948f9e8b339995936d530fa7602fcb94453` |
+| `build-8ed7` | `e1d55e4d70407e4b5b5f0e7515c12945cce513f94cd3d5b52f8de36222d30266` |
+
+全文包manifest分别记录脱敏交付字节和上述原始本机日志hash；不含生产执行证据。
+
+最新结束Hosted为 `34138417314`，报告head `c04d42703188432a2c98026ebfa6c683ae1526c8`，
+实际merge `df274d9412a83ec5bb0be53e1b629c112feb25c3`。主Job成功：scripts前置4/4，
+主体1806通过/41跳过；backend4260通过/11跳过，boundary、bridge、contract、log-eval
+实际执行成功。Owned bootstrap在原2000ms COMMIT观察期限内失败2/22；此前owned阶段
+及smoke/quality成功，local non-HDC与target synthetic跳过，Merge bar失败。
+该run不含本次增量。实际Linux TCP代理实验定位Nagle延迟；两端原生socket现在使用
+`setNoDelay(true)`，保留字节、故障次序和时限。集成本机PG bootstrap在 `ec53a3592`
+加组合根WIP上通过22/22，不能重标为后续干净代码执行；新Linux Hosted仍需运行。
+
+API/worker startup producer及完整controller的P12/P13/报告/业务/恢复集成仍是内部
+工作。A/B/C均未完成，没有生产升级命令或生产执行许可。S6、Policy、比较格式、真实
+备份及企业网络依赖分别见现有手册和决策记录。
+
+## 上次执行检查点，2026-09-07（历史）
 
 代码 `e5c76c9ce4f828df8866f2b26888661a75aa9919`，tree
 `dd12fd3b8a15f168a05487f7dbf16a3e245b72cd`，base `cda6737a8`。已集成双审的
