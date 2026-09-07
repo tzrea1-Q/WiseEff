@@ -25,7 +25,7 @@ function input(): CghComparisonContributionInput {
 describe("CGH production router binding", () => {
   it("rejects a different root pool before inventory or canonical queries", async () => {
     const request = input();
-    const query = vi.spyOn(request.database, "query").mockRejectedValue(new Error("query must not run"));
+    const query = vi.spyOn(request.pool, "query").mockRejectedValue(new Error("query must not run"));
     const other = new pg.Pool({ connectionString: "postgres://synthetic@127.0.0.1:1/other" });
     opened.push({ close: () => other.end() });
     await expect(provideCghParameterCatalogComparisonContribution({ ...request, pool: other }))
@@ -44,7 +44,6 @@ describe("CGH production router binding", () => {
 
   it("does not turn unavailable canonical inventory into a verified fresh zero", async () => {
     const request = { ...input(), inventoryMode: "fresh" as const };
-    vi.spyOn(request.database, "query").mockResolvedValue({ rows: [], rowCount: 0 });
     vi.spyOn(request.pool, "query").mockResolvedValue({ rows: [], rowCount: 0 } as never);
     await expect(provideCghParameterCatalogComparisonContribution(request)).rejects.toMatchObject({
       code: "PCAT-CMP-UNQUERYABLE-PROTECTED-REFERENCE",
