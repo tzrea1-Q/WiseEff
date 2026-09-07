@@ -56,6 +56,18 @@ dispatch table or a trigger owner with only read privileges does not by itself
 block the submatrix. PostgreSQL's [trigger catalog](https://www.postgresql.org/docs/16/catalog-pg-trigger.html)
 supplies the actual dispatch identity and firing metadata.
 
+Replica reachability belongs to the original LOGIN/session, not a substituted
+NOLOGIN role's defaults. The recursive state now retains that capability across
+SET ROLE and definer calls, including reachable parameter SET capabilities and
+function-local replica configuration. A dispatch-table owner can also enable a
+replica-only trigger for ordinary firing. This remains a conservative capability
+analysis, not a simulation proving every trigger condition will fire.
+Test-only `011663f7b7ffcae321150ef43bf2f8bef1643436` reproduced both omissions
+against the first implementation: 31 collected, 29 passed, two failed, zero
+skipped, 5.44 seconds, exit 1, cleanup verified. Both tests independently changed
+the actual legacy row before observing the erroneous passed gate. The corrected
+session/owner implementation awaits its separate fixed real execution.
+
 Test-only `cfb199cbcae3eaf74c2f92e947dbd78839eb25f4`, tree
 `beade877fabf61b7797730c741e66ea7dfb9170d`, reproduced a real restricted LOGIN
 INSERT on an unscoped table changing `driver_schemas` through a trigger whose

@@ -11,6 +11,13 @@
 本身不会导致全部拒绝。元数据来自 PostgreSQL 的
 [触发器目录](https://www.postgresql.org/docs/16/catalog-pg-trigger.html)。
 
+Replica 能力必须沿原 LOGIN／会话传播，不能用 SET ROLE 后 NOLOGIN 的默认设置替代。
+递归状态保留该能力及可达参数 SET 权限／函数局部 replica 配置；分派表 owner 也能把
+replica-only 触发器启用为普通分派。这里是保守能力分析，不是每个触发条件必然满足的模拟。
+test-only `011663f7b7ffcae321150ef43bf2f8bef1643436` 对首版实际复现两处遗漏：
+31 收集、29 过、2 失败、0 跳过，5.44 秒，exit 1，清理已验证；两个反例均先实际改变
+旧表行，再观察到错误的 passed。修订会话／owner 实现尚待独立固定真实执行。
+
 test-only `cfb199cbcae3eaf74c2f92e947dbd78839eb25f4`、tree
 `beade877fabf61b7797730c741e66ea7dfb9170d` 的真实受限 LOGIN 向七表外表 INSERT，
 通过已撤销 EXECUTE 的触发器实际更新 `driver_schemas`；正式 V13 仍通过。

@@ -705,7 +705,7 @@ const observeV13 = async (query: GateQuery): Promise<GateResult> => {
   // that inner function directly to the LOGIN; source-text absence is no proof.
   const unprovenDefiners = await query<{ login: string; function_identity: string }>(`${v13LoginScope},
     user_definers as (
-      select p.oid,p.proowner from pg_catalog.pg_proc p
+      select p.oid,p.proowner,p.proconfig from pg_catalog.pg_proc p
       join pg_catalog.pg_namespace n on n.oid=p.pronamespace
       where p.prosecdef and (n.nspname not in ('pg_catalog','information_schema')
         or not exists(select 1 from pg_catalog.pg_init_privs initial
@@ -713,15 +713,13 @@ const observeV13 = async (query: GateQuery): Promise<GateResult> => {
             and initial.objsubid=0 and initial.privtype='i'))
         and p.prorettype not in ('pg_catalog.trigger'::regtype,'pg_catalog.event_trigger'::regtype)
     ), trigger_edges as (
-      select role.oid as caller,p.proowner as owner,p.oid as function_oid,t.oid as trigger_oid
+      select role.oid as caller,p.proowner as owner,p.oid as function_oid,t.oid as trigger_oid,
+        t.tgenabled='R' and not pg_catalog.pg_has_role(role.oid,dispatch.relowner,'USAGE') as requires_replica,
+        coalesce('session_replication_role=replica'=any(p.proconfig),false) as configures_replica
       from pg_catalog.pg_trigger t join pg_catalog.pg_proc p on p.oid=t.tgfoid
       join pg_catalog.pg_class dispatch on dispatch.oid=t.tgrelid cross join pg_catalog.pg_roles role
       where p.prosecdef and (
-        t.tgenabled in ('O','A')
-        or (t.tgenabled='R' and (pg_catalog.has_parameter_privilege(role.oid,'session_replication_role','SET')
-          or exists(select 1 from pg_catalog.pg_db_role_setting settings
-            where settings.setrole in (0,role.oid) and settings.setdatabase in (0,(select oid from pg_catalog.pg_database where datname=pg_catalog.current_database()))
-              and 'session_replication_role=replica'=any(settings.setconfig))))
+        t.tgenabled in ('O','A','R')
         or (t.tgenabled='D' and pg_catalog.pg_has_role(role.oid,dispatch.relowner,'USAGE'))
       ) and (
         ((t.tgtype & 4)<>0 and pg_catalog.has_any_column_privilege(role.oid,t.tgrelid,'INSERT'))
@@ -730,19 +728,34 @@ const observeV13 = async (query: GateQuery): Promise<GateResult> => {
         or ((t.tgtype & 32)<>0 and pg_catalog.has_table_privilege(role.oid,t.tgrelid,'TRUNCATE'))
       )
     ), authority_edges as (
-      select role.oid as caller,p.proowner as owner,p.oid as function_oid,null::oid as trigger_oid
+      select role.oid as caller,p.proowner as owner,p.oid as function_oid,null::oid as trigger_oid,
+        false as requires_replica,coalesce('session_replication_role=replica'=any(p.proconfig),false) as configures_replica
       from pg_catalog.pg_roles role join user_definers p on pg_catalog.has_function_privilege(role.oid,p.oid,'EXECUTE')
-      union all select caller,owner,function_oid,trigger_oid from trigger_edges
-    ), delegates(login_oid,effective_oid) as (
-      select login_oid,effective_oid from reachable
-      union select delegates.login_oid,edge.owner from delegates
+      union all select caller,owner,function_oid,trigger_oid,requires_replica,configures_replica from trigger_edges
+    ), delegates(login_oid,effective_oid,replica_possible) as (
+      -- Session GUCs originate at LOGIN and survive SET ROLE and definer calls.
+      -- A reachable role with SET capability can establish replica before
+      -- switching again; do not substitute the effective role's login defaults.
+      select login_oid,effective_oid,
+        exists(select 1 from pg_catalog.pg_db_role_setting settings
+          where settings.setrole in (0,reachable.login_oid)
+            and settings.setdatabase in (0,(select oid from pg_catalog.pg_database where datname=pg_catalog.current_database()))
+            and 'session_replication_role=replica'=any(settings.setconfig))
+        or exists(select 1 from reachable capability where capability.login_oid=reachable.login_oid
+          and pg_catalog.has_parameter_privilege(capability.effective_oid,'session_replication_role','SET'))
+      from reachable
+      union select delegates.login_oid,edge.owner,
+        delegates.replica_possible or edge.configures_replica
+          or pg_catalog.has_parameter_privilege(edge.owner,'session_replication_role','SET') from delegates
       join authority_edges edge on edge.caller=delegates.effective_oid
+        and (not edge.requires_replica or delegates.replica_possible)
     )
     select distinct login.rolname as login,
       case when edge.trigger_oid is null then edge.function_oid::regprocedure::text
         else 'trigger:'||edge.trigger_oid::text||':'||edge.function_oid::regprocedure::text end as function_identity
     from delegates join logins login on login.oid=delegates.login_oid
     join authority_edges edge on edge.caller=delegates.effective_oid
+      and (not edge.requires_replica or delegates.replica_possible)
     where exists(select 1 from relations relation where
         pg_catalog.has_table_privilege(edge.owner,relation.oid,'INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER')
         or pg_catalog.has_any_column_privilege(edge.owner,relation.oid,'INSERT,UPDATE,REFERENCES')
