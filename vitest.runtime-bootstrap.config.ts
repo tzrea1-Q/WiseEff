@@ -14,6 +14,8 @@ export default defineConfig({
       "server/modules/agent/xiaoze/durableCheckpointer.test.ts",
       "server/modules/logs/workerRunner.test.ts",
       "server/modules/logs/workerRunnerBootstrap.test.ts",
+      "server/modules/logs/worker.test.ts",
+      "server/modules/logs/logAnalysisQueueRuntime.test.ts",
       "server/modules/parameter-catalog-api/productionWire*.test.ts",
       "server/config/env.test.ts",
       "server/modules/release-verification/startup/verifyStartup.test.ts",
