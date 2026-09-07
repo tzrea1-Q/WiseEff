@@ -7,8 +7,9 @@ import { retireLegacyApplicationLogins, inspectLegacyApplicationLoginFence, type
 
 // Root orchestration only. These I/O substitutes do not prove authentic report
 // approval, a P12 SQL commit, Docker identity, or a PostgreSQL password rotation.
-const io = vi.hoisted(() => ({ apply: vi.fn(), inspect: vi.fn(), journal: vi.fn(),
+const io = vi.hoisted(() => ({ apply: vi.fn(), inspect: vi.fn(), transportInspect: vi.fn(), journal: vi.fn(),
   package: vi.fn(), docker: vi.fn(), activation: vi.fn(), report: vi.fn(),
+  pools: [] as string[],
   clients: [] as Array<{ kind: string; query: ReturnType<typeof vi.fn>; release: ReturnType<typeof vi.fn>; emit(event: string): boolean }>,
   fault: "", hostRefused: false, sourceConnects: 0, closed: [] as string[], rootEvents: [] as Array<{ payload: unknown }> }));
 vi.mock("node:fs/promises", async original => {
@@ -36,6 +37,7 @@ vi.mock("../../../../server/modules/parameter-bindings/cutoverImport/sourceBound
 vi.mock("../../../../server/modules/catalog-cutover/retirement/bootstrapCredentialFence", async original => ({
   ...await original<typeof import("../../../../server/modules/catalog-cutover/retirement/bootstrapCredentialFence")>(),
   applyBootstrapCredentialFence: io.apply, inspectBootstrapCredentialFence: io.inspect,
+  inspectBootstrapCredentialFenceFromCustodyTransport: io.transportInspect,
 }));
 vi.mock("pg", async () => {
   const { EventEmitter } = await import("node:events");
@@ -62,7 +64,7 @@ vi.mock("pg", async () => {
     async end() { this.emit("end"); }
   }
   class Pool extends EventEmitter {
-    constructor(private options: { connectionString?: string }) { super(); }
+    constructor(private options: { connectionString?: string }) { super(); io.pools.push(options.connectionString ?? "unspecified"); }
     connect(callback: (error: null, client: Client) => void) { callback(null, new Client(this.options)); }
     end() { io.closed.push("pool"); if (io.fault === "pool-close") throw new Error("private-pool-diagnostic"); return Promise.resolve(); }
   }
@@ -70,7 +72,7 @@ vi.mock("pg", async () => {
 });
 
 const roots: string[] = [];
-beforeEach(() => { vi.clearAllMocks(); io.clients.length = 0; io.rootEvents.length = 0; io.closed.length = 0; io.fault = ""; io.hostRefused = false; io.sourceConnects = 0; });
+beforeEach(() => { vi.clearAllMocks(); io.pools.length = 0; io.clients.length = 0; io.rootEvents.length = 0; io.closed.length = 0; io.fault = ""; io.hostRefused = false; io.sourceConnects = 0; });
 afterEach(async () => { for (const root of roots.splice(0)) await rm(root, { recursive: true }); });
 
 async function fixture() {
@@ -89,6 +91,7 @@ async function fixture() {
   io.activation.mockReturnValue({ inspect: async () => inspection, inspectOnHeldManagementSession: async () => inspection });
   io.apply.mockResolvedValue({ outcome: "authentication-fenced-not-P13", intentDigest: hash });
   io.inspect.mockResolvedValue({ outcome: "authentication-fenced-not-P13", intentDigest: hash });
+  io.transportInspect.mockResolvedValue({ outcome: "authentication-fenced-not-P13", intentDigest: hash });
   io.report.mockResolvedValue({ kind: "present", report: { digest: hash, purpose: "pre-activation", decision: "passed",
     pins: { artifact: { gitSha: sha }, cutover: { planDigest: hash, sourceSnapshotFingerprint: hash },
       catalog: binding.catalog, mappingArchive: { mappingEpoch: hash, mappingHeadDigest: hash },
@@ -238,4 +241,27 @@ it("reopens only the recorded original custody for root inspection and never rot
   expect(io.apply).toHaveBeenCalledOnce();
   await expect(inspectLegacyApplicationLoginFence({ ...f.input, attemptId: "another-attempt" })).rejects.toThrow("BOOTSTRAP-ROOT-INTENT-MISMATCH");
   expect(io.apply).toHaveBeenCalledOnce();
+});
+
+it("dispatches bootstrap inspection through the borrowed management transport before constructing an old-secret pool", async () => {
+  const f = await fixture();
+  await retireLegacyApplicationLogins(f.input);
+  const poolCount = io.pools.length, clientCount = io.clients.length;
+  const originalManagementInput = f.input.administrativeConnectionString;
+  io.fault = "old-secret-rejected";
+  await expect(inspectLegacyApplicationLoginFence(f.input)).resolves.toMatchObject({
+    status: "bootstrap-authentication-inspected-not-p13", outcome: "authentication-fenced-not-P13",
+  });
+  expect(io.transportInspect).toHaveBeenCalledOnce();
+  const selected = io.transportInspect.mock.calls[0][0];
+  const retained = (io.rootEvents[0].payload as { request: Record<string, unknown> }).request;
+  const { credentials: _credentials, ...expectedRootBinding } = retained;
+  expect(selected.expectedRootBinding).toEqual(expectedRootBinding);
+  expect(selected.managementClient.kind).toBe("guard");
+  expect(io.pools).toHaveLength(poolCount);
+  expect(io.clients.slice(clientCount).map(client => client.kind)).toEqual(["guard"]);
+  expect(selected.managementClient.release).toHaveBeenCalledOnce();
+  expect(f.input.administrativeConnectionString === originalManagementInput).toBe(true);
+  expect(io.apply).toHaveBeenCalledOnce();
+  expect(io.inspect).toHaveBeenCalledOnce();
 });
