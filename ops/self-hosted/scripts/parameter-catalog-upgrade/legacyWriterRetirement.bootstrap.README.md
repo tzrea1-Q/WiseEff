@@ -33,7 +33,7 @@ authentication/owner/ACL invariants.
 | Guard identity | Exact session PID/advisory challenge observed by the already identified OID 10 backend; no new system-function EXECUTE grant |
 | Guard inventory | Six existing Catalog/mapping SHARE locks remain held across both low-level commits and final inspection |
 | Bootstrap manager | Sole S7 session-lock holder; current P12 is inspected on this same lease in a short read-only transaction |
-| Low-level effect | Its own run/event writes and role alteration do not write the six guarded relations; actual two-session compatibility remains to be verified |
+| Low-level effect | Its own run/event writes and role alteration do not write the six guarded relations; actual two-session compatibility is covered by the `290b0e240` run below |
 | Guard error/end | Immediately destroy the mutating connection; retain an unknown outcome if execution started |
 | Cleanup | Attempt both lease releases, pool close, custody close and package-directory close; errors do not replace the earlier refusal |
 
@@ -78,9 +78,8 @@ file lifecycle. PostgreSQL, Docker, approval and P12 observations are test I/O
 substitutes. They prove dispatch, binding, refusal and cleanup behavior only;
 they are not an actual approved upgrade or an actual password rotation.
 The previously executed low-level PostgreSQL authentication tests retain their
-own SHAs. This root integration still needs actual two-session lock compatibility,
-guard termination during commit and the complete legitimate P12/report/capture
-predecessor fixture. It must not use an inserted `passed` report to obtain that
+own SHAs. The complete root integration still needs the legitimate
+P12/report/capture predecessor fixture. It must not use an inserted `passed` report to obtain that
 evidence. No production command is supplied.
 
 The appended PostgreSQL tests execute this root's real guard and the existing

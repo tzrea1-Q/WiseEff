@@ -27,7 +27,7 @@ bootstrap 路径另要求显式私有 `bootstrapCredentialDirectory`，它必须
 | guard 身份 | 已独立定位的 OID 10 会话观察精确 PID/advisory 挑战，不新增系统函数 EXECUTE |
 | guard 库存锁 | 六张既有 Catalog/mapping 表的 SHARE 锁跨底层两次提交，并保持到最终读回 |
 | bootstrap 管理会话 | 唯一 S7 session 锁持有者；短只读事务在同会话检查当前 P12 |
-| 底层效果 | run/event 写入与角色修改不写这六张表；真实双会话兼容仍待验证 |
+| 底层效果 | run/event 写入与角色修改不写这六张表；真实双会话兼容由下文 `290b0e240` 执行覆盖 |
 | guard error/end | 立即销毁写入连接；执行开始后的不确定结果保留 unknown |
 | 清理 | 两个 lease、pool、custody 和包目录均尝试关闭，后续错误不覆盖原拒绝 |
 
@@ -57,8 +57,8 @@ P12/恢复包/锁，并取得同一版本的底层真实读回。
 
 直接根测试执行实际根函数与真实私有 custody 文件生命周期，但 PostgreSQL、Docker、
 批准及 P12 观测使用 I/O 替身。它们仅证明派发、绑定、拒绝和清理，不证明实际获批升级
-或实际密码轮换。此前底层 PG 认证结果保留自己的 SHA。本次根集成仍需真实双会话锁
-兼容、提交期间 guard 终止，以及完整合法 P12/报告/恢复前驱夹具；不得通过插入 passed
+或实际密码轮换。此前底层 PG 认证结果保留自己的 SHA。完整根集成仍需
+合法 P12/报告/恢复前驱夹具；不得通过插入 passed
 报告获得证据。本分片不提供生产命令。
 
 追加 PG 回归在真实 prepared run 上执行本根 guard 与既有认证效果，保留原 22 用例及
