@@ -672,12 +672,14 @@ async function exerciseCustodyTransport() {
     const cleanup = async () => {
     const first = await Promise.allSettled([Promise.resolve().then(() => client?.release(true))]);
     const second = await Promise.allSettled([Promise.resolve().then(endManagers), Promise.resolve().then(() => custody?.close())]);
+    const settings = await Promise.allSettled([Promise.resolve().then(() => withFreshManager(cleanup =>
+      cleanup.query(`alter role ${pg.escapeIdentifier(decodeURIComponent(privateUrl.username))} reset application_name`)))]);
     const third = await Promise.allSettled([Promise.resolve().then(async () => {
       if (created) { await withFreshManager(cleanup => cleanup.query(`drop role ${role}`)); created = false; }
     }), Promise.resolve().then(async () => {
       if (writerCreated) { await withFreshManager(cleanup => cleanup.query(`drop owned by ${writerRole}; drop role ${writerRole}`)); writerCreated = false; }
     })]);
-    if ([...first, ...second, ...third].some(r => r.status === "rejected"))
+    if ([...first, ...second, ...settings, ...third].some(r => r.status === "rejected"))
       throw new Error(failed ? "bootstrap-transport-operation-and-cleanup-failed" : "bootstrap-transport-cleanup-failed");
     };
     if (failed) { successorCheck = undefined; await cleanup(); }
