@@ -27,6 +27,43 @@ trusted baseline, or boundary allowance changes here.
 
 ## Threats and observation
 
+### Native referential actions
+
+Migration 0048's existing `projects` DELETE cascades into
+`project_parameter_bindings`. A restricted LOGIN with only project DELETE and
+identifier SELECT really deleted one binding without a binding mutation ACL;
+V13 nevertheless passed. Test-only `ae1f20d66111cbabb758abee48b9294f3bc16aca`
+reproduced this: 32 collected, 31 passed, one failed, 5.52 seconds, exit 1,
+cleanup verified. Earlier `2dd71469e` failed fixture setup because migration
+0067 requires `module_id`; that result is not a gate Red. The corrected fixture
+supplies an actual module without changing the schema.
+
+The adapter follows actual FK constraints and enabled internal trigger events
+back from the seven relations. DELETE CASCADE propagates DELETE; UPDATE CASCADE
+and SET NULL/DEFAULT propagate affected columns. Recursive UNION follows matching
+relation/event/column paths, checking only referenced key columns for an initiating
+UPDATE, then uses existing LOGIN/SET/definer capabilities at the path source.
+Native RI does not confer arbitrary EXECUTE or all rights of the child owner.
+
+Fixed `c6e1f9402aa142769148cd7480498f59f8058c12`, tree
+`10f8a5437de66c51135ebccf39edffe80d6dfa5f`, ran 34/34 in 5.48 seconds,
+exit 0, no skipped tests, owned cleanup verified. Original 31 cases remain;
+unscoped-child cascades and non-key project updates retain passed submatrix
+results. Targeted strict types exited 0. Same owned command and PG16 image below;
+no grant, migration, timeout, route, or seven-table scope change. Red log
+`/tmp/upg824-v13-native-ri-observed-red.log` SHA256
+`80c2cb6092f00aaca7794c86762fd3568ee52f1fdeb04635ea7e6580bede9fad`;
+Green `/tmp/upg824-v13-native-ri-green.log` SHA256
+`4c13a0c4109308d34f22be606881c70240054758ba6a897b3686165de35aed01`.
+
+This does not revoke legitimate project deletion or rewrite its original FK.
+An available path blocks retirement; preserving business semantics through
+conversion/archive remains the retirement owner's obligation. RI into an
+unscoped child followed by a definer trigger, rewrite rules, and role-source
+exclusions remain separate work, not zero observations or complete P13.
+
+### Direct and delegated capabilities
+
 The original direct-ACL and definer checks remain. Additional observations root
 at actual LOGIN roles, follow PostgreSQL 16 SET membership edges, and use actual
 table/column privileges for PUBLIC and inherited capabilities. Ownership is

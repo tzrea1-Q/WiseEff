@@ -2,6 +2,32 @@
 
 [English](writerReachability.md)
 
+## 原生外键动作
+
+原迁移0048的 `projects` DELETE 会级联删除 `project_parameter_bindings`。
+受限LOGIN只有项目DELETE及id列SELECT、没有binding变更ACL，仍实际删除一条binding，
+而V13错误passed。test-only `ae1f20d66111cbabb758abee48b9294f3bc16aca`
+复现32收集、31过、1失败，5.52秒、exit1、清理通过。更早`2dd71469e`因遗漏0067
+要求的module_id在夹具准备失败，不是gate Red；后续补实际module关联，没有修改schema。
+
+适配器从七表逆向追踪实际FK约束及已启用内部触发器事件。DELETE CASCADE传播DELETE；
+UPDATE CASCADE和SET NULL/DEFAULT传播实际列。递归UNION按关系/事件/列交集追踪，
+起点UPDATE只检查引用key列，再使用既有LOGIN/SET/definer能力。原生RI不授予child
+owner的任意EXECUTE或其它权限。
+
+固定`c6e1f9402aa142769148cd7480498f59f8058c12`、tree
+`10f8a5437de66c51135ebccf39edffe80d6dfa5f`实际34/34，5.48秒，exit0、零skip，
+owned清理通过。原31例保留，非legacy子表级联和项目非key列更新仍为passed子矩阵。
+targeted strict types退出0，沿用下述owned命令及PG16镜像，不改grant/migration/
+timeout/route/七表范围。有效Red日志`/tmp/upg824-v13-native-ri-observed-red.log`
+SHA256 `80c2cb6092f00aaca7794c86762fd3568ee52f1fdeb04635ea7e6580bede9fad`；
+Green `/tmp/upg824-v13-native-ri-green.log` SHA256
+`4c13a0c4109308d34f22be606881c70240054758ba6a897b3686165de35aed01`。
+
+这里不撤销合法项目删除权限，也不改原FK；可达路径会阻止退役，转换/Archive保持业务
+语义由退役owner负责。RI进入非legacy子表后再触发definer、rewrite规则及角色来源排除
+仍待后续处理，不把未观察项视为零或称完整P13。
+
 ## SECURITY DEFINER 触发器分派
 
 已安装触发器的分派来自真实表／列变更权限，不依赖函数的 EXECUTE 授权。
