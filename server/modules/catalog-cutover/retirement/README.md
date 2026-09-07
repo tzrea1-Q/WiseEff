@@ -307,3 +307,39 @@ except PATH/HOME and the exact `bootstrapCredentialFence.test.ts` selector.
 It has no database setup. Future real PostgreSQL cases belong in a separate
 `bootstrapCredentialFence.integration.test.ts` and require a new parent-owned,
 exclusive cluster/receipt; the general server suite is not its execution path.
+
+### Bootstrap fault transport and Linux small-packet delay
+
+Hosted run `34138417314`, head `c04d42703`, passed the endpoint lane's 16 cases
+but returned 20 passed / 2 failed in bootstrap acceptance. Both failures reached
+the unchanged 2000ms wait without observing COMMIT 2; the COMMIT 1 cases passed.
+This did not establish a credential, PostgreSQL commit, or production failure.
+
+The proxy split server responses into individual PostgreSQL frames while both
+new TCP sockets retained Nagle's algorithm. The locked `pg` client's connection
+already calls `setNoDelay(true)`. The test proxy now does the same on both sockets
+before forwarding. Frame parsing, wire bytes, selected COMMIT interception,
+2000ms observation limit and the original test/hook budgets are unchanged.
+[Node's TCP documentation](https://nodejs.org/docs/latest-v22.x/api/net.html#socketsetnodelaynodelay)
+describes the default buffering and this setting; no server or runtime fence
+configuration changes.
+
+A bounded Linux/arm64 Node 22.21.1 container, image
+`sha256:0340fa682d72068edf603c305bfbc10e23219fb0e40df58d9ea4d6f33a9798bf`,
+ran the actual `c04d42703` proxy with 30 synthetic loopback request/reply cycles.
+Original: 1263ms total, 42ms median; with the socket setting: 5ms total, 0ms
+median. Both preserved bytes and intercepted COMMIT 2. The container had no
+network access, mounts or secrets and its exact owned identity was cleaned.
+The preceding macOS comparison was 5ms versus 4ms, so it did not reproduce the
+delay. An initial container invocation omitted interactive stdin and produced
+zero observations; it is not passing evidence. Only the corrected two-result
+invocation supplies the Linux comparison. No PostgreSQL was used in this probe.
+
+`scripts/bootstrap-fault-proxy.test.ts` executes the actual proxy function from
+the test's syntax tree against synthetic TCP frames, without importing its
+database setup. It requires native no-delay configuration before either socket
+forwards bytes, exact replies, COMMIT 1 hold / COMMIT 2 disconnect, and cleanup.
+It uses no speed threshold or fake SQL/approval result. The two new cases failed
+on the unmodified transport and passed after the change. Real bootstrap 22-case
+acceptance and a new Hosted run remain separate required execution evidence;
+this protocol regression alone is not a successful credential fence or P13.

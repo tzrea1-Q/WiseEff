@@ -233,6 +233,7 @@ async function commitFaultProxy(ordinal: 1 | 2) {
     const upstream = connect({ host: privateUrl.hostname, port: Number(privateUrl.port) });
     let packets: Buffer = Buffer.alloc(0), commits = 0, held = false;
     for (const socket of [downstream, upstream]) {
+      socket.setNoDelay(true);
       sockets.add(socket);
       socket.on("error", () => { downstream.destroy(); upstream.destroy(); });
       socket.on("close", () => { sockets.delete(socket); downstream.destroy(); upstream.destroy(); });

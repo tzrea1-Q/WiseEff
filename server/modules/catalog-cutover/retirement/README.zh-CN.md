@@ -229,3 +229,29 @@ ledger 检查中失败。失败前的 setup 可能创建迁移模板、删除陈
 精确选择 `bootstrapCredentialFence.test.ts`；该配置没有数据库 setup。
 后续真实 PostgreSQL 用例使用单独的 `bootstrapCredentialFence.integration.test.ts`，
 必须有父监督器新建的独占集群和 receipt，不能通过通用 server suite 执行。
+
+### Bootstrap 故障代理与 Linux 小报文延迟
+
+Hosted `34138417314`、head `c04d42703` 的 endpoint 16 例通过，随后 bootstrap
+20 通过／2 失败。两次失败都在原 2000ms 内未观察到 COMMIT 2，COMMIT 1 用例通过；
+这不能证明凭据、PostgreSQL 提交或生产环境发生了故障。
+
+代理将服务端响应逐个 PostgreSQL frame 转发，但两个新 TCP socket 仍启用 Nagle。
+锁定的 `pg` 客户端连接已调用 `setNoDelay(true)`；现在测试代理在转发前对两端做
+相同设置。帧解析、实际字节、指定 COMMIT 截断、2000ms 观察限制及原 test/hook
+预算不变。[Node TCP 文档](https://nodejs.org/docs/latest-v22.x/api/net.html#socketsetnodelaynodelay)
+说明了默认缓冲与该设置；没有更改服务端或运行期 fence 配置。
+
+限定的 Linux/arm64 Node 22.21.1 容器，镜像
+`sha256:0340fa682d72068edf603c305bfbc10e23219fb0e40df58d9ea4d6f33a9798bf`，
+运行 `c04d42703` 的实际代理与 30 轮合成 loopback 请求／响应。原版总计1263ms、
+中位42ms；仅加 socket 设置后总计5ms、中位0ms。两者字节相同且都截获 COMMIT 2。
+容器禁用外部网络，没有挂载或秘密，已按精确归属身份清理。此前 macOS 对照为5ms与4ms，
+未复现延迟；初次容器调用漏开交互 stdin，零观察，不算通过。仅修正后确实得到两条
+结果的运行构成 Linux 对照证据。本探针不使用 PostgreSQL。
+
+`scripts/bootstrap-fault-proxy.test.ts` 从测试语法树执行实际代理函数，以合成 TCP 帧
+验证，不导入数据库 setup。它要求两端在转发字节前调用原生 no-delay，核对完整响应、
+COMMIT 1 保留／COMMIT 2 断连和清理；不设速度阈值，不伪造 SQL 或批准结果。
+新增两例在原代理上失败，修改后通过。真实 bootstrap 22 例和新的 Hosted 执行仍须
+分别核验；协议回归通过不等于凭据退出或 P13 已完成。
