@@ -2,7 +2,48 @@
 
 > Chinese: [Chinese](populated-upgrade-evidence.zh-CN.md)
 
-## Current execution checkpoint, 2026-09-08
+## Recovery composition continuation, 2026-09-08
+
+Scratch code `06dcc6ca52ba030e46b232f573d229b2dd530476`, tree
+`2296304b0f369d8909b2285bbfab650a93eddb02`, passed all 15 actual recovery tests,
+zero failed/skipped, 218.64s, exit 0. Original log
+`upg824-real-queue-06dc-actual-full.log` SHA256
+`92aff22e60683f175d701ab752fd773b58c0192bfbc0952778040ccd747adc1b`.
+The formal capture, four-principal approval and package-only separate restore
+now compose successfully; actual BullMQ paused jobs, payloads, failure-after-effect
+retry and database uniqueness are checked. Exact create-unknown volume/container
+cleanup and missing-payload/wrong-run/nonempty-AOF refusals passed. Private evidence
+is retained separately from Docker cleanup. This remains representative synthetic
+queue behavior, not all consumers or complete old-application conversion.
+
+Standards and Spec reviews of that two-file increment passed independently after
+fixing evidence deletion, unregistered create outcomes and ambiguous child failures.
+The authority helper has its own independent reviews at `bc85eb3df`. These reviews
+do not cover the subsequent owned-route increment `2bfd4b2b4`, whose independent
+review is pending. That exact code ran through the existing owned runner:
+15 collected/passed, zero failed/skipped, 228.35s, exit 0; Docker cleanup verified
+and private evidence retained. Original `upg824-recovery-owned-current.log` SHA256
+`b42d1a794676b5f9621971dc120038170a55adb40e70a4c561cf47b168cfd868`.
+The command was `node --import tsx scripts/run-upgrade-component-tests.ts
+--expected-daemon-id <independently verified development daemon> --suite recovery-three-store`.
+The actual PG16 Alpine image was
+`sha256:16bc17c64a573ef34162af9298258d1aec548232985b33ed7b1eac33ba35c229`,
+linux/arm64. Code remained unchanged while six report/operator Markdown files were
+edited. Build also exited 0 with existing warnings (log SHA256
+`4973963707d3b06d0527c5bb8de3246df525d1ab58aa090af5124d98efc73fc7`).
+A prior focused invocation without the required pgvector environment
+failed the S11-RP suite setup (16 passed, 7 not executed); it is not a test pass or
+an external blocker. The owned scripts lane must supply that dependency.
+
+Delivered report `70c1a3ad0` CI `34146381260` succeeded; actual checkout
+`80f831e2a9641a93284a867cdf226499f569c656`. Scripts 1826 passed/41 skipped;
+backend 4289 passed/zero skipped; bridge 134 passed/4 skipped. All ten owned lanes,
+boundary, contract, log-eval, smoke, quality and Merge bar succeeded. Local non-HDC
+and target synthetic jobs skipped. The new Scratch is not covered by that CI.
+The previously verified 70c1 full-file archive remains immutable and does not
+include these new files/logs. A/B/C remain incomplete; no production command.
+
+## Delivered checkpoint ec0 — original execution identity
 
 Code `ec0ee9f3e86c6c3e037bf5485e8d32f322375ca5`, tree
 `ba7e906bf6a3d8d40d679bf87eacb3f9b0e8717c`, integrates the reviewed bootstrap

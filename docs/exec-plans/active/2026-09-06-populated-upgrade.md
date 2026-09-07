@@ -6,6 +6,28 @@
 
 ### Current continuation: real dependencies and activation
 
+Recovery composition now uses formal capture and independently authenticated
+approval before the separate restore process. Scratch `06dcc6ca5` passed all 15
+actual package/queue tests; `2bfd4b2b4` adds a mandatory owned route, recorded
+separately. Neither proves a complete old-application upgrade. Delivered report
+`70c1a3ad0` CI `34146381260` succeeded at actual merge
+`80f831e2a9641a93284a867cdf226499f569c656`; local non-HDC and target synthetic jobs
+skipped. That Hosted result does not cover new Scratch changes.
+
+| Increment / sole writer | R3 threat and required evidence | Documentation impact |
+| --- | --- | --- |
+| Recovery and owned CI / parent | Formal capture and four-principal approval; package-only restore; paused BullMQ/retry; exact unknown-resource reconciliation; private journal retained | Existing operator/evidence pair, plan and authority pair |
+| Bootstrap inspection root / Lagrange | Full observed binding and original lock/report/package checks before custody transport; no old-password fallback | Existing retirement pair |
+| Initialization signals / Fermat | No late consumer/database write after termination; settle existing resources | Lifecycle and shared signal owner pair |
+| Organization archive identity / Raman | Preserve verified owner identity without plaintext in other metadata or ciphertext | Existing Archive pair |
+
+Independent reviews remain separate from author tests. Route/config/CI changes
+require route regression and actual owned execution; generic exclusions cannot
+become unexecuted tests. The existing strict Documentation Update Gate applies.
+Production boundaries and separate external decisions are unchanged.
+
+The following delivered checkpoint retains its original execution identity.
+
 Current code is `ec0ee9f3e86c6c3e037bf5485e8d32f322375ca5`, tree
 `ba7e906bf6a3d8d40d679bf87eacb3f9b0e8717c`. The reviewed root bootstrap
 guard/report/cleanup increment and mandatory owned runtime-identity lane are

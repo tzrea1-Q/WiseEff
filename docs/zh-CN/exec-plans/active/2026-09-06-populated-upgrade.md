@@ -4,6 +4,25 @@
 
 ## 范围与状态
 
+恢复组合已通过正式 capture 和独立认证批准调用单独恢复进程。Scratch
+`06dcc6ca5` 的15项真实包／队列测试全部通过；`2bfd4b2b4` 新增强制owned路由，
+执行另行记录。两者都不证明完整旧应用升级。已交付报告 `70c1a3ad0` 的CI
+`34146381260` 在实际merge `80f831e2a9641a93284a867cdf226499f569c656` 成功；
+local non-HDC及target synthetic两个Job跳过，不覆盖新Scratch。
+
+| 增量／唯一写入者 | R3威胁与所需证据 | 文档影响 |
+| --- | --- | --- |
+| 恢复与owned CI／父协调者 | 正式capture与四principal批准；仅凭包恢复；真实暂停队列／重试；未知资源精确核对；保留私有journal | 现有操作／证据双语文件、主计划及authority说明 |
+| Bootstrap检查根接线／Lagrange | 完整实测binding及原锁／报告／包检查；不回退旧密码 | 现有retirement双语说明 |
+| 初始化信号／Fermat | 终止后无晚到消费者／数据库写入；结算已建资源 | 生命周期及共享信号owner双语说明 |
+| 组织归档身份／Raman | 保留已核验owner身份，其他metadata及密文仍禁明文 | 现有Archive双语说明 |
+
+独立审查与作者测试分别记录。路由／配置／CI改动须有路由回归和真实owned执行，
+普通路由排除不能造成两边都不执行。沿用既有严格Documentation Update Gate；
+生产停止边界和独立外部决定不变。
+
+以下已交付检查点保留原执行身份。
+
 当前代码 `ec0ee9f3e86c6c3e037bf5485e8d32f322375ca5`，tree
 `ba7e906bf6a3d8d40d679bf87eacb3f9b0e8717c`，已串行集成经过独立审查的根bootstrap
 guard/报告/清理增量及强制owned运行身份lane。当前focused92/92、真实bootstrap27/27、

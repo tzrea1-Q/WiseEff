@@ -258,7 +258,19 @@ setup 或测试失败均停止，不能记为 skip 或性能通过。独立的 `
 node --import tsx scripts/rehearse-upgrade-recovery.ts --synthetic-only
 ```
 
-预期退出0，证据明确 `synthetic package only`；分别记录备份存在／checksum／恢复执行／合成行为验证。导出后停止源三存储，独立子进程仅消费包与私有目标输入，核对 `sourceStoppedBeforeRestore=true`、`separateRestoreProcess=true`。检查 PostgreSQL owner/ACL 与受限登录、两个不同对象及来自备份的 metadata、Redis AOF（`redisPersistence="AOF"`）。队列形状的 Redis 键仍不是实际 Bull worker 业务验收。`cleanupVerified=true` 只表示自建资源清理；临时备份不保留（`backupRetained=false`）。`fullBusinessVerification=false`、`releaseReady=false` 必须保持。adapter 已支持有界接收校验并拒绝目标旧 AOF；256 MiB 内存限制、未加密私有包不构成生产加密／密钥管理方案。失败时保留脱敏阶段，不推导生产恢复命令。
+预期退出0，证据明确 `synthetic package only`，分别记录备份存在／checksum／恢复执行／合成行为验证。正式 producer 在真实宿主锁下记录停写三存储 capture；独立自有认证集群通过四个不同合成 principal 的正式确认／批准命令写入授权。导出后停止源三存储，独立子进程仅消费包与私有目标输入，核对 `sourceStoppedBeforeRestore=true`、`separateRestoreProcess=true`。检查 PostgreSQL owner/ACL 与受限登录、两个不同对象及来自备份的 metadata、Redis AOF（`redisPersistence="AOF"`）。恢复子进程不启动消费者。
+
+真实 BullMQ 任务、payload 与暂停状态从 AOF 恢复；随后独立的受控合成验收才恢复任务，使用受限数据库登录验证“提交写入后失败，再重试”由业务唯一约束只产生一行。`actualQueueVerified`、`queuePausedAfterRestore`、`queueRetryVerified`、`queueDeduplicationVerified` 仅证明这个代表性任务，不代表所有业务队列或 exactly-once。`fullBusinessVerification=false`、`releaseReady=false` 必须保持。
+
+capture 提交后 `backupRetained=true`：私有包、批准与 journal 在失败／未知结果后也保留，不自动递归删除。`cleanupVerified` 只表示自有 Docker 资源清理。缺包、错误 run、目标旧 AOF 分别核对实际子进程的有限拒绝码，通用启动失败不能冒充指定反例。256 MiB 内存限制、未加密私有包仍不构成生产加密／密钥管理方案；失败保持隔离，不推导生产恢复命令。
+
+永久回归使用现有准入 runner，输入必须来自已独立确认的开发 daemon：
+
+```bash
+node --import tsx scripts/run-upgrade-component-tests.ts --expected-daemon-id "$verified_development_daemon_id" --suite recovery-three-store
+```
+
+机器／用户／目录：已审隔离开发 checkout 及其开发用户；前置：上述本地镜像、已经核验的 daemon ID。此命令只写入自建测试存储，保留私有证据，不停止任何部署。预期整份测试无 opt-in 跳过，CI owned job 也强制执行；准入、镜像、测试或清理失败即停止。它不是生产维护命令。
 
 真实数据副本：**blocked，尚无受控可恢复备份，生产加密、角色策略及完整业务恢复仍需集成**。本手册不授权生产导出。获批隔离环境需禁用外发邮件、webhook、真实设备及非必要模型调用；provider模拟状态与实际认证／数据库／业务调用证据分别标记。开发合成回归不替代此步骤。
 

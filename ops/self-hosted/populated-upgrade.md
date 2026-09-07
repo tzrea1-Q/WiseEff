@@ -305,7 +305,19 @@ A bounded developer-only synthetic three-store restore creates its own PostgreSQ
 node --import tsx scripts/rehearse-upgrade-recovery.ts --synthetic-only
 ```
 
-Expected: exit 0, `evidence="synthetic package only"`, separate backup/checksum/restore/behavior flags, `sourceStoppedBeforeRestore=true`, `separateRestoreProcess=true`, `redisPersistence="AOF"`, `cleanupVerified=true`, `fullBusinessVerification=false`, `releaseReady=false`. Temporary backups are removed (`backupRetained=false`). Queue-shaped Redis keys are not an actual Bull worker business test. The bounded package adapter supports validated intake and refuses existing target AOF, but its 256 MiB in-memory limit and unencrypted private package are not a production encryption/key-custody solution. Failure stops with a sanitized stage; do not invent a production recovery command.
+Expected: exit 0, `evidence="synthetic package only"`, separate backup/checksum/restore/behavior flags, `sourceStoppedBeforeRestore=true`, `separateRestoreProcess=true`, `redisPersistence="AOF"`, and `cleanupVerified=true`. The producer records the actual stopped-store capture under the existing host lock. A separate owned authentication cluster supplies four independent synthetic principals through the formal confirmation/approval commands. The restore child only consumes the package and private target inputs; it never starts consumers.
+
+Actual BullMQ jobs, payloads and paused state survive the AOF restore. A separate controlled acceptance then resumes those synthetic jobs using a restricted database login. A committed effect followed by failure/retry must produce one row through the business uniqueness constraint. `actualQueueVerified`, `queuePausedAfterRestore`, `queueRetryVerified` and `queueDeduplicationVerified` describe this representative task, not all application queues or exactly-once delivery. `fullBusinessVerification=false` and `releaseReady=false` remain mandatory.
+
+Private capture/package/approval/journal evidence is retained (`backupRetained=true` once capture commits), including after failed or unknown execution. Docker cleanup is separate from evidence retention; no automatic recursive removal of this evidence is authorized. Missing payload, wrong run and existing target AOF must expose their own finite child refusal, not just a generic process failure. The package's 256 MiB memory bound and private unencrypted format are not production encryption/key custody. Failure remains isolated; no production recovery command is implied.
+
+Permanent regression uses the existing admitted runner, with an independently verified development daemon ID supplied by the operator:
+
+```bash
+node --import tsx scripts/run-upgrade-component-tests.ts --expected-daemon-id "$verified_development_daemon_id" --suite recovery-three-store
+```
+
+Run only from the reviewed isolated development checkout, with the listed local images and an already verified daemon. It writes its own disposable stores and retains private evidence; it does not stop any deployment. The owned CI job runs the same complete file without opt-in skips. A failed admission, missing image, test or cleanup stops this lane.
 
 Package v2 records role INHERIT and each PostgreSQL 16 membership's INHERIT/SET
 options explicitly. Unknown flags, privileged attributes, ADMIN, external edges

@@ -2,7 +2,41 @@
 
 > English: [English](populated-upgrade-evidence.md)
 
-## 当前执行检查点，2026-09-08
+## 恢复组合续工，2026-09-08
+
+Scratch代码 `06dcc6ca52ba030e46b232f573d229b2dd530476`，tree
+`2296304b0f369d8909b2285bbfab650a93eddb02`，15项真实恢复测试全部通过，
+失败／跳过0，218.64s，退出0。原日志 `upg824-real-queue-06dc-actual-full.log`
+SHA256：`92aff22e60683f175d701ab752fd773b58c0192bfbc0952778040ccd747adc1b`。
+正式capture、四principal批准及独立进程仅凭包恢复已组合成功；真实BullMQ暂停任务、
+payload、提交副作用后失败重试和数据库唯一约束均核验。卷／容器create结果未知时的
+精确回收，以及缺payload／错误run／目标旧AOF的指定拒绝通过。私有证据保留与Docker
+清理分别记录；这仍是代表性合成队列，不是全消费者或完整旧应用转换。
+
+修复删除证据、未登记create未知结果和子进程失败含混后，两文件增量获得独立
+Standards与Spec通过。authority helper在 `bc85eb3df` 有单独双审。这些审查不覆盖
+后续owned路由 `2bfd4b2b4`，该路由独立审查仍待完成。此精确代码已由现有owned
+runner执行：收集／通过15，失败／跳过0，228.35s，退出0，Docker清理核验且私有
+证据保留。原 `upg824-recovery-owned-current.log` SHA256：
+`b42d1a794676b5f9621971dc120038170a55adb40e70a4c561cf47b168cfd868`。
+命令为 `node --import tsx scripts/run-upgrade-component-tests.ts
+--expected-daemon-id <已独立核验的开发daemon> --suite recovery-three-store`。
+实际PG16 Alpine镜像为
+`sha256:16bc17c64a573ef34162af9298258d1aec548232985b33ed7b1eac33ba35c229`，
+linux/arm64。执行期间代码不变，六份报告／操作Markdown有更新；build也退出0，
+保留原警告，日志SHA256：`4973963707d3b06d0527c5bb8de3246df525d1ab58aa090af5124d98efc73fc7`。
+之前一次focused误用缺少pgvector环境的命令，
+S11-RP套件在setup失败（16通过、7未执行）；不是通过，也不是外部阻塞，须由owned
+scripts lane提供依赖补验。
+
+已交付报告 `70c1a3ad0` 的CI `34146381260` 成功，实际checkout
+`80f831e2a9641a93284a867cdf226499f569c656`。scripts1826通过／41跳过，
+backend4289通过／0跳过，bridge134通过／4跳过。十个owned lane、boundary、contract、
+log-eval、smoke、quality及Merge bar通过；local non-HDC和target synthetic两个Job
+跳过，不覆盖新Scratch。已验证70c1全文包保持原样，不包含这些新增文件和日志。
+A／B／C仍未完成，不提供生产升级命令。
+
+## 已交付ec0检查点——保留原执行身份
 
 代码 `ec0ee9f3e86c6c3e037bf5485e8d32f322375ca5`，tree
 `ba7e906bf6a3d8d40d679bf87eacb3f9b0e8717c`，在原base `cda6737a8` 上串行集成
