@@ -12,8 +12,10 @@ worker 的启动／停止现在负责 listener、消费者和数据库 pool；
 `PCAT-RUNTIME-WORKER-START-FAILED` 或 `PCAT-RUNTIME-WORKER-SHUTDOWN-FAILED`
 保留非零退出和静态诊断。Polling 停止等待当前任务，durable 构造／关闭等待
 Queue／Worker 清理。这些生命周期修复不授权消费，也不证明获批启动。最后 durable
-增量仍待独立审查，当前受到智能体使用额度限制。既有 schema P12／journal 工作
-已保存在独立未完成 Scratch 分支，不属于可执行候选。
+实现源 `2381aaff1` 已通过独立 Standards/Spec 审查；父 API 请求排空及既有存储
+P12／journal 增量也已在限定范围内通过独立审查并集成，不覆盖完整启动 producer
+或 controller 成功升级。`801e0a8b3` 的父监督真实 Redis 九例通过，包括泄漏断言
+自身失败时也不输出秘密的永久反例。
 
 用户已于 2026-09-07 授权两项限定实现：[登记的恢复执行层](storage/execution/README.zh-CN.md)，
 同时保留 S11-RP 检查入口无恢复副作用；以及追加迁移 0140 的
@@ -29,7 +31,7 @@ Binding/ProjectValue 授权或发布。Policy #815 仍需独立决定。
 | 普通 stack apply | 旧 stack 生命周期；canonical 目标在构建/no-op前拒绝 |
 | Catalog apply fresh/populated | 冻结 plan/execute/P11a；不授权对外服务 |
 | Release Verification | purpose/pins/report/approval/runtime pin 模块存在，实际启动尚未接线 |
-| P12 | 管理原型保存在 `codex/pr824-p12-contract-scratch`；新增冻结 schema 决策待定，已从当前可执行候选分离 |
+| P12 | 已集成既有 0137 事件／checkpoint 实现及正式报告关联；获批 apply 的正向成功仍依赖完整 live gate／producer 链。早期新增表原型继续排除 |
 | P13/P11b/P14/P15 | 完整可执行集成仍未完成 |
 
 ## 开发环境

@@ -2,6 +2,50 @@
 
 > Chinese: [Chinese](populated-upgrade-evidence.zh-CN.md)
 
+## Current continuation checkpoint, 2026-09-07
+
+This section supersedes earlier current-state statements about exhausted review
+resources and unintegrated P12/journal work. Historical execution identities below
+remain unchanged. Development base is `cda6737a8f177a8bbd2f3bc7d195f8e3037bfa74`;
+the production source remains `82344044b436a8dafecefbb85dfd724cecb05e3f`.
+
+Hosted run [34104402409](https://github.com/tzrea1-Q/WiseEff/actions/runs/34104402409)
+completed successfully on merge checkout `155ffd1692cf4392e11b6d1f705b18cb40c7c149`
+for report head `39d5b125d9dd64df44d95e9fb2328a51a0bd3d14`. Scripts were
+1657 collected/1616 passed/0 failed/41 skipped; backend 4180/4169/0/11.
+Boundary, bridge, contract, log-eval, owned PostgreSQL, Acceptance smoke/quality and
+Merge bar ran successfully. Local non-HDC and target-synthetic jobs skipped.
+This is not Hosted evidence for the following continuation.
+
+| Actual execution identity | Command/scope and result | Log SHA256 |
+| --- | --- | --- |
+| Clean `4847025983527893e21e260da55cbf32aeff8a46`, tree `3b7671516daf03d332b02c07534a061be6517b8b` | Owned `scripts-pgvector`: 1716 collected, 1690 passed, 1 failed, 25 skipped; 99.45s, exit 1, cleanup verified. Only failure: source-lock lineage case at unchanged 60000ms | `64b8245f38d2882beeb88ee12b917dad84f0dd4d2516c7090cb283a0162a10af` |
+| `484702598` / base `cda6737a8`, independent clean worktrees and identical dependencies | Same source-lock one-case selector: 1 passed/0 failed/3 filtered each, 43.322s / 38.159s, exit 0. Does not overwrite the full-suite failure or establish inherited failure | candidate `28ff39f4800da4f362ac0044b12e392e21ce44ec127cab6398d4757e5b0542b1`; base `3cee9c7de9a3a1898ebf921e1c1d04e8806af119c551d8b987b4cd993d6574a6` |
+| `372d1366d` plus exact owned-routing/Markdown WIP | Owned `activation-existing-pg16`: 11 collected/passed, 0 skipped, 14.84s, exit 0, cleanup verified; existing storage/readback and real S6 counterexample, not approved full P12 apply | `cc3f57a4a91ab9019fc0d22d2cddfb5ed3c725a781559baafae891dc7513710a` |
+| Clean `801e0a8b31c3c7f00d861c294b0c511889a8da4f`, tree `bf0fe5ec209886b34d957faf6afc7d67f45ce0cf` | Owned `log-redis`: 9 collected/passed, 0 skipped, 2.75s, exit 0, cleanup verified. Prior assertion Red: 8 passed/1 failed, exit 1; only boolean failure output | Green `182278a3c613f5f1d2b08f572cfe3e65e2304382c9474a024a7baaa7ae27013e`; Red `62c9727c18b26a301ceb5f12f152bf284f25d0b3823d3422e8f8c451bc626e2d` |
+
+These runs use Node 22.22.3/Vitest 4.1.5 on the independently confirmed development
+Docker Desktop, linux/arm64 images: Redis `sha256:ff02b58f971e7d7d156a1267e283fcbbeee91773b6aa36c49dac28ecfe28eadf`,
+PG16 Alpine `sha256:16bc17c64a573ef34162af9298258d1aec548232985b33ed7b1eac33ba35c229`,
+pgvector `sha256:a36250871de0833b8757561c72f2477ef1ddd1101afa4e617fb552e0de514c6b`.
+Image IDs are not manifest digests or the user's historical production image.
+
+Durable source `2381aaff1`, parent API `b404b615b`, activation journal `e0ce5aa42`,
+Comparison association `d21627c02` and P12 `5b945a645` received independent reviews
+within their explicit component scopes. The separate runner/secret-assertion P2
+was fixed in `801e0a8b3` and independently re-reviewed. Actual Redis/BullMQ evidence
+uses a controlled processor, not the complete log-analysis business pipeline.
+The root API/worker still do not consume a complete live startup producer.
+
+P01's management-membership false refusal and P02's passing after role-switch
+42501 were reproduced with a real SELECT-only verifier login. A bounded S6 decision
+has been requested; no S6/runtime grant or Policy decision was silently changed.
+P13, complete producer/report chain, root controller success, full consumer oracle,
+business recovery/queue/browser/growth acceptance remain internal work. A/B are not
+complete. Real backup, enterprise-network trust, Policy #815 and production approval
+remain separate C dependencies; no production operation occurred. Current continuation
+Hosted, full backend and final integrated review are not yet recorded as passed.
+
 ## Authorized contract implementation checkpoint, 2026-09-07
 
 ### Worker integration and review environment stop

@@ -2,6 +2,43 @@
 
 > English: [English](populated-upgrade-evidence.md)
 
+## 当前续工检查点，2026-09-07
+
+本节更新早期“审查额度耗尽”“P12／journal 尚未集成”的当前状态；下面的历史
+执行身份保持不变。开发 base 为 `cda6737a8f177a8bbd2f3bc7d195f8e3037bfa74`，
+生产源仍为 `82344044b436a8dafecefbb85dfd724cecb05e3f`。
+
+Hosted [34104402409](https://github.com/tzrea1-Q/WiseEff/actions/runs/34104402409)
+已成功结束，报告 head `39d5b125d9dd64df44d95e9fb2328a51a0bd3d14`，实际 merge checkout
+`155ffd1692cf4392e11b6d1f705b18cb40c7c149`。Scripts 收集1657／通过1616／失败0／跳过41；
+backend 为4180／4169／0／11。Boundary、bridge、contract、log-eval、owned PostgreSQL、
+Acceptance smoke/quality、Merge bar 均实际成功。Local non-HDC、target-synthetic 两个
+job 跳过。这不是下列续工代码的 Hosted 证据。
+
+| 实际执行身份 | 命令／范围与结果 | 日志 SHA256 |
+| --- | --- | --- |
+| clean `4847025983527893e21e260da55cbf32aeff8a46`，tree `3b7671516daf03d332b02c07534a061be6517b8b` | owned `scripts-pgvector`：收集1716、通过1690、失败1、跳过25；99.45秒，退出1，清理已核验。唯一失败是 source-lock lineage 原60000ms超时 | `64b8245f38d2882beeb88ee12b917dad84f0dd4d2516c7090cb283a0162a10af` |
+| `484702598`／base `cda6737a8`，独立clean工作树、相同依赖 | 相同 source-lock 单例 selector：各通过1／失败0／过滤3，43.322秒／38.159秒，退出0；不能改写全量失败或据此判为继承失败 | candidate `28ff39f4800da4f362ac0044b12e392e21ce44ec127cab6398d4757e5b0542b1`；base `3cee9c7de9a3a1898ebf921e1c1d04e8806af119c551d8b987b4cd993d6574a6` |
+| `372d1366d` 加精确owned路由／Markdown WIP | owned `activation-existing-pg16`：收集／通过11，跳过0，14.84秒，退出0，清理已核验；既有存储／读回与真实S6反例，不是获批完整P12 apply | `cc3f57a4a91ab9019fc0d22d2cddfb5ed3c725a781559baafae891dc7513710a` |
+| clean `801e0a8b31c3c7f00d861c294b0c511889a8da4f`，tree `bf0fe5ec209886b34d957faf6afc7d67f45ce0cf` | owned `log-redis`：收集／通过9，跳过0，2.75秒，退出0，清理已核验。此前断言Red通过8／失败1、退出1，只输出布尔失败 | Green `182278a3c613f5f1d2b08f572cfe3e65e2304382c9474a024a7baaa7ae27013e`；Red `62c9727c18b26a301ceb5f12f152bf284f25d0b3823d3422e8f8c451bc626e2d` |
+
+以上环境为 Node22.22.3／Vitest4.1.5、独立核验的开发 Docker Desktop。
+linux/arm64 image ID：Redis `sha256:ff02b58f971e7d7d156a1267e283fcbbeee91773b6aa36c49dac28ecfe28eadf`；
+PG16 Alpine `sha256:16bc17c64a573ef34162af9298258d1aec548232985b33ed7b1eac33ba35c229`；
+pgvector `sha256:a36250871de0833b8757561c72f2477ef1ddd1101afa4e617fb552e0de514c6b`。
+这些不是manifest digest，也不是用户历史生产镜像。
+
+Durable源 `2381aaff1`、父API `b404b615b`、activation journal `e0ce5aa42`、Comparison
+关联 `d21627c02`、P12 `5b945a645` 均取得各自限定组件范围的独立审查。另一个路由／秘密
+断言P2已在 `801e0a8b3` 修复并独立复核。真实Redis/BullMQ使用受控processor，不是完整
+日志分析业务管线。API／worker根入口仍未消费完整的真实启动producer。
+
+真实SELECT-only verifier登录复现了P01拒绝必要管理成员关系，以及P02在全部角色切换
+42501后仍通过。已请求限定S6决定，没有暗改S6／runtime授权或Policy方案。P13、完整
+producer／报告链、根controller成功、全量消费者oracle、业务恢复／队列／浏览器／增长
+验收仍属内部工作，A／B未完成。真实备份、企业网络信任、Policy #815、生产批准是独立
+C依赖，未执行生产操作。续工候选Hosted、全量backend和最终集成审查尚未记为通过。
+
 ## 已授权契约实现检查点，2026-09-07
 
 ### Worker 集成与审查环境停止点

@@ -14,9 +14,12 @@ Worker start and shutdown now own the listener, consumers and database pool;
 keeps a nonzero process outcome with static diagnostics. Polling shutdown waits
 for the current task. Durable construction/close awaits Queue/Worker cleanup.
 These lifecycle fixes do not authorize a consumer or prove approved startup.
-The final durable increment still needs independent review after an agent usage
-limit interrupted it. Existing-schema P12/journal work is preserved in separate
-unfinished Scratch branches, not in the executable candidate.
+The final durable implementation at source `2381aaff1` now has independent
+Standards/Spec PASS. Parent API request draining and the existing-storage P12/journal
+increments also have bounded independent reviews and are integrated. These reviews
+do not cover a complete startup producer or a successful controller upgrade.
+The real supervised Redis suite at `801e0a8b3` passed nine cases, including a
+negative test that keeps a failing secret-leak assertion itself secret-free.
 
 The user authorized two bounded implementation changes on 2026-09-07: the
 [registered recovery execution layer](storage/execution/README.md), while S11-RP
@@ -34,7 +37,7 @@ This candidate provides protective interception, bounded canonical conversion an
 | Ordinary stack apply | Legacy stack lifecycle; canonical targets now refused before build/no-op |
 | Catalog apply fresh/populated | Frozen plan/execute/P11a only; no public service authorization |
 | Release Verification | Purpose, pins, report, approval and runtime-pin module; production startup integration missing |
-| P12 | Management prototype retained on `codex/pr824-p12-contract-scratch`; its additional frozen schema decision is pending, so it is absent from this executable candidate |
+| P12 | Existing 0137 event/checkpoint implementation and formal report association integrated; successful approved apply still needs the complete live gate/producer chain. The earlier new-table prototype remains excluded |
 | P13/P11b/P14/P15 | Complete executable integration remains unfinished |
 
 ## Developer commands
@@ -42,7 +45,7 @@ This candidate provides protective interception, bounded canonical conversion an
 On the isolated development checkout, as the development user, run the permanent
 worker lifecycle selectors below. They use synthetic adapters and actual private
 HTTP listeners; no database or production credentials are inputs, and no service
-is stopped. Expect 56 passed; any failure stops validation, not an operational
+is stopped. Record the current collected/passed/failed counts; any failure stops validation, not an operational
 recovery command. This is not a production startup acceptance command.
 
 ```bash
