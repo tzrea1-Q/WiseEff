@@ -1,7 +1,20 @@
 import { spawnSync } from "node:child_process";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { ownsRecoveryContainer } from "./rehearse-upgrade-recovery";
+import { ownsRecoveryContainer, readSyntheticRestoreRefusal } from "./rehearse-upgrade-recovery";
+
+it("does not count early child failures as a specific storage refusal", () => {
+  for (const output of ["", "import failed", JSON.stringify({ status: "blocked", reason: "unclassified" }),
+    JSON.stringify({ status: "blocked", reason: "recovery-package-invalid", secret: "private" })]) {
+    expect(readSyntheticRestoreRefusal(1, output)).toBe("unclassified");
+  }
+  for (const reason of ["recovery-package-invalid", "synthetic-execution-journal-unavailable", "redis-target-has-existing-persistence"]) {
+    const output = JSON.stringify({ status: "blocked", reason });
+    expect(readSyntheticRestoreRefusal(1, output)).toBe(reason);
+    expect(readSyntheticRestoreRefusal(null, output)).toBe("unclassified");
+    expect(readSyntheticRestoreRefusal(0, output)).toBe("unclassified");
+  }
+});
 
 it("requires exact created container identity and private run label for cleanup", () => {
   const inspect = { Id: "created", Config: { Labels: { "wiseeff.synthetic-recovery-run": "this-run" } } };
@@ -44,6 +57,7 @@ describe.skipIf(process.env.UPG_RECOVERY_DOCKER_TEST !== "1")("actual isolated t
     const child = spawnSync(process.execPath, ["--import", "tsx", "--input-type=module", "-e", script], { encoding: "utf8", timeout: 90000 });
     expect(child.status).toBe(0);
     expect(JSON.parse(child.stdout)).toMatchObject({ status: "blocked", reason: "separate-package-restore-failed", backupExists: true, backupRetained: true, checksumVerified: true,
+      restoreRefusal: fault === "stale-target-aof" ? "redis-target-has-existing-persistence" : fault === "missing-object" ? "recovery-package-invalid" : "synthetic-execution-journal-unavailable",
       sourceStoppedBeforeRestore: true, restoreExecuted: false, businessVerified: false, cleanupVerified: true });
   }, 100000);
 

@@ -15,6 +15,7 @@ import { Queue, Worker } from "bullmq";
 import { isDeepStrictEqual } from "node:util";
 import { createBullMqDurableQueue } from "../server/modules/jobs/bullmqQueue";
 import { recordControlledRecoveryCapture } from "../ops/self-hosted/scripts/parameter-catalog-upgrade/recoveryCapture";
+import { ControlledRecoveryRefusal } from "../ops/self-hosted/storage/controlledRecovery";
 import { openSyntheticRecoveryAuthority } from "./synthetic-recovery-authority";
 import { createHttpObjectStorageTransport } from "../server/modules/logs/s3ObjectStore";
 import { createIsolatedUpgradeDocker } from "./isolated-upgrade-docker";
@@ -23,6 +24,15 @@ import { verifyRecoveryPackage, hasUnsupportedNonDumpCapabilities, RECOVERY_NON_
 const images = { postgres: "postgres:16-alpine", redis: "redis:7-alpine", objects: "minio/minio:RELEASE.2024-12-18T13-15-44Z", objectClient: "minio/mc:RELEASE.2024-11-21T17-21-54Z" };
 const hash = (bytes: Buffer) => createHash("sha256").update(bytes).digest("hex");
 const label = "wiseeff.synthetic-recovery-run";
+const childRefusals = ["recovery-package-invalid", "synthetic-execution-journal-unavailable", "redis-target-has-existing-persistence"] as const;
+export function readSyntheticRestoreRefusal(status: number | null, output: string): string {
+  try {
+    const value = JSON.parse(output);
+    if (status === 1 && value?.status === "blocked" && Object.keys(value).sort().join(",") === "reason,status"
+      && childRefusals.some(reason => reason === value.reason)) return value.reason;
+  } catch { /* Spawn/import/unknown errors do not prove a particular refusal. */ }
+  return "unclassified";
+}
 const nonDumpFaults = {
   "database-acl": "grant create on database postgres to sentinel_reader",
   "database-settings": "alter database postgres set default_transaction_read_only=on",
@@ -71,7 +81,7 @@ async function restoreSyntheticPackage(config: RestoreChild) {
       const inspection = await mkdtemp(path.join(os.tmpdir(), "upg-empty-redis-"));
       try {
         transport.command(["cp", `${config.redis}:/data/.`, inspection]);
-        if ((await readdir(inspection)).length) throw new Error("redis-target-has-existing-persistence");
+        if ((await readdir(inspection)).length) throw new ControlledRecoveryRefusal("redis-target-has-existing-persistence");
       } finally { await rm(inspection, { recursive: true, force: true }); }
       const ip = owned(config.objects).NetworkSettings.Networks[config.network].IPAddress;
       const buckets = transport.command(["exec", "-e", `MC_HOST_synthetic=http://synthetic:${config.password}@${ip}:9000`, config.objectClient, "mc", "ls", "--json", "synthetic"]).toString().trim();
@@ -134,6 +144,7 @@ export async function rehearseSyntheticRecovery(options: { fault?: SyntheticFaul
     sourceStoppedBeforeRestore: false, separateRestoreProcess: false, redisPersistence: "AOF", daemonIdentity: "",
     nonDumpCapabilitiesVerified: false, sourcePreservedBeforeCleanup: false,
     actualQueueVerified: false, queuePausedAfterRestore: false, queueRetryVerified: false, queueDeduplicationVerified: false,
+    restoreRefusal: "none",
   };
   const queueClosers: Array<() => Promise<unknown>> = [];
   let queueError = false;
@@ -432,7 +443,10 @@ export async function rehearseSyntheticRecovery(options: { fault?: SyntheticFaul
       input: JSON.stringify({ controllerJournal: openedJournal.value.journalPath, capture, approval, restoreToken: mintRestoreToken(run, capture.recoveryPointDigest), run: options.fault === "wrong-target" ? "0".repeat(24) : run, daemonId: transport.daemonId, directory, digest: result.manifestDigest, password: targetPassword, pg: targetPg, redis: targetRedis, objects: targetObjects, objectClient, network } satisfies RestoreChild),
       encoding: "utf8", timeout: 60000, env: { PATH: process.env.PATH, HOME: os.homedir() },
     });
-    if (child.status !== 0) throw new Error("separate-package-restore-failed");
+    if (child.status !== 0) {
+      result.restoreRefusal = readSyntheticRestoreRefusal(child.status, child.stdout);
+      throw new Error("separate-package-restore-failed");
+    }
     result.separateRestoreProcess = true;
     result.restoreExecuted = true;
     result.reason = "restored-verification-failed";
@@ -622,7 +636,10 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
       if (!/^[a-f0-9]{48}$/.test(config.password)) throw new Error("invalid-private-input");
       await restoreSyntheticPackage(config);
       console.log(JSON.stringify({ status: "synthetic-package-restored" }));
-    } catch { console.log(JSON.stringify({ status: "blocked", reason: "synthetic-package-restore-failed" })); process.exitCode = 1; }
+    } catch (error) {
+      const reason = error instanceof Error ? childRefusals.find(value => value === error.message) : undefined;
+      console.log(JSON.stringify({ status: "blocked", reason: reason ?? "unclassified" })); process.exitCode = 1;
+    }
   } else if (process.argv.slice(2).join(" ") !== "--synthetic-only") {
     console.log(JSON.stringify({ status: "blocked", reason: "explicit-synthetic-only-required-no-other-arguments" }));
     process.exitCode = 2;
