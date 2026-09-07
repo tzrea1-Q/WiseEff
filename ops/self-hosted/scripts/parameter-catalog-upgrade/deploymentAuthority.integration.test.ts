@@ -11,6 +11,7 @@ import { createLocalAuthService } from "../../../../server/modules/auth/localAut
 import { hashLocalAccountPassword } from "../../../../server/modules/auth/localAccountCredentials";
 import { openDeploymentAuthority, isIncidentRestoreConfirmation, isDeploymentReportApproval, type DeploymentAuthorityAssignment, type DeploymentAuthorityOptions } from "./deploymentAuthority";
 import { canonicalJson, sha256Prefixed } from "./journal";
+import { approveDeploymentReport, openReportApprovalTarget, type ReportApprovalTarget } from "./reportApprovalTarget";
 
 // Receipt validation precedes every connection. No ambient database, auth mock,
 // passed gate adapter, report insertion, or missing-environment skip is used.
@@ -20,6 +21,8 @@ let admin: RootDatabase, sourceAdmin: RootDatabase, writer: RootDatabase;
 let options: DeploymentAuthorityOptions, assignment: DeploymentAuthorityAssignment;
 let authority: Awaited<ReturnType<typeof openDeploymentAuthority>>;
 let custodyRoot: string;
+let reportTarget: ReportApprovalTarget;
+let reportTargetOptions: Parameters<typeof openReportApprovalTarget>[0];
 const loginName = `authority_${randomBytes(8).toString("hex")}`;
 const loginRole = pg.escapeIdentifier(loginName);
 const password = randomBytes(24).toString("hex");
@@ -58,6 +61,8 @@ beforeAll(async () => {
     principals: [{ kind: "operator", userId: "operator", organizationId: "authority-org" }, { kind: "platform-owner", userId: "owner", organizationId: "authority-org" }, { kind: "incident-owner", userId: "incident", organizationId: "authority-org" }],
     verifierPrincipals: [{ userId: "verifier", organizationId: "authority-org" }], reports: [{ purpose: "pre-activation", reportDigest: missingReport }],
     restore: { attemptId: "restore-attempt", captureDigest: `sha256:${"b".repeat(64)}`, target: restoreTarget } };
+  assignment.reportDatabase = (await admin.query<{ systemIdentifier: string; databaseOid: string }>(`select c.system_identifier::text as "systemIdentifier",
+    d.oid::text as "databaseOid" from pg_control_system() c cross join pg_database d where d.datname=current_database()`)).rows[0];
   const assignmentPath = path.join(custodyRoot, "assignment.json");
   await writeFile(assignmentPath, JSON.stringify(assignment), { mode: 0o600 });
   options = { custodyRoot, custodianUid: process.getuid!(), assignmentPath, expectedAssignmentDigest: sha256Prefixed(canonicalJson(assignment)), runId: assignment.runId,
@@ -68,10 +73,12 @@ beforeAll(async () => {
     grant catalog_verification_writer_role to ${writerName} with inherit true, set false, admin false`);
   const writerUrl = new URL(control.url); writerUrl.username = writerName.slice(1, -1); writerUrl.password = password;
   writer = createPostgresDatabase(writerUrl.href);
+  reportTargetOptions = { physicalTarget: assignment.reportDatabase, managementConnectionString: control.url, writerConnectionString: writerUrl.href };
+  reportTarget = await openReportApprovalTarget(reportTargetOptions);
   authority = await openDeploymentAuthority(options);
 }, 60_000);
 afterAll(async () => {
-  await authority?.close(); await writer?.close(); await admin?.close(); await sourceAdmin?.close();
+  await authority?.close(); await reportTarget?.close(); await writer?.close(); await admin?.close(); await sourceAdmin?.close();
   await control?.close(); await source?.close();
   if (custodyRoot) await rm(custodyRoot, { recursive: true, force: true });
 });
@@ -104,6 +111,8 @@ it.each(["operator", "owner"])("authenticates %s into a formal command without m
   expect(isDeploymentReportApproval(approval)).toBe(true);
   expect(isDeploymentReportApproval({ ...approval })).toBe(false);
   expect(approval.command).toEqual({ principalId: user, principalKind: reportRequest.kind, purpose: "pre-activation" });
+  const missing = await authority.approveReport(reportRequest, reportTarget);
+  expect(missing).toMatchObject({ ok: false, error: { kind: "plan-not-found" } });
   await expect(authority.approveReport(reportRequest, writer)).rejects.toMatchObject({ code: "PCAT-DEPLOYMENT-AUTHORITY-REPORT-TARGET-ADAPTER-UNAVAILABLE" });
   expect((await admin.query("select count(*)::int as count from parameter_catalog.verification_approvals")).rows).toEqual([{ count: 0 }]);
 });
@@ -151,6 +160,71 @@ it("snapshots the report actor and digest before asynchronous authentication", a
   input.kind = "platform-owner"; input.reportDigest = `sha256:${"0".repeat(64)}`;
   const approval = await pending;
   expect(approval.command.principalKind).toBe("operator"); expect(approval.reportDigest).toBe(missingReport);
+});
+
+it.each(["physical-target", "management-database", "superuser-writer"])("rejects report target factory %s", async fault => {
+  const changed = structuredClone(reportTargetOptions);
+  if (fault === "physical-target") changed.physicalTarget.systemIdentifier = "999";
+  if (fault === "management-database") changed.managementConnectionString = source.url;
+  if (fault === "superuser-writer") changed.writerConnectionString = control.url;
+  await expect(openReportApprovalTarget(changed)).rejects.toMatchObject({ code: fault === "superuser-writer"
+    ? "PCAT-REPORT-APPROVAL-WRITER-CAPABILITY-REJECTED" : "PCAT-REPORT-APPROVAL-PHYSICAL-TARGET-MISMATCH" });
+});
+
+it("refuses a copied report command and an already closed target", async () => {
+  const command = await authority.prepareReportApproval({ authorization: `Bearer ${tokens.get("operator")}`, kind: "operator", purpose: "pre-activation", reportDigest: missingReport });
+  await expect(approveDeploymentReport(reportTarget, { ...command })).rejects.toMatchObject({ code: "PCAT-DEPLOYMENT-AUTHORITY-REPORT-COMMAND-REJECTED" });
+  const closed = await openReportApprovalTarget(reportTargetOptions); await closed.close(); await closed.close();
+  await expect(approveDeploymentReport(closed, command)).rejects.toMatchObject({ code: "PCAT-REPORT-APPROVAL-TARGET-CLOSED" });
+});
+
+it("binds the actual restricted writer session to the management database and releases its challenge", async () => {
+  const other = await createSelfHostedPg16Database("authority_other_report");
+  const otherAdmin = createPostgresDatabase(other.url);
+  try {
+    await applyMigrations(otherAdmin, path.resolve("server/migrations"));
+    const wrong = new URL(other.url), current = new URL(reportTargetOptions.writerConnectionString);
+    wrong.username = current.username; wrong.password = current.password;
+    await expect(openReportApprovalTarget({ ...reportTargetOptions, writerConnectionString: wrong.href }))
+      .rejects.toMatchObject({ code: "PCAT-REPORT-APPROVAL-WRITER-TARGET-MISMATCH" });
+    expect((await admin.query("select count(*)::int as count from pg_locks where locktype='advisory' and classid=1346584915 and objsubid=2")).rows).toEqual([{ count: 0 }]);
+  } finally { await otherAdmin.close(); await other.close(); }
+}, 60_000);
+
+it("rechecks the assignment after a report command has been issued", async () => {
+  const command = await authority.prepareReportApproval({ authorization: `Bearer ${tokens.get("operator")}`, kind: "operator", purpose: "pre-activation", reportDigest: missingReport });
+  await writeFile(options.assignmentPath, JSON.stringify({ ...assignment, expiresAt: "2000-01-01T00:00:00Z" }), { mode: 0o600 });
+  try { await expect(approveDeploymentReport(reportTarget, command)).rejects.toMatchObject({ code: "PCAT-DEPLOYMENT-AUTHORITY-ASSIGNMENT-REJECTED" }); }
+  finally { await writeFile(options.assignmentPath, JSON.stringify(assignment), { mode: 0o600 }); }
+});
+
+it.each(["missing", "other-physical-target"])("refuses a report command whose private physical mapping is %s", async fault => {
+  const current = { ...assignment, reportDatabase: fault === "missing" ? undefined : { ...assignment.reportDatabase!, systemIdentifier: "999" } };
+  const filename = path.join(custodyRoot, `assignment-${fault}.json`);
+  await writeFile(filename, JSON.stringify(current), { mode: 0o600 });
+  const scoped = await openDeploymentAuthority({ ...options, assignmentPath: filename, expectedAssignmentDigest: sha256Prefixed(canonicalJson(JSON.parse(JSON.stringify(current)))) });
+  try {
+    const command = await scoped.prepareReportApproval({ authorization: `Bearer ${tokens.get("operator")}`, kind: "operator", purpose: "pre-activation", reportDigest: missingReport });
+    await expect(approveDeploymentReport(reportTarget, command)).rejects.toMatchObject({ code: "PCAT-DEPLOYMENT-AUTHORITY-REPORT-SCOPE-REJECTED" });
+  } finally { await scoped.close(); await rm(filename); }
+});
+
+it.each(["catalog-read", "report-update", "registry-insert", "public-builtin", "public-parameter", "set-role", "admin-role", "no-inherit"])("refuses effective report writer drift through %s", async fault => {
+  const writerName = pg.escapeIdentifier(new URL(reportTargetOptions.writerConnectionString).username);
+  const grants: Record<string, [string, string]> = {
+    "catalog-read": [`grant select on parameter_catalog.catalog_state to ${writerName}`, `revoke select on parameter_catalog.catalog_state from ${writerName}`],
+    "report-update": [`grant update on parameter_catalog.verification_reports to ${writerName}`, `revoke update on parameter_catalog.verification_reports from ${writerName}`],
+    "registry-insert": [`grant insert on parameter_catalog.verification_gate_registry to ${writerName}`, `revoke insert on parameter_catalog.verification_gate_registry from ${writerName}`],
+    "public-builtin": ["grant execute on function pg_read_file(text) to public", "revoke execute on function pg_read_file(text) from public"],
+    "public-parameter": ["grant alter system on parameter log_statement to public", "revoke alter system on parameter log_statement from public"],
+    "set-role": [`grant catalog_verification_writer_role to ${writerName} with set true`, `grant catalog_verification_writer_role to ${writerName} with set false`],
+    "admin-role": [`grant catalog_verification_writer_role to ${writerName} with admin true`, `grant catalog_verification_writer_role to ${writerName} with admin false`],
+    "no-inherit": [`grant catalog_verification_writer_role to ${writerName} with inherit false`, `grant catalog_verification_writer_role to ${writerName} with inherit true`],
+  };
+  const [grant, revoke] = grants[fault];
+  await admin.query(grant);
+  try { await expect(openReportApprovalTarget(reportTargetOptions)).rejects.toMatchObject({ code: "PCAT-REPORT-APPROVAL-WRITER-CAPABILITY-REJECTED" }); }
+  finally { await admin.query(revoke); }
 });
 
 it.each(["session-insert", "session-column-insert", "password-column-update", "public-password-update", "public-select", "definer", "function-grant", "grant-option", "sequence", "default-grant"])("refuses effective authority forgery through %s", async fault => {

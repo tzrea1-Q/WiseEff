@@ -8,6 +8,7 @@ import { createPostgresDatabase, isRootDatabase, type RootDatabase } from "../..
 import type { ApprovalCommand } from "../../../../server/modules/release-verification/core";
 import type { RecoveryTargetIdentity } from "../../storage/recoveryPoint";
 import { canonicalJson, sha256Prefixed } from "./journal";
+import { approveDeploymentReport, type ReportDatabaseIdentity } from "./reportApprovalTarget";
 
 type AuthorityKind = "operator" | "platform-owner" | "incident-owner";
 type Principal = { userId: string; organizationId: string };
@@ -20,6 +21,8 @@ export type DeploymentAuthorityAssignment = {
   principals: (Principal & { kind: AuthorityKind })[];
   verifierPrincipals: Principal[];
   reports: { purpose: ApprovalCommand["purpose"]; reportDigest: string }[];
+  /** Explicit private custodian binding; it does not observe Docker/storage state. */
+  reportDatabase?: ReportDatabaseIdentity;
   restore: { attemptId: string; captureDigest: string; target: RecoveryTargetIdentity } | null;
 };
 export class DeploymentAuthorityError extends Error {
@@ -73,6 +76,7 @@ async function readAssignment(options: DeploymentAuthorityOptions) {
       || new Set(value.principals.map(identityKey)).size !== 3 || !Array.isArray(value.verifierPrincipals)
       || value.verifierPrincipals.some(principal => !id(principal.userId) || !id(principal.organizationId) || value.principals.some(assigned => identityKey(assigned) === identityKey(principal)))
       || !Array.isArray(value.reports) || value.reports.some(report => !purposes.includes(report.purpose) || !validDigest(report.reportDigest))
+      || (value.reportDatabase !== undefined && (!/^\d+$/.test(value.reportDatabase.systemIdentifier) || !/^\d+$/.test(value.reportDatabase.databaseOid)))
       || !value.authentication || !id(value.authentication.databaseName) || !/^\d+$/.test(value.authentication.databaseOid)
       || typeof value.authentication.serverAddress !== "string" || !Number.isSafeInteger(value.authentication.serverPort)
       || (value.restore !== null && (!id(value.restore.attemptId) || !validDigest(value.restore.captureDigest)))) refuse("ASSIGNMENT-REJECTED");
@@ -148,11 +152,18 @@ export const isIncidentRestoreConfirmation = (value: unknown): value is Incident
 export type DeploymentReportApproval = Readonly<{
   status: "authenticated-report-command-not-persisted"; assignmentDigest: string;
   runId: string; target: RecoveryTargetIdentity; reportDigest: string;
+  expiresAt: string;
   command: Readonly<ApprovalCommand>;
 }>;
 const reportCommands = new WeakSet<object>();
+const reportCommandChecks = new WeakMap<object, (physicalTarget: ReportDatabaseIdentity) => Promise<void>>();
 export const isDeploymentReportApproval = (value: unknown): value is DeploymentReportApproval =>
   typeof value === "object" && value !== null && reportCommands.has(value);
+export async function assertDeploymentReportCommandCurrent(command: DeploymentReportApproval, physicalTarget: ReportDatabaseIdentity): Promise<void> {
+  const verify = typeof command === "object" && command !== null ? reportCommandChecks.get(command) : undefined;
+  if (!verify) refuse("REPORT-COMMAND-REJECTED");
+  await verify(snapshot(physicalTarget));
+}
 type ReportRequest = { authorization: string; kind: "operator" | "platform-owner"; purpose: ApprovalCommand["purpose"]; reportDigest: string };
 
 export async function openDeploymentAuthority(input: DeploymentAuthorityOptions) {
@@ -208,19 +219,25 @@ export async function openDeploymentAuthority(input: DeploymentAuthorityOptions)
           const { assignment, principal } = await authenticate(request.authorization, request.kind);
           if (!assignment.reports.some(report => report.purpose === request.purpose && report.reportDigest === request.reportDigest)) refuse("REPORT-SCOPE-REJECTED");
           const result = Object.freeze({ status: "authenticated-report-command-not-persisted" as const,
-            assignmentDigest: options.expectedAssignmentDigest, runId: options.runId, target: Object.freeze({ ...options.target }), reportDigest: request.reportDigest,
+            assignmentDigest: options.expectedAssignmentDigest, runId: options.runId, target: Object.freeze({ ...options.target }), reportDigest: request.reportDigest, expiresAt: assignment.expiresAt,
             command: Object.freeze({ principalKind: request.kind, principalId: principal.userId, purpose: request.purpose }) });
-          reportCommands.add(result); return result;
+          reportCommands.add(result);
+          reportCommandChecks.set(result, physical => safe(async () => {
+            const current = await verify();
+            if (Date.parse(result.expiresAt) <= Date.now() || !same(current.reportDatabase, physical)
+              || !same(current.target, result.target) || current.runId !== result.runId
+              || !current.principals.some(grant => grant.kind === result.command.principalKind && identityKey(grant) === identityKey(principal))
+              || !current.reports.some(report => report.purpose === result.command.purpose && report.reportDigest === result.reportDigest)) refuse("REPORT-SCOPE-REJECTED");
+          }));
+          return result;
         });
     };
     return Object.freeze({
       prepareReportApproval,
-      async approveReport(request: ReportRequest, reportDb: RootDatabase) {
-        if (!isRootDatabase(reportDb) || reportDb === authDb) refuse("REPORT-COMMAND-REJECTED");
-        await prepareReportApproval(request);
-        // A real pool is not an observed physical target. The parent must bind
-        // its actual target capability before calling the existing report service.
-        return refuse("REPORT-TARGET-ADAPTER-UNAVAILABLE");
+      async approveReport(request: ReportRequest, target: unknown) {
+        const command = await prepareReportApproval(request);
+        if (isRootDatabase(target)) refuse("REPORT-TARGET-ADAPTER-UNAVAILABLE");
+        return approveDeploymentReport(target, command);
       },
       async confirmRestore(request: { authorization: string; attemptId: string; captureDigest: string; target: RecoveryTargetIdentity; traceId: string }) {
         request = snapshot(request);

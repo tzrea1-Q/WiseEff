@@ -49,12 +49,12 @@ superuser／未知参数 SET 也拒绝。认证不需要此类用户 definer。�
 
 `prepareReportApproval` 验证真实 Operator／Platform-owner 与被指派的精确摘要／purpose，
 返回携带真实用户的 opaque command，异步认证前固定请求字段；这不是已持久批准。
-消费方持久批准前必须重新核验当前指派、有效期、目标与阶段，本组件尚未实现该消费方。
-既有 `VerificationReportService.approveReport` 仍是正式批准写入口。本组件中的
-`approveReport` 明确以 `REPORT-TARGET-ADAPTER-UNAVAILABLE` 拒绝：真实 RootDatabase、
-库名／OID 或网络地址均不足以证明报告库物理目标。现有受限报告登录不能查询高权
-集群身份，本组件不增加该 grant。父控制器须通过真实目标组合根接入后才可调用领域
-命令，不能以任意 pool 或调用者 JSON 冒充目标证明。报告完整性、gates、passed、
+`assertDeploymentReportCommandCurrent` 复验当前指派、期限、目标、范围以及封存的
+`reportDatabase` 物理映射；映射由外层受控 observer 采集，不自行观察 Docker／其他
+存储。[受控报告目标](reportApprovalTarget.README.zh-CN.md) 消费命令并调用唯一正式
+批准写入口 `VerificationReportService.approveReport`。`approveReport(request, target)`
+只接收工厂签发目标，普通 RootDatabase 仍以 `REPORT-TARGET-ADAPTER-UNAVAILABLE`
+拒绝。不为报告登录增加高权身份查询授权。报告完整性、gates、passed、
 独立批准及不可变持久化继续由原领域服务负责，配置摘要不能制造报告。
 
 `confirmRestore` 只验证 incident owner 与精确 attempt／capture／目标，返回不可复制
@@ -77,8 +77,9 @@ superuser／未知参数 SET 也拒绝。认证不需要此类用户 definer。�
 目标 receipt，运行实际迁移，经真实本地登录签发会话，使用受限认证 LOGIN。覆盖
 incident 确认、未指派产品 admin／verifier 拒绝、主体冒用、源库排除、会话撤销、
 连接权限漂移、指派漂移及生命周期。Operator／Platform owner 的真实认证确认可通过，
-报告写入仍待实测目标接线。早期 `a86b6095d` 组件运行曾调用领域 missing-report 路径，
-随后审查发现目标绑定缺口，收紧后的接口取代该行为。两次均不证明合法已通过报告的
+目标准入可到达正式 missing-report 拒绝。早期 `a86b6095d` 组件运行曾调用领域
+missing-report 路径，随后审查发现目标绑定缺口，受控物理目标接口取代该行为。
+这些运行均不证明合法已通过报告的
 批准正向链；不制造 passed 报告、不 mock gates。
 
 固定 handoff 配置／凭据读取、正式 controller 动作、typed capture／approval journal、

@@ -71,16 +71,15 @@ not provision or claim that infrastructure.
 `prepareReportApproval` authenticates the requested Operator/Platform-owner role
 and exact assigned purpose/report digest, producing an opaque command carrying
 the actual user. Request values are snapshotted before asynchronous authentication.
-It is not a stored approval. The consumer must revalidate the command's current assignment, expiry, target and
-phase before persisting it; this component does not yet provide that consumer.
-The existing `VerificationReportService.approveReport`
-remains the sole writer of report approvals. In this component `approveReport`
-explicitly refuses with `REPORT-TARGET-ADAPTER-UNAVAILABLE`: a real RootDatabase,
-database name/OID or network address does not prove the report store's physical
-target. The existing restricted report login cannot query privileged cluster
-identity, and this component adds no such grant. The parent must supply its
-trusted actual-target composition before calling the formal domain command;
-it must not take an arbitrary root or caller JSON as that proof. Report integrity,
+It is not a stored approval. `assertDeploymentReportCommandCurrent` revalidates
+the command against the current assignment, expiry, target, scope and sealed
+`reportDatabase` physical mapping. The mapping must be collected by the outer
+controlled observer; it does not itself observe Docker or other stores. The
+[controlled report target](reportApprovalTarget.README.md) consumes that command
+and invokes the existing `VerificationReportService.approveReport` as the sole
+approval writer. `approveReport(request, target)` accepts only that issued target;
+a raw RootDatabase still refuses with `REPORT-TARGET-ADAPTER-UNAVAILABLE`.
+No privileged identity grant is added to the report login. Report integrity,
 gates, passed decision, independent approvals and immutable persistence remain
 domain-owned. A configured digest cannot fabricate a report.
 
@@ -113,11 +112,11 @@ connection, uses actual migrations, issues sessions through real local login,
 and uses a restricted authentication LOGIN. It checks incident confirmation,
 unassigned product admin/verifier refusal, actor spoofing, source exclusion,
 credential revocation, pool privilege drift, assignment drift and lifecycle.
-Operator/Platform owner confirmation is positive but report writing remains
-unavailable pending actual-target integration. There is no synthetic `passed`
+Operator/Platform owner confirmation and target admission can reach the formal
+missing-report refusal. There is no synthetic `passed`
 report or mock gate. The earlier `a86b6095d` component run called the domain's
 missing-report path; the subsequent review found its target-binding gap and
-the narrowed interface supersedes that behavior. Neither run proves a real
+the controlled physical-target interface supersedes that behavior. Neither run proves a real
 approved-report positive chain.
 
 The parent owns the fixed handoff configuration/credential reader, formal
