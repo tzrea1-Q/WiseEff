@@ -9,7 +9,7 @@ import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { createIsolatedUpgradeDocker } from "../../../scripts/isolated-upgrade-docker";
 import type { Database } from "../../shared/database/client";
 import type { ObjectStore } from "./objectStore";
-import { createLogAnalysisQueueRuntime } from "./logAnalysisQueueRuntime";
+import { createLogAnalysisQueueRuntime, createLogAnalysisQueueTransport } from "./logAnalysisQueueRuntime";
 
 // Owns a new Redis daemon, network and volume; never reads ambient REDIS_URL.
 describe.skipIf(process.env.UPG_LOG_QUEUE_REDIS_TEST !== "1")("owned Redis log worker lifecycle", () => {
@@ -163,6 +163,32 @@ describe.skipIf(process.env.UPG_LOG_QUEUE_REDIS_TEST !== "1")("owned Redis log w
       expect(JSON.stringify(output.mock.calls)).not.toContain(password);
       expect(output).toHaveBeenCalledWith("PCAT-LOG-QUEUE-CONNECTION-ERROR");
     } finally { await runtime.close(); await controlQueue.close(); output.mockRestore(); }
+  });
+
+  it("uses the API-side transport to enqueue a real job for an independently owned worker", async () => {
+    const configured = options();
+    const processByJobId = vi.fn(async () => ({ status: "processed" as const }));
+    const runtime = await createLogAnalysisQueueRuntime({ ...configured, processByJobId });
+    const transport = await createLogAnalysisQueueTransport({ env: configured.env });
+    try {
+      await transport.queue.enqueue({ name: "analyze-log", payload: { jobId: "api-job", organizationId: "org", logId: "log", runId: "run" }, idempotencyKey: "api-job" });
+      await vi.waitFor(() => expect(processByJobId).toHaveBeenCalledOnce());
+      await transport.close(); await transport.close();
+      expect((await runtime.queue.checkHealth()).ok).toBe(true);
+    } finally { await transport.close(); await runtime.close(); }
+  });
+
+  it("refuses wrong API-side Redis credentials without leaking them", async () => {
+    const configured = options();
+    const wrongPassword = randomBytes(24).toString("hex");
+    configured.env.REDIS_URL = redisUrl.replace(password, wrongPassword);
+    const output = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      await expect(createLogAnalysisQueueTransport({ env: configured.env }))
+        .rejects.toThrow("PCAT-LOG-QUEUE-INITIALIZATION-FAILED");
+      expect(JSON.stringify(output.mock.calls)).not.toContain(wrongPassword);
+      expect(JSON.stringify(output.mock.calls)).not.toContain(password);
+    } finally { output.mockRestore(); }
   });
 
   it("refuses a stopped owned Redis target without starting a consumer", async () => {

@@ -333,7 +333,7 @@ describe("log analysis queue runtime", () => {
       return queue;
     });
 
-    const runtime = createLogAnalysisQueueTransport({
+    const runtime = await createLogAnalysisQueueTransport({
       env: {
         REDIS_URL: "redis://redis:6379",
         LOG_ANALYSIS_QUEUE_PREFIX: "wiseeff",
@@ -358,6 +358,23 @@ describe("log analysis queue runtime", () => {
     expect(QueueCtor).toHaveBeenCalledOnce();
     expect(queue.add).toHaveBeenCalledWith("analyze-log", expect.objectContaining({ jobId: "job-1" }), expect.any(Object));
     await expect(runtime.queue.checkHealth()).resolves.toMatchObject({ ok: true, waiting: 1 });
+    await runtime.close();
+    expect(queue.close).toHaveBeenCalledOnce();
+  });
+
+  it("refuses API-side transport readiness failure and closes its Queue", async () => {
+    const queue = { ...connectionLifecycle(), close: vi.fn(), waitUntilReady: vi.fn(async () => { throw new Error("private transport initialization"); }) };
+    await expect(Promise.resolve().then(() => createLogAnalysisQueueTransport({ env: lifecycleEnv,
+      QueueCtor: vi.fn(function () { return queue; }) as never })))
+      .rejects.toThrow("PCAT-LOG-QUEUE-INITIALIZATION-FAILED");
+    expect(queue.close).toHaveBeenCalledOnce();
+  });
+
+  it("closes the API-side Queue once across concurrent and repeated shutdown", async () => {
+    const queue = { ...connectionLifecycle(), close: vi.fn(async () => {}) };
+    const runtime = await createLogAnalysisQueueTransport({ env: lifecycleEnv,
+      QueueCtor: vi.fn(function () { return queue; }) as never });
+    await Promise.all([runtime.close(), runtime.close()]);
     await runtime.close();
     expect(queue.close).toHaveBeenCalledOnce();
   });

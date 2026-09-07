@@ -120,6 +120,27 @@ class DrainingWorker extends Worker {
   }
 }
 
+function observeConnectionErrors() {
+  let phase: "initializing" | "running" | "closing" = "initializing";
+  let closeEventFailed = false;
+  let rejectStartup!: (reason: Error) => void;
+  const startupFailure = new Promise<never>((_resolve, reject) => { rejectStartup = reject; });
+  // BullMQ forwards connection/cleanup errors via EventEmitter and otherwise
+  // prints the underlying error. Own that channel throughout resource lifetime.
+  void startupFailure.catch(() => {});
+  const onError = () => {
+    if (phase === "initializing") rejectStartup(new Error("PCAT-LOG-QUEUE-INITIALIZATION-FAILED"));
+    else if (phase === "closing") closeEventFailed = true;
+    else console.error("PCAT-LOG-QUEUE-CONNECTION-ERROR");
+  };
+  return {
+    onError, startupFailure,
+    ready: () => { phase = "running"; },
+    closing: () => { phase = "closing"; },
+    assertClosed: () => { if (closeEventFailed) throw new Error("PCAT-LOG-QUEUE-CLOSE-FAILED"); }
+  };
+}
+
 export async function createLogAnalysisQueueRuntime({
   env,
   db,
@@ -135,18 +156,8 @@ export async function createLogAnalysisQueueRuntime({
 }: CreateLogAnalysisQueueRuntimeOptions) {
   const queueName = "log-analysis";
   const connection = { url: env.REDIS_URL };
-  let phase: "initializing" | "running" | "closing" = "initializing";
-  let closeEventFailed = false;
-  let rejectStartup!: (reason: Error) => void;
-  const startupFailure = new Promise<never>((_resolve, reject) => { rejectStartup = reject; });
-  // BullMQ forwards connection/cleanup errors via EventEmitter and otherwise
-  // prints the underlying error. Own that channel throughout resource lifetime.
-  void startupFailure.catch(() => {});
-  const onError = () => {
-    if (phase === "initializing") rejectStartup(new Error("PCAT-LOG-QUEUE-INITIALIZATION-FAILED"));
-    else if (phase === "closing") closeEventFailed = true;
-    else console.error("PCAT-LOG-QUEUE-CONNECTION-ERROR");
-  };
+  const errors = observeConnectionErrors();
+  const { onError, startupFailure } = errors;
   const queue = new QueueCtor(queueName, {
     connection,
     prefix: env.LOG_ANALYSIS_QUEUE_PREFIX
@@ -210,7 +221,7 @@ export async function createLogAnalysisQueueRuntime({
     try {
       await Promise.race([Promise.all([queue.waitUntilReady(), worker.waitUntilReady()]), startupFailure]);
     } catch { throw new Error("PCAT-LOG-QUEUE-INITIALIZATION-FAILED"); }
-    phase = "running";
+    errors.ready();
     void worker.run().catch(onError);
     const activeWorker = worker;
 
@@ -219,14 +230,14 @@ export async function createLogAnalysisQueueRuntime({
       queue: durableQueue,
       close: () => {
         closing ??= (async () => {
-          phase = "closing";
+          errors.closing();
           const results = await Promise.allSettled([
             Promise.resolve().then(() => activeWorker.close()),
             Promise.resolve().then(() => queue.close())
           ]);
           activeWorker.off("error", onError);
           queue.off("error", onError);
-          if (closeEventFailed) throw new Error("PCAT-LOG-QUEUE-CLOSE-FAILED");
+          errors.assertClosed();
           const failure = results.find((result) => result.status === "rejected");
           if (failure?.status === "rejected") throw failure.reason;
         })();
@@ -234,7 +245,7 @@ export async function createLogAnalysisQueueRuntime({
       }
     };
   } catch (error) {
-    phase = "closing";
+    errors.closing();
     await Promise.allSettled([
       Promise.resolve().then(() => worker?.close(true)),
       Promise.resolve().then(() => queue.close())
@@ -245,7 +256,7 @@ export async function createLogAnalysisQueueRuntime({
   }
 }
 
-export function createLogAnalysisQueueTransport({
+export async function createLogAnalysisQueueTransport({
   env,
   QueueCtor = Queue as unknown as BullMqQueueConstructor
 }: {
@@ -253,22 +264,38 @@ export function createLogAnalysisQueueTransport({
   QueueCtor?: BullMqQueueConstructor;
 }) {
   const queueName = "log-analysis";
+  const errors = observeConnectionErrors();
   const queue = new QueueCtor(queueName, {
     connection: { url: env.REDIS_URL },
     prefix: env.LOG_ANALYSIS_QUEUE_PREFIX
-  });
-
-  const durableQueue = createBullMqDurableQueue<LogAnalysisQueuePayload>({
-    name: queueName,
-    queue,
-    maxAttempts: env.LOG_ANALYSIS_QUEUE_ATTEMPTS,
-    retryBackoffMs: env.LOG_ANALYSIS_QUEUE_BACKOFF_MS
-  });
-
-  return {
-    queue: durableQueue,
-    close: async () => {
-      await queue.close();
-    }
-  };
+  }, DrainingRedisConnection);
+  queue.on("error", errors.onError);
+  try {
+    try { await Promise.race([queue.waitUntilReady(), errors.startupFailure]); }
+    catch { throw new Error("PCAT-LOG-QUEUE-INITIALIZATION-FAILED"); }
+    const durableQueue = createBullMqDurableQueue<LogAnalysisQueuePayload>({
+      name: queueName, queue,
+      maxAttempts: env.LOG_ANALYSIS_QUEUE_ATTEMPTS,
+      retryBackoffMs: env.LOG_ANALYSIS_QUEUE_BACKOFF_MS
+    });
+    errors.ready();
+    let closing: Promise<void> | undefined;
+    return {
+      queue: durableQueue,
+      close: () => {
+        closing ??= (async () => {
+          errors.closing();
+          try { await queue.close(); }
+          finally { queue.off("error", errors.onError); }
+          errors.assertClosed();
+        })();
+        return closing;
+      }
+    };
+  } catch (error) {
+    errors.closing();
+    try { await queue.close(); } catch { /* Keep the original initialization refusal. */ }
+    queue.off("error", errors.onError);
+    throw error;
+  }
 }

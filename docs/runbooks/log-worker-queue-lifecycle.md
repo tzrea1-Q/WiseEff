@@ -2,10 +2,11 @@
 
 > Chinese: [中文](../zh-CN/runbooks/log-worker-queue-lifecycle.md)
 
-This component owns the connections created by `createLogAnalysisQueueRuntime`.
+This component owns the connections created by `createLogAnalysisQueueRuntime`
+and the API-only `createLogAnalysisQueueTransport`.
 It does not authorize Catalog startup, publish a deployment, or resume a paused
-business queue. API-only `createLogAnalysisQueueTransport` is a separate caller
-and is outside this change.
+business queue. Both factories are asynchronous; callers must await them before
+starting their dependent services. The transport starts no Worker.
 
 ## Connection and shutdown contract
 
@@ -15,6 +16,8 @@ forwarded through BullMQ's URL-aware connection adapter; there is no ambient
 `REDIS_URL` fallback in the isolated test. Authentication, connection, and
 asynchronous readiness failures return `PCAT-LOG-QUEUE-INITIALIZATION-FAILED`.
 Already-created resources are closed before this refusal returns.
+The API-only transport uses the same connection compatibility and error observer,
+waits for Queue readiness, and shares the same idempotent shutdown contract.
 
 Queue and Worker error listeners remain installed through shutdown. A recoverable
 running connection error produces only `PCAT-LOG-QUEUE-CONNECTION-ERROR`; it does

@@ -2,9 +2,10 @@
 
 > English: [English](../../runbooks/log-worker-queue-lifecycle.md)
 
-本组件管理 `createLogAnalysisQueueRuntime` 创建的连接，不授予 Catalog 启动、
-部署发布或恢复业务队列的权限。仅供 API 使用的
-`createLogAnalysisQueueTransport` 是另一条调用路径，不在本次修改范围内。
+本组件管理 `createLogAnalysisQueueRuntime` 和仅供 API 使用的
+`createLogAnalysisQueueTransport` 创建的连接，不授予 Catalog 启动、部署发布或
+恢复业务队列的权限。两个 factory 都是异步的；调用者必须等待返回后才启动依赖它们
+的服务。transport 不启动 Worker。
 
 ## 连接与退出契约
 
@@ -12,6 +13,8 @@ Worker 使用 `autorun: false`。Queue 与 Worker 都必须完成 BullMQ 真实�
 `waitUntilReady`，才能开始消费。传入的 Redis URL 由 BullMQ 支持 URL 的连接适配器
 解析；隔离测试不回退读取环境中的 `REDIS_URL`。认证、连接及异步 readiness 失败
 返回 `PCAT-LOG-QUEUE-INITIALIZATION-FAILED`，且返回前关闭已创建的资源。
+API transport 复用相同的连接兼容与错误监听，等待 Queue ready，并遵守相同的
+幂等关闭契约。
 
 Queue 与 Worker 的错误监听器保留到关闭完成。运行期间可恢复的连接错误仅记录
 `PCAT-LOG-QUEUE-CONNECTION-ERROR`，不会让后来已恢复的连接永久失败。关闭期间
