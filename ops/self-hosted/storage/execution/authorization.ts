@@ -67,6 +67,7 @@ export function createRecoveryExecutionAuthorization(input: {
       || authorized.at(-1)?.action !== RECOVERY_EXECUTION_EVENTS.authorized || authorized.at(-1)?.inputDigest !== approvalDigest
       || !authorized.at(-1)?.recoveryApproval || canonicalJson(authorized.at(-1)!.recoveryApproval!.approval) !== canonicalJson(approval)
       || authorized.at(-1)?.outcome !== "committed" || captured.at(-1)!.seq >= authorized.at(-1)!.seq) fail();
+    if (entries.some(entry => entry.seq > captured.at(-1)!.seq && ["recovery-capture-pending", "recovery-capture-unknown"].includes(entry.action))) fail();
     const starts = entries.filter(entry => entry.action === RECOVERY_EXECUTION_EVENTS.started);
     // No blind retry after any dispatched restore, even when a new object is
     // created in this process. Explicit reconciliation belongs to the controller.

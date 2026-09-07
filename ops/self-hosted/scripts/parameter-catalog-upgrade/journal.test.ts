@@ -28,7 +28,7 @@ const tempJournal = (): string =>
   path.join(mkdtempSync(path.join(tmpdir(), "s11-upg-journal-")), "journal.json");
 
 describe("S11-UPG journal", () => {
-  it.each(["valid", "orphan", "cross-run", "reference", "principal", "target", "hash-only", "started", "unknown", "phase", "next-action"])("persists only capture-bound typed recovery approval: %s", fault => {
+  it.each(["valid", "orphan", "cross-run", "reference", "principal", "target", "hash-only", "started", "unknown", "pending-capture", "phase", "next-action"])("persists only capture-bound typed recovery approval: %s", fault => {
     const opened = openUpgradeJournal({ journalPath: tempJournal(), runId: "approval" });
     if (!opened.ok) throw new Error("fixture-open-failed");
     const journal = opened.value;
@@ -56,6 +56,11 @@ describe("S11-UPG journal", () => {
     const inputDigest = sha256Prefixed(canonicalJson(event.approval));
     if (fault === "hash-only") expect(append("recovery-execution-authorized", inputDigest).ok).toBe(true);
     if (fault === "started" || fault === "unknown") expect(append(fault === "started" ? "recovery-execution-started" : "recovery-execution-outcome-unknown", "previous").ok).toBe(true);
+    if (fault === "pending-capture") {
+      const next = { ...pending, attemptId: "next-capture" };
+      expect(commitJournalTransition(journal, { action: "recovery-capture-pending", inputDigest: sha256Prefixed(canonicalJson(next)),
+        toState: "idle", nextAction: "plan", outcome: "crashed", recoveryCapture: next }).ok).toBe(true);
+    }
     const before = journalBytes(journal.journalPath);
     const draft = { action: "recovery-execution-authorized", inputDigest, toState: fault === "phase" ? "completed" as const : "idle" as const,
       nextAction: fault === "next-action" ? "execute" as const : "plan" as const, recoveryApproval: event };
@@ -64,6 +69,12 @@ describe("S11-UPG journal", () => {
       const loaded = loadUpgradeJournal({ journalPath: journal.journalPath, runId: "approval" });
       expect(loaded.ok && loaded.value.record.entries.at(-1)?.recoveryApproval).toEqual(event);
       expect(commitJournalTransition(journal, draft)).toMatchObject({ ok: true, value: { replayed: true } });
+      const laterBody = { ...body, attemptId: "next-restore" };
+      const laterEvent = { ...event, approval: { ...event.approval, attemptId: "next-restore", approvalReference: sha256Prefixed(canonicalJson(laterBody)) } };
+      expect(commitJournalTransition(journal, { ...draft, inputDigest: sha256Prefixed(canonicalJson(laterEvent.approval)), recoveryApproval: laterEvent }).ok).toBe(true);
+      const latest = journalBytes(journal.journalPath);
+      expect(commitJournalTransition(journal, draft).ok).toBe(false);
+      expect(journalBytes(journal.journalPath)).toEqual(latest);
     } else expect(journalBytes(journal.journalPath)).toEqual(before);
   });
   it.each(["phase-change", "numeric-inode", "numeric-attempt"])("does not coerce or grant phases through capture metadata: %s", fault => {

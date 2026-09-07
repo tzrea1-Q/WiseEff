@@ -344,6 +344,7 @@ function validRecoveryApproval(event: RecoveryApprovalEvent, entry: JournalEntry
     entry.nextAction !== (previous.at(-1)?.nextAction ?? "plan") || entry.planDigest !== (previous.at(-1)?.planDigest ?? null)) return false;
   const captured = previous.filter(item => item.action === "recovery-package-captured").at(-1);
   if (captured?.recoveryCapture?.outcome !== "committed" || captured.inputDigest !== approval.captureDigest ||
+    previous.some(item => item.seq > captured.seq && ["recovery-capture-pending", "recovery-capture-unknown"].includes(item.action)) ||
     previous.some(item => item.recoveryApproval?.approval.attemptId === approval.attemptId) ||
     previous.some(item => ["recovery-execution-started", "recovery-execution-completed", "recovery-execution-outcome-unknown", "recovery-execution-revoked"].includes(item.action))) return false;
   const { approvalReference, ...scope } = approval;
@@ -511,11 +512,15 @@ const appendTransition = (
     return failClosed("PCAT-UPG-ILLEGAL-ACTION", "recovery evidence cannot change controller state or pins");
   }
   if (isReplay(journal.record, draft)) {
-    if (draft.recoveryApproval && (!journal.record.entries.some(entry => entry.action === draft.action &&
-      entry.inputDigest === draft.inputDigest && entry.outcome === "committed" && entry.recoveryApproval &&
-      canonicalJson(entry.recoveryApproval) === canonicalJson(draft.recoveryApproval)) ||
-      journal.record.entries.some(entry => ["recovery-execution-started", "recovery-execution-completed", "recovery-execution-outcome-unknown", "recovery-execution-revoked"].includes(entry.action)))) {
-      return failClosed("PCAT-UPG-ILLEGAL-ACTION", "approval replay requires the original unconsumed typed record");
+    if (draft.recoveryApproval) {
+      const current = journal.record.entries.filter(entry => entry.action === "recovery-execution-authorized").at(-1);
+      const captured = journal.record.entries.filter(entry => entry.action === "recovery-package-captured").at(-1);
+      if (!current?.recoveryApproval || current.inputDigest !== draft.inputDigest || current.outcome !== "committed" ||
+        canonicalJson(current.recoveryApproval) !== canonicalJson(draft.recoveryApproval) || captured?.inputDigest !== draft.recoveryApproval.approval.captureDigest ||
+        journal.record.entries.some(entry => ["recovery-execution-started", "recovery-execution-completed", "recovery-execution-outcome-unknown", "recovery-execution-revoked"].includes(entry.action) ||
+          entry.seq > current.seq && ["recovery-capture-pending", "recovery-capture-unknown"].includes(entry.action))) {
+        return failClosed("PCAT-UPG-ILLEGAL-ACTION", "approval replay requires the current unconsumed typed record");
+      }
     }
     if (draft.recoveryCapture && !journal.record.entries.some(entry => entry.action === draft.action &&
       entry.inputDigest === draft.inputDigest && entry.outcome === "committed" && entry.recoveryCapture &&
