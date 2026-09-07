@@ -14,8 +14,9 @@ vi.mock("./isolated-upgrade-docker", async importOriginal => {
   return { ...actual, createIsolatedUpgradeDocker: (...args: Parameters<typeof actual.createIsolatedUpgradeDocker>) => injectedDocker.current ?? actual.createIsolatedUpgradeDocker(...args) };
 });
 
-it.each(["network", "volume", "container", "network-foreign", "volume-foreign", "container-foreign"])("reconciles a lost main profile %s acknowledgment against its exact declared resource", async lost => {
+it.each(["network", "volume", "container", "network-foreign", "volume-foreign", "container-foreign", "network-unowned-return", "volume-unowned-return"])("reconciles a lost main profile %s acknowledgment against its exact declared resource", async lost => {
   const records = new Map<string, { Id: string; Name: string; Labels: Record<string, string>; Image?: string; Containers?: Record<string, unknown> }>();
+  const created: string[] = [];
   const imageId = `sha256:${"a".repeat(64)}`;
   const output = (value: unknown) => Buffer.from(typeof value === "string" ? value : JSON.stringify(value));
   const command = (args: string[]) => {
@@ -23,12 +24,14 @@ it.each(["network", "volume", "container", "network-foreign", "volume-foreign", 
     if (args[0] === "image") return output([{ Id: imageId, Os: "linux", Architecture: "arm64" }]);
     const kind = args[0] === "run" ? "container" : args[1] === "create" ? args[0] : "";
     if (kind) {
+      created.push(kind);
       const [key, value] = args[args.indexOf("--label") + 1].split("=");
       const name = kind === "container" ? (args.includes("--name") ? args[args.indexOf("--name") + 1] : "old-unrecorded-container") : args.at(-1)!;
       const row = { Id: kind === "volume" ? name : (kind === "network" ? "b" : "c").repeat(64), Name: name,
         Labels: { [key]: value }, Image: imageId, Containers: {} };
       records.set(kind, row);
       if (kind === lost.split("-")[0]) {
+        if (lost.endsWith("-unowned-return")) { row.Labels = {}; return output(row.Id); }
         if (lost.endsWith("-foreign")) row.Labels = {};
         throw new Error("transport-acknowledgment-lost");
       }
@@ -52,10 +55,13 @@ it.each(["network", "volume", "container", "network-foreign", "volume-foreign", 
   try {
     const result = await runUpgradeComponentTests(["--expected-daemon-id", "owned", "--suite", "reader-pg16"]);
     expect(result.exitCode).toBe(1);
-    expect(records.size).toBe(lost.endsWith("-foreign") ? 1 : 0);
+    const foreign = lost.endsWith("-foreign") || lost.endsWith("-unowned-return");
+    expect(records.size).toBe(foreign ? 1 : 0);
     const summary = JSON.parse(log.mock.calls.at(-1)![0]);
-    expect(summary.cleanupVerified).toBe(!lost.endsWith("-foreign"));
-    expect(summary.privateEvidenceRetained).toBe(lost.endsWith("-foreign"));
+    expect(summary.cleanupVerified).toBe(!foreign);
+    expect(summary.privateEvidenceRetained).toBe(foreign);
+    if (lost === "network-unowned-return") expect(created).toEqual(["network"]);
+    if (lost === "volume-unowned-return") expect(created).toEqual(["network", "volume"]);
   } finally { injectedDocker.current = undefined; log.mockRestore(); error.mockRestore(); }
 });
 

@@ -58,6 +58,18 @@ export async function createOwnedComponentResources(options: {
   try {
     const parent = await open(directory, "r"); try { await parent.sync(); } finally { await parent.close(); }
   } catch (error) { await records.close(); throw error; }
+  const verify = (kind: keyof typeof resources) => {
+    const resource = resources[kind];
+    if (kind === "volume" ? resource.id !== resource.name : !/^[a-f0-9]{64}$/.test(resource.id)) throw new Error("owned-component-resource-identity-unavailable");
+    if (kind === "container") {
+      const actual = docker.assertOwned(resource.id, label, run);
+      if (actual.Name !== `/${resource.name}` || actual.Image !== imageId) throw new Error("owned-component-resource-identity-mismatch");
+    } else {
+      const actual = JSON.parse(docker.command([kind, "inspect", resource.id]).toString())[0];
+      if (actual.Name !== resource.name || actual.Labels?.[label] !== run ||
+          (kind === "network" && actual.Id !== resource.id)) throw new Error("owned-component-resource-identity-mismatch");
+    }
+  };
   const create = async (kind: keyof typeof resources, command: string[]) => {
     const resource = resources[kind];
     if (resource.attempted) throw new Error("owned-component-create-already-attempted");
@@ -65,13 +77,18 @@ export async function createOwnedComponentResources(options: {
     resource.id = docker.command(command).toString().trim();
     await records.writeFile(JSON.stringify({ kind, name: resource.name, id: resource.id }) + "\n");
     await records.sync();
+    verify(kind);
     return resource.id;
   };
   return {
     network: () => create("network", ["network", "create", "--opt", "com.docker.network.bridge.enable_ip_masquerade=false", "--label", `${label}=${run}`, resources.network.name]),
-    volume: () => create("volume", ["volume", "create", "--label", `${label}=${run}`, resources.volume.name]),
+    volume: () => {
+      verify("network");
+      return create("volume", ["volume", "create", "--label", `${label}=${run}`, resources.volume.name]);
+    },
     async container() {
       if (!resources.network.id || !resources.volume.id) throw new Error("owned-component-prerequisite-unavailable");
+      verify("network"); verify("volume");
       const args = ["run", "-d", "--name", resources.container.name, "--network", resources.network.id, "--label", `${label}=${run}`];
       if (isRedis) {
         await writeFile(path.join(directory, "redis.conf"), `bind 0.0.0.0\nappendonly yes\ndir /data\nrequirepass ${password}\n`, { mode: 0o600, flag: "wx" });

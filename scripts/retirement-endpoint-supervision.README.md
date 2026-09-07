@@ -38,6 +38,9 @@ run label (also the image for containers). It checks all three resources despite
 another cleanup failure, refuses foreign ownership and retains private evidence
 on any failure. It never treats the absence of a returned ID as proof that no
 resource was created.
+Returned resource identities are checked before any dependent creation, including
+the ownership of a volume that Docker might return as an already existing name.
+Network and volume identities are checked again before mounting the service.
 
 The business file consumes the receipt and can start/stop owned probes or apply
 bounded network-alias faults; it creates and removes no Docker resources. The
