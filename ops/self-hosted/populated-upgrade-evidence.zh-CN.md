@@ -4,6 +4,25 @@
 
 ## 集成候选，2026-09-08
 
+运行来源集成 `c3f5a49092b761ad2b6806ad515849ff4ece1878`，tree
+`2841d3d3ebfa756f508c585cc97cb8b390f32d67`，路由／来源selector 32/32、零失败／跳过，
+exit 0；日志SHA256为
+`fa0e48d06bb1a00856ba53ae46b5aa8facb928c5df8efee3fd40c141bc183447`。
+真实PG源执行仍属于测试提交 `a550e8a7f`，不重标为此cherry-pick：13/13、14.01s、
+零失败／跳过、清理验证通过。错误密码、签发后断连和初始化终止使用实际LOGIN会话。
+[来源合同](scripts/parameter-catalog-upgrade/runtimeRoleSource.README.zh-CN.md)保留最初
+2通过／5失败、schema数组Red／Green、精确hash和独立Standards／Spec范围。
+父强制路由也已另获独立Standards／Spec PASS；这些结果不证明真实API／worker启动。
+
+SQL效果集成 `e41dd4e8225dd6aa216bbd32904edad91b16a082`，tree
+`bec6af8d4953222379bfb96c4f961562a3ef2f38`，四文件root／路由selector
+147/147、零失败／跳过、5.38s、exit 0；build exit 0，保留原警告。
+日志SHA256依次为 `c1841efa56872a69895a0316bf862b363350064eda3a13d82bb9cb733afc4eab`
+与 `73d0f588942879bd16bb008cefa849709aabc2696ef5064450ad715ded7ef8ae`。
+路由Red为23通过／1项unknown-suite失败，无跳过。独立Spec审查发现低层管理连接
+缺少search-path前置检查，修复和真实PG效果验证尚待完成。此候选未封存、不受已交付
+Hosted覆盖；root selector仍模拟SQL效果。
+
 执行 `b8fbae437107194c19393651180b397ef7b2ae42`，tree
 `c3068db7f9a2e56eede19e22cf74ee5b14c5129a`，已集成经过审查的bootstrap持久
 步骤、七表V13能力修复和controlled adapter强制路由。七文件selector274/274，

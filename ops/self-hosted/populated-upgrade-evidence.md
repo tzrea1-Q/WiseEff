@@ -4,6 +4,28 @@
 
 ## Integrated candidate, 2026-09-08
 
+Runtime-source integration `c3f5a49092b761ad2b6806ad515849ff4ece1878`, tree
+`2841d3d3ebfa756f508c585cc97cb8b390f32d67`, passed its route/source selector
+32/32, zero failed/skipped, exit 0. Log SHA256:
+`fa0e48d06bb1a00856ba53ae46b5aa8facb928c5df8efee3fd40c141bc183447`.
+The real PG source execution remains test commit `a550e8a7f`, not this cherry-pick:
+13/13, 14.01s, zero failed/skipped, cleanup verified. Its wrong-password,
+post-issuance loss and initialization termination cases use actual LOGIN sessions.
+The [source contract](scripts/parameter-catalog-upgrade/runtimeRoleSource.README.md)
+retains the original 2-pass/5-fail discovery, schema-array Red/Green, exact hashes
+and independent Standards/Spec scope. Parent mandatory routing also has separate
+Standards/Spec PASS. No actual API/worker startup is established by these results.
+
+SQL-effect integration `e41dd4e8225dd6aa216bbd32904edad91b16a082`, tree
+`bec6af8d4953222379bfb96c4f961562a3ef2f38`, passed its four-file root/route selector
+147/147, zero failed/skipped, 5.38s, exit 0, and build exit 0 with retained warnings.
+Log SHA256 values are `c1841efa56872a69895a0316bf862b363350064eda3a13d82bb9cb733afc4eab`
+and `73d0f588942879bd16bb008cefa849709aabc2696ef5064450ad715ded7ef8ae`.
+Its route Red was 23 passed/1 unknown-suite failure; no tests were skipped.
+Independent Spec review identified a missing low-level management search-path
+precondition. The fix and real PG effects are pending; this candidate is not
+sealed or covered by delivered Hosted, and its root selector mocks SQL effects.
+
 Execution `b8fbae437107194c19393651180b397ef7b2ae42`, tree
 `c3068db7f9a2e56eede19e22cf74ee5b14c5129a`, includes reviewed bootstrap durable
 steps, seven-table V13 capability fixes and mandatory controlled adapter routing.

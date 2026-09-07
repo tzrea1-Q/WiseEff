@@ -6,7 +6,16 @@
 
 ### Current continuation: real dependencies and activation
 
-Continuation `b8fbae437` integrates the independently reviewed bootstrap journal
+Continuation `c3f5a4909` integrates the independently reviewed actual runtime
+LOGIN source and its schema-array fix. Source test commit `a550e8a7f` passed
+13/13 real PG authentication, backend-loss and cleanup cases; this is not
+application startup. Its parent route/source selector passed 32/32. The next
+SQL privilege effect is integrated at `e41dd4e82` for review and real PG
+execution; its root/route selector passed 147/147, not a database effect proof.
+The application artifact producer is separately building an actual fixed-source
+Compose image. Neither increment has current Hosted or full startup evidence.
+
+Earlier `b8fbae437` integrates the independently reviewed bootstrap journal
 lock checks, the seven-table V13 capability submatrix, and mandatory controlled
 recovery adapter routing. Focused 274/274 and actual adapter 4/4 passed; build,
 unchanged trusted-base boundary, contract and self-hosted checks exited 0. This
@@ -18,7 +27,9 @@ candidate has not run Hosted. Delivered `cf494324c` separately completed CI
 | Bootstrap journal / Raman, parent integration | Lock loss during the last report await; retain committed evidence without replay | Existing bootstrap pair and evidence |
 | V13 capabilities / Lagrange, parent integration | Indirect LOGIN privileges and custom system-schema definers; seven-table scope only | Existing gate pair and owned CI |
 | Adapter mandatory route / parent | Neither generic exclusion nor opt-in may omit all four tests; failed child cleanup remains unknown | Existing operator/evidence pair |
-| Runtime role source / Fermat Scratch | Original configuration FD, actual restricted LOGIN and physical target proof; no new grants | Handoff/runtime pair, pending integration |
+| Runtime role source / Fermat, parent integration | Original configuration FD, actual restricted LOGIN and physical target proof; no new grants | Existing runtime source and evidence pairs |
+| SQL privilege effect / Raman; parent owns runner/CI | Seven-table ACL CAS, current readback and unknown outcome; no P13 completion claim | Existing retirement pair and mandatory owned route |
+| Application artifact / Lagrange; sole upgrade-lib writer | Actual fixed source/build trust and OCI bytes; Docker image ID is not assumed to be config or manifest digest | Artifact contract and existing decision pair |
 
 Full P13 effects and its immutable generation producer, StartupTarget and real
 API/worker positive startup remain internal implementation work. A, B and C are
