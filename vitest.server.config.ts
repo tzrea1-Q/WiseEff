@@ -30,6 +30,8 @@ export default defineConfig({
       "server/modules/catalog-cutover/retirement/loginFence.integration.test.ts",
       "server/modules/catalog-cutover/retirement/bootstrapCredentialFence.integration.test.ts",
       "server/modules/catalog-kernel/security/catalogReader.integration.test.ts",
+      "server/modules/parameter-catalog-api/cghReadProjection.integration.test.ts",
+      "server/modules/parameter-governance/review/persistedQuery.integration.test.ts",
       "server/modules/release-verification/startup/reportConnection.integration.test.ts",
       "server/modules/catalog-cutover/bindingImportProducer.integration.test.ts",
       "server/modules/catalog-cutover/managementStructure.test.ts",

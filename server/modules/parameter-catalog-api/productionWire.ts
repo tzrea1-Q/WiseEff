@@ -19,7 +19,7 @@ import { executeProposal } from "../parameter-governance/proposals";
 import { createGovernanceCatalogQueries } from "../parameter-governance/queries";
 import { executeRegistration } from "../parameter-governance/registration";
 import { resolveReviewItem } from "../parameter-governance/resolveReviewItem";
-import { createReviewQueueReader } from "../parameter-governance/review";
+import { createPersistedReviewQueueReader, createReviewQueueReader } from "../parameter-governance/review";
 import { createUsageQueries } from "../parameter-bindings/usage";
 import type { RouteRequest, WiseEffRouter } from "../../shared/http/router";
 import type { Database } from "../../shared/database/client";
@@ -300,6 +300,9 @@ const createGovernancePorts = (
   resolveAuth: CatalogApiAuthResolver,
   commandPool: pg.Pool | undefined,
 ): CatalogGovernancePorts => {
+  // A comparison/query connection may read prepared ReviewItems, but must not
+  // enter the existing lazy-grouping reader, whose GET path can insert items.
+  const persistedReviews = !commandPool && pool ? createPersistedReviewQueueReader(pool) : undefined;
   const commands = commandPool
     ? bindCatalogGovernanceCommands({
         executeRegistration: (command) => executeRegistration(commandPool, command),
@@ -335,11 +338,11 @@ const createGovernancePorts = (
             method: "executeProposal",
           },
         }),
-        listReviewQueue: async () => ({
+        listReviewQueue: persistedReviews ? (query: Parameters<CatalogGovernancePorts["listReviewQueue"]>[0]) => persistedReviews.list(query) : async () => ({
           ok: false as const,
           error: { kind: "permission-denied" as const, actorKind: "anonymous" as const },
         }),
-        getReviewItem: async () => ({
+        getReviewItem: persistedReviews ? (query: Parameters<CatalogGovernancePorts["getReviewItem"]>[0]) => persistedReviews.get(query) : async () => ({
           ok: false as const,
           error: { kind: "review-item-not-found" as const, reviewItemId: "catalog-unwired" },
         }),

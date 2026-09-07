@@ -5,6 +5,25 @@ import * as componentRunner from "./run-upgrade-component-tests";
 
 const workflow = readFileSync(new URL("../.github/workflows/ci.yml", import.meta.url), "utf8");
 
+it("requires real restricted Catalog and persisted Review projections in their owned PG16 lane", () => {
+  const files = [
+    "server/modules/parameter-catalog-api/cghReadProjection.integration.test.ts",
+    "server/modules/parameter-governance/review/persistedQuery.integration.test.ts",
+  ];
+  const command = componentRunner.componentTestCommands("read-projections-pg16")[0];
+  expect(command.slice(1)).toEqual(["run", "--config", "vitest.upgrade-cutover.config.ts", ...files]);
+  const config = readFileSync(new URL("../vitest.upgrade-cutover.config.ts", import.meta.url), "utf8");
+  const server = readFileSync(new URL("../vitest.server.config.ts", import.meta.url), "utf8");
+  for (const file of files) {
+    expect(config).toContain(`"${file}"`);
+    expect(server).toContain(`"${file}"`);
+  }
+  expect(config).toContain("assertOwnedUpgradeTestTarget();");
+  expect(config).toContain("maxWorkers: 1");
+  expect(config).not.toContain("passWithNoTests: true");
+  expect(workflow).toContain("--suite read-projections-pg16 --github-hosted");
+});
+
 it("focuses the real comparison fixture without removing it from ordinary backend coverage", () => {
   const file = "server/modules/release-verification/comparison/aggregateComparisonCorpus.integration.test.ts";
   expect(componentRunner.componentTestCommands("comparison-pgvector")[0].slice(1)).toEqual([

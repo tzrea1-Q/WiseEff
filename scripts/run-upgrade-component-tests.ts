@@ -14,6 +14,7 @@ const suites: Record<string, { image: string; files: readonly string[]; config: 
   bindings: { image: "pgvector/pgvector:pg16", files: bindingFiles, config: "vitest.upgrade-cutover.config.ts" },
   "bindings-pg16": { image: "postgres:16-alpine", files: bindingFiles, config: "vitest.upgrade-cutover.config.ts" },
   "reader-pg16": { image: "postgres:16-alpine", files: ["server/modules/catalog-kernel/security/catalogReader.integration.test.ts"], config: "vitest.upgrade-cutover.config.ts" },
+  "read-projections-pg16": { image: "postgres:16-alpine", files: ["server/modules/parameter-catalog-api/cghReadProjection.integration.test.ts", "server/modules/parameter-governance/review/persistedQuery.integration.test.ts"], config: "vitest.upgrade-cutover.config.ts" },
   "activation-existing-pg16": { image: "postgres:16-alpine", files: ["server/modules/catalog-cutover/activation/activation.integration.test.ts"], config: "vitest.upgrade-cutover.config.ts" },
   "report-pg16": { image: "postgres:16-alpine", files: ["server/modules/release-verification/startup/reportConnection.integration.test.ts"], config: "vitest.upgrade-cutover.config.ts" },
   "authority-pg16": { image: "postgres:16-alpine", files: ["ops/self-hosted/scripts/parameter-catalog-upgrade/deploymentAuthority.integration.test.ts"], config: "vitest.upgrade-cutover.config.ts" },
@@ -312,9 +313,10 @@ export async function runUpgradeComponentTests(args: string[], observation?: {
   }
   // Registering a route does not authorize creating resources for an absent
   // component. Integration must supply the exact test/config before execution.
-  if (["retirement-existing-pg16", "bootstrap-credential-pg16"].includes(args[3])) {
+  if (["retirement-existing-pg16", "bootstrap-credential-pg16", "read-projections-pg16"].includes(args[3])) {
     try { for (const file of [...suites[args[3]].files, suites[args[3]].config]) await access(path.join(root, file)); }
-    catch { return { exitCode: 2, reason: args[3] === "bootstrap-credential-pg16" ? "owned-bootstrap-component-unavailable" : "owned-retirement-component-unavailable" }; }
+    catch { return { exitCode: 2, reason: args[3] === "read-projections-pg16" ? "owned-read-projections-component-unavailable" :
+      args[3] === "bootstrap-credential-pg16" ? "owned-bootstrap-component-unavailable" : "owned-retirement-component-unavailable" }; }
   }
   const docker = createIsolatedUpgradeDocker();
   if (docker.daemonId !== args[1] || (!hosted && docker.command(["info", "--format", "{{.ID}}|{{.Name}}|{{.OperatingSystem}}"] ).toString().trim() !== `${args[1]}|docker-desktop|Docker Desktop`)) {

@@ -9,6 +9,8 @@ export default defineConfig({ test: {
     "server/modules/catalog-cutover/**/*.test.ts",
     "server/modules/parameter-bindings/cutoverImport/*.test.ts",
     "server/modules/catalog-kernel/security/catalogReader.integration.test.ts",
+    "server/modules/parameter-catalog-api/cghReadProjection.integration.test.ts",
+    "server/modules/parameter-governance/review/persistedQuery.integration.test.ts",
     "server/modules/release-verification/startup/reportConnection.integration.test.ts",
     "ops/self-hosted/scripts/parameter-catalog-upgrade/deploymentAuthority.integration.test.ts",
   ],

@@ -63,3 +63,11 @@ Docker 身份清理，不依赖已经失效的旧数据库密码。此路由不�
 相同 backend setup、父进程签发的归属 receipt 和非零收集要求，执行真实 aggregate
 比较夹具。该文件仍由普通 backend／Hosted 收集，不以此 selector 替代完整后端。
 两个路由沿用上文 daemon 身份和资源归属合同，不改变时间上限。
+
+`read-projections-pg16` 在另一独立 PG16 集群强制执行 Catalog 正式查询与已持久
+Review 投影的两个精确集成文件。它们创建真实 LOGIN，排除共享 backend worker，
+但由 owned Hosted job 强制收集，沿用 receipt-first cutover 配置和原时限，零收集
+不能通过。Catalog 正例仅持有 0140 reader 成员关系；Review 组件正例使用既有治理
+与同步能力，明确不是 API 最终身份，0140-only 的 Review 访问仍须拒绝。测试不扩展
+能力角色权限，也不批准 runtime 启动。纯路由测试仍由普通 scripts 收集，领域纯测试
+仍由普通 backend 收集。

@@ -84,3 +84,14 @@ the same backend setup, an issued ownership receipt and nonempty collection.
 It remains collected by ordinary backend/Hosted tests; this selection neither
 skips those checks nor claims complete backend acceptance. Both routes use the
 same daemon identity and resource custody contract above, with unchanged deadlines.
+
+`read-projections-pg16` owns the exact Catalog production-query and persisted
+Review projection integration files in another PG16 cluster. Both create real
+LOGIN identities and are excluded from shared backend workers, but are mandatory
+in the owned Hosted job. It reuses the receipt-first cutover config and its
+original deadlines; empty collection cannot pass. The Catalog positive uses only
+0140 reader membership. The Review component positive uses existing governance
+and synchronization capabilities and is explicitly not the final API identity;
+0140-only Review access must still refuse. Neither test grants new capability
+privileges or authorizes runtime startup. Pure routing tests remain in ordinary
+scripts, and the domain's pure tests remain in ordinary backend collection.
