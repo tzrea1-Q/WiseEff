@@ -47,6 +47,9 @@ REVOKE 前须已耐久保存现有 host pending 边界与专属 0137 P13 step in
 现有根在凭据退休前打开品牌 runtime-role source，并在 SQL 效果期间持续
 重读。根原六表 P12 库存锁不变；SQL owner 另在每个事务的首个快照前持有
 七张旧表锁。先提交不可变 intent，再执行精确 REVOKE、实际回读并提交。
+首个身份观察前还须实际管理 search path 以 `pg_catalog` 开头；每个事务另持
+`pg_authid`/`pg_auth_members` 的 SHARE NOWAIT。它短时冻结集群级角色元数据
+写入，不冒充只有七表局部锁；已存在竞争即拒绝。
 第三个事务持七表锁，覆盖新快照回读及根的宿主确认。本 owner 不关闭借入
 pool/client。ACL 前像中的恢复资格只关联原包角色名，不声称当前角色属性、
 成员关系等于原 capture，也不独立恢复它们；当前全部成员边仍参与效果 CAS。
@@ -63,8 +66,20 @@ SELECT/owner/无关业务权限保留、grantor 权限不足、共享或未知�
 原根 Red 为 1 失败、50 filtered，证明新效果未被派发；当前根 54 项纯测试与
 真实宿主 FS 回归通过，包括 host pending 失败时零 SQL、未知效果保留 pending，
 以及凭据变更前拒绝 runtime-source 错目标。其中 SQL、报告、Docker 端口是
-替身。新增 16 项 owned PG 尚未运行，复用真实 P0–P10/P12 storage 与明确未
-批准引用，只测试 SQL 效果。真实 SQL 提交后注入 host 确认失败不冒充网络
+替身。首次固定 `490b976d6` 的 owned PG 为 17 收集、5 过12失败，90.35 秒、
+exit1、cleanuptrue。unsafe search path 确实错误返回成功；另外11失败来自
+夹具 UPDATE definition_lifecycle 调用了原 DTS trigger 却缺其读取权限。
+夹具现改为真实结构列 specification_key，保留实际行数、UPDATE拒绝及其它
+断言，不改 trigger、不补 grant。原日志 `/tmp/pr824-sql-privilege-pg-red.log`
+SHA256 为 `0047ddf3ae7b13bfa2a53840d7a641b94d4e5186491c074a1ead0ad006b7e27c`。
+下一固定 Red `d101d5ded` 为18项中16过2失败，95.04秒、exit1、cleanuptrue。
+只剩 unsafe resolution 与最终 host 确认时并发 GRANT pg_write_all_data：
+后者真实 GRANT 成功，随后实际 LOGIN 又可 UPDATE。保留日志
+`/tmp/pr824-sql-privilege-membership-red.log` 的 SHA256 为
+`40239689884ee73630ffa74ec193fe078e6dd54bd4d673d532a97e7947f82ba4`。
+相应解析 guard 与角色元数据锁修复等待独立固定 Green。
+复用真实 P0–P10/P12 storage 与明确未批准引用，只测试 SQL 效果。
+真实 SQL 提交后注入 host 确认失败不冒充网络
 COMMIT 故障。不声称完整根 P12/P13 批准或全部 writer 退休。
 
 唯一写入路径为本 README 双语文件、`legacySqlPrivilegeFence.ts` 及其

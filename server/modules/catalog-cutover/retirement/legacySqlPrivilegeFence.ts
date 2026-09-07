@@ -98,17 +98,23 @@ const comparison = (inventory: Inventory, removed: ReturnType<typeof changes> = 
   })),
 });
 async function assertManagement(client: pg.PoolClient, target: BindingDatabaseIdentity) {
+  const schemas = (await client.query<{ schemas: string[] }>("select pg_catalog.current_schemas(true)::text[] as schemas")).rows[0]?.schemas;
+  need(Array.isArray(schemas) && schemas[0] === "pg_catalog", "RESOLUTION-UNSAFE");
   need(isDeepStrictEqual(await readBindingDatabaseIdentity(client), target), "TARGET-MISMATCH");
   const row = (await client.query(`select session_user=current_user as same,
     (select rolsuper from pg_catalog.pg_roles where rolname=session_user) as manager,
     exists(select 1 from pg_catalog.pg_locks where pid=pg_catalog.pg_backend_pid() and database=$1::oid
       and locktype='advisory' and granted and mode='ExclusiveLock' and objsubid=2
-      and classid=hashtext('s7-orc-cutover-target')::oid and objid=hashtext(current_database())::oid) as held`, [target.databaseOid])).rows[0];
+      and classid=pg_catalog.hashtext('s7-orc-cutover-target')::oid and objid=pg_catalog.hashtext(pg_catalog.current_database())::oid) as held`, [target.databaseOid])).rows[0];
   need(row?.same === true && row.manager === true && row.held === true, "MANAGEMENT-LOCK-REQUIRED");
 }
 async function begin(client: pg.PoolClient) {
   await client.query("begin isolation level serializable");
   await client.query("set local synchronous_commit=on");
+  // Role identity/membership are cluster-wide metadata. These short NOWAIT
+  // locks prevent a concurrent GRANT/ALTER from escaping the ACL snapshot;
+  // they do not change roles or privileges and are released at transaction end.
+  await client.query("lock table pg_catalog.pg_authid,pg_catalog.pg_auth_members in share mode nowait");
   // The seven legacy tables are not the six separate P12 inventory tables.
   // Lock before the first snapshot, covering concurrent DML, DDL and ACL changes.
   await client.query(`lock table ${relations.map(name => `public.${pg.escapeIdentifier(name)}`).join(",")} in access exclusive mode nowait`);
@@ -196,7 +202,7 @@ export async function applyLegacySqlPrivilegeFence(input: {
       { event_kind: appliedKind, payload: { intentDigest: intent.intentDigest, after } }]), "COMMIT-READBACK-DRIFT");
     need(isDeepStrictEqual(await observe(client, roots, selection.target), after), "COMMIT-READBACK-DRIFT");
     await live(); await persistHostStep(intent.intentDigest); await live();
-    await client.query("rollback"); transaction = false;
+    await client.query("rollback"); transaction = false; await live();
     return { outcome: "legacy-sql-privileges-fenced-not-P13", intentDigest: intent.intentDigest };
   } catch (error) {
     if (transaction && !ending) { try { await client.query("rollback"); } catch { ending = true; } }
