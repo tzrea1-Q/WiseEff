@@ -41,6 +41,24 @@ type LoginFacts = {
   catalog_present: boolean;
 };
 
+/** Identity precondition only. It does not issue a pool or perform/replace the
+ * application Catalog startup admission below. Management observers reuse it
+ * on their own actual LOGIN lease before exposing a role identity. */
+export async function assertRuntimeLoginIdentity(db: Pick<RootDatabase, "query">,
+  purpose: "application" | "catalog-governance-command" = "application") {
+  const facts = (await db.query<LoginFacts>(loginSql)).rows[0];
+  if (!facts || facts.same_identity !== true) throw new RuntimeConnectionError("PCAT-RUNTIME-LOGIN-IDENTITY-MISMATCH");
+  if (facts.privileged_roles > 0) throw new RuntimeConnectionError("PCAT-RUNTIME-PRIVILEGED-LOGIN");
+  if (facts.management_roles > 0) throw new RuntimeConnectionError("PCAT-RUNTIME-MANAGEMENT-ROLE-REACHABLE");
+  if (facts.owned_objects > 0) throw new RuntimeConnectionError("PCAT-RUNTIME-OBJECT-OWNER");
+  if (purpose === "catalog-governance-command") {
+    if (facts.governance_roles !== 1) throw new RuntimeConnectionError("PCAT-RUNTIME-GOVERNANCE-CAPABILITY-MISSING");
+  } else if (facts.governance_roles > 0) {
+    throw new RuntimeConnectionError("PCAT-RUNTIME-GOVERNANCE-CAPABILITY-IN-APPLICATION-POOL");
+  }
+  return facts;
+}
+
 export async function openRuntimeDatabase(
   options: {
     connectionString: string;
@@ -57,16 +75,7 @@ export async function openRuntimeDatabase(
   try {
     db = create(options.connectionString, options.databaseOptions);
     if (options.nodeEnv !== "production") return db;
-    const facts = (await db.query<LoginFacts>(loginSql)).rows[0];
-    if (!facts || facts.same_identity !== true) throw new RuntimeConnectionError("PCAT-RUNTIME-LOGIN-IDENTITY-MISMATCH");
-    if (facts.privileged_roles > 0) throw new RuntimeConnectionError("PCAT-RUNTIME-PRIVILEGED-LOGIN");
-    if (facts.management_roles > 0) throw new RuntimeConnectionError("PCAT-RUNTIME-MANAGEMENT-ROLE-REACHABLE");
-    if (facts.owned_objects > 0) throw new RuntimeConnectionError("PCAT-RUNTIME-OBJECT-OWNER");
-    if (options.purpose === "catalog-governance-command") {
-      if (facts.governance_roles !== 1) throw new RuntimeConnectionError("PCAT-RUNTIME-GOVERNANCE-CAPABILITY-MISSING");
-    } else if (facts.governance_roles > 0) {
-      throw new RuntimeConnectionError("PCAT-RUNTIME-GOVERNANCE-CAPABILITY-IN-APPLICATION-POOL");
-    }
+    const facts = await assertRuntimeLoginIdentity(db, options.purpose);
     if (options.purpose !== "catalog-governance-command") {
       if (facts.catalog_present !== true) throw new RuntimeConnectionError("PCAT-RUNTIME-CATALOG-SCHEMA-MISSING");
       if (!options.verifyCatalogStartup) throw new RuntimeConnectionError("PCAT-RUNTIME-LIVE-PIN-ADAPTER-UNAVAILABLE");

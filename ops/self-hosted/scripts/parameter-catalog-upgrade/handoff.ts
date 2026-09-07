@@ -346,6 +346,69 @@ export async function verifyStoppedHandoff(plan: HandoffPlan, expectedDigest: st
   return observed;
 }
 
+/** Private management-only FD lease. This verifies configuration pins under the
+ * existing issued lock; it does not substitute for stopped-target observation.
+ * Consumers must keep credential values inside their control-plane closure. */
+export async function openHandoffRuntimeConfigurationLease(plan: HandoffPlan, expectedDigest: string, lock: HostOperationLock) {
+  const fixed = structuredClone(plan), { digest, ...body } = fixed;
+  await assertHostOperationLockForJournal(lock, fixed.inputs.journalPath);
+  if (digest !== expectedDigest || digest !== sha256Prefixed(canonicalJson(body))) fail("plan-digest-mismatch");
+  const pins = fixed.observation.privateConfigurations;
+  const bindings = [pins.main, ...runtimeConfigKeys.map(key => pins.runtime[key])];
+  const files: Awaited<ReturnType<typeof open>>[] = [];
+  let closed = false, closing: Promise<void> | undefined;
+  const close = () => closing ??= (async () => {
+    closed = true;
+    const settled = await Promise.allSettled(files.map(file => file.close()));
+    if (settled.some(result => result.status === "rejected")) fail("runtime-config-close-failed");
+  })();
+  const read = async () => {
+    if (closed) fail("runtime-config-closed");
+    try {
+      await assertHostOperationLockForJournal(lock, fixed.inputs.journalPath);
+      const environments: ReturnType<typeof dataOnlyEnv>[] = [];
+      for (const [index, pin] of bindings.entries()) {
+        const file = files[index];
+        const [held, named] = await Promise.all([file.stat(), lstat(pin.path)]);
+        if (!held.isFile() || !named.isFile() || named.isSymbolicLink() || held.nlink !== 1 || named.nlink !== 1 ||
+          held.uid !== process.getuid?.() || named.uid !== held.uid || (held.mode & 0o777) !== 0o600 || (named.mode & 0o777) !== 0o600 ||
+          String(held.dev) !== pin.device || String(held.ino) !== pin.inode || named.dev !== held.dev || named.ino !== held.ino ||
+          held.size !== named.size || held.size > 1024 * 1024 || await realpath(pin.path) !== pin.path) fail("runtime-config-drift");
+        const bytes = Buffer.alloc(held.size + 1);
+        let length = 0;
+        while (length < bytes.length) {
+          const next = await file.read(bytes, length, bytes.length - length, length);
+          if (!next.bytesRead) break;
+          length += next.bytesRead;
+        }
+        if (length !== held.size || bytesDigest(bytes.subarray(0, length)) !== pin.digest) fail("runtime-config-drift");
+        const after = await file.stat(), pathAfter = await lstat(pin.path);
+        if (after.ctimeMs !== held.ctimeMs || pathAfter.dev !== held.dev || pathAfter.ino !== held.ino ||
+          pathAfter.ctimeMs !== held.ctimeMs) fail("runtime-config-drift");
+        environments.push(dataOnlyEnv(bytes.subarray(0, length)));
+        bytes.fill(0);
+      }
+      if (fixed.inputs.privateConfigPath !== pins.main.path || runtimeConfigKeys.some((key, index) => environments[0][key] !== bindings[index + 1].path) ||
+        [environments[1], environments[2]].some(env => env.NODE_ENV !== undefined && env.NODE_ENV !== "production")) fail("runtime-config-drift");
+      await assertHostOperationLockForJournal(lock, fixed.inputs.journalPath);
+      if (closed) fail("runtime-config-closed");
+      return { api: environments[1], worker: environments[2], management: environments[3] };
+    } catch { return fail(closed ? "runtime-config-closed" : "runtime-config-drift"); }
+  };
+  try {
+    if (new Set(bindings.map(pin => `${pin.device}:${pin.inode}`)).size !== 4) fail("runtime-config-drift");
+    for (const pin of bindings) {
+      if (!path.isAbsolute(pin.path) || await realpath(pin.path) !== pin.path) fail("runtime-config-drift");
+      files.push(await open(pin.path, constants.O_RDONLY | constants.O_NOFOLLOW));
+    }
+    await read();
+    return Object.freeze({ read, close });
+  } catch {
+    await close().catch(() => undefined);
+    return fail("runtime-config-drift");
+  }
+}
+
 /** No second controller or journal: dispatches the actual existing controller only
  * after immutable source/config/store pins are re-observed under the host lock. */
 export async function executeHandoff(plan: HandoffPlan, expectedDigest: string, command: ControllerCommand,
