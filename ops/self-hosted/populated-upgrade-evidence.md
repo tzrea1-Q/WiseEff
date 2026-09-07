@@ -4,13 +4,45 @@
 
 ## Integrated candidate, 2026-09-08
 
+Local continuation `2d907209fb1f78aba6798270cc654fba187e36bf`, tree
+`3f3eb2074d0a4db1ddeb49dd12cb49a242127721`, adds the separately reviewed
+partial-restore observation and typed host publication storage. Its six-file
+root/journal selector passed 223/223, zero failed/skipped, 14.61s, exit 0; build
+passed with existing warnings. Original log hashes are
+`97d680621540902827985f77ba64af37c3f923b274aeba967fad0c5f0e3e7f0d` and
+`dee0193b680cfed77da96d2eacb5c65056e3977f777370a1aec3f31e14c60d30`.
+Lagrange Spec/Fermat Standards reviewed the integration separately; implementation
+authors' self-review is not counted. Publication is storage only, not P13 or a
+working StartupTarget. This local increment is not covered by the following CI.
+
+The real partial-restore source execution was `9959dc42e327bf375d6fc24e7e594fecc324835d`:
+16/16, zero failed/skipped, 259.10s, exit 0, cleanup verified and private evidence
+retained. Actual object PUT 403 followed committed PostgreSQL restoration; the
+same attempt retained started/postgres-committed/unknown, Redis never started,
+business effect rows stayed zero, and capture/approval/package were verified again
+after cleanup. Log SHA256 `9f8b6e4503191cec349008c4c8ac3bf27af42c7c7b3558217e58c9eb05a3c1fd`.
+Its Red `1f249b598` was 15 passed/1 failed (missing observed partial evidence), not
+a package setup failure. These executions do not prove complete business recovery.
+
+Delivered report `cf494324cec093343b418001f620a248d861fce6` completed CI
+`34153386496` successfully at actual checkout `f4a900722c36a6aabe9a948a7bfeb92b6f4fa8ba`.
+Frontend 3374 passed; scripts source-lock 4/4, then 1856 passed/31 skipped (1887);
+backend 4300 passed; bridge 134 passed/4 skipped. Boundary, contract and log-eval
+executed. Eleven owned suites passed with zero failures/skips and verified cleanup:
+reader 49, runtime identity 11, projections 10, report 36, authority 81, bindings 98,
+Redis 12, activation 22, endpoints 16, bootstrap 28, recovery 15. Build/test, owned
+PostgreSQL, smoke, quality and Merge bar succeeded; local non-HDC and target
+synthetic jobs skipped. Main/owned original log hashes are
+`2a0a69d4ce0e522852cedbcba06919e5553b91f893e4d9dc9076f9df25f3145e` and
+`37a0b8efefc7434537e9351d3959ce4256ecb663592821c40ddec7920281db42`.
+
 Code `2b5d5ed4446a1aca56dd3d929fd15691172ba29d`, tree
 `d97681435e034b7ee604efbe21295d7b434baa82`, integrates four independently reviewed
 increments on unchanged base `cda6737a8`: formal recovery/actual queue composition,
 private bootstrap inspection transport and root dispatch, verified organization
 Archive identity, and initialization signal ownership. No migration/grant/trusted
-baseline/timeout changed. PR #824 remains Draft/open/unmerged; new Hosted is not
-yet executed. The source deployment remains `82344044b436a8dafecefbb85dfd724cecb05e3f`.
+baseline/timeout changed. PR #824 remains Draft/open/unmerged; its completed Hosted
+is recorded above. The source deployment remains `82344044b436a8dafecefbb85dfd724cecb05e3f`.
 
 | Exact execution | Result | Original log SHA256 |
 | --- | --- | --- |

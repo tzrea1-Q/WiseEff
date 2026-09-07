@@ -4,11 +4,39 @@
 
 ## 集成候选，2026-09-08
 
+本地续工 `2d907209fb1f78aba6798270cc654fba187e36bf`，tree
+`3f3eb2074d0a4db1ddeb49dd12cb49a242127721`，集成分别双审的部分恢复观测与宿主
+publication存储。六文件根／journal selector为223/223，失败／跳过0，14.61s，退出0；
+build通过，保留原警告。原日志hash分别为
+`97d680621540902827985f77ba64af37c3f923b274aeba967fad0c5f0e3e7f0d`、
+`dee0193b680cfed77da96d2eacb5c65056e3977f777370a1aec3f31e14c60d30`。
+Lagrange Spec／Fermat Standards另行审核集成，不把作者自审计入独立审查。
+publication仍仅是存储，不是P13或可用StartupTarget；此本地增量不受下述CI覆盖。
+
+真实部分恢复源执行为 `9959dc42e327bf375d6fc24e7e594fecc324835d`：16/16，失败／
+跳过0，259.10s，退出0，清理核验且保留私有证据。PG恢复提交后实际对象PUT403，
+同attempt保留started／postgres-committed／unknown，Redis从未启动，业务副作用0；
+清理后重新验证capture／approval／包。日志hash
+`9f8b6e4503191cec349008c4c8ac3bf27af42c7c7b3558217e58c9eb05a3c1fd`。
+Red `1f249b598` 为15通过／1失败（缺真实partial观测），不是包setup失败；
+以上不证明完整业务恢复。
+
+已推送报告 `cf494324cec093343b418001f620a248d861fce6` 的CI `34153386496` 已成功，
+实际checkout `f4a900722c36a6aabe9a948a7bfeb92b6f4fa8ba`。Frontend3374通过；
+scripts source-lock4/4，主体1856通过／31跳过（1887）；backend4300通过；
+bridge134通过／4跳过。boundary、contract、log-eval实际执行。十一条owned路由
+均失败／跳过0且清理核验：reader49、runtime identity11、projections10、report36、
+authority81、bindings98、Redis12、activation22、endpoints16、bootstrap28、recovery15。
+Build/test、owned PostgreSQL、smoke、quality、Merge bar成功；local non-HDC与
+target synthetic两个Job跳过。main／owned原日志hash分别为
+`2a0a69d4ce0e522852cedbcba06919e5553b91f893e4d9dc9076f9df25f3145e`、
+`37a0b8efefc7434537e9351d3959ce4256ecb663592821c40ddec7920281db42`。
+
 代码 `2b5d5ed4446a1aca56dd3d929fd15691172ba29d`，tree
 `d97681435e034b7ee604efbe21295d7b434baa82`，在原base `cda6737a8` 上集成四项
 经过独立审查的增量：正式恢复／真实队列组合、私有bootstrap transport及根接线、
 组织Archive身份修复、初始化信号所有权。无migration／grant／trusted baseline／
-timeout变更。PR #824保持Draft／open／未合并，新Hosted尚未执行；源部署仍为
+timeout变更。PR #824保持Draft／open／未合并，已完成Hosted见上；源部署仍为
 `82344044b436a8dafecefbb85dfd724cecb05e3f`。
 
 | 精确执行 | 结果 | 原日志SHA256 |
