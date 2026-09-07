@@ -24,6 +24,8 @@ import { assertHostOperationLockForJournal, type HandoffPlan, type HostOperation
 import { canonicalJson, commitJournalTransition, loadUpgradeJournal, sha256Prefixed,
   type BootstrapRetirementEvent, type BootstrapRetirementIntent } from "./journal";
 import { observeLegacySourceEndpoint } from "./legacyWriterSource";
+import { openRuntimeRoleSource, observeRuntimeRoles, type RuntimeRoleSource } from "./runtimeRoleSource";
+import { applyLegacySqlPrivilegeFence } from "../../../../server/modules/catalog-cutover/retirement/legacySqlPrivilegeFence";
 
 export class LegacyLoginRetirementError extends Error {
   constructor(readonly reason: string) { super(`PCAT-UPG-LEGACY-LOGIN-${reason}`); }
@@ -149,6 +151,7 @@ async function retire(input: LegacyLoginRetirementInput, bootstrapInspection = f
   let packageDirectory: Awaited<ReturnType<typeof open>> | undefined;
   let journalDirectory: Awaited<ReturnType<typeof open>> | undefined;
   let recordRetirementUnknown: (() => Promise<void>) | undefined;
+  let runtimeRoleSource: RuntimeRoleSource | undefined;
   let transaction = false, ending = false, unknown = false;
   let connectionFailed = false;
   let adminReleased = false, bootstrapStarted = false, failed = false;
@@ -371,6 +374,13 @@ async function retire(input: LegacyLoginRetirementInput, bootstrapInspection = f
         await admin!.query("rollback"); transaction = false;
       };
       await verifyGuard();
+      runtimeRoleSource = await openRuntimeRoleSource({ handoff: plan, expectedHandoffDigest: fixed.expectedHandoffDigest, lock: input.lock });
+      const configuredRoles = structuredClone(await observeRuntimeRoles(runtimeRoleSource));
+      need(configuredRoles.runId === plan.inputs.runId && configuredRoles.handoffDigest === fixed.expectedHandoffDigest &&
+        isDeepStrictEqual(configuredRoles.target, input.activation.target), "RUNTIME-ROLE-SOURCE-MISMATCH");
+      const verifyRuntimeRoles = async () => {
+        need(isDeepStrictEqual(await observeRuntimeRoles(runtimeRoleSource!), configuredRoles), "RUNTIME-ROLE-SOURCE-DRIFT");
+      };
       const rootKind = "bootstrap-application-authentication-intent";
       const rootEvents = (await admin.query(`select payload from parameter_catalog.parameter_catalog_cutover_events
         where cutover_run_id=$1 and event_kind=$2 order by sequence_number`, [fixed.activationIntent.runId, rootKind])).rows;
@@ -459,6 +469,34 @@ async function retire(input: LegacyLoginRetirementInput, bootstrapInspection = f
       await verifyGuard();
       await appendRetirement({ intent: hostIntent, outcome: "credential-step", credentialIntentDigest: observed.intentDigest });
       recordRetirementUnknown = undefined;
+      const appendSqlHost = async (outcome: "pending" | "applied", intentDigest: string) => {
+        const loaded = loadUpgradeJournal({ journalPath: plan.inputs.journalPath, runId: plan.inputs.runId });
+        need(loaded.ok, "JOURNAL-UNAVAILABLE"); if (!loaded.ok) return refuse("JOURNAL-UNAVAILABLE");
+        need(!loaded.value.record.entries.some(entry => entry.action === `legacy-sql-privileges-${outcome}`), "ATTEMPT-REQUIRES-RECONCILE");
+        await checkJournalDirectory(); await verifyRuntimeRoles(); await command.beforeEffect();
+        need(isDeepStrictEqual(loaded.value.record, expectedJournal), "JOURNAL-DRIFT");
+        await assertHostOperationLockForJournal(input.lock, plan.inputs.journalPath);
+        need(!connectionFailed, "CONNECTION-FAILED");
+        const saved = commitJournalTransition(loaded.value, { action: `legacy-sql-privileges-${outcome}`,
+          inputDigest: intentDigest, toState: loaded.value.record.state, nextAction: loaded.value.record.nextAction,
+          outcome: outcome === "applied" ? "committed" : "crashed" });
+        need(saved.ok && !saved.value.replayed, "SQL-PRIVILEGE-JOURNAL-UNKNOWN");
+        expectedJournal = structuredClone(loaded.value.record);
+        await checkJournalDirectory(); await verifyRuntimeRoles(); await command.beforeEffect();
+      };
+      need(!expectedJournal.entries.some(entry => entry.action.startsWith("legacy-sql-privileges-")), "ATTEMPT-REQUIRES-RECONCILE");
+      const sqlResult = await applyLegacySqlPrivilegeFence({ client: admin,
+        selection: { runId: fixed.activationIntent.runId, attemptId: fixed.attemptId, target: input.activation.target,
+          activationBindingDigest: binding.bindingDigest, rootRequestDigest: rootRequest.requestDigest, recoveryPackageDigest: backup.digest },
+        runtimeRoles: [...new Map(configuredRoles.roles.map(role => [role.oid, { oid: role.oid, name: role.name }])).values()],
+        recoveryRoles: backup.roles,
+        beforeEffect: async () => { await verifyRuntimeRoles(); await command.beforeEffect(); },
+        persistHostIntent: intent => appendSqlHost("pending", intent.intentDigest),
+        persistHostStep: intentDigest => appendSqlHost("applied", intentDigest),
+      });
+      need(sqlResult.outcome === "legacy-sql-privileges-fenced-not-P13" && /^sha256:[a-f0-9]{64}$/.test(sqlResult.intentDigest), "SQL-PRIVILEGE-OUTCOME-UNKNOWN");
+      await verifyGuard();
+      await command.beforeEffect();
       return { status: "bootstrap-authentication-fenced-not-p13" as const, attemptId: fixed.attemptId,
         fingerprint: digestOf({ rootBinding, intentDigest: observed.intentDigest }) };
     }
@@ -522,6 +560,7 @@ async function retire(input: LegacyLoginRetirementInput, bootstrapInspection = f
       Promise.resolve().then(() => adminPool?.end()), Promise.resolve().then(() => custody?.close()),
       Promise.resolve().then(() => packageDirectory?.close()),
       Promise.resolve().then(() => journalDirectory?.close()),
+      Promise.resolve().then(() => runtimeRoleSource?.close()),
     ]);
     if (!failed && [...releases, ...closed].some(result => result.status === "rejected")) refuse("RESOURCE-CLOSE-FAILED");
   }

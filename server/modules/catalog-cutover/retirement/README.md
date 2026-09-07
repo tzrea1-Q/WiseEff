@@ -2,10 +2,10 @@
 
 > Chinese: [Chinese](README.zh-CN.md)
 
-## Proposed bounded legacy SQL privilege effect
+## Bounded legacy SQL privilege effect
 
-This next Scratch unit is not implemented or validated yet. Its agreed seams
-are the existing retirement root and `legacySqlPrivilegeFence.ts`. It removes
+This Scratch implementation uses the existing retirement root and
+`legacySqlPrivilegeFence.ts`. Actual owned PostgreSQL validation is pending. It removes
 independently reachable legacy SQL grants; it produces no P13 completed
 checkpoint, runtime generation, startup pin or approval.
 
@@ -14,8 +14,10 @@ plus `public.driver_schemas`, `public.driver_schema_versions` and
 `public.dts_property_specs`. Only table INSERT, UPDATE, DELETE and TRUNCATE and
 column INSERT and UPDATE are eligible for revocation. SELECT, owners, other
 relations, schemas, functions and role memberships remain unchanged. Remaining
-REFERENCES/TRIGGER, owner, superuser or opaque executable mutation paths block
-completion of this step; they do not authorize broader REVOKE or full retirement.
+REFERENCES/TRIGGER, owner and superuser capabilities block this grant-only step.
+Opaque executable mutation paths remain outside its proof and must still pass
+the existing V13 verifier before full retirement; this module does not duplicate
+that verifier or authorize broader REVOKE.
 No CASCADE, role deletion or new grant is introduced.
 
 The root reuses its already authenticated, explicitly configured management
@@ -53,17 +55,43 @@ readback are required for the step result. An uncertain commit preserves its
 intent for exact inspection, never blind REVOKE replay. No second S7 lock or
 recursive max-one-pool checkout is allowed; cleanup must retain the first error.
 
-Permanent Red/Green cases will cover real root dispatch; actual direct, column,
+The existing root opens the branded runtime-role source before credential
+retirement and re-observes it throughout the SQL effect. Its already held six
+P12 inventory locks are retained. The SQL owner separately locks all seven
+legacy relations before the first snapshot in each transaction. It commits an
+immutable intent, then performs and commits exact REVOKEs and their actual
+readback. A third transaction holds the seven locks across fresh readback and
+the root's host acknowledgment. No borrowed pool/client is closed by this owner.
+The ACL preimage records role recovery names; it does not assert that later role
+attributes or memberships equal the original capture, or independently restore
+them. All current membership edges remain part of the effect CAS.
+
+`inspectLegacySqlPrivilegeFence` reads the exact original run/attempt/selection
+and intent digest under the existing management/S7 boundary. It can distinguish
+no intent, intent-only unchanged state, and the exact committed grant-only
+effect; malformed records, changed ACLs or lost boundaries return unknown.
+It never replays SQL or promotes a host pending entry. The existing root's
+inspection currently remains credential inspection only: automatic root SQL-step
+reconciliation and the ordinary LOGIN SQL branch are still internal gaps.
+
+Permanent cases cover root dispatch; actual direct, column,
 PUBLIC and INHERIT/SET writes; preserved SELECT/owner/unrelated business access;
 insufficient grantor authority; shared/unidentified use and grant dependencies;
 intent persistence failure with zero REVOKE; and commit/host-lock loss without
-replay. Owned PG fixtures remain synthetic components, not approved whole-root
-P12/P13 evidence. Independent Spec threat review precedes implementation.
+replay. The original-root Red was one failure with 50 filtered: the new effect
+was not called. The root now passes 54 pure/real-host-FS cases, including host
+pending failure with no SQL dispatch, effect uncertainty retaining pending, and
+runtime-source target mismatch before credentials change. SQL/report/Docker
+ports in those cases are substitutes. The new 16-case owned PG file has not run;
+it uses actual P0–P10/P12 storage with explicitly unapproved references and
+tests authentication-independent SQL effects. Host-ack failure after real SQL
+commits is an injected host failure, not a network COMMIT fault. No full root
+P12/P13 approval or full writer retirement is claimed.
 
 Exclusive paths: this README pair; `legacySqlPrivilegeFence.ts`, its `.test.ts`
 and `.integration.test.ts`; adjacent
 `vitest.legacy-sql-privilege.integration.config.ts`; and the existing root
-`legacyWriterRetirement.ts`/`.test.ts`. The parent owns mandatory routing and
+`legacyWriterRetirement.ts`/`.test.ts`/`.bootstrap.test.ts`. The parent owns mandatory routing and
 generic-suite exclusion. No migration, permission manifest, shared journal type,
 report format or frozen baseline changes belong to this unit.
 

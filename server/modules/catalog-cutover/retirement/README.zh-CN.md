@@ -2,18 +2,19 @@
 
 > English: [English](README.md)
 
-## 有界旧 SQL 权限效果提案
+## 有界旧 SQL 权限效果
 
-本 Scratch 单元尚未实现或验证。已约定的测试入口是现有退休根与
-`legacySqlPrivilegeFence.ts`。它撤销独立可达的旧结构 SQL 授权，不产生
+本 Scratch 实现位于现有退休根与 `legacySqlPrivilegeFence.ts`，实际 owned PG
+验证尚未执行。它撤销独立可达的旧结构 SQL 授权，不产生
 P13 completed checkpoint、runtime generation、启动 pin 或批准。
 
 固定库存为 `public` 下原 `LEGACY_STRUCTURAL_TABLES` 四表，加
 `public.driver_schemas`、`public.driver_schema_versions`、
 `public.dts_property_specs`。可撤范围仅表级 INSERT、UPDATE、DELETE、
 TRUNCATE 与列级 INSERT、UPDATE。SELECT、owner、其他表、schema、函数及
-角色成员关系保持。剩余 REFERENCES/TRIGGER、owner、superuser 或不透明
-可执行写入路径阻止本步骤通过，不构成扩大 REVOKE 或宣布全部退休的理由。
+角色成员关系保持。剩余 REFERENCES/TRIGGER、owner、superuser 阻止本授权
+步骤通过。不透明可执行写入路径不在本步骤证明范围内，完整退休仍须通过
+原 V13 核验；本模块不复制该 verifier，也不扩大 REVOKE 范围。
 不使用 CASCADE、不删角色、不增加授权。
 
 根复用原已实际认证且由显式私有配置提供的管理 lease 与 S7 锁，先核每项
@@ -43,16 +44,33 @@ REVOKE 前须已耐久保存现有 host pending 边界与专属 0137 P13 step in
 步骤结果要求实际提交确认及精确回读；未知提交保留 intent，只可精确检查，
 不能盲目重放 REVOKE。不另夺 S7 或递归借用 max-one pool；清理保留原首错。
 
-永久 Red/Green 覆盖真实根调用、直接及列级/PUBLIC/INHERIT/SET 写入、
+现有根在凭据退休前打开品牌 runtime-role source，并在 SQL 效果期间持续
+重读。根原六表 P12 库存锁不变；SQL owner 另在每个事务的首个快照前持有
+七张旧表锁。先提交不可变 intent，再执行精确 REVOKE、实际回读并提交。
+第三个事务持七表锁，覆盖新快照回读及根的宿主确认。本 owner 不关闭借入
+pool/client。ACL 前像中的恢复资格只关联原包角色名，不声称当前角色属性、
+成员关系等于原 capture，也不独立恢复它们；当前全部成员边仍参与效果 CAS。
+
+`inspectLegacySqlPrivilegeFence` 在原管理/S7 边界内读取精确原 run、attempt、
+selection 与 intent digest，区分无 intent、只有 intent 且原态未变、以及
+精确已提交授权效果；坏记录、ACL 漂移或丢失边界均为 unknown。它不重放 SQL，
+不把 host pending 提升为完成。现有根 inspection 仍只检查凭据；SQL 步骤的
+自动根 reconciliation 与普通 LOGIN 的 SQL 接线仍是内部缺口。
+
+永久用例覆盖根调用、直接及列级/PUBLIC/INHERIT/SET 写入、
 SELECT/owner/无关业务权限保留、grantor 权限不足、共享或未知使用、授权
 依赖、intent 落盘失败时零 REVOKE，以及提交或宿主锁丢失后禁止重放。
-owned PG 夹具只证明合成组件，不冒充正式获批的完整 P12/P13 根证据。
-实现前先完成独立 Spec 威胁审查。
+原根 Red 为 1 失败、50 filtered，证明新效果未被派发；当前根 54 项纯测试与
+真实宿主 FS 回归通过，包括 host pending 失败时零 SQL、未知效果保留 pending，
+以及凭据变更前拒绝 runtime-source 错目标。其中 SQL、报告、Docker 端口是
+替身。新增 16 项 owned PG 尚未运行，复用真实 P0–P10/P12 storage 与明确未
+批准引用，只测试 SQL 效果。真实 SQL 提交后注入 host 确认失败不冒充网络
+COMMIT 故障。不声称完整根 P12/P13 批准或全部 writer 退休。
 
 唯一写入路径为本 README 双语文件、`legacySqlPrivilegeFence.ts` 及其
 `.test.ts`/`.integration.test.ts`、同目录
 `vitest.legacy-sql-privilege.integration.config.ts`，以及原根
-`legacyWriterRetirement.ts`/`.test.ts`。mandatory 路由与普通套件精确排除
+`legacyWriterRetirement.ts`/`.test.ts`/`.bootstrap.test.ts`。mandatory 路由与普通套件精确排除
 由父任务负责。本单元不改 migration、权限 manifest、共享 journal 类型、
 报告格式或冻结 baseline。
 
