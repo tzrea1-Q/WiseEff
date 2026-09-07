@@ -1,6 +1,6 @@
 import { randomBytes } from "node:crypto";
 import { spawn, spawnSync } from "node:child_process";
-import { mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, realpath, rm, writeFile, open, access } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -18,11 +18,113 @@ const suites: Record<string, { image: string; files: readonly string[]; config: 
   "report-pg16": { image: "postgres:16-alpine", files: ["server/modules/release-verification/startup/reportConnection.integration.test.ts"], config: "vitest.upgrade-cutover.config.ts" },
   "authority-pg16": { image: "postgres:16-alpine", files: ["ops/self-hosted/scripts/parameter-catalog-upgrade/deploymentAuthority.integration.test.ts"], config: "vitest.upgrade-cutover.config.ts" },
   "log-redis": { image: "redis:7-alpine", files: ["server/modules/logs/logAnalysisQueueRuntime.redis.integration.test.ts"], config: "vitest.upgrade-redis.config.ts" },
+  "retirement-existing-pg16": { image: "postgres:16-alpine", files: ["server/modules/catalog-cutover/retirement/loginFence.integration.test.ts", "scripts/retirement-endpoint-supervision.docker.test.ts"], config: "vitest.upgrade-retirement.config.ts" },
   "scripts-pgvector": { image: "pgvector/pgvector:pg16", files: [], config: "vitest.scripts.config.ts" },
   "server-pgvector": { image: "pgvector/pgvector:pg16", files: [], config: "vitest.server.config.ts" },
   "schema-doc": { image: "pgvector/pgvector:pg16", files: [], config: "", command: "schema-doc" },
   "docs-check": { image: "pgvector/pgvector:pg16", files: [], config: "", command: "docs-check" },
 };
+
+export type RetirementEndpoints = {
+  ownerRunId: string; label: string; networkId: string; imageId: string;
+  firstId: string; secondId: string; probeId: string; hostnameProbeId: string;
+  firstUrl: string; secondUrl: string;
+};
+export type RetirementEndpointObservation = Omit<RetirementEndpoints, "firstUrl" | "secondUrl">;
+export class RetirementEndpointCleanupError extends Error {
+  constructor() { super("owned-retirement-endpoint-cleanup-incomplete"); }
+}
+
+/** Supervising process owns every endpoint resource, including when body kills
+ * the test child. Names/nonce/image are durably declared before any Docker create;
+ * an unknown create acknowledgment is reconciled by that exact owned name. */
+export async function withOwnedRetirementEndpoints<T>(options: {
+  docker: ReturnType<typeof createIsolatedUpgradeDocker>; directory: string;
+  imageId: string; password: string; authorizeCreation: () => void;
+}, body: (endpoints: RetirementEndpoints) => Promise<T>): Promise<T> {
+  const { docker, directory, imageId, password, authorizeCreation } = options;
+  if (!/^sha256:[a-f0-9]{64}$/.test(imageId) || !/^[a-f0-9]{48}$/.test(password)) throw new Error("owned-retirement-input-invalid");
+  const ownerRunId = randomBytes(12).toString("hex"), label = "wiseeff.controlled-recovery-run";
+  const networkName = `retirement-endpoint-${ownerRunId}`;
+  const resources = ["first", "second", "probe", "hostname-probe"].map(kind => ({ kind, name: `${networkName}-${kind}`, id: "", attempted: false }));
+  let networkId = "", networkAttempted = false;
+  const planFile = await open(path.join(directory, "retirement-endpoints-plan.json"), "wx", 0o600);
+  try {
+    await planFile.writeFile(JSON.stringify({ ownerRunId, label, networkName, imageId, resources: resources.map(({ kind, name }) => ({ kind, name })) }));
+    await planFile.sync();
+  } finally { await planFile.close(); }
+  const parent = await open(directory, "r"); try { await parent.sync(); } finally { await parent.close(); }
+  const observations = await open(path.join(directory, "retirement-endpoints-observed.jsonl"), "wx", 0o600);
+  const observedParent = await open(directory, "r"); try { await observedParent.sync(); } finally { await observedParent.close(); }
+  const record = async (kind: string, id: string) => {
+    await observations.writeFile(JSON.stringify({ kind, id }) + "\n");
+    await observations.sync();
+  };
+  const ids = (kind: string) => resources.find(resource => resource.kind === kind)!.id;
+  try {
+    authorizeCreation(); networkAttempted = true;
+    networkId = docker.command(["network", "create", "--driver", "bridge", "--opt", "com.docker.network.bridge.enable_ip_masquerade=false",
+      "--label", `${label}=${ownerRunId}`, networkName]).toString().trim();
+    await record("network", networkId);
+    for (const resource of resources) {
+      const database = resource.kind === "first" || resource.kind === "second";
+      const alias = resource.kind === "first" ? "postgres" : resource.kind === "second" ? "other" : resource.kind === "probe" ? "api" : "hostname-probe";
+      const args = ["create", "--name", resource.name, "--network", networkId, "--network-alias", alias, "--label", `${label}=${ownerRunId}`];
+      if (database) args.push("--publish", "127.0.0.1::5432", "--tmpfs", "/var/lib/postgresql/data:rw,size=268435456", "--env", `POSTGRES_PASSWORD=${password}`);
+      else args.push("--entrypoint", "sleep");
+      if (resource.kind === "hostname-probe") args.push("--hostname", "postgres");
+      args.push(imageId); if (!database) args.push("infinity");
+      authorizeCreation(); resource.attempted = true;
+      resource.id = docker.command(args).toString().trim();
+      await record(resource.kind, resource.id);
+      docker.assertOwned(resource.id, label, ownerRunId);
+      authorizeCreation(); docker.command(["start", resource.id]);
+    }
+    const endpoint = async (id: string) => {
+      for (let attempt = 0; attempt < 40; attempt++) {
+        authorizeCreation();
+        const actual = docker.assertOwned(id, label, ownerRunId);
+        const port = actual.NetworkSettings.Ports?.["5432/tcp"]?.[0];
+        if (actual.State.Running && actual.Image === imageId && port?.HostIp === "127.0.0.1" && /^\d+$/.test(port.HostPort)) {
+          try {
+            docker.command(["exec", id, "pg_isready", "-h", "127.0.0.1", "-U", "postgres"]);
+            return `postgres://postgres:${password}@127.0.0.1:${port.HostPort}/postgres`;
+          } catch { /* Retry only readiness, never a creation or mutation. */ }
+        }
+        await setTimeout(100);
+      }
+      throw new Error("owned-retirement-endpoint-not-ready");
+    };
+    const firstUrl = await endpoint(ids("first")), secondUrl = await endpoint(ids("second"));
+    authorizeCreation();
+    return await body({ ownerRunId, label, networkId, imageId, firstId: ids("first"), secondId: ids("second"),
+      probeId: ids("probe"), hostnameProbeId: ids("hostname-probe"), firstUrl, secondUrl });
+  } finally {
+    let failed = false;
+    for (const resource of [...resources].reverse()) {
+      if (!resource.attempted) continue;
+      try {
+        const found = resource.id || docker.command(["ps", "-aq", "--no-trunc", "--filter", `name=^/${resource.name}$`]).toString().trim();
+        if (!found) continue;
+        const actual = docker.assertOwned(found, label, ownerRunId);
+        if (actual.Image !== imageId || actual.Name !== `/${resource.name}`) throw new Error();
+        docker.command(["rm", "-f", "-v", found]);
+      } catch { failed = true; }
+    }
+    if (networkAttempted) {
+      try {
+        const found = networkId || docker.command(["network", "ls", "-q", "--no-trunc", "--filter", `name=^${networkName}$`]).toString().trim();
+        if (found) {
+          const actual = JSON.parse(docker.command(["network", "inspect", found]).toString())[0];
+          if (actual.Id !== found || actual.Name !== networkName || actual.Labels?.[label] !== ownerRunId || Object.keys(actual.Containers ?? {}).length) throw new Error();
+          docker.command(["network", "rm", found]);
+        }
+      } catch { failed = true; }
+    }
+    try { await observations.close(); } catch { failed = true; }
+    if (failed) throw new RetirementEndpointCleanupError();
+  }
+}
 
 export function componentTestExecutable(name: string): string {
   if (!Object.hasOwn(suites, name)) throw new Error("unknown-upgrade-component-suite");
@@ -93,10 +195,26 @@ export function observeCleanUpgradeCheckout(directory: string): string {
 
 /** Developer component runner, never a deployment upgrade or release approval.
  * Owns a fresh cluster/network/credential; accepts no database URL or backup. */
-export async function runUpgradeComponentTests(args: string[]) {
+export async function runUpgradeComponentTests(args: string[], observation?: {
+  /** Fault injection can only shorten the production supervisor's limits. */
+  limits?: { deadlineMs: number; graceMs: number; outputBytes: number };
+  retirementEndpoints?: (value: RetirementEndpointObservation) => void;
+}) {
+  const limits = observation?.limits ?? { deadlineMs: 15 * 60_000, graceMs: 2000, outputBytes: 8 * 1024 * 1024 };
+  if (!Number.isSafeInteger(limits.deadlineMs) || limits.deadlineMs < 1 || limits.deadlineMs > 15 * 60_000 ||
+      !Number.isSafeInteger(limits.graceMs) || limits.graceMs < 1 || limits.graceMs > 2000 ||
+      !Number.isSafeInteger(limits.outputBytes) || limits.outputBytes < 1 || limits.outputBytes > 8 * 1024 * 1024) {
+    return { exitCode: 2, reason: "component-supervision-limits-invalid" };
+  }
   const hosted = args.length === 5 && args[4] === "--github-hosted";
   if ((!hosted && args.length !== 4) || args[0] !== "--expected-daemon-id" || !/^[a-zA-Z0-9-]+$/.test(args[1]) || args[2] !== "--suite" || !Object.hasOwn(suites, args[3])) {
     return { exitCode: 2, reason: "usage-expected-daemon-id-and-known-suite-required" };
+  }
+  // Registering a route does not authorize creating resources for an absent
+  // component. Integration must supply the exact test/config before execution.
+  if (args[3] === "retirement-existing-pg16") {
+    try { for (const file of [...suites[args[3]].files, suites[args[3]].config]) await access(path.join(root, file)); }
+    catch { return { exitCode: 2, reason: "owned-retirement-component-unavailable" }; }
   }
   const docker = createIsolatedUpgradeDocker();
   if (docker.daemonId !== args[1] || (!hosted && docker.command(["info", "--format", "{{.ID}}|{{.Name}}|{{.OperatingSystem}}"] ).toString().trim() !== `${args[1]}|docker-desktop|Docker Desktop`)) {
@@ -132,6 +250,7 @@ export async function runUpgradeComponentTests(args: string[]) {
   let id = ""; let net = ""; let volume = ""; let child: ReturnType<typeof spawn> | undefined;
   let supervisor: ReturnType<typeof superviseComponentProcess> | undefined;
   let interrupted = false;
+  let retainPrivateDirectory = false;
   const interrupt = () => { interrupted = true; supervisor?.stop(); };
   process.on("SIGINT", interrupt); process.on("SIGTERM", interrupt);
   let exitCode = 1;
@@ -191,13 +310,15 @@ export async function runUpgradeComponentTests(args: string[]) {
     if (isRedis && !physical.redisRunId) throw new Error("owned-redis-identity-unavailable");
     console.log(JSON.stringify({ evidence: "owned-service-profile", profile, imageId: image.Id, databaseProperties: physical.databaseProperties }));
     const dataVolume = JSON.parse(docker.command(["volume", "inspect", volume]).toString())[0];
+    const runChildren = async (retirementEndpoints?: RetirementEndpoints) => {
     await writeFile(receipt, JSON.stringify({ id, net, run, label, daemonId: docker.daemonId, url, ...physical,
       profile,
-      imageId: image.Id, dataVolume: { name: volume, createdAt: dataVolume.CreatedAt } }), { mode: 0o600, flag: "wx" });
+      imageId: image.Id, dataVolume: { name: volume, createdAt: dataVolume.CreatedAt },
+      ...(retirementEndpoints ? { retirementEndpoints } : {}) }), { mode: 0o600, flag: "wx" });
     // Splitting the scripts lane must not multiply its existing supervision
     // deadline/output budget or continue after a failed mandatory first stage.
-    const deadlineAt = Date.now() + 15 * 60_000;
-    let outputRemaining = 8 * 1024 * 1024;
+    const deadlineAt = Date.now() + limits.deadlineMs;
+    let outputRemaining = limits.outputBytes;
     for (const command of componentTestCommands(args[3])) {
       if (interrupted || Date.now() >= deadlineAt || outputRemaining <= 0) { exitCode = 1; break; }
       child = spawn(componentTestExecutable(args[3]), command, {
@@ -211,14 +332,26 @@ export async function runUpgradeComponentTests(args: string[]) {
           UPG_COMPONENT_PROFILE: profile },
         stdio: ["ignore", "pipe", "pipe"], detached: true,
       });
-      supervisor = superviseComponentProcess(child, { deadlineMs: Math.max(1, deadlineAt - Date.now()), graceMs: 2000, outputBytes: outputRemaining });
+      supervisor = superviseComponentProcess(child, { deadlineMs: Math.max(1, deadlineAt - Date.now()), graceMs: limits.graceMs, outputBytes: outputRemaining });
       const { exitCode: status, output } = await supervisor.wait;
       outputRemaining -= Buffer.byteLength(output);
       process.stdout.write(output.split(url).join("[REDACTED_TEST_URL]").split(password).join("[REDACTED]"));
       exitCode = interrupted ? 1 : status;
       if (exitCode !== 0) break;
     }
-  } catch {
+    };
+    if (args[3] === "retirement-existing-pg16") {
+      await withOwnedRetirementEndpoints({ docker, directory, imageId: image.Id, password, authorizeCreation: () => {
+        if (interrupted) throw new Error("owned-retirement-supervisor-interrupted");
+        authorizeCreation();
+      } }, async endpoints => {
+        const { firstUrl: _firstUrl, secondUrl: _secondUrl, ...identity } = endpoints;
+        observation?.retirementEndpoints?.(identity);
+        await runChildren(endpoints);
+      });
+    } else await runChildren();
+  } catch (error) {
+    retainPrivateDirectory = error instanceof RetirementEndpointCleanupError;
     console.error(`upgrade-component-stage-failed:${stage}`);
     exitCode = 1;
   } finally {
@@ -234,10 +367,10 @@ export async function runUpgradeComponentTests(args: string[]) {
       if (found.Id !== net || found.Labels?.[label] !== run) throw new Error("owned-network-mismatch");
       docker.command(["network", "rm", net]);
     }
-    await rm(directory, { recursive: true });
+    if (!retainPrivateDirectory) await rm(directory, { recursive: true });
     process.off("SIGINT", interrupt); process.off("SIGTERM", interrupt);
   }
-  console.log(JSON.stringify({ scope: "isolated-components-only", suite: args[3], imageReference: suite.image, imageId: image.Id, platform: `${image.Os}/${image.Architecture}`, containerId: id, networkId: net, exitCode, cleanupVerified: true, releaseApproved: false }));
+  console.log(JSON.stringify({ scope: "isolated-components-only", suite: args[3], imageReference: suite.image, imageId: image.Id, platform: `${image.Os}/${image.Architecture}`, containerId: id, networkId: net, exitCode, cleanupVerified: !retainPrivateDirectory, privateEvidenceRetained: retainPrivateDirectory, releaseApproved: false }));
   return { exitCode, reason: "isolated-components-only" };
 }
 

@@ -18,6 +18,7 @@ export default defineConfig({
       // The mandatory preceding source-lock stage owns this whole four-case
       // file; leave other script suites parallel without competing Git forks.
       "scripts/wayfinder/parameter-catalog-rehearsal-source-lock.test.ts",
+      "scripts/retirement-endpoint-supervision.docker.test.ts",
       "ops/self-hosted/scripts/parameter-catalog-upgrade/deploymentAuthority.integration.test.ts"],
     passWithNoTests: true,
     // Ancestry walks in rehearsal source-lock tests exceed Vitest's 5s default on Hosted.

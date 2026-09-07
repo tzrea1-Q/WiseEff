@@ -66,12 +66,14 @@ it("routes the cluster-wide reader mutation test to the mandatory independently 
   expect(job).toContain("--suite bindings-pg16 --github-hosted");
   expect(job).toContain("--suite log-redis --github-hosted");
   expect(job).toContain("--suite activation-existing-pg16 --github-hosted");
+  expect(job).toContain("--suite retirement-existing-pg16 --github-hosted");
   expect(job).not.toContain("continue-on-error: true");
   expect(workflow.split("  required:\n")[1]).toContain("- upgrade-components");
   const server = readFileSync(new URL("../vitest.server.config.ts", import.meta.url), "utf8");
   const redisTest = "server/modules/logs/logAnalysisQueueRuntime.redis.integration.test.ts";
   expect(server).toContain(`"${redisTest}"`);
   expect(server).toContain('"server/modules/catalog-cutover/activation/activation.integration.test.ts"');
+  expect(server).toContain('"server/modules/catalog-cutover/retirement/loginFence.integration.test.ts"');
   const redisConfig = readFileSync(new URL("../vitest.upgrade-redis.config.ts", import.meta.url), "utf8");
   expect(redisConfig).toContain(`include: ["${redisTest}"]`);
   expect(redisConfig).toContain("owned-redis-runner-required");
@@ -83,4 +85,9 @@ it("routes the cluster-wide reader mutation test to the mandatory independently 
     .toContain('"server/modules/catalog-cutover/runtimeState.test.ts"');
   const scripts = readFileSync(new URL("../vitest.scripts.config.ts", import.meta.url), "utf8");
   expect(scripts).toContain('"ops/self-hosted/scripts/parameter-catalog-upgrade/deploymentAuthority.integration.test.ts"');
+  expect(scripts).toContain('"scripts/retirement-endpoint-supervision.docker.test.ts"');
+  const retirement = readFileSync(new URL("../vitest.upgrade-retirement.config.ts", import.meta.url), "utf8");
+  expect(retirement).toContain("owned-retirement-runner-required");
+  expect(retirement).toContain("passWithNoTests: false");
+  for (const file of componentRunner.componentTestCommands("retirement-existing-pg16")[0].slice(-2)) expect(retirement).toContain(`"${file}"`);
 });

@@ -27,6 +27,7 @@ export default defineConfig({
     exclude: ["node_modules/**", ...siblingWorktreeExclude,
       "server/modules/logs/logAnalysisQueueRuntime.redis.integration.test.ts",
       "server/modules/catalog-cutover/activation/activation.integration.test.ts",
+      "server/modules/catalog-cutover/retirement/loginFence.integration.test.ts",
       "server/modules/catalog-kernel/security/catalogReader.integration.test.ts",
       "server/modules/release-verification/startup/reportConnection.integration.test.ts",
       "server/modules/catalog-cutover/runtimeState.test.ts"],
