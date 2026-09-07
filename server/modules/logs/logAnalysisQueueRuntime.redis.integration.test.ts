@@ -1,4 +1,6 @@
 import { randomBytes } from "node:crypto";
+import { spawn } from "node:child_process";
+import { once } from "node:events";
 import { constants } from "node:fs";
 import { open } from "node:fs/promises";
 import { setTimeout as delay } from "node:timers/promises";
@@ -110,6 +112,65 @@ describe("owned Redis log worker lifecycle", () => {
       release(); await closing; await runtime.close();
       expect(processByJobId).toHaveBeenCalledOnce();
     } finally { release(); await runtime.close(); }
+  });
+
+  it("drains an actual BullMQ task across repeated OS signals before closing its explicit database seam", async () => {
+    // Redis and SIGTERM/SIGINT are real. Database/admission and the controlled
+    // processor are explicit seams; this is not production Catalog readiness.
+    const child = spawn(process.execPath, ["--import", "tsx", "--input-type=module", "-e", `
+      import { runProcessWithSignals } from './server/processSignals.ts';
+      import { createLogAnalysisQueueRuntime } from './server/modules/logs/logAnalysisQueueRuntime.ts';
+      let configure, release, runtime, closed = false, lateWrites = 0, processed = 0, stops = 0;
+      const configuration = new Promise(resolve => { configure = resolve; });
+      const active = new Promise(resolve => { release = resolve; });
+      process.on('message', message => { if (message === 'release') release(); else configure(message); });
+      process.send('configured-channel');
+      try {
+        const env = await configuration;
+        await runProcessWithSignals({ failureCode: 'PCAT-TEST-QUEUE-SHUTDOWN-FAILED',
+          async initialize() {
+            runtime = await createLogAnalysisQueueRuntime({ env, db: {}, objectStore: {},
+              async processByJobId() {
+                processed++; process.send('active'); await active;
+                if (closed) lateWrites++;
+                return { status: 'processed' };
+              } });
+            await runtime.queue.enqueue({ name:'analyze-log', idempotencyKey:'signal-task',
+              payload:{jobId:'signal-task',organizationId:'synthetic',logId:'synthetic',runId:'synthetic'} });
+          },
+          async shutdown() {
+            stops++; process.send('draining'); await runtime.close(); closed = true;
+            process.send({closed,processed,lateWrites,stops}); process.disconnect();
+          }
+        });
+      } catch { process.stderr.write('PCAT-TEST-QUEUE-CHILD-FAILED'); process.exitCode = 1; process.disconnect(); }
+    `], { cwd: process.cwd(), env: { PATH: process.env.PATH, HOME: process.env.HOME }, stdio: ["ignore", "pipe", "pipe", "ipc"] });
+    const messages: unknown[] = [];
+    let output = "";
+    child.on("message", message => messages.push(message));
+    child.stderr!.on("data", bytes => { output += bytes; });
+    child.stdout!.on("data", bytes => { output += bytes; });
+    const exited = once(child, "exit");
+    try {
+      await vi.waitFor(() => expect(messages.includes("configured-channel")).toBe(true));
+      child.send(options().env); // Private IPC only: no URL in arguments or logs.
+      await vi.waitFor(() => expect(messages.includes("active")).toBe(true));
+      child.kill("SIGTERM");
+      await vi.waitFor(() => expect(messages.includes("draining")).toBe(true));
+      child.kill("SIGINT");
+      await delay(30);
+      expect(child.exitCode === null && child.signalCode === null).toBe(true);
+      expect(messages.some(message => typeof message === "object")).toBe(false);
+      child.send("release");
+      const [code, signal] = await exited;
+      expect({ code, signal }).toEqual({ code: 0, signal: null });
+      expect(messages).toContainEqual({ closed: true, processed: 1, lateWrites: 0, stops: 1 });
+      assertPrivateDiagnosticsAbsent(output, [password, redisUrl]);
+      expect(output.length === 0).toBe(true);
+    } finally {
+      if (child.exitCode === null && child.signalCode === null) child.kill("SIGKILL");
+      await exited;
+    }
   });
 
   it("accepts the formal log producer's idempotency key and deduplicates delivery", async () => {

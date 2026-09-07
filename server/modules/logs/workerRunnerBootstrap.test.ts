@@ -70,6 +70,17 @@ it("can close an admitted runtime without starting and refuses reuse",async()=>{
   expect(fixture.startLoop).not.toHaveBeenCalled();expect(fixture.close).toHaveBeenCalledOnce();
 });
 
+it.each([false, true])("settles a database allocated after an early stop without opening a listener or consumer (close fails: %s)", async closeFails => {
+  const fixture = await admittedRuntime(vi.fn(() => vi.fn()), vi.fn(async () => {
+    if (closeFails) throw new Error("private pool shutdown detail");
+  }));
+  const signal = new AbortController(); signal.abort();
+  await expect(fixture.module.startLogWorkerProcess({}, signal.signal)).rejects.toThrow(closeFails
+    ? "PCAT-RUNTIME-WORKER-SHUTDOWN-FAILED" : "PCAT-RUNTIME-INITIALIZATION-STOPPED");
+  expect(fixture.startLoop).not.toHaveBeenCalled();
+  expect(fixture.close).toHaveBeenCalledOnce();
+});
+
 it("serializes a close racing startup against the same consumer and pool",async()=>{
   const stopped=vi.fn();const fixture=await admittedRuntime(vi.fn(()=>stopped));
   const runtime=await fixture.module.createLogWorkerRuntimeFromEnv({});

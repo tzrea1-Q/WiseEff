@@ -5,6 +5,20 @@ import { createHttpServer } from "./shared/http/server";
 import { once } from "node:events";
 import { setImmediate } from "node:timers/promises";
 
+it("drains initialized workers and both pools before a listener has been created", async () => {
+  let finish!: () => void;
+  const active = new Promise<void>(resolve => { finish = resolve; });
+  const pool = vi.fn(async () => {});
+  const governance = vi.fn(async () => {});
+  const shutdown = createApiShutdown({ server: () => undefined, workers: [() => active], pools: [pool, governance] });
+  const closing = shutdown();
+  expect(shutdown()).toBe(closing);
+  await Promise.resolve();
+  expect(pool).not.toHaveBeenCalled();
+  finish(); await closing;
+  expect(pool).toHaveBeenCalledOnce(); expect(governance).toHaveBeenCalledOnce();
+});
+
 it("keeps pools open for an accepted handler after its client disconnects", async () => {
   let finish!: () => void;
   let received!: () => void;
