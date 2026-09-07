@@ -9,6 +9,13 @@
 职责归属该测试，SQL 原文及全部拒绝断言保持。CGH 生产模块路径未改变，只用公开接口。
 扫描始终启用，没有新增 allowance 或修改 trusted inventory。
 
+父首次集成 PG 执行两组投影共收集十项：四项通过、一项失败、五项跳过。CGH 的真实
+受限登录 Catalog document 用例通过；权限反例误写 `subject_registrations`，实际得到
+不存在关系 `42P01`，不能作为权限拒绝 `42501`。修正后先确认正式 Governance 对象
+`organization_subject_registrations` 存在，再要求实际受限登录 SELECT 被拒绝。
+原执行仍记失败，修正候选必须另行执行。fixture 清理依次尝试全部阶段，仅报告首个
+失败阶段的固定标签，不携带底层私密错误。
+
 CGH provider 现在通过公开的 `registerParameterCatalogApi` 在私有 `createRouter`
 实例注册正式组合，并发出 definitions、组织 registrations、组织 review items 三个固定
 GET。不再自造 `SELECT 1` readiness、未注册投影、零 usage 或空 governance 查询端口。

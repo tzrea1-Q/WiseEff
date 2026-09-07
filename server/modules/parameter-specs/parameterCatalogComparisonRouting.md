@@ -55,6 +55,16 @@ its actual composition owner with all SQL and denial assertions preserved.
 The CGH production module stays in place and imports only public interfaces.
 Boundary scanning remains enabled; no allowance or trusted inventory changes.
 
+The first parent integrated PG run collected ten tests across both projections:
+four passed, one failed and five were skipped. CGH's actual restricted-login
+Catalog document case passed. Its failing permission assertion mistakenly named
+`subject_registrations`, so PostgreSQL returned undefined-relation `42P01` rather
+than permission-denied `42501`. The corrected assertion first verifies the actual
+Governance relation `organization_subject_registrations` exists, then requires
+the restricted login's real SELECT denial. The original execution remains a
+failure; the corrected candidate requires its own run. Fixture cleanup attempts
+every ordered stage and reports only its first static failed-stage label.
+
 ## Remaining integration work
 
 At the pinned dependency, the production Review list/get reader performs a lazy

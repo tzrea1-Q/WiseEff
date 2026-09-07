@@ -53,13 +53,17 @@ beforeAll(async () => {
 afterAll(async () => {
   // Release pools even after a failed setup/assertion. Roles are nonce test
   // identities; DROP ROLE must succeed without dropping owned data or ACLs.
-  const results = await Promise.allSettled([reader?.close(), denied?.close()]);
-  if (admin) results.push(...await Promise.allSettled([readerName, deniedName].map((name) =>
-    admin.query(`drop role if exists ${pg.escapeIdentifier(name)}`).then(() => undefined))));
-  results.push(...await Promise.allSettled([admin?.close()]));
-  results.push(...await Promise.allSettled([target?.close()]));
-  const failed = results.find((result) => result.status === "rejected");
-  if (failed?.status === "rejected") throw failed.reason;
+  let firstFailure: string | undefined;
+  for (const [stage, operations] of [
+    ["runtime-pools", [() => reader?.close(), () => denied?.close()]],
+    ["runtime-roles", [readerName, deniedName].map(name => () => admin?.query(`drop role if exists ${pg.escapeIdentifier(name)}`))],
+    ["management-pool", [() => admin?.close()]],
+    ["database", [() => target?.close()]],
+  ] as const) {
+    const results = await Promise.allSettled(operations.map(async operation => { await operation(); }));
+    if (results.some(result => result.status === "rejected")) firstFailure ??= stage;
+  }
+  if (firstFailure) throw new Error(`cgh-read-fixture-cleanup-failed:${firstFailure}`);
 });
 
 it("reads the actual Catalog document through the formal router with a restricted LOGIN", async () => {
@@ -75,7 +79,11 @@ it("does not replace missing registration and usage read privileges with empty d
   const response = await router(reader).handle(request("/api/v2/catalog/definitions"));
   expect(response.status).toBe(503);
   expect("body" in response && response.body).toMatchObject({ error: { code: "SERVICE_UNAVAILABLE" } });
-  await expect(reader.query("select * from parameter_catalog.subject_registrations limit 0")).rejects.toMatchObject({ code: "42501" });
+  // Match the actual Governance repository relation; an undefined relation
+  // (42P01) is not evidence of an effective SELECT denial.
+  expect((await admin.query("select to_regclass('parameter_catalog.organization_subject_registrations')::text as relation")).rows)
+    .toEqual([{ relation: "parameter_catalog.organization_subject_registrations" }]);
+  await expect(reader.query("select * from parameter_catalog.organization_subject_registrations limit 0")).rejects.toMatchObject({ code: "42501" });
 });
 
 it("keeps the Review GET lazy writer unavailable without governance credentials", async () => {
