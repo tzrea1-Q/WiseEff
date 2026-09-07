@@ -153,6 +153,14 @@ describe.skipIf(process.env.UPG_CONTROLLED_RECOVERY_DOCKER_TEST !== "1")("contro
       containers.push(authContainer); start(authContainer);
       await wait(async () => exec(authContainer, ["pg_isready", "-U", "postgres", "-d", "authority_control"]));
       const authUrl = `postgres://postgres:${authPassword}@${endpoint(authContainer, 5432)}/authority_control`;
+      // Socket readiness during initdb does not prove the published TCP endpoint
+      // used by management is ready. Each bounded probe owns and closes its
+      // connection; no migration or authentication write is retried here.
+      await wait(async () => {
+        const probe = new pg.Client({ connectionString: authUrl, connectionTimeoutMillis: 1000 });
+        try { await probe.connect(); await probe.query("select 1"); }
+        finally { await probe.end(); }
+      });
       authAdmin = createPostgresDatabase(authUrl);
       // Actual historical auth migrations, not a substitute schema or synthetic
       // AuthContextResolver. This management-only database needs no Catalog DDL.
