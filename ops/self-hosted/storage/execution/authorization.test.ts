@@ -1,7 +1,21 @@
-import { chmod, mkdtemp, readFile, rename, rm, stat, symlink, writeFile } from "node:fs/promises";
+import { chmod, link, mkdtemp, readFile, rename, rm, stat, symlink, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { expect, it } from "vitest";
+import { expect, it, vi } from "vitest";
+const filesystemRace = vi.hoisted(() => ({ afterLstat: undefined as undefined | ((file: string) => Promise<void>),
+  onMarkerOpen: undefined as undefined | ((handle: { fd: number }) => void) }));
+vi.mock("node:fs/promises", async importOriginal => {
+  const actual = await importOriginal<typeof import("node:fs/promises")>();
+  return { ...actual, lstat: async (...args: Parameters<typeof actual.lstat>) => {
+    const value = await actual.lstat(...args);
+    await filesystemRace.afterLstat?.(String(args[0]));
+    return value;
+  }, open: async (...args: Parameters<typeof actual.open>) => {
+    const handle = await actual.open(...args);
+    if (String(args[0]).endsWith("/retained-evidence.json")) filesystemRace.onMarkerOpen?.(handle);
+    return handle;
+  } };
+});
 import { openUpgradeJournal, commitJournalTransition, loadUpgradeJournal } from "../../scripts/parameter-catalog-upgrade/journal";
 import { withHostOperationLock } from "../../scripts/parameter-catalog-upgrade/handoff";
 import { captureRecoveryPackage, verifyRecoveryPackage } from "../recoveryPackage";
@@ -15,7 +29,10 @@ const source = { deploymentId: "source", hostFingerprint: "host", postgresIdenti
 const target = { deploymentId: "target", hostFingerprint: "host", postgresIdentity: "pg2", objectStoreIdentity: "s32", redisIdentity: "aof2" };
 
 it.each(["accepted", "failed"] as const)("settles only its owned synthetic evidence and retains failed restore state: %s", async outcome => {
+  let descriptor: { fd: number } | undefined;
+  filesystemRace.onMarkerOpen = handle => { descriptor = handle; };
   const evidence = await createSyntheticRecoveryEvidence();
+  filesystemRace.onMarkerOpen = undefined;
   try {
     const journalPath = path.join(evidence.directory, "controller.json");
     const opened = openUpgradeJournal({ journalPath, runId: "retention-run" });
@@ -24,22 +41,39 @@ it.each(["accepted", "failed"] as const)("settles only its owned synthetic evide
       inputDigest: "sha256:" + "a".repeat(64), toState: opened.value.record.state,
       nextAction: opened.value.record.nextAction, outcome: "crashed" }).ok).toBe(true);
     await writeFile(path.join(evidence.directory, "package.fixture"), "synthetic-package", { mode: 0o600 });
-    expect((await evidence.finish(outcome)).retained).toBe(outcome === "failed");
-    if (outcome === "failed") {
+    expect((await evidence.finish(outcome)).retained).toBe(true);
+    expect(descriptor?.fd).toBe(-1);
       expect((await stat(evidence.directory)).mode & 0o777).toBe(0o700);
       expect((await stat(path.join(evidence.directory, "retained-evidence.json"))).mode & 0o777).toBe(0o600);
       expect(JSON.parse(await readFile(path.join(evidence.directory, "retained-evidence.json"), "utf8")))
-        .toMatchObject({ status: "private-synthetic-evidence-retained" });
+        .toMatchObject({ status: "private-synthetic-evidence-retained", outcome });
       expect(await readFile(path.join(evidence.directory, "package.fixture"), "utf8")).toBe("synthetic-package");
       const loaded = loadUpgradeJournal({ journalPath, runId: "retention-run" });
       expect(loaded.ok).toBe(true);
       if (loaded.ok) expect(loaded.value.record.entries.at(-1)).toMatchObject({ action: RECOVERY_EXECUTION_EVENTS.started, outcome: "crashed" });
       await expect(evidence.finish("accepted")).rejects.toThrow("already-settled");
       expect(await readFile(journalPath, "utf8")).toContain("recovery-execution-started");
-    } else await expect(stat(evidence.directory)).rejects.toMatchObject({ code: "ENOENT" });
   } finally {
     // This unit has now accepted the retention behavior; it owns this fixture,
     // contains no real backup, and deliberately disposes only its own directory.
+    await evidence.finish("failed").catch(() => undefined);
+    await rm(evidence.directory, { recursive: true, force: true });
+  }
+});
+
+it.each(["replacement", "hardlink", "permissions"])("refuses marker identity drift without writing through %s", async fault => {
+  const evidence = await createSyntheticRecoveryEvidence();
+  const marker = path.join(evidence.directory, "retained-evidence.json");
+  try {
+    if (fault === "replacement") {
+      await rename(marker, `${marker}.original`);
+      await writeFile(marker, "foreign-marker", { mode: 0o600 });
+    } else if (fault === "hardlink") await link(marker, `${marker}.shared`);
+    else await chmod(marker, 0o644);
+    await expect(evidence.finish("failed")).rejects.toThrow("synthetic-evidence-identity-drift");
+    expect(await readFile(marker, "utf8")).toBe(fault === "replacement" ? "foreign-marker" : "");
+  } finally {
+    await evidence.finish("failed").catch(() => undefined);
     await rm(evidence.directory, { recursive: true, force: true });
   }
 });
@@ -65,8 +99,42 @@ it.each(["foreign-directory", "symlink", "permissions"])("refuses changed eviden
   } finally {
     // Both directory identities and this rename/symlink were created by this
     // unit. Disposing them after the accepted refusal is explicit fixture cleanup.
+    for (const owned of [evidence, foreign]) await owned.finish("failed").catch(() => undefined);
     for (const directory of [evidence.directory, foreign.directory, moved]) await rm(directory, { recursive: true, force: true });
   }
+});
+
+it.each(["directory-check", "marker-check"])("does not delete or write a foreign directory substituted after %s", async race => {
+  const evidence = await createSyntheticRecoveryEvidence();
+  const foreign = await createSyntheticRecoveryEvidence();
+  const moved = `${evidence.directory}-moved`;
+  const marker = path.join(evidence.directory, "retained-evidence.json");
+  let replaced = false;
+  try {
+    await writeFile(path.join(evidence.directory, "package.fixture"), "original-private-package");
+    await writeFile(path.join(foreign.directory, "foreign.fixture"), "foreign-data");
+    const foreignMarker = await readFile(path.join(foreign.directory, "retained-evidence.json")).catch(() => Buffer.alloc(0));
+    filesystemRace.afterLstat = async file => {
+      if (replaced || file !== (race === "directory-check" ? evidence.directory : marker)) return;
+      replaced = true;
+      await rename(evidence.directory, moved);
+      await rename(foreign.directory, evidence.directory);
+    };
+    await expect(evidence.finish("accepted")).rejects.toThrow("synthetic-evidence-identity-drift");
+    expect(replaced).toBe(true);
+    expect(await readFile(path.join(evidence.directory, "foreign.fixture"), "utf8")).toBe("foreign-data");
+    expect(await readFile(marker)).toEqual(foreignMarker);
+    expect(await readFile(path.join(moved, "package.fixture"), "utf8")).toBe("original-private-package");
+  } finally {
+    filesystemRace.afterLstat = undefined;
+    for (const owned of [evidence, foreign]) await owned.finish("failed").catch(() => undefined);
+    for (const directory of [evidence.directory, foreign.directory, moved]) await rm(directory, { recursive: true, force: true });
+  }
+});
+
+it("keeps the evidence fixture free of removal capabilities", async () => {
+  expect(await readFile(new URL("./authorization.fixture.ts", import.meta.url), "utf8"))
+    .not.toMatch(/\b(?:rm|rmdir|unlink)(?:Sync)?\b/);
 });
 
 it("refuses an empty caller authorization callback before performing restore", async () => {

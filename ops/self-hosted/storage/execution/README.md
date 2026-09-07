@@ -105,16 +105,21 @@ Earlier combined cases at `be7f73f78` and `21f9e89ff` each passed `postgres` but
 timed out for `wiseeff`; those remain failed executions. Phase timings showed
 the six sequential refusals consumed 33–39 seconds in the successful lifecycle's
 180-second budget. The split preserves every assertion and that per-case limit.
-Only accepted scenarios whose owned-resource cleanup also completed remove their
-synthetic package directory. Failure, timeout or cleanup failure retains the
-private package and append-only journal with a 0600 `retained-evidence.json` marker.
-The diagnostic locator is relative to the development host's temporary directory;
-it omits the host path. Do not include retained packages in ordinary artifacts.
-The test-only evidence fixture creates its own 0700 directory, accepts no arbitrary
-cleanup path and refuses a second settlement that could erase retained evidence.
-Before settlement it rechecks the directory's device, inode, owner and 0700 mode
-using `lstat`; a symlink, replacement or permission drift refuses cleanup and
-marker writes. It does not follow a substituted path to find or remove evidence.
+Every scenario retains its private package and append-only journal, including
+accepted scenarios. Docker resources and private secret inputs still have their
+separate owned-resource cleanup. The evidence fixture exposes no deletion
+operation. It creates a 0700 directory and opens a 0600 `retained-evidence.json`
+marker with `wx` during initialization. Settlement writes the accepted/failed
+test outcome only through that same original file descriptor, syncs and closes it.
+It rechecks directory and marker device/inode/owner/mode and descriptor identity;
+replacement, symlinks, hardlinks or permission drift refuse settlement. Actual
+directory-substitution race tests prove no foreign deletion or redirected write.
+On detected path drift no marker locator is returned as verified. A successful
+diagnostic locator is relative to the development host's temporary directory and
+omits its host path; it is not a custody or restore-approval record. Retained
+packages must not enter ordinary artifacts. No general package cleanup command
+is introduced, and older combined-case results are not relabeled by this fixture
+retention change.
 
 Run only in a independently verified development workspace, with the installed
 dependencies and the four pinned image references already present:

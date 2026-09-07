@@ -1,6 +1,7 @@
 import path from "node:path";
 import { randomUUID } from "node:crypto";
-import { lstat, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { lstat, mkdtemp, open } from "node:fs/promises";
+import type { Stats } from "node:fs";
 import os from "node:os";
 import { withHostOperationLock } from "../../scripts/parameter-catalog-upgrade/handoff";
 import { createControlledRecoveryTarget, type RecoveryPackageTarget } from "./packageRestore";
@@ -11,26 +12,52 @@ import { mintRestoreToken, type RecoveryTargetIdentity } from "../recoveryPoint"
 import { createRecoveryExecutionAuthorization, recoveryExecutionRecordDigest, RECOVERY_EXECUTION_EVENTS,
   type RecoveryCaptureRecord, type RecoveryExecutionApproval } from "./authorization";
 
-/** Only manages the private temporary directory created by this fixture. */
+/** Keeps all private evidence. No deletion operation is exposed. The marker is
+ * written only through the original open descriptor, never a substituted path. */
 export async function createSyntheticRecoveryEvidence() {
   const directory = await mkdtemp(path.join(os.tmpdir(), "controlled-recovery-live-"));
   const identity = await lstat(directory);
+  const markerPath = path.join(directory, "retained-evidence.json");
+  const marker = await open(markerPath, "wx", 0o600);
+  let markerIdentity: Stats;
+  try { markerIdentity = await marker.stat(); }
+  catch (error) { await marker.close().catch(() => undefined); throw error; }
+  const same = (current: Stats | undefined, original: Stats, mode: number) => current
+    && current.dev === original.dev && current.ino === original.ino && current.uid === original.uid
+    && (current.mode & 0o777) === mode;
+  const assertIdentity = async () => {
+    const current = await lstat(directory).catch(() => undefined);
+    if (!current?.isDirectory() || current.isSymbolicLink() || !same(current, identity, 0o700)) {
+      throw new Error("synthetic-evidence-identity-drift");
+    }
+    const named = await lstat(markerPath).catch(() => undefined);
+    const descriptor = await marker.stat();
+    if (!named?.isFile() || named.isSymbolicLink() || named.nlink !== 1 || !same(named, markerIdentity, 0o600)
+      || !descriptor.isFile() || descriptor.nlink !== 1 || !same(descriptor, markerIdentity, 0o600)) {
+      throw new Error("synthetic-evidence-identity-drift");
+    }
+  };
   let settled = false;
   return {
     directory,
     async finish(outcome: "accepted" | "failed") {
-      if (settled || !["accepted", "failed"].includes(outcome)) throw new Error("synthetic-evidence-already-settled-or-invalid");
+      if (settled) throw new Error("synthetic-evidence-already-settled-or-invalid");
       settled = true;
-      const current = await lstat(directory).catch(() => undefined);
-      if (!current?.isDirectory() || current.isSymbolicLink() || current.dev !== identity.dev
-        || current.ino !== identity.ino || current.uid !== identity.uid || (current.mode & 0o777) !== 0o700) {
-        throw new Error("synthetic-evidence-identity-drift");
+      let failed = false;
+      try {
+        if (!["accepted", "failed"].includes(outcome)) throw new Error("synthetic-evidence-already-settled-or-invalid");
+        await assertIdentity();
+        await marker.writeFile(JSON.stringify({ status: "private-synthetic-evidence-retained", outcome }) + "\n");
+        await marker.sync();
+        // A race cannot redirect the descriptor's write. Rechecking the names
+        // prevents returning a locator that is already known to be substituted.
+        await assertIdentity();
+        return { retained: true as const, directory };
+      } catch (error) { failed = true; throw error; }
+      finally {
+        try { await marker.close(); }
+        catch { if (!failed) throw new Error("synthetic-evidence-marker-close-failed"); }
       }
-      if (outcome === "accepted") await rm(directory, { recursive: true, force: true });
-      else await writeFile(path.join(directory, "retained-evidence.json"),
-        JSON.stringify({ status: "private-synthetic-evidence-retained", reason: "acceptance-or-cleanup-incomplete" }) + "\n",
-        { mode: 0o600, flag: "wx" });
-      return { retained: outcome === "failed", directory };
     },
   };
 }

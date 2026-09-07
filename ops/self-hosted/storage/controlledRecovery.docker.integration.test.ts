@@ -42,6 +42,16 @@ describe.skipIf(process.env.UPG_CONTROLLED_RECOVERY_DOCKER_TEST !== "1")("contro
     const evidence = await createSyntheticRecoveryEvidence();
     const directory = evidence.directory;
     let acceptanceComplete = false;
+    let bodyStarted = false;
+    const retainEvidence = async (outcome: "accepted" | "failed") => {
+      await evidence.finish(outcome);
+      console.info(JSON.stringify({ evidence: "private-synthetic-package-retained",
+        locator: `${path.basename(directory)}/retained-evidence.json` }));
+    };
+    onTestFinished(async () => {
+      if (bodyStarted) await settled;
+      else await retainEvidence("failed");
+    }, 60000);
     const privateInputs = await mkdtemp(path.join(os.tmpdir(), "controlled-recovery-secrets-"));
     const containers: string[] = []; const volumes: string[] = []; const networks: string[] = [];
     const refs = { postgres: "postgres:16-alpine", objects: "minio/minio:RELEASE.2024-12-18T13-15-44Z", redis: "redis:7-alpine", mc: "minio/mc:RELEASE.2024-11-21T17-21-54Z" };
@@ -107,7 +117,7 @@ describe.skipIf(process.env.UPG_CONTROLLED_RECOVERY_DOCKER_TEST !== "1")("contro
       }
       return { resources, secrets, mc, store: createHttpObjectStorageTransport({ endpoint: `http://${endpoint(objects.id, 9000)}`, accessKeyId: secrets.objectAccessKey, secretAccessKey: secrets.objectSecretKey }) };
     };
-    onTestFinished(() => settled, 60000);
+    bodyStarted = true;
     try {
       const source = await timed("setup-source", () => setup("source"));
       start(source.resources.redis.id);
@@ -324,9 +334,7 @@ describe.skipIf(process.env.UPG_CONTROLLED_RECOVERY_DOCKER_TEST !== "1")("contro
       cleanupComplete = true;
       } finally {
         try {
-          const retained = await evidence.finish(acceptanceComplete && cleanupComplete && !signal.aborted ? "accepted" : "failed");
-          if (retained.retained) console.info(JSON.stringify({ evidence: "private-synthetic-package-retained",
-            locator: `${path.basename(directory)}/retained-evidence.json` }));
+          await retainEvidence(acceptanceComplete && cleanupComplete && !signal.aborted ? "accepted" : "failed");
         } finally { finish(); }
       }
     }
