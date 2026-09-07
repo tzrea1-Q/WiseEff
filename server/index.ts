@@ -287,7 +287,9 @@ await runProcessWithSignals({
     await start();
   },
 }).catch(error => {
-  console.error(error instanceof Error && /^PCAT-[A-Z0-9-]+$/.test(error.message)
-    ? error.message : "PCAT-RUNTIME-API-START-FAILED");
+  const missingDatabase = error instanceof Error && error.message === "DATABASE_URL is required in production";
+  console.error(missingDatabase ? "DATABASE_URL is required in production"
+    : error instanceof Error && /^PCAT-[A-Z0-9-]+$/.test(error.message)
+      ? error.message : "PCAT-RUNTIME-API-START-FAILED");
   process.exitCode = 1;
 });
