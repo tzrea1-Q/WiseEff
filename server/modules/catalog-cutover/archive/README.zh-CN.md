@@ -28,3 +28,18 @@
 此前 custody transport 的准备流程到达 P7 并暴露此问题；平台形态的临时替代
 不证明组织归档成功。本适配器的新 Red/Green 是独立证据，不代表获批 P12、
 完整 controller 切换、恢复就绪或生产授权。
+
+实际 owned PG16 Red `4bf7a876631c6de82c193119c7de79b14a3830ed` 执行
+现有九文件 `bindings-pg16` suite：收集 98、通过 96、失败 2，70.32 秒。
+两项失败分别是合法长 owner 归档及伪造 owner 应优先身份拒绝的错误码。
+Green `82bf84d50b6e06097e3845d79124dbe1de8f18eb` 全部 98 通过，69.87 秒，
+包括 Archive 的全部 24 项 PostgreSQL 用例和七项纯测试。两轮均核验自有
+资源清理成功；profile 为 Linux/arm64 的 `postgres:16-alpine`，镜像
+`sha256:16bc17c64a573ef34162af9298258d1aec548232985b33ed7b1eac33ba35c229`。
+原超时与八项威胁矩阵均未更改。
+
+日志 `/tmp/pr824-archive-owner-red.log` 和
+`/tmp/pr824-archive-owner-green.log` 的 SHA-256 分别为
+`b380f3904291241fc564cab392403d180499ad11e567851018ab0e463eefdad0`、
+`c0afa125b151e43bec5b482aaba7b6066172cde4610ec9b1f36d48f3cf7d592a`。
+这些是本地精确 checkout 的观察，不是后续本次文档更新的执行或 Hosted 验收。

@@ -37,3 +37,21 @@ The prior custody transport preparation reached P7 and exposed this issue; its
 platform-only workaround did not prove organization archiving. This adapter's
 new Red/Green execution is separate evidence, and does not prove approved P12,
 whole-controller cutover, recovery readiness or production authorization.
+
+Actual owned PG16 Red `4bf7a876631c6de82c193119c7de79b14a3830ed` ran the
+existing nine-file `bindings-pg16` suite: 98 collected, 96 passed, two failed,
+70.32s. The failures were the legitimate long-owner archive and the forged
+owner's identity-first rejection code. Green
+`82bf84d50b6e06097e3845d79124dbe1de8f18eb` passed all 98 in 69.87s,
+including all 24 Archive PostgreSQL cases and seven Archive pure cases. Both
+runs verified owned-resource cleanup. The profile was Linux/arm64
+`postgres:16-alpine`, image
+`sha256:16bc17c64a573ef34162af9298258d1aec548232985b33ed7b1eac33ba35c229`.
+The original timeouts and eight threat rows were unchanged.
+
+Logs `/tmp/pr824-archive-owner-red.log` and
+`/tmp/pr824-archive-owner-green.log` have SHA-256
+`b380f3904291241fc564cab392403d180499ad11e567851018ab0e463eefdad0`
+and `c0afa125b151e43bec5b482aaba7b6066172cde4610ec9b1f36d48f3cf7d592a`.
+These are local exact-checkout observations, not executions of this subsequent
+documentation update or Hosted acceptance.
