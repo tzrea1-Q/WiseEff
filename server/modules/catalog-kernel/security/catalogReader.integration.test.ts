@@ -149,6 +149,29 @@ describe("authorized additive Catalog reader on owned PG16", () => {
       expect((await createCatalogKernel(reader).loadCurrentCatalog(chain.pinC)).ok).toBe(true);
     } finally { await second.close(); await third.close(); await another.close(); await concurrent.close(); }
   });
+  it("proves a real LOGIN can invoke a private definer through a parsed view, then refuses that state", async () => {
+    // Deliberately unsafe synthetic state in this owned cluster, never a grant
+    // recommended for runtime. The normal reader still cannot query the table.
+    await admin.query(`create schema reader_private_probe;
+      revoke all on schema reader_private_probe from public;
+      create function reader_private_probe.leak() returns bigint language sql security definer
+        as 'select count(*) from parameter_catalog.subject_placements';
+      create view public.reader_private_probe_view as select reader_private_probe.leak() as n;
+      grant select on public.reader_private_probe_view to public;`);
+    try {
+      expect((await reader.query("select session_user as login, has_schema_privilege(current_user,'reader_private_probe','USAGE') as usage")).rows)
+        .toEqual([{ login: "reader_login", usage: false }]);
+      await expect(reader.query("select * from parameter_catalog.subject_placements")).rejects.toMatchObject({ code: "42501" });
+      expect((await reader.query("select n from public.reader_private_probe_view")).rows)
+        .toEqual((await admin.query("select count(*) as n from parameter_catalog.subject_placements")).rows);
+      await expect(admin.transaction(async tx => {
+        await tx.query(await readFile(path.join(migrations,CATALOG_READER_MIGRATION),"utf8"));
+      })).rejects.toMatchObject({ code: "42501", message: "PCAT-READER-DEFINER-DRIFT" });
+    } finally {
+      await admin.query(`drop view public.reader_private_probe_view;
+        drop function reader_private_probe.leak(); drop schema reader_private_probe;`);
+    }
+  });
   it("cannot SET ROLE to reader or any management/synchronizer/verifier writer", async () => {
     for (const role of [CATALOG_READER_ROLE, "catalog_migration_owner", "catalog_synchronizer_role", "catalog_verification_writer_role", "parameter_governance_writer_role"]) {
       await expect(reader.query(`set role ${role}`)).rejects.toMatchObject({ code: "42501" });
