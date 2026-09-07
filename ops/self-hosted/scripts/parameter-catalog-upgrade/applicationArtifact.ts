@@ -253,7 +253,9 @@ async function buildActual(input: ApplicationBuildInput): Promise<ApplicationArt
     await checkDirectory();
     requireFact(!selection.buildNetworkFile || await fileDigest(networkFile) === networkDigest, "BUILD-NETWORK-CHANGED");
     const metadataDigest = await fileDigest(metadataPath);
-    const metadata = JSON.parse(await readFile(metadataPath, "utf8"));
+    const metadataBytes = await readFile(metadataPath);
+    requireFact(sha(metadataBytes) === metadataDigest, "BUILD-RESULT-MISMATCH");
+    const metadata = JSON.parse(metadataBytes.toString());
     requireFact(await fileDigest(metadataPath) === metadataDigest && digestPattern.test(metadata["containerimage.digest"])
       && digestPattern.test(metadata["containerimage.config.digest"]), "BUILD-RESULT-UNAVAILABLE");
     // BuildKit's own result chooses the immutable object. The mutable output
