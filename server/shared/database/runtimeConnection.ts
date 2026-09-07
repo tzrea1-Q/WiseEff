@@ -67,7 +67,8 @@ export async function openRuntimeDatabase(
     } else if (facts.governance_roles > 0) {
       throw new RuntimeConnectionError("PCAT-RUNTIME-GOVERNANCE-CAPABILITY-IN-APPLICATION-POOL");
     }
-    if (facts.catalog_present && options.purpose !== "catalog-governance-command") {
+    if (options.purpose !== "catalog-governance-command") {
+      if (facts.catalog_present !== true) throw new RuntimeConnectionError("PCAT-RUNTIME-CATALOG-SCHEMA-MISSING");
       if (!options.verifyCatalogStartup) throw new RuntimeConnectionError("PCAT-RUNTIME-LIVE-PIN-ADAPTER-UNAVAILABLE");
       await options.verifyCatalogStartup(db);
     }

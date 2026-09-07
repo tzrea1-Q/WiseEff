@@ -17,10 +17,19 @@ describe("runtime connection bootstrap", () => {
     [{ management_roles: 1 }, "PCAT-RUNTIME-MANAGEMENT-ROLE-REACHABLE"],
     [{ owned_objects: 1 }, "PCAT-RUNTIME-OBJECT-OWNER"],
     [{ catalog_present: true }, "PCAT-RUNTIME-LIVE-PIN-ADAPTER-UNAVAILABLE"],
+    [{ catalog_present: false }, "PCAT-RUNTIME-CATALOG-SCHEMA-MISSING"],
   ])("refuses unsafe startup facts %j", async (extra, code) => {
     const db = { close: vi.fn(async () => undefined), query: vi.fn(async () => ({ rows: [{ same_identity: true, privileged_roles: 0, management_roles: 0, owned_objects: 0, catalog_present: false, ...extra }] })) };
     await expect(openRuntimeDatabase({ connectionString: "secret", nodeEnv: "production" }, (() => db) as never))
       .rejects.toMatchObject({ code });
+    expect(db.close).toHaveBeenCalledOnce();
+  });
+  it("does not use an adapter to approve an absent Catalog schema", async () => {
+    const verifyCatalogStartup = vi.fn(async () => undefined);
+    const db = { close: vi.fn(async () => undefined), query: vi.fn(async () => ({ rows: [{ same_identity: true, privileged_roles: 0, management_roles: 0, governance_roles: 0, owned_objects: 0, catalog_present: false }] })) };
+    await expect(openRuntimeDatabase({ connectionString: "secret", nodeEnv: "production", verifyCatalogStartup }, (() => db) as never))
+      .rejects.toMatchObject({ code: "PCAT-RUNTIME-CATALOG-SCHEMA-MISSING" });
+    expect(verifyCatalogStartup).not.toHaveBeenCalled();
     expect(db.close).toHaveBeenCalledOnce();
   });
   it("exposes only the checked login pool and sanitizes an unreadable identity", async () => {

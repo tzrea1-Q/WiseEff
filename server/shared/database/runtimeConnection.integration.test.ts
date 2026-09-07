@@ -8,6 +8,7 @@ import pg from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createIsolatedUpgradeDocker } from "../../../scripts/isolated-upgrade-docker";
 import { openRuntimeDatabase } from "./runtimeConnection";
+import { createPostgresDatabase } from "./client";
 import { createPostgresCheckpointerSaver, setupXiaozeCheckpointerTables, verifyPostgresCheckpointerTables } from "../../modules/agent/xiaoze/durableCheckpointer";
 
 describe.skipIf(!process.env.UPG_RUNTIME_DOCKER_DAEMON_ID)("actual runtime login and checkpoint management separation", () => {
@@ -145,8 +146,11 @@ describe.skipIf(!process.env.UPG_RUNTIME_DOCKER_DAEMON_ID)("actual runtime login
       if (networkId) { inspectNetwork([]); docker.command(["network", "rm", networkId]); networkId = ""; }
     } finally { await removePrivateConfiguration(); }
   });
-  it("uses the actual restricted login pool for reads and rejects direct writes and elevation", async () => {
-    const db = await openRuntimeDatabase({ connectionString: url("runtime"), nodeEnv: "production" });
+  it("keeps restricted-login business permissions distinct from Catalog startup approval", async () => {
+    await expect(openRuntimeDatabase({ connectionString: url("runtime"), nodeEnv: "production" }))
+      .rejects.toMatchObject({ code: "PCAT-RUNTIME-CATALOG-SCHEMA-MISSING" });
+    // This is a direct permission probe, not a production startup success.
+    const db = createPostgresDatabase(url("runtime"));
     try {
       expect((await db.query("select session_user as login, current_user as effective")).rows).toEqual([{ login: "runtime", effective: "runtime" }]);
       expect((await db.query("select * from public.runtime_business")).rows).toEqual([{ id: 1, value: "synthetic" }]);
@@ -180,10 +184,11 @@ describe.skipIf(!process.env.UPG_RUNTIME_DOCKER_DAEMON_ID)("actual runtime login
       await expect(db.query("set role forbidden")).rejects.toMatchObject({ code: "42501" });
     } finally { await db.close(); }
   });
-  it.each(["server/index.ts", "server/modules/logs/workerRunner.ts"])("%s refuses privileged login before worker/server construction", (entry) => {
+  it.each(["server/index.ts", "server/modules/logs/workerRunner.ts"].flatMap(entry =>
+    ["postgres", "runtime"].map(role => ({ entry, role }))))("$entry refuses $role before worker/server construction", ({ entry, role }) => {
     const result = spawnSync(process.execPath, ["--import", "tsx", path.resolve(entry)], {
       encoding: "utf8", timeout: 20000,
-      env: { PATH: process.env.PATH, HOME: process.env.HOME, NODE_ENV: "production", DATABASE_URL: url("postgres"),
+      env: { PATH: process.env.PATH, HOME: process.env.HOME, NODE_ENV: "production", DATABASE_URL: url(role),
         OBJECT_STORE_MODE: "s3", OBJECT_STORAGE_ENDPOINT: "http://127.0.0.1:1", OBJECT_STORAGE_BUCKET: "isolated-unused",
         OBJECT_STORAGE_ACCESS_KEY_ID: "synthetic-unused", OBJECT_STORAGE_SECRET_ACCESS_KEY: "synthetic-unused",
         AUTH_MODE: "production", AUTH_PROVIDER: "local", XIAOZE_CHECKPOINTER: "postgres",
@@ -191,7 +196,7 @@ describe.skipIf(!process.env.UPG_RUNTIME_DOCKER_DAEMON_ID)("actual runtime login
       },
     });
     expect(result.status).toBe(1);
-    expect(result.stderr).toContain("PCAT-RUNTIME-PRIVILEGED-LOGIN");
+    expect(result.stderr).toContain(role === "postgres" ? "PCAT-RUNTIME-PRIVILEGED-LOGIN" : "PCAT-RUNTIME-CATALOG-SCHEMA-MISSING");
     expect(result.stdout + result.stderr).not.toContain(password);
     expect(result.stdout + result.stderr).not.toContain("ECONNREFUSED");
     expect(result.stdout).not.toContain("listening");
