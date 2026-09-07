@@ -81,7 +81,7 @@ describe.skipIf(process.env.UPG_CONTROLLED_RECOVERY_DOCKER_TEST !== "1")("contro
       const postgres = create(imageIds.postgres, ["-p", "127.0.0.1::5432", "--env-file", postgresEnv], [], "/var/lib/postgresql/data");
       const objects = create(imageIds.objects, ["-p", "127.0.0.1::9000", "--env-file", objectsEnv], ["server", "/data"], "/data");
       const redis = create(imageIds.redis, ["-p", "127.0.0.1::6379"], ["redis-server", "--appendonly", "yes", "--appendfsync", "always"], "/data");
-      const objectClient = create(imageIds.mc, ["--entrypoint", "/bin/sh"], ["-c", "sleep 3600"]);
+      const objectClient = create(imageIds.mc, ["--entrypoint", "/bin/sh"], ["-c", "trap 'exit 0' TERM INT; sleep 3600 & wait"]);
       const writers = (["api", "worker", "web"] as const).map(service => ({ ...create(imageIds.mc, ["--entrypoint", "/bin/sh"], ["-c", "exit 0"]), service }));
       for (const c of [postgres, objects, objectClient, ...writers]) start(c.id);
       for (const writer of writers) docker.command(["wait", writer.id]);
@@ -127,6 +127,15 @@ describe.skipIf(process.env.UPG_CONTROLLED_RECOVERY_DOCKER_TEST !== "1")("contro
       const callerResources = structuredClone(source.resources);
       const callerSecrets = structuredClone(source.secrets);
       const adapter = createDockerRecoverySource(callerResources, callerSecrets);
+      // A stopped, unrelated consumer on a different network must still make a
+      // registered volume unsafe. This also verifies Docker's repeated volume
+      // filter semantics against the real daemon used by the adapter.
+      const borrowed = docker.command(["create", "--label", `${label}=${runId}`, "--network", "none",
+        "--mount", `type=volume,source=${source.resources.postgres.mounts[0].name},target=/borrowed`,
+        "--entrypoint", "/bin/sh", imageIds.mc, "-c", "exit 0"]).toString().trim();
+      containers.push(borrowed);
+      try { await expect(adapter.observe()).rejects.toThrow("volume-shared-with-other-container"); }
+      finally { inspect(borrowed); docker.command(["rm", borrowed]); containers.splice(containers.indexOf(borrowed), 1); }
       // A caller's later object mutation must not retarget pg_dump/mc/AOF or
       // change a credential. The completed capture exercises all these paths.
       callerResources.postgres.id = source.resources.objects.id;
@@ -192,6 +201,7 @@ describe.skipIf(process.env.UPG_CONTROLLED_RECOVERY_DOCKER_TEST !== "1")("contro
       expect(verified.bootstrap).toEqual(source.resources.bootstrap);
       expect(verified.roles.map(role => role.name)).not.toContain(bootstrapName);
       for (const c of [source.resources.postgres, source.resources.objects, source.resources.objectClient]) stop(c.id);
+      expect(inspect(source.resources.objectClient.id).State.ExitCode).toBe(0);
       const destination = await timed("setup-destination", () => setup("destination"));
       const destinationIo = createDockerRecoveryDestination(destination.resources, destination.secrets);
       const destinationIdentity = await destinationIo.observe();

@@ -44,6 +44,11 @@ describe("authorized recovery ownership and dependency contract", () => {
     expect(check({ "ops/self-hosted/storage/check.ts": `const command = ${code};`, "ops/self-hosted/storage/execution/restore.ts": "" }))
       .toContain("restore-effect:ops/self-hosted/storage/check.ts");
   });
+  it.each(["'DROP' + ' DATABASE'", "['DROP', 'DATABASE'].join(' ')", "`DROP ${'DATABASE'}`", "'FLUSH' + 'ALL'", "['FLUSH', 'ALL'].join('')"])("keeps destructive actions forbidden in execution layer: %s", code => {
+    expect(check({ "ops/self-hosted/storage/execution/restore.ts": `const forbidden = ${code}` },
+      { "ops/self-hosted/storage/execution/restore.ts": "execution" }))
+      .toContain("destructive-effect:ops/self-hosted/storage/execution/restore.ts");
+  });
   it("does not make test-file renaming an execution escape", () => {
     expect(check({ "ops/self-hosted/storage/check.ts": "import './hidden.test'", "ops/self-hosted/storage/hidden.test.ts": "" },
       { "ops/self-hosted/storage/check.ts": "check", "ops/self-hosted/storage/hidden.test.ts": "test" }))

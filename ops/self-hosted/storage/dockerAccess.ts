@@ -103,6 +103,15 @@ export function access(resources: DockerRecoveryResources, secrets: DockerRecove
     const images = JSON.parse(docker.command(["image", "inspect", ...imageProfile.map(([, image]) => image)]).toString()) as { Id: string }[];
     if (observed.length !== all.length || new Set(observed.map(i => i.Id)).size !== all.length
       || volumes.length !== volumeNames.length || images.length !== imageProfile.length) recoveryRefuse("docker-inventory-incomplete");
+    // Docker combines repeated volume filters with OR. Compare the complete
+    // consumer set, then verify each registered container's exact mount below.
+    // This remains a fresh observation on every check, including stopped and
+    // never-started containers; no foreign consumer's config is read.
+    const expectedConsumers = all.filter(c => c.mounts.length).map(c => c.id).sort();
+    const consumers = volumeNames.length ? docker.command(["ps", "-a", "--no-trunc",
+      ...volumeNames.flatMap(name => ["--filter", `volume=${name}`]), "--format", "{{.ID}}"])
+      .toString().trim().split("\n").filter(Boolean).sort() : [];
+    if (JSON.stringify(consumers) !== JSON.stringify(expectedConsumers)) recoveryRefuse("volume-shared-with-other-container");
     const infos = all.map(container => {
       const info = observed.find(i => i.Id === container.id);
       if (!info || info.Config?.Labels?.[OWNER_LABEL] !== resources.runId) recoveryRefuse("container-ownership-drift");
@@ -114,9 +123,6 @@ export function access(resources: DockerRecoveryResources, secrets: DockerRecove
         const volume = volumes.find(v => v.Name === mount.name);
         if (!actual || !volume || volume.CreatedAt !== mount.createdAt || volume.Labels?.[OWNER_LABEL] !== resources.runId
           || volume.Driver !== "local" || Object.keys(volume.Options ?? {}).length) recoveryRefuse("volume-identity-drift");
-        const consumers = docker.command(["ps", "-a", "--no-trunc", "--filter", `volume=${mount.name}`, "--format", "{{.ID}}"])
-          .toString().trim().split("\n").filter(Boolean);
-        if (consumers.length !== 1 || consumers[0] !== container.id) recoveryRefuse("volume-shared-with-other-container");
       }
       const networks = Object.values(info.NetworkSettings.Networks);
       // A never-started restore container has no active endpoint yet. Its actual

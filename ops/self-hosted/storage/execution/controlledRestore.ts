@@ -1,7 +1,7 @@
-import type { RecoveryBootstrapIdentity, VerifiedRecoveryPackage } from "../recoveryPackage";
+import { verifyRecoveryPackage, type RecoveryBootstrapIdentity, type VerifiedRecoveryPackage } from "../recoveryPackage";
 import type { RecoveryTargetIdentity } from "../recoveryPoint";
 import { recoveryRefuse, sameRecoveryIdentity, ControlledRecoveryRefusal } from "../controlledRecovery";
-import type { RecoveryPackageTarget, RecoveryRestoreBinding } from "./packageRestore";
+import type { RecoveryPackageAdapter, RecoveryRestoreBinding } from "./packageRestore";
 import { isRecoveryExecutionAuthorization, type RecoveryExecutionAuthorization } from "./authorization";
 const safeFailure = (error: unknown): Error => error instanceof ControlledRecoveryRefusal ? error : new ControlledRecoveryRefusal("controlled-recovery-operation-failed");
 
@@ -18,7 +18,7 @@ export type ControlledRecoveryTarget = {
 export function buildControlledRecoveryTarget(input: {
   target: RecoveryTargetIdentity;
   authorization: RecoveryExecutionAuthorization;
-}, destination: ControlledRecoveryTarget): RecoveryPackageTarget {
+}, destination: ControlledRecoveryTarget): RecoveryPackageAdapter {
   if (!isRecoveryExecutionAuthorization(input.authorization)) recoveryRefuse("execution-authorization-required");
   input = { ...input, target: Object.freeze({ ...input.target }) };
   let binding: RecoveryRestoreBinding | undefined;
@@ -42,6 +42,9 @@ export function buildControlledRecoveryTarget(input: {
     async restore(backup) {
       try {
         if (!binding || backup.digest !== input.authorization.packageDigest) recoveryRefuse("execution-authorization-required");
+        // Even the internal adapter must not accept caller-invented dump bytes.
+        // The only material dispatched below is freshly read from the approved package.
+        backup = await verifyRecoveryPackage(input.authorization.directory, input.authorization.packageDigest);
         await input.authorization.begin(binding);
         await check(); await destination.restorePostgres({ postgres: backup.postgres, roles: backup.roles, ...(backup.bootstrap ? { bootstrap: backup.bootstrap } : {}) });
         await input.authorization.committed("postgres");

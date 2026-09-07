@@ -107,7 +107,8 @@ const dependencies = (file: string, source: string, report: (reason: string) => 
       if (!args || !ts.isArrayLiteralExpression(args) || !args.elements[0] || constant(args.elements[0]) !== "pg_dump") report(`unbounded-capture-command:${file}`);
     }
     const text = constant(node);
-    if (text !== undefined && /pg_restore\b|DROP\s+DATABASE|FLUSHALL\b/i.test(text)) report(`restore-effect:${file}`);
+    if (text !== undefined && /pg_restore\b/i.test(text)) report(`restore-effect:${file}`);
+    if (text !== undefined && /DROP\s+DATABASE|FLUSHALL\b/i.test(text)) report(`destructive-effect:${file}`);
     ts.forEachChild(node, visit);
   };
   visit(ast);

@@ -71,6 +71,9 @@ it.each(["valid", "unapproved", "wrong-token", "cross-run", "expired", "package-
         },
         restoreObjects: async () => { events.push("objects"); }, restoreRedis: async () => { events.push("redis"); },
       });
+      expect(port).not.toHaveProperty("restore");
+      expect(port).not.toHaveProperty("authorize");
+      await expect(restoreRecoveryPackage(root, packageDigest, { ...port })).rejects.toThrow("unissued-target");
       if (fault === "valid") {
         expect(await restoreRecoveryPackage(root, packageDigest, port)).toMatchObject({ status: "restore-executed-not-business-verified" });
         expect(events).toEqual(["postgres", "objects", "redis"]);

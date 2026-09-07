@@ -29,7 +29,7 @@ storage, and rejects unknown files, missing registrations, unresolved imports,
 dynamic loading/evaluation, test-module imports and execution dependencies.
 Constant string folding detects concatenation, template and array-join disguises.
 The capture executable must remain the fixed `pg_dump` command. The original
-S10-PER no-reimplementation and `DROP DATABASE` prohibitions remain across both
+S10-PER no-reimplementation and `DROP DATABASE` / `FLUSHALL` prohibitions remain across both
 production layers. This is a finite static boundary plus behavioral acceptance,
 not a claim that text scanning proves arbitrary JavaScript safe.
 
@@ -60,7 +60,9 @@ an authentication secret and cannot supply source provenance or approval.
 `createControlledRecoveryTarget`, exported by `packageRestore.ts`, accepts only an
 authorization capability issued by that factory. The root `restoreRecoveryPackage`
 rejects unissued target objects before reading a package; importing the lower
-adapter builder cannot create a root-admitted target. Before each
+adapter builder cannot create a root-admitted target.
+The issued target is opaque: it exposes no authorization or restore methods,
+and copying its fields cannot copy its internal admission capability. Before each
 store it rechecks package bytes, current authorization, lock and independently
 observed identities. The existing append-only upgrade journal is the sole
 execution state: it records start, committed store steps, completion or unknown

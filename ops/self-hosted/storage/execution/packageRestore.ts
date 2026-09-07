@@ -3,7 +3,9 @@ import { verifyRecoveryPackage, type RecoveryBootstrapIdentity, type VerifiedRec
 import type { RecoveryTargetIdentity } from "../recoveryPoint";
 
 export type RecoveryRestoreBinding = { runId: string; packageDigest: string; source: RecoveryTargetIdentity; target: RecoveryTargetIdentity };
-export type RecoveryPackageTarget = {
+export type RecoveryPackageTarget = { readonly target: RecoveryTargetIdentity };
+/** Internal adapter shape. The root factory returns only an opaque capability. */
+export type RecoveryPackageAdapter = {
   target: RecoveryTargetIdentity;
   /** Provided by the controller's approval adapter. It must validate the exact binding,
    * principal and purpose; this storage module cannot mint an approval. */
@@ -16,17 +18,19 @@ export type RecoveryPackageTarget = {
    * facilities in its closure, never a source connection or fixture oracle. */
   restore(backup: VerifiedRecoveryPackage): Promise<void>;
 };
-const issuedTargets = new WeakSet<object>();
+const issuedTargets = new WeakMap<object, RecoveryPackageAdapter>();
 /** Only this factory can enroll a target at the root execution seam. The lower
  * adapter builder and structurally identical caller objects cannot mint this. */
 export function createControlledRecoveryTarget(...args: Parameters<typeof buildControlledRecoveryTarget>): RecoveryPackageTarget {
-  const target = Object.freeze(buildControlledRecoveryTarget(...args));
-  issuedTargets.add(target);
-  return target;
+  const adapter = buildControlledRecoveryTarget(...args);
+  const capability = Object.freeze({ target: adapter.target });
+  issuedTargets.set(capability, adapter);
+  return capability;
 }
 
-export async function restoreRecoveryPackage(directory: string, digest: string, target: RecoveryPackageTarget) {
-  if (!issuedTargets.has(target)) throw new Error("recovery-execution-unissued-target");
+export async function restoreRecoveryPackage(directory: string, digest: string, capability: RecoveryPackageTarget) {
+  const target = issuedTargets.get(capability);
+  if (!target) throw new Error("recovery-execution-unissued-target");
   const backup = await verifyRecoveryPackage(directory, digest);
   const binding = { runId: backup.manifest.recovery.runId, packageDigest: digest, source: backup.manifest.recovery.target, target: target.target };
   for (const key of ["deploymentId", "postgresIdentity", "objectStoreIdentity", "redisIdentity"] as const) {

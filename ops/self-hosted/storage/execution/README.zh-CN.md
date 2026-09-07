@@ -24,7 +24,7 @@ CI `34071070497` 与 `34067803219` 均命中此冲突，不是更早的 source-l
 检查递归追踪本地依赖，包括 storage 以外的 helper，拒绝漏登记、漏文件、无法解析
 的导入、动态加载／求值、测试模块依赖和检查层到执行层的路径。字符串常量求值覆盖
 拼接、模板和数组 join 规避；采集的可执行程序必须固定为 `pg_dump`。原有 S10-PER
-禁止重新实现断言及 `DROP DATABASE` 禁令继续覆盖两层生产模块。这是有界静态检查
+禁止重新实现断言及 `DROP DATABASE` / `FLUSHALL` 禁令继续覆盖两层生产模块。这是有界静态检查
 加实际行为验收，不宣称文本扫描可以证明任意 JavaScript 安全。
 
 ## 授权与 journal 消费
@@ -50,6 +50,7 @@ run／完整性绑定，不是认证秘密，不能代替来源和执行批准�
 `packageRestore.ts` 导出的 `createControlledRecoveryTarget` 只接受上述 factory
 实际发出的能力对象。根 `restoreRecoveryPackage` 在读包前拒绝未发行的目标；直接
 调用底层 builder 也不能取得根入口能力。每个存储执行前重新核对包、授权、锁和身份。
+发行的目标是不可伪造的句柄，不公开授权或恢复方法；复制其字段不能复制内部准入能力。
 唯一权威是既有追加式 upgrade journal，记录开始、各存储提交、完成或未知结果；旧的
 可截断包状态文件已删除。重新创建 adapter 不会恢复 started／unknown attempt 的
 重试资格；reconcile 由父 controller 负责，不得清空或重置记录。
