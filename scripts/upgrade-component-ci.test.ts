@@ -28,6 +28,20 @@ it("requires the four actual controlled recovery adapter scenarios in an owned j
   });
 });
 
+it("requires the complete V13 effective-writer regression in its owned PG16 lane", () => {
+  const file = "server/modules/release-verification/gates/postgres/writerReachability.integration.test.ts";
+  expect(componentRunner.componentTestCommands("writer-reachability-pg16")[0].slice(1)).toEqual([
+    "run", "--config", "vitest.writer-reachability.config.ts", file,
+  ]);
+  const config = readFileSync(new URL("../vitest.writer-reachability.config.ts", import.meta.url), "utf8");
+  expect(config).toContain("assertOwnedUpgradeTestTarget();");
+  expect(config).toContain("passWithNoTests: false");
+  expect(config).toContain(`"${file}"`);
+  const server = readFileSync(new URL("../vitest.server.config.ts", import.meta.url), "utf8");
+  expect(server.slice(server.indexOf("exclude:"), server.indexOf("setupFiles:"))).toContain(`"${file}"`);
+  expect(workflow).toContain("--suite writer-reachability-pg16 --github-hosted");
+});
+
 it("never reports nested recovery cleanup as verified after child failure or forced termination", () => {
   expect(componentRunner.componentCleanupEvidence("recovery-three-store", 1, true)).toEqual({
     runnerResourcesCleanupVerified: true, cleanupVerified: false, nestedCleanupOutcome: "unknown",

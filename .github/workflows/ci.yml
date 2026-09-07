@@ -258,6 +258,8 @@ jobs:
           daemon_id="$(docker info --format '{{.ID}}')"
           npx tsx scripts/run-upgrade-component-tests.ts \
             --expected-daemon-id "$daemon_id" --suite reader-pg16 --github-hosted
+          npx tsx scripts/run-upgrade-component-tests.ts \
+            --expected-daemon-id "$daemon_id" --suite writer-reachability-pg16 --github-hosted
           node --import tsx scripts/run-upgrade-component-tests.ts \
             --expected-daemon-id "$daemon_id" --suite runtime-identity-pg16 --github-hosted
           npx tsx scripts/run-upgrade-component-tests.ts \
