@@ -16,7 +16,18 @@ their counts are not added. Build exited 0 with existing warnings, SHA256
 Boundary with unchanged trusted base `9b3ba7df7e21f5589684bc92c872da593ad4c246`
 passed 3509/3509 allowances, zero new/stale/growth. An initial invocation omitted
 the required base argument and exited 1 before scanning. Contract/selfhost exited
-0. This candidate has not yet run full scripts/backend/docs or Hosted.
+0. Report-only successor `e225a450e68c0cb867e0174d93940fcb6dca2902`
+(tree `51af229ae4f4036efcc30eb34ce217fb18dec990`) then ran full owned scripts:
+source-lock 4/4, main 1925 passed/11 skipped/0 failed (1936), exit 0;
+owned backend 4300/4300, zero failed/skipped, 89.03s; strict docs/schema exit 0
+with a real pgvector database and no database skip. All verified resource cleanup.
+The 11 script skips are handoff (1), runtime inspector (5), vendor DTS generator
+(5); they are not passes. Original scripts/backend/docs log SHA256 values are
+`357f5b00f1ca096c704749b815146d7d2bdaa6f653f0114a8967639b4013e448`,
+`27e785fadcd6ca3cbe28f20a0dd81f9ffd8609cf1b08b99ef597deae8062a1a1`,
+`bf5f32b3199b827362c05d6bbe0b377ee5d98a2df54f1782334fc91551d0fdd2`.
+These are new executions at the report SHA, not relabelled earlier runs. Hosted
+on this candidate is not yet run.
 
 The owned `controlled-recovery` route executed all four existing bootstrap and
 stopped-source package/target-refusal scenarios: 4/4, zero failed/skipped, 262.44s,
@@ -26,7 +37,7 @@ exit 0, nested and runner cleanup verified, private evidence retained. Log
 It used the local PG16 Alpine image listed below. This matrix does not itself
 prove actual BullMQ business consumption, complete controller upgrade, or a real
 backup copy. Exact mandatory routing and missing-receipt refusal replace opt-in;
-Lagrange Standards PASS, final Spec pending.
+Lagrange Standards and Raman Spec independently passed the routing increment.
 
 Bootstrap source `6ff7d984` has independent Standards/Spec PASS; its 232/232 run
 was same-byte pre-seal WIP, not a fixed-SHA PG execution. V13 source `d28546fad`

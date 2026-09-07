@@ -14,8 +14,17 @@ Build exit 0，保留原警告，日志SHA256
 `054ef17679960b73505a99231f63a5accfadc7be56d4267aa082f5b5119a7836`。
 Boundary使用原可信基线`9b3ba7df7e21f5589684bc92c872da593ad4c246`，
 3509/3509 allowance，零新增／stale／growth。首次命令漏传必需base参数，扫描前
-exit 1；修正命令后通过。Contract／selfhost exit 0。此候选尚未执行完整
-scripts／backend／docs或Hosted。
+exit 1；修正命令后通过。Contract／selfhost exit 0。仅报告变更的后继
+`e225a450e68c0cb867e0174d93940fcb6dca2902`（tree
+`51af229ae4f4036efcc30eb34ce217fb18dec990`）随后实际执行完整owned scripts：
+source-lock4/4，主体1925通过／11跳过／0失败（1936），exit 0；owned backend
+4300/4300，零失败／跳过，89.03s；严格docs/schema实际pgvector检查exit 0，
+没有数据库跳过，均完成资源清理。11个script跳过分别为handoff1、运行身份检查器5、
+vendor DTS生成器5，不算通过。Scripts／backend／docs原日志SHA256依次为
+`357f5b00f1ca096c704749b815146d7d2bdaa6f653f0114a8967639b4013e448`、
+`27e785fadcd6ca3cbe28f20a0dd81f9ffd8609cf1b08b99ef597deae8062a1a1`、
+`bf5f32b3199b827362c05d6bbe0b377ee5d98a2df54f1782334fc91551d0fdd2`。
+这些是报告SHA上的新执行，不是重标旧运行；该候选Hosted尚未运行。
 
 Owned `controlled-recovery`执行原有四个bootstrap及停源包／目标拒绝场景：
 4/4，零失败／跳过，262.44s，exit 0，内外层清理验证通过，私有证据保留。
@@ -23,7 +32,7 @@ Owned `controlled-recovery`执行原有四个bootstrap及停源包／目标拒�
 `e96878cad31b599bbc623f69dce00b1cdce6c6dfb696b1d5befb4fcf3f76dc85`。
 使用下方本地PG16 Alpine镜像。此矩阵自身不证明真实BullMQ业务消费、完整controller
 升级或真实备份副本。精确强制路由及缺receipt拒绝替代opt-in；Lagrange独立
-Standards PASS，最终Spec待完成。
+Standards及Raman独立Spec均已通过该路由增量。
 
 Bootstrap源`6ff7d984`独立Standards／Spec PASS；其232/232是同字节封前WIP，
 不是固定SHA的PG执行。V13源`d28546fad`双审通过，实际PG24/24在gate模块另记。
