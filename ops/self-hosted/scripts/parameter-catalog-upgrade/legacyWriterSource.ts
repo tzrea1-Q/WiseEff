@@ -97,7 +97,13 @@ export function observeLegacySourceEndpoint(input: {
     const nameservers = dns.filter(line => /^nameserver\s/.test(line));
     if (nameservers.join("\n") !== "nameserver 127.0.0.11") return refuse("resolver-nameserver", { nameserverLineCount: nameservers.length });
     const options = dns.filter(line => /^options\s/.test(line));
-    if (options.join("\n") !== "options ndots:0") {
+    const optionTokens = options[0]?.split(" ").slice(1) ?? [];
+    // Linux Docker can inherit edns0/trust-ad before adding ndots:0. They
+    // affect DNS protocol/AD-bit handling, not the server or search threshold.
+    // No AD bit is authority here: owned network/alias/port checks remain below.
+    if (options.length !== 1 || !options[0].startsWith("options ") || !optionTokens.includes("ndots:0") ||
+        new Set(optionTokens).size !== optionTokens.length ||
+        optionTokens.some(option => !["ndots:0", "edns0", "trust-ad"].includes(option))) {
       const optionKinds = options.flatMap(line => line.split(/\s+/).slice(1)).map((option): OptionKind =>
         option === "ndots:0" ? "ndots-zero" : option.startsWith("ndots:") ? "ndots-other" :
           option === "edns0" || option === "trust-ad" ? option : "other");

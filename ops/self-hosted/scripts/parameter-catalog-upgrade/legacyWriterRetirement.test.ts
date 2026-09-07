@@ -69,6 +69,39 @@ it("derives the source alias and published endpoint from the same observed owned
   expect(observeLegacySourceEndpoint(fixture.value)).toMatchObject({ networkId: "c".repeat(64), postgresId: "b".repeat(64),
     postgresAddress: "172.31.0.2", sourceHost: "postgres", managementPort: "15432" });
 });
+it("accepts the Linux Docker resolver protocol flags while retaining the same owned alias and published endpoint proof", () => {
+  const fixture = endpointFixture();
+  // Observed in Hosted run 34130699134, not an invented relaxed resolver.
+  fixture.resolver["resolv.conf"] = "nameserver 127.0.0.11\noptions edns0 trust-ad ndots:0\n";
+  expect(observeLegacySourceEndpoint(fixture.value)).toMatchObject({ postgresId: "b".repeat(64),
+    postgresAddress: "172.31.0.2", sourceHost: "postgres", managementPort: "15432" });
+});
+it.each(["ndots:0 edns0", "ndots:0 trust-ad", "ndots:0 trust-ad edns0", "trust-ad ndots:0 edns0", "edns0 ndots:0 trust-ad"])(
+  "treats only supported non-routing flags as order-independent: %s", options => {
+    const fixture = endpointFixture(); fixture.resolver["resolv.conf"] = `nameserver 127.0.0.11\noptions ${options}\n`;
+    expect(observeLegacySourceEndpoint(fixture.value)).toMatchObject({ postgresId: "b".repeat(64), sourceHost: "postgres" });
+  });
+it.each(["edns0 trust-ad", "edns0 trust-ad ndots:1", "edns0 trust-ad ndots:00",
+  "edns0 trust-ad ndots:0 ndots:0", "edns0 edns0 trust-ad ndots:0", "edns0 trust-ad trust-ad ndots:0",
+  "edns0 trust-ad ndots:0 rotate", "edns0 trust-ad ndots:0 no-tld-query", "edns0:1 trust-ad ndots:0",
+  "edns0 trust-ad:1 ndots:0", "edns0 trust-ad ndots:0\noptions ndots:0", `ndots:0 ${" ".repeat(256)}edns0`])(
+  "refuses missing, conflicting, duplicate or unsupported resolver options: %s", options => {
+    const fixture = endpointFixture(); fixture.resolver["resolv.conf"] = `nameserver 127.0.0.11\noptions ${options}\n`;
+    try { observeLegacySourceEndpoint(fixture.value); throw new Error("expected-refusal"); }
+    catch (error) { expect(error).toMatchObject({ stage: "resolver-options" }); }
+  });
+it.each(["source-alias", "published-port", "hosts-routing", "resolver-nameserver", "container-identity"])(
+  "never uses supported protocol flags as identity authority: %s", stage => {
+    const fixture = endpointFixture();
+    fixture.resolver["resolv.conf"] = "nameserver 127.0.0.11\noptions edns0 trust-ad ndots:0\n";
+    if (stage === "source-alias") fixture.value.sourceUrl = "postgres://synthetic:synthetic@other/db";
+    if (stage === "published-port") fixture.value.administrativeUrl = "postgres://synthetic:synthetic@127.0.0.1:25432/db";
+    if (stage === "hosts-routing") fixture.resolver.hosts += "172.31.0.99 postgres\n";
+    if (stage === "resolver-nameserver") fixture.resolver["resolv.conf"] = "nameserver 172.31.0.99\noptions edns0 trust-ad ndots:0\n";
+    if (stage === "container-identity") fixture.containers[1].Config.Labels["wiseeff.controlled-recovery-run"] = "f".repeat(24);
+    try { observeLegacySourceEndpoint(fixture.value); throw new Error("expected-refusal"); }
+    catch (error) { expect(error).toMatchObject({ stage }); }
+  });
 it.each(["wrong-source", "wrong-management", "custom-dns", "custom-hosts", "hosts-mount", "alias-conflict", "foreign-member", "network-drift", "foreign-owner",
   "actual-hosts", "hostname", "actual-resolver", "nss-order", "search-first"])(
   "refuses unproven source routing without opening a database: %s", fault => {

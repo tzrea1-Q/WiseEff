@@ -81,12 +81,32 @@ Endpoint refusal retains the static `SOURCE-ENDPOINT-UNPROVEN` error and adds
 an enumerated stage. Diagnostics expose only counts, tar exit status and a
 bounded set of option categories (`ndots-zero`, `ndots-other`, `edns0`, `trust-ad`,
 `other`), never resolver contents, Docker stderr, hostnames or credentials.
-These categories do not authorize additional resolver options. The real endpoint
+Diagnostic categories alone do not authorize additional resolver options. The real endpoint
 fixture requires a valid baseline before each adverse change and checks the
 specific refusal stage, so an unrelated early failure cannot count as the
 intended negative case. The Hosted failure at run 34125753813 had only the outer
-catch location; this diagnostic increment does not establish its platform cause
-or fix it, and does not change endpoint acceptance or timeout limits.
+catch location; that diagnostic increment did not establish its platform cause
+or fix it, and did not change endpoint acceptance or timeout limits.
+
+Run 34130699134 then located the Linux failure at `resolver-options`: one line
+contained the categories `edns0`, `trust-ad`, and `ndots-zero`. The parser now
+requires one options line with exactly one `ndots:0`, and permits only `edns0`
+and `trust-ad` alongside it, at most once each. Other options, duplicates, missing
+or nonzero ndots still refuse. Resolver contents remain bound by their digest;
+no file, DNS server, namespace, target identity or timeout is rewritten.
+
+This corrects the narrow string comparison, not the identity contract.
+[`resolv.conf(5)`](https://man7.org/linux/man-pages/man5/resolv.conf.5.html)
+defines `edns0` as protocol extensions and `trust-ad` as DNSSEC AD-bit handling;
+the latter is not a general trust guarantee. This observer does not consume AD
+bits or authorize a target through DNSSEC. Its proof remains the independently
+observed Docker ownership, single bridge, unique alias/address, exact published
+port and the caller's physical database observation. The
+[musl 1.2.5 parser](https://git.musl-libc.org/cgit/musl/plain/src/network/resolvconf.c?h=v1.2.5)
+consumes ndots, attempts and timeout from options, not these two flags. The
+existing `127.0.0.11`, `hosts: files dns`, host-file, container-state and resolver
+override checks remain mandatory. Synthetic archive tests cover the observed
+Linux token combination; they do not replace a new Hosted or real PG execution.
 
 The parent supervisor creates two owned PostgreSQL containers and psql-only
 probes with the same fixed PostgreSQL image, then supplies a private receipt.

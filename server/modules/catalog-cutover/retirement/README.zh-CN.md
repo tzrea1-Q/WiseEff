@@ -66,10 +66,27 @@ Docker tar 必须精确列出一个所请求名称的普通文件；链接、重
 endpoint 拒绝保留固定 `SOURCE-ENDPOINT-UNPROVEN` 错误，并增加枚举阶段。
 诊断只包含计数、tar 退出状态和有限选项分类（`ndots-zero`、`ndots-other`、
 `edns0`、`trust-ad`、`other`），不输出 resolver 原文、Docker stderr、主机名或
-凭据。这些分类不意味着允许额外 resolver 选项。真实 endpoint 夹具在每次故障
+凭据。诊断分类本身不意味着允许额外 resolver 选项。真实 endpoint 夹具在每次故障
 修改前先要求正常基线成立，再核对精确拒绝阶段，避免无关的早期失败被记为
-预期负例。Hosted run 34125753813 的失败只记录了外层 catch 位置；本次诊断增量
-不代表已确定或修复平台根因，也不改变 endpoint 接受条件或 timeout 上限。
+预期负例。Hosted run 34125753813 的失败只记录了外层 catch 位置；当时诊断增量
+并未确定或修复平台根因，也未改变 endpoint 接受条件或 timeout 上限。
+
+随后 run 34130699134 将 Linux 失败定位到 `resolver-options`：同一行包含
+`edns0`、`trust-ad`、`ndots-zero`。解析器现在要求恰好一行 options、一个
+`ndots:0`，并且只允许附带各至多一次的 `edns0` 和 `trust-ad`。其他选项、重复项、
+缺失或非零 ndots 仍拒绝。resolver 原文仍由摘要固定，不改写任何文件、DNS 服务、
+命名空间、目标身份或 timeout。
+
+这是修复过窄的字符串比较，不改变身份合同。
+[`resolv.conf(5)`](https://man7.org/linux/man-pages/man5/resolv.conf.5.html)
+将 `edns0` 定义为协议扩展，将 `trust-ad` 定义为 DNSSEC AD 位处理；后者不是
+通用信任保证。本观察器不读取 AD 位，也不以 DNSSEC 结果授权目标；证明仍来自
+独立观察的 Docker ownership、单 bridge、唯一 alias／地址、精确发布端口，以及
+调用者的物理数据库观察。
+[musl 1.2.5 解析器](https://git.musl-libc.org/cgit/musl/plain/src/network/resolvconf.c?h=v1.2.5)
+从 options 读取 ndots、attempts、timeout，不读取这两个标志。原有 `127.0.0.11`、
+`hosts: files dns`、hosts 文件、容器状态及 resolver 覆盖检查仍全部强制执行。
+合成归档测试覆盖实测 Linux token 组合，不代替新的 Hosted 或真实 PG 执行。
 
 endpoint 拓扑由父监督器创建两台自有 PostgreSQL 容器及使用同一固定 PostgreSQL
 镜像的 psql 探针，再通过私有 receipt 交给测试子进程。子进程不创建资源，不能
