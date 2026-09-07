@@ -9,7 +9,7 @@ The existing authentication baseline includes relation ACLs. A later, legitimate
 seven-table SQL fence therefore makes the original authentication-only inspection
 return unknown. The 19 SQL component cases do not prove that combined lifecycle.
 
-The repair must consume the original persisted authentication/root intent and
+The repair consumes the original persisted authentication/root intent and
 the exact subsequent SQL intent/applied pair, matching run, attempt, physical
 target, P12 binding, root request and recovery package. The root must also verify
 the actual host pending/applied digests. The existing SQL inspector must prove
@@ -20,13 +20,13 @@ checksum-only authorization is admitted. Every other observed metadata field
 retains its original equality check. Existing custody transport remains private,
 uses only the original version's new secret, and exports no privileged client.
 
-The permanent Red must actually rotate credentials, revoke grants and invoke
+The permanent Red actually rotates credentials, revokes grants and invokes
 inspection in a separate process using the retained custody. Wrong run/target,
 missing or mismatched host steps, extra ACL changes and changed non-ACL metadata
 must remain unknown. Inspection must not rotate, revoke, issue P13 completed or
 silently promote uncertain host writes. A storage-only P12 fixture remains
-explicitly unapproved. Before implementation this is a threat proposal, not a
-successful combined execution.
+explicitly unapproved. These component observations cannot authorize a complete
+root retirement or startup.
 
 The first actual Red at `0c1c3cc33` collected 28: 27 passed and the final
 independent-process successor assertion failed with unknown (9.98 seconds,
@@ -48,8 +48,8 @@ column ACLs continue to be checked by the SQL owner's complete before/after
 inventory rather than changing that format. Root dispatch passes its original
 issued host lock and journal selection; the facade reads actual host steps.
 Extra grants, new relations and missing/wrong host selection have permanent
-real-IO counterexamples. Candidate Green and independent final reviews remain
-pending; the original SQL 19-case result does not cover this new inspection.
+real-IO counterexamples. The original SQL 19-case result alone does not cover
+this new inspection; the fixed combined evidence is recorded below.
 
 Review exposed two additional real failures at `5c46be585`: copied generic host
 SQL steps without the original capture/credential chain were accepted, and a
@@ -77,6 +77,40 @@ the root's `backup.digest`; earlier synthetic prefixed values hid this mismatch.
 This freezes the exact original metadata baseline, not every management
 precondition: sessions/locks, replication state, runtime settings and HBA files
 remain separately observed facts, not an atomic full-writer/P13 inventory.
+
+Fixed `62090c07edca2f07c2ace373bfd9ccc0dab2da80`, tree
+`acd8054df6267409c0b7be6392da49297f6f300c`, passed the unchanged owned suites
+serially: bootstrap **30/30**, 13.62 seconds, and original SQL privilege
+**19/19**, 104.45 seconds. Both exited 0 with exact owned cleanup verified,
+using Node 22.22.3 and the existing PG16 Linux/arm64 profile. The bootstrap
+suite preserves all 28 previous cases and adds two separately budgeted cases
+sharing the original prepared state; no timeout increases. Root dispatch has
+114 passing pure/real-FS cases at `c4941132c`, with SQL/report/Docker substitutes;
+this is not a whole-root PostgreSQL test. Fixed `62090c07e` targeted types exit 0;
+the unchanged trusted-base boundary reports 3509 existing allowances, zero new,
+stale or growing allowances. This fragment did not run a full build or Hosted.
+
+The final independent-process path uses the retained new-secret custody, actual
+SQL REVOKE, formal current SQL inspection and storage-linked P12. Its typed
+capture/credential host records are component fixtures, not a real recovery
+package or approved report. Extra ACL/new-relation drift stays unknown. Copied
+host steps are rejected. The actual last boundary's table/column GRANT, CREATE
+FUNCTION and ALTER ROLE SET all get 55P03, and succeed after the lock is released.
+The role-setting canary was a separate real Red at `e3d90ee80` (29/30, exit 1,
+cleanup verified); `c4941132c`'s earlier 30/30 plus 19/19 does not cover it.
+Earlier `5e5b947a4` 28/28 and the two subsequent review failures remain historical.
+
+Logs (SHA256):
+
+- `/tmp/pr824-successor-role-setting-green.log`:
+  `0ddcaf82326bd902384ecfb8aba6d7569eab0008585f28f2f4a339f382851579`.
+- `/tmp/pr824-successor-620-sql-green.log`:
+  `cbeabbb904c55bc0d7b3afa5988daa06b0b42af39c7f56f270f913f689e9bd20`.
+- `/tmp/pr824-successor-role-setting-red.log`:
+  `231778e3f551dc687266aea36b4a34661becc8e7fa3eda1efcb39cddfd0297ea`.
+
+Independent Spec reviewed the complete fixed source without a remaining P1/P2.
+Standards is independently owned; review outcomes do not change any run's SHA.
 
 Exclusive paths are the existing bootstrap credential module/owned integration
 test and fixture, SQL fence module/test where needed for its own inspection,

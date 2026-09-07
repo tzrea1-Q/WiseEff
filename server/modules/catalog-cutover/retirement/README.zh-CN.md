@@ -8,7 +8,7 @@
 ACL，因此后续合法的七表 SQL 撤权会令原认证专用 inspection 返回 unknown。
 已有19项 SQL 组件测试没有证明这个组合生命周期。
 
-修复必须消费原持久认证/root intent，以及精确的后继 SQL intent/applied 对，
+修复消费原持久认证/root intent，以及精确的后继 SQL intent/applied 对，
 逐项匹配 run、attempt、物理 target、P12 binding、root request 和恢复包。
 根还须核验实际宿主 pending/applied 摘要。原正式 SQL inspector 必须在真实锁
 内证明当前效果成立；仅该已核验后继的精确关系/列 ACL delta 可用于重建原
@@ -16,11 +16,11 @@ ACL，因此后续合法的七表 SQL 撤权会令原认证专用 inspection 返
 自洽授信。其它实测元数据字段继续严格等于原值。既有 custody transport 保持
 私有，仅使用原 version 的新秘密，不导出高权 client。
 
-永久 Red 必须真实轮换凭据、撤销授权，再由独立进程使用保留 custody 执行
+永久 Red 真实轮换凭据、撤销授权，再由独立进程使用保留 custody 执行
 inspection。错 run/target、缺失或不符的宿主步骤、额外 ACL 变化、非 ACL
 元数据变化仍须 unknown。Inspection 不重复轮换/撤权，不发行 P13 completed，
-不静默提升不确定的宿主写入。仅 storage 的 P12 夹具仍明确未批准。实现前
-本节只是威胁提案，不是组合执行成功证据。
+不静默提升不确定的宿主写入。仅 storage 的 P12 夹具仍明确未批准，这些
+组件观察不能授权完整根退役或启动。
 
 首次实际 Red `0c1c3cc33` 收集28项：27过，最后独立进程后继检查因unknown
 失败；9.98秒、exit1、清理通过。此前原4个transport模式、真实七表SQL效果及
@@ -35,7 +35,7 @@ backend、target、事务以及七表/十一张catalog锁，不接受declared-he
 原有界认证结果。原baseline格式没有column ACL字段；列ACL继续由SQL owner
 完整前后库存核验，不改变原格式。根传原issued宿主锁和journal选择，facade
 实读宿主步骤。额外grant、新relation、缺失/错宿主选择有永久真实I/O反例。
-候选Green及最终独立双审仍待完成，原SQL19项结果不覆盖此新inspection。
+原SQL19项结果本身不覆盖此新inspection；最终固定组合的证据另列如下。
 
 审查新增的真实反例在 `5c46be585` 得到28过/2失败：只有复制的宿主SQL步骤、
 缺原capture/credential关联仍被接受；最终边界回调的GRANT逃过已释放的锁。
@@ -55,6 +55,35 @@ request/version/digest、cutover run和plan，之后才是SQL步骤。两个owne
 现有根`backup.digest`接受裸64位hex包摘要；此前合成带前缀值掩盖了该接线错误。
 这只冻结原元数据基线，不是所有管理前置条件：session/lock、replication状态、
 运行设置和HBA文件仍分别观察，不能称原子冻结的完整writer/P13库存。
+
+固定 `62090c07edca2f07c2ace373bfd9ccc0dab2da80`、tree
+`acd8054df6267409c0b7be6392da49297f6f300c` 串行执行既有owned入口：
+bootstrap **30/30**、13.62秒，原SQL权限 **19/19**、104.45秒；两者exit0，
+精确owned清理均已验证，使用Node22.22.3及原PG16 Linux/arm64 profile。
+bootstrap保留原28例，新增两例共享原真实准备状态，各自沿用原预算，不增加timeout。
+根派发114个纯逻辑/真实FS用例在`c4941132c`通过，SQL/report/Docker仍为替身，
+不是完整根PG正向。固定`62090c07e` targeted types退出0；原trusted-base边界
+3509个既有允许、零new/stale/growth。本分片没有运行完整build或Hosted。
+
+最终独立进程路径使用原新secret custody、实际SQL REVOKE、正式SQL现状inspection
+及storage-linked P12。typed capture/credential宿主记录属于组件夹具，不是真实
+恢复包或获批报告。额外ACL、新relation仍unknown，复制的宿主SQL步骤拒绝；
+最后实际边界中的表/列GRANT、CREATE FUNCTION和ALTER ROLE SET均得到55P03，
+释放后实际执行成功。role-setting反例在`e3d90ee80`另有真实Red（29/30、exit1、
+清理已验）；此前`c4941132c`的30/30+19/19不覆盖它。更早`5e5b947a4`的28/28
+及之后两次审查反例失败均保留原身份。
+
+日志及SHA256：
+
+- `/tmp/pr824-successor-role-setting-green.log`：
+  `0ddcaf82326bd902384ecfb8aba6d7569eab0008585f28f2f4a339f382851579`。
+- `/tmp/pr824-successor-620-sql-green.log`：
+  `cbeabbb904c55bc0d7b3afa5988daa06b0b42af39c7f56f270f913f689e9bd20`。
+- `/tmp/pr824-successor-role-setting-red.log`：
+  `231778e3f551dc687266aea36b4a34661becc8e7fa3eda1efcb39cddfd0297ea`。
+
+独立Spec对完整固定源码复审无剩余P1/P2；Standards由另一审查者独立负责。
+审查结论不会改变任何执行的SHA身份。
 
 唯一写入范围为原 bootstrap credential 模块、owned integration test 与夹具，
 必要的 SQL fence 自身 inspection 模块/测试，原退休根/测试及本双语 README。
