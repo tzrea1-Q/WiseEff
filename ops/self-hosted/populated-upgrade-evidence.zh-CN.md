@@ -4,7 +4,128 @@
 
 ## 已授权契约实现检查点，2026-09-07
 
-### 当前集成失败与分别验证的增量
+### 至 4394ec9cb 的后续集成
+
+后续最后代码为 `3ce597e21496b98b7fc3e0e575396abef46d6ce0`，tree
+`6dd110761274923a946a9aca41ec95cdfeb98dfc`。相对 4394 仅在 opt-in 恢复测试夹具
+增加 8 行真实 TCP 就绪探测，每次关闭连接；原四场景、每例 180 秒和迁移仅执行一次均不变。
+不将 4394 全量执行重标到此提交。源 `25414128c9de400749257dc3e2298668359e9654`
+当前锁四例尝试 **0 通过／4 失败**，45.42s，均在 capture／approval 前失败：
+initdb 临时 socket ready 早于认证数据库实际 TCP endpoint。自有资源清理确认。
+失败日志 SHA256：`f36c08c3979cf58d662341ee0f238711b23961e66ef40469a41b4f0d7a712cb3`。
+修正源为 `949110778aa2d9b0f0ca72ef380c05a0434a25cb`。
+
+该干净源（tree `7051a8fd896d439339b88848b0af6c7c2d7e2c3e`）于 15:44:09 执行
+四个真实 Docker 场景：**4 通过、0 失败／跳过**，534.25s，退出 0。每例均低于原
+180 秒（97.957／151.282／138.602／146.131s）。自有容器、网络及卷执行后确认不存在。
+日志 SHA256：`f94726621fbfcc46d8b4817679309e1e39bbefdc1ebc1a5a0fab3702601663ae`。
+storage 全目录、capture／approval／authority／journal／handoff、Docker guard 的
+blob 与父 `3ce597e21` 相同；其他四文件不同（report-target 服务、其双语 README、
+disposable-runtime 测试）。这是组件源码对照，不声称该 run 执行了父 checkout。
+实际测试覆盖采集、真实认证批准、源及认证端停止、独立恢复、owner／ACL、对象内容／
+metadata、Redis AOF，以及两组六类非空目标拒绝时 journal 字节不变、无 started。
+writer 占位服务和形似 Bull 的键仍不证明完整应用停写或实际业务队列消费者恢复。
+
+父 `3ce597e21` 的自有 `schema-doc` 退出 0、清理确认；重新生成 pgvector 标准
+schema 后 Git 无差异，文档治理检查也退出 0。这是实际隔离生成及比较，不把无库
+`docs:check` 跳过解释为验证了迁移。schema 日志 SHA256：
+`4575bc715ea031ca98d04223f4fccb3ff0d0c30fc9fa3f69c8f3f68939895a41`。
+
+全文交付包保留经独立审查的 old／new 合同文件。每个指纹为排序后的 path、mode、
+Git blob、文件 SHA256 记录清单的 canonical JSON SHA256；旧不存在文件显式记录 null。
+这是限定交付指纹，不重置任何冻结 trusted base。包内 manifest 列出每组精确八个文件。
+
+| 合同范围 | 旧 `f00f94435` | 新合同 blob（至 `3ce597e21`） |
+| --- | --- | --- |
+| reader | `9960d9bf66d09e955bd98b2ae431fb09d3f266b21ab419711df6dd2acbc403d7` | `cf87073abc4367f4debfac2037dadbd8fb17ea15e75e39bde7f1a501f3154df3` |
+| 恢复 | `d84482d977522e743a2757c3797010f9428050c8344fac9e2a88470eec11cf89` | `92ae6cfc5307583f242fe1e4260a8d786530ec501c65b5a079fb2bb955b63199` |
+
+Standards、Spec 分别对 4394 已授权分片复核，无 P1／P2；后续 TCP 夹具修订也通过
+独立审查。以上均不批准完整 startup／controller 集成，也不覆盖失败的测试结果。
+
+后续代码 `4394ec9cbfd50c6ab55dd5572db8647d15edbf62`，tree
+`8266327238c9af164f026067ad4c4811768adfa3`，修复了两项新的 scripts 集成问题：
+controller 消费正式公开报告批准服务（T6 不变），disposable-runtime 单测补齐严格
+Pool mock。原 `1708e99c8` 批次 **1614 通过、2 失败、25 跳过，另 1 收集失败**，退出 1。
+修复后完整 `scripts-pgvector` 于 15:30:19 收集 1656：**1630 通过、1 失败、25 跳过**；
+120 文件通过／1 失败／1 跳过，99.06s，退出 1，自有资源清理确认。唯一失败仍为冻结
+source-lock 的 60000ms lineage 超时，不改写历史 Hosted 的 S11-RP 失败归因。
+未放宽 timeout、断言、trusted base 或 allowance。日志 SHA256：
+`1fccb66c6500e5097082d116f7e148ced5a3bbeaf30cc986e4a850a2f676aa66`。
+
+同一代码仅有六个报告／操作／计划 Markdown 文件未提交时，`npm run build`
+退出 0（Vite 10.38s，保留原有警告）。15:35:10 的真实 `authority-pg16`
+**81/81 通过**，0 失败／跳过，36.69s，退出 0，自有资源清理确认；本次也验证了
+新的公开报告服务组合。boundary 再次 **3509 匹配**，0 未登记／stale／mismatch／growth；
+contract、selfhost 均退出 0。build 日志 SHA256：
+`db03392c3dba6bcaef5e512ecb1d00b75e01c9fece3e477a4831709012ec094b`；
+authority 日志：`a051d6b4895c8d31c1575e968d818575ea82e2c901b36f70c6d7bd57ad944c03`。
+
+修正后的实际恢复 suite 在源 `b8378f9f4a09375c23b53093baadcb819c838599`
+（集成 `21362c9d0`／`d1c60c16c`）于 15:10:05 **4/4 通过**，0 跳过，540.64s。
+使用实际 Docker capture、独立受限 PostgreSQL 认证和正式批准 producer；随后关闭源
+及认证服务，由只接收包／journal／私有目标的子进程恢复。两种 bootstrap 均验证
+owner／ACL、对象内容／metadata 和 Redis AOF，两组六类非空目标均拒绝。自有资源
+已清理，四个保留的私有证据 marker 均为 accepted。这是真实合成三存储恢复，
+不是用户真实备份、完整旧应用 controller 或 Bull 消费者验收。日志 SHA256：
+`70ebd6bcd2c1a791dede24aa58dd3b1c2d64acb6573af06261c24b2ced650b8f`。
+
+后续 `aec10a5a5def311c35616396c016906f8ddf92b9` 要求执行器使用 journal 精确
+canonical 私有父目录的原始签发锁。假回调／错误目录 Red **26 通过／2 失败**；
+祖先别名 Red **1 失败／7 过滤**。最终 focused **79 通过／1 个 opt-in Docker 跳过**，
+TypeScript 退出 0，独立 Standards／Spec 通过。一次中间测试修订有变量遮蔽错误
+（15 失败／64 通过／1 跳过），已修复，不将其作为功能结果。`4394ec9cb` 对六类
+非空拒绝增加真实 journal 字节不变／无 started 检查。旧 4/4 仍绑定 b837；
+当前锁实现的实际恢复单独执行。
+
+开发 base 仍为 `cda6737a8f177a8bbd2f3bc7d195f8e3037bfa74`。
+代码 `1708e99c80c29efa9cc31c1d128ace69b387d929`，tree
+`1f68cbd0167d0fd98cd1878ae501a0cf2e6f8d92`；部署源仍为 82344044。
+远端 PR 独立复核为 `f00f94435d128ff8706ffadedabbee507f79781b`，Draft／Open／未合并。
+本检查点这些本地增量尚无新 Hosted 执行。
+
+未获批 P12 schema 已通过 `68304f9bf`、`d4640da40` 和集成 `0edeb24fc` 从可执行候选
+明确撤出，全文保留在 `codex/pr824-p12-contract-scratch` 的
+`9b7af682cfa33cf60a9d27851dd5518bebf7b171`。生成器恢复为 0140、138 张表；
+实现与其 lane 一并分离，没有保留功能而删除必需测试，没有放宽 S2 manifest 或断言。
+
+| 实际执行身份 | 范围及精确结果 |
+| --- | --- |
+| 干净 `69f1a713128ce8a6614b220bddde591d0b1a213b`，tree `c3efe44e9827d0aefaabaf5c76422f80076eb3b5`，14:42:04 UTC+8 | 完整 `server-pgvector` 收集 4172，**4161 通过、0 失败、11 跳过**；518 文件通过、1 跳过；252.68s，退出 0，自有资源清理确认。11 个 opt-in runtime 用例不计本批通过。 |
+| `0edeb24fc` 加 reader 测试 WIP，随后同 base 加实现 WIP | 真实 PG16 reader Red **46 通过／3 失败**，Green **49/49**，无跳过；提交为 `cb82fcb0a`，保留正式 Kernel 查询。 |
+| 源 `09b8f1a4fb6a88b4c5d52429950bd2b822f42db9`，集成 `69f1a7131` | 真实报告读取 PG **36/36**；恢复旧 blob 配最终 canary 的 Red **34 通过／2 失败**。不是通过的 startup 报告。 |
+| 源 `7c200e602af0be47c9ea0c16a95bfeb94912f0a6`，集成 `7aa08586f` | 真实 authority／report-target PG **63/63**；重验认证、私有 assignment、物理 lease；包含 missing-report 拒绝，不是成功的报告批准。 |
+| 源 `371486626afa85526c4b199f38e7733cbbefec3c`，集成 `0d87cbf20` | 真实 authority PG **81/81**，含 18 个新增恢复批准场景；36.60s，退出 0、清理确认。真实受限认证及 capture／journal／approval 代码；存储字节与源边界仍明确为组件合成。 |
+| `b2c77efa4`、后续 `35770b7e1` 提交前 WIP | typed journal Red **27 通过／11 失败**；初始 journal／consumer Green **64/64**。旧批准／pending capture Red **37 通过／2 失败**；最终三 selector **101/101**，退出 0。四 selector 未提供 PG 的尝试有 106 通过／7 跳过及 setup 失败，不是 PG 证据。 |
+| 干净 `1708e99c8` | boundary **3509 匹配、0 未登记／stale／mismatch／growth**，退出 0，trusted base 未变。一次遗漏必需 base 参数的调用仅为 usage 失败，不算扫描。contract、selfhost 均退出 0。 |
+| 干净 `1708e99c8`，15:02:12 UTC+8 | 最新四个 Docker 恢复场景 **0 通过／4 失败**，99.76s，退出 1。证据 marker 使包目录非空，新 capture guard 在原活动写入者断言前拒绝；这是候选夹具组合失败，不是恢复成功。 |
+
+0140 仍是未封存的新追加迁移；本次提交前能力审计新增拒绝 PUBLIC 危险 builtin 与无
+可信来源的系统 schema definer。SHA256 为
+`9fd18152c0dd25037a2b0b5acb706c95897c8f24bfb7b709cb17ff4312db3aee`。
+0138 保持 `a575205695852b11a536c7d41293f87634242b3c8d98f2345b3599e144aca8c5`；
+0139 保持 `36fdd85de86ab09309dd6531594feca16a5bce00b343fa858ac04f4cdbf49f31`。
+不得为此前 Scratch 数据库修改历史 ledger 来绕过 checksum 漂移。
+
+typed 恢复批准持久保存 principal／assignment／trace，重算精确引用，并拒绝仅哈希或
+已被替代的授权。`recordRecoveryExecutionApproval` 在写入前消费正式签发 authority
+和真实宿主锁，不执行恢复或批准流量。普通 TypeScript 构建现已显式覆盖三个管理批准模块；
+此前漏覆盖暴露的 7 个类型收窄错误已修复，未改变拒绝策略。限定 Standards／Spec 审查通过。
+合法生产模式 API／worker 启动、完整 P12／P13／controller、全消费者语义、真实业务队列恢复、
+浏览器和增长证据仍未完成；reader SELECT 与持久批准不能代替它们。
+
+独立审查的退休 Scratch 为 `cb385e347d8a0fe2fcec057be4876e40fa9bf6e1`，保留在
+`codex/pr824-retirement-contract-scratch`，仍依赖分离的 P12 原型。最新提交前代码真实 PG
+**10/10**、纯测 **24/24**；共享锁 Red **9/1**、checkout listener Red **20/4**。
+首次 Green 有一个跨库准备超时；将自有夹具准备放到 beforeAll，未改 timeout 或断言。
+这只证明 LOGIN fencing，不是 P13；旧高权 bootstrap LOGIN 退休仍不支持、未验证。
+
+原始日志 SHA256：完整 server `e50aa9f75c8dacf9912fd77510b607fc5509a3eccec15a4f7fade3ccd116264d`；
+authority 81 `bd3065114dbb06c5363d97cd011cf5d6385856ad09a133f373285bcb9fd67687`；
+最新 journal selectors `708a0e373e794d7cdb4d1f3d9b3ca43228ec25e5b7a1c32b717a6d06061d0603`；
+失败四例恢复 `c835f760da778b03bbff1d9a6b0ecde2cd3b63dd8937b32870c9d47576c3df6f`。
+
+### 较早的集成失败与分别验证的增量
 
 `c120f92da`／`cf4813652` 的 P12 原型通过 0141 增加三张管理表。
 focused PG16 通过不能授权修改冻结 S2 schema 合同。完整 server 在

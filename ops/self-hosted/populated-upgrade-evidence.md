@@ -4,7 +4,157 @@
 
 ## Authorized contract implementation checkpoint, 2026-09-07
 
-### Current integration failures and separately verified increments
+### Subsequent integration through 4394ec9cb
+
+The last subsequent code is `3ce597e21496b98b7fc3e0e575396abef46d6ce0`, tree
+`6dd110761274923a946a9aca41ec95cdfeb98dfc`. Its only change after 4394 is an
+eight-line actual TCP readiness probe in the opt-in recovery test fixture, with
+each connection closed. The original four cases, 180-second case timeout and
+single migration attempt are unchanged. This does not relabel the 4394 full suite.
+At source `25414128c9de400749257dc3e2298668359e9654`, the current-lock four-case
+attempt failed **0 passed/4 failed**, 45.42s, before capture/approval: the temporary
+initdb socket was ready before the authentication database's actual TCP endpoint.
+Owned cleanup passed. Failure log SHA256
+`f36c08c3979cf58d662341ee0f238711b23961e66ef40469a41b4f0d7a712cb3`.
+The corrected source is `949110778aa2d9b0f0ca72ef380c05a0434a25cb`.
+
+That clean source (tree `7051a8fd896d439339b88848b0af6c7c2d7e2c3e`) ran all four
+actual Docker cases at 15:44:09: **4 passed, 0 failed/skipped**, 534.25s, exit 0.
+Each case remained below the original 180-second limit (97.957/151.282/138.602/
+146.131s). Owned containers, networks and volumes were verified absent afterwards.
+Log SHA256 `f94726621fbfcc46d8b4817679309e1e39bbefdc1ebc1a5a0fab3702601663ae`.
+The full storage tree, capture/approval/authority/journal/handoff and Docker guard
+blobs match parent `3ce597e21`; four other files differ (report-target service,
+its two README files and the disposable-runtime test). This is a component source
+comparison, not a claim that the parent checkout was executed by that run.
+The actual test exercises capture, authenticated approval, source/auth shutdown,
+independent restore, owner/ACL, object bytes/metadata and Redis AOF, plus both
+nonempty-target matrices with unchanged journal bytes and no started event.
+Writer placeholders and Bull-shaped keys still do not prove full application
+writer isolation or actual business queue consumer recovery.
+
+Owned `schema-doc` at parent `3ce597e21` exited 0, cleanup verified; regenerating
+the pgvector-canonical schema produced no Git difference. The documentation
+governance checker also exited 0. This is explicit owned generation plus comparison,
+not a claim that a no-database `docs:check` skip verified migrations. Schema log
+SHA256 `4575bc715ea031ca98d04223f4fccb3ff0d0c30fc9fa3f69c8f3f68939895a41`.
+
+The independently reviewed contract scopes retain full old/new files in the
+delivery archive. Each fingerprint is SHA256 of a sorted canonical JSON list of
+path, mode, Git blob and file SHA256; absent old files remain explicit nulls.
+These are scoped delivery fingerprints, not a reset of any frozen trusted base.
+The archive manifest lists the exact eight files in each scope.
+
+| Contract scope | Old `f00f94435` | New contract blobs through `3ce597e21` |
+| --- | --- | --- |
+| Reader | `9960d9bf66d09e955bd98b2ae431fb09d3f266b21ab419711df6dd2acbc403d7` | `cf87073abc4367f4debfac2037dadbd8fb17ea15e75e39bde7f1a501f3154df3` |
+| Recovery | `d84482d977522e743a2757c3797010f9428050c8344fac9e2a88470eec11cf89` | `92ae6cfc5307583f242fe1e4260a8d786530ec501c65b5a079fb2bb955b63199` |
+
+Independent Standards and Spec each found no P1/P2 in the authorized slices at
+4394; the subsequent TCP-fixture change also passed separate review. Neither
+review approves complete startup/controller integration or overrides test failures.
+
+Follow-up code `4394ec9cbfd50c6ab55dd5572db8647d15edbf62`, tree
+`8266327238c9af164f026067ad4c4811768adfa3`, fixes the two subsequent scripts
+integration failures: the controller now consumes the formal public report
+approval service (unchanged T6), and the disposable-runtime unit declares a
+strict Pool mock. The old `1708e99c8` batch had **1614 passed, 2 failed,
+25 skipped plus one collection failure**, exit 1. After repairs, complete
+`scripts-pgvector` at 15:30:19 collected 1656: **1630 passed, 1 failed,
+25 skipped**, 120 files passed/1 failed/1 skipped, 99.06s, exit 1; owned cleanup
+verified. Only the frozen source-lock 60000ms lineage timeout remains. This
+does not rewrite the historical Hosted S11-RP failure. No timeout, assertion,
+trusted base or allowance was relaxed. Log SHA256:
+`1fccb66c6500e5097082d116f7e148ced5a3bbeaf30cc986e4a850a2f676aa66`.
+
+On that same code with only the six report/operator/plan Markdown files dirty,
+`npm run build` exited 0 (Vite 10.38s, existing warnings). The real
+`authority-pg16` suite at 15:35:10 passed **81/81**, 0 failed/skipped, 36.69s,
+exit 0, owned cleanup verified; this also exercises the new public report-service
+composition. Boundary again matched **3509**, with zero unallowlisted, stale,
+mismatch or growth; contract and selfhost checks exited 0. Build log SHA256
+`db03392c3dba6bcaef5e512ecb1d00b75e01c9fece3e477a4831709012ec094b`;
+authority log `a051d6b4895c8d31c1575e968d818575ea82e2c901b36f70c6d7bd57ad944c03`.
+
+The corrected actual recovery suite at source `b8378f9f4a09375c23b53093baadcb819c838599`
+(integrated `21362c9d0`/`d1c60c16c`) passed **4/4**, 0 skipped, 540.64s at
+15:10:05. It uses actual Docker capture, independent restricted PostgreSQL
+authentication, the real approval producer, then stops source and authentication
+services before a package/journal/private-target-only restore subprocess.
+Both bootstrap profiles preserve owner/ACL, object bytes/metadata and Redis AOF;
+both six-case nonempty-target matrices reject. Resources were removed and all
+four retained private evidence markers say accepted. This is real synthetic
+three-storage recovery, not a real backup, full old application controller or
+Bull consumer acceptance. Log SHA256:
+`70ebd6bcd2c1a791dede24aa58dd3b1c2d64acb6573af06261c24b2ced650b8f`.
+
+`aec10a5a5def311c35616396c016906f8ddf92b9` subsequently tightens execution to
+the original issued lock of the journal's exact canonical private parent.
+Forged callback/wrong-root Red was **26 passed/2 failed**; ancestor-alias Red
+was **1 failed/7 filtered**. Final focused execution was **79 passed/1 opt-in
+Docker skipped**, TypeScript exit 0, independent Standards/Spec passed. One
+intermediate test revision had a local variable shadowing error (15 failed/64
+passed/1 skipped); it is not a behavior result and was repaired. `4394ec9cb`
+adds real journal-byte/no-start checks to each nonempty-target refusal. The
+earlier 4/4 remains tied to b837; current-lock actual restore is separately run.
+
+Development base is still `cda6737a8f177a8bbd2f3bc7d195f8e3037bfa74`.
+Code `1708e99c80c29efa9cc31c1d128ace69b387d929` has tree
+`1f68cbd0167d0fd98cd1878ae501a0cf2e6f8d92`. Source deployment identity remains
+82344044, not this checkout. Remote PR head was independently rechecked as
+`f00f94435d128ff8706ffadedabbee507f79781b`, Draft/open/unmerged; these local
+increments had not yet run on Hosted at this checkpoint.
+
+The unapproved P12 schema is now explicitly reverted from this executable
+candidate (`68304f9bf`, `d4640da40`, integration `0edeb24fc`). Full source is
+preserved on `codex/pr824-p12-contract-scratch` at `9b7af682cfa33cf60a9d27851dd5518bebf7b171`.
+The generator again records 138 tables through 0140. This removes prototype
+implementation together with its lane, without deleting a required test while
+retaining the feature. S2 manifests and their assertions were not weakened.
+
+| Actual execution identity | Scope and exact result |
+| --- | --- |
+| Clean `69f1a713128ce8a6614b220bddde591d0b1a213b`, tree `c3efe44e9827d0aefaabaf5c76422f80076eb3b5`, 14:42:04 UTC+8 | Full `server-pgvector`: 4172 collected, **4161 passed, 0 failed, 11 skipped**, 518 files passed/1 skipped; 252.68s; exit 0, owned cleanup verified. The 11 opt-in runtime connection cases are not passes in this batch. |
+| `0edeb24fc` plus reader test WIP, then same base plus reader implementation WIP | Actual PG16 reader Red **46 passed/3 failed**, Green **49/49**, no skips; committed as `cb82fcb0a`. Formal Kernel queries retained. |
+| Source `09b8f1a4fb6a88b4c5d52429950bd2b822f42db9`, integrated `69f1a7131` | Actual report-reader PG **36/36**; restored old blob with final canaries Red **34 passed/2 failed**. Not a passed startup report. |
+| Source `7c200e602af0be47c9ea0c16a95bfeb94912f0a6`, integrated `7aa08586f` | Actual authority/report-target PG **63/63**: reauthentication, private assignment and physical lease checks; missing-report rejection, not a successful report approval. |
+| Source `371486626afa85526c4b199f38e7733cbbefec3c`, integrated `0d87cbf20` | Actual authority PG **81/81**, including 18 new recovery-approval cases; 36.60s, exit 0, cleanup verified. Real restricted authentication and actual capture/journal/approval code; store bytes and source boundary remain explicitly synthetic components. |
+| `b2c77efa4`, then `35770b7e1` precommit WIP | Typed journal Red **27 passed/11 failed**; initial journal/consumer Green **64/64**. Latest-approval/pending-capture Red **37 passed/2 failed**; final three selectors **101/101**, exit 0. A four-selector attempt without PG had 106 passed/7 skipped and a setup failure; it is not PG evidence. |
+| Clean `1708e99c8` | Boundary **3509 matched, 0 unallowlisted/stale/mismatch/growth**, exit 0, same trusted base. An earlier invocation omitted the required base argument and failed usage; it was not a scan. Contract and selfhost checks exit 0. |
+| Clean `1708e99c8`, 15:02:12 UTC+8 | Latest four Docker recovery cases **0 passed/4 failed**, 99.76s, exit 1. The evidence marker made the package directory nonempty, so the new capture guard refused before the unchanged active-writer assertion. This is a candidate fixture integration failure, not a successful restore. |
+
+0140 remains the new unsealed additive migration; its pre-seal effective-capability
+audit now rejects PUBLIC dangerous builtins and unproven system-schema definers.
+Its SHA256 is `9fd18152c0dd25037a2b0b5acb706c95897c8f24bfb7b709cb17ff4312db3aee`.
+0138 remains `a575205695852b11a536c7d41293f87634242b3c8d98f2345b3599e144aca8c5`;
+0139 remains `36fdd85de86ab09309dd6531594feca16a5bce00b343fa858ac04f4cdbf49f31`.
+No historical ledger repair is allowed for earlier Scratch installations.
+
+The typed recovery approval now preserves principal/assignment/trace provenance,
+recomputes its exact reference, and rejects hash-only or superseded authorization.
+`recordRecoveryExecutionApproval` consumes the real issued authority and host
+lock before appending; it never restores or authorizes traffic. Ordinary TypeScript
+build coverage now explicitly includes all three approval management modules;
+this exposed seven previously unexamined narrowing errors, repaired without
+changing refusal policy. Independent Standards/Spec accepted these bounded changes.
+Legal production API/worker startup, complete P12/P13/controller execution,
+full consumer semantics, real business queue recovery, browser and growth evidence
+remain unfinished; neither reader SELECT nor persisted approval substitutes for them.
+
+The separately reviewed retirement Scratch is `cb385e347d8a0fe2fcec057be4876e40fa9bf6e1`
+on `codex/pr824-retirement-contract-scratch`, dependent on the separated P12 prototype.
+Its latest precommit code passed real PG **10/10** and pure **24/24** after SharedLock
+Red **9/1** and checkout-listener Red **20/4**. A first Green attempt had one
+cross-database setup timeout; moving owned fixture preparation to beforeAll
+preserved the original timeout and assertions. This is LOGIN fencing, not P13;
+retiring the old privileged bootstrap LOGIN is still unsupported and unverified.
+
+Selected original log SHA256 values: full server `e50aa9f75c8dacf9912fd77510b607fc5509a3eccec15a4f7fade3ccd116264d`;
+authority 81 `bd3065114dbb06c5363d97cd011cf5d6385856ad09a133f373285bcb9fd67687`;
+latest journal selectors `708a0e373e794d7cdb4d1f3d9b3ca43228ec25e5b7a1c32b717a6d06061d0603`;
+failed four-case restore `c835f760da778b03bbff1d9a6b0ecde2cd3b63dd8937b32870c9d47576c3df6f`.
+
+### Earlier integration failures and separately verified increments
 
 The P12 prototype in `c120f92da`/`cf4813652` adds three management tables through
 0141. Its focused PG16 tests do **not** authorize changing frozen S2 schema

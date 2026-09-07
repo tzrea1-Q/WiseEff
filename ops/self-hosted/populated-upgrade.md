@@ -58,7 +58,7 @@ npm run test:scripts -- scripts/reconcile-upgrade-cli.test.ts ops/self-hosted/sc
 npm run test:scripts -- ops/self-hosted/scripts/build-network-trust.test.ts
 ```
 
-Each test command must exit 0 with nonzero collection; setup failure or skip does not satisfy its real boundary. The source regression creates the old schema from 126 original migrations and applies the 11-file candidate suffix; its few synthetic values/history rows are a narrow oracle, not full consumer-family semantics or the real data copy.
+Each test command must exit 0 with nonzero collection; setup failure or skip does not satisfy its real boundary. The source regression creates the old schema from 126 original migrations and applies the exact current candidate suffix (12 files, 0129–0140); its few synthetic values/history rows are a narrow oracle, not full consumer-family semantics or the real data copy. Earlier 11-file executions retain their historical scope.
 
 ### Reproducible Binding component tests
 
@@ -254,9 +254,12 @@ No destructive production recovery command is supplied: the required target-boun
 The parent and assigned implementation agents own the unfinished release,
 runtime, recovery and acceptance integrations. P12/P13 unavailability, terminal
 composition, full consumer coverage and browser/capacity are internal gaps.
-External decisions are limited to the frozen source-lock change, the separate
-0140 capability proposal and #815 authoritative Policy relation or explicitly
-accepted unavailable contract. External environment inputs are an authorized
+External decisions are limited to bounded frozen source-lock performance work,
+the P12 three-table S2 schema contract, S6 Binding/Value business reading capability
+and #815 authoritative Policy relation or explicitly accepted unavailable contract.
+0140 Kernel reader and the independent recovery execution layer are already
+authorized; neither decision is pending. Report approval now uses the formal
+public report service. External environment inputs are an authorized
 recoverable backup and enterprise CA/network build access; production operation
 and release approvals remain separate. These do not move all remaining work to
 OP-09 or authorize an incomplete synthetic upgrade.

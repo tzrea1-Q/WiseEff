@@ -53,7 +53,19 @@ startup and populated controller acceptance.
 
 ### Current integration ownership
 
-Parent next owns typed recovery capture events in the existing journal and its
+Parent integrated capture and typed approval persistence through `35770b7e1`;
+recovery owns the real authority/approval producer integrated as `0d87cbf20`.
+That owner connected actual authenticated approval to the real four-case Docker
+restore suite at `b8378f9f4`; the latest issued-lock increment is being reverified.
+Parent owns remaining CI composition repairs,
+report-only evidence and delivery; activation supplies independent Spec review.
+The reader and report capability audits passed their dedicated real-login lanes.
+Root production startup still lacks a true current-state producer and actual
+P12/P13 lineage. P12 schema and S6 business capability decisions remain separate;
+management lease challenges can proceed without a new runtime system grant.
+No completed component changes the production stop boundary.
+
+Parent owns typed recovery capture events in the existing journal and its
 capture bridge. The real capture return, not caller JSON, supplies source/package
 digests. A durable pending attempt precedes capture; missing/unknown journal
 outcomes retain the package and block retry. Old hash-only events remain
@@ -79,7 +91,7 @@ is absent with its implementation, not skipped to claim acceptance. After a
 bounded schema decision, restore the prototype and its lane together, verify the
 historical and current schema separately, and repeat affected acceptance.
 
-The parent will add an opt-in per-checkout observation hook so the management
+The parent added an opt-in per-checkout observation hook in `9d55cde19` so the management
 owner's target challenge covers the actual session used by Kernel. A before/after
 probe on another pooled connection is insufficient. The hook receives only the
 checked-out query session, precedes its first caller statement/BEGIN, and covers
@@ -146,14 +158,14 @@ phase-aware handoff, runtime/public state producers, and complete
 business/browser/capacity acceptance. These independent code tasks do not require
 a production backup. The full root milestone remains incomplete.
 
-Three decisions remain separate: a frozen source-lock performance amendment for
-M1; the separate 0140 proposal's two new governance EXECUTE grants; and #815
-authoritative Policy counting versus an explicitly approved unavailable contract.
-None is assumed. Implementing P12/P13 within the existing ownership is still the
-parent's internal work; an unavailable constant alone is not an external decision.
-The runtime proposal is backed up separately, not installed by this candidate.
-No PR, Hosted or production action is claimed. The terminal guide supplies tested
-component/inspection commands, not an invented full-upgrade command.
+The old governance EXECUTE proposal was not authorized and is not part of 0140.
+Current separate decisions concern the frozen source-lock preparation cost,
+P12's three management tables and S2 contracts, S6 Binding/Value business reads,
+and #815 authoritative counting versus an explicitly approved unavailable contract.
+None is assumed. Remaining P12/P13/controller implementation is still owned by
+the parent; an unavailable constant alone is not an external decision. The P12
+prototype is preserved separately. PR #824 is Draft; the terminal guide supplies
+tested component/inspection commands, not an invented full-upgrade command.
 
 ## Ownership and dependencies
 
@@ -243,14 +255,15 @@ approval; initialization failures leak pools or private diagnostics. Independent
 Spec review confirmed the namespace and worker cleanup seams. Production missing
 DATABASE_URL already fails in env validation; it is not a new defect.
 
-Actual process success requires a real P12/P13/current-pin producer and authorized
-Catalog read capability. Neither exists in the current integration. `0139` report
-reader privileges do not grant Catalog reads; `0138` explicitly denies production
-Catalog SELECT. Do not grant synchronizer membership or manufacture a passed
-report. Continue independent initialization fixes; proposed capability and restore
-ownership changes require explicit decisions. No scans, grants or timeouts are
-relaxed. Documentation impact: this plan pair and existing operator/evidence pair.
-The Draft remains partial; no production operations are authorized.
+Actual process success still requires a real P12/P13/current-pin producer. The
+authorized 0140 Kernel reader is now implemented and tested, separately from
+0139 report reads; historical 0138 negatives remain. Reader and recovery-layer
+decisions are settled within their approved scopes. They do not grant S6 business
+reads or approve the separate P12 schema. Do not grant synchronizer membership or
+manufacture a passed report. Continue independent initialization and controller
+work without relaxing scans, grants or timeouts. Documentation impact: this plan
+pair and existing operator/evidence pair. The Draft remains partial; no production
+operations are authorized.
 
 | Threat | Required observation / evidence owner |
 | --- | --- |

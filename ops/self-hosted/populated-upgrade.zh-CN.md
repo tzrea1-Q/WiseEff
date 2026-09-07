@@ -54,7 +54,7 @@ npm run test:scripts -- scripts/reconcile-upgrade-cli.test.ts ops/self-hosted/sc
 npm run test:scripts -- ops/self-hosted/scripts/build-network-trust.test.ts
 ```
 
-预期：非零用例收集、退出 0。setup失败或skip不能算真实边界通过。源回归用原版126份迁移建 schema，应用候选11份后缀；少量合成值／历史是有界 oracle，不是全量消费方语义，也不是用户真实数据副本。
+预期：非零用例收集、退出 0。setup失败或skip不能算真实边界通过。源回归用原版126份迁移建 schema，应用当前候选精确后缀（12份，0129–0140）；少量合成值／历史是有界 oracle，不是全量消费方语义，也不是用户真实数据副本。较早11份后缀的执行保留其历史范围。
 
 ### 可重复的 Binding 组件测试
 
@@ -220,6 +220,8 @@ PG16 Alpine 默认数据库编码、locale/provider 和设置；不支持的属�
 
 父与已分配的实现智能体负责剩余发布、运行、恢复和验收接线；P12/P13 unavailable、
 终端组合根、完整消费方覆盖及浏览器／容量均是内部缺口。外部决策仅限冻结
-source-lock 变更、单独的 0140 能力提案和 #815 权威 Policy 关联或明确批准的
-unavailable 契约。外部环境输入是授权的可恢复备份、企业 CA／网络构建访问；生产
+source-lock 有界性能修订、P12 新增三表的 S2 schema 合同、S6 Binding／Value 业务
+读取能力，以及 #815 权威 Policy 关联或明确批准的
+unavailable 契约。0140 Kernel reader 与独立恢复执行层已获明确授权，不再等待这两项
+决定；报告批准也已通过正式公开服务接线。外部环境输入是授权的可恢复备份、企业 CA／网络构建访问；生产
 操作及发布批准另列。这些条件不把所有剩余工作推给 OP-09，也不批准未完成的合成升级。

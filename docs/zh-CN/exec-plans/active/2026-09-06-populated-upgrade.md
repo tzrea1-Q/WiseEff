@@ -80,7 +80,15 @@ P2真实停写、阶段化resume、P12/P13 producer归属、退休后完整报�
 
 ### 当前集成所有权
 
-父协调者接下来拥有既有 journal 的 typed recovery capture 事件及采集桥接。
+父已集成 capture 及 typed 批准持久化至 `35770b7e1`；恢复负责人实现的真实
+authority／approval producer 已集成为 `0d87cbf20`，`b8378f9f4` 已将真实认证批准接入
+四例实际 Docker 恢复；现复验后续签发锁增量。父负责剩余 CI 组合修复、报告证据与交付；activation 提供
+独立 Spec 审查。reader 和报告读取能力审计已通过各自真实受限登录通道。
+生产根入口仍缺真实 current-state producer 及实际 P12／P13 lineage。
+P12 schema、S6 业务能力决策分别保留；管理 lease challenge 可在不新增运行身份
+系统权限的前提下继续实现。任何组件完成均不改变生产停止边界。
+
+父协调者拥有既有 journal 的 typed recovery capture 事件及采集桥接。
 source/package 摘要来自真实 capture 返回，不接收调用者 JSON；采集前持久化
 pending attempt，未知 journal 结果保留包并禁止重试。旧 hash-only 事件可检查，
 但不能提升为可信 producer 记录。每步核验由模块签发、精确配置根目录的实际
@@ -125,11 +133,12 @@ producer／import组件50/50、最终兼容／门禁63/63及build通过证据；
 journal adapter／reconciliation、分阶段handoff、runtime／public状态生成链、
 完整业务／浏览器／容量仍由父协调者承担，缺真实备份不阻止这些独立开发。
 
-三个决策独立保留：M1冻结source-lock测试的性能修订；独立0140提案新增的两项
-governance EXECUTE；#815权威Policy引用计数或明确批准的unavailable契约。
-没有默认批准。在既有 ownership 内实现 P12/P13 仍是父负责的内部工作，不能把
-unavailable 常量本身当作外部决策。运行权限提案单独备份，未安装到本候选。
-没有PR、Hosted或生产执行；手册提供已测试组件／检查命令，不编造根升级／生产命令。
+旧 governance EXECUTE 提案未获批准，不属于 0140。本轮独立决定涉及冻结
+source-lock 准备成本、P12 三个管理表及 S2 合同、S6 Binding／Value 业务读取，
+以及 #815 权威计数或明确批准的 unavailable 契约，均不默认批准。
+其余 P12/P13/controller 实现仍由父负责，不能把 unavailable 常量本身当作外部
+决策。P12 原型单独保留；PR #824 为 Draft。手册提供已测试组件／检查命令，
+不编造根升级／生产命令。
 
 ## 文件所有权与依赖
 
@@ -184,12 +193,12 @@ producer、既定 ownership 内的 P12/P13、完整新报告链、运行启动�
 或私有诊断。独立 Spec 已确认 namespace 与 worker 清理边界。
 生产缺少 DATABASE_URL 已由 env 校验拒绝，不重新包装为新缺陷。
 
-真实进程正向仍需 P12/P13/current-pin 的真实 producer 及获准 Catalog 读取能力。
-当前集成都未具备。`0139` 报告只读权限不含 Catalog 读取，`0138` 明确以生产
-Catalog SELECT 拒绝为负向合同。不得授予 synchronizer 或制造 passed 报告。
-继续不依赖这些决定的初始化修复；能力及恢复执行归属变更需明确决定。
-不放宽扫描、grant 或 timeout。文档影响为本计划及已有操作／证据双语文件。
-Draft 仍是部分交付，本轮不授权生产操作。
+真实进程正向仍需 P12/P13/current-pin 的真实 producer。已获批的 0140 Kernel
+reader 已实现并验证，与 0139 报告读取分离；历史 0138 负测保留。reader 与恢复
+执行分层两项已在批准范围内落实，不再等待相同决定，也不授予 S6 业务读取或
+批准独立 P12 schema。不得授予 synchronizer 或制造 passed 报告。继续初始化及
+controller 独立工作，不放宽扫描、grant 或 timeout。文档影响为本计划及已有
+操作／证据双语文件。Draft 仍是部分交付，本轮不授权生产操作。
 
 | 威胁 | 必需观察／责任 |
 | --- | --- |
