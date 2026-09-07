@@ -9,9 +9,12 @@
 Continuation `c3f5a4909` integrates the independently reviewed actual runtime
 LOGIN source and its schema-array fix. Source test commit `a550e8a7f` passed
 13/13 real PG authentication, backend-loss and cleanup cases; this is not
-application startup. Its parent route/source selector passed 32/32. The next
-SQL privilege effect is integrated at `e41dd4e82` for review and real PG
-execution; its root/route selector passed 147/147, not a database effect proof.
+application startup. Its parent route/source selector passed 32/32. The SQL
+privilege effect is integrated at `64d478f37`. Its fixed source `2a9b22e2b`
+passed 19/19 real PG cases and independent Standards/Spec review; the earlier
+root/route selector passed 147/147, not a database effect proof. At `64d478f37`,
+full scripts passed source-lock 4/4 then 1940 passed/11 skipped; backend passed
+4300/4300, both exit 0 with verified owned cleanup.
 The application artifact producer is separately building an actual fixed-source
 Compose image. Neither increment has current Hosted or full startup evidence.
 
@@ -29,6 +32,7 @@ candidate has not run Hosted. Delivered `cf494324c` separately completed CI
 | Adapter mandatory route / parent | Neither generic exclusion nor opt-in may omit all four tests; failed child cleanup remains unknown | Existing operator/evidence pair |
 | Runtime role source / Fermat, parent integration | Original configuration FD, actual restricted LOGIN and physical target proof; no new grants | Existing runtime source and evidence pairs |
 | SQL privilege effect / Raman; parent owns runner/CI | Seven-table ACL CAS, current readback and unknown outcome; no P13 completion claim | Existing retirement pair and mandatory owned route |
+| Authentication/SQL successor inspection / Raman, separate Scratch | A legitimate REVOKE changes the original authentication ACL baseline; recognize only the formally verified exact successor, never a caller override | Existing retirement/custody pairs; independent review and actual child-process readback |
 | Application artifact / Lagrange; sole upgrade-lib writer | Actual fixed source/build trust and OCI bytes; Docker image ID is not assumed to be config or manifest digest | Artifact contract and existing decision pair |
 
 Full P13 effects and its immutable generation producer, StartupTarget and real

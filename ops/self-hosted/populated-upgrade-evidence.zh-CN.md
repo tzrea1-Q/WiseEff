@@ -4,6 +4,24 @@
 
 ## 集成候选，2026-09-08
 
+SQL集成 `64d478f37875e43aea468fa3ff2f7902a3ac7bae`，tree
+`addec035553353cde8eab0fed19e79e34287d933`，完整owned scripts：source-lock
+4/4、36.94s；随后1940通过／11跳过／0失败（1951）、85.79s。Owned backend
+4300/4300、零失败／跳过、97.31s；两者均exit 0，资源清理验证通过。日志SHA256依次为
+`de356585385f98f9f457a15c0c11951a2f69833dd7457419e854f61c9a377819`
+与 `88233681b848909f657ce2f179517154aeebfce0c9485f6af9bfd5c7fdd3c3d4`。
+11个跳过仍是下文列明的handoff／运行检查器／vendor DTS用例，不是Hosted或完整controller验收。
+
+SQL源 `2a9b22e2b28e9254f7635e56e7feb897b40bdb99`，tree
+`11018998b52e927564b64e8fbc506ee815e98759`，独立真实PG执行19/19、104.13s、
+零失败／跳过、exit 0且清理验证通过，日志SHA256为
+`fb454b14d7ea1f34ec0729978d411dde41a3bc00ef6de19231a32d508887a58b`。
+独立Standards／Spec及父路由的单独审查通过。
+[Retirement合同](../../server/modules/catalog-cutover/retirement/README.zh-CN.md)保留三项
+真实修复前反例、更早trigger夹具失败，以及关闭并发窗口的精确集群级锁范围。
+此结果证明SQL权限步骤；独立认证检查还需识别合法SQL后继，同时保留原metadata基线。
+该单独根集成正在Scratch中推进。
+
 运行来源集成 `c3f5a49092b761ad2b6806ad515849ff4ece1878`，tree
 `2841d3d3ebfa756f508c585cc97cb8b390f32d67`，路由／来源selector 32/32、零失败／跳过，
 exit 0；日志SHA256为

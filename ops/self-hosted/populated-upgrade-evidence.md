@@ -4,6 +4,28 @@
 
 ## Integrated candidate, 2026-09-08
 
+SQL integration `64d478f37875e43aea468fa3ff2f7902a3ac7bae`, tree
+`addec035553353cde8eab0fed19e79e34287d933`, ran full owned scripts: source-lock
+4/4 in 36.94s, then 1940 passed/11 skipped/0 failed (1951) in 85.79s. Owned
+backend passed 4300/4300, zero failures/skips, in 97.31s. Both exited 0 with
+verified resource cleanup. Log SHA256 values are
+`de356585385f98f9f457a15c0c11951a2f69833dd7457419e854f61c9a377819`
+and `88233681b848909f657ce2f179517154aeebfce0c9485f6af9bfd5c7fdd3c3d4`.
+The 11 skips remain the same handoff/runtime-inspector/vendor-DTS cases listed
+below. This is not Hosted or complete controller acceptance.
+
+The SQL source `2a9b22e2b28e9254f7635e56e7feb897b40bdb99`, tree
+`11018998b52e927564b64e8fbc506ee815e98759`, independently ran 19/19 real PG cases,
+104.13s, zero failed/skipped, exit 0 and cleanup verified. Log SHA256:
+`fb454b14d7ea1f34ec0729978d411dde41a3bc00ef6de19231a32d508887a58b`.
+Independent Standards/Spec and separate parent routing reviews passed. The
+[retirement contract](../../server/modules/catalog-cutover/retirement/README.md)
+retains the three actual pre-fix failures, the earlier trigger-fixture failures,
+and the exact cluster-level locks used to close the observed race windows.
+This establishes a SQL permission step; standalone authentication inspection
+still needs to recognize the legitimate SQL successor without weakening its
+original metadata baseline. That separate integration is in Scratch.
+
 Runtime-source integration `c3f5a49092b761ad2b6806ad515849ff4ece1878`, tree
 `2841d3d3ebfa756f508c585cc97cb8b390f32d67`, passed its route/source selector
 32/32, zero failed/skipped, exit 0. Log SHA256:
