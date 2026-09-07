@@ -37,6 +37,7 @@ candidate has not run Hosted. Delivered `cf494324c` separately completed CI
 | SQL privilege effect / Raman; parent owns runner/CI | Seven-table ACL CAS, current readback and unknown outcome; no P13 completion claim | Existing retirement pair and mandatory owned route |
 | Authentication/SQL successor inspection / Raman, separate Scratch | A legitimate REVOKE changes the original authentication ACL baseline; recognize only the formally verified exact successor, never a caller override | Existing retirement/custody pairs; independent review and actual child-process readback |
 | Application artifact / Lagrange; sole upgrade-lib writer | Actual fixed source/build trust and OCI bytes; Docker image ID is not assumed to be config or manifest digest | Artifact contract and existing decision pair |
+| Artifact terminal dispatch / parent; sole upgrade.sh writer | Explicit prepare/inspect; existing run-bound journal and real host lock; reject ambiguous arguments before build, no implicit journal creation or stack apply | Existing operator/evidence pair and artifact custody contract |
 
 Full P13 effects and its immutable generation producer, StartupTarget and real
 API/worker positive startup remain internal implementation work. A, B and C are

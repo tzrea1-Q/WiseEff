@@ -29,6 +29,7 @@ local non-HDC与target synthetic两个Job跳过。
 | SQL权限效果／Raman，父拥有runner／CI | 七表ACL CAS、当前读回和未知结果；不声称P13完成 | 现有retirement双语文件及强制owned路由 |
 | 认证／SQL后继联合检查／Raman，独立Scratch | 合法REVOKE改变原认证ACL基线；仅认可正式核验的精确后继，禁止caller覆盖基线 | 现有retirement／custody双语文件；独立审查与真实子进程读回 |
 | 应用artifact／Lagrange，独占upgrade-lib | 固定源、真实构建信任及OCI字节；不假定Docker image ID是config或manifest摘要 | Artifact合同及现有决策双语文件 |
+| Artifact终端接线／父，独占upgrade.sh | 显式prepare／inspect；已有run journal及真实宿主锁；构建前拒绝歧义参数，不隐式建journal或转stack apply | 现有操作／证据双语文件与artifact custody合同 |
 
 完整P13效果与不可变generation producer、StartupTarget及真实API／worker正向
 启动仍是内部实现工作。A、B、C均未完成；不新增schema／能力或生产操作授权。
