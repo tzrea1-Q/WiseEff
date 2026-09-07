@@ -683,8 +683,20 @@ export const openUpgradeJournal = (input: {
   readonly journalPath: string;
   readonly runId: string;
   readonly now?: () => Date;
+  /** Explicit preparation may create only a new run, never adopt/reset one. */
+  readonly requireNew?: boolean;
 }): ControllerResult<UpgradeJournal> => {
+  const alreadyPresent = () => {
+    try { lstatSync(input.journalPath); return true; }
+    catch (error) { if ((error as NodeJS.ErrnoException).code === "ENOENT") return false; throw error; }
+  };
+  if (input.requireNew) {
+    try {
+      if (alreadyPresent()) return failClosed("PCAT-UPG-ILLEGAL-ACTION", "new journal requires an unused path");
+    } catch { return failClosed("PCAT-UPG-ILLEGAL-ACTION", "new journal path is unavailable"); }
+  }
   if (existsSync(input.journalPath)) {
+    if (input.requireNew) return failClosed("PCAT-UPG-ILLEGAL-ACTION", "new journal requires an unused path");
     return loadUpgradeJournal(input);
   }
   const runId = requireRunId(input.runId);
@@ -695,6 +707,7 @@ export const openUpgradeJournal = (input: {
   const record = idleRecord(runId.value, now);
   try {
     return withJournalWriteLock(input.journalPath, () => {
+      if (input.requireNew && alreadyPresent()) return failClosed("PCAT-UPG-ILLEGAL-ACTION", "new journal requires an unused path");
       if (existsSync(input.journalPath)) return loadUpgradeJournal(input);
       persist(input.journalPath, record);
       return { ok: true, value: wrap(input.journalPath, record) };

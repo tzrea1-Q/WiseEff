@@ -39,6 +39,16 @@ describe("S11-UPG journal", () => {
     expect(readFileSync(journalPath)).toEqual(original);
     expect(openUpgradeJournal({ journalPath, runId: "new-artifact" }).ok).toBe(true);
   });
+  it("new-run creation preserves a dangling path or an unknown writer outcome", () => {
+    const journalPath = tempJournal();
+    symlinkSync(`${journalPath}.missing`, journalPath);
+    expect(openUpgradeJournal({ journalPath, runId: "new-artifact", requireNew: true }).ok).toBe(false);
+    const unknown = tempJournal();
+    writeFileSync(`${unknown}.write-lock`, "retained-unknown-outcome", { mode: 0o600 });
+    expect(openUpgradeJournal({ journalPath: unknown, runId: "new-artifact", requireNew: true }).ok).toBe(false);
+    expect(readFileSync(`${unknown}.write-lock`, "utf8")).toBe("retained-unknown-outcome");
+    expect(existsSync(unknown)).toBe(false);
+  });
   it.each(["valid", "orphan-step", "cross-host", "cross-run", "cross-target", "capture-digest", "package", "extra-secret",
     "wrong-hash", "wrong-attempt", "wrong-version", "unknown-promotion", "replay", "state-change"])("keeps bootstrap retirement evidence scoped without issuing P13: %s", fault => {
     const opened = openUpgradeJournal({ journalPath: tempJournal(), runId: "retirement-host" });
