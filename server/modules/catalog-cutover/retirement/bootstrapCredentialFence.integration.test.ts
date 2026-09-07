@@ -610,6 +610,7 @@ async function exerciseCustodyTransport() {
       `grant update on public.${pg.escapeIdentifier(LEGACY_STRUCTURAL_TABLES[1])} to ${writerRole}`,
       `grant update(specification_key) on public.${pg.escapeIdentifier(LEGACY_STRUCTURAL_TABLES[1])} to ${writerRole}`,
       `create function public.successor_metadata_${nonce}() returns integer language sql as 'select 1'`,
+      `alter role ${pg.escapeIdentifier(expectedRootBinding.roleName)} set application_name='successor-setting'`,
     ];
     const observed = await inspectInIndependentProcess(successorInput, custodyTransportInspectionChild, mode === "final-boundary" ? async () => {
       // A real second management session, opened only in this boundary window
@@ -640,6 +641,7 @@ async function exerciseCustodyTransport() {
         } finally {
           await fresh.query(`revoke update,update(specification_key) on public.${pg.escapeIdentifier(LEGACY_STRUCTURAL_TABLES[1])} from ${writerRole}`);
           await fresh.query(`drop function if exists public.successor_metadata_${nonce}()`);
+          await fresh.query(`alter role ${pg.escapeIdentifier(expectedRootBinding.roleName)} reset application_name`);
         }
       });
       return;
