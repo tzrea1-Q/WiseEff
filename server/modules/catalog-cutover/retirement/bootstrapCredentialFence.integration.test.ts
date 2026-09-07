@@ -11,7 +11,7 @@ import { assertOwnedUpgradeTestTarget } from "../../../../scripts/upgrade-test-t
 import { createPostgresDatabase } from "../../../shared/database/client";
 import { applyMigrations } from "../../../shared/database/migrations";
 import { readBindingDatabaseIdentity, type BindingDatabaseIdentity } from "../../parameter-bindings/cutoverImport/sourceBoundary";
-import { applyBootstrapCredentialFence, inspectBootstrapCredentialFence, prepareBootstrapCredentialCustody } from "./bootstrapCredentialFence";
+import { applyBootstrapCredentialFence, inspectBootstrapCredentialFence, prepareBootstrapCredentialCustody, reopenBootstrapCredentialCustody } from "./bootstrapCredentialFence";
 import { acquireObservedManagementClient } from "./managementCheckout";
 
 // Exclusive parent-owned PG cluster only. These tests authenticate actual
@@ -301,7 +301,70 @@ try {
   catch { process.exitCode = 25; }
 }`;
 
-it.each([1, 2] as const)("reconciles the original version after actual commit %s acknowledgment loss and process exit", async ordinal => {
+const bootstrapInspectionChild = `
+import { readFile } from 'node:fs/promises';
+import path from 'node:path';
+import pg from 'pg';
+import { reopenBootstrapCredentialCustody, inspectBootstrapCredentialFence } from './server/modules/catalog-cutover/retirement/bootstrapCredentialFence.ts';
+import { acquireObservedManagementClient } from './server/modules/catalog-cutover/retirement/managementCheckout.ts';
+let pool, client, custody, result;
+try {
+  const input = JSON.parse(await readFile(process.argv[1], 'utf8'));
+  custody = await reopenBootstrapCredentialCustody(input.custody);
+  if (input.credentialFile !== 'old' && input.credentialFile !== 'new') throw new Error('invalid-selection');
+  const password = await readFile(path.join(input.custody.directory, input.custody.receipt.version + '.' + input.credentialFile), 'utf8');
+  pool = new pg.Pool({ ...input.database, password, max: 1, connectionTimeoutMillis: 2000, query_timeout: 5000 });
+  pool.on('error', () => {});
+  client = await acquireObservedManagementClient(pool, () => {});
+  await client.query("select pg_advisory_lock(hashtext('s7-orc-cutover-target'),hashtext(current_database()))");
+  result = await inspectBootstrapCredentialFence({ client, target: input.target, runId: input.runId, attemptId: input.attemptId, custody });
+} catch {
+  process.exitCode = 30;
+  process.stderr.write('bootstrap-independent-inspection-refused\\n');
+} finally {
+  try { client?.release(true); } catch { process.exitCode = 31; }
+  const closed = await Promise.allSettled([pool?.end(), custody?.close()]);
+  if (closed.some(item => item.status === 'rejected')) process.exitCode = 31;
+}
+if (!process.exitCode && result) process.stdout.write(JSON.stringify(result) + '\\n');
+`;
+
+async function inspectInIndependentProcess(inputPath: string): Promise<{ outcome: string; intentDigest?: string }> {
+  // Fixed imports and code, inherited supervisor group, no credential argv/env.
+  const child = spawn(process.execPath, ["--import", "tsx", "--input-type=module", "-e", bootstrapInspectionChild, inputPath],
+    { cwd: process.cwd(), env: { PATH: process.env.PATH, HOME: process.env.HOME }, stdio: ["ignore", "pipe", "pipe"] });
+  let stdout = "", stderr = "", failed = false, timer: ReturnType<typeof setTimeout> | undefined;
+  child.on("error", () => { failed = true; });
+  const closed = new Promise<{ code: number | null; signal: NodeJS.Signals | null }>(resolve => {
+    child.once("close", (code, signal) => resolve({ code, signal }));
+  });
+  child.stdout.on("data", chunk => {
+    stdout = (stdout + chunk.toString()).slice(0, 4097);
+    if (stdout.length > 4096) { failed = true; child.kill("SIGKILL"); }
+  });
+  child.stderr.on("data", chunk => {
+    stderr = (stderr + chunk.toString()).slice(0, 4097);
+    if (stderr.length > 4096) { failed = true; child.kill("SIGKILL"); }
+  });
+  try {
+    const exited = await Promise.race([closed, new Promise<never>((_resolve, reject) => {
+      timer = setTimeout(() => reject(new Error("bootstrap-independent-inspection-timeout")), 1500);
+    })]);
+    if (failed || exited.code !== 0 || exited.signal || stderr.length) throw new Error("bootstrap-independent-inspection-failed");
+    let result: { outcome?: unknown; intentDigest?: unknown };
+    try { result = JSON.parse(stdout); } catch { throw new Error("bootstrap-independent-inspection-result-invalid"); }
+    if (!result || typeof result !== "object" || Array.isArray(result) ||
+        Object.keys(result).some(key => key !== "outcome" && key !== "intentDigest") ||
+        !["not-applied", "authentication-fenced-not-P13", "unknown"].includes(String(result.outcome)) ||
+        (result.intentDigest !== undefined && (typeof result.intentDigest !== "string" || !/^sha256:[a-f0-9]{64}$/.test(result.intentDigest))))
+      throw new Error("bootstrap-independent-inspection-result-invalid");
+    return result as { outcome: string; intentDigest?: string };
+  } finally {
+    clearTimeout(timer); child.kill("SIGKILL"); await closed;
+  }
+}
+
+async function exerciseCommitFault(ordinal: 1 | 2, independentInspection: boolean) {
   await closeInitialManager();
   const nonce = randomBytes(8).toString("hex"), runId = `fault-${nonce}`, attemptId = `attempt-${nonce}`;
   const before = await withFreshManager(async client => {
@@ -310,7 +373,7 @@ it.each([1, 2] as const)("reconciles the original version after actual commit %s
       values($1,$2,$3,$4,'component-pg16',$5,'P0','planned')`, [runId, nonce, "a".repeat(40), nonce, nonce]);
     return (await client.query("select to_jsonb(r) as value from pg_roles r where oid=10")).rows[0];
   });
-  const custody = await prepareBootstrapCredentialCustody({ directory, custodianUid: process.getuid!(), oldSecret: decodeURIComponent(privateUrl.password) });
+  let custody = await prepareBootstrapCredentialCustody({ directory, custodianUid: process.getuid!(), oldSecret: decodeURIComponent(privateUrl.password) });
   const proxy = await commitFaultProxy(ordinal).catch(async () => {
     await custody.close(); throw new Error("bootstrap-fault-proxy-unavailable");
   });
@@ -349,6 +412,24 @@ it.each([1, 2] as const)("reconciles the original version after actual commit %s
     const newSecret = await readFile(path.join(directory, `${custody.receipt.version}.new`), "utf8");
     expect(diagnostics.includes(oldSecret) || diagnostics.includes(newSecret)).toBe(false);
     if (ordinal === 2) privateUrl.password = newSecret;
+    let independentResult: Awaited<ReturnType<typeof inspectInIndependentProcess>> | undefined;
+    if (independentInspection) {
+      const receipt = custody.receipt;
+      await custody.close();
+      // All original parent FDs are closed before the second process starts.
+      // Its only state comes from these existing private files and the original
+      // receipt/target; no password, observed outcome, or passed flag is supplied.
+      const inspectionInput = path.join(directory, `${nonce}.inspection-input`);
+      await writeFile(inspectionInput, JSON.stringify({ database: { host: privateUrl.hostname, port: Number(privateUrl.port),
+        database: decodeURIComponent(privateUrl.pathname.slice(1)), user: decodeURIComponent(privateUrl.username) },
+      target, runId, attemptId, credentialFile: ordinal === 1 ? "old" : "new",
+      custody: { directory, custodianUid: process.getuid!(), receipt } }), { mode: 0o600, flag: "wx" });
+      independentResult = await inspectInIndependentProcess(inspectionInput);
+      expect(independentResult.outcome).toBe(ordinal === 1 ? "not-applied" : "authentication-fenced-not-P13");
+      // Subsequent parent-side counterexamples also use newly opened custody,
+      // never the closed instance from preparation or either child process.
+      custody = await reopenBootstrapCredentialCustody({ directory, custodianUid: process.getuid!(), receipt });
+    }
     await withFreshManager(async client => {
       const command = { client, target, runId, attemptId, custody };
       expect(await inspectBootstrapCredentialFence(command)).toMatchObject({ outcome: ordinal === 1 ? "not-applied" : "authentication-fenced-not-P13" });
@@ -356,6 +437,11 @@ it.each([1, 2] as const)("reconciles the original version after actual commit %s
       const rows = (await client.query("select event_kind from parameter_catalog.parameter_catalog_cutover_events where cutover_run_id=$1 order by sequence_number", [runId])).rows;
       expect(rows).toEqual((ordinal === 1 ? ["bootstrap-authentication-fence-intent"] :
         ["bootstrap-authentication-fence-intent", "bootstrap-authentication-fence-applied"]).map(event_kind => ({ event_kind })));
+      if (independentResult) {
+        const actualIntent = (await client.query("select payload->>'digest' as digest from parameter_catalog.parameter_catalog_cutover_events where cutover_run_id=$1 and event_kind='bootstrap-authentication-fence-intent'", [runId])).rows;
+        expect(actualIntent).toHaveLength(1);
+        expect(independentResult.intentDigest).toBe(actualIntent[0].digest);
+      }
       expect((await client.query("select to_jsonb(r) as value from pg_roles r where oid=10")).rows[0]).toEqual(before);
       const count = rows.length;
       await expect(applyBootstrapCredentialFence(command)).rejects.toThrow("bootstrap-authentication-fence-");
@@ -367,4 +453,9 @@ it.each([1, 2] as const)("reconciles the original version after actual commit %s
     const cleanup = await Promise.allSettled([proxy.close(), custody.close()]);
     if (cleanup.some(result => result.status === "rejected")) throw new Error("bootstrap-fault-cleanup-failed");
   }
-});
+}
+
+it.each([1, 2] as const)("reconciles the original version after actual commit %s acknowledgment loss and process exit",
+  ordinal => exerciseCommitFault(ordinal, false));
+it.each([1, 2] as const)("reopens only original private custody in a second process after actual commit %s acknowledgment loss",
+  ordinal => exerciseCommitFault(ordinal, true));
