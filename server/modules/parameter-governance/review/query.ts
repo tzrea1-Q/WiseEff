@@ -342,6 +342,11 @@ const projectionUnavailable = (): Error => Object.assign(
   { name: "ReviewQueueProjectionUnavailable", code: "review-queue-projection-unavailable" },
 );
 
+const assertProjectionPin = async (pool: pg.Pool, pin: CatalogReleasePin) => {
+  try { return await assertCurrentPin(pool, pin); }
+  catch { throw projectionUnavailable(); }
+};
+
 const readPersistedQueue = async (
   pool: pg.Pool,
   query: ListReviewQueueQuery,
@@ -350,7 +355,7 @@ const readPersistedQueue = async (
   if (!authorized.ok) return authorized;
   const pin = validatePin(query.capturedRelease);
   if (!pin.ok) return pin;
-  const current = await assertCurrentPin(pool, pin.value);
+  const current = await assertProjectionPin(pool, pin.value);
   if (!current.ok) return current;
 
   let client: pg.PoolClient;
@@ -396,7 +401,7 @@ const readPersistedQueue = async (
   }
   // The Kernel owns its separate read transaction. Release our checkout first,
   // so even a one-connection pool can revalidate without a nested-checkout wait.
-  const stillCurrent = await assertCurrentPin(pool, pin.value);
+  const stillCurrent = await assertProjectionPin(pool, pin.value);
   if (!stillCurrent.ok) return stillCurrent;
   return result;
 };

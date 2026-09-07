@@ -69,3 +69,11 @@ Documentation impact is this English/Chinese pair; the parent maintains the
 overall PR plan and exact execution evidence. Pure tests, governance-capable
 component PostgreSQL tests, final runtime identity and full upgrade acceptance
 must be reported separately.
+
+Unexpected errors from both independent Kernel pin checks use the projection's
+static unavailable error. Test fixture cleanup settles the reader pool, role,
+admin pool and database in order and attempts every stage even after a failure.
+It reports the first failed stage without the underlying private diagnostic; a
+limited-login assertion failure and cleanup failure are both retained. The pure
+cleanup fault cases exercise this shared fixture function, not PostgreSQL DROP
+or successful real resource cleanup.

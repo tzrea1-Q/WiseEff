@@ -9,6 +9,7 @@ import { installPublishedRelease } from "../../catalog-kernel/install/installer"
 import { jsonCatalogReleaseSource, type CatalogReleasePin } from "../../catalog-kernel/interface";
 import { createEvidenceIngest } from "../evidence";
 import { createPersistedReviewQueueReader, createReviewQueueReader } from "./index";
+import { cleanupPersistedReviewFixture } from "./persistedQuery.fixture";
 
 // This selector intentionally uses cluster-global test logins. It requires the
 // parent's owned target and must not be run in the ambient backend worker lane.
@@ -52,10 +53,12 @@ describe("actual persisted Review Queue projection", () => {
     readerPool = new pg.Pool({ connectionString: url.toString(), max: 1 });
   });
   afterAll(async () => {
-    await readerPool?.end();
-    if (roleCreated) await admin.query(`drop role ${pg.escapeIdentifier(login)}`);
-    await admin?.end();
-    await database?.close();
+    await cleanupPersistedReviewFixture([
+      ["reader-pool", async () => { await readerPool?.end(); }],
+      ["reader-role", async () => { if (roleCreated) await admin.query(`drop role ${pg.escapeIdentifier(login)}`); }],
+      ["admin-pool", async () => { await admin?.end(); }],
+      ["database", async () => { await database?.close(); }],
+    ]);
   });
   it("uses a real restricted login and returns a genuinely empty prepared state", async () => {
     const facts = (await readerPool.query("select current_user as name, rolsuper, rolbypassrls, rolcreatedb, rolcreaterole from pg_catalog.pg_roles where rolname=current_user")).rows[0];
@@ -104,6 +107,8 @@ describe("actual persisted Review Queue projection", () => {
     const limitedLogin = `${login}_limited`;
     let limitedPool: pg.Pool | undefined;
     let created = false;
+    let operationFailed = false;
+    let operationFailure: unknown;
     const before = await state();
     try {
       await admin.query(`create role ${pg.escapeIdentifier(limitedLogin)} login nosuperuser nobypassrls nocreatedb nocreaterole noreplication password ${pg.escapeLiteral(password)}`);
@@ -113,9 +118,22 @@ describe("actual persisted Review Queue projection", () => {
       limitedPool = new pg.Pool({ connectionString: url.toString(), max: 1 });
       await expect(createPersistedReviewQueueReader(limitedPool).list(query())).rejects.toMatchObject({ code: "review-queue-projection-unavailable" });
       expect(await state()).toBe(before);
+    } catch (error) {
+      operationFailed = true;
+      operationFailure = error;
+      throw error;
     } finally {
-      await limitedPool?.end();
-      if (created) await admin.query(`drop role ${pg.escapeIdentifier(limitedLogin)}`);
+      try {
+        await cleanupPersistedReviewFixture([
+          ["reader-pool", async () => { await limitedPool?.end(); }],
+          ["reader-role", async () => { if (created) await admin.query(`drop role ${pg.escapeIdentifier(limitedLogin)}`); }],
+        ]);
+      } catch (cleanupFailure) {
+        if (operationFailed) {
+          throw new AggregateError([operationFailure, cleanupFailure], "review-fixture-operation-and-cleanup-failed");
+        }
+        throw cleanupFailure;
+      }
     }
   });
 });

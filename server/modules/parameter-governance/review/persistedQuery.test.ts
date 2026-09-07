@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type pg from "pg";
 import { createPersistedReviewQueueReader, groupReviewEvidence, reviewItemIdFor } from "./index";
 import type { ListReviewQueueQuery, ReviewEvidenceRecord } from "./types";
+import { cleanupPersistedReviewFixture } from "./persistedQuery.fixture";
 
 const kernel = vi.hoisted(() => ({ loadCurrentCatalog: vi.fn() }));
 vi.mock("../../catalog-kernel/interface", () => ({ createCatalogKernel: () => kernel }));
@@ -105,5 +106,46 @@ describe("persisted Review Queue projection", () => {
     f.query.mockImplementation(async sql => sql.startsWith("select id, organization_id")
       ? { rows: [{ evidence: {} }] } as never : original(sql));
     await expect(f.reader.list(input())).rejects.toThrow("review-queue-projection-unavailable");
+  });
+  it.each(["initial", "final"])("sanitizes an unexpected %s Kernel rejection", async stage => {
+    const f = fixture();
+    if (stage === "final") kernel.loadCurrentCatalog.mockResolvedValueOnce({ ok: true, value: {} });
+    kernel.loadCurrentCatalog.mockRejectedValueOnce(new Error("private-kernel-diagnostic postgres://secret"));
+    await expect(f.reader.list(input())).rejects.toMatchObject({
+      message: "review-queue-projection-unavailable", code: "review-queue-projection-unavailable",
+    });
+    if (stage === "initial") expect(f.pool.connect).not.toHaveBeenCalled();
+    else expect(f.client.release).toHaveBeenCalledOnce();
+  });
+});
+
+describe("persisted Review fixture cleanup", () => {
+  it.each(["reader-pool", "reader-role", "admin-pool", "database"] as const)(
+    "attempts every stage after %s failure and emits only its static stage", async failed => {
+      const visited: string[] = [];
+      const names = ["reader-pool", "reader-role", "admin-pool", "database"] as const;
+      const result = cleanupPersistedReviewFixture(names.map(name => [name, async () => {
+        visited.push(name);
+        if (name === failed || (name === "database" && failed !== "database")) {
+          throw new Error("private-cleanup-diagnostic postgres://secret");
+        }
+      }] as const));
+      await expect(result).rejects.toThrow(`review-fixture-cleanup-failed:${failed}`);
+      expect(visited).toEqual(names);
+    },
+  );
+  it("does not report success before dependent cleanup stages settle", async () => {
+    const visited: string[] = [];
+    let finish!: () => void;
+    const pending = new Promise<void>(resolve => { finish = resolve; });
+    const done = cleanupPersistedReviewFixture([
+      ["reader-pool", () => pending],
+      ["reader-role", async () => { visited.push("role"); }],
+    ]);
+    await Promise.resolve();
+    expect(visited).toEqual([]);
+    finish();
+    await done;
+    expect(visited).toEqual(["role"]);
   });
 });
