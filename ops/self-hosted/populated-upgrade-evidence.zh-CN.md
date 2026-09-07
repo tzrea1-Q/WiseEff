@@ -21,6 +21,25 @@ Lagrange Standards及Fermat Spec独立通过该增量。原子进程／用例／
 自然修改造成三处冻结occurrence位置变化，保持字节布局的替代方案不能作为边界授权。
 两者均不修改生产审计行为，也不记作当前候选CI成功。
 
+自然修复单独保存在
+[`009ce086a3050ce555806394463bb8d179c70fbb`](https://github.com/tzrea1-Q/WiseEff/commit/009ce086a3050ce555806394463bb8d179c70fbb)，
+未集成本候选。旧／新完整blob为 `79c7bdf5cd4535d5d340e546a0037080ebae8c9b` 和
+`e019e246ea36a9ced4a70b572bc4c03d22eaad0b`。三段未变SQL从365／384／423行移动至
+376／395／434行，均偏移1017字节。Fermat独立核验原始字节与权限元数据未变；映射
+仍待用户独立身份决策，不申请通用位移规则。该固定自然候选尚未PG／build，不能借用
+已排除的布局保持方案的执行结果。
+
+报告 `c9dd70008a6bbc5a25941d842bb44dd919e9af07` 的完整owned scripts通过：
+source-lock4/4（39.22s），随后2012项中2001通过／11跳过／0失败（86.91s），清理验证
+通过。日志SHA256 `212a0ca7a8b5966b5a0ebc4704402e2d5b69af8f52b966f2ef6f4e51d113fc8b`。
+Build exit 0，保留警告（Vite7.85s），日志SHA256
+`2f62cfc00eefdd3d8e3cafb1dcf492dd75548046229ec33cf8cc660f3f87675a`。
+原base boundary、contract及selfhost均exit 0。这不修复待处理审计排序反例，也不覆盖
+此前Hosted失败。
+同一报告的完整owned backend为4310/4310、零失败／跳过、98.88s、exit 0且清理通过。
+日志SHA256 `a14f197e09030eb8676a88fb11a24fd4c5af603c37df0a7eef6595f0d2513ebd`。
+本次通过不消除已证明的时间戳相同反例。
+
 后续集成 `b7bd0e6454e7db5c07435aac290ef77d5c3f151a`，tree
 `964de0bb44a4292c8160f7ed5350347448fa7772`，加入分别双审通过的HTTP owner控制与原生
 外键动作检测。父真实PG34/34、6.21s、exit 0、清理验证；HTTP51/51、1.73s、零失败／

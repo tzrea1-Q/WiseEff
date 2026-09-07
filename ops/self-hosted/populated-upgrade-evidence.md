@@ -27,6 +27,30 @@ the natural edit changes three frozen occurrence locations. A layout-preserving
 alternative is not accepted as boundary authorization. Neither changes production
 audit behavior, and neither is recorded as current candidate CI success.
 
+The natural repair is preserved separately at
+[`009ce086a3050ce555806394463bb8d179c70fbb`](https://github.com/tzrea1-Q/WiseEff/commit/009ce086a3050ce555806394463bb8d179c70fbb),
+not in this candidate. Its exact old/new blobs are
+`79c7bdf5cd4535d5d340e546a0037080ebae8c9b` and
+`e019e246ea36a9ced4a70b572bc4c03d22eaad0b`. The three unchanged SQL slices
+move from lines 365/384/423 to 376/395/434, each by 1017 bytes. Fermat independently
+verified raw bytes and unchanged permission metadata; the mapping still requires
+the user's separate identity decision. No general relocation rule is proposed.
+That fixed natural candidate has not run PG/build. The rejected layout-preserving
+alternative's execution cannot be used as its result.
+
+At report `c9dd70008a6bbc5a25941d842bb44dd919e9af07`, full owned scripts
+passed source-lock 4/4 (39.22s), then 2001 passed/11 skipped/0 failed of 2012
+(86.91s), with verified cleanup. Log SHA256:
+`212a0ca7a8b5966b5a0ebc4704402e2d5b69af8f52b966f2ef6f4e51d113fc8b`.
+Build exited 0 with retained warnings (Vite 7.85s), SHA256
+`2f62cfc00eefdd3d8e3cafb1dcf492dd75548046229ec33cf8cc660f3f87675a`.
+Original-base boundary, contract and selfhost exited 0. This does not fix the
+pending audit-order counterexample or overwrite the previous Hosted failure.
+The same report's full owned backend passed 4310/4310, zero failures/skips,
+98.88s, exit 0 with cleanup. Log SHA256:
+`a14f197e09030eb8676a88fb11a24fd4c5af603c37df0a7eef6595f0d2513ebd`.
+Passing this execution does not eliminate the demonstrated timestamp-tie case.
+
 The later integration `b7bd0e6454e7db5c07435aac290ef77d5c3f151a`, tree
 `964de0bb44a4292c8160f7ed5350347448fa7772`, adds independently reviewed
 HTTP owner controls and native referential-action detection. Parent real PG
