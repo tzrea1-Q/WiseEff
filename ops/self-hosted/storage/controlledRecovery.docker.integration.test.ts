@@ -1,6 +1,6 @@
 import { withHostOperationLock } from "../scripts/parameter-catalog-upgrade/handoff";
 import { createRecoveryExecutionAuthorization } from "./execution/authorization";
-import { recordSyntheticRecoveryConsumption } from "./execution/authorization.fixture";
+import { createSyntheticRecoveryEvidence, recordSyntheticRecoveryConsumption } from "./execution/authorization.fixture";
 import { createControlledRecoveryTarget } from "./execution/packageRestore";
 import { createDockerRecoveryDestination } from "./execution/dockerRestore";
 import { restoreRecoveryPackage } from "./execution/packageRestore";
@@ -39,7 +39,9 @@ describe.skipIf(process.env.UPG_CONTROLLED_RECOVERY_DOCKER_TEST !== "1")("contro
     // with a live restored target. This bounded hook does not extend acceptance.
     const runId = randomBytes(12).toString("hex");
     const label = "wiseeff.controlled-recovery-run";
-    const directory = await mkdtemp(path.join(os.tmpdir(), "controlled-recovery-live-"));
+    const evidence = await createSyntheticRecoveryEvidence();
+    const directory = evidence.directory;
+    let acceptanceComplete = false;
     const privateInputs = await mkdtemp(path.join(os.tmpdir(), "controlled-recovery-secrets-"));
     const containers: string[] = []; const volumes: string[] = []; const networks: string[] = [];
     const refs = { postgres: "postgres:16-alpine", objects: "minio/minio:RELEASE.2024-12-18T13-15-44Z", redis: "redis:7-alpine", mc: "minio/mc:RELEASE.2024-11-21T17-21-54Z" };
@@ -254,7 +256,7 @@ describe.skipIf(process.env.UPG_CONTROLLED_RECOVERY_DOCKER_TEST !== "1")("contro
           targetSql(fault.remove);
         }
       }
-      if (scenario === "nonempty-target-refusals") return;
+      if (scenario === "nonempty-target-refusals") { acceptanceComplete = true; return; }
       // The restore child gets only destination identities/secrets and package
       // location/digest. It cannot read a source connection or fixture oracle.
       const consumption = await recordSyntheticRecoveryConsumption(directory, captured.packageDigest, destinationIdentity);
@@ -303,8 +305,10 @@ describe.skipIf(process.env.UPG_CONTROLLED_RECOVERY_DOCKER_TEST !== "1")("contro
       await wait(async () => exec(destination.resources.redis.id, ["redis-cli", "PING"]));
       expect(exec(destination.resources.redis.id, ["redis-cli", "LRANGE", "bull:controlled:wait", "0", "-1"]).toString().trim()).toBe("job-a\njob-b");
       expect(exec(destination.resources.redis.id, ["redis-cli", "HGET", "bull:controlled:meta", "paused"]).toString().trim()).toBe("1");
+      acceptanceComplete = true;
     } finally {
       cleaning = true;
+      let cleanupComplete = false;
       try {
       // Only exact IDs/volumes created by this fixture may be disposed of.
       for (const id of containers.reverse()) { inspect(id); docker.command(["rm", "-f", id]); }
@@ -316,9 +320,15 @@ describe.skipIf(process.env.UPG_CONTROLLED_RECOVERY_DOCKER_TEST !== "1")("contro
         expect(JSON.parse(docker.command(["network", "inspect", id]).toString())[0].Labels[label]).toBe(runId);
         docker.command(["network", "rm", id]);
       }
-      await rm(directory, { recursive: true, force: true });
       await rm(privateInputs, { recursive: true, force: true });
-      } finally { finish(); }
+      cleanupComplete = true;
+      } finally {
+        try {
+          const retained = await evidence.finish(acceptanceComplete && cleanupComplete && !signal.aborted ? "accepted" : "failed");
+          if (retained.retained) console.info(JSON.stringify({ evidence: "private-synthetic-package-retained",
+            locator: `${path.basename(directory)}/retained-evidence.json` }));
+        } finally { finish(); }
+      }
     }
   }, 180000);
 });

@@ -105,6 +105,13 @@ Earlier combined cases at `be7f73f78` and `21f9e89ff` each passed `postgres` but
 timed out for `wiseeff`; those remain failed executions. Phase timings showed
 the six sequential refusals consumed 33–39 seconds in the successful lifecycle's
 180-second budget. The split preserves every assertion and that per-case limit.
+Only accepted scenarios whose owned-resource cleanup also completed remove their
+synthetic package directory. Failure, timeout or cleanup failure retains the
+private package and append-only journal with a 0600 `retained-evidence.json` marker.
+The diagnostic locator is relative to the development host's temporary directory;
+it omits the host path. Do not include retained packages in ordinary artifacts.
+The test-only evidence fixture creates its own 0700 directory, accepts no arbitrary
+cleanup path and refuses a second settlement that could erase retained evidence.
 
 Run only in a independently verified development workspace, with the installed
 dependencies and the four pinned image references already present:

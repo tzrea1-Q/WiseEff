@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { expect, it } from "vitest";
@@ -9,9 +9,40 @@ import { mintRestoreToken } from "../recoveryPoint";
 import { createControlledRecoveryTarget, restoreRecoveryPackage } from "./packageRestore";
 import { createRecoveryExecutionAuthorization, recoveryExecutionRecordDigest, RECOVERY_EXECUTION_EVENTS,
   type RecoveryCaptureRecord, type RecoveryExecutionApproval } from "./authorization";
+import { createSyntheticRecoveryEvidence } from "./authorization.fixture";
 
 const source = { deploymentId: "source", hostFingerprint: "host", postgresIdentity: "pg", objectStoreIdentity: "s3", redisIdentity: "aof" };
 const target = { deploymentId: "target", hostFingerprint: "host", postgresIdentity: "pg2", objectStoreIdentity: "s32", redisIdentity: "aof2" };
+
+it.each(["accepted", "failed"] as const)("settles only its owned synthetic evidence and retains failed restore state: %s", async outcome => {
+  const evidence = await createSyntheticRecoveryEvidence();
+  try {
+    const journalPath = path.join(evidence.directory, "controller.json");
+    const opened = openUpgradeJournal({ journalPath, runId: "retention-run" });
+    if (!opened.ok) throw new Error("fixture journal unavailable");
+    expect(commitJournalTransition(opened.value, { action: RECOVERY_EXECUTION_EVENTS.started,
+      inputDigest: "sha256:" + "a".repeat(64), toState: opened.value.record.state,
+      nextAction: opened.value.record.nextAction, outcome: "crashed" }).ok).toBe(true);
+    await writeFile(path.join(evidence.directory, "package.fixture"), "synthetic-package", { mode: 0o600 });
+    expect((await evidence.finish(outcome)).retained).toBe(outcome === "failed");
+    if (outcome === "failed") {
+      expect((await stat(evidence.directory)).mode & 0o777).toBe(0o700);
+      expect((await stat(path.join(evidence.directory, "retained-evidence.json"))).mode & 0o777).toBe(0o600);
+      expect(JSON.parse(await readFile(path.join(evidence.directory, "retained-evidence.json"), "utf8")))
+        .toMatchObject({ status: "private-synthetic-evidence-retained" });
+      expect(await readFile(path.join(evidence.directory, "package.fixture"), "utf8")).toBe("synthetic-package");
+      const loaded = loadUpgradeJournal({ journalPath, runId: "retention-run" });
+      expect(loaded.ok).toBe(true);
+      if (loaded.ok) expect(loaded.value.record.entries.at(-1)).toMatchObject({ action: RECOVERY_EXECUTION_EVENTS.started, outcome: "crashed" });
+      await expect(evidence.finish("accepted")).rejects.toThrow("already-settled");
+      expect(await readFile(journalPath, "utf8")).toContain("recovery-execution-started");
+    } else await expect(stat(evidence.directory)).rejects.toMatchObject({ code: "ENOENT" });
+  } finally {
+    // This unit has now accepted the retention behavior; it owns this fixture,
+    // contains no real backup, and deliberately disposes only its own directory.
+    await rm(evidence.directory, { recursive: true, force: true });
+  }
+});
 
 it("refuses an empty caller authorization callback before performing restore", async () => {
   expect(() => createControlledRecoveryTarget({ target, journalPath: "/unavailable", authorize: async () => {} } as never, {
