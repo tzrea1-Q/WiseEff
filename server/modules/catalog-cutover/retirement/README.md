@@ -68,11 +68,22 @@ effect with real LOGINs and checks reconnect rejection, membership removal and
 owner/ACL/value preservation, plus wrong target, lock, session, role, recovery and
 cross-database refusals. It includes already-switched direct and transitive
 member sessions: NOLOGIN/REVOKE does not reset another backend's effective role.
-The original caller OIDs remain recorded for post-commit inspection. These nine
+The original caller OIDs remain recorded for post-commit inspection. A matching
+shared advisory lock is refused: the management backend must hold the actual
+granted `ExclusiveLock`. Its negative checks role, membership, owner and ACL state
+before rollback, so rollback cannot conceal a mutation. These ten
 cases are database-component evidence only;
 they do not manufacture P12 reports or execute the top-level adapter. The parent
 must route this exact test to a newly owned PG16 cluster and exclude it from the
 shared server suite. Tests are not silently skipped when a receipt is missing.
+The second database for the shared-role negative is prepared in suite setup;
+database creation is not part of the five-second role-effect assertion.
+
+Both mutation and inspection install the management lease error observer inside
+the pool acquisition callback, before its return. The observer remains through
+lease destruction; failed acquisition destroys an acquired lease and redacts the
+transport error. This resource helper does not verify a target, grant permissions
+or replace the caller's repeated connection and boundary checks.
 
 Pure command: `node_modules/.bin/vitest run --config
 server/modules/catalog-cutover/retirement/vitest.config.ts`. Real SQL uses

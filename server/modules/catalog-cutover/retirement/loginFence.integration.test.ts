@@ -9,12 +9,17 @@ import type { RetiringRole } from "./roleRecovery";
 // Database-effect evidence only. No fake P12 checkpoint/report, mocked verifier,
 // or claim that these focused cases execute the full self-hosted adapter.
 let fixture: Awaited<ReturnType<typeof createSelfHostedPg16Database>>;
+let foreignFixture: Awaited<ReturnType<typeof createSelfHostedPg16Database>>;
 let pool: pg.Pool;
+let foreignDb: pg.Client;
 beforeAll(async () => {
   fixture = await createSelfHostedPg16Database("retirement");
   pool = new pg.Pool({ connectionString: fixture.url, max: 3 });
+  // Database preparation belongs to setup, not the bounded role-effect test.
+  foreignFixture = await createSelfHostedPg16Database("fenceforeign");
+  foreignDb = new pg.Client({ connectionString: foreignFixture.url }); await foreignDb.connect();
 });
-afterAll(async () => { await pool?.end(); await fixture?.close(); });
+afterAll(async () => { await foreignDb?.end(); await foreignFixture?.close(); await pool?.end(); await fixture?.close(); });
 
 async function prepare() {
   const nonce = randomBytes(7).toString("hex"), password = randomBytes(24).toString("hex");
@@ -61,10 +66,22 @@ it("disables the real old LOGIN and SET ROLE entry while retaining source owner,
   } finally { await state.admin.query("rollback"); state.admin.release(); }
 });
 
+it("refuses a shared advisory lock without changing LOGIN, membership, owner or ACL", async () => {
+  const state = await prepare();
+  const readTable = () => state.admin.query("select relowner::text,relacl from pg_catalog.pg_class where oid=$1::regclass", [`public.${state.table}`]);
+  try {
+    const beforeTable = (await readTable()).rows;
+    await state.begin(false);
+    await state.admin.query("select pg_advisory_xact_lock_shared(hashtext('s7-orc-cutover-target'),hashtext(current_database()))");
+    await expect(applyLegacyLoginFence(state.input)).rejects.toThrow("legacy-login-fence-management-lock-required");
+    // Observe inside the transaction: rollback must not hide an earlier effect.
+    expect((await state.admin.query<RetiringRole>(retiringRolesSql, [[state.name]])).rows).toEqual(state.input.expectedRoles);
+    expect((await readTable()).rows).toEqual(beforeTable);
+  } finally { await state.admin.query("rollback"); state.admin.release(); }
+});
+
 it.each(["wrong-target", "unlocked", "active-session", "member-session", "transitive-member-session", "changed-role", "missing-recovery", "foreign-database"])("refuses %s before changing LOGIN", async fault => {
   const state = await prepare(); let live: pg.Client | undefined;
-  let other: Awaited<ReturnType<typeof createSelfHostedPg16Database>> | undefined;
-  let otherDb: pg.Client | undefined;
   try {
     if (fault === "wrong-target") state.input.target = { ...state.input.target, systemIdentifier: "1" };
     if (fault === "active-session") live = await state.connect();
@@ -89,9 +106,7 @@ it.each(["wrong-target", "unlocked", "active-session", "member-session", "transi
     if (fault === "changed-role") state.input.expectedRoles[0].oid = "1";
     if (fault === "missing-recovery") state.input.recoveryRoles.length = 0;
     if (fault === "foreign-database") {
-      other = await createSelfHostedPg16Database("fenceforeign");
-      otherDb = new pg.Client({ connectionString: other.url }); await otherDb.connect();
-      await otherDb.query(`create table public.foreign_owned(value text); alter table public.foreign_owned owner to ${pg.escapeIdentifier(state.name)}`);
+      await foreignDb.query(`create table public.foreign_owned(value text); alter table public.foreign_owned owner to ${pg.escapeIdentifier(state.name)}`);
     }
     await state.begin(fault !== "unlocked");
     await expect(applyLegacyLoginFence(state.input)).rejects.toThrow(/^legacy-login-fence-/);
@@ -99,6 +114,6 @@ it.each(["wrong-target", "unlocked", "active-session", "member-session", "transi
     expect((await state.admin.query("select rolcanlogin as login from pg_roles where rolname=$1", [state.name])).rows[0].login).toBe(true);
   } finally {
     await state.admin.query("rollback"); state.admin.release();
-    await live?.end(); await otherDb?.end(); await other?.close();
+    await live?.end();
   }
 });

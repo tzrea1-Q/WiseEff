@@ -45,7 +45,7 @@ export async function applyLegacyLoginFence(input: {
     (select rolsuper from pg_catalog.pg_roles where rolname=session_user) as manager,
     exists(select 1 from pg_catalog.pg_locks where pid=pg_catalog.pg_backend_pid()
       and database=(select oid from pg_catalog.pg_database where datname=pg_catalog.current_database())
-      and locktype='advisory' and granted and classid=hashtext('s7-orc-cutover-target')::oid
+      and locktype='advisory' and mode='ExclusiveLock' and granted and classid=hashtext('s7-orc-cutover-target')::oid
       and objid=hashtext(current_database())::oid and objsubid=2) as locked`)).rows[0];
   requireFact(boundary?.same === true && boundary.manager === true && boundary.locked === true, "management-lock-required");
   const current = (await client.query<RetiringRole>(retiringRolesSql, [input.expectedRoles.map(role => role.name)])).rows;

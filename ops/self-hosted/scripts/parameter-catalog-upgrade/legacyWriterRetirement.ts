@@ -7,6 +7,7 @@ import { createIsolatedUpgradeDocker } from "../../../../scripts/isolated-upgrad
 import { createP12Activation, type ActivationOptions } from "../../../../server/modules/catalog-cutover/activation";
 import { legacyRolesAreRecoverable, type RetiringRole as Role } from "../../../../server/modules/catalog-cutover/retirement/roleRecovery";
 import { applyLegacyLoginFence, assertNoSharedLegacyRoleUse, retiringRolesSql as rolesSql } from "../../../../server/modules/catalog-cutover/retirement/loginFence";
+import { acquireObservedManagementClient } from "../../../../server/modules/catalog-cutover/retirement/managementCheckout";
 import { readBindingDatabaseIdentity } from "../../../../server/modules/parameter-bindings/cutoverImport/sourceBoundary";
 import { digestOf } from "../../../../server/modules/release-verification/core/digest";
 import { verifyRecoveryPackage } from "../../storage/recoveryPackage";
@@ -118,8 +119,8 @@ async function retire(input: LegacyLoginRetirementInput) {
     need(["postgres:", "postgresql:"].includes(adminUrl.protocol) && !!adminUrl.hostname && !!adminUrl.username && !adminUrl.search && !adminUrl.hash, "MANAGEMENT-CONFIGURATION-INVALID");
     adminPool = new pg.Pool({ connectionString: adminUrl.href, max: 1, connectionTimeoutMillis: 5000, query_timeout: 10000 });
     adminPool.on("error", onConnectionError);
-    admin = await adminPool.connect();
-    admin.on("error", onConnectionError);
+    admin = await acquireObservedManagementClient(adminPool, onConnectionError);
+    need(!connectionFailed, "CONNECTION-FAILED");
     const targetCheck = async () => {
       need(isDeepStrictEqual(await readBindingDatabaseIdentity(admin!), input.activation.target), "TARGET-MISMATCH");
       await check();
@@ -229,8 +230,10 @@ async function inspect(input: LegacyLoginRetirementInput): Promise<{
     const url = new URL(input.administrativeConnectionString);
     need(["postgres:", "postgresql:"].includes(url.protocol) && !!url.hostname && !!url.username && !url.search && !url.hash, "MANAGEMENT-CONFIGURATION-INVALID");
     pool = new pg.Pool({ connectionString: url.href, max: 1, connectionTimeoutMillis: 5000, query_timeout: 10000 });
-    pool.on("error", () => { connectionFailed = true; });
-    client = await pool.connect(); client.on("error", () => { connectionFailed = true; });
+    const onConnectionError = () => { connectionFailed = true; };
+    pool.on("error", onConnectionError);
+    client = await acquireObservedManagementClient(pool, onConnectionError);
+    need(!connectionFailed, "CONNECTION-FAILED");
     need(isDeepStrictEqual(await readBindingDatabaseIdentity(client), fixed.target), "TARGET-MISMATCH");
     await client.query("begin isolation level repeatable read read only");
     const events = (await client.query(`select event_kind,payload from parameter_catalog.parameter_catalog_cutover_events

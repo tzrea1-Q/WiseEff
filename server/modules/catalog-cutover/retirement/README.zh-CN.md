@@ -54,10 +54,17 @@ run phase；返回 `legacy-logins-fenced-not-p13`。已有 intent 不是重试�
 专属 `loginFence.integration.test.ts` 用真实 LOGIN 调用同一管理作用函数，检查
 重连拒绝、成员移除及 owner／ACL／值保留，覆盖错误目标、锁、会话、角色、
 恢复材料和跨库关联，并检查已经 SET ROLE 的直接及间接成员会话：NOLOGIN／REVOKE
-不会重置其他后端的有效角色，因此保留原始 caller OID 供提交后检查。这九例仅属于
+不会重置其他后端的有效角色，因此保留原始 caller OID 供提交后检查。相同键的共享
+advisory lock 仍被拒绝：管理后端必须实际持有已授予的 `ExclusiveLock`；负测在回滚前
+核对角色、成员、owner 和 ACL 不变，不让回滚隐藏副作用。这十例仅属于
 数据库组件证据，不制造 P12 报告，也未执行
 顶层 adapter。父协调者须精确将该文件接入新建自有 PG16 lane，并从共享 server
 suite 排除；缺少 receipt 时明确失败，不静默跳过。
+跨库共享角色负测的第二个数据库在 suite setup 准备；建库不计入五秒角色作用断言。
+
+修改与检查入口均在 pool 获取回调返回前同步安装管理 lease 错误监听，并保持至
+连接销毁。获取失败时销毁已经获取的 lease，脱敏底层连接错误。该资源 helper
+不核验目标、不授予权限，也不取代调用者反复检查连接及目标边界。
 
 纯测试命令：`node_modules/.bin/vitest run --config
 server/modules/catalog-cutover/retirement/vitest.config.ts`。真实 SQL 由父 runner 使用
