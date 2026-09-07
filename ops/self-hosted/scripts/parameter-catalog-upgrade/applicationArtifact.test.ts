@@ -97,7 +97,7 @@ it("cannot translate a mutable tag or a caller-supplied Dockerfile into an immut
   expect(() => resolveApplicationBuildContext(source, "node:candidate")).toThrow("BASE-REFERENCE-INVALID");
   expect(() => resolveApplicationBuildContext(tar([["Dockerfile", Buffer.from("FROM foreign\n")]]), `node@sha256:${"a".repeat(64)}`)).toThrow("TRACKED-RECIPE-MISSING");
 });
-function imageFixture() {
+function imageFixture(variant?: string) {
   const entries: [string, Buffer][] = [];
   const blob = (mediaType: string, value: unknown) => {
     const bytes = Buffer.isBuffer(value) ? value : Buffer.from(JSON.stringify(value));
@@ -105,15 +105,22 @@ function imageFixture() {
     return { mediaType, digest, size: bytes.length };
   };
   const layer = blob("application/vnd.oci.image.layer.v1.tar", Buffer.from("synthetic layer bytes"));
-  const config = blob("application/vnd.oci.image.config.v1+json", { os: "linux", architecture: "arm64",
+  const config = blob("application/vnd.oci.image.config.v1+json", { os: "linux", architecture: "arm64", ...(variant ? { variant } : {}),
     config: { Labels: { "org.opencontainers.image.revision": "b".repeat(40), "org.wiseeff.source.tree": "c".repeat(40), "org.wiseeff.build-tls-policy": "verify" } },
     rootfs: { type: "layers", diff_ids: [layer.digest] } });
   const manifest = blob("application/vnd.oci.image.manifest.v1+json", { schemaVersion: 2,
     mediaType: "application/vnd.oci.image.manifest.v1+json", config, layers: [layer] });
-  const index = blob("application/vnd.oci.image.index.v1+json", { schemaVersion: 2, manifests: [{ ...manifest, platform: { os: "linux", architecture: "arm64" } }] });
+  const index = blob("application/vnd.oci.image.index.v1+json", { schemaVersion: 2, manifests: [{ ...manifest, platform: { os: "linux", architecture: "arm64", ...(variant ? { variant } : {}) } }] });
   entries.push(["oci-layout", Buffer.from('{"imageLayoutVersion":"1.0.0"}')], ["index.json", Buffer.from(JSON.stringify({ schemaVersion: 2, manifests: [index] }))]);
-  return { entries, config, manifest, index, expected: { loadedImageId: index.digest, platform: "linux/arm64", gitSha: "b".repeat(40), gitTree: "c".repeat(40) } };
+  return { entries, config, manifest, index, expected: { loadedImageId: index.digest, platform: `linux/arm64${variant ? `/${variant}` : ""}`, gitSha: "b".repeat(40), gitTree: "c".repeat(40) } };
 }
+it("retains a real platform variant rather than silently deleting it from the expected identity", async () => {
+  const f = imageFixture("v8");
+  await withArchive(f.entries, async archive => {
+    expect((await inspectApplicationOciArchive(archive, f.expected)).platform).toBe("linux/arm64/v8");
+    await expect(inspectApplicationOciArchive(archive, { ...f.expected, platform: "linux/arm64" })).rejects.toMatchObject({ code: "OCI-RUNNABLE-AMBIGUOUS-OR-MISSING" });
+  });
+});
 async function withArchive(entries: [string, Buffer][], action: (archive: string) => Promise<void>) {
   const directory = await mkdtemp(path.join(os.tmpdir(), "application-oci-"));
   try { const archive = path.join(directory, "image.tar"); await writeFile(archive, tar(entries), { mode: 0o600 }); await action(archive); }

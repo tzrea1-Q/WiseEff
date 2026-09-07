@@ -64,6 +64,11 @@ archive 读取中禁 replacement objects；跟踪的 `.gitattributes` 仍生效�
 结果选定，再按不可变身份 inspect/save；nonce 输出 tag 仅作漂移检查，不作为构建
 身份来源。修订后的真实构建结果仍待执行。
 
+固定 `56f8e24fb` 真实命令在应用构建前以 `OCI-RUNNABLE-AMBIGUOUS-OR-MISSING`
+停止：实际 Docker inspect 与保存的基础 config 都为 `linux/arm64/v8`，但调用者
+丢失了 `Variant`。修复保留实际字段；永久 variant 用例同时拒绝被缩短的身份。
+这是实际基础导出阶段失败，不是构建成功。
+
 原 scripts suite 收集 `applicationArtifact.test.ts`。独立真实验收命令必须显式提供
 源、独立实测 daemon、新私有输出目录，不以 opt-in skip 或零用例冒成功；目前尚未
 注册 mandatory CI：

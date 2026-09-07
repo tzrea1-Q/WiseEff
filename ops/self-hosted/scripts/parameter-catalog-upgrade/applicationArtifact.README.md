@@ -77,6 +77,12 @@ Build output is selected from BuildKit's actual metadata manifest/config result,
 then inspected/saved by immutable identity; a nonce output tag is only a drift
 check, not build identity evidence. Revised real-build results remain pending.
 
+The fixed `56f8e24fb` real command stopped before application build with
+`OCI-RUNNABLE-AMBIGUOUS-OR-MISSING`: actual Docker inspect and saved base config
+both identify `linux/arm64/v8`, but the caller had dropped `Variant`. The fix
+retains that actual field; a permanent variant test also refuses a shortened
+identity. This was a real base-export failure, not a successful build.
+
 The normal scripts suite collects `applicationArtifact.test.ts`. The additional
 real acceptance command deliberately requires explicit source, independently
 observed daemon and new private output arguments; there is no opt-in skip or

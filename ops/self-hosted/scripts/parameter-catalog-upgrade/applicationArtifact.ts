@@ -229,7 +229,7 @@ async function buildActual(input: ApplicationBuildInput): Promise<ApplicationArt
       docker.command(["info", "--format", "{{.ID}}"]); await checkDirectory();
     };
     await save(baseBefore.Id, "base.tar");
-    const platform = `${baseBefore.Os}/${baseBefore.Architecture}`;
+    const platform = [baseBefore.Os, baseBefore.Architecture, baseBefore.Variant].filter(Boolean).join("/");
     const base = await inspectArchive(path.join(directory, "base.tar"), { loadedImageId: baseBefore.Id, platform, gitSha: "0".repeat(40), gitTree: "0".repeat(40) }, false);
     const resolved = resolveApplicationBuildContext(source, immutable[0]);
     requireFact(resolved.baseReference === baseReference, "BASE-REFERENCE-MISMATCH");
@@ -262,9 +262,10 @@ async function buildActual(input: ApplicationBuildInput): Promise<ApplicationArt
     requireFact(before?.Id === metadata["containerimage.digest"], "BUILD-RESULT-MISMATCH");
     await save(before.Id, "image.tar");
     const current = JSON.parse(docker.command(["image", "inspect", `${imageName}:candidate`]).toString())[0];
-    requireFact(before?.Id === current?.Id && `${before?.Os}/${before?.Architecture}` === platform, "LOADED-IMAGE-CHANGED");
+    const loadedPlatform = [before?.Os, before?.Architecture, before?.Variant].filter(Boolean).join("/");
+    requireFact(before?.Id === current?.Id && loadedPlatform === platform, "LOADED-IMAGE-CHANGED");
     const archive = path.join(directory, "image.tar");
-    const image = await inspectApplicationOciArchive(archive, { loadedImageId: before.Id, platform: `${before.Os}/${before.Architecture}`, gitSha: selection.gitSha, gitTree });
+    const image = await inspectApplicationOciArchive(archive, { loadedImageId: before.Id, platform: loadedPlatform, gitSha: selection.gitSha, gitTree });
     requireFact(image.configDigest === metadata["containerimage.config.digest"], "BUILD-RESULT-MISMATCH");
     requireFact(await fileDigest(path.join(directory, "build-ca.pem")) === `sha256:${ca}`, "BUILD-TRUST-CHANGED");
     // Do not publish an offline oracle for proxy credentials. The public build
