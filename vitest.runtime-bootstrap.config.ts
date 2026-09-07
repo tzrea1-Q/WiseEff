@@ -7,6 +7,8 @@ export default defineConfig({
   test: {
     environment: "node",
     include: [
+      "server/apiWorkerShutdown.test.ts",
+      "server/apiShutdown.test.ts",
       "server/shared/database/runtimeConnection*.test.ts",
       "server/shared/database/verifiedCheckout.test.ts",
       "server/shared/database/migrationsExpectedInventory.test.ts",

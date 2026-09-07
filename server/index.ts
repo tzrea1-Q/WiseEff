@@ -2,6 +2,7 @@ import { loadDotenvFiles } from "./config/loadDotenv";
 
 loadDotenvFiles();
 import { createWiseEffServerFromEnv } from "./app";
+import { createApiShutdown } from "./apiShutdown";
 import { loadServerEnv } from "./config/env";
 import { createAdbDebugDeviceGateway } from "./modules/debugging/adbGateway";
 import { createDebugDeviceGatewayRegistry } from "./modules/debugging/gatewayRegistry";
@@ -138,7 +139,7 @@ const stopLogWebhookDeliveryRetention =
     : undefined;
 // Started in start() after ensureKnowledgeVectorColumn so the worker never
 // caches a pre-install "no vector support" detection.
-let stopKnowledgeIndexWorker: (() => void) | undefined;
+let stopKnowledgeIndexWorker: (() => Promise<void>) | undefined;
 const notificationQueueEnv = {
   REDIS_URL: env.REDIS_URL ?? "",
   NOTIFICATION_QUEUE_PREFIX: env.NOTIFICATION_QUEUE_PREFIX,
@@ -205,33 +206,25 @@ const server = createWiseEffServerFromEnv({
   }
 });
 
-let shuttingDown = false;
-async function shutdown() {
-  if (shuttingDown) {
-    return;
-  }
-  shuttingDown = true;
-
-  await Promise.all([
-    stopLogWorker?.(),
-    stopLogWebhookDeliveryRetention?.(),
-    stopKnowledgeIndexWorker?.(),
-    stopNotificationWorker?.(),
-    logAnalysisQueueRuntime?.close().catch((error) => {
-      console.error("Failed to close log-analysis durable queue runtime.", error);
-    }),
-    notificationQueueRuntime?.close().catch((error) => {
-      console.error("Failed to close notification durable queue runtime.", error);
-    })
-  ]);
-
-  server.close(() => {
-    void Promise.all([db?.close(), catalogGovernanceDb?.close()]).then(() => process.exit(0));
-  });
-}
-
-process.on("SIGINT", () => void shutdown());
-process.on("SIGTERM", () => void shutdown());
+const shutdown = createApiShutdown({
+  server,
+  workers: [
+    () => stopLogWorker?.(),
+    () => stopLogWebhookDeliveryRetention?.(),
+    () => stopKnowledgeIndexWorker?.(),
+    () => stopNotificationWorker?.(),
+    () => logAnalysisQueueRuntime?.close(),
+    () => notificationQueueRuntime?.close(),
+  ],
+  pools: [async () => { await db?.close(); }, async () => { await catalogGovernanceDb?.close(); }],
+});
+let stopping = false;
+const onShutdown = () => { stopping = true; void shutdown().catch(() => {
+  console.error("PCAT-RUNTIME-API-SHUTDOWN-FAILED");
+  process.exitCode = 1;
+}); };
+process.on("SIGINT", onShutdown);
+process.on("SIGTERM", onShutdown);
 
 async function start() {
   if (env.NODE_ENV !== "production" && db && shouldEnsureLocalPostCutoverOnApiBoot(process.env)) {
@@ -273,12 +266,23 @@ async function start() {
   }
 
   if (env.KNOWLEDGE_INDEX_WORKER_ENABLED && db) {
+    if (stopping) return;
     stopKnowledgeIndexWorker = startKnowledgeIndexWorkerLoop({ db, embeddingClient: knowledgeEmbeddingClient });
   }
 
+  if (stopping) return;
   server.listen(env.PORT, env.HOST, () => {
     console.log(`WiseEff API listening on http://${env.HOST}:${env.PORT}`);
   });
 }
 
-void start();
+server.on("error", () => {
+  console.error("PCAT-RUNTIME-API-LISTENER-FAILED");
+  process.exitCode = 1;
+  onShutdown();
+});
+void start().catch(() => {
+  console.error("PCAT-RUNTIME-API-START-FAILED");
+  process.exitCode = 1;
+  onShutdown();
+});
