@@ -195,17 +195,24 @@ export function observeCleanUpgradeCheckout(directory: string): string {
 
 /** Developer component runner, never a deployment upgrade or release approval.
  * Owns a fresh cluster/network/credential; accepts no database URL or backup. */
+export function componentSupervisionLimits(input = { deadlineMs: 15 * 60_000, graceMs: 2000, outputBytes: 8 * 1024 * 1024 }) {
+  const { deadlineMs, graceMs, outputBytes } = input;
+  if (!Number.isSafeInteger(deadlineMs) || deadlineMs < 1 || deadlineMs > 15 * 60_000 ||
+      !Number.isSafeInteger(graceMs) || graceMs < 1 || graceMs > 2000 ||
+      !Number.isSafeInteger(outputBytes) || outputBytes < 1 || outputBytes > 8 * 1024 * 1024) {
+    throw new Error("component-supervision-limits-invalid");
+  }
+  return Object.freeze({ deadlineMs, graceMs, outputBytes });
+}
+
 export async function runUpgradeComponentTests(args: string[], observation?: {
   /** Fault injection can only shorten the production supervisor's limits. */
   limits?: { deadlineMs: number; graceMs: number; outputBytes: number };
   retirementEndpoints?: (value: RetirementEndpointObservation) => void;
 }) {
-  const limits = observation?.limits ?? { deadlineMs: 15 * 60_000, graceMs: 2000, outputBytes: 8 * 1024 * 1024 };
-  if (!Number.isSafeInteger(limits.deadlineMs) || limits.deadlineMs < 1 || limits.deadlineMs > 15 * 60_000 ||
-      !Number.isSafeInteger(limits.graceMs) || limits.graceMs < 1 || limits.graceMs > 2000 ||
-      !Number.isSafeInteger(limits.outputBytes) || limits.outputBytes < 1 || limits.outputBytes > 8 * 1024 * 1024) {
-    return { exitCode: 2, reason: "component-supervision-limits-invalid" };
-  }
+  let limits: ReturnType<typeof componentSupervisionLimits>;
+  try { limits = componentSupervisionLimits(observation?.limits); }
+  catch { return { exitCode: 2, reason: "component-supervision-limits-invalid" }; }
   const hosted = args.length === 5 && args[4] === "--github-hosted";
   if ((!hosted && args.length !== 4) || args[0] !== "--expected-daemon-id" || !/^[a-zA-Z0-9-]+$/.test(args[1]) || args[2] !== "--suite" || !Object.hasOwn(suites, args[3])) {
     return { exitCode: 2, reason: "usage-expected-daemon-id-and-known-suite-required" };

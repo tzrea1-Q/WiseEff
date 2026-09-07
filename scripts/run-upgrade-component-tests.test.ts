@@ -93,6 +93,14 @@ it.each([
     .toEqual({ exitCode: 2, reason: "component-supervision-limits-invalid" });
 });
 
+it("snapshots the caller budget before asynchronous resource preparation or observation callbacks", () => {
+  const input = { deadlineMs: 100, graceMs: 20, outputBytes: 1024 };
+  const captured = componentRunner.componentSupervisionLimits(input);
+  Object.assign(input, { deadlineMs: 900001, graceMs: 2001, outputBytes: 8388609 });
+  expect(captured).toEqual({ deadlineMs: 100, graceMs: 20, outputBytes: 1024 });
+  expect(Object.isFrozen(captured)).toBe(true);
+});
+
 it.each(["untracked migration", "tracked edit", "staged edit", "ignored output"])("binds the real checkout including %s", kind => {
   const directory = mkdtempSync(join(tmpdir(), "upgrade-checkout-"));
   const git = (...args: string[]) => execFileSync("git", args, { cwd: directory, env: { PATH: process.env.PATH, HOME: process.env.HOME }, stdio: "pipe" });
