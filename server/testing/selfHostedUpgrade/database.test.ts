@@ -7,6 +7,9 @@ import { createSelfHostedPg16Database } from "./database";
 const probes = vi.hoisted(() => ({ docker: vi.fn(), connect: vi.fn(), query: vi.fn(), end: vi.fn() }));
 vi.mock("../../../scripts/isolated-upgrade-docker", () => ({ createIsolatedUpgradeDocker: probes.docker }));
 vi.mock("pg", () => ({ default: {
+  // Shared database modules define a Pool subclass on import. This fixture
+  // exercises only Client; any accidental real pool use must fail immediately.
+  Pool: class { constructor() { throw new Error("unexpected-unit-pool"); } },
   Client: class {
     database: string;
     constructor(input: { connectionString: string }) { this.database = new URL(input.connectionString).pathname.slice(1); }
