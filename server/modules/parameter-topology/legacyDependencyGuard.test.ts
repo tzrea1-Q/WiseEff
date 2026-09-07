@@ -55,6 +55,11 @@ const FORBIDDEN_ACTIVITY_TOKENS = [
   "DTS_IDENTITY_FALLBACK_MODE"
 ] as const;
 
+// The first two identities in the existing retired inventory also name canonical
+// relations. Reuse that inventory for the exception and its paired regressions;
+// do not introduce additional embedded legacy identities.
+const SHARED_CATALOG_RELATION_TOKENS: readonly string[] = FORBIDDEN_ACTIVITY_TOKENS.slice(0, 2);
+
 const FORBIDDEN_DASHBOARD_IMPORT_MARKERS = [
   "LEGACY_IDENTITY_SQL",
   "legacyParameterIdentityNames",
@@ -105,7 +110,7 @@ export async function productionSourceContains(token: string): Promise<boolean> 
 }
 
 export function containsRetiredIdentityToken(text: string, token: string): boolean {
-  if (token !== "parameter_definitions" && token !== "project_parameter_values") return text.includes(token);
+  if (!SHARED_CATALOG_RELATION_TOKENS.includes(token)) return text.includes(token);
   // These two canonical relations share names with retired public tables.
   // Recognize only the exact source spelling, never a file-wide exemption.
   const namespace = "parameter_catalog.";
@@ -163,7 +168,7 @@ export async function listLegacyIdentityTemplateInterpolationHits(
 }
 
 describe("legacy parameter identity dependency guard", () => {
-  it.each(["parameter_definitions", "project_parameter_values"])(
+  it.each(SHARED_CATALOG_RELATION_TOKENS)(
     "still rejects unqualified, disguised and mixed retired %s references",
     token => {
       const forbidden = [token, `public.${token}`, `other.${token}`, `legacy_${token}`,
@@ -179,12 +184,12 @@ describe("legacy parameter identity dependency guard", () => {
 
   it("keeps every other retired token forbidden even with a canonical namespace prefix", () => {
     for (const token of FORBIDDEN_ACTIVITY_TOKENS) {
-      if (token === "parameter_definitions" || token === "project_parameter_values") continue;
+      if (SHARED_CATALOG_RELATION_TOKENS.includes(token)) continue;
       expect(containsRetiredIdentityToken(`parameter_catalog.${token}`, token), token).toBe(true);
     }
   });
 
-  it.each(["parameter_definitions", "project_parameter_values"])(
+  it.each(SHARED_CATALOG_RELATION_TOKENS)(
     "distinguishes the canonical namespace from each retired %s occurrence",
     token => {
       expect(containsRetiredIdentityToken(`select * from parameter_catalog.${token}`, token)).toBe(false);
