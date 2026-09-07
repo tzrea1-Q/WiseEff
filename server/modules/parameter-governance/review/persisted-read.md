@@ -77,3 +77,8 @@ It reports the first failed stage without the underlying private diagnostic; a
 limited-login assertion failure and cleanup failure are both retained. The pure
 cleanup fault cases exercise this shared fixture function, not PostgreSQL DROP
 or successful real resource cleanup.
+
+The bootstrap fixture uses the existing `firstReleaseBundle`, whose real compiler
+result has no predecessor. The general compiler fixture targets a successor and
+is correctly rejected on an empty Catalog. A pure precondition regression covers
+this distinction; actual installation still requires the owned PostgreSQL lane.

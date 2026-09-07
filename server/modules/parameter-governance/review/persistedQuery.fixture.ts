@@ -1,3 +1,7 @@
+import { firstReleaseBundle } from "../../catalog-kernel/runtime/catalogChain.fixture";
+
+export const reviewProjectionReleaseBundle = firstReleaseBundle;
+
 type CleanupStage = "reader-pool" | "reader-role" | "admin-pool" | "database";
 
 /** Test-only cleanup: dependencies settle in order; all stages are attempted. */

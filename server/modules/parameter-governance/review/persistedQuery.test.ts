@@ -2,7 +2,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type pg from "pg";
 import { createPersistedReviewQueueReader, groupReviewEvidence, reviewItemIdFor } from "./index";
 import type { ListReviewQueueQuery, ReviewEvidenceRecord } from "./types";
-import { cleanupPersistedReviewFixture } from "./persistedQuery.fixture";
+import { cleanupPersistedReviewFixture, reviewProjectionReleaseBundle } from "./persistedQuery.fixture";
+import { compileCatalogRelease } from "../../catalog-kernel/compiler";
 
 const kernel = vi.hoisted(() => ({ loadCurrentCatalog: vi.fn() }));
 vi.mock("../../catalog-kernel/interface", () => ({ createCatalogKernel: () => kernel }));
@@ -120,6 +121,13 @@ describe("persisted Review Queue projection", () => {
 });
 
 describe("persisted Review fixture cleanup", () => {
+  it("uses the real compiler's predecessor-free release for empty-target bootstrap", () => {
+    const compiled = compileCatalogRelease(reviewProjectionReleaseBundle());
+    expect(compiled.ok).toBe(true);
+    if (!compiled.ok) return;
+    expect(compiled.value.predecessor).toBeNull();
+    expect(compiled.value.release.id).toBe(reviewProjectionReleaseBundle().targetReleaseId);
+  });
   it.each(["reader-pool", "reader-role", "admin-pool", "database"] as const)(
     "attempts every stage after %s failure and emits only its static stage", async failed => {
       const visited: string[] = [];

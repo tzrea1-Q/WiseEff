@@ -57,3 +57,7 @@ SET FALSE、ADMIN FALSE。**这不是最终 API/worker 最小权限身份**，�
 尝试后续步骤，只报告首个失败阶段，不带底层私密诊断。受限 LOGIN 用例的断言和
 清理同时失败时，两项错误均保留。纯清理反例验证共用夹具函数，不代表实际执行了
 PostgreSQL DROP 或真实资源已清理。
+
+bootstrap 夹具复用既有 `firstReleaseBundle`，真实编译结果不含前驱。通用编译器夹具的
+目标是后继 release，空 Catalog 按正式规则拒绝它。纯前置条件回归覆盖此差别；实际
+安装仍需归属已核验的 PostgreSQL 执行证据。

@@ -4,12 +4,11 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { assertOwnedUpgradeTestTarget } from "../../../../scripts/upgrade-test-target";
 import { createMigratedSelfHostedPg16Database } from "../../../testing/selfHostedUpgrade/database";
 import { compileCatalogRelease } from "../../catalog-kernel/compiler";
-import { validCatalogReleaseBundle } from "../../catalog-kernel/compiler/__fixtures__/catalogReleaseBundle";
 import { installPublishedRelease } from "../../catalog-kernel/install/installer";
 import { jsonCatalogReleaseSource, type CatalogReleasePin } from "../../catalog-kernel/interface";
 import { createEvidenceIngest } from "../evidence";
 import { createPersistedReviewQueueReader, createReviewQueueReader } from "./index";
-import { cleanupPersistedReviewFixture } from "./persistedQuery.fixture";
+import { cleanupPersistedReviewFixture, reviewProjectionReleaseBundle } from "./persistedQuery.fixture";
 
 // This selector intentionally uses cluster-global test logins. It requires the
 // parent's owned target and must not be run in the ambient backend worker lane.
@@ -34,7 +33,7 @@ describe("actual persisted Review Queue projection", () => {
   beforeAll(async () => {
     database = await createMigratedSelfHostedPg16Database("reviewpersisted");
     admin = new pg.Pool({ connectionString: database.url, max: 2 });
-    const bundle = validCatalogReleaseBundle();
+    const bundle = reviewProjectionReleaseBundle();
     const compiled = compileCatalogRelease(bundle);
     if (!compiled.ok) throw new Error("review-fixture-compile-failed");
     const installed = await installPublishedRelease(admin, { mode: "bootstrap", source: jsonCatalogReleaseSource(bundle),
