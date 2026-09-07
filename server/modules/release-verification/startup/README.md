@@ -109,3 +109,47 @@ Execution identities and counts remain in the maintained populated-upgrade
 evidence document. Startup unit selectors use the config without globalSetup;
 the real PostgreSQL file additionally requires the existing owned-target
 receipt/config guard. No production command is executable from this module.
+
+## Independent report connection
+
+`openStartupReportDatabase` in `reportConnection.ts` opens a real pool using an
+explicit PostgreSQL URL. It verifies the actual login before returning that
+pool. It does not call an application startup adapter, so opening the report
+reader cannot recursively demand the runtime report it is about to read.
+There is no development-mode bypass, ambient URL fallback, grant, role switch,
+DDL, report write, or approval action. The six required SELECTs are exactly the
+tables listed in immutable migration `0139_parameter_catalog_verification_core.sql`.
+
+The login must effectively inherit only `catalog_verifier_role`, using PostgreSQL
+16 membership `INHERIT TRUE, SET FALSE, ADMIN FALSE`; the capability role remains
+NOLOGIN and NOINHERIT. Superuser, BYPASSRLS, CREATEDB, CREATEROLE, replication,
+other reachable roles (including Catalog reader, governance and management),
+object ownership, direct extra relation/column/function grants, effective
+application writes, schema/database CREATE, unsafe definer delegation and
+privileged parameter grants refuse admission. Ordinary existing PUBLIC reads
+are not treated as a new grant. Normal PostgreSQL built-in execution is retained;
+explicit function grants and user-schema definers delegating elevated/write
+capability are rejected. This is a purpose-specific login precondition, not a
+replacement for the complete migration/permission manifest or release verifier.
+
+Only a successfully checked `RootDatabase` leaves the function. The composition
+root must close it after use, on later application bootstrap failure, and on
+normal shutdown. Every failure closes any created pool; a close error cannot
+replace the fixed admission reason with private database diagnostics. No report
+content, credential, connection URL or raw SQL error is returned in an error.
+
+| Incremental threat | Required observation |
+| --- | --- |
+| Forged role name, elevated/member/owner login | Actual session and effective-capability query reject before pool exposure |
+| Missing SELECT or mixed application/governance capability | Fixed refusal; no grant or role repair |
+| Broken connection, partial/malformed audit result, failing close | Fixed redacted error and attempted resource release |
+| Report connection used as startup permission | Separate existing startup adapter and controller state remain mandatory |
+
+`reportConnection.test.ts` covers lifecycle and typed failures with a mocked
+database factory. `reportConnection.integration.test.ts` requires the existing
+owned PG16 cluster receipt, uses real restricted LOGIN connections and the formal
+report projection, and includes role/ACL/definer contamination tests. It never
+probes an ambient database or skips for unavailable infrastructure. Its successful
+absent-report read proves connection usability only; it is not a fabricated passed
+report or a successful application startup. Root/config wiring and real execution
+evidence belong to the parent integration lane.

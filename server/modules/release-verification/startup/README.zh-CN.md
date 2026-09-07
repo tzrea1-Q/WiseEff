@@ -88,3 +88,38 @@ evidence 的 `identity.ts` 要求 P12 `retired`。本分片不制造新的 P12 �
 执行身份与计数统一记录在已有 populated-upgrade evidence 文档。启动单测使用
 无 globalSetup 的配置；真实 PostgreSQL 文件还必须使用现有 owned-target
 receipt／config 门禁。本模块不能给出可执行的生产命令。
+
+## 独立报告连接
+
+`reportConnection.ts` 的 `openStartupReportDatabase` 使用显式 PostgreSQL URL
+建立真实连接池，在返回前核验实际登录。它不调用应用 startup adapter，因此报告
+reader 不会递归要求尚待读取的 runtime 报告。没有 development 绕过、ambient URL
+回落、grant、角色切换、DDL、报告写入或批准动作。必需的六表 SELECT 严格对应
+不可变迁移 `0139_parameter_catalog_verification_core.sql`。
+
+登录仅可有效继承 `catalog_verifier_role`，PostgreSQL 16 成员关系必须为
+`INHERIT TRUE, SET FALSE, ADMIN FALSE`；能力角色保持 NOLOGIN、NOINHERIT。
+超级用户、BYPASSRLS、CREATEDB、CREATEROLE、replication、其他可达角色
+（包括 Catalog reader、治理和管理角色）、对象所有权、直接额外关系／列／函数
+授权、有效业务写权限、schema／数据库 CREATE、危险 definer 代理及高权参数授权
+均拒绝准入。已有 PUBLIC 普通读取不视为新授权。保留普通 PostgreSQL 内建执行；
+拒绝显式函数授权及用户 schema 中代理高权／写能力的 definer。此处仅是专用连接
+前置条件，不取代完整迁移／权限 manifest 或 Release Verification。
+
+只有核验通过的 `RootDatabase` 会返回。组合根负责使用后关闭，并在后续应用
+bootstrap 失败和正常退出时释放。任何失败都会尝试关闭已创建的 pool；关闭失败
+不能覆盖原固定准入错误。错误不包含报告内容、凭据、连接 URL 或原始 SQL 诊断。
+
+| 增量威胁 | 必须观察 |
+| --- | --- |
+| 伪造角色名称、高权／混合成员／owner 登录 | 实际会话和有效能力查询在 pool 暴露前拒绝 |
+| 缺少 SELECT 或混入应用／治理能力 | 固定拒绝，不追加 grant 或修复角色 |
+| 连接失败、审计结果缺失／畸形、关闭失败 | 固定脱敏错误，并尝试释放资源 |
+| 将报告连接当作启动权限 | 仍须独立的既有 startup adapter 和 controller 当前状态 |
+
+`reportConnection.test.ts` 使用数据库 factory mock 验证生命周期及 typed 失败。
+`reportConnection.integration.test.ts` 必须取得既有 owned PG16 集群 receipt，使用
+真实受限 LOGIN 和正式报告投影，并覆盖角色／ACL／definer 污染；不探测 ambient
+数据库，也不因环境缺失而跳过。成功读取 absent 报告只证明连接可用，不伪造
+passed 报告或宣称应用启动成功。根入口／config 接线及真实执行证据由父集成 lane
+负责。
