@@ -452,10 +452,15 @@ it("rejects copied successor host steps without the original cutover and credent
   await successorCheck("host-association");
 });
 it("holds the SQL successor locks through the last actual activation boundary callback", async () => {
+  let operationFailed = false;
   try {
     if (!successorCheck) throw new Error("successor-fixture-unavailable");
     await successorCheck("final-boundary");
-  } finally { await closeSuccessor?.(); }
+  } catch (error) { operationFailed = true; throw error; }
+  finally {
+    try { await closeSuccessor?.(); }
+    catch { throw new Error(operationFailed ? "successor-operation-and-cleanup-failed" : "successor-cleanup-failed"); }
+  }
 });
 
 async function exerciseCustodyTransport() {
@@ -640,9 +645,9 @@ async function exerciseCustodyTransport() {
     const first = await Promise.allSettled([Promise.resolve().then(() => client?.release(true))]);
     const second = await Promise.allSettled([Promise.resolve().then(endManagers), Promise.resolve().then(() => custody?.close())]);
     const third = await Promise.allSettled([Promise.resolve().then(async () => {
-      if (created) await withFreshManager(cleanup => cleanup.query(`drop role ${role}`));
+      if (created) { await withFreshManager(cleanup => cleanup.query(`drop role ${role}`)); created = false; }
     }), Promise.resolve().then(async () => {
-      if (writerCreated) await withFreshManager(cleanup => cleanup.query(`drop owned by ${writerRole}; drop role ${writerRole}`));
+      if (writerCreated) { await withFreshManager(cleanup => cleanup.query(`drop owned by ${writerRole}; drop role ${writerRole}`)); writerCreated = false; }
     })]);
     if ([...first, ...second, ...third].some(r => r.status === "rejected"))
       throw new Error(failed ? "bootstrap-transport-operation-and-cleanup-failed" : "bootstrap-transport-cleanup-failed");

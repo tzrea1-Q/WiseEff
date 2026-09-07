@@ -165,7 +165,7 @@ export async function inspectBootstrapCredentialFenceFromCustodyTransport(input:
     const sqlRows = async () => (await manager!.query(`select event_kind,payload from parameter_catalog.parameter_catalog_cutover_events
       where cutover_run_id=$1 and event_kind=any($2::text[]) order by sequence_number`, [root.runId, sqlKinds])).rows;
     const initialSql = await sqlRows();
-    let hostDigest: string | undefined;
+    let hostDigest: string | undefined, credentialDigest: string | undefined;
     const inspectHost = async (intentDigest?: string) => {
       if (!sqlHost) { if (intentDigest) failFence("sql-successor-host-required"); return; }
       await assertHostOperationLockForJournal(sqlHost.lock, sqlHost.journalPath);
@@ -175,9 +175,23 @@ export async function inspectBootstrapCredentialFenceFromCustodyTransport(input:
       hostDigest = loaded.value.record.journalDigest;
       const steps = loaded.value.record.entries.filter(entry => entry.action.startsWith("legacy-sql-privileges-"));
       if (!intentDigest) { if (steps.length) failFence("sql-successor-host-drift"); }
-      else if (steps.length !== 2 || steps[0].action !== "legacy-sql-privileges-pending" || steps[0].outcome !== "crashed" ||
-        steps[1].action !== "legacy-sql-privileges-applied" || steps[1].outcome !== "committed" ||
-        steps.some(step => step.inputDigest !== intentDigest)) failFence("sql-successor-host-drift");
+      else {
+        const record = loaded.value.record;
+        const authentication = record.entries.filter(entry => entry.bootstrapRetirement);
+        const step = authentication[1]?.bootstrapRetirement;
+        // The journal parser already checks the typed capture predecessor and
+        // immutable pending -> credential-step chain. Match that exact chain
+        // to the database-selected root/version, not copied generic SQL rows.
+        if (record.cutoverRunId !== root.runId || record.planDigest !== root.activationIntent.planDigest ||
+            authentication.length !== 2 || authentication[0].bootstrapRetirement?.outcome !== "pending" ||
+            step?.outcome !== "credential-step" || !isDeepStrictEqual(step.intent.rootBinding, root) ||
+            step.intent.rootRequestDigest !== digestOf(request) || step.intent.credentialVersion !== request.credentials.version ||
+            credentialDigest !== undefined && step.credentialIntentDigest !== credentialDigest ||
+            steps.length !== 2 || steps[0].seq <= authentication[1].seq ||
+            steps[0].action !== "legacy-sql-privileges-pending" || steps[0].outcome !== "crashed" ||
+            steps[1].action !== "legacy-sql-privileges-applied" || steps[1].outcome !== "committed" ||
+            steps.some(entry => entry.inputDigest !== intentDigest)) failFence("sql-successor-host-drift");
+      }
       await assertHostOperationLockForJournal(sqlHost.lock, sqlHost.journalPath);
     };
     if (initialSql.length) {
@@ -193,6 +207,8 @@ export async function inspectBootstrapCredentialFenceFromCustodyTransport(input:
       if (!isDeepStrictEqual(ordered.map(row => row.event_kind), ["bootstrap-application-authentication-intent", INTENT_EVENT, APPLIED_EVENT, ...sqlKinds]) ||
           !isDeepStrictEqual(ordered[0].payload, { request, requestDigest: digestOf(request) }) ||
           !isDeepStrictEqual(ordered.slice(3), initialSql)) failFence("sql-successor-order-drift");
+      credentialDigest = ordered[2].payload?.digest;
+      if (typeof credentialDigest !== "string") failFence("sql-successor-order-drift");
       const selected = { client: manager, intentDigest, selection: { runId: root.runId, attemptId: root.attemptId,
         target: root.target, activationBindingDigest: root.activationBindingDigest, rootRequestDigest: digestOf(request),
         recoveryPackageDigest: root.recoveryPackageDigest } };
@@ -202,18 +218,25 @@ export async function inspectBootstrapCredentialFenceFromCustodyTransport(input:
       await inspectHeldBinding();
       if (!isDeepStrictEqual(await readRoot(manager), request) ||
           !isDeepStrictEqual(await inspectLegacySqlPrivilegeFenceOnHeldSession(selected), successor)) failFence("sql-successor-drift");
+      // The final real P12/report boundary may await external work. Keep all
+      // ten locks until it completes, then recheck the SQL effect and original
+      // authentication baseline. No boundary callback runs after rollback.
+      await inspectHeldBinding();
+      if (!isDeepStrictEqual(await inspectLegacySqlPrivilegeFenceOnHeldSession(selected), successor) ||
+          !isDeepStrictEqual(await inspectAuthentication(command, successor), result) ||
+          !isDeepStrictEqual(await readRoot(manager), request)) failFence("sql-successor-drift");
       await inspectHost(intentDigest); await checkCustody(held); await verifyReader();
       await manager.query("rollback"); managerTransaction = false;
-      await inspectHost(intentDigest);
+      live();
     } else {
       await inspectHost();
       result = await inspectBootstrapCredentialFence(command);
       if ((await sqlRows()).length) failFence("sql-successor-drift");
       await inspectHost();
+      await currentBinding();
+      if (!isDeepStrictEqual(await readRoot(manager), request)) failFence("root-intent-drift");
+      await checkCustody(held); await verifyReader();
     }
-    await currentBinding();
-    if (!isDeepStrictEqual(await readRoot(manager), request)) failFence("root-intent-drift");
-    await checkCustody(held); await verifyReader();
   } catch { result = { outcome: "unknown" }; }
   finally {
     const rollbacks = await Promise.allSettled([
