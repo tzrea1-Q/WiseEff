@@ -17,7 +17,7 @@ rule and plan digest. P7 owns one current head **per legacy identity**. The
 [release contract](../../../../docs/design-docs/parameter-catalog-verification-upgrade-retirement-gates.md#fixed-input-and-attempt-identity)
 separately pins the complete mapping epoch and mapping-head digest.
 
-Two independent problems prevent a trustworthy management producer:
+The inspected `1376fbcbe` baseline exposed two independent problems:
 
 1. `comparison/corpusContributionSchema.ts` has one context-wide
    `mappingHeadId/version/checksum`. Every contribution must equal that tuple;
@@ -26,7 +26,7 @@ Two independent problems prevent a trustworthy management producer:
    has no exact mapping-version ID or per-identity head digest. The existing
    live-evidence multi-head counterexample demonstrates this representation
    conflict; a global epoch is not a replacement for a per-record head.
-2. All eleven providers' `classifyCase` functions turn unequal, queryable
+2. At that baseline, all eleven providers' `classifyCase` functions turned unequal, queryable
    observations into declared differences using constructed evidence. For
    example, CGH chooses R1/R9 from the comparison ID and uses the shared head ID
    as an Archive/Definition ID; PRJ chooses R9 and uses the protected-reference
@@ -35,10 +35,13 @@ Two independent problems prevent a trustworthy management producer:
    and at least one target/Archive; it does not enforce the complete domain
    disposition. A passing aggregate cannot repair those missing facts.
 
-The second problem is an implementation violation of the **existing** P11
-contract. Removing inferred dispositions, retaining real query failures and
-classifying unproven differences as blocking requires no new product decision.
-It must not be represented as completion of positive populated verification.
+The second problem violated the **existing** P11 contract. Commit `0d71d9949`
+now removes inferred dispositions across all eleven providers, retains real query
+failures and classifies unproven differences as blocking. Its 36 focused cases
+and independent Standards/Spec reviews passed. This safety repair required no new
+product decision and does not complete positive populated verification. Actual
+PG comparison at `e5c76c9ce` retains the populated inventory and rejects CGH's
+unwired readiness; that production-query integration remains internal work.
 The first problem requires a limited evolution of the frozen evidence format
 and its owned parser/codec/tests. The two previously authorized reader/recovery
 contracts do not implicitly authorize changing this third format.

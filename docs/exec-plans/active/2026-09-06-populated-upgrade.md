@@ -6,6 +6,29 @@
 
 ### Current continuation: real dependencies and activation
 
+Current checked code is `e5c76c9ce4f828df8866f2b26888661a75aa9919`, tree
+`dd12fd3b8a15f168a05487f7dbf16a3e245b72cd`, on unchanged base `cda6737a8`.
+The integrated increments have independent reviews. Owned Binding PG16 92/92,
+backend 4260 passed/11 skipped, scripts 4/4 then 1822 passed/25 skipped, comparison
+4/4, build/boundary/contract/selfhost passed. Each retains its exact execution in
+the existing evidence document; no result establishes full populated conversion.
+Bootstrap independent-process recovery and endpoint fixes are integrated; their
+prior 22/22 and local 16/16 retain their own SHAs. Hosted still records the failed
+`fa3dbef3f` run until a new candidate actually executes.
+
+Parent is the sole writer of root integration, runner/config and this plan/evidence
+pair. Fermat owns a separate CGH formal-query Scratch; Raman reviews its Spec and
+Lagrange its Standards. Replace CGH's constant readiness and fake empty projections
+through existing public composition APIs, without adding grants or moving frozen
+boundaries. Query failures must not prove empty inventory. D01's real usage and
+registration permissions, D06's query/command composition, complete startup facts
+and actual controller success remain explicit internal seams. A/B/C are incomplete.
+R3 threats remain false empty inventories, borrowed authority, stale pins, cleanup
+outcome loss and cross-target effects. Documentation impact: the existing plan,
+evidence and directly affected bilingual module/decision documents; no new macro plan.
+
+The following checkpoint is historical.
+
 Current local code is `439f79c96794d165a73bf41fdd1697bc552ffffe` (tree
 `8b1e7d0510f7d22175d4d586c9565809d9380d2e`). Reviewed bootstrap fencing is now
 integrated: actual owned PG16 18/18 and routing 47/47, build/boundary/contract/

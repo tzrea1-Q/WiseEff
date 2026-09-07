@@ -4,6 +4,24 @@
 
 ## 范围与状态
 
+当前已验证代码 `e5c76c9ce4f828df8866f2b26888661a75aa9919`，tree
+`dd12fd3b8a15f168a05487f7dbf16a3e245b72cd`，base 仍为 `cda6737a8`。
+各集成增量已经独立审查。Owned Binding PG16 92/92、backend 4260通过／11跳过、
+scripts前置4/4及主体1822通过／25跳过、comparison 4/4，以及build／boundary／
+contract／selfhost通过。精确执行见现有证据文档，不表示完整存量转换通过。
+Bootstrap独立进程恢复与端点修复已经集成；此前22/22、本机16/16保留各自SHA。
+新候选尚未实际执行Hosted，不能覆盖 `fa3dbef3f` 的失败。
+
+父协调者独占根集成、runner/config及计划／证据双语文件。Fermat在独立Scratch负责
+CGH正式查询接线，Raman负责Spec、Lagrange负责Standards审查。通过现有公开组合
+接口替换恒定readiness和假空projection，不增加grant、不迁移冻结边界；查询失败
+不能证明库存为零。D01真实usage／registration权限、D06查询／命令组合、完整启动
+事实及实际controller成功仍是明确的内部接线点。A／B／C未完成。
+R3风险仍包括假空库存、借用权限、陈旧pin、清理结果丢失和错误目标副作用。
+Documentation Impact为现有计划／证据及直接相关的双语模块／决策文档，不新增宏观计划。
+
+下方检查点保留历史执行身份。
+
 当前本地代码 `439f79c96794d165a73bf41fdd1697bc552ffffe`，tree
 `8b1e7d0510f7d22175d4d586c9565809d9380d2e`。双审的bootstrap凭据隔离已集成：
 实际owned PG16 18/18、路由47/47，build／boundary／contract／selfhost退出0。

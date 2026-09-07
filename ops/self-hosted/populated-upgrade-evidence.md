@@ -4,6 +4,54 @@
 
 ## Current execution checkpoint, 2026-09-07
 
+Code `e5c76c9ce4f828df8866f2b26888661a75aa9919`, tree
+`dd12fd3b8a15f168a05487f7dbf16a3e245b72cd`, base `cda6737a8`, integrates the
+reviewed Linux resolver correction, explicit retryable cleanup and redacted I/O
+diagnostics, independent-process bootstrap custody checks, and eleven-provider
+comparison safety repair. No historical migration, timeout, grant or trusted
+boundary base changed. Independent increment reviews passed; Lagrange's final
+Standards integration review found no new P1/P2. This is not full integration
+Spec approval or A/B completion.
+
+| Exact execution | Result | Original log SHA256 |
+| --- | --- | --- |
+| `e5c76c9ce`, owned PG16 Alpine Binding lane | 9 files, 92/92, 72.10s, exit 0; cleanup verified | `2213a1012638f8d79cee86001109561ed3a45bb8919ba99916c688ab3131b7ca` |
+| Same code, owned pgvector backend | 4271 collected, 4260 passed, 0 failed, 11 skipped; 96.38s, exit 0; cleanup verified | `005231cda5ff896efcf4eded3d45b8b809c8bcadccd1f4e1a1a219797bffac46` |
+| Same code, focused real comparison | 4/4, 3.70s, exit 0; cleanup verified | `312c8c8ae8d24103d4fbc6b7b02c412e45a5d23a7744f228d11153e109eb0b7a` |
+| Same code, full owned scripts | Source-lock 4/4, 40.47s; ordinary 1847 collected, 1822 passed, 0 failed, 25 skipped, 84.07s; exit 0; cleanup verified | `768ec7169c50f4b2f835f24ff5e70ff8ea9040b8ed1016b6b8dd7161d6aa5a10` |
+| Same code, real Redis/BullMQ | 11/11, 2.75s, exit 0; cleanup verified; real jobs/drain/deduplication, authentication/readiness failure and connection recovery | `6c31c27afa13dceda627d54d9730474d396bd4545e421810c447bcb98f146333` |
+| Same code, build | Exit 0; retained existing warnings | `6172839c231d77fb36a5eab4ca0bcd6cf29adbd784f2b8d6f5230322917dbdef` |
+| Same code, boundary / contract / selfhost | All exit 0; 3509 allowances, zero new/stale/growth, unchanged trusted base `9b3ba7df7e21f5589684bc92c872da593ad4c246` | See delivery log manifest |
+
+The focused comparison proves two fresh comparison positives and complete
+populated inventory checks with a blocking CGH 503, not a passed populated
+corpus. D06 now contains two actually related open/dismissed Review records;
+all nine comparison IDs remain required. The earlier `0d71d9949` backend failed
+once on the real CGH 503; `fd4ea4094` failed twice on missing D06 inventory and
+shared-cluster management observations. Those failures remain historical results.
+The management-structure test now runs only in its mandatory dedicated Binding
+lane, not concurrently with unrelated role mutations; its assertions are intact.
+
+Earlier integrated executions retain their identities: bootstrap `b54241a4f`
+22/22 includes actual COMMIT-ack loss, interrupted child and a second process
+reopening custody after the parent closes its handle. Endpoint `0c198621d`
+passed real Docker/PG 16/16 locally; this is not Linux Hosted evidence. Cleanup
+`88521629e` passed full scripts (4/4 then 1818 passed/25 skipped), and `2307f1d06`
+passed five pure cleanup/diagnostic cases. Cleanup diagnostics distinguish slow
+connect/drop/end without exposing private SQL; they do not establish that the
+Hosted timeout is fixed. No frozen deadline increased.
+
+Latest completed Hosted remains `34130699134` on remote report `fa3dbef3f` and
+merge `1a6c126e93d1b565b77d3b8baada937374da799f`, failed as detailed below.
+No current-candidate Hosted result exists at this checkpoint. Production API and
+worker still lack the complete startup producer/callback; full P12/P13/report/
+controller success, business/browser/growth and whole-state business restore
+remain incomplete. A/B/C remain incomplete. S6, Policy #815 and per-identity
+comparison-format decisions remain separate from internal implementation; actual
+backup, enterprise network and production authorization remain external inputs.
+
+## Bootstrap checkpoint (historical)
+
 Code `439f79c96794d165a73bf41fdd1697bc552ffffe`, tree
 `8b1e7d0510f7d22175d4d586c9565809d9380d2e`, integrates the reviewed bootstrap
 credential fence and its mandatory owned PG16 CI route. The two Spec P2 fixes

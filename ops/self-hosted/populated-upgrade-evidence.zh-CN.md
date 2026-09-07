@@ -4,6 +4,46 @@
 
 ## 当前执行检查点，2026-09-07
 
+代码 `e5c76c9ce4f828df8866f2b26888661a75aa9919`，tree
+`dd12fd3b8a15f168a05487f7dbf16a3e245b72cd`，base `cda6737a8`。已集成双审的
+Linux 解析器修复、可显式重试的清理及脱敏 I/O 诊断、独立进程 custody 验证，
+以及十一个 provider 的比较安全修复。历史 migration、timeout、grant 和 boundary
+可信基线不变。各增量独立审查通过；Lagrange 的最终 Standards 集成审查无新增
+P1/P2。这不是整体 Spec 批准，也不代表 A/B 完成。
+
+| 精确执行 | 结果 | 原始日志 SHA256 |
+| --- | --- | --- |
+| `e5c76c9ce`，独立 PG16 Alpine Binding lane | 9 文件、92/92，72.10s，退出0，清理已验证 | `2213a1012638f8d79cee86001109561ed3a45bb8919ba99916c688ab3131b7ca` |
+| 同代码，独立 pgvector backend | 收集4271，通过4260、失败0、跳过11；96.38s，退出0，清理已验证 | `005231cda5ff896efcf4eded3d45b8b809c8bcadccd1f4e1a1a219797bffac46` |
+| 同代码，真实比较聚焦回归 | 4/4，3.70s，退出0，清理已验证 | `312c8c8ae8d24103d4fbc6b7b02c412e45a5d23a7744f228d11153e109eb0b7a` |
+| 同代码，完整 owned scripts | Source-lock 4/4、40.47s；主体收集1847，通过1822、失败0、跳过25、84.07s；退出0，清理已验证 | `768ec7169c50f4b2f835f24ff5e70ff8ea9040b8ed1016b6b8dd7161d6aa5a10` |
+| 同代码，真实 Redis/BullMQ | 11/11，2.75s，退出0，清理已验证；真实任务／排空／去重、认证／就绪失败及断连恢复 | `6c31c27afa13dceda627d54d9730474d396bd4545e421810c447bcb98f146333` |
+| 同代码，build | 退出0，保留既有警告 | `6172839c231d77fb36a5eab4ca0bcd6cf29adbd784f2b8d6f5230322917dbdef` |
+| 同代码，boundary／contract／selfhost | 均退出0；3509 allowance，无新增／陈旧／增长，可信基线仍为 `9b3ba7df7e21f5589684bc92c872da593ad4c246` | 见交付日志 manifest |
+
+比较聚焦回归证明两个 fresh 比较正例，以及完整存量库存检查后对 CGH 503 的阻塞，
+不是 populated corpus 通过。D06 新增两条真实关联的 open／dismissed Review，九类
+比较 ID 要求全部保留。此前 `0d71d9949` backend 因实际 CGH 503 失败1项；
+`fd4ea4094` 因缺 D06 库存和共享集群管理观察失败2项，均保留为历史失败。
+管理结构测试现在只由强制独占 Binding lane 执行，避免与无关角色修改并发；
+原断言没有放宽。
+
+较早已集成执行保留身份：`b54241a4f` bootstrap 22/22，包含实际 COMMIT 确认丢失、
+子进程中断，以及父进程关闭 handle 后第二进程重新打开 custody。
+`0c198621d` 实际 Docker/PG endpoint 本机16/16，不是 Linux Hosted 结果。
+`88521629e` 完整 scripts 前置4/4、主体1818通过／25跳过；`2307f1d06` 清理／诊断
+纯回归5/5。诊断区分慢 connect/drop/end，不输出私有 SQL；尚未证明 Hosted 超时
+已修复，也没有提高冻结时限。
+
+最新结束 Hosted 仍为远端 `fa3dbef3f` 的 `34130699134`，merge
+`1a6c126e93d1b565b77d3b8baada937374da799f`，失败详情保留于下段；本检查点没有
+当前候选的 Hosted 结果。生产模式 API／worker 的完整 startup producer/callback
+仍未接通；完整 P12/P13／报告／controller、业务／浏览器／增长规模及完整业务恢复
+仍未完成。A／B／C 均未完成。S6、Policy #815、逐身份比较格式决定分别保留；
+真实备份、企业网络及生产批准是独立外部输入，不替代内部实现责任。
+
+## Bootstrap 检查点（历史）
+
 代码 `439f79c96794d165a73bf41fdd1697bc552ffffe`，tree
 `8b1e7d0510f7d22175d4d586c9565809d9380d2e`，已集成双审的 bootstrap
 凭据隔离及强制 owned PG16 CI 路由。两个 Spec P2 修复分别在实际事务提交秘密 SQL

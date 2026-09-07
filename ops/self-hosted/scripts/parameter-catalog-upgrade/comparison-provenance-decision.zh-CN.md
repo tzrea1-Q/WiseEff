@@ -15,21 +15,24 @@ typed target 或 Archive、不可变计划中的规则和 plan digest。P7 为**
 维护一个 current head。[发布合同](../../../../docs/design-docs/parameter-catalog-verification-upgrade-retirement-gates.md#fixed-input-and-attempt-identity)
 另行固定完整 mapping epoch 与 mapping-head digest。
 
-当前有两个独立问题：
+检查时的 `1376fbcbe` 基线暴露了两个独立问题：
 
 1. `comparison/corpusContributionSchema.ts` 的 context 只有一组
    `mappingHeadId/version/checksum`，所有 contribution 必须相等，每条声明差异
    的 head ID/version 又必须等于 contribution，`ruleId` 必须等于 D01–D09 ID。
    v1 封闭字段没有精确 mapping-version ID 或逐身份 head digest。现有 live
    evidence 多 head 反例已经证明这个表达冲突，不能以全局 epoch 代替逐记录 head。
-2. 十一个 provider 的 `classifyCase` 都会为可查询但不相等的观察构造声明差异。
+2. 该基线的十一个 provider 的 `classifyCase` 都会为可查询但不相等的观察构造声明差异。
    例如 CGH 根据 D ID 选择 R1/R9，并以共享 head ID 冒充 Archive/Definition ID；
    PRJ 选择 R9，把 protected reference 当目标。没有实际 mapping 查询或计划规则
    支持这些分类。parser 只要求 R class 非空、至少一个 target/Archive，没有验证
    完整领域去向。后续 aggregate 通过不能补足这些事实。
 
-第二项违反**现有** P11 合同。停止推断去向、保留真实查询错误、把无证据差异标为
-阻塞不需要新的产品决定，但不能据此声称 populated 正向验证完成。第一项涉及冻结
+第二项违反**现有** P11 合同。`0d71d9949` 已在全部十一个 provider 停止推断去向、
+保留真实查询错误，并把无证据差异标为阻塞；36 项聚焦回归及独立 Standards/Spec
+审查通过。该安全修复无需新的产品决定，但不能据此声称 populated 正向验证完成。
+`e5c76c9ce` 的真实 PG 比较保留了存量库存，并拒绝 CGH 未接通的 readiness；
+正式查询接线仍是内部工作。第一项涉及冻结
 证据格式及其 parser/codec/tests 的限定演进。此前 reader/恢复两项授权没有隐含批准
 这第三处格式变化。
 
