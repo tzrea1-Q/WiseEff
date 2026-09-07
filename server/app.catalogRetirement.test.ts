@@ -1,5 +1,6 @@
 import { expect, it, vi } from "vitest";
 import { buildWiseEffRouter, createWiseEffServer } from "./app";
+import * as application from "./app";
 import { parameterCatalogLegacyWriteRouteIds } from "./modules/contracts/dtoSchemas/parameterCatalog";
 import { routeManifest } from "./modules/contracts/routeManifest";
 import { createPostgresDatabase, getRootPostgresPool, type Database, type QueryResult } from "./shared/database/client";
@@ -32,6 +33,21 @@ const retiredRoutes = parameterCatalogLegacyWriteRouteIds.map(id => {
   const route = routeManifest.find(candidate => candidate.id === id);
   if (!route) throw new Error(`Missing frozen retired route: ${id}`);
   return route;
+});
+
+it("reads retired HTTP control evidence only from the actual application registration owner", () => {
+  const { router } = buildWiseEffRouter();
+  const observe = (application as typeof application & {
+    observeCatalogHttpWriterControls(router: typeof router): {
+      kind: string; routes: Array<{ id: string; method: string; path: string; disposition: string }>;
+      registrationDigest: string;
+    };
+  }).observeCatalogHttpWriterControls;
+  const actual = observe(router);
+  expect(actual.kind).toBe("legacy-http-writes-retired");
+  expect(actual.routes).toEqual(retiredRoutes.map(({ id, method, path }) => ({ id, method, path, disposition: "gone-410" })));
+  expect(actual.registrationDigest).toMatch(/^sha256:[a-f0-9]{64}$/);
+  expect(() => observe({ ...router })).toThrow("PCAT-HTTP-WRITER-CONTROLS-UNISSUED");
 });
 
 it("a real branded database root cannot make retirement depend on a Catalog query", async () => {
