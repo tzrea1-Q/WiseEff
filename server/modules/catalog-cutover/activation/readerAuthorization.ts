@@ -46,6 +46,7 @@ export async function assertDedicatedCatalogReader(reader: Queryable): Promise<v
       -- PUBLIC cannot add Catalog interfaces or a writable search-path schema.
       and not exists(select 1 from pg_catalog.pg_namespace n where n.nspname !~ '^pg_(toast|temp)'
         and has_schema_privilege(session_user,n.oid,'CREATE'))
+      and not has_database_privilege(session_user,current_database(),'CREATE')
       and not exists(select 1 from pg_catalog.pg_namespace n,lateral aclexplode(n.nspacl) acl
         where n.nspname='parameter_catalog' and acl.grantee=0)
       and not exists(select 1 from pg_catalog.pg_default_acl d,lateral aclexplode(d.defaclacl) acl
@@ -84,7 +85,25 @@ export async function assertDedicatedCatalogReader(reader: Queryable): Promise<v
             or exists(select 1 from pg_catalog.pg_class c join pg_catalog.pg_namespace cn on cn.oid=c.relnamespace
               where cn.nspname='parameter_catalog' and c.relkind in ('r','p','v','m','f')
                 and (has_table_privilege(owner.oid,c.oid,'SELECT,INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER')
-                  or has_any_column_privilege(owner.oid,c.oid,'SELECT,INSERT,UPDATE,REFERENCES')))))
+                  or has_any_column_privilege(owner.oid,c.oid,'SELECT,INSERT,UPDATE,REFERENCES')))
+            -- A low-privilege definer can delegate a capability outside Catalog.
+            -- Compare effective privileges, not its SQL body or role's name.
+            or has_database_privilege(owner.oid,current_database(),'CREATE')
+            or exists(select 1 from pg_catalog.pg_namespace s where s.nspname not in ('pg_catalog','information_schema')
+              and s.nspname !~ '^pg_(toast|temp)' and has_schema_privilege(owner.oid,s.oid,'CREATE'))
+            or exists(select 1 from pg_catalog.pg_proc delegated where has_function_privilege(owner.oid,delegated.oid,'EXECUTE')
+              and not has_function_privilege(session_user,delegated.oid,'EXECUTE'))
+            or exists(select 1 from pg_catalog.pg_class c join pg_catalog.pg_namespace s on s.oid=c.relnamespace
+              where s.nspname not in ('pg_catalog','information_schema') and s.nspname !~ '^pg_(toast|temp)'
+                and c.relkind in ('r','p','v','m','f','S') and case when c.relkind='S' then
+                  exists(select 1 from unnest(array['SELECT','USAGE','UPDATE']) privilege where
+                    has_sequence_privilege(owner.oid,c.oid,privilege) and not has_sequence_privilege(session_user,c.oid,privilege))
+                else exists(select 1 from unnest(array['SELECT','INSERT','UPDATE','DELETE','TRUNCATE','REFERENCES','TRIGGER']) privilege where
+                    has_table_privilege(owner.oid,c.oid,privilege) and not has_table_privilege(session_user,c.oid,privilege))
+                  or exists(select 1 from pg_catalog.pg_attribute a cross join unnest(array['SELECT','INSERT','UPDATE','REFERENCES']) privilege
+                    where a.attrelid=c.oid and a.attnum>0 and not a.attisdropped
+                      and has_column_privilege(owner.oid,c.oid,a.attnum,privilege)
+                      and not has_column_privilege(session_user,c.oid,a.attnum,privilege)) end)))
       as safe`, [CATALOG_READER_ROLE, relations])).rows[0];
   if (row?.safe !== true) throw new ActivationRefusal("catalog-reader-login-required");
 }

@@ -159,4 +159,45 @@ describe("P12 management persistence on an owned old-schema database", () => {
     finally { await admin.query(remove); }
     await assertDedicatedCatalogReader(reader);
   });
+  it("rejects effective PUBLIC database CREATE without forbidding default CONNECT/TEMP", async () => {
+    const quotedDatabase = pg.escapeIdentifier((await admin.query<{ name: string }>("select current_database() as name")).rows[0].name);
+    expect((await reader.query("select has_database_privilege(current_database(),'CREATE') as allowed")).rows[0].allowed).toBe(false);
+    await admin.query(`grant create on database ${quotedDatabase} to public`);
+    try { await expect(assertDedicatedCatalogReader(reader)).rejects.toThrow("p12-catalog-reader-login-required"); }
+    finally { await admin.query(`revoke create on database ${quotedDatabase} from public`); }
+    await assertDedicatedCatalogReader(reader);
+  });
+  it.each([
+    ["sequence USAGE", "create sequence public.p12_private_seq; grant usage on sequence public.p12_private_seq to DELEGATE", "select nextval('public.p12_private_seq')::integer", "drop sequence public.p12_private_seq"],
+    ["private function EXECUTE", "create function public.p12_private_inner() returns integer language sql security definer as 'select 101'; revoke all on function public.p12_private_inner() from public; grant execute on function public.p12_private_inner() to DELEGATE", "select public.p12_private_inner()", "drop function public.p12_private_inner()"],
+    ["external column SELECT", "create table public.p12_private_table(secret integer); insert into public.p12_private_table values(101); grant select(secret) on public.p12_private_table to DELEGATE", "select secret from public.p12_private_table", "drop table public.p12_private_table"],
+    ["external column UPDATE", "create table public.p12_private_table(secret integer); insert into public.p12_private_table values(101); grant update(secret) on public.p12_private_table to DELEGATE", "update public.p12_private_table set secret=102; select 1", "drop table public.p12_private_table"],
+  ])("rejects a PUBLIC definer whose otherwise limited owner delegates %s", async (_name, setup, body, cleanup) => {
+    const delegate = pg.escapeIdentifier(`p12_delegate_${roleSuffix}`);
+    await assertDedicatedCatalogReader(reader);
+    await admin.query(`create role ${delegate} nologin noinherit nosuperuser nobypassrls nocreatedb nocreaterole`);
+    try {
+      await admin.query(setup.replaceAll("DELEGATE", delegate));
+      await admin.query(`create function public.p12_public_outer() returns integer language sql security definer as ${pg.escapeLiteral(body)};
+        alter function public.p12_public_outer() owner to ${delegate}; grant execute on function public.p12_public_outer() to public`);
+      try {
+        // Establish the real capability path; no body-text regex is the oracle.
+        expect((await reader.query("select public.p12_public_outer() as value")).rows[0].value).toBeTypeOf("number");
+        await expect(assertDedicatedCatalogReader(reader)).rejects.toThrow("p12-catalog-reader-login-required");
+      } finally { await admin.query("drop function public.p12_public_outer()"); }
+    } finally { await admin.query(cleanup); await admin.query(`drop role ${delegate}`); }
+    await assertDedicatedCatalogReader(reader);
+  });
+  it("keeps a PUBLIC definer with no additional owner capability admissible", async () => {
+    const delegate = pg.escapeIdentifier(`p12_delegate_${roleSuffix}`);
+    await admin.query(`create role ${delegate} nologin noinherit nosuperuser nobypassrls nocreatedb nocreaterole`);
+    try {
+      await admin.query(`create function public.p12_public_outer() returns integer language sql security definer as 'select 7';
+        alter function public.p12_public_outer() owner to ${delegate}; grant execute on function public.p12_public_outer() to public`);
+      try {
+        await assertDedicatedCatalogReader(reader);
+        expect((await reader.query("select public.p12_public_outer() as value")).rows[0].value).toBe(7);
+      } finally { await admin.query("drop function public.p12_public_outer()"); }
+    } finally { await admin.query(`drop role ${delegate}`); }
+  });
 });

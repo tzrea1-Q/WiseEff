@@ -34,6 +34,14 @@ Restricted built-ins' PUBLIC EXECUTE is compared with PostgreSQL's recorded
 not the permissive default function ACL. The challenge is not a maintenance lock
 or a release approval.
 
+PUBLIC definers are audited by the owner's effective capability relative to the
+reader across application schemas: table and individual column privileges,
+sequence privileges, CREATE and additional function EXECUTE. A low-privilege
+owner can still delegate a private inner function or sequence; the function's
+SQL body is not parsed as evidence. A definer with no additional owner capability
+is not rejected merely for being a definer. Effective database CREATE (including
+PUBLIC) is refused; ordinary database CONNECT/TEMP remains unchanged.
+
 `createP12Activation` requires an actual target owner. `installTarget(attemptId)`
 installs its P12 effect into the existing `runCatalogReleaseAction` target port;
 there is no CLI, default target, environment approval, or generic SQL executor.
@@ -118,6 +126,13 @@ eventual commit without relabelling it as a post-commit run. Genuine P11 reports
 controller end-to-end execution remain separate integration evidence. No production command is executable from
 this component alone. Do not use the Report tests' constant `passingAdapters` to
 claim a legitimate P11 report.
+
+The follow-up owner-delegation review used the same owned PG16 lane. At
+2026-09-07 13:21:40 +08:00, the prior audit resolved instead of rejecting all five
+new unsafe cases: 22 collected, 17 passed, 5 failed, 0 skipped, exit 1. After the
+capability comparison and effective database CREATE fix, the 13:22:30 run passed
+22/22, 0 skipped, exit 0, including the definer with no additional capability.
+Both runs verified cleanup; neither executes or proves P12 activation.
 
 | Artifact | Update owner |
 | --- | --- |
