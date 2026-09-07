@@ -56,6 +56,13 @@ adapter 绑定完整 `activationIntent` 与领域 `bindingDigest`，读取正式
 但不写业务数据、不执行 DDL、不切角色、不 BEGIN／COMMIT。reconcile 使用同一
 接口并要求事件绑定仍是当前 binding；旧事件不成为当前运行或发布批准。
 
+`beginLegacyRetirementTransaction` 开始 SERIALIZABLE，设置 synchronous commit
+与 UTC，随后对 P12 同样保护的六张 Catalog／mapping 表取得 SHARE NOWAIT 锁。
+两个写事务均在首次产生快照的查询前调用它。S7 锁不能独立阻止 mapping 或
+installer 写入；在 repeatable read 内重复 SELECT 只会重读旧快照。锁竞争留下
+失败事务，由 owner 回滚，该事务不写 intent 或角色 effect。本准备函数不能替代
+实际目标、S7 锁和停写边界检查。
+
 `retireLegacyApplicationLogins` 先持久保存 intent，再于独立事务应用数据库围栏和
 effect event；COMMIT 开启 synchronous commit。它不创建 P13 checkpoint，不推进
 run phase；返回 `legacy-logins-fenced-not-p13`。已有 intent 不是重试许可。

@@ -10,6 +10,7 @@ import { createVerificationReportService } from "../../../../server/modules/rele
 import { legacyRolesAreRecoverable, type RetiringRole as Role } from "../../../../server/modules/catalog-cutover/retirement/roleRecovery";
 import { applyLegacyLoginFence, assertNoSharedLegacyRoleUse, retiringRolesSql as rolesSql } from "../../../../server/modules/catalog-cutover/retirement/loginFence";
 import { acquireObservedManagementClient } from "../../../../server/modules/catalog-cutover/retirement/managementCheckout";
+import { beginLegacyRetirementTransaction } from "../../../../server/modules/catalog-cutover/retirement/managementTransaction";
 import { readBindingDatabaseIdentity } from "../../../../server/modules/parameter-bindings/cutoverImport/sourceBoundary";
 import { digestOf } from "../../../../server/modules/release-verification/core/digest";
 import { verifyRecoveryPackage } from "../../storage/recoveryPackage";
@@ -188,9 +189,8 @@ async function retire(input: LegacyLoginRetirementInput) {
         select $1,$2,coalesce(max(sequence_number),0)+1,'P13',$3,$4::jsonb
         from parameter_catalog.parameter_catalog_cutover_events where cutover_run_id=$2`, [`cevt_${randomUUID()}`, fixed.activationIntent.runId, kind, JSON.stringify({ request, requestDigest: digestOf(request) })]);
     };
-    await admin.query("begin isolation level serializable"); transaction = true;
-    await admin.query("set local synchronous_commit=on");
-    await admin.query("set local timezone='UTC'");
+    transaction = true;
+    await beginLegacyRetirementTransaction(admin);
     await targetCheck();
     await checkCurrentP12();
     await admin.query("select id from parameter_catalog.parameter_catalog_cutover_runs where id=$1 for update", [fixed.activationIntent.runId]);
@@ -198,9 +198,8 @@ async function retire(input: LegacyLoginRetirementInput) {
     need(prior.rowCount === 0, "ATTEMPT-REQUIRES-RECONCILE");
     await append("legacy-login-fence-intent");
     ending = true; await admin.query("commit"); transaction = false; ending = false;
-    await admin.query("begin isolation level serializable"); transaction = true;
-    await admin.query("set local synchronous_commit=on");
-    await admin.query("set local timezone='UTC'");
+    transaction = true;
+    await beginLegacyRetirementTransaction(admin);
     await targetCheck(); await checkShared();
     need(isDeepStrictEqual((await admin.query<Role>(rolesSql, [[...names]])).rows, oldRoles), "ROLE-DRIFT");
     await checkCurrentP12();

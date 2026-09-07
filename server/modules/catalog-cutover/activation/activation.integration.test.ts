@@ -19,6 +19,8 @@ import { physicalIdentity, readFacts, persistActivation } from "./postgres";
 import { decodeBinding } from "./records";
 import { digestOf } from "../../release-verification/core/digest";
 import { runP01, runP02 } from "../../release-verification/gates/postgres/privilegeGates";
+import { beginLegacyRetirementTransaction } from "../retirement/managementTransaction";
+import { acquireObservedManagementClient } from "../retirement/managementCheckout";
 import { assertHostOperationLock, withHostOperationLock, type HostOperationLock } from "../../../../ops/self-hosted/scripts/parameter-catalog-upgrade/handoff";
 
 /** Storage component evidence only. Actual S7 P0–P10 is executed over two
@@ -348,6 +350,54 @@ describe("existing 0137 activation storage on independently owned PG16", () => {
       });
       expect(await counts()).toEqual(before);
     });
+  it("refuses retirement preparation while another owner has changed a mapping head without committing", async () => {
+    const writer = await admin.connect(), owner = await admin.connect();
+    const before = await counts();
+    try {
+      await writer.query("begin");
+      await writer.query("update parameter_catalog.legacy_mapping_heads set cas_version=cas_version+1 where legacy_identity_id='identity-status'");
+      await owner.query("select pg_advisory_lock(hashtext('s7-orc-cutover-target'),hashtext(current_database()))");
+      await expect(beginLegacyRetirementTransaction(owner)).rejects.toThrow("TRANSACTION-PREPARE-FAILED");
+    } finally {
+      await writer.query("rollback"); writer.release(true);
+      await owner.query("rollback"); owner.release(true);
+    }
+    expect(await counts()).toEqual(before);
+    await expect(module.inspect(persistedBinding.intent)).resolves.toMatchObject({ kind: "applied" });
+  });
+  it("holds inventory and S7 barriers until the P13 owner's transaction ends", async () => {
+    const owner = await admin.connect(), competitor = await admin.connect();
+    try {
+      await owner.query("select pg_advisory_lock(hashtext('s7-orc-cutover-target'),hashtext(current_database()))");
+      await beginLegacyRetirementTransaction(owner);
+      expect((await competitor.query("select pg_try_advisory_lock(hashtext('s7-orc-cutover-target'),hashtext(current_database())) as held")).rows[0].held).toBe(false);
+      await competitor.query("begin");
+      await expect(competitor.query(`lock table parameter_catalog.legacy_mapping_heads in row exclusive mode nowait;
+        update parameter_catalog.legacy_mapping_heads set cas_version=cas_version+1 where legacy_identity_id='identity-status'`))
+        .rejects.toMatchObject({ code: "55P03" });
+      await competitor.query("rollback");
+      await owner.query("rollback");
+      // Releasing the actual owner transaction removes the inventory barrier.
+      await competitor.query("begin");
+      await competitor.query("lock table parameter_catalog.legacy_mapping_heads in row exclusive mode nowait");
+    } finally {
+      await competitor.query("rollback"); competitor.release(true);
+      await owner.query("rollback"); owner.release(true);
+    }
+  });
+  it("fails preparation after a real observed management connection is terminated", async () => {
+    let observed = false;
+    let notify!: () => void;
+    const disconnected = new Promise<void>(resolve => { notify = resolve; });
+    const owner = await acquireObservedManagementClient(admin, () => { observed = true; notify(); });
+    try {
+      const pid = (await owner.query("select pg_backend_pid() as pid")).rows[0].pid;
+      await admin.query("select pg_terminate_backend($1)", [pid]);
+      await disconnected;
+      expect(observed).toBe(true);
+      await expect(beginLegacyRetirementTransaction(owner)).rejects.toThrow("TRANSACTION-PREPARE-FAILED");
+    } finally { owner.release(true); }
+  });
   it("never treats a missing mapping head as a zero inventory or silently renews the epoch", async () => {
     await admin.query(`insert into public.parameter_specs(id,source_kind,specification_key,definition_lifecycle,property_key)
       values('unclassified-new-source','dts','synthetic.new','active','synthetic,new')`);

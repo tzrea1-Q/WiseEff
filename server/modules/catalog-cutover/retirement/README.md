@@ -69,6 +69,15 @@ DDL, role changes, BEGIN or COMMIT. Reconciliation uses the same seam and requir
 the event's exact binding to remain current. It cannot turn an old event into
 current runtime or release approval.
 
+`beginLegacyRetirementTransaction` starts SERIALIZABLE and sets synchronous
+commit and UTC, then obtains SHARE NOWAIT locks on the same six Catalog/mapping
+relations protected by P12. Both mutation transactions call this preparation
+before their first snapshot-producing query. S7 alone does not fence independent
+mapping or installer writers; repeating SELECT under repeatable read would only
+repeat an older snapshot. Contention leaves a failed transaction for the owner
+to roll back, with no intent or role effect from that transaction. The helper
+does not replace the actual target, S7 lock or boundary checks.
+
 `retireLegacyApplicationLogins` persists an intent, then applies the database
 fence and an effect event in a separate transaction. COMMIT uses synchronous
 commit. It does not create a P13 checkpoint or advance the run phase. Its return
