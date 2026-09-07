@@ -236,8 +236,21 @@ statistics readers from observing the statement through `pg_stat_activity`;
 logging settings alone do not provide that protection. Inspection snapshots its
 target, run, attempt, custody and client before its first await, so caller mutation
 cannot replace the selected recovery attempt. The new statistics-reader and
-asynchronous-selection regressions require a fresh owned PostgreSQL execution;
-the earlier 17-case result does not cover these fixes.
+asynchronous-selection regressions were executed separately: old implementation
+with the stronger tests at runner candidate `34f3c12a8` collected 18, passed 16
+and failed 2; fixed runner candidate `75a88cf0687a07a93367f18e2e0ba228a4176684`
+passed all 18 in 3.75 seconds, with verified resource cleanup. Its code/test blobs
+match component `3ec370aeb`; the earlier 17-case result does not cover these fixes.
+
+Two subsequent process/transport cases are pending execution. They forward only
+to the receipt-proven isolated database and observe actual server COMMIT replies.
+The first holds the intent commit acknowledgment and terminates the real child;
+inspection must find the unchanged old credential and the original pending intent.
+The second drops the actual connection after the password/event transaction
+commits; a fresh management connection must reconcile that same private version.
+No COMMIT reply, authentication result, applied event or approval is fabricated.
+The existing test/supervisor timeouts remain unchanged. These cases concern the
+authentication component, not whole-state recovery eligibility or completed P13.
 
 Template flags are not an escape from the database inventory. Only the actual
 default template OIDs 1 and 4, bootstrap owner and default template ACL are
