@@ -64,16 +64,16 @@ describe("authorized additive Catalog reader on owned PG16", () => {
     expect((await reader.query("select current_setting('transaction_read_only') as value")).rows).toEqual([{ value: "off" }]);
   });
   it("keeps ungranted production login unable to read any Catalog object", async () => {
-    for (const table of CATALOG_READER_RELATIONS) await expect(denied.query(`select * from parameter_catalog.${table} limit 0`)).rejects.toMatchObject({ code: "42501" });
+    for (const table of CATALOG_READER_RELATIONS) await expect(denied.query(`select * from ${table} limit 0`)).rejects.toMatchObject({ code: "42501" });
     expect(await createCatalogKernel(denied).loadCurrentCatalog(chain.pinC)).toMatchObject({ ok: false, error: { kind: "storage-failure" } });
   });
   it("grants precisely ten SELECTs, no DML, extra-domain reads or function EXECUTE", async () => {
-    const rows = (await admin.query(`select c.relname,
+    const rows = (await admin.query<{ relname: string; can_select: boolean; can_write: boolean }>(`select c.relname,
       has_table_privilege($1,c.oid,'SELECT') as can_select,
       has_table_privilege($1,c.oid,'INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER') as can_write
       from pg_class c join pg_namespace n on n.oid=c.relnamespace
       where n.nspname='parameter_catalog' and c.relkind in ('r','p','v','m') order by c.relname`, [CATALOG_READER_ROLE])).rows;
-    expect(rows.filter(row => row.can_select).map(row => row.relname)).toEqual(CATALOG_READER_RELATIONS);
+    expect(rows.filter(row => row.can_select).map(row => `parameter_catalog.${row.relname}`)).toEqual(CATALOG_READER_RELATIONS);
     expect(rows.some(row => row.can_write)).toBe(false);
     for (const row of rows) {
       if (!row.can_select) await expect(reader.query(`select * from parameter_catalog.${row.relname} limit 0`)).rejects.toMatchObject({ code: "42501" });

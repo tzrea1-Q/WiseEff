@@ -32,6 +32,8 @@ reader 可能已在其他数据库拥有合法 SELECT。当前连接不能读取
 
 ## 验收与文件归属
 
+查询 manifest 为每个关系显式登记 `parameter_catalog` schema。旧身份依赖扫描器区分精确的 `parameter_catalog.parameter_definitions`、`parameter_catalog.project_parameter_values` 与同名的已退役平面身份。这是逐处源码检查，不是 SQL 解析或整个文件的豁免：未限定、`public`、其他 schema、混用、扩展标识符和伪装引用仍然拒绝。其他禁止 token、允许路径以及 migration／grant 合同均不变。引用标识符或以空白分隔的变体仍保守拒绝。
+
 `catalogReader.integration.test.ts` 使用既有 owned-target 组件入口及私有 receipt，在自己创建的 PostgreSQL 16 Alpine 集群执行。部分负测会在回滚事务中临时污染集群级能力，因此不能指向 ambient／共享 Catalog lane。在隔离开发工作树、独立核验本机 Docker daemon 后执行：
 
 ```sh

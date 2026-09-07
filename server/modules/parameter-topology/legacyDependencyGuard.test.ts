@@ -104,6 +104,20 @@ export async function productionSourceContains(token: string): Promise<boolean> 
   return hits.length > 0;
 }
 
+export function containsRetiredIdentityToken(text: string, token: string): boolean {
+  if (token !== "parameter_definitions" && token !== "project_parameter_values") return text.includes(token);
+  // These two canonical relations share names with retired public tables.
+  // Recognize only the exact source spelling, never a file-wide exemption.
+  const namespace = "parameter_catalog.";
+  for (let at = text.indexOf(token); at !== -1; at = text.indexOf(token, at + token.length)) {
+    const start = at - namespace.length;
+    if (start < 0 || text.slice(start, at) !== namespace
+      || /[\w$.\u0080-\uFFFF]/u.test(text[start - 1] ?? "")
+      || /[\w$\u0080-\uFFFF]/u.test(text[at + token.length] ?? "")) return true;
+  }
+  return false;
+}
+
 export async function listProductionHits(token: string): Promise<string[]> {
   const files: string[] = [];
   for (const root of SCAN_ROOTS) {
@@ -116,7 +130,7 @@ export async function listProductionHits(token: string): Promise<string[]> {
     const info = await stat(file);
     if (!info.isFile()) continue;
     const text = await readFile(file, "utf8");
-    if (text.includes(token)) {
+    if (containsRetiredIdentityToken(text, token)) {
       hits.push(path.relative(REPO_ROOT, file).replace(/\\/g, "/"));
     }
   }
@@ -149,6 +163,36 @@ export async function listLegacyIdentityTemplateInterpolationHits(
 }
 
 describe("legacy parameter identity dependency guard", () => {
+  it.each(["parameter_definitions", "project_parameter_values"])(
+    "still rejects unqualified, disguised and mixed retired %s references",
+    token => {
+      const forbidden = [token, `public.${token}`, `other.${token}`, `legacy_${token}`,
+        `xparameter_catalog.${token}`, `other.parameter_catalog.${token}`, `éparameter_catalog.${token}`,
+        `$parameter_catalog.${token}`, `parameter_catalog.${token}_shadow`, `parameter_catalog.${token}é`,
+        `parameter_catalog.${token}$`, `"parameter_catalog".${token}`, `parameter_catalog."${token}"`,
+        `parameter_catalog./* namespace gap */${token}`, `parameter_catalog. ${token}`,
+        `parameter_catalog.${token}; public.${token}`, `${token}; parameter_catalog.${token}`,
+        `/* parameter_catalog.${token} */ select * from ${token}`];
+      for (const text of forbidden) expect(containsRetiredIdentityToken(text, token), text).toBe(true);
+    }
+  );
+
+  it("keeps every other retired token forbidden even with a canonical namespace prefix", () => {
+    for (const token of FORBIDDEN_ACTIVITY_TOKENS) {
+      if (token === "parameter_definitions" || token === "project_parameter_values") continue;
+      expect(containsRetiredIdentityToken(`parameter_catalog.${token}`, token), token).toBe(true);
+    }
+  });
+
+  it.each(["parameter_definitions", "project_parameter_values"])(
+    "distinguishes the canonical namespace from each retired %s occurrence",
+    token => {
+      expect(containsRetiredIdentityToken(`select * from parameter_catalog.${token}`, token)).toBe(false);
+      expect(containsRetiredIdentityToken(`"parameter_catalog.${token}"`, token)).toBe(false);
+      expect(containsRetiredIdentityToken(`parameter_catalog.${token}, parameter_catalog.${token}`, token)).toBe(false);
+    }
+  );
+
   it(
     "has no activity-runtime dependency on legacy parameter identity",
     async () => {
