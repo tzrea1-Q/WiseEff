@@ -31,9 +31,9 @@ import type { LegacyCatalogOptions, LegacyHttpResult } from "./types";
 
 const OPERATOR_PREFIX = "/api/v2/operator/parameter-catalog";
 
-const writeRoutes = routeManifest.filter((route) =>
+const writeRoutes = Object.freeze(routeManifest.filter((route) =>
   (parameterCatalogLegacyWriteRouteIds as readonly string[]).includes(route.id),
-);
+).map(({ id, method, path }) => Object.freeze({ id, method, path })));
 
 const eligibleRoutes = routeManifest.filter((route) =>
   (parameterCatalogBoundedLegacyReadRouteIds as readonly string[]).includes(route.id),
@@ -433,11 +433,11 @@ export function registerCatalogLegacyRoutes(
   }
 }
 
-export const legacyWriteRouteManifest = writeRoutes.map((route) => ({
-  id: route.id,
-  method: route.method as HttpMethod,
-  path: route.path,
-}));
+/** Detached compatibility projections cannot change the owner's registrations. */
+export function readLegacyWriteRouteManifest() {
+  return writeRoutes.map(({ id, method, path }) => ({ id, method: method as HttpMethod, path }));
+}
+export const legacyWriteRouteManifest = readLegacyWriteRouteManifest();
 
 export const legacyEligibleRouteManifest = eligibleRoutes.map((route) => ({
   id: route.id,

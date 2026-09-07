@@ -8,7 +8,11 @@ only that original router through a private WeakMap. It takes no caller route
 inventory, handler callback, approval flag, database URL or artifact identity.
 
 The legacy owner directly registers its fixed 410 handler for the existing
-`legacyWriteRouteManifest`. The original retired registration filter remains in
+retired route contract, retained as a private immutable initialization snapshot.
+The exported `legacyWriteRouteManifest` remains a detached compatibility view;
+neither registration nor observation uses that mutable public array. A fresh
+`readLegacyWriteRouteManifest()` copy supplies the app's private snapshot.
+The original retired registration filter remains in
 place; other handlers, including canonical/business mutations and bounded reads,
 keep their existing behavior. The projection contains the exact retired route
 IDs/methods/paths and a digest of the ordered actual registration/control list.
@@ -36,8 +40,12 @@ conversely this route subset cannot prove database trigger/rule/Agent/job safety
 
 The public seam is the actual `buildWiseEffRouter` result and its observation.
 The first fixed Red (`23309920b`, base `73f12a24e`) collected 42 tests: 41 passed
-and only the missing owner observation failed. The original 38 real HTTP retired
-route checks remain intact. The subsequent 49-test suite includes copied-router,
+and only the missing owner observation failed. Spec review then found the public
+manifest alias could remove the inventory; fixed test-only `0f2c0d2d4` collected
+51 tests, 49 passed and the two full/partial deletion cases failed. The owner
+snapshot fix preserves all routes and actual 410 after both mutations.
+The original 38 real HTTP retired
+route checks remain intact. The subsequent 51-test suite includes copied-router,
 late registration/dispatch mutation and response-copy isolation negatives.
 Early static, renamed-parameter and doubled-slash competitor fixtures actually
 dispatch to a live handler; observation refuses without invoking it. These

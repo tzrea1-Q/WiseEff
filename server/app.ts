@@ -43,8 +43,7 @@ import type { TrustedRefusalAuditSink } from "./modules/audit/trustedRefusalSink
 import { registerProductFeedbackRoutes } from "./modules/product-feedback/routes";
 import { registerUserRoutes } from "./modules/users/routes";
 import { registerParameterCatalogApi } from "./modules/parameter-catalog-api/productionWire";
-import { legacyWriteRouteManifest } from "./modules/parameter-catalog-api/legacy";
-import { retiredCatalogWriteHandler } from "./modules/parameter-catalog-api/legacy/routes";
+import { readLegacyWriteRouteManifest, retiredCatalogWriteHandler } from "./modules/parameter-catalog-api/legacy/routes";
 import { digestOf } from "./modules/release-verification/core/digest";
 import { createHttpServer } from "./shared/http/server";
 import { createRouter, type HttpMethod, type RouteRequest, type WiseEffRouter } from "./shared/http/router";
@@ -60,6 +59,7 @@ type HttpWriterControls = {
   registrationDigest: string;
 };
 const httpWriterControls = new WeakMap<WiseEffRouter, () => HttpWriterControls>();
+const retiredHttpRoutes = readLegacyWriteRouteManifest();
 
 /** Only the actual application registration owner can supply this HTTP subset.
  * It is not artifact identity, database isolation or a P13 completion. */
@@ -74,7 +74,7 @@ export function observeCatalogHttpWriterControls(router: WiseEffRouter): HttpWri
  * first-registration precedence. This filter grants no startup permission and
  * leaves all non-retired routes, including bounded reads, unchanged. */
 function withoutRetiredCatalogRegistrations(router: WiseEffRouter): WiseEffRouter {
-  const retired = new Set(legacyWriteRouteManifest.map(route => `${route.method} ${route.path}`));
+  const retired = new Set(retiredHttpRoutes.map(route => `${route.method} ${route.path}`));
   const register = (method: HttpMethod, add: WiseEffRouter["get"]): WiseEffRouter["get"] =>
     (pattern, handler) => {
       if (!retired.has(`${method} ${pattern}`)) add(pattern, handler);
@@ -358,7 +358,7 @@ export function buildWiseEffRouter(options: WiseEffServerOptions = {}) {
   });
 
   const registered = registrations.slice(), methods = { ...router };
-  const retired = legacyWriteRouteManifest.map(route => ({ ...route, disposition: "gone-410" as const }));
+  const retired = retiredHttpRoutes.map(route => ({ ...route, disposition: "gone-410" as const }));
   httpWriterControls.set(router, () => {
     if (registrations.length !== registered.length || Object.keys(methods).some(key =>
       router[key as keyof WiseEffRouter] !== methods[key as keyof WiseEffRouter])) {
