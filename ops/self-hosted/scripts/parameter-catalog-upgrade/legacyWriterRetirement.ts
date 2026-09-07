@@ -41,6 +41,85 @@ export type LegacyLoginRetirementInput = {
   bootstrapCredentialDirectory?: string;
 };
 
+/** Root-owned resource lifetime, not stage authorization. This acquires no
+ * credential/P12/report evidence and never invokes the authentication effect.
+ * The mutator owns the single S7 lock; the separate restricted LOGIN holds the
+ * six inventory locks across the mutator's own commits. */
+export async function acquireBootstrapInventoryGuard(input: {
+  managementPool: pg.Pool;
+  mutator: pg.PoolClient;
+  target: ActivationOptions["target"];
+  /** Notification after this module has destroyed the actual mutating client. */
+  onMutatorReleased?: () => void;
+}) {
+  const { managementPool, mutator, onMutatorReleased } = input, target = { ...input.target };
+  let guard: pg.PoolClient | undefined, closed = false, lost = false, mutatorReleased = false;
+  const onLost = () => {
+    if (closed) return;
+    lost = true;
+    if (!mutatorReleased) {
+      mutatorReleased = true;
+      try { mutator.release(true); } catch { /* Verification retains a static refusal. */ }
+      finally { onMutatorReleased?.(); }
+    }
+  };
+  const close = async () => {
+    if (closed) return;
+    closed = true;
+    guard?.release(true);
+  };
+  try {
+    need(isDeepStrictEqual(await readBindingDatabaseIdentity(mutator), target), "TARGET-MISMATCH");
+    const manager = (await mutator.query(`select r.oid::text as oid,
+      session_user=current_user and r.rolsuper as admitted from pg_catalog.pg_roles r where rolname=session_user`)).rows[0];
+    need(manager?.admitted === true && manager.oid === "10", "MANAGEMENT-IDENTITY-UNSUPPORTED");
+    guard = await new Promise<pg.PoolClient>((resolve, reject) => {
+      managementPool.connect((error, client) => {
+        if (client) { guard = client; client.on("error", onLost); client.on("end", onLost); }
+        if (error || !client) { reject(new LegacyLoginRetirementError("GUARD-CHECKOUT-FAILED")); return; }
+        resolve(client);
+      });
+    });
+    need(!lost, "GUARD-CONNECTION-LOST");
+    await assertBindingManagementLogin(guard);
+    const identity = (await guard.query(`select pg_backend_pid() as pid,session_user=current_user as same,
+      (select oid::text from pg_roles where rolname=session_user) as oid`)).rows[0];
+    need(identity?.same === true && identity.oid !== "10", "GUARD-IDENTITY-UNSUPPORTED");
+    // OID10 observes the same guard backend, rather than granting the restricted
+    // manager system-identity functions or trusting its connection URL.
+    const challengeKey = randomInt(1, 2147483647);
+    await guard.query("select pg_catalog.pg_advisory_lock(824014,$1)", [challengeKey]);
+    const challenge = (await mutator.query(`select count(*)::int as count from pg_catalog.pg_locks
+      where pid=$1 and database=$2::oid and locktype='advisory' and granted and mode='ExclusiveLock'
+      and classid=824014 and objid=$3::oid and objsubid=2`, [identity.pid, target.databaseOid, challengeKey])).rows[0];
+    need(challenge?.count === 1 && !lost, "GUARD-TARGET-MISMATCH");
+    await guard.query("set role catalog_migration_owner");
+    await beginLegacyRetirementTransaction(guard);
+    const held = (await mutator.query("select pg_catalog.pg_try_advisory_lock(hashtext('s7-orc-cutover-target'),hashtext(current_database())) as held")).rows[0];
+    need(held?.held === true, "CONTROLLER-LOCK-HELD");
+    const verify = async () => {
+      need(!closed && !lost, "GUARD-CONNECTION-LOST");
+      need(isDeepStrictEqual(await readBindingDatabaseIdentity(mutator), target), "TARGET-MISMATCH");
+      const ownLock = (await mutator.query(`select exists(select 1 from pg_catalog.pg_locks
+        where pid=pg_catalog.pg_backend_pid() and database=$1::oid and locktype='advisory' and granted and mode='ExclusiveLock'
+        and classid=hashtext('s7-orc-cutover-target')::oid and objid=hashtext(current_database())::oid and objsubid=2) as held`, [target.databaseOid])).rows[0];
+      const locks = (await mutator.query(`select count(distinct relation)::int as count from pg_catalog.pg_locks
+        where pid=$1 and database=$2::oid and locktype='relation' and granted and mode='ShareLock'
+        and relation=any(array['parameter_catalog.catalog_state'::regclass,'parameter_catalog.catalog_releases'::regclass,
+          'parameter_catalog.catalog_materializations'::regclass,'parameter_catalog.legacy_identities'::regclass,
+          'parameter_catalog.legacy_mapping_heads'::regclass,'parameter_catalog.legacy_mapping_versions'::regclass])`,
+      [identity.pid, target.databaseOid])).rows[0];
+      need(!lost && ownLock?.held === true && locks?.count === 6, "GUARD-LOCK-LOST");
+    };
+    await verify();
+    return { verify, close };
+  } catch (error) {
+    await close().catch(() => undefined);
+    if (error instanceof LegacyLoginRetirementError) throw error;
+    return refuse("GUARD-UNAVAILABLE");
+  }
+}
+
 
 /** Actual former LOGINs are derived from the stopped source containers, not a
  * caller role list. The only mutation is a bounded database substep of P13.
@@ -66,7 +145,7 @@ async function retire(input: LegacyLoginRetirementInput, bootstrapInspection = f
   let transaction = false, ending = false, unknown = false;
   let connectionFailed = false;
   let adminReleased = false, bootstrapStarted = false, failed = false;
-  let guard: pg.PoolClient | undefined, custody: BootstrapCredentialCustody | undefined;
+  let guard: Awaited<ReturnType<typeof acquireBootstrapInventoryGuard>> | undefined, custody: BootstrapCredentialCustody | undefined;
   const destroyAdmin = () => { if (admin && !adminReleased) { adminReleased = true; admin.release(true); } };
   const onConnectionError = () => { connectionFailed = true; };
   try {
@@ -209,49 +288,12 @@ async function retire(input: LegacyLoginRetirementInput, bootstrapInspection = f
       need(path.isAbsolute(custodyDirectory) && await realpath(custodyDirectory) === custodyDirectory &&
         path.dirname(custodyDirectory) === plan.inputs.lockRoot && custodyDirectory !== fixed.recoveryDirectory &&
         !custodyDirectory.startsWith(`${fixed.recoveryDirectory}${path.sep}`), "BOOTSTRAP-CUSTODY-DIRECTORY-INVALID");
-      // The independent guard does not acquire S7. Its SHARE locks cover the
-      // installer/mapping inventory across both commits owned by the fence.
-      const onGuardLost = () => {
-        connectionFailed = true;
-        // A lost guard cannot leave a live mutator continuing after its locks
-        // disappear. A COMMIT already in flight remains an unknown outcome.
-        try { destroyAdmin(); } catch { /* Static refusal below retains uncertainty. */ }
-      };
-      guard = await new Promise<pg.PoolClient>((resolve, reject) => {
-        input.activation.managementPool.connect((error, client) => {
-          if (client) { guard = client; client.on("error", onGuardLost); client.on("end", onGuardLost); }
-          if (error || !client) { reject(new LegacyLoginRetirementError("GUARD-CHECKOUT-FAILED")); return; }
-          resolve(client);
-        });
-      });
-      need(!connectionFailed, "GUARD-CONNECTION-LOST");
-      await assertBindingManagementLogin(guard);
-      const guardIdentity = (await guard.query(`select pg_backend_pid() as pid,session_user=current_user as same,
-        (select oid::text from pg_roles where rolname=session_user) as oid`)).rows[0];
-      need(guardIdentity?.same === true && guardIdentity.oid !== "10", "GUARD-IDENTITY-UNSUPPORTED");
-      // The restricted manager gains no pg_control_system capability. The
-      // independently observed OID10 lease proves this exact guard backend's
-      // database using a transient session challenge, before inventory locks.
-      const challengeKey = randomInt(1, 2147483647);
-      await guard.query("select pg_catalog.pg_advisory_lock(824014,$1)", [challengeKey]);
-      const identityChallenge = (await admin.query(`select count(*)::int as count from pg_catalog.pg_locks
-        where pid=$1 and database=$2::oid and locktype='advisory' and granted and mode='ExclusiveLock'
-        and classid=824014 and objid=$3::oid and objsubid=2`,
-      [guardIdentity.pid, input.activation.target.databaseOid, challengeKey])).rows[0];
-      need(identityChallenge?.count === 1 && !connectionFailed, "GUARD-TARGET-MISMATCH");
-      await guard.query("set role catalog_migration_owner");
-      await beginLegacyRetirementTransaction(guard);
-      const held = (await admin.query("select pg_catalog.pg_try_advisory_lock(hashtext('s7-orc-cutover-target'),hashtext(current_database())) as held")).rows[0];
-      need(held?.held === true, "CONTROLLER-LOCK-HELD");
+      guard = await acquireBootstrapInventoryGuard({ managementPool: input.activation.managementPool,
+        mutator: admin, target: input.activation.target,
+        onMutatorReleased: () => { adminReleased = true; connectionFailed = true; } });
       const verifyGuard = async () => {
         await targetCheck();
-        const locks = (await admin!.query(`select count(distinct relation)::int as count from pg_catalog.pg_locks
-          where pid=$1 and database=$2::oid and locktype='relation' and granted and mode='ShareLock'
-          and relation=any(array['parameter_catalog.catalog_state'::regclass,'parameter_catalog.catalog_releases'::regclass,
-            'parameter_catalog.catalog_materializations'::regclass,'parameter_catalog.legacy_identities'::regclass,
-            'parameter_catalog.legacy_mapping_heads'::regclass,'parameter_catalog.legacy_mapping_versions'::regclass])`,
-        [guardIdentity.pid, input.activation.target.databaseOid])).rows[0];
-        need(locks?.count === 6, "GUARD-LOCK-LOST");
+        await guard!.verify();
         transaction = true;
         await admin!.query("begin isolation level repeatable read read only");
         await admin!.query("set local timezone='UTC'");
@@ -349,7 +391,7 @@ async function retire(input: LegacyLoginRetirementInput, bootstrapInspection = f
     return refuse("OPERATION-FAILED");
   } finally {
     const releases = await Promise.allSettled([
-      Promise.resolve().then(destroyAdmin), Promise.resolve().then(() => guard?.release(true)),
+      Promise.resolve().then(destroyAdmin), Promise.resolve().then(() => guard?.close()),
     ]);
     const closed = await Promise.allSettled([
       Promise.resolve().then(() => adminPool?.end()), Promise.resolve().then(() => custody?.close()),

@@ -13,6 +13,8 @@ import { applyMigrations } from "../../../shared/database/migrations";
 import { readBindingDatabaseIdentity, type BindingDatabaseIdentity } from "../../parameter-bindings/cutoverImport/sourceBoundary";
 import { applyBootstrapCredentialFence, inspectBootstrapCredentialFence, prepareBootstrapCredentialCustody, reopenBootstrapCredentialCustody } from "./bootstrapCredentialFence";
 import { acquireObservedManagementClient } from "./managementCheckout";
+import { acquireBootstrapInventoryGuard } from "../../../../ops/self-hosted/scripts/parameter-catalog-upgrade/legacyWriterRetirement";
+import { assertHostOperationLockForJournal, withHostOperationLock } from "../../../../ops/self-hosted/scripts/parameter-catalog-upgrade/handoff";
 
 // Exclusive parent-owned PG cluster only. These tests authenticate actual
 // bootstrap sessions, not application startup or approved P12/P13 execution.
@@ -460,3 +462,182 @@ it.each([1, 2] as const)("reconciles the original version after actual commit %s
   ordinal => exerciseCommitFault(ordinal, false));
 it.each([1, 2] as const)("reopens only original private custody in a second process after actual commit %s acknowledgment loss",
   ordinal => exerciseCommitFault(ordinal, true));
+
+/** Executes the root's actual guard implementation, not a copied lock query.
+ * It deliberately has only a prepared run, without fake P12/report approval. */
+async function withRootGuardFixture(body: (f: {
+  client: pg.PoolClient; guards: pg.Pool; role: string; runId: string;
+  custody: Awaited<ReturnType<typeof prepareBootstrapCredentialCustody>>;
+  acquire(): ReturnType<typeof acquireBootstrapInventoryGuard>;
+}) => Promise<void>) {
+  await closeInitialManager();
+  const nonce = randomBytes(8).toString("hex"), role = `bootstrap_guard_${nonce}`, runId = `guard-${nonce}`;
+  const managers = new pg.Pool({ connectionString: privateUrl.href, max: 1, connectionTimeoutMillis: 2000, query_timeout: 5000 });
+  managers.on("error", () => {});
+  let client: pg.PoolClient | undefined, guards: pg.Pool | undefined;
+  let guard: Awaited<ReturnType<typeof acquireBootstrapInventoryGuard>> | undefined;
+  let custody: Awaited<ReturnType<typeof prepareBootstrapCredentialCustody>> | undefined;
+  let released = false, created = false, failed = false;
+  try {
+    client = await acquireObservedManagementClient(managers, () => {});
+    expect(await readBindingDatabaseIdentity(client)).toEqual(target);
+    const guardUrl = new URL(privateUrl.href); guardUrl.username = role; guardUrl.password = randomBytes(32).toString("hex");
+    await client.query(`create role ${role} login noinherit password ${pg.escapeLiteral(decodeURIComponent(guardUrl.password))}`);
+    created = true;
+    await client.query(`grant catalog_migration_owner to ${role} with inherit false, set true, admin false`);
+    await client.query(`insert into parameter_catalog.parameter_catalog_cutover_runs
+      (id,source_snapshot_fingerprint,target_artifact_sha,target_catalog_release_digest,migration_contract_version,plan_digest,current_phase,state)
+      values($1,$2,$3,$4,'component-pg16',$5,'P0','planned')`, [runId, nonce, "a".repeat(40), nonce, nonce]);
+    guards = new pg.Pool({ connectionString: guardUrl.href, max: 2, connectionTimeoutMillis: 2000, query_timeout: 5000 });
+    guards.on("error", () => {});
+    custody = await prepareBootstrapCredentialCustody({ directory, custodianUid: process.getuid!(), oldSecret: decodeURIComponent(privateUrl.password) });
+    await body({ client, guards, role, runId, custody, async acquire() {
+      guard = await acquireBootstrapInventoryGuard({ managementPool: guards!, mutator: client!, target,
+        onMutatorReleased: () => { released = true; } });
+      return guard;
+    } });
+  } catch (error) { failed = true; throw error; }
+  finally {
+    // Pool closure must finish before role cleanup. Even synchronous failures
+    // cannot prevent the remaining resources from being attempted.
+    const first = await Promise.allSettled([
+      Promise.resolve().then(() => guard?.close()),
+      Promise.resolve().then(() => { if (client && !released) { released = true; client.release(true); } }),
+    ]);
+    const second = await Promise.allSettled([
+      Promise.resolve().then(() => guards?.end()), Promise.resolve().then(() => managers.end()),
+      Promise.resolve().then(() => custody?.close()),
+    ]);
+    const third = await Promise.allSettled([Promise.resolve().then(async () => {
+      if (created) await withFreshManager(cleanup => cleanup.query(`drop role ${role}`));
+    })]);
+    if ([...first, ...second, ...third].some(result => result.status === "rejected")) {
+      if (failed) throw new Error("bootstrap-root-guard-operation-and-cleanup-failed");
+      throw new Error("bootstrap-root-guard-cleanup-failed");
+    }
+  }
+}
+
+it("holds the actual restricted root inventory guard across both authentication commits and readback", async () => {
+  await withRootGuardFixture(async f => {
+    const guard = await f.acquire();
+    const observer = await acquireObservedManagementClient(f.guards, () => {});
+    try {
+      expect((await observer.query(`select session_user=$1 and not (rolsuper or rolbypassrls or rolcreatedb or rolcreaterole or rolinherit)
+        as restricted from pg_roles where rolname=session_user`, [f.role])).rows).toEqual([{ restricted: true }]);
+      // The actual restricted LOGIN has no newly granted system identity seam.
+      await expect(observer.query("select * from pg_catalog.pg_control_system()")).rejects.toMatchObject({ code: "42501" });
+    } finally { observer.release(true); }
+    let commits = 0;
+    const original = f.client.query;
+    f.client.query = new Proxy(original, { apply(query, receiver, args) {
+      const result = Reflect.apply(query, receiver, args);
+      if (args[0] !== "commit") return result;
+      return result.then(async (value: unknown) => { commits++; await guard.verify(); return value; });
+    } });
+    try {
+      const result = await applyBootstrapCredentialFence({ client: f.client, target, runId: f.runId, attemptId: "guarded", custody: f.custody });
+      privateUrl.password = await readFile(path.join(directory, `${f.custody.receipt.version}.new`), "utf8");
+      expect(result.outcome).toBe("authentication-fenced-not-P13");
+      expect(commits).toBe(2);
+      expect(await inspectBootstrapCredentialFence({ client: f.client, target, runId: f.runId, attemptId: "guarded", custody: f.custody }))
+        .toMatchObject({ outcome: "authentication-fenced-not-P13", intentDigest: result.intentDigest });
+      await guard.verify();
+      expect((await f.client.query("select phase from parameter_catalog.parameter_catalog_cutover_checkpoints where cutover_run_id=$1", [f.runId])).rows).toEqual([]);
+    } finally { f.client.query = original; }
+  });
+});
+
+it.each(["inherit", "set-disabled"])("rejects the actual root guard %s capability before authentication intent", async fault => {
+  await withRootGuardFixture(async f => {
+    if (fault === "inherit") await f.client.query(`alter role ${f.role} inherit`);
+    else await f.client.query(`grant catalog_migration_owner to ${f.role} with set false`);
+    await expect(f.acquire()).rejects.toThrow("PCAT-UPG-LEGACY-LOGIN-GUARD-UNAVAILABLE");
+    expect((await f.client.query("select event_kind from parameter_catalog.parameter_catalog_cutover_events where cutover_run_id=$1", [f.runId])).rows).toEqual([]);
+    expect(await inspectBootstrapCredentialFence({ client: f.client, target, runId: f.runId, attemptId: "guarded", custody: f.custody }))
+      .toMatchObject({ outcome: "unknown" });
+  });
+});
+
+it("destroys the actual mutator after root guard termination and reconciles the same committed intent", async () => {
+  await withRootGuardFixture(async f => {
+    const guard = await f.acquire();
+    const observer = await acquireObservedManagementClient(f.guards, () => {});
+    const original = f.client.query;
+    let committed = false;
+    const ended = new Promise<void>(resolve => f.client.once("end", resolve));
+    f.client.query = new Proxy(original, { apply(query, receiver, args) {
+      const result = Reflect.apply(query, receiver, args);
+      if (args[0] !== "commit") return result;
+      return result.then(async (value: unknown) => {
+        committed = true;
+        const killed = await observer.query(`select pg_terminate_backend(pid) as killed from pg_stat_activity
+          where usename=$1 and pid<>pg_backend_pid()`, [f.role]);
+        expect(killed.rows).toEqual([{ killed: true }]);
+        await ended;
+        return value;
+      });
+    } });
+    try {
+      await expect(applyBootstrapCredentialFence({ client: f.client, target, runId: f.runId, attemptId: "guard-lost", custody: f.custody }))
+        .rejects.toThrow("outcome-unknown");
+      expect(committed).toBe(true);
+      await expect(guard.verify()).rejects.toThrow("GUARD-CONNECTION-LOST");
+    } finally { f.client.query = original; observer.release(true); }
+    await withFreshManager(async fresh => {
+      expect(await inspectBootstrapCredentialFence({ client: fresh, target, runId: f.runId, attemptId: "guard-lost", custody: f.custody }))
+        .toMatchObject({ outcome: "not-applied" });
+      expect((await fresh.query("select event_kind from parameter_catalog.parameter_catalog_cutover_events where cutover_run_id=$1", [f.runId])).rows)
+        .toEqual([{ event_kind: "bootstrap-authentication-fence-intent" }]);
+    });
+  });
+});
+
+it("refuses any password write after the actual issued host-lock holder exits following the first commit", async () => {
+  await withRootGuardFixture(async f => {
+    const guard = await f.acquire(), lockRoot = await realpath(await mkdtemp(path.join(directory, "host-boundary-")));
+    await chmod(lockRoot, 0o700);
+    let firstCommit = false, passwordDispatched = false, fenceError: unknown, holderError: unknown;
+    const original = f.client.query;
+    try {
+      await withHostOperationLock(lockRoot, async lock => {
+        const journalPath = path.join(lockRoot, "journal.json");
+        await assertHostOperationLockForJournal(lock, journalPath);
+        const owner = await readFile(path.join(lockRoot, ".operation.lock.owner"), "utf8")
+          .catch(() => readFile(path.join(lockRoot, ".operation.lock.d", "owner"), "utf8"));
+        const pid = /^pid=([0-9]+)$/m.exec(owner)?.[1];
+        if (!pid || !owner.includes("operation=catalog-handoff\n")) throw new Error("bootstrap-owned-host-lock-unavailable");
+        f.client.query = new Proxy(original, { apply(query, receiver, args) {
+          if (typeof args[0] === "string" && args[0].startsWith("alter role ")) passwordDispatched = true;
+          const result = Reflect.apply(query, receiver, args);
+          if (args[0] !== "commit" || firstCommit) return result;
+          return result.then(async (value: unknown) => {
+            firstCommit = true;
+            process.kill(Number(pid), "SIGTERM");
+            // A real failed holder acknowledgment, without a timing sleep or
+            // caller boolean, establishes the loss before the next effect.
+            await assertHostOperationLockForJournal(lock, journalPath).then(
+              () => { throw new Error("bootstrap-host-lock-loss-not-observed"); }, () => undefined);
+            return value;
+          });
+        } });
+        const command = { client: f.client, target, runId: f.runId, attemptId: "host-lost", custody: f.custody,
+          beforeEffect: async () => { await assertHostOperationLockForJournal(lock, journalPath); await guard.verify(); } };
+        try {
+          await applyBootstrapCredentialFence(command);
+          // Preserve the real credential if the old implementation incorrectly
+          // rotates it, so the Red case can still close its owned fixture.
+          privateUrl.password = await readFile(path.join(directory, `${f.custody.receipt.version}.new`), "utf8");
+        } catch (error) { fenceError = error; }
+      }).catch(error => { holderError = error; });
+      expect(firstCommit).toBe(true);
+      expect(holderError).toBeInstanceOf(Error);
+      expect(fenceError).toMatchObject({ message: expect.stringContaining("outcome-unknown") });
+      expect(passwordDispatched).toBe(false);
+      expect((await f.client.query("select event_kind from parameter_catalog.parameter_catalog_cutover_events where cutover_run_id=$1", [f.runId])).rows)
+        .toEqual([{ event_kind: "bootstrap-authentication-fence-intent" }]);
+      expect(await inspectBootstrapCredentialFence({ client: f.client, target, runId: f.runId, attemptId: "host-lost", custody: f.custody }))
+        .toMatchObject({ outcome: "not-applied" });
+    } finally { f.client.query = original; await rm(lockRoot, { recursive: true }); }
+  });
+});
