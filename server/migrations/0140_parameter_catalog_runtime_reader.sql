@@ -6,6 +6,7 @@
 -- and this database's ACLs pass. Never normalize a contaminated existing role.
 -- Other databases' ACLs are not observable here: this migration does not attest
 -- them or authorize a login there. Their own migration/startup audits still apply.
+set local search_path = pg_catalog, public;
 do $$
 declare
   reader oid;
@@ -51,6 +52,18 @@ begin
     where d.defaclrole=reader or acl.grantee=reader
   ) or exists (
     select 1 from pg_parameter_acl p, lateral aclexplode(p.paracl) acl where acl.grantee=reader
+  ) or exists (
+    select 1 from pg_largeobject_metadata obj, lateral aclexplode(obj.lomacl) acl where acl.grantee=reader
+  ) or exists (
+    select 1 from pg_type obj, lateral aclexplode(obj.typacl) acl where acl.grantee=reader
+  ) or exists (
+    select 1 from pg_language obj, lateral aclexplode(obj.lanacl) acl where acl.grantee=reader
+  ) or exists (
+    select 1 from pg_tablespace obj, lateral aclexplode(obj.spcacl) acl where acl.grantee=reader
+  ) or exists (
+    select 1 from pg_foreign_data_wrapper obj, lateral aclexplode(obj.fdwacl) acl where acl.grantee=reader
+  ) or exists (
+    select 1 from pg_foreign_server obj, lateral aclexplode(obj.srvacl) acl where acl.grantee=reader
   ) then raise exception using errcode='42501', message='PCAT-READER-ACL-DRIFT'; end if;
 
   -- PUBLIC must not bypass the exact Catalog object/capability contract.
@@ -67,7 +80,56 @@ begin
     or exists (select 1 from pg_default_acl d, lateral aclexplode(d.defaclacl) acl
       where acl.grantee=0 and d.defaclnamespace in (0,'parameter_catalog'::regnamespace)
         and d.defaclrole in (current_user::regrole,'catalog_migration_owner'::regrole))
+    or exists (select 1 from pg_parameter_acl p left join pg_settings s on s.name=p.parname,
+      lateral aclexplode(p.paracl) acl where acl.grantee=0
+        and (acl.privilege_type='ALTER SYSTEM' or coalesce(s.context,'unknown') <> 'user'))
   then raise exception using errcode='42501', message='PCAT-READER-PUBLIC-DRIFT'; end if;
+
+  -- User-defined SECURITY DEFINER bodies may contain dynamic SQL, so body text
+  -- is not proof of safety. No privileged external definer is in this manifest.
+  -- Built-ins remain under PostgreSQL's existing permissions, not a blanket ban.
+  if exists (
+    select 1 from pg_proc p join pg_namespace n on n.oid=p.pronamespace
+      join pg_roles owner on owner.oid=p.proowner
+    where p.prosecdef and n.nspname not in ('pg_catalog','information_schema')
+      and n.nspname !~ '^pg_(toast|temp)_'
+      and has_schema_privilege(reader,n.oid,'USAGE')
+      and has_function_privilege(reader,p.oid,'EXECUTE')
+      and (owner.rolsuper or owner.rolbypassrls or owner.rolcreatedb or owner.rolcreaterole
+        or owner.rolreplication
+        or exists (select 1 from pg_roles elevated where
+          (elevated.rolsuper or elevated.rolbypassrls or elevated.rolcreatedb
+            or elevated.rolcreaterole or elevated.rolreplication)
+          and pg_has_role(owner.oid,elevated.oid,'MEMBER'))
+        or exists (select 1 from pg_class c join pg_namespace cn on cn.oid=c.relnamespace
+          where cn.nspname='parameter_catalog' and c.relkind in ('r','p','v','m','f')
+            and has_table_privilege(owner.oid,c.oid,'SELECT,INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER')))
+  ) then raise exception using errcode='42501', message='PCAT-READER-DEFINER-DRIFT'; end if;
+
+  -- Follow actual view rewrite dependencies, including hidden nested views.
+  -- An invoker-only chain does not add owner capabilities; an owner-rights hop
+  -- to Catalog is an unmanifested interface even if its outer view is invoker.
+  if exists (
+    with recursive reachable_views(oid, owner_rights) as (
+      select c.oid, not coalesce(c.reloptions @> array['security_invoker=true'],false)
+      from pg_class c join pg_namespace n on n.oid=c.relnamespace
+      where c.relkind='v' and n.nspname not in ('pg_catalog','information_schema')
+        and n.nspname !~ '^pg_(toast|temp)_'
+        and has_schema_privilege(reader,n.oid,'USAGE')
+        and has_table_privilege(reader,c.oid,'SELECT,INSERT,UPDATE,DELETE')
+      union
+      select child.oid, parent.owner_rights or not coalesce(child.reloptions @> array['security_invoker=true'],false)
+      from reachable_views parent join pg_rewrite r on r.ev_class=parent.oid
+        join pg_depend d on d.classid='pg_rewrite'::regclass and d.objid=r.oid
+          and d.refclassid='pg_class'::regclass and d.refobjid <> parent.oid
+        join pg_class child on child.oid=d.refobjid and child.relkind='v'
+    )
+    select 1 from reachable_views v join pg_rewrite r on r.ev_class=v.oid
+      join pg_depend d on d.classid='pg_rewrite'::regclass and d.objid=r.oid and d.refclassid='pg_class'::regclass
+      join pg_class target on target.oid=d.refobjid
+      join pg_namespace n on n.oid=target.relnamespace
+    where v.owner_rights and n.nspname='parameter_catalog'
+  ) then raise exception using errcode='42501', message='PCAT-READER-VIEW-DRIFT'; end if;
 end;
 $$;
 

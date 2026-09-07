@@ -109,6 +109,17 @@ describe("authorized additive Catalog reader on owned PG16", () => {
     ["future default ACL", `alter default privileges for role catalog_migration_owner in schema parameter_catalog grant select on tables to ${CATALOG_READER_ROLE}`],
     ["role settings", `alter role ${CATALOG_READER_ROLE} set search_path=parameter_catalog`],
     ["system parameter ACL", `grant set on parameter session_replication_role to ${CATALOG_READER_ROLE}`],
+    ["PUBLIC system parameter ACL", "grant set on parameter session_replication_role to public"],
+    ["PUBLIC privileged definer", "create function public.reader_leak() returns bigint language sql security definer as 'select count(*) from parameter_catalog.subject_placements'"],
+    ["PUBLIC privileged dynamic definer", "create function public.reader_leak_dynamic() returns bigint language plpgsql security definer as $$declare n bigint; begin execute 'select count(*) from parameter_catalog.' || 'subject_placements' into n; return n; end$$"],
+    ["PUBLIC owner-rights view", "create view public.reader_leak_view as select * from parameter_catalog.subject_placements; grant select on public.reader_leak_view to public"],
+    ["PUBLIC nested owner-rights view", "create view public.reader_hidden_view as select * from parameter_catalog.subject_placements; create view public.reader_leak_view as select * from public.reader_hidden_view; grant select on public.reader_leak_view to public"],
+    ["large object ACL", `do $$declare obj oid; begin obj := lo_create(0); execute format('grant select on large object %s to ${CATALOG_READER_ROLE}',obj); end$$`],
+    ["type ACL", `create type public.reader_extra_type as enum ('x'); grant usage on type public.reader_extra_type to ${CATALOG_READER_ROLE}`],
+    ["language ACL", `grant usage on language plpgsql to ${CATALOG_READER_ROLE}`],
+    ["tablespace ACL", `grant create on tablespace pg_default to ${CATALOG_READER_ROLE}`],
+    ["foreign data wrapper ACL", `create foreign data wrapper reader_extra_wrapper; grant usage on foreign data wrapper reader_extra_wrapper to ${CATALOG_READER_ROLE}`],
+    ["foreign server ACL", `create foreign data wrapper reader_extra_wrapper; create server reader_extra_server foreign data wrapper reader_extra_wrapper; grant usage on foreign server reader_extra_server to ${CATALOG_READER_ROLE}`],
   ])("refuses contaminated existing role without normalizing: %s", async (_label, sql) => {
     const migration = await readFile(path.join(migrations, CATALOG_READER_MIGRATION), "utf8");
     const databaseName = (await admin.query<{ name: string }>("select current_database() as name")).rows[0]!.name;
@@ -146,5 +157,16 @@ describe("authorized additive Catalog reader on owned PG16", () => {
     await reader.query("insert into public.reader_business values (7)");
     expect((await reader.query("select id from public.reader_business")).rows).toEqual([{ id: 7 }]);
     expect((await admin.query(`select * from pg_default_acl where defaclrole=$1::regrole`, [CATALOG_READER_ROLE])).rows).toEqual([]);
+  });
+  it("keeps normal builtins, invoker views and an unprivileged business definer usable", async () => {
+    await admin.query(`create role reader_business_definer nologin nosuperuser nocreatedb nocreaterole noinherit nobypassrls;
+      create function public.reader_safe_business() returns integer language sql security definer as 'select 42';
+      alter function public.reader_safe_business() owner to reader_business_definer;
+      create view public.reader_invoker_view with (security_invoker=true) as select id from parameter_catalog.catalog_subjects;
+      grant select on public.reader_invoker_view to public;`);
+    await admin.transaction(async tx => { await tx.query(await readFile(path.join(migrations,CATALOG_READER_MIGRATION),"utf8")); });
+    expect((await reader.query("select public.reader_safe_business() as value, length('abc') as builtin")).rows).toEqual([{ value: 42, builtin: 3 }]);
+    expect((await reader.query("select id from public.reader_invoker_view")).rows.length).toBeGreaterThan(0);
+    await expect(denied.query("select id from public.reader_invoker_view")).rejects.toMatchObject({ code: "42501" });
   });
 });
