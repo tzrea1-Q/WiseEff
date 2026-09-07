@@ -20,6 +20,7 @@ imports that script or substitutes its own verifier.
 | `inspectFacts` | Exact run/plan; management read-only transaction | Actual Catalog, complete mapping inventories and current binding; an unprepared epoch remains null |
 | `prepareMappingEpoch` | Explicit management write, exact run/plan and held boundary | One immutable P11 `activation-mapping-epoch` preparation event; it is not a P11 verification checkpoint or approval |
 | `inspect` | Exact typed activation intent | Applied binding only when it remains the unique current chain head and live source/mapping/Catalog agree; otherwise exact not-applied or refusal |
+| `inspectOnHeldManagementSession` | Exact intent and the P13 owner's actual management lease | Same physical target, identity, UTC, strong transaction isolation and granted Exclusive S7 lock; reads the same current binding without acquiring a second lease |
 | `apply` | Typed intent, real approved pre-activation report, actual Comparison artifact and current target observation | Formal approval projection and exact nine-gate artifact association precede journal pending and SQL; missing, unrelated or changed evidence refuses |
 
 An epoch hashes the complete C-ordered current head/version/identity rows and
@@ -42,6 +43,14 @@ durably record pending before SQL and only record committed after acknowledgment
 Lost acknowledgment requires formal inspection and host journal reconciliation;
 it never permits clearing the journal or blindly repeating the activation.
 Inspection of a stored binding is not report approval or runtime admission.
+
+The held-session inspector probes an existing transaction with a randomly named
+`SAVEPOINT` and `RELEASE SAVEPOINT`. These are local transaction-control effects;
+the method does not begin or commit a transaction, change roles, write business
+data or run DDL. It refuses autocommit and aborted transactions. The P13 owner
+keeps its management lease and source boundary alive. Kernel still owns its own
+transactions; no Kernel transaction is passed into this method. The ordinary
+inspector retains its original independent lease and lock behavior.
 
 The root supplies `comparisonReport` from the actual comparison execution's
 `readEvidence().report`. The factory snapshots these bytes. After the formal

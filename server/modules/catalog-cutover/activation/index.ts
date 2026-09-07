@@ -1,5 +1,6 @@
 import { isDeepStrictEqual } from "node:util";
-import type pg from "pg";
+import { randomUUID } from "node:crypto";
+import pg from "pg";
 import { createVerificationReportService } from "../../release-verification/report/index";
 import { digestOf } from "../../release-verification/core/digest";
 import { assertComparisonEvidenceAssociation, ComparisonEvidenceRefusal } from "../../release-verification/comparison/index";
@@ -127,6 +128,14 @@ export function createApplicationReadActivation(options: ActivationOptions) {
     if (attempts.rows.some(row => !isDeepStrictEqual(decodeBinding(row.payload).intent, intent))) refuse("ATTEMPT-CONFLICT");
     return facts;
   };
+  const inspectCurrent = async (client: pg.PoolClient, intent: ActivationIntent) => {
+    const facts = await read(client, intent);
+    const inspected = inspectIntent(facts, intent);
+    if (inspected.kind === "applied" && (!isDeepStrictEqual(inspected.binding.catalog, facts.catalog) ||
+        inspected.binding.mapping.headDigest !== facts.headDigest || inspected.binding.mapping.epoch !== facts.mappingEpoch ||
+        inspected.binding.sourceSnapshotFingerprint !== facts.run.source_snapshot_fingerprint)) refuse("APPLIED-STATE-DRIFT");
+    return inspected;
+  };
   return {
     /** Explicit management preparation. It appends an epoch event, never a P11
      * verification checkpoint, report, approval, read switch, or startup pin. */
@@ -145,14 +154,42 @@ export function createApplicationReadActivation(options: ActivationOptions) {
     },
     async inspect(input: ActivationIntent) {
       const intent = validateIntent(input);
-      return within(() => withTransaction(fixed, false, async client => {
-        const facts = await read(client, intent);
-        const inspected = inspectIntent(facts, intent);
-        if (inspected.kind === "applied" && (!isDeepStrictEqual(inspected.binding.catalog, facts.catalog) ||
-            inspected.binding.mapping.headDigest !== facts.headDigest || inspected.binding.mapping.epoch !== facts.mappingEpoch ||
-            inspected.binding.sourceSnapshotFingerprint !== facts.run.source_snapshot_fingerprint)) refuse("APPLIED-STATE-DRIFT");
+      return within(() => withTransaction(fixed, false, client => inspectCurrent(client, intent)));
+    },
+    /** P13's management owner already holds the actual S7 lock on this lease.
+     * Check that lease and its transaction instead of taking the same lock on
+     * another connection. SAVEPOINT/RELEASE has local transaction effects only;
+     * this method never begins/commits, changes roles, writes data or runs DDL.
+     * It neither passes a transaction to Kernel nor issues runtime approval. */
+    async inspectOnHeldManagementSession(input: ActivationIntent, client: pg.PoolClient) {
+      const intent = validateIntent(input);
+      const verify = async () => {
+        if (!isDeepStrictEqual(await physicalIdentity(client), fixed.target)) refuse("TARGET-MISMATCH");
+        const observed = (await client.query<{ same_identity: boolean; manager: boolean; isolation: string; timezone: string; locked: boolean }>(`select
+          session_user=current_user as same_identity,
+          (select rolsuper or (not rolinherit and not rolbypassrls and not rolcreatedb and not rolcreaterole and not rolreplication
+            and pg_catalog.pg_has_role(session_user,'catalog_migration_owner','MEMBER')) from pg_catalog.pg_roles where rolname=session_user) as manager,
+          pg_catalog.current_setting('transaction_isolation') as isolation, pg_catalog.current_setting('TimeZone') as timezone,
+          exists(select 1 from pg_catalog.pg_locks where pid=pg_catalog.pg_backend_pid()
+            and database=(select oid from pg_catalog.pg_database where datname=pg_catalog.current_database())
+            and locktype='advisory' and mode='ExclusiveLock' and granted
+            and classid=pg_catalog.hashtext('s7-orc-cutover-target')::oid and objid=pg_catalog.hashtext(pg_catalog.current_database())::oid and objsubid=2) as locked`)).rows[0];
+        if (!observed?.same_identity || !observed.manager || !observed.locked ||
+            observed.timezone !== "UTC" || !["repeatable read", "serializable"].includes(observed.isolation)) refuse("HELD-SESSION-REJECTED");
+        await fixed.boundary.verify();
+      };
+      try {
+        await verify();
+        const savepoint = pg.escapeIdentifier(`activation_inspect_${randomUUID().replaceAll("-", "")}`);
+        await client.query(`savepoint ${savepoint}`);
+        await client.query(`release savepoint ${savepoint}`);
+        const inspected = await inspectCurrent(client, intent);
+        await verify();
         return inspected;
-      }));
+      } catch (error) {
+        if (error instanceof ActivationRefusal) throw error;
+        return refuse("HELD-SESSION-UNAVAILABLE");
+      }
     },
     async apply(input: ActivationIntent): Promise<ActivationBinding> {
       const intent = validateIntent(input);

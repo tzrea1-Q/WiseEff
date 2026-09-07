@@ -14,7 +14,7 @@ import { classifyFrozenP0Graph, type FrozenP0Graph } from "../classifier";
 import { appendMappingVersion, readCurrentMappingHead } from "../mapping";
 import { createLocalArchiveObjectStore } from "../archive";
 import { executeCutover, planCutover } from "../orchestrator";
-import { createApplicationReadActivation, createActivationIntent, type ActivationOptions, type ActivationIdentity } from "./index";
+import { createApplicationReadActivation, createActivationIntent, type ActivationOptions, type ActivationIdentity, type ActivationBinding } from "./index";
 import { physicalIdentity, readFacts, persistActivation } from "./postgres";
 import { decodeBinding } from "./records";
 import { digestOf } from "../../release-verification/core/digest";
@@ -38,6 +38,7 @@ describe("existing 0137 activation storage on independently owned PG16", () => {
   let held: HostOperationLock | undefined;
   let source: pg.PoolClient | undefined;
   let module: ReturnType<typeof createApplicationReadActivation>;
+  let persistedBinding: ActivationBinding;
   const role = `activation_${randomUUID().replaceAll("-", "")}`;
   const reportRole = `${role}_reports`;
   const graph: FrozenP0Graph = {
@@ -304,6 +305,7 @@ describe("existing 0137 activation storage on independently owned PG16", () => {
       await persistActivation(lease, facts, binding); await lease.query("commit");
     } finally { await lease.query("rollback"); lease.release(true); }
     const inspected = await module.inspect(binding.intent);
+    persistedBinding = binding;
     expect(inspected).toEqual({ kind: "applied", binding, currentHeadDigest: binding.bindingDigest });
     const before = await counts();
     const { inputDigest: _inputDigest, ...originalIntent } = binding.intent;
@@ -311,6 +313,41 @@ describe("existing 0137 activation storage on independently owned PG16", () => {
       .rejects.toThrow("ACTIVATION-CONFLICT");
     expect(await counts()).toEqual(before);
   });
+  it.each(["valid", "autocommit", "weak-isolation", "no-lock", "shared-lock", "released-lock", "wrong-target", "aborted"])(
+    "inspects the existing binding on the P13 owner's actual lease: %s", async fault => {
+      const before = await counts();
+      await boundary.withLockedBoundary(async () => {
+        const client = await admin.connect();
+        const local = createApplicationReadActivation({ managementPool: management, reports,
+          target: fault === "wrong-target" ? { ...target, databaseOid: "0" } : target,
+          boundary: { ...boundary, withLockedBoundary: async body => body() },
+          journal: { pending: async () => { throw new Error("unexpected-effect"); }, committed: async () => { throw new Error("unexpected-effect"); }, unknown: async () => {} },
+        });
+        try {
+          await client.query("set timezone='UTC'");
+          if (fault !== "no-lock") await client.query(fault === "shared-lock"
+            ? "select pg_advisory_lock_shared(hashtext('s7-orc-cutover-target'),hashtext(current_database()))"
+            : "select pg_advisory_lock(hashtext('s7-orc-cutover-target'),hashtext(current_database()))");
+          if (fault === "autocommit") await client.query("set default_transaction_isolation='serializable'");
+          else await client.query(fault === "weak-isolation" ? "begin isolation level read committed" : "begin isolation level serializable");
+          if (fault === "released-lock") await client.query("select pg_advisory_unlock(hashtext('s7-orc-cutover-target'),hashtext(current_database()))");
+          if (fault === "aborted") await expect(client.query("select 1/0")).rejects.toMatchObject({ code: "22012" });
+          if (fault === "valid") {
+            // The ordinary inspector correctly cannot take a different lease's
+            // S7 lock. The owner seam reuses this actual locked transaction.
+            await expect(local.inspect(persistedBinding.intent)).rejects.toThrow("LOCK-UNAVAILABLE");
+            await expect(local.inspectOnHeldManagementSession(persistedBinding.intent, client)).resolves.toEqual({
+              kind: "applied", binding: persistedBinding, currentHeadDigest: persistedBinding.bindingDigest,
+            });
+            await client.query("commit");
+          } else {
+            await expect(local.inspectOnHeldManagementSession(persistedBinding.intent, client)).rejects.toThrow(
+              fault === "wrong-target" ? "TARGET-MISMATCH" : fault === "autocommit" || fault === "aborted" ? "HELD-SESSION-UNAVAILABLE" : "HELD-SESSION-REJECTED");
+          }
+        } finally { try { await client.query("rollback"); } finally { client.release(true); } }
+      });
+      expect(await counts()).toEqual(before);
+    });
   it("never treats a missing mapping head as a zero inventory or silently renews the epoch", async () => {
     await admin.query(`insert into public.parameter_specs(id,source_kind,specification_key,definition_lifecycle,property_key)
       values('unclassified-new-source','dts','synthetic.new','active','synthetic,new')`);

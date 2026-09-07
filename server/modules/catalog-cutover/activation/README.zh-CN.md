@@ -17,6 +17,7 @@ API／worker 启动或完整 controller 升级成功。
 | `inspectFacts` | 精确 run／plan；管理只读事务 | 实测 Catalog、完整 mapping 库存、当前 binding；未准备 epoch 返回 null |
 | `prepareMappingEpoch` | 显式管理写入及持有的停写边界 | 追加不可变 P11 `activation-mapping-epoch` 准备事件；不是 P11 验证 checkpoint 或批准 |
 | `inspect` | 精确 typed intent | 仅当 binding 仍是唯一当前 head 且实测源／mapping／Catalog 一致时返回 applied；否则返回精确 not-applied 或拒绝 |
+| `inspectOnHeldManagementSession` | 精确 intent 与 P13 owner 实际持有的管理连接 | 核对同一物理目标、身份、UTC、强事务隔离和真实 Exclusive S7 锁；不再另取连接，读取同一当前 binding |
 | `apply` | typed intent、正式获批预激活报告、实际 Comparison artifact 及当前目标观测 | 在 journal pending 和 SQL 前执行正式批准 projection 和九个 gate 的精确关联；缺失、不相关或变化的证据拒绝 |
 
 epoch 由 UTC 下按 C 排序的完整 mapping head／version／identity、全部历史
@@ -34,6 +35,12 @@ latest 行选择指针。既有 `(run, P12)` 主键意味着每个 run 只提交
 只有收到提交确认才能记录 committed。丢失确认必须正式 inspect 并通过
 宿主 journal reconcile，不能清空 journal 或盲目重试。读到 binding 不构成
 报告批准、运行准入或流量许可。
+
+同会话 inspector 以随机名称的 `SAVEPOINT`／`RELEASE SAVEPOINT` 核验事务已存在。
+这属于局部事务控制作用；方法不开始或提交事务，不切角色、不写业务数据、不执行
+DDL。自动提交和 aborted 事务均拒绝。P13 owner 持续负责管理连接和实际源边界。
+Kernel 仍自行管理事务，本方法不接收 Kernel 事务。普通 inspector 保留独立连接和
+原有锁语义。
 
 父组合根从实际 comparison execution 的 `readEvidence().report` 提供
 `comparisonReport`，工厂固定其字节。正式获批报告 projection 通过后，

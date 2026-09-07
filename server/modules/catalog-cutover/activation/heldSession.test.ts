@@ -1,0 +1,21 @@
+import { expect, it, vi } from "vitest";
+import { createActivationIntent, createApplicationReadActivation, type ActivationOptions } from "./index";
+
+it("inspects on the existing management transaction without reacquiring its S7 lock or owning its commit", async () => {
+  const target = { systemIdentifier: "123", databaseOid: "456" };
+  const client = { query: vi.fn(async (sql: string) => {
+    if (sql.includes("pg_control_system")) return { rowCount: 1, rows: [target] };
+    if (sql.includes("transaction_isolation")) return { rowCount: 1, rows: [{ same_identity: true, manager: true, isolation: "serializable", timezone: "UTC", locked: true }] };
+    return { rowCount: 0, rows: [] };
+  }) };
+  const verify = vi.fn(async () => undefined);
+  const activation = createApplicationReadActivation({ target, boundary: { verify } } as unknown as ActivationOptions);
+  const intent = createActivationIntent({ target, runId: "run", attemptId: "attempt", predecessorBindingDigest: null,
+    planDigest: `sha256:${"1".repeat(64)}`, reportDigest: `sha256:${"2".repeat(64)}`, expectedObservationDigest: `sha256:${"3".repeat(64)}` });
+  await expect(activation.inspectOnHeldManagementSession(intent, client as never)).rejects.toThrow("PCAT-ACTIVATION-RUN-MISMATCH");
+  const calls = client.query.mock.calls.map(([sql]) => sql);
+  expect(calls.some(sql => sql.startsWith("savepoint "))).toBe(true);
+  expect(calls.some(sql => sql.startsWith("release savepoint "))).toBe(true);
+  expect(calls.some(sql => /^(begin|commit|rollback|set |reset |insert |update |delete |alter )/i.test(sql) || sql.includes("pg_try_advisory_lock"))).toBe(false);
+  expect(verify).toHaveBeenCalled();
+});
