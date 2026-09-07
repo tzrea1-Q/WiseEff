@@ -1,10 +1,11 @@
-import { mkdtemp, rm, writeFile, mkdir, symlink } from "node:fs/promises";
+import { mkdtemp, rm, writeFile, mkdir, symlink, rename, realpath } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { createHash } from "node:crypto";
 import { spawnSync } from "node:child_process";
 import { expect, it } from "vitest";
-import { inspectApplicationOciArchive, buildApplicationArtifact, applicationVerificationPins, resolveApplicationBuildContext, captureApplicationSourceArchive, type ApplicationArtifact } from "./applicationArtifact";
+import { inspectApplicationOciArchive, buildApplicationArtifact, applicationVerificationPins, resolveApplicationBuildContext, captureApplicationSourceArchive, openApplicationArtifactInspection, type ApplicationArtifact } from "./applicationArtifact";
+import { canonicalBytes, digestOf } from "../../../../server/modules/release-verification/core/digest";
 
 it("refuses a Docker-only archive instead of relabeling its config ID as a manifest", async () => {
   const directory = await mkdtemp(path.join(os.tmpdir(), "application-oci-"));
@@ -126,6 +127,37 @@ async function withArchive(entries: [string, Buffer][], action: (archive: string
   try { const archive = path.join(directory, "image.tar"); await writeFile(archive, tar(entries), { mode: 0o600 }); await action(archive); }
   finally { await rm(directory, { recursive: true }); }
 }
+it.each(["unchanged", "replace", "same-bytes-rewrite", "symlink"])("raw inspection holds original file identities across awaits: %s", async fault => {
+  const directory = await realpath(await mkdtemp(path.join(os.tmpdir(), "application-raw-inspection-")));
+  try {
+    const f = imageFixture(), archive = tar(f.entries), payload = Buffer.from("synthetic material");
+    const image = { ...f.expected, configDigest: f.config.digest, manifestDigest: f.manifest.digest,
+      archiveDigest: hash(archive), layers: [hash(Buffer.from("synthetic layer bytes"))] };
+    const manifest = { version: "wiseeff-application-package-v1", gitSha: f.expected.gitSha, gitTree: f.expected.gitTree,
+      sourceArchiveDigest: hash(payload), buildContextDigest: hash(payload), services: { api: image, worker: image, web: image },
+      buildTrust: { tlsPolicy: "verify", baseArchiveDigest: hash(archive), caDigest: hash(payload), buildLogDigest: hash(payload) } };
+    for (const name of ["source.tar", "build-context.tar", "compose.json", "build-result.json", "build-ca.pem", "build.log"])
+      await writeFile(path.join(directory, name), payload, { mode: 0o600 });
+    await writeFile(path.join(directory, "image.tar"), archive, { mode: 0o600 });
+    await writeFile(path.join(directory, "base.tar"), archive, { mode: 0o600 });
+    await writeFile(path.join(directory, "application-package.json"), canonicalBytes(manifest), { mode: 0o600 });
+    const lease = await openApplicationArtifactInspection(directory, digestOf(manifest));
+    try {
+      const source = path.join(directory, "source.tar");
+      if (fault === "replace") { await rename(source, `${source}.old`); await writeFile(source, payload, { mode: 0o600 }); }
+      if (fault === "same-bytes-rewrite") await writeFile(source, payload);
+      if (fault === "symlink") { await rename(source, `${source}.old`); await symlink(`${source}.old`, source); }
+      if (fault === "unchanged") {
+        await lease.verify(); lease.verifyIdentity();
+        // A successful independent raw validation cannot create a build-issued
+        // handle or turn arbitrary package JSON into release provenance.
+        await expect(applicationVerificationPins({ packageManifestDigest: digestOf(manifest), manifestPath: path.join(directory, "application-package.json"), image }, "candidate"))
+          .rejects.toMatchObject({ code: "UNISSUED-ARTIFACT" });
+      } else await expect(lease.verify()).rejects.toThrow("MATERIAL-CHANGED");
+    } finally { await lease.close(); }
+    await expect(lease.verify()).rejects.toThrow("INSPECTION-CLOSED");
+  } finally { await rm(directory, { recursive: true }); }
+});
 it("keeps actual index, image manifest and config identities distinct", async () => {
   const f = imageFixture();
   await withArchive(f.entries, async archive => {

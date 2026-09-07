@@ -1,6 +1,6 @@
 import { createHash, randomBytes } from "node:crypto";
-import { constants } from "node:fs";
-import { lstat, open, mkdir, mkdtemp, readFile, realpath } from "node:fs/promises";
+import { constants, fstatSync, lstatSync, realpathSync, type BigIntStats } from "node:fs";
+import { lstat, open, mkdir, mkdtemp, readFile, realpath, type FileHandle } from "node:fs/promises";
 import path from "node:path";
 import os from "node:os";
 import { fileURLToPath } from "node:url";
@@ -14,7 +14,7 @@ export class ApplicationArtifactError extends Error {
 
 export type ApplicationArtifact = { readonly packageManifestDigest: string; readonly manifestPath: string; readonly image: ApplicationImage };
 type ArtifactRecord = { repository: string; manifest: ApplicationPackage; archive: string; directory: string };
-type ApplicationPackage = {
+export type ApplicationPackage = {
   version: "wiseeff-application-package-v1"; gitSha: string; gitTree: string;
   sourceArchiveDigest: string; buildContextDigest: string;
   recipe: { originalDockerfile: string; resolvedDockerfile: string; originalDigest: string; resolvedDigest: string; rule: "first-from-immutable-digest-v1" };
@@ -23,6 +23,88 @@ type ApplicationPackage = {
     baseManifestDigest: string; baseConfigDigest: string; baseArchiveDigest: string; composeBuildDigest: string; buildLogDigest: string };
 };
 const issuedArtifacts = new WeakMap<ApplicationArtifact, ArtifactRecord>();
+
+/** A raw on-disk validator, not a build issuer or an authorization importer.
+ * The caller must close this lease; all material FDs remain held across its
+ * async custody/journal checks. Only the actual build owner can issue artifacts. */
+export async function openApplicationArtifactInspection(directory: string, packageManifestDigest: string) {
+  const files = new Map<string, FileHandle>();
+  let directoryFd: FileHandle | undefined, closed = false, closing: Promise<void> | undefined;
+  const names = ["application-package.json", "source.tar", "build-context.tar", "image.tar", "base.tar", "compose.json", "build-result.json", "build-ca.pem", "build.log"];
+  const identity = (stat: BigIntStats) => ({ device: String(stat.dev), inode: String(stat.ino),
+    size: String(stat.size), modified: String(stat.mtimeNs), changed: String(stat.ctimeNs), mode: Number(stat.mode & 0o777n), uid: Number(stat.uid) });
+  const close = () => {
+    closed = true;
+    closing ??= Promise.allSettled([...files.values(), ...(directoryFd ? [directoryFd] : [])].map(file => file.close()))
+      .then(results => { requireFact(results.every(result => result.status === "fulfilled"), "INSPECTION-CLOSE-FAILED"); });
+    return closing;
+  };
+  try {
+    requireFact(digestPattern.test(packageManifestDigest) && path.isAbsolute(directory) && await realpath(directory) === directory, "MATERIAL-UNSAFE");
+    directoryFd = await open(directory, constants.O_RDONLY | constants.O_DIRECTORY | constants.O_NOFOLLOW);
+    const rootStat = await directoryFd.stat({ bigint: true }), rootIdentity = identity(rootStat);
+    requireFact(rootStat.uid === BigInt(process.getuid!()) && (rootStat.mode & 0o777n) === 0o700n, "MATERIAL-UNSAFE");
+    const materials: { name: string; identity: ReturnType<typeof identity>; digest: string }[] = [];
+    const digestFile = async (file: FileHandle) => {
+      const hash = createHash("sha256"), buffer = Buffer.alloc(1024 * 1024); let offset = 0;
+      for (;;) { const read = await file.read(buffer, 0, buffer.length, offset); if (!read.bytesRead) break;
+        hash.update(buffer.subarray(0, read.bytesRead)); offset += read.bytesRead; }
+      return `sha256:${hash.digest("hex")}`;
+    };
+    for (const name of names) {
+      const file = await open(path.join(directory, name), constants.O_RDONLY | constants.O_NOFOLLOW); files.set(name, file);
+      const stat = await file.stat({ bigint: true });
+      requireFact(stat.isFile() && stat.nlink === 1n && stat.uid === rootStat.uid && (stat.mode & 0o022n) === 0n && stat.size <= 64n * 1024n ** 3n, "MATERIAL-UNSAFE");
+      materials.push({ name, identity: identity(stat), digest: await digestFile(file) });
+    }
+    const readJson = async (name: string) => {
+      const file = files.get(name)!, stat = await file.stat(); requireFact(stat.size <= 1024 * 1024, "MATERIAL-UNSAFE");
+      const bytes = Buffer.alloc(stat.size);
+      requireFact((await file.read(bytes, 0, bytes.length, 0)).bytesRead === bytes.length
+        && sha(bytes) === materials.find(item => item.name === name)!.digest, "MATERIAL-CHANGED");
+      return JSON.parse(bytes.toString());
+    };
+    const manifest = await readJson("application-package.json") as ApplicationPackage;
+    requireFact(materials[0].digest === packageManifestDigest && digestOf(manifest) === packageManifestDigest
+      && manifest.version === "wiseeff-application-package-v1" && /^[a-f0-9]{40}$/.test(manifest.gitSha) && /^[a-f0-9]{40}$/.test(manifest.gitTree)
+      && manifest.services.api.gitSha === manifest.gitSha && manifest.services.api.gitTree === manifest.gitTree
+      && digestOf(manifest.services.api) === digestOf(manifest.services.worker) && digestOf(manifest.services.api) === digestOf(manifest.services.web)
+      && manifest.buildTrust.tlsPolicy === "verify", "PACKAGE-CHANGED");
+    const expected = { "source.tar": manifest.sourceArchiveDigest, "build-context.tar": manifest.buildContextDigest,
+      "image.tar": manifest.services.api.archiveDigest, "base.tar": manifest.buildTrust.baseArchiveDigest,
+      "build-ca.pem": manifest.buildTrust.caDigest, "build.log": manifest.buildTrust.buildLogDigest };
+    requireFact(Object.entries(expected).every(([name, digest]) => materials.find(item => item.name === name)?.digest === digest), "PACKAGE-CHANGED");
+    const verifyIdentity = () => {
+      requireFact(!closed && directoryFd, "INSPECTION-CLOSED");
+      const held = fstatSync(directoryFd.fd, { bigint: true }), named = lstatSync(directory, { bigint: true });
+      // Directory size/timestamps change on unrelated entries; original inode,
+      // owner and mode remain required while all selected file identities stay exact.
+      requireFact(held.nlink > 0n && named.isDirectory() && !named.isSymbolicLink() && realpathSync(directory) === directory
+        && [held, named].every(stat => String(stat.dev) === rootIdentity.device && String(stat.ino) === rootIdentity.inode
+          && Number(stat.uid) === rootIdentity.uid && (stat.mode & 0o777n) === 0o700n), "MATERIAL-CHANGED");
+      for (const material of materials) {
+        const stat = fstatSync(files.get(material.name)!.fd, { bigint: true }), located = lstatSync(path.join(directory, material.name), { bigint: true });
+        requireFact(stat.nlink === 1n && located.isFile() && !located.isSymbolicLink() && located.nlink === 1n
+          && digestOf(identity(stat)) === digestOf(material.identity) && digestOf(identity(located)) === digestOf(material.identity), "MATERIAL-CHANGED");
+      }
+    };
+    const verify = async () => {
+      verifyIdentity();
+      for (const material of materials) requireFact(await digestFile(files.get(material.name)!) === material.digest, "MATERIAL-CHANGED");
+      verifyIdentity();
+    };
+    await verify();
+    const image = await inspectApplicationOciArchive(path.join(directory, "image.tar"), manifest.services.api);
+    requireFact(digestOf(image) === digestOf(manifest.services.api), "PACKAGE-CHANGED");
+    await verify();
+    return Object.freeze({ manifest: structuredClone(manifest), image: structuredClone(image),
+      directoryIdentity: rootIdentity, materials: structuredClone(materials), verify, verifyIdentity, close });
+  } catch (error) {
+    await close().catch(() => {});
+    if (error instanceof ApplicationArtifactError) throw error;
+    throw new ApplicationArtifactError("PACKAGE-UNAVAILABLE");
+  }
+}
 const toolRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../../..");
 const safeEnvironment = () => ({ PATH: process.env.PATH, HOME: os.homedir(), LANG: "C", LC_ALL: "C" });
 function git(repository: string, args: string[]) {
