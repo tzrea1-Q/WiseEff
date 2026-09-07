@@ -6,7 +6,7 @@
 -- and this database's ACLs pass. Never normalize a contaminated existing role.
 -- Other databases' ACLs are not observable here: this migration does not attest
 -- them or authorize a login there. Their own migration/startup audits still apply.
-set local search_path = pg_catalog, public;
+set local search_path = pg_catalog, public, pg_temp;
 do $$
 declare
   reader oid;
@@ -113,7 +113,7 @@ begin
     with recursive reachable_views(oid, owner_rights) as (
       select c.oid, not coalesce(c.reloptions @> array['security_invoker=true'],false)
       from pg_class c join pg_namespace n on n.oid=c.relnamespace
-      where c.relkind='v' and n.nspname not in ('pg_catalog','information_schema')
+      where c.relkind in ('v','m') and n.nspname not in ('pg_catalog','information_schema')
         and n.nspname !~ '^pg_(toast|temp)_'
         and has_schema_privilege(reader,n.oid,'USAGE')
         and has_table_privilege(reader,c.oid,'SELECT,INSERT,UPDATE,DELETE')
@@ -122,7 +122,7 @@ begin
       from reachable_views parent join pg_rewrite r on r.ev_class=parent.oid
         join pg_depend d on d.classid='pg_rewrite'::regclass and d.objid=r.oid
           and d.refclassid='pg_class'::regclass and d.refobjid <> parent.oid
-        join pg_class child on child.oid=d.refobjid and child.relkind='v'
+        join pg_class child on child.oid=d.refobjid and child.relkind in ('v','m')
     )
     select 1 from reachable_views v join pg_rewrite r on r.ev_class=v.oid
       join pg_depend d on d.classid='pg_rewrite'::regclass and d.objid=r.oid and d.refclassid='pg_class'::regclass

@@ -114,6 +114,8 @@ describe("authorized additive Catalog reader on owned PG16", () => {
     ["PUBLIC privileged dynamic definer", "create function public.reader_leak_dynamic() returns bigint language plpgsql security definer as $$declare n bigint; begin execute 'select count(*) from parameter_catalog.' || 'subject_placements' into n; return n; end$$"],
     ["PUBLIC owner-rights view", "create view public.reader_leak_view as select * from parameter_catalog.subject_placements; grant select on public.reader_leak_view to public"],
     ["PUBLIC nested owner-rights view", "create view public.reader_hidden_view as select * from parameter_catalog.subject_placements; create view public.reader_leak_view as select * from public.reader_hidden_view; grant select on public.reader_leak_view to public"],
+    ["PUBLIC materialized Catalog view", "create materialized view public.reader_leak_materialized as select * from parameter_catalog.subject_placements; grant select on public.reader_leak_materialized to public"],
+    ["temporary system-catalog shadow", `create temporary table pg_roles as select * from pg_catalog.pg_roles; alter role ${CATALOG_READER_ROLE} bypassrls`],
     ["large object ACL", `do $$declare obj oid; begin obj := lo_create(0); execute format('grant select on large object %s to ${CATALOG_READER_ROLE}',obj); end$$`],
     ["type ACL", `create type public.reader_extra_type as enum ('x'); grant usage on type public.reader_extra_type to ${CATALOG_READER_ROLE}`],
     ["language ACL", `grant usage on language plpgsql to ${CATALOG_READER_ROLE}`],
