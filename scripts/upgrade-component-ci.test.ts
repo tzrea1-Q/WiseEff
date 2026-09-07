@@ -5,6 +5,20 @@ import * as componentRunner from "./run-upgrade-component-tests";
 
 const workflow = readFileSync(new URL("../.github/workflows/ci.yml", import.meta.url), "utf8");
 
+it("requires actual runtime role source LOGIN proofs in its owned PG16 lane", () => {
+  const file = "ops/self-hosted/scripts/parameter-catalog-upgrade/runtimeRoleSource.integration.test.ts";
+  expect(componentRunner.componentTestCommands("runtime-role-source-pg16")[0].slice(1)).toEqual([
+    "run", "--config", "vitest.runtime-role-source.config.ts", file,
+  ]);
+  const config = readFileSync(new URL("../vitest.runtime-role-source.config.ts", import.meta.url), "utf8");
+  expect(config).toContain("assertOwnedUpgradeTestTarget();");
+  expect(config).toContain("passWithNoTests: false");
+  expect(config).toContain(`"${file}"`);
+  const scripts = readFileSync(new URL("../vitest.scripts.config.ts", import.meta.url), "utf8");
+  expect(scripts.slice(scripts.indexOf("exclude:"))).toContain(`"${file}"`);
+  expect(workflow).toContain("--suite runtime-role-source-pg16 --github-hosted");
+});
+
 it("requires the four actual controlled recovery adapter scenarios in an owned job", () => {
   const file = "ops/self-hosted/storage/controlledRecovery.docker.integration.test.ts";
   expect(componentRunner.componentTestCommands("controlled-recovery")[0].slice(1)).toEqual([
