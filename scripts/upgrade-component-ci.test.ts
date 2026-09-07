@@ -5,6 +5,29 @@ import * as componentRunner from "./run-upgrade-component-tests";
 
 const workflow = readFileSync(new URL("../.github/workflows/ci.yml", import.meta.url), "utf8");
 
+it("requires the four actual controlled recovery adapter scenarios in an owned job", () => {
+  const file = "ops/self-hosted/storage/controlledRecovery.docker.integration.test.ts";
+  expect(componentRunner.componentTestCommands("controlled-recovery")[0].slice(1)).toEqual([
+    "run", "--config", "vitest.controlled-recovery.config.ts", file,
+  ]);
+  const source = readFileSync(new URL(`../${file}`, import.meta.url), "utf8");
+  expect(source).not.toContain("describe.skipIf");
+  expect(source).toContain("assertOwnedUpgradeTestTarget();");
+  expect(readFileSync(new URL("../vitest.scripts.config.ts", import.meta.url), "utf8")).toContain(`"${file}"`);
+  const config = readFileSync(new URL("../vitest.controlled-recovery.config.ts", import.meta.url), "utf8");
+  expect(config).toContain(`"${file}"`);
+  expect(config).toContain("assertOwnedUpgradeTestTarget();");
+  expect(config).toContain("passWithNoTests: false");
+  expect(config).toContain("fileParallelism: false");
+  expect(config).not.toContain("testTimeout:");
+  const job = workflow.split("\n  upgrade-components:\n")[1]?.split("\n  acceptance-quality:")[0];
+  expect(job).toContain("--suite controlled-recovery --github-hosted");
+  expect(job).not.toContain("continue-on-error: true");
+  expect(componentRunner.componentCleanupEvidence("controlled-recovery", 1, true)).toEqual({
+    runnerResourcesCleanupVerified: true, cleanupVerified: false, nestedCleanupOutcome: "unknown",
+  });
+});
+
 it("never reports nested recovery cleanup as verified after child failure or forced termination", () => {
   expect(componentRunner.componentCleanupEvidence("recovery-three-store", 1, true)).toEqual({
     runnerResourcesCleanupVerified: true, cleanupVerified: false, nestedCleanupOutcome: "unknown",
