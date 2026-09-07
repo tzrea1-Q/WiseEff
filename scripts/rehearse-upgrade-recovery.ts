@@ -24,7 +24,7 @@ import { verifyRecoveryPackage, hasUnsupportedNonDumpCapabilities, RECOVERY_NON_
 const images = { postgres: "postgres:16-alpine", redis: "redis:7-alpine", objects: "minio/minio:RELEASE.2024-12-18T13-15-44Z", objectClient: "minio/mc:RELEASE.2024-11-21T17-21-54Z" };
 const hash = (bytes: Buffer) => createHash("sha256").update(bytes).digest("hex");
 const label = "wiseeff.synthetic-recovery-run";
-const childRefusals = ["recovery-package-invalid", "synthetic-execution-journal-unavailable", "redis-target-has-existing-persistence"] as const;
+const childRefusals = ["recovery-package-invalid", "synthetic-execution-journal-unavailable", "redis-target-has-existing-persistence", "recovery-restore-outcome-unknown-target-must-remain-isolated"] as const;
 export function readSyntheticRestoreRefusal(status: number | null, output: string): string {
   try {
     const value = JSON.parse(output);
@@ -41,12 +41,13 @@ const nonDumpFaults = {
   "parameter-acl": "grant alter system on parameter work_mem to sentinel_reader",
   "builtin-function-acl": "revoke execute on function pg_catalog.pg_control_system() from public",
 } as const;
-type SyntheticFault = "stale-target-aof" | "missing-object" | "wrong-target" | "authority-volume-create-unknown" | "authority-container-create-unknown" | keyof typeof nonDumpFaults;
+type SyntheticFault = "stale-target-aof" | "missing-object" | "wrong-target" | "object-write-after-postgres" | "authority-volume-create-unknown" | "authority-container-create-unknown" | keyof typeof nonDumpFaults;
 
 type RestoreChild = {
   run: string; daemonId: string; directory: string; digest: string; password: string;
   pg: string; redis: string; objects: string; objectClient: string; network: string;
   controllerJournal: string; capture: RecoveryCaptureRecord; approval: RecoveryExecutionApproval; restoreToken: string;
+  failObjectWrite?: true;
 };
 
 /** Private subprocess adapter: stdin carries ephemeral target credentials. No source
@@ -99,7 +100,9 @@ async function restoreSyntheticPackage(config: RestoreChild) {
       exec(config.pg, ["pg_restore", "-U", "postgres", "-d", "postgres", "--exit-on-error"], backup.postgres);
     },
     async restoreObjects(objects) {
-      const targetStore = createHttpObjectStorageTransport({ endpoint: `http://${endpoint(config.objects, "9000")}`, accessKeyId: "synthetic", secretAccessKey: config.password });
+      // Failure-only synthetic injection: the actual HTTP PUT must fail after
+      // PostgreSQL committed. It cannot bypass any authorization or package check.
+      const targetStore = createHttpObjectStorageTransport({ endpoint: `http://${endpoint(config.objects, "9000")}`, accessKeyId: "synthetic", secretAccessKey: config.failObjectWrite ? "synthetic-invalid-signature" : config.password });
       const ip = owned(config.objects).NetworkSettings.Networks[config.network].IPAddress;
       owned(config.objectClient);
       transport.command(["exec", "-e", `MC_HOST_synthetic=http://synthetic:${config.password}@${ip}:9000`, config.objectClient, "mc", "mb", "synthetic/synthetic-recovery"]);
@@ -125,7 +128,7 @@ export function ownsRecoveryContainer(inspect: { Id: string; Config?: { Labels?:
 
 /** No external targets, backups, image overrides, production configuration, or SQL inputs. */
 export async function rehearseSyntheticRecovery(options: { fault?: SyntheticFault } = {}) {
-  if (Object.keys(options).some(key => key !== "fault") || (options.fault && !["stale-target-aof", "missing-object", "wrong-target", "authority-volume-create-unknown", "authority-container-create-unknown", ...Object.keys(nonDumpFaults)].includes(options.fault))) throw new Error("unknown-synthetic-fault");
+  if (Object.keys(options).some(key => key !== "fault") || (options.fault && !["stale-target-aof", "missing-object", "wrong-target", "object-write-after-postgres", "authority-volume-create-unknown", "authority-container-create-unknown", ...Object.keys(nonDumpFaults)].includes(options.fault))) throw new Error("unknown-synthetic-fault");
   const run = randomBytes(12).toString("hex");
   const password = randomBytes(24).toString("hex");
   const targetPassword = randomBytes(24).toString("hex");
@@ -440,7 +443,8 @@ export async function rehearseSyntheticRecovery(options: { fault?: SyntheticFaul
     result.reason = "separate-package-restore-failed";
     if (options.fault === "missing-object") await rm(path.join(directory, "payload-1.bin"));
     const child = spawnSync(process.execPath, ["--import", "tsx", new URL(import.meta.url).pathname, "--synthetic-package-child"], {
-      input: JSON.stringify({ controllerJournal: openedJournal.value.journalPath, capture, approval, restoreToken: mintRestoreToken(run, capture.recoveryPointDigest), run: options.fault === "wrong-target" ? "0".repeat(24) : run, daemonId: transport.daemonId, directory, digest: result.manifestDigest, password: targetPassword, pg: targetPg, redis: targetRedis, objects: targetObjects, objectClient, network } satisfies RestoreChild),
+      input: JSON.stringify({ controllerJournal: openedJournal.value.journalPath, capture, approval, restoreToken: mintRestoreToken(run, capture.recoveryPointDigest), run: options.fault === "wrong-target" ? "0".repeat(24) : run, daemonId: transport.daemonId, directory, digest: result.manifestDigest, password: targetPassword, pg: targetPg, redis: targetRedis, objects: targetObjects, objectClient, network,
+        ...(options.fault === "object-write-after-postgres" ? { failObjectWrite: true as const } : {}) } satisfies RestoreChild),
       encoding: "utf8", timeout: 60000, env: { PATH: process.env.PATH, HOME: os.homedir() },
     });
     if (child.status !== 0) {

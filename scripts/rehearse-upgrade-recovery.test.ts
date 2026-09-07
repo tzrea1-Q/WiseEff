@@ -11,7 +11,7 @@ it("does not count early child failures as a specific storage refusal", () => {
     JSON.stringify({ status: "blocked", reason: "recovery-package-invalid", secret: "private" })]) {
     expect(readSyntheticRestoreRefusal(1, output)).toBe("unclassified");
   }
-  for (const reason of ["recovery-package-invalid", "synthetic-execution-journal-unavailable", "redis-target-has-existing-persistence"]) {
+  for (const reason of ["recovery-package-invalid", "synthetic-execution-journal-unavailable", "redis-target-has-existing-persistence", "recovery-restore-outcome-unknown-target-must-remain-isolated"]) {
     const output = JSON.stringify({ status: "blocked", reason });
     expect(readSyntheticRestoreRefusal(1, output)).toBe(reason);
     expect(readSyntheticRestoreRefusal(null, output)).toBe("unclassified");
@@ -36,6 +36,31 @@ it("refuses external target and missing explicit synthetic mode before starting 
 });
 
 describe("actual isolated three-store restore", () => {
+  it("retains actual PostgreSQL partial restore and unknown journal after a failed object write without starting Redis or consumers", () => {
+    const script = `import { rehearseSyntheticRecovery } from ${JSON.stringify(path.resolve("scripts/rehearse-upgrade-recovery.ts"))}; console.log(JSON.stringify(await rehearseSyntheticRecovery({ fault: "object-write-after-postgres" })));`;
+    const child = spawnSync(process.execPath, ["--import", "tsx", "--input-type=module", "-e", script], { encoding: "utf8", timeout: 90000 });
+    expect(child.status).toBe(0);
+    const evidence = JSON.parse(child.stdout);
+    // Project only public evidence: failures must not print private targets or credentials.
+    expect({ status: evidence.status, reason: evidence.reason, restoreRefusal: evidence.restoreRefusal,
+      restoreExecuted: evidence.restoreExecuted, businessVerified: evidence.businessVerified,
+      actualQueueVerified: evidence.actualQueueVerified, backupRetained: evidence.backupRetained,
+      sourceStoppedBeforeRestore: evidence.sourceStoppedBeforeRestore, cleanupVerified: evidence.cleanupVerified,
+      partialRestore: evidence.partialRestore }).toEqual({
+      status: "blocked", reason: "separate-package-restore-failed",
+      restoreRefusal: "recovery-restore-outcome-unknown-target-must-remain-isolated",
+      restoreExecuted: false, businessVerified: false, actualQueueVerified: false, backupRetained: true,
+      sourceStoppedBeforeRestore: true, cleanupVerified: true,
+      partialRestore: { execution: [
+        { action: "recovery-execution-started", outcome: "crashed" },
+        { action: "recovery-execution-postgres-committed", outcome: "committed" },
+        { action: "recovery-execution-outcome-unknown", outcome: "crashed" },
+      ], postgresRowsVerified: true, businessEffectRows: 0, objectCount: 0,
+      redisNeverStarted: true, redisPersistenceFiles: 0, captureAndApprovalRetained: true, packageVerified: true },
+    });
+    expect(child.stdout.includes("postgres://")).toBe(false);
+  }, 100000);
+
   it.each(["volume", "container"])("reconciles only the registered owned %s after an unknown create response and retains capture evidence", kind => {
     const script = `import { rehearseSyntheticRecovery } from ${JSON.stringify(path.resolve("scripts/rehearse-upgrade-recovery.ts"))}; console.log(JSON.stringify(await rehearseSyntheticRecovery({ fault: "authority-${kind}-create-unknown" })));`;
     const child = spawnSync(process.execPath, ["--import", "tsx", "--input-type=module", "-e", script], { encoding: "utf8", timeout: 90000 });
