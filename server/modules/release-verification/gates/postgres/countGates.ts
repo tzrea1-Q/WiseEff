@@ -1,7 +1,8 @@
 import type { VerificationPlan } from "../../core/types";
 import type { GateResult } from "../../core/types";
 import { digestOf } from "../../core/digest";
-import { asInt, asStringArray, countedResult, orderedChecksum } from "./evidence";
+import { asInt, asStringArray, countedResult, failedResult, orderedChecksum } from "./evidence";
+import { LEGACY_STRUCTURAL_TABLES } from "../../../catalog-kernel/security/catalogRoleManifest";
 import {
   CATALOG_STRUCTURAL_RELATIONS,
   catalogRelation,
@@ -611,13 +612,29 @@ export const runV12 = async (query: GateQuery, plan: VerificationPlan): Promise<
   });
 };
 
-export const runV13 = async (query: GateQuery): Promise<GateResult> => {
-  const publicLegacy = [
-    definitionRelation(),
-    "parameter_specs",
-    "parameter_spec_versions",
-    "project_parameter_bindings",
-  ];
+// The original four-table role contract remains unchanged. These additional
+// legacy objects have explicit retired structural callers: reattribute updates
+// driver_schemas/dts_property_specs; upsertMatchedDriverSchema persists the root
+// and driver_schema_versions. This is a database submatrix, not all P13 writers.
+const v13Relations = [...LEGACY_STRUCTURAL_TABLES, "driver_schemas", "driver_schema_versions", "dts_property_specs"];
+const v13LoginScope = `with recursive logins as (
+  select oid,rolname from pg_catalog.pg_roles
+  where rolcanlogin and rolname not in ('postgres',current_user)
+), reachable(login_oid,effective_oid) as (
+  select oid,oid from logins
+  union select reachable.login_oid,membership.roleid
+  from reachable join pg_catalog.pg_auth_members membership on membership.member=reachable.effective_oid
+  where membership.set_option
+), relations as (
+  select c.oid,c.relname,c.relowner from pg_catalog.pg_class c
+  join pg_catalog.pg_namespace n on n.oid=c.relnamespace
+  where n.nspname='public' and c.relname=any($1::text[]) and c.relkind in ('r','p')
+)`;
+
+const observeV13 = async (query: GateQuery): Promise<GateResult> => {
+  // Retain the original direct-ACL check, including its existing NOLOGIN role
+  // contract. Neither the old name exclusions nor the LOGIN observations below
+  // establish the controller's still-missing production credential inventory.
   const grants = await query<{
     grantee: string;
     table_name: string;
@@ -632,8 +649,36 @@ export const runV13 = async (query: GateQuery): Promise<GateResult> => {
       and grantee not in ('postgres', current_user)
     order by grantee, table_name, privilege_type
     `,
-    [publicLegacy],
+    [[...LEGACY_STRUCTURAL_TABLES]],
   );
+  const inventory = await query<{ relation: string; present: boolean }>(`select name as relation,
+    exists(select 1 from pg_catalog.pg_class c join pg_catalog.pg_namespace n on n.oid=c.relnamespace
+      where n.nspname='public' and c.relname=name and c.relkind in ('r','p')) as present
+    from unnest($1::text[]) name order by name`, [v13Relations]);
+  if (inventory.rows.length !== v13Relations.length || inventory.rows.some(row => row.present !== true)) {
+    return failedResult("PCAT-DB-V13", "PCAT-VRF-V13-LEGACY-WRITER-REACHABLE", { observation: "scoped-relation-unavailable" });
+  }
+  const effective = await query<{ login: string; effective: string; relation: string; capability: string }>(`${v13LoginScope}
+    select distinct login.rolname as login,role.rolname as effective,relation.relname as relation,
+      privilege.name as capability
+    from reachable join logins login on login.oid=reachable.login_oid
+    join pg_catalog.pg_roles role on role.oid=reachable.effective_oid cross join relations relation
+    cross join unnest(array['INSERT','UPDATE','DELETE','TRUNCATE','REFERENCES','TRIGGER']) privilege(name)
+    where pg_catalog.has_table_privilege(role.oid,relation.oid,privilege.name)
+    union
+    select distinct login.rolname,role.rolname,relation.relname,'column:'||attribute.attname||':'||privilege.name
+    from reachable join logins login on login.oid=reachable.login_oid
+    join pg_catalog.pg_roles role on role.oid=reachable.effective_oid cross join relations relation
+    join pg_catalog.pg_attribute attribute on attribute.attrelid=relation.oid and attribute.attnum>0 and not attribute.attisdropped
+    cross join unnest(array['INSERT','UPDATE','REFERENCES']) privilege(name)
+    where pg_catalog.has_column_privilege(role.oid,relation.oid,attribute.attnum,privilege.name)
+      and not pg_catalog.has_table_privilege(role.oid,relation.oid,privilege.name)
+    union
+    select distinct login.rolname,role.rolname,relation.relname,'ownership'
+    from reachable join logins login on login.oid=reachable.login_oid
+    join pg_catalog.pg_roles role on role.oid=reachable.effective_oid cross join relations relation
+    where pg_catalog.pg_has_role(role.oid,relation.relowner,'USAGE')
+    order by 1,2,3,4`, [v13Relations]);
   const definers = await query<{ proname: string }>(
     `
     select procedure.proname
@@ -650,14 +695,41 @@ export const runV13 = async (query: GateQuery): Promise<GateResult> => {
     order by procedure.proname
     `,
   );
+  // An executable definer with an owner capable of changing these relations is
+  // unproven even when its body uses dynamic SQL. Never use absent source text
+  // as proof of safety. Trigger dispatch and application/job/script inventories
+  // remain additional P13 obligations; this query is not their substitute.
+  const unprovenDefiners = await query<{ login: string; function_identity: string }>(`${v13LoginScope}
+    select distinct login.rolname as login,p.oid::regprocedure::text as function_identity
+    from reachable join logins login on login.oid=reachable.login_oid
+    join pg_catalog.pg_proc p on pg_catalog.has_function_privilege(reachable.effective_oid,p.oid,'EXECUTE')
+    join pg_catalog.pg_namespace n on n.oid=p.pronamespace
+    where p.prosecdef and n.nspname not in ('pg_catalog','information_schema')
+      and p.prorettype not in ('pg_catalog.trigger'::regtype,'pg_catalog.event_trigger'::regtype)
+      and exists(select 1 from relations relation where
+        pg_catalog.has_table_privilege(p.proowner,relation.oid,'INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER')
+        or pg_catalog.has_any_column_privilege(p.proowner,relation.oid,'INSERT,UPDATE,REFERENCES')
+        or pg_catalog.pg_has_role(p.proowner,relation.relowner,'USAGE'))
+    order by 1,2`, [v13Relations]);
   const grantRows = grants.rows;
-  const violationCount = grantRows.length + definers.rows.length;
+  const violationCount = grantRows.length + definers.rows.length + effective.rows.length + unprovenDefiners.rows.length;
   return countedResult("PCAT-DB-V13", "PCAT-VRF-V13-LEGACY-WRITER-REACHABLE", violationCount, {
+    scope: "legacy-database-submatrix-not-complete-p13",
+    scopedRelations: v13Relations,
+    effectiveCapabilities: effective.rows,
+    unprovenDefiners: unprovenDefiners.rows,
     definerCount: definers.rows.length,
     definers: definers.rows.map((row) => row.proname),
     grantCount: grantRows.length,
     grants: grantRows,
   });
+};
+
+export const runV13 = async (query: GateQuery): Promise<GateResult> => {
+  try { return await observeV13(query); }
+  catch {
+    return failedResult("PCAT-DB-V13", "PCAT-VRF-V13-LEGACY-WRITER-REACHABLE", { observation: "query-unavailable" });
+  }
 };
 
 export const runV14 = async (query: GateQuery): Promise<GateResult> => {
