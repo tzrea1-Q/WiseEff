@@ -699,14 +699,24 @@ const observeV13 = async (query: GateQuery): Promise<GateResult> => {
   // unproven even when its body uses dynamic SQL. Never use absent source text
   // as proof of safety. Trigger dispatch and application/job/script inventories
   // remain additional P13 obligations; this query is not their substitute.
-  const unprovenDefiners = await query<{ login: string; function_identity: string }>(`${v13LoginScope}
+  // UNION deduplicates (LOGIN, owner) pairs, including cycles. An owner's
+  // extra EXECUTE capability may delegate to another definer without exposing
+  // that inner function directly to the LOGIN; source-text absence is no proof.
+  const unprovenDefiners = await query<{ login: string; function_identity: string }>(`${v13LoginScope},
+    user_definers as (
+      select p.oid,p.proowner from pg_catalog.pg_proc p
+      join pg_catalog.pg_namespace n on n.oid=p.pronamespace
+      where p.prosecdef and n.nspname not in ('pg_catalog','information_schema')
+        and p.prorettype not in ('pg_catalog.trigger'::regtype,'pg_catalog.event_trigger'::regtype)
+    ), delegates(login_oid,effective_oid) as (
+      select login_oid,effective_oid from reachable
+      union select delegates.login_oid,p.proowner from delegates
+      join user_definers p on pg_catalog.has_function_privilege(delegates.effective_oid,p.oid,'EXECUTE')
+    )
     select distinct login.rolname as login,p.oid::regprocedure::text as function_identity
-    from reachable join logins login on login.oid=reachable.login_oid
-    join pg_catalog.pg_proc p on pg_catalog.has_function_privilege(reachable.effective_oid,p.oid,'EXECUTE')
-    join pg_catalog.pg_namespace n on n.oid=p.pronamespace
-    where p.prosecdef and n.nspname not in ('pg_catalog','information_schema')
-      and p.prorettype not in ('pg_catalog.trigger'::regtype,'pg_catalog.event_trigger'::regtype)
-      and exists(select 1 from relations relation where
+    from delegates join logins login on login.oid=delegates.login_oid
+    join user_definers p on pg_catalog.has_function_privilege(delegates.effective_oid,p.oid,'EXECUTE')
+    where exists(select 1 from relations relation where
         pg_catalog.has_table_privilege(p.proowner,relation.oid,'INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER')
         or pg_catalog.has_any_column_privilege(p.proowner,relation.oid,'INSERT,UPDATE,REFERENCES')
         or pg_catalog.pg_has_role(p.proowner,relation.relowner,'USAGE'))
