@@ -4,6 +4,70 @@
 
 ## Scope and state
 
+### Current continuation: real dependencies and activation
+
+Refreshed PR #824 remains Draft/Open at `39d5b125d`, with base `cda6737a8`.
+Hosted `34104402409` is now completed/success; this does not replace the historical
+local scripts timeout or the two skipped acceptance jobs. Its checkout remains
+`155ffd169`; no execution is relabeled as this continuation's code.
+
+| Increment / unique writer | Required evidence | Documentation impact |
+| --- | --- | --- |
+| Durable Redis / lifecycle Scratch | Actual BullMQ connection, error events, draining and recovery; independent review | Queue module contract and this plan/evidence pair |
+| P12 existing-storage / activation Scratch | Existing 0137 storage, real approval and PG effects, explicit unknown outcome | Activation bilingual module contract |
+| Host activation journal / journal Scratch | Durable intent, full-record CAS, scope and independent readback | Journal contract and operator pair |
+| Startup producer, roots, runner routing / parent | Independent current facts and real restricted production processes | Existing operator/evidence pair |
+
+API request/background-work drain at `b404b615b` has independent Standards and
+Spec PASS for that exact increment. Its focused execution is 61/61, and build
+passed. The actual disconnected HTTP client counterexample failed before the
+fix: socket close does not mean its asynchronous handler has finished using DB.
+This does not prove approved production startup or all initialization paths.
+
+The activation journal `e0ce5aa42` has independent Standards/Spec PASS and is
+integrated as `814199bb6`; the integrated four-file selector executed 109/109.
+It retains intent/unknown/reconcile and full-record CAS, without authorizing P12.
+
+Durable Scratch `815666f16` reported 8/8 real Redis and 60/60 unit tests. Parent
+integration exposed TS2341: Worker.blockingConnection is private, not protected.
+The parent-supervised Redis route then collected eight cases: seven passed and
+authenticated INFO rejection timed out at the unchanged 30000ms limit; exit 1,
+owned resource cleanup verified. Independent Standards also reproduced malformed
+URL construction causing an unhandled URIError. Fixed Scratch `2381aaff1` replaces
+private access with public client/duplicate ownership and validates URLs before
+allocation; independent Standards/Spec re-review passes. Parent integration
+`de15d6b46` ran the supervised real Redis suite 8/8, exit 0, with verified cleanup;
+build passed. Earlier failures remain attributed above. Construction, authenticated
+connection, liveness, readiness and permission to consume remain distinct.
+
+Comparison `d21627c02` and existing-storage activation `5b945a645` have independent
+review and are integrated. Activation now calls the formal approved report
+projection and nine-gate Comparison association instead of constant refusal.
+Parent owned PG16 execution collected/passed 11, skipped 0, exited 0; these cover
+storage, epoch and missing-report refusal, not successful approved public apply.
+The actual SELECT-only verifier experiment found P01 rejects the required
+management membership, while P02 passes after every role-switch probe failed with
+42501. A separate bounded S6 contract decision has been requested; no verifier or
+runtime grant has been widened. Actual P12/P13/root producer and successful runtime
+approval remain unfinished; this finding is not a reason to abandon independent
+integration work.
+
+Controller recovery/fence evidence `920b3f1d9` has independent Standards/Spec PASS.
+The path-escape counterexamples first failed (two tests); the fixed thirteen-case
+suite passes using private package files and a real host lock with unit source/
+writer ports. It is not a real three-storage restoration or complete stop-write
+producer. The permanent owned CI routing now includes both actual Redis lifecycle
+and existing-schema activation; general suites exclude those exact integration
+files, with routing regression. Current candidate Hosted remains not-run.
+
+R3 increment threats: initialization/close error events, transient disconnect
+without permanent poisoning, active work after pool close, signals during startup,
+untrusted activation facts, SQL/file commit uncertainty, cross-run replay and
+metadata drift under the real boundary. Existing two authorized contracts remain
+in force. No new schema/grants, S6/Policy decision, production operation or release
+authorization is included. A/B remain internal work; C retains separate external
+requirements. Parent integrates changes serially and does not self-certify review.
+
 ### Attributed CI and existing-schema activation increment
 
 At `d7cdd6473`, parent owns CI routing, exact execution evidence and final

@@ -4,6 +4,58 @@
 
 ## 范围与状态
 
+### 当前续工：真实依赖与激活
+
+重新核对 PR #824：仍为 Draft/Open，head 为 `39d5b125d`，base 为
+`cda6737a8`。Hosted `34104402409` 现已 completed/success，执行 checkout
+仍为 `155ffd169`；历史本机 scripts 超时及两个跳过的验收 Job 分别保留，
+不把旧执行改记为本轮新增代码的结果。
+
+| 增量与唯一写入者 | 必需证据 | 文档影响 |
+| --- | --- | --- |
+| Durable Redis／生命周期 Scratch | 真实 BullMQ 连接、错误事件、排空与恢复，独立审查 | 队列模块合同及现有计划／证据对 |
+| 既有存储 P12／activation Scratch | 0137、真实批准及 PG 副作用、明确未知结果 | activation 模块双语合同 |
+| 宿主激活 journal／journal Scratch | 持久 intent、完整记录 CAS、范围与独立读回 | journal 合同及操作手册对 |
+| startup producer、组合根、runner 路由／父协调者 | 独立当前事实和真实受限 production 进程 | 现有操作／证据文档对 |
+
+API 请求／后台活动排空增量 `b404b615b` 已取得独立 Standards 和 Spec PASS；
+该固定代码 focused 61/61，build 通过。真实 HTTP 客户端断开反例在修复前失败：
+socket 关闭并不等于异步 handler 已停止使用数据库。这不证明合法 production
+启动，也不覆盖所有初始化路径。
+
+激活 journal `e0ce5aa42` 已取得独立 Standards／Spec PASS，集成为 `814199bb6`；
+集成后四文件 selector 实际 109/109。保留 intent／unknown／reconcile 和完整记录
+CAS，该分片不构成 P12 授权。
+
+Durable Scratch `815666f16` 的历史真实 Redis 为 8/8，单测 60/60。父集成 build
+发现 TS2341：Worker.blockingConnection 是 private，并非 protected。改用父进程
+监管的 Redis 路由后收集 8 例，7 通过，认证后 INFO 拒绝在未修改的 30000ms
+上限超时；退出 1，自有资源清理核验通过。独立 Standards 又复现 malformed URL
+构造产生未处理 URIError。固定 Scratch `2381aaff1` 改用公开 client／duplicate
+所有权，并在分配连接前验证 URL；独立 Standards／Spec 复审通过。父集成
+`de15d6b46` 的受监督真实 Redis 8/8、退出 0、清理已核验，build 通过。
+前述失败保留原归属；构造完成、认证连接、liveness、readiness 与消费授权分别判断。
+
+Comparison `d21627c02` 与既有存储 activation `5b945a645` 经独立审查后已集成。
+Activation 已从恒定拒绝改为正式获批报告 projection 加九 gate Comparison 关联。
+父 owned PG16 收集／通过 11、跳过 0、退出 0；覆盖存储、epoch、缺报告拒绝，
+不代表合法获批 public apply 成功。真实 SELECT-only verifier 对照发现 P01
+拒绝必要管理成员关系；P02 在全部角色切换先被 42501 拒绝后仍返回通过。
+已提出独立限定 S6 合同决策请求，未扩大 verifier 或 runtime grant。
+实际 P12/P13／根 producer 和合法 runtime 批准仍未完成；不能用此发现停止
+不受影响的集成工作。
+
+Controller 恢复点／停写证据 `920b3f1d9` 已获独立 Standards／Spec PASS。
+两个路径逃逸反例先失败，修复后 13 例通过；使用真实私有包文件和宿主锁，
+源／停写 port 仍为单测夹具，不是完整三存储恢复或真实停写 producer。
+必需 owned CI 已接入真实 Redis 生命周期与既有 schema 激活；通用 suite 排除
+对应 integration 文件，并有双端路由回归。当前新增候选 Hosted 尚未执行。
+
+本增量 R3 威胁包括初始化／关闭事件、可恢复断线不永久污染、pool 关闭后的活动写入、
+启动中信号、不可信激活事实、SQL／文件提交不确定、跨 run 重放及真实边界内元数据漂移。
+两项已授权合同继续有效，不含新 schema／grant、S6／Policy 决策、生产操作或发布授权。
+A/B 仍由内部实现承担，C 外部条件单列。父协调者串行集成，不以自审替代独立审查。
+
 ### CI 归因与既有 schema 激活增量
 
 在 `d7cdd6473`，父协调者负责 CI 路由、精确执行证据和最终集成。Hosted
