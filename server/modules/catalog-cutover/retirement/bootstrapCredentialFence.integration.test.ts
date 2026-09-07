@@ -446,6 +446,34 @@ if (!process.exitCode && result) process.stdout.write(JSON.stringify(result) + '
 
 type AuthenticationMode = "exact" | "cross-run" | "package-drift" | "guard-ended";
 type SuccessorMode = "baseline" | "missing-host" | "wrong-host-run" | "extra-acl" | "new-relation" | "host-association" | "final-boundary";
+
+async function failCustodyPreparation(error: unknown, stage: string, cleanup: () => Promise<void>): Promise<never> {
+  await cleanup();
+  throw error;
+}
+
+it("preserves safe preparation and cleanup reasons when both fail", async () => {
+  const primary = Object.assign(new Error("private-primary-material"), { code: "42501" });
+  let attempts = 0;
+  const failure = await failCustodyPreparation(primary, "storage-binding", async () => {
+    attempts += 1;
+    throw new Error("private-cleanup-material");
+  }).catch(error => error);
+  expect(attempts).toBe(1);
+  expect(failure).toBeInstanceOf(AggregateError);
+  expect(failure.errors.map((error: Error) => error.message)).toEqual([
+    "bootstrap-transport-setup-failed:storage-binding:42501", "bootstrap-transport-cleanup-failed",
+  ]);
+  expect(JSON.stringify(failure, Object.getOwnPropertyNames(failure))).not.toContain("private-");
+});
+
+it("keeps the original preparation failure after successful cleanup", async () => {
+  const primary = new Error("bootstrap-transport-source-identity-mismatch");
+  let attempts = 0;
+  await expect(failCustodyPreparation(primary, "storage-binding", async () => { attempts += 1; })).rejects.toBe(primary);
+  expect(attempts).toBe(1);
+});
+
 describe("independent custody transport lifecycle", () => {
   let fixture: Awaited<ReturnType<typeof prepareCustodyTransport>>;
   let inFlight: Promise<void> | undefined;
@@ -697,7 +725,7 @@ async function prepareCustodyTransport() {
     }
     };
     return { authentication, prepareSuccessor, successor, close: cleanup };
-  } catch (error) { failed = true; await cleanup(); throw error; }
+  } catch (error) { failed = true; return failCustodyPreparation(error, "storage-binding", cleanup); }
 }
 
 async function exerciseCommitFault(ordinal: 1 | 2, independentInspection: boolean) {
