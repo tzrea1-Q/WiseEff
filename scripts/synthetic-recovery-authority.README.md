@@ -12,6 +12,11 @@ creating a new control-plane database. It never uses an ambient database URL.
 This existing rehearsal encodes each PostgreSQL identity as its actual container
 ID; both source and destination IDs must equal their captured/selected identities.
 This encoding is not imposed on the separate Docker recovery adapter's digests.
+The auth volume itself must carry the exact run label and retain its recorded
+creation/mount identity; one owned consumer alone is insufficient. All network
+consumers, including stopped containers, must be in the parent's explicit ID
+inventory and have the actual run label. The parent creates and cleans this
+labelled volume; anonymous or foreign volumes are rejected.
 
 The four synthetic principals use actual password logins. The incident-owner's
 actual session is authenticated by `openDeploymentAuthority` through a separate
@@ -50,3 +55,6 @@ are the new change; no migration, grant manifest or shared authority code change
 The first seven-case run failed one new private-input-accessor regression (six
 passed); the corrected helper passes seven pure cases. This is a real error
 redaction Red/Green, not a successful PG authorization or restoration claim.
+Review exposed a separate foreign-volume gap: seven passed and the eighth test
+observed an unwanted DB connection. The fix checks volume ownership before any
+connection; two further cases reject unregistered/foreign network consumers.

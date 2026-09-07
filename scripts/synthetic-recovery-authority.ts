@@ -21,7 +21,7 @@ export type SyntheticRecoveryAuthorityInput = {
   target: RecoveryTargetIdentity; restoreToken: string;
   sourceDatabase: DeploymentAuthorityOptions["sourceDatabase"];
   auth: { expectedDaemonId: string; containerId: string; sourceContainerId: string; targetContainerId: string;
-    imageId: string; networkId: string; adminUrl: string };
+    imageId: string; networkId: string; adminUrl: string; registeredContainerIds: string[] };
 };
 const refuse = (): never => { throw new Error("synthetic-recovery-authority-unavailable"); };
 const label = "wiseeff.synthetic-recovery-run";
@@ -88,10 +88,25 @@ export async function openSyntheticRecoveryAuthority(input: SyntheticRecoveryAut
         || network.Id !== fixed.auth.networkId || network.Labels?.[label] !== fixed.runId || network.Driver !== "bridge") refuse();
       if (actual.Mounts?.length !== 1 || actual.Mounts[0].Type !== "volume" || !actual.Mounts[0].Name
         || actual.Mounts[0].Destination !== "/var/lib/postgresql/data" || actual.Mounts[0].RW !== true) refuse();
+      const volume = JSON.parse(docker.command(["volume", "inspect", actual.Mounts[0].Name]).toString())[0];
+      if (volume.Name !== actual.Mounts[0].Name || volume.Mountpoint !== actual.Mounts[0].Source
+        || volume.Labels?.[label] !== fixed.runId || volume.Driver !== "local" || volume.Scope !== "local"
+        || Object.keys(volume.Options ?? {}).length !== 0 || !Number.isFinite(Date.parse(volume.CreatedAt))) refuse();
       const consumers = docker.command(["ps", "-a", "--no-trunc", "--filter", `volume=${actual.Mounts[0].Name}`, "--format", "{{.ID}}"])
         .toString().trim().split("\n").filter(Boolean);
       if (consumers.length !== 1 || consumers[0] !== fixed.auth.containerId) refuse();
-      const observedStorage = canonicalJson({ mounts: actual.Mounts, networks: actual.NetworkSettings.Networks, networkCreated: network.Created });
+      const registered = fixed.auth.registeredContainerIds;
+      if (!Array.isArray(registered) || registered.some(id => !/^[a-f0-9]{64}$/.test(id))
+        || ![fixed.auth.containerId, fixed.auth.sourceContainerId, fixed.auth.targetContainerId].every(id => registered.includes(id))) refuse();
+      const networkUsers = [...new Set([...Object.keys(network.Containers ?? {}), ...docker.command([
+        "ps", "-a", "--no-trunc", "--filter", `network=${fixed.auth.networkId}`, "--format", "{{.ID}}",
+      ]).toString().trim().split("\n").filter(Boolean)])];
+      for (const id of networkUsers) {
+        if (!registered.includes(id)) refuse();
+        docker.assertOwned(id, label, fixed.runId);
+      }
+      const observedStorage = canonicalJson({ mounts: actual.Mounts, networks: actual.NetworkSettings.Networks,
+        networkCreated: network.Created, volume });
       if (storageIdentity !== undefined && storageIdentity !== observedStorage) refuse();
       storageIdentity = observedStorage;
     };

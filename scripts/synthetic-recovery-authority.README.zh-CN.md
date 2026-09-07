@@ -9,6 +9,9 @@
 随后才新建控制面数据库。没有 ambient DATABASE_URL 回退。
 此既有合成脚本的 PostgreSQL identity 是实际 container ID；源与目标 ID 必须与 capture/
 选定目标精确相等。这不是替换独立 Docker recovery adapter 的组合 digest 编码。
+auth 卷本身必须带精确 run label 并保持创建和挂载身份；只有一个 owned 消费者不够。
+网络所有消费者（包括停止的容器）必须在父明确 ID 清单内且实际带 run label。
+带标记的卷由父创建及清理；匿名卷或外部卷被拒绝。
 
 四个合成 principal 均实际密码登录。Incident owner 的真实 session 经独立受限 LOGIN
 调用 `openDeploymentAuthority` 验证，仅有既有五张认证表 SELECT 和
@@ -34,3 +37,5 @@ Scratch 从本地 main `67d4a7732` 创建后快进至父精确依赖 `70c1a3ad0`
 
 首次七项纯测试新增私有输入 accessor 反例实际为六通过、一失败；修复后七项通过。
 这只证明错误脱敏的 Red/Green，不是 PostgreSQL 认证批准或恢复成功。
+独立审查另发现外部卷漏洞：新增第八项反例实际七通过、一失败，观察到意外数据库连接。
+修复将卷自身归属核验前移至连接前，并增加未登记和外部网络消费者两项反例。
