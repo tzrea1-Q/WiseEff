@@ -340,6 +340,7 @@ if (!process.exitCode && result) process.stdout.write(JSON.stringify(result) + '
 
 async function inspectInIndependentProcess(inputPath: string, code = bootstrapInspectionChild,
   boundary?: () => Promise<void>): Promise<{ outcome: string; intentDigest?: string }> {
+  const started = performance.now();
   // Fixed imports and code, inherited supervisor group, no credential argv/env.
   const child = spawn(process.execPath, ["--import", "tsx", "--input-type=module", "-e", code, inputPath],
     { cwd: process.cwd(), env: { PATH: process.env.PATH, HOME: process.env.HOME }, stdio: ["ignore", "pipe", "pipe", "ipc"] });
@@ -347,6 +348,10 @@ async function inspectInIndependentProcess(inputPath: string, code = bootstrapIn
   child.on("error", () => { failed = true; });
   let boundaryWork: Promise<void> | undefined;
   child.on("message", message => {
+    if (["imports-ready", "manager-ready", "inspection-complete"].includes(String(message))) {
+      console.info(JSON.stringify({ scope: "bootstrap-custody-timing", stage: message, elapsedMs: Math.round(performance.now() - started) }));
+      return;
+    }
     if (message !== "final-boundary" || !boundary || boundaryWork) { failed = true; child.kill("SIGKILL"); return; }
     boundaryWork = boundary().then(() => { child.send("boundary-complete"); }, () => { failed = true; child.kill("SIGKILL"); });
   });
@@ -376,6 +381,7 @@ async function inspectInIndependentProcess(inputPath: string, code = bootstrapIn
     return result as { outcome: string; intentDigest?: string };
   } finally {
     clearTimeout(timer); child.kill("SIGKILL"); await closed; await boundaryWork;
+    console.info(JSON.stringify({ scope: "bootstrap-custody-timing", stage: "child-settled", elapsedMs: Math.round(performance.now() - started) }));
   }
 }
 
@@ -389,11 +395,13 @@ import { acquireObservedManagementClient } from './server/modules/catalog-cutove
 import { inspectBootstrapCredentialFenceFromCustodyTransport } from './server/modules/catalog-cutover/retirement/bootstrapCredentialFence.ts';
 import { withHostOperationLock, assertHostOperationLock } from './ops/self-hosted/scripts/parameter-catalog-upgrade/handoff.ts';
 let pool, client, reports, result, ended = false, boundaryCalls = 0;
+process.send('imports-ready');
 try {
   const input = JSON.parse(await readFile(process.argv[1], 'utf8'));
   pool = new pg.Pool({ connectionString: input.guardUrl, max: 1, connectionTimeoutMillis: 2000, query_timeout: 5000 });
   pool.on('error', () => {});
   client = await acquireObservedManagementClient(pool, () => {});
+  process.send('manager-ready');
   reports = createPostgresDatabase(input.guardUrl);
   const unavailable = async () => { throw new Error('unapproved-storage-only'); };
   result = await withHostOperationLock(input.expectedRootBinding.custodyDirectory, async lock => {
@@ -434,6 +442,7 @@ try {
     }
     return selected;
   });
+  process.send('inspection-complete');
 } catch { process.exitCode = 30; process.stderr.write('custody-transport-inspection-refused\\n'); }
 finally {
   const released = await Promise.allSettled([Promise.resolve().then(() => client?.release(true))]);
@@ -464,6 +473,7 @@ it("holds the SQL successor locks through the last actual activation boundary ca
 });
 
 async function exerciseCustodyTransport() {
+  const preparedAt = performance.now();
   await closeInitialManager();
   const nonce = randomBytes(8).toString("hex"), role = `transport_guard_${nonce}`, writerRole = `transport_writer_${nonce}`;
   const managers = new pg.Pool({ connectionString: privateUrl.href, max: 3, connectionTimeoutMillis: 2000, query_timeout: 5000 });
@@ -510,6 +520,7 @@ async function exerciseCustodyTransport() {
     client.release(true); client = undefined; await endManagers();
     const old = new pg.Client({ connectionString: oldUrl, connectionTimeoutMillis: 2000 }); old.on("error", () => {});
     try { await expect(old.connect()).rejects.toMatchObject({ code: "28P01" }); } finally { await old.end(); }
+    console.info(JSON.stringify({ scope: "bootstrap-custody-timing", stage: "authentication-setup", elapsedMs: Math.round(performance.now() - preparedAt) }));
     for (const selectedMode of ["exact", "cross-run", "package-drift", "guard-ended"] as const) {
       const selected = { ...structuredClone(expectedRootBinding) };
       if (selectedMode === "cross-run") selected.runId = `wrong-${nonce}`;
@@ -523,6 +534,7 @@ async function exerciseCustodyTransport() {
     // process using only the original restricted transport/custody selection.
     // This remains storage-linked component evidence, not approved root P12.
     const journalPath = path.join(directory, `${nonce}.successor-journal.json`), hostRunId = `host-${nonce}`;
+    const sqlAt = performance.now();
     await withHostOperationLock(directory, async lock => {
       const opened = openUpgradeJournal({ journalPath, runId: hostRunId });
       if (!opened.ok) throw new Error("bootstrap-successor-journal-unavailable");
@@ -577,6 +589,7 @@ async function exerciseCustodyTransport() {
           .toEqual([{ count: 0 }]);
       });
     });
+    console.info(JSON.stringify({ scope: "bootstrap-custody-timing", stage: "sql-successor-setup", elapsedMs: Math.round(performance.now() - sqlAt) }));
     successorCheck = async mode => {
     const successorInput = path.join(directory, `${nonce}.${mode}.successor-input`);
     if (mode === "host-association") {
