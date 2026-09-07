@@ -11,6 +11,9 @@ import { legacyRolesAreRecoverable, type RetiringRole as Role } from "../../../.
 import { applyLegacyLoginFence, assertNoSharedLegacyRoleUse, retiringRolesSql as rolesSql } from "../../../../server/modules/catalog-cutover/retirement/loginFence";
 import { acquireObservedManagementClient } from "../../../../server/modules/catalog-cutover/retirement/managementCheckout";
 import { beginLegacyRetirementTransaction } from "../../../../server/modules/catalog-cutover/retirement/managementTransaction";
+import { assertBindingManagementLogin } from "../../../../server/modules/catalog-cutover/bindingImportProducer";
+import { applyBootstrapCredentialFence, inspectBootstrapCredentialFence, prepareBootstrapCredentialCustody,
+  reopenBootstrapCredentialCustody, type BootstrapCredentialCustody } from "../../../../server/modules/catalog-cutover/retirement/bootstrapCredentialFence";
 import { readBindingDatabaseIdentity } from "../../../../server/modules/parameter-bindings/cutoverImport/sourceBoundary";
 import { digestOf } from "../../../../server/modules/release-verification/core/digest";
 import { verifyRecoveryPackage } from "../../storage/recoveryPackage";
@@ -34,6 +37,8 @@ export type LegacyLoginRetirementInput = {
   /** Explicit private management transport. Never inherited from DATABASE_URL. */
   administrativeConnectionString: string;
   recoveryDirectory: string;
+  /** Explicit private custody directory. Never a default or secret JSON input. */
+  bootstrapCredentialDirectory?: string;
 };
 
 
@@ -41,10 +46,11 @@ export type LegacyLoginRetirementInput = {
  * caller role list. The only mutation is a bounded database substep of P13.
  * A result here is deliberately NOT the P13 checkpoint or runtime approval.
  */
-async function retire(input: LegacyLoginRetirementInput) {
+async function retire(input: LegacyLoginRetirementInput, bootstrapInspection = false) {
   input = { ...input, activation: { ...input.activation, target: input.activation?.target ? { ...input.activation.target } : undefined as never } };
   const fixed = { handoff: structuredClone(input.handoff), expectedHandoffDigest: input.expectedHandoffDigest,
-    attemptId: input.attemptId, activationIntent: structuredClone(input.activationIntent), recoveryDirectory: input.recoveryDirectory };
+    attemptId: input.attemptId, activationIntent: structuredClone(input.activationIntent), recoveryDirectory: input.recoveryDirectory,
+    bootstrapCredentialDirectory: input.bootstrapCredentialDirectory };
   const plan = fixed.handoff, { digest, ...planBody } = plan;
   need(typeof fixed.attemptId === "string" && /^[A-Za-z0-9_-]{1,160}$/.test(fixed.attemptId), "ATTEMPT-INVALID");
   need(digest === fixed.expectedHandoffDigest && digest === sha256Prefixed(canonicalJson(planBody)), "HANDOFF-MISMATCH");
@@ -59,6 +65,9 @@ async function retire(input: LegacyLoginRetirementInput) {
   let packageDirectory: Awaited<ReturnType<typeof open>> | undefined;
   let transaction = false, ending = false, unknown = false;
   let connectionFailed = false;
+  let adminReleased = false, bootstrapStarted = false, failed = false;
+  let guard: pg.PoolClient | undefined, custody: BootstrapCredentialCustody | undefined;
+  const destroyAdmin = () => { if (admin && !adminReleased) { adminReleased = true; admin.release(true); } };
   const onConnectionError = () => { connectionFailed = true; };
   try {
     const loaded = loadUpgradeJournal({ journalPath: plan.inputs.journalPath, runId: plan.inputs.runId, requireSettled: true });
@@ -170,6 +179,13 @@ async function retire(input: LegacyLoginRetirementInput) {
     for (const sourceUrlText of sourceUrls) {
       const sourceUrl = new URL(sourceUrlText);
       need(!sourceUrl.search && !sourceUrl.hash && sourceUrl.pathname === `/${management.database}` && !!sourceUrl.username, "SOURCE-CONFIGURATION-UNSUPPORTED");
+      if (bootstrapInspection) {
+        // The retained source credential is intentionally unusable after rotation.
+        // Actual root-intent/custody and both authentications are checked below.
+        need(decodeURIComponent(sourceUrl.username) === management.name, "SOURCE-SESSION-MISMATCH");
+        names.add(management.name);
+        continue;
+      }
       const transport = new URL(adminUrl); transport.username = sourceUrl.username; transport.password = sourceUrl.password;
       const client = new pg.Client({ connectionString: transport.href, connectionTimeoutMillis: 5000, query_timeout: 10000 });
       client.on("error", onConnectionError);
@@ -181,11 +197,110 @@ async function retire(input: LegacyLoginRetirementInput) {
         await client.query("select pg_catalog.pg_advisory_lock(824013,$1)", [key]);
         const challenge = (await admin.query(`select count(*)::int as count from pg_catalog.pg_locks
           where pid=$1 and database=$2::oid and locktype='advisory' and granted and classid=824013 and objid=$3::oid and objsubid=2`, [actual.pid, input.activation.target.databaseOid, key])).rows[0];
-        need(actual.same === true && challenge?.count === 1 && actual.name !== management.name, "SOURCE-SESSION-MISMATCH");
+        need(actual.same === true && challenge?.count === 1, "SOURCE-SESSION-MISMATCH");
         names.add(actual.name);
       } finally { await client.end(); }
     }
     await targetCheck();
+    if (names.has(management.name)) {
+      need(names.size === 1 && backup.bootstrap?.roleName === management.name &&
+        typeof fixed.bootstrapCredentialDirectory === "string", "BOOTSTRAP-CUSTODY-REQUIRED");
+      const custodyDirectory = fixed.bootstrapCredentialDirectory!;
+      need(path.isAbsolute(custodyDirectory) && await realpath(custodyDirectory) === custodyDirectory &&
+        path.dirname(custodyDirectory) === plan.inputs.lockRoot && custodyDirectory !== fixed.recoveryDirectory &&
+        !custodyDirectory.startsWith(`${fixed.recoveryDirectory}${path.sep}`), "BOOTSTRAP-CUSTODY-DIRECTORY-INVALID");
+      // The independent guard does not acquire S7. Its SHARE locks cover the
+      // installer/mapping inventory across both commits owned by the fence.
+      const onGuardLost = () => {
+        connectionFailed = true;
+        // A lost guard cannot leave a live mutator continuing after its locks
+        // disappear. A COMMIT already in flight remains an unknown outcome.
+        try { destroyAdmin(); } catch { /* Static refusal below retains uncertainty. */ }
+      };
+      guard = await new Promise<pg.PoolClient>((resolve, reject) => {
+        input.activation.managementPool.connect((error, client) => {
+          if (client) { guard = client; client.on("error", onGuardLost); client.on("end", onGuardLost); }
+          if (error || !client) { reject(new LegacyLoginRetirementError("GUARD-CHECKOUT-FAILED")); return; }
+          resolve(client);
+        });
+      });
+      need(!connectionFailed, "GUARD-CONNECTION-LOST");
+      await assertBindingManagementLogin(guard);
+      const guardIdentity = (await guard.query(`select pg_backend_pid() as pid,session_user=current_user as same,
+        (select oid::text from pg_roles where rolname=session_user) as oid`)).rows[0];
+      need(guardIdentity?.same === true && guardIdentity.oid !== "10", "GUARD-IDENTITY-UNSUPPORTED");
+      // The restricted manager gains no pg_control_system capability. The
+      // independently observed OID10 lease proves this exact guard backend's
+      // database using a transient session challenge, before inventory locks.
+      const challengeKey = randomInt(1, 2147483647);
+      await guard.query("select pg_catalog.pg_advisory_lock(824014,$1)", [challengeKey]);
+      const identityChallenge = (await admin.query(`select count(*)::int as count from pg_catalog.pg_locks
+        where pid=$1 and database=$2::oid and locktype='advisory' and granted and mode='ExclusiveLock'
+        and classid=824014 and objid=$3::oid and objsubid=2`,
+      [guardIdentity.pid, input.activation.target.databaseOid, challengeKey])).rows[0];
+      need(identityChallenge?.count === 1 && !connectionFailed, "GUARD-TARGET-MISMATCH");
+      await guard.query("set role catalog_migration_owner");
+      await beginLegacyRetirementTransaction(guard);
+      const held = (await admin.query("select pg_catalog.pg_try_advisory_lock(hashtext('s7-orc-cutover-target'),hashtext(current_database())) as held")).rows[0];
+      need(held?.held === true, "CONTROLLER-LOCK-HELD");
+      const verifyGuard = async () => {
+        await targetCheck();
+        const locks = (await admin!.query(`select count(distinct relation)::int as count from pg_catalog.pg_locks
+          where pid=$1 and database=$2::oid and locktype='relation' and granted and mode='ShareLock'
+          and relation=any(array['parameter_catalog.catalog_state'::regclass,'parameter_catalog.catalog_releases'::regclass,
+            'parameter_catalog.catalog_materializations'::regclass,'parameter_catalog.legacy_identities'::regclass,
+            'parameter_catalog.legacy_mapping_heads'::regclass,'parameter_catalog.legacy_mapping_versions'::regclass])`,
+        [guardIdentity.pid, input.activation.target.databaseOid])).rows[0];
+        need(locks?.count === 6, "GUARD-LOCK-LOST");
+        transaction = true;
+        await admin!.query("begin isolation level repeatable read read only");
+        await admin!.query("set local timezone='UTC'");
+        await checkCurrentP12();
+        await admin!.query("rollback"); transaction = false;
+      };
+      await verifyGuard();
+      const rootKind = "bootstrap-application-authentication-intent";
+      const rootEvents = (await admin.query(`select payload from parameter_catalog.parameter_catalog_cutover_events
+        where cutover_run_id=$1 and event_kind=$2 order by sequence_number`, [fixed.activationIntent.runId, rootKind])).rows;
+      const rootBinding = { contract: "pcat-bootstrap-application-authentication-v1", runId: fixed.activationIntent.runId,
+        attemptId: fixed.attemptId, activationIntent: fixed.activationIntent, activationBindingDigest: binding.bindingDigest,
+        handoffDigest: fixed.expectedHandoffDigest, recoveryPackageDigest: backup.digest, recoveryPointDigest: capture.recoveryPointDigest,
+        target: input.activation.target, roleName: management.name, custodyDirectory };
+      if (bootstrapInspection) {
+        const retained = rootEvents[0]?.payload;
+        need(rootEvents.length === 1 && retained?.request && retained.requestDigest === digestOf(retained.request), "BOOTSTRAP-ROOT-INTENT-UNAVAILABLE");
+        const { credentials, ...bound } = retained.request;
+        need(isDeepStrictEqual(bound, rootBinding), "BOOTSTRAP-ROOT-INTENT-MISMATCH");
+        custody = await reopenBootstrapCredentialCustody({ directory: custodyDirectory, custodianUid: process.getuid!(), receipt: credentials });
+      } else {
+        need(rootEvents.length === 0, "ATTEMPT-REQUIRES-RECONCILE");
+        const originalSecret = decodeURIComponent(new URL(sourceUrls[0]).password);
+        need(originalSecret.length > 0 && sourceUrls.every(value => decodeURIComponent(new URL(value).password) === originalSecret), "SOURCE-CREDENTIAL-MISMATCH");
+        custody = await prepareBootstrapCredentialCustody({ directory: custodyDirectory, custodianUid: process.getuid!(), oldSecret: originalSecret });
+        const request = { ...rootBinding, credentials: custody.receipt };
+        await verifyGuard();
+        transaction = true;
+        await admin.query("begin"); await admin.query("set local synchronous_commit=on");
+        await admin.query(`insert into parameter_catalog.parameter_catalog_cutover_events(id,cutover_run_id,sequence_number,phase,event_kind,payload)
+          select $1,$2,coalesce(max(sequence_number),0)+1,'P13',$3,$4::jsonb
+          from parameter_catalog.parameter_catalog_cutover_events where cutover_run_id=$2`,
+        [`cevt_${randomUUID()}`, fixed.activationIntent.runId, rootKind, JSON.stringify({ request, requestDigest: digestOf(request) })]);
+        ending = true; await admin.query("commit"); transaction = false; ending = false;
+      }
+      await verifyGuard();
+      const command = { client: admin, target: input.activation.target, runId: fixed.activationIntent.runId,
+        attemptId: fixed.attemptId, custody };
+      bootstrapStarted = !bootstrapInspection;
+      if (!bootstrapInspection) await applyBootstrapCredentialFence(command);
+      const observed = await inspectBootstrapCredentialFence(command);
+      await verifyGuard();
+      if (bootstrapInspection) return { status: "bootstrap-authentication-inspected-not-p13" as const,
+        outcome: observed.outcome, attemptId: fixed.attemptId, intentDigest: observed.intentDigest };
+      need(observed.outcome === "authentication-fenced-not-P13" && observed.intentDigest, "BOOTSTRAP-OUTCOME-UNKNOWN");
+      return { status: "bootstrap-authentication-fenced-not-p13" as const, attemptId: fixed.attemptId,
+        fingerprint: digestOf({ rootBinding, intentDigest: observed.intentDigest }) };
+    }
+    need(!bootstrapInspection && !fixed.bootstrapCredentialDirectory, "SOURCE-IDENTITY-UNSUPPORTED");
     const oldRoles = (await admin.query<Role>(rolesSql, [[...names]])).rows;
     need(oldRoles.length === names.size && names.size > 0, "SOURCE-ROLE-MISSING");
     need(legacyRolesAreRecoverable(oldRoles, backup.roles), "ROLE-RECOVERY-UNSUPPORTED");
@@ -226,15 +341,18 @@ async function retire(input: LegacyLoginRetirementInput) {
     need(after.length === oldRoles.length && after.every((role, index) => role.oid === oldRoles[index].oid && !role.login && role.members.length === 0), "FENCE-DRIFT");
     return { status: "legacy-logins-fenced-not-p13" as const, attemptId: fixed.attemptId, fingerprint: digestOf({ requestDigest: digestOf(request), roles: after }) };
   } catch (error) {
-    unknown = ending;
+    failed = true;
+    unknown = ending || bootstrapStarted;
     if (transaction && !ending) { try { await admin?.query("rollback"); } catch { unknown = true; } }
     if (unknown) return refuse("TRANSACTION-OUTCOME-UNKNOWN");
     if (error instanceof LegacyLoginRetirementError) throw error;
     return refuse("OPERATION-FAILED");
   } finally {
-    admin?.release(true);
-    await adminPool?.end().catch(() => undefined);
-    await packageDirectory?.close().catch(() => undefined);
+    const releases = await Promise.allSettled([
+      Promise.resolve().then(destroyAdmin), Promise.resolve().then(() => guard?.release(true)),
+    ]);
+    const closed = await Promise.allSettled([adminPool?.end(), custody?.close(), packageDirectory?.close()]);
+    if (!failed && [...releases, ...closed].some(result => result.status === "rejected")) refuse("RESOURCE-CLOSE-FAILED");
   }
 }
 
@@ -309,7 +427,7 @@ async function inspect(input: LegacyLoginRetirementInput): Promise<{
 }
 
 export async function inspectLegacyApplicationLoginFence(input: LegacyLoginRetirementInput) {
-  try { return await inspect(input); }
+  try { return input.bootstrapCredentialDirectory ? await retire(input, true) : await inspect(input); }
   catch (error) {
     if (error instanceof LegacyLoginRetirementError) throw error;
     return refuse("INSPECTION-FAILED");
