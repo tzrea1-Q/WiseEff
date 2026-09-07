@@ -11,6 +11,7 @@ export default defineConfig({
     include: [
       "server/apiWorkerShutdown.test.ts",
       "server/apiShutdown.test.ts",
+      "server/processSignals.test.ts",
       "server/shared/database/runtimeConnection*.test.ts",
       "server/shared/database/verifiedCheckout.test.ts",
       "server/shared/database/migrationsExpectedInventory.test.ts",
