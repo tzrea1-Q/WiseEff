@@ -2,6 +2,30 @@
 
 > English: [English](README.md)
 
+## SQL 后继效果之后的认证 inspection
+
+本独立 Scratch 从 main 建立后快进到 `5f7a3d5b4`。原认证 baseline 包含关系
+ACL，因此后续合法的七表 SQL 撤权会令原认证专用 inspection 返回 unknown。
+已有19项 SQL 组件测试没有证明这个组合生命周期。
+
+修复必须消费原持久认证/root intent，以及精确的后继 SQL intent/applied 对，
+逐项匹配 run、attempt、物理 target、P12 binding、root request 和恢复包。
+根还须核验实际宿主 pending/applied 摘要。原正式 SQL inspector 必须在真实锁
+内证明当前效果成立；仅该已核验后继的精确关系/列 ACL delta 可用于重建原
+认证 baseline，不开放通用 baseline override、调用者 mapper 或仅凭 checksum
+自洽授信。其它实测元数据字段继续严格等于原值。既有 custody transport 保持
+私有，仅使用原 version 的新秘密，不导出高权 client。
+
+永久 Red 必须真实轮换凭据、撤销授权，再由独立进程使用保留 custody 执行
+inspection。错 run/target、缺失或不符的宿主步骤、额外 ACL 变化、非 ACL
+元数据变化仍须 unknown。Inspection 不重复轮换/撤权，不发行 P13 completed，
+不静默提升不确定的宿主写入。仅 storage 的 P12 夹具仍明确未批准。实现前
+本节只是威胁提案，不是组合执行成功证据。
+
+唯一写入范围为原 bootstrap credential 模块、owned integration test 与夹具，
+必要的 SQL fence 自身 inspection 模块/测试，原退休根/测试及本双语 README。
+Runner/CI、共享 migration/grant 不属于本分片。
+
 ## 有界旧 SQL 权限效果
 
 本 Scratch 实现位于现有退休根与 `legacySqlPrivilegeFence.ts`，实际 owned PG

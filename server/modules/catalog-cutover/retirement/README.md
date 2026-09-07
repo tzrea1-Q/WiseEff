@@ -2,6 +2,37 @@
 
 > Chinese: [Chinese](README.zh-CN.md)
 
+## Authentication inspection after the SQL successor
+
+This separate Scratch starts at main and fast-forwards `5f7a3d5b4`.
+The existing authentication baseline includes relation ACLs. A later, legitimate
+seven-table SQL fence therefore makes the original authentication-only inspection
+return unknown. The 19 SQL component cases do not prove that combined lifecycle.
+
+The repair must consume the original persisted authentication/root intent and
+the exact subsequent SQL intent/applied pair, matching run, attempt, physical
+target, P12 binding, root request and recovery package. The root must also verify
+the actual host pending/applied digests. The existing SQL inspector must prove
+the current effect, under its real locks. Only that verified successor's exact
+relation/column ACL delta may participate in reconstructing the original
+authentication baseline; no generic baseline override, caller mapper or
+checksum-only authorization is admitted. Every other observed metadata field
+retains its original equality check. Existing custody transport remains private,
+uses only the original version's new secret, and exports no privileged client.
+
+The permanent Red must actually rotate credentials, revoke grants and invoke
+inspection in a separate process using the retained custody. Wrong run/target,
+missing or mismatched host steps, extra ACL changes and changed non-ACL metadata
+must remain unknown. Inspection must not rotate, revoke, issue P13 completed or
+silently promote uncertain host writes. A storage-only P12 fixture remains
+explicitly unapproved. Before implementation this is a threat proposal, not a
+successful combined execution.
+
+Exclusive paths are the existing bootstrap credential module/owned integration
+test and fixture, SQL fence module/test where needed for its own inspection,
+the existing retirement root/tests, and this README pair. Runner/CI and shared
+migrations/grants remain outside this fragment.
+
 ## Bounded legacy SQL privilege effect
 
 This Scratch implementation uses the existing retirement root and
