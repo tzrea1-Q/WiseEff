@@ -117,6 +117,9 @@ describe.skipIf(process.env.UPG_HANDOFF_DOCKER_TEST !== "1")("actual isolated Co
       await wait(() => exec("mc", ["mc", "mb", "fixture/isolated"]));
       const configFile = path.join(source, "ops/self-hosted/.handoff-private.env");
       const lockRoot = path.join(directory, "state");
+      // The new custodian reader requires a private journal directory. Prepare
+      // this fixture's newly owned directory; never relax the runtime check.
+      await mkdir(lockRoot, { mode: 0o700 });
       const roleFiles = { WISEEFF_API_ENV_FILE: path.join(privateRoot, "api.env"), WISEEFF_WORKER_ENV_FILE: path.join(privateRoot, "worker.env"), WISEEFF_MANAGEMENT_ENV_FILE: path.join(privateRoot, "management.env") };
       for (const [key, file] of Object.entries(roleFiles)) await writeFile(file, `ROLE_PURPOSE=${key}\n`, { mode: 0o600 });
       const mainConfig = (roles = roleFiles) => `WISEEFF_OPERATION_LOCK_DIR=${lockRoot}\n${Object.entries(roles).map(([key, file]) => `${key}=${file}`).join("\n")}\nSYNTHETIC_CONFIGURATION=first\n`;
