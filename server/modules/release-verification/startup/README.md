@@ -16,6 +16,16 @@ It copies the first observation so mutation of a shared object cannot hide
 drift. Its positive result is scoped to isolated candidate startup. It invokes
 no startup effect, queue, proxy, report write, migration or repair.
 
+`verifyPublishedCandidateStartup` handles the separate published-restart check.
+Its observation owner must lock activation/configuration/retirement metadata;
+normal business traffic does not pretend to be a maintenance quiescence proof.
+It consumes the existing runtime and approved-report projections, requires the
+current public report and closed pointer-only rollback eligibility, and binds
+runtime to the actual P12 pre-activation report and acceptance to that runtime.
+The public report must name exactly those three predecessors. Historical runtime
+phase/rollback values are not rewritten to match the later publication. Its unit
+tests do not implement the observation producer or demonstrate process startup.
+
 The `StartupTarget` port is not yet implemented by the root controller. It must
 derive every field independently of the report under its real lock, including
 the latest runtime report selection, completed P12 action, retired P13 state,
