@@ -6,6 +6,25 @@
 
 ### Current continuation: real dependencies and activation
 
+Current code is `ec0ee9f3e86c6c3e037bf5485e8d32f322375ca5`, tree
+`ba7e906bf6a3d8d40d679bf87eacb3f9b0e8717c`. The reviewed root bootstrap
+guard/report/cleanup increment and mandatory owned runtime-identity lane are
+integrated. Current focused 92/92, real bootstrap 27/27, full scripts 4/4 then
+1842 passed/25 skipped, and build passed. Exact evidence and remaining runs are
+in the existing evidence pair. Final limited Standards/Spec reviews passed.
+Latest completed Hosted `34142368636` on `8f3cf8489` succeeded, with two target
+jobs skipped; it does not include this increment. New candidate CI is pending.
+
+Parent retains sole ownership of terminal/controller and plan/evidence changes.
+Raman's next isolated unit connects retained credential custody to an independent
+management transport without exposing secrets or adding grants. This addresses
+whole-root inspection after source authentication changes; it does not manufacture
+P12 or P13. Full startup observation, terminal phase composition and complete
+synthetic acceptance remain internal work. A/B/C are incomplete. R3 threats and
+the existing Documentation Impact Matrix/strict documentation gate remain in force.
+
+The following checkpoint is historical.
+
 Code `8ed7ac196b34caf351e7331f6e2be15ea7f8a5d3` integrates the independently
 reviewed formal CGH router, persisted Review query, production query composition
 and mandatory owned PG route. Real PG16 projection tests passed 10/10, backend

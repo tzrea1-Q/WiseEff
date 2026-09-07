@@ -4,6 +4,64 @@
 
 ## Current execution checkpoint, 2026-09-08
 
+Code `ec0ee9f3e86c6c3e037bf5485e8d32f322375ca5`, tree
+`ba7e906bf6a3d8d40d679bf87eacb3f9b0e8717c`, integrates the reviewed bootstrap
+root adapter and mandatory runtime-identity owned route on unchanged base
+`cda6737a8`. Lagrange's Standards and Fermat's Spec integration reviews passed
+within these increments; neither review claims complete P13 or startup acceptance.
+The bootstrap root rechecks the issued host lock, held inventory guard and formal
+approved report before authentication effects and commits. Cleanup attempts every
+owned resource and preserves an earlier admission or unknown-outcome error.
+No migration, grant, timeout, trusted base or release approval changed.
+
+| Exact execution | Result | Original log SHA256 |
+| --- | --- | --- |
+| Clean `ec0ee9f3e`, focused root/route tests | 92 collected/passed, zero failed/skipped, 2.50s, exit 0 | `1572fa0f212cc148db4356642357bcff0af3839b1a5134d2f09ea88e5fad714f` |
+| Same code, owned bootstrap PG16 | 27 collected/passed, zero failed/skipped, 5.62s, exit 0, cleanup verified | `592dee9d0a8ec74756e355a77139dae58559ea0d4370acfe52264faf1483fdb4` |
+| Same code, full owned scripts | Source-lock 4/4, 43.54s; ordinary 1842 passed/25 skipped, 1867 collected, 82.20s, exit 0, cleanup verified | `57ec64012c9340362ee5629836e164dca96417c9f7d99b8ea7616106b4b5eae4` |
+| Same code, build | Exit 0, existing bundle warnings retained | `6b8e52caa5dc68015a21fd2516700c280f20e84b3468c949db15694d232c0b4d` |
+| Same code, owned backend | 4289 collected/passed, zero failed/skipped, 87.76s, exit 0, cleanup verified; report-only Markdown changed during execution | `19bf2d13a3d8fee31847036fe640de656a5069246ddb4044d14d66da516b0269` |
+| Predecessor `1595baccf294f0069e0fa512657b9060e4a72284`, owned runtime identity PG16 | 11/11, 6.20s, exit 0, cleanup verified; includes actual process refusals, not valid-pin startup | `7dd223abeb3459294c2369f4a46bbc45368d5e601ffd7154163d767c46cfb6de` |
+
+The 27 tests include actual guard-backend loss, host-lock-holder exit, both COMMIT
+boundaries and independent-process low-level inspection. Their prepared run does
+not prove a whole root invocation with legitimate P12/report/capture predecessors.
+The original Red on `dba3e7f8d` was 25 passed/2 failed; host-lock loss permitted
+an authentication effect and a separate ACL fixture assumed the wrong image
+default. The corrective fixture observes existing ACLs without granting privileges.
+Root report-expiry Red/Green and exact component history remain in the paired
+bootstrap adapter note. Runtime identity tests now require the existing owned
+receipt and a mandatory Hosted job; exclusion from generic routes is not a skip.
+
+Latest completed Hosted is run `34142368636`, report head
+`8f3cf848993c7a55891732840d15f76eee3f4add`, actual merge checkout
+`5f87013d39d9026fc1aa972e8cdcec4083960c85`: successful. Main ran frontend
+3374/3374, source-lock 4/4, scripts 1810 passed/41 skipped, bridge 134 passed/4
+skipped, backend 4289 passed/11 skipped, boundary, contract and log-eval.
+Owned lanes passed separately: reader 49, projections 10, report 36, authority
+81, Binding 92, Redis 11, activation 22, endpoints 16, bootstrap 22; zero failures
+or skips in each. Smoke, quality and Merge bar succeeded. Local non-HDC and
+target synthetic jobs skipped. This CI contains neither `1595baccf` nor the new
+root increment; new candidate CI is pending, not inherited.
+
+Current boundary, contract and selfhost checks also exited 0. Boundary retains
+3509 allowances with no new/stale/growth findings and the original trusted SHA.
+The first invocation used the wrong flag `--trusted-base` and exited 1 before
+scanning; the actual check used required `--trusted-base-sha`. This invocation
+error is retained, not reported as a boundary failure or silently overwritten.
+Owned strict `docs:check` passed with the actual pgvector schema comparison,
+exit 0 and verified cleanup; no database skip. Its code is `ec0ee9f3e` with
+only these report/plan Markdown edits present during execution.
+
+Actual API/worker still lack the complete StartupTarget producer/callback.
+The terminal still needs the real handoff/capture/activation/retirement composition;
+authentication retirement alone is not P13 completion. Full comparison, report
+lineage, business/browser acceptance and complete controller recovery remain
+unproved. These are internal work alongside separately recorded external
+decisions and materials. A/B/C remain incomplete; no production command is ready.
+
+## Earlier execution checkpoint, 2026-09-08 (historical)
+
 Code `8ed7ac196b34caf351e7331f6e2be15ea7f8a5d3`, tree
 `b1f545978bf06ee8b1e86b158cb8e10d1d5eae61`, retains base `cda6737a8`.
 The real CGH router replaces constant readiness and empty query ports. The new

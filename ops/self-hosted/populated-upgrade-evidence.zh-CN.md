@@ -4,6 +4,53 @@
 
 ## 当前执行检查点，2026-09-08
 
+代码 `ec0ee9f3e86c6c3e037bf5485e8d32f322375ca5`，tree
+`ba7e906bf6a3d8d40d679bf87eacb3f9b0e8717c`，在原base `cda6737a8` 上串行集成
+已审bootstrap根适配器及强制runtime identity owned路由。Lagrange的Standards与
+Fermat的Spec集成审查在这些增量范围内通过，不是完整P13或startup验收。
+根适配器在认证副作用和提交前重验真实宿主锁、库存guard和正式获批报告。
+清理逐项尝试所有自有资源，保留更早的准入错误或未知结果；未改migration、grant、
+timeout、trusted base或发布批准。
+
+| 精确执行 | 结果 | 原始日志SHA256 |
+| --- | --- | --- |
+| 干净 `ec0ee9f3e`，根入口/路由focused | 收集/通过92，失败/跳过0，2.50s，退出0 | `1572fa0f212cc148db4356642357bcff0af3839b1a5134d2f09ea88e5fad714f` |
+| 同代码，owned bootstrap PG16 | 收集/通过27，失败/跳过0，5.62s，退出0，清理确认 | `592dee9d0a8ec74756e355a77139dae58559ea0d4370acfe52264faf1483fdb4` |
+| 同代码，完整owned scripts | source-lock 4/4、43.54s；主体收集1867、通过1842、跳过25，82.20s，退出0，清理确认 | `57ec64012c9340362ee5629836e164dca96417c9f7d99b8ea7616106b4b5eae4` |
+| 同代码，build | 退出0，保留原bundle警告 | `6b8e52caa5dc68015a21fd2516700c280f20e84b3468c949db15694d232c0b4d` |
+| 同代码，owned backend | 收集/通过4289，失败/跳过0，87.76s，退出0，清理确认；执行中仅报告Markdown变化 | `19bf2d13a3d8fee31847036fe640de656a5069246ddb4044d14d66da516b0269` |
+| 前驱 `1595baccf294f0069e0fa512657b9060e4a72284`，owned runtime identity PG16 | 11/11，6.20s，退出0，清理确认；含真正进程拒绝，不是合法pin启动 | `7dd223abeb3459294c2369f4a46bbc45368d5e601ffd7154163d767c46cfb6de` |
+
+27项覆盖实际guard backend丢失、宿主锁持有进程退出、两个COMMIT边界及独立进程
+低层检查。其prepared run不证明具备真实P12/报告/capture前驱的完整根调用。
+原 `dba3e7f8d` Red为25通过/2失败：锁丢失仍执行认证修改，以及独立ACL夹具对
+镜像默认权限的错误假设。修正夹具只观察既有ACL，没有授予新权限。根报告过期
+Red/Green和精确历史见bootstrap适配器双语说明。运行身份测试改由现有owned receipt
+和强制Hosted job接管；普通路由排除不等于跳过验收。
+
+最新结束Hosted为 `34142368636`，报告head
+`8f3cf848993c7a55891732840d15f76eee3f4add`，实际merge checkout
+`5f87013d39d9026fc1aa972e8cdcec4083960c85`，成功。主Job实际执行frontend3374/3374、
+source-lock4/4、scripts1810通过/41跳过、bridge134通过/4跳过、backend4289通过/11
+跳过，以及boundary、contract、log-eval。Owned各lane分别通过：reader49、projection10、
+report36、authority81、Binding92、Redis11、activation22、endpoint16、bootstrap22，
+各自失败/跳过0。Smoke、quality和Merge bar成功；local non-HDC与target synthetic两个
+Job跳过。该CI不含1595和新根增量，当前候选CI仍待执行，不继承旧成功。
+
+当前boundary、contract和selfhost也均退出0。Boundary保留3509项allowance，新增/
+过期/增长均0，trusted SHA未改。首轮误用 `--trusted-base` 参数，在扫描前退出1；
+实际扫描使用必需的 `--trusted-base-sha`。保留这次调用错误，不记为boundary发现，
+也不覆盖原日志。
+Owned严格 `docs:check` 含真实pgvector schema比较，退出0、清理确认，没有数据库
+跳过。执行代码为 `ec0ee9f3e`，当时仅本轮报告/计划Markdown有未提交修改。
+
+真实API/worker仍缺完整StartupTarget producer/callback。终端还需真实handoff、capture、
+activation和retirement组合；认证退出本身不等于P13。完整comparison、报告链、业务/
+浏览器验收及controller恢复仍未证明。这些内部工作与外部决策/材料分别保留。
+A/B/C未完成，目前不能交付生产升级命令。
+
+## 较早执行检查点，2026-09-08（历史）
+
 代码 `8ed7ac196b34caf351e7331f6e2be15ea7f8a5d3`，tree
 `b1f545978bf06ee8b1e86b158cb8e10d1d5eae61`，base仍为 `cda6737a8`。
 CGH已使用真实路由，替换恒定readiness和假空查询。新增持久Review读取使用只读事务，

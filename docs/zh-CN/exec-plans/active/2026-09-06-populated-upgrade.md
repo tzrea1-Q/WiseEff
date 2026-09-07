@@ -4,6 +4,20 @@
 
 ## 范围与状态
 
+当前代码 `ec0ee9f3e86c6c3e037bf5485e8d32f322375ca5`，tree
+`ba7e906bf6a3d8d40d679bf87eacb3f9b0e8717c`，已串行集成经过独立审查的根bootstrap
+guard/报告/清理增量及强制owned运行身份lane。当前focused92/92、真实bootstrap27/27、
+完整scripts前置4/4及主体1842通过/25跳过、build通过。精确证据及剩余执行见现有
+证据双语文件。最终限域Standards/Spec审查通过。最新结束Hosted `34142368636`
+在 `8f3cf8489` 成功，两个目标Job跳过；不含当前增量，新候选CI待执行。
+
+父协调者独占terminal/controller及计划/证据。Raman下一独立单元连接已保留custody
+与独立管理transport，不返回秘密、不增加grant，用于源认证变更后的完整根检查。
+这不产生P12/P13。真实startup观察、终端阶段组合及完整合成验收仍属内部工作；
+A/B/C未完成。既有R3威胁矩阵、Documentation Impact Matrix及严格文档门禁继续有效。
+
+下方检查点保留历史身份。
+
 代码 `8ed7ac196b34caf351e7331f6e2be15ea7f8a5d3` 已集成独立审查通过的真实CGH
 路由、持久Review查询、生产查询组合根和强制owned PG路由。实际PG16 projection
 10/10，backend4289通过/11跳过，完整scripts前置4/4及主体1826通过/25跳过，
