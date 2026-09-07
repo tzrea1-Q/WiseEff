@@ -62,6 +62,22 @@ export type BindingPhaseEvent = BindingPhaseAttempt & {
   readonly outcome: "pending" | "committed" | "failed" | "unknown";
 };
 
+// Persistence types live with the journal, never in the execution layer: check
+// modules must not acquire an indirect import of restore mechanisms.
+export type RecoveryCaptureRecord = {
+  runId: string; packageDigest: string; recoveryPointDigest: string;
+  source: { deploymentId: string; hostFingerprint: string; postgresIdentity: string; objectStoreIdentity: string; redisIdentity: string };
+  boundaryDigest: string;
+};
+export type RecoveryCaptureEvent = {
+  readonly attemptId: string;
+  readonly outcome: "pending" | "committed" | "unknown";
+  readonly runId: string;
+  readonly source: RecoveryCaptureRecord["source"];
+  readonly directory: { readonly path: string; readonly device: string; readonly inode: string };
+  readonly capture?: RecoveryCaptureRecord;
+};
+
 export type JournalEntry = {
   readonly seq: number;
   readonly at: string;
@@ -74,6 +90,7 @@ export type JournalEntry = {
   readonly planDigest: string | null;
   readonly lastFailureCode: string | null;
   readonly bindingPhase?: BindingPhaseEvent;
+  readonly recoveryCapture?: RecoveryCaptureEvent;
 };
 
 export type JournalRecord = {
@@ -123,6 +140,7 @@ export type JournalTransitionDraft = {
   readonly outcome?: JournalOutcome;
   readonly lastFailureCode?: string | null;
   readonly bindingPhase?: BindingPhaseEvent;
+  readonly recoveryCapture?: RecoveryCaptureEvent;
 };
 
 export type JournalCommit = {
@@ -217,6 +235,7 @@ const parseRecord = (value: unknown): ControllerResult<JournalRecord> => {
     return failClosed("PCAT-UPG-ILLEGAL-ACTION", "upgrade journal digest or entries are missing");
   }
   const candidate = value as JournalRecord;
+  const captures = new Map<string, RecoveryCaptureEvent>();
   for (const [index, entry] of candidate.entries.entries()) {
     if (!entry || entry.seq !== index + 1 || typeof entry.action !== "string" ||
         typeof entry.inputDigest !== "string" || !["committed", "crashed"].includes(entry.outcome) ||
@@ -235,6 +254,17 @@ const parseRecord = (value: unknown): ControllerResult<JournalRecord> => {
     if (entry.action.startsWith("binding-phase-") !== Boolean(phase)) {
       return failClosed("PCAT-UPG-ILLEGAL-ACTION", "upgrade journal phase event is missing or misplaced");
     }
+    if (entry.recoveryCapture) {
+      const event = entry.recoveryCapture;
+      if (!validRecoveryCapture(event, entry, candidate.runId, captures.get(event.attemptId))) {
+        return failClosed("PCAT-UPG-ILLEGAL-ACTION", "upgrade journal capture event is invalid");
+      }
+      captures.set(event.attemptId, event);
+    } else if (entry.action === "recovery-capture-pending" || entry.action === "recovery-capture-unknown") {
+      return failClosed("PCAT-UPG-ILLEGAL-ACTION", "upgrade journal capture event is missing");
+    }
+    // Historical recovery-package-captured hashes remain diagnostic evidence.
+    // A new producer/consumer must separately require the typed record.
   }
   const expected = digestRecord({
     schemaVersion: candidate.schemaVersion,
@@ -255,6 +285,34 @@ const parseRecord = (value: unknown): ControllerResult<JournalRecord> => {
   }
   return { ok: true, value: candidate };
 };
+
+const exactKeys = (value: unknown, keys: readonly string[]): boolean => typeof value === "object" && value !== null &&
+  !Array.isArray(value) && Object.keys(value).sort().join(",") === [...keys].sort().join(",");
+const validRecoverySource = (value: RecoveryCaptureRecord["source"]): boolean =>
+  exactKeys(value, ["deploymentId", "hostFingerprint", "postgresIdentity", "objectStoreIdentity", "redisIdentity"]) &&
+  Object.values(value).every(part => typeof part === "string" && part.trim() === part && part.length > 0 && part.length <= 2048 && !/[\u0000-\u001f\u007f]/.test(part));
+function validRecoveryCapture(event: RecoveryCaptureEvent, entry: JournalEntry, runId: string, previous?: RecoveryCaptureEvent): boolean {
+  if (!exactKeys(event, ["attemptId", "outcome", "runId", "source", "directory", ...(event.outcome === "committed" ? ["capture"] : [])]) ||
+    typeof event.attemptId !== "string" || !RUN_ID.test(event.attemptId) || event.runId !== runId || !validRecoverySource(event.source) ||
+    !exactKeys(event.directory, ["path", "device", "inode"]) || typeof event.directory.path !== "string" || !path.isAbsolute(event.directory.path) ||
+    typeof event.directory.device !== "string" || !/^[0-9]+$/.test(event.directory.device) ||
+    typeof event.directory.inode !== "string" || !/^[0-9]+$/.test(event.directory.inode)) return false;
+  const action = event.outcome === "pending" ? "recovery-capture-pending" : event.outcome === "committed" ? "recovery-package-captured" :
+    event.outcome === "unknown" ? "recovery-capture-unknown" : "";
+  if (!action || entry.action !== action || entry.fromState !== entry.toState ||
+    entry.outcome !== (event.outcome === "committed" ? "committed" : "crashed")) return false;
+  if (event.outcome === "pending") return !previous && entry.inputDigest === sha256Prefixed(canonicalJson(event));
+  if (!previous || previous.outcome !== "pending") return false;
+  if (canonicalJson({ attemptId: event.attemptId, runId: event.runId, source: event.source, directory: event.directory }) !==
+    canonicalJson({ attemptId: previous.attemptId, runId: previous.runId, source: previous.source, directory: previous.directory })) return false;
+  if (event.outcome === "unknown") return entry.inputDigest === sha256Prefixed(canonicalJson(event));
+  const capture = event.capture!;
+  return exactKeys(capture, ["runId", "packageDigest", "recoveryPointDigest", "source", "boundaryDigest"]) &&
+    capture.runId === runId && canonicalJson(capture.source) === canonicalJson(event.source) &&
+    typeof capture.packageDigest === "string" && /^[a-f0-9]{64}$/.test(capture.packageDigest) &&
+    typeof capture.recoveryPointDigest === "string" && /^sha256:[a-f0-9]{64}$/.test(capture.recoveryPointDigest) &&
+    typeof capture.boundaryDigest === "string" && /^[a-f0-9]{64}$/.test(capture.boundaryDigest) && entry.inputDigest === sha256Prefixed(canonicalJson(capture));
+}
 
 const wrap = (journalPath: string, record: JournalRecord): UpgradeJournal => ({
   journalPath,
@@ -409,7 +467,17 @@ const appendTransition = (
   draft: JournalTransitionDraft,
   now: () => Date,
 ): ControllerResult<JournalCommit> => {
+  if (draft.recoveryCapture && (draft.toState !== journal.record.state || draft.nextAction !== journal.record.nextAction ||
+    (["planDigest", "cutoverRunId", "verificationPlanDigest", "verificationAttemptDigest"] as const)
+      .some(key => draft[key] !== undefined && draft[key] !== journal.record[key]))) {
+    return failClosed("PCAT-UPG-ILLEGAL-ACTION", "capture cannot change controller state or pins");
+  }
   if (isReplay(journal.record, draft)) {
+    if (draft.recoveryCapture && !journal.record.entries.some(entry => entry.action === draft.action &&
+      entry.inputDigest === draft.inputDigest && entry.outcome === "committed" && entry.recoveryCapture &&
+      canonicalJson(entry.recoveryCapture) === canonicalJson(draft.recoveryCapture))) {
+      return failClosed("PCAT-UPG-ILLEGAL-ACTION", "capture replay requires the original typed record");
+    }
     return { ok: true, value: { snapshot: snapshotOf(journal.record), replayed: true } };
   }
   const at = now().toISOString();
@@ -425,6 +493,7 @@ const appendTransition = (
     planDigest: draft.planDigest ?? journal.record.planDigest,
     lastFailureCode: draft.lastFailureCode ?? null,
     ...(draft.bindingPhase ? { bindingPhase: draft.bindingPhase } : {}),
+    ...(draft.recoveryCapture ? { recoveryCapture: structuredClone(draft.recoveryCapture) } : {}),
   };
   const record = withDigest({
     schemaVersion: journal.record.schemaVersion,
@@ -441,6 +510,10 @@ const appendTransition = (
     updatedAt: at,
     entries: [...journal.record.entries, entry],
   });
+  if (draft.recoveryCapture || draft.action === "recovery-capture-pending" || draft.action === "recovery-capture-unknown") {
+    const parsed = parseRecord(record);
+    if (!parsed.ok) return parsed;
+  }
   persist(journal.journalPath, record);
   journal.record = record;
   return { ok: true, value: { snapshot: snapshotOf(record), replayed: false } };

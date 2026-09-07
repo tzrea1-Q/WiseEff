@@ -18,6 +18,9 @@ import {
   journalBytes,
   loadUpgradeJournal,
   openUpgradeJournal,
+  canonicalJson,
+  sha256Prefixed,
+  type RecoveryCaptureEvent,
 } from "./journal";
 import { openCatalogUpgradeController } from "./controller";
 
@@ -25,6 +28,71 @@ const tempJournal = (): string =>
   path.join(mkdtempSync(path.join(tmpdir(), "s11-upg-journal-")), "journal.json");
 
 describe("S11-UPG journal", () => {
+  it.each(["phase-change", "numeric-inode", "numeric-attempt"])("does not coerce or grant phases through capture metadata: %s", fault => {
+    const opened = openUpgradeJournal({ journalPath: tempJournal(), runId: "capture" });
+    if (!opened.ok) throw new Error("fixture-open-failed");
+    const event = { attemptId: fault === "numeric-attempt" ? 1 : "capture-one", runId: "capture", outcome: "pending",
+      source: { deploymentId: "isolated", hostFingerprint: "host", postgresIdentity: "pg", objectStoreIdentity: "objects", redisIdentity: "redis" },
+      directory: { path: "/private/synthetic-package", device: "1", inode: fault === "numeric-inode" ? 2 : "2" } };
+    const before = journalBytes(opened.value.journalPath);
+    expect(commitJournalTransition(opened.value, { action: "recovery-capture-pending", inputDigest: sha256Prefixed(canonicalJson(event)),
+      toState: fault === "phase-change" ? "completed" : "idle", nextAction: "plan", outcome: "crashed",
+      recoveryCapture: event as RecoveryCaptureEvent }).ok).toBe(false);
+    expect(journalBytes(opened.value.journalPath)).toEqual(before);
+  });
+  it("does not promote a historical hash-only capture by replaying a typed payload", () => {
+    const opened = openUpgradeJournal({ journalPath: tempJournal(), runId: "capture" });
+    if (!opened.ok) throw new Error("fixture-open-failed");
+    const source = { deploymentId: "isolated", hostFingerprint: "host", postgresIdentity: "pg", objectStoreIdentity: "objects", redisIdentity: "redis" };
+    const capture = { runId: "capture", source, packageDigest: "a".repeat(64), recoveryPointDigest: `sha256:${"b".repeat(64)}`, boundaryDigest: "c".repeat(64) };
+    const draft = { action: "recovery-package-captured", inputDigest: sha256Prefixed(canonicalJson(capture)), toState: "idle" as const, nextAction: "plan" as const };
+    expect(commitJournalTransition(opened.value, draft).ok).toBe(true);
+    const before = journalBytes(opened.value.journalPath);
+    expect(commitJournalTransition(opened.value, { ...draft, recoveryCapture: { attemptId: "capture-one", runId: "capture", outcome: "committed", source,
+      directory: { path: "/private/synthetic-package", device: "1", inode: "2" }, capture } }).ok).toBe(false);
+    expect(journalBytes(opened.value.journalPath)).toEqual(before);
+  });
+  it("persists typed capture intent and outcome without promoting an old hash-only record", () => {
+    const journalPath = tempJournal();
+    const opened = openUpgradeJournal({ journalPath, runId: "capture" });
+    if (!opened.ok) throw new Error("fixture-open-failed");
+    const source = { deploymentId: "isolated", hostFingerprint: "host", postgresIdentity: "pg", objectStoreIdentity: "objects", redisIdentity: "redis" };
+    const pending: RecoveryCaptureEvent = { attemptId: "capture-one", runId: "capture", outcome: "pending", source,
+      directory: { path: "/private/synthetic-package", device: "1", inode: "2" } };
+    expect(commitJournalTransition(opened.value, { action: "recovery-capture-pending", inputDigest: sha256Prefixed(canonicalJson(pending)),
+      toState: "idle", nextAction: "plan", outcome: "crashed", recoveryCapture: pending }).ok).toBe(true);
+    const capture = { runId: "capture", source, packageDigest: "a".repeat(64), recoveryPointDigest: `sha256:${"b".repeat(64)}`, boundaryDigest: "c".repeat(64) };
+    const committed: RecoveryCaptureEvent = { ...pending, outcome: "committed", capture };
+    expect(commitJournalTransition(opened.value, { action: "recovery-package-captured", inputDigest: sha256Prefixed(canonicalJson(capture)),
+      toState: "idle", nextAction: "plan", recoveryCapture: committed }).ok).toBe(true);
+    const loaded = loadUpgradeJournal({ journalPath, runId: "capture" });
+    expect(loaded.ok && loaded.value.record.entries.at(-1)?.recoveryCapture).toEqual(committed);
+  });
+
+  it.each(["cross-run", "wrong-action", "changed-source", "orphan", "payload-hash", "packageDigest", "recoveryPointDigest", "boundaryDigest",
+    "nextAction", "planDigest", "cutoverRunId", "verificationPlanDigest", "verificationAttemptDigest"])("refuses typed capture %s before publishing a new journal", fault => {
+    const journalPath = tempJournal();
+    const opened = openUpgradeJournal({ journalPath, runId: "capture" });
+    if (!opened.ok) throw new Error("fixture-open-failed");
+    const source = { deploymentId: "isolated", hostFingerprint: "host", postgresIdentity: "pg", objectStoreIdentity: "objects", redisIdentity: "redis" };
+    const pending: RecoveryCaptureEvent = { attemptId: "capture-one", runId: "capture", outcome: "pending", source,
+      directory: { path: "/private/synthetic-package", device: "1", inode: "2" } };
+    if (fault !== "orphan") expect(commitJournalTransition(opened.value, { action: "recovery-capture-pending", inputDigest: sha256Prefixed(canonicalJson(pending)),
+      toState: "idle", nextAction: "plan", outcome: "crashed", recoveryCapture: pending }).ok).toBe(true);
+    const capture = { runId: fault === "cross-run" ? "other" : "capture", source: fault === "changed-source" ? { ...source, postgresIdentity: "other" } : source,
+      packageDigest: "a".repeat(64), recoveryPointDigest: `sha256:${"b".repeat(64)}`, boundaryDigest: "c".repeat(64) };
+    const event: RecoveryCaptureEvent = { ...pending, outcome: "committed", capture };
+    if (["packageDigest", "recoveryPointDigest", "boundaryDigest"].includes(fault)) {
+      const field = fault as "packageDigest" | "recoveryPointDigest" | "boundaryDigest";
+      Object.assign(capture, { [field]: [capture[field]] });
+    }
+    const control = ["planDigest", "cutoverRunId", "verificationPlanDigest", "verificationAttemptDigest"].includes(fault) ? { [fault]: "changed" } : {};
+    const before = journalBytes(journalPath);
+    expect(commitJournalTransition(opened.value, { action: fault === "wrong-action" ? "plan" : "recovery-package-captured",
+      inputDigest: fault === "payload-hash" ? "wrong" : sha256Prefixed(canonicalJson(capture)),
+      toState: "idle", nextAction: fault === "nextAction" ? "execute" : "plan", ...control, recoveryCapture: event }).ok).toBe(false);
+    expect(journalBytes(journalPath)).toEqual(before);
+  });
   it("keeps rename-then-fsync failure inspectable but blocks a reopened controller before owners", async () => {
     const journalPath = tempJournal();
     const opened = openUpgradeJournal({ journalPath, runId: "rename-unknown" });

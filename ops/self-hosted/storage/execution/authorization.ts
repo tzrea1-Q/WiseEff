@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import {
   canonicalJson, commitJournalTransition, loadUpgradeJournal, sha256Prefixed,
-  type UpgradeJournal,
+  type UpgradeJournal, type RecoveryCaptureRecord,
 } from "../../scripts/parameter-catalog-upgrade/journal";
 import type { HostOperationLock } from "../../scripts/parameter-catalog-upgrade/handoff";
 import { verifyRecoveryPackage, recoveryPackageStorePorts } from "../recoveryPackage";
@@ -18,10 +18,7 @@ export const RECOVERY_EXECUTION_EVENTS = Object.freeze({
   redis: "recovery-execution-redis-committed", completed: "recovery-execution-completed",
   unknown: "recovery-execution-outcome-unknown",
 } as const);
-export type RecoveryCaptureRecord = {
-  runId: string; packageDigest: string; recoveryPointDigest: string;
-  source: RecoveryTargetIdentity; boundaryDigest: string;
-};
+export type { RecoveryCaptureRecord } from "../../scripts/parameter-catalog-upgrade/journal";
 export type RecoveryExecutionApproval = {
   runId: string; attemptId: string; captureDigest: string; target: RecoveryTargetIdentity;
   approvalReference: string; expiresAt: string;
@@ -62,12 +59,14 @@ export function createRecoveryExecutionAuthorization(input: {
     if (capture.runId !== approval.runId || capture.runId !== journal.record.runId || approval.captureDigest !== captureDigest
       || !/^[A-Za-z0-9_-]+$/.test(approval.attemptId) || !approval.approvalReference.trim()
       || !Number.isFinite(Date.parse(approval.expiresAt)) || Date.parse(approval.expiresAt) <= Date.now()) fail();
-    const loaded = loadUpgradeJournal({ journalPath: journal.journalPath, runId: capture.runId });
+    const loaded = loadUpgradeJournal({ journalPath: journal.journalPath, runId: capture.runId, requireSettled: true });
     if (!loaded.ok) return fail();
     const entries = loaded.value.record.entries;
     const captured = entries.filter(entry => entry.action === RECOVERY_EXECUTION_EVENTS.captured);
     const authorized = entries.filter(entry => entry.action === RECOVERY_EXECUTION_EVENTS.authorized || entry.action === RECOVERY_EXECUTION_EVENTS.revoked);
-    if (captured.at(-1)?.inputDigest !== captureDigest || captured.at(-1)?.outcome !== "committed"
+    const recordedCapture = captured.at(-1)?.recoveryCapture;
+    if (recordedCapture?.outcome !== "committed" || !recordedCapture.capture || canonicalJson(recordedCapture.capture) !== canonicalJson(capture)
+      || captured.at(-1)?.inputDigest !== captureDigest || captured.at(-1)?.outcome !== "committed"
       || authorized.at(-1)?.action !== RECOVERY_EXECUTION_EVENTS.authorized || authorized.at(-1)?.inputDigest !== approvalDigest
       || authorized.at(-1)?.outcome !== "committed" || captured.at(-1)!.seq >= authorized.at(-1)!.seq) fail();
     const starts = entries.filter(entry => entry.action === RECOVERY_EXECUTION_EVENTS.started);

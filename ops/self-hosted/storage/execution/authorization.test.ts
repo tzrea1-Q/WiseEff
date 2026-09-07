@@ -23,7 +23,7 @@ import { mintRestoreToken } from "../recoveryPoint";
 import { createControlledRecoveryTarget, restoreRecoveryPackage } from "./packageRestore";
 import { createRecoveryExecutionAuthorization, recoveryExecutionRecordDigest, RECOVERY_EXECUTION_EVENTS,
   type RecoveryCaptureRecord, type RecoveryExecutionApproval } from "./authorization";
-import { createSyntheticRecoveryEvidence } from "./authorization.fixture";
+import { createSyntheticRecoveryEvidence, recordSyntheticCaptureEvent } from "./authorization.fixture";
 
 const source = { deploymentId: "source", hostFingerprint: "host", postgresIdentity: "pg", objectStoreIdentity: "s3", redisIdentity: "aof" };
 const target = { deploymentId: "target", hostFingerprint: "host", postgresIdentity: "pg2", objectStoreIdentity: "s32", redisIdentity: "aof2" };
@@ -150,7 +150,7 @@ it("refuses a forged target at the root execution entry before opening any packa
   } as never)).rejects.toThrow("unissued-target");
 });
 
-it.each(["valid", "unapproved", "wrong-token", "cross-run", "expired", "package-drift", "approval-revoked", "partial-failure", "lock-lost", "target-drift", "target-drift-after-empty"])("enforces persisted authorization and cross-store boundaries: %s", async fault => {
+it.each(["valid", "hash-only-capture", "unapproved", "wrong-token", "cross-run", "expired", "package-drift", "approval-revoked", "partial-failure", "lock-lost", "target-drift", "target-drift-after-empty"])("enforces persisted authorization and cross-store boundaries: %s", async fault => {
   const root = await mkdtemp(path.join(os.tmpdir(), "authorized-recovery-"));
   const runId = "synthetic_run";
   const events: string[] = [];
@@ -175,7 +175,8 @@ it.each(["valid", "unapproved", "wrong-token", "cross-run", "expired", "package-
       const result = commitJournalTransition(journal, { action, inputDigest, toState: journal.record.state, nextAction: journal.record.nextAction });
       if (!result.ok) throw new Error("fixture journal append unavailable");
     };
-    record(RECOVERY_EXECUTION_EVENTS.captured, recoveryExecutionRecordDigest(capture));
+    if (fault === "hash-only-capture") record(RECOVERY_EXECUTION_EVENTS.captured, recoveryExecutionRecordDigest(capture));
+    else await recordSyntheticCaptureEvent(journal, capture, root);
     if (fault !== "unapproved") record(RECOVERY_EXECUTION_EVENTS.authorized, recoveryExecutionRecordDigest(approval));
     await withHostOperationLock(path.join(root, "locks"), async lock => {
       let held = true;

@@ -80,6 +80,15 @@ P2真实停写、阶段化resume、P12/P13 producer归属、退休后完整报�
 
 ### 当前集成所有权
 
+父协调者接下来拥有既有 journal 的 typed recovery capture 事件及采集桥接。
+source/package 摘要来自真实 capture 返回，不接收调用者 JSON；采集前持久化
+pending attempt，未知 journal 结果保留包并禁止重试。旧 hash-only 事件可检查，
+但不能提升为可信 producer 记录。每步核验由模块签发、精确配置根目录的实际
+host lock；这不证明完整停写 producer，也不授予恢复。Recovery Scratch 仅拥有
+五文件 deployment authority 适配，使用真实 production 认证及私有每 run 指派，
+不新增产品 role 或默认 admin 映射。journal、handoff、controller 仍由父单写。
+文档影响为本计划伴随对、恢复执行合同伴随对及既有运维／证据伴随对。
+
 父协调者拥有数据库基础层及组合根。activation Scratch 拥有追加 0141 和
 `catalog-cutover/activation/`：仅管理阶段的 mapping epoch 与 P12 CAS，
 与 P5 和实际消费路由分开。零 runtime grant，不改历史迁移。显式准备可持久化

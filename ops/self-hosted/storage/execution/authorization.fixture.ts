@@ -6,7 +6,7 @@ import os from "node:os";
 import { withHostOperationLock } from "../../scripts/parameter-catalog-upgrade/handoff";
 import { createControlledRecoveryTarget, type RecoveryPackageTarget } from "./packageRestore";
 import type { ControlledRecoveryTarget } from "./controlledRestore";
-import { openUpgradeJournal, commitJournalTransition } from "../../scripts/parameter-catalog-upgrade/journal";
+import { openUpgradeJournal, commitJournalTransition, canonicalJson, sha256Prefixed, type UpgradeJournal, type RecoveryCaptureEvent } from "../../scripts/parameter-catalog-upgrade/journal";
 import { verifyRecoveryPackage } from "../recoveryPackage";
 import { mintRestoreToken, type RecoveryTargetIdentity } from "../recoveryPoint";
 import { createRecoveryExecutionAuthorization, recoveryExecutionRecordDigest, RECOVERY_EXECUTION_EVENTS,
@@ -65,6 +65,21 @@ export async function createSyntheticRecoveryEvidence() {
 /** Test-only consumer fixture. Explicitly registered as test ownership: live
  * capture/verify/execution modules must never import it. This is not the missing
  * controller approval producer and must not be reported as release approval. */
+export async function recordSyntheticCaptureEvent(journal: UpgradeJournal, capture: RecoveryCaptureRecord, directory: string) {
+  const identity = await lstat(directory);
+  const pending: RecoveryCaptureEvent = { attemptId: randomUUID(), runId: capture.runId, source: capture.source, outcome: "pending",
+    directory: { path: directory, device: String(identity.dev), inode: String(identity.ino) } };
+  for (const event of [pending, { ...pending, outcome: "committed" as const, capture }]) {
+    const result = commitJournalTransition(journal, {
+      action: event.outcome === "pending" ? "recovery-capture-pending" : RECOVERY_EXECUTION_EVENTS.captured,
+      inputDigest: sha256Prefixed(canonicalJson(event.outcome === "pending" ? event : capture)),
+      toState: journal.record.state, nextAction: journal.record.nextAction,
+      outcome: event.outcome === "pending" ? "crashed" : "committed", recoveryCapture: event,
+    });
+    if (!result.ok) throw new Error("synthetic-capture-event-unavailable");
+  }
+}
+
 export async function recordSyntheticRecoveryConsumption(directory: string, packageDigest: string, target: RecoveryTargetIdentity, approved = true) {
   const backup = await verifyRecoveryPackage(directory, packageDigest);
   const runId = backup.manifest.recovery.runId;
@@ -74,8 +89,9 @@ export async function recordSyntheticRecoveryConsumption(directory: string, pack
     source: backup.manifest.recovery.target, boundaryDigest: "a".repeat(64) };
   const approval: RecoveryExecutionApproval = { runId, attemptId: randomUUID(), target, captureDigest: recoveryExecutionRecordDigest(capture),
     approvalReference: "synthetic-isolated-execution-consumer-only", expiresAt: new Date(Date.now() + 600000).toISOString() };
-  for (const [action, record] of [[RECOVERY_EXECUTION_EVENTS.captured, capture], [RECOVERY_EXECUTION_EVENTS.authorized, approval]] as const) {
-    if (!approved && action === RECOVERY_EXECUTION_EVENTS.authorized) continue;
+  await recordSyntheticCaptureEvent(opened.value, capture, directory);
+  for (const [action, record] of [[RECOVERY_EXECUTION_EVENTS.authorized, approval]] as const) {
+    if (!approved) continue;
     const result = commitJournalTransition(opened.value, { action, inputDigest: recoveryExecutionRecordDigest(record),
       toState: opened.value.record.state, nextAction: opened.value.record.nextAction });
     if (!result.ok) throw new Error("synthetic-controller-event-unavailable");

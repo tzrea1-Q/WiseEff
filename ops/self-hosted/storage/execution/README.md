@@ -145,6 +145,19 @@ UPG_CONTROLLED_RECOVERY_DOCKER_TEST=1 ./node_modules/.bin/vitest run \
 
 Stop on any test failure; retain the refusal/unknown evidence and do not manually
 clear a real restore target or journal. No production restore command is provided.
+The controller-side `recordControlledRecoveryCapture` bridge now persists the
+actual S11-RP capture output after a durable typed intent. Its directory identity,
+run/attempt, full capture record and unchanged controller pins are checked on
+journal load/append. Execution rejects historical hash-only capture records;
+they remain inspectable, without being promoted into current trusted capture.
+A pending/unknown attempt retains its package and cannot be blindly retried.
+The bridge uses the real issued host lock, checks root/lock objects on every
+probe, and stops writing the journal after its parent directory changes. Package
+outputs use verified exclusive file descriptors. These component boundaries do
+not yet supply the complete terminal/controller capture or approval producer.
+The shell release still uses a check followed by pathname cleanup; the tests do
+not establish atomic cleanup against a replacement after that final check.
+
 The real controller approval producer and complete business acceptance remain
 integration work; real backups, custody/encryption, enterprise-network evidence
 and production authorization remain separate requirements.

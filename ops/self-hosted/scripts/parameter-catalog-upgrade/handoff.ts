@@ -202,13 +202,47 @@ export type HostOperationLock = {
    */
   assertHeld(): Promise<void>;
 };
+const issuedOperationLocks = new WeakMap<HostOperationLock, string>();
+/** A structural callback or a handle for another deployment is not a host lock.
+ * Custodial producers use this before every store effect. */
+export async function assertHostOperationLock(lock: HostOperationLock, lockRoot: string): Promise<void> {
+  if (!path.isAbsolute(lockRoot) || issuedOperationLocks.get(lock) !== path.resolve(lockRoot)) fail("lock-not-issued-for-target");
+  await lock.assertHeld();
+}
 
 /** Uses the same shell lock as ordinary setup/upgrade. The callback must await
  * assertHeld before each effect; racing the callback against exit cannot cancel it.
  * An outer root already holding the lock forwards this handle instead of relocking.
  */
 export async function withHostOperationLock<T>(lockRoot: string, action: (lock: HostOperationLock) => Promise<T>): Promise<T> {
-  const script = 'source "$1"; wiseeff_operation_lock_acquire "$2" "Catalog handoff lock occupied" "catalog-handoff" || exit $?; trap wiseeff_operation_lock_release EXIT; printf "LOCKED\\n"; while read -r command token; do case "$command" in probe) printf "HELD %s\\n" "$token" ;; release) exit 0 ;; *) exit 76 ;; esac; done';
+  const script = `source "$1"
+wiseeff_operation_lock_acquire "$2" "Catalog handoff lock occupied" "catalog-handoff" || exit $?
+bound_root="$2"
+lock_identity() {
+  local item
+  for item in "$bound_root" "$operation_lock_owner_path"; do
+    [ ! -L "$item" ] || return 1
+    stat -c '%d:%i:%u:%a' "$item" 2>/dev/null || stat -f '%d:%i:%u:%Lp' "$item" 2>/dev/null || return 1
+  done
+  if [ "$operation_lock_mode" = flock ]; then
+    [ ! -L "$operation_lock_path" ] || return 1
+    stat -c '%d:%i:%u:%a' "$operation_lock_path" 2>/dev/null || stat -f '%d:%i:%u:%Lp' "$operation_lock_path" 2>/dev/null || return 1
+  else
+    for item in "$operation_lock_dir" "$operation_lock_dir/pid"; do
+      [ ! -L "$item" ] || return 1
+      stat -c '%d:%i:%u:%a' "$item" 2>/dev/null || stat -f '%d:%i:%u:%Lp' "$item" 2>/dev/null || return 1
+    done
+  fi
+}
+bound_identity="$(lock_identity)" || exit 76
+still_bound() { [ "$(lock_identity)" = "$bound_identity" ]; }
+safe_release() { if still_bound; then wiseeff_operation_lock_release; fi; }
+trap safe_release EXIT
+printf 'LOCKED\\n'
+while read -r command token; do
+  still_bound || exit 76
+  case "$command" in probe) printf 'HELD %s\\n' "$token" ;; release) exit 0 ;; *) exit 76 ;; esac
+done`;
   const child = spawn("bash", ["-c", script, "handoff-lock", fileURLToPath(new URL("../operation-lock.sh", import.meta.url)), lockRoot], {
     env: { PATH: process.env.PATH, HOME: process.env.HOME }, stdio: ["pipe", "pipe", "pipe"],
   });
@@ -262,12 +296,14 @@ export async function withHostOperationLock<T>(lockRoot: string, action: (lock: 
     await ready;
     clearTimeout(acquisitionTimer);
     await lock.assertHeld();
+    issuedOperationLocks.set(lock, path.resolve(lockRoot));
     const result = await action(lock);
     await lock.assertHeld();
     return result;
   }
   finally {
     clearTimeout(acquisitionTimer);
+    issuedOperationLocks.delete(lock);
     active = false;
     lose();
     if (!ended) child.stdin.end("release\n");

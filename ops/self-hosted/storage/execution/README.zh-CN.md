@@ -111,5 +111,14 @@ UPG_CONTROLLED_RECOVERY_DOCKER_TEST=1 ./node_modules/.bin/vitest run \
 
 预期：命令返回 0，用例分别报告两个 bootstrap 场景通过。失败即停止，保留拒绝／未知
 证据，不手工清理真实恢复目标或 journal。生产恢复命令尚不可执行，本文不提供。
+controller 侧 `recordControlledRecoveryCapture` 桥接先持久化 typed intent，再记录
+实际 S11-RP capture 返回值。journal 验证目录身份、run／attempt、完整采集记录，
+并禁止采集事件改变 controller pins。执行层拒绝历史只有摘要的采集记录；它们仍可
+检查，但不能自动提升为当前可信采集。pending／unknown 保留原包并拒绝盲目重试。
+桥接使用实际签发的主机锁，每次 probe 核验 root／锁对象；journal 父目录变化后不再
+写入替换路径。包通过经核验的独占文件描述符输出。这些组件还不等于完整终端／
+controller 的采集和批准 producer。Shell 释放仍是检查后按路径清理；现有用例未证明
+能原子抵御最后一次检查后的替换竞态。
+
 真实 controller 批准 producer 和完整业务验收仍是内部集成工作；真实备份、密钥／
 托管、企业网络证据及生产授权分别保留，不能用合成成功代替。

@@ -53,6 +53,19 @@ startup and populated controller acceptance.
 
 ### Current integration ownership
 
+Parent next owns typed recovery capture events in the existing journal and its
+capture bridge. The real capture return, not caller JSON, supplies source/package
+digests. A durable pending attempt precedes capture; missing/unknown journal
+outcomes retain the package and block retry. Old hash-only events remain
+inspectable but cannot become trusted producer records. A module-issued live
+host lock is checked for the exact configured root before every step. This does
+not certify the writer-boundary producer or grant restoration. Recovery Scratch
+owns a separate five-file deployment authority adapter using real production
+authentication and private per-run assignments; no new product role or implicit
+admin mapping. Parent remains sole writer of journal, handoff and controller;
+Scratch cannot add those seams independently. Documentation impact is this plan
+pair, recovery execution contract pair and the existing operator/evidence pairs.
+
 Parent owns the database foundation and composition roots. Activation Scratch owns
 additive 0141 and `catalog-cutover/activation/`: management-only mapping epochs
 and P12 CAS, separate from P5 and actual consumer routing. No runtime grants or
