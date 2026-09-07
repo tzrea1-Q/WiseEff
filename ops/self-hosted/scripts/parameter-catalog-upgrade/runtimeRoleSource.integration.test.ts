@@ -75,6 +75,21 @@ async function within(options: Parameters<typeof fixture>[0], run: (f: Awaited<R
 }
 
 it("observes actual application and optional governance LOGIN OIDs without startup admission", async () => {
+  const client = new pg.Client({ connectionString: connection("manager") });
+  client.on("error", () => {});
+  try {
+    await client.connect();
+    const result = await client.query(`select pg_catalog.current_schemas(true) as native,
+      pg_catalog.current_schemas(true)::text[] as normalized`);
+    const shape = { nativeType: typeof result.rows[0].native, nativeArray: Array.isArray(result.rows[0].native),
+      nativeOid: result.fields[0].dataTypeID, normalizedType: typeof result.rows[0].normalized,
+      normalizedArray: Array.isArray(result.rows[0].normalized), normalizedOid: result.fields[1].dataTypeID,
+      catalogFirst: result.rows[0].normalized?.[0] === "pg_catalog" };
+    // Only public protocol types/OIDs and a boolean; never schema values or URL.
+    console.info(JSON.stringify({ evidence: "runtime-role-schema-wire-shape", ...shape }));
+    expect(shape).toEqual({ nativeType: "string", nativeArray: false, nativeOid: 1003,
+      normalizedType: "object", normalizedArray: true, normalizedOid: 1009, catalogFirst: true });
+  } finally { await client.end(); }
   await within({ governance: true }, async (f, lock) => {
     const source = await openRuntimeRoleSource({ handoff: f.plan, expectedHandoffDigest: f.plan.digest, lock });
     try {
@@ -103,10 +118,23 @@ it("refuses the actual bootstrap LOGIN hidden by the old V13 postgres exclusion"
   });
 });
 
-it.each(["manager", "governance"] as const)("rejects actual %s credentials used in an application configuration", async key => {
+it.each([
+  ["manager", "PCAT-RUNTIME-MANAGEMENT-ROLE-REACHABLE"],
+  ["governance", "PCAT-RUNTIME-GOVERNANCE-CAPABILITY-IN-APPLICATION-POOL"],
+] as const)("rejects actual %s credentials used in an application configuration", async (key, code) => {
   await within({ api: connection(key) }, async (f, lock) => {
-    await expect(openRuntimeRoleSource({ handoff: f.plan, expectedHandoffDigest: f.plan.digest, lock })).rejects.toThrow("PCAT-RUNTIME-");
+    await expect(openRuntimeRoleSource({ handoff: f.plan, expectedHandoffDigest: f.plan.digest, lock })).rejects.toMatchObject({ code });
   });
+});
+
+it("still refuses an actual session whose search path precedes pg_catalog", async () => {
+  await admin.query(`alter role ${pg.escapeIdentifier(roles.manager)} set search_path=public,pg_catalog`);
+  try {
+    await within({}, async (f, lock) => {
+      await expect(openRuntimeRoleSource({ handoff: f.plan, expectedHandoffDigest: f.plan.digest, lock }))
+        .rejects.toMatchObject({ code: "RESOLUTION-UNSAFE" });
+    });
+  } finally { await admin.query(`alter role ${pg.escapeIdentifier(roles.manager)} reset search_path`); }
 });
 
 it("refuses an unproven endpoint before authenticating a retargeted URL", async () => {
