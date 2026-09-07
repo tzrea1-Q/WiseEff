@@ -1,12 +1,20 @@
 import { withHostOperationLock } from "../scripts/parameter-catalog-upgrade/handoff";
 import { createRecoveryExecutionAuthorization } from "./execution/authorization";
-import { createSyntheticRecoveryEvidence, recordSyntheticRecoveryConsumption } from "./execution/authorization.fixture";
+import { createSyntheticRecoveryEvidence } from "./execution/authorization.fixture";
+import { recordControlledRecoveryCapture } from "../scripts/parameter-catalog-upgrade/recoveryCapture";
+import { recordRecoveryExecutionApproval } from "../scripts/parameter-catalog-upgrade/recoveryApproval";
+import { openDeploymentAuthority, type DeploymentAuthorityAssignment } from "../scripts/parameter-catalog-upgrade/deploymentAuthority";
+import { canonicalJson, openUpgradeJournal, sha256Prefixed } from "../scripts/parameter-catalog-upgrade/journal";
+import { mintRestoreToken } from "./recoveryPoint";
+import { createPostgresDatabase, type RootDatabase } from "../../../server/shared/database/client";
+import { createLocalAuthService } from "../../../server/modules/auth/localAuth";
+import { hashLocalAccountPassword } from "../../../server/modules/auth/localAccountCredentials";
 import { createControlledRecoveryTarget } from "./execution/packageRestore";
 import { createDockerRecoveryDestination } from "./execution/dockerRestore";
 import { restoreRecoveryPackage } from "./execution/packageRestore";
 import { spawnSync } from "node:child_process";
 import { createHash, randomBytes } from "node:crypto";
-import { lstat, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { lstat, mkdir, mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { setTimeout } from "node:timers/promises";
@@ -40,8 +48,9 @@ describe.skipIf(process.env.UPG_CONTROLLED_RECOVERY_DOCKER_TEST !== "1")("contro
     const runId = randomBytes(12).toString("hex");
     const label = "wiseeff.controlled-recovery-run";
     const evidence = await createSyntheticRecoveryEvidence();
-    const directory = path.join(evidence.directory, "package");
-    await mkdir(directory, { mode: 0o700 });
+    const packageDirectory = path.join(evidence.directory, "package");
+    await mkdir(packageDirectory, { mode: 0o700 });
+    const directory = await realpath(packageDirectory);
     let acceptanceComplete = false;
     let bodyStarted = false;
     const retainEvidence = async (outcome: "accepted" | "failed") => {
@@ -54,6 +63,13 @@ describe.skipIf(process.env.UPG_CONTROLLED_RECOVERY_DOCKER_TEST !== "1")("contro
       else await retainEvidence("failed");
     }, 60000);
     const privateInputs = await mkdtemp(path.join(os.tmpdir(), "controlled-recovery-secrets-"));
+    const operationRoot = path.join(await realpath(evidence.directory), "operation");
+    await mkdir(operationRoot, { mode: 0o700 });
+    const openedJournal = openUpgradeJournal({ journalPath: path.join(operationRoot, "run.json"), runId });
+    if (!openedJournal.ok) throw new Error("owned-controller-journal-unavailable");
+    const journal = openedJournal.value;
+    let authAdmin: RootDatabase | undefined;
+    let authority: Awaited<ReturnType<typeof openDeploymentAuthority>> | undefined;
     const containers: string[] = []; const volumes: string[] = []; const networks: string[] = [];
     const refs = { postgres: "postgres:16-alpine", objects: "minio/minio:RELEASE.2024-12-18T13-15-44Z", redis: "redis:7-alpine", mc: "minio/mc:RELEASE.2024-11-21T17-21-54Z" };
     const imageIds = Object.fromEntries(Object.entries(refs).map(([name, ref]) => [name, JSON.parse(docker.command(["image", "inspect", ref]).toString())[0].Id as string]));
@@ -121,6 +137,48 @@ describe.skipIf(process.env.UPG_CONTROLLED_RECOVERY_DOCKER_TEST !== "1")("contro
     bodyStarted = true;
     try {
       const source = await timed("setup-source", () => setup("source"));
+      // Independent authentication cluster: its sessions/credentials never enter
+      // the captured source or the package-only restore child.
+      const authNetwork = docker.command(["network", "create", "--driver", "bridge", "--opt", "com.docker.network.bridge.enable_ip_masquerade=false",
+        "--label", `${label}=${runId}`, `controlled-${runId}-authority`]).toString().trim();
+      networks.push(authNetwork);
+      const authPassword = randomBytes(24).toString("hex");
+      const authVolume = docker.command(["volume", "create", "--label", `${label}=${runId}`, `controlled-${runId}-authority`]).toString().trim();
+      volumes.push(authVolume);
+      const authEnv = path.join(privateInputs, "authority.env");
+      await writeFile(authEnv, `POSTGRES_USER=postgres\nPOSTGRES_DB=authority_control\nPOSTGRES_PASSWORD=${authPassword}\n`, { flag: "wx", mode: 0o600 });
+      const authContainer = docker.command(["create", "--label", `${label}=${runId}`, "--network", authNetwork,
+        "--mount", `type=volume,source=${authVolume},target=/var/lib/postgresql/data`,
+        "-p", "127.0.0.1::5432", "--env-file", authEnv, imageIds.postgres]).toString().trim();
+      containers.push(authContainer); start(authContainer);
+      await wait(async () => exec(authContainer, ["pg_isready", "-U", "postgres", "-d", "authority_control"]));
+      const authUrl = `postgres://postgres:${authPassword}@${endpoint(authContainer, 5432)}/authority_control`;
+      authAdmin = createPostgresDatabase(authUrl);
+      // Actual historical auth migrations, not a substitute schema or synthetic
+      // AuthContextResolver. This management-only database needs no Catalog DDL.
+      for (const filename of ["0001_m0_foundation.sql", "0012_local_account_lifecycle.sql", "0013_local_account_username.sql"]) {
+        await authAdmin.query(await readFile(path.resolve("server/migrations", filename), "utf8"));
+      }
+      await authAdmin.query("insert into organizations(id,name) values ('recovery-org','Synthetic recovery'); insert into roles(id,name,level,permissions) values ('guest','Guest','organization','{}')");
+      const userPassword = `Recovery-${randomBytes(12).toString("hex")}!`;
+      const passwordHash = await hashLocalAccountPassword(userPassword);
+      for (const user of ["operator", "owner", "incident", "verifier"]) {
+        await authAdmin.query("insert into users(id,organization_id,name,email,title) values ($1,'recovery-org',$1,$2,'Synthetic')", [user, `${user}@invalid.example`]);
+        await authAdmin.query("insert into user_password_credentials(user_id,username,password_hash) values ($1,$1,$2)", [user,passwordHash]);
+        await authAdmin.query("insert into user_role_bindings(id,user_id,organization_id,role_id) values ($1,$1,'recovery-org','guest')", [user]);
+      }
+      const login = await createLocalAuthService(authAdmin,{selfRegisterEnabled:false}).login({username:"incident",password:userPassword},{requestId:"recovery-login"});
+      const restrictedPassword = randomBytes(24).toString("hex");
+      await authAdmin.query(`create role recovery_auth login noinherit nosuperuser nobypassrls nocreatedb nocreaterole noreplication password '${restrictedPassword}';
+        grant select on public.auth_sessions,public.users,public.organizations,public.user_role_bindings,public.user_password_credentials to recovery_auth;
+        grant update(last_used_at) on public.auth_sessions to recovery_auth`);
+      const identitySql = `select current_database() as "databaseName", (select oid::text from pg_database where datname=current_database()) as "databaseOid",
+        inet_server_addr()::text as "serverAddress", inet_server_port() as "serverPort"`;
+      const authIdentity = (await authAdmin.query<DeploymentAuthorityAssignment["authentication"]>(identitySql)).rows[0];
+      const sourceIdentityClient = new pg.Client({connectionString:`postgres://${bootstrapName}:${source.secrets.postgresPassword}@${endpoint(source.resources.postgres.id,5432)}/postgres`});
+      let sourceDatabase: DeploymentAuthorityAssignment["authentication"];
+      try { await sourceIdentityClient.connect(); sourceDatabase = (await sourceIdentityClient.query(identitySql)).rows[0]; }
+      finally { await sourceIdentityClient.end(); }
       start(source.resources.redis.id);
       await wait(async () => exec(source.resources.redis.id, ["redis-cli", "PING"]));
       exec(source.resources.postgres.id, ["psql", "-U", bootstrapName, "-d", source.resources.database, "-v", "ON_ERROR_STOP=1"], Buffer.from(`
@@ -210,10 +268,10 @@ describe.skipIf(process.env.UPG_CONTROLLED_RECOVERY_DOCKER_TEST !== "1")("contro
         // disposable fixture explicitly restores its own injected fault.
         exec(source.resources.postgres.id, ["psql", "-U", bootstrapName, "-d", source.resources.database, "-v", "ON_ERROR_STOP=1", "-c", "alter database postgres connection limit -1"]);
       }
-      // Synthetic principal is limited to this test's resource identities. Real
-      // controller approvals are neither generated nor mocked as passed reports.
-      const captured = await timed("capture-package", () => captureControlledRecovery({ directory, runId, target }, adapter, boundaryPort));
-      expect(captured.status).toBe("captured-not-restored");
+      const captured = await timed("capture-package", () => withHostOperationLock(operationRoot, lock =>
+        recordControlledRecoveryCapture({ journal, operationRoot, directory, target, attemptId: "capture", lock }, adapter, boundaryPort)));
+      expect(journal.record.entries.at(-1)).toMatchObject({ action: "recovery-package-captured", outcome: "committed", recoveryCapture: { capture: captured } });
+      expect(journal.record.entries.some(entry => entry.action.startsWith("recovery-execution-"))).toBe(false);
       const verified = await verifyRecoveryPackage(directory, captured.packageDigest);
       expect(verified.manifest.format).toBe(bootstrapName === "postgres" ? "wiseeff-recovery-package-v2" : "wiseeff-recovery-package-v3");
       expect(verified.bootstrap).toEqual(source.resources.bootstrap);
@@ -223,6 +281,26 @@ describe.skipIf(process.env.UPG_CONTROLLED_RECOVERY_DOCKER_TEST !== "1")("contro
       const destination = await timed("setup-destination", () => setup("destination"));
       const destinationIo = createDockerRecoveryDestination(destination.resources, destination.secrets);
       const destinationIdentity = await destinationIo.observe();
+      const custodyRoot = await realpath(await mkdtemp(path.join(privateInputs, "authority-")));
+      const assignment: DeploymentAuthorityAssignment = { format: "wiseeff-deployment-authority-v1", runId, target,
+        expiresAt: new Date(Date.now()+120000).toISOString(), authentication: authIdentity,
+        principals: [{kind:"operator",userId:"operator",organizationId:"recovery-org"},{kind:"platform-owner",userId:"owner",organizationId:"recovery-org"},{kind:"incident-owner",userId:"incident",organizationId:"recovery-org"}],
+        verifierPrincipals: [{userId:"verifier",organizationId:"recovery-org"}], reports: [],
+        restore: {attemptId:"restore-attempt",captureDigest:sha256Prefixed(canonicalJson(captured)),target:destinationIdentity} };
+      const assignmentPath = path.join(custodyRoot,"assignment.json");
+      await writeFile(assignmentPath,JSON.stringify(assignment),{flag:"wx",mode:0o600});
+      const restrictedUrl = new URL(authUrl); restrictedUrl.username = "recovery_auth"; restrictedUrl.password = restrictedPassword;
+      authority = await openDeploymentAuthority({custodyRoot,custodianUid:process.getuid!(),assignmentPath,expectedAssignmentDigest:sha256Prefixed(canonicalJson(assignment)),runId,target,sourceDatabase,authConnectionString:restrictedUrl.href});
+      const confirmation = await authority.confirmRestore({authorization:`Bearer ${login.session.token}`, ...assignment.restore!, traceId:"isolated-recovery"});
+      const restoreToken = mintRestoreToken(runId,captured.recoveryPointDigest);
+      const approval = await timed("authenticate-persist-approval",()=>withHostOperationLock(operationRoot,lock=>
+        recordRecoveryExecutionApproval({journal,operationRoot,lock,confirmation,restoreToken})));
+      const consumption = {journal,directory,capture:captured,approval,restoreToken};
+      expect(journal.record.entries.at(-1)).toMatchObject({action:"recovery-execution-authorized",recoveryApproval:{principal:{userId:"incident",organizationId:"recovery-org"}}});
+      expect(journal.record.entries.some(entry=>entry.action==="recovery-execution-started")).toBe(false);
+      // Neither source nor authentication service remains available to the
+      // restore child. Its only source of data/roles/metadata is the package.
+      await authority.close(); authority = undefined; await authAdmin.close(); authAdmin = undefined; stop(authContainer);
       const targetSql = (sql: string) => exec(destination.resources.postgres.id,
         ["psql", "-U", bootstrapName, "-d", destination.resources.database, "-v", "ON_ERROR_STOP=1", "-At", "-c", sql]).toString().trim();
       if (bootstrapName === "wiseeff") {
@@ -251,8 +329,7 @@ describe.skipIf(process.env.UPG_CONTROLLED_RECOVERY_DOCKER_TEST !== "1")("contro
         try {
           await timed(`restore-nonempty-${fault.name}-refusal`, async () => {
             const journalPath = path.join(directory, `refused-${fault.name}.json`);
-            const consumption = await recordSyntheticRecoveryConsumption(directory, captured.packageDigest, destinationIdentity);
-            await withHostOperationLock(path.join(privateInputs, "locks"), async lock => {
+            await withHostOperationLock(operationRoot, async lock => {
             const port = createControlledRecoveryTarget({ target: destinationIdentity,
               authorization: createRecoveryExecutionAuthorization({ ...consumption, lock }) }, destinationIo);
             await expect(restoreRecoveryPackage(directory, captured.packageDigest, port)).rejects.toThrow("controlled-recovery-restore-database-not-empty");
@@ -270,7 +347,6 @@ describe.skipIf(process.env.UPG_CONTROLLED_RECOVERY_DOCKER_TEST !== "1")("contro
       if (scenario === "nonempty-target-refusals") { acceptanceComplete = true; return; }
       // The restore child gets only destination identities/secrets and package
       // location/digest. It cannot read a source connection or fixture oracle.
-      const consumption = await recordSyntheticRecoveryConsumption(directory, captured.packageDigest, destinationIdentity);
       const childScript = `import { readFileSync } from 'node:fs';
         import { createDockerRecoveryDestination } from ${JSON.stringify(path.resolve("ops/self-hosted/storage/execution/dockerRestore.ts"))};
         import { createControlledRecoveryTarget } from ${JSON.stringify(path.resolve("ops/self-hosted/storage/execution/packageRestore.ts"))};
@@ -293,7 +369,7 @@ describe.skipIf(process.env.UPG_CONTROLLED_RECOVERY_DOCKER_TEST !== "1")("contro
         } catch { console.log('restore-refused'); process.exitCode=1; }`;
       const child = await timed("restore-package-child", async () => spawnSync(process.execPath, ["--import", "tsx", "--input-type=module", "-e", childScript], {
         input: JSON.stringify({ controllerJournal: consumption.journal.journalPath, capture: consumption.capture, approval: consumption.approval, restoreToken: consumption.restoreToken,
-          lockRoot: path.join(privateInputs, "locks"), resources: destination.resources, secrets: destination.secrets, runId, digest: captured.packageDigest, directory, journal: path.join(directory, "restore.json") }),
+          lockRoot: operationRoot, resources: destination.resources, secrets: destination.secrets, runId, digest: captured.packageDigest, directory, journal: path.join(directory, "restore.json") }),
         encoding: "utf8", timeout: 90000, env: { PATH: process.env.PATH, HOME: os.homedir() },
       }));
       expect(child.status, child.stdout).toBe(0);
@@ -321,6 +397,7 @@ describe.skipIf(process.env.UPG_CONTROLLED_RECOVERY_DOCKER_TEST !== "1")("contro
       cleaning = true;
       let cleanupComplete = false;
       try {
+      const authCleanup = await Promise.allSettled([authority?.close(), authAdmin?.close()]);
       // Only exact IDs/volumes created by this fixture may be disposed of.
       for (const id of containers.reverse()) { inspect(id); docker.command(["rm", "-f", id]); }
       for (const name of volumes.reverse()) {
@@ -332,6 +409,7 @@ describe.skipIf(process.env.UPG_CONTROLLED_RECOVERY_DOCKER_TEST !== "1")("contro
         docker.command(["network", "rm", id]);
       }
       await rm(privateInputs, { recursive: true, force: true });
+      if (authCleanup.some(result => result.status === "rejected")) throw new Error("owned-authority-cleanup-failed");
       cleanupComplete = true;
       } finally {
         try {
