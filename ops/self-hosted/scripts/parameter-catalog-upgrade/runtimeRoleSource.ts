@@ -70,9 +70,19 @@ export async function openRuntimeRoleSource(input: { handoff: HandoffPlan; expec
     pool.on("error", onLoss);
     const owned = { pool, client: undefined as pg.PoolClient | undefined, released: false };
     connections.push(owned);
-    const client = await pool.connect();
-    owned.client = client;
-    client.on("error", onLoss); client.on("end", onLoss);
+    const client = await new Promise<pg.PoolClient>((resolve, reject) => {
+      pool.connect((error, checkedOut) => {
+        // Checkout transfers ownership before the Promise continuation. Register
+        // immediately, including an error+client result, so no event can escape
+        // and the failure path still releases every actual checked-out client.
+        if (checkedOut) {
+          owned.client = checkedOut;
+          checkedOut.on("error", onLoss); checkedOut.on("end", onLoss);
+        }
+        if (error || !checkedOut) reject(new RuntimeRoleSourceError("CONNECTION-UNAVAILABLE"));
+        else resolve(checkedOut);
+      });
+    });
     requireFact(!closed && !lost, "CONNECTION-LOST");
     const schemas = (await client.query<{ schemas: string[] }>("select pg_catalog.current_schemas(true) as schemas")).rows[0]?.schemas;
     requireFact(Array.isArray(schemas) && schemas[0] === "pg_catalog", "RESOLUTION-UNSAFE");

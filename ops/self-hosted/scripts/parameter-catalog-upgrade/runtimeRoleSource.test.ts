@@ -2,17 +2,44 @@ import { createHash } from "node:crypto";
 import { chmod, lstat, mkdtemp, realpath, rename, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { expect, it } from "vitest";
+import { expect, it, vi } from "vitest";
 import * as handoff from "./handoff";
 import { canonicalJson, sha256Prefixed } from "./journal";
 import * as runtime from "../../../../server/shared/database/runtimeConnection";
 import { observeRuntimeRoles, openRuntimeRoleSource } from "./runtimeRoleSource";
 
+const checkout = vi.hoisted(() => ({ event: undefined as "error" | "end" | undefined, release: vi.fn(), end: vi.fn() }));
+vi.mock("pg", async original => {
+  const actual = await original<typeof import("pg")>();
+  const { EventEmitter } = await import("node:events");
+  class ProbePool extends EventEmitter {
+    connect(callback?: (error: undefined, client: unknown) => void) {
+      const client = Object.assign(new EventEmitter(), { release: checkout.release, query: async () => ({ rows: [{ schemas: ["pg_catalog"] }] }) });
+      if (callback) callback(undefined, client);
+      if (checkout.event === "error") client.emit("error", new Error("synthetic-private-checkout-error"));
+      else client.emit("end");
+      return callback ? undefined : Promise.resolve(client);
+    }
+    async end() { checkout.end(); }
+  }
+  return { ...actual, default: { ...actual.default, Pool: function(options: ConstructorParameters<typeof actual.default.Pool>[0]) {
+    return checkout.event ? new ProbePool() : new actual.default.Pool(options);
+  } } };
+});
+vi.mock("../../../../scripts/isolated-upgrade-docker", async original => {
+  const actual = await original<typeof import("../../../../scripts/isolated-upgrade-docker")>();
+  return { ...actual, createIsolatedUpgradeDocker: () => checkout.event ? {
+    daemonId: "synthetic-daemon", command: () => Buffer.from(JSON.stringify([{ Id: "a".repeat(64), Image: "synthetic-image",
+      State: { Running: true, StartedAt: "fixed" }, Mounts: [{ Name: "synthetic-volume", Destination: "/data" }],
+      NetworkSettings: { Ports: { "5432/tcp": [{ HostIp: "127.0.0.1", HostPort: "5544" }] } } }])),
+  } : actual.createIsolatedUpgradeDocker() };
+});
+
 async function fixture() {
   const directory = await realpath(await mkdtemp(path.join(os.tmpdir(), "runtime-role-source-")));
   const names = ["main", "api", "worker", "management"];
   const bodies = [`WISEEFF_API_ENV_FILE=${directory}/api\nWISEEFF_WORKER_ENV_FILE=${directory}/worker\nWISEEFF_MANAGEMENT_ENV_FILE=${directory}/management\n`,
-    "NODE_ENV=production\nDATABASE_URL=postgres://private-api\n", "NODE_ENV=production\nDATABASE_URL=postgres://private-worker\n", "DATABASE_URL=postgres://private-manager\n"];
+    "NODE_ENV=production\nDATABASE_URL=postgres://api:synthetic@127.0.0.1:5544/roles\n", "NODE_ENV=production\nDATABASE_URL=postgres://worker:synthetic@127.0.0.1:5544/roles\n", "DATABASE_URL=postgres://manager:synthetic@127.0.0.1:5544/roles\n"];
   const bindings = [];
   for (let index = 0; index < names.length; index++) {
     const filename = path.join(directory, names[index]);
@@ -20,9 +47,10 @@ async function fixture() {
     const stat = await lstat(filename);
     bindings.push({ path: filename, device: String(stat.dev), inode: String(stat.ino), digest: `sha256:${createHash("sha256").update(bodies[index]).digest("hex")}` });
   }
-  const body = { format: "wiseeff-fixed-entry-handoff-v1", inputs: { runId: "roles", lockRoot: directory,
+  const body = { format: "wiseeff-fixed-entry-handoff-v1", inputs: { runId: "roles", lockRoot: directory, expectedDaemonId: "synthetic-daemon",
+    source: { stores: [{ service: "postgres", containerId: "a".repeat(64), volumeName: "synthetic-volume", destination: "/data" }] },
     journalPath: path.join(directory, "journal.json"), privateConfigPath: bindings[0].path },
-  observation: { privateConfigurations: { main: bindings[0], runtime: {
+  observation: { stores: [{ service: "postgres", id: "a".repeat(64), imageId: "synthetic-image" }], privateConfigurations: { main: bindings[0], runtime: {
     WISEEFF_API_ENV_FILE: bindings[1], WISEEFF_WORKER_ENV_FILE: bindings[2], WISEEFF_MANAGEMENT_ENV_FILE: bindings[3],
   } } } };
   const plan = { ...body, digest: sha256Prefixed(canonicalJson(body)) } as unknown as handoff.HandoffPlan;
@@ -35,6 +63,18 @@ it("requires an actual issued host lock before opening private configuration fil
     await expect(handoff.openHandoffRuntimeConfigurationLease(f.plan, f.plan.digest, { async assertHeld() {} }))
       .rejects.toThrow("handoff-lock-not-issued-for-journal");
   } finally { await rm(f.directory, { recursive: true }); }
+});
+
+it.each(["error", "end"] as const)("owns the checkout before a synchronous %s event can escape", async event => {
+  const f = await fixture(); checkout.event = event; checkout.release.mockClear(); checkout.end.mockClear();
+  try {
+    await handoff.withHostOperationLock(f.directory, async lock => {
+      await expect(openRuntimeRoleSource({ handoff: f.plan, expectedHandoffDigest: f.plan.digest, lock }))
+        .rejects.toThrow("PCAT-RUNTIME-ROLE-SOURCE-CONNECTION-LOST");
+      expect(checkout.release).toHaveBeenCalledWith(true);
+      expect(checkout.release).toHaveBeenCalledOnce(); expect(checkout.end).toHaveBeenCalledOnce();
+    });
+  } finally { checkout.event = undefined; await rm(f.directory, { recursive: true }); }
 });
 
 it("rejects caller-created role observations and source locks without a connection", async () => {
