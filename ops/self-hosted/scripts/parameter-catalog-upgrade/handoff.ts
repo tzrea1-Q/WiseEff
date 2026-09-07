@@ -210,6 +210,20 @@ export async function assertHostOperationLock(lock: HostOperationLock, lockRoot:
   await lock.assertHeld();
 }
 
+/** Recovery dispatch requires the exact private journal directory's issued
+ * lock. An arbitrary ancestor lock or a structural callback is not authority. */
+export async function assertHostOperationLockForJournal(lock: HostOperationLock, journalPath: string): Promise<void> {
+  try {
+    const root = issuedOperationLocks.get(lock);
+    if (!root || !path.isAbsolute(journalPath) || path.resolve(journalPath) !== journalPath) return fail("lock-not-issued-for-journal");
+    const directory = path.dirname(journalPath);
+    const actual = await lstat(directory);
+    if (directory !== root || !actual.isDirectory() || actual.isSymbolicLink() || actual.uid !== process.getuid?.() || (actual.mode & 0o777) !== 0o700 ||
+      await realpath(directory) !== directory) fail("lock-not-issued-for-journal");
+    await assertHostOperationLock(lock, root);
+  } catch { fail("lock-not-issued-for-journal"); }
+}
+
 /** Uses the same shell lock as ordinary setup/upgrade. The callback must await
  * assertHeld before each effect; racing the callback against exit cannot cancel it.
  * An outer root already holding the lock forwards this handle instead of relocking.

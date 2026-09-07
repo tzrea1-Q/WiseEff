@@ -43,6 +43,12 @@ revocation. Historical hash-only events remain inspectable but cannot authorize
 the executor. This persistence validation does not authenticate a caller; the
 separate producer must consume the current issued authority and maintenance lock.
 
+Every executor store step requires the original module-issued host lock for the
+exact private parent directory of this journal. A plain `assertHeld` callback,
+an unrelated/ancestor-directory lock, a released handle or a replaced directory
+cannot authorize effects. The approval producer enforces this same direct-parent
+layout before persisting approval. Synthetic fixtures follow this layout too.
+
 The controller must produce these existing-journal entries in order:
 
 1. `recovery-package-captured`: `inputDigest` is

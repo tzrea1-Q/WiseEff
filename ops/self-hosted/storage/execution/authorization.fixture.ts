@@ -1,6 +1,6 @@
 import path from "node:path";
 import { randomUUID } from "node:crypto";
-import { lstat, mkdtemp, open } from "node:fs/promises";
+import { lstat, mkdtemp, open, realpath } from "node:fs/promises";
 import type { Stats } from "node:fs";
 import os from "node:os";
 import { withHostOperationLock } from "../../scripts/parameter-catalog-upgrade/handoff";
@@ -81,6 +81,7 @@ export async function recordSyntheticCaptureEvent(journal: UpgradeJournal, captu
 }
 
 export async function recordSyntheticRecoveryConsumption(directory: string, packageDigest: string, target: RecoveryTargetIdentity, approved = true) {
+  directory = await realpath(directory);
   const backup = await verifyRecoveryPackage(directory, packageDigest);
   const runId = backup.manifest.recovery.runId;
   const opened = openUpgradeJournal({ journalPath: path.join(directory, `synthetic-controller-${randomUUID()}.json`), runId });
@@ -113,8 +114,9 @@ export async function withSyntheticRecoveryTarget<T>(directory: string, packageD
   body: (port: RecoveryPackageTarget, consumption: Awaited<ReturnType<typeof recordSyntheticRecoveryConsumption>>) => Promise<T>,
   approved = true,
 ): Promise<T> {
+  directory = await realpath(directory);
   const consumption = await recordSyntheticRecoveryConsumption(directory, packageDigest, target, approved);
-  return withHostOperationLock(path.join(directory, "fixture-lock"), async lock => body(createControlledRecoveryTarget({ target,
+  return withHostOperationLock(directory, async lock => body(createControlledRecoveryTarget({ target,
     authorization: createRecoveryExecutionAuthorization({ ...consumption, lock }),
   }, { observe: async () => target, ...destination }), consumption));
 }

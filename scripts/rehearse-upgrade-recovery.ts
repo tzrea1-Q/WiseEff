@@ -45,7 +45,7 @@ async function restoreSyntheticPackage(config: RestoreChild) {
   const endpoint = (id: string, port: string) => `127.0.0.1:${owned(id).NetworkSettings.Ports[`${port}/tcp`][0].HostPort}`;
   const loaded = loadUpgradeJournal({ journalPath: config.controllerJournal, runId: config.run });
   if (!loaded.ok) throw new Error("synthetic-execution-journal-unavailable");
-  await withHostOperationLock(path.join(config.directory, "execution-lock"), async lock => {
+  await withHostOperationLock(path.dirname(config.controllerJournal), async lock => {
     const authorization = createRecoveryExecutionAuthorization({ journal: loaded.value, directory: config.directory,
       capture: config.capture, approval: config.approval, restoreToken: config.restoreToken, lock });
     const destination = createControlledRecoveryTarget({ target, authorization }, {

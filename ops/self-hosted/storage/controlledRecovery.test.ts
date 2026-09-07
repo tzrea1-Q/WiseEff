@@ -93,7 +93,7 @@ it("uses the existing authenticated package for target-only restore, refusing dr
     const target = { ...sourceIdentity, deploymentId: "target", postgresIdentity: "pg-target", objectStoreIdentity: "objects-target", redisIdentity: "redis-target" };
     const actions: string[] = [];
     const consumption = await recordSyntheticRecoveryConsumption(directory, captured.packageDigest, target);
-    await withHostOperationLock(path.join(directory, "locks"), async lock => {
+    await withHostOperationLock(consumption.directory, async lock => {
     const destination = createControlledRecoveryTarget({ target,
       authorization: createRecoveryExecutionAuthorization({ ...consumption, lock }),
     }, {

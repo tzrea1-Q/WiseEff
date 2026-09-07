@@ -8,7 +8,7 @@ import { describe, expect, it } from "vitest";
 import { createIsolatedUpgradeDocker } from "../../../../scripts/isolated-upgrade-docker";
 import { openCatalogUpgradeController } from "./controller";
 import { executeHandoff, inspectHandoff, prepareHandoff, withHostOperationLock, type HandoffInputs, type HostOperationLock } from "./handoff";
-import { readHandoffApplicationRequirement } from "./handoff";
+import { readHandoffApplicationRequirement, assertHostOperationLockForJournal } from "./handoff";
 import { bindingJournalPath, createBindingCutoverJournal } from "./bindingJournal";
 import { commitJournalTransition, openUpgradeJournal } from "./journal";
 
@@ -283,6 +283,28 @@ it("invalidates a released lock handle even when a new holder acquires the same 
     await expect(withHostOperationLock(directory, async () => { throw new Error("effect-refused"); })).rejects.toThrow("effect-refused");
     expect(await withHostOperationLock(directory, async lock => { await lock.assertHeld(); return "reacquired"; })).toBe("reacquired");
   } finally { await rm(directory, { recursive: true, force: true }); }
+});
+
+it("binds recovery journal ownership to the exact issued private directory", async () => {
+  const directory = await realpath(await mkdtemp(path.join(os.tmpdir(), "handoff-journal-owner-")));
+  const nested = path.join(directory, "nested"), alias = `${directory}-alias`;
+  try {
+    await mkdir(nested, { mode: 0o700 });
+    await symlink(directory, alias, "dir");
+    await withHostOperationLock(directory, async lock => {
+      await expect(assertHostOperationLockForJournal(lock, path.join(directory, "run.json"))).resolves.toBeUndefined();
+      for (const invalid of ["run.json", `${directory}/nested/../run.json`, path.join(nested, "run.json"), path.join(alias, "run.json")]) {
+        await expect(assertHostOperationLockForJournal(lock, invalid)).rejects.toThrow("lock-not-issued-for-journal");
+      }
+      await withHostOperationLock(nested, async nestedLock => {
+        await expect(assertHostOperationLockForJournal(nestedLock, path.join(alias, "nested", "run.json")))
+          .rejects.toThrow("lock-not-issued-for-journal");
+      });
+    });
+  } finally {
+    await rm(alias, { force: true });
+    await rm(directory, { recursive: true, force: true });
+  }
 });
 
 it("refuses the next effect after the actual lock holder exits and finishes cleanup", async () => {

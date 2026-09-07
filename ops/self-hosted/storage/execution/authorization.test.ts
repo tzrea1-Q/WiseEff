@@ -1,4 +1,4 @@
-import { chmod, link, mkdtemp, readFile, rename, rm, stat, symlink, writeFile } from "node:fs/promises";
+import { chmod, link, mkdtemp, readFile, realpath, rename, rm, stat, symlink, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { expect, it, vi } from "vitest";
@@ -150,8 +150,8 @@ it("refuses a forged target at the root execution entry before opening any packa
   } as never)).rejects.toThrow("unissued-target");
 });
 
-it.each(["valid", "hash-only-capture", "hash-only-approval", "unapproved", "wrong-token", "cross-run", "expired", "package-drift", "approval-revoked", "partial-failure", "lock-lost", "target-drift", "target-drift-after-empty"])("enforces persisted authorization and cross-store boundaries: %s", async fault => {
-  const root = await mkdtemp(path.join(os.tmpdir(), "authorized-recovery-"));
+it.each(["valid", "forged-lock", "released-lock", "wrong-lock-root", "hash-only-capture", "hash-only-approval", "unapproved", "wrong-token", "cross-run", "expired", "package-drift", "approval-revoked", "partial-failure", "lock-lost", "target-drift", "target-drift-after-empty"])("enforces persisted authorization and cross-store boundaries: %s", async fault => {
+  const root = await realpath(await mkdtemp(path.join(os.tmpdir(), "authorized-recovery-")));
   const runId = "synthetic_run";
   const events: string[] = [];
   try {
@@ -184,12 +184,13 @@ it.each(["valid", "hash-only-capture", "hash-only-approval", "unapproved", "wron
         inputDigest: recoveryExecutionRecordDigest(approval), toState: journal.record.state, nextAction: journal.record.nextAction,
         ...(typed ? { recoveryApproval } : {}) }).ok).toBe(true);
     }
-    await withHostOperationLock(path.join(root, "locks"), async lock => {
-      let held = true;
+    let previousLock: Parameters<typeof createRecoveryExecutionAuthorization>[0]["lock"] | undefined;
+    if (fault === "released-lock") await withHostOperationLock(root, async lock => { previousLock = lock; });
+    const execution = withHostOperationLock(fault === "wrong-lock-root" ? path.join(root, "wrong") : root, async lock => {
       let emptyChecked = false;
       const authorization = createRecoveryExecutionAuthorization({ journal, directory: root, capture, approval,
         restoreToken: fault === "wrong-token" ? "restore-other.invalid" : mintRestoreToken(runId, capture.recoveryPointDigest),
-        lock: { assertHeld: async () => { await lock.assertHeld(); if (!held) throw new Error("simulated-lock-loss"); } } });
+        lock: fault === "forged-lock" ? { assertHeld: async () => {} } : previousLock ?? lock });
       const port = createControlledRecoveryTarget({ target, authorization }, {
         observe: async () => (fault === "target-drift" && events.length || fault === "target-drift-after-empty" && emptyChecked) ? { ...target, redisIdentity: "wrong" } : target,
         assertEmptyAndIsolated: async () => { emptyChecked = true; },
@@ -198,7 +199,13 @@ it.each(["valid", "hash-only-capture", "hash-only-approval", "unapproved", "wron
           if (fault === "package-drift") await writeFile(path.join(root, "payload-0.bin"), "tampered");
           if (fault === "approval-revoked") record(RECOVERY_EXECUTION_EVENTS.revoked, recoveryExecutionRecordDigest(approval));
           if (fault === "partial-failure") throw new Error("private-target-connection-must-not-leak");
-          if (fault === "lock-lost") held = false;
+          if (fault === "lock-lost") {
+            const owner = await readFile(path.join(root, ".operation.lock.owner"), "utf8")
+              .catch(() => readFile(path.join(root, ".operation.lock.d", "owner"), "utf8"));
+            const pid = /^pid=([0-9]+)$/m.exec(owner)?.[1];
+            if (!pid || !owner.includes("operation=catalog-handoff\n")) throw new Error("fixture-lock-owner-unavailable");
+            process.kill(Number(pid), "SIGTERM");
+          }
         },
         restoreObjects: async () => { events.push("objects"); }, restoreRedis: async () => { events.push("redis"); },
       });
@@ -216,6 +223,8 @@ it.each(["valid", "hash-only-capture", "hash-only-approval", "unapproved", "wron
       await expect(restoreRecoveryPackage(root, packageDigest, port)).rejects.toThrow(/recovery/);
       expect(events).toEqual(previous);
     });
+    if (fault === "lock-lost") await expect(execution).rejects.toThrow("handoff-lock-lost");
+    else await execution;
     const loaded = loadUpgradeJournal({ journalPath: journal.journalPath, runId });
     expect(loaded.ok).toBe(true);
     if (loaded.ok && events.length) {

@@ -22,7 +22,7 @@ export async function recordRecoveryExecutionApproval(input: {
   const handles: Awaited<ReturnType<typeof open>>[] = [];
   try {
     await assertIncidentRestoreConfirmationCurrent(confirmation);
-    if (!path.isAbsolute(operationRoot) || !journal.journalPath.startsWith(`${operationRoot}${path.sep}`)
+    if (!path.isAbsolute(operationRoot) || path.dirname(journal.journalPath) !== operationRoot
       || confirmation.runId !== journal.record.runId || !/^[A-Za-z0-9_-]+$/.test(confirmation.attemptId)) refuse();
     await assertHostOperationLock(lock, operationRoot);
     const loaded = loadUpgradeJournal({ journalPath: journal.journalPath, runId: confirmation.runId, requireSettled: true });

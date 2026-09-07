@@ -3,7 +3,7 @@ import {
   canonicalJson, commitJournalTransition, loadUpgradeJournal, sha256Prefixed,
   type UpgradeJournal, type RecoveryCaptureRecord, type RecoveryExecutionApprovalRecord,
 } from "../../scripts/parameter-catalog-upgrade/journal";
-import type { HostOperationLock } from "../../scripts/parameter-catalog-upgrade/handoff";
+import { assertHostOperationLockForJournal, type HostOperationLock } from "../../scripts/parameter-catalog-upgrade/handoff";
 import { verifyRecoveryPackage, recoveryPackageStorePorts } from "../recoveryPackage";
 import { restoreCheck } from "../recoveryPoint";
 import { recoveryRefuse } from "../controlledRecovery";
@@ -52,6 +52,7 @@ export function createRecoveryExecutionAuthorization(input: {
   let begun = false; let completed = false; let stepIndex = 0;
   const sessionId = randomUUID();
   const attemptDigest = sha256Prefixed(canonicalJson({ approvalDigest, sessionId }));
+  const assertLock = () => assertHostOperationLockForJournal(lock, journal.journalPath);
   const assertRecord = () => {
     if (capture.runId !== approval.runId || capture.runId !== journal.record.runId || approval.captureDigest !== captureDigest
       || !/^[A-Za-z0-9_-]+$/.test(approval.attemptId) || !approval.approvalReference.trim()
@@ -82,7 +83,7 @@ export function createRecoveryExecutionAuthorization(input: {
   };
   const assertAuthorized = async (binding: RecoveryRestoreBinding) => {
     if (completed) fail();
-    await lock.assertHeld();
+    await assertLock();
     assertRecord();
     if (binding.runId !== capture.runId || binding.packageDigest !== capture.packageDigest
       || canonicalJson(binding.source) !== canonicalJson(capture.source) || canonicalJson(binding.target) !== canonicalJson(approval.target)) fail();
@@ -93,7 +94,7 @@ export function createRecoveryExecutionAuthorization(input: {
     const checked = await restoreCheck({ manifest: current.manifest.recovery, restoreToken: token,
       restoreTargets: {}, stores: recoveryPackageStorePorts(current.manifest, current.manifest.recovery.target) });
     if (!checked.ok) fail();
-    await lock.assertHeld();
+    await assertLock();
     assertRecord();
   };
   const authority: RecoveryExecutionAuthorization = {
@@ -101,11 +102,11 @@ export function createRecoveryExecutionAuthorization(input: {
     async begin(binding) { await assertAuthorized(binding); if (begun) fail(); append(RECOVERY_EXECUTION_EVENTS.started, "crashed"); begun = true; },
     async committed(step) {
       if (!begun || completed || ["postgres", "objects", "redis"][stepIndex] !== step) fail();
-      await lock.assertHeld(); assertRecord(); append(RECOVERY_EXECUTION_EVENTS[step], "committed"); stepIndex++;
+      await assertLock(); assertRecord(); append(RECOVERY_EXECUTION_EVENTS[step], "committed"); stepIndex++;
     },
     async complete() {
       if (!begun || completed || stepIndex !== 3) fail();
-      await lock.assertHeld(); assertRecord(); append(RECOVERY_EXECUTION_EVENTS.completed, "committed"); completed = true;
+      await assertLock(); assertRecord(); append(RECOVERY_EXECUTION_EVENTS.completed, "committed"); completed = true;
     },
     unknown() {
       if (!begun || completed) return;

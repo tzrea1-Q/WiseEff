@@ -35,6 +35,10 @@ CI `34071070497` 与 `34067803219` 均命中此冲突，不是更早的 source-l
 执行器。这些持久化校验不负责认证调用者；独立 producer 仍须消费当前有效的正式授权
 及维护锁。
 
+执行器每个存储步骤都要求 journal 所在私有父目录的原始模块签发宿主锁。普通
+`assertHeld` 回调、无关／祖先目录锁、已释放句柄或被替换目录均不能授权副作用。
+批准 producer 在持久化前也约束 journal 直接位于该目录，合成夹具同样遵守。
+
 父 controller 必须依次写入既有 journal：
 
 1. `recovery-package-captured`：`inputDigest` 为
