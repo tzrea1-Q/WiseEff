@@ -18,6 +18,9 @@ import { assertHostOperationLockForJournal, withHostOperationLock } from "../../
 import { prepareUnapprovedBootstrapTransportBinding } from "./bootstrapCredentialFence.fixture";
 import { digestOf } from "../../release-verification/core/digest";
 import type { BootstrapRootBinding } from "./bootstrapCredentialFence";
+import { applyLegacySqlPrivilegeFence } from "./legacySqlPrivilegeFence";
+import { LEGACY_STRUCTURAL_TABLES } from "../../catalog-kernel/security/catalogRoleManifest";
+import { openUpgradeJournal, commitJournalTransition } from "../../../../ops/self-hosted/scripts/parameter-catalog-upgrade/journal";
 
 // Exclusive parent-owned PG cluster only. These tests authenticate actual
 // bootstrap sessions, not application startup or approved P12/P13 execution.
@@ -420,11 +423,11 @@ if (!process.exitCode && result) process.stdout.write(JSON.stringify(result) + '
 
 it("reopens the exact persisted custody in a separate process using only restricted management transport and rejects changed root selection", async () => {
   await closeInitialManager();
-  const nonce = randomBytes(8).toString("hex"), role = `transport_guard_${nonce}`;
+  const nonce = randomBytes(8).toString("hex"), role = `transport_guard_${nonce}`, writerRole = `transport_writer_${nonce}`;
   const managers = new pg.Pool({ connectionString: privateUrl.href, max: 3, connectionTimeoutMillis: 2000, query_timeout: 5000 });
   managers.on("error", () => {});
   let client: pg.PoolClient | undefined, custody: Awaited<ReturnType<typeof prepareBootstrapCredentialCustody>> | undefined;
-  let created = false, failed = false, ended = false;
+  let created = false, writerCreated = false, failed = false, ended = false;
   const endManagers = async () => { if (!ended) { ended = true; await managers.end(); } };
   try {
     // Actual S7 P0–P10, mapping inventory and storage binding. No report or
@@ -435,6 +438,14 @@ it("reopens the exact persisted custody in a separate process using only restric
     await client.query(`create role ${role} login noinherit password ${pg.escapeLiteral(decodeURIComponent(guardUrl.password))}`);
     created = true;
     await client.query(`grant catalog_migration_owner to ${role} with inherit false, set true, admin false`);
+    // The future SQL successor's exact preimage already exists when the
+    // authentication owner captures its immutable baseline. No extra grant is
+    // smuggled in between authentication and successor inspection.
+    await client.query(`create role ${writerRole} login noinherit password ${pg.escapeLiteral(randomBytes(32).toString("hex"))}`);
+    writerCreated = true;
+    const writerOid = (await client.query("select oid::text from pg_catalog.pg_roles where rolname=$1", [writerRole])).rows[0].oid;
+    const legacyTables = [...LEGACY_STRUCTURAL_TABLES, "driver_schemas", "driver_schema_versions", "dts_property_specs"];
+    await client.query(`grant select,update on ${legacyTables.map(name => `public.${pg.escapeIdentifier(name)}`).join(",")} to ${writerRole}`);
     await client.query("select pg_advisory_lock(hashtext('s7-orc-cutover-target'),hashtext(current_database()))");
     custody = await prepareBootstrapCredentialCustody({ directory, custodianUid: process.getuid!(), oldSecret: decodeURIComponent(privateUrl.password) });
     const expectedRootBinding: BootstrapRootBinding = {
@@ -466,12 +477,51 @@ it("reopens the exact persisted custody in a separate process using only restric
       expect(await inspectInIndependentProcess(inputPath, custodyTransportInspectionChild))
         .toEqual(mode === "exact" ? fenced : { outcome: "unknown" });
     }
+    // Real successor effect and host persistence, followed by another OS
+    // process using only the original restricted transport/custody selection.
+    // This remains storage-linked component evidence, not approved root P12.
+    const journalPath = path.join(directory, `${nonce}.successor-journal.json`), hostRunId = `host-${nonce}`;
+    await withHostOperationLock(directory, async lock => {
+      const opened = openUpgradeJournal({ journalPath, runId: hostRunId });
+      if (!opened.ok) throw new Error("bootstrap-successor-journal-unavailable");
+      const journal = opened.value;
+      const append = async (outcome: "pending" | "applied", intentDigest: string) => {
+        await assertHostOperationLockForJournal(lock, journalPath);
+        const saved = commitJournalTransition(journal, { action: `legacy-sql-privileges-${outcome}`,
+          inputDigest: intentDigest, toState: journal.record.state, nextAction: journal.record.nextAction,
+          outcome: outcome === "applied" ? "committed" : "crashed" });
+        if (!saved.ok || saved.value.replayed) throw new Error("bootstrap-successor-journal-refused");
+      };
+      await withFreshManager(async fresh => {
+        const result = await applyLegacySqlPrivilegeFence({ client: fresh,
+          selection: { runId: binding.intent.runId, attemptId: expectedRootBinding.attemptId, target,
+            activationBindingDigest: binding.bindingDigest, rootRequestDigest: digestOf(request),
+            recoveryPackageDigest: expectedRootBinding.recoveryPackageDigest },
+          runtimeRoles: [{ oid: writerOid, name: writerRole }],
+          recoveryRoles: [{ name: writerRole, login: true, inherit: false, members: [] }],
+          beforeEffect: () => assertHostOperationLockForJournal(lock, journalPath),
+          persistHostIntent: intent => append("pending", intent.intentDigest),
+          persistHostStep: intentDigest => append("applied", intentDigest),
+        });
+        expect(result.outcome).toBe("legacy-sql-privileges-fenced-not-P13");
+        expect((await fresh.query(`select count(*)::int as count from pg_catalog.pg_class c
+          join pg_catalog.pg_namespace n on n.oid=c.relnamespace where n.nspname='public'
+          and c.relname=any($1::text[]) and pg_catalog.has_table_privilege($2,c.oid,'UPDATE')`, [legacyTables, writerRole])).rows)
+          .toEqual([{ count: 0 }]);
+      });
+    });
+    const successorInput = path.join(directory, `${nonce}.successor-input`);
+    await writeFile(successorInput, JSON.stringify({ guardUrl: guardUrl.href, expectedRootBinding,
+      fault: "sql-successor", sqlSuccessor: { journalPath, hostRunId } }), { mode: 0o600, flag: "wx" });
+    expect(await inspectInIndependentProcess(successorInput, custodyTransportInspectionChild)).toEqual(fenced);
   } catch (error) { failed = true; throw error; }
   finally {
     const first = await Promise.allSettled([Promise.resolve().then(() => client?.release(true))]);
     const second = await Promise.allSettled([Promise.resolve().then(endManagers), Promise.resolve().then(() => custody?.close())]);
     const third = await Promise.allSettled([Promise.resolve().then(async () => {
       if (created) await withFreshManager(cleanup => cleanup.query(`drop role ${role}`));
+    }), Promise.resolve().then(async () => {
+      if (writerCreated) await withFreshManager(cleanup => cleanup.query(`drop owned by ${writerRole}; drop role ${writerRole}`));
     })]);
     if ([...first, ...second, ...third].some(r => r.status === "rejected"))
       throw new Error(failed ? "bootstrap-transport-operation-and-cleanup-failed" : "bootstrap-transport-cleanup-failed");
