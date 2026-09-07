@@ -23,6 +23,7 @@ This is not Hosted evidence for the following continuation.
 | `484702598` / base `cda6737a8`, independent clean worktrees and identical dependencies | Same source-lock one-case selector: 1 passed/0 failed/3 filtered each, 43.322s / 38.159s, exit 0. Does not overwrite the full-suite failure or establish inherited failure | candidate `28ff39f4800da4f362ac0044b12e392e21ce44ec127cab6398d4757e5b0542b1`; base `3cee9c7de9a3a1898ebf921e1c1d04e8806af119c551d8b987b4cd993d6574a6` |
 | `372d1366d` plus exact owned-routing/Markdown WIP | Owned `activation-existing-pg16`: 11 collected/passed, 0 skipped, 14.84s, exit 0, cleanup verified; existing storage/readback and real S6 counterexample, not approved full P12 apply | `cc3f57a4a91ab9019fc0d22d2cddfb5ed3c725a781559baafae891dc7513710a` |
 | Clean `801e0a8b31c3c7f00d861c294b0c511889a8da4f`, tree `bf0fe5ec209886b34d957faf6afc7d67f45ce0cf` | Owned `log-redis`: 9 collected/passed, 0 skipped, 2.75s, exit 0, cleanup verified. Prior assertion Red: 8 passed/1 failed, exit 1; only boolean failure output | Green `182278a3c613f5f1d2b08f572cfe3e65e2304382c9474a024a7baaa7ae27013e`; Red `62c9727c18b26a301ceb5f12f152bf284f25d0b3823d3422e8f8c451bc626e2d` |
+| Clean `7d8d9567255608948d2ad8b97c68ac3839b1d688` (only operator/evidence Markdown differs from `801e0a8b3`) | Owned `server-pgvector`: 4237 collected, 4226 passed, 0 failed, 11 skipped; 179.56s, exit 0, cleanup verified. The eleven opt-in runtime bootstrap cases remain skipped | `4c5e70c0b4bdebc90d076189cc5b7954da91df365ab37471598bfc37f16fa832` |
 
 These runs use Node 22.22.3/Vitest 4.1.5 on the independently confirmed development
 Docker Desktop, linux/arm64 images: Redis `sha256:ff02b58f971e7d7d156a1267e283fcbbeee91773b6aa36c49dac28ecfe28eadf`,
@@ -44,7 +45,9 @@ P13, complete producer/report chain, root controller success, full consumer orac
 business recovery/queue/browser/growth acceptance remain internal work. A/B are not
 complete. Real backup, enterprise-network trust, Policy #815 and production approval
 remain separate C dependencies; no production operation occurred. Current continuation
-Hosted, full backend and final integrated review are not yet recorded as passed.
+Hosted and final integrated review are not yet recorded as passed. Documentation
+governance alone passed at `7d8d95672`; the separate generated PostgreSQL schema
+check has not yet been recorded for this continuation.
 
 ## Authorized contract implementation checkpoint, 2026-09-07
 

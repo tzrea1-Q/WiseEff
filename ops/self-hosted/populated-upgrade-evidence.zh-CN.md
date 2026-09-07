@@ -21,6 +21,7 @@ job 跳过。这不是下列续工代码的 Hosted 证据。
 | `484702598`／base `cda6737a8`，独立clean工作树、相同依赖 | 相同 source-lock 单例 selector：各通过1／失败0／过滤3，43.322秒／38.159秒，退出0；不能改写全量失败或据此判为继承失败 | candidate `28ff39f4800da4f362ac0044b12e392e21ce44ec127cab6398d4757e5b0542b1`；base `3cee9c7de9a3a1898ebf921e1c1d04e8806af119c551d8b987b4cd993d6574a6` |
 | `372d1366d` 加精确owned路由／Markdown WIP | owned `activation-existing-pg16`：收集／通过11，跳过0，14.84秒，退出0，清理已核验；既有存储／读回与真实S6反例，不是获批完整P12 apply | `cc3f57a4a91ab9019fc0d22d2cddfb5ed3c725a781559baafae891dc7513710a` |
 | clean `801e0a8b31c3c7f00d861c294b0c511889a8da4f`，tree `bf0fe5ec209886b34d957faf6afc7d67f45ce0cf` | owned `log-redis`：收集／通过9，跳过0，2.75秒，退出0，清理已核验。此前断言Red通过8／失败1、退出1，只输出布尔失败 | Green `182278a3c613f5f1d2b08f572cfe3e65e2304382c9474a024a7baaa7ae27013e`；Red `62c9727c18b26a301ceb5f12f152bf284f25d0b3823d3422e8f8c451bc626e2d` |
+| clean `7d8d9567255608948d2ad8b97c68ac3839b1d688`（与 `801e0a8b3` 仅操作／证据Markdown不同） | owned `server-pgvector`：收集4237、通过4226、失败0、跳过11；179.56秒，退出0，清理已核验。11例显式启用的runtime bootstrap仍跳过 | `4c5e70c0b4bdebc90d076189cc5b7954da91df365ab37471598bfc37f16fa832` |
 
 以上环境为 Node22.22.3／Vitest4.1.5、独立核验的开发 Docker Desktop。
 linux/arm64 image ID：Redis `sha256:ff02b58f971e7d7d156a1267e283fcbbeee91773b6aa36c49dac28ecfe28eadf`；
@@ -37,7 +38,8 @@ Durable源 `2381aaff1`、父API `b404b615b`、activation journal `e0ce5aa42`、C
 42501后仍通过。已请求限定S6决定，没有暗改S6／runtime授权或Policy方案。P13、完整
 producer／报告链、根controller成功、全量消费者oracle、业务恢复／队列／浏览器／增长
 验收仍属内部工作，A／B未完成。真实备份、企业网络信任、Policy #815、生产批准是独立
-C依赖，未执行生产操作。续工候选Hosted、全量backend和最终集成审查尚未记为通过。
+C依赖，未执行生产操作。续工候选Hosted和最终集成审查尚未记为通过。
+`7d8d95672` 的文档治理检查通过；单独的PostgreSQL生成schema检查尚无本轮通过记录。
 
 ## 已授权契约实现检查点，2026-09-07
 
