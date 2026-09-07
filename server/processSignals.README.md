@@ -30,7 +30,14 @@ The additional owned Redis case runs the actual queue runtime and BullMQ task
 in a subprocess, delivers SIGTERM then SIGINT while processing is held, and
 requires a single graceful drain before closing its explicit database seam.
 It consumes the supervising runner's existing private Redis receipt; no child
-creates Docker resources. The new case is pending actual owned-lane execution.
+creates Docker resources. Exact code `ac3423680ac6d348a18a80707fe48508ad34286b`
+ran the owned `log-redis` suite: 12 collected, 12 passed, no failed/skipped,
+exit 0, 5.09 seconds, cleanup verified. The new signal case took 2.365 seconds.
+The image was Linux/arm64 `redis:7-alpine`,
+`sha256:ff02b58f971e7d7d156a1267e283fcbbeee91773b6aa36c49dac28ecfe28eadf`.
+Log `/tmp/upg824-initialization-signals-ac342-redis.log` has SHA-256
+`7e0462a877d39406404067fcf14ec22aadc1387a47f5d5fade54cac7bcadfcc6`.
+This subsequent documentation commit does not change that execution identity.
 None of these tests proves real PostgreSQL business effects or an approved
 production API/worker startup.
 

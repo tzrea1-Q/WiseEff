@@ -22,7 +22,13 @@ runtime purpose 或报告批准。
 新增 owned Redis 用例在子进程中运行实际 queue runtime 和 BullMQ 任务，在
 处理被保持时依次发送 SIGTERM、SIGINT，要求只排空一次，再关闭明确的数据库
 替代。测试消费父监督器现有私有 Redis receipt，子进程不创建 Docker 资源。
-新增用例尚待实际 owned lane 执行。上述测试不证明真实 PostgreSQL 业务作用，
+固定代码 `ac3423680ac6d348a18a80707fe48508ad34286b` 的 owned `log-redis`
+实际收集 12、通过 12、失败和跳过均 0，退出 0，耗时 5.09 秒，自有资源清理已核验。
+新增信号用例耗时 2.365 秒。镜像为 Linux/arm64 的 `redis:7-alpine`，
+`sha256:ff02b58f971e7d7d156a1267e283fcbbeee91773b6aa36c49dac28ecfe28eadf`。
+日志 `/tmp/upg824-initialization-signals-ac342-redis.log` 的 SHA-256 为
+`7e0462a877d39406404067fcf14ec22aadc1387a47f5d5fade54cac7bcadfcc6`。
+后续这份文档提交不改变上述执行身份。上述测试不证明真实 PostgreSQL 业务作用，
 也不代表已批准的 production API/worker 启动成功。
 
 调用者聚焦测试使用既有 runtime bootstrap selector，类型检查使用
