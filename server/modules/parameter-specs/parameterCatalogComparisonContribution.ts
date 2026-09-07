@@ -510,16 +510,7 @@ function classifyCase(input: {
   readonly mappingHeadVersion: number;
   readonly planPin: string;
 }): { result: CghComparisonResult; expectedDifference: CghExpectedDifference | null } {
-  if (
-    input.legacyObservation.status === "query-failure" &&
-    input.legacyObservation.code === CGH_UNQUERYABLE_FAILURE_CODE
-  ) {
-    return { result: "unqueryable/protected-reference-missing", expectedDifference: null };
-  }
-  if (
-    input.canonicalObservation.status === "query-failure" &&
-    input.canonicalObservation.code === CGH_UNQUERYABLE_FAILURE_CODE
-  ) {
+  if (input.legacyObservation.status === "query-failure" || input.canonicalObservation.status === "query-failure") {
     return { result: "unqueryable/protected-reference-missing", expectedDifference: null };
   }
 
@@ -532,17 +523,9 @@ function classifyCase(input: {
     return { result: "exact-equivalent", expectedDifference: null };
   }
 
-  const expectedDifference: CghExpectedDifference = {
-    rClass: input.comparisonId === "PCAT-CMP-D09-LEGACY-OPERATOR-OUTCOME" ? "R1" : "R9",
-    mappingHeadId: input.mappingHeadId,
-    mappingHeadVersion: input.mappingHeadVersion,
-    ...(input.comparisonId === "PCAT-CMP-D09-LEGACY-OPERATOR-OUTCOME"
-      ? { Archive: { id: input.mappingHeadId } }
-      : { typedTarget: { kind: "parameter-definition", id: input.mappingHeadId } }),
-    ruleId: input.comparisonId,
-    planPin: input.planPin,
-  };
-  return { result: "declared-expected-difference", expectedDifference };
+  // Unequal observations are not a plan-declared mapping disposition.
+  // Keep them blocking until the owner supplies exact rule and identity evidence.
+  return { result: "unexplained-difference", expectedDifference: null };
 }
 
 function sortInventory(records: InventoryRecord[]): InventoryRecord[] {

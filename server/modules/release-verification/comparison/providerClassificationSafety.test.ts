@@ -73,6 +73,7 @@ vi.mock("../../../../scripts/wayfinder/inspect-parameter-catalog-cutover", () =>
 
 import { createProductionComparisonProviders, type ComparisonProviderInput } from "./productionProviders";
 import { aggregateLiveComparisonCorpus } from "./aggregateComparisonCorpus";
+import { generateComparisonReport } from "./generateComparisonReport";
 import { handleCatalogRead } from "../../parameter-catalog-api/read";
 
 const sourceRows: Record<string, readonly Record<string, unknown>[]> = {
@@ -107,13 +108,7 @@ beforeEach(() => { fixture.mode = "different"; vi.clearAllMocks(); });
 
 describe("P11 provider classification without declared rule evidence", () => {
   it.each(providers)("$family cannot invent an expected difference from unequal queryable observations", async provider => {
-    const actual = provider.provide(input());
-    if (provider.family === "PRJ" || provider.family === "DBG") {
-      // Preserve these providers' existing explicit refusal of an unexplained case.
-      await expect(actual).rejects.toThrow(`${provider.family} comparison refused an unexplained-difference result`);
-      return;
-    }
-    const contribution = await actual;
+    const contribution = await provider.provide(input());
     expect(contribution.sourceInventoryCount).toBeGreaterThan(0);
     const unequal = contribution.cases.filter(item => item.legacyObservation.status === "value" &&
       item.canonicalObservation.status === "value" &&
@@ -155,8 +150,11 @@ describe("P11 provider classification without declared rule evidence", () => {
     expect(contribution.cases.some(item => item.result === "unexplained-difference")).toBe(true);
   });
 
-  it("the existing real aggregation cannot issue a corpus from invented dispositions", async () => {
-    await expect(aggregateLiveComparisonCorpus(input())).rejects.toThrow(/unexplained-difference/);
+  it("the existing aggregate preserves unexplained cases and the actual report generator refuses them", async () => {
+    const corpus = await aggregateLiveComparisonCorpus(input());
+    expect(corpus.resultCounts["unexplained-difference"]).toBeGreaterThan(0);
+    expect(corpus.resultCounts["declared-expected-difference"]).toBe(0);
+    expect(() => generateComparisonReport(corpus)).toThrow(/unexplained-difference/);
   });
 
   it.each(providers)("$family does not turn an inventory exception into an empty success", async provider => {

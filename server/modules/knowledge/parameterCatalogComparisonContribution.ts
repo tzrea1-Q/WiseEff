@@ -331,16 +331,7 @@ function classifyCase(input: {
   readonly protectedReference: KnwProtectedReference;
   readonly canonicalObservationValue?: Readonly<Record<string, unknown>>;
 }): { result: KnwComparisonResult; expectedDifference: KnwExpectedDifference | null } {
-  if (
-    input.legacyObservation.status === "query-failure" &&
-    input.legacyObservation.code === KNW_UNQUERYABLE_FAILURE_CODE
-  ) {
-    return { result: "unqueryable/protected-reference-missing", expectedDifference: null };
-  }
-  if (
-    input.canonicalObservation.status === "query-failure" &&
-    input.canonicalObservation.code === KNW_UNQUERYABLE_FAILURE_CODE
-  ) {
+  if (input.legacyObservation.status === "query-failure" || input.canonicalObservation.status === "query-failure") {
     return { result: "unqueryable/protected-reference-missing", expectedDifference: null };
   }
 
@@ -353,33 +344,9 @@ function classifyCase(input: {
     return { result: "exact-equivalent", expectedDifference: null };
   }
 
-  const lookup =
-    input.canonicalObservation.status === "value" &&
-    input.canonicalObservation.value.lookup &&
-    typeof input.canonicalObservation.value.lookup === "object"
-      ? (input.canonicalObservation.value.lookup as Record<string, unknown>)
-      : {};
-  const archived = lookup.kind === "archived";
-  const expectedDifference: KnwExpectedDifference = {
-    rClass: "R9",
-    mappingHeadId: input.mappingHeadId,
-    mappingHeadVersion: input.mappingHeadVersion,
-    ...(archived
-      ? { Archive: { id: input.mappingHeadId } }
-      : {
-          typedTarget: {
-            kind:
-              typeof lookup.targetKind === "string"
-                ? lookup.targetKind
-                : input.protectedReference.kind,
-            id:
-              typeof lookup.targetId === "string" ? lookup.targetId : input.protectedReference.id,
-          },
-        }),
-    ruleId: input.comparisonId,
-    planPin: input.planPin,
-  };
-  return { result: "declared-expected-difference", expectedDifference };
+  // Unequal observations are not a plan-declared mapping disposition.
+  // Keep them blocking until the owner supplies exact rule and identity evidence.
+  return { result: "unexplained-difference", expectedDifference: null };
 }
 
 /**
