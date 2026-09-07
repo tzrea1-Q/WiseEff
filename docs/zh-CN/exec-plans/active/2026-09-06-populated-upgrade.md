@@ -9,8 +9,10 @@
 父路由／来源selector 32/32通过。SQL权限效果已集成至 `64d478f37`；固定源
 `2a9b22e2b` 的真实PG19/19及独立Standards／Spec审查通过，此前root／路由selector
 147/147不算数据库效果证明。`64d478f37` 完整scripts为source-lock4/4后1940通过／
-11跳过；backend4300/4300，均exit 0且owned清理验证通过。应用artifact producer
-另行从固定源通过Compose实际构建镜像。两个增量均尚无当前Hosted或完整startup证据。
+11跳过；backend4300/4300，均exit 0且owned清理验证通过。独立审查通过的应用
+artifact producer已集成至 `a557e6886`，selector20/20、build exit 0。
+Builder `75e182236` 实际构建并核验的是源 `a321084a5` 的镜像，不能改记为
+本次集成身份。跨进程包来源选择仍在实现；两个增量均尚无当前Hosted或完整startup证据。
 
 此前 `b8fbae437` 已集成独立审查通过的 bootstrap journal 失锁处理、七表 V13
 能力子矩阵和强制 controlled recovery adapter 路由。Focused 274/274、真实

@@ -4,6 +4,19 @@
 
 ## Integrated candidate, 2026-09-08
 
+Artifact integration `a557e688671d11f7752a61b5f28803af39298bcd`, tree
+`5ccb025d0bb8fcfb433ffd47d11168717505ca4e`, passed 20/20 focused cases in
+348ms, zero failed/skipped, and build exited 0 with retained warnings (8.16s).
+Log SHA256 values: `589ccb2a43871e525c349d26096f4790d5d1c5ab9c2443a8f2a20990ab711fda`
+and `48b5c431de5c85d2aee93b1fb100c364de1ad700bed45a06f886271547db3428`.
+Contract/selfhost exited 0. Boundary retained trusted base `9b3ba7df7e21f5589684bc92c872da593ad4c246`:
+3509/3509 allowances, zero new/stale/growth. The first invocation used an invalid
+argument name and exited 1 before scanning; the corrected invocation exited 0.
+Builder `75e182236` separately built source `a321084a5` using actual BuildKit and
+OCI bytes; both independent reviews passed. Exact identities, refusal history
+and log hashes remain in the [artifact contract](scripts/parameter-catalog-upgrade/applicationArtifact.README.md).
+No current Hosted, startup or complete controller result is implied.
+
 SQL integration `64d478f37875e43aea468fa3ff2f7902a3ac7bae`, tree
 `addec035553353cde8eab0fed19e79e34287d933`, ran full owned scripts: source-lock
 4/4 in 36.94s, then 1940 passed/11 skipped/0 failed (1951) in 85.79s. Owned

@@ -4,6 +4,17 @@
 
 ## 集成候选，2026-09-08
 
+Artifact集成 `a557e688671d11f7752a61b5f28803af39298bcd`，tree
+`5ccb025d0bb8fcfb433ffd47d11168717505ca4e`，focused20/20、348ms、零失败／跳过；
+build exit 0，保留警告（8.16s）。日志SHA256依次为
+`589ccb2a43871e525c349d26096f4790d5d1c5ab9c2443a8f2a20990ab711fda`
+与 `48b5c431de5c85d2aee93b1fb100c364de1ad700bed45a06f886271547db3428`。
+Contract／selfhost exit 0；boundary保留可信基线 `9b3ba7df7e21f5589684bc92c872da593ad4c246`，
+3509/3509，零新增／过期／增长。第一次命令参数名错误，扫描前exit 1；改正后exit 0。
+Builder `75e182236` 另行使用真实BuildKit／OCI字节构建源 `a321084a5`，独立双审通过；
+精确身份、历史拒绝与日志hash见[artifact合同](scripts/parameter-catalog-upgrade/applicationArtifact.README.zh-CN.md)。
+这些结果不是当前Hosted、startup或完整controller通过。
+
 SQL集成 `64d478f37875e43aea468fa3ff2f7902a3ac7bae`，tree
 `addec035553353cde8eab0fed19e79e34287d933`，完整owned scripts：source-lock
 4/4、36.94s；随后1940通过／11跳过／0失败（1951）、85.79s。Owned backend

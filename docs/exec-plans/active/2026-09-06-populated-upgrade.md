@@ -15,8 +15,11 @@ passed 19/19 real PG cases and independent Standards/Spec review; the earlier
 root/route selector passed 147/147, not a database effect proof. At `64d478f37`,
 full scripts passed source-lock 4/4 then 1940 passed/11 skipped; backend passed
 4300/4300, both exit 0 with verified owned cleanup.
-The application artifact producer is separately building an actual fixed-source
-Compose image. Neither increment has current Hosted or full startup evidence.
+The independently reviewed application artifact producer is integrated at
+`a557e6886`; its selector passed 20/20 and build exited 0. Builder `75e182236`
+actually produced and checked an image of source `a321084a5`, separately from
+this integration identity. Restart-safe package selection remains in progress.
+Neither increment has current Hosted or full startup evidence.
 
 Earlier `b8fbae437` integrates the independently reviewed bootstrap journal
 lock checks, the seven-table V13 capability submatrix, and mandatory controlled
