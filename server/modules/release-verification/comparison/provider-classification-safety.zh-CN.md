@@ -47,6 +47,12 @@ CGH 当前正式 comparison readiness 端口执行 `SELECT 1` 后返回 `not-rea
 原始观察、直接 aggregate 和 live aggregate 入口的拒绝，不改错误码来换取解析成功，
 也不生成通过报告。
 
+共享的 checksum 锁定 populated 夹具没有 Review task。本集成测试只在自己的独立数据库
+通过既有 Review repository 补入一条 open 和一条 dismissed 的旧 schema task，均关联
+实际合成 organization、project 和 config revision。两个阶段都必须清点两条 D06 身份，
+并保留各自状态及 source evidence。原来的九行 report gate 允许零 case；现在明确补齐
+九类实际比较夹具覆盖，不修改共享 seed、历史计数、源夹具 checksum 或 Review 批准流程。
+
 该 readiness 端口仍需实际受控的 readiness producer，这是内部集成缺口，与生产备份
 是否提供、逐身份证据格式及 S6 决策分别记录。不能把数据库探针成功直接改为 ready。
 

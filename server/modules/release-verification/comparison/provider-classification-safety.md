@@ -61,6 +61,15 @@ The unchanged parser rejects that observation with
 original observation and refusal of the direct and live aggregate entrances.
 No failure code is rewritten to make it parse, and no report is issued.
 
+The shared checksum-locked populated fixture contains no Review tasks. The local
+integration test supplements only its disposable database through the existing
+Review repository with one open and one dismissed old-schema task, both linked
+to its real synthetic organization, project and config revision. Both phases
+must enumerate both D06 identities and preserve their distinct statuses and
+source evidence. This strengthens the old report's nine gate rows (which could
+contain zero cases) into actual nine-comparison fixture coverage. It changes no
+shared seed, historical counts, source fixture checksum or review approval flow.
+
 That readiness port still needs a real controlled readiness producer. This is
 an internal integration gap, independent of production backup availability or
 the separate per-identity evidence format and S6 decisions. A successful database

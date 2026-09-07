@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { afterAll, describe, expect, it } from "vitest";
 
 import { createPostgresDatabase, getRootPostgresPool } from "../../../shared/database/client";
+import { getSpecReviewTaskById, insertSpecReviewTask } from "../../parameter-specs/repository";
 import {
   createDisposableParameterCatalogDatabase,
   loadParameterCatalogFixture,
@@ -139,6 +140,32 @@ describe("live eleven-family comparison corpus", () => {
     expect(prePool).toBeDefined();
     expect(postPool).toBeDefined();
     try {
+      // Local supplement only: the checksum-locked shared populated fixture has
+      // no Review rows. Keep real old-schema FK links and distinct source states;
+      // these rows are inventory inputs, not review actions or release approvals.
+      const reviews = [
+        { id: "dcp-review-open", status: "open" },
+        { id: "dcp-review-dismissed", status: "dismissed" },
+      ] as const;
+      for (const review of reviews) {
+        await insertSpecReviewTask(preDatabase, {
+          organizationId: "wf671-org",
+          draft: {
+            ...review,
+            projectId: "wf671-project",
+            configRevisionId: "wf671-config-revision",
+            blockerScope: "revision",
+            sourceEvidence: {
+              organizationId: "wf671-org",
+              projectId: "wf671-project",
+              configRevisionId: "wf671-config-revision",
+              propertyKey: "synthetic.review-input",
+            },
+            candidateSchemas: [],
+            projectCount: 1,
+          },
+        });
+      }
       const preInput = providerInput(preDatabase, prePool!, "populated", "pre-activation", POP_PRE_SHA);
       const postInput = providerInput(postDatabase, postPool!, "populated", "post-p13", POP_POST_SHA);
       const preContributions = await collectComparisonContributions(
@@ -188,6 +215,23 @@ describe("live eleven-family comparison corpus", () => {
         // not-ready. The real HTTP handler returns 503 before Kernel loading;
         // this is not a SQL failure, absent business data, or declared R class.
         const cgh = contributions.find((item) => item.family === "CGH")!;
+        const reviewCases = cgh.cases.filter((item) => item.comparisonId === "PCAT-CMP-D06-REVIEW-PROPOSAL-OBSERVATION");
+        expect(reviewCases.map((item) => item.protectedReference.id).sort())
+          .toEqual(reviews.map((item) => item.id).sort());
+        expect(reviewCases.every((item) => item.protectedReference.kind === "review-proposal-observation")).toBe(true);
+        // The two independent collectors must not resolve, discard or rewrite
+        // source Review states just to meet the nine-comparison coverage gate.
+        for (const review of reviews) {
+          expect(await getSpecReviewTaskById(input.database, {
+            organizationId: "wf671-org", taskId: review.id,
+          })).toMatchObject({
+            id: review.id, status: review.status, projectCount: 1,
+            sourceEvidence: {
+              organizationId: "wf671-org", projectId: "wf671-project",
+              configRevisionId: "wf671-config-revision", propertyKey: "synthetic.review-input",
+            },
+          });
+        }
         const definition = cgh.cases.find((item) => item.comparisonId === "PCAT-CMP-D01-DEFINITION-SEMANTICS")!;
         expect(definition.canonicalObservation).toEqual({
           status: "query-failure", code: "503", detail: "catalog-read-list-definitions",
