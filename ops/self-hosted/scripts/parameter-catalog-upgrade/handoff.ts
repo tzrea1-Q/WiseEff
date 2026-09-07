@@ -326,6 +326,24 @@ done`;
   }
 }
 
+/** Management phases reuse the fixed handoff observation under their already
+ * held, issued host lock. This only observes stopped apps and unchanged targets;
+ * it neither stops writers nor proves queue drainage, P12, P13 or approval. */
+export async function verifyStoppedHandoff(plan: HandoffPlan, expectedDigest: string,
+  deps: HandoffObserver, lock: HostOperationLock): Promise<HandoffObservation> {
+  const fixed = structuredClone(plan);
+  await assertHostOperationLockForJournal(lock, fixed.inputs.journalPath);
+  const { digest, ...body } = fixed;
+  if (digest !== expectedDigest || digest !== sha256Prefixed(canonicalJson(body))) fail("plan-digest-mismatch");
+  await assertHostOperationLock(lock, fixed.inputs.lockRoot);
+  let observed: HandoffObservation;
+  try { observed = await observe(fixed.inputs, deps, () => "stopped"); }
+  catch (error) { if (error instanceof Error && /^handoff-[a-z-]+$/.test(error.message)) throw error; return fail("observation-failed"); }
+  await assertHostOperationLockForJournal(lock, fixed.inputs.journalPath);
+  if (canonicalJson(observed) !== canonicalJson(fixed.observation)) fail("target-changed-after-plan");
+  return observed;
+}
+
 /** No second controller or journal: dispatches the actual existing controller only
  * after immutable source/config/store pins are re-observed under the host lock. */
 export async function executeHandoff(plan: HandoffPlan, expectedDigest: string, command: ControllerCommand,

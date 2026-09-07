@@ -208,6 +208,13 @@ old shared secret file. Build metadata uses `WISEEFF_SOURCE_SHA` and
 `WISEEFF_SOURCE_TREE`; handoff separately verifies these labels against fixed Git
 objects and the actual image ID. Labels alone are not reproducible-build evidence.
 
+Management activation can reuse `verifyStoppedHandoff` while holding the existing
+issued lock for the exact journal directory. It re-observes the fixed handoff
+with all three source applications stopped, checks target/configuration drift,
+and verifies the same lock again. It does not stop writers, drain queues, produce
+a P2 proof or approve activation. The root must separately supply these facts;
+ordinary `inspectHandoff` retains its running-source preparation contract.
+
 The new `handoff.ts` binds observed source/candidate artifacts, Compose resources,
 private configuration and store identities under the existing operation lock.
 Its real Compose regression uses identity-fixture application images. It now

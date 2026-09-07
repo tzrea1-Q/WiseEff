@@ -187,6 +187,11 @@ Compose 必须支持 `!override`、`!reset`；版本不支持时失败，不能�
 构建元数据使用 `WISEEFF_SOURCE_SHA`、`WISEEFF_SOURCE_TREE`；handoff 还需对照
 固定 Git 对象和真实 image ID，标签本身不是可复现构建证明。
 
+管理激活阶段可在持有 journal 精确父目录的既有 issued lock 时调用
+`verifyStoppedHandoff`：重新观察固定交接目标，要求三个源应用均已停止，核对资源／配置
+漂移，并再次验证同一把锁。它不负责停写或队列排空，不生成 P2 证明，也不批准激活；
+这些事实仍由实际根入口分别提供。普通 `inspectHandoff` 保持准备阶段要求源服务运行的合同。
+
 新增 `handoff.ts` 绑定实测源／候选 artifact、Compose 资源、私有配置与三存储身份，
 使用既有 operation lock。真实 Compose 回归的应用镜像仍为身份 fixture；现在仅当
 已提交的 P2 证据允许时接受原有应用容器已停止的状态，仍拒绝替换容器和未知 journal

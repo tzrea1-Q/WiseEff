@@ -8,9 +8,19 @@ import { describe, expect, it } from "vitest";
 import { createIsolatedUpgradeDocker } from "../../../../scripts/isolated-upgrade-docker";
 import { openCatalogUpgradeController } from "./controller";
 import { executeHandoff, inspectHandoff, prepareHandoff, withHostOperationLock, type HandoffInputs, type HostOperationLock } from "./handoff";
-import { readHandoffApplicationRequirement, assertHostOperationLockForJournal } from "./handoff";
+import { readHandoffApplicationRequirement, assertHostOperationLockForJournal, verifyStoppedHandoff } from "./handoff";
 import { bindingJournalPath, createBindingCutoverJournal } from "./bindingJournal";
 import { commitJournalTransition, openUpgradeJournal } from "./journal";
+
+it("rejects a structural stopped-handoff lock before observing any target", async () => {
+  let observations = 0;
+  const plan = { inputs: { journalPath: "/unobserved/journal.json" } } as Parameters<typeof verifyStoppedHandoff>[0];
+  await expect(verifyStoppedHandoff(plan, "untrusted", {
+    docker: { daemonId: "unobserved", command() { observations++; throw new Error("must-not-observe"); } },
+    async observeDataIdentity() { observations++; throw new Error("must-not-observe"); },
+  }, { async assertHeld() {} })).rejects.toThrow("handoff-lock-not-issued-for-journal");
+  expect(observations).toBe(0);
+});
 
 it("resumes the exact stopped source only after the same journal durably completed P2", async () => {
   const directory = await realpath(await mkdtemp(path.join(os.tmpdir(), "handoff-resume-")));
@@ -207,10 +217,21 @@ describe.skipIf(process.env.UPG_HANDOFF_DOCKER_TEST !== "1")("actual isolated Co
       expect(fixedResult.ok).toBe(true);
       for (const service of ["api", "worker", "web"]) owned(service);
       compose("stop", "api", "worker", "web");
+      await withHostOperationLock(lockRoot, async lock => {
+        await expect(verifyStoppedHandoff(plan, plan.digest, observer, lock)).resolves.toEqual(plan.observation);
+        expect(await refusal(verifyStoppedHandoff(plan, "wrong-digest", observer, lock))).toBe("handoff-plan-digest-mismatch");
+        const changed = { ...observer, async observeDataIdentity() {
+          return { ...await observer.observeDataIdentity(), redis: "different-observed-redis" };
+        } };
+        expect(await refusal(verifyStoppedHandoff(plan, plan.digest, changed, lock))).toBe("handoff-target-changed-after-plan");
+      });
       expect((await executeHandoff(plan, plan.digest, { action: "inspect" }, { ...observer, openController, withOperationLock: withHostOperationLock })).ok).toBe(true);
       expect(await refusal(executeHandoff(plan, plan.digest, { action: "resume" }, { ...observer, openController, withOperationLock: withHostOperationLock }))).toBe("handoff-source-running-artifact-mismatch");
       for (const service of ["api", "worker", "web"]) owned(service);
       compose("start", "api", "worker", "web");
+      await withHostOperationLock(lockRoot, async lock => {
+        expect(await refusal(verifyStoppedHandoff(plan, plan.digest, observer, lock))).toBe("handoff-source-writer-not-stopped");
+      });
       let controllerOpened = false;
       for (const [key, file] of Object.entries(roleFiles)) {
         await writeFile(file, `ROLE_PURPOSE=${key}\nCONFIGURATION_CHANGED=true\n`);
