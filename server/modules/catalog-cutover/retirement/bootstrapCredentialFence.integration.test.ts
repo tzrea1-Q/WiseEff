@@ -338,7 +338,11 @@ it.each([1, 2] as const)("reconciles the original version after actual commit %s
     })]);
     clearTimeout(timer);
     if (ordinal === 1) child.kill("SIGTERM");
-    expect(await closed).toEqual(ordinal === 1 ? { code: null, signal: "SIGTERM" } : { code: 23, signal: null });
+    const exited = await Promise.race([closed, new Promise<never>((_resolve, reject) => {
+      timer = setTimeout(() => reject(new Error("bootstrap-fault-child-did-not-close")), 1000);
+    })]);
+    clearTimeout(timer);
+    expect(exited).toEqual(ordinal === 1 ? { code: null, signal: "SIGTERM" } : { code: 23, signal: null });
     expect(proxy.observed).toBe(true);
     await proxy.close();
     const oldSecret = await readFile(path.join(directory, `${custody.receipt.version}.old`), "utf8");
