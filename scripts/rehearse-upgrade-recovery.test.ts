@@ -77,5 +77,11 @@ describe("actual isolated three-store restore", () => {
     expect(result.status).toBe(0);
     expect(evidence.manifestDigest).toMatch(/^[a-f0-9]{64}$/);
     expect(result.stdout).not.toContain("postgres://");
+    // Persist the actual test-service identities without private target paths,
+    // credentials, daemon identity or synthetic business payloads.
+    console.info(JSON.stringify({ scope: "synthetic-recovery-service-evidence", imageIdentities: evidence.imageIdentities,
+      manifestDigest: evidence.manifestDigest, sourceStoppedBeforeRestore: evidence.sourceStoppedBeforeRestore,
+      separateRestoreProcess: evidence.separateRestoreProcess, redisPersistence: evidence.redisPersistence,
+      actualQueueVerified: evidence.actualQueueVerified, cleanupVerified: evidence.cleanupVerified }));
   }, 100000);
 });
