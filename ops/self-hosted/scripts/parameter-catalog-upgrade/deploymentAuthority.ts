@@ -150,9 +150,17 @@ export type IncidentRestoreConfirmation = Readonly<{
   approvalReference: string; expiresAt: string;
 }>;
 const confirmations = new WeakSet<object>();
-const confirmationSessions = new WeakMap<object, () => Promise<void>>();
+const confirmationSessions = new WeakMap<object, (source?: RecoveryTargetIdentity) => Promise<void>>();
 export const isIncidentRestoreConfirmation = (value: unknown): value is IncidentRestoreConfirmation =>
   typeof value === "object" && value !== null && confirmations.has(value);
+/** Rechecks only a real issued confirmation against its original private
+ * assignment and live session. It does not approve or execute a restoration. */
+export async function assertIncidentRestoreConfirmationCurrent(confirmation: IncidentRestoreConfirmation, source?: RecoveryTargetIdentity): Promise<void> {
+  const check = typeof confirmation === "object" && confirmation !== null ? confirmationSessions.get(confirmation) : undefined;
+  if (!check) return refuse("RESTORE-SCOPE-REJECTED");
+  try { await check(source === undefined ? undefined : snapshot(source)); }
+  catch (error) { if (error instanceof DeploymentAuthorityError) throw error; refuse("OPERATION-FAILED"); }
+}
 export type DeploymentReportApproval = Readonly<{
   status: "authenticated-report-command-not-persisted"; assignmentDigest: string;
   runId: string; target: RecoveryTargetIdentity; reportDigest: string;
@@ -165,7 +173,7 @@ export const isDeploymentReportApproval = (value: unknown): value is DeploymentR
   typeof value === "object" && value !== null && reportCommands.has(value);
 export async function assertDeploymentReportCommandCurrent(command: DeploymentReportApproval, physicalTarget: ReportDatabaseIdentity): Promise<void> {
   const verify = typeof command === "object" && command !== null ? reportCommandChecks.get(command) : undefined;
-  if (!verify) refuse("REPORT-COMMAND-REJECTED");
+  if (!verify) return refuse("REPORT-COMMAND-REJECTED");
   await verify(snapshot(physicalTarget));
 }
 type ReportRequest = { authorization: string; kind: "operator" | "platform-owner"; purpose: ApprovalCommand["purpose"]; reportDigest: string };
@@ -249,15 +257,16 @@ export async function openDeploymentAuthority(input: DeploymentAuthorityOptions)
         request = snapshot(request);
         return safe(async () => {
           const { assignment, principal } = await authenticate(request.authorization, "incident-owner");
-          if (!id(request.traceId) || !assignment.restore || !same(assignment.restore, { attemptId: request.attemptId, captureDigest: request.captureDigest, target: request.target })) refuse("RESTORE-SCOPE-REJECTED");
+          if (!id(request.traceId) || !assignment.restore || !same(assignment.restore, { attemptId: request.attemptId, captureDigest: request.captureDigest, target: request.target })) return refuse("RESTORE-SCOPE-REJECTED");
           const body = { assignmentDigest: options.expectedAssignmentDigest, runId: options.runId,
             ...structuredClone(assignment.restore), target: Object.freeze({ ...assignment.restore.target }),
             principal: Object.freeze(principal), traceId: request.traceId, expiresAt: assignment.expiresAt };
           const confirmation = Object.freeze({ status: "authenticated-confirmation-not-persisted" as const, ...body, approvalReference: digest(body) });
           confirmations.add(confirmation);
-          confirmationSessions.set(confirmation, async () => {
+          confirmationSessions.set(confirmation, async source => {
             const live = await authenticate(request.authorization, "incident-owner");
             if (identityKey(live.principal) !== identityKey(principal)) refuse("PRINCIPAL-REJECTED");
+            if (source && !same(source,live.assignment.target)) refuse("RESTORE-SCOPE-REJECTED");
           });
           return confirmation;
         });
@@ -269,9 +278,7 @@ export async function openDeploymentAuthority(input: DeploymentAuthorityOptions)
             || confirmation.runId !== options.runId || Date.parse(confirmation.expiresAt) <= Date.now()
             || !assignment.principals.some(principal => principal.kind === "incident-owner" && identityKey(principal) === identityKey(confirmation.principal))
             || !same(assignment.restore, { attemptId: confirmation.attemptId, captureDigest: confirmation.captureDigest, target: confirmation.target })) refuse("RESTORE-SCOPE-REJECTED");
-          const session = confirmationSessions.get(confirmation);
-          if (!session) refuse("RESTORE-SCOPE-REJECTED");
-          await session();
+          await assertIncidentRestoreConfirmationCurrent(confirmation);
         });
       },
       async close() { if (!closed) { closed = true; await authDb.close(); } },

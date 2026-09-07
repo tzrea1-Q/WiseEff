@@ -155,7 +155,7 @@ export async function openReportApprovalTarget(input: { physicalTarget: ReportDa
 export async function approveDeploymentReport(target: unknown, command: DeploymentReportApproval) {
   try {
   const issued = typeof target === "object" && target !== null ? targets.get(target) : undefined;
-  if (!issued) refuse("TARGET-REJECTED");
+  if (!issued) return refuse("TARGET-REJECTED");
   issued.assertCurrent();
   const physical = (target as ReportApprovalTarget).physicalTarget;
   await assertDeploymentReportCommandCurrent(command, physical);

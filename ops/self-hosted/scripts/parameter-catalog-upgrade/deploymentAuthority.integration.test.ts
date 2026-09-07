@@ -1,5 +1,5 @@
 import { randomBytes } from "node:crypto";
-import { mkdtemp, realpath, writeFile, rm, rename } from "node:fs/promises";
+import { mkdir, mkdtemp, realpath, writeFile, rm, rename } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import pg from "pg";
@@ -14,6 +14,12 @@ import { hashLocalAccountPassword } from "../../../../server/modules/auth/localA
 import { openDeploymentAuthority, isIncidentRestoreConfirmation, isDeploymentReportApproval, assertDeploymentReportCommandCurrent, type DeploymentAuthorityAssignment, type DeploymentAuthorityOptions } from "./deploymentAuthority";
 import { canonicalJson, sha256Prefixed } from "./journal";
 import { approveDeploymentReport, openReportApprovalTarget, type ReportApprovalTarget } from "./reportApprovalTarget";
+import { recordControlledRecoveryCapture } from "./recoveryCapture";
+import { recordRecoveryExecutionApproval } from "./recoveryApproval";
+import { withHostOperationLock, type HostOperationLock } from "./handoff";
+import { commitJournalTransition, journalBytes, loadUpgradeJournal, openUpgradeJournal } from "./journal";
+import { createRecoveryExecutionAuthorization, recoveryExecutionRecordDigest, RECOVERY_EXECUTION_EVENTS } from "../../storage/execution/authorization";
+import { mintRestoreToken } from "../../storage/recoveryPoint";
 
 // Receipt validation precedes every connection. No ambient database, auth mock,
 // passed gate adapter, report insertion, or missing-environment skip is used.
@@ -363,3 +369,79 @@ it("closes the authentication pool and refuses later use", async () => {
   await disposable.close(); await disposable.close();
   await expect(disposable.confirmRestore(request())).rejects.toMatchObject({ code: "PCAT-DEPLOYMENT-AUTHORITY-CLOSED" });
 });
+
+it.each(["valid", "forged-confirmation", "wrong-target", "released-lock", "wrong-lock", "missing-capture", "hash-only-capture", "package-drift", "directory-drift", "revoked", "expired", "assignment-drift", "wrong-run", "wrong-capture", "wrong-source", "started", "unknown", "wrong-token"])("persists recovery approval from actual session and typed capture: %s", async fault => {
+  const root = await realpath(await mkdtemp(path.join(os.tmpdir(),"authority-approval-")));
+  const operationRoot = path.join(root,"operation"), directory = path.join(root,"package");
+  await mkdir(operationRoot,{mode:0o700}); await mkdir(directory,{mode:0o700});
+  const runId = `approval-${randomBytes(8).toString("hex")}`;
+  const opened = openUpgradeJournal({journalPath:path.join(operationRoot,"run.json"),runId});
+  if (!opened.ok) throw new Error("approval-fixture-journal-failed");
+  let scoped: Awaited<ReturnType<typeof openDeploymentAuthority>> | undefined;
+  const filename = path.join(custodyRoot,`${runId}.json`);
+  let releasedLock: HostOperationLock | undefined;
+  if (fault === "released-lock") await withHostOperationLock(operationRoot,async lock=>{releasedLock=lock;});
+  try {
+    await withHostOperationLock(operationRoot, async lock => {
+      // Package serialization and capture journal are real. Store adapters here
+      // deliberately use bounded synthetic bytes: this is not pg_restore or a
+      // claim of independent three-store source observation/restoration.
+      const capture = await recordControlledRecoveryCapture({journal:opened.value,operationRoot,directory,target,attemptId:"capture",lock}, {
+        observe: async()=>target, open:async()=>({
+          postgres:async()=>({postgres:Buffer.from("approval-component-dump"),roles:[{name:"component_reader",login:true,inherit:false,members:[]}]}),
+          objects:async()=>[{key:"approval.txt",contentType:"text/plain",metadata:{stage:"approval"},bytes:Buffer.from("component-object")}],
+          redis:async()=>({appendonly:true,files:[{name:"appendonly.aof.manifest",bytes:Buffer.from("file appendonly.aof.1.incr.aof seq 1 type i\n")},{name:"appendonly.aof.1.incr.aof",bytes:Buffer.from("component-aof")}]}),
+          close:async()=>{},
+        }),
+      },{acquire:async()=>({runId,target,digest:"d".repeat(64),observedAt:new Date().toISOString(),expiresAt:new Date(Date.now()+60000).toISOString()}),verify:async()=>{}});
+      const current = structuredClone(assignment);
+      current.runId = fault === "wrong-run" ? `${runId}-other` : runId;
+      current.restore = {attemptId:"restore-attempt",captureDigest:fault === "wrong-capture" ? `sha256:${"0".repeat(64)}` : recoveryExecutionRecordDigest(capture),target:restoreTarget};
+      if (fault === "wrong-source") current.target = {...target,postgresIdentity:"other-source"};
+      await writeFile(filename,JSON.stringify(current),{mode:0o600});
+      scoped = await openDeploymentAuthority({...options,runId:current.runId,target:current.target,assignmentPath:filename,expectedAssignmentDigest:sha256Prefixed(canonicalJson(current))});
+      const confirmation = await scoped.confirmRestore({...request(),...current.restore});
+      let journal = opened.value;
+      if (fault === "missing-capture" || fault === "hash-only-capture") {
+        const empty = openUpgradeJournal({journalPath:path.join(operationRoot,"empty.json"),runId});
+        if (!empty.ok) throw new Error("approval-negative-journal-failed");
+        journal = empty.value;
+        if (fault === "hash-only-capture") expect(commitJournalTransition(journal,{action:RECOVERY_EXECUTION_EVENTS.captured,inputDigest:recoveryExecutionRecordDigest(capture),toState:journal.record.state,nextAction:journal.record.nextAction}).ok).toBe(true);
+      }
+      let selectedLock = lock;
+      if (fault === "released-lock") selectedLock = releasedLock!;
+      if (fault === "wrong-lock") selectedLock = {assertHeld:async()=>{}};
+      if (fault === "package-drift") await writeFile(path.join(directory,"payload-0.bin"),"tampered");
+      if (fault === "directory-drift") {await rename(directory,`${directory}-original`);await mkdir(directory,{mode:0o700});}
+      if (fault === "revoked") await admin.query("update auth_sessions set revoked_at=now() where user_id='incident'");
+      if (fault === "expired") await writeFile(filename,JSON.stringify({...current,expiresAt:"2000-01-01T00:00:00Z"}),{mode:0o600});
+      if (fault === "assignment-drift") await writeFile(filename,JSON.stringify({...current,reports:[]}),{mode:0o600});
+      if (fault === "started" || fault === "unknown") expect(commitJournalTransition(opened.value,{action:fault === "started" ? RECOVERY_EXECUTION_EVENTS.started : RECOVERY_EXECUTION_EVENTS.unknown,inputDigest:`sha256:${"a".repeat(64)}`,toState:opened.value.record.state,nextAction:opened.value.record.nextAction,outcome:"crashed"}).ok).toBe(true);
+      const before = journalBytes(journal.journalPath);
+      const restoreToken = mintRestoreToken(runId,capture.recoveryPointDigest);
+      const invoke = () => recordRecoveryExecutionApproval({journal,operationRoot,lock:selectedLock,
+        confirmation:fault === "wrong-target" ? {...confirmation,target:{...confirmation.target,postgresIdentity:"unassigned"}} : fault === "forged-confirmation" ? {...confirmation} : confirmation,restoreToken:fault === "wrong-token" ? "wrong" : restoreToken});
+      if (fault === "valid") {
+        const approval = await invoke();
+        const loaded = loadUpgradeJournal({journalPath:opened.value.journalPath,runId,requireSettled:true});
+        if (!loaded.ok) throw new Error("approval-fixture-read-failed");
+        expect(loaded.value.record.entries.at(-1)).toMatchObject({action:RECOVERY_EXECUTION_EVENTS.authorized,inputDigest:recoveryExecutionRecordDigest(approval),outcome:"committed",recoveryApproval:{approval,assignmentDigest:confirmation.assignmentDigest,principal:confirmation.principal,traceId:confirmation.traceId}});
+        expect(loaded.value.record.entries.some(entry=>entry.action===RECOVERY_EXECUTION_EVENTS.started)).toBe(false);
+        const consumer = createRecoveryExecutionAuthorization({journal:opened.value,directory,restoreToken,capture,approval,lock});
+        await consumer.assertAuthorized({runId,packageDigest:capture.packageDigest,source:capture.source,target:approval.target});
+        const approved = journalBytes(opened.value.journalPath);
+        await expect(invoke()).rejects.toThrow("PCAT-UPG-RECOVERY-APPROVAL-UNAVAILABLE");
+        expect(journalBytes(opened.value.journalPath)).toEqual(approved);
+        expect(approved.toString()).not.toContain(tokens.get("incident"));
+      } else {
+        await expect(invoke()).rejects.toThrow("PCAT-UPG-RECOVERY-APPROVAL-UNAVAILABLE");
+        expect(journalBytes(journal.journalPath)).toEqual(before);
+      }
+    });
+  } finally {
+    await admin.query("update auth_sessions set revoked_at=null where user_id='incident'");
+    await scoped?.close(); await rm(filename,{force:true});
+    // Explicit disposal of this owned, non-restorable component fixture only.
+    await rm(root,{recursive:true,force:true});
+  }
+},30_000);
