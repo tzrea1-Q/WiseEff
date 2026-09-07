@@ -27,12 +27,6 @@ false）、所有权、直接 ACL、PUBLIC 能力与高权函数委托，再用�
 [初始权限](https://www.postgresql.org/docs/16/catalog-pg-init-privs.html) 比较，
 不使用宽松的函数默认 ACL。挑战不是维护锁，也不构成发布批准。
 
-PUBLIC definer 的审计比较 owner 相对 reader 在各应用 schema 的有效能力：
-表及逐列权限、sequence 权限、CREATE 和额外函数 EXECUTE。低权 owner 仍可能
-委托私有 inner function 或 sequence，不能通过解析 SQL 函数体证明安全。
-没有额外 owner 能力的 definer 不会仅因 definer 身份被拒绝。有效数据库
-CREATE（包括 PUBLIC）会拒绝，普通数据库 CONNECT/TEMP 保持原状。
-
 `createP12Activation` 必须接入真实目标 owner。`installTarget(attemptId)`
 把 P12 效果安装到既有 `runCatalogReleaseAction` 目标端口，不提供 CLI、
 默认目标、环境变量批准或通用 SQL 执行器。目标 owner 生产 artifact、存储、
@@ -104,12 +98,6 @@ producer 通过此管理公共入口获取历史 P12 事实，仍需重新观测
 不能重标为提交后执行。实际 P11 报告与批准、根进程及完整 controller
 仍是独立集成证据。本组件不能单独提供生产运行命令，也不能用
 报告测试的恒定 `passingAdapters` 冒充合法 P11。
-
-后续 owner 委托审查使用同一 owned PG16 lane：2026-09-07 13:21:40 +08:00
-旧审计对五个新增危险条件都错误放行，22 收集／17 通过／5 失败／0 跳过，
-exit 1。修复能力差额比较及有效数据库 CREATE 后，13:22:30 执行得到
-22／22 通过、0 跳过、exit 0，包括没有额外能力的 definer 正例。两轮都验证
-了隔离资源清理；均未执行或证明 P12 激活。
 
 | 文档／文件 | 更新责任 |
 | --- | --- |
