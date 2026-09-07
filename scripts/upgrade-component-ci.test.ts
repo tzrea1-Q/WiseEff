@@ -6,7 +6,7 @@ import * as componentRunner from "./run-upgrade-component-tests";
 const workflow = readFileSync(new URL("../.github/workflows/ci.yml", import.meta.url), "utf8");
 
 it("runs the actual docs-check package command in the owned pgvector lane, separately from generation", () => {
-  expect(componentRunner.componentTestCommands("docs-check")).toEqual([["run", "docs:check"]]);
+  expect(componentRunner.componentTestCommands("docs-check")).toEqual([["run", "docs:check", "--", "--require-database"]]);
   expect(componentRunner.componentTestExecutable("docs-check")).toBe("npm");
   expect(componentRunner.componentTestExecutable("schema-doc")).toBe(process.execPath);
   expect(componentRunner.componentTestCommands("schema-doc")[0].slice(0, 2)).toEqual(["--import", "tsx"]);

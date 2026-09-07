@@ -34,7 +34,7 @@ export function componentTestExecutable(name: string): string {
 export function componentTestCommands(name: string): string[][] {
   if (!Object.hasOwn(suites, name)) throw new Error("unknown-upgrade-component-suite");
   const suite = suites[name];
-  if (suite.command === "docs-check") return [["run", "docs:check"]];
+  if (suite.command === "docs-check") return [["run", "docs:check", "--", "--require-database"]];
   if (suite.command === "schema-doc") return [["--import", "tsx", path.join(root, "scripts/generate-db-schema-doc.ts")]];
   const vitest = path.join(root, "node_modules/vitest/vitest.mjs");
   const commands = [[vitest, "run", "--config", suite.config, ...suite.files]];
