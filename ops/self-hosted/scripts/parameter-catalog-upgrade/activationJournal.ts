@@ -27,7 +27,8 @@ export function createActivationJournal(options: {
   readonly assertBoundary: () => Promise<void>;
   readonly inspect: (intent: ActivationIntentRecord) => Promise<ActivationReadback>;
 }) {
-  const { journal } = options;
+  const { journal, assertBoundary, inspect } = options;
+  if (typeof assertBoundary !== "function" || typeof inspect !== "function") refuse();
   const target = snapshot(options.target);
   const hostRunId = journal.record.runId;
   const cutoverRunId = options.cutoverRunId;
@@ -35,7 +36,7 @@ export function createActivationJournal(options: {
   let busy = false;
   const current = () => {
     const loaded = loadUpgradeJournal({ journalPath: journal.journalPath, runId: hostRunId, requireSettled: true });
-    if (!loaded.ok || loaded.value.record.journalDigest !== journal.record.journalDigest ||
+    if (!loaded.ok || !same(loaded.value.record, journal.record) ||
       loaded.value.record.cutoverRunId !== cutoverRunId) refuse();
     return journal.record.entries.filter(entry => entry.activation).at(-1)?.activation;
   };
@@ -51,7 +52,7 @@ export function createActivationJournal(options: {
   const guarded = async (body: () => Promise<void>) => {
     if (busy) refuse();
     busy = true;
-    try { await options.assertBoundary(); current(); await body(); }
+    try { await assertBoundary(); current(); await body(); }
     catch { refuse(); }
     finally { busy = false; }
   };
@@ -86,14 +87,14 @@ export function createActivationJournal(options: {
     async reconcile() {
       return guarded(async () => {
         const event = current();
-        if (!event || !["pending", "unknown"].includes(event.outcome)) refuse();
+        if (!event || !["pending", "unknown"].includes(event.outcome)) return refuse();
         const intent = structuredClone(event.intent);
         scope(intent);
         const expectedJournalDigest = journal.record.journalDigest;
-        const inspection = structuredClone(await options.inspect(structuredClone(intent)));
+        const inspection = structuredClone(await inspect(structuredClone(intent)));
         // The readback may take time. Keep the host boundary and full-record
         // CAS applicable; no changed observation or journal is guessed safe.
-        await options.assertBoundary(); current();
+        await assertBoundary(); current();
         if (journal.record.journalDigest !== expectedJournalDigest) refuse();
         if (inspection?.kind === "applied" && Object.keys(inspection).sort().join(",") === "binding,currentHeadDigest,kind" &&
           validActivationBinding(inspection.binding) && same(inspection.binding.intent, intent) &&

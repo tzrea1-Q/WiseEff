@@ -28,6 +28,16 @@ const tempJournal = (): string =>
   path.join(mkdtempSync(path.join(tmpdir(), "s11-upg-journal-")), "journal.json");
 
 describe("S11-UPG journal", () => {
+  it("compares the complete in-memory record before appending, not its claimed digest alone", () => {
+    const opened = openUpgradeJournal({ journalPath: tempJournal(), runId: "cas" });
+    if (!opened.ok) throw new Error("fixture-open-failed");
+    const journal = opened.value;
+    expect(commitJournalTransition(journal, { action: "first", inputDigest: "first", toState: "idle", nextAction: "plan" }).ok).toBe(true);
+    const bytes = journalBytes(journal.journalPath);
+    Object.assign(journal.record.entries[0]!, { action: "altered-history" });
+    expect(commitJournalTransition(journal, { action: "second", inputDigest: "second", toState: "idle", nextAction: "plan" }).ok).toBe(false);
+    expect(journalBytes(journal.journalPath)).toEqual(bytes);
+  });
   it("does not silently discard a typed activation pending payload", () => {
     const opened = openUpgradeJournal({ journalPath: tempJournal(), runId: "host" });
     if (!opened.ok) throw new Error("fixture-open-failed");

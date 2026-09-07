@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, expect, it, vi } from "vitest";
@@ -18,7 +18,7 @@ function intent(attemptId = "attempt"): ActivationIntentRecord {
 function binding(request = intent()): ActivationBindingRecord {
   const body = { version: "pcat-activation-v1" as const, intent: request, mode: "canonical" as const,
     sourceSnapshotFingerprint: pin, catalog: { releaseId: "release", releaseDigest: pin, compiledFingerprint: pin, databaseFingerprint: pin },
-    mapping: { epoch: "epoch", headDigest: pin }, comparisonReportDigest: pin };
+    mapping: { epoch: pin, headDigest: pin }, comparisonReportDigest: pin };
   return { ...body, bindingDigest: digest(body) };
 }
 function fixture() {
@@ -152,7 +152,7 @@ it.each(["missing", "state", "next-action", "plan", "cutover", "failure", "orpha
     intent: intent(), ...(fault === "orphan" ? { binding: binding() } : {}) };
   const bytes = journalBytes(f.journal.journalPath);
   const result = commitJournalTransition(f.journal, { action: `activation-${event.outcome}`, inputDigest: fault === "bad-digest" ? pin : digest(event),
-    toState: fault === "state" ? "completed" : "idle", nextAction: fault === "next-action" ? "execute" : "plan",
+    toState: fault === "state" ? "cutover-completed" : "idle", nextAction: fault === "next-action" ? "execute" : "plan",
     ...(fault === "missing" ? {} : { activation: event }), outcome: fault === "orphan" ? "committed" : "crashed",
     ...(fault === "plan" ? { planDigest: pin } : {}), ...(fault === "cutover" ? { cutoverRunId: "other" } : {}),
     ...(fault === "failure" ? { lastFailureCode: "fake" } : {}) });
@@ -174,4 +174,30 @@ it("redacts a non-cloneable malformed request without writing intent", async () 
   const malformed = { ...intent(), privateSecret: function privateSecret() { return "private connection string"; } };
   await expect(f.adapter.pending(malformed)).rejects.toThrow(/^PCAT-UPG-ACTIVATION-JOURNAL-REFUSED$/);
   expect(journalBytes(f.journal.journalPath)).toEqual(before);
+});
+
+it("rejects a non-digest mapping epoch even when the binding hash matches", async () => {
+  const f = fixture(); await f.adapter.pending(intent());
+  const invalid = { ...binding(), mapping: { ...binding().mapping, epoch: "caller-epoch" } };
+  const { bindingDigest: _old, ...body } = invalid; invalid.bindingDigest = digest(body);
+  await expect(f.adapter.committed(invalid)).rejects.toThrow("PCAT-UPG-ACTIVATION");
+});
+
+it.each(["host-lock", "journal-lock", "partial-file"])("refuses %s before acknowledging activation", async fault => {
+  const f = fixture(); await f.adapter.pending(intent());
+  if (fault === "host-lock") f.assertBoundary.mockRejectedValueOnce(new Error("private boundary failure"));
+  if (fault === "journal-lock") mkdirSync(`${f.journal.journalPath}.write-lock`);
+  if (fault === "partial-file") writeFileSync(f.journal.journalPath, "{\"schemaVersion\":");
+  const bytes = journalBytes(f.journal.journalPath);
+  await expect(f.adapter.committed(binding())).rejects.toThrow(/^PCAT-UPG-ACTIVATION-JOURNAL-REFUSED$/);
+  expect(journalBytes(f.journal.journalPath)).toEqual(bytes);
+  expect(f.inspect).not.toHaveBeenCalled();
+});
+
+it("does not accept altered in-memory history merely because its stored digest is unchanged", async () => {
+  const f = fixture(); await f.adapter.pending(intent());
+  const bytes = journalBytes(f.journal.journalPath);
+  Object.assign(f.journal.record.entries[0]!, { action: "tampered-old-history" });
+  await expect(f.adapter.committed(binding())).rejects.toThrow("PCAT-UPG-ACTIVATION");
+  expect(journalBytes(f.journal.journalPath)).toEqual(bytes);
 });

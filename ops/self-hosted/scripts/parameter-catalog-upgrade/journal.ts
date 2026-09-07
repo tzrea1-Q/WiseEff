@@ -342,7 +342,7 @@ const parseRecord = (value: unknown): ControllerResult<JournalRecord> => {
 const exactKeys = (value: unknown, keys: readonly string[]): boolean => typeof value === "object" && value !== null &&
   !Array.isArray(value) && Object.keys(value).sort().join(",") === [...keys].sort().join(",");
 const activationDigest = (value: unknown): value is string => typeof value === "string" && /^sha256:[a-f0-9]{64}$/.test(value);
-const activationToken = (value: unknown): value is string => typeof value === "string" && value.length <= 180 && RUN_ID.test(value);
+const activationToken = (value: unknown): value is string => typeof value === "string" && /^[A-Za-z0-9][A-Za-z0-9_.:-]{0,255}$/.test(value);
 export function validActivationIntent(value: ActivationIntentRecord): boolean {
   if (!exactKeys(value, ["runId", "attemptId", "target", "planDigest", "predecessorBindingDigest", "reportDigest", "expectedObservationDigest", "inputDigest"]) ||
     !activationToken(value.runId) || !activationToken(value.attemptId) || !exactKeys(value.target, ["systemIdentifier", "databaseOid"]) ||
@@ -357,8 +357,7 @@ export function validActivationBinding(value: ActivationBindingRecord): boolean 
     value.version !== "pcat-activation-v1" || value.mode !== "canonical" || !validActivationIntent(value.intent) ||
     !exactKeys(value.catalog, ["releaseId", "releaseDigest", "compiledFingerprint", "databaseFingerprint"]) ||
     !exactKeys(value.mapping, ["epoch", "headDigest"]) ||
-    typeof value.catalog.releaseId !== "string" || !/^[A-Za-z0-9_.:@-]{1,180}$/.test(value.catalog.releaseId) ||
-    typeof value.mapping.epoch !== "string" || !/^[A-Za-z0-9_.:@-]{1,180}$/.test(value.mapping.epoch) ||
+    !activationToken(value.catalog.releaseId) || !activationDigest(value.mapping.epoch) ||
     ![value.sourceSnapshotFingerprint, value.catalog.releaseDigest, value.catalog.compiledFingerprint, value.catalog.databaseFingerprint,
       value.mapping.headDigest, value.comparisonReportDigest, value.bindingDigest].every(activationDigest)) return false;
   const { bindingDigest, ...body } = value;
@@ -576,7 +575,8 @@ export const commitJournalTransition = (
     return withJournalWriteLock(journal.journalPath, () => {
       const current = loadUpgradeJournal({ journalPath: journal.journalPath, runId: journal.record.runId });
       if (!current.ok) return current;
-      if (current.value.record.journalDigest !== journal.record.journalDigest) {
+      if (current.value.record.journalDigest !== journal.record.journalDigest ||
+          canonicalJson(current.value.record) !== canonicalJson(journal.record)) {
         return failClosed("PCAT-UPG-ILLEGAL-ACTION", "journal changed; inspect before retry");
       }
       return appendTransition(journal, draft, now);
