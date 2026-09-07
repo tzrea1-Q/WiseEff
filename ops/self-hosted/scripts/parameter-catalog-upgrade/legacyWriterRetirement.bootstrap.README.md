@@ -25,6 +25,44 @@ custody directory and issued receipt. This is neither a P13 checkpoint nor a
 runtime grant. The low-level fence retains its own intent/applied events and
 authentication/owner/ACL invariants.
 
+## Durable authentication step in the host journal
+
+The bootstrap branch links those SQL events to the original host journal.
+After actual root admission and private credential custody are ready,
+`bootstrap-retirement-pending` must complete file and directory fsync before
+the first SQL intent. Its typed payload binds the host run separately from
+the cutover run, complete root binding (including the P12 intent/report),
+original capture digest, SQL request digest and non-secret custody version.
+Passwords, password hashes and connection URLs are not stored in this event.
+
+Only the existing `applyBootstrapCredentialFence` acknowledgment followed by
+actual `inspectBootstrapCredentialFence` with the same digest can produce
+`bootstrap-retirement-credential-step`. The root rereads the unique unchanged
+SQL root request and repeats its live guard, target, source, package and report
+checks. The issued host lock and original private journal directory descriptor
+are checked around each append. Whole-record CAS advances only to this root
+invocation's acknowledged append, never an unrelated change during an await.
+The records preserve controller state, phases, next action and pins.
+
+An uncertain effect may append `bootstrap-retirement-unknown` only while the
+host boundary remains available; otherwise pending remains. Neither authorizes
+a second rotation, even under a new attempt. If rename succeeds but directory
+fsync fails, diagnostic reading may see a credential-step while the retained
+write lock still makes normal loading refuse. No lock removal, acknowledgment
+or automatic retry is performed. Independent inspection still uses the SQL
+request, original custody and new-secret-only transport; it does not promote
+host pending or unknown. Further reconciliation needs those actual root
+observations, not the host record alone.
+
+This increment is bootstrap-only and reuses 0137 without schema or grant
+changes. It does not create a P13 checkpoint, complete writer retirement, issue
+runtime generation or publish startup. Tests use real host files/CAS/fsync with
+explicit root SQL, Docker, report and activation substitutes. They prove root
+ordering and persistence, not whole-root approved P12/P13 PostgreSQL execution.
+The four initial regression failures are separate from an earlier fixture-only
+mutation failure. Historical 27-case PG results are not relabeled as evidence
+for this host integration.
+
 ## Lock and lifecycle boundaries
 
 | Lease or operation | Required fact and compatibility |

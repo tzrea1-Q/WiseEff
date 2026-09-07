@@ -112,6 +112,33 @@ export type StartupPublicationEvent = {
   readonly outcome: "pending" | "committed" | "unknown";
 };
 
+/** One authentication step of root retirement. Neither this record nor its
+ * credential-step outcome is a completed P13 or startup authorization. */
+export type BootstrapRetirementIntent = {
+  readonly hostRunId: string;
+  readonly rootBinding: {
+    readonly contract: "pcat-bootstrap-application-authentication-v1";
+    readonly runId: string;
+    readonly attemptId: string;
+    readonly activationIntent: ActivationIntentRecord;
+    readonly activationBindingDigest: string;
+    readonly handoffDigest: string;
+    readonly recoveryPackageDigest: string;
+    readonly recoveryPointDigest: string;
+    readonly target: ActivationIntentRecord["target"];
+    readonly roleName: string;
+    readonly custodyDirectory: string;
+  };
+  readonly captureDigest: string;
+  readonly rootRequestDigest: string;
+  readonly credentialVersion: string;
+};
+export type BootstrapRetirementEvent = {
+  readonly intent: BootstrapRetirementIntent;
+  readonly outcome: "pending" | "credential-step" | "unknown";
+  readonly credentialIntentDigest?: string;
+};
+
 // Persistence types live with the journal, never in the execution layer: check
 // modules must not acquire an indirect import of restore mechanisms.
 export type RecoveryCaptureRecord = {
@@ -152,6 +179,7 @@ export type JournalEntry = {
   readonly bindingPhase?: BindingPhaseEvent;
   readonly activation?: ActivationJournalEvent;
   readonly publication?: StartupPublicationEvent;
+  readonly bootstrapRetirement?: BootstrapRetirementEvent;
   readonly recoveryCapture?: RecoveryCaptureEvent;
   readonly recoveryApproval?: RecoveryApprovalEvent;
 };
@@ -205,6 +233,7 @@ export type JournalTransitionDraft = {
   readonly bindingPhase?: BindingPhaseEvent;
   readonly activation?: ActivationJournalEvent;
   readonly publication?: StartupPublicationEvent;
+  readonly bootstrapRetirement?: BootstrapRetirementEvent;
   readonly recoveryCapture?: RecoveryCaptureEvent;
   readonly recoveryApproval?: RecoveryApprovalEvent;
 };
@@ -304,6 +333,7 @@ const parseRecord = (value: unknown): ControllerResult<JournalRecord> => {
   const captures = new Map<string, RecoveryCaptureEvent>();
   let activation: ActivationJournalEvent | undefined;
   let publication: StartupPublicationEvent | undefined;
+  let retirement: BootstrapRetirementEvent | undefined;
   for (const [index, entry] of candidate.entries.entries()) {
     if (!entry || entry.seq !== index + 1 || typeof entry.action !== "string" ||
         typeof entry.inputDigest !== "string" || !["committed", "crashed"].includes(entry.outcome) ||
@@ -333,6 +363,12 @@ const parseRecord = (value: unknown): ControllerResult<JournalRecord> => {
         return failClosed("PCAT-UPG-ILLEGAL-ACTION", "upgrade journal publication event is invalid");
       }
       publication = entry.publication;
+    }
+    if (entry.bootstrapRetirement || entry.action.startsWith("bootstrap-retirement-")) {
+      if (!validBootstrapRetirementEvent(entry, candidate, index, retirement)) {
+        return failClosed("PCAT-UPG-ILLEGAL-ACTION", "bootstrap retirement evidence is invalid");
+      }
+      retirement = entry.bootstrapRetirement;
     }
     if (entry.recoveryCapture) {
       const event = entry.recoveryCapture;
@@ -471,6 +507,40 @@ function validActivationEvent(entry: JournalEntry, record: JournalRecord, index:
   } else if (!["pending", "unknown"].includes(previous.outcome)) return false;
   return !applied || Boolean(event.binding && validActivationBinding(event.binding) && canonicalJson(event.binding.intent) === canonicalJson(event.intent));
 }
+function validBootstrapRetirementEvent(entry: JournalEntry, record: JournalRecord, index: number, previous?: BootstrapRetirementEvent): boolean {
+  const event = entry.bootstrapRetirement;
+  const hash = (value: unknown): value is string => typeof value === "string" && /^sha256:[a-f0-9]{64}$/.test(value);
+  if (!event || !exactKeys(event, ["intent", "outcome", ...(event.outcome === "credential-step" ? ["credentialIntentDigest"] : [])]) ||
+    !["pending", "credential-step", "unknown"].includes(event.outcome) ||
+    !exactKeys(event.intent, ["hostRunId", "rootBinding", "captureDigest", "rootRequestDigest", "credentialVersion"])) return false;
+  const intent = event.intent, binding = intent.rootBinding;
+  if (!exactKeys(binding, ["contract", "runId", "attemptId", "activationIntent", "activationBindingDigest", "handoffDigest",
+    "recoveryPackageDigest", "recoveryPointDigest", "target", "roleName", "custodyDirectory"]) ||
+    binding.contract !== "pcat-bootstrap-application-authentication-v1" || intent.hostRunId !== record.runId ||
+    binding.runId !== record.cutoverRunId || typeof binding.attemptId !== "string" || !RUN_ID.test(binding.attemptId) ||
+    !validActivationIntent(binding.activationIntent) || binding.activationIntent.runId !== binding.runId ||
+    binding.activationIntent.planDigest !== record.planDigest || canonicalJson(binding.target) !== canonicalJson(binding.activationIntent.target) ||
+    !hash(binding.activationBindingDigest) || !hash(binding.handoffDigest) || !hash(binding.recoveryPointDigest) ||
+    typeof binding.recoveryPackageDigest !== "string" || !/^[a-f0-9]{64}$/.test(binding.recoveryPackageDigest) ||
+    typeof binding.roleName !== "string" || !binding.roleName || binding.roleName.length > 63 || /[\u0000-\u001f\u007f]/.test(binding.roleName) ||
+    typeof binding.custodyDirectory !== "string" || !path.isAbsolute(binding.custodyDirectory) ||
+    path.normalize(binding.custodyDirectory) !== binding.custodyDirectory || /[\u0000-\u001f\u007f]/.test(binding.custodyDirectory) ||
+    !hash(intent.captureDigest) || !hash(intent.rootRequestDigest) || typeof intent.credentialVersion !== "string" || !/^[a-f0-9]{32}$/.test(intent.credentialVersion) ||
+    entry.action !== `bootstrap-retirement-${event.outcome}` || entry.fromState !== entry.toState ||
+    entry.outcome !== (event.outcome === "credential-step" ? "committed" : "crashed") ||
+    entry.inputDigest !== sha256Prefixed(canonicalJson(event)) || event.outcome === "credential-step" && !hash(event.credentialIntentDigest)) return false;
+  const prior = record.entries.slice(0, index);
+  const captures = prior.filter(item => item.recoveryCapture?.outcome === "committed");
+  const captured = captures[0];
+  if (captures.length !== 1 || !captured?.recoveryCapture?.capture || captured.inputDigest !== intent.captureDigest ||
+    captured.recoveryCapture.capture.packageDigest !== binding.recoveryPackageDigest ||
+    captured.recoveryCapture.capture.recoveryPointDigest !== binding.recoveryPointDigest ||
+    prior.some(item => item.action.startsWith("recovery-execution-") || item.seq > captured.seq &&
+      ["recovery-capture-pending", "recovery-capture-unknown"].includes(item.action))) return false;
+  if (event.outcome === "pending") return !previous;
+  return previous?.outcome === "pending" && canonicalJson(previous.intent) === canonicalJson(intent);
+}
+
 const validRecoverySource = (value: RecoveryCaptureRecord["source"]): boolean =>
   exactKeys(value, ["deploymentId", "hostFingerprint", "postgresIdentity", "objectStoreIdentity", "redisIdentity"]) &&
   Object.values(value).every(part => typeof part === "string" && part.trim() === part && part.length > 0 && part.length <= 2048 && !/[\u0000-\u001f\u007f]/.test(part));
@@ -675,13 +745,18 @@ const appendTransition = (
   draft: JournalTransitionDraft,
   now: () => Date,
 ): ControllerResult<JournalCommit> => {
-  if ((draft.recoveryCapture || draft.recoveryApproval || draft.activation || draft.publication) && (draft.toState !== journal.record.state || draft.nextAction !== journal.record.nextAction ||
+  if ((draft.recoveryCapture || draft.recoveryApproval || draft.activation || draft.publication || draft.bootstrapRetirement) && (draft.toState !== journal.record.state || draft.nextAction !== journal.record.nextAction ||
     draft.lastFailureCode !== undefined && draft.lastFailureCode !== journal.record.lastFailureCode ||
     (["planDigest", "cutoverRunId", "verificationPlanDigest", "verificationAttemptDigest"] as const)
       .some(key => draft[key] !== undefined && draft[key] !== journal.record[key]))) {
     return failClosed("PCAT-UPG-ILLEGAL-ACTION", "recovery evidence cannot change controller state or pins");
   }
   if (isReplay(journal.record, draft)) {
+    // An acknowledgment belongs to the live root invocation. Reopening a
+    // pending/unknown record never authorizes another credential mutation.
+    if (draft.bootstrapRetirement || draft.action.startsWith("bootstrap-retirement-")) {
+      return failClosed("PCAT-UPG-ILLEGAL-ACTION", "bootstrap retirement requires live root inspection; replay is not an acknowledgment");
+    }
     if (draft.publication || draft.action.startsWith("startup-publication-")) {
       const latest = journal.record.entries.filter(entry => entry.publication).at(-1);
       if (!draft.publication || latest?.action !== draft.action || latest.inputDigest !== draft.inputDigest ||
@@ -728,6 +803,7 @@ const appendTransition = (
     ...(draft.bindingPhase ? { bindingPhase: draft.bindingPhase } : {}),
     ...(draft.activation ? { activation: structuredClone(draft.activation) } : {}),
     ...(draft.publication ? { publication: structuredClone(draft.publication) } : {}),
+    ...(draft.bootstrapRetirement ? { bootstrapRetirement: structuredClone(draft.bootstrapRetirement) } : {}),
     ...(draft.recoveryCapture ? { recoveryCapture: structuredClone(draft.recoveryCapture) } : {}),
     ...(draft.recoveryApproval ? { recoveryApproval: structuredClone(draft.recoveryApproval) } : {}),
   };
@@ -746,7 +822,7 @@ const appendTransition = (
     updatedAt: at,
     entries: [...journal.record.entries, entry],
   });
-  if (draft.recoveryCapture || draft.recoveryApproval || draft.activation || draft.publication || draft.action.startsWith("startup-publication-") || draft.action.startsWith("activation-") || draft.action === "recovery-capture-pending" || draft.action === "recovery-capture-unknown") {
+  if (draft.recoveryCapture || draft.recoveryApproval || draft.activation || draft.publication || draft.bootstrapRetirement || draft.action.startsWith("bootstrap-retirement-") || draft.action.startsWith("startup-publication-") || draft.action.startsWith("activation-") || draft.action === "recovery-capture-pending" || draft.action === "recovery-capture-unknown") {
     const parsed = parseRecord(record);
     if (!parsed.ok) return parsed;
   }

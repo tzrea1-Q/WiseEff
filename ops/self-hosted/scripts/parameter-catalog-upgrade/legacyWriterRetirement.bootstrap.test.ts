@@ -12,11 +12,11 @@ const io = vi.hoisted(() => ({ apply: vi.fn(), inspect: vi.fn(), transportInspec
   package: vi.fn(), docker: vi.fn(), activation: vi.fn(), report: vi.fn(),
   pools: [] as string[],
   clients: [] as Array<{ kind: string; query: ReturnType<typeof vi.fn>; release: ReturnType<typeof vi.fn>; emit(event: string): boolean }>,
-  fault: "", hostRefused: false, sourceConnects: 0, closed: [] as string[], rootEvents: [] as Array<{ payload: unknown }> }));
+  fault: "", fsyncDirectoryInode: -1, hostRefused: false, sourceConnects: 0, closed: [] as string[], rootEvents: [] as Array<{ payload: unknown }> }));
 vi.mock("node:fs", async original => {
   const actual = await original<typeof import("node:fs")>();
   return { ...actual, fsyncSync(fd: number) {
-    if (io.fault === "host-fsync") throw new Error("private-fsync-diagnostic");
+    if (io.fault === "host-fsync" || io.fault === "host-directory-fsync" && actual.fstatSync(fd).ino === io.fsyncDirectoryInode) throw new Error("private-fsync-diagnostic");
     return actual.fsyncSync(fd);
   } };
 });
@@ -169,6 +169,7 @@ it("persists the root intent before SQL and the actual inspection step after SQL
   const f = await fixture();
   io.apply.mockImplementationOnce(async () => {
     expect(retirementEvents(f.input).map(entry => entry.action)).toEqual(["bootstrap-retirement-pending"]);
+    return { outcome: "authentication-fenced-not-P13", intentDigest: `sha256:${"b".repeat(64)}` };
   });
   await expect(retireLegacyApplicationLogins(f.input)).resolves.toMatchObject({ status: "bootstrap-authentication-fenced-not-p13" });
   expect(retirementEvents(f.input).map(entry => entry.action)).toEqual(["bootstrap-retirement-pending", "bootstrap-retirement-credential-step"]);
@@ -189,6 +190,56 @@ it.each(["host-fsync", "host-lock"])("retains pending and refuses a blind retry 
   io.fault = "";
   await expect(retireLegacyApplicationLogins(f.input)).rejects.toThrow("PCAT-UPG-LEGACY-LOGIN-");
   expect(io.apply).toHaveBeenCalledOnce();
+});
+
+it("treats a renamed credential-step as unsettled when the directory fsync acknowledgment is lost", async () => {
+  const f = await fixture();
+  io.fsyncDirectoryInode = (await stat(f.input.handoff.inputs.lockRoot)).ino;
+  io.inspect.mockImplementationOnce(async () => { io.fault = "host-directory-fsync";
+    return { outcome: "authentication-fenced-not-P13", intentDigest: `sha256:${"b".repeat(64)}` }; });
+  await expect(retireLegacyApplicationLogins(f.input)).rejects.toThrow("TRANSACTION-OUTCOME-UNKNOWN");
+  expect(retirementEvents(f.input).map(entry => entry.action)).toEqual(["bootstrap-retirement-pending", "bootstrap-retirement-credential-step"]);
+  expect(loadUpgradeJournal({ journalPath: f.input.handoff.inputs.journalPath, runId: "hostrun", requireSettled: true }).ok).toBe(false);
+  io.fault = "";
+  await expect(retireLegacyApplicationLogins(f.input)).rejects.toThrow("JOURNAL-UNAVAILABLE");
+  expect(io.apply).toHaveBeenCalledOnce();
+});
+
+it("retains the exact host intent as unknown after an uncertain SQL effect, without retrying it", async () => {
+  const f = await fixture();
+  io.apply.mockRejectedValueOnce(new Error("private-SQL-COMMIT-acknowledgment"));
+  await expect(retireLegacyApplicationLogins(f.input)).rejects.toThrow("TRANSACTION-OUTCOME-UNKNOWN");
+  const events = retirementEvents(f.input);
+  expect(events.map(entry => entry.action)).toEqual(["bootstrap-retirement-pending", "bootstrap-retirement-unknown"]);
+  expect(events[1].bootstrapRetirement?.intent).toEqual(events[0].bootstrapRetirement?.intent);
+  expect(events[0].bootstrapRetirement?.intent.rootRequestDigest).toBe((io.rootEvents[0].payload as { requestDigest: string }).requestDigest);
+  await expect(retireLegacyApplicationLogins(f.input)).rejects.toThrow("ATTEMPT-REQUIRES-RECONCILE");
+  expect(io.apply).toHaveBeenCalledOnce();
+});
+
+it.each(["different-inspection", "missing-inspection", "changed-root", "duplicate-root"])("does not turn %s into a credential-step", async fault => {
+  const f = await fixture();
+  io.inspect.mockImplementationOnce(async () => {
+    if (fault === "changed-root") io.rootEvents[0] = { payload: { private: "changed" } };
+    if (fault === "duplicate-root") io.rootEvents.push(io.rootEvents[0]);
+    return fault === "missing-inspection" ? { outcome: "unknown" } :
+      { outcome: "authentication-fenced-not-P13", intentDigest: `sha256:${(fault === "different-inspection" ? "c" : "b").repeat(64)}` };
+  });
+  await expect(retireLegacyApplicationLogins(f.input)).rejects.toThrow("TRANSACTION-OUTCOME-UNKNOWN");
+  expect(retirementEvents(f.input).map(entry => entry.action)).toEqual(["bootstrap-retirement-pending", "bootstrap-retirement-unknown"]);
+});
+
+it("does not adopt an unrelated full-record journal append between SQL and host acknowledgment", async () => {
+  const f = await fixture();
+  io.inspect.mockImplementationOnce(async () => {
+    const opened = loadUpgradeJournal({ journalPath: f.input.handoff.inputs.journalPath, runId: "hostrun" });
+    if (!opened.ok) throw new Error("fixture-journal-unavailable");
+    expect(commitJournalTransition(opened.value, { action: "unrelated-observation", inputDigest: "unrelated",
+      toState: opened.value.record.state, nextAction: opened.value.record.nextAction }).ok).toBe(true);
+    return { outcome: "authentication-fenced-not-P13", intentDigest: `sha256:${"b".repeat(64)}` };
+  });
+  await expect(retireLegacyApplicationLogins(f.input)).rejects.toThrow("TRANSACTION-OUTCOME-UNKNOWN");
+  expect(retirementEvents(f.input).map(entry => entry.action)).toEqual(["bootstrap-retirement-pending"]);
 });
 
 it("the OID10 root route consumes the controlled authentication fence with its exact custody", async () => {

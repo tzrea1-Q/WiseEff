@@ -21,7 +21,8 @@ import { readBindingDatabaseIdentity } from "../../../../server/modules/paramete
 import { digestOf } from "../../../../server/modules/release-verification/core/digest";
 import { verifyRecoveryPackage } from "../../storage/recoveryPackage";
 import { assertHostOperationLockForJournal, type HandoffPlan, type HostOperationLock } from "./handoff";
-import { canonicalJson, loadUpgradeJournal, sha256Prefixed } from "./journal";
+import { canonicalJson, commitJournalTransition, loadUpgradeJournal, sha256Prefixed,
+  type BootstrapRetirementEvent, type BootstrapRetirementIntent } from "./journal";
 import { observeLegacySourceEndpoint } from "./legacyWriterSource";
 
 export class LegacyLoginRetirementError extends Error {
@@ -146,6 +147,8 @@ async function retire(input: LegacyLoginRetirementInput, bootstrapInspection = f
   let adminPool: pg.Pool | undefined;
   let inspectionReader: pg.PoolClient | undefined;
   let packageDirectory: Awaited<ReturnType<typeof open>> | undefined;
+  let journalDirectory: Awaited<ReturnType<typeof open>> | undefined;
+  let recordRetirementUnknown: (() => Promise<void>) | undefined;
   let transaction = false, ending = false, unknown = false;
   let connectionFailed = false;
   let adminReleased = false, bootstrapStarted = false, failed = false;
@@ -164,6 +167,7 @@ async function retire(input: LegacyLoginRetirementInput, bootstrapInspection = f
     const loaded = loadUpgradeJournal({ journalPath: plan.inputs.journalPath, runId: plan.inputs.runId, requireSettled: true });
     need(loaded.ok, "JOURNAL-UNAVAILABLE");
     if (!loaded.ok) return refuse("JOURNAL-UNAVAILABLE");
+    let expectedJournal = structuredClone(loaded.value.record);
     need(loaded.value.record.cutoverRunId === fixed.activationIntent.runId, "CUTOVER-RUN-MISMATCH");
     const captureEntries = loaded.value.record.entries.filter(entry => entry.recoveryCapture?.outcome === "committed" && entry.recoveryCapture.capture);
     const captures = captureEntries.map(entry => entry.recoveryCapture!);
@@ -195,7 +199,7 @@ async function retire(input: LegacyLoginRetirementInput, bootstrapInspection = f
       await assertHostOperationLockForJournal(input.lock, plan.inputs.journalPath);
       await input.activation.boundary.verify();
       const current = loadUpgradeJournal({ journalPath: plan.inputs.journalPath, runId: plan.inputs.runId, requireSettled: true });
-      need(current.ok && current.value.record.journalDigest === loaded.value.record.journalDigest, "JOURNAL-DRIFT");
+      need(current.ok && isDeepStrictEqual(current.value.record, expectedJournal), "JOURNAL-DRIFT");
       await packageNow();
       need(docker.daemonId === plan.inputs.expectedDaemonId, "DAEMON-MISMATCH");
       const urls: string[] = [];
@@ -373,20 +377,57 @@ async function retire(input: LegacyLoginRetirementInput, bootstrapInspection = f
       const rootBinding = { contract: "pcat-bootstrap-application-authentication-v1", runId: fixed.activationIntent.runId,
         attemptId: fixed.attemptId, activationIntent: fixed.activationIntent, activationBindingDigest: binding.bindingDigest,
         handoffDigest: fixed.expectedHandoffDigest, recoveryPackageDigest: backup.digest, recoveryPointDigest: capture.recoveryPointDigest,
-        target: input.activation.target, roleName: management.name, custodyDirectory };
+        target: input.activation.target, roleName: management.name, custodyDirectory } as const;
+      // One authentication attempt is unresolved until actual inspection. A
+      // stored pending/unknown event never authorizes another password change.
+      need(!expectedJournal.entries.some(entry => entry.bootstrapRetirement), "ATTEMPT-REQUIRES-RECONCILE");
+      journalDirectory = await open(plan.inputs.lockRoot, constants.O_RDONLY | constants.O_DIRECTORY | constants.O_NOFOLLOW);
+      const originalDirectory = await journalDirectory.stat();
+      const checkJournalDirectory = async () => {
+        await assertHostOperationLockForJournal(input.lock, plan.inputs.journalPath);
+        const [held, named] = await Promise.all([journalDirectory!.stat(), lstat(plan.inputs.lockRoot)]);
+        need(held.isDirectory() && named.isDirectory() && !named.isSymbolicLink() && named.uid === process.getuid?.() &&
+          (named.mode & 0o777) === 0o700 && held.dev === originalDirectory.dev && held.ino === originalDirectory.ino &&
+          held.dev === named.dev && held.ino === named.ino && await realpath(plan.inputs.lockRoot) === plan.inputs.lockRoot, "JOURNAL-DIRECTORY-DRIFT");
+      };
+      const appendRetirement = async (event: BootstrapRetirementEvent) => {
+        await check(); await checkJournalDirectory();
+        if (event.outcome !== "unknown") await verifyBoundReport();
+        need(!connectionFailed, "CONNECTION-FAILED");
+        need(isDeepStrictEqual(loaded.value.record, expectedJournal), "JOURNAL-DRIFT");
+        const result = commitJournalTransition(loaded.value, { action: `bootstrap-retirement-${event.outcome}`,
+          inputDigest: sha256Prefixed(canonicalJson(event)), toState: loaded.value.record.state,
+          nextAction: loaded.value.record.nextAction, outcome: event.outcome === "credential-step" ? "committed" : "crashed",
+          bootstrapRetirement: event });
+        need(result.ok && !result.value.replayed, "RETIREMENT-JOURNAL-UNKNOWN");
+        // Advance only by this invocation's own acknowledged CAS, never by
+        // adopting a record observed after an unrelated asynchronous write.
+        expectedJournal = structuredClone(loaded.value.record);
+        await checkJournalDirectory(); await check();
+        if (event.outcome !== "unknown") await verifyBoundReport();
+      };
+      let hostIntent: BootstrapRetirementIntent;
+      let rootRequest: { request: typeof rootBinding & { credentials: BootstrapCredentialCustody["receipt"] }; requestDigest: string };
       {
         need(rootEvents.length === 0, "ATTEMPT-REQUIRES-RECONCILE");
         const originalSecret = decodeURIComponent(new URL(sourceUrls[0]).password);
         need(originalSecret.length > 0 && sourceUrls.every(value => decodeURIComponent(new URL(value).password) === originalSecret), "SOURCE-CREDENTIAL-MISMATCH");
         custody = await prepareBootstrapCredentialCustody({ directory: custodyDirectory, custodianUid: process.getuid!(), oldSecret: originalSecret });
         const request = { ...rootBinding, credentials: custody.receipt };
+        rootRequest = { request, requestDigest: digestOf(request) };
+        hostIntent = { hostRunId: plan.inputs.runId, rootBinding: structuredClone(rootBinding),
+          captureDigest: captureEntries[0].inputDigest, rootRequestDigest: rootRequest.requestDigest,
+          credentialVersion: custody.receipt.version };
+        await verifyGuard();
+        await appendRetirement({ intent: hostIntent, outcome: "pending" });
+        recordRetirementUnknown = async () => { await appendRetirement({ intent: hostIntent, outcome: "unknown" }); };
         await verifyGuard();
         transaction = true;
         await admin.query("begin"); await admin.query("set local synchronous_commit=on");
         await admin.query(`insert into parameter_catalog.parameter_catalog_cutover_events(id,cutover_run_id,sequence_number,phase,event_kind,payload)
           select $1,$2,coalesce(max(sequence_number),0)+1,'P13',$3,$4::jsonb
           from parameter_catalog.parameter_catalog_cutover_events where cutover_run_id=$2`,
-        [`cevt_${randomUUID()}`, fixed.activationIntent.runId, rootKind, JSON.stringify({ request, requestDigest: digestOf(request) })]);
+        [`cevt_${randomUUID()}`, fixed.activationIntent.runId, rootKind, JSON.stringify(rootRequest)]);
         ending = true; await admin.query("commit"); transaction = false; ending = false;
       }
       await verifyGuard();
@@ -397,10 +438,17 @@ async function retire(input: LegacyLoginRetirementInput, bootstrapInspection = f
         // transaction while the low-level effect owns its own transaction.
         beforeEffect: async () => { await targetCheck(); await guard!.verify(); await verifyBoundReport(); } };
       bootstrapStarted = true;
-      await applyBootstrapCredentialFence(command);
+      const applied = await applyBootstrapCredentialFence(command);
       const observed = await inspectBootstrapCredentialFence(command);
       await verifyGuard();
-      need(observed.outcome === "authentication-fenced-not-P13" && observed.intentDigest, "BOOTSTRAP-OUTCOME-UNKNOWN");
+      need(applied.outcome === "authentication-fenced-not-P13" && observed.outcome === "authentication-fenced-not-P13" &&
+        observed.intentDigest && applied.intentDigest === observed.intentDigest, "BOOTSTRAP-OUTCOME-UNKNOWN");
+      const currentRoot = (await admin.query(`select payload from parameter_catalog.parameter_catalog_cutover_events
+        where cutover_run_id=$1 and event_kind=$2 order by sequence_number`, [fixed.activationIntent.runId, rootKind])).rows;
+      need(currentRoot.length === 1 && isDeepStrictEqual(currentRoot[0].payload, rootRequest), "ROOT-INTENT-DRIFT");
+      await verifyGuard();
+      await appendRetirement({ intent: hostIntent, outcome: "credential-step", credentialIntentDigest: observed.intentDigest });
+      recordRetirementUnknown = undefined;
       return { status: "bootstrap-authentication-fenced-not-p13" as const, attemptId: fixed.attemptId,
         fingerprint: digestOf({ rootBinding, intentDigest: observed.intentDigest }) };
     }
@@ -448,6 +496,10 @@ async function retire(input: LegacyLoginRetirementInput, bootstrapInspection = f
     failed = true;
     unknown = ending || bootstrapStarted;
     if (transaction && !ending) { try { await admin?.query("rollback"); } catch { unknown = true; } }
+    // Losing the host lock, directory identity, CAS or fsync means even this
+    // diagnostic append is unavailable. Preserve pending and the SQL/custody
+    // evidence; never clear a persistence lock or retry a credential effect.
+    if (recordRetirementUnknown) { try { await recordRetirementUnknown(); } catch { unknown = true; } }
     if (unknown) return refuse("TRANSACTION-OUTCOME-UNKNOWN");
     if (error instanceof LegacyLoginRetirementError) throw error;
     return refuse("OPERATION-FAILED");
@@ -459,6 +511,7 @@ async function retire(input: LegacyLoginRetirementInput, bootstrapInspection = f
     const closed = await Promise.allSettled([
       Promise.resolve().then(() => adminPool?.end()), Promise.resolve().then(() => custody?.close()),
       Promise.resolve().then(() => packageDirectory?.close()),
+      Promise.resolve().then(() => journalDirectory?.close()),
     ]);
     if (!failed && [...releases, ...closed].some(result => result.status === "rejected")) refuse("RESOURCE-CLOSE-FAILED");
   }

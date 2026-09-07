@@ -19,6 +19,34 @@ bootstrap 路径另要求显式私有 `bootstrapCredentialDirectory`，它必须
 目标、attempt、custody 目录及已发行 receipt。此事件不是 P13 checkpoint 或运行权限。
 底层继续拥有自身 intent/applied 事件以及认证、owner、ACL 不变量。
 
+## 宿主 journal 中的持久认证步骤
+
+bootstrap 分支将上述 SQL 事件绑定到原宿主 journal。实际根准入和私有凭据 custody
+准备完成后，`bootstrap-retirement-pending` 必须完成文件及目录 fsync，才能派发首次
+SQL intent。typed payload 分别绑定宿主 run 与 cutover run、完整 root binding
+（含 P12 intent/报告）、原 capture 摘要、SQL request 摘要和非秘密 custody version。
+密码、密码 hash、连接 URL 均不进入该宿主事件。
+
+只有既有 `applyBootstrapCredentialFence` 的提交确认，再加实际
+`inspectBootstrapCredentialFence` 返回相同摘要，才能产生
+`bootstrap-retirement-credential-step`。根另读回唯一且未变的 SQL root request，并复核
+guard、目标、源、恢复包和报告。每次追加前后核真实宿主锁和原私有 journal 目录 FD。
+全记录 CAS 只推进到本次根调用自己的已确认追加，不能采用 await 期间的外部修改。
+记录不改变 controller 状态、phase、next action 或 pins。
+
+效果不确定时，仅在宿主边界仍可用时追加 `bootstrap-retirement-unknown`，否则保留
+pending。二者均不授权再次轮换，即使调用者换新 attempt。若 rename 已成功但目录
+fsync 失败，诊断读取可能看到 credential-step；保留的 write lock 仍令正常读取拒绝。
+不自动移锁、确认结果或重试效果。独立 inspection 继续读取原 SQL request、custody，
+通过仅使用新密码的 transport 核验；它不会提升宿主 pending/unknown。后续 reconcile
+必须结合这些实际根观察，不能仅凭宿主记录确认。
+
+本增量仅支持 bootstrap，复用 0137，不增 schema/grant，不写 P13 checkpoint、不宣称
+全部 writer 退役、不发行 runtime generation 或发布 startup。测试使用真实宿主文件、
+CAS、fsync 故障，SQL、Docker、报告和 activation 仍是显式根编排替身。它们证明持久性
+和派发顺序，不证明完整获批 P12/P13 的 PostgreSQL 根执行。最初四条真实回归失败与
+更早一次夹具自身的 mutation 失败分别保留；历史 27 例 PG 不重标为本次宿主接线证据。
+
 ## 锁与生命周期
 
 | 会话或步骤 | 必需事实及兼容边界 |
