@@ -11,6 +11,7 @@ import { admitHostedUpgradeComponents, assertHostedUpgradeAdmission, type Hosted
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const bindingFiles = ["server/modules/parameter-bindings/cutoverImport/import.integration.test.ts", "server/modules/catalog-cutover/archive/adapter.test.ts", "server/modules/catalog-cutover/archive/adapter.integration.test.ts", "server/modules/catalog-cutover/bindingImportProducer.integration.test.ts", "server/modules/catalog-cutover/conversionManifest.integration.test.ts", "server/modules/catalog-cutover/orchestrator.test.ts", "server/modules/catalog-cutover/runtimeState.test.ts", "server/modules/catalog-cutover/sourceSnapshot.test.ts", "server/modules/catalog-cutover/managementStructure.test.ts"];
 const suites: Record<string, { image: string; files: readonly string[]; config: string; command?: "schema-doc" }> = {
+  "retirement-pg16": { image: "postgres:16-alpine", files: ["server/modules/catalog-cutover/retirement/loginFence.integration.test.ts"], config: "server/modules/catalog-cutover/retirement/vitest.integration.config.ts" },
   bindings: { image: "pgvector/pgvector:pg16", files: bindingFiles, config: "vitest.upgrade-cutover.config.ts" },
   "bindings-pg16": { image: "postgres:16-alpine", files: bindingFiles, config: "vitest.upgrade-cutover.config.ts" },
   "reader-pg16": { image: "postgres:16-alpine", files: ["server/modules/catalog-kernel/security/catalogReader.integration.test.ts"], config: "vitest.upgrade-cutover.config.ts" },
