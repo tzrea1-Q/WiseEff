@@ -8,6 +8,13 @@ PR #824 续工：`PCAT-RUNTIME-WORKER-INITIALIZATION-FAILED` 表示准入之后�
 worker 初始化失败；连接池已关闭，或关闭尝试失败。不得以提权或恢复队列处理。
 该修复没有新增合法启动路径或生产升级命令。
 
+worker 的启动／停止现在负责 listener、消费者和数据库 pool；
+`PCAT-RUNTIME-WORKER-START-FAILED` 或 `PCAT-RUNTIME-WORKER-SHUTDOWN-FAILED`
+保留非零退出和静态诊断。Polling 停止等待当前任务，durable 构造／关闭等待
+Queue／Worker 清理。这些生命周期修复不授权消费，也不证明获批启动。最后 durable
+增量仍待独立审查，当前受到智能体使用额度限制。既有 schema P12／journal 工作
+已保存在独立未完成 Scratch 分支，不属于可执行候选。
+
 用户已于 2026-09-07 授权两项限定实现：[登记的恢复执行层](storage/execution/README.zh-CN.md)，
 同时保留 S11-RP 检查入口无恢复副作用；以及追加迁移 0140 的
 [Catalog reader](../../server/modules/catalog-kernel/security/catalog-reader.zh-CN.md)。
@@ -26,6 +33,19 @@ Binding/ProjectValue 授权或发布。Policy #815 仍需独立决定。
 | P13/P11b/P14/P15 | 完整可执行集成仍未完成 |
 
 ## 开发环境
+
+在隔离开发 checkout、以开发用户运行以下永久 worker 生命周期 selector。
+输入是合成 adapter 与真实私有 HTTP listener，不接收数据库或生产凭据，不停服。
+预期 56 通过；任何失败都停止验收，不据此执行运维恢复。这不是 production
+startup 验收命令。
+
+```bash
+./node_modules/.bin/vitest run --config vitest.runtime-bootstrap.config.ts \
+  server/modules/logs/workerRunner.test.ts \
+  server/modules/logs/workerRunnerBootstrap.test.ts \
+  server/modules/logs/worker.test.ts \
+  server/modules/logs/logAnalysisQueueRuntime.test.ts
+```
 
 组件入口提供 `reader-pg16`、`report-pg16`、
 `authority-pg16`、`scripts-pgvector`、`server-pgvector` 和 `schema-doc`

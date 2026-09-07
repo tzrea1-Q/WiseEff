@@ -4,6 +4,34 @@
 
 ## 范围与状态
 
+### CI 归因与既有 schema 激活增量
+
+在 `d7cdd6473`，父协调者负责 CI 路由、精确执行证据和最终集成。Hosted
+`34097926621` 在 backend 超时；该 run 的 scripts 已不再出现原 S11-RP 失败，
+但新的 backend 故障／取消分别保留。需 receipt 的 runtimeState 文件改在强制
+独立 `bindings-pg16` 执行；身份夹具复用既有迁移模板，不改 23 例断言、源 seed
+或超时。两项修复均独立 Standards／Spec 审查，完整结果记入既有证据双文件，
+不跨 checkout 合计。
+
+进一步 Spec 复核纠正一项设计依赖：冻结合同要求 P12/P13 及 append-only journal
+证据，**并未要求**原型的三张新表。未批准 0141 原型仍排除。激活分片仅拥有新增
+`catalog-cutover/activation/` 公共模块、测试及双语 README，使用既有 0137 的
+run／event／checkpoint 存储与权限。父协调者拥有宿主 journal 和根组合。不扩展
+S7 预激活接口、S2 schema、grant 或 trusted baseline；此替代实现不需要这些扩展。
+
+本增量 R3 威胁：伪造 current head、前驱分叉、跨 run checkpoint 重用、用获批报告
+自身充当目标 oracle、SQL 提交后文件 journal 提交失败、实时锁丢失和覆盖不可变
+checkpoint。动作必须有精确前置条件、真实批准 projection、明确 pending／committed／
+unknown 状态与实读 reconcile；读模式消费者必须实际消费已验证状态。写入一个
+event 不代表 P12 完成或 startup 批准。P12/P13 与完整根执行仍为内部实现责任，
+不再把所选三表提案当作整体阻塞。
+
+生命周期分片拥有 workerRunner／worker 及其既有测试，补齐 stop／start 失败时
+实际 pool 关闭、等待进行中的 polling 工作，不改变准入或权限。威胁包含部分启动、
+同步清理异常、重复 stop、并行未完成工作和私有错误泄漏。父协调者继续独占
+runtimeConnection、API 根、Compose、migration、生成物与指纹。文档影响为本计划
+双文件、既有操作／证据双文件及激活模块 README 双文件。
+
 ### 已批准的限定合同演进，2026-09-07
 
 用户明确授权从 `f00f94435`（代码 `11d8147a5`、main `cda6737a8`）实施和隔离

@@ -4,6 +4,42 @@
 
 ## Scope and state
 
+### Attributed CI and existing-schema activation increment
+
+At `d7cdd6473`, parent owns CI routing, exact execution evidence and final
+integration. Hosted `34097926621` timed out during backend; the original S11-RP
+failure is resolved in that run's scripts, but its new backend failure/cancellation
+is retained separately. The receipt-requiring runtimeState file now executes in
+mandatory owned `bindings-pg16`; the identity fixture clones the existing migrated
+template without changing its 23 assertions, source seed or timeout. Independent
+Standards/Spec reviews cover these two fixes. Full results remain in the existing
+evidence pair, not combined across checkouts.
+
+Further Spec review corrects a design dependency: the frozen contract requires
+P12/P13 and their append-only journal evidence, **not** the prototype's three new
+tables. The unapproved 0141 prototype remains excluded. The activation lane owns
+only a new public `catalog-cutover/activation/` module, tests and bilingual README,
+using existing 0137 run/event/checkpoint storage and privileges. Parent owns host
+journal and root composition. No expansion of S7's pre-activation interface, S2
+schema, grants or trusted baseline is authorized or needed for this alternative.
+
+R3 threats for this increment: a fabricated current head, forked predecessor
+chain, cross-run checkpoint reuse, approved report used as its own target oracle,
+SQL commit followed by failed file-journal commit, live lock loss and immutable
+checkpoint overwrite. Effects need exact preconditions, real approval projection,
+explicit pending/committed/unknown state and readback reconciliation. The read-mode
+consumer must actually honor the validated state; recording an event is not P12
+completion or startup approval. P12/P13 and full root execution remain internal
+implementation work; the chosen three-table proposal is not a blanket blocker.
+
+The lifecycle lane owns workerRunner/worker and their existing tests to close
+actual pools on stop/start failure and await in-flight polling work, without
+changing release admission or privileges. Threats are partial start, synchronous
+cleanup failure, repeated stop, concurrent in-flight work and leaked private errors.
+Parent retains single-writer ownership of runtimeConnection, API root, Compose,
+migrations, generated artifacts and fingerprints. Documentation impact is this
+plan pair, existing operator/evidence pair, and the activation module README pair.
+
 ### Accepted bounded contract evolution, 2026-09-07
 
 The user explicitly authorizes implementation and isolated verification of two

@@ -4,6 +4,145 @@
 
 ## Authorized contract implementation checkpoint, 2026-09-07
 
+### Worker integration and review environment stop
+
+Lifecycle code is `4a0dfa1465c92e59223d98251baa12ac902f8f24`, tree
+`1a598cdeee118a937dae9b22e4a542d32c32463b`; source deployment and development
+base remain unchanged. `1b8b5ed24` integrates independently reviewed source
+`81727d73c856024a5b5b57e67f471a7621774b69`: the worker owns its database and
+listener, waits for in-flight polling work, and attempts all shutdown callbacks
+before closing the pool. Admission errors remain distinct from static redacted
+initialization/start/shutdown errors. Source Red was 35 passed/8 failed; fixed
+source Green was 48/48. These are lifecycle and real HTTP listener tests, not
+approved production startup.
+
+`91a897cde` integrates source `321374300779554825a5b205156d456d726ff87e`:
+the async durable factory cleans Queue when Worker construction fails, waits for
+both close operations even if one throws, and closes once. `4a0dfa146` awaits
+that factory in the actual API root; worker already awaits it. Source Red was
+53 passed/3 failed. Parent execution on `91a897cde` plus that one-line API WIP
+(the code committed as 4a0dfa146) passed **56/56**, 475ms, exit 0; build exited
+0, Vite 9.90s with existing warnings. The final durable increment has parent
+inspection but its separate independent Standards/Spec reviews are **not complete**:
+both review agents hit the account usage limit. It remains Scratch, not sealed.
+
+At `1b8b5ed24` plus Markdown-only WIP, the owned Docker runtime bootstrap selector
+passed **11/11**, 7.03s, exit 0. Four cases launch the actual API/worker production
+entrypoints with actual PostgreSQL logins: superuser and missing Catalog are
+refused before listener/consumer construction; credentials are absent from output.
+Other cases cover actual restricted sessions, checkpoint management and checkout
+failures. This is real negative-root evidence, **not** legal runtime-pin startup.
+The latest whole-backend batch remains the separate d7cdd6473 execution below.
+
+Log SHA256: parent lifecycle
+`5f9a66067dd337ac84e015b4269112cb9e94b15e9801c1bbff0be5bd6a849381`;
+build `47cd1820b576af495ca925f1d81b905c2ad2267aea9c7408a96cc90661657be7`;
+actual runtime roots `9d997d65546a1e251bf25f3747346df84b12666c8628308db87fa846da84597b`.
+Boundary again exited 0, matched 3509 with zero unallowlisted/stale/mismatch/growth;
+contract and selfhost checks exited 0 on 4a0dfa146 with Markdown-only WIP.
+
+Existing-schema P12 work is preserved separately, **not integrated or verified**:
+`codex/pr824-activation-existing-storage` at `b7337f5d11624b287c7615cde36ee38c39b81399`
+and `codex/upg-activation-journal` at `2375dad8b458ed60649ce1e082ab3fd30bfd4f9c`.
+Both started from d7cdd6473. The quota interruption left domain effects, readback,
+root composition and independent review unfinished. No new table/grant is assumed;
+the earlier three-table prototype is still excluded. This remaining implementation
+is owned by the parent, not attributed to missing production authorization.
+
+`1c279310b62ae1a13466aa99602e0b7575ec4a65` (tree
+`49982aab037d1a166ef42291c95bd2d97ef5aae7`) adds the two worker files to the
+existing bootstrap test config so the lifecycle command is reproducible without
+a temporary config or ambient database. Before that config-only commit, the
+same code/config WIP passed **56/56**, 549ms, exit 0. Complete owned scripts at
+4a0dfa146 plus Markdown-only WIP started 17:00:51 and finished before the config
+edit: **1657 collected, 1631 passed, 1 failed, 25 skipped**, 120 files passed/1
+failed/1 skipped, 124.89s, exit 1, owned cleanup verified. The only failure is the
+unchanged source-lock 60000ms lineage case; no assertion, timeout or baseline was
+relaxed. This is not a passing full suite. Scripts log SHA256
+`eeaffb65b36bc4a6659bb307190aa706774624450a55d485da156f131adf92f3`;
+repository-config lifecycle log
+`390c7811a472f4e5148f6b62a5af3a39f8d7c2ed465ba9b4e82b55fad797e725`.
+
+Complete owned backend at 1c279310b with only the six Markdown delivery files
+dirty started 17:04:05: **4180 collected, 4169 passed, 0 failed, 11 skipped**,
+517 files passed/1 skipped, 245.30s, exit 0, owned cleanup verified. It uses the
+same separately identified linux/arm64 pgvector image as d7cdd6473. The opt-in
+runtime bootstrap 11 remain skipped in this batch; the earlier actual 11/11 is
+not relabeled. No production startup or full old deployment conversion follows
+from this backend result. A new Hosted run has not yet completed at this checkpoint.
+
+### Hosted cancellation and attributed CI repairs
+
+Run [34097926621](https://github.com/tzrea1-Q/WiseEff/actions/runs/34097926621)
+used report head `2ce71d683f1cd3e51b657f45aafaabc34d3dd5f2` and actual merge
+checkout `41f592f9214549d142daa978df9a6c3d81089315`, against base `cda6737a8`.
+Build and test reached its existing 20-minute job deadline and was cancelled;
+Merge bar failed. This is a new execution, not the historical S11-RP failure.
+
+| Hosted scope | Observed result |
+| --- | --- |
+| Build, documentation governance, UI ratchet, lint | Steps passed |
+| Frontend | 3374 passed, 438 files |
+| Scripts | 1656 collected: 1615 passed, 0 failed, 41 skipped; 121 files passed/1 skipped |
+| Boundary / device bridge | Both steps passed |
+| Backend | Cancelled without final totals; 516 passing file summaries, runtimeConnection 11 skipped, runtimeState beforeAll failure with 7 skipped; sensitiveNode identity file had no terminal summary |
+| Contract / log-eval | Not executed after cancellation |
+| Owned PG16 reader / report / authority | 49/49, 36/36, 81/81, each with owned cleanup; linux/amd64 PG16 Alpine image `sha256:75f5a96988cdf694a215073c3e9c001b706b371e2f94df3967f2efdec2787f6b` |
+| Acceptance smoke / quality | 4/4 and 100/100; existing fixture acceptance, not production startup or full populated conversion |
+| Target synthetic / local non-HDC | Both jobs skipped by workflow conditions |
+
+The 41 script skips are the 16-case environment-dependent rehearsal, four opt-in
+Docker recovery cases, one handoff Docker case, five runtime identity cases,
+five vendor schema cases and ten recovery rehearsal cases. They remain skips.
+
+An owned local candidate/base control ran the unchanged sensitiveNode 23-case
+selector at `2ce71d683` and `cda6737a8`: **23/23 in 22.05s** and **23/23 in
+21.12s**. It did not reproduce the Hosted stall. Both used separate pgvector PG16
+clusters, linux/arm64, one worker and 768 MiB Node heap. Independent first-case
+timings attributed most cost to full migration preparation, not the resolver.
+Those results do not establish linux/amd64 equivalence or blame migration 0140.
+
+The receipt failure was independently reproduced: ambient DATABASE_URL without
+the required owned target receipt collected seven runtimeState cases, skipped all
+seven and failed beforeAll with `upgrade-tests-require-explicit-owned-postgres-receipt`.
+Commit `4b32a98f1c9464ed8eb0648ca4aa7b6b18171ad9` moves that exact file from
+ambient backend execution to the existing mandatory `bindings-pg16` job. Receipt
+validation, real Docker ownership, 20-minute limit and required Merge bar remain.
+Routing Red was 4 passed/1 failed; the actual owned bindings lane on precommit WIP
+passed **92/92**, including runtimeState 7/7, 78.74s, exit 0 and verified cleanup.
+
+Commit `d7cdd6473c3f37c24c99cb5a1c620c96394ce633` changes only the identity
+test's setup to clone the existing migration-fingerprinted template into a fresh
+database for each case. All 23 assertions and seed SQL are byte-identical;
+single-client FIFO and failure cleanup remain. The clean commit (tree
+`80bcf61c8b08d5c178722bde207b854ec498d893`) passed **23/23 in 3.88s**, exit 0,
+cleanup verified, with original case timeouts. Routing selectors passed **19/19**
+in 1.74s and build exited 0 (Vite 8.95s, existing warnings). Independent Standards
+and Spec found no P1/P2 in these changes. New Hosted confirmation is still required;
+this preparation improvement alone does not prove the cancellation is resolved.
+
+Log SHA256: exact identity Green
+`64bac3a333ae7c21d34064146b44e18d55d64c6eee91076c4d36ca12ea2e0afb`;
+owned bindings `738326584f8fe84f613c112eecc7f7056596fb07d29d20c6e09af4b3fe0ee37e`;
+routing `d189c9a64ad8a78504e91867a1733a4af2fc433fc75110a78bf8291a49e7cc4a`;
+build `05588efb6c1b0bce136f7624ef551bdb9ee9376d3b999fc4b24b95d250ca47c6`.
+
+Full owned `server-pgvector` started on clean `d7cdd6473` at 16:35:50 (the
+subsequent working-tree edits were only the four plan/evidence Markdown files):
+**4165 collected, 4154 passed, 0 failed, 11 skipped**, 517 files passed/1 skipped,
+182.76s, exit 0 and verified cleanup. The seven runtimeState cases now belong to
+the independently required bindings lane; this is an explicit routing change, not
+seven new passes or a silent test removal. Local linux/arm64 pgvector image:
+`sha256:a36250871de0833b8757561c72f2477ef1ddd1101afa4e617fb552e0de514c6b`.
+Log SHA256 `f9074e442d8fd228f8ed000a9de5385448565158249cb8a48acfd1ef07086a63`.
+
+`ee21b3e65` additionally snapshots the release dispatcher's first live observation.
+Its Red was **42 passed/1 failed**: reusing one observer object and mutating
+isolation to public on the second read previously invoked P12. Green **43/43**
+now rejects before every effect. These are invocation tests, not produced passing
+release reports. Independent Standards/Spec passed. Green log SHA256
+`645e2531982b96ed0f926ca184d42b13ba87af8c23784674b5927635439e75d5`.
+
 ### Subsequent integration through 4394ec9cb
 
 The last subsequent code is `3ce597e21496b98b7fc3e0e575396abef46d6ce0`, tree

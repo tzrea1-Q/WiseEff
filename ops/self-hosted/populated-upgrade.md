@@ -9,6 +9,15 @@ completed but worker initialization failed; its pool was closed or closure was
 attempted and failed. Do not respond by raising runtime privileges or reopening
 queues. This code does not add a legal startup path or a production upgrade command.
 
+Worker start and shutdown now own the listener, consumers and database pool;
+`PCAT-RUNTIME-WORKER-START-FAILED` or `PCAT-RUNTIME-WORKER-SHUTDOWN-FAILED`
+keeps a nonzero process outcome with static diagnostics. Polling shutdown waits
+for the current task. Durable construction/close awaits Queue/Worker cleanup.
+These lifecycle fixes do not authorize a consumer or prove approved startup.
+The final durable increment still needs independent review after an agent usage
+limit interrupted it. Existing-schema P12/journal work is preserved in separate
+unfinished Scratch branches, not in the executable candidate.
+
 The user authorized two bounded implementation changes on 2026-09-07: the
 [registered recovery execution layer](storage/execution/README.md), while S11-RP
 checks remain effect-free; and the additive [Catalog reader](../../server/modules/catalog-kernel/security/catalog-reader.md)
@@ -29,6 +38,20 @@ This candidate provides protective interception, bounded canonical conversion an
 | P13/P11b/P14/P15 | Complete executable integration remains unfinished |
 
 ## Developer commands
+
+On the isolated development checkout, as the development user, run the permanent
+worker lifecycle selectors below. They use synthetic adapters and actual private
+HTTP listeners; no database or production credentials are inputs, and no service
+is stopped. Expect 56 passed; any failure stops validation, not an operational
+recovery command. This is not a production startup acceptance command.
+
+```bash
+./node_modules/.bin/vitest run --config vitest.runtime-bootstrap.config.ts \
+  server/modules/logs/workerRunner.test.ts \
+  server/modules/logs/workerRunnerBootstrap.test.ts \
+  server/modules/logs/worker.test.ts \
+  server/modules/logs/logAnalysisQueueRuntime.test.ts
+```
 
 The component runner owns separate `reader-pg16`, `report-pg16`,
 `authority-pg16`, `scripts-pgvector`, `server-pgvector` and

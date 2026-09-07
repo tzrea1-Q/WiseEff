@@ -4,6 +4,129 @@
 
 ## 已授权契约实现检查点，2026-09-07
 
+### Worker 集成与审查环境停止点
+
+生命周期代码 `4a0dfa1465c92e59223d98251baa12ac902f8f24`，tree
+`1a598cdeee118a937dae9b22e4a542d32c32463b`；源部署和开发 base 不变。
+`1b8b5ed24` 集成已独立双审的源 `81727d73c856024a5b5b57e67f471a7621774b69`：
+worker 拥有数据库和 listener，等待进行中的 polling 工作，尝试全部停止回调后
+关闭 pool。保留原准入错误，初始化／启动／停止使用静态脱敏错误。源 Red 为
+35 通过／8 失败，固定源 Green 48/48。这是生命周期和真实 HTTP listener 测试，
+不是已批准的 production startup。
+
+`91a897cde` 集成源 `321374300779554825a5b205156d456d726ff87e`：async durable
+factory 在 Worker 构造失败后清理 Queue，关闭任一项抛错也等待两项关闭，并只
+关闭一次。`4a0dfa146` 在实际 API 根等待该 factory；worker 已等待。源 Red 为
+53 通过／3 失败；父执行 `91a897cde` 加该一行 API WIP（随后提交为 4a0dfa146）
+**56/56、475ms、退出 0**，build 退出 0（Vite 9.90s、既有警告）。最后 durable
+增量经父检查，但独立 Standards／Spec **未完成**：两个审查智能体均遇到账号
+使用额度限制。因此仍为 Scratch，未封存。
+
+`1b8b5ed24` 加仅 Markdown WIP 的独立 Docker runtime bootstrap selector
+**11/11、7.03s、退出 0**。其中四例用真实 PostgreSQL 登录启动实际 API／worker
+production 入口：超级用户、Catalog 缺失均在 listener／消费者构造前拒绝，输出
+不含凭据。其余覆盖受限会话、checkpoint 管理及 checkout 失败。这是真实根入口
+负向证据，**不是**合法 runtime pin 下启动成功。最新完整 backend 仍是下文独立
+记录的 d7cdd6473 执行。
+
+日志 SHA256：父生命周期
+`5f9a66067dd337ac84e015b4269112cb9e94b15e9801c1bbff0be5bd6a849381`；
+build `47cd1820b576af495ca925f1d81b905c2ad2267aea9c7408a96cc90661657be7`；
+真实 runtime 根 `9d997d65546a1e251bf25f3747346df84b12666c8628308db87fa846da84597b`。
+Boundary 再次退出 0，匹配 3509，unallowlisted／stale／mismatch／growth 均为零；
+contract、selfhost 在 4a0dfa146 加仅 Markdown WIP 退出 0。
+
+既有 schema P12 工作分别保存，**未集成、未验证**：
+`codex/pr824-activation-existing-storage` 的 `b7337f5d11624b287c7615cde36ee38c39b81399`，
+以及 `codex/upg-activation-journal` 的 `2375dad8b458ed60649ce1e082ab3fd30bfd4f9c`，
+均从 d7cdd6473 开始。额度中断时领域动作、实读 reconcile、根接线和独立审查尚未
+完成。不假设新增表／grant；此前三表原型仍排除。这些内部实现仍由父协调者负责，
+不归咎于缺少生产授权。
+
+`1c279310b62ae1a13466aa99602e0b7575ec4a65`（tree
+`49982aab037d1a166ef42291c95bd2d97ef5aae7`）把两份 worker 测试纳入既有 bootstrap
+config，使生命周期命令无需临时 config 或 ambient 数据库即可复现。该 config-only
+提交前同样代码／config WIP **56/56、549ms、退出 0**。完整独立 scripts 在
+4a0dfa146 加仅 Markdown WIP 于 17:00:51 启动，在 config 编辑前结束：**收集
+1657、1631 通过、1 失败、25 跳过**，120 文件通过／1 失败／1 跳过，124.89s，
+退出 1、自有资源清理确认。唯一失败仍为未改动 source-lock 的 60000ms lineage
+用例；未放宽断言、超时或 baseline，不得记作完整通过。scripts 日志 SHA256：
+`eeaffb65b36bc4a6659bb307190aa706774624450a55d485da156f131adf92f3`；
+仓库 config 生命周期日志：
+`390c7811a472f4e5148f6b62a5af3a39f8d7c2ed465ba9b4e82b55fad797e725`。
+
+完整独立 backend 在 1c279310b 加仅六份 Markdown 交付 WIP 于 17:04:05 启动：
+**收集 4180、4169 通过、0 失败、11 跳过**，517 文件通过／1 跳过，245.30s，
+退出 0、自有资源清理确认。使用与 d7cdd6473 同一已独立登记的 linux/arm64
+pgvector image。Opt-in runtime bootstrap 11 例在本批仍跳过，不重标此前真实
+11/11；不能从完整 backend 推断 production 启动或真实旧部署完整转换。
+此检查点新的 Hosted run 尚未完成。
+
+### Hosted 取消与已归因的 CI 修复
+
+Run [34097926621](https://github.com/tzrea1-Q/WiseEff/actions/runs/34097926621)
+报告 head 为 `2ce71d683f1cd3e51b657f45aafaabc34d3dd5f2`，实际 merge checkout
+为 `41f592f9214549d142daa978df9a6c3d81089315`，base 为 `cda6737a8`。
+Build and test 达到原有 20 分钟 job 上限后取消，Merge bar 失败。这是新执行，
+不改写历史 S11-RP 失败。
+
+| Hosted 范围 | 实际结果 |
+| --- | --- |
+| Build、文档治理、UI ratchet、lint | 步骤通过 |
+| Frontend | 3374 通过，438 文件 |
+| Scripts | 收集 1656：1615 通过、0 失败、41 跳过；121 文件通过／1 跳过 |
+| Boundary／device bridge | 两步骤通过 |
+| Backend | 取消，无最终总数；516 文件通过摘要，runtimeConnection 11 跳过，runtimeState beforeAll 失败且 7 跳过；sensitiveNode identity 无文件结束摘要 |
+| Contract／log-eval | 取消后未执行 |
+| 独立 PG16 reader／report／authority | 49/49、36/36、81/81，均清理确认；linux/amd64 PG16 Alpine image `sha256:75f5a96988cdf694a215073c3e9c001b706b371e2f94df3967f2efdec2787f6b` |
+| Acceptance smoke／quality | 4/4、100/100；既有夹具验收，不是 production startup 或完整 populated 转换 |
+| Target synthetic／local non-HDC | 两 job 按 workflow 条件跳过 |
+
+41 个 scripts 跳过分别为：环境依赖 rehearsal 16、opt-in Docker recovery 4、
+handoff Docker 1、runtime identity 5、vendor schema 5、recovery rehearsal 10。
+不得记为通过。
+
+本机自有隔离环境对未改动 sensitiveNode 23 例作 candidate/base 对照：
+`2ce71d683` **23/23、22.05s**；`cda6737a8` **23/23、21.12s**。未复现 Hosted
+停滞。两者均独立 pgvector PG16 集群、linux/arm64、单 worker、Node heap 768 MiB。
+另做首例分段测量，主要成本为完整迁移准备，而非 resolver；不能据此声称与
+linux/amd64 等价或将问题归咎于 0140。
+
+Receipt 故障独立复现：仅有 ambient DATABASE_URL、缺必需自有目标 receipt 时，
+runtimeState 收集 7 例、全部跳过，beforeAll 报
+`upgrade-tests-require-explicit-owned-postgres-receipt` 并失败。
+提交 `4b32a98f1c9464ed8eb0648ca4aa7b6b18171ad9` 将该精确文件从 ambient
+backend 移入既有强制 `bindings-pg16` job。Receipt、真实 Docker 所有权、20 分钟
+上限及 Merge bar 均保留。路由 Red 为 4 通过／1 失败；提交前 WIP 的真实自有
+bindings lane **92/92**，含 runtimeState 7/7，78.74s，退出 0、清理确认。
+
+提交 `d7cdd6473c3f37c24c99cb5a1c620c96394ce633` 仅把身份测试准备改为每例从
+既有迁移指纹模板克隆新数据库。23 例断言及 seed SQL 逐字不变，保留单连接 FIFO
+与失败清理。该干净提交（tree `80bcf61c8b08d5c178722bde207b854ec498d893`）
+**23/23、3.88s**，退出 0、清理确认，原用例超时未变；路由 selector **19/19、
+1.74s**，build 退出 0（Vite 8.95s、既有警告）。独立 Standards／Spec 无 P1/P2。
+仍需新 Hosted 确认，不能仅凭准备优化声称取消问题已经解决。
+
+日志 SHA256：身份 Green
+`64bac3a333ae7c21d34064146b44e18d55d64c6eee91076c4d36ca12ea2e0afb`；
+独立 bindings `738326584f8fe84f613c112eecc7f7056596fb07d29d20c6e09af4b3fe0ee37e`；
+路由 `d189c9a64ad8a78504e91867a1733a4af2fc433fc75110a78bf8291a49e7cc4a`；
+build `05588efb6c1b0bce136f7624ef551bdb9ee9376d3b999fc4b24b95d250ca47c6`。
+
+完整独立 `server-pgvector` 于 16:35:50 在干净 `d7cdd6473` 启动（之后工作树仅
+修改四份计划／证据 Markdown）：**收集 4165、4154 通过、0 失败、11 跳过**，
+517 文件通过／1 跳过，182.76s，退出 0、清理确认。runtimeState 七例现在属于
+独立必需 bindings lane；这是明确路由变更，不是新增七次通过或静默删除测试。
+本机 linux/arm64 pgvector image：
+`sha256:a36250871de0833b8757561c72f2477ef1ddd1101afa4e617fb552e0de514c6b`。
+日志 SHA256：`f9074e442d8fd228f8ed000a9de5385448565158249cb8a48acfd1ef07086a63`。
+
+`ee21b3e65` 另为发布 dispatcher 的首次实时观察保存独立快照。Red 为 **42 通过／
+1 失败**：观察方复用一个对象、第二次读取时改为公开状态，原代码仍会调用 P12。
+Green **43/43** 现已在所有动作前拒绝。这是调用接线回归，不是实际生成的通过
+发布报告；独立 Standards／Spec 通过。Green 日志 SHA256：
+`645e2531982b96ed0f926ca184d42b13ba87af8c23784674b5927635439e75d5`。
+
 ### 至 4394ec9cb 的后续集成
 
 后续最后代码为 `3ce597e21496b98b7fc3e0e575396abef46d6ce0`，tree
