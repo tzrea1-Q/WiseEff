@@ -53,6 +53,26 @@ random backend locks prove those authenticated sessions are on the independently
 observed management database. Every critical step repeats host-lock, package,
 container and writer-boundary checks.
 
+The bridge-only source observer first proves the original DATABASE_URL hostname
+is the fixed PostgreSQL endpoint address or its unique alias in the actual owned
+network, and its port is 5432. The same observed container must publish the exact
+loopback management port. Unknown network members, wrong ownership, custom DNS,
+hosts overrides or mounts, multiple networks, wrong ports and alias ambiguity
+refuse before opening the former LOGIN. Every critical check re-observes this
+mapping and rejects endpoint drift. Only after proving Docker's actual forwarding
+relationship may private credentials use that published transport; equal
+credentials alone are not evidence about the original connection target.
+This profile requires the existing controlled-recovery ownership nonce and
+bridge with IP masquerade disabled. Unsupported deployments fail before effects.
+
+The endpoint regression creates two owned PostgreSQL containers and a psql-only
+probe with the same fixed PostgreSQL image. It queries the original URL inside
+the network and independently compares system identity through the published
+port, then stops the probe. Wrong-database URLs, wrong published ports and an
+actual duplicated network alias are refused. The probe is not an old API or
+worker image. Its trust-authenticated throwaway databases prove routing only;
+the original LOGIN-fence cases separately exercise actual restricted credentials.
+
 The adapter binds the full `activationIntent` and the domain's `bindingDigest`,
 then reads the formal approved pre-activation projection and checks its artifact,
 target, source, Catalog, mapping and recovery inputs against the actual binding

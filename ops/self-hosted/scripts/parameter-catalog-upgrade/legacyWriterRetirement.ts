@@ -16,6 +16,7 @@ import { digestOf } from "../../../../server/modules/release-verification/core/d
 import { verifyRecoveryPackage } from "../../storage/recoveryPackage";
 import { assertHostOperationLockForJournal, type HandoffPlan, type HostOperationLock } from "./handoff";
 import { canonicalJson, loadUpgradeJournal, sha256Prefixed } from "./journal";
+import { observeLegacySourceEndpoint } from "./legacyWriterSource";
 
 export class LegacyLoginRetirementError extends Error {
   constructor(readonly reason: string) { super(`PCAT-UPG-LEGACY-LOGIN-${reason}`); }
@@ -86,6 +87,9 @@ async function retire(input: LegacyLoginRetirementInput) {
       return value;
     };
     const backup = await packageNow();
+    const postgresStores = plan.inputs.source.stores.filter(store => store.service === "postgres");
+    need(postgresStores.length === 1, "SOURCE-ENDPOINT-UNPROVEN");
+    const sourceEndpoints = new Map<string, ReturnType<typeof observeLegacySourceEndpoint>>();
     const check = async () => {
       need(!connectionFailed, "CONNECTION-FAILED");
       await assertHostOperationLockForJournal(input.lock, plan.inputs.journalPath);
@@ -105,7 +109,15 @@ async function retire(input: LegacyLoginRetirementInput) {
         if (app.service !== "web") {
           const values = (actual.Config.Env as string[]).filter(value => value.startsWith("DATABASE_URL="));
           need(values.length === 1, "SOURCE-LOGIN-UNAVAILABLE");
-          urls.push(values[0].slice("DATABASE_URL=".length));
+          const sourceUrl = values[0].slice("DATABASE_URL=".length);
+          const endpoint = observeLegacySourceEndpoint({ docker, sourceUrl,
+            administrativeUrl: input.administrativeConnectionString, applicationId: app.containerId,
+            postgresId: postgresStores[0].containerId, ownerRunId: capture.runId,
+            registeredIds: [...plan.inputs.source.applications.map(value => value.containerId), ...plan.inputs.source.stores.map(value => value.containerId)] });
+          const previousEndpoint = sourceEndpoints.get(app.containerId);
+          need(!previousEndpoint || isDeepStrictEqual(previousEndpoint, endpoint), "SOURCE-ENDPOINT-DRIFT");
+          sourceEndpoints.set(app.containerId, endpoint);
+          urls.push(sourceUrl);
         }
       }
       return urls;

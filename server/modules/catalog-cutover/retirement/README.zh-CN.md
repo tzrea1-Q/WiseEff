@@ -44,6 +44,21 @@ v3 恢复包的 bootstrap 是预先存在的 OID 10 身份，不是可转移的�
 实测已停止的旧容器提供原凭据，以随机后端锁证明真实认证连接位于独立观察的
 管理数据库。关键步骤重复检查宿主锁、包、容器和停写边界。
 
+仅支持受控 bridge 的源观察器先证明：原 DATABASE_URL 主机是固定 PostgreSQL
+endpoint 的实测地址，或实际自有网络内唯一指向该容器的 alias，端口为 5432；
+同一实测容器必须发布精确的 loopback 管理端口。未知网络成员、错误 ownership、
+自定义 DNS／hosts／相关挂载、多网络、端口错误或别名冲突均在连接旧 LOGIN 前
+拒绝。关键检查重新观察该映射并拒绝漂移。只有 Docker 转发关系已独立证明后，
+私有凭据才可使用发布端口；凭据相同本身不是原连接目标证明。本 profile 要求
+现有 controlled-recovery ownership nonce 和关闭 IP masquerade 的 bridge；
+不支持的部署在 effect 前拒绝。
+
+endpoint 回归创建两台自有 PostgreSQL 容器及使用同一固定 PostgreSQL 镜像的
+psql 探针；从网络内查询原 URL，再通过发布端口独立比较 system identity，
+随后停止探针。指向另一数据库的 URL、错误发布端口和实际重复 alias 均拒绝。
+探针不是旧 API／worker 镜像；其一次性 trust 认证数据库只证明网络映射，
+原 LOGIN 围栏用例另行验证真实受限凭据。
+
 adapter 绑定完整 `activationIntent` 与领域 `bindingDigest`，读取正式已获批的
 预激活 projection，将 artifact、目标、源、Catalog、mapping、恢复输入逐一
 对齐实测 binding 和恢复包。后续 pending／unknown capture 会使其拒绝。这只是
