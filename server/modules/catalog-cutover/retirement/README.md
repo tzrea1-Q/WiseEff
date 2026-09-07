@@ -77,6 +77,17 @@ digests participate in the repeated endpoint observation.
 are unsupported. Each Docker tar must list exactly one ordinary file with the
 requested name; links, duplicate members and multi-file concatenation refuse.
 
+Endpoint refusal retains the static `SOURCE-ENDPOINT-UNPROVEN` error and adds
+an enumerated stage. Diagnostics expose only counts, tar exit status and a
+bounded set of option categories (`ndots-zero`, `ndots-other`, `edns0`, `trust-ad`,
+`other`), never resolver contents, Docker stderr, hostnames or credentials.
+These categories do not authorize additional resolver options. The real endpoint
+fixture requires a valid baseline before each adverse change and checks the
+specific refusal stage, so an unrelated early failure cannot count as the
+intended negative case. The Hosted failure at run 34125753813 had only the outer
+catch location; this diagnostic increment does not establish its platform cause
+or fix it, and does not change endpoint acceptance or timeout limits.
+
 The parent supervisor creates two owned PostgreSQL containers and psql-only
 probes with the same fixed PostgreSQL image, then supplies a private receipt.
 The test child creates no resources and cannot rely on its own afterAll to clean

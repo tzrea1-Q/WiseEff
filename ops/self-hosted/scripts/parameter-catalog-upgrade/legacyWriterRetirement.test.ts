@@ -1,11 +1,16 @@
 import { afterAll, expect, it, vi } from "vitest";
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import { mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { inspectLegacyApplicationLoginFence, retireLegacyApplicationLogins, type LegacyLoginRetirementInput } from "./legacyWriterRetirement";
 import { canonicalJson, sha256Prefixed } from "./journal";
 import { observeLegacySourceEndpoint } from "./legacyWriterSource";
+
+vi.mock("node:child_process", async importOriginal => {
+  const actual = await importOriginal<typeof import("node:child_process")>();
+  return { ...actual, spawnSync: vi.fn(actual.spawnSync) };
+});
 
 const resolverRoot = mkdtempSync(path.join(os.tmpdir(), "retirement-resolver-test-"));
 afterAll(() => rmSync(resolverRoot, { recursive: true, force: true }));
@@ -83,8 +88,61 @@ it.each(["wrong-source", "wrong-management", "custom-dns", "custom-hosts", "host
     if (fault === "nss-order") fixture.resolver["nsswitch.conf"] = "hosts: myhostname files dns\n";
     if (fault === "search-first") fixture.resolver["resolv.conf"] += "options ndots:1\n";
     expect(() => observeLegacySourceEndpoint(fixture.value)).toThrow("SOURCE-ENDPOINT-UNPROVEN");
+    const stages: Record<string, string> = { "wrong-source": "source-alias", "wrong-management": "published-port",
+      "custom-dns": "container-routing", "custom-hosts": "container-routing", "hosts-mount": "container-routing",
+      "alias-conflict": "source-alias", "foreign-member": "network-identity", "network-drift": "container-routing",
+      "foreign-owner": "container-identity", "actual-hosts": "hosts-routing", hostname: "container-hostname",
+      "actual-resolver": "resolver-nameserver", "nss-order": "resolver-nss", "search-first": "resolver-options" };
+    try { observeLegacySourceEndpoint(fixture.value); throw new Error("expected-refusal"); }
+    catch (error) { expect(error).toMatchObject({ stage: stages[fault] }); }
     expect(fixture.command.mock.calls.every(([args]) => ["inspect", "network", "cp"].includes(args[0]))).toBe(true);
   });
+it("reports only bounded resolver option categories, never private tokens or source credentials", () => {
+  const fixture = endpointFixture();
+  fixture.resolver["resolv.conf"] = "nameserver 127.0.0.11\noptions edns0 trust-ad ndots:0 private-token.invalid\n";
+  try { observeLegacySourceEndpoint(fixture.value); throw new Error("expected-refusal"); }
+  catch (error) {
+    expect(error).toMatchObject({ stage: "resolver-options", facts: {
+      optionLineCount: 1, optionKinds: ["edns0", "trust-ad", "ndots-zero", "other"] } });
+    expect(JSON.stringify(error)).not.toMatch(/private-token|synthetic|postgres:\/\//);
+  }
+});
+it("does not expose a Docker exception as endpoint diagnostic evidence", () => {
+  const fixture = endpointFixture();
+  fixture.command.mockImplementation(() => { throw new Error("postgres://private:password@private-host/db"); });
+  try { observeLegacySourceEndpoint(fixture.value); throw new Error("expected-refusal"); }
+  catch (error) {
+    expect(error).toMatchObject({ stage: "container-identity" });
+    expect(JSON.stringify(error)).not.toMatch(/password|private-host|postgres:\/\//);
+  }
+});
+it("classifies malformed private input without echoing it", () => {
+  const fixture = endpointFixture(); fixture.value.sourceUrl = "private-invalid-url";
+  expect(() => observeLegacySourceEndpoint(fixture.value)).toThrow("SOURCE-ENDPOINT-UNPROVEN");
+  try { observeLegacySourceEndpoint(fixture.value); throw new Error("expected-refusal"); }
+  catch (error) { expect(error).toMatchObject({ stage: "input" }); expect(JSON.stringify(error)).not.toContain("private-invalid-url"); }
+});
+it("classifies unknown resolver directives without returning their contents", () => {
+  const fixture = endpointFixture(); fixture.resolver["resolv.conf"] += "private-directive private.invalid\n";
+  try { observeLegacySourceEndpoint(fixture.value); throw new Error("expected-refusal"); }
+  catch (error) { expect(error).toMatchObject({ stage: "resolver-directives" }); expect(JSON.stringify(error)).not.toContain("private.invalid"); }
+});
+it.each(["hosts", "resolv.conf", "nsswitch.conf"])("identifies the failed bounded archive read: %s", file => {
+  const fixture = endpointFixture(); fixture.archives[file] = Buffer.alloc(0);
+  try { observeLegacySourceEndpoint(fixture.value); throw new Error("expected-refusal"); }
+  catch (error) { expect(error).toMatchObject({ stage: `archive-${file}-read`, facts: {} }); }
+});
+it("keeps an extraction failure separate from a successful one-member listing and redacts subprocess output", () => {
+  const fixture = endpointFixture();
+  const result = (status: number, text: string) => ({ status, stdout: Buffer.from(text), stderr: Buffer.from("private-tar-diagnostic") }) as ReturnType<typeof spawnSync>;
+  vi.mocked(spawnSync).mockReturnValueOnce(result(0, "-rw-r--r-- 0/0 12 2026-09-07 hosts\n"))
+    .mockReturnValueOnce(result(2, "private-file-contents"));
+  try { observeLegacySourceEndpoint(fixture.value); throw new Error("expected-refusal"); }
+  catch (error) {
+    expect(error).toMatchObject({ stage: "archive-hosts-extract", facts: { tarExitStatus: 2 } });
+    expect(JSON.stringify(error)).not.toMatch(/private-tar|private-file/);
+  }
+});
 it.each(["RES_OPTIONS=ndots:5", "LOCALDOMAIN=other.invalid", "HOSTALIASES=/tmp/aliases"])(
   "refuses an effective resolver environment override: %s", override => {
     const fixture = endpointFixture();
@@ -104,5 +162,7 @@ it.each(["duplicate", "link", "invalid"])("rejects a resolver tar that is not on
       fixture.archives.hosts = execFileSync("tar", ["-cf", "-", "-C", resolverRoot, "hosts"]);
     }
     expect(() => observeLegacySourceEndpoint(fixture.value)).toThrow("SOURCE-ENDPOINT-UNPROVEN");
+    try { observeLegacySourceEndpoint(fixture.value); throw new Error("expected-refusal"); }
+    catch (error) { expect(error).toMatchObject({ stage: "archive-hosts-list" }); }
   } finally { rmSync(hosts, { force: true }); }
 });

@@ -63,6 +63,14 @@ Docker 配置本身不够：通过 `docker cp` 读取已停止容器的真实 `/
 Docker tar 必须精确列出一个所请求名称的普通文件；链接、重复成员及多文件
 拼接均拒绝。
 
+endpoint 拒绝保留固定 `SOURCE-ENDPOINT-UNPROVEN` 错误，并增加枚举阶段。
+诊断只包含计数、tar 退出状态和有限选项分类（`ndots-zero`、`ndots-other`、
+`edns0`、`trust-ad`、`other`），不输出 resolver 原文、Docker stderr、主机名或
+凭据。这些分类不意味着允许额外 resolver 选项。真实 endpoint 夹具在每次故障
+修改前先要求正常基线成立，再核对精确拒绝阶段，避免无关的早期失败被记为
+预期负例。Hosted run 34125753813 的失败只记录了外层 catch 位置；本次诊断增量
+不代表已确定或修复平台根因，也不改变 endpoint 接受条件或 timeout 上限。
+
 endpoint 拓扑由父监督器创建两台自有 PostgreSQL 容器及使用同一固定 PostgreSQL
 镜像的 psql 探针，再通过私有 receipt 交给测试子进程。子进程不创建资源，不能
 依赖自己的 afterAll 处理强制终止后的清理。从网络内查询原 URL，再通过发布端口独立比较 system identity，

@@ -7,7 +7,7 @@ import { readBindingDatabaseIdentity } from "../../parameter-bindings/cutoverImp
 import { applyLegacyLoginFence, retiringRolesSql } from "./loginFence";
 import type { RetiringRole } from "./roleRecovery";
 import { createIsolatedUpgradeDocker } from "../../../../scripts/isolated-upgrade-docker";
-import { observeLegacySourceEndpoint } from "../../../../ops/self-hosted/scripts/parameter-catalog-upgrade/legacyWriterSource";
+import { LegacySourceEndpointRefusal, observeLegacySourceEndpoint } from "../../../../ops/self-hosted/scripts/parameter-catalog-upgrade/legacyWriterSource";
 
 // Database-effect evidence only. No fake P12 checkpoint/report, mocked verifier,
 // or claim that these focused cases execute the full self-hosted adapter.
@@ -73,28 +73,41 @@ describe("owned Docker source endpoint observation, not an old API/worker startu
     console.info("RETIREMENT_ENDPOINT_COMPONENT", JSON.stringify({ ownerRunId, networkId: network, imageId,
       postgresIds: [first, second], probeIds: [app, hostnameApp], scope: "database-probe-not-api-worker", resourceOwner: "parent-supervisor" }));
   });
-  const observe = (sourceUrl = originalUrl, administrativeUrl = firstUrl, applicationId = app) =>
-    observeLegacySourceEndpoint({ docker, sourceUrl, administrativeUrl, applicationId, postgresId: first,
-      registeredIds, ownerRunId });
+  const observe = (sourceUrl = originalUrl, administrativeUrl = firstUrl, applicationId = app) => {
+    try { return observeLegacySourceEndpoint({ docker, sourceUrl, administrativeUrl, applicationId, postgresId: first,
+      registeredIds, ownerRunId }); }
+    catch (error) {
+      if (error instanceof LegacySourceEndpointRefusal) console.info("RETIREMENT_ENDPOINT_REFUSAL",
+        JSON.stringify({ stage: error.stage, facts: error.facts }));
+      throw error;
+    }
+  };
+  const refusesAt = (action: () => unknown, stage: string) => {
+    try { action(); throw new Error("expected-source-endpoint-refusal"); }
+    catch (error) { expect(error).toMatchObject({ message: "PCAT-UPG-LEGACY-LOGIN-SOURCE-ENDPOINT-UNPROVEN", stage }); }
+  };
   it("accepts only the actual original alias and the same container's published port", () => {
     expect(observe()).toMatchObject({ postgresId: first, sourceHost: "postgres" });
   });
   it("rejects a same-username URL for the other real owned database before connecting", () => {
+    expect(observe()).toMatchObject({ postgresId: first });
     const other = new URL(originalUrl); other.hostname = "other";
-    expect(() => observe(other.href)).toThrow("SOURCE-ENDPOINT-UNPROVEN");
-    expect(() => observe(undefined, secondUrl)).toThrow("SOURCE-ENDPOINT-UNPROVEN");
+    refusesAt(() => observe(other.href), "source-alias");
+    refusesAt(() => observe(undefined, secondUrl), "published-port");
   });
   it("rejects an actual duplicate network alias", () => {
+    expect(observe()).toMatchObject({ postgresId: first });
     docker.command(["network", "disconnect", network, second]);
     try {
       docker.command(["network", "connect", "--alias", "postgres", network, second]);
-      expect(() => observe()).toThrow("SOURCE-ENDPOINT-UNPROVEN");
+      refusesAt(() => observe(), "source-alias");
     } finally {
       docker.command(["network", "disconnect", network, second]);
       docker.command(["network", "connect", "--alias", "other", network, second]);
     }
   });
   it("rejects the stopped source after its real hosts file redirected the original URL to the second database", () => {
+    expect(observe()).toMatchObject({ postgresId: first });
     docker.command(["start", app]);
     const originalHosts = docker.command(["exec", app, "cat", "/etc/hosts"]);
     try {
@@ -106,7 +119,7 @@ describe("owned Docker source endpoint observation, not an old API/worker startu
       expect(info.HostConfig.ExtraHosts ?? []).toHaveLength(0);
       expect(info.Mounts.some((mount: { Destination: string }) => mount.Destination === "/etc/hosts")).toBe(false);
       docker.command(["stop", "--time", "1", app]);
-      expect(() => observe()).toThrow("SOURCE-ENDPOINT-UNPROVEN");
+      refusesAt(() => observe(), "hosts-routing");
     } finally {
       docker.command(["start", app]);
       docker.command(["exec", "-i", app, "sh", "-c", "cat > /etc/hosts"], originalHosts);
@@ -114,10 +127,11 @@ describe("owned Docker source endpoint observation, not an old API/worker startu
     }
   });
   it("rejects Docker's own hosts entry for a source hostname matching the database alias", () => {
+    expect(observe()).toMatchObject({ postgresId: first });
     docker.command(["start", hostnameApp]);
     try { expect(() => originalQuery(hostnameApp)).toThrow("isolated-docker-operation-failed"); }
     finally { docker.command(["stop", "--time", "1", hostnameApp]); }
-    expect(() => observe(undefined, undefined, hostnameApp)).toThrow("SOURCE-ENDPOINT-UNPROVEN");
+    refusesAt(() => observe(undefined, undefined, hostnameApp), "container-hostname");
   });
 });
 async function prepare() {
