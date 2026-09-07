@@ -38,6 +38,18 @@ gate ID、grant、migration、已批准规则或冻结的声明差异格式。
 检查。DBG 原本要求未绑定合成夹具永不 unexplained 的错误断言，改为明确禁止伪造 declared
 及 evidence 必须 null；不改成 skip 或 passed 发布报告。
 
+十一类真实 PG 集成测试同样先完整采集 populated 的两个阶段，保留每个 family 的库存
+计数、checksum、case 顺序和引用覆盖；不再假定这个夹具能够生成通过报告。
+CGH 当前正式 comparison readiness 端口执行 `SELECT 1` 后返回 `not-ready`，
+实际 Catalog read handler 因而在加载 Kernel snapshot 前返回 HTTP 503。原观察为
+`query-failure`、code `503`、detail `catalog-read-list-definitions`。
+未修改的 parser 用 `PCAT-CMP-UNQUERYABLE-PROTECTED-REFERENCE` 拒绝它；测试同时核对
+原始观察、直接 aggregate 和 live aggregate 入口的拒绝，不改错误码来换取解析成功，
+也不生成通过报告。
+
+该 readiness 端口仍需实际受控的 readiness producer，这是内部集成缺口，与生产备份
+是否提供、逐身份证据格式及 S6 决策分别记录。不能把数据库探针成功直接改为 ready。
+
 本分片只修安全分类。合法声明差异及 populated 正向闭环仍依赖独立记录的逐身份证据格式
 和 producer 工作，不能由全部拒绝或 fresh/query-failure 组件测试关闭。#815 不变。
 

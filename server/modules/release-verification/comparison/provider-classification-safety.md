@@ -49,6 +49,23 @@ assertion that its unbound synthetic fixture must never be unexplained is
 replaced by an explicit prohibition on invented declared differences and a null
 evidence assertion. It is not replaced by a skip or a passing release report.
 
+The real-PG eleven-family integration test also collects both populated phases
+before checking admission. It retains every family's inventory count, checksum,
+case order and reference coverage; it no longer assumes this fixture can produce
+a passing report. CGH's current production comparison readiness port executes
+`SELECT 1` and returns `not-ready`. The actual Catalog read handler therefore
+returns HTTP 503 before loading the Kernel snapshot. Its original observation
+is `query-failure`, code `503`, detail `catalog-read-list-definitions`.
+The unchanged parser rejects that observation with
+`PCAT-CMP-UNQUERYABLE-PROTECTED-REFERENCE`; the test explicitly checks both the
+original observation and refusal of the direct and live aggregate entrances.
+No failure code is rewritten to make it parse, and no report is issued.
+
+That readiness port still needs a real controlled readiness producer. This is
+an internal integration gap, independent of production backup availability or
+the separate per-identity evidence format and S6 decisions. A successful database
+probe must not be changed into a ready declaration.
+
 This is the safety repair only. The separately recorded per-identity evidence
 format/producer work remains necessary for legitimate declared differences and
 a complete populated positive chain. Neither all-refused results nor existing
