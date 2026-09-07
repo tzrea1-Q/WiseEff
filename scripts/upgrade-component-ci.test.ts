@@ -1,15 +1,40 @@
 import { readFileSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import { expect, it } from "vitest";
+import * as componentRunner from "./run-upgrade-component-tests";
 
 const workflow = readFileSync(new URL("../.github/workflows/ci.yml", import.meta.url), "utf8");
 
-it.each(["skipped", "failure", "cancelled", "success"])("the actual merge-bar program requires reader CI when L1 runs: %s", result => {
+it("runs all four frozen source-lock cases as a mandatory serial stage in ordinary, owned and Hosted scripts", () => {
+  const pkg = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8"));
+  expect(pkg.scripts["test:scripts"]).toBe("tsx scripts/check-workspace-links.ts && npm run test:scripts:source-lock && vitest run --config vitest.scripts.config.ts");
+  expect(pkg.scripts["test:scripts:source-lock"]).toBe("vitest run --config vitest.scripts-source-lock.config.ts");
+  const frozen = "scripts/wayfinder/parameter-catalog-rehearsal-source-lock.test.ts";
+  const ordinary = readFileSync(new URL("../vitest.scripts.config.ts", import.meta.url), "utf8");
+  expect(ordinary).toContain(`"${frozen}"`);
+  const serial = readFileSync(new URL("../vitest.scripts-source-lock.config.ts", import.meta.url), "utf8");
+  expect(serial).toContain(`include: ["${frozen}"]`);
+  expect(serial).toContain("passWithNoTests: false");
+  expect(serial).toContain("testTimeout: 60_000");
+  expect(serial).toContain("fileParallelism: false");
+  expect(serial).toContain("maxWorkers: 1");
+  const commands = componentRunner.componentTestCommands("scripts-pgvector");
+  expect(commands.map(command => command.slice(1))).toEqual([
+    ["run", "--config", "vitest.scripts-source-lock.config.ts"],
+    ["run", "--config", "vitest.scripts.config.ts"],
+  ]);
+  expect(componentRunner.componentTestCommands("reader-pg16")).toHaveLength(1);
+  expect(() => componentRunner.componentTestCommands("not-a-suite")).toThrow("unknown-upgrade-component-suite");
+  expect(workflow).toContain("run: npm run test:scripts");
+  expect(workflow.split("  required:\n")[1]).toContain("needs.build-and-test.result");
+});
+
+it.each(["upgrade-components", "build-and-test"].flatMap(job => ["skipped", "failure", "cancelled", "success"].map(result => ({ job, result }))))("the actual merge-bar program requires $job when L1 runs: $result", ({ job, result }) => {
   const source = workflow.split("  required:\n")[1]?.match(/python3 - <<'PY'\n([\s\S]*?)\n\s+PY/)?.[1];
   expect(source).toBeDefined();
   const code = source!.split("\n").map(line => line.slice(10)).join("\n")
     .replaceAll("${{ needs.detect.outputs.run_l1 }}", "true")
-    .replaceAll("${{ needs.upgrade-components.result }}", result)
+    .replaceAll(`\${{ needs.${job}.result }}`, result)
     .replace(/\$\{\{ needs\.[a-z-]+\.result \}\}/g, "success");
   const executed = spawnSync("python3", ["-c", code], { encoding: "utf8" });
   expect(executed.error).toBeUndefined();

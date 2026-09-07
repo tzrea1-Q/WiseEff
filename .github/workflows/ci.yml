@@ -694,6 +694,9 @@ jobs:
           if results["detect"] != "success":
               print("detect must report success")
               sys.exit(1)
+          if "${{ needs.detect.outputs.run_l1 }}" == "true" and results["build-and-test"] != "success":
+              print("build and complete script evidence is required for L1")
+              sys.exit(1)
           if "${{ needs.detect.outputs.run_l1 }}" == "true" and results["upgrade-components"] != "success":
               print("owned Catalog, cutover and authority PostgreSQL evidence is required for L1")
               sys.exit(1)

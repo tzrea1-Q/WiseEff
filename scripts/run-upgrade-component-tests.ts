@@ -23,6 +23,18 @@ const suites: Record<string, { image: string; files: readonly string[]; config: 
   "schema-doc": { image: "pgvector/pgvector:pg16", files: [], config: "", command: "schema-doc" },
 };
 
+/** The scripts lane keeps all frozen source-lock cases, in a separate process
+ * before ordinary parallel suites. Other lanes retain their existing command. */
+export function componentTestCommands(name: string): string[][] {
+  if (!Object.hasOwn(suites, name)) throw new Error("unknown-upgrade-component-suite");
+  const suite = suites[name];
+  if (suite.command === "schema-doc") return [["--import", "tsx", path.join(root, "scripts/generate-db-schema-doc.ts")]];
+  const vitest = path.join(root, "node_modules/vitest/vitest.mjs");
+  const commands = [[vitest, "run", "--config", suite.config, ...suite.files]];
+  if (name === "scripts-pgvector") commands.unshift([vitest, "run", "--config", "vitest.scripts-source-lock.config.ts"]);
+  return commands;
+}
+
 /** The child owns its process group. Deadline/output limits cannot authorize a pass. */
 export function superviseComponentProcess(child: ReturnType<typeof spawn>, limits = { deadlineMs: 15 * 60_000, graceMs: 2000, outputBytes: 8 * 1024 * 1024 }) {
   let output = ""; let bytes = 0; let stopped = false;
@@ -175,25 +187,30 @@ export async function runUpgradeComponentTests(args: string[]) {
     await writeFile(receipt, JSON.stringify({ id, net, run, label, daemonId: docker.daemonId, url, ...physical,
       profile,
       imageId: image.Id, dataVolume: { name: volume, createdAt: dataVolume.CreatedAt } }), { mode: 0o600, flag: "wx" });
-    const selectors = suite.files;
-    const command = suite.command === "schema-doc"
-      ? ["--import", "tsx", path.join(root, "scripts/generate-db-schema-doc.ts")]
-      : [path.join(root, "node_modules/vitest/vitest.mjs"), "run", "--config", suite.config, ...selectors];
-    child = spawn(process.execPath, command, {
-      cwd: root, env: { PATH: process.env.PATH, HOME: process.env.HOME,
-        // Frozen rehearsal cleanup refuses symlink parents (macOS /tmp).
-        // Use this run's canonical private directory, never ambient TMPDIR.
-        TMPDIR: directory,
-        DOCKER_HOST: docker.endpoint,
-        ...(isRedis ? { UPG_REDIS_TARGET_RECEIPT: receipt, UPG_EXPECTED_DOCKER_DAEMON_ID: docker.daemonId }
-          : { WAYFINDER_POSTGRES_CONTAINER: id, UPG_TEST_TARGET_RECEIPT: receipt, DATABASE_URL: url, TEST_DATABASE_URL: url }),
-        UPG_COMPONENT_PROFILE: profile },
-      stdio: ["ignore", "pipe", "pipe"], detached: true,
-    });
-    supervisor = superviseComponentProcess(child);
-    const { exitCode: status, output } = await supervisor.wait;
-    process.stdout.write(output.split(url).join("[REDACTED_TEST_URL]").split(password).join("[REDACTED]"));
-    exitCode = interrupted ? 1 : status;
+    // Splitting the scripts lane must not multiply its existing supervision
+    // deadline/output budget or continue after a failed mandatory first stage.
+    const deadlineAt = Date.now() + 15 * 60_000;
+    let outputRemaining = 8 * 1024 * 1024;
+    for (const command of componentTestCommands(args[3])) {
+      if (interrupted || Date.now() >= deadlineAt || outputRemaining <= 0) { exitCode = 1; break; }
+      child = spawn(process.execPath, command, {
+        cwd: root, env: { PATH: process.env.PATH, HOME: process.env.HOME,
+          // Frozen rehearsal cleanup refuses symlink parents (macOS /tmp).
+          // Use this run's canonical private directory, never ambient TMPDIR.
+          TMPDIR: directory,
+          DOCKER_HOST: docker.endpoint,
+          ...(isRedis ? { UPG_REDIS_TARGET_RECEIPT: receipt, UPG_EXPECTED_DOCKER_DAEMON_ID: docker.daemonId }
+            : { WAYFINDER_POSTGRES_CONTAINER: id, UPG_TEST_TARGET_RECEIPT: receipt, DATABASE_URL: url, TEST_DATABASE_URL: url }),
+          UPG_COMPONENT_PROFILE: profile },
+        stdio: ["ignore", "pipe", "pipe"], detached: true,
+      });
+      supervisor = superviseComponentProcess(child, { deadlineMs: Math.max(1, deadlineAt - Date.now()), graceMs: 2000, outputBytes: outputRemaining });
+      const { exitCode: status, output } = await supervisor.wait;
+      outputRemaining -= Buffer.byteLength(output);
+      process.stdout.write(output.split(url).join("[REDACTED_TEST_URL]").split(password).join("[REDACTED]"));
+      exitCode = interrupted ? 1 : status;
+      if (exitCode !== 0) break;
+    }
   } catch {
     console.error(`upgrade-component-stage-failed:${stage}`);
     exitCode = 1;
