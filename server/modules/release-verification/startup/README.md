@@ -143,7 +143,13 @@ moving an inner function outside Catalog does not hide its extra authority.
 Ordinary built-ins executable by both identities and the six report reads do
 not differ. Function bodies are not parsed or matched as SQL text.
 Explicit function grants and user-schema definers delegating elevated/write
-capability are rejected. This is a purpose-specific login precondition, not a
+capabilities continue to refuse. Callable system-schema SECURITY DEFINER functions
+without PostgreSQL 16 initdb provenance also refuse; a new PUBLIC definer cannot
+hide in `pg_catalog`. PUBLIC EXECUTE on restricted built-ins is compared with
+`pg_init_privs` initial ACLs. Ordinary built-ins and the existing harmless business
+definer exception retain their previous contract. This adds no grant.
+
+This is a purpose-specific login precondition, not a
 replacement for the complete migration/permission manifest or release verifier.
 
 Only a successfully checked `RootDatabase` leaves the function. The composition

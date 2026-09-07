@@ -101,6 +101,27 @@ it("refuses a PUBLIC definer that delegates owner write capability", async () =>
   finally { await admin.query("drop function public.report_write_proxy()"); }
 });
 
+it.each(["builtin-execute", "new-system-definer"])("refuses actual PUBLIC system capability through %s", async capability => {
+  if (capability === "builtin-execute") await admin.query("grant execute on function pg_catalog.pg_read_file(text) to public");
+  else await admin.query(`create table public.report_system_canary(value text);
+    create function pg_catalog.report_system_proxy() returns bigint language sql security definer
+      set search_path=pg_catalog as 'with inserted as (insert into public.report_system_canary values (current_user) returning *) select count(*) from inserted'`);
+  const direct = createPostgresDatabase(url);
+  try {
+    if (capability === "builtin-execute") expect((await direct.query("select trim(pg_catalog.pg_read_file('PG_VERSION')) as version")).rows).toEqual([{ version: "16" }]);
+    else {
+      await expect(direct.query("insert into public.report_system_canary values ('forbidden')")).rejects.toMatchObject({ code: "42501" });
+      expect((await direct.query("select pg_catalog.report_system_proxy()::int as count")).rows).toEqual([{ count: 1 }]);
+      expect((await admin.query("select count(*)::int as count from pg_init_privs where classoid='pg_proc'::regclass and objoid='pg_catalog.report_system_proxy()'::regprocedure")).rows).toEqual([{ count: 0 }]);
+    }
+    await expect(openStartupReportDatabase({ connectionString: url }).then(async db => { await db.close(); return db; }))
+      .rejects.toMatchObject({ code: "PCAT-REPORT-LOGIN-CAPABILITY-REJECTED" });
+  } finally {
+    await direct.close();
+    await admin.query(capability === "builtin-execute" ? "revoke execute on function pg_catalog.pg_read_file(text) from public" : "drop function pg_catalog.report_system_proxy(); drop table public.report_system_canary");
+  }
+});
+
 it("refuses a PUBLIC definer whose owner can only advance a sequence", async () => {
   const owner = pg.escapeIdentifier(`sequence_owner_${randomBytes(8).toString("hex")}`);
   await admin.query(`create role ${owner} nologin noinherit nosuperuser nobypassrls nocreatedb nocreaterole noreplication;

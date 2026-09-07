@@ -114,7 +114,12 @@ SELECT 均拒绝委托。检查覆盖跨 schema 私有函数及 owner-rights vie
 移出 Catalog 不能隐藏额外权限。双方均可执行的普通内建函数和六张报告表读取
 不构成差异。不解析函数体或用 SQL 文本匹配判断安全性。
 拒绝显式函数授权及用户 schema 中代理高权／写能力的 definer。此处仅是专用连接
-前置条件，不取代完整迁移／权限 manifest 或 Release Verification。
+准入，不新增 grant。系统 schema 中可调用但没有 PostgreSQL 16 initdb 来源记录的
+SECURITY DEFINER 也拒绝，新 PUBLIC definer 不能藏在 `pg_catalog`。受限内建函数
+的 PUBLIC EXECUTE 对照 `pg_init_privs` 初始 ACL；正常内建和既有合法业务 definer
+例外保持原合同。
+
+这是专用连接前置条件，不取代完整迁移／权限 manifest 或 Release Verification。
 
 只有核验通过的 `RootDatabase` 会返回。组合根负责使用后关闭，并在后续应用
 bootstrap 失败和正常退出时释放。任何失败都会尝试关闭已创建的 pool；关闭失败

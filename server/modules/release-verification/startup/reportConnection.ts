@@ -57,6 +57,15 @@ select session_user=current_user as same_identity,
   (select count(*)::int from pg_catalog.pg_proc p left join app_schemas n on n.oid=p.pronamespace
     where pg_catalog.has_function_privilege(session_user,p.oid,'EXECUTE') and (
       exists(select 1 from pg_catalog.aclexplode(p.proacl) a where a.grantee in (select oid from reachable))
+      -- A system namespace is not proof of installation provenance. New PUBLIC
+      -- definers must not escape the existing application-definer capability audit.
+      or (n.oid is null and p.prosecdef and not exists(select 1 from pg_catalog.pg_init_privs i
+        where i.classoid='pg_catalog.pg_proc'::pg_catalog.regclass and i.objoid=p.oid and i.objsubid=0 and i.privtype='i'))
+      -- Restricted built-ins have initdb ACLs, not the ordinary function default.
+      or (p.pronamespace='pg_catalog'::pg_catalog.regnamespace and exists(select 1 from pg_catalog.pg_init_privs i
+        where i.classoid='pg_catalog.pg_proc'::pg_catalog.regclass and i.objoid=p.oid and i.objsubid=0 and i.privtype='i'
+          and exists(select 1 from pg_catalog.aclexplode(coalesce(p.proacl,pg_catalog.acldefault('f',p.proowner))) a where a.grantee=0 and a.privilege_type='EXECUTE')
+          and not exists(select 1 from pg_catalog.aclexplode(i.initprivs) a where a.grantee=0 and a.privilege_type='EXECUTE')))
       or (n.oid is not null and p.prosecdef and (
         exists(select 1 from pg_catalog.pg_roles r where pg_catalog.pg_has_role(p.proowner,r.oid,'MEMBER')
           and (r.rolsuper or r.rolbypassrls or r.rolcreatedb or r.rolcreaterole or r.rolreplication))
