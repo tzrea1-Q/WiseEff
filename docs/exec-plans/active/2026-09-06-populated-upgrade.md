@@ -139,6 +139,33 @@ Single writers: parent owns upgrade shell, Compose, runtime integration, migrati
 
 ## Threat matrix
 
+### PR #824 continuation
+
+Parent owns runtime admission, API/worker roots and this plan pair. The independent
+CI Scratch lane owns recovery execution attribution; a read-only Spec reviewer
+challenges startup facts and privileges. Refreshed main remains `cda6737a8` and
+head remains `7fabeb8c4`. Hosted `34067803219` executed merge-ref
+`51ec49131ea542d499607021c20012ad1b39266c`: scripts 1427 passed, 1 failed,
+39 skipped. The failure is the recovery executor's `pg_restore` token against
+the S11-RP contract, not the historical source-lock timeout. Same-selector local
+candidate/base comparison reproduced candidate failure and base success.
+
+Additional R3 threats: missing namespace bypasses application startup admission;
+the report becomes its own current-state oracle; management credentials enter
+runtime; isolated startup starts business consumers; public restart borrows stale
+approval; initialization failures leak pools or private diagnostics. Independent
+Spec review confirmed the namespace and worker cleanup seams. Production missing
+DATABASE_URL already fails in env validation; it is not a new defect.
+
+Actual process success requires a real P12/P13/current-pin producer and authorized
+Catalog read capability. Neither exists in the current integration. `0139` report
+reader privileges do not grant Catalog reads; `0138` explicitly denies production
+Catalog SELECT. Do not grant synchronizer membership or manufacture a passed
+report. Continue independent initialization fixes; proposed capability and restore
+ownership changes require explicit decisions. No scans, grants or timeouts are
+relaxed. Documentation impact: this plan pair and existing operator/evidence pair.
+The Draft remains partial; no production operations are authorized.
+
 | Threat | Required observation / evidence owner |
 | --- | --- |
 | Missing args, absent/unapproved/blocked report; unknown CLI option | Nonzero typed refusal at real CLI, parent B |

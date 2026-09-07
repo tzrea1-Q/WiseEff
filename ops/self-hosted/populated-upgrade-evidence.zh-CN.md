@@ -2,6 +2,43 @@
 
 > English: [English](populated-upgrade-evidence.md)
 
+## PR #824 复核续工，2026-09-07
+
+代码 `11d8147a5accf08867bfaf792346af0d555b1d05`，tree
+`570163372b9b8e1cdae5a6880262d66ae0fde408`，父报告 `7fabeb8c4`。
+worker 准入后初始化失败会关闭连接池并返回固定脱敏错误；清理失败不泄漏诊断。
+原登录／runtime-pin 拒绝处于该处理器之外，保持原样。
+
+修复前两个生命周期反例失败，观察到私有诊断逸出。最终 focused 命令为
+`./node_modules/.bin/vitest run --config vitest.runtime-bootstrap.config.ts
+server/modules/logs/workerRunnerBootstrap.test.ts server/modules/logs/workerRunner.test.ts`：
+退出 0，2 文件，15 收集／通过，0 失败／跳过／过滤。这是生命周期单测，
+不是实际进程合法启动验收。`npm run build` 在相同生产代码上通过（早于最后
+仅测试断言的追加），保留 chunk/externalization 警告。文档治理通过；
+本分片未运行 schema 文档数据库验证、新全量 scripts/server/contract/boundary/
+browser/capacity/PG。独立 Standards 与 Spec 仅本生命周期分片 PASS，
+不构成整 PR 或 M2 审查通过。
+
+Hosted `34067803219` 的 head 为 `7fabeb8c4`，实际 checkout 是
+`51ec49131ea542d499607021c20012ad1b39266c`（base `cda6737a8` 的 merge-ref）。
+scripts 114 文件，1467 收集：1427 通过、1 失败、39 跳过。唯一失败为
+`scripts/run-restore-drill.test.ts` 的 S11-RP 生产 token 禁令命中
+`ops/self-hosted/storage/controlledRecovery.docker.ts` 内 `pg_restore`，
+不是历史 source-lock 超时。本机同 selector：base 1 通过／12 过滤，
+candidate 1 失败／12 过滤；均 Node 22.22.3/npm 10.9.8/Vitest 4.1.5，
+Hosted Node 22.23.2。后续 boundary/bridge/backend/contract/log-eval 步骤跳过。
+该历史 run 的 Acceptance quality/smoke job 成功，不证明生产 startup。
+
+原 CI 日志 SHA256：`7e01dcbdd93b9cae2e21c559146b1f9b2bfcadfe36cbf6964d8f2021ff3fc115`。
+候选 selector：`87ce9486226ae219a6dd23586c4c61c2c2b999a61f58c8a5c707ef60f521acd2`。
+base selector：`698920a886a67deab69d33617d3e22cc12d81425ce81e8582143eea757e68143`。
+原日志私有保留；校验和不等于已提供公开附件。
+
+A/B/C 均未完成：未通过放宽扫描修 CI；未接通真实根 startup adapter／合法
+进程验收；未完成 controller 升级。runtime 只读能力及恢复执行归属需要明确
+合同决定。当前状态／P12/P13／报告 producer 仍是内部实现缺口，不归因于
+生产未授权。本轮无新 Docker/PG、真实备份、企业网络、生产执行或批准。
+
 ## 续工检查点，2026-09-07
 
 代码 `df644163e28d0aaa11733b9b08f398ac7d2429e4`，tree

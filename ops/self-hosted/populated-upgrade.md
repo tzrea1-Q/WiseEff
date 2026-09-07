@@ -4,6 +4,22 @@
 
 ## Current execution contract
 
+PR #824 follow-up: `PCAT-RUNTIME-WORKER-INITIALIZATION-FAILED` means admission
+completed but worker initialization failed; its pool was closed or closure was
+attempted and failed. Do not respond by raising runtime privileges or reopening
+queues. This code does not add a legal startup path or a production upgrade command.
+
+Pending decisions are separate: (1) preserve S11-RP check-only semantics while
+explicitly assigning the existing controlled recovery executor a reviewed execution
+boundary and corresponding mandatory target/approval tests; the present blanket
+token guard cannot be narrowed without approval; (2) authorize a separate NOLOGIN
+Catalog read capability for actual Kernel snapshot queries, with no synchronizer
+DML, owner membership or verification writes. This changes the `0138` production
+SELECT-negative contract and cannot be silently installed. The proposed governance
+EXECUTE additions are not part of runtime report lookup and are not bundled here.
+Policy #815 still needs its own authority/unavailable decision. No command to
+apply these proposed contract changes is currently authorized.
+
 This candidate provides protective interception, bounded canonical conversion and recovery adapters. It does **not** complete a populated release. No production maintenance command is available yet. The source baseline is `82344044b436a8dafecefbb85dfd724cecb05e3f`; current integration base is `cda6737a8f177a8bbd2f3bc7d195f8e3037bfa74`. Earlier bases and executions remain in the evidence record. Supplied deployment counts/image identity are historical, not fresh inventory or backup proof. Do not copy private deployment paths, values or backups into repository evidence.
 
 | Entry | Actual boundary |

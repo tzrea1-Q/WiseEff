@@ -2,6 +2,49 @@
 
 > Chinese: [Chinese](populated-upgrade-evidence.zh-CN.md)
 
+## PR #824 follow-up, 2026-09-07
+
+Code `11d8147a5accf08867bfaf792346af0d555b1d05`, tree
+`570163372b9b8e1cdae5a6880262d66ae0fde408`, parent report `7fabeb8c4`.
+Worker initialization now closes the admitted pool and emits a static refusal
+on downstream initialization failure, including cleanup failure. Original login
+and runtime-pin refusals remain outside this handler and are preserved.
+
+Two lifecycle counterexamples failed before the fix (private diagnostic escaped).
+Final focused command: `./node_modules/.bin/vitest run --config
+vitest.runtime-bootstrap.config.ts server/modules/logs/workerRunnerBootstrap.test.ts
+server/modules/logs/workerRunner.test.ts`: exit 0, 2 files, 15 collected/passed,
+0 failed/skipped/filtered. These are lifecycle unit tests, not real startup
+acceptance. `npm run build` passed on the same production code before the final
+test-only assertion addition; existing chunk/externalization warnings remain.
+Documentation governance passed. The schema-document DB check and full new
+scripts/server/contract/boundary/browser/capacity/PG batches were not run for this
+slice. Independent Standards and Spec reviews passed only this lifecycle slice;
+neither attests the entire PR or M2.
+
+Hosted run `34067803219`, head `7fabeb8c4`, actually checked out
+`51ec49131ea542d499607021c20012ad1b39266c` (merge-ref onto `cda6737a8`).
+Scripts: 114 files, 1467 collected: 1427 passed, 1 failed, 39 skipped. The sole
+failure is `scripts/run-restore-drill.test.ts`: the S11-RP production-token guard
+matches `pg_restore` in `ops/self-hosted/storage/controlledRecovery.docker.ts`.
+It is not the historical source-lock timeout. The same selector on local base
+passed 1 with 12 filtered; candidate failed 1 with 12 filtered. Both use Node
+22.22.3/npm 10.9.8/Vitest 4.1.5; Hosted uses Node 22.23.2. Boundary/bridge/backend/
+contract/log-eval steps following scripts were skipped. Acceptance quality/smoke
+jobs succeeded in that historical run, without proving production startup.
+
+Raw CI-log SHA256: `7e01dcbdd93b9cae2e21c559146b1f9b2bfcadfe36cbf6964d8f2021ff3fc115`.
+Candidate selector: `87ce9486226ae219a6dd23586c4c61c2c2b999a61f58c8a5c707ef60f521acd2`.
+Base selector: `698920a886a67deab69d33617d3e22cc12d81425ce81e8582143eea757e68143`.
+Raw logs remain private; these hashes do not assert public log availability.
+
+Milestones A/B/C remain incomplete: no CI fix by scan relaxation; no real root
+startup adapter/positive process acceptance; no complete controller upgrade.
+Runtime read capability and restore-execution ownership need explicit contract
+decisions. Current-state/P12/P13/report producers remain internal implementation
+gaps, not missing production authorization. No new Docker/PG/real backup/
+enterprise-network/production execution or approval occurred.
+
 ## Continuation checkpoint, 2026-09-07
 
 Code `df644163e28d0aaa11733b9b08f398ac7d2429e4`, tree

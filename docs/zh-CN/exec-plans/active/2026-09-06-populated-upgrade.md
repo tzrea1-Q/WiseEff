@@ -107,6 +107,27 @@ producer、既定 ownership 内的 P12/P13、完整新报告链、运行启动�
 
 ## 威胁矩阵
 
+### PR #824 续工
+
+父协调者单写 runtime admission、API/worker 根入口及本计划双语文件；
+独立 CI Scratch 负责恢复执行归属，独立只读 Spec 审查启动事实与权限。
+刷新后 main 仍为 `cda6737a8`，head 为 `7fabeb8c4`。Hosted `34067803219`
+实际执行 merge-ref `51ec49131ea542d499607021c20012ad1b39266c`：scripts
+1427 通过、1 失败、39 跳过。失败为恢复执行器的 `pg_restore` 命中 S11-RP
+合同，不是历史 source-lock 超时。本机同 selector 对照已复现候选失败、base 通过。
+
+新增 R3 威胁：namespace 缺失绕过应用启动核验；报告反填当前状态；管理凭据
+进入运行池；隔离启动提前消费业务；公开重启借用旧批准；初始化失败泄漏连接
+或私有诊断。独立 Spec 已确认 namespace 与 worker 清理边界。
+生产缺少 DATABASE_URL 已由 env 校验拒绝，不重新包装为新缺陷。
+
+真实进程正向仍需 P12/P13/current-pin 的真实 producer 及获准 Catalog 读取能力。
+当前集成都未具备。`0139` 报告只读权限不含 Catalog 读取，`0138` 明确以生产
+Catalog SELECT 拒绝为负向合同。不得授予 synchronizer 或制造 passed 报告。
+继续不依赖这些决定的初始化修复；能力及恢复执行归属变更需明确决定。
+不放宽扫描、grant 或 timeout。文档影响为本计划及已有操作／证据双语文件。
+Draft 仍是部分交付，本轮不授权生产操作。
+
 | 威胁 | 必需观察／责任 |
 | --- | --- |
 | 缺参数、absent、未批准、blocked、未知参数 | 真实 CLI 非零 typed 拒绝，B |

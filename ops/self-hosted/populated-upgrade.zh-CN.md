@@ -4,6 +4,18 @@
 
 ## 当前可执行边界
 
+PR #824 续工：`PCAT-RUNTIME-WORKER-INITIALIZATION-FAILED` 表示准入之后的
+worker 初始化失败；连接池已关闭，或关闭尝试失败。不得以提权或恢复队列处理。
+该修复没有新增合法启动路径或生产升级命令。
+
+待决策范围分开记录：（1）保留 S11-RP 纯检查语义，同时明确已有受控恢复执行器
+的归属、执行边界和必需目标／批准反例；当前全目录 token 禁令未经批准不能
+收窄。（2）按实际 Kernel snapshot 查询授权独立 NOLOGIN Catalog 只读能力，
+不含 synchronizer DML、owner 成员关系或 verification 写入。这会改变 `0138`
+的生产 SELECT 拒绝合同，不能静默安装。旧提案的治理 EXECUTE 扩展不是 runtime
+报告查询所必需，不与这次只读能力捆绑。Policy #815 的权威关联／unavailable
+方案仍需独立选择。当前没有获准执行这些合同变更的命令。
+
 候选提供保护性拦截、有界canonical转换和恢复adapter；**尚未打通完整存量升级，不能交付生产维护命令**。源版本保持 `82344044b436a8dafecefbb85dfd724cecb05e3f`；当前集成base为 `cda6737a8f177a8bbd2f3bc7d195f8e3037bfa74`，早期base和执行保留在证据记录中。用户提供的计数／镜像是历史观察，不是新冻结清单或恢复证明。私有部署路径、原始值和备份不得放入公开证据。
 
 | 入口 | 实际做到哪里 |
