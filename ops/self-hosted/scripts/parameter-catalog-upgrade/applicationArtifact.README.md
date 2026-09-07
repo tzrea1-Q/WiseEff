@@ -75,7 +75,7 @@ replacement objects for both identity and archive reads. Tracked `.gitattributes
 still applies. The 19-case Green includes a real replacement-ref counterexample.
 Build output is selected from BuildKit's actual metadata manifest/config result,
 then inspected/saved by immutable identity; a nonce output tag is only a drift
-check, not build identity evidence. Revised real-build results remain pending.
+check, not build identity evidence. The final execution is recorded below.
 
 The fixed `56f8e24fb` real command stopped before application build with
 `OCI-RUNNABLE-AMBIGUOUS-OR-MISSING`: actual Docker inspect and saved base config
@@ -111,7 +111,41 @@ the corrected fifteen pure tests and strict targeted types passed. None of this
 substitutes a package digest for approval. The revised real command also makes
 synthetic-only tags in its private Git copy, proves positive six-field pins,
 and refuses a tag pointing at another commit. No shared refs change or tags
-are published. These revised checks still await a new real build.
+are published. The revised checks executed on the fixed candidate below.
+
+## Fixed production and projection evidence
+
+Builder `75e182236cc76cb1201b7772bb74462c8f6f4d68`, tree
+`aa0ea5e26c7b287aef3ddbe622587bf9cff27220`, actually built source `a321084a5`
+and completed the explicit acceptance command with exit zero. It exercised
+immutable FROM and direct tar/CA inputs, actual metadata/OCI association,
+positive six-field pins using only private synthetic Git tags, wrong-commit
+refusal, and actual issued-manifest mutation/refusal/restoration. The fixed
+twenty pure/native Git/tar tests and strict targeted types passed separately.
+These are build/package results, not startup, controller, production release,
+target admission or enterprise CA connectivity results.
+
+Log `/tmp/upg824-application-build-75e.log` has SHA256
+`114e821924ca27af681fca964c3fa0472b0c12a1937b54390326f3d83eb94b8a`.
+Package: `sha256:be5d1d363c7b194c25b45ebf92807fe9717258311b2434cc992318e3f523ebbe`.
+Loaded index: `sha256:3d577d8c720eefde7f40dbf9ffdca59a5101a68c8b5f43e41b21b63171ea4b40`.
+Image manifest: `sha256:64c36c13c6bc5564166d8fbc4f1de0794d9730beeff155f1738fe0a7ccbb90dc`.
+Config: `sha256:9e2576636b1f52746f2c41c5feac9e9a8419167b918c222fe088dd7f013ed8b1`.
+The requested/base platform is `linux/arm64/v8`; actual saved image config is
+`linux/arm64` without a variant. Both facts are retained, without inventing a
+variant or authorizing downstream variant equivalence.
+
+Intermediate evidence remains failed: `49f5b2786` stopped before build because
+this Buildx version does not support `inspect --format`; the implementation now
+uses the supported `ls` JSON inventory. `476316e76` completed the actual image
+build but refused package issuance because its metadata omitted the optional
+config digest. The real result contains an OCI index descriptor/digest/size;
+the final implementation matches that descriptor to its raw saved blob and
+reads the selected config through that verified graph. A provided config digest
+must still match. See [Buildx metadata output](https://docs.docker.com/reference/cli/docker/buildx/build/#write-build-result-metadata-to-a-file-metadata-file).
+No historical run is relabeled as the final candidate. Private evidence,
+synthetic Git copies and nonce images are retained; there were no application
+service containers or remote ref changes to clean up.
 
 The current local read-only capability observation found a Docker driver and a
 containerd image store. The implementation may consume an actual OCI layout

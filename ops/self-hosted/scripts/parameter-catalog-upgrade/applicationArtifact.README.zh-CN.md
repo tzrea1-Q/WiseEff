@@ -62,7 +62,7 @@ source/context digest 与实际基础镜像图；明确解析后配方不等于 
 archive 读取中禁 replacement objects；跟踪的 `.gitattributes` 仍生效。19 项 Green
 另含真实 replacement-ref 反例。构建输出由 BuildKit 实际 metadata manifest/config
 结果选定，再按不可变身份 inspect/save；nonce 输出 tag 仅作漂移检查，不作为构建
-身份来源。修订后的真实构建结果仍待执行。
+身份来源。最终执行记录见下文。
 
 固定 `56f8e24fb` 真实命令在应用构建前以 `OCI-RUNNABLE-AMBIGUOUS-OR-MISSING`
 停止：实际 Docker inspect 与保存的基础 config 都为 `linux/arm64/v8`，但调用者
@@ -90,7 +90,34 @@ digest，核实际保存的 OCI 平台 manifest/config 图后以不可变 FROM �
 修正后十五项纯测试和严格 targeted types 通过。以上均不提供 release tag，也不将
 package digest 等同批准。修订真实命令还会在私有 Git 副本生成 synthetic-only tags，
 证明六字段 pins 正向并拒绝指向其他 commit 的 tag；不改共享 refs、不发布 tag。
-这些修订验收仍待新的真实构建。
+修订验收已在下述固定候选执行。
+
+## 固定生产与投影证据
+
+Builder `75e182236cc76cb1201b7772bb74462c8f6f4d68`、tree
+`aa0ea5e26c7b287aef3ddbe622587bf9cff27220` 实际构建 source `a321084a5`，
+显式验收命令退出零。实际执行不可变 FROM、直接 tar/CA 输入、metadata/OCI 关联、
+仅私有 synthetic Git tag 的六字段 pins 正向、错 commit 拒绝，以及已签发 manifest
+真实篡改/拒绝/恢复。固定二十项纯/native Git/tar 测试与严格 targeted types 另行通过。
+这些是构建/产物结果，不是 startup、controller、生产 release、目标准入或企业 CA
+网络连通性结果。
+
+日志 `/tmp/upg824-application-build-75e.log` 的 SHA256 为
+`114e821924ca27af681fca964c3fa0472b0c12a1937b54390326f3d83eb94b8a`。
+Package：`sha256:be5d1d363c7b194c25b45ebf92807fe9717258311b2434cc992318e3f523ebbe`。
+Loaded index：`sha256:3d577d8c720eefde7f40dbf9ffdca59a5101a68c8b5f43e41b21b63171ea4b40`。
+Image manifest：`sha256:64c36c13c6bc5564166d8fbc4f1de0794d9730beeff155f1738fe0a7ccbb90dc`。
+Config：`sha256:9e2576636b1f52746f2c41c5feac9e9a8419167b918c222fe088dd7f013ed8b1`。
+请求/基础平台为 `linux/arm64/v8`；实际保存的应用 config 为 `linux/arm64`、无 variant。
+分别保留两份事实，不补造 variant，也不替下游批准 variant 等价。
+
+中间失败保留：`49f5b2786` 因锁定 Buildx 不支持 `inspect --format`，在构建前停止；
+现改用实际支持的 `ls` JSON inventory。`476316e76` 实际镜像构建完成，但 metadata
+未输出可选 config digest，因此未签发包。实际结果包含 OCI index descriptor/digest/size；
+最终实现将该 descriptor 与原始保存 blob 比对，再经已验证图读取所选 config。
+若提供 config digest 仍必须一致。参见 [Buildx metadata 输出](https://docs.docker.com/reference/cli/docker/buildx/build/#write-build-result-metadata-to-a-file-metadata-file)。
+历史执行不重标为最终候选。私有证据、synthetic Git 副本和 nonce 镜像保留；未创建
+应用服务容器、未修改远程 refs，不声称做过此类资源清理。
 
 当前本地只读能力观测为 Docker driver 与 containerd image store。
 可消费 `docker image save` 实际提供的 OCI layout；若只有旧 archive 格式必须拒绝，
