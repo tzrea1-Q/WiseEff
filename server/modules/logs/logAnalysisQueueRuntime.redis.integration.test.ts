@@ -121,7 +121,8 @@ describe("owned Redis log worker lifecycle", () => {
         QueueCtor: CapturedQueue as never, WorkerCtor: CapturedWorker as never }))
         .rejects.toThrow("PCAT-LOG-QUEUE-INITIALIZATION-FAILED");
       expect(processByJobId).not.toHaveBeenCalled();
-      expect(actualQueue.isClosed).toBe(true); expect(actualWorker.isClosed).toBe(true);
+      expect(actualQueue.isClosed).toBe(true);
+      expect(actualWorker).toBeUndefined(); // Refuse before allocating any Worker client.
       expect(JSON.stringify(output.mock.calls)).not.toContain(wrongPassword);
       expect(JSON.stringify(output.mock.calls)).not.toContain(password);
     } finally { await actualWorker?.close(true); await actualQueue?.close(); output.mockRestore(); }

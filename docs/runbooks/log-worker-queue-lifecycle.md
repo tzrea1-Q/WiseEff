@@ -34,11 +34,15 @@ their public diagnostic redaction.
 The inspected version is BullMQ 5.78.0. Its `RedisConnection.close` removes event
 listeners before a still-pending initialization rejection handler can emit its
 error. `DrainingRedisConnection` waits for initialization to settle after
-disconnecting the owned initializing client, then calls the native close. Worker
-does not pass its public `Connection` extension argument to its blocking
-connection, so `DrainingWorker` applies the same drain to that protected member.
-The compatibility helper uses the base class's protected `_client`, never its
-private initialization promise. Recheck this assumption when changing BullMQ.
+disconnecting its own initializing client, then calls the native close. The
+Queue's public ready client creates a separately owned Worker connection through
+`duplicate({ maxRetriesPerRequest: null })`. Its public duplicate method registers
+the additional blocking client before BullMQ uses it. Failure disconnects and
+settles owned clients before native cleanup; normal shutdown first drains the
+Worker and then closes the explicitly owned connections. No Worker private member
+is read. Only the RedisConnection subclass accesses its own protected `_client`;
+its private initialization promise is never accessed. Recheck this dependency
+contract when changing BullMQ.
 
 ioredis's callback-form INFO readiness failure otherwise prints a raw server
 diagnostic and can skip its readiness check for NOPERM. The owned client INFO
@@ -46,6 +50,9 @@ method preserves the actual command and loading checks, but returns a static
 readiness error in both callback and promise forms. No ready/version check is
 disabled, no global console/error handler is replaced, and no dependency file or
 grant is changed.
+Malformed URI escapes are rejected before client allocation. Permanent production
+mode subprocess regressions check static refusal and absence of unhandled
+rejections for both factories.
 
 ## Threat and evidence matrix
 

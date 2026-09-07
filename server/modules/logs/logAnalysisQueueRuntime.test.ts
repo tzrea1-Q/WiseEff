@@ -1,11 +1,18 @@
 import { describe, expect, it, vi } from "vitest";
+import { EventEmitter } from "node:events";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
 
 import { createTracingBoundary, type TraceExporter } from "../../observability/tracing";
 import type { Database } from "../../shared/database/client";
 import type { ObjectStore } from "./objectStore";
 import { createLogAnalysisQueueRuntime, createLogAnalysisQueueTransport } from "./logAnalysisQueueRuntime";
 
-const connectionLifecycle = () => ({ on: vi.fn(), off: vi.fn(), waitUntilReady: vi.fn(async () => {}), run: vi.fn(async () => {}) });
+function fakeRedisClient() {
+  return Object.assign(new EventEmitter(), { status: "ready", duplicate: () => fakeRedisClient(), info: async () => "redis_version:7.0.0",
+    disconnect() { this.status = "end"; }, async quit() { this.status = "end"; return "OK"; } });
+}
+const connectionLifecycle = () => ({ on: vi.fn(), off: vi.fn(), waitUntilReady: vi.fn(async () => fakeRedisClient()), run: vi.fn(async () => {}) });
 
 function createTraceRecorder() {
   const spans: Parameters<TraceExporter>[0][] = [];
@@ -22,6 +29,27 @@ function createTraceRecorder() {
 }
 
 describe("log analysis queue runtime", () => {
+  it.each(["runtime", "transport"])("refuses malformed Redis credentials in a real %s subprocess without an unhandled rejection", async factory => {
+    const source = `
+      import { createLogAnalysisQueueRuntime, createLogAnalysisQueueTransport } from './server/modules/logs/logAnalysisQueueRuntime.ts';
+      process.on('unhandledRejection', () => { process.stderr.write('unhandled-rejection'); process.exitCode = 2; });
+      const env = { REDIS_URL: 'redis://synthetic:%ZZ@127.0.0.1:1', LOG_ANALYSIS_QUEUE_PREFIX: 'synthetic',
+        LOG_ANALYSIS_QUEUE_ATTEMPTS: 2, LOG_ANALYSIS_QUEUE_BACKOFF_MS: 100, LOG_ANALYSIS_QUEUE_CONCURRENCY: 1 };
+      try {
+        await ${factory === "runtime" ? "createLogAnalysisQueueRuntime({ env, db: {}, objectStore: {} })" : "createLogAnalysisQueueTransport({ env })"};
+        process.exitCode = 3;
+      } catch (error) {
+        if (error.message !== 'PCAT-LOG-QUEUE-INITIALIZATION-FAILED') process.exitCode = 4;
+        else process.stdout.write(error.message);
+      }
+    `;
+    const result = await promisify(execFile)(process.execPath, ["--import", "tsx", "--input-type=module", "-e", source], {
+      cwd: process.cwd(), timeout: 5000, env: { PATH: process.env.PATH, HOME: process.env.HOME, NODE_ENV: "production" }
+    });
+    expect(result.stdout).toBe("PCAT-LOG-QUEUE-INITIALIZATION-FAILED");
+    expect(result.stderr).toBe("");
+  });
+
   const lifecycleEnv = {
     REDIS_URL: "redis://redis:6379",
     LOG_ANALYSIS_QUEUE_PREFIX: "wiseeff",
@@ -32,7 +60,7 @@ describe("log analysis queue runtime", () => {
 
   it("does not start consumption before both real connection readiness promises settle", async () => {
     let releaseQueue!: () => void; let releaseWorker!: () => void;
-    const queueReady = new Promise<void>((resolve) => { releaseQueue = resolve; });
+    const queueReady = new Promise<ReturnType<typeof fakeRedisClient>>((resolve) => { releaseQueue = () => resolve(fakeRedisClient()); });
     const workerReady = new Promise<void>((resolve) => { releaseWorker = resolve; });
     const queue = { ...connectionLifecycle(), close: vi.fn(), waitUntilReady: () => queueReady };
     const worker = { ...connectionLifecycle(), close: vi.fn(), waitUntilReady: () => workerReady };
@@ -124,6 +152,22 @@ describe("log analysis queue runtime", () => {
     expect(queue.close).toHaveBeenCalledOnce();
   });
 
+  it("preserves the worker close error when its separately owned client also fails cleanup", async () => {
+    const first = new Error("worker close failed");
+    const client = fakeRedisClient();
+    client.quit = vi.fn(async () => { throw new Error("client cleanup failed"); });
+    const queueClient = fakeRedisClient();
+    queueClient.duplicate = () => client;
+    const queue = { ...connectionLifecycle(), waitUntilReady: async () => queueClient, close: vi.fn() };
+    const worker = { ...connectionLifecycle(), close: vi.fn(async () => { throw first; }) };
+    const runtime = await createLogAnalysisQueueRuntime({ env: lifecycleEnv, db: {} as Database, objectStore: {} as ObjectStore,
+      QueueCtor: vi.fn(function () { return queue; }) as never, WorkerCtor: vi.fn(function () { return worker; }) as never });
+    await expect(runtime.close()).rejects.toBe(first);
+    expect(client.status).toBe("end");
+    expect(queue.close).toHaveBeenCalledOnce();
+    await expect(runtime.close()).rejects.toBe(first);
+  });
+
   it("creates a BullMQ queue and worker with Redis connection settings", async () => {
     const processByJobId = vi.fn(async () => ({ status: "processed" as const }));
     const queue = {
@@ -173,7 +217,7 @@ describe("log analysis queue runtime", () => {
       "log-analysis",
       expect.any(Function),
       {
-        connection: { url: "redis://redis:6379" },
+        connection: expect.objectContaining({ status: "ready" }),
         prefix: "wiseeff",
         concurrency: 3,
         name: "wiseeff-log-worker",

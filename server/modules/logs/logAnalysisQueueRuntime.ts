@@ -1,4 +1,4 @@
-import { Queue, RedisConnection, Worker } from "bullmq";
+import { Queue, RedisConnection, Worker, type RedisClient } from "bullmq";
 
 import { createBullMqDurableQueue } from "../jobs/bullmqQueue";
 import type { MetricsRegistry } from "../../observability/metrics";
@@ -24,7 +24,7 @@ type BullMqQueueConstructor = new (
 ) => {
   on: (event: "error", listener: (error: Error) => void) => unknown;
   off: (event: "error", listener: (error: Error) => void) => unknown;
-  waitUntilReady: () => Promise<unknown>;
+  waitUntilReady: () => Promise<RedisClient>;
   add: (name: string, data: LogAnalysisQueuePayload, options: unknown) => Promise<{ id?: string | number }>;
   pause: () => Promise<void>;
   resume: () => Promise<void>;
@@ -42,7 +42,7 @@ type BullMqQueueConstructor = new (
 type BullMqWorkerConstructor = new (
   name: string,
   processor: (job: { data: LogAnalysisQueuePayload }) => Promise<"processed" | "idle" | "dead-lettered">,
-  options: { connection: { url: string }; prefix: string; concurrency: number; name: string; autorun: false },
+  options: { connection: RedisClient; prefix: string; concurrency: number; name: string; autorun: false },
   Connection?: typeof RedisConnection
 ) => {
   on: (event: "error", listener: (error: Error) => void) => unknown;
@@ -72,52 +72,34 @@ type CreateLogAnalysisQueueRuntimeOptions = {
 class DrainingRedisConnection extends RedisConnection {
   constructor(...args: ConstructorParameters<typeof RedisConnection>) {
     super(...args);
-    DrainingRedisConnection.redactReadiness(this);
-  }
-  // Worker constructs its blocking RedisConnection without forwarding the public
-  // Connection extension argument. Both instances have this same base-class
-  // protected client; no RedisConnection private initialization field is read.
-  static async drain(connection: RedisConnection) {
-    const owned = connection as DrainingRedisConnection;
-    if (owned.status === "initializing") {
-      owned._client.disconnect();
-      await owned.client.catch(() => {});
-    }
-  }
-  static redactReadiness(connection: RedisConnection) {
-    const client = (connection as DrainingRedisConnection)._client;
-    const info = client.info.bind(client);
-    // ioredis invokes this public method in callback form during its loading
-    // readiness check and otherwise logs the server's raw NOPERM diagnostic.
-    // Keep the check enabled: deny on failure, with a static error in both forms.
-    client.info = ((...args: unknown[]) => {
-      const callback = args.at(-1);
-      if (typeof callback === "function") {
-        args[args.length - 1] = (error: unknown, result: unknown) => callback(
-          error ? new Error("PCAT-LOG-QUEUE-READINESS-FAILED") : null, result);
-      }
-      const result = Reflect.apply(info, client, args) as Promise<string>;
-      return result.catch(() => {
-        if (typeof callback === "function") return undefined;
-        throw new Error("PCAT-LOG-QUEUE-READINESS-FAILED");
-      });
-    }) as typeof client.info;
+    if (this._client) redactClientReadiness(this._client);
   }
   override async close(force = false) {
-    await DrainingRedisConnection.drain(this);
+    if (this.status === "initializing") {
+      this._client?.disconnect();
+      await this.client.catch(() => {});
+    }
     await super.close(force);
   }
 }
 
-class DrainingWorker extends Worker {
-  constructor(...args: ConstructorParameters<typeof Worker>) {
-    super(...args);
-    DrainingRedisConnection.redactReadiness(this.blockingConnection);
-  }
-  override async close(force = false) {
-    await DrainingRedisConnection.drain(this.blockingConnection);
-    await super.close(force);
-  }
+function redactClientReadiness(client: RedisClient) {
+  const info = client.info.bind(client);
+  // ioredis invokes this public method in callback form during its loading
+  // readiness check and otherwise logs the server's raw NOPERM diagnostic.
+  // Keep the check enabled: deny on failure, with a static error in both forms.
+  client.info = ((...args: unknown[]) => {
+    const callback = args.at(-1);
+    if (typeof callback === "function") {
+      args[args.length - 1] = (error: unknown, result: unknown) => callback(
+        error ? new Error("PCAT-LOG-QUEUE-READINESS-FAILED") : null, result);
+    }
+    const result = Reflect.apply(info, client, args) as Promise<string>;
+    return result.catch(() => {
+      if (typeof callback === "function") return undefined;
+      throw new Error("PCAT-LOG-QUEUE-READINESS-FAILED");
+    });
+  }) as typeof client.info;
 }
 
 function observeConnectionErrors() {
@@ -141,13 +123,24 @@ function observeConnectionErrors() {
   };
 }
 
+function redisConnectionOptions(url: string) {
+  try {
+    const parsed = new URL(url);
+    if (!["redis:", "rediss:"].includes(parsed.protocol) || !parsed.hostname) throw new Error();
+    // ioredis decodes these after its async constructor starts. Reject malformed
+    // escapes before allocating any client or allowing fallback connection data.
+    for (const part of [parsed.username, parsed.password, parsed.pathname]) decodeURIComponent(part);
+    return { url };
+  } catch { throw new Error("PCAT-LOG-QUEUE-INITIALIZATION-FAILED"); }
+}
+
 export async function createLogAnalysisQueueRuntime({
   env,
   db,
   objectStore,
   analyzer,
   QueueCtor = Queue as unknown as BullMqQueueConstructor,
-  WorkerCtor = DrainingWorker as unknown as BullMqWorkerConstructor,
+  WorkerCtor = Worker as unknown as BullMqWorkerConstructor,
   processByJobId = processLogAnalysisJobById,
   workerId = "wiseeff-log-worker",
   metrics,
@@ -155,7 +148,7 @@ export async function createLogAnalysisQueueRuntime({
   webhooks
 }: CreateLogAnalysisQueueRuntimeOptions) {
   const queueName = "log-analysis";
-  const connection = { url: env.REDIS_URL };
+  const connection = redisConnectionOptions(env.REDIS_URL);
   const errors = observeConnectionErrors();
   const { onError, startupFailure } = errors;
   const queue = new QueueCtor(queueName, {
@@ -164,7 +157,35 @@ export async function createLogAnalysisQueueRuntime({
   }, DrainingRedisConnection);
   queue.on("error", onError);
   let worker: InstanceType<BullMqWorkerConstructor> | undefined;
+  // Inject a separately owned client through BullMQ's public connection seam.
+  // Register every public duplicate before the Worker uses it; no Worker private
+  // blockingConnection field is accessed, even during failed initialization.
+  const workerClients = new Map<RedisClient, Promise<void>>();
+  const ownClient = (client: RedisClient): RedisClient => {
+    redactClientReadiness(client);
+    client.on("error", onError);
+    const duplicate = client.duplicate.bind(client);
+    client.duplicate = (...args) => ownClient(duplicate(...args));
+    const ready = RedisConnection.waitUntilReady(client);
+    void ready.catch(onError);
+    workerClients.set(client, ready);
+    return client;
+  };
+  const closeWorkerClients = async () => {
+    const results = await Promise.allSettled([...workerClients.keys()].map(async client => {
+      try { if (client.status !== "end") await client.quit(); }
+      finally { client.disconnect(); client.off("error", onError); }
+    }));
+    const failure = results.find(result => result.status === "rejected");
+    if (failure?.status === "rejected") throw failure.reason;
+  };
   try {
+    let workerClient: RedisClient;
+    try {
+      const queueClient = await Promise.race([queue.waitUntilReady(), startupFailure]);
+      workerClient = ownClient(queueClient.duplicate({ maxRetriesPerRequest: null }));
+      await Promise.race([workerClients.get(workerClient)!, startupFailure]);
+    } catch { throw new Error("PCAT-LOG-QUEUE-INITIALIZATION-FAILED"); }
     const durableQueue = createBullMqDurableQueue<LogAnalysisQueuePayload>({
       name: queueName,
       queue,
@@ -209,7 +230,7 @@ export async function createLogAnalysisQueueRuntime({
         }
       },
       {
-        connection,
+        connection: workerClient,
         prefix: env.LOG_ANALYSIS_QUEUE_PREFIX,
         concurrency: env.LOG_ANALYSIS_QUEUE_CONCURRENCY,
         name: workerId,
@@ -232,7 +253,12 @@ export async function createLogAnalysisQueueRuntime({
         closing ??= (async () => {
           errors.closing();
           const results = await Promise.allSettled([
-            Promise.resolve().then(() => activeWorker.close()),
+            Promise.resolve().then(async () => {
+              const [workerResult] = await Promise.allSettled([Promise.resolve().then(() => activeWorker.close())]);
+              const [clientResult] = await Promise.allSettled([closeWorkerClients()]);
+              if (workerResult.status === "rejected") throw workerResult.reason;
+              if (clientResult.status === "rejected") throw clientResult.reason;
+            }),
             Promise.resolve().then(() => queue.close())
           ]);
           activeWorker.off("error", onError);
@@ -246,8 +272,13 @@ export async function createLogAnalysisQueueRuntime({
     };
   } catch (error) {
     errors.closing();
+    for (const client of workerClients.keys()) client.disconnect();
+    await Promise.allSettled([...workerClients.values()]);
     await Promise.allSettled([
-      Promise.resolve().then(() => worker?.close(true)),
+      Promise.resolve().then(async () => {
+        try { await worker?.close(true); }
+        finally { await closeWorkerClients(); }
+      }),
       Promise.resolve().then(() => queue.close())
     ]);
     worker?.off("error", onError);
@@ -266,7 +297,7 @@ export async function createLogAnalysisQueueTransport({
   const queueName = "log-analysis";
   const errors = observeConnectionErrors();
   const queue = new QueueCtor(queueName, {
-    connection: { url: env.REDIS_URL },
+    connection: redisConnectionOptions(env.REDIS_URL),
     prefix: env.LOG_ANALYSIS_QUEUE_PREFIX
   }, DrainingRedisConnection);
   queue.on("error", errors.onError);

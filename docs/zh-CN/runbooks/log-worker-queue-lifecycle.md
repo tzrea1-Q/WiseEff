@@ -27,15 +27,20 @@ Queue 与 Worker 的错误监听器保留到关闭完成。运行期间可恢复
 
 已检查的版本为 BullMQ 5.78.0。其 `RedisConnection.close` 会在初始化拒绝处理器
 尚未发出错误前移除监听器。`DrainingRedisConnection` 先断开仍在初始化的自有连接，
-等待初始化结算，再调用原生 close。Worker 内部构造阻塞连接时不传递公开的
-`Connection` 扩展参数，所以 `DrainingWorker` 对其 protected 成员执行同样的处理。
-兼容 helper 使用基类 protected `_client`，不读取 private 初始化 Promise。
-升级 BullMQ 时必须重新验证此假设。
+等待初始化结算，再调用原生 close。Queue 的公开 ready client 通过
+`duplicate({ maxRetriesPerRequest: null })` 创建独立自有 Worker 连接，其公开
+duplicate 方法在 BullMQ 使用前登记额外的阻塞客户端。初始化失败先断开并结算
+这些自有客户端，再执行原生清理；正常关闭先等待 Worker 排空，再关闭自有连接。
+不读取 Worker 的任何 private 成员；只有 RedisConnection 子类访问自己的
+protected `_client`，不读取 private 初始化 Promise。升级 BullMQ 时必须重新验证
+这份依赖契约。
 
 ioredis 的 callback 形式 INFO readiness 失败原本会输出服务器原始诊断，并可能在
 NOPERM 时跳过 readiness。本组件只替换自有客户端公开 INFO 方法的错误输出：
 保留实际命令和加载检查，两种调用形式均返回静态 readiness 错误。不关闭
 ready/version 检查，不替换全局 console 或异常处理器，不修改依赖文件或权限。
+格式错误的 URI 转义在分配客户端之前拒绝。两个 factory 都有 production 模式
+真实子进程回归，检查静态拒绝和无未处理 Promise 拒绝。
 
 ## 威胁与证据矩阵
 
