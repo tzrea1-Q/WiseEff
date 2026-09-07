@@ -49,7 +49,7 @@ startup 验收命令。
   server/modules/logs/logAnalysisQueueRuntime.test.ts
 ```
 
-组件入口提供 `reader-pg16`、`report-pg16`、
+组件入口提供 `reader-pg16`、`runtime-identity-pg16`、`read-projections-pg16`、`report-pg16`、
 `authority-pg16`、`scripts-pgvector`、`server-pgvector`、`schema-doc`、`docs-check`、
 `log-redis`、`activation-existing-pg16` 和 `retirement-existing-pg16`
 独占测试通道。执行机器必须是已独立核验的开发 Docker Desktop；
@@ -60,6 +60,27 @@ startup 验收命令。
 `docs/generated/db-schema.md`，不是只读检查。预期是测试退出码 0 且
 `cleanupVerified: true`；任一失败停止验收，不连接部署数据库补跑。
 `docs-check` 必须实际比对数据库schema；缺少专用数据库或vector扩展时失败，不以skip通过。
+
+复跑真实Catalog路由和持久Review查询：机器为上述独立核验的开发宿主，用户为开发者，
+目录为固定候选checkout。输入为已核验的开发daemon ID；数据库数据和角色均由runner
+合成创建。命令只写入并清理自己新建的集群、网络和卷，不停止部署服务：
+
+```bash
+: "${UPG_EXPECTED_DAEMON_ID:?必须设置已独立核验的开发daemon身份}"
+env -i PATH="$PATH" HOME="$HOME" ./node_modules/.bin/tsx \
+  scripts/run-upgrade-component-tests.ts \
+  --expected-daemon-id "$UPG_EXPECTED_DAEMON_ID" --suite read-projections-pg16
+```
+
+代码 `8ed7ac196` 的预期为两文件、10项测试、退出0、清理已核验。缺文件在Docker
+创建前失败；setup、断言或清理任一失败即停止验收。Catalog GET正例使用真实0140-only
+LOGIN；Review正例使用既有较宽治理能力和只读事务，0140-only身份仍被拒绝读Review。
+本命令不启动API或worker，不授权runtime、队列、流量或生产升级。
+
+相同开发机器/用户/目录，选择 `--suite runtime-identity-pg16` 可运行既有十一项真实
+登录、checkout、checkpoint及API/worker进程拒绝反例。父runner提供已核验PG16 receipt
+并负责全部资源清理，不再使用opt-in skip或默认部署连接。预期收集十一项并验证清理；
+其中包含受限业务/checkpoint操作，不包含获批runtime pin下的启动成功。
 
 retirement通道在独占PG16 Alpine上调用真实角色fence和原endpoint核对。父进程在
 测试child启动前创建并持久登记全部endpoint资源，child结束后只清理这些精确对象。

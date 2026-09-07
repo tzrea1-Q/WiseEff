@@ -56,7 +56,7 @@ recovery command. This is not a production startup acceptance command.
   server/modules/logs/logAnalysisQueueRuntime.test.ts
 ```
 
-The component runner owns separate `reader-pg16`, `report-pg16`,
+The component runner owns separate `reader-pg16`, `runtime-identity-pg16`, `read-projections-pg16`, `report-pg16`,
 `authority-pg16`, `scripts-pgvector`, `server-pgvector` and
 `schema-doc`, `docs-check`, `log-redis`, `activation-existing-pg16` and
 `retirement-existing-pg16` lanes. After independently confirming the
@@ -69,6 +69,33 @@ inspection. `docs-check` requires actual database schema comparison and fails
 instead of skipping when its dedicated database or vector extension is unavailable.
 A failed test or unverified cleanup stops acceptance. Never supply
 an ambient deployment database or use these component results as a release.
+
+To repeat the actual Catalog route and persisted Review query checks on that
+independently approved development host, as the developer in the fixed candidate
+checkout, use the existing owned lane below. Input is the verified development
+daemon ID; all database data and roles are synthetic and created by the runner.
+It writes and removes only its new cluster/network/volume, and stops no deployment.
+
+```bash
+: "${UPG_EXPECTED_DAEMON_ID:?set the independently approved development daemon ID}"
+env -i PATH="$PATH" HOME="$HOME" ./node_modules/.bin/tsx \
+  scripts/run-upgrade-component-tests.ts \
+  --expected-daemon-id "$UPG_EXPECTED_DAEMON_ID" --suite read-projections-pg16
+```
+
+At code `8ed7ac196` expect two files, 10 tests, exit 0 and verified cleanup.
+Missing files fail before Docker creation; any setup, assertion or cleanup failure
+stops acceptance. Catalog GET success uses an actual 0140-only LOGIN. The Review
+positive uses existing wider governance capabilities in a read-only transaction;
+the 0140-only identity remains denied Review. This command does not start the API
+or worker and does not authorize runtime, queues, traffic or a production upgrade.
+
+On the same development machine/user/checkout, select `--suite runtime-identity-pg16`
+to run the existing eleven actual login, checkout, checkpoint and API/worker
+process-refusal cases. The parent supplies the verified PG16 receipt and owns all
+resource cleanup; there is no opt-in skip or ambient deployment connection.
+Expect eleven collected cases and verified cleanup. These include restricted
+business/checkpoint operations but do not include approved runtime-pin startup.
 
 The retirement lane invokes the real role fence and original-endpoint checks on
 owned PostgreSQL 16 Alpine. Its parent creates and records all endpoint resources

@@ -1,132 +1,33 @@
 import { randomBytes } from "node:crypto";
 import { spawnSync } from "node:child_process";
-import { chmod, lstat, mkdtemp, readdir, rmdir, unlink, writeFile } from "node:fs/promises";
-import os from "node:os";
 import path from "node:path";
 import { setTimeout } from "node:timers/promises";
 import pg from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { createIsolatedUpgradeDocker } from "../../../scripts/isolated-upgrade-docker";
+import { assertOwnedUpgradeTestTarget } from "../../../scripts/upgrade-test-target";
+import { createSelfHostedPg16Database } from "../../testing/selfHostedUpgrade/database";
 import { openRuntimeDatabase } from "./runtimeConnection";
 import { createPostgresDatabase, getRootPostgresPool } from "./client";
 import { createPostgresCheckpointerSaver, setupXiaozeCheckpointerTables, verifyPostgresCheckpointerTables } from "../../modules/agent/xiaoze/durableCheckpointer";
 
-describe.skipIf(!process.env.UPG_RUNTIME_DOCKER_DAEMON_ID)("actual runtime login and checkpoint management separation", () => {
-  const name = `wiseeff-upg-runtime-${randomBytes(6).toString("hex")}`;
+// The mandatory parent lane owns the cluster and cleanup, on Desktop or Hosted.
+// No opt-in skip and no ambient URL can authorize test collection.
+assertOwnedUpgradeTestTarget();
+describe("actual runtime login and checkpoint management separation", () => {
   const password = randomBytes(24).toString("hex");
-  let docker: ReturnType<typeof createIsolatedUpgradeDocker>;
-  let id = "";
-  const label = "wiseeff.test";
-  const volumeName = `${name}-data`;
-  let networkId = "";
-  let networkCreated = "";
-  let volume: { name: string; created: string; mountpoint: string } | undefined;
-  let imageId = "";
-  let privateDirectory = "";
-  let privateDirectoryIdentity: { dev: number; ino: number } | undefined;
-  let privateFileIdentity: { dev: number; ino: number } | undefined;
-  let port = "";
+  let fixture: Awaited<ReturnType<typeof createSelfHostedPg16Database>>;
   let admin: pg.Client;
-  const url = (role: string) => `postgres://${role}:${password}@127.0.0.1:${port}/postgres`;
-  const containerConsumers = (args: string[]) => docker.command(["ps", "-a", "--no-trunc", ...args, "--format", "{{.ID}}"])
-    .toString().trim().split("\n").filter(Boolean);
-  const inspectNetwork = (allowedContainers: string[]) => {
-    const actual = JSON.parse(docker.command(["network", "inspect", networkId]).toString())[0];
-    if (!/^[a-f0-9]{64}$/.test(networkId) || !Number.isFinite(Date.parse(networkCreated))
-      || actual?.Id !== networkId || actual.Name !== name || actual.Created !== networkCreated
-      || actual.Labels?.[label] !== name || actual.Driver !== "bridge" || actual.Internal !== false
-      || actual.Options?.["com.docker.network.bridge.enable_ip_masquerade"] !== "false"
-      || Object.keys(actual.Containers ?? {}).some(container => !allowedContainers.includes(container))
-      || containerConsumers(["--filter", `network=${networkId}`]).some(container => !allowedContainers.includes(container))) {
-      throw new Error("owned runtime network identity mismatch");
-    }
-  };
-  const inspectVolume = (allowedContainers: string[]) => {
-    const actual = JSON.parse(docker.command(["volume", "inspect", volumeName]).toString())[0];
-    if (!volume || !Number.isFinite(Date.parse(volume.created)) || typeof volume.mountpoint !== "string" || !path.posix.isAbsolute(volume.mountpoint)
-      || actual?.Name !== volume.name || actual.CreatedAt !== volume.created || actual.Mountpoint !== volume.mountpoint
-      || actual.Labels?.[label] !== name || actual.Driver !== "local" || actual.Scope !== "local"
-      || Object.keys(actual.Options ?? {}).length !== 0
-      || containerConsumers(["--filter", `volume=${volumeName}`]).some(container => !allowedContainers.includes(container))) {
-      throw new Error("owned runtime volume identity mismatch");
-    }
-  };
-  const inspectContainer = () => {
-    const actual = docker.assertOwned(id, label, name);
-    const networks = Object.values(actual.NetworkSettings?.Networks ?? {}) as { NetworkID: string }[];
-    if (actual.Name !== `/${name}` || actual.Image !== imageId || actual.HostConfig?.NetworkMode !== networkId
-      || networks.length !== 1 || networks[0].NetworkID !== networkId || actual.Mounts?.length !== 1
-      || actual.Mounts[0].Type !== "volume" || actual.Mounts[0].Name !== volumeName || actual.Mounts[0].Source !== volume?.mountpoint
-      || actual.Mounts[0].Destination !== "/var/lib/postgresql/data" || actual.Mounts[0].RW !== true) {
-      throw new Error("owned runtime container resources mismatch");
-    }
-    inspectNetwork([id]); inspectVolume([id]);
-    return actual;
-  };
-  const removePrivateConfiguration = async () => {
-    if (!privateDirectoryIdentity) return;
-    const directory = await lstat(privateDirectory);
-    if (!directory.isDirectory() || directory.dev !== privateDirectoryIdentity.dev || directory.ino !== privateDirectoryIdentity.ino
-      || (directory.mode & 0o777) !== 0o700 || directory.uid !== process.getuid?.()) throw new Error("runtime private directory identity mismatch");
-    const entries = await readdir(privateDirectory);
-    if (privateFileIdentity) {
-      const file = await lstat(path.join(privateDirectory, "postgres.env"));
-      if (!file.isFile() || file.nlink !== 1 || file.dev !== privateFileIdentity.dev || file.ino !== privateFileIdentity.ino
-        || (file.mode & 0o777) !== 0o600 || file.uid !== directory.uid || entries.length !== 1 || entries[0] !== "postgres.env") {
-        throw new Error("runtime private configuration identity mismatch");
-      }
-      await unlink(path.join(privateDirectory, "postgres.env"));
-    } else if (entries.length) throw new Error("runtime private configuration outcome unknown");
-    await rmdir(privateDirectory);
+  const url = (role: string) => {
+    if (role === "postgres") return fixture.url;
+    const connection = new URL(fixture.url);
+    connection.username = role;
+    connection.password = password;
+    return connection.href;
   };
   beforeAll(async () => {
-    docker = createIsolatedUpgradeDocker();
-    const expected = process.env.UPG_RUNTIME_DOCKER_DAEMON_ID;
-    if (docker.command(["info", "--format", "{{.ID}}|{{.Name}}|{{.OperatingSystem}}"] ).toString().trim() !== `${expected}|docker-desktop|Docker Desktop`) {
-      throw new Error("explicit development daemon identity mismatch");
-    }
-    // Refuse collisions before creation; a prefix or a local daemon is not an
-    // ownership proof. Every removal below rechecks the actual created resource.
-    if (docker.command(["ps", "-a", "--format", "{{.Names}}"] ).toString().trim().split("\n").includes(name)
-      || docker.command(["network", "ls", "--format", "{{.Name}}"] ).toString().trim().split("\n").includes(name)
-      || docker.command(["volume", "ls", "--format", "{{.Name}}"] ).toString().trim().split("\n").includes(volumeName)) {
-      throw new Error("runtime resource name collision");
-    }
-    imageId = JSON.parse(docker.command(["image", "inspect", "postgres:16-alpine"]).toString())[0]?.Id;
-    if (!/^sha256:[a-f0-9]{64}$/.test(imageId)) throw new Error("runtime source image identity missing");
-    privateDirectory = await mkdtemp(path.join(os.tmpdir(), "wiseeff-runtime-private-"));
-    await chmod(privateDirectory, 0o700);
-    privateDirectoryIdentity = await lstat(privateDirectory);
-    const environmentFile = path.join(privateDirectory, "postgres.env");
-    await writeFile(environmentFile, `POSTGRES_PASSWORD=${password}\n`, { flag: "wx", mode: 0o600 });
-    privateFileIdentity = await lstat(environmentFile);
-    networkId = docker.command(["network", "create", "--driver", "bridge", "--label", `${label}=${name}`,
-      "--opt", "com.docker.network.bridge.enable_ip_masquerade=false", name]).toString().trim();
-    networkCreated = JSON.parse(docker.command(["network", "inspect", networkId]).toString())[0]?.Created;
-    inspectNetwork([]);
-    if (docker.command(["volume", "create", "--driver", "local", "--label", `${label}=${name}`, volumeName]).toString().trim() !== volumeName) {
-      throw new Error("runtime volume creation outcome unknown");
-    }
-    const createdVolume = JSON.parse(docker.command(["volume", "inspect", volumeName]).toString())[0];
-    volume = { name: volumeName, created: createdVolume.CreatedAt, mountpoint: createdVolume.Mountpoint };
-    inspectVolume([]);
-    id = docker.command(["run", "-d", "--name", name, "--label", `${label}=${name}`, "--network", networkId,
-      "--mount", `type=volume,src=${volumeName},dst=/var/lib/postgresql/data`, "--env-file", environmentFile,
-      "-p", "127.0.0.1::5432", imageId]).toString().trim();
-    const actual = inspectContainer();
-    const bindings = actual.NetworkSettings.Ports?.["5432/tcp"];
-    if (!actual.State.Running || bindings?.length !== 1 || bindings[0].HostIp !== "127.0.0.1"
-      || Object.entries(actual.NetworkSettings.Ports).some(([key, value]) => key !== "5432/tcp" && Boolean(value))) {
-      throw new Error("runtime published endpoint mismatch");
-    }
-    port = bindings[0].HostPort;
-    if (!/^[1-9][0-9]*$/.test(port) || Number(port) > 65535) throw new Error("runtime published port invalid");
-    for (let attempt = 0; attempt < 30; attempt++) {
-      const client = new pg.Client({ connectionString: url("postgres") });
-      try { await client.connect(); admin = client; break; }
-      catch { await client.end().catch(() => undefined); await setTimeout(200); }
-    }
-    if (!admin) throw new Error("owned development cluster unavailable");
+    fixture = await createSelfHostedPg16Database("runtimeidentity");
+    admin = new pg.Client({ connectionString: fixture.url });
+    await admin.connect();
     await admin.query(`create role runtime login password '${password}' nosuperuser nobypassrls nocreatedb nocreaterole noinherit;
       create role parameter_governance_writer_role nologin nosuperuser nobypassrls nocreatedb nocreaterole noinherit;
       create role governance login password '${password}' nosuperuser nobypassrls nocreatedb nocreaterole inherit;
@@ -139,12 +40,13 @@ describe.skipIf(!process.env.UPG_RUNTIME_DOCKER_DAEMON_ID)("actual runtime login
       grant select on public.runtime_business to runtime;`);
   });
   afterAll(async () => {
-    try {
-      await admin?.end();
-      if (id) { inspectContainer(); docker.command(["rm", "-f", id]); id = ""; }
-      if (volume) { inspectVolume([]); docker.command(["volume", "rm", volume.name]); volume = undefined; }
-      if (networkId) { inspectNetwork([]); docker.command(["network", "rm", networkId]); networkId = ""; }
-    } finally { await removePrivateConfiguration(); }
+    let failed = false;
+    // End the management session before dropping only this fixture's exact DB.
+    // A failed first close must not skip the owned database cleanup attempt.
+    for (const close of [() => admin?.end(), () => fixture?.close()]) {
+      try { await close(); } catch { failed = true; }
+    }
+    if (failed) throw new Error("runtime-identity-fixture-cleanup-failed");
   });
   it("keeps restricted-login business permissions distinct from Catalog startup approval", async () => {
     await expect(openRuntimeDatabase({ connectionString: url("runtime"), nodeEnv: "production" }))
@@ -254,7 +156,11 @@ describe.skipIf(!process.env.UPG_RUNTIME_DOCKER_DAEMON_ID)("actual runtime login
     });
     expect(result.status).toBe(1);
     expect(result.stderr).toContain(role === "postgres" ? "PCAT-RUNTIME-PRIVILEGED-LOGIN" : "PCAT-RUNTIME-CATALOG-SCHEMA-MISSING");
-    expect(result.stdout + result.stderr).not.toContain(password);
+    const output = result.stdout + result.stderr;
+    // Parent management and synthetic runtime credentials are now independent.
+    // Boolean assertions do not echo a secret as the expected value on failure.
+    expect(output.includes(password)).toBe(false);
+    expect(output.includes(decodeURIComponent(new URL(fixture.url).password))).toBe(false);
     expect(result.stdout + result.stderr).not.toContain("ECONNREFUSED");
     expect(result.stdout).not.toContain("listening");
   });

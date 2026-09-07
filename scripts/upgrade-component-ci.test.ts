@@ -5,6 +5,20 @@ import * as componentRunner from "./run-upgrade-component-tests";
 
 const workflow = readFileSync(new URL("../.github/workflows/ci.yml", import.meta.url), "utf8");
 
+it("requires real runtime login and process regressions in an owned PG16 lane without opt-in skips", () => {
+  const file = "server/shared/database/runtimeConnection.integration.test.ts";
+  expect(componentRunner.componentTestCommands("runtime-identity-pg16")[0].slice(1)).toEqual([
+    "run", "--config", "vitest.upgrade-cutover.config.ts", file,
+  ]);
+  expect(readFileSync(new URL("../vitest.upgrade-cutover.config.ts", import.meta.url), "utf8")).toContain(`"${file}"`);
+  expect(readFileSync(new URL("../vitest.server.config.ts", import.meta.url), "utf8")).toContain(`"${file}"`);
+  const source = readFileSync(new URL(`../${file}`, import.meta.url), "utf8");
+  expect(source).not.toContain("describe.skipIf");
+  expect(source).not.toContain("UPG_RUNTIME_DOCKER_DAEMON_ID");
+  expect(source).toContain("assertOwnedUpgradeTestTarget();");
+  expect(workflow).toContain("--suite runtime-identity-pg16 --github-hosted");
+});
+
 it("requires real restricted Catalog and persisted Review projections in their owned PG16 lane", () => {
   const files = [
     "server/modules/parameter-catalog-api/cghReadProjection.integration.test.ts",

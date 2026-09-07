@@ -6,6 +6,7 @@ assertOwnedUpgradeTestTarget();
 export default defineConfig({ test: {
   environment: "node",
   include: [
+    "server/shared/database/runtimeConnection.integration.test.ts",
     "server/modules/catalog-cutover/**/*.test.ts",
     "server/modules/parameter-bindings/cutoverImport/*.test.ts",
     "server/modules/catalog-kernel/security/catalogReader.integration.test.ts",

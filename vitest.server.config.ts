@@ -25,6 +25,7 @@ export default defineConfig({
     // cannot isolate these mutations from the shared server suite. runtimeState
     // also requires the independently issued target receipt supplied by bindings-pg16.
     exclude: ["node_modules/**", ...siblingWorktreeExclude,
+      "server/shared/database/runtimeConnection.integration.test.ts",
       "server/modules/logs/logAnalysisQueueRuntime.redis.integration.test.ts",
       "server/modules/catalog-cutover/activation/activation.integration.test.ts",
       "server/modules/catalog-cutover/retirement/loginFence.integration.test.ts",

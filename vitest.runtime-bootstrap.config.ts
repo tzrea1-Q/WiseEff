@@ -6,6 +6,8 @@ import { defineConfig } from "vitest/config";
 export default defineConfig({
   test: {
     environment: "node",
+    // Real login/process cases are mandatory in the owned PG16 CI lane.
+    exclude: ["server/shared/database/runtimeConnection.integration.test.ts"],
     include: [
       "server/apiWorkerShutdown.test.ts",
       "server/apiShutdown.test.ts",
