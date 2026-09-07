@@ -108,7 +108,7 @@ it.each(["builtin-execute", "new-system-definer"])("refuses actual PUBLIC system
       set search_path=pg_catalog as 'with inserted as (insert into public.report_system_canary values (current_user) returning *) select count(*) from inserted'`);
   const direct = createPostgresDatabase(url);
   try {
-    if (capability === "builtin-execute") expect((await direct.query("select trim(pg_catalog.pg_read_file('PG_VERSION')) as version")).rows).toEqual([{ version: "16" }]);
+    if (capability === "builtin-execute") expect(String((await direct.query("select pg_catalog.pg_read_file('PG_VERSION') as version")).rows[0].version).trim()).toBe("16");
     else {
       await expect(direct.query("insert into public.report_system_canary values ('forbidden')")).rejects.toMatchObject({ code: "42501" });
       expect((await direct.query("select pg_catalog.report_system_proxy()::int as count")).rows).toEqual([{ count: 1 }]);
