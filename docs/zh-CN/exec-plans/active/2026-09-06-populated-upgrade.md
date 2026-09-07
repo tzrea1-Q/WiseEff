@@ -21,6 +21,13 @@
 | P13 endpoint 资源监管及 owned 路由／Fermat | 父发行私有 receipt、持久计划／实际 ID、强杀 child 与精确清理 | runner 合同及必需 CI 路由 |
 | P13 集成 Spec／Lagrange | 固定 SHA 的独立跨层审查，不编辑实现 | 现有计划／证据双文件审查记录 |
 | 正式 durable 投递／父协调者，独立 Spec Lagrange | 锁定 BullMQ 接受正式 producer key；既有身份及重试兼容 | 队列合同及现有证据双文件 |
+| P12 激活命令组合／Lagrange；根 controller 集成／父协调者 | issued host lock 下复用领域、报告 dispatcher 和持久 journal；inspect／reconcile 不重放 SQL | activation-controller 模块双文档及现有操作文档 |
+
+新增 P12 组合 Scratch 显式依赖 `07919b498`，不拥有新 schema／grant 或 verifier。
+威胁包括伪造／丢失宿主锁、跨 run journal、未观察的 pins、批准前写 pending、SQL 回执
+丢失及 reconcile 意外重放。命令仅选择 action、report、attempt；当前观察必须来自
+真实 owner，不来自报告。Lagrange 现为实现者，后续必须由其他人独立审查；父协调者
+继续拥有 producer、共享 controller／状态机及 shell 入口。辅助 port 测试不证明获准 PG 激活。
 
 停止源 resolver 与父监督增量经独立 Standards/Spec 审查，已集成至 `c6a57ae41`。
 后续实际旧镜像业务验收在上传时 HTTP 500；新增永久真实 Redis 测试使用正式

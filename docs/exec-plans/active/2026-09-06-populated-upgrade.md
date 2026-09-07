@@ -21,6 +21,16 @@ local scripts timeout or the two skipped acceptance jobs. Its checkout remains
 | P13 endpoint resource supervisor and owned routing / Fermat | Parent-issued private receipt, durable planned/observed IDs, child kill and exact cleanup | Runner contract and mandatory CI route |
 | P13 integration Spec / Lagrange | Independent fixed-SHA cross-layer review, no implementation edits | Review evidence in this plan/evidence pair |
 | Formal durable enqueue / parent, independent Spec Lagrange | Actual producer key accepted by locked BullMQ, existing identity and retry compatibility | Queue contract and existing evidence pair |
+| P12 activation command composition / Lagrange; root/controller integration / parent | Existing domain, report dispatcher and persistent journal under the issued host lock; inspect/reconcile never replays SQL | Activation-controller module pair and existing operator pair |
+
+The new P12 composition Scratch depends explicitly on `07919b498`. It owns no
+new schema/grant or verifier. Threats are forged/lost host locks, cross-run journal
+reuse, unobserved pins, pending before approval, lost SQL acknowledgment and
+reconcile accidentally applying again. Its command input selects only action,
+report and attempt; current observations must come from the real owner, not the
+report. Lagrange now implements this module; its eventual independent review must
+come from another reviewer. Parent retains the producer, shared controller/state
+machine and shell entry. Auxiliary port tests cannot prove approved PG activation.
 
 The stopped-source resolver and parent supervision increment is integrated through
 `c6a57ae41`, after independent Standards/Spec review. Subsequent actual old-image

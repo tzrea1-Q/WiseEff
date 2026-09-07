@@ -42,6 +42,31 @@ global setup 在归属核验前尝试默认数据库，可能执行模板及 mig
 无 setup 的 retirement 配置；PG 测试必须独立 integration 文件及父级 owned cluster
 receipt。Bootstrap 凭据退出仍为 Scratch。
 
+队列修复 `07919b49834c6edb8060fa2612d55ab7892cc3dc`，tree
+`4262f0741d17649646897a2abd901e444109ec69`，获独立 Standards/Spec 通过。正式
+producer 先复现 BullMQ 拒绝 ID：10收集／9通过／1失败、exit 1、owned 清理核验成功。
+修复提交前 WIP 的真实 Redis 11/11，包括日志同 key 并发／不同 key、通知 key 和真实
+未标记持久任务碰撞。业务 processor 仍注入，只证明传输／调度，不证明完整日志业务或
+通知送达。WIP focused 28/28、typecheck 通过。干净 `07919b498` build 通过（保留既有
+bundle 警告）、contract／selfhost／boundary 通过；boundary 3509/3509、未允许及
+stale 均0。首次 boundary 命令漏必填 trusted-base，检查前 exit 1；纠正后仍使用原
+`9b3ba7df7e21f5589684bc92c872da593ad4c246`。
+
+| 队列增量日志 | SHA256 |
+| --- | --- |
+| 真实 producer Red，`c6a57ae41` 加测试／Markdown WIP | `9e814a278a3c89f455d4df3b0601e7f6a84138b062c19dc553cd43806eba2116` |
+| 真实 Redis Green，`194fefd97` 加后提交为 `07919b498` 的代码 WIP | `34df5cfb5654ca2beaea1ae833556b402deb1a68802d9308e6bf0e7d808da8a2` |
+| WIP focused 28/28 | `8965a97fb36059090678e9f4b3b31bf56e1804e9305eecdf79203503949a8e45` |
+| 干净 `07919b498` build | `77ed519befe1abea53820e6017aeb0cd73f23470f880385705e1f1dd35ff886e` |
+
+`07919b498` 完整 owned backend 收集4261：4249通过／1失败／11跳过，115.39s、
+exit 1、清理核验成功。Catalog roles 全集群负测看到了并行 Binding producer 夹具
+创建的 `s7_binding_*` LOGIN。这是候选测试路由缺陷，不归为 main 继承失败。
+`3fc7f7464` 仅将该文件移出共享 backend；`df41defd3` 永久检查其既有 mandatory
+owned `bindings-pg16` 收集。独立 Standards/Spec 通过；路由 Red 1失败／Green 1通过，
+权限断言、role grant、timeout 不变。完整 backend 失败保留，等待单独归属的新执行；
+路由测试或旧 Hosted 成功不替代全量结果。
+
 | 实际执行身份 | 命令／范围与结果 | 日志 SHA256 |
 | --- | --- | --- |
 | clean `4847025983527893e21e260da55cbf32aeff8a46`，tree `3b7671516daf03d332b02c07534a061be6517b8b` | owned `scripts-pgvector`：收集1716、通过1690、失败1、跳过25；99.45秒，退出1，清理已核验。唯一失败是 source-lock lineage 原60000ms超时 | `64b8245f38d2882beeb88ee12b917dad84f0dd4d2516c7090cb283a0162a10af` |

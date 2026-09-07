@@ -53,6 +53,38 @@ failures, not Red/Green evidence. Filesystem tests now use the existing no-setup
 retirement configuration; PG tests require a separate integration file and
 parent-owned cluster receipt. Bootstrap credential fencing remains Scratch.
 
+Queue transport fix `07919b49834c6edb8060fa2612d55ab7892cc3dc` (tree
+`4262f0741d17649646897a2abd901e444109ec69`) has independent Standards/Spec PASS.
+The formal producer first reproduced BullMQ's rejected ID: 10 collected, 9 passed,
+1 failed, exit 1, owned cleanup verified. The fixed pre-commit worktree passed
+11/11 real Redis tests, including concurrent identical/distinct log keys,
+notification keys and a real unmarked persisted collision. Its controlled
+processor is injected: this proves transport/dispatch, not complete business
+analysis or notification delivery. Pure focused tests passed 28/28 and typecheck
+passed on WIP. Clean `07919b498` build passed (existing bundle warnings), contract,
+selfhost and boundary passed; boundary retained 3509/3509 allowances and zero
+unallowlisted/stale entries. An initial boundary invocation omitted its required
+trusted-base argument and exited 1 before checking; the corrected command used
+the unchanged `9b3ba7df7e21f5589684bc92c872da593ad4c246`.
+
+| Queue increment log | SHA256 |
+| --- | --- |
+| Real producer Red, `c6a57ae41` plus test/Markdown WIP | `9e814a278a3c89f455d4df3b0601e7f6a84138b062c19dc553cd43806eba2116` |
+| Real Redis Green, `194fefd97` plus code WIP later committed as `07919b498` | `34df5cfb5654ca2beaea1ae833556b402deb1a68802d9308e6bf0e7d808da8a2` |
+| WIP focused 28/28 | `8965a97fb36059090678e9f4b3b31bf56e1804e9305eecdf79203503949a8e45` |
+| Clean `07919b498` build | `77ed519befe1abea53820e6017aeb0cd73f23470f880385705e1f1dd35ff886e` |
+
+The complete owned backend at `07919b498` collected 4261: 4249 passed, 1 failed,
+11 skipped, 115.39s, exit 1, cleanup verified. The Catalog roles cluster-wide
+negative observed a temporary `s7_binding_*` LOGIN created by the simultaneously
+collected Binding producer fixture. This candidate routing defect is not called
+inherited main failure. `3fc7f7464` excludes that exact file from shared backend;
+`df41defd3` permanently requires its existing mandatory owned `bindings-pg16`
+collection. Independent Standards/Spec passed; routing Red 1 failed / Green 1
+passed. Permission assertions, role grants and timeouts are unchanged. The full
+backend failure is retained until a separately attributed execution passes;
+neither the routing test nor prior Hosted success substitutes for it.
+
 | Actual execution identity | Command/scope and result | Log SHA256 |
 | --- | --- | --- |
 | Clean `4847025983527893e21e260da55cbf32aeff8a46`, tree `3b7671516daf03d332b02c07534a061be6517b8b` | Owned `scripts-pgvector`: 1716 collected, 1690 passed, 1 failed, 25 skipped; 99.45s, exit 1, cleanup verified. Only failure: source-lock lineage case at unchanged 60000ms | `64b8245f38d2882beeb88ee12b917dad84f0dd4d2516c7090cb283a0162a10af` |
