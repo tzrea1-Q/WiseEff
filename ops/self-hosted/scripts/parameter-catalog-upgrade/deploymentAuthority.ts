@@ -115,8 +115,11 @@ select pg_catalog.current_database() as "databaseName", (select oid::text from p
     or (pg_catalog.has_column_privilege(session_user,c.oid,a.attnum,'UPDATE') and not(c.nspname='public' and c.relname='auth_sessions' and a.attname='last_used_at')))) end) as extra_relations,
  (select count(*)::int from app_schemas n where pg_catalog.has_schema_privilege(session_user,n.oid,'CREATE'))
   + case when pg_catalog.has_database_privilege(session_user,pg_catalog.current_database(),'CREATE') then 1 else 0 end as ddl,
- (select count(*)::int from pg_catalog.pg_proc p join app_schemas n on n.oid=p.pronamespace
-   where p.prosecdef and pg_catalog.has_function_privilege(session_user,p.oid,'EXECUTE')) as definers,
+ (select count(*)::int from pg_catalog.pg_proc p join pg_catalog.pg_namespace n on n.oid=p.pronamespace
+   where p.prosecdef and pg_catalog.has_function_privilege(session_user,p.oid,'EXECUTE')
+     and (n.nspname not in ('pg_catalog','information_schema') or not exists(
+       select 1 from pg_catalog.pg_init_privs i where i.classoid='pg_catalog.pg_proc'::pg_catalog.regclass
+         and i.objoid=p.oid and i.objsubid=0 and i.privtype='i'))) as definers,
  (select count(*)::int from pg_catalog.pg_proc p cross join lateral pg_catalog.aclexplode(p.proacl) a
    where a.grantee in(select oid from reachable)) as explicit_functions,
  -- Restricted built-ins have an initdb ACL, distinct from the ordinary

@@ -33,8 +33,11 @@ const identitySql = `with recursive reachable(oid) as (
   or pg_catalog.has_any_column_privilege(session_user,c.oid,'UPDATE,REFERENCES') end) as extra_relations,
  (select count(*)::int from pg_catalog.pg_namespace s where s.nspname !~ '^pg_(temp|toast)' and pg_catalog.has_schema_privilege(session_user,s.oid,'CREATE'))
   +case when pg_catalog.has_database_privilege(session_user,pg_catalog.current_database(),'CREATE') then 1 else 0 end as ddl,
- (select count(*)::int from pg_catalog.pg_proc p left join schemas s on s.oid=p.pronamespace where
-  (p.prosecdef and s.oid is not null and pg_catalog.has_function_privilege(session_user,p.oid,'EXECUTE'))
+ (select count(*)::int from pg_catalog.pg_proc p join pg_catalog.pg_namespace s on s.oid=p.pronamespace where
+  (p.prosecdef and pg_catalog.has_function_privilege(session_user,p.oid,'EXECUTE')
+    and (s.nspname not in ('pg_catalog','information_schema') or not exists(
+      select 1 from pg_catalog.pg_init_privs i where i.classoid='pg_catalog.pg_proc'::pg_catalog.regclass
+        and i.objoid=p.oid and i.objsubid=0 and i.privtype='i')))
   or exists(select 1 from pg_catalog.aclexplode(p.proacl) a where a.grantee in(select oid from reachable))) as functions,
  (select count(*)::int from pg_catalog.pg_proc p join pg_catalog.pg_namespace s on s.oid=p.pronamespace
   join pg_catalog.pg_init_privs i on i.classoid='pg_catalog.pg_proc'::pg_catalog.regclass and i.objoid=p.oid and i.objsubid=0 and i.privtype='i'

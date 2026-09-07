@@ -227,6 +227,21 @@ it.each(["catalog-read", "report-update", "registry-insert", "public-builtin", "
   finally { await admin.query(revoke); }
 });
 
+it.each(["authentication", "report-writer"])("refuses a new PUBLIC system definer on the actual %s LOGIN", async pool => {
+  await admin.query(`create table public.authority_definer_canary(value text);
+    create function pg_catalog.authority_untrusted_definer() returns bigint language sql security definer
+    set search_path=pg_catalog as 'with inserted as (insert into public.authority_definer_canary values (current_user) returning *) select count(*) from inserted'`);
+  const restricted = createPostgresDatabase(pool === "authentication" ? options.authConnectionString : reportTargetOptions.writerConnectionString);
+  try {
+    await expect(restricted.query("insert into public.authority_definer_canary values ('forbidden')")).rejects.toMatchObject({ code: "42501" });
+    expect((await restricted.query("select pg_catalog.authority_untrusted_definer()::int as count")).rows).toEqual([{ count: 1 }]);
+    expect((await admin.query("select count(*)::int as count from pg_init_privs where classoid='pg_proc'::regclass and objoid='pg_catalog.authority_untrusted_definer()'::regprocedure")).rows).toEqual([{ count: 0 }]);
+    if (pool === "authentication") await expect(authority.confirmRestore(request())).rejects.toMatchObject({ code: "PCAT-DEPLOYMENT-AUTHORITY-AUTHENTICATION-DATABASE-REJECTED" });
+    else await expect(openReportApprovalTarget(reportTargetOptions).then(async accepted => { await accepted.close(); return accepted; }))
+      .rejects.toMatchObject({ code: "PCAT-REPORT-APPROVAL-WRITER-CAPABILITY-REJECTED" });
+  } finally { await restricted.close(); await admin.query("drop function pg_catalog.authority_untrusted_definer(); drop table public.authority_definer_canary"); }
+});
+
 it.each(["session-insert", "session-column-insert", "password-column-update", "public-password-update", "public-select", "definer", "function-grant", "grant-option", "sequence", "default-grant"])("refuses effective authority forgery through %s", async fault => {
   const grants: Record<string, [string, string]> = {
     "session-insert": [`grant insert on public.auth_sessions to ${loginRole}`, `revoke insert on public.auth_sessions from ${loginRole}`],

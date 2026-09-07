@@ -39,6 +39,8 @@ SECURITY DEFINER 都拒绝。通过 PostgreSQL 16 的 `pg_init_privs` 初始化 
 PUBLIC 新获得的受限系统函数执行能力；有效参数授权中的 ALTER SYSTEM 以及
 superuser／未知参数 SET 也拒绝。认证不需要此类用户 definer。本组件不执行这些 grant，
 不扩大运行 pool 权限。
+系统 schema 中可调用但没有 initdb 来源记录的 SECURITY DEFINER 也拒绝，不能仅凭
+namespace 就认定函数是可信内建。
 
 本地会话解析会更新 last_used_at，只能写独立管理认证库，不能写冻结源。本组件真实
 测试使用同一自有集群中的两个数据库，证明数据库写隔离，不证明恢复故障域独立。

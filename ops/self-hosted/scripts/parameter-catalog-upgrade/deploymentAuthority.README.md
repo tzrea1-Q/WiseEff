@@ -55,6 +55,8 @@ explicit function grants and executable user-schema SECURITY DEFINER functions
 refuse. PUBLIC execution newly granted to restricted PostgreSQL built-ins is
 checked against the PostgreSQL 16 initdb ACL in `pg_init_privs`. Effective parameter
 grants for ALTER SYSTEM or SET of superuser/unknown parameters also refuse.
+Callable system-schema SECURITY DEFINER without an initdb provenance record
+also refuses; namespace alone is not evidence of a trusted built-in.
 Authentication requires no such user definer. This document does not
 provision those grants or expand any runtime pool.
 

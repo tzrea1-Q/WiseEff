@@ -34,6 +34,8 @@ SET false、ADMIN false。高权／可达角色、所有权、其他成员关系
 有效表／列／序列能力、DDL、grant option、默认 ACL 和不安全函数／参数权限拒绝。
 PUBLIC 新增的受限系统函数 EXECUTE 对照 PostgreSQL 16 `pg_init_privs` 检查。
 不修改历史迁移。
+可调用的系统 schema SECURITY DEFINER 还须有 initdb 来源记录；新建 PUBLIC definer
+不能藏在 `pg_catalog` 中绕过审计。
 
 `approveDeploymentReport` 只接收工厂签发的 opaque target 和真实 authority 签发的
 opaque command。派发前以及实际 checkout 后原 service 事务体内都重新核验当前私有

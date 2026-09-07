@@ -44,6 +44,8 @@ High/reachable roles, ownership, other memberships, missing grants, extra effect
 table/column/sequence capabilities, DDL, grant options, default ACLs and unsafe
 function/parameter privileges refuse. PUBLIC restricted built-in EXECUTE is
 checked against PostgreSQL 16 `pg_init_privs`. No historical migration is changed.
+Callable system-schema SECURITY DEFINER functions also require an initdb
+provenance record; a newly created PUBLIC definer cannot hide in `pg_catalog`.
 
 `approveDeploymentReport` accepts only a factory-issued opaque target and a real
 authority-issued opaque command. The command is revalidated against its current
