@@ -35,6 +35,80 @@ export class RetirementEndpointCleanupError extends Error {
   constructor() { super("owned-retirement-endpoint-cleanup-incomplete"); }
 }
 
+/** This ledger owns only the three freshly named component-profile resources.
+ * Creation acknowledgments are not the sole source of cleanup identity. */
+export async function createOwnedComponentResources(options: {
+  docker: ReturnType<typeof createIsolatedUpgradeDocker>; directory: string;
+  imageId: string; run: string; password: string; bootstrapUser: string;
+  isRedis: boolean; authorizeCreation: () => void;
+}) {
+  const { docker, directory, imageId, run, password, bootstrapUser, isRedis, authorizeCreation } = options;
+  if (!/^conversion-[a-f0-9]{16}$/.test(run) || !/^sha256:[a-f0-9]{64}$/.test(imageId) ||
+      !/^[a-f0-9]{48}$/.test(password) || !["postgres", "wiseeff"].includes(bootstrapUser)) throw new Error("owned-component-resource-input-invalid");
+  const label = "wiseeff.upgrade.conversion";
+  const resources = {
+    network: { name: run, id: "", attempted: false },
+    volume: { name: `${run}-data`, id: "", attempted: false },
+    container: { name: `${run}-service`, id: "", attempted: false },
+  };
+  const plan = await open(path.join(directory, "component-resources-plan.json"), "wx", 0o600);
+  try { await plan.writeFile(JSON.stringify({ run, label, imageId, resources })); await plan.sync(); }
+  finally { await plan.close(); }
+  const records = await open(path.join(directory, "component-resources-observed.jsonl"), "wx", 0o600);
+  try {
+    const parent = await open(directory, "r"); try { await parent.sync(); } finally { await parent.close(); }
+  } catch (error) { await records.close(); throw error; }
+  const create = async (kind: keyof typeof resources, command: string[]) => {
+    const resource = resources[kind];
+    if (resource.attempted) throw new Error("owned-component-create-already-attempted");
+    authorizeCreation(); resource.attempted = true;
+    resource.id = docker.command(command).toString().trim();
+    await records.writeFile(JSON.stringify({ kind, name: resource.name, id: resource.id }) + "\n");
+    await records.sync();
+    return resource.id;
+  };
+  return {
+    network: () => create("network", ["network", "create", "--opt", "com.docker.network.bridge.enable_ip_masquerade=false", "--label", `${label}=${run}`, resources.network.name]),
+    volume: () => create("volume", ["volume", "create", "--label", `${label}=${run}`, resources.volume.name]),
+    async container() {
+      if (!resources.network.id || !resources.volume.id) throw new Error("owned-component-prerequisite-unavailable");
+      const args = ["run", "-d", "--name", resources.container.name, "--network", resources.network.id, "--label", `${label}=${run}`];
+      if (isRedis) {
+        await writeFile(path.join(directory, "redis.conf"), `bind 0.0.0.0\nappendonly yes\ndir /data\nrequirepass ${password}\n`, { mode: 0o600, flag: "wx" });
+        args.push("--mount", `type=volume,source=${resources.volume.id},target=/data`, "--mount", `type=bind,source=${directory},target=/private,readonly`,
+          "-p", "127.0.0.1::6379", "--entrypoint", "redis-server", imageId, "/private/redis.conf");
+      } else args.push("-v", `${resources.volume.id}:/var/lib/postgresql/data`, "-e", `POSTGRES_PASSWORD=${password}`,
+        "-e", `POSTGRES_USER=${bootstrapUser}`, "-e", "POSTGRES_DB=postgres", "-p", "127.0.0.1::5432", imageId);
+      return create("container", args);
+    },
+    async cleanup() {
+      let failed = false;
+      for (const kind of ["container", "volume", "network"] as const) {
+        const resource = resources[kind];
+        if (!resource.attempted) continue;
+        try {
+          const lookup = kind === "container" ? ["ps", "-aq", "--no-trunc", "--filter", `name=^/${resource.name}$`]
+            : [kind, "ls", "-q", ...(kind === "network" ? ["--no-trunc"] : []), "--filter", `name=^${resource.name}$`];
+          const id = resource.id || docker.command(lookup).toString().trim();
+          if (!id) continue;
+          if (kind === "container") {
+            const actual = docker.assertOwned(id, label, run);
+            if (actual.Image !== imageId || actual.Name !== `/${resource.name}`) throw new Error();
+            docker.command(["rm", "-f", "-v", id]);
+          } else {
+            const actual = JSON.parse(docker.command([kind, "inspect", id]).toString())[0];
+            if (actual.Name !== resource.name || actual.Labels?.[label] !== run ||
+                (kind === "network" && (actual.Id !== id || Object.keys(actual.Containers ?? {}).length))) throw new Error();
+            docker.command([kind, "rm", id]);
+          }
+        } catch { failed = true; }
+      }
+      try { await records.close(); } catch { failed = true; }
+      if (failed) throw new Error("owned-component-resource-cleanup-incomplete");
+    },
+  };
+}
+
 /** Supervising process owns every endpoint resource, including when body kills
  * the test child. Names/nonce/image are durably declared before any Docker create;
  * an unknown create acknowledgment is reconciled by that exact owned name. */
@@ -262,25 +336,18 @@ export async function runUpgradeComponentTests(args: string[], observation?: {
   process.on("SIGINT", interrupt); process.on("SIGTERM", interrupt);
   let exitCode = 1;
   let stage = "network-create";
+  let resources: Awaited<ReturnType<typeof createOwnedComponentResources>> | undefined;
   try {
+    resources = await createOwnedComponentResources({ docker, directory, imageId: image.Id, run, password, bootstrapUser, isRedis,
+      authorizeCreation: () => { if (interrupted) throw new Error("owned-component-supervisor-interrupted"); authorizeCreation(); } });
     // Only the selected data service runs here. An internal Docker network does not publish
     // its port on Docker Desktop; this owned bridge publishes loopback only.
     // This is not an application egress-isolation environment.
-    authorizeCreation();
-    net = docker.command(["network", "create", "--opt", "com.docker.network.bridge.enable_ip_masquerade=false", "--label", `${label}=${run}`, run]).toString().trim();
+    net = await resources.network();
     stage = "volume-create";
-    authorizeCreation();
-    volume = docker.command(["volume", "create", "--label", `${label}=${run}`, `${run}-data`]).toString().trim();
+    volume = await resources.volume();
     stage = "container-create";
-    authorizeCreation();
-    if (isRedis) {
-      await writeFile(path.join(directory, "redis.conf"), `bind 0.0.0.0\nappendonly yes\ndir /data\nrequirepass ${password}\n`, { mode: 0o600, flag: "wx" });
-      authorizeCreation();
-      id = docker.command(["run", "-d", "--network", net, "--label", `${label}=${run}`, "--mount", `type=volume,source=${volume},target=/data`,
-        "--mount", `type=bind,source=${directory},target=/private,readonly`, "-p", "127.0.0.1::6379", "--entrypoint", "redis-server", image.Id, "/private/redis.conf"]).toString().trim();
-    } else {
-      id = docker.command(["run", "-d", "--network", net, "--label", `${label}=${run}`, "-v", `${volume}:/var/lib/postgresql/data`, "-e", `POSTGRES_PASSWORD=${password}`, "-e", `POSTGRES_USER=${bootstrapUser}`, "-e", "POSTGRES_DB=postgres", "-p", "127.0.0.1::5432", image.Id]).toString().trim();
-    }
+    id = await resources.container();
     const redisCommand = (args: string[]) => docker.command(["exec", id, "sh", "-c",
       'export REDISCLI_AUTH="$(awk \'$1 == "requirepass" {print $2}\' /private/redis.conf)"; exec redis-cli --raw "$@"', "redis-probe", ...args]).toString().trim();
     stage = "container-port-observation";
@@ -362,18 +429,8 @@ export async function runUpgradeComponentTests(args: string[], observation?: {
     console.error(`upgrade-component-stage-failed:${stage}`);
     exitCode = 1;
   } finally {
-    // Each destructive cleanup is constrained to the exact newly created object.
-    if (id) { docker.assertOwned(id, label, run); docker.command(["rm", "-f", "-v", id]); }
-    if (volume) {
-      const found = JSON.parse(docker.command(["volume", "inspect", volume]).toString())[0];
-      if (found.Name !== volume || found.Labels?.[label] !== run) throw new Error("owned-volume-mismatch");
-      docker.command(["volume", "rm", volume]);
-    }
-    if (net) {
-      const found = JSON.parse(docker.command(["network", "inspect", net]).toString())[0];
-      if (found.Id !== net || found.Labels?.[label] !== run) throw new Error("owned-network-mismatch");
-      docker.command(["network", "rm", net]);
-    }
+    try { await resources?.cleanup(); }
+    catch { retainPrivateDirectory = true; exitCode = 1; console.error("owned-component-resource-cleanup-incomplete"); }
     if (!retainPrivateDirectory) await rm(directory, { recursive: true });
     process.off("SIGINT", interrupt); process.off("SIGTERM", interrupt);
   }

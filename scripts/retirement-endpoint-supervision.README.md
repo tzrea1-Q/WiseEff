@@ -30,6 +30,15 @@ predeclared exact name, nonce and image. A foreign or changed object is not dele
 cleanup failure makes the run fail and retains its private evidence directory.
 The check before each readiness iteration also refuses an interrupted parent.
 
+The same rule covers the main component profile's network, volume and service
+container. All three have exact predeclared names and a private fsynced plan;
+the service has an explicit Docker name even if `docker run` loses its response.
+Cleanup reconciles an unknown acknowledgment against that exact name and the
+run label (also the image for containers). It checks all three resources despite
+another cleanup failure, refuses foreign ownership and retains private evidence
+on any failure. It never treats the absence of a returned ID as proof that no
+resource was created.
+
 The business file consumes the receipt and can start/stop owned probes or apply
 bounded network-alias faults; it creates and removes no Docker resources. The
 supervision file likewise consumes the receipt, kills a TERM-resistant process

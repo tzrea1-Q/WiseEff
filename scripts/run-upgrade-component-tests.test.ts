@@ -1,4 +1,4 @@
-import { expect, it } from "vitest";
+import { expect, it, vi } from "vitest";
 import { spawn } from "node:child_process";
 import { setTimeout } from "node:timers/promises";
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync, readFileSync, statSync } from "node:fs";
@@ -7,6 +7,57 @@ import { join } from "node:path";
 import { execFileSync } from "node:child_process";
 import * as componentRunner from "./run-upgrade-component-tests";
 import { observeCleanUpgradeCheckout, runUpgradeComponentTests, superviseComponentProcess } from "./run-upgrade-component-tests";
+
+const injectedDocker = vi.hoisted(() => ({ current: undefined as any }));
+vi.mock("./isolated-upgrade-docker", async importOriginal => {
+  const actual = await importOriginal<typeof import("./isolated-upgrade-docker")>();
+  return { ...actual, createIsolatedUpgradeDocker: (...args: Parameters<typeof actual.createIsolatedUpgradeDocker>) => injectedDocker.current ?? actual.createIsolatedUpgradeDocker(...args) };
+});
+
+it.each(["network", "volume", "container", "network-foreign", "volume-foreign", "container-foreign"])("reconciles a lost main profile %s acknowledgment against its exact declared resource", async lost => {
+  const records = new Map<string, { Id: string; Name: string; Labels: Record<string, string>; Image?: string; Containers?: Record<string, unknown> }>();
+  const imageId = `sha256:${"a".repeat(64)}`;
+  const output = (value: unknown) => Buffer.from(typeof value === "string" ? value : JSON.stringify(value));
+  const command = (args: string[]) => {
+    if (args[0] === "info") return output("owned|docker-desktop|Docker Desktop");
+    if (args[0] === "image") return output([{ Id: imageId, Os: "linux", Architecture: "arm64" }]);
+    const kind = args[0] === "run" ? "container" : args[1] === "create" ? args[0] : "";
+    if (kind) {
+      const [key, value] = args[args.indexOf("--label") + 1].split("=");
+      const name = kind === "container" ? (args.includes("--name") ? args[args.indexOf("--name") + 1] : "old-unrecorded-container") : args.at(-1)!;
+      const row = { Id: kind === "volume" ? name : (kind === "network" ? "b" : "c").repeat(64), Name: name,
+        Labels: { [key]: value }, Image: imageId, Containers: {} };
+      records.set(kind, row);
+      if (kind === lost.split("-")[0]) {
+        if (lost.endsWith("-foreign")) row.Labels = {};
+        throw new Error("transport-acknowledgment-lost");
+      }
+      return output(row.Id);
+    }
+    if (args[0] === "ps") return output(records.get("container")?.Id ?? "");
+    if (args[1] === "ls") return output(records.get(args[0])?.Id ?? "");
+    if (args[1] === "inspect") return output([records.get(args[0])]);
+    if (args[0] === "rm") { records.delete("container"); return output(""); }
+    if (args[1] === "rm") { records.delete(args[0]); return output(""); }
+    throw new Error("unexpected-unit-docker-command");
+  };
+  injectedDocker.current = { daemonId: "owned", endpoint: "unix:///unused-test-socket", command,
+    assertOwned(id: string, label: string, run: string) {
+      const row = records.get("container");
+      if (!row || row.Id !== id || row.Labels[label] !== run) throw new Error("wrong-owner");
+      return { ...row, Name: `/${row.Name}` };
+    } };
+  const log = vi.spyOn(console, "log").mockImplementation(() => {});
+  const error = vi.spyOn(console, "error").mockImplementation(() => {});
+  try {
+    const result = await runUpgradeComponentTests(["--expected-daemon-id", "owned", "--suite", "reader-pg16"]);
+    expect(result.exitCode).toBe(1);
+    expect(records.size).toBe(lost.endsWith("-foreign") ? 1 : 0);
+    const summary = JSON.parse(log.mock.calls.at(-1)![0]);
+    expect(summary.cleanupVerified).toBe(!lost.endsWith("-foreign"));
+    expect(summary.privateEvidenceRetained).toBe(lost.endsWith("-foreign"));
+  } finally { injectedDocker.current = undefined; log.mockRestore(); error.mockRestore(); }
+});
 
 it("owns the retirement endpoint topology in the supervising runner before the test child is started", () => {
   expect(typeof componentRunner.withOwnedRetirementEndpoints).toBe("function");
