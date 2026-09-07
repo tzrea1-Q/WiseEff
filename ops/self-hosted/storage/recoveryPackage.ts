@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { constants } from "node:fs";
-import { open, writeFile } from "node:fs/promises";
+import { lstat, open } from "node:fs/promises";
 import path from "node:path";
 import { captureRecoveryPoint, verifyRecoveryPoint, type QuiescenceProof, type RecoveryTargetIdentity, type RecoveryManifest, type StoreSnapshotPort } from "./recoveryPoint";
 
@@ -118,6 +118,46 @@ export type VerifiedRecoveryPackage = {
   bootstrap?: RecoveryBootstrapIdentity;
 };
 const invalid = () => new Error("recovery-package-invalid");
+export type RecoveryPackageDirectoryIdentity = Readonly<{ dev: number; ino: number }>;
+const sameFileIdentity = (left: RecoveryPackageDirectoryIdentity, right: RecoveryPackageDirectoryIdentity) => left.dev === right.dev && left.ino === right.ino;
+
+/** A pathname can be replaced while the source is exported or between payloads.
+ * Keep the original directory open, then identify each actual output descriptor
+ * and its named inode before writing through that descriptor. A race during open
+ * can create an empty file in a replacement directory, but it receives no backup
+ * bytes. Never delete that file or any other foreign resource on refusal.
+ */
+async function openPackageWriter(directory: string, expected?: RecoveryPackageDirectoryIdentity) {
+  const pinned = expected ? { ...expected } : undefined;
+  const root = await open(directory, constants.O_RDONLY | constants.O_DIRECTORY | constants.O_NOFOLLOW);
+  try {
+    const original = await root.stat();
+    if (pinned && !sameFileIdentity(original, pinned)) throw invalid();
+    const check = async () => {
+      const [held, named] = await Promise.all([root.stat(), lstat(directory)]);
+      if (!held.isDirectory() || !named.isDirectory() || named.isSymbolicLink()
+        || (held.mode & 0o777) !== 0o700 || (named.mode & 0o777) !== 0o700
+        || !sameFileIdentity(original, held) || !sameFileIdentity(original, named)) throw invalid();
+    };
+    await check();
+    return { check, close: () => root.close(), async write(name: string, bytes: Buffer) {
+      await check();
+      const filename = path.join(directory, name);
+      const output = await open(filename, constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW, 0o600);
+      try {
+        await check();
+        const [held, named] = await Promise.all([output.stat(), lstat(filename)]);
+        await check();
+        if (!held.isFile() || !named.isFile() || held.nlink !== 1 || named.nlink !== 1
+          || held.size !== 0 || (held.mode & 0o777) !== 0o600 || !sameFileIdentity(held, named)) throw invalid();
+        await output.writeFile(bytes);
+        await check();
+        const final = await output.stat();
+        if (final.size !== bytes.length || final.nlink !== 1 || !sameFileIdentity(final, await lstat(filename))) throw invalid();
+      } finally { await output.close(); }
+    } };
+  } catch (error) { await root.close(); throw error; }
+}
 const roleName = (name: unknown): name is string => typeof name === "string" && /^[a-z][a-z0-9_]{0,62}$/.test(name) && !name.startsWith("pg_") && name !== "postgres";
 const validateBootstrap = (value: RecoveryBootstrapIdentity) => {
   if (!value || typeof value !== "object" || Object.keys(value).sort().join(",") !== "postgresMajor,roleName,roleOid"
@@ -156,32 +196,37 @@ export const recoveryPackageStorePorts = (manifest: Pick<Manifest, "postgres" | 
 /** The source adapter exports all bytes and non-secret role capabilities while fenced.
  * No credentials, executable role SQL, config files or application approvals belong here.
  */
-export async function captureRecoveryPackage(directory: string, input: RecoveryPackageInput): Promise<string> {
+export async function captureRecoveryPackage(directory: string, input: RecoveryPackageInput, expectedDirectoryIdentity?: RecoveryPackageDirectoryIdentity): Promise<string> {
   validateRoles(input.roles);
   if (input.bootstrap !== undefined) validateBootstrapRoles(input.bootstrap, input.roles);
-  let index = 0; let size = 0;
-  const payload = async (bytes: Buffer): Promise<FileRef> => {
-    size += bytes.length;
-    if (size > LIMIT) throw invalid();
-    const file = `payload-${index++}.bin`;
-    await writeFile(path.join(directory, file), bytes, { flag: "wx", mode: 0o600 });
-    return { file, sha256: hash(bytes), size: bytes.length };
-  };
-  const postgres = await payload(input.postgres);
-  const objects = [];
-  for (const object of input.objects) objects.push({ key: object.key, contentType: object.contentType, metadata: object.metadata, ...await payload(object.bytes) });
-  const files = [];
-  for (const file of input.redis.files) files.push({ name: file.name, ...await payload(file.bytes) });
-  const content = { postgres, roles: input.roles, objects, redis: { appendonly: true as const, files }, ...(input.bootstrap ? { bootstrap: { ...input.bootstrap } } : {}) };
-  const capture = await captureRecoveryPoint({ runId: input.runId, target: input.target, quiescence: input.quiescence,
-    maximumAgeMs: 24 * 60 * 60 * 1000, stores: recoveryPackageStorePorts(content, input.target) });
-  if (!capture.ok) throw invalid();
-  const manifest: Manifest = { format: input.bootstrap ? "wiseeff-recovery-package-v3" : "wiseeff-recovery-package-v2", recovery: capture.value.manifest, ...content };
-  const bytes = Buffer.from(JSON.stringify(manifest));
-  await writeFile(path.join(directory, "manifest.json"), bytes, { flag: "wx", mode: 0o600 });
-  const digest = hash(bytes);
-  await verifyRecoveryPackage(directory, digest);
-  return digest;
+  const writer = await openPackageWriter(directory, expectedDirectoryIdentity).catch(() => { throw invalid(); });
+  try {
+    let index = 0; let size = 0;
+    const payload = async (bytes: Buffer): Promise<FileRef> => {
+      size += bytes.length;
+      if (size > LIMIT) throw invalid();
+      const file = `payload-${index++}.bin`;
+      await writer.write(file, bytes);
+      return { file, sha256: hash(bytes), size: bytes.length };
+    };
+    const postgres = await payload(input.postgres);
+    const objects = [];
+    for (const object of input.objects) objects.push({ key: object.key, contentType: object.contentType, metadata: object.metadata, ...await payload(object.bytes) });
+    const files = [];
+    for (const file of input.redis.files) files.push({ name: file.name, ...await payload(file.bytes) });
+    const content = { postgres, roles: input.roles, objects, redis: { appendonly: true as const, files }, ...(input.bootstrap ? { bootstrap: { ...input.bootstrap } } : {}) };
+    const capture = await captureRecoveryPoint({ runId: input.runId, target: input.target, quiescence: input.quiescence,
+      maximumAgeMs: 24 * 60 * 60 * 1000, stores: recoveryPackageStorePorts(content, input.target) });
+    if (!capture.ok) throw invalid();
+    const manifest: Manifest = { format: input.bootstrap ? "wiseeff-recovery-package-v3" : "wiseeff-recovery-package-v2", recovery: capture.value.manifest, ...content };
+    const bytes = Buffer.from(JSON.stringify(manifest));
+    await writer.write("manifest.json", bytes);
+    const digest = hash(bytes);
+    await verifyRecoveryPackage(directory, digest);
+    await writer.check();
+    return digest;
+  } catch { throw invalid(); }
+  finally { await writer.close().catch(() => { throw invalid(); }); }
 }
 
 /** A fixed maximum bounds this in-memory adapter. Larger archives require a reviewed

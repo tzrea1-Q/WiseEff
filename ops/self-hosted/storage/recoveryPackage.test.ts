@@ -2,11 +2,13 @@ import { withSyntheticRecoveryTarget } from "./execution/authorization.fixture";
 import { loadUpgradeJournal } from "../scripts/parameter-catalog-upgrade/journal";
 import { RECOVERY_EXECUTION_EVENTS } from "./execution/authorization";
 import { restoreRecoveryPackage } from "./execution/packageRestore";
-import { mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
+import { mkdtemp, open, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { expect, it } from "vitest";
+import { expect, it, vi } from "vitest";
 import { createHash } from "node:crypto";
+import { mkdirSync, readdirSync, renameSync, writeFileSync } from "node:fs";
+import { captureControlledRecovery } from "./controlledRecovery";
 import { captureRecoveryPackage, hasUnsupportedNonDumpCapabilities, verifyRecoveryPackage, type RecoveryBootstrapIdentity, type RecoveryRole } from "./recoveryPackage";
 
 it("requires a complete zero non-dump capability inventory and never treats absent or unknown counts as clear", () => {
@@ -54,13 +56,89 @@ it.each(["same-store", "approval-refused"])("never invokes restore for %s", asyn
   } finally { await rm(directory, { recursive: true }); }
 });
 
-const fixture = async (directory: string, roles: RecoveryRole[] = [{ name: "owner", login: false, inherit: false, members: [] }], bootstrap?: RecoveryBootstrapIdentity) => captureRecoveryPackage(directory, {
+const fixtureInput = (roles: RecoveryRole[] = [{ name: "owner", login: false, inherit: false, members: [] }], bootstrap?: RecoveryBootstrapIdentity) => ({
   runId: "restore_run", target: { deploymentId: "source", hostFingerprint: "host", postgresIdentity: "pg", objectStoreIdentity: "s3", redisIdentity: "redis" },
-  quiescence: { status: "quiesced", writersFenced: true, queueDrained: true, proxyStopped: true, observedAt: new Date().toISOString() },
+  quiescence: { status: "quiesced" as const, writersFenced: true as const, queueDrained: true as const, proxyStopped: true as const, observedAt: new Date().toISOString() },
   postgres: Buffer.from("dump"), roles,
   ...(bootstrap ? { bootstrap } : {}),
   objects: [{ key: "one", contentType: "application/json", metadata: { tenant: "two" }, bytes: Buffer.from("null") }],
-  redis: { appendonly: true, files: [{ name: "appendonly.aof.manifest", bytes: Buffer.from("file appendonly.aof.1.incr.aof seq 1 type i\n") }, { name: "appendonly.aof.1.incr.aof", bytes: Buffer.from("aof") }] },
+  redis: { appendonly: true as const, files: [{ name: "appendonly.aof.manifest", bytes: Buffer.from("file appendonly.aof.1.incr.aof seq 1 type i\n") }, { name: "appendonly.aof.1.incr.aof", bytes: Buffer.from("aof") }] },
+});
+const fixture = (directory: string, roles?: RecoveryRole[], bootstrap?: RecoveryBootstrapIdentity) => captureRecoveryPackage(directory, fixtureInput(roles, bootstrap));
+
+it("does not write later package bytes into a replacement directory after the first real payload", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "upg-package-swap-"));
+  const directory = path.join(root, "package"); const moved = path.join(root, "original");
+  mkdirSync(directory, { mode: 0o700 });
+  const input = fixtureInput(); const objects = input.objects;
+  Object.defineProperty(input, "objects", { get() {
+    expect(readdirSync(directory)).toEqual(["payload-0.bin"]);
+    renameSync(directory, moved); mkdirSync(directory, { mode: 0o700 });
+    return objects;
+  } });
+  try {
+    await expect(captureRecoveryPackage(directory, input)).rejects.toThrow("recovery-package-invalid");
+    expect(await readFile(path.join(moved, "payload-0.bin"), "utf8")).toBe("dump");
+    expect(readdirSync(directory)).toEqual([]);
+  } finally { await rm(root, { recursive: true }); }
+});
+
+it("keeps controlled capture's earliest directory identity across source export", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "upg-package-swap-"));
+  const directory = path.join(root, "package"); const moved = path.join(root, "original");
+  mkdirSync(directory, { mode: 0o700 });
+  const input = fixtureInput(); let closed = false;
+  try {
+    await expect(captureControlledRecovery({ directory, runId: input.runId, target: input.target }, {
+      observe: async () => input.target,
+      open: async () => ({
+        postgres: async () => { renameSync(directory, moved); mkdirSync(directory, { mode: 0o700 }); return input; },
+        objects: async () => input.objects, redis: async () => input.redis, close: async () => { closed = true; },
+      }),
+    }, {
+      acquire: async () => ({ runId: input.runId, target: input.target, digest: "a".repeat(64), observedAt: new Date().toISOString(), expiresAt: new Date(Date.now() + 60000).toISOString() }),
+      verify: async () => {},
+    })).rejects.toThrow("controlled-recovery-directory-identity-drift");
+    expect(closed).toBe(true);
+    expect(readdirSync(directory)).toEqual([]);
+    expect(readdirSync(moved)).toEqual([]);
+  } finally { await rm(root, { recursive: true }); }
+});
+
+it("rejects directory replacement after opening the actual output descriptor, before writing bytes", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "upg-package-fd-"));
+  const directory = path.join(root, "package"); const moved = path.join(root, "original");
+  mkdirSync(directory, { mode: 0o700 });
+  const probe = await open(path.join(root, "probe"), "wx");
+  const prototype = Object.getPrototypeOf(probe); const realStat = prototype.stat;
+  await probe.close();
+  let replaced = false;
+  // All filesystem operations and descriptors remain real. Pause only at the
+  // descriptor observation to deterministically perform the namespace race.
+  const observation = vi.spyOn(prototype, "stat").mockImplementation(async function (this: Awaited<ReturnType<typeof open>>, ...args: unknown[]) {
+    const result = await realStat.apply(this, args);
+    if (result.isFile() && !replaced) {
+      replaced = true;
+      renameSync(directory, moved); mkdirSync(directory, { mode: 0o700 });
+      writeFileSync(path.join(directory, "foreign.keep"), "foreign-owned-content");
+    }
+    return result;
+  });
+  try {
+    await expect(fixture(directory)).rejects.toThrow("recovery-package-invalid");
+    expect(replaced).toBe(true);
+    expect(readdirSync(directory)).toEqual(["foreign.keep"]);
+    expect(await readFile(path.join(directory, "foreign.keep"), "utf8")).toBe("foreign-owned-content");
+    expect((await readFile(path.join(moved, "payload-0.bin"))).length).toBe(0);
+  } finally { observation.mockRestore(); await rm(root, { recursive: true }); }
+});
+
+it("refuses an earlier expected directory identity before creating any payload", async () => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), "upg-package-identity-"));
+  try {
+    await expect(captureRecoveryPackage(directory, fixtureInput(), { dev: -1, ino: -1 })).rejects.toThrow("recovery-package-invalid");
+    expect(readdirSync(directory)).toEqual([]);
+  } finally { await rm(directory, { recursive: true }); }
 });
 
 it("authenticates a v3 pre-existing bootstrap identity without making it a restorable privileged role", async () => {
