@@ -49,31 +49,31 @@ assertion that its unbound synthetic fixture must never be unexplained is
 replaced by an explicit prohibition on invented declared differences and a null
 evidence assertion. It is not replaced by a skip or a passing release report.
 
-The real-PG eleven-family integration test also collects both populated phases
-before checking admission. It retains every family's inventory count, checksum,
-case order and reference coverage; it no longer assumes this fixture can produce
-a passing report. CGH's current production comparison readiness port executes
-`SELECT 1` and returns `not-ready`. The actual Catalog read handler therefore
-returns HTTP 503 before loading the Kernel snapshot. Its original observation
-is `query-failure`, code `503`, detail `catalog-read-list-definitions`.
-The unchanged parser rejects that observation with
-`PCAT-CMP-UNQUERYABLE-PROTECTED-REFERENCE`; the test explicitly checks both the
-original observation and refusal of the direct and live aggregate entrances.
-No failure code is rewritten to make it parse, and no report is issued.
+The real-PG integration test retains both phases' complete old CGH source
+enumeration and the other ten families' inventory counts, checksums, case order
+and references. CGH now uses the actual public production router; see the
+[routing contract](../../parameter-specs/parameterCatalogComparisonRouting.md).
+Unavailable canonical queries throw the original typed blocking observation,
+including when the old inventory is empty. The test does not invent an eleventh
+contribution or claim that unavailable canonical inventory was collected. Direct
+aggregation of only ten families fails missing-family, and actual eleven-family
+collection fails on the real CGH query. No code or parser rule is rewritten to
+issue a report. The separate classification transport fixture retains equality,
+serialization, uniqueness and phase checksum checks for queryable observations.
 
 The shared checksum-locked populated fixture contains no Review tasks. The local
 integration test supplements only its disposable database through the existing
 Review repository with one open and one dismissed old-schema task, both linked
 to its real synthetic organization, project and config revision. Both phases
-must enumerate both D06 identities and preserve their distinct statuses and
-source evidence. This strengthens the old report's nine gate rows (which could
-contain zero cases) into actual nine-comparison fixture coverage. It changes no
+must enumerate both old Review identities and preserve their distinct statuses
+and source evidence. All nine comparison IDs remain registered; missing canonical
+Review inventory is not a successful D06 case or passed coverage. It changes no
 shared seed, historical counts, source fixture checksum or review approval flow.
 
-That readiness port still needs a real controlled readiness producer. This is
-an internal integration gap, independent of production backup availability or
-the separate per-identity evidence format and S6 decisions. A successful database
-probe must not be changed into a ready declaration.
+The former synthetic readiness port has been removed. Remaining controlled
+identity, full semantic observations and legitimate persisted Review query
+capabilities are internal integration work, independent of production backup
+availability and the separate per-identity evidence format and S6 decisions.
 
 This is the safety repair only. The separately recorded per-identity evidence
 format/producer work remains necessary for legitimate declared differences and

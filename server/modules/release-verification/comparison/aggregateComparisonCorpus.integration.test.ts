@@ -3,6 +3,7 @@ import { afterAll, describe, expect, it } from "vitest";
 
 import { createPostgresDatabase, getRootPostgresPool } from "../../../shared/database/client";
 import { getSpecReviewTaskById, insertSpecReviewTask } from "../../parameter-specs/repository";
+import { captureComparisonLegacySource } from "../../parameter-specs/parameterCatalogComparisonSource.fixture";
 import {
   createDisposableParameterCatalogDatabase,
   loadParameterCatalogFixture,
@@ -19,9 +20,6 @@ import { preferPopulatedRehearsalOrganization } from "./corpusTestSupport";
 import {
   aggregateLiveComparisonCorpus,
   aggregateComparisonCorpus,
-  collectComparisonContributions,
-  assertIndependentPhaseReports,
-  generateComparisonReport,
   productionComparisonProviders,
   type ComparisonProviderInput,
 } from "./index";
@@ -56,6 +54,7 @@ function providerInput(
 
 describe("live eleven-family comparison corpus", () => {
   const providers = productionComparisonProviders();
+  const queryableFamilies = providers.filter(provider => provider.family !== "CGH");
   let freshPreDb: ParameterCatalogDatabase;
   let freshPostDb: ParameterCatalogDatabase;
   let populatedDb: ParameterCatalogDatabase;
@@ -68,69 +67,69 @@ describe("live eleven-family comparison corpus", () => {
     expect(providers.map((provider) => provider.family)).toEqual([...COMPARISON_FAMILIES]);
   });
 
-  it("fresh/pre-activation queries real PostgreSQL and proves zero inventory for all families", async () => {
+  it("fresh/pre-activation proves zero old inventory but refuses unavailable canonical collection", async () => {
     freshPreDb = await createDisposableParameterCatalogDatabase("dcpfp");
+    expect((await loadParameterCatalogFixture(freshPreDb.url, "zero")).zeroInventory).toBe(0);
     const database = createPostgresDatabase(freshPreDb.url);
-    const pool = getRootPostgresPool(database);
-    expect(pool).toBeDefined();
     try {
-      const corpus = await aggregateLiveComparisonCorpus(
-        providerInput(database, pool!, "fresh", "pre-activation", FRESH_PRE_SHA),
-        providers,
-      );
-      expect(corpus.phase).toBe("pre-activation");
-      expect(corpus.inventoryMode).toBe("fresh");
-      expect(corpus.cases).toEqual([]);
-      expect(corpus.sourceInventoryCount).toBe(0);
-      expect(corpus.familyBindings).toHaveLength(11);
-      for (const binding of corpus.familyBindings) {
-        expect(binding.sourceInventoryCount).toBe(0);
+      const input = providerInput(database, getRootPostgresPool(database)!, "fresh", "pre-activation", FRESH_PRE_SHA);
+      const source = await captureComparisonLegacySource(database);
+      expect(source.count).toBe(0); expect(source.records).toEqual([]);
+      const contributions = await Promise.all(queryableFamilies.map(provider => provider.provide(input)));
+      expect(contributions).toHaveLength(10);
+      for (const item of contributions) {
+        expect(item.phase).toBe("pre-activation");
+        expect(item.inventoryMode).toBe("fresh");
+        expect(item.sourceInventoryCount).toBe(0); expect(item.cases).toEqual([]);
+        const { checksum, ...unsigned } = item;
+        expect(checksum).toBe(checksumComparisonContribution(unsigned));
       }
-      const report = generateComparisonReport(corpus);
-      expect(report.unexplainedDifferenceCount).toBe(0);
-      expect(report.unqueryableProtectedReferenceCount).toBe(0);
-      expect(report.gateCoverage.map((gate) => gate.comparisonId)).toEqual([...COMPARISON_IDS]);
-      expect(report.gateCoverage.every((gate) => gate.caseCount === 0)).toBe(true);
-    } finally {
-      await database.close();
-    }
+      await expect(aggregateLiveComparisonCorpus(input, providers)).rejects.toMatchObject({
+        code: "PCAT-CMP-UNQUERYABLE-PROTECTED-REFERENCE",
+      });
+      expect(await captureComparisonLegacySource(database)).toEqual(source);
+    } finally { await database.close(); }
   }, 180_000);
 
-  it("fresh/post-p13 independently queries a second database with distinct checksums", async () => {
+  it("fresh/post-p13 independently preserves source and contribution checksums without fabricating a report", async () => {
     freshPostDb = await createDisposableParameterCatalogDatabase("dcpfs");
-    const postDatabase = createPostgresDatabase(freshPostDb.url);
-    const postPool = getRootPostgresPool(postDatabase);
-    expect(postPool).toBeDefined();
     const independentPreDb = await createDisposableParameterCatalogDatabase("dcpfp2");
+    expect((await loadParameterCatalogFixture(freshPostDb.url, "zero")).zeroInventory).toBe(0);
+    expect((await loadParameterCatalogFixture(independentPreDb.url, "zero")).zeroInventory).toBe(0);
+    const postDatabase = createPostgresDatabase(freshPostDb.url);
     const preDatabase = createPostgresDatabase(independentPreDb.url);
-    const prePool = getRootPostgresPool(preDatabase);
-    expect(prePool).toBeDefined();
     try {
-      const postCorpus = await aggregateLiveComparisonCorpus(
-        providerInput(postDatabase, postPool!, "fresh", "post-p13", FRESH_POST_SHA),
-        providers,
-      );
-      const preCorpus = await aggregateLiveComparisonCorpus(
-        providerInput(preDatabase, prePool!, "fresh", "pre-activation", FRESH_PRE_SHA),
-        providers,
-      );
-      expect(postCorpus.phase).toBe("post-p13");
-      expect(postCorpus.inventoryMode).toBe("fresh");
-      expect(postCorpus.sourceInventoryCount).toBe(0);
-      expect(postCorpus.cases).toEqual([]);
-      expect(preCorpus.sourceInventoryCount).toBe(0);
-      const preReport = generateComparisonReport(preCorpus);
-      const postReport = generateComparisonReport(postCorpus);
-      assertIndependentPhaseReports(preReport, postReport);
-      expect(preReport.checksum).not.toBe(postReport.checksum);
+      const preInput = providerInput(preDatabase, getRootPostgresPool(preDatabase)!, "fresh", "pre-activation", FRESH_PRE_SHA);
+      const postInput = providerInput(postDatabase, getRootPostgresPool(postDatabase)!, "fresh", "post-p13", FRESH_POST_SHA);
+      const pre = await Promise.all(queryableFamilies.map(provider => provider.provide(preInput)));
+      const post = await Promise.all(queryableFamilies.map(provider => provider.provide(postInput)));
+      expect(pre).toHaveLength(10); expect(post).toHaveLength(10);
+      for (const [index, item] of post.entries()) {
+        expect(item.phase).toBe("post-p13"); expect(pre[index].phase).toBe("pre-activation");
+        expect(item.sourceInventoryCount).toBe(0); expect(item.cases).toEqual([]);
+        expect(pre[index].sourceInventoryCount).toBe(0); expect(pre[index].cases).toEqual([]);
+        expect(item.sourceInventoryChecksum).toBe(pre[index].sourceInventoryChecksum);
+        expect(item.checksum).not.toBe(pre[index].checksum);
+        for (const contribution of [item, pre[index]]) {
+          const { checksum, ...unsigned } = contribution;
+          expect(checksum).toBe(checksumComparisonContribution(unsigned));
+        }
+      }
+      for (const input of [preInput, postInput]) {
+        const source = await captureComparisonLegacySource(input.database);
+        expect(source.count).toBe(0); expect(source.records).toEqual([]);
+        await expect(aggregateLiveComparisonCorpus(input, providers)).rejects.toMatchObject({
+          code: "PCAT-CMP-UNQUERYABLE-PROTECTED-REFERENCE",
+        });
+        expect(await captureComparisonLegacySource(input.database)).toEqual(source);
+      }
     } finally {
-      await postDatabase.close();
-      await preDatabase.close();
+      await Promise.all([postDatabase.close(), preDatabase.close()]);
       await independentPreDb.close();
     }
   }, 180_000);
 
-  it("populated phases retain complete inventories but refuse the unready canonical observation", async () => {
+  it("populated phases preserve complete old CGH source and ten contributions while canonical CGH collection is unavailable", async () => {
     populatedDb = await createDisposableParameterCatalogDatabase("dcppop");
     await loadParameterCatalogFixture(populatedDb.url, "populated");
     const preDatabase = preferPopulatedRehearsalOrganization(createPostgresDatabase(populatedDb.url));
@@ -168,18 +167,18 @@ describe("live eleven-family comparison corpus", () => {
       }
       const preInput = providerInput(preDatabase, prePool!, "populated", "pre-activation", POP_PRE_SHA);
       const postInput = providerInput(postDatabase, postPool!, "populated", "post-p13", POP_POST_SHA);
-      const preContributions = await collectComparisonContributions(
-        preInput,
-        providers,
-      );
-      const postContributions = await collectComparisonContributions(
-        postInput,
-        providers,
-      );
+      const preSource = await captureComparisonLegacySource(preDatabase);
+      const postSource = await captureComparisonLegacySource(postDatabase);
+      expect(preSource.count).toBeGreaterThan(0);
+      expect(postSource.records).toEqual(preSource.records);
+      expect(postSource.count).toBe(preSource.count);
+      expect(postSource.checksum).toBe(preSource.checksum);
+      const preContributions = await Promise.all(queryableFamilies.map(provider => provider.provide(preInput)));
+      const postContributions = await Promise.all(queryableFamilies.map(provider => provider.provide(postInput)));
       // Collection is inspectable even when its observations cannot become a
       // valid corpus. Do not manufacture a corpus or normalize failure codes.
-      expect(preContributions.map((item) => item.family)).toEqual([...COMPARISON_FAMILIES]);
-      expect(postContributions.map((item) => item.family)).toEqual([...COMPARISON_FAMILIES]);
+      expect(preContributions.map((item) => item.family)).toEqual(COMPARISON_FAMILIES.filter(family => family !== "CGH"));
+      expect(postContributions.map((item) => item.family)).toEqual(COMPARISON_FAMILIES.filter(family => family !== "CGH"));
       const preCases = preContributions.flatMap((item) => item.cases);
       const postCases = postContributions.flatMap((item) => item.cases);
       const inventoryCount = (items: typeof preContributions) =>
@@ -209,16 +208,14 @@ describe("live eleven-family comparison corpus", () => {
 
       expect(preContributions.map((item) => item.checksum))
         .not.toEqual(postContributions.map((item) => item.checksum));
-      expect([...new Set(preCases.map((item) => item.comparisonId))].sort()).toEqual([...COMPARISON_IDS].sort());
+      // All nine comparisons stay registered. D06's old source is inventoried
+      // below; canonical D06 coverage is unavailable, never marked zero/passed.
+      expect([...new Set(providers.flatMap(provider => [...provider.comparisonIds]))].sort()).toEqual([...COMPARISON_IDS].sort());
       for (const [contributions, input] of [[preContributions, preInput], [postContributions, postInput]] as const) {
-        // The CGH production readiness port executes SELECT 1 then returns
-        // not-ready. The real HTTP handler returns 503 before Kernel loading;
-        // this is not a SQL failure, absent business data, or declared R class.
-        const cgh = contributions.find((item) => item.family === "CGH")!;
-        const reviewCases = cgh.cases.filter((item) => item.comparisonId === "PCAT-CMP-D06-REVIEW-PROPOSAL-OBSERVATION");
-        expect(reviewCases.map((item) => item.protectedReference.id).sort())
+        const source = await captureComparisonLegacySource(input.database);
+        expect(source).toEqual(preSource);
+        expect(source.records.filter(item => item.kind === "review").map(item => item.id).sort())
           .toEqual(reviews.map((item) => item.id).sort());
-        expect(reviewCases.every((item) => item.protectedReference.kind === "review-proposal-observation")).toBe(true);
         // The two independent collectors must not resolve, discard or rewrite
         // source Review states just to meet the nine-comparison coverage gate.
         for (const review of reviews) {
@@ -232,19 +229,14 @@ describe("live eleven-family comparison corpus", () => {
             },
           });
         }
-        const definition = cgh.cases.find((item) => item.comparisonId === "PCAT-CMP-D01-DEFINITION-SEMANTICS")!;
-        expect(definition.canonicalObservation).toEqual({
-          status: "query-failure", code: "503", detail: "catalog-read-list-definitions",
-        });
-        expect(definition.result).toBe("unqueryable/protected-reference-missing");
-        expect(definition.expectedDifference).toBeNull();
         expect(contributions.flatMap((item) => item.cases)
           .some((item) => item.result === "declared-expected-difference")).toBe(false);
         expect(() => aggregateComparisonCorpus(contributions, input)).toThrow(
-          "PCAT-CMP-UNQUERYABLE-PROTECTED-REFERENCE",
+          "PCAT-CMP-MISSING-FAMILY",
         );
         await expect(aggregateLiveComparisonCorpus(input, providers)).rejects.toMatchObject({
           code: "PCAT-CMP-UNQUERYABLE-PROTECTED-REFERENCE",
+          observation: { status: "query-failure", code: "503", detail: "catalog-read-list-definitions" },
         });
       }
     } finally {

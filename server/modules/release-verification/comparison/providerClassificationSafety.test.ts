@@ -1,6 +1,5 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
-import type pg from "pg";
-import type { Database } from "../../../shared/database/client";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { createPostgresDatabase, getRootPostgresPool, type RootDatabase } from "../../../shared/database/client";
 
 // Exercise the actual eleven provider entrypoints and existing aggregation.
 // Only their database/domain read ports are synthetic. These are classification
@@ -14,6 +13,19 @@ vi.mock("../../parameter-catalog-api/read", () => ({
 vi.mock("../../parameter-catalog-api/governance", () => ({
   emptyGovernanceQueryPorts: {},
   handleCatalogGovernance: vi.fn(async () => ({ status: fixture.mode === "query-failure" ? 503 : 200, body: { items: [] } })),
+}));
+// Classification-only transport seam: the actual CGH provider dispatches its
+// GETs through a real router. Formal production composition, pool admission and
+// actual restricted LOGIN reads are covered by the dedicated CGH routing tests.
+vi.mock("../../parameter-catalog-api/productionWire", () => ({
+  registerParameterCatalogApi: (router: import("../../../shared/http/router").WiseEffRouter) => {
+    router.get("/api/v2/catalog/definitions", async () =>
+      (await import("../../parameter-catalog-api/read")).handleCatalogRead({} as never, {} as never));
+    for (const path of ["/api/v2/organizations/:organizationId/subject-registrations", "/api/v2/organizations/:organizationId/parameter-review-items"]) {
+      router.get(path, async () =>
+        (await import("../../parameter-catalog-api/governance")).handleCatalogGovernance({} as never, {} as never));
+    }
+  },
 }));
 vi.mock("../../parameter-catalog-api/legacy", () => ({
   LEGACY_WRITE_GONE_MESSAGE: "synthetic-retired",
@@ -73,6 +85,7 @@ vi.mock("../../../../scripts/wayfinder/inspect-parameter-catalog-cutover", () =>
 
 import { createProductionComparisonProviders, type ComparisonProviderInput } from "./productionProviders";
 import { aggregateLiveComparisonCorpus } from "./aggregateComparisonCorpus";
+import { provideCghParameterCatalogComparisonContribution, serializeCghComparisonContribution, checksumCghComparisonBytes, CGH_COMPARISON_IDS } from "../../parameter-specs/parameterCatalogComparisonContribution";
 import { generateComparisonReport } from "./generateComparisonReport";
 import { handleCatalogRead } from "../../parameter-catalog-api/read";
 
@@ -89,15 +102,20 @@ const sourceRows: Record<string, readonly Record<string, unknown>[]> = {
 const emptyTables = new Set(["dts_logical_node_revisions", "dts_config_revisions", "agent_tool_calls", "agent_approvals",
   "debug_nodes", "debug_node_bindings", "debugging_parameter_node_bindings", "node_operations", "debugging_sessions",
   "debugging_snapshots", "dts_reload_run_targets"]);
+const roots: RootDatabase[] = [];
+afterEach(async () => { await Promise.all(roots.splice(0).map((db) => db.close())); });
 function input(): ComparisonProviderInput {
   const query = vi.fn(async (sql: string) => {
     const table = /\bfrom\s+(\w+)/i.exec(sql)?.[1];
     if (!table || (!sourceRows[table] && !emptyTables.has(table))) throw new Error("synthetic-inventory-query-not-registered");
     return { rows: structuredClone(sourceRows[table] ?? []) };
   });
+  const database = createPostgresDatabase("postgres://synthetic@127.0.0.1:1/synthetic");
+  roots.push(database);
+  const pool = getRootPostgresPool(database)!;
+  vi.spyOn(pool, "query").mockImplementation(query as never);
   return {
-    database: { query } as unknown as Database,
-    pool: { options: { connectionString: "postgres://synthetic.invalid/synthetic" }, query } as unknown as pg.Pool,
+    database, pool,
     phase: "pre-activation", inventoryMode: "populated", candidateSha: "a".repeat(40), planPin: "synthetic-plan",
     mappingHeadId: "shared-head-is-not-a-target", mappingHeadVersion: 1,
     mappingHeadChecksum: "b".repeat(64), catalogSnapshotChecksum: "c".repeat(64),
@@ -125,6 +143,13 @@ describe("P11 provider classification without declared rule evidence", () => {
     // LOG records route HTTP outcomes as values; a thrown read error exercises
     // its actual query-failure adapter, whereas CGH/TOP/MOD preserve HTTP 503.
     if (provider.family === "LOG") vi.mocked(handleCatalogRead).mockRejectedValueOnce(new Error("synthetic-canonical-query-failed"));
+    if (provider.family === "CGH") {
+      await expect(provider.provide(input())).rejects.toMatchObject({
+        code: "PCAT-CMP-UNQUERYABLE-PROTECTED-REFERENCE",
+        observation: { status: "query-failure", code: "503", detail: "catalog-read-list-definitions" },
+      });
+      return;
+    }
     const contribution = await provider.provide(input());
     const failed = contribution.cases.filter(item => item.legacyObservation.status === "query-failure" || item.canonicalObservation.status === "query-failure");
     expect(failed.length).toBeGreaterThan(0);
@@ -143,7 +168,21 @@ describe("P11 provider classification without declared rule evidence", () => {
   });
 
   it("retains the real CGH legacy-route equality while blocking its unexplained definition comparison", async () => {
-    const contribution = await providers.find(provider => provider.family === "CGH")!.provide(input());
+    const contribution = await provideCghParameterCatalogComparisonContribution(input());
+    const post = await provideCghParameterCatalogComparisonContribution({ ...input(), phase: "post-p13", candidateSha: "d".repeat(40) });
+    expect(post.sourceInventoryCount).toBe(contribution.sourceInventoryCount);
+    expect(post.sourceInventoryChecksum).toBe(contribution.sourceInventoryChecksum);
+    expect(post.cases.map(item => item.caseId)).toEqual(contribution.cases.map(item => item.caseId));
+    expect(post.checksum).not.toBe(contribution.checksum);
+    for (const capture of [contribution, post]) {
+      const bytes = serializeCghComparisonContribution(capture);
+      expect(bytes.toString().endsWith("\n")).toBe(true);
+      expect(bytes.toString()).not.toContain("\r");
+      expect(capture.checksum).toBe(checksumCghComparisonBytes(bytes));
+      expect(new Set(capture.cases.map(item => item.caseId)).size).toBe(capture.cases.length);
+      expect(capture.cases.every(item => CGH_COMPARISON_IDS.includes(item.comparisonId))).toBe(true);
+      expect(capture.cases.every(item => item.expectedDifference === null)).toBe(true);
+    }
     const route = contribution.cases.find(item => item.comparisonId === "PCAT-CMP-D09-LEGACY-OPERATOR-OUTCOME")!;
     expect(route.result).toBe("exact-equivalent");
     expect(route.expectedDifference).toBeNull();
@@ -159,7 +198,7 @@ describe("P11 provider classification without declared rule evidence", () => {
 
   it.each(providers)("$family does not turn an inventory exception into an empty success", async provider => {
     const value = input();
-    vi.mocked(value.database.query).mockRejectedValue(new Error("synthetic-inventory-unavailable"));
+    vi.mocked(value.pool.query).mockRejectedValue(new Error("synthetic-inventory-unavailable"));
     await expect(provider.provide(value)).rejects.toThrow("synthetic-inventory-unavailable");
   });
 });
