@@ -12,6 +12,7 @@ const bindingFiles = ["server/modules/parameter-bindings/cutoverImport/import.in
 const suites = {
   bindings: { image: "pgvector/pgvector:pg16", files: bindingFiles },
   "bindings-pg16": { image: "postgres:16-alpine", files: bindingFiles },
+  "reader-pg16": { image: "postgres:16-alpine", files: ["server/modules/catalog-kernel/security/catalogReader.integration.test.ts"] },
 } as const;
 
 /** The child owns its process group. Deadline/output limits cannot authorize a pass. */

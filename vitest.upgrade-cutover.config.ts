@@ -8,6 +8,7 @@ export default defineConfig({ test: {
   include: [
     "server/modules/catalog-cutover/**/*.test.ts",
     "server/modules/parameter-bindings/cutoverImport/*.test.ts",
+    "server/modules/catalog-kernel/security/catalogReader.integration.test.ts",
   ],
   testTimeout: 30000,
   hookTimeout: 30000,
