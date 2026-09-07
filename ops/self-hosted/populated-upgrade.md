@@ -280,9 +280,14 @@ No destructive production recovery command is supplied: the required target-boun
 The parent and assigned implementation agents own the unfinished release,
 runtime, recovery and acceptance integrations. P12/P13 unavailability, terminal
 composition, full consumer coverage and browser/capacity are internal gaps.
-External decisions are limited to bounded frozen source-lock performance work,
-the P12 three-table S2 schema contract, S6 Binding/Value business reading capability
-and #815 authoritative Policy relation or explicitly accepted unavailable contract.
+The current bounded S6 decision concerns P01's management-membership classification
+and P02's actual restricted-login probes; it does not authorize runtime grants.
+Policy #815 still requires an authoritative relation or an explicitly accepted
+unavailable contract. The P12 new-table prototype is excluded and is not a
+prerequisite for the existing-storage path. Serial source-lock routing leaves
+the frozen test unchanged; any later algorithm/identity revision needs its own
+precise review. Additional business capability gaps require an actual caller,
+operation and failure before a separate permission proposal.
 0140 Kernel reader and the independent recovery execution layer are already
 authorized; neither decision is pending. Report approval now uses the formal
 public report service. External environment inputs are an authorized
