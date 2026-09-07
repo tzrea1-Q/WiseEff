@@ -60,7 +60,7 @@ imported. The public seam and frozen transaction ownership stay unchanged.
 | --- | --- | --- |
 | Source/installer management pool | Actual source inventory, `public.schema_migrations`, Catalog projection, Cutover/mapping/Archive reads and system identity | Controlled management phase only; never passed to API/worker |
 | Startup report reader | `0139` `catalog_verifier_role`: schema USAGE and SELECT on six verification tables; the projection reads plans, reports and approvals | Separate restricted login/pool; no verification writer, governance writer, synchronizer or migration-owner membership |
-| Future runtime Catalog reader | Existing `0140` reader proposal | Separate decision/integration; not granted by this slice |
+| Runtime Catalog reader | Authorized additive `0140` `catalog_runtime_reader_role`, ten explicit Kernel tables | No Binding, governance, activation or management metadata capability; runtime connection integration remains separate |
 
 `0138` does not grant `catalog_migration_owner` SELECT on `schema_migrations`, so
 the observer deliberately uses the source/installer pool rather than silently
@@ -71,9 +71,8 @@ the management login is an acceptable runtime identity.
 No SQL grants or role attributes change here. Report reads use the already
 approved `0139` interface and do not need either of the two proposed `0140`
 governance-writer EXECUTE additions. Those additions remain unapproved. The
-parent must validate the dedicated login and prevent
-`catalog_verification_writer_role` from entering runtime pools; the existing
-shared runtime guard does not yet explicitly exclude it.
+parent must validate the dedicated login. The shared runtime guard explicitly
+rejects reachable `catalog_verification_writer_role` membership.
 
 The frozen sequencing is P12 activation, P13 retirement, then a new complete
 post-retirement verification attempt and approval. The existing runtime query
@@ -106,8 +105,7 @@ management role assumption. The fixture fence covers only its owned database;
 it does not implement the cross-storage production controller. It does not
 create a fake passed report.
 
-The implementation agent did not execute tests, build, Docker or database
-commands. The parent owns all execution. Before execution, the parent must
-include only these selectors in the appropriate config without globalSetup;
+Execution identities and counts remain in the maintained populated-upgrade
+evidence document. Startup unit selectors use the config without globalSetup;
 the real PostgreSQL file additionally requires the existing owned-target
 receipt/config guard. No production command is executable from this module.

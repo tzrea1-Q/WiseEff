@@ -48,7 +48,7 @@ READ ONLY，Kernel 使用独立读取事务。必需的 `RuntimeObservationBound
 | --- | --- | --- |
 | 源／installer 管理 pool | 真实源库存、`public.schema_migrations`、Catalog 投影、Cutover／mapping／Archive 与集群身份读取 | 仅受控管理阶段，不能进入 API／worker |
 | 启动报告读 pool | `0139` 的 `catalog_verifier_role`：schema USAGE 与六张 verification 表 SELECT；投影实际读取 plan、report、approval | 独立受限登录，不继承 verification writer、governance writer、synchronizer 或 migration owner |
-| 后续 runtime Catalog reader | 已有 `0140` reader 提案 | 独立决策与接线，本分片没有授权 |
+| Runtime Catalog reader | 已获批准的追加 `0140` `catalog_runtime_reader_role`，明确列出十张 Kernel 表 | 不含 Binding、治理、激活及管理元数据能力；运行连接接线仍单独验证 |
 
 `0138` 没有给 `catalog_migration_owner` 授予 `schema_migrations` SELECT，因此
 观察器明确使用源／installer pool，不偷偷添加授权。观察事务和 Kernel 自管
@@ -56,8 +56,8 @@ READ ONLY，Kernel 使用独立读取事务。必需的 `RuntimeObservationBound
 
 本分片不修改 SQL 授权或角色属性。报告读取复用既有 `0139` 接口，不需要
 `0140` 提议的两项 governance writer EXECUTE；那两项仍未获批准。父协调者
-仍须核验独立登录，并阻止 `catalog_verification_writer_role` 进入运行池；
-现有 shared runtime guard 尚未明确排除该角色。
+仍须核验独立登录。现有 shared runtime guard 已明确拒绝可达的
+`catalog_verification_writer_role` 成员关系。
 
 冻结顺序是 P12 激活、P13 退休、新的完整 post-retirement 验证 attempt 和批准。
 现有 runtime query 使用 P13 `retired`，适配器保持该语义。根接线前仍须处理
@@ -85,7 +85,6 @@ evidence 的 `identity.ts` 要求 P12 `retired`。本分片不制造新的 P12 �
 切换。fixture 的锁只覆盖其独占数据库，没有实现生产跨存储 controller，也不
 伪造 passed 报告。
 
-实现智能体没有执行测试、build、Docker 或数据库命令，全部执行由父协调者
-负责。执行前由父协调者在无 globalSetup 的合适 config 中仅纳入对应 selector；
-真实 PostgreSQL 文件还必须使用现有 owned-target receipt／config 门禁。本模块
-不能给出可执行的生产命令。
+执行身份与计数统一记录在已有 populated-upgrade evidence 文档。启动单测使用
+无 globalSetup 的配置；真实 PostgreSQL 文件还必须使用现有 owned-target
+receipt／config 门禁。本模块不能给出可执行的生产命令。

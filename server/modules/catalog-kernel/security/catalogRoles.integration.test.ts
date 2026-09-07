@@ -1189,11 +1189,14 @@ describe("0138 Catalog role migration paths", () => {
     );
   }, 120_000);
 
-  it("T13: fresh current schema and 0137-then-0138-then-0139 upgrade produce the same ACL fingerprint", async () => {
+  it("T13: fresh through 0139 and 0137-then-0138-then-0139 upgrade preserve the historical ACL contract", async () => {
     let fresh = "";
     let upgrade = "";
 
-    await withTempDatabase({ prefix: "pcat_rbac_fresh" }, async ({ db }) => {
+    await withTempDatabase({ prefix: "pcat_rbac_fresh", migrate: false }, async ({ db }) => {
+      // Later opt-in capability migrations have their own real-login contract.
+      // This comparison must keep both sides at the historical 0139 boundary.
+      await applyMigrations(db, migrationsDir, { through: VERIFICATION_MIGRATION });
       fresh = await aclFingerprint(db);
     });
 
