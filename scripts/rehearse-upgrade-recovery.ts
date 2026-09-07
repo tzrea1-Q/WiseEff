@@ -1,4 +1,4 @@
-import { createRecoveryExecutionAuthorization, type RecoveryCaptureRecord, type RecoveryExecutionApproval } from "../ops/self-hosted/storage/execution/authorization";
+import { createRecoveryExecutionAuthorization, RECOVERY_EXECUTION_EVENTS, type RecoveryCaptureRecord, type RecoveryExecutionApproval } from "../ops/self-hosted/storage/execution/authorization";
 import { withHostOperationLock } from "../ops/self-hosted/scripts/parameter-catalog-upgrade/handoff";
 import { openUpgradeJournal, loadUpgradeJournal } from "../ops/self-hosted/scripts/parameter-catalog-upgrade/journal";
 import { mintRestoreToken } from "../ops/self-hosted/storage/recoveryPoint";
@@ -28,7 +28,10 @@ const childRefusals = ["recovery-package-invalid", "synthetic-execution-journal-
 export function readSyntheticRestoreRefusal(status: number | null, output: string): string {
   try {
     const value = JSON.parse(output);
-    if (status === 1 && value?.status === "blocked" && Object.keys(value).sort().join(",") === "reason,status"
+    const keys = Object.keys(value ?? {}).sort().join(",");
+    const safeShape = keys === "reason,status" || (keys === "objectWriteStatus,reason,status" && value.objectWriteStatus === 403
+      && value.reason === "recovery-restore-outcome-unknown-target-must-remain-isolated");
+    if (status === 1 && value?.status === "blocked" && safeShape
       && childRefusals.some(reason => reason === value.reason)) return value.reason;
   } catch { /* Spawn/import/unknown errors do not prove a particular refusal. */ }
   return "unclassified";
@@ -52,7 +55,7 @@ type RestoreChild = {
 
 /** Private subprocess adapter: stdin carries ephemeral target credentials. No source
  * connection, source container, fixture role SQL or object metadata is accepted. */
-async function restoreSyntheticPackage(config: RestoreChild) {
+async function restoreSyntheticPackage(config: RestoreChild, observation: { objectWriteStatus?: number }) {
   const transport = createIsolatedUpgradeDocker();
   if (transport.daemonId !== config.daemonId || !/^[a-f0-9]{24}$/.test(config.run)) throw new Error("synthetic-target-binding-invalid");
   const owned = (id: string) => transport.assertOwned(id, label, config.run);
@@ -102,7 +105,12 @@ async function restoreSyntheticPackage(config: RestoreChild) {
     async restoreObjects(objects) {
       // Failure-only synthetic injection: the actual HTTP PUT must fail after
       // PostgreSQL committed. It cannot bypass any authorization or package check.
-      const targetStore = createHttpObjectStorageTransport({ endpoint: `http://${endpoint(config.objects, "9000")}`, accessKeyId: "synthetic", secretAccessKey: config.failObjectWrite ? "synthetic-invalid-signature" : config.password });
+      const targetStore = createHttpObjectStorageTransport({ endpoint: `http://${endpoint(config.objects, "9000")}`, accessKeyId: "synthetic", secretAccessKey: config.failObjectWrite ? "synthetic-invalid-signature" : config.password,
+        async fetchImpl(input, init) {
+          const response = await fetch(input, init);
+          if (init?.method === "PUT") observation.objectWriteStatus = response.status;
+          return response; // Preserve the real response, including its refusal.
+        } });
       const ip = owned(config.objects).NetworkSettings.Networks[config.network].IPAddress;
       owned(config.objectClient);
       transport.command(["exec", "-e", `MC_HOST_synthetic=http://synthetic:${config.password}@${ip}:9000`, config.objectClient, "mc", "mb", "synthetic/synthetic-recovery"]);
@@ -148,7 +156,13 @@ export async function rehearseSyntheticRecovery(options: { fault?: SyntheticFaul
     nonDumpCapabilitiesVerified: false, sourcePreservedBeforeCleanup: false,
     actualQueueVerified: false, queuePausedAfterRestore: false, queueRetryVerified: false, queueDeduplicationVerified: false,
     restoreRefusal: "none",
+    partialRestore: undefined as undefined | {
+      execution: Array<{ action: string; outcome: string }>; singleExecutionAttempt: boolean;
+      objectWriteStatus: number | null; postgresRowsVerified: boolean; businessEffectRows: number; objectCount: number;
+      redisNeverStarted: boolean; redisPersistenceFiles: number; captureAndApprovalRetained: boolean; packageVerified: boolean;
+    },
   };
+  let inspectRetainedPartialEvidence: (() => Promise<void>) | undefined;
   const queueClosers: Array<() => Promise<unknown>> = [];
   let queueError = false;
   const onQueueError = () => { queueError = true; };
@@ -449,6 +463,47 @@ export async function rehearseSyntheticRecovery(options: { fault?: SyntheticFaul
     });
     if (child.status !== 0) {
       result.restoreRefusal = readSyntheticRestoreRefusal(child.status, child.stdout);
+      if (result.restoreRefusal === "recovery-restore-outcome-unknown-target-must-remain-isolated") {
+        // Observe the failed execution independently. The requested fault is
+        // never evidence that a restore step happened or that a journal survived.
+        const loaded = loadUpgradeJournal({ journalPath: openedJournal.value.journalPath, runId: run });
+        if (!loaded.ok) throw new Error("partial-journal-unavailable");
+        const execution = loaded.value.record.entries.filter(entry => entry.action.startsWith("recovery-execution-") && entry.action !== RECOVERY_EXECUTION_EVENTS.authorized);
+        const select = async (user: string, sql: string) => {
+          const client = new pg.Client({ connectionString: `postgres://${user}:${targetPassword}@${endpoint(targetPg, "5432")}/postgres` });
+          try { await client.connect(); return (await client.query(sql)).rows; }
+          finally { await client.end(); }
+        };
+        const rows = await select("sentinel_reader", "select id,value from public.sentinel order by id");
+        const effects = await select("recovery_queue_writer", "select count(*)::integer as count from public.recovery_queue_effects");
+        const redis = owned(targetRedis);
+        const inspection = await mkdtemp(path.join(operationRoot, "partial-redis-inspection-"));
+        let redisPersistenceFiles: number;
+        try {
+          docker(["cp", `${targetRedis}:/data/.`, inspection]);
+          redisPersistenceFiles = (await readdir(inspection)).length;
+        } finally { await rm(inspection, { recursive: true }); }
+        const objects = mc(targetObjects, ["ls", "--recursive", "--json", "synthetic/synthetic-recovery"], targetPassword).toString().trim();
+        const partial: NonNullable<typeof result.partialRestore> = {
+          execution: execution.map(entry => ({ action: Object.values(RECOVERY_EXECUTION_EVENTS).some(action => action === entry.action) ? entry.action : "unexpected-execution-event", outcome: entry.outcome })),
+          singleExecutionAttempt: execution.length > 0 && execution.every(entry => entry.inputDigest === execution[0].inputDigest),
+          objectWriteStatus: JSON.parse(child.stdout).objectWriteStatus ?? null,
+          postgresRowsVerified: isDeepStrictEqual(rows, [{ id: 1, value: "synthetic-value" }]),
+          businessEffectRows: effects[0].count, objectCount: objects ? objects.split("\n").length : 0,
+          redisNeverStarted: redis.State.Running === false && redis.State.StartedAt === "0001-01-01T00:00:00Z",
+          redisPersistenceFiles, captureAndApprovalRetained: false, packageVerified: false,
+        };
+        result.partialRestore = partial;
+        const observedRecord = loaded.value.record;
+        inspectRetainedPartialEvidence = async () => {
+          const retained = loadUpgradeJournal({ journalPath: openedJournal.value.journalPath, runId: run });
+          partial.captureAndApprovalRetained = retained.ok && isDeepStrictEqual(retained.value.record, observedRecord)
+            && isDeepStrictEqual(retained.value.record.entries.findLast(entry => entry.recoveryCapture?.outcome === "committed")?.recoveryCapture?.capture, capture)
+            && isDeepStrictEqual(retained.value.record.entries.findLast(entry => entry.recoveryApproval)?.recoveryApproval?.approval, approval);
+          const verified = await verifyRecoveryPackage(directory!, result.manifestDigest);
+          partial.packageVerified = verified.digest === capture.packageDigest;
+        };
+      }
       throw new Error("separate-package-restore-failed");
     }
     result.separateRestoreProcess = true;
@@ -619,6 +674,9 @@ export async function rehearseSyntheticRecovery(options: { fault?: SyntheticFaul
     // Keep the private journal, package and assignment for explicit inspection;
     // Docker cleanup is not permission to erase the only recovery evidence.
     result.backupRetained = result.backupExists;
+    // Check retained package and exact typed journal again after resource cleanup.
+    try { await inspectRetainedPartialEvidence?.(); }
+    catch { result.status = "blocked"; }
     result.cleanupVerified = cleaned;
     if (!cleaned || queueError) {
       if (result.status === "passed") result.reason = !cleaned ? "owned-resource-cleanup-failed" : "queue-connection-failed";
@@ -633,16 +691,18 @@ export async function rehearseSyntheticRecovery(options: { fault?: SyntheticFaul
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   if (process.argv.slice(2).join(" ") === "--synthetic-package-child") {
+    const observation: { objectWriteStatus?: number } = {};
     try {
       const chunks = [];
       for await (const chunk of process.stdin) chunks.push(Buffer.from(chunk));
       const config = JSON.parse(Buffer.concat(chunks).toString()) as RestoreChild;
       if (!/^[a-f0-9]{48}$/.test(config.password)) throw new Error("invalid-private-input");
-      await restoreSyntheticPackage(config);
+      await restoreSyntheticPackage(config, observation);
       console.log(JSON.stringify({ status: "synthetic-package-restored" }));
     } catch (error) {
       const reason = error instanceof Error ? childRefusals.find(value => value === error.message) : undefined;
-      console.log(JSON.stringify({ status: "blocked", reason: reason ?? "unclassified" })); process.exitCode = 1;
+      console.log(JSON.stringify({ status: "blocked", reason: reason ?? "unclassified",
+        ...(reason === "recovery-restore-outcome-unknown-target-must-remain-isolated" && observation.objectWriteStatus === 403 ? { objectWriteStatus: 403 } : {}) })); process.exitCode = 1;
     }
   } else if (process.argv.slice(2).join(" ") !== "--synthetic-only") {
     console.log(JSON.stringify({ status: "blocked", reason: "explicit-synthetic-only-required-no-other-arguments" }));

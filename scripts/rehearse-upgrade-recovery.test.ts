@@ -17,6 +17,11 @@ it("does not count early child failures as a specific storage refusal", () => {
     expect(readSyntheticRestoreRefusal(null, output)).toBe("unclassified");
     expect(readSyntheticRestoreRefusal(0, output)).toBe("unclassified");
   }
+  const unknown = { status: "blocked", reason: "recovery-restore-outcome-unknown-target-must-remain-isolated" };
+  expect(readSyntheticRestoreRefusal(1, JSON.stringify({ ...unknown, objectWriteStatus: 403 }))).toBe(unknown.reason);
+  for (const extra of [{ objectWriteStatus: 200 }, { objectWriteStatus: "403" }, { objectWriteStatus: 403, detail: "private" }]) {
+    expect(readSyntheticRestoreRefusal(1, JSON.stringify({ ...unknown, ...extra }))).toBe("unclassified");
+  }
 });
 
 it("requires exact created container identity and private run label for cleanup", () => {
@@ -55,7 +60,7 @@ describe("actual isolated three-store restore", () => {
         { action: "recovery-execution-started", outcome: "crashed" },
         { action: "recovery-execution-postgres-committed", outcome: "committed" },
         { action: "recovery-execution-outcome-unknown", outcome: "crashed" },
-      ], postgresRowsVerified: true, businessEffectRows: 0, objectCount: 0,
+      ], singleExecutionAttempt: true, objectWriteStatus: 403, postgresRowsVerified: true, businessEffectRows: 0, objectCount: 0,
       redisNeverStarted: true, redisPersistenceFiles: 0, captureAndApprovalRetained: true, packageVerified: true },
     });
     expect(child.stdout.includes("postgres://")).toBe(false);
