@@ -80,6 +80,7 @@ incident 确认、未指派产品 admin／verifier 拒绝、主体冒用、源�
 
 固定 handoff 配置／凭据读取、正式 controller 动作、typed capture／approval journal、
 当前阶段与 pin 校验、API／worker 生命周期由父协调者负责；本五文件组件没有完成
-这些接线。终端 selector 需追加到既有自有 component runner，不在此提供生产命令。
+这些接线。既有自有 component runner 的 `authority-pg16` selector 执行受限登录集成
+测试，并非生产 controller 动作；不在此提供生产命令。
 生产指派、真实备份使用、恢复、迁移、队列／代理变更和发布仍需单独授权。本组件及
 其配置来源／权限边界须接受独立 Standards 和 Spec 审查。

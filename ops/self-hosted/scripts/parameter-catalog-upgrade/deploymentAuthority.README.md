@@ -118,8 +118,9 @@ approved-report positive chain.
 The parent owns the fixed handoff configuration/credential reader, formal
 controller actions, typed capture/approval journal records, current phase/pin
 checks and root API/worker lifecycle. These are not connected by this five-file
-component. Its future terminal selector must be added to the existing owned
-component runner; no production command is supplied here. Production assignment,
+component. The existing owned component runner's `authority-pg16` selector runs
+the restricted-login integration tests; it is not a production controller action.
+No production command is supplied here. Production assignment,
 backup use, restore, migration, queue/proxy changes and release remain separately
 authorized. Both the implementation and its custody/authority boundary require
 independent Standards and Spec review.
