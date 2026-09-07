@@ -230,6 +230,35 @@ jobs:
       - name: Log analysis behavior eval
         run: npm run logs:eval
 
+  upgrade-components:
+    name: Owned Catalog reader PostgreSQL
+    needs: detect
+    if: needs.detect.outputs.run_l1 == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Check out exact CI candidate
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: Run actual restricted reader logins in a newly owned cluster
+        shell: bash
+        run: |
+          set -euo pipefail
+          daemon_id="$(docker info --format '{{.ID}}')"
+          npx tsx scripts/run-upgrade-component-tests.ts \
+            --expected-daemon-id "$daemon_id" --suite reader-pg16 --github-hosted
+
   acceptance-quality:
     name: Acceptance quality
     needs: detect
@@ -626,6 +655,7 @@ jobs:
     needs:
       - detect
       - build-and-test
+      - upgrade-components
       - acceptance-quality
       - acceptance-smoke
       - acceptance-local-non-hdc
@@ -640,6 +670,7 @@ jobs:
           results = {
             "detect": "${{ needs.detect.result }}",
             "build-and-test": "${{ needs.build-and-test.result }}",
+            "upgrade-components": "${{ needs.upgrade-components.result }}",
             "acceptance-quality": "${{ needs.acceptance-quality.result }}",
             "acceptance-smoke": "${{ needs.acceptance-smoke.result }}",
             "acceptance-local-non-hdc": "${{ needs.acceptance-local-non-hdc.result }}",
@@ -652,5 +683,8 @@ jobs:
               sys.exit(1)
           if results["detect"] != "success":
               print("detect must report success")
+              sys.exit(1)
+          if "${{ needs.detect.outputs.run_l1 }}" == "true" and results["upgrade-components"] != "success":
+              print("owned reader PostgreSQL evidence is required for L1")
               sys.exit(1)
           PY

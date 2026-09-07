@@ -1,19 +1,23 @@
 import { randomBytes } from "node:crypto";
-import { spawn } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { setTimeout } from "node:timers/promises";
 import { createIsolatedUpgradeDocker } from "./isolated-upgrade-docker";
+import { admitHostedUpgradeComponents, assertHostedUpgradeAdmission, type HostedUpgradeAdmission } from "./upgrade-hosted-admission";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const bindingFiles = ["server/modules/parameter-bindings/cutoverImport/import.integration.test.ts", "server/modules/catalog-cutover/archive/adapter.test.ts", "server/modules/catalog-cutover/archive/adapter.integration.test.ts", "server/modules/catalog-cutover/bindingImportProducer.integration.test.ts", "server/modules/catalog-cutover/conversionManifest.integration.test.ts", "server/modules/catalog-cutover/orchestrator.test.ts", "server/modules/catalog-cutover/runtimeState.test.ts", "server/modules/catalog-cutover/sourceSnapshot.test.ts", "server/modules/catalog-cutover/managementStructure.test.ts"];
-const suites = {
-  bindings: { image: "pgvector/pgvector:pg16", files: bindingFiles },
-  "bindings-pg16": { image: "postgres:16-alpine", files: bindingFiles },
-  "reader-pg16": { image: "postgres:16-alpine", files: ["server/modules/catalog-kernel/security/catalogReader.integration.test.ts"] },
-} as const;
+const suites: Record<string, { image: string; files: readonly string[]; config: string; command?: "schema-doc" }> = {
+  bindings: { image: "pgvector/pgvector:pg16", files: bindingFiles, config: "vitest.upgrade-cutover.config.ts" },
+  "bindings-pg16": { image: "postgres:16-alpine", files: bindingFiles, config: "vitest.upgrade-cutover.config.ts" },
+  "reader-pg16": { image: "postgres:16-alpine", files: ["server/modules/catalog-kernel/security/catalogReader.integration.test.ts"], config: "vitest.upgrade-cutover.config.ts" },
+  "scripts-pgvector": { image: "pgvector/pgvector:pg16", files: [], config: "vitest.scripts.config.ts" },
+  "server-pgvector": { image: "pgvector/pgvector:pg16", files: [], config: "vitest.server.config.ts" },
+  "schema-doc": { image: "pgvector/pgvector:pg16", files: [], config: "", command: "schema-doc" },
+};
 
 /** The child owns its process group. Deadline/output limits cannot authorize a pass. */
 export function superviseComponentProcess(child: ReturnType<typeof spawn>, limits = { deadlineMs: 15 * 60_000, graceMs: 2000, outputBytes: 8 * 1024 * 1024 }) {
@@ -53,14 +57,36 @@ export function superviseComponentProcess(child: ReturnType<typeof spawn>, limit
 /** Developer component runner, never a deployment upgrade or release approval.
  * Owns a fresh cluster/network/credential; accepts no database URL or backup. */
 export async function runUpgradeComponentTests(args: string[]) {
-  if (args.length !== 4 || args[0] !== "--expected-daemon-id" || !/^[a-zA-Z0-9-]+$/.test(args[1]) || args[2] !== "--suite" || !Object.hasOwn(suites, args[3])) {
+  const hosted = args.length === 5 && args[4] === "--github-hosted";
+  if ((!hosted && args.length !== 4) || args[0] !== "--expected-daemon-id" || !/^[a-zA-Z0-9-]+$/.test(args[1]) || args[2] !== "--suite" || !Object.hasOwn(suites, args[3])) {
     return { exitCode: 2, reason: "usage-expected-daemon-id-and-known-suite-required" };
   }
   const docker = createIsolatedUpgradeDocker();
-  if (docker.command(["info", "--format", "{{.ID}}|{{.Name}}|{{.OperatingSystem}}"] ).toString().trim() !== `${args[1]}|docker-desktop|Docker Desktop`) {
+  if (docker.daemonId !== args[1] || (!hosted && docker.command(["info", "--format", "{{.ID}}|{{.Name}}|{{.OperatingSystem}}"] ).toString().trim() !== `${args[1]}|docker-desktop|Docker Desktop`)) {
     return { exitCode: 2, reason: "explicit-development-daemon-required" };
   }
+  const observeHosted = () => {
+    const git = spawnSync("git", ["rev-parse", "HEAD"], { cwd: root, encoding: "utf8",
+      env: { PATH: process.env.PATH, HOME: process.env.HOME }, timeout: 10000 });
+    const clean = spawnSync("git", ["diff-index", "--quiet", "HEAD", "--"], { cwd: root,
+      env: { PATH: process.env.PATH, HOME: process.env.HOME }, timeout: 10000 });
+    if (git.status !== 0 || git.error || clean.status !== 0 || clean.error) throw new Error("upgrade-hosted-checkout-unavailable");
+    return { checkoutSha: git.stdout.trim(), daemonId: docker.command(["info", "--format", "{{.ID}}"] ).toString().trim(),
+      workflowRef: process.env.GITHUB_WORKFLOW_REF ?? "", runId: process.env.GITHUB_RUN_ID ?? "", runAttempt: process.env.GITHUB_RUN_ATTEMPT ?? "" };
+  };
+  let admission: HostedUpgradeAdmission | undefined;
+  if (hosted) admission = await admitHostedUpgradeComponents(observeHosted(), {
+    ACTIONS_ID_TOKEN_REQUEST_URL: process.env.ACTIONS_ID_TOKEN_REQUEST_URL,
+    ACTIONS_ID_TOKEN_REQUEST_TOKEN: process.env.ACTIONS_ID_TOKEN_REQUEST_TOKEN,
+  }, observeHosted);
+  const authorizeCreation = () => { if (hosted) assertHostedUpgradeAdmission(admission!, observeHosted()); };
   const suite = suites[args[3] as keyof typeof suites];
+  if (hosted) {
+    // Registry acquisition also uses the authenticated job and pinned local
+    // daemon, never an ambient shell Docker context before host admission.
+    authorizeCreation();
+    docker.command(["pull", suite.image]);
+  }
   const image = JSON.parse(docker.command(["image", "inspect", suite.image]).toString())[0];
   const run = `conversion-${randomBytes(8).toString("hex")}`;
   const label = "wiseeff.upgrade.conversion";
@@ -77,10 +103,13 @@ export async function runUpgradeComponentTests(args: string[]) {
     // Only PostgreSQL runs here. An internal Docker network does not publish
     // its port on Docker Desktop; this owned bridge publishes loopback only.
     // This is not an application egress-isolation environment.
+    authorizeCreation();
     net = docker.command(["network", "create", "--opt", "com.docker.network.bridge.enable_ip_masquerade=false", "--label", `${label}=${run}`, run]).toString().trim();
     stage = "volume-create";
+    authorizeCreation();
     volume = docker.command(["volume", "create", "--label", `${label}=${run}`, `${run}-data`]).toString().trim();
     stage = "container-create";
+    authorizeCreation();
     id = docker.command(["run", "-d", "--network", net, "--label", `${label}=${run}`, "-v", `${volume}:/var/lib/postgresql/data`, "-e", `POSTGRES_PASSWORD=${password}`, "-p", "127.0.0.1::5432", image.Id]).toString().trim();
     stage = "container-port-observation";
     let port: string | undefined;
@@ -100,6 +129,11 @@ export async function runUpgradeComponentTests(args: string[]) {
       catch { await setTimeout(200); }
     }
     if (!ready || interrupted) throw new Error("owned-postgres-not-ready");
+    if (suite.image === "pgvector/pgvector:pg16") {
+      stage = "owned-vector-preparation";
+      docker.assertOwned(id, label, run);
+      docker.command(["exec", id, "psql", "-X", "-v", "ON_ERROR_STOP=1", "-U", "postgres", "-d", "postgres", "-c", "create extension vector"]);
+    }
     stage = "receipt-and-tests";
     const receipt = path.join(directory, "target.json");
     const physical = JSON.parse(docker.command(["exec", id, "psql", "-X", "-U", "postgres", "-d", "postgres", "-Atc", "select json_build_object('systemIdentifier',system_identifier::text,'databaseOid',(select oid::text from pg_database where datname=current_database()),'databaseProperties',(select row_to_json(p) from (select encoding,datcollate,datctype,datlocprovider,daticulocale,daticurules,datcollversion,datconnlimit,datallowconn,datistemplate from pg_database where datname=current_database()) p)) from pg_control_system()"]).toString());
@@ -109,7 +143,10 @@ export async function runUpgradeComponentTests(args: string[]) {
       profile: suite.image === "postgres:16-alpine" ? "selfhost-postgres16-alpine-v1" : "catalog-pgvector-v1",
       imageId: image.Id, dataVolume: { name: volume, createdAt: dataVolume.CreatedAt } }), { mode: 0o600, flag: "wx" });
     const selectors = suite.files;
-    child = spawn(process.execPath, [path.join(root, "node_modules/vitest/vitest.mjs"), "run", "--config", "vitest.upgrade-cutover.config.ts", ...selectors], {
+    const command = suite.command === "schema-doc"
+      ? ["--import", "tsx", path.join(root, "scripts/generate-db-schema-doc.ts")]
+      : [path.join(root, "node_modules/vitest/vitest.mjs"), "run", "--config", suite.config, ...selectors];
+    child = spawn(process.execPath, command, {
       cwd: root, env: { PATH: process.env.PATH, HOME: process.env.HOME,
         UPG_TEST_TARGET_RECEIPT: receipt, DATABASE_URL: url, TEST_DATABASE_URL: url,
         UPG_COMPONENT_PROFILE: suite.image === "postgres:16-alpine" ? "selfhost-postgres16-alpine-v1" : "catalog-pgvector-v1" },

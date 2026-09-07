@@ -20,7 +20,11 @@ export default defineConfig({
   test: {
     environment: "node",
     include: ["server/**/*.test.ts"],
-    exclude: ["node_modules/**", ...siblingWorktreeExclude],
+    // This case deliberately contaminates a cluster-wide capability role. Its
+    // mandatory reader-pg16 lane owns a separate cluster; worker databases alone
+    // cannot isolate these mutations from the shared server suite.
+    exclude: ["node_modules/**", ...siblingWorktreeExclude,
+      "server/modules/catalog-kernel/security/catalogReader.integration.test.ts"],
     setupFiles: ["./server/testing/vitest.setup.ts"],
     // Pre-builds the PG template database so no suite pays the build in its test budget.
     globalSetup: ["./server/testing/globalSetup.ts"],
