@@ -55,7 +55,7 @@ type CreateLogAnalysisQueueRuntimeOptions = {
   webhooks?: LogWorkerWebhooks;
 };
 
-export function createLogAnalysisQueueRuntime({
+export async function createLogAnalysisQueueRuntime({
   env,
   db,
   objectStore,
@@ -74,64 +74,77 @@ export function createLogAnalysisQueueRuntime({
     connection,
     prefix: env.LOG_ANALYSIS_QUEUE_PREFIX
   });
-  const durableQueue = createBullMqDurableQueue<LogAnalysisQueuePayload>({
-    name: queueName,
-    queue,
-    maxAttempts: env.LOG_ANALYSIS_QUEUE_ATTEMPTS,
-    retryBackoffMs: env.LOG_ANALYSIS_QUEUE_BACKOFF_MS
-  });
-  const worker = new WorkerCtor(
-    queueName,
-    async (job) => {
-      const attributes: Record<string, string | number | boolean> = { queue: queueName };
-      const process = async () => {
-        const jobId = job.data?.jobId;
-        if (!jobId) {
-          throw new Error("BullMQ log-analysis job payload must include jobId.");
-        }
+  try {
+    const durableQueue = createBullMqDurableQueue<LogAnalysisQueuePayload>({
+      name: queueName,
+      queue,
+      maxAttempts: env.LOG_ANALYSIS_QUEUE_ATTEMPTS,
+      retryBackoffMs: env.LOG_ANALYSIS_QUEUE_BACKOFF_MS
+    });
+    const worker = new WorkerCtor(
+      queueName,
+      async (job) => {
+        const attributes: Record<string, string | number | boolean> = { queue: queueName };
+        const process = async () => {
+          const jobId = job.data?.jobId;
+          if (!jobId) {
+            throw new Error("BullMQ log-analysis job payload must include jobId.");
+          }
 
-        const result = await processByJobId({
-          db,
-          objectStore,
-          jobId,
-          workerId,
-          maxAttempts: env.LOG_ANALYSIS_QUEUE_ATTEMPTS,
-          retryBaseDelayMs: env.LOG_ANALYSIS_QUEUE_BACKOFF_MS,
-          metrics,
-          ...(analyzer ? { analyzer } : {}),
-          ...(tracing ? { tracing } : {}),
-          ...(webhooks ? { webhooks } : {})
-        });
-        if (result.status === "retry") {
-          throw new Error(result.reason);
-        }
-        attributes.status = result.status;
-        return result.status;
-      };
+          const result = await processByJobId({
+            db,
+            objectStore,
+            jobId,
+            workerId,
+            maxAttempts: env.LOG_ANALYSIS_QUEUE_ATTEMPTS,
+            retryBaseDelayMs: env.LOG_ANALYSIS_QUEUE_BACKOFF_MS,
+            metrics,
+            ...(analyzer ? { analyzer } : {}),
+            ...(tracing ? { tracing } : {}),
+            ...(webhooks ? { webhooks } : {})
+          });
+          if (result.status === "retry") {
+            throw new Error(result.reason);
+          }
+          attributes.status = result.status;
+          return result.status;
+        };
 
-      try {
-        return tracing ? await tracing.withSpan("log_analysis.queue.process", attributes, process) : await process();
-      } catch (error) {
-        attributes.status = "failed";
-        attributes.errorType = error instanceof Error ? error.name : "unknown";
-        throw error;
+        try {
+          return tracing ? await tracing.withSpan("log_analysis.queue.process", attributes, process) : await process();
+        } catch (error) {
+          attributes.status = "failed";
+          attributes.errorType = error instanceof Error ? error.name : "unknown";
+          throw error;
+        }
+      },
+      {
+        connection,
+        prefix: env.LOG_ANALYSIS_QUEUE_PREFIX,
+        concurrency: env.LOG_ANALYSIS_QUEUE_CONCURRENCY,
+        name: workerId
       }
-    },
-    {
-      connection,
-      prefix: env.LOG_ANALYSIS_QUEUE_PREFIX,
-      concurrency: env.LOG_ANALYSIS_QUEUE_CONCURRENCY,
-      name: workerId
-    }
-  );
+    );
 
-  return {
-    queue: durableQueue,
-    close: async () => {
-      await worker.close();
-      await queue.close();
-    }
-  };
+    let closing: Promise<void> | undefined;
+    return {
+      queue: durableQueue,
+      close: () => {
+        closing ??= (async () => {
+          const results = await Promise.allSettled([
+            Promise.resolve().then(() => worker.close()),
+            Promise.resolve().then(() => queue.close())
+          ]);
+          const failure = results.find((result) => result.status === "rejected");
+          if (failure?.status === "rejected") throw failure.reason;
+        })();
+        return closing;
+      }
+    };
+  } catch (error) {
+    try { await queue.close(); } catch { /* Preserve the construction error. */ }
+    throw error;
+  }
 }
 
 export function createLogAnalysisQueueTransport({

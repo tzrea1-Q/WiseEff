@@ -20,6 +20,78 @@ function createTraceRecorder() {
 }
 
 describe("log analysis queue runtime", () => {
+  const lifecycleEnv = {
+    REDIS_URL: "redis://redis:6379",
+    LOG_ANALYSIS_QUEUE_PREFIX: "wiseeff",
+    LOG_ANALYSIS_QUEUE_ATTEMPTS: 4,
+    LOG_ANALYSIS_QUEUE_BACKOFF_MS: 1000,
+    LOG_ANALYSIS_QUEUE_CONCURRENCY: 1
+  };
+
+  it("awaits queue cleanup after worker construction fails and preserves the construction error", async () => {
+    const constructionError = new Error("worker construction failed");
+    let finishCleanup!: () => void;
+    const cleanup = new Promise<void>((resolve) => { finishCleanup = resolve; });
+    const queue = { close: vi.fn(async () => { await cleanup; throw new Error("cleanup failed"); }) };
+    const start = Promise.resolve().then(() => createLogAnalysisQueueRuntime({
+      env: lifecycleEnv, db: {} as Database, objectStore: {} as ObjectStore,
+      QueueCtor: vi.fn(function () { return queue; }) as never,
+      WorkerCtor: vi.fn(function () { throw constructionError; }) as never
+    }));
+    let settled = false;
+    const observed = start.catch((error) => { settled = true; return error; });
+    await vi.waitFor(() => expect(queue.close).toHaveBeenCalledOnce());
+    expect(settled).toBe(false);
+    finishCleanup();
+    expect(await observed).toBe(constructionError);
+  });
+
+  it("closes both resources once and awaits queue cleanup when worker close fails synchronously", async () => {
+    const closeError = new Error("worker close failed");
+    let finishCleanup!: () => void;
+    const cleanup = new Promise<void>((resolve) => { finishCleanup = resolve; });
+    const queue = { close: vi.fn(async () => { await cleanup; }) };
+    const worker = { close: vi.fn(() => { throw closeError; }) };
+    const runtime = await createLogAnalysisQueueRuntime({
+      env: lifecycleEnv, db: {} as Database, objectStore: {} as ObjectStore,
+      QueueCtor: vi.fn(function () { return queue; }) as never,
+      WorkerCtor: vi.fn(function () { return worker; }) as never
+    });
+    let settled = false;
+    const closing = runtime.close();
+    const repeated = runtime.close();
+    const observed = Promise.all([closing.catch((error) => error), repeated.catch((error) => error)])
+      .then((errors) => { settled = true; return errors; });
+    await vi.waitFor(() => expect(queue.close).toHaveBeenCalledOnce());
+    expect(settled).toBe(false);
+    finishCleanup();
+    expect(await observed).toEqual([closeError, closeError]);
+    expect(worker.close).toHaveBeenCalledOnce();
+    expect(queue.close).toHaveBeenCalledOnce();
+  });
+
+  it("waits for worker draining even when queue close rejects", async () => {
+    const closeError = new Error("queue close failed");
+    let finishWorker!: () => void;
+    const draining = new Promise<void>((resolve) => { finishWorker = resolve; });
+    const worker = { close: vi.fn(async () => { await draining; }) };
+    const queue = { close: vi.fn(async () => { throw closeError; }) };
+    const runtime = await createLogAnalysisQueueRuntime({
+      env: lifecycleEnv, db: {} as Database, objectStore: {} as ObjectStore,
+      QueueCtor: vi.fn(function () { return queue; }) as never,
+      WorkerCtor: vi.fn(function () { return worker; }) as never
+    });
+    let settled = false;
+    const observed = runtime.close().catch((error) => { settled = true; return error; });
+    await Promise.resolve();
+    expect(settled).toBe(false);
+    finishWorker();
+    expect(await observed).toBe(closeError);
+    await expect(runtime.close()).rejects.toBe(closeError);
+    expect(worker.close).toHaveBeenCalledOnce();
+    expect(queue.close).toHaveBeenCalledOnce();
+  });
+
   it("creates a BullMQ queue and worker with Redis connection settings", async () => {
     const processByJobId = vi.fn(async () => ({ status: "processed" as const }));
     const queue = {
@@ -43,7 +115,7 @@ describe("log analysis queue runtime", () => {
     const objectStore = {} as ObjectStore;
     const metrics = { recordLogAnalysisJobResult: vi.fn() };
 
-    const runtime = createLogAnalysisQueueRuntime({
+    const runtime = await createLogAnalysisQueueRuntime({
       env: {
         REDIS_URL: "redis://redis:6379",
         LOG_ANALYSIS_QUEUE_PREFIX: "wiseeff",
@@ -107,7 +179,7 @@ describe("log analysis queue runtime", () => {
       return { close: vi.fn() };
     });
 
-    createLogAnalysisQueueRuntime({
+    await createLogAnalysisQueueRuntime({
       env: {
         REDIS_URL: "redis://redis:6379",
         LOG_ANALYSIS_QUEUE_PREFIX: "wiseeff",
@@ -141,7 +213,7 @@ describe("log analysis queue runtime", () => {
       return { close: vi.fn() };
     });
 
-    createLogAnalysisQueueRuntime({
+    await createLogAnalysisQueueRuntime({
       env: {
         REDIS_URL: "redis://redis:6379",
         LOG_ANALYSIS_QUEUE_PREFIX: "wiseeff",
@@ -176,7 +248,7 @@ describe("log analysis queue runtime", () => {
       return { close: vi.fn() };
     });
 
-    createLogAnalysisQueueRuntime({
+    await createLogAnalysisQueueRuntime({
       env: {
         REDIS_URL: "redis://redis-secret:6379",
         LOG_ANALYSIS_QUEUE_PREFIX: "wiseeff-secret",

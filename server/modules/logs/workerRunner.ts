@@ -131,7 +131,7 @@ export function createLogWorkerRuntime({
         if (!env) {
           throw new Error("Durable log worker runtime requires Redis queue environment.");
         }
-        const runtime = createDurableRuntime({
+        const runtime = await createDurableRuntime({
           env,
           db,
           objectStore,

@@ -263,7 +263,7 @@ describe("log worker runner", () => {
 
   it("starts a durable BullMQ runtime instead of polling when queue mode is durable", async () => {
     const close = vi.fn(async () => undefined);
-    const createDurableRuntime = vi.fn(() => ({
+    const createDurableRuntime = vi.fn(async () => ({
       queue: {
         enqueue: vi.fn(),
         processNext: vi.fn(),
