@@ -242,21 +242,8 @@ export const createArchiveAdapter = (options: ArchiveAdapterOptions): ArchiveAda
       plaintext,
     });
 
-    const metadataHaystacks = [
-      command.legacyIdentityId,
-      command.ownerScopeId,
-      command.reason,
-      sourceChecksum,
-      graphChecksum,
-      encryptedObjectRef,
-      command.cutoverRunId,
-      command.catalogReleaseId,
-      command.successAuditRef,
-      JSON.stringify(command.protectedReferences),
-    ].map((value) => Buffer.from(value, "utf8"));
-
     try {
-      assertNoPlaintext([envelope, ...metadataHaystacks], needles);
+      assertNoPlaintext([envelope], needles);
     } catch {
       return persistFail("PCAT-ARC-PLAINTEXT-LEAK", "refusing to persist plaintext archive bytes");
     }
@@ -294,6 +281,23 @@ export const createArchiveAdapter = (options: ArchiveAdapterOptions): ArchiveAda
         await client.query("rollback");
         return persistFail("PCAT-ARC-INVALID-INPUT", "archive owner scope does not match the legacy identity");
       }
+
+      // Owner scope is required identity metadata, not an arbitrary copy of
+      // payload bytes. Only that column uses the actual identity checked above.
+      // Keep every needle for ciphertext and all other metadata: globally
+      // removing an owner value would hide a copy in reason or audit fields.
+      const metadataHaystacks = [
+        command.legacyIdentityId,
+        command.reason,
+        sourceChecksum,
+        graphChecksum,
+        encryptedObjectRef,
+        command.cutoverRunId,
+        command.catalogReleaseId,
+        command.successAuditRef,
+        JSON.stringify(command.protectedReferences),
+      ].map((value) => Buffer.from(value, "utf8"));
+      assertNoPlaintext(metadataHaystacks, needles);
 
       const run = await client.query<{ id: string }>(
         "select id from parameter_catalog.parameter_catalog_cutover_runs where id = $1",
@@ -398,8 +402,8 @@ export const createArchiveAdapter = (options: ArchiveAdapterOptions): ArchiveAda
         [
           archiveId,
           command.legacyIdentityId,
-          command.ownerScopeKind,
-          command.ownerScopeId,
+          identityRow.owner_scope_kind,
+          identityRow.owner_scope_id,
           command.rClass,
           command.reason,
           sourceChecksum,
