@@ -21,6 +21,7 @@ export default defineConfig({
       "scripts/retirement-endpoint-supervision.docker.test.ts",
       "scripts/rehearse-upgrade-recovery.test.ts",
       "ops/self-hosted/storage/controlledRecovery.docker.integration.test.ts",
+      "ops/self-hosted/scripts/parameter-catalog-upgrade/runtimeRoleSource.integration.test.ts",
       "ops/self-hosted/scripts/parameter-catalog-upgrade/deploymentAuthority.integration.test.ts"],
     passWithNoTests: true,
     // Ancestry walks in rehearsal source-lock tests exceed Vitest's 5s default on Hosted.

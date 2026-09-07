@@ -263,6 +263,8 @@ jobs:
           node --import tsx scripts/run-upgrade-component-tests.ts \
             --expected-daemon-id "$daemon_id" --suite runtime-identity-pg16 --github-hosted
           npx tsx scripts/run-upgrade-component-tests.ts \
+            --expected-daemon-id "$daemon_id" --suite runtime-role-source-pg16 --github-hosted
+          npx tsx scripts/run-upgrade-component-tests.ts \
             --expected-daemon-id "$daemon_id" --suite read-projections-pg16 --github-hosted
           npx tsx scripts/run-upgrade-component-tests.ts \
             --expected-daemon-id "$daemon_id" --suite report-pg16 --github-hosted
