@@ -406,8 +406,11 @@ async function retire(input: LegacyLoginRetirementInput, bootstrapInspection = f
         // Advance only by this invocation's own acknowledged CAS, never by
         // adopting a record observed after an unrelated asynchronous write.
         expectedJournal = structuredClone(loaded.value.record);
+        if (event.outcome === "credential-step") recordRetirementUnknown = undefined;
         await checkJournalDirectory(); await check();
         if (event.outcome !== "unknown") await verifyBoundReport();
+        await assertHostOperationLockForJournal(input.lock, plan.inputs.journalPath);
+        need(!connectionFailed, "CONNECTION-FAILED");
       };
       let hostIntent: BootstrapRetirementIntent;
       let rootRequest: { request: typeof rootBinding & { credentials: BootstrapCredentialCustody["receipt"] }; requestDigest: string };

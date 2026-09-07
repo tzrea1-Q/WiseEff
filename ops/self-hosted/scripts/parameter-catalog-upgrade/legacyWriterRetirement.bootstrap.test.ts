@@ -202,6 +202,24 @@ it.each(["pending", "credential-step"])("does not persist %s after host-lock los
   else expect(io.apply).toHaveBeenCalledOnce();
 });
 
+it("does not report success if the post-commit report await loses the host lock", async () => {
+  const f = await fixture(), permitted = await io.report();
+  let lost = false;
+  io.report.mockImplementation(async () => {
+    await Promise.resolve();
+    if (retirementEvents(f.input).at(-1)?.action === "bootstrap-retirement-credential-step") {
+      lost = true; io.fault = "host-lock";
+    }
+    return permitted;
+  });
+  await expect(retireLegacyApplicationLogins(f.input)).rejects.toThrow("TRANSACTION-OUTCOME-UNKNOWN");
+  expect(lost).toBe(true);
+  // This acknowledgment was durable before lock loss. Keep it intact for
+  // actual inspection; do not overwrite it or retry the credential mutation.
+  expect(retirementEvents(f.input).map(entry => entry.action)).toEqual(["bootstrap-retirement-pending", "bootstrap-retirement-credential-step"]);
+  expect(io.apply).toHaveBeenCalledOnce();
+});
+
 it.each(["host-fsync", "host-lock"])("retains pending and refuses a blind retry after SQL when %s is lost", async fault => {
   const f = await fixture();
   io.inspect.mockImplementationOnce(async () => { io.fault = fault; return { outcome: "authentication-fenced-not-P13", intentDigest: `sha256:${"b".repeat(64)}` }; });

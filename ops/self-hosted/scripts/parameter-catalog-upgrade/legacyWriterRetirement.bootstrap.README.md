@@ -47,6 +47,9 @@ The final host-lock check follows the report await immediately before each
 host append and low-level SQL effect. The two host-write race regressions and
 the SQL continuation regression separately reproduce lock loss inside that
 last report read; a post-write refusal alone is insufficient.
+The post-commit report read also ends with the actual lock/connection check.
+If that last await loses the lock, the root returns unknown while retaining
+the already durable credential-step; it never overwrites that terminal record.
 
 An uncertain effect may append `bootstrap-retirement-unknown` only while the
 host boundary remains available; otherwise pending remains. Neither authorizes
