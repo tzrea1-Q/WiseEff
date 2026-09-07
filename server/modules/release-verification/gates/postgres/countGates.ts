@@ -697,8 +697,9 @@ const observeV13 = async (query: GateQuery): Promise<GateResult> => {
   );
   // An executable definer with an owner capable of changing these relations is
   // unproven even when its body uses dynamic SQL. Never use absent source text
-  // as proof of safety. Trigger dispatch and application/job/script inventories
-  // remain additional P13 obligations; this query is not their substitute.
+  // as proof of safety. Installed definer triggers are dispatched by relation
+  // mutation privileges, even without EXECUTE on their function. Other trigger
+  // mechanisms and application/job/script inventories remain P13 obligations.
   // UNION deduplicates (LOGIN, owner) pairs, including cycles. An owner's
   // extra EXECUTE capability may delegate to another definer without exposing
   // that inner function directly to the LOGIN; source-text absence is no proof.
@@ -711,18 +712,41 @@ const observeV13 = async (query: GateQuery): Promise<GateResult> => {
           where initial.classoid='pg_catalog.pg_proc'::regclass and initial.objoid=p.oid
             and initial.objsubid=0 and initial.privtype='i'))
         and p.prorettype not in ('pg_catalog.trigger'::regtype,'pg_catalog.event_trigger'::regtype)
+    ), trigger_edges as (
+      select role.oid as caller,p.proowner as owner,p.oid as function_oid,t.oid as trigger_oid
+      from pg_catalog.pg_trigger t join pg_catalog.pg_proc p on p.oid=t.tgfoid
+      join pg_catalog.pg_class dispatch on dispatch.oid=t.tgrelid cross join pg_catalog.pg_roles role
+      where p.prosecdef and (
+        t.tgenabled in ('O','A')
+        or (t.tgenabled='R' and (pg_catalog.has_parameter_privilege(role.oid,'session_replication_role','SET')
+          or exists(select 1 from pg_catalog.pg_db_role_setting settings
+            where settings.setrole in (0,role.oid) and settings.setdatabase in (0,(select oid from pg_catalog.pg_database where datname=pg_catalog.current_database()))
+              and 'session_replication_role=replica'=any(settings.setconfig))))
+        or (t.tgenabled='D' and pg_catalog.pg_has_role(role.oid,dispatch.relowner,'USAGE'))
+      ) and (
+        ((t.tgtype & 4)<>0 and pg_catalog.has_any_column_privilege(role.oid,t.tgrelid,'INSERT'))
+        or ((t.tgtype & 8)<>0 and pg_catalog.has_table_privilege(role.oid,t.tgrelid,'DELETE'))
+        or ((t.tgtype & 16)<>0 and pg_catalog.has_any_column_privilege(role.oid,t.tgrelid,'UPDATE'))
+        or ((t.tgtype & 32)<>0 and pg_catalog.has_table_privilege(role.oid,t.tgrelid,'TRUNCATE'))
+      )
+    ), authority_edges as (
+      select role.oid as caller,p.proowner as owner,p.oid as function_oid,null::oid as trigger_oid
+      from pg_catalog.pg_roles role join user_definers p on pg_catalog.has_function_privilege(role.oid,p.oid,'EXECUTE')
+      union all select caller,owner,function_oid,trigger_oid from trigger_edges
     ), delegates(login_oid,effective_oid) as (
       select login_oid,effective_oid from reachable
-      union select delegates.login_oid,p.proowner from delegates
-      join user_definers p on pg_catalog.has_function_privilege(delegates.effective_oid,p.oid,'EXECUTE')
+      union select delegates.login_oid,edge.owner from delegates
+      join authority_edges edge on edge.caller=delegates.effective_oid
     )
-    select distinct login.rolname as login,p.oid::regprocedure::text as function_identity
+    select distinct login.rolname as login,
+      case when edge.trigger_oid is null then edge.function_oid::regprocedure::text
+        else 'trigger:'||edge.trigger_oid::text||':'||edge.function_oid::regprocedure::text end as function_identity
     from delegates join logins login on login.oid=delegates.login_oid
-    join user_definers p on pg_catalog.has_function_privilege(delegates.effective_oid,p.oid,'EXECUTE')
+    join authority_edges edge on edge.caller=delegates.effective_oid
     where exists(select 1 from relations relation where
-        pg_catalog.has_table_privilege(p.proowner,relation.oid,'INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER')
-        or pg_catalog.has_any_column_privilege(p.proowner,relation.oid,'INSERT,UPDATE,REFERENCES')
-        or pg_catalog.pg_has_role(p.proowner,relation.relowner,'USAGE'))
+        pg_catalog.has_table_privilege(edge.owner,relation.oid,'INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER')
+        or pg_catalog.has_any_column_privilege(edge.owner,relation.oid,'INSERT,UPDATE,REFERENCES')
+        or pg_catalog.pg_has_role(edge.owner,relation.relowner,'USAGE'))
     order by 1,2`, [v13Relations]);
   const grantRows = grants.rows;
   const violationCount = grantRows.length + definers.rows.length + effective.rows.length + unprovenDefiners.rows.length;

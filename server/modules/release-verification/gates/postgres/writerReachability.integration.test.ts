@@ -222,3 +222,52 @@ it("blocks actual trigger dispatch from a writable unscoped table into a legacy 
     await admin.query(`drop table public.${table}; drop function public.${fn}()`);
   }
 });
+
+it.each(["read-only-owner", "disabled", "no-dispatch-grant"])("retains a passed submatrix for a %s trigger", async mode => {
+  const table = `v13_safe_dispatch_${nonce}`, fn = `v13_safe_trigger_${nonce}`;
+  await admin.query(`create table public.${table}(id integer);
+    grant select on public.driver_schemas to ${capabilityName};
+    create function public.${fn}() returns trigger language plpgsql security definer as $$
+      begin perform 1 from public.driver_schemas limit 1; return new; end $$;
+    create trigger dispatch after insert on public.${table} for each row execute function public.${fn}();
+    revoke all on function public.${fn}() from public`);
+  try {
+    if (mode === "read-only-owner") await admin.query(`alter function public.${fn}() owner to ${capabilityName}`);
+    if (mode === "disabled") await admin.query(`alter table public.${table} disable trigger dispatch`);
+    if (mode !== "no-dispatch-grant") {
+      await admin.query(`grant insert on public.${table} to ${writerName}`);
+      expect((await writer.query(`insert into public.${table}(id) values (1)`)).rowCount).toBe(1);
+    } else {
+      await expect(writer.query(`insert into public.${table}(id) values (1)`)).rejects.toMatchObject({ code: "42501" });
+    }
+    expect(await runGate()).toMatchObject({ status: "passed" });
+  } finally {
+    await admin.query(`drop table public.${table}; drop function public.${fn}(); revoke select on public.driver_schemas from ${capabilityName}`);
+  }
+});
+
+it("follows a dispatched restricted trigger owner to its private inner writer", async () => {
+  const table = `v13_indirect_dispatch_${nonce}`, fn = `v13_indirect_trigger_${nonce}`, inner = `v13_trigger_inner_${nonce}`;
+  await admin.query(`create table public.${table}(id integer);
+    create function public.${inner}() returns void language plpgsql security definer as $$
+      begin execute format('update %I.%I set schema_namespace=%L where id=%L',
+        'public', 'driver_schemas', 'trigger-inner', 'v13-driver'); end $$;
+    revoke all on function public.${inner}() from public;
+    grant execute on function public.${inner}() to ${capabilityName};
+    create function public.${fn}() returns trigger language plpgsql security definer as $$
+      begin perform public.${inner}(); return new; end $$;
+    alter function public.${fn}() owner to ${capabilityName};
+    create trigger dispatch after insert on public.${table} for each row execute function public.${fn}();
+    revoke all on function public.${fn}() from public;
+    grant insert on public.${table} to ${writerName}`);
+  try {
+    expect((await writer.query(`select pg_catalog.has_function_privilege(current_user,'public.${inner}()','EXECUTE') as allowed`)).rows)
+      .toEqual([{ allowed: false }]);
+    expect((await writer.query(`insert into public.${table}(id) values (1)`)).rowCount).toBe(1);
+    expect((await admin.query("select schema_namespace from public.driver_schemas where id='v13-driver'")).rows)
+      .toEqual([{ schema_namespace: "trigger-inner" }]);
+    await expectBlocked();
+  } finally {
+    await admin.query(`drop table public.${table}; drop function public.${fn}(); drop function public.${inner}()`);
+  }
+});

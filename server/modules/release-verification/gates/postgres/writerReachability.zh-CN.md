@@ -2,6 +2,23 @@
 
 [English](writerReachability.md)
 
+## SECURITY DEFINER 触发器分派
+
+已安装触发器的分派来自真实表／列变更权限，不依赖函数的 EXECUTE 授权。
+现有 owner 能力图追加该分派边，并继续追踪私有内部 definer；依据实际事件位、
+启用状态及 replica 设置／参数权限判断。禁用触发器仅在可启用它的 owner 路径可达。
+不将函数体或 WHEN 条件当作安全证明；无法变更分派表或仅有读取权限的触发器 owner
+本身不会导致全部拒绝。元数据来自 PostgreSQL 的
+[触发器目录](https://www.postgresql.org/docs/16/catalog-pg-trigger.html)。
+
+test-only `cfb199cbcae3eaf74c2f92e947dbd78839eb25f4`、tree
+`beade877fabf61b7797730c741e66ea7dfb9170d` 的真实受限 LOGIN 向七表外表 INSERT，
+通过已撤销 EXECUTE 的触发器实际更新 `driver_schemas`；正式 V13 仍通过。
+实际 25 收集、24 过、1 失败、0 跳过，5.25 秒，exit 1，自有资源清理已验证。
+修复及新增合法触发器回归尚待固定版本真实执行，不将 Red 视为退休通过。
+原生外键级联、rewrite rules、event triggers 与全部 HTTP／Agent／review／jobs／scripts
+写入者清单仍不属于这项 SECURITY DEFINER 子矩阵证明，不签发完整 P13 fingerprint。
+
 本次修复已实际复现的 V13 误放行：独立受限 LOGIN 可以修改旧 driver schema，
 正式 PostgreSQL V13 adapter 却返回 `passed`。本分片不证明完整 P13 退休，
 也不批准运行启动、恢复、队列消费或发布。

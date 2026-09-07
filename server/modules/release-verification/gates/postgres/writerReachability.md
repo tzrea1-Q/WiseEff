@@ -45,9 +45,29 @@ in this graph; a schema name alone cannot justify the builtin exclusion.
 Missing scoped relations and actual query failures return the existing typed
 blocking V13 result without private diagnostics or repair writes.
 
+Installed SECURITY DEFINER triggers add a different dispatch edge: the LOGIN
+needs the triggering table/column mutation privilege, not EXECUTE on the
+function. The existing owner graph now follows these edges and private inner
+definers. The observation checks event bits and firing mode; a disabled trigger
+is only reachable through an owner able to enable it, and replica-only firing
+requires the parameter capability or a recorded replica setting. It does not
+interpret function bodies or WHEN clauses as proof of safety. An inaccessible
+dispatch table or a trigger owner with only read privileges does not by itself
+block the submatrix. PostgreSQL's [trigger catalog](https://www.postgresql.org/docs/16/catalog-pg-trigger.html)
+supplies the actual dispatch identity and firing metadata.
+
+Test-only `cfb199cbcae3eaf74c2f92e947dbd78839eb25f4`, tree
+`beade877fabf61b7797730c741e66ea7dfb9170d`, reproduced a real restricted LOGIN
+INSERT on an unscoped table changing `driver_schemas` through a trigger whose
+EXECUTE grant had been revoked. The formal V13 adapter still passed: 25 collected,
+24 passed, one failed, zero skipped, 5.25 seconds, exit 1, owned cleanup verified.
+The implementation and its additional legitimate-trigger regressions await their
+own fixed real execution; the Red is not a successful retirement.
+
 The inherited `postgres` and `current_user` exclusions are compatibility behavior,
 not a trusted production-role manifest. Controller-proven production identities,
-all legacy tables, triggers, other function mechanisms, HTTP/Agent/review/jobs,
+all legacy tables, native referential-action triggers, rewrite rules, event
+triggers, other function mechanisms, HTTP/Agent/review/jobs,
 scripts and background writers remain separate obligations. The evidence scope
 label enters the evidence digest; the report does not interpret it as a new gate
 state. A passed database submatrix must not become a complete P13 fingerprint.
