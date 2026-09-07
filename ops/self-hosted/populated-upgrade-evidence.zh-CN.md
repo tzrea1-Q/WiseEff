@@ -32,7 +32,14 @@ API用例是真实注册／HTTP加数据库替身，不是production获准启动
 `101880674239` 在bootstrap custody失败：30项中27通过／3失败／0跳过，20.62s，
 exit 1且清理验证。首项超过5000ms，后两项为锁和独立子进程失败。原job日志SHA256
 `953304e16fbf84c0774aff3bc3fdd7ff3574bd63139f6c542a1581ac01888672`。
-这是新候选失败，不是历史source-lock超时；记录时其余run仍在进行，不声称当前CI通过。
+这是新候选失败，不是历史source-lock超时。该run已失败结束：smoke／quality通过，
+Build/test及owned两个job失败，Merge bar失败。Frontend3374/3374，scripts为
+source-lock4/4后1985通过／27跳过，bridge134通过／4跳过。Backend4299通过／1失败／
+0跳过：knowledge参数引用审计用例收到相同两条记录但顺序相反，正在独立核验时间戳
+相同时的排序保证，不能与bootstrap混为一因。Contract及log-eval未执行；owned依序至
+retirement-existing均通过，bootstrap失败后后续恢复suite未执行。Local non-HDC与
+target synthetic两个job跳过。Main job日志SHA256
+`7c75d16db519fe3fcafd72acc98f60892e2f3c282b47463f656703c2e7c52bcd`，不声称当前CI通过。
 报告 `d79b9b23b` 的独立strict owned docs已通过，含真实DB schema验证、exit 0及清理，
 日志SHA256 `66089de582a346c6dc8a496c65ee2a704fcc3a9ed4d21ae601a4b5fe73b653a3`。
 

@@ -39,7 +39,17 @@ skipped of 30, 20.62s, exit 1 with cleanup. The first test exceeded 5000ms;
 subsequent cases reported lock and independent-process failures. Original job
 log SHA256 is `953304e16fbf84c0774aff3bc3fdd7ff3574bd63139f6c542a1581ac01888672`.
 This is a new candidate failure, not the historical source-lock timeout. The
-remaining run was still active when recorded; no current CI success is claimed.
+run finished failed: smoke and quality passed; both Build/test and owned jobs
+failed and Merge bar failed. Frontend passed 3374/3374; scripts passed
+source-lock 4/4 then 1985 passed/27 skipped; bridge passed 134/4 skipped.
+Backend had 4299 passed/1 failed/0 skipped: the knowledge parameter-reference
+audit test received the same two events in reverse timestamp-tie order. That
+ordering failure is being investigated separately from bootstrap. Contract and
+log-eval did not execute. Owned suites through retirement-existing passed, then
+bootstrap failed; subsequent recovery suites did not execute. Local non-HDC and
+target synthetic jobs were skipped. Main-job log SHA256:
+`7c75d16db519fe3fcafd72acc98f60892e2f3c282b47463f656703c2e7c52bcd`.
+No current CI success is claimed.
 Strict owned docs at report `d79b9b23b` separately passed including database
 schema validation, exit 0 and cleanup; log SHA256
 `66089de582a346c6dc8a496c65ee2a704fcc3a9ed4d21ae601a4b5fe73b653a3`.
