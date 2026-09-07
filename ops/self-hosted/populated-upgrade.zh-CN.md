@@ -8,13 +8,12 @@ PR #824 续工：`PCAT-RUNTIME-WORKER-INITIALIZATION-FAILED` 表示准入之后�
 worker 初始化失败；连接池已关闭，或关闭尝试失败。不得以提权或恢复队列处理。
 该修复没有新增合法启动路径或生产升级命令。
 
-待决策范围分开记录：（1）保留 S11-RP 纯检查语义，同时明确已有受控恢复执行器
-的归属、执行边界和必需目标／批准反例；当前全目录 token 禁令未经批准不能
-收窄。（2）按实际 Kernel snapshot 查询授权独立 NOLOGIN Catalog 只读能力，
-不含 synchronizer DML、owner 成员关系或 verification 写入。这会改变 `0138`
-的生产 SELECT 拒绝合同，不能静默安装。旧提案的治理 EXECUTE 扩展不是 runtime
-报告查询所必需，不与这次只读能力捆绑。Policy #815 的权威关联／unavailable
-方案仍需独立选择。当前没有获准执行这些合同变更的命令。
+用户已于 2026-09-07 授权两项限定实现：[登记的恢复执行层](storage/execution/README.zh-CN.md)，
+同时保留 S11-RP 检查入口无恢复副作用；以及追加迁移 0140 的
+[Catalog reader](../../server/modules/catalog-kernel/security/catalog-reader.zh-CN.md)。
+历史 0138/0139 字节保持不变。这些决定不授权生产操作、治理 EXECUTE 扩展、
+Binding/ProjectValue 授权或发布。Policy #815 仍需独立决定。
+受限登录的正式 Kernel 读取已验证；API/worker 启动和完整 controller 仍是未完成的独立集成。
 
 候选提供保护性拦截、有界canonical转换和恢复adapter；**尚未打通完整存量升级，不能交付生产维护命令**。源版本保持 `82344044b436a8dafecefbb85dfd724cecb05e3f`；当前集成base为 `cda6737a8f177a8bbd2f3bc7d195f8e3037bfa74`，早期base和执行保留在证据记录中。用户提供的计数／镜像是历史观察，不是新冻结清单或恢复证明。私有部署路径、原始值和备份不得放入公开证据。
 
@@ -26,6 +25,21 @@ worker 初始化失败；连接池已关闭，或关闭尝试失败。不得以�
 | P12/P13/P11b/P14/P15 | 当前候选没有完整可执行集成 |
 
 ## 开发环境
+
+组件入口另提供 `reader-pg16`、`scripts-pgvector`、`server-pgvector` 和
+`schema-doc` 独占测试通道。执行机器必须是已独立核验的开发 Docker Desktop；
+用户为开发者，目录为审阅候选仓库。先确认 daemon 及资源归属，再用仓库的
+`tsx` 执行 `scripts/run-upgrade-component-tests.ts`，传入真实的
+`--expected-daemon-id` 和选择的 `--suite`。这些命令创建并删除新的数据库集群、
+网络和卷，不停止部署服务。`schema-doc` 还会生成并写入
+`docs/generated/db-schema.md`，不是只读检查。预期是测试退出码 0 且
+`cleanupVerified: true`；任一失败停止验收，不连接部署数据库补跑。
+
+仅 GitHub 使用的 `--github-hosted` 要求实时签名 OIDC、实际干净 checkout
+（含非 ignored 未跟踪文件）和固定本地 daemon；不能用调用者 token 或 CI 布尔值代替。
+reader job 为必需门禁，使用独占集群，避免角色反例污染 server 测试。
+参见[Hosted 准入合同](../../scripts/upgrade-hosted-admission.zh-CN.md)。
+以上均为开发组件验证，不能当作生产维护命令或发布批准。
 
 机器：独立开发机；用户：开发者；目录：审阅候选仓库。前置：Git 中有源版本对象、Docker 可用、锁定依赖。输入均为合成数据；测试自行创建独立数据库，会写临时测试存储，不停止部署服务。
 

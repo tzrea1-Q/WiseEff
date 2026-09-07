@@ -9,16 +9,14 @@ completed but worker initialization failed; its pool was closed or closure was
 attempted and failed. Do not respond by raising runtime privileges or reopening
 queues. This code does not add a legal startup path or a production upgrade command.
 
-Pending decisions are separate: (1) preserve S11-RP check-only semantics while
-explicitly assigning the existing controlled recovery executor a reviewed execution
-boundary and corresponding mandatory target/approval tests; the present blanket
-token guard cannot be narrowed without approval; (2) authorize a separate NOLOGIN
-Catalog read capability for actual Kernel snapshot queries, with no synchronizer
-DML, owner membership or verification writes. This changes the `0138` production
-SELECT-negative contract and cannot be silently installed. The proposed governance
-EXECUTE additions are not part of runtime report lookup and are not bundled here.
-Policy #815 still needs its own authority/unavailable decision. No command to
-apply these proposed contract changes is currently authorized.
+The user authorized two bounded implementation changes on 2026-09-07: the
+[registered recovery execution layer](storage/execution/README.md), while S11-RP
+checks remain effect-free; and the additive [Catalog reader](../../server/modules/catalog-kernel/security/catalog-reader.md)
+in migration 0140. Historical 0138/0139 bytes remain unchanged. Neither approval
+permits production execution, governance EXECUTE additions, Binding/ProjectValue
+grants, or publication. Policy #815 remains a separate decision. Real Kernel reads
+with limited logins have been exercised; API/worker startup and the complete
+controller are still separate unfinished integration work.
 
 This candidate provides protective interception, bounded canonical conversion and recovery adapters. It does **not** complete a populated release. No production maintenance command is available yet. The source baseline is `82344044b436a8dafecefbb85dfd724cecb05e3f`; current integration base is `cda6737a8f177a8bbd2f3bc7d195f8e3037bfa74`. Earlier bases and executions remain in the evidence record. Supplied deployment counts/image identity are historical, not fresh inventory or backup proof. Do not copy private deployment paths, values or backups into repository evidence.
 
@@ -30,6 +28,23 @@ This candidate provides protective interception, bounded canonical conversion an
 | P12/P13/P11b/P14/P15 | No approved complete executable integration in this candidate |
 
 ## Developer commands
+
+The component runner also owns separate `reader-pg16`, `scripts-pgvector`,
+`server-pgvector` and `schema-doc` lanes. After independently confirming the
+development Docker Desktop daemon and its owned resources, pass its actual ID
+with `--expected-daemon-id` and the selected `--suite` to
+`scripts/run-upgrade-component-tests.ts` using the repository's `tsx` binary.
+These commands create and remove a fresh cluster/network/volume. `schema-doc`
+also writes `docs/generated/db-schema.md`; it is a generator, not a read-only
+inspection. A failed test or unverified cleanup stops acceptance. Never supply
+an ambient deployment database or use these component results as a release.
+
+The GitHub-only `--github-hosted` option requires fresh, verified GitHub OIDC
+claims, the actual clean checkout (including non-ignored untracked files) and
+the pinned local daemon. It does not accept a caller token or a CI boolean.
+The mandatory reader job uses a separate cluster because role mutation tests
+cannot share the server suite's cluster. See the
+[Hosted admission contract](../../scripts/upgrade-hosted-admission.md).
 
 Machine: isolated development host; user: developer; directory: reviewed candidate repository; prerequisites: locked dependencies, Git source object, Docker. These tests create their own synthetic database clusters and never accept production backup input. They do write disposable test storage; they do not stop the deployed service.
 
