@@ -2,6 +2,10 @@
 
 英文：[English](reportApprovalTarget.README.md)
 
+组合根使用既有 `report/index` 公开 factory 的
+`VerificationReportService.approveReport`，不实例化核心 gate runner。
+原 controller T6 断言继续约束此边界；缺报告等拒绝保留正式报告服务的 typed 结果。
+
 这个仅用于管理面的适配器连接已有 deployment authority 和 Release Verification
 批准命令，不运行 gates、不制造报告、不授权新权限，也不批准运行／流量／恢复。
 管理凭据不得进入 API 或 worker 容器。

@@ -1,7 +1,7 @@
 import { randomInt } from "node:crypto";
 import pg from "pg";
 import { createPostgresDatabase, type Database, type Queryable, type RootDatabase } from "../../../../server/shared/database/client";
-import { createReleaseVerificationService } from "../../../../server/modules/release-verification/core";
+import { createVerificationReportService } from "../../../../server/modules/release-verification/report/index";
 import { assertDeploymentReportCommandCurrent, DeploymentAuthorityError, type DeploymentReportApproval } from "./deploymentAuthority";
 
 export type ReportDatabaseIdentity = Readonly<{ systemIdentifier: string; databaseOid: string }>;
@@ -163,7 +163,7 @@ export async function approveDeploymentReport(target: unknown, command: Deployme
   // service's transaction body. This wrapper grants no transaction to Kernel.
   const guarded: Database = { query: issued.db.query.bind(issued.db), transaction: body =>
     issued.db.transaction(async tx => { await assertDeploymentReportCommandCurrent(command, physical); return body(tx); }) };
-  return await createReleaseVerificationService({ db: guarded }).approveReport(command.reportDigest, command.command);
+  return await createVerificationReportService({ db: guarded }).approveReport(command.reportDigest, command.command);
   } catch (error) {
     if (error instanceof ReportApprovalTargetError || error instanceof DeploymentAuthorityError) throw error;
     return refuse("ACTION-FAILED");

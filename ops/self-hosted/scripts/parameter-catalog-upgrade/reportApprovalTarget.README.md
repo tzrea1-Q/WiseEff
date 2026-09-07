@@ -7,6 +7,11 @@ existing Release Verification approval command. It does not run gates, fabricate
 reports, grant privileges or authorize runtime/traffic/recovery. No management
 credential belongs in an API or worker container.
 
+The composition root uses the existing public `report/index` factory and its
+`VerificationReportService.approveReport`. It does not instantiate the core gate
+runner. The unchanged controller T6 assertion continues to enforce that boundary;
+missing report and other refusals retain the report service's typed result.
+
 ## Inputs and ownership
 
 `openReportApprovalTarget` accepts explicit private management and writer URLs

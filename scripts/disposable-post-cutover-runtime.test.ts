@@ -10,6 +10,9 @@ const pgState = vi.hoisted(() => ({
 
 vi.mock("pg", () => ({
   default: {
+    Pool: class {
+      constructor() { throw new Error("unexpected-pool-in-disposable-runtime-unit"); }
+    },
     Client: class {
       async connect() {}
       async end() {}
