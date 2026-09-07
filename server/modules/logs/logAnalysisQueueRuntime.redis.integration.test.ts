@@ -1,60 +1,67 @@
 import { randomBytes } from "node:crypto";
-import { mkdtemp, writeFile, rm } from "node:fs/promises";
-import os from "node:os";
-import path from "node:path";
+import { constants } from "node:fs";
+import { open } from "node:fs/promises";
 import { setTimeout as delay } from "node:timers/promises";
 import { Queue, Worker } from "bullmq";
-import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
+import { beforeAll, describe, expect, it, vi } from "vitest";
 
 import { createIsolatedUpgradeDocker } from "../../../scripts/isolated-upgrade-docker";
 import type { Database } from "../../shared/database/client";
 import type { ObjectStore } from "./objectStore";
 import { createLogAnalysisQueueRuntime, createLogAnalysisQueueTransport } from "./logAnalysisQueueRuntime";
 
-// Owns a new Redis daemon, network and volume; never reads ambient REDIS_URL.
-describe.skipIf(process.env.UPG_LOG_QUEUE_REDIS_TEST !== "1")("owned Redis log worker lifecycle", () => {
+// The supervising runner owns creation and cleanup, including when Vitest is killed.
+// This child verifies the private receipt against Docker and Redis, never ambient URLs.
+describe("owned Redis log worker lifecycle", () => {
   let docker: ReturnType<typeof createIsolatedUpgradeDocker>;
-  const run = randomBytes(12).toString("hex");
-  const label = "wiseeff.log-worker-lifecycle";
-  let container = ""; let network = ""; let volume = ""; let privateDirectory = "";
+  let run = ""; let label = ""; let container = "";
   let redisUrl = "";
-  const password = randomBytes(24).toString("hex");
+  let password = "";
   const owned = () => docker.assertOwned(container, label, run);
   beforeAll(async () => {
     docker = createIsolatedUpgradeDocker();
     if (docker.daemonId !== process.env.UPG_EXPECTED_DOCKER_DAEMON_ID) throw new Error("owned-redis-daemon-identity-required");
-    const image = JSON.parse(docker.command(["image", "inspect", "redis:7-alpine"]).toString())[0];
-    privateDirectory = await mkdtemp(path.join(os.tmpdir(), "wiseeff-owned-redis-"));
-    await writeFile(path.join(privateDirectory, "redis.conf"), `bind 0.0.0.0\nappendonly yes\ndir /data\nrequirepass ${password}\n`, { mode: 0o600 });
-    network = docker.command(["network", "create", "--driver", "bridge", "--opt", "com.docker.network.bridge.enable_ip_masquerade=false", "--label", `${label}=${run}`, `log-worker-${run}`]).toString().trim();
-    volume = docker.command(["volume", "create", "--label", `${label}=${run}`, `log-worker-${run}`]).toString().trim();
-    container = docker.command(["create", "--label", `${label}=${run}`, "--network", network, "-p", "127.0.0.1::6379", "--entrypoint", "redis-server",
-      "--mount", `type=volume,source=${volume},target=/data`, "--mount", `type=bind,source=${privateDirectory},target=/private,readonly`,
-      image.Id, "/private/redis.conf"]).toString().trim();
-    owned(); docker.command(["start", container]);
-    const running = owned();
-    if (!running.State.Running || !running.NetworkSettings.Ports["6379/tcp"]?.[0]?.HostPort) {
-      throw new Error(`owned-redis-startup-unavailable:running=${running.State.Running}:exit=${running.State.ExitCode}`);
+    const receiptPath = process.env.UPG_REDIS_TARGET_RECEIPT;
+    if (!receiptPath) throw new Error("owned-redis-runner-required");
+    const file = await open(receiptPath, constants.O_RDONLY | constants.O_NOFOLLOW);
+    let receipt;
+    try {
+      const stat = await file.stat();
+      if (!stat.isFile() || stat.nlink !== 1 || (stat.mode & 0o777) !== 0o600 ||
+          stat.uid !== process.getuid?.() || stat.size > 16384) throw new Error("owned-redis-receipt-private-file-required");
+      receipt = JSON.parse(await file.readFile("utf8"));
+    } finally { await file.close(); }
+    if (receipt.profile !== "selfhost-redis7-aof-v1" || receipt.daemonId !== docker.daemonId ||
+        receipt.label !== "wiseeff.upgrade.conversion" || !/^conversion-[a-f0-9]+$/.test(receipt.run)) {
+      throw new Error("owned-redis-receipt-identity-mismatch");
     }
-    redisUrl = `redis://:${password}@127.0.0.1:${running.NetworkSettings.Ports["6379/tcp"][0].HostPort}`;
+    run = receipt.run; label = receipt.label; container = receipt.id;
+    const running = owned();
+    const port = running.NetworkSettings.Ports["6379/tcp"]?.[0];
+    const mounts = running.Mounts.filter((mount: { Destination: string }) => mount.Destination === "/data");
+    const network = JSON.parse(docker.command(["network", "inspect", receipt.net]).toString())[0];
+    const volume = JSON.parse(docker.command(["volume", "inspect", receipt.dataVolume.name]).toString())[0];
+    const consumers = docker.command(["ps", "-aq", "--filter", `volume=${receipt.dataVolume.name}`]).toString().trim().split("\n");
+    if (!running.State.Running || running.Image !== receipt.imageId || port?.HostIp !== "127.0.0.1" ||
+        mounts.length !== 1 || mounts[0].Name !== receipt.dataVolume.name ||
+        volume.CreatedAt !== receipt.dataVolume.createdAt || volume.Labels?.[label] !== run ||
+        network.Labels?.[label] !== run || !network.Containers?.[container] ||
+        Object.keys(network.Containers).length !== 1 || consumers.length !== 1 || !container.startsWith(consumers[0])) {
+      throw new Error("owned-redis-resource-identity-mismatch");
+    }
+    const url = new URL(receipt.url);
+    if (url.protocol !== "redis:" || url.hostname !== "127.0.0.1" || url.port !== port.HostPort ||
+        url.username || !url.password || url.search || url.hash || url.pathname) throw new Error("owned-redis-connection-mismatch");
+    redisUrl = receipt.url; password = url.password;
     const probe = new Queue(`probe-${run}`, { connection: { url: redisUrl } });
     probe.on("error", () => {});
-    try { await probe.waitUntilReady(); } finally { await probe.close(); }
-    console.info(JSON.stringify({ evidence: "owned-redis-lifecycle", imageId: image.Id, platform: `${image.Os}/${image.Architecture}`, persistence: "aof" }));
-  });
-  afterAll(async () => {
-    if (container) { owned(); docker.command(["rm", "-f", container]); }
-    for (const [kind, identity] of [["volume", volume], ["network", network]]) {
-      if (!identity) continue;
-      const info = JSON.parse(docker.command([kind, "inspect", identity]).toString())[0];
-      if (info.Labels?.[label] !== run) throw new Error("owned-redis-resource-ownership-mismatch");
-      docker.command([kind, "rm", identity]);
-    }
-    if (privateDirectory) await rm(privateDirectory, { recursive: true });
-    for (const args of [["ps", "-aq"], ["volume", "ls", "-q"], ["network", "ls", "-q"]]) {
-      if (docker.command([...args, "--filter", `label=${label}=${run}`]).toString().trim()) throw new Error("owned-redis-cleanup-incomplete");
-    }
-    console.info(JSON.stringify({ evidence: "owned-redis-lifecycle", cleanupVerified: true }));
+    try {
+      const client = await probe.waitUntilReady();
+      const server = await client.info("server");
+      if (/^run_id:([a-f0-9]{40})\r?$/m.exec(server)?.[1] !== receipt.redisRunId) throw new Error("owned-redis-server-identity-mismatch");
+      expect(await client.config("GET", "appendonly")).toEqual(["appendonly", "yes"]);
+    } finally { await probe.close(); }
+    console.info(JSON.stringify({ evidence: "owned-redis-lifecycle", imageId: receipt.imageId, persistence: "aof" }));
   });
   const options = () => ({
     env: { REDIS_URL: redisUrl, LOG_ANALYSIS_QUEUE_PREFIX: `owned-${randomBytes(8).toString("hex")}`,

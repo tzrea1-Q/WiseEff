@@ -121,7 +121,7 @@ const logAnalysisQueueRuntime =
           tracing: defaultTracingBoundary,
           webhooks: logWebhookDeliverer
         })
-      : createLogAnalysisQueueTransport({ env: logAnalysisQueueEnv })
+      : await createLogAnalysisQueueTransport({ env: logAnalysisQueueEnv })
     : undefined;
 const stopLogWorker =
   env.LOG_WORKER_ENABLED && env.LOG_ANALYSIS_QUEUE_MODE === "polling" && db && objectStore

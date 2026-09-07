@@ -27,12 +27,19 @@ it("routes the cluster-wide reader mutation test to the mandatory independently 
   expect(job).not.toContain("--suite activation-pg16"); // Unsealed P12 contract is a separate Scratch branch.
   expect(job).toContain("--suite authority-pg16 --github-hosted");
   expect(job).toContain("--suite bindings-pg16 --github-hosted");
+  expect(job).toContain("--suite log-redis --github-hosted");
   expect(job).not.toContain("continue-on-error: true");
   expect(workflow.split("  required:\n")[1]).toContain("- upgrade-components");
   const server = readFileSync(new URL("../vitest.server.config.ts", import.meta.url), "utf8");
+  const redisTest = "server/modules/logs/logAnalysisQueueRuntime.redis.integration.test.ts";
+  expect(server).toContain(`"${redisTest}"`);
+  const redisConfig = readFileSync(new URL("../vitest.upgrade-redis.config.ts", import.meta.url), "utf8");
+  expect(redisConfig).toContain(`include: ["${redisTest}"]`);
+  expect(redisConfig).toContain("owned-redis-runner-required");
   expect(server).toContain('"server/modules/catalog-kernel/security/catalogReader.integration.test.ts"');
   expect(server).toContain('"server/modules/catalog-cutover/runtimeState.test.ts"');
   const runner = readFileSync(new URL("./run-upgrade-component-tests.ts", import.meta.url), "utf8");
+  expect(runner).toContain(`"log-redis": { image: "redis:7-alpine", files: ["${redisTest}"], config: "vitest.upgrade-redis.config.ts" }`);
   expect(runner.split("const bindingFiles = ")[1]?.split(";\n")[0])
     .toContain('"server/modules/catalog-cutover/runtimeState.test.ts"');
   const scripts = readFileSync(new URL("../vitest.scripts.config.ts", import.meta.url), "utf8");

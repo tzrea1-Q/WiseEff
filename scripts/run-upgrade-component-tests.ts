@@ -16,6 +16,7 @@ const suites: Record<string, { image: string; files: readonly string[]; config: 
   "reader-pg16": { image: "postgres:16-alpine", files: ["server/modules/catalog-kernel/security/catalogReader.integration.test.ts"], config: "vitest.upgrade-cutover.config.ts" },
   "report-pg16": { image: "postgres:16-alpine", files: ["server/modules/release-verification/startup/reportConnection.integration.test.ts"], config: "vitest.upgrade-cutover.config.ts" },
   "authority-pg16": { image: "postgres:16-alpine", files: ["ops/self-hosted/scripts/parameter-catalog-upgrade/deploymentAuthority.integration.test.ts"], config: "vitest.upgrade-cutover.config.ts" },
+  "log-redis": { image: "redis:7-alpine", files: ["server/modules/logs/logAnalysisQueueRuntime.redis.integration.test.ts"], config: "vitest.upgrade-redis.config.ts" },
   "scripts-pgvector": { image: "pgvector/pgvector:pg16", files: [], config: "vitest.scripts.config.ts" },
   "server-pgvector": { image: "pgvector/pgvector:pg16", files: [], config: "vitest.server.config.ts" },
   "schema-doc": { image: "pgvector/pgvector:pg16", files: [], config: "", command: "schema-doc" },
@@ -92,6 +93,8 @@ export async function runUpgradeComponentTests(args: string[]) {
   }, observeHosted);
   const authorizeCreation = () => { if (hosted) assertHostedUpgradeAdmission(admission!, observeHosted()); };
   const suite = suites[args[3] as keyof typeof suites];
+  const isRedis = args[3] === "log-redis";
+  const profile = isRedis ? "selfhost-redis7-aof-v1" : suite.image === "postgres:16-alpine" ? "selfhost-postgres16-alpine-v1" : "catalog-pgvector-v1";
   // Frozen rehearsal CLI fixtures use their historical bootstrap login. It is
   // confined to this newly created cluster, never an application identity.
   const bootstrapUser = args[3] === "scripts-pgvector" ? "wiseeff" : "postgres";
@@ -114,7 +117,7 @@ export async function runUpgradeComponentTests(args: string[]) {
   let exitCode = 1;
   let stage = "network-create";
   try {
-    // Only PostgreSQL runs here. An internal Docker network does not publish
+    // Only the selected data service runs here. An internal Docker network does not publish
     // its port on Docker Desktop; this owned bridge publishes loopback only.
     // This is not an application egress-isolation environment.
     authorizeCreation();
@@ -124,25 +127,38 @@ export async function runUpgradeComponentTests(args: string[]) {
     volume = docker.command(["volume", "create", "--label", `${label}=${run}`, `${run}-data`]).toString().trim();
     stage = "container-create";
     authorizeCreation();
-    id = docker.command(["run", "-d", "--network", net, "--label", `${label}=${run}`, "-v", `${volume}:/var/lib/postgresql/data`, "-e", `POSTGRES_PASSWORD=${password}`, "-e", `POSTGRES_USER=${bootstrapUser}`, "-e", "POSTGRES_DB=postgres", "-p", "127.0.0.1::5432", image.Id]).toString().trim();
+    if (isRedis) {
+      await writeFile(path.join(directory, "redis.conf"), `bind 0.0.0.0\nappendonly yes\ndir /data\nrequirepass ${password}\n`, { mode: 0o600, flag: "wx" });
+      authorizeCreation();
+      id = docker.command(["run", "-d", "--network", net, "--label", `${label}=${run}`, "--mount", `type=volume,source=${volume},target=/data`,
+        "--mount", `type=bind,source=${directory},target=/private,readonly`, "-p", "127.0.0.1::6379", "--entrypoint", "redis-server", image.Id, "/private/redis.conf"]).toString().trim();
+    } else {
+      id = docker.command(["run", "-d", "--network", net, "--label", `${label}=${run}`, "-v", `${volume}:/var/lib/postgresql/data`, "-e", `POSTGRES_PASSWORD=${password}`, "-e", `POSTGRES_USER=${bootstrapUser}`, "-e", "POSTGRES_DB=postgres", "-p", "127.0.0.1::5432", image.Id]).toString().trim();
+    }
+    const redisCommand = (args: string[]) => docker.command(["exec", id, "sh", "-c",
+      'export REDISCLI_AUTH="$(awk \'$1 == "requirepass" {print $2}\' /private/redis.conf)"; exec redis-cli --raw "$@"', "redis-probe", ...args]).toString().trim();
     stage = "container-port-observation";
     let port: string | undefined;
     for (let n = 0; n < 40 && !interrupted; n++) {
       const owned = docker.assertOwned(id, label, run);
-      const published = owned.NetworkSettings.Ports?.["5432/tcp"]?.[0];
+      const published = owned.NetworkSettings.Ports?.[isRedis ? "6379/tcp" : "5432/tcp"]?.[0];
       if (owned.State.Running && published?.HostIp === "127.0.0.1" && /^\d+$/.test(published.HostPort)) { port = published.HostPort; break; }
       await setTimeout(200);
     }
-    if (!port) throw new Error("owned-postgres-port-unavailable");
-    const url = `postgres://${bootstrapUser}:${password}@127.0.0.1:${port}/postgres`;
+    if (!port) throw new Error("owned-service-port-unavailable");
+    const url = isRedis ? `redis://:${password}@127.0.0.1:${port}` : `postgres://${bootstrapUser}:${password}@127.0.0.1:${port}/postgres`;
     stage = "database-readiness";
     let ready = false;
     for (let n = 0; n < 40 && !interrupted; n++) {
       docker.assertOwned(id, label, run);
-      try { docker.command(["exec", id, "pg_isready", "-h", "127.0.0.1", "-U", bootstrapUser]); ready = true; break; }
+      try {
+        if (isRedis) { if (redisCommand(["PING"]) !== "PONG") throw new Error("redis-not-ready"); }
+        else docker.command(["exec", id, "pg_isready", "-h", "127.0.0.1", "-U", bootstrapUser]);
+        ready = true; break;
+      }
       catch { await setTimeout(200); }
     }
-    if (!ready || interrupted) throw new Error("owned-postgres-not-ready");
+    if (!ready || interrupted) throw new Error("owned-service-not-ready");
     if (suite.image === "pgvector/pgvector:pg16") {
       stage = "owned-vector-preparation";
       docker.assertOwned(id, label, run);
@@ -150,11 +166,13 @@ export async function runUpgradeComponentTests(args: string[]) {
     }
     stage = "receipt-and-tests";
     const receipt = path.join(directory, "target.json");
-    const physical = JSON.parse(docker.command(["exec", id, "psql", "-X", "-U", bootstrapUser, "-d", "postgres", "-Atc", "select json_build_object('systemIdentifier',system_identifier::text,'databaseOid',(select oid::text from pg_database where datname=current_database()),'databaseProperties',(select row_to_json(p) from (select encoding,datcollate,datctype,datlocprovider,daticulocale,daticurules,datcollversion,datconnlimit,datallowconn,datistemplate from pg_database where datname=current_database()) p)) from pg_control_system()"]).toString());
-    console.log(JSON.stringify({ evidence: "owned-database-profile", imageId: image.Id, databaseProperties: physical.databaseProperties }));
+    const physical = isRedis ? { redisRunId: /^run_id:([a-f0-9]{40})\r?$/m.exec(redisCommand(["INFO", "server"]))?.[1] }
+      : JSON.parse(docker.command(["exec", id, "psql", "-X", "-U", bootstrapUser, "-d", "postgres", "-Atc", "select json_build_object('systemIdentifier',system_identifier::text,'databaseOid',(select oid::text from pg_database where datname=current_database()),'databaseProperties',(select row_to_json(p) from (select encoding,datcollate,datctype,datlocprovider,daticulocale,daticurules,datcollversion,datconnlimit,datallowconn,datistemplate from pg_database where datname=current_database()) p)) from pg_control_system()"]).toString());
+    if (isRedis && !physical.redisRunId) throw new Error("owned-redis-identity-unavailable");
+    console.log(JSON.stringify({ evidence: "owned-service-profile", profile, imageId: image.Id, databaseProperties: physical.databaseProperties }));
     const dataVolume = JSON.parse(docker.command(["volume", "inspect", volume]).toString())[0];
     await writeFile(receipt, JSON.stringify({ id, net, run, label, daemonId: docker.daemonId, url, ...physical,
-      profile: suite.image === "postgres:16-alpine" ? "selfhost-postgres16-alpine-v1" : "catalog-pgvector-v1",
+      profile,
       imageId: image.Id, dataVolume: { name: volume, createdAt: dataVolume.CreatedAt } }), { mode: 0o600, flag: "wx" });
     const selectors = suite.files;
     const command = suite.command === "schema-doc"
@@ -165,9 +183,10 @@ export async function runUpgradeComponentTests(args: string[]) {
         // Frozen rehearsal cleanup refuses symlink parents (macOS /tmp).
         // Use this run's canonical private directory, never ambient TMPDIR.
         TMPDIR: directory,
-        WAYFINDER_POSTGRES_CONTAINER: id, DOCKER_HOST: docker.endpoint,
-        UPG_TEST_TARGET_RECEIPT: receipt, DATABASE_URL: url, TEST_DATABASE_URL: url,
-        UPG_COMPONENT_PROFILE: suite.image === "postgres:16-alpine" ? "selfhost-postgres16-alpine-v1" : "catalog-pgvector-v1" },
+        DOCKER_HOST: docker.endpoint,
+        ...(isRedis ? { UPG_REDIS_TARGET_RECEIPT: receipt, UPG_EXPECTED_DOCKER_DAEMON_ID: docker.daemonId }
+          : { WAYFINDER_POSTGRES_CONTAINER: id, UPG_TEST_TARGET_RECEIPT: receipt, DATABASE_URL: url, TEST_DATABASE_URL: url }),
+        UPG_COMPONENT_PROFILE: profile },
       stdio: ["ignore", "pipe", "pipe"], detached: true,
     });
     supervisor = superviseComponentProcess(child);
