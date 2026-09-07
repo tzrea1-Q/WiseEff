@@ -152,7 +152,9 @@ digests、platform 与 build trust。检查的非测试 `releaseTag/packageManif
 manifest digest。Catalog 的 `CatalogReleaseBundle.manifest` 和基础设施 base-image
 bundle 是不同产物，不能填充这些应用字段。
 
-本地 image ID 继续作为实测 config identity 保留。检查的冻结规范没有允许 local-image-only
+本地 image ID 继续作为不预设种类的实测 loaded-image identity 保留。真实 containerd
+store 导出表明 `image inspect .Id` 可能指向 OCI index，而不是 config；应依据实际
+descriptor 与原始 blob 字节确定种类，历史 ID 不重标。检查的冻结规范没有允许 local-image-only
 免除 manifest pin。先复用现有 build-network/build 入口补实际应用 release/package 与
 OCI manifest/config 来源采集；这是内部 producer 工作，不以关闭 TLS 解阻。不能从 Git SHA
 造 release tag，不能把 image ID 重标为 registry manifest digest。如果需要 local-only

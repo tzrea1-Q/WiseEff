@@ -190,7 +190,10 @@ an application package manifest or prove an OCI manifest digest. Catalog
 `CatalogReleaseBundle.manifest` and the infrastructure base-image bundle are
 different artifacts and must not fill those application fields.
 
-Keep the observed local image ID as a config identity. The inspected normative
+Keep the observed local image ID as an opaque loaded-image identity. A real
+containerd-store export showed that `image inspect .Id` can identify an OCI
+index rather than the config. Determine its role from actual descriptors and
+raw blob bytes; retain historical IDs without relabeling them. The inspected normative
 contract does not grant a local-image-only exemption from its manifest pin.
 First reuse the existing build-network/build entrypoint and capture its actual
 application release/package and OCI manifest/config provenance; that missing
