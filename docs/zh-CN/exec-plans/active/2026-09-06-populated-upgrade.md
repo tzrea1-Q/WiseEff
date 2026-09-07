@@ -4,6 +4,15 @@
 
 ## 范围与状态
 
+以下四个有界增量已集成至 `2b5d5ed44`（tree
+`d97681435e034b7ee604efbe21295d7b434baa82`），强制真实恢复路由15/15通过并记录服务
+镜像证据。服务端代码 `6e519a3b4` 修复缺DB静态诊断的集成回归后，
+原断言保留，bootstrap240/240及owned backend4300/4300通过，build及严格owned文档／schema检查通过。各源提交
+组件执行与当前候选检查在证据中分别记录；新Hosted及完整startup／controller
+验收尚未建立。Raman下一独占Scratch在现有宿主journal补typed publication事件，
+不新增schema／grant／报告格式；缺完整P13 producer时不得借caller retired标志或
+伪pin发行运行状态。
+
 恢复组合已通过正式 capture 和独立认证批准调用单独恢复进程。Scratch
 `06dcc6ca5` 的15项真实包／队列测试全部通过；`2bfd4b2b4` 新增强制owned路由，
 执行另行记录。两者都不证明完整旧应用升级。已交付报告 `70c1a3ad0` 的CI

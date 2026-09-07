@@ -2,6 +2,50 @@
 
 > English: [English](populated-upgrade-evidence.md)
 
+## 集成候选，2026-09-08
+
+代码 `2b5d5ed4446a1aca56dd3d929fd15691172ba29d`，tree
+`d97681435e034b7ee604efbe21295d7b434baa82`，在原base `cda6737a8` 上集成四项
+经过独立审查的增量：正式恢复／真实队列组合、私有bootstrap transport及根接线、
+组织Archive身份修复、初始化信号所有权。无migration／grant／trusted baseline／
+timeout变更。PR #824保持Draft／open／未合并，新Hosted尚未执行；源部署仍为
+`82344044b436a8dafecefbb85dfd724cecb05e3f`。
+
+| 精确执行 | 结果 | 原日志SHA256 |
+| --- | --- | --- |
+| `6e519a3b4`，完整bootstrap路由 | 240/240，失败／跳过0，1.09s，退出0 | `7b9e33887191dcc514775263a42ae5219005530fba0c03c646cd81da91bfda05` |
+| 同代码，owned backend | 4300/4300，失败／跳过0，94.65s，退出0，清理核验 | `2dacc625d79b7c7d5822acf7af8ba410bcafac4f14d3972628d90330c4c8165c` |
+| 同代码，build | 退出0，保留原bundle警告 | `7249d28fbc96147ea3fadaa0c30793bfb4dc456769eb3b948e6e166e6d9b03fb` |
+| 同代码，严格owned文档／schema检查 | 退出0，实际pgvector schema对比，数据库未跳过，清理核验 | `f32ede11b5587ca1a00bcfd282ac48db936a90b5dc9ed53742127337c1527bfd` |
+| `2b5d5ed44`，强制owned恢复路由 | 15/15，失败／跳过／过滤0，220.43s，退出0，清理核验，私有证据保留 | `e34bf2bca5dbd410897860a4f8fe8870f5d4a3fb75f6d439327c71d11bf7f876` |
+| 集成前驱 `d0fba71ca`，完整owned scripts | source-lock4/4，主体收集1867／通过1852／跳过15／失败0，退出0；S11-RP实际13/13 | `67a2a3693f2076f54371ce1a030950aff6493e1899f5a0cf1f92ba19a3da596c` |
+
+相比 `6e519a3b4`，代码仅新增六行恢复测试证据输出，已获Lagrange Standards与
+Fermat Spec独立通过。服务端／build执行保留原SHA；期间仅两份操作Markdown更新。
+之后恢复执行期间八份Markdown未提交。实际服务均为linux/arm64，SHA256 image ID为：
+PG `16bc17c64a573ef34162af9298258d1aec548232985b33ed7b1eac33ba35c229`，
+Redis `ff02b58f971e7d7d156a1267e283fcbbeee91773b6aa36c49dac28ecfe28eadf`，
+MinIO `1dce27c494a16bae114774f1cec295493f3613142713130c2d22dd5696be6ad3`，
+mc `993e8c454a7ec632923f7e3e61adf1d473261da6354cefd641aedd33a2cfe112`。
+这些不是registry manifest digest；包manifest摘要为
+`f5eaf9e8917b7b3d856d0df9344c1e49acecee25feec61a494442dcbce654797`。
+前驱 `4091d2e28` 的bootstrap为
+239通过／1失败，backend为4299通过／1失败：新包装替换了原缺DATABASE_URL的静态
+诊断。修复仅恢复精确安全文字，没有修改原断言或输出任意底层错误。两份原失败日志
+SHA256为 `63f921011a57e83a2f18c294f6925628f7c3b80399773ffbe6019abbe348e019`、
+`7e19e61d45d5a3b9c25a153b2406cfa6dc775f0ebe35255c9733a031fd70498d`。
+
+组件及集成审查按非作者范围分别执行，不以自审替代独立审查。最新诊断修复
+`fc241712e` 有Lagrange Standards／Raman Spec通过；根 `44d63de87` 的真实socket与
+已观测源端点绑定已独立审查。根测试使用真实文件系统和合成PG／领域依赖，不是
+完整获批部署。真实custody28/28、Archive98/98、Redis生命周期12/12在模块证据中
+保留原执行SHA，不改记为此候选执行。
+
+A／B／C仍未完成。API与worker仍缺完整独立StartupTarget接线，合法获批状态下的
+production启动和非空旧controller全链尚未证明。持久publication／P13／Archive pins
+及报告集成仍属内部责任；真实备份、企业网络／CA、S6／Policy决定和生产批准分别
+保留，不混为一项阻塞。不提供生产升级命令或切流授权。
+
 ## 恢复组合续工，2026-09-08
 
 Scratch代码 `06dcc6ca52ba030e46b232f573d229b2dd530476`，tree
@@ -15,7 +59,9 @@ payload、提交副作用后失败重试和数据库唯一约束均核验。卷�
 
 修复删除证据、未登记create未知结果和子进程失败含混后，两文件增量获得独立
 Standards与Spec通过。authority helper在 `bc85eb3df` 有单独双审。这些审查不覆盖
-后续owned路由 `2bfd4b2b4`，该路由独立审查仍待完成。此精确代码已由现有owned
+后续owned路由 `2bfd4b2b4`。该路由初审发现嵌套清理的不完整成功声明，
+`be1f38964` 修正后获独立Standards／Spec通过；子进程被强制终止时仍记录嵌套清理
+unknown，自动回收全部此类资源尚未实现。原 `2bfd4b2b4` 精确代码已由现有owned
 runner执行：收集／通过15，失败／跳过0，228.35s，退出0，Docker清理核验且私有
 证据保留。原 `upg824-recovery-owned-current.log` SHA256：
 `b42d1a794676b5f9621971dc120038170a55adb40e70a4c561cf47b168cfd868`。

@@ -272,6 +272,12 @@ node --import tsx scripts/run-upgrade-component-tests.ts --expected-daemon-id "$
 
 机器／用户／目录：已审隔离开发 checkout 及其开发用户；前置：上述本地镜像、已经核验的 daemon ID。此命令只写入自建测试存储，保留私有证据，不停止任何部署。预期整份测试无 opt-in 跳过，CI owned job 也强制执行；准入、镜像、测试或清理失败即停止。它不是生产维护命令。
 
+若监督进程强制终止恢复子进程，额外测试存储的清理结果为 **unknown**，不能因
+runner自身PG已清理就称整体已清理。`runnerResourcesCleanupVerified` 与
+`cleanupVerified` 分开；恢复lane非零时整体清理不会标为通过。必须保留私有证据，
+再按精确身份核对资源。强杀后自动核对并回收全部子资源尚未实现；不得广泛删除
+容器／卷或清空证据来伪造成功。
+
 真实数据副本：**blocked，尚无受控可恢复备份，生产加密、角色策略及完整业务恢复仍需集成**。本手册不授权生产导出。获批隔离环境需禁用外发邮件、webhook、真实设备及非必要模型调用；provider模拟状态与实际认证／数据库／业务调用证据分别标记。开发合成回归不替代此步骤。
 
 包v2显式保存角色INHERIT及PG16成员关系每条边的INHERIT／SET选项，拒绝未知字段、

@@ -6,6 +6,17 @@
 
 ### Current continuation: real dependencies and activation
 
+The four bounded increments below are integrated at `2b5d5ed44` (tree
+`d97681435e034b7ee604efbe21295d7b434baa82`). Its mandatory actual recovery route
+passed 15/15 with service image evidence. At server code `6e519a3b4`, bootstrap 240/240 and owned backend
+4300/4300 passed after fixing an integration regression in the static missing-DB
+diagnostic; the original assertion was retained. Build and strict owned documentation/schema checks passed. Exact prior-source
+component executions and current-candidate checks are separate in the evidence
+pair. New Hosted/complete startup/controller acceptance are not yet established.
+Raman's next exclusive Scratch owns typed publication events in the existing host
+journal; no new schema, grant or report format is authorized. A missing full P13
+producer cannot be replaced by a caller-supplied retired flag or fabricated pin.
+
 Recovery composition now uses formal capture and independently authenticated
 approval before the separate restore process. Scratch `06dcc6ca5` passed all 15
 actual package/queue tests; `2bfd4b2b4` adds a mandatory owned route, recorded

@@ -2,6 +2,58 @@
 
 > Chinese: [Chinese](populated-upgrade-evidence.zh-CN.md)
 
+## Integrated candidate, 2026-09-08
+
+Code `2b5d5ed4446a1aca56dd3d929fd15691172ba29d`, tree
+`d97681435e034b7ee604efbe21295d7b434baa82`, integrates four independently reviewed
+increments on unchanged base `cda6737a8`: formal recovery/actual queue composition,
+private bootstrap inspection transport and root dispatch, verified organization
+Archive identity, and initialization signal ownership. No migration/grant/trusted
+baseline/timeout changed. PR #824 remains Draft/open/unmerged; new Hosted is not
+yet executed. The source deployment remains `82344044b436a8dafecefbb85dfd724cecb05e3f`.
+
+| Exact execution | Result | Original log SHA256 |
+| --- | --- | --- |
+| `6e519a3b4`, complete bootstrap route | 240/240, zero failed/skipped, 1.09s, exit 0 | `7b9e33887191dcc514775263a42ae5219005530fba0c03c646cd81da91bfda05` |
+| Same code, owned backend | 4300/4300, zero failed/skipped, 94.65s, exit 0, cleanup verified | `2dacc625d79b7c7d5822acf7af8ba410bcafac4f14d3972628d90330c4c8165c` |
+| Same code, build | Exit 0, existing bundle warnings | `7249d28fbc96147ea3fadaa0c30793bfb4dc456769eb3b948e6e166e6d9b03fb` |
+| Same code, strict owned documentation/schema checks | Exit 0, actual pgvector schema comparison, no database skip, cleanup verified | `f32ede11b5587ca1a00bcfd282ac48db936a90b5dc9ed53742127337c1527bfd` |
+| `2b5d5ed44`, mandatory owned recovery route | 15/15, zero failed/skipped/filtered, 220.43s, exit 0, cleanup verified; private evidence retained | `e34bf2bca5dbd410897860a4f8fe8870f5d4a3fb75f6d439327c71d11bf7f876` |
+| Integrated predecessor `d0fba71ca`, full owned scripts | Source-lock 4/4, then 1852 passed/15 skipped, zero failed, 1867 collected, exit 0; S11-RP 13/13 actually ran | `67a2a3693f2076f54371ce1a030950aff6493e1899f5a0cf1f92ba19a3da596c` |
+
+The only code difference from `6e519a3b4` is six lines of recovery-test evidence
+output, independently reviewed by Lagrange (Standards) and Fermat (Spec). The
+server/build executions retain their original SHA. Two operator Markdown files
+were edited during those server runs; eight Markdown files were uncommitted
+during the later recovery run. Recovery service identities were actual linux/arm64
+images: PostgreSQL `16bc17c64a573ef34162af9298258d1aec548232985b33ed7b1eac33ba35c229`,
+Redis `ff02b58f971e7d7d156a1267e283fcbbeee91773b6aa36c49dac28ecfe28eadf`,
+MinIO `1dce27c494a16bae114774f1cec295493f3613142713130c2d22dd5696be6ad3`,
+and mc `993e8c454a7ec632923f7e3e61adf1d473261da6354cefd641aedd33a2cfe112`
+(all SHA256 image IDs, not registry manifest digests). The package manifest digest
+was `f5eaf9e8917b7b3d856d0df9344c1e49acecee25feec61a494442dcbce654797`.
+At predecessor `4091d2e28`, bootstrap was 239 passed/1 failed and backend 4299
+passed/1 failed: the new wrapper replaced the existing static missing-DATABASE_URL
+diagnostic. The fix retains the exact safe message, without changing the original
+test or exposing arbitrary driver errors. Original failure logs have SHA256
+`63f921011a57e83a2f18c294f6925628f7c3b80399773ffbe6019abbe348e019` and
+`7e19e61d45d5a3b9c25a153b2406cfa6dc775f0ebe35255c9733a031fd70498d`.
+
+Independent component/integration reviews are scope-specific: authors did not
+self-review their own implementation. Latest static diagnostic fix `fc241712e`
+has separate Lagrange Standards/Raman Spec PASS. Root `44d63de87` has independent
+review of actual socket-to-observed-source endpoint binding; root tests use real
+filesystem and synthetic PG/domain dependencies, not a whole approved deployment.
+Actual custody 28/28, Archive 98/98, and Redis lifecycle 12/12 retain their source
+execution identities in the module evidence; none is relabeled as this SHA's run.
+
+A/B/C remain incomplete. API and worker still lack the complete independent
+StartupTarget adapter; legal approved production-mode startup and the complete
+nonempty old-controller path are unproved. Startup publication/P13/Archive pins
+and report integration remain internal work. Real backups, enterprise network/CA,
+S6/Policy decisions and production approval are distinct outstanding inputs.
+No production upgrade command or traffic authorization is supplied.
+
 ## Recovery composition continuation, 2026-09-08
 
 Scratch code `06dcc6ca52ba030e46b232f573d229b2dd530476`, tree
@@ -19,8 +71,11 @@ queue behavior, not all consumers or complete old-application conversion.
 Standards and Spec reviews of that two-file increment passed independently after
 fixing evidence deletion, unregistered create outcomes and ambiguous child failures.
 The authority helper has its own independent reviews at `bc85eb3df`. These reviews
-do not cover the subsequent owned-route increment `2bfd4b2b4`, whose independent
-review is pending. That exact code ran through the existing owned runner:
+do not cover the subsequent owned-route increment `2bfd4b2b4`. Its initial review
+found an incomplete nested-cleanup claim; `be1f38964` corrected it and passed
+independent Standards/Spec review. Forced child termination still records nested
+cleanup as unknown; automatic recovery of all such resources remains unimplemented.
+The original `2bfd4b2b4` code ran through the existing owned runner:
 15 collected/passed, zero failed/skipped, 228.35s, exit 0; Docker cleanup verified
 and private evidence retained. Original `upg824-recovery-owned-current.log` SHA256
 `b42d1a794676b5f9621971dc120038170a55adb40e70a4c561cf47b168cfd868`.

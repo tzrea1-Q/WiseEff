@@ -319,6 +319,14 @@ node --import tsx scripts/run-upgrade-component-tests.ts --expected-daemon-id "$
 
 Run only from the reviewed isolated development checkout, with the listed local images and an already verified daemon. It writes its own disposable stores and retains private evidence; it does not stop any deployment. The owned CI job runs the same complete file without opt-in skips. A failed admission, missing image, test or cleanup stops this lane.
 
+If the supervising process forcibly terminates the recovery child, its additional
+store cleanup is **unknown**, even if the runner's own PG was cleaned.
+`runnerResourcesCleanupVerified` is separate from `cleanupVerified`; a nonzero
+recovery lane cannot report overall cleanup verified. Retained private evidence
+must be inspected before exact-resource reconciliation. Automatic recovery of all
+child resources after forced termination is not yet implemented; do not broadly
+delete containers, volumes or evidence to turn that result into success.
+
 Package v2 records role INHERIT and each PostgreSQL 16 membership's INHERIT/SET
 options explicitly. Unknown flags, privileged attributes, ADMIN, external edges
 and secret fields are refused. Old v1 packages are not silently upgraded; re-export

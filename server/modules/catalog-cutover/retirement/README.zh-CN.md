@@ -2,6 +2,13 @@
 
 > English: [English](README.md)
 
+根 `inspectLegacyApplicationLoginFence` 现已在构造旧密码管理pool之前调用此
+transport，把借入的实际TCP socket绑定两份已核验源端点，保留锁／包／报告／P12
+检查，并先归还lease再做max-one pool的最终P12读取。根 `44d63de87` 的95项调度
+回归及独立审查通过，不是完整获批根PG执行。下文保留的组织Archive失败已由
+[Archive证据](../archive/README.zh-CN.md)所述独立修复和验证；原custody执行仍只
+覆盖platform场景，不重标历史。
+
 ## 私有凭据保管连接检查
 
 `inspectBootstrapCredentialFenceFromCustodyTransport` 仅返回既有认证检查结果。

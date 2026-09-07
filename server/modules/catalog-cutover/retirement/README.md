@@ -2,6 +2,15 @@
 
 > Chinese: [Chinese](README.zh-CN.md)
 
+The root `inspectLegacyApplicationLoginFence` now dispatches this transport before
+constructing any old-secret administrative pool. It binds the borrowed actual TCP
+socket to both already verified source endpoints, retains lock/package/report/P12
+checks, and returns the lease before a final max-one-pool P12 read. Root `44d63de87`
+passed 95 orchestration regressions and independent review; these are not a full
+approved-root PG invocation. The organization Archive failure recorded below was
+subsequently fixed and independently tested in the [Archive evidence](../archive/README.md);
+the original custody executions remain platform-scoped.
+
 ## Private custody transport inspection
 
 `inspectBootstrapCredentialFenceFromCustodyTransport` returns only the existing
