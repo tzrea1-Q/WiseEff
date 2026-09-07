@@ -32,6 +32,7 @@ export default defineConfig({
       "server/modules/catalog-kernel/security/catalogReader.integration.test.ts",
       "server/modules/release-verification/startup/reportConnection.integration.test.ts",
       "server/modules/catalog-cutover/bindingImportProducer.integration.test.ts",
+      "server/modules/catalog-cutover/managementStructure.test.ts",
       "server/modules/catalog-cutover/runtimeState.test.ts"],
     setupFiles: ["./server/testing/vitest.setup.ts"],
     // Pre-builds the PG template database so no suite pays the build in its test budget.

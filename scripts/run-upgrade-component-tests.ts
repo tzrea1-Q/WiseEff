@@ -22,6 +22,7 @@ const suites: Record<string, { image: string; files: readonly string[]; config: 
   "bootstrap-credential-pg16": { image: "postgres:16-alpine", files: ["server/modules/catalog-cutover/retirement/bootstrapCredentialFence.integration.test.ts"], config: "vitest.upgrade-bootstrap-credential.config.ts" },
   "scripts-pgvector": { image: "pgvector/pgvector:pg16", files: [], config: "vitest.scripts.config.ts" },
   "server-pgvector": { image: "pgvector/pgvector:pg16", files: [], config: "vitest.server.config.ts" },
+  "comparison-pgvector": { image: "pgvector/pgvector:pg16", files: ["server/modules/release-verification/comparison/aggregateComparisonCorpus.integration.test.ts"], config: "vitest.upgrade-comparison.config.ts" },
   "schema-doc": { image: "pgvector/pgvector:pg16", files: [], config: "", command: "schema-doc" },
   "docs-check": { image: "pgvector/pgvector:pg16", files: [], config: "", command: "docs-check" },
 };

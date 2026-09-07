@@ -74,3 +74,13 @@ and empty collection and keeps the original default test/hook deadlines. The
 ordinary server lane excludes it; the mandatory component job runs it separately.
 Parent cleanup uses Docker identity, not the old database password. This route
 does not authorize production credential rotation or establish completed P13.
+
+`managementStructure.test.ts` observes cluster-wide roles, memberships and ACLs.
+It runs exclusively in the existing mandatory `bindings-pg16` lane; separate
+databases in parallel backend workers cannot isolate those observations. The
+structural digest and its assertions are unchanged. The development-only
+`comparison-pgvector` selection runs the real aggregate comparison fixture with
+the same backend setup, an issued ownership receipt and nonempty collection.
+It remains collected by ordinary backend/Hosted tests; this selection neither
+skips those checks nor claims complete backend acceptance. Both routes use the
+same daemon identity and resource custody contract above, with unchanged deadlines.

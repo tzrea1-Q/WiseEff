@@ -56,3 +56,10 @@ Docker 资源。监督文件同样只消费 receipt，终止拒绝 TERM 的子�
 用例及 hook 预算；普通 server 套件排除它，由强制组件 job 单独执行。父进程按
 Docker 身份清理，不依赖已经失效的旧数据库密码。此路由不授权生产凭据轮换，
 也不证明 P13 已完成。
+
+`managementStructure.test.ts` 读取整个集群的角色、成员关系和 ACL，因此只在既有
+强制 `bindings-pg16` lane 执行；并行 backend worker 的不同数据库不能隔离这些
+观测。结构摘要和断言保持不变。仅供开发聚焦执行的 `comparison-pgvector` 使用
+相同 backend setup、父进程签发的归属 receipt 和非零收集要求，执行真实 aggregate
+比较夹具。该文件仍由普通 backend／Hosted 收集，不以此 selector 替代完整后端。
+两个路由沿用上文 daemon 身份和资源归属合同，不改变时间上限。

@@ -5,6 +5,35 @@ import * as componentRunner from "./run-upgrade-component-tests";
 
 const workflow = readFileSync(new URL("../.github/workflows/ci.yml", import.meta.url), "utf8");
 
+it("focuses the real comparison fixture without removing it from ordinary backend coverage", () => {
+  const file = "server/modules/release-verification/comparison/aggregateComparisonCorpus.integration.test.ts";
+  expect(componentRunner.componentTestCommands("comparison-pgvector")[0].slice(1)).toEqual([
+    "run", "--config", "vitest.upgrade-comparison.config.ts", file,
+  ]);
+  const config = readFileSync(new URL("../vitest.upgrade-comparison.config.ts", import.meta.url), "utf8");
+  expect(config).toContain("assertOwnedUpgradeTestTarget();");
+  expect(config).toContain("passWithNoTests: false");
+  expect(config).not.toContain("testTimeout:");
+  expect(config).not.toContain("hookTimeout:");
+  expect(readFileSync(new URL("../vitest.server.config.ts", import.meta.url), "utf8")).not.toContain(`"${file}"`);
+  const run = spawnSync(process.execPath, ["node_modules/vitest/vitest.mjs", "list", "--config", "vitest.upgrade-comparison.config.ts"],
+    { env: { PATH: process.env.PATH, HOME: process.env.HOME }, encoding: "utf8", timeout: 10000 });
+  expect(run.error).toBeUndefined();
+  expect(run.status).not.toBe(0);
+  expect(run.stderr + run.stdout).toContain("upgrade-tests-require-explicit-owned-postgres-receipt");
+});
+
+it("keeps cluster-wide structure observations exclusively in the mandatory owned Binding lane", () => {
+  const file = "server/modules/catalog-cutover/managementStructure.test.ts";
+  const server = readFileSync(new URL("../vitest.server.config.ts", import.meta.url), "utf8");
+  expect(server).toContain(`"${file}"`);
+  expect(componentRunner.componentTestCommands("bindings-pg16")[0]).toContain(file);
+  const config = readFileSync(new URL("../vitest.upgrade-cutover.config.ts", import.meta.url), "utf8");
+  expect(config).toContain("assertOwnedUpgradeTestTarget();");
+  expect(config).toContain("maxWorkers: 1");
+  expect(workflow).toContain("--suite bindings-pg16 --github-hosted");
+});
+
 it("isolates bootstrap credential mutation in its own mandatory cluster and exact collection", () => {
   const file = "server/modules/catalog-cutover/retirement/bootstrapCredentialFence.integration.test.ts";
   const command = componentRunner.componentTestCommands("bootstrap-credential-pg16");
