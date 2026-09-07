@@ -5,6 +5,21 @@ import * as componentRunner from "./run-upgrade-component-tests";
 
 const workflow = readFileSync(new URL("../.github/workflows/ci.yml", import.meta.url), "utf8");
 
+it("requires all real recovery package and queue regressions in the owned job without opt-in skips", () => {
+  const file = "scripts/rehearse-upgrade-recovery.test.ts";
+  expect(componentRunner.componentTestCommands("recovery-three-store")[0].slice(1)).toEqual([
+    "run", "--config", "vitest.upgrade-recovery.config.ts", file,
+  ]);
+  expect(readFileSync(new URL("../vitest.scripts.config.ts", import.meta.url), "utf8")).toContain(`"${file}"`);
+  const source = readFileSync(new URL(`../${file}`, import.meta.url), "utf8");
+  expect(source).not.toContain("describe.skipIf");
+  expect(source).toContain("assertOwnedUpgradeTestTarget();");
+  expect(workflow).toContain("--suite recovery-three-store --github-hosted");
+  const config = readFileSync(new URL("../vitest.upgrade-recovery.config.ts", import.meta.url), "utf8");
+  expect(config).toContain("passWithNoTests: false");
+  expect(config).toContain(`"${file}"`);
+});
+
 it("requires real runtime login and process regressions in an owned PG16 lane without opt-in skips", () => {
   const file = "server/shared/database/runtimeConnection.integration.test.ts";
   expect(componentRunner.componentTestCommands("runtime-identity-pg16")[0].slice(1)).toEqual([

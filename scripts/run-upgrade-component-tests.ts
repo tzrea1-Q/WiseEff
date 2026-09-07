@@ -10,7 +10,9 @@ import { admitHostedUpgradeComponents, assertHostedUpgradeAdmission, type Hosted
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const bindingFiles = ["server/modules/parameter-bindings/cutoverImport/import.integration.test.ts", "server/modules/catalog-cutover/archive/adapter.test.ts", "server/modules/catalog-cutover/archive/adapter.integration.test.ts", "server/modules/catalog-cutover/bindingImportProducer.integration.test.ts", "server/modules/catalog-cutover/conversionManifest.integration.test.ts", "server/modules/catalog-cutover/orchestrator.test.ts", "server/modules/catalog-cutover/runtimeState.test.ts", "server/modules/catalog-cutover/sourceSnapshot.test.ts", "server/modules/catalog-cutover/managementStructure.test.ts"];
-const suites: Record<string, { image: string; files: readonly string[]; config: string; command?: "schema-doc" | "docs-check" }> = {
+const suites: Record<string, { image: string; files: readonly string[]; config: string; extraImages?: readonly string[]; command?: "schema-doc" | "docs-check" }> = {
+  "recovery-three-store": { image: "postgres:16-alpine", files: ["scripts/rehearse-upgrade-recovery.test.ts"], config: "vitest.upgrade-recovery.config.ts",
+    extraImages: ["redis:7-alpine", "minio/minio:RELEASE.2024-12-18T13-15-44Z", "minio/mc:RELEASE.2024-11-21T17-21-54Z"] },
   bindings: { image: "pgvector/pgvector:pg16", files: bindingFiles, config: "vitest.upgrade-cutover.config.ts" },
   "bindings-pg16": { image: "postgres:16-alpine", files: bindingFiles, config: "vitest.upgrade-cutover.config.ts" },
   "reader-pg16": { image: "postgres:16-alpine", files: ["server/modules/catalog-kernel/security/catalogReader.integration.test.ts"], config: "vitest.upgrade-cutover.config.ts" },
@@ -334,6 +336,7 @@ export async function runUpgradeComponentTests(args: string[], observation?: {
   }, observeHosted);
   const authorizeCreation = () => { if (hosted) assertHostedUpgradeAdmission(admission!, observeHosted()); };
   const suite = suites[args[3] as keyof typeof suites];
+  const isRecovery = args[3] === "recovery-three-store";
   const isRedis = args[3] === "log-redis";
   const profile = isRedis ? "selfhost-redis7-aof-v1" : suite.image === "postgres:16-alpine" ? "selfhost-postgres16-alpine-v1" : "catalog-pgvector-v1";
   // Frozen rehearsal CLI fixtures use their historical bootstrap login. It is
@@ -344,6 +347,9 @@ export async function runUpgradeComponentTests(args: string[], observation?: {
     // daemon, never an ambient shell Docker context before host admission.
     authorizeCreation();
     docker.command(["pull", suite.image]);
+    for (const image of suite.extraImages ?? []) {
+      authorizeCreation(); docker.command(["pull", image]);
+    }
   }
   const image = JSON.parse(docker.command(["image", "inspect", suite.image]).toString())[0];
   const run = `conversion-${randomBytes(8).toString("hex")}`;
@@ -453,10 +459,12 @@ export async function runUpgradeComponentTests(args: string[], observation?: {
   } finally {
     try { await resources?.cleanup(); }
     catch { retainPrivateDirectory = true; exitCode = 1; console.error("owned-component-resource-cleanup-incomplete"); }
-    if (!retainPrivateDirectory) await rm(directory, { recursive: true });
+    // The recovery rehearsal retains its authoritative journal/package even
+    // after a successful drill. Resource cleanup and evidence retention differ.
+    if (!retainPrivateDirectory && !isRecovery) await rm(directory, { recursive: true });
     process.off("SIGINT", interrupt); process.off("SIGTERM", interrupt);
   }
-  console.log(JSON.stringify({ scope: "isolated-components-only", suite: args[3], imageReference: suite.image, imageId: image.Id, platform: `${image.Os}/${image.Architecture}`, containerId: id, networkId: net, exitCode, cleanupVerified: !retainPrivateDirectory, privateEvidenceRetained: retainPrivateDirectory, releaseApproved: false }));
+  console.log(JSON.stringify({ scope: "isolated-components-only", suite: args[3], imageReference: suite.image, imageId: image.Id, platform: `${image.Os}/${image.Architecture}`, containerId: id, networkId: net, exitCode, cleanupVerified: !retainPrivateDirectory, privateEvidenceRetained: retainPrivateDirectory || isRecovery, releaseApproved: false }));
   return { exitCode, reason: "isolated-components-only", childProcessId: child?.pid };
 }
 

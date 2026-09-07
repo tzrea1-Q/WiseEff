@@ -2,6 +2,9 @@ import { spawnSync } from "node:child_process";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { ownsRecoveryContainer, readSyntheticRestoreRefusal } from "./rehearse-upgrade-recovery";
+import { assertOwnedUpgradeTestTarget } from "./upgrade-test-target";
+
+assertOwnedUpgradeTestTarget();
 
 it("does not count early child failures as a specific storage refusal", () => {
   for (const output of ["", "import failed", JSON.stringify({ status: "blocked", reason: "unclassified" }),
@@ -32,7 +35,7 @@ it("refuses external target and missing explicit synthetic mode before starting 
   }
 });
 
-describe.skipIf(process.env.UPG_RECOVERY_DOCKER_TEST !== "1")("actual isolated three-store restore", () => {
+describe("actual isolated three-store restore", () => {
   it.each(["volume", "container"])("reconciles only the registered owned %s after an unknown create response and retains capture evidence", kind => {
     const script = `import { rehearseSyntheticRecovery } from ${JSON.stringify(path.resolve("scripts/rehearse-upgrade-recovery.ts"))}; console.log(JSON.stringify(await rehearseSyntheticRecovery({ fault: "authority-${kind}-create-unknown" })));`;
     const child = spawnSync(process.execPath, ["--import", "tsx", "--input-type=module", "-e", script], { encoding: "utf8", timeout: 90000 });
