@@ -2,7 +2,8 @@ import { mkdtemp, mkdir, realpath, stat, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { beforeEach, afterEach, expect, it, vi } from "vitest";
-import { canonicalJson, sha256Prefixed } from "./journal";
+import { canonicalJson, sha256Prefixed, openUpgradeJournal, commitJournalTransition, loadUpgradeJournal } from "./journal";
+import { createActivationIntent } from "../../../../server/modules/catalog-cutover/activation/records";
 import { retireLegacyApplicationLogins, inspectLegacyApplicationLoginFence, type LegacyLoginRetirementInput } from "./legacyWriterRetirement";
 
 // Root orchestration only. These I/O substitutes do not prove authentic report
@@ -12,6 +13,13 @@ const io = vi.hoisted(() => ({ apply: vi.fn(), inspect: vi.fn(), transportInspec
   pools: [] as string[],
   clients: [] as Array<{ kind: string; query: ReturnType<typeof vi.fn>; release: ReturnType<typeof vi.fn>; emit(event: string): boolean }>,
   fault: "", hostRefused: false, sourceConnects: 0, closed: [] as string[], rootEvents: [] as Array<{ payload: unknown }> }));
+vi.mock("node:fs", async original => {
+  const actual = await original<typeof import("node:fs")>();
+  return { ...actual, fsyncSync(fd: number) {
+    if (io.fault === "host-fsync") throw new Error("private-fsync-diagnostic");
+    return actual.fsyncSync(fd);
+  } };
+});
 vi.mock("node:fs/promises", async original => {
   const actual = await original<typeof import("node:fs/promises")>();
   return { ...actual, open: async (...args: Parameters<typeof actual.open>) => {
@@ -97,8 +105,9 @@ async function fixture() {
   const directory = await stat(root);
   const target = { systemIdentifier: "100", databaseOid: "200" };
   const sha = "a".repeat(40), hash = `sha256:${"b".repeat(64)}`;
-  const source = { deploymentId: "deployment", hostFingerprint: "host", postgresIdentity: "pg" };
-  const activationIntent = { runId: "cutover", attemptId: "p12", target, planDigest: hash, reportDigest: hash };
+  const source = { deploymentId: "deployment", hostFingerprint: "host", postgresIdentity: "pg", objectStoreIdentity: "objects", redisIdentity: "redis" };
+  const activationIntent = structuredClone(createActivationIntent({ runId: "cutover", attemptId: "p12", target, planDigest: hash, reportDigest: hash,
+    predecessorBindingDigest: null, expectedObservationDigest: hash }));
   const binding = { version: "pcat-activation-v1", intent: activationIntent, bindingDigest: hash,
     sourceSnapshotFingerprint: hash, catalog: { releaseId: "release", releaseDigest: hash }, mapping: { epoch: hash, headDigest: hash } };
   const inspection = { kind: "applied", binding, currentHeadDigest: hash };
@@ -111,10 +120,21 @@ async function fixture() {
       catalog: binding.catalog, mappingArchive: { mappingEpoch: hash, mappingHeadDigest: hash },
       recovery: { recoveryPointDigest: hash }, target: { deploymentId: "deployment", hostFingerprint: "host" },
       database: { targetIdentity: "pg" } } } });
-  io.journal.mockReturnValue({ ok: true, value: { record: { journalDigest: hash, cutoverRunId: "cutover", entries: [{ seq: 1, action: "recovery-capture-committed",
-    recoveryCapture: { outcome: "committed", directory: { path: root, device: String(directory.dev), inode: String(directory.ino) },
-      capture: { runId: "hostrun", packageDigest: hash, recoveryPointDigest: hash, source } } }] } } });
-  io.package.mockResolvedValue({ digest: hash, bootstrap: { roleName: "postgres" }, roles: [],
+  const actualJournal = await vi.importActual<typeof import("./journal")>("./journal");
+  io.journal.mockImplementation(actualJournal.loadUpgradeJournal);
+  const opened = openUpgradeJournal({ journalPath: path.join(operationRoot, "journal.json"), runId: "hostrun" });
+  if (!opened.ok) throw new Error("fixture-journal-unavailable");
+  expect(commitJournalTransition(opened.value, { action: "bind-cutover", inputDigest: "bind", cutoverRunId: "cutover",
+    planDigest: hash, toState: "idle", nextAction: "plan" }).ok).toBe(true);
+  const pending = { runId: "hostrun", attemptId: "capture", outcome: "pending" as const, source,
+    directory: { path: root, device: String(directory.dev), inode: String(directory.ino) } };
+  const capture = { runId: "hostrun", packageDigest: "b".repeat(64), recoveryPointDigest: hash, source, boundaryDigest: "c".repeat(64) };
+  for (const event of [pending, { ...pending, outcome: "committed" as const, capture }]) {
+    expect(commitJournalTransition(opened.value, { action: event.outcome === "pending" ? "recovery-capture-pending" : "recovery-package-captured",
+      inputDigest: sha256Prefixed(canonicalJson(event.outcome === "pending" ? event : capture)), toState: "idle", nextAction: "plan",
+      outcome: event.outcome === "pending" ? "crashed" : "committed", recoveryCapture: event }).ok).toBe(true);
+  }
+  io.package.mockResolvedValue({ digest: capture.packageDigest, bootstrap: { roleName: "postgres" }, roles: [],
     manifest: { recovery: { runId: "hostrun", recoveryPointDigest: hash, target: source } } });
   const applications = ["api", "web", "worker"].map(service => ({ service, containerId: service, imageId: "image", imageReference: "source" }));
   io.docker.mockImplementation((args: string[]) => {
@@ -138,6 +158,38 @@ async function fixture() {
     bootstrapCredentialDirectory: custodyDirectory } as unknown as LegacyLoginRetirementInput;
   return { input, custodyDirectory };
 }
+
+const retirementEvents = (input: LegacyLoginRetirementInput) => {
+  const loaded = loadUpgradeJournal({ journalPath: input.handoff.inputs.journalPath, runId: "hostrun" });
+  if (!loaded.ok) throw new Error("fixture-journal-unavailable");
+  return loaded.value.record.entries.filter(entry => entry.action.startsWith("bootstrap-retirement-"));
+};
+
+it("persists the root intent before SQL and the actual inspection step after SQL, without declaring P13", async () => {
+  const f = await fixture();
+  io.apply.mockImplementationOnce(async () => {
+    expect(retirementEvents(f.input).map(entry => entry.action)).toEqual(["bootstrap-retirement-pending"]);
+  });
+  await expect(retireLegacyApplicationLogins(f.input)).resolves.toMatchObject({ status: "bootstrap-authentication-fenced-not-p13" });
+  expect(retirementEvents(f.input).map(entry => entry.action)).toEqual(["bootstrap-retirement-pending", "bootstrap-retirement-credential-step"]);
+  expect(JSON.stringify(retirementEvents(f.input))).not.toContain("old-secret");
+});
+
+it("does not dispatch any SQL intent or credential effect when host pending fsync fails", async () => {
+  const f = await fixture(); io.fault = "host-fsync";
+  await expect(retireLegacyApplicationLogins(f.input)).rejects.toThrow("PCAT-UPG-LEGACY-LOGIN-");
+  expect(io.rootEvents).toEqual([]); expect(io.apply).not.toHaveBeenCalled();
+});
+
+it.each(["host-fsync", "host-lock"])("retains pending and refuses a blind retry after SQL when %s is lost", async fault => {
+  const f = await fixture();
+  io.inspect.mockImplementationOnce(async () => { io.fault = fault; return { outcome: "authentication-fenced-not-P13", intentDigest: `sha256:${"b".repeat(64)}` }; });
+  await expect(retireLegacyApplicationLogins(f.input)).rejects.toThrow("TRANSACTION-OUTCOME-UNKNOWN");
+  expect(retirementEvents(f.input).map(entry => entry.action)).toEqual(["bootstrap-retirement-pending"]);
+  io.fault = "";
+  await expect(retireLegacyApplicationLogins(f.input)).rejects.toThrow("PCAT-UPG-LEGACY-LOGIN-");
+  expect(io.apply).toHaveBeenCalledOnce();
+});
 
 it("the OID10 root route consumes the controlled authentication fence with its exact custody", async () => {
   const f = await fixture();
