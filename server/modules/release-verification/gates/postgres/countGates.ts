@@ -706,7 +706,10 @@ const observeV13 = async (query: GateQuery): Promise<GateResult> => {
     user_definers as (
       select p.oid,p.proowner from pg_catalog.pg_proc p
       join pg_catalog.pg_namespace n on n.oid=p.pronamespace
-      where p.prosecdef and n.nspname not in ('pg_catalog','information_schema')
+      where p.prosecdef and (n.nspname not in ('pg_catalog','information_schema')
+        or not exists(select 1 from pg_catalog.pg_init_privs initial
+          where initial.classoid='pg_catalog.pg_proc'::regclass and initial.objoid=p.oid
+            and initial.objsubid=0 and initial.privtype='i'))
         and p.prorettype not in ('pg_catalog.trigger'::regtype,'pg_catalog.event_trigger'::regtype)
     ), delegates(login_oid,effective_oid) as (
       select login_oid,effective_oid from reachable
