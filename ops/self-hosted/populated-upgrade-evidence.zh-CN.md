@@ -2,7 +2,33 @@
 
 > English: [English](populated-upgrade-evidence.md)
 
-## 当前续工检查点，2026-09-07
+## 当前执行检查点，2026-09-07
+
+代码 `439f79c96794d165a73bf41fdd1697bc552ffffe`，tree
+`8b1e7d0510f7d22175d4d586c9565809d9380d2e`，已集成双审的 bootstrap
+凭据隔离及强制 owned PG16 CI 路由。两个 Spec P2 修复分别在实际事务提交秘密 SQL
+之前关闭活动跟踪，以及在首次等待前固定检查输入。加强的活动可见性基线在
+Scratch `75a88cf06` 通过18/18；三份代码／测试文件原样集成于 `a78cdb24d`。
+父候选 `439f79c96` 实际 owned PG16 18/18、路由47/47及build、boundary、contract、
+selfhost均退出0，PG清理已验证。这是凭据隔离证据，不是完整P13或获批启动。
+COMMIT确认丢失／子进程中断新增反例仍单独保留，实际执行待核对，尚未集成。
+新的数据库连接不等于新的进程重新打开custody。
+
+最新已结束 Hosted 为 [34130699134](https://github.com/tzrea1-Q/WiseEff/actions/runs/34130699134)，
+head `fa3dbef3f9e44327d6e3797111e260036e05c647`，实际merge checkout
+`1a6c126e93d1b565b77d3b8baada937374da799f`。结果失败：scripts前置4/4，
+随后1774通过／41跳过（1815），两个suite因upgrade/recovery临时数据库清理的
+**afterAll** 10000ms超时失败。这不是测试断言失败，也不是历史source-lock超时。
+Owned endpoint为11通过／5失败（16）：正向基线暴露Linux解析器选项
+`edns0`、`trust-ad`、`ndots:0`所在拒绝阶段，尚无已验证的接受条件修复。
+后续owned阶段及主流程boundary／bridge／backend／contract／log-eval未运行。
+Smoke与quality通过；local non-HDC与target synthetic跳过；Merge bar失败。
+该run没有执行 `439f79c96`。
+
+实际API／worker当前状态producer及完整populated controller仍是内部实现缺口。
+A／B／C均未完成，尚不能交付生产升级命令。
+
+## 上次续工检查点，2026-09-07（历史）
 
 最新已结束 Hosted 为 [34125753813](https://github.com/tzrea1-Q/WiseEff/actions/runs/34125753813)，
 head `3c0fe1d66`，merge checkout `e0f9ea2e56582b1dfe5398c5d5f4d9b77b30ea73`。

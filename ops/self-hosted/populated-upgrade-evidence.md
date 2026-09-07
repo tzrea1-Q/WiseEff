@@ -2,7 +2,36 @@
 
 > Chinese: [Chinese](populated-upgrade-evidence.zh-CN.md)
 
-## Current continuation checkpoint, 2026-09-07
+## Current execution checkpoint, 2026-09-07
+
+Code `439f79c96794d165a73bf41fdd1697bc552ffffe`, tree
+`8b1e7d0510f7d22175d4d586c9565809d9380d2e`, integrates the reviewed bootstrap
+credential fence and its mandatory owned PG16 CI route. The two Spec P2 fixes
+disable activity tracking on the actual transaction before submitting secret SQL
+and snapshot inspection inputs before yielding. The strengthened visibility
+baseline passed 18/18 on Scratch `75a88cf06`; the same three code/test blobs are
+integrated in `a78cdb24d`. Parent `439f79c96` passed actual owned PG16 18/18,
+routing 47/47, build, boundary, contract and selfhost (all exit 0; PG cleanup
+verified). These are credential-fence results, not full P13 or approved startup.
+Additional COMMIT-ack loss/child-interruption tests remain separately unintegrated
+pending actual execution. A new DB connection is not a new process reopening custody.
+
+Latest completed Hosted is [34130699134](https://github.com/tzrea1-Q/WiseEff/actions/runs/34130699134),
+head `fa3dbef3f9e44327d6e3797111e260036e05c647`, actual merge checkout
+`1a6c126e93d1b565b77d3b8baada937374da799f`. It failed: scripts preceding 4/4,
+then 1774 passed/41 skipped (1815), with two failed suites due to **afterAll**
+10000ms timeouts in upgrade/recovery disposable-database cleanup. These are not
+assertion failures or the historical source-lock timeout. Owned endpoint tests
+were 11 passed/5 failed (16): the positive baseline now exposes Linux resolver
+options `edns0`, `trust-ad`, `ndots:0` as the refusal stage. No resolver acceptance
+change has yet been verified. Later owned stages and main boundary/bridge/backend/
+contract/log-eval did not run. Smoke and quality passed; local non-HDC and target
+synthetic skipped; Merge bar failed. This run does not execute `439f79c96`.
+
+Actual API/worker startup producer and full populated controller remain internal
+implementation gaps. A/B/C are incomplete; no production upgrade command is ready.
+
+## Previous continuation checkpoint, 2026-09-07 (historical)
 
 Latest completed Hosted is [34125753813](https://github.com/tzrea1-Q/WiseEff/actions/runs/34125753813),
 head `3c0fe1d66`, merge checkout `e0f9ea2e56582b1dfe5398c5d5f4d9b77b30ea73`.

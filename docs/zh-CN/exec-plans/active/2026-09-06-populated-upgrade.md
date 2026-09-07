@@ -4,6 +4,17 @@
 
 ## 范围与状态
 
+当前本地代码 `439f79c96794d165a73bf41fdd1697bc552ffffe`，tree
+`8b1e7d0510f7d22175d4d586c9565809d9380d2e`。双审的bootstrap凭据隔离已集成：
+实际owned PG16 18/18、路由47/47，build／boundary／contract／selfhost退出0。
+额外进程／未知提交测试仍单独保留，等待实际执行。远端报告 `fa3dbef3f` 的
+Hosted `34130699134`，merge `1a6c126e93d1b565b77d3b8baada937374da799f`，
+scripts两个清理hook超时，owned endpoint五个解析器选项失败，不能记为通过。
+父协调者负责清理集成及交付；Lagrange负责端点修复，Fermat持有串行PG lane，
+Raman负责bootstrap及清理诊断。不放宽timeout、grant、可信基线或阶段批准。
+文档影响仍为本计划／证据双语文件及受影响模块合同。startup producer和真实根入口
+成功仍是内部工作；A／B／C未完成。下方续工段保留上个检查点的历史状态。
+
 ### 当前续工：真实依赖与激活
 
 PR #824 仍为 Draft/Open，base `cda6737a8`，重新核对的远端为 `3c0fe1d66`。

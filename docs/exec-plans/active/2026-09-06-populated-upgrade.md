@@ -6,6 +6,20 @@
 
 ### Current continuation: real dependencies and activation
 
+Current local code is `439f79c96794d165a73bf41fdd1697bc552ffffe` (tree
+`8b1e7d0510f7d22175d4d586c9565809d9380d2e`). Reviewed bootstrap fencing is now
+integrated: actual owned PG16 18/18 and routing 47/47, build/boundary/contract/
+selfhost exit 0. Extra process/unknown-commit tests remain separate pending
+actual execution. Latest remote report `fa3dbef3f` ran Hosted `34130699134`,
+merge `1a6c126e93d1b565b77d3b8baada937374da799f`: scripts has two cleanup-hook
+timeouts, owned endpoint has five resolver-options failures. It is not green.
+Parent owns cleanup/integration and delivery; Lagrange owns endpoint correction;
+Fermat owns the serial PG lane; Raman owns bootstrap and cleanup diagnosis.
+No timeout, grant, trusted baseline or stage approval is relaxed. Documentation
+impact remains this plan/evidence pair and the affected bilingual module contract.
+Startup producer and actual root success remain internal work; A/B/C incomplete.
+The following continuation paragraph records the preceding checkpoint only.
+
 PR #824 remains Draft/Open, base `cda6737a8`; the refreshed remote is `3c0fe1d66`.
 Its Hosted `34125753813` failed on merge checkout
 `e0f9ea2e56582b1dfe5398c5d5f4d9b77b30ea73`: two missing recovery dependency
