@@ -1,6 +1,7 @@
 import type pg from "pg";
 import type { Database } from "../../../shared/database/client";
 import type { VerificationPins, VerificationSubject } from "../../release-verification/core/types";
+import type { ComparisonReport } from "../../release-verification/comparison/index";
 
 export type ActivationIdentity = Readonly<{ systemIdentifier: string; databaseOid: string }>;
 export type ActivationIntent = Readonly<{
@@ -58,6 +59,9 @@ export type ActivationJournal = {
 export type ActivationOptions = {
   readonly managementPool: pg.Pool;
   readonly reports: Database;
+  /** Actual artifact returned by the comparison owner's live execution. The
+   * approved report must bind all nine gate envelopes to these exact bytes. */
+  readonly comparisonReport?: ComparisonReport;
   readonly target: ActivationIdentity;
   readonly boundary: {
     withLockedBoundary<T>(body: () => Promise<T>): Promise<T>;

@@ -2,6 +2,7 @@ import { isDeepStrictEqual } from "node:util";
 import type pg from "pg";
 import { createVerificationReportService } from "../../release-verification/report/index";
 import { digestOf } from "../../release-verification/core/digest";
+import { assertComparisonEvidenceAssociation, ComparisonEvidenceRefusal } from "../../release-verification/comparison/index";
 import { assertBindingManagementLogin } from "../bindingImportProducer";
 import { ActivationRefusal, type ActivationBinding, type ActivationIntent, type ActivationObservation, type ActivationOptions } from "./interface";
 import { createActivationIntent, decodeBinding, refuse, validateIntent } from "./records";
@@ -93,16 +94,24 @@ async function approvedReport(options: ActivationOptions, observed: ActivationOb
       !isDeepStrictEqual(report.predecessorReportDigests, observed.predecessorReportDigests) ||
       report.pointerRollbackStatus !== observed.pointerRollbackStatus || report.evidenceRefs.length === 0 ||
       report.evidenceRefs.some(ref => !isDeepStrictEqual(ref.subject, observed.subject))) refuse("REPORT-MISMATCH");
-  // The actual Comparison -> S10 evidence adapter is being integrated by the
-  // report owner. A syntactically valid caller digest is not evidence that the
-  // approved report covered that comparison artifact. Do not reach pending or
-  // SQL until the formal cross-report projection can verify that relationship.
-  return refuse("COMPARISON-ADAPTER-UNAVAILABLE");
+  const comparisonReport = options.comparisonReport;
+  if (!comparisonReport) return refuse("COMPARISON-REPORT-UNAVAILABLE");
+  try {
+    const association = assertComparisonEvidenceAssociation({
+      comparisonReport, verificationReport: report, subject: observed.subject,
+    });
+    if (association.comparisonReportDigest !== observed.comparisonReportDigest) refuse("COMPARISON-REPORT-MISMATCH");
+  } catch (error) {
+    if (error instanceof ActivationRefusal) throw error;
+    if (error instanceof ComparisonEvidenceRefusal) return refuse(`COMPARISON-${error.reason}`);
+    return refuse("COMPARISON-REPORT-UNAVAILABLE");
+  }
 }
 
 export function createApplicationReadActivation(options: ActivationOptions) {
   const fixedTarget = options.target && structuredClone(options.target);
-  const fixed = { ...options, target: fixedTarget };
+  const fixed = { ...options, target: fixedTarget,
+    comparisonReport: options.comparisonReport && structuredClone(options.comparisonReport) };
   const within = async <T>(body: () => Promise<T>): Promise<T> => {
     try { return await fixed.boundary.withLockedBoundary(body); }
     catch (error) {

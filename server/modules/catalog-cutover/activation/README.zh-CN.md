@@ -17,7 +17,7 @@ API／worker 启动或完整 controller 升级成功。
 | `inspectFacts` | 精确 run／plan；管理只读事务 | 实测 Catalog、完整 mapping 库存、当前 binding；未准备 epoch 返回 null |
 | `prepareMappingEpoch` | 显式管理写入及持有的停写边界 | 追加不可变 P11 `activation-mapping-epoch` 准备事件；不是 P11 验证 checkpoint 或批准 |
 | `inspect` | 精确 typed intent | 仅当 binding 仍是唯一当前 head 且实测源／mapping／Catalog 一致时返回 applied；否则返回精确 not-applied 或拒绝 |
-| `apply` | typed intent、正式获批预激活报告及当前目标观测 | **尚不可执行**：正式 Comparison 与 S10 证据关联尚未接通，在 journal pending 和 SQL 前拒绝 `COMPARISON-ADAPTER-UNAVAILABLE` |
+| `apply` | typed intent、正式获批预激活报告、实际 Comparison artifact 及当前目标观测 | 在 journal pending 和 SQL 前执行正式批准 projection 和九个 gate 的精确关联；缺失、不相关或变化的证据拒绝 |
 
 epoch 由 UTC 下按 C 排序的完整 mapping head／version／identity、全部历史
 mapping versions、物理目标、run、plan、源快照共同计算。缺 identity、head
@@ -35,6 +35,13 @@ latest 行选择指针。既有 `(run, P12)` 主键意味着每个 run 只提交
 宿主 journal reconcile，不能清空 journal 或盲目重试。读到 binding 不构成
 报告批准、运行准入或流量许可。
 
+父组合根从实际 comparison execution 的 `readEvidence().report` 提供
+`comparisonReport`，工厂固定其字节。正式获批报告 projection 通过后，
+`assertComparisonEvidenceAssociation` 核对原 Comparison checksum、九个
+gate envelope、result 和 typed ref，返回摘要还须等于独立观测值。
+这项接线尚未产生一次正式获批的公开 `apply` 成功执行；真实完整 consumer
+producer、有效权限门禁和批准仍不可缺少。报告形状的对象不能绕过这些条件。
+
 | R3 威胁 | 防线／必需证据 |
 | --- | --- |
 | 错误物理数据库 | 同一管理 session 在任何目标锁之前和完成之前核对身份 |
@@ -42,7 +49,7 @@ latest 行选择指针。既有 `(run, P12)` 主键意味着每个 run 只提交
 | 不参与 advisory lock 的 mapping／installer 写入 | 管理写阶段对既有可变 Catalog／mapping 库存表持 SHARE 锁 |
 | 输入、源、mapping、报告、predecessor 漂移 | 固定 intent／双观测、完整库存、唯一当前链、正式报告 projection |
 | 部分提交／进程失败 | 原 0137 原子写、静态 unknown、持久 pending 与显式回读 reconcile |
-| 任意调用者摘要冒充批准 | 正式报告批准与待接通的比较报告关联；当前缺关联即拒绝 |
+| 任意调用者摘要冒充批准 | 正式报告批准 projection 和 Comparison artifact／九个 gate 精确关联；缺证据拒绝 |
 | 私有错误泄露／连接泄漏 | 静态错误、同步监听管理连接错误、销毁连接、保留原拒绝 |
 
 Documentation Impact 仅为本 README 双语对。宿主 journal、controller、发布
@@ -67,7 +74,13 @@ adapter 与操作手册由父协调者分别集成和审查。本组件没有生
   `activation-existing-pg16`，必须经过既有 daemon 准入和 owned-cluster receipt，
   不回退到 ambient DATABASE_URL。
 
-仍属内部实现的工作：正式比较报告 artifact 与九个 gate 的证据关联、真实
-报告与独立 principal 批准链、释放 lease／跨 run／分叉故障扩展、实际应用
+新增独占 PG16 观察通过真实 0139 SELECT-only 登录与 READ ONLY 事务执行现有
+P01／P02。受控管理成员存在时 P01 失败，仅撤销该测试成员后 P01 通过；P02
+两边均通过，但 P01 的七次、P02 的九次角色切换全部先返回 `42501`，没有进入
+原本要验证的 writer 身份。这是既有 verifier 合同冲突的实测归因，不是实际
+writer 权限验收通过。测试恢复管理成员原选项，不增加 verifier grant，
+不修改历史 gate 实现。
+
+仍属内部实现的工作：真实报告与独立 principal 批准链、释放 lease／跨 run／分叉故障扩展、实际应用
 读模式消费、宿主 journal reconcile 接线，以及完整 controller／API／worker
 正向。真实备份、企业网络与生产授权分别属于外部证据；它们不阻止继续内部实现。

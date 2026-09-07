@@ -20,7 +20,7 @@ imports that script or substitutes its own verifier.
 | `inspectFacts` | Exact run/plan; management read-only transaction | Actual Catalog, complete mapping inventories and current binding; an unprepared epoch remains null |
 | `prepareMappingEpoch` | Explicit management write, exact run/plan and held boundary | One immutable P11 `activation-mapping-epoch` preparation event; it is not a P11 verification checkpoint or approval |
 | `inspect` | Exact typed activation intent | Applied binding only when it remains the unique current chain head and live source/mapping/Catalog agree; otherwise exact not-applied or refusal |
-| `apply` | Typed intent, real approved pre-activation report and current target observation | **Not executable yet:** `COMPARISON-ADAPTER-UNAVAILABLE` protects the missing formal Comparison-to-S10 evidence binding before journal pending or SQL |
+| `apply` | Typed intent, real approved pre-activation report, actual Comparison artifact and current target observation | Formal approval projection and exact nine-gate artifact association precede journal pending and SQL; missing, unrelated or changed evidence refuses |
 
 An epoch hashes the complete C-ordered current head/version/identity rows and
 all historical mapping versions, under UTC, plus physical target, run, plan and
@@ -43,6 +43,15 @@ Lost acknowledgment requires formal inspection and host journal reconciliation;
 it never permits clearing the journal or blindly repeating the activation.
 Inspection of a stored binding is not report approval or runtime admission.
 
+The root supplies `comparisonReport` from the actual comparison execution's
+`readEvidence().report`. The factory snapshots these bytes. After the formal
+approved report projection succeeds, `assertComparisonEvidenceAssociation`
+checks the original Comparison checksum and all nine gate envelopes, results and
+typed refs. Its returned digest must equal the independently observed digest.
+This wiring has not yet produced a successful authorized public `apply` run.
+The actual full consumer producer, valid privilege gates and approvals remain
+required; passing a report-shaped object cannot bypass them.
+
 | R3 threat | Enforcement / required evidence |
 | --- | --- |
 | Wrong physical database | Same acquired session checked before any target lock and before completion |
@@ -50,7 +59,7 @@ Inspection of a stored binding is not report approval or runtime admission.
 | Mapping/installer writer bypassing the advisory lock | SHARE locks on the existing mutable Catalog/mapping inventory relations during management writes |
 | Input, source, mapping, report or predecessor drift | Fixed cloned intent/observations, complete inventory and exact current chain checks; formal report projection |
 | Partial commit or process failure | Atomic 0137 writes, static unknown outcome, durable pending and explicit readback reconciliation |
-| Report or caller digest used as permission | Report approval projection plus mandatory future formal comparison evidence binding; currently fails closed |
+| Report or caller digest used as permission | Formal report approval projection and exact Comparison artifact/9-gate association; missing evidence fails closed |
 | Private diagnostics or lease leakage | Static errors, synchronous management error observer, destructive pool release, original refusal preserved |
 
 Documentation impact is confined to this README pair. Parent-owned journal,
@@ -79,8 +88,16 @@ From Scratch base `d7cdd6473` plus the tracked activation implementation:
   `scripts/run-upgrade-component-tests.ts`. It requires the existing real daemon
   admission and owned-cluster receipt; there is no ambient DATABASE_URL fallback.
 
-Remaining internal work: formal comparison report artifact/9-gate evidence
-association, genuine approved report and principal chain, released-lease and
+An additional owned PG16 observation ran the existing P01/P02 implementations
+under an actual 0139 SELECT-only login and a READ ONLY transaction. With the
+controlled management membership present, P01 failed; removing only that test
+membership made P01 pass. P02 passed in both cases, but all seven P01 and nine
+P02 role-switch probes returned `42501` before reaching the intended writer.
+This diagnoses the existing verifier contract conflict, not successful writer
+privilege verification. The test restores the original management membership.
+No verifier grant or historical gate implementation is changed.
+
+Remaining internal work: genuine approved report and principal chain, released-lease and
 cross-run/fork fault expansion, actual current read-mode consumption, host journal
 reconciliation integration, and the complete controller/API/worker positive path.
 Real backup, enterprise network and production authorization remain distinct

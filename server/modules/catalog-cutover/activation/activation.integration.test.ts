@@ -6,7 +6,7 @@ import path from "node:path";
 import pg from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createCheckedEmptyDatabase, type ParameterCatalogDatabase } from "../../../testing/upgradeComponents";
-import { createPostgresDatabase, type RootDatabase } from "../../../shared/database/client";
+import { createPostgresDatabase, type Database, type RootDatabase } from "../../../shared/database/client";
 import { applyMigrations } from "../../../shared/database/migrations";
 import { validCatalogReleaseBundle } from "../../catalog-kernel/compiler/__fixtures__/catalogReleaseBundle";
 import { jsonCatalogReleaseSource } from "../../catalog-kernel/interface";
@@ -18,6 +18,7 @@ import { createApplicationReadActivation, createActivationIntent, type Activatio
 import { physicalIdentity, readFacts, persistActivation } from "./postgres";
 import { decodeBinding } from "./records";
 import { digestOf } from "../../release-verification/core/digest";
+import { runP01, runP02 } from "../../release-verification/gates/postgres/privilegeGates";
 import { assertHostOperationLock, withHostOperationLock, type HostOperationLock } from "../../../../ops/self-hosted/scripts/parameter-catalog-upgrade/handoff";
 
 /** Storage component evidence only. Actual S7 P0–P10 is executed over two
@@ -242,6 +243,45 @@ describe("existing 0137 activation storage on independently owned PG16", () => {
       predecessorBindingDigest: null, reportDigest: digestOf("missing-report"), expectedObservationDigest: digestOf("negative-only") });
     await expect(selected.apply(intent)).rejects.toThrow("REPORT-MISSING");
     expect(journalCalls).toBe(0); expect(await counts()).toEqual(before);
+  });
+  it("records the existing privilege gates under the real SELECT-only verification login without adding capabilities", async () => {
+    const observations = [];
+    try {
+      for (const managementMembership of [true, false]) {
+        if (!managementMembership) await admin.query(`revoke catalog_migration_owner from ${pg.escapeIdentifier(role)}`);
+        const observed = await reports.transaction(async tx => {
+          await tx.query("set transaction read only");
+          const facts = (await tx.query<{ read_only: string; can_owner: boolean; can_governance: boolean }>(`select
+            current_setting('transaction_read_only') as read_only,
+            pg_has_role(session_user,'catalog_migration_owner','MEMBER') as can_owner,
+            pg_has_role(session_user,'parameter_governance_writer_role','MEMBER') as can_governance`)).rows[0];
+          const deniedRoleChanges: string[] = [];
+          const probed: Database = { ...tx, async query<Row>(text: string, values?: unknown[]) {
+            try { return await tx.query<Row>(text, values); }
+            catch (error) {
+              if (text.startsWith("set local role")) deniedRoleChanges.push(
+                error instanceof pg.DatabaseError ? error.code ?? "unknown" : "unknown");
+              throw error;
+            }
+          } };
+          const p01 = await runP01(probed);
+          const p01DeniedRoleChanges = deniedRoleChanges.splice(0);
+          const p02 = await runP02(probed);
+          return { managementMembership, facts, p01, p02, p01DeniedRoleChanges, p02DeniedRoleChanges: deniedRoleChanges };
+        });
+        observations.push(observed);
+        expect(observed.facts).toEqual({ read_only: "on", can_owner: false, can_governance: false });
+        expect(observed.p01DeniedRoleChanges).toEqual(Array(7).fill("42501"));
+        expect(observed.p02DeniedRoleChanges).toEqual(Array(9).fill("42501"));
+      }
+    } finally {
+      await admin.query(`grant catalog_migration_owner to ${pg.escapeIdentifier(role)} with inherit false, set true, admin false`);
+    }
+    // Evidence records actual gate decisions, not permission to activate. Every
+    // role-changing probe above failed before exercising the intended writer.
+    console.info("ACTIVATION_EXISTING_S6_OBSERVATION", JSON.stringify(observations));
+    expect(observations[0]?.p01.status).toBe("failed");
+    expect(observations[1]?.p01.status).toBe("passed");
   });
   it("SQL component atomically persists one explicit P12 binding and readback without claiming report approval", async () => {
     const lease = await management.connect();
