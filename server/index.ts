@@ -111,7 +111,7 @@ const logWebhookDeliverer = db
 const logAnalysisQueueRuntime =
   env.LOG_ANALYSIS_QUEUE_MODE === "durable" && db && objectStore
     ? env.LOG_WORKER_ENABLED
-      ? createLogAnalysisQueueRuntime({
+      ? await createLogAnalysisQueueRuntime({
           env: logAnalysisQueueEnv,
           db,
           objectStore,
