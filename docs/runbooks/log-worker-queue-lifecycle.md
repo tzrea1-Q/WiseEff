@@ -65,7 +65,7 @@ rejections for both factories.
 | BullMQ catches close error and emits it | Application close rejects; private canary is absent from console output |
 | Dropped TCP connections | A subsequent real BullMQ job executes; later close succeeds |
 | Repeated close | Shared completion, no repeated resource close |
-| Test target/cleanup | Independently pinned daemon and individually owned container/network/volume; no remaining labeled resources |
+| Test target/cleanup | Independently pinned daemon and individually owned container/network/volume; removal of those created resources succeeds |
 
 The real Redis suite is
 `server/modules/logs/logAnalysisQueueRuntime.redis.integration.test.ts`. It uses
@@ -75,7 +75,14 @@ outbound masquerading. A private directory and mode-0600 configuration carry a
 random test password. The fixture runs Redis directly so that its private mounted
 configuration remains readable without widening host permissions; it is not a
 claim about the production container's Unix user. Cleanup removes only resources
-whose exact identity and run label still match, and checks the remaining inventory.
+whose exact identity and run label still match, and checks each removal result.
+It does not claim a separate scan of all remaining daemon resources.
+
+Private diagnostic assertions throw only a fixed error. Their permanent failure
+counterexample checks both serialized and rendered assertion errors: a failed
+leakage check must not print the expected secret or captured output. Native Redis
+failure comparisons similarly retain only a boolean result, not a credential-bearing
+error or client object. ACL fixture failures remain static and still close the client.
 
 The processor is an explicitly injected controlled promise, while Queue, Worker,
 Redis authentication, actual job delivery, reconnect and close are real. This is

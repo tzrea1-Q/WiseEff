@@ -53,7 +53,7 @@ ready/version 检查，不替换全局 console 或异常处理器，不修改依
 | BullMQ 捕获关闭错误再发出事件 | 应用 close 拒绝，私有错误 canary 不进入 console |
 | TCP 连接被断开 | 重连后实际 BullMQ 任务执行，随后 close 成功 |
 | 重复关闭 | 复用关闭结果，不重复释放 |
-| 测试目标与清理 | 独立固定 daemon，每个容器、网络、卷均核验归属；清理后无本 run 资源 |
+| 测试目标与清理 | 独立固定 daemon，每个容器、网络、卷均核验归属；本次创建资源的删除操作成功 |
 
 真实 Redis 测试文件为
 `server/modules/logs/logAnalysisQueueRuntime.redis.integration.test.ts`。
@@ -61,7 +61,13 @@ ready/version 检查，不替换全局 console 或异常处理器，不修改依
 AOF、仅 loopback 发布的端口及关闭出站 masquerade 的 bridge。
 随机测试密码仅位于私有目录中的 0600 配置。夹具直接启动 Redis，以保持挂载的
 私有配置可读，不扩大宿主文件权限；这不证明生产容器使用的 Unix 身份。
-仅删除精确身份和 run 标签仍匹配的资源，并复核清理后的库存。
+仅删除精确身份和 run 标签仍匹配的资源，并核对每次删除的结果；不声称另行扫描了
+daemon 上的全部剩余资源。
+
+私有诊断断言只抛出固定错误。永久反例同时检查断言错误的序列化和文本输出，确保
+泄漏检查失败时不会再次打印期望秘密或捕获的原始输出。原生 Redis 失败比较也只
+保留布尔结果，不把含凭据的错误或客户端对象交给断言格式化器。ACL 夹具失败输出
+固定错误，仍会尝试关闭客户端。
 
 处理器是明确注入的受控 Promise，Queue、Worker、Redis 认证、任务投递、重连和
 关闭均为真实实现。这不代表 PostgreSQL 权限、真实日志分析业务、已获批准的生产

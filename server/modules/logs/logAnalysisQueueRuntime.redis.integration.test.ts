@@ -10,6 +10,19 @@ import type { Database } from "../../shared/database/client";
 import type { ObjectStore } from "./objectStore";
 import { createLogAnalysisQueueRuntime, createLogAnalysisQueueTransport } from "./logAnalysisQueueRuntime";
 
+function assertPrivateDiagnosticsAbsent(output: string, secrets: readonly string[]) {
+  // Assertion libraries retain expected/actual values, even if a reporter hides
+  // them. A failing leakage check must never become another copy of the secret.
+  if (secrets.some(secret => output.includes(secret))) throw new Error("private-diagnostic-observed");
+}
+
+async function assertStaticFailure(operation: Promise<unknown>, code: string) {
+  let matched = false;
+  try { await operation; }
+  catch (error) { matched = error instanceof Error && error.message === code; }
+  expect(matched).toBe(true);
+}
+
 // The supervising runner owns creation and cleanup, including when Vitest is killed.
 // This child verifies the private receipt against Docker and Redis, never ambient URLs.
 describe("owned Redis log worker lifecycle", () => {
@@ -69,6 +82,16 @@ describe("owned Redis log worker lifecycle", () => {
     db: {} as Database, objectStore: {} as ObjectStore
   });
 
+  it("keeps the leakage assertion itself free of private diagnostics when it fails", () => {
+    const secret = randomBytes(24).toString("hex");
+    let failure: unknown;
+    try { assertPrivateDiagnosticsAbsent(`AUTH ${secret}`, [secret]); }
+    catch (error) { failure = error; }
+    expect(failure instanceof Error).toBe(true);
+    expect(JSON.stringify(failure).includes(secret)).toBe(false);
+    expect(String(failure).includes(secret)).toBe(false);
+  });
+
   it("runs a real BullMQ job and drains it before idempotent close", async () => {
     let release!: () => void;
     const active = new Promise<void>((resolve) => { release = resolve; });
@@ -97,8 +120,8 @@ describe("owned Redis log worker lifecycle", () => {
     vi.spyOn(connection, "close").mockImplementation(async (force) => { await originalClose(force); throw new Error(privateCanary); });
     const output = vi.spyOn(console, "error").mockImplementation(() => {});
     try {
-      await expect(runtime.close()).rejects.toThrow("PCAT-LOG-QUEUE-CLOSE-FAILED");
-      expect(JSON.stringify(output.mock.calls)).not.toContain(privateCanary);
+      await assertStaticFailure(runtime.close(), "PCAT-LOG-QUEUE-CLOSE-FAILED");
+      assertPrivateDiagnosticsAbsent(JSON.stringify(output.mock.calls), [privateCanary]);
     } finally { await runtime.close().catch(() => {}); output.mockRestore(); }
   });
 
@@ -117,14 +140,13 @@ describe("owned Redis log worker lifecycle", () => {
     const processByJobId = vi.fn();
     const output = vi.spyOn(console, "error").mockImplementation(() => {});
     try {
-      await expect(createLogAnalysisQueueRuntime({ ...configured, processByJobId,
-        QueueCtor: CapturedQueue as never, WorkerCtor: CapturedWorker as never }))
-        .rejects.toThrow("PCAT-LOG-QUEUE-INITIALIZATION-FAILED");
+      await assertStaticFailure(createLogAnalysisQueueRuntime({ ...configured, processByJobId,
+        QueueCtor: CapturedQueue as never, WorkerCtor: CapturedWorker as never }),
+        "PCAT-LOG-QUEUE-INITIALIZATION-FAILED");
       expect(processByJobId).not.toHaveBeenCalled();
       expect(actualQueue.isClosed).toBe(true);
-      expect(actualWorker).toBeUndefined(); // Refuse before allocating any Worker client.
-      expect(JSON.stringify(output.mock.calls)).not.toContain(wrongPassword);
-      expect(JSON.stringify(output.mock.calls)).not.toContain(password);
+      expect(actualWorker === undefined).toBe(true); // Never serialize a credential-bearing client on failure.
+      assertPrivateDiagnosticsAbsent(JSON.stringify(output.mock.calls), [wrongPassword, password]);
     } finally { await actualWorker?.close(true); await actualQueue?.close(); output.mockRestore(); }
   });
 
@@ -140,15 +162,23 @@ describe("owned Redis log worker lifecycle", () => {
     const errors = vi.spyOn(console, "error").mockImplementation(() => {});
     const warnings = vi.spyOn(console, "warn").mockImplementation(() => {});
     try {
-      await control.runCommand("acl", ["SETUSER", name, "on", `>${secret}`, "~*", "+@all", "-info"]);
-      await expect(createLogAnalysisQueueRuntime({ ...configured, processByJobId }))
-        .rejects.toThrow("PCAT-LOG-QUEUE-INITIALIZATION-FAILED");
+      await control.runCommand("acl", ["SETUSER", name, "on", `>${secret}`, "~*", "+@all", "-info"])
+        .catch(() => { throw new Error("owned-redis-test-acl-setup-failed"); });
+      await assertStaticFailure(createLogAnalysisQueueRuntime({ ...configured, processByJobId }),
+        "PCAT-LOG-QUEUE-INITIALIZATION-FAILED");
       expect(processByJobId).not.toHaveBeenCalled();
       const output = JSON.stringify([...errors.mock.calls, ...warnings.mock.calls]);
-      expect(output).not.toContain(name); expect(output).not.toContain(secret); expect(output).not.toContain(password);
+      assertPrivateDiagnosticsAbsent(output, [name, secret, password]);
     } finally {
-      await control.runCommand("acl", ["DELUSER", name]); await controlQueue.close();
+      // The parent still owns the Redis target. Attempt client cleanup even if
+      // ACL cleanup fails, and never expose a Redis command's private arguments.
+      let cleanupFailed = false;
+      try { await control.runCommand("acl", ["DELUSER", name]); }
+      catch { cleanupFailed = true; }
+      try { await controlQueue.close(); }
+      catch { cleanupFailed = true; }
       errors.mockRestore(); warnings.mockRestore();
+      if (cleanupFailed) throw new Error("owned-redis-test-acl-cleanup-failed");
     }
   });
 
@@ -168,8 +198,8 @@ describe("owned Redis log worker lifecycle", () => {
       await runtime.queue.enqueue({ name: "analyze-log", payload: { jobId: "after-reconnect", organizationId: "org", logId: "log", runId: "run" }, idempotencyKey: "after-reconnect" });
       await vi.waitFor(() => expect(processByJobId).toHaveBeenCalledOnce(), { timeout: 5000 });
       await runtime.close(); await runtime.close();
-      expect(JSON.stringify(output.mock.calls)).not.toContain(password);
-      expect(output).toHaveBeenCalledWith("PCAT-LOG-QUEUE-CONNECTION-ERROR");
+      assertPrivateDiagnosticsAbsent(JSON.stringify(output.mock.calls), [password]);
+      expect(output.mock.calls.some(call => call.length === 1 && call[0] === "PCAT-LOG-QUEUE-CONNECTION-ERROR")).toBe(true);
     } finally { await runtime.close(); await controlQueue.close(); output.mockRestore(); }
   });
 
@@ -192,10 +222,9 @@ describe("owned Redis log worker lifecycle", () => {
     configured.env.REDIS_URL = redisUrl.replace(password, wrongPassword);
     const output = vi.spyOn(console, "error").mockImplementation(() => {});
     try {
-      await expect(createLogAnalysisQueueTransport({ env: configured.env }))
-        .rejects.toThrow("PCAT-LOG-QUEUE-INITIALIZATION-FAILED");
-      expect(JSON.stringify(output.mock.calls)).not.toContain(wrongPassword);
-      expect(JSON.stringify(output.mock.calls)).not.toContain(password);
+      await assertStaticFailure(createLogAnalysisQueueTransport({ env: configured.env }),
+        "PCAT-LOG-QUEUE-INITIALIZATION-FAILED");
+      assertPrivateDiagnosticsAbsent(JSON.stringify(output.mock.calls), [wrongPassword, password]);
     } finally { output.mockRestore(); }
   });
 
@@ -204,10 +233,10 @@ describe("owned Redis log worker lifecycle", () => {
     const processByJobId = vi.fn();
     const output = vi.spyOn(console, "error").mockImplementation(() => {});
     try {
-      await expect(createLogAnalysisQueueRuntime({ ...options(), processByJobId }))
-        .rejects.toThrow("PCAT-LOG-QUEUE-INITIALIZATION-FAILED");
+      await assertStaticFailure(createLogAnalysisQueueRuntime({ ...options(), processByJobId }),
+        "PCAT-LOG-QUEUE-INITIALIZATION-FAILED");
       expect(processByJobId).not.toHaveBeenCalled();
-      expect(JSON.stringify(output.mock.calls)).not.toContain(password);
+      assertPrivateDiagnosticsAbsent(JSON.stringify(output.mock.calls), [password]);
     } finally { owned(); docker.command(["start", container]); output.mockRestore(); }
   });
 });
