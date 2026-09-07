@@ -3,6 +3,9 @@ import type pg from "pg";
 import type { CatalogReleaseSource } from "../catalog-kernel/interface";
 import type { FrozenP0Graph } from "./classifier";
 import type { ArchiveObjectStore } from "./archive";
+import type { ConversionManifest } from "./conversionManifest";
+import type { BindingImportIntent } from "../parameter-bindings/cutoverImport/intent";
+import type { DatabaseIdentity } from "./bindingImportProducer";
 
 export { THREAT_MATRIX } from "./threatMatrix";
 export type { ThreatMatrixRow } from "./threatMatrix";
@@ -67,7 +70,19 @@ export type CutoverResult<T> =
   | { readonly ok: true; readonly value: T }
   | { readonly ok: false; readonly error: CutoverFailure };
 
+export type ManagementPreparationPin = {
+  readonly runId: string;
+  readonly planDigest: string;
+  readonly candidateArtifactSha: string;
+  readonly candidateArtifactTree: string;
+};
+
 export type CutoverPlan = {
+  readonly managementPreparation?: ManagementPreparationPin;
+  readonly managementMigrationReceiptDigest?: string;
+  readonly bindingImportIntentDigest?: string;
+  readonly bindingArchiveRetainUntil?: string;
+  readonly conversionManifestDigest?: string;
   readonly planDigest: string;
   readonly sourceSnapshotFingerprint: string;
   readonly targetArtifactSha: string;
@@ -96,6 +111,13 @@ export type CutoverRunSnapshot = {
 };
 
 export type PlanCutoverInput = {
+  readonly managementPreparation?: ManagementPreparationPin;
+  /** Receipt from the fixed preparation plan, generated before this S7 plan. */
+  readonly managementMigrationReceiptDigest?: string;
+  readonly bindingImportIntent?: BindingImportIntent;
+  /** Explicit retention-owner input. No production retention period is invented by the controller. */
+  readonly bindingArchiveRetainUntil?: string;
+  readonly conversionManifest?: ConversionManifest;
   readonly graph: FrozenP0Graph;
   readonly targetArtifactSha: string;
   readonly targetCatalogReleaseDigest: string;
@@ -103,6 +125,20 @@ export type PlanCutoverInput = {
 };
 
 export type ExecuteCutoverInput = {
+  readonly managementMigrations?: {
+    /** Root-owned: recompute the source/ledger/checkpoint receipt on the actual
+     * target, and compare it with the committed existing controller journal. */
+    verify(input: { receiptDigest: string; target: DatabaseIdentity; preparation: ManagementPreparationPin }): Promise<{
+      receiptDigest: string; sourceSnapshotDigest: string; candidateInventoryDigest: string;
+    }>;
+  };
+  readonly bindingImportIntent?: BindingImportIntent;
+  /** Controlled management login only; never the API/worker runtime pool. */
+  readonly bindingManagementPool?: pg.Pool;
+  readonly bindingBoundary?: BindingCutoverBoundary;
+  /** Adapter over the existing upgrade controller journal; no alternate journal store. */
+  readonly bindingJournal?: BindingCutoverJournal;
+  readonly conversionManifest?: ConversionManifest;
   readonly pool: pg.Pool;
   readonly plan: CutoverPlan;
   readonly graph: FrozenP0Graph;
@@ -111,6 +147,35 @@ export type ExecuteCutoverInput = {
   readonly archiveEncryptionKey: Buffer;
   readonly operatorAuditRef: string;
   readonly failBeforePhase?: PreActivationPhase;
+};
+
+export type BindingBoundaryReceipt = {
+  readonly runId: string;
+  readonly planDigest: string;
+  readonly target: DatabaseIdentity;
+  readonly sourceInventoryFingerprint: string;
+  readonly writeFenceReceiptDigest: string;
+  readonly recoveryManifestDigest: string;
+};
+
+/** Implemented by the deployment boundary owner using real writer isolation and three-store recovery. */
+export type BindingCutoverBoundary = {
+  prepare(input: { runId: string; plan: CutoverPlan; target: DatabaseIdentity }): Promise<BindingBoundaryReceipt>;
+  verify(receipt: BindingBoundaryReceipt): Promise<void>;
+};
+
+export type BindingPhaseAttempt = {
+  readonly attemptId:string;
+  readonly runId:string;
+  readonly planDigest:string;
+  readonly phase:PreActivationPhase;
+};
+
+/** Pending/unknown outcomes require the existing controller's explicit reconciliation. */
+export type BindingCutoverJournal = {
+  unresolved(target:DatabaseIdentity):Promise<readonly (BindingPhaseAttempt & {outcome:"pending" | "unknown"})[]>;
+  begin(input:{target:DatabaseIdentity;runId:string;planDigest:string;phase:PreActivationPhase;inputDigest:string}):Promise<BindingPhaseAttempt>;
+  finish(input:{attempt:BindingPhaseAttempt;outcome:"committed" | "failed" | "unknown"}):Promise<void>;
 };
 
 export type InspectCutoverInput = {

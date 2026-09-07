@@ -3,6 +3,7 @@ import { promises as fs } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import pg from "pg";
+import { createDatabaseCleanup, createDatabaseCleanupTrace } from "./databaseCleanup";
 import {
   createDatabase,
   createSavepointDatabase,
@@ -276,11 +277,17 @@ async function cloneTemplateDatabase(name: string): Promise<void> {
 
 async function dropDatabase(name: string): Promise<void> {
   const admin = new pg.Client({ connectionString: connectionStringFor("postgres") });
-  await admin.connect();
+  const trace = createDatabaseCleanupTrace();
+  let failed = false;
   try {
-    await admin.query(`drop database if exists ${name} with (force)`);
+    await trace("connect", () => admin.connect());
+    await trace("drop", () => admin.query(`drop database if exists ${name} with (force)`));
+  } catch (error) {
+    failed = true;
+    throw error;
   } finally {
-    await admin.end().catch(() => undefined);
+    try { await trace("end", () => admin.end()); }
+    catch (error) { if (!failed) throw error; }
   }
 }
 
@@ -326,14 +333,10 @@ export async function createEphemeralTestDatabase(label: string): Promise<Epheme
   const rand = Math.floor(Math.random() * 1_000_000_000).toString(36);
   const name = `${WORKER_PREFIX}${fingerprint}_${currentRunToken()}_e${safeLabel}_${rand}`;
   await cloneTemplateDatabase(name);
-  let dropped = false;
+  const cleanup = createDatabaseCleanup(() => dropDatabase(name));
   return {
     url: connectionStringFor(name),
-    drop: async () => {
-      if (dropped) return;
-      dropped = true;
-      await dropDatabase(name);
-    }
+    drop: cleanup.close,
   };
 }
 

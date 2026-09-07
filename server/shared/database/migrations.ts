@@ -11,6 +11,12 @@ import type { Database } from "./client";
 const MIGRATION_ADVISORY_LOCK_KEY = 7_154_209_001;
 
 export type ApplyMigrationsOptions = {
+  /** Complete frozen candidate inventory. Controlled populated upgrades require
+   * this pin; subset selectors cannot be combined with it. */
+  expectedInventory?: readonly { readonly name: string; readonly checksum: string }[];
+  /** Controlled entry checks its live host/database lock and writer fence before
+   * every writing transaction. This does not authorize a migration by itself. */
+  beforeWrite?: () => Promise<void>;
   /** Apply only migrations whose file name sorts strictly before this value. */
   before?: string;
   /** Apply only migrations whose file name sorts at or before this value. */
@@ -78,20 +84,36 @@ export async function applyMigrations(
   migrationsDir: string,
   options: ApplyMigrationsOptions = {}
 ) {
+  // Clone before the first await: callers cannot replace a pin while we inspect
+  // the files. Validate before even the ledger bootstrap performs DDL.
+  const expected = options.expectedInventory === undefined ? undefined : structuredClone(options.expectedInventory);
+  const inventoryFailure = () => { throw new Error("migration-expected-inventory-drift"); };
+  const files = (await fs.readdir(migrationsDir)).filter((file) => file.endsWith(".sql")).sort();
+  if (expected !== undefined) {
+    if (!Array.isArray(expected) || expected.length === 0 || options.before !== undefined || options.through !== undefined ||
+        expected.length !== files.length || expected.some((entry, index) => !entry || entry.name !== files[index] ||
+          !/^[A-Za-z0-9_-]+\.sql$/.test(entry.name) || !/^[a-f0-9]{64}$/.test(entry.checksum)) ||
+        new Set(expected.map(entry => entry.name)).size !== expected.length) inventoryFailure();
+    for (const entry of expected) {
+      if (UNSAFE_LEGACY_MIGRATIONS.has(entry.name) || sha256(await fs.readFile(path.join(migrationsDir, entry.name), "utf8")) !== entry.checksum) inventoryFailure();
+    }
+  }
+  const expectedChecksums = expected && new Map(expected.map(entry => [entry.name, entry.checksum]));
   // Bootstrap under the same advisory lock: concurrent `create table if not
   // exists` on two sessions is a documented Postgres race (pg_type unique key).
   await db.transaction(async (tx) => {
     await tx.query("select pg_advisory_xact_lock($1)", [MIGRATION_ADVISORY_LOCK_KEY]);
+    await options.beforeWrite?.();
     await tx.query(`
       create table if not exists schema_migrations (
         name text primary key,
         applied_at timestamptz not null default now()
       )
     `);
+    await options.beforeWrite?.();
     await tx.query(`alter table schema_migrations add column if not exists checksum text`);
   });
 
-  const files = (await fs.readdir(migrationsDir)).filter((file) => file.endsWith(".sql")).sort();
   const limited = files.filter(
     (file) =>
       (options.before === undefined || file < options.before) &&
@@ -102,6 +124,8 @@ export async function applyMigrations(
     "select name, checksum from schema_migrations order by name"
   );
   const appliedChecksums = new Map(applied.rows.map((row) => [row.name, row.checksum]));
+  // The controlled path never backfills old checksums or accepts unpinned aliases.
+  if (expectedChecksums && applied.rows.some(row => !expectedChecksums.has(row.name) || expectedChecksums.get(row.name) !== row.checksum)) inventoryFailure();
 
   const legacyMigrationNames = Object.keys(LEGACY_MIGRATION_CHECKSUMS);
   const missingFiles = getMissingMigrationFiles(
@@ -135,6 +159,7 @@ export async function applyMigrations(
     const canonical = checksums[0];
     if (!canonical) continue;
     if (stored == null) {
+      await options.beforeWrite?.();
       throw new Error(
         `Migration history checksum missing for historical alias ${name}. ` +
           `Verify the exact legacy SQL and repair schema_migrations.checksum to ${canonical} ` +
@@ -174,15 +199,20 @@ export async function applyMigrations(
   for (const file of pending) {
     const sql = await fs.readFile(path.join(migrationsDir, file), "utf8");
     const checksum = sha256(sql);
+    // This checksum covers exactly the string passed to tx.query below, not an
+    // earlier filesystem scan. A later file replacement cannot change that SQL.
+    if (expectedChecksums && expectedChecksums.get(file) !== checksum) inventoryFailure();
     const didApply = await db.transaction(async (tx) => {
       await tx.query("select pg_advisory_xact_lock($1)", [MIGRATION_ADVISORY_LOCK_KEY]);
-      const already = await tx.query<{ name: string }>(
-        "select name from schema_migrations where name = $1",
+      const already = await tx.query<{ name: string; checksum: string | null }>(
+        "select name, checksum from schema_migrations where name = $1",
         [file]
       );
       if (already.rows.length > 0) {
+        if (expectedChecksums && already.rows[0]?.checksum !== checksum) inventoryFailure();
         return false;
       }
+      await options.beforeWrite?.();
       await tx.query(sql);
       await tx.query("insert into schema_migrations (name, checksum) values ($1, $2)", [file, checksum]);
       return true;

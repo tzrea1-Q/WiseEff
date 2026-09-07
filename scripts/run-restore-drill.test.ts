@@ -1,3 +1,4 @@
+import { checkRecoveryStorageBoundary, readRecoveryBoundarySources, RECOVERY_STORAGE_OWNERSHIP } from "./recovery-storage-boundary";
 import { readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -156,12 +157,11 @@ describe("S11-RP threat matrix", () => {
 
 describe("S11-RP S10-PER type consumption", () => {
   it("does not reimplement S10-PER operations or emit forbidden production tokens", () => {
-    const productionFiles = [
-      path.join(scriptsDir, "run-restore-drill.ts"),
-      ...readdirSync(storageDir)
-        .filter((name) => name.endsWith(".ts") && !name.includes(".test."))
-        .map((name) => path.join(storageDir, name)),
-    ];
+    const sources = readRecoveryBoundarySources();
+    expect(checkRecoveryStorageBoundary(sources)).toEqual([]);
+    const productionFiles = Object.entries(RECOVERY_STORAGE_OWNERSHIP)
+      .filter(([, layer]) => layer === "check" || layer === "execution")
+      .map(([file]) => path.resolve(scriptsDir, "..", file));
     expect(productionFiles.length).toBeGreaterThan(1);
 
     const forbiddenLegacy = ["parameter", "definitions"].join("_");
@@ -173,7 +173,9 @@ describe("S11-RP S10-PER type consumption", () => {
     expect(combined).not.toMatch(/function\s+assembleReport\b/);
     expect(combined).not.toMatch(/function\s+approveReport\b/);
     expect(combined).not.toContain("createReleaseVerificationService");
-    expect(combined).not.toMatch(/pg_restore\b/);
+    const checkOnly = Object.entries(RECOVERY_STORAGE_OWNERSHIP).filter(([, layer]) => layer === "check")
+      .map(([file]) => sources[file]).join("\n");
+    expect(checkOnly).not.toMatch(/pg_restore\b/);
     expect(combined).not.toMatch(/DROP\s+DATABASE/i);
   });
 });

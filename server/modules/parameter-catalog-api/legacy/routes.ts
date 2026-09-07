@@ -62,6 +62,13 @@ function addRoute(
   add.call(router, path, handler);
 }
 
+const retiredWriteRouter = createRouter();
+for (const route of writeRoutes) {
+  addRoute(retiredWriteRouter, route.method, route.path, async (request) =>
+    catalogLegacyGoneResult(request.requestId, LEGACY_WRITE_GONE_MESSAGE),
+  );
+}
+
 const headerValue = (
   headers: RouteRequest["headers"],
   name: string,
@@ -316,6 +323,12 @@ export async function handleLegacyCatalogRequest(
     };
   }
 
+  // Retirement is independent of Catalog availability and authentication. Use
+  // the same frozen routes and matcher before consulting any current pointer.
+  if (retiredWriteRouter.matchRoutePattern(request.method, request.path)) {
+    return catalogLegacyGoneResult(request.requestId, LEGACY_WRITE_GONE_MESSAGE);
+  }
+
   options = {
     ...options,
     catalogReleaseId: await currentCatalogReleaseId(options),
@@ -333,13 +346,6 @@ export async function handleLegacyCatalogRequest(
         lookupHeaders(options),
       );
       return { status: result.status, body: { __legacy: result } };
-    });
-  }
-
-  for (const route of writeRoutes) {
-    addRoute(router, route.method, route.path, async (matched) => {
-      const gone = catalogLegacyGoneResult(matched.requestId, LEGACY_WRITE_GONE_MESSAGE);
-      return { status: gone.status, body: { __legacy: gone } };
     });
   }
 

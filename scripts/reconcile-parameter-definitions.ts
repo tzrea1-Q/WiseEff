@@ -1,11 +1,6 @@
 import "dotenv/config";
 
 import { loadServerEnv } from "../server/config/env";
-import {
-  reconcileDriverParameterDefinitions,
-  type DefinitionReconciliationMode,
-} from "../server/modules/parameter-specs/definitionReconciliation";
-import { verifyEffectiveDriverParameterDefinitions } from "../server/modules/parameter-specs/definitionVerification";
 import { createPostgresDatabase } from "../server/shared/database/client";
 import {
   catalogLegacyGoneResult,
@@ -25,6 +20,17 @@ export async function runReconcileParameterDefinitions(
   env: NodeJS.ProcessEnv = process.env,
 ): Promise<{ readonly exitCode: number; readonly body: unknown }> {
   const command = parseReconcileCliCommand(argv);
+  if (command.kind === "release-gate-unavailable") {
+    return {
+      exitCode: 2,
+      body: {
+        kind: "blocked",
+        code: "PCAT-UPG-RELEASE-CONTEXT-UNAVAILABLE",
+        reason: "approved-current-target-context-unavailable",
+        message: "Report lookup cannot authorize an upgrade. The controlled runtime/public-release integration is unavailable; keep the candidate isolated.",
+      },
+    };
+  }
   if (command.kind === "apply-gone") {
     return {
       exitCode: 2,
@@ -36,14 +42,16 @@ export async function runReconcileParameterDefinitions(
   const db = createPostgresDatabase(loaded.DATABASE_URL);
   try {
     if (command.kind === "verify") {
-    const report = await verifyEffectiveDriverParameterDefinitions && await readTypedVerificationReport({
+    const report = await readTypedVerificationReport({
       database: db,
       reportIdOrDigest: command.reportIdOrDigest,
     });
       const observation = report as Awaited<ReturnType<typeof readTypedVerificationReport>>;
       return {
         exitCode: observation.status === "query-failure" ? 1 : 0,
-        body: observation,
+        body: observation.status === "query-failure"
+          ? { status: observation.status, code: observation.code, detail: "verification-report-query-failed" }
+          : observation,
       };
     }
     if (command.kind === "legacy") {
@@ -74,6 +82,7 @@ export async function runReconcileParameterDefinitions(
 }
 
 export type ReconcileCliCommand =
+  | { readonly kind: "release-gate-unavailable" }
   | { readonly kind: "inspect"; readonly runId?: string; readonly planDigest?: string; readonly phase?: string }
   | { readonly kind: "verify"; readonly reportIdOrDigest: string }
   | {
@@ -90,6 +99,22 @@ function readOption(args: readonly string[], name: string): string | undefined {
 }
 
 export function parseReconcileCliCommand(args: readonly string[]): ReconcileCliCommand {
+  const flags = new Set(["--verify", "--catalog-only", "--diagnostic", "--dry-run", "--apply"]);
+  const options = new Set(["--report-id", "--run-id", "--plan-digest", "--phase", "--legacy-type", "--legacy-id", "--organization-id"]);
+  const seen = new Set<string>();
+  for (let index = 0; index < args.length; index += 1) {
+    const arg = args[index];
+    if ((!flags.has(arg) && !options.has(arg)) || seen.has(arg)) {
+      throw new Error("PCAT-UPG-INVALID-ARGUMENT: unknown or duplicate option.");
+    }
+    seen.add(arg);
+    if (options.has(arg)) {
+      const value = args[++index];
+      if (!value?.trim() || value.startsWith("--")) {
+        throw new Error("PCAT-UPG-INVALID-ARGUMENT: option requires a value.");
+      }
+    }
+  }
   const verify = args.includes("--verify");
   const catalogOnly = args.includes("--catalog-only");
   const dryRun = args.includes("--dry-run");
@@ -99,6 +124,14 @@ export function parseReconcileCliCommand(args: readonly string[]): ReconcileCliC
   }
   if (catalogOnly && !verify) {
     throw new Error("--catalog-only requires --verify.");
+  }
+  if (args.includes("--diagnostic") && (!verify || catalogOnly)) {
+    throw new Error("PCAT-UPG-INVALID-ARGUMENT: --diagnostic requires --verify and cannot authorize --catalog-only.");
+  }
+  // Old controllers use --verify --catalog-only without a trustworthy target
+  // context. Never infer one from a report or from caller-supplied assertions.
+  if (verify && !args.includes("--diagnostic")) {
+    return { kind: "release-gate-unavailable" };
   }
   if (apply) {
     return { kind: "apply-gone" };
@@ -118,7 +151,10 @@ export function parseReconcileCliCommand(args: readonly string[]): ReconcileCliC
   }
   if (verify) {
     const reportIdOrDigest =
-      readOption(args, "--report-id")?.trim() || readOption(args, "--run-id")?.trim() || "missing";
+      readOption(args, "--report-id")?.trim() || readOption(args, "--run-id")?.trim();
+    if (!reportIdOrDigest || (args.includes("--report-id") && args.includes("--run-id"))) {
+      throw new Error("PCAT-UPG-INVALID-ARGUMENT: diagnostic lookup requires one report identifier.");
+    }
     return { kind: "verify", reportIdOrDigest };
   }
   return {
@@ -138,8 +174,8 @@ if (invokedDirectly) {
       process.stdout.write(`${JSON.stringify(result.body, null, 2)}\n`);
       process.exitCode = result.exitCode;
     })
-    .catch((error: unknown) => {
-      process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`);
+    .catch(() => {
+      process.stderr.write(`${JSON.stringify({ kind: "blocked", code: "PCAT-UPG-CLI-FAILED", reason: "invalid-input-or-query-failure" })}\n`);
       process.exitCode = 1;
     });
 }

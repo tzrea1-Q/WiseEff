@@ -43,27 +43,31 @@ export async function processNextKnowledgeIndexJob(
 export function startKnowledgeIndexWorkerLoop(
   options: KnowledgeIndexWorkerOptions,
   intervalMs = 1000
-): () => void {
+): () => Promise<void> {
   let stopped = false;
   let running = false;
+  let activeRun: Promise<void> | undefined;
 
   const tick = () => {
     if (stopped || running) return;
     running = true;
-    void processNextKnowledgeIndexJob(options)
+    activeRun = processNextKnowledgeIndexJob(options)
+      .then(() => undefined)
       .catch(() => {
         // Loop-level failures (e.g. transient connection errors) must not kill the interval.
       })
       .finally(() => {
         running = false;
+        activeRun = undefined;
       });
   };
 
   const interval = setInterval(tick, intervalMs);
   tick();
 
-  return () => {
+  return async () => {
     stopped = true;
     clearInterval(interval);
+    await activeRun;
   };
 }

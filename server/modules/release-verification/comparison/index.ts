@@ -60,3 +60,15 @@ export {
   createProductionComparisonProviders,
 } from "./productionProviders";
 export type { ComparisonProvider, ComparisonProviderInput } from "./productionProviders";
+export {
+  assertComparisonEvidenceAssociation,
+  COMPARISON_EVIDENCE_PRODUCER,
+  ComparisonEvidenceRefusal,
+  createComparisonEvidenceExecution,
+} from "./liveEvidence";
+export type {
+  ComparisonBoundaryObservation,
+  ComparisonEvidenceBundle,
+  ComparisonEvidenceFailure,
+  LiveComparisonSource,
+} from "./liveEvidence";

@@ -19,7 +19,7 @@ import { executeProposal } from "../parameter-governance/proposals";
 import { createGovernanceCatalogQueries } from "../parameter-governance/queries";
 import { executeRegistration } from "../parameter-governance/registration";
 import { resolveReviewItem } from "../parameter-governance/resolveReviewItem";
-import { createReviewQueueReader } from "../parameter-governance/review";
+import { createPersistedReviewQueueReader, createReviewQueueReader } from "../parameter-governance/review";
 import { createUsageQueries } from "../parameter-bindings/usage";
 import type { RouteRequest, WiseEffRouter } from "../../shared/http/router";
 import type { Database } from "../../shared/database/client";
@@ -298,18 +298,22 @@ const createReadPorts = (pool: pg.Pool | undefined, resolveAuth: CatalogApiAuthR
 const createGovernancePorts = (
   pool: pg.Pool | undefined,
   resolveAuth: CatalogApiAuthResolver,
+  commandPool: pg.Pool | undefined,
 ): CatalogGovernancePorts => {
-  const commands = pool
+  // A comparison/query connection may read prepared ReviewItems, but must not
+  // enter the existing lazy-grouping reader, whose GET path can insert items.
+  const persistedReviews = !commandPool && pool ? createPersistedReviewQueueReader(pool) : undefined;
+  const commands = commandPool
     ? bindCatalogGovernanceCommands({
-        executeRegistration: (command) => executeRegistration(pool, command),
-        resolveReviewItem: (command) => resolveReviewItem(pool, command),
-        executeProposal: (command) => executeProposal(pool, command),
+        executeRegistration: (command) => executeRegistration(commandPool, command),
+        resolveReviewItem: (command) => resolveReviewItem(commandPool, command),
+        executeProposal: (command) => executeProposal(commandPool, command),
         listReviewQueue: (query) => {
-          const reader = createReviewQueueReader(pool);
+          const reader = createReviewQueueReader(pool ?? commandPool);
           return reader.list(query);
         },
         getReviewItem: (query) => {
-          const reader = createReviewQueueReader(pool);
+          const reader = createReviewQueueReader(pool ?? commandPool);
           return reader.get(query);
         },
       })
@@ -334,11 +338,11 @@ const createGovernancePorts = (
             method: "executeProposal",
           },
         }),
-        listReviewQueue: async () => ({
+        listReviewQueue: persistedReviews ? (query: Parameters<CatalogGovernancePorts["listReviewQueue"]>[0]) => persistedReviews.list(query) : async () => ({
           ok: false as const,
           error: { kind: "permission-denied" as const, actorKind: "anonymous" as const },
         }),
-        getReviewItem: async () => ({
+        getReviewItem: persistedReviews ? (query: Parameters<CatalogGovernancePorts["getReviewItem"]>[0]) => persistedReviews.get(query) : async () => ({
           ok: false as const,
           error: { kind: "review-item-not-found" as const, reviewItemId: "catalog-unwired" },
         }),
@@ -425,11 +429,18 @@ export const registerParameterCatalogApi = (
   router: WiseEffRouter,
   options: {
     readonly db?: Database;
+    readonly governanceDb?: Database;
+    readonly requireSeparateGovernancePool?: boolean;
     readonly resolveAuth: CatalogApiAuthResolver;
   },
 ): void => {
   const pool = getRootPostgresPool(options.db);
+  const governancePool = getRootPostgresPool(options.governanceDb);
+  if (options.requireSeparateGovernancePool && governancePool && governancePool === pool) {
+    throw new Error("PCAT-RUNTIME-GOVERNANCE-POOL-MUST-BE-SEPARATE");
+  }
   registerCatalogReadRoutes(router, createReadPorts(pool, options.resolveAuth));
-  registerCatalogGovernanceRoutes(router, createGovernancePorts(pool, options.resolveAuth));
+  registerCatalogGovernanceRoutes(router, createGovernancePorts(pool, options.resolveAuth,
+    governancePool ?? (options.requireSeparateGovernancePool ? undefined : pool)));
   registerCatalogLegacyRoutes(router, createLegacyOptions(options.db, pool, options.resolveAuth));
 };

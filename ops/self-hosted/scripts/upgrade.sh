@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # WiseEff self-hosted upgrade entry. The implementation lives in upgrade-lib.sh
-# so the launcher can be replaced safely when a target checkout changes.
+# Loaded functions remain at the entry version even when checkout changes.
+# Target commands must reject incompatible legacy controller invocations.
 set -euo pipefail
 
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -13,6 +14,17 @@ eval "$(declare -f wiseeff_upgrade_main | sed '1s/.*/wiseeff_upgrade_stack_main 
 wiseeff_upgrade_usage() {
   wiseeff_upgrade_stack_usage
   cat <<'EOF'
+
+Application artifact stages (private host run; no stack upgrade):
+  artifact-init --journal PATH --run-id ID
+  artifact-prepare --journal PATH --run-id ID --source-repository PATH
+    --source-sha SHA --expected-daemon-id ID --release-tag TAG --api-base-url URL
+    [--build-network-file PATH]
+  artifact-inspect --journal PATH --run-id ID
+Preparation builds and persists an artifact under the existing host lock.
+Inspection takes that lock and verifies the retained package; neither stage
+starts applications or approves runtime/public release. Only artifact-init
+explicitly creates a new empty journal; an existing run is never replaced.
 
 Catalog apply (fresh XOR populated; never a silent default):
   apply --catalog-apply-mode fresh|populated
@@ -650,6 +662,19 @@ wiseeff_catalog_upgrade_apply() {
 }
 
 wiseeff_upgrade_main() {
+  case "${1:-}" in
+    artifact-init|artifact-prepare|artifact-inspect)
+      # Dedicated artifact stages never fall through to stack apply or consume
+      # ambient Catalog mode/configuration. Only explicit init creates a run.
+      local artifact_tsx="${script_dir}/../../../node_modules/.bin/tsx"
+      if [ ! -x "$artifact_tsx" ]; then
+        printf '%s\n' 'PCAT-UPG-ARTIFACT-ENTRY-DEPENDENCY-UNAVAILABLE' >&2
+        return 2
+      fi
+      "$artifact_tsx" "${script_dir}/parameter-catalog-upgrade/applicationArtifactCli.ts" "$@"
+      return $?
+      ;;
+  esac
   local catalog_intent="false"
   local catalog_journal="${WISEEFF_CATALOG_UPGRADE_JOURNAL:-}"
   local catalog_graph=""

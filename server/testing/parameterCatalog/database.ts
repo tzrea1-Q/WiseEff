@@ -2,6 +2,7 @@ import { createHash, randomBytes } from "node:crypto";
 import pg from "pg";
 
 import { createEphemeralTestDatabase } from "../testDatabase";
+import { createDatabaseCleanup } from "../databaseCleanup";
 
 /** 0137-only S2-SCH freeze. Live cloned databases also include 0138 DEFINER reachability. */
 export const S2_SCH_0137_FINGERPRINT =
@@ -529,28 +530,27 @@ function registerHandle(
   drop: () => Promise<void>,
 ): ParameterCatalogDatabase {
   liveCatalogDatabases.add(name);
-  let closed = false;
-  const close = async () => {
-    if (closed) {
-      return;
-    }
-    closed = true;
+  let abandoned = false;
+  const cleanup = createDatabaseCleanup(async () => {
+    await drop();
     abandonedCatalogDatabases.delete(name);
     liveCatalogDatabases.delete(name);
-    await drop();
-  };
+  });
   return {
     name,
     url,
     serverVersion: identity.serverVersion,
     pgvectorVersion: identity.pgvectorVersion,
     schemaFingerprint,
-    close,
+    close: () => abandoned ? Promise.resolve() : cleanup.close(),
     abandon: async () => {
-      if (closed) {
+      if (abandoned || cleanup.closed) {
         return;
       }
-      closed = true;
+      // An in-progress DROP still owns this target. Do not make it eligible
+      // for another worker's cleanup before its actual result is known.
+      if (cleanup.pending) { await cleanup.close(); return; }
+      abandoned = true;
       liveCatalogDatabases.delete(name);
       abandonedCatalogDatabases.add(name);
       if (!name.startsWith(CATALOG_DATABASE_PREFIX)) {
@@ -612,8 +612,6 @@ export async function createDisposableParameterCatalogDatabase(
     }
     await assertCheckedEmptyCatalog(ephemeral.url);
     return registerHandle(name, ephemeral.url, identity, schemaFingerprint, async () => {
-      liveCatalogDatabases.delete(name);
-      abandonedCatalogDatabases.delete(name);
       await ephemeral.drop();
     });
   } catch (error) {

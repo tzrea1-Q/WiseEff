@@ -10,10 +10,14 @@ import {
 import type { PrepareVerificationInput } from "../../../../server/modules/release-verification/core";
 
 import { inspectActionGuards, type CutoverPorts, type VerificationPorts } from "./actions";
+import { createBindingCutoverJournal } from "./bindingJournal";
+import { readManagementMigrationAttempt } from "./managementJournal";
+import type { HostOperationLock } from "./handoff";
 import {
   canonicalJson,
   commitJournalTransition,
   hasCommittedReplay,
+  loadUpgradeJournal,
   openUpgradeJournal,
   sha256Prefixed,
   type JournalSnapshot,
@@ -46,6 +50,11 @@ export type ControllerDeps = {
   readonly cutover: CutoverPorts;
   readonly verification: VerificationPorts;
   readonly now?: () => Date;
+  readonly operationLock?: HostOperationLock;
+  readonly bindingJournalScope?: {
+    readonly operationRoot: string;
+    readonly target: { readonly systemIdentifier: string; readonly databaseOid: string };
+  };
 };
 
 export type CatalogUpgradeController = {
@@ -72,6 +81,12 @@ const inputDigestFor = (
       action: "plan",
       targetArtifactSha: record?.targetArtifactSha ?? null,
       targetCatalogReleaseDigest: record?.targetCatalogReleaseDigest ?? null,
+      graph: record?.graph ?? null,
+      conversionManifest: record?.conversionManifest ?? null,
+      bindingImportIntent: record?.bindingImportIntent ?? null,
+      bindingArchiveRetainUntil: record?.bindingArchiveRetainUntil ?? null,
+      managementMigrationReceiptDigest: record?.managementMigrationReceiptDigest ?? null,
+      managementPreparation: record?.managementPreparation ?? null,
     });
   }
   if (action === "execute") {
@@ -86,16 +101,13 @@ const inputDigestFor = (
       action: "recover",
       runId: record?.runId ?? journal.record.cutoverRunId,
       recordedAction: record?.recordedAction ?? null,
+      runBoundToken: record?.runBoundToken ?? null,
     });
   }
   if (action === "prepareVerification") {
-    const pins = asRecord(record?.pins);
-    const cutover = asRecord(pins?.cutover);
     return digestOf({
       action: "prepareVerification",
-      purpose: record?.purpose ?? null,
-      mode: record?.mode ?? null,
-      cutoverPlanDigest: cutover?.planDigest ?? journal.record.planDigest,
+      input: record,
     });
   }
   if (action === "runVerification") {
@@ -158,9 +170,27 @@ export const openCatalogUpgradeController = (
   }
   const journal = opened.value;
   const clock = deps.now ?? (() => new Date());
+  const bindingJournal = deps.bindingJournalScope ? createBindingCutoverJournal({ ...deps.bindingJournalScope, journal, assertEffectAllowed: () => {
+    if (!deps.operationLock) throw new Error("handoff-lock-required");
+    return deps.operationLock.assertHeld();
+  } }) : undefined;
 
   const controller: CatalogUpgradeController = {
     async dispatch(command) {
+      const current = loadUpgradeJournal({ journalPath: journal.journalPath, runId: journal.record.runId, requireSettled: true });
+      if (!current.ok) return current;
+      try {
+        const management = readManagementMigrationAttempt(current.value.record);
+        if (management.status === "pending" || management.status === "unknown") return failClosed("PCAT-UPG-UNKNOWN-OUTCOME", "management migration requires explicit reconciliation");
+        // The Binding adapter reads every run under the same target admission
+        // lock, including management outcomes, before any owner or replay.
+        if (deps.bindingJournalScope && bindingJournal && (await bindingJournal.unresolved(deps.bindingJournalScope.target)).length !== 0) {
+          return failClosed("PCAT-UPG-UNKNOWN-OUTCOME", "Binding phase requires explicit reconciliation");
+        }
+      } catch { return failClosed("PCAT-UPG-UNKNOWN-OUTCOME", "target phase admission is unavailable"); }
+      if (current.value.record.journalDigest !== journal.record.journalDigest) return failClosed("PCAT-UPG-ILLEGAL-ACTION", "journal changed; inspect before retry");
+      try { await deps.operationLock?.assertHeld(); }
+      catch { return failClosed("PCAT-UPG-ILLEGAL-ACTION", "handoff-lock-lost"); }
       const guard = inspectActionGuards(command.action, command.input);
       if (guard) {
         return { ok: false, error: guard };
@@ -178,12 +208,13 @@ export const openCatalogUpgradeController = (
       }
       const action = resolved.value;
       const inputDigest = inputDigestFor(action, command.input, journal);
-      if (hasCommittedReplay(journal, action, inputDigest)) {
+      const replayed = hasCommittedReplay(journal, action, inputDigest);
+      if (replayed && action !== "execute" && action !== "plan") {
         return { ok: true, value: withReplay(journal, true) };
       }
 
       const legality = transition(journal.record.state, action);
-      if (!legality.ok) {
+      if (!legality.ok && !(replayed && (action === "execute" || action === "plan"))) {
         return legality;
       }
 
@@ -211,6 +242,10 @@ export const openCatalogUpgradeController = (
             `${planned.error.code}: ${planned.error.detail}`,
           );
         }
+        if (replayed) {
+          if (planned.value.planDigest !== journal.record.planDigest) return failClosed("PCAT-UPG-ILLEGAL-ACTION", "planned input is no longer applicable");
+          return { ok: true, value: withReplay(journal, true) };
+        }
         const committed = commitJournalTransition(
           journal,
           {
@@ -229,7 +264,7 @@ export const openCatalogUpgradeController = (
       }
 
       if (action === "execute") {
-        const executeInput = command.input as ExecuteCutoverInput;
+        let executeInput = command.input as ExecuteCutoverInput;
         const plannedDigest = journal.record.planDigest;
         const incomingDigest = executePlanDigest(command.input);
         if (!plannedDigest || incomingDigest !== plannedDigest) {
@@ -244,6 +279,12 @@ export const openCatalogUpgradeController = (
             "execute plan phases must equal the frozen S7-ORC pre-activation contract",
           );
         }
+        if (executeInput.bindingImportIntent || deps.bindingJournalScope || journal.record.entries.some(entry => entry.bindingPhase)) {
+          if (!executeInput.bindingImportIntent || !bindingJournal || !deps.operationLock) return failClosed("PCAT-UPG-ILLEGAL-ACTION", "binding-controller-scope-and-live-lock-required");
+          executeInput = { ...executeInput, bindingJournal };
+        }
+        try { await deps.operationLock?.assertHeld(); }
+        catch { return failClosed("PCAT-UPG-ILLEGAL-ACTION", "handoff-lock-lost"); }
         const executed = await deps.cutover.execute(executeInput);
         if (!executed.ok) {
           if (executed.error.code === "PCAT-ORC-CRASH") {
@@ -269,6 +310,10 @@ export const openCatalogUpgradeController = (
             "PCAT-UPG-ILLEGAL-ACTION",
             `${executed.error.code}: ${executed.error.detail}`,
           );
+        }
+        if (replayed) {
+          if (executed.value.state !== "completed" || executed.value.runId !== journal.record.cutoverRunId || executed.value.planDigest !== journal.record.planDigest) return failClosed("PCAT-UPG-ILLEGAL-ACTION", "committed execute no longer matches live Cutover state");
+          return { ok: true, value: withReplay(journal, true) };
         }
         const completed = executed.value.state === "completed";
         const toState: ControllerState = completed ? "cutover-completed" : "executing";

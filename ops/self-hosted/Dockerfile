@@ -64,6 +64,10 @@ ENV NODE_ENV=production \
     LD_LIBRARY_PATH=/opt/dtc/lib
 ARG WISEEFF_BUILD_TLS_POLICY
 LABEL org.wiseeff.build-tls-policy="${WISEEFF_BUILD_TLS_POLICY}"
+ARG WISEEFF_SOURCE_SHA
+ARG WISEEFF_SOURCE_TREE
+LABEL org.opencontainers.image.revision="${WISEEFF_SOURCE_SHA}" \
+    org.wiseeff.source.tree="${WISEEFF_SOURCE_TREE}"
 ARG VITE_WISEEFF_RUNTIME_MODE=api
 ARG VITE_WISEEFF_API_BASE_URL
 ARG VITE_WISEEFF_FOOTER_COPYRIGHT_OWNER=雷泽（WiseEff）
@@ -84,6 +88,13 @@ COPY tools/dts-toolchain/requirements.txt /tmp/dts-toolchain-requirements.txt
 COPY tools/dts-toolchain/versions.json /etc/wiseeff-dts-toolchain-versions.json
 COPY --from=dtc-builder /opt/dtc /opt/dtc
 COPY --from=dtc-builder /opt/dtc-wheels /tmp/dtc-wheels
+# Login shells reset PATH and application probes deliberately omit loader variables.
+# Keep the pinned binaries and their SONAME available through standard search paths.
+RUN ln -s /opt/dtc/bin/dtc /usr/local/bin/dtc \
+  && ln -s /opt/dtc/bin/fdtoverlay /usr/local/bin/fdtoverlay \
+  && ln -s /opt/dtc/lib/libfdt.so.1 /usr/local/lib/libfdt.so.1 \
+  && env -i PATH=/usr/local/bin:/usr/bin:/bin dtc --version \
+  && env -i PATH=/usr/local/bin:/usr/bin:/bin fdtoverlay --version
 RUN if [ "${WISEEFF_BUILD_TLS_POLICY}" = "insecure" ]; then \
     set -- --trusted-host pypi.org --trusted-host files.pythonhosted.org; \
   else \
@@ -95,6 +106,7 @@ RUN if [ "${WISEEFF_BUILD_TLS_POLICY}" = "insecure" ]; then \
   && pip3 install "$@" --break-system-packages --no-cache-dir --no-deps -r /tmp/dts-toolchain-requirements.txt \
   && rm -rf /tmp/dtc-wheels
 RUN dtc --version && fdtoverlay --version && dt-validate --version \
+  && env -i PATH=/usr/local/bin:/usr/bin:/bin HOME=/root dt-validate --version \
   && echo "Pinned toolchain:" && cat /etc/wiseeff-dts-toolchain-versions.json
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .

@@ -1,10 +1,11 @@
 import { createServer } from "node:http";
+import { assertProcessInitializing, ProcessInitializationStopped, runProcessWithSignals } from "../../processSignals";
 import { loadServerEnv } from "../../config/env";
 import { resolveKnowledgeEmbeddingClient } from "../knowledge/indexing/embeddingClient";
 import { createMetricsRegistry, type MetricsRegistry } from "../../observability/metrics";
 import { defaultTracingBoundary } from "../../observability/tracing";
 import type { Database } from "../../shared/database/client";
-import { createPostgresDatabase } from "../../shared/database/client";
+import { openRuntimeDatabase } from "../../shared/database/runtimeConnection";
 import { createObjectStoreFromEnv } from "../../objectStoreFactory";
 import type { LogAnalysisAdapter } from "./analyzer";
 import { createLogAnalyzerFromEnv } from "./analyzer/analyzerFromEnv";
@@ -37,7 +38,7 @@ type LogWorkerRuntimeOptions = {
   db: Database;
   objectStore: ObjectStore;
   analyzer?: LogAnalysisAdapter;
-  startLoop?: (options: ProcessLogWorkerOptions, intervalMs?: number) => () => void;
+  startLoop?: (options: ProcessLogWorkerOptions, intervalMs?: number) => () => void | Promise<void>;
   startRetentionLoop?: LogWebhookDeliveryRetentionLoopStarter;
   retention?: { enabled: boolean; keepPerDomain: number };
   createDurableRuntime?: typeof createLogAnalysisQueueRuntime;
@@ -125,13 +126,13 @@ export function createLogWorkerRuntime({
   webhooks
 }: LogWorkerRuntimeOptions) {
   return {
-    start() {
+    async start() {
       let stopWorker: () => void | Promise<void>;
       if (queueMode === "durable") {
         if (!env) {
           throw new Error("Durable log worker runtime requires Redis queue environment.");
         }
-        const runtime = createDurableRuntime({
+        const runtime = await createDurableRuntime({
           env,
           db,
           objectStore,
@@ -149,15 +150,23 @@ export function createLogWorkerRuntime({
         );
       }
 
-      const stopRetention = retention?.enabled
-        ? startRetentionLoop({ db, keepPerDomain: retention.keepPerDomain })
-        : undefined;
-
-      return async () => {
-        const retentionShutdown = stopRetention?.();
-        const workerShutdown = stopWorker();
-        await Promise.all([retentionShutdown, workerShutdown]);
-      };
+      try {
+        const stopRetention = retention?.enabled
+          ? startRetentionLoop({ db, keepPerDomain: retention.keepPerDomain })
+          : undefined;
+        let shutdown: Promise<void> | undefined;
+        return () => shutdown ??= (async () => {
+          // Invoke both callbacks even if one throws synchronously; settle both
+          // before the owner can close the database they may still be using.
+          const stop = async (callback?: () => void | Promise<void>) => callback?.();
+          const results = await Promise.allSettled([stop(stopRetention), stop(stopWorker)]);
+          const failed = results.find(result => result.status === "rejected");
+          if (failed?.status === "rejected") throw failed.reason;
+        })();
+      } catch (error) {
+        try { await stopWorker(); } catch { /* Preserve the initialization failure. */ }
+        throw error;
+      }
     }
   };
 }
@@ -167,7 +176,26 @@ export async function createLogWorkerRuntimeFromEnv(raw: NodeJS.ProcessEnv = pro
   const env = loadServerEnv(raw);
   validateLogWorkerConfig(env);
 
-  const db = createPostgresDatabase(env.DATABASE_URL!, { tracing: defaultTracingBoundary });
+  const db = await openRuntimeDatabase({
+    connectionString: env.DATABASE_URL!,
+    nodeEnv: env.NODE_ENV,
+    databaseOptions: { tracing: defaultTracingBoundary },
+  });
+  try {
+    return await initializeLogWorkerRuntime(env, raw, db);
+  } catch {
+    // Initialization has not exposed a runtime or started a consumer. Closing
+    // must not replace the static refusal with a credential-bearing DB error.
+    await db.close().catch(() => undefined);
+    throw new Error("PCAT-RUNTIME-WORKER-INITIALIZATION-FAILED");
+  }
+}
+
+async function initializeLogWorkerRuntime(
+  env: ReturnType<typeof loadServerEnv>,
+  raw: NodeJS.ProcessEnv,
+  db: Awaited<ReturnType<typeof openRuntimeDatabase>>,
+) {
   await resolveParameterIdentityMode(db);
 
   const metrics = createMetricsRegistry({ serviceName: "wiseeff-log-worker" });
@@ -201,29 +229,82 @@ export async function createLogWorkerRuntimeFromEnv(raw: NodeJS.ProcessEnv = pro
     metrics
   });
 
-  return { ...runtime, metrics, observability };
+  let started: ReturnType<typeof runtime.start> | undefined;
+  let shutdown: Promise<void> | undefined;
+  const close = () => shutdown ??= (async () => {
+    let stop: Awaited<ReturnType<typeof runtime.start>> | undefined;
+    try { stop = await started; } catch { /* start reports its original refusal. */ }
+    let failed = false;
+    try { await stop?.(); } catch { failed = true; }
+    try { await db.close(); } catch { failed = true; }
+    if (failed) throw new Error("PCAT-RUNTIME-WORKER-SHUTDOWN-FAILED");
+  })();
+  return { metrics, observability, close, async start() {
+    if (started || shutdown) throw new Error("PCAT-RUNTIME-WORKER-START-FAILED");
+    started = runtime.start();
+    try { await started; return close; }
+    catch {
+      await close().catch(() => undefined);
+      throw new Error("PCAT-RUNTIME-WORKER-START-FAILED");
+    }
+  } };
+}
+
+/** Own the real listener and the admitted runtime together. No consumer starts
+ * before the private observability endpoint has bound successfully. */
+export async function startLogWorkerProcess(raw: NodeJS.ProcessEnv = process.env, signal?: AbortSignal) {
+  const runtime = await createLogWorkerRuntimeFromEnv(raw);
+  const observabilityServer = createLogWorkerObservabilityServer({ metrics: runtime.metrics });
+  let shutdown: Promise<void> | undefined;
+  const stop = () => shutdown ??= (async () => {
+    const results = await Promise.allSettled([runtime.close(), new Promise<void>((resolve, reject) => {
+      observabilityServer.close(error => error && (error as NodeJS.ErrnoException).code !== "ERR_SERVER_NOT_RUNNING" ? reject(error) : resolve());
+    })]);
+    if (results.some(result => result.status === "rejected")) throw new Error("PCAT-RUNTIME-WORKER-SHUTDOWN-FAILED");
+  })();
+  let failed = false;
+  observabilityServer.on("error", () => { failed = true; void stop().catch(() => undefined); });
+  try {
+    assertProcessInitializing(signal);
+    await new Promise<void>((resolve, reject) => {
+      const onError = () => reject(new Error("PCAT-RUNTIME-WORKER-START-FAILED"));
+      observabilityServer.once("error", onError);
+      observabilityServer.listen(runtime.observability.port, runtime.observability.host, () => {
+        observabilityServer.off("error", onError); resolve();
+      });
+    });
+    assertProcessInitializing(signal);
+    await runtime.start();
+    assertProcessInitializing(signal);
+    if (failed) throw new Error("PCAT-RUNTIME-WORKER-START-FAILED");
+    return { stop, observabilityServer, observability: runtime.observability };
+  } catch (error) {
+    if (error instanceof ProcessInitializationStopped) {
+      await stop();
+      throw error;
+    }
+    await stop().catch(() => undefined);
+    throw new Error("PCAT-RUNTIME-WORKER-START-FAILED");
+  }
 }
 
 if (import.meta.url === `file://${process.argv[1]?.replace(/\\/g, "/")}`) {
-  const runtime = await createLogWorkerRuntimeFromEnv();
-  const stop = runtime.start();
-  const observabilityServer = createLogWorkerObservabilityServer({ metrics: runtime.metrics });
-  observabilityServer.listen(runtime.observability.port, runtime.observability.host, () => {
-    console.log(
-      `WiseEff log worker observability listening on http://${runtime.observability.host}:${runtime.observability.port}`
-    );
-  });
-
-  let shuttingDown = false;
-  const shutdown = async () => {
-    if (shuttingDown) {
-      return;
-    }
-    shuttingDown = true;
-    await stop();
-    observabilityServer.close(() => process.exit(0));
-  };
-
-  process.on("SIGINT", () => void shutdown());
-  process.on("SIGTERM", () => void shutdown());
+  try {
+    let service: Awaited<ReturnType<typeof startLogWorkerProcess>> | undefined;
+    await runProcessWithSignals({
+      failureCode: "PCAT-RUNTIME-WORKER-SHUTDOWN-FAILED",
+      async initialize(signal, stop) {
+        service = await startLogWorkerProcess(process.env, signal);
+        console.log(`WiseEff log worker observability listening on http://${service.observability.host}:${service.observability.port}`);
+        service.observabilityServer.on("error", () => {
+          console.error("PCAT-RUNTIME-WORKER-START-FAILED"); process.exitCode = 1;
+          void stop().catch(() => { console.error("PCAT-RUNTIME-WORKER-SHUTDOWN-FAILED"); });
+        });
+      },
+      async shutdown() { await service?.stop(); },
+    });
+  } catch (error) {
+    console.error(error instanceof Error && /^PCAT-[A-Z0-9-]+$/.test(error.message) ? error.message : "PCAT-RUNTIME-WORKER-START-FAILED");
+    process.exitCode = 1;
+  }
 }

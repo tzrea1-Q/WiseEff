@@ -1,4 +1,4 @@
-import { mkdtempSync, readdirSync, readFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readdirSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -26,7 +26,9 @@ import type {
 import type { CutoverPorts, VerificationPorts } from "./actions";
 import { asPrepareVerificationCutover } from "./actions";
 import { openCatalogUpgradeController } from "./controller";
-import { journalBytes } from "./journal";
+import { journalBytes, openUpgradeJournal } from "./journal";
+import { bindingJournalPath, createBindingCutoverJournal } from "./bindingJournal";
+import { withHostOperationLock } from "./handoff";
 import { THREAT_MATRIX } from "./threatMatrix";
 
 const dir = path.dirname(fileURLToPath(import.meta.url));
@@ -202,6 +204,19 @@ const createHarness = (options?: {
 const journalPathFor = (runId: string): string =>
   path.join(mkdtempSync(path.join(tmpdir(), `s11-upg-${runId}-`)), "journal.json");
 
+it("does not invoke an owner through a general controller after an unsettled journal write", async () => {
+  const harness = createHarness();
+  const journalPath = journalPathFor("unsettled");
+  const opened = openCatalogUpgradeController({ journalPath, runId: "unsettled", cutover: harness.cutover, verification: harness.verification });
+  if (!opened.ok) throw new Error("fixture-controller-open-failed");
+  mkdirSync(`${journalPath}.write-lock`, { mode: 0o700 });
+  const before = journalBytes(journalPath);
+  const result = await opened.value.dispatch({ action: "plan", input: planInput() });
+  expect(result.ok).toBe(false);
+  expect(harness.calls).toEqual([]);
+  expect(journalBytes(journalPath)).toEqual(before);
+});
+
 describe("S11-UPG threat matrix", () => {
   it("freezes the seven R3 observations before production controller work", () => {
     expect(THREAT_MATRIX).toHaveLength(7);
@@ -225,6 +240,72 @@ describe("S11-UPG threat matrix", () => {
 });
 
 describe("S11-UPG controller", () => {
+  it.each(["pending", "unknown"] as const)("rejects cross-run %s before planning, verification or replay", async outcome => {
+    const operationRoot = mkdtempSync(path.join(tmpdir(), "upg-controller-admission-"));
+    const target = { systemIdentifier: "123456789", databaseOid: "16384" };
+    await withHostOperationLock(operationRoot, async operationLock => {
+      const completed = createHarness();
+      const journalPath = bindingJournalPath({ operationRoot, target, runId: "completed" });
+      let opened = openCatalogUpgradeController({ journalPath, runId: "completed", cutover: completed.cutover,
+        verification: completed.verification, operationLock });
+      if (!opened.ok) throw new Error("fixture-open-failed");
+      for (const command of [{ action: "plan", input: planInput() }, { action: "execute", input: executeInput() },
+        { action: "prepareVerification", input: prepareInput() }]) {
+        const result = await opened.value.dispatch(command);
+        if (!result.ok) throw new Error(`fixture-${command.action}: ${result.error.code}: ${result.error.detail}`);
+      }
+      opened = openCatalogUpgradeController({ journalPath, runId: "completed", cutover: completed.cutover,
+        verification: completed.verification, operationLock, bindingJournalScope: { operationRoot, target } });
+      if (!opened.ok) throw new Error("fixture-reopen-failed");
+      const idle = createHarness();
+      const idlePath = bindingJournalPath({ operationRoot, target, runId: "idle" });
+      const idleController = openCatalogUpgradeController({ journalPath: idlePath, runId: "idle", cutover: idle.cutover,
+        verification: idle.verification, operationLock, bindingJournalScope: { operationRoot, target } });
+      if (!idleController.ok) throw new Error("fixture-open-failed");
+      const other = openUpgradeJournal({ journalPath: bindingJournalPath({ operationRoot, target, runId: "uncertain" }), runId: "uncertain" });
+      if (!other.ok) throw new Error("fixture-open-failed");
+      const adapter = createBindingCutoverJournal({ operationRoot, target, journal: other.value, assertEffectAllowed: operationLock.assertHeld });
+      const pin = `sha256:${"a".repeat(64)}`;
+      const attempt = await adapter.begin({ target, runId: "cutover_uncertain", planDigest: pin, phase: "P9", inputDigest: pin });
+      if (outcome === "unknown") await adapter.finish({ attempt, outcome });
+      const before = journalBytes(journalPath); const beforeIdle = journalBytes(idlePath);
+      const calls = [...completed.calls];
+      for (const command of [{ action: "prepareVerification", input: prepareInput() },
+        { action: "prepareVerification", input: { ...prepareInput(), purpose: "public-release" } },
+        { action: "runVerification", input: { planDigest: "sha256:vplan" } }]) {
+        expect(await opened.value.dispatch(command)).toMatchObject({ ok: false, error: { code: "PCAT-UPG-UNKNOWN-OUTCOME" } });
+      }
+      expect(await idleController.value.dispatch({ action: "plan", input: planInput() }))
+        .toMatchObject({ ok: false, error: { code: "PCAT-UPG-UNKNOWN-OUTCOME" } });
+      expect(completed.calls).toEqual(calls); expect(idle.calls).toEqual([]);
+      expect(journalBytes(journalPath)).toEqual(before); expect(journalBytes(idlePath)).toEqual(beforeIdle);
+    });
+  });
+  it("does not reuse a prepared verification when another database pin is supplied", async () => {
+    const harness = createHarness();
+    const opened = openCatalogUpgradeController({ journalPath: journalPathFor("verification-input"), runId: "verification-input", cutover: harness.cutover, verification: harness.verification });
+    if (!opened.ok) throw new Error("fixture-open-failed");
+    await opened.value.dispatch({ action: "plan", input: planInput() });
+    await opened.value.dispatch({ action: "execute", input: executeInput() });
+    await opened.value.dispatch({ action: "prepareVerification", input: prepareInput() });
+    const input = prepareInput();
+    const result = await opened.value.dispatch({ action: "prepareVerification", input: { ...input, pins: { ...input.pins, database: { ...input.pins.database, targetIdentity: "different-database" } } } });
+    expect(result).toMatchObject({ ok: true, value: { replayed: false } });
+    expect(harness.calls.filter(call => call === "prepareVerification")).toHaveLength(2);
+  });
+  it("rechecks Cutover admission before returning a historical committed execute", async () => {
+    let invocations = 0;
+    const harness = createHarness({ execute: async () => ++invocations === 1 ? ok(completedSnapshot()) : {
+      ok: false, error: { code: "PCAT-ORC-RESUME-INVALIDATED", detail: "binding-unresolved-phase-attempt" },
+    } });
+    const opened = openCatalogUpgradeController({ journalPath: journalPathFor("replay-admission"), runId: "replay-admission", cutover: harness.cutover, verification: harness.verification });
+    if (!opened.ok) throw new Error("fixture-open-failed");
+    await opened.value.dispatch({ action: "plan", input: planInput() });
+    expect((await opened.value.dispatch({ action: "execute", input: executeInput() })).ok).toBe(true);
+    const replay = await opened.value.dispatch({ action: "execute", input: executeInput() });
+    expect(replay.ok).toBe(false);
+    expect(invocations).toBe(2);
+  });
   it("T1 legal plan then execute is idempotent and does not rewrite the journal", async () => {
     const harness = createHarness();
     const journalPath = journalPathFor("legal");
@@ -266,8 +347,10 @@ describe("S11-UPG controller", () => {
     if (!replayExecute.ok) return;
     expect(replayExecute.value.replayed).toBe(true);
     expect(journalBytes(journalPath).equals(committed)).toBe(true);
-    expect(harness.calls.filter((name) => name === "plan")).toHaveLength(1);
-    expect(harness.calls.filter((name) => name === "execute")).toHaveLength(1);
+    expect(harness.calls.filter((name) => name === "plan")).toHaveLength(2);
+    // Replay still invokes the existing Cutover admission/verification path;
+    // idempotence means no additional journal transition or domain mutation.
+    expect(harness.calls.filter((name) => name === "execute")).toHaveLength(2);
   });
 
   it("T2 refuses an illegal action and leaves journal bytes unchanged", async () => {

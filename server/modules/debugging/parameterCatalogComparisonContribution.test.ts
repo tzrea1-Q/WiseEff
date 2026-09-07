@@ -208,7 +208,10 @@ describe("provideDbgParameterCatalogComparisonContribution", () => {
           "unexplained-difference",
           "unqueryable/protected-reference-missing",
         ]).toContain(item.result);
-        expect(item.result).not.toBe("unexplained-difference");
+        // This fixture has no plan-declared mapping rule. Successful inventory
+        // capture does not authorize a difference or a passing release report.
+        expect(item.result).not.toBe("declared-expected-difference");
+        expect(item.expectedDifference).toBeNull();
         if (item.result === "unqueryable/protected-reference-missing") {
           expect(
             item.legacyObservation.status === "query-failure"

@@ -942,10 +942,15 @@ describe("log worker", () => {
       const claimCountWhileBlocked = calls.filter((call) => call.includes("update jobs set status = 'processing'")).length;
       expect(claimCountWhileBlocked).toBe(1);
 
-      stop();
+      let shutdownFinished = false;
+      const shutdown = Promise.resolve(stop()).then(() => { shutdownFinished = true; });
+      await Promise.resolve();
+      const stoppedBeforeJobCompleted = shutdownFinished;
       releaseParse();
       await Promise.resolve();
       await vi.advanceTimersByTimeAsync(50);
+      await shutdown;
+      expect(stoppedBeforeJobCompleted).toBe(false);
 
       const claimCountAfterCleanup = calls.filter((call) => call.includes("update jobs set status = 'processing'")).length;
       expect(claimCountAfterCleanup).toBe(1);

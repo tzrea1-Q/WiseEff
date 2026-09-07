@@ -188,6 +188,33 @@ wiseeff_build_network_authorize_build() {
   printf 'WARNING: TLS certificate verification is disabled for this image build only (%s).\n' "$operation" >&2
 }
 
+# Configuration preflight only: callers must still verify the actual candidate
+# image provenance and target release approval. Never accepts the emergency ACK.
+wiseeff_build_network_require_verified() {
+  [ "${WISEEFF_BUILD_TLS_POLICY:-verify}" = "verify" ] || {
+    wiseeff_build_network_error "BUILD-TRUST-INSECURE: this upgrade requires verified build transport."
+    return $?
+  }
+  case "${WISEEFF_NPM_REGISTRY:-https://registry.npmjs.org}" in
+    https://*) ;;
+    *)
+      wiseeff_build_network_error "BUILD-TRUST-REGISTRY: this upgrade requires an HTTPS npm registry."
+      return $?
+      ;;
+  esac
+  if [ "${WISEEFF_BUILD_NETWORK_CA_STATUS:-not configured}" = "configured" ]; then
+    if grep -q -- 'PRIVATE KEY' "$WISEEFF_BUILD_CA_CERT_FILE"; then
+      wiseeff_build_network_error "BUILD-TRUST-CA: trust material must not contain a private key."
+      return $?
+    fi
+    if ! command -v openssl >/dev/null 2>&1 ||
+      ! openssl crl2pkcs7 -nocrl -certfile "$WISEEFF_BUILD_CA_CERT_FILE" -out /dev/null 2>/dev/null; then
+      wiseeff_build_network_error "BUILD-TRUST-CA: certificate parsing failed or openssl is unavailable."
+      return $?
+    fi
+  fi
+}
+
 wiseeff_build_network_prepare() {
   local compose_dir="$1"
   local config_file="${2:-${WISEEFF_BUILD_NETWORK_FILE:-${compose_dir}/.build-network.env}}"

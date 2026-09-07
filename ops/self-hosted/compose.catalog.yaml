@@ -1,0 +1,71 @@
+# Explicit controlled Catalog lane. Compose 2.24.4+ is required for !override.
+# Pass BOTH files with an explicit source project and source volume bindings.
+# This file separates credentials; it does not authorize a migration or release.
+services:
+  postgres:
+    env_file: !reset []
+    profiles: ["catalog-infrastructure"]
+  redis:
+    profiles: ["catalog-infrastructure"]
+  minio:
+    profiles: ["catalog-infrastructure"]
+  minio-init:
+    profiles: ["catalog-infrastructure"]
+  api:
+    image: ${WISEEFF_CATALOG_CANDIDATE_IMAGE:?set the observed candidate image ID}
+    build: !reset null
+    pull_policy: never
+    profiles: ["catalog-runtime"]
+    depends_on: !reset {}
+    env_file: !override
+      - ${WISEEFF_API_ENV_FILE:?set a private API-only environment file}
+    environment:
+      NODE_ENV: production
+    command: ["npx", "tsx", "server/index.ts"]
+  worker:
+    image: ${WISEEFF_CATALOG_CANDIDATE_IMAGE:?set the observed candidate image ID}
+    build: !reset null
+    pull_policy: never
+    profiles: ["catalog-runtime"]
+    depends_on: !reset {}
+    env_file: !override
+      - ${WISEEFF_WORKER_ENV_FILE:?set a private worker-only environment file}
+    environment:
+      NODE_ENV: production
+  web:
+    image: ${WISEEFF_CATALOG_CANDIDATE_IMAGE:?set the observed candidate image ID}
+    build: !reset null
+    pull_policy: never
+    profiles: ["catalog-runtime"]
+    depends_on: !reset {}
+    env_file: !reset []
+  proxy:
+    profiles: ["catalog-public"]
+    depends_on: !reset {}
+    env_file: !reset []
+    environment:
+      WISEEFF_SITE_HOST: ${WISEEFF_SITE_HOST:-}
+      WISEEFF_TLS_EMAIL: ${WISEEFF_TLS_EMAIL:-}
+  catalog-management:
+    image: ${WISEEFF_CATALOG_CANDIDATE_IMAGE:?set the observed candidate image ID}
+    pull_policy: never
+    profiles: ["catalog-management"]
+    restart: "no"
+    env_file:
+      - ${WISEEFF_MANAGEMENT_ENV_FILE:?set a private management-only environment file}
+    command: ["npm", "run", "db:migrate"]
+
+volumes:
+  wiseeff-postgres-data:
+    external: true
+    name: ${WISEEFF_CATALOG_POSTGRES_VOLUME:?set the observed existing PostgreSQL volume}
+  wiseeff-minio-data:
+    external: true
+    name: ${WISEEFF_CATALOG_MINIO_VOLUME:?set the observed existing MinIO volume}
+  wiseeff-redis-data:
+    external: true
+    name: ${WISEEFF_CATALOG_REDIS_VOLUME:?set the observed existing Redis volume}
+networks:
+  default:
+    external: true
+    name: ${WISEEFF_CATALOG_NETWORK:?set the observed existing network}

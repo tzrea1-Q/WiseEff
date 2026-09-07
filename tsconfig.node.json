@@ -15,6 +15,6 @@
     "strict": true,
     "noEmit": true
   },
-  "include": ["vite.config.ts", "vitest.server.config.ts", "src/vite-env.d.ts", "server/**/*.ts", "scripts/**/*.ts"],
+  "include": ["vite.config.ts", "vitest.server.config.ts", "src/vite-env.d.ts", "server/**/*.ts", "scripts/**/*.ts", "ops/self-hosted/scripts/parameter-catalog-upgrade/handoff.ts", "ops/self-hosted/scripts/parameter-catalog-upgrade/managementPreparation.ts", "ops/self-hosted/scripts/parameter-catalog-upgrade/deploymentAuthority.ts", "ops/self-hosted/scripts/parameter-catalog-upgrade/reportApprovalTarget.ts", "ops/self-hosted/scripts/parameter-catalog-upgrade/recoveryApproval.ts", "ops/self-hosted/scripts/parameter-catalog-upgrade/legacyWriterRetirement.ts", "ops/self-hosted/storage/controlledRecovery.docker.ts"],
   "exclude": ["**/*.test.ts"]
 }

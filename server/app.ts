@@ -43,13 +43,34 @@ import type { TrustedRefusalAuditSink } from "./modules/audit/trustedRefusalSink
 import { registerProductFeedbackRoutes } from "./modules/product-feedback/routes";
 import { registerUserRoutes } from "./modules/users/routes";
 import { registerParameterCatalogApi } from "./modules/parameter-catalog-api/productionWire";
+import { legacyWriteRouteManifest } from "./modules/parameter-catalog-api/legacy";
 import { createHttpServer } from "./shared/http/server";
-import { createRouter, type RouteRequest } from "./shared/http/router";
+import { createRouter, type HttpMethod, type RouteRequest, type WiseEffRouter } from "./shared/http/router";
 import type { Database } from "./shared/database/client";
 import type { ServerEnv } from "./config/env";
 import type { JsonWebKey } from "node:crypto";
 
 type LocalAuthService = ReturnType<typeof createLocalAuthService>;
+
+/** The candidate already owns these exact retired surfaces through #677's 410
+ * adapter. Do not also register their older implementation: equal routes use
+ * first-registration precedence. This filter grants no startup permission and
+ * leaves all non-retired routes, including bounded reads, unchanged. */
+function withoutRetiredCatalogRegistrations(router: WiseEffRouter): WiseEffRouter {
+  const retired = new Set(legacyWriteRouteManifest.map(route => `${route.method} ${route.path}`));
+  const register = (method: HttpMethod, add: WiseEffRouter["get"]): WiseEffRouter["get"] =>
+    (pattern, handler) => {
+      if (!retired.has(`${method} ${pattern}`)) add(pattern, handler);
+    };
+  return {
+    ...router,
+    get: register("GET", router.get),
+    post: register("POST", router.post),
+    put: register("PUT", router.put),
+    patch: register("PATCH", router.patch),
+    delete: register("DELETE", router.delete),
+  };
+}
 
 async function getCurrentAuthContext(options: { db?: Database }, request: RouteRequest) {
   const userId = request.headers["x-wiseeff-user"]?.toString() ?? developmentAuthContext.user.id;
@@ -81,6 +102,8 @@ type DeviceBridgeEnv = Pick<
 
 export type WiseEffServerOptions = {
   db?: Database;
+  /** Separate login used only by authenticated Catalog governance domain commands. */
+  catalogGovernanceDb?: Database;
   /** Optional server-owned DTS refusal writer when the supplied DB is not the pool root. */
   dtsReloadRefusalAuditSink?: TrustedRefusalAuditSink;
   objectStore?: ObjectStore;
@@ -108,6 +131,7 @@ export type WiseEffServerOptions = {
  */
 export function buildWiseEffRouter(options: WiseEffServerOptions = {}) {
   const router = createRouter();
+  const legacyParameterRouter = withoutRetiredCatalogRegistrations(router);
   const metrics = options.metrics ?? createMetricsRegistry({ serviceName: "wiseeff-api" });
   const tracing = options.tracing ?? defaultTracingBoundary;
   const localAuthService = options.localAuthService ?? (options.db ? createEnvLocalAuthService(options.db, options.env) : undefined);
@@ -157,26 +181,26 @@ export function buildWiseEffRouter(options: WiseEffServerOptions = {}) {
     db: options.db,
     getCurrentAuthContext: authResolver
   });
-  registerParameterRoutes(router, {
+  registerParameterRoutes(legacyParameterRouter, {
     db: options.db,
     objectStore: options.objectStore,
     getCurrentAuthContext: authResolver
   });
-  registerParameterFileRoutes(router, {
+  registerParameterFileRoutes(legacyParameterRouter, {
     db: options.db,
     objectStore: options.objectStore,
     getCurrentAuthContext: authResolver
   });
-  registerParameterSpecRoutes(router, {
+  registerParameterSpecRoutes(legacyParameterRouter, {
     db: options.db,
     objectStore: options.objectStore,
     getCurrentAuthContext: authResolver
   });
-  registerParameterModuleRoutes(router, {
+  registerParameterModuleRoutes(legacyParameterRouter, {
     db: options.db,
     getCurrentAuthContext: authResolver
   });
-  registerParameterTopologyRoutes(router, {
+  registerParameterTopologyRoutes(legacyParameterRouter, {
     db: options.db,
     objectStore: options.objectStore,
     getCurrentAuthContext: authResolver
@@ -246,6 +270,8 @@ export function buildWiseEffRouter(options: WiseEffServerOptions = {}) {
   });
   registerParameterCatalogApi(router, {
     db: options.db,
+    governanceDb: options.catalogGovernanceDb,
+    requireSeparateGovernancePool: options.env?.NODE_ENV === "production",
     resolveAuth: authResolver
   });
 
@@ -457,6 +483,7 @@ function attachDeviceBridgeServer(
 export function createWiseEffServerFromEnv(
   options: {
     db?: Database;
+    catalogGovernanceDb?: Database;
     objectStore?: ObjectStore;
     objectStoreHealth?: ObjectStoreHealthCheck;
     logAnalysisQueue?: LogAnalysisQueue;

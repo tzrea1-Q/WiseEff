@@ -194,22 +194,26 @@ export async function deliverNotificationPayload(
 export function startNotificationOutboxWorkerLoop(options: ProcessNotificationOutboxOptions, intervalMs = 1000) {
   let stopped = false;
   let running = false;
+  let activeRun: Promise<void> | undefined;
 
   const tick = () => {
     if (stopped || running) return;
     running = true;
-    void processNextNotificationOutboxEntry(options)
+    activeRun = processNextNotificationOutboxEntry(options)
+      .then(() => undefined)
       .catch(() => undefined)
       .finally(() => {
         running = false;
+        activeRun = undefined;
       });
   };
 
   const intervalId = setInterval(tick, intervalMs);
   tick();
 
-  return () => {
+  return async () => {
     stopped = true;
     clearInterval(intervalId);
+    await activeRun;
   };
 }

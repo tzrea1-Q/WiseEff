@@ -1,0 +1,285 @@
+import { readFileSync } from "node:fs";
+import { spawnSync } from "node:child_process";
+import { expect, it } from "vitest";
+import * as componentRunner from "./run-upgrade-component-tests";
+
+const workflow = readFileSync(new URL("../.github/workflows/ci.yml", import.meta.url), "utf8");
+
+it("requires actual legacy SQL privilege effects in the owned PG16 job", () => {
+  const file = "server/modules/catalog-cutover/retirement/legacySqlPrivilegeFence.integration.test.ts";
+  const configPath = "server/modules/catalog-cutover/retirement/vitest.legacy-sql-privilege.integration.config.ts";
+  expect(componentRunner.componentTestCommands("legacy-sql-privileges-pg16")[0].slice(1)).toEqual([
+    "run", "--config", configPath, file,
+  ]);
+  const config = readFileSync(new URL(`../${configPath}`, import.meta.url), "utf8");
+  expect(config).toContain("assertOwnedUpgradeTestTarget();");
+  expect(config).toContain("passWithNoTests: false");
+  expect(config).toContain(`"${file}"`);
+  expect(config).toContain("fileParallelism: false");
+  expect(config).not.toContain("testTimeout:");
+  const server = readFileSync(new URL("../vitest.server.config.ts", import.meta.url), "utf8");
+  expect(server.slice(server.indexOf("exclude:"), server.indexOf("setupFiles:"))).toContain(`"${file}"`);
+  const job = workflow.split("\n  upgrade-components:\n")[1]?.split("\n  acceptance-quality:")[0];
+  expect(job).toContain("--suite legacy-sql-privileges-pg16 --github-hosted");
+  expect(job).not.toContain("continue-on-error: true");
+});
+
+it("requires actual runtime role source LOGIN proofs in its owned PG16 lane", () => {
+  const file = "ops/self-hosted/scripts/parameter-catalog-upgrade/runtimeRoleSource.integration.test.ts";
+  expect(componentRunner.componentTestCommands("runtime-role-source-pg16")[0].slice(1)).toEqual([
+    "run", "--config", "vitest.runtime-role-source.config.ts", file,
+  ]);
+  const config = readFileSync(new URL("../vitest.runtime-role-source.config.ts", import.meta.url), "utf8");
+  expect(config).toContain("assertOwnedUpgradeTestTarget();");
+  expect(config).toContain("passWithNoTests: false");
+  expect(config).toContain(`"${file}"`);
+  const scripts = readFileSync(new URL("../vitest.scripts.config.ts", import.meta.url), "utf8");
+  expect(scripts.slice(scripts.indexOf("exclude:"))).toContain(`"${file}"`);
+  expect(workflow).toContain("--suite runtime-role-source-pg16 --github-hosted");
+});
+
+it("requires the four actual controlled recovery adapter scenarios in an owned job", () => {
+  const file = "ops/self-hosted/storage/controlledRecovery.docker.integration.test.ts";
+  expect(componentRunner.componentTestCommands("controlled-recovery")[0].slice(1)).toEqual([
+    "run", "--config", "vitest.controlled-recovery.config.ts", file,
+  ]);
+  const source = readFileSync(new URL(`../${file}`, import.meta.url), "utf8");
+  expect(source).not.toContain("describe.skipIf");
+  expect(source).toContain("assertOwnedUpgradeTestTarget();");
+  expect(readFileSync(new URL("../vitest.scripts.config.ts", import.meta.url), "utf8")).toContain(`"${file}"`);
+  const config = readFileSync(new URL("../vitest.controlled-recovery.config.ts", import.meta.url), "utf8");
+  expect(config).toContain(`"${file}"`);
+  expect(config).toContain("assertOwnedUpgradeTestTarget();");
+  expect(config).toContain("passWithNoTests: false");
+  expect(config).toContain("fileParallelism: false");
+  expect(config).not.toContain("testTimeout:");
+  const job = workflow.split("\n  upgrade-components:\n")[1]?.split("\n  acceptance-quality:")[0];
+  expect(job).toContain("--suite controlled-recovery --github-hosted");
+  expect(job).not.toContain("continue-on-error: true");
+  expect(componentRunner.componentCleanupEvidence("controlled-recovery", 1, true)).toEqual({
+    runnerResourcesCleanupVerified: true, cleanupVerified: false, nestedCleanupOutcome: "unknown",
+  });
+});
+
+it("requires the complete V13 effective-writer regression in its owned PG16 lane", () => {
+  const file = "server/modules/release-verification/gates/postgres/writerReachability.integration.test.ts";
+  expect(componentRunner.componentTestCommands("writer-reachability-pg16")[0].slice(1)).toEqual([
+    "run", "--config", "vitest.writer-reachability.config.ts", file,
+  ]);
+  const config = readFileSync(new URL("../vitest.writer-reachability.config.ts", import.meta.url), "utf8");
+  expect(config).toContain("assertOwnedUpgradeTestTarget();");
+  expect(config).toContain("passWithNoTests: false");
+  expect(config).toContain(`"${file}"`);
+  const server = readFileSync(new URL("../vitest.server.config.ts", import.meta.url), "utf8");
+  expect(server.slice(server.indexOf("exclude:"), server.indexOf("setupFiles:"))).toContain(`"${file}"`);
+  expect(workflow).toContain("--suite writer-reachability-pg16 --github-hosted");
+});
+
+it("never reports nested recovery cleanup as verified after child failure or forced termination", () => {
+  expect(componentRunner.componentCleanupEvidence("recovery-three-store", 1, true)).toEqual({
+    runnerResourcesCleanupVerified: true, cleanupVerified: false, nestedCleanupOutcome: "unknown",
+  });
+  expect(componentRunner.componentCleanupEvidence("recovery-three-store", 0, true).cleanupVerified).toBe(true);
+  expect(componentRunner.componentCleanupEvidence("recovery-three-store", 0, false).cleanupVerified).toBe(false);
+  expect(componentRunner.componentCleanupEvidence("reader-pg16", 1, true)).toEqual({
+    runnerResourcesCleanupVerified: true, cleanupVerified: true, nestedCleanupOutcome: "not-applicable",
+  });
+});
+
+it("requires all real recovery package and queue regressions in the owned job without opt-in skips", () => {
+  const file = "scripts/rehearse-upgrade-recovery.test.ts";
+  expect(componentRunner.componentTestCommands("recovery-three-store")[0].slice(1)).toEqual([
+    "run", "--config", "vitest.upgrade-recovery.config.ts", file,
+  ]);
+  expect(readFileSync(new URL("../vitest.scripts.config.ts", import.meta.url), "utf8")).toContain(`"${file}"`);
+  const source = readFileSync(new URL(`../${file}`, import.meta.url), "utf8");
+  expect(source).not.toContain("describe.skipIf");
+  expect(source).toContain("assertOwnedUpgradeTestTarget();");
+  expect(workflow).toContain("--suite recovery-three-store --github-hosted");
+  const config = readFileSync(new URL("../vitest.upgrade-recovery.config.ts", import.meta.url), "utf8");
+  expect(config).toContain("passWithNoTests: false");
+  expect(config).toContain(`"${file}"`);
+});
+
+it("requires real runtime login and process regressions in an owned PG16 lane without opt-in skips", () => {
+  const file = "server/shared/database/runtimeConnection.integration.test.ts";
+  expect(componentRunner.componentTestCommands("runtime-identity-pg16")[0].slice(1)).toEqual([
+    "run", "--config", "vitest.upgrade-cutover.config.ts", file,
+  ]);
+  expect(readFileSync(new URL("../vitest.upgrade-cutover.config.ts", import.meta.url), "utf8")).toContain(`"${file}"`);
+  expect(readFileSync(new URL("../vitest.server.config.ts", import.meta.url), "utf8")).toContain(`"${file}"`);
+  const source = readFileSync(new URL(`../${file}`, import.meta.url), "utf8");
+  expect(source).not.toContain("describe.skipIf");
+  expect(source).not.toContain("UPG_RUNTIME_DOCKER_DAEMON_ID");
+  expect(source).toContain("assertOwnedUpgradeTestTarget();");
+  expect(workflow).toContain("--suite runtime-identity-pg16 --github-hosted");
+});
+
+it("requires real restricted Catalog and persisted Review projections in their owned PG16 lane", () => {
+  const files = [
+    "server/modules/parameter-catalog-api/cghReadProjection.integration.test.ts",
+    "server/modules/parameter-governance/review/persistedQuery.integration.test.ts",
+  ];
+  const command = componentRunner.componentTestCommands("read-projections-pg16")[0];
+  expect(command.slice(1)).toEqual(["run", "--config", "vitest.upgrade-cutover.config.ts", ...files]);
+  const config = readFileSync(new URL("../vitest.upgrade-cutover.config.ts", import.meta.url), "utf8");
+  const server = readFileSync(new URL("../vitest.server.config.ts", import.meta.url), "utf8");
+  for (const file of files) {
+    expect(config).toContain(`"${file}"`);
+    expect(server).toContain(`"${file}"`);
+  }
+  expect(config).toContain("assertOwnedUpgradeTestTarget();");
+  expect(config).toContain("maxWorkers: 1");
+  expect(config).not.toContain("passWithNoTests: true");
+  expect(workflow).toContain("--suite read-projections-pg16 --github-hosted");
+});
+
+it("focuses the real comparison fixture without removing it from ordinary backend coverage", () => {
+  const file = "server/modules/release-verification/comparison/aggregateComparisonCorpus.integration.test.ts";
+  expect(componentRunner.componentTestCommands("comparison-pgvector")[0].slice(1)).toEqual([
+    "run", "--config", "vitest.upgrade-comparison.config.ts", file,
+  ]);
+  const config = readFileSync(new URL("../vitest.upgrade-comparison.config.ts", import.meta.url), "utf8");
+  expect(config).toContain("assertOwnedUpgradeTestTarget();");
+  expect(config).toContain("passWithNoTests: false");
+  expect(config).not.toContain("testTimeout:");
+  expect(config).not.toContain("hookTimeout:");
+  expect(readFileSync(new URL("../vitest.server.config.ts", import.meta.url), "utf8")).not.toContain(`"${file}"`);
+  const run = spawnSync(process.execPath, ["node_modules/vitest/vitest.mjs", "list", "--config", "vitest.upgrade-comparison.config.ts"],
+    { env: { PATH: process.env.PATH, HOME: process.env.HOME }, encoding: "utf8", timeout: 10000 });
+  expect(run.error).toBeUndefined();
+  expect(run.status).not.toBe(0);
+  expect(run.stderr + run.stdout).toContain("upgrade-tests-require-explicit-owned-postgres-receipt");
+});
+
+it("keeps cluster-wide structure observations exclusively in the mandatory owned Binding lane", () => {
+  const file = "server/modules/catalog-cutover/managementStructure.test.ts";
+  const server = readFileSync(new URL("../vitest.server.config.ts", import.meta.url), "utf8");
+  expect(server).toContain(`"${file}"`);
+  expect(componentRunner.componentTestCommands("bindings-pg16")[0]).toContain(file);
+  const config = readFileSync(new URL("../vitest.upgrade-cutover.config.ts", import.meta.url), "utf8");
+  expect(config).toContain("assertOwnedUpgradeTestTarget();");
+  expect(config).toContain("maxWorkers: 1");
+  expect(workflow).toContain("--suite bindings-pg16 --github-hosted");
+});
+
+it("isolates bootstrap credential mutation in its own mandatory cluster and exact collection", () => {
+  const file = "server/modules/catalog-cutover/retirement/bootstrapCredentialFence.integration.test.ts";
+  const command = componentRunner.componentTestCommands("bootstrap-credential-pg16");
+  expect(command).toHaveLength(1);
+  expect(command[0].slice(1)).toEqual(["run", "--config", "vitest.upgrade-bootstrap-credential.config.ts", file]);
+  expect(componentRunner.componentTestCommands("retirement-existing-pg16").flat()).not.toContain(file);
+  const config = readFileSync(new URL("../vitest.upgrade-bootstrap-credential.config.ts", import.meta.url), "utf8");
+  expect(config).toContain("assertOwnedUpgradeTestTarget();");
+  expect(config).toContain(`include: ["${file}"]`);
+  expect(config).toContain("passWithNoTests: false");
+  expect(config).not.toContain("testTimeout:");
+  expect(config).not.toContain("hookTimeout:");
+  expect(readFileSync(new URL("../vitest.server.config.ts", import.meta.url), "utf8")).toContain(`"${file}"`);
+  const job = workflow.split("\n  upgrade-components:\n")[1]?.split("\n  acceptance-quality:")[0];
+  expect(job).toContain("--suite bootstrap-credential-pg16 --github-hosted");
+  expect(job).not.toContain("continue-on-error: true");
+});
+
+it("refuses bootstrap collection without its parent's ownership receipt instead of using an ambient database", () => {
+  const run = spawnSync(process.execPath, ["node_modules/vitest/vitest.mjs", "list", "--config", "vitest.upgrade-bootstrap-credential.config.ts"],
+    { env: { PATH: process.env.PATH, HOME: process.env.HOME }, encoding: "utf8", timeout: 10000 });
+  expect(run.error).toBeUndefined();
+  expect(run.status).not.toBe(0);
+  expect(run.stderr + run.stdout).toContain("upgrade-tests-require-explicit-owned-postgres-receipt");
+});
+
+it("refuses controlled recovery collection without the owned parent receipt", () => {
+  const run = spawnSync(process.execPath, ["node_modules/vitest/vitest.mjs", "list", "--config", "vitest.controlled-recovery.config.ts"],
+    { env: { PATH: process.env.PATH, HOME: process.env.HOME }, encoding: "utf8", timeout: 10000 });
+  expect(run.error).toBeUndefined();
+  expect(run.status).not.toBe(0);
+  expect(run.stderr + run.stdout).toContain("upgrade-tests-require-explicit-owned-postgres-receipt");
+});
+
+it("runs the actual docs-check package command in the owned pgvector lane, separately from generation", () => {
+  expect(componentRunner.componentTestCommands("docs-check")).toEqual([["run", "docs:check", "--", "--require-database"]]);
+  expect(componentRunner.componentTestExecutable("docs-check")).toBe("npm");
+  expect(componentRunner.componentTestExecutable("schema-doc")).toBe(process.execPath);
+  expect(componentRunner.componentTestCommands("schema-doc")[0].slice(0, 2)).toEqual(["--import", "tsx"]);
+  expect(componentRunner.componentTestCommands("schema-doc")[0][2]).toMatch(/scripts\/generate-db-schema-doc\.ts$/);
+  expect(() => componentRunner.componentTestExecutable("__proto__")).toThrow("unknown-upgrade-component-suite");
+  const runner = readFileSync(new URL("./run-upgrade-component-tests.ts", import.meta.url), "utf8");
+  expect(runner).toContain('"docs-check": { image: "pgvector/pgvector:pg16", files: [], config: "", command: "docs-check" }');
+  expect(runner).toContain("spawn(componentTestExecutable(args[3]), command");
+});
+
+it("runs all four frozen source-lock cases as a mandatory serial stage in ordinary, owned and Hosted scripts", () => {
+  const pkg = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8"));
+  expect(pkg.scripts["test:scripts"]).toBe("tsx scripts/check-workspace-links.ts && npm run test:scripts:source-lock && vitest run --config vitest.scripts.config.ts");
+  expect(pkg.scripts["test:scripts:source-lock"]).toBe("vitest run --config vitest.scripts-source-lock.config.ts");
+  const frozen = "scripts/wayfinder/parameter-catalog-rehearsal-source-lock.test.ts";
+  const ordinary = readFileSync(new URL("../vitest.scripts.config.ts", import.meta.url), "utf8");
+  expect(ordinary).toContain(`"${frozen}"`);
+  const serial = readFileSync(new URL("../vitest.scripts-source-lock.config.ts", import.meta.url), "utf8");
+  expect(serial).toContain(`include: ["${frozen}"]`);
+  expect(serial).toContain("passWithNoTests: false");
+  expect(serial).toContain("testTimeout: 60_000");
+  expect(serial).toContain("fileParallelism: false");
+  expect(serial).toContain("maxWorkers: 1");
+  const commands = componentRunner.componentTestCommands("scripts-pgvector");
+  expect(commands.map(command => command.slice(1))).toEqual([
+    ["run", "--config", "vitest.scripts-source-lock.config.ts"],
+    ["run", "--config", "vitest.scripts.config.ts"],
+  ]);
+  expect(componentRunner.componentTestCommands("reader-pg16")).toHaveLength(1);
+  expect(() => componentRunner.componentTestCommands("not-a-suite")).toThrow("unknown-upgrade-component-suite");
+  expect(workflow).toContain("run: npm run test:scripts");
+  expect(workflow.split("  required:\n")[1]).toContain("needs.build-and-test.result");
+});
+
+it.each(["upgrade-components", "build-and-test"].flatMap(job => ["skipped", "failure", "cancelled", "success"].map(result => ({ job, result }))))("the actual merge-bar program requires $job when L1 runs: $result", ({ job, result }) => {
+  const source = workflow.split("  required:\n")[1]?.match(/python3 - <<'PY'\n([\s\S]*?)\n\s+PY/)?.[1];
+  expect(source).toBeDefined();
+  const code = source!.split("\n").map(line => line.slice(10)).join("\n")
+    .replaceAll("${{ needs.detect.outputs.run_l1 }}", "true")
+    .replaceAll(`\${{ needs.${job}.result }}`, result)
+    .replace(/\$\{\{ needs\.[a-z-]+\.result \}\}/g, "success");
+  const executed = spawnSync("python3", ["-c", code], { encoding: "utf8" });
+  expect(executed.error).toBeUndefined();
+  expect(executed.status, executed.stderr + executed.stdout).toBe(result === "success" ? 0 : 1);
+});
+
+it("routes the cluster-wide reader mutation test to the mandatory independently owned CI lane", () => {
+  const job = workflow.split("\n  upgrade-components:\n")[1]?.split("\n  acceptance-quality:")[0];
+  expect(job).toBeDefined();
+  expect(job).toContain("runs-on: ubuntu-latest");
+  expect(job).toContain("needs.detect.outputs.run_l1 == 'true'");
+  expect(job).toContain("id-token: write");
+  expect(job).toContain("--suite reader-pg16 --github-hosted");
+  expect(job).toContain("--suite report-pg16 --github-hosted");
+  expect(job).not.toContain("--suite activation-pg16"); // Unsealed P12 contract is a separate Scratch branch.
+  expect(job).toContain("--suite authority-pg16 --github-hosted");
+  expect(job).toContain("--suite bindings-pg16 --github-hosted");
+  expect(job).toContain("--suite log-redis --github-hosted");
+  expect(job).toContain("--suite activation-existing-pg16 --github-hosted");
+  expect(job).toContain("--suite retirement-existing-pg16 --github-hosted");
+  expect(job).not.toContain("continue-on-error: true");
+  expect(workflow.split("  required:\n")[1]).toContain("- upgrade-components");
+  const server = readFileSync(new URL("../vitest.server.config.ts", import.meta.url), "utf8");
+  const redisTest = "server/modules/logs/logAnalysisQueueRuntime.redis.integration.test.ts";
+  expect(server).toContain(`"${redisTest}"`);
+  expect(server).toContain('"server/modules/catalog-cutover/activation/activation.integration.test.ts"');
+  expect(server).toContain('"server/modules/catalog-cutover/retirement/loginFence.integration.test.ts"');
+  const redisConfig = readFileSync(new URL("../vitest.upgrade-redis.config.ts", import.meta.url), "utf8");
+  expect(redisConfig).toContain(`include: ["${redisTest}"]`);
+  expect(redisConfig).toContain("owned-redis-runner-required");
+  expect(server).toContain('"server/modules/catalog-kernel/security/catalogReader.integration.test.ts"');
+  expect(server).toContain('"server/modules/catalog-cutover/runtimeState.test.ts"');
+  const runner = readFileSync(new URL("./run-upgrade-component-tests.ts", import.meta.url), "utf8");
+  expect(runner).toContain(`"log-redis": { image: "redis:7-alpine", files: ["${redisTest}"], config: "vitest.upgrade-redis.config.ts" }`);
+  expect(runner.split("const bindingFiles = ")[1]?.split(";\n")[0])
+    .toContain('"server/modules/catalog-cutover/runtimeState.test.ts"');
+  const scripts = readFileSync(new URL("../vitest.scripts.config.ts", import.meta.url), "utf8");
+  expect(scripts).toContain('"ops/self-hosted/scripts/parameter-catalog-upgrade/deploymentAuthority.integration.test.ts"');
+  expect(scripts).toContain('"scripts/retirement-endpoint-supervision.docker.test.ts"');
+  const retirement = readFileSync(new URL("../vitest.upgrade-retirement.config.ts", import.meta.url), "utf8");
+  expect(retirement).toContain("owned-retirement-runner-required");
+  expect(retirement).toContain("passWithNoTests: false");
+  for (const file of componentRunner.componentTestCommands("retirement-existing-pg16")[0].slice(-2)) expect(retirement).toContain(`"${file}"`);
+});

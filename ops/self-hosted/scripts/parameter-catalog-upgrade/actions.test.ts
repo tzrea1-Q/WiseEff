@@ -19,6 +19,12 @@ const cutoverPlan = (): CutoverPlan => ({
 });
 
 describe("S11-UPG action guards", () => {
+  it("handles cyclic server-owned pool objects without hiding forbidden input keys", () => {
+    const pool: Record<string, unknown> = {};
+    pool.self = pool;
+    expect(inspectActionGuards("execute", { pool })).toBeNull();
+    expect(inspectActionGuards("execute", { pool, nested: { guessedOutcome: true } })?.code).toBe("PCAT-UPG-UNKNOWN-OUTCOME");
+  });
   it("T4 refuses caller gate selection and waivers before any verification port", () => {
     const withGates = inspectActionGuards("prepareVerification", {
       gates: ["V01"],

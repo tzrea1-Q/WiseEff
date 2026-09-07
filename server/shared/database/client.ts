@@ -46,6 +46,76 @@ type DatabaseOptions = {
   tracing?: Pick<TracingBoundary, "withSpan">;
 };
 
+type PostgresDatabaseOptions = DatabaseOptions & {
+  /** Server-owned observation of this actual lease, before caller SQL/BEGIN.
+   * Must finish its observation and release any probe locks. It owns no caller
+   * transaction and grants no startup/release permission by itself. */
+  verifyCheckout?: (session: Queryable) => Promise<void>;
+};
+type CheckoutCallback = (error: Error | undefined, client: pg.PoolClient | undefined, release: pg.PoolClient["release"]) => void;
+
+/** Kernel deliberately obtains the real pool and owns its own transactions.
+ * Verify at the pool checkout seam, including pg's callback-based query path,
+ * rather than only wrapping RootDatabase.transaction(). */
+class VerifiedCheckoutPool extends pg.Pool {
+  constructor(connectionString: string, private readonly verify: (session: Queryable) => Promise<void>) {
+    super({ connectionString });
+  }
+
+  override connect(): Promise<pg.PoolClient>;
+  override connect(callback: CheckoutCallback): void;
+  override connect(callback?: CheckoutCallback): Promise<pg.PoolClient> | void {
+    let resolve!: (client: pg.PoolClient) => void;
+    let reject!: (error: Error) => void;
+    const result = callback ? undefined : new Promise<pg.PoolClient>((res, rej) => { resolve = res; reject = rej; });
+    const fail = (error: unknown) => {
+      // pg callbacks distinguish failure by truthiness. Never pass a falsy throw.
+      const refusal = error instanceof Error ? error : new Error("PCAT-DATABASE-CHECKOUT-VERIFICATION-FAILED");
+      if (callback) callback(refusal, undefined, () => undefined);
+      else reject(refusal);
+    };
+    // Install synchronously inside pg's actual acquisition callback, before the
+    // driver can emit another event. A Promise.then here leaves a listener gap.
+    super.connect((acquisitionError, client) => {
+      if (acquisitionError) { fail(acquisitionError); return; }
+      if (!client) { fail(new Error("PCAT-DATABASE-CHECKOUT-VERIFICATION-FAILED")); return; }
+      // pg-pool removed its idle error listener when it leased this client.
+      // The caller cannot install its listener until observation finishes.
+      let connectionFailure: Error | undefined;
+      let rejectConnection!: (error: Error) => void;
+      const disconnected = new Promise<never>((_, reject) => { rejectConnection = reject; });
+      const onError = () => {
+        connectionFailure ??= new Error("PCAT-DATABASE-CHECKOUT-CONNECTION-FAILED");
+        rejectConnection(connectionFailure);
+      };
+      client.on("error", onError);
+      const verification = Promise.race([disconnected, Promise.resolve().then(() => this.verify({ query: async <Row,>(text: string, values?: unknown[]) => {
+          if (connectionFailure) throw connectionFailure;
+          const result = await client.query(text, values);
+          return { rows: result.rows as Row[], rowCount: result.rowCount };
+        } }))]);
+      const refuseLease = (error: unknown) => {
+        // Keep the listener through destruction, preserving the first refusal.
+        client.once("end", () => client.removeListener("error", onError));
+        try { client.release(true); } catch { /* preserve original refusal */ }
+        fail(error);
+      };
+      void verification.then(() => {
+        if (connectionFailure) { refuseLease(connectionFailure); return; }
+        if (callback) {
+          try { callback(undefined, client, client.release); }
+          finally { client.removeListener("error", onError); }
+        } else {
+          resolve(client);
+          // The already waiting promise caller resumes before listener removal.
+          queueMicrotask(() => client.removeListener("error", onError));
+        }
+      }, refuseLease);
+    });
+    return result;
+  }
+}
+
 /**
  * Transaction handle bound to one already-open session/transaction.
  * Nested transaction() calls map to SAVEPOINT / RELEASE / ROLLBACK TO on the
@@ -138,8 +208,10 @@ function statementType(text: string) {
   return text.trim().split(/\s+/, 1)[0]?.toLowerCase() || "unknown";
 }
 
-export function createPostgresDatabase(connectionString: string, options: DatabaseOptions = {}): RootDatabase {
-  const pool = new pg.Pool({ connectionString });
+export function createPostgresDatabase(connectionString: string, options: PostgresDatabaseOptions = {}): RootDatabase {
+  const pool = options.verifyCheckout
+    ? new VerifiedCheckoutPool(connectionString, options.verifyCheckout)
+    : new pg.Pool({ connectionString });
   let closed = false;
   const query = <Row,>(text: string, values: unknown[] = []) =>
     traceQuery(options.tracing, text, values, async () => {
