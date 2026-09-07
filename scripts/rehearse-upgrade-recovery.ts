@@ -1,19 +1,24 @@
-import { createRecoveryExecutionAuthorization, recoveryExecutionRecordDigest, RECOVERY_EXECUTION_EVENTS, type RecoveryCaptureRecord, type RecoveryExecutionApproval } from "../ops/self-hosted/storage/execution/authorization";
+import { createRecoveryExecutionAuthorization, type RecoveryCaptureRecord, type RecoveryExecutionApproval } from "../ops/self-hosted/storage/execution/authorization";
 import { withHostOperationLock } from "../ops/self-hosted/scripts/parameter-catalog-upgrade/handoff";
-import { openUpgradeJournal, loadUpgradeJournal, commitJournalTransition } from "../ops/self-hosted/scripts/parameter-catalog-upgrade/journal";
+import { openUpgradeJournal, loadUpgradeJournal } from "../ops/self-hosted/scripts/parameter-catalog-upgrade/journal";
 import { mintRestoreToken } from "../ops/self-hosted/storage/recoveryPoint";
 import { createControlledRecoveryTarget, restoreRecoveryPackage } from "../ops/self-hosted/storage/execution/packageRestore";
 import { createHash, randomBytes } from "node:crypto";
 import { spawnSync } from "node:child_process";
-import { mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, readdir, realpath, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { setTimeout } from "node:timers/promises";
 import { pathToFileURL } from "node:url";
 import pg from "pg";
+import { Queue, Worker } from "bullmq";
+import { isDeepStrictEqual } from "node:util";
+import { createBullMqDurableQueue } from "../server/modules/jobs/bullmqQueue";
+import { recordControlledRecoveryCapture } from "../ops/self-hosted/scripts/parameter-catalog-upgrade/recoveryCapture";
+import { openSyntheticRecoveryAuthority } from "./synthetic-recovery-authority";
 import { createHttpObjectStorageTransport } from "../server/modules/logs/s3ObjectStore";
 import { createIsolatedUpgradeDocker } from "./isolated-upgrade-docker";
-import { captureRecoveryPackage, verifyRecoveryPackage, hasUnsupportedNonDumpCapabilities, RECOVERY_NON_DUMP_CAPABILITY_INVENTORY_SQL, type RecoveryRole } from "../ops/self-hosted/storage/recoveryPackage";
+import { verifyRecoveryPackage, hasUnsupportedNonDumpCapabilities, RECOVERY_NON_DUMP_CAPABILITY_INVENTORY_SQL, type RecoveryRole } from "../ops/self-hosted/storage/recoveryPackage";
 
 const images = { postgres: "postgres:16-alpine", redis: "redis:7-alpine", objects: "minio/minio:RELEASE.2024-12-18T13-15-44Z", objectClient: "minio/mc:RELEASE.2024-11-21T17-21-54Z" };
 const hash = (bytes: Buffer) => createHash("sha256").update(bytes).digest("hex");
@@ -26,7 +31,7 @@ const nonDumpFaults = {
   "parameter-acl": "grant alter system on parameter work_mem to sentinel_reader",
   "builtin-function-acl": "revoke execute on function pg_catalog.pg_control_system() from public",
 } as const;
-type SyntheticFault = "stale-target-aof" | "missing-object" | "wrong-target" | keyof typeof nonDumpFaults;
+type SyntheticFault = "stale-target-aof" | "missing-object" | "wrong-target" | "authority-volume-create-unknown" | keyof typeof nonDumpFaults;
 
 type RestoreChild = {
   run: string; daemonId: string; directory: string; digest: string; password: string;
@@ -110,11 +115,12 @@ export function ownsRecoveryContainer(inspect: { Id: string; Config?: { Labels?:
 
 /** No external targets, backups, image overrides, production configuration, or SQL inputs. */
 export async function rehearseSyntheticRecovery(options: { fault?: SyntheticFault } = {}) {
-  if (Object.keys(options).some(key => key !== "fault") || (options.fault && !["stale-target-aof", "missing-object", "wrong-target", ...Object.keys(nonDumpFaults)].includes(options.fault))) throw new Error("unknown-synthetic-fault");
+  if (Object.keys(options).some(key => key !== "fault") || (options.fault && !["stale-target-aof", "missing-object", "wrong-target", "authority-volume-create-unknown", ...Object.keys(nonDumpFaults)].includes(options.fault))) throw new Error("unknown-synthetic-fault");
   const run = randomBytes(12).toString("hex");
   const password = randomBytes(24).toString("hex");
   const targetPassword = randomBytes(24).toString("hex");
   const ids: string[] = [];
+  const volumes: Array<{ Name: string; identity?: { CreatedAt: string; Mountpoint: string } }> = [];
   let networkId = "";
   const network = `upg-recovery-${run}`;
   const pinnedImages = new Map<string, string>();
@@ -126,8 +132,13 @@ export async function rehearseSyntheticRecovery(options: { fault?: SyntheticFaul
     reason: "not-started", imageIdentities: {} as Record<string, string>, manifestDigest: "",
     sourceStoppedBeforeRestore: false, separateRestoreProcess: false, redisPersistence: "AOF", daemonIdentity: "",
     nonDumpCapabilitiesVerified: false, sourcePreservedBeforeCleanup: false,
+    actualQueueVerified: false, queuePausedAfterRestore: false, queueRetryVerified: false, queueDeduplicationVerified: false,
   };
+  const queueClosers: Array<() => Promise<unknown>> = [];
+  let queueError = false;
+  const onQueueError = () => { queueError = true; };
   let directory: string | undefined;
+  let operationRoot: string | undefined;
   let interrupted = false;
   let cleaning = false;
   let transport: ReturnType<typeof createIsolatedUpgradeDocker>;
@@ -170,7 +181,9 @@ export async function rehearseSyntheticRecovery(options: { fault?: SyntheticFaul
         .toString().trim();
       pinnedImages.set(image, result.imageIdentities[kind].split(" ")[0]!);
     }
-    directory = await mkdtemp(path.join(os.tmpdir(), "wiseeff-synthetic-recovery-"));
+    operationRoot = await realpath(await mkdtemp(path.join(os.tmpdir(), "wiseeff-synthetic-recovery-")));
+    directory = path.join(operationRoot, "package");
+    await mkdir(directory, { mode: 0o700 });
     networkId = docker(["network", "create", "--opt", "com.docker.network.bridge.enable_ip_masquerade=false", "--label", `${label}=${run}`, network]).toString().trim();
     result.reason = "source-preparation-failed";
     const sourcePg = create(images.postgres, "5432", ["-e", `POSTGRES_PASSWORD=${password}`], []);
@@ -204,6 +217,7 @@ export async function rehearseSyntheticRecovery(options: { fault?: SyntheticFaul
       create role sentinel_explicit_capability nologin noinherit;
       create role pgapp_recovery nologin noinherit;
       create role sentinel_reader login inherit password '${password}' nosuperuser nobypassrls nocreatedb nocreaterole;
+      create role recovery_queue_writer login noinherit password '${password}' nosuperuser nobypassrls nocreatedb nocreaterole;
       grant sentinel_read_capability to sentinel_reader with inherit true;
       grant sentinel_read_capability to sentinel_reader with set false;
       grant sentinel_explicit_capability to sentinel_reader with inherit false;
@@ -217,14 +231,45 @@ export async function rehearseSyntheticRecovery(options: { fault?: SyntheticFaul
       alter table public.explicit_sentinel owner to sentinel_owner;
       insert into public.explicit_sentinel values (2,'synthetic-explicit');
       grant select on public.explicit_sentinel to sentinel_explicit_capability;
+      create table public.recovery_queue_effects(job_key text primary key, value integer not null);
+      alter table public.recovery_queue_effects owner to sentinel_owner;
+      grant select,insert on public.recovery_queue_effects to recovery_queue_writer;
     `));
     const objectOracle = [
       { key: "evidence/alpha.json", bytes: Buffer.from('{"value":null}'), contentType: "application/json", metadata: { source: "alpha", revision: "2" } },
       { key: "reports/beta.txt", bytes: Buffer.from("different payload\n"), contentType: "text/plain", metadata: { source: "beta", revision: "9" } },
     ];
     for (const object of objectOracle) await sourceStore.put({ bucket, ...object });
-    execute(sourceRedis, ["redis-cli", "LPUSH", "bull:synthetic:wait", "job-2", "job-1"]);
-    execute(sourceRedis, ["redis-cli", "HSET", "bull:synthetic:meta", "paused", "1"]);
+    const queueName = "synthetic-restored";
+    const queuePrefix = `upg-${run}`;
+    const queueConnection = (id: string) => ({ host: "127.0.0.1", port: Number(owned(id).NetworkSettings.Ports["6379/tcp"][0].HostPort),
+      connectTimeout: 5000, maxRetriesPerRequest: null });
+    const sourceQueue = new Queue<Record<string, unknown>>(queueName, { connection: queueConnection(sourceRedis), prefix: queuePrefix });
+    sourceQueue.on("error", onQueueError);
+    queueClosers.push(() => sourceQueue.close());
+    await sourceQueue.waitUntilReady();
+    const sourceAdapter = createBullMqDurableQueue({ name: queueName, queue: sourceQueue, maxAttempts: 2, retryBackoffMs: 10 });
+    await sourceAdapter.pause();
+    const inputs = [
+      { name: "controlled-effect", idempotencyKey: "recovery:alpha", payload: { key: "alpha", value: 7 } },
+      { name: "controlled-effect", idempotencyKey: "recovery:beta", payload: { key: "beta", value: 13 } },
+    ];
+    const enqueued = await Promise.all(inputs.map(input => sourceAdapter.enqueue(input)));
+    if ((await sourceAdapter.enqueue(inputs[0])).id !== enqueued[0].id || queueError) throw new Error("source-queue-deduplication-failed");
+    // Independent parent oracle is never passed to the restore process.
+    const queueOracle = await Promise.all(enqueued.map(async item => {
+      const job = await sourceQueue.getJob(item.id);
+      if (!job) throw new Error("source-queue-job-missing");
+      return { id: job.id, name: job.name, data: structuredClone(job.data), attempts: job.opts.attempts,
+        backoff: structuredClone(job.opts.backoff), attemptsMade: job.attemptsMade };
+    }));
+    const checkSourceQueue = async () => {
+      const counts = await sourceQueue.getJobCounts("paused", "active", "completed", "failed");
+      if (queueError || !await sourceQueue.isPaused() || counts.paused !== 2 || counts.active !== 0 || counts.completed !== 0 || counts.failed !== 0) {
+        throw new Error("source-queue-not-quiesced");
+      }
+    };
+    await checkSourceQueue();
     // Only these seeded stores exist; no API, worker, proxy or external writer has this private network/credentials.
     result.reason = "non-dump-capability-inventory-unavailable";
     if (options.fault && Object.hasOwn(nonDumpFaults, options.fault)) {
@@ -241,11 +286,18 @@ export async function rehearseSyntheticRecovery(options: { fault?: SyntheticFaul
         ["psql", "-U", "postgres", "-Atc", "select pg_catalog.current_setting('default_transaction_read_only')"]).toString().trim() === "on";
       const unchangedRows = execute(sourcePg, ["psql", "-U", "postgres", "-Atc", "select (select count(*) from public.sentinel where id=1 and value='synthetic-value') + (select count(*) from public.explicit_sentinel where id=2 and value='synthetic-explicit')"]).toString().trim() === "2";
       const unchangedObjects = (await Promise.all(objectOracle.map(async object => Boolean(await sourceStore.head({ bucket, key: object.key })) && hash(await sourceStore.get({ bucket, key: object.key })) === hash(object.bytes)))).every(Boolean);
-      const unchangedQueue = execute(sourceRedis, ["redis-cli", "LRANGE", "bull:synthetic:wait", "0", "-1"]).toString().trim() === "job-1\njob-2" && execute(sourceRedis, ["redis-cli", "HGET", "bull:synthetic:meta", "paused"]).toString().trim() === "1";
+      await checkSourceQueue();
+      const unchangedQueue = (await Promise.all(queueOracle.map(async expected => {
+        const actual = await sourceQueue.getJob(expected.id!);
+        return actual && isDeepStrictEqual(actual.data, expected.data);
+      }))).every(Boolean);
       result.sourcePreservedBeforeCleanup = unchangedInventory && unchangedDatabaseSetting && unchangedRows && unchangedObjects && unchangedQueue;
       throw new Error("non-dump-capability-unsupported");
     }
     result.nonDumpCapabilitiesVerified = true;
+    // This source has no worker: the proof covers pending jobs, not active-job draining.
+    await checkSourceQueue();
+    await sourceQueue.close();
     result.reason = "backup-failed";
     const dump = execute(sourcePg, ["pg_dump", "-U", "postgres", "-d", "postgres", "--format=custom"]);
     const unsupportedRoles = execute(sourcePg, ["psql", "-U", "postgres", "-Atc", `select count(*) from pg_roles where rolname !~ '^pg_' and rolname <> 'postgres' and (rolsuper or rolbypassrls or rolcreatedb or rolcreaterole or rolreplication or rolconnlimit <> -1 or rolvaliduntil is not null or rolconfig is not null)`]).toString().trim();
@@ -267,7 +319,7 @@ export async function rehearseSyntheticRecovery(options: { fault?: SyntheticFaul
        from pg_auth_members am join pg_roles member on member.oid=am.member where am.roleid=r.oid)) order by rolname),'[]')
       from pg_roles r where rolname !~ '^pg_' and rolname <> 'postgres'`]).toString()) as RecoveryRole[];
     const listing = mc(sourceObjects, ["ls", "--recursive", "--json", `synthetic/${bucket}`]).toString().trim().split("\n").map(line => JSON.parse(line));
-    const objects = [];
+    const objects: Array<{ key: string; bytes: Buffer; contentType: string; metadata: Record<string, string> }> = [];
     for (const entry of listing) {
       const key = entry.key as string;
       const head = await sourceStore.head({ bucket, key });
@@ -276,16 +328,54 @@ export async function rehearseSyntheticRecovery(options: { fault?: SyntheticFaul
       if (typeof contentType !== "string") throw new Error("object-content-type-not-exported");
       objects.push({ key, bytes: await sourceStore.get({ bucket, key }), contentType, metadata: head?.metadata ?? {} });
     }
+    const sourceIdentityConnection = new pg.Client({ connectionString: `postgres://postgres:${password}@${endpoint(sourcePg,"5432")}/postgres` });
+    sourceIdentityConnection.on("error", onQueueError);
+    let sourceDatabase;
+    try {
+      await sourceIdentityConnection.connect();
+      sourceDatabase = (await sourceIdentityConnection.query(`select current_database() as "databaseName",
+        (select oid::text from pg_database where datname=current_database()) as "databaseOid",
+        inet_server_addr()::text as "serverAddress",inet_server_port() as "serverPort"`)).rows[0];
+    } finally { await sourceIdentityConnection.end(); }
     for (const id of [sourcePg, sourceRedis, sourceObjects]) { owned(id); docker(["stop", id]); }
     result.sourceStoppedBeforeRestore = true;
-    const redisExport = path.join(directory, "redis-export");
+    const redisExport = path.join(operationRoot, "redis-export");
     owned(sourceRedis); docker(["cp", `${sourceRedis}:/data/appendonlydir`, redisExport]);
     const redisFiles = await Promise.all((await readdir(redisExport)).sort().map(async name => ({ name, bytes: await readFile(path.join(redisExport, name)) })));
-    result.manifestDigest = await captureRecoveryPackage(directory, {
-      runId: run, target: { deploymentId: `source-${run}`, hostFingerprint: transport.daemonId, postgresIdentity: sourcePg, objectStoreIdentity: sourceObjects, redisIdentity: sourceRedis },
-      quiescence: { status: "quiesced", writersFenced: true, queueDrained: true, proxyStopped: true, observedAt: new Date().toISOString() },
-      postgres: dump, roles: roleManifest, objects, redis: { appendonly: true, files: redisFiles },
+    const sourceTarget = { deploymentId: `source-${run}`, hostFingerprint: transport.daemonId,
+      postgresIdentity: sourcePg, objectStoreIdentity: sourceObjects, redisIdentity: sourceRedis };
+    const openedJournal = openUpgradeJournal({ journalPath: path.join(operationRoot, "synthetic-controller.json"), runId: run });
+    if (!openedJournal.ok) throw new Error("synthetic-controller-journal-unavailable");
+    const stoppedObservation = () => [sourcePg, sourceRedis, sourceObjects].map(id => {
+      const info = owned(id);
+      if (info.State.Running || info.State.Restarting || info.State.Status !== "exited") throw new Error("source-store-not-stopped");
+      return { id: info.Id, image: info.Image, started: info.State.StartedAt, finished: info.State.FinishedAt };
     });
+    const stopped = stoppedObservation();
+    result.reason = "controlled-capture-failed";
+    const receipt = { runId: run, target: sourceTarget, digest: hash(Buffer.from(JSON.stringify(stopped))),
+      observedAt: new Date().toISOString(), expiresAt: new Date(Date.now() + 600000).toISOString() };
+    const verifyStopped = async () => {
+      if (queueError || transport.daemonId !== sourceTarget.hostFingerprint || !isDeepStrictEqual(stoppedObservation(), stopped)) throw new Error("source-stop-boundary-drift");
+    };
+    const capture = await withHostOperationLock(operationRoot, lock => recordControlledRecoveryCapture({
+      journal: openedJournal.value, attemptId: `capture-${run}`, directory: directory!, operationRoot: operationRoot!, target: sourceTarget, lock,
+    }, {
+      async observe() { await verifyStopped(); return sourceTarget; },
+      async open() {
+        await verifyStopped();
+        // These are the actual exports made after the only producer closed.
+        // Stopped container identities remain held throughout package capture.
+        return { async postgres() { await verifyStopped(); return { postgres: dump, roles: roleManifest }; },
+          async objects() { await verifyStopped(); return objects; },
+          async redis() { await verifyStopped(); return { appendonly: true as const, files: redisFiles }; },
+          async close() { await verifyStopped(); } };
+      },
+    }, {
+      async acquire(input) { await verifyStopped(); if (input.runId !== run || !isDeepStrictEqual(input.target, sourceTarget)) throw new Error("source-boundary-target-mismatch"); return receipt; },
+      async verify(current) { if (!isDeepStrictEqual(current,receipt)) throw new Error("source-boundary-receipt-mismatch"); await verifyStopped(); },
+    }));
+    result.manifestDigest = capture.packageDigest;
     result.backupExists = true;
     result.checksumVerified = true;
     result.reason = "restore-failed";
@@ -302,23 +392,35 @@ export async function rehearseSyntheticRecovery(options: { fault?: SyntheticFaul
     await wait(async () => execute(targetPg, ["pg_isready", "-h", "127.0.0.1", "-U", "postgres"]));
     const targetStore = storage(targetObjects, targetPassword);
     await wait(async () => mc(targetObjects, ["ready", "synthetic"], targetPassword));
-    // This CLI only creates a fresh synthetic fixture. Its persisted events
-    // exercise execution consumption and never represent production approval.
-    const verifiedPackage = await verifyRecoveryPackage(directory, result.manifestDigest);
-    const openedJournal = openUpgradeJournal({ journalPath: path.join(directory, "synthetic-controller.json"), runId: run });
-    if (!openedJournal.ok) throw new Error("synthetic-controller-journal-unavailable");
-    const capture: RecoveryCaptureRecord = { runId: run, packageDigest: result.manifestDigest,
-      recoveryPointDigest: verifiedPackage.manifest.recovery.recoveryPointDigest,
-      source: verifiedPackage.manifest.recovery.target, boundaryDigest: hash(Buffer.from(run)) };
-    const approval: RecoveryExecutionApproval = { runId: run, attemptId: randomBytes(12).toString("hex"),
-      captureDigest: recoveryExecutionRecordDigest(capture), approvalReference: "synthetic-cli-created-owned-resources",
-      target: { deploymentId: `restore-${run}`, hostFingerprint: transport.daemonId, postgresIdentity: targetPg, objectStoreIdentity: targetObjects, redisIdentity: targetRedis },
-      expiresAt: new Date(Date.now() + 600000).toISOString() };
-    for (const [action, record] of [[RECOVERY_EXECUTION_EVENTS.captured, capture], [RECOVERY_EXECUTION_EVENTS.authorized, approval]] as const) {
-      const entry = commitJournalTransition(openedJournal.value, { action, inputDigest: recoveryExecutionRecordDigest(record),
-        toState: openedJournal.value.record.state, nextAction: openedJournal.value.record.nextAction });
-      if (!entry.ok) throw new Error("synthetic-controller-record-unavailable");
-    }
+    const authVolumeName = `upg-recovery-${run}-authority`;
+    // Register the exact create intent before Docker can commit with a lost reply.
+    // Only this nonce name plus its run label may be reconciled in cleanup.
+    const volumeIntent: typeof volumes[number] = { Name: authVolumeName };
+    volumes.push(volumeIntent);
+    result.reason = "authority-volume-create-outcome-unknown";
+    docker(["volume", "create", "--label", `${label}=${run}`, authVolumeName]);
+    // Real volume exists, but the caller has not consumed a successful response.
+    if (options.fault === "authority-volume-create-unknown") throw new Error("synthetic-create-reply-lost");
+    const authVolume = JSON.parse(docker(["volume", "inspect", authVolumeName]).toString())[0];
+    if (authVolume.Name !== authVolumeName || authVolume.Labels?.[label] !== run || authVolume.Driver !== "local"
+      || Object.keys(authVolume.Options ?? {}).length !== 0 || !authVolume.CreatedAt || !authVolume.Mountpoint) throw new Error("authority-volume-ownership-mismatch");
+    volumeIntent.identity = { CreatedAt: authVolume.CreatedAt, Mountpoint: authVolume.Mountpoint };
+    const authPg = create(images.postgres, "5432", ["-e", `POSTGRES_PASSWORD=${targetPassword}`, "-v", `${authVolumeName}:/var/lib/postgresql/data`], []);
+    start(authPg);
+    await wait(async () => execute(authPg, ["pg_isready", "-h", "127.0.0.1", "-U", "postgres"]));
+    const privateDirectory = path.join(operationRoot, "authority");
+    await mkdir(privateDirectory, { mode: 0o700 });
+    const restoreToken = mintRestoreToken(run, capture.recoveryPointDigest);
+    result.reason = "synthetic-restore-approval-failed";
+    const approval = await withHostOperationLock(operationRoot, async lock => {
+      const authority = await openSyntheticRecoveryAuthority({ runId: run, operationRoot: operationRoot!, privateDirectory,
+        journal: openedJournal.value, lock, capture, restoreToken, sourceDatabase,
+        target: { deploymentId: `restore-${run}`, hostFingerprint: transport.daemonId, postgresIdentity: targetPg, objectStoreIdentity: targetObjects, redisIdentity: targetRedis },
+        auth: { expectedDaemonId: transport.daemonId, containerId: authPg, imageId: pinnedImages.get(images.postgres)!, networkId,
+          sourceContainerId: sourcePg, targetContainerId: targetPg, registeredContainerIds: [...ids], adminUrl: `postgres://postgres:${targetPassword}@${endpoint(authPg,"5432")}/postgres` } });
+      try { return authority.approval; } finally { await authority.close(); }
+    });
+    result.reason = "separate-package-restore-failed";
     if (options.fault === "missing-object") await rm(path.join(directory, "payload-1.bin"));
     const child = spawnSync(process.execPath, ["--import", "tsx", new URL(import.meta.url).pathname, "--synthetic-package-child"], {
       input: JSON.stringify({ controllerJournal: openedJournal.value.journalPath, capture, approval, restoreToken: mintRestoreToken(run, capture.recoveryPointDigest), run: options.fault === "wrong-target" ? "0".repeat(24) : run, daemonId: transport.daemonId, directory, digest: result.manifestDigest, password: targetPassword, pg: targetPg, redis: targetRedis, objects: targetObjects, objectClient, network } satisfies RestoreChild),
@@ -390,18 +492,92 @@ export async function rehearseSyntheticRecovery(options: { fault?: SyntheticFaul
     }
     result.objectCount = mc(targetObjects, ["ls", "--recursive", "--json", `synthetic/${bucket}`], targetPassword).toString().trim().split("\n").filter(Boolean).length;
     if (result.objectCount !== 2) throw new Error("object-count-mismatch");
-    await wait(async () => {
-      if (execute(targetRedis, ["redis-cli", "LRANGE", "bull:synthetic:wait", "0", "-1"]).toString().trim() !== "job-1\njob-2" || execute(targetRedis, ["redis-cli", "HGET", "bull:synthetic:meta", "paused"]).toString().trim() !== "1") throw new Error("redis-value-mismatch");
-    });
+    const targetQueue = new Queue<Record<string, unknown>>(queueName, { connection: queueConnection(targetRedis), prefix: queuePrefix });
+    targetQueue.on("error", onQueueError);
+    queueClosers.push(() => targetQueue.close());
+    await targetQueue.waitUntilReady();
+    if (queueError || !await targetQueue.isPaused() || await targetQueue.getActiveCount() !== 0) throw new Error("restored-queue-not-paused");
+    for (const expected of queueOracle) {
+      const job = await targetQueue.getJob(expected.id!);
+      if (!job || !isDeepStrictEqual({ id: job.id, name: job.name, data: job.data, attempts: job.opts.attempts,
+        backoff: job.opts.backoff, attemptsMade: job.attemptsMade }, expected)) throw new Error("restored-queue-job-mismatch");
+    }
+    if (await targetQueue.getJobCountByTypes("paused", "active", "completed", "failed", "delayed") !== 2) throw new Error("restored-queue-count-mismatch");
+    result.queuePausedAfterRestore = true;
+    const targetAdapter = createBullMqDurableQueue({ name: queueName, queue: targetQueue, maxAttempts: 2, retryBackoffMs: 10 });
+    for (const [index, input] of inputs.entries()) {
+      if ((await targetAdapter.enqueue(input)).id !== enqueued[index].id) throw new Error("restored-queue-deduplication-failed");
+    }
+    // Separate, explicitly synthetic acceptance. The restore child never resumes a queue.
+    const effects = new pg.Client({ connectionString: `postgres://recovery_queue_writer:${targetPassword}@${endpoint(targetPg, "5432")}/postgres` });
+    effects.on("error", onQueueError);
+    let worker: Worker | undefined;
+    let running: Promise<void> | undefined;
+    const activeEffects = new Set<Promise<unknown>>();
+    let stoppingEffects = false;
+    try {
+      await effects.connect();
+      const identity = (await effects.query("select session_user as name,rolsuper or rolbypassrls or rolcreatedb or rolcreaterole as privileged from pg_roles where rolname=session_user")).rows[0];
+      if (identity?.name !== "recovery_queue_writer" || identity.privileged !== false) throw new Error("queue-effect-login-invalid");
+      worker = new Worker(queueName, async job => {
+        if (stoppingEffects) throw new Error("controlled-worker-stopping");
+        if (!inputs.some(input => isDeepStrictEqual(input.payload, { key: job.data.key, value: job.data.value }))) throw new Error("controlled-job-invalid");
+        // A failure after the committed effect exercises at-least-once replay.
+        // The actual database uniqueness boundary, not completed-job counts, deduplicates it.
+        const pending = effects.query("insert into public.recovery_queue_effects(job_key,value) values($1,$2) on conflict(job_key) do nothing", [job.data.key, job.data.value]);
+        activeEffects.add(pending);
+        try { await pending; } finally { activeEffects.delete(pending); }
+        if (job.data.key === "alpha" && job.attemptsMade === 0) throw new Error("controlled-retry-after-effect");
+        return "controlled-effect-recorded";
+      }, { connection: queueConnection(targetRedis), prefix: queuePrefix, autorun: false, concurrency: 1 });
+      worker.on("error", onQueueError);
+      await worker.waitUntilReady();
+      await targetAdapter.resume();
+      running = worker.run().catch(() => { queueError = true; });
+      await wait(async () => {
+        if (queueError || await targetQueue.getCompletedCount() !== 2) throw new Error("controlled-queue-incomplete");
+      });
+      const jobs = await Promise.all(enqueued.map(item => targetQueue.getJob(item.id)));
+      if (jobs[0]?.attemptsMade !== 2 || jobs[1]?.attemptsMade !== 1 || queueError) throw new Error("controlled-retry-mismatch");
+      const rows = (await effects.query("select job_key,value from public.recovery_queue_effects order by job_key")).rows;
+      if (!isDeepStrictEqual(rows, [{ job_key: "alpha", value: 7 }, { job_key: "beta", value: 13 }])) throw new Error("controlled-effect-mismatch");
+      result.queueRetryVerified = true;
+      result.queueDeduplicationVerified = true;
+      result.actualQueueVerified = true;
+    } finally {
+      // Close/drain the worker before closing the database used by late callbacks.
+      stoppingEffects = true;
+      const closed = await Promise.allSettled([Promise.resolve().then(() => worker?.close())]);
+      if (closed[0].status === "rejected") {
+        queueError = true;
+        await Promise.resolve().then(() => worker?.disconnect()).catch(() => { queueError = true; });
+      }
+      await running;
+      await Promise.allSettled([...activeEffects]);
+      await effects.end();
+    }
+    if (queueError) throw new Error("controlled-queue-lifecycle-failed");
     result.businessVerified = true; // Only the explicitly labeled synthetic sentinel behavior.
-    result.status = "passed"; result.reason = "synthetic-sentinels-restored";
+    result.status = "passed"; result.reason = "synthetic-package-and-controlled-queue-restored";
   } catch {
     result.status = "blocked"; // Keep the static stage, never driver output or private material.
   } finally {
     cleaning = true;
     let cleaned = true;
+    const queueCleanup = await Promise.allSettled(queueClosers.map(close => Promise.resolve().then(close)));
+    if (queueCleanup.some(outcome => outcome.status === "rejected")) cleaned = false;
     for (const id of [...ids].reverse()) {
       try { owned(id); docker(["rm", "-f", "-v", id]); } catch { cleaned = false; }
+    }
+    for (const expected of volumes) {
+      try {
+        const current = JSON.parse(docker(["volume", "inspect", expected.Name]).toString())[0];
+        if (current.Labels?.[label] !== run || current.Driver !== "local" || Object.keys(current.Options ?? {}).length !== 0
+          || current.Name !== expected.Name || !current.CreatedAt || !current.Mountpoint
+          || (expected.identity && !isDeepStrictEqual({ CreatedAt: current.CreatedAt, Mountpoint: current.Mountpoint }, expected.identity))
+          || docker(["ps", "-aq", "--filter", `volume=${expected.Name}`]).toString().trim()) throw new Error("volume-ownership-mismatch");
+        docker(["volume", "rm", expected.Name]);
+      } catch { cleaned = false; }
     }
     if (networkId) {
       try {
@@ -410,9 +586,15 @@ export async function rehearseSyntheticRecovery(options: { fault?: SyntheticFaul
         docker(["network", "rm", networkId]);
       } catch { cleaned = false; }
     }
-    if (directory) await rm(directory, { recursive: true, force: true });
+    // Capture/approval/restore may have committed even when the caller failed.
+    // Keep the private journal, package and assignment for explicit inspection;
+    // Docker cleanup is not permission to erase the only recovery evidence.
+    result.backupRetained = result.backupExists;
     result.cleanupVerified = cleaned;
-    if (!cleaned) { result.status = "blocked"; result.reason = "owned-resource-cleanup-failed"; }
+    if (!cleaned || queueError) {
+      if (result.status === "passed") result.reason = !cleaned ? "owned-resource-cleanup-failed" : "queue-connection-failed";
+      result.status = "blocked";
+    }
     if (interrupted) { result.status = "blocked"; result.reason = "synthetic-drill-interrupted"; }
     process.off("SIGINT", onInterrupt);
     process.off("SIGTERM", onInterrupt);

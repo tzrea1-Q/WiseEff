@@ -20,6 +20,15 @@ it("refuses external target and missing explicit synthetic mode before starting 
 });
 
 describe.skipIf(process.env.UPG_RECOVERY_DOCKER_TEST !== "1")("actual isolated three-store restore", () => {
+  it("reconciles only the registered owned volume after an unknown create response and retains capture evidence", () => {
+    const script = `import { rehearseSyntheticRecovery } from ${JSON.stringify(path.resolve("scripts/rehearse-upgrade-recovery.ts"))}; console.log(JSON.stringify(await rehearseSyntheticRecovery({ fault: "authority-volume-create-unknown" })));`;
+    const child = spawnSync(process.execPath, ["--import", "tsx", "--input-type=module", "-e", script], { encoding: "utf8", timeout: 90000 });
+    expect(child.status).toBe(0);
+    expect(JSON.parse(child.stdout)).toMatchObject({ status: "blocked", reason: "authority-volume-create-outcome-unknown",
+      backupExists: true, backupRetained: true, checksumVerified: true, restoreExecuted: false,
+      businessVerified: false, sourceStoppedBeforeRestore: true, cleanupVerified: true });
+    expect(child.stdout).not.toContain("postgres://");
+  }, 100000);
   it.each(["database-acl", "database-settings", "other-database-acl", "tablespace-acl", "parameter-acl", "builtin-function-acl"])("refuses non-dump %s before capture without correcting or deleting source state", fault => {
     const script = `import { rehearseSyntheticRecovery } from ${JSON.stringify(path.resolve("scripts/rehearse-upgrade-recovery.ts"))}; console.log(JSON.stringify(await rehearseSyntheticRecovery({ fault: ${JSON.stringify(fault)} })));`;
     const child = spawnSync(process.execPath, ["--import", "tsx", "--input-type=module", "-e", script], { encoding: "utf8", timeout: 90000 });
@@ -34,7 +43,7 @@ describe.skipIf(process.env.UPG_RECOVERY_DOCKER_TEST !== "1")("actual isolated t
     const script = `import { rehearseSyntheticRecovery } from ${JSON.stringify(path.resolve("scripts/rehearse-upgrade-recovery.ts"))}; console.log(JSON.stringify(await rehearseSyntheticRecovery({ fault: ${JSON.stringify(fault)} })));`;
     const child = spawnSync(process.execPath, ["--import", "tsx", "--input-type=module", "-e", script], { encoding: "utf8", timeout: 90000 });
     expect(child.status).toBe(0);
-    expect(JSON.parse(child.stdout)).toMatchObject({ status: "blocked", backupExists: true, checksumVerified: true,
+    expect(JSON.parse(child.stdout)).toMatchObject({ status: "blocked", reason: "separate-package-restore-failed", backupExists: true, backupRetained: true, checksumVerified: true,
       sourceStoppedBeforeRestore: true, restoreExecuted: false, businessVerified: false, cleanupVerified: true });
   }, 100000);
 
@@ -44,8 +53,9 @@ describe.skipIf(process.env.UPG_RECOVERY_DOCKER_TEST !== "1")("actual isolated t
     });
     const evidence = JSON.parse(result.stdout);
     expect(evidence).toMatchObject({ status: "passed", evidence: "synthetic package only", releaseReady: false,
-      fullBusinessVerification: false, backupExists: true, checksumVerified: true, restoreExecuted: true,
+      fullBusinessVerification: false, backupExists: true, backupRetained: true, checksumVerified: true, restoreExecuted: true,
       businessVerified: true, ownerAclVerified: true, roleCapabilitiesVerified: true, nonDumpCapabilitiesVerified: true, cleanupVerified: true, objectCount: 2,
+      actualQueueVerified: true, queuePausedAfterRestore: true, queueRetryVerified: true, queueDeduplicationVerified: true,
       sourceStoppedBeforeRestore: true, separateRestoreProcess: true, redisPersistence: "AOF" });
     expect(result.status).toBe(0);
     expect(evidence.manifestDigest).toMatch(/^[a-f0-9]{64}$/);
