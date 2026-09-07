@@ -16,6 +16,8 @@ import { applyLegacySqlPrivilegeFence, inspectLegacySqlPrivilegeFence, type Lega
 // Actual SQL effect only. P0–P10 and P12 storage are real, but the existing
 // fixture's references are unapproved. No full root approval is fabricated.
 // The manifest's second relation is the residual-spec fixture's source table.
+// Its real specification_key UPDATE avoids the distinct active-DTS lifecycle
+// trigger's extra read prerequisites; no trigger is disabled or grant added.
 const table = LEGACY_STRUCTURAL_TABLES[1];
 let database: Awaited<ReturnType<typeof createMigratedSelfHostedPg16Database>> | undefined;
 let pool: pg.Pool | undefined, manager: pg.PoolClient | undefined, writer: pg.Client | undefined;
@@ -90,15 +92,15 @@ it.each(["direct", "column", "public", "inherit", "set"] as const)("retires an a
     grantee = pg.escapeIdentifier(capability);
   }
   await manager!.query(`grant select on public.${pg.escapeIdentifier(table)} to ${grantee};
-    grant update${mode === "column" ? " (definition_lifecycle)" : ""} on public.${pg.escapeIdentifier(table)} to ${grantee};
+    grant update${mode === "column" ? " (specification_key)" : ""} on public.${pg.escapeIdentifier(table)} to ${grantee};
     create table public.sql_fence_unrelated(value integer); grant select,insert on public.sql_fence_unrelated to ${pg.escapeIdentifier(role)}`);
   if (mode === "set") await writer!.query(`set role ${pg.escapeIdentifier(capability)}`);
-  const changed = await writer!.query(`update public.${pg.escapeIdentifier(table)} set definition_lifecycle=definition_lifecycle`);
+  const changed = await writer!.query(`update public.${pg.escapeIdentifier(table)} set specification_key=specification_key`);
   expect(changed.rowCount).toBe(1);
   const owner = (await manager!.query("select relowner::text from pg_class where oid=$1::regclass", [`public.${table}`])).rows[0].relowner;
   expect(await applyLegacySqlPrivilegeFence(command)).toMatchObject({ outcome: "legacy-sql-privileges-fenced-not-P13" });
   expect(intents).toHaveLength(1);
-  await expect(writer!.query(`update public.${pg.escapeIdentifier(table)} set definition_lifecycle=definition_lifecycle`)).rejects.toMatchObject({ code: "42501" });
+  await expect(writer!.query(`update public.${pg.escapeIdentifier(table)} set specification_key=specification_key`)).rejects.toMatchObject({ code: "42501" });
   expect((await writer!.query(`select id from public.${pg.escapeIdentifier(table)}`)).rowCount).toBe(1);
   if (mode === "set") await writer!.query("reset role");
   expect((await writer!.query("insert into public.sql_fence_unrelated values (1)")).rowCount).toBe(1);
@@ -111,7 +113,7 @@ it("does not dispatch REVOKE when the root's host intent persistence fails", asy
   await manager!.query(`grant select,update on public.${pg.escapeIdentifier(table)} to ${pg.escapeIdentifier(role)}`);
   await expect(applyLegacySqlPrivilegeFence({ ...command, persistHostIntent: async () => { throw new Error("private-fsync-failure"); } }))
     .rejects.toMatchObject({ code: "UNAVAILABLE" });
-  expect((await writer!.query(`update public.${pg.escapeIdentifier(table)} set definition_lifecycle=definition_lifecycle`)).rowCount).toBe(1);
+  expect((await writer!.query(`update public.${pg.escapeIdentifier(table)} set specification_key=specification_key`)).rowCount).toBe(1);
   expect((await manager!.query("select count(*)::int as count from parameter_catalog.parameter_catalog_cutover_events where cutover_run_id=$1 and event_kind='legacy-sql-privileges-intent'", [command.selection.runId])).rows[0].count).toBe(0);
 });
 
@@ -134,7 +136,7 @@ it.each([
   if (mode === "grant-option") await manager!.query(`grant update on public.${pg.escapeIdentifier(table)} to ${pg.escapeIdentifier(role)} with grant option`);
   await expect(applyLegacySqlPrivilegeFence({ ...command, ...(mode === "recovery" ? { recoveryRoles: [] } : {}) })).rejects.toMatchObject({ code });
   expect(intents).toHaveLength(0);
-  expect((await writer!.query(`update public.${pg.escapeIdentifier(table)} set definition_lifecycle=definition_lifecycle`)).rowCount).toBe(1);
+  expect((await writer!.query(`update public.${pg.escapeIdentifier(table)} set specification_key=specification_key`)).rowCount).toBe(1);
 });
 
 it("does not fall back when the actual management session has changed role", async () => {
@@ -169,11 +171,35 @@ it("keeps the actual committed effect inspectable after host acknowledgment fail
   await expect(applyLegacySqlPrivilegeFence({ ...command, persistHostStep: async () => { throw new Error("private-host-write-failure"); } }))
     .rejects.toMatchObject({ code: "OUTCOME-UNKNOWN" });
   expect(intents).toHaveLength(1);
-  await expect(writer!.query(`update public.${pg.escapeIdentifier(table)} set definition_lifecycle=definition_lifecycle`)).rejects.toMatchObject({ code: "42501" });
+  await expect(writer!.query(`update public.${pg.escapeIdentifier(table)} set specification_key=specification_key`)).rejects.toMatchObject({ code: "42501" });
   await expect(applyLegacySqlPrivilegeFence(command)).rejects.toMatchObject({ code: "ATTEMPT-REQUIRES-INSPECTION" });
   const inspect = { client: manager!, selection: command.selection, intentDigest: intents[0].intentDigest, beforeEffect: command.beforeEffect };
   expect(await inspectLegacySqlPrivilegeFence(inspect)).toEqual({ outcome: "legacy-sql-privileges-fenced-not-P13", intentDigest: intents[0].intentDigest });
   expect(await inspectLegacySqlPrivilegeFence({ ...inspect, selection: { ...inspect.selection, attemptId: "another-attempt" } })).toEqual({ outcome: "unknown" });
   await manager!.query(`grant update on public.${pg.escapeIdentifier(table)} to ${pg.escapeIdentifier(role)}`);
   expect(await inspectLegacySqlPrivilegeFence(inspect)).toEqual({ outcome: "unknown" });
+});
+
+it("freezes actual role membership until the final host acknowledgment and releases that lock afterwards", async () => {
+  await manager!.query(`grant select,update on public.${pg.escapeIdentifier(table)} to ${pg.escapeIdentifier(role)}`);
+  const other = await pool!.connect(); let grantCode = "not-attempted";
+  try {
+    await other.query("set lock_timeout='100ms'");
+    const observed = await applyLegacySqlPrivilegeFence({ ...command, persistHostStep: async () => {
+      try { await other.query(`grant pg_write_all_data to ${pg.escapeIdentifier(role)} with inherit true,set true,admin false`); grantCode = "succeeded"; }
+      catch (error) { grantCode = typeof (error as { code?: unknown }).code === "string" ? (error as { code: string }).code : "unknown"; }
+    } });
+    let writerChanged = false;
+    try { writerChanged = (await writer!.query(`update public.${pg.escapeIdentifier(table)} set specification_key=specification_key`)).rowCount === 1; }
+    catch (error) { expect((error as { code?: string }).code).toBe("42501"); }
+    expect(observed.outcome).toBe("legacy-sql-privileges-fenced-not-P13");
+    expect({ grantCode, writerChanged }).toEqual({ grantCode: "55P03", writerChanged: false });
+    // The module has released its transaction locks; this same real grant is
+    // now possible. This is test-owned restoration of a capability, not P13.
+    await other.query(`grant pg_write_all_data to ${pg.escapeIdentifier(role)} with inherit true,set true,admin false`);
+    expect((await writer!.query(`update public.${pg.escapeIdentifier(table)} set specification_key=specification_key`)).rowCount).toBe(1);
+  } finally {
+    try { await other.query(`revoke pg_write_all_data from ${pg.escapeIdentifier(role)}`); }
+    finally { other.release(true); }
+  }
 });
