@@ -156,6 +156,14 @@ it("refuses bootstrap collection without its parent's ownership receipt instead 
   expect(run.stderr + run.stdout).toContain("upgrade-tests-require-explicit-owned-postgres-receipt");
 });
 
+it("refuses controlled recovery collection without the owned parent receipt", () => {
+  const run = spawnSync(process.execPath, ["node_modules/vitest/vitest.mjs", "list", "--config", "vitest.controlled-recovery.config.ts"],
+    { env: { PATH: process.env.PATH, HOME: process.env.HOME }, encoding: "utf8", timeout: 10000 });
+  expect(run.error).toBeUndefined();
+  expect(run.status).not.toBe(0);
+  expect(run.stderr + run.stdout).toContain("upgrade-tests-require-explicit-owned-postgres-receipt");
+});
+
 it("runs the actual docs-check package command in the owned pgvector lane, separately from generation", () => {
   expect(componentRunner.componentTestCommands("docs-check")).toEqual([["run", "docs:check", "--", "--require-database"]]);
   expect(componentRunner.componentTestExecutable("docs-check")).toBe("npm");

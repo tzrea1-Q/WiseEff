@@ -11,6 +11,8 @@ import { admitHostedUpgradeComponents, assertHostedUpgradeAdmission, type Hosted
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const bindingFiles = ["server/modules/parameter-bindings/cutoverImport/import.integration.test.ts", "server/modules/catalog-cutover/archive/adapter.test.ts", "server/modules/catalog-cutover/archive/adapter.integration.test.ts", "server/modules/catalog-cutover/bindingImportProducer.integration.test.ts", "server/modules/catalog-cutover/conversionManifest.integration.test.ts", "server/modules/catalog-cutover/orchestrator.test.ts", "server/modules/catalog-cutover/runtimeState.test.ts", "server/modules/catalog-cutover/sourceSnapshot.test.ts", "server/modules/catalog-cutover/managementStructure.test.ts"];
 const suites: Record<string, { image: string; files: readonly string[]; config: string; extraImages?: readonly string[]; command?: "schema-doc" | "docs-check" }> = {
+  "controlled-recovery": { image: "postgres:16-alpine", files: ["ops/self-hosted/storage/controlledRecovery.docker.integration.test.ts"], config: "vitest.controlled-recovery.config.ts",
+    extraImages: ["redis:7-alpine", "minio/minio:RELEASE.2024-12-18T13-15-44Z", "minio/mc:RELEASE.2024-11-21T17-21-54Z"] },
   "writer-reachability-pg16": { image: "postgres:16-alpine", files: ["server/modules/release-verification/gates/postgres/writerReachability.integration.test.ts"], config: "vitest.writer-reachability.config.ts" },
   "recovery-three-store": { image: "postgres:16-alpine", files: ["scripts/rehearse-upgrade-recovery.test.ts"], config: "vitest.upgrade-recovery.config.ts",
     extraImages: ["redis:7-alpine", "minio/minio:RELEASE.2024-12-18T13-15-44Z", "minio/mc:RELEASE.2024-11-21T17-21-54Z"] },
@@ -306,7 +308,7 @@ export function componentSupervisionLimits(input = { deadlineMs: 15 * 60_000, gr
 export function componentCleanupEvidence(suite: string, exitCode: number, runnerResourcesCleanupVerified: boolean) {
   // The recovery child owns additional stores. On failure/forced termination,
   // its finally may not have run; cleaning this runner's PG is not their proof.
-  const nestedCleanupOutcome = suite === "recovery-three-store" ? exitCode === 0 ? "verified-by-complete-suite" : "unknown" : "not-applicable";
+  const nestedCleanupOutcome = ["recovery-three-store", "controlled-recovery"].includes(suite) ? exitCode === 0 ? "verified-by-complete-suite" : "unknown" : "not-applicable";
   return { runnerResourcesCleanupVerified,
     cleanupVerified: runnerResourcesCleanupVerified && nestedCleanupOutcome !== "unknown", nestedCleanupOutcome };
 }
@@ -345,7 +347,7 @@ export async function runUpgradeComponentTests(args: string[], observation?: {
   }, observeHosted);
   const authorizeCreation = () => { if (hosted) assertHostedUpgradeAdmission(admission!, observeHosted()); };
   const suite = suites[args[3] as keyof typeof suites];
-  const isRecovery = args[3] === "recovery-three-store";
+  const isRecovery = ["recovery-three-store", "controlled-recovery"].includes(args[3]);
   const isRedis = args[3] === "log-redis";
   const profile = isRedis ? "selfhost-redis7-aof-v1" : suite.image === "postgres:16-alpine" ? "selfhost-postgres16-alpine-v1" : "catalog-pgvector-v1";
   // Frozen rehearsal CLI fixtures use their historical bootstrap login. It is

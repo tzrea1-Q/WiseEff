@@ -280,6 +280,8 @@ jobs:
             --expected-daemon-id "$daemon_id" --suite bootstrap-credential-pg16 --github-hosted
           npx tsx scripts/run-upgrade-component-tests.ts \
             --expected-daemon-id "$daemon_id" --suite recovery-three-store --github-hosted
+          npx tsx scripts/run-upgrade-component-tests.ts \
+            --expected-daemon-id "$daemon_id" --suite controlled-recovery --github-hosted
 
   acceptance-quality:
     name: Acceptance quality

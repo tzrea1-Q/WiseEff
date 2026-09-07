@@ -25,9 +25,11 @@ import { createHttpObjectStorageTransport } from "../../../server/modules/logs/s
 import { captureControlledRecovery } from "./controlledRecovery";
 import { createDockerRecoverySource, type DockerRecoveryResources, type DockerRecoverySecrets } from "./controlledRecovery.docker";
 import { verifyRecoveryPackage } from "./recoveryPackage";
+import { assertOwnedUpgradeTestTarget } from "../../../scripts/upgrade-test-target";
 
-// Explicit opt-in uses only the owned Docker guard; no globalSetup or ambient DB URL.
-describe.skipIf(process.env.UPG_CONTROLLED_RECOVERY_DOCKER_TEST !== "1")("controlled three-store Docker adapter", () => {
+// Mandatory owned lane; no globalSetup or ambient DB URL authorizes a target.
+assertOwnedUpgradeTestTarget();
+describe("controlled three-store Docker adapter", () => {
   // Each acceptance responsibility owns a fresh source, package, target and run.
   // The six rejected-target attempts must not consume the successful lifecycle's
   // deadline. Both responsibilities retain the same 180s limit and all assertions.
