@@ -2,7 +2,168 @@
 
 > English: [English](populated-upgrade-evidence.md)
 
-## PR #824 复核续工，2026-09-07
+## 已授权契约实现检查点，2026-09-07
+
+### 当前集成失败与分别验证的增量
+
+`c120f92da`／`cf4813652` 的 P12 原型通过 0141 增加三张管理表。
+focused PG16 通过不能授权修改冻结 S2 schema 合同。完整 server 在
+`28c9902a4ea9cca600d7355e91276629f8c6647d`、14:01:54 UTC+8 执行，
+退出 1：**4184 收集、3919 通过、53 失败、212 跳过**；521 文件中
+482 通过、38 失败、1 跳过，151.36 秒，独占资源清理已核验。
+新增表导致历史 43 表断言和 S2 指纹拒绝当前 46 表 schema。
+原指纹仍为 `5424d2588395ab736b7af2ad5146091d7c9592ede4a59eea48480917e84516f5`；
+候选实测为 `23fe1747c1c5e5477277654e90b3a0a002db6123a05c9342ef11a57fdc270646`。
+这是候选集成失败，不归为 main 继承失败。P12 保持未封存 Scratch，等待独立、
+限定的 S2／S2-RBAC／S2-PGH 决定；两项已有授权不包含替换该冻结合同。
+旧 manifest、断言、指纹均未改变。
+
+`1066cd05f` 将现有恢复采集接到 typed pending／committed／unknown journal
+和由模块签发、绑定原目录的宿主锁。执行消费者拒绝历史仅 hash 的采集记录。
+目录被替换时保留原 pending 证据，不写入替换目录中的 journal 副本。
+采集不生成批准、不推进发布阶段。最终提交前 focused 在 13:44:03 执行：
+105 收集、**104 通过、1 个 opt-in Docker 跳过**，退出 0，4.70 秒。
+这是文件系统／journal 证据，不是绑定真实源的完整 controller 执行。
+
+`f96833510` 将恢复输出绑定原目录和文件句柄。`81d99a6c0`
+（源提交 `fff28cf7a8104f2284b424afc47f59b7abcc79db`）先同步每个 payload
+和 manifest，再同步目录，完成后才返回成功。源 Red 为 4 失败／38 filtered；
+源 Green 为 **84/84**、无跳过，TypeScript 检查退出 0。父集成后的
+package／capture／authorization selector 在 14:12:44 执行 **83/83**，
+退出 0，4.46 秒。两者 selector 不同，不合并总数。独立 Standards／Spec
+接受限定句柄和同步修复。失败保留部分包；这些验证不能证明 shell 锁释放最后
+一次路径检查之后遭到替换时，清理操作仍具原子性。
+
+实际部署认证实现到 `5fafaff65`（源
+`0c4a57e110fdddb7255d9a1dbc4a1b1b767b0540`）：真实受限认证 LOGIN、
+现有会话授权、私有 run assignment，并核查有效 ACL／成员／函数／系统参数能力。
+其独占 PG16 为 **38/38**，单测 **14/14**，build 与文档治理退出 0。
+assignment 不把产品管理员自动变成部署 Operator。后续报告 writer target
+为另一个仍在审查的 Scratch；中间 54/54 不能证明 passed 报告批准或启动成功。
+
+`2ae097c939b611f94efe45fa878932f60fe2852c`、tree
+`e774874e6fd86e0c43c1362c95664586c64c2c3c` 的 build 退出 0，Vite
+8.76 秒，保留原警告。独占 schema 生成退出 0，新增 0141 库存提交为
+`28c9902a4`；生成不是 schema 批准。reader／report／activation／authority
+为必需 CI 独占集群；从共享套件精确排除后，不能在对应必需 job 未运行时算通过。
+这里没有新的 Hosted 执行或生产操作证据。
+
+新增原始日志 SHA256：
+
+- 完整 server `28c9902a4`：`0328b620ad6839d1f57d377eb849f093f5e3ddd50e57c1f17f9278207426f5b7`。
+- 集成恢复同步 selector：`18207bff46a7d7ee089961476c6398ccd77cdbbf6d6e6f37cca0bcb90e502365`。
+- build `2ae097c93`：`3ddb73e02838a41b4fd38ebb5330e71ebc1a71592d4b11b46304f7ec46ea411e`。
+
+### 本次续工中较早的执行
+
+用户的两项限定决定取代下方历史记录中的恢复／reader 待决策状态。
+base 保持 `cda6737a8`，生产源仍为 `82344044b436a8dafecefbb85dfd724cecb05e3f`。
+发布本轮工作前实查 PR #824 为 Draft/Open/未合并，远端 head `f00f94435`。
+历史执行不改记到后续报告提交。
+
+reader 提交 `cf06d5a79` 至 `9caeae155` 追加 0140、十表精确查询／grant 清单和
+权限污染反例。历史 0138 SHA256 为
+`a575205695852b11a536c7d41293f87634242b3c8d98f2345b3599e144aca8c5`；
+0139 为 `36fdd85de86ab09309dd6531594feca16a5bce00b343fa858ac04f4cdbf49f31`。
+`3f2e8f7a7` 将历史角色合同两侧明确停在 0139，新增 reader 另行验收。
+未修改生产登录或凭据。权限审计修正后，独立 Standards/Spec 审查无剩余 P1/P2。
+
+恢复提交 `6b8febdc2`、`d22efaccc`、`44eaa7a9a` 实现登记的检查／执行分层、
+不可伪造的执行目标对象和持久授权消费。检查入口不能导入执行层；新增模块漏登记、
+命令伪装均有负测，无关 S10-PER 禁令保留。消费方要求既有 journal 中已经提交的
+采集／批准记录；合成夹具不是尚缺的真实认证 controller producer。
+独立审查在此消费方及四场景拆分中未发现剩余 P1/P2。真实恢复与完整 controller
+批准生成仍为独立验收。
+
+| 执行身份／命令 | 实际结果 |
+| --- | --- |
+| `0a4d6a4b6e86151aac87794f681e02d06cb47bb1`，tree `2aaf410e77adcda983bdd01cda4861e4403cc361`，owned runner `--suite reader-pg16`，11:33:23 UTC+8 | 46 收集／通过，0 失败／跳过／过滤，退出 0；真实受限 LOGIN 调正式 Kernel；PG16 Alpine 镜像 `sha256:16bc17c64a573ef34162af9298258d1aec548232985b33ed7b1eac33ba35c229`，linux/arm64；清理核验通过 |
+| 同提交，startup config 选择 `verifyStartup.test.ts`、`publishedStartup.test.ts`，11:35:21 | 41 通过、0 失败／跳过；仅 adapter 单测，非生产入口启动成功 |
+| 同提交，boundary selector `locks the post-refresh`，11:35:22 | 1 通过、23 selector 过滤；非全套 |
+| `6e6ceb6b57dc6b493ebe9629cbd8deb0d2eb2e7d`，owned runner `--suite schema-doc` | 退出 0，真实生成库存为 138 个迁移、末尾 0140；pgvector 镜像 `sha256:a36250871de0833b8757561c72f2477ef1ddd1101afa4e617fb552e0de514c6b`；清理核验通过；生成结果另提交 `4f0b54413` |
+| 随后提交为 `2ff5e46b2` 的提交前字节，CI/runner/Hosted admission selectors，11:54:32 | 4 文件、75 通过、0 失败／跳过；合成密码学与真实 Git 夹具，非 Hosted 签发证据 |
+| `44eaa7a9a71b3951c9af6292f439d64e5dd17702`，tree `aeb64d15e656d9e8d4a12a515a4825eba08b7ab7`，owned runner `--suite scripts-pgvector`，11:54:54 | 118 文件：115 通过、2 失败、1 跳过；1572 测试：1482 通过、65 失败、25 跳过；退出 1，63.14 秒；独占集群清理核验通过 |
+
+本次 scripts 失败不归并到旧 Hosted 失败：一项是未改动 source-lock 的 60 秒
+超时，另 64 项为 rehearsal。缺少规范化 TMPDIR 触发冻结的符号链接安全清理拒绝；
+数据库用例还保留默认开发容器，未使用 runner 独占容器。因此首批不能证明这些嵌套
+CLI 全部命中独占目标。`d7b7215c4` 传入本次私有规范路径、精确容器／固定 Docker
+endpoint 及匹配的新集群 bootstrap 登录，不修改冻结断言或 timeout；修复后全量如下。
+
+| 后续执行身份／命令 | 实际结果 |
+| --- | --- |
+| `a39294fff7d061249f229438c2a56c54234e8dd2`，tree `ba88e0792cb2d432c378f4166d8ce8c1dfa1462b`，仅证据文档 WIP；owned `scripts-pgvector`，12:08:34 | 118 文件：116 通过、1 失败、1 跳过；1572 测试：**1546 通过、1 失败、25 跳过**，退出 1，193.19 秒。64 项 rehearsal 已实际通过；source-lock deadline 仍失败。清理核验通过。 |
+| 同代码，owned `server-pgvector`，12:15:32 | 517 文件：515 通过、1 失败、1 跳过；4111 测试：**4101 通过、1 失败、9 跳过**，退出 1，295.65 秒。唯一失败是 legacy guard 将明确 canonical schema 关系误判为旧 flat 身份。 |
+| 同代码，`npm run build` | 退出 0；Vite 15.40 秒，保留 chunk/externalization 警告。contract、selfhost、文档治理也退出 0；非目标机镜像构建。 |
+| 同代码，boundary CLI，明确 trusted base `cda6737a8f177a8bbd2f3bc7d195f8e3037bfa74` | 退出 0：3509 matches/allowances，unallowlisted/stale/metadata/growth 均 0。 |
+| 同代码，实际独占 PG runtime integration，12:14:31 | **9/9**，退出 0，7.33 秒。真正 production `server/index.ts` 和 `workerRunner.ts` 在 listener/consumer 前拒绝高权登录或缺 schema 的受限登录；没有证明合法生产启动。 |
+| `2437ab790` 加逐次 checkout WIP，随后提交为 `9d55cde1950a1e5108d01b72b1d0531435225df4`，12:45:08 | **38/38**，退出 0，6.85 秒：11 项真实 PG／入口负测、27 项 hook 单测。延迟核验时真正终止 backend 会拒绝并销毁连接，Kernel/root/raw pool 不能绕过观察；不是获批启动正向。 |
+| `9d55cde1950a1e5108d01b72b1d0531435225df4` 加 runner/config WIP，随后提交为 `503c20b2850ddb3bfe9e84da1df6fea04c361b4c`，owned `report-pg16`，12:46:49 | **34/34**，退出 0，8.95 秒；PG16 Alpine 镜像同前，独立随机集群清理核验通过。真实受限 LOGIN 调正式报告投影，拒绝额外成员／ACL／definer 委托；正向读取 absent 报告，不是通过的技术报告。同代码独立报告单测 **27/27**，退出 0。 |
+
+未改动的 source-lock 文件在 candidate/base 同一精简环境、直接 Command Line
+Tools Git 下对照，两侧 70 秒外层监督均以 143 终止；两侧都不是通过，也不证明
+所有候选失败均继承。没有修改 timeout、预期或 trusted base。
+`c837829314c20ee6557334676c7970e728fe3ba3` 只修两个 schema 同名误判，逐处检测，
+保留 path/token 禁令；独立 source 提交扫描 8/8。后续全 server 结果另记，不能用
+该 selector 推定全套通过。
+
+`9d55cde19` 保留真实反例链：hook 前十一项绕过失败；七种非 Error 拒绝暴露 pg
+callback 假值成功分支；五项延迟断线暴露未处理 error 事件。最终同步 acquisition
+callback 与连续监听移交分别通过 Standards/Spec 复审，不增加 grant 或发布权限。
+
+恢复执行 source `4bd547437a1e6981ad14430899b5a2df032cf198`（集成为 `44eaa7a9a`）
+实际 Docker **4/4**，退出 0，566.22 秒，原每例 180 秒不变。PostgreSQL 的
+`postgres`、`wiseeff` 两种 bootstrap 登录分别覆盖完整独立包恢复及非空目标矩阵。
+源停止后由独立过程验证 owner/ACL、受限读取、对象字节／content type／metadata 和
+Redis AOF；形似队列的键不等于真实 Bull 业务消费者验收。后续仅夹具 source
+`a957f7f998ea583d1dd4183aefbc04fe38ee81bb`（集成到 `954022cd8`）成功／失败均保留
+私有证据，通过原 FD 写 marker。独立 focused 为 102 通过／10 项 opt-in Docker
+跳过；legacy CLI 为 1 通过／11 过滤，20.25 秒，退出 0。不把前述四场景重新标为
+此夹具提交执行。最终证据保留变更的独立审查无剩余 P1/P2。
+
+新增原日志 SHA256（私有日志，不是上传的备份）：
+
+- 修复后 scripts：`1f2af023f54a78e150c5cd4ee9dc5599a0828b122588de09e87edafae96d03ba`。
+- 最终 checkout PG/单测：`3fb09556e9cea3fd40bbfb714b3702aea4612ca3685ff1cc3cb6c504cd8c296f`。
+- 报告 PG：`f51e7118d40c8afa22a362651fa2a92e50d7e4efaa9c46842e6d730f19e079ad`。
+- 四场景恢复：`afc8dac2356bfddd90c3d23d6fd522f763f2743ad80de94e5b6710c988b1220d`。
+- 后续 legacy CLI：`044c666c0d8a89e9103dff178c6b05d4dac2722c7a8f2314e29cf1cd8852b560`。
+
+代码 `c837829314c20ee6557334676c7970e728fe3ba3`，tree
+`ecf59fd9cb98d82f531e68f31bcb4e370ac8f59d` 的 `npm run build` 通过，Vite
+9.16 秒，保留原警告。12:54:42 全 server 收集 4158 项：**4147 通过、0 断言失败、
+11 跳过**，但有 **1 个 suite 收集失败**：`selfHostedUpgrade/database.test.ts`
+仅模拟 Client，新增 import-time 子类需要 Pool。整批退出 1，243.61 秒；519 文件为
+517 通过／1 失败／1 跳过。`d93ae67a6` 补入误实例化即报错的 mock Pool，不增加
+真实数据库 fallback。12:59:50 focused **41/41**（14 fixture＋27 checkout），退出
+0；这不能覆盖全 server 失败。build 日志 SHA256：
+`d4b4272c5eb0a732323d77e026079774cc34148a9ad59027fbcd2f7f44bb9007`；
+server：`318091fde20e83e312657d1fde45d1e301f85948a1f686240b307a24b8fe4ea1`。
+
+独立可审的规范修订为 `7cb047d1b10fbb74cf70b0cb2ab4d7b9e9e5d243`（reader，
+两份规范）和 `a3e58024b3b20a2fdcc154a6bab3981310be7571`（恢复，四份规范）。
+它们追加本次明确授权，原 phase、审批、退休和整体恢复资格条款不变。Standards
+复审无 P1/P2，并核对中英文及相对链接。全文交付分别登记限定合同指纹，不将它们
+当成全量 trusted baseline、实现候选或测试 checkout。
+
+reader 日志 SHA256：`ff5f63523cd4418541d022ac20166d5d3a698b5ce5f211eddd01de2ac9c3d553`。
+startup 日志：`854670dda36ec5d67ab63391a417a8da8cdf5254b2505583cb6c04e5aeeaff5f`。
+boundary selector：`94fea2760b9d43e95e3b71b2ed3ba2ccc6d1978349243ff2e9f3b45636a6207a`。
+这些是私有原始日志指纹，不代表已上传日志。
+
+`e7f72e800` 新增已发布候选重启的批准投影核验，没有生成当前目标事实。
+`1ebb03bf6`、`0a4d6a4b6` 让 38 个退休 HTTP 写路径只由一个入口处理，
+并在查询 Catalog 指针前返回 410；含真实 branded pool 的根路由回归，
+但未完成 P13 数据库／后台写路径清点。`d60043451` 修复生产缺 schema 绕过：
+修复前新增两项单测失败，修复后选中三文件 25 项通过；真实受限登录进程负测见上表。
+
+真实 API/worker startup callback、当前状态 producer、P12/P13、副作用后的报告／
+批准链和完整 controller 仍是内部实现责任。S6 Binding/Value 租户权限是单独的
+限定决策，不在 reader 0140 授权中。真实备份授权／材料、企业 CA／网络、
+Policy #815 和生产批准分别保留为外部依赖。本检查点未建立真实副本、企业构建、
+浏览器／容量或生产执行证据。PR 保持 Draft，M2 未完成。
+
+## 历史 PR #824 复核续工，2026-09-07
 
 代码 `11d8147a5accf08867bfaf792346af0d555b1d05`，tree
 `570163372b9b8e1cdae5a6880262d66ae0fde408`，父报告 `7fabeb8c4`。

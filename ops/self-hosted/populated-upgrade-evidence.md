@@ -2,7 +2,204 @@
 
 > Chinese: [Chinese](populated-upgrade-evidence.zh-CN.md)
 
-## PR #824 follow-up, 2026-09-07
+## Authorized contract implementation checkpoint, 2026-09-07
+
+### Current integration failures and separately verified increments
+
+The P12 prototype in `c120f92da`/`cf4813652` adds three management tables through
+0141. Its focused PG16 tests do **not** authorize changing frozen S2 schema
+contracts. Full server execution at `28c9902a4ea9cca600d7355e91276629f8c6647d`,
+14:01:54 UTC+8, exited 1: **4184 collected, 3919 passed, 53 failed, 212 skipped**;
+521 files: 482 passed, 38 failed, 1 skipped; 151.36s, owned cleanup verified.
+The new tables cause the historical 43-relation assertions and S2 fingerprint
+to reject the current 46-relation schema. The expected fingerprint remains
+`5424d2588395ab736b7af2ad5146091d7c9592ede4a59eea48480917e84516f5`;
+the observed candidate is
+`23fe1747c1c5e5477277654e90b3a0a002db6123a05c9342ef11a57fdc270646`.
+This is a candidate integration failure, not inherited main failure. P12 remains
+unsealed Scratch pending a separate, bounded S2/S2-RBAC/S2-PGH decision; neither
+of the two approved contracts grants permission to replace this freeze.
+The old manifests, assertions and fingerprints are unchanged.
+
+`1066cd05f` connects the existing recovery capture implementation to typed
+pending/committed/unknown journal events and an issued, root-bound host lock.
+The execution consumer refuses historical hash-only capture events. Directory
+replacement leaves the original pending evidence intact; it cannot write a
+copied journal in the substituted root. Capture does not create approval or
+advance release phases. Final precommit focused execution at 13:44:03:
+105 collected, **104 passed, 1 opt-in Docker skipped**, exit 0, 4.70s.
+This is filesystem/journal evidence, not an actual source-bound controller run.
+
+`f96833510` binds each recovery output to its original directory and file
+descriptor. `81d99a6c0` (source `fff28cf7a8104f2284b424afc47f59b7abcc79db`)
+syncs every payload and manifest file, then the directory before success.
+Source Red was 4 failures/38 filtered; source Green was **84/84**, no skips,
+with TypeScript check exit 0. Parent integrated package/capture/authorization
+selectors at 14:12:44: **83/83**, exit 0, 4.46s. These are different selectors,
+not a decreasing or combined total. Independent Standards/Spec reviews accepted
+the bounded descriptor and sync changes. Partial packages remain after failure;
+neither filesystem tests nor descriptor binding prove atomic cleanup against a
+replacement after the final pathname check in the shell lock release.
+
+Actual deployment authentication is implemented through `5fafaff65` (source
+`0c4a57e110fdddb7255d9a1dbc4a1b1b767b0540`): a restricted authentication LOGIN,
+existing session authorization and private per-run custodian assignments, with
+effective ACL/member/function/system-parameter checks. Its owned PG16 run was
+**38/38**, unit run **14/14**, build and documentation governance exit 0.
+Assignments do not turn product administrators into deployment operators.
+The later report-writer target is a separate Scratch change under review;
+its intermediate 54/54 run is not a passed-report approval or startup proof.
+
+At `2ae097c939b611f94efe45fa878932f60fe2852c`, tree
+`e774874e6fd86e0c43c1362c95664586c64c2c3c`, build exited 0 (Vite 8.76s,
+existing warnings). Owned schema generation exited 0 and generated the additional
+0141 inventory, committed as `28c9902a4`; generation does not approve that schema.
+Mandatory reader/report/activation/authority CI lanes each have a separate cluster;
+their exact exclusions from shared suites do not count as passes without those
+required jobs. No new Hosted execution or production operation is implied here.
+
+New raw log hashes:
+
+- Full server `28c9902a4`: `0328b620ad6839d1f57d377eb849f093f5e3ddd50e57c1f17f9278207426f5b7`.
+- Integrated recovery sync selectors: `18207bff46a7d7ee089961476c6398ccd77cdbbf6d6e6f37cca0bcb90e502365`.
+- Build `2ae097c93`: `3ddb73e02838a41b4fd38ebb5330e71ebc1a71592d4b11b46304f7ec46ea411e`.
+
+### Earlier executions in this same continuation
+
+The user's two bounded decisions supersede the pending recovery/reader decisions
+in the historical follow-up below. Base remains `cda6737a8`; source deployment
+remains `82344044b436a8dafecefbb85dfd724cecb05e3f`. PR #824 was independently
+read as Draft/Open/unmerged at remote `f00f94435` before publishing this work.
+No historical execution is reassigned to a later report commit.
+
+Reader commits `cf06d5a79` through `9caeae155` append 0140, its exact ten-table
+query/grant manifest and privilege-drift negatives. Historical 0138 SHA256 is
+`a575205695852b11a536c7d41293f87634242b3c8d98f2345b3599e144aca8c5`;
+0139 is `36fdd85de86ab09309dd6531594feca16a5bce00b343fa858ac04f4cdbf49f31`.
+`3f2e8f7a7` keeps the historical role contract comparison explicitly at 0139;
+new reader permission acceptance is separate. No runtime LOGIN or production
+credentials were changed. Independent Standards/Spec reviews of the reader
+found no remaining P1/P2 after the documented privilege-audit corrections.
+
+Recovery commits `6b8febdc2`, `d22efaccc` and `44eaa7a9a` implement the registered
+check/execution split, opaque execution target and durable authorization consumer.
+Check-only entrypoints cannot import the executor; missing modules and disguised
+commands are negative cases, while unrelated S10-PER prohibitions remain. The
+consumer requires capture/approval records already committed in the existing
+journal; the synthetic fixture is not the missing authenticated controller
+producer. Independent reviews found no remaining P1/P2 in that consumer or the
+four-case acceptance split. Real restore acceptance and complete controller
+approval production remain separate results.
+
+| Execution identity / command | Observed result |
+| --- | --- |
+| `0a4d6a4b6e86151aac87794f681e02d06cb47bb1`, tree `2aaf410e77adcda983bdd01cda4861e4403cc361`, owned runner `--suite reader-pg16`, 11:33:23 UTC+8 | 46 collected/passed, 0 failed/skipped/filtered, exit 0; formal Kernel through real restricted LOGIN; PG16 Alpine image `sha256:16bc17c64a573ef34162af9298258d1aec548232985b33ed7b1eac33ba35c229`, linux/arm64; cleanup verified |
+| Same commit, startup config selecting `verifyStartup.test.ts` and `publishedStartup.test.ts`, 11:35:21 | 41 passed, 0 failed/skipped; adapter units only, no production entrypoint success |
+| Same commit, boundary test selector `locks the post-refresh`, 11:35:22 | 1 passed, 23 selector-filtered; not the whole suite |
+| `6e6ceb6b57dc6b493ebe9629cbd8deb0d2eb2e7d`, owned runner `--suite schema-doc` | exit 0, real generated inventory now 138 migrations through 0140; pgvector image `sha256:a36250871de0833b8757561c72f2477ef1ddd1101afa4e617fb552e0de514c6b`, cleanup verified; generation committed separately as `4f0b54413` |
+| Precommit bytes later committed as `2ff5e46b2`, CI/runner/Hosted admission selectors, 11:54:32 | 4 files, 75 passed, 0 failed/skipped; synthetic cryptography plus real Git fixtures, not Hosted issuance |
+| `44eaa7a9a71b3951c9af6292f439d64e5dd17702`, tree `aeb64d15e656d9e8d4a12a515a4825eba08b7ab7`, owned runner `--suite scripts-pgvector`, 11:54:54 | 118 files: 115 passed, 2 failed, 1 skipped; 1572 tests: 1482 passed, 65 failed, 25 skipped; exit 1, 63.14s; owned cluster cleanup verified |
+
+The full-scripts failures are not collapsed into the old Hosted failure. One is
+the unchanged source-lock test's 60-second deadline. The other 64 are rehearsal
+cases: a missing canonical TMPDIR triggers the frozen symlink-safe cleanup
+refusal, and the database cases also retain a default development container
+instead of the runner's owned container. The first batch therefore does not
+prove complete target isolation for those nested CLI calls. `d7b7215c4` supplies
+the run's private canonical TMPDIR, exact owned container/pinned Docker endpoint
+and matching isolated bootstrap login. It changes no frozen assertion or timeout;
+the corrected full execution is recorded below.
+
+| Later execution identity / command | Observed result |
+| --- | --- |
+| `a39294fff7d061249f229438c2a56c54234e8dd2`, tree `ba88e0792cb2d432c378f4166d8ce8c1dfa1462b`, evidence-doc WIP only; owned `scripts-pgvector`, 12:08:34 | 118 files: 116 passed, 1 failed, 1 skipped; 1572 tests: **1546 passed, 1 failed, 25 skipped**, exit 1, 193.19s. All 64 rehearsal failures now passed; the source-lock deadline remains. Cleanup verified. |
+| Same code, owned `server-pgvector`, 12:15:32 | 517 files: 515 passed, 1 failed, 1 skipped; 4111 tests: **4101 passed, 1 failed, 9 skipped**, exit 1, 295.65s. Sole failure: legacy dependency guard mistakes canonical schema-qualified relations for retired flat identities. |
+| Same code, `npm run build` | exit 0; Vite 15.40s, existing chunk/externalization warnings. Contract, selfhost and documentation-governance checks also exit 0; not a target build. |
+| Same code, boundary CLI with explicit trusted base `cda6737a8f177a8bbd2f3bc7d195f8e3037bfa74` | exit 0: 3509 matches/allowances, zero unallowlisted/stale/metadata/growth findings. |
+| Same code, actual owned PG runtime integration, 12:14:31 | **9/9**, exit 0, 7.33s. Actual production `server/index.ts` and `workerRunner.ts` refuse privileged or missing-schema restricted login before listener/consumer construction. No legal production startup was demonstrated. |
+| `2437ab790` plus checkout WIP later committed as `9d55cde1950a1e5108d01b72b1d0531435225df4`, runtime config, 12:45:08 | **38/38**, exit 0, 6.85s: 11 actual PG/entry-negative cases and 27 hook units. Actual backend termination during delayed checkout rejects and destroys the lease; formal Kernel/root/raw-pool paths cannot bypass observation. These are not approved startup positives. |
+| `9d55cde1950a1e5108d01b72b1d0531435225df4` plus runner/config WIP later committed as `503c20b2850ddb3bfe9e84da1df6fea04c361b4c`, owned `report-pg16`, 12:46:49 | **34/34**, exit 0, 8.95s; PG16 Alpine image as reader above, independent nonce cluster cleanup verified. Real restricted LOGIN calls formal report projection and rejects extra memberships/ACL/definer delegation. The positive reads an absent report; it is not a passing technical report. Separate same-code report units **27/27**, exit 0. |
+
+The unchanged source-lock file was compared on candidate/base in the same slim
+environment with the direct Command Line Tools Git executable. Both bounded
+70-second supervisors terminated with 143; neither is a pass or proof that all
+candidate failures are inherited. No test deadline, expected output or trusted
+base was changed. `c837829314c20ee6557334676c7970e728fe3ba3` fixes only the legacy
+scanner's two schema-name collisions, retaining all path/token prohibitions and
+testing each occurrence; its independent source commit passed 8/8. The subsequent
+full server result must be recorded separately, not inferred from that selector.
+
+`9d55cde19` followed real counterexamples: eleven bypass cases failed before the
+per-checkout hook, seven non-Error refusals exposed pg's falsy callback branch,
+and five delayed-disconnect cases exposed an unhandled client event. The final
+callback acquisition and continuous listener handoff passed independent Standards
+and Spec review. It adds no role grant or release permission.
+
+Recovery execution source `4bd547437a1e6981ad14430899b5a2df032cf198`
+(integrated as `44eaa7a9a`) ran **4/4 actual Docker cases**, exit 0, 566.22s,
+under unchanged per-case 180-second limits. PostgreSQL bootstrap identities
+`postgres` and `wiseeff` each cover complete independent package restore and the
+nonempty-target matrix. PostgreSQL owner/ACL and restricted reads, object bytes,
+content types/metadata, and Redis AOF survive source shutdown and separate restore.
+Queue-shaped keys are not actual Bull business-consumer acceptance. The later
+fixture-only source `a957f7f998ea583d1dd4183aefbc04fe38ee81bb` (integrated through
+`954022cd8`) retains private evidence for both success/failure and writes its
+marker through the original file descriptor. Its separate focused result is
+102 passed/10 opt-in Docker skipped; legacy CLI selector is 1 passed/11 filtered,
+20.25s, exit 0. No four-case rerun is relabeled to this fixture commit.
+Independent final reviews of the retention changes found no remaining P1/P2.
+
+Additional raw-log SHA256 values (private logs, not uploaded backups):
+
+- Corrected scripts: `1f2af023f54a78e150c5cd4ee9dc5599a0828b122588de09e87edafae96d03ba`.
+- Final checkout PG/units: `3fb09556e9cea3fd40bbfb714b3702aea4612ca3685ff1cc3cb6c504cd8c296f`.
+- Report PG: `f51e7118d40c8afa22a362651fa2a92e50d7e4efaa9c46842e6d730f19e079ad`.
+- Four-case restore: `afc8dac2356bfddd90c3d23d6fd522f763f2743ad80de94e5b6710c988b1220d`.
+- Later legacy CLI: `044c666c0d8a89e9103dff178c6b05d4dac2722c7a8f2314e29cf1cd8852b560`.
+
+At code `c837829314c20ee6557334676c7970e728fe3ba3`, tree
+`ecf59fd9cb98d82f531e68f31bcb4e370ac8f59d`, `npm run build` passed (Vite 9.16s,
+same existing warnings). Full owned server execution at 12:54:42 collected
+4158 tests: **4147 passed, 0 assertion failures, 11 skipped**, but **one suite
+failed collection** (`selfHostedUpgrade/database.test.ts`: its Client-only pg
+mock lacked Pool after the new import-time subclass). Overall exit 1, 243.61s;
+the 519 files were 517 passed/1 failed/1 skipped. `d93ae67a6` supplies a mock Pool
+which throws if accidentally instantiated; no actual database fallback is added.
+Its 12:59:50 focused run passed **41/41** (14 fixture + 27 checkout), exit 0.
+This does not replace the full server failure. Build log SHA256 is
+`d4b4272c5eb0a732323d77e026079774cc34148a9ad59027fbcd2f7f44bb9007`;
+server log is `318091fde20e83e312657d1fde45d1e301f85948a1f686240b307a24b8fe4ea1`.
+
+The independently reviewable normative amendments are `7cb047d1b10fbb74cf70b0cb2ab4d7b9e9e5d243`
+(reader, two specification files) and `a3e58024b3b20a2fdcc154a6bab3981310be7571`
+(recovery, four specification files). These add the user's exact authorization;
+original phase, approval, retirement and whole-state eligibility clauses remain.
+Standards review found no P1/P2 and checked both languages and relative links.
+Full-file delivery records scoped contract fingerprints separately from any
+global trusted baseline, implementation candidate or test checkout.
+
+Reader log SHA256: `ff5f63523cd4418541d022ac20166d5d3a698b5ce5f211eddd01de2ac9c3d553`.
+Startup log: `854670dda36ec5d67ab63391a417a8da8cdf5254b2505583cb6c04e5aeeaff5f`.
+Boundary selector log: `94fea2760b9d43e95e3b71b2ed3ba2ccc6d1978349243ff2e9f3b45636a6207a`.
+These are private execution-log fingerprints, not claims of uploaded raw logs.
+
+`e7f72e800` adds approved published-restart projection checks, not a live state
+producer. `1ebb03bf6` and `0a4d6a4b6` give the 38 retired HTTP writes one owner
+and return 410 before any Catalog pointer lookup, including real branded-pool
+root dispatch tests. Neither completes P13's database/background writer census.
+`d60043451` closes the missing-schema production-startup bypass: two new unit
+counterexamples failed before the fix, then the three selected runtime files
+passed 25 tests. Actual restricted-login process negatives are recorded above.
+
+The actual API/worker startup callback, current-state producer, P12/P13 effects,
+post-retirement report/approval chain and full controller remain internal work.
+S6 Binding/Value tenancy permissions are a separate bounded decision, not part
+of reader 0140. Real backup authorization/materials, enterprise CA/network,
+Policy #815 and production approval remain distinct external dependencies.
+No real-data-copy, enterprise build, browser/capacity acceptance or production
+execution is established by this checkpoint. PR remains Draft; M2 is incomplete.
+
+## Historical PR #824 follow-up, 2026-09-07
 
 Code `11d8147a5accf08867bfaf792346af0d555b1d05`, tree
 `570163372b9b8e1cdae5a6880262d66ae0fde408`, parent report `7fabeb8c4`.
