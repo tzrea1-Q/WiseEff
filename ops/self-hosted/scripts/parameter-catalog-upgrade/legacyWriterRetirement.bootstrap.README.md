@@ -46,10 +46,12 @@ relation locks and mutator S7 lock. Guard loss destroys the actual mutator.
 
 The low-level `beforeEffect` lifecycle constraint is installed by the root's
 own closure, never accepted in root input. The closure rechecks the issued host
-lock, source/package/journal boundary and held guard before each event append,
+lock, source/package/journal boundary, held guard and formal report projection before each event append,
 password change and COMMIT, and after the first COMMIT. It uses the existing
 sessions and starts no nested transaction. The low-level API without a hook
 remains only a management component, not a supported maintenance entry point.
+The report is read again because its retention deadline can pass independently
+of the six inventory locks; an earlier approved projection cannot replace that check.
 
 Inspection reopens the exact persisted custody version. It never creates a new
 secret, retries ALTER ROLE, resets the journal, or infers success from an intent.

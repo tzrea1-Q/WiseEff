@@ -335,7 +335,7 @@ async function retire(input: LegacyLoginRetirementInput, bootstrapInspection = f
         // The root constructs this constraint from issued/live resources. It
         // is not caller-supplied authorization and never opens a nested RR
         // transaction while the low-level effect owns its own transaction.
-        beforeEffect: async () => { await targetCheck(); await guard!.verify(); } };
+        beforeEffect: async () => { await targetCheck(); await guard!.verify(); await verifyBoundReport(); } };
       bootstrapStarted = !bootstrapInspection;
       if (!bootstrapInspection) await applyBootstrapCredentialFence(command);
       const observed = await inspectBootstrapCredentialFence(command);

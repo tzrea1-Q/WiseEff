@@ -177,6 +177,22 @@ it("installs the root's live host check before the low-level effect can continue
   expect(io.rootEvents).toHaveLength(1);
 });
 
+it("rechecks an expired report projection before the low-level effect can continue", async () => {
+  const f = await fixture();
+  let continued = false;
+  io.apply.mockImplementationOnce(async command => {
+    // Simulate the formal projection becoming unavailable after the first
+    // intent commit. This is root orchestration coverage, not a passed SQL report.
+    io.report.mockResolvedValue({ kind: "absent", reason: "retention-expired" });
+    await command.beforeEffect();
+    continued = true;
+    return { outcome: "authentication-fenced-not-P13", intentDigest: "ignored" };
+  });
+  await expect(retireLegacyApplicationLogins(f.input)).rejects.toThrow("TRANSACTION-OUTCOME-UNKNOWN");
+  expect(continued).toBe(false);
+  expect(io.rootEvents).toHaveLength(1);
+});
+
 it.each([false, true])("attempts every close after a synchronous pool close failure, retaining prior refusal=%s", async priorFailure => {
   const f = await fixture(); io.fault = "pool-close";
   if (priorFailure) io.apply.mockRejectedValueOnce(new Error("private-admission-detail"));

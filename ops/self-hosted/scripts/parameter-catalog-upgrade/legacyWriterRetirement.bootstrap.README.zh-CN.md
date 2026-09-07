@@ -38,8 +38,9 @@ guard 丢失立即销毁真实 mutator。
 
 底层 `beforeEffect` 生命周期约束由根自身闭包安装，不接受根调用者输入的 callback。
 闭包在每次事件追加、密码写入、COMMIT 前及首次 COMMIT 后复核真实 issued 宿主锁、
-源/恢复包/journal 边界和持有的 guard。它复用既有会话，不开启嵌套事务。
+源/恢复包/journal 边界、持有的 guard 与正式报告投影。它复用既有会话，不开启嵌套事务。
 不带该钩子的底层 API 仍仅是管理组件，不是正式维护入口或发布批准。
+报告留存期限可能在六表锁仍被持有时到期，因此旧的通过投影不能代替每次效果前的复核。
 
 inspect 只重开原持久 custody 版本，不生成新 secret、不重试 ALTER、不重置 journal，
 也不把 intent 当成功。只有根 intent、尚无底层 intent 的中断仍为 unknown；本分片不
