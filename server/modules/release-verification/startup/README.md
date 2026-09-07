@@ -127,8 +127,12 @@ other reachable roles (including Catalog reader, governance and management),
 object ownership, direct extra relation/column/function grants, effective
 application writes, schema/database CREATE, unsafe definer delegation and
 privileged parameter grants refuse admission. Ordinary existing PUBLIC reads
-are not treated as a new grant. Normal PostgreSQL built-in execution is retained;
-explicit function grants and user-schema definers delegating elevated/write
+are not treated as a new grant. Normal PostgreSQL built-in execution is retained.
+PUBLIC table/column SELECT on non-report Catalog objects is nevertheless refused;
+the ordinary-business PUBLIC read exception does not widen canonical access.
+Sequence USAGE/UPDATE delegated by a definer is write capability and is refused,
+even when its owner lacks table writes and schema CREATE.
+Explicit function grants and user-schema definers delegating elevated/write
 capability are rejected. This is a purpose-specific login precondition, not a
 replacement for the complete migration/permission manifest or release verifier.
 

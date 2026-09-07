@@ -87,6 +87,8 @@ it.each([
   ["report grant option", `grant select on parameter_catalog.verification_reports to ${role} with grant option`, `revoke select on parameter_catalog.verification_reports from ${role}`],
   ["system function EXECUTE", `grant execute on function pg_catalog.pg_read_file(text) to ${role}`, `revoke execute on function pg_catalog.pg_read_file(text) from ${role}`],
   ["PUBLIC privileged parameter", "grant set on parameter session_replication_role to public", "revoke set on parameter session_replication_role from public"],
+  ["PUBLIC non-report Catalog SELECT", "grant select on parameter_catalog.catalog_state to public", "revoke select on parameter_catalog.catalog_state from public"],
+  ["PUBLIC non-report Catalog column SELECT", "grant select(current_catalog_release_id) on parameter_catalog.catalog_state to public", "revoke select(current_catalog_release_id) on parameter_catalog.catalog_state from public"],
 ])("refuses %s outside its read contract", async (_name, setup, cleanup) => {
   await admin.query(setup);
   try { await expect(openStartupReportDatabase({ connectionString: url })).rejects.toMatchObject({ code: "PCAT-REPORT-LOGIN-CAPABILITY-REJECTED" }); }
@@ -97,4 +99,34 @@ it("refuses a PUBLIC definer that delegates owner write capability", async () =>
   await admin.query("create function public.report_write_proxy() returns void language sql security definer set search_path=pg_catalog as 'delete from public.organizations where false'");
   try { await expect(openStartupReportDatabase({ connectionString: url })).rejects.toMatchObject({ code: "PCAT-REPORT-LOGIN-CAPABILITY-REJECTED" }); }
   finally { await admin.query("drop function public.report_write_proxy()"); }
+});
+
+it("refuses a PUBLIC definer whose owner can only advance a sequence", async () => {
+  const owner = pg.escapeIdentifier(`sequence_owner_${randomBytes(8).toString("hex")}`);
+  await admin.query(`create role ${owner} nologin noinherit nosuperuser nobypassrls nocreatedb nocreaterole noreplication;
+    create sequence public.report_sequence_probe;
+    grant usage on sequence public.report_sequence_probe to ${owner};
+    grant usage on schema public to ${owner};
+    create function public.report_sequence_proxy() returns bigint language sql security definer
+      set search_path=pg_catalog as 'select nextval(''public.report_sequence_probe''::regclass)';
+    alter function public.report_sequence_proxy() owner to ${owner}`);
+  const direct = createPostgresDatabase(url);
+  try {
+    const ownerName = owner.slice(1, -1);
+    expect((await admin.query(`select has_schema_privilege($1,'public','CREATE') as schema_create,
+      has_sequence_privilege($1,'public.report_sequence_probe','USAGE') as sequence_usage,
+      (select count(*)::int from pg_class c join pg_namespace n on n.oid=c.relnamespace
+       where c.relkind in ('r','p','v','m','f') and n.nspname not in ('pg_catalog','information_schema')
+        and (has_table_privilege($1,c.oid,'INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER')
+          or has_any_column_privilege($1,c.oid,'INSERT,UPDATE,REFERENCES'))) as table_writes`, [ownerName])).rows)
+      .toEqual([{ schema_create: false, sequence_usage: true, table_writes: 0 }]);
+    await expect(direct.query("select nextval('public.report_sequence_probe')")).rejects.toMatchObject({ code: "42501" });
+    // Actual restricted LOGIN demonstrates the definer side effect. This is a
+    // permission probe, not a pool that has passed the new admission check.
+    expect((await direct.query("select public.report_sequence_proxy()::text as value")).rows).toEqual([{ value: "1" }]);
+    await expect(openStartupReportDatabase({ connectionString: url })).rejects.toMatchObject({ code: "PCAT-REPORT-LOGIN-CAPABILITY-REJECTED" });
+  } finally {
+    await direct.close();
+    await admin.query("drop function public.report_sequence_proxy(); drop sequence public.report_sequence_probe");
+  }
 });

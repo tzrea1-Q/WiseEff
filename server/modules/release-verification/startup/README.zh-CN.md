@@ -103,6 +103,9 @@ reader 不会递归要求尚待读取的 runtime 报告。没有 development 绕
 （包括 Catalog reader、治理和管理角色）、对象所有权、直接额外关系／列／函数
 授权、有效业务写权限、schema／数据库 CREATE、危险 definer 代理及高权参数授权
 均拒绝准入。已有 PUBLIC 普通读取不视为新授权。保留普通 PostgreSQL 内建执行；
+PUBLIC 对非报告 Catalog 对象的表级／列级 SELECT 仍须拒绝，普通业务读取例外
+不扩大 canonical 访问。definer 代理的序列 USAGE／UPDATE 属于写能力，即使其
+owner 没有表写权限或 schema CREATE 也拒绝。
 拒绝显式函数授权及用户 schema 中代理高权／写能力的 definer。此处仅是专用连接
 前置条件，不取代完整迁移／权限 manifest 或 Release Verification。
 

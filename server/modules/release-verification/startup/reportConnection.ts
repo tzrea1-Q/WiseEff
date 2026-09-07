@@ -42,7 +42,12 @@ select session_user=current_user as same_identity,
         and (c.oid not in (select oid from reports) or a.is_grantable)) +
    (select count(*)::int from pg_catalog.pg_attribute t join app_relations c on c.oid=t.attrelid
       cross join lateral pg_catalog.aclexplode(t.attacl) a
-      where a.grantee in (select oid from reachable))) as unexpected_direct_reads,
+      where a.grantee in (select oid from reachable)) +
+   (select count(*)::int from app_relations c join pg_catalog.pg_namespace n on n.oid=c.relnamespace
+      where n.nspname='parameter_catalog' and c.oid not in (select oid from reports) and
+        case when c.relkind='S' then pg_catalog.has_sequence_privilege(session_user,c.oid,'SELECT')
+        else pg_catalog.has_table_privilege(session_user,c.oid,'SELECT')
+          or pg_catalog.has_any_column_privilege(session_user,c.oid,'SELECT') end)) as unexpected_direct_reads,
   ((select count(*)::int from app_relations c where
       case when c.relkind='S' then pg_catalog.has_sequence_privilege(session_user,c.oid,'USAGE,UPDATE')
       else pg_catalog.has_table_privilege(session_user,c.oid,'INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER')
@@ -56,9 +61,10 @@ select session_user=current_user as same_identity,
         exists(select 1 from pg_catalog.pg_roles r where pg_catalog.pg_has_role(p.proowner,r.oid,'MEMBER')
           and (r.rolsuper or r.rolbypassrls or r.rolcreatedb or r.rolcreaterole or r.rolreplication))
         or exists(select 1 from app_schemas s where pg_catalog.has_schema_privilege(p.proowner,s.oid,'CREATE'))
-        or exists(select 1 from app_relations c where c.relkind<>'S' and (
-          pg_catalog.has_table_privilege(p.proowner,c.oid,'INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER')
-          or pg_catalog.has_any_column_privilege(p.proowner,c.oid,'INSERT,UPDATE,REFERENCES')))
+        or exists(select 1 from app_relations c where
+          case when c.relkind='S' then pg_catalog.has_sequence_privilege(p.proowner,c.oid,'USAGE,UPDATE')
+          else pg_catalog.has_table_privilege(p.proowner,c.oid,'INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER')
+            or pg_catalog.has_any_column_privilege(p.proowner,c.oid,'INSERT,UPDATE,REFERENCES') end)
       )))) as unsafe_definers,
   (select count(*)::int from pg_catalog.pg_parameter_acl p cross join lateral pg_catalog.aclexplode(p.paracl) a
     left join pg_catalog.pg_settings s on s.name=p.parname
