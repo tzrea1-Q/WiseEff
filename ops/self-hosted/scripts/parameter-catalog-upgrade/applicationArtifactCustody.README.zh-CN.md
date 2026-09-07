@@ -49,7 +49,9 @@ FD，selection 没有 `close()` 义务；原始检查 lease 则须单独 `close(
 也不构建；实际材料 FD 的 fsync 故障禁止 committed。这些不算真实应用构建验收。
 同字节 receipt 替换和 native symbolic tag 各先使新增反例失败，再修复通过。
 最初缺模块运行是收集失败，不计行为 Red。严格聚焦类型和原 trusted boundary
-单独核验。正式 init/prepare 及独立进程 inspect 同一真实产物仍待执行。
+单独核验。后续 `73f12a24e` 已通过正式 init／prepare 及独立进程inspect同一真实包。
+`3cee9f235` 的永久终端验收实际构建同一源码、独立读回并拒绝错误输入／材料变化。
+最后的负测run故意不可复用，此前成功包单独保留。精确执行身份与hash见现有存量升级证据。
 
 ```sh
 node_modules/.bin/vitest run --config vitest.scripts.config.ts ops/self-hosted/scripts/parameter-catalog-upgrade/applicationArtifact.test.ts ops/self-hosted/scripts/parameter-catalog-upgrade/applicationArtifactCustody.test.ts

@@ -4,6 +4,46 @@
 
 ## Integrated candidate, 2026-09-08
 
+The later integration `b7bd0e6454e7db5c07435aac290ef77d5c3f151a`, tree
+`964de0bb44a4292c8160f7ed5350347448fa7772`, adds independently reviewed
+HTTP owner controls and native referential-action detection. Parent real PG
+passed 34/34, 6.21s, exit 0 with cleanup; HTTP passed 51/51, 1.73s, zero
+failures/skips. Build exited 0 with warnings (Vite 7.93s), original-base boundary
+remained 3509/3509 with no growth. Corresponding log SHA256 values are
+`e4b8168023ea0ea407f9df891c94fbe277edfbb4441620ff5133f3ea689082d4`,
+`1995f029ce884575887abb60dbfcacb4e3b49ab8f0ba4cbaea1a22ddf4973a71`, and
+`6be96b6a4e9c34c85fae4d83921179458446125c8a15f8088987c9a01f5bea1c`.
+The API test uses actual registration/HTTP with database doubles, not approved
+production-mode startup. Native RI detection does not revoke project deletion
+or change the original FK. Subsequent database-dispatch analysis was stopped by
+the agent tool's automated cybersecurity review; its unfinished work and independent
+review are not passes. Complete database fencing and P13 remain unfinished.
+
+The permanent existing `applicationArtifact.build.ts` acceptance was changed
+to invoke the real terminal at `3cee9f235534dd5d2f5cfcc9e8ae46b95f6520c4`, tree
+`97a9ccffc8dfe84ffb38ebb66731ff9ec097e30f`. It actually built that same source,
+independently reopened it, refused missing/wrong source input, then refused
+original-package mutation and refused reuse even after restoring its bytes.
+The command exited 0; log `/tmp/upg824-terminal-permanent.log` has SHA256
+`c2f639f967a490bdcd05512d165c04716d554c487b2fbd3d002581808920e6ec`.
+Its package is `sha256:cda7007066579eff3e82ffca6ede81a91d660f87a7f181d827edd9b55a5bbdad`,
+loaded image `sha256:db0ccc9915f16f9bcdfd50612c93247e4efb18c4c9dd115ba2fee2a3a086183b`,
+and platform manifest `sha256:82717e836965c30246859dc038e60585984872226a3b5f0dc5f0a023b45d9942`.
+This deliberately damaged negative-test run is ineligible for reuse. The earlier
+successful `73f12a24e` package below is retained separately. Neither is a release.
+
+Hosted run `34167230816` for report `d79b9b23bcf7799613aa4d8265fedf1ab4ac6240`
+actually checked out `4817c844a0e4e0d63d117fa9d6e5eea0e49017aa`.
+Its owned job `101880674239` failed bootstrap custody: 27 passed/3 failed/0
+skipped of 30, 20.62s, exit 1 with cleanup. The first test exceeded 5000ms;
+subsequent cases reported lock and independent-process failures. Original job
+log SHA256 is `953304e16fbf84c0774aff3bc3fdd7ff3574bd63139f6c542a1581ac01888672`.
+This is a new candidate failure, not the historical source-lock timeout. The
+remaining run was still active when recorded; no current CI success is claimed.
+Strict owned docs at report `d79b9b23b` separately passed including database
+schema validation, exit 0 and cleanup; log SHA256
+`66089de582a346c6dc8a496c65ee2a704fcc3a9ed4d21ae601a4b5fe73b653a3`.
+
 Terminal code `73f12a24e17f12b9b863b7ebe78790ddd46d722b`, tree
 `c02d9512c54c643cb5e85efa0e4d460536c7fb7d`, actually ran the existing
 `upgrade.sh` artifact-init, artifact-prepare and a separate-process artifact-inspect

@@ -1,5 +1,10 @@
 # 应用构建产物生产
 
+永久 `applicationArtifact.build.ts` 命令现已调用真实 `upgrade.sh` 的
+init／prepare／inspect。在 `3cee9f235` 实际构建同一源码，通过独立进程读回、
+错误输入及包变化拒绝，exit 0；最后的负测run不可复用。这替代了下文历史命令
+仅调用helper的范围说明，不改记旧执行证据，也不证明应用启动。
+
 English: [English](applicationArtifact.README.md)。
 
 本有界构建 owner 复用现有 Compose/Dockerfile 配方生成本地应用包。

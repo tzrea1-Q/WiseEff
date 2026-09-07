@@ -61,7 +61,11 @@ build acceptance. Same-byte receipt replacement and a native symbolic tag each
 first failed their new negative test and then passed. The initial missing-module
 run was a collection failure, not a behavioral Red. Strict targeted types and the
 unchanged trusted boundary are checked separately. Official init/prepare and a
-separate-process inspect of one issued package remain pending.
+separate-process inspect of one issued package subsequently passed at `73f12a24e`.
+The permanent terminal acceptance at `3cee9f235` built that source, reopened in
+another process and refused wrong input/material changes. Its final negative
+run is intentionally ineligible for reuse; the earlier positive package is retained.
+Exact execution identities and hashes are in the existing populated upgrade evidence.
 
 ```sh
 node_modules/.bin/vitest run --config vitest.scripts.config.ts ops/self-hosted/scripts/parameter-catalog-upgrade/applicationArtifact.test.ts ops/self-hosted/scripts/parameter-catalog-upgrade/applicationArtifactCustody.test.ts

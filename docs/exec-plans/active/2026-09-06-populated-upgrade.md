@@ -6,6 +6,17 @@
 
 ### Current continuation: real dependencies and activation
 
+Current integrated continuation `b7bd0e645` adds the independently reviewed HTTP
+owner controls and native RI detection; parent HTTP 51/51, real PG 34/34,
+build and unchanged-base boundary passed. The permanent actual terminal test at
+`3cee9f235` also passed, separately from the earlier retained `73f12a24e` package.
+Report `d79b9b23b` Hosted `34167230816` has a failed owned bootstrap job (27/3),
+not a green candidate. Its 5000ms fixture overrun and subsequent shared-state
+failures are being corrected without extending timeouts. A later database
+analysis was stopped by the agent tool; that unfinished work remains explicit.
+Actual StartupTarget, production-mode positive startup and full P13/controller
+are still internal implementation work, separate from external target inputs.
+
 At `73f12a24e17f12b9b863b7ebe78790ddd46d722b` (tree
 `c02d9512c54c643cb5e85efa0e4d460536c7fb7d`), the real `upgrade.sh`
 artifact-init/prepare/inspect chain built that same source and reopened its
@@ -15,7 +26,7 @@ terminal dispatch and new-journal semantics each have independent Standards/Spec
 review. Fixed-candidate focused tests passed 59/59; full owned scripts passed
 source-lock 4/4 then 2001 passed/11 skipped, and backend passed 4300/4300.
 Build, original-base boundary, contract and selfhost checks exited zero. Current
-Hosted is not run. Exact hashes and the bounded negative-test correction are in
+Hosted had not run at that local checkpoint. Exact hashes and the bounded negative-test correction are in
 the existing evidence pair. The earlier checkpoints below retain their identities.
 
 The exact authentication/SQL successor and trigger dispatch fixes are now

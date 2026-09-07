@@ -4,6 +4,38 @@
 
 ## 集成候选，2026-09-08
 
+后续集成 `b7bd0e6454e7db5c07435aac290ef77d5c3f151a`，tree
+`964de0bb44a4292c8160f7ed5350347448fa7772`，加入分别双审通过的HTTP owner控制与原生
+外键动作检测。父真实PG34/34、6.21s、exit 0、清理验证；HTTP51/51、1.73s、零失败／
+跳过。Build exit 0、保留警告（Vite7.93s），原base boundary3509/3509、无增长。
+上述PG／HTTP／build日志SHA256依次为
+`e4b8168023ea0ea407f9df891c94fbe277edfbb4441620ff5133f3ea689082d4`、
+`1995f029ce884575887abb60dbfcacb4e3b49ab8f0ba4cbaea1a22ddf4973a71`、
+`6be96b6a4e9c34c85fae4d83921179458446125c8a15f8088987c9a01f5bea1c`。
+API用例是真实注册／HTTP加数据库替身，不是production获准启动。RI检测不撤销项目删除
+能力、不改原FK。后续数据库派发分析被子智能体工具的网络安全自动审查中止；未完工作
+及独立审查不记通过，完整数据库封禁与P13仍未完成。
+
+原永久入口 `applicationArtifact.build.ts` 在
+`3cee9f235534dd5d2f5cfcc9e8ae46b95f6520c4`（tree
+`97a9ccffc8dfe84ffb38ebb66731ff9ec097e30f`）改为调用真实终端，并实际构建同一源码、
+独立进程读回、拒绝缺失／错误源输入，随后拒绝原包篡改，以及恢复字节后的再次复用。
+命令exit 0，`/tmp/upg824-terminal-permanent.log` SHA256
+`c2f639f967a490bdcd05512d165c04716d554c487b2fbd3d002581808920e6ec`。
+包为 `sha256:cda7007066579eff3e82ffca6ede81a91d660f87a7f181d827edd9b55a5bbdad`，
+加载镜像 `sha256:db0ccc9915f16f9bcdfd50612c93247e4efb18c4c9dd115ba2fee2a3a086183b`，
+平台manifest `sha256:82717e836965c30246859dc038e60585984872226a3b5f0dc5f0a023b45d9942`。
+故意损坏的负测run不可复用，之前 `73f12a24e` 成功包单独保留；两者均不是发布。
+
+报告 `d79b9b23bcf7799613aa4d8265fedf1ab4ac6240` 的Hosted run `34167230816`
+实际checkout为 `4817c844a0e4e0d63d117fa9d6e5eea0e49017aa`。Owned job
+`101880674239` 在bootstrap custody失败：30项中27通过／3失败／0跳过，20.62s，
+exit 1且清理验证。首项超过5000ms，后两项为锁和独立子进程失败。原job日志SHA256
+`953304e16fbf84c0774aff3bc3fdd7ff3574bd63139f6c542a1581ac01888672`。
+这是新候选失败，不是历史source-lock超时；记录时其余run仍在进行，不声称当前CI通过。
+报告 `d79b9b23b` 的独立strict owned docs已通过，含真实DB schema验证、exit 0及清理，
+日志SHA256 `66089de582a346c6dc8a496c65ee2a704fcc3a9ed4d21ae601a4b5fe73b653a3`。
+
 终端代码 `73f12a24e17f12b9b863b7ebe78790ddd46d722b`，tree
 `c02d9512c54c643cb5e85efa0e4d460536c7fb7d`，实际通过现有 `upgrade.sh`
 执行artifact-init、artifact-prepare及从 `/` 工作目录启动的独立进程artifact-inspect，

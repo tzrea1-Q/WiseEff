@@ -4,13 +4,21 @@
 
 ## 范围与状态
 
+当前集成续工 `b7bd0e645` 加入独立双审的HTTP owner控制与原生RI检测，父HTTP51/51、
+真实PG34/34、build及原base boundary通过。`3cee9f235` 的永久真实终端验收也已通过，
+与此前保留的 `73f12a24e` 成功包分开。报告 `d79b9b23b` 的Hosted `34167230816`
+owned bootstrap job为27通过／3失败，不是绿色候选；正在修复5000ms夹具超时及其
+共享状态后续失败，不延长timeout。后续一项数据库分析被子智能体工具中止，未完工作
+明确保留。实际StartupTarget、production正向启动及完整P13／controller仍是内部实现，
+与外部目标材料分开。
+
 固定候选 `73f12a24e17f12b9b863b7ebe78790ddd46d722b`（tree
 `c02d9512c54c643cb5e85efa0e4d460536c7fb7d`）通过真实 `upgrade.sh`
 artifact-init／prepare／inspect：构建同一源码，再由不同工作目录的独立进程
 读回原受控包，两次观察完全相同；这不批准启动。Artifact custody、终端接线及
 新journal语义分别完成独立Standards／Spec审查。固定候选focused59/59，完整
 owned scripts为source-lock4/4后2001通过／11跳过；backend4300/4300。
-Build、原可信基线boundary、contract及selfhost均exit 0。当前Hosted未运行。
+Build、原可信基线boundary、contract及selfhost均exit 0。该本地检查点执行时Hosted尚未运行。
 精确hash及负测中一次错误预期的有界修正见现有证据文件；下文历史身份保留。
 
 认证／SQL精确后继与trigger派发修复已集成：源 `62090c07e` 的30项联合检查及

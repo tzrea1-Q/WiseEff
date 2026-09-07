@@ -1,5 +1,12 @@
 # Application artifact production
 
+The permanent `applicationArtifact.build.ts` command now invokes actual
+`upgrade.sh` init/prepare/inspect stages. At `3cee9f235` it built the same source,
+verified independent reopening and refusal after wrong input/package changes,
+and exited zero. Its final negative-test run is not reusable. This supersedes
+the helper-only scope of the historical command executions below; it does not
+retroactively change their evidence or establish application startup.
+
 Chinese: [中文](applicationArtifact.README.zh-CN.md).
 
 This bounded build owner produces a local application package from the existing
