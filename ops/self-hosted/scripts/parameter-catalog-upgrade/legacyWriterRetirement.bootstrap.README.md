@@ -37,12 +37,37 @@ authentication/owner/ACL invariants.
 | Guard error/end | Immediately destroy the mutating connection; retain an unknown outcome if execution started |
 | Cleanup | Attempt both lease releases, pool close, custody close and package-directory close; errors do not replace the earlier refusal |
 
+`acquireBootstrapInventoryGuard` is the actual root resource implementation,
+also exercised by the existing owned PostgreSQL fixture. It does not authorize
+P12, recovery or retirement: it acquires no credential and performs no stage
+effect. Its guard holds no S7 lock; the mutator owns that lock. No connection
+pool is enlarged in production. Each guard verification observes the exact six
+relation locks and mutator S7 lock. Guard loss destroys the actual mutator.
+
+The low-level `beforeEffect` lifecycle constraint is installed by the root's
+own closure, never accepted in root input. The closure rechecks the issued host
+lock, source/package/journal boundary and held guard before each event append,
+password change and COMMIT, and after the first COMMIT. It uses the existing
+sessions and starts no nested transaction. The low-level API without a hook
+remains only a management component, not a supported maintenance entry point.
+
 Inspection reopens the exact persisted custody version. It never creates a new
 secret, retries ALTER ROLE, resets the journal, or infers success from an intent.
 A missing low-level intent after a root-intent-only interruption stays unknown;
 this unit does not introduce an automatic retry for that case. A completed
 authentication fence still requires live P12/package/lock checks and a matching
 low-level readback before returning `bootstrap-authentication-fenced-not-p13`.
+
+After a successful rotation the old source and old management passwords cannot
+connect. Inspection therefore requires an explicitly supplied, valid private
+`administrativeConnectionString` from the retained credential custodian's
+authorized maintenance input. Source URLs stay unchanged. The adapter does not
+guess old/new passwords, use ambient configuration, expose a password-returning
+API or automatically construct that private input. The current root mock test
+proves that inspection does not reconnect the rejected old source credential;
+a separate-process **whole-root** inspection with genuinely approved P12 and
+capture predecessors is still unexecuted. Existing independent-process
+low-level inspection evidence does not fill that gap.
 
 ## Validation scope
 
@@ -55,6 +80,14 @@ own SHAs. This root integration still needs actual two-session lock compatibilit
 guard termination during commit and the complete legitimate P12/report/capture
 predecessor fixture. It must not use an inserted `passed` report to obtain that
 evidence. No production command is supplied.
+
+The appended PostgreSQL tests execute this root's real guard and the existing
+authentication effect on a prepared run. They retain all 22 existing tests and
+their timeouts, and add restricted LOGIN/SET-negative, cross-COMMIT lock,
+actual guard backend termination and actual host-lock-holder termination cases.
+These tests are prepared for the parent's `bootstrap-credential-pg16` owned
+runner; no local PostgreSQL run is claimed by this code commit. Their prepared
+run is not a forged P12 checkpoint or report approval.
 
 Documentation impact is this paired root-adapter note. The parent retains the
 single overall upgrade plan and owns subsequent controller/startup integration.

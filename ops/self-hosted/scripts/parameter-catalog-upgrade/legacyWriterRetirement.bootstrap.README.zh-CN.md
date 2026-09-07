@@ -31,10 +31,26 @@ bootstrap 路径另要求显式私有 `bootstrapCredentialDirectory`，它必须
 | guard error/end | 立即销毁写入连接；执行开始后的不确定结果保留 unknown |
 | 清理 | 两个 lease、pool、custody 和包目录均尝试关闭，后续错误不覆盖原拒绝 |
 
+`acquireBootstrapInventoryGuard` 是根实际使用的资源实现，既有独占 PG 夹具也调用它。
+它不提供 P12、恢复或退役授权，不取得凭据，也不执行阶段动作。guard 不取得 S7 锁，
+此锁只属于 mutator；生产连接池容量不变。每次 verify 实查六张表锁与 mutator 的 S7 锁，
+guard 丢失立即销毁真实 mutator。
+
+底层 `beforeEffect` 生命周期约束由根自身闭包安装，不接受根调用者输入的 callback。
+闭包在每次事件追加、密码写入、COMMIT 前及首次 COMMIT 后复核真实 issued 宿主锁、
+源/恢复包/journal 边界和持有的 guard。它复用既有会话，不开启嵌套事务。
+不带该钩子的底层 API 仍仅是管理组件，不是正式维护入口或发布批准。
+
 inspect 只重开原持久 custody 版本，不生成新 secret、不重试 ALTER、不重置 journal，
 也不把 intent 当成功。只有根 intent、尚无底层 intent 的中断仍为 unknown；本分片不
 自动重试此状态。返回 `bootstrap-authentication-fenced-not-p13` 之前仍须核实当前
 P12/恢复包/锁，并取得同一版本的底层真实读回。
+
+轮换成功后，原源密码和原管理密码都不能再连接。inspect 因此要求通过既有凭据保管者的
+受控维护输入，显式提供当前有效的私有 `administrativeConnectionString`；源 URL 保持
+原样。适配器不猜新旧密码、不使用 ambient 配置、不新增返回密码的 API，也不自动构造
+该私有输入。当前根替身回归证明 inspect 不重连已拒绝的原源凭据；由独立进程执行、
+带真实获批 P12 与 capture 前驱的完整根 inspect 仍未运行，不能用底层独立进程结果覆盖。
 
 ## 验证范围
 
@@ -43,5 +59,10 @@ P12/恢复包/锁，并取得同一版本的底层真实读回。
 或实际密码轮换。此前底层 PG 认证结果保留自己的 SHA。本次根集成仍需真实双会话锁
 兼容、提交期间 guard 终止，以及完整合法 P12/报告/恢复前驱夹具；不得通过插入 passed
 报告获得证据。本分片不提供生产命令。
+
+追加 PG 回归在真实 prepared run 上执行本根 guard 与既有认证效果，保留原 22 用例及
+超时，并追加受限 LOGIN/SET 反例、跨两次 COMMIT 锁兼容、真实 guard backend 终止、
+真实宿主锁进程终止。它们准备交父协调者的 `bootstrap-credential-pg16` 独占入口执行；
+本代码提交不宣称已执行 PG，也不把 prepared run 伪造为 P12 checkpoint 或报告批准。
 
 文档影响为本根适配器中英文说明；父协调者维护唯一升级主计划及后续 controller/startup 接合。

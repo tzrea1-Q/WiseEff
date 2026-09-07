@@ -136,6 +136,10 @@ type AuthenticationCommand = {
    * the host lock. This module additionally checks the actual S7 session lock. */
   client: pg.PoolClient; target: BindingDatabaseIdentity; runId: string; attemptId: string;
   custody: BootstrapCredentialCustody;
+  /** Optional management lifecycle constraint, not approval. Formal roots
+   * install their own live boundary closure; callers cannot supply it to the
+   * maintenance root. It must not open a nested transaction or borrow this pool. */
+  beforeEffect?: () => Promise<void>;
 };
 class BootstrapAuthenticationFenceError extends Error {}
 function failFence(reason: string): never { throw new BootstrapAuthenticationFenceError(`bootstrap-authentication-fence-${reason}`); }
@@ -317,7 +321,7 @@ async function appendAuthenticationEvent(client: pg.PoolClient, intent: Authenti
 export async function applyBootstrapCredentialFence(input: AuthenticationCommand): Promise<{
   outcome: "authentication-fenced-not-P13"; intentDigest: string;
 }> {
-  const { client } = input;
+  const { client, beforeEffect } = input;
   if (!(client instanceof pg.Client)) failFence("management-client-unavailable");
   const target = structuredClone(input.target), runId = input.runId, attemptId = input.attemptId;
   const custody = heldCustodies.get(input.custody);
@@ -346,9 +350,12 @@ export async function applyBootstrapCredentialFence(input: AuthenticationCommand
     if (existing.rowCount) failFence("existing-attempt-requires-inspection");
     const intent: AuthenticationIntent = { contract: "pcat-bootstrap-authentication-v1", runId, attemptId, target,
       roleName, roleOid: "10", credentials: structuredClone(custody.receipt), baselineDigest: await metadataDigest(client) };
+    await beforeEffect?.();
     await appendAuthenticationEvent(client, intent, INTENT_EVENT);
     await checkCustody(custody);
+    await beforeEffect?.();
     commitDispatched = true; await client.query("commit"); transaction = false; commitDispatched = false; intentCommitted = true;
+    await beforeEffect?.();
     await client.query("begin"); transaction = true;
     await client.query("set local synchronous_commit=on");
     await client.query("lock table pg_catalog.pg_authid in share row exclusive mode nowait");
@@ -365,11 +372,14 @@ export async function applyBootstrapCredentialFence(input: AuthenticationCommand
     await client.query("set local track_activities=off");
     if ((await client.query("select not pg_catalog.current_setting('track_activities')::boolean as private")).rows[0]?.private !== true)
       failFence("activity-privacy-unavailable");
+    await beforeEffect?.();
     await client.query(`alter role ${pg.escapeIdentifier(roleName)} password ${pg.escapeLiteral(custody.newSecret.toString("utf8"))}`);
     if (await metadataDigest(client) !== intent.baselineDigest) failFence("owner-acl-or-attribute-drift");
+    await beforeEffect?.();
     await appendAuthenticationEvent(client, intent, APPLIED_EVENT);
     await checkCustody(custody);
     if (broken) failFence("connection-lost");
+    await beforeEffect?.();
     commitDispatched = true; await client.query("commit"); transaction = false; commitDispatched = false;
     if (await authenticate(client, custody.newSecret, target, roleName) !== "accepted" ||
         await authenticate(client, custody.oldSecret, target, roleName) !== "password-rejected") failFence("postcondition-unknown");

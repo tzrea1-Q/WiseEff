@@ -331,7 +331,11 @@ async function retire(input: LegacyLoginRetirementInput, bootstrapInspection = f
       }
       await verifyGuard();
       const command = { client: admin, target: input.activation.target, runId: fixed.activationIntent.runId,
-        attemptId: fixed.attemptId, custody };
+        attemptId: fixed.attemptId, custody,
+        // The root constructs this constraint from issued/live resources. It
+        // is not caller-supplied authorization and never opens a nested RR
+        // transaction while the low-level effect owns its own transaction.
+        beforeEffect: async () => { await targetCheck(); await guard!.verify(); } };
       bootstrapStarted = !bootstrapInspection;
       if (!bootstrapInspection) await applyBootstrapCredentialFence(command);
       const observed = await inspectBootstrapCredentialFence(command);

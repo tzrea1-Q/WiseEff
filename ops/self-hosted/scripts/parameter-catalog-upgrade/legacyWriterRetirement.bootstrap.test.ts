@@ -10,7 +10,7 @@ import { retireLegacyApplicationLogins, inspectLegacyApplicationLoginFence, type
 const io = vi.hoisted(() => ({ apply: vi.fn(), inspect: vi.fn(), journal: vi.fn(),
   package: vi.fn(), docker: vi.fn(), activation: vi.fn(), report: vi.fn(),
   clients: [] as Array<{ kind: string; query: ReturnType<typeof vi.fn>; release: ReturnType<typeof vi.fn>; emit(event: string): boolean }>,
-  fault: "", closed: [] as string[], rootEvents: [] as Array<{ payload: unknown }> }));
+  fault: "", hostRefused: false, sourceConnects: 0, closed: [] as string[], rootEvents: [] as Array<{ payload: unknown }> }));
 vi.mock("node:fs/promises", async original => {
   const actual = await original<typeof import("node:fs/promises")>();
   return { ...actual, open: async (...args: Parameters<typeof actual.open>) => {
@@ -22,7 +22,9 @@ vi.mock("node:fs/promises", async original => {
 });
 vi.mock("../../../../scripts/isolated-upgrade-docker", () => ({ createIsolatedUpgradeDocker: () => ({ daemonId: "daemon", command: io.docker }) }));
 vi.mock("./legacyWriterSource", () => ({ observeLegacySourceEndpoint: () => ({ endpoint: "fixed" }) }));
-vi.mock("./handoff", () => ({ assertHostOperationLockForJournal: async () => {} }));
+vi.mock("./handoff", () => ({ assertHostOperationLockForJournal: async () => {
+  if (io.fault === "host-lock") { io.hostRefused = true; throw new Error("private-lock-diagnostic"); }
+} }));
 vi.mock("./journal", async original => ({ ...await original<typeof import("./journal")>(), loadUpgradeJournal: io.journal }));
 vi.mock("../../storage/recoveryPackage", () => ({ verifyRecoveryPackage: io.package }));
 vi.mock("../../../../server/modules/catalog-cutover/activation", () => ({ createApplicationReadActivation: io.activation }));
@@ -56,7 +58,7 @@ vi.mock("pg", async () => {
     });
     release = vi.fn(() => { this.emit("end"); });
     constructor(options: { connectionString?: string } = {}) { super(); this.kind = options.connectionString?.includes("guard") ? "guard" : "bootstrap"; io.clients.push(this); }
-    async connect() {}
+    async connect() { io.sourceConnects++; if (io.fault === "old-secret-rejected") throw new Error("private-authentication-refused"); }
     async end() { this.emit("end"); }
   }
   class Pool extends EventEmitter {
@@ -68,7 +70,7 @@ vi.mock("pg", async () => {
 });
 
 const roots: string[] = [];
-beforeEach(() => { vi.clearAllMocks(); io.clients.length = 0; io.rootEvents.length = 0; io.closed.length = 0; io.fault = ""; });
+beforeEach(() => { vi.clearAllMocks(); io.clients.length = 0; io.rootEvents.length = 0; io.closed.length = 0; io.fault = ""; io.hostRefused = false; io.sourceConnects = 0; });
 afterEach(async () => { for (const root of roots.splice(0)) await rm(root, { recursive: true }); });
 
 async function fixture() {
@@ -163,6 +165,18 @@ it("also destroys the mutator on a guard end without an error event", async () =
   expect(io.rootEvents).toHaveLength(1);
 });
 
+it("installs the root's live host check before the low-level effect can continue", async () => {
+  const f = await fixture();
+  io.apply.mockImplementationOnce(async command => {
+    io.fault = "host-lock";
+    await command.beforeEffect();
+    throw new Error("must-not-pass-lost-root-boundary");
+  });
+  await expect(retireLegacyApplicationLogins(f.input)).rejects.toThrow("TRANSACTION-OUTCOME-UNKNOWN");
+  expect(io.hostRefused).toBe(true);
+  expect(io.rootEvents).toHaveLength(1);
+});
+
 it.each([false, true])("attempts every close after a synchronous pool close failure, retaining prior refusal=%s", async priorFailure => {
   const f = await fixture(); io.fault = "pool-close";
   if (priorFailure) io.apply.mockRejectedValueOnce(new Error("private-admission-detail"));
@@ -190,6 +204,10 @@ it("reopens only the recorded original custody for root inspection and never rot
   const f = await fixture();
   await retireLegacyApplicationLogins(f.input);
   const first = io.apply.mock.calls[0][0].custody;
+  const sourceConnections = io.sourceConnects;
+  io.fault = "old-secret-rejected";
+  // Explicit new private management input; stopped source URLs remain old.
+  f.input.administrativeConnectionString = "postgres://postgres:new-private-input@127.0.0.1/db";
   await expect(inspectLegacyApplicationLoginFence(f.input)).resolves.toMatchObject({
     status: "bootstrap-authentication-inspected-not-p13", outcome: "authentication-fenced-not-P13", attemptId: "auth-attempt",
   });
@@ -197,7 +215,9 @@ it("reopens only the recorded original custody for root inspection and never rot
   const reopened = io.inspect.mock.calls.at(-1)![0].custody;
   expect(reopened).not.toBe(first);
   expect(reopened.receipt).toEqual(first.receipt);
+  expect(io.sourceConnects).toBe(sourceConnections);
   expect(io.rootEvents).toHaveLength(1);
+  io.fault = "";
   await expect(retireLegacyApplicationLogins(f.input)).rejects.toThrow("ATTEMPT-REQUIRES-RECONCILE");
   expect(io.apply).toHaveBeenCalledOnce();
   await expect(inspectLegacyApplicationLoginFence({ ...f.input, attemptId: "another-attempt" })).rejects.toThrow("BOOTSTRAP-ROOT-INTENT-MISMATCH");
