@@ -16,7 +16,14 @@ Replica 能力必须沿原 LOGIN／会话传播，不能用 SET ROLE 后 NOLOGIN
 replica-only 触发器启用为普通分派。这里是保守能力分析，不是每个触发条件必然满足的模拟。
 test-only `011663f7b7ffcae321150ef43bf2f8bef1643436` 对首版实际复现两处遗漏：
 31 收集、29 过、2 失败、0 跳过，5.44 秒，exit 1，清理已验证；两个反例均先实际改变
-旧表行，再观察到错误的 passed。修订会话／owner 实现尚待独立固定真实执行。
+旧表行，再观察到错误的 passed。固定修复 `205dabf265510870db78264aec75eaa1278aae96`、
+tree `09bb0ec01ec4f654f93a42f74fbe939b0242f834` 实际同 31 项全过，5.48 秒，
+exit 0、0 跳过、清理已验证。严格 targeted types 与原 3509 项边界扫描均退出 0。
+Red 日志 SHA256：`97f454c826a4a7c14b7f827a00d8046951a8ea0867e7f388a20f373be01080da`；
+Green：`1616927f610e013329fc6047d60d603e4b0b3f8b144095df56e63f82b7856667`。
+命令仍为 `node --import tsx scripts/run-upgrade-component-tests.ts
+--expected-daemon-id <独立实测本地daemon> --suite writer-reachability-pg16`，
+原父 15 分钟预算及每项默认时限未变；原 29 项不重标为此次 31 项执行，均非全 consumer 退休。
 
 test-only `cfb199cbcae3eaf74c2f92e947dbd78839eb25f4`、tree
 `beade877fabf61b7797730c741e66ea7dfb9170d` 的真实受限 LOGIN 向七表外表 INSERT，

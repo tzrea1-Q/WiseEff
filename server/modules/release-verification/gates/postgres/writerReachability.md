@@ -65,8 +65,18 @@ analysis, not a simulation proving every trigger condition will fire.
 Test-only `011663f7b7ffcae321150ef43bf2f8bef1643436` reproduced both omissions
 against the first implementation: 31 collected, 29 passed, two failed, zero
 skipped, 5.44 seconds, exit 1, cleanup verified. Both tests independently changed
-the actual legacy row before observing the erroneous passed gate. The corrected
-session/owner implementation awaits its separate fixed real execution.
+the actual legacy row before observing the erroneous passed gate. Fixed
+`205dabf265510870db78264aec75eaa1278aae96`, tree
+`09bb0ec01ec4f654f93a42f74fbe939b0242f834`, ran the same 31 cases successfully
+in 5.48 seconds, exit 0, zero skipped, cleanup verified. Strict targeted types
+and the unchanged 3509-occurrence boundary scan also exited 0. Red log SHA256:
+`97f454c826a4a7c14b7f827a00d8046951a8ea0867e7f388a20f373be01080da`;
+Green: `1616927f610e013329fc6047d60d603e4b0b3f8b144095df56e63f82b7856667`.
+The command remains `node --import tsx scripts/run-upgrade-component-tests.ts
+--expected-daemon-id <independently-observed-local-daemon> --suite
+writer-reachability-pg16`; the original 15-minute parent budget and per-test
+defaults are unchanged. The initial 29-case result is not relabeled as this
+31-case execution, and neither establishes whole-consumer retirement.
 
 Test-only `cfb199cbcae3eaf74c2f92e947dbd78839eb25f4`, tree
 `beade877fabf61b7797730c741e66ea7dfb9170d`, reproduced a real restricted LOGIN
