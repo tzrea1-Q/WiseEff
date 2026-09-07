@@ -140,7 +140,11 @@ async function openPackageWriter(directory: string, expected?: RecoveryPackageDi
         || !sameFileIdentity(original, held) || !sameFileIdentity(original, named)) throw invalid();
     };
     await check();
-    return { check, close: () => root.close(), async write(name: string, bytes: Buffer) {
+    return { check, close: () => root.close(), async sync() {
+      await check();
+      await root.sync();
+      await check();
+    }, async write(name: string, bytes: Buffer) {
       await check();
       const filename = path.join(directory, name);
       const output = await open(filename, constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW, 0o600);
@@ -151,6 +155,7 @@ async function openPackageWriter(directory: string, expected?: RecoveryPackageDi
         if (!held.isFile() || !named.isFile() || held.nlink !== 1 || named.nlink !== 1
           || held.size !== 0 || (held.mode & 0o777) !== 0o600 || !sameFileIdentity(held, named)) throw invalid();
         await output.writeFile(bytes);
+        await output.sync();
         await check();
         const final = await output.stat();
         if (final.size !== bytes.length || final.nlink !== 1 || !sameFileIdentity(final, await lstat(filename))) throw invalid();
@@ -222,6 +227,9 @@ export async function captureRecoveryPackage(directory: string, input: RecoveryP
     const bytes = Buffer.from(JSON.stringify(manifest));
     await writer.write("manifest.json", bytes);
     const digest = hash(bytes);
+    // All payloads and the manifest have synced their actual file descriptors;
+    // persist directory entries before verification can return capture success.
+    await writer.sync();
     await verifyRecoveryPackage(directory, digest);
     await writer.check();
     return digest;

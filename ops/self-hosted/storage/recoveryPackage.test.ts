@@ -141,6 +141,33 @@ it("refuses an earlier expected directory identity before creating any payload",
   } finally { await rm(directory, { recursive: true }); }
 });
 
+it.each(["payload", "manifest", "directory", "none"])("syncs real output descriptors and refuses %s sync failure without cleanup", async fault => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "upg-package-sync-"));
+  const directory = path.join(root, "package"); mkdirSync(directory, { mode: 0o700 });
+  const probe = await open(path.join(root, "probe"), "wx");
+  const prototype = Object.getPrototypeOf(probe); const realSync = prototype.sync;
+  await probe.close();
+  const calls: string[] = []; let files = 0;
+  const synchronization = vi.spyOn(prototype, "sync").mockImplementation(async function (this: Awaited<ReturnType<typeof open>>) {
+    const kind = (await this.stat()).isDirectory() ? "directory" : "file";
+    calls.push(kind); if (kind === "file") files++;
+    if ((fault === "payload" && files === 1) || (fault === "manifest" && files === 5)
+      || (fault === "directory" && kind === "directory")) throw new Error("synthetic private filesystem sync failure");
+    await realSync.call(this);
+  });
+  try {
+    if (fault === "none") {
+      await fixture(directory);
+      expect(calls).toEqual(["file", "file", "file", "file", "file", "directory"]);
+    } else {
+      await expect(fixture(directory)).rejects.toThrow("recovery-package-invalid");
+      expect(calls.length).toBe(fault === "payload" ? 1 : fault === "manifest" ? 5 : 6);
+      expect((await readFile(path.join(directory, "payload-0.bin"))).toString()).toBe("dump");
+      expect(readdirSync(directory).length).toBe(fault === "payload" ? 1 : 5);
+    }
+  } finally { synchronization.mockRestore(); await rm(root, { recursive: true }); }
+});
+
 it("authenticates a v3 pre-existing bootstrap identity without making it a restorable privileged role", async () => {
   const directory = await mkdtemp(path.join(os.tmpdir(), "upg-package-test-"));
   const bootstrap: RecoveryBootstrapIdentity = { roleName: "wiseeff", roleOid: "10", postgresMajor: 16 };
