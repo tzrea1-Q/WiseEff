@@ -22,6 +22,21 @@ inspection。错 run/target、缺失或不符的宿主步骤、额外 ACL 变化
 不静默提升不确定的宿主写入。仅 storage 的 P12 夹具仍明确未批准。实现前
 本节只是威胁提案，不是组合执行成功证据。
 
+首次实际 Red `0c1c3cc33` 收集28项：27过，最后独立进程后继检查因unknown
+失败；9.98秒、exit1、清理通过。此前原4个transport模式、真实七表SQL效果及
+剩余UPDATE权限为零的断言均通过。日志 `/tmp/pr824-successor-red.log` SHA256为
+`7dcb02c8669c12f0998c7442c4ad4d6d083a2977a98606e4678730db6c7f4c77`。
+这是有效组合生命周期Red，不是installer或timeout失败。
+
+候选将原SQL owner读回复用于原inspection与持事务inspection；后者核真实
+backend、target、事务以及七表/三张共享catalog锁，不接受declared-held布尔。
+私有custody owner持锁直到认证、原baseline精确重建及最终P12/root边界复验。
+该inspection没有DML，但ACCESS EXCLUSIVE锁需要read/write事务。输出仍为
+原有界认证结果。原baseline格式没有column ACL字段；列ACL继续由SQL owner
+完整前后库存核验，不改变原格式。根传原issued宿主锁和journal选择，facade
+实读宿主步骤。额外grant、新relation、缺失/错宿主选择有永久真实I/O反例。
+候选Green及最终独立双审仍待完成，原SQL19项结果不覆盖此新inspection。
+
 唯一写入范围为原 bootstrap credential 模块、owned integration test 与夹具，
 必要的 SQL fence 自身 inspection 模块/测试，原退休根/测试及本双语 README。
 Runner/CI、共享 migration/grant 不属于本分片。

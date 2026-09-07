@@ -226,18 +226,68 @@ export async function inspectLegacySqlPrivilegeFence(input: {
   const live = async () => { await beforeEffect(); need(!lost, "CONNECTION-LOST"); };
   try {
     need(/^sha256:[a-f0-9]{64}$/.test(intentDigest), "SELECTION-INVALID");
-    const probe = pg.escapeIdentifier(`sql_inspect_${randomUUID().replaceAll("-", "")}`);
-    let outer = false;
-    try { await client.query(`savepoint ${probe}`); outer = true; }
-    catch (error) { need((error as { code?: string }).code === "25P01", "TRANSACTION-UNAVAILABLE"); }
-    if (outer) { await client.query(`release savepoint ${probe}`); throw new LegacySqlPrivilegeFenceError("EXTERNAL-TRANSACTION"); }
+    await requireAutocommit(client);
     await assertManagement(client, selection.target); await live();
     transaction = true; await begin(client); await assertManagement(client, selection.target);
+    const inspected = await inspectLegacySqlPrivilegeFenceOnHeldSession({ client, selection, intentDigest });
+    await live(); await client.query("rollback"); transaction = false; await live();
+    return { outcome: inspected.outcome, ...(inspected.outcome === "not-applied" ? {} : { intentDigest }) };
+  } catch {
+    return { outcome: "unknown" };
+  } finally {
+    if (transaction) { try { await client.query("rollback"); } catch { lost = true; } }
+    client.removeListener("error", onLoss); client.removeListener("end", onLoss);
+  }
+}
+
+async function requireAutocommit(client: pg.PoolClient) {
+  const probe = pg.escapeIdentifier(`sql_inspect_${randomUUID().replaceAll("-", "")}`);
+  let outer = false;
+  try { await client.query(`savepoint ${probe}`); outer = true; }
+  catch (error) { need((error as { code?: string }).code === "25P01", "TRANSACTION-UNAVAILABLE"); }
+  if (outer) { await client.query(`release savepoint ${probe}`); throw new LegacySqlPrivilegeFenceError("EXTERNAL-TRANSACTION"); }
+}
+
+/** Begin the existing management inspection transaction. The private owner
+ * rolls it back without business writes. PostgreSQL requires a read/write
+ * transaction for these ACCESS EXCLUSIVE locks; this does not grant writes. */
+export async function beginLegacySqlPrivilegeInspection(client: pg.PoolClient, target: BindingDatabaseIdentity) {
+  await requireAutocommit(client);
+  await assertManagement(client, target);
+  await begin(client);
+}
+
+/** Exact successor readback for the private custody owner. No callback,
+ * credential or authority is returned. Consumption must retain this actual
+ * transaction, whose locks and backend are verified again before returning. */
+export async function inspectLegacySqlPrivilegeFenceOnHeldSession(input: {
+  client: pg.PoolClient; selection: LegacySqlPrivilegeSelection; intentDigest: string;
+}): Promise<{ outcome: "not-applied" | "intent-only" | "legacy-sql-privileges-fenced-not-P13";
+  intent?: LegacySqlPrivilegeIntent; after?: Inventory }> {
+    const { client, intentDigest } = input, selection = structuredClone(input.selection);
+    need(/^sha256:[a-f0-9]{64}$/.test(intentDigest), "SELECTION-INVALID");
+    await assertManagement(client, selection.target);
+    const verifyHeld = async () => {
+      const held = (await client.query(`select pg_catalog.current_setting('transaction_isolation')='serializable' as isolated,
+        (select count(distinct c.oid)::int from pg_catalog.pg_class c
+          join pg_catalog.pg_locks l on l.relation=c.oid and l.pid=pg_catalog.pg_backend_pid()
+            and l.granted and l.locktype='relation'
+            and l.database=case when c.relisshared then 0::oid else $1::oid end
+          where (c.oid=any($2::regclass[]) and l.mode='ShareLock')
+            or (c.oid=any($3::regclass[]) and l.mode='AccessExclusiveLock')) as count`,
+      [selection.target.databaseOid, ["pg_catalog.pg_authid", "pg_catalog.pg_auth_members", "pg_catalog.pg_shdepend"],
+        relations.map(name => `public.${name}`)])).rows[0];
+      need(held?.isolated === true && held.count === 10, "INSPECTION-LOCKS-UNAVAILABLE");
+      const probe = pg.escapeIdentifier(`sql_held_${randomUUID().replaceAll("-", "")}`);
+      await client.query(`savepoint ${probe}`); await client.query(`release savepoint ${probe}`);
+    };
+    await verifyHeld();
     const run = (await client.query("select current_phase,state from parameter_catalog.parameter_catalog_cutover_runs where id=$1 for update", [selection.runId])).rows[0];
     need(run?.current_phase === "P12" && run.state === "running", "P12-RUN-UNAVAILABLE");
     const rows = (await client.query(`select event_kind,payload from parameter_catalog.parameter_catalog_cutover_events
       where cutover_run_id=$1 and event_kind=any($2::text[]) order by sequence_number`, [selection.runId, [intentKind, appliedKind]])).rows;
     let outcome: "not-applied" | "intent-only" | "legacy-sql-privileges-fenced-not-P13" = "not-applied";
+    let retained: LegacySqlPrivilegeIntent | undefined, after: Inventory | undefined;
     if (rows.length) {
       need(rows.length <= 2 && rows[0].event_kind === intentKind, "INTENT-DRIFT");
       const intent = rows[0].payload as LegacySqlPrivilegeIntent;
@@ -245,6 +295,7 @@ export async function inspectLegacySqlPrivilegeFence(input: {
       need(body.contract === "pcat-legacy-sql-privileges-v1" && storedDigest === intentDigest && digestOf(body) === intentDigest &&
         isDeepStrictEqual(body.selection, selection), "INTENT-DRIFT");
       const current = await observe(client, body.runtimeRoles, selection.target);
+      retained = structuredClone(intent);
       if (rows.length === 1) {
         need(isDeepStrictEqual(current, body.inventory), "INVENTORY-DRIFT"); outcome = "intent-only";
       } else {
@@ -252,14 +303,9 @@ export async function inspectLegacySqlPrivilegeFence(input: {
           isDeepStrictEqual(rows[1].payload.after, current) &&
           isDeepStrictEqual(comparison(current), comparison(body.inventory, changes(body.inventory))), "COMMIT-READBACK-DRIFT");
         outcome = "legacy-sql-privileges-fenced-not-P13";
+        after = structuredClone(current);
       }
     }
-    await live(); await client.query("rollback"); transaction = false; await live();
-    return { outcome, ...(outcome === "not-applied" ? {} : { intentDigest }) };
-  } catch {
-    return { outcome: "unknown" };
-  } finally {
-    if (transaction) { try { await client.query("rollback"); } catch { lost = true; } }
-    client.removeListener("error", onLoss); client.removeListener("end", onLoss);
-  }
+    await verifyHeld();
+    return { outcome, ...(retained ? { intent: retained } : {}), ...(after ? { after } : {}) };
 }

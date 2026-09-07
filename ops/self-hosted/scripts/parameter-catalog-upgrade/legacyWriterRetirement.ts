@@ -308,6 +308,7 @@ async function retire(input: LegacyLoginRetirementInput, bootstrapInspection = f
       await verifyInspectionBoundary();
       const observed = structuredClone(await inspectBootstrapCredentialFenceFromCustodyTransport({
         managementClient: inspectionReader, expectedRootBinding,
+        sqlSuccessor: { journalPath: plan.inputs.journalPath, hostRunId: plan.inputs.runId, lock: input.lock },
         activation: { ...input.activation, boundary: { ...input.activation.boundary, verify: verifyInspectionBoundary } },
       }));
       await verifyInspectionBoundary();

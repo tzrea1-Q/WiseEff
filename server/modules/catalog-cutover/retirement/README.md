@@ -28,6 +28,29 @@ silently promote uncertain host writes. A storage-only P12 fixture remains
 explicitly unapproved. Before implementation this is a threat proposal, not a
 successful combined execution.
 
+The first actual Red at `0c1c3cc33` collected 28: 27 passed and the final
+independent-process successor assertion failed with unknown (9.98 seconds,
+exit 1, cleanup verified). Its original four transport modes and the actual
+seven-table SQL effect/zero remaining UPDATE assertion passed first. Log
+`/tmp/pr824-successor-red.log` has SHA256
+`7dcb02c8669c12f0998c7442c4ad4d6d083a2977a98606e4678730db6c7f4c77`.
+This is a valid combined-lifecycle Red, not an installer or timeout failure.
+
+The candidate shares the original SQL owner's locked readback between its
+ordinary inspector and a held-session inspector. The latter verifies actual
+backend, target, transaction and all seven relation/three shared-catalog locks;
+no declared-held boolean is accepted. The private custody owner keeps those
+locks through authentication, exact baseline reconstruction and the final P12/
+root boundary checks. This inspection has no DML but requires a read/write
+transaction for ACCESS EXCLUSIVE locks. It returns only the existing bounded
+authentication outcome. The original baseline format has no column ACL member;
+column ACLs continue to be checked by the SQL owner's complete before/after
+inventory rather than changing that format. Root dispatch passes its original
+issued host lock and journal selection; the facade reads actual host steps.
+Extra grants, new relations and missing/wrong host selection have permanent
+real-IO counterexamples. Candidate Green and independent final reviews remain
+pending; the original SQL 19-case result does not cover this new inspection.
+
 Exclusive paths are the existing bootstrap credential module/owned integration
 test and fixture, SQL fence module/test where needed for its own inspection,
 the existing retirement root/tests, and this README pair. Runner/CI and shared

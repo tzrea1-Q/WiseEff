@@ -11,6 +11,9 @@ import { digestOf } from "../../release-verification/core/digest";
 import { createApplicationReadActivation, createActivationIntent, type ActivationIntent, type ActivationOptions } from "../activation/index";
 import { assertBindingManagementLogin } from "../bindingImportProducer";
 import { acquireObservedManagementClient } from "./managementCheckout";
+import { beginLegacySqlPrivilegeInspection, inspectLegacySqlPrivilegeFenceOnHeldSession } from "./legacySqlPrivilegeFence";
+import { assertHostOperationLockForJournal, type HostOperationLock } from "../../../../ops/self-hosted/scripts/parameter-catalog-upgrade/handoff";
+import { loadUpgradeJournal } from "../../../../ops/self-hosted/scripts/parameter-catalog-upgrade/journal";
 
 /** Exact non-secret portion of the root's persisted authentication intent.
  * This selects evidence; it is not authorization to rotate credentials. */
@@ -26,14 +29,18 @@ export type BootstrapRootBinding = Readonly<{
 export async function inspectBootstrapCredentialFenceFromCustodyTransport(input: {
   managementClient: pg.PoolClient; expectedRootBinding: BootstrapRootBinding;
   activation: ActivationOptions;
+  /** Original root-owned journal/issued lock, never caller-supplied effect digests. */
+  sqlSuccessor?: { journalPath: string; hostRunId: string; lock: HostOperationLock };
 }): Promise<{ outcome: "not-applied" | "authentication-fenced-not-P13" | "unknown"; intentDigest?: string }> {
   const reader = input.managementClient;
   let root: BootstrapRootBinding, activation: ReturnType<typeof createApplicationReadActivation>;
   let stream: Socket, host: string, port: number;
+  let sqlHost: typeof input.sqlSuccessor;
   // Client.host/port and caller objects are mutable. Use the actual connected
   // socket, then independently verify its database before reading any secret.
   try {
     root = structuredClone(input.expectedRootBinding);
+    sqlHost = input.sqlSuccessor ? { ...input.sqlSuccessor } : undefined;
     if (!(reader instanceof pg.Client)) return { outcome: "unknown" };
     const connected = reader.connection.stream;
     if (!(connected instanceof Socket) || connected instanceof TLSSocket ||
@@ -138,19 +145,71 @@ export async function inspectBootstrapCredentialFenceFromCustodyTransport(input:
         !isDeepStrictEqual(await readBindingDatabaseIdentity(manager), root.target)) failFence("target-unproven");
     if ((await manager.query("select pg_catalog.pg_try_advisory_lock(hashtext('s7-orc-cutover-target'),hashtext(current_database())) as held")).rows[0]?.held !== true)
       failFence("management-lock-unavailable");
-    const currentBinding = async () => {
+    const inspectHeldBinding = async () => {
       await verifyReader();
-      await manager!.query("begin isolation level repeatable read read only"); managerTransaction = true;
-      await manager!.query("set local timezone='UTC'");
       const selected = await activation.inspectOnHeldManagementSession(root.activationIntent, manager!);
       if (selected.kind !== "applied" || selected.currentHeadDigest !== root.activationBindingDigest ||
           selected.binding.bindingDigest !== root.activationBindingDigest) failFence("activation-binding-mismatch");
+    };
+    const currentBinding = async () => {
+      await manager!.query("begin isolation level repeatable read read only"); managerTransaction = true;
+      await manager!.query("set local timezone='UTC'");
+      await inspectHeldBinding();
       await manager!.query("rollback"); managerTransaction = false;
     };
     await currentBinding();
     if (!isDeepStrictEqual(await readRoot(manager), request)) failFence("root-intent-drift");
-    result = await inspectBootstrapCredentialFence({ client: manager, target: root.target,
-      runId: root.runId, attemptId: root.attemptId, custody });
+    const command = { client: manager, target: root.target, runId: root.runId, attemptId: root.attemptId, custody };
+    const sqlKinds = ["legacy-sql-privileges-intent", "legacy-sql-privileges-applied"];
+    const sqlRows = async () => (await manager!.query(`select event_kind,payload from parameter_catalog.parameter_catalog_cutover_events
+      where cutover_run_id=$1 and event_kind=any($2::text[]) order by sequence_number`, [root.runId, sqlKinds])).rows;
+    const initialSql = await sqlRows();
+    let hostDigest: string | undefined;
+    const inspectHost = async (intentDigest?: string) => {
+      if (!sqlHost) { if (intentDigest) failFence("sql-successor-host-required"); return; }
+      await assertHostOperationLockForJournal(sqlHost.lock, sqlHost.journalPath);
+      const loaded = loadUpgradeJournal({ journalPath: sqlHost.journalPath, runId: sqlHost.hostRunId, requireSettled: true });
+      if (!loaded.ok) failFence("sql-successor-host-unavailable");
+      if (hostDigest && loaded.value.record.journalDigest !== hostDigest) failFence("sql-successor-host-drift");
+      hostDigest = loaded.value.record.journalDigest;
+      const steps = loaded.value.record.entries.filter(entry => entry.action.startsWith("legacy-sql-privileges-"));
+      if (!intentDigest) { if (steps.length) failFence("sql-successor-host-drift"); }
+      else if (steps.length !== 2 || steps[0].action !== "legacy-sql-privileges-pending" || steps[0].outcome !== "crashed" ||
+        steps[1].action !== "legacy-sql-privileges-applied" || steps[1].outcome !== "committed" ||
+        steps.some(step => step.inputDigest !== intentDigest)) failFence("sql-successor-host-drift");
+      await assertHostOperationLockForJournal(sqlHost.lock, sqlHost.journalPath);
+    };
+    if (initialSql.length) {
+      const intentDigest = initialSql[0]?.payload?.intentDigest;
+      if (initialSql.length !== 2 || typeof intentDigest !== "string") failFence("sql-successor-unavailable");
+      await inspectHost(intentDigest);
+      managerTransaction = true;
+      await beginLegacySqlPrivilegeInspection(manager, root.target);
+      await manager.query("set local timezone='UTC'");
+      const ordered = (await manager.query(`select event_kind,payload from parameter_catalog.parameter_catalog_cutover_events
+        where cutover_run_id=$1 and phase='P13' and event_kind=any($2::text[]) order by sequence_number`,
+      [root.runId, ["bootstrap-application-authentication-intent", INTENT_EVENT, APPLIED_EVENT, ...sqlKinds]])).rows;
+      if (!isDeepStrictEqual(ordered.map(row => row.event_kind), ["bootstrap-application-authentication-intent", INTENT_EVENT, APPLIED_EVENT, ...sqlKinds]) ||
+          !isDeepStrictEqual(ordered[0].payload, { request, requestDigest: digestOf(request) }) ||
+          !isDeepStrictEqual(ordered.slice(3), initialSql)) failFence("sql-successor-order-drift");
+      const selected = { client: manager, intentDigest, selection: { runId: root.runId, attemptId: root.attemptId,
+        target: root.target, activationBindingDigest: root.activationBindingDigest, rootRequestDigest: digestOf(request),
+        recoveryPackageDigest: root.recoveryPackageDigest } };
+      const successor = await inspectLegacySqlPrivilegeFenceOnHeldSession(selected);
+      if (successor.outcome !== "legacy-sql-privileges-fenced-not-P13" || !successor.intent || !successor.after) failFence("sql-successor-unavailable");
+      result = await inspectAuthentication(command, successor);
+      await inspectHeldBinding();
+      if (!isDeepStrictEqual(await readRoot(manager), request) ||
+          !isDeepStrictEqual(await inspectLegacySqlPrivilegeFenceOnHeldSession(selected), successor)) failFence("sql-successor-drift");
+      await inspectHost(intentDigest); await checkCustody(held); await verifyReader();
+      await manager.query("rollback"); managerTransaction = false;
+      await inspectHost(intentDigest);
+    } else {
+      await inspectHost();
+      result = await inspectBootstrapCredentialFence(command);
+      if ((await sqlRows()).length) failFence("sql-successor-drift");
+      await inspectHost();
+    }
     await currentBinding();
     if (!isDeepStrictEqual(await readRoot(manager), request)) failFence("root-intent-drift");
     await checkCustody(held); await verifyReader();
@@ -426,7 +485,7 @@ async function assertNonTargetDatabases(client: pg.PoolClient, target: BindingDa
     where datid=4 or (usesysid=10 and pid<>pg_catalog.pg_backend_pid() and not ${DORMANT_LAUNCHER}) limit 1`)).rowCount) failFence("maintenance-boundary-drift");
 }
 
-async function metadataDigest(client: pg.PoolClient): Promise<string> {
+async function metadataValue(client: pg.PoolClient) {
   const result = await client.query(`select jsonb_build_object(
     'role',(select to_jsonb(r) from pg_catalog.pg_roles r where oid=10),
     'relations',(select jsonb_agg(jsonb_build_array(oid,relowner,relacl) order by oid) from pg_catalog.pg_class),
@@ -436,7 +495,27 @@ async function metadataDigest(client: pg.PoolClient): Promise<string> {
     'databases',(select jsonb_agg(jsonb_build_array(oid,datdba,datacl) order by oid) from pg_catalog.pg_database),
     'defaults',(select jsonb_agg(to_jsonb(a) order by oid) from pg_catalog.pg_default_acl a),
     'members',(select jsonb_agg(to_jsonb(a) order by roleid,member) from pg_catalog.pg_auth_members a)) as value`);
-  return digestOf(result.rows[0]?.value ?? failFence("metadata-unavailable"));
+  return result.rows[0]?.value ?? failFence("metadata-unavailable");
+}
+async function metadataDigest(client: pg.PoolClient): Promise<string> {
+  return digestOf(await metadataValue(client));
+}
+type SqlSuccessorInspection = Awaited<ReturnType<typeof inspectLegacySqlPrivilegeFenceOnHeldSession>>;
+/** Only the private facade can enter this path after the formal SQL owner has
+ * verified the original successor and while its actual locks remain held.
+ * Preserve the original metadata format: column ACLs belong to SQL readback. */
+async function metadataBeforeSqlSuccessor(client: pg.PoolClient, successor: SqlSuccessorInspection): Promise<string> {
+  if (!successor.intent || !successor.after || successor.outcome !== "legacy-sql-privileges-fenced-not-P13") failFence("sql-successor-unavailable");
+  const value = await metadataValue(client);
+  if (!Array.isArray(value.relations)) failFence("metadata-unavailable");
+  for (const previous of successor.intent.inventory.relations) {
+    const matches = value.relations.filter((tuple: unknown[]) => Array.isArray(tuple) && String(tuple[0]) === previous.oid);
+    const after = successor.after.relations.filter(relation => relation.oid === previous.oid);
+    if (matches.length !== 1 || after.length !== 1 || matches[0].length !== 3 || String(matches[0][1]) !== previous.owner ||
+        after[0].owner !== previous.owner || !isDeepStrictEqual(matches[0][2], after[0].acl)) failFence("sql-successor-metadata-drift");
+    matches[0][2] = structuredClone(previous.acl);
+  }
+  return digestOf(value);
 }
 
 async function authenticate(client: pg.PoolClient, password: Buffer, target: BindingDatabaseIdentity, roleName: string,
@@ -559,6 +638,12 @@ export async function applyBootstrapCredentialFence(input: AuthenticationCommand
 export async function inspectBootstrapCredentialFence(input: AuthenticationCommand): Promise<{
   outcome: "not-applied" | "authentication-fenced-not-P13" | "unknown"; intentDigest?: string;
 }> {
+  return inspectAuthentication(input);
+}
+
+async function inspectAuthentication(input: AuthenticationCommand, successor?: SqlSuccessorInspection): Promise<{
+  outcome: "not-applied" | "authentication-fenced-not-P13" | "unknown"; intentDigest?: string;
+}> {
   // Select once before the first custody/SQL await. Inspection must reconcile
   // the caller's original intent, not a later mutation of the same object.
   const { client, custody: selectedCustody, runId, attemptId } = input;
@@ -580,12 +665,14 @@ export async function inspectBootstrapCredentialFence(input: AuthenticationComma
     if (!intent || events[0].event_kind !== INTENT_EVENT || intent.contract !== "pcat-bootstrap-authentication-v1" ||
         intent.runId !== runId || intent.attemptId !== attemptId || intent.roleName !== roleName || intent.roleOid !== "10" ||
         !isDeepStrictEqual(intent.target, target) || !isDeepStrictEqual(intent.credentials, custody.receipt) ||
-        events[0].payload.digest !== digestOf(intent) || await metadataDigest(client) !== intent.baselineDigest ||
+        events[0].payload.digest !== digestOf(intent) ||
+        (successor ? await metadataBeforeSqlSuccessor(client, successor) : await metadataDigest(client)) !== intent.baselineDigest ||
         (events.length !== 1 && !(events.length === 2 && events[1].event_kind === APPLIED_EVENT &&
           isDeepStrictEqual(events[1].payload, events[0].payload)))) return { outcome: "unknown" };
     const oldAuthentication = await authenticate(client, custody.oldSecret, target, roleName);
     const newAuthentication = await authenticate(client, custody.newSecret, target, roleName);
     await assertManagement(client, target, custody); await checkCustody(custody);
+    if (successor && await metadataBeforeSqlSuccessor(client, successor) !== intent.baselineDigest) return { outcome: "unknown" };
     if (broken) return { outcome: "unknown" };
     if (events.length === 1 && oldAuthentication === "accepted" && newAuthentication === "password-rejected")
       return { outcome: "not-applied", intentDigest: digestOf(intent) };

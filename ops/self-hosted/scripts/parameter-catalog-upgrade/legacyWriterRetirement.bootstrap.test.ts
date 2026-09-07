@@ -486,6 +486,8 @@ it("dispatches bootstrap inspection through the borrowed management transport be
   const retained = (io.rootEvents[0].payload as { request: Record<string, unknown> }).request;
   const { credentials: _credentials, ...expectedRootBinding } = retained;
   expect(selected.expectedRootBinding).toEqual(expectedRootBinding);
+  expect(selected.sqlSuccessor).toEqual({ journalPath: f.input.handoff.inputs.journalPath,
+    hostRunId: f.input.handoff.inputs.runId, lock: f.input.lock });
   expect(selected.managementClient.kind).toBe("guard");
   expect(io.pools).toHaveLength(poolCount);
   expect(io.clients.slice(clientCount).map(client => client.kind)).toEqual(["guard"]);

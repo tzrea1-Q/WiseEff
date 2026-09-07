@@ -402,7 +402,16 @@ try {
         } },
       journal: { pending: unavailable, committed: unavailable, unknown: unavailable } };
     const selected = await inspectBootstrapCredentialFenceFromCustodyTransport({ managementClient: client,
-      expectedRootBinding: input.expectedRootBinding, activation });
+      expectedRootBinding: input.expectedRootBinding, activation,
+      ...(input.sqlSuccessor ? { sqlSuccessor: { ...input.sqlSuccessor, lock } } : {}) });
+    if (input.fault === 'sql-successor') {
+      // Real persisted SQL alone cannot replace the original host record.
+      for (const sqlSuccessor of [undefined, { ...input.sqlSuccessor, hostRunId: 'wrong-host-run', lock }]) {
+        const refused = await inspectBootstrapCredentialFenceFromCustodyTransport({ managementClient: client,
+          expectedRootBinding: input.expectedRootBinding, activation, sqlSuccessor });
+        if (refused.outcome !== 'unknown') throw new Error('sql-successor-host-admission-bypassed');
+      }
+    }
     // The facade borrows the lease and must restore its role/transaction state.
     if (input.fault === 'guard-ended') {
       if (!ended || selected.outcome !== 'unknown') throw new Error('ended-guard-was-not-observed');
@@ -514,6 +523,25 @@ it("reopens the exact persisted custody in a separate process using only restric
     await writeFile(successorInput, JSON.stringify({ guardUrl: guardUrl.href, expectedRootBinding,
       fault: "sql-successor", sqlSuccessor: { journalPath, hostRunId } }), { mode: 0o600, flag: "wx" });
     expect(await inspectInIndependentProcess(successorInput, custodyTransportInspectionChild)).toEqual(fenced);
+    // An additional grant is outside the recorded successor. A new relation
+    // leaves the SQL pre/postimage valid but must still fail the original
+    // authentication metadata baseline. Neither may be normalized away.
+    for (const fault of ["extra-acl", "new-relation"] as const) {
+      const alteredTable = `transport_unrecorded_${nonce}`;
+      await withFreshManager(fresh => fresh.query(fault === "extra-acl"
+        ? `grant delete on public.${pg.escapeIdentifier(LEGACY_STRUCTURAL_TABLES[1])} to ${writerRole}`
+        : `create table public.${alteredTable}(id integer)`));
+      try {
+        const invalidInput = path.join(directory, `${nonce}.${fault}-input`);
+        await writeFile(invalidInput, JSON.stringify({ guardUrl: guardUrl.href, expectedRootBinding,
+          fault, sqlSuccessor: { journalPath, hostRunId } }), { mode: 0o600, flag: "wx" });
+        expect(await inspectInIndependentProcess(invalidInput, custodyTransportInspectionChild)).toEqual({ outcome: "unknown" });
+      } finally {
+        await withFreshManager(fresh => fresh.query(fault === "extra-acl"
+          ? `revoke delete on public.${pg.escapeIdentifier(LEGACY_STRUCTURAL_TABLES[1])} from ${writerRole}`
+          : `drop table public.${alteredTable}`));
+      }
+    }
   } catch (error) { failed = true; throw error; }
   finally {
     const first = await Promise.allSettled([Promise.resolve().then(() => client?.release(true))]);
