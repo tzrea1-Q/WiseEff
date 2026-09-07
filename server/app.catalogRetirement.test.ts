@@ -2,6 +2,7 @@ import { expect, it, vi } from "vitest";
 import { buildWiseEffRouter, createWiseEffServer } from "./app";
 import * as application from "./app";
 import * as parameterSpecRoutes from "./modules/parameter-specs/routes";
+import { legacyWriteRouteManifest } from "./modules/parameter-catalog-api/legacy/routes";
 import type { HttpMethod } from "./shared/http/router";
 import { parameterCatalogLegacyWriteRouteIds } from "./modules/contracts/dtoSchemas/parameterCatalog";
 import { routeManifest } from "./modules/contracts/routeManifest";
@@ -47,6 +48,20 @@ it("reads retired HTTP control evidence only from the actual application registr
     .toSorted((a, b) => a.id.localeCompare(b.id)));
   expect(actual.registrationDigest).toMatch(/^sha256:[a-f0-9]{64}$/);
   expect(() => observe({ ...router })).toThrow("PCAT-HTTP-WRITER-CONTROLS-UNISSUED");
+});
+
+it.each(["empty", "one-removed"])("keeps the complete owner inventory and actual 410 after public manifest is %s", async fault => {
+  const original = legacyWriteRouteManifest.slice();
+  try {
+    if (fault === "empty") legacyWriteRouteManifest.length = 0;
+    else legacyWriteRouteManifest.splice(legacyWriteRouteManifest.findIndex(route => route.id === "parameterSpecs.create"), 1);
+    const { router } = buildWiseEffRouter();
+    const controls = application.observeCatalogHttpWriterControls(router);
+    expect(controls.routes.map(route => route.id).sort()).toEqual(retiredRoutes.map(route => route.id).sort());
+    const response = await router.handle({ method: "POST", path: "/api/v2/parameter-specs", params: {}, query: {},
+      headers: {}, requestId: "http-controls-mutable-manifest", body: {} });
+    expect(response.status).toBe(410);
+  } finally { legacyWriteRouteManifest.splice(0, legacyWriteRouteManifest.length, ...original); }
 });
 
 it.each(["registration", "dispatch", "method"])("refuses later %s changes to the issued router", fault => {
