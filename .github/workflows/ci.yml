@@ -231,7 +231,7 @@ jobs:
         run: npm run logs:eval
 
   upgrade-components:
-    name: Owned Catalog and report reader PostgreSQL
+    name: Owned Catalog, cutover and authority PostgreSQL
     needs: detect
     if: needs.detect.outputs.run_l1 == 'true'
     runs-on: ubuntu-latest
@@ -251,7 +251,7 @@ jobs:
           cache: npm
       - name: Install dependencies
         run: npm ci
-      - name: Run actual restricted reader logins in a newly owned cluster
+      - name: Run reader, cutover and authority tests in independently owned clusters
         shell: bash
         run: |
           set -euo pipefail
@@ -262,6 +262,8 @@ jobs:
             --expected-daemon-id "$daemon_id" --suite report-pg16 --github-hosted
           npx tsx scripts/run-upgrade-component-tests.ts \
             --expected-daemon-id "$daemon_id" --suite authority-pg16 --github-hosted
+          npx tsx scripts/run-upgrade-component-tests.ts \
+            --expected-daemon-id "$daemon_id" --suite bindings-pg16 --github-hosted
 
   acceptance-quality:
     name: Acceptance quality
@@ -689,6 +691,6 @@ jobs:
               print("detect must report success")
               sys.exit(1)
           if "${{ needs.detect.outputs.run_l1 }}" == "true" and results["upgrade-components"] != "success":
-              print("owned Catalog and report reader PostgreSQL evidence is required for L1")
+              print("owned Catalog, cutover and authority PostgreSQL evidence is required for L1")
               sys.exit(1)
           PY

@@ -22,10 +22,12 @@ export default defineConfig({
     include: ["server/**/*.test.ts"],
     // These cases deliberately contaminate cluster-wide capability roles/ACLs.
     // Their mandatory PG16 lanes own separate clusters; worker databases alone
-    // cannot isolate these mutations from the shared server suite.
+    // cannot isolate these mutations from the shared server suite. runtimeState
+    // also requires the independently issued target receipt supplied by bindings-pg16.
     exclude: ["node_modules/**", ...siblingWorktreeExclude,
       "server/modules/catalog-kernel/security/catalogReader.integration.test.ts",
-      "server/modules/release-verification/startup/reportConnection.integration.test.ts"],
+      "server/modules/release-verification/startup/reportConnection.integration.test.ts",
+      "server/modules/catalog-cutover/runtimeState.test.ts"],
     setupFiles: ["./server/testing/vitest.setup.ts"],
     // Pre-builds the PG template database so no suite pays the build in its test budget.
     globalSetup: ["./server/testing/globalSetup.ts"],
