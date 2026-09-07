@@ -31,7 +31,7 @@ const nonDumpFaults = {
   "parameter-acl": "grant alter system on parameter work_mem to sentinel_reader",
   "builtin-function-acl": "revoke execute on function pg_catalog.pg_control_system() from public",
 } as const;
-type SyntheticFault = "stale-target-aof" | "missing-object" | "wrong-target" | "authority-volume-create-unknown" | keyof typeof nonDumpFaults;
+type SyntheticFault = "stale-target-aof" | "missing-object" | "wrong-target" | "authority-volume-create-unknown" | "authority-container-create-unknown" | keyof typeof nonDumpFaults;
 
 type RestoreChild = {
   run: string; daemonId: string; directory: string; digest: string; password: string;
@@ -115,11 +115,12 @@ export function ownsRecoveryContainer(inspect: { Id: string; Config?: { Labels?:
 
 /** No external targets, backups, image overrides, production configuration, or SQL inputs. */
 export async function rehearseSyntheticRecovery(options: { fault?: SyntheticFault } = {}) {
-  if (Object.keys(options).some(key => key !== "fault") || (options.fault && !["stale-target-aof", "missing-object", "wrong-target", "authority-volume-create-unknown", ...Object.keys(nonDumpFaults)].includes(options.fault))) throw new Error("unknown-synthetic-fault");
+  if (Object.keys(options).some(key => key !== "fault") || (options.fault && !["stale-target-aof", "missing-object", "wrong-target", "authority-volume-create-unknown", "authority-container-create-unknown", ...Object.keys(nonDumpFaults)].includes(options.fault))) throw new Error("unknown-synthetic-fault");
   const run = randomBytes(12).toString("hex");
   const password = randomBytes(24).toString("hex");
   const targetPassword = randomBytes(24).toString("hex");
   const ids: string[] = [];
+  const containerIntents: Array<{ name: string; image: string; id?: string }> = [];
   const volumes: Array<{ Name: string; identity?: { CreatedAt: string; Mountpoint: string } }> = [];
   let networkId = "";
   const network = `upg-recovery-${run}`;
@@ -158,9 +159,13 @@ export async function rehearseSyntheticRecovery(options: { fault?: SyntheticFaul
     owned(id);
     return docker(["exec", "-i", id, ...args], input);
   };
-  const create = (image: string, port: string, extra: string[], command: string[]) => {
-    const id = docker(["create", "--label", `${label}=${run}`, "--name", `upg-recovery-${run}-${ids.length}`,
-      "--network", network, "-p", `127.0.0.1::${port}`, ...extra, pinnedImages.get(image)!, ...command]).toString().trim();
+  const create = (image: string, port: string, extra: string[], command: string[], unknownReply = false) => {
+    const intent: typeof containerIntents[number] = { name: `upg-recovery-${run}-${containerIntents.length}`, image: pinnedImages.get(image)! };
+    containerIntents.push(intent);
+    const id = docker(["create", "--label", `${label}=${run}`, "--name", intent.name,
+      "--network", network, "-p", `127.0.0.1::${port}`, ...extra, intent.image, ...command]).toString().trim();
+    if (unknownReply) throw new Error("synthetic-container-create-reply-lost");
+    intent.id = id;
     ids.push(id); owned(id); return id;
   };
   const start = (id: string) => { owned(id); docker(["start", id]); };
@@ -405,7 +410,8 @@ export async function rehearseSyntheticRecovery(options: { fault?: SyntheticFaul
     if (authVolume.Name !== authVolumeName || authVolume.Labels?.[label] !== run || authVolume.Driver !== "local"
       || Object.keys(authVolume.Options ?? {}).length !== 0 || !authVolume.CreatedAt || !authVolume.Mountpoint) throw new Error("authority-volume-ownership-mismatch");
     volumeIntent.identity = { CreatedAt: authVolume.CreatedAt, Mountpoint: authVolume.Mountpoint };
-    const authPg = create(images.postgres, "5432", ["-e", `POSTGRES_PASSWORD=${targetPassword}`, "-v", `${authVolumeName}:/var/lib/postgresql/data`], []);
+    result.reason = "authority-container-create-outcome-unknown";
+    const authPg = create(images.postgres, "5432", ["-e", `POSTGRES_PASSWORD=${targetPassword}`, "-v", `${authVolumeName}:/var/lib/postgresql/data`], [], options.fault === "authority-container-create-unknown");
     start(authPg);
     await wait(async () => execute(authPg, ["pg_isready", "-h", "127.0.0.1", "-U", "postgres"]));
     const privateDirectory = path.join(operationRoot, "authority");
@@ -566,8 +572,13 @@ export async function rehearseSyntheticRecovery(options: { fault?: SyntheticFaul
     let cleaned = true;
     const queueCleanup = await Promise.allSettled(queueClosers.map(close => Promise.resolve().then(close)));
     if (queueCleanup.some(outcome => outcome.status === "rejected")) cleaned = false;
-    for (const id of [...ids].reverse()) {
-      try { owned(id); docker(["rm", "-f", "-v", id]); } catch { cleaned = false; }
+    for (const intent of [...containerIntents].reverse()) {
+      try {
+        const info = JSON.parse(docker(["inspect", intent.id ?? intent.name]).toString())[0];
+        if (!ownsRecoveryContainer(info, info.Id, run) || info.Name !== `/${intent.name}` || info.Image !== intent.image
+          || (intent.id && info.Id !== intent.id)) throw new Error("container-create-identity-mismatch");
+        owned(info.Id); docker(["rm", "-f", "-v", info.Id]);
+      } catch { cleaned = false; }
     }
     for (const expected of volumes) {
       try {

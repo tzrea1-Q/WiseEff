@@ -20,11 +20,11 @@ it("refuses external target and missing explicit synthetic mode before starting 
 });
 
 describe.skipIf(process.env.UPG_RECOVERY_DOCKER_TEST !== "1")("actual isolated three-store restore", () => {
-  it("reconciles only the registered owned volume after an unknown create response and retains capture evidence", () => {
-    const script = `import { rehearseSyntheticRecovery } from ${JSON.stringify(path.resolve("scripts/rehearse-upgrade-recovery.ts"))}; console.log(JSON.stringify(await rehearseSyntheticRecovery({ fault: "authority-volume-create-unknown" })));`;
+  it.each(["volume", "container"])("reconciles only the registered owned %s after an unknown create response and retains capture evidence", kind => {
+    const script = `import { rehearseSyntheticRecovery } from ${JSON.stringify(path.resolve("scripts/rehearse-upgrade-recovery.ts"))}; console.log(JSON.stringify(await rehearseSyntheticRecovery({ fault: "authority-${kind}-create-unknown" })));`;
     const child = spawnSync(process.execPath, ["--import", "tsx", "--input-type=module", "-e", script], { encoding: "utf8", timeout: 90000 });
     expect(child.status).toBe(0);
-    expect(JSON.parse(child.stdout)).toMatchObject({ status: "blocked", reason: "authority-volume-create-outcome-unknown",
+    expect(JSON.parse(child.stdout)).toMatchObject({ status: "blocked", reason: `authority-${kind}-create-outcome-unknown`,
       backupExists: true, backupRetained: true, checksumVerified: true, restoreExecuted: false,
       businessVerified: false, sourceStoppedBeforeRestore: true, cleanupVerified: true });
     expect(child.stdout).not.toContain("postgres://");
