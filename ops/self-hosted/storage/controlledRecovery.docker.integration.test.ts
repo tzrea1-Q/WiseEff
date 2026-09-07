@@ -4,7 +4,7 @@ import { createSyntheticRecoveryEvidence } from "./execution/authorization.fixtu
 import { recordControlledRecoveryCapture } from "../scripts/parameter-catalog-upgrade/recoveryCapture";
 import { recordRecoveryExecutionApproval } from "../scripts/parameter-catalog-upgrade/recoveryApproval";
 import { openDeploymentAuthority, type DeploymentAuthorityAssignment } from "../scripts/parameter-catalog-upgrade/deploymentAuthority";
-import { canonicalJson, openUpgradeJournal, sha256Prefixed } from "../scripts/parameter-catalog-upgrade/journal";
+import { canonicalJson, journalBytes, loadUpgradeJournal, openUpgradeJournal, sha256Prefixed } from "../scripts/parameter-catalog-upgrade/journal";
 import { mintRestoreToken } from "./recoveryPoint";
 import { createPostgresDatabase, type RootDatabase } from "../../../server/shared/database/client";
 import { createLocalAuthService } from "../../../server/modules/auth/localAuth";
@@ -329,10 +329,15 @@ describe.skipIf(process.env.UPG_CONTROLLED_RECOVERY_DOCKER_TEST !== "1")("contro
         try {
           await timed(`restore-nonempty-${fault.name}-refusal`, async () => {
             const journalPath = path.join(directory, `refused-${fault.name}.json`);
+            const before = journalBytes(consumption.journal.journalPath);
             await withHostOperationLock(operationRoot, async lock => {
             const port = createControlledRecoveryTarget({ target: destinationIdentity,
               authorization: createRecoveryExecutionAuthorization({ ...consumption, lock }) }, destinationIo);
             await expect(restoreRecoveryPackage(directory, captured.packageDigest, port)).rejects.toThrow("controlled-recovery-restore-database-not-empty");
+            expect(journalBytes(consumption.journal.journalPath)).toEqual(before);
+            const after = loadUpgradeJournal({journalPath:consumption.journal.journalPath,runId,requireSettled:true});
+            if (!after.ok) throw new Error("owned-refusal-journal-unavailable");
+            expect(after.value.record.entries.some(entry => entry.action === "recovery-execution-started")).toBe(false);
             await expect(lstat(journalPath)).rejects.toMatchObject({ code: "ENOENT" });
             expect(targetSql(fault.read)).toBe(fault.expected);
             expect(targetSql("select count(*) from pg_roles where rolname in ('data_owner','read_capability','reader')")).toBe("0");
