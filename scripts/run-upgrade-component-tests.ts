@@ -10,7 +10,7 @@ import { admitHostedUpgradeComponents, assertHostedUpgradeAdmission, type Hosted
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const bindingFiles = ["server/modules/parameter-bindings/cutoverImport/import.integration.test.ts", "server/modules/catalog-cutover/archive/adapter.test.ts", "server/modules/catalog-cutover/archive/adapter.integration.test.ts", "server/modules/catalog-cutover/bindingImportProducer.integration.test.ts", "server/modules/catalog-cutover/conversionManifest.integration.test.ts", "server/modules/catalog-cutover/orchestrator.test.ts", "server/modules/catalog-cutover/runtimeState.test.ts", "server/modules/catalog-cutover/sourceSnapshot.test.ts", "server/modules/catalog-cutover/managementStructure.test.ts"];
-const suites: Record<string, { image: string; files: readonly string[]; config: string; command?: "schema-doc" }> = {
+const suites: Record<string, { image: string; files: readonly string[]; config: string; command?: "schema-doc" | "docs-check" }> = {
   bindings: { image: "pgvector/pgvector:pg16", files: bindingFiles, config: "vitest.upgrade-cutover.config.ts" },
   "bindings-pg16": { image: "postgres:16-alpine", files: bindingFiles, config: "vitest.upgrade-cutover.config.ts" },
   "reader-pg16": { image: "postgres:16-alpine", files: ["server/modules/catalog-kernel/security/catalogReader.integration.test.ts"], config: "vitest.upgrade-cutover.config.ts" },
@@ -21,13 +21,20 @@ const suites: Record<string, { image: string; files: readonly string[]; config: 
   "scripts-pgvector": { image: "pgvector/pgvector:pg16", files: [], config: "vitest.scripts.config.ts" },
   "server-pgvector": { image: "pgvector/pgvector:pg16", files: [], config: "vitest.server.config.ts" },
   "schema-doc": { image: "pgvector/pgvector:pg16", files: [], config: "", command: "schema-doc" },
+  "docs-check": { image: "pgvector/pgvector:pg16", files: [], config: "", command: "docs-check" },
 };
+
+export function componentTestExecutable(name: string): string {
+  if (!Object.hasOwn(suites, name)) throw new Error("unknown-upgrade-component-suite");
+  return suites[name].command === "docs-check" ? "npm" : process.execPath;
+}
 
 /** The scripts lane keeps all frozen source-lock cases, in a separate process
  * before ordinary parallel suites. Other lanes retain their existing command. */
 export function componentTestCommands(name: string): string[][] {
   if (!Object.hasOwn(suites, name)) throw new Error("unknown-upgrade-component-suite");
   const suite = suites[name];
+  if (suite.command === "docs-check") return [["run", "docs:check"]];
   if (suite.command === "schema-doc") return [["--import", "tsx", path.join(root, "scripts/generate-db-schema-doc.ts")]];
   const vitest = path.join(root, "node_modules/vitest/vitest.mjs");
   const commands = [[vitest, "run", "--config", suite.config, ...suite.files]];
@@ -193,7 +200,7 @@ export async function runUpgradeComponentTests(args: string[]) {
     let outputRemaining = 8 * 1024 * 1024;
     for (const command of componentTestCommands(args[3])) {
       if (interrupted || Date.now() >= deadlineAt || outputRemaining <= 0) { exitCode = 1; break; }
-      child = spawn(process.execPath, command, {
+      child = spawn(componentTestExecutable(args[3]), command, {
         cwd: root, env: { PATH: process.env.PATH, HOME: process.env.HOME,
           // Frozen rehearsal cleanup refuses symlink parents (macOS /tmp).
           // Use this run's canonical private directory, never ambient TMPDIR.

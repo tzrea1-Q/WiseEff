@@ -5,6 +5,18 @@ import * as componentRunner from "./run-upgrade-component-tests";
 
 const workflow = readFileSync(new URL("../.github/workflows/ci.yml", import.meta.url), "utf8");
 
+it("runs the actual docs-check package command in the owned pgvector lane, separately from generation", () => {
+  expect(componentRunner.componentTestCommands("docs-check")).toEqual([["run", "docs:check"]]);
+  expect(componentRunner.componentTestExecutable("docs-check")).toBe("npm");
+  expect(componentRunner.componentTestExecutable("schema-doc")).toBe(process.execPath);
+  expect(componentRunner.componentTestCommands("schema-doc")[0].slice(0, 2)).toEqual(["--import", "tsx"]);
+  expect(componentRunner.componentTestCommands("schema-doc")[0][2]).toMatch(/scripts\/generate-db-schema-doc\.ts$/);
+  expect(() => componentRunner.componentTestExecutable("__proto__")).toThrow("unknown-upgrade-component-suite");
+  const runner = readFileSync(new URL("./run-upgrade-component-tests.ts", import.meta.url), "utf8");
+  expect(runner).toContain('"docs-check": { image: "pgvector/pgvector:pg16", files: [], config: "", command: "docs-check" }');
+  expect(runner).toContain("spawn(componentTestExecutable(args[3]), command");
+});
+
 it("runs all four frozen source-lock cases as a mandatory serial stage in ordinary, owned and Hosted scripts", () => {
   const pkg = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8"));
   expect(pkg.scripts["test:scripts"]).toBe("tsx scripts/check-workspace-links.ts && npm run test:scripts:source-lock && vitest run --config vitest.scripts.config.ts");
