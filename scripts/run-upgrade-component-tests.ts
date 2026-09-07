@@ -19,6 +19,7 @@ const suites: Record<string, { image: string; files: readonly string[]; config: 
   "authority-pg16": { image: "postgres:16-alpine", files: ["ops/self-hosted/scripts/parameter-catalog-upgrade/deploymentAuthority.integration.test.ts"], config: "vitest.upgrade-cutover.config.ts" },
   "log-redis": { image: "redis:7-alpine", files: ["server/modules/logs/logAnalysisQueueRuntime.redis.integration.test.ts"], config: "vitest.upgrade-redis.config.ts" },
   "retirement-existing-pg16": { image: "postgres:16-alpine", files: ["server/modules/catalog-cutover/retirement/loginFence.integration.test.ts", "scripts/retirement-endpoint-supervision.docker.test.ts"], config: "vitest.upgrade-retirement.config.ts" },
+  "bootstrap-credential-pg16": { image: "postgres:16-alpine", files: ["server/modules/catalog-cutover/retirement/bootstrapCredentialFence.integration.test.ts"], config: "vitest.upgrade-bootstrap-credential.config.ts" },
   "scripts-pgvector": { image: "pgvector/pgvector:pg16", files: [], config: "vitest.scripts.config.ts" },
   "server-pgvector": { image: "pgvector/pgvector:pg16", files: [], config: "vitest.server.config.ts" },
   "schema-doc": { image: "pgvector/pgvector:pg16", files: [], config: "", command: "schema-doc" },
@@ -310,9 +311,9 @@ export async function runUpgradeComponentTests(args: string[], observation?: {
   }
   // Registering a route does not authorize creating resources for an absent
   // component. Integration must supply the exact test/config before execution.
-  if (args[3] === "retirement-existing-pg16") {
+  if (["retirement-existing-pg16", "bootstrap-credential-pg16"].includes(args[3])) {
     try { for (const file of [...suites[args[3]].files, suites[args[3]].config]) await access(path.join(root, file)); }
-    catch { return { exitCode: 2, reason: "owned-retirement-component-unavailable" }; }
+    catch { return { exitCode: 2, reason: args[3] === "bootstrap-credential-pg16" ? "owned-bootstrap-component-unavailable" : "owned-retirement-component-unavailable" }; }
   }
   const docker = createIsolatedUpgradeDocker();
   if (docker.daemonId !== args[1] || (!hosted && docker.command(["info", "--format", "{{.ID}}|{{.Name}}|{{.OperatingSystem}}"] ).toString().trim() !== `${args[1]}|docker-desktop|Docker Desktop`)) {

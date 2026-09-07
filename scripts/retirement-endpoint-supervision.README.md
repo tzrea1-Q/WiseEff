@@ -65,3 +65,12 @@ Documentation impact: this paired file records only fixture ownership, mandatory
 routing and supervision evidence. Product authorization, P13 semantics, migration
 inventory, grants and deployment operations are unchanged. Complete controller,
 approved P12/P13 and production startup evidence remain separate requirements.
+
+The separate `--suite bootstrap-credential-pg16` route runs only
+`bootstrapCredentialFence.integration.test.ts` in another fresh PG16 cluster.
+It does not share the retirement endpoint cluster: changing OID 10 credentials
+is a cluster-wide effect. Its exact config rejects missing ownership evidence
+and empty collection and keeps the original default test/hook deadlines. The
+ordinary server lane excludes it; the mandatory component job runs it separately.
+Parent cleanup uses Docker identity, not the old database password. This route
+does not authorize production credential rotation or establish completed P13.

@@ -49,3 +49,10 @@ Docker 资源。监督文件同样只消费 receipt，终止拒绝 TERM 的子�
 文档影响仅包括此双语文件中的夹具归属、强制路由和监督证据。产品权限、P13 语义、
 迁移清单、grant 及部署操作保持不变。完整 controller、获批 P12/P13 和生产启动
 仍需要独立证据，组件成功不能替代这些验收。
+
+独立的 `--suite bootstrap-credential-pg16` 路由只在另一个全新 PG16 集群执行
+`bootstrapCredentialFence.integration.test.ts`。OID 10 凭据修改影响整个集群，
+因此不能与退休端点套件共享集群。专用配置拒绝缺归属证据和零收集，保持原默认
+用例及 hook 预算；普通 server 套件排除它，由强制组件 job 单独执行。父进程按
+Docker 身份清理，不依赖已经失效的旧数据库密码。此路由不授权生产凭据轮换，
+也不证明 P13 已完成。

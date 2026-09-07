@@ -5,6 +5,32 @@ import * as componentRunner from "./run-upgrade-component-tests";
 
 const workflow = readFileSync(new URL("../.github/workflows/ci.yml", import.meta.url), "utf8");
 
+it("isolates bootstrap credential mutation in its own mandatory cluster and exact collection", () => {
+  const file = "server/modules/catalog-cutover/retirement/bootstrapCredentialFence.integration.test.ts";
+  const command = componentRunner.componentTestCommands("bootstrap-credential-pg16");
+  expect(command).toHaveLength(1);
+  expect(command[0].slice(1)).toEqual(["run", "--config", "vitest.upgrade-bootstrap-credential.config.ts", file]);
+  expect(componentRunner.componentTestCommands("retirement-existing-pg16").flat()).not.toContain(file);
+  const config = readFileSync(new URL("../vitest.upgrade-bootstrap-credential.config.ts", import.meta.url), "utf8");
+  expect(config).toContain("assertOwnedUpgradeTestTarget();");
+  expect(config).toContain(`include: ["${file}"]`);
+  expect(config).toContain("passWithNoTests: false");
+  expect(config).not.toContain("testTimeout:");
+  expect(config).not.toContain("hookTimeout:");
+  expect(readFileSync(new URL("../vitest.server.config.ts", import.meta.url), "utf8")).toContain(`"${file}"`);
+  const job = workflow.split("\n  upgrade-components:\n")[1]?.split("\n  acceptance-quality:")[0];
+  expect(job).toContain("--suite bootstrap-credential-pg16 --github-hosted");
+  expect(job).not.toContain("continue-on-error: true");
+});
+
+it("refuses bootstrap collection without its parent's ownership receipt instead of using an ambient database", () => {
+  const run = spawnSync(process.execPath, ["node_modules/vitest/vitest.mjs", "list", "--config", "vitest.upgrade-bootstrap-credential.config.ts"],
+    { env: { PATH: process.env.PATH, HOME: process.env.HOME }, encoding: "utf8", timeout: 10000 });
+  expect(run.error).toBeUndefined();
+  expect(run.status).not.toBe(0);
+  expect(run.stderr + run.stdout).toContain("upgrade-tests-require-explicit-owned-postgres-receipt");
+});
+
 it("runs the actual docs-check package command in the owned pgvector lane, separately from generation", () => {
   expect(componentRunner.componentTestCommands("docs-check")).toEqual([["run", "docs:check", "--", "--require-database"]]);
   expect(componentRunner.componentTestExecutable("docs-check")).toBe("npm");

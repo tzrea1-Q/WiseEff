@@ -28,6 +28,7 @@ export default defineConfig({
       "server/modules/logs/logAnalysisQueueRuntime.redis.integration.test.ts",
       "server/modules/catalog-cutover/activation/activation.integration.test.ts",
       "server/modules/catalog-cutover/retirement/loginFence.integration.test.ts",
+      "server/modules/catalog-cutover/retirement/bootstrapCredentialFence.integration.test.ts",
       "server/modules/catalog-kernel/security/catalogReader.integration.test.ts",
       "server/modules/release-verification/startup/reportConnection.integration.test.ts",
       "server/modules/catalog-cutover/bindingImportProducer.integration.test.ts",
