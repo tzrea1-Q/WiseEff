@@ -4,6 +4,40 @@
 
 ## 范围与状态
 
+### 已批准的限定合同演进，2026-09-07
+
+用户明确授权从 `f00f94435`（代码 `11d8147a5`、main `cda6737a8`）实施和隔离
+验证两项独立 R3 变更。刷新后引用未变，工作树干净。这两项此前待决策状态已被
+本次实现授权取代，不重复请求批准。
+
+恢复：S11-RP 保持 capture/verify/restore-check 的 manifest、精确目标、停写及
+run-bound token 所有权。纯检查入口不得直接或间接调用执行层。登记全部 storage
+模块及依赖，建立独立受控执行合同。恢复消费既有受信包／token，绑定持久 attempt、
+来源信任、授权和逐存储实时目标／锁校验。部分／未知结果保留，成功不恢复流量。
+全目录 token 禁令仅演进为有穷尽登记和回归的分层，其他禁用操作不变。
+
+Reader：追加下一个迁移（当前 0140，集成前重查），历史 SQL／checksum 不变。
+NOLOGIN 能力仅获正式 Kernel SQL 所需 schema USAGE 和逐对象 SELECT。
+保留 0138 历史负测，并以真实受限 LOGIN 验证新增显式授权的读取。不含 DML、
+所有权、grant/admin option、高权角色可达、治理 EXECUTE 或新增高权系统元数据
+读取。报告查询仍用独立 0139 角色。
+
+单写责任：恢复 Scratch 独占 storage 检查／执行归属及测试；reader Scratch 独占
+新增迁移、role manifest、真实 Kernel／角色测试；父协调者独占 runtime 根、
+controller、生成 schema、指纹发布及最终操作／证据双语文档。分片分别维护模块
+双语合同，独立 Standards／Spec 审查后按 reader→恢复顺序集成。测试不得共享
+集群级角色；不照搬旧提案。父协调者继续 startup／P12/P13 内部集成。
+
+威胁冻结：漏登记模块、间接／动态跨层调用、命令规避、伪造／过期／跨 run 包及
+token、非空／错误／共享目标、跨存储锁丢失、未知恢复结果、导出后源停止、
+PUBLIC／owner／间接成员提权、INHERIT／SET／ADMIN 错配、非法读写、错误 Kernel
+pins 和 pool 清理失败。封存前需永久负测与真实隔离正向证据。
+
+文档影响：本计划双语、模块合同、ownership／grant manifest、对应测试／指纹、
+生成 schema、已有操作／证据双语文件。不重置 trusted base 或扩大无关 allowance。
+未批准 #815、真实备份、企业 CA、生产操作、合并或发布。PR #824 保持 Draft；
+这两项不能替代真实 startup 与完整 populated controller 验收。
+
 本次从报告`1190ba591`续工，R3职责已实际分配：父协调者独占controller／journal、
 根组合入口与全部执行；release分片独占handoff锁存活；runtime分片新增startup／
 真实状态读取；recovery分片新增controlledRecovery adapter及测试。独立预审发现

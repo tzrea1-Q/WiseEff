@@ -4,6 +4,51 @@
 
 ## Scope and state
 
+### Accepted bounded contract evolution, 2026-09-07
+
+The user explicitly authorizes implementation and isolated verification of two
+independent R3 changes at `f00f94435` (code `11d8147a5`, main `cda6737a8`).
+Refreshed refs are unchanged and the worktree is clean. Earlier pending decisions
+for these two scopes are superseded; this is implementation authorization.
+
+Recovery: retain S11-RP capture/verify/restore-check manifest, exact target,
+quiescence and run-bound token ownership. No direct or transitive execution from
+check-only entrypoints. Register every storage module and its dependencies under
+an independent controlled execution contract. Restore consumes existing verified
+package/token contracts with persistent attempt, source provenance, authorization
+and live target/lock checks at each store. Unknown/partial outcomes remain locked;
+success cannot resume traffic. The blanket token scan evolves only into this
+exhaustive split, preserving every unrelated forbidden operation.
+
+Reader: append the next migration (currently 0140; recheck before integration),
+preserving every historical SQL/checksum. NOLOGIN capability grants only schema
+USAGE and SELECT required by real Kernel SQL, with an exact object manifest.
+Retain historical 0138 negatives and test new opt-in real LOGIN reads. No DML,
+ownership, grant/admin option, high role reachability, governance EXECUTE or new
+privileged system metadata capability. Report reads retain the separate 0139 role.
+
+Single writers: recovery Scratch owns storage execution/check ownership/tests;
+reader Scratch owns the new migration, role manifest and real Kernel/role tests;
+parent owns runtime roots/controller, generated schema, fingerprint publication
+and final bilingual operator/evidence changes. Each lane writes its own bilingual
+module contract. Integrate reader then recovery serially after independent
+Standards/Spec review. Test clusters cannot share cluster-global roles. Do not
+apply the old proposal wholesale. Parent continues startup/P12/P13 integration.
+
+Threats: missing modules, indirect/dynamic check-to-execution imports, command
+obfuscation, forged/stale/cross-run package/token, nonempty/wrong/shared target,
+lost locks between stores, unknown restore outcomes, source stopped after capture,
+PUBLIC/owner/indirect membership escalation, unsafe INHERIT/SET/ADMIN options,
+unauthorized reads/writes, invalid Kernel pins and pool cleanup failures. These
+require permanent negatives and real isolated positive evidence before sealing.
+
+Documentation impact: existing plan pair, module contracts, ownership/grant
+manifests, relevant tests/fingerprints and generated schema, operator/evidence
+pairs. No global trusted-base reset or unrelated allowance changes. Neither
+authorization approves #815, real backups, enterprise CA, production operations,
+merge or release. PR #824 remains Draft; these slices do not replace the full
+startup and populated controller acceptance.
+
 ## Continuation: M1 and M2
 
 Fresh preflight confirms base `67d4a77325b6009b77c2373bd788298a6d022bcf`, inherited report head `1a9ba7745b6f4e0ba1e52aede3e0ee5fe1ab6016`, clean candidate worktree. Source deployment is unchanged. M1 is independently reviewable interception; M2 requires a successful actual isolated upgrade and remains separate.
