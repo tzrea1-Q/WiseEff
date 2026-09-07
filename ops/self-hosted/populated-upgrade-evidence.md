@@ -17,6 +17,42 @@ Boundary, bridge, contract, log-eval, owned PostgreSQL, Acceptance smoke/quality
 Merge bar ran successfully. Local non-HDC and target-synthetic jobs skipped.
 This is not Hosted evidence for the following continuation.
 
+Endpoint and supervision fixes are integrated through `097a4a598`, tree
+`73095ef503baf41b12c3f7ed67f0b39d548011b9`. Component `cdb0db88d` passed
+16/16 real two-PG endpoint tests after the original 14 passed/2 failed resolver
+counterexample; independent Standards/Spec passed. Parent pure retirement tests
+at `9722cc18e` passed 47/47. Neither result proves complete P13 or runtime startup.
+
+Image fix `df0fa9c56` makes pinned DTS tools/libfdt available in the existing
+minimal environment, without relying on `LD_LIBRARY_PATH`. Independent
+Standards/Spec passed. The formal login-shell toolchain command exited 1 in the
+old image and 0 in the fixed image. Fixed image ID:
+`sha256:7148348e0a7db9e9574dcc7ec6dd49b184809f8d9417ec2ecb9d89e3c0c56dd0`
+(linux/arm64, verified TLS configuration, cached dependencies). It excludes later
+retirement commits and does not prove enterprise-network trust. Log SHA256:
+`5b8cfbe336c77c23b89a5a424ba9ebb0d3c1300806a614beede7d9e22b3cdd17`.
+
+The actual old-source image passed API readiness, worker liveness, registration,
+login, authenticated reading and anonymous/wrong-password refusal in an owned
+internal Compose network without published ports. Only model providers use the
+existing deterministic implementations; production mode, authentication, PG,
+MinIO and Redis AOF are real. This is old-source preparation, not candidate
+startup. Log SHA256: `72a294da16e04abe5a8efcf64f4cff539e97a0c0a21b099b619ce953dcaa09db`.
+The following two-upload business experiment failed with HTTP 500 (exit 1);
+queue processing is unproven. Exact owned containers were verified stopped and
+data retained. Failure log SHA256:
+`ea7244096fc7f5484e80a9486dc084f6ef079110271bbea74d21fc20200a24e5`.
+
+An agent mistakenly used the general server configuration twice for a filesystem
+bootstrap test. Both runs exited 1 with zero tests. Global setup attempted a
+default database before ownership verification; it can perform template and
+migration-ledger DDL. No execution log establishes whether writes occurred.
+The route was stopped, without investigating or cleaning that unverified target;
+no untouched-target or restoration claim is made. These are invalid setup
+failures, not Red/Green evidence. Filesystem tests now use the existing no-setup
+retirement configuration; PG tests require a separate integration file and
+parent-owned cluster receipt. Bootstrap credential fencing remains Scratch.
+
 | Actual execution identity | Command/scope and result | Log SHA256 |
 | --- | --- | --- |
 | Clean `4847025983527893e21e260da55cbf32aeff8a46`, tree `3b7671516daf03d332b02c07534a061be6517b8b` | Owned `scripts-pgvector`: 1716 collected, 1690 passed, 1 failed, 25 skipped; 99.45s, exit 1, cleanup verified. Only failure: source-lock lineage case at unchanged 60000ms | `64b8245f38d2882beeb88ee12b917dad84f0dd4d2516c7090cb283a0162a10af` |

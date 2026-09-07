@@ -20,6 +20,19 @@ local scripts timeout or the two skipped acceptance jobs. Its checkout remains
 | P13 stopped-source resolver / Raman | Actual stopped-container hosts/resolver files, original endpoint and two-PG counterexample | Retirement/source module contract pair |
 | P13 endpoint resource supervisor and owned routing / Fermat | Parent-issued private receipt, durable planned/observed IDs, child kill and exact cleanup | Runner contract and mandatory CI route |
 | P13 integration Spec / Lagrange | Independent fixed-SHA cross-layer review, no implementation edits | Review evidence in this plan/evidence pair |
+| Formal durable enqueue / parent, independent Spec Lagrange | Actual producer key accepted by locked BullMQ, existing identity and retry compatibility | Queue contract and existing evidence pair |
+
+The stopped-source resolver and parent supervision increment is integrated through
+`c6a57ae41`, after independent Standards/Spec review. Subsequent actual old-image
+business acceptance failed at upload with HTTP 500. A new permanent real Redis
+test using the formal `enqueueLogAnalysisJob` producer reproduced the locked
+BullMQ rejection of its colon-containing job ID (9 passed/1 failed, no skips,
+exit 1, exact owned cleanup verified). Earlier controlled-task lifecycle passes
+did not exercise this producer key. The fix must preserve persisted task identity
+and retries; changing fixtures to an accepted key cannot satisfy this acceptance.
+Current API/worker approved startup and full controller remain internal unfinished
+work. See the evidence pair for the separately recorded invalid bootstrap setup
+invocations; no unverified default database may be contacted to continue testing.
 
 API request/background-work drain at `b404b615b` has independent Standards and
 Spec PASS for that exact increment. Its focused execution is 61/61, and build

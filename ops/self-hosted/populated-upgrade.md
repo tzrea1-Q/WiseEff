@@ -38,7 +38,7 @@ This candidate provides protective interception, bounded canonical conversion an
 | Catalog apply fresh/populated | Frozen plan/execute/P11a only; no public service authorization |
 | Release Verification | Purpose, pins, report, approval and runtime-pin module; production startup integration missing |
 | P12 | Existing 0137 event/checkpoint implementation and formal report association integrated; successful approved apply still needs the complete live gate/producer chain. The earlier new-table prototype remains excluded |
-| P13/P11b/P14/P15 | Complete executable integration remains unfinished |
+| P13/P11b/P14/P15 | Existing-storage legacy LOGIN fence and observed source endpoint are integrated components; bootstrap/superuser source, complete retirement, reports and publication remain unfinished |
 
 ## Developer commands
 
@@ -58,14 +58,36 @@ recovery command. This is not a production startup acceptance command.
 
 The component runner owns separate `reader-pg16`, `report-pg16`,
 `authority-pg16`, `scripts-pgvector`, `server-pgvector` and
-`schema-doc` lanes. After independently confirming the
+`schema-doc`, `docs-check`, `log-redis`, `activation-existing-pg16` and
+`retirement-existing-pg16` lanes. After independently confirming the
 development Docker Desktop daemon and its owned resources, pass its actual ID
 with `--expected-daemon-id` and the selected `--suite` to
 `scripts/run-upgrade-component-tests.ts` using the repository's `tsx` binary.
 These commands create and remove a fresh cluster/network/volume. `schema-doc`
 also writes `docs/generated/db-schema.md`; it is a generator, not a read-only
-inspection. A failed test or unverified cleanup stops acceptance. Never supply
+inspection. `docs-check` requires actual database schema comparison and fails
+instead of skipping when its dedicated database or vector extension is unavailable.
+A failed test or unverified cleanup stops acceptance. Never supply
 an ambient deployment database or use these component results as a release.
+
+The retirement lane invokes the real role fence and original-endpoint checks on
+owned PostgreSQL 16 Alpine. Its parent creates and records all endpoint resources
+before the test child starts, and cleans those exact resources after child exit.
+It includes actual stopped-container resolver files and two different PG targets.
+Run it on the same approved development host/user/checkout described above:
+
+```bash
+: "${UPG_EXPECTED_DAEMON_ID:?set the independently approved development daemon ID}"
+env -i PATH="$PATH" HOME="$HOME" node --import tsx \
+  scripts/run-upgrade-component-tests.ts \
+  --expected-daemon-id "$UPG_EXPECTED_DAEMON_ID" --suite retirement-existing-pg16
+```
+
+Expect nonzero collection, exit 0 and verified cleanup. The explicit timeout
+fault experiment instead expects child/runner failure and separately verifies
+cleanup; it is not a business-suite pass. Missing tests/config fail before resource
+creation. These are PG/psql source probes, not actual old API/worker handoff, a
+complete approved `retireLegacyApplicationLogins` run, P13 approval or restart.
 
 The GitHub-only `--github-hosted` option requires fresh, verified GitHub OIDC
 claims, the actual clean checkout (including non-ignored untracked files) and

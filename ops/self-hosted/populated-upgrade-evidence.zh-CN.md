@@ -15,6 +15,33 @@ backend 为4180／4169／0／11。Boundary、bridge、contract、log-eval、owne
 Acceptance smoke/quality、Merge bar 均实际成功。Local non-HDC、target-synthetic 两个
 job 跳过。这不是下列续工代码的 Hosted 证据。
 
+Endpoint／监管修复已集成至 `097a4a598`，tree 为
+`73095ef503baf41b12c3f7ed67f0b39d548011b9`。组件 `cdb0db88d` 的真实双 PG
+endpoint 测试16/16；原 resolver 反例14通过／2失败，修复获独立 Standards/Spec
+通过。父候选 `9722cc18e` 的纯 retirement 测试47/47。两者都不证明完整 P13 或运行启动。
+
+镜像修复 `df0fa9c56` 让固定 DTS 工具及 libfdt 在既有最小环境可用，不依赖
+`LD_LIBRARY_PATH`；独立 Standards/Spec 通过。正式 login-shell 工具链命令在旧镜像
+exit 1，在修复镜像 exit 0。修复镜像 ID 为
+`sha256:7148348e0a7db9e9574dcc7ec6dd49b184809f8d9417ec2ecb9d89e3c0c56dd0`
+（linux/arm64、TLS 验证配置、依赖缓存）；不含后续 retirement 提交，不证明企业网络信任。
+日志 SHA256：`5b8cfbe336c77c23b89a5a424ba9ebb0d3c1300806a614beede7d9e22b3cdd17`。
+
+实际旧源镜像在独占内部 Compose 网络、无公开端口的环境中通过 API readiness、worker
+liveness、注册、登录、认证读取及匿名／错误密码拒绝。只有模型使用既有 deterministic
+实现；production 模式、认证、PG、MinIO、Redis AOF 均真实。这是旧源准备，不是候选
+启动。日志 SHA256：`72a294da16e04abe5a8efcf64f4cff539e97a0c0a21b099b619ce953dcaa09db`。
+随后两文件上传业务实验 HTTP 500、exit 1，尚未证明任务处理；已核验全部精确自有容器
+停止、数据保留。失败日志 SHA256：
+`ea7244096fc7f5484e80a9486dc084f6ef079110271bbea74d21fc20200a24e5`。
+
+一个实现智能体两次误用通用 server 配置运行纯文件 bootstrap 测试；均 exit 1、0用例。
+global setup 在归属核验前尝试默认数据库，可能执行模板及 migration ledger DDL。
+现无执行日志能确定是否发生写入；已停用该路径，未对未核验目标调查或清理，不声称
+目标未变或已经恢复。这是无效 setup 失败，不是 Red/Green。纯文件测试现使用既有
+无 setup 的 retirement 配置；PG 测试必须独立 integration 文件及父级 owned cluster
+receipt。Bootstrap 凭据退出仍为 Scratch。
+
 | 实际执行身份 | 命令／范围与结果 | 日志 SHA256 |
 | --- | --- | --- |
 | clean `4847025983527893e21e260da55cbf32aeff8a46`，tree `3b7671516daf03d332b02c07534a061be6517b8b` | owned `scripts-pgvector`：收集1716、通过1690、失败1、跳过25；99.45秒，退出1，清理已核验。唯一失败是 source-lock lineage 原60000ms超时 | `64b8245f38d2882beeb88ee12b917dad84f0dd4d2516c7090cb283a0162a10af` |

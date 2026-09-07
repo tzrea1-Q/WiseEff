@@ -32,7 +32,7 @@ Binding/ProjectValue 授权或发布。Policy #815 仍需独立决定。
 | Catalog apply fresh/populated | 冻结 plan/execute/P11a；不授权对外服务 |
 | Release Verification | purpose/pins/report/approval/runtime pin 模块存在，实际启动尚未接线 |
 | P12 | 已集成既有 0137 事件／checkpoint 实现及正式报告关联；获批 apply 的正向成功仍依赖完整 live gate／producer 链。早期新增表原型继续排除 |
-| P13/P11b/P14/P15 | 完整可执行集成仍未完成 |
+| P13/P11b/P14/P15 | 既有存储旧LOGIN fence及真实源endpoint观察已作为组件集成；bootstrap／superuser源、完整退休、报告及发布仍未完成 |
 
 ## 开发环境
 
@@ -50,7 +50,8 @@ startup 验收命令。
 ```
 
 组件入口提供 `reader-pg16`、`report-pg16`、
-`authority-pg16`、`scripts-pgvector`、`server-pgvector` 和 `schema-doc`
+`authority-pg16`、`scripts-pgvector`、`server-pgvector`、`schema-doc`、`docs-check`、
+`log-redis`、`activation-existing-pg16` 和 `retirement-existing-pg16`
 独占测试通道。执行机器必须是已独立核验的开发 Docker Desktop；
 用户为开发者，目录为审阅候选仓库。先确认 daemon 及资源归属，再用仓库的
 `tsx` 执行 `scripts/run-upgrade-component-tests.ts`，传入真实的
@@ -58,6 +59,24 @@ startup 验收命令。
 网络和卷，不停止部署服务。`schema-doc` 还会生成并写入
 `docs/generated/db-schema.md`，不是只读检查。预期是测试退出码 0 且
 `cleanupVerified: true`；任一失败停止验收，不连接部署数据库补跑。
+`docs-check` 必须实际比对数据库schema；缺少专用数据库或vector扩展时失败，不以skip通过。
+
+retirement通道在独占PG16 Alpine上调用真实角色fence和原endpoint核对。父进程在
+测试child启动前创建并持久登记全部endpoint资源，child结束后只清理这些精确对象。
+测试读取停止容器的真实解析文件，并使用两个不同PG目标。执行机器／用户／目录及
+身份前置条件同上；会写入临时角色和数据，但不停止用户部署服务：
+
+```bash
+: "${UPG_EXPECTED_DAEMON_ID:?必须设置已独立核验的开发daemon身份}"
+env -i PATH="$PATH" HOME="$HOME" node --import tsx \
+  scripts/run-upgrade-component-tests.ts \
+  --expected-daemon-id "$UPG_EXPECTED_DAEMON_ID" --suite retirement-existing-pg16
+```
+
+预期非零收集、退出0、清理已核验。显式timeout故障实验则预期child／runner失败，
+另行验证清理，不算业务suite通过。缺测试／config在创建资源前失败。这里的源是
+PG／psql probe，不是实际旧API／worker交接，不是完整获批的
+`retireLegacyApplicationLogins` 执行、P13批准或重启。
 
 仅 GitHub 使用的 `--github-hosted` 要求实时签名 OIDC、实际干净 checkout
 （含非 ignored 未跟踪文件）和固定本地 daemon；不能用调用者 token 或 CI 布尔值代替。

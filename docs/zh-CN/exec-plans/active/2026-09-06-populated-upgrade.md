@@ -20,6 +20,15 @@
 | P13 停止源解析／Raman | 停止容器真实 hosts／resolver 文件、原 endpoint 及双 PG 反例 | retirement／source 模块合同双文件 |
 | P13 endpoint 资源监管及 owned 路由／Fermat | 父发行私有 receipt、持久计划／实际 ID、强杀 child 与精确清理 | runner 合同及必需 CI 路由 |
 | P13 集成 Spec／Lagrange | 固定 SHA 的独立跨层审查，不编辑实现 | 现有计划／证据双文件审查记录 |
+| 正式 durable 投递／父协调者，独立 Spec Lagrange | 锁定 BullMQ 接受正式 producer key；既有身份及重试兼容 | 队列合同及现有证据双文件 |
+
+停止源 resolver 与父监督增量经独立 Standards/Spec 审查，已集成至 `c6a57ae41`。
+后续实际旧镜像业务验收在上传时 HTTP 500；新增永久真实 Redis 测试使用正式
+`enqueueLogAnalysisJob`，复现锁定 BullMQ 拒绝含冒号的 job ID：9通过／1失败、
+0跳过、exit 1，精确 owned 清理核验成功。此前受控任务生命周期通过没有覆盖这个
+producer key。修复必须保留持久任务身份及重试；改夹具为可接受 key 不满足此项验收。
+当前 API／worker 获准启动和完整 controller 仍是内部未完成工作。误用 bootstrap
+测试配置的无效 setup 调用单独记录在证据文档，不得继续联系未经核验的默认数据库。
 
 API 请求／后台活动排空增量 `b404b615b` 已取得独立 Standards 和 Spec PASS；
 该固定代码 focused 61/61，build 通过。真实 HTTP 客户端断开反例在修复前失败：
