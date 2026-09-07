@@ -393,8 +393,11 @@ async function retire(input: LegacyLoginRetirementInput, bootstrapInspection = f
       const appendRetirement = async (event: BootstrapRetirementEvent) => {
         await check(); await checkJournalDirectory();
         if (event.outcome !== "unknown") await verifyBoundReport();
-        need(!connectionFailed, "CONNECTION-FAILED");
         need(isDeepStrictEqual(loaded.value.record, expectedJournal), "JOURNAL-DRIFT");
+        // This must be the final await before the synchronous host effect:
+        // report projection reads above may outlive the lock holder.
+        await assertHostOperationLockForJournal(input.lock, plan.inputs.journalPath);
+        need(!connectionFailed, "CONNECTION-FAILED");
         const result = commitJournalTransition(loaded.value, { action: `bootstrap-retirement-${event.outcome}`,
           inputDigest: sha256Prefixed(canonicalJson(event)), toState: loaded.value.record.state,
           nextAction: loaded.value.record.nextAction, outcome: event.outcome === "credential-step" ? "committed" : "crashed",
@@ -436,7 +439,11 @@ async function retire(input: LegacyLoginRetirementInput, bootstrapInspection = f
         // The root constructs this constraint from issued/live resources. It
         // is not caller-supplied authorization and never opens a nested RR
         // transaction while the low-level effect owns its own transaction.
-        beforeEffect: async () => { await targetCheck(); await guard!.verify(); await verifyBoundReport(); } };
+        beforeEffect: async () => {
+          await targetCheck(); await guard!.verify(); await verifyBoundReport();
+          await assertHostOperationLockForJournal(input.lock, plan.inputs.journalPath);
+          need(!connectionFailed, "CONNECTION-FAILED");
+        } };
       bootstrapStarted = true;
       const applied = await applyBootstrapCredentialFence(command);
       const observed = await inspectBootstrapCredentialFence(command);

@@ -182,6 +182,26 @@ it("does not dispatch any SQL intent or credential effect when host pending fsyn
   expect(io.rootEvents).toEqual([]); expect(io.apply).not.toHaveBeenCalled();
 });
 
+it.each(["pending", "credential-step"])("does not persist %s after host-lock loss during the final report await", async stage => {
+  const f = await fixture(), permitted = await io.report();
+  let lost = false;
+  io.report.mockImplementation(async () => {
+    await Promise.resolve();
+    const lastSql = io.clients.find(client => client.kind === "bootstrap")?.query.mock.calls.at(-1)?.[0];
+    // Guard verification reads the report inside its RR transaction. The
+    // append's last report read occurs after that transaction rolls back.
+    if (!lost && lastSql === "rollback" && (stage === "pending" ? io.rootEvents.length === 0 : io.inspect.mock.calls.length === 1)) {
+      lost = true; io.fault = "host-lock";
+    }
+    return permitted;
+  });
+  await expect(retireLegacyApplicationLogins(f.input)).rejects.toThrow("PCAT-UPG-LEGACY-LOGIN-");
+  expect(lost).toBe(true);
+  expect(retirementEvents(f.input).map(entry => entry.action)).toEqual(stage === "pending" ? [] : ["bootstrap-retirement-pending"]);
+  if (stage === "pending") { expect(io.rootEvents).toEqual([]); expect(io.apply).not.toHaveBeenCalled(); }
+  else expect(io.apply).toHaveBeenCalledOnce();
+});
+
 it.each(["host-fsync", "host-lock"])("retains pending and refuses a blind retry after SQL when %s is lost", async fault => {
   const f = await fixture();
   io.inspect.mockImplementationOnce(async () => { io.fault = fault; return { outcome: "authentication-fenced-not-P13", intentDigest: `sha256:${"b".repeat(64)}` }; });
@@ -311,6 +331,20 @@ it("rechecks an expired report projection before the low-level effect can contin
   await expect(retireLegacyApplicationLogins(f.input)).rejects.toThrow("TRANSACTION-OUTCOME-UNKNOWN");
   expect(continued).toBe(false);
   expect(io.rootEvents).toHaveLength(1);
+});
+
+it("stops the next SQL effect if the last report await loses the issued host lock", async () => {
+  const f = await fixture(), permitted = await io.report();
+  let continued = false;
+  io.apply.mockImplementationOnce(async command => {
+    io.report.mockImplementationOnce(async () => { await Promise.resolve(); io.fault = "host-lock"; return permitted; });
+    await command.beforeEffect();
+    continued = true;
+    return { outcome: "authentication-fenced-not-P13", intentDigest: `sha256:${"b".repeat(64)}` };
+  });
+  await expect(retireLegacyApplicationLogins(f.input)).rejects.toThrow("TRANSACTION-OUTCOME-UNKNOWN");
+  expect(continued).toBe(false);
+  expect(retirementEvents(f.input).map(entry => entry.action)).toEqual(["bootstrap-retirement-pending"]);
 });
 
 it.each([false, true])("attempts every close after a synchronous pool close failure, retaining prior refusal=%s", async priorFailure => {

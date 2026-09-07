@@ -33,6 +33,9 @@ SQL intent。typed payload 分别绑定宿主 run 与 cutover run、完整 root 
 guard、目标、源、恢复包和报告。每次追加前后核真实宿主锁和原私有 journal 目录 FD。
 全记录 CAS 只推进到本次根调用自己的已确认追加，不能采用 await 期间的外部修改。
 记录不改变 controller 状态、phase、next action 或 pins。
+每次宿主追加和底层 SQL 效果前，最终宿主锁核验位于报告 await 之后。两条宿主写入
+反例和一条 SQL 继续执行反例分别在最后一次报告读取内触发失锁；写后拒绝不能替代
+阻止失锁后的写入。
 
 效果不确定时，仅在宿主边界仍可用时追加 `bootstrap-retirement-unknown`，否则保留
 pending。二者均不授权再次轮换，即使调用者换新 attempt。若 rename 已成功但目录

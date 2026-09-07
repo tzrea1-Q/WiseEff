@@ -43,6 +43,10 @@ checks. The issued host lock and original private journal directory descriptor
 are checked around each append. Whole-record CAS advances only to this root
 invocation's acknowledged append, never an unrelated change during an await.
 The records preserve controller state, phases, next action and pins.
+The final host-lock check follows the report await immediately before each
+host append and low-level SQL effect. The two host-write race regressions and
+the SQL continuation regression separately reproduce lock loss inside that
+last report read; a post-write refusal alone is insufficient.
 
 An uncertain effect may append `bootstrap-retirement-unknown` only while the
 host boundary remains available; otherwise pending remains. Neither authorizes
