@@ -353,3 +353,19 @@ it("blocks native project deletion cascading into an actual legacy binding witho
     await admin.query(`delete from public.organizations where id=$1`, [organization]);
   }
 });
+
+it("does not turn native cascade authority over unscoped children into their owner's arbitrary legacy rights", async () => {
+  await admin.query(`grant delete on public.project_parameter_file_versions to ${writerName}`);
+  try {
+    expect((await writer.query(`delete from public.project_parameter_file_versions where false`)).rowCount).toBe(0);
+    expect(await runGate()).toMatchObject({ status: "passed" });
+  } finally { await admin.query(`revoke delete on public.project_parameter_file_versions from ${writerName}`); }
+});
+
+it("does not treat a non-key project column update as a cascading legacy mutation", async () => {
+  await admin.query(`grant update(name) on public.projects to ${writerName}`);
+  try {
+    expect((await writer.query(`update public.projects set name='unchanged' where false`)).rowCount).toBe(0);
+    expect(await runGate()).toMatchObject({ status: "passed" });
+  } finally { await admin.query(`revoke update(name) on public.projects from ${writerName}`); }
+});

@@ -704,6 +704,31 @@ const observeV13 = async (query: GateQuery): Promise<GateResult> => {
   // extra EXECUTE capability may delegate to another definer without exposing
   // that inner function directly to the LOGIN; source-text absence is no proof.
   const unprovenDefiners = await query<{ login: string; function_identity: string }>(`${v13LoginScope},
+    referential_edges as (
+      -- Native RI actions bypass the initiating LOGIN's child-table ACL. Keep
+      -- their exact relation/event effect; they do not delegate arbitrary
+      -- privileges or EXECUTE capabilities of the child table's owner.
+      select fk.confrelid as source_oid,fk.conrelid as target_oid,
+        action.parent_action,case when action.parent_action='DELETE' and action.kind='c'
+          then 'DELETE' else 'UPDATE' end as child_action,
+        case when action.parent_action='UPDATE' then fk.confkey else null::smallint[] end as source_columns,
+        case when action.parent_action='DELETE' then coalesce(fk.confdelsetcols,fk.conkey)
+          else fk.conkey end as target_columns,t.tgenabled='R' as requires_replica
+      from pg_catalog.pg_constraint fk
+      cross join lateral (values ('DELETE',8,fk.confdeltype),('UPDATE',16,fk.confupdtype)) action(parent_action,event_bit,kind)
+      join pg_catalog.pg_trigger t on t.tgconstraint=fk.oid and t.tgisinternal
+        and t.tgrelid=fk.confrelid and (t.tgtype & action.event_bit)<>0
+      where fk.contype='f' and action.kind in ('c','n','d') and t.tgenabled in ('O','A','R')
+    ), referential_paths(target_oid,source_oid,action,columns,requires_replica) as (
+      select edge.target_oid,edge.source_oid,edge.parent_action,edge.source_columns,edge.requires_replica
+      from referential_edges edge join relations scoped on scoped.oid=edge.target_oid
+      union
+      select path.target_oid,edge.source_oid,edge.parent_action,edge.source_columns,
+        path.requires_replica or edge.requires_replica
+      from referential_paths path join referential_edges edge on edge.target_oid=path.source_oid
+        and edge.child_action=path.action
+        and (path.action='DELETE' or edge.target_columns && path.columns)
+    ),
     user_definers as (
       select p.oid,p.proowner,p.proconfig from pg_catalog.pg_proc p
       join pg_catalog.pg_namespace n on n.oid=p.pronamespace
@@ -760,6 +785,13 @@ const observeV13 = async (query: GateQuery): Promise<GateResult> => {
         pg_catalog.has_table_privilege(edge.owner,relation.oid,'INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER')
         or pg_catalog.has_any_column_privilege(edge.owner,relation.oid,'INSERT,UPDATE,REFERENCES')
         or pg_catalog.pg_has_role(edge.owner,relation.relowner,'USAGE'))
+    union
+    select distinct login.rolname,'referential-action:'||path.source_oid::regclass::text||':'||path.action||'->'||path.target_oid::regclass::text
+    from delegates join logins login on login.oid=delegates.login_oid
+    join referential_paths path on not path.requires_replica or delegates.replica_possible
+    where (path.action='DELETE' and pg_catalog.has_table_privilege(delegates.effective_oid,path.source_oid,'DELETE'))
+      or (path.action='UPDATE' and exists(select 1 from unnest(path.columns) column_number
+        where pg_catalog.has_column_privilege(delegates.effective_oid,path.source_oid,column_number,'UPDATE')))
     order by 1,2`, [v13Relations]);
   const grantRows = grants.rows;
   const violationCount = grantRows.length + definers.rows.length + effective.rows.length + unprovenDefiners.rows.length;
