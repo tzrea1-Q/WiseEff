@@ -62,6 +62,35 @@ export type BindingPhaseEvent = BindingPhaseAttempt & {
   readonly outcome: "pending" | "committed" | "failed" | "unknown";
 };
 
+/** Host persistence shape, structurally matching the Cutover activation public
+ * interface. This record is neither SQL commit proof nor release approval. */
+export type ActivationIntentRecord = {
+  readonly runId: string;
+  readonly attemptId: string;
+  readonly target: { readonly systemIdentifier: string; readonly databaseOid: string };
+  readonly planDigest: string;
+  readonly predecessorBindingDigest: string | null;
+  readonly reportDigest: string;
+  readonly expectedObservationDigest: string;
+  readonly inputDigest: string;
+};
+export type ActivationBindingRecord = {
+  readonly version: "pcat-activation-v1";
+  readonly intent: ActivationIntentRecord;
+  readonly mode: "canonical";
+  readonly sourceSnapshotFingerprint: string;
+  readonly catalog: { readonly releaseId: string; readonly releaseDigest: string; readonly compiledFingerprint: string; readonly databaseFingerprint: string };
+  readonly mapping: { readonly epoch: string; readonly headDigest: string };
+  readonly comparisonReportDigest: string;
+  readonly bindingDigest: string;
+};
+export type ActivationJournalEvent = {
+  readonly hostRunId: string;
+  readonly intent: ActivationIntentRecord;
+  readonly outcome: "pending" | "committed" | "unknown" | "reconciled" | "not-applied";
+  readonly binding?: ActivationBindingRecord;
+};
+
 // Persistence types live with the journal, never in the execution layer: check
 // modules must not acquire an indirect import of restore mechanisms.
 export type RecoveryCaptureRecord = {
@@ -100,6 +129,7 @@ export type JournalEntry = {
   readonly planDigest: string | null;
   readonly lastFailureCode: string | null;
   readonly bindingPhase?: BindingPhaseEvent;
+  readonly activation?: ActivationJournalEvent;
   readonly recoveryCapture?: RecoveryCaptureEvent;
   readonly recoveryApproval?: RecoveryApprovalEvent;
 };
@@ -151,6 +181,7 @@ export type JournalTransitionDraft = {
   readonly outcome?: JournalOutcome;
   readonly lastFailureCode?: string | null;
   readonly bindingPhase?: BindingPhaseEvent;
+  readonly activation?: ActivationJournalEvent;
   readonly recoveryCapture?: RecoveryCaptureEvent;
   readonly recoveryApproval?: RecoveryApprovalEvent;
 };
@@ -248,6 +279,7 @@ const parseRecord = (value: unknown): ControllerResult<JournalRecord> => {
   }
   const candidate = value as JournalRecord;
   const captures = new Map<string, RecoveryCaptureEvent>();
+  let activation: ActivationJournalEvent | undefined;
   for (const [index, entry] of candidate.entries.entries()) {
     if (!entry || entry.seq !== index + 1 || typeof entry.action !== "string" ||
         typeof entry.inputDigest !== "string" || !["committed", "crashed"].includes(entry.outcome) ||
@@ -265,6 +297,12 @@ const parseRecord = (value: unknown): ControllerResult<JournalRecord> => {
     }
     if (entry.action.startsWith("binding-phase-") !== Boolean(phase)) {
       return failClosed("PCAT-UPG-ILLEGAL-ACTION", "upgrade journal phase event is missing or misplaced");
+    }
+    if (entry.activation || entry.action.startsWith("activation-")) {
+      if (!validActivationEvent(entry, candidate, index, activation)) {
+        return failClosed("PCAT-UPG-ILLEGAL-ACTION", "upgrade journal activation event is invalid");
+      }
+      activation = entry.activation;
     }
     if (entry.recoveryCapture) {
       const event = entry.recoveryCapture;
@@ -303,6 +341,51 @@ const parseRecord = (value: unknown): ControllerResult<JournalRecord> => {
 
 const exactKeys = (value: unknown, keys: readonly string[]): boolean => typeof value === "object" && value !== null &&
   !Array.isArray(value) && Object.keys(value).sort().join(",") === [...keys].sort().join(",");
+const activationDigest = (value: unknown): value is string => typeof value === "string" && /^sha256:[a-f0-9]{64}$/.test(value);
+const activationToken = (value: unknown): value is string => typeof value === "string" && value.length <= 180 && RUN_ID.test(value);
+export function validActivationIntent(value: ActivationIntentRecord): boolean {
+  if (!exactKeys(value, ["runId", "attemptId", "target", "planDigest", "predecessorBindingDigest", "reportDigest", "expectedObservationDigest", "inputDigest"]) ||
+    !activationToken(value.runId) || !activationToken(value.attemptId) || !exactKeys(value.target, ["systemIdentifier", "databaseOid"]) ||
+    ![value.target.systemIdentifier, value.target.databaseOid].every(part => typeof part === "string" && /^[0-9]{1,24}$/.test(part)) ||
+    ![value.planDigest, value.reportDigest, value.expectedObservationDigest, value.inputDigest].every(activationDigest) ||
+    value.predecessorBindingDigest !== null && !activationDigest(value.predecessorBindingDigest)) return false;
+  const { inputDigest, ...body } = value;
+  return inputDigest === sha256Prefixed(canonicalJson(body));
+}
+export function validActivationBinding(value: ActivationBindingRecord): boolean {
+  if (!exactKeys(value, ["version", "intent", "mode", "sourceSnapshotFingerprint", "catalog", "mapping", "comparisonReportDigest", "bindingDigest"]) ||
+    value.version !== "pcat-activation-v1" || value.mode !== "canonical" || !validActivationIntent(value.intent) ||
+    !exactKeys(value.catalog, ["releaseId", "releaseDigest", "compiledFingerprint", "databaseFingerprint"]) ||
+    !exactKeys(value.mapping, ["epoch", "headDigest"]) ||
+    typeof value.catalog.releaseId !== "string" || !/^[A-Za-z0-9_.:@-]{1,180}$/.test(value.catalog.releaseId) ||
+    typeof value.mapping.epoch !== "string" || !/^[A-Za-z0-9_.:@-]{1,180}$/.test(value.mapping.epoch) ||
+    ![value.sourceSnapshotFingerprint, value.catalog.releaseDigest, value.catalog.compiledFingerprint, value.catalog.databaseFingerprint,
+      value.mapping.headDigest, value.comparisonReportDigest, value.bindingDigest].every(activationDigest)) return false;
+  const { bindingDigest, ...body } = value;
+  return bindingDigest === sha256Prefixed(canonicalJson(body));
+}
+function validActivationEvent(entry: JournalEntry, record: JournalRecord, index: number, previous?: ActivationJournalEvent): boolean {
+  const event = entry.activation;
+  if (!event) return false;
+  const applied = event.outcome === "committed" || event.outcome === "reconciled";
+  if (!exactKeys(event, ["hostRunId", "intent", "outcome", ...(applied ? ["binding"] : [])]) || event.hostRunId !== record.runId ||
+    !validActivationIntent(event.intent) || event.intent.runId !== record.cutoverRunId ||
+    !["pending", "committed", "unknown", "reconciled", "not-applied"].includes(event.outcome) ||
+    entry.action !== `activation-${event.outcome}` || entry.inputDigest !== sha256Prefixed(canonicalJson(event)) ||
+    entry.outcome !== (applied || event.outcome === "not-applied" ? "committed" : "crashed") ||
+    entry.fromState !== entry.toState || entry.nextAction !== (record.entries[index - 1]?.nextAction ?? "plan") ||
+    entry.planDigest !== (record.entries[index - 1]?.planDigest ?? null)) return false;
+  if (event.outcome === "pending") {
+    return !previous || previous.outcome === "not-applied" && previous.intent.attemptId !== event.intent.attemptId &&
+      canonicalJson(previous.intent.target) === canonicalJson(event.intent.target) &&
+      !record.entries.slice(0, index).some(item => item.activation?.intent.attemptId === event.intent.attemptId);
+  }
+  if (!previous || canonicalJson(previous.intent) !== canonicalJson(event.intent)) return false;
+  if (event.outcome === "committed" || event.outcome === "unknown") {
+    if (previous.outcome !== "pending") return false;
+  } else if (!["pending", "unknown"].includes(previous.outcome)) return false;
+  return !applied || Boolean(event.binding && validActivationBinding(event.binding) && canonicalJson(event.binding.intent) === canonicalJson(event.intent));
+}
 const validRecoverySource = (value: RecoveryCaptureRecord["source"]): boolean =>
   exactKeys(value, ["deploymentId", "hostFingerprint", "postgresIdentity", "objectStoreIdentity", "redisIdentity"]) &&
   Object.values(value).every(part => typeof part === "string" && part.trim() === part && part.length > 0 && part.length <= 2048 && !/[\u0000-\u001f\u007f]/.test(part));
@@ -506,12 +589,20 @@ const appendTransition = (
   draft: JournalTransitionDraft,
   now: () => Date,
 ): ControllerResult<JournalCommit> => {
-  if ((draft.recoveryCapture || draft.recoveryApproval) && (draft.toState !== journal.record.state || draft.nextAction !== journal.record.nextAction ||
+  if ((draft.recoveryCapture || draft.recoveryApproval || draft.activation) && (draft.toState !== journal.record.state || draft.nextAction !== journal.record.nextAction ||
+    draft.lastFailureCode !== undefined && draft.lastFailureCode !== journal.record.lastFailureCode ||
     (["planDigest", "cutoverRunId", "verificationPlanDigest", "verificationAttemptDigest"] as const)
       .some(key => draft[key] !== undefined && draft[key] !== journal.record[key]))) {
     return failClosed("PCAT-UPG-ILLEGAL-ACTION", "recovery evidence cannot change controller state or pins");
   }
   if (isReplay(journal.record, draft)) {
+    if (draft.activation || draft.action.startsWith("activation-")) {
+      const latest = journal.record.entries.filter(entry => entry.activation).at(-1);
+      if (!draft.activation || latest?.action !== draft.action || latest.inputDigest !== draft.inputDigest ||
+        latest.outcome !== "committed" || canonicalJson(latest.activation) !== canonicalJson(draft.activation)) {
+        return failClosed("PCAT-UPG-ILLEGAL-ACTION", "activation replay requires the current exact typed record");
+      }
+    }
     if (draft.recoveryApproval) {
       const current = journal.record.entries.filter(entry => entry.action === "recovery-execution-authorized").at(-1);
       const captured = journal.record.entries.filter(entry => entry.action === "recovery-package-captured").at(-1);
@@ -542,6 +633,7 @@ const appendTransition = (
     planDigest: draft.planDigest ?? journal.record.planDigest,
     lastFailureCode: draft.lastFailureCode ?? null,
     ...(draft.bindingPhase ? { bindingPhase: draft.bindingPhase } : {}),
+    ...(draft.activation ? { activation: structuredClone(draft.activation) } : {}),
     ...(draft.recoveryCapture ? { recoveryCapture: structuredClone(draft.recoveryCapture) } : {}),
     ...(draft.recoveryApproval ? { recoveryApproval: structuredClone(draft.recoveryApproval) } : {}),
   };
@@ -560,7 +652,7 @@ const appendTransition = (
     updatedAt: at,
     entries: [...journal.record.entries, entry],
   });
-  if (draft.recoveryCapture || draft.recoveryApproval || draft.action === "recovery-capture-pending" || draft.action === "recovery-capture-unknown") {
+  if (draft.recoveryCapture || draft.recoveryApproval || draft.activation || draft.action.startsWith("activation-") || draft.action === "recovery-capture-pending" || draft.action === "recovery-capture-unknown") {
     const parsed = parseRecord(record);
     if (!parsed.ok) return parsed;
   }
