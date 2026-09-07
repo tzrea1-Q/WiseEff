@@ -48,8 +48,9 @@ REVOKE 前须已耐久保存现有 host pending 边界与专属 0137 P13 step in
 重读。根原六表 P12 库存锁不变；SQL owner 另在每个事务的首个快照前持有
 七张旧表锁。先提交不可变 intent，再执行精确 REVOKE、实际回读并提交。
 首个身份观察前还须实际管理 search path 以 `pg_catalog` 开头；每个事务另持
-`pg_authid`/`pg_auth_members` 的 SHARE NOWAIT。它短时冻结集群级角色元数据
-写入，不冒充只有七表局部锁；已存在竞争即拒绝。
+`pg_authid`/`pg_auth_members`/`pg_shdepend` 的 SHARE NOWAIT。它短时冻结
+集群级角色及共享依赖元数据写入，包括相冲突的 DDL/ACL 操作，不冒充只有
+七表局部锁；已存在竞争即拒绝。
 第三个事务持七表锁，覆盖新快照回读及根的宿主确认。本 owner 不关闭借入
 pool/client。ACL 前像中的恢复资格只关联原包角色名，不声称当前角色属性、
 成员关系等于原 capture，也不独立恢复它们；当前全部成员边仍参与效果 CAS。
@@ -77,7 +78,15 @@ SHA256 为 `0047ddf3ae7b13bfa2a53840d7a641b94d4e5186491c074a1ead0ad006b7e27c`。
 后者真实 GRANT 成功，随后实际 LOGIN 又可 UPDATE。保留日志
 `/tmp/pr824-sql-privilege-membership-red.log` 的 SHA256 为
 `40239689884ee73630ffa74ec193fe078e6dd54bd4d673d532a97e7947f82ba4`。
-相应解析 guard 与角色元数据锁修复等待独立固定 Green。
+相应解析 guard 与角色元数据锁的固定 `f1064b650` Green 为18/18，94.76秒、
+exit0、cleanuptrue；`/tmp/pr824-sql-privilege-pg-green.log` SHA256 为
+`0da0d4c778fc5af765848dafe2219663265d9a4e33913ae2956052a1442138f6`。
+随后固定 `175a6e320` 增加第二个 owned DB：最终 host 确认时实际 GRANT SELECT
+仍成功并新增共享依赖。该 Red 为19项中18过1失败，104.66秒、exit1、cleanuptrue，
+日志 `/tmp/pr824-sql-privilege-dependency-red.log`。新共享依赖锁等待自身固定Green。
+新夹具最初把真实 pg.Client 传给仅查询但类型要求 PoolClient 的 helper，targeted
+types 拒绝；现改为原实际 observed pool checkout，独立关闭 pool 与数据库，
+不使用 cast 或修改 helper 合同。
 复用真实 P0–P10/P12 storage 与明确未批准引用，只测试 SQL 效果。
 真实 SQL 提交后注入 host 确认失败不冒充网络
 COMMIT 故障。不声称完整根 P12/P13 批准或全部 writer 退休。

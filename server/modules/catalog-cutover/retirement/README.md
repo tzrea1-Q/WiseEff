@@ -60,9 +60,10 @@ retirement and re-observes it throughout the SQL effect. Its already held six
 P12 inventory locks are retained. The SQL owner separately locks all seven
 legacy relations before the first snapshot in each transaction. Before identity
 observation the actual management search path must have `pg_catalog`
-first. The same transaction also takes SHARE NOWAIT locks on `pg_authid` and
-`pg_auth_members`: these briefly freeze cluster-wide role metadata writes, not
-only the seven tables. Existing contention refuses immediately. It commits an
+first. The same transaction also takes SHARE NOWAIT locks on `pg_authid`,
+`pg_auth_members` and `pg_shdepend`: these briefly freeze cluster-wide role and
+shared-dependency metadata writes, including conflicting DDL/ACL operations,
+not only the seven tables. Existing contention refuses immediately. It commits an
 immutable intent, then performs and commits exact REVOKEs and their actual
 readback. A third transaction holds the seven locks across fresh readback and
 the root's host acknowledgment. No borrowed pool/client is closed by this owner.
@@ -101,8 +102,19 @@ failed: the latter grant succeeded during final host acknowledgment and the
 actual LOGIN could UPDATE afterward. Its retained log is
 `/tmp/pr824-sql-privilege-membership-red.log`, SHA256
 `40239689884ee73630ffa74ec193fe078e6dd54bd4d673d532a97e7947f82ba4`.
-The corresponding management-resolution and role-metadata-lock fixes await
-their separate fixed Green execution. The file
+The management-resolution and role-metadata-lock fixes at `f1064b650` passed
+18/18, 94.76 seconds, exit 0 and cleanup true. Its log
+`/tmp/pr824-sql-privilege-pg-green.log` has SHA256
+`0da0d4c778fc5af765848dafe2219663265d9a4e33913ae2956052a1442138f6`.
+The subsequent fixed `175a6e320` adds a separate owned database: its actual
+GRANT SELECT at final host acknowledgment succeeded and created a new shared
+dependency, despite the existing role locks. That Red was 18/19, 104.66 seconds,
+exit 1 and cleanup true, in `/tmp/pr824-sql-privilege-dependency-red.log`.
+The added shared-dependency lock awaits its own fixed Green. The new fixture
+initially passed a real `pg.Client` to a query-only helper typed as `PoolClient`;
+targeted types rejected it. It now uses the existing actual observed pool
+checkout and independently closes that pool and database; no cast or helper
+contract change was used. The file
 uses actual P0–P10/P12 storage with explicitly unapproved references and
 tests authentication-independent SQL effects. Host-ack failure after real SQL
 commits is an injected host failure, not a network COMMIT fault. No full root

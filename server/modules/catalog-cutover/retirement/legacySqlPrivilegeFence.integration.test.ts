@@ -206,10 +206,11 @@ it("freezes actual role membership until the final host acknowledgment and relea
 
 it("freezes cross-database ACL dependencies until acknowledgment without touching the other database's grants", async () => {
   const second = await createSelfHostedPg16Database("sql_shared_dependency");
-  const other = new pg.Client({ connectionString: second.url, connectionTimeoutMillis: 2000, query_timeout: 5000 });
-  other.on("error", () => {}); let operationError: unknown, cleanupFailed = false;
+  const otherPool = new pg.Pool({ connectionString: second.url, max: 1, connectionTimeoutMillis: 2000, query_timeout: 5000 });
+  otherPool.on("error", () => {});
+  let other: pg.PoolClient | undefined, operationError: unknown, cleanupFailed = false;
   try {
-    await other.connect();
+    other = await acquireObservedManagementClient(otherPool, () => {});
     const identity = await readBindingDatabaseIdentity(other);
     expect(identity.systemIdentifier).toBe(command.selection.target.systemIdentifier);
     expect(identity.databaseOid).not.toBe(command.selection.target.databaseOid);
@@ -217,7 +218,7 @@ it("freezes cross-database ACL dependencies until acknowledgment without touchin
     await manager!.query(`grant select,update on public.${pg.escapeIdentifier(table)} to ${pg.escapeIdentifier(role)}`);
     let grantCode = "not-attempted";
     await applyLegacySqlPrivilegeFence({ ...command, persistHostStep: async () => {
-      try { await other.query(`grant select on public.other_business to ${pg.escapeIdentifier(role)}`); grantCode = "succeeded"; }
+      try { await other!.query(`grant select on public.other_business to ${pg.escapeIdentifier(role)}`); grantCode = "succeeded"; }
       catch (error) { grantCode = typeof (error as { code?: unknown }).code === "string" ? (error as { code: string }).code : "unknown"; }
     } });
     const dependency = async () => (await manager!.query<{ present: boolean }>(`select exists(select 1 from pg_catalog.pg_shdepend
@@ -230,7 +231,7 @@ it("freezes cross-database ACL dependencies until acknowledgment without touchin
     expect(await dependency()).toBe(true);
   } catch (error) { operationError = error; throw error; }
   finally {
-    for (const close of [() => other.end(), () => second.close()]) {
+    for (const close of [() => other?.release(true), () => otherPool.end(), () => second.close()]) {
       try { await close(); } catch { cleanupFailed = true; }
     }
     if (cleanupFailed) {

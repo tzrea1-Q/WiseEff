@@ -111,10 +111,10 @@ async function assertManagement(client: pg.PoolClient, target: BindingDatabaseId
 async function begin(client: pg.PoolClient) {
   await client.query("begin isolation level serializable");
   await client.query("set local synchronous_commit=on");
-  // Role identity/membership are cluster-wide metadata. These short NOWAIT
-  // locks prevent a concurrent GRANT/ALTER from escaping the ACL snapshot;
-  // they do not change roles or privileges and are released at transaction end.
-  await client.query("lock table pg_catalog.pg_authid,pg_catalog.pg_auth_members in share mode nowait");
+  // Identity, membership and cross-database dependencies are cluster-wide
+  // metadata. These short NOWAIT locks freeze competing GRANT/ALTER/DDL writes;
+  // they change no role or privilege and are released at transaction end.
+  await client.query("lock table pg_catalog.pg_authid,pg_catalog.pg_auth_members,pg_catalog.pg_shdepend in share mode nowait");
   // The seven legacy tables are not the six separate P12 inventory tables.
   // Lock before the first snapshot, covering concurrent DML, DDL and ACL changes.
   await client.query(`lock table ${relations.map(name => `public.${pg.escapeIdentifier(name)}`).join(",")} in access exclusive mode nowait`);
