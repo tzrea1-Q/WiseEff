@@ -58,14 +58,17 @@ vi.mock("pg", async () => {
       if (sql.includes("as safe")) return { rows: [{ safe: io.fault !== "guard-role" }], rowCount: 1 };
       return { rows: [], rowCount: 0 };
     });
-    release = vi.fn(() => { this.emit("end"); });
+    release = vi.fn(() => { this.emit("end"); if (this.kind === "guard" && io.fault === "reader-release") throw new Error("private-release-diagnostic"); });
     constructor(options: { connectionString?: string } = {}) { super(); this.kind = options.connectionString?.includes("guard") ? "guard" : "bootstrap"; io.clients.push(this); }
     async connect() { io.sourceConnects++; if (io.fault === "old-secret-rejected") throw new Error("private-authentication-refused"); }
     async end() { this.emit("end"); }
   }
   class Pool extends EventEmitter {
     constructor(private options: { connectionString?: string }) { super(); io.pools.push(options.connectionString ?? "unspecified"); }
-    connect(callback: (error: null, client: Client) => void) { callback(null, new Client(this.options)); }
+    connect(callback: (error: null, client: Client) => void) {
+      const client = new Client(this.options); callback(null, client);
+      if (client.kind === "guard" && io.fault === "reader-end-at-checkout") client.emit("end");
+    }
     end() { io.closed.push("pool"); if (io.fault === "pool-close") throw new Error("private-pool-diagnostic"); return Promise.resolve(); }
   }
   return { default: { Pool, Client, escapeIdentifier: (v: string) => `"${v}"` } };
@@ -219,27 +222,27 @@ it("does not reach bootstrap preparation when the actual P12 report projection r
   expect(io.apply).not.toHaveBeenCalled(); expect(io.rootEvents).toEqual([]);
 });
 
-it("reopens only the recorded original custody for root inspection and never rotates again", async () => {
+it("selects retained custody through the formal facade and never retries rotation during inspection", async () => {
   const f = await fixture();
   await retireLegacyApplicationLogins(f.input);
-  const first = io.apply.mock.calls[0][0].custody;
   const sourceConnections = io.sourceConnects;
   io.fault = "old-secret-rejected";
-  // Explicit new private management input; stopped source URLs remain old.
-  f.input.administrativeConnectionString = "postgres://postgres:new-private-input@127.0.0.1/db";
+  // The facade owns actual FD reopen and is covered by its independent PG
+  // process tests. The root must neither supply a new secret nor retry apply.
   await expect(inspectLegacyApplicationLoginFence(f.input)).resolves.toMatchObject({
     status: "bootstrap-authentication-inspected-not-p13", outcome: "authentication-fenced-not-P13", attemptId: "auth-attempt",
   });
   expect(io.apply).toHaveBeenCalledOnce();
-  const reopened = io.inspect.mock.calls.at(-1)![0].custody;
-  expect(reopened).not.toBe(first);
-  expect(reopened.receipt).toEqual(first.receipt);
+  expect(io.transportInspect.mock.calls[0][0].expectedRootBinding.custodyDirectory).toBe(f.custodyDirectory);
+  expect(io.inspect).toHaveBeenCalledOnce();
   expect(io.sourceConnects).toBe(sourceConnections);
   expect(io.rootEvents).toHaveLength(1);
   io.fault = "";
   await expect(retireLegacyApplicationLogins(f.input)).rejects.toThrow("ATTEMPT-REQUIRES-RECONCILE");
   expect(io.apply).toHaveBeenCalledOnce();
-  await expect(inspectLegacyApplicationLoginFence({ ...f.input, attemptId: "another-attempt" })).rejects.toThrow("BOOTSTRAP-ROOT-INTENT-MISMATCH");
+  io.transportInspect.mockResolvedValueOnce({ outcome: "unknown" });
+  await expect(inspectLegacyApplicationLoginFence({ ...f.input, attemptId: "another-attempt" })).resolves.toMatchObject({ outcome: "unknown" });
+  expect(io.transportInspect.mock.calls.at(-1)![0].expectedRootBinding.attemptId).toBe("another-attempt");
   expect(io.apply).toHaveBeenCalledOnce();
 });
 
@@ -264,4 +267,124 @@ it("dispatches bootstrap inspection through the borrowed management transport be
   expect(f.input.administrativeConnectionString === originalManagementInput).toBe(true);
   expect(io.apply).toHaveBeenCalledOnce();
   expect(io.inspect).toHaveBeenCalledOnce();
+});
+
+it.each(["report", "package", "host-lock", "source-role", "bootstrap-package"])("rejects inspection %s before dispatch or any new secret transport", async fault => {
+  const f = await fixture();
+  if (fault === "report") io.report.mockResolvedValue({ kind: "absent", reason: "missing" });
+  if (fault === "package") io.package.mockRejectedValue(new Error("private-package-diagnostic"));
+  if (fault === "host-lock") io.fault = "host-lock";
+  if (fault === "source-role") {
+    const inspect = io.docker.getMockImplementation()!;
+    io.docker.mockImplementation((args: string[]) => {
+      const value = JSON.parse(inspect(args).toString());
+      value[0].Config.Env = ["DATABASE_URL=postgres://other:old-secret@postgres/db"];
+      return Buffer.from(JSON.stringify(value));
+    });
+  }
+  if (fault === "bootstrap-package") {
+    const backup = await io.package(); delete backup.bootstrap; io.package.mockResolvedValue(backup);
+  }
+  let rejected: unknown;
+  try { await inspectLegacyApplicationLoginFence(f.input); } catch (error) { rejected = error; }
+  expect(rejected).toMatchObject({ name: "Error", reason: expect.any(String) });
+  expect(String(rejected).includes("private-")).toBe(false);
+  expect(io.transportInspect).not.toHaveBeenCalled();
+  expect(io.pools).toHaveLength(1); // Only the fixture's pre-existing borrowed pool.
+  expect(io.apply).not.toHaveBeenCalled();
+});
+
+it.each(["report", "host-lock", "source-configuration"])("retains the live root %s check inside the facade's held boundary", async fault => {
+  const f = await fixture();
+  let continued = false;
+  io.transportInspect.mockImplementationOnce(async selected => {
+    if (fault === "report") io.report.mockResolvedValue({ kind: "absent", reason: "missing" });
+    else if (fault === "host-lock") io.fault = "host-lock";
+    else {
+      const inspect = io.docker.getMockImplementation()!;
+      io.docker.mockImplementation((args: string[]) => {
+        const value = JSON.parse(inspect(args).toString());
+        value[0].Config.Env = ["DATABASE_URL=postgres://postgres:changed-private-secret@postgres/db"];
+        return Buffer.from(JSON.stringify(value));
+      });
+    }
+    await selected.activation.boundary.verify();
+    continued = true;
+    return { outcome: "authentication-fenced-not-P13", intentDigest: "ignored" };
+  });
+  await expect(inspectLegacyApplicationLoginFence(f.input)).rejects.toThrow("PCAT-UPG-LEGACY-LOGIN-");
+  expect(continued).toBe(false);
+  expect(io.clients[0].release).toHaveBeenCalledOnce();
+  expect(io.closed).not.toContain("pool");
+  expect(io.apply).not.toHaveBeenCalled(); expect(io.rootEvents).toEqual([]);
+});
+
+it("refuses report drift after facade readback and releases only the borrowed lease", async () => {
+  const f = await fixture();
+  io.transportInspect.mockImplementationOnce(async () => {
+    io.report.mockResolvedValue({ kind: "absent", reason: "missing" });
+    return { outcome: "authentication-fenced-not-P13", intentDigest: "ignored" };
+  });
+  await expect(inspectLegacyApplicationLoginFence(f.input)).rejects.toThrow("P12-REPORT-UNAVAILABLE");
+  expect(io.clients[0].release).toHaveBeenCalledOnce(); expect(io.closed).not.toContain("pool");
+});
+
+it("refuses a changed current P12 binding after facade readback without retrying authentication", async () => {
+  const f = await fixture();
+  io.transportInspect.mockImplementationOnce(async () => {
+    io.activation.mock.results[0].value.inspect = async () => ({ kind: "not-applied" });
+    return { outcome: "authentication-fenced-not-P13", intentDigest: "ignored" };
+  });
+  await expect(inspectLegacyApplicationLoginFence(f.input)).rejects.toThrow("P12-CURRENT-STATE-DRIFT");
+  expect(io.clients[0].release).toHaveBeenCalledOnce();
+  expect(io.apply).not.toHaveBeenCalled(); expect(io.pools).toHaveLength(1);
+});
+
+it("returns the borrowed management lease before the final P12 read needs the same max-one pool", async () => {
+  const f = await fixture();
+  const activation = io.activation.getMockImplementation()!();
+  const inspect = activation.inspect;
+  activation.inspect = async () => {
+    if (io.clients.some(client => client.kind === "guard" && client.release.mock.calls.length === 0)) {
+      throw new Error("management-pool-capacity-held-by-inspection");
+    }
+    return inspect();
+  };
+  io.activation.mockReturnValue(activation);
+  await expect(inspectLegacyApplicationLoginFence(f.input)).resolves.toMatchObject({ outcome: "authentication-fenced-not-P13" });
+  expect(io.clients[0].release).toHaveBeenCalledOnce();
+  expect(io.closed).not.toContain("pool");
+});
+
+it("retains the original activation boundary within inspection and snapshots caller selection", async () => {
+  const f = await fixture();
+  const original = vi.fn(async () => {});
+  f.input.activation.boundary.verify = original;
+  io.transportInspect.mockImplementationOnce(async selected => {
+    const previousCalls = original.mock.calls.length;
+    f.input.attemptId = "changed-after-dispatch";
+    Object.assign(f.input.activationIntent, { runId: "changed-after-dispatch" });
+    await selected.activation.boundary.verify();
+    expect(original.mock.calls.length).toBeGreaterThan(previousCalls);
+    expect(selected.expectedRootBinding.attemptId).toBe("auth-attempt");
+    expect(selected.expectedRootBinding.activationIntent.runId).toBe("cutover");
+    return { outcome: "unknown" };
+  });
+  await expect(inspectLegacyApplicationLoginFence(f.input)).resolves.toMatchObject({ outcome: "unknown", attemptId: "auth-attempt" });
+  expect(io.apply).not.toHaveBeenCalled(); expect(io.pools).toHaveLength(1);
+});
+
+it("observes borrowed-client end synchronously during checkout before dispatch", async () => {
+  const f = await fixture(); io.fault = "reader-end-at-checkout";
+  await expect(inspectLegacyApplicationLoginFence(f.input)).rejects.toThrow("CONNECTION-FAILED");
+  expect(io.transportInspect).not.toHaveBeenCalled();
+  expect(io.clients[0].release).toHaveBeenCalledOnce(); expect(io.closed).not.toContain("pool");
+});
+
+it.each([false, true])("attempts file cleanup after borrowed release fails, retaining prior refusal=%s", async priorFailure => {
+  const f = await fixture(); io.fault = "reader-release";
+  if (priorFailure) io.transportInspect.mockRejectedValueOnce(new Error("private-facade-diagnostic"));
+  await expect(inspectLegacyApplicationLoginFence(f.input)).rejects.toThrow(priorFailure ? "OPERATION-FAILED" : "RESOURCE-CLOSE-FAILED");
+  expect(io.clients[0].release).toHaveBeenCalledOnce();
+  expect(io.closed).toContain("file"); expect(io.closed).not.toContain("pool");
 });

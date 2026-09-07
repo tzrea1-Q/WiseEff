@@ -13,7 +13,8 @@ import { acquireObservedManagementClient } from "../../../../server/modules/cata
 import { beginLegacyRetirementTransaction } from "../../../../server/modules/catalog-cutover/retirement/managementTransaction";
 import { assertBindingManagementLogin } from "../../../../server/modules/catalog-cutover/bindingImportProducer";
 import { applyBootstrapCredentialFence, inspectBootstrapCredentialFence, prepareBootstrapCredentialCustody,
-  reopenBootstrapCredentialCustody, type BootstrapCredentialCustody } from "../../../../server/modules/catalog-cutover/retirement/bootstrapCredentialFence";
+  inspectBootstrapCredentialFenceFromCustodyTransport, type BootstrapCredentialCustody,
+  type BootstrapRootBinding } from "../../../../server/modules/catalog-cutover/retirement/bootstrapCredentialFence";
 import { readBindingDatabaseIdentity } from "../../../../server/modules/parameter-bindings/cutoverImport/sourceBoundary";
 import { digestOf } from "../../../../server/modules/release-verification/core/digest";
 import { verifyRecoveryPackage } from "../../storage/recoveryPackage";
@@ -141,13 +142,22 @@ async function retire(input: LegacyLoginRetirementInput, bootstrapInspection = f
   const activation = createApplicationReadActivation(input.activation);
   let admin: pg.PoolClient | undefined;
   let adminPool: pg.Pool | undefined;
+  let inspectionReader: pg.PoolClient | undefined;
   let packageDirectory: Awaited<ReturnType<typeof open>> | undefined;
   let transaction = false, ending = false, unknown = false;
   let connectionFailed = false;
   let adminReleased = false, bootstrapStarted = false, failed = false;
+  let inspectionReaderReleased = false;
   let guard: Awaited<ReturnType<typeof acquireBootstrapInventoryGuard>> | undefined, custody: BootstrapCredentialCustody | undefined;
   const destroyAdmin = () => { if (admin && !adminReleased) { adminReleased = true; admin.release(true); } };
   const onConnectionError = () => { connectionFailed = true; };
+  const onInspectionConnectionError = () => { if (!inspectionReaderReleased) onConnectionError(); };
+  const releaseInspectionReader = () => {
+    if (inspectionReader && !inspectionReaderReleased) {
+      inspectionReaderReleased = true;
+      try { inspectionReader.release(true); } catch { refuse("RESOURCE-CLOSE-FAILED"); }
+    }
+  };
   try {
     const loaded = loadUpgradeJournal({ journalPath: plan.inputs.journalPath, runId: plan.inputs.runId, requireSettled: true });
     need(loaded.ok, "JOURNAL-UNAVAILABLE");
@@ -240,6 +250,53 @@ async function retire(input: LegacyLoginRetirementInput, bootstrapInspection = f
     await checkCurrentP12();
     const adminUrl = new URL(input.administrativeConnectionString);
     need(["postgres:", "postgresql:"].includes(adminUrl.protocol) && !!adminUrl.hostname && !!adminUrl.username && !adminUrl.search && !adminUrl.hash, "MANAGEMENT-CONFIGURATION-INVALID");
+    if (bootstrapInspection) {
+      // The source and management URL still contain the retired secret. Only
+      // their already-observed routing is used here; never open an OID10 pool
+      // before the formal facade reopens the exact retained private custody.
+      const roleName = backup.bootstrap?.roleName, custodyDirectory = fixed.bootstrapCredentialDirectory;
+      if (typeof roleName !== "string" || !roleName || typeof custodyDirectory !== "string") return refuse("BOOTSTRAP-CUSTODY-REQUIRED");
+      need(path.isAbsolute(custodyDirectory) && await realpath(custodyDirectory) === custodyDirectory &&
+        path.dirname(custodyDirectory) === plan.inputs.lockRoot && custodyDirectory !== fixed.recoveryDirectory &&
+        !custodyDirectory.startsWith(`${fixed.recoveryDirectory}${path.sep}`), "BOOTSTRAP-CUSTODY-DIRECTORY-INVALID");
+      for (const text of sourceUrls) {
+        const sourceUrl = new URL(text);
+        need(!sourceUrl.search && !sourceUrl.hash && sourceUrl.pathname === adminUrl.pathname &&
+          decodeURIComponent(sourceUrl.username) === roleName, "SOURCE-SESSION-MISMATCH");
+      }
+      const expectedRootBinding: BootstrapRootBinding = { contract: "pcat-bootstrap-application-authentication-v1",
+        runId: fixed.activationIntent.runId, attemptId: fixed.attemptId, activationIntent: fixed.activationIntent,
+        activationBindingDigest: binding.bindingDigest, handoffDigest: fixed.expectedHandoffDigest,
+        recoveryPackageDigest: backup.digest, recoveryPointDigest: capture.recoveryPointDigest,
+        target: input.activation.target, roleName, custodyDirectory };
+      const verifyInspectionBoundary = async () => {
+        need(isDeepStrictEqual(await check(), sourceUrls), "SOURCE-CONFIGURATION-DRIFT");
+        await verifyBoundReport();
+      };
+      // Attach both observers synchronously at checkout. The root releases
+      // this borrowed lease; the facade owns only its private OID10 pool/FDs.
+      inspectionReader = await new Promise<pg.PoolClient>((resolve, reject) => {
+        input.activation.managementPool.connect((error, client) => {
+          if (client) { inspectionReader = client; client.on("error", onInspectionConnectionError); client.on("end", onInspectionConnectionError); }
+          if (error || !client) reject(new LegacyLoginRetirementError("CONNECTION-FAILED"));
+          else resolve(client);
+        });
+      });
+      await verifyInspectionBoundary();
+      const observed = structuredClone(await inspectBootstrapCredentialFenceFromCustodyTransport({
+        managementClient: inspectionReader, expectedRootBinding,
+        activation: { ...input.activation, boundary: { ...input.activation.boundary, verify: verifyInspectionBoundary } },
+      }));
+      await verifyInspectionBoundary();
+      // The final P12 observation borrows this same pool. Return the facade's
+      // lease first, including for max:1; this is an additional drift check,
+      // not a claim to retain the facade's SQL locks after it returns.
+      releaseInspectionReader();
+      await checkCurrentP12();
+      await verifyInspectionBoundary();
+      return { status: "bootstrap-authentication-inspected-not-p13" as const,
+        outcome: observed.outcome, attemptId: fixed.attemptId, intentDigest: observed.intentDigest };
+    }
     adminPool = new pg.Pool({ connectionString: adminUrl.href, max: 1, connectionTimeoutMillis: 5000, query_timeout: 10000 });
     adminPool.on("error", onConnectionError);
     admin = await acquireObservedManagementClient(adminPool, onConnectionError);
@@ -258,13 +315,6 @@ async function retire(input: LegacyLoginRetirementInput, bootstrapInspection = f
     for (const sourceUrlText of sourceUrls) {
       const sourceUrl = new URL(sourceUrlText);
       need(!sourceUrl.search && !sourceUrl.hash && sourceUrl.pathname === `/${management.database}` && !!sourceUrl.username, "SOURCE-CONFIGURATION-UNSUPPORTED");
-      if (bootstrapInspection) {
-        // The retained source credential is intentionally unusable after rotation.
-        // Actual root-intent/custody and both authentications are checked below.
-        need(decodeURIComponent(sourceUrl.username) === management.name, "SOURCE-SESSION-MISMATCH");
-        names.add(management.name);
-        continue;
-      }
       const transport = new URL(adminUrl); transport.username = sourceUrl.username; transport.password = sourceUrl.password;
       const client = new pg.Client({ connectionString: transport.href, connectionTimeoutMillis: 5000, query_timeout: 10000 });
       client.on("error", onConnectionError);
@@ -308,13 +358,7 @@ async function retire(input: LegacyLoginRetirementInput, bootstrapInspection = f
         attemptId: fixed.attemptId, activationIntent: fixed.activationIntent, activationBindingDigest: binding.bindingDigest,
         handoffDigest: fixed.expectedHandoffDigest, recoveryPackageDigest: backup.digest, recoveryPointDigest: capture.recoveryPointDigest,
         target: input.activation.target, roleName: management.name, custodyDirectory };
-      if (bootstrapInspection) {
-        const retained = rootEvents[0]?.payload;
-        need(rootEvents.length === 1 && retained?.request && retained.requestDigest === digestOf(retained.request), "BOOTSTRAP-ROOT-INTENT-UNAVAILABLE");
-        const { credentials, ...bound } = retained.request;
-        need(isDeepStrictEqual(bound, rootBinding), "BOOTSTRAP-ROOT-INTENT-MISMATCH");
-        custody = await reopenBootstrapCredentialCustody({ directory: custodyDirectory, custodianUid: process.getuid!(), receipt: credentials });
-      } else {
+      {
         need(rootEvents.length === 0, "ATTEMPT-REQUIRES-RECONCILE");
         const originalSecret = decodeURIComponent(new URL(sourceUrls[0]).password);
         need(originalSecret.length > 0 && sourceUrls.every(value => decodeURIComponent(new URL(value).password) === originalSecret), "SOURCE-CREDENTIAL-MISMATCH");
@@ -336,17 +380,15 @@ async function retire(input: LegacyLoginRetirementInput, bootstrapInspection = f
         // is not caller-supplied authorization and never opens a nested RR
         // transaction while the low-level effect owns its own transaction.
         beforeEffect: async () => { await targetCheck(); await guard!.verify(); await verifyBoundReport(); } };
-      bootstrapStarted = !bootstrapInspection;
-      if (!bootstrapInspection) await applyBootstrapCredentialFence(command);
+      bootstrapStarted = true;
+      await applyBootstrapCredentialFence(command);
       const observed = await inspectBootstrapCredentialFence(command);
       await verifyGuard();
-      if (bootstrapInspection) return { status: "bootstrap-authentication-inspected-not-p13" as const,
-        outcome: observed.outcome, attemptId: fixed.attemptId, intentDigest: observed.intentDigest };
       need(observed.outcome === "authentication-fenced-not-P13" && observed.intentDigest, "BOOTSTRAP-OUTCOME-UNKNOWN");
       return { status: "bootstrap-authentication-fenced-not-p13" as const, attemptId: fixed.attemptId,
         fingerprint: digestOf({ rootBinding, intentDigest: observed.intentDigest }) };
     }
-    need(!bootstrapInspection && !fixed.bootstrapCredentialDirectory, "SOURCE-IDENTITY-UNSUPPORTED");
+    need(!fixed.bootstrapCredentialDirectory, "SOURCE-IDENTITY-UNSUPPORTED");
     const oldRoles = (await admin.query<Role>(rolesSql, [[...names]])).rows;
     need(oldRoles.length === names.size && names.size > 0, "SOURCE-ROLE-MISSING");
     need(legacyRolesAreRecoverable(oldRoles, backup.roles), "ROLE-RECOVERY-UNSUPPORTED");
@@ -396,6 +438,7 @@ async function retire(input: LegacyLoginRetirementInput, bootstrapInspection = f
   } finally {
     const releases = await Promise.allSettled([
       Promise.resolve().then(destroyAdmin), Promise.resolve().then(() => guard?.close()),
+      Promise.resolve().then(releaseInspectionReader),
     ]);
     const closed = await Promise.allSettled([
       Promise.resolve().then(() => adminPool?.end()), Promise.resolve().then(() => custody?.close()),
