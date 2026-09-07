@@ -10,7 +10,16 @@ import { retireLegacyApplicationLogins, inspectLegacyApplicationLoginFence, type
 const io = vi.hoisted(() => ({ apply: vi.fn(), inspect: vi.fn(), journal: vi.fn(),
   package: vi.fn(), docker: vi.fn(), activation: vi.fn(), report: vi.fn(),
   clients: [] as Array<{ kind: string; query: ReturnType<typeof vi.fn>; release: ReturnType<typeof vi.fn>; emit(event: string): boolean }>,
-  fault: "", rootEvents: [] as Array<{ payload: unknown }> }));
+  fault: "", closed: [] as string[], rootEvents: [] as Array<{ payload: unknown }> }));
+vi.mock("node:fs/promises", async original => {
+  const actual = await original<typeof import("node:fs/promises")>();
+  return { ...actual, open: async (...args: Parameters<typeof actual.open>) => {
+    const handle = await actual.open(...args);
+    const close = handle.close.bind(handle);
+    handle.close = async () => { io.closed.push("file"); await close(); };
+    return handle;
+  } };
+});
 vi.mock("../../../../scripts/isolated-upgrade-docker", () => ({ createIsolatedUpgradeDocker: () => ({ daemonId: "daemon", command: io.docker }) }));
 vi.mock("./legacyWriterSource", () => ({ observeLegacySourceEndpoint: () => ({ endpoint: "fixed" }) }));
 vi.mock("./handoff", () => ({ assertHostOperationLockForJournal: async () => {} }));
@@ -53,13 +62,13 @@ vi.mock("pg", async () => {
   class Pool extends EventEmitter {
     constructor(private options: { connectionString?: string }) { super(); }
     connect(callback: (error: null, client: Client) => void) { callback(null, new Client(this.options)); }
-    async end() {}
+    end() { io.closed.push("pool"); if (io.fault === "pool-close") throw new Error("private-pool-diagnostic"); return Promise.resolve(); }
   }
   return { default: { Pool, Client, escapeIdentifier: (v: string) => `"${v}"` } };
 });
 
 const roots: string[] = [];
-beforeEach(() => { vi.clearAllMocks(); io.clients.length = 0; io.rootEvents.length = 0; io.fault = ""; });
+beforeEach(() => { vi.clearAllMocks(); io.clients.length = 0; io.rootEvents.length = 0; io.closed.length = 0; io.fault = ""; });
 afterEach(async () => { for (const root of roots.splice(0)) await rm(root, { recursive: true }); });
 
 async function fixture() {
@@ -152,6 +161,17 @@ it("also destroys the mutator on a guard end without an error event", async () =
   await expect(retireLegacyApplicationLogins(f.input)).rejects.toThrow("TRANSACTION-OUTCOME-UNKNOWN");
   expect(io.clients[0].release).toHaveBeenCalledOnce();
   expect(io.rootEvents).toHaveLength(1);
+});
+
+it.each([false, true])("attempts every close after a synchronous pool close failure, retaining prior refusal=%s", async priorFailure => {
+  const f = await fixture(); io.fault = "pool-close";
+  if (priorFailure) io.apply.mockRejectedValueOnce(new Error("private-admission-detail"));
+  await expect(retireLegacyApplicationLogins(f.input)).rejects.toThrow(priorFailure ? "TRANSACTION-OUTCOME-UNKNOWN" : "RESOURCE-CLOSE-FAILED");
+  const poolClose = io.closed.indexOf("pool");
+  expect(poolClose).toBeGreaterThanOrEqual(0);
+  // The directory and held custody descriptors must still be closed after the
+  // first cleanup operation throws synchronously.
+  expect(io.closed.slice(poolClose + 1).filter(value => value === "file").length).toBeGreaterThanOrEqual(3);
 });
 
 it("cannot use the source backup directory as new secret custody", async () => {

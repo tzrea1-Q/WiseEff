@@ -351,7 +351,10 @@ async function retire(input: LegacyLoginRetirementInput, bootstrapInspection = f
     const releases = await Promise.allSettled([
       Promise.resolve().then(destroyAdmin), Promise.resolve().then(() => guard?.release(true)),
     ]);
-    const closed = await Promise.allSettled([adminPool?.end(), custody?.close(), packageDirectory?.close()]);
+    const closed = await Promise.allSettled([
+      Promise.resolve().then(() => adminPool?.end()), Promise.resolve().then(() => custody?.close()),
+      Promise.resolve().then(() => packageDirectory?.close()),
+    ]);
     if (!failed && [...releases, ...closed].some(result => result.status === "rejected")) refuse("RESOURCE-CLOSE-FAILED");
   }
 }
