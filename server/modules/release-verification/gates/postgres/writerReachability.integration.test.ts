@@ -271,3 +271,35 @@ it("follows a dispatched restricted trigger owner to its private inner writer", 
     await admin.query(`drop table public.${table}; drop function public.${fn}(); drop function public.${inner}()`);
   }
 });
+
+it("preserves the authenticated LOGIN replica setting after SET ROLE for trigger dispatch", async () => {
+  const table = `v13_replica_dispatch_${nonce}`, fn = `v13_replica_trigger_${nonce}`;
+  let session: pg.Client | undefined;
+  await admin.query(`create table public.${table}(id integer);
+    create function public.${fn}() returns trigger language plpgsql security definer as $$
+      begin execute format('update %I.%I set schema_namespace=%L where id=%L',
+        'public', 'driver_schemas', 'replica-set-role', 'v13-driver'); return new; end $$;
+    create trigger dispatch after insert on public.${table} for each row execute function public.${fn}();
+    alter table public.${table} enable replica trigger dispatch;
+    revoke all on function public.${fn}() from public;
+    grant insert on public.${table} to ${capabilityName};
+    grant ${capabilityName} to ${writerName} with inherit false,set true,admin false;
+    alter role ${writerName} set session_replication_role=replica`);
+  try {
+    const url = new URL(target.url); url.username = writerName; url.password = secret;
+    session = new pg.Client({ connectionString: url.href }); session.on("error", () => {});
+    await session.connect();
+    await session.query(`set role ${capabilityName}`);
+    expect((await session.query("select session_user<>current_user as switched,current_setting('session_replication_role') as mode")).rows)
+      .toEqual([{ switched: true, mode: "replica" }]);
+    expect((await session.query(`insert into public.${table}(id) values (1)`)).rowCount).toBe(1);
+    expect((await admin.query("select schema_namespace from public.driver_schemas where id='v13-driver'")).rows)
+      .toEqual([{ schema_namespace: "replica-set-role" }]);
+    await expectBlocked();
+  } finally {
+    const closed = await Promise.allSettled([Promise.resolve().then(() => session?.end())]);
+    const restored = await Promise.allSettled([admin.query(`alter role ${writerName} reset session_replication_role;
+      revoke ${capabilityName} from ${writerName}; drop table public.${table}; drop function public.${fn}()`)]);
+    if ([...closed, ...restored].some(result => result.status === "rejected")) throw new Error("v13-replica-fixture-cleanup-failed");
+  }
+});
