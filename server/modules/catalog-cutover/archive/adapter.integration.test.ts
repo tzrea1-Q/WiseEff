@@ -1,4 +1,4 @@
-import { randomBytes } from "node:crypto";
+import { randomBytes, randomUUID } from "node:crypto";
 import { mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -11,6 +11,7 @@ import {
   type ParameterCatalogDatabase,
 } from "../../../testing/upgradeComponents";
 import { DISPOSITION_BY_R_CLASS } from "../classifier/index";
+import { captureArchivedDefinitionGraph } from "../conversionManifest";
 import type { OwnerScopeKind, RClass } from "../classifier/types";
 import { archiveGraphChecksum, checksumContract } from "./checksum";
 import { buildArchiveAad, encryptArchiveObject } from "./crypto";
@@ -32,6 +33,7 @@ const CATALOG_TEST_TIMEOUT_MS = 60_000;
 const CATALOG_HOOK_TIMEOUT_MS = 120_000;
 const PLAINTEXT_TOKEN = "S7ARC-PLAINTEXT-SOURCE-v1-DO-NOT-PERSIST-IN-OBJECT-OR-METADATA";
 const ORG_ID = "s7arc-org";
+const LONG_ORG_ID = randomUUID();
 const RELEASE_ID = "s7arc-crel";
 const RELEASE_DIGEST = "sha256:s7arc-release";
 const OPERATOR: ArchiveActor = {
@@ -137,13 +139,13 @@ describe("immutable archive adapter", { timeout: CATALOG_TEST_TIMEOUT_MS }, () =
     objectRoot = await mkdtemp(path.join(os.tmpdir(), "s7arc-objects-"));
     encryptionKey = randomBytes(32);
 
-    await client.query(
+    for (const organizationId of [ORG_ID, LONG_ORG_ID]) await client.query(
       `
       insert into public.organizations (id, name)
       values ($1, 'S7-ARC Organization')
       on conflict (id) do nothing
       `,
-      [ORG_ID],
+      [organizationId],
     );
     await client.query("begin");
     try {
@@ -221,9 +223,9 @@ describe("immutable archive adapter", { timeout: CATALOG_TEST_TIMEOUT_MS }, () =
     return `s7arc-${label}-${seq}`;
   };
 
-  const seedIdentity = async (rClass: RClass): Promise<SeededIdentity> => {
+  const seedIdentity = async (rClass: RClass, organizationId = ORG_ID): Promise<SeededIdentity> => {
     const ownerScopeKind: OwnerScopeKind = rClass === "R7" ? "organization" : "platform";
-    const ownerScopeId = ownerScopeKind === "platform" ? "platform" : ORG_ID;
+    const ownerScopeId = ownerScopeKind === "platform" ? "platform" : organizationId;
     const specId = nextToken(`spec-${rClass.toLowerCase()}`);
     const identityId = nextToken(`lid-${rClass.toLowerCase()}`);
     const cutoverRunId = nextToken(`run-${rClass.toLowerCase()}`);
@@ -233,7 +235,7 @@ describe("immutable archive adapter", { timeout: CATALOG_TEST_TIMEOUT_MS }, () =
         id, organization_id, source_kind, specification_key, definition_lifecycle
       ) values ($1, $2, 'manual', $3, 'active')
       `,
-      [specId, ownerScopeKind === "platform" ? null : ORG_ID, specId],
+      [specId, ownerScopeKind === "platform" ? null : organizationId, specId],
     );
     await client.query(
       `
@@ -363,6 +365,57 @@ describe("immutable archive adapter", { timeout: CATALOG_TEST_TIMEOUT_MS }, () =
     expect(result.ok).toBe(false);
     if (result.ok) return;
     expect(result.error.code).toBe("PCAT-ARC-DISPOSITION-NOT-ARCHIVED");
+    expect(await store.listRefs()).toEqual([]);
+  });
+
+  it("archives an observed organization source whose long owner ID is required identity metadata", async () => {
+    const identity = await seedIdentity("R7", LONG_ORG_ID);
+    const sourceGraph = await captureArchivedDefinitionGraph(client, identity.specId);
+    expect(sourceGraph).not.toBeNull();
+    if (!sourceGraph) throw new Error("archive-source-unavailable");
+    expect(sourceGraph.sourcePayload).toMatchObject({ organization_id: LONG_ORG_ID });
+    const store = createLocalArchiveObjectStore(await mkdtemp(path.join(objectRoot, "owner-identity-")));
+    const adapter = adapterFor(store);
+    const command = persistCommand(identity, { sourceGraph });
+    const result = await adapter.persistArchive(command);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    const row = await loadArchiveRow(result.value.archiveId);
+    expect(row.owner_scope_kind).toBe("organization");
+    expect(row.owner_scope_id).toBe(LONG_ORG_ID);
+    expect(row.source_checksum).toBe(checksumContract(sourceGraph.sourcePayload));
+    const bytes = await store.get(result.value.encryptedObjectRef);
+    expect(bytes.includes(LONG_ORG_ID)).toBe(false);
+    expect(bytes.includes(identity.specId)).toBe(false);
+    const restored = await adapter.restoreArchive({ actor: OPERATOR, archiveId: result.value.archiveId });
+    expect(restored.ok).toBe(true);
+    if (restored.ok) expect(restored.value.sourceGraph).toEqual(sourceGraph);
+  });
+
+  it.each([
+    ["reason", "owner"], ["reason", "secret"],
+    ["successAuditRef", "owner"], ["successAuditRef", "secret"],
+  ] as const)("rejects a %s containing source %s bytes despite a valid owner identity", async (field, value) => {
+    const identity = await seedIdentity("R7", LONG_ORG_ID);
+    const store = createLocalArchiveObjectStore(await mkdtemp(path.join(objectRoot, "owner-leak-")));
+    const command = persistCommand(identity);
+    const sourceGraph = { ...command.sourceGraph,
+      sourcePayload: { organization_id: LONG_ORG_ID, privateToken: PLAINTEXT_TOKEN } };
+    const before = await archiveRowCount();
+    const result = await adapterFor(store).persistArchive({ ...command, sourceGraph,
+      [field]: `copied:${value === "owner" ? LONG_ORG_ID : PLAINTEXT_TOKEN}` });
+    expect(result).toMatchObject({ ok: false, error: { code: "PCAT-ARC-PLAINTEXT-LEAK" } });
+    expect(await archiveRowCount()).toBe(before);
+    expect(await store.listRefs()).toEqual([]);
+  });
+
+  it("refuses a forged owner field before exempting it from payload scanning", async () => {
+    const identity = await seedIdentity("R7", LONG_ORG_ID);
+    const store = createLocalArchiveObjectStore(await mkdtemp(path.join(objectRoot, "owner-mismatch-")));
+    const before = await archiveRowCount();
+    const result = await adapterFor(store).persistArchive(persistCommand(identity, { ownerScopeId: PLAINTEXT_TOKEN }));
+    expect(result).toMatchObject({ ok: false, error: { code: "PCAT-ARC-INVALID-INPUT" } });
+    expect(await archiveRowCount()).toBe(before);
     expect(await store.listRefs()).toEqual([]);
   });
 
