@@ -303,3 +303,27 @@ it("preserves the authenticated LOGIN replica setting after SET ROLE for trigger
     if ([...closed, ...restored].some(result => result.status === "rejected")) throw new Error("v13-replica-fixture-cleanup-failed");
   }
 });
+
+it("detects a dispatch-table owner able to enable a replica-only definer trigger", async () => {
+  const table = `v13_owner_dispatch_${nonce}`, fn = `v13_owner_trigger_${nonce}`;
+  await admin.query(`create table public.${table}(id integer);
+    create function public.${fn}() returns trigger language plpgsql security definer as $$
+      begin execute format('update %I.%I set schema_namespace=%L where id=%L',
+        'public', 'driver_schemas', 'owner-enabled', 'v13-driver'); return new; end $$;
+    create trigger dispatch after insert on public.${table} for each row execute function public.${fn}();
+    revoke all on function public.${fn}() from public;
+    alter table public.${table} enable replica trigger dispatch;
+    alter table public.${table} owner to ${writerName}`);
+  try {
+    expect((await writer.query("select pg_catalog.has_parameter_privilege(current_user,'session_replication_role','SET') as allowed")).rows)
+      .toEqual([{ allowed: false }]);
+    await writer.query(`alter table public.${table} enable trigger dispatch`);
+    expect((await writer.query(`insert into public.${table}(id) values (1)`)).rowCount).toBe(1);
+    expect((await admin.query("select schema_namespace from public.driver_schemas where id='v13-driver'")).rows)
+      .toEqual([{ schema_namespace: "owner-enabled" }]);
+    await writer.query(`alter table public.${table} enable replica trigger dispatch`);
+    await expectBlocked();
+  } finally {
+    await admin.query(`drop table public.${table}; drop function public.${fn}()`);
+  }
+});
