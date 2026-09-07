@@ -65,6 +65,13 @@ select session_user=current_user as same_identity,
           case when c.relkind='S' then pg_catalog.has_sequence_privilege(p.proowner,c.oid,'USAGE,UPDATE')
           else pg_catalog.has_table_privilege(p.proowner,c.oid,'INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER')
             or pg_catalog.has_any_column_privilege(p.proowner,c.oid,'INSERT,UPDATE,REFERENCES') end)
+        or exists(select 1 from app_relations c join pg_catalog.pg_namespace s on s.oid=c.relnamespace
+          where s.nspname='parameter_catalog' and c.oid not in (select oid from reports) and
+            case when c.relkind='S' then pg_catalog.has_sequence_privilege(p.proowner,c.oid,'SELECT')
+            else pg_catalog.has_table_privilege(p.proowner,c.oid,'SELECT')
+              or pg_catalog.has_any_column_privilege(p.proowner,c.oid,'SELECT') end)
+        or exists(select 1 from pg_catalog.pg_proc protected join pg_catalog.pg_namespace s on s.oid=protected.pronamespace
+          where s.nspname='parameter_catalog' and pg_catalog.has_function_privilege(p.proowner,protected.oid,'EXECUTE'))
       )))) as unsafe_definers,
   (select count(*)::int from pg_catalog.pg_parameter_acl p cross join lateral pg_catalog.aclexplode(p.paracl) a
     left join pg_catalog.pg_settings s on s.name=p.parname

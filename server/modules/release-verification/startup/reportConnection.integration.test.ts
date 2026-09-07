@@ -130,3 +130,70 @@ it("refuses a PUBLIC definer whose owner can only advance a sequence", async () 
     await admin.query("drop function public.report_sequence_proxy(); drop sequence public.report_sequence_probe");
   }
 });
+
+it.each(["reader-member", "column-only", "function-only"])("refuses a PUBLIC definer delegating %s Catalog access", async capability => {
+  const ownerName = `catalog_proxy_${randomBytes(8).toString("hex")}`;
+  const owner = pg.escapeIdentifier(ownerName);
+  await admin.query(`create role ${owner} nologin noinherit nosuperuser nobypassrls nocreatedb nocreaterole noreplication;
+    grant usage on schema parameter_catalog to ${owner}`);
+  if (capability === "reader-member") {
+    await admin.query(`grant catalog_runtime_reader_role to ${owner} with inherit true, set false, admin false`);
+  } else if (capability === "column-only") {
+    await admin.query(`grant select(current_catalog_release_id) on parameter_catalog.catalog_state to ${owner}`);
+  } else {
+    await admin.query(`create function parameter_catalog.report_protected_probe() returns bigint language sql security definer
+      set search_path=pg_catalog as 'select count(current_catalog_release_id) from parameter_catalog.catalog_state';
+      revoke all on function parameter_catalog.report_protected_probe() from public;
+      grant execute on function parameter_catalog.report_protected_probe() to ${owner}`);
+  }
+  const body = capability === "function-only"
+    ? "select parameter_catalog.report_protected_probe()"
+    : "select count(current_catalog_release_id) from parameter_catalog.catalog_state";
+  await admin.query(`create function public.report_catalog_proxy() returns bigint language sql security definer
+    set search_path=pg_catalog as '${body}'; alter function public.report_catalog_proxy() owner to ${owner}`);
+  const direct = createPostgresDatabase(url);
+  try {
+    expect((await admin.query(`select has_schema_privilege($1,'public','CREATE') as schema_create,
+      has_table_privilege($1,'parameter_catalog.catalog_state','UPDATE') as catalog_write`, [ownerName])).rows)
+      .toEqual([{ schema_create: false, catalog_write: false }]);
+    if (capability === "column-only") {
+      expect((await admin.query("select has_table_privilege($1,'parameter_catalog.catalog_state','SELECT') as table_select", [ownerName])).rows)
+        .toEqual([{ table_select: false }]);
+    }
+    if (capability === "function-only") {
+      expect((await admin.query("select has_any_column_privilege($1,'parameter_catalog.catalog_state','SELECT') as column_select", [ownerName])).rows)
+        .toEqual([{ column_select: false }]);
+    }
+    await expect(direct.query("select current_catalog_release_id from parameter_catalog.catalog_state")).rejects.toMatchObject({ code: "42501" });
+    if (capability === "function-only") await expect(direct.query("select parameter_catalog.report_protected_probe()")).rejects.toMatchObject({ code: "42501" });
+    // This actual LOGIN can reach protected state through the PUBLIC definer;
+    // opening it as an admitted report pool must refuse that extra capability.
+    expect((await direct.query("select public.report_catalog_proxy()::text as value")).rows).toEqual([{ value: "0" }]);
+    await expect(openStartupReportDatabase({ connectionString: url })).rejects.toMatchObject({ code: "PCAT-REPORT-LOGIN-CAPABILITY-REJECTED" });
+  } finally {
+    await direct.close();
+    await admin.query("drop function public.report_catalog_proxy()");
+    if (capability === "function-only") await admin.query("drop function parameter_catalog.report_protected_probe()");
+    if (capability === "reader-member") await admin.query(`revoke catalog_runtime_reader_role from ${owner}`);
+    if (capability === "column-only") await admin.query(`revoke select(current_catalog_release_id) on parameter_catalog.catalog_state from ${owner}`);
+    await admin.query(`revoke usage on schema parameter_catalog from ${owner}; drop role ${owner}`);
+  }
+});
+
+it("retains formal 0139 report reads with a definer owner limited to the same six tables", async () => {
+  const owner = pg.escapeIdentifier(`report_proxy_${randomBytes(8).toString("hex")}`);
+  await admin.query(`create role ${owner} nologin noinherit nosuperuser nobypassrls nocreatedb nocreaterole noreplication;
+    grant catalog_verifier_role to ${owner} with inherit true, set false, admin false;
+    create function public.report_read_proxy() returns bigint language sql security definer
+      set search_path=pg_catalog as 'select count(*) from parameter_catalog.verification_reports';
+    alter function public.report_read_proxy() owner to ${owner}`);
+  try {
+    const db = await openStartupReportDatabase({ connectionString: url });
+    try {
+      expect(await createVerificationReportService({ db }).readReport("synthetic-absent-report"))
+        .toEqual({ kind: "absent", reason: "missing" });
+    } finally { await db.close(); }
+  } finally {
+    await admin.query(`drop function public.report_read_proxy(); revoke catalog_verifier_role from ${owner}; drop role ${owner}`);
+  }
+});

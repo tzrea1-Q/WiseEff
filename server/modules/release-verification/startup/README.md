@@ -132,6 +132,10 @@ PUBLIC table/column SELECT on non-report Catalog objects is nevertheless refused
 the ordinary-business PUBLIC read exception does not widen canonical access.
 Sequence USAGE/UPDATE delegated by a definer is write capability and is refused,
 even when its owner lacks table writes and schema CREATE.
+The same refusal applies when the definer owner has only non-report Catalog
+table/column SELECT or Catalog function EXECUTE: a read-only proxy still crosses
+the report/Catalog boundary. The six 0139 report reads are excluded from this
+extra Catalog-read test; no report query needs protected function EXECUTE.
 Explicit function grants and user-schema definers delegating elevated/write
 capability are rejected. This is a purpose-specific login precondition, not a
 replacement for the complete migration/permission manifest or release verifier.

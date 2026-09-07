@@ -106,6 +106,9 @@ reader 不会递归要求尚待读取的 runtime 报告。没有 development 绕
 PUBLIC 对非报告 Catalog 对象的表级／列级 SELECT 仍须拒绝，普通业务读取例外
 不扩大 canonical 访问。definer 代理的序列 USAGE／UPDATE 属于写能力，即使其
 owner 没有表写权限或 schema CREATE 也拒绝。
+definer owner 仅有非报告 Catalog 表／列 SELECT 或 Catalog 函数 EXECUTE 时同样
+拒绝：只读代理也会越过报告／Catalog 边界。0139 六表读取不计入额外 Catalog
+读取检查；正式报告查询不需要受保护函数 EXECUTE。
 拒绝显式函数授权及用户 schema 中代理高权／写能力的 definer。此处仅是专用连接
 前置条件，不取代完整迁移／权限 manifest 或 Release Verification。
 
