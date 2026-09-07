@@ -54,5 +54,5 @@ export function createIsolatedUpgradeDocker(environment: NodeJS.ProcessEnv = pro
     if (info?.Id !== id || info?.Config?.Labels?.[label] !== run) throw new Error("isolated-docker-container-ownership-mismatch");
     return info;
   };
-  return { command, assertOwned, daemonId };
+  return { command, assertOwned, daemonId, endpoint };
 }

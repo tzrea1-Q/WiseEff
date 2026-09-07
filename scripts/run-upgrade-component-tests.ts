@@ -1,6 +1,6 @@
 import { randomBytes } from "node:crypto";
 import { spawn, spawnSync } from "node:child_process";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -90,6 +90,9 @@ export async function runUpgradeComponentTests(args: string[]) {
   }, observeHosted);
   const authorizeCreation = () => { if (hosted) assertHostedUpgradeAdmission(admission!, observeHosted()); };
   const suite = suites[args[3] as keyof typeof suites];
+  // Frozen rehearsal CLI fixtures use their historical bootstrap login. It is
+  // confined to this newly created cluster, never an application identity.
+  const bootstrapUser = args[3] === "scripts-pgvector" ? "wiseeff" : "postgres";
   if (hosted) {
     // Registry acquisition also uses the authenticated job and pinned local
     // daemon, never an ambient shell Docker context before host admission.
@@ -100,7 +103,7 @@ export async function runUpgradeComponentTests(args: string[]) {
   const run = `conversion-${randomBytes(8).toString("hex")}`;
   const label = "wiseeff.upgrade.conversion";
   const password = randomBytes(24).toString("hex");
-  const directory = await mkdtemp(path.join(os.tmpdir(), "upgrade-components-"));
+  const directory = await mkdtemp(path.join(await realpath(os.tmpdir()), "upgrade-components-"));
   let id = ""; let net = ""; let volume = ""; let child: ReturnType<typeof spawn> | undefined;
   let supervisor: ReturnType<typeof superviseComponentProcess> | undefined;
   let interrupted = false;
@@ -119,7 +122,7 @@ export async function runUpgradeComponentTests(args: string[]) {
     volume = docker.command(["volume", "create", "--label", `${label}=${run}`, `${run}-data`]).toString().trim();
     stage = "container-create";
     authorizeCreation();
-    id = docker.command(["run", "-d", "--network", net, "--label", `${label}=${run}`, "-v", `${volume}:/var/lib/postgresql/data`, "-e", `POSTGRES_PASSWORD=${password}`, "-p", "127.0.0.1::5432", image.Id]).toString().trim();
+    id = docker.command(["run", "-d", "--network", net, "--label", `${label}=${run}`, "-v", `${volume}:/var/lib/postgresql/data`, "-e", `POSTGRES_PASSWORD=${password}`, "-e", `POSTGRES_USER=${bootstrapUser}`, "-e", "POSTGRES_DB=postgres", "-p", "127.0.0.1::5432", image.Id]).toString().trim();
     stage = "container-port-observation";
     let port: string | undefined;
     for (let n = 0; n < 40 && !interrupted; n++) {
@@ -129,23 +132,23 @@ export async function runUpgradeComponentTests(args: string[]) {
       await setTimeout(200);
     }
     if (!port) throw new Error("owned-postgres-port-unavailable");
-    const url = `postgres://postgres:${password}@127.0.0.1:${port}/postgres`;
+    const url = `postgres://${bootstrapUser}:${password}@127.0.0.1:${port}/postgres`;
     stage = "database-readiness";
     let ready = false;
     for (let n = 0; n < 40 && !interrupted; n++) {
       docker.assertOwned(id, label, run);
-      try { docker.command(["exec", id, "pg_isready", "-h", "127.0.0.1", "-U", "postgres"]); ready = true; break; }
+      try { docker.command(["exec", id, "pg_isready", "-h", "127.0.0.1", "-U", bootstrapUser]); ready = true; break; }
       catch { await setTimeout(200); }
     }
     if (!ready || interrupted) throw new Error("owned-postgres-not-ready");
     if (suite.image === "pgvector/pgvector:pg16") {
       stage = "owned-vector-preparation";
       docker.assertOwned(id, label, run);
-      docker.command(["exec", id, "psql", "-X", "-v", "ON_ERROR_STOP=1", "-U", "postgres", "-d", "postgres", "-c", "create extension vector"]);
+      docker.command(["exec", id, "psql", "-X", "-v", "ON_ERROR_STOP=1", "-U", bootstrapUser, "-d", "postgres", "-c", "create extension vector"]);
     }
     stage = "receipt-and-tests";
     const receipt = path.join(directory, "target.json");
-    const physical = JSON.parse(docker.command(["exec", id, "psql", "-X", "-U", "postgres", "-d", "postgres", "-Atc", "select json_build_object('systemIdentifier',system_identifier::text,'databaseOid',(select oid::text from pg_database where datname=current_database()),'databaseProperties',(select row_to_json(p) from (select encoding,datcollate,datctype,datlocprovider,daticulocale,daticurules,datcollversion,datconnlimit,datallowconn,datistemplate from pg_database where datname=current_database()) p)) from pg_control_system()"]).toString());
+    const physical = JSON.parse(docker.command(["exec", id, "psql", "-X", "-U", bootstrapUser, "-d", "postgres", "-Atc", "select json_build_object('systemIdentifier',system_identifier::text,'databaseOid',(select oid::text from pg_database where datname=current_database()),'databaseProperties',(select row_to_json(p) from (select encoding,datcollate,datctype,datlocprovider,daticulocale,daticurules,datcollversion,datconnlimit,datallowconn,datistemplate from pg_database where datname=current_database()) p)) from pg_control_system()"]).toString());
     console.log(JSON.stringify({ evidence: "owned-database-profile", imageId: image.Id, databaseProperties: physical.databaseProperties }));
     const dataVolume = JSON.parse(docker.command(["volume", "inspect", volume]).toString())[0];
     await writeFile(receipt, JSON.stringify({ id, net, run, label, daemonId: docker.daemonId, url, ...physical,
@@ -157,6 +160,10 @@ export async function runUpgradeComponentTests(args: string[]) {
       : [path.join(root, "node_modules/vitest/vitest.mjs"), "run", "--config", suite.config, ...selectors];
     child = spawn(process.execPath, command, {
       cwd: root, env: { PATH: process.env.PATH, HOME: process.env.HOME,
+        // Frozen rehearsal cleanup refuses symlink parents (macOS /tmp).
+        // Use this run's canonical private directory, never ambient TMPDIR.
+        TMPDIR: directory,
+        WAYFINDER_POSTGRES_CONTAINER: id, DOCKER_HOST: docker.endpoint,
         UPG_TEST_TARGET_RECEIPT: receipt, DATABASE_URL: url, TEST_DATABASE_URL: url,
         UPG_COMPONENT_PROFILE: suite.image === "postgres:16-alpine" ? "selfhost-postgres16-alpine-v1" : "catalog-pgvector-v1" },
       stdio: ["ignore", "pipe", "pipe"], detached: true,
