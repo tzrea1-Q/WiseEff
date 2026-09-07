@@ -29,6 +29,12 @@ CI `34071070497` 与 `34067803219` 均命中此冲突，不是更早的 source-l
 
 ## 授权与 journal 消费
 
+恢复批准通过 `recoveryApproval` 保存完整批准、assignment 摘要、已认证的 principal
+标识及 trace 标识。journal 重算批准引用，绑定前面的 typed capture，并拒绝状态／pin
+变化、重复 attempt，以及执行或撤销后的批准。历史仅有哈希的事件仍可检查，但不能授权
+执行器。这些持久化校验不负责认证调用者；独立 producer 仍须消费当前有效的正式授权
+及维护锁。
+
 父 controller 必须依次写入既有 journal：
 
 1. `recovery-package-captured`：`inputDigest` 为

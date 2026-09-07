@@ -6,7 +6,7 @@ import os from "node:os";
 import { withHostOperationLock } from "../../scripts/parameter-catalog-upgrade/handoff";
 import { createControlledRecoveryTarget, type RecoveryPackageTarget } from "./packageRestore";
 import type { ControlledRecoveryTarget } from "./controlledRestore";
-import { openUpgradeJournal, commitJournalTransition, canonicalJson, sha256Prefixed, type UpgradeJournal, type RecoveryCaptureEvent } from "../../scripts/parameter-catalog-upgrade/journal";
+import { openUpgradeJournal, commitJournalTransition, canonicalJson, sha256Prefixed, type UpgradeJournal, type RecoveryCaptureEvent, type RecoveryApprovalEvent } from "../../scripts/parameter-catalog-upgrade/journal";
 import { verifyRecoveryPackage } from "../recoveryPackage";
 import { mintRestoreToken, type RecoveryTargetIdentity } from "../recoveryPoint";
 import { createRecoveryExecutionAuthorization, recoveryExecutionRecordDigest, RECOVERY_EXECUTION_EVENTS,
@@ -89,14 +89,23 @@ export async function recordSyntheticRecoveryConsumption(directory: string, pack
     source: backup.manifest.recovery.target, boundaryDigest: "a".repeat(64) };
   const approval: RecoveryExecutionApproval = { runId, attemptId: randomUUID(), target, captureDigest: recoveryExecutionRecordDigest(capture),
     approvalReference: "synthetic-isolated-execution-consumer-only", expiresAt: new Date(Date.now() + 600000).toISOString() };
+  const recoveryApproval = syntheticRecoveryApprovalEvent(approval);
   await recordSyntheticCaptureEvent(opened.value, capture, directory);
   for (const [action, record] of [[RECOVERY_EXECUTION_EVENTS.authorized, approval]] as const) {
     if (!approved) continue;
     const result = commitJournalTransition(opened.value, { action, inputDigest: recoveryExecutionRecordDigest(record),
-      toState: opened.value.record.state, nextAction: opened.value.record.nextAction });
+      toState: opened.value.record.state, nextAction: opened.value.record.nextAction, recoveryApproval });
     if (!result.ok) throw new Error("synthetic-controller-event-unavailable");
   }
   return { capture, approval, journal: opened.value, directory, restoreToken: mintRestoreToken(runId, capture.recoveryPointDigest) };
+}
+
+/** Test-only evidence shape, never an authenticated approval producer. */
+export function syntheticRecoveryApprovalEvent(approval: RecoveryExecutionApproval): RecoveryApprovalEvent {
+  const metadata = { assignmentDigest: `sha256:${"f".repeat(64)}`, principal: { userId: "synthetic-operator", organizationId: "synthetic-organization" }, traceId: "synthetic-consumer-only" };
+  const { approvalReference: _previous, ...scope } = approval;
+  approval.approvalReference = sha256Prefixed(canonicalJson({ ...scope, ...metadata }));
+  return { approval: structuredClone(approval), ...metadata };
 }
 
 export async function withSyntheticRecoveryTarget<T>(directory: string, packageDigest: string, target: RecoveryTargetIdentity,

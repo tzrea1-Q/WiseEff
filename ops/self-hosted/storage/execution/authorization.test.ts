@@ -23,7 +23,7 @@ import { mintRestoreToken } from "../recoveryPoint";
 import { createControlledRecoveryTarget, restoreRecoveryPackage } from "./packageRestore";
 import { createRecoveryExecutionAuthorization, recoveryExecutionRecordDigest, RECOVERY_EXECUTION_EVENTS,
   type RecoveryCaptureRecord, type RecoveryExecutionApproval } from "./authorization";
-import { createSyntheticRecoveryEvidence, recordSyntheticCaptureEvent } from "./authorization.fixture";
+import { createSyntheticRecoveryEvidence, recordSyntheticCaptureEvent, syntheticRecoveryApprovalEvent } from "./authorization.fixture";
 
 const source = { deploymentId: "source", hostFingerprint: "host", postgresIdentity: "pg", objectStoreIdentity: "s3", redisIdentity: "aof" };
 const target = { deploymentId: "target", hostFingerprint: "host", postgresIdentity: "pg2", objectStoreIdentity: "s32", redisIdentity: "aof2" };
@@ -150,7 +150,7 @@ it("refuses a forged target at the root execution entry before opening any packa
   } as never)).rejects.toThrow("unissued-target");
 });
 
-it.each(["valid", "hash-only-capture", "unapproved", "wrong-token", "cross-run", "expired", "package-drift", "approval-revoked", "partial-failure", "lock-lost", "target-drift", "target-drift-after-empty"])("enforces persisted authorization and cross-store boundaries: %s", async fault => {
+it.each(["valid", "hash-only-capture", "hash-only-approval", "unapproved", "wrong-token", "cross-run", "expired", "package-drift", "approval-revoked", "partial-failure", "lock-lost", "target-drift", "target-drift-after-empty"])("enforces persisted authorization and cross-store boundaries: %s", async fault => {
   const root = await mkdtemp(path.join(os.tmpdir(), "authorized-recovery-"));
   const runId = "synthetic_run";
   const events: string[] = [];
@@ -169,6 +169,7 @@ it.each(["valid", "hash-only-capture", "unapproved", "wrong-token", "cross-run",
     const approval: RecoveryExecutionApproval = { runId: fault === "cross-run" ? "other" : runId, attemptId: "attempt-a",
       captureDigest: recoveryExecutionRecordDigest(capture), target, approvalReference: "isolated-synthetic-operator-action",
       expiresAt: new Date(Date.now() + (fault === "expired" ? -1 : 60000)).toISOString() };
+    const recoveryApproval = syntheticRecoveryApprovalEvent(approval);
     // Fixture acceptance only: these actual journal writes exercise the consumer;
     // they are not a real controller/domain approval producer or release report.
     const record = (action: string, inputDigest: string) => {
@@ -177,7 +178,12 @@ it.each(["valid", "hash-only-capture", "unapproved", "wrong-token", "cross-run",
     };
     if (fault === "hash-only-capture") record(RECOVERY_EXECUTION_EVENTS.captured, recoveryExecutionRecordDigest(capture));
     else await recordSyntheticCaptureEvent(journal, capture, root);
-    if (fault !== "unapproved") record(RECOVERY_EXECUTION_EVENTS.authorized, recoveryExecutionRecordDigest(approval));
+    if (fault !== "unapproved") {
+      const typed = !["hash-only-capture", "hash-only-approval", "cross-run"].includes(fault);
+      expect(commitJournalTransition(journal, { action: RECOVERY_EXECUTION_EVENTS.authorized,
+        inputDigest: recoveryExecutionRecordDigest(approval), toState: journal.record.state, nextAction: journal.record.nextAction,
+        ...(typed ? { recoveryApproval } : {}) }).ok).toBe(true);
+    }
     await withHostOperationLock(path.join(root, "locks"), async lock => {
       let held = true;
       let emptyChecked = false;

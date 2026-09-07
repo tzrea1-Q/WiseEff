@@ -28,6 +28,44 @@ const tempJournal = (): string =>
   path.join(mkdtempSync(path.join(tmpdir(), "s11-upg-journal-")), "journal.json");
 
 describe("S11-UPG journal", () => {
+  it.each(["valid", "orphan", "cross-run", "reference", "principal", "target", "hash-only", "started", "unknown", "phase", "next-action"])("persists only capture-bound typed recovery approval: %s", fault => {
+    const opened = openUpgradeJournal({ journalPath: tempJournal(), runId: "approval" });
+    if (!opened.ok) throw new Error("fixture-open-failed");
+    const journal = opened.value;
+    const source = { deploymentId: "source", hostFingerprint: "host", postgresIdentity: "pg", objectStoreIdentity: "objects", redisIdentity: "redis" };
+    const capture = { runId: "approval", source, packageDigest: "a".repeat(64), recoveryPointDigest: `sha256:${"b".repeat(64)}`, boundaryDigest: "c".repeat(64) };
+    const pending: RecoveryCaptureEvent = { attemptId: "capture", runId: "approval", outcome: "pending", source,
+      directory: { path: "/private/synthetic-package", device: "1", inode: "2" } };
+    const append = (action: string, inputDigest: string) => commitJournalTransition(journal, { action, inputDigest, toState: "idle", nextAction: "plan" });
+    if (fault !== "orphan") {
+      for (const event of [pending, { ...pending, outcome: "committed" as const, capture }]) {
+        expect(commitJournalTransition(journal, { action: event.outcome === "pending" ? "recovery-capture-pending" : "recovery-package-captured",
+          inputDigest: sha256Prefixed(canonicalJson(event.outcome === "pending" ? event : capture)), toState: "idle", nextAction: "plan",
+          outcome: event.outcome === "pending" ? "crashed" : "committed", recoveryCapture: event }).ok).toBe(true);
+      }
+    }
+    const body = { assignmentDigest: `sha256:${"d".repeat(64)}`, runId: fault === "cross-run" ? "other" : "approval", attemptId: "restore",
+      captureDigest: sha256Prefixed(canonicalJson(capture)), target: { ...source, deploymentId: "target" },
+      principal: { userId: "operator", organizationId: "organization" }, traceId: "trace", expiresAt: "2099-01-01T00:00:00.000Z" };
+    const event = { approval: { runId: body.runId, attemptId: body.attemptId, captureDigest: body.captureDigest, target: body.target,
+      expiresAt: body.expiresAt, approvalReference: sha256Prefixed(canonicalJson(body)) },
+      assignmentDigest: body.assignmentDigest, principal: body.principal, traceId: body.traceId };
+    if (fault === "reference") event.approval.approvalReference = `sha256:${"e".repeat(64)}`;
+    if (fault === "principal") event.principal.userId = "different";
+    if (fault === "target") event.approval.target.postgresIdentity = "different";
+    const inputDigest = sha256Prefixed(canonicalJson(event.approval));
+    if (fault === "hash-only") expect(append("recovery-execution-authorized", inputDigest).ok).toBe(true);
+    if (fault === "started" || fault === "unknown") expect(append(fault === "started" ? "recovery-execution-started" : "recovery-execution-outcome-unknown", "previous").ok).toBe(true);
+    const before = journalBytes(journal.journalPath);
+    const draft = { action: "recovery-execution-authorized", inputDigest, toState: fault === "phase" ? "completed" as const : "idle" as const,
+      nextAction: fault === "next-action" ? "execute" as const : "plan" as const, recoveryApproval: event };
+    expect(commitJournalTransition(journal, draft).ok).toBe(fault === "valid");
+    if (fault === "valid") {
+      const loaded = loadUpgradeJournal({ journalPath: journal.journalPath, runId: "approval" });
+      expect(loaded.ok && loaded.value.record.entries.at(-1)?.recoveryApproval).toEqual(event);
+      expect(commitJournalTransition(journal, draft)).toMatchObject({ ok: true, value: { replayed: true } });
+    } else expect(journalBytes(journal.journalPath)).toEqual(before);
+  });
   it.each(["phase-change", "numeric-inode", "numeric-attempt"])("does not coerce or grant phases through capture metadata: %s", fault => {
     const opened = openUpgradeJournal({ journalPath: tempJournal(), runId: "capture" });
     if (!opened.ok) throw new Error("fixture-open-failed");

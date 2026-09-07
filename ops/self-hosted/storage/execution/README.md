@@ -35,6 +35,14 @@ not a claim that text scanning proves arbitrary JavaScript safe.
 
 ## Authorization and journal consumption
 
+Recovery approval is persisted as `recoveryApproval`: the exact approval,
+assignment digest, authenticated principal identifiers and trace identifier.
+The journal recomputes the approval reference, binds the preceding typed capture,
+and refuses state/pin changes, reused attempts and approval after execution or
+revocation. Historical hash-only events remain inspectable but cannot authorize
+the executor. This persistence validation does not authenticate a caller; the
+separate producer must consume the current issued authority and maintenance lock.
+
 The controller must produce these existing-journal entries in order:
 
 1. `recovery-package-captured`: `inputDigest` is

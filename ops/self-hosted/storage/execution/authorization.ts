@@ -1,11 +1,11 @@
 import { randomUUID } from "node:crypto";
 import {
   canonicalJson, commitJournalTransition, loadUpgradeJournal, sha256Prefixed,
-  type UpgradeJournal, type RecoveryCaptureRecord,
+  type UpgradeJournal, type RecoveryCaptureRecord, type RecoveryExecutionApprovalRecord,
 } from "../../scripts/parameter-catalog-upgrade/journal";
 import type { HostOperationLock } from "../../scripts/parameter-catalog-upgrade/handoff";
 import { verifyRecoveryPackage, recoveryPackageStorePorts } from "../recoveryPackage";
-import { restoreCheck, type RecoveryTargetIdentity } from "../recoveryPoint";
+import { restoreCheck } from "../recoveryPoint";
 import { recoveryRefuse } from "../controlledRecovery";
 import type { RecoveryRestoreBinding } from "./packageRestore";
 
@@ -19,10 +19,7 @@ export const RECOVERY_EXECUTION_EVENTS = Object.freeze({
   unknown: "recovery-execution-outcome-unknown",
 } as const);
 export type { RecoveryCaptureRecord } from "../../scripts/parameter-catalog-upgrade/journal";
-export type RecoveryExecutionApproval = {
-  runId: string; attemptId: string; captureDigest: string; target: RecoveryTargetIdentity;
-  approvalReference: string; expiresAt: string;
-};
+export type RecoveryExecutionApproval = RecoveryExecutionApprovalRecord;
 export const recoveryExecutionRecordDigest = (record: RecoveryCaptureRecord | RecoveryExecutionApproval) => sha256Prefixed(canonicalJson(record));
 const fail = (): never => recoveryRefuse("execution-authorization-unavailable");
 type Step = "postgres" | "objects" | "redis";
@@ -68,6 +65,7 @@ export function createRecoveryExecutionAuthorization(input: {
     if (recordedCapture?.outcome !== "committed" || !recordedCapture.capture || canonicalJson(recordedCapture.capture) !== canonicalJson(capture)
       || captured.at(-1)?.inputDigest !== captureDigest || captured.at(-1)?.outcome !== "committed"
       || authorized.at(-1)?.action !== RECOVERY_EXECUTION_EVENTS.authorized || authorized.at(-1)?.inputDigest !== approvalDigest
+      || !authorized.at(-1)?.recoveryApproval || canonicalJson(authorized.at(-1)!.recoveryApproval!.approval) !== canonicalJson(approval)
       || authorized.at(-1)?.outcome !== "committed" || captured.at(-1)!.seq >= authorized.at(-1)!.seq) fail();
     const starts = entries.filter(entry => entry.action === RECOVERY_EXECUTION_EVENTS.started);
     // No blind retry after any dispatched restore, even when a new object is

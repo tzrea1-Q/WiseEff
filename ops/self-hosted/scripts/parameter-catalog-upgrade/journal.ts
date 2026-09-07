@@ -77,6 +77,16 @@ export type RecoveryCaptureEvent = {
   readonly directory: { readonly path: string; readonly device: string; readonly inode: string };
   readonly capture?: RecoveryCaptureRecord;
 };
+export type RecoveryExecutionApprovalRecord = {
+  runId: string; attemptId: string; captureDigest: string; target: RecoveryCaptureRecord["source"];
+  approvalReference: string; expiresAt: string;
+};
+export type RecoveryApprovalEvent = {
+  readonly approval: RecoveryExecutionApprovalRecord;
+  readonly assignmentDigest: string;
+  readonly principal: { readonly userId: string; readonly organizationId: string };
+  readonly traceId: string;
+};
 
 export type JournalEntry = {
   readonly seq: number;
@@ -91,6 +101,7 @@ export type JournalEntry = {
   readonly lastFailureCode: string | null;
   readonly bindingPhase?: BindingPhaseEvent;
   readonly recoveryCapture?: RecoveryCaptureEvent;
+  readonly recoveryApproval?: RecoveryApprovalEvent;
 };
 
 export type JournalRecord = {
@@ -141,6 +152,7 @@ export type JournalTransitionDraft = {
   readonly lastFailureCode?: string | null;
   readonly bindingPhase?: BindingPhaseEvent;
   readonly recoveryCapture?: RecoveryCaptureEvent;
+  readonly recoveryApproval?: RecoveryApprovalEvent;
 };
 
 export type JournalCommit = {
@@ -265,6 +277,9 @@ const parseRecord = (value: unknown): ControllerResult<JournalRecord> => {
     }
     // Historical recovery-package-captured hashes remain diagnostic evidence.
     // A new producer/consumer must separately require the typed record.
+    if (entry.recoveryApproval && !validRecoveryApproval(entry.recoveryApproval, entry, candidate.runId, candidate.entries.slice(0, index))) {
+      return failClosed("PCAT-UPG-ILLEGAL-ACTION", "upgrade journal recovery approval is invalid");
+    }
   }
   const expected = digestRecord({
     schemaVersion: candidate.schemaVersion,
@@ -312,6 +327,29 @@ function validRecoveryCapture(event: RecoveryCaptureEvent, entry: JournalEntry, 
     typeof capture.packageDigest === "string" && /^[a-f0-9]{64}$/.test(capture.packageDigest) &&
     typeof capture.recoveryPointDigest === "string" && /^sha256:[a-f0-9]{64}$/.test(capture.recoveryPointDigest) &&
     typeof capture.boundaryDigest === "string" && /^[a-f0-9]{64}$/.test(capture.boundaryDigest) && entry.inputDigest === sha256Prefixed(canonicalJson(capture));
+}
+
+function validRecoveryApproval(event: RecoveryApprovalEvent, entry: JournalEntry, runId: string, previous: readonly JournalEntry[]): boolean {
+  const digest = (value: unknown) => typeof value === "string" && /^sha256:[a-f0-9]{64}$/.test(value);
+  const identifier = (value: unknown) => typeof value === "string" && /^[A-Za-z0-9_.:@-]{1,180}$/.test(value);
+  if (!exactKeys(event, ["approval", "assignmentDigest", "principal", "traceId"]) ||
+    !exactKeys(event.approval, ["runId", "attemptId", "captureDigest", "target", "approvalReference", "expiresAt"]) ||
+    !exactKeys(event.principal, ["userId", "organizationId"]) || !identifier(event.principal.userId) || !identifier(event.principal.organizationId) ||
+    !identifier(event.traceId) || !digest(event.assignmentDigest)) return false;
+  const approval = event.approval;
+  if (approval.runId !== runId || !identifier(approval.attemptId) || !RUN_ID.test(approval.attemptId) || !digest(approval.captureDigest) ||
+    !digest(approval.approvalReference) || !validRecoverySource(approval.target) || typeof approval.expiresAt !== "string" ||
+    !Number.isFinite(Date.parse(approval.expiresAt)) || entry.action !== "recovery-execution-authorized" ||
+    entry.outcome !== "committed" || entry.fromState !== entry.toState ||
+    entry.nextAction !== (previous.at(-1)?.nextAction ?? "plan") || entry.planDigest !== (previous.at(-1)?.planDigest ?? null)) return false;
+  const captured = previous.filter(item => item.action === "recovery-package-captured").at(-1);
+  if (captured?.recoveryCapture?.outcome !== "committed" || captured.inputDigest !== approval.captureDigest ||
+    previous.some(item => item.recoveryApproval?.approval.attemptId === approval.attemptId) ||
+    previous.some(item => ["recovery-execution-started", "recovery-execution-completed", "recovery-execution-outcome-unknown", "recovery-execution-revoked"].includes(item.action))) return false;
+  const { approvalReference, ...scope } = approval;
+  return entry.inputDigest === sha256Prefixed(canonicalJson(approval)) && approvalReference === sha256Prefixed(canonicalJson({
+    ...scope, assignmentDigest: event.assignmentDigest, principal: event.principal, traceId: event.traceId,
+  }));
 }
 
 const wrap = (journalPath: string, record: JournalRecord): UpgradeJournal => ({
@@ -467,12 +505,18 @@ const appendTransition = (
   draft: JournalTransitionDraft,
   now: () => Date,
 ): ControllerResult<JournalCommit> => {
-  if (draft.recoveryCapture && (draft.toState !== journal.record.state || draft.nextAction !== journal.record.nextAction ||
+  if ((draft.recoveryCapture || draft.recoveryApproval) && (draft.toState !== journal.record.state || draft.nextAction !== journal.record.nextAction ||
     (["planDigest", "cutoverRunId", "verificationPlanDigest", "verificationAttemptDigest"] as const)
       .some(key => draft[key] !== undefined && draft[key] !== journal.record[key]))) {
-    return failClosed("PCAT-UPG-ILLEGAL-ACTION", "capture cannot change controller state or pins");
+    return failClosed("PCAT-UPG-ILLEGAL-ACTION", "recovery evidence cannot change controller state or pins");
   }
   if (isReplay(journal.record, draft)) {
+    if (draft.recoveryApproval && (!journal.record.entries.some(entry => entry.action === draft.action &&
+      entry.inputDigest === draft.inputDigest && entry.outcome === "committed" && entry.recoveryApproval &&
+      canonicalJson(entry.recoveryApproval) === canonicalJson(draft.recoveryApproval)) ||
+      journal.record.entries.some(entry => ["recovery-execution-started", "recovery-execution-completed", "recovery-execution-outcome-unknown", "recovery-execution-revoked"].includes(entry.action)))) {
+      return failClosed("PCAT-UPG-ILLEGAL-ACTION", "approval replay requires the original unconsumed typed record");
+    }
     if (draft.recoveryCapture && !journal.record.entries.some(entry => entry.action === draft.action &&
       entry.inputDigest === draft.inputDigest && entry.outcome === "committed" && entry.recoveryCapture &&
       canonicalJson(entry.recoveryCapture) === canonicalJson(draft.recoveryCapture))) {
@@ -494,6 +538,7 @@ const appendTransition = (
     lastFailureCode: draft.lastFailureCode ?? null,
     ...(draft.bindingPhase ? { bindingPhase: draft.bindingPhase } : {}),
     ...(draft.recoveryCapture ? { recoveryCapture: structuredClone(draft.recoveryCapture) } : {}),
+    ...(draft.recoveryApproval ? { recoveryApproval: structuredClone(draft.recoveryApproval) } : {}),
   };
   const record = withDigest({
     schemaVersion: journal.record.schemaVersion,
@@ -510,7 +555,7 @@ const appendTransition = (
     updatedAt: at,
     entries: [...journal.record.entries, entry],
   });
-  if (draft.recoveryCapture || draft.action === "recovery-capture-pending" || draft.action === "recovery-capture-unknown") {
+  if (draft.recoveryCapture || draft.recoveryApproval || draft.action === "recovery-capture-pending" || draft.action === "recovery-capture-unknown") {
     const parsed = parseRecord(record);
     if (!parsed.ok) return parsed;
   }
