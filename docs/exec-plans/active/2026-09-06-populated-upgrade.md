@@ -51,6 +51,27 @@ startup and populated controller acceptance.
 
 ## Continuation: M1 and M2
 
+### Current integration ownership
+
+Parent owns the database foundation and composition roots. Activation Scratch owns
+additive 0141 and `catalog-cutover/activation/`: management-only mapping epochs
+and P12 CAS, separate from P5 and actual consumer routing. No runtime grants or
+historical migration edits. Explicit preparation may persist an epoch; inspect
+remains read-only. Reports cannot supply their own current-state facts.
+
+The parent will add an opt-in per-checkout observation hook so the management
+owner's target challenge covers the actual session used by Kernel. A before/after
+probe on another pooled connection is insufficient. The hook receives only the
+checked-out query session, precedes its first caller statement/BEGIN, and covers
+the raw pool exposed to formal Kernel. Failure destroys the lease and preserves
+the admission error; pending verification must not expose the session. No external
+transaction enters Kernel and no database privilege is added. Regressions cover
+root queries/transactions, raw promise/callback checkout, delay and cleanup. The
+generic hook is neither target proof nor approval; the owner supplies actual
+nonce/physical-target observations. Documentation impact: this plan pair,
+foundation documentation and activation contracts, then operator/evidence pairs
+after execution. Reader and recovery retain separate reviews and execution SHAs.
+
 Fresh preflight confirms base `67d4a77325b6009b77c2373bd788298a6d022bcf`, inherited report head `1a9ba7745b6f4e0ba1e52aede3e0ee5fe1ab6016`, clean candidate worktree. Source deployment is unchanged. M1 is independently reviewable interception; M2 requires a successful actual isolated upgrade and remains separate.
 
 The later remote refresh found documentation-only PR #823 at

@@ -8,7 +8,7 @@ import pg from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createIsolatedUpgradeDocker } from "../../../scripts/isolated-upgrade-docker";
 import { openRuntimeDatabase } from "./runtimeConnection";
-import { createPostgresDatabase } from "./client";
+import { createPostgresDatabase, getRootPostgresPool } from "./client";
 import { createPostgresCheckpointerSaver, setupXiaozeCheckpointerTables, verifyPostgresCheckpointerTables } from "../../modules/agent/xiaoze/durableCheckpointer";
 
 describe.skipIf(!process.env.UPG_RUNTIME_DOCKER_DAEMON_ID)("actual runtime login and checkpoint management separation", () => {
@@ -164,6 +164,39 @@ describe.skipIf(!process.env.UPG_RUNTIME_DOCKER_DAEMON_ID)("actual runtime login
         .rejects.toMatchObject({ code: "PCAT-RUNTIME-PRIVILEGED-LOGIN" });
     }
   });
+  it("observes the actual restricted session for every root and raw-pool checkout", async () => {
+    const observed: number[] = [];
+    let reject = false;
+    const refusal = new Error("PCAT-TARGET-IDENTITY-MISMATCH");
+    const db = createPostgresDatabase(url("runtime"), { verifyCheckout: async session => {
+      const row = (await session.query<{ pid: number; login: string }>("select pg_backend_pid() as pid, session_user as login")).rows[0];
+      expect(row.login).toBe("runtime");
+      observed.push(row.pid);
+      if (reject) throw refusal;
+    } });
+    const statement = "select pg_backend_pid() as pid";
+    try {
+      expect((await db.query<{ pid: number }>(statement)).rows[0].pid).toBe(observed.at(-1));
+      await db.transaction(async tx => {
+        expect((await tx.query<{ pid: number }>(statement)).rows[0].pid).toBe(observed.at(-1));
+      });
+      const pool = getRootPostgresPool(db)!;
+      const client = await pool.connect();
+      try { expect((await client.query(statement)).rows[0].pid).toBe(observed.at(-1)); }
+      finally { client.release(); }
+      expect((await pool.query(statement)).rows[0].pid).toBe(observed.at(-1));
+      expect(observed).toHaveLength(4);
+      reject = true;
+      await expect(pool.query(statement)).rejects.toBe(refusal);
+      expect(observed).toHaveLength(5);
+      let remaining = 1;
+      for (let attempt = 0; attempt < 30 && remaining; attempt++) {
+        remaining = (await admin.query("select count(*)::int as count from pg_stat_activity where pid=$1", [observed.at(-1)])).rows[0].count;
+        if (remaining) await setTimeout(20);
+      }
+      expect(remaining).toBe(0);
+    } finally { await db.close(); }
+  });
   it("refuses a login able to assume the release verification writer role", async () => {
     await admin.query("create role catalog_verification_writer_role nologin noinherit; grant catalog_verification_writer_role to runtime with inherit false");
     try {
@@ -171,6 +204,30 @@ describe.skipIf(!process.env.UPG_RUNTIME_DOCKER_DAEMON_ID)("actual runtime login
         .then(async db => { await db.close(); return "allowed"; }, error => error.code);
       expect(outcome).toBe("PCAT-RUNTIME-MANAGEMENT-ROLE-REACHABLE");
     } finally { await admin.query("revoke catalog_verification_writer_role from runtime; drop role catalog_verification_writer_role"); }
+  });
+  it("rejects a real terminated backend during checkout without executing caller SQL", async () => {
+    let signalStarted!: (pid: number) => void;
+    const started = new Promise<number>(resolve => { signalStarted = resolve; });
+    let proceed!: () => void;
+    const wait = new Promise<void>(resolve => { proceed = resolve; });
+    let lateProbe = false;
+    const db = createPostgresDatabase(url("runtime"), { verifyCheckout: async session => {
+      const pid = (await session.query<{ pid: number }>("select pg_backend_pid() as pid")).rows[0].pid;
+      signalStarted(pid);
+      await wait;
+      await session.query("select 1");
+      lateProbe = true;
+    } });
+    try {
+      const result = expect(getRootPostgresPool(db)!.query("select * from public.runtime_business"))
+        .rejects.toThrow("PCAT-DATABASE-CHECKOUT-CONNECTION-FAILED");
+      const pid = await started;
+      expect((await admin.query("select pg_terminate_backend($1) as terminated", [pid])).rows).toEqual([{ terminated: true }]);
+      await result;
+      proceed(); await setTimeout(20);
+      expect(lateProbe).toBe(false);
+      expect(getRootPostgresPool(db)!.totalCount).toBe(0);
+    } finally { proceed(); await db.close(); }
   });
   it("requires a separate actual governance login and refuses it as the application pool", async () => {
     await expect(openRuntimeDatabase({ connectionString: url("governance"), nodeEnv: "production" }))

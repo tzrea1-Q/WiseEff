@@ -78,6 +78,22 @@ P2真实停写、阶段化resume、P12/P13 producer归属、退休后完整报�
 
 ## 续工：M1与M2
 
+### 当前集成所有权
+
+父协调者拥有数据库基础层及组合根。activation Scratch 拥有追加 0141 和
+`catalog-cutover/activation/`：仅管理阶段的 mapping epoch 与 P12 CAS，
+与 P5 和实际消费路由分开。零 runtime grant，不改历史迁移。显式准备可持久化
+epoch，inspect 保持只读；报告不能提供自身的当前状态事实。
+
+父协调者新增可选的逐次连接借出核验，使管理 owner 的目标挑战覆盖 Kernel
+实际使用的 session。在另一连接上前后探测并不足够。hook 只接收借出的查询
+session，在调用者第一条语句／BEGIN 前执行，也覆盖正式 Kernel 取得的 raw pool。
+失败销毁连接并保留准入错误；验证等待期间不得暴露 session。不向 Kernel 外传
+事务，不增加数据库权限。回归覆盖根查询／事务、raw promise/callback 借出、
+延迟和清理。通用 hook 本身不是目标证明或批准，owner 必须提供真实 nonce／
+物理目标观察。文档影响：本计划双语、基础层说明和 activation 合同；执行后更新
+操作／证据文档。reader 与恢复仍保留独立审查和执行 SHA。
+
 新preflight确认base `67d4a77325b6009b77c2373bd788298a6d022bcf`、继承报告head `1a9ba7745b6f4e0ba1e52aede3e0ee5fe1ab6016`，候选工作树干净。源部署不变。M1仅为可独立审阅的安全拦截；M2必须完成真实隔离升级成功链，二者分开。
 
 父智能体负责M1 CLI／债务删除、固定入口交接、共享upgrade／Compose／migration、集成及交付。`m2_release`负责既有release-gate脚本及测试；`m2_runtime`负责运行连接／启动文件及测试；`m2_recovery`负责备份包恢复adapter及合成恢复测试。各自独立Scratch，父智能体串行集成；无人获准生产操作或扩大权限。

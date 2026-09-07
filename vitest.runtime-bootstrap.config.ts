@@ -8,6 +8,7 @@ export default defineConfig({
     environment: "node",
     include: [
       "server/shared/database/runtimeConnection*.test.ts",
+      "server/shared/database/verifiedCheckout.test.ts",
       "server/shared/database/migrationsExpectedInventory.test.ts",
       "server/testing/selfHostedUpgrade/database.test.ts",
       "server/modules/agent/xiaoze/durableCheckpointer.test.ts",
