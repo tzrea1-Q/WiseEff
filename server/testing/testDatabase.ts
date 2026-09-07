@@ -3,7 +3,7 @@ import { promises as fs } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import pg from "pg";
-import { createDatabaseCleanup } from "./databaseCleanup";
+import { createDatabaseCleanup, createDatabaseCleanupTrace } from "./databaseCleanup";
 import {
   createDatabase,
   createSavepointDatabase,
@@ -277,15 +277,16 @@ async function cloneTemplateDatabase(name: string): Promise<void> {
 
 async function dropDatabase(name: string): Promise<void> {
   const admin = new pg.Client({ connectionString: connectionStringFor("postgres") });
+  const trace = createDatabaseCleanupTrace();
   let failed = false;
   try {
-    await admin.connect();
-    await admin.query(`drop database if exists ${name} with (force)`);
+    await trace("connect", () => admin.connect());
+    await trace("drop", () => admin.query(`drop database if exists ${name} with (force)`));
   } catch (error) {
     failed = true;
     throw error;
   } finally {
-    try { await admin.end(); }
+    try { await trace("end", () => admin.end()); }
     catch (error) { if (!failed) throw error; }
   }
 }
