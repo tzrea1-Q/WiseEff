@@ -6,7 +6,7 @@ import { createDockerRecoveryDestination } from "./execution/dockerRestore";
 import { restoreRecoveryPackage } from "./execution/packageRestore";
 import { spawnSync } from "node:child_process";
 import { createHash, randomBytes } from "node:crypto";
-import { lstat, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { lstat, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { setTimeout } from "node:timers/promises";
@@ -40,13 +40,14 @@ describe.skipIf(process.env.UPG_CONTROLLED_RECOVERY_DOCKER_TEST !== "1")("contro
     const runId = randomBytes(12).toString("hex");
     const label = "wiseeff.controlled-recovery-run";
     const evidence = await createSyntheticRecoveryEvidence();
-    const directory = evidence.directory;
+    const directory = path.join(evidence.directory, "package");
+    await mkdir(directory, { mode: 0o700 });
     let acceptanceComplete = false;
     let bodyStarted = false;
     const retainEvidence = async (outcome: "accepted" | "failed") => {
       await evidence.finish(outcome);
       console.info(JSON.stringify({ evidence: "private-synthetic-package-retained",
-        locator: `${path.basename(directory)}/retained-evidence.json` }));
+        locator: `${path.basename(evidence.directory)}/retained-evidence.json` }));
     };
     onTestFinished(async () => {
       if (bodyStarted) await settled;
