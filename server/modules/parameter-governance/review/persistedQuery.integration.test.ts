@@ -38,9 +38,9 @@ describe("actual persisted Review Queue projection", () => {
     const compiled = compileCatalogRelease(bundle);
     if (!compiled.ok) throw new Error("review-fixture-compile-failed");
     const installed = await installPublishedRelease(admin, { mode: "bootstrap", source: jsonCatalogReleaseSource(bundle),
-      expectedTargetDigest: compiled.aggregateDigest });
-    if (!installed.ok) throw new Error("review-fixture-install-failed");
-    pin = { id: compiled.release.id, digest: compiled.release.digest };
+      expectedTargetDigest: compiled.value.aggregateDigest });
+    if (!installed.ok) throw new Error(`review-fixture-install-failed:${installed.error.kind}`);
+    pin = { id: compiled.value.release.id, digest: compiled.value.release.digest };
     await admin.query("insert into public.organizations(id,name) values('persisted-review-org','Synthetic review organization')");
     // Test-only login uses two existing 0138 capabilities; no capability role or
     // table grant is changed. This identity is not approved for API startup.
