@@ -329,11 +329,12 @@ it("detects a dispatch-table owner able to enable a replica-only definer trigger
 });
 
 it("blocks native project deletion cascading into an actual legacy binding without its mutation grant", async () => {
-  const organization = `v13_ri_org_${nonce}`, project = `v13_ri_project_${nonce}`, binding = `v13_ri_binding_${nonce}`;
+  const organization = `v13_ri_org_${nonce}`, project = `v13_ri_project_${nonce}`, binding = `v13_ri_binding_${nonce}`, module = `v13_ri_module_${nonce}`;
   await admin.query(`insert into public.organizations(id,name) values ($1,'V13 RI fixture')`, [organization]);
   await admin.query(`insert into public.projects(id,organization_id,name,code) values ($1,$2,'V13 RI fixture','v13-ri')`, [project, organization]);
-  await admin.query(`insert into public.project_parameter_bindings(id,organization_id,project_id,parameter_spec_id)
-    values ($1,$2,$3,'v13-spec')`, [binding, organization, project]);
+  await admin.query(`insert into public.parameter_modules(id,organization_id,name,path) values ($1,$2,'V13 RI fixture',$1)`, [module, organization]);
+  await admin.query(`insert into public.project_parameter_bindings(id,organization_id,project_id,parameter_spec_id,module_id)
+    values ($1,$2,$3,'v13-spec',$4)`, [binding, organization, project, module]);
   await admin.query(`grant delete,select(id) on public.projects to ${writerName}`);
   try {
     expect((await writer.query(`select pg_catalog.has_table_privilege(current_user,'public.project_parameter_bindings','DELETE')
@@ -348,6 +349,7 @@ it("blocks native project deletion cascading into an actual legacy binding witho
   } finally {
     await admin.query(`revoke delete,select(id) on public.projects from ${writerName}`);
     await admin.query(`delete from public.projects where id=$1`, [project]);
+    await admin.query(`delete from public.parameter_modules where id=$1`, [module]);
     await admin.query(`delete from public.organizations where id=$1`, [organization]);
   }
 });
