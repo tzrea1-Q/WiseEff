@@ -6,10 +6,27 @@
 
 ### Current continuation: real dependencies and activation
 
-Refreshed PR #824 remains Draft/Open at `39d5b125d`, with base `cda6737a8`.
-Hosted `34104402409` is now completed/success; this does not replace the historical
-local scripts timeout or the two skipped acceptance jobs. Its checkout remains
-`155ffd169`; no execution is relabeled as this continuation's code.
+PR #824 remains Draft/Open, base `cda6737a8`; the refreshed remote is `3c0fe1d66`.
+Its Hosted `34125753813` failed on merge checkout
+`e0f9ea2e56582b1dfe5398c5d5f4d9b77b30ea73`: two missing recovery dependency
+registrations and the Linux endpoint positive case. The older `34104402409`
+success remains historical. Parent candidate `be95a710f` fixes the registration,
+integrates the reviewed P12 adapter, and adds safe endpoint diagnostics without
+claiming the Linux cause is resolved. New Hosted evidence remains pending.
+
+At clean `1376fbcbe`, complete owned scripts passed 4/4 then 1781/1781 with 25
+skips; backend passed 4241 with 11 skips, and mandatory owned Binding tests passed
+92/92. Build and unchanged-baseline boundary passed. These executions are not
+relabeled as later handoff changes. At `be95a710f`, actual Compose identity tests
+passed 9/9 after reproducing shared-object drift acceptance; build passed. Both
+increments have independent Standards/Spec review. The fixture uses identity
+apps, not actual old API/worker processes.
+
+The unintegrated bootstrap candidate passed 17 actual PG cases on `f122a6285`,
+but independent Spec then found activity-statistics secret exposure and mutable
+inspection input. It is not sealed; fixes and real counterexamples are in progress.
+Parent remains responsible for actual startup/management roots. No legal runtime
+pin root startup, full populated controller or production command is claimed.
 
 | Increment / unique writer | Required evidence | Documentation impact |
 | --- | --- | --- |

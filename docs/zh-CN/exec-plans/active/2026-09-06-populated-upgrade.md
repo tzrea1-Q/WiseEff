@@ -6,10 +6,23 @@
 
 ### 当前续工：真实依赖与激活
 
-重新核对 PR #824：仍为 Draft/Open，head 为 `39d5b125d`，base 为
-`cda6737a8`。Hosted `34104402409` 现已 completed/success，执行 checkout
-仍为 `155ffd169`；历史本机 scripts 超时及两个跳过的验收 Job 分别保留，
-不把旧执行改记为本轮新增代码的结果。
+PR #824 仍为 Draft/Open，base `cda6737a8`，重新核对的远端为 `3c0fe1d66`。
+该候选 Hosted `34125753813` 在实际 merge checkout
+`e0f9ea2e56582b1dfe5398c5d5f4d9b77b30ea73` 失败：恢复依赖登记导致两个失败，
+另有 Linux endpoint 正向失败。旧 `34104402409` 成功保留为历史。父候选
+`be95a710f` 已修复登记、集成获双审的 P12 适配器，并加入脱敏 endpoint 诊断；
+尚未宣称 Linux 根因解决，新 Hosted 证据仍待执行。
+
+干净候选 `1376fbcbe` 的完整 owned scripts 前置4/4，主体1781通过／25跳过；
+backend 4241通过／11跳过，必需 owned Binding 92/92，均无失败。Build 和保持
+可信基线的 boundary 通过。这些执行不改记为后续 handoff 修改的结果。
+`be95a710f` 的实际 Compose 身份回归在复现共享对象掩盖漂移后通过9/9，build通过，
+相关增量分别完成独立 Standards/Spec 审查。应用为身份夹具，不是真正旧 API／worker。
+
+未集成 bootstrap 在 `f122a6285` 通过17项真实PG，但独立Spec随后发现统计视图泄露
+秘密及检查输入可变两个P2，尚未封存，修复和真实反例正在进行。父协调者继续承担
+真实 startup／管理组合根；尚未证明合法 runtime pin 下根入口启动或完整 populated
+controller，不提供生产升级命令。
 
 | 增量与唯一写入者 | 必需证据 | 文档影响 |
 | --- | --- | --- |

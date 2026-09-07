@@ -4,6 +4,41 @@
 
 ## 当前续工检查点，2026-09-07
 
+最新已结束 Hosted 为 [34125753813](https://github.com/tzrea1-Q/WiseEff/actions/runs/34125753813)，
+head `3c0fe1d66`，merge checkout `e0f9ea2e56582b1dfe5398c5d5f4d9b77b30ea73`。
+Scripts 前置4/4；主体1734通过／2失败／41跳过（1777），两个失败是摘要传递依赖未登记，
+本机同期主体1750通过／2失败／25跳过。Linux owned endpoint 为15通过／1失败；后续
+owned阶段及主流程backend、boundary、bridge、contract、log-eval未运行。Smoke/quality
+成功，local non-HDC与target-synthetic跳过，Merge bar失败。下方旧成功记录保留原身份。
+
+`770764871` 登记九个实际摘要依赖并继续递归扫描。新增逐模块反例还发现 execution 根
+会把恢复命令豁免传给普通helper，已收紧为仅明确execution模块允许。初次selector并非
+成功：九个新增断言失败，另一个restore套件缺少必需PG导致setup失败／七项跳过，没有
+连接默认数据库。修复后的纯boundary为45/45，独立Standards/Spec通过。
+`1376fbcbe` 集成获双审的P12 controller adapter；正向领域操作与报告测试仍是替身，
+不作为真实已批准P12证据。
+
+| 干净执行身份 | 结果与范围 | 日志SHA256 |
+| --- | --- | --- |
+| `1376fbcbe34f140ebe44d6deda121bd7744ff836`，tree `df7069faa182c4194e557ab72ee11fe566de4ba6` | owned scripts前置4/4、主体1781通过／0失败／25跳过（1806），46.23s+87.49s，exit0、清理通过 | `10dacb17c6eb346c9f6a1ed3bb23264ea2697dab7eb508e2e29a352e13b94de7` |
+| 同一`1376fbcbe` | owned backend 4241通过／0失败／11跳过（4252），110.84s，exit0、清理通过 | `0227f19dffaac897130c41c95bbcd94bb8ce2d12e0e116159dc5bdd86ef4a3dc` |
+| 同一`1376fbcbe` | 必需owned Binding 92/92，75.76s，exit0、清理通过；从通用backend迁出的精确文件在此收集 | `4e5194a9d00991fa09bfdd2891e759edcd7827fda1c03e5bcf3e14062f57ed11` |
+| 同一`1376fbcbe` | build exit0，保留已有警告 | `723dcb007c326c2ab49ff8754ad4e4ccc30c87415b569eb2f5e1e59c2770be4f` |
+| 同一`1376fbcbe` | boundary exit0，可信基线不变 | `da522bf73a2a7fe5678fa952947c608bbb31908fa9288f45ce246a0f433ee4c5` |
+| `04f6cbdba` | 实际Compose共享观察Red：8通过／1失败，漂移被错误接受 | `adb490beab0cc7afed05133c9c978900f446392020e606d2da02a3e0ea8f79c4` |
+| `be95a710f51ca73f13c2a6f222682cec816a5296`，tree `33c7a2b6aa160eca6c615581d27241727a12a033` | 实际Compose身份Green：9/9，53.37s，exit0；立即快照修复漂移掩盖 | `d79afc127b790f264a703888d4a81274815232a69ae0a5c33944c0280e02bc18` |
+| 同一`be95a710f` | build exit0 | `3a2d89bdd6f560a962875a23d5b836e7a31870ae976b9ace963b4d9e4d3ee5c5` |
+
+Compose应用为明确的身份夹具，不是旧应用镜像。此前两次8通过／1失败均拒绝夹具的
+非规范journal路径；仅创建0700目录未解决，实际修正为已有realpath父目录，不放宽锁／
+路径校验。Handoff及快照增量已获独立双审。Linux endpoint增量仅加入安全阶段诊断，
+父`193cccd73`纯测试37通过；Linux根因仍待Hosted实测，尚未宣称修好。
+
+Bootstrap仍未集成：17项正向后独立Spec发现统计视图秘密暴露与inspection参数可变两P2。
+真实Red `29def0df3`为18收集／16通过／2失败，修复组合`6f5593fa6`为18/18、exit0、
+清理通过，仅证明低层认证操作，不是P13。之后新增的统计可见性baseline需另记执行和审查。
+真实startup producer、合法pin下根进程启动及完整populated controller仍是未完成内部工作。
+
 本节更新早期“审查额度耗尽”“P12／journal 尚未集成”的当前状态；下面的历史
 执行身份保持不变。开发 base 为 `cda6737a8f177a8bbd2f3bc7d195f8e3037bfa74`，
 生产源仍为 `82344044b436a8dafecefbb85dfd724cecb05e3f`。

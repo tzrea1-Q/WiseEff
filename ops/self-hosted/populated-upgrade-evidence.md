@@ -4,6 +4,52 @@
 
 ## Current continuation checkpoint, 2026-09-07
 
+Latest completed Hosted is [34125753813](https://github.com/tzrea1-Q/WiseEff/actions/runs/34125753813),
+head `3c0fe1d66`, merge checkout `e0f9ea2e56582b1dfe5398c5d5f4d9b77b30ea73`.
+Scripts: preceding 4/4; ordinary 1734 passed, 2 failed, 41 skipped (1777).
+The failures are missing transitive digest registrations, reproduced locally
+(1750 passed/2 failed/25 skipped in that ordinary stage). Owned endpoint tests
+were 15 passed/1 failed on Linux; subsequent owned stages and main backend,
+boundary/bridge/contract/log-eval did not run. Acceptance smoke/quality passed;
+local non-HDC and target-synthetic skipped; Merge bar failed. This supersedes
+earlier current-CI statements, without changing the historical success below.
+
+`770764871` registers the nine actual digest dependencies and keeps them scanned.
+New per-module injection tests also exposed an overbroad execution-root exemption;
+only explicitly registered execution modules may now contain restore commands.
+The first selector was not green: 9 new assertions failed and the separate restore
+suite lacked its required PG setup (7 skipped); it did not access a default DB.
+The corrected pure boundary passed 45/45. Independent Standards/Spec passed.
+`1376fbcbe` integrates the reviewed P12 controller adapter. Its positive domain
+effect/report test ports remain substitutes, not actual approved P12 evidence.
+
+| Clean execution | Result and scope | Log SHA256 |
+| --- | --- | --- |
+| `1376fbcbe34f140ebe44d6deda121bd7744ff836`, tree `df7069faa182c4194e557ab72ee11fe566de4ba6` | Owned scripts: 4/4 then 1781 passed/0 failed/25 skipped (1806), 46.23s + 87.49s; exit 0, cleanup verified | `10dacb17c6eb346c9f6a1ed3bb23264ea2697dab7eb508e2e29a352e13b94de7` |
+| Same `1376fbcbe` | Owned backend: 4241 passed/0 failed/11 skipped (4252), 110.84s; exit 0, cleanup verified | `0227f19dffaac897130c41c95bbcd94bb8ce2d12e0e116159dc5bdd86ef4a3dc` |
+| Same `1376fbcbe` | Mandatory owned Binding: 92/92, 75.76s; exit 0, cleanup verified; exact shared-backend exclusion is collected here | `4e5194a9d00991fa09bfdd2891e759edcd7827fda1c03e5bcf3e14062f57ed11` |
+| Same `1376fbcbe` | Build exit 0; existing warnings | `723dcb007c326c2ab49ff8754ad4e4ccc30c87415b569eb2f5e1e59c2770be4f` |
+| Same `1376fbcbe` | Boundary exit 0; unchanged trusted base | `da522bf73a2a7fe5678fa952947c608bbb31908fa9288f45ce246a0f433ee4c5` |
+| `04f6cbdba` | Actual Compose shared-observation Red: 8 passed/1 failed; drift incorrectly accepted | `adb490beab0cc7afed05133c9c978900f446392020e606d2da02a3e0ea8f79c4` |
+| `be95a710f51ca73f13c2a6f222682cec816a5296`, tree `33c7a2b6aa160eca6c615581d27241727a12a033` | Actual Compose identity Green: 9/9, 53.37s, exit 0; immediate snapshot fixes drift masking | `d79afc127b790f264a703888d4a81274815232a69ae0a5c33944c0280e02bc18` |
+| Same `be95a710f` | Build exit 0 | `3a2d89bdd6f560a962875a23d5b836e7a31870ae976b9ace963b4d9e4d3ee5c5` |
+
+The Compose fixture is explicitly an identity app, not an old application image.
+Two preceding 8-pass/1-fail runs rejected its noncanonical journal directory.
+Creating it as 0700 alone did not fix the issue; the actual correction used its
+already resolved canonical parent. No lock/path check was relaxed. Handoff and
+snapshot increments have independent Standards/Spec PASS. Linux endpoint changes
+only classify safe refusal stages; 37 pure tests passed on `193cccd73`. Linux
+root cause is still awaiting Hosted observation, not declared fixed.
+
+Bootstrap remains unintegrated: the 17-case positive was followed by two Spec P2
+findings (activity-statistics secret exposure; inspection argument mutation).
+Real Red `29def0df3` collected 18, passed 16, failed 2; fixed combination
+`6f5593fa6` passed 18/18, exit 0 and owned cleanup verified. These are low-level
+authentication results, not P13. The subsequent statistics-visibility baseline
+test has its own pending execution and review. Actual startup producer, accepted
+runtime root processes and complete populated controller remain unfinished.
+
 This section supersedes earlier current-state statements about exhausted review
 resources and unintegrated P12/journal work. Historical execution identities below
 remain unchanged. Development base is `cda6737a8f177a8bbd2f3bc7d195f8e3037bfa74`;
