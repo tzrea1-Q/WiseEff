@@ -206,9 +206,11 @@ const server = createWiseEffServerFromEnv({
   }
 });
 
+let initialization: Promise<void> | undefined;
 const shutdown = createApiShutdown({
   server,
   workers: [
+    () => initialization,
     () => stopLogWorker?.(),
     () => stopLogWebhookDeliveryRetention?.(),
     () => stopKnowledgeIndexWorker?.(),
@@ -281,7 +283,8 @@ server.on("error", () => {
   process.exitCode = 1;
   onShutdown();
 });
-void start().catch(() => {
+initialization = start();
+void initialization.catch(() => {
   console.error("PCAT-RUNTIME-API-START-FAILED");
   process.exitCode = 1;
   onShutdown();
