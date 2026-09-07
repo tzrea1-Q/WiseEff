@@ -36,6 +36,34 @@ Binding/ProjectValue 授权或发布。Policy #815 仍需独立决定。
 
 ## 开发环境
 
+### 固定应用产物准备（仅开发机）
+
+执行机器是独立核验的本地Docker Desktop宿主，以开发用户在干净、固定候选checkout
+内运行。输入来自私有Git副本中指向精确候选SHA的合成tag、实测daemon ID，以及新建的
+规范绝对路径、同用户、`0700` journal父目录。以下变量必须来自这些实际观察；不得使用
+生产checkout、配置或历史生产image ID。`73f12a24e` 实际执行了这些入口，并从另一工作
+目录启动独立inspect进程。
+
+```sh
+bash ops/self-hosted/scripts/upgrade.sh artifact-init \
+  --journal "${ARTIFACT_JOURNAL:?}" --run-id "${ARTIFACT_RUN_ID:?}"
+bash ops/self-hosted/scripts/upgrade.sh artifact-prepare \
+  --journal "${ARTIFACT_JOURNAL:?}" --run-id "${ARTIFACT_RUN_ID:?}" \
+  --source-repository "${PRIVATE_SOURCE_REPOSITORY:?}" --source-sha "${CANDIDATE_SHA:?}" \
+  --expected-daemon-id "${OBSERVED_DAEMON_ID:?}" --release-tag "${SYNTHETIC_SOURCE_TAG:?}" \
+  --api-base-url "${ISOLATED_API_BASE_URL:?}"
+bash ops/self-hosted/scripts/upgrade.sh artifact-inspect \
+  --journal "${ARTIFACT_JOURNAL:?}" --run-id "${ARTIFACT_RUN_ID:?}"
+```
+
+Init只写新的空宿主run，拒绝替换已有run。Prepare持有真实宿主锁，写入request／pending／
+receipt／committed证据，实际构建并保留镜像和OCI包，不停服、不启动服务。Inspect持有
+同一锁，读取原包而不重建。成功prepare／inspect返回相同source／image／receipt／pins，
+且 `releaseApproved:false`；这只是构建产物保管，不是runtime／public批准或完整升级。
+任何非零退出都停止：保留journal和包，不删除pending／unknown、不替换receipt、不用
+新run重试未知操作。这些步骤不授权清理或生产维护。企业网络可通过现有
+`--build-network-file` 参数传入私有构建网络文件；真实企业网络验证仍是独立条件。
+
 在隔离开发 checkout、以开发用户运行以下永久 worker 生命周期 selector。
 输入是合成 adapter 与真实私有 HTTP listener，不接收数据库或生产凭据，不停服。
 记录当前实际收集／通过／失败数；任何失败都停止验收，不据此执行运维恢复。这不是 production

@@ -4,6 +4,64 @@
 
 ## Integrated candidate, 2026-09-08
 
+Terminal code `73f12a24e17f12b9b863b7ebe78790ddd46d722b`, tree
+`c02d9512c54c643cb5e85efa0e4d460536c7fb7d`, actually ran the existing
+`upgrade.sh` artifact-init, artifact-prepare and a separate-process artifact-inspect
+from `/`. Each exited 0. The synthetic private Git tag selected this same source;
+the independently observed daemon was local Docker Desktop
+`07ef20c3-7210-41f4-b337-5f617ca84c0d`. No services started. Both artifact
+observations are byte-identical, SHA256
+`2b2dba36e8d64fc86161470f694e5da9c460a493666eca19daf33c4be72c64d4`.
+The init log hash is `d7728e0d2100d2b0260f55ed7ae8294b34434ea5dafb1a2ac99a8f26e3d79f44`.
+Raw logs are `/tmp/upg824-terminal-73f-{init,prepare,inspect}.log`; these local
+paths are execution references, not downloadable attachments. The private package
+is retained and excluded from public evidence.
+
+- Loaded image ID: `sha256:173a729b33c1a2509bc233732ee195bc2be41ffa777d5310abedad1a6970e9dd`.
+- Platform image manifest: `sha256:a5b82ffedf7a6eb42a2b765fbe7a4cab780d92a7ece1ec7973c5af88a11442d8`.
+- Package: `sha256:5017b60822678dc2d55ec58bf30e4527d8ae948302f5ddd8dd6d2e62015fd269`.
+- Receipt: `sha256:d43a144fddb390242fca229b3efd62fe356d6ef1dac0ff3c449223bf5bea18ab`.
+
+Cross-run inspect, repeated init and repeated prepare exited 2 without changing
+the journal. The first ad hoc negative invocation expected the wrong literal
+`ATTEMPT-EXISTS`; actual code correctly returned `EXISTING-SELECTION`. That
+assertion failed; a bounded rerun using the existing source contract passed.
+Both logs remain: negative SHA256
+`38d1ecf74925bf3898ea14ca9b1b512f45e28b59de3a1eed9d326ca90012d2d9`,
+corrected duplicate SHA256 `663f45b654a1ba5d4c1619b54ee2857154364138e50b652ae6efaf0cec1baef4`.
+No implementation or requirement was changed to correct that test expectation.
+
+Fixed `73f12a24e` checks, all exit 0:
+
+| Check | Actual result | Log SHA256 |
+| --- | --- | --- |
+| Artifact/terminal focused | 59 passed, 0 failed/skipped, 14.30s | `24d1be45e1b00e651a4faf4ffaa6a6461ae4cae009907a4f8d2e4433a586fcdd` |
+| Build | Passed with existing warnings; Vite 7.90s | `733a75b89dfe17c90f3e2620805766afbf3144ab3cef5f52a557f338708d01ea` |
+| Owned scripts | Source-lock 4/4, 37.39s; main 2001 passed, 11 skipped, 0 failed (2012), 135 files, 89.02s | `1e8fa2e66f056bd2f917c3d55604dc779192d16bbf77fcbc70805a46b78e119f` |
+| Owned backend | 4300 passed, 0 failed/skipped, 528 files, 95.92s | `3dd95f0425816efca7f09a72dd1b11497b5f07c5bfedbb872debb403bc50f8ad` |
+| Boundary | Original trusted base, 3509/3509, zero new/stale/growth | `da522bf73a2a7fe5678fa952947c608bbb31908fa9288f45ce246a0f433ee4c5` |
+| Contract | Passed | `b360b9bd3abdfe68681a8d267d5287709d4444710f48e2e21afb069a384d9981` |
+| Selfhost | Passed | `fb3bebbd4a67124cfc37061ec47e862690f238d75a55a572211b4ba5a2701f56` |
+
+Both owned suites verified cleanup on the recorded local pgvector profile;
+they do not replace PostgreSQL 16 Alpine or target deployment acceptance. The
+11 skips remain the previously listed handoff/runtime-inspector/vendor-DTS cases.
+An earlier five-file selector at `01a25af5c` had 236 passed, four skipped and one
+suite precondition failure because its required PG environment was absent (exit 1).
+Its SHA256 `899f92814d7835f5a82b6302428c1a6eef5c63c96b6e4e0d56b4a25d655f8c03`
+is retained; this is not a functional regression or a full-suite pass.
+
+Journal `a05e79510` separately passed 58/58 in 3.35s (log SHA256
+`13496a8bde5c12bcb4fe123c9d7d4381397256985dcbfb558589774d411f6792`).
+Its independent Standards/Spec reviews passed. Custody source `2339a92c0` and
+terminal `73f12a24e` also have independent Standards/Spec limited PASS; the
+custody author's 50 cases explicitly double the build owner, unlike the actual
+terminal execution above. Authentication/SQL successor `62090c07e` (30+19 real
+PG cases) and trigger source `205dabf26` (31 real PG cases) retain their exact
+Red/Green hashes in their existing contracts and are now integrated. No current
+Hosted, complete P13, StartupTarget, API/worker positive startup, full controller
+or target acceptance follows from this artifact checkpoint. A/B/C remain incomplete.
+
 Artifact integration `a557e688671d11f7752a61b5f28803af39298bcd`, tree
 `5ccb025d0bb8fcfb433ffd47d11168717505ca4e`, passed 20/20 focused cases in
 348ms, zero failed/skipped, and build exited 0 with retained warnings (8.16s).

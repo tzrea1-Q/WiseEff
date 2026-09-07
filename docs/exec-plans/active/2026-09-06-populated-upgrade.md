@@ -6,6 +6,25 @@
 
 ### Current continuation: real dependencies and activation
 
+At `73f12a24e17f12b9b863b7ebe78790ddd46d722b` (tree
+`c02d9512c54c643cb5e85efa0e4d460536c7fb7d`), the real `upgrade.sh`
+artifact-init/prepare/inspect chain built that same source and reopened its
+protected package in another process from a different working directory. The
+two observations match exactly; neither authorizes startup. Artifact custody,
+terminal dispatch and new-journal semantics each have independent Standards/Spec
+review. Fixed-candidate focused tests passed 59/59; full owned scripts passed
+source-lock 4/4 then 2001 passed/11 skipped, and backend passed 4300/4300.
+Build, original-base boundary, contract and selfhost checks exited zero. Current
+Hosted is not run. Exact hashes and the bounded negative-test correction are in
+the existing evidence pair. The earlier checkpoints below retain their identities.
+
+The exact authentication/SQL successor and trigger dispatch fixes are now
+integrated: source `62090c07e` passed 30 joint cases plus the original 19 SQL
+cases; source `205dabf26` passed 31 writer-reachability cases. Both have separate
+independent reviews. These remain component evidence, not full P13. Next work
+uses actual HTTP registration controls and effective database fencing, without
+inventing a whole-repository source scanner or claiming a complete writer inventory.
+
 Continuation `c3f5a4909` integrates the independently reviewed actual runtime
 LOGIN source and its schema-array fix. Source test commit `a550e8a7f` passed
 13/13 real PG authentication, backend-loss and cleanup cases; this is not
@@ -18,8 +37,8 @@ full scripts passed source-lock 4/4 then 1940 passed/11 skipped; backend passed
 The independently reviewed application artifact producer is integrated at
 `a557e6886`; its selector passed 20/20 and build exited 0. Builder `75e182236`
 actually produced and checked an image of source `a321084a5`, separately from
-this integration identity. Restart-safe package selection remains in progress.
-Neither increment has current Hosted or full startup evidence.
+this integration identity. Restart-safe selection was unfinished at this earlier
+checkpoint; the later terminal execution above supersedes only that status.
 
 Earlier `b8fbae437` integrates the independently reviewed bootstrap journal
 lock checks, the seven-table V13 capability submatrix, and mandatory controlled

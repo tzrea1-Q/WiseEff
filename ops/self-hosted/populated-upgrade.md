@@ -42,6 +42,40 @@ This candidate provides protective interception, bounded canonical conversion an
 
 ## Developer commands
 
+### Fixed application artifact preparation (development only)
+
+Run as the development user in the clean, fixed candidate checkout, on the
+independently verified Docker Desktop host. Inputs are an existing private Git
+copy with a synthetic tag selecting the exact candidate SHA, the observed daemon
+ID, and a new canonical, same-user `0700` journal parent directory. Set the shell
+variables below from those observations; do not use the production checkout,
+configuration or historical production image ID. The `73f12a24e` execution used
+these actual entrypoints and then inspected from a different working directory.
+
+```sh
+bash ops/self-hosted/scripts/upgrade.sh artifact-init \
+  --journal "${ARTIFACT_JOURNAL:?}" --run-id "${ARTIFACT_RUN_ID:?}"
+bash ops/self-hosted/scripts/upgrade.sh artifact-prepare \
+  --journal "${ARTIFACT_JOURNAL:?}" --run-id "${ARTIFACT_RUN_ID:?}" \
+  --source-repository "${PRIVATE_SOURCE_REPOSITORY:?}" --source-sha "${CANDIDATE_SHA:?}" \
+  --expected-daemon-id "${OBSERVED_DAEMON_ID:?}" --release-tag "${SYNTHETIC_SOURCE_TAG:?}" \
+  --api-base-url "${ISOLATED_API_BASE_URL:?}"
+bash ops/self-hosted/scripts/upgrade.sh artifact-inspect \
+  --journal "${ARTIFACT_JOURNAL:?}" --run-id "${ARTIFACT_RUN_ID:?}"
+```
+
+Init writes only a new empty host run; an existing run is refused. Prepare takes
+the real host lock, writes request/pending/receipt/committed evidence, builds and
+retains the actual image and OCI package. It does not stop or start services.
+Inspect takes the same lock and reads the original package without rebuilding.
+Successful prepare/inspect return equal source/image/receipt/pins with
+`releaseApproved:false`. This is build custody, not runtime/public approval or
+full upgrade. A nonzero exit is a stop: preserve the journal and package; do not
+delete pending/unknown state, replace the receipt or create a new run to retry an
+uncertain operation. No cleanup or production maintenance command is authorized
+by these steps. A private build-network file may be supplied through the existing
+`--build-network-file` option; actual corporate-network validation remains separate.
+
 On the isolated development checkout, as the development user, run the permanent
 worker lifecycle selectors below. They use synthetic adapters and actual private
 HTTP listeners; no database or production credentials are inputs, and no service

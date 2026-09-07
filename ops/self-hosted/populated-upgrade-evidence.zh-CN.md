@@ -4,6 +4,54 @@
 
 ## 集成候选，2026-09-08
 
+终端代码 `73f12a24e17f12b9b863b7ebe78790ddd46d722b`，tree
+`c02d9512c54c643cb5e85efa0e4d460536c7fb7d`，实际通过现有 `upgrade.sh`
+执行artifact-init、artifact-prepare及从 `/` 工作目录启动的独立进程artifact-inspect，
+各exit 0。私有Git副本的合成tag选中同一源码；独立核验的本地Docker Desktop
+daemon为 `07ef20c3-7210-41f4-b337-5f617ca84c0d`，未启动服务。
+两次产物观察逐字节相同，SHA256为
+`2b2dba36e8d64fc86161470f694e5da9c460a493666eca19daf33c4be72c64d4`；
+init日志hash为 `d7728e0d2100d2b0260f55ed7ae8294b34434ea5dafb1a2ac99a8f26e3d79f44`。
+原始日志 `/tmp/upg824-terminal-73f-{init,prepare,inspect}.log` 是本地执行索引，
+不是下载附件。私有包保留，不进入公开证据。
+
+- 加载镜像ID：`sha256:173a729b33c1a2509bc233732ee195bc2be41ffa777d5310abedad1a6970e9dd`。
+- 平台镜像manifest：`sha256:a5b82ffedf7a6eb42a2b765fbe7a4cab780d92a7ece1ec7973c5af88a11442d8`。
+- 包：`sha256:5017b60822678dc2d55ec58bf30e4527d8ae948302f5ddd8dd6d2e62015fd269`。
+- Receipt：`sha256:d43a144fddb390242fca229b3efd62fe356d6ef1dac0ff3c449223bf5bea18ab`。
+
+跨run inspect、重复init及重复prepare均exit 2，journal字节不变。首次临时负测
+误写预期 `ATTEMPT-EXISTS`，实际源码正确返回 `EXISTING-SELECTION`，因此该断言失败；
+按现有源码合同有界重跑该例通过，没有为此修改实现或要求。失败日志SHA256
+`38d1ecf74925bf3898ea14ca9b1b512f45e28b59de3a1eed9d326ca90012d2d9`，
+修正后重复prepare日志 `663f45b654a1ba5d4c1619b54ee2857154364138e50b652ae6efaf0cec1baef4`。
+
+固定 `73f12a24e` 执行均exit 0：
+
+| 检查 | 实际结果 | 日志SHA256 |
+| --- | --- | --- |
+| Artifact／终端focused | 59通过、0失败／跳过，14.30s | `24d1be45e1b00e651a4faf4ffaa6a6461ae4cae009907a4f8d2e4433a586fcdd` |
+| Build | 通过、保留既有警告；Vite 7.90s | `733a75b89dfe17c90f3e2620805766afbf3144ab3cef5f52a557f338708d01ea` |
+| Owned scripts | Source-lock4/4、37.39s；主批2001通过、11跳过、0失败（2012），135文件、89.02s | `1e8fa2e66f056bd2f917c3d55604dc779192d16bbf77fcbc70805a46b78e119f` |
+| Owned backend | 4300通过、0失败／跳过，528文件、95.92s | `3dd95f0425816efca7f09a72dd1b11497b5f07c5bfedbb872debb403bc50f8ad` |
+| Boundary | 原可信base，3509/3509，无new／stale／growth | `da522bf73a2a7fe5678fa952947c608bbb31908fa9288f45ce246a0f433ee4c5` |
+| Contract | 通过 | `b360b9bd3abdfe68681a8d267d5287709d4444710f48e2e21afb069a384d9981` |
+| Selfhost | 通过 | `fb3bebbd4a67124cfc37061ec47e862690f238d75a55a572211b4ba5a2701f56` |
+
+两项owned批次在记录的本地pgvector profile验证了资源清理，不能替代PG16 Alpine或
+目标验收。11项skip仍是下文列出的handoff／runtime-inspector／vendor-DTS用例。
+此前 `01a25af5c` 五文件selector因缺必要PG环境，236通过、4跳过、1个suite前置失败，
+exit 1；保留日志hash `899f92814d7835f5a82b6302428c1a6eef5c63c96b6e4e0d56b4a25d655f8c03`，
+不能称为功能回归或完整通过。
+
+Journal `a05e79510` 独立58/58、3.35s，日志hash
+`13496a8bde5c12bcb4fe123c9d7d4381397256985dcbfb558589774d411f6792`，
+独立双审通过。Custody源 `2339a92c0` 与终端 `73f12a24e` 也各有独立Standards／Spec
+限定PASS；custody作者50项用例明确替代build owner，与上文真实终端执行分开。
+认证／SQL后继 `62090c07e`（真实PG30+19）及trigger源 `205dabf26`（真实PG31）已集成，
+精确Red／Green及hash仍见其现有合同。当前Hosted、完整P13／StartupTarget、API／worker
+合法启动、完整controller及目标验收均不能从产物检查点推导；A／B／C仍未完成。
+
 Artifact集成 `a557e688671d11f7752a61b5f28803af39298bcd`，tree
 `5ccb025d0bb8fcfb433ffd47d11168717505ca4e`，focused20/20、348ms、零失败／跳过；
 build exit 0，保留警告（8.16s）。日志SHA256依次为

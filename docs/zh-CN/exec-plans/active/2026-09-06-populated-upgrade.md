@@ -4,6 +4,20 @@
 
 ## 范围与状态
 
+固定候选 `73f12a24e17f12b9b863b7ebe78790ddd46d722b`（tree
+`c02d9512c54c643cb5e85efa0e4d460536c7fb7d`）通过真实 `upgrade.sh`
+artifact-init／prepare／inspect：构建同一源码，再由不同工作目录的独立进程
+读回原受控包，两次观察完全相同；这不批准启动。Artifact custody、终端接线及
+新journal语义分别完成独立Standards／Spec审查。固定候选focused59/59，完整
+owned scripts为source-lock4/4后2001通过／11跳过；backend4300/4300。
+Build、原可信基线boundary、contract及selfhost均exit 0。当前Hosted未运行。
+精确hash及负测中一次错误预期的有界修正见现有证据文件；下文历史身份保留。
+
+认证／SQL精确后继与trigger派发修复已集成：源 `62090c07e` 的30项联合检查及
+原19项SQL回归通过，源 `205dabf26` 的31项writer reachability通过，分别完成
+独立双审。这些仍是组件证据，不是完整P13。后续接入真实HTTP注册控制与有效
+数据库封禁，不另建全仓库源码扫描平台，也不冒称完整writer库存。
+
 续工 `c3f5a4909` 已集成独立审查通过的真实运行LOGIN来源及schema数组类型修复。
 源测试提交 `a550e8a7f` 的真实PG认证、连接终止及清理13/13通过；这不是应用启动。
 父路由／来源selector 32/32通过。SQL权限效果已集成至 `64d478f37`；固定源
@@ -12,7 +26,7 @@
 11跳过；backend4300/4300，均exit 0且owned清理验证通过。独立审查通过的应用
 artifact producer已集成至 `a557e6886`，selector20/20、build exit 0。
 Builder `75e182236` 实际构建并核验的是源 `a321084a5` 的镜像，不能改记为
-本次集成身份。跨进程包来源选择仍在实现；两个增量均尚无当前Hosted或完整startup证据。
+本次集成身份。该历史检查点尚未实现跨进程包来源选择；上文新执行仅替代此项状态。
 
 此前 `b8fbae437` 已集成独立审查通过的 bootstrap journal 失锁处理、七表 V13
 能力子矩阵和强制 controlled recovery adapter 路由。Focused 274/274、真实
