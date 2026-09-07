@@ -1,0 +1,78 @@
+# Legacy LOGIN retirement
+
+> Chinese: [Chinese](README.zh-CN.md)
+
+This R3 work remains Scratch. Its database operation disables the exact former
+application LOGINs and removes their incoming membership edges. It does not
+erase owners, ACLs, roles, passwords or source data. The original capabilities
+must remain represented in the same verified recovery package. No new privilege
+is granted. The management connection must be distinct from the retiring roles.
+
+P13 is not implemented elsewhere under `retireLegacyWrites`: the original
+P0–P10 orchestrator explicitly leaves P13 unavailable. The formal
+`createP12Activation().inspectAppliedBinding(attemptId)` is the predecessor seam;
+it returns committed historical facts, not current runtime approval. This slice
+must not replace the verifier or promote its login-fence result into a complete
+writer-retirement result. Routes, Agent, jobs, triggers and the complete new
+post-retirement V01–V17/D01–D09 attempt remain separate required observations.
+
+## Incremental threat matrix and ownership
+
+| Threat | Required observation |
+| --- | --- |
+| Caller supplies a role name instead of old application credentials | Open the actual source LOGIN, bind its backend to the physical management target, derive name/OID from that session |
+| Wrong database or lost host lock | Refuse before role mutations; repeat before commit |
+| Current bootstrap or a privileged role missing from recovery format | Refuse without altering it; do not invent a reduced-capability restoration |
+| Role membership, owner or ACL outside this database | Refuse shared scope; retain recovery material unchanged |
+| Old connection remains after NOLOGIN | Not retired; NOLOGIN is not connection termination or quiescence |
+| Concurrent controller or uncertain commit | Durable intent remains; inspect only, no blind retry or journal reset |
+| Source role renamed/replaced or capabilities drift | Refuse the fixed OID/name/package comparison |
+| Partial database fence | Never resume processes, queues or proxy |
+
+Files under `retirement/` and the new self-hosted composition adapter are owned
+by this Scratch slice. Migration, application pools, the main controller,
+generated schema and the consolidated execution plan remain parent-owned.
+Both this file and its Chinese companion change with the implementation.
+Real PostgreSQL uses a newly owned component cluster; no ambient database URL.
+
+The v3 recovery bootstrap is a pre-existing OID 10 identity, not a transferable
+privileged role declaration. Disabling the only bootstrap LOGIN while relying on
+that same identity for reconnecting management would lose the control channel.
+That case requires a separately demonstrated management/restore strategy; the
+ordinary packaged-role path cannot silently claim to cover it.
+
+## Implemented entry and evidence boundary
+
+`ops/self-hosted/scripts/parameter-catalog-upgrade/legacyWriterRetirement.ts`
+constructs the genuine P12 component, verifies its applied binding and current
+Kernel/source/mapping facts, and consumes the capture entry from the existing
+host journal. It reopens the same package using the captured directory inode and
+package digest. Actual stopped container identity supplies the old credentials;
+random backend locks prove those authenticated sessions are on the independently
+observed management database. Every critical step repeats host-lock, package,
+container and writer-boundary checks.
+
+`retireLegacyApplicationLogins` persists an intent, then applies the database
+fence and an effect event in a separate transaction. COMMIT uses synchronous
+commit. It does not create a P13 checkpoint or advance the run phase. Its return
+is `legacy-logins-fenced-not-p13`. A retained intent is not retry permission.
+`inspectLegacyApplicationLoginFence` reads actual event/role/backend state after
+an uncertain outcome without needing the disabled credential or changing data.
+The original owner and table ACL remain intact for restoration and historical
+access; they are not proof of zero reachable writers. New runtime permissions,
+trigger/route/job retirement, all-consumer proof and a full P13 commit remain
+internal integration work.
+
+The dedicated `loginFence.integration.test.ts` invokes the exact management
+effect with real LOGINs and checks reconnect rejection, membership removal and
+owner/ACL/value preservation, plus wrong target, lock, session, role, recovery and
+cross-database refusals. These seven cases are database-component evidence only;
+they do not manufacture P12 reports or execute the top-level adapter. The parent
+must route this exact test to a newly owned PG16 cluster and exclude it from the
+shared server suite. Tests are not silently skipped when a receipt is missing.
+
+Pure command: `node_modules/.bin/vitest run --config
+server/modules/catalog-cutover/retirement/vitest.config.ts`. Real SQL uses
+`retirement/vitest.integration.config.ts` through the parent-owned runner; it is
+not a standalone command against an arbitrary database. No production command
+or production readiness is delivered by this slice.
