@@ -30,6 +30,15 @@ const tempJournal = (): string =>
   path.join(mkdtempSync(path.join(tmpdir(), "s11-upg-journal-")), "journal.json");
 
 describe("S11-UPG journal", () => {
+  it("explicit new-run creation refuses an existing journal without adopting or rewriting it", () => {
+    const journalPath = tempJournal();
+    expect(openUpgradeJournal({ journalPath, runId: "new-artifact", requireNew: true }).ok).toBe(true);
+    const original = readFileSync(journalPath);
+    expect(openUpgradeJournal({ journalPath, runId: "new-artifact", requireNew: true }).ok).toBe(false);
+    expect(openUpgradeJournal({ journalPath, runId: "another-run", requireNew: true }).ok).toBe(false);
+    expect(readFileSync(journalPath)).toEqual(original);
+    expect(openUpgradeJournal({ journalPath, runId: "new-artifact" }).ok).toBe(true);
+  });
   it.each(["valid", "orphan-step", "cross-host", "cross-run", "cross-target", "capture-digest", "package", "extra-secret",
     "wrong-hash", "wrong-attempt", "wrong-version", "unknown-promotion", "replay", "state-change"])("keeps bootstrap retirement evidence scoped without issuing P13: %s", fault => {
     const opened = openUpgradeJournal({ journalPath: tempJournal(), runId: "retirement-host" });
