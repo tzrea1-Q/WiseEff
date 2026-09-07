@@ -28,6 +28,42 @@ const tempJournal = (): string =>
   path.join(mkdtempSync(path.join(tmpdir(), "s11-upg-journal-")), "journal.json");
 
 describe("S11-UPG journal", () => {
+  it("does not silently discard a typed activation pending payload", () => {
+    const opened = openUpgradeJournal({ journalPath: tempJournal(), runId: "host" });
+    if (!opened.ok) throw new Error("fixture-open-failed");
+    const journal = opened.value;
+    expect(commitJournalTransition(journal, { action: "bind-cutover", inputDigest: "bind", cutoverRunId: "cutover",
+      toState: "idle", nextAction: "plan" }).ok).toBe(true);
+    const body = { runId: "cutover", attemptId: "activation", target: { systemIdentifier: "123", databaseOid: "456" },
+      planDigest: `sha256:${"a".repeat(64)}`, predecessorBindingDigest: null,
+      reportDigest: `sha256:${"b".repeat(64)}`, expectedObservationDigest: `sha256:${"c".repeat(64)}` };
+    const activation = { hostRunId: "host", outcome: "pending", intent: { ...body, inputDigest: sha256Prefixed(canonicalJson(body)) } };
+    expect(commitJournalTransition(journal, { action: "activation-pending", inputDigest: sha256Prefixed(canonicalJson(activation)),
+      toState: "idle", nextAction: "plan", outcome: "crashed", activation } as Parameters<typeof commitJournalTransition>[1]).ok).toBe(true);
+    const loaded = loadUpgradeJournal({ journalPath: journal.journalPath, runId: "host" });
+    expect(loaded.ok && loaded.value.record.entries.at(-1)).toHaveProperty("activation", activation);
+  });
+  it("retains an uncertain activation persistence lock after directory fsync fails", () => {
+    const journalPath = tempJournal();
+    const opened = openUpgradeJournal({ journalPath, runId: "host" });
+    if (!opened.ok) throw new Error("fixture-open-failed");
+    const journal = opened.value;
+    expect(commitJournalTransition(journal, { action: "bind-cutover", inputDigest: "bind", cutoverRunId: "cutover",
+      toState: "idle", nextAction: "plan" }).ok).toBe(true);
+    const body = { runId: "cutover", attemptId: "activation", target: { systemIdentifier: "123", databaseOid: "456" },
+      planDigest: `sha256:${"a".repeat(64)}`, predecessorBindingDigest: null,
+      reportDigest: `sha256:${"b".repeat(64)}`, expectedObservationDigest: `sha256:${"c".repeat(64)}` };
+    const activation = { hostRunId: "host", outcome: "pending" as const, intent: { ...body, inputDigest: sha256Prefixed(canonicalJson(body)) } };
+    faults.directoryInode = statSync(path.dirname(journalPath)).ino;
+    try {
+      expect(commitJournalTransition(journal, { action: "activation-pending", inputDigest: sha256Prefixed(canonicalJson(activation)),
+        toState: "idle", nextAction: "plan", outcome: "crashed", activation }).ok).toBe(false);
+      expect(existsSync(`${journalPath}.write-lock`)).toBe(true);
+      expect(loadUpgradeJournal({ journalPath, runId: "host", requireSettled: true }).ok).toBe(false);
+      const diagnostic = loadUpgradeJournal({ journalPath, runId: "host" });
+      expect(diagnostic.ok && diagnostic.value.record.entries.at(-1)?.activation?.outcome).toBe("pending");
+    } finally { faults.directoryInode = null; }
+  });
   it.each(["valid", "orphan", "cross-run", "reference", "principal", "target", "hash-only", "started", "unknown", "pending-capture", "phase", "next-action"])("persists only capture-bound typed recovery approval: %s", fault => {
     const opened = openUpgradeJournal({ journalPath: tempJournal(), runId: "approval" });
     if (!opened.ok) throw new Error("fixture-open-failed");
