@@ -40,7 +40,7 @@ it.each(["foreign-volume", "unregistered-network-member", "foreign-network-membe
   const root = await realpath(await mkdtemp(path.join(os.tmpdir(), "synthetic-authority-test-")));
   const value = input(); value.operationRoot = root; value.privateDirectory = path.join(root, "authority");
   await mkdir(value.privateDirectory, { mode: 0o700 });
-  value.journal.journalPath = path.join(root, "journal.json");
+  value.journal = { ...value.journal, journalPath: path.join(root, "journal.json") };
   const record = { runId: value.runId, journalDigest: "fixed", entries: [{ recoveryCapture: { outcome: "committed", capture: value.capture } }] };
   Object.assign(value.journal, { record }); io.loaded = { ok: true, value: { record } }; io.host = true;
   const mount = { Type: "volume", Name: "foreign-volume", Source: "/private/foreign-volume", Destination: "/var/lib/postgresql/data", RW: true };

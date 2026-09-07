@@ -131,12 +131,12 @@ export async function openSyntheticRecoveryAuthority(input: SyntheticRecoveryAut
     const organizationId = `recovery-${fixed.runId}`;
     await control.query("insert into organizations(id,name) values($1,'Synthetic recovery authority')", [organizationId]);
     await control.query("insert into roles(id,name,level,permissions) values('guest','guest','organization','{}') on conflict(id) do nothing");
-    const accountPassword = `Synthetic-${randomBytes(24).toString("hex")}!`;
-    const hash = await hashLocalAccountPassword(accountPassword);
     const principals = ["operator", "platform-owner", "incident-owner", "verifier"] as const;
     const authService = createLocalAuthService(control, { selfRegisterEnabled: false });
     let incidentToken = "";
     for (const kind of principals) {
+      const accountPassword = `Synthetic-${randomBytes(24).toString("hex")}!`;
+      const hash = await hashLocalAccountPassword(accountPassword);
       const userId = `${kind}-${fixed.runId}`;
       await control.query("insert into users(id,organization_id,name,email,title) values($1,$2,$1,$3,'Synthetic')", [userId, organizationId, `${userId}@invalid.example`]);
       await control.query("insert into user_password_credentials(user_id,username,password_hash) values($1,$1,$2)", [userId, hash]);
