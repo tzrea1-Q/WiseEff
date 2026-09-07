@@ -87,9 +87,21 @@ The appended PostgreSQL tests execute this root's real guard and the existing
 authentication effect on a prepared run. They retain all 22 existing tests and
 their timeouts, and add restricted LOGIN/SET-negative, cross-COMMIT lock,
 actual guard backend termination and actual host-lock-holder termination cases.
-These tests are prepared for the parent's `bootstrap-credential-pg16` owned
-runner; no local PostgreSQL run is claimed by this code commit. Their prepared
-run is not a forged P12 checkpoint or report approval.
+Their prepared run is not a forged P12 checkpoint or report approval.
+
+| Actual candidate | Execution and scope |
+| --- | --- |
+| `dba3e7f8d` | Parent owned `bootstrap-credential-pg16`: 25 passed / 2 failed, 5.49s, exit 1, cleanup verified. Host-lock loss still allowed the password write; a separate fixture incorrectly expected the image's existing `pg_control_system` permission to reject. The positive guard test had not reached its two commits. |
+| `290b0e240a1cdda22bfff7bedfbe5207f3c10a22` | Same owned selector: 27 passed / 0 failed / 0 skipped, 5.55s, exit 0, cleanup verified. Actual cross-commit guard, authentication readback and holder/backend loss tests passed. |
+| `22bdf0e1d462635cd17b39ce4f4c13ad1681efff` | Subsequent root-only report-retention fix: 75 pure root tests passed and targeted strict types passed. Its Red was 14 passed / 1 failed. It does not relabel the PostgreSQL execution above as this commit. |
+
+The parent used `postgres:16-alpine`, linux/arm64, image ID
+`sha256:16bc17c64a573ef34162af9298258d1aec548232985b33ed7b1eac33ba35c229`.
+The raw Red/Green log SHA-256 values are respectively
+`704b6106abda7548b99f7fc26afad0c4c61ef7924f78beab51feaf8d8c1fb28c` and
+`b770f8952c3c67ef244f4c85695381d26dc0da20663fc9abdcfed8c91fbd0a06`.
+This is isolated component evidence, not full-root approval, startup, P13,
+business queue acceptance, Hosted evidence or production authorization.
 
 Documentation impact is this paired root-adapter note. The parent retains the
 single overall upgrade plan and owns subsequent controller/startup integration.

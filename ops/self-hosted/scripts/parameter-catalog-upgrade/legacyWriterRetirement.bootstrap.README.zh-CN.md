@@ -63,7 +63,19 @@ P12/恢复包/锁，并取得同一版本的底层真实读回。
 
 追加 PG 回归在真实 prepared run 上执行本根 guard 与既有认证效果，保留原 22 用例及
 超时，并追加受限 LOGIN/SET 反例、跨两次 COMMIT 锁兼容、真实 guard backend 终止、
-真实宿主锁进程终止。它们准备交父协调者的 `bootstrap-credential-pg16` 独占入口执行；
-本代码提交不宣称已执行 PG，也不把 prepared run 伪造为 P12 checkpoint 或报告批准。
+真实宿主锁进程终止，不把 prepared run 伪造为 P12 checkpoint 或报告批准。
+
+| 实际候选 | 执行及范围 |
+| --- | --- |
+| `dba3e7f8d` | 父 owned `bootstrap-credential-pg16`：25 通过 / 2 失败，5.49s，exit 1，清理已核验。宿主锁退出仍能继续密码写入；另一夹具错误地期待镜像既有 `pg_control_system` 权限拒绝。该轮 guard 正向尚未进入两次提交。 |
+| `290b0e240a1cdda22bfff7bedfbe5207f3c10a22` | 同 owned selector：27 通过 / 0 失败 / 0 跳过，5.55s，exit 0，清理已核验；跨提交 guard、认证读回及宿主/backend 失效反例通过。 |
+| `22bdf0e1d462635cd17b39ce4f4c13ad1681efff` | 后续仅根报告留存复核修复：75 pure 根回归及 targeted strict types 通过；其 Red 为 14 通过 / 1 失败。此结果不重标上面的 PG 执行 SHA。 |
+
+父使用 `postgres:16-alpine`，linux/arm64，实际 image ID 为
+`sha256:16bc17c64a573ef34162af9298258d1aec548232985b33ed7b1eac33ba35c229`。
+原始 Red/Green 日志 SHA-256 分别为
+`704b6106abda7548b99f7fc26afad0c4c61ef7924f78beab51feaf8d8c1fb28c` 和
+`b770f8952c3c67ef244f4c85695381d26dc0da20663fc9abdcfed8c91fbd0a06`。
+它们属于隔离组件证据，不是完整根批准、startup、P13、业务队列、Hosted 或生产批准。
 
 文档影响为本根适配器中英文说明；父协调者维护唯一升级主计划及后续 controller/startup 接合。
