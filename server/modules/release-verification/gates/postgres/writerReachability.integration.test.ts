@@ -406,7 +406,7 @@ it("blocks the retired module mapping INSERT and conflict UPDATE with no write c
   }
 });
 
-it.each(["direct", "private-inner"])("blocks native file deletion dispatching an unscoped %s definer trigger into legacy storage", async mode => {
+it.each(["direct", "private-inner", "invoker"])("blocks native file deletion dispatching an unscoped %s trigger into legacy storage", async mode => {
   const suffix = `${nonce}_${mode.replace("-", "_")}`;
   const organization = `ri_trigger_org_${suffix}`, project = `ri_trigger_project_${suffix}`;
   const file = `ri_trigger_file_${suffix}`, version = `ri_trigger_version_${suffix}`, node = `ri_trigger_node_${suffix}`;
@@ -421,8 +421,8 @@ it.each(["direct", "private-inner"])("blocks native file deletion dispatching an
   await admin.query(`create function public.${inner}() returns void language plpgsql security definer set search_path=pg_catalog,public
     as $$ begin ${mutation} end $$; revoke all on function public.${inner}() from public;
     grant execute on function public.${inner}() to ${capabilityName};
-    create function public.${outer}() returns trigger language plpgsql security definer set search_path=pg_catalog,public
-    as $$ begin ${mode === "direct" ? mutation : `perform public.${inner}();`} return old; end $$;
+    create function public.${outer}() returns trigger language plpgsql security ${mode === "invoker" ? "invoker" : "definer"} set search_path=pg_catalog,public
+    as $$ begin ${mode === "private-inner" ? `perform public.${inner}();` : mutation} return old; end $$;
     revoke all on function public.${outer}() from public;
     create trigger ${trigger} after delete on public.dts_nodes for each row execute function public.${outer}();
     ${mode === "private-inner" ? `alter function public.${outer}() owner to ${capabilityName};` : ""}
