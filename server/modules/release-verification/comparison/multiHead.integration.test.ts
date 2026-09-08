@@ -1,12 +1,9 @@
-import { Buffer } from "node:buffer";
-import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { mkdtemp, mkdir, realpath, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { stringify } from "yaml";
 import { createPostgresDatabase, getRootPostgresPool, type RootDatabase } from "../../../shared/database/client";
 import { applyMigrations } from "../../../shared/database/migrations";
 import { makeTestAuthContext } from "../../../testing/authContext";
@@ -20,12 +17,16 @@ import { classifyFrozenP0Graph, fingerprintP0Graph, type FrozenP0Graph } from ".
 import { planCutover } from "../../catalog-cutover/orchestrator";
 import { acquireObservedManagementClient } from "../../catalog-cutover/retirement/managementCheckout";
 import { compileCatalogRelease } from "../../catalog-kernel/compiler";
-import { refreshReleaseAggregateDigest, validCatalogReleaseBundle } from "../../catalog-kernel/compiler/__fixtures__/catalogReleaseBundle";
-import type { CatalogReleaseBundle, CatalogReleaseDefinitionDocument } from "../../catalog-kernel/compiler/types";
+import type { CatalogReleaseBundle } from "../../catalog-kernel/compiler/types";
 import { jsonCatalogReleaseSource } from "../../catalog-kernel/interface";
-import { serializeContract, type ContractJsonValue } from "../../parameter-catalog-contract/index";
 import { readComparisonSourceInventory } from "./planInventory";
 import { COMPARISON_FAMILIES } from "./corpusContributionSchema";
+import {
+  reviewedSyntheticBundle,
+  syntheticIinArrayValueSchema,
+  syntheticTarget,
+  type SyntheticProperty,
+} from "./__fixtures__/multiHeadSyntheticArtifacts";
 import {
   captureConversionSourceInventory,
   captureConversionSourceSnapshot,
@@ -36,154 +37,12 @@ import {
 
 if (process.env.UPG_COMPONENT_PROFILE !== "selfhost-postgres16-alpine-v1") throw new Error("comparison-multihead-owned-profile-required");
 
-type DeepMutable<Value> = Value extends readonly (infer Item)[]
-  ? DeepMutable<Item>[]
-  : Value extends object
-    ? { -readonly [Key in keyof Value]: DeepMutable<Value[Key]> }
-    : Value;
-
-const mutable = <Value>(value: Value): DeepMutable<Value> => value as DeepMutable<Value>;
-
-const syntheticTarget = {
-  subjectId: "csub_acme_power",
-  aliasId: "cali_acme_power_v1",
-  definitions: {
-    iin_max: { id: "pdef_acme_power_iin_max", revisionId: "drev_acme_power_iin_max_1" },
-    enabled: { id: "pdef_acme_power_enabled", revisionId: "drev_acme_power_enabled_1" },
-  },
-} as const;
-
-const syntheticIinArrayValueSchema = {
-  type: "array",
-  items: { type: "integer", minimum: 0 },
-} as const;
-
-type SyntheticProperty = keyof typeof syntheticTarget.definitions;
 type SyntheticTargetKind = "catalog-subject" | "parameter-definition" | "definition-revision";
 type SourceTargetDeclaration = {
   readonly sourceKind: string;
   readonly sourceId: string;
   readonly targetKind: SyntheticTargetKind;
   readonly targetId: string;
-};
-
-const syntheticDigest = (value: ContractJsonValue): string =>
-  `sha256:${createHash("sha256").update(serializeContract(value)).digest("hex")}`;
-
-const syntheticBytesDigest = (bytes: Uint8Array): string =>
-  `sha256:${createHash("sha256").update(bytes).digest("hex")}`;
-
-const syntheticRevisionModel = (
-  document: Extract<CatalogReleaseDefinitionDocument, { kind: "definition" }>,
-): ContractJsonValue => {
-  const { revision } = document.content;
-  const model: Record<string, ContractJsonValue> = {
-    "/lifecycle": revision.lifecycle,
-    "/displayName": revision.displayName,
-    "/documentation": revision.documentation,
-    "/valueSchema": revision.valueSchema,
-    "/matching": revision.matching,
-  };
-  if (revision.successorDefinitionId !== undefined) model["/successorDefinitionId"] = revision.successorDefinitionId;
-  if (revision.unit !== undefined) model["/unit"] = revision.unit;
-  if (revision.examples !== undefined) model["/examples"] = revision.examples;
-  return model;
-};
-
-const syntheticDefinition = (
-  source: CatalogReleaseDefinitionDocument["source"],
-  subjectId: string,
-  propertyKey: SyntheticProperty,
-  ids: { readonly id: string; readonly revisionId: string },
-): CatalogReleaseDefinitionDocument => {
-  const revisionContent = {
-    lifecycle: "active" as const,
-    displayName: propertyKey === "iin_max" ? "Input current limit" : "Enabled",
-    documentation: propertyKey === "iin_max" ? "Maximum accepted input current." : "Whether the parameter is enabled.",
-    ...(propertyKey === "iin_max" ? { unit: "mA" } : {}),
-    valueSchema: propertyKey === "iin_max" ? { type: "integer", minimum: 0 } : { type: "boolean" },
-    matching: { sourceProperty: propertyKey, selectorKind: "driver-compatible" as const },
-  };
-  const content = {
-    id: ids.id,
-    subjectId,
-    propertyKey,
-    revision: {
-      id: ids.revisionId,
-      number: 1,
-      contentDigest: "",
-      ...revisionContent,
-    },
-  } as unknown as CatalogReleaseDefinitionDocument["content"];
-  content.revision.contentDigest = syntheticDigest(syntheticRevisionModel({
-    source,
-    kind: "definition",
-    normalizedDigest: "",
-    content,
-  }));
-  return {
-    source,
-    kind: "definition",
-    normalizedDigest: syntheticDigest(content as unknown as ContractJsonValue),
-    content,
-  };
-};
-
-const refreshSyntheticRelease = (release: DeepMutable<CatalogReleaseBundle["releases"][number]>): void => {
-  for (const document of release.documents) {
-    if (document.kind === "definition") {
-      document.content.revision.contentDigest = syntheticDigest(syntheticRevisionModel(document));
-    }
-    document.normalizedDigest = syntheticDigest(document.content as unknown as ContractJsonValue);
-  }
-  const sourcePath = release.documents[0]!.source.path;
-  const mediaType = release.documents[0]!.source.mediaType;
-  const bytes = Buffer.from(stringify({
-    schemaVersion: "1.0.0",
-    documents: release.documents.map((document) => ({ kind: document.kind, content: document.content })),
-  }, { lineWidth: 0 }), "utf8");
-  const digest = syntheticBytesDigest(bytes);
-  const source = { path: sourcePath, mediaType, digest } as const;
-  release.sources = [{ path: sourcePath, mediaType, encoding: "base64", bytes: bytes.toString("base64") }];
-  release.manifest.files = [{ path: sourcePath, mediaType, digest }];
-  for (const document of release.documents) document.source = source;
-  release.manifest.documents = release.documents.map((document) => ({
-    sourcePath: document.source.path,
-    kind: document.kind,
-    documentId: document.content.id,
-    normalizedDigest: document.normalizedDigest,
-  }));
-  refreshReleaseAggregateDigest(release);
-};
-
-const deepFreeze = <Value>(value: Value): Value => {
-  if (value !== null && typeof value === "object" && !Object.isFrozen(value)) {
-    for (const nested of Object.values(value)) deepFreeze(nested);
-    Object.freeze(value);
-  }
-  return value;
-};
-
-const reviewedSyntheticBundle = (): CatalogReleaseBundle => {
-  const bundle = mutable(structuredClone(validCatalogReleaseBundle()));
-  const target = bundle.releases.find((release) => release.manifest.release.id === bundle.targetReleaseId);
-  if (!target) throw new Error("comparison-multihead-reviewed-bundle-target-missing");
-  const subject = target.documents.find((document) => document.kind === "subject");
-  const definition = target.documents.find((document) => document.kind === "definition");
-  if (!subject || subject.kind !== "subject" || !definition || definition.kind !== "definition") {
-    throw new Error("comparison-multihead-reviewed-bundle-base-invalid");
-  }
-  const iinMax = target.documents.find((document) => document.kind === "definition"
-    && document.content.id === syntheticTarget.definitions.iin_max.id);
-  if (!iinMax || iinMax.kind !== "definition" || iinMax.content.revision.id !== syntheticTarget.definitions.iin_max.revisionId) {
-    throw new Error("comparison-multihead-reviewed-bundle-iin-target-invalid");
-  }
-  // The source fixture records u32-array/[43]; the reviewed target must retain
-  // that shape explicitly instead of inheriting the scalar base-fixture schema.
-  iinMax.content.revision.valueSchema = syntheticIinArrayValueSchema;
-  target.documents.push(syntheticDefinition(definition.source, subject.content.id, "enabled", syntheticTarget.definitions.enabled));
-  refreshSyntheticRelease(target);
-  return deepFreeze(bundle);
 };
 
 const sourceIdentityId = (graph: FrozenP0Graph, sourceKind: string, sourceId: string): string => {
@@ -220,7 +79,11 @@ const reviewedSyntheticArtifacts = (input: {
   }
   const bundle = reviewedSyntheticBundle();
   const compiled = compileCatalogRelease(bundle);
-  if (!compiled.ok) throw new Error(`comparison-multihead-reviewed-bundle-${compiled.error.kind}`);
+  if (!compiled.ok) {
+    console.info(JSON.stringify({ stage: "reviewed-bundle-compile", phase: compiled.error.phase,
+      violations: compiled.error.violations.map(({ code, location, detail }) => ({ code, location, detail })) }));
+    throw new Error(`comparison-multihead-reviewed-bundle-${compiled.error.kind}`);
+  }
   const target = bundle.releases.find((release) => release.manifest.release.id === bundle.targetReleaseId);
   if (!target) throw new Error("comparison-multihead-reviewed-bundle-target-missing");
   const mappings = declarations.map((declaration) => {
