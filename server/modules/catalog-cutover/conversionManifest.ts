@@ -56,10 +56,13 @@ export async function captureConversionSourceSnapshot(client: Queryable): Promis
 }
 
 async function scanConversionSourceInventory(client: Queryable, capture: boolean): Promise<ConversionSourceSnapshot> {
-  const prior = await client.query<{ row_security: string }>("show row_security");
-  await client.query("set row_security = off");
+  let prior: { rows: { row_security: string }[] } | undefined;
+  let restore = false;
   let primary: Error | undefined;
   try {
+  prior = await client.query<{ row_security: string }>("show row_security");
+  await client.query("set row_security = off");
+  restore = true;
   const tables = await client.query<{ table_name: string; columns: string[] }>(`
     select c.relname as table_name, array_agg(a.attname::text order by a.attnum) as columns
     from pg_catalog.pg_class c
@@ -112,12 +115,14 @@ async function scanConversionSourceInventory(client: Queryable, capture: boolean
       "PCAT-CONVERSION-SOURCE-PROJECTION-DUPLICATE"].includes(message) ? message : "PCAT-CONVERSION-SOURCE-PROJECTION-QUERY-FAILED");
     throw primary;
   } finally {
-    try { await client.query(prior.rows[0]?.row_security === "off" ? "set row_security = off" : "set row_security = on"); }
+    if (restore) {
+    try { await client.query(prior?.rows[0]?.row_security === "off" ? "set row_security = off" : "set row_security = on"); }
     catch (error) {
       if (!capture) throw error;
       const cleanup = new Error("PCAT-CONVERSION-SOURCE-PROJECTION-RESTORE-FAILED");
       if (primary) throw new AggregateError([primary, cleanup], "PCAT-CONVERSION-SOURCE-PROJECTION-AND-RESTORE-FAILED");
       throw cleanup;
+    }
     }
   }
 }
