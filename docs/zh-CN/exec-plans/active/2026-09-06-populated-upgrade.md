@@ -4,6 +4,29 @@
 
 ## 范围与状态
 
+### 已授权续工：NW-01–NW-04
+
+用户最新review批准D-A：自然审计测试修复 `009ce086a3050ce555806394463bb8d179c70fbb`
+及其三对精确身份重定位，实施前仍逐对独立核验字节／元数据；批准D-B：显式演进比较
+证据版本，将完整mapping快照与逐身份、固定计划规则支持的声明差异分开。两项均不
+授权新增migration、runtime grant、S6／Policy语义、生产操作或合并Draft。历史v1字节与
+批准、原可信库存、原23对映射及用途／批准规则保持不变。
+
+当前base仍为 `cda6737a8`；报告 `b5ef257cc` 的run `34169931811` 已失败结束，
+实际merge checkout `829f8b49d`。runtime-role-source为12通过／1失败：管理会话终止后
+服务端会话数预期0、实测1；后续owned suite未执行。Build/test、smoke和quality通过，
+两个目标job跳过。不得与此前任何timeout或恢复失败合并归因。
+
+| 工作单元／唯一写入者 | 退出条件与风险 | 文档影响 |
+| --- | --- | --- |
+| NW-01运行来源／Raman；审计及精确映射／父 | 按PID归因释放；不放宽预算；三对字节与身份反例 | 现有runtime source、boundary及证据双语文件 |
+| NW-02 codec／provider／mapping集成／父 | 实际多head与固定P0规则通过既有九gate；未知来源拒绝 | 现有比较合同／决策及指纹 |
+| NW-03 controller／journal／组合根／父 | 真实P13与正式批准报告支持受限production API／worker启动 | 现有startup、retirement及操作手册 |
+| NW-04集成／父 | 真实终端完整升级非空隔离旧环境并完成业务／恢复验收 | 现有证据／操作手册 |
+
+同一时间只推进一个共享实现根，独立审查单列。先跑相关真实边界，稳定候选再完整验证。
+A／B／C均未完成；严格文档检查要求保持。
+
 集成 `864bd95f180a297fb0fd3ec04aeeaf930b36718c` 修复bootstrap夹具生命周期失败，
 没有增加任何预算。源 `c4b99f4ba` 经独立Standards／Spec审查通过、真实PG40/40；
 父集成另行执行40/40，清理验证通过。审计时间戳相同的修复仍为Scratch：保持字节布局

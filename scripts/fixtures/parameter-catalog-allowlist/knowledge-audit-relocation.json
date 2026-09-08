@@ -1,0 +1,109 @@
+{
+  "schemaVersion": 1,
+  "file": "server/modules/knowledge/parameterReferences.test.ts",
+  "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
+  "fixtureSha256": "fe3cd2abe9181517332612938f00082db864d66f6f9b284d5f43b3051b5fe951",
+  "sourceBlobOid": "79c7bdf5cd4535d5d340e546a0037080ebae8c9b",
+  "destinationBlobOid": "e019e246ea36a9ced4a70b572bc4c03d22eaad0b",
+  "pairs": [
+    {
+      "old": {
+        "id": "S12-KNW:legacy-catalog-sql-write:3d31528c144b37be:08e77a47d62c9f61",
+        "rule": "legacy-catalog-sql-write",
+        "file": "server/modules/knowledge/parameterReferences.test.ts",
+        "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration.",
+        "family": "S12-KNW",
+        "line": 365,
+        "column": 22,
+        "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
+        "trustedBlobOid": "79c7bdf5cd4535d5d340e546a0037080ebae8c9b",
+        "byteStart": 14609,
+        "byteEnd": 14687,
+        "token": "write:parameter_specs",
+        "evidence": "write parameter_specs: update parameter_specs set definition_lifecycle = 'deprecated' where id = $1"
+      },
+      "new": {
+        "id": "S12-KNW:legacy-catalog-sql-write:3d31528c144b37be:9741979d2a88795a",
+        "family": "S12-KNW",
+        "rule": "legacy-catalog-sql-write",
+        "file": "server/modules/knowledge/parameterReferences.test.ts",
+        "line": 376,
+        "column": 22,
+        "byteStart": 15626,
+        "byteEnd": 15704,
+        "token": "write:parameter_specs",
+        "evidence": "write parameter_specs: update parameter_specs set definition_lifecycle = 'deprecated' where id = $1",
+        "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration.",
+        "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
+        "trustedBlobOid": "e019e246ea36a9ced4a70b572bc4c03d22eaad0b"
+      },
+      "sliceSha256": "6c168a590f96d6f2381a79f7fcc2ac3d0832c4387297f8606bd939b1111477f6"
+    },
+    {
+      "old": {
+        "id": "S12-KNW:legacy-catalog-sql-write:3d31528c144b37be:bd7f09e12e4df3d5",
+        "rule": "legacy-catalog-sql-write",
+        "file": "server/modules/knowledge/parameterReferences.test.ts",
+        "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration.",
+        "family": "S12-KNW",
+        "line": 384,
+        "column": 9,
+        "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
+        "trustedBlobOid": "79c7bdf5cd4535d5d340e546a0037080ebae8c9b",
+        "byteStart": 15636,
+        "byteEnd": 15749,
+        "token": "write:parameter_specs",
+        "evidence": "write parameter_specs: update parameter_specs set attribution_subject_id = $2, property_key = $3, specification_key = $4 where id = $1"
+      },
+      "new": {
+        "id": "S12-KNW:legacy-catalog-sql-write:3d31528c144b37be:14777792e8983885",
+        "family": "S12-KNW",
+        "rule": "legacy-catalog-sql-write",
+        "file": "server/modules/knowledge/parameterReferences.test.ts",
+        "line": 395,
+        "column": 9,
+        "byteStart": 16653,
+        "byteEnd": 16766,
+        "token": "write:parameter_specs",
+        "evidence": "write parameter_specs: update parameter_specs set attribution_subject_id = $2, property_key = $3, specification_key = $4 where id = $1",
+        "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration.",
+        "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
+        "trustedBlobOid": "e019e246ea36a9ced4a70b572bc4c03d22eaad0b"
+      },
+      "sliceSha256": "3ecfc0678cfb3546f4048683aef009371c5f70c05cdb7e53044ed887992f85b8"
+    },
+    {
+      "old": {
+        "id": "S12-KNW:legacy-catalog-sql-write:d9a4a583ce9afb5f:a601ffdab93fd7f1",
+        "rule": "legacy-catalog-sql-write",
+        "file": "server/modules/knowledge/parameterReferences.test.ts",
+        "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration.",
+        "family": "S12-KNW",
+        "line": 423,
+        "column": 29,
+        "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
+        "trustedBlobOid": "79c7bdf5cd4535d5d340e546a0037080ebae8c9b",
+        "byteStart": 17786,
+        "byteEnd": 17829,
+        "token": "write:parameter_specs",
+        "evidence": "write parameter_specs: delete from parameter_specs where id = $1"
+      },
+      "new": {
+        "id": "S12-KNW:legacy-catalog-sql-write:d9a4a583ce9afb5f:ec96a9fbb1bac820",
+        "family": "S12-KNW",
+        "rule": "legacy-catalog-sql-write",
+        "file": "server/modules/knowledge/parameterReferences.test.ts",
+        "line": 434,
+        "column": 29,
+        "byteStart": 18803,
+        "byteEnd": 18846,
+        "token": "write:parameter_specs",
+        "evidence": "write parameter_specs: delete from parameter_specs where id = $1",
+        "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration.",
+        "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
+        "trustedBlobOid": "e019e246ea36a9ced4a70b572bc4c03d22eaad0b"
+      },
+      "sliceSha256": "f5086dbb8b26c225c2ea06c6db547a05638b6cc1befadfb0fd4ed59ed763d1e2"
+    }
+  ]
+}

@@ -4,6 +4,34 @@
 
 ## Scope and state
 
+### Authorized continuation: NW-01–NW-04
+
+The user's latest review authorizes D-A (the natural audit test repair at
+`009ce086a3050ce555806394463bb8d179c70fbb` and only its three exact identity
+relocations, after independent byte/metadata verification) and D-B (an explicit
+comparison evidence version separating the complete mapping snapshot from
+per-identity, fixed-plan-backed differences). Neither authorizes new migrations,
+runtime grants, S6/Policy semantics, production operations or merging this Draft.
+Historical v1 bytes and approvals, original trusted inventory, the previous
+23-pair relocation and existing purpose/approval rules stay unchanged.
+
+Current base remains `cda6737a8`; report `b5ef257cc` run `34169931811` finished
+failed at merge checkout `829f8b49d`: runtime-role-source 12 passed/1 failed,
+where the post-manager-termination session count was 1 instead of 0. Later owned
+suites did not execute. Build/test, smoke and quality passed; two target jobs
+skipped. This is separate from every earlier timeout and restore failure.
+
+| Unit / sole writer | Exit condition and risk | Documentation impact |
+| --- | --- | --- |
+| NW-01 runtime source / Raman; audit and exact relocation / parent | PID-based teardown diagnosis; no budget relaxation; exact three old/new slices and adversarial identity checks | Existing runtime source, boundary, evidence pairs |
+| NW-02 codec/provider/mapping integration / parent | Actual multi-head owner data and fixed P0 rules pass existing nine gates; unknown provenance refuses | Existing comparison contract/decision pair and fingerprints |
+| NW-03 controller/journal/composition roots / parent | Real P13 facts and formal approved reports allow restricted production API/worker startup | Existing startup, retirement and operator pairs |
+| NW-04 integration / parent | Actual terminal upgrades a nonempty isolated old system through business/recovery acceptance | Existing evidence/operator pair |
+
+Only one shared implementation root is active at a time; independent review
+remains separate. Focused real-boundary checks precede one stable-candidate full
+validation. A/B/C remain incomplete. The strict documentation gate still applies.
+
 ### Current continuation: real dependencies and activation
 
 Integrated `864bd95f180a297fb0fd3ec04aeeaf930b36718c` closes the bootstrap
