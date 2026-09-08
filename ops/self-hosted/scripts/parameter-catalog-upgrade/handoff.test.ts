@@ -11,6 +11,7 @@ import { executeHandoff, inspectHandoff, prepareHandoff, withHostOperationLock, 
 import { readHandoffApplicationRequirement, assertHostOperationLockForJournal, verifyStoppedHandoff } from "./handoff";
 import { bindingJournalPath, createBindingCutoverJournal } from "./bindingJournal";
 import { commitJournalTransition, openUpgradeJournal } from "./journal";
+import { createOwnedHandoffDataObserver } from "./handoffDataSource";
 
 it("rejects a structural stopped-handoff lock before observing any target", async () => {
   let observations = 0;
@@ -64,7 +65,7 @@ describe.skipIf(process.env.UPG_HANDOFF_DOCKER_TEST !== "1")("actual isolated Co
     const directory = await mkdtemp(path.join(os.tmpdir(), "handoff-compose-"));
     const source = path.join(directory, "source");
     const run = `handoff-${randomBytes(8).toString("hex")}`;
-    const secret = randomBytes(24).toString("hex");
+    const secret = randomBytes(24).toString("hex") + " '$()\\\"";
     const git = (...args: string[]) => {
       const result = spawnSync("git", ["-C", root, ...args], { encoding: "utf8" });
       if (result.status !== 0) throw new Error("fixture-git-failed");
@@ -78,6 +79,8 @@ describe.skipIf(process.env.UPG_HANDOFF_DOCKER_TEST !== "1")("actual isolated Co
     let composeFile = "";
     let worktree = false;
     let composeAttempted = false;
+    const createdImages = new Map<string, string>();
+    let primaryFailure: unknown;
     const compose = (...args: string[]) => docker.command(["compose", "-p", run, "-f", composeFile, ...args]);
     const ids: Record<string, string> = {};
     const owned = (service: string) => {
@@ -93,10 +96,12 @@ describe.skipIf(process.env.UPG_HANDOFF_DOCKER_TEST !== "1")("actual isolated Co
       const revision = git("rev-parse", "HEAD"); const tree = git("rev-parse", "HEAD^{tree}");
       const redisImage = docker.command(["image", "inspect", "redis:7-alpine", "--format", "{{.Id}}"] ).toString().trim();
       docker.command(["tag", redisImage, sourceImage]);
+      createdImages.set(sourceImage, redisImage);
       const dockerfile = path.join(directory, "Dockerfile");
       await writeFile(dockerfile, `FROM ${sourceImage}\nLABEL org.opencontainers.image.revision=${revision}\nLABEL org.wiseeff.source.tree=${tree}\n`);
       docker.command(["build", "--network=none", "-t", candidateTag, "-f", dockerfile, directory]);
       const candidateImage = docker.command(["image", "inspect", candidateTag, "--format", "{{.Id}}"] ).toString().trim();
+      createdImages.set(candidateTag, candidateImage);
       // App fixtures prove artifact/Compose identity only. They are not a built legacy application.
       const app = { image: sourceImage, entrypoint: ["sh", "-c", "sleep 300"] };
       await writeFile(composeFile, JSON.stringify({ services: {
@@ -104,9 +109,12 @@ describe.skipIf(process.env.UPG_HANDOFF_DOCKER_TEST !== "1")("actual isolated Co
         postgres: { image: "postgres:16-alpine", environment: { POSTGRES_PASSWORD: secret }, volumes: ["pg:/var/lib/postgresql/data"] },
         redis: { image: "redis:7-alpine", command: ["redis-server", "--appendonly", "yes"], volumes: ["redis:/data"] },
         minio: { image: "minio/minio:RELEASE.2024-12-18T13-15-44Z", environment: { MINIO_ROOT_USER: "synthetic", MINIO_ROOT_PASSWORD: secret }, command: ["server", "/data"], volumes: ["objects:/data"] },
-        mc: { image: "minio/mc:RELEASE.2024-11-21T17-21-54Z", entrypoint: ["sh", "-c", "sleep 300"], environment: { MC_HOST_fixture: `http://synthetic:${secret}@minio:9000` } },
+        mc: { image: "minio/mc:RELEASE.2024-11-21T17-21-54Z", entrypoint: ["sh", "-c", "sleep 300"] },
       }, volumes: { pg: {}, redis: {}, objects: {} }, networks: { default: { driver_opts: { "com.docker.network.bridge.enable_ip_masquerade": "false" } } } }), { mode: 0o600 });
       expect(docker.command(["ps", "-aq", "--filter", `label=com.docker.compose.project=${run}`]).toString().trim()).toBe("");
+      for (const kind of ["volume", "network"]) {
+        expect(docker.command([kind, "ls", "-q", "--filter", `label=com.docker.compose.project=${run}`]).toString().trim()).toBe("");
+      }
       composeAttempted = true;
       compose("up", "-d", "--no-build", "--pull", "never");
       for (const service of ["api", "worker", "web", "postgres", "redis", "minio", "mc"]) {
@@ -114,7 +122,14 @@ describe.skipIf(process.env.UPG_HANDOFF_DOCKER_TEST !== "1")("actual isolated Co
         ids[service] = JSON.parse(docker.command(["inspect", short]).toString())[0].Id; owned(service);
       }
       await wait(() => exec("postgres", ["pg_isready", "-U", "postgres"]));
-      await wait(() => exec("mc", ["mc", "mb", "fixture/isolated"]));
+      // Only fixture preparation creates a bucket. Even here credentials use
+      // private stdin JSON, so punctuation is never shell or URL syntax.
+      await wait(() => {
+        owned("mc"); owned("minio");
+        return docker.command(["exec", "-i", ids.mc!, "env", "-i", "PATH=/usr/local/bin:/usr/bin:/bin", "HOME=/tmp", "sh", "-c",
+          'umask 077; d=$(mktemp -d) || exit 1; trap \'rm -rf "$d"\' EXIT HUP INT TERM; cat > "$d/config.json" || exit 1; mc --config-dir "$d" mb --ignore-existing fixture/isolated'],
+        Buffer.from(JSON.stringify({ version: "10", aliases: { fixture: { url: "http://minio:9000", accessKey: "synthetic", secretKey: secret, api: "S3v4", path: "auto" } } })));
+      });
       const configFile = path.join(source, "ops/self-hosted/.handoff-private.env");
       const lockRoot = path.join(privateRoot, "state");
       // The new custodian reader requires a private journal directory. Prepare
@@ -131,13 +146,14 @@ describe.skipIf(process.env.UPG_HANDOFF_DOCKER_TEST !== "1")("actual isolated Co
           stores: (["postgres", "minio", "redis"] as const).map(service => ({ service, containerId: ids[service]!, volumeName: owned(service).Mounts[0].Name, destination: service === "postgres" ? "/var/lib/postgresql/data" : "/data" })),
         }, candidate: { checkout: root, sha: revision, tree, imageId: candidateImage }, privateConfigPath: await realpath(configFile), lockRoot, journalPath: path.join(lockRoot, "journal.json"),
       };
-      const observer = { docker, async observeDataIdentity() {
-        return {
-          postgres: exec("postgres", ["psql", "-U", "postgres", "-Atc", "select system_identifier::text || ':' || (select oid::text from pg_database where datname=current_database()) from pg_control_system()"]),
-          objectStore: `${JSON.parse(exec("minio", ["cat", "/data/.minio.sys/format.json"])).id}:${exec("mc", ["mc", "ls", "--json", "fixture"])}:${exec("mc", ["mc", "version", "info", "fixture/isolated"])}`,
-          redis: `${exec("redis", ["redis-cli", "INFO", "server"]).split("\n").find(line => line.startsWith("run_id:"))}:${exec("redis", ["redis-cli", "CONFIG", "GET", "appendonly"])}:db0:synthetic`,
-        };
-      } };
+      // This is the production read-only owned profile. App containers above
+      // remain identity fixtures; database 0 is not a BullMQ-prefix proof.
+      const observer = createOwnedHandoffDataObserver({ inputs: input,
+        objectClient: { containerId: ids.mc!, imageId: owned("mc").Image },
+        postgres: { database: "postgres", user: "postgres", password: secret },
+        objects: { bucket: "isolated", accessKey: "synthetic", secretKey: secret },
+        redis: { database: 0, auth: { kind: "none" } },
+      });
       const plan = await prepareHandoff(input, path.join(directory, "plan.json"), observer);
       // Return only the typed reason on unexpected acceptance; never dump a plan
       // containing private paths or live resource metadata into assertion output.
@@ -206,7 +222,7 @@ describe.skipIf(process.env.UPG_HANDOFF_DOCKER_TEST !== "1")("actual isolated Co
       const fixedResult = await executeHandoff(plan, plan.digest, mutableCommand, {
         ...observer,
         async observeDataIdentity() {
-          const identity = await observer.observeDataIdentity();
+          const identity = await observer.observeDataIdentity(input);
           mutableCommand.action = "execute";
           return identity;
         },
@@ -224,11 +240,11 @@ describe.skipIf(process.env.UPG_HANDOFF_DOCKER_TEST !== "1")("actual isolated Co
         await expect(verifyStoppedHandoff(plan, plan.digest, observer, lock)).resolves.toEqual(plan.observation);
         expect(await refusal(verifyStoppedHandoff(plan, "wrong-digest", observer, lock))).toBe("handoff-plan-digest-mismatch");
         const changed = { ...observer, async observeDataIdentity() {
-          return { ...await observer.observeDataIdentity(), redis: "different-observed-redis" };
+          return { ...await observer.observeDataIdentity(input), redis: "different-observed-redis" };
         } };
         expect(await refusal(verifyStoppedHandoff(plan, plan.digest, changed, lock))).toBe("handoff-target-changed-after-plan");
         const sharedObserver = { ...observer, async observeDataIdentity() {
-          const actual = await observer.observeDataIdentity();
+          const actual = await observer.observeDataIdentity(input);
           const shared = { ...actual, redis: "observed-drift" };
           setImmediate(() => { shared.redis = actual.redis; });
           return shared;
@@ -254,30 +270,48 @@ describe.skipIf(process.env.UPG_HANDOFF_DOCKER_TEST !== "1")("actual isolated Co
       await writeFile(configFile, `${mainConfig()}CHANGED_CONFIGURATION=true\n`, { mode: 0o600 });
       await expect(executeHandoff(plan, plan.digest, { action: "inspect" }, { ...observer, openController, withOperationLock: withHostOperationLock })).rejects.toThrow("target-changed-after-plan");
       expect(JSON.parse(await readFile(input.journalPath, "utf8")).entries).toEqual([]);
-    } finally {
+    } catch (error) { primaryFailure = error; throw error; } finally {
+      const cleanupErrors: Error[] = [];
+      const clean = async (stage: string, action: () => unknown | Promise<unknown>) => {
+        try { await action(); } catch { cleanupErrors.push(new Error(`handoff-fixture-cleanup-${stage}-failed`)); }
+      };
       if (composeAttempted) {
-        const remaining = docker.command(["ps", "-aq", "--filter", `label=com.docker.compose.project=${run}`]).toString().trim().split("\n").filter(Boolean);
-        for (const id of remaining) {
-          const info = JSON.parse(docker.command(["inspect", id]).toString())[0];
-          if (info.Config.Labels["com.docker.compose.project"] !== run || info.Config.Labels["com.docker.compose.project.config_files"] !== composeFile) throw new Error("cleanup-container-owner-mismatch");
-          docker.command(["rm", "-f", "-v", info.Id]);
-        }
-        for (const kind of ["volume", "network"]) {
+        // Include partial Compose creation only after exact project/config
+        // ownership has been observed. Never infer ownership from a prefix.
+        await clean("containers", async () => {
+          const list = () => docker.command(["ps", "-aq", "--no-trunc", "--filter", `label=com.docker.compose.project=${run}`]).toString().trim().split("\n").filter(Boolean);
+          for (const id of list()) await clean("container", () => {
+            const info = JSON.parse(docker.command(["inspect", id]).toString())[0];
+            if (info.Id !== id || info.Config.Labels["com.docker.compose.project"] !== run || info.Config.Labels["com.docker.compose.project.config_files"] !== composeFile) throw new Error("cleanup-container-owner-mismatch");
+            docker.command(["rm", "-f", "-v", info.Id]);
+          });
+          if (list().length) throw new Error("cleanup-container-still-present");
+        });
+        for (const kind of ["volume", "network"]) await clean(kind, async () => {
           const names = docker.command([kind, "ls", "-q", "--filter", `label=com.docker.compose.project=${run}`]).toString().trim().split("\n").filter(Boolean);
-          for (const name of names) {
+          for (const name of names) await clean(kind, () => {
             const info = JSON.parse(docker.command([kind, "inspect", name]).toString())[0];
             if (info.Labels?.["com.docker.compose.project"] !== run) throw new Error("cleanup-resource-owner-mismatch");
             docker.command([kind, "rm", kind === "network" ? info.Id : info.Name]);
-          }
-        }
+          });
+          if (docker.command([kind, "ls", "-q", "--filter", `label=com.docker.compose.project=${run}`]).toString().trim()) throw new Error("cleanup-resource-still-present");
+        });
       }
-      for (const reference of [sourceImage, candidateTag]) { try { docker.command(["image", "rm", reference]); } catch { /* Absent if setup failed before creation. */ } }
-      if (worktree) {
+      for (const reference of [sourceImage, candidateTag]) await clean("image", () => {
+        const list = () => docker.command(["image", "ls", "--no-trunc", "-q", "--filter", `reference=${reference}`]).toString().trim();
+        const current = list();
+        if (!current) return; // A successful empty listing proves absence.
+        if (!createdImages.has(reference) || current !== createdImages.get(reference)) throw new Error("cleanup-image-owner-unproven");
+        docker.command(["image", "rm", reference]);
+        if (list()) throw new Error("cleanup-image-still-present");
+      });
+      await clean("worktree", async () => { if (worktree) {
         for (const file of [composeFile, path.join(source, "ops/self-hosted/.handoff-private.env")]) if (file) await rm(file, { force: true });
         git("worktree", "remove", source);
-      }
-      await rm(directory, { recursive: true, force: true });
-      await rm(repositorySecretRoot, { recursive: true, force: true });
+      } });
+      await clean("private-directory", () => rm(directory, { recursive: true, force: true }));
+      await clean("repository-private-directory", () => rm(repositorySecretRoot, { recursive: true, force: true }));
+      if (cleanupErrors.length) throw new AggregateError(primaryFailure === undefined ? cleanupErrors : [primaryFailure, ...cleanupErrors], "handoff-fixture-cleanup-failed");
     }
   }, 120000);
 });

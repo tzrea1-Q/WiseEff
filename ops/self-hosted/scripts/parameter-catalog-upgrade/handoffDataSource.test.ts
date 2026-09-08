@@ -50,14 +50,14 @@ function fixture() {
     if (args[0] === "inspect") return Buffer.from(JSON.stringify(args.slice(1).map(i => containers.find(c => c.Id === i))));
     if (args[0] === "volume") return Buffer.from(JSON.stringify(args.slice(2).map(name => volumes.find(v => v.Name === name))));
     if (args[0] === "network") return Buffer.from(JSON.stringify([network]));
-    if (args[0] === "ps") return Buffer.from(inputs.source.stores.find(s => args.includes(`volume=${s.volumeName}`))!.containerId + "\n");
+    if (args[0] === "ps") return Buffer.from(args.some(arg => arg.startsWith("network=")) ? containers.map(c => c.Id).join("\n") : inputs.source.stores.find(s => args.includes(`volume=${s.volumeName}`))!.containerId + "\n");
     if (args[0] === "exec") {
       beforeExec?.();
       if (args.includes("handoff-postgres")) return Buffer.from(JSON.stringify(info.postgres));
       if (args.includes("handoff-minio")) return Buffer.from(JSON.stringify(args.includes("admin") ? info.deployment : args.includes("version") ? info.versioning : info.buckets));
+      if (args.includes("CLIENT")) return Buffer.from(info.client);
       if (args.includes("INFO")) return Buffer.from(info.redis);
       if (args.includes("CONFIG")) return Buffer.from(info.persistence);
-      if (args.includes("CLIENT")) return Buffer.from(info.client);
     }
     throw new Error("private-command-failure");
   });
@@ -117,4 +117,32 @@ it("pins caller configuration and refuses a different handoff selection", async 
   f.options.inputs.source.stores[0]!.containerId = "9".repeat(64);
   await expect(observer.observeDataIdentity(f.options.inputs)).rejects.toThrow(/^handoff-data-/);
   expect(seam.command).not.toHaveBeenCalled();
+});
+
+it("binds real Redis process and bucket versioning changes into their respective identities", async () => {
+  const f = fixture(); const observer = create(f.options);
+  const before = await observer.observeDataIdentity(f.options.inputs);
+  f.info.redis = f.info.redis.replace("a".repeat(40), "b".repeat(40));
+  f.info.versioning.versioning.status = "Enabled";
+  const after = await observer.observeDataIdentity(f.options.inputs);
+  expect(after.postgres).toBe(before.postgres);
+  expect(after.redis).not.toBe(before.redis);
+  expect(after.objectStore).not.toBe(before.objectStore);
+});
+
+it("does not expose private command failures", async () => {
+  const f = fixture(); const previous = seam.command.getMockImplementation()!;
+  seam.command.mockImplementation((args, input) => {
+    if (args[0] === "exec") throw new Error(f.options.postgres.password);
+    return previous(args, input);
+  });
+  const error = await create(f.options).observeDataIdentity(f.options.inputs).catch((value: unknown) => value);
+  expect(error).toEqual(new Error("handoff-data-observation-unavailable"));
+  expect(Reflect.get(error as object, "cause")).toBeUndefined();
+});
+
+it("preserves a legitimate empty persistence value at the end of raw Redis output", async () => {
+  const f = fixture();
+  f.info.persistence = f.info.persistence.replace("save\n3600 1\n", "") + "save\n\n";
+  await expect(create(f.options).observeDataIdentity(f.options.inputs)).resolves.toBeDefined();
 });
