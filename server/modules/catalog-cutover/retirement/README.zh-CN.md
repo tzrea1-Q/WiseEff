@@ -2,6 +2,23 @@
 
 > English: [English](README.md)
 
+## 普通 LOGIN 的 SQL 后继：实现边界
+
+当前非 OID10 普通分支确认 NOLOGIN 与成员撤销后即返回；bootstrap 分支还会调用
+既有 SQL 权限隔离。旧应用角色 NOLOGIN 不会撤销另一候选 LOGIN 在固定八张旧结构
+表上的写权限。这是原已授权效果的组合遗漏，不授权扩大至审计、历史或 ProjectValue。
+
+本次仅修改普通分支及直接测试。API、worker 和已配置治理 LOGIN 必须来自原
+`openRuntimeRoleSource`；实际管理 lease 与 S7 保持，原 SQL intent 绑定同一 run、
+attempt、物理目标、P12、root request 和已核验恢复包。效果前保留真实宿主 journal
+CAS、报告与源边界检查；缺失或未知后继不得报告退休成功。重查只检查原 attempt，
+不得重试认证或 REVOKE。保留 SELECT 与无关业务权限，不发行 P13 完成或运行期
+发布，也不新增 grant/schema。
+
+先用现有显式 I/O 替身记录根编排反例，再以实际 owned PostgreSQL 观察普通 LOGIN
+已 NOLOGIN、候选写入被拒和 SELECT 保留。前者不证明真实获批 P12/报告或完整生产
+根。本提案提交两项验证均待执行；既有 bootstrap/SQL 通过不能替代本次组合验证。
+
 独立审查另发现继承的准备失败路径：若清理也失败，会覆盖首个错误。现同时报告两项：
 准备错误保留内部选定的阶段及闭集 PostgreSQL 错误码，清理错误使用静态信息；
 聚合错误不携带原始 SQL、私密错误或 cause。清理成功仍保留原准备错误。

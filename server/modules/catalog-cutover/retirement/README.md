@@ -2,6 +2,33 @@
 
 > Chinese: [Chinese](README.zh-CN.md)
 
+## Ordinary LOGIN SQL successor: implementation boundary
+
+The ordinary non-OID10 branch currently returns after observing NOLOGIN and
+removed memberships. Its bootstrap sibling also invokes the existing SQL
+privilege fence. NOLOGIN on the stopped application's original role does not
+remove a different candidate LOGIN's grants on the eight fixed legacy
+relations. This is a missing composition of already authorized effects, not
+permission to retire unrelated audit, history or ProjectValue writes.
+
+The bounded follow-up owns only the ordinary branch and its direct tests. It
+must obtain API, worker and configured governance LOGINs from the original
+`openRuntimeRoleSource`, retain the actual management lease and S7 lock, and
+bind the existing SQL intent to the same run, attempt, physical target, P12,
+root request and verified recovery package. Original host journal CAS and
+report/source checks precede effects; a missing or unknown successor must not
+be reported as successful retirement. Reconciliation must inspect the original
+attempt and must never repeat a credential or REVOKE effect. SELECT and
+unrelated business privileges remain unchanged. No P13 completion, runtime
+publication, new grant or schema is introduced.
+
+Validation starts with a root orchestration counterexample using the existing
+explicit I/O substitutes, followed by actual owned PostgreSQL observations of
+ordinary NOLOGIN, denied candidate mutations and retained SELECT. The former
+does not prove approved P12/report or a complete production root. Both checks
+are pending at this proposal commit; prior bootstrap and SQL results do not
+establish this new composition.
+
 ## Independent inspection test lifecycle
 
 Hosted run `34167230816`, job `101880674239`, executed merge
