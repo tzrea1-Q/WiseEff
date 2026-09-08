@@ -71,6 +71,10 @@ vi.mock("pg", async () => {
     // fixture, not evidence of an actual PostgreSQL/Docker connection.
     connection = { stream: new Socket() };
     query = vi.fn(async (sql: string, values?: unknown[]) => {
+      if (io.ordinary && sql === "rollback" && io.sqlInspect.mock.calls.length === 1) {
+        if (io.fault === "ordinary-final-manager-loss") this.emit("end");
+        if (io.fault === "ordinary-final-host-loss") io.fault = "host-lock";
+      }
       if (io.ordinary && sql.includes("phase='P13' order by sequence_number")) return { rows: structuredClone(io.rootEvents), rowCount: io.rootEvents.length };
       if (io.ordinary && sql.includes("r.rolname=any($1::text[])")) return { rows: [{ oid: "20003", name: "old_application",
         login: !io.ordinaryFenced, inherit: true, privileged: false, members: [], callers: [{ oid: "20003", name: "old_application" }] }], rowCount: 1 };
@@ -295,6 +299,26 @@ it.each(["sql", "role", "success"] as const)("retains the ordinary inspection re
     ? "SQL-PRIVILEGE-OUTCOME-UNKNOWN" : fault === "role" ? "RUNTIME-ROLE-SOURCE-DRIFT" : "INSPECTION-CLOSE-FAILED" });
   expect(io.closed.filter(value => value === "pool")).toHaveLength(closedPools + 1);
   expect(io.clients.at(-1)?.release).toHaveBeenCalledOnce();
+});
+
+it("refuses a retained SQL host intent before another ordinary authentication effect", async () => {
+  const f = await ordinaryFixture();
+  const journal = loadUpgradeJournal({ journalPath: f.input.handoff.inputs.journalPath, runId: "hostrun" });
+  if (!journal.ok) throw new Error("fixture-journal-unavailable");
+  expect(commitJournalTransition(journal.value, { action: "legacy-sql-privileges-pending", inputDigest: `sha256:${"b".repeat(64)}`,
+    toState: journal.value.record.state, nextAction: journal.value.record.nextAction, outcome: "crashed" }).ok).toBe(true);
+  await expect(retireLegacyApplicationLogins(f.input)).rejects.toMatchObject({ reason: "ATTEMPT-REQUIRES-RECONCILE" });
+  expect(io.ordinaryFenced).toBe(false);
+  expect(io.sqlPrivilegeEffect).not.toHaveBeenCalled();
+});
+
+it.each(["manager", "host"] as const)("rejects ordinary inspection loss during its final rollback: %s", async fault => {
+  const f = await ordinaryFixture();
+  await retireLegacyApplicationLogins(f.input);
+  io.fault = `ordinary-final-${fault}-loss`;
+  await expect(inspectLegacyApplicationLoginFence(f.input)).rejects.toThrow(/^PCAT-UPG-LEGACY-LOGIN-/);
+  expect(io.sqlInspect).toHaveBeenCalledOnce();
+  expect(io.sqlPrivilegeEffect).toHaveBeenCalledOnce();
 });
 
 it("persists the root intent before SQL and the actual inspection step after SQL, without declaring P13", async () => {
