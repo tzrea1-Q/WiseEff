@@ -25,7 +25,8 @@ import { canonicalJson, commitJournalTransition, loadUpgradeJournal, sha256Prefi
   type BootstrapRetirementEvent, type BootstrapRetirementIntent } from "./journal";
 import { observeLegacySourceEndpoint } from "./legacyWriterSource";
 import { openRuntimeRoleSource, observeRuntimeRoles, type RuntimeRoleSource } from "./runtimeRoleSource";
-import { applyLegacySqlPrivilegeFence } from "../../../../server/modules/catalog-cutover/retirement/legacySqlPrivilegeFence";
+import { applyLegacySqlPrivilegeFence, beginLegacySqlPrivilegeInspection,
+  inspectLegacySqlPrivilegeFenceOnHeldSession } from "../../../../server/modules/catalog-cutover/retirement/legacySqlPrivilegeFence";
 
 export class LegacyLoginRetirementError extends Error {
   constructor(readonly reason: string) { super(`PCAT-UPG-LEGACY-LOGIN-${reason}`); }
@@ -154,7 +155,7 @@ async function retire(input: LegacyLoginRetirementInput, bootstrapInspection = f
   let runtimeRoleSource: RuntimeRoleSource | undefined;
   let transaction = false, ending = false, unknown = false;
   let connectionFailed = false;
-  let adminReleased = false, bootstrapStarted = false, failed = false;
+  let adminReleased = false, bootstrapStarted = false, ordinarySqlStarted = false, failed = false;
   let inspectionReaderReleased = false;
   let guard: Awaited<ReturnType<typeof acquireBootstrapInventoryGuard>> | undefined, custody: BootstrapCredentialCustody | undefined;
   const destroyAdmin = () => { if (admin && !adminReleased) { adminReleased = true; admin.release(true); } };
@@ -502,8 +503,24 @@ async function retire(input: LegacyLoginRetirementInput, bootstrapInspection = f
         fingerprint: digestOf({ rootBinding, intentDigest: observed.intentDigest }) };
     }
     need(!fixed.bootstrapCredentialDirectory, "SOURCE-IDENTITY-UNSUPPORTED");
+    guard = await acquireBootstrapInventoryGuard({ managementPool: input.activation.managementPool,
+      mutator: admin, target: input.activation.target,
+      onMutatorReleased: () => { adminReleased = true; connectionFailed = true; } });
+    runtimeRoleSource = await openRuntimeRoleSource({ handoff: plan, expectedHandoffDigest: fixed.expectedHandoffDigest, lock: input.lock });
+    const configuredRoles = structuredClone(await observeRuntimeRoles(runtimeRoleSource));
+    need(configuredRoles.runId === plan.inputs.runId && configuredRoles.handoffDigest === fixed.expectedHandoffDigest &&
+      isDeepStrictEqual(configuredRoles.target, input.activation.target), "RUNTIME-ROLE-SOURCE-MISMATCH");
+    const verifyOrdinaryBoundary = async () => {
+      await targetCheck(); await guard!.verify();
+      need(isDeepStrictEqual(await observeRuntimeRoles(runtimeRoleSource!), configuredRoles), "RUNTIME-ROLE-SOURCE-DRIFT");
+      await verifyBoundReport();
+      await assertHostOperationLockForJournal(input.lock, plan.inputs.journalPath);
+      need(!connectionFailed, "CONNECTION-FAILED");
+    };
+    await verifyOrdinaryBoundary();
     const oldRoles = (await admin.query<Role>(rolesSql, [[...names]])).rows;
     need(oldRoles.length === names.size && names.size > 0, "SOURCE-ROLE-MISSING");
+    need(!oldRoles.some(old => configuredRoles.roles.some(candidate => candidate.oid === old.oid)), "SOURCE-RUNTIME-ROLE-OVERLAP");
     need(legacyRolesAreRecoverable(oldRoles, backup.roles), "ROLE-RECOVERY-UNSUPPORTED");
     const checkShared = () => assertNoSharedLegacyRoleUse(admin!, oldRoles, input.activation.target);
     await checkShared();
@@ -540,10 +557,35 @@ async function retire(input: LegacyLoginRetirementInput, bootstrapInspection = f
     await checkShared(); await targetCheck();
     const after = (await admin.query<Role>(rolesSql, [[...names]])).rows;
     need(after.length === oldRoles.length && after.every((role, index) => role.oid === oldRoles[index].oid && !role.login && role.members.length === 0), "FENCE-DRIFT");
-    return { status: "legacy-logins-fenced-not-p13" as const, attemptId: fixed.attemptId, fingerprint: digestOf({ requestDigest: digestOf(request), roles: after }) };
+    const appendOrdinarySqlHost = async (outcome: "pending" | "applied", intentDigest: string) => {
+      await verifyOrdinaryBoundary();
+      need(isDeepStrictEqual(loaded.value.record, expectedJournal), "JOURNAL-DRIFT");
+      const saved = commitJournalTransition(loaded.value, { action: `legacy-sql-privileges-${outcome}`,
+        inputDigest: intentDigest, toState: loaded.value.record.state, nextAction: loaded.value.record.nextAction,
+        outcome: outcome === "applied" ? "committed" : "crashed" });
+      need(saved.ok && !saved.value.replayed, "SQL-PRIVILEGE-JOURNAL-UNKNOWN");
+      expectedJournal = structuredClone(loaded.value.record);
+      await verifyOrdinaryBoundary();
+    };
+    need(!expectedJournal.entries.some(entry => entry.action.startsWith("legacy-sql-privileges-")), "ATTEMPT-REQUIRES-RECONCILE");
+    // From this point any interrupted SQL successor has an unknown outcome;
+    // the already committed authentication effect must never authorize replay.
+    ordinarySqlStarted = true;
+    const sqlResult = await applyLegacySqlPrivilegeFence({ client: admin,
+      selection: { runId: fixed.activationIntent.runId, attemptId: fixed.attemptId, target: input.activation.target,
+        activationBindingDigest: binding.bindingDigest, rootRequestDigest: digestOf(request), recoveryPackageDigest: backup.digest },
+      runtimeRoles: [...new Map(configuredRoles.roles.map(role => [role.oid, { oid: role.oid, name: role.name }])).values()],
+      recoveryRoles: backup.roles, beforeEffect: verifyOrdinaryBoundary,
+      persistHostIntent: intent => appendOrdinarySqlHost("pending", intent.intentDigest),
+      persistHostStep: digest => appendOrdinarySqlHost("applied", digest),
+    });
+    need(sqlResult.outcome === "legacy-sql-privileges-fenced-not-P13" && /^sha256:[a-f0-9]{64}$/.test(sqlResult.intentDigest), "SQL-PRIVILEGE-OUTCOME-UNKNOWN");
+    await verifyOrdinaryBoundary();
+    return { status: "legacy-logins-fenced-not-p13" as const, attemptId: fixed.attemptId,
+      fingerprint: digestOf({ requestDigest: digestOf(request), roles: after, sqlIntentDigest: sqlResult.intentDigest }) };
   } catch (error) {
     failed = true;
-    unknown = ending || bootstrapStarted;
+    unknown = ending || bootstrapStarted || ordinarySqlStarted;
     if (transaction && !ending) { try { await admin?.query("rollback"); } catch { unknown = true; } }
     // Losing the host lock, directory identity, CAS or fsync means even this
     // diagnostic append is unavailable. Preserve pending and the SQL/custody
@@ -585,6 +627,7 @@ async function inspect(input: LegacyLoginRetirementInput): Promise<{
   const fixed = { handoff: structuredClone(input.handoff), attemptId: input.attemptId, activationIntent: structuredClone(input.activationIntent),
     expectedHandoffDigest: input.expectedHandoffDigest, target: { ...input.activation.target }, runId: input.activationIntent.runId };
   let pool: pg.Pool | undefined, client: pg.PoolClient | undefined;
+  let runtimeRoleSource: RuntimeRoleSource | undefined;
   let connectionFailed = false;
   try {
     const { digest, ...body } = fixed.handoff;
@@ -604,8 +647,9 @@ async function inspect(input: LegacyLoginRetirementInput): Promise<{
     await client.query("set local timezone='UTC'");
     const activation = await createApplicationReadActivation(input.activation).inspectOnHeldManagementSession(fixed.activationIntent, client);
     need(activation.kind === "applied" && activation.currentHeadDigest === activation.binding.bindingDigest, "P12-BINDING-MISMATCH");
-    const events = (await client.query(`select event_kind,payload from parameter_catalog.parameter_catalog_cutover_events
+    const allEvents = (await client.query(`select event_kind,payload from parameter_catalog.parameter_catalog_cutover_events
       where cutover_run_id=$1 and phase='P13' order by sequence_number`, [fixed.runId])).rows;
+    const events = allEvents.slice(0, 2), successors = allEvents.slice(2);
     let outcome: "missing" | "pending" | "applied" | "inconsistent" = events.length ? "inconsistent" : "missing";
     const request = events[0]?.payload?.request;
     if (request?.contract === "pcat-legacy-login-fence-v1" && request.runId === fixed.runId && request.attemptId === fixed.attemptId &&
@@ -622,7 +666,42 @@ async function inspect(input: LegacyLoginRetirementInput): Promise<{
         // Preserve pre-revocation caller OIDs: an existing SET ROLE session
         // retains its effective identity after membership has been removed.
         await assertNoSharedLegacyRoleUse(client, original, fixed.target);
-        outcome = "applied";
+        // An authentication-only predecessor is incomplete. Do not retry it
+        // or infer the SQL successor from NOLOGIN or a host boolean.
+        outcome = "pending";
+        if (successors.length === 2 && successors[0].event_kind === "legacy-sql-privileges-intent" &&
+          successors[1].event_kind === "legacy-sql-privileges-applied") {
+          const sqlIntentDigest = successors[0].payload?.intentDigest;
+          const journal = loadUpgradeJournal({ journalPath: fixed.handoff.inputs.journalPath,
+            runId: fixed.handoff.inputs.runId, requireSettled: true });
+          need(journal.ok && journal.value.record.cutoverRunId === fixed.runId, "SQL-PRIVILEGE-JOURNAL-UNKNOWN");
+          if (!journal.ok) return refuse("SQL-PRIVILEGE-JOURNAL-UNKNOWN");
+          const hostSteps = journal.value.record.entries.filter(entry => entry.action.startsWith("legacy-sql-privileges-"));
+          need(hostSteps.length === 2 && hostSteps[0].action === "legacy-sql-privileges-pending" &&
+            hostSteps[1].action === "legacy-sql-privileges-applied" && hostSteps[0].inputDigest === sqlIntentDigest &&
+            hostSteps[1].inputDigest === sqlIntentDigest && hostSteps[1].outcome === "committed", "SQL-PRIVILEGE-JOURNAL-UNKNOWN");
+          const expectedJournal = structuredClone(journal.value.record);
+          await client.query("rollback");
+          runtimeRoleSource = await openRuntimeRoleSource({ handoff: fixed.handoff, expectedHandoffDigest: fixed.expectedHandoffDigest, lock: input.lock });
+          const configured = await observeRuntimeRoles(runtimeRoleSource);
+          need(configured.runId === fixed.handoff.inputs.runId && configured.handoffDigest === fixed.expectedHandoffDigest &&
+            isDeepStrictEqual(configured.target, fixed.target), "RUNTIME-ROLE-SOURCE-MISMATCH");
+          await beginLegacySqlPrivilegeInspection(client, fixed.target);
+          const sql = await inspectLegacySqlPrivilegeFenceOnHeldSession({ client, intentDigest: sqlIntentDigest,
+            selection: { runId: fixed.runId, attemptId: fixed.attemptId, target: fixed.target,
+              activationBindingDigest: activation.binding.bindingDigest, rootRequestDigest: digestOf(request), recoveryPackageDigest: request.recoveryPackageDigest } });
+          const observedRoles = [...new Map(configured.roles.map(role => [role.oid, { oid: role.oid, name: role.name }])).values()];
+          need(sql.outcome === "legacy-sql-privileges-fenced-not-P13" &&
+            isDeepStrictEqual(sql.intent?.runtimeRoles, observedRoles), "SQL-PRIVILEGE-OUTCOME-UNKNOWN");
+          need(isDeepStrictEqual((await client.query<Role>(rolesSql, [original.map(role => role.name)])).rows, fenced), "FENCE-DRIFT");
+          await assertNoSharedLegacyRoleUse(client, original, fixed.target);
+          const current = await createApplicationReadActivation(input.activation).inspectOnHeldManagementSession(fixed.activationIntent, client);
+          need(current.kind === "applied" && isDeepStrictEqual(current.binding, activation.binding), "P12-BINDING-MISMATCH");
+          need(isDeepStrictEqual(await observeRuntimeRoles(runtimeRoleSource), configured), "RUNTIME-ROLE-SOURCE-DRIFT");
+          const latest = loadUpgradeJournal({ journalPath: fixed.handoff.inputs.journalPath, runId: fixed.handoff.inputs.runId, requireSettled: true });
+          need(latest.ok && isDeepStrictEqual(latest.value.record, expectedJournal), "JOURNAL-DRIFT");
+          outcome = "applied";
+        } else if (successors.length) outcome = "inconsistent";
       }
     }
     await assertHostOperationLockForJournal(input.lock, fixed.handoff.inputs.journalPath);
@@ -633,7 +712,8 @@ async function inspect(input: LegacyLoginRetirementInput): Promise<{
     if (error instanceof LegacyLoginRetirementError) throw error;
     return refuse("INSPECTION-FAILED");
   } finally {
-    client?.release(true); await pool?.end().catch(() => undefined);
+    try { await runtimeRoleSource?.close(); }
+    finally { client?.release(true); await pool?.end().catch(() => undefined); }
   }
 }
 

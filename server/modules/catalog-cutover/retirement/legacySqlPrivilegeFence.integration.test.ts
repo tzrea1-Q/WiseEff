@@ -302,3 +302,45 @@ it("retires the existing module mapping mutation grants while retaining SELECT a
   expect((await manager!.query(`select count(*)::int as count from parameter_catalog.parameter_catalog_cutover_checkpoints
     where cutover_run_id=$1 and phase='P13'`, [command.selection.runId])).rows).toEqual([{ count: 0 }]);
 });
+
+it("composes ordinary source NOLOGIN with candidate SQL retirement while preserving reads", async () => {
+  const { applyLegacyLoginFence, retiringRolesSql } = await import("./loginFence");
+  // Real owner effects on the owned database. The original fixture's P12
+  // references remain unapproved; this is not the approved host root.
+  const secret = randomBytes(24).toString("hex");
+  await manager!.query(`alter role ${pg.escapeIdentifier(capability)} login password ${pg.escapeLiteral(secret)}`);
+  const oldUrl = new URL(database!.url); oldUrl.username = capability; oldUrl.password = secret;
+  const source = new pg.Client({ connectionString: oldUrl.href, connectionTimeoutMillis: 2000, query_timeout: 5000 });
+  source.on("error", () => {});
+  try {
+    await source.connect();
+    expect((await source.query("select session_user as name")).rows[0].name).toBe(capability);
+  } finally { await source.end(); }
+  const original = (await manager!.query<import("./roleRecovery").RetiringRole>(retiringRolesSql, [[capability]])).rows;
+  const saved = { name: capability, login: true, inherit: true, members: [] };
+  command.recoveryRoles = command.recoveryRoles.map(value => value.name === capability ? saved : value);
+  await manager!.query("begin");
+  try {
+    await applyLegacyLoginFence({ client: manager!, target: command.selection.target, expectedRoles: original, recoveryRoles: command.recoveryRoles });
+    await manager!.query("commit");
+  } catch (error) { await manager!.query("rollback"); throw error; }
+  expect((await manager!.query("select rolcanlogin from pg_roles where rolname=$1", [capability])).rows[0].rolcanlogin).toBe(false);
+  const retry = new pg.Client({ connectionString: oldUrl.href, connectionTimeoutMillis: 2000, query_timeout: 5000 });
+  retry.on("error", () => {});
+  try { await expect(retry.connect()).rejects.toMatchObject({ code: "28000" }); }
+  finally { await retry.end(); }
+  const fixedRelations = [...LEGACY_STRUCTURAL_TABLES, "driver_schemas", "driver_schema_versions", "dts_property_specs", "parameter_module_mappings"];
+  for (const name of fixedRelations) await manager!.query(`grant select,insert,update,delete,truncate on public.${pg.escapeIdentifier(name)} to ${pg.escapeIdentifier(role)}`);
+  // Authentication retirement alone leaves this actual candidate write intact.
+  expect((await writer!.query(`update public.${pg.escapeIdentifier(table)} set specification_key=specification_key`)).rowCount).toBe(1);
+  expect(await applyLegacySqlPrivilegeFence(command)).toMatchObject({ outcome: "legacy-sql-privileges-fenced-not-P13" });
+  for (const name of fixedRelations) {
+    const privileges = (await writer!.query("select has_table_privilege(current_user,$1,'SELECT') as readable, has_table_privilege(current_user,$1,'INSERT,UPDATE,DELETE,TRUNCATE') as writable", [`public.${name}`])).rows[0];
+    expect(privileges).toEqual({ readable: true, writable: false });
+  }
+  await expect(writer!.query(`update public.${pg.escapeIdentifier(table)} set specification_key=specification_key`)).rejects.toMatchObject({ code: "42501" });
+  expect((await writer!.query(`select id from public.${pg.escapeIdentifier(table)}`)).rowCount).toBe(1);
+  await expect(inspectLegacySqlPrivilegeFence({ client: manager!, selection: command.selection,
+    intentDigest: intents[0].intentDigest, beforeEffect: command.beforeEffect })).resolves.toMatchObject({ outcome: "legacy-sql-privileges-fenced-not-P13" });
+  expect((await manager!.query("select count(*)::int as count from parameter_catalog.parameter_catalog_cutover_checkpoints where cutover_run_id=$1 and phase='P13'", [command.selection.runId])).rows[0].count).toBe(0);
+});

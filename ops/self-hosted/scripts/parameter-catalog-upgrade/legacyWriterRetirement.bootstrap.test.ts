@@ -8,11 +8,11 @@ import { retireLegacyApplicationLogins, inspectLegacyApplicationLoginFence, type
 
 // Root orchestration only. These I/O substitutes do not prove authentic report
 // approval, a P12 SQL commit, Docker identity, or a PostgreSQL password rotation.
-const io = vi.hoisted(() => ({ apply: vi.fn(), sqlPrivilegeEffect: vi.fn(), runtimeRoles: vi.fn(), inspect: vi.fn(), transportInspect: vi.fn(), journal: vi.fn(),
+const io = vi.hoisted(() => ({ apply: vi.fn(), sqlPrivilegeEffect: vi.fn(), sqlInspect: vi.fn(), runtimeRoles: vi.fn(), inspect: vi.fn(), transportInspect: vi.fn(), journal: vi.fn(),
   package: vi.fn(), docker: vi.fn(), activation: vi.fn(), report: vi.fn(),
   ordinary: false, ordinaryFenced: false, pools: [] as string[],
   clients: [] as Array<{ kind: string; query: ReturnType<typeof vi.fn>; release: ReturnType<typeof vi.fn>; emit(event: string): boolean }>,
-  fault: "", fsyncDirectoryInode: -1, hostRefused: false, sourceConnects: 0, closed: [] as string[], rootEvents: [] as Array<{ payload: unknown }> }));
+  fault: "", fsyncDirectoryInode: -1, hostRefused: false, sourceConnects: 0, closed: [] as string[], rootEvents: [] as Array<{ event_kind?: string; payload: any }> }));
 vi.mock("node:fs", async original => {
   const actual = await original<typeof import("node:fs")>();
   return { ...actual, fsyncSync(fd: number) {
@@ -49,6 +49,8 @@ vi.mock("../../../../server/modules/catalog-cutover/retirement/bootstrapCredenti
 }));
 vi.mock("../../../../server/modules/catalog-cutover/retirement/legacySqlPrivilegeFence", () => ({
   applyLegacySqlPrivilegeFence: io.sqlPrivilegeEffect,
+  beginLegacySqlPrivilegeInspection: async () => {},
+  inspectLegacySqlPrivilegeFenceOnHeldSession: io.sqlInspect,
 }));
 vi.mock("../../../../server/modules/catalog-cutover/retirement/loginFence", async original => ({
   ...await original<typeof import("../../../../server/modules/catalog-cutover/retirement/loginFence")>(),
@@ -67,11 +69,12 @@ vi.mock("pg", async () => {
     // fixture, not evidence of an actual PostgreSQL/Docker connection.
     connection = { stream: new Socket() };
     query = vi.fn(async (sql: string, values?: unknown[]) => {
+      if (io.ordinary && sql.includes("phase='P13' order by sequence_number")) return { rows: structuredClone(io.rootEvents), rowCount: io.rootEvents.length };
       if (io.ordinary && sql.includes("r.rolname=any($1::text[])")) return { rows: [{ oid: "20003", name: "old_application",
         login: !io.ordinaryFenced, inherit: true, privileged: false, members: [], callers: [{ oid: "20003", name: "old_application" }] }], rowCount: 1 };
       if (sql.includes("event_kind=$2 order by sequence_number")) return { rows: [...io.rootEvents], rowCount: io.rootEvents.length };
       if (sql.includes("insert into parameter_catalog.parameter_catalog_cutover_events")) {
-        io.rootEvents.push({ payload: JSON.parse(values![3] as string) });
+        io.rootEvents.push({ event_kind: values![2] as string, payload: JSON.parse(values![3] as string) });
       }
       if (sql.includes("as admitted")) return { rows: [{ oid: "10", name: "postgres", database: "db", admitted: true }], rowCount: 1 };
       if (sql.includes("as same;")) return { rows: [{ pid: 1001, name: io.ordinary ? "old_application" : "postgres", same: true }], rowCount: 1 };
@@ -121,8 +124,12 @@ async function fixture() {
   io.sqlPrivilegeEffect.mockImplementation(async command => {
     await command.persistHostIntent({ intentDigest: hash }); await command.beforeEffect();
     await command.persistHostStep(hash);
+    if (io.ordinary) io.rootEvents.push({ event_kind: "legacy-sql-privileges-intent", payload: { intentDigest: hash } },
+      { event_kind: "legacy-sql-privileges-applied", payload: { intentDigest: hash } });
     return { outcome: "legacy-sql-privileges-fenced-not-P13", intentDigest: hash };
   });
+  io.sqlInspect.mockImplementation(async () => ({ outcome: "legacy-sql-privileges-fenced-not-P13", intent: {
+    runtimeRoles: [{ oid: "20001", name: "candidate_api" }, { oid: "20002", name: "candidate_worker" }] } }));
   const source = { deploymentId: "deployment", hostFingerprint: "host", postgresIdentity: "pg", objectStoreIdentity: "objects", redisIdentity: "redis" };
   const activationIntent = structuredClone(createActivationIntent({ runId: "cutover", attemptId: "p12", target, planDigest: hash, reportDigest: hash,
     predecessorBindingDigest: null, expectedObservationDigest: hash }));
@@ -186,7 +193,7 @@ const retirementEvents = (input: LegacyLoginRetirementInput) => {
   return loaded.value.record.entries.filter(entry => entry.action.startsWith("bootstrap-retirement-"));
 };
 
-it("continues ordinary LOGIN retirement through the existing SQL effect using observed candidate roles", async () => {
+async function ordinaryFixture() {
   const f = await fixture();
   io.ordinary = true;
   delete f.input.bootstrapCredentialDirectory;
@@ -196,6 +203,11 @@ it("continues ordinary LOGIN retirement through the existing SQL effect using ob
     { name: "candidate_api", login: true, inherit: true, members: [] },
     { name: "candidate_worker", login: true, inherit: true, members: [] },
   ] });
+  return f;
+}
+
+it("continues ordinary LOGIN retirement through the existing SQL effect using observed candidate roles", async () => {
+  const f = await ordinaryFixture();
   const original = io.sqlPrivilegeEffect.getMockImplementation()!;
   io.sqlPrivilegeEffect.mockImplementationOnce(async command => {
     expect(io.ordinaryFenced).toBe(true);
@@ -209,6 +221,62 @@ it("continues ordinary LOGIN retirement through the existing SQL effect using ob
   expect(io.sqlPrivilegeEffect).toHaveBeenCalledOnce();
   expect(io.runtimeRoles).toHaveBeenCalled();
   expect(result.status).toBe("legacy-logins-fenced-not-p13");
+});
+
+it("inspects the original ordinary authentication and SQL successor without repeating effects or old authentication", async () => {
+  const f = await ordinaryFixture();
+  await retireLegacyApplicationLogins(f.input);
+  const sourceConnects = io.sourceConnects;
+  await expect(inspectLegacyApplicationLoginFence(f.input)).resolves.toMatchObject({ outcome: "applied" });
+  expect(io.sqlInspect).toHaveBeenCalledOnce();
+  expect(io.sqlPrivilegeEffect).toHaveBeenCalledOnce();
+  expect(io.sourceConnects).toBe(sourceConnects);
+  expect(io.apply).not.toHaveBeenCalled();
+});
+
+it("keeps authentication-only ordinary inspection incomplete", async () => {
+  const f = await ordinaryFixture();
+  await retireLegacyApplicationLogins(f.input);
+  io.rootEvents.splice(2);
+  await expect(inspectLegacyApplicationLoginFence(f.input)).resolves.toMatchObject({ outcome: "pending" });
+  expect(io.sqlInspect).not.toHaveBeenCalled();
+  expect(io.sqlPrivilegeEffect).toHaveBeenCalledOnce();
+});
+
+it("does not return ordinary authentication success when its SQL successor becomes unknown", async () => {
+  const f = await ordinaryFixture();
+  io.sqlPrivilegeEffect.mockImplementationOnce(async command => {
+    await command.persistHostIntent({ intentDigest: `sha256:${"b".repeat(64)}` });
+    throw new Error("private-unknown-commit");
+  });
+  await expect(retireLegacyApplicationLogins(f.input)).rejects.toMatchObject({ reason: "TRANSACTION-OUTCOME-UNKNOWN" });
+  expect(io.ordinaryFenced).toBe(true);
+  const journal = loadUpgradeJournal({ journalPath: f.input.handoff.inputs.journalPath, runId: "hostrun" });
+  expect(journal.ok && journal.value.record.entries.filter(entry => entry.action.startsWith("legacy-sql-privileges-")).map(entry => entry.action))
+    .toEqual(["legacy-sql-privileges-pending"]);
+});
+
+it("refuses retiring a LOGIN still selected by the candidate before changing authentication", async () => {
+  const f = await ordinaryFixture();
+  const original = await io.runtimeRoles();
+  io.runtimeRoles.mockResolvedValue({ ...original, roles: [{ service: "api", purpose: "application", oid: "20003", name: "old_application" }] });
+  await expect(retireLegacyApplicationLogins(f.input)).rejects.toMatchObject({ reason: "SOURCE-RUNTIME-ROLE-OVERLAP" });
+  expect(io.ordinaryFenced).toBe(false);
+  expect(io.sqlPrivilegeEffect).not.toHaveBeenCalled();
+});
+
+it.each(["wrong-target", "drift", "host-step", "sql-unknown"] as const)("refuses ordinary successor %s without promoting P13", async fault => {
+  const f = await ordinaryFixture();
+  await retireLegacyApplicationLogins(f.input);
+  if (fault === "wrong-target") io.runtimeRoles.mockResolvedValue({ ...(await io.runtimeRoles()), target: { systemIdentifier: "100", databaseOid: "201" } });
+  if (fault === "drift") {
+    const roles = await io.runtimeRoles();
+    io.runtimeRoles.mockResolvedValueOnce(roles).mockResolvedValue({ ...roles, roles: [] });
+  }
+  if (fault === "host-step") io.rootEvents[2].payload.intentDigest = `sha256:${"c".repeat(64)}`;
+  if (fault === "sql-unknown") io.sqlInspect.mockResolvedValueOnce({ outcome: "intent-only" });
+  await expect(inspectLegacyApplicationLoginFence(f.input)).rejects.toThrow(/^PCAT-UPG-LEGACY-LOGIN-/);
+  expect(io.sqlPrivilegeEffect).toHaveBeenCalledOnce();
 });
 
 it("persists the root intent before SQL and the actual inspection step after SQL, without declaring P13", async () => {
