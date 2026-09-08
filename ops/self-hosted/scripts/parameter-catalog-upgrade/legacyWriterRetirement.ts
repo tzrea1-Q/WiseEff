@@ -628,7 +628,7 @@ async function inspect(input: LegacyLoginRetirementInput): Promise<{
     expectedHandoffDigest: input.expectedHandoffDigest, target: { ...input.activation.target }, runId: input.activationIntent.runId };
   let pool: pg.Pool | undefined, client: pg.PoolClient | undefined;
   let runtimeRoleSource: RuntimeRoleSource | undefined;
-  let connectionFailed = false;
+  let connectionFailed = false, inspectionFailed = false;
   try {
     const { digest, ...body } = fixed.handoff;
     need(digest === fixed.expectedHandoffDigest && digest === sha256Prefixed(canonicalJson(body)), "HANDOFF-MISMATCH");
@@ -709,11 +709,22 @@ async function inspect(input: LegacyLoginRetirementInput): Promise<{
     await client.query("rollback");
     return { outcome, attemptId: fixed.attemptId };
   } catch (error) {
+    inspectionFailed = true;
     if (error instanceof LegacyLoginRetirementError) throw error;
     return refuse("INSPECTION-FAILED");
   } finally {
-    try { await runtimeRoleSource?.close(); }
-    finally { client?.release(true); await pool?.end().catch(() => undefined); }
+    const closed = await Promise.allSettled([
+      Promise.resolve().then(() => runtimeRoleSource?.close()),
+      (async () => {
+        try {
+          if (client) {
+            try { if (!(client instanceof pg.Client)) return refuse("INSPECTION-CLOSE-FAILED"); await client.end(); }
+            finally { client.release(true); }
+          }
+        } finally { await pool?.end(); }
+      })(),
+    ]);
+    if (!inspectionFailed && closed.some(result => result.status === "rejected")) refuse("INSPECTION-CLOSE-FAILED");
   }
 }
 
