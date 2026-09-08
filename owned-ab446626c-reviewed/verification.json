@@ -1,0 +1,14 @@
+{
+  "base": "cda6737a8f177a8bbd2f3bc7d195f8e3037bfa74",
+  "head": "ab446626c4998715fb2ec55aa32c53d714f517af",
+  "headTree": "847d21e72cc99273f3dfd0fc51cec816c47447d5",
+  "code": "d18439ba7960b0688246695b39ffe67e0544b6f7",
+  "codeTree": "5b6a1c8b9d9e2c169217c9648743bb92acbe0152",
+  "fullFiles": 360,
+  "archiveEntries": 487,
+  "archiveBytes": 4973522,
+  "sha256": "68823ab930c2ccb9463807737089a1a892be180e759d6e012f5d6df31ed71c18",
+  "gitBytesVerified": true,
+  "zipReadbackVerified": true,
+  "independentReview": "bounded code Standards and Spec passed; package material review pending"
+}
