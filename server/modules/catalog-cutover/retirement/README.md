@@ -225,9 +225,31 @@ as applied, the actual LOGIN still performed both INSERT and UPDATE instead
 of receiving 42501. Log `/tmp/pr824-module-mapping-c954-effect-red.log` SHA256:
 `a3b9aa69c327944d90e05b9af11af69246fca568945a54f77511fd8be5e06838`.
 The new success oracle also requires SELECT/original data preservation, formal
-inspection of the exact intent, and no P13 checkpoint. Green execution of the
-two constant changes remains pending. Older seven-relation receipts are not
-silently upgraded: current inventory equality still applies on inspection.
+inspection of the exact intent, and no P13 checkpoint. Older seven-relation
+receipts are not silently upgraded: current inventory equality still applies
+on inspection.
+
+Fixed `cf15075ee7e8170f25d06ea065e6ad9a25f3a975`, tree
+`b63859a0da100bf0c0b3115e4ee16585f1cc2f6e`, passed the original owned suites:
+V13 **35/35** in 5.87 seconds and SQL retirement **20/20** in 130.10 seconds.
+Both exited 0 with cleanup verified. All prior 34/19 cases remain; the two new
+cases passed their actual LOGIN effects/readbacks. These executions used Node
+22.22.3 and the existing PG16 Linux/arm64 profile. Logs and SHA256:
+
+- `/tmp/pr824-module-mapping-cf150-gate-green.log`:
+  `5ab4a5d55ca898207c6d524f1050bf387550909a55c2abeda98690e0dc3979df`.
+- `/tmp/pr824-module-mapping-cf150-effect-green.log`:
+  `fc6865db043e928793620dbb65c3fc9b0c35c15be47bd8620ad6002e82a9c7d1`.
+
+The original `run-upgrade-component-tests.ts` command selected
+`writer-reachability-pg16` and `legacy-sql-privileges-pg16`, respectively, with
+`--expected-daemon-id` obtained from `createIsolatedUpgradeDocker()` on the
+same local daemon. No test filtering or timeout changed. Targeted strict types
+and `npm run build` passed at `3b55325f0`; `cf15075ee` changes only two obsolete
+lock-count comments. The fixed `cf15075ee` boundary scan retains all original
+3509 allowances with zero new/stale/mismatched/growing records. Parent Spec
+and independent Standards reviewed the bounded implementation. This is local
+component evidence, not Hosted, a full writer inventory or P13 completion.
 
 This Scratch implementation uses the existing retirement root and
 `legacySqlPrivilegeFence.ts`. Its actual owned PostgreSQL component validation

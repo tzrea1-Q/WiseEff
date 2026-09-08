@@ -174,8 +174,26 @@ INSERT 与 UPDATE，而非得到42501。日志
 `/tmp/pr824-module-mapping-c954-effect-red.log` SHA256：
 `a3b9aa69c327944d90e05b9af11af69246fca568945a54f77511fd8be5e06838`。
 新增成功断言还要求 SELECT/原值保留、精确 intent 的正式 inspection，以及没有
-P13 checkpoint。两处常量修复的 Green 尚待执行。旧七表 receipt 不会被静默
-升级：inspection 仍要求与当前库存相等。
+P13 checkpoint。旧七表 receipt 不会被静默升级：inspection 仍要求与当前库存相等。
+
+固定 `cf15075ee7e8170f25d06ea065e6ad9a25f3a975`、tree
+`b63859a0da100bf0c0b3115e4ee16585f1cc2f6e` 实际执行原 owned suite：
+V13 **35/35**，5.87秒；SQL退休 **20/20**，130.10秒。两次均exit0、cleanup通过。
+原34/19项全部保留，新增两项实际 LOGIN 效果及读回断言通过。环境为Node22.22.3
+和既有PG16 Linux/arm64 profile。日志及SHA256：
+
+- `/tmp/pr824-module-mapping-cf150-gate-green.log`：
+  `5ab4a5d55ca898207c6d524f1050bf387550909a55c2abeda98690e0dc3979df`。
+- `/tmp/pr824-module-mapping-cf150-effect-green.log`：
+  `fc6865db043e928793620dbb65c3fc9b0c35c15be47bd8620ad6002e82a9c7d1`。
+
+原 `run-upgrade-component-tests.ts` 分别选择 `writer-reachability-pg16` 与
+`legacy-sql-privileges-pg16`；`--expected-daemon-id` 来自同一本地daemon的
+`createIsolatedUpgradeDocker()` 实测。无筛选测试或改变timeout。
+`3b55325f0` 严格targeted types及 `npm run build` 通过；后继 `cf15075ee`
+只修两处过时锁数量注释。固定cf150边界扫描保留原3509项，零新增、失效、
+不匹配或增长。父Spec与独立Standards已审此限定实现。这是本地组件证据，
+不是Hosted、完整writer库存或P13完成。
 
 本 Scratch 实现位于现有退休根与 `legacySqlPrivilegeFence.ts`，实际 owned PG
 组件验证已按下文记录通过。它撤销独立可达的旧结构 SQL 授权，不产生
