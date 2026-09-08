@@ -148,13 +148,21 @@ const observe = async (input: HandoffInputs, deps: HandoffObserver, applicationR
   const imageInfo = JSON.parse(deps.docker.command(["image", "inspect", input.candidate.imageId]).toString())[0];
   if (imageInfo.Id !== input.candidate.imageId || !/^sha256:[a-f0-9]{64}$/.test(input.candidate.imageId)) fail("candidate-image-mismatch");
   if (imageInfo.Config?.Labels?.["org.opencontainers.image.revision"] !== input.candidate.sha || imageInfo.Config?.Labels?.["org.wiseeff.source.tree"] !== input.candidate.tree) fail("candidate-image-source-label-mismatch");
+  if (input.source.applications.map(a => a.service).sort().join(",") !== "api,web,worker" || input.source.stores.map(s => s.service).sort().join(",") !== "minio,postgres,redis") fail("source-service-set-incomplete");
+  const containerIds = [...input.source.applications, ...input.source.stores].map(resource => resource.containerId);
+  if (containerIds.some(id => !/^[a-f0-9]{64}$/.test(id))) fail("container-id-not-fixed");
+  if (new Set(containerIds).size !== containerIds.length) fail("compose-container-mismatch");
+  // One native observation of the exact resource set, not a cached observation
+  // across data reads or controller phases. Response order is not identity.
+  const containerRows = JSON.parse(deps.docker.command(["inspect", "--type", "container", ...containerIds]).toString());
+  if (!Array.isArray(containerRows) || containerRows.length !== containerIds.length ||
+    new Set(containerRows.map(row => row?.Id)).size !== containerIds.length ||
+    containerRows.some(row => !row || !containerIds.includes(row.Id))) fail("container-inventory-mismatch");
   const inspect = (id: string, service: string) => {
-    if (!/^[a-f0-9]{64}$/.test(id)) fail("container-id-not-fixed");
-    const info = JSON.parse(deps.docker.command(["inspect", id]).toString())[0];
+    const info = containerRows.find(row => row.Id === id);
     if (info.Id !== id || info.Config?.Labels?.["com.docker.compose.project"] !== input.source.project || info.Config?.Labels?.["com.docker.compose.service"] !== service || info.Config?.Labels?.["com.docker.compose.project.config_files"] !== composeFile || info.Config?.Labels?.["com.docker.compose.project.working_dir"] !== path.dirname(composeFile)) fail("compose-container-mismatch");
     return info;
   };
-  if (input.source.applications.map(a => a.service).sort().join(",") !== "api,web,worker" || input.source.stores.map(s => s.service).sort().join(",") !== "minio,postgres,redis") fail("source-service-set-incomplete");
   const required = applicationRequirement();
   const applications = input.source.applications.map(app => {
     const info = inspect(app.containerId, app.service);
@@ -164,13 +172,22 @@ const observe = async (input: HandoffInputs, deps: HandoffObserver, applicationR
     if (!app.imageReference.endsWith(`:${input.source.sha}`) || (info.Config.Labels?.["org.opencontainers.image.revision"] && info.Config.Labels["org.opencontainers.image.revision"] !== input.source.sha)) fail("source-sha-image-reference-mismatch");
     return { service: app.service, id: info.Id as string, imageId: info.Image as string, imageReference: info.Config.Image as string };
   });
-  const stores = input.source.stores.map(store => {
+  const storeMounts = input.source.stores.map(store => {
     const info = inspect(store.containerId, store.service);
     const mounts = info.Mounts.filter((m: { Destination: string }) => m.Destination === store.destination);
     if (mounts.length !== 1 || mounts[0].Type !== "volume" || mounts[0].Name !== store.volumeName) fail("source-volume-mismatch");
-    const volume = JSON.parse(deps.docker.command(["volume", "inspect", store.volumeName]).toString())[0];
+    return { store, info, mount: mounts[0] };
+  });
+  const volumeNames = input.source.stores.map(store => store.volumeName);
+  if (new Set(volumeNames).size !== volumeNames.length) fail("source-volume-mismatch");
+  const volumeRows = JSON.parse(deps.docker.command(["volume", "inspect", ...volumeNames]).toString());
+  if (!Array.isArray(volumeRows) || volumeRows.length !== volumeNames.length ||
+    new Set(volumeRows.map(row => row?.Name)).size !== volumeNames.length ||
+    volumeRows.some(row => !row || !volumeNames.includes(row.Name))) fail("volume-inventory-mismatch");
+  const stores = storeMounts.map(({ store, info, mount }) => {
+    const volume = volumeRows.find(row => row.Name === store.volumeName);
     if (volume.Name !== store.volumeName || volume.Labels?.["com.docker.compose.project"] !== input.source.project) fail("source-volume-owner-mismatch");
-    return { service: store.service, id: info.Id as string, imageId: info.Image as string, mount: mounts[0], volume };
+    return { service: store.service, id: info.Id as string, imageId: info.Image as string, mount, volume };
   });
   // Freeze the actual port result before file or lock awaits. A producer may
   // reuse its own object; later mutation cannot erase an observed drift.
