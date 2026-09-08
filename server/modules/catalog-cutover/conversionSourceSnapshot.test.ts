@@ -16,8 +16,10 @@ function fixture() {
   ];
   records.users = [{ source_row: { id: "private-user", value: "private-password-canary" }, sql_nulls: [false, false] }];
   const queries: string[] = [];
+  const faults = { restore: false };
   const client = { async query(sql: string) {
     queries.push(sql);
+    if (sql === "set row_security = on" && faults.restore) throw new Error("private-cleanup-canary");
     if (sql === "show row_security") return { rows: [{ row_security: "on" }] };
     if (sql.startsWith("set row_security")) return { rows: [] };
     if (sql.includes("pg_catalog.pg_class")) return { rows: structuredClone(tables) };
@@ -25,7 +27,7 @@ function fixture() {
     if (!relation) throw new Error("unexpected-query-double");
     return { rows: structuredClone(records[relation]) };
   } } as CutoverQueryable;
-  return { client, queries, records, tables };
+  return { client, queries, records, tables, faults };
 }
 
 describe("conversion source projection from the original complete-row scan", () => {
@@ -56,5 +58,18 @@ describe("conversion source projection from the original complete-row scan", () 
     else f.records.parameter_spec_versions!.push(structuredClone(f.records.parameter_spec_versions![0]!));
     await expect(captureConversionSourceSnapshot(f.client)).rejects.toThrow("PCAT-CONVERSION-SOURCE-PROJECTION-");
     expect(f.queries.at(-1)).toBe("set row_security = on");
+  });
+  it("retains the closed primary projection refusal when restoring the session also fails", async () => {
+    const f = fixture(); f.records.parameter_spec_versions![0]!.sql_nulls.pop(); f.faults.restore = true;
+    const failure = await captureConversionSourceSnapshot(f.client).catch(error => error);
+    expect(failure).toBeInstanceOf(AggregateError);
+    expect(failure.errors.map((error: Error) => error.message)).toEqual([
+      "PCAT-CONVERSION-SOURCE-PROJECTION-INVALID", "PCAT-CONVERSION-SOURCE-PROJECTION-RESTORE-FAILED",
+    ]);
+    expect(JSON.stringify(failure, Object.getOwnPropertyNames(failure))).not.toContain("private-cleanup-canary");
+  });
+  it("refuses an otherwise complete projection if restoring the session fails", async () => {
+    const f = fixture(); f.faults.restore = true;
+    await expect(captureConversionSourceSnapshot(f.client)).rejects.toThrow("PCAT-CONVERSION-SOURCE-PROJECTION-RESTORE-FAILED");
   });
 });
