@@ -1,0 +1,26 @@
+{
+  "scope": "Independent immutable delivery verification; no test re-execution or release approval",
+  "head": "4b346d6ef483d599a9449bddab44345dd11fce26",
+  "headTree": "7cca513f5dfdb916525e5a090af0f115d80d0d1c",
+  "code": "25e8aabaee5bedd709aa15d02e6e6d020cc5550c",
+  "codeTree": "e03802313b64eaf4f33fc04299f06072fe9f9fb5",
+  "changedPaths": 351,
+  "presentFilesVerifiedAgainstGit": 351,
+  "deletedPaths": 0,
+  "contractBlobsVerified": 25,
+  "explicitLogsVerified": 42,
+  "archiveEntries": 421,
+  "fullBinaryDiffVerified": true,
+  "originalAndDeliveredLogHashesVerified": true,
+  "historicalPackageHashVerified": true,
+  "historicalPackageLogsNotRecopiedWholesale": 231,
+  "privacyReview": "All 42 explicit logs inspected by credential/URL/private-path patterns. Boundary token fields are static scanner rule metadata; authorization matches are Hosted *** and an empty example assignment. Loopback endpoint is a source fixture. No private connection credentials or retained evidence locators are delivered. Source files are unmodified Git bytes.",
+  "boundaries": [
+    "D-A 69 pure result is preseal implementation WIP; 15 PG result is exact file-blob evidence because unrelated checkout files advanced.",
+    "2a96 SQL 18/19 failed; later 074 full 19/19 is separate.",
+    "25e retirement preparation failed with 1 pass and 15 skipped; quiet 16/16 is separate and does not establish a cause.",
+    "25e scripts retain 11 skips; ordinary docs skipped schema; strict owned docs is separate.",
+    "Historical Hosted failure is retained; no Hosted execution on 25e or 4b is claimed.",
+    "No unintegrated NW02, Scratch 009bf, or commits after 4b346 are included; no production, full controller, or approved startup claim."
+  ]
+}
