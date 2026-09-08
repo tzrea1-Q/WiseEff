@@ -240,6 +240,30 @@ describe("S11-UPG threat matrix", () => {
 });
 
 describe("S11-UPG controller", () => {
+  it.each([false, true])("does not accept a plan when the host lock is lost while the planner runs (replay=%s)", async replay => {
+    const harness = createHarness();
+    const journalPath = journalPathFor("plan-lock-loss");
+    let held = true;
+    let loseDuringPlan = false;
+    const opened = openCatalogUpgradeController({
+      journalPath, runId: "plan-lock-loss", verification: harness.verification,
+      operationLock: { async assertHeld() { if (!held) throw new Error("private-lock-diagnostic"); } },
+      cutover: { ...harness.cutover, async plan(input) {
+        const result = await harness.cutover.plan(input);
+        if (loseDuringPlan) held = false;
+        return result;
+      } },
+    });
+    if (!opened.ok) throw new Error("fixture-controller-open-failed");
+    if (replay) expect((await opened.value.dispatch({ action: "plan", input: planInput() })).ok).toBe(true);
+    loseDuringPlan = true;
+    const before = journalBytes(journalPath);
+    const result = await opened.value.dispatch({ action: "plan", input: planInput() });
+    expect(result).toMatchObject({ ok: false, error: { code: "PCAT-UPG-ILLEGAL-ACTION", detail: "handoff-lock-lost" } });
+    expect(harness.calls).toEqual(replay ? ["plan", "plan"] : ["plan"]);
+    expect(journalBytes(journalPath)).toEqual(before);
+  });
+
   it.each(["pending", "unknown"] as const)("rejects cross-run %s before planning, verification or replay", async outcome => {
     const operationRoot = mkdtempSync(path.join(tmpdir(), "upg-controller-admission-"));
     const target = { systemIdentifier: "123456789", databaseOid: "16384" };

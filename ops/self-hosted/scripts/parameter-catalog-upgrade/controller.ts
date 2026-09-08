@@ -242,6 +242,10 @@ export const openCatalogUpgradeController = (
             `${planned.error.code}: ${planned.error.detail}`,
           );
         }
+        // Planning awaits source observations. Its result cannot authorize a
+        // journal commit or successful replay after the enclosing lock is lost.
+        try { await deps.operationLock?.assertHeld(); }
+        catch { return failClosed("PCAT-UPG-ILLEGAL-ACTION", "handoff-lock-lost"); }
         if (replayed) {
           if (planned.value.planDigest !== journal.record.planDigest) return failClosed("PCAT-UPG-ILLEGAL-ACTION", "planned input is no longer applicable");
           return { ok: true, value: withReplay(journal, true) };
