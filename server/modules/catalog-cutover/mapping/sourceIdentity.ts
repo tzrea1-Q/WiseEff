@@ -52,7 +52,7 @@ export async function capturePhysicalSourceIdentities(input: {
         "parameter_catalog.serialize_legacy_source_key(array['auditEventId','semanticId','subjectKind'],array[audit_event_id,semantic_id,subject_kind])" : "id";
       // The relation is a grammar-checked identifier from the installed owner
       // registry, never a path or SQL fragment supplied by a comparison case.
-      const rows = (await input.client.query<{ sourceId: string }>(`select ${key} as "sourceId" from ${entry.sourceRelation} order by "sourceId" collate "C"`)).rows;
+      const rows = (await input.client.query<{ sourceId: string }>(`select ${key} as "sourceId" from ${entry.sourceRelation} order by ${key} collate "C"`)).rows;
       for (const row of rows) sources.push({ sourceKind: entry.sourceKind, sourceId: row.sourceId });
     }
     const identities = await capturePlannedSourceIdentities({ ...input, sources });
