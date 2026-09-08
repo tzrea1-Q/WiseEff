@@ -1,0 +1,9 @@
+{
+  "head": "6d8fbe2bf0b751617839ca6da8bf7f9c5195c325",
+  "fullFiles": 359,
+  "archiveEntries": 451,
+  "sha256": "f40cf3aec5cab1f28966622cda331460fbfb6e031eebaf3ab1efa92b7c68716e",
+  "gitBytesVerified": true,
+  "zipReadbackVerified": true,
+  "independentReview": "PASS: independent reviewer checked all 359 Git files, 451 ZIP entries, historical byte preservation, four new execution logs and secret-material exclusions. No A/B/C or Hosted approval inferred."
+}
