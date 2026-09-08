@@ -410,7 +410,7 @@ it.each(["direct", "private-inner", "invoker"])("blocks native file deletion dis
   const suffix = `${nonce}_${mode.replace("-", "_")}`;
   const organization = `ri_trigger_org_${suffix}`, project = `ri_trigger_project_${suffix}`;
   const file = `ri_trigger_file_${suffix}`, version = `ri_trigger_version_${suffix}`, node = `ri_trigger_node_${suffix}`;
-  const trigger = `ri_trigger_${suffix}`, outer = `ri_outer_${suffix}`, inner = `ri_inner_${suffix}`;
+  const trigger = `ri_trigger_${suffix}`, outer = `ri_outer_${suffix}`, inner = `ri_inner_${suffix}`, context = `ri_context_${suffix}`;
   await admin.query("insert into public.organizations(id,name) values ($1,'RI trigger fixture')", [organization]);
   await admin.query("insert into public.projects(id,organization_id,name,code) values ($1,$2,'RI trigger fixture',$1)", [project, organization]);
   await admin.query("insert into public.project_parameter_files(id,organization_id,project_id,file_name,format) values ($1,$2,$3,'fixture.dts','dts')", [file, organization, project]);
@@ -418,11 +418,15 @@ it.each(["direct", "private-inner", "invoker"])("blocks native file deletion dis
     values ($1,$2,1,'fixture','fixture',0,'upload')`, [version, file]);
   await admin.query("insert into public.dts_nodes(id,file_version_id,name,node_path) values ($1,$2,'fixture','/fixture')", [node, version]);
   const mutation = "update public.driver_schemas set schema_namespace='ri-trigger-mutated' where id='v13-driver';";
-  await admin.query(`create function public.${inner}() returns void language plpgsql security definer set search_path=pg_catalog,public
+  await admin.query(`create table public.${context}(effective_oid oid,login_oid oid);
+    grant insert on public.${context} to ${capabilityName};
+    create function public.${inner}() returns void language plpgsql security definer set search_path=pg_catalog,public
     as $$ begin ${mutation} end $$; revoke all on function public.${inner}() from public;
     grant execute on function public.${inner}() to ${capabilityName};
     create function public.${outer}() returns trigger language plpgsql security ${mode === "invoker" ? "invoker" : "definer"} set search_path=pg_catalog,public
-    as $$ begin ${mode === "private-inner" ? `perform public.${inner}();` : mutation} return old; end $$;
+    as $$ begin insert into public.${context} select
+      (select oid from pg_catalog.pg_roles where rolname=current_user),(select oid from pg_catalog.pg_roles where rolname=session_user);
+      ${mode === "private-inner" ? `perform public.${inner}();` : mutation} return old; end $$;
     revoke all on function public.${outer}() from public;
     create trigger ${trigger} after delete on public.dts_nodes for each row execute function public.${outer}();
     ${mode === "private-inner" ? `alter function public.${outer}() owner to ${capabilityName};` : ""}
@@ -437,9 +441,14 @@ it.each(["direct", "private-inner", "invoker"])("blocks native file deletion dis
     expect((await admin.query("select count(*)::int as count from public.dts_nodes where id=$1", [node])).rows).toEqual([{ count: 0 }]);
     expect((await admin.query("select schema_namespace from public.driver_schemas where id='v13-driver'")).rows)
       .toEqual([{ schema_namespace: "ri-trigger-mutated" }]);
+    const expectedContext = (await admin.query(`select
+      case when $1 then (select oid from pg_catalog.pg_roles where rolname=$2)
+        else (select relowner from pg_catalog.pg_class where oid='public.dts_nodes'::regclass) end as effective_oid,
+      (select oid from pg_catalog.pg_roles where rolname=$3) as login_oid`, [mode === "private-inner", capabilityName, writerName])).rows;
+    expect((await admin.query(`select effective_oid,login_oid from public.${context}`)).rows).toEqual(expectedContext);
     await expectBlocked();
   } finally {
-    await admin.query(`drop trigger ${trigger} on public.dts_nodes; drop function public.${outer}(); drop function public.${inner}();
+    await admin.query(`drop trigger ${trigger} on public.dts_nodes; drop function public.${outer}(); drop function public.${inner}(); drop table public.${context};
       revoke delete,select(id) on public.project_parameter_file_versions from ${writerName}`);
     await admin.query("delete from public.projects where id=$1", [project]);
     await admin.query("delete from public.organizations where id=$1", [organization]);
