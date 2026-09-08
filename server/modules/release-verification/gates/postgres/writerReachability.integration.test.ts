@@ -418,15 +418,18 @@ it.each(["direct", "private-inner", "invoker"])("blocks native file deletion dis
     values ($1,$2,1,'fixture','fixture',0,'upload')`, [version, file]);
   await admin.query("insert into public.dts_nodes(id,file_version_id,name,node_path) values ($1,$2,'fixture','/fixture')", [node, version]);
   const mutation = "update public.driver_schemas set schema_namespace='ri-trigger-mutated' where id='v13-driver';";
-  await admin.query(`create table public.${context}(effective_oid oid,login_oid oid);
-    grant insert on public.${context} to ${capabilityName};
+  await admin.query(`create table public.${context}(effective_oid oid,login_oid oid,effect_code text);
+    grant insert on public.${context} to ${capabilityName},${writerName};
     create function public.${inner}() returns void language plpgsql security definer set search_path=pg_catalog,public
     as $$ begin ${mutation} end $$; revoke all on function public.${inner}() from public;
     grant execute on function public.${inner}() to ${capabilityName};
     create function public.${outer}() returns trigger language plpgsql security ${mode === "invoker" ? "invoker" : "definer"} set search_path=pg_catalog,public
-    as $$ begin insert into public.${context} select
-      (select oid from pg_catalog.pg_roles where rolname=current_user),(select oid from pg_catalog.pg_roles where rolname=session_user);
-      ${mode === "private-inner" ? `perform public.${inner}();` : mutation} return old; end $$;
+    as $$ declare effect_code text := 'succeeded'; begin
+      begin ${mode === "private-inner" ? `perform public.${inner}();` : mutation}
+      exception when insufficient_privilege then effect_code := SQLSTATE; end;
+      insert into public.${context} select (select oid from pg_catalog.pg_roles where rolname=current_user),
+        (select oid from pg_catalog.pg_roles where rolname=session_user),effect_code;
+      return old; end $$;
     revoke all on function public.${outer}() from public;
     create trigger ${trigger} after delete on public.dts_nodes for each row execute function public.${outer}();
     ${mode === "private-inner" ? `alter function public.${outer}() owner to ${capabilityName};` : ""}
@@ -440,13 +443,16 @@ it.each(["direct", "private-inner", "invoker"])("blocks native file deletion dis
     expect((await writer.query("delete from public.project_parameter_file_versions where id=$1", [version])).rowCount).toBe(1);
     expect((await admin.query("select count(*)::int as count from public.dts_nodes where id=$1", [node])).rows).toEqual([{ count: 0 }]);
     expect((await admin.query("select schema_namespace from public.driver_schemas where id='v13-driver'")).rows)
-      .toEqual([{ schema_namespace: "ri-trigger-mutated" }]);
+      .toEqual([{ schema_namespace: mode === "invoker" ? "ri-trigger-before" : "ri-trigger-mutated" }]);
     const expectedContext = (await admin.query(`select
-      case when $1 then (select oid from pg_catalog.pg_roles where rolname=$2)
+      case when $1='private-inner' then (select oid from pg_catalog.pg_roles where rolname=$2)
+        when $1='invoker' then (select oid from pg_catalog.pg_roles where rolname=$3)
         else (select relowner from pg_catalog.pg_class where oid='public.dts_nodes'::regclass) end as effective_oid,
-      (select oid from pg_catalog.pg_roles where rolname=$3) as login_oid`, [mode === "private-inner", capabilityName, writerName])).rows;
-    expect((await admin.query(`select effective_oid,login_oid from public.${context}`)).rows).toEqual(expectedContext);
-    await expectBlocked();
+      (select oid from pg_catalog.pg_roles where rolname=$3) as login_oid,
+      case when $1='invoker' then '42501' else 'succeeded' end as effect_code`, [mode, capabilityName, writerName])).rows;
+    expect((await admin.query(`select effective_oid,login_oid,effect_code from public.${context}`)).rows).toEqual(expectedContext);
+    if (mode === "invoker") expect(await runGate()).toMatchObject({ status: "passed" });
+    else await expectBlocked();
   } finally {
     await admin.query(`drop trigger ${trigger} on public.dts_nodes; drop function public.${outer}(); drop function public.${inner}(); drop table public.${context};
       revoke delete,select(id) on public.project_parameter_file_versions from ${writerName}`);
