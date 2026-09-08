@@ -4,6 +4,22 @@
 
 ## NW continuation, 2026-09-08
 
+### Retired module-mapping writer integration
+
+Integrated `ce3eee2f27f7e0b3eeec8e163a3cf0196ba47a94` and source report
+`e5aa2712f4bce573e1cb5a6eabdcbc5fec78e09c` share tree
+`14023ee5c0b769fe4b737ea45afa4fcb06b78966`. The actual executions belong to
+source code `cf15075ee7e8170f25d06ea065e6ad9a25f3a975`: V13 35/35, 5.87s;
+SQL fence 20/20, 130.10s; zero failed/skipped, both exit 0 and cleanup verified.
+Logs `/tmp/pr824-module-mapping-cf150-gate-green.log` and
+`/tmp/pr824-module-mapping-cf150-effect-green.log` have SHA256
+`5ab4a5d55ca898207c6d524f1050bf387550909a55c2abeda98690e0dc3979df` and
+`fc6865db043e928793620dbb65c3fc9b0c35c15be47bd8620ad6002e82a9c7d1`.
+The bounded independent reviews and both real failing predecessors are recorded
+in the retirement module README. This repairs one existing writer scope, with no
+new grant or migration; it does not establish complete P13 or runtime approval.
+Current-candidate Hosted and a refreshed public full-file package remain pending.
+
 ### Final-boundary fixture follow-up
 
 Hosted `34197132779` completed failed, report `23f3a7e21`, actual merge checkout
@@ -44,7 +60,23 @@ remained 3509/3509 against the unchanged trusted base. Logs:
 `abba015b58a21f80519ad0ddc35ebabb5549f28168a8a5f1a5ce7d22e0a51959`;
 `/tmp/pr824-de225-boundary.log` SHA256
 `6eecbc7c68f93a34280ba53bb4a3837ff844959de6391569ee190fe9a3b0f795`.
-New Hosted execution is not yet available.
+Hosted `34200531532` subsequently completed successfully at report `504fd4046`,
+actual merge checkout `ed57cadcdc5c599e02635aac2f772c8bd84c95ca`.
+Build/test, owned, smoke, quality and Merge bar passed. Local non-HDC and target
+synthetic skipped. Frontend passed 3374/3374; scripts passed 2019 with 27 skips
+plus the separate 4/4 source-lock; bridge passed 134 with 4 skips; backend passed
+4322/4322. Boundary, contract and log-eval ran successfully.
+All sixteen owned suites executed: reader 49, writer 34, runtime identity 11,
+runtime-role-source 13, SQL privilege 19, read projections 10, report 36,
+authority 81, bindings 98, Redis 12, activation 22, retirement 16, bootstrap 44,
+three-store recovery 16, controlled recovery 4 and handoff 9: 474 passed,
+zero failed/skipped, every suite reported verified cleanup. These remain
+component suites, including identity-stub handoff apps, not a full old-app upgrade.
+Original owned log `/tmp/pr824-ci-504fd-owned.log`, SHA256
+`01bd876306d2cdfea28341ff2deedb9d87e9323e878b789c9576805d8c07ab71`;
+build log `/tmp/pr824-ci-504fd-build.log`, SHA256
+`9f436137990b5ed997078a1a12e74f484ecbc8cd1e64f6215b1751c390d09697`.
+Neither log is retroactively included in the published `23f3a7e21` package.
 
 ### Integrated follow-up `0390bd028`
 

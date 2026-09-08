@@ -4,11 +4,15 @@
 
 ## 范围与状态
 
-最新集成代码 `de225d639` 保留已审安全修复。报告 `23f3a7e21` 的 Hosted
+最新集成代码 `ce3eee2f2` 将既有已退休模块映射写入口同时纳入 V13 和 SQL fence。源执行 `cf15075ee` 的真实 PostgreSQL 为35/35、20/20，清理核验通过；限定 Standards／Spec 均通过。集成 tree 与源报告 `e5aa2712f` 相同。该候选尚未执行 Hosted，下述成功 CI 属于前序代码。完整 P13、获批应用启动和完整升级仍未完成。
+
+此前集成代码 `de225d639` 保留已审安全修复。报告 `23f3a7e21` 的 Hosted
 `34197132779` 已结束：Build/test、smoke、quality 通过；owned 在 bootstrap
 最后边界1500ms期限失败（40/41），后续 owned 未执行。Merge bar失败，两项目标任务跳过。
 `de225d639` 的测试拆分已独立审查，保留全部超时、锁断言及解锁后成功检查；
-相同源tree的真实 PostgreSQL 为44/44，集成build及boundary通过。新Hosted尚未验证。
+相同源tree的真实 PostgreSQL 为44/44，集成build及boundary通过。随后报告 `504fd4046`
+的 Hosted `34200531532` 在 merge `ed57cadcdc5c599e02635aac2f772c8bd84c95ca`
+通过必需job，包含474项owned；两项目标job跳过。
 精确执行身份及日志见既有证据。旧应用源lease及完整P0 producer仍为Scratch；
 合法启动和完整存量升级尚未通过。
 

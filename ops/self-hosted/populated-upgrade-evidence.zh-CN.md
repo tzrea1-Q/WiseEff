@@ -4,6 +4,21 @@
 
 ## NW 续工，2026-09-08
 
+### 已退休模块映射写入口集成
+
+集成 `ce3eee2f27f7e0b3eeec8e163a3cf0196ba47a94` 与源报告
+`e5aa2712f4bce573e1cb5a6eabdcbc5fec78e09c` 的 tree 相同：
+`14023ee5c0b769fe4b737ea45afa4fcb06b78966`。真实执行属于源代码
+`cf15075ee7e8170f25d06ea065e6ad9a25f3a975`：V13为35/35、5.87秒；
+SQL fence为20/20、130.10秒；均零失败／跳过、退出0、清理核验通过。
+日志 `/tmp/pr824-module-mapping-cf150-gate-green.log` 与
+`/tmp/pr824-module-mapping-cf150-effect-green.log` 的 SHA256 分别为
+`5ab4a5d55ca898207c6d524f1050bf387550909a55c2abeda98690e0dc3979df`、
+`fc6865db043e928793620dbb65c3fc9b0c35c15be47bd8620ad6002e82a9c7d1`。
+限定独立审查及两次真实失败反例见 retirement 模块双语 README。本次仅修复既有写入口
+范围，不新增 grant 或 migration，不代表完整 P13 或运行批准。
+当前候选 Hosted 与更新后的公开全文包仍待完成。
+
 ### 最后边界夹具后续修复
 
 Hosted `34197132779` 已失败结束，报告 `23f3a7e21`，实际 merge checkout
@@ -38,7 +53,21 @@ Owned 到 bootstrap 为40/41：仅 `final-boundary` 触发既有1500ms独立子�
 `abba015b58a21f80519ad0ddc35ebabb5549f28168a8a5f1a5ce7d22e0a51959`；
 `/tmp/pr824-de225-boundary.log` 的SHA256为
 `6eecbc7c68f93a34280ba53bb4a3837ff844959de6391569ee190fe9a3b0f795`。
-新 Hosted 尚无执行结果。
+随后 Hosted `34200531532` 成功结束，报告 `504fd4046`，实际 merge checkout
+`ed57cadcdc5c599e02635aac2f772c8bd84c95ca`。Build/test、owned、smoke、quality、
+Merge bar通过；local non-HDC和target synthetic跳过。Frontend为3374/3374；
+scripts为2019通过／27跳过，另有source-lock 4/4；bridge为134通过／4跳过；
+backend为4322/4322。Boundary、contract、log-eval均实际成功执行。
+十六组owned全部执行：reader49、writer34、runtime identity11、runtime-role-source13、
+SQL privilege19、read projections10、report36、authority81、bindings98、Redis12、
+activation22、retirement16、bootstrap44、三存储恢复16、controlled recovery4、handoff9。
+合计474通过，零失败／跳过，各suite均报告清理核验通过。这些仍是组件验收，
+handoff应用仍为identity stub，不是完整旧应用升级。
+原owned日志 `/tmp/pr824-ci-504fd-owned.log`，SHA256
+`01bd876306d2cdfea28341ff2deedb9d87e9323e878b789c9576805d8c07ab71`；
+build日志 `/tmp/pr824-ci-504fd-build.log`，SHA256
+`9f436137990b5ed997078a1a12e74f484ecbc8cd1e64f6215b1751c390d09697`。
+这两份日志未倒填进已发布的 `23f3a7e21` 文件包。
 
 ### 集成后续候选 `0390bd028`
 

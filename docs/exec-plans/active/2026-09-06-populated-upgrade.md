@@ -4,14 +4,17 @@
 
 ## Scope and state
 
-Latest integrated code `de225d639` retains the reviewed safety fixes. Report
+Latest integrated code `ce3eee2f2` additionally covers the existing retired module-mapping writer in both V13 and the SQL fence. Source execution `cf15075ee` passed real PostgreSQL 35/35 and 20/20, with verified cleanup; independent Standards/Spec passed the bounded change. Its integrated tree is identical to source report `e5aa2712f`. This candidate has not yet run Hosted; the following successful CI belongs to its predecessor. P13, approved application startup and the full upgrade remain incomplete.
+
+Earlier integrated code `de225d639` retains the reviewed safety fixes. Report
 `23f3a7e21` Hosted run `34197132779` finished: Build/test, smoke and quality
 passed; owned failed at the bootstrap final-boundary 1500ms deadline (40/41),
 and later owned suites did not run. Merge bar failed; two target jobs skipped.
 The independently reviewed test split at `de225d639` preserves every timeout,
 lock assertion and unlocked-success check. Its identical source tree passed
-44/44 real PostgreSQL; integrated build and boundary passed. New Hosted remains
-unverified. Existing evidence records exact identities and logs. The old-app
+44/44 real PostgreSQL; integrated build and boundary passed. Subsequent report
+`504fd4046` Hosted `34200531532` passed required jobs at merge `ed57cadcdc5c599e02635aac2f772c8bd84c95ca`,
+including all 474 owned tests; two target jobs skipped. Existing evidence records exact identities and logs. The old-app
 source lease and full P0 producer remain Scratch; neither approved startup nor
 the complete populated upgrade has passed.
 
