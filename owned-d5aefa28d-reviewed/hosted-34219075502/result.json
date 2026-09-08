@@ -1,0 +1,22 @@
+{
+  "run": 34219075502,
+  "reportHead": "d5aefa28d32afcd42fc22a2ef9f728cef6c749be",
+  "code": "bd4ad49c85c5eeaa2e351245f5a4b616af700399",
+  "base": "cda6737a8f177a8bbd2f3bc7d195f8e3037bfa74",
+  "actualMergeCheckout": "f5acf76cef1fa667620c12c25262420e11282746",
+  "status": "completed",
+  "conclusion": "success",
+  "owned": { "suites": 16, "passed": 477, "failed": 0, "skipped": 0, "cleanupVerified": true },
+  "frontend": { "passed": 3374, "failed": 0, "skipped": 0 },
+  "sourceLock": { "passed": 4, "failed": 0, "skipped": 0 },
+  "scripts": { "passed": 2035, "failed": 0, "skipped": 27, "collected": 2062 },
+  "bridge": { "passed": 134, "failed": 0, "skipped": 4, "collected": 138 },
+  "backend": { "passed": 4322, "failed": 0, "skipped": 0 },
+  "otherPassed": ["boundary", "contract", "log-eval", "acceptance-smoke", "acceptance-quality", "merge-bar"],
+  "skippedJobs": ["Acceptance local non-HDC", "Target synthetic acceptance"],
+  "logs": {
+    "owned.log": "a1e740767500023dafcbd0b49b6d6dc4d5f31fd6330a001be62c033bdec80725",
+    "build.log": "dad3b5fe2ca6afb5d619430f33af19bd040df6833ff5cbf51ca60db5f08d673f"
+  },
+  "limits": "Subsequent Scratch is not covered. No complete populated controller, approved application startup, target backup rehearsal, enterprise network build or production execution is certified. The original ZIP retains its earlier packaging-time pending-CI record."
+}
