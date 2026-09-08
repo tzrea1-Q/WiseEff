@@ -53,6 +53,11 @@ const syntheticTarget = {
   },
 } as const;
 
+const syntheticIinArrayValueSchema = {
+  type: "array",
+  items: { type: "integer", minimum: 0 },
+} as const;
+
 type SyntheticProperty = keyof typeof syntheticTarget.definitions;
 type SyntheticTargetKind = "catalog-subject" | "parameter-definition" | "definition-revision";
 type SourceTargetDeclaration = {
@@ -168,6 +173,14 @@ const reviewedSyntheticBundle = (): CatalogReleaseBundle => {
   if (!subject || subject.kind !== "subject" || !definition || definition.kind !== "definition") {
     throw new Error("comparison-multihead-reviewed-bundle-base-invalid");
   }
+  const iinMax = target.documents.find((document) => document.kind === "definition"
+    && document.content.id === syntheticTarget.definitions.iin_max.id);
+  if (!iinMax || iinMax.kind !== "definition" || iinMax.content.revision.id !== syntheticTarget.definitions.iin_max.revisionId) {
+    throw new Error("comparison-multihead-reviewed-bundle-iin-target-invalid");
+  }
+  // The source fixture records u32-array/[43]; the reviewed target must retain
+  // that shape explicitly instead of inheriting the scalar base-fixture schema.
+  iinMax.content.revision.valueSchema = syntheticIinArrayValueSchema;
   target.documents.push(syntheticDefinition(definition.source, subject.content.id, "enabled", syntheticTarget.definitions.enabled));
   refreshSyntheticRelease(target);
   return deepFreeze(bundle);
@@ -352,6 +365,13 @@ describe("complete legacy source to multi-head comparison", () => {
       count: inventory[family].length })), comparisonRulesProduced: false }));
     const artifacts = reviewedSyntheticArtifacts({ graph, sourceSnapshot: snapshot, driverSchemaId,
       driverRootParameterSpecId, driverRootParameterVersionId, properties: created });
+    const targetRelease = artifacts.bundle.releases.find((release) => release.manifest.release.id === artifacts.bundle.targetReleaseId);
+    const targetIin = targetRelease?.documents.find((document) => document.kind === "definition"
+      && document.content.id === syntheticTarget.definitions.iin_max.id);
+    expect(targetIin).toMatchObject({
+      kind: "definition",
+      content: { revision: { valueSchema: syntheticIinArrayValueSchema } },
+    });
     expect(inspectConversionManifest({
       graph,
       bundle: artifacts.bundle,

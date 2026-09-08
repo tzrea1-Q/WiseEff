@@ -5,6 +5,21 @@ import * as componentRunner from "./run-upgrade-component-tests";
 
 const workflow = readFileSync(new URL("../.github/workflows/ci.yml", import.meta.url), "utf8");
 
+it("requires the full-source multi-head case in the owned PG16 job", () => {
+  const file = "server/modules/release-verification/comparison/multiHead.integration.test.ts";
+  expect(componentRunner.componentTestCommands("comparison-multihead-pg16")[0].slice(1)).toEqual([
+    "run", "--config", "vitest.upgrade-cutover.config.ts", file,
+  ]);
+  const config = readFileSync(new URL("../vitest.upgrade-cutover.config.ts", import.meta.url), "utf8");
+  expect(config).toContain("assertOwnedUpgradeTestTarget();");
+  expect(config).toContain("passWithNoTests: false");
+  expect(config).toContain(`"${file}"`);
+  const server = readFileSync(new URL("../vitest.server.config.ts", import.meta.url), "utf8");
+  expect(server.slice(server.indexOf("exclude:"), server.indexOf("setupFiles:"))).toContain(`"${file}"`);
+  expect(workflow).toContain("--suite comparison-multihead-pg16 --github-hosted");
+  expect(readFileSync(new URL(`../${file}`, import.meta.url), "utf8")).not.toContain("describe.skipIf");
+});
+
 it("requires actual legacy SQL privilege effects in the owned PG16 job", () => {
   const file = "server/modules/catalog-cutover/retirement/legacySqlPrivilegeFence.integration.test.ts";
   const configPath = "server/modules/catalog-cutover/retirement/vitest.legacy-sql-privilege.integration.config.ts";

@@ -279,6 +279,8 @@ jobs:
           npx tsx scripts/run-upgrade-component-tests.ts \
             --expected-daemon-id "$daemon_id" --suite activation-existing-pg16 --github-hosted
           npx tsx scripts/run-upgrade-component-tests.ts \
+            --expected-daemon-id "$daemon_id" --suite comparison-multihead-pg16 --github-hosted
+          npx tsx scripts/run-upgrade-component-tests.ts \
             --expected-daemon-id "$daemon_id" --suite retirement-existing-pg16 --github-hosted
           npx tsx scripts/run-upgrade-component-tests.ts \
             --expected-daemon-id "$daemon_id" --suite bootstrap-credential-pg16 --github-hosted
