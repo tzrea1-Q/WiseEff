@@ -4,6 +4,48 @@
 
 ## NW continuation, 2026-09-08
 
+### Final-boundary fixture follow-up
+
+Hosted `34197132779` completed failed, report `23f3a7e21`, actual merge checkout
+`b3e9bfea958fe91f77a97747f70204a3067875eb`. Build/test, smoke and quality passed;
+local non-HDC and target synthetic skipped; owned and Merge bar failed. Build/test
+executed frontend 3374/3374, source-lock 4/4, scripts 2019 passed/27 skipped,
+bridge 134 passed/4 skipped, backend 4322/4322, boundary 3509/3509, contract and
+log-eval. Scripts skips were historical rehearsal 16, handoff 1, runtime identity
+5 and vendor DT 5; bridge skips were CLI 2 and macOS URL scheme 2.
+
+Owned reached bootstrap 40/41: only `final-boundary` hit the existing 1500ms
+independent-child deadline. The former acknowledgment-loss case and native probe
+regression passed. The next recovery and handoff suites did not execute. Original
+log `/tmp/pr824-ci-23f3-owned.log`, SHA256
+`76fe0e229f12e1e0eb01bd683a6ac2df4c4b090dfb303e4ac363120013ae68a0`.
+One unchanged local `23f3` control passed 41/41, 18.41s, cleanup verified; it did
+not reproduce Hosted. Log `/tmp/pr824-bootstrap-23f3-timeout-control.log`, SHA256
+`985d853d98158b3836b3db6fa94bb453a7ee21ff7cd76f704d8b6abe164f7010`.
+
+Test-only source `2747faf47ab46171891a9742dd4fb1d7754ab9f3` and integrated
+`de225d63913ae51856b819b39e6061763bd0950d` have identical tree
+`b22fa72f940a8b0f17fa4648f9bf3c232d4e2b47`. Four independently named final-boundary
+cases replace the aggregate: each retains actual `55P03`, success after lock
+release, the 1500ms child deadline and 50ms lock timeout. Restoration now wraps
+the blocked phase too. Production code and all other cases are unchanged.
+The formal source execution passed 44/44, no failure/skip/filter, 20.97s, cleanup
+verified; four case durations were 922/865/905/880ms. Log
+`/tmp/pr824-bootstrap-boundary-split-full.log`, SHA256
+`96227b31bf3e27ed95d08e0eaba220c5a1080f80030bcb1b4ba1fe3e7c84ed7f`.
+Separate independent Standards/Spec reviews passed this single-file change.
+Splitting removes three deliberate lock waits from each child window; it does
+not prove the original timeout cause or future Hosted stability. No startup or
+complete upgrade is inferred.
+
+At integrated `de225d639`, build exited 0 with existing warnings and boundary
+remained 3509/3509 against the unchanged trusted base. Logs:
+`/tmp/pr824-de225-build.log` SHA256
+`abba015b58a21f80519ad0ddc35ebabb5549f28168a8a5f1a5ce7d22e0a51959`;
+`/tmp/pr824-de225-boundary.log` SHA256
+`6eecbc7c68f93a34280ba53bb4a3837ff844959de6391569ee190fe9a3b0f795`.
+New Hosted execution is not yet available.
+
 ### Integrated follow-up `0390bd028`
 
 Code `0390bd028219b464e143418cb13155d3819aee0e`, tree

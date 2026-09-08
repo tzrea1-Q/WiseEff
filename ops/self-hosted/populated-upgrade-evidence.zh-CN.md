@@ -4,6 +4,42 @@
 
 ## NW 续工，2026-09-08
 
+### 最后边界夹具后续修复
+
+Hosted `34197132779` 已失败结束，报告 `23f3a7e21`，实际 merge checkout
+`b3e9bfea958fe91f77a97747f70204a3067875eb`。Build/test、smoke、quality 通过；
+local non-HDC、target synthetic 跳过；owned 和 Merge bar 失败。
+Build/test 实际执行 frontend 3374/3374、source-lock 4/4、scripts 2019通过／27跳过、
+bridge 134通过／4跳过、backend 4322/4322、boundary 3509/3509、contract、log-eval。
+scripts 跳过为历史 rehearsal 16、handoff 1、runtime identity 5、vendor DT 5；
+bridge 跳过为 CLI 2、macOS URL scheme 2。
+
+Owned 到 bootstrap 为40/41：仅 `final-boundary` 触发既有1500ms独立子进程期限。
+原 acknowledgment-loss 和 native probe 回归通过；后续 recovery、handoff suite 未执行。
+原日志 `/tmp/pr824-ci-23f3-owned.log`，SHA256
+`76fe0e229f12e1e0eb01bd683a6ac2df4c4b090dfb303e4ac363120013ae68a0`。
+一次未改代码的本机 `23f3` 对照为41/41、18.41秒、清理通过，未复现 Hosted。
+日志 `/tmp/pr824-bootstrap-23f3-timeout-control.log`，SHA256
+`985d853d98158b3836b3db6fa94bb453a7ee21ff7cd76f704d8b6abe164f7010`。
+
+仅测试源提交 `2747faf47ab46171891a9742dd4fb1d7754ab9f3` 与集成
+`de225d63913ae51856b819b39e6061763bd0950d` 的 tree 相同：
+`b22fa72f940a8b0f17fa4648f9bf3c232d4e2b47`。原聚合检查拆成四个独立命名的最后边界用例；
+每条保持真实 `55P03`、锁释放后执行成功、1500ms子进程期限及50ms锁超时。
+恢复还覆盖阻塞阶段本身失败的路径，生产代码及其他用例未变。
+正式源执行44/44，零失败／跳过／过滤、20.97秒，清理核验通过；四例耗时
+922／865／905／880ms。日志 `/tmp/pr824-bootstrap-boundary-split-full.log`，SHA256
+`96227b31bf3e27ed95d08e0eaba220c5a1080f80030bcb1b4ba1fe3e7c84ed7f`。
+独立 Standards／Spec 均通过该单文件增量。拆分让每个子进程窗口少等待三次锁超时，
+但不证明原 Hosted 的精确原因或未来稳定性，也不代表启动或完整升级完成。
+
+集成 `de225d639` 的 build 退出0，保留既有警告；boundary 使用未改 trusted base，
+保持3509/3509。日志 `/tmp/pr824-de225-build.log` 的SHA256为
+`abba015b58a21f80519ad0ddc35ebabb5549f28168a8a5f1a5ce7d22e0a51959`；
+`/tmp/pr824-de225-boundary.log` 的SHA256为
+`6eecbc7c68f93a34280ba53bb4a3837ff844959de6391569ee190fe9a3b0f795`。
+新 Hosted 尚无执行结果。
+
 ### 集成后续候选 `0390bd028`
 
 代码 `0390bd028219b464e143418cb13155d3819aee0e`，tree

@@ -4,6 +4,17 @@
 
 ## Scope and state
 
+Latest integrated code `de225d639` retains the reviewed safety fixes. Report
+`23f3a7e21` Hosted run `34197132779` finished: Build/test, smoke and quality
+passed; owned failed at the bootstrap final-boundary 1500ms deadline (40/41),
+and later owned suites did not run. Merge bar failed; two target jobs skipped.
+The independently reviewed test split at `de225d639` preserves every timeout,
+lock assertion and unlocked-success check. Its identical source tree passed
+44/44 real PostgreSQL; integrated build and boundary passed. New Hosted remains
+unverified. Existing evidence records exact identities and logs. The old-app
+source lease and full P0 producer remain Scratch; neither approved startup nor
+the complete populated upgrade has passed.
+
 ### Authorized continuation: NW-01–NW-04
 
 The user's latest review authorizes D-A (the natural audit test repair at

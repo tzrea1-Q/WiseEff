@@ -4,6 +4,14 @@
 
 ## 范围与状态
 
+最新集成代码 `de225d639` 保留已审安全修复。报告 `23f3a7e21` 的 Hosted
+`34197132779` 已结束：Build/test、smoke、quality 通过；owned 在 bootstrap
+最后边界1500ms期限失败（40/41），后续 owned 未执行。Merge bar失败，两项目标任务跳过。
+`de225d639` 的测试拆分已独立审查，保留全部超时、锁断言及解锁后成功检查；
+相同源tree的真实 PostgreSQL 为44/44，集成build及boundary通过。新Hosted尚未验证。
+精确执行身份及日志见既有证据。旧应用源lease及完整P0 producer仍为Scratch；
+合法启动和完整存量升级尚未通过。
+
 ### 已授权续工：NW-01–NW-04
 
 用户最新review批准D-A：自然审计测试修复 `009ce086a3050ce555806394463bb8d179c70fbb`
