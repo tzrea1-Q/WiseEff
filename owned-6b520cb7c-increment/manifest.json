@@ -1,0 +1,119 @@
+{
+  "base": "ab446626c4998715fb2ec55aa32c53d714f517af",
+  "head": "6b520cb7c326654238d27fe5281ad45c016de638",
+  "tree": "abf4d1aeac710e972b5691cf87d54a309bcf1f5d",
+  "files": [
+    {
+      "path": "docs/exec-plans/active/2026-09-06-populated-upgrade.md",
+      "blob": "1161c52df8c86bba9a3cd163de3f58dceb10dea9",
+      "sha256": "3f726b82f9cc01dca99f55c9f8c65ec39ae5a9b8ddc2c56cb9025ac52c4496ca"
+    },
+    {
+      "path": "docs/zh-CN/exec-plans/active/2026-09-06-populated-upgrade.md",
+      "blob": "2fb3b7490d2d4e9b4678698ecf07f34446b12e1c",
+      "sha256": "d9b419df4ab20b32e036ec520940e62e3ada775e256b7ce7321e4ec3652e0296"
+    },
+    {
+      "path": "ops/self-hosted/populated-upgrade-evidence.md",
+      "blob": "1f2cb36123edd3f6e33c8b9be32656bfc7e6dec3",
+      "sha256": "d5f2dbd3c499b5d2ca8554d94dd86a8b17e300aa46b8512760227ec92a67bcfb"
+    },
+    {
+      "path": "ops/self-hosted/populated-upgrade-evidence.zh-CN.md",
+      "blob": "d1639509c1d0382bb7c95b8af14cf048368c8e61",
+      "sha256": "dd62ef55d7d87df396549e2c16c1212efd8f0993bc64292ec48baae59d651ad0"
+    },
+    {
+      "path": "ops/self-hosted/populated-upgrade.md",
+      "blob": "aed947cbebd59f6ea99ad7385592cf49b7468f6f",
+      "sha256": "d70bea46a06e48e4bc5fc50f13f084c50775f6b363249bb448d86db9feb101f5"
+    },
+    {
+      "path": "ops/self-hosted/populated-upgrade.zh-CN.md",
+      "blob": "be269d3be457ebfb8c93a1c28ee68257f1d121c0",
+      "sha256": "b65a5afe2c67b35a165ce4ca775d67fb98bff1b3ebd83bcee30195bb203e1e8f"
+    },
+    {
+      "path": "ops/self-hosted/scripts/parameter-catalog-upgrade/handoffDataSource.test.ts",
+      "blob": "c99ce6896266fba32872f05662547a48db917dbe",
+      "sha256": "aedf6af7608de376733e32730ad001821c1e99fa41e07c0266337c52488f21d1"
+    },
+    {
+      "path": "ops/self-hosted/scripts/parameter-catalog-upgrade/handoffDataSource.ts",
+      "blob": "1ad55d880a64b677b11f441ec17768633f6761e1",
+      "sha256": "215376e360f3749ae1cc52478a7e06c2713cef1031c9b6145b087aab82ff6d19"
+    },
+    {
+      "path": "ops/self-hosted/scripts/parameter-catalog-upgrade/handoffLegacySource.fixture.test.ts",
+      "blob": "32c6da9fde4456033654a7e43cd1cec40391bf97",
+      "sha256": "1515c85222f0dca1102a0dec42bd1213dc77924ece93b9590b767dfa1648ce98"
+    },
+    {
+      "path": "ops/self-hosted/scripts/parameter-catalog-upgrade/handoffLegacySource.fixture.ts",
+      "blob": "acfd4ea77632e1a5c7ded879ebad8ab2a8a9fd28",
+      "sha256": "18300aef538b57acd585c1fd2184a1a54db90ea7ad31209652c10e4bc1f4931b"
+    },
+    {
+      "path": "ops/self-hosted/scripts/parameter-catalog-upgrade/handoffLegacySource.integration.test.ts",
+      "blob": "f3fe678a883d0e6fc2eb31c2332ab8212a95af50",
+      "sha256": "744b9d7905a1f2dbca81a00a9606a83751453a7935905b83145d87d859af54ce"
+    },
+    {
+      "path": "ops/self-hosted/scripts/parameter-catalog-upgrade/managementSnapshotChild.test.ts",
+      "blob": "7400adc253d55d32374ae1a04e9e3c1cc026afe2",
+      "sha256": "c4a4cb543fe4cf9b8fb923324db01c773b5c92c6326d7ee61cc43add124242d2"
+    },
+    {
+      "path": "ops/self-hosted/scripts/parameter-catalog-upgrade/managementSnapshotChild.ts",
+      "blob": "0825a28865a688207eabc2c456c2a4bcedb9dcf2",
+      "sha256": "638eeb2b6e33ebd9374cb6b9b37ffc56b92cf95c645104f4448a89685793c957"
+    },
+    {
+      "path": "scripts/run-upgrade-component-tests.test.ts",
+      "blob": "83246b57cee490d680b3bd40673c5bb738f7b372",
+      "sha256": "1c51a1ae8e5008386ec6df25a83e65addac49c29b1b3d074af9f3d7df9583862"
+    },
+    {
+      "path": "scripts/run-upgrade-component-tests.ts",
+      "blob": "ff21f414bf2af119c8a5261828435ea050eca74b",
+      "sha256": "675c1b8d4f31f7136bc6048deefe5caca13d3d3669c28fbc267b7b8aa252be54"
+    },
+    {
+      "path": "server/modules/catalog-cutover/retirement/legacySqlPrivilegeFence.integration.test.ts",
+      "blob": "2cf4b27f0623f8ab4eff8575b7cc1f8f8cf5bf1b",
+      "sha256": "fdeaee47b5de3d4e2b88bfbe80a6bcc9c70232e0fca4080f4c3d3a1aec817a26"
+    },
+    {
+      "path": "vitest.upgrade-legacy-source.config.ts",
+      "blob": "0122005f5d0eb49f56e8d92d0a24839f27ef63ba",
+      "sha256": "9117d7414c0e11d8362087324696a2b73211c7534ac12ffc5ec4cb5f99a9ecff"
+    }
+  ],
+  "evidence": [
+    {
+      "path": "evidence/pr824-6b520-scripts.log",
+      "execution": "6b520cb7c326654238d27fe5281ad45c016de638",
+      "scope": "Owned source-lock 4/4 and main scripts 2130 passed, 13 skipped; exit0 cleanup verified.",
+      "sha256": "221336b71323d34a5d8749965b029e91fb9412e3abda7a09e58d609a395535f8"
+    },
+    {
+      "path": "evidence/pr824-6b520-docs.log",
+      "execution": "6b520cb7c326654238d27fe5281ad45c016de638",
+      "scope": "Owned docs governance and actual schema verified; exit0 cleanup verified.",
+      "sha256": "c9331bd091241b80f021f9f4edf7b3aba5cc156e9a232fb45d1cbb6652cc822e"
+    },
+    {
+      "path": "evidence/pr824-source-integration-focused.log",
+      "execution": "4d4b46cdb+source-integration-WIP",
+      "scope": "Four-file 120/120; code files later committed byte-identical in 6b520.",
+      "sha256": "c4bfca09ae900da404b86438888cb4ca4d2994b2a870dd20b67828b1e586656a"
+    },
+    {
+      "path": "evidence/pr824-7cb-formal-capture.log",
+      "execution": "7cb5acd1346f349728783391a8a4b8b5f3717b71",
+      "scope": "Source Scratch capture only: 1 passed,9 filtered,100.99s; not P0/conversion/controller startup.",
+      "sha256": "6645b5af47314e86a5a674460f0e81b036e40ca754d78886adc99e43e75959f8"
+    }
+  ],
+  "scope": "Incremental full files; combine with immutable ab446 full package. No Scratch code, real backups, secrets, or production operation. No full P13/startup/controller or A/B/C completion. Hosted34243299959 still pending at packaging."
+}
