@@ -503,6 +503,7 @@ async function retire(input: LegacyLoginRetirementInput, bootstrapInspection = f
         fingerprint: digestOf({ rootBinding, intentDigest: observed.intentDigest }) };
     }
     need(!fixed.bootstrapCredentialDirectory, "SOURCE-IDENTITY-UNSUPPORTED");
+    need(!expectedJournal.entries.some(entry => entry.action.startsWith("legacy-sql-privileges-")), "ATTEMPT-REQUIRES-RECONCILE");
     guard = await acquireBootstrapInventoryGuard({ managementPool: input.activation.managementPool,
       mutator: admin, target: input.activation.target,
       onMutatorReleased: () => { adminReleased = true; connectionFailed = true; } });
@@ -567,7 +568,6 @@ async function retire(input: LegacyLoginRetirementInput, bootstrapInspection = f
       expectedJournal = structuredClone(loaded.value.record);
       await verifyOrdinaryBoundary();
     };
-    need(!expectedJournal.entries.some(entry => entry.action.startsWith("legacy-sql-privileges-")), "ATTEMPT-REQUIRES-RECONCILE");
     // From this point any interrupted SQL successor has an unknown outcome;
     // the already committed authentication effect must never authorize replay.
     ordinarySqlStarted = true;
@@ -707,6 +707,8 @@ async function inspect(input: LegacyLoginRetirementInput): Promise<{
     await assertHostOperationLockForJournal(input.lock, fixed.handoff.inputs.journalPath);
     need(!connectionFailed, "CONNECTION-FAILED");
     await client.query("rollback");
+    await assertHostOperationLockForJournal(input.lock, fixed.handoff.inputs.journalPath);
+    need(!connectionFailed, "CONNECTION-FAILED");
     return { outcome, attemptId: fixed.attemptId };
   } catch (error) {
     inspectionFailed = true;
