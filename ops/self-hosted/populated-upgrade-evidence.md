@@ -6,6 +6,27 @@
 
 ### Resumed integration and latest Hosted result
 
+The subsequent exact code `6b520cb7c326654238d27fe5281ad45c016de638`
+passed Hosted run `34243299959`, actual merge checkout
+`2c56bd53ac2215126c8aa2dcd039f756598320d3`. Build and test, owned PostgreSQL,
+smoke, quality and Merge bar succeeded. Local non-HDC and target synthetic
+were skipped. Hosted frontend: 3374/3374; scripts: 2114 passed/29 skipped,
+plus preceding source-lock 4/4; bridge: 134 passed/4 skipped; backend: 4323/4323.
+Boundary, contract and log-eval actually executed successfully. All sixteen
+owned suites executed, including SQL privileges 21/21 and bootstrap 44/44;
+the previous SQL cleanup failure did not recur, which does not establish its
+cause. Full Hosted log SHA256:
+`81885dae10eb9d83af0b37e214d4fc2a11d9a20d0cabad9c134e2c3bac806b1c`.
+
+Local exact `6b520cb7c` owned scripts: 2130 passed/0 failed/13 skipped,
+with source-lock 4/4 separately; exit 0 and cleanup verified. The thirteen skips
+are two old-source cases, one handoff case, five DTS-tool cases and five runtime
+identity cases; these are not successes. Owned docs governance and actual schema
+validation also passed, with cleanup verified. These local and Hosted counts
+remain separate. The source integration and the incremental 17-file delivery
+package received bounded independent review; neither covers complete P13,
+approved process startup, comparison Scratch or complete controller execution.
+
 Run `34239424721` on report head `ab446626c4998715fb2ec55aa32c53d714f517af`
 finished: Build and test, smoke and quality succeeded; owned PostgreSQL and
 Merge bar failed; local non-HDC and target synthetic were skipped. The owned

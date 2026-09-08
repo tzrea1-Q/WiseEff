@@ -4,6 +4,22 @@
 
 ## 中断后续工与最新 Hosted 结果
 
+后续代码 `6b520cb7c326654238d27fe5281ad45c016de638` 的 Hosted run
+`34243299959` 已通过，实际 merge checkout 为
+`2c56bd53ac2215126c8aa2dcd039f756598320d3`。Build and test、owned PostgreSQL、
+smoke、quality、Merge bar成功；local non-HDC、target synthetic跳过。
+Hosted frontend 3374/3374；scripts 2114通过／29跳过，source-lock另计4/4；
+bridge 134通过／4跳过；backend 4323/4323。boundary、contract、log-eval均实际执行
+成功。十六个owned套件全部执行，包括SQL privileges 21/21和bootstrap 44/44。
+前次SQL清理失败未复现，但不能据此确定根因。完整Hosted日志SHA256：
+`81885dae10eb9d83af0b37e214d4fc2a11d9a20d0cabad9c134e2c3bac806b1c`。
+
+本地精确 `6b520cb7c` 的owned scripts为2130通过／0失败／13跳过，source-lock
+另计4/4，退出0且清理已验证。13项跳过分别为旧源2、handoff 1、DTS工具5、运行身份5，
+不计为成功。owned docs治理及实际schema验证通过且清理完成。本地与Hosted计数分开。
+源采集集成和17文件增量交付包已获有界独立审查；均不覆盖完整P13、获批的真实进程
+启动、comparison Scratch或完整controller执行。
+
 报告 head `ab446626c4998715fb2ec55aa32c53d714f517af` 的 run `34239424721`
 已经结束：Build and test、smoke、quality 成功；owned PostgreSQL、Merge bar
 失败；local non-HDC、target synthetic 跳过。SQL privilege 套件20通过、1失败，

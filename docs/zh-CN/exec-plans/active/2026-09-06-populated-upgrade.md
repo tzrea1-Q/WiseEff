@@ -7,8 +7,10 @@
 当前续工：父协调者集成 `7cb5acd13` 的十个已审查源采集文件，独占共享 runner／config
 修改。集成 focused 为120/120，build及未改变的boundary通过；Scratch采集另记为
 1通过／9过滤，清理已验证。下一纵向依赖仍为真实多head mapping／比较，随后接通
-完整P13／startup。最新Hosted `34239424721` 在业务断言完成后的SQL fixture清理
-失败；诊断 `4d4b46cdb` 尚未证明根因。A/B/C仍未完成。文档影响为本计划、操作手册
+完整P13／startup。代码 `6b520cb7c` 的Hosted `34243299959` 已在merge checkout
+`2c56bd53a` 通过，包含全部owned套件；两个目标job跳过。前次 `34239424721` 在
+业务断言完成后的SQL fixture清理失败；诊断 `4d4b46cdb` 尚未证明根因。A/B/C仍未完成。
+文档影响为本计划、操作手册
 和证据各自的中英文文件。以下历史段保留原执行身份与当时状态。
 
 代码 `59cd27412` 缩小 activation 加载范围：inspection 不再初始化 Comparison 消费者，

@@ -9,8 +9,10 @@ from `7cb5acd13` and owns shared runner/config changes. Focused integration is
 120/120; build and unchanged boundary pass. Source Scratch capture is separately
 1 passed/9 filtered with verified cleanup. The next vertical dependency remains
 real multi-head mapping/comparison, followed by complete P13/startup. The current
-Hosted run `34239424721` failed SQL fixture cleanup after business assertions;
-diagnostic `4d4b46cdb` has not established the cause. A/B/C remain incomplete.
+code `6b520cb7c` passed Hosted `34243299959` at merge checkout `2c56bd53a`,
+including all owned suites. The two target jobs were skipped. Previous run
+`34239424721` failed SQL fixture cleanup after business assertions; diagnostic
+`4d4b46cdb` has not established the cause. A/B/C remain incomplete.
 Documentation impact is this plan pair, the operator pair and evidence pair.
 The history below retains original execution identities and former status.
 
