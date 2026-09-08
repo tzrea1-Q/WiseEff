@@ -1,0 +1,58 @@
+{
+  "head": "6d8fbe2bf0b751617839ca6da8bf7f9c5195c325",
+  "code": "ce3eee2f27f7e0b3eeec8e163a3cf0196ba47a94",
+  "base": "cda6737a8f177a8bbd2f3bc7d195f8e3037bfa74",
+  "mergeCheckout": "e3fb8ebe295762237f8696eee4d684187f4093f4",
+  "run": 34213839839,
+  "status": "completed",
+  "conclusion": "success",
+  "owned": {
+    "passed": 476,
+    "failed": 0,
+    "skipped": 0,
+    "suites": {
+      "reader-pg16": 49,
+      "writer-reachability-pg16": 35,
+      "runtime-identity-pg16": 11,
+      "runtime-role-source-pg16": 13,
+      "legacy-sql-privileges-pg16": 20,
+      "read-projections-pg16": 10,
+      "report-pg16": 36,
+      "authority-pg16": 81,
+      "bindings-pg16": 98,
+      "log-redis": 12,
+      "activation-existing-pg16": 22,
+      "retirement-existing-pg16": 16,
+      "bootstrap-credential-pg16": 44,
+      "recovery-three-store": 16,
+      "controlled-recovery": 4,
+      "handoff-three-store": 9
+    },
+    "cleanupVerified": true
+  },
+  "scripts": {
+    "passed": 2019,
+    "skipped": 27,
+    "failed": 0,
+    "separateSourceLockPassed": 4
+  },
+  "backend": {
+    "passed": 4322,
+    "failed": 0,
+    "skipped": 0
+  },
+  "frontendPassed": 3374,
+  "bridge": {
+    "passed": 134,
+    "skipped": 4
+  },
+  "skippedJobs": [
+    "Acceptance local non-HDC",
+    "Target synthetic acceptance"
+  ],
+  "logSha256": {
+    "pr824-ci-6d8-owned.log": "09ff008be824ef8faf5fe7e0f6d040e0fc58e8581691f55201cee2118c8ea3f8",
+    "pr824-ci-6d8-build.log": "67a8f5dade80198bc2dac8f4bcc9207e2c583ca85641a489ced5f93e6f155f6e"
+  },
+  "limits": "Component evidence only. Does not cover unintegrated Scratch providers, complete old-app controller, approved candidate startup, target data or production. ZIP metadata records its earlier packaging time and is not rewritten."
+}
