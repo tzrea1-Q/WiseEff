@@ -205,22 +205,29 @@ it("freezes actual role membership until the final host acknowledgment and relea
 });
 
 it("freezes cross-database ACL dependencies until acknowledgment without touching the other database's grants", async () => {
+  const started = performance.now();
+  const trace = (stage: string) => console.info(JSON.stringify({ evidence: "sql-dependency-lifecycle", stage, elapsedMs: Math.round(performance.now() - started) }));
+  trace("second-database-start");
   const second = await createSelfHostedPg16Database("sql_shared_dependency");
+  trace("second-database-ready");
   const otherPool = new pg.Pool({ connectionString: second.url, max: 1, connectionTimeoutMillis: 2000, query_timeout: 5000 });
   otherPool.on("error", () => {});
   let other: pg.PoolClient | undefined, operationError: unknown, cleanupFailed = false;
   try {
     other = await acquireObservedManagementClient(otherPool, () => {});
+    trace("second-session-ready");
     const identity = await readBindingDatabaseIdentity(other);
     expect(identity.systemIdentifier).toBe(command.selection.target.systemIdentifier);
     expect(identity.databaseOid).not.toBe(command.selection.target.databaseOid);
     await other.query("create table public.other_business(value integer); set lock_timeout='100ms'");
     await manager!.query(`grant select,update on public.${pg.escapeIdentifier(table)} to ${pg.escapeIdentifier(role)}`);
     let grantCode = "not-attempted";
+    trace("effect-start");
     await applyLegacySqlPrivilegeFence({ ...command, persistHostStep: async () => {
       try { await other!.query(`grant select on public.other_business to ${pg.escapeIdentifier(role)}`); grantCode = "succeeded"; }
       catch (error) { grantCode = typeof (error as { code?: unknown }).code === "string" ? (error as { code: string }).code : "unknown"; }
     } });
+    trace("effect-complete");
     const dependency = async () => (await manager!.query<{ present: boolean }>(`select exists(select 1 from pg_catalog.pg_shdepend
       where refclassid='pg_catalog.pg_authid'::regclass and refobjid=$1::oid and dbid=$2::oid) as present`,
     [command.runtimeRoles[0].oid, identity.databaseOid])).rows[0].present;
@@ -229,10 +236,13 @@ it("freezes cross-database ACL dependencies until acknowledgment without touchin
     // not revoked by the production effect; its owner cleans up this fixture.
     await other.query(`grant select on public.other_business to ${pg.escapeIdentifier(role)}`);
     expect(await dependency()).toBe(true);
+    trace("assertions-complete");
   } catch (error) { operationError = error; throw error; }
   finally {
-    for (const close of [() => other?.release(true), () => otherPool.end(), () => second.close()]) {
+    for (const [stage, close] of [["second-session-release", () => other?.release(true)],
+      ["second-pool-close", () => otherPool.end()], ["second-database-close", () => second.close()]] as const) {
       try { await close(); } catch { cleanupFailed = true; }
+      trace(stage);
     }
     if (cleanupFailed) {
       const cleanupError = new Error("sql-dependency-cleanup-failed");
