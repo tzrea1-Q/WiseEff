@@ -445,7 +445,8 @@ if (!process.exitCode && result) process.stdout.write(JSON.stringify(result) + '
 `;
 
 type AuthenticationMode = "exact" | "cross-run" | "package-drift" | "guard-ended";
-type SuccessorMode = "baseline" | "missing-host" | "wrong-host-run" | "extra-acl" | "new-relation" | "host-association" | "final-boundary";
+type BoundaryMutation = "table-grant" | "column-grant" | "function" | "role-setting";
+type SuccessorMode = "baseline" | "missing-host" | "wrong-host-run" | "extra-acl" | "new-relation" | "host-association" | `final-boundary-${BoundaryMutation}`;
 
 type CustodyPreparationStage = "storage-binding" | "management-checkout" | "role-preparation" | "custody-preparation" |
   "root-intent" | "authentication-fence" | "credential-readback" | "original-manager-close" | "old-password-oracle";
@@ -518,7 +519,8 @@ describe("independent custody transport lifecycle", () => {
     "checks original authentication selection %s in one independent process", mode => run(() => fixture.authentication(mode)));
   describe("recorded SQL successor", () => {
     beforeAll(async () => { await run(() => fixture.prepareSuccessor()); await drain(); });
-    it.each<SuccessorMode>(["baseline", "missing-host", "wrong-host-run", "extra-acl", "new-relation", "host-association", "final-boundary"])(
+    it.each<SuccessorMode>(["baseline", "missing-host", "wrong-host-run", "extra-acl", "new-relation", "host-association",
+      "final-boundary-table-grant", "final-boundary-column-grant", "final-boundary-function", "final-boundary-role-setting"])(
       "checks successor selection %s with original custody and real locks", mode => run(() => fixture.successor(mode)));
   });
 });
@@ -707,17 +709,21 @@ async function prepareCustodyTransport() {
       }
       return;
     }
+    const mutation = mode.startsWith("final-boundary-") ? mode.slice("final-boundary-".length) as BoundaryMutation : undefined;
     await writeFile(successorInput, JSON.stringify({ guardUrl: guardUrl.href, expectedRootBinding,
-      fault: mode, ...(mode === "missing-host" ? {} : { sqlSuccessor: { journalPath, hostRunId: mode === "wrong-host-run" ? "wrong-host-run" : hostRunId } }) }),
+      fault: mutation ? "final-boundary" : mode, ...(mode === "missing-host" ? {} : { sqlSuccessor: { journalPath, hostRunId: mode === "wrong-host-run" ? "wrong-host-run" : hostRunId } }) }),
     { mode: 0o600, flag: "wx" });
     const blockedGrants: string[] = [];
-    const grantCommands = [
-      `grant update on public.${pg.escapeIdentifier(LEGACY_STRUCTURAL_TABLES[1])} to ${writerRole}`,
-      `grant update(specification_key) on public.${pg.escapeIdentifier(LEGACY_STRUCTURAL_TABLES[1])} to ${writerRole}`,
-      `create function public.successor_metadata_${nonce}() returns integer language sql as 'select 1'`,
-      `alter role ${pg.escapeIdentifier(expectedRootBinding.roleName)} set application_name='successor-setting'`,
-    ];
-    const observed = await inspectInIndependentProcess(successorInput, custodyTransportInspectionChild, mode === "final-boundary" ? async () => {
+    const commands: Record<BoundaryMutation, string> = {
+      "table-grant": `grant update on public.${pg.escapeIdentifier(LEGACY_STRUCTURAL_TABLES[1])} to ${writerRole}`,
+      "column-grant": `grant update(specification_key) on public.${pg.escapeIdentifier(LEGACY_STRUCTURAL_TABLES[1])} to ${writerRole}`,
+      function: `create function public.successor_metadata_${nonce}() returns integer language sql as 'select 1'`,
+      "role-setting": `alter role ${pg.escapeIdentifier(expectedRootBinding.roleName)} set application_name='successor-setting'`,
+    };
+    const grantCommands = mutation ? [commands[mutation]] : [];
+    let primary: unknown;
+    try {
+    const observed = await inspectInIndependentProcess(successorInput, custodyTransportInspectionChild, mutation ? async () => {
       // A real second management session, opened only in this boundary window
       // and closed before auth's session inventory is checked again. No S7.
       const other = new pg.Client({ connectionString: privateUrl.href, connectionTimeoutMillis: 2000 }); other.on("error", () => {});
@@ -730,26 +736,44 @@ async function prepareCustodyTransport() {
       } finally { await other.end(); }
     } : undefined);
     expect(observed).toEqual(mode === "missing-host" || mode === "wrong-host-run" ? { outcome: "unknown" } : fenced);
-    if (mode === "final-boundary") {
+    if (mutation) {
       expect(blockedGrants).toEqual(grantCommands);
       await withFreshManager(async fresh => {
         expect((await fresh.query(`select pg_catalog.has_table_privilege($1,$2,'UPDATE') as relation,
           pg_catalog.has_column_privilege($1,$2,'specification_key','UPDATE') as attribute`,
         [writerRole, `public.${LEGACY_STRUCTURAL_TABLES[1]}`])).rows).toEqual([{ relation: false, attribute: false }]);
-        // Both real GRANTs work after the inspection transaction ends. The
-        // denial above was held metadata locks, not missing management rights.
-        try {
+        // Each independently named case preserves the same real child boundary,
+        // 1500ms child budget and 50ms lock timeout. One actual mutation succeeds
+        // after lock release; four deliberate waits no longer share one budget.
           for (const sql of grantCommands) await fresh.query(sql);
           expect((await fresh.query(`select pg_catalog.has_table_privilege($1,$2,'UPDATE') as relation,
             pg_catalog.has_column_privilege($1,$2,'specification_key','UPDATE') as attribute`,
-          [writerRole, `public.${LEGACY_STRUCTURAL_TABLES[1]}`])).rows).toEqual([{ relation: true, attribute: true }]);
-        } finally {
-          await fresh.query(`revoke update,update(specification_key) on public.${pg.escapeIdentifier(LEGACY_STRUCTURAL_TABLES[1])} from ${writerRole}`);
-          await fresh.query(`drop function if exists public.successor_metadata_${nonce}()`);
-          await fresh.query(`alter role ${pg.escapeIdentifier(expectedRootBinding.roleName)} reset application_name`);
-        }
+          [writerRole, `public.${LEGACY_STRUCTURAL_TABLES[1]}`])).rows).toEqual([{
+            relation: mutation === "table-grant", attribute: mutation === "table-grant" || mutation === "column-grant",
+          }]);
       });
-      return;
+    }
+    } catch (error) { primary = error; throw error; }
+    finally {
+      // Restore even when an allegedly blocked mutation unexpectedly succeeds
+      // and inspection refuses before reaching the post-release oracle.
+      if (mutation) try {
+        await withFreshManager(async fresh => {
+          const results = [];
+          for (const sql of [
+            `revoke update,update(specification_key) on public.${pg.escapeIdentifier(LEGACY_STRUCTURAL_TABLES[1])} from ${writerRole}`,
+            `drop function if exists public.successor_metadata_${nonce}()`,
+            `alter role ${pg.escapeIdentifier(expectedRootBinding.roleName)} reset application_name`,
+          ]) {
+            try { await fresh.query(sql); results.push(true); } catch { results.push(false); }
+          }
+          if (results.some(ok => !ok)) throw new Error("successor-boundary-restoration-failed");
+        });
+      } catch {
+        const cleanup = new Error("successor-boundary-restoration-failed");
+        if (primary) throw new AggregateError([primary, cleanup], "successor-boundary-and-restoration-failed");
+        throw cleanup;
+      }
     }
     };
     return { authentication, prepareSuccessor, successor, close: cleanup };
