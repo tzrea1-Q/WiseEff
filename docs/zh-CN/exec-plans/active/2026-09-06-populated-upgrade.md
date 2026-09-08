@@ -4,7 +4,11 @@
 
 ## 范围与状态
 
-当前代码 `bd4ad49c8` 将既有八表 SQL 退休效果接到普通 LOGIN 分支，并修复 inspection 失败清理。父 Spec 与独立 Standards 通过限定增量；同一代码的真实 PostgreSQL 21/21、根调度130/130、types/build及boundary通过。源报告 `5822d889c` 仅修改退休模块手册。新候选 Hosted 尚无执行记录。完整 P13、启动及完整存量转换仍是内部工作，A/B/C均未完成。
+本地代码 `2ef8cdae3` 已继续集成管理会话来源核验及清理／脱敏回归。父 Spec 与独立 Standards 接受这一限定单元；后者指出的 `cause`／隐藏错误测试缺口已修复并独立复核关闭。同一代码的 focused 为80/80、真实PG为19/19、owned scripts为2055通过／11跳过（source-lock另计4/4）、owned backend为4322/4322，资源清理已验证。Strict types、build、原boundary、contract、selfhost及包含真实schema验证的owned docs均退出0；后续Hosted待完成。先前未提供必需owned数据库的错误调用失败，保留在证据中。该修改证明退休管理会话与真实来源的绑定，不提供完整P13或启动批准。
+
+本地集成 `f950e02ce` 包含已审handoff批处理和RI触发器可达性修复。同一代码的真实PostgreSQL可达性38/38通过、清理已验证，strict types、build及原boundary通过。前一handoff单独集成 `71ba53ea1` 与已审源 `8d6a49b6c` 的tree完全相同（`d217506a85a9aaa7f46c3351c548027a0a5830f5`），真实9/9证据保留原源身份。两项限定修改均通过独立Standards与Spec。当前本地集成未推送、无新Hosted覆盖，不证明完整P13或真实旧源controller升级；管理会话来源接线及完整多head producer仍是独立Scratch。
+
+当前代码 `bd4ad49c8` 将既有八表 SQL 退休效果接到普通 LOGIN 分支，并修复 inspection 失败清理。父 Spec 与独立 Standards 通过限定增量；同一代码的真实 PostgreSQL 21/21、根调度130/130、types/build及boundary通过。源报告 `5822d889c` 仅修改退休模块手册。报告 `d5aefa28d` 的 Hosted `34219075502` 已在 merge `f5acf76cef1fa667620c12c25262420e11282746` 成功结束：16套owned全部执行，477通过／0失败／0跳过，清理已核验；scripts 2035通过／27跳过，backend 4322通过／0跳过。必需job通过，local non-HDC、target synthetic跳过。[原始日志与精确执行索引](https://github.com/tzrea1-Q/WiseEff/tree/06ba6f7c9ae2d66957a24366085b6de9d307031c/owned-d5aefa28d-reviewed/hosted-34219075502) 不覆盖后续Scratch。完整 P13、启动及完整存量转换仍是内部工作，A/B/C均未完成。
 
 前序代码 `ce3eee2f2` 将既有已退休模块映射写入口同时纳入 V13 和 SQL fence。源执行 `cf15075ee` 的真实 PostgreSQL 为35/35、20/20，清理核验通过；限定 Standards／Spec 均通过。集成 tree 与源报告 `e5aa2712f` 相同。报告 `6d8fbe2bf` 的 Hosted `34213839839` 在 merge `e3fb8ebe295762237f8696eee4d684187f4093f4` 成功结束，476项owned全部通过；local non-HDC、target synthetic跳过。此执行不覆盖后续普通分支增量。
 

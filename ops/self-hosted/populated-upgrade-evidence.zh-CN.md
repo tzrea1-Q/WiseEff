@@ -4,6 +4,95 @@
 
 ## NW 续工，2026-09-08
 
+### 管理会话接线集成
+
+代码 `2ef8cdae3ce7e7996656efdb4a7ae9ba2492a618`、tree
+`36e41f8a696f98caa7013411a07678ceb1d86459` 原样集成源提交
+`6d2637196`、`f76a79b65` 和 `cd377f4d1`。退休执行方核对实际租借的管理连接与
+已签发来源，包括端点、数据库和真实观察到的 advisory challenge。
+解锁结果不确定时销毁调用方 lease、使来源失效；清理失败保留先前准入错误码，
+不导出底层 cause。独立 Standards 核验新增 cause、隐藏属性和 JSON 脱敏断言后
+关闭最后P2；父Spec接受限定单元。
+
+同一集成代码的两个focused套件收集／通过80/80、失败／跳过0/0、退出0。
+Strict TypeScript、build（保留既有警告）及原trusted-base boundary均退出0。
+同一集成的 `runtime-role-source-pg16` 收集／通过19/19、失败／跳过0/0，21.25秒、
+退出0、清理已验证，使用下文记录的显式owned daemon及PG16 Alpine镜像。
+源 `f76a79b65` 先前19/19仍单独保留，当前Hosted待完成。
+日志尚在本地，待下一份全文交付包收录：
+
+| 日志 | SHA256 |
+| --- | --- |
+| `pr824-2ef8-source-pure.log` | `c8e91c3a11347af6a575687faf6bdb2d72dc3735dcd781b36a08c82b2cde17e0` |
+| `pr824-2ef8-build.log` | `ae94642175174266c03c0c413fd5d74c19a8b8cbcdd81fca5a946b4e958aa23f` |
+| `pr824-2ef8-types.log` | `e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855` |
+| `pr824-2ef8-boundary.log` | `6eecbc7c68f93a34280ba53bb4a3837ff844959de6391569ee190fe9a3b0f795` |
+| `pr824-2ef8-runtime-source-native.log` | `51d5d1b189016bbbf20bd3e82c2e7f26cfc0157280260ef9db24588b3bfda19c` |
+
+第一次完整scripts通过 `env -i` 调用，未配置必需的owned PostgreSQL／TMPDIR／
+容器输入，退出1：1976通过、62失败、28跳过（2066），另有四个套件setup错误。
+Source-lock单独4/4通过。这是父协调者的执行方式错误，不是继承代码失败的证据。
+旧rehearsal helper选择了默认本地测试目标，exporter报告临时路径清理失败。
+原结果保留在 `pr824-2ef8-scripts.log`，SHA256
+`f7daf6edcf9fbcc152ce3a68de96418a2a9a3bec2f1ac03250d365b440f59b20`。
+修正执行复用既有 `scripts-pgvector` owned runner，结果单独记录：137文件通过，
+2055测试通过／0失败／11跳过，前置source-lock另计4/4；退出0、清理已验证。
+同一代码的owned backend为4322/4322、无失败／跳过、退出0、清理已验证。
+Owned docs同时验证governance与真实schema产物，退出0、清理已验证（报告Markdown
+当时为WIP）；contract和selfhost均退出0。未放宽断言或预算。这些结果不覆盖合法
+隔离启动、完整controller、浏览器业务验收或增长容量。
+
+| 补充日志 | SHA256 |
+| --- | --- |
+| `pr824-2ef8-scripts-owned.log` | `6aadea7a8d4f0ec84b657e7723c9ad5489e8f5cc2038ebf0366d9378b9cb7e2c` |
+| `pr824-2ef8-server-owned.log` | `9d7e5ee66d9e0ac61b1e30c1bd619b11c7e2da8f2d50992069d111df619b3fe1` |
+| `pr824-2ef8-docs-owned.log` | `7438f859771d8e0b458ea29622ebc0ebdfedd9bc413a11f3b866aecad5a7586e` |
+| `pr824-2ef8-contract.log` | `b360b9bd3abdfe68681a8d267d5287709d4444710f48e2e21afb069a384d9981` |
+| `pr824-2ef8-selfhost.log` | `fb3bebbd4a67124cfc37061ec47e862690f238d75a55a572211b4ba5a2701f56` |
+
+完全相同代码随后在干净的detached验证checkout执行 `handoff-three-store`，
+9/9通过、70.54秒、退出0，全部nested清理已验证；应用容器仍为身份fixture，
+不是真实旧应用。此前从父协调者含未提交报告的工作树运行，被正确拒绝
+`handoff-entry-artifact-changed`（8通过／1失败，nested清理unknown）。修正checkout
+保管条件后只重跑受影响套件。日志 `pr824-2ef8-handoff-clean.log` SHA256为
+`e6dc845e379dffdb33bac03159a3bef83418587b70df02eb3249f9b4cc454268`；
+原拒绝执行 `pr824-2ef8-handoff-owned.log` SHA256为
+`7a4bf7bec95c8d56ef89a077931a3e5da37154990fde7974f52d73523edd2058`。
+
+### Handoff批处理与原生RI触发器可达性
+
+集成代码 `f950e02cea8d67b423b3a3d84677827dc72fe0ab`、tree
+`f5b5823ab11500568e95ea06686266334a1d9e8d` 沿用原base。精确容器／卷批量观察
+保留各阶段独立边界检查。源 `8d6a49b6c` 的真实handoff为9/9，同tree集成为
+`71ba53ea1`；这些测试不是完整旧应用升级。
+
+RI修复沿外键动作追踪非退休表上已安装的SECURITY DEFINER触发器，再复用原有
+退休对象写能力检查。两个真实受限登录反例此前已修改 `driver_schemas`，V13却通过；
+现在均拒绝。invoker反例仍不能修改该表。父Spec与独立Standards通过限定修复。
+Standards审查者核对真实反例后撤回了限制dispatch范围的初始建议，因为该限制会恢复
+两条漏检。未改变权限或发布阶段。
+
+在集成 `f950e02ce` 上，`writer-reachability-pg16` 收集／通过38/38，失败／跳过0/0，
+退出0、耗时6.11秒，runner与相关资源清理已验证。显式owned daemon为
+`07ef20c3-7210-41f4-b337-5f617ca84c0d`，PostgreSQL16 Alpine镜像为
+`sha256:16bc17c64a573ef34162af9298258d1aec548232985b33ed7b1eac33ba35c229`，
+linux/arm64。build（保留警告）、包含两个修改测试的strict types及原trusted-base
+boundary均退出0。日志SHA256：
+
+| 执行 | SHA256 |
+| --- | --- |
+| 真实PostgreSQL | `3968197348ee799a78ef1685e87807ddb39ca4ad477e1a8e7b4e679e9c444237` |
+| Build | `1ea63b5bd6104e12597eaa963e5290a7fa5a164f9078bca0347bdaa597fcc26c` |
+| Boundary | `6eecbc7c68f93a34280ba53bb4a3837ff844959de6391569ee190fe9a3b0f795` |
+| Strict types（成功空日志） | `e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855` |
+
+这些结果不覆盖独立管理会话来源接线或完整multi-head producer。Scratch采集
+`f6ab3b705` 实际返回126个关系、126条源迁移及12条待执行迁移，但用时155.215秒，
+超过未改变的120秒预算而失败；runner清理通过，nested cleanup仍为unknown。
+Scratch `785acd2d6` 将原正向plan断言改成预期不支持；其报告的1/1绿色不接受为验收
+证据；提交 `fbbd52a2d4cd807960ef3d63d3cbfc8d35d2ae0c` 已恢复原正向要求，
+尚无后续正向执行通过证据。两次执行均不证明P13、合法启动、完整controller或A/B/C完成。
+
 ### 普通 LOGIN 后续 SQL 退休
 
 代码 `bd4ad49c85c5eeaa2e351245f5a4b616af700399`、tree
@@ -12,8 +101,11 @@
 [限定实现、原反例及执行 hash](../../server/modules/catalog-cutover/retirement/README.zh-CN.md)
 记录根调度130/130、真实 PostgreSQL 21/21且清理核验通过，以及types/build、
 boundary3509/3509。父Spec和独立Standards通过本分片。PG用例使用真实受限连接及
-既有SQL owner；夹具P12引用不是获批宿主根入口证据。当前Hosted尚无记录，下方
-前序执行保持原身份。完整P13、合法production启动及完整controller仍未完成。
+既有SQL owner；夹具P12引用不是获批宿主根入口证据。报告 `d5aefa28d` 的Hosted
+`34219075502` 随后在merge `f5acf76cef1fa667620c12c25262420e11282746` 通过必需job：
+owned477/477、scripts2035通过／27跳过、backend4322/4322；local non-HDC和target
+synthetic跳过。[原始日志](https://github.com/tzrea1-Q/WiseEff/tree/06ba6f7c9ae2d66957a24366085b6de9d307031c/owned-d5aefa28d-reviewed/hosted-34219075502)
+不覆盖上方后续集成。完整P13、合法production启动及完整controller仍未完成。
 
 ### 已退休模块映射写入口集成
 

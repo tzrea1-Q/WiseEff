@@ -4,6 +4,109 @@
 
 ## NW continuation, 2026-09-08
 
+### Manager session integration
+
+Code `2ef8cdae3ce7e7996656efdb4a7ae9ba2492a618`, tree
+`36e41f8a696f98caa7013411a07678ceb1d86459`, integrates source commits
+`6d2637196`, `f76a79b65` and `cd377f4d1` without changing their code. The
+retirement owner verifies its actual checked-out management session against the
+issued source, including endpoint, database and an observed advisory challenge.
+An uncertain unlock destroys the caller lease and invalidates the source; a
+cleanup failure preserves the earlier admission code without exporting its cause.
+Independent Standards closed the final P2 after checking explicit `cause`, hidden
+inspection and JSON redaction assertions; parent Spec accepted the bounded unit.
+
+On this exact integrated code, the two focused suites collected/passed 80/80,
+failed/skipped 0/0, exit 0. Strict TypeScript, build (existing warnings) and the
+unchanged trusted-base boundary exited 0. Native `runtime-role-source-pg16`
+collected/passed 19/19, failed/skipped 0/0, exit 0 in 21.25s; cleanup verified.
+It used the same explicit owned daemon and PG16 Alpine image recorded below.
+Source `f76a79b65`'s earlier 19/19 remains a separate execution; current Hosted is pending.
+Logs are local pending the next full-file delivery:
+
+| Log | SHA256 |
+| --- | --- |
+| `pr824-2ef8-source-pure.log` | `c8e91c3a11347af6a575687faf6bdb2d72dc3735dcd781b36a08c82b2cde17e0` |
+| `pr824-2ef8-build.log` | `ae94642175174266c03c0c413fd5d74c19a8b8cbcdd81fca5a946b4e958aa23f` |
+| `pr824-2ef8-types.log` | `e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855` |
+| `pr824-2ef8-boundary.log` | `6eecbc7c68f93a34280ba53bb4a3837ff844959de6391569ee190fe9a3b0f795` |
+| `pr824-2ef8-runtime-source-native.log` | `51d5d1b189016bbbf20bd3e82c2e7f26cfc0157280260ef9db24588b3bfda19c` |
+
+The first full scripts invocation used `env -i` without the required owned
+PostgreSQL/TMPDIR/container configuration. It exited 1: 1976 passed, 62 failed,
+28 skipped (2066), with four additional suite-setup errors. Source-lock passed
+4/4 separately. This is a parent invocation error, not evidence of an inherited
+code failure. The legacy rehearsal helper selected its default local test target;
+its exporter reported temporary-path cleanup failure. This result is retained
+(`pr824-2ef8-scripts.log`, SHA256 `f7daf6edcf9fbcc152ce3a68de96418a2a9a3bec2f1ac03250d365b440f59b20`).
+The existing `scripts-pgvector` owned runner is the corrective execution path;
+its result is separate: 137 files passed, 2055 tests passed/0 failed/11 skipped;
+preceding source-lock 4/4. Exit 0 and cleanup verified. The same code's owned
+backend passed 4322/4322, no failures/skips, exit 0 and cleanup verified.
+Owned docs checked both governance and the actual schema artifact, exit 0 with
+cleanup verified (report Markdown was WIP). Contract and selfhost checks exited 0.
+No assertions or budgets were relaxed. These results do not cover isolated
+startup, full controller, browser business acceptance or growth capacity.
+
+| Additional log | SHA256 |
+| --- | --- |
+| `pr824-2ef8-scripts-owned.log` | `6aadea7a8d4f0ec84b657e7723c9ad5489e8f5cc2038ebf0366d9378b9cb7e2c` |
+| `pr824-2ef8-server-owned.log` | `9d7e5ee66d9e0ac61b1e30c1bd619b11c7e2da8f2d50992069d111df619b3fe1` |
+| `pr824-2ef8-docs-owned.log` | `7438f859771d8e0b458ea29622ebc0ebdfedd9bc413a11f3b866aecad5a7586e` |
+| `pr824-2ef8-contract.log` | `b360b9bd3abdfe68681a8d267d5287709d4444710f48e2e21afb069a384d9981` |
+| `pr824-2ef8-selfhost.log` | `fb3bebbd4a67124cfc37061ec47e862690f238d75a55a572211b4ba5a2701f56` |
+
+The exact same code's `handoff-three-store` suite subsequently passed 9/9 in a
+clean detached validation checkout: 70.54s, exit 0, all nested cleanup verified.
+Its application containers remain identity fixtures, not the actual old app.
+The preceding run from the parent's dirty report worktree correctly refused
+`handoff-entry-artifact-changed` (8 passed/1 failed; nested cleanup unknown).
+Only the affected suite was rerun after correcting checkout custody. Logs:
+`pr824-2ef8-handoff-clean.log` SHA256
+`e6dc845e379dffdb33bac03159a3bef83418587b70df02eb3249f9b4cc454268`;
+the refused run `pr824-2ef8-handoff-owned.log` SHA256
+`7a4bf7bec95c8d56ef89a077931a3e5da37154990fde7974f52d73523edd2058`.
+
+### Handoff batching and native RI trigger reachability
+
+Integrated code `f950e02cea8d67b423b3a3d84677827dc72fe0ab`, tree
+`f5b5823ab11500568e95ea06686266334a1d9e8d`, retains the same base. Exact
+container/volume batches preserve independent boundary observations. Source
+`8d6a49b6c` passed native handoff 9/9; its identical-tree integration is
+`71ba53ea1`. These tests do not use a complete old application upgrade.
+
+The RI fix follows a foreign-key action into an installed SECURITY DEFINER
+trigger on a non-retired table, then applies the existing scoped write-capability
+test. Two real restricted-login cases previously mutated `driver_schemas` while
+V13 passed. Both now refuse; the invoker case still cannot mutate that table.
+Parent Spec and independent Standards passed this bounded fix. The Standards
+reviewer withdrew an initial dispatch-scope restriction after verifying that it
+would restore the two demonstrated failures. No permission or phase changed.
+
+On integrated `f950e02ce`, `writer-reachability-pg16` collected/passed 38/38,
+failed/skipped 0/0, exit 0, 6.11s; runner and nested-resource cleanup were verified.
+The explicit owned daemon was `07ef20c3-7210-41f4-b337-5f617ca84c0d`, PostgreSQL
+16 Alpine image `sha256:16bc17c64a573ef34162af9298258d1aec548232985b33ed7b1eac33ba35c229`,
+linux/arm64. Build (retained warnings), strict types including both changed tests,
+and original trusted-base boundary exited 0. Log SHA256 values:
+
+| Execution | SHA256 |
+| --- | --- |
+| Native PostgreSQL | `3968197348ee799a78ef1685e87807ddb39ca4ad477e1a8e7b4e679e9c444237` |
+| Build | `1ea63b5bd6104e12597eaa963e5290a7fa5a164f9078bca0347bdaa597fcc26c` |
+| Boundary | `6eecbc7c68f93a34280ba53bb4a3837ff844959de6391569ee190fe9a3b0f795` |
+| Strict types (empty successful log) | `e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855` |
+
+These results do not cover the separate manager-source assertion or full
+multi-head producer. Scratch capture `f6ab3b705` actually returned 126 relations,
+126 source migrations and 12 pending migrations but failed its unchanged 120s
+budget (155.215s); runner cleanup passed, nested cleanup remained unknown.
+Scratch `785acd2d6` changed the positive plan assertion to expect an unsupported
+result. Its reported 1/1 green is rejected as acceptance evidence; commit
+`fbbd52a2d4cd807960ef3d63d3cbfc8d35d2ae0c` restores the positive requirement.
+No subsequent positive execution is established. Neither execution establishes P13, legal startup,
+complete controller acceptance or A/B/C completion.
+
 ### Ordinary LOGIN successor
 
 Code `bd4ad49c85c5eeaa2e351245f5a4b616af700399`, tree
@@ -14,8 +117,12 @@ record root scheduling 130/130 and native PostgreSQL 21/21 with verified cleanup
 strict types, build and boundary 3509/3509. Parent Spec and independent Standards
 passed this scope. The PostgreSQL case uses actual restricted connections and
 the existing SQL owner; its fixture P12 references are not approved host-root
-evidence. Current Hosted is not yet recorded; predecessor results below remain
-historical. Full P13, legal production startup and full controller are incomplete.
+evidence. Report `d5aefa28d` Hosted `34219075502` subsequently passed required jobs
+at merge `f5acf76cef1fa667620c12c25262420e11282746`: owned 477/477, scripts
+2035 passed/27 skipped and backend 4322/4322. Local non-HDC and target synthetic
+skipped. [Original logs](https://github.com/tzrea1-Q/WiseEff/tree/06ba6f7c9ae2d66957a24366085b6de9d307031c/owned-d5aefa28d-reviewed/hosted-34219075502)
+do not cover the later integration above. Full P13, legal production startup and
+full controller are incomplete.
 
 ### Retired module-mapping writer integration
 
