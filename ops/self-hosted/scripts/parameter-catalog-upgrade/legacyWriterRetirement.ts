@@ -406,7 +406,7 @@ async function retire(input: LegacyLoginRetirementInput, bootstrapInspection = f
       };
       const appendRetirement = async (event: BootstrapRetirementEvent) => {
         await check(); await checkJournalDirectory();
-        if (event.outcome !== "unknown") await verifyBoundReport();
+        if (event.outcome !== "unknown") { await verifyBoundReport(); await verifyRuntimeRoles(); }
         need(isDeepStrictEqual(loaded.value.record, expectedJournal), "JOURNAL-DRIFT");
         // This must be the final await before the synchronous host effect:
         // report projection reads above may outlive the lock holder.
@@ -422,7 +422,7 @@ async function retire(input: LegacyLoginRetirementInput, bootstrapInspection = f
         expectedJournal = structuredClone(loaded.value.record);
         if (event.outcome === "credential-step") recordRetirementUnknown = undefined;
         await checkJournalDirectory(); await check();
-        if (event.outcome !== "unknown") await verifyBoundReport();
+        if (event.outcome !== "unknown") { await verifyBoundReport(); await verifyRuntimeRoles(); }
         await assertHostOperationLockForJournal(input.lock, plan.inputs.journalPath);
         need(!connectionFailed, "CONNECTION-FAILED");
       };
@@ -458,6 +458,7 @@ async function retire(input: LegacyLoginRetirementInput, bootstrapInspection = f
         // transaction while the low-level effect owns its own transaction.
         beforeEffect: async () => {
           await targetCheck(); await guard!.verify(); await verifyBoundReport();
+          await verifyRuntimeRoles();
           await assertHostOperationLockForJournal(input.lock, plan.inputs.journalPath);
           need(!connectionFailed, "CONNECTION-FAILED");
         } };

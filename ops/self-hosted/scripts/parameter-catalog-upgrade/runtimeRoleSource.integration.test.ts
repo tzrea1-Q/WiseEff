@@ -154,6 +154,31 @@ it("refuses a manager-source assertion after the source manager dies and release
   } finally { await observed.cleanup(); }
 });
 
+it("checks the live source while the credential transaction holds catalog locks without taking transaction ownership", async () => {
+  await within({}, async (f, lock) => {
+    const source = await openRuntimeRoleSource({ handoff: f.plan, expectedHandoffDigest: f.plan.digest, lock });
+    const candidatePool = new pg.Pool({ connectionString: target.url, max: 1 });
+    candidatePool.on("error", () => {});
+    const candidate = await candidatePool.connect();
+    candidate.on("error", () => {});
+    try {
+      const expected = await observeRuntimeRoles(source);
+      await candidate.query("begin");
+      await candidate.query("lock table pg_catalog.pg_authid in share row exclusive mode nowait");
+      await candidate.query("lock table pg_catalog.pg_database in share mode nowait");
+      const before = (await candidate.query("select pg_catalog.txid_current()::text as id")).rows[0].id;
+      await assertRuntimeRoleSourceManagementSession(source, candidate);
+      expect(await observeRuntimeRoles(source)).toEqual(expected);
+      expect((await candidate.query("select pg_catalog.txid_current()::text as id")).rows[0].id).toBe(before);
+      await candidate.query("rollback");
+    } finally {
+      candidate.release(true);
+      await candidatePool.end();
+      await source.close();
+    }
+  });
+});
+
 it.each(["false", "reject", "primary+reject"] as const)("destroys the checked-out manager lease after an unlock %s and redacts the cleanup driver error", async mode => {
   const observed = observePools();
   try {

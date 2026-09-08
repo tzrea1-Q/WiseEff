@@ -11,7 +11,7 @@ import { retireLegacyApplicationLogins, inspectLegacyApplicationLoginFence, type
 const io = vi.hoisted(() => ({ apply: vi.fn(), sqlPrivilegeEffect: vi.fn(), sqlInspect: vi.fn(), runtimeRoles: vi.fn(), runtimeManager: vi.fn(), inspect: vi.fn(), transportInspect: vi.fn(), journal: vi.fn(),
   package: vi.fn(), docker: vi.fn(), activation: vi.fn(), report: vi.fn(),
   ordinary: false, ordinaryFenced: false, runtimeCloseFails: false, pools: [] as string[],
-  clients: [] as Array<{ kind: string; query: ReturnType<typeof vi.fn>; release: ReturnType<typeof vi.fn>; emit(event: string): boolean }>,
+  clients: [] as Array<{ kind: string; query: ReturnType<typeof vi.fn>; release: ReturnType<typeof vi.fn>; end: ReturnType<typeof vi.fn>; emit(event: string): boolean }>,
   fault: "", fsyncDirectoryInode: -1, hostRefused: false, sourceConnects: 0, closed: [] as string[], rootEvents: [] as Array<{ event_kind?: string; payload: any }> }));
 vi.mock("node:fs", async original => {
   const actual = await original<typeof import("node:fs")>();
@@ -104,7 +104,7 @@ vi.mock("pg", async () => {
       io.clients.push(this);
     }
     async connect() { io.sourceConnects++; if (io.fault === "old-secret-rejected") throw new Error("private-authentication-refused"); }
-    async end() { this.emit("end"); }
+    end = vi.fn(async () => { this.emit("end"); });
   }
   class Pool extends EventEmitter {
     constructor(private options: { connectionString?: string }) { super(); io.pools.push(options.connectionString ?? "unspecified"); }
@@ -558,6 +558,28 @@ it("installs the root's live host check before the low-level effect can continue
   expect(io.rootEvents).toHaveLength(1);
 });
 
+it.each(["manager-lost", "configuration-drift"] as const)("rechecks the issued runtime source after initial observation: %s", async fault => {
+  const f = await fixture();
+  let continued = false;
+  io.apply.mockImplementationOnce(async command => {
+    // Fail after the root has observed the source and committed its intent.
+    // This exercises the real root hook; password effects remain mocked here.
+    if (fault === "manager-lost") io.runtimeManager.mockRejectedValue(new Error("private-source-loss"));
+    else io.runtimeRoles.mockResolvedValue({ ...(await io.runtimeRoles()), roles: [] });
+    await command.beforeEffect();
+    continued = true;
+    return { outcome: "authentication-fenced-not-P13", intentDigest: "ignored" };
+  });
+  await expect(retireLegacyApplicationLogins(f.input)).rejects.toThrow("TRANSACTION-OUTCOME-UNKNOWN");
+  expect(continued).toBe(false);
+  expect(io.sqlPrivilegeEffect).not.toHaveBeenCalled();
+  expect(retirementEvents(f.input).map(entry => entry.action)).toEqual([
+    "bootstrap-retirement-pending", "bootstrap-retirement-unknown",
+  ]);
+  expect(io.closed).toContain("runtime-source");
+  expect(io.clients.every(client => client.release.mock.calls.length + client.end.mock.calls.length === 1)).toBe(true);
+});
+
 it("rechecks an expired report projection before the low-level effect can continue", async () => {
   const f = await fixture();
   let continued = false;
@@ -572,6 +594,20 @@ it("rechecks an expired report projection before the low-level effect can contin
   await expect(retireLegacyApplicationLogins(f.input)).rejects.toThrow("TRANSACTION-OUTCOME-UNKNOWN");
   expect(continued).toBe(false);
   expect(io.rootEvents).toHaveLength(1);
+});
+
+it("does not acknowledge a credential step when source observation is lost during final inspection", async () => {
+  const f = await fixture();
+  const inspected = await io.inspect();
+  io.inspect.mockImplementationOnce(async () => {
+    io.runtimeManager.mockRejectedValue(new Error("private-source-loss"));
+    return inspected;
+  });
+  await expect(retireLegacyApplicationLogins(f.input)).rejects.toThrow("TRANSACTION-OUTCOME-UNKNOWN");
+  expect(retirementEvents(f.input).map(entry => entry.action)).toEqual([
+    "bootstrap-retirement-pending", "bootstrap-retirement-unknown",
+  ]);
+  expect(io.sqlPrivilegeEffect).not.toHaveBeenCalled();
 });
 
 it("stops the next SQL effect if the last report await loses the issued host lock", async () => {
