@@ -353,11 +353,7 @@ async function inspectInIndependentProcess(inputPath: string, code = bootstrapIn
       return;
     }
     if (message !== "final-boundary" || !boundary || boundaryWork) { failed = true; child.kill("SIGKILL"); return; }
-    console.info(JSON.stringify({ scope: "bootstrap-custody-timing", stage: "boundary-enter", elapsedMs: Math.round(performance.now() - started) }));
-    boundaryWork = boundary().then(() => {
-      console.info(JSON.stringify({ scope: "bootstrap-custody-timing", stage: "boundary-complete", elapsedMs: Math.round(performance.now() - started) }));
-      child.send("boundary-complete");
-    }, () => { failed = true; child.kill("SIGKILL"); });
+    boundaryWork = boundary().then(() => { child.send("boundary-complete"); }, () => { failed = true; child.kill("SIGKILL"); });
   });
   const closed = new Promise<{ code: number | null; signal: NodeJS.Signals | null }>(resolve => {
     child.once("close", (code, signal) => resolve({ code, signal }));
@@ -731,16 +727,13 @@ async function prepareCustodyTransport() {
       // A real second management session, opened only in this boundary window
       // and closed before auth's session inventory is checked again. No S7.
       const other = new pg.Client({ connectionString: privateUrl.href, connectionTimeoutMillis: 2000 }); other.on("error", () => {});
-      const boundaryStarted = performance.now();
-      const markBoundary = (stage: string) => console.info(JSON.stringify({ scope: "bootstrap-custody-timing", stage, elapsedMs: Math.round(performance.now() - boundaryStarted) }));
       try {
-        await other.connect(); markBoundary("mutation-connected"); await other.query("set lock_timeout='50ms'");
+        await other.connect(); await other.query("set lock_timeout='50ms'");
         for (const sql of grantCommands) {
           try { await other.query(sql); }
           catch (error) { if ((error as { code?: string }).code !== "55P03") throw new Error("successor-boundary-unexpected-failure"); blockedGrants.push(sql); }
         }
-        markBoundary("mutation-settled");
-      } finally { await other.end(); markBoundary("mutation-closed"); }
+      } finally { await other.end(); }
     } : undefined);
     expect(observed).toEqual(mode === "missing-host" || mode === "wrong-host-run" ? { outcome: "unknown" } : fenced);
     if (mutation) {
