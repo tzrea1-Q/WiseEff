@@ -556,3 +556,12 @@ export async function provideDtsParameterCatalogComparisonContribution(
     checksum: checksumDtsComparisonBytes(bytes),
   };
 }
+
+/** Complete source inventory used by P0 before any semantic comparison. */
+export async function readDtsComparisonSourceInventory(database: Database) {
+  const projects = await queryProjects(database);
+  return sortInventory([
+    ...(await queryReloadRunInventory(database)), ...(await queryReloadTargetInventory(database)),
+    ...(await queryBindingInventory(database, projects)),
+  ]);
+}

@@ -428,3 +428,11 @@ export async function provideKnwParameterCatalogComparisonContribution(
     checksum: checksumKnwComparisonBytes(bytes),
   };
 }
+
+/** P0 reads the same complete consumer inventory before selecting comparison
+ * rules. This is a database projection, not a contribution or classification. */
+export async function readKnwComparisonSourceInventory(database: Database) {
+  // Preserve the actual parameter_spec_id FK and reference organization. The
+  // comparison owner joins these to its independently captured CGH inventory.
+  return sortInventory(await queryKnwInventory(database));
+}

@@ -4,8 +4,9 @@ export {
   rewriteMappingVersion,
 } from "./map";
 export { lookupProtectedIdentity } from "./lookup";
-export { readMappingInventory, readMappingSnapshot, mappingHeadDigest, MappingInventoryError } from "./snapshot";
+export { readMappingInventory, readMappingSnapshot, readProtectedIdentityInventory, mappingHeadDigest, MappingInventoryError } from "./snapshot";
 export type { MappingInventoryHead, MappingSourceIdentity, MappingSnapshotMember } from "./snapshot";
+export { capturePhysicalSourceIdentities, readLegacySourceRegistry, capturePlannedSourceIdentities, registerPlannedSourceIdentities, SourceIdentityRefusal } from "./sourceIdentity";
 export { MAPPING_FAILURE_CODES, MAPPING_TARGET_KINDS } from "./types";
 export type {
   AppendMappingInput,

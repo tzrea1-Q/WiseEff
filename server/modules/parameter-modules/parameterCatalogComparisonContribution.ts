@@ -612,3 +612,8 @@ export async function provideModParameterCatalogComparisonContribution(
     checksum: checksumModComparisonBytes(bytes),
   };
 }
+
+/** Legacy side of the P0 inventory, through the existing production owner. */
+export async function readModComparisonSourceInventory(database: Database) {
+  return sortInventory(await queryModInventory(database));
+}

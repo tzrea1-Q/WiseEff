@@ -561,3 +561,12 @@ export async function provideAgtParameterCatalogComparisonContribution(
     checksum: checksumAgtComparisonBytes(bytes),
   };
 }
+
+/** Complete source inventory used by P0 before any semantic comparison. */
+export async function readAgtComparisonSourceInventory(database: Database) {
+  const projects = await queryProjects(database);
+  return sortInventory([
+    ...(await queryAgentSessionInventory(database)), ...(await queryAgentToolCallInventory(database)),
+    ...(await queryAgentApprovalInventory(database)), ...(await queryBindingInventory(database, projects)),
+  ]);
+}

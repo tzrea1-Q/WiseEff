@@ -78,6 +78,7 @@ export type ManagementPreparationPin = {
 };
 
 export type CutoverPlan = {
+  readonly comparisonRules?: import("./comparisonRules").ComparisonP0Rules;
   readonly managementPreparation?: ManagementPreparationPin;
   readonly managementMigrationReceiptDigest?: string;
   readonly bindingImportIntentDigest?: string;
@@ -111,6 +112,8 @@ export type CutoverRunSnapshot = {
 };
 
 export type PlanCutoverInput = {
+  /** Original management-bound source inventory, captured before comparison. */
+  readonly comparisonInventory?: import("../release-verification/comparison/planInventory").CapturedComparisonInventory;
   readonly managementPreparation?: ManagementPreparationPin;
   /** Receipt from the fixed preparation plan, generated before this S7 plan. */
   readonly managementMigrationReceiptDigest?: string;
@@ -125,6 +128,16 @@ export type PlanCutoverInput = {
 };
 
 export type ExecuteCutoverInput = {
+  readonly comparisonInventory?: import("../release-verification/comparison/planInventory").CapturedComparisonInventory;
+  /** Original maintenance-source owner, reopened under this executor's actual
+   * management transaction and S7. This is a code capability, not JSON input.
+   * The source lease closes only after the P0 commit (or rollback).
+   */
+  readonly openComparisonSource?: (management: pg.PoolClient) => Promise<{
+    readonly inventory: import("../release-verification/comparison/planInventory").CapturedComparisonInventory;
+    verify(): Promise<unknown>;
+    close(): Promise<void>;
+  }>;
   readonly managementMigrations?: {
     /** Root-owned: recompute the source/ledger/checkpoint receipt on the actual
      * target, and compare it with the committed existing controller journal. */

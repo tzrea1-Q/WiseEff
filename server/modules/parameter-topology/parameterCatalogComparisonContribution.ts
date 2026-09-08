@@ -639,3 +639,13 @@ export async function provideTopParameterCatalogComparisonContribution(
     checksum: checksumTopComparisonBytes(bytes),
   };
 }
+
+/** Legacy side of the P0 inventory; native Catalog/governance membership is
+ * collected separately from the actual production query routes. */
+export async function readTopComparisonSourceInventory(database: Database) {
+  const organizations = await queryOrganizationIds(database);
+  const projects = await queryProjects(database);
+  return sortInventory([
+    ...(await queryBindingInventory(database, projects)), ...(await queryMappingInventory(database, organizations)),
+  ]);
+}

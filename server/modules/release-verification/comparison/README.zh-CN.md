@@ -6,6 +6,22 @@
 接入九个 S10 `PCAT-CMP-D01`–`D09` adapter。它不另建 verifier、批准服务
 或 Catalog 转换器。
 
+## 实现中的 P0 来源接线
+
+`comparisonSource.ts` 将原停写 handoff、私有管理配置与真实 issued 宿主锁
+接入同一个源事务。组合根提供原登记容器集合；实际端点校验仍逐项验证
+owner 标签和网络成员。source-system 显式声明来自被固定的管理配置，
+不能从比较报告复制。来源负责人采集已安装 0137 的完整来源身份与十一家
+消费者库存。P0 登记使用既有管理事务和 journal attempt，严格复用完整 tuple，
+INSERT 后重新核验；源租约将旧业务表锁保留到 P0 提交及宿主确认之后。
+
+目前仅有数据库/传输替身及真实私有文件、宿主锁的定点测试。
+原 populated-plan 转换与 Binding 族限制仍保留；完整来源计划、真实 P0 执行、
+v2 provider/report/gate 和完整两 head 正向均未验证。MOD 仍沿原生产 reader
+读取 schema 文件/缓存及已锁定的数据库行，不声称来源完全不依赖文件。
+拟议的 MOD 数据库投影已隔离，等待精确 boundary 决定；未修改 allowance
+或可信基线。
+
 ## 组合契约
 
 每次实际 `runVerification` 调用创建一个

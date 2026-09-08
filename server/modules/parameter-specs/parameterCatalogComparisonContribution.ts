@@ -603,3 +603,87 @@ export async function provideCghParameterCatalogComparisonContribution(
     checksum: checksumCghComparisonBytes(bytes),
   };
 }
+
+/** Legacy inventory only, before disposition comparison. */
+export async function readCghComparisonSourceInventory(database: Database) {
+  const records = new Map<string, InventoryRecord & { sourceReferences: readonly SourceAnchor[];
+    sourceObservations: Array<{ organizationId: string; value: Readonly<Record<string, unknown>> }> }>();
+  const organizations = await queryOrganizationIds(database);
+  for (const organizationId of organizations.length ? organizations : ["platform"]) {
+    for (const item of (await listParameterSpecs(database, inventoryAuth(organizationId), {})).items) {
+      if (item.organizationId === undefined) throw new Error("PCAT-CGH-SOURCE-OWNER-UNAVAILABLE");
+      const sourceReferences = [specAnchor(item.id, item.organizationId)];
+      const prior = records.get(`spec:${item.id}`);
+      if (prior && JSON.stringify(prior.sourceReferences) !== JSON.stringify(sourceReferences)) throw new Error("PCAT-CGH-SOURCE-OWNER-DRIFT");
+      const record = prior ?? { kind: "parameter-definition-spec", id: item.id,
+        applicable: ["PCAT-CMP-D01-DEFINITION-SEMANTICS", "PCAT-CMP-D09-LEGACY-OPERATOR-OUTCOME"] as const,
+        sourceReferences, sourceObservations: [] };
+      if (record.sourceObservations.some(observation => observation.organizationId === organizationId)) throw new Error("PCAT-CGH-SOURCE-DUPLICATE");
+      record.sourceObservations.push({ organizationId, value: structuredClone(item) });
+      records.set(`spec:${item.id}`, record);
+    }
+    if (!organizations.length) continue;
+    const seen = new Set<string>(); let cursor: string | undefined;
+    do {
+      const page = await listSpecReviewTasks(database, inventoryAuth(organizationId), { limit: 100, cursor });
+      for (const item of page.items) records.set(`review:${item.id}`, { kind: "review-proposal-observation", id: item.id,
+        applicable: ["PCAT-CMP-D06-REVIEW-PROPOSAL-OBSERVATION", "PCAT-CMP-D09-LEGACY-OPERATOR-OUTCOME"],
+        sourceObservations: [{ organizationId, value: structuredClone(item) }], sourceReferences: [{ sourceKind: "parameter-spec-review-task", sourceId: item.id,
+          ownerScopeKind: "organization", ownerScopeId: organizationId }] });
+      cursor = page.nextCursor ?? undefined;
+      if (cursor && seen.has(cursor)) throw new Error("PCAT-CGH-INVENTORY-CURSOR-REPEATED");
+      if (cursor) seen.add(cursor);
+    } while (cursor !== undefined);
+  }
+  return [...records.values()].sort((a, b) => compareText(a.kind, b.kind) || compareText(a.id, b.id));
+}
+
+type SourceAnchor = { sourceKind: "parameter-spec" | "parameter-spec-review-task"; sourceId: string;
+  ownerScopeKind: "platform" | "organization"; ownerScopeId: string };
+const specAnchor = (id: string, organizationId: string | null): SourceAnchor => ({ sourceKind: "parameter-spec", sourceId: id,
+  ownerScopeKind: organizationId === null ? "platform" : "organization", ownerScopeId: organizationId ?? "platform" });
+
+/** Maintenance capture uses the real root-bound GET routes and follows every
+ * cursor. Neither an unavailable route nor a malformed page is an empty list.
+ * This returns observations; it cannot issue a report or an authorization. */
+export async function readComparisonNativeInventory(database: Database) {
+  if (!getRootPostgresPool(database)) throw new Error("PCAT-CGH-ROOT-POOL-MISMATCH");
+  const organizations = await queryOrganizationIds(database);
+  const records: Array<{ kind: string; id: string; organizationId: string; value: Record<string, unknown> }> = [];
+  for (const organizationId of organizations.length ? organizations : ["platform"]) {
+    const router = createComparisonRouter(database, organizationId);
+    for (const [routeId, kind, scoped] of [
+      ["catalog.listSubjects", "catalog-subject", false],
+      ["catalog.listDefinitions", "parameter-definition", false],
+      ["catalog.listRegistrations", "subject-registration", true],
+      ["catalog.listReviewItems", "review-item", true],
+      ["catalog.listObservations", "parameter-observation", true],
+    ] as const) {
+      const params: Record<string, string> = scoped ? { organizationId } : {};
+      let cursor: string | undefined;
+      const seen = new Set<string>(), ids = new Set<string>();
+      do {
+        const response = await router.handle({ method: "GET", path: catalogPath(routeId, params), params,
+          query: cursor ? { cursor } : {}, headers: {}, requestId: randomUUID(), body: undefined });
+        if (response.status !== 200 || !("body" in response) || !response.body || typeof response.body !== "object") {
+          throw new Error("PCAT-CMP-NATIVE-INVENTORY-UNAVAILABLE");
+        }
+        const page = response.body as { items?: unknown; nextCursor?: unknown };
+        if (!Array.isArray(page.items) || !(page.nextCursor === null || typeof page.nextCursor === "string")) {
+          throw new Error("PCAT-CMP-NATIVE-INVENTORY-INCOMPLETE");
+        }
+        for (const item of page.items) {
+          if (!item || typeof item !== "object" || typeof item.id !== "string" || !item.id || ids.has(item.id)) {
+            throw new Error("PCAT-CMP-NATIVE-INVENTORY-INCOMPLETE");
+          }
+          ids.add(item.id);
+          records.push({ kind, id: item.id, organizationId, value: structuredClone(item) as Record<string, unknown> });
+        }
+        if (page.nextCursor !== null && (!page.nextCursor || seen.has(page.nextCursor))) throw new Error("PCAT-CMP-NATIVE-INVENTORY-INCOMPLETE");
+        cursor = page.nextCursor ?? undefined;
+        if (cursor) seen.add(cursor);
+      } while (cursor !== undefined);
+    }
+  }
+  return records;
+}

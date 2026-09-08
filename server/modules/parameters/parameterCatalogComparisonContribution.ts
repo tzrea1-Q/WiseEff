@@ -316,3 +316,13 @@ export async function providePrjParameterCatalogComparisonContribution(
     checksum: checksumPrjComparisonBytes(bytes),
   };
 }
+
+/** Source-only P0 inventory; retain both binding-history and value-pin cases. */
+export async function readPrjComparisonSourceInventory(database: Database) {
+  return sortInventory(await queryBindingInventory(database)).map(record => {
+    const projectId = record.legacyValue.projectId;
+    if (typeof projectId !== "string" || !projectId) throw new Error("PCAT-PRJ-SOURCE-PROJECT-UNAVAILABLE");
+    return { ...record, sourceReferences: [{ sourceKind: "project-parameter-binding" as const, sourceId: record.id,
+      ownerScopeKind: "project", ownerScopeId: projectId }] };
+  });
+}

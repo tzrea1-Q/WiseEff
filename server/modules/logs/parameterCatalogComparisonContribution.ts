@@ -405,3 +405,8 @@ export async function provideLogParameterCatalogComparisonContribution(
     checksum: checksumLogComparisonBytes(bytes),
   };
 }
+
+/** Source-only P0 inventory; no canonical read or comparison is performed. */
+export async function readLogComparisonSourceInventory(database: Database) {
+  return sortInventory(await queryLogRecordInventory(database));
+}

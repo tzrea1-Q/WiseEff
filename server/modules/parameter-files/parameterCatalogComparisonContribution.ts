@@ -515,3 +515,11 @@ export async function provideFilParameterCatalogComparisonContribution(
     checksum: checksumFilComparisonBytes(bytes),
   };
 }
+
+/** Complete source inventory used by P0 before any semantic comparison. */
+export async function readFilComparisonSourceInventory(database: Database) {
+  return sortInventory([
+    ...(await queryFileInventory(database)), ...(await queryLogicalNodeInventory(database)),
+    ...(await queryLogicalNodeRevisionInventory(database)), ...(await queryConfigRevisionInventory(database)),
+  ]);
+}

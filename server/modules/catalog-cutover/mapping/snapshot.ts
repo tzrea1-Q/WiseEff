@@ -22,6 +22,22 @@ export type MappingSnapshotMember = {
   readonly headDigest: string;
 };
 
+/** P0 may precede mapping heads. Read the actual protected identity registry
+ * without inventing a head, epoch or source-system default. */
+export async function readProtectedIdentityInventory(client: { query<Row>(text: string): Promise<{ rows: Row[] }> }): Promise<readonly MappingSourceIdentity[]> {
+  const rows = structuredClone((await client.query<MappingSourceIdentity>(`select id as "legacyIdentityId",source_system as "sourceSystem",source_kind as "sourceKind",
+    owner_scope_kind as "ownerScopeKind",owner_scope_id as "ownerScopeId",source_id as "sourceId"
+    from parameter_catalog.legacy_identities order by id collate "C"`)).rows);
+  const ids = new Set<string>(), tuples = new Set<string>();
+  for (const row of rows) {
+    const tuple = JSON.stringify([row.sourceSystem, row.sourceKind, row.ownerScopeKind, row.ownerScopeId, row.sourceId]);
+    if ([row.legacyIdentityId, row.sourceSystem, row.sourceKind, row.ownerScopeKind, row.ownerScopeId, row.sourceId].some(value => typeof value !== "string" || !value) || ids.has(row.legacyIdentityId) || tuples.has(tuple) ||
+      !(legacyMappingSourceKinds as readonly string[]).includes(row.sourceKind) || !["platform", "organization", "project"].includes(row.ownerScopeKind)) throw new MappingInventoryError();
+    ids.add(row.legacyIdentityId); tuples.add(tuple);
+  }
+  return rows;
+}
+
 /** Exact public MappingHead under the existing canonical core codec. This
  * includes the mapping version, CAS version, run, source and evidence archive;
  * it is intentionally different from the historical raw complete-set codec. */

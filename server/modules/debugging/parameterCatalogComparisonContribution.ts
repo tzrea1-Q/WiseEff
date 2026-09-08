@@ -586,3 +586,15 @@ export async function provideDbgParameterCatalogComparisonContribution(
     checksum: checksumDbgComparisonBytes(bytes),
   };
 }
+
+/** Complete source inventory used by P0 before any semantic comparison. */
+export async function readDbgComparisonSourceInventory(database: Database) {
+  const projects = await queryProjects(database);
+  return sortInventory([
+    ...(await queryDebugParameterInventory(database)), ...(await queryDebugNodeInventory(database)),
+    ...(await queryDebugNodeBindingInventory(database)), ...(await queryDebugParameterBindingInventory(database)),
+    ...(await queryNodeOperationInventory(database)), ...(await queryDebugSessionInventory(database)),
+    ...(await queryDebugSnapshotInventory(database)), ...(await queryLogicalNodeInventory(database)),
+    ...(await queryLogicalNodeRevisionInventory(database)), ...(await queryBindingInventory(database, projects)),
+  ]);
+}

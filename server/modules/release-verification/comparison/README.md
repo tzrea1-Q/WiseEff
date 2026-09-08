@@ -6,6 +6,27 @@
 Comparison report generator to the nine S10 `PCAT-CMP-D01`–`D09` adapters. It
 does not implement another verifier, approval service or Catalog converter.
 
+## P0 source wiring under development
+
+`comparisonSource.ts` connects the original stopped handoff, private management
+configuration and issued host lock to a single source transaction. The root
+provides its original registered container set; actual endpoint checks still
+verify every owner label and network member. The explicit source-system name
+comes from the pinned management configuration, not from a comparison report.
+The source owner captures all installed 0137 source identities and the eleven
+consumer inventories. P0 registration uses the existing management transaction
+and journal attempt, with exact tuple reuse and post-insert readback. Its source
+lease retains legacy-table locks through P0 commit and host acknowledgement.
+
+This wiring has only focused tests with database/transport doubles and real
+private files/host locks so far. The original populated-plan conversion and
+Binding-family restrictions remain; full-source planning, actual P0 execution,
+v2 providers/report/gates and the complete two-head positive are not verified.
+The existing MOD production reader still reads schema files/cache in addition
+to locked database rows. No filesystem-free source claim is made. The proposed
+MOD database projection is isolated pending its exact boundary decision; no
+allowance or trusted baseline was changed.
+
 ## Composition contract
 
 Create one `createComparisonEvidenceExecution({ source })` per actual

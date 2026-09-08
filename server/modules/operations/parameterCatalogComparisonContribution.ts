@@ -476,3 +476,11 @@ export async function provideOpsParameterCatalogComparisonContribution(
     checksum: checksumOpsComparisonBytes(bytes),
   };
 }
+
+/** Complete source inventory used by P0 before any semantic comparison. */
+export async function readOpsComparisonSourceInventory(database: Database) {
+  return sortInventory([
+    ...(await queryProjectInventory(database)), ...(await queryLogicalNodeInventory(database)),
+    ...(await queryConfigRevisionInventory(database)),
+  ]);
+}
