@@ -16,9 +16,10 @@ function fixture() {
   ];
   records.users = [{ source_row: { id: "private-user", value: "private-password-canary" }, sql_nulls: [false, false] }];
   const queries: string[] = [];
-  const faults = { restore: false };
+  const faults = { restore: false, preparation: "" };
   const client = { async query(sql: string) {
     queries.push(sql);
+    if (sql === faults.preparation) throw new Error("postgres://private-canary:password@private-host/raw-input", { cause: "private-cause" });
     if (sql === "set row_security = on" && faults.restore) throw new Error("private-cleanup-canary");
     if (sql === "show row_security") return { rows: [{ row_security: "on" }] };
     if (sql.startsWith("set row_security")) return { rows: [] };
@@ -71,5 +72,15 @@ describe("conversion source projection from the original complete-row scan", () 
   it("refuses an otherwise complete projection if restoring the session fails", async () => {
     const f = fixture(); f.faults.restore = true;
     await expect(captureConversionSourceSnapshot(f.client)).rejects.toThrow("PCAT-CONVERSION-SOURCE-PROJECTION-RESTORE-FAILED");
+  });
+  it.each(["show row_security", "set row_security = off"])("sanitizes the first %s failure before exposing a projection", async stage => {
+    const f = fixture(); f.faults.preparation = stage;
+    const failure = await captureConversionSourceSnapshot(f.client).catch(error => error);
+    expect(failure).toBeInstanceOf(Error);
+    expect(failure.message).toBe("PCAT-CONVERSION-SOURCE-PROJECTION-QUERY-FAILED");
+    expect(failure.cause).toBeUndefined();
+    expect(String(failure.stack)).not.toContain("private-canary");
+    expect(f.queries.at(-1)).toBe(stage);
+    expect(f.queries.some(query => query.includes("pg_catalog.pg_class"))).toBe(false);
   });
 });
