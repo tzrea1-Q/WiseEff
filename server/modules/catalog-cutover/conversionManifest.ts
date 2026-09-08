@@ -7,6 +7,7 @@ import type { CutoverQueryable } from "./checkpoints";
 import type { ArchiveSourceGraph } from "./archive";
 import type { ContractJsonValue } from "../parameter-catalog-contract/index";
 import type { BindingImportIntent } from "../parameter-bindings/cutoverImport/intent";
+import type { Queryable } from "../../shared/database/client";
 
 export const CONVERSION_MANIFEST_VERSION = "pcat-conversion-manifest-v1";
 
@@ -43,6 +44,16 @@ export const conversionManifestDigest = (manifest: ConversionManifest): string =
  * Caller must already own the quiescent source boundary. This function does not stop writers.
  */
 export async function captureConversionSourceInventory(client: CutoverQueryable): Promise<string> {
+  return (await scanConversionSourceInventory(client, false)).sourceInventoryFingerprint;
+}
+
+/** Read-only data from the same scan as the historical inventory digest. This
+ * does not issue a plan, mapping, write boundary or archive authorization. */
+export async function captureConversionSourceSnapshot(client: Queryable): Promise<ConversionSourceSnapshot> {
+  return scanConversionSourceInventory(client, true);
+}
+
+async function scanConversionSourceInventory(client: Queryable, capture: boolean): Promise<ConversionSourceSnapshot> {
   const prior = await client.query<{ row_security: string }>("show row_security");
   await client.query("set row_security = off");
   try {
@@ -56,6 +67,8 @@ export async function captureConversionSourceInventory(client: CutoverQueryable)
   `);
   const quote = (value: string) => `"${value.replaceAll('"', '""')}"`;
   const hash = createHash("sha256");
+  const records: ConversionSourceRecord[] = [];
+  const capturedRelations = new Set<string>();
   for (const table of tables.rows) {
     const nullFlags = table.columns.map((column) => `(source.${quote(column)} is null)`).join(", ");
     const rows = await client.query<{ source_row: unknown; sql_nulls: boolean[] }>(
@@ -63,12 +76,56 @@ export async function captureConversionSourceInventory(client: CutoverQueryable)
     );
     const canonicalRows = rows.rows.map((row) => JSON.stringify(row)).sort();
     hash.update(JSON.stringify({ table: table.table_name, columns: table.columns, rows: canonicalRows }));
+    if (capture && Object.hasOwn(conversionSourceRelations, table.table_name)) {
+      capturedRelations.add(table.table_name);
+      const sourceKind = conversionSourceRelations[table.table_name as keyof typeof conversionSourceRelations];
+      for (const row of rows.rows) {
+        const payload = structuredClone(row.source_row);
+        if (!payload || typeof payload !== "object" || Array.isArray(payload) ||
+          typeof Reflect.get(payload, "id") !== "string" || !Reflect.get(payload, "id") ||
+          row.sql_nulls.length !== table.columns.length || row.sql_nulls.some(flag => typeof flag !== "boolean") ||
+          new Set(table.columns).size !== table.columns.length ||
+          Object.keys(payload).sort().join("\0") !== [...table.columns].sort().join("\0")) {
+          throw new Error("PCAT-CONVERSION-SOURCE-PROJECTION-INVALID");
+        }
+        records.push({ sourceKind, sourceId: Reflect.get(payload, "id"),
+          payload: payload as Record<string, ContractJsonValue>,
+          sqlNullColumns: table.columns.filter((_, index) => row.sql_nulls[index]).sort() });
+      }
+    }
   }
-    return `sha256:${hash.digest("hex")}`;
+    if (capture && capturedRelations.size !== Object.keys(conversionSourceRelations).length) {
+      throw new Error("PCAT-CONVERSION-SOURCE-PROJECTION-INCOMPLETE");
+    }
+    records.sort((left, right) => left.sourceKind < right.sourceKind ? -1 : left.sourceKind > right.sourceKind ? 1 :
+      left.sourceId < right.sourceId ? -1 : left.sourceId > right.sourceId ? 1 : 0);
+    if (records.some((record, index) => index > 0 && record.sourceKind === records[index - 1]!.sourceKind &&
+      record.sourceId === records[index - 1]!.sourceId)) throw new Error("PCAT-CONVERSION-SOURCE-PROJECTION-DUPLICATE");
+    return { sourceInventoryFingerprint: `sha256:${hash.digest("hex")}`, records };
   } finally {
     await client.query(prior.rows[0]?.row_security === "off" ? "set row_security = off" : "set row_security = on");
   }
 }
+
+// Only the existing definition/subject/module-placement owners needed by the
+// complete source graph are exposed. Other public rows remain digest-only.
+const conversionSourceRelations = {
+  parameter_specs: "parameter-spec", parameter_spec_versions: "parameter-spec-version",
+  driver_schemas: "driver-schema", driver_schema_versions: "driver-schema-version",
+  dts_property_specs: "dts-property-spec", attribution_subjects: "parameter-subject",
+  parameter_modules: "parameter-module", driver_registration_placements: "parameter-placement",
+  parameter_module_mappings: "parameter-module-mapping",
+} as const;
+export type ConversionSourceRecord = {
+  readonly sourceKind: typeof conversionSourceRelations[keyof typeof conversionSourceRelations];
+  readonly sourceId: string;
+  readonly payload: Readonly<Record<string, ContractJsonValue>>;
+  readonly sqlNullColumns: readonly string[];
+};
+export type ConversionSourceSnapshot = {
+  readonly sourceInventoryFingerprint: string;
+  readonly records: readonly ConversionSourceRecord[];
+};
 
 export async function captureArchivedDefinitionGraph(client: CutoverQueryable, sourceId: string): Promise<ArchiveSourceGraph | null> {
   const source = await client.query<{ source_payload: ContractJsonValue }>("select to_jsonb(source) as source_payload from public.parameter_specs source where id = $1", [sourceId]);

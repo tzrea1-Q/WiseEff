@@ -20,6 +20,7 @@ import { validCatalogReleaseBundle } from "../../catalog-kernel/compiler/__fixtu
 import { jsonCatalogReleaseSource } from "../../catalog-kernel/interface";
 import { readComparisonSourceInventory } from "./planInventory";
 import { COMPARISON_FAMILIES } from "./corpusContributionSchema";
+import { captureConversionSourceInventory, captureConversionSourceSnapshot } from "../../catalog-cutover/conversionManifest";
 
 if (process.env.UPG_COMPONENT_PROFILE !== "selfhost-postgres16-alpine-v1") throw new Error("comparison-multihead-owned-profile-required");
 
@@ -89,7 +90,16 @@ describe("complete legacy source to multi-head comparison", () => {
             }
           };
         } });
-        return await captureComparisonP0Graph(observed, "wiseeff-v1");
+        const graph = await captureComparisonP0Graph(observed, "wiseeff-v1");
+        const snapshot = await captureConversionSourceSnapshot(observed);
+        expect(snapshot.sourceInventoryFingerprint).toBe(await captureConversionSourceInventory(observed));
+        for (const source of created) {
+          const version = snapshot.records.find(record => record.sourceKind === "parameter-spec-version" && record.sourceId === source.parameterSpecVersionId);
+          expect(version?.payload.parameter_spec_id).toBe(source.parameterSpecId);
+          expect(version?.sqlNullColumns).not.toContain("example_value");
+          expect(version?.payload.example_value).toEqual(source.parameterSpecId.endsWith(":enabled") ? true : [43]);
+        }
+        return graph;
       } finally {
         try { await client.query("rollback"); } finally { client.release(); }
       }
