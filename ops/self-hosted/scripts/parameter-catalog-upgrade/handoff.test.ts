@@ -154,10 +154,39 @@ describe.skipIf(process.env.UPG_HANDOFF_DOCKER_TEST !== "1")("actual isolated Co
         objects: { bucket: "isolated", accessKey: "synthetic", secretKey: secret },
         redis: { database: 0, auth: { kind: "none" } },
       });
-      const plan = await prepareHandoff(input, path.join(directory, "plan.json"), observer);
+      const observationCommands: string[][] = [];
+      let batchFault: "none" | "container-missing" | "container-duplicate" | "container-foreign" |
+        "volume-missing" | "volume-duplicate" | "volume-foreign" = "none";
+      const batchedObserver = { ...observer, docker: { daemonId: observer.docker.daemonId, command(args: string[]) {
+        observationCommands.push([...args]);
+        const bytes = observer.docker.command(args);
+        const kind = args[0] === "inspect" && args[1] === "--type" && args[2] === "container" ? "container" :
+          args[0] === "volume" && args[1] === "inspect" ? "volume" : null;
+        if (!kind) return bytes;
+        const rows = JSON.parse(bytes.toString());
+        // Docker is real. Only the returned inventory is perturbed; no resource
+        // is removed, replaced or cleaned to manufacture an admission result.
+        if (batchFault === `${kind}-missing`) rows.pop();
+        if (batchFault === `${kind}-duplicate`) rows[1] = structuredClone(rows[0]);
+        if (batchFault === `${kind}-foreign`) rows[0] = { ...rows[0], [kind === "container" ? "Id" : "Name"]: "foreign" };
+        return Buffer.from(JSON.stringify(rows.reverse()));
+      } } };
+      const plan = await prepareHandoff(input, path.join(directory, "plan.json"), batchedObserver);
+      expect(observationCommands.filter(args => args[0] === "inspect")).toEqual([
+        ["inspect", "--type", "container", ...input.source.applications.map(app => app.containerId), ...input.source.stores.map(store => store.containerId)],
+      ]);
+      expect(observationCommands.filter(args => args[0] === "volume")).toEqual([
+        ["volume", "inspect", ...input.source.stores.map(store => store.volumeName)],
+      ]);
       // Return only the typed reason on unexpected acceptance; never dump a plan
       // containing private paths or live resource metadata into assertion output.
       const refusal = async (operation: Promise<unknown>) => operation.then(() => "unexpected-success", error => error instanceof Error ? error.message : "unknown-error");
+      for (const fault of ["container-missing", "container-duplicate", "container-foreign", "volume-missing", "volume-duplicate", "volume-foreign"] as const) {
+        batchFault = fault;
+        expect(await refusal(inspectHandoff(input, batchedObserver))).toBe(
+          fault.startsWith("container-") ? "handoff-container-inventory-mismatch" : "handoff-volume-inventory-mismatch");
+      }
+      batchFault = "none";
       for (const [key, file] of Object.entries(roleFiles)) {
         expect(plan.observation.privateConfigurations.runtime[key]).toEqual({ path: file, device: expect.any(String), inode: expect.any(String), digest: expect.stringMatching(/^sha256:[a-f0-9]{64}$/) });
       }
