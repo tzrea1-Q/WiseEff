@@ -187,6 +187,7 @@ describe("source placement producer", () => {
       const record = value.records[0]!;
       return { ...value, records: [{ ...record, payload: { ...record.payload, driver_group_module_id: null }, sqlNullColumns: [...record.sqlNullColumns, "driver_group_module_id"] }] };
     }],
+    ["duplicate placement identity", (value: ConversionSourceSnapshot) => ({ ...value, records: [...value.records, value.records[0]!] })],
   ])("refuses %s", (_name, mutate) => {
     expect(() => derivePlacementRegistrationPlans({
       snapshot: mutate(snapshot()),

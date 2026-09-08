@@ -26,6 +26,7 @@ const requireFact = (condition: unknown, reason: string): asserts condition => {
 };
 
 const payloadString = (record: ConversionSourceRecord, field: string): string | null => {
+  if (record.sqlNullColumns.includes(field)) return null;
   const value = record.payload[field];
   return typeof value === "string" && value.length > 0 ? value : null;
 };
@@ -90,6 +91,10 @@ export const derivePlacementRegistrationPlans = (input: {
     .sort((left, right) => left.sourceId.localeCompare(right.sourceId));
   const graphPlacementIds = new Set(input.graph.placements.map((placement) => placement.id));
   const snapshotPlacementIds = new Set(placementRecords.map((record) => record.sourceId));
+  requireFact(
+    placementRecords.length === snapshotPlacementIds.size,
+    "placement-source-identity-duplicate",
+  );
   requireFact(
     graphPlacementIds.size === snapshotPlacementIds.size &&
       [...graphPlacementIds].every((placementId) => snapshotPlacementIds.has(placementId)),
