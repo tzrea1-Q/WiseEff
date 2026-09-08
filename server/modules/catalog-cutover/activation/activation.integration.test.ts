@@ -256,6 +256,29 @@ describe("existing 0137 activation storage on independently owned PG16", () => {
       expect((await admin.query("select pid from pg_stat_activity where pid=any($1::integer[])", [[sourcePid, managerPid]])).rows).toEqual([]);
     });
   });
+  it("rejects unsafe manager resolution before invoking a real shadow identity function", async () => {
+    await withComparisonRoot(async (_value, manager) => {
+      await manager.query("create temporary sequence comparison_resolution_probe");
+      await manager.query(`create function public.current_database() returns name language plpgsql as $$
+        begin perform pg_catalog.nextval('pg_temp.comparison_resolution_probe');
+        return pg_catalog.current_database(); end $$`);
+      await manager.query("set local search_path=public,pg_catalog");
+      let unexpected: Awaited<ReturnType<typeof openComparisonDatabaseV2>> | undefined;
+      try {
+        await expect((async () => {
+          unexpected = await openComparisonDatabaseV2({ connectionString: database.url, managementClient: manager,
+            target, cutoverRunId: runId, planPin: planDigest, verifyBoundary: boundary.verify });
+        })()).rejects.toThrow("PCAT-CMP-REPORT-INTEGRITY");
+        expect((await manager.query("select is_called from pg_temp.comparison_resolution_probe")).rows[0].is_called).toBe(false);
+        const schemas: string[] = (await manager.query("select pg_catalog.current_schemas(true)::text[] as schemas")).rows[0].schemas;
+        expect(schemas.indexOf("public")).toBeLessThan(schemas.indexOf("pg_catalog"));
+      } finally {
+        await unexpected?.close();
+        await manager.query("set local search_path=pg_catalog,public");
+        await manager.query("drop function public.current_database()");
+      }
+    });
+  });
   it("resolves a lost COMMIT acknowledgment by inspection without duplicating the mapping preparation event", async () => {
     await appendArchiveEvidence(true);
     const faultPool = new pg.Pool({ ...management.options, max: 1 });
