@@ -1,0 +1,17 @@
+docs/exec-plans/active/2026-09-06-populated-upgrade.md
+docs/zh-CN/exec-plans/active/2026-09-06-populated-upgrade.md
+ops/self-hosted/populated-upgrade-evidence.md
+ops/self-hosted/populated-upgrade-evidence.zh-CN.md
+ops/self-hosted/populated-upgrade.md
+ops/self-hosted/populated-upgrade.zh-CN.md
+ops/self-hosted/scripts/parameter-catalog-upgrade/handoffDataSource.test.ts
+ops/self-hosted/scripts/parameter-catalog-upgrade/handoffDataSource.ts
+ops/self-hosted/scripts/parameter-catalog-upgrade/handoffLegacySource.fixture.test.ts
+ops/self-hosted/scripts/parameter-catalog-upgrade/handoffLegacySource.fixture.ts
+ops/self-hosted/scripts/parameter-catalog-upgrade/handoffLegacySource.integration.test.ts
+ops/self-hosted/scripts/parameter-catalog-upgrade/managementSnapshotChild.test.ts
+ops/self-hosted/scripts/parameter-catalog-upgrade/managementSnapshotChild.ts
+scripts/run-upgrade-component-tests.test.ts
+scripts/run-upgrade-component-tests.ts
+server/modules/catalog-cutover/retirement/legacySqlPrivilegeFence.integration.test.ts
+vitest.upgrade-legacy-source.config.ts
