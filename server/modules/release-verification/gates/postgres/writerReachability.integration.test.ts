@@ -8,6 +8,7 @@ import { VerificationGateId, type VerificationPlan } from "../../core/types";
 import { validPrepare } from "../../report/fixtures";
 import { createPostgresGateAdapters } from "./index";
 import { LEGACY_STRUCTURAL_TABLES } from "../../../catalog-kernel/security/catalogRoleManifest";
+import { insertMapping } from "../../../parameter-modules/repository";
 
 // An owned cluster is necessary: PUBLIC and role membership are deliberately
 // contaminated. These are actual gate/LOGIN probes, not P13 or passing reports.
@@ -368,4 +369,39 @@ it("does not treat a non-key project column update as a cascading legacy mutatio
     expect((await writer.query(`update public.projects set name='unchanged' where false`)).rowCount).toBe(0);
     expect(await runGate()).toMatchObject({ status: "passed" });
   } finally { await admin.query(`revoke update(name) on public.projects from ${writerName}`); }
+});
+
+it("blocks the retired module mapping INSERT and conflict UPDATE with no write capability on the original seven relations", async () => {
+  const organization = `v13_mapping_org_${nonce}`, module = `v13_mapping_module_${nonce}`, mapping = `v13_mapping_${nonce}`;
+  await admin.query(`insert into public.organizations(id,name) values ($1,'V13 module mapping fixture')`, [organization]);
+  await admin.query(`insert into public.parameter_modules(id,organization_id,name,path)
+    values ($1,$2,'V13 module mapping fixture',$1)`, [module, organization]);
+  await admin.query(`grant select,insert,update on public.parameter_module_mappings to ${writerName}`);
+  try {
+    // The frozen parameterModules.createMapping route calls this repository.
+    // Its attribution rule is retired even when no existing binding is moved.
+    const input = { id: mapping, organizationId: organization, moduleId: module,
+      matchKind: "compatible" as const, matchValue: "v13,mapping-fixture", priority: 1 };
+    const connection = { query: (text: string, values?: unknown[]) => writer.query(text, values) };
+    const read = () => admin.query(`select id,parameter_module_id,match_value,priority
+      from public.parameter_module_mappings where organization_id=$1`, [organization]);
+    expect((await read()).rows).toEqual([]);
+    await insertMapping(connection, input);
+    expect((await read()).rows).toEqual([{ id: mapping, parameter_module_id: module,
+      match_value: "v13,mapping-fixture", priority: 1 }]);
+    await insertMapping(connection, { ...input, id: `${mapping}_conflict`, priority: 2 });
+    const expected = [{ id: mapping, parameter_module_id: module, match_value: "v13,mapping-fixture", priority: 2 }];
+    expect((await read()).rows).toEqual(expected);
+    expect((await writer.query(`select name from unnest($1::text[]) name
+      where pg_catalog.has_table_privilege(current_user,('public.'||name)::regclass,'INSERT,UPDATE,DELETE,TRUNCATE')
+        or pg_catalog.has_any_column_privilege(current_user,('public.'||name)::regclass,'INSERT,UPDATE')`, [tables])).rows)
+      .toEqual([]);
+    await expectBlocked();
+    expect((await read()).rows).toEqual(expected); // Verification neither repairs nor revokes.
+  } finally {
+    await admin.query(`revoke select,insert,update on public.parameter_module_mappings from ${writerName}`);
+    await admin.query("delete from public.parameter_module_mappings where organization_id=$1", [organization]);
+    await admin.query("delete from public.parameter_modules where id=$1", [module]);
+    await admin.query("delete from public.organizations where id=$1", [organization]);
+  }
 });

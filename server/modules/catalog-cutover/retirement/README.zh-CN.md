@@ -145,6 +145,23 @@ Runner/CI、共享 migration/grant 不属于本分片。
 
 ## 有界旧 SQL 权限效果
 
+### 已退休模块映射范围回归
+
+冻结 V13/R-L0 契约要求旧结构可达写入者为零，见
+[验证门禁](../../../../docs/design-docs/parameter-catalog-verification-upgrade-retirement-gates.md)
+的 V13 与分阶段退休表。既有38路由明确退休
+`parameterModules.createMapping` 和 `parameterModules.deleteMapping`。
+原 POST handler 调用 `createModuleMapping`，再调用 repository 的 `insertMapping`：
+向 `public.parameter_module_mappings` 插入归属规则，或冲突时更新
+`parameter_module_id`、`priority`。该表由原迁移
+`0066_parameter_module_mappings.sql` 定义，当前七表 V13/SQL fence 未纳入它。
+
+本回归拟补的范围只有该表。真实 LOGIN 通过原 repository 插入并更新规则，独立读回
+两次效果，核原七表没有 mutation 能力后要求 V13 拒绝。已有 Organization/module
+行仅为外键前提，不将这些表一并退休。审计、历史、ProjectValues、其它关系权限及
+正常项目操作均不扩入范围。真实 PostgreSQL Red 尚待执行；测试准备不等于已证明
+失败，更不构成完整 P13。
+
 本 Scratch 实现位于现有退休根与 `legacySqlPrivilegeFence.ts`，实际 owned PG
 组件验证已按下文记录通过。它撤销独立可达的旧结构 SQL 授权，不产生
 P13 completed checkpoint、runtime generation、启动 pin 或批准。

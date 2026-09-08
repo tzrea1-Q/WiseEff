@@ -190,6 +190,27 @@ migrations/grants remain outside this fragment.
 
 ## Bounded legacy SQL privilege effect
 
+### Retired module mapping scope regression
+
+The frozen V13/R-L0 contract requires zero reachable legacy structural writers
+([verification gates](../../../../docs/design-docs/parameter-catalog-verification-upgrade-retirement-gates.md),
+V13 and the staged-retirement table). The existing 38-route manifest explicitly
+retires `parameterModules.createMapping` and `parameterModules.deleteMapping`.
+The original POST handler calls `createModuleMapping`, then the repository's
+`insertMapping`: it inserts into `public.parameter_module_mappings` or updates
+its `parameter_module_id` and `priority` on a matching Organization rule. This
+table, defined by migration `0066_parameter_module_mappings.sql`, is absent
+from the current seven-relation V13/SQL-fence inventory.
+
+The bounded regression adds only this relation to the proposed retirement scope.
+Its real LOGIN probe uses the original repository to insert and update an
+attribution rule, independently reads both effects, and requires V13 refusal
+while the original seven relations have no mutation capability. Existing
+Organization/module rows are foreign-key prerequisites, not additional retired
+tables. Audit, history, ProjectValues, grants outside this relation and ordinary
+project operations are not added to the scope. The actual PostgreSQL Red is
+pending; this test preparation is neither a demonstrated failure nor full P13.
+
 This Scratch implementation uses the existing retirement root and
 `legacySqlPrivilegeFence.ts`. Its actual owned PostgreSQL component validation
 passed as recorded below. It removes
