@@ -76,7 +76,20 @@ describe("complete legacy source to multi-head comparison", () => {
     const graph = await (async () => {
       try {
         await client.query("begin isolation level repeatable read read only");
-        return await captureComparisonP0Graph(client, "wiseeff-v1");
+        const observed = new Proxy(client, { get(target, property) {
+          if (property !== "query") return Reflect.get(target, property);
+          return async (sql: string, values?: unknown[]) => {
+            try { return await target.query(sql, values); }
+            catch (error) {
+              const code = error && typeof error === "object" ? Reflect.get(error, "code") : undefined;
+              console.info(JSON.stringify({ stage: "source-query-refused",
+                relation: /from (public\.[a-z_]+)\b/.exec(sql)?.[1] ?? "owner-query",
+                sqlState: typeof code === "string" && /^[0-9A-Z]{5}$/.test(code) ? code : "unclassified" }));
+              throw error;
+            }
+          };
+        } });
+        return await captureComparisonP0Graph(observed, "wiseeff-v1");
       } finally {
         try { await client.query("rollback"); } finally { client.release(); }
       }
