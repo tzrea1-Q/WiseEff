@@ -82,6 +82,12 @@ export function createOwnedHandoffDataObserver(offered: Options): HandoffObserve
     const observedStores = stores.map(store => containers.find(c => c.Id === store.containerId)!);
     const volumes = JSON.parse(docker.command(["volume", "inspect", ...stores.map(s => s.volumeName)]).toString()) as Volume[];
     need(volumes.length === 3, "volume-unavailable");
+    const consumers = docker.command(["ps", "-a", "--no-trunc",
+      ...stores.flatMap(store => ["--filter", `volume=${store.volumeName}`]), "--format", "{{.ID}}"])
+      .toString().trim().split("\n").filter(Boolean);
+    const expectedConsumers = new Set(stores.map(store => store.containerId));
+    need(consumers.length === expectedConsumers.size && new Set(consumers).size === expectedConsumers.size &&
+      consumers.every(containerId => expectedConsumers.has(containerId)), "shared-volume");
     for (const [index, store] of stores.entries()) {
       const container = observedStores[index]!, volume = volumes.find(v => v.Name === store.volumeName);
       const destination = store.service === "postgres" ? "/var/lib/postgresql/data" : "/data";
@@ -89,9 +95,6 @@ export function createOwnedHandoffDataObserver(offered: Options): HandoffObserve
         container.Mounts[0]!.Name === store.volumeName && container.Mounts[0]!.Destination === destination &&
         volume?.Labels?.["com.docker.compose.project"] === inputs.source.project && volume.Driver === "local" &&
         Object.keys(volume.Options ?? {}).length === 0 && path.isAbsolute(volume.Mountpoint) && Number.isFinite(Date.parse(volume.CreatedAt)), "volume-owner-mismatch");
-      const consumers = docker.command(["ps", "-a", "--no-trunc", "--filter", `volume=${store.volumeName}`, "--format", "{{.ID}}"])
-        .toString().trim().split("\n").filter(Boolean);
-      need(consumers.length === 1 && consumers[0] === store.containerId, "shared-volume");
     }
     const connected = [...observedStores, helper];
     const networks = connected.map(c => Object.values(c.NetworkSettings.Networks));

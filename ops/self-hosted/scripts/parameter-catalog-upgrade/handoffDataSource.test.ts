@@ -46,11 +46,17 @@ function fixture() {
     persistence: "appendonly\nyes\nappendfsync\neverysec\nsave\n3600 1\ndir\n/data\ndbfilename\ndump.rdb\nappendfilename\nappendonly.aof\nappenddirname\nappendonlydir\ndatabases\n16\n",
     client: "id=42 addr=127.0.0.1:1234 db=0 user=default\n" };
   let beforeExec: (() => void) | undefined;
+  let volumeConsumerIds = [...inputs.source.stores].reverse().map(store => store.containerId);
   seam.command.mockImplementation((args: string[]) => {
     if (args[0] === "inspect") return Buffer.from(JSON.stringify(args.slice(1).map(i => containers.find(c => c.Id === i))));
     if (args[0] === "volume") return Buffer.from(JSON.stringify(args.slice(2).map(name => volumes.find(v => v.Name === name))));
     if (args[0] === "network") return Buffer.from(JSON.stringify([network]));
-    if (args[0] === "ps") return Buffer.from(args.some(arg => arg.startsWith("network=")) ? containers.map(c => c.Id).join("\n") : inputs.source.stores.find(s => args.includes(`volume=${s.volumeName}`))!.containerId + "\n");
+    if (args[0] === "ps") {
+      if (args.some(arg => arg.startsWith("network="))) return Buffer.from(containers.map(c => c.Id).join("\n"));
+      const volumeFilters = args.filter(arg => arg.startsWith("volume="));
+      if (volumeFilters.length > 1) return Buffer.from(volumeConsumerIds.join("\n") + "\n");
+      return Buffer.from(inputs.source.stores.find(s => args.includes(`volume=${s.volumeName}`))!.containerId + "\n");
+    }
     if (args[0] === "exec") {
       beforeExec?.();
       if (args.includes("handoff-postgres")) return Buffer.from(JSON.stringify(info.postgres));
@@ -61,7 +67,9 @@ function fixture() {
     }
     throw new Error("private-command-failure");
   });
-  return { options, containers, volumes, network, info, onExec(action: () => void) { beforeExec = action; } };
+  return { options, containers, volumes, network, info, volumeConsumerIds,
+    setVolumeConsumerIds(ids: string[]) { volumeConsumerIds = ids; },
+    onExec(action: () => void) { beforeExec = action; } };
 }
 beforeEach(() => { seam.command.mockReset(); });
 
@@ -69,12 +77,27 @@ it("observes three store identities and the actual Redis database namespace with
   const f = fixture(); const observer = create(f.options);
   const first = await observer.observeDataIdentity(f.options.inputs);
   expect(first).toEqual({ postgres: expect.stringMatching(/^sha256:[a-f0-9]{64}$/), objectStore: expect.stringMatching(/^sha256:[a-f0-9]{64}$/), redis: expect.stringMatching(/^sha256:[a-f0-9]{64}$/) });
+  const firstVolumeConsumerCalls = seam.command.mock.calls.filter(([args]) => args[0] === "ps" && args.some((arg: string) => arg.startsWith("volume=")));
+  expect(firstVolumeConsumerCalls).toHaveLength(4);
+  for (const [args] of firstVolumeConsumerCalls) expect(args.filter((arg: string) => arg.startsWith("volume="))).toEqual([
+    "volume=volume-postgres", "volume=volume-minio", "volume=volume-redis",
+  ]);
   expect(await observer.observeDataIdentity(f.options.inputs)).toEqual(first);
+  expect(seam.command.mock.calls.filter(([args]) => args[0] === "ps" && args.some((arg: string) => arg.startsWith("volume=")))).toHaveLength(8);
   const argv = JSON.stringify(seam.command.mock.calls.map(call => call[0]));
   for (const secret of [f.options.postgres.password, f.options.objects.accessKey, f.options.objects.secretKey]) {
     expect(argv.includes(secret)).toBe(false); expect(JSON.stringify(first).includes(secret)).toBe(false);
   }
   expect(seam.command.mock.calls.some(call => call[1] instanceof Buffer && call[1].includes(f.options.postgres.password))).toBe(true);
+});
+
+it.each(["missing", "duplicate", "foreign"] as const)("refuses an invalid batched volume consumer set: %s", async fault => {
+  const f = fixture(); const ids = f.volumeConsumerIds;
+  if (fault === "missing") f.setVolumeConsumerIds(ids.slice(0, -1));
+  if (fault === "duplicate") f.setVolumeConsumerIds([ids[0]!, ids[0]!, ids[2]!]);
+  if (fault === "foreign") f.setVolumeConsumerIds([ids[0]!, ids[1]!, "9".repeat(64)]);
+  await expect(create(f.options).observeDataIdentity(f.options.inputs)).rejects.toThrow(/^handoff-data-/);
+  expect(seam.command.mock.calls.filter(([args]) => args[0] === "exec")).toHaveLength(0);
 });
 
 it.each(["foreign-volume", "shared-volume", "wrong-helper", "foreign-network-member", "daemon"])("refuses %s before dispatching credentials", async fault => {
