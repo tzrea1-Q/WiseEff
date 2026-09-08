@@ -6,10 +6,12 @@ import path from "node:path";
 import pg from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createCheckedEmptyDatabase, type ParameterCatalogDatabase } from "../../../testing/upgradeComponents";
-import { createPostgresDatabase, type Database, type RootDatabase } from "../../../shared/database/client";
+import { createPostgresDatabase, getRootPostgresPool, type Database, type RootDatabase } from "../../../shared/database/client";
 import { applyMigrations } from "../../../shared/database/migrations";
 import { validCatalogReleaseBundle } from "../../catalog-kernel/compiler/__fixtures__/catalogReleaseBundle";
-import { jsonCatalogReleaseSource } from "../../catalog-kernel/interface";
+import { createCatalogKernel, jsonCatalogReleaseSource } from "../../catalog-kernel/interface";
+import { CatalogReleaseDigest, CatalogReleaseId } from "../../parameter-catalog-contract/index";
+import { openComparisonDatabaseV2, assertComparisonDatabaseSource } from "../../release-verification/comparison/databaseSource";
 import { classifyFrozenP0Graph, type FrozenP0Graph } from "../classifier";
 import { appendMappingVersion, readCurrentMappingHead } from "../mapping";
 import { createLocalArchiveObjectStore } from "../archive";
@@ -168,6 +170,91 @@ describe("existing 0137 activation storage on independently owned PG16", () => {
     expect(second.mappingEpoch).toBe(first.mappingEpoch);
     expect(await counts()).toEqual({ events: before.events + 1, checkpoints: before.checkpoints });
     expect((await module.inspectFacts(runId, planDigest)).mappingEpoch).toBe(first.mappingEpoch);
+  });
+  const withComparisonRoot = async (body: (value: Awaited<ReturnType<typeof openComparisonDatabaseV2>>, manager: pg.PoolClient) => Promise<void>) => {
+    await boundary.withLockedBoundary(async () => {
+      let failed = false;
+      const manager = await acquireObservedManagementClient(admin, () => { failed = true; });
+      let value: Awaited<ReturnType<typeof openComparisonDatabaseV2>> | undefined;
+      try {
+        await manager.query("select pg_advisory_lock(hashtext('s7-orc-cutover-target'),hashtext(current_database()))");
+        await manager.query("begin isolation level repeatable read");
+        await manager.query("set local timezone='UTC'");
+        value = await openComparisonDatabaseV2({ connectionString: database.url, managementClient: manager,
+          target, cutoverRunId: runId, planPin: planDigest, verifyBoundary: boundary.verify });
+        await body(value, manager);
+      } finally {
+        try { await value?.close(); }
+        finally {
+          try {
+            if (!failed) {
+              await manager.query("rollback");
+              await manager.query("select pg_advisory_unlock(hashtext('s7-orc-cutover-target'),hashtext(current_database()))");
+            }
+          } finally {
+            try { if (!(manager instanceof pg.Client)) throw new Error("comparison-manager-type"); await manager.end(); }
+            finally { manager.release(true); }
+          }
+        }
+      }
+    });
+  };
+  it("binds real source and Kernel checkouts to the held management target, then closes native sessions", async () => {
+    await withComparisonRoot(async (value, manager) => {
+      const selection = { ...value, managementClient: manager, target, cutoverRunId: runId, planPin: planDigest, verifyBoundary: boundary.verify };
+      assertComparisonDatabaseSource(selection);
+      const pid = Number((await value.database.query<{ pid: number }>("select pg_backend_pid() as pid")).rows[0].pid);
+      const facts = await readFacts(manager, target, runId, planDigest);
+      const loaded = await createCatalogKernel(value.pool).loadCurrentCatalog({
+        id: CatalogReleaseId(facts.catalog.releaseId), digest: CatalogReleaseDigest(facts.catalog.releaseDigest) });
+      expect(loaded.ok).toBe(true);
+      expect(value.pool.totalCount).toBe(1);
+      expect(() => assertComparisonDatabaseSource({ ...selection, managementClient: source! })).toThrow("PCAT-CMP-REPORT-INTEGRITY");
+      const activeLease = await value.pool.connect();
+      await activeLease.query("begin");
+      const nativeEnded = new Promise<void>(resolve => activeLease.once("end", resolve));
+      const closing = value.close();
+      await nativeEnded;
+      activeLease.release(true);
+      await closing;
+      expect(() => assertComparisonDatabaseSource(selection)).toThrow("PCAT-CMP-REPORT-INTEGRITY");
+      expect((await manager.query("select pid from pg_stat_activity where pid=$1", [pid])).rows).toEqual([]);
+      expect((await manager.query("select 1 as alive")).rows[0].alive).toBe(1);
+    });
+  });
+  it("refuses an actual other-database root and a checkout after the original transaction releases its challenge", async () => {
+    await withComparisonRoot(async (value, manager) => {
+      const otherUrl = new URL(database.url); otherUrl.pathname = "/postgres";
+      const otherRoot = createPostgresDatabase(otherUrl.toString());
+      const otherPool = getRootPostgresPool(otherRoot)!;
+      const other = await acquireObservedManagementClient(otherPool, () => undefined);
+      try {
+        expect(await physicalIdentity(other)).not.toEqual(target);
+        expect(() => assertComparisonDatabaseSource({ database: otherRoot, pool: otherPool, managementClient: manager,
+          target, cutoverRunId: runId, planPin: planDigest, verifyBoundary: boundary.verify })).toThrow("PCAT-CMP-REPORT-INTEGRITY");
+      } finally {
+        try { if (!(other instanceof pg.Client)) throw new Error("comparison-other-type"); await other.end(); }
+        finally { other.release(true); await otherRoot.close(); }
+      }
+      const pid = Number((await value.database.query<{ pid: number }>("select pg_backend_pid() as pid")).rows[0].pid);
+      await manager.query("rollback");
+      await expect(value.database.query("select 1")).rejects.toThrow("PCAT-CMP-REPORT-INTEGRITY");
+      await value.close();
+      expect((await manager.query("select pid from pg_stat_activity where pid=$1", [pid])).rows).toEqual([]);
+      expect((await manager.query("select 1 as alive")).rows[0].alive).toBe(1);
+    });
+  });
+  it("refuses further source reads after the actual borrowed manager is terminated", async () => {
+    await withComparisonRoot(async (value, manager) => {
+      const sourcePid = Number((await value.database.query<{ pid: number }>("select pg_backend_pid() as pid")).rows[0].pid);
+      const managerPid = Number((await manager.query("select pg_backend_pid() as pid")).rows[0].pid);
+      const terminated = new Promise<void>(resolve => manager.once("end", resolve));
+      expect((await admin.query("select pg_terminate_backend($1) as terminated", [managerPid])).rows[0].terminated).toBe(true);
+      await terminated;
+      await expect(value.database.query("select 1")).rejects.toThrow("PCAT-CMP-REPORT-INTEGRITY");
+      await value.close();
+      expect((await admin.query("select pid from pg_stat_activity where pid=any($1::integer[])", [[sourcePid, managerPid]])).rows).toEqual([]);
+    });
   });
   it("resolves a lost COMMIT acknowledgment by inspection without duplicating the mapping preparation event", async () => {
     await appendArchiveEvidence(true);

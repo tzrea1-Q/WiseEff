@@ -9,6 +9,7 @@ import { COMPARISON_FAMILIES, checksumCanonicalBytes, serializeCanonical } from 
 // Actual collector/codec with explicit owner-read doubles. This is not a
 // PostgreSQL snapshot, trusted P0 issuance, or successful whole report.
 const owned = vi.hoisted(() => ({ value: {} as Record<string, any>, reads: [] as string[] }));
+vi.mock("./databaseSource", () => ({ assertComparisonDatabaseSource: () => undefined }));
 vi.mock("../../../shared/database/client", () => ({ getRootPostgresPool: (database: unknown) => database === owned.value.database ? owned.value.pool : undefined }));
 vi.mock("../../catalog-cutover/comparisonRules", () => ({ readCommittedComparisonPlan: async () => structuredClone(owned.value.plan) }));
 vi.mock("../../catalog-cutover/activation", () => ({ readComparisonMappingFactsOnHeldSession: async () => structuredClone(owned.value.facts) }));

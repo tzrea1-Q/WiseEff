@@ -21,6 +21,7 @@ import { readComparisonSourceInventory, type ComparisonInventoryRecord } from ".
 import { comparisonContextV2Schema, checksumComparisonContributionV2, parseComparisonContributionV2,
   type ComparisonContextV2, type ComparisonContributionV2, type ComparisonCaseV2 } from "./corpusContributionV2";
 import { ComparisonCorpusError, corpusRefusal } from "./errors";
+import { assertComparisonDatabaseSource } from "./databaseSource";
 import {
   FAMILY_COMPARISON_IDS,
   COMPARISON_FAMILIES, checksumCanonicalBytes, serializeCanonical, compareComparisonCases,
@@ -75,6 +76,7 @@ export type ComparisonContextReadInputV2 = Omit<ComparisonProviderInputV2, "mapp
 async function readActualContext(input: ComparisonContextReadInputV2) {
   const { database, pool, managementClient, cutoverRunId, phase, inventoryMode, candidateSha, planPin, verifyBoundary } = input;
   const target = structuredClone(input.target);
+  assertComparisonDatabaseSource({ database, pool, managementClient, cutoverRunId, target, planPin, verifyBoundary });
   if (getRootPostgresPool(database) !== pool) throw corpusRefusal("PCAT-CMP-REPORT-INTEGRITY", "actual root pool differs");
   await verifyBoundary();
   const facts = await readComparisonMappingFactsOnHeldSession({ client: managementClient, target, runId: cutoverRunId,
@@ -84,6 +86,7 @@ async function readActualContext(input: ComparisonContextReadInputV2) {
   const context = comparisonContextV2Schema.parse({ phase, inventoryMode, candidateSha, planPin,
     mappingSnapshot: facts.mapping, catalogSnapshotChecksum: inventoryChecksum(native) });
   await verifyBoundary();
+  assertComparisonDatabaseSource({ database, pool, managementClient, cutoverRunId, target, planPin, verifyBoundary });
   return { context, facts, native };
 }
 
@@ -119,6 +122,7 @@ async function collectActualContributions(input: ComparisonProviderInputV2): Pro
   const context = comparisonContextV2Schema.parse({ phase: input.phase, inventoryMode: input.inventoryMode,
     candidateSha: input.candidateSha, planPin: input.planPin, mappingSnapshot: structuredClone(input.mappingSnapshot),
     catalogSnapshotChecksum: input.catalogSnapshotChecksum });
+  assertComparisonDatabaseSource({ database, pool, managementClient, cutoverRunId, target, planPin: context.planPin, verifyBoundary });
   if (getRootPostgresPool(database) !== pool) throw corpusRefusal("PCAT-CMP-REPORT-INTEGRITY", "actual root pool differs");
   await verifyBoundary();
   const plan = await readCommittedComparisonPlan({ client: managementClient, runId: cutoverRunId,
@@ -204,6 +208,7 @@ async function collectActualContributions(input: ComparisonProviderInputV2): Pro
     throw corpusRefusal("PCAT-CMP-REPORT-INTEGRITY", "fixed comparison selection changed during collection");
   }
   await verifyBoundary();
+  assertComparisonDatabaseSource({ database, pool, managementClient, cutoverRunId, target, planPin: context.planPin, verifyBoundary });
   return output;
 }
 
