@@ -182,7 +182,23 @@ export function inspectConversionManifest(input: {
     const identity = graph.identities.find((row) => row.id === mapping.legacyIdentityId);
     if (!identity || !expected.some((row) => row.identityId === mapping.legacyIdentityId)) return "conversion-identity-unavailable";
     const assignment = expected.find(row => row.identityId === identity.id);
-    const expectedKind = assignment?.rClass === "R2" && ["parameter-spec","driver-schema"].includes(identity.sourceKind) ? "catalog-subject"
+    const rootVersion = assignment?.rClass === "R2" && identity.sourceKind === "parameter-spec-version";
+    if (rootVersion) {
+      if (mapping.retainedReleaseId !== undefined) return "conversion-root-version-retained-subject-pin";
+      const version = graph.specVersions.find(row => row.id === identity.sourceId);
+      const roots = graph.driverSchemas.filter(row => row.parameterSpecId === version?.parameterSpecId);
+      const parents = graph.identities.filter(row => row.sourceKind === "parameter-spec" && row.sourceId === version?.parameterSpecId ||
+        row.sourceKind === "driver-schema" && roots.some(root => root.id === row.sourceId));
+      if (!version || !roots.length || parents.filter(row => row.sourceKind === "parameter-spec").length !== 1 ||
+        roots.some(root => parents.filter(row => row.sourceKind === "driver-schema" && row.sourceId === root.id).length !== 1) ||
+        parents.some(parent => parent.sourceSystem !== identity.sourceSystem || parent.ownerScopeKind !== identity.ownerScopeKind ||
+          parent.ownerScopeId !== identity.ownerScopeId || expected.find(row => row.identityId === parent.id)?.rClass !== "R2" ||
+          !manifest.mappings.some(target => target.legacyIdentityId === parent.id && target.targetKind === "catalog-subject" &&
+            target.targetId === mapping.targetId && target.targetSourceDigest === mapping.targetSourceDigest))) {
+        return "conversion-root-version-parent-mismatch";
+      }
+    }
+    const expectedKind = rootVersion || assignment?.rClass === "R2" && ["parameter-spec","driver-schema"].includes(identity.sourceKind) ? "catalog-subject"
       : identity.sourceKind === "parameter-spec" ? "parameter-definition"
       : identity.sourceKind === "parameter-spec-version" ? "definition-revision"
       : identity.sourceKind === "parameter-subject" ? "catalog-subject" : null;

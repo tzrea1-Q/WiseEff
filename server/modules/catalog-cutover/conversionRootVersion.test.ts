@@ -42,7 +42,7 @@ describe("explicit Subject conversion for a provable DriverSchema root version",
     });
     expect(inspectConversionManifest({ ...f, targetCatalogReleaseDigest: f.release.manifest.release.digest })).toBeNull();
   });
-  it.each(["wrong-parent", "missing-parent-identity", "different-target"])("refuses %s with freshly consistent outer pins", mode => {
+  it.each(["wrong-parent", "missing-parent-identity", "different-target", "historical-subject-pin"])("refuses %s with freshly consistent outer pins", mode => {
     const f = fixture();
     const graph = structuredClone(f.graph), manifest = structuredClone(f.manifest);
     if (mode === "wrong-parent") Object.assign(graph.specVersions[0]!, { parameterSpecId: "another-spec" });
@@ -51,6 +51,7 @@ describe("explicit Subject conversion for a provable DriverSchema root version",
       Object.assign(manifest, { mappings: manifest.mappings.filter(row => row.legacyIdentityId !== "unit:parameter-spec") });
     }
     if (mode === "different-target") Object.assign(manifest.mappings[2]!, { targetId: "another-subject" });
+    if (mode === "historical-subject-pin") Object.assign(manifest.mappings[2]!, { retainedReleaseId: f.release.manifest.release.id });
     Object.assign(manifest, { sourceSnapshotFingerprint: fingerprintP0Graph(graph) });
     expect(inspectConversionManifest({ ...f, graph, manifest, targetCatalogReleaseDigest: f.release.manifest.release.digest })).not.toBeNull();
   });
