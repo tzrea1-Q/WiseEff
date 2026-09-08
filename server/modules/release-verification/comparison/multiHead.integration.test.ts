@@ -18,6 +18,8 @@ import { planCutover } from "../../catalog-cutover/orchestrator";
 import { acquireObservedManagementClient } from "../../catalog-cutover/retirement/managementCheckout";
 import { validCatalogReleaseBundle } from "../../catalog-kernel/compiler/__fixtures__/catalogReleaseBundle";
 import { jsonCatalogReleaseSource } from "../../catalog-kernel/interface";
+import { readComparisonSourceInventory } from "./planInventory";
+import { COMPARISON_FAMILIES } from "./corpusContributionSchema";
 
 if (process.env.UPG_COMPONENT_PROFILE !== "selfhost-postgres16-alpine-v1") throw new Error("comparison-multihead-owned-profile-required");
 
@@ -88,6 +90,11 @@ describe("complete legacy source to multi-head comparison", () => {
     expect(graph.placements.length).toBeGreaterThan(0);
     const classified = classifyFrozenP0Graph(graph);
     expect(classified.ok).toBe(true);
+    const inventory = await readComparisonSourceInventory(database,
+      graph.identities.map(({ id, ...identity }) => ({ legacyIdentityId: id, ...identity })));
+    expect(Object.keys(inventory).sort()).toEqual([...COMPARISON_FAMILIES].sort());
+    console.info(JSON.stringify({ stage: "full-source-inventory", families: COMPARISON_FAMILIES.map(family => ({ family,
+      count: inventory[family].length })), comparisonRulesProduced: false }));
     const full = validCatalogReleaseBundle(), release = full.releases[0]!;
     const bundle = { ...full, targetReleaseId: release.manifest.release.id, releases: [release] };
     const planned = await planCutover({ graph, targetArtifactSha: "e".repeat(40),
@@ -95,7 +102,7 @@ describe("complete legacy source to multi-head comparison", () => {
     console.info(JSON.stringify({ stage: "full-source-plan", sourceIdentityCount: graph.identities.length,
       sourceKinds: [...new Set(graph.identities.map(identity => identity.sourceKind))].sort(),
       classifications: classified.ok ? [...new Set(classified.value.assignments.map(assignment => assignment.rClass))].sort() : [],
-      planned: planned.ok, comparisonExecuted: false }));
+      planned: planned.ok, failure: planned.ok ? null : planned.error, comparisonExecuted: false }));
     expect(planned).toMatchObject({ ok: true });
   });
 });
