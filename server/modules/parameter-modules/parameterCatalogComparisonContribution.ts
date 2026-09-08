@@ -25,6 +25,7 @@ import {
   getModuleDiscoveryHints,
   getParameterModuleRegistry,
   listDriverRegistry,
+  listDriverRegistryIdentityPlacements,
 } from "./service";
 
 export const MOD_COMPARISON_CONTRACT_VERSION = "pcat-comparison-contribution/v1";
@@ -271,7 +272,10 @@ function createLegacyOptions(database: Database, organizationId: string): Legacy
   };
 }
 
-async function queryModInventory(database: Database): Promise<InventoryRecord[]> {
+async function queryModInventory(
+  database: Database,
+  readDrivers: typeof listDriverRegistryIdentityPlacements = listDriverRegistry,
+): Promise<InventoryRecord[]> {
   const organizations = await queryOrganizationIds(database);
   const byKey = new Map<string, InventoryRecord>();
   const scopes = organizations.length > 0 ? organizations : ["platform"];
@@ -300,7 +304,7 @@ async function queryModInventory(database: Database): Promise<InventoryRecord[]>
         applicable: ["PCAT-CMP-D03-REGISTRATION-PLACEMENT"],
       });
     }
-    const drivers = await listDriverRegistry(database, auth);
+    const drivers = await readDrivers(database, auth);
     for (const item of drivers.items) {
       byKey.set(`subject-registration:${item.moduleId}`, {
         kind: "subject-registration",
@@ -611,4 +615,10 @@ export async function provideModParameterCatalogComparisonContribution(
     ...unsigned,
     checksum: checksumModComparisonBytes(bytes),
   };
+}
+
+/** Legacy side of the P0 inventory. The capture owner separately enumerates
+ * actual native registrations through the production query route. */
+export async function readModComparisonSourceInventory(database: Database) {
+  return sortInventory(await queryModInventory(database, listDriverRegistryIdentityPlacements));
 }
