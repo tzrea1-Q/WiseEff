@@ -568,7 +568,16 @@ async function authenticate(client: pg.PoolClient, password: Buffer, target: Bin
     if (!broken && error instanceof Error && "code" in error && error.code === "28P01") return "password-rejected";
     return failFence("authentication-result-unknown");
   } finally {
-    try { probe?.release(true); await pool.end(); }
+    try {
+      try {
+        if (probe) {
+          try {
+            if (!(probe instanceof pg.Client)) failFence("authentication-close-unknown");
+            await probe.end();
+          } finally { probe.release(true); }
+        }
+      } finally { await pool.end(); }
+    }
     catch { failFence("authentication-close-unknown"); }
   }
 }

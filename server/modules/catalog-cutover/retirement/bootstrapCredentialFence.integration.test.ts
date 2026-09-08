@@ -6,7 +6,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import pg from "pg";
-import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { assertOwnedUpgradeTestTarget } from "../../../../scripts/upgrade-test-target";
 import { createPostgresDatabase } from "../../../shared/database/client";
 import { applyMigrations } from "../../../shared/database/migrations";
@@ -756,7 +756,7 @@ async function prepareCustodyTransport() {
   } catch (error) { return failCustodyPreparation(error, stage, cleanup); }
 }
 
-async function exerciseCommitFault(ordinal: 1 | 2, independentInspection: boolean) {
+async function exerciseCommitFault(ordinal: 1 | 2, independentInspection: boolean, pendingProbeClose = false) {
   await closeInitialManager();
   const nonce = randomBytes(8).toString("hex"), runId = `fault-${nonce}`, attemptId = `attempt-${nonce}`;
   const before = await withFreshManager(async client => {
@@ -824,7 +824,84 @@ async function exerciseCommitFault(ordinal: 1 | 2, independentInspection: boolea
     }
     await withFreshManager(async client => {
       const command = { client, target, runId, attemptId, custody };
-      expect(await inspectBootstrapCredentialFence(command)).toMatchObject({ outcome: ordinal === 1 ? "not-applied" : "authentication-fenced-not-P13" });
+      const inspected = pendingProbeClose ? await (async () => {
+      if (!(client instanceof pg.Client)) throw new Error("bootstrap-native-client-required");
+      const endObservations: Array<{ pid: number; targetDatabase: boolean; endEvent: boolean }> = [];
+      const guardObservations: Array<{ sessions: number; ended: typeof endObservations; active: unknown[] }> = [];
+      let delayedEnd: Promise<void> | undefined;
+      let releaseProbeClose: (() => void) | undefined;
+      let guardReached: (() => void) | undefined;
+      const observedGuard = new Promise<void>(resolve => { guardReached = resolve; });
+      let probeHeld: (() => void) | undefined;
+      const heldProbe = new Promise<void>(resolve => { probeHeld = resolve; });
+      let observationTimer: ReturnType<typeof setTimeout> | undefined;
+      const nativeEnd = pg.Client.prototype.end;
+      const endSpy = vi.spyOn(pg.Client.prototype, "end").mockImplementation(function(this: pg.Client, ...args) {
+        const pid = Reflect.get(this, "processID");
+        if (typeof pid === "number" && !endObservations.some(probe => probe.pid === pid)) {
+          const observed = { pid, targetDatabase: this.database === client.database, endEvent: false };
+          endObservations.push(observed); this.once("end", () => { observed.endEvent = true; });
+        }
+        if (!delayedEnd && this !== client && this.database === client.database && typeof pid === "number") {
+          // Hold this actual owned probe's native termination. The original
+          // callback is retained; no SQL result or guard outcome is replaced.
+          delayedEnd = new Promise<void>((resolve, reject) => {
+            releaseProbeClose = () => {
+              releaseProbeClose = undefined;
+              this.once("end", resolve);
+              try {
+                const result: unknown = Reflect.apply(nativeEnd, this, args);
+                if (result instanceof Promise) result.then(resolve, reject);
+              } catch (error) { reject(error); }
+            };
+          });
+          probeHeld!();
+          return delayedEnd;
+        }
+        return Reflect.apply(nativeEnd, this, args);
+      });
+      const nativeQuery = client.query;
+      const querySpy = vi.spyOn(client, "query").mockImplementation((...args) => {
+        const pending: unknown = Reflect.apply(nativeQuery, client, args);
+        if (typeof args[0] !== "string" || !args[0].includes("as standard") || !args[0].includes("as sessions")) return pending;
+        if (!(pending instanceof Promise)) throw new Error("bootstrap-query-promise-required");
+        return pending.then(async (result: pg.QueryResult) => {
+          const active = result.rows[0]?.sessions ? (await Reflect.apply(nativeQuery, client,
+            ["select pid,backend_type,state from pg_catalog.pg_stat_activity where usesysid=10 and pid<>pg_catalog.pg_backend_pid() and backend_type='client backend' order by pid"])).rows : [];
+          guardObservations.push({ sessions: result.rows[0]?.sessions, ended: structuredClone(endObservations), active });
+          if (active.some((row: { pid: number }) => endObservations.some(probe => probe.pid === row.pid && probe.targetDatabase && !probe.endEvent))) guardReached!();
+          return result;
+        });
+      });
+      let inspected: Awaited<ReturnType<typeof inspectBootstrapCredentialFence>>;
+      let primaryFailure: unknown;
+      const inspection = inspectBootstrapCredentialFence(command);
+      try {
+        await Promise.race([heldProbe, inspection]);
+        expect(delayedEnd).toBeDefined();
+        // The old implementation reaches a real guard with the held PID.
+        // A correct await stays pending instead; the supervisor releases the
+        // gate at the existing 2s fault-observation bound, within the 5s test.
+        await Promise.race([observedGuard, new Promise<void>(resolve => { observationTimer = setTimeout(resolve, 2000); })]);
+        releaseProbeClose?.();
+        inspected = await inspection;
+      } catch (error) { primaryFailure = error; throw error; } finally {
+        clearTimeout(observationTimer); releaseProbeClose?.();
+        const cleanup = await Promise.allSettled([inspection, delayedEnd]);
+        querySpy.mockRestore(); endSpy.mockRestore();
+        const failures = cleanup.flatMap((result, index) => result.status === "rejected" ?
+          [new Error(index === 0 ? "bootstrap-probe-inspection-failed" : "bootstrap-native-probe-close-failed")] : []);
+        if (failures.length) throw new AggregateError(primaryFailure === undefined ? failures :
+          [new Error("bootstrap-probe-primary-failed"), ...failures], "bootstrap-probe-cleanup-failed");
+      }
+      await client.query("select pg_catalog.pg_stat_clear_snapshot()");
+      const sessions = (await client.query("select pid,backend_type,state from pg_catalog.pg_stat_activity where usesysid=10 and pid<>pg_catalog.pg_backend_pid() and backend_type='client backend' order by pid")).rows;
+      console.info(JSON.stringify({ scope: "bootstrap-parent-inspection-diagnostic", guardObservations, endObservations, sessions, outcome: inspected.outcome }));
+      expect(endObservations.filter(probe => probe.targetDatabase).every(probe => probe.endEvent)).toBe(true);
+      expect(sessions).toEqual([]);
+      return inspected;
+      })() : await inspectBootstrapCredentialFence(command);
+      expect(inspected).toMatchObject({ outcome: ordinal === 1 ? "not-applied" : "authentication-fenced-not-P13" });
       expect(await inspectBootstrapCredentialFence({ ...command, attemptId: "different" })).toEqual({ outcome: "unknown" });
       const rows = (await client.query("select event_kind from parameter_catalog.parameter_catalog_cutover_events where cutover_run_id=$1 order by sequence_number", [runId])).rows;
       expect(rows).toEqual((ordinal === 1 ? ["bootstrap-authentication-fence-intent"] :
@@ -851,6 +928,8 @@ it.each([1, 2] as const)("reconciles the original version after actual commit %s
   ordinal => exerciseCommitFault(ordinal, false));
 it.each([1, 2] as const)("reopens only original private custody in a second process after actual commit %s acknowledgment loss",
   ordinal => exerciseCommitFault(ordinal, true));
+it("awaits native authentication probe termination before the next actual management guard",
+  () => exerciseCommitFault(1, true, true));
 
 /** Executes the root's actual guard implementation, not a copied lock query.
  * It deliberately has only a prepared run, without fake P12/report approval. */
