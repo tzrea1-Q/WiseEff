@@ -221,15 +221,6 @@ const requireRelationValue = (
   return value;
 };
 
-const snapshotRecord = (
-  snapshot: ConversionSourceSnapshot,
-  sourceKind: string,
-  sourceId: string,
-): ConversionSourceRecord | null => {
-  const records = snapshot.records.filter((record) => record.sourceKind === sourceKind && record.sourceId === sourceId);
-  return records.length === 1 ? records[0]! : null;
-};
-
 const sourceRecordKey = (record: Pick<ConversionSourceRecord, "sourceKind" | "sourceId">): string =>
   `${record.sourceKind}\u0000${record.sourceId}`;
 
@@ -241,15 +232,16 @@ export function archivedSourceGraphFromSnapshot(
   sourceKind: string,
   sourceId: string,
 ): ArchiveSourceGraph | null {
-  const root = snapshotRecord(snapshot, sourceKind, sourceId);
   const rootTable = sourceTableForKind(sourceKind);
-  if (!root || !rootTable) return null;
+  if (!rootTable) return null;
   const byKey = new Map<string, ConversionSourceRecord>();
   for (const record of snapshot.records) {
     const key = sourceRecordKey(record);
     if (byKey.has(key)) throw new Error("PCAT-CONVERSION-ARCHIVE-SOURCE-GRAPH-DUPLICATE");
     byKey.set(key, record);
   }
+  const root = byKey.get(sourceRecordKey({ sourceKind: sourceKind as ConversionSourceRecord["sourceKind"], sourceId })) ?? null;
+  if (!root) return null;
   const links: Array<{ from: string; field: string; to: string }> = [];
   const externalReferences: Array<{ from: string; field: string; targetTable: string; targetId: string }> = [];
   const included = new Map<string, ConversionSourceRecord>();

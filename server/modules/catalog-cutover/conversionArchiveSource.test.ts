@@ -195,6 +195,14 @@ describe("conversion Archive owner for closed source identities", () => {
     }, "parameter-placement", "placement-1")).toThrow(
       "PCAT-CONVERSION-ARCHIVE-SOURCE-GRAPH-DUPLICATE",
     );
+    const duplicateRoot = sourceSnapshot();
+    const rootPlacement = duplicateRoot.records.find((record) => record.sourceKind === "parameter-placement")!;
+    expect(() => captureArchivedSourceGraph({
+      ...duplicateRoot,
+      records: [...duplicateRoot.records, rootPlacement],
+    }, "parameter-placement", "placement-1")).toThrow(
+      "PCAT-CONVERSION-ARCHIVE-SOURCE-GRAPH-DUPLICATE",
+    );
 
     const missingTarget = sourceSnapshot();
     const placement = missingTarget.records.find((record) => record.sourceKind === "parameter-placement")!;
