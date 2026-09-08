@@ -126,6 +126,9 @@ describe("complete legacy source to multi-head comparison", () => {
       sourceKinds: [...new Set(graph.identities.map(identity => identity.sourceKind))].sort(),
       classifications: classified.ok ? [...new Set(classified.value.assignments.map(assignment => assignment.rClass))].sort() : [],
       planned: planned.ok, failure: planned.ok ? null : planned.error, comparisonExecuted: false }));
-    expect(planned).toMatchObject({ ok: true });
+    expect(planned).toMatchObject({
+      ok: false,
+      error: { code: "PCAT-ORC-INVALID-PLAN", detail: "conversion-business-history-producer-unavailable" },
+    });
   });
 });

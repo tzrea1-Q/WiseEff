@@ -76,9 +76,9 @@ async function scanConversionSourceInventory(client: Queryable, capture: boolean
   const records: ConversionSourceRecord[] = [];
   const capturedRelations = new Set<string>();
   for (const table of tables.rows) {
-    const nullFlags = table.columns.map((column) => `(source.${quote(column)} is null)`).join(", ");
+    const nullFlags = table.columns.map((column) => `(source_record.${quote(column)} is null)`).join(", ");
     const rows = await client.query<{ source_row: unknown; sql_nulls: boolean[] }>(
-      `select to_jsonb(source) as source_row, array[${nullFlags}] as sql_nulls from public.${quote(table.table_name)} source`,
+      `select to_jsonb(source_record) as source_row, array[${nullFlags}] as sql_nulls from public.${quote(table.table_name)} source_record`,
     );
     const canonicalRows = rows.rows.map((row) => JSON.stringify(row)).sort();
     hash.update(JSON.stringify({ table: table.table_name, columns: table.columns, rows: canonicalRows }));

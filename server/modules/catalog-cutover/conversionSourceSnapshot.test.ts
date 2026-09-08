@@ -6,9 +6,13 @@ import type { CutoverQueryable } from "./checkpoints";
 const names = ["parameter_specs", "parameter_spec_versions", "driver_schemas", "driver_schema_versions",
   "dts_property_specs", "attribution_subjects", "parameter_modules", "driver_registration_placements", "parameter_module_mappings"];
 function fixture() {
-  const tables = [...names, "users"].sort().map(table_name => ({ table_name, columns: ["id", "value"] }));
-  const records: Record<string, Array<{ source_row: { id: string; value: unknown }; sql_nulls: boolean[] }>> =
+  const tables = [...names, "users"].sort().map(table_name => ({ table_name,
+    columns: table_name === "driver_schema_versions" ? ["id", "source", "value"] : ["id", "value"] }));
+  const records: Record<string, Array<{ source_row: Record<string, unknown>; sql_nulls: boolean[] }>> =
     Object.fromEntries(tables.map(table => [table.table_name, []]));
+  records.driver_schema_versions = [
+    { source_row: { id: "source-column", source: "manual", value: "row" }, sql_nulls: [false, false, false] },
+  ];
   records.parameter_spec_versions = [
     { source_row: { id: "sql-null", value: null }, sql_nulls: [false, true] },
     { source_row: { id: "json-null", value: null }, sql_nulls: [false, false] },
@@ -24,7 +28,7 @@ function fixture() {
     if (sql === "show row_security") return { rows: [{ row_security: "on" }] };
     if (sql.startsWith("set row_security")) return { rows: [] };
     if (sql.includes("pg_catalog.pg_class")) return { rows: structuredClone(tables) };
-    const relation = /from public\."([a-z_]+)" source/.exec(sql)?.[1];
+    const relation = /from public\."([a-z_]+)" source_record/.exec(sql)?.[1];
     if (!relation) throw new Error("unexpected-query-double");
     return { rows: structuredClone(records[relation]) };
   } } as CutoverQueryable;
@@ -41,6 +45,7 @@ describe("conversion source projection from the original complete-row scan", () 
     const snapshot = await captureConversionSourceSnapshot(f.client);
     expect(snapshot.sourceInventoryFingerprint).toBe(expected);
     expect(snapshot.records.map(row => [row.sourceId, row.payload.value, row.sqlNullColumns])).toEqual([
+      ["source-column", "row", []],
       ["empty", "", []], ["json-null", null, []], ["sql-null", null, ["value"]],
     ]);
     expect(JSON.stringify(snapshot)).not.toContain("private-password-canary");
