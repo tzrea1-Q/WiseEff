@@ -154,9 +154,9 @@ Runner/CI、共享 migration/grant 不属于本分片。
 原 POST handler 调用 `createModuleMapping`，再调用 repository 的 `insertMapping`：
 向 `public.parameter_module_mappings` 插入归属规则，或冲突时更新
 `parameter_module_id`、`priority`。该表由原迁移
-`0066_parameter_module_mappings.sql` 定义，当前七表 V13/SQL fence 未纳入它。
+`0066_parameter_module_mappings.sql` 定义，原七表 V13/SQL fence 未纳入它。
 
-本回归拟补的范围只有该表。真实 LOGIN 通过原 repository 插入并更新规则，独立读回
+本次修复只将该表补入原两个库存。真实 LOGIN 通过原 repository 插入并更新规则，独立读回
 两次效果，核原七表没有 mutation 能力后要求 V13 拒绝。已有 Organization/module
 行仅为外键前提，不将这些表一并退休。审计、历史、ProjectValues、其它关系权限及
 正常项目操作均不扩入范围。固定 test-only `6164aba02`（tree
@@ -167,13 +167,23 @@ Runner/CI、共享 migration/grant 不属于本分片。
 `3ac895217827aeac4b21ac2fede9254c7c336a5e81e1bd91a4cf0ee01c3b3ef6`。
 这是实际隔离组件失败，不是完整 P13 执行。
 
+独立效果 Red `c9540aff6`（tree `bbb656cd1943283543a6e3ce188e4414b0a36909`）
+实际执行原 owned `legacy-sql-privileges-pg16`：19通过、1失败，125.13秒，
+exit1、cleanup通过。原 fence 返回其有限步骤已完成后，实际 LOGIN 仍成功
+INSERT 与 UPDATE，而非得到42501。日志
+`/tmp/pr824-module-mapping-c954-effect-red.log` SHA256：
+`a3b9aa69c327944d90e05b9af11af69246fca568945a54f77511fd8be5e06838`。
+新增成功断言还要求 SELECT/原值保留、精确 intent 的正式 inspection，以及没有
+P13 checkpoint。两处常量修复的 Green 尚待执行。旧七表 receipt 不会被静默
+升级：inspection 仍要求与当前库存相等。
+
 本 Scratch 实现位于现有退休根与 `legacySqlPrivilegeFence.ts`，实际 owned PG
 组件验证已按下文记录通过。它撤销独立可达的旧结构 SQL 授权，不产生
 P13 completed checkpoint、runtime generation、启动 pin 或批准。
 
 固定库存为 `public` 下原 `LEGACY_STRUCTURAL_TABLES` 四表，加
 `public.driver_schemas`、`public.driver_schema_versions`、
-`public.dts_property_specs`。可撤范围仅表级 INSERT、UPDATE、DELETE、
+`public.dts_property_specs`、`public.parameter_module_mappings`。可撤范围仅表级 INSERT、UPDATE、DELETE、
 TRUNCATE 与列级 INSERT、UPDATE。SELECT、owner、其他表、schema、函数及
 角色成员关系保持。剩余 REFERENCES/TRIGGER、owner、superuser 阻止本授权
 步骤通过。不透明可执行写入路径不在本步骤证明范围内，完整退休仍须通过

@@ -199,10 +199,10 @@ retires `parameterModules.createMapping` and `parameterModules.deleteMapping`.
 The original POST handler calls `createModuleMapping`, then the repository's
 `insertMapping`: it inserts into `public.parameter_module_mappings` or updates
 its `parameter_module_id` and `priority` on a matching Organization rule. This
-table, defined by migration `0066_parameter_module_mappings.sql`, is absent
-from the current seven-relation V13/SQL-fence inventory.
+table, defined by migration `0066_parameter_module_mappings.sql`, was absent
+from the seven-relation V13/SQL-fence inventory.
 
-The bounded regression adds only this relation to the proposed retirement scope.
+The bounded correction adds only this relation to both existing inventories.
 Its real LOGIN probe uses the original repository to insert and update an
 attribution rule, independently reads both effects, and requires V13 refusal
 while the original seven relations have no mutation capability. Existing
@@ -217,6 +217,18 @@ permission check passed before V13 incorrectly returned `passed`. The log is
 `3ac895217827aeac4b21ac2fede9254c7c336a5e81e1bd91a4cf0ee01c3b3ef6`.
 This is an actual isolated component failure, not a complete P13 execution.
 
+The separate effect Red at `c9540aff6` (tree
+`bbb656cd1943283543a6e3ce188e4414b0a36909`) ran the original owned
+`legacy-sql-privileges-pg16` suite: 19 passed, one failed, 125.13 seconds,
+exit 1, cleanup verified. After the original fence reported its limited step
+as applied, the actual LOGIN still performed both INSERT and UPDATE instead
+of receiving 42501. Log `/tmp/pr824-module-mapping-c954-effect-red.log` SHA256:
+`a3b9aa69c327944d90e05b9af11af69246fca568945a54f77511fd8be5e06838`.
+The new success oracle also requires SELECT/original data preservation, formal
+inspection of the exact intent, and no P13 checkpoint. Green execution of the
+two constant changes remains pending. Older seven-relation receipts are not
+silently upgraded: current inventory equality still applies on inspection.
+
 This Scratch implementation uses the existing retirement root and
 `legacySqlPrivilegeFence.ts`. Its actual owned PostgreSQL component validation
 passed as recorded below. It removes
@@ -224,8 +236,8 @@ independently reachable legacy SQL grants; it produces no P13 completed
 checkpoint, runtime generation, startup pin or approval.
 
 The fixed inventory is the four existing `LEGACY_STRUCTURAL_TABLES` in `public`,
-plus `public.driver_schemas`, `public.driver_schema_versions` and
-`public.dts_property_specs`. Only table INSERT, UPDATE, DELETE and TRUNCATE and
+plus `public.driver_schemas`, `public.driver_schema_versions`,
+`public.dts_property_specs` and `public.parameter_module_mappings`. Only table INSERT, UPDATE, DELETE and TRUNCATE and
 column INSERT and UPDATE are eligible for revocation. SELECT, owners, other
 relations, schemas, functions and role memberships remain unchanged. Remaining
 REFERENCES/TRIGGER, owner and superuser capabilities block this grant-only step.

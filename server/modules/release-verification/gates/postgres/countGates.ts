@@ -616,7 +616,7 @@ export const runV12 = async (query: GateQuery, plan: VerificationPlan): Promise<
 // legacy objects have explicit retired structural callers: reattribute updates
 // driver_schemas/dts_property_specs; upsertMatchedDriverSchema persists the root
 // and driver_schema_versions. This is a database submatrix, not all P13 writers.
-const v13Relations = [...LEGACY_STRUCTURAL_TABLES, "driver_schemas", "driver_schema_versions", "dts_property_specs"];
+const v13Relations = [...LEGACY_STRUCTURAL_TABLES, "driver_schemas", "driver_schema_versions", "dts_property_specs", "parameter_module_mappings"];
 const v13LoginScope = `with recursive logins as (
   select oid,rolname from pg_catalog.pg_roles
   where rolcanlogin and rolname not in ('postgres',current_user)
