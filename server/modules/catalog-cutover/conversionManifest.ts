@@ -1,5 +1,9 @@
 import { createHash } from "node:crypto";
-import type { CatalogReleaseBundle } from "../catalog-kernel/compiler/types";
+import { compileCatalogRelease } from "../catalog-kernel/compiler";
+import type {
+  CatalogReleaseBundle,
+  CatalogReleaseDocument,
+} from "../catalog-kernel/compiler/types";
 import type { FrozenP0Graph } from "./classifier";
 import { classifyFrozenP0Graph, fingerprintP0Graph } from "./classifier";
 import type { MappingTargetKind } from "./mapping/types";
@@ -28,6 +32,217 @@ export type ConversionManifest = {
     /** Explicit retained release for historical revision pins; never inferred from latest. */
     readonly retainedReleaseId?: string;
   }[];
+};
+
+export type SourceBoundCatalogAuthoring = (input: {
+  readonly graph: FrozenP0Graph;
+  readonly sourceSnapshot: ConversionSourceSnapshot;
+}) => CatalogReleaseBundle;
+
+export type SourceBoundConversionArtifacts = {
+  readonly bundle: CatalogReleaseBundle;
+  readonly targetCatalogReleaseDigest: string;
+  readonly manifest: ConversionManifest;
+};
+
+export class ConversionArtifactProducerRefusal extends Error {
+  constructor(readonly code: string) {
+    super(code);
+    this.name = "ConversionArtifactProducerRefusal";
+  }
+}
+
+const freezeArtifact = <Value>(value: Value): Value => {
+  if (value !== null && typeof value === "object" && !Object.isFrozen(value)) {
+    for (const nested of Object.values(value)) freezeArtifact(nested);
+    Object.freeze(value);
+  }
+  return value;
+};
+
+const targetDocuments = (
+  bundle: CatalogReleaseBundle,
+  targetReleaseId: string,
+  kind: CatalogReleaseDocument["kind"],
+): readonly CatalogReleaseDocument[] => {
+  const target = bundle.releases.find(
+    (release) => release.manifest.release.id === targetReleaseId,
+  );
+  if (!target) throw new ConversionArtifactProducerRefusal("source-bound-target-release-missing");
+  return target.documents.filter((document) => document.kind === kind);
+};
+
+/**
+ * Join the closed source graph to one already-authored Catalog Release. The
+ * authoring callback owns release IDs; this producer only emits mappings when
+ * the authored target identity is unique for the current R2/R4 fixture. It
+ * never allocates or searches for an ID by name, property, or release head.
+ */
+export const produceSourceBoundConversionArtifacts = (input: {
+  readonly graph: FrozenP0Graph;
+  readonly sourceSnapshot: ConversionSourceSnapshot;
+  readonly author: SourceBoundCatalogAuthoring;
+}): SourceBoundConversionArtifacts => {
+  const classified = classifyFrozenP0Graph(input.graph);
+  if (!classified.ok) {
+    throw new ConversionArtifactProducerRefusal("source-bound-classification-unavailable");
+  }
+  if (classified.value.assignments.some((assignment) =>
+    ["blocked", "review-evidence", "definition-proposal"].includes(assignment.disposition))) {
+    throw new ConversionArtifactProducerRefusal("source-bound-disposition-producer-unavailable");
+  }
+
+  const authored = input.author({
+    graph: input.graph,
+    sourceSnapshot: input.sourceSnapshot,
+  });
+  const bundle = freezeArtifact(structuredClone(authored));
+  const compiled = compileCatalogRelease(bundle);
+  if (!compiled.ok) throw new ConversionArtifactProducerRefusal("source-bound-catalog-release-invalid");
+  const targetReleaseId = bundle.targetReleaseId;
+  const subjects = targetDocuments(bundle, targetReleaseId, "subject");
+  const definitions = targetDocuments(bundle, targetReleaseId, "definition");
+  const expected = classified.value.assignments.filter((assignment) =>
+    assignment.disposition === "mapped" &&
+    assignment.sourceKind !== "project-parameter-binding" &&
+    assignment.sourceKind !== "project-parameter-binding-revision",
+  );
+  const r2 = expected.filter((assignment) => assignment.rClass === "R2" &&
+    ["parameter-spec", "driver-schema", "parameter-spec-version"].includes(assignment.sourceKind));
+  const r4 = expected.filter((assignment) => assignment.rClass === "R4" &&
+    ["parameter-spec", "parameter-spec-version"].includes(assignment.sourceKind));
+  const unsupported = expected.filter((assignment) => !r2.includes(assignment) && !r4.includes(assignment));
+  if (unsupported.length > 0) {
+    throw new ConversionArtifactProducerRefusal("source-bound-mapped-kind-unavailable");
+  }
+
+  const r2TargetForSubject = new Map<string, Extract<CatalogReleaseDocument, { kind: "subject" }>>();
+  const sourceSubjectForAssignment = (assignment: typeof r2[number]): string => {
+    if (assignment.ownerScopeKind !== "platform" || assignment.ownerScopeId !== "platform") {
+      throw new ConversionArtifactProducerRefusal("source-bound-r2-platform-owner-required");
+    }
+    if (assignment.sourceKind === "driver-schema") {
+      const schema = input.graph.driverSchemas.find((row) => row.id === assignment.sourceId);
+      if (!schema?.attributionSubjectId) throw new ConversionArtifactProducerRefusal("source-bound-r2-subject-parent-missing");
+      return schema.attributionSubjectId;
+    }
+    const specId = assignment.sourceKind === "parameter-spec"
+      ? assignment.sourceId
+      : input.graph.specVersions.find((row) => row.id === assignment.sourceId)?.parameterSpecId;
+    const schemas = input.graph.driverSchemas.filter((row) => row.parameterSpecId === specId);
+    const subjects = new Set(schemas.map((row) => row.attributionSubjectId).filter((id): id is string => id !== null));
+    if (subjects.size !== 1) throw new ConversionArtifactProducerRefusal("source-bound-r2-subject-parent-ambiguous");
+    return [...subjects][0]!;
+  };
+  const sourceBoundSubjectTarget = (sourceSubjectId: string): Extract<CatalogReleaseDocument, { kind: "subject" }> => {
+    const cached = r2TargetForSubject.get(sourceSubjectId);
+    if (cached) return cached;
+    const sourceSubject = input.graph.subjects.find((row) => row.id === sourceSubjectId);
+    const record = input.sourceSnapshot.records.find((row) => row.sourceKind === "parameter-subject" && row.sourceId === sourceSubjectId);
+    if (!sourceSubject || sourceSubject.organizationId !== null || !record) {
+      throw new ConversionArtifactProducerRefusal("source-bound-r2-source-provenance-missing");
+    }
+    const sourceKind = payloadValue(record.payload, "subject_kind");
+    const sourceKey = payloadValue(record.payload, "source_key");
+    if (typeof sourceKind !== "string" || typeof sourceKey !== "string" || !sourceKey.includes(":")) {
+      throw new ConversionArtifactProducerRefusal("source-bound-r2-selector-provenance-missing");
+    }
+    const [sourceSelectorKind, ...sourceSelectorParts] = sourceKey.split(":");
+    const sourceSelector = sourceSelectorParts.join(":");
+    const expectedKind = sourceKind === "driver-registration" && sourceSelectorKind === "compatible"
+      ? { kind: "driver" as const, selectorKind: "driver-compatible" as const, canonicalPrefix: "driver" }
+      : sourceKind === "node-type-definition" && sourceSelectorKind === "nodetype"
+        ? { kind: "node-type" as const, selectorKind: "node-type-name" as const, canonicalPrefix: "node-type" }
+        : null;
+    if (!expectedKind || !sourceSelector) {
+      throw new ConversionArtifactProducerRefusal("source-bound-r2-selector-provenance-invalid");
+    }
+    const candidates = subjects.filter((document): document is Extract<CatalogReleaseDocument, { kind: "subject" }> =>
+      document.kind === "subject" &&
+      document.content.kind === expectedKind.kind &&
+      document.content.canonicalKey === `${expectedKind.canonicalPrefix}:${sourceSelector}` &&
+      document.content.selector.kind === expectedKind.selectorKind &&
+      document.content.selector.value === sourceSelector,
+    );
+    if (candidates.length === 0) throw new ConversionArtifactProducerRefusal("source-bound-r2-subject-target-missing");
+    if (candidates.length !== 1) throw new ConversionArtifactProducerRefusal("source-bound-r2-subject-target-ambiguous");
+    r2TargetForSubject.set(sourceSubjectId, candidates[0]!);
+    return candidates[0]!;
+  };
+
+  const mappings: ConversionManifest["mappings"][number][] = [];
+  for (const assignment of r2) {
+    const subject = sourceBoundSubjectTarget(sourceSubjectForAssignment(assignment));
+    mappings.push({
+      legacyIdentityId: assignment.identityId,
+      targetKind: "catalog-subject",
+      targetId: subject.content.id,
+      targetSourceDigest: subject.source.digest,
+    });
+  }
+
+  const r4Specs = r4.filter((assignment) => assignment.sourceKind === "parameter-spec");
+  const r4Versions = r4.filter((assignment) => assignment.sourceKind === "parameter-spec-version");
+  if (r4.length > 0) {
+    if (r4Specs.length === 0 || r4Versions.length !== r4Specs.length) {
+      throw new ConversionArtifactProducerRefusal("source-bound-definition-version-pair-missing");
+    }
+    const specIds = new Set(r4Specs.map((assignment) => assignment.sourceId));
+    if (r4Versions.some((assignment) => {
+      const version = input.graph.specVersions.find((row) => row.id === assignment.sourceId);
+      return !version || !specIds.has(version.parameterSpecId);
+    })) {
+      throw new ConversionArtifactProducerRefusal("source-bound-definition-version-parent-mismatch");
+    }
+    if (definitions.length === 0) throw new ConversionArtifactProducerRefusal("source-bound-definition-target-missing");
+    if (r4Specs.length !== 1) throw new ConversionArtifactProducerRefusal("source-bound-definition-target-ambiguous");
+    const r4Spec = input.graph.specs.find((row) => row.id === r4Specs[0]!.sourceId);
+    if (!r4Spec?.attributionSubjectId || r4Spec.propertyKey === null) {
+      throw new ConversionArtifactProducerRefusal("source-bound-definition-source-provenance-missing");
+    }
+    const ownerSubject = sourceBoundSubjectTarget(r4Spec.attributionSubjectId);
+    const ownerDefinitions = definitions.filter((document): document is Extract<CatalogReleaseDocument, { kind: "definition" }> =>
+      document.kind === "definition" && document.content.subjectId === ownerSubject.content.id,
+    );
+    if (ownerDefinitions.length !== 1) throw new ConversionArtifactProducerRefusal("source-bound-definition-target-ambiguous");
+    const definition = ownerDefinitions[0]!;
+    if (definition.kind !== "definition") throw new ConversionArtifactProducerRefusal("source-bound-definition-target-invalid");
+    if (definition.content.propertyKey !== r4Spec.propertyKey) {
+      throw new ConversionArtifactProducerRefusal("source-bound-definition-property-mismatch");
+    }
+    const r4Version = input.graph.specVersions.find((row) => row.id === r4Versions[0]!.sourceId);
+    if (!r4Version || definition.content.revision.number !== r4Version.version || definition.content.revision.lifecycle !== r4Spec.definitionLifecycle) {
+      throw new ConversionArtifactProducerRefusal("source-bound-definition-revision-mismatch");
+    }
+    mappings.push({
+      legacyIdentityId: r4Specs[0]!.identityId,
+      targetKind: "parameter-definition",
+      targetId: definition.content.id,
+      targetSourceDigest: definition.source.digest,
+    });
+    mappings.push({
+      legacyIdentityId: r4Versions[0]!.identityId,
+      targetKind: "definition-revision",
+      targetId: definition.content.revision.id,
+      targetSourceDigest: definition.source.digest,
+    });
+  }
+
+  const expectedIds = new Set(expected.map((assignment) => assignment.identityId));
+  if (mappings.length !== expectedIds.size || new Set(mappings.map((mapping) => mapping.legacyIdentityId)).size !== mappings.length) {
+    throw new ConversionArtifactProducerRefusal("source-bound-mapping-conservation");
+  }
+  return freezeArtifact({
+    bundle,
+    targetCatalogReleaseDigest: compiled.value.release.digest,
+    manifest: {
+      version: CONVERSION_MANIFEST_VERSION,
+      sourceSnapshotFingerprint: fingerprintP0Graph(input.graph),
+      sourceInventoryFingerprint: input.sourceSnapshot.sourceInventoryFingerprint,
+      targetCatalogReleaseDigest: compiled.value.release.digest,
+      mappings: mappings.sort((left, right) => left.legacyIdentityId.localeCompare(right.legacyIdentityId)),
+    },
+  });
 };
 
 export const conversionManifestDigest = (manifest: ConversionManifest): string =>

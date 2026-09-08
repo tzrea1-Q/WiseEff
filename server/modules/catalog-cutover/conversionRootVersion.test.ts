@@ -1,8 +1,14 @@
 import { describe, expect, it } from "vitest";
 import { validCatalogReleaseBundle } from "../catalog-kernel/compiler/__fixtures__/catalogReleaseBundle";
+import { jsonCatalogReleaseSource } from "../catalog-kernel/interface";
 import { FROZEN_P0_GRAPH_FIXTURE } from "./classifier/__fixtures__/p0GraphFixture";
 import { classifyFrozenP0Graph, fingerprintP0Graph, type FrozenP0Graph } from "./classifier";
-import { inspectConversionManifest, type ConversionManifest } from "./conversionManifest";
+import {
+  inspectConversionManifest,
+  produceSourceBoundConversionArtifacts,
+  type ConversionManifest,
+} from "./conversionManifest";
+import { planCutover } from "./orchestrator";
 
 // A validator unit graph, not a replacement for complete physical P0 capture.
 function fixture() {
@@ -32,6 +38,41 @@ function fixture() {
 }
 
 describe("explicit Subject conversion for a provable DriverSchema root version", () => {
+  it("produces one fixed bundle and manifest before plan generation", async () => {
+    const f = fixture();
+    const artifacts = produceSourceBoundConversionArtifacts({
+      graph: f.graph,
+      sourceSnapshot: {
+        sourceInventoryFingerprint: f.manifest.sourceInventoryFingerprint,
+        records: [{
+          sourceKind: "parameter-subject",
+          sourceId: f.graph.subjects[0]!.id,
+          payload: {
+            id: f.graph.subjects[0]!.id,
+            organization_id: null,
+            subject_kind: "driver-registration",
+            display_name: "acme,power",
+            origin: "curated",
+            source_key: "compatible:acme,power",
+          },
+          sqlNullColumns: ["organization_id"],
+        }],
+      },
+      author: () => f.bundle,
+    });
+    expect(artifacts.manifest.mappings).toEqual(expect.arrayContaining(f.manifest.mappings));
+    expect(artifacts.manifest.mappings).toHaveLength(f.manifest.mappings.length);
+    expect(Object.isFrozen(artifacts.bundle)).toBe(true);
+    const planned = await planCutover({
+      graph: f.graph,
+      targetArtifactSha: "a".repeat(40),
+      targetCatalogReleaseDigest: artifacts.targetCatalogReleaseDigest,
+      catalogReleaseSource: jsonCatalogReleaseSource(artifacts.bundle),
+      conversionManifest: artifacts.manifest,
+    });
+    expect(planned).toMatchObject({ ok: true });
+  });
+
   it("retains the actual parent root Subject rather than requiring a fabricated Definition revision", () => {
     const f = fixture(), classification = classifyFrozenP0Graph(f.graph);
     expect(classification.ok).toBe(true);
