@@ -10,7 +10,7 @@ import { retireLegacyApplicationLogins, inspectLegacyApplicationLoginFence, type
 // approval, a P12 SQL commit, Docker identity, or a PostgreSQL password rotation.
 const io = vi.hoisted(() => ({ apply: vi.fn(), sqlPrivilegeEffect: vi.fn(), sqlInspect: vi.fn(), runtimeRoles: vi.fn(), inspect: vi.fn(), transportInspect: vi.fn(), journal: vi.fn(),
   package: vi.fn(), docker: vi.fn(), activation: vi.fn(), report: vi.fn(),
-  ordinary: false, ordinaryFenced: false, pools: [] as string[],
+  ordinary: false, ordinaryFenced: false, runtimeCloseFails: false, pools: [] as string[],
   clients: [] as Array<{ kind: string; query: ReturnType<typeof vi.fn>; release: ReturnType<typeof vi.fn>; emit(event: string): boolean }>,
   fault: "", fsyncDirectoryInode: -1, hostRefused: false, sourceConnects: 0, closed: [] as string[], rootEvents: [] as Array<{ event_kind?: string; payload: any }> }));
 vi.mock("node:fs", async original => {
@@ -57,7 +57,9 @@ vi.mock("../../../../server/modules/catalog-cutover/retirement/loginFence", asyn
   assertNoSharedLegacyRoleUse: async () => {},
   applyLegacyLoginFence: async () => { io.ordinaryFenced = true; },
 }));
-vi.mock("./runtimeRoleSource", () => ({ openRuntimeRoleSource: async () => ({ close: async () => { io.closed.push("runtime-source"); } }),
+vi.mock("./runtimeRoleSource", () => ({ openRuntimeRoleSource: async () => ({ close: async () => {
+  io.closed.push("runtime-source"); if (io.runtimeCloseFails) throw new Error("private-runtime-close");
+} }),
   observeRuntimeRoles: io.runtimeRoles,
 }));
 vi.mock("pg", async () => {
@@ -110,7 +112,7 @@ vi.mock("pg", async () => {
 });
 
 const roots: string[] = [];
-beforeEach(() => { vi.clearAllMocks(); io.ordinary = false; io.ordinaryFenced = false; io.pools.length = 0; io.clients.length = 0; io.rootEvents.length = 0; io.closed.length = 0; io.fault = ""; io.hostRefused = false; io.sourceConnects = 0; });
+beforeEach(() => { vi.clearAllMocks(); io.ordinary = false; io.ordinaryFenced = false; io.runtimeCloseFails = false; io.pools.length = 0; io.clients.length = 0; io.rootEvents.length = 0; io.closed.length = 0; io.fault = ""; io.hostRefused = false; io.sourceConnects = 0; });
 afterEach(async () => { for (const root of roots.splice(0)) await rm(root, { recursive: true }); });
 
 async function fixture() {
@@ -277,6 +279,22 @@ it.each(["wrong-target", "drift", "host-step", "sql-unknown"] as const)("refuses
   if (fault === "sql-unknown") io.sqlInspect.mockResolvedValueOnce({ outcome: "intent-only" });
   await expect(inspectLegacyApplicationLoginFence(f.input)).rejects.toThrow(/^PCAT-UPG-LEGACY-LOGIN-/);
   expect(io.sqlPrivilegeEffect).toHaveBeenCalledOnce();
+});
+
+it.each(["sql", "role", "success"] as const)("retains the ordinary inspection result when source cleanup also fails: %s", async fault => {
+  const f = await ordinaryFixture();
+  await retireLegacyApplicationLogins(f.input);
+  const closedPools = io.closed.filter(value => value === "pool").length;
+  if (fault === "sql") io.sqlInspect.mockResolvedValueOnce({ outcome: "intent-only" });
+  if (fault === "role") {
+    const original = await io.runtimeRoles();
+    io.runtimeRoles.mockResolvedValueOnce(original).mockResolvedValue({ ...original, roles: [] });
+  }
+  io.runtimeCloseFails = true;
+  await expect(inspectLegacyApplicationLoginFence(f.input)).rejects.toMatchObject({ reason: fault === "sql"
+    ? "SQL-PRIVILEGE-OUTCOME-UNKNOWN" : fault === "role" ? "RUNTIME-ROLE-SOURCE-DRIFT" : "INSPECTION-CLOSE-FAILED" });
+  expect(io.closed.filter(value => value === "pool")).toHaveLength(closedPools + 1);
+  expect(io.clients.at(-1)?.release).toHaveBeenCalledOnce();
 });
 
 it("persists the root intent before SQL and the actual inspection step after SQL, without declaring P13", async () => {
