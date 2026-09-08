@@ -412,6 +412,48 @@ wiseeff_upgrade_docker() {
   docker "$@"
 }
 
+# Build-only application artifact owner. The TypeScript caller supplies a new
+# private directory containing only the exact tracked Git archive. This entry
+# never reads the runtime env file, starts Compose services, or creates releases.
+wiseeff_upgrade_prepare_application_artifact() (
+  set -euo pipefail -C
+  local context="$1" output="$2" endpoint="$3" daemon="$4" image="$5" sha="$6" tree="$7" network_file="$8" api_url="$9"
+  umask 077
+  artifact_docker() {
+    [ "$(docker --host "$endpoint" info --format '{{.ID}}')" = "$daemon" ] || return 10
+    docker --host "$endpoint" "$@"
+  }
+  wiseeff_build_network_prepare "$context/ops/self-hosted" "$network_file"
+  wiseeff_build_network_require_verified
+  # Snapshot trust material outside COPY and bind its actual bytes. Recheck the
+  # source after the build; a mutable trust source cannot issue a package.
+  local original_ca="$WISEEFF_BUILD_CA_CERT_FILE" ca_hash
+  ca_hash="$(wiseeff_build_network_file_fingerprint "$original_ca")"
+  cat "$original_ca" > "$output/build-ca.pem"
+  [ "$(wiseeff_build_network_file_fingerprint "$output/build-ca.pem")" = "$ca_hash" ] || return 10
+  export WISEEFF_BUILD_CA_CERT_FILE="$output/build-ca.pem"
+  export WISEEFF_SOURCE_SHA="$sha" WISEEFF_SOURCE_TREE="$tree" WISEEFF_APP_IMAGE="$image" WISEEFF_APP_TAG="candidate"
+  export VITE_WISEEFF_API_BASE_URL="$api_url" WISEEFF_ENV_FILE=/dev/null
+  # Compose interpolates non-build services too. These non-secret placeholders
+  # are never used by a process: this owner permits only config/build commands.
+  export POSTGRES_PASSWORD=build-only-unused MINIO_ROOT_USER=build-only-unused MINIO_ROOT_PASSWORD=build-only-unused DATABASE_URL=build-only-unused
+  [ "$(wiseeff_build_network_file_fingerprint "$original_ca")" = "$ca_hash" ] || return 10
+  printf '%s\n%s\n' "$WISEEFF_BUILD_TRANSPORT_FINGERPRINT" "$ca_hash" > "$output/build-trust.txt"
+  # Read the exact tracked Compose bytes from stdin, not a mutable worktree.
+  artifact_docker compose --project-directory "$context/ops/self-hosted" --env-file /dev/null -f - config --format json
+)
+
+wiseeff_upgrade_export_application_artifact() (
+  set -euo pipefail -C
+  local endpoint="$1" daemon="$2" output="$3"
+  shift 3
+  [ "$(docker --host "$endpoint" info --format '{{.ID}}')" = "$daemon" ] || return 10
+  # The producer translates the actual Compose build model's closed option set.
+  # The stdin archive is held by that process; no mutable directory is COPY's
+  # source. This command neither pushes nor creates service containers.
+  docker --host "$endpoint" buildx build "$@" 2>&1 | wiseeff_upgrade_sanitize_diagnostic_stream > "$output/build.log"
+)
+
 wiseeff_upgrade_base_image_contract_relative_path() {
   printf 'ops/self-hosted/images/base-image-bundle.env\n'
 }
@@ -1985,6 +2027,7 @@ wiseeff_upgrade_run_recover_candidate() {
     wiseeff_upgrade_die 2 "Candidate recovery requires --confirm recover-candidate-${upgrade_run_id}."
     return $?
   fi
+  wiseeff_upgrade_require_supported_stack_target || return 70
 
   upgrade_recovery_queue_image_tag="$candidate_image"
   wiseeff_upgrade_state_write recovery_started true
@@ -2104,6 +2147,7 @@ wiseeff_upgrade_run_resume() {
     wiseeff_upgrade_restore_old_stack_after_stop
     return $?
   fi
+  wiseeff_upgrade_require_supported_stack_target || return 70
 
   [ -n "$upgrade_candidate_image_tag" ] || {
     wiseeff_upgrade_die 70 "Candidate image identity is missing; manual recovery is required."
@@ -2560,6 +2604,21 @@ wiseeff_upgrade_wait_public_probe() {
   return 1
 }
 
+# The ordinary stack controller predates Catalog's purpose-scoped release chain.
+# Detect this from the immutable target tree, including same-SHA attempts. This
+# is a compatibility refusal, not a replacement Release Verification decision.
+wiseeff_upgrade_require_supported_stack_target() {
+  local catalog_entry
+  if ! catalog_entry="$(wiseeff_upgrade_git ls-tree "$upgrade_target_sha" -- server/modules/catalog-cutover/interface.ts)"; then
+    wiseeff_upgrade_die 10 "PCAT-UPG-TARGET-UNKNOWN: immutable target inspection failed."
+    return $?
+  fi
+  if [ -n "$catalog_entry" ]; then
+    wiseeff_upgrade_die 10 "PCAT-UPG-STACK-CATALOG-UNSUPPORTED: ordinary stack apply cannot execute the approved Catalog activation/runtime/public-release chain. Keep the current service unchanged; use the reviewed populated upgrade procedure."
+    return $?
+  fi
+}
+
 wiseeff_upgrade_run_apply() {
   wiseeff_upgrade_acquire_lock
   trap wiseeff_upgrade_release_lock EXIT
@@ -2568,6 +2627,7 @@ wiseeff_upgrade_run_apply() {
   if ! wiseeff_upgrade_preflight; then
     return 10
   fi
+  wiseeff_upgrade_require_supported_stack_target || return 10
   if [ "$upgrade_previous_sha" = "$upgrade_target_sha" ] &&
     [ "$upgrade_restart" != "true" ] &&
     wiseeff_upgrade_target_app_image_is_running &&

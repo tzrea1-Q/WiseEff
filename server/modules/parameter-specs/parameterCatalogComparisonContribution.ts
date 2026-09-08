@@ -2,24 +2,13 @@ import { createHash, randomUUID } from "node:crypto";
 import type pg from "pg";
 
 import type { AuthContext } from "../auth/types";
-import { createCatalogKernel } from "../catalog-kernel/interface";
-import {
-  handleCatalogGovernance,
-  emptyGovernanceQueryPorts,
-  type CatalogGovernancePorts,
-} from "../parameter-catalog-api/governance";
-import {
-  handleCatalogRead,
-  kernelOnlyTimelineComposer,
-  unregisteredProjection,
-  zeroUsageProjection,
-  type CatalogReadPorts,
-} from "../parameter-catalog-api/read";
+import { registerParameterCatalogApi } from "../parameter-catalog-api/productionWire";
 import { handleLegacyCatalogRequest } from "../parameter-catalog-api/legacy";
 import type { LegacyCatalogOptions } from "../parameter-catalog-api/legacy";
 import { parameterCatalogCanonicalRoutes } from "../contracts/dtoSchemas/parameterCatalog";
 import { routeManifest } from "../contracts/routeManifest";
-import type { Database } from "../../shared/database/client";
+import { getRootPostgresPool, type Database } from "../../shared/database/client";
+import { createRouter, type WiseEffRouter } from "../../shared/http/router";
 import { createUserInvocation } from "../auth/trustedInvocation";
 import { listParameterSpecs, listSpecReviewTasks } from "./service";
 
@@ -59,6 +48,14 @@ export type CghQueryObservation =
       readonly code: string;
       readonly detail: string;
     };
+
+export class CghComparisonQueryError extends Error {
+  readonly code = CGH_UNQUERYABLE_FAILURE_CODE;
+  constructor(readonly observation: Extract<CghQueryObservation, { status: "query-failure" }>) {
+    super(`${CGH_UNQUERYABLE_FAILURE_CODE}: ${observation.detail}`);
+    this.name = "CghComparisonQueryError";
+  }
+}
 
 export type CghExpectedDifference = {
   readonly rClass: string;
@@ -229,79 +226,16 @@ function catalogPath(routeId: string, params: Record<string, string> = {}): stri
   });
 }
 
-function createReadPorts(pool: pg.Pool, organizationId: string): CatalogReadPorts {
-  const kernel = createCatalogKernel(pool);
-  const scope = {
-    principalId: "cgh-comparison-reader",
-    organizationId,
-    actorKind: "platform-admin" as const,
-    canReadCatalog: true,
-    projectScope: { kind: "only" as const, ids: [] },
-    canRegister: true,
-    subjects: { kind: "all" as const },
-    definitions: { kind: "all" as const },
-  };
-  return {
-    runtime: kernel,
-    readiness: {
-      async current() {
-        await pool.query("select 1 as ok");
-        return { status: "not-ready", retryAfterSeconds: 1 };
-      },
-      async named() {
-        await pool.query("select 1 as ok");
-        return { status: "unknown" };
-      },
-    },
-    registration: unregisteredProjection,
-    usage: zeroUsageProjection,
-    timeline: kernelOnlyTimelineComposer,
-    authenticate: async () => ({ ok: true as const, scope }),
-  };
-}
-
-function createGovernancePorts(organizationId: string): CatalogGovernancePorts {
-  return {
-    authenticate: async () => ({
-      ok: true as const,
-      scope: {
-        principalId: "cgh-comparison-reader",
-        organizationId,
-        actorKind: "platform-admin" as const,
-        canReadGovernance: true,
-        canMutateOrganization: true,
-        canReviewProposals: true,
-        defaultDestinationModuleId: "",
-        defaultSubjectKind: "driver" as const,
-      },
-    }),
-    currentRelease: async () => null,
-    executeRegistration: async () => ({
-      ok: false as const,
-      error: { kind: "catalog-drift" as const, code: "PCAT-GUARD-DRIFT" as const, sqlstate: "PCA04" as const },
-    }),
-    resolveReviewItem: async () => ({
-      ok: false as const,
-      error: { kind: "review-item-not-found" as const, reviewItemId: "cgh-unwired" },
-    }),
-    executeProposal: async () => ({
-      ok: false as const,
-      error: {
-        kind: "permission-denied" as const,
-        actorKind: "platform-admin" as const,
-        method: "executeProposal" as const,
-      },
-    }),
-    listReviewQueue: async () => ({
-      ok: false as const,
-      error: { kind: "permission-denied" as const, actorKind: "anonymous" as const },
-    }),
-    getReviewItem: async () => ({
-      ok: false as const,
-      error: { kind: "review-item-not-found" as const, reviewItemId: "cgh-unwired" },
-    }),
-    ...emptyGovernanceQueryPorts,
-  };
+function createComparisonRouter(database: Database, organizationId: string): WiseEffRouter {
+  const router = createRouter();
+  registerParameterCatalogApi(router, {
+    db: database,
+    resolveAuth: () => inventoryAuth(organizationId),
+    // Query adapters use this root pool; governance commands never fall back
+    // to it. No management or governance credentials are supplied here.
+    requireSeparateGovernancePool: true,
+  });
+  return router;
 }
 
 function createLegacyOptions(database: Database, organizationId: string): LegacyCatalogOptions {
@@ -315,19 +249,18 @@ function createLegacyOptions(database: Database, organizationId: string): Legacy
 }
 
 async function observeCanonicalDefinitions(
-  pool: pg.Pool,
-  organizationId: string,
+  router: WiseEffRouter,
 ): Promise<CghQueryObservation> {
-  const ports = createReadPorts(pool, organizationId);
-  const response = await handleCatalogRead(ports, {
+  const response = await router.handle({
     method: "GET",
     path: catalogPath("catalog.listDefinitions"),
     params: {},
     query: {},
     headers: {},
     requestId: randomUUID(),
+    body: undefined,
   });
-  if (response.status === 200 && response.body && typeof response.body === "object") {
+  if (response.status === 200 && "body" in response && response.body && typeof response.body === "object") {
     const body = response.body as { items?: unknown };
     return {
       status: "value",
@@ -345,10 +278,10 @@ async function observeCanonicalDefinitions(
 }
 
 async function observeCanonicalRegistrations(
+  router: WiseEffRouter,
   organizationId: string,
 ): Promise<{ observation: CghQueryObservation; records: InventoryRecord[] }> {
-  const ports = createGovernancePorts(organizationId);
-  const response = await handleCatalogGovernance(ports, {
+  const response = await router.handle({
     method: "GET",
     path: catalogPath("catalog.listRegistrations", { organizationId }),
     params: { organizationId },
@@ -357,7 +290,7 @@ async function observeCanonicalRegistrations(
     requestId: randomUUID(),
     body: undefined,
   });
-  if (response.status === 200 && response.body && typeof response.body === "object") {
+  if (response.status === 200 && "body" in response && response.body && typeof response.body === "object") {
     const body = response.body as { items?: Array<{ id?: string }> };
     const items = Array.isArray(body.items) ? body.items : [];
     return {
@@ -385,10 +318,10 @@ async function observeCanonicalRegistrations(
 }
 
 async function observeCanonicalReviewItems(
+  router: WiseEffRouter,
   organizationId: string,
 ): Promise<{ observation: CghQueryObservation; records: InventoryRecord[] }> {
-  const ports = createGovernancePorts(organizationId);
-  const response = await handleCatalogGovernance(ports, {
+  const response = await router.handle({
     method: "GET",
     path: catalogPath("catalog.listReviewItems", { organizationId }),
     params: { organizationId },
@@ -397,7 +330,7 @@ async function observeCanonicalReviewItems(
     requestId: randomUUID(),
     body: undefined,
   });
-  if (response.status === 200 && response.body && typeof response.body === "object") {
+  if (response.status === 200 && "body" in response && response.body && typeof response.body === "object") {
     const body = response.body as { items?: Array<{ id?: string }> };
     const items = Array.isArray(body.items) ? body.items : [];
     return {
@@ -510,16 +443,7 @@ function classifyCase(input: {
   readonly mappingHeadVersion: number;
   readonly planPin: string;
 }): { result: CghComparisonResult; expectedDifference: CghExpectedDifference | null } {
-  if (
-    input.legacyObservation.status === "query-failure" &&
-    input.legacyObservation.code === CGH_UNQUERYABLE_FAILURE_CODE
-  ) {
-    return { result: "unqueryable/protected-reference-missing", expectedDifference: null };
-  }
-  if (
-    input.canonicalObservation.status === "query-failure" &&
-    input.canonicalObservation.code === CGH_UNQUERYABLE_FAILURE_CODE
-  ) {
+  if (input.legacyObservation.status === "query-failure" || input.canonicalObservation.status === "query-failure") {
     return { result: "unqueryable/protected-reference-missing", expectedDifference: null };
   }
 
@@ -532,17 +456,9 @@ function classifyCase(input: {
     return { result: "exact-equivalent", expectedDifference: null };
   }
 
-  const expectedDifference: CghExpectedDifference = {
-    rClass: input.comparisonId === "PCAT-CMP-D09-LEGACY-OPERATOR-OUTCOME" ? "R1" : "R9",
-    mappingHeadId: input.mappingHeadId,
-    mappingHeadVersion: input.mappingHeadVersion,
-    ...(input.comparisonId === "PCAT-CMP-D09-LEGACY-OPERATOR-OUTCOME"
-      ? { Archive: { id: input.mappingHeadId } }
-      : { typedTarget: { kind: "parameter-definition", id: input.mappingHeadId } }),
-    ruleId: input.comparisonId,
-    planPin: input.planPin,
-  };
-  return { result: "declared-expected-difference", expectedDifference };
+  // Unequal observations are not a plan-declared mapping disposition.
+  // Keep them blocking until the owner supplies exact rule and identity evidence.
+  return { result: "unexplained-difference", expectedDifference: null };
 }
 
 function sortInventory(records: InventoryRecord[]): InventoryRecord[] {
@@ -572,6 +488,7 @@ function sortCases(cases: CghComparisonCase[]): CghComparisonCase[] {
 export async function provideCghParameterCatalogComparisonContribution(
   input: CghComparisonContributionInput,
 ): Promise<CghComparisonContribution> {
+  input = Object.freeze({ ...input });
   if (input.phase !== "pre-activation" && input.phase !== "post-p13") {
     throw new Error("CGH comparison phase must be pre-activation or post-p13");
   }
@@ -581,15 +498,22 @@ export async function provideCghParameterCatalogComparisonContribution(
   if (!/^[a-f0-9]{40}$/u.test(input.candidateSha)) {
     throw new Error("CGH comparison candidateSha must be a full Git SHA");
   }
+  if (!getRootPostgresPool(input.database) || getRootPostgresPool(input.database) !== input.pool) {
+    throw new Error("PCAT-CGH-ROOT-POOL-MISMATCH");
+  }
 
   const specRecords = await querySpecInventory(input.database);
   const reviewRecords = await queryReviewTaskInventory(input.database);
   const organizations = await queryOrganizationIds(input.database);
   const organizationId = organizations[0] ?? "platform";
 
-  const canonicalDefinitions = await observeCanonicalDefinitions(input.pool, organizationId);
-  const canonicalRegistrations = await observeCanonicalRegistrations(organizationId);
-  const canonicalReviews = await observeCanonicalReviewItems(organizationId);
+  const router = createComparisonRouter(input.database, organizationId);
+  const canonicalDefinitions = await observeCanonicalDefinitions(router);
+  const canonicalRegistrations = await observeCanonicalRegistrations(router, organizationId);
+  const canonicalReviews = await observeCanonicalReviewItems(router, organizationId);
+  for (const observation of [canonicalDefinitions, canonicalRegistrations.observation, canonicalReviews.observation]) {
+    if (observation.status === "query-failure") throw new CghComparisonQueryError(observation);
+  }
 
   const inventory = sortInventory([
     ...specRecords,

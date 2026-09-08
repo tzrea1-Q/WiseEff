@@ -404,6 +404,19 @@ The exact SQL and failure codes belong to the implementation specification, but 
 
 Whole-state restore means PostgreSQL, configured S3-compatible object storage, and durable Redis from the same recovery-point manifest. Partial cross-store restore is unsupported. After restore, rerun the independent verifier against the restored legacy boundary before public traffic. A successful restore invalidates the candidate run; do not resume its checkpoints.
 
+The 2026-09-07 PR #824 owner amendment separates recovery-point checking from
+explicit execution. The [registered execution contract](../../ops/self-hosted/storage/execution/README.md)
+consumes the existing S11-RP manifest/token and controller journal; it does not
+create another recovery-point or release-verification model. Capture, verify and
+restore-check remain free of restore/queue/proxy effects and cannot import the
+execution layer. Only an explicitly authorized, run/attempt-bound action under
+the observed target lock can restore into an independently verified isolated
+empty target. Partial/unknown results retain their journal and private evidence;
+they do not authorize retry, cleanup or traffic. This amendment authorizes
+isolated synthetic implementation/verification, not production execution or
+original-volume overwrite. All eligibility and approval requirements above stay
+in force.
+
 ## Self-hosted `upgrade.sh` integration sequence
 
 The current controller starts the API to run migrations and discovers catalog readiness later through an in-container check. The replacement must change the ordering; this document does not implement that change.

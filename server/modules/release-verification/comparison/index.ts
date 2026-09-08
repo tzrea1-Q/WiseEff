@@ -1,4 +1,6 @@
 export { THREAT_MATRIX } from "./threatMatrix";
+export { parseComparisonContributionV2, checksumComparisonContributionV2 } from "./corpusContributionV2";
+export type { ComparisonSourceIdentity, ComparisonContextV2, ExpectedDifferenceV2, ComparisonCaseV2, ComparisonContributionV2 } from "./corpusContributionV2";
 export type { ThreatMatrixId, ThreatMatrixRow } from "./threatMatrix";
 export {
   ComparisonCorpusError,
@@ -60,3 +62,15 @@ export {
   createProductionComparisonProviders,
 } from "./productionProviders";
 export type { ComparisonProvider, ComparisonProviderInput } from "./productionProviders";
+export {
+  assertComparisonEvidenceAssociation,
+  COMPARISON_EVIDENCE_PRODUCER,
+  ComparisonEvidenceRefusal,
+  createComparisonEvidenceExecution,
+} from "./liveEvidence";
+export type {
+  ComparisonBoundaryObservation,
+  ComparisonEvidenceBundle,
+  ComparisonEvidenceFailure,
+  LiveComparisonSource,
+} from "./liveEvidence";

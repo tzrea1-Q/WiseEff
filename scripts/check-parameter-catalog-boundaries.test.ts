@@ -19,7 +19,9 @@ import {
   allowlistShardDirectory,
   boundaryViolationFixturePath,
   loadBoundaryViolationFixture,
+  loadAllowlistIndex,
 } from "./parameter-catalog-allowlist/index";
+import { compareBoundaryInventory } from "./parameter-catalog-allowlist/deterministicOutput";
 
 describe("parameter catalog boundary checker", () => {
   it("freezes the exact 37 schema-qualified canonical relations", () => {
@@ -766,17 +768,38 @@ describe("parameter catalog boundary checker", () => {
         duplicateBaseIdOccurrences: 1_975,
       });
       expect(report.status).toBe("passed");
-      expect(report.relocations).toHaveLength(23);
-      expect(new Set(report.relocations.map((entry) => entry.id)).size).toBe(23);
-      expect(new Set(report.relocations.map((entry) => entry.observed.id)).size).toBe(23);
+      expect(report.relocations).toHaveLength(26);
+      expect(report.relocations.filter(entry => entry.observed.file === "server/modules/parameter-specs/propertyKeyCutover.integration.test.ts")).toHaveLength(23);
+      expect(report.relocations.filter(entry => entry.observed.file === "server/modules/knowledge/parameterReferences.test.ts")).toHaveLength(3);
+      expect(new Set(report.relocations.map((entry) => entry.id)).size).toBe(26);
+      expect(new Set(report.relocations.map((entry) => entry.observed.id)).size).toBe(26);
       expect(report.summary).toEqual({
-        violations: 3_513,
-        allowlisted: 3_513,
+        violations: 3_509,
+        allowlisted: 3_509,
         unallowlisted: 0,
         staleAllowances: 0,
         metadataMismatches: 0,
         allowlistGrowth: 0,
       });
+      // Reviewed M1 deletion: these exact four legacy dependencies no longer
+      // exist. Historical fixture identities remain immutable and cannot be
+      // reintroduced through a smaller numeric summary.
+      const removedIds = [
+        "S12-OPS:legacy-catalog-module-import:0de940e8c1cf0301:a43f4f7a42918672",
+        "S12-OPS:legacy-catalog-module-import:d9e13bef075b88d5:332be66199b7f0bb",
+        "S12-OPS:legacy-effective-governance-contract:0a94e52764fc5f68:866526a44b8818f5",
+        "S12-OPS:legacy-effective-governance-contract:70c00c1b4d907eed:435e4c1c7a8cc55e",
+      ];
+      const removed = fixture.violations.filter((entry) => removedIds.includes(entry.id));
+      expect(removed.map((entry) => entry.id).sort()).toEqual([...removedIds].sort());
+      const currentAllowances = await loadAllowlistIndex(repoRoot);
+      expect(currentAllowances.entries.filter((entry) => removedIds.includes(entry.id))).toEqual([]);
+      expect(report.violations.filter((entry) => removedIds.includes(entry.id))).toEqual([]);
+      const reintroduced = compareBoundaryInventory(
+        [...report.violations, ...removed], currentAllowances.entries, fixture.violations,
+      );
+      expect(reintroduced.status).toBe("failed");
+      expect(reintroduced.unallowlisted.map((entry) => entry.id).sort()).toEqual([...removedIds].sort());
       expect(report.violations.map((violation) => violation.id)).toEqual(
         [...report.violations.map((violation) => violation.id)].sort(),
       );

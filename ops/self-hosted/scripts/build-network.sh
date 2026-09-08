@@ -12,10 +12,13 @@ json="false"
 
 usage() {
   cat <<'EOF'
-Usage: build-network.sh init|status [--config PATH] [--json]
+Usage: build-network.sh init|status|require-verified [--config PATH] [--json]
 
 `init` creates a mode-0600 config without overwriting an existing file.
 `status` loads only allowlisted data and prints a credential-free summary.
+`require-verified` rejects insecure policy, HTTP registry, or invalid/key-bearing
+CA material. This is configuration preflight, not proof of a successful trusted
+Docker pull/build or release approval; no network requests are made.
 The default config is ops/self-hosted/.build-network.env; shell proxy variables
 take precedence over empty or matching values in that file.
 EOF
@@ -23,7 +26,7 @@ EOF
 
 while [ "$#" -gt 0 ]; do
   case "$1" in
-    init|status) action="$1"; shift ;;
+    init|status|require-verified) action="$1"; shift ;;
     --config)
       [ "$#" -ge 2 ] || { echo "--config requires a path." >&2; exit 2; }
       config_file="$2"
@@ -50,6 +53,9 @@ if [ "$action" = "init" ]; then
 fi
 
 wiseeff_build_network_prepare "$compose_dir" "$config_file"
+if [ "$action" = "require-verified" ]; then
+  wiseeff_build_network_require_verified
+fi
 if [ "$json" = "true" ]; then
   wiseeff_build_network_print_status json
 else

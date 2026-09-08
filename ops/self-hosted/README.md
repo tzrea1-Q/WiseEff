@@ -45,7 +45,13 @@ The upgrade entry recreates all of these services while preserving the existing 
 
 Server prerequisites: Docker Engine 20.10+ and Docker Compose v2. Build-secret support makes standalone Compose v1 unsupported. Node.js is not required on the server; the stack runs inside containers.
 
-The runtime image installs Alpine's `dtc` package and runs `dtc --version` during image build. This makes DTS validation and `db:seed:m1` independent of host packages. `npm run selfhost:check` verifies both the image dependency and the repository dtc commands.
+The runtime image builds DTC from the pinned source and installs its matching libfdt.
+Standard executable and library paths keep `dtc` and `fdtoverlay` usable after a
+login shell resets PATH and when application subprocesses omit `LD_LIBRARY_PATH`.
+Image construction runs both tools and `dt-validate` with a minimal environment;
+failure stops the build. Application subprocesses retain their existing environment
+allowlist. DTS validation and `db:seed:m1` do not depend on host packages.
+`npm run selfhost:check` also verifies the image configuration and repository commands.
 
 ```bash
 cp .env.example .env

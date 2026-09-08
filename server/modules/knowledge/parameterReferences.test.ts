@@ -142,15 +142,17 @@ async function createMarkdownEntry(db: InMemoryTestDatabase, auth: AuthContext, 
   );
 }
 
-async function listReferenceAudits(db: InMemoryTestDatabase, entryId: string) {
-  const result = await db.query<{ kind: string; action: string; metadata: Record<string, unknown> }>(
+async function listReferenceAudits(db: InMemoryTestDatabase, entryId: string, tieOrder: "asc" | "desc" = "asc") {
+  const result = await db.query<{ kind: string; action: string; metadata: Record<string, unknown>; createdAt: string }>(
     `
-    select kind, action, metadata
+    select kind, action, metadata, created_at::text as "createdAt"
     from audit_events
     where organization_id = $1 and target_id = $2 and kind like 'knowledge-parameter-reference%'
-    order by created_at asc
+    order by created_at asc,
+      case when $3::text = 'asc' then kind end asc,
+      case when $3::text = 'desc' then kind end desc
     `,
-    [ORG_ID, entryId]
+    [ORG_ID, entryId, tieOrder]
   );
   return result.rows;
 }
@@ -210,20 +212,29 @@ describe.skipIf(!databaseAvailable)("knowledge parameter references", () => {
     expect(audits[0].metadata).toMatchObject({ specId: SPEC_ORG, propertyKey: "charge_pump_ratio" });
   });
 
-  it("references platform-global definitions and removes references with audit evidence", async () => {
+  it.each(["asc", "desc"] as const)("references platform-global definitions and removes references with audit evidence (%s timestamp ties)", async tieOrder => {
     const auth = makeAuth(EDITOR_A, viewEdit);
     const entry = await createMarkdownEntry(db, auth, "Global spec notes");
 
     const withReference = await addKnowledgeParameterReference(db, auth, { entryId: entry.id, specId: SPEC_GLOBAL });
     expect(withReference.parameterReferences.map((reference) => reference.specId)).toEqual([SPEC_GLOBAL]);
 
+    // Observe the add before removal; timestamps are not an event sequence.
+    const addedAudits = await listReferenceAudits(db, entry.id, tieOrder);
+    expect(addedAudits).toHaveLength(1);
+    expect(addedAudits[0]).toMatchObject({ kind: "knowledge-parameter-reference-add", action: "parameter-reference-add",
+      metadata: { title: "Global spec notes", specId: SPEC_GLOBAL, propertyKey: "global_current_limit" } });
+
     const removed = await removeKnowledgeParameterReference(db, auth, { entryId: entry.id, specId: SPEC_GLOBAL });
     expect(removed.parameterReferences).toHaveLength(0);
 
-    const audits = await listReferenceAudits(db, entry.id);
-    expect(audits.map((audit) => audit.kind)).toEqual([
-      "knowledge-parameter-reference-add",
-      "knowledge-parameter-reference-remove"
+    const audits = await listReferenceAudits(db, entry.id, tieOrder);
+    // The real fixture's outer BEGIN freezes now(); either tie order is legal.
+    expect(new Set(audits.map(audit => audit.createdAt)).size).toBe(1);
+    expect([...audits].sort((left, right) => left.kind.localeCompare(right.kind))).toEqual([
+      addedAudits[0],
+      { kind: "knowledge-parameter-reference-remove", action: "parameter-reference-remove",
+        metadata: { title: "Global spec notes", specId: SPEC_GLOBAL }, createdAt: addedAudits[0].createdAt }
     ]);
   });
 

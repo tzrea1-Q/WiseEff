@@ -2,6 +2,8 @@ import { loadDotenvFiles } from "./config/loadDotenv";
 
 loadDotenvFiles();
 import { createWiseEffServerFromEnv } from "./app";
+import { createApiShutdown } from "./apiShutdown";
+import { assertProcessInitializing, runProcessWithSignals } from "./processSignals";
 import { loadServerEnv } from "./config/env";
 import { createAdbDebugDeviceGateway } from "./modules/debugging/adbGateway";
 import { createDebugDeviceGatewayRegistry } from "./modules/debugging/gatewayRegistry";
@@ -26,240 +28,268 @@ import { startNotificationOutboxWorkerLoop } from "./modules/notifications/outbo
 import { createMetricsRegistry } from "./observability/metrics";
 import { defaultTracingBoundary } from "./observability/tracing";
 import { createObjectStoreFromEnv } from "./objectStoreFactory";
-import { createPostgresDatabase } from "./shared/database/client";
+import { openRuntimeDatabase } from "./shared/database/runtimeConnection";
+import { verifyPostgresCheckpointerTables } from "./modules/agent/xiaoze/durableCheckpointer";
 import {
   ensureLocalPostCutoverIdentity,
   shouldEnsureLocalPostCutoverOnApiBoot
 } from "./modules/parameter-topology/localPostCutover";
 import { resolveParameterIdentityMode } from "./modules/parameter-kernel/parameterIdentityMode";
 
-const env = loadServerEnv(process.env);
-for (const diagnostic of env.XIAOZE_LLM_CONFIG.diagnostics) {
-  console.warn(
-    `[xiaoze-llm-config] ${diagnostic.code}: ${diagnostic.key} -> ${diagnostic.canonicalKey}`
-  );
-}
-const db = env.DATABASE_URL ? createPostgresDatabase(env.DATABASE_URL, { tracing: defaultTracingBoundary }) : undefined;
-const objectStore = db ? createObjectStoreFromEnv(env, { tracing: defaultTracingBoundary }) : undefined;
-const metrics = createMetricsRegistry({ serviceName: "wiseeff-api" });
-const hdcGateway = createHdcDebugDeviceGateway({ timeoutMs: env.HDC_TIMEOUT_MS });
-const adbGateway = createAdbDebugDeviceGateway({ timeoutMs: env.ADB_TIMEOUT_MS });
-const simulatorGateway = createSimulatorDebugDeviceGateway();
-const debugGateway =
-  env.DEBUG_DEVICE_GATEWAY_MODE === "hdc"
-    ? hdcGateway
-    : env.DEBUG_DEVICE_GATEWAY_MODE === "adb"
-      ? adbGateway
-      : simulatorGateway;
-const debugGatewayRegistry = createDebugDeviceGatewayRegistry({
-  hdc:
-    env.DEBUG_DEVICE_GATEWAY_MODE === "hdc" || env.DEBUG_DEVICE_GATEWAY_MODE === "multi"
-      ? hdcGateway
-      : env.DEBUG_DEVICE_GATEWAY_MODE === "simulator"
-        ? simulatorGateway
-        : undefined,
-  adb: env.DEBUG_DEVICE_GATEWAY_MODE === "multi" || env.DEBUG_DEVICE_GATEWAY_MODE === "adb" ? adbGateway : undefined
+let db: Awaited<ReturnType<typeof openRuntimeDatabase>> | undefined;
+let catalogGovernanceDb: typeof db;
+let server: ReturnType<typeof createWiseEffServerFromEnv> | undefined;
+let logAnalysisQueueRuntime: Awaited<ReturnType<typeof createLogAnalysisQueueRuntime>> | undefined;
+let notificationQueueRuntime: ReturnType<typeof createNotificationQueueRuntime> | undefined;
+let stopLogWorker: ReturnType<typeof startLogWorkerLoop> | undefined;
+let stopLogWebhookDeliveryRetention: ReturnType<typeof startLogWebhookDeliveryRetentionLoop> | undefined;
+let stopKnowledgeIndexWorker: ReturnType<typeof startKnowledgeIndexWorkerLoop> | undefined;
+let stopNotificationWorker: ReturnType<typeof startNotificationOutboxWorkerLoop> | undefined;
+const shutdown = createApiShutdown({
+  server: () => server,
+  workers: [() => stopLogWorker?.(), () => stopLogWebhookDeliveryRetention?.(),
+    () => stopKnowledgeIndexWorker?.(), () => stopNotificationWorker?.(),
+    () => logAnalysisQueueRuntime?.close(), () => notificationQueueRuntime?.close()],
+  pools: [async () => { await db?.close(); }, async () => { await catalogGovernanceDb?.close(); }],
 });
-const bridgeConnectionPool = createBridgeConnectionPool();
-const bridgeRpcClient = createBridgeRpcClient({ pool: bridgeConnectionPool });
-const logAnalysisQueueEnv = {
-  REDIS_URL: env.REDIS_URL ?? "",
-  LOG_ANALYSIS_QUEUE_PREFIX: env.LOG_ANALYSIS_QUEUE_PREFIX,
-  LOG_ANALYSIS_QUEUE_ATTEMPTS: env.LOG_ANALYSIS_QUEUE_ATTEMPTS,
-  LOG_ANALYSIS_QUEUE_BACKOFF_MS: env.LOG_ANALYSIS_QUEUE_BACKOFF_MS,
-  LOG_ANALYSIS_QUEUE_CONCURRENCY: env.LOG_ANALYSIS_QUEUE_CONCURRENCY
-};
-const knowledgeEmbeddingClient = resolveKnowledgeEmbeddingClient(env);
-const logAnalyzer = createLogAnalyzerFromEnv(env, {
-  telemetry: {
-    recordLlmCall: (input) => metrics.recordLogAnalysisLlmCall(input),
-    recordDegraded: (input) => metrics.recordLogAnalysisDegraded(input)
-  },
-  db,
-  embeddingClient: knowledgeEmbeddingClient
-});
-const logWebhookDeliverer = db
-  ? createLogWebhookDeliverer({
-      db,
-      env: {
-        timeoutMs: env.LOG_WEBHOOK_TIMEOUT_MS,
-        maxAttempts: env.LOG_WEBHOOK_MAX_ATTEMPTS,
-        retryBaseDelayMs: env.LOG_WEBHOOK_RETRY_BASE_DELAY_MS,
-        allowInsecureLocal: env.LOG_WEBHOOK_ALLOW_INSECURE_LOCAL
+await runProcessWithSignals({
+  failureCode: "PCAT-RUNTIME-API-SHUTDOWN-FAILED",
+  shutdown,
+  async initialize(signal, stop) {
+    const env = loadServerEnv(process.env);
+    for (const diagnostic of env.XIAOZE_LLM_CONFIG.diagnostics) {
+      console.warn(
+        `[xiaoze-llm-config] ${diagnostic.code}: ${diagnostic.key} -> ${diagnostic.canonicalKey}`
+      );
+    }
+    // Await the actual login before constructing any queue, worker, or server.
+    db = env.DATABASE_URL ? await openRuntimeDatabase({
+      connectionString: env.DATABASE_URL,
+      nodeEnv: env.NODE_ENV,
+      databaseOptions: { tracing: defaultTracingBoundary },
+    }) : undefined;
+    assertProcessInitializing(signal);
+    if (db && env.NODE_ENV === "production" && env.XIAOZE_CHECKPOINTER === "postgres") {
+      await verifyPostgresCheckpointerTables(env.DATABASE_URL!);
+    }
+    assertProcessInitializing(signal);
+    catalogGovernanceDb = env.CATALOG_GOVERNANCE_DATABASE_URL?.trim()
+      ? await openRuntimeDatabase({
+          connectionString: env.CATALOG_GOVERNANCE_DATABASE_URL,
+          nodeEnv: "production",
+          purpose: "catalog-governance-command",
+          databaseOptions: { tracing: defaultTracingBoundary },
+        })
+      : undefined;
+    assertProcessInitializing(signal);
+    const objectStore = db ? createObjectStoreFromEnv(env, { tracing: defaultTracingBoundary }) : undefined;
+    const metrics = createMetricsRegistry({ serviceName: "wiseeff-api" });
+    const hdcGateway = createHdcDebugDeviceGateway({ timeoutMs: env.HDC_TIMEOUT_MS });
+    const adbGateway = createAdbDebugDeviceGateway({ timeoutMs: env.ADB_TIMEOUT_MS });
+    const simulatorGateway = createSimulatorDebugDeviceGateway();
+    const debugGateway =
+      env.DEBUG_DEVICE_GATEWAY_MODE === "hdc"
+        ? hdcGateway
+        : env.DEBUG_DEVICE_GATEWAY_MODE === "adb"
+          ? adbGateway
+          : simulatorGateway;
+    const debugGatewayRegistry = createDebugDeviceGatewayRegistry({
+      hdc:
+        env.DEBUG_DEVICE_GATEWAY_MODE === "hdc" || env.DEBUG_DEVICE_GATEWAY_MODE === "multi"
+          ? hdcGateway
+          : env.DEBUG_DEVICE_GATEWAY_MODE === "simulator"
+            ? simulatorGateway
+            : undefined,
+      adb: env.DEBUG_DEVICE_GATEWAY_MODE === "multi" || env.DEBUG_DEVICE_GATEWAY_MODE === "adb" ? adbGateway : undefined
+    });
+    const bridgeConnectionPool = createBridgeConnectionPool();
+    const bridgeRpcClient = createBridgeRpcClient({ pool: bridgeConnectionPool });
+    const logAnalysisQueueEnv = {
+      REDIS_URL: env.REDIS_URL ?? "",
+      LOG_ANALYSIS_QUEUE_PREFIX: env.LOG_ANALYSIS_QUEUE_PREFIX,
+      LOG_ANALYSIS_QUEUE_ATTEMPTS: env.LOG_ANALYSIS_QUEUE_ATTEMPTS,
+      LOG_ANALYSIS_QUEUE_BACKOFF_MS: env.LOG_ANALYSIS_QUEUE_BACKOFF_MS,
+      LOG_ANALYSIS_QUEUE_CONCURRENCY: env.LOG_ANALYSIS_QUEUE_CONCURRENCY
+    };
+    const knowledgeEmbeddingClient = resolveKnowledgeEmbeddingClient(env);
+    const logAnalyzer = createLogAnalyzerFromEnv(env, {
+      telemetry: {
+        recordLlmCall: (input) => metrics.recordLogAnalysisLlmCall(input),
+        recordDegraded: (input) => metrics.recordLogAnalysisDegraded(input)
       },
-      metrics
-    })
-  : undefined;
-const logAnalysisQueueRuntime =
-  env.LOG_ANALYSIS_QUEUE_MODE === "durable" && db && objectStore
-    ? env.LOG_WORKER_ENABLED
-      ? createLogAnalysisQueueRuntime({
-          env: logAnalysisQueueEnv,
+      db,
+      embeddingClient: knowledgeEmbeddingClient
+    });
+    const logWebhookDeliverer = db
+      ? createLogWebhookDeliverer({
           db,
-          objectStore,
-          analyzer: logAnalyzer,
-          metrics,
-          tracing: defaultTracingBoundary,
-          webhooks: logWebhookDeliverer
+          env: {
+            timeoutMs: env.LOG_WEBHOOK_TIMEOUT_MS,
+            maxAttempts: env.LOG_WEBHOOK_MAX_ATTEMPTS,
+            retryBaseDelayMs: env.LOG_WEBHOOK_RETRY_BASE_DELAY_MS,
+            allowInsecureLocal: env.LOG_WEBHOOK_ALLOW_INSECURE_LOCAL
+          },
+          metrics
         })
-      : createLogAnalysisQueueTransport({ env: logAnalysisQueueEnv })
-    : undefined;
-const stopLogWorker =
-  env.LOG_WORKER_ENABLED && env.LOG_ANALYSIS_QUEUE_MODE === "polling" && db && objectStore
-    ? startLogWorkerLoop({ db, objectStore, analyzer: logAnalyzer, metrics, tracing: defaultTracingBoundary, webhooks: logWebhookDeliverer })
-    : undefined;
-const stopLogWebhookDeliveryRetention =
-  env.LOG_WORKER_ENABLED &&
-  env.LOG_WEBHOOK_DELIVERY_RETENTION_ENABLED &&
-  db &&
-  objectStore
-    ? startLogWebhookDeliveryRetentionLoop({
-        db,
-        keepPerDomain: env.LOG_WEBHOOK_DELIVERY_RETENTION_PER_DOMAIN
-      })
-    : undefined;
-// Started in start() after ensureKnowledgeVectorColumn so the worker never
-// caches a pre-install "no vector support" detection.
-let stopKnowledgeIndexWorker: (() => void) | undefined;
-const notificationQueueEnv = {
-  REDIS_URL: env.REDIS_URL ?? "",
-  NOTIFICATION_QUEUE_PREFIX: env.NOTIFICATION_QUEUE_PREFIX,
-  NOTIFICATION_QUEUE_ATTEMPTS: env.NOTIFICATION_QUEUE_ATTEMPTS,
-  NOTIFICATION_QUEUE_BACKOFF_MS: env.NOTIFICATION_QUEUE_BACKOFF_MS,
-  NOTIFICATION_QUEUE_CONCURRENCY: env.NOTIFICATION_QUEUE_CONCURRENCY
-};
-const notificationDeliveryMode =
-  env.NOTIFICATION_DELIVERY_MODE === "async" && env.NOTIFICATION_WORKER_ENABLED ? "async" : "sync";
-const notificationQueueRuntime =
-  notificationDeliveryMode === "async" &&
-  env.NOTIFICATION_QUEUE_MODE === "durable" &&
-  db
-    ? env.NOTIFICATION_WORKER_ENABLED
-      ? createNotificationQueueRuntime({
-          env: notificationQueueEnv,
-          db,
-          metrics,
-          tracing: defaultTracingBoundary
-        })
-      : createNotificationQueueTransport({ env: notificationQueueEnv })
-    : undefined;
-const stopNotificationWorker =
-  notificationDeliveryMode === "async" &&
-  env.NOTIFICATION_WORKER_ENABLED &&
-  env.NOTIFICATION_QUEUE_MODE === "polling" &&
-  db
-    ? startNotificationOutboxWorkerLoop({
-        db,
-        metrics,
-        tracing: defaultTracingBoundary,
-        maxAttempts: env.NOTIFICATION_QUEUE_ATTEMPTS,
-        retryBaseDelayMs: env.NOTIFICATION_QUEUE_BACKOFF_MS
-      })
-    : undefined;
+      : undefined;
+    logAnalysisQueueRuntime =
+      env.LOG_ANALYSIS_QUEUE_MODE === "durable" && db && objectStore
+        ? env.LOG_WORKER_ENABLED
+          ? await createLogAnalysisQueueRuntime({
+              env: logAnalysisQueueEnv,
+              db,
+              objectStore,
+              analyzer: logAnalyzer,
+              metrics,
+              tracing: defaultTracingBoundary,
+              webhooks: logWebhookDeliverer
+            })
+          : await createLogAnalysisQueueTransport({ env: logAnalysisQueueEnv })
+        : undefined;
+    assertProcessInitializing(signal);
+    stopLogWorker =
+      env.LOG_WORKER_ENABLED && env.LOG_ANALYSIS_QUEUE_MODE === "polling" && db && objectStore
+        ? startLogWorkerLoop({ db, objectStore, analyzer: logAnalyzer, metrics, tracing: defaultTracingBoundary, webhooks: logWebhookDeliverer })
+        : undefined;
+    stopLogWebhookDeliveryRetention =
+      env.LOG_WORKER_ENABLED &&
+      env.LOG_WEBHOOK_DELIVERY_RETENTION_ENABLED &&
+      db &&
+      objectStore
+        ? startLogWebhookDeliveryRetentionLoop({
+            db,
+            keepPerDomain: env.LOG_WEBHOOK_DELIVERY_RETENTION_PER_DOMAIN
+          })
+        : undefined;
+    // Started in start() after ensureKnowledgeVectorColumn so the worker never
+    // caches a pre-install "no vector support" detection.
+    const notificationQueueEnv = {
+      REDIS_URL: env.REDIS_URL ?? "",
+      NOTIFICATION_QUEUE_PREFIX: env.NOTIFICATION_QUEUE_PREFIX,
+      NOTIFICATION_QUEUE_ATTEMPTS: env.NOTIFICATION_QUEUE_ATTEMPTS,
+      NOTIFICATION_QUEUE_BACKOFF_MS: env.NOTIFICATION_QUEUE_BACKOFF_MS,
+      NOTIFICATION_QUEUE_CONCURRENCY: env.NOTIFICATION_QUEUE_CONCURRENCY
+    };
+    const notificationDeliveryMode =
+      env.NOTIFICATION_DELIVERY_MODE === "async" && env.NOTIFICATION_WORKER_ENABLED ? "async" : "sync";
+    notificationQueueRuntime =
+      notificationDeliveryMode === "async" &&
+      env.NOTIFICATION_QUEUE_MODE === "durable" &&
+      db
+        ? env.NOTIFICATION_WORKER_ENABLED
+          ? createNotificationQueueRuntime({
+              env: notificationQueueEnv,
+              db,
+              metrics,
+              tracing: defaultTracingBoundary
+            })
+          : createNotificationQueueTransport({ env: notificationQueueEnv })
+        : undefined;
+    stopNotificationWorker =
+      notificationDeliveryMode === "async" &&
+      env.NOTIFICATION_WORKER_ENABLED &&
+      env.NOTIFICATION_QUEUE_MODE === "polling" &&
+      db
+        ? startNotificationOutboxWorkerLoop({
+            db,
+            metrics,
+            tracing: defaultTracingBoundary,
+            maxAttempts: env.NOTIFICATION_QUEUE_ATTEMPTS,
+            retryBaseDelayMs: env.NOTIFICATION_QUEUE_BACKOFF_MS
+          })
+        : undefined;
 
-if (db) {
-  configureNotificationDelivery({
-    mode: notificationDeliveryMode,
-    queue: notificationQueueRuntime?.queue,
-    metrics
-  });
-}
+    if (db) {
+      configureNotificationDelivery({
+        mode: notificationDeliveryMode,
+        queue: notificationQueueRuntime?.queue,
+        metrics
+      });
+    }
 
-const server = createWiseEffServerFromEnv({
-  db,
-  objectStore,
-  objectStoreHealth: objectStore,
-  logAnalysisQueue: logAnalysisQueueRuntime?.queue,
-  debugGateway,
-  debugGatewayRegistry,
-  durableQueue: logAnalysisQueueRuntime?.queue,
-  env,
-  metrics,
-  knowledgeEmbeddingClient,
-  deviceBridge: {
-    connectionPool: bridgeConnectionPool,
-    rpcClient: bridgeRpcClient
+    server = createWiseEffServerFromEnv({
+      db,
+      catalogGovernanceDb,
+      objectStore,
+      objectStoreHealth: objectStore,
+      logAnalysisQueue: logAnalysisQueueRuntime?.queue,
+      debugGateway,
+      debugGatewayRegistry,
+      durableQueue: logAnalysisQueueRuntime?.queue,
+      env,
+      metrics,
+      knowledgeEmbeddingClient,
+      deviceBridge: {
+        connectionPool: bridgeConnectionPool,
+        rpcClient: bridgeRpcClient
+      },
+      logWebhooks: {
+        deliverer: logWebhookDeliverer,
+        allowInsecureLocal: env.LOG_WEBHOOK_ALLOW_INSECURE_LOCAL
+      }
+    });
+
+    async function start() {
+      if (env.NODE_ENV !== "production" && db && shouldEnsureLocalPostCutoverOnApiBoot(process.env)) {
+        try {
+          const cutover = await ensureLocalPostCutoverIdentity(db);
+          if (cutover.status === "already-complete") {
+            console.log("[local-post-cutover] already complete");
+          } else {
+            console.log(`[local-post-cutover] applied (run ${cutover.migrationRunId})`);
+          }
+        } catch (error) {
+          console.error("[local-post-cutover] refused to start API:", error);
+          throw new Error("PCAT-RUNTIME-API-START-FAILED");
+        }
+      }
+
+      if (db) {
+        const identityMode = await resolveParameterIdentityMode(db);
+        console.log(`[parameter-identity] mode: ${identityMode}`);
+      }
+
+      if (db && env.NODE_ENV !== "production") {
+        try {
+          const vectorEnsure = await ensureKnowledgeVectorColumn(db);
+          if (vectorEnsure.outcome === "installed") {
+            console.log(
+              `[knowledge-vector] embedding column installed (pgvector late install); re-enqueued ${vectorEnsure.enqueued} published entries for re-indexing`
+            );
+          } else if (vectorEnsure.outcome === "extension-install-failed") {
+            console.warn(
+              `[knowledge-vector] pgvector is available but could not be installed (${vectorEnsure.reason}); knowledge retrieval stays FTS-only`
+            );
+          }
+          // "extension-unavailable" and "already-present" are the steady states and stay quiet;
+          // /knowledge-admin reports the live retrieval mode either way.
+        } catch (error) {
+          console.error("[knowledge-vector] ensure failed; knowledge retrieval keeps its current mode:", error);
+        }
+      }
+
+      if (env.KNOWLEDGE_INDEX_WORKER_ENABLED && db) {
+        assertProcessInitializing(signal);
+        stopKnowledgeIndexWorker = startKnowledgeIndexWorkerLoop({ db, embeddingClient: knowledgeEmbeddingClient });
+      }
+
+      assertProcessInitializing(signal);
+      server!.listen(env.PORT, env.HOST, () => {
+        console.log(`WiseEff API listening on http://${env.HOST}:${env.PORT}`);
+      });
+    }
+
+    server.on("error", () => {
+      console.error("PCAT-RUNTIME-API-LISTENER-FAILED");
+      process.exitCode = 1;
+      void stop().catch(() => { console.error("PCAT-RUNTIME-API-SHUTDOWN-FAILED"); });
+    });
+    await start();
   },
-  logWebhooks: {
-    deliverer: logWebhookDeliverer,
-    allowInsecureLocal: env.LOG_WEBHOOK_ALLOW_INSECURE_LOCAL
-  }
+}).catch(error => {
+  const missingDatabase = error instanceof Error && error.message === "DATABASE_URL is required in production";
+  console.error(missingDatabase ? "DATABASE_URL is required in production"
+    : error instanceof Error && /^PCAT-[A-Z0-9-]+$/.test(error.message)
+      ? error.message : "PCAT-RUNTIME-API-START-FAILED");
+  process.exitCode = 1;
 });
-
-let shuttingDown = false;
-async function shutdown() {
-  if (shuttingDown) {
-    return;
-  }
-  shuttingDown = true;
-
-  await Promise.all([
-    stopLogWorker?.(),
-    stopLogWebhookDeliveryRetention?.(),
-    stopKnowledgeIndexWorker?.(),
-    stopNotificationWorker?.(),
-    logAnalysisQueueRuntime?.close().catch((error) => {
-      console.error("Failed to close log-analysis durable queue runtime.", error);
-    }),
-    notificationQueueRuntime?.close().catch((error) => {
-      console.error("Failed to close notification durable queue runtime.", error);
-    })
-  ]);
-
-  server.close(() => {
-    process.exit(0);
-  });
-}
-
-process.on("SIGINT", () => void shutdown());
-process.on("SIGTERM", () => void shutdown());
-
-async function start() {
-  if (db && shouldEnsureLocalPostCutoverOnApiBoot(process.env)) {
-    try {
-      const cutover = await ensureLocalPostCutoverIdentity(db);
-      if (cutover.status === "already-complete") {
-        console.log("[local-post-cutover] already complete");
-      } else {
-        console.log(`[local-post-cutover] applied (run ${cutover.migrationRunId})`);
-      }
-    } catch (error) {
-      console.error("[local-post-cutover] refused to start API:", error);
-      process.exit(1);
-    }
-  }
-
-  if (db) {
-    const identityMode = await resolveParameterIdentityMode(db);
-    console.log(`[parameter-identity] mode: ${identityMode}`);
-  }
-
-  if (db) {
-    try {
-      const vectorEnsure = await ensureKnowledgeVectorColumn(db);
-      if (vectorEnsure.outcome === "installed") {
-        console.log(
-          `[knowledge-vector] embedding column installed (pgvector late install); re-enqueued ${vectorEnsure.enqueued} published entries for re-indexing`
-        );
-      } else if (vectorEnsure.outcome === "extension-install-failed") {
-        console.warn(
-          `[knowledge-vector] pgvector is available but could not be installed (${vectorEnsure.reason}); knowledge retrieval stays FTS-only`
-        );
-      }
-      // "extension-unavailable" and "already-present" are the steady states and stay quiet;
-      // /knowledge-admin reports the live retrieval mode either way.
-    } catch (error) {
-      console.error("[knowledge-vector] ensure failed; knowledge retrieval keeps its current mode:", error);
-    }
-  }
-
-  if (env.KNOWLEDGE_INDEX_WORKER_ENABLED && db) {
-    stopKnowledgeIndexWorker = startKnowledgeIndexWorkerLoop({ db, embeddingClient: knowledgeEmbeddingClient });
-  }
-
-  server.listen(env.PORT, env.HOST, () => {
-    console.log(`WiseEff API listening on http://${env.HOST}:${env.PORT}`);
-  });
-}
-
-void start();

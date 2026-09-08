@@ -1,9 +1,10 @@
 import { randomUUID } from "node:crypto";
+import pg from "pg";
 import { describe, expect, it } from "vitest";
 
-import type { Queryable } from "../../shared/database/client";
+import { createDatabase, type Queryable } from "../../shared/database/client";
 import { seedCoreGraph } from "../../testing/fixtures";
-import { withTempDatabase } from "../../testing/tempDatabase";
+import { createEphemeralTestDatabase, createSerializedTestQueryable } from "../../testing/testDatabase";
 import { resolveDtsNodeCompatible } from "./sensitiveNode";
 
 const source = {
@@ -16,7 +17,17 @@ const mismatch = { code: "CONFLICT", details: { code: "parameter-sensitive-node-
 const scopeMismatch = { code: "CONFLICT", details: { code: "parameter-sensitive-source-version-mismatch" } };
 
 async function withSource(run: (db: Queryable) => Promise<void>) {
-  await withTempDatabase({ prefix: "sensitiveidentity" }, async ({ db }) => {
+  // These resolver cases require the current schema, not a migration replay.
+  // Clone the fingerprinted migrations template into a new database per case;
+  // preserve the real single-session FIFO queries and all independently seeded rows.
+  const database = await createEphemeralTestDatabase("sensitiveidentity");
+  const client = new pg.Client({ connectionString: database.url });
+  try {
+    await client.connect();
+    const db = createDatabase(createSerializedTestQueryable(async (text, values = []) => {
+      const result = await client.query(text, values);
+      return { rows: result.rows, rowCount: result.rowCount };
+    }));
     await seedCoreGraph(db, { organization: { id: source.organizationId }, projects: [{ id: source.projectId }] });
     await seedCoreGraph(db, { organization: { id: "identity-org-b" }, projects: [{ id: "identity-project-b" }] });
     await db.query(`insert into project_parameter_files (id, organization_id, project_id, file_name, format)
@@ -31,7 +42,10 @@ async function withSource(run: (db: Queryable) => Promise<void>) {
     [source.sourceFileVersionId]);
     await db.query("update project_parameter_files set current_version_id = 'identity-version-current' where id = 'identity-file-a'");
     await run(db);
-  });
+  } finally {
+    try { await client.end(); }
+    finally { await database.drop(); }
+  }
 }
 
 async function node(db: Queryable, path: string, compatible: string | null, version = source.sourceFileVersionId) {

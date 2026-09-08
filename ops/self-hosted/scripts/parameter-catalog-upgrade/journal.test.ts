@@ -1,20 +1,320 @@
-import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, statSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+
+const faults = vi.hoisted(() => ({ directoryInode: null as number | null }));
+vi.mock("node:fs", async importOriginal => {
+  const fs = await importOriginal<typeof import("node:fs")>();
+  return { ...fs, fsyncSync(fd: number) {
+    if (faults.directoryInode === fs.fstatSync(fd).ino) throw Object.assign(new Error("synthetic-fsync-failure"), { code: "EIO" });
+    return fs.fsyncSync(fd);
+  } };
+});
 
 import {
   commitJournalTransition,
   journalBytes,
   loadUpgradeJournal,
   openUpgradeJournal,
+  canonicalJson,
+  sha256Prefixed,
+  type RecoveryCaptureEvent,
+  type BootstrapRetirementEvent,
 } from "./journal";
+import { openCatalogUpgradeController } from "./controller";
+import { createActivationIntent } from "../../../../server/modules/catalog-cutover/activation/index";
 
 const tempJournal = (): string =>
   path.join(mkdtempSync(path.join(tmpdir(), "s11-upg-journal-")), "journal.json");
 
 describe("S11-UPG journal", () => {
+  it("explicit new-run creation refuses an existing journal without adopting or rewriting it", () => {
+    const journalPath = tempJournal();
+    expect(openUpgradeJournal({ journalPath, runId: "new-artifact", requireNew: true }).ok).toBe(true);
+    const original = readFileSync(journalPath);
+    expect(openUpgradeJournal({ journalPath, runId: "new-artifact", requireNew: true }).ok).toBe(false);
+    expect(openUpgradeJournal({ journalPath, runId: "another-run", requireNew: true }).ok).toBe(false);
+    expect(readFileSync(journalPath)).toEqual(original);
+    expect(openUpgradeJournal({ journalPath, runId: "new-artifact" }).ok).toBe(true);
+  });
+  it("new-run creation preserves a dangling path or an unknown writer outcome", () => {
+    const journalPath = tempJournal();
+    symlinkSync(`${journalPath}.missing`, journalPath);
+    expect(openUpgradeJournal({ journalPath, runId: "new-artifact", requireNew: true }).ok).toBe(false);
+    const unknown = tempJournal();
+    writeFileSync(`${unknown}.write-lock`, "retained-unknown-outcome", { mode: 0o600 });
+    expect(openUpgradeJournal({ journalPath: unknown, runId: "new-artifact", requireNew: true }).ok).toBe(false);
+    expect(readFileSync(`${unknown}.write-lock`, "utf8")).toBe("retained-unknown-outcome");
+    expect(existsSync(unknown)).toBe(false);
+  });
+  it.each(["valid", "orphan-step", "cross-host", "cross-run", "cross-target", "capture-digest", "package", "extra-secret",
+    "wrong-hash", "wrong-attempt", "wrong-version", "unknown-promotion", "replay", "state-change"])("keeps bootstrap retirement evidence scoped without issuing P13: %s", fault => {
+    const opened = openUpgradeJournal({ journalPath: tempJournal(), runId: "retirement-host" });
+    if (!opened.ok) throw new Error("fixture-open-failed");
+    const journal = opened.value, hash = `sha256:${"b".repeat(64)}`;
+    expect(commitJournalTransition(journal, { action: "bind-cutover", inputDigest: "bind", cutoverRunId: "cutover", planDigest: hash,
+      toState: "idle", nextAction: "plan" }).ok).toBe(true);
+    const source = { deploymentId: "deployment", hostFingerprint: "host", postgresIdentity: "pg", objectStoreIdentity: "objects", redisIdentity: "redis" };
+    const capture = { runId: "retirement-host", source, packageDigest: "b".repeat(64), recoveryPointDigest: hash, boundaryDigest: "c".repeat(64) };
+    const pending: RecoveryCaptureEvent = { runId: "retirement-host", attemptId: "capture", outcome: "pending", source,
+      directory: { path: "/private/storage-fixture-package", device: "1", inode: "2" } };
+    for (const event of [pending, { ...pending, outcome: "committed" as const, capture }]) expect(commitJournalTransition(journal, {
+      action: event.outcome === "pending" ? "recovery-capture-pending" : "recovery-package-captured",
+      inputDigest: sha256Prefixed(canonicalJson(event.outcome === "pending" ? event : capture)), toState: "idle", nextAction: "plan",
+      outcome: event.outcome === "pending" ? "crashed" : "committed", recoveryCapture: event }).ok).toBe(true);
+    // Deliberately storage-only data. No approved report, P12 SQL result or
+    // credential mutation is manufactured by this journal parser fixture.
+    const event: BootstrapRetirementEvent = { outcome: "pending", intent: { hostRunId: "retirement-host",
+      captureDigest: sha256Prefixed(canonicalJson(capture)), rootRequestDigest: hash, credentialVersion: "d".repeat(32),
+      rootBinding: { contract: "pcat-bootstrap-application-authentication-v1", runId: "cutover", attemptId: "authentication",
+        activationIntent: createActivationIntent({ runId: "cutover", attemptId: "activation", target: { systemIdentifier: "100", databaseOid: "200" },
+          planDigest: hash, reportDigest: hash, predecessorBindingDigest: null, expectedObservationDigest: hash }),
+        target: { systemIdentifier: "100", databaseOid: "200" }, activationBindingDigest: hash, handoffDigest: hash,
+        recoveryPackageDigest: capture.packageDigest, recoveryPointDigest: hash, roleName: "postgres", custodyDirectory: "/private/storage-fixture-custody" } } };
+    const append = (value: BootstrapRetirementEvent) => commitJournalTransition(journal, { action: `bootstrap-retirement-${value.outcome}`,
+      inputDigest: sha256Prefixed(canonicalJson(value)), toState: "idle", nextAction: "plan",
+      outcome: value.outcome === "credential-step" ? "committed" : "crashed", bootstrapRetirement: value });
+    if (["valid", "wrong-attempt", "wrong-version", "unknown-promotion", "replay"].includes(fault)) {
+      expect(append(event).ok).toBe(true);
+      if (fault === "unknown-promotion") expect(append({ ...event, outcome: "unknown" }).ok).toBe(true);
+      const next = structuredClone(event);
+      if (fault === "wrong-attempt") Reflect.set(next.intent.rootBinding, "attemptId", "other");
+      if (fault === "wrong-version") Reflect.set(next.intent, "credentialVersion", "e".repeat(32));
+      const before = journalBytes(journal.journalPath);
+      expect(append(fault === "replay" ? event : { ...next, outcome: "credential-step", credentialIntentDigest: hash }).ok).toBe(fault === "valid");
+      if (fault !== "valid") expect(journalBytes(journal.journalPath)).toEqual(before);
+    } else {
+      const next = structuredClone(event);
+      if (fault === "orphan-step") Object.assign(next, { outcome: "credential-step", credentialIntentDigest: hash });
+      if (fault === "cross-host") Reflect.set(next.intent, "hostRunId", "other");
+      if (fault === "cross-run") Reflect.set(next.intent.rootBinding, "runId", "other");
+      if (fault === "cross-target") Reflect.set(next.intent.rootBinding.target, "databaseOid", "201");
+      if (fault === "capture-digest") Reflect.set(next.intent, "captureDigest", `sha256:${"e".repeat(64)}`);
+      if (fault === "package") Reflect.set(next.intent.rootBinding, "recoveryPackageDigest", "e".repeat(64));
+      if (fault === "extra-secret") Reflect.set(next.intent, "password", "private-fixture-secret");
+      const draft = { action: `bootstrap-retirement-${next.outcome}`, inputDigest: fault === "wrong-hash" ? "wrong" : sha256Prefixed(canonicalJson(next)),
+        toState: fault === "state-change" ? "planned" as const : "idle" as const, nextAction: "plan" as const, outcome: "crashed" as const, bootstrapRetirement: next };
+      const before = journalBytes(journal.journalPath);
+      expect(commitJournalTransition(journal, draft).ok).toBe(false);
+      expect(journalBytes(journal.journalPath)).toEqual(before);
+    }
+    expect(journal.record.state).toBe("idle");
+  });
+  it("compares the complete in-memory record before appending, not its claimed digest alone", () => {
+    const opened = openUpgradeJournal({ journalPath: tempJournal(), runId: "cas" });
+    if (!opened.ok) throw new Error("fixture-open-failed");
+    const journal = opened.value;
+    expect(commitJournalTransition(journal, { action: "first", inputDigest: "first", toState: "idle", nextAction: "plan" }).ok).toBe(true);
+    const bytes = journalBytes(journal.journalPath);
+    Object.assign(journal.record.entries[0]!, { action: "altered-history" });
+    expect(commitJournalTransition(journal, { action: "second", inputDigest: "second", toState: "idle", nextAction: "plan" }).ok).toBe(false);
+    expect(journalBytes(journal.journalPath)).toEqual(bytes);
+  });
+  it("does not silently discard a typed activation pending payload", () => {
+    const opened = openUpgradeJournal({ journalPath: tempJournal(), runId: "host" });
+    if (!opened.ok) throw new Error("fixture-open-failed");
+    const journal = opened.value;
+    expect(commitJournalTransition(journal, { action: "bind-cutover", inputDigest: "bind", cutoverRunId: "cutover",
+      toState: "idle", nextAction: "plan" }).ok).toBe(true);
+    const body = { runId: "cutover", attemptId: "activation", target: { systemIdentifier: "123", databaseOid: "456" },
+      planDigest: `sha256:${"a".repeat(64)}`, predecessorBindingDigest: null,
+      reportDigest: `sha256:${"b".repeat(64)}`, expectedObservationDigest: `sha256:${"c".repeat(64)}` };
+    const activation = { hostRunId: "host", outcome: "pending", intent: createActivationIntent(body) };
+    expect(commitJournalTransition(journal, { action: "activation-pending", inputDigest: sha256Prefixed(canonicalJson(activation)),
+      toState: "idle", nextAction: "plan", outcome: "crashed", activation } as Parameters<typeof commitJournalTransition>[1]).ok).toBe(true);
+    const loaded = loadUpgradeJournal({ journalPath: journal.journalPath, runId: "host" });
+    expect(loaded.ok && loaded.value.record.entries.at(-1)).toHaveProperty("activation", activation);
+  });
+  it("retains an uncertain activation persistence lock after directory fsync fails", () => {
+    const journalPath = tempJournal();
+    const opened = openUpgradeJournal({ journalPath, runId: "host" });
+    if (!opened.ok) throw new Error("fixture-open-failed");
+    const journal = opened.value;
+    expect(commitJournalTransition(journal, { action: "bind-cutover", inputDigest: "bind", cutoverRunId: "cutover",
+      toState: "idle", nextAction: "plan" }).ok).toBe(true);
+    const body = { runId: "cutover", attemptId: "activation", target: { systemIdentifier: "123", databaseOid: "456" },
+      planDigest: `sha256:${"a".repeat(64)}`, predecessorBindingDigest: null,
+      reportDigest: `sha256:${"b".repeat(64)}`, expectedObservationDigest: `sha256:${"c".repeat(64)}` };
+    const activation = { hostRunId: "host", outcome: "pending" as const, intent: createActivationIntent(body) };
+    faults.directoryInode = statSync(path.dirname(journalPath)).ino;
+    try {
+      expect(commitJournalTransition(journal, { action: "activation-pending", inputDigest: sha256Prefixed(canonicalJson(activation)),
+        toState: "idle", nextAction: "plan", outcome: "crashed", activation }).ok).toBe(false);
+      expect(existsSync(`${journalPath}.write-lock`)).toBe(true);
+      expect(loadUpgradeJournal({ journalPath, runId: "host", requireSettled: true }).ok).toBe(false);
+      const diagnostic = loadUpgradeJournal({ journalPath, runId: "host" });
+      expect(diagnostic.ok && diagnostic.value.record.entries.at(-1)?.activation?.outcome).toBe("pending");
+    } finally { faults.directoryInode = null; }
+  });
+  it.each(["valid", "orphan", "cross-run", "reference", "principal", "target", "hash-only", "started", "unknown", "pending-capture", "phase", "next-action"])("persists only capture-bound typed recovery approval: %s", fault => {
+    const opened = openUpgradeJournal({ journalPath: tempJournal(), runId: "approval" });
+    if (!opened.ok) throw new Error("fixture-open-failed");
+    const journal = opened.value;
+    const source = { deploymentId: "source", hostFingerprint: "host", postgresIdentity: "pg", objectStoreIdentity: "objects", redisIdentity: "redis" };
+    const capture = { runId: "approval", source, packageDigest: "a".repeat(64), recoveryPointDigest: `sha256:${"b".repeat(64)}`, boundaryDigest: "c".repeat(64) };
+    const pending: RecoveryCaptureEvent = { attemptId: "capture", runId: "approval", outcome: "pending", source,
+      directory: { path: "/private/synthetic-package", device: "1", inode: "2" } };
+    const append = (action: string, inputDigest: string) => commitJournalTransition(journal, { action, inputDigest, toState: "idle", nextAction: "plan" });
+    if (fault !== "orphan") {
+      for (const event of [pending, { ...pending, outcome: "committed" as const, capture }]) {
+        expect(commitJournalTransition(journal, { action: event.outcome === "pending" ? "recovery-capture-pending" : "recovery-package-captured",
+          inputDigest: sha256Prefixed(canonicalJson(event.outcome === "pending" ? event : capture)), toState: "idle", nextAction: "plan",
+          outcome: event.outcome === "pending" ? "crashed" : "committed", recoveryCapture: event }).ok).toBe(true);
+      }
+    }
+    const body = { assignmentDigest: `sha256:${"d".repeat(64)}`, runId: fault === "cross-run" ? "other" : "approval", attemptId: "restore",
+      captureDigest: sha256Prefixed(canonicalJson(capture)), target: { ...source, deploymentId: "target" },
+      principal: { userId: "operator", organizationId: "organization" }, traceId: "trace", expiresAt: "2099-01-01T00:00:00.000Z" };
+    const event = { approval: { runId: body.runId, attemptId: body.attemptId, captureDigest: body.captureDigest, target: body.target,
+      expiresAt: body.expiresAt, approvalReference: sha256Prefixed(canonicalJson(body)) },
+      assignmentDigest: body.assignmentDigest, principal: body.principal, traceId: body.traceId };
+    if (fault === "reference") event.approval.approvalReference = `sha256:${"e".repeat(64)}`;
+    if (fault === "principal") event.principal.userId = "different";
+    if (fault === "target") event.approval.target.postgresIdentity = "different";
+    const inputDigest = sha256Prefixed(canonicalJson(event.approval));
+    if (fault === "hash-only") expect(append("recovery-execution-authorized", inputDigest).ok).toBe(true);
+    if (fault === "started" || fault === "unknown") expect(append(fault === "started" ? "recovery-execution-started" : "recovery-execution-outcome-unknown", "previous").ok).toBe(true);
+    if (fault === "pending-capture") {
+      const next = { ...pending, attemptId: "next-capture" };
+      expect(commitJournalTransition(journal, { action: "recovery-capture-pending", inputDigest: sha256Prefixed(canonicalJson(next)),
+        toState: "idle", nextAction: "plan", outcome: "crashed", recoveryCapture: next }).ok).toBe(true);
+    }
+    const before = journalBytes(journal.journalPath);
+    const draft = { action: "recovery-execution-authorized", inputDigest, toState: "idle" as const,
+      nextAction: fault === "next-action" ? "execute" as const : "plan" as const, recoveryApproval: event };
+    if (fault === "phase") Reflect.set(draft, "toState", "completed");
+    expect(commitJournalTransition(journal, draft).ok).toBe(fault === "valid");
+    if (fault === "valid") {
+      const loaded = loadUpgradeJournal({ journalPath: journal.journalPath, runId: "approval" });
+      expect(loaded.ok && loaded.value.record.entries.at(-1)?.recoveryApproval).toEqual(event);
+      expect(commitJournalTransition(journal, draft)).toMatchObject({ ok: true, value: { replayed: true } });
+      const laterBody = { ...body, attemptId: "next-restore" };
+      const laterEvent = { ...event, approval: { ...event.approval, attemptId: "next-restore", approvalReference: sha256Prefixed(canonicalJson(laterBody)) } };
+      expect(commitJournalTransition(journal, { ...draft, inputDigest: sha256Prefixed(canonicalJson(laterEvent.approval)), recoveryApproval: laterEvent }).ok).toBe(true);
+      const latest = journalBytes(journal.journalPath);
+      expect(commitJournalTransition(journal, draft).ok).toBe(false);
+      expect(journalBytes(journal.journalPath)).toEqual(latest);
+    } else expect(journalBytes(journal.journalPath)).toEqual(before);
+  });
+  it.each(["phase-change", "numeric-inode", "numeric-attempt"])("does not coerce or grant phases through capture metadata: %s", fault => {
+    const opened = openUpgradeJournal({ journalPath: tempJournal(), runId: "capture" });
+    if (!opened.ok) throw new Error("fixture-open-failed");
+    const event = { attemptId: fault === "numeric-attempt" ? 1 : "capture-one", runId: "capture", outcome: "pending",
+      source: { deploymentId: "isolated", hostFingerprint: "host", postgresIdentity: "pg", objectStoreIdentity: "objects", redisIdentity: "redis" },
+      directory: { path: "/private/synthetic-package", device: "1", inode: fault === "numeric-inode" ? 2 : "2" } };
+    const before = journalBytes(opened.value.journalPath);
+    const draft = { action: "recovery-capture-pending", inputDigest: sha256Prefixed(canonicalJson(event)),
+      toState: "idle" as const, nextAction: "plan" as const, outcome: "crashed" as const, recoveryCapture: event as RecoveryCaptureEvent };
+    if (fault === "phase-change") Reflect.set(draft, "toState", "completed");
+    expect(commitJournalTransition(opened.value, draft).ok).toBe(false);
+    expect(journalBytes(opened.value.journalPath)).toEqual(before);
+  });
+  it("does not promote a historical hash-only capture by replaying a typed payload", () => {
+    const opened = openUpgradeJournal({ journalPath: tempJournal(), runId: "capture" });
+    if (!opened.ok) throw new Error("fixture-open-failed");
+    const source = { deploymentId: "isolated", hostFingerprint: "host", postgresIdentity: "pg", objectStoreIdentity: "objects", redisIdentity: "redis" };
+    const capture = { runId: "capture", source, packageDigest: "a".repeat(64), recoveryPointDigest: `sha256:${"b".repeat(64)}`, boundaryDigest: "c".repeat(64) };
+    const draft = { action: "recovery-package-captured", inputDigest: sha256Prefixed(canonicalJson(capture)), toState: "idle" as const, nextAction: "plan" as const };
+    expect(commitJournalTransition(opened.value, draft).ok).toBe(true);
+    const before = journalBytes(opened.value.journalPath);
+    expect(commitJournalTransition(opened.value, { ...draft, recoveryCapture: { attemptId: "capture-one", runId: "capture", outcome: "committed", source,
+      directory: { path: "/private/synthetic-package", device: "1", inode: "2" }, capture } }).ok).toBe(false);
+    expect(journalBytes(opened.value.journalPath)).toEqual(before);
+  });
+  it("persists typed capture intent and outcome without promoting an old hash-only record", () => {
+    const journalPath = tempJournal();
+    const opened = openUpgradeJournal({ journalPath, runId: "capture" });
+    if (!opened.ok) throw new Error("fixture-open-failed");
+    const source = { deploymentId: "isolated", hostFingerprint: "host", postgresIdentity: "pg", objectStoreIdentity: "objects", redisIdentity: "redis" };
+    const pending: RecoveryCaptureEvent = { attemptId: "capture-one", runId: "capture", outcome: "pending", source,
+      directory: { path: "/private/synthetic-package", device: "1", inode: "2" } };
+    expect(commitJournalTransition(opened.value, { action: "recovery-capture-pending", inputDigest: sha256Prefixed(canonicalJson(pending)),
+      toState: "idle", nextAction: "plan", outcome: "crashed", recoveryCapture: pending }).ok).toBe(true);
+    const capture = { runId: "capture", source, packageDigest: "a".repeat(64), recoveryPointDigest: `sha256:${"b".repeat(64)}`, boundaryDigest: "c".repeat(64) };
+    const committed: RecoveryCaptureEvent = { ...pending, outcome: "committed", capture };
+    expect(commitJournalTransition(opened.value, { action: "recovery-package-captured", inputDigest: sha256Prefixed(canonicalJson(capture)),
+      toState: "idle", nextAction: "plan", recoveryCapture: committed }).ok).toBe(true);
+    const loaded = loadUpgradeJournal({ journalPath, runId: "capture" });
+    expect(loaded.ok && loaded.value.record.entries.at(-1)?.recoveryCapture).toEqual(committed);
+  });
+
+  it.each(["cross-run", "wrong-action", "changed-source", "orphan", "payload-hash", "packageDigest", "recoveryPointDigest", "boundaryDigest",
+    "nextAction", "planDigest", "cutoverRunId", "verificationPlanDigest", "verificationAttemptDigest"])("refuses typed capture %s before publishing a new journal", fault => {
+    const journalPath = tempJournal();
+    const opened = openUpgradeJournal({ journalPath, runId: "capture" });
+    if (!opened.ok) throw new Error("fixture-open-failed");
+    const source = { deploymentId: "isolated", hostFingerprint: "host", postgresIdentity: "pg", objectStoreIdentity: "objects", redisIdentity: "redis" };
+    const pending: RecoveryCaptureEvent = { attemptId: "capture-one", runId: "capture", outcome: "pending", source,
+      directory: { path: "/private/synthetic-package", device: "1", inode: "2" } };
+    if (fault !== "orphan") expect(commitJournalTransition(opened.value, { action: "recovery-capture-pending", inputDigest: sha256Prefixed(canonicalJson(pending)),
+      toState: "idle", nextAction: "plan", outcome: "crashed", recoveryCapture: pending }).ok).toBe(true);
+    const capture = { runId: fault === "cross-run" ? "other" : "capture", source: fault === "changed-source" ? { ...source, postgresIdentity: "other" } : source,
+      packageDigest: "a".repeat(64), recoveryPointDigest: `sha256:${"b".repeat(64)}`, boundaryDigest: "c".repeat(64) };
+    const event: RecoveryCaptureEvent = { ...pending, outcome: "committed", capture };
+    if (["packageDigest", "recoveryPointDigest", "boundaryDigest"].includes(fault)) {
+      const field = fault as "packageDigest" | "recoveryPointDigest" | "boundaryDigest";
+      Object.assign(capture, { [field]: [capture[field]] });
+    }
+    const control = ["planDigest", "cutoverRunId", "verificationPlanDigest", "verificationAttemptDigest"].includes(fault) ? { [fault]: "changed" } : {};
+    const before = journalBytes(journalPath);
+    expect(commitJournalTransition(opened.value, { action: fault === "wrong-action" ? "plan" : "recovery-package-captured",
+      inputDigest: fault === "payload-hash" ? "wrong" : sha256Prefixed(canonicalJson(capture)),
+      toState: "idle", nextAction: fault === "nextAction" ? "execute" : "plan", ...control, recoveryCapture: event }).ok).toBe(false);
+    expect(journalBytes(journalPath)).toEqual(before);
+  });
+  it("keeps rename-then-fsync failure inspectable but blocks a reopened controller before owners", async () => {
+    const journalPath = tempJournal();
+    const opened = openUpgradeJournal({ journalPath, runId: "rename-unknown" });
+    if (!opened.ok) throw new Error("fixture-open-failed");
+    faults.directoryInode = statSync(path.dirname(journalPath)).ino;
+    try {
+      expect(commitJournalTransition(opened.value, { action: "plan", inputDigest: "uncertain-plan", toState: "planned", nextAction: "execute" }).ok).toBe(false);
+    } finally { faults.directoryInode = null; }
+    expect(existsSync(`${journalPath}.write-lock`)).toBe(true);
+    const diagnostic = loadUpgradeJournal({ journalPath, runId: "rename-unknown" });
+    expect(diagnostic.ok && diagnostic.value.record.state).toBe("planned");
+    const owner = vi.fn(() => { throw new Error("must-not-call-owner"); });
+    const reopened = openCatalogUpgradeController({ journalPath, runId: "rename-unknown", cutover: { plan: owner, execute: owner, inspect: owner, recover: owner }, verification: { prepareVerification: owner, runVerification: owner } });
+    if (!reopened.ok) throw new Error("fixture-reopen-failed");
+    for (const action of ["plan", "execute", "resume", "runVerification"]) {
+      const result = await reopened.value.dispatch({ action });
+      expect(result.ok ? "unexpected-success" : result.error.code).toBe("PCAT-UPG-UNKNOWN-OUTCOME");
+    }
+    expect(owner).not.toHaveBeenCalled();
+  });
+  it("does not treat a directory left by failed parent fsync as durable on retry", () => {
+    const parent = mkdtempSync(path.join(tmpdir(), "upg-directory-durability-"));
+    const directory = path.join(parent, "created", "child");
+    const journalPath = path.join(directory, "run.json");
+    faults.directoryInode = statSync(parent).ino;
+    try {
+      expect(openUpgradeJournal({ journalPath, runId: "directory" }).ok).toBe(false);
+      expect(existsSync(path.join(parent, "created"))).toBe(true);
+      expect(openUpgradeJournal({ journalPath, runId: "directory" }).ok).toBe(false);
+    } finally { faults.directoryInode = null; }
+    expect(openUpgradeJournal({ journalPath, runId: "directory" }).ok).toBe(true);
+  });
+  it("rejects a stale handle instead of overwriting another committed transition", () => {
+    const journalPath = tempJournal();
+    const first = openUpgradeJournal({ journalPath, runId: "cas" });
+    const stale = openUpgradeJournal({ journalPath, runId: "cas" });
+    if (!first.ok || !stale.ok) throw new Error("fixture-open-failed");
+    expect(commitJournalTransition(first.value, { action: "plan", inputDigest: "plan", toState: "planned", nextAction: "execute" }).ok).toBe(true);
+    const before = journalBytes(journalPath);
+    expect(commitJournalTransition(stale.value, { action: "execute", inputDigest: "other", toState: "executing", nextAction: "inspect" }).ok).toBe(false);
+    expect(journalBytes(journalPath)).toEqual(before);
+  });
+
+  it("refuses a journal symlink before reading or replacing its target", () => {
+    const journalPath = tempJournal();
+    const original = openUpgradeJournal({ journalPath, runId: "link" });
+    expect(original.ok).toBe(true);
+    const link = `${journalPath}.link`;
+    symlinkSync(journalPath, link);
+    expect(loadUpgradeJournal({ journalPath: link, runId: "link" }).ok).toBe(false);
+  });
   it("T1 commits a legal transition and replays it without rewriting bytes", () => {
     const journalPath = tempJournal();
     const opened = openUpgradeJournal({ journalPath, runId: "run-legal" });

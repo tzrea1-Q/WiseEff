@@ -1,0 +1,236 @@
+import { chmod, link, mkdtemp, readFile, realpath, rename, rm, stat, symlink, writeFile } from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
+import { expect, it, vi } from "vitest";
+const filesystemRace = vi.hoisted(() => ({ afterLstat: undefined as undefined | ((file: string) => Promise<void>),
+  onMarkerOpen: undefined as undefined | ((handle: { fd: number }) => void) }));
+vi.mock("node:fs/promises", async importOriginal => {
+  const actual = await importOriginal<typeof import("node:fs/promises")>();
+  return { ...actual, lstat: async (...args: Parameters<typeof actual.lstat>) => {
+    const value = await actual.lstat(...args);
+    await filesystemRace.afterLstat?.(String(args[0]));
+    return value;
+  }, open: async (...args: Parameters<typeof actual.open>) => {
+    const handle = await actual.open(...args);
+    if (String(args[0]).endsWith("/retained-evidence.json")) filesystemRace.onMarkerOpen?.(handle);
+    return handle;
+  } };
+});
+import { openUpgradeJournal, commitJournalTransition, loadUpgradeJournal } from "../../scripts/parameter-catalog-upgrade/journal";
+import { withHostOperationLock } from "../../scripts/parameter-catalog-upgrade/handoff";
+import { captureRecoveryPackage, verifyRecoveryPackage } from "../recoveryPackage";
+import { mintRestoreToken } from "../recoveryPoint";
+import { createControlledRecoveryTarget, restoreRecoveryPackage } from "./packageRestore";
+import { createRecoveryExecutionAuthorization, recoveryExecutionRecordDigest, RECOVERY_EXECUTION_EVENTS,
+  type RecoveryCaptureRecord, type RecoveryExecutionApproval } from "./authorization";
+import { createSyntheticRecoveryEvidence, recordSyntheticCaptureEvent, syntheticRecoveryApprovalEvent } from "./authorization.fixture";
+
+const source = { deploymentId: "source", hostFingerprint: "host", postgresIdentity: "pg", objectStoreIdentity: "s3", redisIdentity: "aof" };
+const target = { deploymentId: "target", hostFingerprint: "host", postgresIdentity: "pg2", objectStoreIdentity: "s32", redisIdentity: "aof2" };
+
+it.each(["accepted", "failed"] as const)("settles only its owned synthetic evidence and retains failed restore state: %s", async outcome => {
+  let descriptor: { fd: number } | undefined;
+  filesystemRace.onMarkerOpen = handle => { descriptor = handle; };
+  const evidence = await createSyntheticRecoveryEvidence();
+  filesystemRace.onMarkerOpen = undefined;
+  try {
+    const journalPath = path.join(evidence.directory, "controller.json");
+    const opened = openUpgradeJournal({ journalPath, runId: "retention-run" });
+    if (!opened.ok) throw new Error("fixture journal unavailable");
+    expect(commitJournalTransition(opened.value, { action: RECOVERY_EXECUTION_EVENTS.started,
+      inputDigest: "sha256:" + "a".repeat(64), toState: opened.value.record.state,
+      nextAction: opened.value.record.nextAction, outcome: "crashed" }).ok).toBe(true);
+    await writeFile(path.join(evidence.directory, "package.fixture"), "synthetic-package", { mode: 0o600 });
+    expect((await evidence.finish(outcome)).retained).toBe(true);
+    expect(descriptor?.fd).toBe(-1);
+      expect((await stat(evidence.directory)).mode & 0o777).toBe(0o700);
+      expect((await stat(path.join(evidence.directory, "retained-evidence.json"))).mode & 0o777).toBe(0o600);
+      expect(JSON.parse(await readFile(path.join(evidence.directory, "retained-evidence.json"), "utf8")))
+        .toMatchObject({ status: "private-synthetic-evidence-retained", outcome });
+      expect(await readFile(path.join(evidence.directory, "package.fixture"), "utf8")).toBe("synthetic-package");
+      const loaded = loadUpgradeJournal({ journalPath, runId: "retention-run" });
+      expect(loaded.ok).toBe(true);
+      if (loaded.ok) expect(loaded.value.record.entries.at(-1)).toMatchObject({ action: RECOVERY_EXECUTION_EVENTS.started, outcome: "crashed" });
+      await expect(evidence.finish("accepted")).rejects.toThrow("already-settled");
+      expect(await readFile(journalPath, "utf8")).toContain("recovery-execution-started");
+  } finally {
+    // This unit has now accepted the retention behavior; it owns this fixture,
+    // contains no real backup, and deliberately disposes only its own directory.
+    await evidence.finish("failed").catch(() => undefined);
+    await rm(evidence.directory, { recursive: true, force: true });
+  }
+});
+
+it.each(["replacement", "hardlink", "permissions"])("refuses marker identity drift without writing through %s", async fault => {
+  const evidence = await createSyntheticRecoveryEvidence();
+  const marker = path.join(evidence.directory, "retained-evidence.json");
+  try {
+    if (fault === "replacement") {
+      await rename(marker, `${marker}.original`);
+      await writeFile(marker, "foreign-marker", { mode: 0o600 });
+    } else if (fault === "hardlink") await link(marker, `${marker}.shared`);
+    else await chmod(marker, 0o644);
+    await expect(evidence.finish("failed")).rejects.toThrow("synthetic-evidence-identity-drift");
+    expect(await readFile(marker, "utf8")).toBe(fault === "replacement" ? "foreign-marker" : "");
+  } finally {
+    await evidence.finish("failed").catch(() => undefined);
+    await rm(evidence.directory, { recursive: true, force: true });
+  }
+});
+
+it.each(["foreign-directory", "symlink", "permissions"])("refuses changed evidence directory identity before cleanup: %s", async fault => {
+  const evidence = await createSyntheticRecoveryEvidence();
+  const foreign = await createSyntheticRecoveryEvidence();
+  const moved = `${evidence.directory}-moved`;
+  try {
+    await writeFile(path.join(evidence.directory, "original.fixture"), "original-evidence");
+    await writeFile(path.join(foreign.directory, "foreign.fixture"), "foreign-evidence");
+    if (fault === "permissions") await chmod(evidence.directory, 0o755);
+    else {
+      await rename(evidence.directory, moved);
+      if (fault === "foreign-directory") await rename(foreign.directory, evidence.directory);
+      else await symlink(foreign.directory, evidence.directory, "dir");
+    }
+    await expect(evidence.finish("accepted")).rejects.toThrow("synthetic-evidence-identity-drift");
+    expect(await readFile(path.join(fault === "permissions" ? evidence.directory : moved, "original.fixture"), "utf8"))
+      .toBe("original-evidence");
+    expect(await readFile(path.join(fault === "foreign-directory" ? evidence.directory : foreign.directory, "foreign.fixture"), "utf8"))
+      .toBe("foreign-evidence");
+  } finally {
+    // Both directory identities and this rename/symlink were created by this
+    // unit. Disposing them after the accepted refusal is explicit fixture cleanup.
+    for (const owned of [evidence, foreign]) await owned.finish("failed").catch(() => undefined);
+    for (const directory of [evidence.directory, foreign.directory, moved]) await rm(directory, { recursive: true, force: true });
+  }
+});
+
+it.each(["directory-check", "marker-check"])("does not delete or write a foreign directory substituted after %s", async race => {
+  const evidence = await createSyntheticRecoveryEvidence();
+  const foreign = await createSyntheticRecoveryEvidence();
+  const moved = `${evidence.directory}-moved`;
+  const marker = path.join(evidence.directory, "retained-evidence.json");
+  let replaced = false;
+  try {
+    await writeFile(path.join(evidence.directory, "package.fixture"), "original-private-package");
+    await writeFile(path.join(foreign.directory, "foreign.fixture"), "foreign-data");
+    const foreignMarker = await readFile(path.join(foreign.directory, "retained-evidence.json")).catch(() => Buffer.alloc(0));
+    filesystemRace.afterLstat = async file => {
+      if (replaced || file !== (race === "directory-check" ? evidence.directory : marker)) return;
+      replaced = true;
+      await rename(evidence.directory, moved);
+      await rename(foreign.directory, evidence.directory);
+    };
+    await expect(evidence.finish("accepted")).rejects.toThrow("synthetic-evidence-identity-drift");
+    expect(replaced).toBe(true);
+    expect(await readFile(path.join(evidence.directory, "foreign.fixture"), "utf8")).toBe("foreign-data");
+    expect(await readFile(marker)).toEqual(foreignMarker);
+    expect(await readFile(path.join(moved, "package.fixture"), "utf8")).toBe("original-private-package");
+  } finally {
+    filesystemRace.afterLstat = undefined;
+    for (const owned of [evidence, foreign]) await owned.finish("failed").catch(() => undefined);
+    for (const directory of [evidence.directory, foreign.directory, moved]) await rm(directory, { recursive: true, force: true });
+  }
+});
+
+it("keeps the evidence fixture free of removal capabilities", async () => {
+  expect(await readFile(new URL("./authorization.fixture.ts", import.meta.url), "utf8"))
+    .not.toMatch(/\b(?:rm|rmdir|unlink)(?:Sync)?\b/);
+});
+
+it("refuses an empty caller authorization callback before performing restore", async () => {
+  expect(() => createControlledRecoveryTarget({ target, journalPath: "/unavailable", authorize: async () => {} } as never, {
+    observe: async () => target, assertEmptyAndIsolated: async () => {},
+    restorePostgres: async () => { throw new Error("must not run"); }, restoreObjects: async () => {}, restoreRedis: async () => {},
+  })).toThrow("execution-authorization-required");
+});
+
+it("refuses a forged target at the root execution entry before opening any package", async () => {
+  await expect(restoreRecoveryPackage("/must-not-read", "a".repeat(64), {
+    target, authorize: async () => {}, assertEmptyAndIsolated: async () => {}, restore: async () => {},
+  } as never)).rejects.toThrow("unissued-target");
+});
+
+it.each(["valid", "forged-lock", "released-lock", "wrong-lock-root", "hash-only-capture", "hash-only-approval", "unapproved", "wrong-token", "cross-run", "expired", "package-drift", "approval-revoked", "partial-failure", "lock-lost", "target-drift", "target-drift-after-empty"])("enforces persisted authorization and cross-store boundaries: %s", async fault => {
+  const root = await realpath(await mkdtemp(path.join(os.tmpdir(), "authorized-recovery-")));
+  const runId = "synthetic_run";
+  const events: string[] = [];
+  try {
+    const packageDigest = await captureRecoveryPackage(root, { runId, target: source,
+      quiescence: { status: "quiesced", writersFenced: true, queueDrained: true, proxyStopped: true, observedAt: new Date().toISOString() },
+      postgres: Buffer.from("synthetic-dump"), roles: [], objects: [{ key: "one", contentType: "text/plain", metadata: {}, bytes: Buffer.from("one") }],
+      redis: { appendonly: true, files: [{ name: "appendonly.aof.manifest", bytes: Buffer.from("file appendonly.aof.1.incr.aof seq 1 type i\n") },
+        { name: "appendonly.aof.1.incr.aof", bytes: Buffer.from("synthetic-aof") }] } });
+    const verified = await verifyRecoveryPackage(root, packageDigest);
+    const opened = openUpgradeJournal({ journalPath: path.join(root, "controller.json"), runId });
+    if (!opened.ok) throw new Error("fixture journal unavailable");
+    const journal = opened.value;
+    const capture: RecoveryCaptureRecord = { runId, packageDigest, recoveryPointDigest: verified.manifest.recovery.recoveryPointDigest,
+      source, boundaryDigest: "a".repeat(64) };
+    const approval: RecoveryExecutionApproval = { runId: fault === "cross-run" ? "other" : runId, attemptId: "attempt-a",
+      captureDigest: recoveryExecutionRecordDigest(capture), target, approvalReference: "isolated-synthetic-operator-action",
+      expiresAt: new Date(Date.now() + (fault === "expired" ? -1 : 60000)).toISOString() };
+    const recoveryApproval = syntheticRecoveryApprovalEvent(approval);
+    // Fixture acceptance only: these actual journal writes exercise the consumer;
+    // they are not a real controller/domain approval producer or release report.
+    const record = (action: string, inputDigest: string) => {
+      const result = commitJournalTransition(journal, { action, inputDigest, toState: journal.record.state, nextAction: journal.record.nextAction });
+      if (!result.ok) throw new Error("fixture journal append unavailable");
+    };
+    if (fault === "hash-only-capture") record(RECOVERY_EXECUTION_EVENTS.captured, recoveryExecutionRecordDigest(capture));
+    else await recordSyntheticCaptureEvent(journal, capture, root);
+    if (fault !== "unapproved") {
+      const typed = !["hash-only-capture", "hash-only-approval", "cross-run"].includes(fault);
+      expect(commitJournalTransition(journal, { action: RECOVERY_EXECUTION_EVENTS.authorized,
+        inputDigest: recoveryExecutionRecordDigest(approval), toState: journal.record.state, nextAction: journal.record.nextAction,
+        ...(typed ? { recoveryApproval } : {}) }).ok).toBe(true);
+    }
+    let previousLock: Parameters<typeof createRecoveryExecutionAuthorization>[0]["lock"] | undefined;
+    if (fault === "released-lock") await withHostOperationLock(root, async lock => { previousLock = lock; });
+    const execution = withHostOperationLock(fault === "wrong-lock-root" ? path.join(root, "wrong") : root, async lock => {
+      let emptyChecked = false;
+      const authorization = createRecoveryExecutionAuthorization({ journal, directory: root, capture, approval,
+        restoreToken: fault === "wrong-token" ? "restore-other.invalid" : mintRestoreToken(runId, capture.recoveryPointDigest),
+        lock: fault === "forged-lock" ? { assertHeld: async () => {} } : previousLock ?? lock });
+      const port = createControlledRecoveryTarget({ target, authorization }, {
+        observe: async () => (fault === "target-drift" && events.length || fault === "target-drift-after-empty" && emptyChecked) ? { ...target, redisIdentity: "wrong" } : target,
+        assertEmptyAndIsolated: async () => { emptyChecked = true; },
+        restorePostgres: async () => {
+          events.push("postgres");
+          if (fault === "package-drift") await writeFile(path.join(root, "payload-0.bin"), "tampered");
+          if (fault === "approval-revoked") record(RECOVERY_EXECUTION_EVENTS.revoked, recoveryExecutionRecordDigest(approval));
+          if (fault === "partial-failure") throw new Error("private-target-connection-must-not-leak");
+          if (fault === "lock-lost") {
+            const owner = await readFile(path.join(root, ".operation.lock.owner"), "utf8")
+              .catch(() => readFile(path.join(root, ".operation.lock.d", "owner"), "utf8"));
+            const pid = /^pid=([0-9]+)$/m.exec(owner)?.[1];
+            if (!pid || !owner.includes("operation=catalog-handoff\n")) throw new Error("fixture-lock-owner-unavailable");
+            process.kill(Number(pid), "SIGTERM");
+          }
+        },
+        restoreObjects: async () => { events.push("objects"); }, restoreRedis: async () => { events.push("redis"); },
+      });
+      expect(port).not.toHaveProperty("restore");
+      expect(port).not.toHaveProperty("authorize");
+      await expect(restoreRecoveryPackage(root, packageDigest, { ...port })).rejects.toThrow("unissued-target");
+      if (fault === "valid") {
+        expect(await restoreRecoveryPackage(root, packageDigest, port)).toMatchObject({ status: "restore-executed-not-business-verified" });
+        expect(events).toEqual(["postgres", "objects", "redis"]);
+      } else {
+        await expect(restoreRecoveryPackage(root, packageDigest, port)).rejects.toThrow(/recovery/);
+        expect(events).toEqual(["package-drift", "approval-revoked", "partial-failure", "lock-lost", "target-drift"].includes(fault) ? ["postgres"] : []);
+      }
+      const previous = [...events];
+      await expect(restoreRecoveryPackage(root, packageDigest, port)).rejects.toThrow(/recovery/);
+      expect(events).toEqual(previous);
+    });
+    if (fault === "lock-lost") await expect(execution).rejects.toThrow("handoff-lock-lost");
+    else await execution;
+    const loaded = loadUpgradeJournal({ journalPath: journal.journalPath, runId });
+    expect(loaded.ok).toBe(true);
+    if (loaded.ok && events.length) {
+      expect(loaded.value.record.entries.some(entry => entry.action === RECOVERY_EXECUTION_EVENTS.started)).toBe(true);
+      expect(loaded.value.record.entries.some(entry => entry.action === RECOVERY_EXECUTION_EVENTS.completed)).toBe(fault === "valid");
+      expect(await readFile(journal.journalPath, "utf8")).not.toContain("private-target-connection");
+    }
+  } finally { await rm(root, { recursive: true, force: true }); }
+});

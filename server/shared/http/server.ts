@@ -249,7 +249,9 @@ export function createHttpServer(
   router: { handle(request: RouteRequest): Promise<RouteResponse>; matchRoutePattern?: (method: HttpMethod, path: string) => string | undefined },
   options: { metrics?: MetricsRegistry; tracing?: Pick<TracingBoundary, "withSpan"> } = {}
 ) {
-  const server = createServer(async (request, response) => {
+  const activeRequests = new Set<Promise<void>>();
+  let failed = false;
+  const handle = async (request: IncomingMessage, response: ServerResponse) => {
     const startedAt = Date.now();
     const requestId = request.headers["x-request-id"]?.toString() ?? randomUUID();
     setCorsHeaders(request, response);
@@ -349,11 +351,26 @@ export function createHttpServer(
         });
       }
     }
+  };
+  const server = createServer((request, response) => {
+    // A disconnected socket does not cancel the router's async work. Keep its
+    // lifetime separate so shutdown cannot release its database prematurely.
+    const pending = handle(request, response).catch(() => {
+      failed = true;
+      response.destroy();
+    });
+    activeRequests.add(pending);
+    void pending.then(() => activeRequests.delete(pending));
   });
   // Node defaults keepAliveTimeout to 5s. Playwright's APIRequestContext
   // reuses sockets, so a browser-only case longer than 5s then POSTs
   // "socket hang up". headersTimeout must stay above keepAliveTimeout.
   server.keepAliveTimeout = 65_000;
   server.headersTimeout = 66_000;
-  return server;
+  return Object.assign(server, { async drainRequests() {
+    // The owner must stop HTTP admission before draining; repeat for requests
+    // already accepted by Node while the listener was closing.
+    while (activeRequests.size) await Promise.all([...activeRequests]);
+    if (failed) throw new Error("HTTP-REQUEST-DRAIN-FAILED");
+  } });
 }

@@ -20,7 +20,25 @@ export default defineConfig({
   test: {
     environment: "node",
     include: ["server/**/*.test.ts"],
-    exclude: ["node_modules/**", ...siblingWorktreeExclude],
+    // These cases deliberately contaminate cluster-wide capability roles/ACLs.
+    // Their mandatory PG16 lanes own separate clusters; worker databases alone
+    // cannot isolate these mutations from the shared server suite. runtimeState
+    // also requires the independently issued target receipt supplied by bindings-pg16.
+    exclude: ["node_modules/**", ...siblingWorktreeExclude,
+      "server/modules/release-verification/gates/postgres/writerReachability.integration.test.ts",
+      "server/shared/database/runtimeConnection.integration.test.ts",
+      "server/modules/logs/logAnalysisQueueRuntime.redis.integration.test.ts",
+      "server/modules/catalog-cutover/activation/activation.integration.test.ts",
+      "server/modules/catalog-cutover/retirement/loginFence.integration.test.ts",
+      "server/modules/catalog-cutover/retirement/bootstrapCredentialFence.integration.test.ts",
+      "server/modules/catalog-cutover/retirement/legacySqlPrivilegeFence.integration.test.ts",
+      "server/modules/catalog-kernel/security/catalogReader.integration.test.ts",
+      "server/modules/parameter-catalog-api/cghReadProjection.integration.test.ts",
+      "server/modules/parameter-governance/review/persistedQuery.integration.test.ts",
+      "server/modules/release-verification/startup/reportConnection.integration.test.ts",
+      "server/modules/catalog-cutover/bindingImportProducer.integration.test.ts",
+      "server/modules/catalog-cutover/managementStructure.test.ts",
+      "server/modules/catalog-cutover/runtimeState.test.ts"],
     setupFiles: ["./server/testing/vitest.setup.ts"],
     // Pre-builds the PG template database so no suite pays the build in its test budget.
     globalSetup: ["./server/testing/globalSetup.ts"],

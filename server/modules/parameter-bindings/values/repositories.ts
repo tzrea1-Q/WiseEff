@@ -186,13 +186,15 @@ export const insertProjectValue = async (
     readonly valueDigest: string;
     readonly valueKind: ProjectValueKind;
     readonly valueJson: string;
+    /** Management import preserves the source timestamp; ordinary writes use now(). */
+    readonly createdAt?: string;
   },
 ): Promise<ProjectValueRow | null> => {
   const result = await client.query<ProjectValueRow>(
     `insert into parameter_catalog.${projectParameterValues} (
        id, binding_id, definition_id, definition_revision_id,
-       source_ref, config_revision_id, value_digest, value_kind, value
-     ) values ($1,$2,$3,$4,$5,$6,$7,$8,$9::jsonb)
+       source_ref, config_revision_id, value_digest, value_kind, value, created_at
+     ) values ($1,$2,$3,$4,$5,$6,$7,$8,$9::jsonb,coalesce($10::timestamptz,now()))
      on conflict (id) do nothing
      returning id, binding_id, definition_id, definition_revision_id,
                source_ref, config_revision_id, value_digest, value_kind, value, created_at`,
@@ -206,6 +208,7 @@ export const insertProjectValue = async (
       input.valueDigest,
       input.valueKind,
       input.valueJson,
+      input.createdAt ?? null,
     ],
   );
   return result.rows[0] ?? null;

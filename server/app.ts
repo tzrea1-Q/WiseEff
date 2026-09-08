@@ -43,13 +43,51 @@ import type { TrustedRefusalAuditSink } from "./modules/audit/trustedRefusalSink
 import { registerProductFeedbackRoutes } from "./modules/product-feedback/routes";
 import { registerUserRoutes } from "./modules/users/routes";
 import { registerParameterCatalogApi } from "./modules/parameter-catalog-api/productionWire";
+import { readLegacyWriteRouteManifest, retiredCatalogWriteHandler } from "./modules/parameter-catalog-api/legacy/routes";
+import { digestOf } from "./modules/release-verification/core/digest";
 import { createHttpServer } from "./shared/http/server";
-import { createRouter, type RouteRequest } from "./shared/http/router";
+import { createRouter, type HttpMethod, type RouteRequest, type WiseEffRouter } from "./shared/http/router";
 import type { Database } from "./shared/database/client";
 import type { ServerEnv } from "./config/env";
 import type { JsonWebKey } from "node:crypto";
 
 type LocalAuthService = ReturnType<typeof createLocalAuthService>;
+
+type HttpWriterControls = {
+  kind: "legacy-http-writes-retired";
+  routes: Array<{ id: string; method: HttpMethod; path: string; disposition: "gone-410" }>;
+  registrationDigest: string;
+};
+const httpWriterControls = new WeakMap<WiseEffRouter, () => HttpWriterControls>();
+const retiredHttpRoutes = readLegacyWriteRouteManifest();
+
+/** Only the actual application registration owner can supply this HTTP subset.
+ * It is not artifact identity, database isolation or a P13 completion. */
+export function observeCatalogHttpWriterControls(router: WiseEffRouter): HttpWriterControls {
+  const observe = httpWriterControls.get(router);
+  if (!observe) throw new Error("PCAT-HTTP-WRITER-CONTROLS-UNISSUED");
+  return observe();
+}
+
+/** The candidate already owns these exact retired surfaces through #677's 410
+ * adapter. Do not also register their older implementation: equal routes use
+ * first-registration precedence. This filter grants no startup permission and
+ * leaves all non-retired routes, including bounded reads, unchanged. */
+function withoutRetiredCatalogRegistrations(router: WiseEffRouter): WiseEffRouter {
+  const retired = new Set(retiredHttpRoutes.map(route => `${route.method} ${route.path}`));
+  const register = (method: HttpMethod, add: WiseEffRouter["get"]): WiseEffRouter["get"] =>
+    (pattern, handler) => {
+      if (!retired.has(`${method} ${pattern}`)) add(pattern, handler);
+    };
+  return {
+    ...router,
+    get: register("GET", router.get),
+    post: register("POST", router.post),
+    put: register("PUT", router.put),
+    patch: register("PATCH", router.patch),
+    delete: register("DELETE", router.delete),
+  };
+}
 
 async function getCurrentAuthContext(options: { db?: Database }, request: RouteRequest) {
   const userId = request.headers["x-wiseeff-user"]?.toString() ?? developmentAuthContext.user.id;
@@ -81,6 +119,8 @@ type DeviceBridgeEnv = Pick<
 
 export type WiseEffServerOptions = {
   db?: Database;
+  /** Separate login used only by authenticated Catalog governance domain commands. */
+  catalogGovernanceDb?: Database;
   /** Optional server-owned DTS refusal writer when the supplied DB is not the pool root. */
   dtsReloadRefusalAuditSink?: TrustedRefusalAuditSink;
   objectStore?: ObjectStore;
@@ -108,6 +148,15 @@ export type WiseEffServerOptions = {
  */
 export function buildWiseEffRouter(options: WiseEffServerOptions = {}) {
   const router = createRouter();
+  const registrations: Array<{ method: HttpMethod; pattern: string; handler: Parameters<WiseEffRouter["get"]>[1] }> = [];
+  for (const method of ["get", "post", "put", "patch", "delete"] as const) {
+    const add = router[method];
+    router[method] = (pattern, handler) => {
+      add(pattern, handler);
+      registrations.push({ method: method.toUpperCase() as HttpMethod, pattern, handler });
+    };
+  }
+  const legacyParameterRouter = withoutRetiredCatalogRegistrations(router);
   const metrics = options.metrics ?? createMetricsRegistry({ serviceName: "wiseeff-api" });
   const tracing = options.tracing ?? defaultTracingBoundary;
   const localAuthService = options.localAuthService ?? (options.db ? createEnvLocalAuthService(options.db, options.env) : undefined);
@@ -157,26 +206,26 @@ export function buildWiseEffRouter(options: WiseEffServerOptions = {}) {
     db: options.db,
     getCurrentAuthContext: authResolver
   });
-  registerParameterRoutes(router, {
+  registerParameterRoutes(legacyParameterRouter, {
     db: options.db,
     objectStore: options.objectStore,
     getCurrentAuthContext: authResolver
   });
-  registerParameterFileRoutes(router, {
+  registerParameterFileRoutes(legacyParameterRouter, {
     db: options.db,
     objectStore: options.objectStore,
     getCurrentAuthContext: authResolver
   });
-  registerParameterSpecRoutes(router, {
+  registerParameterSpecRoutes(legacyParameterRouter, {
     db: options.db,
     objectStore: options.objectStore,
     getCurrentAuthContext: authResolver
   });
-  registerParameterModuleRoutes(router, {
+  registerParameterModuleRoutes(legacyParameterRouter, {
     db: options.db,
     getCurrentAuthContext: authResolver
   });
-  registerParameterTopologyRoutes(router, {
+  registerParameterTopologyRoutes(legacyParameterRouter, {
     db: options.db,
     objectStore: options.objectStore,
     getCurrentAuthContext: authResolver
@@ -246,6 +295,8 @@ export function buildWiseEffRouter(options: WiseEffServerOptions = {}) {
   });
   registerParameterCatalogApi(router, {
     db: options.db,
+    governanceDb: options.catalogGovernanceDb,
+    requireSeparateGovernancePool: options.env?.NODE_ENV === "production",
     resolveAuth: authResolver
   });
 
@@ -306,6 +357,32 @@ export function buildWiseEffRouter(options: WiseEffServerOptions = {}) {
     };
   });
 
+  const registered = registrations.slice(), methods = { ...router };
+  const retired = retiredHttpRoutes.map(route => ({ ...route, disposition: "gone-410" as const }));
+  httpWriterControls.set(router, () => {
+    if (registrations.length !== registered.length || Object.keys(methods).some(key =>
+      router[key as keyof WiseEffRouter] !== methods[key as keyof WiseEffRouter])) {
+      throw new Error("PCAT-HTTP-WRITER-CONTROLS-CHANGED");
+    }
+    // Router segments are slash-normalized; ':' is its only wildcard. Refuse
+    // any intersecting non-retired handler, even one currently lower priority.
+    // This bounded evidence never invokes an unknown handler to test safety.
+    for (const route of retired) {
+      const segments = route.path.split("/").filter(Boolean);
+      const contenders = registered.filter(entry => {
+        const other = entry.pattern.split("/").filter(Boolean);
+        return entry.method === route.method && segments.length === other.length
+          && segments.every((segment, index) => segment.startsWith(":") || other[index].startsWith(":") || segment === other[index]);
+      });
+      if (!contenders.length || !contenders.some(entry => entry.pattern === route.path)
+        || contenders.some(entry => entry.handler !== retiredCatalogWriteHandler)) {
+        throw new Error("PCAT-HTTP-WRITER-CONTROLS-UNPROVEN");
+      }
+    }
+    return { kind: "legacy-http-writes-retired", routes: structuredClone(retired),
+      registrationDigest: digestOf(registered.map(({ method, pattern, handler }) => ({ method, pattern,
+        control: handler === retiredCatalogWriteHandler ? "gone-410" : "outside-retired-http-scope" }))) };
+  });
   return { router, metrics, tracing };
 }
 
@@ -457,6 +534,7 @@ function attachDeviceBridgeServer(
 export function createWiseEffServerFromEnv(
   options: {
     db?: Database;
+    catalogGovernanceDb?: Database;
     objectStore?: ObjectStore;
     objectStoreHealth?: ObjectStoreHealthCheck;
     logAnalysisQueue?: LogAnalysisQueue;

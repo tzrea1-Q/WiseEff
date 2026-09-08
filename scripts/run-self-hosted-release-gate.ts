@@ -2,6 +2,96 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 
 import path from "node:path";
 import { spawnSync } from "node:child_process";
 import { pathToFileURL } from "node:url";
+import { isDeepStrictEqual } from "node:util";
+import { createVerificationReportService } from "../server/modules/release-verification/report/index";
+import type { RuntimePinQuery } from "../server/modules/release-verification/report/index";
+import type { ReleaseVerificationReport } from "../server/modules/release-verification/core";
+import type { Database } from "../server/shared/database/client";
+
+export type CatalogReleaseAction = "activate-p12" | "start-candidate" | "release-public";
+
+/** Produced by the target owner from live state inside its exclusive maintenance lock.
+ * It is not a CLI argument, report projection, environment flag, or approval command.
+ */
+export type CatalogReleaseBoundary = RuntimePinQuery & {
+  readonly phaseSnapshot: string;
+  readonly p12State: "not-started" | "completed";
+  readonly trafficIsolationState: "isolated" | "public";
+  readonly predecessorReportDigests: readonly string[];
+  readonly pointerRollbackStatus: "open" | "closed";
+};
+
+export type CatalogReleaseActionResult =
+  | { readonly ok: true; readonly action: CatalogReleaseAction; readonly reportDigest: string }
+  | { readonly ok: false; readonly reason: "missing-report" | "absent" | "unapproved" | "wrong-purpose" | "boundary-mismatch" | "not-isolated" | "pre-pin" | "unknown-action" | "unknown-outcome" };
+
+export type CatalogReleaseTarget = {
+  /** The implementation holds its target lock until the effect and its journal commit finish.
+   * Exceptions preserve isolation and require outcome inspection; the dispatcher never retries.
+   */
+  withExclusiveBoundary<T>(body: () => Promise<T>): Promise<T>;
+  observeBoundary(): Promise<CatalogReleaseBoundary>;
+  activateP12(report: ReleaseVerificationReport): Promise<void>;
+  startCandidate(report: ReleaseVerificationReport): Promise<void>;
+  releasePublic(report: ReleaseVerificationReport): Promise<void>;
+};
+
+/** Invocation adapter only: the existing Report module owns approval, retention and lineage.
+ * M6 caller-supplied passed statuses never enter this path. The target owner must supply
+ * the real live boundary and transactional effect; no default or simulated target exists.
+ */
+export async function runCatalogReleaseAction(options: {
+  readonly db: Database;
+  readonly target: CatalogReleaseTarget;
+  readonly action: string;
+  readonly reportDigest: string;
+}): Promise<CatalogReleaseActionResult> {
+  if (!["activate-p12", "start-candidate", "release-public"].includes(options.action)) {
+    return { ok: false, reason: "unknown-action" };
+  }
+  if (!options.reportDigest.trim()) return { ok: false, reason: "missing-report" };
+  const action = options.action as CatalogReleaseAction;
+  const purpose = action === "activate-p12" ? "pre-activation" : action === "start-candidate" ? "post-retirement-runtime" : "public-release";
+  try {
+    return await options.target.withExclusiveBoundary(async () => {
+      // Hold an independent first observation: a producer reusing and mutating
+      // its object must not make the final drift comparison compare one alias.
+      const current = structuredClone(await options.target.observeBoundary());
+      if (current.trafficIsolationState !== "isolated") return { ok: false, reason: "not-isolated" };
+      const reports = createVerificationReportService({ db: options.db });
+      const read = action === "start-candidate"
+        ? await reports.readApprovedRuntimePin(current)
+        : await reports.readReport(options.reportDigest);
+      if (read.kind === "absent") {
+        return { ok: false, reason: read.reason === "missing" ? "absent" : read.reason };
+      }
+      const report = read.report;
+      if (report.purpose !== purpose || report.decision !== "passed") return { ok: false, reason: "wrong-purpose" };
+      if (report.digest !== options.reportDigest ||
+          !isDeepStrictEqual(report.pins, current.pins) ||
+          report.phaseSnapshot !== current.phaseSnapshot ||
+          !isDeepStrictEqual(report.predecessorReportDigests, current.predecessorReportDigests) ||
+          report.pointerRollbackStatus !== current.pointerRollbackStatus ||
+          report.evidenceRefs.length === 0 ||
+          report.evidenceRefs.some((ref) => !isDeepStrictEqual(ref.subject, current.subject))) {
+        return { ok: false, reason: "boundary-mismatch" };
+      }
+      if (action === "activate-p12" ? current.p12State !== "not-started" || current.p13State !== "not-started"
+          : current.p12State !== "completed" || current.p13State !== "retired" || !current.writerRetirementFingerprint || !current.runtimePinGeneration) {
+        return { ok: false, reason: "pre-pin" };
+      }
+      // A report read can take time; reject drift before handing the approved effect to its owner.
+      if (!isDeepStrictEqual(current, await options.target.observeBoundary())) return { ok: false, reason: "boundary-mismatch" };
+      if (action === "activate-p12") await options.target.activateP12(report);
+      else if (action === "start-candidate") await options.target.startCandidate(report);
+      else await options.target.releasePublic(report);
+      return { ok: true, action, reportDigest: report.digest };
+    });
+  } catch {
+    // Neither a failed command nor a lost commit acknowledgment proves that nothing happened.
+    return { ok: false, reason: "unknown-outcome" };
+  }
+}
 
 export type GateStatus = "passed" | "failed" | "pending";
 export type HdcReleaseStatus = "unavailable" | "skipped_by_scope" | "enabled";

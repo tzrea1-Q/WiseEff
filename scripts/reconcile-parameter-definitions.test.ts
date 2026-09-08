@@ -15,11 +15,11 @@ describe("reconcile-parameter-definitions CLI", () => {
   });
 
   it("maps --verify to a typed readReport command", () => {
-    expect(parseReconcileCliCommand(["--verify", "--report-id", "vreport_1"])).toEqual({
+    expect(parseReconcileCliCommand(["--verify", "--diagnostic", "--report-id", "vreport_1"])).toEqual({
       kind: "verify",
       reportIdOrDigest: "vreport_1",
     });
-    expect(parseReconcileCliCommand(["--verify", "--catalog-only", "--run-id", "digest-1"])).toEqual({
+    expect(parseReconcileCliCommand(["--verify", "--diagnostic", "--run-id", "digest-1"])).toEqual({
       kind: "verify",
       reportIdOrDigest: "digest-1",
     });

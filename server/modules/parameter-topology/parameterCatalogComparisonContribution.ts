@@ -478,16 +478,7 @@ function classifyCase(input: {
   readonly mappingHeadVersion: number;
   readonly planPin: string;
 }): { result: TopComparisonResult; expectedDifference: TopExpectedDifference | null } {
-  if (
-    input.legacyObservation.status === "query-failure" &&
-    input.legacyObservation.code === TOP_UNQUERYABLE_FAILURE_CODE
-  ) {
-    return { result: "unqueryable/protected-reference-missing", expectedDifference: null };
-  }
-  if (
-    input.canonicalObservation.status === "query-failure" &&
-    input.canonicalObservation.code === TOP_UNQUERYABLE_FAILURE_CODE
-  ) {
+  if (input.legacyObservation.status === "query-failure" || input.canonicalObservation.status === "query-failure") {
     return { result: "unqueryable/protected-reference-missing", expectedDifference: null };
   }
 
@@ -500,15 +491,9 @@ function classifyCase(input: {
     return { result: "exact-equivalent", expectedDifference: null };
   }
 
-  const expectedDifference: TopExpectedDifference = {
-    rClass: input.comparisonId === "PCAT-CMP-D02-SUBJECT-IDENTITY" ? "R2" : "R9",
-    mappingHeadId: input.mappingHeadId,
-    mappingHeadVersion: input.mappingHeadVersion,
-    typedTarget: { kind: "canonical-pin", id: input.mappingHeadId },
-    ruleId: input.comparisonId,
-    planPin: input.planPin,
-  };
-  return { result: "declared-expected-difference", expectedDifference };
+  // Unequal observations are not a plan-declared mapping disposition.
+  // Keep them blocking until the owner supplies exact rule and identity evidence.
+  return { result: "unexplained-difference", expectedDifference: null };
 }
 
 function sortInventory(records: InventoryRecord[]): InventoryRecord[] {

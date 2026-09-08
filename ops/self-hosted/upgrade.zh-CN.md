@@ -2,6 +2,22 @@
 
 > English: [English](upgrade.md)
 
+## canonical Catalog 兼容停止点
+
+已有旧参数数据的部署先阅读[存量升级准备手册](populated-upgrade.zh-CN.md)。普通 stack controller 尚不能执行 Catalog P12/P13、获批运行启动与公开发布，现会在构建／停服前拒绝 canonical 目标（包括同 SHA/no-op），并拒绝候选 resume/recover-candidate。这是兼容停止，不是迁移路径完成。Catalog apply 仍止于 P11a；`applyCompleted=true` 不授权启动或开放流量。
+
+源 `82344044b436a8dafecefbb85dfd724cecb05e3f` 升级器调用 `npm run parameter-definitions:check -- --catalog-only`。新候选对此缺少受控目标上下文的发布检查返回退出码 2、`PCAT-UPG-RELEASE-CONTEXT-UNAVAILABLE`。checkout 不会重载旧 shell 已加载的函数。不得在生产试验此拒绝：旧 controller 可能停服／迁移之后才到达它。
+
+报告诊断必须显式执行：
+
+```bash
+npm run parameter-definitions:reconcile -- --verify --diagnostic --report-id missing
+```
+
+配置私有数据库后，报告不存在会返回 typed `absent/missing` 和退出码 0，含义仅为查询成功。不得替换发布门禁。查询失败返回非零及脱敏诊断；check 命令不把报告存在当成发布授权。
+
+`./scripts/build-network.sh require-verified --json` 复用私有构建配置，拒绝 insecure、HTTP registry、非法证书或夹带私钥的 CA。它不发网络请求，不证明 Docker 拉取、依赖下载、镜像来源或企业 CA 兼容。既有紧急 insecure 通道保留，但不能证明本次升级就绪。
+
 `scripts/upgrade.sh` 是已经运行的自托管 checkout 的标准升级入口。它把目标解析为唯一 Git commit，在停机前构建候选镜像，暂停并排空应用工作，创建并校验恢复点，基于原有 volume 重建全部服务，等待迁移与健康门禁完成，并写入可恢复的运行日志。
 
 宿主机只需要 Docker Engine 和 Compose，不需要 Node.js。命令会读取 `ops/self-hosted/.env`，但不会改写它、轮换密钥、写入种子数据、创建管理员，也不会删除 volume。实现不会调用 `compose down -v`、`volume rm` 或 `system prune`。

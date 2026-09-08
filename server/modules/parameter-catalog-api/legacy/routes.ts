@@ -31,9 +31,9 @@ import type { LegacyCatalogOptions, LegacyHttpResult } from "./types";
 
 const OPERATOR_PREFIX = "/api/v2/operator/parameter-catalog";
 
-const writeRoutes = routeManifest.filter((route) =>
+const writeRoutes = Object.freeze(routeManifest.filter((route) =>
   (parameterCatalogLegacyWriteRouteIds as readonly string[]).includes(route.id),
-);
+).map(({ id, method, path }) => Object.freeze({ id, method, path })));
 
 const eligibleRoutes = routeManifest.filter((route) =>
   (parameterCatalogBoundedLegacyReadRouteIds as readonly string[]).includes(route.id),
@@ -60,6 +60,15 @@ function addRoute(
             ? router.patch
             : router.delete;
   add.call(router, path, handler);
+}
+
+const retiredWriteRouter = createRouter();
+/** The registration owner uses this identity to distinguish an actual fixed
+ * refusal from a route name or an arbitrary handler that reports success. */
+export const retiredCatalogWriteHandler: Parameters<WiseEffRouter["get"]>[1] = async request =>
+  catalogLegacyGoneResult(request.requestId, LEGACY_WRITE_GONE_MESSAGE);
+for (const route of writeRoutes) {
+  addRoute(retiredWriteRouter, route.method, route.path, retiredCatalogWriteHandler);
 }
 
 const headerValue = (
@@ -316,6 +325,12 @@ export async function handleLegacyCatalogRequest(
     };
   }
 
+  // Retirement is independent of Catalog availability and authentication. Use
+  // the same frozen routes and matcher before consulting any current pointer.
+  if (retiredWriteRouter.matchRoutePattern(request.method, request.path)) {
+    return catalogLegacyGoneResult(request.requestId, LEGACY_WRITE_GONE_MESSAGE);
+  }
+
   options = {
     ...options,
     catalogReleaseId: await currentCatalogReleaseId(options),
@@ -333,13 +348,6 @@ export async function handleLegacyCatalogRequest(
         lookupHeaders(options),
       );
       return { status: result.status, body: { __legacy: result } };
-    });
-  }
-
-  for (const route of writeRoutes) {
-    addRoute(router, route.method, route.path, async (matched) => {
-      const gone = catalogLegacyGoneResult(matched.requestId, LEGACY_WRITE_GONE_MESSAGE);
-      return { status: gone.status, body: { __legacy: gone } };
     });
   }
 
@@ -418,18 +426,18 @@ export function registerCatalogLegacyRoutes(
     addRoute(router, route.method, route.path, handler);
   }
   for (const route of writeRoutes) {
-    addRoute(router, route.method, route.path, handler);
+    addRoute(router, route.method, route.path, retiredCatalogWriteHandler);
   }
   for (const route of eligibleRoutes) {
     addRoute(router, route.method, route.path, handler);
   }
 }
 
-export const legacyWriteRouteManifest = writeRoutes.map((route) => ({
-  id: route.id,
-  method: route.method as HttpMethod,
-  path: route.path,
-}));
+/** Detached compatibility projections cannot change the owner's registrations. */
+export function readLegacyWriteRouteManifest() {
+  return writeRoutes.map(({ id, method, path }) => ({ id, method: method as HttpMethod, path }));
+}
+export const legacyWriteRouteManifest = readLegacyWriteRouteManifest();
 
 export const legacyEligibleRouteManifest = eligibleRoutes.map((route) => ({
   id: route.id,

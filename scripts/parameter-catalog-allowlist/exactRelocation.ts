@@ -13,6 +13,11 @@ export const exactRelocationRecordPath = "scripts/fixtures/parameter-catalog-all
 // Materialized after independent Standards/Spec review of 164b832f543433564b3f5cd75d6b9445a7b9bb8d.
 // Both reviewers independently verified this digest; the JSON cannot authorize itself.
 const reviewedRecordSha256 = "fe2a8aa3e97193c98aafdfd06572335419e2e53854e80b33e172afa0e741e074";
+const auditFile = "server/modules/knowledge/parameterReferences.test.ts";
+// D-A authorizes only these exact three natural-edit identities. The original
+// record and inventory remain immutable; this candidate still requires review.
+const auditRecordPath = "scripts/fixtures/parameter-catalog-allowlist/knowledge-audit-relocation.json";
+const auditRecordSha256 = "3b10d26e362a35676d0f6d352e43d1085aca41769507ac331f222fc8fe539e1a";
 
 const relocationSchema = z.object({
   schemaVersion: z.literal(1),
@@ -27,6 +32,13 @@ const relocationSchema = z.object({
     sliceSha256: z.string().regex(/^[a-f0-9]{64}$/u),
   }).strict()).length(23),
 }).strict();
+const auditRelocationSchema = relocationSchema.extend({
+  file: z.literal(auditFile),
+  sourceBlobOid: z.literal("79c7bdf5cd4535d5d340e546a0037080ebae8c9b"),
+  destinationBlobOid: z.literal("e019e246ea36a9ced4a70b572bc4c03d22eaad0b"),
+  pairs: relocationSchema.shape.pairs.element.array().length(3),
+}).strict();
+const authorizedRecordSchema = z.discriminatedUnion("file", [relocationSchema, auditRelocationSchema]);
 
 type RelocationInput = {
   fixture: BoundaryViolationFixture;
@@ -38,7 +50,7 @@ type RelocationInput = {
 
 /** Validate every pair before granting any alias. No SQL normalization or search. */
 export function validateExactRelocation(value: unknown, input: RelocationInput) {
-  const record = relocationSchema.parse(value);
+  const record = authorizedRecordSchema.parse(value);
   requireMatch(input.fixture.trustedBaseSha === originalBase, "fixture base");
   requireMatch(blobOid(input.source) === record.sourceBlobOid, "source whole-file blob");
   requireMatch(blobOid(input.destination) === record.destinationBlobOid, "destination whole-file blob");
@@ -62,9 +74,11 @@ export function validateExactRelocation(value: unknown, input: RelocationInput) 
     for (const key of ["file", "family", "rule", "reason", "token", "evidence", "column", "trustedBaseSha"] as const) {
       requireMatch(old[key] === next[key], `unchanged ${key}`);
     }
-    requireMatch(old.file === file && old.trustedBaseSha === originalBase, "file and trusted base");
+    requireMatch(old.file === record.file && old.trustedBaseSha === originalBase, "file and trusted base");
     requireMatch(old.trustedBlobOid === record.sourceBlobOid && next.trustedBlobOid === record.destinationBlobOid, "occurrence blob identity");
-    requireMatch(next.byteStart - old.byteStart === 216 && next.byteEnd - old.byteEnd === 216 && next.line - old.line === 5, "reviewed position pair");
+    const displacement = record.file === file ? { bytes: 216, lines: 5 } : { bytes: 1017, lines: 11 };
+    requireMatch(next.byteStart - old.byteStart === displacement.bytes && next.byteEnd - old.byteEnd === displacement.bytes &&
+      next.line - old.line === displacement.lines, "reviewed position pair");
     requireMatch(old.byteEnd <= input.source.length && next.byteEnd <= input.destination.length, "slice bounds");
     const oldBytes = input.source.subarray(old.byteStart, old.byteEnd);
     const nextBytes = input.destination.subarray(next.byteStart, next.byteEnd);
@@ -80,19 +94,23 @@ export async function applyReviewedExactRelocation(
   allowances: readonly AllowlistEntry[],
   discovered: readonly BoundaryViolation[],
 ) {
-  // Synthetic inventories do not carry this original file/identity contract.
-  if (!fixture.violations.some((violation) => violation.file === file)) {
-    return { violations: discovered, relocations: [] };
+  const pairs: ReturnType<typeof validateExactRelocation> = [];
+  for (const approved of [
+    { file, path: exactRelocationRecordPath, sha256: reviewedRecordSha256 },
+    { file: auditFile, path: auditRecordPath, sha256: auditRecordSha256 },
+  ]) {
+    // Synthetic inventories do not carry these original file/identity contracts.
+    if (!fixture.violations.some(violation => violation.file === approved.file)) continue;
+    const bytes = await readFile(resolve(repoRoot, approved.path));
+    requireMatch(sha256(bytes) === approved.sha256, "reviewed record integrity");
+    const [destination, source] = await Promise.all([
+      readFile(resolve(repoRoot, approved.file)),
+      Promise.resolve().then(() => execFileSync("git", ["show", `${originalBase}:${approved.file}`], { cwd: repoRoot })),
+    ]);
+    pairs.push(...validateExactRelocation(JSON.parse(bytes.toString("utf8")), {
+      fixture, allowances, discovered, source, destination,
+    }));
   }
-  const bytes = await readFile(resolve(repoRoot, exactRelocationRecordPath));
-  requireMatch(sha256(bytes) === reviewedRecordSha256, "reviewed record integrity");
-  const [destination, source] = await Promise.all([
-    readFile(resolve(repoRoot, file)),
-    Promise.resolve().then(() => execFileSync("git", ["show", `${originalBase}:${file}`], { cwd: repoRoot })),
-  ]);
-  const pairs = validateExactRelocation(JSON.parse(bytes.toString("utf8")), {
-    fixture, allowances, discovered, source, destination,
-  });
   const aliases = new Map(pairs.map((pair) => [pair.new.id, pair.old]));
   return {
     violations: discovered.map((violation) => aliases.get(violation.id) ?? violation),

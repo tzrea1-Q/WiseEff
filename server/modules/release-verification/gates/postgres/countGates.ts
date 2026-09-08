@@ -1,7 +1,8 @@
 import type { VerificationPlan } from "../../core/types";
 import type { GateResult } from "../../core/types";
 import { digestOf } from "../../core/digest";
-import { asInt, asStringArray, countedResult, orderedChecksum } from "./evidence";
+import { asInt, asStringArray, countedResult, failedResult, orderedChecksum } from "./evidence";
+import { LEGACY_STRUCTURAL_TABLES } from "../../../catalog-kernel/security/catalogRoleManifest";
 import {
   CATALOG_STRUCTURAL_RELATIONS,
   catalogRelation,
@@ -611,13 +612,29 @@ export const runV12 = async (query: GateQuery, plan: VerificationPlan): Promise<
   });
 };
 
-export const runV13 = async (query: GateQuery): Promise<GateResult> => {
-  const publicLegacy = [
-    definitionRelation(),
-    "parameter_specs",
-    "parameter_spec_versions",
-    "project_parameter_bindings",
-  ];
+// The original four-table role contract remains unchanged. These additional
+// legacy objects have explicit retired structural callers: reattribute updates
+// driver_schemas/dts_property_specs; upsertMatchedDriverSchema persists the root
+// and driver_schema_versions. This is a database submatrix, not all P13 writers.
+const v13Relations = [...LEGACY_STRUCTURAL_TABLES, "driver_schemas", "driver_schema_versions", "dts_property_specs", "parameter_module_mappings"];
+const v13LoginScope = `with recursive logins as (
+  select oid,rolname from pg_catalog.pg_roles
+  where rolcanlogin and rolname not in ('postgres',current_user)
+), reachable(login_oid,effective_oid) as (
+  select oid,oid from logins
+  union select reachable.login_oid,membership.roleid
+  from reachable join pg_catalog.pg_auth_members membership on membership.member=reachable.effective_oid
+  where membership.set_option
+), relations as (
+  select c.oid,c.relname,c.relowner from pg_catalog.pg_class c
+  join pg_catalog.pg_namespace n on n.oid=c.relnamespace
+  where n.nspname='public' and c.relname=any($1::text[]) and c.relkind in ('r','p')
+)`;
+
+const observeV13 = async (query: GateQuery): Promise<GateResult> => {
+  // Retain the original direct-ACL check, including its existing NOLOGIN role
+  // contract. Neither the old name exclusions nor the LOGIN observations below
+  // establish the controller's still-missing production credential inventory.
   const grants = await query<{
     grantee: string;
     table_name: string;
@@ -632,8 +649,36 @@ export const runV13 = async (query: GateQuery): Promise<GateResult> => {
       and grantee not in ('postgres', current_user)
     order by grantee, table_name, privilege_type
     `,
-    [publicLegacy],
+    [[...LEGACY_STRUCTURAL_TABLES]],
   );
+  const inventory = await query<{ relation: string; present: boolean }>(`select name as relation,
+    exists(select 1 from pg_catalog.pg_class c join pg_catalog.pg_namespace n on n.oid=c.relnamespace
+      where n.nspname='public' and c.relname=name and c.relkind in ('r','p')) as present
+    from unnest($1::text[]) name order by name`, [v13Relations]);
+  if (inventory.rows.length !== v13Relations.length || inventory.rows.some(row => row.present !== true)) {
+    return failedResult("PCAT-DB-V13", "PCAT-VRF-V13-LEGACY-WRITER-REACHABLE", { observation: "scoped-relation-unavailable" });
+  }
+  const effective = await query<{ login: string; effective: string; relation: string; capability: string }>(`${v13LoginScope}
+    select distinct login.rolname as login,role.rolname as effective,relation.relname as relation,
+      privilege.name as capability
+    from reachable join logins login on login.oid=reachable.login_oid
+    join pg_catalog.pg_roles role on role.oid=reachable.effective_oid cross join relations relation
+    cross join unnest(array['INSERT','UPDATE','DELETE','TRUNCATE','REFERENCES','TRIGGER']) privilege(name)
+    where pg_catalog.has_table_privilege(role.oid,relation.oid,privilege.name)
+    union
+    select distinct login.rolname,role.rolname,relation.relname,'column:'||attribute.attname||':'||privilege.name
+    from reachable join logins login on login.oid=reachable.login_oid
+    join pg_catalog.pg_roles role on role.oid=reachable.effective_oid cross join relations relation
+    join pg_catalog.pg_attribute attribute on attribute.attrelid=relation.oid and attribute.attnum>0 and not attribute.attisdropped
+    cross join unnest(array['INSERT','UPDATE','REFERENCES']) privilege(name)
+    where pg_catalog.has_column_privilege(role.oid,relation.oid,attribute.attnum,privilege.name)
+      and not pg_catalog.has_table_privilege(role.oid,relation.oid,privilege.name)
+    union
+    select distinct login.rolname,role.rolname,relation.relname,'ownership'
+    from reachable join logins login on login.oid=reachable.login_oid
+    join pg_catalog.pg_roles role on role.oid=reachable.effective_oid cross join relations relation
+    where pg_catalog.pg_has_role(role.oid,relation.relowner,'USAGE')
+    order by 1,2,3,4`, [v13Relations]);
   const definers = await query<{ proname: string }>(
     `
     select procedure.proname
@@ -650,14 +695,142 @@ export const runV13 = async (query: GateQuery): Promise<GateResult> => {
     order by procedure.proname
     `,
   );
+  // An executable definer with an owner capable of changing these relations is
+  // unproven even when its body uses dynamic SQL. Never use absent source text
+  // as proof of safety. Installed definer triggers are dispatched by relation
+  // mutation privileges, even without EXECUTE on their function. Other trigger
+  // mechanisms and application/job/script inventories remain P13 obligations.
+  // UNION deduplicates (LOGIN, owner) pairs, including cycles. An owner's
+  // extra EXECUTE capability may delegate to another definer without exposing
+  // that inner function directly to the LOGIN; source-text absence is no proof.
+  const unprovenDefiners = await query<{ login: string; function_identity: string }>(`${v13LoginScope},
+    referential_edges as (
+      -- Native RI actions bypass the initiating LOGIN's child-table ACL. Keep
+      -- their exact relation/event effect; they do not delegate arbitrary
+      -- privileges or EXECUTE capabilities of the child table's owner.
+      select fk.confrelid as source_oid,fk.conrelid as target_oid,
+        action.parent_action,case when action.parent_action='DELETE' and action.kind='c'
+          then 'DELETE' else 'UPDATE' end as child_action,
+        case when action.parent_action='UPDATE' then fk.confkey else null::smallint[] end as source_columns,
+        case when action.parent_action='DELETE' then coalesce(fk.confdelsetcols,fk.conkey)
+          else fk.conkey end as target_columns,t.tgenabled='R' as requires_replica
+      from pg_catalog.pg_constraint fk
+      cross join lateral (values ('DELETE',8,fk.confdeltype),('UPDATE',16,fk.confupdtype)) action(parent_action,event_bit,kind)
+      join pg_catalog.pg_trigger t on t.tgconstraint=fk.oid and t.tgisinternal
+        and t.tgrelid=fk.confrelid and (t.tgtype & action.event_bit)<>0
+      where fk.contype='f' and action.kind in ('c','n','d') and t.tgenabled in ('O','A','R')
+    ), referential_paths(target_oid,target_action,target_columns,source_oid,action,columns,requires_replica) as (
+      select edge.target_oid,edge.child_action,edge.target_columns,edge.source_oid,edge.parent_action,edge.source_columns,edge.requires_replica
+      from referential_edges edge
+      union
+      select path.target_oid,path.target_action,path.target_columns,edge.source_oid,edge.parent_action,edge.source_columns,
+        path.requires_replica or edge.requires_replica
+      from referential_paths path join referential_edges edge on edge.target_oid=path.source_oid
+        and edge.child_action=path.action
+        and (path.action='DELETE' or edge.target_columns && path.columns)
+    ),
+    user_definers as (
+      select p.oid,p.proowner,p.proconfig from pg_catalog.pg_proc p
+      join pg_catalog.pg_namespace n on n.oid=p.pronamespace
+      where p.prosecdef and (n.nspname not in ('pg_catalog','information_schema')
+        or not exists(select 1 from pg_catalog.pg_init_privs initial
+          where initial.classoid='pg_catalog.pg_proc'::regclass and initial.objoid=p.oid
+            and initial.objsubid=0 and initial.privtype='i'))
+        and p.prorettype not in ('pg_catalog.trigger'::regtype,'pg_catalog.event_trigger'::regtype)
+    ), trigger_edges as (
+      select role.oid as caller,p.proowner as owner,p.oid as function_oid,t.oid as trigger_oid,
+        t.tgenabled='R' and not pg_catalog.pg_has_role(role.oid,dispatch.relowner,'USAGE') as requires_replica,
+        coalesce('session_replication_role=replica'=any(p.proconfig),false) as configures_replica
+      from pg_catalog.pg_trigger t join pg_catalog.pg_proc p on p.oid=t.tgfoid
+      join pg_catalog.pg_class dispatch on dispatch.oid=t.tgrelid cross join pg_catalog.pg_roles role
+      where p.prosecdef and (
+        t.tgenabled in ('O','A','R')
+        or (t.tgenabled='D' and pg_catalog.pg_has_role(role.oid,dispatch.relowner,'USAGE'))
+      ) and (
+        ((t.tgtype & 4)<>0 and pg_catalog.has_any_column_privilege(role.oid,t.tgrelid,'INSERT'))
+        or ((t.tgtype & 8)<>0 and pg_catalog.has_table_privilege(role.oid,t.tgrelid,'DELETE'))
+        or ((t.tgtype & 16)<>0 and pg_catalog.has_any_column_privilege(role.oid,t.tgrelid,'UPDATE'))
+        or ((t.tgtype & 32)<>0 and pg_catalog.has_table_privilege(role.oid,t.tgrelid,'TRUNCATE'))
+      )
+      union
+      -- An RI action can dispatch an installed user trigger without granting
+      -- its child-table mutation to the original role. Only a SECURITY DEFINER
+      -- trigger changes authority; an invoker trigger retains that role.
+      select role.oid,p.proowner,p.oid,t.oid,
+        path.requires_replica or (t.tgenabled='R' and not pg_catalog.pg_has_role(role.oid,dispatch.relowner,'USAGE')),
+        coalesce('session_replication_role=replica'=any(p.proconfig),false)
+      from referential_paths path join pg_catalog.pg_trigger t on t.tgrelid=path.target_oid
+      join pg_catalog.pg_proc p on p.oid=t.tgfoid join pg_catalog.pg_class dispatch on dispatch.oid=t.tgrelid
+      cross join pg_catalog.pg_roles role
+      where p.prosecdef and not t.tgisinternal
+        and (t.tgenabled in ('O','A','R') or (t.tgenabled='D' and pg_catalog.pg_has_role(role.oid,dispatch.relowner,'USAGE')))
+        and ((path.target_action='DELETE' and (t.tgtype & 8)<>0)
+          or (path.target_action='UPDATE' and (t.tgtype & 16)<>0
+            and (cardinality(t.tgattr::smallint[])=0 or t.tgattr::smallint[] && path.target_columns)))
+        and ((path.action='DELETE' and pg_catalog.has_table_privilege(role.oid,path.source_oid,'DELETE'))
+          or (path.action='UPDATE' and exists(select 1 from unnest(path.columns) column_number
+            where pg_catalog.has_column_privilege(role.oid,path.source_oid,column_number,'UPDATE'))))
+    ), authority_edges as (
+      select role.oid as caller,p.proowner as owner,p.oid as function_oid,null::oid as trigger_oid,
+        false as requires_replica,coalesce('session_replication_role=replica'=any(p.proconfig),false) as configures_replica
+      from pg_catalog.pg_roles role join user_definers p on pg_catalog.has_function_privilege(role.oid,p.oid,'EXECUTE')
+      union all select caller,owner,function_oid,trigger_oid,requires_replica,configures_replica from trigger_edges
+    ), delegates(login_oid,effective_oid,replica_possible) as (
+      -- Session GUCs originate at LOGIN and survive SET ROLE and definer calls.
+      -- A reachable role with SET capability can establish replica before
+      -- switching again; do not substitute the effective role's login defaults.
+      select login_oid,effective_oid,
+        exists(select 1 from pg_catalog.pg_db_role_setting settings
+          where settings.setrole in (0,reachable.login_oid)
+            and settings.setdatabase in (0,(select oid from pg_catalog.pg_database where datname=pg_catalog.current_database()))
+            and 'session_replication_role=replica'=any(settings.setconfig))
+        or exists(select 1 from reachable capability where capability.login_oid=reachable.login_oid
+          and pg_catalog.has_parameter_privilege(capability.effective_oid,'session_replication_role','SET'))
+      from reachable
+      union select delegates.login_oid,edge.owner,
+        delegates.replica_possible or edge.configures_replica
+          or pg_catalog.has_parameter_privilege(edge.owner,'session_replication_role','SET') from delegates
+      join authority_edges edge on edge.caller=delegates.effective_oid
+        and (not edge.requires_replica or delegates.replica_possible)
+    )
+    select distinct login.rolname as login,
+      case when edge.trigger_oid is null then edge.function_oid::regprocedure::text
+        else 'trigger:'||edge.trigger_oid::text||':'||edge.function_oid::regprocedure::text end as function_identity
+    from delegates join logins login on login.oid=delegates.login_oid
+    join authority_edges edge on edge.caller=delegates.effective_oid
+      and (not edge.requires_replica or delegates.replica_possible)
+    where exists(select 1 from relations relation where
+        pg_catalog.has_table_privilege(edge.owner,relation.oid,'INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER')
+        or pg_catalog.has_any_column_privilege(edge.owner,relation.oid,'INSERT,UPDATE,REFERENCES')
+        or pg_catalog.pg_has_role(edge.owner,relation.relowner,'USAGE'))
+    union
+    select distinct login.rolname,'referential-action:'||path.source_oid::regclass::text||':'||path.action||'->'||path.target_oid::regclass::text
+    from delegates join logins login on login.oid=delegates.login_oid
+    join referential_paths path on not path.requires_replica or delegates.replica_possible
+    join relations scoped on scoped.oid=path.target_oid
+    where (path.action='DELETE' and pg_catalog.has_table_privilege(delegates.effective_oid,path.source_oid,'DELETE'))
+      or (path.action='UPDATE' and exists(select 1 from unnest(path.columns) column_number
+        where pg_catalog.has_column_privilege(delegates.effective_oid,path.source_oid,column_number,'UPDATE')))
+    order by 1,2`, [v13Relations]);
   const grantRows = grants.rows;
-  const violationCount = grantRows.length + definers.rows.length;
+  const violationCount = grantRows.length + definers.rows.length + effective.rows.length + unprovenDefiners.rows.length;
   return countedResult("PCAT-DB-V13", "PCAT-VRF-V13-LEGACY-WRITER-REACHABLE", violationCount, {
+    scope: "legacy-database-submatrix-not-complete-p13",
+    scopedRelations: v13Relations,
+    effectiveCapabilities: effective.rows,
+    unprovenDefiners: unprovenDefiners.rows,
     definerCount: definers.rows.length,
     definers: definers.rows.map((row) => row.proname),
     grantCount: grantRows.length,
     grants: grantRows,
   });
+};
+
+export const runV13 = async (query: GateQuery): Promise<GateResult> => {
+  try { return await observeV13(query); }
+  catch {
+    return failedResult("PCAT-DB-V13", "PCAT-VRF-V13-LEGACY-WRITER-REACHABLE", { observation: "query-unavailable" });
+  }
 };
 
 export const runV14 = async (query: GateQuery): Promise<GateResult> => {

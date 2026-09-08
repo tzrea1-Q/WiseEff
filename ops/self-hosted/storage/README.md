@@ -34,3 +34,6 @@ npm run backup:check
 ```
 
 Commit only redacted evidence. Do not commit customer object bytes, database dumps, access keys, signed URLs, or raw provider error payloads.
+
+The [controlled recovery execution contract](execution/README.md) separates S11-RP
+capture/verify/restore-check from explicit restoration and its persisted authorization.
