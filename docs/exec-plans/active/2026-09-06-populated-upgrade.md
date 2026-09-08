@@ -4,6 +4,16 @@
 
 ## Scope and state
 
+Current bounded repair: report `3423a7148` failed Hosted frontend (3373/1/0),
+while owned PostgreSQL passed. The parent owns only the topology test's
+working-tip readiness synchronization and its immediate/deferred regression;
+production behavior, grants and timeouts are unchanged (R1). Documentation
+impact: this plan pair and the evidence pair. Local file 25/25; complete
+frontend 3375/3375 and build passed with retained warnings. Bounded independent
+Standards/Spec review passed. NW02 remains a separate
+Scratch source-integration dependency; full P13/startup/controller remain
+internal unfinished work. No production actions or release approval.
+
 Current resumption: the parent integrates the ten reviewed source-capture files
 from `7cb5acd13` and owns shared runner/config changes. Focused integration is
 120/120; build and unchanged boundary pass. Source Scratch capture is separately

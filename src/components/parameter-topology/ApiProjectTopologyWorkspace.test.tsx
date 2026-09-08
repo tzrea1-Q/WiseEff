@@ -970,7 +970,9 @@ describe("ApiProjectTopologyWorkspace", () => {
     );
   });
 
-  it("aligns same-project pending drafts to the shared working tip after create", async () => {
+  it.each([false, true])("aligns same-project pending drafts to the shared working tip after create (deferred topology: %s)", async (deferredTopology) => {
+    const workingTipLoaded = createDeferred<void>();
+    const defaultGetTopology = createRepository().getTopology;
     const createBindingDraft = vi.fn()
       .mockResolvedValueOnce({
         draftId: "draft-gpio",
@@ -1002,6 +1004,10 @@ describe("ApiProjectTopologyWorkspace", () => {
       });
     const repository = createRepository({
       createBindingDraft,
+      getTopology: vi.fn(async (...args: Parameters<ParameterTopologyRepository["getTopology"]>) => {
+        if (deferredTopology && args[2] === "working-tip-1") await workingTipLoaded.promise;
+        return defaultGetTopology(...args);
+      }),
       getSpec: vi.fn().mockImplementation(async (specId: string) => ({
         id: specId,
         organizationId: "org-chargelab",
@@ -1051,6 +1057,18 @@ describe("ApiProjectTopologyWorkspace", () => {
     });
     await screen.findByRole("region", { name: "参数修改提交" });
 
+    if (deferredTopology) {
+      await waitFor(() => expect(repository.getTopology).toHaveBeenCalledWith(
+        "aurora", "dcs-default-aurora", "working-tip-1", "effective"
+      ));
+      expect(screen.getByRole("region", { name: "DTS 参数工作台" })).toHaveAttribute("aria-busy", "true");
+      workingTipLoaded.resolve();
+    }
+
+    // The draft tray can appear before the topology reload replaces its tree.
+    // Interact with the new working tip, not a node from the previous render.
+    await waitFor(() => expect(screen.getByRole("region", { name: "DTS 参数工作台" }))
+      .toHaveAttribute("data-revision-id", "working-tip-1"));
     workspace = screen.getByRole("region", { name: "DTS 参数工作台" });
     const mt5788 = within(workspace).getByRole("treeitem", { name: /未分类 · mt5788/ });
     fireEvent.click(mt5788);

@@ -6,6 +6,31 @@
 
 ### Resumed integration and latest Hosted result
 
+Report head `3423a71488dfe92a5f0749e0c882a90fdfe119ae` subsequently failed
+Hosted `34246119676`, merge checkout `15df31576f155c62615b63d4347cb6432a63df96`.
+Frontend was 3373 passed/1 failed/0 skipped: the shared-working-tip test observed
+`aria-selected=false`. Build and test and Merge bar failed; owned PostgreSQL,
+smoke and quality passed; local non-HDC and target synthetic were skipped.
+Build-job steps after frontend did not execute. This does not rewrite the
+preceding code run's successful execution below.
+
+The bounded frontend test repair waits for the actual `working-tip-1` topology
+before clicking the next node. Immediate and explicitly deferred repository
+responses retain all draft-count, selected-node, shared-tip and submission
+assertions. Before the wait, the deferred case failed because the workspace
+was still loading; after it, the complete file passed 25/25. This establishes
+the missing readiness condition, not an exact reproduction of the Hosted
+cached-DOM state. Production UI, timeout and assertion thresholds are unchanged.
+These local executions are WIP after report head `3423a7148`, not a rerun of
+that commit. Logs: `/tmp/pr824-topology-deferred-red.log` and
+`/tmp/pr824-topology-green.log`. The same test WIP then passed all 3375 frontend
+tests across 438 files (0 failed/skipped), exit 0, in 66.84s; build exited 0
+with existing externalization/chunk warnings. Logs:
+`/tmp/pr824-topology-full-frontend.log`, `/tmp/pr824-topology-build.log`.
+Independent bounded Standards/Spec review passed the single-file diff and its
+evidence limits; it did not run tests or review the full upgrade. This repair
+does not advance A/B/C to done.
+
 The subsequent exact code `6b520cb7c326654238d27fe5281ad45c016de638`
 passed Hosted run `34243299959`, actual merge checkout
 `2c56bd53ac2215126c8aa2dcd039f756598320d3`. Build and test, owned PostgreSQL,

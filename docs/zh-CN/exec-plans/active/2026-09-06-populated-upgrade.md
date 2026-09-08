@@ -4,6 +4,13 @@
 
 ## 范围与状态
 
+当前有界修复：报告 `3423a7148` 的Hosted frontend失败（3373/1/0），owned
+PostgreSQL通过。父协调者独占拓扑测试的working-tip就绪同步与即时／延迟回归；
+生产行为、权限、timeout不变（R1）。文档影响为本计划及证据的中英文文件。
+本地整文件25/25、完整frontend 3375/3375、build通过，保留构建警告；
+独立有界Standards/Spec审查通过。NW02仍是独立Scratch来源接线依赖，完整
+P13／startup／controller仍属内部未完成工作。未执行生产操作或发布批准。
+
 当前续工：父协调者集成 `7cb5acd13` 的十个已审查源采集文件，独占共享 runner／config
 修改。集成 focused 为120/120，build及未改变的boundary通过；Scratch采集另记为
 1通过／9过滤，清理已验证。下一纵向依赖仍为真实多head mapping／比较，随后接通

@@ -4,6 +4,25 @@
 
 ## 中断后续工与最新 Hosted 结果
 
+后续报告 head `3423a71488dfe92a5f0749e0c882a90fdfe119ae` 的 Hosted
+`34246119676` 失败，merge checkout 为 `15df31576f155c62615b63d4347cb6432a63df96`。
+Frontend 3373通过／1失败／0跳过：共享 working tip 用例观察到
+`aria-selected=false`。Build and test、Merge bar失败；owned PostgreSQL、
+smoke、quality成功；local non-HDC和target synthetic跳过。Build job在frontend
+之后的步骤未执行，不改写下述前一次代码运行的成功结果。
+
+本次有界测试修复等待实际 `working-tip-1` 拓扑后再点击下一节点，保留草稿数量、
+节点选中、共享tip及提交断言，并覆盖即时和显式延迟的仓储响应。加入等待之前，
+延迟用例因工作台仍在loading而失败；加入后整文件25/25通过。这证明缺少就绪条件，
+不等于精确重现Hosted的缓存DOM状态。生产UI、timeout及断言门槛均未修改。
+本地执行属于报告head `3423a7148` 之后的WIP，不重标为该提交复跑；日志为
+`/tmp/pr824-topology-deferred-red.log`、`/tmp/pr824-topology-green.log`。
+同一测试WIP随后完整frontend为438文件、3375通过／0失败／0跳过，退出0，
+66.84秒；build退出0，保留原有externalization／chunk警告。日志：
+`/tmp/pr824-topology-full-frontend.log`、`/tmp/pr824-topology-build.log`。
+独立有界Standards/Spec审查通过该单文件diff及证据边界，审查者未运行测试，
+未审完整升级。此修复不使A/B/C变为完成。
+
 后续代码 `6b520cb7c326654238d27fe5281ad45c016de638` 的 Hosted run
 `34243299959` 已通过，实际 merge checkout 为
 `2c56bd53ac2215126c8aa2dcd039f756598320d3`。Build and test、owned PostgreSQL、
