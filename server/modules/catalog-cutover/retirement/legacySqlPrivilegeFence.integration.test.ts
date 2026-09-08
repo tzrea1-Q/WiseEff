@@ -58,33 +58,33 @@ beforeEach(async () => {
 }, 30_000);
 
 afterEach(async () => {
-  const failures: unknown[] = [];
-  const attempt = async (body: () => Promise<unknown>) => { try { await body(); } catch { failures.push("cleanup-failed"); } };
+  const failures: string[] = [];
+  const attempt = async (stage: string, body: () => Promise<unknown>) => { try { await body(); } catch { failures.push(stage); } };
   // Drain the case-owned work and remove its cross-database dependencies before
   // dropping shared roles. A failed close must not skip the remaining stages.
-  await attempt(async () => { await closeDependencyFixture?.(); }); closeDependencyFixture = undefined;
-  await attempt(async () => { await writer?.end(); }); writer = undefined;
-  await attempt(async () => { await manager?.query("rollback"); await manager?.query("reset role"); });
+  await attempt("dependency-fixture", async () => { await closeDependencyFixture?.(); }); closeDependencyFixture = undefined;
+  await attempt("writer-close", async () => { await writer?.end(); }); writer = undefined;
+  await attempt("manager-reset", async () => { await manager?.query("rollback"); await manager?.query("reset role"); });
   // Cleanup uses an independent connection to the same owned database. A dead
   // tested lease must not skip role cleanup or fall back to an ambient target.
   const cleanup = database ? new pg.Client({ connectionString: database.url, connectionTimeoutMillis: 2000, query_timeout: 5000 }) : undefined;
   cleanup?.on("error", () => {});
-  await attempt(async () => { await cleanup?.connect(); });
-  if (ownsRole) await attempt(async () => {
+  await attempt("cleanup-connect", async () => { await cleanup?.connect(); });
+  if (ownsRole) await attempt("restore-table-owner", async () => {
     if (!cleanup) throw new Error("cleanup-client-missing");
     await cleanup.query(`alter table public.${pg.escapeIdentifier(table)} owner to current_user`);
   });
   for (const [name, owned] of [[role, ownsRole], [capability, ownsCapability]] as const) if (owned) {
-    await attempt(async () => { if (!cleanup) throw new Error("cleanup-client-missing");
+    await attempt(name === role ? "drop-candidate-role" : "drop-capability-role", async () => { if (!cleanup) throw new Error("cleanup-client-missing");
       await cleanup.query(`drop owned by ${pg.escapeIdentifier(name)}; drop role ${pg.escapeIdentifier(name)}`); });
   }
-  await attempt(async () => { await cleanup?.end(); });
+  await attempt("cleanup-close", async () => { await cleanup?.end(); });
   ownsRole = false; ownsCapability = false;
-  await attempt(async () => { manager?.release(true); }); manager = undefined;
-  await attempt(async () => { await pool?.end(); }); pool = undefined;
-  await attempt(async () => { await database?.close(); }); database = undefined;
-  await attempt(async () => { if (directory) await rm(directory, { recursive: true }); }); directory = undefined;
-  if (failures.length) throw new Error("legacy-sql-fixture-cleanup-failed");
+  await attempt("manager-release", async () => { manager?.release(true); }); manager = undefined;
+  await attempt("pool-close", async () => { await pool?.end(); }); pool = undefined;
+  await attempt("database-close", async () => { await database?.close(); }); database = undefined;
+  await attempt("directory-close", async () => { if (directory) await rm(directory, { recursive: true }); }); directory = undefined;
+  if (failures.length) throw new Error(`legacy-sql-fixture-cleanup-failed:${failures.join(",")}`);
 });
 
 it.each(["direct", "column", "public", "inherit", "set"] as const)("retires an actual %s grant without removing SELECT, owners or unrelated business privileges", async mode => {
@@ -226,7 +226,11 @@ describe("cross-database dependency lifecycle", () => {
         if (client) { try { if (client instanceof pg.Client) await client.end(); } finally { client.release(true); } }
       }], ["second-pool-close", async () => { await otherPool?.end(); }],
       ["second-database-close", async () => { await second?.close(); }]] as const) {
-        try { await close(); } catch { failed = true; }
+        try { await close(); } catch {
+          failed = true;
+          try { console.info(JSON.stringify({ evidence: "sql-dependency-cleanup-failure", stage })); }
+          catch { /* Diagnostics must not skip the remaining owned cleanup. */ }
+        }
         trace(stage);
       }
       if (failed) throw new Error("sql-dependency-cleanup-failed");
