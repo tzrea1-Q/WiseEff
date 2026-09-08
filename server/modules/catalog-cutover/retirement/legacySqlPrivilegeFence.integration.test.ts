@@ -3,7 +3,7 @@ import { mkdtemp, realpath, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import pg from "pg";
-import { afterEach, beforeEach, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { assertOwnedUpgradeTestTarget } from "../../../../scripts/upgrade-test-target";
 import { createMigratedSelfHostedPg16Database, createSelfHostedPg16Database } from "../../../testing/selfHostedUpgrade/database";
 import { LEGACY_STRUCTURAL_TABLES } from "../../catalog-kernel/security/catalogRoleManifest";
@@ -24,6 +24,7 @@ let pool: pg.Pool | undefined, manager: pg.PoolClient | undefined, writer: pg.Cl
 let directory: string | undefined, role: string, capability: string;
 let command: Parameters<typeof applyLegacySqlPrivilegeFence>[0], intents: LegacySqlPrivilegeIntent[];
 let ownsRole = false, ownsCapability = false;
+let closeDependencyFixture: (() => Promise<void>) | undefined;
 
 beforeEach(async () => {
   assertOwnedUpgradeTestTarget();
@@ -59,6 +60,9 @@ beforeEach(async () => {
 afterEach(async () => {
   const failures: unknown[] = [];
   const attempt = async (body: () => Promise<unknown>) => { try { await body(); } catch { failures.push("cleanup-failed"); } };
+  // Drain the case-owned work and remove its cross-database dependencies before
+  // dropping shared roles. A failed close must not skip the remaining stages.
+  await attempt(async () => { await closeDependencyFixture?.(); }); closeDependencyFixture = undefined;
   await attempt(async () => { await writer?.end(); }); writer = undefined;
   await attempt(async () => { await manager?.query("rollback"); await manager?.query("reset role"); });
   // Cleanup uses an independent connection to the same owned database. A dead
@@ -204,50 +208,68 @@ it("freezes actual role membership until the final host acknowledgment and relea
   }
 });
 
-it("freezes cross-database ACL dependencies until acknowledgment without touching the other database's grants", async () => {
-  const started = performance.now();
+describe("cross-database dependency lifecycle", () => {
+  let other: pg.PoolClient, identity: Awaited<ReturnType<typeof readBindingDatabaseIdentity>>;
+  let work: Promise<void>;
+  let started: number;
   const trace = (stage: string) => console.info(JSON.stringify({ evidence: "sql-dependency-lifecycle", stage, elapsedMs: Math.round(performance.now() - started) }));
-  trace("second-database-start");
-  const second = await createSelfHostedPg16Database("sql_shared_dependency");
-  trace("second-database-ready");
-  const otherPool = new pg.Pool({ connectionString: second.url, max: 1, connectionTimeoutMillis: 2000, query_timeout: 5000 });
-  otherPool.on("error", () => {});
-  let other: pg.PoolClient | undefined, operationError: unknown, cleanupFailed = false;
-  try {
-    other = await acquireObservedManagementClient(otherPool, () => {});
-    trace("second-session-ready");
-    const identity = await readBindingDatabaseIdentity(other);
-    expect(identity.systemIdentifier).toBe(command.selection.target.systemIdentifier);
-    expect(identity.databaseOid).not.toBe(command.selection.target.databaseOid);
-    await other.query("create table public.other_business(value integer); set lock_timeout='100ms'");
-    await manager!.query(`grant select,update on public.${pg.escapeIdentifier(table)} to ${pg.escapeIdentifier(role)}`);
-    let grantCode = "not-attempted";
-    trace("effect-start");
-    await applyLegacySqlPrivilegeFence({ ...command, persistHostStep: async () => {
-      try { await other!.query(`grant select on public.other_business to ${pg.escapeIdentifier(role)}`); grantCode = "succeeded"; }
-      catch (error) { grantCode = typeof (error as { code?: unknown }).code === "string" ? (error as { code: string }).code : "unknown"; }
-    } });
-    trace("effect-complete");
-    const dependency = async () => (await manager!.query<{ present: boolean }>(`select exists(select 1 from pg_catalog.pg_shdepend
-      where refclassid='pg_catalog.pg_authid'::regclass and refobjid=$1::oid and dbid=$2::oid) as present`,
-    [command.runtimeRoles[0].oid, identity.databaseOid])).rows[0].present;
-    expect({ grantCode, dependency: await dependency() }).toEqual({ grantCode: "55P03", dependency: false });
-    // The same independent owned-DB grant succeeds after our locks end. It is
-    // not revoked by the production effect; its owner cleans up this fixture.
-    await other.query(`grant select on public.other_business to ${pg.escapeIdentifier(role)}`);
-    expect(await dependency()).toBe(true);
-    trace("assertions-complete");
-  } catch (error) { operationError = error; throw error; }
-  finally {
-    for (const [stage, close] of [["second-session-release", () => other?.release(true)],
-      ["second-pool-close", () => otherPool.end()], ["second-database-close", () => second.close()]] as const) {
-      try { await close(); } catch { cleanupFailed = true; }
-      trace(stage);
-    }
-    if (cleanupFailed) {
-      const cleanupError = new Error("sql-dependency-cleanup-failed");
-      if (operationError) throw new AggregateError([operationError, cleanupError], "sql-dependency-operation-and-cleanup-failed");
-      throw cleanupError;
-    }
-  }
+
+  beforeEach(() => {
+    let second: Awaited<ReturnType<typeof createSelfHostedPg16Database>> | undefined;
+    let otherPool: pg.Pool | undefined, client: pg.PoolClient | undefined;
+    // Register ownership synchronously, including preparation that may outlive
+    // a Vitest timeout. The outer cleanup always drains it before dropping roles.
+    closeDependencyFixture = async () => {
+      await work.catch(() => {}); // Vitest retains the setup/test failure.
+      let failed = false;
+      for (const [stage, close] of [["second-session-close", async () => {
+        if (client) { try { if (client instanceof pg.Client) await client.end(); } finally { client.release(true); } }
+      }], ["second-pool-close", async () => { await otherPool?.end(); }],
+      ["second-database-close", async () => { await second?.close(); }]] as const) {
+        try { await close(); } catch { failed = true; }
+        trace(stage);
+      }
+      if (failed) throw new Error("sql-dependency-cleanup-failed");
+    };
+    started = performance.now();
+    work = Promise.resolve().then(async () => {
+      trace("second-database-start");
+      second = await createSelfHostedPg16Database("sql_shared_dependency");
+      trace("second-database-ready");
+      otherPool = new pg.Pool({ connectionString: second.url, max: 1, connectionTimeoutMillis: 2000, query_timeout: 5000 });
+      otherPool.on("error", () => {});
+      client = await acquireObservedManagementClient(otherPool, () => {});
+      other = client;
+      trace("second-session-ready");
+      identity = await readBindingDatabaseIdentity(other);
+      expect(identity.systemIdentifier).toBe(command.selection.target.systemIdentifier);
+      expect(identity.databaseOid).not.toBe(command.selection.target.databaseOid);
+      await other.query("create table public.other_business(value integer); set lock_timeout='100ms'");
+      trace("preparation-complete");
+    });
+    return work;
+  });
+
+  it("freezes cross-database ACL dependencies until acknowledgment without touching the other database's grants", () => {
+    work = Promise.resolve().then(async () => {
+      await manager!.query(`grant select,update on public.${pg.escapeIdentifier(table)} to ${pg.escapeIdentifier(role)}`);
+      let grantCode = "not-attempted";
+      trace("effect-start");
+      await applyLegacySqlPrivilegeFence({ ...command, persistHostStep: async () => {
+        try { await other!.query(`grant select on public.other_business to ${pg.escapeIdentifier(role)}`); grantCode = "succeeded"; }
+        catch (error) { grantCode = typeof (error as { code?: unknown }).code === "string" ? (error as { code: string }).code : "unknown"; }
+      } });
+      trace("effect-complete");
+      const dependency = async () => (await manager!.query<{ present: boolean }>(`select exists(select 1 from pg_catalog.pg_shdepend
+        where refclassid='pg_catalog.pg_authid'::regclass and refobjid=$1::oid and dbid=$2::oid) as present`,
+      [command.runtimeRoles[0].oid, identity.databaseOid])).rows[0].present;
+      expect({ grantCode, dependency: await dependency() }).toEqual({ grantCode: "55P03", dependency: false });
+      // The same independent owned-DB grant succeeds after our locks end. It is
+      // not revoked by the production effect; its owner cleans up this fixture.
+      await other.query(`grant select on public.other_business to ${pg.escapeIdentifier(role)}`);
+      expect(await dependency()).toBe(true);
+      trace("assertions-complete");
+    });
+    return work;
+  });
 });
