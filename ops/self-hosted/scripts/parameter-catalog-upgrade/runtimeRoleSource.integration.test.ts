@@ -2,6 +2,7 @@ import { createHash, randomBytes } from "node:crypto";
 import { lstat, mkdtemp, readFile, realpath, rename, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import { inspect } from "node:util";
 import pg from "pg";
 import { afterAll, beforeAll, expect, it, vi } from "vitest";
 import { assertOwnedUpgradeTestTarget } from "../../../../scripts/upgrade-test-target";
@@ -181,6 +182,15 @@ it.each(["false", "reject", "primary+reject"] as const)("destroys the checked-ou
         expect(rejected).toMatchObject({ code: mode === "primary+reject" ? "MANAGEMENT-SESSION-CHALLENGE-FAILED" : "MANAGEMENT-SESSION-CLEANUP-UNKNOWN" });
         expect((rejected as { cleanupCode?: string }).cleanupCode).toBe(mode === "primary+reject" ? "MANAGEMENT-SESSION-CLEANUP-UNKNOWN" : undefined);
         expect(String(rejected)).not.toContain("private-unlock");
+        expect(String(rejected)).not.toContain("postgres://");
+        expect(Reflect.get(rejected as object, "cause")).toBeUndefined();
+        expect(Object.hasOwn(rejected as object, "cause")).toBe(false);
+        const hidden = inspect(rejected, { showHidden: true, depth: null });
+        expect(hidden).not.toContain("private-unlock");
+        expect(hidden).not.toContain("postgres://");
+        const serialized = JSON.stringify(rejected) ?? "";
+        expect(serialized).not.toContain("private-unlock");
+        expect(serialized).not.toContain("postgres://");
       } finally {
         // The source cannot own this caller lease; uncertain unlock always
         // takes the caller's destroy path instead of returning it to the pool.
