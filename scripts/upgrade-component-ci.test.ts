@@ -5,6 +5,21 @@ import * as componentRunner from "./run-upgrade-component-tests";
 
 const workflow = readFileSync(new URL("../.github/workflows/ci.yml", import.meta.url), "utf8");
 
+it("collects the real Compose handoff in an admitted owned job and keeps failed nested cleanup unknown", () => {
+  const file = "ops/self-hosted/scripts/parameter-catalog-upgrade/handoff.test.ts";
+  expect(componentRunner.componentTestCommands("handoff-three-store")[0].slice(1)).toEqual([
+    "run", "--config", "vitest.upgrade-handoff.config.ts", file,
+  ]);
+  const config = readFileSync(new URL("../vitest.upgrade-handoff.config.ts", import.meta.url), "utf8");
+  expect(config.indexOf("assertOwnedUpgradeTestTarget();")).toBeLessThan(config.indexOf('process.env.UPG_HANDOFF_DOCKER_TEST = "1"'));
+  expect(config).toContain("passWithNoTests: false");
+  expect(config).not.toContain("testTimeout:");
+  expect(workflow).toContain("--suite handoff-three-store --github-hosted");
+  expect(componentRunner.componentCleanupEvidence("handoff-three-store", 1, true)).toEqual({
+    runnerResourcesCleanupVerified: true, cleanupVerified: false, nestedCleanupOutcome: "unknown",
+  });
+});
+
 it("requires actual legacy SQL privilege effects in the owned PG16 job", () => {
   const file = "server/modules/catalog-cutover/retirement/legacySqlPrivilegeFence.integration.test.ts";
   const configPath = "server/modules/catalog-cutover/retirement/vitest.legacy-sql-privilege.integration.config.ts";
