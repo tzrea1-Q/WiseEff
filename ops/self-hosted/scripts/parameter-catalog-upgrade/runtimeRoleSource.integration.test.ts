@@ -173,17 +173,26 @@ it("observes a runtime privilege change after issuance instead of trusting cache
 function observePools(onAcquire?: (kind: keyof typeof roles) => void) {
   const pools = new Map<pg.Pool, keyof typeof roles>();
   const acquired = new Set<keyof typeof roles>();
+  const clients = new Map<pg.PoolClient, { kind: keyof typeof roles; pid: number; ended: boolean }>();
   const original = pg.Pool.prototype.connect;
   const observer = vi.spyOn(pg.Pool.prototype, "connect").mockImplementation(function(this: pg.Pool, callback) {
     const value = this.options.connectionString;
     const kind = value ? (Object.keys(roles) as (keyof typeof roles)[]).find(key => new URL(value).username === roles[key]) : undefined;
     if (kind && !pools.has(this)) {
       pools.set(this, kind);
-      this.on("acquire", () => { acquired.add(kind); onAcquire?.(kind); });
+      this.on("acquire", (client: pg.PoolClient) => {
+        acquired.add(kind);
+        if (!clients.has(client)) {
+          const row = { kind, pid: (client as pg.PoolClient & { processID: number }).processID, ended: false };
+          clients.set(client, row);
+          client.once("end", () => { row.ended = true; });
+        }
+        onAcquire?.(kind);
+      });
     }
     return original.call(this, callback);
   });
-  return { pools, acquired, async cleanup() {
+  return { pools, acquired, clients, async cleanup() {
     observer.mockRestore();
     // Regression failure must not strand the observed real pool. Assertions
     // below run before this fallback and cannot mistake it for module cleanup.
@@ -193,9 +202,14 @@ function observePools(onAcquire?: (kind: keyof typeof roles) => void) {
 }
 async function assertReleased(observed: ReturnType<typeof observePools>) {
   expect([...observed.pools.keys()].every(pool => pool.ended && pool.totalCount === 0 && pool.waitingCount === 0)).toBe(true);
-  const sessions = await admin.query<{ count: number }>(`select count(*)::int as count from pg_catalog.pg_stat_activity
+  const atReturn = [...observed.clients.values()].map(row => ({ ...row }));
+  const sessions = await admin.query<{ pid: number; state: string }>(`select pid,state from pg_catalog.pg_stat_activity
     where datname=current_database() and usename=any($1::text[]) and backend_type='client backend'`, [Object.values(roles)]);
-  expect(sessions.rows[0]?.count).toBe(0);
+  console.info(JSON.stringify({ evidence: "runtime-role-close-pids", atReturn,
+    server: sessions.rows.map(row => ({ pid: row.pid, observed: atReturn.some(client => client.pid === row.pid),
+      idle: row.state === "idle", active: row.state === "active" })) }));
+  expect(atReturn.every(row => Number.isSafeInteger(row.pid) && row.pid > 0 && row.ended)).toBe(true);
+  expect(sessions.rows).toHaveLength(0);
 }
 async function staticFailure(action: () => Promise<unknown>, extraSecret?: string) {
   let rejected = false, typed = false, code: string | undefined, leaked = false;
