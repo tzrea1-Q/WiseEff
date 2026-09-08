@@ -719,11 +719,11 @@ const observeV13 = async (query: GateQuery): Promise<GateResult> => {
       join pg_catalog.pg_trigger t on t.tgconstraint=fk.oid and t.tgisinternal
         and t.tgrelid=fk.confrelid and (t.tgtype & action.event_bit)<>0
       where fk.contype='f' and action.kind in ('c','n','d') and t.tgenabled in ('O','A','R')
-    ), referential_paths(target_oid,source_oid,action,columns,requires_replica) as (
-      select edge.target_oid,edge.source_oid,edge.parent_action,edge.source_columns,edge.requires_replica
-      from referential_edges edge join relations scoped on scoped.oid=edge.target_oid
+    ), referential_paths(target_oid,target_action,target_columns,source_oid,action,columns,requires_replica) as (
+      select edge.target_oid,edge.child_action,edge.target_columns,edge.source_oid,edge.parent_action,edge.source_columns,edge.requires_replica
+      from referential_edges edge
       union
-      select path.target_oid,edge.source_oid,edge.parent_action,edge.source_columns,
+      select path.target_oid,path.target_action,path.target_columns,edge.source_oid,edge.parent_action,edge.source_columns,
         path.requires_replica or edge.requires_replica
       from referential_paths path join referential_edges edge on edge.target_oid=path.source_oid
         and edge.child_action=path.action
@@ -752,6 +752,24 @@ const observeV13 = async (query: GateQuery): Promise<GateResult> => {
         or ((t.tgtype & 16)<>0 and pg_catalog.has_any_column_privilege(role.oid,t.tgrelid,'UPDATE'))
         or ((t.tgtype & 32)<>0 and pg_catalog.has_table_privilege(role.oid,t.tgrelid,'TRUNCATE'))
       )
+      union
+      -- An RI action can dispatch an installed user trigger without granting
+      -- its child-table mutation to the original role. Only a SECURITY DEFINER
+      -- trigger changes authority; an invoker trigger retains that role.
+      select role.oid,p.proowner,p.oid,t.oid,
+        path.requires_replica or (t.tgenabled='R' and not pg_catalog.pg_has_role(role.oid,dispatch.relowner,'USAGE')),
+        coalesce('session_replication_role=replica'=any(p.proconfig),false)
+      from referential_paths path join pg_catalog.pg_trigger t on t.tgrelid=path.target_oid
+      join pg_catalog.pg_proc p on p.oid=t.tgfoid join pg_catalog.pg_class dispatch on dispatch.oid=t.tgrelid
+      cross join pg_catalog.pg_roles role
+      where p.prosecdef and not t.tgisinternal
+        and (t.tgenabled in ('O','A','R') or (t.tgenabled='D' and pg_catalog.pg_has_role(role.oid,dispatch.relowner,'USAGE')))
+        and ((path.target_action='DELETE' and (t.tgtype & 8)<>0)
+          or (path.target_action='UPDATE' and (t.tgtype & 16)<>0
+            and (cardinality(t.tgattr::smallint[])=0 or t.tgattr::smallint[] && path.target_columns)))
+        and ((path.action='DELETE' and pg_catalog.has_table_privilege(role.oid,path.source_oid,'DELETE'))
+          or (path.action='UPDATE' and exists(select 1 from unnest(path.columns) column_number
+            where pg_catalog.has_column_privilege(role.oid,path.source_oid,column_number,'UPDATE'))))
     ), authority_edges as (
       select role.oid as caller,p.proowner as owner,p.oid as function_oid,null::oid as trigger_oid,
         false as requires_replica,coalesce('session_replication_role=replica'=any(p.proconfig),false) as configures_replica
@@ -789,6 +807,7 @@ const observeV13 = async (query: GateQuery): Promise<GateResult> => {
     select distinct login.rolname,'referential-action:'||path.source_oid::regclass::text||':'||path.action||'->'||path.target_oid::regclass::text
     from delegates join logins login on login.oid=delegates.login_oid
     join referential_paths path on not path.requires_replica or delegates.replica_possible
+    join relations scoped on scoped.oid=path.target_oid
     where (path.action='DELETE' and pg_catalog.has_table_privilege(delegates.effective_oid,path.source_oid,'DELETE'))
       or (path.action='UPDATE' and exists(select 1 from unnest(path.columns) column_number
         where pg_catalog.has_column_privilege(delegates.effective_oid,path.source_oid,column_number,'UPDATE')))
