@@ -2,6 +2,37 @@
 
 > English: [English](populated-upgrade-evidence.md)
 
+## Bootstrap 来源边界续修
+
+独立 Scratch `1ce73d4c21b7b20b86c5fafa1bfc0fbfaf8d1988`，tree
+`e670a5c8961813130c24dc1cfa9b7b0434bfd1a7`，通过调度范围的独立 Standards/Spec
+及26/26纯回归。随后真实旧源采集在不变的120秒预算内通过，用时103.92秒：1通过、1过滤
+（runner显示跳过），退出0。候选内部子进程读取126关系、126条源迁移、12条待迁移，未执行
+迁移或P0。采集 cleanupRejected=false，runner清理true；runner通用的
+`verified-by-complete-suite` 标签不能把此 selector 记作全套通过。该clean Scratch尚未集成。
+此前156秒超时保留；源准备耗时也不同，不能将全部改善归因于调度。日志及hash见英文对应段。
+
+代码 `1eb67491386a22392dafb741ff4a137a6477be87`，tree
+`4795bd23de24c417e45998557d3e5ce0680bb686`，承接报告 `8bf6706b6`。
+独立 Spec 发现 bootstrap hook 未重验运行来源。两个效果前反例证明管理来源丢失／配置漂移后
+仍继续；第三个反例证明最终 inspection 丢失来源后仍记录 `credential-step`。修复复用原来源
+核验，在效果 hook 和非 unknown 宿主记录前后调用；unknown 仍依赖尚存的宿主边界。
+独立 Spec 已复核该提交并关闭 P1；独立 Standards 也通过三文件及双语手册增量，另复跑根测试
+74/74。审查者的 docs governance 通过，但缺pgvector导致schema验证跳过，不记作完整docs通过。
+
+随后原样提交的代码 WIP 上，根调度回归83收集／83通过／0失败／0跳过，退出0。此前三个
+Red 在实际继续执行／完成记录断言失败，不代表真实密码轮换。真实 PG16 为20/20、退出0、
+清理已核验；执行时是添加宿主记录复核之前的 WIP，source 和 integration-test blob 与最终
+代码相同。它证明真实来源失效／清理及目录锁／事务兼容，不证明完整根执行。最终代码 build
+退出0，保留既有警告；无新 Hosted、完整 P13 或真实启动结论。
+
+已提交代码 `1eb674913` 的 owned scripts 随后为2058/2069通过、0失败、11跳过，退出0；
+source-lock另计4/4，清理已核验，原boundary退出0。原始日志/hash见英文对应段。
+前序 `2ef8cdae3` 的 backend 与真实PG证据仍保留原执行身份。
+
+精确原始日志、hash、容器和网络身份见[对应英文证据表](populated-upgrade-evidence.md#bootstrap-source-boundary-follow-up)。
+本次日志仍在本地，待下一份公开全文包；已有 `8bf6706b6` 公开包不包含这次续修。
+
 ## NW 续工，2026-09-08
 
 ### 管理会话接线集成

@@ -4,6 +4,63 @@
 
 ## NW continuation, 2026-09-08
 
+### Bootstrap source boundary follow-up
+
+Separate Scratch `1ce73d4c21b7b20b86c5fafa1bfc0fbfaf8d1988`, tree
+`e670a5c8961813130c24dc1cfa9b7b0434bfd1a7`, passed independent bounded scheduler
+Standards/Spec and 26/26 pure cases. Its selected real old-source capture then
+passed in 103.92s under the unchanged 120s test budget: 1 passed, 1 filtered
+(reported skipped), exit 0. The internal candidate child read 126 relations,
+126 source migrations and 12 pending migrations; no migration/P0 was executed.
+Capture cleanup rejected=false and runner cleanup=true. The runner's generic
+`verified-by-complete-suite` label does not turn this selector into a full suite.
+This clean Scratch is not integrated into the parent candidate. The previous
+156s timeout remains historical; differing source setup times prevent attributing
+the whole reduction to the scheduler. Log `/tmp/pr824-management-child-1ce73-selected-capture.log`,
+SHA256 `09e5e4f86494ed5c2113ec12387dbe7214e1cee0a8eee7cbf6995cd5d9dc554d`.
+
+Code `1eb67491386a22392dafb741ff4a137a6477be87`, tree
+`4795bd23de24c417e45998557d3e5ce0680bb686`, follows report `8bf6706b6`.
+Independent Spec found that the bootstrap hook did not recheck the issued
+runtime source. Two new pre-effect cases reproduced continued execution after
+manager loss/configuration drift. A third case reproduced a `credential-step`
+acknowledgment after source loss during final inspection. The fix reuses the
+existing source verifier in the effect hook and around non-unknown host records;
+unknown persistence retains its surviving host-boundary requirement.
+Independent Spec re-reviewed this commit and closed the P1; independent Standards
+also passed the three-file change and companion manuals. The reviewer reran
+74/74 root tests; its docs governance passed but schema verification skipped
+without pgvector, which is not complete docs verification.
+
+Root scheduling tests ran on the code WIP subsequently committed unchanged:
+83 collected/passed, 0 failed/skipped, exit 0. The preceding three Red cases
+failed at the actual continuation/acknowledgment assertions; they do not prove
+a real password rotation. Native PG16 ran 20/20, exit 0, cleanup verified on an
+earlier WIP with identical source/integration-test blobs, before the additional
+host-record checks. It proves real source loss/cleanup and catalog-lock/transaction
+compatibility, not complete root execution. Final code build exited 0 with
+existing warnings. No new Hosted result or full P13/startup is claimed.
+
+On committed code `1eb674913`, owned scripts then passed 2058/2069, failed 0,
+skipped 11, exit 0; source-lock separately passed 4/4. Resource cleanup was
+verified. Log `/tmp/pr824-1eb674-scripts-owned.log`, SHA256
+`d5541305bacf6bdac060aa90577c8cc9a130fc53b9c574252cbf900659e7f573`.
+The unchanged boundary also exited 0. The previous `2ef8cdae3` backend and native
+results remain attached to their original execution identities.
+
+| Local raw log | SHA256 |
+| --- | --- |
+| `/tmp/pr824-bootstrap-source-red.log` | `b2be1f23db240d6e2b513cbd4430dfffb8dfa4bb9115484434c85b990e1048d6` |
+| `/tmp/pr824-bootstrap-source-native.log` | `9b23fe383c4c134c81e059293d7cc188056cb26714430ea34fda461567d4e17d` |
+
+The native runner used the already pinned PG16 Alpine image and explicit owned
+daemon below, container `faf53b27fc60e24755bb608edb6a06429592a16ddb4d0efb7b72941415fe007b`,
+network `0ae2dd75124ac45d05e21a7d2f4a2ae0725f9e475f5984ec08ca90a18a742392`.
+Remaining local logs are `pr824-bootstrap-step-red.log`,
+`pr824-bootstrap-source-final-green.log` and `pr824-1eb674-build.log` under `/tmp`;
+they await the next public full-file package. The earlier public `8bf6706b6`
+package does not contain this follow-up.
+
 ### Manager session integration
 
 Code `2ef8cdae3ce7e7996656efdb4a7ae9ba2492a618`, tree

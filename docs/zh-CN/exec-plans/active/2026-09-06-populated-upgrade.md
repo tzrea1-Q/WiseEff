@@ -4,6 +4,14 @@
 
 ## 范围与状态
 
+续工代码 `1eb674913` 修复后续独立 Spec 在 `2ef8cdae3` 上发现的 P1：bootstrap
+效果及非 unknown 的宿主完成记录现在重新核验已签发的运行来源。两个效果前反例和一个
+最终 inspection 后的完成记录反例先失败，修复后 focused 83/83。新增真实 PG16 锁／事务
+兼容正例与原有19项来源测试一起通过，清理已核验；执行保留证据记录中的 WIP 身份，
+独立 Spec 与 Standards 复审通过。已提交代码的 owned scripts 为2058通过／11跳过
+（source-lock另4/4），build及原boundary退出0。`8bf6706b6` 全文包保留为历史未封存候选。采集调度和完整源 manifest
+仍在独立 Scratch；完整 P13、真实获准启动和完整 controller 仍是内部工作，A/B/C均未完成。
+
 本地代码 `2ef8cdae3` 已继续集成管理会话来源核验及清理／脱敏回归。父 Spec 与独立 Standards 接受这一限定单元；后者指出的 `cause`／隐藏错误测试缺口已修复并独立复核关闭。同一代码的 focused 为80/80、真实PG为19/19、owned scripts为2055通过／11跳过（source-lock另计4/4）、owned backend为4322/4322，资源清理已验证。Strict types、build、原boundary、contract、selfhost及包含真实schema验证的owned docs均退出0；后续Hosted待完成。先前未提供必需owned数据库的错误调用失败，保留在证据中。该修改证明退休管理会话与真实来源的绑定，不提供完整P13或启动批准。
 
 本地集成 `f950e02ce` 包含已审handoff批处理和RI触发器可达性修复。同一代码的真实PostgreSQL可达性38/38通过、清理已验证，strict types、build及原boundary通过。前一handoff单独集成 `71ba53ea1` 与已审源 `8d6a49b6c` 的tree完全相同（`d217506a85a9aaa7f46c3351c548027a0a5830f5`），真实9/9证据保留原源身份。两项限定修改均通过独立Standards与Spec。当前本地集成未推送、无新Hosted覆盖，不证明完整P13或真实旧源controller升级；管理会话来源接线及完整多head producer仍是独立Scratch。

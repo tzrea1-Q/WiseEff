@@ -98,6 +98,15 @@ remains only a management component, not a supported maintenance entry point.
 The report is read again because its retention deadline can pass independently
 of the six inventory locks; an earlier approved projection cannot replace that check.
 
+The same hook revalidates the issued runtime-role source and its actual manager
+lease. Non-unknown host records repeat that validation before and after their
+append. Initial observation does not authorize later effects: source loss or
+configuration drift stops the next credential action or acknowledgment. Unknown
+records remain writable under the surviving host boundary even when that source
+is unavailable. A PG16 regression checks source observation under the credential
+transaction's catalog locks without ending the caller's transaction; this is
+transaction compatibility evidence, not complete root retirement approval.
+
 Inspection reopens the exact persisted custody version. It never creates a new
 secret, retries ALTER ROLE, resets the journal, or infers success from an intent.
 A missing low-level intent after a root-intent-only interruption stays unknown;

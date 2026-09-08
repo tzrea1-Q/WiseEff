@@ -4,6 +4,20 @@
 
 ## Scope and state
 
+Resumption code `1eb674913` repairs the later independent Spec P1 on `2ef8cdae3`:
+bootstrap effects and non-unknown host acknowledgments now recheck the issued
+runtime source. Two pre-effect counterexamples and one post-inspection
+acknowledgment counterexample failed before correction; focused suites then
+passed 83/83. A new real PG16 lock/transaction compatibility case passed with
+the 19 existing source cases, with verified cleanup. These executions retain
+their WIP identity in the evidence record; independent Spec and Standards
+re-review passed. On committed code, owned scripts passed 2058 with 11 skipped
+(source-lock 4/4 separately); build and unchanged boundary exited 0.
+The `8bf6706b6` full-file package remains a historical, unsealed candidate.
+The capture scheduler and full-source manifest work remain separate Scratch;
+complete P13, real approved startup and the full controller are still internal
+work, so A/B/C remain incomplete.
+
 Local code `2ef8cdae3` now also integrates the manager-session source assertion and its cleanup/redaction regressions. Parent Spec and independent Standards accepted this bounded unit; the latter's missing `cause`/hidden-error test finding was repaired and independently closed. On this exact code, focused tests passed 80/80, native PostgreSQL 19/19, owned scripts 2055 passed/11 skipped (source-lock 4/4 separately), and owned backend 4322/4322; resource cleanup was verified. Strict types, build, unchanged boundary, contract, selfhost and owned docs (including actual schema verification) exited 0. Subsequent Hosted is pending. An earlier invocation without the required owned database failed and is retained in the evidence record. This binds the retirement manager to its real source; it does not supply complete P13 or a startup approval.
 
 Local integration `f950e02ce` contains the reviewed handoff batch and RI-trigger reachability fixes. On this code, native PostgreSQL writer reachability passed 38/38 with verified cleanup; strict types, build and unchanged boundary passed. The preceding handoff-only integration `71ba53ea1` has exactly the reviewed source `8d6a49b6c` tree (`d217506a85a9aaa7f46c3351c548027a0a5830f5`); its native 9/9 evidence retains that source identity. Independent Standards and Spec passed both bounded changes. This local integration is not yet pushed or covered by Hosted, and does not prove complete P13 or the old-source controller upgrade. The pending manager-source assertion and full multi-head producer remain separate Scratch.
