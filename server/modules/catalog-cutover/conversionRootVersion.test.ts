@@ -1,11 +1,11 @@
 import { describe, expect, it } from "vitest";
+import { compileCatalogRelease } from "../catalog-kernel/compiler";
 import { validCatalogReleaseBundle } from "../catalog-kernel/compiler/__fixtures__/catalogReleaseBundle";
 import { jsonCatalogReleaseSource } from "../catalog-kernel/interface";
 import { FROZEN_P0_GRAPH_FIXTURE } from "./classifier/__fixtures__/p0GraphFixture";
 import { classifyFrozenP0Graph, fingerprintP0Graph, type FrozenP0Graph } from "./classifier";
 import {
   inspectConversionManifest,
-  produceSourceBoundConversionArtifacts,
   type ConversionManifest,
 } from "./conversionManifest";
 import { planCutover } from "./orchestrator";
@@ -38,37 +38,26 @@ function fixture() {
 }
 
 describe("explicit Subject conversion for a provable DriverSchema root version", () => {
-  it("produces one fixed bundle and manifest before plan generation", async () => {
+  it("consumes a pre-authored bundle and explicit manifest before plan generation", async () => {
     const f = fixture();
-    const artifacts = produceSourceBoundConversionArtifacts({
+    const compiled = compileCatalogRelease(f.bundle);
+    expect(compiled.ok).toBe(true);
+    if (!compiled.ok) return;
+    expect(f.manifest.mappings).toHaveLength(3);
+    expect(f.manifest.mappings.every((mapping) => mapping.targetKind === "catalog-subject")).toBe(true);
+    expect(new Set(f.manifest.mappings.map((mapping) => mapping.targetId))).toEqual(new Set(["csub_acme_power"]));
+    expect(inspectConversionManifest({
       graph: f.graph,
-      sourceSnapshot: {
-        sourceInventoryFingerprint: f.manifest.sourceInventoryFingerprint,
-        records: [{
-          sourceKind: "parameter-subject",
-          sourceId: f.graph.subjects[0]!.id,
-          payload: {
-            id: f.graph.subjects[0]!.id,
-            organization_id: null,
-            subject_kind: "driver-registration",
-            display_name: "acme,power",
-            origin: "curated",
-            source_key: "compatible:acme,power",
-          },
-          sqlNullColumns: ["organization_id"],
-        }],
-      },
-      author: () => f.bundle,
-    });
-    expect(artifacts.manifest.mappings).toEqual(expect.arrayContaining(f.manifest.mappings));
-    expect(artifacts.manifest.mappings).toHaveLength(f.manifest.mappings.length);
-    expect(Object.isFrozen(artifacts.bundle)).toBe(true);
+      bundle: f.bundle,
+      manifest: f.manifest,
+      targetCatalogReleaseDigest: compiled.value.release.digest,
+    })).toBeNull();
     const planned = await planCutover({
       graph: f.graph,
       targetArtifactSha: "a".repeat(40),
-      targetCatalogReleaseDigest: artifacts.targetCatalogReleaseDigest,
-      catalogReleaseSource: jsonCatalogReleaseSource(artifacts.bundle),
-      conversionManifest: artifacts.manifest,
+      targetCatalogReleaseDigest: compiled.value.release.digest,
+      catalogReleaseSource: jsonCatalogReleaseSource(f.bundle),
+      conversionManifest: f.manifest,
     });
     expect(planned).toMatchObject({ ok: true });
   });
