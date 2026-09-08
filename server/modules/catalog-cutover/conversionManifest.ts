@@ -48,7 +48,9 @@ export async function captureConversionSourceInventory(client: CutoverQueryable)
 }
 
 /** Read-only data from the same scan as the historical inventory digest. This
- * does not issue a plan, mapping, write boundary or archive authorization. */
+ * requires one actual transaction held inside the existing quiescent source
+ * boundary; a pool root that leases separately for each query is not a snapshot.
+ * It does not issue a plan, mapping, write boundary or archive authorization. */
 export async function captureConversionSourceSnapshot(client: Queryable): Promise<ConversionSourceSnapshot> {
   return scanConversionSourceInventory(client, true);
 }
