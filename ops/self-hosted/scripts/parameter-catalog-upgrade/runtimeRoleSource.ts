@@ -62,7 +62,10 @@ export async function openRuntimeRoleSource(input: { handoff: HandoffPlan; expec
         if (connection.client && !connection.released) {
           // pg-pool removes a released client from its count before that
           // client's asynchronous end settles. Pool.end alone can return early.
-          try { await connection.client.end(); }
+          try {
+            requireFact(connection.client instanceof pg.Client, "CLOSE-FAILED");
+            await connection.client.end();
+          }
           finally { connection.released = true; connection.client.release(true); }
         }
       } finally { await connection.pool.end(); }
