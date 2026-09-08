@@ -4,6 +4,19 @@
 
 ## NW continuation, 2026-09-08
 
+### Ordinary LOGIN successor
+
+Code `bd4ad49c85c5eeaa2e351245f5a4b616af700399`, tree
+`22bb45b5aa84c82f79b5480edb037d116a1beb8d`, is integrated without rewriting its
+execution identity. Source report `5822d889c` changes only the retirement manuals.
+Its [bounded implementation, original counterexamples and execution hashes](../../server/modules/catalog-cutover/retirement/README.md#ordinary-login-sql-successor-implementation-boundary)
+record root scheduling 130/130 and native PostgreSQL 21/21 with verified cleanup,
+strict types, build and boundary 3509/3509. Parent Spec and independent Standards
+passed this scope. The PostgreSQL case uses actual restricted connections and
+the existing SQL owner; its fixture P12 references are not approved host-root
+evidence. Current Hosted is not yet recorded; predecessor results below remain
+historical. Full P13, legal production startup and full controller are incomplete.
+
 ### Retired module-mapping writer integration
 
 Integrated `ce3eee2f27f7e0b3eeec8e163a3cf0196ba47a94` and source report
@@ -18,7 +31,18 @@ Logs `/tmp/pr824-module-mapping-cf150-gate-green.log` and
 The bounded independent reviews and both real failing predecessors are recorded
 in the retirement module README. This repairs one existing writer scope, with no
 new grant or migration; it does not establish complete P13 or runtime approval.
-Current-candidate Hosted and a refreshed public full-file package remain pending.
+Hosted `34213839839` completed successfully at report `6d8fbe2bf`, merge
+`e3fb8ebe295762237f8696eee4d684187f4093f4`. All sixteen owned suites executed,
+476 passed/0 failed/0 skipped, with verified cleanup. Frontend 3374; source-lock
+4; scripts 2019 passed/27 skipped; bridge 134 passed/4 skipped; backend 4322.
+Boundary, contract, log-eval, smoke, quality and Merge bar passed; local non-HDC
+and target synthetic skipped. [Original logs and execution index](https://github.com/tzrea1-Q/WiseEff/tree/5fd8a74f5ea440a67fcb24fde3e01a18db45009e/owned-6d8fbe2bf-reviewed/hosted-34213839839)
+retain exact identities. [Full-file package](https://raw.githubusercontent.com/tzrea1-Q/WiseEff/b7b5c531c442f0d8cc2b108a49aeb867d7fbd737/owned-6d8fbe2bf-reviewed/pr824-authorized-full-files.zip)
+contains 359 full Git files and excludes Scratch; SHA256
+`f40cf3aec5cab1f28966622cda331460fbfb6e031eebaf3ab1efa92b7c68716e`.
+Independent byte/material review and parent download checksum verification passed.
+Its manifest retains the earlier packaging-time pending-CI state; the linked
+subsequent CI index records completion without rewriting that historical artifact.
 
 ### Final-boundary fixture follow-up
 

@@ -4,7 +4,9 @@
 
 ## 范围与状态
 
-最新集成代码 `ce3eee2f2` 将既有已退休模块映射写入口同时纳入 V13 和 SQL fence。源执行 `cf15075ee` 的真实 PostgreSQL 为35/35、20/20，清理核验通过；限定 Standards／Spec 均通过。集成 tree 与源报告 `e5aa2712f` 相同。该候选尚未执行 Hosted，下述成功 CI 属于前序代码。完整 P13、获批应用启动和完整升级仍未完成。
+当前代码 `bd4ad49c8` 将既有八表 SQL 退休效果接到普通 LOGIN 分支，并修复 inspection 失败清理。父 Spec 与独立 Standards 通过限定增量；同一代码的真实 PostgreSQL 21/21、根调度130/130、types/build及boundary通过。源报告 `5822d889c` 仅修改退休模块手册。新候选 Hosted 尚无执行记录。完整 P13、启动及完整存量转换仍是内部工作，A/B/C均未完成。
+
+前序代码 `ce3eee2f2` 将既有已退休模块映射写入口同时纳入 V13 和 SQL fence。源执行 `cf15075ee` 的真实 PostgreSQL 为35/35、20/20，清理核验通过；限定 Standards／Spec 均通过。集成 tree 与源报告 `e5aa2712f` 相同。报告 `6d8fbe2bf` 的 Hosted `34213839839` 在 merge `e3fb8ebe295762237f8696eee4d684187f4093f4` 成功结束，476项owned全部通过；local non-HDC、target synthetic跳过。此执行不覆盖后续普通分支增量。
 
 此前集成代码 `de225d639` 保留已审安全修复。报告 `23f3a7e21` 的 Hosted
 `34197132779` 已结束：Build/test、smoke、quality 通过；owned 在 bootstrap

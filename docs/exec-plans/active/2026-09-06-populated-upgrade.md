@@ -4,7 +4,9 @@
 
 ## Scope and state
 
-Latest integrated code `ce3eee2f2` additionally covers the existing retired module-mapping writer in both V13 and the SQL fence. Source execution `cf15075ee` passed real PostgreSQL 35/35 and 20/20, with verified cleanup; independent Standards/Spec passed the bounded change. Its integrated tree is identical to source report `e5aa2712f`. This candidate has not yet run Hosted; the following successful CI belongs to its predecessor. P13, approved application startup and the full upgrade remain incomplete.
+Current code `bd4ad49c8` adds the ordinary LOGIN branch's existing eight-table SQL retirement successor and failure-safe inspection cleanup. Parent Spec and independent Standards passed this bounded increment; real PostgreSQL 21/21, root scheduling 130/130, types/build and boundary passed on that exact code. Source report `5822d889c` changes only the retirement manuals. Its Hosted execution is not yet recorded. Full P13, startup and complete populated conversion remain internal work; A/B/C are not complete.
+
+Predecessor code `ce3eee2f2` additionally covers the existing retired module-mapping writer in both V13 and the SQL fence. Source execution `cf15075ee` passed real PostgreSQL 35/35 and 20/20, with verified cleanup; independent Standards/Spec passed the bounded change. Its integrated tree is identical to source report `e5aa2712f`. Report `6d8fbe2bf` Hosted `34213839839` completed successfully at merge `e3fb8ebe295762237f8696eee4d684187f4093f4`, including all 476 owned tests; local non-HDC and target synthetic skipped. This does not certify the later ordinary-branch increment.
 
 Earlier integrated code `de225d639` retains the reviewed safety fixes. Report
 `23f3a7e21` Hosted run `34197132779` finished: Build/test, smoke and quality

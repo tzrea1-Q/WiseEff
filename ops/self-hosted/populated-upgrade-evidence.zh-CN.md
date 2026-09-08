@@ -4,6 +4,17 @@
 
 ## NW 续工，2026-09-08
 
+### 普通 LOGIN 后续 SQL 退休
+
+代码 `bd4ad49c85c5eeaa2e351245f5a4b616af700399`、tree
+`22bb45b5aa84c82f79b5480edb037d116a1beb8d` 已原样集成，未改写执行身份。
+源报告 `5822d889c` 仅修改退休模块手册。
+[限定实现、原反例及执行 hash](../../server/modules/catalog-cutover/retirement/README.zh-CN.md)
+记录根调度130/130、真实 PostgreSQL 21/21且清理核验通过，以及types/build、
+boundary3509/3509。父Spec和独立Standards通过本分片。PG用例使用真实受限连接及
+既有SQL owner；夹具P12引用不是获批宿主根入口证据。当前Hosted尚无记录，下方
+前序执行保持原身份。完整P13、合法production启动及完整controller仍未完成。
+
 ### 已退休模块映射写入口集成
 
 集成 `ce3eee2f27f7e0b3eeec8e163a3cf0196ba47a94` 与源报告
@@ -17,7 +28,16 @@ SQL fence为20/20、130.10秒；均零失败／跳过、退出0、清理核验�
 `fc6865db043e928793620dbb65c3fc9b0c35c15be47bd8620ad6002e82a9c7d1`。
 限定独立审查及两次真实失败反例见 retirement 模块双语 README。本次仅修复既有写入口
 范围，不新增 grant 或 migration，不代表完整 P13 或运行批准。
-当前候选 Hosted 与更新后的公开全文包仍待完成。
+报告 `6d8fbe2bf` 的 Hosted `34213839839` 已成功结束，merge 为
+`e3fb8ebe295762237f8696eee4d684187f4093f4`。十六组owned全部执行，476通过／0失败／0跳过，
+清理核验通过。Frontend3374；source-lock4；scripts2019通过／27跳过；bridge134通过／4跳过；
+backend4322。Boundary、contract、log-eval、smoke、quality、Merge bar通过；local non-HDC、
+target synthetic跳过。[原日志与执行索引](https://github.com/tzrea1-Q/WiseEff/tree/5fd8a74f5ea440a67fcb24fde3e01a18db45009e/owned-6d8fbe2bf-reviewed/hosted-34213839839)
+保留精确身份。[全文包](https://raw.githubusercontent.com/tzrea1-Q/WiseEff/b7b5c531c442f0d8cc2b108a49aeb867d7fbd737/owned-6d8fbe2bf-reviewed/pr824-authorized-full-files.zip)
+包含359个完整Git文件、不含Scratch；SHA256为
+`f40cf3aec5cab1f28966622cda331460fbfb6e031eebaf3ab1efa92b7c68716e`。
+独立字节／材料审查及父重新下载checksum核验通过。包内manifest保留打包时CI待完成的
+历史状态；后续CI索引单独记录完成，不改写历史包。
 
 ### 最后边界夹具后续修复
 
