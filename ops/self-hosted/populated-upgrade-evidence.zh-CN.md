@@ -4,6 +4,49 @@
 
 ## NW 续工，2026-09-08
 
+### 固定 NW-01 集成
+
+代码 `25e8aabaee5bedd709aa15d02e6e6d020cc5550c`，tree
+`e03802313b64eaf4f33fc04299f06072fe9f9fb5`，加入独立双审通过的跨数据库
+夹具生命周期修复。源 `074c49c0b` 正式完整 19/19 通过，114.97 秒，退出 0，
+清理已核验。第二个空数据库在专属既有 hook 中准备；清理先等待真实在途工作，
+再移除跨库依赖和共享角色。所有测试／hook 预算及 SQL 断言保留。源日志 SHA256：
+`9cc822fdb13485be96c34089dd399eb8309a81dcf41ed2ac4ab3216c4cae5ee6`。
+
+`25e8` 后续正式 owned 执行通过 read projections 10/10、report 36/36、
+authority 81/81、bindings 98/98、真实 Redis 12/12、activation 22/22。
+随后 retirement 的 10000ms 准备 hook 失败，1 通过、15 跳过；失败期间父同时
+运行了两个 boundary 扫描。相同代码、无并行扫描的完整对照 16/16 通过，23.56 秒。
+另一个仅诊断的 Scratch 测得准备耗时 6077ms，也通过 16/16；这些不证明扫描与
+失败的因果关系。未修改 retirement 代码或预算，未集成诊断 Scratch。对照日志
+SHA256：`d6fa9fbc81154331b720ece3305a90688140b9d2d990450b0f4d51ecdd556c07`。
+
+明确续跑的后续套件通过 bootstrap 40/40、合成三存储包恢复 16/16（382.57 秒）、
+受控恢复 4/4（364.40 秒），均核验清理。这些是分别执行的组件证据，不回写成
+一次未中断的串行成功，更不是完整升级。全量 scripts 先通过 source-lock 4/4
+（47.65 秒），再通过 2013、跳过 11、失败 0，共 2024（129.07 秒）。跳过分布：
+handoff 1、vendor DT generator 5、通用 runtime identity 文件 5；独立真实
+runtime-identity 套件不能重标为这五条已执行。全量 backend 4311/4311，零跳过／
+失败，181.43 秒。build、contract、selfhost 退出 0；CI 固定 base 的 boundary
+3509/3509，无新增或失效 allowance。普通 docs 退出 0 但跳过 schema 子项；
+随后独立严格 owned pgvector docs-check 验证了实际 schema 产物及清理。
+这段验证期间仅两个 boundary 文档命令示例未提交，无代码或 HEAD 变化。
+尚无新的 Hosted 结果。
+
+日志前缀 `/tmp/upg824-nw01-25e8-`（本地证据，不是下载链接）：
+
+| 后缀 | SHA256 |
+| --- | --- |
+| scripts-pgvector.log | `5b7ee934eeda53c4cf32280af2d2b958784f8b6a93811d551817ce544b29154f` |
+| server-pgvector.log | `db5d56ee05072e14109b91491400ddba3497a5553b763c0d13bec2b2c92325f9` |
+| build.log | `0e172463482c4fa315f1a761ac704aa70e4059bd739f6ba74388e69085a466cb` |
+| docs-owned.log | `0a6dff3e5d48939e0ca60b073b07680de875000ffa6a0d4a7a98b614eedfc3a5` |
+| boundary-ci-base.log | `6eecbc7c68f93a34280ba53bb4a3837ff844959de6391569ee190fe9a3b0f795` |
+| recovery-three-store.log | `e5b5bcb933b6f39735ae877ee1b02d8d84f4c3812448134d6cf288337e3bb70c` |
+| controlled-recovery.log | `a18d0f4dcfb3f8615976bedbbf0a77b0a649e79a08f2cd9f7aea8481b82d6ae1` |
+
+### 较早的 NW-01 执行
+
 本地代码 `2a96d3f31f8ca00559b7fb81ea578632ae9ec165`，tree
 `5bfa1d4febe0085ac1d760ac9dce96d9038a7a09`，已集成独立审查的 NW-01
 原生连接关闭修复及获准的 D-A 审计重定位。base 仍为

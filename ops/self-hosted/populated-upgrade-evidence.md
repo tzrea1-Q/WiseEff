@@ -4,6 +4,56 @@
 
 ## NW continuation, 2026-09-08
 
+### Fixed NW-01 integration
+
+Code `25e8aabaee5bedd709aa15d02e6e6d020cc5550c`, tree
+`e03802313b64eaf4f33fc04299f06072fe9f9fb5`, adds the independently reviewed
+cross-database fixture lifecycle repair. Source `074c49c0b` passed the formal
+full 19/19, 114.97s, exit 0, cleanup verified. The second empty database is
+prepared in its own existing hook; cleanup drains actual work before removing
+cross-database dependencies and shared roles. No test/hook budget or SQL oracle
+changed. Its source log SHA256 is
+`9cc822fdb13485be96c34089dd399eb8309a81dcf41ed2ac4ab3216c4cae5ee6`.
+
+Subsequent formal owned execution at `25e8` passed read projections 10/10,
+report 36/36, authority 81/81, bindings 98/98, real Redis 12/12 and activation
+22/22. Retirement then failed in its 10000ms preparation hook (1 passed,
+15 skipped). Two parent boundary scans overlapped that failed execution.
+An unchanged-code, quiet full control passed 16/16, 23.56s; a separate
+diagnostic-only Scratch measured preparation at 6077ms and also passed 16/16.
+This does not prove scan contention caused the failure. No retirement code or
+budget change was made and the diagnostic Scratch was not integrated. Quiet
+control log SHA256: `d6fa9fbc81154331b720ece3305a90688140b9d2d990450b0f4d51ecdd556c07`.
+
+The explicitly resumed remaining suites passed bootstrap 40/40, synthetic
+three-store package recovery 16/16 (382.57s), and controlled recovery 4/4
+(364.40s), all with verified cleanup. These are separate component executions,
+not a retrospectively successful uninterrupted serial run or full upgrade.
+Full scripts passed source-lock 4/4 (47.65s), then 2013 passed/11 skipped/0
+failed of 2024 (129.07s). Skips are handoff 1, vendor DT generator 5 and the
+generic runtime identity file 5; the separate actual runtime-identity suite
+above is not relabeled as those five executions. Full backend passed 4311/4311,
+zero skipped/failed, 181.43s. Build, contract and selfhost exited 0. CI-base
+boundary passed 3509/3509 with no new/stale allowances. Ordinary docs returned
+0 but skipped its schema check; a separate strict owned pgvector docs-check
+then verified the actual schema artifact and cleanup. During this validation,
+only the two boundary-documentation command examples were uncommitted; no code
+or HEAD changed. No new Hosted result is claimed.
+
+Log prefix `/tmp/upg824-nw01-25e8-` (local evidence, not download links):
+
+| Suffix | SHA256 |
+| --- | --- |
+| scripts-pgvector.log | `5b7ee934eeda53c4cf32280af2d2b958784f8b6a93811d551817ce544b29154f` |
+| server-pgvector.log | `db5d56ee05072e14109b91491400ddba3497a5553b763c0d13bec2b2c92325f9` |
+| build.log | `0e172463482c4fa315f1a761ac704aa70e4059bd739f6ba74388e69085a466cb` |
+| docs-owned.log | `0a6dff3e5d48939e0ca60b073b07680de875000ffa6a0d4a7a98b614eedfc3a5` |
+| boundary-ci-base.log | `6eecbc7c68f93a34280ba53bb4a3837ff844959de6391569ee190fe9a3b0f795` |
+| recovery-three-store.log | `e5b5bcb933b6f39735ae877ee1b02d8d84f4c3812448134d6cf288337e3bb70c` |
+| controlled-recovery.log | `a18d0f4dcfb3f8615976bedbbf0a77b0a649e79a08f2cd9f7aea8481b82d6ae1` |
+
+### Earlier NW-01 execution
+
 Local code `2a96d3f31f8ca00559b7fb81ea578632ae9ec165`, tree
 `5bfa1d4febe0085ac1d760ac9dce96d9038a7a09`, includes the independently reviewed
 NW-01 native client termination fix and authorized D-A audit relocation. Base

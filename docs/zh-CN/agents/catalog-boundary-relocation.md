@@ -32,4 +32,4 @@ checker 先完成原有 fixture 完整性、显式基线祖先及 allowance 防�
 
 这是单份精确记录，不是通用位移或搜索规则。记录缺失／篡改、源码变化（包括未提交和后续改动）、映射缺项或跨文件替换均拒绝。其他扫描发现继续进入原比较逻辑；新增债务仍无 allowance，删除的债务不能由该入口恢复。后续合法修改需删除已迁移债务或另行完成明确身份审查；不得重新生成清单、按 SQL 等价推断、填充源码、换基线或停用检查。
 
-验证命令为 `npm run test:scripts -- scripts/parameter-catalog-allowlist/exactRelocation.test.ts scripts/check-parameter-catalog-boundaries.test.ts`，以及 `npm run parameter-catalog-boundaries:check -- --trusted-base-sha 35cbfb18e0504d6ccf16d2fc18c72a0d2da80391`。现有 inventory 断言保持不变，增加映射唯一性断言。实际命令、审查 SHA 和 Hosted checkout 证据记录在[交付计划](../exec-plans/active/2026-09-05-catalog-r2-delivery.md)中，文档本身不是 CI 证据。
+验证命令为 `npm run test:scripts -- scripts/parameter-catalog-allowlist/exactRelocation.test.ts scripts/check-parameter-catalog-boundaries.test.ts`，以及 `npm run parameter-catalog-boundaries:check -- --trusted-base-sha 9b3ba7df7e21f5589684bc92c872da593ad4c246`，与 `.github/workflows/ci.yml` 的明确固定值一致。这是修正文档中的旧示例，不修改扫描器可信基线。现有 inventory 断言保持不变，增加映射唯一性断言。实际命令、审查 SHA 和 Hosted checkout 证据记录在[交付计划](../exec-plans/active/2026-09-05-catalog-r2-delivery.md)中，文档本身不是 CI 证据。
