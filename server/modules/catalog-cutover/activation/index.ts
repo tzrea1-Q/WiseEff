@@ -24,7 +24,7 @@ export async function readComparisonMappingFactsOnHeldSession(input: {
   const target = structuredClone(input.target);
   const assertResolution = async () => {
     const row = (await client.query<{ schemas: string[] }>("select pg_catalog.current_schemas(true)::text[] as schemas")).rows[0];
-    if (!Array.isArray(row?.schemas) || row.schemas[0] !== "pg_catalog") refuse("HELD-SESSION-REJECTED");
+    if (!isDeepStrictEqual(row?.schemas, ["pg_catalog", "public"])) refuse("HELD-SESSION-REJECTED");
   };
   const verify = async () => {
     await assertResolution();

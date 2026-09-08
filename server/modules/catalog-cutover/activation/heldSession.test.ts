@@ -35,9 +35,9 @@ it("does not treat a session isolation default as an active held comparison tran
   expect(client.query.mock.calls.some(([sql]) => sql.includes("parameter_catalog_cutover_runs"))).toBe(false);
 });
 
-it("rejects an unsafe management resolution path before its first physical identity read", async () => {
+it.each([["public", "pg_catalog"], ["pg_catalog", "pg_temp_7", "public"]])("rejects unsafe management resolution %j before its first physical identity read", async (...schemas) => {
   const client = { query: vi.fn(async (sql: string) => {
-    if (sql.includes("current_schemas")) return { rows: [{ schemas: ["public", "pg_catalog"] }], rowCount: 1 };
+    if (sql.includes("current_schemas")) return { rows: [{ schemas }], rowCount: 1 };
     if (sql.includes("pg_control_system")) return { rows: [{ systemIdentifier: "123", databaseOid: "456" }], rowCount: 1 };
     return { rows: [], rowCount: 0 };
   }) };

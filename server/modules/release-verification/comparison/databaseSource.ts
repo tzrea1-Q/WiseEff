@@ -112,7 +112,7 @@ export async function openComparisonDatabaseV2(input: Source & { readonly connec
       [owner.pid, target.databaseOid, challenge])).rows[0];
       const native = [...clients].filter(client => !ended.has(client) && Reflect.get(client, "processID") === current?.pid);
       if (!current || native.length !== 1 || !current.same_identity || current.username !== owner.username ||
-        current.schemas[0] !== "pg_catalog" || !current.held) refuse();
+        !isDeepStrictEqual(current.schemas, ["pg_catalog", "public"]) || !current.held) refuse();
       peer(native[0]!);
       if (!isDeepStrictEqual(await readBindingDatabaseIdentity(native[0]!), target)) refuse();
       await verifyBoundary(); live(); peer(native[0]!);
