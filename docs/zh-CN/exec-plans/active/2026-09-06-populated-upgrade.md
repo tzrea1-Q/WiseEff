@@ -12,6 +12,21 @@
 授权新增migration、runtime grant、S6／Policy语义、生产操作或合并Draft。历史v1字节与
 批准、原可信库存、原23对映射及用途／批准规则保持不变。
 
+NW-01代码 `25e8aabae`／报告 `4b346d6ef` 已推送，D-A与原生client关闭修复均经独立审查。
+run `34192523701` 在merge `7affb0894c4d78446efbfaf534ff61561c44e0a4` 出现新的owned失败：
+bootstrap 39通过／1失败：独立child的 `not-applied` 断言已过，但父进程后续fresh-manager inspect
+预期 `not-applied`、实际 `unknown`，不能归因成child重开失败。
+后续owned suite未执行，由Fermat定位；不能据此推断原runtime-role-source又失败。
+
+后续本地代码：`53946302d` 在planner返回后、journal提交或重放成功前复查原宿主锁；
+Red为失锁仍成功，Green为19/19调度回归，限定Standards／Spec独立通过。
+`1ad2fdb0f` 登记真实Compose handoff owned入口，路由／监督59/59，实际入口执行待Raman的
+数据观察器；父唯一负责runner／CI／controller，Raman唯一负责 `handoffDataSource` 和handoff夹具。
+`b7c64328f` 集成已双审的mapping快照／v2 codec小边界，真实PG activation 22/22、五文件纯测24/24、
+build退出0并保留警告。首次纯测误选配置触发默认开发库ledger检查，未收集用例，不计验证。
+上述不证明完整多head比较、P13、获批启动或完整controller成功；新代码不会倒填到已发布的
+`4b346d6ef` 全文包。
+
 当前base仍为 `cda6737a8`；报告 `b5ef257cc` 的run `34169931811` 已失败结束，
 实际merge checkout `829f8b49d`。runtime-role-source为12通过／1失败：管理会话终止后
 服务端会话数预期0、实测1；后续owned suite未执行。Build/test、smoke和quality通过，
@@ -26,6 +41,8 @@
 
 同一时间只推进一个共享实现根，独立审查单列。先跑相关真实边界，稳定候选再完整验证。
 A／B／C均未完成；严格文档检查要求保持。
+
+### 历史续工记录：真实依赖与激活
 
 集成 `864bd95f180a297fb0fd3ec04aeeaf930b36718c` 修复bootstrap夹具生命周期失败，
 没有增加任何预算。源 `c4b99f4ba` 经独立Standards／Spec审查通过、真实PG40/40；

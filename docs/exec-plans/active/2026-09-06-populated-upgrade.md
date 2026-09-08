@@ -15,6 +15,27 @@ runtime grants, S6/Policy semantics, production operations or merging this Draft
 Historical v1 bytes and approvals, original trusted inventory, the previous
 23-pair relocation and existing purpose/approval rules stay unchanged.
 
+NW-01 code `25e8aabae` / report `4b346d6ef` is pushed, with D-A and native
+client-close fixes independently reviewed. Run `34192523701` reached a new owned
+failure at merge `7affb0894c4d78446efbfaf534ff61561c44e0a4`: bootstrap 39 passed/1
+failed: the independent child passed its `not-applied` assertion, but the parent's
+subsequent fresh-manager inspection returned `unknown` instead of `not-applied`.
+Later owned suites did not execute; diagnosis belongs
+to Fermat. This does not reopen the old runtime-role-source failure by assumption.
+
+Subsequent local code: `53946302d` rechecks the existing host lock after planning
+before journal commit or replay (Red: accepted after loss; Green: 19/19 scheduling
+tests, bounded independent Standards/Spec PASS). `1ad2fdb0f` registers the real
+Compose handoff in an owned route; 59 routing/supervision tests pass, actual route
+execution is pending Raman's data observer. Parent owns runner/CI/controller;
+Raman owns `handoffDataSource` and the handoff fixture. `b7c64328f` integrates the
+independently reviewed mapping snapshot/v2 codec unit: actual PG activation 22/22,
+pure five-file suite 24/24, build exit 0 with warnings. An initial wrong pure-test
+configuration hit the default development ledger and collected no tests; it is
+not validation. None of these results proves complete multi-head comparison,
+P13, approved startup, or full controller success. No new code is added to the
+already published `4b346d6ef` file package retroactively.
+
 Current base remains `cda6737a8`; report `b5ef257cc` run `34169931811` finished
 failed at merge checkout `829f8b49d`: runtime-role-source 12 passed/1 failed,
 where the post-manager-termination session count was 1 instead of 0. Later owned
@@ -32,7 +53,7 @@ Only one shared implementation root is active at a time; independent review
 remains separate. Focused real-boundary checks precede one stable-candidate full
 validation. A/B/C remain incomplete. The strict documentation gate still applies.
 
-### Current continuation: real dependencies and activation
+### Historical continuation: real dependencies and activation
 
 Integrated `864bd95f180a297fb0fd3ec04aeeaf930b36718c` closes the bootstrap
 fixture lifecycle failure without increasing any budget. Source `c4b99f4ba`
