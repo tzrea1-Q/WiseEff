@@ -1,16 +1,9 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import type { AuthContext } from "../auth/types";
 import type { Database } from "../../shared/database/client";
 import { makeTestAuthContext } from "../../testing/authContext";
 import { listDriverRegistry } from "./service";
-import * as service from "./service";
-import * as schemaCache from "../parameter-specs/schemaRegistryCache";
-import * as overlays from "../parameter-specs/driverSchemaOverlayRepository";
-import * as coverage from "../parameter-specs/parseCoverage";
-import { readModComparisonSourceInventory } from "./parameterCatalogComparisonContribution";
-
-afterEach(() => vi.restoreAllMocks());
 
 function makeAuth(): AuthContext {
   return makeTestAuthContext({
@@ -153,106 +146,5 @@ describe("listDriverRegistry", () => {
     expect(sc?.observed).toBe(true);
     expect(sc?.notYetObserved).toBe(false);
     expect(sc?.parameterCount).toBe(3);
-  });
-});
-
-function projectionDatabase() {
-  const query = vi.fn(async (text: string, values?: unknown[]) => {
-    expect(values).toEqual(["org-1"]);
-    if (text.includes("driver_registrations")) return { rows: [
-      { module_id: "driver", driver_nature: "physical", instance_cardinality: "multiple", default_business_category_module_id: "default-category" },
-    ] };
-    if (text.includes("from parameter_modules")) return { rows: [
-      { id: "category", name: "Category", kind: "business", origin: "curated", parent_id: null },
-      { id: "driver", name: "Driver", kind: "driver-group", origin: "curated", parent_id: "category" },
-      { id: "empty", name: "Empty", kind: "driver-group", origin: "curated", parent_id: null },
-      { id: "scaffold-name", name: "i2c@FDF5E000", kind: "driver-group", origin: "auto", parent_id: null },
-      { id: "scaffold-compatible", name: "Hidden", kind: "driver-group", origin: "auto", parent_id: null },
-    ] };
-    if (text.includes("from project_parameter_bindings")) return { rows: [{ module_id: "driver", parameter_spec_id: "spec" }] };
-    if (text.includes("from parameter_module_mappings")) return { rows: [
-      { id: "mapping", parameter_module_id: "driver", match_kind: "compatible", match_value: "vendor,driver", priority: 1 },
-      { id: "scaffold", parameter_module_id: "scaffold-compatible", match_kind: "compatible", match_value: "i2c@fdf5e000", priority: 0 },
-    ] };
-    throw new Error("unexpected-projection-query");
-  });
-  return { query, transaction: vi.fn() } as unknown as Database;
-}
-
-describe("driver identity and placement projection", () => {
-  const read = (db: Database, auth = makeAuth()) =>
-    Reflect.get(service, "listDriverRegistryIdentityPlacements")(db, auth) as Promise<{ items: unknown[]; total: number }>;
-
-  it("preserves every production identity field and filter while coverage stays in the production list", async () => {
-    const cache = vi.spyOn(schemaCache, "getCachedOrganizationSchemaRegistry").mockResolvedValue({ drivers: [] } as never);
-    const promoted = vi.spyOn(overlays, "listOrganizationDriverSchemas").mockResolvedValue([
-      { compatible: "VENDOR,DRIVER", supersededBySchemaId: "promoted-schema" },
-    ] as never);
-    const lookup = vi.spyOn(coverage, "lookupParseCoverage").mockReturnValue({
-      covered: true, scope: "platform", source: "vendor", pattern: "vendor,driver", driverId: "schema",
-    });
-    const projection = await read(projectionDatabase());
-    expect(cache).not.toHaveBeenCalled();
-    expect(promoted).not.toHaveBeenCalled();
-    expect(lookup).not.toHaveBeenCalled();
-    const production = await listDriverRegistry(projectionDatabase(), makeAuth());
-    expect(projection).toEqual({
-      total: 2,
-      items: production.items.map(({ parseCoverages: _coverage, ...identity }) => identity),
-    });
-    expect(projection.items).toEqual([
-      { moduleId: "driver", name: "Driver", origin: "curated", businessCategoryId: "category", businessCategoryName: "Category",
-        defaultBusinessCategoryId: "default-category", compatibles: ["vendor,driver"], parameterCount: 1, observed: true,
-        notYetObserved: false, driverNature: "physical", instanceCardinality: "multiple" },
-      { moduleId: "empty", name: "Empty", origin: "curated", businessCategoryId: null, businessCategoryName: null,
-        defaultBusinessCategoryId: null, compatibles: [], parameterCount: 0, observed: false,
-        notYetObserved: true, driverNature: null, instanceCardinality: null },
-    ]);
-    expect(production.items[0]!.parseCoverages).toEqual([{ compatible: "vendor,driver", coverage: {
-      covered: true, scope: "platform", source: "vendor", pattern: "vendor,driver", driverId: "schema", promoted: true,
-    } }]);
-    expect(cache).toHaveBeenCalledTimes(1);
-    expect(promoted).toHaveBeenCalledTimes(1);
-  });
-
-  it("does not turn a production coverage failure into an empty P0 inventory", async () => {
-    const failure = new Error("schema-cache-unavailable");
-    vi.spyOn(schemaCache, "getCachedOrganizationSchemaRegistry").mockRejectedValue(failure);
-    expect((await read(projectionDatabase())).total).toBe(2);
-    await expect(listDriverRegistry(projectionDatabase(), makeAuth())).rejects.toBe(failure);
-  });
-
-  it("retains view permission and actual database failure rejection", async () => {
-    const db = projectionDatabase();
-    const auth = makeTestAuthContext({ organizationId: "org-1", permissions: [] });
-    await expect(read(db, auth)).rejects.toMatchObject({ code: "FORBIDDEN" });
-    expect(db.query).not.toHaveBeenCalled();
-    const failure = new Error("source-query-unavailable");
-    vi.mocked(db.query).mockRejectedValue(failure);
-    await expect(read(db)).rejects.toBe(failure);
-  });
-
-  it("feeds the actual P0 consumer all module, mapping, dismissal, registration and placement rows without coverage I/O", async () => {
-    const cache = vi.spyOn(schemaCache, "getCachedOrganizationSchemaRegistry").mockRejectedValue(new Error("no-checkout-schema"));
-    const overlay = vi.spyOn(overlays, "listOrganizationDriverSchemas").mockRejectedValue(new Error("no-overlay-coverage"));
-    const database = projectionDatabase();
-    const db = { query: async (text: string, values?: unknown[]) => {
-      if (text === "select id from organizations order by id") return { rows: [{ id: "org-1" }] };
-      if (text.includes("from parameter_module_dismissed_compatibles dc\n")) return { rows: [
-        { compatible: "dismissed,driver", reason: "operator", dismissed_at: "2026-01-01", binding_count: "0", project_count: "0" },
-      ] };
-      if (text.includes("group by lower(trim")) return { rows: [] };
-      return database.query(text, values);
-    }, transaction: vi.fn() } as unknown as Database;
-    const inventory = await readModComparisonSourceInventory(db);
-    expect(inventory.map(row => `${row.kind}:${row.id}`).sort()).toEqual([
-      "parameter-module:category", "parameter-module:driver", "parameter-module:empty",
-      "parameter-module:scaffold-name", "parameter-module:scaffold-compatible",
-      "parameter-module-mapping:mapping", "parameter-module-mapping:scaffold",
-      "parameter-module-dismissed-compatible:dismissed,driver",
-      "subject-registration:driver", "subject-registration:empty", "subject-placement:driver",
-    ].sort());
-    expect(cache).not.toHaveBeenCalled();
-    expect(overlay).not.toHaveBeenCalled();
   });
 });

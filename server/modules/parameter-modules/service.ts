@@ -1240,40 +1240,6 @@ export async function listDriverRegistry(
       .filter((overlay) => Boolean(overlay.supersededBySchemaId))
       .map((overlay) => overlay.compatible.toLowerCase()),
   );
-  const projection = await projectDriverRegistry(db, auth, registry);
-  return {
-    items: projection.items.map((item) => ({
-      ...item,
-      parseCoverages: item.compatibles.map((compatible) => {
-        const coverage = lookupParseCoverage(compatible, schemaRegistry);
-        if (
-          coverage.covered &&
-          coverage.scope === "platform" &&
-          promotedCompatibles.has(compatible.toLowerCase())
-        ) {
-          return { compatible, coverage: { ...coverage, promoted: true } };
-        }
-        return { compatible, coverage };
-      }),
-    })),
-    total: projection.total,
-  };
-}
-
-/** Database identity and placement facts, without schema-file coverage reads. */
-export async function listDriverRegistryIdentityPlacements(
-  db: Database,
-  auth: AuthContext,
-) {
-  requireCanView(auth);
-  return projectDriverRegistry(db, auth, await readRegistry(db, auth.organization.id));
-}
-
-async function projectDriverRegistry(
-  db: Database,
-  auth: AuthContext,
-  registry: ParameterModuleRegistryDto,
-): Promise<{ items: Omit<DriverRegistryEntry, "parseCoverages">[]; total: number }> {
   const registrationByModuleId = new Map<
     string,
     {
@@ -1328,7 +1294,7 @@ async function projectDriverRegistry(
     mappingsByModule.set(mapping.moduleId, list);
   }
 
-  const items: Omit<DriverRegistryEntry, "parseCoverages">[] = [];
+  const items: DriverRegistryEntry[] = [];
   for (const module of registry.modules) {
     if (module.kind !== "driver-group") continue;
     if (isScaffoldingDriverLabel(module.name)) continue;
@@ -1358,6 +1324,17 @@ async function projectDriverRegistry(
       notYetObserved: module.origin === "curated" && !observed,
       driverNature: registration?.driverNature ?? null,
       instanceCardinality: registration?.instanceCardinality ?? null,
+      parseCoverages: compatibles.map((compatible) => {
+        const coverage = lookupParseCoverage(compatible, schemaRegistry);
+        if (
+          coverage.covered &&
+          coverage.scope === "platform" &&
+          promotedCompatibles.has(compatible.toLowerCase())
+        ) {
+          return { compatible, coverage: { ...coverage, promoted: true } };
+        }
+        return { compatible, coverage };
+      }),
     });
   }
 
