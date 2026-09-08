@@ -122,7 +122,7 @@ async function begin(client: pg.PoolClient) {
   // Relation locks alone do not serialize GRANT against an existing grantee,
   // nor changes to other metadata included by the authentication baseline.
   await client.query(`lock table ${inspectionCatalogs.join(",")} in share mode nowait`);
-  // The seven legacy tables are not the six separate P12 inventory tables.
+  // The fixed legacy relations differ from the six separate P12 inventory tables.
   // Lock before the first snapshot, covering concurrent DML, DDL and ACL changes.
   await client.query(`lock table ${relations.map(name => `public.${pg.escapeIdentifier(name)}`).join(",")} in access exclusive mode nowait`);
 }
@@ -201,7 +201,7 @@ export async function applyLegacySqlPrivilegeFence(input: {
     await live(); ending = true; await client.query("commit"); transaction = false; ending = false;
     await live();
     // Fresh post-commit inspection and the host acknowledgment share these
-    // seven locks. An earlier RR snapshot is not a current ACL observation.
+    // relation locks. An earlier RR snapshot is not a current ACL observation.
     transaction = true; await begin(client); await assertManagement(client, selection.target);
     await client.query("select id from parameter_catalog.parameter_catalog_cutover_runs where id=$1 for update", [selection.runId]);
     const readback = (await client.query(`select event_kind,payload from parameter_catalog.parameter_catalog_cutover_events
