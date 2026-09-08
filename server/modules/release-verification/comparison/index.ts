@@ -1,4 +1,6 @@
 export { THREAT_MATRIX } from "./threatMatrix";
+export { parseComparisonContributionV2, checksumComparisonContributionV2 } from "./corpusContributionV2";
+export type { ComparisonSourceIdentity, ComparisonContextV2, ExpectedDifferenceV2, ComparisonCaseV2, ComparisonContributionV2 } from "./corpusContributionV2";
 export type { ThreatMatrixId, ThreatMatrixRow } from "./threatMatrix";
 export {
   ComparisonCorpusError,

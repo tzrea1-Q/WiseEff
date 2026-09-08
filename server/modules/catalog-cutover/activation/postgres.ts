@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { isDeepStrictEqual } from "node:util";
 import type pg from "pg";
+import { readMappingInventory, MappingInventoryError } from "../mapping";
 import { digestOf } from "../../release-verification/core/digest";
 import { PRE_ACTIVATION_PHASES } from "../interface";
 import type { ActivationBinding, ActivationIdentity, ActivationIntent } from "./interface";
@@ -75,18 +76,10 @@ export async function readFacts(client: pg.PoolClient, target: ActivationIdentit
   if (current.rowCount !== 1 || !current.rows[0] || Object.values(current.rows[0]).some(value => typeof value !== "string" || !value.trim())) refuse("CATALOG-UNAVAILABLE");
   const catalog = current.rows[0] as Catalog;
   if (catalog.releaseDigest !== run.target_catalog_release_digest) refuse("CATALOG-MISMATCH");
-  const heads = (await client.query<{ legacy_identity_id: string; current_version_id: string; cas_version: string; version: unknown; identity: unknown }>(`select h.legacy_identity_id,h.current_version_id,h.cas_version::text,to_jsonb(v) as version,to_jsonb(i) as identity
-    from parameter_catalog.legacy_mapping_heads h left join parameter_catalog.legacy_mapping_versions v
-    on v.id=h.current_version_id and v.legacy_identity_id=h.legacy_identity_id
-    left join parameter_catalog.legacy_identities i on i.id=h.legacy_identity_id order by h.legacy_identity_id collate "C"`)).rows;
-  if (!heads.length || heads.some(row => !row.version || !row.identity) || new Set(heads.map(row => row.legacy_identity_id)).size !== heads.length) refuse("MAPPING-INCOMPLETE");
-  const versions = (await client.query<{ id: string; version: unknown; identity: unknown }>(`select v.id,to_jsonb(v) as version,to_jsonb(i) as identity
-    from parameter_catalog.legacy_mapping_versions v left join parameter_catalog.legacy_identities i on i.id=v.legacy_identity_id order by v.id collate "C"`)).rows;
-  if (!versions.length || versions.some(row => !row.identity) || new Set(versions.map(row => row.id)).size !== versions.length) refuse("MAPPING-INCOMPLETE");
-  const identities = (await client.query<{ id: string }>("select id from parameter_catalog.legacy_identities order by id")).rows;
-  if (identities.length !== heads.length || identities.some(identity => !heads.some(head => head.legacy_identity_id === identity.id))) refuse("MAPPING-INCOMPLETE");
-  const headDigest = digestOf(heads);
-  const versionInventoryDigest = digestOf(versions);
+  const { headDigest, versionInventoryDigest } = await readMappingInventory(client).catch(error => {
+    if (error instanceof MappingInventoryError) refuse("MAPPING-INCOMPLETE");
+    throw error;
+  });
   const basis = { version: "pcat-activation-mapping-v1", target, runId, planDigest,
     sourceSnapshotFingerprint: run.source_snapshot_fingerprint, headDigest, versionInventoryDigest };
   const epoch = digestOf(basis);
