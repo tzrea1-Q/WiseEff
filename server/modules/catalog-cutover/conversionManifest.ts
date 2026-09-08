@@ -147,11 +147,181 @@ export type ConversionSourceSnapshot = {
   readonly records: readonly ConversionSourceRecord[];
 };
 
-export async function captureArchivedDefinitionGraph(client: CutoverQueryable, sourceId: string): Promise<ArchiveSourceGraph | null> {
+type SourceRelationEdge = {
+  readonly from: ConversionSourceRecord["sourceKind"];
+  readonly field: string;
+  readonly to: ConversionSourceRecord["sourceKind"];
+  readonly nullable: boolean;
+};
+
+// This is a relation graph over the same nine rows that the closed source
+// projection already owns. It deliberately does not reach into a wider
+// public-table allowlist or infer a relationship from display names.
+const sourceRelationEdges: readonly SourceRelationEdge[] = [
+  { from: "parameter-spec-version", field: "parameter_spec_id", to: "parameter-spec", nullable: false },
+  { from: "driver-schema", field: "parameter_spec_id", to: "parameter-spec", nullable: false },
+  { from: "driver-schema", field: "attribution_subject_id", to: "parameter-subject", nullable: true },
+  { from: "driver-schema-version", field: "driver_schema_id", to: "driver-schema", nullable: false },
+  { from: "driver-schema-version", field: "parameter_spec_version_id", to: "parameter-spec-version", nullable: false },
+  { from: "dts-property-spec", field: "parameter_spec_id", to: "parameter-spec", nullable: false },
+  { from: "dts-property-spec", field: "driver_schema_id", to: "driver-schema", nullable: true },
+  { from: "parameter-spec", field: "attribution_subject_id", to: "parameter-subject", nullable: true },
+  { from: "parameter-module", field: "attribution_subject_id", to: "parameter-subject", nullable: true },
+  { from: "parameter-module", field: "parent_id", to: "parameter-module", nullable: true },
+  { from: "parameter-placement", field: "attribution_subject_id", to: "parameter-subject", nullable: false },
+  { from: "parameter-placement", field: "driver_group_module_id", to: "parameter-module", nullable: false },
+  { from: "parameter-placement", field: "default_business_category_module_id", to: "parameter-module", nullable: true },
+  { from: "parameter-module-mapping", field: "parameter_module_id", to: "parameter-module", nullable: false },
+];
+
+type SourceExternalReference = {
+  readonly from: ConversionSourceRecord["sourceKind"];
+  readonly field: string;
+  readonly targetTable: string;
+  readonly nullable: boolean;
+};
+
+// These are real FKs from the nine projected owners into public tables that
+// remain digest-only. They are emitted as references rather than silently
+// discarded; the archive owner still refuses a malformed non-null value.
+const sourceExternalReferences: readonly SourceExternalReference[] = [
+  { from: "parameter-spec", field: "organization_id", targetTable: "organizations", nullable: true },
+  { from: "driver-schema", field: "organization_id", targetTable: "organizations", nullable: true },
+  { from: "parameter-subject", field: "organization_id", targetTable: "organizations", nullable: true },
+  { from: "parameter-module", field: "organization_id", targetTable: "organizations", nullable: false },
+  { from: "parameter-placement", field: "organization_id", targetTable: "organizations", nullable: false },
+  { from: "parameter-module-mapping", field: "organization_id", targetTable: "organizations", nullable: false },
+];
+
+const sourceTableForKind = (sourceKind: string): string | null =>
+  Object.entries(conversionSourceRelations).find(([, kind]) => kind === sourceKind)?.[0] ?? null;
+
+const payloadValue = (payload: ContractJsonValue, key: string): ContractJsonValue | undefined => {
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) return undefined;
+  return Object.hasOwn(payload, key) ? payload[key] : undefined;
+};
+
+const requireRelationValue = (
+  record: ConversionSourceRecord,
+  field: string,
+  nullable: boolean,
+): string | null => {
+  const value = payloadValue(record.payload, field);
+  const listedAsNull = record.sqlNullColumns.includes(field);
+  if (value === undefined || (value === null ? !listedAsNull : listedAsNull)) {
+    throw new Error("PCAT-CONVERSION-ARCHIVE-SOURCE-GRAPH-PROJECTION-MISMATCH");
+  }
+  if (value === null) {
+    if (!nullable) throw new Error("PCAT-CONVERSION-ARCHIVE-SOURCE-GRAPH-NONNULL-FK");
+    return null;
+  }
+  if (typeof value !== "string" || value.length === 0) {
+    throw new Error("PCAT-CONVERSION-ARCHIVE-SOURCE-GRAPH-FK-INVALID");
+  }
+  return value;
+};
+
+const snapshotRecord = (
+  snapshot: ConversionSourceSnapshot,
+  sourceKind: string,
+  sourceId: string,
+): ConversionSourceRecord | null => {
+  const records = snapshot.records.filter((record) => record.sourceKind === sourceKind && record.sourceId === sourceId);
+  return records.length === 1 ? records[0]! : null;
+};
+
+const sourceRecordKey = (record: Pick<ConversionSourceRecord, "sourceKind" | "sourceId">): string =>
+  `${record.sourceKind}\u0000${record.sourceId}`;
+
+/** Build an immutable source graph from the exact rows captured by the closed
+ * projection. Every emitted row retains SQL NULL columns; every edge is a
+ * declared FK edge from an existing source owner. */
+export function archivedSourceGraphFromSnapshot(
+  snapshot: ConversionSourceSnapshot,
+  sourceKind: string,
+  sourceId: string,
+): ArchiveSourceGraph | null {
+  const root = snapshotRecord(snapshot, sourceKind, sourceId);
+  const rootTable = sourceTableForKind(sourceKind);
+  if (!root || !rootTable) return null;
+  const byKey = new Map<string, ConversionSourceRecord>();
+  for (const record of snapshot.records) {
+    const key = sourceRecordKey(record);
+    if (byKey.has(key)) throw new Error("PCAT-CONVERSION-ARCHIVE-SOURCE-GRAPH-DUPLICATE");
+    byKey.set(key, record);
+  }
+  const links: Array<{ from: string; field: string; to: string }> = [];
+  const externalReferences: Array<{ from: string; field: string; targetTable: string; targetId: string }> = [];
+  const included = new Map<string, ConversionSourceRecord>();
+  const visit = (record: ConversionSourceRecord) => {
+    const recordKey = sourceRecordKey(record);
+    if (included.has(recordKey)) return;
+    included.set(recordKey, record);
+    for (const edge of sourceRelationEdges) {
+      if (record.sourceKind !== edge.from) continue;
+      const referencedId = requireRelationValue(record, edge.field, edge.nullable);
+      if (referencedId === null) continue;
+      const targetKey = `${edge.to}\u0000${referencedId}`;
+      const target = byKey.get(targetKey);
+      if (!target) throw new Error("PCAT-CONVERSION-ARCHIVE-SOURCE-GRAPH-FK-TARGET-MISSING");
+      links.push({ from: recordKey, field: edge.field, to: targetKey });
+      visit(target);
+    }
+    for (const reference of sourceExternalReferences) {
+      if (record.sourceKind !== reference.from) continue;
+      const targetId = requireRelationValue(record, reference.field, reference.nullable);
+      if (targetId !== null) externalReferences.push({ from: recordKey, field: reference.field, targetTable: reference.targetTable, targetId });
+    }
+  };
+  visit(root);
+  const records = [...included.values()].sort((left, right) =>
+    sourceTableForKind(left.sourceKind)!.localeCompare(sourceTableForKind(right.sourceKind)!) ||
+    left.sourceId.localeCompare(right.sourceId));
+  links.sort((left, right) => left.from.localeCompare(right.from) || left.field.localeCompare(right.field) || left.to.localeCompare(right.to));
+  externalReferences.sort((left, right) => left.from.localeCompare(right.from) || left.field.localeCompare(right.field) ||
+    left.targetTable.localeCompare(right.targetTable) || left.targetId.localeCompare(right.targetId));
+  const project = (record: ConversionSourceRecord) => ({
+    sourceKind: record.sourceKind,
+    sourceId: record.sourceId,
+    table: sourceTableForKind(record.sourceKind)!,
+    row: record.payload,
+    sqlNullColumns: [...record.sqlNullColumns],
+  }) as unknown as ContractJsonValue;
+  const rootProjection = project(root);
+  return {
+    sourcePayload: rootProjection,
+    relationGraph: {
+      version: "pcat-archive-source-graph-v2",
+      sourceInventoryFingerprint: snapshot.sourceInventoryFingerprint,
+      root: { sourceKind, sourceId },
+      records: records.map(project),
+      links: links.map((link) => ({ ...link })),
+      externalReferences: externalReferences.map((reference) => ({ ...reference })),
+    },
+  };
+}
+
+export async function captureArchivedDefinitionGraph(
+  client: CutoverQueryable,
+  sourceId: string,
+  snapshot?: ConversionSourceSnapshot,
+): Promise<ArchiveSourceGraph | null> {
+  if (snapshot) return archivedSourceGraphFromSnapshot(snapshot, "parameter-spec", sourceId);
   const source = await client.query<{ source_payload: ContractJsonValue }>("select to_jsonb(source) as source_payload from public.parameter_specs source where id = $1", [sourceId]);
   if (source.rows.length !== 1) return null;
   const revisions = await client.query<{ revision: ContractJsonValue }>("select to_jsonb(revision) as revision from public.parameter_spec_versions revision where parameter_spec_id = $1 order by version, id", [sourceId]);
   return { sourcePayload: source.rows[0].source_payload, relationGraph: { sourceId, revisions: revisions.rows.map((row) => row.revision) } };
+}
+
+/** Archive owner for the complete source graph's non-definition identities.
+ * The caller must provide the original closed projection. This function never
+ * re-queries one current row per identity or accepts a caller-selected table. */
+export function captureArchivedSourceGraph(
+  snapshot: ConversionSourceSnapshot,
+  sourceKind: string,
+  sourceId: string,
+): Promise<ArchiveSourceGraph | null> {
+  return Promise.resolve(archivedSourceGraphFromSnapshot(snapshot, sourceKind, sourceId));
 }
 
 export async function definitionGraphMatchesSource(client: CutoverQueryable, graph: FrozenP0Graph): Promise<boolean> {
@@ -177,7 +347,7 @@ export function inspectConversionManifest(input: {
   const classification = classifyFrozenP0Graph(graph);
   if (!classification.ok) return "conversion-classification-unavailable";
   if (classification.value.assignments.some((assignment) => ["blocked", "review-evidence", "definition-proposal"].includes(assignment.disposition))) return "conversion-disposition-producer-unavailable";
-  if ((graph.bindings.length || graph.bindingRevisions.length || graph.placements.length) && !input.bindingImportIntent) return "conversion-business-history-producer-unavailable";
+  if ((graph.bindings.length || graph.bindingRevisions.length) && !input.bindingImportIntent) return "conversion-business-history-producer-unavailable";
   const businessKinds = new Set(["project-parameter-binding","project-parameter-binding-revision"]);
   const expected = classification.value.assignments.filter((assignment) => assignment.disposition === "mapped" && !(input.bindingImportIntent && businessKinds.has(assignment.sourceKind)));
   if (manifest.mappings.length !== expected.length || new Set(manifest.mappings.map((mapping) => mapping.legacyIdentityId)).size !== manifest.mappings.length) return "conversion-mapping-conservation";

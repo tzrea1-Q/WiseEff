@@ -3,7 +3,7 @@ import type pg from "pg";
 import type { CatalogReleaseSource } from "../catalog-kernel/interface";
 import type { FrozenP0Graph } from "./classifier";
 import type { ArchiveObjectStore } from "./archive";
-import type { ConversionManifest } from "./conversionManifest";
+import type { ConversionManifest, ConversionSourceSnapshot } from "./conversionManifest";
 import type { BindingImportIntent } from "../parameter-bindings/cutoverImport/intent";
 import type { DatabaseIdentity } from "./bindingImportProducer";
 
@@ -135,6 +135,8 @@ export type ExecuteCutoverInput = {
    */
   readonly openComparisonSource?: (management: pg.PoolClient) => Promise<{
     readonly inventory: import("../release-verification/comparison/planInventory").CapturedComparisonInventory;
+    /** Original full public scan captured under the same source lease as the graph. */
+    readonly conversionSourceSnapshot?: ConversionSourceSnapshot;
     verify(): Promise<unknown>;
     close(): Promise<void>;
   }>;

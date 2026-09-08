@@ -7,6 +7,7 @@ import { createSavepointDatabase } from "../../../../server/shared/database/clie
 import { readBindingDatabaseIdentity } from "../../../../server/modules/catalog-cutover/bindingImportProducer";
 import { planCutover } from "../../../../server/modules/catalog-cutover/orchestrator";
 import { captureComparisonP0Graph } from "../../../../server/modules/catalog-cutover/comparisonRules";
+import { captureConversionSourceSnapshot, type ConversionSourceSnapshot } from "../../../../server/modules/catalog-cutover/conversionManifest";
 import { readLegacySourceRegistry } from "../../../../server/modules/catalog-cutover/mapping";
 import type { ExecuteCutoverInput, PlanCutoverInput } from "../../../../server/modules/catalog-cutover/interface";
 import { captureComparisonPlanInventory, type ComparisonPlanSourceBinding } from "../../../../server/modules/release-verification/comparison/planInventory";
@@ -28,6 +29,15 @@ export class ComparisonSourceError extends Error {
 function requireFact(value: unknown, code: string): asserts value {
   if (!value) throw new ComparisonSourceError(code);
 }
+
+/** A source lease may expose a read view to its caller, but the caller must
+ * never receive the object that a later producer trusts. Keep the copy
+ * boundary explicit and verify the structured clone before returning it. */
+const cloneConversionSourceSnapshot = (snapshot: ConversionSourceSnapshot): ConversionSourceSnapshot => {
+  const copy = structuredClone(snapshot);
+  requireFact(canonicalJson(copy) === canonicalJson(snapshot), "SOURCE-SNAPSHOT-COPY-FAILED");
+  return copy;
+};
 
 // Exact source relations traversed by the eleven legacy inventory readers and
 // their existing repository/service calls. This is not a new runtime grant list.
@@ -84,6 +94,7 @@ type SourceLease = {
   verify(): Promise<ComparisonPlanSourceBinding>;
   inventory: Awaited<ReturnType<typeof captureComparisonPlanInventory>>;
   readGraph(): Awaited<ReturnType<typeof captureComparisonP0Graph>>;
+  conversionSourceSnapshot: Awaited<ReturnType<typeof captureConversionSourceSnapshot>>;
   plan(input: Omit<PlanCutoverInput, "comparisonInventory">): ReturnType<typeof planCutover>;
   openForExecution: NonNullable<ExecuteCutoverInput["openComparisonSource"]>;
 };
@@ -245,8 +256,13 @@ async function openSource(input: SourceInput, management?: pg.PoolClient): Promi
     }
     };
     const graph = await captureComparisonP0Graph(source, sourceSystem);
+    const conversionSourceSnapshot = cloneConversionSourceSnapshot(await captureConversionSourceSnapshot(source));
     const inventory = await captureComparisonPlanInventory(createSavepointDatabase(source), { observe }, graph);
     return Object.freeze({ close, verify: observe, inventory,
+      get conversionSourceSnapshot() {
+        live();
+        return cloneConversionSourceSnapshot(conversionSourceSnapshot);
+      },
       // The plan lease must have ended before executeCutover acquires S7.
       // Only this original root closure may reopen its private source input.
       async openForExecution(manager: pg.PoolClient) {

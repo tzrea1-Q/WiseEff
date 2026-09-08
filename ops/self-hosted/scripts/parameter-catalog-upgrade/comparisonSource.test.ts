@@ -10,7 +10,8 @@ import { openComparisonPlanSource } from "./comparisonSource";
 
 // Real private files and issued OS holder; explicit PG/Docker/inventory ports.
 // These cases prove lifecycle refusals, not actual P0 data or PG permission.
-const state = vi.hoisted(() => ({ endpointActual: false, foreignHelper: false, endpointIds: [] as string[], stoppedContract: false, s7: true, manager: true, acquisitions: 0, relations: [] as string[], lockCount: 0, closed: 0, released: 0, poolClosed: 0, observed: {} as unknown }));
+const state = vi.hoisted(() => ({ endpointActual: false, foreignHelper: false, endpointIds: [] as string[], stoppedContract: false, s7: true, manager: true, acquisitions: 0, relations: [] as string[], lockCount: 0, closed: 0, released: 0, poolClosed: 0, observed: {} as unknown,
+  sourceSnapshot: { sourceInventoryFingerprint: `sha256:${"1".repeat(64)}`, records: [{ sourceKind: "parameter-spec", sourceId: "spec-1", payload: { id: "spec-1", marker: "source" }, sqlNullColumns: [] }] } }));
 vi.mock("pg", async original => {
   const actual = await original<typeof import("pg")>();
   const { EventEmitter } = await import("node:events");
@@ -69,6 +70,10 @@ vi.mock("./handoff", async original => ({ ...await original<typeof import("./han
   verifyStoppedHandoff: async () => structuredClone(state.observed),
 }));
 vi.mock("../../../../server/modules/catalog-cutover/mapping", () => ({ readLegacySourceRegistry: async () => [] }));
+vi.mock("../../../../server/modules/catalog-cutover/conversionManifest", async original => ({
+  ...await original<typeof import("../../../../server/modules/catalog-cutover/conversionManifest")>(),
+  captureConversionSourceSnapshot: async () => structuredClone(state.sourceSnapshot),
+}));
 vi.mock("../../../../server/modules/catalog-cutover/comparisonRules", () => ({ captureComparisonP0Graph: async () => ({ catalog: "p0-graph-double" }) }));
 vi.mock("../../../../server/modules/release-verification/comparison/planInventory", () => ({
   captureComparisonPlanInventory: async (_database: unknown, boundary: { observe(): Promise<unknown> }) => { await boundary.observe(); return Object.freeze({}); },
@@ -186,6 +191,22 @@ it("captures the original registered set before its first await", async () => {
       const source = await opening;
       try { await source.verify(); expect(state.endpointIds).toEqual(original); }
       finally { await source.close(); }
+    });
+  } finally { await rm(f.directory, { recursive: true }); }
+});
+
+it("does not let a caller-mutated source snapshot change the later producer view", async () => {
+  const f = await fixture(); state.s7 = state.manager = true;
+  try {
+    await handoff.withHostOperationLock(f.directory, async lock => {
+      const source = await openComparisonPlanSource({ ...f, handoff: f.plan, expectedHandoffDigest: f.plan.digest, lock,
+        observer: {} as handoff.HandoffObserver, administrativeConnectionString: "postgres://manager:synthetic@127.0.0.1:5544/source" });
+      try {
+        const callerView = source.conversionSourceSnapshot;
+        Reflect.set(callerView.records[0]!.payload, "marker", "caller-tamper");
+        Reflect.apply(Array.prototype.push, callerView.records as unknown as unknown[], [{ sourceKind: "parameter-spec", sourceId: "invented", payload: { id: "invented" }, sqlNullColumns: [] }]);
+        expect(source.conversionSourceSnapshot).toEqual(state.sourceSnapshot);
+      } finally { await source.close(); }
     });
   } finally { await rm(f.directory, { recursive: true }); }
 });
