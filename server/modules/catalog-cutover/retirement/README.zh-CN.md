@@ -4,8 +4,8 @@
 
 ## 普通 LOGIN 的 SQL 后继：实现边界
 
-当前非 OID10 普通分支确认 NOLOGIN 与成员撤销后即返回；bootstrap 分支还会调用
-既有 SQL 权限隔离。旧应用角色 NOLOGIN 不会撤销另一候选 LOGIN 在固定八张旧结构
+此前非 OID10 普通分支确认 NOLOGIN 与成员撤销后即返回；现与 bootstrap 分支一样，
+继续调用既有 SQL 权限隔离。旧应用角色 NOLOGIN 不会撤销另一候选 LOGIN 在固定八张旧结构
 表上的写权限。这是原已授权效果的组合遗漏，不授权扩大至审计、历史或 ProjectValue。
 
 本次仅修改普通分支及直接测试。API、worker 和已配置治理 LOGIN 必须来自原
@@ -15,9 +15,38 @@ CAS、报告与源边界检查；缺失或未知后继不得报告退休成功�
 不得重试认证或 REVOKE。保留 SELECT 与无关业务权限，不发行 P13 完成或运行期
 发布，也不新增 grant/schema。
 
-先用现有显式 I/O 替身记录根编排反例，再以实际 owned PostgreSQL 观察普通 LOGIN
-已 NOLOGIN、候选写入被拒和 SELECT 保留。前者不证明真实获批 P12/报告或完整生产
-根。本提案提交两项验证均待执行；既有 bootstrap/SQL 通过不能替代本次组合验证。
+重查使用受控管理连接读取原 attempt，不重连已禁用密码，也不重复效果。只有认证
+前驱时保持 pending；已存在 SQL 宿主 intent 时，在认证效果前拒绝。普通 inspector
+从同步 checkout 起监听真实 error/end，覆盖最后 rollback，等待全部自有资源关闭；
+清理也失败时保留首个拒绝，成功清理后再检查原宿主锁。bootstrap 效果分支及原测试、
+连接、查询预算不变。
+
+以下执行归固定源码 `bd4ad49c85c5eeaa2e351245f5a4b616af700399`，不重标本次后继文档：
+
+- 原根 I/O 替身与真实宿主文件：130/130、exit 0、8.10s。
+  日志 `/tmp/pr824-ordinary-login-final-lifetime-green.log`，SHA-256：
+  `b15d8032a7c36de4ef669d26fc4a84ca140c939f0286648b37ec92390e6e9d21`。
+  这些测试不证明真实获批 P12/报告或完整生产根。
+- 原 owned `legacy-sql-privileges-pg16`：21/21，无失败或跳过，exit 0、197.85s；
+  runner 与资源 cleanup 均 true。日志 `/tmp/pr824-ordinary-login-bd4-actual.log`，
+  SHA-256：`e862960ac1d2d505a12a469cfbbccfaa2a01c468cea0fff65ca63881440de214`。
+  新真实 LOGIN 用例先证实旧角色 NOLOGIN 后候选 UPDATE 仍成功，再执行 SQL 隔离：
+  八表均保留 SELECT、撤销变更能力，真实 UPDATE 返回 42501，原行仍可读，正式 SQL
+  inspection 成功且没有 P13 checkpoint。原 fixture 的 P12 引用仍未获批；这是
+  真实组件组合，不是获批宿主根的执行。
+- 定向严格类型与固定 build 均 exit 0。构建日志
+  `/tmp/pr824-ordinary-login-bd4-build.log`，SHA-256：
+  `64a9bbd6895333a5a11175094abd86ae8539287e304cd2b32ba1c5870057419d`。
+  固定边界日志 `/tmp/pr824-ordinary-login-bd4-boundary.log`，SHA-256：
+  `b5beceab4477a42922f5b11483fe523b8fde1659e8a76f7815a243ea390ea9cc`；
+  3509/3509 原 allowance，无新增、过期、元数据不符或增长。
+
+永久根反例首先在 `b8435a750` 失败（1失败、54 filtered）：NOLOGIN 已完成，SQL 未调用。
+后续清理及末尾边界反例分别在 `d88186570`（3/63）、`0c6e97ca9`（3/66）、
+`c8ef4a6f0`（1/69）失败，括号表示失败/filtered。中间 `c31dcb16f` 实际128通过、
+1失败，原因是 end 事件仍未被监听；其命名为 `final-boundary-green.log` 的日志仍是
+失败执行，不能当 Green。最终 lifetime 日志才是130/130。父 Spec 与 R Standards
+独立审查覆盖固定普通分支增量，不认证完整 P13、startup 发布、生产或 Hosted。
 
 独立审查另发现继承的准备失败路径：若清理也失败，会覆盖首个错误。现同时报告两项：
 准备错误保留内部选定的阶段及闭集 PostgreSQL 错误码，清理错误使用静态信息；

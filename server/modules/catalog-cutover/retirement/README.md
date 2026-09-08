@@ -4,17 +4,17 @@
 
 ## Ordinary LOGIN SQL successor: implementation boundary
 
-The ordinary non-OID10 branch currently returns after observing NOLOGIN and
-removed memberships. Its bootstrap sibling also invokes the existing SQL
-privilege fence. NOLOGIN on the stopped application's original role does not
+The ordinary non-OID10 branch previously returned after observing NOLOGIN and
+removed memberships. It now also invokes the existing SQL privilege fence,
+as its bootstrap sibling already did. NOLOGIN on the stopped application's original role does not
 remove a different candidate LOGIN's grants on the eight fixed legacy
 relations. This is a missing composition of already authorized effects, not
 permission to retire unrelated audit, history or ProjectValue writes.
 
-The bounded follow-up owns only the ordinary branch and its direct tests. It
-must obtain API, worker and configured governance LOGINs from the original
-`openRuntimeRoleSource`, retain the actual management lease and S7 lock, and
-bind the existing SQL intent to the same run, attempt, physical target, P12,
+This change owns only the ordinary branch and its direct tests. It
+obtains API, worker and configured governance LOGINs from the original
+`openRuntimeRoleSource`, retains the actual management lease and S7 lock, and
+binds the existing SQL intent to the same run, attempt, physical target, P12,
 root request and verified recovery package. Original host journal CAS and
 report/source checks precede effects; a missing or unknown successor must not
 be reported as successful retirement. Reconciliation must inspect the original
@@ -22,12 +22,48 @@ attempt and must never repeat a credential or REVOKE effect. SELECT and
 unrelated business privileges remain unchanged. No P13 completion, runtime
 publication, new grant or schema is introduced.
 
-Validation starts with a root orchestration counterexample using the existing
-explicit I/O substitutes, followed by actual owned PostgreSQL observations of
-ordinary NOLOGIN, denied candidate mutations and retained SELECT. The former
-does not prove approved P12/report or a complete production root. Both checks
-are pending at this proposal commit; prior bootstrap and SQL results do not
-establish this new composition.
+The original attempt is inspected using the controlled management connection;
+inspection does not reconnect with the disabled password or repeat effects.
+An authentication-only predecessor remains pending. A retained SQL host intent
+is rejected before authentication effects. The ordinary inspector observes
+native error/end from synchronous checkout through rollback, waits for every
+owned close, preserves a primary refusal if cleanup also fails, and checks the
+original host lock after successful cleanup. The bootstrap effect branch and
+existing test/connection/query budgets are unchanged.
+
+Validation belongs to fixed source
+`bd4ad49c85c5eeaa2e351245f5a4b616af700399`, not this later documentation:
+
+- Existing root I/O substitutes and real host files: 130/130, exit 0, 8.10s.
+  Log `/tmp/pr824-ordinary-login-final-lifetime-green.log`, SHA-256
+  `b15d8032a7c36de4ef669d26fc4a84ca140c939f0286648b37ec92390e6e9d21`.
+  These tests do not prove approved P12/report or a complete production root.
+- Original owned `legacy-sql-privileges-pg16` suite: 21/21, zero failed/skipped,
+  exit 0, 197.85s; runner and resource cleanup both true. Log
+  `/tmp/pr824-ordinary-login-bd4-actual.log`, SHA-256
+  `e862960ac1d2d505a12a469cfbbccfaa2a01c468cea0fff65ca63881440de214`.
+  The new native LOGIN case first observes a successful candidate UPDATE after
+  old-role NOLOGIN, then actual SQL retirement: all eight relations retain
+  SELECT and lose mutation privileges, UPDATE fails with 42501, the original
+  row remains readable, formal SQL inspection succeeds, and no P13 checkpoint
+  exists. Its existing fixture P12 references remain unapproved; this is real
+  component composition, not execution of the approved host root.
+- Targeted strict types and fixed build exited 0. Build log
+  `/tmp/pr824-ordinary-login-bd4-build.log`, SHA-256
+  `64a9bbd6895333a5a11175094abd86ae8539287e304cd2b32ba1c5870057419d`.
+  Fixed boundary log `/tmp/pr824-ordinary-login-bd4-boundary.log`, SHA-256
+  `b5beceab4477a42922f5b11483fe523b8fde1659e8a76f7815a243ea390ea9cc`:
+  3509/3509 existing allowances, no new/stale/mismatch/growth.
+
+The permanent root counterexample first failed at `b8435a750` (1 failed,
+54 filtered): NOLOGIN completed but SQL was never invoked. Later exact cleanup
+and boundary counterexamples failed at `d88186570` (3/63), `0c6e97ca9` (3/66),
+and `c8ef4a6f0` (1/69), with counts expressed as failed/filtered. The intermediate
+`c31dcb16f` run was 128 passed/1 failed: an end event still escaped observation.
+Its misleadingly named `final-boundary-green.log` remains a failed execution;
+only the final lifetime log records 130/130. Independent parent Spec and R
+Standards reviews cover the fixed ordinary increment; they do not certify
+full P13, startup publication, production or Hosted execution.
 
 ## Independent inspection test lifecycle
 
