@@ -23,7 +23,8 @@ const refuse = (): never => { throw corpusRefusal("PCAT-CMP-REPORT-INTEGRITY", "
 export function assertComparisonDatabaseSource(input: Source & { readonly database: Database; readonly pool: pg.Pool }): void {
   const source = issued.get(input.database);
   if (!source || !source.alive() || source.pool !== input.pool || getRootPostgresPool(input.database) !== input.pool ||
-    source.managementClient !== input.managementClient || source.cutoverRunId !== input.cutoverRunId || source.planPin !== input.planPin ||
+    source.managementClient !== input.managementClient || source.verifyBoundary !== input.verifyBoundary ||
+    source.cutoverRunId !== input.cutoverRunId || source.planPin !== input.planPin ||
     !isDeepStrictEqual(source.target, input.target)) refuse();
 }
 

@@ -12,6 +12,7 @@ let native: pg.PoolClient & pg.Client;
 let observedTarget = target;
 let held = true;
 let rootClosed = false;
+let boundary: () => Promise<void>;
 let releaseBoundary: (() => void) | undefined;
 const resources: Array<{ close(): Promise<void> }> = [];
 
@@ -32,10 +33,11 @@ function client(pid: number) {
   return value;
 }
 const input = () => ({ connectionString: "postgresql://manager:private@127.0.0.1:15432/source", managementClient: manager,
-  target, cutoverRunId: "run", planPin: `sha256:${"1".repeat(64)}`, verifyBoundary: async () => undefined });
+  target, cutoverRunId: "run", planPin: `sha256:${"1".repeat(64)}`, verifyBoundary: boundary });
 
 beforeEach(() => {
   observedTarget = target; held = true; rootClosed = false;
+  boundary = async () => undefined;
   manager = client(100); native = client(101);
   const pools = new WeakSet<pg.Pool>();
   vi.spyOn(pg.Pool.prototype, "connect").mockImplementation((function (this: pg.Pool, callback: (error: Error | undefined, value?: pg.PoolClient) => void) {
@@ -96,5 +98,9 @@ describe("comparison root actual checkout ownership", () => {
     expect(native.end).toHaveBeenCalledOnce();
     expect(manager.end).not.toHaveBeenCalled();
     expect(() => assertComparisonDatabaseSource({ ...input(), ...source })).toThrow();
+  });
+  it("rejects substitution of the issuing owner's final boundary", async () => {
+    const source = await openComparisonDatabaseV2(input()); resources.push(source);
+    expect(() => assertComparisonDatabaseSource({ ...input(), ...source, verifyBoundary: async () => undefined })).toThrow("PCAT-CMP-REPORT-INTEGRITY");
   });
 });
