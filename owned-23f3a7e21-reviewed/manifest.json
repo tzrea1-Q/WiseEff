@@ -1,0 +1,3772 @@
+{
+  "base": "cda6737a8f177a8bbd2f3bc7d195f8e3037bfa74",
+  "head": "23f3a7e212d57f6423e8c7a65150cf17ffee1d36",
+  "headTree": "2d409e91fa9218b49fcbdee14d66f8c207355c13",
+  "code": "0390bd028219b464e143418cb13155d3819aee0e",
+  "codeTree": "bdd8c313172648b2fedf58b2790775213fa9ab0f",
+  "sourceDeploymentSha": "82344044b436a8dafecefbb85dfd724cecb05e3f",
+  "executionEvidence": "files/ops/self-hosted/populated-upgrade-evidence.md",
+  "executionIdentityPolicy": "Each evidence row retains its original candidate. This archive is not a test execution or release approval.",
+  "contracts": {
+    "reader": {
+      "old": {
+        "revision": "f00f94435d128ff8706ffadedabbee507f79781b",
+        "scopedFingerprint": "9960d9bf66d09e955bd98b2ae431fb09d3f266b21ab419711df6dd2acbc403d7",
+        "files": [
+          {
+            "path": "docs/design-docs/parameter-catalog-verification-upgrade-retirement-gates.md",
+            "mode": "100644",
+            "blob": "fb63c2c86b64ef9525944dc1b4e705d3acbd7c96",
+            "sha256": "d501f6783d99ecaaa4cfc78f0aceff516bdd807004da14c1c7d020a4f48fd974"
+          },
+          {
+            "path": "docs/zh-CN/design-docs/parameter-catalog-verification-upgrade-retirement-gates.md",
+            "mode": "100644",
+            "blob": "8fdc462d8ec23825af6f5b9b6a10a792b310757f",
+            "sha256": "6d7a323e827c5a76d37d27631f7d1e133557db0ac87150e37f455cf7bfe692d7"
+          },
+          {
+            "path": "server/migrations/0138_canonical_parameter_catalog_roles.sql",
+            "mode": "100644",
+            "blob": "1efaa50d25ed3d64e46ed15e9eac9990562c92eb",
+            "sha256": "a575205695852b11a536c7d41293f87634242b3c8d98f2345b3599e144aca8c5"
+          },
+          {
+            "path": "server/migrations/0139_parameter_catalog_verification_core.sql",
+            "mode": "100644",
+            "blob": "99e04ac596582465733c8cf9a2c1c5af60e89167",
+            "sha256": "36fdd85de86ab09309dd6531594feca16a5bce00b343fa858ac04f4cdbf49f31"
+          },
+          {
+            "path": "server/migrations/0140_parameter_catalog_runtime_reader.sql",
+            "mode": null,
+            "blob": null,
+            "sha256": null
+          },
+          {
+            "path": "server/modules/catalog-kernel/security/catalog-reader.md",
+            "mode": null,
+            "blob": null,
+            "sha256": null
+          },
+          {
+            "path": "server/modules/catalog-kernel/security/catalog-reader.zh-CN.md",
+            "mode": null,
+            "blob": null,
+            "sha256": null
+          },
+          {
+            "path": "server/modules/catalog-kernel/security/catalogReaderManifest.ts",
+            "mode": null,
+            "blob": null,
+            "sha256": null
+          }
+        ]
+      },
+      "new": {
+        "revision": "23f3a7e212d57f6423e8c7a65150cf17ffee1d36",
+        "scopedFingerprint": "cf87073abc4367f4debfac2037dadbd8fb17ea15e75e39bde7f1a501f3154df3",
+        "files": [
+          {
+            "path": "docs/design-docs/parameter-catalog-verification-upgrade-retirement-gates.md",
+            "mode": "100644",
+            "blob": "3648378444ac3865967db92ef216e399fd1bece2",
+            "sha256": "9d4e19cc360055d84894dc7aae6fb512c7582187bd4f1acd287f60ca4bf736bd"
+          },
+          {
+            "path": "docs/zh-CN/design-docs/parameter-catalog-verification-upgrade-retirement-gates.md",
+            "mode": "100644",
+            "blob": "ed3ad35e105f9d2834427b6f75f568b651bc6e76",
+            "sha256": "c1e33aefee6ecf12e2c718d130e3e6f2c9fe7a2c6c5f8a72264f5b7fd5f0b65a"
+          },
+          {
+            "path": "server/migrations/0138_canonical_parameter_catalog_roles.sql",
+            "mode": "100644",
+            "blob": "1efaa50d25ed3d64e46ed15e9eac9990562c92eb",
+            "sha256": "a575205695852b11a536c7d41293f87634242b3c8d98f2345b3599e144aca8c5"
+          },
+          {
+            "path": "server/migrations/0139_parameter_catalog_verification_core.sql",
+            "mode": "100644",
+            "blob": "99e04ac596582465733c8cf9a2c1c5af60e89167",
+            "sha256": "36fdd85de86ab09309dd6531594feca16a5bce00b343fa858ac04f4cdbf49f31"
+          },
+          {
+            "path": "server/migrations/0140_parameter_catalog_runtime_reader.sql",
+            "mode": "100644",
+            "blob": "5dc1e027e352ef32e2113c322ad9a343b3bbb461",
+            "sha256": "9fd18152c0dd25037a2b0b5acb706c95897c8f24bfb7b709cb17ff4312db3aee"
+          },
+          {
+            "path": "server/modules/catalog-kernel/security/catalog-reader.md",
+            "mode": "100644",
+            "blob": "78f03f50ac9954ffc19ebcfd6a61bd6d91c70ff2",
+            "sha256": "c559c0ac538af3ea12dcbe95571a7c596a21ce319a4008e337db88e9b9abcb74"
+          },
+          {
+            "path": "server/modules/catalog-kernel/security/catalog-reader.zh-CN.md",
+            "mode": "100644",
+            "blob": "0327416cd2d7e69a6915402e8e8b839148451d28",
+            "sha256": "6dbc62baa66aa8f6210a3ba752d49fcfa72c1b4507803937cb0ac0fc7fda4347"
+          },
+          {
+            "path": "server/modules/catalog-kernel/security/catalogReaderManifest.ts",
+            "mode": "100644",
+            "blob": "ce8cb986244d01c63a3f512bc67df5d5affa5a37",
+            "sha256": "84729f4ce06069fbdf3001b78f4685be0cbe4a7fc998f0814a4dcf9ebe2c99bf"
+          }
+        ]
+      }
+    },
+    "recovery": {
+      "old": {
+        "revision": "f00f94435d128ff8706ffadedabbee507f79781b",
+        "scopedFingerprint": "d84482d977522e743a2757c3797010f9428050c8344fac9e2a88470eec11cf89",
+        "files": [
+          {
+            "path": "docs/design-docs/parameter-catalog-cutover-archive-rollback.md",
+            "mode": "100644",
+            "blob": "acb290916ccfa1e395b3bf03ab48221175aaa698",
+            "sha256": "d59df442099bea170be46486a15f2803de2f047ae1f9da17860778f31fd13c4b"
+          },
+          {
+            "path": "docs/design-docs/parameter-catalog-verification-upgrade-retirement-gates.md",
+            "mode": "100644",
+            "blob": "fb63c2c86b64ef9525944dc1b4e705d3acbd7c96",
+            "sha256": "d501f6783d99ecaaa4cfc78f0aceff516bdd807004da14c1c7d020a4f48fd974"
+          },
+          {
+            "path": "docs/zh-CN/design-docs/parameter-catalog-cutover-archive-rollback.md",
+            "mode": "100644",
+            "blob": "80f9ab853726ac93dc41c35cf4c2e0b24e245804",
+            "sha256": "ad146f6494070daf97b36c6b633857e8fa133e27d5a2ea70068d889432893c4e"
+          },
+          {
+            "path": "docs/zh-CN/design-docs/parameter-catalog-verification-upgrade-retirement-gates.md",
+            "mode": "100644",
+            "blob": "8fdc462d8ec23825af6f5b9b6a10a792b310757f",
+            "sha256": "6d7a323e827c5a76d37d27631f7d1e133557db0ac87150e37f455cf7bfe692d7"
+          },
+          {
+            "path": "ops/self-hosted/storage/execution/README.md",
+            "mode": null,
+            "blob": null,
+            "sha256": null
+          },
+          {
+            "path": "ops/self-hosted/storage/execution/README.zh-CN.md",
+            "mode": null,
+            "blob": null,
+            "sha256": null
+          },
+          {
+            "path": "scripts/recovery-storage-boundary.ts",
+            "mode": null,
+            "blob": null,
+            "sha256": null
+          },
+          {
+            "path": "scripts/run-restore-drill.test.ts",
+            "mode": "100644",
+            "blob": "9401faeefc46d2207ca646e7869dec116653a540",
+            "sha256": "48b28d392dba4329f2d2eef42858fddb9184010c9b2bf7cd362b6a0d6176085f"
+          }
+        ]
+      },
+      "new": {
+        "revision": "23f3a7e212d57f6423e8c7a65150cf17ffee1d36",
+        "scopedFingerprint": "6246729db56ae44ff85e8bcbd8cf8d085038a3af28cca8f2083af1006232eda5",
+        "files": [
+          {
+            "path": "docs/design-docs/parameter-catalog-cutover-archive-rollback.md",
+            "mode": "100644",
+            "blob": "75c70cb5a01c95d40462aff2297c2f5562393292",
+            "sha256": "9ee2d24cae1acb1c500686ede45054d57b5ab56761510ef00fff40916fc64524"
+          },
+          {
+            "path": "docs/design-docs/parameter-catalog-verification-upgrade-retirement-gates.md",
+            "mode": "100644",
+            "blob": "3648378444ac3865967db92ef216e399fd1bece2",
+            "sha256": "9d4e19cc360055d84894dc7aae6fb512c7582187bd4f1acd287f60ca4bf736bd"
+          },
+          {
+            "path": "docs/zh-CN/design-docs/parameter-catalog-cutover-archive-rollback.md",
+            "mode": "100644",
+            "blob": "829b9924fe5c5c165d3ebfb1873de080a88dcc2c",
+            "sha256": "e8c124a54dc22418372e47924b37d5f7cdd38d92c5a621d9408fc7e31baca2ef"
+          },
+          {
+            "path": "docs/zh-CN/design-docs/parameter-catalog-verification-upgrade-retirement-gates.md",
+            "mode": "100644",
+            "blob": "ed3ad35e105f9d2834427b6f75f568b651bc6e76",
+            "sha256": "c1e33aefee6ecf12e2c718d130e3e6f2c9fe7a2c6c5f8a72264f5b7fd5f0b65a"
+          },
+          {
+            "path": "ops/self-hosted/storage/execution/README.md",
+            "mode": "100644",
+            "blob": "11432c99bb6e473a90c2fac7cac81d44a9f7b438",
+            "sha256": "baa6963eda3edbf343ca43524e6f982d7147ea5b9b8396f2b861ed2447d064ed"
+          },
+          {
+            "path": "ops/self-hosted/storage/execution/README.zh-CN.md",
+            "mode": "100644",
+            "blob": "341724c532ba1fc7a546c32b842e954f34a1ab5d",
+            "sha256": "6ead9e89847effff976cce56dc402c99d3c98ac5809053ccffb7e02ec7e094a7"
+          },
+          {
+            "path": "scripts/recovery-storage-boundary.ts",
+            "mode": "100644",
+            "blob": "731c2455c1e6d90526225e7c965b5f9efd2d4e2f",
+            "sha256": "07734fe67222766694c194f3e315e8c78b80596c24d13396fd8b4a6e32779029"
+          },
+          {
+            "path": "scripts/run-restore-drill.test.ts",
+            "mode": "100644",
+            "blob": "0160e0592c610345d4a27d27316a8f2bc4923868",
+            "sha256": "7c48ee98228dc21c59151834101435b35fc5198e13cef098df293ac2e57502e1"
+          }
+        ]
+      }
+    }
+  },
+  "files": [
+    {
+      "path": ".dockerignore",
+      "mode": "100644",
+      "blob": "5740037c8c6c245a732e480723ffc543c301e9dd",
+      "sha256": "e6136fb6b2ead77ab74c94ef5ff1abfbf3a54b5a8306992ef1e3a2ee785dc470",
+      "bytes": 431,
+      "state": "present"
+    },
+    {
+      "path": ".github/workflows/ci.yml",
+      "mode": "100644",
+      "blob": "8543cb0be1210056b28737096e9172465b55977d",
+      "sha256": "df0c0d830d36e9663491dee2777b759b446426086ac40fc79983251e4fde4024",
+      "bytes": 26468,
+      "state": "present"
+    },
+    {
+      "path": "docs/agents/catalog-boundary-relocation.md",
+      "mode": "100644",
+      "blob": "89cfaecb0ffb6ac4fde6d586343d218f7ddb83fb",
+      "sha256": "da03107da28ec8660eeec49366b1e6d179b704d1c49854e03da7c7a64eafc940",
+      "bytes": 4890,
+      "state": "present"
+    },
+    {
+      "path": "docs/design-docs/parameter-catalog-cutover-archive-rollback.md",
+      "mode": "100644",
+      "blob": "75c70cb5a01c95d40462aff2297c2f5562393292",
+      "sha256": "9ee2d24cae1acb1c500686ede45054d57b5ab56761510ef00fff40916fc64524",
+      "bytes": 101614,
+      "state": "present"
+    },
+    {
+      "path": "docs/design-docs/parameter-catalog-verification-upgrade-retirement-gates.md",
+      "mode": "100644",
+      "blob": "3648378444ac3865967db92ef216e399fd1bece2",
+      "sha256": "9d4e19cc360055d84894dc7aae6fb512c7582187bd4f1acd287f60ca4bf736bd",
+      "bytes": 107807,
+      "state": "present"
+    },
+    {
+      "path": "docs/exec-plans/active/2026-09-06-populated-upgrade.md",
+      "mode": "100644",
+      "blob": "0acdd9a35ebc335cc72ac02c5941e52f9eb7cb8e",
+      "sha256": "f70e187fef4c9de90f5e25f6ec4e517d23d47c00ac401c609406b8d4edeb057c",
+      "bytes": 54820,
+      "state": "present"
+    },
+    {
+      "path": "docs/generated/db-schema.md",
+      "mode": "100644",
+      "blob": "c44c0ce5a86242a8bd24de598b127b40b670f5ab",
+      "sha256": "1fae11f0bfaf20de7cc07ed1bb8bf755e63743eaae0caa7ccea4d3be50e5780b",
+      "bytes": 293767,
+      "state": "present"
+    },
+    {
+      "path": "docs/runbooks/durable-queue.md",
+      "mode": "100644",
+      "blob": "fdbd6c328297b93e7ef5e435c3a17f7ed63f12f9",
+      "sha256": "afd50a492b8c045057114b14666360fa5405773e7c5ae81017f0121b605f08ee",
+      "bytes": 4564,
+      "state": "present"
+    },
+    {
+      "path": "docs/runbooks/log-worker-queue-lifecycle.md",
+      "mode": "100644",
+      "blob": "2a283321f381aba2b5ac195f9dbccf4dfa345b96",
+      "sha256": "0e39d5dc336e11f064d3ed911e2afc7bd3ecd3242469566b7b67b27e1883eb1d",
+      "bytes": 6671,
+      "state": "present"
+    },
+    {
+      "path": "docs/zh-CN/agents/catalog-boundary-relocation.md",
+      "mode": "100644",
+      "blob": "bbbeaed490b66f0d664b0534d4bc80ae6db49c73",
+      "sha256": "804af8c317b3ec6093bc6c1014ac2102f3d23e5f8611fab3fdfb42e95570c548",
+      "bytes": 4138,
+      "state": "present"
+    },
+    {
+      "path": "docs/zh-CN/design-docs/parameter-catalog-cutover-archive-rollback.md",
+      "mode": "100644",
+      "blob": "829b9924fe5c5c165d3ebfb1873de080a88dcc2c",
+      "sha256": "e8c124a54dc22418372e47924b37d5f7cdd38d92c5a621d9408fc7e31baca2ef",
+      "bytes": 96818,
+      "state": "present"
+    },
+    {
+      "path": "docs/zh-CN/design-docs/parameter-catalog-verification-upgrade-retirement-gates.md",
+      "mode": "100644",
+      "blob": "ed3ad35e105f9d2834427b6f75f568b651bc6e76",
+      "sha256": "c1e33aefee6ecf12e2c718d130e3e6f2c9fe7a2c6c5f8a72264f5b7fd5f0b65a",
+      "bytes": 105614,
+      "state": "present"
+    },
+    {
+      "path": "docs/zh-CN/exec-plans/active/2026-09-06-populated-upgrade.md",
+      "mode": "100644",
+      "blob": "0673622053a20e49112d5c7b4bcc112c755b2b16",
+      "sha256": "16583fbd88e15f4f7e43581af07f3a64cac78cdcbf7d6d6e15a6db39ae8d1ce6",
+      "bytes": 46308,
+      "state": "present"
+    },
+    {
+      "path": "docs/zh-CN/runbooks/durable-queue.md",
+      "mode": "100644",
+      "blob": "5ee5e3db086a606a7c2d66e9587848c336c6eb2a",
+      "sha256": "0b1b621a4ba9dc10711f9b7f091f7c529ecd08d690e5f8518a62923a1ec765c9",
+      "bytes": 2569,
+      "state": "present"
+    },
+    {
+      "path": "docs/zh-CN/runbooks/log-worker-queue-lifecycle.md",
+      "mode": "100644",
+      "blob": "6d9008882238e35a95cd4b7c554674703f18304d",
+      "sha256": "bf584c918d44a74906c79968ecb0cabb9f88bb963701a7b9653363a751810a0e",
+      "bytes": 5938,
+      "state": "present"
+    },
+    {
+      "path": "ops/self-hosted/Dockerfile",
+      "mode": "100644",
+      "blob": "c574af23d88c929bba38f9cb6d5a67d0fea58497",
+      "sha256": "b0779e081e03ad72d35640acc9aaf533957ec97becb0fddf09fc294605000d65",
+      "bytes": 5114,
+      "state": "present"
+    },
+    {
+      "path": "ops/self-hosted/README.md",
+      "mode": "100644",
+      "blob": "fd5beed2e16a1fca35e96142673fc4d2db646e9b",
+      "sha256": "d20798e5de55f321224efec35a24965ab9b2dd5bb4346ad915c0795b4105b315",
+      "bytes": 8349,
+      "state": "present"
+    },
+    {
+      "path": "ops/self-hosted/README.zh-CN.md",
+      "mode": "100644",
+      "blob": "4f05c6e857bcd8074c6864f5439502b759e6a409",
+      "sha256": "742ed6a9f20e071ca3dee489e45f07c3da99f48ef09d7907f7e6777e307012bb",
+      "bytes": 6226,
+      "state": "present"
+    },
+    {
+      "path": "ops/self-hosted/compose.catalog.yaml",
+      "mode": "100644",
+      "blob": "43617bf9e01d53c73a60782592d010b80fa33bd2",
+      "sha256": "428dfe2bcfcdd544dd80ae0f9ea94a861f4c9865f166879664e95dc4fcee2412",
+      "bytes": 2463,
+      "state": "present"
+    },
+    {
+      "path": "ops/self-hosted/compose.yaml",
+      "mode": "100644",
+      "blob": "de506348d48012bccc9ec57f00bd433d043144f9",
+      "sha256": "6e9fe2687102b071a2d02f83d4b6c5df803fdf6d5bb508ba3c862bd131e15ffe",
+      "bytes": 9881,
+      "state": "present"
+    },
+    {
+      "path": "ops/self-hosted/populated-upgrade-evidence.md",
+      "mode": "100644",
+      "blob": "98d128173264a5b931740b335ade7246660a9b4e",
+      "sha256": "f39b1e77369397caf3c7f75a736b19248a3c8968faf642c387312b04896f758d",
+      "bytes": 137387,
+      "state": "present"
+    },
+    {
+      "path": "ops/self-hosted/populated-upgrade-evidence.zh-CN.md",
+      "mode": "100644",
+      "blob": "cc907fc6c1b31d960994899af5942c1a65dbad29",
+      "sha256": "81f5bdde53c4b49d030678caedba786df1ff8bdb2203e3203a63f3c35f92c91a",
+      "bytes": 122659,
+      "state": "present"
+    },
+    {
+      "path": "ops/self-hosted/populated-upgrade.md",
+      "mode": "100644",
+      "blob": "6284c2869a219ebbeaf4e3e4599090307c363448",
+      "sha256": "2ce1032b980811f02eae652b47f13b0b646ac078265bfa32afa4946d066826d8",
+      "bytes": 31496,
+      "state": "present"
+    },
+    {
+      "path": "ops/self-hosted/populated-upgrade.zh-CN.md",
+      "mode": "100644",
+      "blob": "b62b2e791a9aea56a69a0e9bfbb0254fff8a73a7",
+      "sha256": "5e8a4d44d603d3b6bb39df08c15ea3faac943c6904c8ab2f26a42954cad05604",
+      "bytes": 27437,
+      "state": "present"
+    },
+    {
+      "path": "ops/self-hosted/scripts/build-network-lib.sh",
+      "mode": "100755",
+      "blob": "36b5046e77a06fb6368daf06dd33493a57f52a99",
+      "sha256": "db6c774984e170d4a4dd3b7c5e8e31a519f8669b0ef78bd9e9d15cdd9aca832a",
+      "bytes": 12233,
+      "state": "present"
+    },
+    {
+      "path": "ops/self-hosted/scripts/build-network-trust.test.ts",
+      "mode": "100644",
+      "blob": "c7ff4a2bba1a16844b62a7a67b952863f5f3df56",
+      "sha256": "8ab0ed798757bff91c6e8e933592ad33a06ea13c723c89240d0645af2e71bcd3",
+      "bytes": 5912,
+      "state": "present"
+    },
+    {
+      "path": "ops/self-hosted/scripts/build-network.sh",
+      "mode": "100755",
+      "blob": "67cfc64ecaf77074cebe5d9694e1d030a0c96c18",
+      "sha256": "b94ee3d00a7d47644f3e70991abc5f7bd36216f433ede041382f0eaee4135a23",
+      "bytes": 2108,
+      "state": "present"
+    },
+    {
+      "path": "ops/self-hosted/scripts/catalog-compose.test.ts",
+      "mode": "100644",
+      "blob": "4ab7332e6e8c0e78bbf30b892b2d9c2c4b414f72",
+      "sha256": "65bc5c8d1190d708cf3f653c1bad75ab13a280aec3517cadf37c3a4d0cfd1542",
+      "bytes": 4552,
+      "state": "present"
+    },
+    {
+      "path": "ops/self-hosted/scripts/parameter-catalog-upgrade/actions.test.ts",
+      "mode": "100644",
+      "blob": "ca5ddb718a50dfbed18ddd0bc7a809528d4b4e32",
+      "sha256": "86d21779246ffb129dabf8fa7c822ae8213525067e4c2cf1f8ead935eccc370c",
+      "bytes": 3703,
+      "state": "present"
+    },
+    {
+      "path": "ops/self-hosted/scripts/parameter-catalog-upgrade/actions.ts",
+      "mode": "100644",
+      "blob": "524efa34c85e2ac64619771baf647632771518a4",
+      "sha256": "e4e6bb8f4a291cd43879f5eab03aa8a5aecb35d3b3118f1f9bc298ae6c1438bc",
+      "bytes": 4335,
+      "state": "present"
+    },
+    {
+      "path": "ops/self-hosted/scripts/parameter-catalog-upgrade/activationController.README.md",
+      "mode": "100644",
+      "blob": "145ade4ef79d3e003cc9fa38d8a3d565ce1a0888",
+      "sha256": "e01ad722d2b136920ae9942f1c84dafc24215f4b0c9b1d4b8498c5159bf2fb8d",
+      "bytes": 5536,
+      "state": "present"
+    },
+    {
+      "path": "ops/self-hosted/scripts/parameter-catalog-upgrade/activationController.README.zh-CN.md",
+      "mode": "100644",
+      "blob": "37b70d6c6f3a0bbce071bea47cd37973fbe19375",
+      "sha256": "bab040ad8b228f87fed4286e1b9ea19e60f13a3357af0f285f203ee290f10e41",
+      "bytes": 4936,
+      "state": "present"
+    },
+    {
+      "path": "ops/self-hosted/scripts/parameter-catalog-upgrade/activationController.test.ts",
+      "mode": "100644",
+      "blob": "23bae3b5af478bd5296330abd301feb2e063c87f",
+      "sha256": "4fbbe9a3f78e871f71f926d446625e5812a03026404a4d4a950f2223726675e6",
+      "bytes": 18119,
+      "state": "present"
+    },
+    {
+      "path": "ops/self-hosted/scripts/parameter-catalog-upgrade/activationController.ts",
+      "mode": "100644",
+      "blob": "4b81d07d330ec135f00371e922880c90df2f907f",
+      "sha256": "fe2ef0ffa3c5fcd862b8a76917d7da446e5457d9bd567fd9b773ee35690152e8",
+      "bytes": 10132,
+      "state": "present"
+    },
+    {
+      "path": "ops/self-hosted/scripts/parameter-catalog-upgrade/activationJournal.README.md",
+      "mode": "100644",
+      "blob": "3ca62189a8239ec93bd2539f8acd0487e72587bf",
+      "sha256": "77f312b1e21fac2fdc9b1fdd16ef2438486e4bfd213db3abb76dfc973db22236",
+      "bytes": 4051,
+      "state": "present"
+    },
+    {
+      "path": "ops/self-hosted/scripts/parameter-catalog-upgrade/activationJournal.README.zh-CN.md",
+      "mode": "100644",
+      "blob": "059771d4952290fac001e3953638be5ddfc4567f",
+      "sha256": "7eaf4dda7bc1a4f29c8d5bb1b3d483a214ed8b9157ce20c7e01eb4172bebc085",
+      "bytes": 3553,
+      "state": "present"
+    },
+    {
+      "path": "ops/self-hosted/scripts/parameter-catalog-upgrade/activationJournal.test.ts",
+      "mode": "100644",
+      "blob": "4cab1126b142ab83bc6b739a67724b6b3c070376",
+      "sha256": "063a4be534f3d6417d3c92d887b28f5051a912a742ee64d5c2c19d6005fa9ed3",
+      "bytes": 15467,
+      "state": "present"
+    },
+    {
+      "path": "ops/self-hosted/scripts/parameter-catalog-upgrade/activationJournal.ts",
+      "mode": "100644",
+      "blob": "a80dcd6834b204d85411ceaa19f72d7f1e55ddf4",
+      "sha256": "2288c38c49a7078de5a42960b2031de656ba016586ae74e944ff77c417badd85",
+      "bytes": 5908,
+      "state": "present"
+    },
+    {
+      "path": "ops/self-hosted/scripts/parameter-catalog-upgrade/applicationArtifact.README.md",
+      "mode": "100644",
+      "blob": "3145f953bf34bb32220799ea5cb9fa9a7b8372e9",
+      "sha256": "7302f8bfae1e07c270dbf68872fdb557b7383195b4a36fbcb71108a23f088a9e",
+      "bytes": 11586,
+      "state": "present"
+    },
+    {
+      "path": "ops/self-hosted/scripts/parameter-catalog-upgrade/applicationArtifact.README.zh-CN.md",
+      "mode": "100644",
+      "blob": "5c0210aed52739267293631da9e92fbe66ad0ca4",
+      "sha256": "9c64f2c827ce58c9673640dc545f9869c872b1227a9e14c3eac69ce062967067",
+      "bytes": 10046,
+      "state": "present"
+    },
+    {
+      "path": "ops/self-hosted/scripts/parameter-catalog-upgrade/applicationArtifact.build.ts",
+      "mode": "100644",
+      "blob": "92fdf5afd6b004f4b56cf7b011d4a4a5459bb3ad",
+      "sha256": "1cca00a8eb4cd2d0b378579752c154de6dbc57d4c168cf7fc9fbafc0dabd05af",
+      "bytes": 9455,
+      "state": "present"
+    },
+    {
+      "path": "ops/self-hosted/scripts/parameter-catalog-upgrade/applicationArtifact.test.ts",
+      "mode": "100644",
+      "blob": "afe2465b6ae6c4d60b08d539fee55f4d721dddd8",
+      "sha256": "fcdd352fea05217bc597cbe4e5895fc30aeaa78bd4eee61a7ced248974df359d",
+      "bytes": 17068,
+      "state": "present"
+    },
+    {
+      "path": "ops/self-hosted/scripts/parameter-catalog-upgrade/applicationArtifact.ts",
+      "mode": "100644",
+      "blob": "3d427e429e3c80158cfe50c20f86f8e9b2690f3c",
+      "sha256": "92e62372f50bd9b7a06b174e95122717a2590d4ee1dfcf0daf2564df4257b0ae",
+      "bytes": 45089,
+      "state": "present"
+    },
+    {
+      "path": "ops/self-hosted/scripts/parameter-catalog-upgrade/applicationArtifactCli.test.ts",
+      "mode": "100644",
+      "blob": "c52413859cafa8d636729ca2443ccd674f9e00f4",
+      "sha256": "1736db6c18844176737b4719a67fb24a23e31820078b02de3184bb740aebe7dc",
+      "bytes": 3478,
+      "state": "present"
+    },
+    {
+      "path": "ops/self-hosted/scripts/parameter-catalog-upgrade/applicationArtifactCli.ts",
+      "mode": "100644",
+      "blob": "01edf5819dcc40d73cfbb70c2757aa507dc3e5b4",
+      "sha256": "9807842cb0179e1d16430d1d3fe72378ced54db3153461c7c409618fbb1d19ba",
+      "bytes": 5655,
+      "state": "present"
+    },
+    {
+      "path": "ops/self-hosted/scripts/parameter-catalog-upgrade/applicationArtifactCustody.README.md",
+      "mode": "100644",
+      "blob": "ee0c4adb5cb00c180b0e272a2cd2d64ca58ffb1a",
+      "sha256": "b57e4d3b9dadaec6f21cf90f128ced50e8e7fa42afd79d5010de42eed4ccd800",
+      "bytes": 5276,
+      "state": "present"
+    },
+    {
+      "path": "ops/self-hosted/scripts/parameter-catalog-upgrade/applicationArtifactCustody.README.zh-CN.md",
+      "mode": "100644",
+      "blob": "28ae83ef29b687f9fb7db36aa116ab260235716b",
+      "sha256": "55796252af1deba3bef7363e729b29bea75c12fd1b955950a7932036f3ad8921",
+      "bytes": 4420,
+      "state": "present"
+    },
+    {
+      "path": "ops/self-hosted/scripts/parameter-catalog-upgrade/applicationArtifactCustody.test.ts",
+      "mode": "100644",
+      "blob": "3836865fee49cf98c94c0259c1fdfa6093776afe",
+      "sha256": "915a0e42207301daee961a7121d3540e1a2447ebeb2696ba2fc658825fc59ede",
+      "bytes": 19529,
+      "state": "present"
+    },
+    {
+      "path": "ops/self-hosted/scripts/parameter-catalog-upgrade/applicationArtifactCustody.ts",
+      "mode": "100644",
+      "blob": "11548fb911c76f30b4e88db023c7ad61047a9f86",
+      "sha256": "4522235307bde74ca2880f73f31cedee4022ac72193c4238adadced04e50f46b",
+      "bytes": 23813,
+      "state": "present"
+    },
+    {
+      "path": "ops/self-hosted/scripts/parameter-catalog-upgrade/bindingJournal.test.ts",
+      "mode": "100644",
+      "blob": "c64717edbf8d9f98763e3ec662fee47fd7d0a1a4",
+      "sha256": "ff9cd8795b64e371333486c34f318834301a3108f9e01930febf9c93f96a7e53",
+      "bytes": 6479,
+      "state": "present"
+    },
+    {
+      "path": "ops/self-hosted/scripts/parameter-catalog-upgrade/bindingJournal.ts",
+      "mode": "100644",
+      "blob": "e3f16173bbdc792f2c7d26fbe86aca7b76136ed4",
+      "sha256": "a3beb7055633bfde2e4cd130433e6a2c05689971cbbaa48fa3ce882d09d7e4a3",
+      "bytes": 7109,
+      "state": "present"
+    },
+    {
+      "path": "ops/self-hosted/scripts/parameter-catalog-upgrade/comparison-provenance-decision.md",
+      "mode": "100644",
+      "blob": "996b15e618d86924a73df4b5efe0b7fa31b543e9",
+      "sha256": "75db25282226c30441a00513268e5bd313b9b2589ab97ebd0a2880b5bd1acce2",
+      "bytes": 16499,
+      "state": "present"
+    },
+    {
+      "path": "ops/self-hosted/scripts/parameter-catalog-upgrade/comparison-provenance-decision.zh-CN.md",
+      "mode": "100644",
+      "blob": "68ea5de6369e8f23d384481efcde8cdef0d76100",
+      "sha256": "43eaa5b31c9019ef076e3b46acfb72c569318b5fb146f949235609bc04cc658f",
+      "bytes": 13787,
+      "state": "present"
+    },
+    {
+      "path": "ops/self-hosted/scripts/parameter-catalog-upgrade/controller.test.ts",
+      "mode": "100644",
+      "blob": "064e7adcb8ce62433f3b73d3b2a7085bd5e62aed",
+      "sha256": "081fb515526ae6d8f991bd24636b0186bd5eae936ea21784d0f074e397d5b33e",
+      "bytes": 29589,
+      "state": "present"
+    },
+    {
+      "path": "ops/self-hosted/scripts/parameter-catalog-upgrade/controller.ts",
+      "mode": "100644",
+      "blob": "5e608aa02cb3f2fa3e9c1a2be25d3d5ada643372",
+      "sha256": "bb35e2de3506847c78b5e4c17c3dbc1b5d558609412cb7b33ca969ab5a4540ca",
+      "bytes": 17026,
+      "state": "present"
+    },
+    {
+      "path": "ops/self-hosted/scripts/parameter-catalog-upgrade/deploymentAuthority.README.md",
+      "mode": "100644",
+      "blob": "329a898835c7af44c93ccf66d7c7ffd1d86581ce",
+      "sha256": "c371ff429b71d5cc24011f50bcd22436d1735b8378bebda1a9e7c4f88912de38",
+      "bytes": 8817,
+      "state": "present"
+    },
+    {
+      "path": "ops/self-hosted/scripts/parameter-catalog-upgrade/deploymentAuthority.README.zh-CN.md",
+      "mode": "100644",
+      "blob": "375905f734e95ea1c11eec23b9202614dd03e44d",
+      "sha256": "82e0706319e2184e71bb2f6dea3d98514838380e06705d5272359487a13d1b2c",
+      "bytes": 7266,
+      "state": "present"
+    },
+    {
+      "path": "ops/self-hosted/scripts/parameter-catalog-upgrade/deploymentAuthority.integration.test.ts",
+      "mode": "100644",
+      "blob": "d40c760a808b59210c62a3d69cb277176150c81d",
+      "sha256": "17cd9e35fb2661daca072b58242a6c11d9168f420889670b2310d0a807cc779f",
+      "bytes": 40067,
+      "state": "present"
+    },
+    {
+      "path": "ops/self-hosted/scripts/parameter-catalog-upgrade/deploymentAuthority.test.ts",
+      "mode": "100644",
+      "blob": "7adca815784658ef5bc42eab8b5d5c96cb19ac64",
+      "sha256": "d53879cdf544eff5765b101df8b481f22b257220b611a5796e4e5df223776cb3",
+      "bytes": 5150,
+      "state": "present"
+    },
+    {
+      "path": "ops/self-hosted/scripts/parameter-catalog-upgrade/deploymentAuthority.ts",
+      "mode": "100644",
+      "blob": "7a71db3b1ffe17afd89854c49d610104484c10cb",
+      "sha256": "6f83da6ae8ff4543b07b85dd10753f6884925c9176375a4dfdb76763a42485dc",
+      "bytes": 22845,
+      "state": "present"
+    },
+    {
+      "path": "ops/self-hosted/scripts/parameter-catalog-upgrade/handoff.test.ts",
+      "mode": "100644",
+      "blob": "89e6aa886f27fab68b93df439542e57bbae883eb",
+      "sha256": "ead7d72c3b489f74e79d1c217649db7bc47640b9dbe36591b50a786ac8bb9311",
+      "bytes": 29403,
+      "state": "present"
+    },
+    {
+      "path": "ops/self-hosted/scripts/parameter-catalog-upgrade/handoff.ts",
+      "mode": "100644",
+      "blob": "32a66b65658cff8f63d1b70547e3d0f16ce383cd",
+      "sha256": "794e1c41de3f0fb7eba85e90e0fc7dd04bd336350ea1c7fc6768effdee7ef45c",
+      "bytes": 29302,
+      "state": "present"
+    },
+    {
+      "path": "ops/self-hosted/scripts/parameter-catalog-upgrade/handoffDataSource.test.ts",
+      "mode": "100644",
+      "blob": "ebf9690d078ad3afe4d27dc52dbdffbaf214f11a",
+      "sha256": "e1e386b147cad10040e4407cd2e6b79c089a095810eecf75d1ac25f9f81e45ea",
+      "bytes": 9997,
+      "state": "present"
+    },
+    {
+      "path": "ops/self-hosted/scripts/parameter-catalog-upgrade/handoffDataSource.ts",
+      "mode": "100644",
+      "blob": "b8919e08e83a25d75cee0c1620b30a8cb2d7aa35",
+      "sha256": "c54633a2117b1ffb20f3dff3117ae5d6de398e76db557e3342256d0201874cf5",
+      "bytes": 14969,
+      "state": "present"
+    },
+    {
+      "path": "ops/self-hosted/scripts/parameter-catalog-upgrade/journal.test.ts",
+      "mode": "100644",
+      "blob": "f5da9879128f4ae1020cb1f4003f45521c962233",
+      "sha256": "fe60c2c37487844a362aa1933bd8671995510396c3ae40efd7c08e478532807b",
+      "bytes": 30289,
+      "state": "present"
+    },
+    {
+      "path": "ops/self-hosted/scripts/parameter-catalog-upgrade/journal.ts",
+      "mode": "100644",
+      "blob": "1b0de858d571bd75e2810d604ce764bfa3e1bda0",
+      "sha256": "6fd4d916c65547539cd040cb760eaec4f184f7e10720684c03c0c2620020534f",
+      "bytes": 46439,
+      "state": "present"
+    },
+    {
+      "path": "ops/self-hosted/scripts/parameter-catalog-upgrade/legacyWriterRetirement.bootstrap.README.md",
+      "mode": "100644",
+      "blob": "11ff5ea3e577f2a4ec7a90508097cf53d742098c",
+      "sha256": "c4d03b18f4ca8409fd0a4c163dabfa916b6117c887629eda6fbbc63046ace0b8",
+      "bytes": 10478,
+      "state": "present"
+    },
+    {
+      "path": "ops/self-hosted/scripts/parameter-catalog-upgrade/legacyWriterRetirement.bootstrap.README.zh-CN.md",
+      "mode": "100644",
+      "blob": "9cba4edd7afe35e3a9837b7f2291fb46dce2c942",
+      "sha256": "26482b7a19561e62286feeff46b3a0f4a96166d951a18567ea73e7dc1539b5e2",
+      "bytes": 8881,
+      "state": "present"
+    },
+    {
+      "path": "ops/self-hosted/scripts/parameter-catalog-upgrade/legacyWriterRetirement.bootstrap.test.ts",
+      "mode": "100644",
+      "blob": "06789ea0553c49f14a32b0f7c067064d4f4993c8",
+      "sha256": "c7b1e24e7333113f277839b8d828db2c4447caf668907ed3bab01eda3aa042df",
+      "bytes": 41414,
+      "state": "present"
+    },
+    {
+      "path": "ops/self-hosted/scripts/parameter-catalog-upgrade/legacyWriterRetirement.test.ts",
+      "mode": "100644",
+      "blob": "185231b28a74b4a0af8e0e56b5d2360939e27918",
+      "sha256": "6860ba43d983c1b2221605fc6b10b7f845ac491b153938f3115ce00216a101c6",
+      "bytes": 15054,
+      "state": "present"
+    },
+    {
+      "path": "ops/self-hosted/scripts/parameter-catalog-upgrade/legacyWriterRetirement.ts",
+      "mode": "100644",
+      "blob": "3f4ee913685ffb065fdd8888f549a77ff83c74f6",
+      "sha256": "8115508280d745094d8830a73fe6e732abb9a921e88f21d24395a54e330db816",
+      "bytes": 46753,
+      "state": "present"
+    },
+    {
+      "path": "ops/self-hosted/scripts/parameter-catalog-upgrade/legacyWriterSource.ts",
+      "mode": "100644",
+      "blob": "205c7136aa1d040124675f48bdfb7b9b19a332b0",
+      "sha256": "d553f622b6d0ba42c42f91e53137b36cb4b6d444eff4bb4cba6be5d2967618e6",
+      "bytes": 10026,
+      "state": "present"
+    },
+    {
+      "path": "ops/self-hosted/scripts/parameter-catalog-upgrade/managementJournal.test.ts",
+      "mode": "100644",
+      "blob": "9bbc032b7c29b4fa8abb125a1c3e9fafac8adfbe",
+      "sha256": "af43e77b907980fdf34d38dafa67f86064b853bde06170c5be242ffa21a12ed7",
+      "bytes": 13513,
+      "state": "present"
+    },
+    {
+      "path": "ops/self-hosted/scripts/parameter-catalog-upgrade/managementJournal.ts",
+      "mode": "100644",
+      "blob": "b2def9ad56966f4849c0f1171c1b4b4fcbeb82af",
+      "sha256": "aef67b59b7c226804a6448c3872d6ba8f94e6fc6fe60325c34c45679f845b501",
+      "bytes": 12305,
+      "state": "present"
+    },
+    {
+      "path": "ops/self-hosted/scripts/parameter-catalog-upgrade/managementPreparation.ts",
+      "mode": "100644",
+      "blob": "f54b2290151994b1dcaf1c0aa4e463e2a0c310cd",
+      "sha256": "2e167ad362d9efdb0fa516936a73e4e13e96b0d03f6d0e460e6be674d6c3c43c",
+      "bytes": 3434,
+      "state": "present"
+    },
+    {
+      "path": "ops/self-hosted/scripts/parameter-catalog-upgrade/recoveryApproval.README.md",
+      "mode": "100644",
+      "blob": "6e0d1a32e29c58614fa54d2739be2506320e3e18",
+      "sha256": "a8bd3fb0b5f68bb1b8788f24bb58ab46e60fc7faebdbd0b1a53908272e702e2d",
+      "bytes": 4523,
+      "state": "present"
+    },
+    {
+      "path": "ops/self-hosted/scripts/parameter-catalog-upgrade/recoveryApproval.README.zh-CN.md",
+      "mode": "100644",
+      "blob": "be963b659b222592d4ab6355daf23bc4bedbadac",
+      "sha256": "358fc1c640df048d326c90b99001b585d636a54505eeb023b8593341b8b334c1",
+      "bytes": 3804,
+      "state": "present"
+    },
+    {
+      "path": "ops/self-hosted/scripts/parameter-catalog-upgrade/recoveryApproval.test.ts",
+      "mode": "100644",
+      "blob": "82dd96ac6a11bdd8c50529ac4da1eaa804a46c7e",
+      "sha256": "3ceb3e4d60e7536637c53cac970fba97bd4acae9ea42a81bc5bceec5febcaea9",
+      "bytes": 1346,
+      "state": "present"
+    },
+    {
+      "path": "ops/self-hosted/scripts/parameter-catalog-upgrade/recoveryApproval.ts",
+      "mode": "100644",
+      "blob": "9a9f2b56f8bf499ca7d3239ccf70e99a774cd714",
+      "sha256": "9ca25b1497b33f85a8ce4b8278300b81b21adcf19e2e3fe58f588fe9b670a38b",
+      "bytes": 6701,
+      "state": "present"
+    },
+    {
+      "path": "ops/self-hosted/scripts/parameter-catalog-upgrade/recoveryCapture.test.ts",
+      "mode": "100644",
+      "blob": "116121e34c7d514c1900979fa02bd9b956a6c3a3",
+      "sha256": "6ac6e1a4fe916da44fe904c8382c1fa6a6d3bd9e996bf4b0b0bdf9a97c307382",
+      "bytes": 8873,
+      "state": "present"
+    },
+    {
+      "path": "ops/self-hosted/scripts/parameter-catalog-upgrade/recoveryCapture.ts",
+      "mode": "100644",
+      "blob": "0f3797694d06bb21bc8b2593601d6a3ceeee8b54",
+      "sha256": "583c503d95f5acfe1ed0edfac86e77acf47ff2ce9ce875c5a252ba20204b0e74",
+      "bytes": 8096,
+      "state": "present"
+    },
+    {
+      "path": "ops/self-hosted/scripts/parameter-catalog-upgrade/recoveryVerification.README.md",
+      "mode": "100644",
+      "blob": "506e8f2de0f86fc6cfc01c805eb223f409aa038d",
+      "sha256": "741f960b6569aa422b9253931367288c2ca2c525f6311392bddc44c620a79b18",
+      "bytes": 2434,
+      "state": "present"
+    },
+    {
+      "path": "ops/self-hosted/scripts/parameter-catalog-upgrade/recoveryVerification.README.zh-CN.md",
+      "mode": "100644",
+      "blob": "4bebeb00fb671dea522343d6eae1829f2be32052",
+      "sha256": "b1f546d2a51adc9863c4aa39b40d888a500994d9dc78f6508a5349db601a3acd",
+      "bytes": 2103,
+      "state": "present"
+    },
+    {
+      "path": "ops/self-hosted/scripts/parameter-catalog-upgrade/recoveryVerification.test.ts",
+      "mode": "100644",
+      "blob": "6b18288df6d7e0d4a680574a4302bc8a4ec2dc52",
+      "sha256": "486035df5fb0319c1066761daf7d45df0fe6188639f270e573de632c9b7ea551",
+      "bytes": 7666,
+      "state": "present"
+    },
+    {
+      "path": "ops/self-hosted/scripts/parameter-catalog-upgrade/recoveryVerification.ts",
+      "mode": "100644",
+      "blob": "c15e60f4202c49560e50b2f2fb0e7dd9f40b3f1d",
+      "sha256": "58cdaee65aaf98d10e60206d386efe83a6c8af325e59d1185345701396f2c4ea",
+      "bytes": 9227,
+      "state": "present"
+    },
+    {
+      "path": "ops/self-hosted/scripts/parameter-catalog-upgrade/reportApprovalTarget.README.md",
+      "mode": "100644",
+      "blob": "3870b18b9b4232a4d1142a9c2ed6558e926060fd",
+      "sha256": "365bae9ab016d8f0b4f3a886a47d082ad3d76aabfed88585d1566790eebea6f6",
+      "bytes": 5204,
+      "state": "present"
+    },
+    {
+      "path": "ops/self-hosted/scripts/parameter-catalog-upgrade/reportApprovalTarget.README.zh-CN.md",
+      "mode": "100644",
+      "blob": "5f123c98829c9952fce8fc30f456f218f59ac944",
+      "sha256": "9d3d5224a86bb1f4bedf703e98421b95b078de4cb5d8d67846388ca7944c25e2",
+      "bytes": 4427,
+      "state": "present"
+    },
+    {
+      "path": "ops/self-hosted/scripts/parameter-catalog-upgrade/reportApprovalTarget.test.ts",
+      "mode": "100644",
+      "blob": "e70ebc49d71e59710625b2827b56fc2ad535d5e7",
+      "sha256": "82530a503e93b7cc95b7d5725a1ff806a7dde176bfc5a98a5744e57b9ad1d8f9",
+      "bytes": 992,
+      "state": "present"
+    },
+    {
+      "path": "ops/self-hosted/scripts/parameter-catalog-upgrade/reportApprovalTarget.ts",
+      "mode": "100644",
+      "blob": "fd1e9eb236e81f069988781fa417317cc195e625",
+      "sha256": "c76a15fb5d9123b98e13536d054de7c29159263bc53f7542a5ef66287dc6b352",
+      "bytes": 13765,
+      "state": "present"
+    },
+    {
+      "path": "ops/self-hosted/scripts/parameter-catalog-upgrade/runtimeRoleSource.README.md",
+      "mode": "100644",
+      "blob": "27b98bfd3012c5d38e7ece6b2cefceeb22332368",
+      "sha256": "802213b94d6214b106a4f0b1cbebefbfa383d99e07f65a524c87d084de9c1ffd",
+      "bytes": 9974,
+      "state": "present"
+    },
+    {
+      "path": "ops/self-hosted/scripts/parameter-catalog-upgrade/runtimeRoleSource.README.zh-CN.md",
+      "mode": "100644",
+      "blob": "ebacaa9a7091d340d69dd5cf43c25738196c4078",
+      "sha256": "f56e8748b9b594cf00bf4ae23363750cd407ff899871e68248fb1e1a0656f0bb",
+      "bytes": 8583,
+      "state": "present"
+    },
+    {
+      "path": "ops/self-hosted/scripts/parameter-catalog-upgrade/runtimeRoleSource.integration.test.ts",
+      "mode": "100644",
+      "blob": "76214f9233d4f0db70872df35a7f1da2d38efce3",
+      "sha256": "fca6c9ea2fb04da40b96e5be07f9e9622cb116f468bcaddbf93c70d5ceb1c5ff",
+      "bytes": 18821,
+      "state": "present"
+    },
+    {
+      "path": "ops/self-hosted/scripts/parameter-catalog-upgrade/runtimeRoleSource.test.ts",
+      "mode": "100644",
+      "blob": "4266324666f6bd4fd4509e6549707f2c6a2e48b6",
+      "sha256": "7836ccd03a1271985f17eb9d697d24e85d40af650a75ee5040622616d7e88415",
+      "bytes": 7642,
+      "state": "present"
+    },
+    {
+      "path": "ops/self-hosted/scripts/parameter-catalog-upgrade/runtimeRoleSource.ts",
+      "mode": "100644",
+      "blob": "b03e1fddeb699723bca9e5e8b1fb8cfb4eb858b2",
+      "sha256": "7947a6ac00239b3437710d2908304d4ead5ade9dfc402f0f4f20c4e6562e1a7c",
+      "bytes": 12988,
+      "state": "present"
+    },
+    {
+      "path": "ops/self-hosted/scripts/parameter-catalog-upgrade/startupPublication.README.md",
+      "mode": "100644",
+      "blob": "8365a7835e9ce20e91614867f68d3690b41150b9",
+      "sha256": "19e8b9629de993efef4405186a3fdc9758f5f0a4a7f71442e6c00d3f5d674966",
+      "bytes": 4329,
+      "state": "present"
+    },
+    {
+      "path": "ops/self-hosted/scripts/parameter-catalog-upgrade/startupPublication.README.zh-CN.md",
+      "mode": "100644",
+      "blob": "8bfe3a8555d88060d3adc17849009578365b8497",
+      "sha256": "ea0011d153223f32ce30954e44a1795d9989a5bf1f5017281594950859459fbf",
+      "bytes": 3615,
+      "state": "present"
+    },
+    {
+      "path": "ops/self-hosted/scripts/parameter-catalog-upgrade/startupPublication.test.ts",
+      "mode": "100644",
+      "blob": "be73489f160047dafc30d2e017facd95a78fc3e7",
+      "sha256": "2d90cf18a9092cf5506157db6f5fc8eab92d3233078192944640d35ccd793465",
+      "bytes": 15775,
+      "state": "present"
+    },
+    {
+      "path": "ops/self-hosted/scripts/parameter-catalog-upgrade/startupPublication.ts",
+      "mode": "100644",
+      "blob": "7d21bd370b32d47b4ea588226e96706685961cc6",
+      "sha256": "64aba3a678d6975a1b7763c187dbf6dc90bb87bc08dc068477550e7c632d19c1",
+      "bytes": 9413,
+      "state": "present"
+    },
+    {
+      "path": "ops/self-hosted/scripts/parameter-catalog-upgrade/stateMachine.ts",
+      "mode": "100644",
+      "blob": "ea443814f25f36f2f1f93df418f13eccf23784e3",
+      "sha256": "1b68292c831da10f0ea2ada0180ac450129c137eb7e787b2b6666c2e80b4dc5a",
+      "bytes": 5798,
+      "state": "present"
+    },
+    {
+      "path": "ops/self-hosted/scripts/upgrade-compatibility.test.ts",
+      "mode": "100644",
+      "blob": "3c0ad8e7e4bf3515a8e46f88f65eb4d4f1ce2634",
+      "sha256": "15680cb7dd6ca6b7ee858840fc3114b77e645939876db83d79d08822908b2a7a",
+      "bytes": 3309,
+      "state": "present"
+    },
+    {
+      "path": "ops/self-hosted/scripts/upgrade-lib.sh",
+      "mode": "100755",
+      "blob": "7fa7530bfbe47da6db392693997c5214fb294aa3",
+      "sha256": "9dfba26b00b60ad322e3c304b3f0a47cefa2c30495a7cf0238be6f61c3123400",
+      "bytes": 139471,
+      "state": "present"
+    },
+    {
+      "path": "ops/self-hosted/scripts/upgrade.sh",
+      "mode": "100755",
+      "blob": "0c5374914fb6bf75478ccbcc7a05460b91ab5e0e",
+      "sha256": "b08165549e54bc67c2058f009128ba4bf50174debf9ae131cb9fe9040c1d8cae",
+      "bytes": 33596,
+      "state": "present"
+    },
+    {
+      "path": "ops/self-hosted/scripts/upgrade.sh.test.ts",
+      "mode": "100644",
+      "blob": "bc4b2dd93381726a32bd14db38d38fe7eb337e7b",
+      "sha256": "22446660712136fc9d478f3d24536304f228fb57863d64776f875af738570ba8",
+      "bytes": 188947,
+      "state": "present"
+    },
+    {
+      "path": "ops/self-hosted/storage/README.md",
+      "mode": "100644",
+      "blob": "2ed37ba15c75685b85f8b7bcfd59393df95bfbca",
+      "sha256": "6bf059345ee8cd32bc1f2f5c47e42af8f36eee4847621fd0d94569e0f84bac38",
+      "bytes": 1627,
+      "state": "present"
+    },
+    {
+      "path": "ops/self-hosted/storage/README.zh-CN.md",
+      "mode": "100644",
+      "blob": "4d952d0b9433b8c3fc4c4cbe69e8bed06b04032b",
+      "sha256": "bbd214629ea5774e78f1ad336179924b7c6b973572980235fe2c54127a64ebc0",
+      "bytes": 1550,
+      "state": "present"
+    },
+    {
+      "path": "ops/self-hosted/storage/controlledRecovery.docker.integration.test.ts",
+      "mode": "100644",
+      "blob": "8d2d69b2a6e1fa7b67c740732289cccd21586786",
+      "sha256": "13d294acb40af5b682a76514118307e74b6cd0f541518e439bf0e948248adc6e",
+      "bytes": 36643,
+      "state": "present"
+    },
+    {
+      "path": "ops/self-hosted/storage/controlledRecovery.docker.ts",
+      "mode": "100644",
+      "blob": "563eafad4d97c2400c6ba876e661325b05631bf9",
+      "sha256": "c8d870b1b65c44df2468c68397fb01f3227d3a940016e6041a9fbb7244d6bba8",
+      "bytes": 4400,
+      "state": "present"
+    },
+    {
+      "path": "ops/self-hosted/storage/controlledRecovery.test.ts",
+      "mode": "100644",
+      "blob": "e57a8ec655654dac9567ed0409882a048ac73b93",
+      "sha256": "b9e678f6d6a20aab060d633267550c346603c3ac0813d90ab9ec1c34b445a5a1",
+      "bytes": 7575,
+      "state": "present"
+    },
+    {
+      "path": "ops/self-hosted/storage/controlledRecovery.ts",
+      "mode": "100644",
+      "blob": "c6569c0776802c3034d29f91fdaa3c21a905e681",
+      "sha256": "7067593af66ffb5824cfe22e338f08be737df44615d9e85faa37a4cecb2a56b6",
+      "bytes": 6207,
+      "state": "present"
+    },
+    {
+      "path": "ops/self-hosted/storage/dockerAccess.ts",
+      "mode": "100644",
+      "blob": "fa1e032b5565636528e1a80f563f7852eb8f3e41",
+      "sha256": "817bbf292659675c412755eb7e50477c8318162b663915625162ec8a4d7b7312",
+      "bytes": 20625,
+      "state": "present"
+    },
+    {
+      "path": "ops/self-hosted/storage/execution/README.md",
+      "mode": "100644",
+      "blob": "11432c99bb6e473a90c2fac7cac81d44a9f7b438",
+      "sha256": "baa6963eda3edbf343ca43524e6f982d7147ea5b9b8396f2b861ed2447d064ed",
+      "bytes": 12248,
+      "state": "present"
+    },
+    {
+      "path": "ops/self-hosted/storage/execution/README.zh-CN.md",
+      "mode": "100644",
+      "blob": "341724c532ba1fc7a546c32b842e954f34a1ab5d",
+      "sha256": "6ead9e89847effff976cce56dc402c99d3c98ac5809053ccffb7e02ec7e094a7",
+      "bytes": 10537,
+      "state": "present"
+    },
+    {
+      "path": "ops/self-hosted/storage/execution/authorization.fixture.ts",
+      "mode": "100644",
+      "blob": "fe48916cac507a32b3bd2337167094840757d475",
+      "sha256": "586a0d083b1aca64e06035320134985b846257dbcd22d94e9c02939f9c72db7a",
+      "bytes": 7854,
+      "state": "present"
+    },
+    {
+      "path": "ops/self-hosted/storage/execution/authorization.test.ts",
+      "mode": "100644",
+      "blob": "5299de9353ac6992480819af3f21d61e376ca42a",
+      "sha256": "fe658333f40b5e0141da71def530f00aabf3ac19951df0817fb56410ba1701a3",
+      "bytes": 16370,
+      "state": "present"
+    },
+    {
+      "path": "ops/self-hosted/storage/execution/authorization.ts",
+      "mode": "100644",
+      "blob": "b54315e2a93e6555c1ed16e11a3f41d96aeb0c93",
+      "sha256": "de3eccd077b98332a507f51cdf14fcc9dbe93b32b8d1afaadf8b140b31d289e1",
+      "bytes": 8189,
+      "state": "present"
+    },
+    {
+      "path": "ops/self-hosted/storage/execution/controlledRestore.ts",
+      "mode": "100644",
+      "blob": "9c09ea105a1047e611b67fca682636c4d177238d",
+      "sha256": "155ef35ebdca04cb68fb0fb7fcee53a7c87eb6d2b4c5c864e4997d55ce40accc",
+      "bytes": 3771,
+      "state": "present"
+    },
+    {
+      "path": "ops/self-hosted/storage/execution/dockerRestore.ts",
+      "mode": "100644",
+      "blob": "ff3ff867ba335eb69f5df6af4bac407be2b367af",
+      "sha256": "89fd7a7243f64e592012f5e471e4ce0ebf3a0f4632ebb2738594f598d31584b4",
+      "bytes": 7923,
+      "state": "present"
+    },
+    {
+      "path": "ops/self-hosted/storage/execution/packageRestore.ts",
+      "mode": "100644",
+      "blob": "d69a3a019a9602539a5673aabbec712f45c3a524",
+      "sha256": "e7549b781f3a834f9720ae4488c9df10b618441259204933f73cccadf9c8d117",
+      "bytes": 3297,
+      "state": "present"
+    },
+    {
+      "path": "ops/self-hosted/storage/recoveryPackage.test.ts",
+      "mode": "100644",
+      "blob": "ac1c8194373ee747622646775bed4874f82d5024",
+      "sha256": "e843069f406d6b8521cabb8d97e095ca45db4f7067c76370eaf07357456f8102",
+      "bytes": 21698,
+      "state": "present"
+    },
+    {
+      "path": "ops/self-hosted/storage/recoveryPackage.ts",
+      "mode": "100644",
+      "blob": "12ae34e01660a499359e0db6ed7de02df35169d0",
+      "sha256": "7239456cbcdf7b39830b3654c9341516835e303e1be1d7e14b06f5c4e4973a39",
+      "bytes": 21646,
+      "state": "present"
+    },
+    {
+      "path": "ops/self-hosted/upgrade.md",
+      "mode": "100644",
+      "blob": "cd848130e7c1e2c39b4ad4234db747ab8929fbbf",
+      "sha256": "a1ad340ad44b78a8029c2d7813d8c170ffb399aeb4350b3096157b41971dde53",
+      "bytes": 27078,
+      "state": "present"
+    },
+    {
+      "path": "ops/self-hosted/upgrade.zh-CN.md",
+      "mode": "100644",
+      "blob": "25f308025a594998cc1fe348109efb276e92c588",
+      "sha256": "dc8c9b1c2064c7600952608b510330a78c931962f628cc914a811b1b9f5a4cf9",
+      "bytes": 24181,
+      "state": "present"
+    },
+    {
+      "path": "package.json",
+      "mode": "100644",
+      "blob": "bd937c0865f3b3f08f824d184e3fcc27f7bfb863",
+      "sha256": "86db1238bcb9a905aef4b5b5bbd12d87cd0faed780e5fbee95e388dd011d5e37",
+      "bytes": 9380,
+      "state": "present"
+    },
+    {
+      "path": "scripts/bootstrap-fault-proxy.test.ts",
+      "mode": "100644",
+      "blob": "61c2176bf5bb671c19e201335a4faa4747367ffe",
+      "sha256": "f7e9ca435b2583a1fbde1281fc54f27c7c36cdec7cd2cf31f7e412ac36399d5f",
+      "bytes": 5525,
+      "state": "present"
+    },
+    {
+      "path": "scripts/check-db-schema-doc.test.ts",
+      "mode": "100644",
+      "blob": "cc27c361d0448f826bcb94fd419adce28e519e37",
+      "sha256": "ae8e96a93b701ab17cc929bacf1ba404f51d1453be042758515ddae064c8979f",
+      "bytes": 2886,
+      "state": "present"
+    },
+    {
+      "path": "scripts/check-db-schema-doc.ts",
+      "mode": "100644",
+      "blob": "ac49dd29a15a68aa053a31b73b16625c2dfbe83f",
+      "sha256": "3e2315e0fb345b7aea15f0813404dd0c92ead69de748bcb1694c60c4e4071f0b",
+      "bytes": 1798,
+      "state": "present"
+    },
+    {
+      "path": "scripts/check-parameter-catalog-boundaries.test.ts",
+      "mode": "100644",
+      "blob": "d0ae39871726863c2468847943992f4440e873b7",
+      "sha256": "f20cf5a4ebf71c855bddbcdec389dace3746a5a078eac65c3a9e8af87ae0a8bb",
+      "bytes": 40187,
+      "state": "present"
+    },
+    {
+      "path": "scripts/database-cleanup.test.ts",
+      "mode": "100644",
+      "blob": "2a52cf548fc02d4d2bf88288548993567cf31444",
+      "sha256": "8e2168a931951bb8f33f9a24fbaf076f1f0df1c6a81b5ab9dcc1c21b88579bc0",
+      "bytes": 4656,
+      "state": "present"
+    },
+    {
+      "path": "scripts/disposable-post-cutover-runtime.test.ts",
+      "mode": "100644",
+      "blob": "a816f6010b4ee956d7c97ea1ea27842fb0cdd03d",
+      "sha256": "b59c28bfdca3eb3affa0a7bb0d4055e6fab69cf3604f897d5a7f75f0cccfb058",
+      "bytes": 9905,
+      "state": "present"
+    },
+    {
+      "path": "scripts/fixtures/parameter-catalog-allowlist/knowledge-audit-relocation.json",
+      "mode": "100644",
+      "blob": "3f264a1287e18f77859824f8b6329d254ecbc0ac",
+      "sha256": "3b10d26e362a35676d0f6d352e43d1085aca41769507ac331f222fc8fe539e1a",
+      "bytes": 5179,
+      "state": "present"
+    },
+    {
+      "path": "scripts/fixtures/upgrade-82344044-catalog-gate.sh",
+      "mode": "100644",
+      "blob": "4c8b7cd3739cc21910e8cecc581b451311848979",
+      "sha256": "29c28f2b5951bf4650984ec1be07ac121b8bb61c07e29388f70b7848e8952232",
+      "bytes": 351,
+      "state": "present"
+    },
+    {
+      "path": "scripts/inspect-populated-upgrade-source.integration.test.ts",
+      "mode": "100644",
+      "blob": "8a74c9f8028b70d53703a173593ed67818826a38",
+      "sha256": "2c708ec615d1baaa1d9c709ca4e840760bced319f88be882af7d2b6e290237e4",
+      "bytes": 8806,
+      "state": "present"
+    },
+    {
+      "path": "scripts/inspect-populated-upgrade-source.test.ts",
+      "mode": "100644",
+      "blob": "049584927c90888a4d6dce1a90fed1c1b29de227",
+      "sha256": "1749afeccefc0e7daaa00913a98371b656643b152759ebf20b4c933f981b2a85",
+      "bytes": 2227,
+      "state": "present"
+    },
+    {
+      "path": "scripts/inspect-populated-upgrade-source.ts",
+      "mode": "100644",
+      "blob": "da0a7f4a579a49acdeae806d1768a56cef87e163",
+      "sha256": "f6a346cd4c4eabc9fe8680e57c755de2310ad21e150a2b1e53b76622dbea412f",
+      "bytes": 6933,
+      "state": "present"
+    },
+    {
+      "path": "scripts/inspect-upgrade-runtime-identity.test.ts",
+      "mode": "100644",
+      "blob": "a6c19a4ed720f342da465780f3b3fea78e0357f9",
+      "sha256": "c8da36ee7dfa0ef55958c352b6daa4c01f1e623db794c338d78964ff0ff6a738",
+      "bytes": 6514,
+      "state": "present"
+    },
+    {
+      "path": "scripts/inspect-upgrade-runtime-identity.ts",
+      "mode": "100644",
+      "blob": "0daef545bfddf96f7494a504b28418f1880aad35",
+      "sha256": "31ea2292ef9c1aafb1b228f780a5b16884d3cb1ecf419664aaba6ddd7c291eb3",
+      "bytes": 5611,
+      "state": "present"
+    },
+    {
+      "path": "scripts/isolated-upgrade-docker.test.ts",
+      "mode": "100644",
+      "blob": "b3294dfcb3b5b9912f48431df51d701741650cec",
+      "sha256": "287cbf271b40968780070cf16ff46c3b87a6822f2fe903ae7f5721f83c60bea9",
+      "bytes": 3924,
+      "state": "present"
+    },
+    {
+      "path": "scripts/isolated-upgrade-docker.ts",
+      "mode": "100644",
+      "blob": "d4a93fbc1beac457c2ef06325a5131c70ea358cc",
+      "sha256": "af06e0475336638eba85240ede801506cb9b5d03e12b469ab76bd615f68067cb",
+      "bytes": 3176,
+      "state": "present"
+    },
+    {
+      "path": "scripts/migrate.test.ts",
+      "mode": "100644",
+      "blob": "8383265b047e9b0d634cf335f2f655ff9b225e8e",
+      "sha256": "3ffe171178fe20ec7e95962253501237302652d56f60fb54dd848ac41c7cd3ac",
+      "bytes": 8044,
+      "state": "present"
+    },
+    {
+      "path": "scripts/migrate.ts",
+      "mode": "100644",
+      "blob": "92ebb5666a6cc32f22f729b2a09c6f1a334c9606",
+      "sha256": "d65d22d86d060ccd38a5aa24f842eb6f7d7a869ef80e08bf63af5c39f14bc6fb",
+      "bytes": 19367,
+      "state": "present"
+    },
+    {
+      "path": "scripts/owned-docs-check.README.md",
+      "mode": "100644",
+      "blob": "12b16e2be54b3ba1cfae404bfee8bd8d1d5bb2b3",
+      "sha256": "05e35e754ec21a4e2e2f41e1c6b7f83a52195935c295a114e90912fea552f646",
+      "bytes": 2069,
+      "state": "present"
+    },
+    {
+      "path": "scripts/owned-docs-check.README.zh-CN.md",
+      "mode": "100644",
+      "blob": "dac6dbaefb1e6fcc0c73ac3042526ca3800cce0d",
+      "sha256": "fc339506780eee44537394be4bf6e6f4cab5a62a28669fad77fd10c7f1967b0e",
+      "bytes": 1803,
+      "state": "present"
+    },
+    {
+      "path": "scripts/parameter-catalog-allowlist/exactRelocation.test.ts",
+      "mode": "100644",
+      "blob": "aa4e6ce4861f6659ebf2982a305e0409ccaf8d47",
+      "sha256": "045a6ea6a9e37afedce58d5548faf6fb35bab40f2af234efb8ca8efd8df6b319",
+      "bytes": 8418,
+      "state": "present"
+    },
+    {
+      "path": "scripts/parameter-catalog-allowlist/exactRelocation.ts",
+      "mode": "100644",
+      "blob": "7e6f9912878e8a03584b1dad34c42d2676e182ba",
+      "sha256": "aa57f620d5e85e07c54d4ad1cb2faa56befa2c51a8f5856f44ea71088d2eba4e",
+      "bytes": 7332,
+      "state": "present"
+    },
+    {
+      "path": "scripts/parameter-catalog-allowlist/knowledgeAuditRelocation.test.ts",
+      "mode": "100644",
+      "blob": "6ce2574ad91c8becb637a4bf9cf4acf882f8f246",
+      "sha256": "5d2be94f39ee874d1bfd5ed26e8dc4d68949c562f60fc456951cdaa835772a64",
+      "bytes": 2872,
+      "state": "present"
+    },
+    {
+      "path": "scripts/parameter-catalog-allowlist/shards/s12-ops.json",
+      "mode": "100644",
+      "blob": "5873255fa8ef9b9a1db0724409b0da39aec36281",
+      "sha256": "faa252d4358ebd0ef934ccdd2c87c6bd2e53b69a0d507a4c795807dc05f08750",
+      "bytes": 298,
+      "state": "present"
+    },
+    {
+      "path": "scripts/reconcile-legacy-isolation.test.ts",
+      "mode": "100644",
+      "blob": "8b63c706a0c7996e71a1719c84e4aaf4a69f6b72",
+      "sha256": "36d08023bfb562d4ef16c16c23b487ac4dfde2a1d80ea5e7e3568b6f4dbe7fa6",
+      "bytes": 1475,
+      "state": "present"
+    },
+    {
+      "path": "scripts/reconcile-parameter-definitions.test.ts",
+      "mode": "100644",
+      "blob": "12364f463a1978be127740f9409e5d73da136e3f",
+      "sha256": "962ba867b7e29b0d255a322ff681af56f6db882221ba72c3d2a3ca89bbe3d0a6",
+      "bytes": 2322,
+      "state": "present"
+    },
+    {
+      "path": "scripts/reconcile-parameter-definitions.ts",
+      "mode": "100644",
+      "blob": "60d253931ea9db550dd6fde9d60add31e9b4e375",
+      "sha256": "31a14c9c43adff343fe462e3adb4bdd04595459be126ba592cb0e76f50ce2da5",
+      "bytes": 6909,
+      "state": "present"
+    },
+    {
+      "path": "scripts/reconcile-upgrade-cli.test.ts",
+      "mode": "100644",
+      "blob": "b660c652dfb6909e82fd4861778dc59efc856624",
+      "sha256": "5f1e951ef12a48e1e45e1dbe7593d00c896e2294576b0308f5b67f3b81bbed59",
+      "bytes": 2714,
+      "state": "present"
+    },
+    {
+      "path": "scripts/reconcile-upgrade-gate.test.ts",
+      "mode": "100644",
+      "blob": "ad7e94b6a7105f0dd6b6844072ce728c3ba6565d",
+      "sha256": "b81e02a02296c9e92e9c6ac091e8d486ebc63645624549b6c3a895772b2b93b1",
+      "bytes": 986,
+      "state": "present"
+    },
+    {
+      "path": "scripts/recovery-storage-boundary.test.ts",
+      "mode": "100644",
+      "blob": "857cac14c154dfd21dbb5436c2bd10e05ca3b6f9",
+      "sha256": "a21cc1fb103adb865562cdab7d2eb4550e107530ddc7760302b3fe09bab6e557",
+      "bytes": 6526,
+      "state": "present"
+    },
+    {
+      "path": "scripts/recovery-storage-boundary.ts",
+      "mode": "100644",
+      "blob": "731c2455c1e6d90526225e7c965b5f9efd2d4e2f",
+      "sha256": "07734fe67222766694c194f3e315e8c78b80596c24d13396fd8b4a6e32779029",
+      "bytes": 10837,
+      "state": "present"
+    },
+    {
+      "path": "scripts/rehearse-upgrade-recovery.test.ts",
+      "mode": "100644",
+      "blob": "a5ddd24412fd2bef454f5d5fb642acec461cdcb2",
+      "sha256": "6b2b00a35f6c71740bd5a397978db9d32afd001e39dc7992f57ba2819307c892",
+      "bytes": 9537,
+      "state": "present"
+    },
+    {
+      "path": "scripts/rehearse-upgrade-recovery.ts",
+      "mode": "100644",
+      "blob": "3f725df30c0e95df0f8089f59f2508752e07f9ee",
+      "sha256": "0cbbfc4d686265ebe3058eb3e1a66856bf27b4ab25f2bd1a9cab7db2262e377e",
+      "bytes": 53860,
+      "state": "present"
+    },
+    {
+      "path": "scripts/retirement-endpoint-supervision.README.md",
+      "mode": "100644",
+      "blob": "5bb72437fa7b303a6648168c8921c2dfe0f614d9",
+      "sha256": "3a9f957844ac3e49e6bded4ecb924ecb3df3e9b9262292b330c92c993649bafe",
+      "bytes": 6329,
+      "state": "present"
+    },
+    {
+      "path": "scripts/retirement-endpoint-supervision.README.zh-CN.md",
+      "mode": "100644",
+      "blob": "2457a3bed1bf8b5dfde7dadf7e4d5b7c736406b7",
+      "sha256": "ea2367c1a8b75c3da9eb7535f38467cedeebb07be8372aca401240837a6f668c",
+      "bytes": 5512,
+      "state": "present"
+    },
+    {
+      "path": "scripts/retirement-endpoint-supervision.docker.test.ts",
+      "mode": "100644",
+      "blob": "1f3401b8c03deae24bf9dd606d25f4cbf71455c6",
+      "sha256": "bb9b64d667e5a0c683434cc1d73d27e14b18bdf42ae4e31991b200ab946f40f3",
+      "bytes": 2963,
+      "state": "present"
+    },
+    {
+      "path": "scripts/run-restore-drill.test.ts",
+      "mode": "100644",
+      "blob": "0160e0592c610345d4a27d27316a8f2bc4923868",
+      "sha256": "7c48ee98228dc21c59151834101435b35fc5198e13cef098df293ac2e57502e1",
+      "bytes": 20355,
+      "state": "present"
+    },
+    {
+      "path": "scripts/run-self-hosted-release-gate.test.ts",
+      "mode": "100644",
+      "blob": "ab45d73aa70a5f20f3f8c8ed906a91cf1a4b6a5e",
+      "sha256": "ca7e52892a994fe40fb5db00762886e09a6c9223e8e05effe50ee056fb70843f",
+      "bytes": 22623,
+      "state": "present"
+    },
+    {
+      "path": "scripts/run-self-hosted-release-gate.ts",
+      "mode": "100644",
+      "blob": "f7d9899149dc99f83481d059dfcca8d1075e0eec",
+      "sha256": "5f52869668977121dad3d596aec75761a9ca87ae02859271a486cea519bccebf",
+      "bytes": 27510,
+      "state": "present"
+    },
+    {
+      "path": "scripts/run-upgrade-component-tests.test.ts",
+      "mode": "100644",
+      "blob": "c527f512c69f3acd85cadd798681327fcf7293c5",
+      "sha256": "56d7d20f26e87a722fe41f35bdaaab127df4fabf3f208e3f950b06a848df274c",
+      "bytes": 15195,
+      "state": "present"
+    },
+    {
+      "path": "scripts/run-upgrade-component-tests.ts",
+      "mode": "100644",
+      "blob": "707ca8d8a477aa0113e481aeee493d01de22f27d",
+      "sha256": "18ffa0b98577a393237a4b65c78bfcb25409dfc95ebcd3092a6166ea4eaec8dc",
+      "bytes": 34531,
+      "state": "present"
+    },
+    {
+      "path": "scripts/source-lock-routing.README.md",
+      "mode": "100644",
+      "blob": "ef657f249972861f06141f61ef54b4c2963991bd",
+      "sha256": "561ea45d73ad62284492f2c51b3dd3eaa5cb5cd55c5d34d684a21b74eb3b3aa5",
+      "bytes": 2008,
+      "state": "present"
+    },
+    {
+      "path": "scripts/source-lock-routing.README.zh-CN.md",
+      "mode": "100644",
+      "blob": "441fc56452cb5ec37eb80b3dda95597a477fd6f8",
+      "sha256": "f530e09f0bca4971a859aab7f689b08898226214bd4dbfd79c14d2c1d98841d7",
+      "bytes": 1697,
+      "state": "present"
+    },
+    {
+      "path": "scripts/synthetic-recovery-authority.README.md",
+      "mode": "100644",
+      "blob": "d0d7520e165e70e0bb81669eae46250be6f991e8",
+      "sha256": "66c9cebbe1abfcb1f3fa1e9d247af9bcdef21c791555635d6ca3f6f9ff748f93",
+      "bytes": 3822,
+      "state": "present"
+    },
+    {
+      "path": "scripts/synthetic-recovery-authority.README.zh-CN.md",
+      "mode": "100644",
+      "blob": "894f09fbfd3684ef8af29f0f1174548400a05e7a",
+      "sha256": "b4c02229bc7ec51318bb41fc1d94b08d94608e1d76d457bfd01f6eaff13e36ed",
+      "bytes": 3123,
+      "state": "present"
+    },
+    {
+      "path": "scripts/synthetic-recovery-authority.test.ts",
+      "mode": "100644",
+      "blob": "20eaac0ea03e3ecf5e3501ff9069b9be24a6349d",
+      "sha256": "c91667fc910a43cc0a3b31222f33bd59a41d10a70547384eea80e80087907744",
+      "bytes": 6636,
+      "state": "present"
+    },
+    {
+      "path": "scripts/synthetic-recovery-authority.ts",
+      "mode": "100644",
+      "blob": "6c8033b1ab922b5dd2b9be2ec0bd044edb14585e",
+      "sha256": "bbe78ff0a0708d569f60a406c861c8efa21276e28a0794700569501d56338965",
+      "bytes": 14726,
+      "state": "present"
+    },
+    {
+      "path": "scripts/upgrade-component-ci.test.ts",
+      "mode": "100644",
+      "blob": "95e52598084d9810db09aa6f052920db5d8fdac6",
+      "sha256": "f037b8fb4eafa1d9b17e829f4a9889de6c2eec18422248deb9552698b8f57a31",
+      "bytes": 20311,
+      "state": "present"
+    },
+    {
+      "path": "scripts/upgrade-component-missing.test.ts",
+      "mode": "100644",
+      "blob": "bad92a45ed71d7d6a4c3a4bdc4d47026ae380a1f",
+      "sha256": "6bd9bd8d6c7a677a8f47add447a284ea0d4bd3fc139646e5e8b0731edf889c10",
+      "bytes": 909,
+      "state": "present"
+    },
+    {
+      "path": "scripts/upgrade-hosted-admission.md",
+      "mode": "100644",
+      "blob": "7574a4d7e0d71ad13557928b8d0ac60db3be6e66",
+      "sha256": "b5610bc212549fbe63dc2a79abb1b45423b54813eae21a54e31d241eef6df7d9",
+      "bytes": 5211,
+      "state": "present"
+    },
+    {
+      "path": "scripts/upgrade-hosted-admission.test.ts",
+      "mode": "100644",
+      "blob": "bef08f5bc28fdc9f1c9603b1d453d5ce304e54c6",
+      "sha256": "3732bee4c4e1ff8148180a194781716cbf74ada3a6f87129a88e7887f9498960",
+      "bytes": 10666,
+      "state": "present"
+    },
+    {
+      "path": "scripts/upgrade-hosted-admission.ts",
+      "mode": "100644",
+      "blob": "1460469be62a3de3efc56bef52c0cc9c602353de",
+      "sha256": "1646374fe8c33432e2af06f115ee72425797dafb96534b0d2dce076f1fa55892",
+      "bytes": 8146,
+      "state": "present"
+    },
+    {
+      "path": "scripts/upgrade-hosted-admission.zh-CN.md",
+      "mode": "100644",
+      "blob": "77c76cc3740c8a6906d231ff6da77045af345e6e",
+      "sha256": "bd33e023644a41ea13d36da057b15892576c47a1a3b4b5610e0fb57b1752f18f",
+      "bytes": 4489,
+      "state": "present"
+    },
+    {
+      "path": "scripts/upgrade-role-routing.test.ts",
+      "mode": "100644",
+      "blob": "a6da58d317826b32c56ce9bf56c6398ec3d87fb3",
+      "sha256": "5da2d2ee2123278566dc8dce7c97c7ea7dcf80dea326046ea1ad1910b602b1c8",
+      "bytes": 1283,
+      "state": "present"
+    },
+    {
+      "path": "scripts/upgrade-test-target.test.ts",
+      "mode": "100644",
+      "blob": "503c2c94e5e5322c3f176361da352ab499a421c3",
+      "sha256": "76a57abc84477e4c716e53cc64bf5685d026cab1e8058c38a9cbc16d82207753",
+      "bytes": 3223,
+      "state": "present"
+    },
+    {
+      "path": "scripts/upgrade-test-target.ts",
+      "mode": "100644",
+      "blob": "f5db7542892d5d9acd2717dad5438f49f539bd8d",
+      "sha256": "c6bea33c24cb3864d93fe10d4ead3ebd9b1759558f683f1eca2d8c7d190df816",
+      "bytes": 2627,
+      "state": "present"
+    },
+    {
+      "path": "server/apiShutdown.test.ts",
+      "mode": "100644",
+      "blob": "0de73aa8d839459018d1fe1fc0f31fc0aef085c7",
+      "sha256": "0d0874adf63d0b4f7a04b92b5eb6d9943d635b1d4731a4266945244539f83f2c",
+      "bytes": 4636,
+      "state": "present"
+    },
+    {
+      "path": "server/apiShutdown.ts",
+      "mode": "100644",
+      "blob": "44b95df95b67e4b78c4457ef6020f692771264d8",
+      "sha256": "f85852c8719bb3d63278b00f90b974646953e7a09f5218da0bac76bf0adcbc4d",
+      "bytes": 1513,
+      "state": "present"
+    },
+    {
+      "path": "server/apiWorkerShutdown.test.ts",
+      "mode": "100644",
+      "blob": "287fd2b483b7522c88409976d1db33e538e3925a",
+      "sha256": "8e4caf8fce8667ef2c5cd37a94c6f46b4d87a5d851861f96c9df20564125803e",
+      "bytes": 1511,
+      "state": "present"
+    },
+    {
+      "path": "server/app.catalogRetirement.test.ts",
+      "mode": "100644",
+      "blob": "73e08fb33b4f239e34c2a009628b152fda925764",
+      "sha256": "c28d6b540987ef727063f025100a199609f63359db36cfe4028cce5bb1c819c9",
+      "bytes": 10563,
+      "state": "present"
+    },
+    {
+      "path": "server/app.ts",
+      "mode": "100644",
+      "blob": "bf3063482376c9885348d8f49b14a976f9ae443f",
+      "sha256": "8fd24fbb29c956b8997f462598668baa9618253fd5e177e59f9bcfa106ed86fa",
+      "bytes": 26174,
+      "state": "present"
+    },
+    {
+      "path": "server/app.writerControls.README.md",
+      "mode": "100644",
+      "blob": "aa7abc8b01c4060ee3dd2b49b364687a5bc44d0f",
+      "sha256": "b8e4f2404e46528d85761894814be189a86296c112653bed549d50a1e08aef3b",
+      "bytes": 3929,
+      "state": "present"
+    },
+    {
+      "path": "server/app.writerControls.README.zh-CN.md",
+      "mode": "100644",
+      "blob": "5737414263b3198346c8963fff011e55e3fd003b",
+      "sha256": "93bac53794ed4a894c328920f9b7073c8a35448d9b8efdf8914beb0cb96b621f",
+      "bytes": 3282,
+      "state": "present"
+    },
+    {
+      "path": "server/config/env.ts",
+      "mode": "100644",
+      "blob": "ae41869f32fe425c7e77d4c148e008f8c16b6725",
+      "sha256": "b7299880e9fd83994fe6a2696aaefc948a0bce4314a06e0cb4d69afd07dd740b",
+      "bytes": 9085,
+      "state": "present"
+    },
+    {
+      "path": "server/index.ts",
+      "mode": "100644",
+      "blob": "6ce62bd4626313d0e06bbbb0eebde9276b0f1790",
+      "sha256": "192b1d43fe0fde4fa3a9cb939b8d1ef2106b2c909693707173edab700e1a6fc3",
+      "bytes": 13473,
+      "state": "present"
+    },
+    {
+      "path": "server/migrations/0140_parameter_catalog_runtime_reader.sql",
+      "mode": "100644",
+      "blob": "5dc1e027e352ef32e2113c322ad9a343b3bbb461",
+      "sha256": "9fd18152c0dd25037a2b0b5acb706c95897c8f24bfb7b709cb17ff4312db3aee",
+      "bytes": 10305,
+      "state": "present"
+    },
+    {
+      "path": "server/modules/agent/parameterCatalogComparisonContribution.ts",
+      "mode": "100644",
+      "blob": "a5d3a00aee991b1f01c161657761e794887af0d2",
+      "sha256": "b77f83da9bfefff5d6a4967fac51341ed65dd80fe2e29bd97aa11d7007c93544",
+      "bytes": 19234,
+      "state": "present"
+    },
+    {
+      "path": "server/modules/agent/xiaoze/durableCheckpointer.ts",
+      "mode": "100644",
+      "blob": "265376f88b4c2e58151288e2beb7209bc072b0a4",
+      "sha256": "736060c035aa1f6a897d38569ae2ab4dc354e8e1a3d7ede1b35a76b62413cddc",
+      "bytes": 10916,
+      "state": "present"
+    },
+    {
+      "path": "server/modules/catalog-cutover/activation/README.md",
+      "mode": "100644",
+      "blob": "be8b24405db8b353c7bce85fd41c10257ad1911f",
+      "sha256": "f3f1038ec4b249a05f52c8470b9fa930d09b9b8522ecfba6afe4ebc91cb8c483",
+      "bytes": 8413,
+      "state": "present"
+    },
+    {
+      "path": "server/modules/catalog-cutover/activation/README.zh-CN.md",
+      "mode": "100644",
+      "blob": "5f9135b582d9d462d3d8a82cf9244d76602eac4a",
+      "sha256": "f6951f7c21d54ae9bd037521540aba7f2b0fd93968fe7d683d5c44256665d367",
+      "bytes": 7116,
+      "state": "present"
+    },
+    {
+      "path": "server/modules/catalog-cutover/activation/activation.integration.test.ts",
+      "mode": "100644",
+      "blob": "d4670e19de7581712e6cf3a5b155fcfe0a7e68a0",
+      "sha256": "ab56486d199b9fc6e136494e95b2ef9695200e8d695f410151fd94f564725f92",
+      "bytes": 28852,
+      "state": "present"
+    },
+    {
+      "path": "server/modules/catalog-cutover/activation/activation.test.ts",
+      "mode": "100644",
+      "blob": "711e2e467d7c55054a3068fe8fdb6d81d2b52fd7",
+      "sha256": "3822efa837279bf5430d2e79d656e8ccc6a40199784d1e23f5e5363a350912fc",
+      "bytes": 3883,
+      "state": "present"
+    },
+    {
+      "path": "server/modules/catalog-cutover/activation/heldSession.test.ts",
+      "mode": "100644",
+      "blob": "3be0f530c9d1d3d9fb4f4b0dfe82cf9b61aa622d",
+      "sha256": "f165f5aa6ccd8763390d540c394e3bb15326e3b910da6cea8caefdf46650f59c",
+      "bytes": 1673,
+      "state": "present"
+    },
+    {
+      "path": "server/modules/catalog-cutover/activation/index.ts",
+      "mode": "100644",
+      "blob": "98145d1ca49be66d70cee2dd2354deab67106140",
+      "sha256": "e53c0888451a04ec00f0884c90741e9d5633b9ed5c7fcc432c990f868e8e6ee4",
+      "bytes": 15037,
+      "state": "present"
+    },
+    {
+      "path": "server/modules/catalog-cutover/activation/interface.ts",
+      "mode": "100644",
+      "blob": "ca8db6cdd5a612c963e5dd353b4ce74d5abcbc8e",
+      "sha256": "c045491727c58cd27c6ef71d3082b57ddde41c32169e5dbe2eadd5e1aa55b4d3",
+      "bytes": 3034,
+      "state": "present"
+    },
+    {
+      "path": "server/modules/catalog-cutover/activation/postgres.ts",
+      "mode": "100644",
+      "blob": "7d92a61a211bb687cc805db6e95f4eb708cd0fd4",
+      "sha256": "93eb8128dd5abb01423758df4a6a55ad68818873c59d8891f09c5f95a4f740ba",
+      "bytes": 11193,
+      "state": "present"
+    },
+    {
+      "path": "server/modules/catalog-cutover/activation/records.ts",
+      "mode": "100644",
+      "blob": "487fafa08464884c02ea80c8c369a5bab16ba73d",
+      "sha256": "5549bb4fe5d8cff0cb1a19b3f225691ddd49017c1dc9d23685be40ca0ff9be87",
+      "bytes": 4567,
+      "state": "present"
+    },
+    {
+      "path": "server/modules/catalog-cutover/archive/README.md",
+      "mode": "100644",
+      "blob": "668b27ecf79807294f961131be28b77130f03583",
+      "sha256": "e66fc60023c24cffb871326419ebdff4ee3042563ae0a8c905510967bf00b0cd",
+      "bytes": 3401,
+      "state": "present"
+    },
+    {
+      "path": "server/modules/catalog-cutover/archive/README.zh-CN.md",
+      "mode": "100644",
+      "blob": "eb014cc817ba4f044ac3f40ab733026290069dee",
+      "sha256": "7052cf59de27dce60f5363471ca9581eb90ac5c3a7931849936483b446938100",
+      "bytes": 2945,
+      "state": "present"
+    },
+    {
+      "path": "server/modules/catalog-cutover/archive/adapter.integration.test.ts",
+      "mode": "100644",
+      "blob": "e29b02d2f4539d2ffb5033d7e650b6fb8bf2f6df",
+      "sha256": "ca370f9be4537946e34c2f29881e73d24a57bc1866eccecb34557115db44b6c8",
+      "bytes": 25882,
+      "state": "present"
+    },
+    {
+      "path": "server/modules/catalog-cutover/archive/adapter.test.ts",
+      "mode": "100644",
+      "blob": "1bea8183b026a470afce87e0cab8dc9fe65a1799",
+      "sha256": "6a5f6e5ad09fa3d561a76aef592641ec5a7454abc0bc5b96dfe2527b80dc0ea9",
+      "bytes": 5560,
+      "state": "present"
+    },
+    {
+      "path": "server/modules/catalog-cutover/archive/adapter.ts",
+      "mode": "100644",
+      "blob": "ed430d08a89cb1864245b4e584df55af93c24cd0",
+      "sha256": "24fb4108c919b53c538ac0cf51f08a7839be00cfd00d0924ba63f34bb3f679b4",
+      "bytes": 20807,
+      "state": "present"
+    },
+    {
+      "path": "server/modules/catalog-cutover/archive/types.ts",
+      "mode": "100644",
+      "blob": "7c3414acc8d2ca08debb22c739048cda3460196b",
+      "sha256": "5883beceecdd0a00708a6a5c34e01906215dbe320282fc8da3035458c1e9f655",
+      "bytes": 3897,
+      "state": "present"
+    },
+    {
+      "path": "server/modules/catalog-cutover/bindingImportProducer.integration.test.ts",
+      "mode": "100644",
+      "blob": "14a10e36b8022bd0f7b2cb3c807f589ed13def73",
+      "sha256": "c036d3c317c54a4be00d3f495bd0ceab74b4292b9b787d49538eb05cc5ac45b0",
+      "bytes": 32216,
+      "state": "present"
+    },
+    {
+      "path": "server/modules/catalog-cutover/bindingImportProducer.ts",
+      "mode": "100644",
+      "blob": "ec78751d24f603d82285a143736b3745f9696c1f",
+      "sha256": "c28fe2c696c88f677bf5bcc0c0f6554f153f9bcd20f98f2c1058d44051868ed9",
+      "bytes": 18797,
+      "state": "present"
+    },
+    {
+      "path": "server/modules/catalog-cutover/conversionManifest.integration.test.ts",
+      "mode": "100644",
+      "blob": "0cebec0aa4c808ad9e7ecdef8181a18598744a71",
+      "sha256": "9565fd372629970e709fc99178a0a3c5833a920eac2fa0a2b8d4eec034773a6c",
+      "bytes": 12810,
+      "state": "present"
+    },
+    {
+      "path": "server/modules/catalog-cutover/conversionManifest.ts",
+      "mode": "100644",
+      "blob": "4288aec0091db9dd0e9a54ce1426ca8dadafb56f",
+      "sha256": "b85e83899cd6b5dc6d1c2c746c8bed923119cc427cc716790276852ce72d822a",
+      "bytes": 9279,
+      "state": "present"
+    },
+    {
+      "path": "server/modules/catalog-cutover/interface.ts",
+      "mode": "100644",
+      "blob": "1f75fcb413010dcbb56da65a8ff121a7a4dff34c",
+      "sha256": "6af41803e4e16ae2dbf95ed2430091f2f15123b5f9e3b837f4c97fa4ed13954d",
+      "bytes": 6833,
+      "state": "present"
+    },
+    {
+      "path": "server/modules/catalog-cutover/managementStructure.test.ts",
+      "mode": "100644",
+      "blob": "46d713655a1f69bfef3931027ab7d82784679370",
+      "sha256": "3cec12f0c28c81977923d3bbd32c2b7f8af3eee62fbc9c5e0340df17869b1074",
+      "bytes": 7019,
+      "state": "present"
+    },
+    {
+      "path": "server/modules/catalog-cutover/managementStructure.ts",
+      "mode": "100644",
+      "blob": "5cb024998cf9518c290b707f2e409d00897ad03c",
+      "sha256": "4c7010b16a3d4e73a9a430c4e946e91e3244b16843ee600a15e1bc132f82f219",
+      "bytes": 15784,
+      "state": "present"
+    },
+    {
+      "path": "server/modules/catalog-cutover/mapping/index.ts",
+      "mode": "100644",
+      "blob": "80118bb4b87018cd07b94acb5faa5eed8b1b0b23",
+      "sha256": "4b0963a2f9442b6511604902a2b5b23d9016767f28461158468a04f8dad4f5d7",
+      "bytes": 826,
+      "state": "present"
+    },
+    {
+      "path": "server/modules/catalog-cutover/mapping/snapshot.test.ts",
+      "mode": "100644",
+      "blob": "00175b059125317e0e4f7913cb4f26ace7a0779a",
+      "sha256": "765caaf46e7a5126d4c38b5e1c5615fb310d7bd2d39740ce374343a3663f9372",
+      "bytes": 4849,
+      "state": "present"
+    },
+    {
+      "path": "server/modules/catalog-cutover/mapping/snapshot.ts",
+      "mode": "100644",
+      "blob": "3b1a3dbe099413e2d59623b59c816305bd63a818",
+      "sha256": "b2bd4d5bf2330c81a595cdd87288a7b7440efedaafd39167618452dee3615296",
+      "bytes": 6467,
+      "state": "present"
+    },
+    {
+      "path": "server/modules/catalog-cutover/orchestrator.test.ts",
+      "mode": "100644",
+      "blob": "d6a8727a79cf164ca5411054f17bff60faad3bfe",
+      "sha256": "5ccb0c430177abca03183e7217dea9eab28e2201ed647af1e583ebb472d872bc",
+      "bytes": 17096,
+      "state": "present"
+    },
+    {
+      "path": "server/modules/catalog-cutover/orchestrator.ts",
+      "mode": "100644",
+      "blob": "e6a68fc56f25ecb178038622d694230c1cddc1af",
+      "sha256": "f54bcb24ed6a0b47660f913a48919b372d829ffdc94829187fd55738ca923b0e",
+      "bytes": 46025,
+      "state": "present"
+    },
+    {
+      "path": "server/modules/catalog-cutover/retirement/README.md",
+      "mode": "100644",
+      "blob": "d1a1cc977146e1e23603cdcf84bce0e18d4be787",
+      "sha256": "f627b567732b348871a67affcced9631e6ebef97b526dda59cc0b18e49ce748e",
+      "bytes": 50725,
+      "state": "present"
+    },
+    {
+      "path": "server/modules/catalog-cutover/retirement/README.zh-CN.md",
+      "mode": "100644",
+      "blob": "586ced2b9757f583c09f4395d025a714cfc92f96",
+      "sha256": "75ca2f07bbc085fd21c0817e6119efcf567db14ec50983e43dc518085e4f22ff",
+      "bytes": 42999,
+      "state": "present"
+    },
+    {
+      "path": "server/modules/catalog-cutover/retirement/bootstrapCredentialFence.fixture.ts",
+      "mode": "100644",
+      "blob": "83cfe6b2c34a0ab2ca8d8169515babaae9d314b0",
+      "sha256": "7d785edc0257ad8590fc5bc28c3ee4448e3b4b8bac2502adaf6943adcf49adea",
+      "bytes": 8295,
+      "state": "present"
+    },
+    {
+      "path": "server/modules/catalog-cutover/retirement/bootstrapCredentialFence.integration.test.ts",
+      "mode": "100644",
+      "blob": "f3099e7d1d9a2d478b6ba03f452216c026a2127e",
+      "sha256": "97cec48397cb3a7f267410000fc08ce8eb102501d64c393731475168a49fbc53",
+      "bytes": 79314,
+      "state": "present"
+    },
+    {
+      "path": "server/modules/catalog-cutover/retirement/bootstrapCredentialFence.test.ts",
+      "mode": "100644",
+      "blob": "ef6c521fcd59351e37bd0c1b98b7724783fe50b6",
+      "sha256": "ad7b923039a05cad0c1af6a93de1c5d82583e318d6ee1459c1e8ab6c384b1c3b",
+      "bytes": 4172,
+      "state": "present"
+    },
+    {
+      "path": "server/modules/catalog-cutover/retirement/bootstrapCredentialFence.ts",
+      "mode": "100644",
+      "blob": "281aa42b376a1d4a64543b3d3aa4166484b70f5b",
+      "sha256": "1a256a8e217c8affdf1f047934c718328b4d3c97ef5e097c349ffe6b7ded644b",
+      "bytes": 53138,
+      "state": "present"
+    },
+    {
+      "path": "server/modules/catalog-cutover/retirement/legacySqlPrivilegeFence.integration.test.ts",
+      "mode": "100644",
+      "blob": "dd3fe91cab47ee139e89216743b3a28d31db56dd",
+      "sha256": "bc5a02f925182da276db3584991b31fc1fea37e2270425f1ffd0440594dfe93f",
+      "bytes": 20212,
+      "state": "present"
+    },
+    {
+      "path": "server/modules/catalog-cutover/retirement/legacySqlPrivilegeFence.ts",
+      "mode": "100644",
+      "blob": "24ab4cc27889db9450a68d878bcab8c90ddab9ab",
+      "sha256": "1a429503af3734f412a9d2e16c59056bac04857d0ab27595d8e741909129d50f",
+      "bytes": 24120,
+      "state": "present"
+    },
+    {
+      "path": "server/modules/catalog-cutover/retirement/loginFence.integration.test.ts",
+      "mode": "100644",
+      "blob": "70133c9efe59caa866ecd26b1ae0b2bc77484ba0",
+      "sha256": "93e37d09f15f3c72491cab6a93ca17d9fdac2c7fe4ad903dde8c24aefd721ca1",
+      "bytes": 15622,
+      "state": "present"
+    },
+    {
+      "path": "server/modules/catalog-cutover/retirement/loginFence.ts",
+      "mode": "100644",
+      "blob": "0c51c38c3e6743eefa47623d66564136dadd8657",
+      "sha256": "2bcae66e5b3381a9bf06960f74872a5546060ab03c3cb0859dd74936c5da0ecf",
+      "bytes": 5725,
+      "state": "present"
+    },
+    {
+      "path": "server/modules/catalog-cutover/retirement/managementCheckout.test.ts",
+      "mode": "100644",
+      "blob": "b7a9b400d9e5ba7c78bd774adccbc9cb0f4c28e7",
+      "sha256": "845e4ddb79c04c17d41537114e50e7941b6ebba36d5d78cfd6e45f7bd4440eea",
+      "bytes": 2145,
+      "state": "present"
+    },
+    {
+      "path": "server/modules/catalog-cutover/retirement/managementCheckout.ts",
+      "mode": "100644",
+      "blob": "e124f280975defa34779ed7d56a6f22cc63ab7c8",
+      "sha256": "415c5062f93e9af5df1cf6dbb2b94eba59dabf1b76f45bf0f13bb621d12be37c",
+      "bytes": 1008,
+      "state": "present"
+    },
+    {
+      "path": "server/modules/catalog-cutover/retirement/managementTransaction.test.ts",
+      "mode": "100644",
+      "blob": "a2150c45b150f42288b36d14113eec05c52e1970",
+      "sha256": "234ca55422aafd23ba8c79a805b22fd8c76ddeb1b84f209a2161345b4ee35df4",
+      "bytes": 1123,
+      "state": "present"
+    },
+    {
+      "path": "server/modules/catalog-cutover/retirement/managementTransaction.ts",
+      "mode": "100644",
+      "blob": "109ce9f381db127d8f4de5209d224241ad3b86a3",
+      "sha256": "26805907c6d5d060fcc00e9331cae3992d85ff1e694dcfb67b14f13d983a72b5",
+      "bytes": 1085,
+      "state": "present"
+    },
+    {
+      "path": "server/modules/catalog-cutover/retirement/roleRecovery.test.ts",
+      "mode": "100644",
+      "blob": "a35756e15065b6bf0d52ce552bebbdfbd0b4943f",
+      "sha256": "1029197e93e9a90bcb27ff61b25b16c624d30298947f4bc36d6f6a3358be04db",
+      "bytes": 1533,
+      "state": "present"
+    },
+    {
+      "path": "server/modules/catalog-cutover/retirement/roleRecovery.ts",
+      "mode": "100644",
+      "blob": "77a3c62b400af2bcf2b5eb48c8d954b073e69e8d",
+      "sha256": "506e27e7043577812b008d8afe5c31b28433f1b525ad71499afe8884506a1bef",
+      "bytes": 1546,
+      "state": "present"
+    },
+    {
+      "path": "server/modules/catalog-cutover/retirement/vitest.config.ts",
+      "mode": "100644",
+      "blob": "5cc78cb214eb2fdd83b1c511799bee136d4e366e",
+      "sha256": "08edadfbd711e4d2b8d398395b4dbc9b2aa5941e97cd3e2800b2458c0f382728",
+      "bytes": 322,
+      "state": "present"
+    },
+    {
+      "path": "server/modules/catalog-cutover/retirement/vitest.integration.config.ts",
+      "mode": "100644",
+      "blob": "4aa073c6cd4a97e6e0393386b27509451d30ca57",
+      "sha256": "1717bb5d460a6d64488d2450a953f3cad477c4d5fb15f99973bdcb705b986a95",
+      "bytes": 371,
+      "state": "present"
+    },
+    {
+      "path": "server/modules/catalog-cutover/retirement/vitest.legacy-sql-privilege.integration.config.ts",
+      "mode": "100644",
+      "blob": "d5385344dbc583e4c5c5b8a8e6aeb2225444f133",
+      "sha256": "a1da49d600b064ae72c97a6767277cf7e848139a110ee58fc8379ae1ef634611",
+      "bytes": 397,
+      "state": "present"
+    },
+    {
+      "path": "server/modules/catalog-cutover/runtimeState.test.ts",
+      "mode": "100644",
+      "blob": "36a7fb20361f971d406108b0398eb8ee572cf9ce",
+      "sha256": "7f37a9553953866ec1a7eb98cc13d7026ed2d0b7c957cd223ef84bba6c0bee5a",
+      "bytes": 10695,
+      "state": "present"
+    },
+    {
+      "path": "server/modules/catalog-cutover/runtimeState.ts",
+      "mode": "100644",
+      "blob": "48f7b8b6d6f5cbe7f9e5ba12ff460861c2ac0e42",
+      "sha256": "30b670f601684441fec9f678643a9da1c66bcbad6abeab6f6360c11733e8f5ca",
+      "bytes": 8765,
+      "state": "present"
+    },
+    {
+      "path": "server/modules/catalog-cutover/sourceSnapshot.test.ts",
+      "mode": "100644",
+      "blob": "a1e66c8f1c60daf8dc9c566039452013fc7cd809",
+      "sha256": "8fe6bd553cfc740d2a86d9a04b8de23cbca127bfb31289053ec90f613c3680e3",
+      "bytes": 21335,
+      "state": "present"
+    },
+    {
+      "path": "server/modules/catalog-cutover/sourceSnapshot.ts",
+      "mode": "100644",
+      "blob": "cf0631f83dced9caac88addc023cfe25d12be964",
+      "sha256": "441f9581931f0b67f42a1cdd34ae4bd8aeda3232579588ec4598abc6c8a88c19",
+      "bytes": 14084,
+      "state": "present"
+    },
+    {
+      "path": "server/modules/catalog-kernel/security/catalog-reader.md",
+      "mode": "100644",
+      "blob": "78f03f50ac9954ffc19ebcfd6a61bd6d91c70ff2",
+      "sha256": "c559c0ac538af3ea12dcbe95571a7c596a21ce319a4008e337db88e9b9abcb74",
+      "bytes": 8075,
+      "state": "present"
+    },
+    {
+      "path": "server/modules/catalog-kernel/security/catalog-reader.zh-CN.md",
+      "mode": "100644",
+      "blob": "0327416cd2d7e69a6915402e8e8b839148451d28",
+      "sha256": "6dbc62baa66aa8f6210a3ba752d49fcfa72c1b4507803937cb0ac0fc7fda4347",
+      "bytes": 7101,
+      "state": "present"
+    },
+    {
+      "path": "server/modules/catalog-kernel/security/catalogReader.integration.test.ts",
+      "mode": "100644",
+      "blob": "6010861bb5b7b30a7e9e91a14e77f64cc36d9c42",
+      "sha256": "1f4f48dd5085dbc4d35104a3014281c186d7f609470c987d463e3f0687045efa",
+      "bytes": 22773,
+      "state": "present"
+    },
+    {
+      "path": "server/modules/catalog-kernel/security/catalogReaderManifest.ts",
+      "mode": "100644",
+      "blob": "ce8cb986244d01c63a3f512bc67df5d5affa5a37",
+      "sha256": "84729f4ce06069fbdf3001b78f4685be0cbe4a7fc998f0814a4dcf9ebe2c99bf",
+      "bytes": 1511,
+      "state": "present"
+    },
+    {
+      "path": "server/modules/catalog-kernel/security/catalogRoles.integration.test.ts",
+      "mode": "100644",
+      "blob": "1b2f0caffb4f8159e553b51e36ff058737698610",
+      "sha256": "dff88387fc271bcc8b479a1f61d69b87494713f180f1ef5901f2dae2f68e9ab2",
+      "bytes": 45552,
+      "state": "present"
+    },
+    {
+      "path": "server/modules/debugging/parameterCatalogComparisonContribution.test.ts",
+      "mode": "100644",
+      "blob": "d59b642573c6fe460ff0aa5010221b1a8d6470c6",
+      "sha256": "7807c61e9e9dbe44439850975dd3be76ff12882a9c7c146ca1a0a0df3a0d9c97",
+      "bytes": 10273,
+      "state": "present"
+    },
+    {
+      "path": "server/modules/debugging/parameterCatalogComparisonContribution.ts",
+      "mode": "100644",
+      "blob": "8cad8cf884c7191495a49c3813f5aa42a74a5a15",
+      "sha256": "ebc97f7bef2d7dcbad24980501a3ffc01a26cdf59d0ec3e75ddb979d7d4b617c",
+      "bytes": 20519,
+      "state": "present"
+    },
+    {
+      "path": "server/modules/dts-reload/parameterCatalogComparisonContribution.ts",
+      "mode": "100644",
+      "blob": "5eb1cf7922400b0a667d2ce6f24ac2fa67d30e5f",
+      "sha256": "d916bd702214df2c757246b3e5a716482a025fb7c6c516eb34284b1e0f3e09ba",
+      "bytes": 19092,
+      "state": "present"
+    },
+    {
+      "path": "server/modules/jobs/bullmqQueue.test.ts",
+      "mode": "100644",
+      "blob": "e5e22349857b1ab82a939d0df5fbbe0b93d6d8ac",
+      "sha256": "c8d90ba13f3666bd466300f53984680316f0cf062357c3053bba41d1c9471cc1",
+      "bytes": 9751,
+      "state": "present"
+    },
+    {
+      "path": "server/modules/jobs/bullmqQueue.ts",
+      "mode": "100644",
+      "blob": "f8739a0ad699533ed708e3f4fc47e3dbb75a3478",
+      "sha256": "798e20a4d9e601c5284cee1d6e8a104b3abbf24673a51f5fa366f6c402505801",
+      "bytes": 8843,
+      "state": "present"
+    },
+    {
+      "path": "server/modules/knowledge/indexing/worker.ts",
+      "mode": "100644",
+      "blob": "5a7d75574922d4e027f30f2b5107d25e20eda13a",
+      "sha256": "0ca072f02a5109f48a3628a581c2b72e4744caa4d765ae2c60c0807b4a76d9a2",
+      "bytes": 2214,
+      "state": "present"
+    },
+    {
+      "path": "server/modules/knowledge/parameterCatalogComparisonContribution.ts",
+      "mode": "100644",
+      "blob": "a8703ee11dcdcda6476640b5ec6b9d3607a4e76f",
+      "sha256": "a8073ec05d8c44e91c298f17d5f30dcd82336216670f87928e05da3411859239",
+      "bytes": 14662,
+      "state": "present"
+    },
+    {
+      "path": "server/modules/knowledge/parameterReferences.test.ts",
+      "mode": "100644",
+      "blob": "e019e246ea36a9ced4a70b572bc4c03d22eaad0b",
+      "sha256": "99a3441cc750f469ce5936cff34651131b416308a847f359f9b73ac59be989bb",
+      "bytes": 18898,
+      "state": "present"
+    },
+    {
+      "path": "server/modules/logs/logAnalysisQueueRuntime.redis.integration.test.ts",
+      "mode": "100644",
+      "blob": "09432ab05dd945bf8caa9324767a485ccbe92d75",
+      "sha256": "d88d983e4323dcfc633b6e7931219e340715995d53e8017774947a1f198d9431",
+      "bytes": 21258,
+      "state": "present"
+    },
+    {
+      "path": "server/modules/logs/logAnalysisQueueRuntime.test.ts",
+      "mode": "100644",
+      "blob": "96c4e7c88c2fe5fab0d108c237737e30073f6b63",
+      "sha256": "1c0eedefe88e6e9cba5e86b95bc6728e2a9b2efe8c6de0a7260cbfe3bab18282",
+      "bytes": 18710,
+      "state": "present"
+    },
+    {
+      "path": "server/modules/logs/logAnalysisQueueRuntime.ts",
+      "mode": "100644",
+      "blob": "91c03b98342cfe4c50b68fb47f6181ad0033af76",
+      "sha256": "430e4d1cfb2a663b22065e077a1f9a0e0861b864121a4197204cc1142ec096ad",
+      "bytes": 13139,
+      "state": "present"
+    },
+    {
+      "path": "server/modules/logs/parameterCatalogComparisonContribution.ts",
+      "mode": "100644",
+      "blob": "b9b09fc9ea1e31245b6d71e981dcc862745d947f",
+      "sha256": "409aad00eca7405e35f4c21d213df6bf1428c2c43c768dd0db2e131433c3166a",
+      "bytes": 14196,
+      "state": "present"
+    },
+    {
+      "path": "server/modules/logs/worker.test.ts",
+      "mode": "100644",
+      "blob": "b3de2ce6727ae0783058cd0b5d163c25df905817",
+      "sha256": "a46181a7c5c1cd5989db90feaf94a2a04ba622c0b30905bc8781fd8011ca8db7",
+      "bytes": 34262,
+      "state": "present"
+    },
+    {
+      "path": "server/modules/logs/worker.ts",
+      "mode": "100644",
+      "blob": "2d1c69bc1a4ab5e94a06aac201395564caca5d33",
+      "sha256": "7a277b8e8bd3bb7c5785cb107f78db2a15f2df11f5f669710e83bf9d3cc09d9d",
+      "bytes": 19140,
+      "state": "present"
+    },
+    {
+      "path": "server/modules/logs/workerRunner.test.ts",
+      "mode": "100644",
+      "blob": "abec1faaec27784bfe7f3ad08f026f2ff6451037",
+      "sha256": "87f516b760a6c78a1555275955334019e02fa65639e8957296a1231fad3032db",
+      "bytes": 13426,
+      "state": "present"
+    },
+    {
+      "path": "server/modules/logs/workerRunner.ts",
+      "mode": "100644",
+      "blob": "4cea74452870428a1513bd1bc303d1c7aad363f0",
+      "sha256": "a70c58ceef19b4452b318b2fa19606252573ca078099fe9ba2d2055f97c13f03",
+      "bytes": 12594,
+      "state": "present"
+    },
+    {
+      "path": "server/modules/logs/workerRunnerBootstrap.test.ts",
+      "mode": "100644",
+      "blob": "00023fcdf688c8f1ee91d89d5fe9302180839bd4",
+      "sha256": "891218a8160d08f95f2badb50d587e8874011290a5457799dcb924367c2dffdf",
+      "bytes": 9193,
+      "state": "present"
+    },
+    {
+      "path": "server/modules/notifications/notificationQueueRuntime.ts",
+      "mode": "100644",
+      "blob": "35ae3a05e51911fe6c7933796422b1b599522b3f",
+      "sha256": "b3f6948ef7fefa8dd75df822bdffda4b08f7cab88bf02f39c5798410ce520e4f",
+      "bytes": 4719,
+      "state": "present"
+    },
+    {
+      "path": "server/modules/notifications/outboxWorker.ts",
+      "mode": "100644",
+      "blob": "73fbd04bb7dab977f1f5202fc184566c90fd4a33",
+      "sha256": "5ecfc2d8bb93bac7d588f89be5fcd95350b050f6d7f9485474b870450b3419ba",
+      "bytes": 7067,
+      "state": "present"
+    },
+    {
+      "path": "server/modules/operations/parameterCatalogComparisonContribution.ts",
+      "mode": "100644",
+      "blob": "62bce36845c5ce0fa0a3f141ce591c31f485428d",
+      "sha256": "508d5f873de68d2d302711c80deaa80165c07fbce6e0c556f688318fa245abca",
+      "bytes": 16104,
+      "state": "present"
+    },
+    {
+      "path": "server/modules/parameter-bindings/binding/repositories.ts",
+      "mode": "100644",
+      "blob": "504f9cfa619907db093d5188bf3726debe3950ff",
+      "sha256": "49151bdc174c6760d16647e1d59fbeee65bf9998cfc2973b01e5cdce9c5bf803",
+      "bytes": 6479,
+      "state": "present"
+    },
+    {
+      "path": "server/modules/parameter-bindings/cutoverImport/README.md",
+      "mode": "100644",
+      "blob": "9a0ee9c3c4236ad7e919b21abdf5695316c6424e",
+      "sha256": "a69acf4a8f6f27f23880564efe944b28719b82d52665adba91cee9549ed80c19",
+      "bytes": 7570,
+      "state": "present"
+    },
+    {
+      "path": "server/modules/parameter-bindings/cutoverImport/README.zh-CN.md",
+      "mode": "100644",
+      "blob": "7dea2d805f4ccbc9763d897e0a06a4711194971e",
+      "sha256": "c475983b57408e8011d92e8b8a5180c675e02f860a53ef32738fb96d3e960a12",
+      "bytes": 6708,
+      "state": "present"
+    },
+    {
+      "path": "server/modules/parameter-bindings/cutoverImport/import.integration.test.ts",
+      "mode": "100644",
+      "blob": "4032f73f76975539127cd249d2e7445bb8476d9d",
+      "sha256": "94359dcbfb93bd0192131961bd30d78edbab73eb90581192e7d2e8378e36f4fd",
+      "bytes": 25465,
+      "state": "present"
+    },
+    {
+      "path": "server/modules/parameter-bindings/cutoverImport/index.ts",
+      "mode": "100644",
+      "blob": "0aa6f25a9540e54d15dcc553aa7479f8d35828c4",
+      "sha256": "61321e8af03f219ad13c24b5cacdc9e1d326ca1feb8f0fee9b8673f5bba1b3f5",
+      "bytes": 25044,
+      "state": "present"
+    },
+    {
+      "path": "server/modules/parameter-bindings/cutoverImport/intent.ts",
+      "mode": "100644",
+      "blob": "91f70e6151de1ec7ec03e2d68578e25171f64dc9",
+      "sha256": "3e9d13518f6182070ae323d3fe954934bd69cad5fa5ffcbf020590f1b09d7f2f",
+      "bytes": 6159,
+      "state": "present"
+    },
+    {
+      "path": "server/modules/parameter-bindings/cutoverImport/sourceBoundary.ts",
+      "mode": "100644",
+      "blob": "5f7ee4bc8638bda4ada027bb23df4bc174ca5794",
+      "sha256": "fa45301ee610c246e7b0a132fefe43ef1a05d09c29a6d6bf5f1b03cb22c549a2",
+      "bytes": 4992,
+      "state": "present"
+    },
+    {
+      "path": "server/modules/parameter-bindings/values/repositories.ts",
+      "mode": "100644",
+      "blob": "ac0475d10a1049708a39a6c8256cd898fc8e4634",
+      "sha256": "ec8c966e8b350b9fcf80cf8da51b99eacfc39050616cf21ec429ecd54672d67b",
+      "bytes": 8933,
+      "state": "present"
+    },
+    {
+      "path": "server/modules/parameter-catalog-api/cghReadProjection.integration.test.ts",
+      "mode": "100644",
+      "blob": "e35abfbcfaa5977dad937fd4e10058c225f93b57",
+      "sha256": "33b110767836e9dda9df5344d257eb09aec8da346452f8afa24be9ce0a65a304",
+      "bytes": 6879,
+      "state": "present"
+    },
+    {
+      "path": "server/modules/parameter-catalog-api/legacy/app-wiring.md",
+      "mode": "100644",
+      "blob": "b6e37a724bfddaa8225b4185cbf7b26ca0712556",
+      "sha256": "33b5acc42c5c11c26e998646ebe8a072b57789dde2eb5611124aed56a3810f93",
+      "bytes": 3215,
+      "state": "present"
+    },
+    {
+      "path": "server/modules/parameter-catalog-api/legacy/app-wiring.zh-CN.md",
+      "mode": "100644",
+      "blob": "86db19732be9b12f0e1a85da7a10204e442ccbf5",
+      "sha256": "28604199f32ba0b4374a66f9d591e88fedf82e7d11c1e51e9f5305cd2b157054",
+      "bytes": 2671,
+      "state": "present"
+    },
+    {
+      "path": "server/modules/parameter-catalog-api/legacy/routes.ts",
+      "mode": "100644",
+      "blob": "b1894c40df37a48e89c065d0cdc280fd6bb5f8b5",
+      "sha256": "82c5e5f4bc292b0adea9b1a71addaf032d91161654dda1352fbd1f492e6a9c85",
+      "bytes": 14147,
+      "state": "present"
+    },
+    {
+      "path": "server/modules/parameter-catalog-api/productionWire.pools.test.ts",
+      "mode": "100644",
+      "blob": "ba5da778c09b4a27b679bc8dba2fc94ef0f132c3",
+      "sha256": "27b10c58755e6b64b4daee152ba1209832e5bc212f8fa9b1e6de9ed27dd8c5e2",
+      "bytes": 4664,
+      "state": "present"
+    },
+    {
+      "path": "server/modules/parameter-catalog-api/productionWire.ts",
+      "mode": "100644",
+      "blob": "a1d304822207a7311b31f98665a0dca0f329200e",
+      "sha256": "4f8a5b1714af8fa1c87a623b3196f0f20ace1c254e96c4f65740ff8608f32530",
+      "bytes": 16736,
+      "state": "present"
+    },
+    {
+      "path": "server/modules/parameter-files/parameterCatalogComparisonContribution.ts",
+      "mode": "100644",
+      "blob": "eb9f400bf3fdb1eb99b5cc19381b17955cdf23da",
+      "sha256": "bc2fb3b6305b80b4071eb75a52816324bd689c70306bf02e461ec0acda4949df",
+      "bytes": 17910,
+      "state": "present"
+    },
+    {
+      "path": "server/modules/parameter-governance/review/index.ts",
+      "mode": "100644",
+      "blob": "421e0c19f2c741be744204d98fea585016dd7e57",
+      "sha256": "53154795d3f15fadab19f1dd8c8d5f8238acc060162e875b59881e5d505c149e",
+      "bytes": 877,
+      "state": "present"
+    },
+    {
+      "path": "server/modules/parameter-governance/review/persisted-read.md",
+      "mode": "100644",
+      "blob": "76330be70ee7dfd57bf8623ce3a24555f202bff4",
+      "sha256": "ef6f039d9f0a975739a0992d33c84914139164c663b5b7ed3f91067a2c64ebf3",
+      "bytes": 5302,
+      "state": "present"
+    },
+    {
+      "path": "server/modules/parameter-governance/review/persisted-read.zh-CN.md",
+      "mode": "100644",
+      "blob": "ec9f23adcf31ddd00bba4c845ddf699c21dc43a3",
+      "sha256": "401cdf622a6387e8d1eaf9e4f0791bf38b06718b6aa4e4018d5857616836690e",
+      "bytes": 4532,
+      "state": "present"
+    },
+    {
+      "path": "server/modules/parameter-governance/review/persistedQuery.fixture.ts",
+      "mode": "100644",
+      "blob": "dfe4a1d3ba97d4f64f500bcf689542a4d23c7cf9",
+      "sha256": "233cd527d99d4777dc1517dac68d607fc7921f7b11c576340ac4e973e156f728",
+      "bytes": 689,
+      "state": "present"
+    },
+    {
+      "path": "server/modules/parameter-governance/review/persistedQuery.integration.test.ts",
+      "mode": "100644",
+      "blob": "226374338d5d74c2f50f4feffdb60cc6f4d47a16",
+      "sha256": "633027e3c3903c3c5f42cfbd0344bebd14480edc1333d5de548b15fca83e779d",
+      "bytes": 8884,
+      "state": "present"
+    },
+    {
+      "path": "server/modules/parameter-governance/review/persistedQuery.test.ts",
+      "mode": "100644",
+      "blob": "997417d84b9d7c16ebad070dff9049eb6157fbf2",
+      "sha256": "3b650840b50fded7fefe6a4fa4ca3d7d550257be44dede3953ead326acce28f1",
+      "bytes": 9317,
+      "state": "present"
+    },
+    {
+      "path": "server/modules/parameter-governance/review/query.ts",
+      "mode": "100644",
+      "blob": "f6875e86866a6e823bdc15e5583a70965121ab20",
+      "sha256": "22a9151d6007078226651efc474ba87e46211a2da823df56165598118a42df73",
+      "bytes": 14202,
+      "state": "present"
+    },
+    {
+      "path": "server/modules/parameter-kernel/sensitiveNode.identity.integration.test.ts",
+      "mode": "100644",
+      "blob": "fea4379aa03bc231a48813f339009b4d41dc792d",
+      "sha256": "77bc837aa6cbe9bba33e4c44ee3e11bf2d30226e40caf788eb28774453489cc1",
+      "bytes": 7964,
+      "state": "present"
+    },
+    {
+      "path": "server/modules/parameter-modules/parameterCatalogComparisonContribution.ts",
+      "mode": "100644",
+      "blob": "e2cafcbd2a6141362c73abd2cc947e112ec85b57",
+      "sha256": "42bbc3bad1ab33525e7656c225992de4fe2bbb9e1ec3f3c154652c5140b68b58",
+      "bytes": 21306,
+      "state": "present"
+    },
+    {
+      "path": "server/modules/parameter-specs/parameterCatalogComparisonContribution.test.ts",
+      "mode": "100644",
+      "blob": "deb1b729e717cba129e78b1cd1ae07791e26cf7c",
+      "sha256": "621847d60bae026b89d5b93c4f6925068a0e23611b6b861b7c01545c74e4a30a",
+      "bytes": 5620,
+      "state": "present"
+    },
+    {
+      "path": "server/modules/parameter-specs/parameterCatalogComparisonContribution.ts",
+      "mode": "100644",
+      "blob": "0c802e26c033bfcaa64046b9cbfe05a1df648389",
+      "sha256": "fda5be4bd6c9d7097ef706ff1794f48fb0c68a667ba7647b9fc2ba5a012ef4b4",
+      "bytes": 21586,
+      "state": "present"
+    },
+    {
+      "path": "server/modules/parameter-specs/parameterCatalogComparisonRouting.md",
+      "mode": "100644",
+      "blob": "beb5c4f071aa23ace4ed25d71bc55b5c66cad397",
+      "sha256": "2f5af39d6490ee7aa5992ebeec066964c40059203ea0a96ee5efb9069fc8c899",
+      "bytes": 5958,
+      "state": "present"
+    },
+    {
+      "path": "server/modules/parameter-specs/parameterCatalogComparisonRouting.test.ts",
+      "mode": "100644",
+      "blob": "41f972a01268ba2fe1404d0aaa5bcba58e56f70a",
+      "sha256": "5efdad6c5859b316344acb87ab29a5803bb1772c3a38f43e89b2272ebc3f4a29",
+      "bytes": 6410,
+      "state": "present"
+    },
+    {
+      "path": "server/modules/parameter-specs/parameterCatalogComparisonRouting.zh-CN.md",
+      "mode": "100644",
+      "blob": "38873b95517646fe8f057a200c220bd7a1b9c0cb",
+      "sha256": "c5e6c122fefcfa19df9c5a1dcfba4f794fde2aacc2a0df2f9e0adaafd64c3c71",
+      "bytes": 4624,
+      "state": "present"
+    },
+    {
+      "path": "server/modules/parameter-specs/parameterCatalogComparisonSource.fixture.ts",
+      "mode": "100644",
+      "blob": "bc2c9665a35773c7f3446c36e809236faff792cf",
+      "sha256": "03e1ac68c9d87c64864d0fc27451643f22914ec2c74b959e6e86ed44fa052ce8",
+      "bytes": 1992,
+      "state": "present"
+    },
+    {
+      "path": "server/modules/parameter-topology/legacyDependencyGuard.test.ts",
+      "mode": "100644",
+      "blob": "e64f85ad530d6b06e012f8dc3ba8fdcbf2832ea1",
+      "sha256": "959948b51dec96824c55bf6de120845ee02b887191d1f7e0c6c5ff4dec713c49",
+      "bytes": 8911,
+      "state": "present"
+    },
+    {
+      "path": "server/modules/parameter-topology/parameterCatalogComparisonContribution.ts",
+      "mode": "100644",
+      "blob": "63426618871e3de2ff6f14ae29727744e59242b0",
+      "sha256": "2ade6fdbaa15bbc453e980ba42c78812739a09f3e0ce80d96d2b45ede81f3649",
+      "bytes": 21889,
+      "state": "present"
+    },
+    {
+      "path": "server/modules/parameters/parameterCatalogComparisonContribution.ts",
+      "mode": "100644",
+      "blob": "99a196f241ab595c9d2a82b7a25cb365213b64ea",
+      "sha256": "b93fb4441ee3d7c567409a1293bb7d7f9dea3d97ab6eb5643fd139da3652b4f3",
+      "bytes": 11254,
+      "state": "present"
+    },
+    {
+      "path": "server/modules/release-verification/comparison/README.md",
+      "mode": "100644",
+      "blob": "49715d936220ff1b25083b11e428c75ada5505b2",
+      "sha256": "815893c5ecf3b54873c3d19c7007982fb74f390ba001473d6532ff8ccc9b6b13",
+      "bytes": 5605,
+      "state": "present"
+    },
+    {
+      "path": "server/modules/release-verification/comparison/README.zh-CN.md",
+      "mode": "100644",
+      "blob": "73ad7e52370000e5ab66cee6d967e357fe783434",
+      "sha256": "ddf4edbca1a781b9da5741b73709b51611b23ab800c3f744fe22c4638b1db111",
+      "bytes": 4922,
+      "state": "present"
+    },
+    {
+      "path": "server/modules/release-verification/comparison/aggregateComparisonCorpus.integration.test.ts",
+      "mode": "100644",
+      "blob": "1fcd360083aa362195ad792d0c24639302156695",
+      "sha256": "34e95eac4c6de8738dd8254f37436cddfccb25ca3f4a7e5c11d0e531003313d6",
+      "bytes": 13292,
+      "state": "present"
+    },
+    {
+      "path": "server/modules/release-verification/comparison/corpusContributionV2.test.ts",
+      "mode": "100644",
+      "blob": "eff9449f24b8b4fa3623a123792295c0d3c10dfd",
+      "sha256": "74fbacfd9ed9cbe4fef66ef2a0ff24550ba85a39b8d6c0c28bf19db0903ac585",
+      "bytes": 3316,
+      "state": "present"
+    },
+    {
+      "path": "server/modules/release-verification/comparison/corpusContributionV2.ts",
+      "mode": "100644",
+      "blob": "a62f1b0aabe0fcdaf91a6716b621e29996dc741c",
+      "sha256": "e02bd1b1b113ab94eacd5242e7a06f3de774acf312d885c21813f0b0a8dfe40d",
+      "bytes": 6396,
+      "state": "present"
+    },
+    {
+      "path": "server/modules/release-verification/comparison/index.ts",
+      "mode": "100644",
+      "blob": "99c0c7fc3e1b7ba90a9e8a4178f29feeae71e03c",
+      "sha256": "51db516fdbc2a6b7abde71ee35e92436e86e861b744e840fc37ca626f714a007",
+      "bytes": 2371,
+      "state": "present"
+    },
+    {
+      "path": "server/modules/release-verification/comparison/liveEvidence.test.ts",
+      "mode": "100644",
+      "blob": "6096f9b27fd6997aa4e0d704ded8f4cd1bf59b18",
+      "sha256": "734b21d10d903235196adaee38a8cb7829ce04d9058f75f9624ee86bb6daf767",
+      "bytes": 15694,
+      "state": "present"
+    },
+    {
+      "path": "server/modules/release-verification/comparison/liveEvidence.ts",
+      "mode": "100644",
+      "blob": "a1834b58b13056548fb7166980c2688c4991b047",
+      "sha256": "0bdebe5ec6a092f44aed28cabd75b8339107c9ff8ff80b2c9cff4acdcc810f0a",
+      "bytes": 11814,
+      "state": "present"
+    },
+    {
+      "path": "server/modules/release-verification/comparison/provider-classification-safety.md",
+      "mode": "100644",
+      "blob": "7d53318027b7f0f757c103af199c39cd4eeb1f99",
+      "sha256": "eb4942e11c55c939f01dc43dcef77389420023cebad75910b5f44e388f998edc",
+      "bytes": 5614,
+      "state": "present"
+    },
+    {
+      "path": "server/modules/release-verification/comparison/provider-classification-safety.zh-CN.md",
+      "mode": "100644",
+      "blob": "d447b726d14d6341b054c031dfe4a904d1364c9b",
+      "sha256": "2da5b03996e642d2f154673e315dd49e0ae9c91fa6b161030aa72d8f4ee0afba",
+      "bytes": 4491,
+      "state": "present"
+    },
+    {
+      "path": "server/modules/release-verification/comparison/providerClassificationSafety.test.ts",
+      "mode": "100644",
+      "blob": "448e116bdc814e10bdb0a06f4af5d73b05e113db",
+      "sha256": "41f386f1837ae32b94a6f0522bd807c622b614b9d8a7a9379fad072bf80c58df",
+      "bytes": 13075,
+      "state": "present"
+    },
+    {
+      "path": "server/modules/release-verification/gates/postgres/countGates.ts",
+      "mode": "100644",
+      "blob": "6c5e5dedab179a6393d98b3bc7fd93ead6fa17d3",
+      "sha256": "e73ef33db110af4373ede55c51fdd5b6786795d5ec063f5c0367a5e97a2036c5",
+      "bytes": 43278,
+      "state": "present"
+    },
+    {
+      "path": "server/modules/release-verification/gates/postgres/writerReachability.integration.test.ts",
+      "mode": "100644",
+      "blob": "35dc42c336be9a01d0ff4d3954a482668eadec4d",
+      "sha256": "8f19022eecbcec83828a62de907b4aa3a19a672d124021d119067eade5fad5a0",
+      "bytes": 24146,
+      "state": "present"
+    },
+    {
+      "path": "server/modules/release-verification/gates/postgres/writerReachability.md",
+      "mode": "100644",
+      "blob": "e840b51d6cf1234740f2ca8eb3db596ea32c417b",
+      "sha256": "bc95636292fb527c2fcce0ec2db0e0368ee9c555cc4292025b89832d1ac04820",
+      "bytes": 12370,
+      "state": "present"
+    },
+    {
+      "path": "server/modules/release-verification/gates/postgres/writerReachability.zh-CN.md",
+      "mode": "100644",
+      "blob": "6a42066d56ce0203c8118182e238c11ed9239bda",
+      "sha256": "e9b3412650adf3d923cac147d0e001460de02ee6e0b851bf7ce166cb70cf9fc3",
+      "bytes": 10897,
+      "state": "present"
+    },
+    {
+      "path": "server/modules/release-verification/startup/README.md",
+      "mode": "100644",
+      "blob": "3285a42ccf0fd96b29b2d818524c92bce102d4b4",
+      "sha256": "730c3e51c8981ce34e48cb44ff93a564bf56683eeaa450cd91139175b803c3b8",
+      "bytes": 12118,
+      "state": "present"
+    },
+    {
+      "path": "server/modules/release-verification/startup/README.zh-CN.md",
+      "mode": "100644",
+      "blob": "3d3058789a2625d3328fa01ec120ed4d9d259251",
+      "sha256": "092414c29f5b52e2929e4b4bdcf31f80af906e3560f01c22a960eb5a0f3341b1",
+      "bytes": 10451,
+      "state": "present"
+    },
+    {
+      "path": "server/modules/release-verification/startup/interface.ts",
+      "mode": "100644",
+      "blob": "b0ac9c9952b3dc135ec0e52d1f3a2804b8e771e0",
+      "sha256": "8beade552009250b436a034875c2663fe50090eef1039888bce8bfc0c7f6f151",
+      "bytes": 1457,
+      "state": "present"
+    },
+    {
+      "path": "server/modules/release-verification/startup/publishedStartup.test.ts",
+      "mode": "100644",
+      "blob": "48d6f70fffd99b88dec390c781e76c670b236e85",
+      "sha256": "d5dfa02394aaf546461128bed1f23b0fe292c5038dcdec88f8e281639857ecdc",
+      "bytes": 7321,
+      "state": "present"
+    },
+    {
+      "path": "server/modules/release-verification/startup/publishedStartup.ts",
+      "mode": "100644",
+      "blob": "5b1c3300545380d9660b0568f4cfab4788ae1406",
+      "sha256": "0aefb5e37ba9dea230e706dcaf62a88fdb2ad6e0a0fac706415a008b2b7c7790",
+      "bytes": 6807,
+      "state": "present"
+    },
+    {
+      "path": "server/modules/release-verification/startup/reportConnection.integration.test.ts",
+      "mode": "100644",
+      "blob": "7492dcb4c4abb0414d0e3a998f11e2a307a1da4b",
+      "sha256": "30a63d8033e5ceda8474c1134123b09f8c2e1933ac66e77158c9e8a36c49d5e9",
+      "bytes": 19664,
+      "state": "present"
+    },
+    {
+      "path": "server/modules/release-verification/startup/reportConnection.test.ts",
+      "mode": "100644",
+      "blob": "dff3a2edc6f7bf201f09bf9c28c017ee430a5784",
+      "sha256": "6a7a1622ab4b498bce839fed8222882bdd7ddc53f48d4974e4627f72cf2adce2",
+      "bytes": 4833,
+      "state": "present"
+    },
+    {
+      "path": "server/modules/release-verification/startup/reportConnection.ts",
+      "mode": "100644",
+      "blob": "48a392b04e1cc36c2737ceeaf1d03e3712a43d44",
+      "sha256": "3ebb2ad37d0e3c332cb8048178d3f03a1e4ff4c978f47c3e53d197ae009e62a5",
+      "bytes": 10689,
+      "state": "present"
+    },
+    {
+      "path": "server/modules/release-verification/startup/verifyStartup.test.ts",
+      "mode": "100644",
+      "blob": "0ada7066357ac1047e2286baf875e0fbaa3b5ea0",
+      "sha256": "0c04f701e27ff19873be8431ef99ce4664a241d0d882ac367d3c8e0c91f9ab59",
+      "bytes": 5699,
+      "state": "present"
+    },
+    {
+      "path": "server/modules/release-verification/startup/verifyStartup.ts",
+      "mode": "100644",
+      "blob": "c66e78338a32d0c51c4ba090ed73f36a482a31c1",
+      "sha256": "36813e6a60a625af50d933ad30574ef96e26affa4d924b32b818471021a56f0c",
+      "bytes": 2458,
+      "state": "present"
+    },
+    {
+      "path": "server/processSignals.README.md",
+      "mode": "100644",
+      "blob": "d7cf3bab04aae6a63de88923a8fe11fc786a09a5",
+      "sha256": "499f34dbf6e7d556d1eab6dc8708f3d39380d091ea9e58f75e32c887dfe4d202",
+      "bytes": 3067,
+      "state": "present"
+    },
+    {
+      "path": "server/processSignals.README.zh-CN.md",
+      "mode": "100644",
+      "blob": "970b2263aa12cf48e81809367f7df96eb0912435",
+      "sha256": "bf9dfe32608da3a8ca969ecf92cbf60bdfa66f3fe005c6ce90776ca5c6133bc4",
+      "bytes": 2730,
+      "state": "present"
+    },
+    {
+      "path": "server/processSignals.test.ts",
+      "mode": "100644",
+      "blob": "b78c81027cbe65d0e39abf6c741f5e8695137da4",
+      "sha256": "fbe05e840101aedd7ae885db99d858e884a38ed962e4911052b488691f6f7514",
+      "bytes": 2902,
+      "state": "present"
+    },
+    {
+      "path": "server/processSignals.ts",
+      "mode": "100644",
+      "blob": "a1ca999856e4e00bcc0dcec6c0385fbe235d9809",
+      "sha256": "d7628b3aba2e7b01877c3133de9d9543a03b255df21ca61353335e8d2e175efb",
+      "bytes": 1550,
+      "state": "present"
+    },
+    {
+      "path": "server/shared/database/README.md",
+      "mode": "100644",
+      "blob": "39f39a38bb0192bf28c09b45d5797fd9076a4535",
+      "sha256": "1898b53a8b7df6930ce038bac8b8650df9b9cc3eb182d8a58797789cba67dfd1",
+      "bytes": 2480,
+      "state": "present"
+    },
+    {
+      "path": "server/shared/database/README.zh-CN.md",
+      "mode": "100644",
+      "blob": "9a2048faf364da4499be92f32d74343db1fd39d4",
+      "sha256": "561213de1dc14255bb7cf8d799766c59abeda637ea714a5ac65e60d92015cbbd",
+      "bytes": 2072,
+      "state": "present"
+    },
+    {
+      "path": "server/shared/database/client.ts",
+      "mode": "100644",
+      "blob": "3c3462480b45add90de78364e75450469a3a47b3",
+      "sha256": "647250a1fc5f8a908d03a47810c41680041fc81f266f398a642e35d67e067a08",
+      "bytes": 9689,
+      "state": "present"
+    },
+    {
+      "path": "server/shared/database/migrations.ts",
+      "mode": "100644",
+      "blob": "7ccbb53c9ad85766460d82330107e1f2a800e9b1",
+      "sha256": "cd0a58c4b6ffbf88eadf227ab4c301e3689a2836a15c368c3ae26cde72250039",
+      "bytes": 10250,
+      "state": "present"
+    },
+    {
+      "path": "server/shared/database/migrationsExpectedInventory.test.ts",
+      "mode": "100644",
+      "blob": "732f1e417f128de82b573e393c32c9ec7e10d98f",
+      "sha256": "99ba82a0e959699d4028f074534ea115ec9646d4a1120ca477f4a008ab3b9748",
+      "bytes": 2963,
+      "state": "present"
+    },
+    {
+      "path": "server/shared/database/runtimeConnection.integration.test.ts",
+      "mode": "100644",
+      "blob": "37b1186e4b65c1e643be0747947ea7a084771b63",
+      "sha256": "e107dfe854f9b2346c1fcf0530e1f57a3125d32aa28bef819a8699346ae6f4ce",
+      "bytes": 12603,
+      "state": "present"
+    },
+    {
+      "path": "server/shared/database/runtimeConnection.test.ts",
+      "mode": "100644",
+      "blob": "407d0b4e884c49afeb7532f80f929d4d4e7efb06",
+      "sha256": "e1fa903ecf368e277064d6397c2e2c5a9df127cbd14c062a7fcf44aa9711c526",
+      "bytes": 3689,
+      "state": "present"
+    },
+    {
+      "path": "server/shared/database/runtimeConnection.ts",
+      "mode": "100644",
+      "blob": "ece8e07fcfa5346b73531d4d1d043e8e04309e5c",
+      "sha256": "bba1af1bd8c879fb247ddd589f14f607e50a2e214bbb06650f43cbc226e5b6d2",
+      "bytes": 5013,
+      "state": "present"
+    },
+    {
+      "path": "server/shared/database/verifiedCheckout.test.ts",
+      "mode": "100644",
+      "blob": "66d6a8ad48dc15a280780ae5707e916e1c3b35a8",
+      "sha256": "5274bb0315c91c68eacd7bdc373c1408ed60de668f6c0baa6eb5665337857d85",
+      "bytes": 7811,
+      "state": "present"
+    },
+    {
+      "path": "server/shared/http/server.ts",
+      "mode": "100644",
+      "blob": "6bae761926e16d3151a83303d6380b97882dd207",
+      "sha256": "7b03aeff084346c7d69037b2af4b91789f9ad9716707f5a6bca5a3860919ecec",
+      "bytes": 13285,
+      "state": "present"
+    },
+    {
+      "path": "server/testing/databaseCleanup.ts",
+      "mode": "100644",
+      "blob": "8079e76e15c36c1e970902458307a3b009c0aabc",
+      "sha256": "0e87cf33b3a9b5b21b0845b2cbbfe26b85d80d623d0ce9afe20b8bb38d675afc",
+      "bytes": 1800,
+      "state": "present"
+    },
+    {
+      "path": "server/testing/fixtures.ts",
+      "mode": "100644",
+      "blob": "27d551f65da8b80cd294282b490e235f93dc1b45",
+      "sha256": "375441e5669230195c9d1f925bdf69997f3da8baa4712e098950fd1e8bfc316b",
+      "bytes": 9006,
+      "state": "present"
+    },
+    {
+      "path": "server/testing/parameterCatalog/database.ts",
+      "mode": "100644",
+      "blob": "c990eb2b9de65749666d8feba825e482c17c5c7b",
+      "sha256": "1e3faae187abc31fe969d7396bef32d9b64814e924140987ef4b15f2b4596a0d",
+      "bytes": 22260,
+      "state": "present"
+    },
+    {
+      "path": "server/testing/selfHostedUpgrade/database.test.ts",
+      "mode": "100644",
+      "blob": "f443b4d1acc56c815fdbe953f752f66e758a7717",
+      "sha256": "d4fbd9e7a438fa8ba9bb514781621de93e4cb47cb0941d803530fbc381284ad2",
+      "bytes": 8179,
+      "state": "present"
+    },
+    {
+      "path": "server/testing/selfHostedUpgrade/database.ts",
+      "mode": "100644",
+      "blob": "a64320f662344291d852a2092abd56f8b9978696",
+      "sha256": "c970cd3586042a4276912ea521617a5fd24e552cd411c0a11c32edd0fe07aadb",
+      "bytes": 11531,
+      "state": "present"
+    },
+    {
+      "path": "server/testing/testDatabase.ts",
+      "mode": "100644",
+      "blob": "02e76308457a1c87a0b27124445897c73ab14335",
+      "sha256": "c91851d86cae513341bc2d014949ffd3a74128c9bd2571eb3398211a72df2db6",
+      "bytes": 13857,
+      "state": "present"
+    },
+    {
+      "path": "server/testing/upgradeComponents.ts",
+      "mode": "100644",
+      "blob": "24b1619fdd5c0760702f602e4219224c24be6de2",
+      "sha256": "be794c20de55b74b613693be8613fd41b1f8b52ffe6cc86e4a2c4a467e7fd06b",
+      "bytes": 1274,
+      "state": "present"
+    },
+    {
+      "path": "tsconfig.node.json",
+      "mode": "100644",
+      "blob": "064599886d4ff4de4ed5e19a69fbefbd44947d5d",
+      "sha256": "ba81f365f13f605cff617c9b44031e4a73784c1d11cadc8647e25c5e1045a6b2",
+      "bytes": 1117,
+      "state": "present"
+    },
+    {
+      "path": "vitest.controlled-recovery.config.ts",
+      "mode": "100644",
+      "blob": "b192947b52596a0435eb343cd162cd430b6646d0",
+      "sha256": "81ec43924dca7001700808a773a0768d9d74818473b18b7add11ebdc8c998f14",
+      "bytes": 460,
+      "state": "present"
+    },
+    {
+      "path": "vitest.runtime-bootstrap.config.ts",
+      "mode": "100644",
+      "blob": "e1bd99dfe7eda0b105e813c4a871645bdf51e3c6",
+      "sha256": "cc82d0e04eb026a003c26a8fe7f2339993225dde171daa70cfa1216be1e29adb",
+      "bytes": 1675,
+      "state": "present"
+    },
+    {
+      "path": "vitest.runtime-role-source.config.ts",
+      "mode": "100644",
+      "blob": "b43f165e4ac567daa822547f519fa00b5696141d",
+      "sha256": "57e6c4ab7e214422672c6d3755e73ac82cbceb3008b3bbc46c06e16be95c2706",
+      "bytes": 391,
+      "state": "present"
+    },
+    {
+      "path": "vitest.scripts-source-lock.config.ts",
+      "mode": "100644",
+      "blob": "d59b11e77289319d076dad8180e7a33faf461ec2",
+      "sha256": "896d6e04964134f0141e30e5639052756a23da6362ed617469fd9a9e8934d351",
+      "bytes": 466,
+      "state": "present"
+    },
+    {
+      "path": "vitest.scripts.config.ts",
+      "mode": "100644",
+      "blob": "cd0cc6867cb8e70c1f695ee6c4f9b8df88da56b4",
+      "sha256": "c5cf00c35acc61d75924e7d51ba12ec53c05b4f53853a3f95de36bdc92c0d958",
+      "bytes": 1584,
+      "state": "present"
+    },
+    {
+      "path": "vitest.server.config.ts",
+      "mode": "100644",
+      "blob": "9a617d580f69b78b8c77109536632371ecda86cc",
+      "sha256": "6d433189964916a7166ab4a29f04e68e9695c44f8f43f1dc83478148ca54b507",
+      "bytes": 3166,
+      "state": "present"
+    },
+    {
+      "path": "vitest.upgrade-bootstrap-credential.config.ts",
+      "mode": "100644",
+      "blob": "a5b6b708885eb063e17ed17d3a2e9c3805062c3a",
+      "sha256": "f7d96d3b609e6aaa8fbdd6f511a8a8b3cb9a1e3c1ffc7a942959a58250484a78",
+      "bytes": 481,
+      "state": "present"
+    },
+    {
+      "path": "vitest.upgrade-comparison.config.ts",
+      "mode": "100644",
+      "blob": "316b2a281f9f1a0ddb401eeb23044345a20f8212",
+      "sha256": "7dd1eb0846294f655ad96aea36fd22ee90872b6c8f1946b18e92b05c14bbd25a",
+      "bytes": 634,
+      "state": "present"
+    },
+    {
+      "path": "vitest.upgrade-cutover.config.ts",
+      "mode": "100644",
+      "blob": "12310165500b95378d457803fdf1d05c9d894a1b",
+      "sha256": "c7dca0655756c501d3e05469703fbc284b9cd64841e18746c6ddd54b70c15688",
+      "bytes": 1002,
+      "state": "present"
+    },
+    {
+      "path": "vitest.upgrade-handoff.config.ts",
+      "mode": "100644",
+      "blob": "55cc81e7fc8cff55f57120848f8397417e3a337f",
+      "sha256": "c35d5360cad11baefe736c26f343615f15f2cdc9f7cf4cb0bb8cc4476656a43e",
+      "bytes": 577,
+      "state": "present"
+    },
+    {
+      "path": "vitest.upgrade-recovery.config.ts",
+      "mode": "100644",
+      "blob": "63e5e07a9f47ca2a203c21155e9a59d1d39c82cf",
+      "sha256": "d81991c5e8302fedc716759db1a7df3bbe24dcdbe9b6966aa9c61c2fc3e14240",
+      "bytes": 427,
+      "state": "present"
+    },
+    {
+      "path": "vitest.upgrade-redis.config.ts",
+      "mode": "100644",
+      "blob": "3ab55e3c8adde7c8e9c12b42c4256ee03567accd",
+      "sha256": "24659ada34a415c992fa5b60f02fa0c8c72addb0491b2abd8d55230e451353e5",
+      "bytes": 404,
+      "state": "present"
+    },
+    {
+      "path": "vitest.upgrade-retirement.config.ts",
+      "mode": "100644",
+      "blob": "89d5e05437f4cb2e88b90db038bfa859089469a7",
+      "sha256": "0957b932a70b5d66f9a734e93932c773b9c30adf44625cf0a79965323beb5497",
+      "bytes": 465,
+      "state": "present"
+    },
+    {
+      "path": "vitest.writer-reachability.config.ts",
+      "mode": "100644",
+      "blob": "6c3ef47e959eb29f5886701b384b20a5e663b876",
+      "sha256": "2e444c3a9a6346a25dc06c670779a93f074b50d85cdb165910085d27e94db09b",
+      "bytes": 393,
+      "state": "present"
+    }
+  ],
+  "logs": [
+    {
+      "path": "evidence/upg824-ci-b5ef-owned.log",
+      "executionIdentity": {
+        "scope": "Historical Hosted runtime-role-source failure; not current Hosted proof",
+        "head": "b5ef257cccb7268b65524a1154fd661dbfabeca5",
+        "mergeRef": "829f8b49d36cee002ae7aae199b7abf245e085c2",
+        "runId": "34169931811",
+        "result": "12 passed, 1 failed of 13"
+      },
+      "originalSha256": "3f4951be8e9e3794443d2accc951882837d4121befee8c4ade8de9b2780db116",
+      "deliveredSha256": "5218fe3a346e03fc6c61d0d4229e2ffa943e29664afec3be363eea4c91d8d37d",
+      "redaction": "ANSI formatting removed; local workspace/temp paths, retained private package locators, connection/bearer strings and credential environment assignments redacted. No execution is relabeled."
+    },
+    {
+      "path": "evidence/pr824-nw01-baseline.log",
+      "executionIdentity": {
+        "code": "b5ef257cccb7268b65524a1154fd661dbfabeca5",
+        "scope": "unchanged local control, not reproduction of Hosted",
+        "result": "13/13 passed; 15.93s"
+      },
+      "originalSha256": "09e9ebfde20b26fc22152ba0d77a6a530b948fe2d545752f6efba357c79053e8",
+      "deliveredSha256": "12b2b044bb920f6d46bce56424f3978c705bd74b132f447734fdff57ae01f577",
+      "redaction": "ANSI formatting removed; local workspace/temp paths, retained private package locators, connection/bearer strings and credential environment assignments redacted. No execution is relabeled."
+    },
+    {
+      "path": "evidence/pr824-nw01-pid-red.log",
+      "executionIdentity": {
+        "code": "499cb44ce1dc7a9f397a65c2f6df2fd51b5b7d69",
+        "scope": "test-only native client end and exact backend PID counterexamples",
+        "result": "9 passed, 4 failed of 13; native end incomplete and real server sessions remained"
+      },
+      "originalSha256": "5eeb376980d787724961652b7caacb5b929c5f7e61e1d19fa48200b974d7e6b4",
+      "deliveredSha256": "69a63d6344fca6d9074170405791fb6f7c8bce861eaf1c4e0b06c2168a0959c4",
+      "redaction": "ANSI formatting removed; local workspace/temp paths, retained private package locators, connection/bearer strings and credential environment assignments redacted. No execution is relabeled."
+    },
+    {
+      "path": "evidence/pr824-nw01-client-end-green.log",
+      "executionIdentity": {
+        "code": "a60ce60c4c99916556587b72bd601a222ac44fc1",
+        "scope": "first runtime cleanup implementation before native-client type narrowing",
+        "result": "13/13 passed; 15.36s; not final source identity"
+      },
+      "originalSha256": "faa28052af4f07ea7f5221bb6afff33af90e52fe14e97230be6bfaaba0b3ffa7",
+      "deliveredSha256": "2572d67a582d289df74856a5ed49764db572774e24cc220115d8826116cbb0bd",
+      "redaction": "ANSI formatting removed; local workspace/temp paths, retained private package locators, connection/bearer strings and credential environment assignments redacted. No execution is relabeled."
+    },
+    {
+      "path": "evidence/pr824-nw01-types.log",
+      "executionIdentity": {
+        "code": "a60ce60c4c99916556587b72bd601a222ac44fc1",
+        "scope": "historical type failure before native-client narrowing",
+        "result": "PoolClient type did not expose end; subsequent b576 repair required"
+      },
+      "originalSha256": "7185a0fa1f8572065ee2767086e0c47efd63c505da98e853a9410086a82568e0",
+      "deliveredSha256": "7185a0fa1f8572065ee2767086e0c47efd63c505da98e853a9410086a82568e0",
+      "redaction": "ANSI formatting removed; local workspace/temp paths, retained private package locators, connection/bearer strings and credential environment assignments redacted. No execution is relabeled."
+    },
+    {
+      "path": "evidence/pr824-nw01-b576-green.log",
+      "executionIdentity": {
+        "code": "b5763c6042dcc18f301be32c297a0bd726c4ddf8",
+        "scope": "formal owned runtime-role-source PG acceptance",
+        "result": "13/13 passed; 15.46s; exit 0; cleanup verified; native end true and exact server sessions empty"
+      },
+      "originalSha256": "64e7e867406e705f6b3bf880b452dd5e97f958b2ca531ae189775422e50d389f",
+      "deliveredSha256": "6fdc0096f46d58dce67639adf2b9c548ec18ec531d00cc6575e1f98bd7d26643",
+      "redaction": "ANSI formatting removed; local workspace/temp paths, retained private package locators, connection/bearer strings and credential environment assignments redacted. No execution is relabeled."
+    },
+    {
+      "path": "evidence/pr824-nw01-pure-fixed.log",
+      "executionIdentity": {
+        "codeBytesSealedAt": "b5763c6042dcc18f301be32c297a0bd726c4ddf8",
+        "scope": "fixed implementation verification",
+        "result": "9 pure tests passed; no PG evidence"
+      },
+      "originalSha256": "9f39d5edd54c34237b26532bc5f38cd08c5c5b5ca127bf50d29a82ec003c1229",
+      "deliveredSha256": "fd82851b569fd026c7548d4d1ff6a0f0a7943229b8ed8664a7e97af976a19876",
+      "redaction": "ANSI formatting removed; local workspace/temp paths, retained private package locators, connection/bearer strings and credential environment assignments redacted. No execution is relabeled."
+    },
+    {
+      "path": "evidence/pr824-nw01-types-fixed.log",
+      "executionIdentity": {
+        "codeBytesSealedAt": "b5763c6042dcc18f301be32c297a0bd726c4ddf8",
+        "scope": "fixed implementation verification",
+        "result": "strict typecheck exit 0; empty log"
+      },
+      "originalSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "deliveredSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "redaction": "ANSI formatting removed; local workspace/temp paths, retained private package locators, connection/bearer strings and credential environment assignments redacted. No execution is relabeled."
+    },
+    {
+      "path": "evidence/upg824-da-relocation-red.log",
+      "executionIdentity": {
+        "checkoutBase": "7485a5607f536ea3688c5340d18afaee6b4714b9",
+        "scope": "D-A test/implementation WIP before seal; not a fixed whole-candidate execution",
+        "finalImplementationSealedAt": "86d590713addf8e5b59c2684a54b526ebe255c1b",
+        "result": "1 failed, 11 passed of 12; permanent exact relocation regression"
+      },
+      "originalSha256": "23e8a5ff0dbd66c205e7bcbfee5581e476495b976598e76d8917b0729cc28923",
+      "deliveredSha256": "588e81bea332a1a41c54e515876ea5b0de6c4af13fccb33932d63ba3f575ceec",
+      "redaction": "ANSI formatting removed; local workspace/temp paths, retained private package locators, connection/bearer strings and credential environment assignments redacted. No execution is relabeled."
+    },
+    {
+      "path": "evidence/upg824-da-relocation-green.log",
+      "executionIdentity": {
+        "checkoutBase": "7485a5607f536ea3688c5340d18afaee6b4714b9",
+        "scope": "D-A test/implementation WIP before seal; not a fixed whole-candidate execution",
+        "finalImplementationSealedAt": "86d590713addf8e5b59c2684a54b526ebe255c1b",
+        "result": "1 failed, 68 passed of 69; old aggregate count assertion still needed correction"
+      },
+      "originalSha256": "8e8c86cd2dd43dd02da0e68d6f4a18021bb3f15f1af76a53131963b2f9f3216f",
+      "deliveredSha256": "b467350f7cf83660a2f0f6c6b69814ba4305a1c9307ceebf14b1be4f2bae42e8",
+      "redaction": "ANSI formatting removed; local workspace/temp paths, retained private package locators, connection/bearer strings and credential environment assignments redacted. No execution is relabeled."
+    },
+    {
+      "path": "evidence/upg824-da-relocation-final.log",
+      "executionIdentity": {
+        "checkoutBase": "7485a5607f536ea3688c5340d18afaee6b4714b9",
+        "scope": "D-A test/implementation WIP before seal; not a fixed whole-candidate execution",
+        "finalImplementationSealedAt": "86d590713addf8e5b59c2684a54b526ebe255c1b",
+        "result": "69/69 passed; 17.23s"
+      },
+      "originalSha256": "0a17b3349497ad687c0f89913983e9764137cd53df5114c736a341ae14d6c437",
+      "deliveredSha256": "7a1e30e940de48f7b2992ba31c5fb62f315a239e892e680b04302c255fc16c95",
+      "redaction": "ANSI formatting removed; local workspace/temp paths, retained private package locators, connection/bearer strings and credential environment assignments redacted. No execution is relabeled."
+    },
+    {
+      "path": "evidence/upg824-da-86d-pg.log",
+      "executionIdentity": {
+        "fileBlob": "e019e246ea36a9ced4a70b572bc4c03d22eaad0b",
+        "scope": "authorized natural audit test file only; unrelated runtime checkout advanced during execution",
+        "result": "15/15 passed; not fixed whole-candidate evidence"
+      },
+      "originalSha256": "d498bdc4fb4a39f5c08f40d9cddd148b30d68bd1f5da3bbc6b57b7395995b0bc",
+      "deliveredSha256": "6804dc15971e0210f643327f3cb70be03670ceeb4a969ace886725c871e141c1",
+      "redaction": "ANSI formatting removed; local workspace/temp paths, retained private package locators, connection/bearer strings and credential environment assignments redacted. No execution is relabeled."
+    },
+    {
+      "path": "evidence/upg824-nw01-2a96-reader-pg16.log",
+      "executionIdentity": {
+        "code": "2a96d3f31f8ca00559b7fb81ea578632ae9ec165",
+        "tree": "5bfa1d4febe0085ac1d760ac9dce96d9038a7a09",
+        "scope": "earlier local integrated execution",
+        "result": "49/49 passed"
+      },
+      "originalSha256": "62cc1e1a899d84cc45fbe2b7faeaec2daf4d56a9e625d9716f9620cb6158414d",
+      "deliveredSha256": "826b422bb6880283a90a5e6b23db6724c13793544d7be2d787dd8d416b48926b",
+      "redaction": "ANSI formatting removed; local workspace/temp paths, retained private package locators, connection/bearer strings and credential environment assignments redacted. No execution is relabeled."
+    },
+    {
+      "path": "evidence/upg824-nw01-2a96-writer-reachability-pg16.log",
+      "executionIdentity": {
+        "code": "2a96d3f31f8ca00559b7fb81ea578632ae9ec165",
+        "tree": "5bfa1d4febe0085ac1d760ac9dce96d9038a7a09",
+        "scope": "earlier local integrated execution",
+        "result": "34/34 passed"
+      },
+      "originalSha256": "ac39cb4b824a3433ae78381fad54f38654c994dcb2dc45a478669f16446a89c9",
+      "deliveredSha256": "55205d8557c8d905bcfe79d2046aeb5060fff5b8620fcb68a4265b7e4848953b",
+      "redaction": "ANSI formatting removed; local workspace/temp paths, retained private package locators, connection/bearer strings and credential environment assignments redacted. No execution is relabeled."
+    },
+    {
+      "path": "evidence/upg824-nw01-2a96-runtime-identity-pg16.log",
+      "executionIdentity": {
+        "code": "2a96d3f31f8ca00559b7fb81ea578632ae9ec165",
+        "tree": "5bfa1d4febe0085ac1d760ac9dce96d9038a7a09",
+        "scope": "earlier local integrated execution",
+        "result": "11/11 passed"
+      },
+      "originalSha256": "7643e9c36faa586728407c0204d1f0dfd4199ca1310047f5071b708ade66776d",
+      "deliveredSha256": "d15581d669ecc83998b10f30a109962775c0f2082db7c12772a6f38816db9d7e",
+      "redaction": "ANSI formatting removed; local workspace/temp paths, retained private package locators, connection/bearer strings and credential environment assignments redacted. No execution is relabeled."
+    },
+    {
+      "path": "evidence/upg824-nw01-2a96-runtime-role-source-pg16.log",
+      "executionIdentity": {
+        "code": "2a96d3f31f8ca00559b7fb81ea578632ae9ec165",
+        "tree": "5bfa1d4febe0085ac1d760ac9dce96d9038a7a09",
+        "scope": "earlier local integrated execution",
+        "result": "13/13 passed"
+      },
+      "originalSha256": "9b7b8305559be3b468ccd9f93d06cc0280eae8d22218ab051f6a0ec7e66f66ce",
+      "deliveredSha256": "3859d4f73612bac01e418909a9fdfbae8f13bce02e81cc9d9ed1911a41cf7ba8",
+      "redaction": "ANSI formatting removed; local workspace/temp paths, retained private package locators, connection/bearer strings and credential environment assignments redacted. No execution is relabeled."
+    },
+    {
+      "path": "evidence/upg824-nw01-2a96-legacy-sql-privileges-pg16.log",
+      "executionIdentity": {
+        "code": "2a96d3f31f8ca00559b7fb81ea578632ae9ec165",
+        "tree": "5bfa1d4febe0085ac1d760ac9dce96d9038a7a09",
+        "scope": "earlier local integrated execution",
+        "result": "18 passed, 1 failed of 19; 5000ms test timeout and fixture cleanup failure; outer runner cleanup verified; later serial suites did not run"
+      },
+      "originalSha256": "ba7739739f0dbf0638d5c56d5547b4f14cef4391ca143839ab4c25d1aab9860b",
+      "deliveredSha256": "52247210d8cb6ad450296442a9da844c6811f41fc00ac06aa597b3447c99085d",
+      "redaction": "ANSI formatting removed; local workspace/temp paths, retained private package locators, connection/bearer strings and credential environment assignments redacted. No execution is relabeled."
+    },
+    {
+      "path": "evidence/upg824-nw01-2a96-build.log",
+      "executionIdentity": {
+        "code": "2a96d3f31f8ca00559b7fb81ea578632ae9ec165",
+        "tree": "5bfa1d4febe0085ac1d760ac9dce96d9038a7a09",
+        "scope": "earlier local integrated execution",
+        "result": "exit 0 with warnings"
+      },
+      "originalSha256": "b452864ba63d9b5630480de71784d50042724ddb3eeed4d6d7b2fd2d8e37d9fe",
+      "deliveredSha256": "a15f71755ba6482d199823ddbd5cbd5e63f1cba8e9ac24a17d1282aa171f0091",
+      "redaction": "ANSI formatting removed; local workspace/temp paths, retained private package locators, connection/bearer strings and credential environment assignments redacted. No execution is relabeled."
+    },
+    {
+      "path": "evidence/pr824-sql-dependency-baseline-focused.log",
+      "executionIdentity": {
+        "code": "2a96d3f31f8ca00559b7fb81ea578632ae9ec165",
+        "scope": "local focused control; not a full suite or reproduced failure",
+        "result": "1 passed, 18 filtered"
+      },
+      "originalSha256": "bf70e3c3e6af7210cc2c1242568485e0e1d5c1514ab03af61450572e7107df95",
+      "deliveredSha256": "4545ebaab3ac0e86213cdacd351b6fdead6a4f1f22da194d153763587e19a1a6",
+      "redaction": "ANSI formatting removed; local workspace/temp paths, retained private package locators, connection/bearer strings and credential environment assignments redacted. No execution is relabeled."
+    },
+    {
+      "path": "evidence/pr824-sql-dependency-profile.log",
+      "executionIdentity": {
+        "code": "10f28fbc1ec18db32533a7eb996c3240bb7b9cdf",
+        "scope": "diagnostic timing source, not final implementation",
+        "result": "1 passed, 18 filtered; second empty DB prepare 2705ms, effect 140ms, close 1510ms"
+      },
+      "originalSha256": "8c5f35c238f3b8ca32ebdcd365376f0f9130271aa56abda6b927b4a7c9f0c56b",
+      "deliveredSha256": "363d83c46f1b05f70f80dbd3844b7a51dc04c4c07ebb095ea89ed0babb253cba",
+      "redaction": "ANSI formatting removed; local workspace/temp paths, retained private package locators, connection/bearer strings and credential environment assignments redacted. No execution is relabeled."
+    },
+    {
+      "path": "evidence/pr824-sql-dependency-074-focused.log",
+      "executionIdentity": {
+        "code": "074c49c0bf782e69ac99780976405379fb8d7a5a",
+        "scope": "focused repaired lifecycle",
+        "result": "1 passed, 18 filtered; prepare 2810ms, effect 138ms, close 1530ms; cleanup verified"
+      },
+      "originalSha256": "4185d2a763a802dbba07711bba5796672bfd593ef2de068698a91e58af25fddd",
+      "deliveredSha256": "7253859760dbf69fadab242ca9db21def9d7527ccc52f84985c8628f5354c4e4",
+      "redaction": "ANSI formatting removed; local workspace/temp paths, retained private package locators, connection/bearer strings and credential environment assignments redacted. No execution is relabeled."
+    },
+    {
+      "path": "evidence/pr824-sql-dependency-074-full.log",
+      "executionIdentity": {
+        "code": "074c49c0bf782e69ac99780976405379fb8d7a5a",
+        "tree": "258e14c7821a21878772f6cef31e6c56d4d7aeb4",
+        "scope": "formal owned full legacy SQL suite",
+        "result": "19/19 passed; 114.97s; exit 0; cleanup verified"
+      },
+      "originalSha256": "9cc822fdb13485be96c34089dd399eb8309a81dcf41ed2ac4ab3216c4cae5ee6",
+      "deliveredSha256": "a23d991a21ecd36f129e6239d68fd35182fed61f95f11d80fd34c6bc35079761",
+      "redaction": "ANSI formatting removed; local workspace/temp paths, retained private package locators, connection/bearer strings and credential environment assignments redacted. No execution is relabeled."
+    },
+    {
+      "path": "evidence/pr824-sql-dependency-types.log",
+      "executionIdentity": {
+        "codeBytesSealedAt": "074c49c0bf782e69ac99780976405379fb8d7a5a",
+        "scope": "strict typecheck",
+        "result": "exit 0; empty log"
+      },
+      "originalSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "deliveredSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "redaction": "ANSI formatting removed; local workspace/temp paths, retained private package locators, connection/bearer strings and credential environment assignments redacted. No execution is relabeled."
+    },
+    {
+      "path": "evidence/upg824-nw01-25e8-read-projections-pg16.log",
+      "executionIdentity": {
+        "code": "25e8aabaee5bedd709aa15d02e6e6d020cc5550c",
+        "tree": "e03802313b64eaf4f33fc04299f06072fe9f9fb5",
+        "scope": "local fixed code; two documentation command examples WIP only; no new Hosted result",
+        "result": "10/10 passed"
+      },
+      "originalSha256": "14846e89099cbc069293751a54986cc9eb222ba3b4e8ff3c8080fd443b7e1f93",
+      "deliveredSha256": "d40f5391d3d3fa739d985237836857491b5ec19f28d0fb51812df6be1abe6dee",
+      "redaction": "ANSI formatting removed; local workspace/temp paths, retained private package locators, connection/bearer strings and credential environment assignments redacted. No execution is relabeled."
+    },
+    {
+      "path": "evidence/upg824-nw01-25e8-report-pg16.log",
+      "executionIdentity": {
+        "code": "25e8aabaee5bedd709aa15d02e6e6d020cc5550c",
+        "tree": "e03802313b64eaf4f33fc04299f06072fe9f9fb5",
+        "scope": "local fixed code; two documentation command examples WIP only; no new Hosted result",
+        "result": "36/36 passed"
+      },
+      "originalSha256": "7b21731af69d89038a5f75637418dca4b28316dce68705f8f71fa97dce017269",
+      "deliveredSha256": "1a4ac1c3042e56a02af27854854600d26f6278c06f04d4e500ae273dae8556b6",
+      "redaction": "ANSI formatting removed; local workspace/temp paths, retained private package locators, connection/bearer strings and credential environment assignments redacted. No execution is relabeled."
+    },
+    {
+      "path": "evidence/upg824-nw01-25e8-authority-pg16.log",
+      "executionIdentity": {
+        "code": "25e8aabaee5bedd709aa15d02e6e6d020cc5550c",
+        "tree": "e03802313b64eaf4f33fc04299f06072fe9f9fb5",
+        "scope": "local fixed code; two documentation command examples WIP only; no new Hosted result",
+        "result": "81/81 passed"
+      },
+      "originalSha256": "bfd3f2d0726efd2676643748d47561f32c8a1e414b481e618f7ba268215fe041",
+      "deliveredSha256": "728c5bb263c4c52cc90fe541e701739a2d7467849a993d1081638a5152878bb0",
+      "redaction": "ANSI formatting removed; local workspace/temp paths, retained private package locators, connection/bearer strings and credential environment assignments redacted. No execution is relabeled."
+    },
+    {
+      "path": "evidence/upg824-nw01-25e8-bindings-pg16.log",
+      "executionIdentity": {
+        "code": "25e8aabaee5bedd709aa15d02e6e6d020cc5550c",
+        "tree": "e03802313b64eaf4f33fc04299f06072fe9f9fb5",
+        "scope": "local fixed code; two documentation command examples WIP only; no new Hosted result",
+        "result": "98/98 passed"
+      },
+      "originalSha256": "4695ac074d656e9a5bc8bd2257993d3a9ef08cccb36c24e98d6d65fe985957f5",
+      "deliveredSha256": "2246e29df37a20efc8861828f1743e6c836aba7f82b1400c137c7cc2ac501331",
+      "redaction": "ANSI formatting removed; local workspace/temp paths, retained private package locators, connection/bearer strings and credential environment assignments redacted. No execution is relabeled."
+    },
+    {
+      "path": "evidence/upg824-nw01-25e8-log-redis.log",
+      "executionIdentity": {
+        "code": "25e8aabaee5bedd709aa15d02e6e6d020cc5550c",
+        "tree": "e03802313b64eaf4f33fc04299f06072fe9f9fb5",
+        "scope": "local fixed code; two documentation command examples WIP only; no new Hosted result",
+        "result": "12/12 passed"
+      },
+      "originalSha256": "b01de88da7dee6e04473c3c5781673c98946f33c79cebfdc362cd856af1acdcc",
+      "deliveredSha256": "62f9a8d87d0d677a78f41676cf70d0d34bf34460bbe7088a98d4848db9923d67",
+      "redaction": "ANSI formatting removed; local workspace/temp paths, retained private package locators, connection/bearer strings and credential environment assignments redacted. No execution is relabeled."
+    },
+    {
+      "path": "evidence/upg824-nw01-25e8-activation-existing-pg16.log",
+      "executionIdentity": {
+        "code": "25e8aabaee5bedd709aa15d02e6e6d020cc5550c",
+        "tree": "e03802313b64eaf4f33fc04299f06072fe9f9fb5",
+        "scope": "local fixed code; two documentation command examples WIP only; no new Hosted result",
+        "result": "22/22 passed"
+      },
+      "originalSha256": "93d261aeee8c697bb2db2222bec4855c255e59435baa210f0dfc4b62fa2c8f09",
+      "deliveredSha256": "46e632e03ca076ecf4154a1ad1af9677e402e2464357dbb55ddb1e9747f682ad",
+      "redaction": "ANSI formatting removed; local workspace/temp paths, retained private package locators, connection/bearer strings and credential environment assignments redacted. No execution is relabeled."
+    },
+    {
+      "path": "evidence/upg824-nw01-25e8-retirement-existing-pg16.log",
+      "executionIdentity": {
+        "code": "25e8aabaee5bedd709aa15d02e6e6d020cc5550c",
+        "tree": "e03802313b64eaf4f33fc04299f06072fe9f9fb5",
+        "scope": "local fixed code; two documentation command examples WIP only; no new Hosted result",
+        "result": "beforeAll 10000ms timeout; 1 passed, 15 skipped; exit 1. Two boundary scans overlapped; causation not established"
+      },
+      "originalSha256": "b1066b77087af7e10b9d3d8982963ddf55c3336287208a6ed01843db99c8b579",
+      "deliveredSha256": "f095c61607f31b4741b79610d36cf24587bef7fb57da0f964325a8ba42f41161",
+      "redaction": "ANSI formatting removed; local workspace/temp paths, retained private package locators, connection/bearer strings and credential environment assignments redacted. No execution is relabeled."
+    },
+    {
+      "path": "evidence/upg824-nw01-25e8-bootstrap-credential-pg16.log",
+      "executionIdentity": {
+        "code": "25e8aabaee5bedd709aa15d02e6e6d020cc5550c",
+        "tree": "e03802313b64eaf4f33fc04299f06072fe9f9fb5",
+        "scope": "local fixed code; two documentation command examples WIP only; no new Hosted result",
+        "result": "separately resumed suite: 40/40 passed"
+      },
+      "originalSha256": "75e82915690cdfdd815c3128b9cc21747a1d61600801227319cc99a9c87e08a8",
+      "deliveredSha256": "81380b0853c9406532310ac7ebe6243f4277b9299da8cbc3416a43483cb2d088",
+      "redaction": "ANSI formatting removed; local workspace/temp paths, retained private package locators, connection/bearer strings and credential environment assignments redacted. No execution is relabeled."
+    },
+    {
+      "path": "evidence/upg824-nw01-25e8-recovery-three-store.log",
+      "executionIdentity": {
+        "code": "25e8aabaee5bedd709aa15d02e6e6d020cc5550c",
+        "tree": "e03802313b64eaf4f33fc04299f06072fe9f9fb5",
+        "scope": "local fixed code; two documentation command examples WIP only; no new Hosted result",
+        "result": "separately resumed suite: 16/16 passed; 382.57s; cleanup verified; synthetic, not full business recovery"
+      },
+      "originalSha256": "e5b5bcb933b6f39735ae877ee1b02d8d84f4c3812448134d6cf288337e3bb70c",
+      "deliveredSha256": "78c983c0031cb014b0607f66be718d5ce8d6cab9e1fafe6668a939eef371c7ed",
+      "redaction": "ANSI formatting removed; local workspace/temp paths, retained private package locators, connection/bearer strings and credential environment assignments redacted. No execution is relabeled."
+    },
+    {
+      "path": "evidence/upg824-nw01-25e8-controlled-recovery.log",
+      "executionIdentity": {
+        "code": "25e8aabaee5bedd709aa15d02e6e6d020cc5550c",
+        "tree": "e03802313b64eaf4f33fc04299f06072fe9f9fb5",
+        "scope": "local fixed code; two documentation command examples WIP only; no new Hosted result",
+        "result": "separately resumed suite: 4/4 passed; 364.40s; cleanup verified"
+      },
+      "originalSha256": "a18d0f4dcfb3f8615976bedbbf0a77b0a649e79a08f2cd9f7aea8481b82d6ae1",
+      "deliveredSha256": "bbee20deca0037b533969fd017c6fcdf9f76dd1042ed1c5ce509abfc4d2bfba3",
+      "redaction": "ANSI formatting removed; local workspace/temp paths, retained private package locators, connection/bearer strings and credential environment assignments redacted. No execution is relabeled."
+    },
+    {
+      "path": "evidence/upg824-nw01-25e8-scripts-pgvector.log",
+      "executionIdentity": {
+        "code": "25e8aabaee5bedd709aa15d02e6e6d020cc5550c",
+        "tree": "e03802313b64eaf4f33fc04299f06072fe9f9fb5",
+        "scope": "local fixed code; two documentation command examples WIP only; no new Hosted result",
+        "result": "source-lock 4/4 (47.65s), then 2013 passed, 11 skipped, 0 failed of 2024 (129.07s); skips remain unexecuted"
+      },
+      "originalSha256": "5b7ee934eeda53c4cf32280af2d2b958784f8b6a93811d551817ce544b29154f",
+      "deliveredSha256": "bb43a7b080637e43c54fee3ed80eea18c695040c13b77b8a488dc1d66559831d",
+      "redaction": "ANSI formatting removed; local workspace/temp paths, retained private package locators, connection/bearer strings and credential environment assignments redacted. No execution is relabeled."
+    },
+    {
+      "path": "evidence/upg824-nw01-25e8-server-pgvector.log",
+      "executionIdentity": {
+        "code": "25e8aabaee5bedd709aa15d02e6e6d020cc5550c",
+        "tree": "e03802313b64eaf4f33fc04299f06072fe9f9fb5",
+        "scope": "local fixed code; two documentation command examples WIP only; no new Hosted result",
+        "result": "4311/4311 passed; zero skips/failures; 181.43s"
+      },
+      "originalSha256": "db5d56ee05072e14109b91491400ddba3497a5553b763c0d13bec2b2c92325f9",
+      "deliveredSha256": "10b1481490bfc253facfdbae68c7d717e386bf6fd04faf2081ade7fc35fd4fb8",
+      "redaction": "ANSI formatting removed; local workspace/temp paths, retained private package locators, connection/bearer strings and credential environment assignments redacted. No execution is relabeled."
+    },
+    {
+      "path": "evidence/upg824-nw01-25e8-build.log",
+      "executionIdentity": {
+        "code": "25e8aabaee5bedd709aa15d02e6e6d020cc5550c",
+        "tree": "e03802313b64eaf4f33fc04299f06072fe9f9fb5",
+        "scope": "local fixed code; two documentation command examples WIP only; no new Hosted result",
+        "result": "exit 0 with retained warnings"
+      },
+      "originalSha256": "0e172463482c4fa315f1a761ac704aa70e4059bd739f6ba74388e69085a466cb",
+      "deliveredSha256": "51bc284b8c8f92bf3e8c963ed692aace540a6149b527212e9ac0a8b44b7531d2",
+      "redaction": "ANSI formatting removed; local workspace/temp paths, retained private package locators, connection/bearer strings and credential environment assignments redacted. No execution is relabeled."
+    },
+    {
+      "path": "evidence/upg824-nw01-25e8-contract.log",
+      "executionIdentity": {
+        "code": "25e8aabaee5bedd709aa15d02e6e6d020cc5550c",
+        "tree": "e03802313b64eaf4f33fc04299f06072fe9f9fb5",
+        "scope": "local fixed code; two documentation command examples WIP only; no new Hosted result",
+        "result": "exit 0"
+      },
+      "originalSha256": "b360b9bd3abdfe68681a8d267d5287709d4444710f48e2e21afb069a384d9981",
+      "deliveredSha256": "b360b9bd3abdfe68681a8d267d5287709d4444710f48e2e21afb069a384d9981",
+      "redaction": "ANSI formatting removed; local workspace/temp paths, retained private package locators, connection/bearer strings and credential environment assignments redacted. No execution is relabeled."
+    },
+    {
+      "path": "evidence/upg824-nw01-25e8-selfhost.log",
+      "executionIdentity": {
+        "code": "25e8aabaee5bedd709aa15d02e6e6d020cc5550c",
+        "tree": "e03802313b64eaf4f33fc04299f06072fe9f9fb5",
+        "scope": "local fixed code; two documentation command examples WIP only; no new Hosted result",
+        "result": "exit 0"
+      },
+      "originalSha256": "fb3bebbd4a67124cfc37061ec47e862690f238d75a55a572211b4ba5a2701f56",
+      "deliveredSha256": "fb3bebbd4a67124cfc37061ec47e862690f238d75a55a572211b4ba5a2701f56",
+      "redaction": "ANSI formatting removed; local workspace/temp paths, retained private package locators, connection/bearer strings and credential environment assignments redacted. No execution is relabeled."
+    },
+    {
+      "path": "evidence/upg824-nw01-25e8-boundary-ci-base.log",
+      "executionIdentity": {
+        "code": "25e8aabaee5bedd709aa15d02e6e6d020cc5550c",
+        "tree": "e03802313b64eaf4f33fc04299f06072fe9f9fb5",
+        "scope": "local fixed code; two documentation command examples WIP only; no new Hosted result",
+        "result": "3509/3509; zero new/stale allowances"
+      },
+      "originalSha256": "6eecbc7c68f93a34280ba53bb4a3837ff844959de6391569ee190fe9a3b0f795",
+      "deliveredSha256": "6eecbc7c68f93a34280ba53bb4a3837ff844959de6391569ee190fe9a3b0f795",
+      "redaction": "ANSI formatting removed; local workspace/temp paths, retained private package locators, connection/bearer strings and credential environment assignments redacted. No execution is relabeled."
+    },
+    {
+      "path": "evidence/upg824-nw01-25e8-docs.log",
+      "executionIdentity": {
+        "code": "25e8aabaee5bedd709aa15d02e6e6d020cc5550c",
+        "tree": "e03802313b64eaf4f33fc04299f06072fe9f9fb5",
+        "scope": "local fixed code; two documentation command examples WIP only; no new Hosted result",
+        "result": "exit 0; schema verification skipped"
+      },
+      "originalSha256": "d2efeb1154e57db80b5a249404b16544888d2884127beee44237155fcf1b295f",
+      "deliveredSha256": "d2efeb1154e57db80b5a249404b16544888d2884127beee44237155fcf1b295f",
+      "redaction": "ANSI formatting removed; local workspace/temp paths, retained private package locators, connection/bearer strings and credential environment assignments redacted. No execution is relabeled."
+    },
+    {
+      "path": "evidence/upg824-nw01-25e8-docs-owned.log",
+      "executionIdentity": {
+        "code": "25e8aabaee5bedd709aa15d02e6e6d020cc5550c",
+        "tree": "e03802313b64eaf4f33fc04299f06072fe9f9fb5",
+        "scope": "local fixed code; two documentation command examples WIP only; no new Hosted result",
+        "result": "separate strict owned PG schema verification; exit 0; cleanup verified"
+      },
+      "originalSha256": "0a6dff3e5d48939e0ca60b073b07680de875000ffa6a0d4a7a98b614eedfc3a5",
+      "deliveredSha256": "0a6dff3e5d48939e0ca60b073b07680de875000ffa6a0d4a7a98b614eedfc3a5",
+      "redaction": "ANSI formatting removed; local workspace/temp paths, retained private package locators, connection/bearer strings and credential environment assignments redacted. No execution is relabeled."
+    },
+    {
+      "path": "evidence/pr824-login-25e8-baseline.log",
+      "executionIdentity": {
+        "code": "25e8aabaee5bedd709aa15d02e6e6d020cc5550c",
+        "scope": "separate unchanged-code quiet full retirement control; not evidence of timeout causation or an uninterrupted serial pass",
+        "result": "16/16 passed; 23.56s; cleanup verified"
+      },
+      "originalSha256": "d6fa9fbc81154331b720ece3305a90688140b9d2d990450b0f4d51ecdd556c07",
+      "deliveredSha256": "a912a54e195835b3706c101832a75fd6e9754c9e720fa3297c4e7dcc39be8319",
+      "redaction": "ANSI formatting removed; local workspace/temp paths, retained private package locators, connection/bearer strings and credential environment assignments redacted. No execution is relabeled."
+    },
+    {
+      "path": "evidence/pr824-0390-focused.log",
+      "executionIdentity": {
+        "scope": "Parent integrated focused; not report-head execution or full acceptance",
+        "code": "0390bd028219b464e143418cb13155d3819aee0e"
+      },
+      "originalSha256": "f2dc90a596d9be23b362629d937e84c6450b9a51ec2738c44bcab9a5ce6c21bb",
+      "deliveredSha256": "ed45280fffdcff61b866993679cab2858bccf52d7315aabaaad5a66eac4b09af",
+      "redaction": "ANSI formatting removed; local workspace/temp paths, retained private package locators, connection/bearer strings and credential environment assignments redacted. No execution is relabeled."
+    },
+    {
+      "path": "evidence/pr824-0390-build.log",
+      "executionIdentity": {
+        "scope": "Parent integrated build; not report-head execution or full acceptance",
+        "code": "0390bd028219b464e143418cb13155d3819aee0e"
+      },
+      "originalSha256": "d99411a7e6ba2d37789984e0935a60c1f3dce6efc9c6010441251c48304f130c",
+      "deliveredSha256": "f3231cfbdb150233bfebea25e254dfce3b558055e248a83d034b1017ec6836d7",
+      "redaction": "ANSI formatting removed; local workspace/temp paths, retained private package locators, connection/bearer strings and credential environment assignments redacted. No execution is relabeled."
+    },
+    {
+      "path": "evidence/pr824-0390-boundary.log",
+      "executionIdentity": {
+        "scope": "Parent integrated boundary; not report-head execution or full acceptance",
+        "code": "0390bd028219b464e143418cb13155d3819aee0e"
+      },
+      "originalSha256": "6eecbc7c68f93a34280ba53bb4a3837ff844959de6391569ee190fe9a3b0f795",
+      "deliveredSha256": "6eecbc7c68f93a34280ba53bb4a3837ff844959de6391569ee190fe9a3b0f795",
+      "redaction": "ANSI formatting removed; local workspace/temp paths, retained private package locators, connection/bearer strings and credential environment assignments redacted. No execution is relabeled."
+    },
+    {
+      "path": "evidence/pr824-0390-docs-owned.log",
+      "executionIdentity": {
+        "scope": "Parent integrated docs-owned; not report-head execution or full acceptance",
+        "code": "0390bd028219b464e143418cb13155d3819aee0e"
+      },
+      "originalSha256": "38d0d45cc59844a373b03a8adc693fbcd3efdbf4432c553071315a7f25b135d3",
+      "deliveredSha256": "38d0d45cc59844a373b03a8adc693fbcd3efdbf4432c553071315a7f25b135d3",
+      "redaction": "ANSI formatting removed; local workspace/temp paths, retained private package locators, connection/bearer strings and credential environment assignments redacted. No execution is relabeled."
+    },
+    {
+      "path": "evidence/pr824-handoff-data-c219-actual.log",
+      "executionIdentity": {
+        "scope": "Actual owned three stores 9/9; application identity stubs, not old API/worker",
+        "code": "c2197ae17a2409022f54e658170b9bfe8f7b8bb2"
+      },
+      "originalSha256": "465c86b2a5b5a19a3a82ad96e9b0f7808a952c33ded7f479752defcd19b631a2",
+      "deliveredSha256": "7ede9e6b401f19b9f17949f176ea04322156a00f77f05017f6a2c01fd64c00e3",
+      "redaction": "ANSI formatting removed; local workspace/temp paths, retained private package locators, connection/bearer strings and credential environment assignments redacted. No execution is relabeled."
+    },
+    {
+      "path": "evidence/pr824-bootstrap-probe-3fa5-final-green.log",
+      "executionIdentity": {
+        "scope": "Actual owned bootstrap 41/41; no Hosted cause determination",
+        "code": "3fa5db71efb8e4677503bd75e467c58cf547d4dc"
+      },
+      "originalSha256": "6e4fd6a31068c45f48222ebb97ae9477830edccae9bea5e487ba8af6bba1e704",
+      "deliveredSha256": "f8e7ecc9ba1f1729f2adf18d05e70e1f819b4d28167430a8decaf7a06bd6d652",
+      "redaction": "ANSI formatting removed; local workspace/temp paths, retained private package locators, connection/bearer strings and credential environment assignments redacted. No execution is relabeled."
+    },
+    {
+      "path": "evidence/pr824-ci-4b-owned.log",
+      "executionIdentity": {
+        "scope": "Historical Hosted run 34192523701 merge 7affb0894c4d78446efbfaf534ff61561c44e0a4; bootstrap 39 passed/1 failed; later suites unexecuted",
+        "code": "4b346d6ef483d599a9449bddab44345dd11fce26"
+      },
+      "originalSha256": "c36cc577c9b303bde9645dcdaee1b5503de29dfef8f575d248d6f656cd5a063c",
+      "deliveredSha256": "a5b1a38c0e9ded48a8d3cac72ab6a0904438c08af6bd6d94ecf741651683822c",
+      "redaction": "ANSI formatting removed; local workspace/temp paths, retained private package locators, connection/bearer strings and credential environment assignments redacted. No execution is relabeled."
+    },
+    {
+      "path": "evidence/pr824-b7c-comparison-pure.log",
+      "executionIdentity": {
+        "scope": "Wrong server config; default development ledger reached; zero tests; not passing and zero writes unproven",
+        "code": "b7c64328fb447fb07421cc08b1264d084ab7e3e3"
+      },
+      "originalSha256": "6b18e73e96371936054a33df4c457641d4a6b29101a68b23714a4b5290de2fd3",
+      "deliveredSha256": "3bda1b1699280fe704e433a37b6c9780846909cd3c045f18055d256d72232001",
+      "redaction": "ANSI formatting removed; local workspace/temp paths, retained private package locators, connection/bearer strings and credential environment assignments redacted. No execution is relabeled."
+    },
+    {
+      "path": "evidence/pr824-b7c-comparison-pure-corrected.log",
+      "executionIdentity": {
+        "scope": "24/24 pure; no database evidence",
+        "code": "b7c64328fb447fb07421cc08b1264d084ab7e3e3"
+      },
+      "originalSha256": "2be3d67007c75f03282291b9edc8f7f8640c363957ccb0031a7f7639c66d1cc8",
+      "deliveredSha256": "ba05876a73e5b9faee2290e90bb6143c5006dc0d5051a20d0ebbd54d2741d5b3",
+      "redaction": "ANSI formatting removed; local workspace/temp paths, retained private package locators, connection/bearer strings and credential environment assignments redacted. No execution is relabeled."
+    },
+    {
+      "path": "evidence/pr824-b7c-activation.log",
+      "executionIdentity": {
+        "scope": "22/22 actual owned activation",
+        "code": "b7c64328fb447fb07421cc08b1264d084ab7e3e3"
+      },
+      "originalSha256": "0b9aa0936b0673e8a9f69d461e0139fb6f168380715f1374fd2e6db2863932d2",
+      "deliveredSha256": "a42303211cc4575165346f34903adadf44bcd684edc9cffa0b46ef5e10a9a6ab",
+      "redaction": "ANSI formatting removed; local workspace/temp paths, retained private package locators, connection/bearer strings and credential environment assignments redacted. No execution is relabeled."
+    },
+    {
+      "path": "evidence/pr824-b7c-build.log",
+      "executionIdentity": {
+        "scope": "Build only",
+        "code": "b7c64328fb447fb07421cc08b1264d084ab7e3e3"
+      },
+      "originalSha256": "0623632f6594e4578e1f0ea7aab371e83a8ea990bcddb97e668cb1b3e2be2ff4",
+      "deliveredSha256": "19e0c79960b2f2782bc74a6ec8c133fcf6fb1e1f75aa625a8d6bcb53c2d5fdbd",
+      "redaction": "ANSI formatting removed; local workspace/temp paths, retained private package locators, connection/bearer strings and credential environment assignments redacted. No execution is relabeled."
+    },
+    {
+      "path": "evidence/pr824-bootstrap-probe-delivery-evidence.md",
+      "executionIdentity": {
+        "scope": "Source delivery narrative; retains separate Red/Green identities, no independent execution",
+        "code": "3fa5db71efb8e4677503bd75e467c58cf547d4dc"
+      },
+      "originalSha256": "d9fd4fc8fd3823580688b92d175eb98dfd74df81a321a239673f121bcf0518ab",
+      "deliveredSha256": "0e38d4b520c3dfa36deca9085b40e071c925a16d2f09256d7a53d166573a0850",
+      "redaction": "ANSI formatting removed; local workspace/temp paths, retained private package locators, connection/bearer strings and credential environment assignments redacted. No execution is relabeled."
+    },
+    {
+      "path": "evidence/pr824-ack-reopen-17817-delayed-end-red.log",
+      "executionIdentity": {
+        "scope": "Preliminary Red 1 failed/39 filtered; not final mechanism",
+        "code": "1781768807a1a542a1b51cb23075a3fbe9273a2c"
+      },
+      "originalSha256": "8f7813c3a4794236e54709da05d34e449947b909adf9ca58adca864016693319",
+      "deliveredSha256": "4c7add0d6cf43a390295d0949c6e8e3564a5b07383038f2b0c74caa715a6c1f9",
+      "redaction": "ANSI formatting removed; local workspace/temp paths, retained private package locators, connection/bearer strings and credential environment assignments redacted. No execution is relabeled."
+    },
+    {
+      "path": "evidence/pr824-ack-reopen-68470-gated-red.log",
+      "executionIdentity": {
+        "scope": "Effective actual deferred Red 1 failed/40 filtered",
+        "code": "684708d9b6101806990ad2f0b910751bbff4348c"
+      },
+      "originalSha256": "1c530dda3811f9e0bfbef73adb4710bd5a74e6e1a1b4bdb4b103ccf54002d837",
+      "deliveredSha256": "c39d5a39cbc0240ffb7561252c5929c3ef24e419b9bcd8f0d3b01b345cc16c0f",
+      "redaction": "ANSI formatting removed; local workspace/temp paths, retained private package locators, connection/bearer strings and credential environment assignments redacted. No execution is relabeled."
+    },
+    {
+      "path": "evidence/pr824-ack-reopen-ef57-full-green.log",
+      "executionIdentity": {
+        "scope": "Earlier Green 41/41 before final cleanup correction",
+        "code": "ef57b7dc5a067749d3d2efe29af823988a3eac72"
+      },
+      "originalSha256": "47de2431363344350595f74d8de38abd1d8e0dfce86685fb66d3f56fbc41d320",
+      "deliveredSha256": "da55f6b547a11dfcad90ab01ba86de6331fe5f098100c3638d5c9688552c81b4",
+      "redaction": "ANSI formatting removed; local workspace/temp paths, retained private package locators, connection/bearer strings and credential environment assignments redacted. No execution is relabeled."
+    },
+    {
+      "path": "evidence/pr824-ack-reopen-final-types.log",
+      "executionIdentity": {
+        "scope": "Final source bytes strict typecheck before delivery sealing; empty log"
+      },
+      "originalSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "deliveredSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "redaction": "ANSI formatting removed; local workspace/temp paths, retained private package locators, connection/bearer strings and credential environment assignments redacted. No execution is relabeled."
+    }
+  ],
+  "excluded": [
+    "private configuration",
+    "credentials",
+    "database backups",
+    "object payloads",
+    "unreviewed runtime logs"
+  ],
+  "states": {
+    "pr": "Draft; unmerged",
+    "production": "not authorized; not executed",
+    "fullController": "not complete",
+    "productionStartupSuccess": "not demonstrated"
+  }
+}

@@ -1,0 +1,29 @@
+{
+  "scope": "Artifact integrity only; no tests executed, no upload/push or approval",
+  "head": "23f3a7e212d57f6423e8c7a65150cf17ffee1d36",
+  "headTree": "2d409e91fa9218b49fcbdee14d66f8c207355c13",
+  "code": "0390bd028219b464e143418cb13155d3819aee0e",
+  "codeTree": "bdd8c313172648b2fedf58b2790775213fa9ab0f",
+  "base": "cda6737a8f177a8bbd2f3bc7d195f8e3037bfa74",
+  "changedPaths": 359,
+  "presentFilesVerifiedAgainstGit": 359,
+  "contractBlobsVerified": 25,
+  "explicitEvidenceVerified": 58,
+  "archiveEntries": 445,
+  "fullBinaryDiffVerified": true,
+  "originalAndDeliveredEvidenceHashesVerified": true,
+  "zipSha256": "278c7126a68d7cf104284557534ca51890b000f8a1a9956a9c90ead72c37b2bc",
+  "priorPackage": {
+    "head": "4b346d6ef483d599a9449bddab44345dd11fce26",
+    "sha256": "96c90ca1ef077f968500910b72626c3ede19a9212a8b991277203c42c6d8f364",
+    "untouched": true
+  },
+  "privacyReview": "Local user/temp paths, private retained locators, connection strings, bearer values and credential environment assignments redacted. Remaining inspected credential hits are static boundary rule metadata, masked Hosted authorization, empty example authorization, and test descriptions. Public hosted /home/runner paths and named /tmp evidence references retained. Git source blobs unchanged.",
+  "limitations": [
+    "58 explicit selected evidence files, not wholesale historical raw logs; prior package remains separately available.",
+    "Original old Hosted bootstrap failure retained; its exact cause remains unproven.",
+    "0390 focused/build/boundary/docs evidence is distinct from source c219 handoff and source 3fa bootstrap; report commit is not a new execution.",
+    "b7 wrong-config zero-test/shared-ledger deviation retained; cannot claim zero writes.",
+    "No full NW02 provider/report chain, P13, approved startup, old-application upgrade or production acceptance."
+  ]
+}
