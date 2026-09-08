@@ -1,0 +1,150 @@
+diff --git a/docs/exec-plans/active/2026-09-06-populated-upgrade.md b/docs/exec-plans/active/2026-09-06-populated-upgrade.md
+index ee37c881b..3d9ffffaa 100644
+--- a/docs/exec-plans/active/2026-09-06-populated-upgrade.md
++++ b/docs/exec-plans/active/2026-09-06-populated-upgrade.md
+@@ -4,6 +4,16 @@
+ 
+ ## Scope and state
+ 
++Current bounded repair: report `3423a7148` failed Hosted frontend (3373/1/0),
++while owned PostgreSQL passed. The parent owns only the topology test's
++working-tip readiness synchronization and its immediate/deferred regression;
++production behavior, grants and timeouts are unchanged (R1). Documentation
++impact: this plan pair and the evidence pair. Local file 25/25; complete
++frontend 3375/3375 and build passed with retained warnings. Bounded independent
++Standards/Spec review passed. NW02 remains a separate
++Scratch source-integration dependency; full P13/startup/controller remain
++internal unfinished work. No production actions or release approval.
++
+ Current resumption: the parent integrates the ten reviewed source-capture files
+ from `7cb5acd13` and owns shared runner/config changes. Focused integration is
+ 120/120; build and unchanged boundary pass. Source Scratch capture is separately
+diff --git a/docs/zh-CN/exec-plans/active/2026-09-06-populated-upgrade.md b/docs/zh-CN/exec-plans/active/2026-09-06-populated-upgrade.md
+index 427199dd1..8e546e447 100644
+--- a/docs/zh-CN/exec-plans/active/2026-09-06-populated-upgrade.md
++++ b/docs/zh-CN/exec-plans/active/2026-09-06-populated-upgrade.md
+@@ -4,6 +4,13 @@
+ 
+ ## 范围与状态
+ 
++当前有界修复：报告 `3423a7148` 的Hosted frontend失败（3373/1/0），owned
++PostgreSQL通过。父协调者独占拓扑测试的working-tip就绪同步与即时／延迟回归；
++生产行为、权限、timeout不变（R1）。文档影响为本计划及证据的中英文文件。
++本地整文件25/25、完整frontend 3375/3375、build通过，保留构建警告；
++独立有界Standards/Spec审查通过。NW02仍是独立Scratch来源接线依赖，完整
++P13／startup／controller仍属内部未完成工作。未执行生产操作或发布批准。
++
+ 当前续工：父协调者集成 `7cb5acd13` 的十个已审查源采集文件，独占共享 runner／config
+ 修改。集成 focused 为120/120，build及未改变的boundary通过；Scratch采集另记为
+ 1通过／9过滤，清理已验证。下一纵向依赖仍为真实多head mapping／比较，随后接通
+diff --git a/ops/self-hosted/populated-upgrade-evidence.md b/ops/self-hosted/populated-upgrade-evidence.md
+index c7e8f86d8..a16bcf611 100644
+--- a/ops/self-hosted/populated-upgrade-evidence.md
++++ b/ops/self-hosted/populated-upgrade-evidence.md
+@@ -6,6 +6,31 @@
+ 
+ ### Resumed integration and latest Hosted result
+ 
++Report head `3423a71488dfe92a5f0749e0c882a90fdfe119ae` subsequently failed
++Hosted `34246119676`, merge checkout `15df31576f155c62615b63d4347cb6432a63df96`.
++Frontend was 3373 passed/1 failed/0 skipped: the shared-working-tip test observed
++`aria-selected=false`. Build and test and Merge bar failed; owned PostgreSQL,
++smoke and quality passed; local non-HDC and target synthetic were skipped.
++Build-job steps after frontend did not execute. This does not rewrite the
++preceding code run's successful execution below.
++
++The bounded frontend test repair waits for the actual `working-tip-1` topology
++before clicking the next node. Immediate and explicitly deferred repository
++responses retain all draft-count, selected-node, shared-tip and submission
++assertions. Before the wait, the deferred case failed because the workspace
++was still loading; after it, the complete file passed 25/25. This establishes
++the missing readiness condition, not an exact reproduction of the Hosted
++cached-DOM state. Production UI, timeout and assertion thresholds are unchanged.
++These local executions are WIP after report head `3423a7148`, not a rerun of
++that commit. Logs: `/tmp/pr824-topology-deferred-red.log` and
++`/tmp/pr824-topology-green.log`. The same test WIP then passed all 3375 frontend
++tests across 438 files (0 failed/skipped), exit 0, in 66.84s; build exited 0
++with existing externalization/chunk warnings. Logs:
++`/tmp/pr824-topology-full-frontend.log`, `/tmp/pr824-topology-build.log`.
++Independent bounded Standards/Spec review passed the single-file diff and its
++evidence limits; it did not run tests or review the full upgrade. This repair
++does not advance A/B/C to done.
++
+ The subsequent exact code `6b520cb7c326654238d27fe5281ad45c016de638`
+ passed Hosted run `34243299959`, actual merge checkout
+ `2c56bd53ac2215126c8aa2dcd039f756598320d3`. Build and test, owned PostgreSQL,
+diff --git a/ops/self-hosted/populated-upgrade-evidence.zh-CN.md b/ops/self-hosted/populated-upgrade-evidence.zh-CN.md
+index 8a5fd5850..1b5467d1c 100644
+--- a/ops/self-hosted/populated-upgrade-evidence.zh-CN.md
++++ b/ops/self-hosted/populated-upgrade-evidence.zh-CN.md
+@@ -4,6 +4,25 @@
+ 
+ ## 中断后续工与最新 Hosted 结果
+ 
++后续报告 head `3423a71488dfe92a5f0749e0c882a90fdfe119ae` 的 Hosted
++`34246119676` 失败，merge checkout 为 `15df31576f155c62615b63d4347cb6432a63df96`。
++Frontend 3373通过／1失败／0跳过：共享 working tip 用例观察到
++`aria-selected=false`。Build and test、Merge bar失败；owned PostgreSQL、
++smoke、quality成功；local non-HDC和target synthetic跳过。Build job在frontend
++之后的步骤未执行，不改写下述前一次代码运行的成功结果。
++
++本次有界测试修复等待实际 `working-tip-1` 拓扑后再点击下一节点，保留草稿数量、
++节点选中、共享tip及提交断言，并覆盖即时和显式延迟的仓储响应。加入等待之前，
++延迟用例因工作台仍在loading而失败；加入后整文件25/25通过。这证明缺少就绪条件，
++不等于精确重现Hosted的缓存DOM状态。生产UI、timeout及断言门槛均未修改。
++本地执行属于报告head `3423a7148` 之后的WIP，不重标为该提交复跑；日志为
++`/tmp/pr824-topology-deferred-red.log`、`/tmp/pr824-topology-green.log`。
++同一测试WIP随后完整frontend为438文件、3375通过／0失败／0跳过，退出0，
++66.84秒；build退出0，保留原有externalization／chunk警告。日志：
++`/tmp/pr824-topology-full-frontend.log`、`/tmp/pr824-topology-build.log`。
++独立有界Standards/Spec审查通过该单文件diff及证据边界，审查者未运行测试，
++未审完整升级。此修复不使A/B/C变为完成。
++
+ 后续代码 `6b520cb7c326654238d27fe5281ad45c016de638` 的 Hosted run
+ `34243299959` 已通过，实际 merge checkout 为
+ `2c56bd53ac2215126c8aa2dcd039f756598320d3`。Build and test、owned PostgreSQL、
+diff --git a/src/components/parameter-topology/ApiProjectTopologyWorkspace.test.tsx b/src/components/parameter-topology/ApiProjectTopologyWorkspace.test.tsx
+index eda9fddab..38e3090d9 100644
+--- a/src/components/parameter-topology/ApiProjectTopologyWorkspace.test.tsx
++++ b/src/components/parameter-topology/ApiProjectTopologyWorkspace.test.tsx
+@@ -970,7 +970,9 @@ describe("ApiProjectTopologyWorkspace", () => {
+     );
+   });
+ 
+-  it("aligns same-project pending drafts to the shared working tip after create", async () => {
++  it.each([false, true])("aligns same-project pending drafts to the shared working tip after create (deferred topology: %s)", async (deferredTopology) => {
++    const workingTipLoaded = createDeferred<void>();
++    const defaultGetTopology = createRepository().getTopology;
+     const createBindingDraft = vi.fn()
+       .mockResolvedValueOnce({
+         draftId: "draft-gpio",
+@@ -1002,6 +1004,10 @@ describe("ApiProjectTopologyWorkspace", () => {
+       });
+     const repository = createRepository({
+       createBindingDraft,
++      getTopology: vi.fn(async (...args: Parameters<ParameterTopologyRepository["getTopology"]>) => {
++        if (deferredTopology && args[2] === "working-tip-1") await workingTipLoaded.promise;
++        return defaultGetTopology(...args);
++      }),
+       getSpec: vi.fn().mockImplementation(async (specId: string) => ({
+         id: specId,
+         organizationId: "org-chargelab",
+@@ -1051,6 +1057,18 @@ describe("ApiProjectTopologyWorkspace", () => {
+     });
+     await screen.findByRole("region", { name: "参数修改提交" });
+ 
++    if (deferredTopology) {
++      await waitFor(() => expect(repository.getTopology).toHaveBeenCalledWith(
++        "aurora", "dcs-default-aurora", "working-tip-1", "effective"
++      ));
++      expect(screen.getByRole("region", { name: "DTS 参数工作台" })).toHaveAttribute("aria-busy", "true");
++      workingTipLoaded.resolve();
++    }
++
++    // The draft tray can appear before the topology reload replaces its tree.
++    // Interact with the new working tip, not a node from the previous render.
++    await waitFor(() => expect(screen.getByRole("region", { name: "DTS 参数工作台" }))
++      .toHaveAttribute("data-revision-id", "working-tip-1"));
+     workspace = screen.getByRole("region", { name: "DTS 参数工作台" });
+     const mt5788 = within(workspace).getByRole("treeitem", { name: /未分类 · mt5788/ });
+     fireEvent.click(mt5788);

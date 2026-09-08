@@ -1,0 +1,9 @@
+
+ RUN  v4.1.5 /Users/tzrea1/.codex/worktrees/457f/WiseEff
+
+
+ Test Files  1 passed (1)
+      Tests  25 passed (25)
+   Start at  23:57:07
+   Duration  4.56s (transform 1.61s, setup 49ms, import 2.61s, tests 1.70s, environment 148ms)
+

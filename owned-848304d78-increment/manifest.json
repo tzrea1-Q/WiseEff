@@ -1,0 +1,33 @@
+{
+  "base": "3423a71488dfe92a5f0749e0c882a90fdfe119ae",
+  "head": "848304d780abd680b937b41f81afcb298a260ead",
+  "tree": "4cb7f9a1dd9248c83612189b7821bbdce17bb5bc",
+  "files": [
+    {
+      "path": "docs/exec-plans/active/2026-09-06-populated-upgrade.md",
+      "sha256": "8819ba97daea3d8de6e1144fc382d2a7f03213b1d70eddfa0bed42a7044c0c83",
+      "blob": "3d9ffffaa79e274b49b68dd5f0b8b7321121da83"
+    },
+    {
+      "path": "docs/zh-CN/exec-plans/active/2026-09-06-populated-upgrade.md",
+      "sha256": "5133e912d375d4c2790e36925efcfb23bb056b4ec11a6db7e7b73063d1e90849",
+      "blob": "8e546e4472fa2133290a2cfce79ce7dbe49a3008"
+    },
+    {
+      "path": "ops/self-hosted/populated-upgrade-evidence.md",
+      "sha256": "e1090d03e85f0b677d2a2389396d9ff5f706757e6c07f15c98e4b61cc5906a5d",
+      "blob": "a16bcf611407a91c99cf092eda50c1467ee13794"
+    },
+    {
+      "path": "ops/self-hosted/populated-upgrade-evidence.zh-CN.md",
+      "sha256": "22d0df03829c39a546397867eba0b84bc6d52f2895a7c5abb41684a25d46644e",
+      "blob": "1b5467d1c4af810523f43d5ee62f5e3a7e08479f"
+    },
+    {
+      "path": "src/components/parameter-topology/ApiProjectTopologyWorkspace.test.tsx",
+      "sha256": "2a462a7f2300af1699637f09861fa6354469c85fb6f7206d7f2d5c445f15d487",
+      "blob": "38e3090d97d9286c9ef56785f804ebfdd1f0a395"
+    }
+  ],
+  "scope": "Five-file test synchronization increment; not full upgrade. Logs retain precommit WIP identity; Hosted current run pending."
+}
