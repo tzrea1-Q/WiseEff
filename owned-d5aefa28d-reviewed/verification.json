@@ -1,0 +1,10 @@
+{
+  "head": "d5aefa28d32afcd42fc22a2ef9f728cef6c749be",
+  "fullFiles": 359,
+  "archiveEntries": 456,
+  "archiveBytes": 4102353,
+  "sha256": "c0160cf723124b84306ff0126ae0136d698cd53683007d6975703c71140a85ec",
+  "gitBytesVerified": true,
+  "zipReadbackVerified": true,
+  "independentReview": "PASS: independent exact Git bytes, archive paths, checksums and material review"
+}
