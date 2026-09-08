@@ -58,6 +58,7 @@ export async function captureConversionSourceSnapshot(client: Queryable): Promis
 async function scanConversionSourceInventory(client: Queryable, capture: boolean): Promise<ConversionSourceSnapshot> {
   const prior = await client.query<{ row_security: string }>("show row_security");
   await client.query("set row_security = off");
+  let primary: Error | undefined;
   try {
   const tables = await client.query<{ table_name: string; columns: string[] }>(`
     select c.relname as table_name, array_agg(a.attname::text order by a.attnum) as columns
@@ -104,8 +105,20 @@ async function scanConversionSourceInventory(client: Queryable, capture: boolean
     if (records.some((record, index) => index > 0 && record.sourceKind === records[index - 1]!.sourceKind &&
       record.sourceId === records[index - 1]!.sourceId)) throw new Error("PCAT-CONVERSION-SOURCE-PROJECTION-DUPLICATE");
     return { sourceInventoryFingerprint: `sha256:${hash.digest("hex")}`, records };
+  } catch (error) {
+    if (!capture) throw error;
+    const message = error instanceof Error ? error.message : "";
+    primary = new Error(["PCAT-CONVERSION-SOURCE-PROJECTION-INVALID", "PCAT-CONVERSION-SOURCE-PROJECTION-INCOMPLETE",
+      "PCAT-CONVERSION-SOURCE-PROJECTION-DUPLICATE"].includes(message) ? message : "PCAT-CONVERSION-SOURCE-PROJECTION-QUERY-FAILED");
+    throw primary;
   } finally {
-    await client.query(prior.rows[0]?.row_security === "off" ? "set row_security = off" : "set row_security = on");
+    try { await client.query(prior.rows[0]?.row_security === "off" ? "set row_security = off" : "set row_security = on"); }
+    catch (error) {
+      if (!capture) throw error;
+      const cleanup = new Error("PCAT-CONVERSION-SOURCE-PROJECTION-RESTORE-FAILED");
+      if (primary) throw new AggregateError([primary, cleanup], "PCAT-CONVERSION-SOURCE-PROJECTION-AND-RESTORE-FAILED");
+      throw cleanup;
+    }
   }
 }
 
