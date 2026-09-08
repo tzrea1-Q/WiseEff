@@ -10,7 +10,7 @@ import { createMigratedSelfHostedPg16Database } from "../../../../server/testing
 import { createPostgresDatabase, type RootDatabase } from "../../../../server/shared/database/client";
 import { canonicalJson, sha256Prefixed } from "./journal";
 import { withHostOperationLock, type HandoffPlan } from "./handoff";
-import { observeRuntimeRoles, openRuntimeRoleSource, RuntimeRoleSourceError, type RuntimeRoleSource } from "./runtimeRoleSource";
+import { assertRuntimeRoleSourceManagementSession, observeRuntimeRoles, openRuntimeRoleSource, RuntimeRoleSourceError, type RuntimeRoleSource } from "./runtimeRoleSource";
 
 // These are actual LOGIN/config/session proofs on a parent-owned cluster. The
 // scoped handoff fixture is not prepareHandoff/P12/report/startup approval.
@@ -106,6 +106,47 @@ it("observes actual application and optional governance LOGIN OIDs without start
     } finally { await source.close(); }
     await expect(observeRuntimeRoles(source)).rejects.toThrow("CLOSED-OR-LOST");
   });
+});
+
+it("proves a checked-out manager session through the private source endpoint and releases its challenge lock", async () => {
+  await within({}, async (f, lock) => {
+    const source = await openRuntimeRoleSource({ handoff: f.plan, expectedHandoffDigest: f.plan.digest, lock });
+    const candidate = new pg.Client({ connectionString: target.url });
+    candidate.on("error", () => {});
+    try {
+      await candidate.connect();
+      const pid = (await candidate.query<{ pid: number }>("select pg_catalog.pg_backend_pid() as pid")).rows[0].pid;
+      await expect(assertRuntimeRoleSourceManagementSession(source, candidate)).resolves.toBeUndefined();
+      const locks = await admin.query<{ count: number }>(`select count(*)::int as count from pg_catalog.pg_locks
+        where pid=$1 and locktype='advisory' and granted and classid=824018::oid`, [pid]);
+      expect(locks.rows[0]?.count).toBe(0);
+    } finally {
+      await candidate.end();
+      await source.close();
+    }
+  });
+});
+
+it("refuses a manager-source assertion after the source manager dies and releases every source lease", async () => {
+  const observed = observePools();
+  try {
+    await within({}, async (f, lock) => {
+      const source = await openRuntimeRoleSource({ handoff: f.plan, expectedHandoffDigest: f.plan.digest, lock });
+      const candidate = new pg.Client({ connectionString: target.url });
+      candidate.on("error", () => {});
+      try {
+        await candidate.connect();
+        expect((await terminateLogin("manager")).rows).toEqual([{ terminated: true }]);
+        await expect(assertRuntimeRoleSourceManagementSession(source, candidate)).rejects.toMatchObject({
+          code: expect.stringMatching(/^(CLOSED-OR-LOST|SESSION-ENDPOINT-MISMATCH|MANAGEMENT-SESSION-UNAVAILABLE)$/),
+        });
+      } finally {
+        await candidate.end().catch(() => undefined);
+        await source.close();
+      }
+      await assertReleased(observed);
+    });
+  } finally { await observed.cleanup(); }
 });
 
 it("refuses the actual bootstrap LOGIN hidden by the old V13 postgres exclusion", async () => {

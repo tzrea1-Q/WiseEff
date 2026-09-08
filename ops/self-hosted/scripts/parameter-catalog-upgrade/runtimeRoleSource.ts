@@ -10,7 +10,9 @@ import { assertHostOperationLockForJournal, openHandoffRuntimeConfigurationLease
 import { observeLegacySourceEndpoint } from "./legacyWriterSource";
 
 export class RuntimeRoleSourceError extends Error {
-  constructor(readonly code: string) { super(`PCAT-RUNTIME-ROLE-SOURCE-${code}`); }
+  constructor(readonly code: string, readonly cleanupCode?: string) {
+    super(`PCAT-RUNTIME-ROLE-SOURCE-${code}`);
+  }
 }
 function requireFact(value: unknown, code: string): asserts value {
   if (!value) throw new RuntimeRoleSourceError(code);
@@ -25,14 +27,31 @@ export type RuntimeRoleObservation = {
 };
 declare const sourceBrand: unique symbol;
 export type RuntimeRoleSource = { readonly [sourceBrand]: true; close(): Promise<void> };
-const issued = new WeakMap<RuntimeRoleSource, () => Promise<RuntimeRoleObservation>>();
+type IssuedRuntimeRoleSource = {
+  observe: () => Promise<RuntimeRoleObservation>;
+  assertManagementSession: (client: pg.PoolClient) => Promise<void>;
+};
+const issued = new WeakMap<RuntimeRoleSource, IssuedRuntimeRoleSource>();
 
 /** Observations cannot be supplied as JSON to this consumer. Every call repeats
  * config, endpoint, same-session identity/challenge and actual lock checks. */
 export async function observeRuntimeRoles(source: RuntimeRoleSource): Promise<RuntimeRoleObservation> {
   const current = issued.get(source);
   requireFact(current, "NOT-ISSUED");
-  return current();
+  return current.observe();
+}
+
+/** Proves that a retirement manager session is on the same pinned source
+ * endpoint as the private management configuration. The caller receives only
+ * an opaque source handle and its own checked-out client; no URL, credential,
+ * callback, or caller-provided endpoint participates in this proof. */
+export async function assertRuntimeRoleSourceManagementSession(
+  source: RuntimeRoleSource,
+  client: pg.PoolClient,
+): Promise<void> {
+  const current = issued.get(source);
+  requireFact(current, "NOT-ISSUED");
+  await current.assertManagementSession(client);
 }
 
 const parseConnection = (value: string | undefined) => {
@@ -164,6 +183,66 @@ export async function openRuntimeRoleSource(input: { handoff: HandoffPlan; expec
       await client.query("select pg_catalog.pg_advisory_lock(824017,$1::int)", [key]);
       sessions.push({ selection, client, key, identity });
     }
+    const assertManagementSession = async (candidate: pg.PoolClient): Promise<void> => {
+      try {
+        requireFact(!closed && !lost, "CLOSED-OR-LOST");
+        await config.read();
+        requireFact(inspect() === containerIdentity, "TARGET-DRIFT");
+        peer(manager);
+        await assertBindingManagementLogin(manager);
+        requireFact(canonicalJson(await readBindingDatabaseIdentity(manager)) === canonicalJson(target), "DATABASE-DRIFT");
+        peer(candidate);
+        const identity = (await candidate.query<{ pid: number; database: string }>(`select pg_catalog.pg_backend_pid() as pid,
+          (select oid::text from pg_catalog.pg_database where datname=pg_catalog.current_database()) as database`)).rows[0];
+        requireFact(identity?.pid && identity.database === target.databaseOid, "MANAGEMENT-SESSION-IDENTITY-MISMATCH");
+        const key = randomInt(1, 2147483647);
+        let lockAttempted = false;
+        let primaryError: unknown;
+        let cleanupError: unknown;
+        try {
+          lockAttempted = true;
+          await candidate.query("select pg_catalog.pg_advisory_lock(824018,$1::int)", [key]);
+          const proof = await manager.query<{ valid: boolean }>(`select count(*)=1 as valid from pg_catalog.pg_locks
+            where locktype='advisory' and granted and mode='ExclusiveLock' and pid=$1 and database=$2::oid
+              and classid=824018::oid and objid=$3::oid and objsubid=2`, [identity.pid, target.databaseOid, key]);
+          requireFact(proof.rows[0]?.valid === true, "MANAGEMENT-SESSION-CHALLENGE-FAILED");
+        } catch (error) {
+          primaryError = error;
+        } finally {
+          if (lockAttempted) {
+            try {
+              const unlocked = await candidate.query<{ unlocked: boolean }>(
+                "select pg_catalog.pg_advisory_unlock(824018,$1::int) as unlocked", [key]);
+              if (unlocked.rows[0]?.unlocked !== true) throw new RuntimeRoleSourceError("MANAGEMENT-SESSION-UNLOCK-FAILED");
+            } catch (error) {
+              cleanupError = error;
+              // A failed unlock leaves the caller-owned session lease uncertain.
+              // Retire the source as well; the caller still owns and must close
+              // the candidate client in its normal resource-finally path.
+              lost = true;
+            }
+          }
+        }
+        if (primaryError) {
+          const cleanupCode = cleanupError ? "MANAGEMENT-SESSION-CLEANUP-UNKNOWN" : undefined;
+          // Keep the typed admission reason, but never export a driver error or
+          // its cause. The owner must destroy the checked-out client when this
+          // static cleanup code is present.
+          if (primaryError instanceof RuntimeRoleSourceError) {
+            throw cleanupCode ? new RuntimeRoleSourceError(primaryError.code, cleanupCode) : primaryError;
+          }
+          if (primaryError instanceof RuntimeConnectionError && !cleanupCode) throw primaryError;
+          throw new RuntimeRoleSourceError(cleanupCode ?? "MANAGEMENT-SESSION-UNAVAILABLE", cleanupCode);
+        }
+        if (cleanupError) throw new RuntimeRoleSourceError("MANAGEMENT-SESSION-CLEANUP-UNKNOWN");
+        await config.read(); requireFact(inspect() === containerIdentity, "TARGET-DRIFT");
+        await assertHostOperationLockForJournal(lock, plan.inputs.journalPath);
+        requireFact(!closed && !lost, "CLOSED-OR-LOST");
+      } catch (error) {
+        if (error instanceof RuntimeRoleSourceError || error instanceof RuntimeConnectionError) throw error;
+        throw new RuntimeRoleSourceError("MANAGEMENT-SESSION-UNAVAILABLE");
+      }
+    };
     const current = async (): Promise<RuntimeRoleObservation> => {
       try {
         requireFact(!closed && !lost, "CLOSED-OR-LOST");
@@ -195,7 +274,7 @@ export async function openRuntimeRoleSource(input: { handoff: HandoffPlan; expec
     };
     await current();
     const source = Object.freeze({ close }) as RuntimeRoleSource;
-    issued.set(source, current);
+    issued.set(source, { observe: current, assertManagementSession });
     return source;
   } catch (error) {
     await close().catch(() => undefined);

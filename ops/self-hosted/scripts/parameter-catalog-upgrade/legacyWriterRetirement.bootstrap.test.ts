@@ -8,7 +8,7 @@ import { retireLegacyApplicationLogins, inspectLegacyApplicationLoginFence, type
 
 // Root orchestration only. These I/O substitutes do not prove authentic report
 // approval, a P12 SQL commit, Docker identity, or a PostgreSQL password rotation.
-const io = vi.hoisted(() => ({ apply: vi.fn(), sqlPrivilegeEffect: vi.fn(), sqlInspect: vi.fn(), runtimeRoles: vi.fn(), inspect: vi.fn(), transportInspect: vi.fn(), journal: vi.fn(),
+const io = vi.hoisted(() => ({ apply: vi.fn(), sqlPrivilegeEffect: vi.fn(), sqlInspect: vi.fn(), runtimeRoles: vi.fn(), runtimeManager: vi.fn(), inspect: vi.fn(), transportInspect: vi.fn(), journal: vi.fn(),
   package: vi.fn(), docker: vi.fn(), activation: vi.fn(), report: vi.fn(),
   ordinary: false, ordinaryFenced: false, runtimeCloseFails: false, pools: [] as string[],
   clients: [] as Array<{ kind: string; query: ReturnType<typeof vi.fn>; release: ReturnType<typeof vi.fn>; emit(event: string): boolean }>,
@@ -61,6 +61,7 @@ vi.mock("./runtimeRoleSource", () => ({ openRuntimeRoleSource: async () => ({ cl
   io.closed.push("runtime-source"); if (io.runtimeCloseFails) throw new Error("private-runtime-close");
   if (io.fault === "ordinary-close-host-loss") io.fault = "host-lock";
 } }),
+  assertRuntimeRoleSourceManagementSession: io.runtimeManager,
   observeRuntimeRoles: io.runtimeRoles,
 }));
 vi.mock("pg", async () => {
@@ -117,7 +118,7 @@ vi.mock("pg", async () => {
 });
 
 const roots: string[] = [];
-beforeEach(() => { vi.clearAllMocks(); io.ordinary = false; io.ordinaryFenced = false; io.runtimeCloseFails = false; io.pools.length = 0; io.clients.length = 0; io.rootEvents.length = 0; io.closed.length = 0; io.fault = ""; io.hostRefused = false; io.sourceConnects = 0; });
+beforeEach(() => { vi.clearAllMocks(); io.ordinary = false; io.ordinaryFenced = false; io.runtimeCloseFails = false; io.pools.length = 0; io.clients.length = 0; io.rootEvents.length = 0; io.closed.length = 0; io.fault = ""; io.hostRefused = false; io.sourceConnects = 0; io.runtimeManager.mockResolvedValue(undefined); });
 afterEach(async () => { for (const root of roots.splice(0)) await rm(root, { recursive: true }); });
 
 async function fixture() {
@@ -226,8 +227,18 @@ it("continues ordinary LOGIN retirement through the existing SQL effect using ob
   const result = await retireLegacyApplicationLogins(f.input);
   expect(io.ordinaryFenced).toBe(true);
   expect(io.sqlPrivilegeEffect).toHaveBeenCalledOnce();
+  expect(io.runtimeManager).toHaveBeenCalled();
   expect(io.runtimeRoles).toHaveBeenCalled();
   expect(result.status).toBe("legacy-logins-fenced-not-p13");
+});
+
+it("refuses ordinary retirement when the private runtime source cannot prove the manager session", async () => {
+  const f = await ordinaryFixture();
+  io.runtimeManager.mockRejectedValueOnce(new Error("private-manager-source-unavailable"));
+  await expect(retireLegacyApplicationLogins(f.input)).rejects.toThrow(/^PCAT-UPG-LEGACY-LOGIN-/);
+  expect(io.ordinaryFenced).toBe(false);
+  expect(io.sqlPrivilegeEffect).not.toHaveBeenCalled();
+  expect(io.clients.find(client => client.kind === "bootstrap")?.release).toHaveBeenCalledWith(true);
 });
 
 it("inspects the original ordinary authentication and SQL successor without repeating effects or old authentication", async () => {

@@ -6,7 +6,7 @@ import { expect, it, vi } from "vitest";
 import * as handoff from "./handoff";
 import { canonicalJson, sha256Prefixed } from "./journal";
 import * as runtime from "../../../../server/shared/database/runtimeConnection";
-import { observeRuntimeRoles, openRuntimeRoleSource } from "./runtimeRoleSource";
+import { assertRuntimeRoleSourceManagementSession, observeRuntimeRoles, openRuntimeRoleSource } from "./runtimeRoleSource";
 
 const checkout = vi.hoisted(() => ({ event: undefined as "error" | "end" | undefined, release: vi.fn(), end: vi.fn() }));
 vi.mock("pg", async original => {
@@ -79,6 +79,7 @@ it.each(["error", "end"] as const)("owns the checkout before a synchronous %s ev
 
 it("rejects caller-created role observations and source locks without a connection", async () => {
   await expect(observeRuntimeRoles({ close: async () => undefined } as never)).rejects.toThrow("NOT-ISSUED");
+  await expect(assertRuntimeRoleSourceManagementSession({ close: async () => undefined } as never, {} as never)).rejects.toThrow("NOT-ISSUED");
   const f = await fixture();
   try {
     await expect(openRuntimeRoleSource({ handoff: f.plan, expectedHandoffDigest: f.plan.digest, lock: { async assertHeld() {} } }))

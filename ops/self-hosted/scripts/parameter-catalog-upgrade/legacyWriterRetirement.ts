@@ -24,7 +24,7 @@ import { assertHostOperationLockForJournal, type HandoffPlan, type HostOperation
 import { canonicalJson, commitJournalTransition, loadUpgradeJournal, sha256Prefixed,
   type BootstrapRetirementEvent, type BootstrapRetirementIntent } from "./journal";
 import { observeLegacySourceEndpoint } from "./legacyWriterSource";
-import { openRuntimeRoleSource, observeRuntimeRoles, type RuntimeRoleSource } from "./runtimeRoleSource";
+import { assertRuntimeRoleSourceManagementSession, openRuntimeRoleSource, observeRuntimeRoles, type RuntimeRoleSource } from "./runtimeRoleSource";
 import { applyLegacySqlPrivilegeFence, beginLegacySqlPrivilegeInspection,
   inspectLegacySqlPrivilegeFenceOnHeldSession } from "../../../../server/modules/catalog-cutover/retirement/legacySqlPrivilegeFence";
 
@@ -377,10 +377,12 @@ async function retire(input: LegacyLoginRetirementInput, bootstrapInspection = f
       };
       await verifyGuard();
       runtimeRoleSource = await openRuntimeRoleSource({ handoff: plan, expectedHandoffDigest: fixed.expectedHandoffDigest, lock: input.lock });
+      await assertRuntimeRoleSourceManagementSession(runtimeRoleSource, admin!);
       const configuredRoles = structuredClone(await observeRuntimeRoles(runtimeRoleSource));
       need(configuredRoles.runId === plan.inputs.runId && configuredRoles.handoffDigest === fixed.expectedHandoffDigest &&
         isDeepStrictEqual(configuredRoles.target, input.activation.target), "RUNTIME-ROLE-SOURCE-MISMATCH");
       const verifyRuntimeRoles = async () => {
+        await assertRuntimeRoleSourceManagementSession(runtimeRoleSource!, admin!);
         need(isDeepStrictEqual(await observeRuntimeRoles(runtimeRoleSource!), configuredRoles), "RUNTIME-ROLE-SOURCE-DRIFT");
       };
       const rootKind = "bootstrap-application-authentication-intent";
@@ -508,11 +510,13 @@ async function retire(input: LegacyLoginRetirementInput, bootstrapInspection = f
       mutator: admin, target: input.activation.target,
       onMutatorReleased: () => { adminReleased = true; connectionFailed = true; } });
     runtimeRoleSource = await openRuntimeRoleSource({ handoff: plan, expectedHandoffDigest: fixed.expectedHandoffDigest, lock: input.lock });
+    await assertRuntimeRoleSourceManagementSession(runtimeRoleSource, admin!);
     const configuredRoles = structuredClone(await observeRuntimeRoles(runtimeRoleSource));
     need(configuredRoles.runId === plan.inputs.runId && configuredRoles.handoffDigest === fixed.expectedHandoffDigest &&
       isDeepStrictEqual(configuredRoles.target, input.activation.target), "RUNTIME-ROLE-SOURCE-MISMATCH");
     const verifyOrdinaryBoundary = async () => {
       await targetCheck(); await guard!.verify();
+      await assertRuntimeRoleSourceManagementSession(runtimeRoleSource!, admin!);
       need(isDeepStrictEqual(await observeRuntimeRoles(runtimeRoleSource!), configuredRoles), "RUNTIME-ROLE-SOURCE-DRIFT");
       await verifyBoundReport();
       await assertHostOperationLockForJournal(input.lock, plan.inputs.journalPath);
@@ -689,6 +693,7 @@ async function inspect(input: LegacyLoginRetirementInput): Promise<{
           const expectedJournal = structuredClone(journal.value.record);
           await client.query("rollback");
           runtimeRoleSource = await openRuntimeRoleSource({ handoff: fixed.handoff, expectedHandoffDigest: fixed.expectedHandoffDigest, lock: input.lock });
+          await assertRuntimeRoleSourceManagementSession(runtimeRoleSource, client);
           const configured = await observeRuntimeRoles(runtimeRoleSource);
           need(configured.runId === fixed.handoff.inputs.runId && configured.handoffDigest === fixed.expectedHandoffDigest &&
             isDeepStrictEqual(configured.target, fixed.target), "RUNTIME-ROLE-SOURCE-MISMATCH");
@@ -703,6 +708,7 @@ async function inspect(input: LegacyLoginRetirementInput): Promise<{
           await assertNoSharedLegacyRoleUse(client, original, fixed.target);
           const current = await createApplicationReadActivation(input.activation).inspectOnHeldManagementSession(fixed.activationIntent, client);
           need(current.kind === "applied" && isDeepStrictEqual(current.binding, activation.binding), "P12-BINDING-MISMATCH");
+          await assertRuntimeRoleSourceManagementSession(runtimeRoleSource, client);
           need(isDeepStrictEqual(await observeRuntimeRoles(runtimeRoleSource), configured), "RUNTIME-ROLE-SOURCE-DRIFT");
           const latest = loadUpgradeJournal({ journalPath: fixed.handoff.inputs.journalPath, runId: fixed.handoff.inputs.runId, requireSettled: true });
           need(latest.ok && isDeepStrictEqual(latest.value.record, expectedJournal), "JOURNAL-DRIFT");
