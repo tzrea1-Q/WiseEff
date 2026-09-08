@@ -22,13 +22,22 @@ export async function readComparisonMappingFactsOnHeldSession(input: {
 }) {
   const { client, runId, planDigest, verifyBoundary } = input;
   const target = structuredClone(input.target);
-  try {
+  const assertResolution = async () => {
+    const row = (await client.query<{ schemas: string[] }>("select pg_catalog.current_schemas(true)::text[] as schemas")).rows[0];
+    if (!Array.isArray(row?.schemas) || row.schemas[0] !== "pg_catalog") refuse("HELD-SESSION-REJECTED");
+  };
+  const verify = async () => {
+    await assertResolution();
     await verifyHeldManagementSession(client, target, verifyBoundary);
+    await assertResolution();
+  };
+  try {
+    await verify();
     const savepoint = pg.escapeIdentifier(`comparison_observe_${randomUUID().replaceAll("-", "")}`);
     await client.query(`savepoint ${savepoint}`);
     await client.query(`release savepoint ${savepoint}`);
     const facts = await readFacts(client, target, runId, planDigest);
-    await verifyHeldManagementSession(client, target, verifyBoundary);
+    await verify();
     return structuredClone({ mapping: { epoch: facts.mappingEpoch, headDigest: facts.headDigest },
       versionInventoryDigest: facts.versionInventoryDigest, catalog: facts.catalog,
       sourceSnapshotFingerprint: facts.run.source_snapshot_fingerprint, candidateSha: facts.run.target_artifact_sha,

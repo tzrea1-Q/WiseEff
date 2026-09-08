@@ -23,6 +23,7 @@ it("inspects on the existing management transaction without reacquiring its S7 l
 it("does not treat a session isolation default as an active held comparison transaction", async () => {
   const target = { systemIdentifier: "123", databaseOid: "456" };
   const client = { query: vi.fn(async (sql: string) => {
+    if (sql.includes("current_schemas")) return { rowCount: 1, rows: [{ schemas: ["pg_catalog", "public"] }] };
     if (sql.includes("pg_control_system")) return { rowCount: 1, rows: [target] };
     if (sql.includes("transaction_isolation")) return { rowCount: 1, rows: [{ same_identity: true, manager: true,
       isolation: "repeatable read", timezone: "UTC", locked: true }] };
