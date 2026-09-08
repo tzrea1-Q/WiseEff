@@ -12,6 +12,7 @@ type DeepMutable<Value> = Value extends readonly (infer Item)[]
     : Value;
 
 const mutable = <Value>(value: Value): DeepMutable<Value> => value as DeepMutable<Value>;
+type MutableDefinitionContent = DeepMutable<CatalogReleaseDefinitionDocument["content"]>;
 
 export const syntheticTarget = {
   subjectId: "csub_acme_power",
@@ -71,7 +72,7 @@ const syntheticDefinition = (
       valueSchema: { type: "boolean" },
       matching: { sourceProperty: propertyKey, selectorKind: "driver-compatible" as const },
     },
-  } as unknown as CatalogReleaseDefinitionDocument["content"];
+  } as unknown as MutableDefinitionContent;
   content.revision.contentDigest = syntheticDigest(syntheticRevisionModel({
     source,
     kind: "definition",
@@ -113,7 +114,7 @@ const refreshSyntheticRelease = (release: DeepMutable<CatalogReleaseBundle["rele
   refreshReleaseAggregateDigest(release);
 };
 
-const deepFreeze = <Value>(value: Value): Value => {
+export const deepFreeze = <Value>(value: Value): Value => {
   if (value !== null && typeof value === "object" && !Object.isFrozen(value)) {
     for (const nested of Object.values(value)) deepFreeze(nested);
     Object.freeze(value);
@@ -142,7 +143,7 @@ export const reviewedSyntheticBundle = (): CatalogReleaseBundle => {
     && document.content.id === syntheticTarget.definitions.iin_max.id);
   if (!targetIin || targetIin.kind !== "definition") throw new Error("comparison-multihead-reviewed-bundle-iin-target-missing");
   targetIin.content.revision.valueSchema = syntheticIinArrayValueSchema;
-  target.documents.push(syntheticDefinition(targetIin.source, subject.content.id, "enabled"));
+  target.documents.push(mutable(syntheticDefinition(targetIin.source, subject.content.id, "enabled")));
   refreshSyntheticRelease(target);
   return deepFreeze({
     ...full,

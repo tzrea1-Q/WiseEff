@@ -22,6 +22,7 @@ import { jsonCatalogReleaseSource } from "../../catalog-kernel/interface";
 import { readComparisonSourceInventory } from "./planInventory";
 import { COMPARISON_FAMILIES } from "./corpusContributionSchema";
 import {
+  deepFreeze,
   reviewedSyntheticBundle,
   syntheticIinArrayValueSchema,
   syntheticTarget,
