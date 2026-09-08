@@ -84,6 +84,15 @@ mapping 库存的关联与逐 case 证据保全仍是集成责任，不是已批
 
 ## 验证与文档影响
 
+comparison P0 的管理连接现在在原 pool callback 内、回调返回前登记
+`error`/`end` 监听，覆盖 S7、宿主 journal 的 await、借入源租约及连接释放。
+连接丢失会拒绝继续派发 P0；丢弃的 native client 先完成 end 再 release，
+调用者的 pool 仍由调用者持有。健康连接上的原未决 attempt 拒绝保持不变。
+修复前四个生命周期反例失败；新增五例与原 23 个 source/inventory 用例
+合计 28/28。测试使用真实 `pg.Client` 事件对象与 checkout/SQL 替身，
+不证明真实 PostgreSQL LOGIN 或成功 P0。定向严格类型与原 trusted boundary
+扫描通过；真实源/plan 及完整 v2 provider 调用链仍待完成。
+
 `liveEvidence.test.ts` 使用合成 family contributions 和合成边界 source，
 运行真实聚合器、parser 与报告生成器。报告关联夹具不是服务产生的获批报告。
 测试覆盖九项关联、采集失败、漂移、重放、不可用 family 和多 head 限制；

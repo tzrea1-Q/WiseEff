@@ -101,6 +101,18 @@ shortcut.
 
 ## Verification and documentation impact
 
+The comparison P0 management checkout now installs its `error`/`end` observers
+inside the original pool callback, before that callback returns. They remain
+attached through S7, the host journal awaits, the borrowed source lease and
+checkout release. Session loss refuses further P0 dispatch; a discarded native
+client is ended before release, while the caller's pool remains owned by the
+caller. A healthy unresolved-attempt refusal keeps its original result.
+Four lifecycle counterexamples failed before this fix; the five focused cases
+and the existing 23 source/inventory cases pass together (28/28). These use a
+native `pg.Client` event emitter with checkout/SQL doubles, not PostgreSQL LOGIN
+or a successful P0 execution. Targeted strict types and the original trusted
+boundary scan pass; the real source/plan and full v2 provider chain remain pending.
+
 `liveEvidence.test.ts` runs the real aggregation, parsers and report generator
 with synthetic family contributions and a synthetic boundary source. Its
 report association fixture is not an approved service report. These tests

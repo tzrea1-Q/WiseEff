@@ -563,23 +563,54 @@ const runPhase = async (
 
 const withCutoverLock = async <T>(
   pool: pg.Pool,
-  body: (client: pg.PoolClient) => Promise<CutoverResult<T>>,
+  body: (client: pg.PoolClient, assertLive: () => void) => Promise<CutoverResult<T>>,
 ): Promise<CutoverResult<T>> => {
-  const client = await pool.connect();
-  let acquired = false;
+  let client: pg.PoolClient | undefined, acquired = false, lost = false;
+  const onLoss = () => { lost = true; };
+  const unavailable = () => fail<T>("PCAT-ORC-PHASE-FAILED", "cutover-management-session-unavailable");
+  const assertLive = () => { if (lost || !client) throw new Error("cutover-management-session-unavailable"); };
+  let result: CutoverResult<T> = unavailable();
   try {
+    await new Promise<void>((resolve, reject) => {
+      try {
+        pool.connect((error, observed) => {
+          // pg-pool removes its idle error handler when checking a client out.
+          // Own this exact session before the callback can return to pg-pool.
+          if (observed) {
+            client = observed;
+            client.on("error", onLoss); client.on("end", onLoss);
+          }
+          if (error || !observed) { lost = true; reject(new Error("cutover-management-checkout-failed")); }
+          else resolve();
+        });
+      } catch { lost = true; reject(new Error("cutover-management-checkout-failed")); }
+    });
+    assertLive();
+    if (!client) return unavailable();
     const lock = await client.query<{ acquired: boolean }>("select pg_catalog.pg_try_advisory_lock(hashtext('s7-orc-cutover-target'), hashtext(current_database())) as acquired");
     acquired = lock.rows[0]?.acquired === true;
-    if (!acquired) return fail("PCAT-ORC-PHASE-FAILED", "cutover-target-lock-held");
-    return await body(client);
+    assertLive();
+    result = acquired ? await body(client, assertLive) : fail("PCAT-ORC-PHASE-FAILED", "cutover-target-lock-held");
+  } catch {
+    lost = true;
   } finally {
-    try {
-      if (acquired) await client.query("select pg_catalog.pg_advisory_unlock(hashtext('s7-orc-cutover-target'), hashtext(current_database()))");
-    } finally {
-      await client.query("reset role").catch(() => undefined);
-      client.release();
+    if (client) {
+      try {
+        if (!lost && acquired) await client.query("select pg_catalog.pg_advisory_unlock(hashtext('s7-orc-cutover-target'), hashtext(current_database()))");
+        if (!lost) await client.query("reset role");
+      } catch { lost = true; }
+      try {
+        // A discarded native session must actually finish before its S7 lease
+        // is considered released. Never end the caller's pool.
+        if (lost) { if (!(client instanceof pg.Client)) throw new Error("cutover-management-client-unavailable"); await client.end(); }
+      } catch { lost = true; }
+      finally {
+        try { client.release(lost); } catch { lost = true; }
+        finally { client.off("error", onLoss); client.off("end", onLoss); }
+      }
     }
   }
+  return lost ? unavailable() : result;
 };
 
 export const executeCutover = async (
@@ -599,7 +630,7 @@ export const executeCutover = async (
   const comparison = input.plan.comparisonRules !== undefined;
   if (comparison && (!input.openComparisonSource || !input.bindingManagementPool || !input.bindingJournal)) return fail("PCAT-ORC-INVALID-PLAN", "comparison-management-source-and-journal-required");
   if (!comparison && input.openComparisonSource) return fail("PCAT-ORC-INVALID-PLAN", "comparison-plan-required");
-  return withCutoverLock(input.bindingImportIntent || comparison ? input.bindingManagementPool! : input.pool, async (client) => {
+  return withCutoverLock(input.bindingImportIntent || comparison ? input.bindingManagementPool! : input.pool, async (client, assertLive) => {
     let comparisonSource: Awaited<ReturnType<NonNullable<ExecuteCutoverInput["openComparisonSource"]>>> | undefined;
     let comparisonTransaction = false, comparisonWritten = false;
     let startupAttempt: BindingPhaseAttempt | undefined;
@@ -607,23 +638,34 @@ export const executeCutover = async (
     try {
     if (comparison) {
       await assertBindingManagementLogin(client);
+      assertLive();
       await client.query("set role catalog_migration_owner");
+      assertLive();
       const target = await readBindingDatabaseIdentity(client);
-      if ((await input.bindingJournal!.unresolved(target)).length) return fail("PCAT-ORC-RESUME-INVALIDATED", "binding-unresolved-phase-attempt");
+      assertLive();
+      const unresolved = await input.bindingJournal!.unresolved(target);
+      assertLive();
+      if (unresolved.length) return fail("PCAT-ORC-RESUME-INVALIDATED", "binding-unresolved-phase-attempt");
       const previous = await loadRunByPlanDigest(client, input.plan.planDigest);
+      assertLive();
       const prior = previous ? await loadCheckpoints(client, previous.id) : [];
+      assertLive();
       if (!prior.some(checkpoint => checkpoint.phase === "P0")) {
         const runId = previous?.id ?? `cutover_${createHash("sha256").update(input.plan.planDigest).digest("hex").slice(0, 32)}`;
         startupAttempt = await input.bindingJournal!.begin({ target, runId, planDigest: input.plan.planDigest,
           phase: "P0", inputDigest: bindingImportDigest({ plan: input.plan, phase: "P0" }) });
         if (!startupAttempt.attemptId || startupAttempt.runId !== runId || startupAttempt.planDigest !== input.plan.planDigest || startupAttempt.phase !== "P0") throw new BindingProducerRefusal("binding-journal-attempt-mismatch");
         comparisonPendingAttempt = startupAttempt;
+        assertLive();
       }
       // Registry writes belong to this original management transaction. A
       // second source SHARE on this table would block our own P0 INSERT.
       await client.query("begin isolation level serializable"); comparisonTransaction = true;
+      assertLive();
       await client.query("lock table parameter_catalog.legacy_identities in share row exclusive mode nowait");
+      assertLive();
       comparisonSource = await input.openComparisonSource!(client);
+      assertLive();
       input = { ...input, comparisonInventory: comparisonSource.inventory };
     }
     let sourceInventory: string | undefined;
