@@ -273,3 +273,32 @@ describe("cross-database dependency lifecycle", () => {
     return work;
   });
 });
+
+it("retires the existing module mapping mutation grants while retaining SELECT and the original rule", async () => {
+  await manager!.query("insert into public.organizations(id,name) values ('sql-mapping-org','SQL mapping fixture')");
+  await manager!.query(`insert into public.parameter_modules(id,organization_id,name,path)
+    values ('sql-mapping-module','sql-mapping-org','SQL mapping fixture','sql-mapping-module')`);
+  await manager!.query(`grant select,insert,update on public.parameter_module_mappings to ${pg.escapeIdentifier(role)}`);
+  expect((await writer!.query(`insert into public.parameter_module_mappings
+    (id,organization_id,parameter_module_id,match_kind,match_value,priority)
+    values ('sql-mapping','sql-mapping-org','sql-mapping-module','compatible','sql,mapping',1)`)).rowCount).toBe(1);
+  expect((await writer!.query("update public.parameter_module_mappings set priority=2 where id='sql-mapping'")).rowCount).toBe(1);
+  const read = () => writer!.query("select id,priority from public.parameter_module_mappings where organization_id='sql-mapping-org' order by id");
+  expect((await read()).rows).toEqual([{ id: "sql-mapping", priority: 2 }]);
+  const result = await applyLegacySqlPrivilegeFence(command);
+  expect(result.outcome).toBe("legacy-sql-privileges-fenced-not-P13");
+  const attempts = await Promise.allSettled([
+    writer!.query(`insert into public.parameter_module_mappings
+      (id,organization_id,parameter_module_id,match_kind,match_value,priority)
+      values ('sql-mapping-late','sql-mapping-org','sql-mapping-module','compatible','sql,late',1)`),
+    writer!.query("update public.parameter_module_mappings set priority=3 where id='sql-mapping'"),
+  ]);
+  expect(attempts.map(attempt => attempt.status === "fulfilled" ? "write-succeeded" : attempt.reason?.code))
+    .toEqual(["42501", "42501"]);
+  expect((await read()).rows).toEqual([{ id: "sql-mapping", priority: 2 }]);
+  expect(await inspectLegacySqlPrivilegeFence({ client: manager!, selection: command.selection,
+    intentDigest: result.intentDigest, beforeEffect: command.beforeEffect }))
+    .toEqual({ outcome: "legacy-sql-privileges-fenced-not-P13", intentDigest: result.intentDigest });
+  expect((await manager!.query(`select count(*)::int as count from parameter_catalog.parameter_catalog_cutover_checkpoints
+    where cutover_run_id=$1 and phase='P13'`, [command.selection.runId])).rows).toEqual([{ count: 0 }]);
+});

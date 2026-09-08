@@ -208,8 +208,14 @@ attribution rule, independently reads both effects, and requires V13 refusal
 while the original seven relations have no mutation capability. Existing
 Organization/module rows are foreign-key prerequisites, not additional retired
 tables. Audit, history, ProjectValues, grants outside this relation and ordinary
-project operations are not added to the scope. The actual PostgreSQL Red is
-pending; this test preparation is neither a demonstrated failure nor full P13.
+project operations are not added to the scope. Fixed test-only `6164aba02`
+(tree `fd7960f65388bdef49099c094b9289ddacd6e301`) ran the original owned
+`writer-reachability-pg16` suite: 34 passed, one failed, 6.29 seconds, exit 1,
+cleanup verified. Both repository effects and the original seven-table
+permission check passed before V13 incorrectly returned `passed`. The log is
+`/tmp/pr824-module-mapping-6164-red.log`, SHA256
+`3ac895217827aeac4b21ac2fede9254c7c336a5e81e1bd91a4cf0ee01c3b3ef6`.
+This is an actual isolated component failure, not a complete P13 execution.
 
 This Scratch implementation uses the existing retirement root and
 `legacySqlPrivilegeFence.ts`. Its actual owned PostgreSQL component validation

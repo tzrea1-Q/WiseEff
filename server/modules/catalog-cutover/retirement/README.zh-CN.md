@@ -159,8 +159,13 @@ Runner/CI、共享 migration/grant 不属于本分片。
 本回归拟补的范围只有该表。真实 LOGIN 通过原 repository 插入并更新规则，独立读回
 两次效果，核原七表没有 mutation 能力后要求 V13 拒绝。已有 Organization/module
 行仅为外键前提，不将这些表一并退休。审计、历史、ProjectValues、其它关系权限及
-正常项目操作均不扩入范围。真实 PostgreSQL Red 尚待执行；测试准备不等于已证明
-失败，更不构成完整 P13。
+正常项目操作均不扩入范围。固定 test-only `6164aba02`（tree
+`fd7960f65388bdef49099c094b9289ddacd6e301`）实际执行原 owned
+`writer-reachability-pg16`：34通过、1失败，6.29秒、exit1、cleanup通过。
+两次 repository 效果与原七表权限断言先通过，随后 V13 错误返回 `passed`。
+日志 `/tmp/pr824-module-mapping-6164-red.log`，SHA256
+`3ac895217827aeac4b21ac2fede9254c7c336a5e81e1bd91a4cf0ee01c3b3ef6`。
+这是实际隔离组件失败，不是完整 P13 执行。
 
 本 Scratch 实现位于现有退休根与 `legacySqlPrivilegeFence.ts`，实际 owned PG
 组件验证已按下文记录通过。它撤销独立可达的旧结构 SQL 授权，不产生
