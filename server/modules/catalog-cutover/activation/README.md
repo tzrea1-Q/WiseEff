@@ -61,6 +61,11 @@ This wiring has not yet produced a successful authorized public `apply` run.
 The actual full consumer producer, valid privilege gates and approvals remain
 required; passing a report-shaped object cannot bypass them.
 
+Read-only inspection does not initialize the Comparison consumer graph. The
+existing public Comparison projection is loaded when `apply` checks its approved
+report, before any pending journal record or SQL effect. This changes module
+loading only; it does not remove or defer an authorization check past an effect.
+
 | R3 threat | Enforcement / required evidence |
 | --- | --- |
 | Wrong physical database | Same acquired session checked before any target lock and before completion |

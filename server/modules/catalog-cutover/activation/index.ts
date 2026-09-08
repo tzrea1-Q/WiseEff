@@ -3,7 +3,6 @@ import { randomUUID } from "node:crypto";
 import pg from "pg";
 import { createVerificationReportService } from "../../release-verification/report/index";
 import { digestOf } from "../../release-verification/core/digest";
-import { assertComparisonEvidenceAssociation, ComparisonEvidenceRefusal } from "../../release-verification/comparison/index";
 import { assertBindingManagementLogin } from "../bindingImportProducer";
 import { ActivationRefusal, type ActivationBinding, type ActivationIntent, type ActivationObservation, type ActivationOptions } from "./interface";
 import { createActivationIntent, decodeBinding, refuse, validateIntent } from "./records";
@@ -97,6 +96,10 @@ async function approvedReport(options: ActivationOptions, observed: ActivationOb
       report.evidenceRefs.some(ref => !isDeepStrictEqual(ref.subject, observed.subject))) refuse("REPORT-MISMATCH");
   const comparisonReport = options.comparisonReport;
   if (!comparisonReport) return refuse("COMPARISON-REPORT-UNAVAILABLE");
+  // Inspection never executes comparison gates. Load their existing public
+  // projection only for apply, before any pending record or database effect.
+  const { assertComparisonEvidenceAssociation, ComparisonEvidenceRefusal } =
+    await import("../../release-verification/comparison/index");
   try {
     const association = assertComparisonEvidenceAssociation({
       comparisonReport, verificationReport: report, subject: observed.subject,

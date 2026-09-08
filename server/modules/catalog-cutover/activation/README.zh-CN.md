@@ -49,6 +49,10 @@ gate envelope、result 和 typed ref，返回摘要还须等于独立观测值�
 这项接线尚未产生一次正式获批的公开 `apply` 成功执行；真实完整 consumer
 producer、有效权限门禁和批准仍不可缺少。报告形状的对象不能绕过这些条件。
 
+只读 inspection 不初始化 Comparison 消费者模块。`apply` 核验获批报告时加载原有
+Comparison 公共 projection，位置仍在任何 pending journal 记录或 SQL 效果之前。
+本次只改变模块加载时机，不移除批准检查，也不把检查延迟到副作用之后。
+
 | R3 威胁 | 防线／必需证据 |
 | --- | --- |
 | 错误物理数据库 | 同一管理 session 在任何目标锁之前和完成之前核对身份 |
