@@ -59,6 +59,7 @@ vi.mock("../../../../server/modules/catalog-cutover/retirement/loginFence", asyn
 }));
 vi.mock("./runtimeRoleSource", () => ({ openRuntimeRoleSource: async () => ({ close: async () => {
   io.closed.push("runtime-source"); if (io.runtimeCloseFails) throw new Error("private-runtime-close");
+  if (io.fault === "ordinary-close-host-loss") io.fault = "host-lock";
 } }),
   observeRuntimeRoles: io.runtimeRoles,
 }));
@@ -319,6 +320,15 @@ it.each(["manager", "host"] as const)("rejects ordinary inspection loss during i
   await expect(inspectLegacyApplicationLoginFence(f.input)).rejects.toThrow(/^PCAT-UPG-LEGACY-LOGIN-/);
   expect(io.sqlInspect).toHaveBeenCalledOnce();
   expect(io.sqlPrivilegeEffect).toHaveBeenCalledOnce();
+});
+
+it("does not return ordinary applied when the original host lock is lost during successful cleanup", async () => {
+  const f = await ordinaryFixture();
+  await retireLegacyApplicationLogins(f.input);
+  io.fault = "ordinary-close-host-loss";
+  await expect(inspectLegacyApplicationLoginFence(f.input)).rejects.toThrow(/^PCAT-UPG-LEGACY-LOGIN-/);
+  expect(io.sqlInspect).toHaveBeenCalledOnce();
+  expect(io.closed.at(-1)).toBe("pool");
 });
 
 it("persists the root intent before SQL and the actual inspection step after SQL, without declaring P13", async () => {
