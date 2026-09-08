@@ -4,6 +4,17 @@
 
 ## Scope and state
 
+Code `59cd27412` narrows activation module loading: inspection no longer initializes
+the Comparison consumer graph; `apply` still loads the same public projection
+before pending/SQL effects. Parent owns activation and bootstrap timing tests;
+the README pair and evidence pair are the documentation impact. R3 admission,
+timeouts, SQL and permissions are unchanged. Loading Red failed once, then the
+three pure files passed 7/7; real bootstrap PG16 passed 44/44 with cleanup. Build
+and unchanged boundary passed. Independent review and new Hosted remain pending;
+the preceding Hosted `34234885440` failed four bootstrap child deadlines, and
+its later owned suites did not run. Source-capture and comparison Scratch remain
+unintegrated. This increment does not complete A, B or C.
+
 Resumption code `1eb674913` repairs the later independent Spec P1 on `2ef8cdae3`:
 bootstrap effects and non-unknown host acknowledgments now recheck the issued
 runtime source. Two pre-effect counterexamples and one post-inspection

@@ -4,6 +4,14 @@
 
 ## 范围与状态
 
+代码 `59cd27412` 缩小 activation 加载范围：inspection 不再初始化 Comparison 消费者，
+`apply` 仍在 pending/SQL 效果之前加载同一公共 projection。父协调者独占 activation
+与 bootstrap 计时测试；文档影响为 README 及证据的中英文文件。R3 准入、超时、SQL、
+权限均不改变。加载 Red 一项失败后，三个纯测试文件7/7通过；真实 bootstrap PG16
+44/44通过且清理完成，build及原boundary通过。独立审查和新Hosted尚待完成；
+前序Hosted `34234885440` 四个bootstrap子进程期限失败，其后owned套件未执行。
+来源采集与comparison Scratch未集成；本增量不代表A、B或C完成。
+
 续工代码 `1eb674913` 修复后续独立 Spec 在 `2ef8cdae3` 上发现的 P1：bootstrap
 效果及非 unknown 的宿主完成记录现在重新核验已签发的运行来源。两个效果前反例和一个
 最终 inspection 后的完成记录反例先失败，修复后 focused 83/83。新增真实 PG16 锁／事务

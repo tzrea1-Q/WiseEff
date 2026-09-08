@@ -2,7 +2,34 @@
 
 > English: [English](populated-upgrade-evidence.md)
 
+## Inspection 加载增量
+
+追加提交 `d18439ba7960b0688246695b39ffe67e0544b6f7` 按独立Spec意见删除所有本次新增
+边界计时probe，避免日志拖延子进程确认。bootstrap integration test与`ffd0ff9f3`字节相同。
+精确追加代码的真实自有PG16为44/44、18.74秒、退出0、清理完成；日志及hash见英文对应段。
+独立Spec复审已关闭计时finding并通过净四文件增量。Standards静态审查无新finding；
+其误用server配置的尝试同样在global setup因ledger拒绝，不计执行测试结果。新Hosted待完成。
+
+代码 `59cd2741263d8538a95e0c72c8462aa343bb741a`，tree
+`fdcea9dff305ebca366c12c072c8aa3615345579`，把原 Comparison 公共 projection 的
+加载移到 apply 的获批报告核验处，仍早于任何效果；SQL、权限、期限和 gate 语义不变。
+加载 Red 1/1失败；修复后 activation、held-session、loading 三个纯测试文件7/7通过。
+随后原样提交的 WIP 在真实自有 PG16 上44/44通过、18.20秒、清理已核验。
+前序干净 `ffd0ff9f3` 同套件44/44、20.76秒；四个本地边界用例的加载耗时从235–246ms
+降到167–169ms，不能据此覆盖Hosted失败或宣称Hosted已修复。build/types/boundary退出0。
+
+首次加载测试误用了 server 的数据库 global setup，setup在执行测试前因ledger不匹配拒绝，
+不计作Red或通过。正式Red/Green使用无数据库setup的纯Node配置。独立审查和新CI仍待完成。
+原始日志及逐文件hash见[英文对应表](populated-upgrade-evidence.md#inspection-dependency-loading)。
+
 ## Bootstrap 来源边界续修
+
+未集成Scratch `607d2fbfce98a5d1f976fd03bb67af0a863c4233` 的正式owned
+`legacy-source-capture-three-store` runner已通过选定采集用例：1通过、1过滤
+（Vitest记为skip）、99.89秒、退出0、自有清理完成。它以
+`--management-snapshot-input-file` 消费原私有custody输入，不再使用临时selector wrapper。
+runner的通用`verified-by-complete-suite`字段只记清理，不能解释为过滤的业务用例也执行。
+日志及hash见英文对应段。新增父清理失败路径仍需专门回归，尚未封存。
 
 独立 Scratch `1ce73d4c21b7b20b86c5fafa1bfc0fbfaf8d1988`，tree
 `e670a5c8961813130c24dc1cfa9b7b0434bfd1a7`，通过调度范围的独立 Standards/Spec
@@ -22,9 +49,17 @@
 
 随后原样提交的代码 WIP 上，根调度回归83收集／83通过／0失败／0跳过，退出0。此前三个
 Red 在实际继续执行／完成记录断言失败，不代表真实密码轮换。真实 PG16 为20/20、退出0、
-清理已核验；执行时是添加宿主记录复核之前的 WIP，source 和 integration-test blob 与最终
-代码相同。它证明真实来源失效／清理及目录锁／事务兼容，不证明完整根执行。最终代码 build
-退出0，保留既有警告；无新 Hosted、完整 P13 或真实启动结论。
+清理已核验；执行时是以 `8bf6706b6` 为基线、添加宿主记录复核之前的 WIP。
+当时没有保存完整 WIP tree/blob 快照，因此仅保留中间执行证据，不能归属已提交的
+`1eb674913`。独立交付包审查后撤回此前“blob相同”的声明。最终代码 build
+退出0，保留既有警告；完整 P13 和真实启动仍未证明。
+
+Hosted `34234885440` 已结束，实际 merge checkout 为
+`437a6fc4b568e4cb88f56dda1c5a012edcee8add`：Build/test、smoke、quality成功，
+owned PostgreSQL与Merge bar失败；target synthetic和local non-HDC跳过。
+bootstrap credential套件40通过／4失败／0跳过，四个final-boundary独立子进程检查超出1500ms；
+其后串行owned套件未执行。干净的本地报告head `ffd0ff9f3` 同套件44/44通过且自有资源清理完成，
+不能抹去Hosted失败。
 
 已提交代码 `1eb674913` 的 owned scripts 随后为2058/2069通过、0失败、11跳过，退出0；
 source-lock另计4/4，清理已核验，原boundary退出0。原始日志/hash见英文对应段。

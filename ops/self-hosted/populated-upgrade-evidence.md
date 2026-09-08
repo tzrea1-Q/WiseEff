@@ -4,7 +4,54 @@
 
 ## NW continuation, 2026-09-08
 
+### Inspection dependency loading
+
+Follow-up `d18439ba7960b0688246695b39ffe67e0544b6f7` removes all newly added
+boundary timing probes after independent Spec noted that logging could delay
+the child acknowledgment. The bootstrap integration test is byte-identical to
+`ffd0ff9f3`. The exact follow-up code passed real owned PG16 44/44 in 18.74s,
+exit 0, cleanup verified. Log `/tmp/pr824-d184-bootstrap.log`, SHA256
+`be4a58b98bdb2349a7c2aac8b547952bfa1356b4bb8613a9510d7f61165a86fa`.
+Independent Spec re-review closed the timing finding and passed this four-file
+net increment. Standards reported no new finding on static review; its attempted
+server-config run hit the unrelated global-setup ledger refusal, not an executed
+test result. New Hosted remains pending.
+
+Code `59cd2741263d8538a95e0c72c8462aa343bb741a`, tree
+`fdcea9dff305ebca366c12c072c8aa3615345579`, defers the existing Comparison
+public projection until approved-report checking in apply, before any effect.
+No SQL, permissions, timeout or gate semantics changed. The dependency-loading
+Red failed 1/1; corrected pure activation/held-session/loading tests passed 7/7.
+The real owned PG16 suite passed 44/44 in 18.20s, cleanup verified, on the WIP
+subsequently committed as this code. The clean preceding `ffd0ff9f3` passed
+44/44 in 20.76s; the Hosted deadline failure remains a separate result. Four
+local final-boundary imports fell from 235–246ms to 167–169ms; these local
+observations are not proof that Hosted now passes. Build/types/boundary exited 0.
+
+The initial loading-test invocation incorrectly selected the server global
+database setup, which refused a mismatched migration ledger before executing
+tests. It is not a Red or passing result. The actual Red/Green used a pure
+Node config with no database setup. Independent review/new CI are pending.
+
+| Raw local log | SHA256 |
+| --- | --- |
+| `/tmp/pr824-inspection-loading-actual-red.log` | `f4c1d3d97e7b76646e1e2dc3ffc4eae87d6988ef605cf76c4dbf8634af0da928` |
+| `/tmp/pr824-inspection-loading-green.log` | `215648c230c4a08c1a700953d6d1f8a8440544b2a0d619912bbdebe916514087` |
+| `/tmp/pr824-bootstrap-lazy-green.log` | `4dfd93167ba1a52799e85464af1192a8b18d1b4c13d1385a9912afc7fb92c8c9` |
+| `/tmp/pr824-59cd-build.log` | `706ab144a1e936420d62f07012549682480fc8cae0e96fcca48c2859ebba515a` |
+| `/tmp/pr824-59cd-boundary.log` | `6eecbc7c68f93a34280ba53bb4a3837ff844959de6391569ee190fe9a3b0f795` |
+
 ### Bootstrap source boundary follow-up
+
+The explicit owned `legacy-source-capture-three-store` runner at unintegrated
+Scratch `607d2fbfce98a5d1f976fd03bb67af0a863c4233` passed its selected capture
+case in 99.89s: 1 passed, 1 filtered (Vitest reports skipped), exit 0, owned
+cleanup verified. It uses `--management-snapshot-input-file` with the existing
+private custody input rather than a temporary selector wrapper. The generic
+runner's `verified-by-complete-suite` label describes cleanup, not execution of
+the filtered business case. Log `/tmp/pr824-607d-formal-capture.log`, SHA256
+`929e9e5d2a3681228d55fd9a9e610d73e608d872c7cadca607c412ae1b192340`.
+New parent cleanup-failure paths still need dedicated regression before sealing.
 
 Separate Scratch `1ce73d4c21b7b20b86c5fafa1bfc0fbfaf8d1988`, tree
 `e670a5c8961813130c24dc1cfa9b7b0434bfd1a7`, passed independent bounded scheduler
@@ -36,10 +83,19 @@ Root scheduling tests ran on the code WIP subsequently committed unchanged:
 83 collected/passed, 0 failed/skipped, exit 0. The preceding three Red cases
 failed at the actual continuation/acknowledgment assertions; they do not prove
 a real password rotation. Native PG16 ran 20/20, exit 0, cleanup verified on an
-earlier WIP with identical source/integration-test blobs, before the additional
-host-record checks. It proves real source loss/cleanup and catalog-lock/transaction
-compatibility, not complete root execution. Final code build exited 0 with
-existing warnings. No new Hosted result or full P13/startup is claimed.
+earlier WIP based on `8bf6706b6`, before the additional host-record checks.
+The execution did not preserve a complete WIP tree/blob snapshot: its results
+remain interim evidence and cannot be attributed to committed `1eb674913`.
+Independent package review withdrew the earlier identical-blob claim.
+Final code build exited 0 with existing warnings; full P13/startup is unproven.
+
+Hosted `34234885440` finished at merge checkout
+`437a6fc4b568e4cb88f56dda1c5a012edcee8add`: Build/test, smoke and quality
+succeeded; owned PostgreSQL and Merge bar failed. Target synthetic and local
+non-HDC skipped. Bootstrap credential tests had 40 passed/4 failed/0 skipped:
+the four final-boundary independent child inspections exceeded 1500ms. Later
+serial owned suites did not run. Clean local report `ffd0ff9f3` ran the same
+suite with 44/44 passing and owned cleanup; this does not erase the Hosted failure.
 
 On committed code `1eb674913`, owned scripts then passed 2058/2069, failed 0,
 skipped 11, exit 0; source-lock separately passed 4/4. Resource cleanup was
