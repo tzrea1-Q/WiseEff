@@ -10,7 +10,7 @@ import { retireLegacyApplicationLogins, inspectLegacyApplicationLoginFence, type
 // approval, a P12 SQL commit, Docker identity, or a PostgreSQL password rotation.
 const io = vi.hoisted(() => ({ apply: vi.fn(), sqlPrivilegeEffect: vi.fn(), runtimeRoles: vi.fn(), inspect: vi.fn(), transportInspect: vi.fn(), journal: vi.fn(),
   package: vi.fn(), docker: vi.fn(), activation: vi.fn(), report: vi.fn(),
-  pools: [] as string[],
+  ordinary: false, ordinaryFenced: false, pools: [] as string[],
   clients: [] as Array<{ kind: string; query: ReturnType<typeof vi.fn>; release: ReturnType<typeof vi.fn>; emit(event: string): boolean }>,
   fault: "", fsyncDirectoryInode: -1, hostRefused: false, sourceConnects: 0, closed: [] as string[], rootEvents: [] as Array<{ payload: unknown }> }));
 vi.mock("node:fs", async original => {
@@ -50,6 +50,11 @@ vi.mock("../../../../server/modules/catalog-cutover/retirement/bootstrapCredenti
 vi.mock("../../../../server/modules/catalog-cutover/retirement/legacySqlPrivilegeFence", () => ({
   applyLegacySqlPrivilegeFence: io.sqlPrivilegeEffect,
 }));
+vi.mock("../../../../server/modules/catalog-cutover/retirement/loginFence", async original => ({
+  ...await original<typeof import("../../../../server/modules/catalog-cutover/retirement/loginFence")>(),
+  assertNoSharedLegacyRoleUse: async () => {},
+  applyLegacyLoginFence: async () => { io.ordinaryFenced = true; },
+}));
 vi.mock("./runtimeRoleSource", () => ({ openRuntimeRoleSource: async () => ({ close: async () => { io.closed.push("runtime-source"); } }),
   observeRuntimeRoles: io.runtimeRoles,
 }));
@@ -62,12 +67,14 @@ vi.mock("pg", async () => {
     // fixture, not evidence of an actual PostgreSQL/Docker connection.
     connection = { stream: new Socket() };
     query = vi.fn(async (sql: string, values?: unknown[]) => {
+      if (io.ordinary && sql.includes("r.rolname=any($1::text[])")) return { rows: [{ oid: "20003", name: "old_application",
+        login: !io.ordinaryFenced, inherit: true, privileged: false, members: [], callers: [{ oid: "20003", name: "old_application" }] }], rowCount: 1 };
       if (sql.includes("event_kind=$2 order by sequence_number")) return { rows: [...io.rootEvents], rowCount: io.rootEvents.length };
       if (sql.includes("insert into parameter_catalog.parameter_catalog_cutover_events")) {
         io.rootEvents.push({ payload: JSON.parse(values![3] as string) });
       }
       if (sql.includes("as admitted")) return { rows: [{ oid: "10", name: "postgres", database: "db", admitted: true }], rowCount: 1 };
-      if (sql.includes("as same;")) return { rows: [{ pid: 1001, name: "postgres", same: true }], rowCount: 1 };
+      if (sql.includes("as same;")) return { rows: [{ pid: 1001, name: io.ordinary ? "old_application" : "postgres", same: true }], rowCount: 1 };
       if (sql.includes("select pg_backend_pid() as pid")) return { rows: [{ pid: 1002, oid: "20000", same: true }], rowCount: 1 };
       if (sql.includes("count(distinct relation)")) return { rows: [{ count: io.fault === "guard-lock" ? 5 : 6 }], rowCount: 1 };
       if (sql.includes("classid=824014")) return { rows: [{ count: io.fault === "guard-target" ? 0 : 1 }], rowCount: 1 };
@@ -100,7 +107,7 @@ vi.mock("pg", async () => {
 });
 
 const roots: string[] = [];
-beforeEach(() => { vi.clearAllMocks(); io.pools.length = 0; io.clients.length = 0; io.rootEvents.length = 0; io.closed.length = 0; io.fault = ""; io.hostRefused = false; io.sourceConnects = 0; });
+beforeEach(() => { vi.clearAllMocks(); io.ordinary = false; io.ordinaryFenced = false; io.pools.length = 0; io.clients.length = 0; io.rootEvents.length = 0; io.closed.length = 0; io.fault = ""; io.hostRefused = false; io.sourceConnects = 0; });
 afterEach(async () => { for (const root of roots.splice(0)) await rm(root, { recursive: true }); });
 
 async function fixture() {
@@ -152,7 +159,7 @@ async function fixture() {
     const service = args[1];
     return Buffer.from(JSON.stringify([{ Id: service, Image: "image", Config: { Image: "source",
       Labels: { "com.docker.compose.project": "project", "com.docker.compose.service": service },
-      Env: ["DATABASE_URL=postgres://postgres:old-secret@postgres/db"] },
+      Env: [`DATABASE_URL=postgres://${io.ordinary ? "old_application" : "postgres"}:old-secret@postgres/db`] },
       State: { Status: "exited", Running: false, Restarting: false } }]));
   });
   const body = { format: "wiseeff-fixed-entry-handoff-v1", inputs: { runId: "hostrun", expectedDaemonId: "daemon",
@@ -178,6 +185,31 @@ const retirementEvents = (input: LegacyLoginRetirementInput) => {
   if (!loaded.ok) throw new Error("fixture-journal-unavailable");
   return loaded.value.record.entries.filter(entry => entry.action.startsWith("bootstrap-retirement-"));
 };
+
+it("continues ordinary LOGIN retirement through the existing SQL effect using observed candidate roles", async () => {
+  const f = await fixture();
+  io.ordinary = true;
+  delete f.input.bootstrapCredentialDirectory;
+  const originalPackage = await io.package();
+  io.package.mockResolvedValue({ ...originalPackage, roles: [
+    { name: "old_application", login: true, inherit: true, members: [] },
+    { name: "candidate_api", login: true, inherit: true, members: [] },
+    { name: "candidate_worker", login: true, inherit: true, members: [] },
+  ] });
+  const original = io.sqlPrivilegeEffect.getMockImplementation()!;
+  io.sqlPrivilegeEffect.mockImplementationOnce(async command => {
+    expect(io.ordinaryFenced).toBe(true);
+    expect(io.apply).not.toHaveBeenCalled();
+    expect(command.runtimeRoles).toEqual([{ oid: "20001", name: "candidate_api" }, { oid: "20002", name: "candidate_worker" }]);
+    expect(command.client).toBe(io.clients[0]);
+    return original(command);
+  });
+  const result = await retireLegacyApplicationLogins(f.input);
+  expect(io.ordinaryFenced).toBe(true);
+  expect(io.sqlPrivilegeEffect).toHaveBeenCalledOnce();
+  expect(io.runtimeRoles).toHaveBeenCalled();
+  expect(result.status).toBe("legacy-logins-fenced-not-p13");
+});
 
 it("persists the root intent before SQL and the actual inspection step after SQL, without declaring P13", async () => {
   const f = await fixture();
