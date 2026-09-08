@@ -638,7 +638,13 @@ async function inspect(input: LegacyLoginRetirementInput): Promise<{
     pool = new pg.Pool({ connectionString: url.href, max: 1, connectionTimeoutMillis: 5000, query_timeout: 10000 });
     const onConnectionError = () => { connectionFailed = true; };
     pool.on("error", onConnectionError);
-    client = await acquireObservedManagementClient(pool, onConnectionError);
+    client = await new Promise<pg.PoolClient>((resolve, reject) => {
+      pool!.connect((error, acquired) => {
+        if (acquired) { client = acquired; acquired.on("error", onConnectionError); acquired.on("end", onConnectionError); }
+        if (error || !acquired) reject(new LegacyLoginRetirementError("CONNECTION-FAILED"));
+        else resolve(acquired);
+      });
+    });
     need(!connectionFailed, "CONNECTION-FAILED");
     need(isDeepStrictEqual(await readBindingDatabaseIdentity(client), fixed.target), "TARGET-MISMATCH");
     const held = (await client.query("select pg_catalog.pg_try_advisory_lock(pg_catalog.hashtext('s7-orc-cutover-target'),pg_catalog.hashtext(pg_catalog.current_database())) as held")).rows[0];
@@ -727,6 +733,7 @@ async function inspect(input: LegacyLoginRetirementInput): Promise<{
       })(),
     ]);
     if (!inspectionFailed && closed.some(result => result.status === "rejected")) refuse("INSPECTION-CLOSE-FAILED");
+    if (!inspectionFailed) await assertHostOperationLockForJournal(input.lock, fixed.handoff.inputs.journalPath);
   }
 }
 
