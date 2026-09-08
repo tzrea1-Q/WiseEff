@@ -111,17 +111,19 @@ it("observes actual application and optional governance LOGIN OIDs without start
 it("proves a checked-out manager session through the private source endpoint and releases its challenge lock", async () => {
   await within({}, async (f, lock) => {
     const source = await openRuntimeRoleSource({ handoff: f.plan, expectedHandoffDigest: f.plan.digest, lock });
-    const candidate = new pg.Client({ connectionString: target.url });
+    const candidatePool = new pg.Pool({ connectionString: target.url, max: 1 });
+    candidatePool.on("error", () => {});
+    const candidate = await candidatePool.connect();
     candidate.on("error", () => {});
     try {
-      await candidate.connect();
       const pid = (await candidate.query<{ pid: number }>("select pg_catalog.pg_backend_pid() as pid")).rows[0].pid;
       await expect(assertRuntimeRoleSourceManagementSession(source, candidate)).resolves.toBeUndefined();
       const locks = await admin.query<{ count: number }>(`select count(*)::int as count from pg_catalog.pg_locks
         where pid=$1 and locktype='advisory' and granted and classid=824018::oid`, [pid]);
       expect(locks.rows[0]?.count).toBe(0);
     } finally {
-      await candidate.end();
+      candidate.release(true);
+      await candidatePool.end();
       await source.close();
     }
   });
@@ -132,21 +134,90 @@ it("refuses a manager-source assertion after the source manager dies and release
   try {
     await within({}, async (f, lock) => {
       const source = await openRuntimeRoleSource({ handoff: f.plan, expectedHandoffDigest: f.plan.digest, lock });
-      const candidate = new pg.Client({ connectionString: target.url });
+      const candidatePool = new pg.Pool({ connectionString: target.url, max: 1 });
+      candidatePool.on("error", () => {});
+      const candidate = await candidatePool.connect();
       candidate.on("error", () => {});
       try {
-        await candidate.connect();
         expect((await terminateLogin("manager")).rows).toEqual([{ terminated: true }]);
         await expect(assertRuntimeRoleSourceManagementSession(source, candidate)).rejects.toMatchObject({
           code: expect.stringMatching(/^(CLOSED-OR-LOST|SESSION-ENDPOINT-MISMATCH|MANAGEMENT-SESSION-UNAVAILABLE)$/),
         });
       } finally {
-        await candidate.end().catch(() => undefined);
+        candidate.release(true);
+        await candidatePool.end();
         await source.close();
       }
       await assertReleased(observed);
     });
   } finally { await observed.cleanup(); }
+});
+
+it.each(["false", "reject", "primary+reject"] as const)("destroys the checked-out manager lease after an unlock %s and redacts the cleanup driver error", async mode => {
+  const observed = observePools();
+  try {
+    await within({}, async (f, lock) => {
+      const source = await openRuntimeRoleSource({ handoff: f.plan, expectedHandoffDigest: f.plan.digest, lock });
+      const candidatePool = new pg.Pool({ connectionString: target.url, max: 1 });
+      candidatePool.on("error", () => {});
+      const candidate = await candidatePool.connect();
+      candidate.on("error", () => {});
+      const pid = (await candidate.query<{ pid: number }>("select pg_catalog.pg_backend_pid() as pid")).rows[0].pid;
+      const realQuery = candidate.query.bind(candidate);
+      vi.spyOn(candidate, "query").mockImplementation((async (...args: never[]) => {
+        const text = typeof args[0] === "string" ? args[0] : String((args[0] as { text?: string }).text);
+        if (text.includes("pg_advisory_lock(824018")) {
+          if (mode === "primary+reject") return { rows: [], rowCount: 0 } as never;
+          return realQuery(args[0] as never, args[1] as never);
+        }
+        if (text.includes("pg_advisory_unlock(824018")) {
+          if (mode !== "false") throw new Error("private-unlock-postgres://secret");
+          return { rows: [{ unlocked: false }], rowCount: 1 } as never;
+        }
+        return realQuery(args[0] as never, args[1] as never);
+      }) as never);
+      try {
+        const rejected = await assertRuntimeRoleSourceManagementSession(source, candidate).then(() => undefined, error => error);
+        expect(rejected).toMatchObject({ code: mode === "primary+reject" ? "MANAGEMENT-SESSION-CHALLENGE-FAILED" : "MANAGEMENT-SESSION-CLEANUP-UNKNOWN" });
+        expect((rejected as { cleanupCode?: string }).cleanupCode).toBe(mode === "primary+reject" ? "MANAGEMENT-SESSION-CLEANUP-UNKNOWN" : undefined);
+        expect(String(rejected)).not.toContain("private-unlock");
+      } finally {
+        // The source cannot own this caller lease; uncertain unlock always
+        // takes the caller's destroy path instead of returning it to the pool.
+        candidate.release(true);
+        await candidatePool.end();
+        await source.close();
+      }
+      const sessions = await admin.query<{ count: number }>(`select count(*)::int as count from pg_catalog.pg_stat_activity
+        where pid=$1 and backend_type='client backend'`, [pid]);
+      expect(sessions.rows[0]?.count).toBe(0);
+      await assertReleased(observed);
+    });
+  } finally { await observed.cleanup(); }
+});
+
+it("rejects a same-endpoint manager client connected to the wrong database", async () => {
+  const f = await fixture();
+  try {
+    await withHostOperationLock(f.directory, async lock => {
+      const source = await openRuntimeRoleSource({ handoff: f.plan, expectedHandoffDigest: f.plan.digest, lock });
+      const wrongDatabase = new URL(target.url); wrongDatabase.pathname = "/postgres";
+      const candidatePool = new pg.Pool({ connectionString: wrongDatabase.href, max: 1 });
+      candidatePool.on("error", () => {});
+      const candidate = await candidatePool.connect();
+      candidate.on("error", () => {});
+      try {
+        await expect(assertRuntimeRoleSourceManagementSession(source, candidate)).rejects.toMatchObject({
+          code: "MANAGEMENT-SESSION-IDENTITY-MISMATCH",
+        });
+        await expect(observeRuntimeRoles(source)).resolves.toMatchObject({ scope: "management-time-configured-logins-only" });
+      } finally {
+        candidate.release(true);
+        await candidatePool.end();
+        await source.close();
+      }
+    });
+  } finally { await rm(f.directory, { recursive: true }); }
 });
 
 it("refuses the actual bootstrap LOGIN hidden by the old V13 postgres exclusion", async () => {
