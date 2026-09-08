@@ -2,19 +2,29 @@ import { expect, it, vi } from "vitest";
 import { spawn } from "node:child_process";
 import { setTimeout } from "node:timers/promises";
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync, readFileSync, statSync } from "node:fs";
+import * as fsPromises from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { execFileSync } from "node:child_process";
 import * as componentRunner from "./run-upgrade-component-tests";
-import { observeCleanUpgradeCheckout, runUpgradeComponentTests, superviseComponentProcess } from "./run-upgrade-component-tests";
+import { assertOwnedLegacySourceCaptureInput, observeCleanUpgradeCheckout, runUpgradeComponentTests, superviseComponentProcess } from "./run-upgrade-component-tests";
 
 const injectedDocker = vi.hoisted(() => ({ current: undefined as any }));
+const observedDirectories = vi.hoisted(() => ({ paths: [] as string[] }));
+vi.mock("node:fs/promises", async importOriginal => {
+  const actual = await importOriginal<typeof import("node:fs/promises")>();
+  return { ...actual, mkdtemp: async (...args: Parameters<typeof actual.mkdtemp>) => {
+    const directory = await actual.mkdtemp(...args);
+    observedDirectories.paths.push(String(directory));
+    return directory;
+  } };
+});
 vi.mock("./isolated-upgrade-docker", async importOriginal => {
   const actual = await importOriginal<typeof import("./isolated-upgrade-docker")>();
   return { ...actual, createIsolatedUpgradeDocker: (...args: Parameters<typeof actual.createIsolatedUpgradeDocker>) => injectedDocker.current ?? actual.createIsolatedUpgradeDocker(...args) };
 });
 
-it.each(["network", "volume", "container", "network-foreign", "volume-foreign", "container-foreign", "network-unowned-return", "volume-unowned-return"])("reconciles a lost main profile %s acknowledgment against its exact declared resource", async lost => {
+it.each(["network", "volume", "container", "network-foreign", "volume-foreign", "container-foreign", "network-unowned-return", "volume-unowned-return", "network-child-evidence"])("reconciles a lost main profile %s acknowledgment against its exact declared resource", async lost => {
   const records = new Map<string, { Id: string; Name: string; Labels: Record<string, string>; Image?: string; Containers?: Record<string, unknown> }>();
   const created: string[] = [];
   const imageId = `sha256:${"a".repeat(64)}`;
@@ -52,14 +62,24 @@ it.each(["network", "volume", "container", "network-foreign", "volume-foreign", 
     } };
   const log = vi.spyOn(console, "log").mockImplementation(() => {});
   const error = vi.spyOn(console, "error").mockImplementation(() => {});
+  observedDirectories.paths = [];
   try {
-    const result = await runUpgradeComponentTests(["--expected-daemon-id", "owned", "--suite", "reader-pg16"]);
+    const nested = lost === "network-child-evidence";
+    const result = await runUpgradeComponentTests(["--expected-daemon-id", "owned", "--suite", nested ? "legacy-source-three-store" : "reader-pg16"]);
     expect(result.exitCode).toBe(1);
     const foreign = lost.endsWith("-foreign") || lost.endsWith("-unowned-return");
     expect(records.size).toBe(foreign ? 1 : 0);
     const summary = JSON.parse(log.mock.calls.at(-1)![0]);
-    expect(summary.cleanupVerified).toBe(!foreign);
-    expect(summary.privateEvidenceRetained).toBe(foreign);
+    expect(summary.runnerResourcesCleanupVerified).toBe(!foreign);
+    expect(summary.cleanupVerified).toBe(!foreign && !nested);
+    expect(summary.privateEvidenceRetained).toBe(foreign || nested);
+    if (nested) {
+      const directory = observedDirectories.paths[0];
+      expect((await fsPromises.stat(directory)).isDirectory()).toBe(true);
+      expect((await fsPromises.readdir(directory)).length).toBeGreaterThan(0);
+      // The test, not the failed runner, owns disposal of its mock-only plan.
+      await fsPromises.rm(directory, { recursive: true });
+    }
     if (lost === "network-unowned-return") expect(created).toEqual(["network"]);
     if (lost === "volume-unowned-return") expect(created).toEqual(["network", "volume"]);
   } finally { injectedDocker.current = undefined; log.mockRestore(); error.mockRestore(); }
@@ -213,4 +233,27 @@ it("kills a TERM-resistant descendant even after its leader closes", async () =>
 
 it.each([[], ["--suite", "bindings"], ["--expected-daemon-id", "owned", "--suite", "unknown"], ["--expected-daemon-id", "owned", "--suite", "bindings", "--database-url", "forbidden"]].map(args => ({ args })))("refuses incomplete or external component runner input %#", async ({ args }) => {
   expect(await runUpgradeComponentTests(args)).toMatchObject({ exitCode: 2 });
+});
+
+it("requires the owned input before admitting the legacy-source capture profile", async () => {
+  await expect(runUpgradeComponentTests(["--expected-daemon-id", "owned", "--suite", "legacy-source-capture-three-store"]))
+    .resolves.toEqual({ exitCode: 2, reason: "legacy-source-capture-input-required" });
+});
+
+it("admits only a private, schema-bound legacy-source capture input", async () => {
+  const directory = await fsPromises.realpath(await fsPromises.mkdtemp(join(tmpdir(), "legacy-capture-input-")));
+  const filename = join(directory, "input.json");
+  try {
+    await expect(assertOwnedLegacySourceCaptureInput(filename)).rejects.toThrow("legacy-source-capture-input-invalid");
+    await fsPromises.writeFile(filename, JSON.stringify({ root: directory, source: directory, journal: join(directory, "journal.json"), runId: "capture", sha: "a".repeat(40) }), { mode: 0o600 });
+    await expect(assertOwnedLegacySourceCaptureInput(filename)).resolves.toBeUndefined();
+    await fsPromises.chmod(filename, 0o644);
+    await expect(assertOwnedLegacySourceCaptureInput(filename)).rejects.toThrow("legacy-source-capture-input-invalid");
+  } finally { await fsPromises.rm(directory, { recursive: true, force: true }); }
+});
+
+it("uses a separate capture command that selects the capture test", () => {
+  const command = componentRunner.componentTestCommands("legacy-source-capture-three-store")[0];
+  expect(command).toContain("--testNamePattern");
+  expect(command.at(-1)).toContain("captures the actual stopped old source");
 });

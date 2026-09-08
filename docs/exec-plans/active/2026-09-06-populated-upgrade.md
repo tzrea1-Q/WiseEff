@@ -4,6 +4,16 @@
 
 ## Scope and state
 
+Current resumption: the parent integrates the ten reviewed source-capture files
+from `7cb5acd13` and owns shared runner/config changes. Focused integration is
+120/120; build and unchanged boundary pass. Source Scratch capture is separately
+1 passed/9 filtered with verified cleanup. The next vertical dependency remains
+real multi-head mapping/comparison, followed by complete P13/startup. The current
+Hosted run `34239424721` failed SQL fixture cleanup after business assertions;
+diagnostic `4d4b46cdb` has not established the cause. A/B/C remain incomplete.
+Documentation impact is this plan pair, the operator pair and evidence pair.
+The history below retains original execution identities and former status.
+
 Code `59cd27412` narrows activation module loading: inspection no longer initializes
 the Comparison consumer graph; `apply` still loads the same public projection
 before pending/SQL effects. Parent owns activation and bootstrap timing tests;

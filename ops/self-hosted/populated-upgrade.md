@@ -4,6 +4,18 @@
 
 ## Current execution contract
 
+The developer-only owned runner now provides `legacy-source-capture-three-store`.
+Run it from the isolated development checkout as the same user owning an already
+prepared private custody input, with explicit `--expected-daemon-id` and
+`--management-snapshot-input-file`. The latter must be an absolute file in a
+same-user private directory, containing the existing artifact/journal custody
+pointers; it cannot supply approval or runtime pins. The exact tested invocation
+is recorded in the evidence. The runner creates and stops owned synthetic
+services and captures their stopped source; it does not execute a production
+upgrade or complete P0/P13. Missing input fails before Docker admission. Failed
+cleanup retains private evidence and stops; do not delete or retry over unknown
+outcomes. The ordinary `legacy-source-three-store` profile remains distinct.
+
 PR #824 follow-up: `PCAT-RUNTIME-WORKER-INITIALIZATION-FAILED` means admission
 completed but worker initialization failed; its pool was closed or closure was
 attempted and failed. Do not respond by raising runtime privileges or reopening

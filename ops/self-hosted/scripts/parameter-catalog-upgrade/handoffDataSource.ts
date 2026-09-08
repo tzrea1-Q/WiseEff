@@ -4,6 +4,7 @@ import path from "node:path";
 import { createIsolatedUpgradeDocker } from "../../../../scripts/isolated-upgrade-docker";
 import { canonicalJson } from "./journal";
 import type { DataIdentity, HandoffInputs, HandoffObserver } from "./handoff";
+import { observeManagementSnapshotChild, type ManagementSnapshotChild } from "./managementSnapshotChild";
 
 type Options = {
   inputs: HandoffInputs;
@@ -12,6 +13,7 @@ type Options = {
   objects: { bucket: string; accessKey: string; secretKey: string };
   /** Only the actual Redis logical database, never an inferred BullMQ prefix. */
   redis: { database: number; auth: { kind: "none" } | { kind: "password"; username: string; password: string } };
+  management?: ManagementSnapshotChild;
 };
 type Container = {
   Id: string; Image: string; Config: { Labels: Record<string, string> };
@@ -44,7 +46,10 @@ const persistenceKeys = ["appendonly", "appendfsync", "save", "dir", "dbfilename
  */
 export function createOwnedHandoffDataObserver(offered: Options): HandoffObserver {
   let fixed: Options;
-  try { fixed = structuredClone(offered); need(fixed, "input-invalid"); } catch { fail("input-invalid"); }
+  const management = offered?.management;
+  try { fixed = structuredClone({ ...offered, management: undefined }); need(fixed, "input-invalid");
+    if (management) observeManagementSnapshotChild(management);
+  } catch { fail("input-invalid"); }
   const { inputs, postgres, objects, redis } = fixed;
   try {
   need(inputs && inputs.source && identifier(postgres?.database) && identifier(postgres?.user) &&
@@ -102,18 +107,22 @@ export function createOwnedHandoffDataObserver(offered: Options): HandoffObserve
     const networkId = networks[0]![0]!.NetworkID;
     need(networks.every(n => n[0]!.NetworkID === networkId), "network-unproven");
     const network = JSON.parse(docker.command(["network", "inspect", networkId]).toString())[0];
+    const manager = management && observeManagementSnapshotChild(management);
+    if (manager) need(manager.networkId === networkId && manager.sourceIds.length === selections.length &&
+      manager.sourceIds.every(selected => selections.some(s => s.containerId === selected)), "management-source-mismatch");
+    const allowed = (key: string) => selections.some(s => s.containerId === key) ||
+      manager && manager.state !== "removed" && manager.containerId === key;
     const networkConsumers = docker.command(["ps", "-a", "--no-trunc", "--filter", `network=${networkId}`, "--format", "{{.ID}}"])
       .toString().trim().split("\n").filter(Boolean);
-    need(network.Id === networkId && network.Driver === "bridge" && network.Internal === false &&
+    need(network.Id === networkId && network.Driver === "bridge" && typeof network.Internal === "boolean" &&
       network.Labels?.["com.docker.compose.project"] === inputs.source.project &&
       network.Options?.["com.docker.network.bridge.enable_ip_masquerade"] === "false" &&
-      Object.keys(network.Containers).every(key => selections.some(s => s.containerId === key)) &&
-      networkConsumers.every(key => selections.some(s => s.containerId === key)) &&
+      Object.keys(network.Containers).every(allowed) && networkConsumers.every(allowed) &&
       connected.every(c => Object.hasOwn(network.Containers, c.Id)), "network-unproven");
     const address = Object.values(observedStores[1]!.NetworkSettings.Networks)[0]!.IPAddress;
     need(/^(?:[0-9]{1,3}\.){3}[0-9]{1,3}$/.test(address) && address.split(".").every(octet => Number(octet) <= 255), "network-unproven");
     return { containers: connected.map(c => ({ id: c.Id, image: c.Image, startedAt: c.State.StartedAt, mounts: c.Mounts })),
-      volumes, networkId, address };
+      volumes, networkId, internal: network.Internal as boolean, address };
   };
   return { docker, async observeDataIdentity(selection): Promise<DataIdentity> {
     try {
@@ -165,7 +174,7 @@ export function createOwnedHandoffDataObserver(offered: Options): HandoffObserve
           createdAt: bucket[0].lastModified, versioning: version.versioning }, redis: { runId, persistence, namespace: { kind: "logical-database", database: redis.database } } };
       };
       const facts = read();
-      const resource = (index: number) => ({ daemon: docker.daemonId, project: inputs.source.project, network: baseline.networkId,
+      const resource = (index: number) => ({ daemon: docker.daemonId, project: inputs.source.project, network: baseline.networkId, internal: baseline.internal,
         container: stores[index]!.containerId, image: baseline.containers[index]!.image, volume: baseline.volumes.find(v => v.Name === stores[index]!.volumeName) });
       return { postgres: digest({ resource: resource(0), identity: facts.pgIdentity }),
         objectStore: digest({ resource: resource(1), identity: facts.objects }), redis: digest({ resource: resource(2), identity: facts.redis }) };

@@ -2,6 +2,31 @@
 
 > English: [English](populated-upgrade-evidence.md)
 
+## 中断后续工与最新 Hosted 结果
+
+报告 head `ab446626c4998715fb2ec55aa32c53d714f517af` 的 run `34239424721`
+已经结束：Build and test、smoke、quality 成功；owned PostgreSQL、Merge bar
+失败；local non-HDC、target synthetic 跳过。SQL privilege 套件20通过、1失败，
+失败发生在跨数据库用例业务断言完成后的 fixture cleanup。Bootstrap及其后续套件
+未执行。这与上一轮 bootstrap deadline 失败分开归因。owned 原日志 SHA256：
+`5bb2f69ccfde0d47b89b0a8d552dc13854b5d5a34e00f4e591fcb5562d4f04bb`。
+
+诊断提交 `4d4b46cdbd071c9902f2805431ef51a81c30d9df` 只增加固定、尽力输出的
+清理阶段标签，不输出底层错误，不改变清理顺序。本地 WIP 套件21/21通过，未复现
+Hosted失败。独立静态审查通过；根因仍未确定，诊断不能算作清理修复。
+
+父候选现已按原字节集成 Scratch `7cb5acd1346f349728783391a8a4b8b5f3717b71`
+的十个源采集文件。该 Scratch 提交的正式 `legacy-source-capture-three-store`
+入口实跑1通过、9过滤，100.99秒，未改变120秒用例预算，资源清理已验证。
+这证明实际隔离旧源经 custody 绑定管理子进程采集，不包含P0、转换或完整升级。
+日志 `/tmp/pr824-7cb-formal-capture.log`，SHA256：
+`6645b5af47314e86a5a674460f0e81b036e40ca754d78886adc99e43e75959f8`。
+父集成 WIP 的四文件 focused 为120/120，退出0；日志
+`/tmp/pr824-source-integration-focused.log`，SHA256：
+`c4bfca09ae900da404b86438888cb4ca4d2994b2a870dd20b67828b1e586656a`。
+两次执行身份分开，不重标为后续提交。已有 Scratch 审查覆盖这些源文件；完整
+startup/controller审查及A/B/C均未完成。公开 `ab446626c` 全文包不包含本增量。
+
 ## Inspection 加载增量
 
 追加提交 `d18439ba7960b0688246695b39ffe67e0544b6f7` 按独立Spec意见删除所有本次新增

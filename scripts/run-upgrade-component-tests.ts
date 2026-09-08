@@ -1,5 +1,6 @@
 import { randomBytes } from "node:crypto";
 import { spawn, spawnSync } from "node:child_process";
+import { constants } from "node:fs";
 import { mkdtemp, realpath, rm, writeFile, open, access } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -10,7 +11,11 @@ import { admitHostedUpgradeComponents, assertHostedUpgradeAdmission, type Hosted
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const bindingFiles = ["server/modules/parameter-bindings/cutoverImport/import.integration.test.ts", "server/modules/catalog-cutover/archive/adapter.test.ts", "server/modules/catalog-cutover/archive/adapter.integration.test.ts", "server/modules/catalog-cutover/bindingImportProducer.integration.test.ts", "server/modules/catalog-cutover/conversionManifest.integration.test.ts", "server/modules/catalog-cutover/orchestrator.test.ts", "server/modules/catalog-cutover/runtimeState.test.ts", "server/modules/catalog-cutover/sourceSnapshot.test.ts", "server/modules/catalog-cutover/managementStructure.test.ts"];
+const legacySourceSuite = { image: "postgres:16-alpine", files: ["ops/self-hosted/scripts/parameter-catalog-upgrade/handoffLegacySource.integration.test.ts"], config: "vitest.upgrade-legacy-source.config.ts",
+  extraImages: ["redis:7-alpine", "minio/minio:RELEASE.2024-12-18T13-15-44Z", "minio/mc:RELEASE.2024-11-21T17-21-54Z"] } as const;
 const suites: Record<string, { image: string; files: readonly string[]; config: string; extraImages?: readonly string[]; command?: "schema-doc" | "docs-check" }> = {
+  "legacy-source-three-store": legacySourceSuite,
+  "legacy-source-capture-three-store": legacySourceSuite,
   "handoff-three-store": { image: "postgres:16-alpine", files: ["ops/self-hosted/scripts/parameter-catalog-upgrade/handoff.test.ts"], config: "vitest.upgrade-handoff.config.ts",
     extraImages: ["redis:7-alpine", "minio/minio:RELEASE.2024-12-18T13-15-44Z", "minio/mc:RELEASE.2024-11-21T17-21-54Z"] },
   "legacy-sql-privileges-pg16": { image: "postgres:16-alpine", files: ["server/modules/catalog-cutover/retirement/legacySqlPrivilegeFence.integration.test.ts"], config: "server/modules/catalog-cutover/retirement/vitest.legacy-sql-privilege.integration.config.ts" },
@@ -37,6 +42,39 @@ const suites: Record<string, { image: string; files: readonly string[]; config: 
   "schema-doc": { image: "pgvector/pgvector:pg16", files: [], config: "", command: "schema-doc" },
   "docs-check": { image: "pgvector/pgvector:pg16", files: [], config: "", command: "docs-check" },
 };
+
+type LegacySourceCaptureInput = { root: string; source: string; journal: string; runId: string; sha: string };
+const captureInputKeys = "journal,root,runId,sha,source";
+
+/** Admission-only read of the existing private custody pointer. The child
+ * reopens the journal and artifact custody; this file supplies no pins. */
+export async function assertOwnedLegacySourceCaptureInput(filename: string): Promise<void> {
+  try {
+    if (!path.isAbsolute(filename) || path.resolve(filename) !== filename) throw new Error();
+    const owner = process.getuid?.();
+    if (owner === undefined) throw new Error();
+    const parentPath = path.dirname(filename);
+    if (await realpath(parentPath) !== parentPath) throw new Error();
+    const parent = await open(parentPath, constants.O_RDONLY | constants.O_DIRECTORY | constants.O_NOFOLLOW);
+    try {
+      const parentStat = await parent.stat({ bigint: true });
+      if (!parentStat.isDirectory() || parentStat.uid !== BigInt(owner) || (parentStat.mode & 0o077n) !== 0n) throw new Error();
+    } finally { await parent.close(); }
+    const file = await open(filename, constants.O_RDONLY | constants.O_NOFOLLOW);
+    try {
+      const fileStat = await file.stat({ bigint: true });
+      if (!fileStat.isFile() || fileStat.nlink !== 1n || fileStat.uid !== BigInt(owner) ||
+          (fileStat.mode & 0o077n) !== 0n || fileStat.size > 64n * 1024n) throw new Error();
+      const bytes = Buffer.alloc(Number(fileStat.size));
+      if ((await file.read(bytes, 0, bytes.length, 0)).bytesRead !== bytes.length) throw new Error();
+      const value = JSON.parse(bytes.toString("utf8")) as Partial<LegacySourceCaptureInput>;
+      if (!value || typeof value !== "object" || Object.keys(value).sort().join(",") !== captureInputKeys ||
+          ![value.root, value.source, value.journal].every(item => typeof item === "string" && path.isAbsolute(item) && path.resolve(item) === item) ||
+          typeof value.runId !== "string" || !value.runId.length || value.runId.length > 256 || /[\0\r\n]/.test(value.runId) ||
+          typeof value.sha !== "string" || !/^[a-f0-9]{40}$/.test(value.sha)) throw new Error();
+    } finally { await file.close(); }
+  } catch { throw new Error("legacy-source-capture-input-invalid"); }
+}
 
 export type RetirementEndpoints = {
   ownerRunId: string; label: string; networkId: string; imageId: string;
@@ -244,6 +282,7 @@ export function componentTestCommands(name: string): string[][] {
   if (suite.command === "schema-doc") return [["--import", "tsx", path.join(root, "scripts/generate-db-schema-doc.ts")]];
   const vitest = path.join(root, "node_modules/vitest/vitest.mjs");
   const commands = [[vitest, "run", "--config", suite.config, ...suite.files]];
+  if (name === "legacy-source-capture-three-store") commands[0].push("--testNamePattern", "captures the actual stopped old source");
   if (name === "scripts-pgvector") commands.unshift([vitest, "run", "--config", "vitest.scripts-source-lock.config.ts"]);
   return commands;
 }
@@ -312,7 +351,7 @@ export function componentSupervisionLimits(input = { deadlineMs: 15 * 60_000, gr
 export function componentCleanupEvidence(suite: string, exitCode: number, runnerResourcesCleanupVerified: boolean) {
   // The recovery child owns additional stores. On failure/forced termination,
   // its finally may not have run; cleaning this runner's PG is not their proof.
-  const nestedCleanupOutcome = ["recovery-three-store", "controlled-recovery", "handoff-three-store"].includes(suite) ? exitCode === 0 ? "verified-by-complete-suite" : "unknown" : "not-applicable";
+  const nestedCleanupOutcome = ["recovery-three-store", "controlled-recovery", "handoff-three-store", "legacy-source-three-store", "legacy-source-capture-three-store"].includes(suite) ? exitCode === 0 ? "verified-by-complete-suite" : "unknown" : "not-applicable";
   return { runnerResourcesCleanupVerified,
     cleanupVerified: runnerResourcesCleanupVerified && nestedCleanupOutcome !== "unknown", nestedCleanupOutcome };
 }
@@ -325,9 +364,18 @@ export async function runUpgradeComponentTests(args: string[], observation?: {
   let limits: ReturnType<typeof componentSupervisionLimits>;
   try { limits = componentSupervisionLimits(observation?.limits); }
   catch { return { exitCode: 2, reason: "component-supervision-limits-invalid" }; }
-  const hosted = args.length === 5 && args[4] === "--github-hosted";
-  if ((!hosted && args.length !== 4) || args[0] !== "--expected-daemon-id" || !/^[a-zA-Z0-9-]+$/.test(args[1]) || args[2] !== "--suite" || !Object.hasOwn(suites, args[3])) {
+  const captureProfile = args[3] === "legacy-source-capture-three-store";
+  const hosted = args.at(-1) === "--github-hosted";
+  const invocation = hosted ? args.slice(0, -1) : args;
+  if (captureProfile && invocation.length === 4) return { exitCode: 2, reason: "legacy-source-capture-input-required" };
+  if ((invocation.length !== (captureProfile ? 6 : 4)) || args[0] !== "--expected-daemon-id" || !/^[a-zA-Z0-9-]+$/.test(args[1]) || args[2] !== "--suite" || !Object.hasOwn(suites, args[3]) ||
+      captureProfile && (invocation[4] !== "--management-snapshot-input-file" || !invocation[5])) {
     return { exitCode: 2, reason: "usage-expected-daemon-id-and-known-suite-required" };
+  }
+  const managementSnapshotInputFile = captureProfile ? invocation[5] : undefined;
+  if (managementSnapshotInputFile) {
+    try { await assertOwnedLegacySourceCaptureInput(managementSnapshotInputFile); }
+    catch { return { exitCode: 2, reason: "legacy-source-capture-input-invalid" }; }
   }
   // Registering a route does not authorize creating resources for an absent
   // component. Integration must supply the exact test/config before execution.
@@ -375,6 +423,7 @@ export async function runUpgradeComponentTests(args: string[], observation?: {
   let supervisor: ReturnType<typeof superviseComponentProcess> | undefined;
   let interrupted = false;
   let retainPrivateDirectory = false;
+  let privateEvidenceRetained = false;
   const interrupt = () => { interrupted = true; supervisor?.stop(); };
   process.on("SIGINT", interrupt); process.on("SIGTERM", interrupt);
   let exitCode = 1;
@@ -446,6 +495,7 @@ export async function runUpgradeComponentTests(args: string[], observation?: {
           DOCKER_HOST: docker.endpoint,
           ...(isRedis ? { UPG_REDIS_TARGET_RECEIPT: receipt, UPG_EXPECTED_DOCKER_DAEMON_ID: docker.daemonId }
             : { WAYFINDER_POSTGRES_CONTAINER: id, UPG_TEST_TARGET_RECEIPT: receipt, DATABASE_URL: url, TEST_DATABASE_URL: url }),
+          ...(managementSnapshotInputFile ? { UPG_MANAGEMENT_SNAPSHOT_INPUT_FILE: managementSnapshotInputFile } : {}),
           UPG_COMPONENT_PROFILE: profile },
         stdio: ["ignore", "pipe", "pipe"], detached: true,
       });
@@ -476,10 +526,13 @@ export async function runUpgradeComponentTests(args: string[], observation?: {
     catch { retainPrivateDirectory = true; exitCode = 1; console.error("owned-component-resource-cleanup-incomplete"); }
     // The recovery rehearsal retains its authoritative journal/package even
     // after a successful drill. Resource cleanup and evidence retention differ.
-    if (!retainPrivateDirectory && !isRecovery) await rm(directory, { recursive: true });
+    // The old-source child keeps its failed cleanup records beneath TMPDIR.
+    // Successful outer resource cleanup cannot authorize deleting those records.
+    privateEvidenceRetained = retainPrivateDirectory || isRecovery || (["legacy-source-three-store", "legacy-source-capture-three-store"].includes(args[3]) && exitCode !== 0);
+    if (!privateEvidenceRetained) await rm(directory, { recursive: true });
     process.off("SIGINT", interrupt); process.off("SIGTERM", interrupt);
   }
-  console.log(JSON.stringify({ scope: "isolated-components-only", suite: args[3], imageReference: suite.image, imageId: image.Id, platform: `${image.Os}/${image.Architecture}`, containerId: id, networkId: net, exitCode, ...componentCleanupEvidence(args[3], exitCode, !retainPrivateDirectory), privateEvidenceRetained: retainPrivateDirectory || isRecovery, releaseApproved: false }));
+  console.log(JSON.stringify({ scope: "isolated-components-only", suite: args[3], imageReference: suite.image, imageId: image.Id, platform: `${image.Os}/${image.Architecture}`, containerId: id, networkId: net, exitCode, ...componentCleanupEvidence(args[3], exitCode, !retainPrivateDirectory), privateEvidenceRetained, releaseApproved: false }));
   return { exitCode, reason: "isolated-components-only", childProcessId: child?.pid };
 }
 

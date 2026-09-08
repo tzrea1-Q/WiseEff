@@ -73,6 +73,12 @@ function fixture() {
 }
 beforeEach(() => { seam.command.mockReset(); });
 
+it("does not admit a caller JSON manager as an eighth network member", () => {
+  const f = fixture();
+  expect(() => create({ ...f.options, management: { containerId: "9".repeat(64) } })).toThrow("handoff-data-input-invalid");
+  expect(seam.command).not.toHaveBeenCalled();
+});
+
 it("observes three store identities and the actual Redis database namespace without emitting private values", async () => {
   const f = fixture(); const observer = create(f.options);
   const first = await observer.observeDataIdentity(f.options.inputs);
@@ -168,4 +174,12 @@ it("preserves a legitimate empty persistence value at the end of raw Redis outpu
   const f = fixture();
   f.info.persistence = f.info.persistence.replace("save\n3600 1\n", "") + "save\n\n";
   await expect(create(f.options).observeDataIdentity(f.options.inputs)).resolves.toBeDefined();
+});
+
+it("accepts an actually owned internal bridge without weakening member or volume checks", async () => {
+  const f = fixture(); f.network.Internal = true;
+  const observer = create(f.options);
+  await expect(observer.observeDataIdentity(f.options.inputs)).resolves.toBeDefined();
+  f.network.Containers["9".repeat(64)] = {};
+  await expect(observer.observeDataIdentity(f.options.inputs)).rejects.toThrow(/^handoff-data-/);
 });

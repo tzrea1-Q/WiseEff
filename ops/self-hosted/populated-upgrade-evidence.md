@@ -4,6 +4,39 @@
 
 ## NW continuation, 2026-09-08
 
+### Resumed integration and latest Hosted result
+
+Run `34239424721` on report head `ab446626c4998715fb2ec55aa32c53d714f517af`
+finished: Build and test, smoke and quality succeeded; owned PostgreSQL and
+Merge bar failed; local non-HDC and target synthetic were skipped. The owned
+SQL privilege suite passed 20 cases and failed one cross-database case during
+fixture cleanup, after its business assertions completed. Bootstrap and later
+owned suites did not execute. This is distinct from the preceding bootstrap
+deadline failures. Raw owned log SHA256:
+`5bb2f69ccfde0d47b89b0a8d552dc13854b5d5a34e00f4e591fcb5562d4f04bb`.
+
+Diagnostic commit `4d4b46cdbd071c9902f2805431ef51a81c30d9df` identifies cleanup
+stages using fixed, best-effort labels without exposing underlying errors or
+changing cleanup order. Its local WIP suite passed 21/21 and did not reproduce
+the Hosted failure. Independent static review passed; the root cause remains
+unresolved. Diagnostics are not a cleanup repair.
+
+The ten source-capture files from Scratch
+`7cb5acd1346f349728783391a8a4b8b5f3717b71` are now copied into the parent
+candidate, preserving their exact bytes. On that Scratch commit the formal
+`legacy-source-capture-three-store` route passed 1 case, filtered 9, in 100.99s
+under the unchanged 120s case budget; resource cleanup was verified. It captured
+the actual isolated old source through the custody-bound management child;
+it did not execute P0, conversion or a complete upgrade. Log
+`/tmp/pr824-7cb-formal-capture.log`, SHA256
+`6645b5af47314e86a5a674460f0e81b036e40ca754d78886adc99e43e75959f8`.
+Parent integration WIP focused checks passed 120/120 across four files, exit 0;
+log `/tmp/pr824-source-integration-focused.log`, SHA256
+`c4bfca09ae900da404b86438888cb4ca4d2994b2a870dd20b67828b1e586656a`.
+These are separate executions, not reattributed to a later commit. Existing
+Scratch reviews cover the source files; complete startup/controller review and
+A/B/C remain incomplete. The public `ab446626c` package predates this increment.
+
 ### Inspection dependency loading
 
 Follow-up `d18439ba7960b0688246695b39ffe67e0544b6f7` removes all newly added

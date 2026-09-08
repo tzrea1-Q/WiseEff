@@ -4,6 +4,14 @@
 
 ## 当前可执行边界
 
+开发隔离 runner 新增 `legacy-source-capture-three-store`。执行机器是已核验的开发
+宿主，目录是独立开发 checkout，用户须拥有事先准备的私有 custody 输入；显式传入
+`--expected-daemon-id` 和 `--management-snapshot-input-file`。后者须为同用户私有
+目录中的绝对文件路径，仅引用已有 artifact／journal custody，不能提供批准或运行
+pin。实际测试命令记录在证据中。该入口创建并停止自有合成服务，采集停写源，不能用于
+生产升级，也未完成P0／P13。缺输入在Docker准入前失败；清理失败保留私有证据并停止，
+不得删除证据或覆盖未知结果重试。普通 `legacy-source-three-store` 保持独立。
+
 PR #824 续工：`PCAT-RUNTIME-WORKER-INITIALIZATION-FAILED` 表示准入之后的
 worker 初始化失败；连接池已关闭，或关闭尝试失败。不得以提权或恢复队列处理。
 该修复没有新增合法启动路径或生产升级命令。
