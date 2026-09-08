@@ -4,6 +4,63 @@
 
 ## NW continuation, 2026-09-08
 
+### Integrated follow-up `0390bd028`
+
+Code `0390bd028219b464e143418cb13155d3819aee0e`, tree
+`bdd8c313172648b2fedf58b2790775213fa9ab0f`, retains base `cda6737a8`.
+The following checks ran with HEAD and code unchanged; later documentation is
+not another code execution. Node 22.22.3 / Vitest 4.1.5, isolated development only.
+
+| Execution | Result | Local log / SHA256 |
+| --- | --- | --- |
+| Scripts configuration: controller, handoffDataSource, upgrade-component-ci, run-upgrade-component-tests | 97/97, zero failed/skipped, exit 0 | `/tmp/pr824-0390-focused.log` / `f2dc90a596d9be23b362629d937e84c6450b9a51ec2738c44bcab9a5ce6c21bb` |
+| `npm run build` | Exit 0; existing warnings retained | `/tmp/pr824-0390-build.log` / `d99411a7e6ba2d37789984e0935a60c1f3dce6efc9c6010441251c48304f130c` |
+| Boundary, unchanged CI trusted base `9b3ba7df7e21f5589684bc92c872da593ad4c246` | 3509/3509; no extra, stale, mismatch or growth; exit 0 | `/tmp/pr824-0390-boundary.log` / `6eecbc7c68f93a34280ba53bb4a3837ff844959de6391569ee190fe9a3b0f795` |
+| Formal owned runner `--suite docs-check` | Governance and actual pgvector schema artifact verified; cleanup verified; exit 0 | `/tmp/pr824-0390-docs-owned.log` / `38d0d45cc59844a373b03a8adc693fbcd3efdbf4432c553071315a7f25b135d3` |
+
+Separate source executions remain separate: `c2197ae17` ran the formal
+`handoff-three-store` route, 9/9, 77.32s, exit 0, cleanup verified. Log
+`/tmp/pr824-handoff-data-c219-actual.log`, SHA256
+`465c86b2a5b5a19a3a82ad96e9b0f7808a952c33ded7f479752defcd19b631a2`.
+This uses real owned stores and private transports but identity-stub application
+containers, not the old API/worker. The mandatory owned CI route now collects it.
+
+Bootstrap source `3fa5db71e` passed the unchanged formal full route, 41/41,
+zero failed/skipped/filtered, 17.65s, exit 0, cleanup verified. Log
+`/tmp/pr824-bootstrap-probe-3fa5-final-green.log`, SHA256
+`6e4fd6a31068c45f48222ebb97ae9477830edccae9bea5e487ba8af6bba1e704`.
+Its deferred real-PG Red observed the next guard while an owned authentication
+PID remained alive; the fix waits for native termination before subsequent guards.
+It preserves unknown outcomes and permissions. The original Hosted failure's
+exact cause is not proven: two local controls did not reproduce it.
+
+Run `34192523701` is completed and failed on merge
+`7affb0894c4d78446efbfaf534ff61561c44e0a4`: bootstrap 39 passed/1 failed.
+The child returned `not-applied`; the parent's subsequent fresh-manager inspect
+returned `unknown`. Later owned suites did not run. Build/test, smoke and quality
+passed; local non-HDC and target synthetic skipped; Merge bar failed. Original
+job log `/tmp/pr824-ci-4b-owned.log`, SHA256
+`c36cc577c9b303bde9645dcdaee1b5503de29dfef8f575d248d6f656cd5a063c`.
+This is distinct from the previous runtimeRoleSource count failure and timeouts.
+No current full scripts/backend or new Hosted pass is inferred from these results.
+
+The bootstrap, handoff and mapping/codec units received separate Standards/Spec
+reviews. A fresh read-only integration Spec review of `4b346d6ef..0390bd028`
+also passed without P1/P2 findings; that reviewer executed no tests. Reviews cover
+these bounded changes, not full providers, P13, approved application startup or
+the complete upgrade. A/B/C remain incomplete.
+
+Additional execution safety deviation: at `b7c64328f`, the parent selected the
+server configuration for two pure tests. Global setup reached the default/shared
+development ledger and refused; zero tests ran. No numbered migration loop ran,
+but bootstrap DDL effects were not fully observed, so zero writes cannot be
+claimed. No repair or cleanup was attempted there. Log
+`/tmp/pr824-b7c-comparison-pure.log`, SHA256
+`6b18e73e96371936054a33df4c457641d4a6b29101a68b23714a4b5290de2fd3`.
+Subsequent pure checks disabled global setup explicitly; subsequent database
+checks used the formal owned runner. This new deviation is separate from the
+historical incidents below and is not passing evidence.
+
 ### Fixed NW-01 integration
 
 Code `25e8aabaee5bedd709aa15d02e6e6d020cc5550c`, tree

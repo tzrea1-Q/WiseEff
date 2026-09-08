@@ -4,6 +4,54 @@
 
 ## NW 续工，2026-09-08
 
+### 集成后续候选 `0390bd028`
+
+代码 `0390bd028219b464e143418cb13155d3819aee0e`，tree
+`bdd8c313172648b2fedf58b2790775213fa9ab0f`，base 保持 `cda6737a8`。
+以下执行期间 HEAD 和代码未变；后续文档提交不构成新的代码执行。
+Node 22.22.3／Vitest 4.1.5，仅开发隔离环境。
+
+| 执行 | 结果 | 本地日志／SHA256 |
+| --- | --- | --- |
+| scripts 配置下 controller、handoffDataSource、upgrade-component-ci、run-upgrade-component-tests | 97/97，零失败／跳过，退出0 | `/tmp/pr824-0390-focused.log`／`f2dc90a596d9be23b362629d937e84c6450b9a51ec2738c44bcab9a5ce6c21bb` |
+| `npm run build` | 退出0，保留既有警告 | `/tmp/pr824-0390-build.log`／`d99411a7e6ba2d37789984e0935a60c1f3dce6efc9c6010441251c48304f130c` |
+| Boundary，原 CI trusted base `9b3ba7df7e21f5589684bc92c872da593ad4c246` | 3509/3509，无新增／stale／不匹配／增长，退出0 | `/tmp/pr824-0390-boundary.log`／`6eecbc7c68f93a34280ba53bb4a3837ff844959de6391569ee190fe9a3b0f795` |
+| 正式 owned runner `--suite docs-check` | governance、真实 pgvector schema 产物及清理核验通过，退出0 | `/tmp/pr824-0390-docs-owned.log`／`38d0d45cc59844a373b03a8adc693fbcd3efdbf4432c553071315a7f25b135d3` |
+
+独立源执行保持原身份：`c2197ae17` 正式 `handoff-three-store` 为9/9、77.32秒，
+退出0、清理核验通过。日志 `/tmp/pr824-handoff-data-c219-actual.log`，SHA256
+`465c86b2a5b5a19a3a82ad96e9b0f7808a952c33ded7f479752defcd19b631a2`。
+该执行使用真实 owned 三存储和私有传输，但应用容器仍为身份 stub，并非旧 API／worker。
+它已登记到强制 owned CI 路由。
+
+bootstrap 源 `3fa5db71e` 正式完整入口为41/41，零失败／跳过／过滤，17.65秒，
+退出0、清理核验通过。日志 `/tmp/pr824-bootstrap-probe-3fa5-final-green.log`，SHA256
+`6e4fd6a31068c45f48222ebb97ae9477830edccae9bea5e487ba8af6bba1e704`。
+deferred 真实 PG Red 观察到下一次 guard 执行时自有认证 PID 仍存活；修复等待原生终止
+再进入后续 guard，保留 unknown 和权限合同。两次原代码本机对照未复现 Hosted，
+因此不能声称已证明原 Hosted 失败的精确原因。
+
+run `34192523701` 已失败结束，merge 为 `7affb0894c4d78446efbfaf534ff61561c44e0a4`：
+bootstrap 39通过／1失败。child 已返回 `not-applied`，父后续 fresh-manager inspect
+返回 `unknown`；后续 owned suite 未执行。Build/test、smoke、quality 通过；
+local non-HDC、target synthetic 跳过；Merge bar 失败。原日志
+`/tmp/pr824-ci-4b-owned.log`，SHA256
+`c36cc577c9b303bde9645dcdaee1b5503de29dfef8f575d248d6f656cd5a063c`。
+它与此前 runtimeRoleSource 会话数失败及各次超时分别记录。
+以上不代表当前完整 scripts／backend 或新 Hosted 已通过。
+
+bootstrap、handoff、mapping／codec 分片分别通过 Standards／Spec；另有新独立审查者
+只读审查 `4b346d6ef..0390bd028` 集成并给出 Spec PASS、无 P1/P2；审查者没有执行测试。
+审查范围不包括完整 provider、P13、获批应用启动或完整升级。A／B／C均未完成。
+
+新增执行安全偏差：父在 `b7c64328f` 对两个纯测误选 server 配置，global setup 到达
+默认／共享开发库 ledger 后拒绝，零用例执行。编号 migration 循环未运行，但 bootstrap
+DDL 影响未完整观测，不能声称零写入；没有在那里尝试修复或清理。日志
+`/tmp/pr824-b7c-comparison-pure.log`，SHA256
+`6b18e73e96371936054a33df4c457641d4a6b29101a68b23714a4b5290de2fd3`。
+后续纯测显式不加载 global setup，数据库验证均使用正式 owned runner。
+这是独立于下方历史事件的新偏差，不计为通过证据。
+
 ### 固定 NW-01 集成
 
 代码 `25e8aabaee5bedd709aa15d02e6e6d020cc5550c`，tree

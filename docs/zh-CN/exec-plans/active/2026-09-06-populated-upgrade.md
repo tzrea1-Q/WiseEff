@@ -16,16 +16,25 @@ NW-01代码 `25e8aabae`／报告 `4b346d6ef` 已推送，D-A与原生client关�
 run `34192523701` 在merge `7affb0894c4d78446efbfaf534ff61561c44e0a4` 出现新的owned失败：
 bootstrap 39通过／1失败：独立child的 `not-applied` 断言已过，但父进程后续fresh-manager inspect
 预期 `not-applied`、实际 `unknown`，不能归因成child重开失败。
-后续owned suite未执行，由Fermat定位；不能据此推断原runtime-role-source又失败。
+后续owned suite未执行。随后本机 deferred 真实 PG 反例证明认证探针关闭竞态，
+但未复现或证明原 Hosted 原因；已审修复集成到 `0390bd028`。
 
 后续本地代码：`53946302d` 在planner返回后、journal提交或重放成功前复查原宿主锁；
 Red为失锁仍成功，Green为19/19调度回归，限定Standards／Spec独立通过。
-`1ad2fdb0f` 登记真实Compose handoff owned入口，路由／监督59/59，实际入口执行待Raman的
-数据观察器；父唯一负责runner／CI／controller，Raman唯一负责 `handoffDataSource` 和handoff夹具。
+`1ad2fdb0f` 登记真实Compose handoff owned入口，路由／监督59/59；随后源 `c2197ae17`
+实际入口9/9、清理已验证，但应用容器仍为身份 stub。
+父唯一负责runner／CI／controller，Raman唯一负责 `handoffDataSource` 和handoff夹具。
 `b7c64328f` 集成已双审的mapping快照／v2 codec小边界，真实PG activation 22/22、五文件纯测24/24、
 build退出0并保留警告。首次纯测误选配置触发默认开发库ledger检查，未收集用例，不计验证。
 上述不证明完整多head比较、P13、获批启动或完整controller成功；新代码不会倒填到已发布的
 `4b346d6ef` 全文包。
+
+集成代码 `0390bd028`／tree `bdd8c313172648b2fedf58b2790775213fa9ab0f` 的相关97/97、
+build、原 boundary 3509/3509、含真实 schema 核验的严格 owned docs 均通过。
+bootstrap 源 `3fa5db71e` 单独真实 PG 41/41、清理已核验。分片 Standards／Spec 和新的
+限定集成 Spec 均通过，不推定当前全量或 Hosted 通过。精确执行身份、hash 及新增默认库
+误调用偏差见现有证据双语文件。Lagrange 继续实际 P0 库存／登记及多 head provider 链；
+Raman 继续真实旧应用源 lease。这些未完成 Scratch 路径不计入交付代码。
 
 当前base仍为 `cda6737a8`；报告 `b5ef257cc` 的run `34169931811` 已失败结束，
 实际merge checkout `829f8b49d`。runtime-role-source为12通过／1失败：管理会话终止后
