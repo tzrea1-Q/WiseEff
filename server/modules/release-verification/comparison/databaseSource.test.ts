@@ -11,6 +11,7 @@ let manager: pg.PoolClient & pg.Client;
 let native: pg.PoolClient & pg.Client;
 let observedTarget = target;
 let held = true;
+let nativeSchemas: string[];
 let rootClosed = false;
 let boundary: () => Promise<void>;
 let releaseBoundary: (() => void) | undefined;
@@ -24,7 +25,7 @@ function client(pid: number) {
   vi.spyOn(value, "query").mockImplementation(((text: string, ...args: unknown[]) => {
     const result = text.includes("pg_control_system") ? { rowCount: 1, rows: [{ system_identifier: observedTarget.systemIdentifier, database_oid: observedTarget.databaseOid }] } :
       text.includes("pg_advisory_xact_lock") ? { rowCount: 1, rows: [{ pid, username: "manager", database: "source" }] } :
-      text.includes("current_schemas") ? { rowCount: 1, rows: [{ pid, username: "manager", same_identity: true, schemas: ["pg_catalog", "public"], held }] } :
+      text.includes("current_schemas") ? { rowCount: 1, rows: [{ pid, username: "manager", same_identity: true, schemas: nativeSchemas, held }] } :
       { rowCount: 1, rows: [{ value: 1 }] };
     const callback = args.at(-1);
     if (typeof callback === "function") { callback(undefined, result); return; }
@@ -37,6 +38,7 @@ const input = () => ({ connectionString: "postgresql://manager:private@127.0.0.1
 
 beforeEach(() => {
   observedTarget = target; held = true; rootClosed = false;
+  nativeSchemas = ["pg_catalog", "public"];
   boundary = async () => undefined;
   manager = client(100); native = client(101);
   const pools = new WeakSet<pg.Pool>();
@@ -102,5 +104,10 @@ describe("comparison root actual checkout ownership", () => {
   it("rejects substitution of the issuing owner's final boundary", async () => {
     const source = await openComparisonDatabaseV2(input()); resources.push(source);
     expect(() => assertComparisonDatabaseSource({ ...input(), ...source, verifyBoundary: async () => undefined })).toThrow("PCAT-CMP-REPORT-INTEGRITY");
+  });
+  it("rejects an explicit temporary schema after pg_catalog before accepting another lease", async () => {
+    const source = await openComparisonDatabaseV2(input()); resources.push(source);
+    nativeSchemas = ["pg_catalog", "pg_temp_7", "public"];
+    await expect(source.database.query("select 1")).rejects.toThrow("PCAT-CMP-REPORT-INTEGRITY");
   });
 });

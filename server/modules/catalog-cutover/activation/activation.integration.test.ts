@@ -279,6 +279,19 @@ describe("existing 0137 activation storage on independently owned PG16", () => {
       }
     });
   });
+  it("rejects a reused source lease whose temporary relation shadows the actual public inventory", async () => {
+    await withComparisonRoot(async (value) => {
+      const source = await value.pool.connect();
+      try {
+        await source.query("create temporary table parameter_spec_versions as select * from public.parameter_spec_versions with no data");
+        await source.query("set search_path=pg_catalog,pg_temp,public");
+        expect((await source.query("select count(*)::int as n from public.parameter_spec_versions")).rows[0].n).toBeGreaterThan(0);
+        expect((await source.query("select count(*)::int as n from parameter_spec_versions")).rows[0].n).toBe(0);
+      } finally { source.release(); }
+      await expect(value.database.query("select count(*)::int as n from parameter_spec_versions"))
+        .rejects.toThrow("PCAT-CMP-REPORT-INTEGRITY");
+    });
+  });
   it("resolves a lost COMMIT acknowledgment by inspection without duplicating the mapping preparation event", async () => {
     await appendArchiveEvidence(true);
     const faultPool = new pg.Pool({ ...management.options, max: 1 });
