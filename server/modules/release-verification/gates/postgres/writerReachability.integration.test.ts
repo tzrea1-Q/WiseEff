@@ -405,3 +405,43 @@ it("blocks the retired module mapping INSERT and conflict UPDATE with no write c
     await admin.query("delete from public.organizations where id=$1", [organization]);
   }
 });
+
+it.each(["direct", "private-inner"])("blocks native file deletion dispatching an unscoped %s definer trigger into legacy storage", async mode => {
+  const suffix = `${nonce}_${mode.replace("-", "_")}`;
+  const organization = `ri_trigger_org_${suffix}`, project = `ri_trigger_project_${suffix}`;
+  const file = `ri_trigger_file_${suffix}`, version = `ri_trigger_version_${suffix}`, node = `ri_trigger_node_${suffix}`;
+  const trigger = `ri_trigger_${suffix}`, outer = `ri_outer_${suffix}`, inner = `ri_inner_${suffix}`;
+  await admin.query("insert into public.organizations(id,name) values ($1,'RI trigger fixture')", [organization]);
+  await admin.query("insert into public.projects(id,organization_id,name,code) values ($1,$2,'RI trigger fixture',$1)", [project, organization]);
+  await admin.query("insert into public.project_parameter_files(id,organization_id,project_id,file_name,format) values ($1,$2,$3,'fixture.dts','dts')", [file, organization, project]);
+  await admin.query(`insert into public.project_parameter_file_versions(id,file_id,version_number,storage_key,checksum,size_bytes,origin)
+    values ($1,$2,1,'fixture','fixture',0,'upload')`, [version, file]);
+  await admin.query("insert into public.dts_nodes(id,file_version_id,name,node_path) values ($1,$2,'fixture','/fixture')", [node, version]);
+  const mutation = "update public.driver_schemas set schema_namespace='ri-trigger-mutated' where id='v13-driver';";
+  await admin.query(`create function public.${inner}() returns void language plpgsql security definer set search_path=pg_catalog,public
+    as $$ begin ${mutation} end $$; revoke all on function public.${inner}() from public;
+    grant execute on function public.${inner}() to ${capabilityName};
+    create function public.${outer}() returns trigger language plpgsql security definer set search_path=pg_catalog,public
+    as $$ begin ${mode === "direct" ? mutation : `perform public.${inner}();`} return old; end $$;
+    revoke all on function public.${outer}() from public;
+    create trigger ${trigger} after delete on public.dts_nodes for each row execute function public.${outer}();
+    ${mode === "private-inner" ? `alter function public.${outer}() owner to ${capabilityName};` : ""}
+    grant delete,select(id) on public.project_parameter_file_versions to ${writerName};`);
+  try {
+    expect((await writer.query(`select pg_catalog.has_table_privilege(current_user,'public.dts_nodes','DELETE') as child_write,
+      pg_catalog.has_function_privilege(current_user,$1,'EXECUTE') as outer_execute,
+      pg_catalog.has_function_privilege(current_user,$2,'EXECUTE') as inner_execute`, [`public.${outer}()`, `public.${inner}()`])).rows)
+      .toEqual([{ child_write: false, outer_execute: false, inner_execute: false }]);
+    await admin.query("update public.driver_schemas set schema_namespace='ri-trigger-before' where id='v13-driver'");
+    expect((await writer.query("delete from public.project_parameter_file_versions where id=$1", [version])).rowCount).toBe(1);
+    expect((await admin.query("select count(*)::int as count from public.dts_nodes where id=$1", [node])).rows).toEqual([{ count: 0 }]);
+    expect((await admin.query("select schema_namespace from public.driver_schemas where id='v13-driver'")).rows)
+      .toEqual([{ schema_namespace: "ri-trigger-mutated" }]);
+    await expectBlocked();
+  } finally {
+    await admin.query(`drop trigger ${trigger} on public.dts_nodes; drop function public.${outer}(); drop function public.${inner}();
+      revoke delete,select(id) on public.project_parameter_file_versions from ${writerName}`);
+    await admin.query("delete from public.projects where id=$1", [project]);
+    await admin.query("delete from public.organizations where id=$1", [organization]);
+  }
+});
