@@ -2,6 +2,27 @@
 
 [Chinese](runtimeRoleSource.README.zh-CN.md)
 
+## NW-01: native client completion
+
+Run `34169931811` at merge `829f8b49d` failed the manager-termination test:
+12 passed/1 failed, server session count 1 instead of 0. This was not evidence
+of a permanent leak. Exact-PID instrumentation on `499cb44ce` reproduced four
+native-end failures (9 passed/4 failed); one remaining idle API session matched
+this module's acquired PID. Locked pg-pool removes a released client from its
+local list before asynchronous client termination, so `pool.end()` alone can
+resolve too early. The fix awaits the owned native `Client.end()`, then releases
+in `finally` and awaits the pool. All resources still settle, close is shared,
+and admission failures retain their existing safe reason.
+
+Fixed source `b5763c6042dcc18f301be32c297a0bd726c4ddf8` passed real PG 13/13,
+15.46s, cleanup verified, plus types and nine pure tests. At close return all
+observed native clients had ended; subsequent independent session queries were
+empty, before fallback cleanup. No polling, fixed sleep, extra termination,
+retry, grant or timeout change was used. Independent Standards/Spec passed this
+bounded increment. Log SHA256:
+`64e7e867406e705f6b3bf880b452dd5e97f958b2ca531ae189775422e50d389f`.
+The source/transport evidence below is historical and does not prove startup.
+
 `openRuntimeRoleSource` observes the actual LOGIN selected by the handoff-pinned API and worker `DATABASE_URL`, plus the API's separate `CATALOG_GOVERNANCE_DATABASE_URL` when present. It returns an opaque handle; `observeRuntimeRoles` accepts only a handle issued by this module and rechecks its live resources. No connection, password, environment contents, startup pin, or approval is returned.
 
 The control root supplies its fixed `HandoffPlan`, authoritative expected digest, and actual same-directory `HostOperationLock`. The new handoff FD lease checks the four original private files, including device/inode, current path, owner, 0600, single link and content hash, and keeps them open until close. It does not replace `verifyStoppedHandoff`, capture, current mapping, report verification or any phase decision. A fixture with a scoped plan is not evidence that the full handoff producer ran.

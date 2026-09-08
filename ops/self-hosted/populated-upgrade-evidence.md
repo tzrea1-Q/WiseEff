@@ -2,7 +2,47 @@
 
 > Chinese: [Chinese](populated-upgrade-evidence.zh-CN.md)
 
-## Integrated candidate, 2026-09-08
+## NW continuation, 2026-09-08
+
+Local code `2a96d3f31f8ca00559b7fb81ea578632ae9ec165`, tree
+`5bfa1d4febe0085ac1d760ac9dce96d9038a7a09`, includes the independently reviewed
+NW-01 native client termination fix and authorized D-A audit relocation. Base
+remains `cda6737a8f177a8bbd2f3bc7d195f8e3037bfa74`. This local execution has no
+CI merge-ref. Remote report `b5ef257cc` retains failed run `34169931811`;
+its manager-session assertion is distinct from the new local failure below.
+
+The unchanged formal component runner executed the original serial suite order
+on the independently identified development Docker daemon, PostgreSQL 16 Alpine,
+linux/arm64. At this fixed code, reader passed 49/49, writer reachability 34/34,
+runtime identity 11/11, and runtime role source 13/13, all exit 0 with no
+skips/filters and verified cleanup. The next legacy SQL suite failed: 18 passed,
+1 failed of 19, exit 1. Its cross-database case exceeded the unchanged 5000ms
+test budget and its fixture reported cleanup failure; the outer owned runner
+verified resource cleanup. Later suites did not execute in this batch. Build
+exited 0 with retained warnings. This is not a full owned-suite pass or startup.
+
+Logs use `/tmp/upg824-nw01-2a96-<name>.log` on the execution machine (not a
+download link). SHA256:
+
+| Name | SHA256 |
+| --- | --- |
+| reader-pg16 | `62cc1e1a899d84cc45fbe2b7faeaec2daf4d56a9e625d9716f9620cb6158414d` |
+| writer-reachability-pg16 | `ac39cb4b824a3433ae78381fad54f38654c994dcb2dc45a478669f16446a89c9` |
+| runtime-identity-pg16 | `7643e9c36faa586728407c0204d1f0dfd4199ca1310047f5071b708ade66776d` |
+| runtime-role-source-pg16 | `9b7b8305559be3b468ccd9f93d06cc0280eae8d22218ab051f6a0ec7e66f66ce` |
+| legacy-sql-privileges-pg16 | `ba7739739f0dbf0638d5c56d5547b4f14cef4391ca143839ab4c25d1aab9860b` |
+| build | `b452864ba63d9b5630480de71784d50042724ddb3eeed4d6d7b2fd2d8e37d9fe` |
+
+D-A is now authorized and integrated at `86d590713`; the historical sections
+below describe its earlier unapproved status. The exact natural test file is
+blob `e019e246ea36a9ced4a70b572bc4c03d22eaad0b`. The three unchanged protected
+slices and permission metadata were independently reviewed. Relocation tests
+passed 69/69. A separate real-PG execution of that exact test file passed 15/15;
+the checkout advanced in unrelated runtime source files during that execution,
+so it is file-specific evidence, not a fixed whole-candidate run. D-B remains
+in implementation. A/B/C are incomplete; production has not been accessed.
+
+## Historical integrated candidate, 2026-09-08
 
 Bootstrap integration `864bd95f180a297fb0fd3ec04aeeaf930b36718c`, tree
 `3174a0505facdf5d4b298c208057024152a490ca`, passed the actual owned

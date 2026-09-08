@@ -2,7 +2,42 @@
 
 > English: [English](populated-upgrade-evidence.md)
 
-## 集成候选，2026-09-08
+## NW 续工，2026-09-08
+
+本地代码 `2a96d3f31f8ca00559b7fb81ea578632ae9ec165`，tree
+`5bfa1d4febe0085ac1d760ac9dce96d9038a7a09`，已集成独立审查的 NW-01
+原生连接关闭修复及获准的 D-A 审计重定位。base 仍为
+`cda6737a8f177a8bbd2f3bc7d195f8e3037bfa74`。本地执行没有 CI merge-ref。
+远端报告 `b5ef257cc` 的 `34169931811` 仍是失败执行；其管理会话断言
+与下面新发现的本地失败分别记录。
+
+未修改的正式组件 runner 按原串行顺序，在独立核验的开发 Docker daemon、
+PostgreSQL 16 Alpine、linux/arm64 上执行。该固定代码的 reader 49/49、
+writer reachability 34/34、runtime identity 11/11、runtime role source 13/13
+通过，均退出 0，无跳过或过滤，清理已核验。下一项 legacy SQL 为 18 通过、
+1 失败，共 19，退出 1：跨数据库用例超过原 5000ms 预算，夹具报告清理失败；
+外层 owned runner 核验其资源已清理。该批次后续套件未执行。build 退出 0，
+保留构建警告。这不是全部 owned 通过，也不是启动通过。
+
+日志位于执行机器 `/tmp/upg824-nw01-2a96-<名称>.log`，不是下载链接。SHA256：
+
+| 名称 | SHA256 |
+| --- | --- |
+| reader-pg16 | `62cc1e1a899d84cc45fbe2b7faeaec2daf4d56a9e625d9716f9620cb6158414d` |
+| writer-reachability-pg16 | `ac39cb4b824a3433ae78381fad54f38654c994dcb2dc45a478669f16446a89c9` |
+| runtime-identity-pg16 | `7643e9c36faa586728407c0204d1f0dfd4199ca1310047f5071b708ade66776d` |
+| runtime-role-source-pg16 | `9b7b8305559be3b468ccd9f93d06cc0280eae8d22218ab051f6a0ec7e66f66ce` |
+| legacy-sql-privileges-pg16 | `ba7739739f0dbf0638d5c56d5547b4f14cef4391ca143839ab4c25d1aab9860b` |
+| build | `b452864ba63d9b5630480de71784d50042724ddb3eeed4d6d7b2fd2d8e37d9fe` |
+
+D-A 已获准并在 `86d590713` 集成；下方历史段保留其当时未批准状态。
+自然修改的测试文件精确 blob 为 `e019e246ea36a9ced4a70b572bc4c03d22eaad0b`，
+三条受保护原始切片及权限元数据已独立核验。重定位测试 69/69 通过。
+该精确测试文件另一次真实 PG 执行 15/15 通过，但执行期间 checkout 的无关
+runtime 源文件前进，因此只作为该文件的证据，不记为固定整候选执行。
+D-B 仍在实现；A/B/C 均未完成，未访问生产。
+
+## 历史集成候选，2026-09-08
 
 Bootstrap集成 `864bd95f180a297fb0fd3ec04aeeaf930b36718c`，tree
 `3174a0505facdf5d4b298c208057024152a490ca`，实际owned

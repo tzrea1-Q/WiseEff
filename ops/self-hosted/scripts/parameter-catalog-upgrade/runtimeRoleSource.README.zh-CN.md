@@ -2,6 +2,22 @@
 
 [English](runtimeRoleSource.README.md)
 
+## NW-01：等待原生连接结束
+
+Run `34169931811`（merge `829f8b49d`）管理会话终止用例失败：12通过／1失败，
+服务端会话数预期0、实测1；这本身不能证明永久泄漏。`499cb44ce` 的精确PID观测
+复现四个原生end未完成反例（9通过／4失败），其中仍idle的API会话与本模块取得的PID
+一致。锁定版本pg-pool先从本地列表移除client，再异步结束连接，因此仅等pool.end()
+可能提前返回。修复先等自有原生Client.end()，在finally释放，再等待pool关闭；全部
+资源仍尝试清理、close共享，准入错误保留既有安全原因。
+
+固定源 `b5763c6042dcc18f301be32c297a0bd726c4ddf8` 真实PG13/13，15.46s，清理验证
+通过；types及9项纯测试通过。close返回时全部被观察原生client已结束，其后独立会话
+查询为空，断言早于fallback清理。没有轮询、固定sleep、额外终止、重试、grant或timeout
+变化。独立Standards／Spec通过此限定增量。日志SHA256：
+`64e7e867406e705f6b3bf880b452dd5e97f958b2ca531ae189775422e50d389f`。
+下文来源／传输执行为历史证据，不证明startup。
+
 `openRuntimeRoleSource` 观察 handoff 固定 API、worker `DATABASE_URL` 实际选择的 LOGIN，以及 API 配置时独立的 `CATALOG_GOVERNANCE_DATABASE_URL`。它返回不透明句柄；`observeRuntimeRoles` 只接受本模块签发的句柄，并复核仍存活的资源。不返回连接、密码、环境文件内容、startup pin 或批准。
 
 控制根提供固定 `HandoffPlan`、受控的预期摘要，以及同目录真实 `HostOperationLock`。新增 handoff FD 租借核对四个原私有文件的 device/inode、当前路径、所有者、0600、单链接和内容摘要，保持原 FD 直到关闭。它不替代 `verifyStoppedHandoff`、capture、当前 mapping、报告验证或任何阶段判定。仅构造限定 plan 的夹具不证明完整 handoff producer 已执行。

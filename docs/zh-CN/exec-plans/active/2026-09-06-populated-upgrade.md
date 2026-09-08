@@ -20,7 +20,7 @@
 | 工作单元／唯一写入者 | 退出条件与风险 | 文档影响 |
 | --- | --- | --- |
 | NW-01运行来源／Raman；审计及精确映射／父 | 按PID归因释放；不放宽预算；三对字节与身份反例 | 现有runtime source、boundary及证据双语文件 |
-| NW-02 codec／provider／mapping集成／父 | 实际多head与固定P0规则通过既有九gate；未知来源拒绝 | 现有比较合同／决策及指纹 |
+| NW-02 codec／provider／mapping实现／Lagrange；串行集成／父 | 实际多head与固定P0规则通过既有九gate；未知来源拒绝 | 现有比较合同／决策及指纹 |
 | NW-03 controller／journal／组合根／父 | 真实P13与正式批准报告支持受限production API／worker启动 | 现有startup、retirement及操作手册 |
 | NW-04集成／父 | 真实终端完整升级非空隔离旧环境并完成业务／恢复验收 | 现有证据／操作手册 |
 
