@@ -13,6 +13,48 @@ export { createActivationIntent };
 export { ActivationRefusal } from "./interface";
 export type { ActivationBinding, ActivationIdentity, ActivationInspection, ActivationIntent, ActivationJournal, ActivationObservation, ActivationOptions } from "./interface";
 
+/** Management-only observation for the v2 Comparison collector. Reuse the
+ * original persisted epoch/facts reader; this does not prepare an epoch,
+ * acquire S7 on another connection, or issue an activation/report approval. */
+export async function readComparisonMappingFactsOnHeldSession(input: {
+  readonly client: pg.PoolClient; readonly target: ActivationOptions["target"];
+  readonly runId: string; readonly planDigest: string; readonly verifyBoundary: () => Promise<void>;
+}) {
+  const { client, runId, planDigest, verifyBoundary } = input;
+  const target = structuredClone(input.target);
+  try {
+    await verifyHeldManagementSession(client, target, verifyBoundary);
+    const savepoint = pg.escapeIdentifier(`comparison_observe_${randomUUID().replaceAll("-", "")}`);
+    await client.query(`savepoint ${savepoint}`);
+    await client.query(`release savepoint ${savepoint}`);
+    const facts = await readFacts(client, target, runId, planDigest);
+    await verifyHeldManagementSession(client, target, verifyBoundary);
+    return structuredClone({ mapping: { epoch: facts.mappingEpoch, headDigest: facts.headDigest },
+      versionInventoryDigest: facts.versionInventoryDigest, catalog: facts.catalog,
+      sourceSnapshotFingerprint: facts.run.source_snapshot_fingerprint, candidateSha: facts.run.target_artifact_sha,
+      runState: facts.run.state, runPhase: facts.run.current_phase, currentBinding: facts.currentBinding });
+  } catch (error) {
+    if (error instanceof ActivationRefusal) throw error;
+    return refuse("HELD-SESSION-UNAVAILABLE");
+  }
+}
+
+async function verifyHeldManagementSession(client: pg.PoolClient, target: ActivationOptions["target"], verifyBoundary: () => Promise<void>) {
+  if (!isDeepStrictEqual(await physicalIdentity(client), target)) refuse("TARGET-MISMATCH");
+  const observed = (await client.query<{ same_identity: boolean; manager: boolean; isolation: string; timezone: string; locked: boolean }>(`select
+    session_user=current_user as same_identity,
+    (select rolsuper or (not rolinherit and not rolbypassrls and not rolcreatedb and not rolcreaterole and not rolreplication
+      and pg_catalog.pg_has_role(session_user,'catalog_migration_owner','MEMBER')) from pg_catalog.pg_roles where rolname=session_user) as manager,
+    pg_catalog.current_setting('transaction_isolation') as isolation, pg_catalog.current_setting('TimeZone') as timezone,
+    exists(select 1 from pg_catalog.pg_locks where pid=pg_catalog.pg_backend_pid()
+      and database=(select oid from pg_catalog.pg_database where datname=pg_catalog.current_database())
+      and locktype='advisory' and mode='ExclusiveLock' and granted
+      and classid=pg_catalog.hashtext('s7-orc-cutover-target')::oid and objid=pg_catalog.hashtext(pg_catalog.current_database())::oid and objsubid=2) as locked`)).rows[0];
+  if (!observed?.same_identity || !observed.manager || !observed.locked ||
+    observed.timezone !== "UTC" || !["repeatable read", "serializable"].includes(observed.isolation)) refuse("HELD-SESSION-REJECTED");
+  await verifyBoundary();
+}
+
 /** A real management lease is observed from pg's acquisition callback through
  * destruction. It never becomes an application connection or grant. */
 async function withTransaction<T>(options: ActivationOptions, write: boolean, body: (client: pg.PoolClient) => Promise<T>): Promise<T> {
@@ -97,6 +139,10 @@ async function approvedReport(options: ActivationOptions, observed: ActivationOb
       report.evidenceRefs.some(ref => !isDeepStrictEqual(ref.subject, observed.subject))) refuse("REPORT-MISMATCH");
   const comparisonReport = options.comparisonReport;
   if (!comparisonReport) return refuse("COMPARISON-REPORT-UNAVAILABLE");
+  // Historical reports remain inspectable. This helper is called only by a
+  // new apply, which requires the explicitly versioned live capture contract.
+  const comparisonVersion: unknown = comparisonReport.contractVersion;
+  if (comparisonVersion !== "pcat-comparison-report/v2") return refuse("COMPARISON-REPORT-MISMATCH");
   try {
     const association = assertComparisonEvidenceAssociation({
       comparisonReport, verificationReport: report, subject: observed.subject,
@@ -163,21 +209,7 @@ export function createApplicationReadActivation(options: ActivationOptions) {
      * It neither passes a transaction to Kernel nor issues runtime approval. */
     async inspectOnHeldManagementSession(input: ActivationIntent, client: pg.PoolClient) {
       const intent = validateIntent(input);
-      const verify = async () => {
-        if (!isDeepStrictEqual(await physicalIdentity(client), fixed.target)) refuse("TARGET-MISMATCH");
-        const observed = (await client.query<{ same_identity: boolean; manager: boolean; isolation: string; timezone: string; locked: boolean }>(`select
-          session_user=current_user as same_identity,
-          (select rolsuper or (not rolinherit and not rolbypassrls and not rolcreatedb and not rolcreaterole and not rolreplication
-            and pg_catalog.pg_has_role(session_user,'catalog_migration_owner','MEMBER')) from pg_catalog.pg_roles where rolname=session_user) as manager,
-          pg_catalog.current_setting('transaction_isolation') as isolation, pg_catalog.current_setting('TimeZone') as timezone,
-          exists(select 1 from pg_catalog.pg_locks where pid=pg_catalog.pg_backend_pid()
-            and database=(select oid from pg_catalog.pg_database where datname=pg_catalog.current_database())
-            and locktype='advisory' and mode='ExclusiveLock' and granted
-            and classid=pg_catalog.hashtext('s7-orc-cutover-target')::oid and objid=pg_catalog.hashtext(pg_catalog.current_database())::oid and objsubid=2) as locked`)).rows[0];
-        if (!observed?.same_identity || !observed.manager || !observed.locked ||
-            observed.timezone !== "UTC" || !["repeatable read", "serializable"].includes(observed.isolation)) refuse("HELD-SESSION-REJECTED");
-        await fixed.boundary.verify();
-      };
+      const verify = () => verifyHeldManagementSession(client, fixed.target, () => fixed.boundary.verify());
       try {
         await verify();
         const savepoint = pg.escapeIdentifier(`activation_inspect_${randomUUID().replaceAll("-", "")}`);

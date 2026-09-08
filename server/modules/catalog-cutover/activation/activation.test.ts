@@ -3,6 +3,11 @@ import { EventEmitter } from "node:events";
 import { createApplicationReadActivation, createActivationIntent } from "./index";
 import type { ActivationOptions } from "./interface";
 
+const approval = vi.hoisted(() => ({ selected: null as unknown }));
+vi.mock("../../release-verification/report/index", () => ({ createVerificationReportService: () => ({
+  readReport: async () => approval.selected,
+}) }));
+
 const input = () => ({
   runId: "cutover-source", attemptId: "activation-attempt",
   target: { systemIdentifier: "123", databaseOid: "456" },
@@ -12,6 +17,22 @@ const input = () => ({
 });
 
 describe("application read activation public boundary (not full release evidence)", () => {
+  it("refuses historical Comparison v1 for a new apply before acquiring a lease or writing pending", async () => {
+    // Only the formal report read is doubled. This tests the public apply's
+    // version gate, not approval issuance or a successful activation.
+    const observed = { pins: {}, subject: {}, phaseSnapshot: "phase", predecessorReportDigests: [], pointerRollbackStatus: "open" };
+    approval.selected = { kind: "present", report: { digest: input().reportDigest, purpose: "pre-activation", decision: "passed",
+      ...observed, evidenceRefs: [{ subject: observed.subject }] } };
+    const connect = vi.fn(), pending = vi.fn();
+    const activation = createApplicationReadActivation({ target: input().target,
+      comparisonReport: { contractVersion: "pcat-comparison-report/v1" }, managementPool: { connect }, reports: {},
+      journal: { pending }, boundary: { withLockedBoundary: async (body: () => Promise<unknown>) => body(),
+        verify: async () => undefined, observe: async () => observed },
+    } as unknown as ActivationOptions);
+    await expect(activation.apply(createActivationIntent(input()))).rejects.toThrow("PCAT-ACTIVATION-COMPARISON-REPORT-MISMATCH");
+    expect(connect).not.toHaveBeenCalled();
+    expect(pending).not.toHaveBeenCalled();
+  });
   it("rejects a caller-supplied digest that does not bind the request before any lease or effect", async () => {
     const options = { boundary: { withLockedBoundary: vi.fn() }, managementPool: { connect: vi.fn() } } as unknown as ActivationOptions;
     const activation = createApplicationReadActivation(options);

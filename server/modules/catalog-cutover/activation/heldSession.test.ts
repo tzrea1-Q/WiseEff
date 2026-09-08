@@ -1,5 +1,5 @@
 import { expect, it, vi } from "vitest";
-import { createActivationIntent, createApplicationReadActivation, type ActivationOptions } from "./index";
+import { createActivationIntent, createApplicationReadActivation, readComparisonMappingFactsOnHeldSession, type ActivationOptions } from "./index";
 
 it("inspects on the existing management transaction without reacquiring its S7 lock or owning its commit", async () => {
   const target = { systemIdentifier: "123", databaseOid: "456" };
@@ -18,4 +18,18 @@ it("inspects on the existing management transaction without reacquiring its S7 l
   expect(calls.some(sql => sql.startsWith("release savepoint "))).toBe(true);
   expect(calls.some(sql => /^(begin|commit|rollback|set |reset |insert |update |delete |alter )/i.test(sql) || sql.includes("pg_try_advisory_lock"))).toBe(false);
   expect(verify).toHaveBeenCalled();
+});
+
+it("does not treat a session isolation default as an active held comparison transaction", async () => {
+  const target = { systemIdentifier: "123", databaseOid: "456" };
+  const client = { query: vi.fn(async (sql: string) => {
+    if (sql.includes("pg_control_system")) return { rowCount: 1, rows: [target] };
+    if (sql.includes("transaction_isolation")) return { rowCount: 1, rows: [{ same_identity: true, manager: true,
+      isolation: "repeatable read", timezone: "UTC", locked: true }] };
+    if (sql.startsWith("savepoint ")) throw Object.assign(new Error("no transaction"), { code: "25P01" });
+    return { rowCount: 0, rows: [] };
+  }) };
+  await expect(readComparisonMappingFactsOnHeldSession({ client: client as never, target, runId: "run",
+    planDigest: `sha256:${"1".repeat(64)}`, verifyBoundary: async () => undefined })).rejects.toThrow("PCAT-ACTIVATION-HELD-SESSION-UNAVAILABLE");
+  expect(client.query.mock.calls.some(([sql]) => sql.includes("parameter_catalog_cutover_runs"))).toBe(false);
 });

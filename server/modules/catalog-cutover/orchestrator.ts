@@ -258,7 +258,7 @@ const runPhase = async (
         specCount: inventory.specs,
         classifierVersion: classified.value.classifierVersion,
         installer: installPublishedRelease.name,
-        ...(input.plan.comparisonRules ? { comparisonRules: input.plan.comparisonRules } : {}),
+        ...(input.plan.comparisonRules ? { comparisonRules: input.plan.comparisonRules, comparisonPlan: JSON.stringify(input.plan) } : {}),
         ...(input.bindingImportIntent ? {sourceInventoryFingerprint:input.bindingImportIntent.sourceInventoryFingerprint,bindingImportIntent:input.bindingImportIntent,bindingImportIntentDigest:bindingImportDigest(input.bindingImportIntent),conversionManifestDigest:input.plan.conversionManifestDigest,bindingArchiveRetainUntil:input.plan.bindingArchiveRetainUntil} : {}),
       });
     }

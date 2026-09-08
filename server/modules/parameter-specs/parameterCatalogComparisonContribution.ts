@@ -3,7 +3,7 @@ import type pg from "pg";
 
 import type { AuthContext } from "../auth/types";
 import { registerParameterCatalogApi } from "../parameter-catalog-api/productionWire";
-import { handleLegacyCatalogRequest } from "../parameter-catalog-api/legacy";
+import { handleLegacyCatalogRequest, lookupLegacyIdentifier } from "../parameter-catalog-api/legacy";
 import type { LegacyCatalogOptions } from "../parameter-catalog-api/legacy";
 import { parameterCatalogCanonicalRoutes } from "../contracts/dtoSchemas/parameterCatalog";
 import { routeManifest } from "../contracts/routeManifest";
@@ -642,6 +642,30 @@ type SourceAnchor = { sourceKind: "parameter-spec" | "parameter-spec-review-task
   ownerScopeKind: "platform" | "organization"; ownerScopeId: string };
 const specAnchor = (id: string, organizationId: string | null): SourceAnchor => ({ sourceKind: "parameter-spec", sourceId: id,
   ownerScopeKind: organizationId === null ? "platform" : "organization", ownerScopeId: organizationId ?? "platform" });
+
+/** D09 observes the actual retired owner route and its bounded successor
+ * lookup. Neither an existing mapping ID nor a caller's desired HTTP status
+ * supplies the result. Namespace and scope follow the production lookup. */
+export async function readCghComparisonOperatorOutcome(database: Database, sourceId: string, organizationIds: readonly string[]) {
+  const route = routeManifest.find(entry => entry.id === "parameterSpecs.create");
+  if (!route || !organizationIds.length || new Set(organizationIds).size !== organizationIds.length) {
+    throw new Error("PCAT-CGH-OPERATOR-OBSERVATION-UNAVAILABLE");
+  }
+  const outcomes = [];
+  for (const organizationId of organizationIds) {
+    const retired = await handleLegacyCatalogRequest({ method: route.method, path: route.path, params: {}, query: {},
+      headers: {}, requestId: randomUUID(), body: undefined }, createLegacyOptions(database, organizationId));
+    const body = retired.body as { error?: { code?: unknown; details?: { reason?: unknown; retryable?: unknown } } };
+    if (retired.status !== 410 || body.error?.code !== "GONE" || body.error.details?.reason !== "legacy-surface-retired" || body.error.details.retryable !== false) {
+      throw new Error("PCAT-CGH-OPERATOR-OBSERVATION-UNAVAILABLE");
+    }
+    const successor = await lookupLegacyIdentifier({ client: database as unknown as Parameters<typeof lookupLegacyIdentifier>[0]["client"],
+      legacyType: "parameter-spec", legacyId: sourceId, organizationId });
+    outcomes.push({ organizationId, retired: { status: retired.status, code: body.error.code,
+      reason: body.error.details.reason, retryable: body.error.details.retryable }, successor });
+  }
+  return outcomes;
+}
 
 /** Maintenance capture uses the real root-bound GET routes and follows every
  * cursor. Neither an unavailable route nor a malformed page is an empty list.

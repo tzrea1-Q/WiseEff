@@ -1,9 +1,14 @@
 import { digestOf } from "../release-verification/core/digest";
+import { createHash } from "node:crypto";
+import { isDeepStrictEqual } from "node:util";
+import { z } from "zod";
 import type pg from "pg";
 import { classifyFrozenP0Graph, fingerprintP0Graph, type FrozenP0Graph } from "./classifier";
 import { comparisonInventorySummary, readCapturedComparisonInventory, type CapturedComparisonInventory } from "../release-verification/comparison/planInventory";
-import { COMPARISON_FAMILIES, type ComparisonId } from "../release-verification/comparison/corpusContributionSchema";
+import { COMPARISON_FAMILIES, COMPARISON_IDS, FAMILY_COMPARISON_IDS, type ComparisonId } from "../release-verification/comparison/corpusContributionSchema";
 import { capturePhysicalSourceIdentities, type MappingSourceIdentity, type MappingQueryable } from "./mapping";
+import { comparisonSourceIdentitySchema } from "../release-verification/comparison/corpusContributionV2";
+import { MIGRATION_CONTRACT_VERSION, PRE_ACTIVATION_PHASES, type CutoverPlan } from "./interface";
 
 /** Source-only P0 graph. No canonical Catalog, mapping outcome, comparison
  * result or caller graph supplies these fields. The root retains the actual
@@ -97,4 +102,111 @@ export function produceComparisonP0Rules(graph: FrozenP0Graph, selection: Captur
   const rules = { version: "pcat-comparison-p0-rules/v2" as const,
     sourceSnapshotFingerprint: fingerprintP0Graph(graph), inventory: summary, cases };
   return { ...rules, digest: digestOf(rules) };
+}
+
+/** The original plan hashing order. Do not canonicalize this historical
+ * JSON.stringify codec or replace its nested original input bytes. */
+export function comparisonPlanDigest(plan: Omit<CutoverPlan, "planDigest">): string {
+  return `sha256:${createHash("sha256").update(JSON.stringify({
+    sourceSnapshotFingerprint: plan.sourceSnapshotFingerprint,
+    targetArtifactSha: plan.targetArtifactSha,
+    targetCatalogReleaseDigest: plan.targetCatalogReleaseDigest,
+    migrationContractVersion: plan.migrationContractVersion,
+    phases: plan.phases,
+    ...(plan.comparisonRules ? { comparisonRulesDigest: plan.comparisonRules.digest } : {}),
+    ...(plan.managementMigrationReceiptDigest ? { managementMigrationReceiptDigest: plan.managementMigrationReceiptDigest,
+      managementPreparation: plan.managementPreparation } : {}),
+    ...(plan.conversionManifestDigest ? { conversionManifestDigest: plan.conversionManifestDigest } : {}),
+    ...(plan.bindingImportIntentDigest ? { bindingImportIntentDigest: plan.bindingImportIntentDigest } : {}),
+    ...(plan.bindingImportIntentDigest ? { bindingArchiveRetainUntil: plan.bindingArchiveRetainUntil } : {}),
+  })).digest("hex")}`;
+}
+
+const nonempty = z.string().min(1);
+const digest = z.string().regex(/^sha256:[a-f0-9]{64}$/u);
+const checksum = z.string().regex(/^[a-f0-9]{64}$/u);
+const sha = z.string().regex(/^[a-f0-9]{40}$/u);
+const protectedReference = z.object({ kind: nonempty, id: nonempty }).strict();
+const plannedCase = z.object({ comparisonId: z.enum(COMPARISON_IDS), protectedReference, inputChecksum: checksum }).strict();
+const sourceBinding = z.object({ hostRunId: nonempty, handoffDigest: digest, sourceSystem: nonempty,
+  managementConfigurationDigest: digest, target: z.object({ systemIdentifier: nonempty, databaseOid: nonempty }).strict(),
+  sourceSha: sha, candidateSha: sha }).strict();
+const storedRules = z.object({ version: z.literal("pcat-comparison-p0-rules/v2"), sourceSnapshotFingerprint: digest,
+  inventory: z.object({ version: z.literal("pcat-comparison-selection/v2"), binding: sourceBinding,
+    families: z.array(z.object({ family: z.enum(COMPARISON_FAMILIES), sourceInventoryCount: z.number().int().safe().nonnegative(),
+      sourceInventoryChecksum: checksum, cases: z.array(plannedCase) }).strict()) }).strict(),
+  cases: z.array(plannedCase.extend({ inputChecksum: digest, family: z.enum(COMPARISON_FAMILIES), semanticAssertion: nonempty, ruleId: nonempty,
+    identities: z.array(z.object({ sourceIdentity: comparisonSourceIdentitySchema,
+      rClass: z.enum(["R1", "R2", "R3", "R4", "R5", "R6", "R7", "R8", "R9", "R10"]),
+      classificationRuleId: nonempty, disposition: z.enum(["mapped", "archived", "review-evidence", "definition-proposal"]),
+    }).strict()),
+  }).strict()), digest }).strict();
+const storedPlan = z.object({ comparisonRules: storedRules,
+  managementPreparation: z.object({ runId: nonempty, planDigest: digest, candidateArtifactSha: sha, candidateArtifactTree: sha }).strict().optional(),
+  managementMigrationReceiptDigest: digest.optional(), bindingImportIntentDigest: digest.optional(),
+  bindingArchiveRetainUntil: nonempty.optional(), conversionManifestDigest: digest.optional(),
+  planDigest: digest, sourceSnapshotFingerprint: digest, targetArtifactSha: sha, targetCatalogReleaseDigest: digest,
+  migrationContractVersion: z.literal(MIGRATION_CONTRACT_VERSION), phases: z.array(z.enum(PRE_ACTIVATION_PHASES)),
+}).strict();
+
+/** Read-only public owner projection for live Comparison. The maintenance
+ * root holds its original source/target boundary and this actual session.
+ * It does not accept plan JSON and does not authorize a phase or a mapping.
+ */
+export async function readCommittedComparisonPlan(input: {
+  readonly client: MappingQueryable; readonly runId: string; readonly planDigest: string; readonly candidateSha: string;
+}): Promise<CutoverPlan & { readonly comparisonRules: ComparisonP0Rules }> {
+  try {
+    const rows = (await input.client.query<{ runId: string; planDigest: string; candidateSha: string;
+      sourceFingerprint: string; state: string; checkpointDigest: string; eventDigest: string;
+      payload: { comparisonPlan?: unknown; comparisonRules?: unknown; sourceSnapshotFingerprint?: unknown } }>(`
+      select r.id as "runId",r.plan_digest as "planDigest",r.target_artifact_sha as "candidateSha",
+        r.source_snapshot_fingerprint as "sourceFingerprint",r.state,
+        c.checkpoint_digest as "checkpointDigest",e.payload->>'checkpointDigest' as "eventDigest",c.payload
+      from parameter_catalog.parameter_catalog_cutover_runs r
+      join parameter_catalog.parameter_catalog_cutover_checkpoints c on c.cutover_run_id=r.id and c.phase='P0'
+      join parameter_catalog.parameter_catalog_cutover_events e on e.cutover_run_id=r.id and e.phase='P0' and e.event_kind='checkpoint'
+      where r.id=$1`, [input.runId])).rows;
+    const row = rows[0];
+    if (rows.length !== 1 || !row || row.runId !== input.runId || row.planDigest !== input.planDigest ||
+      row.candidateSha !== input.candidateSha || !["running", "completed"].includes(row.state) ||
+      !digest.safeParse(row.checkpointDigest).success || row.eventDigest !== row.checkpointDigest ||
+      typeof row.payload?.comparisonPlan !== "string") throw new Error();
+    // Keep the original parsed object order for the historical plan digest.
+    // Zod's decoded clone is used for validation only.
+    const original: unknown = JSON.parse(row.payload.comparisonPlan);
+    storedPlan.parse(original);
+    const plan = original as CutoverPlan & { comparisonRules: ComparisonP0Rules };
+    const rules = plan.comparisonRules;
+    const { digest: rulesDigest, ...unsignedRules } = rules;
+    if (plan.planDigest !== input.planDigest || plan.targetArtifactSha !== input.candidateSha ||
+      comparisonPlanDigest(plan) !== input.planDigest || !isDeepStrictEqual(plan.phases, PRE_ACTIVATION_PHASES) ||
+      plan.sourceSnapshotFingerprint !== row.sourceFingerprint || row.payload.sourceSnapshotFingerprint !== row.sourceFingerprint ||
+      rules.sourceSnapshotFingerprint !== row.sourceFingerprint || rules.digest !== digestOf(unsignedRules) ||
+      rules.inventory.binding.candidateSha !== input.candidateSha || !isDeepStrictEqual(row.payload.comparisonRules, rules) ||
+      Boolean(plan.managementPreparation) !== Boolean(plan.managementMigrationReceiptDigest) ||
+      Boolean(plan.bindingImportIntentDigest) !== Boolean(plan.bindingArchiveRetainUntil) ||
+      !isDeepStrictEqual(rules.inventory.families.map(family => family.family), COMPARISON_FAMILIES)) throw new Error();
+    for (const family of rules.inventory.families) {
+      const actual = rules.cases.filter(item => item.family === family.family);
+      // Source-inventory checksums use the Comparison codec; rule input
+      // digests use the core codec. Preserve both, never compare their hashes
+      // as if adding/removing a prefix established equivalence.
+      const summarized = actual.map(({ comparisonId, protectedReference }) => ({ comparisonId, protectedReference }));
+      const inventoryCases = family.cases.map(({ comparisonId, protectedReference }) => ({ comparisonId, protectedReference }));
+      if (!isDeepStrictEqual(summarized, inventoryCases) || new Set(family.cases.map(item => JSON.stringify(item.protectedReference))).size !== family.sourceInventoryCount) throw new Error();
+      const seen = new Set<string>();
+      for (const item of actual) {
+        const { ruleId, ...basis } = item;
+        const key = JSON.stringify([item.comparisonId, item.protectedReference]);
+        if (seen.has(key) || ruleId !== `PCAT-P0-COMPARISON:${digestOf(basis)}` ||
+          item.semanticAssertion !== assertions[item.comparisonId] ||
+          !(FAMILY_COMPARISON_IDS[family.family] as readonly string[]).includes(item.comparisonId) ||
+          new Set(item.identities.map(identity => identity.sourceIdentity.legacyIdentityId)).size !== item.identities.length ||
+          item.identities.some(identity => identity.sourceIdentity.sourceSystem !== rules.inventory.binding.sourceSystem)) throw new Error();
+        seen.add(key);
+      }
+    }
+    return structuredClone(plan);
+  } catch { throw new Error("PCAT-CMP-P0-PLAN-UNAVAILABLE"); }
 }
