@@ -1,0 +1,10 @@
+{
+  "head": "ffd0ff9f3faa1448c11160c3e7c0f33a32f9459d",
+  "fullFiles": 359,
+  "archiveEntries": 480,
+  "archiveBytes": 4735125,
+  "sha256": "e3ec57717ec7e3522f25614e78c7b89216f551fb1ac970f7f8aa34102598ce0f",
+  "gitBytesVerified": true,
+  "zipReadbackVerified": true,
+  "independentReview": "bounded code Standards and Spec passed; package material review pending"
+}
