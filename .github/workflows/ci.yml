@@ -43,7 +43,7 @@ jobs:
     name: Minimal upgrade terminal probe
     if: github.event_name == 'workflow_dispatch' && inputs.acceptance_mode == 'minimal-upgrade'
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
         with:

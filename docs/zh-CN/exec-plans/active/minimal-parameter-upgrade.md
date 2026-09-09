@@ -6,7 +6,7 @@
 
 当前候选：`30c9614553a19b82c16bd1edc2b4ba54b5084f38`，tree `6af0c560c9a425303f4c750c5b4a0b5dc6315e01`。[34323085084](https://github.com/tzrea1-Q/WiseEff/actions/runs/34323085084) 的终端探针用时 14 分 48 秒，通过全部保全、重启、同 SHA、真实杀死迁移后隔离及两次恢复检查。实际候选镜像为 `sha256:e8d36d481465fbadd60fcf52e7148df9b329a00c6a69bd8acde0931e1b8de203`，实际旧源镜像为 `sha256:276f0f6226a28a209088a9ef3f7143fff00983bcbb4c10c8f342bb891304b326`；清理完成。当前九张截图全部查看：三个视口的未发布空表格裁切已消除，原节点名称/路径及仓库发布后的重启读取可见。这是限定的只读浏览器证据，不代表完整参数业务或整页视觉验收。console 仍为 0 error、1 个未采集文本的 warning，唯一记录到的非 200 是登录前 `/me` 401。[56 文件完整源码包](https://github.com/tzrea1-Q/WiseEff/actions/runs/34323085084/artifacts/10093108904) 的字节、逐文件 hash 和 diff 均与 Git 精确匹配；[扫描后的证据 ZIP](https://github.com/tzrea1-Q/WiseEff/actions/runs/34323085084/artifacts/10093108129) SHA-256 为 `cbfa5bad6cb7365f6287058192f11c0fe38b1f9df77bd9dbec82f9c8b6b6c0f3`。
 
-结论：**尚未达到集成就绪**。用户于本轮选定：保留仓库发布定义，网页只写已发布定义下的项目实际值，不增加网页定义发布权。运行代码已接上该路径：DTS ingest 对已发布且已注册的定义走 Binding/ProjectValue（真实 config-set/revision 来源与 CAS），工作台保存走 writeback 而不进审阅草稿袋，导入更新已有 canonical binding。本地 focused：catalog 同步 4 项、ingest 7 项、工作台 25 项、`tsc -b` 通过。仍缺同一部署上的真实页面新增/编辑保存/导入/重启浏览器验收、独立增量审查和剩余 required CI。#824 仍为 Draft/Open、head `848304d780abd680b937b41f81afcb298a260ead`，main 仍等于本计划基线；未执行合并或生产操作。下文保留历史执行身份，当前结论以本段为准。
+结论：**尚未达到集成就绪**。用户于本轮选定：保留仓库发布定义，网页只写已发布定义下的项目实际值，不增加网页定义发布权。运行代码已接上该路径：DTS ingest 对已发布且已注册的定义走 Binding/ProjectValue（真实 config-set/revision 来源与 CAS），工作台保存走 writeback 而不进审阅草稿袋，导入更新已有 canonical binding。终端探针现在在同一部署上、仓库发布并首次重启之后、same-SHA/rollback 之前驱动该闭环：页面登记 `acme,power`，生产 config-set/DTS ingest 得到 `iin_max=1000`，工作台读取并保存为 `2000` 且不进草稿袋，导入把已有 binding 更新为 `3000`，再重启 API/worker 后复读。专用 Hosted 执行、独立增量审查和剩余 required CI 仍未完成。#824 仍为 Draft/Open、head `848304d780abd680b937b41f81afcb298a260ead`，main 仍等于本计划基线；未执行合并或生产操作。下文保留历史执行身份，当前结论以本段为准。
 
 最新终端执行：[34321449970](https://github.com/tzrea1-Q/WiseEff/actions/runs/34321449970)，候选 `77ccbce28e420a916ef678a4565b193e18da12f8`，实际镜像 `sha256:61ef694c5989710fe1eacf063874470dbeeba9646782fed18b7a9993082d3752`。正常升级、126 张表/183 条记录/661 条约束保全、真实 HTTP/worker 业务、首次仓库发布、重启、同 SHA no-op、杀死迁移后隔离及两次恢复均通过，清理完成。九张截图全部查看：三个视口 1440×900、768×1024、390×844 中文可读，原节点名称/路径及重启后的发布可见。console 为 0 error、1 warning（未采集该 warning 文本）；网络只有登录前 `/me` 401，登录后记录的响应均为 200。桌面未发布态仍渲染了提示被裁切的空表格；下一处条件修复保留未发布提示、略去无用 workspace，真实浏览器复验待完成。页面新增/编辑保存/导入仍未实现。[55 文件完整源码包](https://github.com/tzrea1-Q/WiseEff/actions/runs/34321449970/artifacts/10092434503) 的字节、hash 和 diff 均与 Git 一致；[扫描后的证据 ZIP](https://github.com/tzrea1-Q/WiseEff/actions/runs/34321449970/artifacts/10092433807) SHA-256 为 `6fc2ad9b33065e628ff9f9a17efa856e9e2108d7cfb2035d96504c8a7ed2f5f4`。
 
@@ -35,16 +35,16 @@
 | 阶段 | 验收 | 当前证据 |
 | --- | --- | --- |
 | 旧源到迁移 | 完整账本/schema、受保护记录保全 | 34316513041 的真实终端升级执行 0129–0139，保全 126 张表中 183 条原记录的全部原字段和 661 条原有约束。早期 190 条记录的组件探针单独记录。 |
-| 空态到首个真实数据 | 正式页面/API、合法发布、基本导入 | production API 返回未发布空态；真实编译/安装非空首个发布，重启后 API 仍可读取。项目值 ingest/保存/导入已有 focused PG 回归；同一部署浏览器新增/编辑保存/导入尚未验收。 |
+| 空态到首个真实数据 | 正式页面/API、合法发布、基本导入 | production API 返回未发布空态；真实编译/安装非空首个发布，重启后 API 仍可读取。项目值 ingest/保存/导入已有 focused PG 回归。终端探针已包含同一部署的页面登记、DTS ingest、工作台读取/保存、导入和重启复读；该闭环的 Hosted 执行尚未验收。 |
 | 升级入口及重启 | 既有控制器、run 绑定初始化、就绪及队列/代理恢复 | 原生 amd64 终端 apply、原用户/节点、首个仓库发布、API/worker 正常重启、同 SHA 保全及错误目标拒绝在 34316513041 通过。实际杀死迁移后保持隔离，resume 返回 70；本地 ARM 平台拒绝保留。 |
 | 保全及恢复 | 逐条原字段/关系、对象、必要任务及实际恢复 | 34316513041 的升级及两次整套恢复保全全部 183 条原记录、661 条约束、原对象字节/metadata 和实际队列 payload/状态；新 HTTP 上传和真实 worker 完成。早期对象故障及各存储探针继续单列为组件证据。 |
-| 审查及交付 | 稳定候选测试、三个视口、独立审查及 required CI | 独立运行期审查问题已关闭，Standards 浏览器/artifact 增量审查到 77ccbce28；Spec 保留页面新增/编辑保存/导入 P1。当前三个视口的浏览器执行及最终 required suites 尚未验收，早期组件浏览器观察不覆盖当前候选。 |
+| 审查及交付 | 稳定候选测试、三个视口、独立审查及 required CI | 独立运行期审查问题已关闭，Standards 浏览器/artifact 增量审查到 77ccbce28。探针已包含三视口页面登记/读取/保存/导入/重启；该候选的 Hosted 执行、增量审查和最终 required suites 尚未验收。 |
 
 真实副本、可信目标构建及维护窗口是生产前置材料，不阻塞内部合成实现。若需要新权限或发布语义，必须指出具体受阻操作；不新增通用控制器或检查器。
 
 当前证据为 WIP，非封存候选或服务器目标构建。API/worker 业务使用 ARM 镜像 `sha256:9bb4554d4e20b34a09f452663630bca2d9c4d8121e0af4a3e70a3076c09e0ae9`；重试/首个 Subject 浏览器构建为 `sha256:afd02abed466a6afd93056624b700f65f0fcb69b6777cf4e48d915c4ce8de4cc`，不覆盖之后的刷新、项目初始化及 Redis 恢复改动。Focused 结果：backend 单元 60 项、Catalog 前端 31 项、真实项目加载回归 1 项、离线 Redis 恢复 shell 3 项。浏览器等待窗口在部分观察后超时，该进程非零退出并清理源环境，额外浏览器资源另行清理；不宣称完整浏览器验收通过。
 
-终端探针为 `scripts/run-minimal-upgrade-acceptance.ts`，由 workflow-dispatch 的 `minimal-upgrade` 模式运行。它创建独占的原 Compose 部署并调用 `upgrade.sh`；本地原生 ARM 在创建部署前被拒绝。34316513041 已执行原字段/约束/对象/任务检查、成员权限隔离、仓库发布、正常重启、同 SHA 执行、真实迁移中断及两次 rollback。`complete:false` 保留页面新增/编辑保存/导入和最终验证缺口。这个已测试的隔离入口不构成生产执行批准。
+终端探针为 `scripts/run-minimal-upgrade-acceptance.ts`，由 workflow-dispatch 的 `minimal-upgrade` 模式运行。它创建独占的原 Compose 部署并调用 `upgrade.sh`；本地原生 ARM 在创建部署前被拒绝。首次仓库发布并重启后，探针会在目录页登记 `acme,power`，经生产 config-set/文件 API ingest 匹配 DTS，在工作台/导入页读取、保存、导入已发布的 `iin_max`，再在第二次 API/worker 重启后复读，然后继续 same-SHA、rollback 和杀死迁移后的恢复。`complete:false` 仍保留独立审查、required CI 和最终验证。这个已测试的隔离入口不构成生产执行批准。
 
 Hosted [34306500953](https://github.com/tzrea1-Q/WiseEff/actions/runs/34306500953) 对应代码 `75a5f88f7849fbb78b7d487a24c5f0e99679378e`，从固定旧源实际构建 amd64 镜像 `sha256:f26bb4fc466ff1a65c980503d1ba8afb32460bc8a9fc04017d05a2f0dc7b3fa4`，在 `old-start` / `minimal-terminal-api-not-ready` 停止，尚未升级或迁移，部署已清理。已复用现有脱敏器补充依赖/命令诊断，不改旧源、不改 timeout。单独的文档 job 因中文计划使用英文节标题失败，标题已修正；本 run 不算 required CI 通过。
 
@@ -52,7 +52,7 @@ Hosted [34307587109](https://github.com/tzrea1-Q/WiseEff/actions/runs/3430758710
 
 对象恢复实测复现“字节相同、S3 metadata 丢失”，原生 `mc mirror --preserve` 也未保留所需字段。新的本地单机 MinIO 卷恢复已验证原字节、`contentType`、`originalFileName`、`retentionClass` 恢复，备份后的新增对象消失。这是实际停进程备份/恢复组件观察，不是完整终端验收。升级 shell focused 9 项、App 回归 143 项通过；文档治理检查通过，数据库 schema 文档仍待独占数据库验证。
 
-剩余产品接线：Catalog 合同通过仓库评审的包发布，页面提案仅表示发布意图。已选定的项目值路径：ingest 在已注册的已发布定义上调用既有 `stabilizeCanonicalBinding` / `writebackProtectedReference`；来源为实际 config-set 与 config revision。工作台对 canonical pin 保存即 writeback。导入只更新已有 binding，不创建新定义身份。尚未完成同一部署的浏览器新增/编辑保存/导入/重启。本计划不授权扩权或伪造来源。
+剩余产品接线：Catalog 合同通过仓库评审的包发布，页面提案仅表示发布意图。已选定的项目值路径：ingest 在已注册的已发布定义上调用既有 `stabilizeCanonicalBinding` / `writebackProtectedReference`；来源为实际 config-set 与 config revision。工作台对 canonical pin 保存即 writeback。导入只更新已有 binding，不创建新定义身份。终端探针已驱动同一部署的页面登记/ingest/读取/保存/导入/重启；该闭环的 Hosted 证据仍未完成。本计划不授权扩权或伪造来源。
 
 `34308789909` 随后被取消：旧目标 job 条件也匹配了新增的最小模式。误触发的目标 job 在 `https://example.invalid/` 浏览器预热失败，不算目标验证。终端 job 被中断，没有完成或清理证明。现已在目标条件中排除 `minimal-upgrade`，并加入回归，要求隔离 job 不读取仓库 secrets；12 项 CI 配置测试通过。下次终端运行必须包含此路由修复。
 

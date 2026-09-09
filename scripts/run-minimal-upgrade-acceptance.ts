@@ -77,6 +77,39 @@ function captureBrowser(name: string, code: string) {
     }
   }
 }
+function browserJson(output: string) {
+  return JSON.parse(output.match(/^### Result\n([^\n]+)\n/m)?.[1] ?? "null");
+}
+const publishedDts = `/dts-v1/;
+/ {
+	charger {
+		compatible = "acme,power";
+		iin_max = <1000>;
+	};
+};
+`;
+function readPublishedValues(id: string) {
+  return inApi(`
+    import{readFileSync}from'node:fs';import{createPostgresDatabase}from'./server/shared/database/client.ts';
+    const {projectId}=JSON.parse(readFileSync(0,'utf8'));
+    const db=createPostgresDatabase(process.env.DATABASE_URL);
+    try{
+      const values=await db.query("select d.property_key as key, v.value from parameter_catalog.project_parameter_bindings b join parameter_catalog.parameter_definitions d on d.id=b.definition_id join parameter_catalog.project_parameter_values v on v.id=b.current_value_id where b.project_id=$1 and v.source_ref <> 'canonical-binding-identity'",[projectId]);
+      const specs=await db.query("select count(*)::text as c from parameter_specs ps left join dts_property_specs dps on dps.parameter_spec_id=ps.id where coalesce(ps.property_key,dps.property_key)='iin_max'");
+      const registrations=await db.query("select count(*)::text as c from parameter_catalog.organization_subject_registrations where status='active' and subject_id='csub_acme_power'");
+      console.log(JSON.stringify({values:values.rows,specCount:Number(specs.rows[0]?.c??0),registrations:Number(registrations.rows[0]?.c??0)}));
+    }finally{await db.close()}
+  `, { projectId: id });
+}
+async function waitForPublishedValue(id: string, expected: number) {
+  for (let attempt = 0; attempt < 30; attempt++) {
+    const observed = readPublishedValues(id);
+    const row = observed.values.find((item: { key: string; value: unknown }) => item.key === "iin_max");
+    if (row && Number(row.value) === expected && observed.specCount === 0) return observed;
+    await setTimeout(1000);
+  }
+  throw new Error(`${step}: published iin_max ${expected} was not observed without a new spec`);
+}
 assert.equal(docker("ps", "-aq", "--filter", `label=com.docker.compose.project=${project}`), "");
 const checkout = path.join(directory, "deployment");
 run("git", ["clone", "--no-local", "--quiet", repository, checkout]);
@@ -397,6 +430,151 @@ try {
     await page.goto('http://127.0.0.1:18080/parameter-admin/specs');
     await page.getByLabel('目录发布', {exact:true}).getByText(${JSON.stringify(first.targetReleaseId)}, {exact:true}).waitFor();
   }`);
+  step = "page-register-published-subject";
+  const driverGroups = inApi(`
+    import{createPostgresDatabase}from'./server/shared/database/client.ts';
+    const db=createPostgresDatabase(process.env.DATABASE_URL);
+    try{const r=await db.query("select count(*)::int as c from parameter_modules where kind='driver-group'");console.log(JSON.stringify(Number(r.rows[0]?.c??0)>0))}finally{await db.close()}
+  `);
+  if (!driverGroups) {
+    http("/api/v2/parameter-modules/driver-registry", "POST", {
+      displayName: "Published driver", businessCategoryId: business.id, compatibles: ["acme,power"]
+    }, 201);
+  }
+  const registered = browserJson(browserCode(`async page => {
+    const dismiss = page.getByRole('button', {name:'不再提示'});
+    if (await dismiss.isVisible().catch(() => false)) await dismiss.click({force:true});
+    await page.goto('http://127.0.0.1:18080/parameter-admin/specs');
+    await page.getByRole('region', {name:'参数定义目录'}).waitFor();
+    await page.getByRole('list', {name:'主体列表'}).getByRole('button', {name:/acme,power/}).click();
+    const register = page.getByRole('button', {name:'登记主体', exact:true});
+    await register.waitFor();
+    await register.click();
+    const dialog = page.getByRole('dialog', {name:'登记主体', exact:true});
+    await dialog.waitFor();
+    await dialog.getByRole('radio', {name:'使用默认根放置'}).click();
+    await dialog.getByRole('textbox', {name:'原因'}).fill('minimal-upgrade-page-register');
+    await dialog.getByRole('button', {name:'继续确认', exact:true}).click();
+    const confirm = page.getByRole('dialog', {name:'确认登记主体', exact:true});
+    await confirm.waitFor();
+    await confirm.getByRole('checkbox').check();
+    await confirm.getByRole('button', {name:'确认登记', exact:true}).click();
+    await dialog.waitFor({state:'detached'});
+    await page.getByRole('button', {name:'调整放置', exact:true}).waitFor();
+    return {registered:true};
+  }`));
+  assert.equal(registered?.registered, true);
+  assert.ok(readPublishedValues(projectId).registrations >= 1, "page registration must persist an active subject");
+  captureBrowser("registered-subject", `async page => {
+    await page.goto('http://127.0.0.1:18080/parameter-admin/specs');
+    await page.getByRole('list', {name:'主体列表'}).getByRole('button', {name:/acme,power/}).click();
+    await page.getByText('已登记', {exact:true}).first().waitFor();
+  }`);
+  step = "dts-ingest-published-value";
+  const configSet = http(`/api/v1/projects/${projectId}/config-sets`, "POST", {
+    name: "published-values", description: "minimal published project value"
+  }, 201).item;
+  const uploaded = http(`/api/v1/projects/${projectId}/parameter-files`, "POST", {
+    fileName: "charger.dts", contentBase64: Buffer.from(publishedDts).toString("base64")
+  }, 201);
+  http(`/api/v1/projects/${projectId}/config-sets/${configSet.id}/files`, "POST", {
+    fileId: uploaded.item.id, role: "base", sortOrder: 0
+  }, 201);
+  http(`/api/v1/projects/${projectId}/parameter-files`, "POST", {
+    fileName: "charger.dts", contentBase64: Buffer.from(publishedDts).toString("base64")
+  }, 201);
+  await waitForPublishedValue(projectId, 1000);
+  step = "page-read-published-value";
+  captureBrowser("published-value-1000", `async page => {
+    await page.goto('http://127.0.0.1:18080/parameters');
+    const project = page.getByRole('combobox', {name:'项目'});
+    if (await project.count()) {
+      const current = await project.innerText();
+      if (!current.includes('Preserved project')) {
+        await project.click();
+        await page.getByRole('option', {name:/Preserved project/}).click();
+      }
+    }
+    await page.getByRole('region', {name:'DTS 参数工作台'}).waitFor();
+    if (await page.getByText('该项目尚未上传项目 DTS').count()) throw new Error('workbench did not load the ingested DTS');
+    await page.getByText('iin_max', {exact:true}).waitFor();
+    await page.getByText('<1000>', {exact:true}).waitFor();
+  }`);
+  step = "page-edit-save-published-value";
+  const saved = browserJson(browserCode(`async page => {
+    await page.goto('http://127.0.0.1:18080/parameters');
+    await page.getByRole('region', {name:'DTS 参数工作台'}).waitFor();
+    await page.getByRole('button', {name:/编辑 iin_max/}).click();
+    const dialog = page.getByRole('dialog', {name:'修改草稿', exact:true});
+    await dialog.waitFor();
+    await dialog.getByRole('textbox', {name:'目标值'}).fill('<2000>');
+    await dialog.getByRole('textbox', {name:'修改原因'}).fill('raise published input current');
+    await dialog.getByRole('button', {name:'校验并加入本轮', exact:true}).click();
+    await dialog.waitFor({state:'detached'});
+    if (await page.getByRole('region', {name:'本轮已修改'}).count()) throw new Error('canonical save opened the review draft tray');
+    await page.getByText('<2000>', {exact:true}).waitFor();
+    return {saved:true};
+  }`));
+  assert.equal(saved?.saved, true);
+  await waitForPublishedValue(projectId, 2000);
+  captureBrowser("published-value-2000", `async page => {
+    await page.goto('http://127.0.0.1:18080/parameters');
+    await page.getByRole('region', {name:'DTS 参数工作台'}).waitFor();
+    await page.getByText('<2000>', {exact:true}).waitFor();
+    if (await page.getByRole('region', {name:'本轮已修改'}).count()) throw new Error('saved value still has a draft tray');
+  }`);
+  step = "page-import-published-value";
+  const importJson = JSON.stringify([{
+    name: "iin_max", module: "Driver", currentValue: "3000", configFormat: "DTS", risk: "Low"
+  }]);
+  const imported = browserJson(browserCode(`async page => {
+    await page.goto('http://127.0.0.1:18080/parameter-admin/specs');
+    await page.getByRole('button', {name:'打开批量参数导入'}).click();
+    const dialog = page.getByRole('dialog', {name:'批量参数导入'});
+    await dialog.waitFor();
+    await dialog.getByLabel('目标项目').selectOption({label:/Preserved project/});
+    await dialog.getByRole('button', {name:'粘贴 JSON / CSV / DTS 内容'}).click();
+    const paste = page.getByRole('dialog', {name:'粘贴导入内容'});
+    await paste.waitFor();
+    await paste.getByLabel('导入内容').fill(${JSON.stringify(importJson)});
+    await paste.getByRole('button', {name:'确认', exact:true}).click();
+    await dialog.getByRole('button', {name:'下一步', exact:true}).click();
+    await dialog.getByRole('region', {name:'解析与校验'}).waitFor();
+    await dialog.getByRole('button', {name:'下一步', exact:true}).click();
+    await dialog.getByRole('region', {name:'逐行核对'}).waitFor();
+    if (await dialog.getByRole('button', {name:'预填并创建'}).count()) throw new Error('import treated the published value as a new definition');
+    await dialog.getByRole('button', {name:'通过', exact:true}).click();
+    await dialog.getByRole('button', {name:'下一步', exact:true}).click();
+    const preview = dialog.getByRole('region', {name:'批次预览'});
+    await preview.waitFor();
+    const text = await preview.innerText();
+    if (!/更新\\s*1/.test(text) || !/新增\\s*0/.test(text)) throw new Error('import preview must update the existing value: '+text);
+    await dialog.getByRole('button', {name:'下一步', exact:true}).click();
+    await dialog.getByRole('button', {name:'确认应用', exact:true}).click();
+    await dialog.waitFor({state:'detached'});
+    return {imported:true};
+  }`));
+  assert.equal(imported?.imported, true);
+  await waitForPublishedValue(projectId, 3000);
+  captureBrowser("published-value-3000", `async page => {
+    await page.goto('http://127.0.0.1:18080/parameters');
+    await page.getByRole('region', {name:'DTS 参数工作台'}).waitFor();
+    await page.getByText('<3000>', {exact:true}).waitFor();
+  }`);
+  step = "published-value-restart-reread";
+  compose("restart", "api", "worker");
+  await ready();
+  await waitForPublishedValue(projectId, 3000);
+  captureBrowser("published-value-after-restart", `async page => {
+    await page.goto('http://127.0.0.1:18080/parameters');
+    await page.getByRole('region', {name:'DTS 参数工作台'}).waitFor();
+    await page.getByText('<3000>', {exact:true}).waitFor();
+  }`);
+  evidence.pageProjectValues = { registeredSubject: "csub_acme_power", ingested: 1000, saved: 2000, imported: 3000, restartReread: 3000 };
+  evidence.browser = { viewports: [[1440, 900], [768, 1024], [390, 844]],
+    observed: ["original-user-login", "unpublished-page", "original-node-details", "published-after-restart",
+      "registered-subject", "published-value-1000", "published-value-2000", "published-value-3000", "published-value-after-restart"],
+    visualAndConsoleReview: "pending", parameterEditSaveImport: "executed" };
   step = "same-sha-no-op";
   upgrade("apply", "--ref", candidateSha, "--non-interactive", "--yes");
   assert.equal(http("/api/v2/catalog").item.catalogReleaseId, first.targetReleaseId);
@@ -485,7 +663,7 @@ try {
   evidence.interruptionRestore = assertPreserved(restoreOracle, observeRows(restoreOracle));
   assert.equal(JSON.stringify(observeObjects()), readFileSync(path.join(directory, "private-source-objects.json"), "utf8"));
   assert.equal(JSON.stringify(observeQueue()), readFileSync(path.join(directory, "private-source-queue.json"), "utf8"));
-  evidence.nextStage = "new-parameter-edit-save-import-browser-and-final-validation";
+  evidence.nextStage = "independent-review-and-required-ci";
 } catch (error) {
   evidence.failedStage = step;
   evidence.failure = sanitizeGate0DiagnosticText(error instanceof Error ? error.message : "minimal-terminal-failed", secrets).value;
