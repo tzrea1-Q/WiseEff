@@ -1,0 +1,15 @@
+# Standards review: minimal parameter upgrade
+
+Review basis: `cda6737a8f177a8bbd2f3bc7d195f8e3037bfa74...eceda8f0a94e276994494413774f0e0d1937a5be`, with the final security deltas `584e515bdf9285ddcd34b7d76b488d5614be6839` and `eceda8f0a94e276994494413774f0e0d1937a5be`. The tree was clean and `git diff --check` passed. This is a read-only Standards review; it does not approve the product gap or Gate 0.
+
+## Findings
+
+No outstanding hard or actionable Standards findings were found in the final deltas. The prior **[P1] raw browser artifact upload** is resolved by `584e515bdf9285ddcd34b7d76b488d5614be6839`: `.github/workflows/ci.yml:62-68` uploads only `/tmp/wiseeff-minimal-terminal-*/evidence.zip` and fails when absent. `scripts/run-minimal-upgrade-acceptance.ts:523-544` records after cleanup, copies only explicitly enumerated regular browser files and evidence into private staging, runs the existing sanitizer and scanner with the run's exact secrets, writes through the existing `writeZipArchive` helper, rescans the ZIP, then chmods it `0444`, fsyncs it, and atomically renames it. A failure before rename yields no upload; a killed owner cannot execute the fallback. This now satisfies the artifact clause in `docs/SECURITY.md:29`.
+
+The `eceda8f0a94e276994494413774f0e0d1937a5be` increment captures the actual `/api/v1/auth/login` response token and registers it before any browser evidence capture (`scripts/run-minimal-upgrade-acceptance.ts:342-356`), closing the previous redaction gap. Browser code remains mode-600 and private (`:54-58`), and the owned session close remains in `:507-509`.
+
+## Confirmed boundaries
+
+The existing child-environment allowlist, owner/driver cleanup, status/mode persistence, writer-transaction orphan guard, and original PK/FK/UNIQUE/CHECK oracle remain consistent with the cited repository rules. The browser assertions cover login, unpublished empty state, original-node details, and published release label at 1440×900, 768×1024, and 390×844 (`:60-74`, `:357-388`). They explicitly keep visual/console review pending and parameter edit/save/import unexecuted (`:366-368`), so no browser or product PASS is claimed. The cancelled run's partial evidence and absent screenshots/cleanup attestation remain historical execution limits.
+
+Judgment smells (mysterious names, duplication, data clumps, speculative abstraction, and similar categories) do not yield an actionable finding here; reusing the existing archive helper is the smaller, coherent change.

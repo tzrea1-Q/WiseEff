@@ -57,19 +57,22 @@ function browserCode(code: string) {
   writeFileSync(file, code, { mode: 0o600 });
   return browser("run-code", "--filename", file);
 }
+function captureBrowserText(name: string) {
+  for (const command of [["snapshot"], ["console", "error"], ["requests"]]) {
+    const output = browser(...command);
+    const attachments = [...output.matchAll(/\]\((\.playwright-cli\/[a-zA-Z0-9_.-]+\.(?:yml|log|txt))\)/g)]
+      .map(match => readFileSync(path.join(directory, match[1]), "utf8"));
+    writeFileSync(path.join(browserDirectory, `${name}-${command[0]}.txt`),
+      sanitizeGate0DiagnosticText([output, ...attachments].join("\n"), secrets).value);
+  }
+}
 function captureBrowser(name: string, code: string) {
   for (const [width, height] of [[1440, 900], [768, 1024], [390, 844]]) {
     browser("resize", String(width), String(height));
     try {
       browserCode(code);
     } finally {
-      for (const command of [["snapshot"], ["console", "error"], ["requests"]]) {
-        const output = browser(...command);
-        const attachments = [...output.matchAll(/\]\((\.playwright-cli\/[a-zA-Z0-9_.-]+\.(?:yml|log|txt))\)/g)]
-          .map(match => readFileSync(path.join(directory, match[1]), "utf8"));
-        writeFileSync(path.join(browserDirectory, `${name}-${width}-${command[0]}.txt`),
-          sanitizeGate0DiagnosticText([output, ...attachments].join("\n"), secrets).value);
-      }
+      captureBrowserText(`${name}-${width}`);
       browser("screenshot", `--filename=${path.join(browserDirectory, `${name}-${width}.png`)}`);
     }
   }
@@ -347,13 +350,13 @@ try {
       page.locator('form').getByRole('button', {name:'登录', exact:true}).click()
     ]);
     const session = await response.json();
-    await page.getByRole('button', {name:'打开用户菜单', exact:true}).waitFor();
     return {sessionToken: session.token};
   }`);
   const browserSession = JSON.parse(browserLogin.match(/^### Result\n([^\n]+)\n/m)?.[1] ?? "null");
   assert.ok(typeof browserSession?.sessionToken === "string" && browserSession.sessionToken.length > 0,
     "browser login must return its actual session for evidence redaction");
   secrets.push(browserSession.sessionToken);
+  browserCode(`async page => { await page.getByRole('main', {name:'雷泽首页', exact:true}).waitFor(); }`);
   captureBrowser("unpublished", `async page => {
     await page.goto('http://127.0.0.1:18080/parameter-admin/specs');
     await page.getByText('尚无首个 Catalog 发布。旧参数不会自动迁入；请先发布真实参数定义。', {exact:true}).waitFor();
@@ -480,6 +483,10 @@ try {
   evidence.failure = sanitizeGate0DiagnosticText(error instanceof Error ? error.message : "minimal-terminal-failed", secrets).value;
   evidence.lastHealth = sanitizeGate0DiagnosticText(JSON.stringify(lastHealth ?? null), secrets).value;
   evidence.commandFailure = lastCommandFailure;
+  if (browserOpened) {
+    try { captureBrowserText("failed-stage"); }
+    catch { evidence.browserDiagnostics = "unavailable"; }
+  }
   if (interruptionChild) {
     evidence.interruptionDiagnostics = sanitizeGate0DiagnosticText(
       readFileSync(path.join(directory, "private-interruption.log"), "utf8"), secrets).value.slice(-6000);
