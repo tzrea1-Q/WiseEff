@@ -57,6 +57,7 @@ jobs:
         run: |
           npm install --global @playwright/cli@0.1.14
           google-chrome --version
+          sudo rm -f /etc/apt/sources.list.d/google-chrome.list
           timeout 180s sudo apt-get update
           timeout 180s sudo apt-get install --no-install-recommends -y fontconfig fonts-noto-cjk
           fc-match -f '%{family}\n' 'sans-serif:lang=zh-cn' | grep -F 'Noto Sans CJK'
