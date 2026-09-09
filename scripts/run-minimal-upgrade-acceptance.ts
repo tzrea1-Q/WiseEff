@@ -562,7 +562,7 @@ try {
     await page.getByRole('button', {name:'打开批量参数导入'}).click();
     const dialog = page.getByRole('dialog', {name:'批量参数导入'});
     await dialog.waitFor();
-    await dialog.getByLabel('目标项目').selectOption(${JSON.stringify(projectId)});
+    await dialog.locator('select').selectOption(${JSON.stringify(projectId)});
     await dialog.getByRole('button', {name:'粘贴 JSON / CSV / DTS 内容'}).click();
     const paste = page.getByRole('dialog', {name:'粘贴导入内容'});
     await paste.waitFor();
