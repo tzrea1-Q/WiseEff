@@ -666,7 +666,7 @@ function copyTreeContents(source: string, destination: string) {
   }
 }
 
-async function writeZipArchive(treeRoot: string, archivePath: string) {
+export async function writeZipArchive(treeRoot: string, archivePath: string) {
   const zip = new JSZip();
   for (const filePath of listRegularFiles(treeRoot)) {
     const relativePath = path.relative(treeRoot, filePath).split(path.sep).join("/");

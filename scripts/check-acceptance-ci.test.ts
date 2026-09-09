@@ -383,6 +383,9 @@ jobs:
     expect(jobs["target-synthetic-acceptance"].if).toContain("inputs.acceptance_mode != 'minimal-upgrade'");
     expect(jobs["minimal-upgrade"].if).toContain("inputs.acceptance_mode == 'minimal-upgrade'");
     expect(JSON.stringify(jobs["minimal-upgrade"])).not.toContain("secrets.");
+    const evidenceUpload = jobs["minimal-upgrade"].steps.find((step: { with?: { name?: string } }) =>
+      step.with?.name === "minimal-upgrade-terminal-evidence");
+    expect(evidenceUpload.with.path).toBe("/tmp/wiseeff-minimal-terminal-*/evidence.zip");
   });
 
   it("rejects a missing or oversized @ci-smoke set", () => {

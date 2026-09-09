@@ -1,14 +1,15 @@
 import assert from "node:assert/strict";
 import { spawn, spawnSync } from "node:child_process";
 import { createHash, randomBytes } from "node:crypto";
-import { chmodSync, closeSync, mkdirSync, mkdtempSync, openSync, readFileSync, symlinkSync, writeFileSync } from "node:fs";
+import { chmodSync, closeSync, copyFileSync, existsSync, fsyncSync, lstatSync, mkdirSync, mkdtempSync, openSync, readFileSync, readdirSync, renameSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { setTimeout } from "node:timers/promises";
 import { pathToFileURL } from "node:url";
 import { parse } from "dotenv";
-import { gate0SecretValuesFromEnv, sanitizeGate0DiagnosticText } from "./gate0-artifact-sanitizer";
+import { gate0SecretValuesFromEnv, sanitizeGate0ArtifactTree, sanitizeGate0DiagnosticText, scanGate0ArtifactTree } from "./gate0-artifact-sanitizer";
 import { buildGate0OwnedChildProcessEnv } from "./gate0-child-process-env";
+import { writeZipArchive } from "./finalize-gate0-upload";
 import { validCatalogReleaseBundle } from "../server/modules/catalog-kernel/compiler/__fixtures__/catalogReleaseBundle";
 import { compileCatalogRelease } from "../server/modules/catalog-kernel/compiler/index";
 
@@ -511,5 +512,26 @@ try {
     } catch { evidence.cleanup = "incomplete"; process.exitCode = 1; }
   }
   record();
+  // Publish only after the CLI and deployment cleanup attempts have finished.
+  // A killed owner cannot publish a partial raw tree through the CI fallback.
+  const staging = mkdtempSync(path.join(directory, "private-upload-staging-"));
+  copyFileSync(path.join(directory, "evidence.json"), path.join(staging, "evidence.json"));
+  if (existsSync(browserDirectory)) {
+    for (const name of readdirSync(browserDirectory)) {
+      const source = path.join(browserDirectory, name);
+      assert.ok(lstatSync(source).isFile() && !lstatSync(source).isSymbolicLink(), "browser evidence must be regular files");
+      copyFileSync(source, path.join(staging, name));
+    }
+  }
+  await sanitizeGate0ArtifactTree(staging, undefined, secrets);
+  assert.equal((await scanGate0ArtifactTree(staging, undefined, secrets)).violations.length, 0, "unsafe evidence staging");
+  const archiveDirectory = mkdtempSync(path.join(directory, "private-upload-archive-"));
+  const archive = path.join(archiveDirectory, "evidence.zip");
+  await writeZipArchive(staging, archive);
+  assert.equal((await scanGate0ArtifactTree(archiveDirectory, undefined, secrets)).violations.length, 0, "unsafe evidence archive");
+  chmodSync(archive, 0o444);
+  const archiveFd = openSync(archive, "r");
+  try { fsyncSync(archiveFd); } finally { closeSync(archiveFd); }
+  renameSync(archive, path.join(directory, "evidence.zip"));
   console.log(JSON.stringify({ evidence: path.join(directory, "evidence.json"), failedStage: evidence.failedStage ?? null, complete: false }));
 }

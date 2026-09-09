@@ -64,9 +64,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: minimal-upgrade-terminal-evidence
-          path: |
-            /tmp/wiseeff-minimal-terminal-*/evidence.json
-            /tmp/wiseeff-minimal-terminal-*/browser-evidence/*
+          path: /tmp/wiseeff-minimal-terminal-*/evidence.zip
           if-no-files-found: error
       - name: Package the exact changed source for review
         if: always()
