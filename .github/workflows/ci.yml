@@ -57,6 +57,9 @@ jobs:
         run: |
           npm install --global @playwright/cli@0.1.14
           google-chrome --version
+          timeout 180s sudo apt-get update
+          timeout 180s sudo apt-get install --no-install-recommends -y fontconfig fonts-noto-cjk
+          fc-match -f '%{family}\n' 'sans-serif:lang=zh-cn' | rg -q 'Noto Sans CJK'
       - name: Run the isolated fixed-source terminal probe
         run: npx tsx scripts/run-minimal-upgrade-acceptance.ts "$GITHUB_SHA" "$(docker info --format '{{.ID}}')"
       - name: Retain sanitized stage evidence only

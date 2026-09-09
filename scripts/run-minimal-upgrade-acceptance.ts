@@ -364,7 +364,14 @@ try {
   captureBrowser("original-node", `async page => {
     await page.goto('http://127.0.0.1:18080/debugging-admin/nodes');
     await page.getByRole('cell', {name:'Preserved node', exact:true}).click();
-    await page.getByRole('dialog', {name:'Preserved node', exact:true}).waitFor();
+    const editor = page.getByRole('dialog', {name:'编辑节点', exact:true});
+    await editor.waitFor();
+    if (await editor.getByRole('textbox', {name:'名称', exact:true}).inputValue() !== 'Preserved node') throw new Error('original node name changed');
+    await editor.getByRole('button', {name:'取消', exact:true}).click();
+    await page.getByRole('button', {name:'路径绑定', exact:true}).click();
+    const bindings = page.getByRole('dialog', {name:'Preserved node', exact:true});
+    await bindings.waitFor();
+    if (await bindings.getByRole('textbox', {name:'HDC 节点路径', exact:true}).inputValue() !== '/minimal/node') throw new Error('original node path changed');
   }`);
   evidence.browser = { viewports: [[1440, 900], [768, 1024], [390, 844]],
     observed: ["original-user-login", "unpublished-page", "original-node-details"],
