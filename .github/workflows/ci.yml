@@ -655,6 +655,7 @@ jobs:
       - acceptance-smoke
       - acceptance-local-non-hdc
       - target-synthetic-acceptance
+      - minimal-upgrade
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -669,6 +670,7 @@ jobs:
             "acceptance-smoke": "${{ needs.acceptance-smoke.result }}",
             "acceptance-local-non-hdc": "${{ needs.acceptance-local-non-hdc.result }}",
             "target-synthetic-acceptance": "${{ needs.target-synthetic-acceptance.result }}",
+            "minimal-upgrade": "${{ needs.minimal-upgrade.result }}",
           }
           print(results)
           failed = [name for name, result in results.items() if result in ("failure", "cancelled")]
