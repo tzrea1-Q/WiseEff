@@ -53,6 +53,10 @@ jobs:
           node-version-file: .nvmrc
           cache: npm
       - run: npm ci
+      - name: Prepare the real browser CLI
+        run: |
+          npm install --global @playwright/cli@0.1.14
+          google-chrome --version
       - name: Run the isolated fixed-source terminal probe
         run: npx tsx scripts/run-minimal-upgrade-acceptance.ts "$GITHUB_SHA" "$(docker info --format '{{.ID}}')"
       - name: Retain sanitized stage evidence only
@@ -60,7 +64,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: minimal-upgrade-terminal-evidence
-          path: /tmp/wiseeff-minimal-terminal-*/evidence.json
+          path: |
+            /tmp/wiseeff-minimal-terminal-*/evidence.json
+            /tmp/wiseeff-minimal-terminal-*/browser-evidence/*
           if-no-files-found: error
       - name: Package the exact changed source for review
         if: always()

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { spawn, spawnSync } from "node:child_process";
 import { createHash, randomBytes } from "node:crypto";
-import { chmodSync, closeSync, mkdtempSync, openSync, readFileSync, symlinkSync, writeFileSync } from "node:fs";
+import { chmodSync, closeSync, mkdirSync, mkdtempSync, openSync, readFileSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { setTimeout } from "node:timers/promises";
@@ -44,6 +44,35 @@ assert.equal(docker("info", "--format", "{{.OSType}}/{{.Architecture}}"), "linux
 assert.equal(run("git", ["status", "--porcelain"]), "", "seal the candidate before terminal acceptance");
 assert.equal(run("git", ["rev-parse", "HEAD"]), candidateSha);
 const project = `minimal-${randomBytes(8).toString("hex")}`;
+const browserDirectory = path.join(directory, "browser-evidence");
+let browserOpened = false;
+function browser(...args: string[]) {
+  const output = run("playwright-cli", [`-s=${project}`, ...args], { cwd: directory });
+  assert.ok(!/^### Error/m.test(output), sanitizeGate0DiagnosticText(output, secrets).value);
+  return output;
+}
+function browserCode(code: string) {
+  const file = path.join(directory, "private-browser-code.js");
+  writeFileSync(file, code, { mode: 0o600 });
+  return browser("run-code", "--filename", file);
+}
+function captureBrowser(name: string, code: string) {
+  for (const [width, height] of [[1440, 900], [768, 1024], [390, 844]]) {
+    browser("resize", String(width), String(height));
+    try {
+      browserCode(code);
+    } finally {
+      for (const command of [["snapshot"], ["console", "error"], ["requests"]]) {
+        const output = browser(...command);
+        const attachments = [...output.matchAll(/\]\((\.playwright-cli\/[a-zA-Z0-9_.-]+\.(?:yml|log|txt))\)/g)]
+          .map(match => readFileSync(path.join(directory, match[1]), "utf8"));
+        writeFileSync(path.join(browserDirectory, `${name}-${width}-${command[0]}.txt`),
+          sanitizeGate0DiagnosticText([output, ...attachments].join("\n"), secrets).value);
+      }
+      browser("screenshot", `--filename=${path.join(browserDirectory, `${name}-${width}.png`)}`);
+    }
+  }
+}
 assert.equal(docker("ps", "-aq", "--filter", `label=com.docker.compose.project=${project}`), "");
 const checkout = path.join(directory, "deployment");
 run("git", ["clone", "--no-local", "--quiet", repository, checkout]);
@@ -305,6 +334,28 @@ try {
   evidence.candidateHttpUploadAndWorkerCompleted = true;
   evidence.terminalUpgradeAndOriginalLogin = true;
   evidence.candidateImageId = JSON.parse(docker("inspect", owned("api")))[0].Image;
+  step = "candidate-browser-empty-and-original-node";
+  mkdirSync(browserDirectory, { mode: 0o700 });
+  browserOpened = true;
+  browser("open", "http://127.0.0.1:18080", "--browser=chrome");
+  browserCode(`async page => {
+    await page.getByLabel('用户名', {exact:true}).fill(${JSON.stringify(account.username)});
+    await page.getByLabel('密码', {exact:true}).fill(${JSON.stringify(password)});
+    await page.locator('form').getByRole('button', {name:'登录', exact:true}).click();
+    await page.getByRole('button', {name:'打开用户菜单', exact:true}).waitFor();
+  }`);
+  captureBrowser("unpublished", `async page => {
+    await page.goto('http://127.0.0.1:18080/parameter-admin/specs');
+    await page.getByText('尚无首个 Catalog 发布。旧参数不会自动迁入；请先发布真实参数定义。', {exact:true}).waitFor();
+  }`);
+  captureBrowser("original-node", `async page => {
+    await page.goto('http://127.0.0.1:18080/debugging-admin/nodes');
+    await page.getByRole('cell', {name:'Preserved node', exact:true}).click();
+    await page.getByRole('dialog', {name:'Preserved node', exact:true}).waitFor();
+  }`);
+  evidence.browser = { viewports: [[1440, 900], [768, 1024], [390, 844]],
+    observed: ["original-user-login", "unpublished-page", "original-node-details"],
+    visualAndConsoleReview: "pending", parameterEditSaveImport: "not-executed" };
   step = "first-real-catalog-publication";
   const fixture = validCatalogReleaseBundle();
   const first = { schemaVersion: fixture.schemaVersion, targetReleaseId: fixture.releases[0].manifest.release.id, releases: [fixture.releases[0]] };
@@ -321,6 +372,10 @@ try {
   assert.equal(http("/api/v2/catalog").item.catalogReleaseId, first.targetReleaseId);
   evidence.firstPublicationAndNormalRestart = { releaseId: first.targetReleaseId, digest: compiled.value.aggregateDigest,
     input: "repository compiler fixture via actual management CLI; not page editing" };
+  captureBrowser("published-after-restart", `async page => {
+    await page.goto('http://127.0.0.1:18080/parameter-admin/specs');
+    await page.getByLabel('目录发布', {exact:true}).getByText(${JSON.stringify(first.targetReleaseId)}, {exact:true}).waitFor();
+  }`);
   step = "same-sha-no-op";
   upgrade("apply", "--ref", candidateSha, "--non-interactive", "--yes");
   assert.equal(http("/api/v2/catalog").item.catalogReleaseId, first.targetReleaseId);
@@ -439,6 +494,9 @@ try {
   }
   process.exitCode = 1;
 } finally {
+  if (browserOpened) {
+    try { browser("close"); } catch { evidence.browserCleanup = "incomplete"; process.exitCode = 1; }
+  }
   if (interruptionChild && interruptionChild.exitCode === null) interruptionChild.kill("SIGTERM");
   if (created) {
     try {
