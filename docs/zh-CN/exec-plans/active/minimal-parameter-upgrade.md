@@ -4,7 +4,11 @@
 
 状态：实施中。用户于 2026-09-09 批准本范围。基线：`cda6737a8f177a8bbd2f3bc7d195f8e3037bfa74`。
 
-最新执行：[34314419833](https://github.com/tzrea1-Q/WiseEff/actions/runs/34314419833)，运行代码 `9c722080bb979cf798c039246c7629c337bf2fe8`；[脱敏证据](../../../exec-plans/active/minimal-parameter-upgrade-evidence/terminal-9c722080b.json)。同一非空部署完成正常升级及两次整套恢复。第二次升级实际杀死迁移容器，持久记录 `recovery-required`，停止代理/worker、暂停队列，普通 resume 退出 70；显式 rollback 恢复全部 183 条原记录、对象和任务状态。错误目标拒绝、真实 HTTP/worker 业务、首个仓库发布、重启及同 SHA 保全通过。原生 Linux source-lock 测试按原超时通过 4/4，清理完成。专用 CI 成功不覆盖跳过的 required suites 或页面编辑/导入。源码包逐文件字节及 hash 与该候选一致；按 Hosted 的八位对象缩写重算后 diff 完全一致。
+当前已验证运行代码：`37d7cea70b179f149212bbd7dac2ee098c0cdc6f`，[执行 34316513041](https://github.com/tzrea1-Q/WiseEff/actions/runs/34316513041)。升级及两次实际恢复均保留 126 张表中 183 条原记录的全部原字段，以及 661 条原有主键、外键、唯一约束和 CHECK。迁移确实被杀死，代理/worker 保持停止、队列保持暂停，普通 resume 返回 70，显式 rollback 通过，清理完成。候选实际镜像为 `sha256:a10b2c4fe3ea62a1d20c020b14bd9c72a50ccfe8d4a76717e56228d4a9fadc0a`。源码包全部 51 个文件、hash 及 diff 与该候选一致。独立 Standards/Spec 已关闭运行期审查问题，包括残留投影安装和模式/状态处理；页面新增/编辑保存/导入仍未完成。常规 required CI 被跳过。
+
+浏览器增量 [34317375612](https://github.com/tzrea1-Q/WiseEff/actions/runs/34317375612) 对应 `f850f2f13e882dc1749adbce6da00ab38aca19e5`。审查发现截图将绕过既有扫描/ZIP 边界后，该执行被取消；保留 artifact 只有中途阶段 JSON，没有浏览器文件，也没有清理完成证明，不构成浏览器验收。后续修复复用既有脱敏、扫描及 ZIP 编码器，清理尝试结束后仅发布扫描过的只读 ZIP，并登记浏览器实际会话供精确脱敏；进程被杀死时不能上传不完整的原始目录。相关 artifact/finalizer/CI 回归 59 项及 build 通过；修复后的浏览器执行待完成。
+
+前次执行：[34314419833](https://github.com/tzrea1-Q/WiseEff/actions/runs/34314419833)，运行代码 `9c722080bb979cf798c039246c7629c337bf2fe8`；[脱敏证据](../../../exec-plans/active/minimal-parameter-upgrade-evidence/terminal-9c722080b.json)。同一非空部署完成正常升级及两次整套恢复。第二次升级实际杀死迁移容器，持久记录 `recovery-required`，停止代理/worker、暂停队列，普通 resume 退出 70；显式 rollback 恢复全部 183 条原记录、对象和任务状态。错误目标拒绝、真实 HTTP/worker 业务、首个仓库发布、重启及同 SHA 保全通过。原生 Linux source-lock 测试按原超时通过 4/4，清理完成。专用 CI 成功不覆盖跳过的 required suites 或页面编辑/导入。源码包逐文件字节及 hash 与该候选一致；按 Hosted 的八位对象缩写重算后 diff 完全一致。
 
 审查修复 `37d7cea70b179f149212bbd7dac2ee098c0cdc6f` 拒绝在残留 Catalog 投影上首次安装，沿用现有子进程环境白名单，将初始化模式限定于 plan/apply，并在 status 返回持久模式。真实 PG 回归 35 项、状态/动作 5 项、环境 helper 1 项通过，build 和 boundary 通过。终端保全检查新增原有主键、外键、唯一约束和 CHECK 定义及验证状态比较；新执行 [34316513041](https://github.com/tzrea1-Q/WiseEff/actions/runs/34316513041) 待完成，独立复审待完成。确认尚缺页面新增/编辑保存/导入链；三段 BullMQ ID 的审查误报已按锁定实现撤回。
 
