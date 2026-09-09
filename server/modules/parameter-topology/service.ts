@@ -15,9 +15,19 @@ import {
 } from "../parameter-specs/repository";
 import { verifyEffectiveDriverParameterDefinitions } from "../parameter-specs/definitionVerification";
 import { canAdminParameters, canEditParameters, canViewParameters } from "../parameter-kernel/policy";
-import type { TrustedSensitiveNodeWriteContext } from "../parameter-kernel/sensitiveNode";
-import type { Database, Queryable } from "../../shared/database/client";
+import {
+  assertTrustedSensitiveNodeWriteAllowed,
+  type TrustedSensitiveNodeWriteContext
+} from "../parameter-kernel/sensitiveNode";
+import { getRootPostgresPool, type Database, type Queryable } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
+import { renderDtsValue } from "../dts/valueAst";
+import {
+  findCatalogBindingRow,
+  listCatalogBindingRowsForProject,
+  loadPublishedCatalog,
+  saveCanonicalProjectValue,
+} from "./catalogProjectValueSync";
 import {
   applyReviewedIdentityMapping,
   continuityReuseFromTaskEvidence,
@@ -245,12 +255,17 @@ export async function listProjectBindings(
     projectId: input.projectId,
     revisionId: input.revisionId
   });
+  const catalogRows = await listCatalogBindingRowsForProject(db, auth, input);
+  const seen = new Set(catalogRows.map((row) => row.id));
 
-  const items = rows.map((row) =>
+  const items = [...catalogRows, ...rows.filter((row) => !seen.has(row.id))].map((row) =>
     projectBindingDtoSchema.parse({
       id: row.id,
       parameterSpecId: row.parameterSpecId,
       parameterSpecVersionId: row.parameterSpecVersionId,
+      definitionId: row.definitionId,
+      definitionRevisionId: row.definitionRevisionId,
+      currentValueId: row.currentValueId,
       propertyKey: row.propertyKey,
       driverModule: row.driverModule,
       logicalNodeId: row.logicalNodeId,
@@ -1592,6 +1607,65 @@ export async function createBindingDraft(
     });
   }
 
+  const catalogBinding = await findCatalogBindingRow(db, {
+    organizationId: auth.organization.id,
+    projectId: input.projectId,
+    bindingId: input.bindingId
+  });
+  if (catalogBinding) {
+    const pool = getRootPostgresPool(db);
+    if (!pool) {
+      throw new ApiError("INTERNAL_ERROR", "Canonical project value writes require the root database.");
+    }
+    if ((input.action ?? "set") === "delete" || !input.targetValue) {
+      throw new ApiError("VALIDATION_FAILED", "Published definition values require a set action and target value.");
+    }
+    const locator = await db.query<{ node_locator: string | null; compatible: string | null }>(
+      `
+      select node_locator, compatible
+        from dts_logical_node_revisions
+       where logical_node_id = $1
+       order by config_revision_id desc
+       limit 1
+      `,
+      [catalogBinding.logical_node_id]
+    );
+    if (locator.rows[0]?.node_locator) {
+      await assertTrustedSensitiveNodeWriteAllowed(db, auth, {
+        organizationId: auth.organization.id,
+        projectId: input.projectId,
+        nodePath: locator.rows[0].node_locator,
+        compatible: locator.rows[0].compatible,
+        compatibleIsAuthoritative: true,
+        invocation: context.invocation,
+        requestId: context.requestId,
+        refusalSink: context.refusalSink
+      });
+    }
+    const saved = await saveCanonicalProjectValue(pool, {
+      organizationId: auth.organization.id,
+      projectId: input.projectId,
+      bindingId: input.bindingId,
+      configRevisionId: input.baseRevisionId,
+      targetValue: input.targetValue
+    });
+    const rawText = renderDtsValue(input.targetValue);
+    return {
+      draftId: saved.currentValueId,
+      parameterId: saved.bindingId,
+      candidateRevisionId: input.baseRevisionId,
+      workingCandidateRevisionId: input.baseRevisionId,
+      rebasedDraftIds: [],
+      rawText,
+      action: "set",
+      parameterSpecId: saved.definitionId,
+      projectParameterBindingId: saved.bindingId,
+      writeTarget: { role: "canonical-project-value", propertyKey: saved.propertyKey },
+      overlayFileId: "",
+      overlayFileName: ""
+    };
+  }
+
   const bindingProject = await db.query<{ project_id: string }>(
     `
     select project_id
@@ -1607,6 +1681,9 @@ export async function createBindingDraft(
       bindingId: input.bindingId
     });
   }
+
+  const pool = getRootPostgresPool(db);
+  const publishedCatalog = pool ? await loadPublishedCatalog(pool) : null;
 
   // The edit helper creates the immutable candidate file blob before it reaches
   // its audited draft/rebase step. Keep every database write (file version,
@@ -1625,7 +1702,7 @@ export async function createBindingDraft(
         action: input.action,
         reason: input.reason
       },
-      deps,
+      { ...deps, publishedCatalog },
       context
     )
   );

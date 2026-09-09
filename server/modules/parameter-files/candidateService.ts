@@ -15,7 +15,12 @@ import { listRegisteredCompatibles } from "../parameter-modules/repository";
 import { buildIngestDriverSummary } from "../parameter-modules/ingestDriverSummary";
 import { listOpenConflicts } from "../parameters/fileSyncConflictRepository";
 import { canAdminParameters, canViewParameters } from "../parameter-kernel/policy";
-import type { Database, Queryable } from "../../shared/database/client";
+import { getRootPostgresPool, type Database, type Queryable } from "../../shared/database/client";
+import {
+  loadPublishedCatalog,
+  syncPublishedCatalogProjectValues,
+} from "../parameter-topology/catalogProjectValueSync";
+import type { DtsConfigRevisionDto } from "../parameter-topology/types";
 import { ApiError } from "../../shared/http/errors";
 import { diffResolvedDts } from "./baselineDiff";
 import {
@@ -745,6 +750,9 @@ export async function activateCandidate(
     "parameter file candidate activation"
   );
   requireCandidateAdmin(auth);
+  const pool = getRootPostgresPool(db);
+  const publishedCatalog = pool ? await loadPublishedCatalog(pool) : null;
+  const ingestState: { revision: DtsConfigRevisionDto | null } = { revision: null };
 
   const existing = await getParameterFileCandidateById(db, {
     organizationId: auth.organization.id,
@@ -789,7 +797,16 @@ export async function activateCandidate(
     input.expectedCurrentVersionId === undefined ? null : input.expectedCurrentVersionId;
 
   try {
-    return await runActivationTransaction();
+    const activated = await runActivationTransaction();
+    if (pool && ingestState.revision?.status === "resolved") {
+      await syncPublishedCatalogProjectValues(pool, {
+        organizationId: auth.organization.id,
+        projectId: input.projectId,
+        configSetId: ingestState.revision.configSetId,
+        configRevisionId: ingestState.revision.id
+      });
+    }
+    return activated;
   } catch (error) {
     if (!(error instanceof StaleBaseDetected)) {
       throw error;
@@ -935,11 +952,17 @@ export async function activateCandidate(
       await ingestDtsFileVersion(tx, version.id, source);
     }
     if (locked.format === "dts") {
-      await maybeIngestSemanticConfigRevision(tx, objectStore, auth, {
-        fileId: file.id,
-        frozenVersionId: version.id,
-        frozenSource: source
-      });
+      ingestState.revision = await maybeIngestSemanticConfigRevision(
+        tx,
+        objectStore,
+        auth,
+        {
+          fileId: file.id,
+          frozenVersionId: version.id,
+          frozenSource: source
+        },
+        publishedCatalog
+      );
       await syncFileVersion(asAuditTx(tx), auth, { fileId: file.id, versionId: version.id });
     }
 

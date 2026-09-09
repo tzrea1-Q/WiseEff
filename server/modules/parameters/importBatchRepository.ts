@@ -15,6 +15,7 @@ import { type ParameterRiskLevel } from "./status";
 import { LEGACY_SQL } from "../parameter-topology/migration";
 import { LEGACY_IDENTITY_SQL } from "../parameter-kernel/legacyParameterIdentityNames";
 import { parameterIdentityMode } from "../parameter-kernel/parameterIdentityMode";
+import { listCatalogBindingsForImport } from "../parameter-topology/catalogProjectValueSync";
 import { ApiError } from "../../shared/http/errors";
 import { dateTimeToIso } from "../../shared/database/sqlUtil";
 
@@ -201,7 +202,27 @@ export async function listParameterDefinitionsForImport(
   query: { organizationId: string; projectId: string; names: string[]; definitionIds: string[] }
 ) {
   if (parameterIdentityMode() === "semantic") {
-    return listSemanticParameterDefinitionsForImport(db, query);
+    const [semantic, catalog] = await Promise.all([
+      listSemanticParameterDefinitionsForImport(db, query),
+      listCatalogBindingsForImport(db, query),
+    ]);
+    const seen = new Set(catalog.map((row) => row.projectParameterValueId));
+    return [
+      ...catalog.map((row) => ({
+        id: row.id,
+        name: row.name,
+        description: row.description,
+        explanation: row.explanation,
+        configFormat: row.configFormat,
+        module: row.module,
+        range: row.range,
+        unit: row.unit,
+        risk: row.risk,
+        projectParameterValueId: row.projectParameterValueId,
+        currentValue: row.currentValue,
+      })),
+      ...semantic.filter((row) => !row.projectParameterValueId || !seen.has(row.projectParameterValueId)),
+    ];
   }
 
   const result = await db.query<ParameterDefinitionImportRow>(

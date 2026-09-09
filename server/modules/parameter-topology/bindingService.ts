@@ -1388,6 +1388,9 @@ export type ProjectBindingListItem = {
   displayName: string | null;
   description: string | null;
   documentation: string | null;
+  definitionId?: string;
+  definitionRevisionId?: string;
+  currentValueId?: string;
 };
 
 export async function listProjectBindingRows(

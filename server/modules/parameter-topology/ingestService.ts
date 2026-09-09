@@ -48,7 +48,13 @@ import {
 } from "../parameter-modules/modulePlacement";
 import { isStructuralPropertyKey } from "./parameterSurface";
 import { ApiError } from "../../shared/http/errors";
-import type { Database, Queryable } from "../../shared/database/client";
+import { getRootPostgresPool, type Database, type Queryable } from "../../shared/database/client";
+import type { CatalogSnapshot } from "../catalog-kernel/interface";
+import {
+  loadPublishedCatalog,
+  publishedCatalogOwnsProperty,
+  syncPublishedCatalogProjectValues,
+} from "./catalogProjectValueSync";
 import {
   persistAmbiguousIdentityMapping,
   applyReviewedContinuityToSnapshots,
@@ -605,6 +611,7 @@ async function matchBindAndQueueReviews(
     propertyOccurrenceByKey: Map<string, string>;
     registry: SchemaRegistry;
     attribution?: TrustedInvocationDomainAttribution;
+    publishedCatalog?: CatalogSnapshot | null;
   },
 ): Promise<SpecReviewTaskDraft[]> {
   const overrides = await listMatcherOverridesForProject(tx, {
@@ -625,6 +632,12 @@ async function matchBindAndQueueReviews(
       // Structural keys (status, compatible, …) are node enablement / topology
       // metadata — never specs, bindings, or review tasks (ADR-0003).
       if (isStructuralPropertyKey(propertyKey)) continue;
+      if (
+        input.publishedCatalog &&
+        publishedCatalogOwnsProperty(input.publishedCatalog, matchable.compatible, propertyKey)
+      ) {
+        continue;
+      }
       const propertyOccurrenceId =
         input.propertyOccurrenceByKey.get(
           `${node.nodeLocator}\0${propertyKey}`,
@@ -816,9 +829,20 @@ export async function ingestConfigRevision(
   manifest: ConfigRevisionManifest,
   auth: AuthContext,
 ): Promise<DtsConfigRevisionDto> {
-  return db.transaction(async (tx) =>
-    ingestConfigRevisionInTransaction(tx, manifest, auth),
+  const pool = getRootPostgresPool(db);
+  const publishedCatalog = pool ? await loadPublishedCatalog(pool) : null;
+  const revision = await db.transaction(async (tx) =>
+    ingestConfigRevisionInTransaction(tx, manifest, auth, undefined, publishedCatalog),
   );
+  if (pool && revision.status === "resolved") {
+    await syncPublishedCatalogProjectValues(pool, {
+      organizationId: manifest.organizationId,
+      projectId: manifest.projectId,
+      configSetId: manifest.configSetId,
+      configRevisionId: revision.id,
+    });
+  }
+  return revision;
 }
 
 /** Same as `ingestConfigRevision` but for callers already inside a DB transaction. */
@@ -827,8 +851,9 @@ export async function ingestConfigRevisionInTransaction(
   manifest: ConfigRevisionManifest,
   auth: AuthContext,
   attribution?: { createdByUserId: string | null | undefined; domain?: TrustedInvocationDomainAttribution },
+  publishedCatalog?: CatalogSnapshot | null,
 ): Promise<DtsConfigRevisionDto> {
-  return ingestConfigRevisionTx(tx, manifest, auth, attribution);
+  return ingestConfigRevisionTx(tx, manifest, auth, attribution, publishedCatalog);
 }
 
 async function ingestConfigRevisionTx(
@@ -836,6 +861,7 @@ async function ingestConfigRevisionTx(
   manifest: ConfigRevisionManifest,
   auth: AuthContext,
   attribution?: { createdByUserId: string | null | undefined; domain?: TrustedInvocationDomainAttribution },
+  publishedCatalog?: CatalogSnapshot | null,
 ): Promise<DtsConfigRevisionDto> {
   const normalized = normalizePersistedManifest({
     entryFile: manifest.entryFile,
@@ -1047,6 +1073,7 @@ async function ingestConfigRevisionTx(
     propertyOccurrenceByKey,
     registry,
     attribution: attribution?.domain,
+    publishedCatalog,
   });
   await persistOpenReviewTaskDrafts(tx, manifest.organizationId, reviewDrafts);
 

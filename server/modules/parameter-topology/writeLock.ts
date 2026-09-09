@@ -14,7 +14,7 @@ import { getConfigRevisionById } from "./repository";
 
 export type BindingDraftWriteTarget = {
   /** `base` when the project-primary DTS is the sole config member; `overlay` for legacy base+overlay sets. */
-  role: "base" | "overlay" | "project-occurrence";
+  role: "base" | "overlay" | "project-occurrence" | "canonical-project-value";
   propertyKey: string;
   fileId?: string;
   fileName?: string;

@@ -20,6 +20,7 @@ import type { TrustedInvocationDomainAttribution } from "../auth/trustedInvocati
 import type { ObjectStore } from "../logs/objectStore";
 import { type DtsToolchainRunner } from "../parameter-files/dtsToolchain";
 import type { Database, Queryable } from "../../shared/database/client";
+import type { CatalogSnapshot } from "../catalog-kernel/interface";
 import { ApiError } from "../../shared/http/errors";
 import { countOpenSpecReviewTasksForRevision } from "../parameter-specs/repository";
 import {
@@ -67,6 +68,8 @@ export type CreateBindingDraftDeps = {
   createdByUserId?: string | null;
   /** Full trusted execution projection for every #614 domain write. */
   attribution?: TrustedInvocationDomainAttribution;
+  /** Current published Catalog; ingest skips spec creation for owned properties. */
+  publishedCatalog?: CatalogSnapshot | null;
 };
 
 export function throwIfManifestNeedsReview(revision: {
@@ -805,6 +808,7 @@ export async function applyLockedOverlayWriteback(
           domain: deps.attribution,
         }
       : undefined,
+    deps.publishedCatalog,
   );
   if (ingested.status === "invalid" || ingested.status === "needs_mapping") {
     throw new ApiError(
@@ -1108,6 +1112,7 @@ export async function applyLockedEnablementWriteback(
           domain: deps.attribution,
         }
       : undefined,
+    deps.publishedCatalog,
   );
   if (ingested.status === "invalid" || ingested.status === "needs_mapping") {
     throw new ApiError(
