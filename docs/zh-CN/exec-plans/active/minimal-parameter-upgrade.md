@@ -26,13 +26,17 @@
 
 当前证据为 WIP，非封存候选或服务器目标构建。API/worker 业务使用 ARM 镜像 `sha256:9bb4554d4e20b34a09f452663630bca2d9c4d8121e0af4a3e70a3076c09e0ae9`；重试/首个 Subject 浏览器构建为 `sha256:afd02abed466a6afd93056624b700f65f0fcb69b6777cf4e48d915c4ce8de4cc`，不覆盖之后的刷新、项目初始化及 Redis 恢复改动。Focused 结果：backend 单元 60 项、Catalog 前端 31 项、真实项目加载回归 1 项、离线 Redis 恢复 shell 3 项。浏览器等待窗口在部分观察后超时，该进程非零退出并清理源环境，额外浏览器资源另行清理；不宣称完整浏览器验收通过。
 
-首个终端探针为 `scripts/run-minimal-upgrade-acceptance.ts`，由 workflow-dispatch 的 `minimal-upgrade` 模式运行。它创建独占的原 Compose 部署并调用 `upgrade.sh`；本地原生 ARM 在创建部署前被拒绝。当前即使执行成功，也仅证明原用户/节点及 Catalog 空态，明确输出 `complete:false`。首次参数写入、记录/对象 oracle 和联合恢复必须在同一流程继续补齐。首次 Hosted 失败记录如下，此中间入口不是已测试的生产手册。
+终端探针为 `scripts/run-minimal-upgrade-acceptance.ts`，由 workflow-dispatch 的 `minimal-upgrade` 模式运行。它创建独占的原 Compose 部署并调用 `upgrade.sh`；本地原生 ARM 在创建部署前被拒绝。入口现已加入原有字段/对象/任务 oracle、原成员权限隔离、真实仓库发布、正常重启、同 SHA 执行和联合恢复。成功运行到达之前，这些阶段仍属于未执行；`complete:false` 同时保留页面编辑/导入及中断验收缺口。此中间入口不是已测试的生产手册。
 
 Hosted [34306500953](https://github.com/tzrea1-Q/WiseEff/actions/runs/34306500953) 对应代码 `75a5f88f7849fbb78b7d487a24c5f0e99679378e`，从固定旧源实际构建 amd64 镜像 `sha256:f26bb4fc466ff1a65c980503d1ba8afb32460bc8a9fc04017d05a2f0dc7b3fa4`，在 `old-start` / `minimal-terminal-api-not-ready` 停止，尚未升级或迁移，部署已清理。已复用现有脱敏器补充依赖/命令诊断，不改旧源、不改 timeout。单独的文档 job 因中文计划使用英文节标题失败，标题已修正；本 run 不算 required CI 通过。
+
+Hosted [34307587109](https://github.com/tzrea1-Q/WiseEff/actions/runs/34307587109) 对应代码 `3f7ca488a28dc5875dabc343ce2999b67ea3e7b2`，在升级前的旧环境启动失败：夹具缺少必需的 `XIAOZE_CHECKPOINTER=postgres`。实际旧源镜像为 `sha256:55773c688794fa58fc107219e12f682c4256c3e3d4f442ae40f0637d9158d6d5`，已完成清理。现已补上配置，并在构建前调用固定旧源自己的环境验证器；旧代码和 timeout 保持不变。[34308789909](https://github.com/tzrea1-Q/WiseEff/actions/runs/34308789909) 正在验证 `68f660b61` 的修复及扩展流程，暂不声明结果。
 
 对象恢复实测复现“字节相同、S3 metadata 丢失”，原生 `mc mirror --preserve` 也未保留所需字段。新的本地单机 MinIO 卷恢复已验证原字节、`contentType`、`originalFileName`、`retentionClass` 恢复，备份后的新增对象消失。这是实际停进程备份/恢复组件观察，不是完整终端验收。升级 shell focused 9 项、App 回归 143 项通过；文档治理检查通过，数据库 schema 文档仍待独占数据库验证。
 
 剩余产品接线：Catalog 合同通过仓库评审的包发布，页面提案仅表示发布意图；项目参数工作台仍读旧模型，canonical ProjectValue 需要真实 Binding、来源和配置 revision。保留现有发布规则，不把提案成功或手填来源 ID 当作新的编辑保存流程。本计划不授权扩权或伪造来源。
+
+`34308789909` 随后被取消：旧目标 job 条件也匹配了新增的最小模式。误触发的目标 job 在 `https://example.invalid/` 浏览器预热失败，不算目标验证。终端 job 被中断，没有完成或清理证明。现已在目标条件中排除 `minimal-upgrade`，并加入回归，要求隔离 job 不读取仓库 secrets；12 项 CI 配置测试通过。下次终端运行必须包含此路由修复。
 
 ## 文档影响矩阵
 

@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
+import YAML from "yaml";
 import {
   CI_SMOKE_TAG,
   countCiSmokeTags,
@@ -375,6 +376,13 @@ jobs:
     expect(qualityJob).toContain("timeout-minutes: 35");
     expect(qualityJob).not.toContain("setup-dts-toolchain");
     expect(workflow).toContain("./.github/actions/setup-dts-toolchain");
+  });
+
+  it("keeps the isolated minimal upgrade mode out of target acceptance", () => {
+    const { jobs } = YAML.parse(readFileSync(".github/workflows/ci.yml", "utf8"));
+    expect(jobs["target-synthetic-acceptance"].if).toContain("inputs.acceptance_mode != 'minimal-upgrade'");
+    expect(jobs["minimal-upgrade"].if).toContain("inputs.acceptance_mode == 'minimal-upgrade'");
+    expect(JSON.stringify(jobs["minimal-upgrade"])).not.toContain("secrets.");
   });
 
   it("rejects a missing or oversized @ci-smoke set", () => {

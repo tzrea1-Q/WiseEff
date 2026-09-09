@@ -537,7 +537,7 @@ jobs:
   target-synthetic-acceptance:
     name: Target synthetic acceptance
     needs: detect
-    if: github.event_name == 'workflow_dispatch' && inputs.acceptance_mode != 'local-non-hdc'
+    if: github.event_name == 'workflow_dispatch' && inputs.acceptance_mode != 'local-non-hdc' && inputs.acceptance_mode != 'minimal-upgrade'
     runs-on: ubuntu-latest
     timeout-minutes: 50
 
