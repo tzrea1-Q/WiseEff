@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { randomBytes } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 import { chmodSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -123,7 +123,7 @@ try {
   compose("up", "-d", "--no-build", "postgres", "redis", "minio", "minio-init", "api", "worker", "web", "proxy");
   await ready();
   step = "old-synthetic-business";
-  inApi(`import{readFileSync}from'node:fs';import{createPostgresDatabase}from'./server/shared/database/client.ts';import{bootstrapLocalAdmin}from'./server/modules/auth/bootstrapLocalAdmin.ts';const db=createPostgresDatabase(process.env.DATABASE_URL);try{console.log(JSON.stringify(await bootstrapLocalAdmin(db,JSON.parse(readFileSync(0,'utf8')))))}finally{await db.close()}`, account);
+  const admin = inApi(`import{readFileSync}from'node:fs';import{createPostgresDatabase}from'./server/shared/database/client.ts';import{bootstrapLocalAdmin}from'./server/modules/auth/bootstrapLocalAdmin.ts';const db=createPostgresDatabase(process.env.DATABASE_URL);try{console.log(JSON.stringify(await bootstrapLocalAdmin(db,JSON.parse(readFileSync(0,'utf8')))))}finally{await db.close()}`, account);
   token = http("/api/v1/auth/login", "POST", { username: account.username, password }).token;
   const projectId = `${project}-business`;
   http("/api/v1/parameters/admin/projects", "POST", { id: projectId, name: "Preserved project", code: "MIN" }, 201);
@@ -134,7 +134,44 @@ try {
   const actualDriver = http("/api/v1/parameter-modules").items.find((item: { id: string }) => item.id === driver.id);
   http("/api/v2/parameter-specs", "POST", { attributionSubjectId: actualDriver.attributionSubjectId, propertyKey: "legacy-voltage",
     valueShape: { kind: "cells", bits: 32, groups: 1, cellsPerGroup: 1 }, constraints: { cells: 1 }, documentation: "Retained old parameter", reason: "synthetic source" }, 201);
-  evidence.sourceBusiness = { projectId, nodeId: node.id, legacyParameterCreated: true };
+  const logBytes = Buffer.from("2026-09-09T00:00:00Z INFO isolated original source\n");
+  const upload = inApi(httpScript, { route: "/api/v1/log-files", method: "POST", token,
+    body: { fileName: "original.log", contentType: "text/plain", contentBase64: logBytes.toString("base64") } });
+  let jobId: string;
+  if (upload.status === 201) jobId = upload.body.job.id;
+  else {
+    assert.equal(upload.status, 500);
+    assert.equal(upload.body.error.code, "INTERNAL_ERROR");
+    // Reuse the fixed old fixture's explicit native producer for its observed
+    // colon-ID defect. It consumes only the exact HTTP-created job, and does
+    // not relabel the failed HTTP upload as a success or change the old image.
+    jobId = inApi(`
+      import{readFileSync}from'node:fs';import{Job,Queue}from'bullmq';
+      import{createPostgresDatabase}from'./server/shared/database/client.ts';
+      const p=JSON.parse(readFileSync(0,'utf8')),db=createPostgresDatabase(process.env.DATABASE_URL);
+      const q=new Queue('log-analysis',{connection:{url:process.env.REDIS_URL},prefix:process.env.LOG_ANALYSIS_QUEUE_PREFIX});
+      try {
+        const r=await db.query("select j.id,lr.id as log_id,lar.id as run_id,j.status from jobs j join log_analysis_runs lar on lar.id=j.target_id join log_records lr on lr.id=lar.log_record_id join log_file_objects f on f.id=lr.file_object_id where j.organization_id=$1 and lr.organization_id=$1 and lar.organization_id=$1 and f.organization_id=$1 and j.kind='log-analysis' and j.target_type='log-analysis-run' and lr.current_run_id=lar.id and lr.submitted_by_user_id=$2 and f.uploaded_by_user_id=$2 and f.file_name='original.log' and f.checksum_sha256=$3",[p.organizationId,p.userId,p.checksum]);
+        if(r.rows.length!==1||r.rows[0].status!=='queued')throw Error('legacy-job-scope');
+        const row=r.rows[0];let rejected=false;
+        try{Job.prototype.validateOptions.call({opts:{jobId:'log-analysis:'+row.id},name:'analyze-log'},{data:'{}'})}
+        catch(e){if(e.message==='Custom Id cannot contain :')rejected=true;else throw e}
+        if(!rejected||(await q.getJobs(['wait','active','delayed','completed','failed','paused'],0,-1)).length)throw Error('legacy-delivery-ambiguous');
+        await q.add('analyze-log',{organizationId:p.organizationId,logId:row.log_id,runId:row.run_id,jobId:row.id},{jobId:'owned-legacy-'+row.id,attempts:1,removeOnComplete:false,removeOnFail:false});
+        console.log(JSON.stringify(row.id));
+      }finally{await q.close();await db.close()}
+    `, { organizationId: admin.organizationId, userId: admin.userId, checksum: createHash("sha256").update(logBytes).digest("hex") });
+  }
+  let originalJobCompleted = false;
+  for (let attempt = 0; attempt < 60; attempt++) {
+    const job = inApi(`import{readFileSync}from'node:fs';import{createPostgresDatabase}from'./server/shared/database/client.ts';import{getJobSnapshot}from'./server/modules/jobs/repository.ts';const db=createPostgresDatabase(process.env.DATABASE_URL);try{console.log(JSON.stringify(await getJobSnapshot(db,JSON.parse(readFileSync(0,'utf8')).jobId)))}finally{await db.close()}`, { jobId });
+    if (job?.status === "complete") { originalJobCompleted = true; break; }
+    await setTimeout(1000);
+  }
+  assert.ok(originalJobCompleted, "the actual old worker must complete the synthetic job");
+  evidence.sourceBusiness = { projectId, nodeId: node.id, legacyParameterCreated: true,
+    originalHttpUploadStatus: upload.status, originalJobCompleted,
+    delivery: upload.status === 201 ? "original-http" : "original-http-500-native-test-producer" };
   record();
   step = "candidate-checkout";
   run("git", ["checkout", "--detach", candidateSha], { cwd: checkout });
