@@ -93,7 +93,9 @@ WiseEff 新增规范的 `/api/v2/catalog/*` 资源命名空间。系统不会就
 }
 ```
 
-规范目录响应包含 `X-WiseEff-Catalog-Release: <catalogReleaseId>`。集合 envelope 使用 `items`、`nextCursor` 和 `catalogReleaseId`；单项 envelope 使用 `item`。分页使用 cursor，并以 `(stable sort key, id)` 做确定性 tie-breaker。后续 OpenAPI 合同可固定有界 page limit，但不得改变这些语义。
+首个真实发布之前，由 owner 观察确认的空投影返回 `200`、`{"item":null,"publicationState":"unpublished"}`，不附带 release header。客户端显示未发布空态，依赖 release 的写入保持禁用。缺失指针但已有部分数据仍不可用，不是空发布或批准。`new-empty` 升级路径使用此状态，不改变仓库发布权限，正常重启不需要额外参数。
+
+已安装的规范目录响应包含 `X-WiseEff-Catalog-Release: <catalogReleaseId>`。集合 envelope 使用 `items`、`nextCursor` 和 `catalogReleaseId`；单项 envelope 使用 `item`。分页使用 cursor，并以 `(stable sort key, id)` 做确定性 tie-breaker。后续 OpenAPI 合同可固定有界 page limit，但不得改变这些语义。
 
 依赖当前发布状态的写入发送客户端读取时的 `X-WiseEff-Catalog-Release`。可变 Organization 资源和 proposal 还必须使用响应 `ETag` 对应的 `If-Match`。release 过期返回 `release-drift`；资源过期返回 `revision-conflict` 或 `proposal-stale`。客户端必须刷新并要求用户重新确认，不能静默重试治理写入。
 
