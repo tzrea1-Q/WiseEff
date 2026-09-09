@@ -396,16 +396,24 @@ try {
     if (await page.getByRole('region', {name:'目录列表', exact:true}).count()) throw new Error('unpublished page rendered a publication workspace');
   }`);
   captureBrowser("original-node", `async page => {
+    const waitValue = async (box, expected, message) => {
+      await box.waitFor();
+      for (let attempt = 0; attempt < 40; attempt++) {
+        if (await box.inputValue() === expected) return;
+        await page.waitForTimeout(100);
+      }
+      throw new Error(message);
+    };
     await page.goto('http://127.0.0.1:18080/debugging-admin/nodes');
     await page.getByRole('cell', {name:'Preserved node', exact:true}).click();
     const editor = page.getByRole('dialog', {name:'编辑节点', exact:true});
     await editor.waitFor();
-    if (await editor.getByRole('textbox', {name:'名称', exact:true}).inputValue() !== 'Preserved node') throw new Error('original node name changed');
+    await waitValue(editor.getByRole('textbox', {name:'名称', exact:true}), 'Preserved node', 'original node name changed');
     await editor.getByRole('button', {name:'取消', exact:true}).click();
     await page.getByRole('button', {name:'路径绑定', exact:true}).click();
     const bindings = page.getByRole('dialog', {name:'Preserved node', exact:true});
     await bindings.waitFor();
-    if (await bindings.getByRole('textbox', {name:'HDC 节点路径', exact:true}).inputValue() !== '/minimal/node') throw new Error('original node path changed');
+    await waitValue(bindings.getByRole('textbox', {name:'HDC 节点路径', exact:true}), '/minimal/node', 'original node path changed');
   }`);
   evidence.browser = { viewports: [[1440, 900], [768, 1024], [390, 844]],
     observed: ["original-user-login", "unpublished-page", "original-node-details"],
