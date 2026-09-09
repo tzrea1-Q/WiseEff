@@ -685,6 +685,33 @@ const diagnosticCanaries: Array<{ label: string; text: string; secret: string; c
 ];
 
 describe("upgrade.sh public interface", () => {
+  it.each(["success", "image-drift", "invalid-format"])("restores the MinIO recovery format only to its compatible stopped service: %s", (scenario) => {
+    const directory = mkdtempSync(join(tmpdir(), "wiseeff-minio-restore-"));
+    mkdirSync(join(directory, "data/.minio.sys"), { recursive: true });
+    writeFileSync(join(directory, "data/.minio.sys/format.json"), "{}");
+    writeFileSync(join(directory, "format"), scenario === "invalid-format" ? "unknown" : "minio-volume-v1");
+    writeFileSync(join(directory, "image-id"), "sha256:minio-image\n");
+    try {
+      const result = runLibrary(`
+        wiseeff_upgrade_state_read() { printf '%s' "$PROBE_BACKUP"; }
+        wiseeff_upgrade_env_value() { printf 'http://minio:9000'; }
+        wiseeff_upgrade_compose() { case "$1" in ps) printf 'minio-id';; stop) printf 'stop\\n';; *) return 99;; esac; }
+        wiseeff_upgrade_docker() {
+          case "$1" in
+            inspect) case "$3" in *Mounts*) printf 'yes';; *Running*) printf 'false';; *) printf '${scenario === "image-drift" ? "sha256:other" : "sha256:minio-image"}';; esac;;
+            run) printf 'offline-copy\\n'; [ "$2 $3 $4 $5 $6" = '--rm --network none --volumes-from minio-id' ];;
+            start) printf 'start\\n';;
+            *) return 99;;
+          esac
+        }
+        wiseeff_upgrade_wait_object_store_ready() { printf 'ready\\n'; }
+        wiseeff_upgrade_restore_objects
+      `, [], { PROBE_BACKUP: directory });
+      expect(result.status === 0).toBe(scenario === "success");
+      expect(result.stdout).toBe(scenario === "success" ? "stop\noffline-copy\nstart\nready\n" : "");
+    } finally { rmSync(directory, { recursive: true, force: true }); }
+  });
+
   it.each(["success", "still-running", "invalid-backup"])("restores Redis offline and starts only a validated recovery point: %s", (scenario) => {
     const directory = mkdtempSync(join(tmpdir(), "wiseeff-redis-restore-"));
     mkdirSync(join(directory, "data"));

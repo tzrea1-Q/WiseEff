@@ -927,6 +927,10 @@ wiseeff_upgrade_preflight() {
   wiseeff_upgrade_collect_runtime || return $?
   wiseeff_upgrade_collect_volumes || return $?
   wiseeff_upgrade_resolve_target || return $?
+  if [ "${upgrade_parameter_data_mode:-}" = "new-empty" ] && ! wiseeff_upgrade_local_minio_container >/dev/null; then
+    wiseeff_upgrade_die 10 "new-empty requires the supported Compose MinIO endpoint http://minio:9000 and its named /data volume for metadata-preserving recovery."
+    return 10
+  fi
   if [ -n "${upgrade_runtime_image_ref_api:-}" ] &&
     [ "${upgrade_runtime_image_ref_api##*:}" = "82344044b436a8dafecefbb85dfd724cecb05e3f" ] &&
     [ "${upgrade_parameter_data_mode:-}" != "new-empty" ]; then
@@ -1696,10 +1700,33 @@ wiseeff_upgrade_snapshot_postgres() {
   wiseeff_upgrade_state_write postgres_backup "$dump" || return $?
 }
 
+wiseeff_upgrade_local_minio_container() {
+  [ "$(wiseeff_upgrade_env_value OBJECT_STORAGE_ENDPOINT)" = "http://minio:9000" ] || return 1
+  local container
+  container="$(wiseeff_upgrade_compose ps -aq minio)" || return $?
+  [ -n "$container" ] || return 1
+  [ "$(wiseeff_upgrade_docker inspect -f '{{range .Mounts}}{{if and (eq .Type "volume") (eq .Destination "/data")}}yes{{end}}{{end}}' "$container")" = "yes" ] || return 1
+  printf '%s' "$container"
+}
+
 wiseeff_upgrade_snapshot_objects() {
   local output_dir="${upgrade_backup_dir}/object-store"
-  local network
+  local network container
   mkdir -p "$output_dir" || return $?
+  if container="$(wiseeff_upgrade_local_minio_container)"; then
+    # A filesystem mirror of S3 objects loses their metadata. Capture the owned
+    # single-node MinIO volume while stopped, including its actual metadata.
+    wiseeff_upgrade_compose stop -t "${WISEEFF_UPGRADE_STOP_TIMEOUT_SECONDS:-60}" minio || return $?
+    [ "$(wiseeff_upgrade_docker inspect -f '{{.State.Running}}' "$container")" = "false" ] || return 40
+    wiseeff_upgrade_docker cp "${container}:/data/." "${output_dir}/data.part" || return $?
+    [ -f "${output_dir}/data.part/.minio.sys/format.json" ] || return 40
+    mv "${output_dir}/data.part" "${output_dir}/data" || return $?
+    wiseeff_upgrade_docker inspect -f '{{.Image}}' "$container" > "${output_dir}/image-id" || return $?
+    printf '%s\n' minio-volume-v1 > "${output_dir}/format" || return $?
+    wiseeff_upgrade_state_write object_backup "$output_dir"
+    return $?
+  fi
+  [ "${upgrade_parameter_data_mode:-}" != "new-empty" ] || return 40
   network="$(wiseeff_upgrade_state_read network)"
   local image="${WISEEFF_BACKUP_MC_IMAGE:-minio/mc:RELEASE.2024-11-21T17-21-54Z}"
   local endpoint bucket
@@ -2254,9 +2281,24 @@ wiseeff_upgrade_restore_postgres() {
 }
 
 wiseeff_upgrade_restore_objects() {
-  local object_dir network image
+  local object_dir network image container
   object_dir="$(wiseeff_upgrade_state_read object_backup)"
   [ -d "${object_dir}/data" ] || { wiseeff_upgrade_die 40 "Object-store recovery point is missing: ${object_dir}"; return $?; }
+  if [ -f "${object_dir}/format" ]; then
+    [ "$(cat "${object_dir}/format")" = "minio-volume-v1" ] || return 40
+    container="$(wiseeff_upgrade_local_minio_container)" || return 40
+    image="$(wiseeff_upgrade_docker inspect -f '{{.Image}}' "$container")" || return $?
+    [ "$image" = "$(cat "${object_dir}/image-id")" ] || return 40
+    [ -f "${object_dir}/data/.minio.sys/format.json" ] || return 40
+    wiseeff_upgrade_compose stop -t "${WISEEFF_UPGRADE_STOP_TIMEOUT_SECONDS:-60}" minio || return $?
+    [ "$(wiseeff_upgrade_docker inspect -f '{{.State.Running}}' "$container")" = "false" ] || return 40
+    wiseeff_upgrade_docker run --rm --network none --volumes-from "$container" \
+      --mount "type=bind,source=${object_dir}/data,target=/restore,readonly" --entrypoint /bin/sh "$image" -ec \
+      'rm -rf -- /data/* /data/.[!.]* /data/..?*; cp -a /restore/. /data/' || return $?
+    wiseeff_upgrade_docker start "$container" || return $?
+    wiseeff_upgrade_wait_object_store_ready
+    return $?
+  fi
   network="$(wiseeff_upgrade_state_read network)"
   image="${WISEEFF_BACKUP_MC_IMAGE:-minio/mc:RELEASE.2024-11-21T17-21-54Z}"
   wiseeff_upgrade_docker run --rm --network "$network" --env-file "$upgrade_env_file" -v "${object_dir}/data:/backup/data:ro" --entrypoint /bin/sh "$image" -lc \

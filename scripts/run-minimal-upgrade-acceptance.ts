@@ -5,6 +5,7 @@ import { chmodSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { setTimeout } from "node:timers/promises";
+import { gate0SecretValuesFromEnv, sanitizeGate0DiagnosticText } from "./gate0-artifact-sanitizer";
 
 // Isolated terminal acceptance only. The application and upgrade controller are
 // unmodified production entry points; this driver owns the synthetic deployment.
@@ -18,10 +19,13 @@ const directory = mkdtempSync(path.join(tmpdir(), "wiseeff-minimal-terminal-"));
 chmodSync(directory, 0o700);
 let step = "preflight";
 let commandNumber = 0;
+const secrets = gate0SecretValuesFromEnv();
+let lastCommandFailure = "";
 function run(command: string, args: string[], options: { cwd?: string; env?: NodeJS.ProcessEnv; input?: string } = {}) {
   const result = spawnSync(command, args, { cwd: options.cwd ?? repository,
     env: options.env ?? process.env, input: options.input, encoding: "utf8", maxBuffer: 32 * 1024 * 1024 });
   if (result.status !== 0) {
+    lastCommandFailure = sanitizeGate0DiagnosticText(result.stdout + result.stderr, secrets).value.slice(-6000);
     writeFileSync(path.join(directory, `private-failure-${++commandNumber}.log`), result.stdout + result.stderr, { mode: 0o600 });
     throw new Error(`minimal-terminal-${step}-command-failed:${result.status ?? "signal"}`);
   }
@@ -41,6 +45,7 @@ run("git", ["checkout", "--detach", sourceSha], { cwd: checkout });
 const composeDir = path.join(checkout, "ops/self-hosted");
 const password = randomBytes(24).toString("hex");
 const account = { username: `minimal-${randomBytes(6).toString("hex")}`, password, name: "Synthetic upgrade admin", organization: "软件部" };
+secrets.push(password, account.username);
 const envFile = path.join(directory, "runtime.env");
 const ca = path.join(directory, "corporate-ca.pem");
 writeFileSync(ca, "", { mode: 0o600 });
@@ -89,11 +94,17 @@ let token = "";
 const http = (route: string, method = "GET", body?: unknown, status = 200) => {
   const result = inApi(httpScript, { route, method, body, token });
   assert.equal(result.status, status, `${step}: ${method} ${route}`);
+  if (route === "/api/v1/auth/login" && typeof result.body.token === "string") secrets.push(result.body.token);
   return result.body;
 };
+let lastHealth: unknown;
 async function ready() {
   for (let attempt = 0; attempt < 60; attempt++) {
-    try { if (http("/health/ready").ok) return; } catch { /* startup remains unaccepted */ }
+    try {
+      const health = inApi(httpScript, { route: "/health/ready", method: "GET" });
+      lastHealth = health;
+      if (health.status === 200 && health.body.ok) return;
+    } catch { /* startup remains unaccepted */ }
     await setTimeout(2000);
   }
   throw new Error("minimal-terminal-api-not-ready");
@@ -147,6 +158,12 @@ try {
 } catch (error) {
   evidence.failedStage = step;
   evidence.failure = error instanceof Error ? error.message : "minimal-terminal-failed";
+  evidence.lastHealth = sanitizeGate0DiagnosticText(JSON.stringify(lastHealth ?? null), secrets).value;
+  evidence.commandFailure = lastCommandFailure;
+  if (created) {
+    try { evidence.apiDiagnostics = sanitizeGate0DiagnosticText(compose("logs", "--no-color", "--tail", "40", "api"), secrets).value.slice(-6000); }
+    catch { evidence.apiDiagnostics = "unavailable"; }
+  }
   process.exitCode = 1;
 } finally {
   if (created) {

@@ -2,6 +2,18 @@
 
 > English: [English](upgrade.md)
 
+## 最小参数初始化候选
+
+[最小升级计划](../../docs/zh-CN/exec-plans/active/minimal-parameter-upgrade.md) 为 `plan` 和 `apply` 增加 `--parameter-data-mode new-empty`。本候选仍在隔离验收，不构成生产执行批准。该选项绑定计划/run，仅选择管理期初始化；API/worker 不读取绕过开关，后续正常重启不会清空参数。
+
+本路径保留旧参数表和共享引用，不将旧参数迁入 Catalog。新 Catalog 明确处于未发布空态，不伪造空发布或通过报告。首个真实发布仍使用既有仓库评审包、编译和安装能力，页面提案不直接发布定义。本路径不声称完成 #824 单独实施的旧参数完整迁移认证。
+
+准入核对完整迁移清单及固定旧源 `82344044b436a8dafecefbb85dfd724cecb05e3f` 的已知 schema；不支持及部分转换状态在停服前拒绝。此外，仅支持具有 `/data` 命名卷的原 Compose `http://minio:9000`，不把远程对象存储静默视为等价恢复目标。
+
+此本地 MinIO 形态在备份时停止 MinIO 并采集实际卷，包括 S3 metadata；`minio-volume-v1` 恢复要求 MinIO 镜像身份一致。Redis 复制 AOF manifest/文件前也会停进程；恢复先校验 RDB/AOF，再替换停止服务的数据并重新加载。PostgreSQL 恢复重建备份中的数据库并保留 owner，移除候选新增 schema。这些仅是显式恢复操作，正常升级不删除原业务数据。应预留完整 MinIO 卷和 Redis 校验暂存所需空间。旧 bucket mirror 备份仍按原格式读取，但不能追认为已保全 metadata。
+
+正式终端流程及完整编辑、导入、恢复证据仍在计划中待完成，不把中间 CI 探针用作生产操作手册。
+
 `scripts/upgrade.sh` 是已经运行的自托管 checkout 的标准升级入口。它把目标解析为唯一 Git commit，在停机前构建候选镜像，暂停并排空应用工作，创建并校验恢复点，基于原有 volume 重建全部服务，等待迁移与健康门禁完成，并写入可恢复的运行日志。
 
 宿主机只需要 Docker Engine 和 Compose，不需要 Node.js。命令会读取 `ops/self-hosted/.env`，但不会改写它、轮换密钥、写入种子数据、创建管理员，也不会删除 volume。实现不会调用 `compose down -v`、`volume rm` 或 `system prune`。

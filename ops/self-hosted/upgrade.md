@@ -6,6 +6,18 @@
 
 The host needs Docker Engine and Compose; Node.js is not required. The command reads `ops/self-hosted/.env` but never rewrites it, rotates credentials, seeds data, provisions an admin, or removes a volume. It never runs `compose down -v`, `volume rm`, or `system prune`.
 
+## Minimal parameter initialization candidate
+
+The active [minimal upgrade plan](../../docs/exec-plans/active/minimal-parameter-upgrade.md) adds `--parameter-data-mode new-empty` to `plan` and `apply`. This candidate is still under isolated acceptance; it is not a production execution approval. The option is recorded in the plan/run and selects management initialization only. API and worker processes do not read a bypass flag, and subsequent normal restarts never clear parameters.
+
+This route preserves old parameter tables and shared references without importing them into Catalog. The new Catalog starts explicitly unpublished; no empty release or passed verification report is synthesized. A first real release still requires the existing reviewed repository bundle, compiler and installer. Page proposals do not publish definitions. This route does not claim the full legacy parameter migration/certification implemented separately in #824.
+
+Admission checks the complete migration inventory and the known schema of source `82344044b436a8dafecefbb85dfd724cecb05e3f`. Unsupported and partially converted sources are rejected before downtime. The minimal route additionally requires the stock `http://minio:9000` service with a named `/data` volume. Remote object stores are not silently accepted as equivalent recovery targets.
+
+For this local MinIO profile, backup stops MinIO and captures its actual volume, including S3 metadata. The `minio-volume-v1` recovery point requires the same MinIO image identity on restore. Redis is also stopped before copying its AOF manifest/files; restore validates RDB/AOF before replacing stopped-service data and loading it. PostgreSQL restore recreates the recorded database including owners, removing candidate schemas. These are explicit recovery operations; normal upgrades do not delete old business data. Retain enough storage for the complete MinIO volume and Redis validation staging. Older bucket-mirror recovery points remain readable by their original format, but do not acquire metadata-preservation evidence retroactively.
+
+The integrated terminal probe and complete edit/import/recovery evidence remain pending in the active plan. Do not use the intermediate CI probe as a production upgrade manual.
+
 Git target resolution inherits the proxy environment of the invoking command and normalizes upper-case `HTTP_PROXY`, `HTTPS_PROXY`, `ALL_PROXY`, and `NO_PROXY` to the lower-case variables expected by Git/libcurl. Existing Git `http.proxy`, URL-specific proxy, `GIT_SSH_COMMAND`, and `core.sshCommand` settings remain effective. When needed, provide a Git-only override:
 
 ```bash
