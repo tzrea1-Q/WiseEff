@@ -12,7 +12,7 @@
 
 此本地 MinIO 形态在备份时停止 MinIO 并采集实际卷，包括 S3 metadata；`minio-volume-v1` 恢复要求 MinIO 镜像身份一致。Redis 复制 AOF manifest/文件前也会停进程；恢复先校验 RDB/AOF，再替换停止服务的数据并重新加载。PostgreSQL 恢复重建备份中的数据库并保留 owner，移除候选新增 schema。这些仅是显式恢复操作，正常升级不删除原业务数据。应预留完整 MinIO 卷和 Redis 校验暂存所需空间。旧 bucket mirror 备份仍按原格式读取，但不能追认为已保全 metadata。
 
-隔离终端升级、原数据保全、正常重启、错误目标拒绝、实际迁移中断及两次整套恢复已在 [34314419833](https://github.com/tzrea1-Q/WiseEff/actions/runs/34314419833) 通过。中断后的候选保持隔离，普通 resume 退出 70。页面编辑保存/导入和完整浏览器验收仍待完成。恢复后的独立镜像别名仅在实际运行镜像 ID 与保留的原 SHA 镜像完全一致时才能重入限定的源路径；镜像缺失或不同仍拒绝。初始化模式仅由 plan/apply 接受，status 展示 run 的持久 `parameterDataMode`；恢复消费既有 run，无需再次传初始化选项。
+隔离终端升级、原数据保全（126 张表、183 条原记录、661 条原有约束）、正常重启、错误目标拒绝、实际迁移中断及两次整套恢复已在候选 `30c9614553a19b82c16bd1edc2b4ba54b5084f38` 的 [34323085084](https://github.com/tzrea1-Q/WiseEff/actions/runs/34323085084) 通过。中断后的候选保持隔离，普通 resume 退出 70，清理完成。三个视口观察覆盖未发布空态、原节点详情及仓库发布后的重启读取；页面新增/编辑保存/导入和最终验收仍待完成，因此尚非集成或生产就绪候选。恢复后的独立镜像别名仅在实际运行镜像 ID 与保留的原 SHA 镜像完全一致时才能重入限定的源路径；镜像缺失或不同仍拒绝。初始化模式仅由 plan/apply 接受，status 展示 run 的持久 `parameterDataMode`；恢复消费既有 run，无需再次传初始化选项。
 
 已测试的隔离入口是专用 GitHub-hosted Linux/amd64 job。在已登录 `gh` 且有仓库 Actions 权限的 checkout 中执行：
 
