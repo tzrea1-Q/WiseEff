@@ -339,12 +339,21 @@ try {
   mkdirSync(browserDirectory, { mode: 0o700 });
   browserOpened = true;
   browser("open", "http://127.0.0.1:18080", "--browser=chrome");
-  browserCode(`async page => {
+  const browserLogin = browserCode(`async page => {
     await page.getByLabel('用户名', {exact:true}).fill(${JSON.stringify(account.username)});
     await page.getByLabel('密码', {exact:true}).fill(${JSON.stringify(password)});
-    await page.locator('form').getByRole('button', {name:'登录', exact:true}).click();
+    const [response] = await Promise.all([
+      page.waitForResponse(response => response.url().endsWith('/api/v1/auth/login') && response.request().method() === 'POST'),
+      page.locator('form').getByRole('button', {name:'登录', exact:true}).click()
+    ]);
+    const session = await response.json();
     await page.getByRole('button', {name:'打开用户菜单', exact:true}).waitFor();
+    return {sessionToken: session.token};
   }`);
+  const browserSession = JSON.parse(browserLogin.match(/^### Result\n([^\n]+)\n/m)?.[1] ?? "null");
+  assert.ok(typeof browserSession?.sessionToken === "string" && browserSession.sessionToken.length > 0,
+    "browser login must return its actual session for evidence redaction");
+  secrets.push(browserSession.sessionToken);
   captureBrowser("unpublished", `async page => {
     await page.goto('http://127.0.0.1:18080/parameter-admin/specs');
     await page.getByText('尚无首个 Catalog 发布。旧参数不会自动迁入；请先发布真实参数定义。', {exact:true}).waitFor();
