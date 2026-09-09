@@ -446,7 +446,9 @@ try {
     if (await dismiss.isVisible().catch(() => false)) await dismiss.click({force:true});
     await page.goto('http://127.0.0.1:18080/parameter-admin/specs');
     await page.getByRole('region', {name:'参数定义目录'}).waitFor();
-    await page.getByRole('list', {name:'主体列表'}).getByRole('button', {name:/acme,power/}).click();
+    const subject = page.getByRole('list', {name:'主体列表'}).getByRole('button', {name:/acme,power/});
+    await subject.waitFor();
+    await subject.click();
     const register = page.getByRole('button', {name:'登记主体', exact:true});
     await register.waitFor();
     await register.click();
@@ -547,6 +549,8 @@ try {
     await dialog.getByRole('button', {name:'下一步', exact:true}).click();
     const preview = dialog.getByRole('region', {name:'批次预览'});
     await preview.waitFor();
+    await preview.getByText('正在生成导入预览…').waitFor({state:'hidden'}).catch(() => undefined);
+    await preview.getByText('更新', {exact:true}).waitFor();
     const text = await preview.innerText();
     if (!/更新\\s*1/.test(text) || !/新增\\s*0/.test(text)) throw new Error('import preview must update the existing value: '+text);
     await dialog.getByRole('button', {name:'下一步', exact:true}).click();
