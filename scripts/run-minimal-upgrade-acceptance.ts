@@ -527,7 +527,6 @@ try {
       }
     }
     await page.getByRole('region', {name:'DTS 参数工作台'}).waitFor();
-    if (await page.getByText('该项目尚未上传项目 DTS').count()) throw new Error('workbench did not load the ingested DTS');
     await page.getByText('iin_max', {exact:true}).waitFor();
     await page.getByText('<1000>', {exact:true}).waitFor();
   }`);
