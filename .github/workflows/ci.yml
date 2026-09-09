@@ -62,6 +62,27 @@ jobs:
           name: minimal-upgrade-terminal-evidence
           path: /tmp/wiseeff-minimal-terminal-*/evidence.json
           if-no-files-found: error
+      - name: Package the exact changed source for review
+        if: always()
+        shell: bash
+        run: |
+          base=cda6737a8f177a8bbd2f3bc7d195f8e3037bfa74
+          mkdir -p /tmp/minimal-upgrade-source
+          mapfile -d '' changed < <(git diff --name-only -z --diff-filter=ACMR "$base" "$GITHUB_SHA")
+          test "${#changed[@]}" -gt 0
+          git diff --exit-code "$GITHUB_SHA" -- "${changed[@]}"
+          git archive --format=tar "$GITHUB_SHA" -- "${changed[@]}" > /tmp/minimal-upgrade-source/source.tar
+          git diff --binary "$base" "$GITHUB_SHA" > /tmp/minimal-upgrade-source/changes.diff
+          sha256sum -- "${changed[@]}" > /tmp/minimal-upgrade-source/SHA256SUMS
+          git show -s --format='candidate=%H%ntree=%T' "$GITHUB_SHA" > /tmp/minimal-upgrade-source/identity.txt
+          echo "base=$base" >> /tmp/minimal-upgrade-source/identity.txt
+      - name: Retain the review source package
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: minimal-upgrade-source
+          path: /tmp/minimal-upgrade-source/
+          if-no-files-found: error
 
   detect:
     name: Detect changed paths
@@ -88,6 +109,10 @@ jobs:
 
       - name: Install dependencies
         run: npm ci
+
+      - name: Retained rehearsal source lock on native Linux
+        if: github.event_name == 'workflow_dispatch' && inputs.acceptance_mode == 'minimal-upgrade'
+        run: npx vitest run --config vitest.scripts.config.ts scripts/wayfinder/parameter-catalog-rehearsal-source-lock.test.ts
 
       - name: Classify changed paths
         id: paths
