@@ -165,6 +165,7 @@ describe("CatalogPage", () => {
       .toBeVisible();
     expect(list).not.toHaveBeenCalled();
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "目录列表" })).not.toBeInTheDocument();
   });
   it("renders the three-view ready catalog without Effective or Governance peers", async () => {
     renderCatalog();

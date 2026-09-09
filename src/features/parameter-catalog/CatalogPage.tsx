@@ -574,7 +574,7 @@ export function CatalogPage({
         <SectionSkeleton label={catalogLoadingLabel} />
       ) : domainState.kind === "error" && !snapshot ? (
         <SectionError message={statusMessage ?? "目录加载失败，请稍后重试。"} onRetry={() => void load()} />
-      ) : (
+      ) : unpublished ? null : (
         <div className="parameter-catalog__workspace">
           <section className="parameter-catalog__pane parameter-catalog__pane--list" aria-label={catalogListLabel}>
             <h2 className="parameter-catalog__pane-title">{catalogListLabel}</h2>

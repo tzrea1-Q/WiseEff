@@ -360,6 +360,7 @@ try {
   captureBrowser("unpublished", `async page => {
     await page.goto('http://127.0.0.1:18080/parameter-admin/specs');
     await page.getByText('尚无首个 Catalog 发布。旧参数不会自动迁入；请先发布真实参数定义。', {exact:true}).waitFor();
+    if (await page.getByRole('region', {name:'目录列表', exact:true}).count()) throw new Error('unpublished page rendered a publication workspace');
   }`);
   captureBrowser("original-node", `async page => {
     await page.goto('http://127.0.0.1:18080/debugging-admin/nodes');
