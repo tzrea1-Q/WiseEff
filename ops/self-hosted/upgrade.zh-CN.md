@@ -12,7 +12,15 @@
 
 此本地 MinIO 形态在备份时停止 MinIO 并采集实际卷，包括 S3 metadata；`minio-volume-v1` 恢复要求 MinIO 镜像身份一致。Redis 复制 AOF manifest/文件前也会停进程；恢复先校验 RDB/AOF，再替换停止服务的数据并重新加载。PostgreSQL 恢复重建备份中的数据库并保留 owner，移除候选新增 schema。这些仅是显式恢复操作，正常升级不删除原业务数据。应预留完整 MinIO 卷和 Redis 校验暂存所需空间。旧 bucket mirror 备份仍按原格式读取，但不能追认为已保全 metadata。
 
-正式终端流程及完整编辑、导入、恢复证据仍在计划中待完成，不把中间 CI 探针用作生产操作手册。
+隔离终端升级、原数据保全、正常重启及整套恢复已在 [34310318652](https://github.com/tzrea1-Q/WiseEff/actions/runs/34310318652) 通过。页面编辑保存/导入、完整浏览器及中断验收仍待完成。恢复后的独立镜像别名仅在实际运行镜像 ID 与保留的原 SHA 镜像完全一致时才能重入限定的源路径；镜像缺失或不同仍拒绝。
+
+已测试的隔离入口是专用 GitHub-hosted Linux/amd64 job。在已登录 `gh` 且有仓库 Actions 权限的 checkout 中执行：
+
+```bash
+gh workflow run ci.yml --repo tzrea1-Q/WiseEff --ref codex/minimal-parameter-upgrade -f acceptance_mode=minimal-upgrade
+```
+
+它仅在 hosted runner 创建和修改自己的合成 Compose 部署，调用真实 plan/apply/rollback，最终删除自有夹具卷；不需要目标服务器备份或凭据。`minimal-upgrade-terminal-evidence` artifact 记录精确候选/源镜像、阶段及清理；`complete:false` 表示仍有未完成验收。失败即停止诊断，不授权服务器操作。这是隔离测试入口，不是生产升级手册。
 
 `scripts/upgrade.sh` 是已经运行的自托管 checkout 的标准升级入口。它把目标解析为唯一 Git commit，在停机前构建候选镜像，暂停并排空应用工作，创建并校验恢复点，基于原有 volume 重建全部服务，等待迁移与健康门禁完成，并写入可恢复的运行日志。
 

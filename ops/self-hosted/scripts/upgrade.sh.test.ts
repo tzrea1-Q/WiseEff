@@ -793,6 +793,34 @@ describe("upgrade.sh public interface", () => {
     expect(failed.status).toBe(70);
     expect(failed.stdout.trim()).toBe("isolated");
   });
+
+  it.each([
+    ["wiseeff-app:wiseeff-previous-api-owned-run", "sha256:source", 0],
+    ["wiseeff-app:wiseeff-previous-api-owned-run", "sha256:different", 10],
+    ["wiseeff-app:wiseeff-previous-api-owned-run", "", 10],
+    ["wiseeff-app:arbitrary-alias", "sha256:source", 10],
+  ])("requires the exact retained source image for restored alias %s / %s", (reference, imageId, status) => {
+    const result = runLibrary(`
+      upgrade_parameter_data_mode=new-empty
+      upgrade_runtime_image_ref_api="$1"
+      upgrade_runtime_image_id_api=sha256:source
+      upgrade_ref=target
+      wiseeff_upgrade_app_image_name() { printf 'wiseeff-app'; }
+      wiseeff_upgrade_docker() {
+        [ "$*" = "image inspect --format {{.Id}} wiseeff-app:82344044b436a8dafecefbb85dfd724cecb05e3f" ] || return 1
+        printf '%s' "$TEST_RETAINED_IMAGE"
+      }
+      wiseeff_upgrade_git() {
+        if [ "$1" = rev-parse ]; then printf '${"b".repeat(40)}'; fi
+      }
+      wiseeff_upgrade_prepare_git_transport() { :; }
+      wiseeff_upgrade_validate_protocol() { :; }
+      wiseeff_upgrade_resolve_target || exit $?
+      printf '%s' "$upgrade_previous_sha"
+    `, [reference], { TEST_RETAINED_IMAGE: imageId });
+    expect(result.status).toBe(status);
+    if (status === 0) expect(result.stdout).toBe("82344044b436a8dafecefbb85dfd724cecb05e3f");
+  });
   it("fails candidate readiness when the canonical driver catalog gate is blocked", () => {
     const runDir = mkdtempSync(
       join(tmpdir(), "wiseeff-upgrade-parameter-catalog-gate-"),

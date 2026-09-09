@@ -783,6 +783,23 @@ wiseeff_upgrade_resolve_target() {
       return 10
     fi
     upgrade_previous_sha="${upgrade_runtime_image_ref_api##*:}"
+    if ! [[ "$upgrade_previous_sha" =~ ^[a-f0-9]{40}$ ]]; then
+      # Controlled rollback preserves immutable images under per-run aliases.
+      # Recover source identity only when the retained source-SHA image is still
+      # present and exactly equals the actual running image, never from HEAD.
+      local retained_source_sha retained_source_image
+      retained_source_sha=82344044b436a8dafecefbb85dfd724cecb05e3f
+      retained_source_image=""
+      case "$upgrade_runtime_image_ref_api" in
+        "$(wiseeff_upgrade_app_image_name)":wiseeff-previous-api-*)
+          retained_source_image="$(wiseeff_upgrade_docker image inspect --format '{{.Id}}' \
+            "$(wiseeff_upgrade_app_image_name):${retained_source_sha}" 2>/dev/null || true)"
+          ;;
+      esac
+      if [ -n "$retained_source_image" ] && [ "$retained_source_image" = "${upgrade_runtime_image_id_api:-}" ]; then
+        upgrade_previous_sha="$retained_source_sha"
+      fi
+    fi
     if ! [[ "$upgrade_previous_sha" =~ ^[a-f0-9]{40}$ ]] ||
       ! wiseeff_upgrade_git cat-file -e "${upgrade_previous_sha}^{commit}"; then
       wiseeff_upgrade_die 10 "new-empty requires a retained source commit identified by the running application image."
@@ -819,6 +836,7 @@ wiseeff_upgrade_collect_runtime() {
   upgrade_runtime_services="postgres redis minio api worker web proxy"
   upgrade_compose_project=""
   upgrade_mixed_app_images="false"
+  upgrade_runtime_image_id_api=""
   app_image=""
   for service in $upgrade_runtime_services; do
     container="$(wiseeff_upgrade_compose ps -q "$service" 2>/dev/null || true)"
@@ -845,6 +863,7 @@ wiseeff_upgrade_collect_runtime() {
       }
       image_ref_variable="upgrade_runtime_image_ref_${service}"
       printf -v "$image_ref_variable" '%s' "$image_ref"
+      [ "$service" != "api" ] || upgrade_runtime_image_id_api="$image"
       if [ -n "${upgrade_run_dir:-}" ]; then
         wiseeff_upgrade_state_write "image_ref_${service}" "$image_ref"
       fi

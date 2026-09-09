@@ -183,6 +183,7 @@ async function ready() {
 const evidence: Record<string, unknown> = { sourceSha, candidateSha, project, daemon: expectedDaemon, complete: false };
 const record = () => writeFileSync(path.join(directory, "evidence.json"), JSON.stringify(evidence, null, 2), { mode: 0o600 });
 let created = false;
+let activeUpgradeRunId = `${project}-upgrade`;
 let interruptionChild: ReturnType<typeof spawn> | undefined;
 try {
   step = "old-config-validation";
@@ -325,6 +326,7 @@ try {
   step = "interrupted-management-migration";
   run("git", ["checkout", "--detach", candidateSha], { cwd: checkout });
   const interruptionRunId = `${project}-interrupted`;
+  activeUpgradeRunId = interruptionRunId;
   const previousPostgres = owned("postgres");
   const interruptionLog = openSync(path.join(directory, "private-interruption.log"), "w", 0o600);
   interruptionChild = spawn("bash", upgradeArgs("apply", "--run-id", interruptionRunId, "--ref", candidateSha,
@@ -345,7 +347,7 @@ try {
         { stdio: "ignore" }).status === 0) { postgres = current; break; }
     await setTimeout(1000);
   }
-  assert.ok(postgres, "interruption: replacement PostgreSQL was not observed before migration");
+  assert.ok(postgres, `interruption: replacement PostgreSQL was not observed; controller exit=${interruptionChild.exitCode}`);
   const applicationName = `minimal-interruption-${project}`;
   const blocker = spawn("docker", ["exec", "-e", `PGAPPNAME=${applicationName}`, postgres, "psql", "-U", "wiseeff",
     "-d", "wiseeff", "-v", "ON_ERROR_STOP=1", "-c",
@@ -409,10 +411,11 @@ try {
   const journal: Record<string, string> = {};
   for (const key of ["phase", "outcome", "failure_code", "migration_started", "parameter_initialization",
     "recovery_proxy_stopped", "recovery_queue_paused", "next_action"]) {
-    try { journal[key] = readFileSync(path.join(directory, "runs", `${project}-upgrade`, key), "utf8").trim(); }
+    try { journal[key] = readFileSync(path.join(directory, "runs", activeUpgradeRunId, key), "utf8").trim(); }
     catch { /* A failure before run creation has no controller journal. */ }
   }
   evidence.controllerJournal = journal;
+  evidence.requestedControllerRunId = activeUpgradeRunId;
   if (created) {
     try {
       const state = JSON.parse(docker("inspect", owned("api")))[0].State;

@@ -52,6 +52,19 @@ export const readCurrentCatalogPointer = async (
   };
 };
 
+/** A missing pointer may also be a partially installed projection. */
+export const isCatalogProjectionEmpty = async (
+  client: CatalogPointerClient,
+): Promise<boolean> => {
+  const result = await client.query<{ empty: boolean }>(`select not (
+    exists(select 1 from parameter_catalog.catalog_state)
+    or exists(select 1 from parameter_catalog.catalog_releases)
+    or exists(select 1 from parameter_catalog.catalog_subjects)
+    or exists(select 1 from ${catalogDefinitionRelation})
+  ) as empty`);
+  return result.rows[0]?.empty === true;
+};
+
 export const restoreCurrentDefinitionHeads = async (
   client: CatalogPointerClient,
   releaseId: string,

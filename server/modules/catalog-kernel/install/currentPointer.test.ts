@@ -10,6 +10,7 @@ import {
 import { seedCompiledCatalogProjection } from "../runtime/currentSnapshot";
 import {
   advanceCurrentPointer,
+  isCatalogProjectionEmpty,
   readCurrentCatalogPointer,
   restoreCurrentDefinitionHeads,
   switchCurrentPointerTo,
@@ -65,6 +66,15 @@ describe("current catalog pointer", () => {
 
   it("reads empty catalog_state as an empty pointer", async () => {
     expect(await readCurrentCatalogPointer(client)).toEqual({ kind: "empty" });
+    expect(await isCatalogProjectionEmpty(client)).toBe(true);
+  });
+
+  it("does not classify a projection without its pointer as unpublished", async () => {
+    await seedCompiledCatalogProjection(database.url);
+    expect(await isCatalogProjectionEmpty(client)).toBe(false);
+    await client.query("delete from parameter_catalog.catalog_state");
+    expect(await readCurrentCatalogPointer(client)).toEqual({ kind: "empty" });
+    expect(await isCatalogProjectionEmpty(client)).toBe(false);
   });
 
   it("switches back to the recorded previous pin and restores that release's heads", async () => {

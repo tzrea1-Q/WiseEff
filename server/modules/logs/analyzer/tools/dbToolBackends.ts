@@ -150,8 +150,9 @@ export function createDbLogAnalysisToolBackends(input: {
 }
 
 function pinLogRelatedParameterQuery(db: Queryable): Queryable {
+  const query = db.query.bind(db);
   return {
-    query: (sql, values) => db.query(interceptExactRelatedParameterSql(sql), values),
+    query: (sql, values) => query(interceptExactRelatedParameterSql(sql), values),
   };
 }
 

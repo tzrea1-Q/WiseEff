@@ -16,7 +16,15 @@ Admission checks the complete migration inventory and the known schema of source
 
 For this local MinIO profile, backup stops MinIO and captures its actual volume, including S3 metadata. The `minio-volume-v1` recovery point requires the same MinIO image identity on restore. Redis is also stopped before copying its AOF manifest/files; restore validates RDB/AOF before replacing stopped-service data and loading it. PostgreSQL restore recreates the recorded database including owners, removing candidate schemas. These are explicit recovery operations; normal upgrades do not delete old business data. Retain enough storage for the complete MinIO volume and Redis validation staging. Older bucket-mirror recovery points remain readable by their original format, but do not acquire metadata-preservation evidence retroactively.
 
-The integrated terminal probe and complete edit/import/recovery evidence remain pending in the active plan. Do not use the intermediate CI probe as a production upgrade manual.
+The isolated terminal upgrade, original-data preservation, normal restart and whole-state restore passed in [run 34310318652](https://github.com/tzrea1-Q/WiseEff/actions/runs/34310318652). Page edit/save/import, complete browser acceptance and interruption acceptance remain open in the active plan. A restored per-run image alias can re-enter the bounded source route only when its actual running image ID equals the retained original SHA image; missing or different images still refuse.
+
+The tested isolated entry is the dedicated GitHub-hosted Linux/amd64 job. From a checkout with authenticated `gh` and repository Actions permission:
+
+```bash
+gh workflow run ci.yml --repo tzrea1-Q/WiseEff --ref codex/minimal-parameter-upgrade -f acceptance_mode=minimal-upgrade
+```
+
+This creates and modifies only its synthetic Compose deployment on the hosted runner, invokes the real plan/apply/rollback commands, then removes its own fixture volumes. It requires no target-server backup or credentials. The artifact `minimal-upgrade-terminal-evidence` records the exact candidate/source images, stages and cleanup; `complete:false` means outstanding acceptance must not be treated as passed. A failed run is a stopping point for diagnosis, not permission to execute on a server. This is an isolated test entry, not a production upgrade manual.
 
 Git target resolution inherits the proxy environment of the invoking command and normalizes upper-case `HTTP_PROXY`, `HTTPS_PROXY`, `ALL_PROXY`, and `NO_PROXY` to the lower-case variables expected by Git/libcurl. Existing Git `http.proxy`, URL-specific proxy, `GIT_SSH_COMMAND`, and `core.sshCommand` settings remain effective. When needed, provide a Git-only override:
 

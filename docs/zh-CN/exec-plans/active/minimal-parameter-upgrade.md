@@ -44,6 +44,10 @@ Hosted [34307587109](https://github.com/tzrea1-Q/WiseEff/actions/runs/3430758710
 
 当前终端里程碑：[34310318652](https://github.com/tzrea1-Q/WiseEff/actions/runs/34310318652) 在 `c1d44f17f036a561ac46f28fb35f9c1f1e56f234` 通过，[脱敏证据](../../../exec-plans/active/minimal-parameter-upgrade-evidence/terminal-c1d44f17f.json)。同一非空部署完成正式升级、126 张表/183 条原记录逐字段比较、对象保全、原用户登录及权限隔离、新 HTTP/worker 业务、首个仓库发布、正常重启、同 SHA no-op 和包括对象/Redis 的整套恢复，清理完成。候选镜像为 `sha256:33aa2fe161d2a19fbf39d601eed637d2b74a7e4b3e0cc2410bd1d4462b7926c1`。通过的是专用 job，常规 required suites 被跳过，证据仍为 `complete:false`；页面编辑保存/导入和完整浏览器验收仍未完成。下一版探针加入同一部署的错误目标拒绝及真实杀死迁移后的显式恢复，尚未执行。
 
+[34311496178](https://github.com/tzrea1-Q/WiseEff/actions/runs/34311496178) 对应代码 `16d908183626a6f2b840e84bded1226ddf642244`，错误目标拒绝通过，并再次完成正常升级、保全、发布、重启、no-op 和整套恢复。第二次升级在迁移前拒绝：未能从 rollback 保留的镜像别名识别固定旧源。尚未执行迁移中断，清理完成。旧镜像为 `sha256:0ef5304700eb48e10c4668bf050c6f6ee44851e4ee8586f7c1d4cc6458e27971`，候选为 `sha256:f1f3662cdbce759f6a819ad7ab46665a9cde15c9e72df32f94f807f141756622`。修复仅在受控恢复别名的实际运行 image ID 与保留的旧 SHA 镜像完全相同时识别源；缺失、不匹配及任意别名仍拒绝。失败探针误读了第一个已恢复 run 的 journal，现改为记录当前 run 及控制器退出码。
+
+后续工作树本地验证：前端 438 个文件、3378 项全部通过，修复仅等待 cutover UI 实际就绪；build 和 boundary 通过。独占 PostgreSQL 后端全量为 3931 通过、1 失败：新增空态 SQL 触发旧身份依赖边界。查询现收回既有 Catalog pointer owner，并添加真实孤立投影回归。scripts 为 1245 通过、15 失败、5 跳过：旧 Wayfinder exporter 未跟随独占数据库 URL，尝试默认 Docker 容器，在测试数据库不存在处失败，未执行导出。复跑显式把 `WAYFINDER_POSTGRES_CONTAINER` 绑定到 owned 容器。保留这些失败记录，复跑结果待定；迁移及 docs 检查通过，独占资源已清理。
+
 ## 文档影响矩阵
 
 | 范围 | 处理 | 文件 |
