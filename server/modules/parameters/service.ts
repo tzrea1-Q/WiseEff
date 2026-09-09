@@ -34,6 +34,7 @@ import {
 import type { ObjectStore } from "../logs/objectStore";
 import { getRootPostgresPool, type Database, type Queryable } from "../../shared/database/client";
 import {
+  asValueClient,
   findCatalogBindingRow,
   importTextToDtsValue,
   saveCanonicalProjectValue,
@@ -1234,16 +1235,20 @@ export async function applyImportBatch(db: Database, auth: AuthContext, input: A
               bindingId: catalogBinding.id
             });
           }
-          await saveCanonicalProjectValue(pool, {
-            organizationId: auth.organization.id,
-            projectId: batch.projectId,
-            bindingId: catalogBinding.id,
-            configRevisionId,
-            targetValue: importTextToDtsValue(
-              item.name,
-              item.currentValue ?? item.recommendedValue ?? ""
-            )
-          });
+          await saveCanonicalProjectValue(
+            pool,
+            {
+              organizationId: auth.organization.id,
+              projectId: batch.projectId,
+              bindingId: catalogBinding.id,
+              configRevisionId,
+              targetValue: importTextToDtsValue(
+                item.name,
+                item.currentValue ?? item.recommendedValue ?? ""
+              )
+            },
+            asValueClient(tx)
+          );
           updated += 1;
           continue;
         }

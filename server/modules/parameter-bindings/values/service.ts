@@ -195,11 +195,34 @@ const agreeRevision = (
   return { ok: true, value: true };
 };
 
+const isPool = (session: pg.Pool | ValueClient): session is pg.Pool =>
+  typeof (session as pg.Pool).connect === "function";
+
 const withValueUnitOfWork = async <T>(
-  pool: pg.Pool,
-  work: (client: ValueClient & pg.PoolClient) => Promise<Result<T, ProjectValueConflict>>,
+  session: pg.Pool | ValueClient,
+  work: (client: ValueClient) => Promise<Result<T, ProjectValueConflict>>,
 ): Promise<Result<T, ProjectValueConflict>> => {
-  const client = await pool.connect();
+  if (!isPool(session)) {
+    await session.query("savepoint wiseeff_project_value");
+    try {
+      await session.query("set constraints all deferred");
+      const result = await work(session);
+      if (!result.ok) {
+        await session.query("rollback to wiseeff_project_value");
+        await session.query("release savepoint wiseeff_project_value");
+        return result;
+      }
+      await session.query("set constraints all immediate");
+      await session.query("release savepoint wiseeff_project_value");
+      return result;
+    } catch (error) {
+      await session.query("rollback to wiseeff_project_value").catch(() => undefined);
+      await session.query("release savepoint wiseeff_project_value").catch(() => undefined);
+      throw error;
+    }
+  }
+
+  const client = await session.connect();
   try {
     await client.query("begin");
     await client.query("set constraints all deferred");
@@ -371,14 +394,14 @@ const writeAppend = async (
 };
 
 export const appendProjectValue = async (
-  pool: pg.Pool,
+  session: pg.Pool | ValueClient,
   command: AppendProjectValueCommand,
 ): Promise<Result<ProjectValueWriteResult, ProjectValueConflict>> => {
   const validated = validateAppendCommand(command);
   if (!validated.ok) return validated;
 
   try {
-    return await withValueUnitOfWork(pool, (client) => writeAppend(client, command));
+    return await withValueUnitOfWork(session, (client) => writeAppend(client, command));
   } catch (error) {
     if (error instanceof pg.DatabaseError && error.code === "23503") {
       return fail({ kind: "agreement-conflict", reason: "revision-unavailable" });

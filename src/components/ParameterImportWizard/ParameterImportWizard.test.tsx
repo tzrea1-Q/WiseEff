@@ -1,9 +1,11 @@
 import { fireEvent, render, screen, within } from "@testing-library/react";
 import { StrictMode, type ComponentProps } from "react";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { ParameterImportWizard } from "./ParameterImportWizard";
 import { fillPasteImportContent } from "./testHelpers";
 import { initialState } from "@/mockData";
+import * as dtsStructuredRuntime from "@/application/parameters/dtsStructuredRuntime";
+import * as parameterTopologyResolve from "@/application/parameters/parameterTopologyResolve";
 
 function renderWizard(
   overrides: Partial<ComponentProps<typeof ParameterImportWizard>> = {},
@@ -30,6 +32,10 @@ function renderWizard(
 }
 
 describe("ParameterImportWizard", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
   it("does not render anything when closed", () => {
     renderWizard({ open: false });
 
@@ -430,5 +436,36 @@ describe("ParameterImportWizard", () => {
 
     await within(dialog).findByRole("region", { name: "批次预览" });
     expect(createImportPreview).toHaveBeenCalledTimes(1);
+  });
+
+  it("stops matching when the published topology library cannot be loaded", async () => {
+    vi.spyOn(dtsStructuredRuntime, "resolveDtsStructuredRepository").mockReturnValue({
+      listConfigSets: vi.fn().mockResolvedValue([{ id: "cs-1", name: "default" }])
+    } as never);
+    vi.spyOn(parameterTopologyResolve, "resolveParameterTopologyRepository").mockReturnValue({
+      getTopology: vi.fn().mockRejectedValue(new Error("topology unavailable")),
+      listBindings: vi.fn()
+    } as never);
+
+    renderWizard({ runtimeMode: "api" });
+    const dialog = screen.getByRole("dialog", { name: "批量参数导入" });
+    fillPasteImportContent(
+      dialog,
+      JSON.stringify([
+        {
+          name: "iin_max",
+          module: "Driver",
+          currentValue: "3000",
+          recommendedValue: "3000",
+          range: "",
+          unit: "",
+          risk: "Low"
+        }
+      ])
+    );
+    fireEvent.click(within(dialog).getByRole("button", { name: "下一步" }));
+
+    expect(await within(dialog).findByRole("alert")).toHaveTextContent("无法加载当前项目的已发布参数");
+    expect(within(dialog).queryByRole("button", { name: "预填并创建" })).not.toBeInTheDocument();
   });
 });

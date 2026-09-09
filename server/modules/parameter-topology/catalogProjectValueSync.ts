@@ -31,12 +31,28 @@ import {
   writebackProtectedReference,
 } from "../parameter-bindings/adapters";
 import type { ProjectValuePayload } from "../parameter-bindings/values";
+import type { ValueClient } from "../parameter-bindings/values/repositories";
 import { parseDtsValue, renderDtsValue } from "../dts/valueAst";
 import type { DtsValue } from "../dts/types";
 import { isStructuralPropertyKey } from "./parameterSurface";
 import type { ProjectBindingListItem } from "./bindingService";
 
 const VALUES_RELATION = ["project_parameter", "values"].join("_");
+
+export function asValueClient(db: Queryable): ValueClient {
+  return {
+    query: async <Row extends pg.QueryResultRow>(text: string, values?: unknown[]) => {
+      const result = await db.query<Row>(text, values);
+      return {
+        rows: result.rows,
+        rowCount: result.rowCount ?? result.rows.length,
+        command: "UNKNOWN",
+        oid: 0,
+        fields: [],
+      } as pg.QueryResult<Row>;
+    },
+  };
+}
 
 const pinOf = (id: string, digest: string): CatalogReleasePin => ({
   id: CatalogReleaseId(id),
@@ -317,20 +333,6 @@ export async function syncPublishedCatalogProjectValues(
   return written;
 }
 
-export async function syncPublishedCatalogProjectValuesIfRoot(
-  db: Database,
-  input: {
-    organizationId: string;
-    projectId: string;
-    configSetId: string;
-    configRevisionId: string;
-  },
-): Promise<number> {
-  const pool = getRootPostgresPool(db);
-  if (!pool) return 0;
-  return syncPublishedCatalogProjectValues(pool, input);
-}
-
 type CatalogBindingRow = {
   id: string;
   organization_id: string;
@@ -385,6 +387,7 @@ export async function saveCanonicalProjectValue(
     configRevisionId: string;
     targetValue: DtsValue;
   },
+  session: pg.Pool | ValueClient = pool,
 ): Promise<{
   bindingId: string;
   definitionId: string;
@@ -444,7 +447,7 @@ export async function saveCanonicalProjectValue(
     });
   }
   const payload = dtsValueToPayload(input.targetValue);
-  const written = await writebackProtectedReference(pool, {
+  const written = await writebackProtectedReference(session, {
     snapshot,
     binding,
     definitionRevisionId: binding.effectiveRevisionId,

@@ -23,6 +23,7 @@ import { getRootPostgresPool, type Database, type Queryable } from "../../shared
 import { ApiError } from "../../shared/http/errors";
 import { renderDtsValue } from "../dts/valueAst";
 import {
+  asValueClient,
   findCatalogBindingRow,
   listCatalogBindingRowsForProject,
   loadPublishedCatalog,
@@ -56,7 +57,7 @@ import {
   type NodeEnablementDraftResult
 } from "./editService";
 import { type CreateBindingDraftDeps } from "./overlayWriteback";
-import { writeGovernanceAudit } from "./governanceAudit";
+import { writeGovernanceAudit, writeTrustedGovernanceAudit } from "./governanceAudit";
 import { asAuditTx, withAuditedWrite } from "../audit/auditedWrite";
 import { getProjectById } from "../projects/repository";
 import { getConfigSetById } from "../parameter-files/configSetRepository";
@@ -1617,7 +1618,8 @@ export async function createBindingDraft(
     if (!pool) {
       throw new ApiError("INTERNAL_ERROR", "Canonical project value writes require the root database.");
     }
-    if ((input.action ?? "set") === "delete" || !input.targetValue) {
+    const targetValue = input.targetValue;
+    if ((input.action ?? "set") === "delete" || !targetValue) {
       throw new ApiError("VALIDATION_FAILED", "Published definition values require a set action and target value.");
     }
     const locator = await db.query<{ node_locator: string | null; compatible: string | null }>(
@@ -1630,40 +1632,77 @@ export async function createBindingDraft(
       `,
       [catalogBinding.logical_node_id]
     );
-    if (locator.rows[0]?.node_locator) {
-      await assertTrustedSensitiveNodeWriteAllowed(db, auth, {
-        organizationId: auth.organization.id,
-        projectId: input.projectId,
-        nodePath: locator.rows[0].node_locator,
-        compatible: locator.rows[0].compatible,
-        compatibleIsAuthoritative: true,
-        invocation: context.invocation,
-        requestId: context.requestId,
-        refusalSink: context.refusalSink
-      });
+    const nodeLocator = locator.rows[0]?.node_locator;
+    if (!nodeLocator) {
+      throw new ApiError(
+        "VALIDATION_FAILED",
+        "Published definition node could not be resolved for a sensitive-node check.",
+        {
+          bindingId: input.bindingId,
+          logicalNodeId: catalogBinding.logical_node_id
+        }
+      );
     }
-    const saved = await saveCanonicalProjectValue(pool, {
+    await assertTrustedSensitiveNodeWriteAllowed(db, auth, {
       organizationId: auth.organization.id,
       projectId: input.projectId,
-      bindingId: input.bindingId,
-      configRevisionId: input.baseRevisionId,
-      targetValue: input.targetValue
+      nodePath: nodeLocator,
+      compatible: locator.rows[0]?.compatible,
+      compatibleIsAuthoritative: true,
+      invocation: context.invocation,
+      requestId: context.requestId,
+      refusalSink: context.refusalSink
     });
-    const rawText = renderDtsValue(input.targetValue);
-    return {
-      draftId: saved.currentValueId,
-      parameterId: saved.bindingId,
-      candidateRevisionId: input.baseRevisionId,
-      workingCandidateRevisionId: input.baseRevisionId,
-      rebasedDraftIds: [],
-      rawText,
-      action: "set",
-      parameterSpecId: saved.definitionId,
-      projectParameterBindingId: saved.bindingId,
-      writeTarget: { role: "canonical-project-value", propertyKey: saved.propertyKey },
-      overlayFileId: "",
-      overlayFileName: ""
-    };
+    return withAuditedWrite(db, auth, { requestId: context.requestId }, async (tx) => {
+      const saved = await saveCanonicalProjectValue(
+        pool,
+        {
+          organizationId: auth.organization.id,
+          projectId: input.projectId,
+          bindingId: input.bindingId,
+          configRevisionId: input.baseRevisionId,
+          targetValue
+        },
+        asValueClient(tx)
+      );
+      await writeTrustedGovernanceAudit(
+        asAuditTx(tx),
+        context.invocation,
+        {
+          action: "binding-edited",
+          organizationId: auth.organization.id,
+          projectId: input.projectId,
+          targetType: "project-parameter-binding",
+          targetId: input.bindingId,
+          metadata: {
+            currentValueId: saved.currentValueId,
+            propertyKey: saved.propertyKey,
+            writeTargetRole: "canonical-project-value",
+            reason: input.reason,
+            configRevisionId: input.baseRevisionId
+          }
+        },
+        context.requestId
+      );
+      const rawText = renderDtsValue(targetValue);
+      return {
+        result: {
+          draftId: saved.currentValueId,
+          parameterId: saved.bindingId,
+          candidateRevisionId: input.baseRevisionId,
+          workingCandidateRevisionId: input.baseRevisionId,
+          rebasedDraftIds: [],
+          rawText,
+          action: "set" as const,
+          parameterSpecId: saved.definitionId,
+          projectParameterBindingId: saved.bindingId,
+          writeTarget: { role: "canonical-project-value" as const, propertyKey: saved.propertyKey },
+          overlayFileId: "",
+          overlayFileName: ""
+        },
+        audit: null
+      };
+    });
   }
 
   const bindingProject = await db.query<{ project_id: string }>(

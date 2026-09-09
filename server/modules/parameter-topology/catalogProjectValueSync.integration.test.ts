@@ -293,6 +293,21 @@ describe("published catalog project values", () => {
     expect(saved.writeTarget.role).toBe("canonical-project-value");
     expect(saved.rawText).toBe("<2000>");
 
+    const audits = await pool.query<{ kind: string; action: string; target_id: string }>(
+      `select kind, action, target_id
+         from audit_events
+        where target_id = $1
+          and action = 'binding-edited'`,
+      [listed.items[0]!.id],
+    );
+    expect(audits.rows).toEqual([
+      {
+        kind: "parameter-topology-governance",
+        action: "binding-edited",
+        target_id: listed.items[0]!.id,
+      },
+    ]);
+
     const after = await listProjectBindings(root, auth, { projectId: PROJECT });
     expect(after.items[0]?.rawValue).toBe("<2000>");
 

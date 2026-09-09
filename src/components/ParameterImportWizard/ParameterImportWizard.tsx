@@ -61,21 +61,17 @@ async function libraryForImport(
   if (runtimeMode !== "api") {
     return parameters;
   }
-  try {
-    const sets = await resolveDtsStructuredRepository("api").listConfigSets(projectId);
-    const configSet = sets.find((item) => item.name === "default") ?? sets[0];
-    if (!configSet) {
-      return parameters;
-    }
-    const topology = resolveParameterTopologyRepository("api");
-    const tree = await topology.getTopology(projectId, configSet.id, "current", "effective");
-    const items = await topology.listBindings(projectId, tree.revisionId);
-    const fromBindings = items.map((binding) => bindingToLibraryRecord(projectId, binding));
-    const seen = new Set(fromBindings.map((item) => item.id));
-    return [...fromBindings, ...parameters.filter((item) => !seen.has(item.id))];
-  } catch {
+  const sets = await resolveDtsStructuredRepository("api").listConfigSets(projectId);
+  const configSet = sets.find((item) => item.name === "default") ?? sets[0];
+  if (!configSet) {
     return parameters;
   }
+  const topology = resolveParameterTopologyRepository("api");
+  const tree = await topology.getTopology(projectId, configSet.id, "current", "effective");
+  const items = await topology.listBindings(projectId, tree.revisionId);
+  const fromBindings = items.map((binding) => bindingToLibraryRecord(projectId, binding));
+  const seen = new Set(fromBindings.map((item) => item.id));
+  return [...fromBindings, ...parameters.filter((item) => !seen.has(item.id))];
 }
 
 function reconcileReviewedRows(rows: ReviewedImportRow[], parameters: ParameterRecord[], targetProjectId: string): ReviewedImportRow[] {
@@ -259,8 +255,13 @@ export function ParameterImportWizard({
       }
     }
     setParsedRows(parsed);
-    const library = await libraryForImport(parameters, projectId, runtimeMode);
-    setReviewedRows(matchToLibrary(parsed, library, projectId));
+    try {
+      const library = await libraryForImport(parameters, projectId, runtimeMode);
+      setReviewedRows(matchToLibrary(parsed, library, projectId));
+    } catch (error) {
+      errors.push(presentError(error, "无法加载当前项目的已发布参数，已停止匹配以免误建新定义。"));
+      setReviewedRows([]);
+    }
     setParseErrors(errors);
   };
 
