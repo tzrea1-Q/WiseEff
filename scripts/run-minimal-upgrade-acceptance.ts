@@ -539,6 +539,7 @@ try {
     await page.getByText('<1000>', {exact:true}).waitFor();
   }`);
   step = "page-edit-save-published-value";
+  browser("resize", "1440", "900");
   const saved = browserJson(browserCode(`async page => {
     await page.goto('http://127.0.0.1:18080/parameters');
     await page.getByRole('region', {name:'DTS 参数工作台'}).waitFor();
@@ -562,6 +563,7 @@ try {
     if (await page.getByRole('region', {name:'本轮已修改'}).count()) throw new Error('saved value still has a draft tray');
   }`);
   step = "page-import-published-value";
+  browser("resize", "1440", "900");
   const importJson = JSON.stringify([{
     name: "iin_max", module: "Driver", currentValue: "3000", configFormat: "DTS", risk: "Low"
   }]);
@@ -586,8 +588,12 @@ try {
     const preview = dialog.getByRole('region', {name:'批次预览'});
     await preview.waitFor();
     await preview.getByText('正在生成导入预览…').waitFor({state:'hidden'}).catch(() => undefined);
-    await preview.getByRole('term', {name:'更新', exact:true}).waitFor();
-    const text = await preview.innerText();
+    let text = "";
+    for (let attempt = 0; attempt < 40; attempt++) {
+      text = await preview.innerText();
+      if (/更新\\s*1/.test(text) && /新增\\s*0/.test(text)) break;
+      await page.waitForTimeout(250);
+    }
     if (!/更新\\s*1/.test(text) || !/新增\\s*0/.test(text)) throw new Error('import preview must update the existing value: '+text);
     await dialog.getByRole('button', {name:'下一步', exact:true}).click();
     await dialog.getByRole('button', {name:'确认应用', exact:true}).click();
