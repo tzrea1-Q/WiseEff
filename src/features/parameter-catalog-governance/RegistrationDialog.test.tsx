@@ -12,13 +12,14 @@ import {
   unregisteredSubject
 } from "@/application/parameter-catalog/fixtures";
 import { catalogApiFailure } from "@/application/parameter-catalog/errors";
-import { createMockParameterCatalogGovernanceRepository } from "@/application/parameter-catalog/mockAdapter";
+import { createMockCatalogPorts, createMockParameterCatalogGovernanceRepository } from "@/application/parameter-catalog/mockAdapter";
 import { deriveCatalogDomainState } from "@/application/parameter-catalog/states";
 import type { CatalogActorKind } from "@/application/parameter-catalog/authority";
 import type { CatalogDomainState } from "@/application/parameter-catalog/states";
 import type { ParameterCatalogGovernanceRepository } from "@/application/ports/ParameterCatalogGovernanceRepository";
 
 import { RegistrationDialog } from "./RegistrationDialog";
+import { CatalogOrganizationSurface } from "./CatalogOrganizationSurface";
 
 const unregistered = deriveCatalogDomainState({
   document: readyCatalogDocument,
@@ -74,6 +75,22 @@ async function confirmWrite(confirmName: string) {
 }
 
 describe("RegistrationDialog", () => {
+  it("refreshes the organization surface after first registration succeeds", async () => {
+    const ports = createMockCatalogPorts({ scenario: "unregistered" });
+    const read = vi.spyOn(ports.catalog, "getCatalog");
+    render(<CatalogOrganizationSurface {...ports} actor="org-admin"
+      search={`?subjectId=${CATALOG_SUBJECT_ID}&catalogReleaseId=${CATALOG_RELEASE_ID}`}
+      onAnchorChange={vi.fn()} organizationId={CATALOG_ORGANIZATION_ID} currentPersonId="person-admin" />);
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "登记主体" }));
+    await user.click(screen.getByRole("radio", { name: "使用默认根放置" }));
+    await user.type(screen.getByLabelText("原因"), "首次登记");
+    const before = read.mock.calls.length;
+    await confirmWrite("确认登记");
+    await waitFor(() => expect(read.mock.calls.length).toBeGreaterThan(before));
+    expect(await screen.findByRole("button", { name: "调整放置" })).toBeVisible();
+  });
+
   it("lets Org Admin choose default-root Placement, reconfirm, and register once with release and idempotency", async () => {
     const onCompleted = vi.fn();
     const { createRegistration } = renderDialog({ onCompleted });

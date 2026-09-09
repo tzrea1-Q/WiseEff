@@ -64,6 +64,7 @@ export type CatalogDocumentFacts = {
 
 export type CatalogReadinessResult =
   | { readonly status: "ready"; readonly document: CatalogDocumentFacts }
+  | { readonly status: "unpublished" }
   | { readonly status: "not-ready"; readonly retryAfterSeconds: number }
   | { readonly status: "unknown" };
 

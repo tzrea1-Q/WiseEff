@@ -20,6 +20,7 @@ on:
           - local-non-hdc
           - target-non-hdc
           - full-pilot
+          - minimal-upgrade
       frontend_url:
         description: Target frontend URL for target-non-HDC or full-pilot synthetic runs.
         required: false
@@ -38,6 +39,30 @@ permissions:
   contents: read
 
 jobs:
+  minimal-upgrade:
+    name: Minimal upgrade terminal probe
+    if: github.event_name == 'workflow_dispatch' && inputs.acceptance_mode == 'minimal-upgrade'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - name: Run the isolated fixed-source terminal probe
+        run: npx tsx scripts/run-minimal-upgrade-acceptance.ts "$GITHUB_SHA" "$(docker info --format '{{.ID}}')"
+      - name: Retain sanitized stage evidence only
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: minimal-upgrade-terminal-evidence
+          path: /tmp/wiseeff-minimal-terminal-*/evidence.json
+          if-no-files-found: error
+
   detect:
     name: Detect changed paths
     runs-on: ubuntu-latest

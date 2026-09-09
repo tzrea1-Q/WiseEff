@@ -46,6 +46,8 @@ export function catalogActionAffordances(
 
 export function catalogStateMessage(state: CatalogDomainState): string | null {
   switch (state.kind) {
+    case "unpublished":
+      return "尚无首个 Catalog 发布。旧参数不会自动迁入；请先发布真实参数定义。";
     case "loading":
       return state.stale ? "正在刷新目录发布，写入已暂停" : "正在加载目录";
     case "error":

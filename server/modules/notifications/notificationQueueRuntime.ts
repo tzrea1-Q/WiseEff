@@ -19,6 +19,7 @@ type BullMqQueueConstructor = new (
   name: string,
   options: { connection: { url: string }; prefix: string }
 ) => {
+  getJob: (id: string) => Promise<{ id?: string | number; data?: Record<string, unknown> } | undefined>;
   add: (name: string, data: NotificationQueuePayload, options: unknown) => Promise<{ id?: string | number }>;
   pause: () => Promise<void>;
   resume: () => Promise<void>;

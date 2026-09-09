@@ -731,8 +731,10 @@ function AppShell({
   }, [state]);
 
   useEffect(() => {
+    if (!apiRuntimeSynced || apiRuntimeFailures.has("parameters") ||
+      !state.configDraft.projects.some((project) => project.id === state.activeProjectId)) return;
     void hydrateActiveProjectInitialization(state.activeProjectId);
-  }, [hydrateActiveProjectInitialization, state.activeProjectId]);
+  }, [apiRuntimeSynced, apiRuntimeFailures, hydrateActiveProjectInitialization, state.activeProjectId, state.configDraft.projects]);
 
   useEffect(() => {
     if (runtimeMode !== "api" || apiAuthStatus !== "authenticated") {

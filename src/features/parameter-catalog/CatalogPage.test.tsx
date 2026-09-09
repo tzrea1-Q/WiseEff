@@ -156,6 +156,16 @@ function renderCatalog(
 }
 
 describe("CatalogPage", () => {
+  it("shows the unpublished empty state without requesting pinned collections", async () => {
+    const repository = createMockParameterCatalogRepository({ scenario: "ready" });
+    repository.getCatalog = async () => ({ item: null, publicationState: "unpublished" });
+    const list = vi.spyOn(repository, "listSubjects");
+    renderCatalog({ repository });
+    expect(await screen.findByText("尚无首个 Catalog 发布。旧参数不会自动迁入；请先发布真实参数定义。"))
+      .toBeVisible();
+    expect(list).not.toHaveBeenCalled();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
   it("renders the three-view ready catalog without Effective or Governance peers", async () => {
     renderCatalog();
 
@@ -282,6 +292,14 @@ describe("CatalogPage", () => {
     await screen.findByRole("region", { name: "参数定义目录" });
     expect(screen.queryByRole("button", { name: "登记主体" })).not.toBeInTheDocument();
     expect(screen.getAllByText(/尚未登记/).length).toBeGreaterThan(0);
+  });
+
+  it("lets an administrator select the first published, unregistered subject from the list", async () => {
+    renderCatalog({ actor: "org-admin", scenario: "unregistered" });
+    const subjects = await screen.findByRole("list", { name: "主体列表" });
+    await userEvent.click(within(subjects).getAllByRole("button")[0]);
+    await waitFor(() => expect(screen.getByRole("region", { name: "参数定义目录" })).toHaveAttribute("data-catalog-state", "unregistered"));
+    expect(screen.getByRole("button", { name: "登记主体" })).toBeEnabled();
   });
 
   it("distinguishes loading, error, and the four empty reasons", async () => {

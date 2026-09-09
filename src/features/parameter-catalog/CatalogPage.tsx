@@ -88,7 +88,7 @@ export type CatalogPageProps = {
 };
 
 type CatalogSnapshot = {
-  document: CatalogDocumentResponse;
+  document: Exclude<CatalogDocumentResponse, { item: null }>;
   subjects: CatalogSubjectListResponse;
   definitions: CatalogDefinitionListResponse;
   subject: SubjectItem | null;
@@ -163,6 +163,7 @@ export function CatalogPage({
   const [snapshot, setSnapshot] = useState<CatalogSnapshot | null>(null);
   const [inFlight, setInFlight] = useState(true);
   const [error, setError] = useState<unknown>();
+  const [unpublished, setUnpublished] = useState(false);
   const [inspectorOpen, setInspectorOpen] = useState(false);
   const [inspectorTab, setInspectorTab] = useState<InspectorTab>("detail");
   const listReviewItemsRef = useRef(listReviewItems);
@@ -201,6 +202,7 @@ export function CatalogPage({
 
   const load = useCallback(async () => {
     setInFlight(true);
+    setUnpublished(false);
     try {
       const catalog = repositoryRef.current;
       const currentAnchor = parseCatalogUrlAnchor(resolvedSearch);
@@ -225,6 +227,12 @@ export function CatalogPage({
         query.search = searchQuery.trim();
       }
       const document = await catalog.getCatalog(pin);
+      if (document.item === null) {
+        setSnapshot(null);
+        setError(undefined);
+        setUnpublished(true);
+        return;
+      }
       const subjects = await catalog.listSubjects(query);
       let subject: SubjectItem | null = null;
       let definition: DefinitionItem | null = null;
@@ -324,7 +332,7 @@ export function CatalogPage({
   const domainState: CatalogDomainState = deriveCatalogDomainState({
     inFlight,
     previousReleaseId: snapshot?.document.item.catalogReleaseId ?? null,
-    document: snapshot?.document,
+    document: unpublished ? { item: null, publicationState: "unpublished" } : snapshot?.document,
     subject: snapshot?.subject ?? undefined,
     definition: snapshot?.definition ?? undefined,
     collection: inFlight || error !== undefined ? undefined : collection,
@@ -570,7 +578,10 @@ export function CatalogPage({
         <div className="parameter-catalog__workspace">
           <section className="parameter-catalog__pane parameter-catalog__pane--list" aria-label={catalogListLabel}>
             <h2 className="parameter-catalog__pane-title">{catalogListLabel}</h2>
-            {pageEmptyReason && pageEmptyReason !== "no-review-work" ? (
+            {pageEmptyReason === "no-registrations" && (snapshot?.subjects.items.length ?? 0) > 0 ? (
+              <SectionEmpty message={catalogEmptyMessage("no-registrations")} />
+            ) : null}
+            {pageEmptyReason && pageEmptyReason !== "no-review-work" && !(pageEmptyReason === "no-registrations" && (snapshot?.subjects.items.length ?? 0) > 0) ? (
               <div data-catalog-empty={pageEmptyReason}>
                 <SectionEmpty message={catalogEmptyMessage(pageEmptyReason)} />
               </div>

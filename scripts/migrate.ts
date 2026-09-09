@@ -14,16 +14,20 @@ if (!env.DATABASE_URL) {
 }
 
 const db = createPostgresDatabase(env.DATABASE_URL);
-const applied = await applyMigrations(db, path.join(root, "server", "migrations"));
+try {
+  const applied = await applyMigrations(db, path.join(root, "server", "migrations"));
 
-console.log(`Applied ${applied.length} migration(s): ${applied.join(", ") || "none"}`);
+  console.log(`Applied ${applied.length} migration(s): ${applied.join(", ") || "none"}`);
 
-const checkpointerSetup = await setupXiaozeCheckpointerTables({
-  mode: env.XIAOZE_CHECKPOINTER,
-  connectionString: env.DATABASE_URL
-});
-if (checkpointerSetup.status === "ensured") {
-  console.log("Ensured Xiaoze LangGraph checkpoint tables.");
-} else {
-  console.log("Skipped Xiaoze LangGraph checkpoint setup (XIAOZE_CHECKPOINTER is not postgres).");
+  const checkpointerSetup = await setupXiaozeCheckpointerTables({
+    mode: env.XIAOZE_CHECKPOINTER,
+    connectionString: env.DATABASE_URL
+  });
+  if (checkpointerSetup.status === "ensured") {
+    console.log("Ensured Xiaoze LangGraph checkpoint tables.");
+  } else {
+    console.log("Skipped Xiaoze LangGraph checkpoint setup (XIAOZE_CHECKPOINTER is not postgres).");
+  }
+} finally {
+  await db.close();
 }

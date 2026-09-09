@@ -1,4 +1,4 @@
-import { chmodSync, existsSync, mkdtempSync, mkdirSync, readFileSync, readdirSync, statSync, symlinkSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdtempSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import { createHash, randomBytes } from "node:crypto";
 import { tmpdir } from "node:os";
@@ -685,6 +685,87 @@ const diagnosticCanaries: Array<{ label: string; text: string; secret: string; c
 ];
 
 describe("upgrade.sh public interface", () => {
+  it.each(["success", "still-running", "invalid-backup"])("restores Redis offline and starts only a validated recovery point: %s", (scenario) => {
+    const directory = mkdtempSync(join(tmpdir(), "wiseeff-redis-restore-"));
+    mkdirSync(join(directory, "data"));
+    try {
+      const result = runLibrary(`
+        wiseeff_upgrade_state_read() { printf '%s' "$PROBE_BACKUP"; }
+        wiseeff_upgrade_compose() { case "$1" in ps) printf 'redis-id';; stop) printf 'stop\\n';; *) return 99;; esac; }
+        wiseeff_upgrade_docker() {
+          case "$1" in
+            inspect) case "$3" in *Running*) printf '${scenario === "still-running" ? "true" : "false"}';; *) printf 'sha256:redis-image';; esac;;
+            run) printf 'offline-validate-and-copy\\n'; [ "$2 $3 $4 $5 $6" = '--rm --network none --volumes-from redis-id' ] || return 99; return ${scenario === "invalid-backup" ? 1 : 0};;
+            start) printf 'start\\n';;
+            *) return 99;;
+          esac
+        }
+        wiseeff_upgrade_wait_data_service_healthy() { printf 'ready\\n'; }
+        wiseeff_upgrade_restore_redis
+      `, [], { PROBE_BACKUP: directory });
+      expect(result.status === 0).toBe(scenario === "success");
+      expect(result.stdout).toBe(scenario === "success" ? "stop\noffline-validate-and-copy\nstart\nready\n" :
+        scenario === "still-running" ? "stop\n" : "stop\noffline-validate-and-copy\n");
+    } finally { rmSync(directory, { recursive: true, force: true }); }
+  });
+
+  it("restores the run-bound database including owners instead of leaving new schemas behind", () => {
+    const directory = mkdtempSync(join(tmpdir(), "wiseeff-upgrade-restore-command-"));
+    const dump = join(directory, "postgres.dump");
+    writeFileSync(dump, "synthetic command-input");
+    try {
+      const result = runLibrary(`
+        wiseeff_upgrade_state_read() { printf '%s' "$1" | sed 's|postgres_backup|${dump}|'; }
+        wiseeff_upgrade_compose() { printf '%s\\n' "$*"; }
+        wiseeff_upgrade_restore_postgres
+      `);
+      expect(result.status).toBe(0);
+      expect(result.stdout.trim()).toBe("exec -T postgres pg_restore --create --clean --if-exists --exit-on-error -U wiseeff -d postgres");
+    } finally { rmSync(directory, { recursive: true, force: true }); }
+  });
+  it("rejects missing, unknown and repeated new-empty options before environment preflight", () => {
+    for (const args of [
+      ["plan", "--parameter-data-mode"],
+      ["plan", "--parameter-data-mode", "discard-all"],
+      ["plan", "--parameter-data-mode", "new-empty", "--parameter-data-mode", "new-empty"],
+    ]) {
+      const result = runLibrary('wiseeff_upgrade_main "$@"', args);
+      expect(result.status).toBe(2);
+      expect(result.stderr).toContain("--parameter-data-mode");
+    }
+  });
+
+  it("runs new-empty initialization as management before recording success and preserves failures", () => {
+    const result = runLibrary(`
+      upgrade_parameter_data_mode=new-empty
+      upgrade_candidate_image_tag=wiseeff-app:candidate
+      upgrade_previous_sha=82344044b436a8dafecefbb85dfd724cecb05e3f
+      wiseeff_upgrade_state_read() { :; }
+      wiseeff_upgrade_compose_for_image() { printf 'command:%s\\n' "$*"; }
+      wiseeff_upgrade_state_write() { printf 'record:%s=%s\\n' "$1" "$2"; }
+      wiseeff_upgrade_initialize_parameters
+    `);
+    expect(result.status).toBe(0);
+    expect(result.stdout.split("\n").filter(Boolean)).toEqual([
+      "command:wiseeff-app:candidate run --rm --no-deps api node --import tsx scripts/parameter-data-mode.ts prepare 82344044b436a8dafecefbb85dfd724cecb05e3f",
+      "record:parameter_preparation=verified",
+      "command:wiseeff-app:candidate run --rm --no-deps api npm run db:migrate",
+      "command:wiseeff-app:candidate run --rm --no-deps api node --import tsx scripts/parameter-data-mode.ts initialize 82344044b436a8dafecefbb85dfd724cecb05e3f",
+      "record:parameter_initialization=verified",
+    ]);
+    const failed = runLibrary(`
+      upgrade_parameter_data_mode=new-empty
+      upgrade_candidate_image_tag=wiseeff-app:candidate
+      upgrade_previous_sha=82344044b436a8dafecefbb85dfd724cecb05e3f
+      wiseeff_upgrade_state_read() { :; }
+      wiseeff_upgrade_compose_for_image() { return 1; }
+      wiseeff_upgrade_state_write() { echo unexpected-success; }
+      wiseeff_upgrade_mark_recovery_required() { echo isolated; }
+      wiseeff_upgrade_initialize_parameters
+    `);
+    expect(failed.status).toBe(70);
+    expect(failed.stdout.trim()).toBe("isolated");
+  });
   it("fails candidate readiness when the canonical driver catalog gate is blocked", () => {
     const runDir = mkdtempSync(
       join(tmpdir(), "wiseeff-upgrade-parameter-catalog-gate-"),

@@ -187,7 +187,15 @@ const createKernelReadiness = (
   const current = async (): Promise<CatalogReadinessResult> => {
     const pointer = await readCurrentCatalogPointer(pool);
     if (pointer.kind !== "installed") {
-      return notReady();
+      // An absent pointer alone also describes an interrupted installation.
+      // Only a genuinely empty owner projection is an unpublished catalog.
+      const empty = await pool.query<{ empty: boolean }>(`select not (
+        exists(select 1 from parameter_catalog.catalog_state)
+        or exists(select 1 from parameter_catalog.catalog_releases)
+        or exists(select 1 from parameter_catalog.catalog_subjects)
+        or exists(select 1 from parameter_catalog.parameter_definitions)
+      ) as empty`);
+      return empty.rows[0]?.empty ? { status: "unpublished" } : notReady();
     }
     const loaded = await kernel.loadCurrentCatalog(pinOf(pointer.current.id, pointer.current.digest));
     if (!loaded.ok) {

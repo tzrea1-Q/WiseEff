@@ -25,6 +25,7 @@ export const catalogUnregisteredHint = "该主体尚未登记。可阅读目录�
 export const catalogWritesPausedHint = "当前状态禁止写入";
 
 export const catalogStateBadges = {
+  unpublished: "尚未发布",
   ready: "就绪",
   loading: "加载中",
   error: "失败",

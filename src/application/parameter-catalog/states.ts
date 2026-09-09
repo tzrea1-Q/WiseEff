@@ -14,6 +14,7 @@ import { WiseEffApiError } from "@/infrastructure/http/apiClient";
 import { catalogFailureReason } from "@/infrastructure/http/parameterCatalogClient";
 
 export const catalogDomainStateKinds = [
+  "unpublished",
   "ready",
   "unregistered",
   "empty",
@@ -101,6 +102,7 @@ export type CatalogConflictState = {
 };
 
 export type CatalogDomainState =
+  | { readonly kind: "unpublished"; readonly catalogReleaseId: null; readonly writesEnabled: false }
   | CatalogLoadingState
   | CatalogReadyState
   | CatalogUnregisteredState
@@ -210,7 +212,7 @@ export function catalogStateFromFailure(error: unknown): CatalogDomainState {
 
 export function deriveCatalogDomainState(input: CatalogDomainStateInput): CatalogDomainState {
   if (input.inFlight) {
-    const catalogReleaseId = input.previousReleaseId ?? input.document?.item.catalogReleaseId ?? null;
+    const catalogReleaseId = input.previousReleaseId ?? input.document?.item?.catalogReleaseId ?? null;
     return {
       kind: "loading",
       catalogReleaseId,
@@ -221,6 +223,9 @@ export function deriveCatalogDomainState(input: CatalogDomainStateInput): Catalo
 
   if (input.error !== undefined) {
     return catalogStateFromFailure(input.error);
+  }
+  if (input.document?.item === null) {
+    return { kind: "unpublished", catalogReleaseId: null, writesEnabled: false };
   }
 
   if (input.reviewItem?.candidateState.status === "stale") {

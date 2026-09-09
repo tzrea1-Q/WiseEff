@@ -89,12 +89,76 @@ describe("durable queue adapter contract", () => {
 });
 
 describe("BullMQ durable queue wrapper", () => {
+  function harness() {
+    const jobs = new Map<string, { id: string; data: Record<string, unknown> }>();
+    const transport = {
+      getJob: vi.fn(async (id: string) => jobs.get(id)),
+      add: vi.fn(async (_name: string, data: Record<string, unknown>, options: { jobId: string }) => {
+        if (!jobs.has(options.jobId)) jobs.set(options.jobId, { id: options.jobId, data });
+        return { id: options.jobId, data }; // Native add can return requested, not persisted data.
+      }),
+      pause: vi.fn(), resume: vi.fn(), close: vi.fn(), getJobCounts: vi.fn()
+    };
+    return { jobs, transport, queue: createBullMqDurableQueue({ name: "synthetic", queue: transport }) };
+  }
+  const input = (idempotencyKey: string) => ({ name: "synthetic", payload: { jobId: "job" }, idempotencyKey });
+
+  it("preserves an already persisted colon-key job without adding or renaming it", async () => {
+    const h = harness();
+    h.jobs.set("log-analysis:job", { id: "log-analysis:job", data: { jobId: "job" } });
+    expect((await h.queue.enqueue(input("log-analysis:job"))).id).toBe("log-analysis:job");
+    expect(h.transport.add).not.toHaveBeenCalled();
+  });
+
+  it("keeps safe existing IDs unchanged and encodes distinct keys without conflating their business payloads", async () => {
+    const h = harness();
+    const keys = ["safe-job", "log-analysis:job", "notification-outbox:job", "123", "x:\ud800", "x:\ufffd", "0:x:y"];
+    const jobs = await Promise.all(keys.map(key => h.queue.enqueue(input(key))));
+    expect(jobs[0].id).toBe("safe-job");
+    expect(new Set(jobs.map(job => job.id)).size).toBe(keys.length);
+    expect(jobs.every(job => !job.id.includes(":"))).toBe(true);
+    expect(jobs.map(job => job.idempotencyKey)).toEqual(keys);
+    expect(jobs.every(job => Object.keys(job.payload).join() === "jobId")).toBe(true);
+    expect((await h.queue.enqueue(input(keys[1]))).id).toBe(jobs[1].id);
+    expect((await h.queue.enqueue(input("legacy:three:parts"))).id).toBe("legacy:three:parts");
+  });
+
+  it("refuses an unmarked historical collision and a direct request for an encoded job's reserved ID", async () => {
+    const h = harness();
+    const encoded = (await h.queue.enqueue(input("log-analysis:job"))).id;
+    await expect(h.queue.enqueue(input(encoded))).rejects.toThrow("durable-queue-key-collision");
+    h.jobs.set(encoded, { id: encoded, data: { jobId: "foreign" } });
+    h.transport.add.mockClear();
+    await expect(h.queue.enqueue(input("log-analysis:job"))).rejects.toThrow("durable-queue-key-collision");
+    expect(h.transport.add).not.toHaveBeenCalled();
+  });
+
+  it("checks persisted identity after add instead of trusting its returned Job", async () => {
+    const h = harness();
+    h.transport.add.mockImplementation(async (_name, data, options) => {
+      h.jobs.set(options.jobId, { id: options.jobId, data: { jobId: "foreign" } });
+      return { id: options.jobId, data };
+    });
+    await expect(h.queue.enqueue(input("log-analysis:job"))).rejects.toThrow("durable-queue-key-collision");
+  });
+
+  it("refuses new reserved IDs, empty keys and payload metadata spoofing without adding", async () => {
+    const h = harness();
+    await expect(h.queue.enqueue(input("wiseeff-durable-v1-new"))).rejects.toThrow("durable-queue-key-namespace-reserved");
+    await expect(h.queue.enqueue(input(""))).rejects.toThrow("durable-queue-key-invalid");
+    await expect(h.queue.enqueue({ ...input("safe"), payload: { $wiseeffDurableKeyV1: "spoof" } }))
+      .rejects.toThrow("durable-queue-key-invalid");
+    expect(h.transport.add).not.toHaveBeenCalled();
+  });
+
   it("maps WiseEff enqueue options to BullMQ job options", async () => {
-    const add = vi.fn(async () => ({ id: "bull-job-1" }));
+    let stored: { id: string; data: Record<string, unknown> } | undefined;
+    const add = vi.fn(async (_name, data, options) => (stored = { id: options.jobId, data }));
     const queue = createBullMqDurableQueue({
       name: "log-analysis",
       queue: {
         add,
+        getJob: vi.fn(async id => stored?.id === id ? stored : undefined),
         pause: vi.fn(),
         resume: vi.fn(),
         getJobCounts: vi.fn(),
@@ -111,7 +175,7 @@ describe("BullMQ durable queue wrapper", () => {
         idempotencyKey: "log-analysis:job-1"
       })
     ).resolves.toEqual({
-      id: "bull-job-1",
+      id: expect.stringMatching(/^wiseeff-durable-v1-/),
       name: "analyze-log",
       payload: { jobId: "job-1" },
       idempotencyKey: "log-analysis:job-1",
@@ -119,21 +183,24 @@ describe("BullMQ durable queue wrapper", () => {
     });
     expect(add).toHaveBeenCalledWith(
       "analyze-log",
-      { jobId: "job-1" },
+      { jobId: "job-1", $wiseeffDurableKeyV1: "log-analysis:job-1" },
       {
-        jobId: "log-analysis:job-1",
+        jobId: expect.stringMatching(/^wiseeff-durable-v1-/),
         attempts: 4,
         backoff: { type: "exponential", delay: 1500 },
         removeOnComplete: false,
         removeOnFail: false
       }
     );
+    expect(Buffer.from(stored!.id.slice("wiseeff-durable-v1-".length), "base64url").toString("utf16le"))
+      .toBe("log-analysis:job-1");
   });
 
   it("reports BullMQ stats and safe health failures", async () => {
     const queue = createBullMqDurableQueue({
       name: "log-analysis",
       queue: {
+        getJob: vi.fn(),
         add: vi.fn(),
         pause: vi.fn(),
         resume: vi.fn(),
@@ -164,6 +231,7 @@ describe("BullMQ durable queue wrapper", () => {
     const queue = createBullMqDurableQueue({
       name: "log-analysis",
       queue: {
+        getJob: vi.fn(),
         add: vi.fn(),
         pause: vi.fn(),
         resume: vi.fn(),
