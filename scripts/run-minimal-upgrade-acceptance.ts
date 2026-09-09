@@ -586,7 +586,7 @@ try {
     const preview = dialog.getByRole('region', {name:'批次预览'});
     await preview.waitFor();
     await preview.getByText('正在生成导入预览…').waitFor({state:'hidden'}).catch(() => undefined);
-    await preview.getByText('更新', {exact:true}).waitFor();
+    await preview.getByRole('term', {name:'更新', exact:true}).waitFor();
     const text = await preview.innerText();
     if (!/更新\\s*1/.test(text) || !/新增\\s*0/.test(text)) throw new Error('import preview must update the existing value: '+text);
     await dialog.getByRole('button', {name:'下一步', exact:true}).click();
