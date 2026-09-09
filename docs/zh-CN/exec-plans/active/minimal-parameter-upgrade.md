@@ -4,6 +4,12 @@
 
 状态：实施中。用户于 2026-09-09 批准本范围。基线：`cda6737a8f177a8bbd2f3bc7d195f8e3037bfa74`。
 
+最新执行：[34314419833](https://github.com/tzrea1-Q/WiseEff/actions/runs/34314419833)，运行代码 `9c722080bb979cf798c039246c7629c337bf2fe8`；[脱敏证据](../../../exec-plans/active/minimal-parameter-upgrade-evidence/terminal-9c722080b.json)。同一非空部署完成正常升级及两次整套恢复。第二次升级实际杀死迁移容器，持久记录 `recovery-required`，停止代理/worker、暂停队列，普通 resume 退出 70；显式 rollback 恢复全部 183 条原记录、对象和任务状态。错误目标拒绝、真实 HTTP/worker 业务、首个仓库发布、重启及同 SHA 保全通过。原生 Linux source-lock 测试按原超时通过 4/4，清理完成。专用 CI 成功不覆盖跳过的 required suites 或页面编辑/导入。源码包逐文件字节及 hash 与该候选一致；按 Hosted 的八位对象缩写重算后 diff 完全一致。
+
+审查修复 `37d7cea70b179f149212bbd7dac2ee098c0cdc6f` 拒绝在残留 Catalog 投影上首次安装，沿用现有子进程环境白名单，将初始化模式限定于 plan/apply，并在 status 返回持久模式。真实 PG 回归 35 项、状态/动作 5 项、环境 helper 1 项通过，build 和 boundary 通过。终端保全检查新增原有主键、外键、唯一约束和 CHECK 定义及验证状态比较；新执行 [34316513041](https://github.com/tzrea1-Q/WiseEff/actions/runs/34316513041) 待完成，独立复审待完成。确认尚缺页面新增/编辑保存/导入链；三段 BullMQ ID 的审查误报已按锁定实现撤回。
+
+下文保留各次历史执行身份及当时未完成阶段，当前状态以上述最新记录为准。
+
 保留全部非参数记录、原主键和关系、对象字节及任务状态。旧参数表和共享引用保留；新参数以尚无首个发布的空态开始，不伪造发布。通过既有升级入口交付正式新增、读取、修改、基本导入、生产 API/worker 启动、重启持久性和一次实际备份恢复。
 
 采用与计划和 run 绑定的 `--parameter-data-mode new-empty`，不作为运行期绕过。历史迁移和账本不变；未知源和部分转换在停服前拒绝。管理期初始化不能在重启或重复执行时重置数据。迁移后失败保持隔离。
