@@ -471,10 +471,40 @@ try {
     await page.goto('http://127.0.0.1:18080/parameter-admin/specs');
     await page.getByRole('list', {name:'主体列表'}).getByRole('button', {name:/acme,power.*已登记/}).waitFor();
   }`);
+  step = "initialize-preserved-project";
+  const initialization = http(`/api/v1/parameters/projects/${projectId}/initialization`);
+  if (initialization.status !== "initialized" && initialization.status !== "maintenance") {
+    const pending = (http("/api/v1/parameters/admin/initialization-reviews").items as Array<{ id: string; projectId: string }>)
+      .find((item) => item.projectId === projectId);
+    let reviewId = pending?.id;
+    if (!reviewId) {
+      http(`/api/v1/parameters/projects/${projectId}/initialization/draft`, "PUT", {
+        projectName: "Preserved project",
+        projectCode: "MIN",
+        ownerUserId: admin.userId,
+        sourceProjectIds: [],
+        primarySourceProjectId: null,
+        supplementSourceProjectIds: [],
+        selectedModuleIds: [],
+        selectedRisks: [],
+        selectedSourceBindingIds: [],
+        bindingSnapshots: [],
+        emptyLibrary: true,
+        notes: "minimal-upgrade-empty-library"
+      });
+      reviewId = http(`/api/v1/parameters/projects/${projectId}/initialization/submit`, "POST", {}, 201).item.id;
+    }
+    http(`/api/v1/parameters/admin/initialization-reviews/${reviewId}/approve`, "POST", {});
+  }
+  assert.ok(["initialized", "maintenance"].includes(
+    http(`/api/v1/parameters/projects/${projectId}/initialization`).status
+  ), "project must be initialized before workbench save");
   step = "dts-ingest-published-value";
-  const configSet = http(`/api/v1/projects/${projectId}/config-sets`, "POST", {
-    name: "published-values", description: "minimal published project value"
-  }, 201).item;
+  const listedSets = http(`/api/v1/projects/${projectId}/config-sets`).items as Array<{ id: string; name: string }>;
+  const configSet = listedSets.find((item) => item.name === "default")
+    ?? http(`/api/v1/projects/${projectId}/config-sets`, "POST", {
+      name: "default", description: "minimal published project value"
+    }, 201).item;
   const uploaded = http(`/api/v1/projects/${projectId}/parameter-files`, "POST", {
     fileName: "charger.dts", contentBase64: Buffer.from(publishedDts).toString("base64")
   }, 201);
