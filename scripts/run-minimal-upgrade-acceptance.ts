@@ -185,7 +185,7 @@ try {
   step = "old-config-validation";
   symlinkSync(path.join(repository, "node_modules"), path.join(checkout, "node_modules"), "dir");
   const sourceConfig = await import(pathToFileURL(path.join(checkout, "server/config/env.ts")).href);
-  sourceConfig.loadServerEnv(parse(readFileSync(envFile)));
+  sourceConfig.loadServerEnv(parse(readFileSync(envFile, "utf8")));
   step = "old-image-build";
   docker("load", "-i", path.join(composeDir, "images/node-22.21.1-alpine-amd64.tar"));
   run("docker", ["build", "--secret", `id=wiseeff-corporate-ca,src=${ca}`, "--build-arg", "VITE_WISEEFF_RUNTIME_MODE=api",
