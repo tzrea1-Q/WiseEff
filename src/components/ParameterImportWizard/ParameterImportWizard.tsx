@@ -7,7 +7,10 @@ import { parseImportSource } from "@/application/parameters/import/detectImportF
 import { findExistingParameter, matchToLibrary } from "@/application/parameters/import/matchToLibrary";
 import type { ParsedImportRow, ReviewedImportRow } from "@/application/parameters/import/types";
 import type { ParameterImportBatchDto } from "@/application/ports/ParameterRepository";
+import { resolveDtsStructuredRepository } from "@/application/parameters/dtsStructuredRuntime";
+import { resolveParameterTopologyRepository } from "@/application/parameters/parameterTopologyResolve";
 import { presentError } from "@/infrastructure/http/presentError";
+import type { ProjectParameterBinding } from "@/domain/parameter-topology/types";
 import { ProjectAdminFormDialog } from "@/components/admin/ProjectAdminFormDialog";
 import { ConfirmDialog } from "@/components/common/ConfirmDialog";
 import { ModalDialog } from "@/components/common/ModalDialog";
@@ -26,6 +29,53 @@ const RESOLVED_ROW_STATUSES = new Set<ReviewedImportRow["status"]>(["approved", 
 
 function reviewRowMatchKey(row: ReviewedImportRow): string {
   return `${row.name}::${row.module}`;
+}
+
+function bindingToLibraryRecord(projectId: string, binding: ProjectParameterBinding): ParameterRecord {
+  return {
+    id: binding.id,
+    name: binding.propertyKey,
+    description: binding.description ?? "",
+    explanation: "",
+    configFormat: "DTS",
+    module: binding.driverModule ?? "",
+    moduleId: binding.moduleId || undefined,
+    projectId,
+    currentValue: binding.rawValue,
+    recommendedValue: "",
+    range: "",
+    unit: "",
+    risk: "Low",
+    valueKind: "scalar",
+    updatedAt: "",
+    updatedAtTs: "",
+    history: []
+  };
+}
+
+async function libraryForImport(
+  parameters: ParameterRecord[],
+  projectId: string,
+  runtimeMode: WiseEffRuntimeMode | undefined
+): Promise<ParameterRecord[]> {
+  if (runtimeMode !== "api") {
+    return parameters;
+  }
+  try {
+    const sets = await resolveDtsStructuredRepository("api").listConfigSets(projectId);
+    const configSet = sets.find((item) => item.name === "default") ?? sets[0];
+    if (!configSet) {
+      return parameters;
+    }
+    const topology = resolveParameterTopologyRepository("api");
+    const tree = await topology.getTopology(projectId, configSet.id, "current", "effective");
+    const items = await topology.listBindings(projectId, tree.revisionId);
+    const fromBindings = items.map((binding) => bindingToLibraryRecord(projectId, binding));
+    const seen = new Set(fromBindings.map((item) => item.id));
+    return [...fromBindings, ...parameters.filter((item) => !seen.has(item.id))];
+  } catch {
+    return parameters;
+  }
 }
 
 function reconcileReviewedRows(rows: ReviewedImportRow[], parameters: ParameterRecord[], targetProjectId: string): ReviewedImportRow[] {
@@ -209,7 +259,8 @@ export function ParameterImportWizard({
       }
     }
     setParsedRows(parsed);
-    setReviewedRows(matchToLibrary(parsed, parameters, projectId));
+    const library = await libraryForImport(parameters, projectId, runtimeMode);
+    setReviewedRows(matchToLibrary(parsed, library, projectId));
     setParseErrors(errors);
   };
 
