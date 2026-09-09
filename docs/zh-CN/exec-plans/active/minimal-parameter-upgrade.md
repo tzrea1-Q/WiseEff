@@ -18,8 +18,8 @@
 | --- | --- | --- |
 | 旧源到迁移 | 完整账本/schema、受保护记录保全 | 真实旧语义切换、重复兼容准备后，0129–0139 全部迁移成功；126 张原表、190 条原记录的原字段全部保留。属于小规模组件探针，非完整升级验收。 |
 | 空态到首个真实数据 | 正式页面/API、合法发布、基本导入 | production API 返回未发布空态；真实编译/安装非空首个发布，重启后 API 仍可读取。页面编辑及导入尚未验收。 |
-| 升级入口及重启 | 既有控制器、run 绑定初始化、就绪及队列/代理恢复 | 原生 amd64 终端 apply 已完成 126 项旧账本准入、备份阶段、11 项迁移、未发布初始化及候选应用就绪。最终代理检查失败，完整验收及重启仍待完成；本地 ARM 平台拒绝保留。 |
-| 保全及恢复 | 逐条原字段/关系、对象、必要任务及实际恢复 | 实际 PG 恢复保留原记录并移除新 schema。新 HTTP 上传 201，worker 完成任务；实际对象存储故障后任务保持延迟，恢复后第 2 次执行完成。Redis 备份/恢复改为停进程复制 AOF，重启后实际 BullMQ 任务恢复。同一终端 run 的 PG/对象/Redis 联合验收仍待执行。 |
+| 升级入口及重启 | 既有控制器、run 绑定初始化、就绪及队列/代理恢复 | 原生 amd64 终端 apply、原用户/节点、首个真实发布、API/worker 正常重启及同 SHA 保全在 34310318652 通过。错误目标及中断执行待完成；本地 ARM 平台拒绝保留。 |
+| 保全及恢复 | 逐条原字段/关系、对象、必要任务及实际恢复 | 同一终端 run 的升级和整套恢复均保全 126 张表中 183 条原记录的全部原字段、原对象字节/metadata 及实际队列 payload/状态。新 HTTP 上传和 worker 完成。早期对象故障重试及各存储探针继续单列为组件证据。 |
 | 审查及交付 | 稳定候选测试、三个视口、独立审查及 required CI | 三个视口检查了 Catalog 空态、原节点详情、已发布定义。首次登记成功；修复首个 Subject 被隐藏和成功后未刷新的问题。复现并修复初始化误查演示项目，新增延迟加载回归。完整编辑/导入、CI 和独立审查待执行。 |
 
 真实副本、可信目标构建及维护窗口是生产前置材料，不阻塞内部合成实现。若需要新权限或发布语义，必须指出具体受阻操作；不新增通用控制器或检查器。
@@ -41,6 +41,8 @@ Hosted [34307587109](https://github.com/tzrea1-Q/WiseEff/actions/runs/3430758710
 [34309051449](https://github.com/tzrea1-Q/WiseEff/actions/runs/34309051449) 对应 `b7bc76af66f99427a0c4e21d1bf86e217c076141`，真实旧 API 已就绪，随后在 `old-synthetic-business` 失败：bootstrap 夹具误用了已退休的部门名作为组织名。尚未升级，已完成清理。实际旧镜像为 `sha256:e588b50fe38b5603e8399d85e52ca001346cde047447debade2154016da55cce`。现已改用合法的合成组织名，并将 `WISEEFF_PUBLIC_URL` 绑定到实际回环代理端口。selfhost 静态检查已同步到更强的清洁环境 `fdtoverlay` 命令；18 项测试及 `selfhost:check` 通过。[34309386308](https://github.com/tzrea1-Q/WiseEff/actions/runs/34309386308) 正在验证 `be6d17dae`，结果待定。
 
 [34309386308](https://github.com/tzrea1-Q/WiseEff/actions/runs/34309386308) 在 `be6d17dae43d149dfccdba4f7719f7b1101cbb74` 到达 `terminal-apply`：真实原用户/项目/节点/旧参数/log 对象已创建，旧 worker 原生任务已完成。旧镜像为 `sha256:f725bdfea4274ed13c02f3e8c937a5521655d35ea2042ef2478213da73625fce`，候选镜像为 `sha256:7d72c04b59a6529b7c76ba82cccf4ff0f40249c301ed0548ae2de2c46ba54ac4`。控制器执行全部 11 项迁移并观察到 canonical 未发布状态，随后在 `candidate-proxy-public` 返回 70，夹具已清理。本地真实 Caddy 复现了夹具的行内 block 语法错误；改为多行后 `caddy adapt` 通过。探针现改为构建前校验 Caddy、通过真实回环代理检查就绪，并保存脱敏的代理/journal 诊断。本 run 尚未到达逐条记录/对象比较、重启和联合恢复。
+
+当前终端里程碑：[34310318652](https://github.com/tzrea1-Q/WiseEff/actions/runs/34310318652) 在 `c1d44f17f036a561ac46f28fb35f9c1f1e56f234` 通过，[脱敏证据](../../../exec-plans/active/minimal-parameter-upgrade-evidence/terminal-c1d44f17f.json)。同一非空部署完成正式升级、126 张表/183 条原记录逐字段比较、对象保全、原用户登录及权限隔离、新 HTTP/worker 业务、首个仓库发布、正常重启、同 SHA no-op 和包括对象/Redis 的整套恢复，清理完成。候选镜像为 `sha256:33aa2fe161d2a19fbf39d601eed637d2b74a7e4b3e0cc2410bd1d4462b7926c1`。通过的是专用 job，常规 required suites 被跳过，证据仍为 `complete:false`；页面编辑保存/导入和完整浏览器验收仍未完成。下一版探针加入同一部署的错误目标拒绝及真实杀死迁移后的显式恢复，尚未执行。
 
 ## 文档影响矩阵
 

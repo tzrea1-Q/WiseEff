@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
-import { spawnSync } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { createHash, randomBytes } from "node:crypto";
-import { chmodSync, mkdtempSync, readFileSync, symlinkSync, writeFileSync } from "node:fs";
+import { chmodSync, closeSync, mkdtempSync, openSync, readFileSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { setTimeout } from "node:timers/promises";
@@ -183,6 +183,7 @@ async function ready() {
 const evidence: Record<string, unknown> = { sourceSha, candidateSha, project, daemon: expectedDaemon, complete: false };
 const record = () => writeFileSync(path.join(directory, "evidence.json"), JSON.stringify(evidence, null, 2), { mode: 0o600 });
 let created = false;
+let interruptionChild: ReturnType<typeof spawn> | undefined;
 try {
   step = "old-config-validation";
   symlinkSync(path.join(repository, "node_modules"), path.join(checkout, "node_modules"), "dir");
@@ -251,8 +252,18 @@ try {
   record();
   step = "candidate-checkout";
   run("git", ["checkout", "--detach", candidateSha], { cwd: checkout });
-  const upgrade = (...args: string[]) => run("bash", ["scripts/upgrade.sh", ...args, "--env-file", envFile,
-    "--state-dir", path.join(directory, "runs"), "--backup-root", path.join(directory, "backups")], { cwd: composeDir, env });
+  const upgradeArgs = (...args: string[]) => ["scripts/upgrade.sh", ...args, "--env-file", envFile,
+    "--state-dir", path.join(directory, "runs"), "--backup-root", path.join(directory, "backups")];
+  const upgrade = (...args: string[]) => run("bash", upgradeArgs(...args), { cwd: composeDir, env });
+  step = "wrong-target-before-side-effects";
+  const originalContainers = ["api", "worker", "web", "proxy"].map(owned);
+  const wrongTarget = spawnSync("bash", upgradeArgs("plan", "--ref", sourceSha, "--parameter-data-mode", "new-empty"),
+    { cwd: composeDir, env, encoding: "utf8" });
+  assert.equal(wrongTarget.status, 10);
+  assert.ok(wrongTarget.stderr.includes("target does not implement the new-empty parameter route"));
+  assert.deepEqual(["api", "worker", "web", "proxy"].map(owned), originalContainers);
+  await ready();
+  evidence.wrongTargetRejectedBeforeDowntime = true;
   step = "terminal-plan";
   evidence.plan = JSON.parse(upgrade("plan", "--ref", candidateSha, "--parameter-data-mode", "new-empty", "--json"));
   record();
@@ -311,12 +322,90 @@ try {
   evidence.originalObjectsRestored = true;
   assert.ok(JSON.stringify(observeQueue()) === readFileSync(path.join(directory, "private-source-queue.json"), "utf8"), "restore: actual original queue payload or state changed");
   evidence.originalQueueRestored = true;
-  evidence.nextStage = "new-parameter-edit-save-import-browser-and-interruption-acceptance";
+  step = "interrupted-management-migration";
+  run("git", ["checkout", "--detach", candidateSha], { cwd: checkout });
+  const interruptionRunId = `${project}-interrupted`;
+  const previousPostgres = owned("postgres");
+  const interruptionLog = openSync(path.join(directory, "private-interruption.log"), "w", 0o600);
+  interruptionChild = spawn("bash", upgradeArgs("apply", "--run-id", interruptionRunId, "--ref", candidateSha,
+    "--parameter-data-mode", "new-empty", "--non-interactive", "--yes"), { cwd: composeDir, env,
+    stdio: ["ignore", interruptionLog, interruptionLog] });
+  closeSync(interruptionLog);
+  const interruptionExit = new Promise<number | null>((resolve, reject) => {
+    interruptionChild!.once("error", reject);
+    interruptionChild!.once("exit", resolve);
+  });
+  let postgres = "";
+  // The controller recreates the data plane. Acquire the test lock on the new
+  // PostgreSQL process, before its health gate admits the migration container.
+  for (let attempt = 0; attempt < 180 && interruptionChild.exitCode === null; attempt++) {
+    const current = compose("ps", "-aq", "postgres");
+    if (/^[a-f0-9]{64}$/.test(current) && current !== previousPostgres &&
+      spawnSync("docker", ["exec", current, "psql", "-U", "wiseeff", "-d", "wiseeff", "-Atc", "select 1"],
+        { stdio: "ignore" }).status === 0) { postgres = current; break; }
+    await setTimeout(1000);
+  }
+  assert.ok(postgres, "interruption: replacement PostgreSQL was not observed before migration");
+  const applicationName = `minimal-interruption-${project}`;
+  const blocker = spawn("docker", ["exec", "-e", `PGAPPNAME=${applicationName}`, postgres, "psql", "-U", "wiseeff",
+    "-d", "wiseeff", "-v", "ON_ERROR_STOP=1", "-c",
+    "begin; lock table public.parameter_drafts in share mode; select pg_sleep(600); rollback;"], { stdio: "ignore" });
+  const blockerExit = new Promise<void>(resolve => blocker.once("exit", () => resolve()));
+  const sql = (query: string) => docker("exec", postgres, "psql", "-U", "wiseeff", "-d", "wiseeff", "-Atc", query);
+  let killed = false;
+  try {
+    for (let attempt = 0; attempt < 120 && interruptionChild.exitCode === null; attempt++) {
+      const waiting = sql("select count(*) from pg_locks where relation='public.parameter_drafts'::regclass and not granted");
+      if (Number(waiting) > 0) {
+        const ids = docker("ps", "-q", "--no-trunc", "--filter", `label=com.docker.compose.project=${project}`)
+          .split(/\s+/).filter(Boolean);
+        const migrations = ids.map(id => JSON.parse(docker("inspect", id))[0]).filter(container =>
+          container.Config.Labels["com.docker.compose.oneoff"] === "True" &&
+          JSON.stringify(container.Config.Cmd) === JSON.stringify(["npm", "run", "db:migrate"]));
+        assert.equal(migrations.length, 1, "interruption: require the actual owned migration process");
+        assert.equal(migrations[0].Image, JSON.parse(docker("image", "inspect", `${project}:${candidateSha}`))[0].Id);
+        evidence.interruptedCandidateImageId = migrations[0].Image;
+        assert.equal(migrations[0].Config.Labels["com.docker.compose.project.working_dir"], composeDir);
+        docker("kill", "--signal", "KILL", migrations[0].Id);
+        killed = true;
+        break;
+      }
+      await setTimeout(1000);
+    }
+    assert.ok(killed, "interruption: no blocked migration was killed; do not count a missed injection");
+    assert.equal(await interruptionExit, 70);
+  } finally {
+    sql(`select pg_terminate_backend(pid) from pg_stat_activity where application_name='${applicationName}' and datname=current_database()`);
+    await blockerExit;
+  }
+  const interruptionState = (key: string) => readFileSync(path.join(directory, "runs", interruptionRunId, key), "utf8").trim();
+  assert.equal(interruptionState("outcome"), "recovery-required");
+  assert.equal(interruptionState("migration_started"), "true");
+  for (const service of ["proxy", "worker"]) assert.equal(JSON.parse(docker("inspect", owned(service)))[0].State.Running, false);
+  const queueState = compose("run", "--rm", "--no-deps", "-T", "api", "node", "--input-type=module", "-e",
+    "import{Queue}from'bullmq';const q=new Queue('log-analysis',{connection:{url:process.env.REDIS_URL},prefix:process.env.LOG_ANALYSIS_QUEUE_PREFIX});try{console.log(JSON.stringify({paused:await q.isPaused()}))}finally{await q.close()}");
+  assert.equal(JSON.parse(queueState).paused, true);
+  const resume = spawnSync("bash", upgradeArgs("resume", "--run-id", interruptionRunId, "--non-interactive", "--yes"),
+    { cwd: composeDir, env, encoding: "utf8" });
+  assert.equal(resume.status, 70, "a migration failure requires explicit recovery, not automatic traffic resume");
+  evidence.interruptedMigration = { actualMigrationKilled: killed, outcome: interruptionState("outcome"),
+    proxyStopped: true, workerStopped: true, queuePaused: true, ordinaryResumeExit: resume.status };
+  step = "interrupted-migration-explicit-restore";
+  upgrade("rollback", "--run-id", interruptionRunId, "--restore-data", "--confirm", `restore-${interruptionRunId}`, "--non-interactive", "--yes");
+  await ready();
+  evidence.interruptionRestore = assertPreserved(restoreOracle, observeRows(restoreOracle));
+  assert.equal(JSON.stringify(observeObjects()), readFileSync(path.join(directory, "private-source-objects.json"), "utf8"));
+  assert.equal(JSON.stringify(observeQueue()), readFileSync(path.join(directory, "private-source-queue.json"), "utf8"));
+  evidence.nextStage = "new-parameter-edit-save-import-browser-and-final-validation";
 } catch (error) {
   evidence.failedStage = step;
   evidence.failure = sanitizeGate0DiagnosticText(error instanceof Error ? error.message : "minimal-terminal-failed", secrets).value;
   evidence.lastHealth = sanitizeGate0DiagnosticText(JSON.stringify(lastHealth ?? null), secrets).value;
   evidence.commandFailure = lastCommandFailure;
+  if (interruptionChild) {
+    evidence.interruptionDiagnostics = sanitizeGate0DiagnosticText(
+      readFileSync(path.join(directory, "private-interruption.log"), "utf8"), secrets).value.slice(-6000);
+  }
   const journal: Record<string, string> = {};
   for (const key of ["phase", "outcome", "failure_code", "migration_started", "parameter_initialization",
     "recovery_proxy_stopped", "recovery_queue_paused", "next_action"]) {
@@ -336,6 +425,7 @@ try {
   }
   process.exitCode = 1;
 } finally {
+  if (interruptionChild && interruptionChild.exitCode === null) interruptionChild.kill("SIGTERM");
   if (created) {
     try {
       const ids = docker("ps", "-aq", "--no-trunc", "--filter", `label=com.docker.compose.project=${project}`).split(/\s+/).filter(Boolean);

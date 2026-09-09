@@ -1,0 +1,191 @@
+{
+  "sourceSha": "82344044b436a8dafecefbb85dfd724cecb05e3f",
+  "candidateSha": "c1d44f17f036a561ac46f28fb35f9c1f1e56f234",
+  "project": "minimal-85489b070fe63221",
+  "daemon": "a4efb8b6-20f9-46f4-b827-91ac0547be3a",
+  "complete": false,
+  "sourceImageId": "sha256:5cf3c9b8d39ed4013199c0c726f6ed5a56269f06b48c21605976900f823d579f",
+  "sourceBusiness": {
+    "projectId": "minimal-85489b070fe63221-business",
+    "nodeId": "d86d46e0-7846-490b-8258-0235d7df32a8",
+    "legacyParameterCreated": true,
+    "originalHttpUploadStatus": 500,
+    "originalJobCompleted": true,
+    "delivery": "original-http-500-native-test-producer"
+  },
+  "plan": {
+    "action": "plan",
+    "previousSha": "82344044b436a8dafecefbb85dfd724cecb05e3f",
+    "targetSha": "c1d44f17f036a561ac46f28fb35f9c1f1e56f234",
+    "requestedRef": "c1d44f17f036a561ac46f28fb35f9c1f1e56f234",
+    "migrationCount": 11,
+    "restart": false,
+    "parameterDataMode": "new-empty",
+    "baseImage": {
+      "ref": "node:22.21.1-alpine",
+      "id": "sha256:eefb407f08684593068a61d76c3336fb418bdfd184357ccfe448aadfa1147b3e",
+      "configId": "sha256:c91ce80d48fb1a545181cbad2e7e4329bf5aa581c9a87db465e31fa21f92add7",
+      "platform": "linux/amd64",
+      "source": "bundled-archive",
+      "status": "ready-bundled"
+    },
+    "buildNetwork": {
+      "proxy": "not configured",
+      "npmRegistry": "package-lock defaults",
+      "corporateCa": "not configured",
+      "buildTlsPolicy": "verify",
+      "runtimeProxy": false
+    }
+  },
+  "preservation": {
+    "tables": 126,
+    "originalRows": 183,
+    "everyOriginalFieldPreserved": true,
+    "additions": {
+      "dts_config_revisions": {
+        "rows": 0,
+        "columns": [
+          "initiator_type",
+          "initiator_system_kind",
+          "initiator_system_name",
+          "initiator_session_id",
+          "initiator_tool_call_id",
+          "initiator_approval_id",
+          "initiator_principal_deleted"
+        ]
+      },
+      "parameter_change_requests": {
+        "rows": 0,
+        "columns": [
+          "initiator_type",
+          "initiator_system_kind",
+          "initiator_system_name",
+          "initiator_session_id",
+          "initiator_tool_call_id",
+          "initiator_approval_id",
+          "initiator_principal_deleted"
+        ]
+      },
+      "parameter_drafts": {
+        "rows": 0,
+        "columns": [
+          "initiator_type",
+          "initiator_system_kind",
+          "initiator_system_name",
+          "initiator_session_id",
+          "initiator_tool_call_id",
+          "initiator_approval_id"
+        ]
+      },
+      "parameter_history_entries": {
+        "rows": 0,
+        "columns": [
+          "initiator_type",
+          "initiator_system_kind",
+          "initiator_system_name",
+          "initiator_session_id",
+          "initiator_tool_call_id",
+          "initiator_approval_id",
+          "initiator_principal_deleted"
+        ]
+      },
+      "parameter_review_decisions": {
+        "rows": 0,
+        "columns": [
+          "initiator_type",
+          "initiator_system_kind",
+          "initiator_system_name",
+          "initiator_session_id",
+          "initiator_tool_call_id",
+          "initiator_approval_id",
+          "initiator_principal_deleted"
+        ]
+      },
+      "parameter_submission_rounds": {
+        "rows": 0,
+        "columns": [
+          "initiator_type",
+          "initiator_system_kind",
+          "initiator_system_name",
+          "initiator_session_id",
+          "initiator_tool_call_id",
+          "initiator_approval_id",
+          "initiator_principal_deleted"
+        ]
+      },
+      "project_parameter_binding_revisions": {
+        "rows": 0,
+        "columns": [
+          "initiator_type",
+          "initiator_system_kind",
+          "initiator_system_name",
+          "initiator_session_id",
+          "initiator_tool_call_id",
+          "initiator_approval_id",
+          "initiator_principal_deleted"
+        ]
+      },
+      "project_parameter_file_candidates": {
+        "rows": 0,
+        "columns": [
+          "initiator_type",
+          "initiator_system_kind",
+          "initiator_system_name",
+          "initiator_session_id",
+          "initiator_tool_call_id",
+          "initiator_approval_id",
+          "initiator_principal_deleted"
+        ]
+      },
+      "project_parameter_file_versions": {
+        "rows": 0,
+        "columns": [
+          "initiator_type",
+          "initiator_system_kind",
+          "initiator_system_name",
+          "initiator_session_id",
+          "initiator_tool_call_id",
+          "initiator_approval_id",
+          "initiator_principal_deleted"
+        ]
+      },
+      "project_parameter_values": {
+        "rows": 0,
+        "columns": [
+          "initiator_type",
+          "initiator_system_kind",
+          "initiator_system_name",
+          "initiator_session_id",
+          "initiator_tool_call_id",
+          "initiator_approval_id",
+          "initiator_principal_deleted"
+        ]
+      },
+      "schema_migrations": {
+        "rows": 11,
+        "columns": []
+      }
+    }
+  },
+  "originalObjectsPreserved": true,
+  "originalMemberLoginAndPermissionIsolation": true,
+  "candidateHttpUploadAndWorkerCompleted": true,
+  "terminalUpgradeAndOriginalLogin": true,
+  "candidateImageId": "sha256:33aa2fe161d2a19fbf39d601eed637d2b74a7e4b3e0cc2410bd1d4462b7926c1",
+  "firstPublicationAndNormalRestart": {
+    "releaseId": "crel_acme_1",
+    "digest": "sha256:365305492cf3fddb973b65268d1c7b8c60715240e9fd2dac05aa9091f0c38044",
+    "input": "repository compiler fixture via actual management CLI; not page editing"
+  },
+  "sameShaDidNotResetCatalog": true,
+  "restoredRows": {
+    "tables": 126,
+    "originalRows": 183,
+    "everyOriginalFieldPreserved": true,
+    "additions": {}
+  },
+  "originalObjectsRestored": true,
+  "originalQueueRestored": true,
+  "nextStage": "new-parameter-edit-save-import-browser-and-interruption-acceptance",
+  "cleanup": "complete"
+}
