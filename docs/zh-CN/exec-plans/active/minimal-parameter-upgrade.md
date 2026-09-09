@@ -18,7 +18,7 @@
 | --- | --- | --- |
 | 旧源到迁移 | 完整账本/schema、受保护记录保全 | 真实旧语义切换、重复兼容准备后，0129–0139 全部迁移成功；126 张原表、190 条原记录的原字段全部保留。属于小规模组件探针，非完整升级验收。 |
 | 空态到首个真实数据 | 正式页面/API、合法发布、基本导入 | production API 返回未发布空态；真实编译/安装非空首个发布，重启后 API 仍可读取。页面编辑及导入尚未验收。 |
-| 升级入口及重启 | 既有控制器、run 绑定初始化、就绪及队列/代理恢复 | 选项、计划/run 及管理初始化已接线，focused shell 检查通过。完整终端流程待 amd64 执行；本地 daemon 为 arm64，保留原平台拒绝。 |
+| 升级入口及重启 | 既有控制器、run 绑定初始化、就绪及队列/代理恢复 | 原生 amd64 终端 apply 已完成 126 项旧账本准入、备份阶段、11 项迁移、未发布初始化及候选应用就绪。最终代理检查失败，完整验收及重启仍待完成；本地 ARM 平台拒绝保留。 |
 | 保全及恢复 | 逐条原字段/关系、对象、必要任务及实际恢复 | 实际 PG 恢复保留原记录并移除新 schema。新 HTTP 上传 201，worker 完成任务；实际对象存储故障后任务保持延迟，恢复后第 2 次执行完成。Redis 备份/恢复改为停进程复制 AOF，重启后实际 BullMQ 任务恢复。同一终端 run 的 PG/对象/Redis 联合验收仍待执行。 |
 | 审查及交付 | 稳定候选测试、三个视口、独立审查及 required CI | 三个视口检查了 Catalog 空态、原节点详情、已发布定义。首次登记成功；修复首个 Subject 被隐藏和成功后未刷新的问题。复现并修复初始化误查演示项目，新增延迟加载回归。完整编辑/导入、CI 和独立审查待执行。 |
 
@@ -37,6 +37,10 @@ Hosted [34307587109](https://github.com/tzrea1-Q/WiseEff/actions/runs/3430758710
 剩余产品接线：Catalog 合同通过仓库评审的包发布，页面提案仅表示发布意图；项目参数工作台仍读旧模型，canonical ProjectValue 需要真实 Binding、来源和配置 revision。保留现有发布规则，不把提案成功或手填来源 ID 当作新的编辑保存流程。本计划不授权扩权或伪造来源。
 
 `34308789909` 随后被取消：旧目标 job 条件也匹配了新增的最小模式。误触发的目标 job 在 `https://example.invalid/` 浏览器预热失败，不算目标验证。终端 job 被中断，没有完成或清理证明。现已在目标条件中排除 `minimal-upgrade`，并加入回归，要求隔离 job 不读取仓库 secrets；12 项 CI 配置测试通过。下次终端运行必须包含此路由修复。
+
+[34309051449](https://github.com/tzrea1-Q/WiseEff/actions/runs/34309051449) 对应 `b7bc76af66f99427a0c4e21d1bf86e217c076141`，真实旧 API 已就绪，随后在 `old-synthetic-business` 失败：bootstrap 夹具误用了已退休的部门名作为组织名。尚未升级，已完成清理。实际旧镜像为 `sha256:e588b50fe38b5603e8399d85e52ca001346cde047447debade2154016da55cce`。现已改用合法的合成组织名，并将 `WISEEFF_PUBLIC_URL` 绑定到实际回环代理端口。selfhost 静态检查已同步到更强的清洁环境 `fdtoverlay` 命令；18 项测试及 `selfhost:check` 通过。[34309386308](https://github.com/tzrea1-Q/WiseEff/actions/runs/34309386308) 正在验证 `be6d17dae`，结果待定。
+
+[34309386308](https://github.com/tzrea1-Q/WiseEff/actions/runs/34309386308) 在 `be6d17dae43d149dfccdba4f7719f7b1101cbb74` 到达 `terminal-apply`：真实原用户/项目/节点/旧参数/log 对象已创建，旧 worker 原生任务已完成。旧镜像为 `sha256:f725bdfea4274ed13c02f3e8c937a5521655d35ea2042ef2478213da73625fce`，候选镜像为 `sha256:7d72c04b59a6529b7c76ba82cccf4ff0f40249c301ed0548ae2de2c46ba54ac4`。控制器执行全部 11 项迁移并观察到 canonical 未发布状态，随后在 `candidate-proxy-public` 返回 70，夹具已清理。本地真实 Caddy 复现了夹具的行内 block 语法错误；改为多行后 `caddy adapt` 通过。探针现改为构建前校验 Caddy、通过真实回环代理检查就绪，并保存脱敏的代理/journal 诊断。本 run 尚未到达逐条记录/对象比较、重启和联合恢复。
 
 ## 文档影响矩阵
 

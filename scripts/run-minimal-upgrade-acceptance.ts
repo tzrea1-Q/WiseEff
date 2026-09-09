@@ -72,7 +72,7 @@ writeFileSync(envFile, [
 ].join("\n") + "\n", { mode: 0o600 });
 // Only test transport changes: retain stock services, volumes, commands and
 // health checks, bind the proxy to loopback and suppress external certificate IO.
-writeFileSync(path.join(directory, "Caddyfile"), ":80 {\n handle /api/* { reverse_proxy api:8787 }\n handle /health/* { reverse_proxy api:8787 }\n handle { reverse_proxy web:5173 }\n}\n", { mode: 0o600 });
+writeFileSync(path.join(directory, "Caddyfile"), ":80 {\n handle /api/* {\n  reverse_proxy api:8787\n }\n handle /health/* {\n  reverse_proxy api:8787\n }\n handle {\n  reverse_proxy web:5173\n }\n}\n", { mode: 0o600 });
 writeFileSync(path.join(directory, "compose.override.yaml"), `services:
   proxy:
     ports: !override ["127.0.0.1:18080:80"]
@@ -170,9 +170,11 @@ let lastHealth: unknown;
 async function ready() {
   for (let attempt = 0; attempt < 60; attempt++) {
     try {
-      const health = inApi(httpScript, { route: "/health/ready", method: "GET" });
+      const response = await fetch("http://127.0.0.1:18080/health/ready", { signal: AbortSignal.timeout(2000) });
+      const health = { status: response.status, body: await response.json() };
       lastHealth = health;
-      if (health.status === 200 && health.body.ok) return;
+      if (health.status === 200 && health.body && typeof health.body === "object" &&
+        "ok" in health.body && health.body.ok === true) return;
     } catch { /* startup remains unaccepted */ }
     await setTimeout(2000);
   }
@@ -186,6 +188,9 @@ try {
   symlinkSync(path.join(repository, "node_modules"), path.join(checkout, "node_modules"), "dir");
   const sourceConfig = await import(pathToFileURL(path.join(checkout, "server/config/env.ts")).href);
   sourceConfig.loadServerEnv(parse(readFileSync(envFile, "utf8")));
+  run("docker", ["run", "--rm", "--network", "none", "--label", `wiseeff.upgrade.minimal=${project}`,
+    "-v", `${directory}/Caddyfile:/etc/caddy/Caddyfile:ro`, "caddy:2-alpine", "caddy", "adapt",
+    "--config", "/etc/caddy/Caddyfile", "--adapter", "caddyfile"]);
   step = "old-image-build";
   docker("load", "-i", path.join(composeDir, "images/node-22.21.1-alpine-amd64.tar"));
   run("docker", ["build", "--secret", `id=wiseeff-corporate-ca,src=${ca}`, "--build-arg", "VITE_WISEEFF_RUNTIME_MODE=api",
@@ -312,6 +317,13 @@ try {
   evidence.failure = sanitizeGate0DiagnosticText(error instanceof Error ? error.message : "minimal-terminal-failed", secrets).value;
   evidence.lastHealth = sanitizeGate0DiagnosticText(JSON.stringify(lastHealth ?? null), secrets).value;
   evidence.commandFailure = lastCommandFailure;
+  const journal: Record<string, string> = {};
+  for (const key of ["phase", "outcome", "failure_code", "migration_started", "parameter_initialization",
+    "recovery_proxy_stopped", "recovery_queue_paused", "next_action"]) {
+    try { journal[key] = readFileSync(path.join(directory, "runs", `${project}-upgrade`, key), "utf8").trim(); }
+    catch { /* A failure before run creation has no controller journal. */ }
+  }
+  evidence.controllerJournal = journal;
   if (created) {
     try {
       const state = JSON.parse(docker("inspect", owned("api")))[0].State;
@@ -319,6 +331,8 @@ try {
     } catch { evidence.apiProcess = "unavailable"; }
     try { evidence.apiDiagnostics = sanitizeGate0DiagnosticText(compose("logs", "--no-color", "--tail", "40", "api"), secrets).value.slice(-6000); }
     catch { evidence.apiDiagnostics = "unavailable"; }
+    try { evidence.proxyDiagnostics = sanitizeGate0DiagnosticText(compose("logs", "--no-color", "--tail", "20", "proxy"), secrets).value.slice(-3000); }
+    catch { evidence.proxyDiagnostics = "unavailable"; }
   }
   process.exitCode = 1;
 } finally {
