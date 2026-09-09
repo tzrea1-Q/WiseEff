@@ -70,15 +70,20 @@ describe("current catalog pointer", () => {
   });
 
   it("does not classify a projection without its pointer as unpublished", async () => {
-    await seedCompiledCatalogProjection(database.url);
-    expect(await isCatalogProjectionEmpty(client)).toBe(false);
-    await client.query("delete from parameter_catalog.catalog_state");
+    // A release row can exist before the atomic installation publishes a
+    // complete pointer. Do not disable the immutable singleton protection.
+    await client.query(`insert into parameter_catalog.catalog_releases (
+      id, release_sequence, release_version, release_digest,
+      compiled_model_digest, toolchain_digest, published_at
+    ) values ('crel_partial', 0, '0.0.1', 'partial-release',
+      'partial-model', 'partial-toolchain', '2026-09-09T00:00:00Z')`);
     expect(await readCurrentCatalogPointer(client)).toEqual({ kind: "empty" });
     expect(await isCatalogProjectionEmpty(client)).toBe(false);
   });
 
   it("switches back to the recorded previous pin and restores that release's heads", async () => {
     const pins = await seedCompiledCatalogProjection(database.url);
+    expect(await isCatalogProjectionEmpty(client)).toBe(false);
     const before = await readCurrentCatalogPointer(client);
     expect(before).toMatchObject({
       kind: "installed",
