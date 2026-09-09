@@ -147,6 +147,7 @@ wiseeff_upgrade_write_status() {
     printf 'protocol_version=%s\n' "$(wiseeff_upgrade_state_read protocol_version)"
     printf 'previous_sha=%s\n' "$(wiseeff_upgrade_state_read previous_sha)"
     printf 'target_sha=%s\n' "$(wiseeff_upgrade_state_read target_sha)"
+    printf 'parameter_data_mode=%s\n' "$(wiseeff_upgrade_state_read parameter_data_mode)"
     printf 'backup_dir=%s\n' "$(wiseeff_upgrade_state_read backup_dir)"
     printf 'build_status=%s\n' "$(wiseeff_upgrade_state_read build_status)"
     printf 'diagnostics_dir=%s\n' "$(wiseeff_upgrade_state_read diagnostics_dir)"
@@ -2911,7 +2912,7 @@ wiseeff_upgrade_status() {
           true|false) ;;
           *) runtime_proxy_status=false ;;
         esac
-        printf '{"runId":"%s","phase":"%s","outcome":"%s","updatedAt":"%s","protocolVersion":"%s","previousSha":"%s","targetSha":"%s","backupDir":"%s","buildStatus":"%s","diagnosticsDir":"%s","buildLog":"%s","buildSummary":"%s","baseImageRef":"%s","baseImageId":"%s","baseImageConfigId":"%s","baseImagePlatform":"%s","baseImageSource":"%s","baseImageStatus":"%s","buildNetwork":{"proxy":"%s","npmRegistry":"%s","corporateCa":"%s","buildTlsPolicy":"%s","transportFingerprint":"%s","runtimeProxy":%s},"completedWithInsecureBuildTransport":%s,"failedPhase":"%s","failureService":"%s","failureCode":"%s","failureSummary":"%s","recoveryStarted":"%s","recoveryVerified":"%s","recoveryProxyStopped":"%s","recoveryQueuePaused":"%s","recoveryFailureSummary":"%s","nextAction":"%s"}\n' \
+        printf '{"runId":"%s","phase":"%s","outcome":"%s","updatedAt":"%s","protocolVersion":"%s","previousSha":"%s","targetSha":"%s","backupDir":"%s","buildStatus":"%s","diagnosticsDir":"%s","buildLog":"%s","buildSummary":"%s","baseImageRef":"%s","baseImageId":"%s","baseImageConfigId":"%s","baseImagePlatform":"%s","baseImageSource":"%s","baseImageStatus":"%s","buildNetwork":{"proxy":"%s","npmRegistry":"%s","corporateCa":"%s","buildTlsPolicy":"%s","transportFingerprint":"%s","runtimeProxy":%s},"completedWithInsecureBuildTransport":%s,"failedPhase":"%s","failureService":"%s","failureCode":"%s","failureSummary":"%s","recoveryStarted":"%s","recoveryVerified":"%s","recoveryProxyStopped":"%s","recoveryQueuePaused":"%s","recoveryFailureSummary":"%s","nextAction":"%s","parameterDataMode":"%s"}\n' \
           "$(wiseeff_upgrade_json_escape "$(cat "${run_dir}/run_id" 2>/dev/null || printf '%s' "$requested_run_id")")" \
           "$(wiseeff_upgrade_json_escape "$(cat "${run_dir}/phase" 2>/dev/null || true)")" \
           "$(wiseeff_upgrade_json_escape "$(cat "${run_dir}/outcome" 2>/dev/null || true)")" \
@@ -2946,7 +2947,8 @@ wiseeff_upgrade_status() {
           "$(wiseeff_upgrade_json_escape "$(cat "${run_dir}/recovery_proxy_stopped" 2>/dev/null || printf 'false')")" \
           "$(wiseeff_upgrade_json_escape "$(cat "${run_dir}/recovery_queue_paused" 2>/dev/null || printf 'false')")" \
           "$(wiseeff_upgrade_json_escape "$(cat "${run_dir}/recovery_failure_summary" 2>/dev/null || true)")" \
-          "$(wiseeff_upgrade_json_escape "$(cat "${run_dir}/next_action" 2>/dev/null || true)")"
+          "$(wiseeff_upgrade_json_escape "$(cat "${run_dir}/next_action" 2>/dev/null || true)")" \
+          "$(wiseeff_upgrade_json_escape "$(cat "${run_dir}/parameter_data_mode" 2>/dev/null || true)")"
       else
         cat "${state_root}/${requested_run_id}/status"
       fi
@@ -3096,6 +3098,11 @@ wiseeff_upgrade_main() {
         ;;
     esac
   done
+
+  if [ -n "$upgrade_parameter_data_mode" ] && [ "$upgrade_action" != "plan" ] && [ "$upgrade_action" != "apply" ]; then
+    wiseeff_upgrade_die 2 "--parameter-data-mode is only valid with plan or apply."
+    return 2
+  fi
 
   if [ -n "$upgrade_state_dir" ]; then
     export WISEEFF_UPGRADE_STATE_DIR="$upgrade_state_dir"

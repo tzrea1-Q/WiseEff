@@ -794,6 +794,12 @@ describe("upgrade.sh public interface", () => {
     expect(failed.stdout.trim()).toBe("isolated");
   });
 
+  it.each(["status", "resume", "rollback", "recover-candidate"])("rejects initialization mode on %s", (action) => {
+    const result = runUpgrade([action, "--parameter-data-mode", "new-empty"]);
+    expect(result.status).toBe(2);
+    expect(result.stderr).toContain("--parameter-data-mode is only valid with plan or apply");
+  });
+
   it.each([
     ["wiseeff-app:wiseeff-previous-api-owned-run", "sha256:source", 0],
     ["wiseeff-app:wiseeff-previous-api-owned-run", "sha256:different", 10],
@@ -3288,6 +3294,7 @@ describe("upgrade.sh public interface", () => {
     writeFileSync(join(runDir, "outcome"), "completed\n");
     writeFileSync(join(runDir, "previous_sha"), "abc123\n");
     writeFileSync(join(runDir, "target_sha"), "def456\n");
+    writeFileSync(join(runDir, "parameter_data_mode"), "new-empty\n");
     writeFileSync(join(runDir, "backup_dir"), "/var/backups/wiseeff/upgrades/run-1\n");
     writeFileSync(join(runDir, "build_status"), "failed\n");
     writeFileSync(join(runDir, "diagnostics_dir"), `${runDir}/diagnostics\n`);
@@ -3321,6 +3328,7 @@ describe("upgrade.sh public interface", () => {
     expect(result.status).toBe(0);
     expect(JSON.parse(result.stdout)).toMatchObject({
       runId: "run-1",
+      parameterDataMode: "new-empty",
       phase: "completed",
       outcome: "completed",
       buildStatus: "failed",

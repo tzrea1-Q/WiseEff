@@ -8,6 +8,7 @@ import { setTimeout } from "node:timers/promises";
 import { pathToFileURL } from "node:url";
 import { parse } from "dotenv";
 import { gate0SecretValuesFromEnv, sanitizeGate0DiagnosticText } from "./gate0-artifact-sanitizer";
+import { buildGate0OwnedChildProcessEnv } from "./gate0-child-process-env";
 import { validCatalogReleaseBundle } from "../server/modules/catalog-kernel/compiler/__fixtures__/catalogReleaseBundle";
 import { compileCatalogRelease } from "../server/modules/catalog-kernel/compiler/index";
 
@@ -24,10 +25,11 @@ chmodSync(directory, 0o700);
 let step = "preflight";
 let commandNumber = 0;
 const secrets = gate0SecretValuesFromEnv();
+const launchEnv = buildGate0OwnedChildProcessEnv({});
 let lastCommandFailure = "";
 function run(command: string, args: string[], options: { cwd?: string; env?: NodeJS.ProcessEnv; input?: string } = {}) {
   const result = spawnSync(command, args, { cwd: options.cwd ?? repository,
-    env: options.env ?? process.env, input: options.input, encoding: "utf8", maxBuffer: 32 * 1024 * 1024 });
+    env: options.env ?? launchEnv, input: options.input, encoding: "utf8", maxBuffer: 32 * 1024 * 1024 });
   if (result.status !== 0) {
     lastCommandFailure = sanitizeGate0DiagnosticText(result.stdout + result.stderr, secrets).value.slice(-6000);
     writeFileSync(path.join(directory, `private-failure-${++commandNumber}.log`), result.stdout + result.stderr, { mode: 0o600 });
@@ -54,7 +56,7 @@ secrets.push(password, account.username, member.username, member.password);
 const envFile = path.join(directory, "runtime.env");
 const ca = path.join(directory, "corporate-ca.pem");
 writeFileSync(ca, "", { mode: 0o600 });
-const env = { ...process.env, COMPOSE_PROJECT_NAME: project, WISEEFF_ENV_FILE: envFile,
+const env = { ...launchEnv, COMPOSE_PROJECT_NAME: project, WISEEFF_ENV_FILE: envFile,
   COMPOSE_FILE: `${composeDir}/compose.yaml:${directory}/compose.override.yaml` };
 writeFileSync(envFile, [
   "NODE_ENV=production", "HOST=0.0.0.0", "PORT=8787", "AUTH_MODE=production", "AUTH_PROVIDER=local",
@@ -94,7 +96,8 @@ function inApi(script: string, input: unknown = {}) {
   return JSON.parse(run("docker", ["exec", "-i", owned("api"), "node", "--import", "tsx", "--input-type=module", "-e", script],
     { input: JSON.stringify(input) }));
 }
-type TableObservation = { name: string; columns: string[]; rows: string[] };
+type ConstraintObservation = { name: string; definition: string; validated: boolean };
+type TableObservation = { name: string; columns: string[]; rows: string[]; constraints: ConstraintObservation[] };
 const observeRows = (projections: TableObservation[] = []): TableObservation[] => inApi(`
   import{readFileSync}from'node:fs';
   import{createPostgresDatabase}from'./server/shared/database/client.ts';
@@ -105,7 +108,9 @@ const observeRows = (projections: TableObservation[] = []): TableObservation[] =
     const tables=await tx.query("select c.table_name,array_agg(c.column_name::text order by c.ordinal_position) as columns from information_schema.columns c join information_schema.tables t on t.table_schema=c.table_schema and t.table_name=c.table_name where c.table_schema='public' and t.table_type='BASE TABLE' group by c.table_name order by c.table_name");
     const result=[];
     for(const table of tables.rows){const quoted='"'+table.table_name.replaceAll('"','""')+'"';const source=projections.find(p=>p.name===table.table_name);const added=source?table.columns.filter(column=>!source.columns.includes(column)):[];
-      const rows=await tx.query('select (to_jsonb(t) - $1::text[])::text as row from public.'+quoted+' t',[added]);result.push({name:table.table_name,columns:table.columns,rows:rows.rows.map(r=>r.row)});}
+      const rows=await tx.query('select (to_jsonb(t) - $1::text[])::text as row from public.'+quoted+' t',[added]);
+      const constraints=await tx.query("select c.conname as name,pg_get_constraintdef(c.oid) as definition,c.convalidated as validated from pg_constraint c join pg_class t on t.oid=c.conrelid join pg_namespace n on n.oid=t.relnamespace where n.nspname='public' and t.relname=$1 and c.contype in ('p','f','u','c') order by c.conname",[table.table_name]);
+      result.push({name:table.table_name,columns:table.columns,rows:rows.rows.map(r=>r.row),constraints:constraints.rows});}
     return result;
   })))}finally{await db.close()}
 `, { projections: projections.map(({ name, columns }) => ({ name, columns })) });
@@ -136,11 +141,15 @@ async function waitForJob(jobId: string) {
   throw new Error(`${step}: actual worker did not complete its job`);
 }
 function assertPreserved(before: TableObservation[], after: TableObservation[]) {
-  const additions: Record<string, { rows: number; columns: string[] }> = {};
+  const additions: Record<string, { rows: number; columns: string[]; constraints: ConstraintObservation[] }> = {};
   for (const source of before) {
     const target = after.find(table => table.name === source.name);
     assert.ok(target, `preservation: missing table ${source.name}`);
     assert.ok(source.columns.every(column => target.columns.includes(column)), `preservation: missing column in ${source.name}`);
+    for (const constraint of source.constraints) {
+      assert.deepEqual(target.constraints.find(current => current.name === constraint.name), constraint,
+        `preservation: original constraint changed or lost in ${source.name}.${constraint.name}`);
+    }
     // Keep PostgreSQL canonical JSON as text: parsing bigint/numeric values in
     // JavaScript could make different original values compare equal.
     const remaining = new Map<string, number>();
@@ -153,10 +162,12 @@ function assertPreserved(before: TableObservation[], after: TableObservation[]) 
     const added = [...remaining.values()].reduce((sum, count) => sum + count, 0);
     assert.ok(added === 0 || source.name === "schema_migrations", `preservation: unexplained added rows in ${source.name}`);
     const columns = target.columns.filter(column => !source.columns.includes(column));
-    if (added || columns.length) additions[source.name] = { rows: added, columns };
+    const constraints = target.constraints.filter(current => !source.constraints.some(original => original.name === current.name));
+    if (added || columns.length || constraints.length) additions[source.name] = { rows: added, columns, constraints };
   }
   return { tables: before.length, originalRows: before.reduce((sum, table) => sum + table.rows.length, 0),
-    everyOriginalFieldPreserved: true, additions };
+    originalConstraints: before.reduce((sum, table) => sum + table.constraints.length, 0),
+    everyOriginalFieldPreserved: true, everyOriginalConstraintPreserved: true, additions };
 }
 const httpScript = `import{readFileSync}from'node:fs';const p=JSON.parse(readFileSync(0,'utf8'));const r=await fetch('http://127.0.0.1:8787'+p.route,{method:p.method,headers:{'content-type':'application/json',...(p.token?{authorization:'Bearer '+p.token}:{})},...(p.body===undefined?{}:{body:JSON.stringify(p.body)})});console.log(JSON.stringify({status:r.status,body:await r.json()}));`;
 let token = "";
@@ -344,14 +355,14 @@ try {
     const current = compose("ps", "-aq", "postgres");
     if (/^[a-f0-9]{64}$/.test(current) && current !== previousPostgres &&
       spawnSync("docker", ["exec", current, "psql", "-U", "wiseeff", "-d", "wiseeff", "-Atc", "select 1"],
-        { stdio: "ignore" }).status === 0) { postgres = current; break; }
+        { env: launchEnv, stdio: "ignore" }).status === 0) { postgres = current; break; }
     await setTimeout(1000);
   }
   assert.ok(postgres, `interruption: replacement PostgreSQL was not observed; controller exit=${interruptionChild.exitCode}`);
   const applicationName = `minimal-interruption-${project}`;
   const blocker = spawn("docker", ["exec", "-e", `PGAPPNAME=${applicationName}`, postgres, "psql", "-U", "wiseeff",
     "-d", "wiseeff", "-v", "ON_ERROR_STOP=1", "-c",
-    "begin; lock table public.parameter_drafts in share mode; select pg_sleep(600); rollback;"], { stdio: "ignore" });
+    "begin; lock table public.parameter_drafts in share mode; select pg_sleep(600); rollback;"], { env: launchEnv, stdio: "ignore" });
   const blockerExit = new Promise<void>(resolve => blocker.once("exit", () => resolve()));
   const sql = (query: string) => docker("exec", postgres, "psql", "-U", "wiseeff", "-d", "wiseeff", "-Atc", query);
   let killed = false;

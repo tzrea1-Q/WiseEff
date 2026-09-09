@@ -342,6 +342,24 @@ describe("atomic Catalog install and pointer switch", () => {
     }
   });
 
+  it("refuses bootstrap over an orphan publication without changing its rows", async () => {
+    await observer.query(`insert into parameter_catalog.catalog_releases (
+      id, release_sequence, release_version, release_digest,
+      compiled_model_digest, toolchain_digest, published_at
+    ) values ('crel_partial', 0, '0.0.1', 'partial-release',
+      'partial-model', 'partial-toolchain', '2026-09-09T00:00:00Z')`);
+    const first = compileOrThrow(firstReleaseBundle());
+    const result = await createCatalogInstaller(pool).installPublishedRelease({
+      mode: "bootstrap", source: jsonCatalogReleaseSource(firstReleaseBundle()),
+      expectedTargetDigest: first.aggregateDigest,
+    });
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error).toMatchObject({ kind: "drift", scope: "candidate-install" });
+    expect((await observer.query("select id from parameter_catalog.catalog_releases")).rows)
+      .toEqual([{ id: "crel_partial" }]);
+    expect((await observer.query("select * from parameter_catalog.catalog_state")).rows).toEqual([]);
+  });
+
   it("bootstraps an empty catalog, then treats lost-response retry as already-current", async () => {
     const first = compileOrThrow(firstReleaseBundle());
     const installer = createCatalogInstaller(pool);

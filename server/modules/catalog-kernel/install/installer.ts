@@ -23,6 +23,7 @@ import type {
 } from "../interface";
 import {
   advanceCurrentPointer,
+  isCatalogProjectionEmpty,
   readCurrentCatalogPointer,
   restoreCurrentDefinitionHeads,
   type CatalogPointerState,
@@ -513,6 +514,20 @@ const evaluateInstallLineage = async (
   }
 
   if (pointer.kind === "empty") {
+    if (!(await isCatalogProjectionEmpty(client))) {
+      throw new CatalogKernelFailure({
+        kind: "drift",
+        scope: "candidate-install",
+        expected: { id: compiled.release.id, digest: compiled.release.digest },
+        actual: null,
+        violations: [{
+          code: "current-pointer-mismatch",
+          relation: "parameter_catalog.catalog_state",
+          identity: "singleton",
+          detail: "nonempty-catalog-without-current-pointer",
+        }],
+      });
+    }
     if (command.mode === "advance") {
       throw new CatalogKernelFailure({
         kind: "unsupported-lineage",
