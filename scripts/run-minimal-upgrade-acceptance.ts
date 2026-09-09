@@ -469,8 +469,7 @@ try {
   assert.ok(readPublishedValues(projectId).registrations >= 1, "page registration must persist an active subject");
   captureBrowser("registered-subject", `async page => {
     await page.goto('http://127.0.0.1:18080/parameter-admin/specs');
-    await page.getByRole('list', {name:'主体列表'}).getByRole('button', {name:/acme,power/}).click();
-    await page.getByText('已登记', {exact:true}).first().waitFor();
+    await page.getByRole('list', {name:'主体列表'}).getByRole('button', {name:/acme,power.*已登记/}).waitFor();
   }`);
   step = "dts-ingest-published-value";
   const configSet = http(`/api/v1/projects/${projectId}/config-sets`, "POST", {
