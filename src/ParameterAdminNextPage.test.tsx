@@ -18,6 +18,8 @@ import { createMockCatalogPorts } from "@/application/parameter-catalog";
 import { CATALOG_ORGANIZATION_ID } from "@/application/parameter-catalog/fixtures";
 import { createTestParameterTopologyRepository, withPortSpies } from "./test/harness";
 import type { AppRuntime } from "@/app/appRuntime";
+import * as dtsStructuredRuntime from "@/application/parameters/dtsStructuredRuntime";
+import * as parameterTopologyResolve from "@/application/parameters/parameterTopologyResolve";
 
 afterEach(() => {
   cleanup();
@@ -938,6 +940,10 @@ describe("ParameterAdminNextPage · organization module tree and driver mapping"
 });
 
 describe("ParameterAdminNextPage · organization bulk import", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
   it("opens the import wizard from the organization area", async () => {
     renderPage({ parameterActions: createParameterActions() });
 
@@ -953,6 +959,13 @@ describe("ParameterAdminNextPage · organization bulk import", () => {
   });
 
   it("parses JSON through preview and apply with governance audit", async () => {
+    vi.spyOn(dtsStructuredRuntime, "resolveDtsStructuredRepository").mockReturnValue({
+      listConfigSets: vi.fn().mockResolvedValue([{ id: "cs-1", name: "default" }])
+    } as never);
+    vi.spyOn(parameterTopologyResolve, "resolveParameterTopologyRepository").mockReturnValue({
+      getTopology: vi.fn().mockResolvedValue({ revisionId: "rev-1" }),
+      listBindings: vi.fn().mockResolvedValue([])
+    } as never);
     const parameterActions = createParameterActions();
     renderPage({ parameterActions, runtimeMode: "api" });
 
