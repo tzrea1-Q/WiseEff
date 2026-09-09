@@ -48,7 +48,7 @@ run("git", ["clone", "--no-local", "--quiet", repository, checkout]);
 run("git", ["checkout", "--detach", sourceSha], { cwd: checkout });
 const composeDir = path.join(checkout, "ops/self-hosted");
 const password = randomBytes(24).toString("hex");
-const account = { username: `minimal-${randomBytes(6).toString("hex")}`, password, name: "Synthetic upgrade admin", organization: "软件部" };
+const account = { username: `minimal-${randomBytes(6).toString("hex")}`, password, name: "Synthetic upgrade admin", organization: "Minimal upgrade rehearsal" };
 const member = { username: `${project}-member`, password: randomBytes(24).toString("hex") };
 secrets.push(password, account.username, member.username, member.password);
 const envFile = path.join(directory, "runtime.env");
@@ -66,7 +66,7 @@ writeFileSync(envFile, [
   "LOG_WORKER_ENABLED=false", "LOG_ANALYSIS_DETERMINISTIC=true", "XIAOZE_CHECKPOINTER=postgres", "XIAOZE_DETERMINISTIC=true", "XIAOZE_PROACTIVE_ENABLED=false",
   "DEBUG_DEVICE_GATEWAY_MODE=multi", "DEVICE_GATEWAY_ALLOW_SIMULATOR_IN_PRODUCTION=true",
   "LOG_WORKER_OBSERVABILITY_HOST=0.0.0.0", "WISEEFF_SITE_HOST=localhost", "WISEEFF_TLS_EMAIL=synthetic@example.invalid",
-  "WISEEFF_API_BASE_URL=http://127.0.0.1:18080", "VITE_WISEEFF_API_BASE_URL=http://127.0.0.1:18080",
+  "WISEEFF_PUBLIC_URL=http://127.0.0.1:18080", "WISEEFF_API_BASE_URL=http://127.0.0.1:18080", "VITE_WISEEFF_API_BASE_URL=http://127.0.0.1:18080",
   `WISEEFF_APP_IMAGE=${project}`, `WISEEFF_APP_TAG=${sourceSha}`, `WISEEFF_BUILD_CA_CERT_FILE=${ca}`,
   "WISEEFF_BUILD_TLS_POLICY=verify"
 ].join("\n") + "\n", { mode: 0o600 });
