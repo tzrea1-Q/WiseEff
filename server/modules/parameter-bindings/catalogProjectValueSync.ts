@@ -482,12 +482,19 @@ export async function saveCanonicalProjectValue(
       bindingId: input.bindingId,
     });
   }
+  const write = asWriteClient(session);
+  const source = await resolveConfigRevisionForSource(write, {
+    organizationId: input.organizationId,
+    projectId: input.projectId,
+    sourceRef,
+    configRevisionId: input.configRevisionId,
+  });
   const payload = dtsValueToPayload(input.targetValue);
   const written = await writebackProtectedReference(session, {
     snapshot,
     binding,
     definitionRevisionId: binding.effectiveRevisionId,
-    source: { sourceRef, configRevisionId: input.configRevisionId },
+    source: { sourceRef, configRevisionId: source.configRevisionId },
     payload,
     expectedTip: binding.currentValueId,
   });
@@ -582,24 +589,112 @@ export async function listCatalogBindingRowsForProject(
   return items;
 }
 
+export type CatalogImportCandidate = {
+  id: string;
+  name: string;
+  description: string;
+  explanation: string;
+  configFormat: string;
+  module: string;
+  range: string;
+  unit: string;
+  risk: "Low";
+  projectParameterValueId: string;
+  currentValue: string;
+};
+
+export function matchCatalogImportRow(
+  source: { id?: string; name: string },
+  candidates: readonly CatalogImportCandidate[],
+): CatalogImportCandidate | null {
+  if (source.id) {
+    const byBinding = candidates.filter((row) => row.projectParameterValueId === source.id);
+    if (byBinding.length === 1) return byBinding[0]!;
+    if (byBinding.length > 1) {
+      throw new ApiError("CONFLICT", "Published import identity matches more than one project value.", {
+        identity: source.id
+      });
+    }
+    const byDefinition = candidates.filter((row) => row.id === source.id);
+    if (byDefinition.length === 1) return byDefinition[0]!;
+    if (byDefinition.length > 1) {
+      throw new ApiError("CONFLICT", "Published definition is bound more than once in this project.", {
+        definitionId: source.id
+      });
+    }
+    throw new ApiError("NOT_FOUND", "Published import identity was not found in this project.", {
+      identity: source.id
+    });
+  }
+  const byName = candidates.filter((row) => row.name === source.name);
+  if (byName.length === 1) return byName[0]!;
+  if (byName.length > 1) {
+    throw new ApiError("CONFLICT", "Published parameter name matches more than one project value.", {
+      name: source.name
+    });
+  }
+  return null;
+}
+
+export function parseConfigSetSourceRef(sourceRef: string): string | null {
+  const prefix = "config-set:";
+  if (!sourceRef.startsWith(prefix)) return null;
+  const id = sourceRef.slice(prefix.length).trim();
+  return id.length > 0 ? id : null;
+}
+
+export async function resolveConfigRevisionForSource(
+  session: ValueClient,
+  input: {
+    organizationId: string;
+    projectId: string;
+    sourceRef: string;
+    configRevisionId: string;
+  },
+): Promise<{ configSetId: string; configRevisionId: string }> {
+  const configSetId = parseConfigSetSourceRef(input.sourceRef);
+  if (!configSetId) {
+    throw new ApiError("CONFLICT", "Project value is missing an actual config-set source.", {
+      sourceRef: input.sourceRef
+    });
+  }
+  const found = await session.query<{
+    id: string;
+    organization_id: string;
+    project_id: string;
+    config_set_id: string;
+  }>(
+    `
+    select id, organization_id, project_id, config_set_id
+      from dts_config_revisions
+     where id = $1
+     limit 1
+    `,
+    [input.configRevisionId],
+  );
+  const revision = found.rows[0];
+  if (!revision) {
+    throw new ApiError("NOT_FOUND", "Config revision was not found.", {
+      configRevisionId: input.configRevisionId
+    });
+  }
+  if (
+    revision.organization_id !== input.organizationId ||
+    revision.project_id !== input.projectId ||
+    revision.config_set_id !== configSetId
+  ) {
+    throw new ApiError("CONFLICT", "Config revision does not belong to the project value source.", {
+      configRevisionId: input.configRevisionId,
+      sourceRef: input.sourceRef
+    });
+  }
+  return { configSetId, configRevisionId: revision.id };
+}
+
 export async function listCatalogBindingsForImport(
   db: Queryable,
   query: { organizationId: string; projectId: string; names: string[]; definitionIds: string[] },
-): Promise<
-  Array<{
-    id: string;
-    name: string;
-    description: string;
-    explanation: string;
-    configFormat: string;
-    module: string;
-    range: string;
-    unit: string;
-    risk: "Low";
-    projectParameterValueId: string;
-    currentValue: string;
-  }>
-> {
+): Promise<CatalogImportCandidate[]> {
   const result = await db.query<{
     id: string;
     name: string;

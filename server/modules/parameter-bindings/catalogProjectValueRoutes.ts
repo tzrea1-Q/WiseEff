@@ -47,6 +47,7 @@ import {
   importTextToDtsValue,
   listCatalogBindingRowsForProject,
   listCatalogBindingsForImport,
+  matchCatalogImportRow,
   saveCanonicalProjectValue,
   syncPublishedCatalogProjectValues
 } from "./catalogProjectValueSync";
@@ -193,11 +194,11 @@ export function registerCatalogProjectValueConsumerRoutes(
   router.post("/api/v2/projects/:projectId/parameter-bindings/:bindingId/drafts", async (request) => {
     const db = requireDb(options.db);
     const auth = await options.getCurrentAuthContext(request);
+    const params = parseWithSchema(createBindingDraftParamsSchema, request.params);
+    const body = parseWithSchema(createBindingDraftBodySchema, request.body ?? {});
     if (!canEditParameters(auth)) {
       throw new ApiError("FORBIDDEN", "Parameter edit permission is required.");
     }
-    const params = parseWithSchema(createBindingDraftParamsSchema, request.params);
-    const body = parseWithSchema(createBindingDraftBodySchema, request.body ?? {});
     const catalogBinding = await findCatalogBindingRow(db, {
       organizationId: auth.organization.id,
       projectId: params.projectId,
@@ -220,6 +221,9 @@ export function registerCatalogProjectValueConsumerRoutes(
         }
       );
       return { status: 201, body: { item } };
+    }
+    if (!canEditParameters(auth, params.projectId)) {
+      throw new ApiError("FORBIDDEN", "Parameter edit role is required for this project.");
     }
     const pool = getRootPostgresPool(db);
     if (!pool) {
@@ -362,9 +366,12 @@ export function registerCatalogProjectValueConsumerRoutes(
     }
     const rewritten = await withAuditedWrite(db, auth, { requestId: request.requestId }, async (tx) => {
       const item = await createImportPreview(tx, auth, body, { requestId: request.requestId });
-      const byName = new Map(catalog.map((row) => [row.name, row]));
-      const items = item.items.map((row) => {
-        const match = byName.get(row.name);
+      if (item.items.length !== body.items.length) {
+        throw new ApiError("CONFLICT", "Import preview item count did not match the source rows.");
+      }
+      const items = item.items.map((row, index) => {
+        const source = body.items[index]!;
+        const match = matchCatalogImportRow({ id: source.id, name: source.name }, catalog);
         if (!match) return row;
         return {
           ...row,

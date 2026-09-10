@@ -502,4 +502,90 @@ describe("published catalog project values", () => {
     );
     expect(audits.rows[0]?.c).toBe("0");
   }, 60_000);
+
+  it("rejects canonical saves whose config revision is not the value source", async () => {
+    const listed = await listCatalogBindingRowsForProject(root, auth, { projectId: PROJECT });
+    expect(listed[0]?.id).toBeTruthy();
+    const bindingId = listed[0]!.id;
+    const beforeTip = await pool.query<{ id: string; raw: string }>(
+      `select v.id, v.source_ref as raw
+         from parameter_catalog.project_parameter_bindings b
+         join parameter_catalog.project_parameter_values v on v.id = b.current_value_id
+        where b.id = $1`,
+      [bindingId],
+    );
+    const currentTip = beforeTip.rows[0]?.id;
+    expect(currentTip).toBeTruthy();
+
+    await expect(
+      saveCanonicalProjectValue(pool, {
+        organizationId: ORG,
+        projectId: PROJECT,
+        bindingId,
+        configRevisionId: randomUUID(),
+        targetValue: importTextToDtsValue("iin_max", "9999"),
+      }),
+    ).rejects.toMatchObject({ code: "NOT_FOUND" });
+
+    const otherSet = "dcs-other-source";
+    const otherRev = randomUUID();
+    await pool.query(
+      `insert into dts_config_set (id, organization_id, project_id, name, description)
+       values ($1, $2, $3, 'other', 'other source')`,
+      [otherSet, ORG, PROJECT],
+    );
+    await pool.query(
+      `insert into dts_config_revisions (id, organization_id, project_id, config_set_id, revision_number, status)
+       values ($1, $2, $3, $4, 1, 'resolved')`,
+      [otherRev, ORG, PROJECT, otherSet],
+    );
+    await expect(
+      saveCanonicalProjectValue(pool, {
+        organizationId: ORG,
+        projectId: PROJECT,
+        bindingId,
+        configRevisionId: otherRev,
+        targetValue: importTextToDtsValue("iin_max", "8888"),
+      }),
+    ).rejects.toMatchObject({ code: "CONFLICT" });
+
+    const foreignProject = "project-min-upg-foreign";
+    const foreignSet = "dcs-foreign";
+    const foreignRev = randomUUID();
+    await pool.query(
+      `insert into public.projects (id, organization_id, name, code, status)
+       values ($1, $2, 'Foreign', 'FOR', 'initialized')`,
+      [foreignProject, ORG],
+    );
+    await pool.query(
+      `insert into dts_config_set (id, organization_id, project_id, name, description)
+       values ($1, $2, $3, 'foreign', 'foreign source')`,
+      [foreignSet, ORG, foreignProject],
+    );
+    await pool.query(
+      `insert into dts_config_revisions (id, organization_id, project_id, config_set_id, revision_number, status)
+       values ($1, $2, $3, $4, 1, 'resolved')`,
+      [foreignRev, ORG, foreignProject, foreignSet],
+    );
+    await expect(
+      saveCanonicalProjectValue(pool, {
+        organizationId: ORG,
+        projectId: PROJECT,
+        bindingId,
+        configRevisionId: foreignRev,
+        targetValue: importTextToDtsValue("iin_max", "7777"),
+      }),
+    ).rejects.toMatchObject({ code: "CONFLICT" });
+
+    const afterTip = await pool.query<{ id: string }>(
+      `select current_value_id as id from parameter_catalog.project_parameter_bindings where id = $1`,
+      [bindingId],
+    );
+    expect(afterTip.rows[0]?.id).toBe(currentTip);
+    const audits = await pool.query<{ c: string }>(
+      `select count(*)::text as c from audit_events where action = 'binding-edited' and target_id = $1 and trace_id like 'req-min-upg-bad-rev%'`,
+      [bindingId],
+    );
+    expect(audits.rows[0]?.c).toBe("0");
+  }, 60_000);
 });
