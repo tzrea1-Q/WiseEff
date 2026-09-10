@@ -6,6 +6,8 @@
 
 当前产品候选：`f51569d2c32f6a27e8f64271c358fefcd62b8d61`，tree `258d0a5bfb1e5af1cb3022b6ea544fdc96834945`。本增量让 Binding stabilize 接入外层事务（savepoint，不再内层 COMMIT），使 DTS ingest sync 与 catalog 导入预览改写与其审计同事务提交（ADR-0027）。该 SHA 的专用 Hosted 待跑。上一轮页面闭环绿在 [34424170420](https://github.com/tzrea1-Q/WiseEff/actions/runs/34424170420) 的 `2cf966a9790df97e7502a0609fd0452c36685be3`（`pageProjectValues` 1000/2000/3000/3000，清理完成），PR L1 [34424167069](https://github.com/tzrea1-Q/WiseEff/actions/runs/34424167069)；审计接入后该 SHA 不可复用。搬迁前 Hosted `e35ac1b66` / 34387796500 仅作历史记录。
 
+本地后续（未推送）：对 `f32131111` 的检视留下 SPEC-1 P2：Catalog 候选为空时跳过 `matchCatalogImportRow`，外项目 BindingId/DefinitionId 会落入旧 `createImportPreview` 并标成 `added`。导入包装现在在任何预览写入前，用（可为空的）候选集匹配来源身份；无精确身份且无候选的名称行仍走旧预览。STD-1、SPEC-2 未再改实现。
+
 本地后续（未推送）：对 `194834481` 的独立检视确认三项可达缺陷。STD-1：canonical 保存只用 `canEditParameters(auth)`，未带目标项目。SPEC-1：导入预览用 `Map(name → row)` 压候选，精确身份可被同名 Binding 覆盖。SPEC-2：保存沿用 `sourceRef`，却直接接受客户端 `baseRevisionId`，未证明该 revision 属于对应 config-set/组织/项目。修复留在 Binding：找到 catalog binding 后使用 `canEditParameters(auth, projectId)`；`matchCatalogImportRow`（binding id → 唯一 definition id → 唯一名称，禁止静默回退）；在写入事务上 `resolveConfigRevisionForSource`。Hosted 34439804231 / L1 34439801677 只证明 `194834481`。`complete: false`。visualAndConsoleReview 仍 pending。本增量不得推送、合入或标记 Ready。
 
 结论：**尚未达到可合并**。网页只写已发布定义下的项目实际值，不增加网页定义发布权。已登记定义的 ingest sync 现于 `withAuditedWrite` 内 writeback；工作台保存此前已同事务审计；导入预览改写与 apply 与其审计同事务。剩余：本 SHA 的专用 Hosted 与 PR L1、本增量独立审查、人工 visual/console 审查。`complete: false`。Draft PR #825 保持 Draft。#824 仍为 Draft/Open、head `848304d780abd680b937b41f81afcb298a260ead`。未执行合并或生产操作。下文保留历史执行身份，当前结论以本段为准。

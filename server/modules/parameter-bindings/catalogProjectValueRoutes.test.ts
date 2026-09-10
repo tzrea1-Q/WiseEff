@@ -437,6 +437,141 @@ describe("catalog published-value import apply route", () => {
     expect(response.status).toBe(409);
     expect(parameterService.applyImportBatch).not.toHaveBeenCalled();
   });
+
+  it("rejects a precise catalog identity when the target project has no catalog candidates", async () => {
+    const db = makeDb();
+    vi.mocked(catalogSync.listCatalogBindingsForImport).mockResolvedValue([]);
+    vi.mocked(parameterService.createImportPreview).mockResolvedValue({
+      id: "batch-should-not-exist",
+      projectId: "project-a",
+      sourceName: "pasted-import.txt",
+      status: "previewed",
+      createdAt: "2026-09-10T00:00:00.000Z",
+      summary: { added: 1, updated: 0, unchanged: 0, conflict: 0, highRisk: 0 },
+      items: [
+        {
+          id: "pbind-from-project-b",
+          name: "iin_max",
+          module: "Driver",
+          risk: "Low",
+          unit: "A",
+          range: "0-10",
+          currentValue: "3000",
+          classification: "added"
+        }
+      ]
+    });
+
+    const response = await requestJson<{ code?: string }>(
+      makeServer({ db }),
+      "/api/v1/parameter-import-batches",
+      {
+        method: "POST",
+        body: JSON.stringify({
+          projectId: "project-a",
+          sourceName: "pasted-import.txt",
+          items: [
+            {
+              id: "pbind-from-project-b",
+              name: "iin_max",
+              module: "Driver",
+              risk: "Low",
+              unit: "A",
+              range: "0-10",
+              currentValue: "3000"
+            }
+          ]
+        })
+      }
+    );
+
+    expect(response.status).toBe(404);
+    expect(response.body).toMatchObject({ error: { code: "NOT_FOUND" } });
+    expect(parameterService.createImportPreview).not.toHaveBeenCalled();
+    expect(auditedWrite.withAuditedWrite).not.toHaveBeenCalled();
+  });
+
+  it("rejects a published definition identity with no project value in the target project", async () => {
+    const db = makeDb();
+    vi.mocked(catalogSync.listCatalogBindingsForImport).mockResolvedValue([]);
+
+    const response = await requestJson<{ code?: string }>(
+      makeServer({ db }),
+      "/api/v1/parameter-import-batches",
+      {
+        method: "POST",
+        body: JSON.stringify({
+          projectId: "project-a",
+          sourceName: "pasted-import.txt",
+          items: [
+            {
+              id: "pdef_acme_power_iin_max",
+              name: "iin_max",
+              module: "Driver",
+              risk: "Low",
+              unit: "A",
+              range: "0-10",
+              currentValue: "3000"
+            }
+          ]
+        })
+      }
+    );
+
+    expect(response.status).toBe(404);
+    expect(parameterService.createImportPreview).not.toHaveBeenCalled();
+  });
+
+  it("still allows a name-only legacy preview when the project has no catalog candidates", async () => {
+    const db = makeDb();
+    vi.mocked(catalogSync.listCatalogBindingsForImport).mockResolvedValue([]);
+    vi.mocked(parameterService.createImportPreview).mockResolvedValue({
+      id: "batch-legacy-1",
+      projectId: "project-a",
+      sourceName: "pasted-import.txt",
+      status: "previewed",
+      createdAt: "2026-09-10T00:00:00.000Z",
+      summary: { added: 1, updated: 0, unchanged: 0, conflict: 0, highRisk: 0 },
+      items: [
+        {
+          id: "item-1",
+          name: "iin_max",
+          module: "Driver",
+          risk: "Low",
+          unit: "A",
+          range: "0-10",
+          currentValue: "3000",
+          classification: "added"
+        }
+      ]
+    });
+
+    const response = await requestJson(
+      makeServer({ db }),
+      "/api/v1/parameter-import-batches",
+      {
+        method: "POST",
+        body: JSON.stringify({
+          projectId: "project-a",
+          sourceName: "pasted-import.txt",
+          items: [
+            {
+              name: "iin_max",
+              module: "Driver",
+              risk: "Low",
+              unit: "A",
+              range: "0-10",
+              currentValue: "3000"
+            }
+          ]
+        })
+      }
+    );
+
+    expect(response.status).toBe(201);
+    expect(parameterService.createImportPreview).toHaveBeenCalled();
+    expect(parameterImportBatchResponseSchema.parse(response.body).item.summary.added).toBe(1);
+  });
 });
 
 describe("catalog published-value save authorization", () => {

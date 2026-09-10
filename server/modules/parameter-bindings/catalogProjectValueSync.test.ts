@@ -93,6 +93,11 @@ describe("catalog import identity matching", () => {
     }
   });
 
+  it("refuses a precise identity when the candidate set is empty", () => {
+    expect(() => matchCatalogImportRow({ id: "pbind-from-project-b", name: "iin_max" }, [])).toThrow(ApiError);
+    expect(matchCatalogImportRow({ name: "iin_max" }, [])).toBeNull();
+  });
+
   it("matches a unique name when no precise identity is supplied", () => {
     expect(matchCatalogImportRow({ name: "iin_max" }, [bindingA])).toEqual(bindingA);
   });

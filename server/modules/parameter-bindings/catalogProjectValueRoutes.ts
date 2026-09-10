@@ -360,6 +360,9 @@ export function registerCatalogProjectValueConsumerRoutes(
       names: body.items.map((row) => row.name),
       definitionIds: body.items.map((row) => row.id).filter((id): id is string => Boolean(id))
     });
+    const catalogMatches = body.items.map((source) =>
+      matchCatalogImportRow({ id: source.id, name: source.name }, catalog)
+    );
     if (catalog.length === 0) {
       const item = await createImportPreview(db, auth, body, { requestId: request.requestId });
       return { status: 201, body: { item } };
@@ -370,8 +373,7 @@ export function registerCatalogProjectValueConsumerRoutes(
         throw new ApiError("CONFLICT", "Import preview item count did not match the source rows.");
       }
       const items = item.items.map((row, index) => {
-        const source = body.items[index]!;
-        const match = matchCatalogImportRow({ id: source.id, name: source.name }, catalog);
+        const match = catalogMatches[index];
         if (!match) return row;
         return {
           ...row,
