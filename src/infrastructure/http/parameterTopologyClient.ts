@@ -38,9 +38,6 @@ export type ProjectBindingDto = {
   id: string;
   parameterSpecId: string;
   parameterSpecVersionId: string;
-  definitionId?: string;
-  definitionRevisionId?: string;
-  currentValueId?: string;
   propertyKey: string;
   driverModule: string | null;
   logicalNodeId: string | null;
@@ -167,9 +164,6 @@ export function bindingFromDto(
     id: dto.id,
     parameterSpecId: dto.parameterSpecId,
     parameterSpecVersionId: dto.parameterSpecVersionId,
-    definitionId: dto.definitionId,
-    definitionRevisionId: dto.definitionRevisionId,
-    currentValueId: dto.currentValueId,
     propertyKey: dto.propertyKey,
     driverModule: dto.driverModule,
     logicalNodeId: dto.logicalNodeId,

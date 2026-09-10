@@ -24,11 +24,18 @@ import {
   getRootPostgresPool,
   type RootDatabase,
 } from "../../shared/database/client";
-import { createTrustedRefusalAuditSink } from "../audit/trustedRefusalSink";
-import { ingestConfigRevision } from "./ingestService";
-import { createBindingDraft, listProjectBindings } from "./service";
-import { importTextToDtsValue, listCatalogBindingsForImport, saveCanonicalProjectValue } from "./catalogProjectValueSync";
-import type { ConfigRevisionManifest } from "./types";
+import { asAuditTx, withAuditedWrite } from "../audit/auditedWrite";
+import { writeTrustedGovernanceAudit } from "../parameter-topology/governanceAudit";
+import { ingestConfigRevision } from "../parameter-topology/ingestService";
+import {
+  asValueClient,
+  importTextToDtsValue,
+  listCatalogBindingRowsForProject,
+  listCatalogBindingsForImport,
+  saveCanonicalProjectValue,
+  syncPublishedCatalogProjectValues,
+} from "./catalogProjectValueSync";
+import type { ConfigRevisionManifest } from "../parameter-topology/types";
 
 const databaseAvailable = await isTestDatabaseAvailable();
 if (!databaseAvailable) {
@@ -242,6 +249,12 @@ describe("published catalog project values", () => {
 
     const revision = await ingestConfigRevision(root, manifest, auth);
     expect(revision.status).toBe("resolved");
+    await syncPublishedCatalogProjectValues(pool, {
+      organizationId: ORG,
+      projectId: PROJECT,
+      configSetId: CONFIG_SET,
+      configRevisionId: revision.id,
+    });
 
     const specs = await pool.query<{ c: string }>(
       `select count(*)::text as c
@@ -263,34 +276,46 @@ describe("published catalog project values", () => {
     expect(values.rows[0]?.config_revision_id).toBe(revision.id);
     expect(values.rows[0]?.value).toEqual(1000);
 
-    const listed = await listProjectBindings(root, auth, {
+    const listed = await listCatalogBindingRowsForProject(root, auth, {
       projectId: PROJECT,
       revisionId: revision.id,
     });
-    expect(listed.items).toHaveLength(1);
-    expect(listed.items[0]?.propertyKey).toBe("iin_max");
-    expect(listed.items[0]?.rawValue).toBe("<1000>");
-    expect(listed.items[0]?.definitionId).toBe("pdef_acme_power_iin_max");
+    expect(listed).toHaveLength(1);
+    expect(listed[0]?.propertyKey).toBe("iin_max");
+    expect(listed[0]?.rawValue).toBe("<1000>");
+    expect(listed[0]?.parameterSpecId).toBe("pdef_acme_power_iin_max");
 
-    const sink = createTrustedRefusalAuditSink(root);
-    const saved = await createBindingDraft(
-      root,
-      auth,
-      {
-        projectId: PROJECT,
-        bindingId: listed.items[0]!.id,
-        baseRevisionId: revision.id,
-        targetValue: {
-          kind: "cells",
-          bits: 32,
-          groups: [[{ kind: "integer", raw: "2000", value: "2000" }]],
+    const saved = await withAuditedWrite(root, auth, { requestId: "req-min-upg-val" }, async (tx) => {
+      const result = await saveCanonicalProjectValue(
+        pool,
+        {
+          organizationId: ORG,
+          projectId: PROJECT,
+          bindingId: listed[0]!.id,
+          configRevisionId: revision.id,
+          targetValue: {
+            kind: "cells",
+            bits: 32,
+            groups: [[{ kind: "integer", raw: "2000", value: "2000" }]],
+          },
         },
-        reason: "raise input current limit",
-      },
-      {},
-      { invocation: createUserInvocation(auth), requestId: "req-min-upg-val", refusalSink: sink },
-    );
-    expect(saved.writeTarget.role).toBe("canonical-project-value");
+        asValueClient(tx),
+      );
+      await writeTrustedGovernanceAudit(
+        asAuditTx(tx),
+        createUserInvocation(auth),
+        {
+          action: "binding-edited",
+          organizationId: ORG,
+          projectId: PROJECT,
+          targetType: "project-parameter-binding",
+          targetId: listed[0]!.id,
+          metadata: { currentValueId: result.currentValueId },
+        },
+        "req-min-upg-val",
+      );
+      return { result, audit: null };
+    });
     expect(saved.rawText).toBe("<2000>");
 
     const audits = await pool.query<{ kind: string; action: string; target_id: string }>(
@@ -298,18 +323,18 @@ describe("published catalog project values", () => {
          from audit_events
         where target_id = $1
           and action = 'binding-edited'`,
-      [listed.items[0]!.id],
+      [listed[0]!.id],
     );
     expect(audits.rows).toEqual([
       {
         kind: "parameter-topology-governance",
         action: "binding-edited",
-        target_id: listed.items[0]!.id,
+        target_id: listed[0]!.id,
       },
     ]);
 
-    const after = await listProjectBindings(root, auth, { projectId: PROJECT });
-    expect(after.items[0]?.rawValue).toBe("<2000>");
+    const after = await listCatalogBindingRowsForProject(root, auth, { projectId: PROJECT });
+    expect(after[0]?.rawValue).toBe("<2000>");
 
     const imported = await listCatalogBindingsForImport(root, {
       organizationId: ORG,
@@ -326,7 +351,7 @@ describe("published catalog project values", () => {
       configRevisionId: revision.id,
       targetValue: importTextToDtsValue("iin_max", "3000"),
     });
-    const afterImport = await listProjectBindings(root, auth, { projectId: PROJECT });
-    expect(afterImport.items[0]?.rawValue).toBe("<3000>");
+    const afterImport = await listCatalogBindingRowsForProject(root, auth, { projectId: PROJECT });
+    expect(afterImport[0]?.rawValue).toBe("<3000>");
   }, 60_000);
 });

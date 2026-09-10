@@ -38,6 +38,7 @@ import { registerParameterDashboardRoutes } from "./modules/parameters/dashboard
 import { registerParameterSpecRoutes } from "./modules/parameter-specs/routes";
 import { registerParameterModuleRoutes } from "./modules/parameter-modules/routes";
 import { registerParameterTopologyRoutes } from "./modules/parameter-topology/routes";
+import { registerCatalogProjectValueConsumerRoutes } from "./modules/parameter-bindings/catalogProjectValueRoutes";
 import { registerDtsReloadRoutes } from "./modules/dts-reload/routes";
 import type { TrustedRefusalAuditSink } from "./modules/audit/trustedRefusalSink";
 import { registerProductFeedbackRoutes } from "./modules/product-feedback/routes";
@@ -155,6 +156,11 @@ export function buildWiseEffRouter(options: WiseEffServerOptions = {}) {
   });
   registerUserRoutes(router, {
     db: options.db,
+    getCurrentAuthContext: authResolver
+  });
+  registerCatalogProjectValueConsumerRoutes(router, {
+    db: options.db,
+    objectStore: options.objectStore,
     getCurrentAuthContext: authResolver
   });
   registerParameterRoutes(router, {

@@ -11,17 +11,11 @@ import type { AuthContext } from "../auth/types";
 import type { ObjectStore } from "../logs/objectStore";
 import { canAdminParameters } from "../parameter-kernel/policy";
 import { ingestConfigRevisionInTransaction } from "../parameter-topology/ingestService";
-import type { CatalogSnapshot } from "../catalog-kernel/interface";
-import {
-  loadPublishedCatalog,
-  syncPublishedCatalogProjectValues,
-} from "../parameter-topology/catalogProjectValueSync";
-import { getRootPostgresPool, type Database, type Queryable } from "../../shared/database/client";
 import type {
   ConfigRevisionManifest,
   ConfigRevisionManifestMember,
-  DtsConfigRevisionDto,
 } from "../parameter-topology/types";
+import type { Database, Queryable } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
 import { listConfigSetMemberFiles } from "./baselineRepository";
 import {
@@ -186,14 +180,13 @@ export async function maybeIngestSemanticConfigRevision(
     frozenVersionId: string;
     frozenSource: string;
   },
-  publishedCatalog?: CatalogSnapshot | null,
-): Promise<DtsConfigRevisionDto | null> {
+): Promise<void> {
   const membership = await getFileConfigSetMembership(db, {
     organizationId: auth.organization.id,
     fileId: input.fileId,
   });
   if (!membership?.configSetId) {
-    return null;
+    return;
   }
 
   const configSet = await getConfigSetById(db, {
@@ -201,7 +194,7 @@ export async function maybeIngestSemanticConfigRevision(
     configSetId: membership.configSetId,
   });
   if (!configSet) {
-    return null;
+    return;
   }
 
   const memberFiles = await listConfigSetMemberFiles(
@@ -212,7 +205,7 @@ export async function maybeIngestSemanticConfigRevision(
     memberFiles.length === 0 ||
     memberFiles.some((member) => !member.currentVersionId)
   ) {
-    return null;
+    return;
   }
 
   const members: ConfigRevisionManifestMember[] = [];
@@ -233,7 +226,7 @@ export async function maybeIngestSemanticConfigRevision(
     const versionId = member.currentVersionId as string;
     const version = await getFileVersionById(db, { versionId });
     if (!version) {
-      return null;
+      return;
     }
 
     const content =
@@ -259,7 +252,7 @@ export async function maybeIngestSemanticConfigRevision(
     );
   if (baseMembers.length === 0) {
     // Incomplete manifest: overlays/includes without a base entry are not ingestible alone.
-    return null;
+    return;
   }
 
   const overlayOrder = members
@@ -280,7 +273,7 @@ export async function maybeIngestSemanticConfigRevision(
     members,
   };
 
-  return ingestConfigRevisionInTransaction(db, manifest, auth, undefined, publishedCatalog);
+  await ingestConfigRevisionInTransaction(db, manifest, auth);
 }
 
 export async function uploadProjectParameterFile(
@@ -295,8 +288,6 @@ export async function uploadProjectParameterFile(
   driverSummary?: IngestDriverSummary;
 }> {
   requireParameterFileAdmin(auth);
-  const pool = getRootPostgresPool(db);
-  const publishedCatalog = pool ? await loadPublishedCatalog(pool) : null;
   const normalized = parseUploadInput(input);
   const format = detectFormat(normalized.fileName);
   const sizeBytes = normalized.bytes.byteLength;
@@ -314,7 +305,7 @@ export async function uploadProjectParameterFile(
   const source = normalized.bytes.toString("utf8");
   const parsedIndex = buildParsedIndex(format, normalized.bytes);
 
-  const uploaded = await db.transaction(async (tx) => {
+  return db.transaction(async (tx) => {
     const existing = await getProjectParameterFileByName(tx, {
       organizationId: auth.organization.id,
       projectId: normalized.projectId,
@@ -353,19 +344,12 @@ export async function uploadProjectParameterFile(
     if (format === "dts" && isDtsStructuralIngestEnabled()) {
       await ingestDtsFileVersion(tx, version.id, source);
     }
-    let ingested: DtsConfigRevisionDto | null = null;
     if (format === "dts") {
-      ingested = await maybeIngestSemanticConfigRevision(
-        tx,
-        objectStore,
-        auth,
-        {
-          fileId: file.id,
-          frozenVersionId: version.id,
-          frozenSource: source,
-        },
-        publishedCatalog,
-      );
+      await maybeIngestSemanticConfigRevision(tx, objectStore, auth, {
+        fileId: file.id,
+        frozenVersionId: version.id,
+        frozenSource: source,
+      });
     }
     if (version.origin === "upload") {
       await syncFileVersion(asAuditTx(tx), auth, {
@@ -408,19 +392,8 @@ export async function uploadProjectParameterFile(
       },
       version,
       ...(driverSummary ? { driverSummary } : {}),
-      ingested,
     };
   });
-  if (pool && uploaded.ingested?.status === "resolved") {
-    await syncPublishedCatalogProjectValues(pool, {
-      organizationId: auth.organization.id,
-      projectId: normalized.projectId,
-      configSetId: uploaded.ingested.configSetId,
-      configRevisionId: uploaded.ingested.id,
-    });
-  }
-  const { ingested: _ingested, ...result } = uploaded;
-  return result;
 }
 
 export function getProjectParameterFileContent(

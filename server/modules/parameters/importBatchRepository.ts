@@ -15,7 +15,6 @@ import { type ParameterRiskLevel } from "./status";
 import { LEGACY_SQL } from "../parameter-topology/migration";
 import { LEGACY_IDENTITY_SQL } from "../parameter-kernel/legacyParameterIdentityNames";
 import { parameterIdentityMode } from "../parameter-kernel/parameterIdentityMode";
-import { listCatalogBindingsForImport } from "../parameter-topology/catalogProjectValueSync";
 import { ApiError } from "../../shared/http/errors";
 import { dateTimeToIso } from "../../shared/database/sqlUtil";
 
@@ -197,37 +196,12 @@ async function listSemanticParameterDefinitionsForImport(
   return result.rows.map(toParameterDefinitionImportCandidate);
 }
 
-function catalogImportCandidates(
-  catalog: Awaited<ReturnType<typeof listCatalogBindingsForImport>>
-) {
-  return catalog.map((row) => ({
-    id: row.id,
-    name: row.name,
-    description: row.description,
-    explanation: row.explanation,
-    configFormat: row.configFormat,
-    module: row.module,
-    range: row.range,
-    unit: row.unit,
-    risk: row.risk,
-    projectParameterValueId: row.projectParameterValueId,
-    currentValue: row.currentValue,
-  }));
-}
-
 export async function listParameterDefinitionsForImport(
   db: Queryable,
   query: { organizationId: string; projectId: string; names: string[]; definitionIds: string[] }
 ) {
-  const catalog = await listCatalogBindingsForImport(db, query);
-  const catalogRows = catalogImportCandidates(catalog);
-  const seen = new Set(catalog.map((row) => row.projectParameterValueId));
   if (parameterIdentityMode() === "semantic") {
-    const semantic = await listSemanticParameterDefinitionsForImport(db, query);
-    return [
-      ...catalogRows,
-      ...semantic.filter((row) => !row.projectParameterValueId || !seen.has(row.projectParameterValueId)),
-    ];
+    return listSemanticParameterDefinitionsForImport(db, query);
   }
 
   const result = await db.query<ParameterDefinitionImportRow>(
@@ -258,12 +232,7 @@ export async function listParameterDefinitionsForImport(
     [query.organizationId, query.projectId, query.names, query.definitionIds]
   );
 
-  return [
-    ...catalogRows,
-    ...result.rows
-      .map(toParameterDefinitionImportCandidate)
-      .filter((row) => !row.projectParameterValueId || !seen.has(row.projectParameterValueId)),
-  ];
+  return result.rows.map(toParameterDefinitionImportCandidate);
 }
 
 export async function insertImportBatch(

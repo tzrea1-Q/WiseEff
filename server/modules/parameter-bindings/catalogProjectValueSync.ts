@@ -34,8 +34,26 @@ import type { ProjectValuePayload } from "../parameter-bindings/values";
 import type { ValueClient } from "../parameter-bindings/values/repositories";
 import { parseDtsValue, renderDtsValue } from "../dts/valueAst";
 import type { DtsValue } from "../dts/types";
-import { isStructuralPropertyKey } from "./parameterSurface";
-import type { ProjectBindingListItem } from "./bindingService";
+import { isStructuralPropertyKey } from "../parameter-topology/parameterSurface";
+
+export type CatalogBindingView = {
+  id: string;
+  parameterSpecId: string;
+  parameterSpecVersionId: string;
+  propertyKey: string;
+  driverModule: string | null;
+  logicalNodeId: string | null;
+  instanceName: string | null;
+  locator: string | null;
+  typedValue: DtsValue;
+  rawValue: string;
+  schemaState: "valid";
+  policyState: "not_applicable";
+  moduleId: string;
+  displayName: string | null;
+  description: string | null;
+  documentation: string | null;
+};
 
 const VALUES_RELATION = ["project_parameter", "values"].join("_");
 
@@ -476,14 +494,14 @@ export async function listCatalogBindingRowsForProject(
   db: Database,
   auth: AuthContext,
   input: { projectId: string; revisionId?: string },
-): Promise<ProjectBindingListItem[]> {
+): Promise<CatalogBindingView[]> {
   const pool = getRootPostgresPool(db);
   if (!pool) return [];
   const protectedRows = await readProjectProtectedParameters(pool, {
     invocation: createUserInvocation(auth),
     projectId: input.projectId,
   });
-  const items: ProjectBindingListItem[] = [];
+  const items: CatalogBindingView[] = [];
   for (const row of protectedRows) {
     if (row.pin.source.sourceRef === "canonical-binding-identity") continue;
     if (input.revisionId && row.pin.source.configRevisionId !== input.revisionId) continue;
@@ -541,9 +559,6 @@ export async function listCatalogBindingRowsForProject(
       documentation: row.revision.content.documentation.kind === "present"
         ? row.revision.content.documentation.value
         : null,
-      definitionId: row.pin.definitionId,
-      definitionRevisionId: row.pin.definitionRevisionId,
-      currentValueId: row.pin.currentValueId,
     });
   }
   return items;

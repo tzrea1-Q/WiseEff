@@ -32,13 +32,7 @@ import {
   type TrustedRefusalAuditSink
 } from "../audit/trustedRefusalSink";
 import type { ObjectStore } from "../logs/objectStore";
-import { getRootPostgresPool, type Database, type Queryable } from "../../shared/database/client";
-import {
-  asValueClient,
-  findCatalogBindingRow,
-  importTextToDtsValue,
-  saveCanonicalProjectValue,
-} from "../parameter-topology/catalogProjectValueSync";
+import type { Database, Queryable } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
 import { nodePathToParameterIdentity } from "./pathMapper";
 import { getProjectParameterFileById } from "../parameter-files/repository";
@@ -1104,7 +1098,6 @@ export async function createImportPreview(
 export async function applyImportBatch(db: Database, auth: AuthContext, input: ApplyImportBatchInput, context: ServiceContext = {}) {
   requireCanAdminImport(auth);
   const parsed = assertValidApplyImportInput(input);
-  const pool = getRootPostgresPool(db);
 
   return db.transaction(async (tx) => {
     const batch = await getImportBatchForUpdate(tx, {
@@ -1211,47 +1204,6 @@ export async function applyImportBatch(db: Database, auth: AuthContext, input: A
         }
         added += 1;
       } else if (item.classification === "updated") {
-        const catalogBinding = await findCatalogBindingRow(tx, {
-          organizationId: auth.organization.id,
-          projectId: batch.projectId,
-          bindingId: item.projectParameterValueId
-        });
-        if (catalogBinding) {
-          if (!pool) {
-            throw new ApiError("INTERNAL_ERROR", "Canonical project value import requires the root database.");
-          }
-          const current = await tx.query<{ config_revision_id: string }>(
-            `
-            select config_revision_id
-              from parameter_catalog.project_parameter_values
-             where id = $1
-             limit 1
-            `,
-            [catalogBinding.current_value_id]
-          );
-          const configRevisionId = current.rows[0]?.config_revision_id;
-          if (!configRevisionId || configRevisionId === "canonical-binding-identity") {
-            throw new ApiError("CONFLICT", "Imported project value is missing an actual config-set source.", {
-              bindingId: catalogBinding.id
-            });
-          }
-          await saveCanonicalProjectValue(
-            pool,
-            {
-              organizationId: auth.organization.id,
-              projectId: batch.projectId,
-              bindingId: catalogBinding.id,
-              configRevisionId,
-              targetValue: importTextToDtsValue(
-                item.name,
-                item.currentValue ?? item.recommendedValue ?? ""
-              )
-            },
-            asValueClient(tx)
-          );
-          updated += 1;
-          continue;
-        }
         const appliedItem = await applyUpdatedImportItem(tx, {
           organizationId: auth.organization.id,
           projectId: batch.projectId,
