@@ -39,6 +39,8 @@ import {
   applyImportBatchBodySchema,
   createImportBatchBodySchema
 } from "../parameters/schemas";
+import { markImportBatchApplied } from "../parameters/importBatchRepository";
+import { parameterImportBatchDtoSchema } from "../contracts/dtoSchemas/parameters";
 import {
   asValueClient,
   findCatalogBindingRow,
@@ -355,6 +357,9 @@ export function registerCatalogProjectValueConsumerRoutes(
   router.post("/api/v1/parameter-import-batches/:batchId/apply", async (request) => {
     const db = requireDb(options.db);
     const auth = await options.getCurrentAuthContext(request);
+    if (!canAdminParameters(auth)) {
+      throw new ApiError("FORBIDDEN", "Admin access is required for parameter import.");
+    }
     const params = parseWithSchema(paramsWithBatchIdSchema, request.params);
     const body = parseWithSchema(
       applyImportBatchBodySchema,
@@ -437,17 +442,15 @@ export function registerCatalogProjectValueConsumerRoutes(
           asValueClient(tx)
         );
       }
-      await tx.query(
-        `
-        update parameter_import_batches
-           set status = 'applied',
-               applied_at = now()
-         where id = $1
-        `,
-        [params.batchId]
-      );
+      const item = await markImportBatchApplied(tx, {
+        organizationId: auth.organization.id,
+        batchId: params.batchId
+      });
+      if (!item) {
+        throw new ApiError("NOT_FOUND", "Parameter import batch was not found.", { batchId: params.batchId });
+      }
       return {
-        result: { id: params.batchId, status: "applied" },
+        result: parameterImportBatchDtoSchema.parse(item),
         audit: {
           app: "parameter-management",
           kind: "batch-import",
