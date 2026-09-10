@@ -227,11 +227,26 @@ const parseCompatibles = (raw: string | null): string[] => {
     .filter(Boolean);
 };
 
+type WriteSession = pg.Pool | ValueClient;
+
+const isPoolSession = (session: WriteSession): session is pg.Pool =>
+  typeof (session as pg.Pool).connect === "function";
+
+const asWriteClient = (session: WriteSession): ValueClient => {
+  if (isPoolSession(session)) {
+    return {
+      query: async <Row extends pg.QueryResultRow>(text: string, values?: unknown[]) =>
+        session.query<Row>(text, values),
+    };
+  }
+  return session;
+};
+
 async function listObservedProperties(
-  pool: pg.Pool,
+  session: ValueClient,
   configRevisionId: string,
 ): Promise<ObservedProperty[]> {
-  const result = await pool.query<ObservedProperty>(
+  const result = await session.query<ObservedProperty>(
     `
     select
       lnr.logical_node_id as "logicalNodeId",
@@ -251,11 +266,11 @@ async function listObservedProperties(
 }
 
 async function activeRegistrationId(
-  pool: pg.Pool,
+  session: ValueClient,
   organizationId: string,
   subjectId: string,
 ): Promise<string | null> {
-  const result = await pool.query<{ id: string }>(
+  const result = await session.query<{ id: string }>(
     `
     select id
       from parameter_catalog.organization_subject_registrations
@@ -278,12 +293,15 @@ export async function syncPublishedCatalogProjectValues(
     configSetId: string;
     configRevisionId: string;
   },
+  session: WriteSession = pool,
 ): Promise<number> {
   const snapshot = await loadPublishedCatalog(pool);
   if (!snapshot) {
     return 0;
   }
-  const observed = await listObservedProperties(pool, input.configRevisionId);
+  const write = asWriteClient(session);
+  const writeTarget = isPoolSession(session) ? session : write;
+  const observed = await listObservedProperties(write, input.configRevisionId);
   const sourceRef = `config-set:${input.configSetId}`;
   let written = 0;
   for (const row of observed) {
@@ -308,12 +326,12 @@ export async function syncPublishedCatalogProjectValues(
     });
     if (definition.status !== "found") continue;
     const registrationId = await activeRegistrationId(
-      pool,
+      write,
       input.organizationId,
       subject.subject.id,
     );
     if (!registrationId) continue;
-    const stabilized = await stabilizeCanonicalBinding(pool, {
+    const stabilized = await stabilizeCanonicalBinding(writeTarget, {
       snapshot,
       organizationId: input.organizationId,
       projectId: input.projectId,
@@ -331,7 +349,7 @@ export async function syncPublishedCatalogProjectValues(
       });
     }
     const payload = rawTextToPayload(row.propertyKey, row.rawText);
-    const writtenBack = await writebackProtectedReference(pool, {
+    const writtenBack = await writebackProtectedReference(writeTarget, {
       snapshot,
       binding: stabilized.value.binding,
       definitionRevisionId: definition.definition.selectedRevision.id,

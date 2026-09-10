@@ -19,7 +19,8 @@ vi.mock("./catalogProjectValueSync", async (importOriginal) => {
   return {
     ...actual,
     findCatalogBindingRow: vi.fn(),
-    saveCanonicalProjectValue: vi.fn()
+    saveCanonicalProjectValue: vi.fn(),
+    listCatalogBindingsForImport: vi.fn()
   };
 });
 
@@ -35,7 +36,8 @@ vi.mock("../parameters/service", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../parameters/service")>();
   return {
     ...actual,
-    applyImportBatch: vi.fn()
+    applyImportBatch: vi.fn(),
+    createImportPreview: vi.fn()
   };
 });
 
@@ -166,5 +168,80 @@ describe("catalog published-value import apply route", () => {
       organizationId: "org-1",
       batchId: "batch-1"
     });
+  });
+
+  it("rewrites a catalog import preview inside the audited write", async () => {
+    const db = makeDb();
+    const previewed = {
+      id: "batch-preview-1",
+      projectId: "project-1",
+      sourceName: "pasted-import.txt",
+      status: "previewed" as const,
+      createdAt: "2026-09-10T00:00:00.000Z",
+      summary: { added: 1, updated: 0, unchanged: 0, conflict: 0, highRisk: 0 },
+      items: [
+        {
+          id: "item-1",
+          name: "iin_max",
+          module: "Driver",
+          risk: "Low" as const,
+          unit: "A",
+          range: "0-10",
+          currentValue: "3000",
+          classification: "added" as const
+        }
+      ]
+    };
+    vi.mocked(catalogSync.listCatalogBindingsForImport).mockResolvedValue([
+      {
+        id: "pdef_acme_power_iin_max",
+        name: "iin_max",
+        description: "",
+        explanation: "",
+        configFormat: "DTS",
+        module: "",
+        range: "",
+        unit: "",
+        risk: "Low",
+        projectParameterValueId: "pbind-1",
+        currentValue: "2000"
+      }
+    ]);
+    vi.mocked(parameterService.createImportPreview).mockResolvedValue(previewed);
+    vi.mocked(db.query).mockResolvedValue({ rows: [] });
+
+    const response = await requestJson(makeServer({ db }), "/api/v1/parameter-import-batches", {
+      method: "POST",
+      body: JSON.stringify({
+        projectId: "project-1",
+        sourceName: "pasted-import.txt",
+        items: [
+          {
+            name: "iin_max",
+            module: "Driver",
+            risk: "Low",
+            unit: "A",
+            range: "0-10",
+            currentValue: "3000"
+          }
+        ]
+      })
+    });
+
+    expect(response.status).toBe(201);
+    const body = parameterImportBatchResponseSchema.parse(response.body);
+    expect(body.item.summary).toEqual({ added: 0, updated: 1, unchanged: 0, conflict: 0, highRisk: 0 });
+    expect(body.item.items[0]?.classification).toBe("updated");
+    expect(auditedWrite.withAuditedWrite).toHaveBeenCalled();
+    expect(parameterService.createImportPreview).toHaveBeenCalledWith(
+      db,
+      expect.anything(),
+      expect.objectContaining({ projectId: "project-1" }),
+      { requestId: "test-request" }
+    );
+    expect(db.query).toHaveBeenCalledWith(
+      expect.stringContaining("update parameter_import_batches"),
+      expect.arrayContaining(["batch-preview-1"])
+    );
   });
 });

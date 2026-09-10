@@ -27,6 +27,7 @@ import {
 import { asAuditTx, withAuditedWrite } from "../audit/auditedWrite";
 import { writeTrustedGovernanceAudit } from "../parameter-topology/governanceAudit";
 import { ingestConfigRevision } from "../parameter-topology/ingestService";
+import { createImportPreview } from "../parameters/service";
 import {
   asValueClient,
   importTextToDtsValue,
@@ -249,12 +250,32 @@ describe("published catalog project values", () => {
 
     const revision = await ingestConfigRevision(root, manifest, auth);
     expect(revision.status).toBe("resolved");
-    await syncPublishedCatalogProjectValues(pool, {
-      organizationId: ORG,
-      projectId: PROJECT,
-      configSetId: CONFIG_SET,
-      configRevisionId: revision.id,
+    const written = await withAuditedWrite(root, auth, { requestId: "req-min-upg-sync" }, async (tx) => {
+      const count = await syncPublishedCatalogProjectValues(
+        pool,
+        {
+          organizationId: ORG,
+          projectId: PROJECT,
+          configSetId: CONFIG_SET,
+          configRevisionId: revision.id,
+        },
+        asValueClient(tx),
+      );
+      return {
+        result: count,
+        audit: {
+          app: "parameters",
+          kind: "parameter-topology-governance",
+          action: "binding-edited",
+          severity: "Medium" as const,
+          projectId: PROJECT,
+          targetType: "dts-config-revision",
+          targetId: revision.id,
+          metadata: { written: count, configRevisionId: revision.id },
+        },
+      };
     });
+    expect(written).toBe(1);
 
     const specs = await pool.query<{ c: string }>(
       `select count(*)::text as c
@@ -275,6 +296,12 @@ describe("published catalog project values", () => {
     expect(values.rows[0]?.source_ref).toBe(`config-set:${CONFIG_SET}`);
     expect(values.rows[0]?.config_revision_id).toBe(revision.id);
     expect(values.rows[0]?.value).toEqual(1000);
+
+    const syncAudits = await pool.query<{ action: string; target_id: string }>(
+      `select action, target_id from audit_events where trace_id = $1`,
+      ["req-min-upg-sync"],
+    );
+    expect(syncAudits.rows).toEqual([{ action: "binding-edited", target_id: revision.id }]);
 
     const listed = await listCatalogBindingRowsForProject(root, auth, {
       projectId: PROJECT,
@@ -353,5 +380,126 @@ describe("published catalog project values", () => {
     });
     const afterImport = await listCatalogBindingRowsForProject(root, auth, { projectId: PROJECT });
     expect(afterImport[0]?.rawValue).toBe("<3000>");
+  }, 60_000);
+
+  it("rolls published-value sync back with the outer transaction", async () => {
+    const fileId = randomUUID();
+    const versionId = randomUUID();
+    const checksum = createHash("sha256").update(DTS, "utf8").digest("hex");
+    await pool.query(
+      `insert into project_parameter_files (
+         id, organization_id, project_id, file_name, format, enabled,
+         config_set_id, config_set_role, config_set_sort_order
+       ) values ($1, $2, $3, 'charger-rollback.dts', 'dts', true, $4, 'base', 1)`,
+      [fileId, ORG, PROJECT, CONFIG_SET],
+    );
+    await pool.query(
+      `insert into project_parameter_file_versions (
+         id, file_id, version_number, storage_key, checksum, size_bytes, parsed_index, origin, created_by_user_id
+       ) values ($1, $2, 1, $3, $4, $5, '{}'::jsonb, 'upload', $6)`,
+      [versionId, fileId, `${ORG}/${checksum}-charger-rollback.dts`, checksum, Buffer.byteLength(DTS, "utf8"), USER],
+    );
+    await pool.query(`update project_parameter_files set current_version_id = $1 where id = $2`, [
+      versionId,
+      fileId,
+    ]);
+    const revision = await ingestConfigRevision(
+      root,
+      {
+        organizationId: ORG,
+        projectId: PROJECT,
+        configSetId: CONFIG_SET,
+        entryFile: "charger-rollback.dts",
+        includeSearchPaths: ["."],
+        overlayOrder: [],
+        members: [
+          {
+            fileId,
+            fileVersionId: versionId,
+            fileName: "charger-rollback.dts",
+            role: "base",
+            sortOrder: 1,
+            content: DTS,
+          },
+        ],
+      },
+      auth,
+    );
+    expect(revision.status).toBe("resolved");
+    const before = await pool.query<{ c: string }>(
+      `select count(*)::text as c
+         from parameter_catalog.project_parameter_values
+        where config_revision_id = $1`,
+      [revision.id],
+    );
+    await expect(
+      withAuditedWrite(root, auth, { requestId: "req-min-upg-sync-rollback" }, async (tx) => {
+        const count = await syncPublishedCatalogProjectValues(
+          pool,
+          {
+            organizationId: ORG,
+            projectId: PROJECT,
+            configSetId: CONFIG_SET,
+            configRevisionId: revision.id,
+          },
+          asValueClient(tx),
+        );
+        expect(count).toBeGreaterThan(0);
+        throw new Error("force-sync-rollback");
+      }),
+    ).rejects.toThrow("force-sync-rollback");
+    const after = await pool.query<{ c: string }>(
+      `select count(*)::text as c
+         from parameter_catalog.project_parameter_values
+        where config_revision_id = $1`,
+      [revision.id],
+    );
+    expect(after.rows[0]?.c).toBe(before.rows[0]?.c);
+    const audits = await pool.query<{ c: string }>(
+      `select count(*)::text as c from audit_events where trace_id = $1`,
+      ["req-min-upg-sync-rollback"],
+    );
+    expect(audits.rows[0]?.c).toBe("0");
+  }, 60_000);
+
+  it("rolls a catalog import-preview rewrite back with the outer transaction", async () => {
+    await expect(
+      withAuditedWrite(root, auth, { requestId: "req-min-upg-preview-rollback" }, async (tx) => {
+        const item = await createImportPreview(
+          tx,
+          auth,
+          {
+            projectId: PROJECT,
+            sourceName: "pasted-import.txt",
+            items: [
+              {
+                name: "iin_max",
+                module: "Driver",
+                risk: "Low",
+                unit: "A",
+                range: "0-10",
+                currentValue: "3000"
+              }
+            ]
+          },
+          { requestId: "req-min-upg-preview-rollback" }
+        );
+        await tx.query(
+          `update parameter_import_batches set summary = $2::jsonb where id = $1`,
+          [item.id, JSON.stringify({ added: 0, updated: 1, unchanged: 0, conflict: 0, highRisk: 0 })]
+        );
+        throw new Error("force-preview-rollback");
+      }),
+    ).rejects.toThrow("force-preview-rollback");
+    const leftover = await pool.query<{ c: string }>(
+      `select count(*)::text as c from parameter_import_batches where project_id = $1 and source_name = 'pasted-import.txt'`,
+      [PROJECT],
+    );
+    expect(leftover.rows[0]?.c).toBe("0");
+    const audits = await pool.query<{ c: string }>(
+      `select count(*)::text as c from audit_events where trace_id = $1`,
+      ["req-min-upg-preview-rollback"],
+    );
+    expect(audits.rows[0]?.c).toBe("0");
   }, 60_000);
 });

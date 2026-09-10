@@ -40,7 +40,7 @@ import {
   type EphemeralTestDatabase,
 } from "../../../testing/testDatabase";
 
-import { createBindingService } from "./index";
+import { createBindingService, stabilizeCanonicalBinding } from "./index";
 import { mapLegacyBinding, loadLegacyBindingIdentity } from "./migrationAdapter";
 
 const databaseAvailable = await isTestDatabaseAvailable();
@@ -366,6 +366,35 @@ describe("canonical Binding identity", () => {
     const stored = await bindingResidue(NODE_SUCCESS);
     expect(stored.count).toBe("1");
     expect(stored.owners).toBe(`${ORG_A}:${registrationA}`);
+  });
+
+  it("rolls a joined-session stabilize back with the outer transaction", async () => {
+    const logicalNodeId = "logical-node-s6-bnd-join";
+    const client = await pool.connect();
+    try {
+      await client.query("begin");
+      const result = await stabilizeCanonicalBinding(client, {
+        snapshot: snapshot1,
+        organizationId: ORG_A,
+        projectId: PROJECT_A,
+        logicalNodeId,
+        registrationId: registrationA,
+        definitionId: DEFINITION_ID,
+        effectiveRevisionId: REVISION_1,
+        expectedEffectiveRevisionId: null,
+      });
+      expect(result.ok).toBe(true);
+      const inside = await client.query<{ c: string }>(
+        `select count(*)::text as c from parameter_catalog.project_parameter_bindings where logical_node_id = $1`,
+        [logicalNodeId],
+      );
+      expect(inside.rows[0]?.c).toBe("1");
+      await client.query("rollback");
+    } finally {
+      client.release();
+    }
+    const residue = await bindingResidue(logicalNodeId);
+    expect(residue.count).toBe("0");
   });
 
   it("refuses module identity and latest-head disagreement without writing a Binding", async () => {

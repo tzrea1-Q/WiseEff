@@ -90,7 +90,12 @@ function decodeContentBase64(contentBase64: string) {
   }
 }
 
-async function syncLatestPublishedValues(db: Database, auth: AuthContext, projectId: string) {
+async function syncLatestPublishedValues(
+  db: Database,
+  auth: AuthContext,
+  projectId: string,
+  context: { requestId: string }
+) {
   const pool = getRootPostgresPool(db);
   if (!pool) return;
   const sets = await listConfigSets(db, auth, projectId);
@@ -102,11 +107,38 @@ async function syncLatestPublishedValues(db: Database, auth: AuthContext, projec
     configSetId: configSet.id
   });
   if (!revision || revision.status !== "resolved") return;
-  await syncPublishedCatalogProjectValues(pool, {
-    organizationId: auth.organization.id,
-    projectId,
-    configSetId: configSet.id,
-    configRevisionId: revision.id
+  await withAuditedWrite(db, auth, { requestId: context.requestId }, async (tx) => {
+    const written = await syncPublishedCatalogProjectValues(
+      pool,
+      {
+        organizationId: auth.organization.id,
+        projectId,
+        configSetId: configSet.id,
+        configRevisionId: revision.id
+      },
+      asValueClient(tx)
+    );
+    if (written === 0) {
+      return { result: 0, audit: null };
+    }
+    return {
+      result: written,
+      audit: {
+        app: "parameters",
+        kind: "parameter-topology-governance",
+        action: "binding-edited",
+        severity: "Medium" as const,
+        projectId,
+        targetType: "dts-config-revision",
+        targetId: revision.id,
+        metadata: {
+          writeTargetRole: "canonical-project-value",
+          sourceRef: `config-set:${configSet.id}`,
+          configRevisionId: revision.id,
+          written
+        }
+      }
+    };
   });
 }
 
@@ -303,7 +335,7 @@ export function registerCatalogProjectValueConsumerRoutes(
       },
       { requestId: request.requestId }
     );
-    await syncLatestPublishedValues(db, auth, params.projectId);
+    await syncLatestPublishedValues(db, auth, params.projectId, { requestId: request.requestId });
     return {
       status: 201,
       body: {
@@ -318,7 +350,6 @@ export function registerCatalogProjectValueConsumerRoutes(
     const db = requireDb(options.db);
     const auth = await options.getCurrentAuthContext(request);
     const body = parseWithSchema(createImportBatchBodySchema, request.body);
-    const item = await createImportPreview(db, auth, body, { requestId: request.requestId });
     const catalog = await listCatalogBindingsForImport(db, {
       organizationId: auth.organization.id,
       projectId: body.projectId,
@@ -326,32 +357,49 @@ export function registerCatalogProjectValueConsumerRoutes(
       definitionIds: body.items.map((row) => row.id).filter((id): id is string => Boolean(id))
     });
     if (catalog.length === 0) {
+      const item = await createImportPreview(db, auth, body, { requestId: request.requestId });
       return { status: 201, body: { item } };
     }
-    const byName = new Map(catalog.map((row) => [row.name, row]));
-    const rewritten = item.items.map((row) => {
-      const match = byName.get(row.name);
-      if (!match) return row;
+    const rewritten = await withAuditedWrite(db, auth, { requestId: request.requestId }, async (tx) => {
+      const item = await createImportPreview(tx, auth, body, { requestId: request.requestId });
+      const byName = new Map(catalog.map((row) => [row.name, row]));
+      const items = item.items.map((row) => {
+        const match = byName.get(row.name);
+        if (!match) return row;
+        return {
+          ...row,
+          classification: "updated" as const,
+          definitionId: match.id,
+          projectParameterValueId: match.projectParameterValueId
+        };
+      });
+      const added = items.filter((row) => row.classification === "added").length;
+      const updated = items.filter((row) => row.classification === "updated").length;
+      const summary = { ...item.summary, added, updated };
+      await tx.query(
+        `
+        update parameter_import_batches
+           set items = $2::jsonb,
+               summary = $3::jsonb
+         where id = $1
+        `,
+        [item.id, JSON.stringify(items), JSON.stringify(summary)]
+      );
       return {
-        ...row,
-        classification: "updated" as const,
-        definitionId: match.id,
-        projectParameterValueId: match.projectParameterValueId
+        result: parameterImportBatchDtoSchema.parse({ ...item, items, summary }),
+        audit: {
+          app: "parameter-management",
+          kind: "batch-import",
+          action: "preview",
+          severity: "High" as const,
+          projectId: body.projectId,
+          targetType: "parameter-import-batch",
+          targetId: item.id,
+          metadata: { batchId: item.id, summary: { added, updated, skipped: 0 }, catalogRewrite: true }
+        }
       };
     });
-    const added = rewritten.filter((row) => row.classification === "added").length;
-    const updated = rewritten.filter((row) => row.classification === "updated").length;
-    const summary = { ...item.summary, added, updated };
-    await db.query(
-      `
-      update parameter_import_batches
-         set items = $2::jsonb,
-             summary = $3::jsonb
-       where id = $1
-      `,
-      [item.id, JSON.stringify(rewritten), JSON.stringify(summary)]
-    );
-    return { status: 201, body: { item: { ...item, items: rewritten, summary } } };
+    return { status: 201, body: { item: rewritten } };
   });
 
   router.post("/api/v1/parameter-import-batches/:batchId/apply", async (request) => {

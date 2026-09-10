@@ -130,11 +130,35 @@ const agreeBindingIdentity = (
   return { ok: true, value: { subjectId: registration.subject_id } };
 };
 
+type BindingSession = pg.Pool | BindingWriterClient;
+
+const isPool = (session: BindingSession): session is pg.Pool => session instanceof pg.Pool;
+
 const withBindingUnitOfWork = async <T>(
-  pool: pg.Pool,
+  session: BindingSession,
   work: (client: BindingWriterClient) => Promise<Result<T, BindingConflict>>,
 ): Promise<Result<T, BindingConflict>> => {
-  const client = await pool.connect();
+  if (!isPool(session)) {
+    await session.query("savepoint wiseeff_canonical_binding");
+    try {
+      await session.query("set constraints all deferred");
+      const result = await work(session);
+      if (!result.ok) {
+        await session.query("rollback to wiseeff_canonical_binding");
+        await session.query("release savepoint wiseeff_canonical_binding");
+        return result;
+      }
+      await session.query("set constraints all immediate");
+      await session.query("release savepoint wiseeff_canonical_binding");
+      return result;
+    } catch (error) {
+      await session.query("rollback to wiseeff_canonical_binding").catch(() => undefined);
+      await session.query("release savepoint wiseeff_canonical_binding").catch(() => undefined);
+      throw error;
+    }
+  }
+
+  const client = await session.connect();
   try {
     await client.query("begin");
     await client.query("set constraints all deferred");
@@ -231,7 +255,7 @@ const writeExisting = async (
 };
 
 export const writeCanonicalBinding = async (
-  pool: pg.Pool,
+  session: BindingSession,
   command: StabilizeBindingCommand,
   options: CanonicalBindingWriteOptions = {},
 ): Promise<Result<BindingResult, BindingConflict>> => {
@@ -239,7 +263,7 @@ export const writeCanonicalBinding = async (
   if (!validated.ok) return validated;
 
   try {
-    return await withBindingUnitOfWork(pool, async (client) => {
+    return await withBindingUnitOfWork(session, async (client) => {
       const projectOwned = await loadProjectOwner(
         client,
         command.projectId,
@@ -330,9 +354,9 @@ export const writeCanonicalBinding = async (
 };
 
 export const stabilizeCanonicalBinding = (
-  pool: pg.Pool,
+  session: pg.Pool | BindingWriterClient,
   command: StabilizeBindingCommand,
-): Promise<Result<BindingResult, BindingConflict>> => writeCanonicalBinding(pool, command);
+): Promise<Result<BindingResult, BindingConflict>> => writeCanonicalBinding(session, command);
 
 export const createBindingService = (pool: pg.Pool): BindingService => ({
   stabilize: (command) => stabilizeCanonicalBinding(pool, command),

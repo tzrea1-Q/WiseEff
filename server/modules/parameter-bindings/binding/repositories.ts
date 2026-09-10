@@ -9,7 +9,12 @@ import {
 } from "../../parameter-catalog-contract/index";
 
 export type BindingWriterClient = {
-  query: pg.PoolClient["query"];
+  query: {
+    <Row extends pg.QueryResultRow>(
+      text: string,
+      values?: unknown[],
+    ): Promise<pg.QueryResult<Row>>;
+  };
 };
 
 export type BindingRow = {
