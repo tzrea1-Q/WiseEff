@@ -12,7 +12,7 @@
 
 此本地 MinIO 形态在备份时停止 MinIO 并采集实际卷，包括 S3 metadata；`minio-volume-v1` 恢复要求 MinIO 镜像身份一致。Redis 复制 AOF manifest/文件前也会停进程；恢复先校验 RDB/AOF，再替换停止服务的数据并重新加载。PostgreSQL 恢复重建备份中的数据库并保留 owner，移除候选新增 schema。这些仅是显式恢复操作，正常升级不删除原业务数据。应预留完整 MinIO 卷和 Redis 校验暂存所需空间。旧 bucket mirror 备份仍按原格式读取，但不能追认为已保全 metadata。
 
-隔离终端升级、原数据保全（126 张表、183 条原记录、661 条原有约束）、正常重启、错误目标拒绝、实际迁移中断及两次整套恢复已在候选 `e35ac1b66edac97341b087fb706e478e5c8f0572` 的 [34387796500](https://github.com/tzrea1-Q/WiseEff/actions/runs/34387796500) 通过。中断后的候选保持隔离，普通 resume 退出 70，清理完成。同一部署还完成了登记 `acme,power`、ingest `iin_max=1000`、保存 `2000`、导入 `3000` 及重启复读 `3000`。尚不可合并或投入生产：GitHub L1 仍需在 PR 上运行，人工 visual/console 审查仍待完成。恢复后的独立镜像别名仅在实际运行镜像 ID 与保留的原 SHA 镜像完全一致时才能重入限定的源路径；镜像缺失或不同仍拒绝。初始化模式仅由 plan/apply 接受，status 展示 run 的持久 `parameterDataMode`；恢复消费既有 run，无需再次传初始化选项。
+隔离终端升级、原数据保全（126 张表、183 条原记录、661 条原有约束）、正常重启、错误目标拒绝、实际迁移中断及两次整套恢复的上一轮页面闭环绿在 `2cf966a9790df97e7502a0609fd0452c36685be3` 的 [34424170420](https://github.com/tzrea1-Q/WiseEff/actions/runs/34424170420)（PR L1 [34424167069](https://github.com/tzrea1-Q/WiseEff/actions/runs/34424167069)）。当前代码候选 `f51569d2c32f6a27e8f64271c358fefcd62b8d61` 将 ingest sync 与 catalog 导入预览改写接入其审计事务；该 SHA 的专用 Hosted 待跑，此前 Hosted 证据不可复用。尚不可合并或投入生产：人工 visual/console 审查仍待完成。恢复后的独立镜像别名仅在实际运行镜像 ID 与保留的原 SHA 镜像完全一致时才能重入限定的源路径；镜像缺失或不同仍拒绝。初始化模式仅由 plan/apply 接受，status 展示 run 的持久 `parameterDataMode`；恢复消费既有 run，无需再次传初始化选项。
 
 已测试的隔离入口是专用 GitHub-hosted Linux/amd64 job。在已登录 `gh` 且有仓库 Actions 权限的 checkout 中执行：
 

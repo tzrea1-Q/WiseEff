@@ -4,9 +4,9 @@
 
 状态：实施中。用户于 2026-09-09 批准本范围。基线：`cda6737a8f177a8bbd2f3bc7d195f8e3037bfa74`。
 
-当前产品候选：`e35ac1b66edac97341b087fb706e478e5c8f0572`，tree `a6ca46dc4df81b9ef1c17394d3d41bd2992a0212`。专用 Hosted [34387796500](https://github.com/tzrea1-Q/WiseEff/actions/runs/34387796500) 通过终端探针：保全、页面登记/ingest/读取/保存/导入/重启、同 SHA、真实杀死迁移后隔离及两次恢复。实际候选镜像为 `sha256:b669e1916bd858dc04bf04adb7a090ac79e1d67b35f161391aefe966bd5f7a3a`；清理完成。`pageProjectValues`：登记 `csub_acme_power`，ingest `1000`，保存 `2000`，导入 `3000`，重启复读 `3000`。`parameterEditSaveImport: executed`。审计修复增量的独立 Standards 为 PASS；Spec 残余（API 模式无 config-set 时仍回退 App 库）按 P2 接受，不挡住 Hosted 的 default config-set 路径。专用 dispatch 仍跳过 GitHub L1 Build and test。[80 文件源码包](https://github.com/tzrea1-Q/WiseEff/actions/runs/34387796500/artifacts/10118853480) 对应该 SHA；[扫描后的证据 ZIP](https://github.com/tzrea1-Q/WiseEff/actions/runs/34387796500/artifacts/10118852649) 内层 SHA-256 为 `751c3d4d2eb6f512882f44b1466a98723c01f43c72cf628b341525c5be1a84d7`。审查记录：[review-e35ac1b66.json](../../../exec-plans/active/minimal-parameter-upgrade-evidence/review-e35ac1b66.json)。
+当前产品候选：`f51569d2c32f6a27e8f64271c358fefcd62b8d61`，tree `258d0a5bfb1e5af1cb3022b6ea544fdc96834945`。本增量让 Binding stabilize 接入外层事务（savepoint，不再内层 COMMIT），使 DTS ingest sync 与 catalog 导入预览改写与其审计同事务提交（ADR-0027）。该 SHA 的专用 Hosted 待跑。上一轮页面闭环绿在 [34424170420](https://github.com/tzrea1-Q/WiseEff/actions/runs/34424170420) 的 `2cf966a9790df97e7502a0609fd0452c36685be3`（`pageProjectValues` 1000/2000/3000/3000，清理完成），PR L1 [34424167069](https://github.com/tzrea1-Q/WiseEff/actions/runs/34424167069)；审计接入后该 SHA 不可复用。搬迁前 Hosted `e35ac1b66` / 34387796500 仅作历史记录。
 
-结论：**尚未达到可合并**。本轮保留仓库发布定义，网页只写已发布定义下的项目实际值，不增加网页定义发布权。DTS ingest 对已发布且已注册的定义走 Binding/ProjectValue（真实 config-set/revision 来源与 CAS）；工作台保存走 writeback 且与 `binding-edited` 同事务；导入在导入事务内更新已有 canonical binding。该 SHA 的 Hosted 页面闭环已验收。剩余：最小 PR 上的 GitHub L1，以及人工 visual/console 审查（`visualAndConsoleReview: pending`）。`complete: false`。#824 仍为 Draft/Open、head `848304d780abd680b937b41f81afcb298a260ead`，main 仍等于本计划基线；未执行合并或生产操作。下文保留历史执行身份，当前结论以本段为准。
+结论：**尚未达到可合并**。网页只写已发布定义下的项目实际值，不增加网页定义发布权。已登记定义的 ingest sync 现于 `withAuditedWrite` 内 writeback；工作台保存此前已同事务审计；导入预览改写与 apply 与其审计同事务。剩余：本 SHA 的专用 Hosted 与 PR L1、本增量独立审查、人工 visual/console 审查。`complete: false`。Draft PR #825 保持 Draft。#824 仍为 Draft/Open、head `848304d780abd680b937b41f81afcb298a260ead`。未执行合并或生产操作。下文保留历史执行身份，当前结论以本段为准。
 
 最新终端执行：[34321449970](https://github.com/tzrea1-Q/WiseEff/actions/runs/34321449970)，候选 `77ccbce28e420a916ef678a4565b193e18da12f8`，实际镜像 `sha256:61ef694c5989710fe1eacf063874470dbeeba9646782fed18b7a9993082d3752`。正常升级、126 张表/183 条记录/661 条约束保全、真实 HTTP/worker 业务、首次仓库发布、重启、同 SHA no-op、杀死迁移后隔离及两次恢复均通过，清理完成。九张截图全部查看：三个视口 1440×900、768×1024、390×844 中文可读，原节点名称/路径及重启后的发布可见。console 为 0 error、1 warning（未采集该 warning 文本）；网络只有登录前 `/me` 401，登录后记录的响应均为 200。桌面未发布态仍渲染了提示被裁切的空表格；下一处条件修复保留未发布提示、略去无用 workspace，真实浏览器复验待完成。页面新增/编辑保存/导入仍未实现。[55 文件完整源码包](https://github.com/tzrea1-Q/WiseEff/actions/runs/34321449970/artifacts/10092434503) 的字节、hash 和 diff 均与 Git 一致；[扫描后的证据 ZIP](https://github.com/tzrea1-Q/WiseEff/actions/runs/34321449970/artifacts/10092433807) SHA-256 为 `6fc2ad9b33065e628ff9f9a17efa856e9e2108d7cfb2035d96504c8a7ed2f5f4`。
 
@@ -35,10 +35,10 @@
 | 阶段 | 验收 | 当前证据 |
 | --- | --- | --- |
 | 旧源到迁移 | 完整账本/schema、受保护记录保全 | 34316513041 的真实终端升级执行 0129–0139，保全 126 张表中 183 条原记录的全部原字段和 661 条原有约束。早期 190 条记录的组件探针单独记录。 |
-| 空态到首个真实数据 | 正式页面/API、合法发布、基本导入 | production API 返回未发布空态；真实编译/安装非空首个发布，重启后 API 仍可读取。Hosted 34387796500 在 `e35ac1b66` 上完成页面登记 `csub_acme_power`、DTS ingest `iin_max=1000`、工作台保存 `2000`、导入更新 `3000`、重启复读 `3000`。 |
+| 空态到首个真实数据 | 正式页面/API、合法发布、基本导入 | production API 返回未发布空态；真实编译/安装非空首个发布，重启后 API 仍可读取。Hosted 34424170420 在 `2cf966a97` 上完成页面登记 `csub_acme_power`、DTS ingest `iin_max=1000`、工作台保存 `2000`、导入更新 `3000`、重启复读 `3000`。ADR-0027 ingest/preview 接入为 `f51569d2c`，该 SHA 的 Hosted 待跑。 |
 | 升级入口及重启 | 既有控制器、run 绑定初始化、就绪及队列/代理恢复 | 原生 amd64 终端 apply、原用户/节点、首个仓库发布、API/worker 正常重启、同 SHA 保全及错误目标拒绝在 34316513041 通过。实际杀死迁移后保持隔离，resume 返回 70；本地 ARM 平台拒绝保留。 |
 | 保全及恢复 | 逐条原字段/关系、对象、必要任务及实际恢复 | 34316513041 的升级及两次整套恢复保全全部 183 条原记录、661 条约束、原对象字节/metadata 和实际队列 payload/状态；新 HTTP 上传和真实 worker 完成。早期对象故障及各存储探针继续单列为组件证据。 |
-| 审查及交付 | 稳定候选测试、三个视口、独立审查及 required CI | 独立运行期审查问题已关闭到 77ccbce28。页面值增量及审计修复已在 `e35ac1b66` 审查：Standards PASS；Spec 残余（无 config-set 时回退 App 库）按 P2 接受。专用 Hosted 34387796500 通过。GitHub L1 Build and test 在专用 dispatch 上仍跳过，需由最小 PR 补跑。人工 visual/console 审查仍待完成。 |
+| 审查及交付 | 稳定候选测试、三个视口、独立审查及 required CI | 独立运行期审查问题已关闭到 77ccbce28。搬迁 + DTO/守卫 Hosted 34424170420 与 PR L1 34424167069 在 `2cf966a97` 通过。ADR-0027 ingest/preview 接入为 `f51569d2c`；该增量的专用 Hosted 与独立审查待完成。人工 visual/console 审查仍待完成。 |
 
 真实副本、可信目标构建及维护窗口是生产前置材料，不阻塞内部合成实现。若需要新权限或发布语义，必须指出具体受阻操作；不新增通用控制器或检查器。
 
