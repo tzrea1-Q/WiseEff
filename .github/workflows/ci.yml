@@ -20,6 +20,7 @@ on:
           - local-non-hdc
           - target-non-hdc
           - full-pilot
+          - minimal-upgrade
       frontend_url:
         description: Target frontend URL for target-non-HDC or full-pilot synthetic runs.
         required: false
@@ -38,6 +39,59 @@ permissions:
   contents: read
 
 jobs:
+  minimal-upgrade:
+    name: Minimal upgrade terminal probe
+    if: github.event_name == 'workflow_dispatch' && inputs.acceptance_mode == 'minimal-upgrade'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - name: Prepare the real browser CLI
+        run: |
+          npm install --global @playwright/cli@0.1.14
+          google-chrome --version
+          sudo find /etc/apt/sources.list.d -iname '*chrome*' -delete -o -iname '*google*' -delete
+          timeout 180s sudo apt-get update || true
+          timeout 180s sudo apt-get install --no-install-recommends -y fontconfig fonts-noto-cjk
+          fc-match -f '%{family}\n' 'sans-serif:lang=zh-cn' | grep -F 'Noto Sans CJK'
+      - name: Run the isolated fixed-source terminal probe
+        run: npx tsx scripts/run-minimal-upgrade-acceptance.ts "$GITHUB_SHA" "$(docker info --format '{{.ID}}')"
+      - name: Retain sanitized stage evidence only
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: minimal-upgrade-terminal-evidence
+          path: /tmp/wiseeff-minimal-terminal-*/evidence.zip
+          if-no-files-found: error
+      - name: Package the exact changed source for review
+        if: always()
+        shell: bash
+        run: |
+          base=cda6737a8f177a8bbd2f3bc7d195f8e3037bfa74
+          mkdir -p /tmp/minimal-upgrade-source
+          mapfile -d '' changed < <(git diff --name-only -z --diff-filter=ACMR "$base" "$GITHUB_SHA")
+          test "${#changed[@]}" -gt 0
+          git diff --exit-code "$GITHUB_SHA" -- "${changed[@]}"
+          git archive --format=tar "$GITHUB_SHA" -- "${changed[@]}" > /tmp/minimal-upgrade-source/source.tar
+          git diff --binary "$base" "$GITHUB_SHA" > /tmp/minimal-upgrade-source/changes.diff
+          sha256sum -- "${changed[@]}" > /tmp/minimal-upgrade-source/SHA256SUMS
+          git show -s --format='candidate=%H%ntree=%T' "$GITHUB_SHA" > /tmp/minimal-upgrade-source/identity.txt
+          echo "base=$base" >> /tmp/minimal-upgrade-source/identity.txt
+      - name: Retain the review source package
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: minimal-upgrade-source
+          path: /tmp/minimal-upgrade-source/
+          if-no-files-found: error
+
   detect:
     name: Detect changed paths
     runs-on: ubuntu-latest
@@ -63,6 +117,10 @@ jobs:
 
       - name: Install dependencies
         run: npm ci
+
+      - name: Retained rehearsal source lock on native Linux
+        if: github.event_name == 'workflow_dispatch' && inputs.acceptance_mode == 'minimal-upgrade'
+        run: npx vitest run --config vitest.scripts.config.ts scripts/wayfinder/parameter-catalog-rehearsal-source-lock.test.ts
 
       - name: Classify changed paths
         id: paths
@@ -512,7 +570,7 @@ jobs:
   target-synthetic-acceptance:
     name: Target synthetic acceptance
     needs: detect
-    if: github.event_name == 'workflow_dispatch' && inputs.acceptance_mode != 'local-non-hdc'
+    if: github.event_name == 'workflow_dispatch' && inputs.acceptance_mode != 'local-non-hdc' && inputs.acceptance_mode != 'minimal-upgrade'
     runs-on: ubuntu-latest
     timeout-minutes: 50
 
@@ -630,6 +688,7 @@ jobs:
       - acceptance-smoke
       - acceptance-local-non-hdc
       - target-synthetic-acceptance
+      - minimal-upgrade
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -644,6 +703,7 @@ jobs:
             "acceptance-smoke": "${{ needs.acceptance-smoke.result }}",
             "acceptance-local-non-hdc": "${{ needs.acceptance-local-non-hdc.result }}",
             "target-synthetic-acceptance": "${{ needs.target-synthetic-acceptance.result }}",
+            "minimal-upgrade": "${{ needs.minimal-upgrade.result }}",
           }
           print(results)
           failed = [name for name, result in results.items() if result in ("failure", "cancelled")]

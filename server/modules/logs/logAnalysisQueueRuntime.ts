@@ -1,6 +1,7 @@
-import { Queue, Worker } from "bullmq";
+import { DelayedError, Queue, Worker } from "bullmq";
 
 import { createBullMqDurableQueue } from "../jobs/bullmqQueue";
+import { getJobSnapshot } from "../jobs/repository";
 import type { MetricsRegistry } from "../../observability/metrics";
 import type { TracingBoundary } from "../../observability/tracing";
 import type { Database } from "../../shared/database/client";
@@ -21,6 +22,7 @@ type BullMqQueueConstructor = new (
   name: string,
   options: { connection: { url: string }; prefix: string }
 ) => {
+  getJob: (id: string) => Promise<{ id?: string | number; data?: Record<string, unknown> } | undefined>;
   add: (name: string, data: LogAnalysisQueuePayload, options: unknown) => Promise<{ id?: string | number }>;
   pause: () => Promise<void>;
   resume: () => Promise<void>;
@@ -37,7 +39,7 @@ type BullMqQueueConstructor = new (
 
 type BullMqWorkerConstructor = new (
   name: string,
-  processor: (job: { data: LogAnalysisQueuePayload }) => Promise<"processed" | "idle" | "dead-lettered">,
+  processor: (job: { data: LogAnalysisQueuePayload; moveToDelayed(timestamp: number, token?: string): Promise<void> }, token?: string) => Promise<"processed" | "idle" | "dead-lettered">,
   options: { connection: { url: string }; prefix: string; concurrency: number; name: string }
 ) => { close: () => Promise<void> };
 
@@ -82,7 +84,7 @@ export function createLogAnalysisQueueRuntime({
   });
   const worker = new WorkerCtor(
     queueName,
-    async (job) => {
+    async (job, token) => {
       const attributes: Record<string, string | number | boolean> = { queue: queueName };
       const process = async () => {
         const jobId = job.data?.jobId;
@@ -103,7 +105,20 @@ export function createLogAnalysisQueueRuntime({
           ...(webhooks ? { webhooks } : {})
         });
         if (result.status === "retry") {
-          throw new Error(result.reason);
+          // The database owns the retry deadline and attempt budget. BullMQ's
+          // independent exponential backoff can fire before next_run_at.
+          await job.moveToDelayed(Date.parse(result.nextRunAt), token);
+          throw new DelayedError();
+        }
+        if (result.status === "idle") {
+          const persisted = await getJobSnapshot(db, jobId);
+          if (!persisted) throw new Error("Log-analysis delivery has no persisted job.");
+          if (persisted.status === "queued" || persisted.status === "processing") {
+            // ponytail: pending legacy deliveries poll at the configured retry
+            // interval; expose the database wakeup deadline if this becomes hot.
+            await job.moveToDelayed(Date.now() + env.LOG_ANALYSIS_QUEUE_BACKOFF_MS, token);
+            throw new DelayedError();
+          }
         }
         attributes.status = result.status;
         return result.status;

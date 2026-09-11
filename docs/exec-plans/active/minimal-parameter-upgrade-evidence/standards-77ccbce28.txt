@@ -1,0 +1,13 @@
+# Standards review: minimal parameter upgrade
+
+Review basis: `cda6737a8f177a8bbd2f3bc7d195f8e3037bfa74...77ccbce28e420a916ef678a4565b193e18da12f8`, with the final browser/diagnostic delta `297e471c53cedb53c41abb58597b27fc2fde6802` and YAML portability fix `77ccbce28e420a916ef678a4565b193e18da12f8`. The tree was clean and `git diff --check` passed. This is a read-only Standards review; it does not approve the product gap or Gate 0.
+
+## Findings
+
+No outstanding hard or actionable Standards findings were found in these deltas. The prior **[P1] raw browser artifact upload** remains closed: `.github/workflows/ci.yml:65-71` uploads only `evidence.zip` and fails when absent. `scripts/run-minimal-upgrade-acceptance.ts:537-558` records after cleanup, copies only explicitly enumerated regular browser files and evidence into private staging, sanitizes and scans with exact run secrets, writes through the existing `writeZipArchive`, rescans the ZIP, then chmods `0444`, fsyncs, and atomically renames it. A failure before rename yields no upload; a killed owner cannot execute the fallback. This satisfies `docs/SECURITY.md:29`.
+
+`297e471c53cedb53c41abb58597b27fc2fde6802` does not weaken that boundary. `captureBrowserText` sanitizes snapshots, console errors, request output, and attachments before writing (`scripts/run-minimal-upgrade-acceptance.ts:60-67`); failed-stage diagnostics use the same path (`:488-496`). The browser login token is registered before the landing-page wait (`:345-359`). The landing assertion and node checks are stronger and based on observed controls (`:360-378`): real landing main, `编辑节点`, preserved name, then `路径绑定` with `/minimal/node`.
+
+`77ccbce28e420a916ef678a4565b193e18da12f8` only replaces unavailable `rg` with native `grep -F` in the CJK font preflight (`.github/workflows/ci.yml:60-62`); it does not alter evidence or business assertions. Supplied run evidence says the preflight reached font installation but stopped before Docker, so no browser PASS exists.
+
+The existing child-environment allowlist, cleanup, status/mode persistence, writer-transaction orphan guard, and constraint oracle remain unchanged. Visual/console review and parameter edit/save/import stay explicitly pending (`:376-378`). Judgment smells do not yield an actionable finding; helper extraction and existing archive-helper reuse are coherent.

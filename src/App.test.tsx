@@ -41,6 +41,24 @@ const userState = { ...initialState, activeRoleId: "user", changeRequests: [] };
 const committerState = { ...initialState, activeRoleId: "committer" };
 const adminState = { ...initialState, activeRoleId: "admin" };
 
+it("waits for live projects before reading their initialization state", async () => {
+  window.history.replaceState(null, "", "/parameters");
+  let resolveProjects!: (projects: typeof initialState.configDraft.projects) => void;
+  const projects = new Promise<typeof initialState.configDraft.projects>((resolve) => { resolveProjects = resolve; });
+  const repository = createTestParameterRepository({ listProjects: vi.fn(() => projects) });
+  const getInitialization = vi.fn().mockResolvedValue({ status: "not_initialized" });
+  render(<App runtimeMode="api" initialAppState={userState}
+    authClient={createTestAuthClient("user")} parameterRepository={repository}
+    logAnalysisRepository={createTestLogAnalysisRepository()}
+    parameterInitializationRepository={{ getInitialization, listPendingReviews: vi.fn().mockResolvedValue([]),
+      upsertDraft: vi.fn(), previewSnapshot: vi.fn(), submit: vi.fn(), approve: vi.fn(), reject: vi.fn() }} />);
+  await waitFor(() => expect(repository.listProjects).toHaveBeenCalled());
+  expect(getInitialization).not.toHaveBeenCalled();
+  resolveProjects([{ ...initialState.configDraft.projects[0], id: "live-only-project" }]);
+  await waitFor(() => expect(getInitialization).toHaveBeenCalledWith("live-only-project"));
+  expect(getInitialization.mock.calls.every(([id]) => id === "live-only-project")).toBe(true);
+});
+
 function parameterAdminNavGroup(sidebar: HTMLElement): HTMLElement {
   const label = Array.from(sidebar.querySelectorAll(".nav-group-label")).find((node) => node.textContent === "参数管理");
   const group = label?.closest(".nav-group");

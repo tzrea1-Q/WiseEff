@@ -75,17 +75,19 @@ describe("PropertyKeyCutoverPanel", () => {
     fireEvent.change(screen.getByLabelText("新属性键"), { target: { value: "corrected_prop" } });
     fireEvent.click(screen.getByRole("button", { name: "预检" }));
     await waitFor(() => expect(actions.preview).toHaveBeenCalledWith({ propertyKey: "corrected_prop" }));
-    expect(screen.getByText(/将改写源/)).toBeInTheDocument();
+    expect(await screen.findByText(/将改写源/)).toBeInTheDocument();
 
     fireEvent.change(screen.getByLabelText("原因"), { target: { value: "纠正错键" } });
+    await waitFor(() => expect(screen.getByRole("button", { name: "启动作业" })).toBeEnabled());
     fireEvent.click(screen.getByRole("button", { name: "启动作业" }));
     await waitFor(() =>
       expect(actions.start).toHaveBeenCalledWith({ propertyKey: "corrected_prop", reason: "纠正错键" }),
     );
 
+    await waitFor(() => expect(screen.getByRole("button", { name: "暂存草稿" })).toBeEnabled());
     fireEvent.click(screen.getByRole("button", { name: "暂存草稿" }));
     await waitFor(() => expect(actions.prepare).toHaveBeenCalled());
-    expect(screen.getByText(/已暂存文件草稿/)).toBeInTheDocument();
+    expect(await screen.findByText(/已暂存文件草稿/)).toBeInTheDocument();
     const handoff = screen.getByRole("link", { name: "在配置工作台审阅并合入 board.dts" });
     expect(handoff).toHaveAttribute(
       "href",

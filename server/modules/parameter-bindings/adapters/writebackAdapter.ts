@@ -48,8 +48,17 @@ const mapWriteConflict = (error: ProjectValueConflict): ProtectedReferenceBlock 
   }
 };
 
+type ValueSession = pg.Pool | {
+  query: {
+    <Row extends pg.QueryResultRow>(
+      text: string,
+      values?: unknown[],
+    ): Promise<pg.QueryResult<Row>>;
+  };
+};
+
 export const writebackProtectedReference = async (
-  pool: pg.Pool,
+  session: ValueSession,
   command: ProtectedWritebackCommand,
 ): Promise<ProtectedReferenceWritebackResult> => {
   const binding = requireBinding(command);
@@ -66,7 +75,7 @@ export const writebackProtectedReference = async (
     return blocked({ kind: "typed-block", reason: "invalid-command", field: "configRevisionId" });
   }
 
-  const appended = await appendProjectValue(pool, {
+  const appended = await appendProjectValue(session, {
     snapshot: command.snapshot,
     binding: binding.value,
     definitionRevisionId: command.definitionRevisionId,

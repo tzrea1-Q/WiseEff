@@ -46,7 +46,7 @@ export type ProcessLogWorkerByIdOptions = ProcessLogWorkerOptions & {
 export type ProcessLogWorkerResult =
   | { status: "processed" }
   | { status: "idle" }
-  | { status: "retry"; reason: string }
+  | { status: "retry"; reason: string; nextRunAt: string }
   | { status: "dead-lettered"; reason: string };
 
 type StageStatus = "processing" | "complete" | "failed";
@@ -457,7 +457,7 @@ async function processClaimedLogAnalysisJob(
       });
       if (!scheduled) return { status: "idle" };
       recordMetric({ status: "retry", stage: currentStage, failureReason: currentFailureReason, endedAt });
-      return { status: "retry", reason: decision.reason };
+      return { status: "retry", reason: decision.reason, nextRunAt: decision.nextRunAt };
     }
 
     const deadLettered = await markJobDeadLettered(db, {

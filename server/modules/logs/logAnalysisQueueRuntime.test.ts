@@ -20,6 +20,23 @@ function createTraceRecorder() {
 }
 
 describe("log analysis queue runtime", () => {
+  it.each(["queued", "processing"])("does not acknowledge an idle delivery while its database job is %s", async status => {
+    let processor!: (job: { data: { jobId: string }; moveToDelayed(timestamp: number, token?: string): Promise<void> }, token?: string) => Promise<string>;
+    const db = { query: vi.fn(async () => ({ rows: [{ id: "job", status, updated_at: "2026-09-09T00:00:00Z" }], rowCount: 1 })) } as unknown as Database;
+    const runtime = createLogAnalysisQueueRuntime({
+      db, objectStore: {} as ObjectStore,
+      env: { REDIS_URL: "redis://redis:6379", LOG_ANALYSIS_QUEUE_PREFIX: "wiseeff", LOG_ANALYSIS_QUEUE_ATTEMPTS: 4, LOG_ANALYSIS_QUEUE_BACKOFF_MS: 1000, LOG_ANALYSIS_QUEUE_CONCURRENCY: 1 },
+      QueueCtor: vi.fn(function () { return { close: vi.fn() }; }) as never,
+      WorkerCtor: vi.fn(function (_name: string, handler: typeof processor) { processor = handler; return { close: vi.fn() }; }) as never,
+      processByJobId: vi.fn(async () => ({ status: "idle" as const })),
+    });
+    const moveToDelayed = vi.fn(async (_timestamp: number, _token?: string) => {});
+    const started = Date.now();
+    await expect(processor({ data: { jobId: "job" }, moveToDelayed }, "token")).rejects.toThrow("bullmq:movedToDelayed");
+    expect(moveToDelayed).toHaveBeenCalledWith(expect.any(Number), "token");
+    expect(moveToDelayed.mock.calls[0][0]).toBeGreaterThanOrEqual(started + 1000);
+    await runtime.close();
+  });
   it("creates a BullMQ queue and worker with Redis connection settings", async () => {
     const processByJobId = vi.fn(async () => ({ status: "processed" as const }));
     const queue = {
@@ -125,7 +142,7 @@ describe("log analysis queue runtime", () => {
     await expect(processor?.({ data: { runId: "run-1" } })).rejects.toThrow("BullMQ log-analysis job payload must include jobId.");
   });
 
-  it("throws for database-scheduled retries so BullMQ redelivers the message", async () => {
+  it("redelivers at the database retry deadline without consuming a second retry budget", async () => {
     const QueueCtor = vi.fn(function () {
       return {
         add: vi.fn(),
@@ -135,8 +152,8 @@ describe("log analysis queue runtime", () => {
         close: vi.fn()
       };
     });
-    let processor: ((job: { data: { jobId: string } }) => Promise<string>) | undefined;
-    const WorkerCtor = vi.fn(function (_name: string, handler: (job: { data: { jobId: string } }) => Promise<string>) {
+    let processor: ((job: { data: { jobId: string }; moveToDelayed: (timestamp: number, token?: string) => Promise<void> }, token?: string) => Promise<string>) | undefined;
+    const WorkerCtor = vi.fn(function (_name: string, handler: NonNullable<typeof processor>) {
       processor = handler;
       return { close: vi.fn() };
     });
@@ -153,10 +170,12 @@ describe("log analysis queue runtime", () => {
       objectStore: {} as ObjectStore,
       QueueCtor: QueueCtor as never,
       WorkerCtor: WorkerCtor as never,
-      processByJobId: vi.fn(async () => ({ status: "retry" as const, reason: "Retry 2 of 4 after 2000ms." }))
+      processByJobId: vi.fn(async () => ({ status: "retry" as const, reason: "Retry 2 of 4 after 2000ms.", nextRunAt: "2026-09-09T00:00:02.000Z" }))
     });
 
-    await expect(processor?.({ data: { jobId: "job-1" } })).rejects.toThrow("Retry 2 of 4 after 2000ms.");
+    const moveToDelayed = vi.fn(async () => {});
+    await expect(processor?.({ data: { jobId: "job-1" }, moveToDelayed }, "lease-token")).rejects.toThrow("bullmq:movedToDelayed");
+    expect(moveToDelayed).toHaveBeenCalledWith(Date.parse("2026-09-09T00:00:02.000Z"), "lease-token");
   });
 
   it("exports low-cardinality durable queue processor spans without Redis or job identifiers", async () => {
@@ -210,8 +229,14 @@ describe("log analysis queue runtime", () => {
   });
 
   it("creates an API-side queue transport without starting a worker", async () => {
+    const stored = new Map<string, { id: string; data: Record<string, unknown> }>();
     const queue = {
-      add: vi.fn(async () => ({ id: "bull-job-1" })),
+      getJob: vi.fn(async (id: string) => stored.get(id)),
+      add: vi.fn(async (_name: string, data: Record<string, unknown>, options: { jobId: string }) => {
+        const job = { id: options.jobId, data };
+        stored.set(job.id, job);
+        return job;
+      }),
       pause: vi.fn(),
       resume: vi.fn(),
       getJobCounts: vi.fn(async () => ({ waiting: 1, active: 0, completed: 0, failed: 0, delayed: 0, paused: 0 })),

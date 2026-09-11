@@ -5,7 +5,7 @@ import { permissionsForRoles } from "../auth/policy";
 import type { UsageProjectScope } from "../parameter-bindings/usage";
 import { createUserInvocation } from "../auth/trustedInvocation";
 import { createCatalogKernel, type CatalogKernel } from "../catalog-kernel/interface";
-import { readCurrentCatalogPointer } from "../catalog-kernel/install/currentPointer";
+import { isCatalogProjectionEmpty, readCurrentCatalogPointer } from "../catalog-kernel/install/currentPointer";
 import {
   CatalogReleaseDigest,
   CatalogReleaseId,
@@ -187,7 +187,9 @@ const createKernelReadiness = (
   const current = async (): Promise<CatalogReadinessResult> => {
     const pointer = await readCurrentCatalogPointer(pool);
     if (pointer.kind !== "installed") {
-      return notReady();
+      // An absent pointer alone also describes an interrupted installation.
+      // Only a genuinely empty owner projection is an unpublished catalog.
+      return await isCatalogProjectionEmpty(pool) ? { status: "unpublished" } : notReady();
     }
     const loaded = await kernel.loadCurrentCatalog(pinOf(pointer.current.id, pointer.current.digest));
     if (!loaded.ok) {

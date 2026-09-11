@@ -93,7 +93,9 @@ IDs are opaque strings. Clients must never construct an ID from a property key, 
 }
 ```
 
-Canonical catalog responses include `X-WiseEff-Catalog-Release: <catalogReleaseId>`. Collection envelopes use `items`, `nextCursor`, and a `catalogReleaseId`; item envelopes use `item`. Pagination is cursor-based with a deterministic `(stable sort key, id)` tie-breaker. The future OpenAPI contract will set bounded page limits without changing these semantics.
+Before the first real publication, an owner-observed empty projection returns `200` with `{"item":null,"publicationState":"unpublished"}` and no release header. Clients show the unpublished empty state and keep release-dependent writes disabled. A missing pointer with partial data remains unavailable; it is not an empty release or approval. The `new-empty` upgrade route uses this state without changing repository publication authority or requiring a runtime restart flag.
+
+Installed canonical catalog responses include `X-WiseEff-Catalog-Release: <catalogReleaseId>`. Collection envelopes use `items`, `nextCursor`, and a `catalogReleaseId`; item envelopes use `item`. Pagination is cursor-based with a deterministic `(stable sort key, id)` tie-breaker. The future OpenAPI contract will set bounded page limits without changing these semantics.
 
 A write whose validity depends on current publication state sends `X-WiseEff-Catalog-Release` with the release observed by the client. Mutable Organization resources and proposals also use `If-Match` with their response `ETag`. A stale release returns `release-drift`; a stale resource returns `revision-conflict` or `proposal-stale`. Clients refresh and ask the user to re-confirm rather than silently retrying a governance write.
 

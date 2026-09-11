@@ -20228,73 +20228,96 @@
         "x-wiseeff-schema": "DeviceBridgeToolReleaseManifestResponse"
       },
       "CatalogDocumentResponse": {
-        "type": "object",
-        "properties": {
-          "item": {
+        "anyOf": [
+          {
             "type": "object",
             "properties": {
-              "catalogReleaseId": {
-                "type": "string"
-              },
-              "releaseName": {
-                "type": "string"
-              },
-              "releaseSequence": {
-                "type": "number"
-              },
-              "publishedAt": {
-                "type": "string"
-              },
-              "materializedAt": {
-                "type": "string"
-              },
-              "status": {
-                "type": "string",
-                "enum": [
-                  "ready"
-                ]
-              },
-              "digest": {
-                "type": "string"
-              },
-              "materializationFingerprint": {
-                "type": "string"
-              },
-              "links": {
+              "item": {
                 "type": "object",
                 "properties": {
-                  "subjects": {
+                  "catalogReleaseId": {
                     "type": "string"
                   },
-                  "definitions": {
+                  "releaseName": {
                     "type": "string"
+                  },
+                  "releaseSequence": {
+                    "type": "number"
+                  },
+                  "publishedAt": {
+                    "type": "string"
+                  },
+                  "materializedAt": {
+                    "type": "string"
+                  },
+                  "status": {
+                    "type": "string",
+                    "enum": [
+                      "ready"
+                    ]
+                  },
+                  "digest": {
+                    "type": "string"
+                  },
+                  "materializationFingerprint": {
+                    "type": "string"
+                  },
+                  "links": {
+                    "type": "object",
+                    "properties": {
+                      "subjects": {
+                        "type": "string"
+                      },
+                      "definitions": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "subjects",
+                      "definitions"
+                    ],
+                    "additionalProperties": false
                   }
                 },
                 "required": [
-                  "subjects",
-                  "definitions"
+                  "catalogReleaseId",
+                  "releaseName",
+                  "releaseSequence",
+                  "publishedAt",
+                  "materializedAt",
+                  "status",
+                  "digest",
+                  "materializationFingerprint",
+                  "links"
                 ],
                 "additionalProperties": false
               }
             },
             "required": [
-              "catalogReleaseId",
-              "releaseName",
-              "releaseSequence",
-              "publishedAt",
-              "materializedAt",
-              "status",
-              "digest",
-              "materializationFingerprint",
-              "links"
+              "item"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "item": {
+                "type": "null"
+              },
+              "publicationState": {
+                "type": "string",
+                "enum": [
+                  "unpublished"
+                ]
+              }
+            },
+            "required": [
+              "item",
+              "publicationState"
             ],
             "additionalProperties": false
           }
-        },
-        "required": [
-          "item"
         ],
-        "additionalProperties": false,
         "x-wiseeff-schema": "CatalogDocumentResponse"
       },
       "CatalogSubjectListResponse": {

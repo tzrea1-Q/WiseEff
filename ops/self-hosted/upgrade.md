@@ -6,6 +6,26 @@
 
 The host needs Docker Engine and Compose; Node.js is not required. The command reads `ops/self-hosted/.env` but never rewrites it, rotates credentials, seeds data, provisions an admin, or removes a volume. It never runs `compose down -v`, `volume rm`, or `system prune`.
 
+## Minimal parameter initialization candidate
+
+The active [minimal upgrade plan](../../docs/exec-plans/active/minimal-parameter-upgrade.md) adds `--parameter-data-mode new-empty` to `plan` and `apply`. This candidate is still under isolated acceptance; it is not a production execution approval. The option is recorded in the plan/run and selects management initialization only. API and worker processes do not read a bypass flag, and subsequent normal restarts never clear parameters.
+
+This route preserves old parameter tables and shared references without importing them into Catalog. The new Catalog starts explicitly unpublished; no empty release or passed verification report is synthesized. A first real release still requires the existing reviewed repository bundle, compiler and installer. Page proposals do not publish definitions. This route does not claim the full legacy parameter migration/certification implemented separately in #824.
+
+Admission checks the complete migration inventory and the known schema of source `82344044b436a8dafecefbb85dfd724cecb05e3f`. Unsupported and partially converted sources are rejected before downtime. The minimal route additionally requires the stock `http://minio:9000` service with a named `/data` volume. Remote object stores are not silently accepted as equivalent recovery targets.
+
+For this local MinIO profile, backup stops MinIO and captures its actual volume, including S3 metadata. The `minio-volume-v1` recovery point requires the same MinIO image identity on restore. Redis is also stopped before copying its AOF manifest/files; restore validates RDB/AOF before replacing stopped-service data and loading it. PostgreSQL restore recreates the recorded database including owners, removing candidate schemas. These are explicit recovery operations; normal upgrades do not delete old business data. Retain enough storage for the complete MinIO volume and Redis validation staging. Older bucket-mirror recovery points remain readable by their original format, but do not acquire metadata-preservation evidence retroactively.
+
+The isolated terminal upgrade, original-data preservation (126 tables, 183 original records, 661 original constraints), normal restart, wrong-target refusal, actual migration interruption and both whole-state restores last passed the page loop at `2cf966a9790df97e7502a0609fd0452c36685be3` in [run 34424170420](https://github.com/tzrea1-Q/WiseEff/actions/runs/34424170420) (PR L1 [34424167069](https://github.com/tzrea1-Q/WiseEff/actions/runs/34424167069)). Current code candidate `f51569d2c32f6a27e8f64271c358fefcd62b8d61` joins ingest sync and catalog import-preview rewrite to their audit transactions; dedicated Hosted for that SHA is pending and prior Hosted evidence is not reusable. This is not a merge-ready or production-ready candidate: human visual/console review remains pending. A restored per-run image alias can re-enter the bounded source route only when its actual running image ID equals the retained original SHA image; missing or different images still refuse. Initialization mode is accepted only by plan/apply; status exposes the run's persisted `parameterDataMode`, and recovery consumes the existing run without another initialization flag.
+
+The tested isolated entry is the dedicated GitHub-hosted Linux/amd64 job. From a checkout with authenticated `gh` and repository Actions permission:
+
+```bash
+gh workflow run ci.yml --repo tzrea1-Q/WiseEff --ref codex/minimal-parameter-upgrade -f acceptance_mode=minimal-upgrade
+```
+
+This creates and modifies only its synthetic Compose deployment on the hosted runner, invokes the real plan/apply/rollback commands, then removes its own fixture volumes. It requires no target-server backup or credentials. The artifact `minimal-upgrade-terminal-evidence` records the exact candidate/source images, stages and cleanup; `complete:false` means outstanding acceptance must not be treated as passed. A failed run is a stopping point for diagnosis, not permission to execute on a server. This is an isolated test entry, not a production upgrade manual.
+
 Git target resolution inherits the proxy environment of the invoking command and normalizes upper-case `HTTP_PROXY`, `HTTPS_PROXY`, `ALL_PROXY`, and `NO_PROXY` to the lower-case variables expected by Git/libcurl. Existing Git `http.proxy`, URL-specific proxy, `GIT_SSH_COMMAND`, and `core.sshCommand` settings remain effective. When needed, provide a Git-only override:
 
 ```bash

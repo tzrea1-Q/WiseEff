@@ -1,0 +1,21 @@
+# Independent Spec review — sealed runtime `37d7cea70b179f149212bbd7dac2ee098c0cdc6f`
+
+Original base `cda6737a8f177a8bbd2f3bc7d195f8e3037bfa74`; candidate `d682da31d7a42a61d78662cbdcd2d4b690381874`. Original diff: 46 files, +1,751/-67; 11-commit log retained. Sealed increment: `37d7cea70b179f149212bbd7dac2ee098c0cdc6f`; `f850f2f13` only adds pending browser capture.
+
+Run 34314419833 passes migration kill, isolation, resume refusal (70), and whole-state restore. Sealed checks: 35 PostgreSQL tests, five mode/status cases, one environment-helper case, build and boundary checks. Run 34316513041 succeeds at sealed SHA; evidence records 126 tables, 183 rows, and 661 original constraints preserved for upgrade and both restores; cleanup complete. The driver records `visualAndConsoleReview: "pending"` and `parameterEditSaveImport: "not-executed"` (`scripts/run-minimal-upgrade-acceptance.ts:356-358`).
+
+## Findings and disposition (under 300 words)
+
+1. **P1 — Formal workflow remains absent.** Plan requires actual create/read/update/basic import (`docs/exec-plans/active/minimal-parameter-upgrade.md:15`). `src/features/parameter-catalog/CatalogPage.tsx:203-235` only reads; `src/components/parameter-topology/ApiProjectTopologyWorkspace.tsx:223-308` uses the old model. The driver publishes a CLI fixture (`scripts/run-minimal-upgrade-acceptance.ts:373-374`) and leaves edit/save/import for `:467`. f850 captures login, unpublished, node, and published views, but does not execute edit/save/import. Real ProjectValue source+Binding/config-revision wiring and browser proof remain required.
+
+2. **Closed — d682 orphan bootstrap.** Sealed `server/modules/catalog-kernel/install/installer.ts:516-530` checks projection emptiness inside the locked install path; `installer.integration.test.ts:345-361` covers refusal without row changes. The 35-test PostgreSQL run passed.
+
+3. **Closed — constraint evidence.** The oracle captures original PK/FK/UNIQUE/CHECK definitions and validation (`scripts/run-minimal-upgrade-acceptance.ts:99-113`) and compares them after state (`:149-151`). Run `34316513041` preserved 126 tables, 183 rows, and 661 constraints through upgrade and both restores. Added indexes/policies/functions are outside this contract and remain unknown, not blockers.
+
+4. **Source identity — no defect confirmed.** Fixed `823…` is rejected if changed before downtime (`parameter-data-mode.ts:52-56`; plan `:17`). Same-tag byte attestation is unspecified.
+
+5. **Withdrawn queue finding.** Pinned BullMQ accepts three-part keys (`job.js:1045-1049`); d682 test covers it (`bullmqQueue.test.ts:113-124`).
+
+6. **Closed P2 flag issue.** Sealed `ops/self-hosted/scripts/upgrade-lib.sh:3102-3105` rejects non-plan/apply use; `upgrade.sh.test.ts:797-801` covers status/resume/rollback/recover-candidate.
+
+Disposition: **sealed runtime remains unaccepted** pending the formal workbench/create/edit/save/import. Evidence remains `complete:false` for that page stage.

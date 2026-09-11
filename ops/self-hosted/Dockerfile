@@ -83,6 +83,7 @@ RUN if [ "${WISEEFF_BUILD_TLS_POLICY}" = "insecure" ]; then \
 COPY tools/dts-toolchain/requirements.txt /tmp/dts-toolchain-requirements.txt
 COPY tools/dts-toolchain/versions.json /etc/wiseeff-dts-toolchain-versions.json
 COPY --from=dtc-builder /opt/dtc /opt/dtc
+COPY --from=dtc-builder /opt/dtc/lib/ /usr/local/lib/
 COPY --from=dtc-builder /opt/dtc-wheels /tmp/dtc-wheels
 RUN if [ "${WISEEFF_BUILD_TLS_POLICY}" = "insecure" ]; then \
     set -- --trusted-host pypi.org --trusted-host files.pythonhosted.org; \
@@ -94,7 +95,7 @@ RUN if [ "${WISEEFF_BUILD_TLS_POLICY}" = "insecure" ]; then \
     "ruamel.yaml>0.15.69" "jsonschema>=4.18" rfc3987 \
   && pip3 install "$@" --break-system-packages --no-cache-dir --no-deps -r /tmp/dts-toolchain-requirements.txt \
   && rm -rf /tmp/dtc-wheels
-RUN dtc --version && fdtoverlay --version && dt-validate --version \
+RUN dtc --version && env -i PATH="$PATH" fdtoverlay --version && dt-validate --version \
   && echo "Pinned toolchain:" && cat /etc/wiseeff-dts-toolchain-versions.json
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .

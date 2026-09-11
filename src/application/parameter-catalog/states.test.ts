@@ -29,8 +29,9 @@ function failure(reason: string, details: Record<string, unknown> = {}) {
 }
 
 describe("catalog domain states", () => {
-  it("closes over ready, unregistered, empty, loading, error, retired, and conflict", () => {
+  it("distinguishes an unpublished catalog from published collection states", () => {
     expect([...catalogDomainStateKinds]).toEqual([
+      "unpublished",
       "ready",
       "unregistered",
       "empty",
@@ -39,6 +40,8 @@ describe("catalog domain states", () => {
       "retired",
       "conflict"
     ]);
+    expect(deriveCatalogDomainState({ document: { item: null, publicationState: "unpublished" } }))
+      .toEqual({ kind: "unpublished", catalogReleaseId: null, writesEnabled: false });
     expect([...catalogEmptyReasons]).toEqual([
       "no-registrations",
       "no-definitions",

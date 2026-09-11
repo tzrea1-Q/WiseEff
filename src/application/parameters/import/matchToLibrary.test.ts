@@ -87,6 +87,25 @@ describe("matchToLibrary", () => {
     expect(reviewed[0].existingParameter).toBeUndefined();
   });
 
+  it("matches a unique project parameter by name when the module differs", () => {
+    const library = [
+      {
+        ...parameters[0],
+        id: "aurora-iin-max",
+        name: "iin_max",
+        module: "Legacy driver",
+        projectId: "aurora"
+      }
+    ];
+    const reviewed = matchToLibrary(
+      [baseRow({ name: "iin_max", module: "Driver" })],
+      library,
+      projectId
+    );
+    expect(reviewed[0].existingParameter?.id).toBe("aurora-iin-max");
+    expect(reviewed[0].status).toBe("pending");
+  });
+
   it("marks unmatched rows as pending new candidates", () => {
     const reviewed = matchToLibrary(
       [baseRow({ name: "brand_new_param", module: "New Module" })],

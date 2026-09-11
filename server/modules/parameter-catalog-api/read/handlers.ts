@@ -180,6 +180,16 @@ async function resolveDocumentFacts(
   const readiness = named
     ? await ports.readiness.named(named, expectedDigest)
     : await ports.readiness.current();
+  if (readiness.status === "unpublished") {
+    if (!documentRoute || named || expectedDigest || headerRelease) {
+      return { ok: false, response: notFound(request.requestId, "subject-not-published") };
+    }
+    return { ok: false, response: {
+      status: 200,
+      headers: { "Cache-Control": "no-store" },
+      body: { item: null, publicationState: "unpublished" },
+    } };
+  }
   if (readiness.status === "not-ready") {
     return { ok: false, response: catalogNotReady(request.requestId, readiness.retryAfterSeconds) };
   }

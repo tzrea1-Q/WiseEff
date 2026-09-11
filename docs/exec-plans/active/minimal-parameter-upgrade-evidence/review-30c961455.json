@@ -1,0 +1,51 @@
+{
+  "baseSha": "cda6737a8f177a8bbd2f3bc7d195f8e3037bfa74",
+  "candidateSha": "30c9614553a19b82c16bd1edc2b4ba54b5084f38",
+  "reviews": [
+    {
+      "axis": "Standards",
+      "reviewer": "/root/minimal_standards",
+      "scope": "Prior runtime and artifact review through 77ccbce28, followed by the unpublished workspace delta committed unchanged in 30c961455.",
+      "result": "No new actionable finding. Unpublished banner, disabled privileged actions and refresh remain; removing the unused workspace changes no publication permission.",
+      "testsRunByReviewer": false
+    },
+    {
+      "axis": "Spec",
+      "reviewer": "/root/minimal_spec",
+      "scope": "Final bounded review at 30c961455 with observed terminal evidence from run 34321449970 at 77ccbce28.",
+      "result": "P1 remains: formal ProjectValue create/edit/save/import and corresponding browser acceptance. No other confirmed blocker. Management CLI publication is not page writing.",
+      "testsRunByReviewer": false
+    }
+  ],
+  "browserRecheckAtReviewTime": "pending",
+  "subsequentParentObservation": {
+    "runId": 34323085084,
+    "candidateImageId": "sha256:e8d36d481465fbadd60fcf52e7148df9b329a00c6a69bd8acde0931e1b8de203",
+    "terminalProbe": "passed",
+    "cleanup": "complete",
+    "evidenceArtifactId": 10093108129,
+    "evidenceZipSha256": "cbfa5bad6cb7365f6287058192f11c0fe38b1f9df77bd9dbec82f9c8b6b6c0f3",
+    "sourceArtifactId": 10093108904,
+    "sourceFilesVerifiedAgainstGitBytesAndHashes": 56,
+    "diffVerifiedAgainstGit": true,
+    "browserTool": "playwright-cli 0.1.14",
+    "runtimeMode": "production API",
+    "baseUrlDuringTest": "http://127.0.0.1:18080",
+    "routes": ["/parameter-admin/specs", "/debugging-admin/nodes"],
+    "viewports": [[1440, 900], [768, 1024], [390, 844]],
+    "screenshotNamePatterns": ["unpublished-{width}.png", "original-node-{width}.png", "published-after-restart-{width}.png"],
+    "screenshotsViewed": 9,
+    "observedInteractions": ["original user login", "unpublished page navigation", "original node editor name read and cancel", "path binding dialog open and path read", "repository publication visible after actual API and worker restart"],
+    "unpublishedTableClipping": "fixed",
+    "consoleErrors": 0,
+    "consoleWarnings": 1,
+    "warningText": "not captured",
+    "networkNon200": "One pre-login GET /api/v1/me returned 401; all captured subsequent responses returned 200.",
+    "parameterCreateEditSaveImport": "not implemented or accepted",
+    "wholePageVisualAcceptance": "not claimed; bounded read-only observations only",
+    "requiredSuitesInDedicatedRun": "skipped"
+  },
+  "overallAccepted": false,
+  "mergeAuthorized": false,
+  "productionAuthorized": false
+}

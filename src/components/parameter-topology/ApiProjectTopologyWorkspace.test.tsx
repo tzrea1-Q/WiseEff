@@ -604,6 +604,43 @@ describe("ApiProjectTopologyWorkspace", () => {
     });
   });
 
+  it("saves a published definition value without adding a review draft", async () => {
+    const { fireEvent } = await import("@testing-library/react");
+    const createBindingDraft = vi.fn().mockResolvedValue({
+      draftId: "pval_saved",
+      parameterId: "binding-sc8562-gpio-int",
+      candidateRevisionId: "rev-real-1",
+      workingCandidateRevisionId: "rev-real-1",
+      rawText: "<2000>",
+      action: "set",
+      parameterSpecId: "pdef_acme_power_iin_max",
+      projectParameterBindingId: "binding-sc8562-gpio-int",
+      writeTarget: { role: "canonical-project-value", propertyKey: "iin_max" },
+      overlayFileId: "",
+      overlayFileName: ""
+    });
+    const repository = createRepository({ createBindingDraft });
+
+    render(
+      <ApiProjectTopologyWorkspace
+        projectId="aurora"
+        canEdit
+        topologyRepository={repository}
+        listConfigSets={async () => [{ id: "dcs-default-aurora", name: "default" }]}
+      />
+    );
+
+    await waitFor(() => {
+      expect(within(screen.getByRole("region", { name: "DTS 参数工作台" })).getByRole("treeitem", { name: /未分类 · sc8562/ })).toBeVisible();
+    });
+    const workspace = screen.getByRole("region", { name: "DTS 参数工作台" });
+    fireEvent.click(within(workspace).getByRole("treeitem", { name: /未分类 · sc8562/ }));
+    await createGpioDraftFromWorkbench(workspace, fireEvent, { reason: "Save published value" });
+
+    await waitFor(() => expect(createBindingDraft).toHaveBeenCalledTimes(1));
+    expect(screen.queryByText(/^本轮 1 项$/)).not.toBeInTheDocument();
+  });
+
   it("drops the previous project's candidate revision and draft before loading the next project", async () => {
     const { fireEvent } = await import("@testing-library/react");
     const { WiseEffApiError } = await import("@/infrastructure/http/apiClient");

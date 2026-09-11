@@ -25,7 +25,7 @@ export const CATALOG_OBSERVATION_ID = "pobs_01KOBS";
 export const CATALOG_AUTHOR_PERSON_ID = "user_author";
 export const CATALOG_REVIEWER_PERSON_ID = "user_reviewer";
 
-export const readyCatalogDocument: CatalogDocumentResponse = {
+export const readyCatalogDocument: Exclude<CatalogDocumentResponse, { item: null }> = {
   item: {
     catalogReleaseId: CATALOG_RELEASE_ID,
     releaseName: "2026.08.3",

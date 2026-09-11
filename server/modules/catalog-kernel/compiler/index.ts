@@ -1,4 +1,5 @@
 export { compileCatalogRelease } from "./compileCatalogRelease";
+export { isCatalogReleaseBundle } from "./validation";
 export {
   catalogCompilerContract,
   catalogCompilerContractFingerprint,

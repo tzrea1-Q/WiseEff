@@ -134,7 +134,7 @@ RUN pip3 install "$@" --break-system-packages --no-cache-dir /tmp/dtc-wheels/lib
 RUN pip3 install --break-system-packages --no-cache-dir "ruamel.yaml>0.15.69" "jsonschema>=4.18" rfc3987
 RUN pip3 install "$@" --break-system-packages --no-cache-dir --no-deps -r /tmp/dts-toolchain-requirements.txt
 COPY --from=dtc-builder /opt/dtc /opt/dtc
-RUN dtc --version && fdtoverlay --version && dt-validate --version
+RUN dtc --version && env -i PATH="$PATH" fdtoverlay --version && dt-validate --version
 COPY ops/self-hosted/scripts/npm-ci-with-diagnostics.sh /usr/local/bin/wiseeff-npm-ci
 RUN /usr/local/bin/wiseeff-npm-ci
 RUN npx tsc -b && npx vite build

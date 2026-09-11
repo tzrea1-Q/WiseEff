@@ -61,6 +61,14 @@ const FORBIDDEN_DASHBOARD_IMPORT_MARKERS = [
   "legacyParameterIdentityAdapter"
 ] as const;
 
+/**
+ * Catalog Kernel tables reuse the retired public names under `parameter_catalog`.
+ * Those qualified names are the Binding/ProjectValue owner, not flat identity.
+ */
+function containsBareLegacyIdentityToken(text: string, token: string): boolean {
+  return text.split(`parameter_catalog.${token}`).join("").includes(token);
+}
+
 function isAllowedPath(absolutePath: string): boolean {
   const normalized = absolutePath.replace(/\\/g, "/");
   if (ALLOWED_PATH_SUBSTRINGS.some((fragment) => normalized.includes(fragment))) {
@@ -116,7 +124,7 @@ export async function listProductionHits(token: string): Promise<string[]> {
     const info = await stat(file);
     if (!info.isFile()) continue;
     const text = await readFile(file, "utf8");
-    if (text.includes(token)) {
+    if (containsBareLegacyIdentityToken(text, token)) {
       hits.push(path.relative(REPO_ROOT, file).replace(/\\/g, "/"));
     }
   }

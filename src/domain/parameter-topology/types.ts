@@ -202,6 +202,9 @@ export type ProjectParameterBinding = {
   id: string;
   parameterSpecId: string;
   parameterSpecVersionId: string;
+  definitionId?: string;
+  definitionRevisionId?: string;
+  currentValueId?: string;
   propertyKey: string;
   driverModule: string | null;
   logicalNodeId: string | null;

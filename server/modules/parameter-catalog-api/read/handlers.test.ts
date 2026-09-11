@@ -333,6 +333,18 @@ describe("R2-ASYNC dispatcher rejection contract", () => {
 });
 
 describe("S8-READ nine canonical catalog read routes", () => {
+  it("returns an unpublished document without a release pin or runtime snapshot", async () => {
+    const { ports, runtimeCalls } = createHarness();
+    ports.readiness.current = async () => ({ status: "unpublished" });
+    const response = await handleCatalogRead(ports, get("/api/v2/catalog"));
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual({ item: null, publicationState: "unpublished" });
+    expect(catalogDocumentResponseSchema.safeParse(response.body).success).toBe(true);
+    expect(response.headers[CATALOG_RELEASE_HEADER]).toBeUndefined();
+    expect(runtimeCalls).toEqual([]);
+    const detail = await handleCatalogRead(ports, get("/api/v2/catalog/subjects/csub_unknown"));
+    expect(detail.status).toBe(404);
+  });
   it("R2-SCOPE forwards the same trusted project selection for list and detail", async () => {
     const projectScope = { kind: "only" as const, ids: ["project-visible"] };
     const { ports } = createHarness({ scope: { ...scope, projectScope } });

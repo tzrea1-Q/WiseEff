@@ -33,6 +33,7 @@ Options:
   --run-id ID                   Existing run for status/resume/recover-candidate/rollback.
   --operator USER               Deployment user for prepare-host (defaults to SUDO_USER).
   --restart                     Recreate even when the target SHA is already running.
+  --parameter-data-mode new-empty Start the new parameter system without importing legacy parameters.
   --non-interactive --yes       Required together for unattended apply.
   --restore-data                Restore all stores during rollback (confirmation required).
   --confirm TOKEN               Run-bound confirmation token for protected recovery.
@@ -146,6 +147,7 @@ wiseeff_upgrade_write_status() {
     printf 'protocol_version=%s\n' "$(wiseeff_upgrade_state_read protocol_version)"
     printf 'previous_sha=%s\n' "$(wiseeff_upgrade_state_read previous_sha)"
     printf 'target_sha=%s\n' "$(wiseeff_upgrade_state_read target_sha)"
+    printf 'parameter_data_mode=%s\n' "$(wiseeff_upgrade_state_read parameter_data_mode)"
     printf 'backup_dir=%s\n' "$(wiseeff_upgrade_state_read backup_dir)"
     printf 'build_status=%s\n' "$(wiseeff_upgrade_state_read build_status)"
     printf 'diagnostics_dir=%s\n' "$(wiseeff_upgrade_state_read diagnostics_dir)"
@@ -774,6 +776,37 @@ wiseeff_upgrade_resolve_target() {
     wiseeff_upgrade_die 10 "Could not resolve the current checkout commit."
     return $?
   }
+  if [ "${upgrade_parameter_data_mode:-}" = "new-empty" ]; then
+    # The running source owns rollback identity; a newly checked-out controller
+    # must not turn its own HEAD into the previous deployment version.
+    if [ "${upgrade_mixed_app_images:-false}" = "true" ]; then
+      wiseeff_upgrade_die 10 "new-empty requires one source application image across API, worker and web."
+      return 10
+    fi
+    upgrade_previous_sha="${upgrade_runtime_image_ref_api##*:}"
+    if ! [[ "$upgrade_previous_sha" =~ ^[a-f0-9]{40}$ ]]; then
+      # Controlled rollback preserves immutable images under per-run aliases.
+      # Recover source identity only when the retained source-SHA image is still
+      # present and exactly equals the actual running image, never from HEAD.
+      local retained_source_sha retained_source_image
+      retained_source_sha=82344044b436a8dafecefbb85dfd724cecb05e3f
+      retained_source_image=""
+      case "$upgrade_runtime_image_ref_api" in
+        "$(wiseeff_upgrade_app_image_name)":wiseeff-previous-api-*)
+          retained_source_image="$(wiseeff_upgrade_docker image inspect --format '{{.Id}}' \
+            "$(wiseeff_upgrade_app_image_name):${retained_source_sha}" 2>/dev/null || true)"
+          ;;
+      esac
+      if [ -n "$retained_source_image" ] && [ "$retained_source_image" = "${upgrade_runtime_image_id_api:-}" ]; then
+        upgrade_previous_sha="$retained_source_sha"
+      fi
+    fi
+    if ! [[ "$upgrade_previous_sha" =~ ^[a-f0-9]{40}$ ]] ||
+      ! wiseeff_upgrade_git cat-file -e "${upgrade_previous_sha}^{commit}"; then
+      wiseeff_upgrade_die 10 "new-empty requires a retained source commit identified by the running application image."
+      return 10
+    fi
+  fi
   wiseeff_upgrade_prepare_git_transport
   if ! wiseeff_upgrade_git fetch origin --prune >/dev/null; then
     wiseeff_upgrade_die 10 "Git fetch failed for origin. Run as the deployment user and verify its proxy/Git configuration; do not use sudo for plan or apply."
@@ -788,6 +821,11 @@ wiseeff_upgrade_resolve_target() {
     return $?
   }
   wiseeff_upgrade_validate_protocol "$upgrade_target_sha" || return $?
+  if [ "${upgrade_parameter_data_mode:-}" = "new-empty" ] &&
+    ! wiseeff_upgrade_git cat-file -e "${upgrade_target_sha}:scripts/parameter-data-mode.ts"; then
+    wiseeff_upgrade_die 10 "The target does not implement the new-empty parameter route."
+    return 10
+  fi
   upgrade_migrations="$(wiseeff_upgrade_git diff --name-only "$upgrade_previous_sha" "$upgrade_target_sha" -- server/migrations)" || {
     wiseeff_upgrade_die 10 "Could not compare migrations between the current and target commits."
     return $?
@@ -799,6 +837,7 @@ wiseeff_upgrade_collect_runtime() {
   upgrade_runtime_services="postgres redis minio api worker web proxy"
   upgrade_compose_project=""
   upgrade_mixed_app_images="false"
+  upgrade_runtime_image_id_api=""
   app_image=""
   for service in $upgrade_runtime_services; do
     container="$(wiseeff_upgrade_compose ps -q "$service" 2>/dev/null || true)"
@@ -825,6 +864,7 @@ wiseeff_upgrade_collect_runtime() {
       }
       image_ref_variable="upgrade_runtime_image_ref_${service}"
       printf -v "$image_ref_variable" '%s' "$image_ref"
+      [ "$service" != "api" ] || upgrade_runtime_image_id_api="$image"
       if [ -n "${upgrade_run_dir:-}" ]; then
         wiseeff_upgrade_state_write "image_ref_${service}" "$image_ref"
       fi
@@ -907,6 +947,16 @@ wiseeff_upgrade_preflight() {
   wiseeff_upgrade_collect_runtime || return $?
   wiseeff_upgrade_collect_volumes || return $?
   wiseeff_upgrade_resolve_target || return $?
+  if [ "${upgrade_parameter_data_mode:-}" = "new-empty" ] && ! wiseeff_upgrade_local_minio_container >/dev/null; then
+    wiseeff_upgrade_die 10 "new-empty requires the supported Compose MinIO endpoint http://minio:9000 and its named /data volume for metadata-preserving recovery."
+    return 10
+  fi
+  if [ -n "${upgrade_runtime_image_ref_api:-}" ] &&
+    [ "${upgrade_runtime_image_ref_api##*:}" = "82344044b436a8dafecefbb85dfd724cecb05e3f" ] &&
+    [ "${upgrade_parameter_data_mode:-}" != "new-empty" ]; then
+    wiseeff_upgrade_die 10 "This legacy source requires explicit --parameter-data-mode new-empty; automatic parameter migration is unsupported."
+    return 10
+  fi
   wiseeff_upgrade_validate_target_base_image_bundle || return $?
 }
 
@@ -924,8 +974,8 @@ wiseeff_upgrade_print_plan() {
     migrations_count="$(printf '%s\n' "$upgrade_migrations" | sed '/^$/d' | wc -l | tr -d ' ')"
   fi
   if [ "$upgrade_json" = "true" ]; then
-    printf '{"action":"plan","previousSha":"%s","targetSha":"%s","requestedRef":"%s","migrationCount":%s,"restart":%s,"baseImage":{"ref":"%s","id":"%s","configId":"%s","platform":"%s","source":"%s","status":"%s"},"buildNetwork":{"proxy":"%s","npmRegistry":"%s","corporateCa":"%s","buildTlsPolicy":"%s","runtimeProxy":%s}}\n' \
-      "$upgrade_previous_sha" "$upgrade_target_sha" "$escaped_ref" "$migrations_count" "$upgrade_restart" \
+    printf '{"action":"plan","previousSha":"%s","targetSha":"%s","requestedRef":"%s","migrationCount":%s,"restart":%s,"parameterDataMode":"%s","baseImage":{"ref":"%s","id":"%s","configId":"%s","platform":"%s","source":"%s","status":"%s"},"buildNetwork":{"proxy":"%s","npmRegistry":"%s","corporateCa":"%s","buildTlsPolicy":"%s","runtimeProxy":%s}}\n' \
+      "$upgrade_previous_sha" "$upgrade_target_sha" "$escaped_ref" "$migrations_count" "$upgrade_restart" "${upgrade_parameter_data_mode:-unchanged}" \
       "$(wiseeff_upgrade_json_escape "$upgrade_base_image_ref")" \
       "$(wiseeff_upgrade_json_escape "$upgrade_base_image_id")" \
       "$(wiseeff_upgrade_json_escape "$upgrade_base_image_config_id")" \
@@ -1019,6 +1069,7 @@ wiseeff_upgrade_init_run() {
 }
 
 wiseeff_upgrade_store_plan() {
+  wiseeff_upgrade_state_write parameter_data_mode "${upgrade_parameter_data_mode:-}"
   wiseeff_upgrade_state_write previous_sha "$upgrade_previous_sha"
   wiseeff_upgrade_state_write target_sha "$upgrade_target_sha"
   wiseeff_upgrade_state_write migrations "$upgrade_migrations"
@@ -1299,6 +1350,29 @@ wiseeff_upgrade_queue_command_for_image() {
   local image_ref="$2"
   shift 2
   wiseeff_upgrade_compose_for_image "$image_ref" run --rm --no-deps api npm run selfhost:queue-maintenance -- "$command" --timeout-ms "${WISEEFF_UPGRADE_DRAIN_TIMEOUT_MS:-120000}" "$@"
+}
+
+wiseeff_upgrade_parameter_management() {
+  [ "${upgrade_parameter_data_mode:-}" = "new-empty" ] || return 0
+  wiseeff_upgrade_compose_for_image "$upgrade_candidate_image_tag" run --rm --no-deps api \
+    node --import tsx scripts/parameter-data-mode.ts "$1" "$upgrade_previous_sha"
+}
+
+wiseeff_upgrade_initialize_parameters() {
+  [ "${upgrade_parameter_data_mode:-}" = "new-empty" ] || return 0
+  if [ "$(wiseeff_upgrade_state_read parameter_preparation)" != "verified" ]; then
+    if ! wiseeff_upgrade_parameter_management prepare; then
+      wiseeff_upgrade_mark_recovery_required database parameter-preparation-failed "Bounded legacy schema preparation failed; candidate traffic remains isolated."
+      return 70
+    fi
+    wiseeff_upgrade_state_write parameter_preparation verified
+  fi
+  if ! wiseeff_upgrade_compose_for_image "$upgrade_candidate_image_tag" run --rm --no-deps api npm run db:migrate ||
+    ! wiseeff_upgrade_parameter_management initialize; then
+    wiseeff_upgrade_mark_recovery_required database parameter-initialization-failed "Management migration or unpublished-state verification failed; candidate traffic remains isolated."
+    return 70
+  fi
+  wiseeff_upgrade_state_write parameter_initialization verified
 }
 
 wiseeff_upgrade_queue_command() {
@@ -1605,6 +1679,11 @@ wiseeff_upgrade_probe_worker() {
 }
 
 wiseeff_upgrade_verify_parameter_catalog() {
+  if [ -n "${upgrade_target_sha:-}" ] &&
+    wiseeff_upgrade_git cat-file -e "${upgrade_target_sha}:scripts/parameter-data-mode.ts" 2>/dev/null; then
+    wiseeff_upgrade_compose exec -T api node --import tsx scripts/parameter-data-mode.ts initialize "$upgrade_target_sha"
+    return $?
+  fi
   if wiseeff_upgrade_compose exec -T api npm run parameter-definitions:check -- --catalog-only; then
     return 0
   fi
@@ -1641,10 +1720,33 @@ wiseeff_upgrade_snapshot_postgres() {
   wiseeff_upgrade_state_write postgres_backup "$dump" || return $?
 }
 
+wiseeff_upgrade_local_minio_container() {
+  [ "$(wiseeff_upgrade_env_value OBJECT_STORAGE_ENDPOINT)" = "http://minio:9000" ] || return 1
+  local container
+  container="$(wiseeff_upgrade_compose ps -aq minio)" || return $?
+  [ -n "$container" ] || return 1
+  [ "$(wiseeff_upgrade_docker inspect -f '{{range .Mounts}}{{if and (eq .Type "volume") (eq .Destination "/data")}}yes{{end}}{{end}}' "$container")" = "yes" ] || return 1
+  printf '%s' "$container"
+}
+
 wiseeff_upgrade_snapshot_objects() {
   local output_dir="${upgrade_backup_dir}/object-store"
-  local network
+  local network container
   mkdir -p "$output_dir" || return $?
+  if container="$(wiseeff_upgrade_local_minio_container)"; then
+    # A filesystem mirror of S3 objects loses their metadata. Capture the owned
+    # single-node MinIO volume while stopped, including its actual metadata.
+    wiseeff_upgrade_compose stop -t "${WISEEFF_UPGRADE_STOP_TIMEOUT_SECONDS:-60}" minio || return $?
+    [ "$(wiseeff_upgrade_docker inspect -f '{{.State.Running}}' "$container")" = "false" ] || return 40
+    wiseeff_upgrade_docker cp "${container}:/data/." "${output_dir}/data.part" || return $?
+    [ -f "${output_dir}/data.part/.minio.sys/format.json" ] || return 40
+    mv "${output_dir}/data.part" "${output_dir}/data" || return $?
+    wiseeff_upgrade_docker inspect -f '{{.Image}}' "$container" > "${output_dir}/image-id" || return $?
+    printf '%s\n' minio-volume-v1 > "${output_dir}/format" || return $?
+    wiseeff_upgrade_state_write object_backup "$output_dir"
+    return $?
+  fi
+  [ "${upgrade_parameter_data_mode:-}" != "new-empty" ] || return 40
   network="$(wiseeff_upgrade_state_read network)"
   local image="${WISEEFF_BACKUP_MC_IMAGE:-minio/mc:RELEASE.2024-11-21T17-21-54Z}"
   local endpoint bucket
@@ -1678,9 +1780,13 @@ wiseeff_upgrade_snapshot_redis() {
   mkdir -p "$output_dir" || return $?
   wiseeff_upgrade_compose exec -T redis redis-cli SAVE >/dev/null || return $?
   container="$(wiseeff_upgrade_state_read container_redis)"
+  wiseeff_upgrade_compose exec -T redis redis-check-rdb /data/dump.rdb >/dev/null || return $?
+  # Finish AOF writes/rewrite before copying its manifest and component files.
+  # The existing next data-plane start (or recovery) starts Redis again.
+  wiseeff_upgrade_compose stop -t "${WISEEFF_UPGRADE_STOP_TIMEOUT_SECONDS:-60}" redis || return $?
+  [ "$(wiseeff_upgrade_docker inspect -f '{{.State.Running}}' "$container")" = "false" ] || return 40
   wiseeff_upgrade_docker cp "${container}:/data/." "${output_dir}/data.part" || return $?
   wiseeff_upgrade_docker cp "${container}:/data/dump.rdb" "${output_dir}/dump.rdb.part" || return $?
-  wiseeff_upgrade_compose exec -T redis redis-check-rdb /data/dump.rdb >/dev/null || return $?
   mv -f "${output_dir}/dump.rdb.part" "${output_dir}/dump.rdb" || return $?
   mv -f "${output_dir}/data.part" "${output_dir}/data" || return $?
   wiseeff_upgrade_state_write redis_backup "${output_dir}" || return $?
@@ -1854,6 +1960,17 @@ wiseeff_upgrade_load_run() {
     return $?
   fi
   upgrade_previous_sha="$(wiseeff_upgrade_state_read previous_sha)"
+  local recorded_parameter_mode
+  recorded_parameter_mode="$(wiseeff_upgrade_state_read parameter_data_mode)"
+  case "$recorded_parameter_mode" in
+    ""|new-empty) ;;
+    *) wiseeff_upgrade_die 10 "Unknown parameter data mode in the upgrade run."; return 10 ;;
+  esac
+  if [ -n "${upgrade_parameter_data_mode:-}" ] && [ "$upgrade_parameter_data_mode" != "$recorded_parameter_mode" ]; then
+    wiseeff_upgrade_die 10 "The parameter data mode must match the recorded upgrade run."
+    return 10
+  fi
+  upgrade_parameter_data_mode="$recorded_parameter_mode"
   upgrade_target_sha="$(wiseeff_upgrade_state_read target_sha)"
   upgrade_backup_dir="$(wiseeff_upgrade_state_read backup_dir)"
   upgrade_runtime_network="$(wiseeff_upgrade_state_read runtime_network)"
@@ -2112,6 +2229,7 @@ wiseeff_upgrade_run_resume() {
   wiseeff_upgrade_git checkout --detach "$upgrade_target_sha" >/dev/null
   candidate_image="$upgrade_candidate_image_tag"
   if [ "$phase" = "migrating" ]; then
+    wiseeff_upgrade_initialize_parameters || return 70
     local api_container api_state
     api_container="$(wiseeff_upgrade_compose ps -q api 2>/dev/null || true)"
     api_state=""
@@ -2176,13 +2294,31 @@ wiseeff_upgrade_restore_postgres() {
   local dump
   dump="$(wiseeff_upgrade_state_read postgres_backup)"
   [ -f "$dump" ] || { wiseeff_upgrade_die 40 "PostgreSQL recovery point is missing: ${dump}"; return $?; }
-  wiseeff_upgrade_compose exec -T postgres pg_restore --clean --if-exists --no-owner --exit-on-error -U wiseeff -d wiseeff < "$dump"
+  # Restore the run-bound database as a whole. Table-by-table --clean leaves
+  # newly installed schemas behind and fails on their cross-schema references.
+  # Writers are stopped by the recovery controller before this step.
+  wiseeff_upgrade_compose exec -T postgres pg_restore --create --clean --if-exists --exit-on-error -U wiseeff -d postgres < "$dump"
 }
 
 wiseeff_upgrade_restore_objects() {
-  local object_dir network image
+  local object_dir network image container
   object_dir="$(wiseeff_upgrade_state_read object_backup)"
   [ -d "${object_dir}/data" ] || { wiseeff_upgrade_die 40 "Object-store recovery point is missing: ${object_dir}"; return $?; }
+  if [ -f "${object_dir}/format" ]; then
+    [ "$(cat "${object_dir}/format")" = "minio-volume-v1" ] || return 40
+    container="$(wiseeff_upgrade_local_minio_container)" || return 40
+    image="$(wiseeff_upgrade_docker inspect -f '{{.Image}}' "$container")" || return $?
+    [ "$image" = "$(cat "${object_dir}/image-id")" ] || return 40
+    [ -f "${object_dir}/data/.minio.sys/format.json" ] || return 40
+    wiseeff_upgrade_compose stop -t "${WISEEFF_UPGRADE_STOP_TIMEOUT_SECONDS:-60}" minio || return $?
+    [ "$(wiseeff_upgrade_docker inspect -f '{{.State.Running}}' "$container")" = "false" ] || return 40
+    wiseeff_upgrade_docker run --rm --network none --volumes-from "$container" \
+      --mount "type=bind,source=${object_dir}/data,target=/restore,readonly" --entrypoint /bin/sh "$image" -ec \
+      'rm -rf -- /data/* /data/.[!.]* /data/..?*; cp -a /restore/. /data/' || return $?
+    wiseeff_upgrade_docker start "$container" || return $?
+    wiseeff_upgrade_wait_object_store_ready
+    return $?
+  fi
   network="$(wiseeff_upgrade_state_read network)"
   image="${WISEEFF_BACKUP_MC_IMAGE:-minio/mc:RELEASE.2024-11-21T17-21-54Z}"
   wiseeff_upgrade_docker run --rm --network "$network" --env-file "$upgrade_env_file" -v "${object_dir}/data:/backup/data:ro" --entrypoint /bin/sh "$image" -lc \
@@ -2190,17 +2326,31 @@ wiseeff_upgrade_restore_objects() {
 }
 
 wiseeff_upgrade_restore_redis() {
-  local redis_dir container
+  local redis_dir container image
   redis_dir="$(wiseeff_upgrade_state_read redis_backup)"
   [ "$redis_dir" = "skipped" ] && return 0
   [ -d "${redis_dir}/data" ] || { wiseeff_upgrade_die 40 "Redis recovery point is missing: ${redis_dir}"; return $?; }
   container="$(wiseeff_upgrade_compose ps -aq redis)" || return $?
   [ -n "$container" ] || { wiseeff_upgrade_die 40 "Redis container is unavailable for recovery."; return $?; }
   wiseeff_upgrade_compose stop -t "${WISEEFF_UPGRADE_STOP_TIMEOUT_SECONDS:-60}" redis || return $?
+  [ "$(wiseeff_upgrade_docker inspect -f '{{.State.Running}}' "$container")" = "false" ] || return 40
+  image="$(wiseeff_upgrade_docker inspect -f '{{.Image}}' "$container")" || return $?
+  # Redis must not retain candidate keys in memory or open AOF descriptors while
+  # the recovery point replaces its files. Validate before changing the volume.
+  wiseeff_upgrade_docker run --rm --network none --volumes-from "$container" \
+    --mount "type=bind,source=${redis_dir}/data,target=/restore,readonly" \
+    --entrypoint sh "$image" -ec '
+      staging=$(mktemp -d)
+      trap '\''rm -rf "$staging"'\'' EXIT
+      cp -a /restore/. "$staging/"
+      redis-check-rdb "$staging/dump.rdb"
+      test -f "$staging/appendonlydir/appendonly.aof.manifest"
+      (cd "$staging/appendonlydir" && redis-check-aof appendonly.aof.manifest)
+      find /data -mindepth 1 -maxdepth 1 -exec rm -rf -- {} +
+      cp -a /restore/. /data/
+    ' || return $?
   wiseeff_upgrade_docker start "$container" || return $?
-  wiseeff_upgrade_docker exec "$container" sh -lc 'find /data -mindepth 1 -maxdepth 1 -exec rm -rf -- {} +' || return $?
-  wiseeff_upgrade_docker cp "${redis_dir}/data/." "${container}:/data/" || return $?
-  wiseeff_upgrade_compose exec -T redis redis-check-rdb /data/dump.rdb || return $?
+  wiseeff_upgrade_wait_data_service_healthy redis || return $?
 }
 
 wiseeff_upgrade_run_rollback() {
@@ -2615,6 +2765,12 @@ wiseeff_upgrade_run_apply() {
   wiseeff_upgrade_set_phase built complete
   wiseeff_upgrade_write_status "$upgrade_run_id"
 
+  if ! wiseeff_upgrade_parameter_management inspect; then
+    wiseeff_upgrade_set_phase failed-safe failed
+    wiseeff_upgrade_record_failure preflighted database parameter-source-unsupported "Source admission failed before downtime; no migration or parameter initialization ran."
+    return 20
+  fi
+
   wiseeff_upgrade_set_phase quiescing running
   if ! wiseeff_upgrade_stop_old_stack; then
     if ! wiseeff_upgrade_restore_old_stack_after_stop; then
@@ -2633,6 +2789,11 @@ wiseeff_upgrade_run_apply() {
   fi
   wiseeff_upgrade_set_phase recovery-point-verified complete
 
+  if ! wiseeff_upgrade_parameter_management inspect; then
+    wiseeff_upgrade_mark_recovery_required database parameter-source-drift "Source admission changed after draining; stores remain isolated."
+    return 70
+  fi
+
   wiseeff_upgrade_set_phase restarting-data running
   if ! wiseeff_upgrade_start_candidate_data_plane; then
     if ! wiseeff_upgrade_restore_old_stack_after_stop; then
@@ -2649,6 +2810,9 @@ wiseeff_upgrade_run_apply() {
 
   wiseeff_upgrade_state_write migration_started true
   wiseeff_upgrade_set_phase migrating running
+  if [ "${upgrade_parameter_data_mode:-}" = "new-empty" ]; then
+    wiseeff_upgrade_initialize_parameters || return 70
+  fi
   if ! WISEEFF_APP_TAG="$upgrade_target_sha" wiseeff_upgrade_compose up -d --force-recreate --no-build api; then
     wiseeff_upgrade_mark_recovery_required api candidate-api-recreate "The candidate API container could not be recreated."
     return 70
@@ -2748,7 +2912,7 @@ wiseeff_upgrade_status() {
           true|false) ;;
           *) runtime_proxy_status=false ;;
         esac
-        printf '{"runId":"%s","phase":"%s","outcome":"%s","updatedAt":"%s","protocolVersion":"%s","previousSha":"%s","targetSha":"%s","backupDir":"%s","buildStatus":"%s","diagnosticsDir":"%s","buildLog":"%s","buildSummary":"%s","baseImageRef":"%s","baseImageId":"%s","baseImageConfigId":"%s","baseImagePlatform":"%s","baseImageSource":"%s","baseImageStatus":"%s","buildNetwork":{"proxy":"%s","npmRegistry":"%s","corporateCa":"%s","buildTlsPolicy":"%s","transportFingerprint":"%s","runtimeProxy":%s},"completedWithInsecureBuildTransport":%s,"failedPhase":"%s","failureService":"%s","failureCode":"%s","failureSummary":"%s","recoveryStarted":"%s","recoveryVerified":"%s","recoveryProxyStopped":"%s","recoveryQueuePaused":"%s","recoveryFailureSummary":"%s","nextAction":"%s"}\n' \
+        printf '{"runId":"%s","phase":"%s","outcome":"%s","updatedAt":"%s","protocolVersion":"%s","previousSha":"%s","targetSha":"%s","backupDir":"%s","buildStatus":"%s","diagnosticsDir":"%s","buildLog":"%s","buildSummary":"%s","baseImageRef":"%s","baseImageId":"%s","baseImageConfigId":"%s","baseImagePlatform":"%s","baseImageSource":"%s","baseImageStatus":"%s","buildNetwork":{"proxy":"%s","npmRegistry":"%s","corporateCa":"%s","buildTlsPolicy":"%s","transportFingerprint":"%s","runtimeProxy":%s},"completedWithInsecureBuildTransport":%s,"failedPhase":"%s","failureService":"%s","failureCode":"%s","failureSummary":"%s","recoveryStarted":"%s","recoveryVerified":"%s","recoveryProxyStopped":"%s","recoveryQueuePaused":"%s","recoveryFailureSummary":"%s","nextAction":"%s","parameterDataMode":"%s"}\n' \
           "$(wiseeff_upgrade_json_escape "$(cat "${run_dir}/run_id" 2>/dev/null || printf '%s' "$requested_run_id")")" \
           "$(wiseeff_upgrade_json_escape "$(cat "${run_dir}/phase" 2>/dev/null || true)")" \
           "$(wiseeff_upgrade_json_escape "$(cat "${run_dir}/outcome" 2>/dev/null || true)")" \
@@ -2783,7 +2947,8 @@ wiseeff_upgrade_status() {
           "$(wiseeff_upgrade_json_escape "$(cat "${run_dir}/recovery_proxy_stopped" 2>/dev/null || printf 'false')")" \
           "$(wiseeff_upgrade_json_escape "$(cat "${run_dir}/recovery_queue_paused" 2>/dev/null || printf 'false')")" \
           "$(wiseeff_upgrade_json_escape "$(cat "${run_dir}/recovery_failure_summary" 2>/dev/null || true)")" \
-          "$(wiseeff_upgrade_json_escape "$(cat "${run_dir}/next_action" 2>/dev/null || true)")"
+          "$(wiseeff_upgrade_json_escape "$(cat "${run_dir}/next_action" 2>/dev/null || true)")" \
+          "$(wiseeff_upgrade_json_escape "$(cat "${run_dir}/parameter_data_mode" 2>/dev/null || true)")"
       else
         cat "${state_root}/${requested_run_id}/status"
       fi
@@ -2836,6 +3001,7 @@ wiseeff_upgrade_main() {
   upgrade_run_id=""
   upgrade_operator=""
   upgrade_restart="false"
+  upgrade_parameter_data_mode=""
   upgrade_allow_insecure_build="false"
   upgrade_non_interactive="false"
   upgrade_yes="false"
@@ -2896,6 +3062,18 @@ wiseeff_upgrade_main() {
         shift 2
         ;;
       --restart) upgrade_restart="true"; shift ;;
+      --parameter-data-mode)
+        [ "$#" -ge 2 ] && [ "$2" = "new-empty" ] || {
+          wiseeff_upgrade_die 2 "--parameter-data-mode requires new-empty."
+          return 2
+        }
+        [ -z "$upgrade_parameter_data_mode" ] || {
+          wiseeff_upgrade_die 2 "--parameter-data-mode must be supplied once."
+          return 2
+        }
+        upgrade_parameter_data_mode="$2"
+        shift 2
+        ;;
       --allow-insecure-build) upgrade_allow_insecure_build="true"; shift ;;
       --non-interactive) upgrade_non_interactive="true"; shift ;;
       --yes) upgrade_yes="true"; shift ;;
@@ -2920,6 +3098,11 @@ wiseeff_upgrade_main() {
         ;;
     esac
   done
+
+  if [ -n "$upgrade_parameter_data_mode" ] && [ "$upgrade_action" != "plan" ] && [ "$upgrade_action" != "apply" ]; then
+    wiseeff_upgrade_die 2 "--parameter-data-mode is only valid with plan or apply."
+    return 2
+  fi
 
   if [ -n "$upgrade_state_dir" ]; then
     export WISEEFF_UPGRADE_STATE_DIR="$upgrade_state_dir"

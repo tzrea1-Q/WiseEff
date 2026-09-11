@@ -14,10 +14,13 @@ export function findExistingParameter(
   const matches = parameters.filter(
     (parameter) => parameter.name === name && parameter.module === module
   );
-  if (matches.length === 0) {
-    return undefined;
+  if (matches.length > 0) {
+    return matches.find((parameter) => parameter.projectId === projectId) ?? matches[0];
   }
-  return matches.find((parameter) => parameter.projectId === projectId) ?? matches[0];
+  const byName = parameters.filter(
+    (parameter) => parameter.name === name && parameter.projectId === projectId
+  );
+  return byName.length === 1 ? byName[0] : undefined;
 }
 
 export function matchToLibrary(

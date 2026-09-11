@@ -567,9 +567,10 @@ export const catalogNodeEnablementDraftDtoSchema = catalogObject({
   enabled: z.boolean()
 });
 
-export const catalogDocumentResponseSchema = itemEnvelopeSchema(catalogDocumentDtoSchema).superRefine(
-  rejectLegacySpecKeys
-);
+export const catalogDocumentResponseSchema = z.union([
+  itemEnvelopeSchema(catalogDocumentDtoSchema),
+  catalogObject({ item: z.null(), publicationState: z.literal("unpublished") }),
+]).superRefine(rejectLegacySpecKeys);
 export const catalogSubjectListResponseSchema = catalogItemsEnvelopeSchema(catalogSubjectDtoSchema);
 export const catalogSubjectResponseSchema = itemEnvelopeSchema(catalogSubjectDtoSchema).superRefine(
   rejectLegacySpecKeys

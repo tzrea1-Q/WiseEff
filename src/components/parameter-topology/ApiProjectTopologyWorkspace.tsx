@@ -644,6 +644,14 @@ export function ApiProjectTopologyWorkspace({
           diagnostics: [{ message: "项目已切换，已忽略上一项目的草稿响应。", code: "PROJECT_CHANGED" }]
         };
       }
+      if (draft.writeTarget.role === "canonical-project-value") {
+        setPreferredRevision({
+          projectId: requestProjectId,
+          revisionId: draft.workingCandidateRevisionId ?? draft.candidateRevisionId
+        });
+        setReloadToken((token) => token + 1);
+        return { valid: true, diagnostics: [] };
+      }
       setPendingDrafts((current) => {
         if (!isCurrentProjectRequest(requestProjectId, requestGeneration)) return current;
         const tip = draft.workingCandidateRevisionId ?? draft.candidateRevisionId;

@@ -150,14 +150,10 @@ export function createDbLogAnalysisToolBackends(input: {
 }
 
 function pinLogRelatedParameterQuery(db: Queryable): Queryable {
-  const marked = db as Queryable & { __logExactPin?: boolean };
-  if (!marked.__logExactPin) {
-    const original = db.query.bind(db);
-    db.query = ((sql: string, values?: unknown[]) =>
-      original(interceptExactRelatedParameterSql(sql), values)) as Queryable["query"];
-    marked.__logExactPin = true;
-  }
-  return db;
+  const query = db.query.bind(db);
+  return {
+    query: (sql, values) => query(interceptExactRelatedParameterSql(sql), values),
+  };
 }
 
 /** Runtime intercept: keep scanned SQL spans, execute exact name/property pins. */

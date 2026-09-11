@@ -1,0 +1,60 @@
+{
+  "baseSha": "cda6737a8f177a8bbd2f3bc7d195f8e3037bfa74",
+  "previousReviewedSha": "68b618eb86b0be8b20b33c420e38dcc69e34f2a4",
+  "candidateSha": "e35ac1b66edac97341b087fb706e478e5c8f0572",
+  "tree": "a6ca46dc4df81b9ef1c17394d3d41bd2992a0212",
+  "reviews": [
+    {
+      "axis": "Standards",
+      "reviewer": "independent-subagent",
+      "scope": "Page-value increment 30c961455...68b618eb8, then audit repair 68b618eb8...e35ac1b66.",
+      "result": "First increment: P1 unaudited canonical writeback and import pool autocommit inside the import tx; P2 wizard silent fallback, missing-locator skip, unused helper. Repair increment RESULT: PASS. P1s closed by withAuditedWrite + asValueClient(tx) savepoint CAS + writeTrustedGovernanceAudit. Residual smells only.",
+      "testsRunByReviewer": false
+    },
+    {
+      "axis": "Spec",
+      "reviewer": "independent-subagent",
+      "scope": "User option 1: project values under repository-published definitions; no web definition publication.",
+      "result": "Page-loop P1 at 30c961455 closed at 68b618eb8 and re-proven on e35ac1b66. No definition-publication authority. Repair increment: page-loop intact. Residual: API mode with no config-set still returns the App library (P2; Hosted uses default config-set). Parent accepted as non-blocking.",
+      "testsRunByReviewer": false
+    }
+  ],
+  "localGatesAtRepair": {
+    "docs:check": "passed",
+    "build": "passed",
+    "ui:check": "passed",
+    "lint": "0 errors, 312 warnings (baseline)",
+    "frontendWizardAndWorkbench": "passed",
+    "focusedServer": "60 passed"
+  },
+  "hostedAtCandidate": {
+    "runId": 34387796500,
+    "sha": "e35ac1b66edac97341b087fb706e478e5c8f0572",
+    "url": "https://github.com/tzrea1-Q/WiseEff/actions/runs/34387796500",
+    "conclusion": "success",
+    "candidateImageId": "sha256:b669e1916bd858dc04bf04adb7a090ac79e1d67b35f161391aefe966bd5f7a3a",
+    "pageProjectValues": {
+      "registeredSubject": "csub_acme_power",
+      "ingested": 1000,
+      "saved": 2000,
+      "imported": 3000,
+      "restartReread": 3000
+    },
+    "parameterEditSaveImport": "executed",
+    "visualAndConsoleReview": "pending",
+    "cleanup": "complete",
+    "complete": false,
+    "sourceArtifactId": 10118853480,
+    "evidenceArtifactId": 10118852649,
+    "evidenceZipSha256": "751c3d4d2eb6f512882f44b1466a98723c01f43c72cf628b341525c5be1a84d7"
+  },
+  "overallAccepted": false,
+  "mergeAuthorized": false,
+  "productionAuthorized": false,
+  "pr824": {
+    "number": 824,
+    "state": "OPEN",
+    "isDraft": true,
+    "head": "848304d780abd680b937b41f81afcb298a260ead"
+  }
+}

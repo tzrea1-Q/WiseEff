@@ -106,6 +106,7 @@ export function CatalogOrganizationSurface({
             createIdempotencyKey={createGovernanceIdempotencyKey}
             onRefreshEvidence={async () => {
               const current = await catalog.getCatalog();
+              if (current.item === null) return;
               onAnchorChange(buildCatalogHref({ ...anchor, catalogReleaseId: current.item.catalogReleaseId }), "replace");
               setSurfaceEpoch((value) => value + 1);
             }}
@@ -128,6 +129,7 @@ export function CatalogOrganizationSurface({
           catalogReleaseId={catalogReleaseId}
           registrationId={actionRegistrationId ?? undefined}
           createIdempotencyKey={createGovernanceIdempotencyKey}
+          onCompleted={() => setSurfaceEpoch((value) => value + 1)}
           onRefreshEvidence={() => setSurfaceEpoch((value) => value + 1)}
           onOpenChange={(open) => {
             if (!open) {

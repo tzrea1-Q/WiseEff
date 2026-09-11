@@ -8,7 +8,7 @@ import type { Database } from "./client";
  * own transaction holding this advisory lock, with pendingness re-checked
  * under the lock, so two `db:migrate` processes cannot double-apply DDL.
  */
-const MIGRATION_ADVISORY_LOCK_KEY = 7_154_209_001;
+export const MIGRATION_ADVISORY_LOCK_KEY = 7_154_209_001;
 
 export type ApplyMigrationsOptions = {
   /** Apply only migrations whose file name sorts strictly before this value. */
