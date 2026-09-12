@@ -46,6 +46,7 @@ import {
   type AlreadyRecordedResult,
   type CatalogInstallOutcome,
 } from "./publicationTypes";
+import { isPublicationFrozen } from "../../catalog-publication/runtime/freeze";
 
 export type PublicationActivationOptions = MaterializeReleaseOptions;
 
@@ -424,6 +425,14 @@ export const activateOnlinePublication = async (
       });
     }
     return alreadyRecorded(client, receipt, "online-publication");
+  }
+
+  if (await isPublicationFrozen(db)) {
+    throw new PublicationActivationFailure({
+      kind: "publication-not-authorized",
+      reason: "publication-frozen",
+      detail: "publication is frozen for maintenance",
+    });
   }
 
   const authorized = await verifyAuthorizationForActivation(db, {

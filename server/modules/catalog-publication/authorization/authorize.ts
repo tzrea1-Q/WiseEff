@@ -26,6 +26,7 @@ import {
 import type { Queryable } from "../../../shared/database/client";
 import { PUBLICATION_GUARD_FUNCTION_IDENTITY } from "../../catalog-kernel/security/catalogRoleManifest";
 import { appendAuthorization, getCandidate, getPolicy } from "../persistence/store";
+import { isPublicationFrozen } from "../runtime/freeze";
 import type {
   PublicationAuthorizationRecord,
   PublicationCandidateRecord,
@@ -270,6 +271,9 @@ export async function authorizePublish(
   if (!policy.ok) {
     return fail("publication-policy-disabled", "publication policy is missing");
   }
+  if (await isPublicationFrozen(db)) {
+    return fail("publication-frozen", "publication is frozen for maintenance");
+  }
   if (policy.value.revision !== input.policyRevision) {
     return fail("candidate-stale", "policy revision does not match current policy");
   }
@@ -422,6 +426,9 @@ export async function verifyAuthorizationForActivation(
   const policy = await getPolicy(db);
   if (!policy.ok) {
     return fail("publication-policy-disabled", "publication policy is missing");
+  }
+  if (await isPublicationFrozen(db)) {
+    return fail("publication-frozen", "publication is frozen for maintenance");
   }
   if (policy.value.revision !== authorization.policyRevision) {
     return fail("candidate-stale", "policy revision is no longer applicable");

@@ -13,6 +13,7 @@ Use `.env.example` as the local non-HDC staging profile. Copy it to `.env`, then
 | `PORT` | `8787` | API startup | The frontend assumes `127.0.0.1:8787` in API mode by default. |
 | `DATABASE_URL` | local PostgreSQL URL | Migrations, seeds, API mode, E2E | PostgreSQL is the source of truth. Catalog launch lanes must not use the default compose URL `postgres://wiseeff:wiseeff@127.0.0.1:5432/wiseeff`; use `npm run catalog:lane:env -- provision --issue <n>` (`wiseeff_lane_<n>` on `127.0.0.1:55438`). |
 | `TEST_DATABASE_URL` | unset | Catalog/server integration tests | When set, the catalog harness and `catalog:lane:accept` prefer it over `DATABASE_URL`. Must still be real pgvector PostgreSQL, never the shared compose app database. |
+| `CATALOG_BASELINE_READONLY_DATABASE_URL` | unset | Catalog publication baseline inspect | Read-only DSN for `scripts/inspect-catalog-publication-baseline.ts` only. The collector refuses `DATABASE_URL`, requires `SET TRANSACTION READ ONLY`, fails if the role can INSERT/UPDATE/DELETE catalog or publication relations, never prints the DSN, and does not insert an Artifact. |
 | `WISEEFF_API_BASE_URL` | `http://127.0.0.1:8787` | smoke clients | Used by M5 smoke scripts. |
 | `VITE_WISEEFF_RUNTIME_MODE` | `api` (code default and `.env.example`) | frontend runtime | `npm run dev` / `npm run dev:all` also inject `api`. Use `mock` for frontend-only tests or demos. |
 | `VITE_WISEEFF_API_BASE_URL` | `http://127.0.0.1:8787` | frontend API runtime | Must point at the API process. |

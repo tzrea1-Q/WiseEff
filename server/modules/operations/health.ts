@@ -1,4 +1,5 @@
-import type { Database } from "../../shared/database/client";
+import { getRootPostgresPool, type Database } from "../../shared/database/client";
+import { evaluateDualFactReadiness } from "../catalog-publication/runtime";
 import type { ResolvedXiaozeLlmConfig } from "../../config/xiaozeLlmConfig";
 import { buildDurableQueueHealth, type CombinedDurableQueueHealth } from "../jobs/queueHealth";
 import type { DurableQueueHealth } from "../jobs/queuePort";
@@ -39,6 +40,7 @@ export type OperationsHealthBody = {
     xiaozeLlm?: DependencyHealth;
     logAnalysisLlm?: DependencyHealth;
     dtsToolchain?: DependencyHealth;
+    catalogPublication?: DependencyHealth;
   };
 };
 
@@ -275,6 +277,7 @@ export async function buildReadyHealth(options: {
       ? buildDurableQueueHealth({ transport: durableQueueTransport, database: workerQueue })
       : undefined;
   const dtsToolchain = options.includeDtsToolchain === false ? undefined : await checkDtsToolchain();
+  const catalogPublication = await checkCatalogPublication(options.db);
   const ok =
     database.ok &&
     objectStore.ok &&
@@ -283,7 +286,8 @@ export async function buildReadyHealth(options: {
     (durableQueue?.ok ?? true) &&
     (xiaozeLlm?.ok ?? true) &&
     (logAnalysisLlm?.ok ?? true);
-  // dtsToolchain is reported but does not gate process readiness (release gate is fail-closed separately).
+  // dtsToolchain and catalogPublication are reported but do not gate process
+  // readiness. Drain of old images and production enablement are CP-12.
 
   return {
     status: ok ? 200 : 503,
@@ -299,8 +303,30 @@ export async function buildReadyHealth(options: {
         ...(durableQueue ? { durableQueue } : {}),
         ...(xiaozeLlm ? { xiaozeLlm } : {}),
         ...(logAnalysisLlm ? { logAnalysisLlm } : {}),
-        ...(dtsToolchain ? { dtsToolchain } : {})
+        ...(dtsToolchain ? { dtsToolchain } : {}),
+        ...(catalogPublication ? { catalogPublication } : {})
       }
     } satisfies OperationsHealthBody
   };
+}
+
+async function checkCatalogPublication(db?: Pick<Database, "query">): Promise<DependencyHealth | undefined> {
+  if (!db) return undefined;
+  const pool = getRootPostgresPool(db as Database);
+  if (!pool) return undefined;
+  try {
+    const dual = await evaluateDualFactReadiness(pool, { dataMode: "new-empty" });
+    const reasons =
+      dual.status === "not-ready" ? dual.reasons.join(",") : dual.status;
+    return {
+      ok: true,
+      status: dual.onlinePublicationReady ? "ready" : dual.status === "unpublished" ? "missing" : "failed",
+      message: dual.onlinePublicationReady
+        ? "Catalog dual-fact online publication ready."
+        : `Catalog is not online-publication-ready (${reasons}). Drain of old images is CP-12.`,
+      details: { onlinePublicationReady: dual.onlinePublicationReady },
+    };
+  } catch {
+    return undefined;
+  }
 }

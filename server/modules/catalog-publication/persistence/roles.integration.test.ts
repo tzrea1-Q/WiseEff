@@ -20,6 +20,7 @@ import {
   requirePgvectorTestDatabase,
   sha256Digest,
   uniqueToken,
+  withCommittedRole,
   withLocalRole,
   withProductionLogin,
 } from "./integrationHarness";
@@ -393,6 +394,47 @@ describe("catalog publication role isolation T03.a", () => {
     );
     expect(disable.code).toBe("42501");
     expect(disable.message.toLowerCase()).toMatch(/permission denied|must be owner/);
+  });
+
+  it("coordinator can freeze via definer while synchronizer and baseline reader cannot", async () => {
+    await withLocalRole(client, CATALOG_BASELINE_READER_ROLE, async () => {
+      const freeze = await client.query<{ frozen: boolean }>(
+        "select frozen from catalog_publication.publication_freeze where singleton",
+      );
+      expect(freeze.rows).toEqual([{ frozen: false }]);
+    });
+
+    const syncFreeze = await captureRoleStatementError(
+      client,
+      CATALOG_SYNCHRONIZER_ROLE,
+      `select catalog_publication.set_publication_freeze(true, 'sync')`,
+    );
+    assertSqlstate42501(syncFreeze);
+
+    const readerFreeze = await captureRoleStatementError(
+      client,
+      CATALOG_BASELINE_READER_ROLE,
+      `select catalog_publication.set_publication_freeze(true, 'reader')`,
+    );
+    assertSqlstate42501(readerFreeze);
+
+    const direct = await captureRoleStatementError(
+      client,
+      CATALOG_PUBLICATION_COORDINATOR_ROLE,
+      `update catalog_publication.publication_freeze set frozen = true`,
+    );
+    assertSqlstate42501(direct);
+
+    await withCommittedRole(client, CATALOG_PUBLICATION_COORDINATOR_ROLE, async () => {
+      const frozen = await client.query<{ set_publication_freeze: boolean }>(
+        `select catalog_publication.set_publication_freeze(true, 'coord-freeze')`,
+      );
+      expect(frozen.rows[0]?.set_publication_freeze).toBe(true);
+      const unfrozen = await client.query<{ set_publication_freeze: boolean }>(
+        `select catalog_publication.set_publication_freeze(false, 'coord-freeze')`,
+      );
+      expect(unfrozen.rows[0]?.set_publication_freeze).toBe(false);
+    });
   });
 
   it("governance writer has no publication schema DML and no receipts", async () => {

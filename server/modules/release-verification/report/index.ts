@@ -20,6 +20,7 @@ export type { RetentionClock, RetentionEvaluation } from "./retention";
 export {
   P13_RETIRED_STATE,
   createStartupRuntimePinReader,
+  readApprovedCatalogPublicationRuntime,
   readApprovedRuntimePin,
 } from "./runtimePin";
 export type {

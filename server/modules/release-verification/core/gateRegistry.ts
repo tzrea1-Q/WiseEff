@@ -266,6 +266,7 @@ const launchDatabaseApplicability = (purpose: VerificationPurpose): GateApplicab
     case "isolated-candidate-acceptance":
     case "public-release":
     case "legacy-read-sunset":
+    case "catalog-publication-runtime":
       return notApplicable(BELONGS_LAUNCH);
   }
 };
@@ -279,6 +280,7 @@ const migrationApplicability = (purpose: VerificationPurpose): GateApplicability
     case "isolated-candidate-acceptance":
     case "public-release":
     case "legacy-read-sunset":
+    case "catalog-publication-runtime":
       return notApplicable(BELONGS_PRE_ACTIVATION);
   }
 };
@@ -293,6 +295,7 @@ const apiBrowserApplicability = (purpose: VerificationPurpose): GateApplicabilit
       return REQUIRED_NOW;
     case "public-release":
     case "legacy-read-sunset":
+    case "catalog-publication-runtime":
       return notApplicable(BELONGS_ISOLATED);
   }
 };
@@ -306,6 +309,7 @@ const recoveryApplicability = (purpose: VerificationPurpose): GateApplicability 
     case "p16-cleanup":
       return REQUIRED_NOW;
     case "isolated-candidate-acceptance":
+    case "catalog-publication-runtime":
       return notApplicable(BELONGS_LAUNCH);
   }
 };
@@ -320,6 +324,7 @@ const observabilityApplicability = (purpose: VerificationPurpose): GateApplicabi
     case "p16-cleanup":
       return REQUIRED_NOW;
     case "legacy-read-sunset":
+    case "catalog-publication-runtime":
       return notApplicable(BELONGS_ISOLATED);
   }
 };
@@ -334,6 +339,7 @@ const rollbackApplicability = (purpose: VerificationPurpose): GateApplicability 
     case "p16-cleanup":
       return REQUIRED_NOW;
     case "legacy-read-sunset":
+    case "catalog-publication-runtime":
       return notApplicable(BELONGS_ISOLATED);
   }
 };
@@ -348,6 +354,7 @@ const lineageApplicability = (purpose: VerificationPurpose): GateApplicability =
       return REQUIRED_NOW;
     case "pre-activation":
     case "post-retirement-runtime":
+    case "catalog-publication-runtime":
       return notApplicable("belongs-to-purpose:public-release");
   }
 };
@@ -363,6 +370,7 @@ const sunsetWindowApplicability = (purpose: VerificationPurpose): GateApplicabil
     case "pre-activation":
     case "post-retirement-runtime":
     case "isolated-candidate-acceptance":
+    case "catalog-publication-runtime":
       return notApplicable(BELONGS_SUNSET);
   }
 };
@@ -377,6 +385,7 @@ const cleanupFamilyApplicability = (purpose: VerificationPurpose): GateApplicabi
     case "pre-activation":
     case "post-retirement-runtime":
     case "isolated-candidate-acceptance":
+    case "catalog-publication-runtime":
       return notApplicable(BELONGS_CLEANUP);
   }
 };
@@ -414,6 +423,9 @@ export const gateApplicability = (
         return notYetExecutable("post-retirement-runtime");
       }
       if (purpose === "post-retirement-runtime") {
+        return REQUIRED_NOW;
+      }
+      if (purpose === "catalog-publication-runtime") {
         return REQUIRED_NOW;
       }
       return notApplicable(BELONGS_POST_RETIREMENT);

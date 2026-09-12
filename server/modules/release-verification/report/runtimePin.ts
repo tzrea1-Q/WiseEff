@@ -93,6 +93,66 @@ export const readApprovedRuntimePin = async (
   return { kind: "absent", reason: "missing" };
 };
 
+/**
+ * Combo purpose reader. Keeps the same P13 / writer-retirement fingerprint /
+ * generation / digestOf(pins) compares as readApprovedRuntimePin. An old
+ * catalog-publication-runtime report that pins Catalog A cannot approve Catalog B.
+ */
+export const readApprovedCatalogPublicationRuntime = async (
+  db: Database,
+  query: RuntimePinQuery,
+  clock: RetentionClock,
+): Promise<RuntimePinResult> => {
+  if (!isRetiredP13(query)) {
+    return { kind: "absent", reason: "pre-pin" };
+  }
+
+  const rows = await db.query<RuntimePinRow>(
+    `select r.digest
+     from parameter_catalog.verification_reports r
+     inner join parameter_catalog.verification_plans p on p.digest = r.plan_digest
+     where r.purpose = 'catalog-publication-runtime'
+       and r.decision = 'passed'
+     order by r.assembled_at desc, r.id desc`,
+  );
+
+  for (const row of rows.rows) {
+    const stored = await findReport(db, row.digest);
+    if (stored.kind === "missing") {
+      continue;
+    }
+    const plan = await findPlanByDigest(db, stored.report.planDigest);
+    if (!plan) {
+      continue;
+    }
+    if (plan.lineage.p13State !== query.p13State) {
+      continue;
+    }
+    if (plan.lineage.writerRetirementFingerprint !== query.writerRetirementFingerprint) {
+      continue;
+    }
+    if (plan.lineage.runtimePinGeneration !== query.runtimePinGeneration) {
+      continue;
+    }
+    if (digestOf(stored.report.pins) !== digestOf(query.pins)) {
+      continue;
+    }
+    if (digestOf(plan.subject) !== digestOf(query.subject)) {
+      continue;
+    }
+    const approvals = await listApprovals(db, stored.report.digest);
+    if (!approvalsComplete(stored.report.purpose, approvals)) {
+      return { kind: "absent", reason: "unapproved" };
+    }
+    if (reportRetentionBlocksPresent(stored.report, clock)) {
+      continue;
+    }
+    return { kind: "present", report: stored.report };
+  }
+
+  return { kind: "absent", reason: "missing" };
+};
+
 export const createStartupRuntimePinReader = (options: {
   readonly db: Database;
   readonly clock: RetentionClock;

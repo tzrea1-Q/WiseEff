@@ -217,6 +217,17 @@ describe("catalog publication schema constraints", () => {
     ]);
   });
 
+  it("seeds publication_freeze=false without bumping policy revision", async () => {
+    const freeze = await client.query<{ frozen: boolean }>(
+      `select frozen from catalog_publication.publication_freeze where singleton`,
+    );
+    expect(freeze.rows).toEqual([{ frozen: false }]);
+    const policy = await client.query<{ revision: string }>(
+      `select revision::text as revision from catalog_publication.publication_policies where singleton`,
+    );
+    expect(policy.rows).toEqual([{ revision: "1" }]);
+  });
+
   it("T07.a stores aggregate digest independently of bytes checksum and rejects digest reuse with different bytes", async () => {
     const token = uniqueToken("t07a");
     const bytes = Buffer.from(`artifact-bytes-${token}`);

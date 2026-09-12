@@ -38,6 +38,8 @@ The compiler must print `releaseId=crel_vendor_catalog_1` and digest `sha256:efc
 
 A lost-response retry of the same command returns `already-current`. A current pointer that is not `crel_acme_1` with that digest is refused. After restart, Catalog should list 114 definitions, including the original `iin_max`.
 
+These vendor `advance` commands are **not** the publication-control-plane inspect, adopt, publish, or restore entries. Inspect uses `scripts/inspect-catalog-publication-baseline.ts` with `CATALOG_BASELINE_READONLY_DATABASE_URL` only. Adopt uses the synchronizer `adopted-preexisting` adapter and does not move the pointer. Online publish is CP-07 and is not enabled here. Restore remains the upgrade recovery path. Do not reuse one script with a dangerous default for all four. Drain of old API/worker images before first online enablement is CP-12.
+
 ## Minimal parameter initialization candidate
 
 The active [minimal upgrade plan](../../docs/exec-plans/active/minimal-parameter-upgrade.md) adds `--parameter-data-mode new-empty` to `plan` and `apply`. This candidate is still under isolated acceptance; it is not a production execution approval. The option is recorded in the plan/run and selects management initialization only. API and worker processes do not read a bypass flag, and subsequent normal restarts never clear parameters.

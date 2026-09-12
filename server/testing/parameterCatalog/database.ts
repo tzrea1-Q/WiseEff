@@ -7,9 +7,9 @@ import { createEphemeralTestDatabase } from "../testDatabase";
 export const S2_SCH_0137_FINGERPRINT =
   "f2ad57b2af5c6e0d50841284bacf5aff927dd1dbf09039099144e20216c82453";
 
-/** Live catalog schema fingerprint of origin/main through 0139. 0137-only freeze is S2_SCH_0137_FINGERPRINT. */
+/** Live catalog schema fingerprint through 0143 publication runtime. 0137-only freeze is S2_SCH_0137_FINGERPRINT. */
 export const S2_SCH_CONTRACT_FINGERPRINT =
-  "5424d2588395ab736b7af2ad5146091d7c9592ede4a59eea48480917e84516f5";
+  "1fee5ae1af7abb38c4a220b4e66e83f14ea82b2798687f4deda79513e0e15daa";
 
 const CATALOG_DATABASE_PREFIX = "wiseeff_pcat_";
 const FAKE_ENGINE_PATTERN = /pglite|postgres-js|pg-mem|sqlite|:memory:|memory:\/\//i;

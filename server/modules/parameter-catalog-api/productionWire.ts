@@ -7,6 +7,12 @@ import { createUserInvocation } from "../auth/trustedInvocation";
 import { createCatalogKernel, type CatalogKernel } from "../catalog-kernel/interface";
 import { isCatalogProjectionEmpty, readCurrentCatalogPointer } from "../catalog-kernel/install/currentPointer";
 import {
+  captureCurrentCatalogPin,
+  createPinCapturingCatalogRuntime,
+  evaluateDualFactReadiness,
+} from "../catalog-publication/runtime";
+import { createStartupRuntimePin } from "../release-verification/report/service";
+import {
   CatalogReleaseDigest,
   CatalogReleaseId,
   CatalogSubjectId,
@@ -183,13 +189,38 @@ const notReady = (): CatalogReadinessResult => ({
 const createKernelReadiness = (
   kernel: CatalogKernel,
   pool: pg.Pool,
+  db?: Database,
 ): CatalogReadPorts["readiness"] => {
   const current = async (): Promise<CatalogReadinessResult> => {
+    if (db) {
+      createStartupRuntimePin({ db });
+    }
     const pointer = await readCurrentCatalogPointer(pool);
     if (pointer.kind !== "installed") {
       // An absent pointer alone also describes an interrupted installation.
       // Only a genuinely empty owner projection is an unpublished catalog.
       return await isCatalogProjectionEmpty(pool) ? { status: "unpublished" } : notReady();
+    }
+    const captured = await captureCurrentCatalogPin(pool);
+    if (
+      captured === null ||
+      captured.id !== pointer.current.id ||
+      captured.digest !== pointer.current.digest
+    ) {
+      return notReady();
+    }
+    const dual = await evaluateDualFactReadiness(pool, { dataMode: "new-empty" });
+    if (dual.status === "not-ready") {
+      const catalogReasons = dual.reasons.filter(
+        (reason) =>
+          reason === "missing-receipt" ||
+          reason === "receipt-pin-mismatch" ||
+          reason === "artifact-pin-mismatch" ||
+          reason === "unsupported-catalog-capability",
+      );
+      if (catalogReasons.length > 0) {
+        return notReady();
+      }
     }
     const loaded = await kernel.loadCurrentCatalog(pinOf(pointer.current.id, pointer.current.digest));
     if (!loaded.ok) {
@@ -265,7 +296,11 @@ const lookupChooseParentDestinationModule = async (
   return result.rows[0]?.id ?? null;
 };
 
-const createReadPorts = (pool: pg.Pool | undefined, resolveAuth: CatalogApiAuthResolver): CatalogReadPorts => {
+const createReadPorts = (
+  pool: pg.Pool | undefined,
+  resolveAuth: CatalogApiAuthResolver,
+  db?: Database,
+): CatalogReadPorts => {
   if (!pool) {
     return {
       runtime: unavailableRuntime,
@@ -285,11 +320,12 @@ const createReadPorts = (pool: pg.Pool | undefined, resolveAuth: CatalogApiAuthR
   }
 
   const kernel = createCatalogKernel(pool);
+  const runtime = createPinCapturingCatalogRuntime(pool, kernel);
   const queries = createGovernanceCatalogQueries(pool);
   const usage = createUsageQueries(pool);
   return {
-    runtime: kernel,
-    readiness: createKernelReadiness(kernel, pool),
+    runtime,
+    readiness: createKernelReadiness(runtime, pool, db),
     registration: createRegistrationProjectionFromQueries(queries),
     usage: createUsageProjectionFromQueries(usage),
     timeline: kernelOnlyTimelineComposer,
@@ -346,7 +382,9 @@ const createGovernancePorts = (
         }),
       };
 
-  const kernel = pool ? createCatalogKernel(pool) : undefined;
+  const kernel = pool
+    ? createPinCapturingCatalogRuntime(pool, createCatalogKernel(pool))
+    : undefined;
   const queries = pool ? createGovernanceCatalogQueries(pool) : undefined;
 
   return {
@@ -431,7 +469,7 @@ export const registerParameterCatalogApi = (
   },
 ): void => {
   const pool = getRootPostgresPool(options.db);
-  registerCatalogReadRoutes(router, createReadPorts(pool, options.resolveAuth));
+  registerCatalogReadRoutes(router, createReadPorts(pool, options.resolveAuth, options.db));
   registerCatalogGovernanceRoutes(router, createGovernancePorts(pool, options.resolveAuth));
   registerCatalogLegacyRoutes(router, createLegacyOptions(options.db, pool, options.resolveAuth));
 };

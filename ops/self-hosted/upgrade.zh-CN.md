@@ -34,6 +34,8 @@ API 镜像必须包含 `scripts/compile-vendor-catalog-release.ts`，以及 `scr
 
 同一命令因丢失响应而重试时返回 `already-current`。当前指针不是带该 digest 的 `crel_acme_1` 时拒绝。重启后 Catalog 应列出 114 条定义，并仍包含原来的 `iin_max`。
 
+上述厂商 `advance` 命令**不是**发布控制面的采集、接管、在线发布或恢复入口。采集只使用 `scripts/inspect-catalog-publication-baseline.ts` 且仅读取 `CATALOG_BASELINE_READONLY_DATABASE_URL`。接管使用同步器 `adopted-preexisting` adapter，不移动指针。在线发布属于 CP-07，此处未启用。恢复仍走升级 recovery 路径。禁止用一个带危险默认值的脚本覆盖这四类操作。首次启用在线发布前清退旧 API/worker 镜像属于 CP-12。
+
 ## 最小参数初始化候选
 
 [最小升级计划](../../docs/zh-CN/exec-plans/active/minimal-parameter-upgrade.md) 为 `plan` 和 `apply` 增加 `--parameter-data-mode new-empty`。本候选仍在隔离验收，不构成生产执行批准。该选项绑定计划/run，仅选择管理期初始化；API/worker 不读取绕过开关，后续正常重启不会清空参数。

@@ -64,6 +64,15 @@ export const THREAT_MATRIX = freezeMatrix([
     expected: "assembly composes frozen S10-PER assemble only; applicability stays on the plan profile",
     evidenceOwner: "L",
   },
+  {
+    id: 9,
+    name: "combo-runtime-pin-does-not-approve-later-catalog",
+    attack:
+      "reuse an approved post-retirement-runtime or catalog-publication-runtime report whose pins bind Catalog A to approve Catalog B",
+    expected:
+      "digestOf(pins) compare remains exact; combo purpose is additive; old reports do not authorize a later Catalog",
+    evidenceOwner: "L+PG",
+  },
 ] as const);
 
 export type ThreatMatrixRow = (typeof THREAT_MATRIX)[number];

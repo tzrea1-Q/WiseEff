@@ -114,6 +114,8 @@ export const PUBLICATION_INTENT_REFERENCE_MIGRATION =
   "0141_catalog_publication_intent_reference.sql";
 export const PUBLICATION_ACTIVATION_MIGRATION =
   "0142_catalog_publication_activation.sql";
+export const PUBLICATION_RUNTIME_MIGRATION =
+  "0143_catalog_publication_runtime.sql";
 export const SCHEMA_MIGRATION = "0137_canonical_parameter_catalog_schema.sql";
 export const FLOOR_MIGRATION = "0136_parameter_execution_principal_deleted_marker.sql";
 
@@ -127,6 +129,7 @@ export const PUBLICATION_RELATIONS = [
   "publication_policies",
   "publication_policy_revisions",
   "publication_guard",
+  "publication_freeze",
 ] as const;
 
 export const PUBLICATION_GUARD_FUNCTION_IDENTITY =
@@ -134,6 +137,9 @@ export const PUBLICATION_GUARD_FUNCTION_IDENTITY =
 
 export const REVISE_PUBLICATION_POLICY_FUNCTION_IDENTITY =
   "catalog_publication.revise_publication_policy(boolean,boolean,text,text)";
+
+export const SET_PUBLICATION_FREEZE_FUNCTION_IDENTITY =
+  "catalog_publication.set_publication_freeze(boolean,text)";
 
 export const SYNCHRONIZER_HEAD_UPDATES: Record<string, string> = {
   catalog_state: "current_catalog_release_id",

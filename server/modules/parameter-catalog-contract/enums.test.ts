@@ -108,7 +108,8 @@ describe("parameter catalog closed literals", () => {
       "isolated-candidate-acceptance",
       "public-release",
       "legacy-read-sunset",
-      "p16-cleanup"
+      "p16-cleanup",
+      "catalog-publication-runtime"
     ]);
     expect(verificationModes).toEqual(["fresh", "populated", "restored", "cleanup"]);
     expect(verificationGateStatuses).toEqual([
