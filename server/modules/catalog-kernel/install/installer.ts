@@ -46,6 +46,7 @@ import {
   publicationRegimeActive,
   setSynchronizerRole,
   type PublicationActivationOptions,
+  type PublicationActivationTestOptions,
 } from "./publicationActivation";
 import {
   CatalogInstallFailure,
@@ -179,6 +180,9 @@ export type TrafficActivationGuard = {
 export type CatalogInstallerOptions = PublicationActivationOptions & {
   readonly trafficActivationGuard?: TrafficActivationGuard;
 };
+
+export type CatalogInstallerTestOptions = CatalogInstallerOptions &
+  PublicationActivationTestOptions;
 
 const absent = { kind: "absent" as const };
 
@@ -657,10 +661,31 @@ const withCatalogWriteTransaction = async <T>(
   }
 };
 
+const productionInstallOptions = (
+  options?: CatalogInstallerOptions,
+): CatalogInstallerOptions => ({
+  failAfter: options?.failAfter,
+  trafficActivationGuard: options?.trafficActivationGuard,
+});
+
 export const installPublishedRelease = async (
   pool: pg.Pool,
   command: InstallPublishedReleaseCommand,
   options?: CatalogInstallerOptions,
+): Promise<Result<CatalogInstallOutcome, CatalogInstallError>> =>
+  installPublishedReleaseInternal(pool, command, productionInstallOptions(options));
+
+export const installPublishedReleaseForTests = async (
+  pool: pg.Pool,
+  command: InstallPublishedReleaseCommand,
+  options?: CatalogInstallerTestOptions,
+): Promise<Result<CatalogInstallOutcome, CatalogInstallError>> =>
+  installPublishedReleaseInternal(pool, command, options);
+
+const installPublishedReleaseInternal = async (
+  pool: pg.Pool,
+  command: InstallPublishedReleaseCommand,
+  options?: CatalogInstallerTestOptions,
 ): Promise<Result<CatalogInstallOutcome, CatalogInstallError>> => {
   if (command.mode === "online-publication") {
     return withCatalogWriteTransaction(
@@ -841,7 +866,17 @@ export const createCatalogInstaller = (
   options?: CatalogInstallerOptions,
 ): CatalogInstaller => ({
   installPublishedRelease: (command) =>
-    installPublishedRelease(pool, command, options),
+    installPublishedRelease(pool, command, productionInstallOptions(options)),
+  switchBackBeforeTraffic: (command) =>
+    switchBackBeforeTraffic(pool, command, productionInstallOptions(options)),
+});
+
+export const createCatalogInstallerForTests = (
+  pool: pg.Pool,
+  options?: CatalogInstallerTestOptions,
+): CatalogInstaller => ({
+  installPublishedRelease: (command) =>
+    installPublishedReleaseForTests(pool, command, options),
   switchBackBeforeTraffic: (command) =>
     switchBackBeforeTraffic(pool, command, options),
 });

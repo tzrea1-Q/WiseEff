@@ -15,7 +15,7 @@ import {
   isTestDatabaseAvailable,
   type EphemeralTestDatabase,
 } from "../../../testing/testDatabase";
-import { installPublishedRelease } from "./installer";
+import { installPublishedRelease, installPublishedReleaseForTests } from "./installer";
 import {
   connect,
   domainSnapshot,
@@ -119,7 +119,7 @@ describe("publication revoke versus activate linearization", () => {
       releaseActivation = resolve;
     });
     let guardHeld = false;
-    const activating = installPublishedRelease(pool, prepared.command, {
+    const activating = installPublishedReleaseForTests(pool, prepared.command, {
       afterGuard: async () => {
         guardHeld = true;
         await held;

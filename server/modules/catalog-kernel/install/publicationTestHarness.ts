@@ -55,6 +55,9 @@ export type DomainSnapshot = {
   readonly receipts: string;
   readonly receiptKinds: readonly string[];
   readonly jobStatuses: readonly string[];
+  readonly bindings: string;
+  readonly projectValues: string;
+  readonly activationAudits: string;
 };
 
 export async function connect(url: string): Promise<pg.Client> {
@@ -72,6 +75,9 @@ export async function domainSnapshot(client: pg.Client): Promise<DomainSnapshot>
     revisions: string;
     heads: string;
     receipts: string;
+    bindings: string;
+    project_values: string;
+    activation_audits: string;
   }>(`
     select
       (select current_catalog_release_id from parameter_catalog.catalog_state) as current,
@@ -85,7 +91,10 @@ export async function domainSnapshot(client: pg.Client): Promise<DomainSnapshot>
       (select count(*)::text from parameter_catalog.catalog_materializations) as materializations,
       (select count(*)::text from parameter_catalog.definition_revisions) as revisions,
       (select count(*)::text from parameter_catalog.catalog_release_definition_heads) as heads,
-      (select count(*)::text from parameter_catalog.catalog_activation_receipts) as receipts
+      (select count(*)::text from parameter_catalog.catalog_activation_receipts) as receipts,
+      (select count(*)::text from parameter_catalog.project_parameter_bindings) as bindings,
+      (select count(*)::text from parameter_catalog.project_parameter_values) as project_values,
+      (select count(*)::text from public.audit_events where kind = 'catalog-activation') as activation_audits
   `);
   const kinds = await client.query<{ kind: string }>(
     `select kind from parameter_catalog.catalog_activation_receipts order by created_at, id`,
@@ -104,6 +113,9 @@ export async function domainSnapshot(client: pg.Client): Promise<DomainSnapshot>
     receipts: row.receipts,
     receiptKinds: kinds.rows.map((item) => item.kind),
     jobStatuses: jobs.rows.map((item) => item.status),
+    bindings: row.bindings,
+    projectValues: row.project_values,
+    activationAudits: row.activation_audits,
   };
 }
 

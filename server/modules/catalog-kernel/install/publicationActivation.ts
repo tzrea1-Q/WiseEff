@@ -47,10 +47,15 @@ import {
   type CatalogInstallOutcome,
 } from "./publicationTypes";
 
-export type PublicationActivationOptions = MaterializeReleaseOptions & {
+export type PublicationActivationOptions = MaterializeReleaseOptions;
+
+export type PublicationActivationTestHooks = {
   readonly afterMaterialize?: (client: pg.PoolClient) => Promise<void>;
   readonly afterGuard?: (client: pg.PoolClient) => Promise<void>;
 };
+
+export type PublicationActivationTestOptions = PublicationActivationOptions &
+  PublicationActivationTestHooks;
 
 const SHA256_DIGEST = /^sha256:[0-9a-f]{64}$/;
 
@@ -246,7 +251,7 @@ const alreadyRecorded = async (
 };
 
 const maybeFailStage = (
-  options: PublicationActivationOptions | undefined,
+  options: PublicationActivationTestOptions | undefined,
   stage: "staged-verify" | "receipt" | "job-status" | "pointer",
 ): void => {
   if (options?.failAfter === stage) {
@@ -262,6 +267,39 @@ const markJobActivated = async (
   await client.query(
     `select catalog_publication.mark_job_activated($1, $2)`,
     [jobId, expectedFence],
+  );
+};
+
+const appendActivationSuccessAudit = async (
+  client: Pick<pg.Client, "query">,
+  input: {
+    readonly actorPrincipalId: string;
+    readonly action: "online-publication" | "adopted-preexisting";
+    readonly receiptId: string;
+    readonly releaseId: string;
+    readonly releaseDigest: string;
+    readonly verificationDigest: string;
+    readonly publicationJobId?: string | null;
+    readonly candidateId?: string | null;
+  },
+): Promise<void> => {
+  await client.query(
+    `select catalog_publication.append_activation_success_audit($1, $2, $3, $4, $5::jsonb, $6)`,
+    [
+      `audit_${randomUUID()}`,
+      input.actorPrincipalId,
+      input.action,
+      input.receiptId,
+      JSON.stringify({
+        receiptId: input.receiptId,
+        releaseId: input.releaseId,
+        releaseDigest: input.releaseDigest,
+        verificationDigest: input.verificationDigest,
+        publicationJobId: input.publicationJobId ?? null,
+        candidateId: input.candidateId ?? null,
+      }),
+      input.verificationDigest,
+    ],
   );
 };
 
@@ -337,7 +375,7 @@ const evidenceMatches = (
 export const activateOnlinePublication = async (
   client: pg.PoolClient,
   command: Extract<InstallPublishedReleaseCommand, { mode: "online-publication" }>,
-  options?: PublicationActivationOptions,
+  options?: PublicationActivationTestOptions,
 ): Promise<CatalogInstallOutcome> => {
   await acquirePublicationGuardLock(client);
   if (options?.afterGuard) {
@@ -519,6 +557,16 @@ export const activateOnlinePublication = async (
       detail: `receipt insert failed: ${inserted.error.kind}`,
     });
   }
+  await appendActivationSuccessAudit(client, {
+    actorPrincipalId: authorized.value.authorization.actorPrincipalId,
+    action: "online-publication",
+    receiptId: inserted.value.id,
+    releaseId: compiled.value.release.id,
+    releaseDigest: compiled.value.release.digest,
+    verificationDigest: compiled.value.materializationFingerprint,
+    publicationJobId: command.jobId,
+    candidateId: command.candidateId,
+  });
   maybeFailStage(options, "receipt");
 
   await restoreCurrentDefinitionHeads(client, compiled.value.release.id);
@@ -568,7 +616,7 @@ const validateAdoptionEvidence = (
 export const adoptPreexistingCurrent = async (
   client: pg.PoolClient,
   command: Extract<InstallPublishedReleaseCommand, { mode: "adopted-preexisting" }>,
-  options?: PublicationActivationOptions,
+  options?: PublicationActivationTestOptions,
 ): Promise<CatalogInstallOutcome> => {
   await acquirePublicationGuardLock(client);
   if (options?.afterGuard) {
@@ -594,6 +642,50 @@ export const adoptPreexistingCurrent = async (
       kind: "adoption-evidence-invalid",
       detail: "adoption target is missing stored catalog history",
     });
+  }
+  if (command.adoptionEvidence.verification_digest !== fingerprint) {
+    throw new PublicationActivationFailure({
+      kind: "adoption-evidence-invalid",
+      detail: "adoption verification_digest does not match the stored materialization fingerprint",
+    });
+  }
+
+  const artifact = await getArtifactByDigest(asQueryable(client), pointer.current.digest);
+  if (!artifact.ok) {
+    throw new PublicationActivationFailure({
+      kind: "adoption-evidence-invalid",
+      detail: "adoption target artifact bytes are missing",
+    });
+  }
+  let bundle: CatalogReleaseBundle;
+  try {
+    bundle = parseArtifactBundle(artifact.value.artifactBytes);
+  } catch (error) {
+    if (error instanceof PublicationActivationFailure) throw error;
+    throw new PublicationActivationFailure({
+      kind: "adoption-evidence-invalid",
+      detail: "adoption target artifact bytes are unreadable",
+    });
+  }
+  const compiled = compileCatalogRelease(bundle);
+  if (!compiled.ok) {
+    throw new CatalogInstallFailure(compiled.error);
+  }
+  if (
+    compiled.value.release.id !== pointer.current.id ||
+    compiled.value.release.digest !== pointer.current.digest ||
+    compiled.value.materializationFingerprint !== fingerprint
+  ) {
+    throw new PublicationActivationFailure({
+      kind: "adoption-evidence-invalid",
+      detail: "compiled adoption artifact does not match the current materialization",
+    });
+  }
+  const verified = await verifyStagedReleaseProjection(client, compiled.value, {
+    checkCurrentPointer: true,
+  });
+  if (!verified.ok) {
+    throw new CatalogInstallFailure(verified.error);
   }
 
   const existing = await loadAdoptedReceipt(client, pointer.current.id);
@@ -628,7 +720,7 @@ export const adoptPreexistingCurrent = async (
     releaseDigest: pointer.current.digest,
     predecessorReleaseId,
     predecessorReleaseDigest,
-    verificationDigest: command.adoptionEvidence.verification_digest,
+    verificationDigest: fingerprint,
     publicationJobId: null,
     authorizationId: null,
     candidateId: null,
@@ -641,6 +733,14 @@ export const adoptPreexistingCurrent = async (
       detail: `adoption receipt insert failed: ${inserted.error.kind}`,
     });
   }
+  await appendActivationSuccessAudit(client, {
+    actorPrincipalId: command.actorPrincipalId,
+    action: "adopted-preexisting",
+    receiptId: inserted.value.id,
+    releaseId: pointer.current.id,
+    releaseDigest: pointer.current.digest,
+    verificationDigest: fingerprint,
+  });
   maybeFailStage(options, "receipt");
 
   return {

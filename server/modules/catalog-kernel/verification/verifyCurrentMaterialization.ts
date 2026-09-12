@@ -859,13 +859,14 @@ export const createCatalogVerifier = (pool: pg.Pool): CatalogVerifierAdapter => 
 export const verifyStagedReleaseProjection = async (
   client: Pick<pg.Client, "query">,
   compiled: CompiledCatalogRelease,
+  options: CompareCompiledProjectionOptions = {},
 ): Promise<Result<never, CatalogKernelError> | { readonly ok: true }> => {
   const expected = {
     id: compiled.release.id,
     digest: compiled.release.digest,
   };
   const violations = await compareCompiledProjection(client, compiled, expected, {
-    checkCurrentPointer: false,
+    checkCurrentPointer: options.checkCurrentPointer ?? false,
   });
   if (violations.length > 0) {
     return fail({

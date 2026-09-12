@@ -94,9 +94,100 @@ before insert or update of current_catalog_release_id
 on parameter_catalog.catalog_state
 for each row execute function parameter_catalog.assert_publication_regime_pointer();
 
+-- catalog_synchronizer_role has no INSERT on public.audit_events (0138 grants
+-- that to parameter_governance_writer_role). The kernel writes a success audit
+-- after Receipt and before heads via this owner definer.
+grant insert on table public.audit_events to catalog_migration_owner;
+
+create function catalog_publication.append_activation_success_audit(
+  event_id text,
+  actor_principal_id text,
+  action text,
+  target_id text,
+  metadata jsonb,
+  trace_id text
+)
+returns void
+language plpgsql
+security definer
+set search_path = pg_catalog, public
+as $$
+begin
+  if event_id is null or btrim(event_id) <> event_id or event_id = ''
+     or event_id !~ '^audit_' then
+    raise exception using
+      errcode = '23514',
+      message = 'activation success audit id must be audit_*';
+  end if;
+  if actor_principal_id is null
+     or btrim(actor_principal_id) <> actor_principal_id
+     or actor_principal_id = '' then
+    raise exception using
+      errcode = '23514',
+      message = 'activation success audit requires actor_principal_id';
+  end if;
+  if action is null or action not in ('online-publication', 'adopted-preexisting') then
+    raise exception using
+      errcode = '23514',
+      message = 'activation success audit action must be online-publication or adopted-preexisting';
+  end if;
+  if target_id is null or btrim(target_id) <> target_id or target_id = ''
+     or target_id !~ '^crct_' then
+    raise exception using
+      errcode = '23514',
+      message = 'activation success audit target must be a receipt id';
+  end if;
+  if metadata is null or jsonb_typeof(metadata) <> 'object' then
+    raise exception using
+      errcode = '23514',
+      message = 'activation success audit metadata must be a JSON object';
+  end if;
+  if trace_id is null or btrim(trace_id) <> trace_id or trace_id = '' then
+    raise exception using
+      errcode = '23514',
+      message = 'activation success audit requires trace_id';
+  end if;
+
+  insert into public.audit_events (
+    id,
+    organization_id,
+    project_id,
+    actor_user_id,
+    actor_type,
+    app,
+    kind,
+    action,
+    severity,
+    target_type,
+    target_id,
+    metadata,
+    trace_id
+  ) values (
+    event_id,
+    null,
+    null,
+    null,
+    'system',
+    'catalog-publication',
+    'catalog-activation',
+    action,
+    'info',
+    'catalog-activation-receipt',
+    target_id,
+    metadata || jsonb_build_object('actorPrincipalId', actor_principal_id),
+    trace_id
+  );
+end;
+$$;
+
+comment on function catalog_publication.append_activation_success_audit(text, text, text, text, jsonb, text) is
+  'Synchronizer-callable SECURITY DEFINER append of a catalog-activation success audit. Does not grant generic audit INSERT to the synchronizer.';
+
 alter function catalog_publication.mark_job_activated(text, bigint)
   owner to catalog_migration_owner;
 alter function parameter_catalog.assert_publication_regime_pointer()
+  owner to catalog_migration_owner;
+alter function catalog_publication.append_activation_success_audit(text, text, text, text, jsonb, text)
   owner to catalog_migration_owner;
 
 revoke all on function catalog_publication.mark_job_activated(text, bigint)
@@ -108,7 +199,14 @@ revoke all on function parameter_catalog.assert_publication_regime_pointer()
   catalog_publication_coordinator_role, catalog_baseline_reader_role,
   catalog_verification_writer_role, catalog_verifier_role;
 
+revoke all on function catalog_publication.append_activation_success_audit(text, text, text, text, jsonb, text)
+  from public, catalog_synchronizer_role, parameter_governance_writer_role,
+  catalog_publication_coordinator_role, catalog_baseline_reader_role;
+
 grant execute on function catalog_publication.mark_job_activated(text, bigint)
+  to catalog_synchronizer_role;
+
+grant execute on function catalog_publication.append_activation_success_audit(text, text, text, text, jsonb, text)
   to catalog_synchronizer_role;
 
 select pg_catalog.pg_advisory_unlock(140014000142);

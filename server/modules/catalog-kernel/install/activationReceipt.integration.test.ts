@@ -114,10 +114,11 @@ describe("activation receipt recovery", () => {
 
   it("adopts the current pin without moving heads and replays the same proof", async () => {
     const predecessor = await bootstrapFirstAcme(pool);
+    await persistPredecessorArtifact(observer, predecessor);
     const before = await domainSnapshot(observer);
     const evidence = {
       source_bundle_digest: predecessor.digest,
-      verification_digest: predecessor.digest,
+      verification_digest: predecessor.compiled.materializationFingerprint,
       data_mode: "populated" as const,
       collected_at: "2026-09-12T00:00:00.000Z",
       approved_by: PUBLISHER,
@@ -141,6 +142,9 @@ describe("activation receipt recovery", () => {
     expect(after.revisions).toBe(before.revisions);
     expect(after.heads).toBe(before.heads);
     expect(after.receipts).toBe("1");
+    expect(after.activationAudits).toBe("1");
+    expect(after.bindings).toBe(before.bindings);
+    expect(after.projectValues).toBe(before.projectValues);
 
     const replay = await installPublishedRelease(pool, command);
     expect(replay.ok).toBe(true);
@@ -191,8 +195,56 @@ describe("activation receipt recovery", () => {
     expect(snapshot.receipts).toBe("0");
   });
 
+  it("rejects adoption when verification_digest does not match the materialization fingerprint", async () => {
+    const predecessor = await bootstrapFirstAcme(pool);
+    await persistPredecessorArtifact(observer, predecessor);
+    const before = await domainSnapshot(observer);
+    const forged = await installPublishedRelease(pool, {
+      mode: "adopted-preexisting",
+      expectedCurrent: {
+        id: CatalogReleaseId(predecessor.compiled.release.id),
+        digest: CatalogReleaseDigest(predecessor.digest),
+      },
+      actorPrincipalId: PUBLISHER,
+      adoptionEvidence: {
+        source_bundle_digest: predecessor.digest,
+        verification_digest: `sha256:${"c".repeat(64)}`,
+        data_mode: "populated",
+        collected_at: "2026-09-12T00:00:00.000Z",
+        approved_by: PUBLISHER,
+      },
+    });
+    expect(forged.ok).toBe(false);
+    if (!forged.ok) expect(forged.error.kind).toBe("adoption-evidence-invalid");
+    expect(await domainSnapshot(observer)).toEqual(before);
+  });
+
+  it("rejects adoption when the current pin has no stored artifact bytes", async () => {
+    const predecessor = await bootstrapFirstAcme(pool);
+    const before = await domainSnapshot(observer);
+    const missing = await installPublishedRelease(pool, {
+      mode: "adopted-preexisting",
+      expectedCurrent: {
+        id: CatalogReleaseId(predecessor.compiled.release.id),
+        digest: CatalogReleaseDigest(predecessor.digest),
+      },
+      actorPrincipalId: PUBLISHER,
+      adoptionEvidence: {
+        source_bundle_digest: predecessor.digest,
+        verification_digest: predecessor.compiled.materializationFingerprint,
+        data_mode: "populated",
+        collected_at: "2026-09-12T00:00:00.000Z",
+        approved_by: PUBLISHER,
+      },
+    });
+    expect(missing.ok).toBe(false);
+    if (!missing.ok) expect(missing.error.kind).toBe("adoption-evidence-invalid");
+    expect(await domainSnapshot(observer)).toEqual(before);
+  });
+
   it("closes legacy bootstrap and advance after any receipt exists", async () => {
     const predecessor = await bootstrapFirstAcme(pool);
+    await persistPredecessorArtifact(observer, predecessor);
     await installPublishedRelease(pool, {
       mode: "adopted-preexisting",
       expectedCurrent: {
@@ -202,7 +254,7 @@ describe("activation receipt recovery", () => {
       actorPrincipalId: PUBLISHER,
       adoptionEvidence: {
         source_bundle_digest: predecessor.digest,
-        verification_digest: predecessor.digest,
+        verification_digest: predecessor.compiled.materializationFingerprint,
         data_mode: "populated",
         collected_at: "2026-09-12T00:00:00.000Z",
         approved_by: PUBLISHER,

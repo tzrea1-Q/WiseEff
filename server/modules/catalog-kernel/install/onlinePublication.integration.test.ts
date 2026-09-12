@@ -17,7 +17,7 @@ import {
 } from "../../../testing/testDatabase";
 import { installCatalogRelease } from "../../../../scripts/install-catalog-release";
 import { CATALOG_ACTIVATION_LOCK_ORDER } from "./lockProtocol";
-import { installPublishedRelease } from "./installer";
+import { installPublishedRelease, installPublishedReleaseForTests } from "./installer";
 import {
   bootstrapFirstAcme,
   buildAuthorizedJob,
@@ -102,8 +102,17 @@ describe("atomic online Catalog publication", () => {
     expect(after.receipts).toBe("1");
     expect(after.receiptKinds).toEqual(["online-publication"]);
     expect(after.jobStatuses).toEqual(["active"]);
+    expect(after.activationAudits).toBe("1");
+    expect(after.bindings).toBe(before.bindings);
+    expect(after.projectValues).toBe(before.projectValues);
     expect(Number(after.releases)).toBe(Number(before.releases) + 1);
     expect(Number(after.revisions)).toBeGreaterThan(Number(before.revisions));
+    const audit = await observer.query<{ kind: string; action: string; app: string }>(
+      `select kind, action, app from public.audit_events where kind = 'catalog-activation'`,
+    );
+    expect(audit.rows).toEqual([
+      { kind: "catalog-activation", action: "online-publication", app: "catalog-publication" },
+    ]);
   });
 
   it.each(["subjects", "receipt", "pointer", "job-status"] as const)(
@@ -120,7 +129,7 @@ describe("atomic online Catalog publication", () => {
   it("rejects a tampered staged projection even when the writer fingerprint is intact", async () => {
     const prepared = await provisionOnlineActivation(pool, observer, "iin_tamp");
     const before = await domainSnapshot(observer);
-    const result = await installPublishedRelease(pool, prepared.command, {
+    const result = await installPublishedReleaseForTests(pool, prepared.command, {
       afterMaterialize: async (client) => {
         await client.query(
           `insert into parameter_catalog.catalog_subjects (
@@ -250,6 +259,7 @@ describe("atomic online Catalog publication", () => {
 
   it("blocks unauthorized CLI advance after regime even when publication_enabled is false", async () => {
     const predecessor = await bootstrapFirstAcme(pool);
+    await persistPredecessorArtifact(observer, predecessor);
     const adopted = await installPublishedRelease(pool, {
       mode: "adopted-preexisting",
       expectedCurrent: {
@@ -259,7 +269,7 @@ describe("atomic online Catalog publication", () => {
       actorPrincipalId: PUBLISHER,
       adoptionEvidence: {
         source_bundle_digest: predecessor.digest,
-        verification_digest: predecessor.digest,
+        verification_digest: predecessor.compiled.materializationFingerprint,
         data_mode: "populated",
         collected_at: "2026-09-12T00:00:00.000Z",
         approved_by: PUBLISHER,
@@ -313,6 +323,7 @@ describe("atomic online Catalog publication", () => {
 
   it("commit-layer pointer guard rejects a receipt-less advance after regime", async () => {
     const predecessor = await bootstrapFirstAcme(pool);
+    await persistPredecessorArtifact(observer, predecessor);
     await installPublishedRelease(pool, {
       mode: "adopted-preexisting",
       expectedCurrent: {
@@ -322,7 +333,7 @@ describe("atomic online Catalog publication", () => {
       actorPrincipalId: PUBLISHER,
       adoptionEvidence: {
         source_bundle_digest: predecessor.digest,
-        verification_digest: predecessor.digest,
+        verification_digest: predecessor.compiled.materializationFingerprint,
         data_mode: "populated",
         collected_at: "2026-09-12T00:00:00.000Z",
         approved_by: PUBLISHER,
@@ -346,20 +357,33 @@ describe("atomic online Catalog publication", () => {
     ).rejects.toMatchObject({ code: "23514" });
   });
 
-  it("grants mark_job_activated only to the synchronizer", async () => {
+  it("grants mark_job_activated and activation audit append only to the synchronizer", async () => {
     const granted = await observer.query<{
-      synchronizer: boolean;
-      coordinator: boolean;
-      public_execute: boolean;
+      job_synchronizer: boolean;
+      job_coordinator: boolean;
+      job_public: boolean;
+      audit_synchronizer: boolean;
+      audit_coordinator: boolean;
+      audit_public: boolean;
     }>(
       `select
-         pg_catalog.has_function_privilege($1, 'catalog_publication.mark_job_activated(text,bigint)', 'execute') as synchronizer,
-         pg_catalog.has_function_privilege($2, 'catalog_publication.mark_job_activated(text,bigint)', 'execute') as coordinator,
-         pg_catalog.has_function_privilege('public', 'catalog_publication.mark_job_activated(text,bigint)', 'execute') as public_execute`,
+         pg_catalog.has_function_privilege($1, 'catalog_publication.mark_job_activated(text,bigint)', 'execute') as job_synchronizer,
+         pg_catalog.has_function_privilege($2, 'catalog_publication.mark_job_activated(text,bigint)', 'execute') as job_coordinator,
+         pg_catalog.has_function_privilege('public', 'catalog_publication.mark_job_activated(text,bigint)', 'execute') as job_public,
+         pg_catalog.has_function_privilege($1, 'catalog_publication.append_activation_success_audit(text,text,text,text,jsonb,text)', 'execute') as audit_synchronizer,
+         pg_catalog.has_function_privilege($2, 'catalog_publication.append_activation_success_audit(text,text,text,text,jsonb,text)', 'execute') as audit_coordinator,
+         pg_catalog.has_function_privilege('public', 'catalog_publication.append_activation_success_audit(text,text,text,text,jsonb,text)', 'execute') as audit_public`,
       [CATALOG_SYNCHRONIZER_ROLE, CATALOG_PUBLICATION_COORDINATOR_ROLE],
     );
     expect(granted.rows).toEqual([
-      { synchronizer: true, coordinator: false, public_execute: false },
+      {
+        job_synchronizer: true,
+        job_coordinator: false,
+        job_public: false,
+        audit_synchronizer: true,
+        audit_coordinator: false,
+        audit_public: false,
+      },
     ]);
   });
 });
