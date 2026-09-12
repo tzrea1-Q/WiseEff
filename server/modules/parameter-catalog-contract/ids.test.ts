@@ -6,7 +6,10 @@ import { describe, expect, it } from "vitest";
 
 import * as contract from "./index";
 import {
+  CatalogActivationReceiptId,
+  CatalogArtifactId,
   CatalogCanonicalKey,
+  CatalogCandidateId,
   CatalogEventTime,
   CatalogPageLimit,
   CatalogReleaseDigest,
@@ -18,6 +21,9 @@ import {
   MaintenanceAttemptId,
   ParameterDefinitionId,
   parseCanonicalPropertyKey,
+  PublicationAuthorizationId,
+  PublicationJobId,
+  PublicationPolicyRevision,
   SubjectPlacementId
 } from "./index";
 import type { PropertyKey } from "./index";
@@ -30,8 +36,12 @@ const primitiveReleaseId: CatalogReleaseId = "crel_01K42";
 // @ts-expect-error Different opaque identifier kinds are not interchangeable.
 const crossKindSubjectId: CatalogSubjectId = releaseId;
 
+// @ts-expect-error Publication identifiers stay distinct from Catalog release identifiers.
+const crossKindArtifactId: CatalogArtifactId = releaseId;
+
 void primitiveReleaseId;
 void crossKindSubjectId;
+void crossKindArtifactId;
 
 if (false) {
   // @ts-expect-error Canonical compatible values can only be constructed by the parser.
@@ -74,6 +84,12 @@ describe("parameter catalog nominal identifiers", () => {
     expect(DefinitionRevisionId("drev_01KVIN3")).toBe("drev_01KVIN3");
     expect(SubjectPlacementId("spla_root_drivers")).toBe("spla_root_drivers");
     expect(MaintenanceAttemptId("maint_01KCUTOVER")).toBe("maint_01KCUTOVER");
+    expect(CatalogArtifactId("cart_01KCP02")).toBe("cart_01KCP02");
+    expect(CatalogCandidateId("ccand_01KCP02")).toBe("ccand_01KCP02");
+    expect(PublicationAuthorizationId("cauth_01KCP02")).toBe("cauth_01KCP02");
+    expect(PublicationJobId("cjob_01KCP02")).toBe("cjob_01KCP02");
+    expect(CatalogActivationReceiptId("crct_01KCP02")).toBe("crct_01KCP02");
+    expect(PublicationPolicyRevision(1)).toBe(1);
   });
 
   it("rejects empty, surrounding-whitespace, or control-bearing strings without inventing formats", () => {
@@ -92,6 +108,11 @@ describe("parameter catalog nominal identifiers", () => {
 
     for (const invalid of ["", " ", " crel_01K42", "crel_01K42 "]) {
       expect(() => CatalogReleaseId(invalid)).toThrow(TypeError);
+      expect(() => CatalogArtifactId(invalid)).toThrow(TypeError);
+      expect(() => CatalogCandidateId(invalid)).toThrow(TypeError);
+      expect(() => PublicationAuthorizationId(invalid)).toThrow(TypeError);
+      expect(() => PublicationJobId(invalid)).toThrow(TypeError);
+      expect(() => CatalogActivationReceiptId(invalid)).toThrow(TypeError);
     }
     expect(() => CatalogReleaseDigest(" sha256:release")).toThrow(TypeError);
     expect(() => CatalogCanonicalKey("driver:sc8562\n")).toThrow(TypeError);
@@ -117,6 +138,10 @@ describe("parameter catalog nominal identifiers", () => {
     expect(CatalogReleaseSequence(Number.MAX_SAFE_INTEGER)).toBe(
       Number.MAX_SAFE_INTEGER,
     );
+    expect(PublicationPolicyRevision(1)).toBe(1);
+    expect(PublicationPolicyRevision(Number.MAX_SAFE_INTEGER)).toBe(
+      Number.MAX_SAFE_INTEGER,
+    );
 
     for (const invalid of [
       0,
@@ -128,6 +153,7 @@ describe("parameter catalog nominal identifiers", () => {
       Number.MAX_VALUE,
     ]) {
       expect(() => CatalogPageLimit(invalid)).toThrow(TypeError);
+      expect(() => PublicationPolicyRevision(invalid)).toThrow(TypeError);
     }
     for (const invalid of [
       -1,

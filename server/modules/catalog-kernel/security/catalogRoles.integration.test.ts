@@ -32,6 +32,7 @@ import {
   P02_FAILURE_CODE,
   P02_GATE_ID,
   PARAMETER_GOVERNANCE_WRITER_ROLE,
+  PUBLICATION_MIGRATION,
   ROLES_MIGRATION,
   SCHEMA_MIGRATION,
   VERIFICATION_MIGRATION,
@@ -1189,7 +1190,7 @@ describe("0138 Catalog role migration paths", () => {
     );
   }, 120_000);
 
-  it("T13: fresh current schema and 0137-then-0138-then-0139 upgrade produce the same ACL fingerprint", async () => {
+  it("T13: fresh current schema and 0137-then-0138-then-0139-then-0140 upgrade produce the same ACL fingerprint", async () => {
     let fresh = "";
     let upgrade = "";
 
@@ -1204,6 +1205,7 @@ describe("0138 Catalog role migration paths", () => {
         await applyMigrations(db, migrationsDir, { through: SCHEMA_MIGRATION });
         await applyMigrations(db, migrationsDir, { through: ROLES_MIGRATION });
         await applyMigrations(db, migrationsDir, { through: VERIFICATION_MIGRATION });
+        await applyMigrations(db, migrationsDir, { through: PUBLICATION_MIGRATION });
         upgrade = await aclFingerprint(db);
       },
     );

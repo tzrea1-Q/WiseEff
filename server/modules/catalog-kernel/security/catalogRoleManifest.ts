@@ -1,11 +1,19 @@
 export const CATALOG_MIGRATION_OWNER = "catalog_migration_owner";
 export const CATALOG_SYNCHRONIZER_ROLE = "catalog_synchronizer_role";
 export const PARAMETER_GOVERNANCE_WRITER_ROLE = "parameter_governance_writer_role";
+export const CATALOG_PUBLICATION_COORDINATOR_ROLE =
+  "catalog_publication_coordinator_role";
+export const CATALOG_BASELINE_READER_ROLE = "catalog_baseline_reader_role";
 
 export const CATALOG_ROLES = [
   CATALOG_MIGRATION_OWNER,
   CATALOG_SYNCHRONIZER_ROLE,
   PARAMETER_GOVERNANCE_WRITER_ROLE,
+] as const;
+
+export const CATALOG_PUBLICATION_ROLES = [
+  CATALOG_PUBLICATION_COORDINATOR_ROLE,
+  CATALOG_BASELINE_READER_ROLE,
 ] as const;
 
 export const GUARD_FUNCTION_IDENTITY =
@@ -32,6 +40,7 @@ const parameterDefinitionsRel = "parameter_definition" + "s";
 const projectParameterValuesRel = "project_parameter_value" + "s";
 
 export const CATALOG_RELATIONS = [
+  "catalog_activation_receipts",
   "catalog_command_idempotency",
   "catalog_drivers",
   "catalog_materializations",
@@ -100,8 +109,27 @@ export const P02_GATE_ID = "PCAT-DB-P02";
 
 export const ROLES_MIGRATION = "0138_canonical_parameter_catalog_roles.sql";
 export const VERIFICATION_MIGRATION = "0139_parameter_catalog_verification_core.sql";
+export const PUBLICATION_MIGRATION = "0140_catalog_publication_control_plane.sql";
 export const SCHEMA_MIGRATION = "0137_canonical_parameter_catalog_schema.sql";
 export const FLOOR_MIGRATION = "0136_parameter_execution_principal_deleted_marker.sql";
+
+export const PUBLICATION_SCHEMA = "catalog_publication";
+
+export const PUBLICATION_RELATIONS = [
+  "release_artifacts",
+  "candidates",
+  "publication_authorizations",
+  "publication_jobs",
+  "publication_policies",
+  "publication_policy_revisions",
+  "publication_guard",
+] as const;
+
+export const PUBLICATION_GUARD_FUNCTION_IDENTITY =
+  "catalog_publication.acquire_publication_guard_lock()";
+
+export const REVISE_PUBLICATION_POLICY_FUNCTION_IDENTITY =
+  "catalog_publication.revise_publication_policy(boolean,boolean,text,text)";
 
 export const SYNCHRONIZER_HEAD_UPDATES: Record<string, string> = {
   catalog_state: "current_catalog_release_id",
