@@ -49,6 +49,7 @@ import type {
   CatalogActivationReceiptRecord,
   CatalogPublicationStoreError,
   CatalogPublicationStoreResult,
+  ClaimNextJobInput,
   CreatePublicationJobInput,
   InsertActivationReceiptInput,
   JobExecutionPatch,
@@ -607,6 +608,31 @@ export async function appendAuthorization(
   }
 }
 
+export async function getAuthorization(
+  db: Queryable,
+  authorizationId: PublicationAuthorizationId,
+): Promise<CatalogPublicationStoreResult<PublicationAuthorizationRecord>> {
+  try {
+    const result = await db.query<AuthorizationRow>(
+      `select
+         id, event_kind, candidate_id, artifact_digest, expected_base_release_id,
+         expected_base_release_digest, proposal_revision_id, impact_report_digest,
+         capability_contract_digest, policy_revision, actor_principal_id,
+         approved_authorization_id, created_at
+       from catalog_publication.publication_authorizations
+       where id = $1`,
+      [authorizationId],
+    );
+    const row = result.rows[0];
+    if (!row) {
+      return fail({ kind: "not-found", entity: "authorization" });
+    }
+    return ok(toAuthorization(row));
+  } catch (error) {
+    return fail(mapWriteError(error));
+  }
+}
+
 export async function getJob(
   db: Queryable,
   jobId: PublicationJobId,
@@ -626,6 +652,31 @@ export async function getJob(
     return fail({ kind: "not-found", entity: "job" });
   }
   return ok(toJob(row));
+  } catch (error) {
+    return fail(mapWriteError(error));
+  }
+}
+
+export async function getJobByIdempotency(
+  db: Queryable,
+  requestScope: string,
+  idempotencyKey: string,
+): Promise<CatalogPublicationStoreResult<PublicationJobRecord>> {
+  try {
+    const result = await db.query<JobRow>(
+      `select
+         id, candidate_id, authorization_id, request_scope, idempotency_key,
+         request_digest, status, lease_owner, lease_until, fencing_token,
+         attempt_count, last_error_class, last_error_reason, created_at, updated_at
+       from catalog_publication.publication_jobs
+       where request_scope = $1 and idempotency_key = $2`,
+      [requestScope, idempotencyKey],
+    );
+    const row = result.rows[0];
+    if (!row) {
+      return fail({ kind: "not-found", entity: "job" });
+    }
+    return ok(toJob(row));
   } catch (error) {
     return fail(mapWriteError(error));
   }
@@ -702,6 +753,59 @@ export async function createJob(
       }
     }
     return fail(mapped);
+  }
+}
+
+export async function claimNextJob(
+  db: Queryable,
+  input: ClaimNextJobInput,
+): Promise<CatalogPublicationStoreResult<PublicationJobRecord>> {
+  if (input.leaseOwner.trim().length === 0 || input.leaseOwner.trim() !== input.leaseOwner) {
+    return fail({ kind: "invalid-input", reason: "leaseOwner is required" });
+  }
+  if (!Number.isInteger(input.leaseSeconds) || input.leaseSeconds <= 0) {
+    return fail({ kind: "invalid-input", reason: "leaseSeconds must be a positive integer" });
+  }
+  try {
+    const claimed = await db.query<JobRow>(
+      `with picked as (
+         select id
+           from catalog_publication.publication_jobs
+          where (
+                  status in ('queued', 'failed-retryable')
+                  and (lease_until is null or lease_until < now())
+                )
+             or (
+                  status = 'running'
+                  and lease_until is not null
+                  and lease_until < now()
+                )
+          order by created_at asc, id asc
+          for update skip locked
+          limit 1
+       )
+       update catalog_publication.publication_jobs as job
+          set status = 'running',
+              lease_owner = $1,
+              lease_until = now() + make_interval(secs => $2::int),
+              fencing_token = job.fencing_token + 1,
+              attempt_count = job.attempt_count + 1,
+              updated_at = now()
+         from picked
+        where job.id = picked.id
+       returning
+         job.id, job.candidate_id, job.authorization_id, job.request_scope, job.idempotency_key,
+         job.request_digest, job.status, job.lease_owner, job.lease_until, job.fencing_token,
+         job.attempt_count, job.last_error_class, job.last_error_reason, job.created_at, job.updated_at`,
+      [input.leaseOwner, input.leaseSeconds],
+    );
+    const row = claimed.rows[0];
+    if (!row) {
+      return fail({ kind: "not-found", entity: "job" });
+    }
+    return ok(toJob(row));
+  } catch (error) {
+    return fail(mapWriteError(error));
   }
 }
 

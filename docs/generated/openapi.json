@@ -8277,6 +8277,280 @@
         }
       }
     },
+    "/api/v2/catalog/publication-candidates": {
+      "post": {
+        "operationId": "catalog.createPublicationCandidate",
+        "summary": "Build and freeze a complete successor publication candidate from a typed ChangeSet",
+        "tags": [
+          "catalog"
+        ],
+        "parameters": [
+          {
+            "name": "X-WiseEff-Catalog-Release",
+            "in": "header",
+            "required": true,
+            "description": "Catalog release observed by the client.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CatalogCreatePublicationCandidateRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CatalogPublicationCandidateResponse"
+                }
+              }
+            },
+            "headers": {
+              "X-WiseEff-Catalog-Release": {
+                "description": "Catalog release that produced this response.",
+                "required": true,
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "401": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "404": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "409": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "422": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "503": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
+    "/api/v2/catalog/publication-candidates/{candidateId}": {
+      "get": {
+        "operationId": "catalog.getPublicationCandidate",
+        "summary": "Get one frozen publication candidate in the caller scope",
+        "tags": [
+          "catalog"
+        ],
+        "parameters": [
+          {
+            "name": "candidateId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CatalogPublicationCandidateResponse"
+                }
+              }
+            },
+            "headers": {
+              "X-WiseEff-Catalog-Release": {
+                "description": "Catalog release that produced this response.",
+                "required": true,
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "401": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "404": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "503": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
+    "/api/v2/catalog/publication-candidates/{candidateId}/publish": {
+      "post": {
+        "operationId": "catalog.publishPublicationCandidate",
+        "summary": "Authorize and enqueue publication of a frozen candidate; returns a job, not a definition",
+        "tags": [
+          "catalog"
+        ],
+        "parameters": [
+          {
+            "name": "candidateId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-WiseEff-Catalog-Release",
+            "in": "header",
+            "required": true,
+            "description": "Catalog release observed by the client.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CatalogPublishPublicationCandidateRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CatalogPublicationJobResponse"
+                }
+              }
+            },
+            "headers": {
+              "X-WiseEff-Catalog-Release": {
+                "description": "Catalog release that produced this response.",
+                "required": true,
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "401": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "404": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "409": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "422": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "503": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
+    "/api/v2/catalog/publications/{jobId}": {
+      "get": {
+        "operationId": "catalog.getPublication",
+        "summary": "Get one publication job, including verified Receipt effectiveness and currentness",
+        "tags": [
+          "catalog"
+        ],
+        "parameters": [
+          {
+            "name": "jobId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CatalogPublicationJobResponse"
+                }
+              }
+            },
+            "headers": {
+              "X-WiseEff-Catalog-Release": {
+                "description": "Catalog release that produced this response.",
+                "required": true,
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "401": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "404": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "503": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
     "/api/v2/catalog/legacy-identifiers/{legacyType}/{legacyId}": {
       "get": {
         "operationId": "catalog.getLegacyIdentifier",
@@ -23073,6 +23347,358 @@
         ],
         "additionalProperties": false,
         "x-wiseeff-schema": "CatalogRejectProposalRequest"
+      },
+      "CatalogCreatePublicationCandidateRequest": {
+        "type": "object",
+        "properties": {
+          "changeSet": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "op": {
+                  "type": "string",
+                  "enum": [
+                    "create-definition"
+                  ]
+                },
+                "subjectId": {
+                  "type": "string"
+                },
+                "propertyKey": {
+                  "type": "string"
+                },
+                "content": {
+                  "type": "object",
+                  "properties": {
+                    "displayName": {
+                      "type": "string"
+                    },
+                    "documentation": {
+                      "type": "string"
+                    },
+                    "unit": {
+                      "type": "string",
+                      "enum": [
+                        "mA",
+                        "mV",
+                        "ms",
+                        "uOhm"
+                      ]
+                    },
+                    "valueSchema": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "properties": {
+                            "type": {
+                              "type": "string",
+                              "enum": [
+                                "integer"
+                              ]
+                            },
+                            "minimum": {
+                              "type": "number"
+                            },
+                            "maximum": {
+                              "type": "number"
+                            }
+                          },
+                          "required": [
+                            "type"
+                          ],
+                          "additionalProperties": false
+                        },
+                        {
+                          "type": "object",
+                          "properties": {
+                            "type": {
+                              "type": "string",
+                              "enum": [
+                                "number"
+                              ]
+                            },
+                            "minimum": {
+                              "type": "number"
+                            },
+                            "maximum": {
+                              "type": "number"
+                            }
+                          },
+                          "required": [
+                            "type"
+                          ],
+                          "additionalProperties": false
+                        },
+                        {
+                          "type": "object",
+                          "properties": {
+                            "type": {
+                              "type": "string",
+                              "enum": [
+                                "string"
+                              ]
+                            }
+                          },
+                          "required": [
+                            "type"
+                          ],
+                          "additionalProperties": false
+                        }
+                      ]
+                    },
+                    "examples": {
+                      "type": "array",
+                      "items": {
+                        "anyOf": [
+                          {
+                            "type": "number"
+                          },
+                          {
+                            "type": "string"
+                          }
+                        ]
+                      }
+                    }
+                  },
+                  "required": [
+                    "displayName",
+                    "documentation",
+                    "valueSchema"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "required": [
+                "op",
+                "subjectId",
+                "propertyKey",
+                "content"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "proposalId": {
+            "type": "string"
+          },
+          "proposalRevisionId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "changeSet"
+        ],
+        "additionalProperties": false,
+        "x-wiseeff-schema": "CatalogCreatePublicationCandidateRequest"
+      },
+      "CatalogPublicationCandidateResponse": {
+        "type": "object",
+        "properties": {
+          "item": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "expectedBaseReleaseId": {
+                "type": "string"
+              },
+              "expectedBaseReleaseDigest": {
+                "type": "string"
+              },
+              "riskClass": {
+                "type": "string",
+                "enum": [
+                  "low",
+                  "high"
+                ]
+              },
+              "impactSummary": {
+                "type": "object",
+                "properties": {
+                  "addedDefinitionCount": {
+                    "type": "number"
+                  },
+                  "changedDefinitionCount": {
+                    "type": "number"
+                  },
+                  "addedSubjectCount": {
+                    "type": "number"
+                  }
+                },
+                "required": [
+                  "addedDefinitionCount",
+                  "changedDefinitionCount",
+                  "addedSubjectCount"
+                ],
+                "additionalProperties": false
+              },
+              "capabilityContract": {
+                "type": "object",
+                "properties": {
+                  "revision": {
+                    "type": "string"
+                  },
+                  "allowListId": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "revision",
+                  "allowListId"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "required": [
+              "id",
+              "expectedBaseReleaseId",
+              "expectedBaseReleaseDigest",
+              "riskClass",
+              "impactSummary",
+              "capabilityContract"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "item"
+        ],
+        "additionalProperties": false,
+        "x-wiseeff-schema": "CatalogPublicationCandidateResponse"
+      },
+      "CatalogPublishPublicationCandidateRequest": {
+        "type": "object",
+        "properties": {
+          "idempotencyKey": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "idempotencyKey"
+        ],
+        "additionalProperties": false,
+        "x-wiseeff-schema": "CatalogPublishPublicationCandidateRequest"
+      },
+      "CatalogPublicationJobResponse": {
+        "type": "object",
+        "properties": {
+          "item": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "candidateId": {
+                "type": "string"
+              },
+              "status": {
+                "type": "string",
+                "enum": [
+                  "queued",
+                  "running",
+                  "active",
+                  "needs-rebase",
+                  "blocked",
+                  "failed-retryable",
+                  "failed-terminal",
+                  "cancelled"
+                ]
+              },
+              "attemptCount": {
+                "type": "number"
+              },
+              "effective": {
+                "type": "boolean"
+              },
+              "isCurrent": {
+                "type": "boolean"
+              },
+              "currentness": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "enum": [
+                  "active",
+                  "active-superseded"
+                ]
+              },
+              "failure": {
+                "type": [
+                  "object",
+                  "null"
+                ],
+                "properties": {
+                  "class": {
+                    "type": "string"
+                  },
+                  "reason": {
+                    "type": "string",
+                    "enum": [
+                      "catalog-not-ready",
+                      "release-drift",
+                      "subject-not-published",
+                      "subject-retired",
+                      "definition-not-found",
+                      "definition-retired",
+                      "registration-required",
+                      "placement-conflict",
+                      "invalid-placement-parent",
+                      "observation-ambiguous",
+                      "proposal-stale",
+                      "proposal-replay-unavailable",
+                      "proposal-self-approval-forbidden",
+                      "revision-conflict",
+                      "legacy-id-archived",
+                      "legacy-surface-retired",
+                      "legacy-id-ambiguous",
+                      "forbidden",
+                      "migration-diagnostics-not-public",
+                      "publication-not-authorized",
+                      "publication-capability-missing",
+                      "publication-self-approval-forbidden",
+                      "publication-policy-disabled",
+                      "publication-frozen",
+                      "candidate-stale",
+                      "candidate-tampered",
+                      "needs-rebase",
+                      "unsupported-catalog-capability",
+                      "publication-authorization-revoked",
+                      "idempotency-key-conflict",
+                      "artifact-missing",
+                      "predecessor-incomplete",
+                      "activation-receipt-mismatch",
+                      "adoption-evidence-invalid",
+                      "registration-followup-failed"
+                    ]
+                  }
+                },
+                "required": [
+                  "class",
+                  "reason"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "required": [
+              "id",
+              "candidateId",
+              "status",
+              "attemptCount",
+              "effective",
+              "isCurrent",
+              "currentness",
+              "failure"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "item"
+        ],
+        "additionalProperties": false,
+        "x-wiseeff-schema": "CatalogPublicationJobResponse"
       },
       "CatalogLegacyIdentifierResponse": {
         "type": "object",

@@ -101,6 +101,34 @@ describe("S8-CON threat matrix", () => {
     expect(catalogFailureClientBehaviors["catalog-not-ready"]).toBe("disable-writes-retry-after");
     expect(catalogFailureClientBehaviors["legacy-surface-retired"]).toBe("migrate-to-successor-no-retry");
     expect(catalogFailureClientBehaviors["migration-diagnostics-not-public"]).toBe("treat-as-not-found");
+    expect(catalogFailureClientBehaviors["publication-policy-disabled"]).toBe("publication-disabled");
+    expect(catalogFailureClientBehaviors["idempotency-key-conflict"]).toBe("new-idempotency-key");
+    expect(catalogFailureClientBehaviors["needs-rebase"]).toBe("rebase-candidate");
+    expect(catalogFailureClientBehaviors["activation-receipt-mismatch"]).toBe("inspect-receipt-no-retry");
+  });
+
+  it("freezes the four CP-00 publication routes without v3, /admin, cancel, or retry", () => {
+    const publication = parameterCatalogCanonicalRoutes.filter((route) =>
+      route.path.includes("publication")
+    );
+    expect(publication.map((route) => `${route.method} ${route.path}`)).toEqual([
+      "POST /api/v2/catalog/publication-candidates",
+      "GET /api/v2/catalog/publication-candidates/:candidateId",
+      "POST /api/v2/catalog/publication-candidates/:candidateId/publish",
+      "GET /api/v2/catalog/publications/:jobId"
+    ]);
+    expect(
+      parameterCatalogCanonicalRoutes.some((route) => route.path.includes("/admin") || route.path.includes("/v3/"))
+    ).toBe(false);
+    expect(
+      parameterCatalogCanonicalRoutes.some((route) =>
+        route.path.includes("cancel") || route.path.endsWith("/retry")
+      )
+    ).toBe(false);
+    expect(parameterCatalogClientMethodByRouteId["catalog.createPublicationCandidate"]).toBe(
+      "createPublicationCandidate"
+    );
+    expect(parameterCatalogClientMethodByRouteId["catalog.getPublication"]).toBe("getPublication");
   });
 
   it("fails closed when a canonical client method is missing for a catalog route", () => {

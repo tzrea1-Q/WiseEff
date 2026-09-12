@@ -177,6 +177,11 @@ export interface CreatePublicationJobInput {
   readonly requestDigest: string;
 }
 
+export interface ClaimNextJobInput {
+  readonly leaseOwner: string;
+  readonly leaseSeconds: number;
+}
+
 export interface JobExecutionPatch {
   readonly status?: PublicationJobStatus;
   readonly leaseOwner?: string | null;

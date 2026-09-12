@@ -40,6 +40,16 @@ import {
   bindGovernanceCatalogQueryPorts,
   unavailableGovernanceQueryPorts,
 } from "./governance/ports";
+import { registerCatalogPublicationRoutes } from "./publication/routes";
+import {
+  bindCatalogPublicationCommands,
+  unavailablePublicationCommandPorts,
+} from "./publication/ports";
+import type {
+  CatalogPublicationPorts,
+  CatalogPublicationRequest,
+  TrustedPublicationScope,
+} from "./publication/types";
 import type {
   CatalogGovernancePorts,
   CatalogGovernanceRequest,
@@ -169,6 +179,24 @@ const authenticateGovernance =
       return { ok: false as const, status: 401 as const };
     }
     return { ok: true as const, scope: governanceScope(auth) };
+  };
+
+const publicationScope = (auth: AuthContext): TrustedPublicationScope => ({
+  principalId: auth.user.id,
+  organizationId: auth.organization.id,
+  actorKind: governanceActorKind(auth),
+  permissions: auth.permissions,
+  trustedActor: createUserInvocation(auth),
+});
+
+const authenticatePublication =
+  (resolveAuth: CatalogApiAuthResolver) =>
+  async (request: CatalogPublicationRequest) => {
+    const auth = await resolveAuth(request as RouteRequest);
+    if (!auth.user.isActive) {
+      return { ok: false as const, status: 401 as const };
+    }
+    return { ok: true as const, scope: publicationScope(auth) };
   };
 
 const factsFromSnapshot = (snapshot: LoadedCatalogSnapshot): CatalogDocumentFacts => ({
@@ -453,6 +481,30 @@ const createGovernancePorts = (
   };
 };
 
+const createPublicationPorts = (
+  db: Database | undefined,
+  resolveAuth: CatalogApiAuthResolver,
+): CatalogPublicationPorts => {
+  const pool = getRootPostgresPool(db);
+  const commands = db
+    ? bindCatalogPublicationCommands({ db, pool })
+    : unavailablePublicationCommandPorts;
+  return {
+    authenticate: authenticatePublication(resolveAuth),
+    currentRelease: async () => {
+      if (!pool) {
+        return null;
+      }
+      const pointer = await readCurrentCatalogPointer(pool);
+      if (pointer.kind !== "installed") {
+        return null;
+      }
+      return pinOf(pointer.current.id, pointer.current.digest);
+    },
+    ...commands,
+  };
+};
+
 const createLegacyOptions = (
   db: Database | undefined,
   pool: pg.Pool | undefined,
@@ -493,5 +545,9 @@ export const registerParameterCatalogApi = (
     createReadPorts(pool, options.resolveAuth, options.db, options.catalogPublication ?? {}),
   );
   registerCatalogGovernanceRoutes(router, createGovernancePorts(pool, options.resolveAuth));
+  registerCatalogPublicationRoutes(
+    router,
+    createPublicationPorts(options.db, options.resolveAuth),
+  );
   registerCatalogLegacyRoutes(router, createLegacyOptions(options.db, pool, options.resolveAuth));
 };

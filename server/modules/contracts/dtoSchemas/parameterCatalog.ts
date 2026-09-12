@@ -49,7 +49,23 @@ export const catalogApiFailureReasons = [
   "legacy-surface-retired",
   "legacy-id-ambiguous",
   "forbidden",
-  "migration-diagnostics-not-public"
+  "migration-diagnostics-not-public",
+  "publication-not-authorized",
+  "publication-capability-missing",
+  "publication-self-approval-forbidden",
+  "publication-policy-disabled",
+  "publication-frozen",
+  "candidate-stale",
+  "candidate-tampered",
+  "needs-rebase",
+  "unsupported-catalog-capability",
+  "publication-authorization-revoked",
+  "idempotency-key-conflict",
+  "artifact-missing",
+  "predecessor-incomplete",
+  "activation-receipt-mismatch",
+  "adoption-evidence-invalid",
+  "registration-followup-failed"
 ] as const;
 export type CatalogApiFailureReason = (typeof catalogApiFailureReasons)[number];
 
@@ -72,7 +88,23 @@ export const catalogFailureClientBehaviors = {
   "legacy-surface-retired": "migrate-to-successor-no-retry",
   "legacy-id-ambiguous": "no-candidate-disclosure",
   forbidden: "hide-out-of-scope",
-  "migration-diagnostics-not-public": "treat-as-not-found"
+  "migration-diagnostics-not-public": "treat-as-not-found",
+  "publication-not-authorized": "require-catalog-publish-capability",
+  "publication-capability-missing": "require-catalog-capability",
+  "publication-self-approval-forbidden": "require-other-publisher",
+  "publication-policy-disabled": "publication-disabled",
+  "publication-frozen": "wait-unfreeze-no-retry",
+  "candidate-stale": "rebuild-candidate",
+  "candidate-tampered": "rebuild-candidate",
+  "needs-rebase": "rebase-candidate",
+  "unsupported-catalog-capability": "remove-unsupported-change",
+  "publication-authorization-revoked": "reauthorize-no-busy-retry",
+  "idempotency-key-conflict": "new-idempotency-key",
+  "artifact-missing": "restore-predecessor-artifact",
+  "predecessor-incomplete": "rebuild-complete-successor",
+  "activation-receipt-mismatch": "inspect-receipt-no-retry",
+  "adoption-evidence-invalid": "inspect-adoption-evidence",
+  "registration-followup-failed": "retry-registration-keep-catalog"
 } as const satisfies Record<CatalogApiFailureReason, string>;
 export type CatalogFailureClientBehavior =
   (typeof catalogFailureClientBehaviors)[CatalogApiFailureReason];
@@ -514,6 +546,98 @@ export const catalogRejectProposalRequestSchema = catalogObject({
   reason: z.string()
 });
 
+export const catalogPublicationJobStatuses = [
+  "queued",
+  "running",
+  "active",
+  "needs-rebase",
+  "blocked",
+  "failed-retryable",
+  "failed-terminal",
+  "cancelled"
+] as const;
+
+export const catalogPublicationRiskClasses = ["low", "high"] as const;
+
+export const catalogPublicationCurrentness = ["active", "active-superseded"] as const;
+
+export const catalogSupportedValueSchemaSchema = z.union([
+  catalogObject({
+    type: z.literal("integer"),
+    minimum: z.number().optional(),
+    maximum: z.number().optional()
+  }),
+  catalogObject({
+    type: z.literal("number"),
+    minimum: z.number().optional(),
+    maximum: z.number().optional()
+  }),
+  catalogObject({
+    type: z.literal("string")
+  })
+]);
+
+export const catalogSupportedDefinitionContentSchema = catalogObject({
+  displayName: z.string(),
+  documentation: z.string(),
+  unit: z.enum(["mA", "mV", "ms", "uOhm"]).optional(),
+  valueSchema: catalogSupportedValueSchemaSchema,
+  examples: z.array(z.union([z.number(), z.string()])).optional()
+});
+
+export const catalogCreateDefinitionChangeSchema = catalogObject({
+  op: z.literal("create-definition"),
+  subjectId: z.string(),
+  propertyKey: z.string(),
+  content: catalogSupportedDefinitionContentSchema
+});
+
+export const catalogCreatePublicationCandidateRequestSchema = catalogObject({
+  changeSet: z.array(catalogCreateDefinitionChangeSchema).min(1).max(32),
+  proposalId: z.string().optional(),
+  proposalRevisionId: z.string().optional()
+});
+
+export const catalogPublishPublicationCandidateRequestSchema = catalogObject({
+  idempotencyKey: z.string().min(1)
+});
+
+export const catalogPublicationImpactSummaryDtoSchema = catalogObject({
+  addedDefinitionCount: z.number().int().nonnegative(),
+  changedDefinitionCount: z.number().int().nonnegative(),
+  addedSubjectCount: z.number().int().nonnegative()
+});
+
+export const catalogPublicationCapabilityContractDtoSchema = catalogObject({
+  revision: z.string(),
+  allowListId: z.string()
+});
+
+export const catalogPublicationCandidateDtoSchema = catalogObject({
+  id: z.string(),
+  expectedBaseReleaseId: z.string(),
+  expectedBaseReleaseDigest: z.string(),
+  riskClass: closedEnum(catalogPublicationRiskClasses),
+  impactSummary: catalogPublicationImpactSummaryDtoSchema,
+  capabilityContract: catalogPublicationCapabilityContractDtoSchema
+});
+
+export const catalogPublicationFailureDtoSchema = catalogObject({
+  class: z.string(),
+  reason: catalogApiFailureReasonSchema
+});
+
+export const catalogPublicationJobDtoSchema = catalogObject({
+  id: z.string(),
+  candidateId: z.string(),
+  status: closedEnum(catalogPublicationJobStatuses),
+  attemptCount: z.number().int().nonnegative(),
+  effective: z.boolean(),
+  isCurrent: z.boolean(),
+  currentness: closedEnum(catalogPublicationCurrentness).nullable(),
+  failure: catalogPublicationFailureDtoSchema.nullable()
+});
+
 export const catalogLegacyIdentifierDtoSchema = catalogObject({
   legacyType: catalogLegacyIdentifierTypeSchema,
   legacyId: z.string(),
@@ -645,6 +769,12 @@ export const catalogProposalListResponseSchema = catalogItemsEnvelopeSchema(cata
 export const catalogProposalResponseSchema = itemEnvelopeSchema(catalogProposalDtoSchema).superRefine(
   rejectLegacySpecKeys
 );
+export const catalogPublicationCandidateResponseSchema = itemEnvelopeSchema(
+  catalogPublicationCandidateDtoSchema
+).superRefine(rejectLegacySpecKeys);
+export const catalogPublicationJobResponseSchema = itemEnvelopeSchema(
+  catalogPublicationJobDtoSchema
+).superRefine(rejectLegacySpecKeys);
 export const catalogLegacyIdentifierResponseSchema = itemEnvelopeSchema(
   catalogLegacyIdentifierDtoSchema
 ).superRefine(rejectLegacySpecKeys);
@@ -706,6 +836,10 @@ export const parameterCatalogDtoSchemaCatalog = {
   CatalogWithdrawProposalRequest: catalogWithdrawProposalRequestSchema,
   CatalogAcceptProposalRequest: catalogAcceptProposalRequestSchema,
   CatalogRejectProposalRequest: catalogRejectProposalRequestSchema,
+  CatalogCreatePublicationCandidateRequest: catalogCreatePublicationCandidateRequestSchema,
+  CatalogPublicationCandidateResponse: catalogPublicationCandidateResponseSchema,
+  CatalogPublishPublicationCandidateRequest: catalogPublishPublicationCandidateRequestSchema,
+  CatalogPublicationJobResponse: catalogPublicationJobResponseSchema,
   CatalogLegacyIdentifierResponse: catalogLegacyIdentifierResponseSchema,
   CatalogLegacyGoneResponse: catalogLegacyGoneResponseSchema,
   ProjectParameterBindingListResponse: projectParameterBindingListResponseSchema,
@@ -952,6 +1086,34 @@ export const parameterCatalogCanonicalRoutes = [
     stability: "mvp"
   },
   {
+    id: "catalog.createPublicationCandidate",
+    method: "POST",
+    path: "/api/v2/catalog/publication-candidates",
+    module: "catalog",
+    stability: "mvp"
+  },
+  {
+    id: "catalog.getPublicationCandidate",
+    method: "GET",
+    path: "/api/v2/catalog/publication-candidates/:candidateId",
+    module: "catalog",
+    stability: "mvp"
+  },
+  {
+    id: "catalog.publishPublicationCandidate",
+    method: "POST",
+    path: "/api/v2/catalog/publication-candidates/:candidateId/publish",
+    module: "catalog",
+    stability: "mvp"
+  },
+  {
+    id: "catalog.getPublication",
+    method: "GET",
+    path: "/api/v2/catalog/publications/:jobId",
+    module: "catalog",
+    stability: "mvp"
+  },
+  {
     id: "catalog.getLegacyIdentifier",
     method: "GET",
     path: "/api/v2/catalog/legacy-identifiers/:legacyType/:legacyId",
@@ -995,6 +1157,10 @@ export const parameterCatalogRouteGates: Record<
   "catalog.withdrawProposal": ["PCAT-API-06", "PCAT-API-10"],
   "catalog.acceptProposal": ["PCAT-API-06", "PCAT-API-09", "PCAT-API-10"],
   "catalog.rejectProposal": ["PCAT-API-06", "PCAT-API-09", "PCAT-API-10"],
+  "catalog.createPublicationCandidate": ["PCAT-API-10", "PCAT-API-11"],
+  "catalog.getPublicationCandidate": ["PCAT-API-11"],
+  "catalog.publishPublicationCandidate": ["PCAT-API-10", "PCAT-API-11"],
+  "catalog.getPublication": ["PCAT-API-11"],
   "catalog.getLegacyIdentifier": ["PCAT-API-07"]
 };
 
@@ -1039,6 +1205,10 @@ export const parameterCatalogClientMethodByRouteId = {
   "catalog.withdrawProposal": "withdrawProposal",
   "catalog.acceptProposal": "acceptProposal",
   "catalog.rejectProposal": "rejectProposal",
+  "catalog.createPublicationCandidate": "createPublicationCandidate",
+  "catalog.getPublicationCandidate": "getPublicationCandidate",
+  "catalog.publishPublicationCandidate": "publishPublicationCandidate",
+  "catalog.getPublication": "getPublication",
   "catalog.getLegacyIdentifier": "getLegacyIdentifier"
 } as const satisfies Record<ParameterCatalogCanonicalRouteId, string>;
 
@@ -1120,6 +1290,12 @@ const catalogWriteErrors = {
   "404": "ErrorResponse",
   "409": "ErrorResponse",
   "503": "ErrorResponse"
+} as const;
+
+const catalogPublicationWriteErrors = {
+  ...catalogWriteErrors,
+  "400": "ErrorResponse",
+  "422": "ErrorResponse"
 } as const;
 
 const proposalWriteErrors = { ...catalogWriteErrors, "503": "CatalogProposalUnavailableResponse" } as const;
@@ -1380,6 +1556,40 @@ export const parameterCatalogSchemaRegistry = {
     additionalResponses: proposalWriteErrors,
     requestParameters: [catalogReleaseRequestHeader, catalogIdempotencyHeader, catalogIfMatchHeader],
     successHeaders: [catalogReleaseResponseHeader, catalogEtagResponseHeader]
+  },
+  "catalog.createPublicationCandidate": {
+    summary: "Build and freeze a complete successor publication candidate from a typed ChangeSet",
+    tags: ["catalog"],
+    requestBody: "CatalogCreatePublicationCandidateRequest",
+    responseBody: "CatalogPublicationCandidateResponse",
+    successStatus: 201,
+    additionalResponses: catalogPublicationWriteErrors,
+    requestParameters: [catalogReleaseRequestHeader],
+    successHeaders: [catalogReleaseResponseHeader]
+  },
+  "catalog.getPublicationCandidate": {
+    summary: "Get one frozen publication candidate in the caller scope",
+    tags: ["catalog"],
+    responseBody: "CatalogPublicationCandidateResponse",
+    additionalResponses: catalogReadErrors,
+    successHeaders: [catalogReleaseResponseHeader]
+  },
+  "catalog.publishPublicationCandidate": {
+    summary: "Authorize and enqueue publication of a frozen candidate; returns a job, not a definition",
+    tags: ["catalog"],
+    requestBody: "CatalogPublishPublicationCandidateRequest",
+    responseBody: "CatalogPublicationJobResponse",
+    successStatus: 201,
+    additionalResponses: catalogPublicationWriteErrors,
+    requestParameters: [catalogReleaseRequestHeader],
+    successHeaders: [catalogReleaseResponseHeader]
+  },
+  "catalog.getPublication": {
+    summary: "Get one publication job, including verified Receipt effectiveness and currentness",
+    tags: ["catalog"],
+    responseBody: "CatalogPublicationJobResponse",
+    additionalResponses: catalogReadErrors,
+    successHeaders: [catalogReleaseResponseHeader]
   },
   "catalog.getLegacyIdentifier": {
     summary: "Look up an exact authorized legacy identifier mapping",
