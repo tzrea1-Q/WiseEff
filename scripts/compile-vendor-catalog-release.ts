@@ -250,8 +250,10 @@ const vendorDocuments = (schemasRoot: string): CatalogReleaseDocument[] => {
       throw new Error(`catalog-vendor-invalid-selector:${relativePath}:${parsed.error}`);
     }
 
-    const kind = isDriver ? "driver" : "node-type";
-    const selectorKind = isDriver ? "driver-compatible" : "node-type-name";
+    const kind = isDriver ? ("driver" as const) : ("node-type" as const);
+    const selectorKind = isDriver
+      ? ("driver-compatible" as const)
+      : ("node-type-name" as const);
     const subjectSlug = `${isDriver ? "drv" : "nt"}_${slug(canonical)}`;
     const subjectId = claimId(usedIds, `csub_${subjectSlug}`, "subject");
     const subjectContent = {
@@ -269,13 +271,13 @@ const vendorDocuments = (schemasRoot: string): CatalogReleaseDocument[] => {
             nature: "physical-device" as const,
             cardinality: { kind: "multiple" as const },
           }
-        : {},
+        : ({} as Record<never, never>),
       tombstone: null,
     };
     documents.push({
       source: placeholderSource,
       kind: "subject",
-      normalizedDigest: canonicalDigest(subjectContent),
+      normalizedDigest: canonicalDigest(subjectContent as unknown as ContractJsonValue),
       content: subjectContent,
     });
 
@@ -299,7 +301,7 @@ const vendorDocuments = (schemasRoot: string): CatalogReleaseDocument[] => {
       documents.push({
         source: placeholderSource,
         kind: "alias",
-        normalizedDigest: canonicalDigest(aliasContent),
+        normalizedDigest: canonicalDigest(aliasContent as unknown as ContractJsonValue),
         content: aliasContent,
       });
     }
@@ -349,7 +351,7 @@ const vendorDocuments = (schemasRoot: string): CatalogReleaseDocument[] => {
       documents.push({
         source: placeholderSource,
         kind: "definition",
-        normalizedDigest: canonicalDigest(definitionContent),
+        normalizedDigest: canonicalDigest(definitionContent as unknown as ContractJsonValue),
         content: definitionContent,
       });
     }
