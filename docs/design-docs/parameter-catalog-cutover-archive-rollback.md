@@ -488,6 +488,20 @@ The public `LegacyLookupIdentifierType` remains the seven API kinds fixed by the
 
 The historical fixture source at `6c3adfc35c0e3be6d5d381013dace9408190380e` and its original checksum remain immutable evidence, not executable trust. S0-FIX must append a repair commit `R` limited to the original 18 files, then a nineteenth external source-lock test that pins `R`, all path/mode/per-file hashes, and a new length-framed bundle checksum `B`. The PostgreSQL-aware lexer rejects transaction/session escape and explicitly denies `COMMIT WORK`, `END`, `PREPARE TRANSACTION`, `SAVEPOINT`, `RELEASE SAVEPOINT`, `COPY ... FROM STDIN`, `\i`, `\ir`, `\gexec`, `\gset`, `\copy`, `\connect`, `\!`, and `\q`. `synthetic-fixture-verify.sql` runs before candidate mutation, after candidate application/validation immediately before rollback, and after rollback. Cleanup fails closed and emits `CLEANUP_OK` only after complete cleanup; the runner secret-scans the closed world of source and generated artifacts. Real PostgreSQL and `test:scripts` are implementation gates. No local synthetic rehearsal is target, release, or production evidence.
 
+## 2026-09-12 preexisting Catalog adoption addendum
+
+[ADR-0043](../adr/0043-catalog-authoring-and-online-publication.md) adds a one-time `adopted-preexisting` proof for a Catalog already installed before the publication control plane. It binds the exact current ID/digest, exact source Artifact bytes, independent projection verification, data mode, collection time, and operator approval time. It proves “we verified and adopted this already-installed release today.” It does not prove that the new approval flow ran in the past, and it is not a general unsigned-bundle activator.
+
+This program must not:
+
+- reconstruct a Release from extra database rows;
+- substitute a similar fixture for host Artifact bytes without digest equality;
+- re-bootstrap or seed an instance that already has a current Catalog;
+- restore or merge [#824](https://github.com/tzrea1-Q/WiseEff/pull/824) as part of authoring/publication;
+- describe `new-empty` as populated-data cutover or as P13 retirement.
+
+Pointer-only rollback after candidate writes/traffic remains forbidden. Business Catalog mistakes use a forward successor Release. Disaster recovery still requires Artifact, projection, authorization/Receipt, and business stores to restore together.
+
 ## Decision completeness
 
 This contract leaves no migration, Archive, activation, dual-read comparison, or rollback choice open in [Choose populated-data cutover, archive, and rollback strategy](https://github.com/tzrea1-Q/WiseEff/issues/678). Exact physical table names, SQL, CLI flags, failure-code spellings, and implementation slices belong to the later specification. [Choose the catalog kernel interface and transaction boundary](https://github.com/tzrea1-Q/WiseEff/issues/673) still owns the Catalog Kernel interface; [Choose the parameter API and legacy-identifier transition](https://github.com/tzrea1-Q/WiseEff/issues/677) owns exact HTTP/DTO transition responses and compatibility duration; [Choose verification, upgrade, and legacy-retirement gates](https://github.com/tzrea1-Q/WiseEff/issues/679) owns the final independent release/legacy-deletion gate. Those handoffs may add detail but cannot make the P11 comparison optional, narrow D01-D09 or inventory coverage, permit a non-zero unexplained/unqueryable result, or weaken this document's dispositions, evidence boundaries, zero-write rollback rule, whole-state restore boundary, or pre-startup synchronization/verifier ordering.

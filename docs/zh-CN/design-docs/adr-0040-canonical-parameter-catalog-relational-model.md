@@ -10,6 +10,8 @@
 
 本记录继续使用 ADR-0040。[Issue #674](https://github.com/tzrea1-Q/WiseEff/issues/674) 的发布决策改用 ADR-0041；[Issue #675](https://github.com/tzrea1-Q/WiseEff/issues/675) 的 registration/placement 决策保持 ADR-0042。如果这些记录与本次修正冲突，必须按该编号与本决策统一解读和修正。
 
+2026-09-12 来源修正：[ADR-0043](../../adr/0043-catalog-authoring-and-online-publication.md) 取代“Catalog Release 必须作为经仓库评审的应用制品来编写”这一排他解读。本 ADR 中的唯一同步器、完整后继、不可变 revision、Proposal 接受不物化、稳定身份、以及禁止组织 overlay 仍然有效。关系图中 `PUBLICATION_INTENT` → `CATALOG_RELEASE` 的兑现路径是冻结 Candidate、绑定授权与同步器，而不再只允许 Git 仓库引用。历史 `repositoryReference` 仍是一种合法来源种类。
+
 ## 背景
 
 当前目录把一份属性契约分散在 `parameter_specs`、`parameter_spec_versions`、归属主体、Schema 根/属性、组织 overlay、放置、评审、Binding，以及重复的 lifecycle/current 字段中。因此，组织 override、未匹配 DTS occurrence、提案或历史行都可能看起来像第二份当前定义。

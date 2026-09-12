@@ -8,6 +8,15 @@
 
 已由 [Choose platform schema publication and synchronization semantics](https://github.com/tzrea1-Q/WiseEff/issues/674) 接受；该票属于 [Wayfinder: replace the parameter catalog with one canonical definition model](https://github.com/tzrea1-Q/WiseEff/issues/668)。本记录正式编号为 ADR-0041，并以 [ADR-0040](../../adr/0040-canonical-parameter-catalog-relational-model.md) 的模型权威、稳定身份、revision 与事务规则为前提。本 ADR 描述目标 publication/synchronization 语义，不表示现有 loader、数据库、缓存或 upgrade 路径已经完成实现。
 
+2026-09-12 来源与运行时修正：[ADR-0043](../../adr/0043-catalog-authoring-and-online-publication.md) 只取代下列排他条款：
+
+- §1 将“随目标应用制品一并交付”视为**唯一**发布输入；
+- §1 将“产品表单不是 catalog 输入”理解为禁止类型化 ChangeSet 编写；
+- §5/§6 把每一次 Catalog 内容变更都当成一次应用升级同步；
+- 备选方案中对“Admin UI 编写 catalog”的拒绝——仅在其拒绝**编写入口**的范围内被取代。UI 与 PostgreSQL 仍然不得成为第二结构真相，也不得直接写 Catalog 表。
+
+完整后继、唯一同步器、失败即关闭的编译与 digest 合同、历史重放、禁止 overlay、流量后禁止仅指针回滚，以及精确的应用批准 `readApprovedRuntimePin` / P13 比较，均保持不变。数据发布现在与这些应用事实组合使用；旧报告不能批准后来的 Catalog 后继。`new-empty` 不得被说成 P13 已退休。
+
 ## 背景
 
 已批准的目标只有一个结构真相来源：Platform schema catalog。组织可以注册和放置正式 Driver、NodeType 主体，但不能编写、复制、覆盖或私有重定义 schema。运行时 observation 只是证据，不能创建 definition。

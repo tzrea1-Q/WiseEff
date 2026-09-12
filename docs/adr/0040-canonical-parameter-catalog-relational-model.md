@@ -10,6 +10,8 @@ Accepted for the replacement architecture described by [Wayfinder: replace the p
 
 This record remains ADR-0040. The publication decision in [Issue #674](https://github.com/tzrea1-Q/WiseEff/issues/674) is ADR-0041, and the registration/placement decision in [Issue #675](https://github.com/tzrea1-Q/WiseEff/issues/675) remains ADR-0042. Where those records conflict with this correction, they must be read and renumbered consistently with this sequence.
 
+2026-09-12 source amendment: [ADR-0043](0043-catalog-authoring-and-online-publication.md) supersedes the exclusive reading that a Catalog Release must be authored as a repository-reviewed application artifact. The unique synchronizer, complete successor, immutable revision, “Proposal acceptance does not materialize,” stable IDs, and no-organization-overlay decisions in this ADR remain in force. The diagram edge `PUBLICATION_INTENT` → `CATALOG_RELEASE` is fulfilled by a frozen Candidate plus bound Authorization plus the synchronizer, not only by a Git repository reference. Historical `repositoryReference` remains one valid source kind.
+
 ## Context
 
 The current catalog spreads one property contract across `parameter_specs`, `parameter_spec_versions`, attribution subjects, schema roots/properties, organization overlays, placements, review rows, bindings, and duplicated lifecycle/current flags. That shape can make an organization override, an unmatched DTS occurrence, a proposal, or a historical row look like a second current definition.

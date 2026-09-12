@@ -6,6 +6,14 @@
 
 本决策以 [`9fe269d4facc31b49fc1e0535d2d51ba7140644b`](https://github.com/tzrea1-Q/WiseEff/tree/9fe269d4facc31b49fc1e0535d2d51ba7140644b) 中通过验收的 ADR-0040/0041/0042 最终超集为前提；领域与关系语义继续以这些 ADR 为准。本页只决定深模块 seam、类型、事务所有权、权限、缓存行为和测试面，不创建生产代码、迁移、HTTP 路由、UI 或 implementation ticket，也不占用新的 ADR 编号。
 
+2026-09-12 补记（[ADR-0043](../../adr/0043-catalog-authoring-and-online-publication.md)）：
+
+- **现状与本页：** 在 `origin/main` `063b12c49` 上，`installPublishedRelease` 已经实现 bootstrap/advance、`expectedCurrent`、独占锁和 Kernel 自有事务。上文“这些操作在 S3-INS / S3-VFY 接管前返回 `permission-denied`”相对已落地的 installer 是历史表述。本补记不重开 Wayfinder #668 节点。
+- 调用方仍然不能传入已开启事务，也不能自行协调 Catalog 表。
+- 在线发布在同一边界内扩展 `installPublishedRelease`：校验 Candidate 授权、在同一未提交事务内用独立于写入算法的逻辑重算投影，并写入与 pointer/heads 同事务提交的不可变 Activation Receipt。没有第二个 current pointer，也不接受“先切指针再验证”的窗口。
+- 编写、Candidate 冻结与批准属于 Kernel 外的 `catalog-publication`。Kernel 消费不可变已发布源以及 ADR-0043 要求的证明，它不是审批服务。
+- `adopted-preexisting` 是针对已经 current 的基线的独立安装种类，不是未签名包的通用后门。
+
 ## 决策摘要
 
 **Catalog Kernel** 是一个无路由的深模块。它在一个公共 seam 后统一拥有 Catalog Release 的确定性编译、完整校验、原子物化、精确 release 快照、selector 匹配、Definition 查询、独立物化验证及可丢弃的快照缓存。调用方不再协调 catalog 表、不传入已开启事务、不选择 revision head、不自行应用 alias，也不推断 current lifecycle。

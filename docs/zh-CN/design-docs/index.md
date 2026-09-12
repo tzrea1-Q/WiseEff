@@ -29,6 +29,7 @@
 
 - [docs/zh-CN/design-docs/index.md](index.md)
 - [参数目录验证、升级与退出门禁——锁定决策](parameter-catalog-verification-upgrade-retirement-gates.md)
+- [Catalog 编写与发布控制面——CP-00 锁定合同](catalog-authoring-and-publication-control-plane.md)
 - [docs/zh-CN/design-docs/core-beliefs.md](core-beliefs.md)
 - [docs/zh-CN/design-docs/full-stack-architecture.md](full-stack-architecture.md)
 - [docs/zh-CN/design-docs/domain-model.md](domain-model.md)

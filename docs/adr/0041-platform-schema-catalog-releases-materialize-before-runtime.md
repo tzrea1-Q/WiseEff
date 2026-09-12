@@ -8,6 +8,15 @@ Date: 2026-08-31
 
 Accepted for [Choose platform schema publication and synchronization semantics](https://github.com/tzrea1-Q/WiseEff/issues/674), a decision ticket in [Wayfinder: replace the parameter catalog with one canonical definition model](https://github.com/tzrea1-Q/WiseEff/issues/668). This record is ADR-0041 and depends on [ADR-0040](0040-canonical-parameter-catalog-relational-model.md) for model authority, stable identity, revision, and transaction rules. This ADR defines destination publication and synchronization semantics; it does not claim that the current loader, database, cache, or upgrade path already implements them.
 
+2026-09-12 source and runtime amendment: [ADR-0043](0043-catalog-authoring-and-online-publication.md) supersedes these exclusive clauses only:
+
+- §1 “shipped inside the target application artifact” as the **only** publication input;
+- §1 “product forms are not catalog inputs” as a ban on typed ChangeSet authoring;
+- §5/§6 treating every Catalog content change as an application-upgrade synchronization;
+- the considered-options rejection of “Admin UI authors the catalog,” insofar as that rejected **authoring entry**. UI and PostgreSQL still must not become a second structural truth or write Catalog tables.
+
+Retained without change: complete successor, unique synchronizer, fail-closed compilation and digest contract, historical replay, no overlay, no pointer-only rollback after traffic, and the exact application-approval `readApprovedRuntimePin` / P13 comparison. Data publication is now combined with those application facts; an old report does not approve a later Catalog successor. `new-empty` must not be described as P13 retirement.
+
 ## Context
 
 The approved destination has one Platform schema catalog as the sole structural truth source. Organizations register and place formal Driver and NodeType subjects but do not author, copy, override, or privately redefine their schemas. Runtime observations are evidence and cannot create a definition.

@@ -89,5 +89,6 @@ export const developerFacingBilingualDocs: BilingualDocEntry[] = [
   { en: "docs/exec-plans/active/development-roadmap.md", zh: "docs/zh-CN/exec-plans/development-roadmap.md", tier: "planning", status: "required" },
   { en: "docs/exec-plans/completed/README.md", zh: "docs/zh-CN/exec-plans/completed/README.md", tier: "planning", status: "required" },
   { en: "docs/exec-plans/tech-debt-tracker.md", zh: "docs/zh-CN/exec-plans/tech-debt-tracker.md", tier: "planning", status: "required" },
-  { en: "docs/design-docs/parameter-catalog-verification-upgrade-retirement-gates.md", zh: "docs/zh-CN/design-docs/parameter-catalog-verification-upgrade-retirement-gates.md", tier: "architecture", status: "required" }
+  { en: "docs/design-docs/parameter-catalog-verification-upgrade-retirement-gates.md", zh: "docs/zh-CN/design-docs/parameter-catalog-verification-upgrade-retirement-gates.md", tier: "architecture", status: "required" },
+  { en: "docs/design-docs/catalog-authoring-and-publication-control-plane.md", zh: "docs/zh-CN/design-docs/catalog-authoring-and-publication-control-plane.md", tier: "architecture", status: "required" }
 ];

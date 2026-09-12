@@ -593,8 +593,20 @@ Physical filename、table name、SQL text、CLI flag spelling、storage vendor �
 - **只用 Prometheus zero count 决定 sunset。** 拒绝，因为 bounded metrics retention 无法证明全部 supported deployments 或连续 30 天；需要 immutable daily rollups 与 deployment inventory。
 - **允许 partial PostgreSQL-only rollback。** 拒绝，因为 database/object/Redis state 会跨越 recovery boundary。
 
+## 2026-09-12 Catalog 数据发布补记
+
+[ADR-0043](../../adr/0043-catalog-authoring-and-online-publication.md) **不**删除 digest 比较、不改写旧报告、也不豁免 P13。
+
+- 应用批准事实仍是本模块的 purpose-scoped reports 与 `readApprovedRuntimePin`（精确 P13 状态、`writerRetirementFingerprint`、`runtimePinGeneration` 与 pins）。
+- Catalog 激活事实是当前 Catalog ID/digest、Artifact、前驱、Candidate 授权、投影校验，以及 Activation Receipt（或一次性 `adopted-preexisting` 证明）。
+- 进程就绪是二者的合取。钉住 Catalog A 的报告不能批准后继 Catalog B。
+- `new-empty` 是数据模式。它不能证明 P13 writer retirement 已经发生，也不得捆绑 [#824](https://github.com/tzrea1-Q/WiseEff/pull/824)。
+- 普通启动仍只做校验，不得把应用镜像内的 vendor 包自动安装到数据库当前 Catalog 之上。
+- 应用升级/恢复必须冻结新的 Catalog 发布，等待或有界中止在途任务，然后再取恢复点。隐藏页面按钮不是该冻结。
+- 不兼容的旧镜像必须保持 not-ready，而不能靠跳过这些检查运行。
+
 ## 决策完整性
 
-本文没有为 issue #679 留下已知的 verification architecture、purpose-specific report applicability、P12/P13 ordering、post-retirement P11 rerun、runtime-pin selection、isolated candidate acceptance、public-release authorization、database invariant、API/browser gate、rollback proof、observability、evidence-level、compatibility-window 或 legacy-deletion 未决选择。
+本文没有为 issue #679 留下已知的 verification architecture、purpose-specific report applicability、P12/P13 ordering、post-retirement P11 rerun、runtime-pin selection、isolated candidate acceptance、public-release authorization、database invariant、API/browser gate、rollback proof、observability、evidence-level、compatibility-window 或 legacy-deletion 未决选择。已获批准的应用 pin 之后的 Catalog **内容**发布由 ADR-0043 拥有，必须与本模块组合，而不能替代本模块。
 
 此前 single-report cycle 已被 supersede：pre-activation 绝不声称 live API/browser success；P13 始终产生新的完整 V01-V17 + D01-D09 attempt；startup 只绑定其 approved post-retirement report；public traffic 等待后续 aggregate report 与 purpose-specific approval。该修复恢复 issue #678 在 `1839398b0d4fe1c77dec5c8fe8ef7835a2dc210d` 的强度，不改变 #673 或 #677 authority。后续工作可以选择 implementation mechanics，但若无新的明确 product decision，不得重开 Platform-only structural authority、R0-R10 outcomes、V01-V17、D01-D09、zero unexplained/unqueryable thresholds、全部 11 consumer families、one-page UX、API ownership、三个 browser viewports、minimum two-release/90-day/30-day thresholds、no-dual-write/read/lazy-repair rule、cross-store recovery、protected-history retention 或 staged retirement。

@@ -53,6 +53,7 @@
 
 ### 仍待做的产品与 UX
 
+- `exec-plans/active/2026-09-12-catalog-authoring-publication.md`：产品内 Catalog 定义编写与在线发布（ADR-0043）。CP-00/CP-01 文档冻结在 Scratch 分支 `docs/catalog-authoring-publication-cp00`。在取得授权只读证据前，主机 Artifact 接管保持 blocked。本程序不重开冻结的 Wayfinder #668 节点图，不捆绑 #824，也不是生产启用。
 - `exec-plans/active/2026-09-05-parameter-catalog-review-remediation.md`：F1–F7 与 INT-01 已由 #812（`35cbfb18e`）合入 `main`。剩余工作是 OP-09 / #811 / INT-02 在 #735 合同下的目标机证据。程序 #802 保持打开。OP-09 需人工授权，不是智能体 cutover。本计划不重开冻结的 Wayfinder #668 nodes。
 - `exec-plans/active/2026-09-01-wayfinder-canonical-parameter-catalog-replacement.md`：Wayfinder #668 的完整实现规格。G0 与 G0.1 已合入；Phase A 已发布 #683–#735，Phase B/Phase C 已完成；S0-ID、S0-FIX 与 S1-BND 已分别通过 PR #739、#743、#741 关闭。G0.2 引入仓库交付协议。G0.3 提高开发并发、要求专用 lane PostgreSQL 与角色忠实的本地验收，并禁止把 Hosted 当调试器，但不改变任何冻结 node 或 dependency edge。launch graph 保持 53 nodes 与 `CD=90`、`CF=54`、`ID=27`、`RE=18`；S13-PROGRAM/S14-PROGRAM 继续作为 Temporal 工作延后。G0.2/G0.3 不声称新的实现、Hosted、target、release 或 production evidence。剩余 launch Issues 遵守 `docs/agents/catalog-launch-operating-rules.md`。
 
