@@ -84,6 +84,8 @@
     "db:migrate": "tsx scripts/migrate.ts",
     "catalog:lane:env": "tsx scripts/catalog-lane-env.ts",
     "catalog:lane:accept": "tsx scripts/catalog-lane-env.ts accept",
+    "catalog:compile-vendor": "tsx scripts/compile-vendor-catalog-release.ts",
+    "catalog:install-release": "tsx scripts/install-catalog-release.ts",
     "parameter-identities:migrate": "tsx scripts/migrate-parameter-identities.ts",
     "parameter-identities:cutover": "tsx scripts/apply-parameter-identity-cutover.ts",
     "parameter-identities:check": "tsx scripts/check-parameter-identity-cutover.ts",

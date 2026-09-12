@@ -2,6 +2,38 @@
 
 > English: [English](upgrade.md)
 
+## 厂商 Catalog 后继发布
+
+仅当当前 Catalog 指针是首个夹具发布 `crel_acme_1`，且 digest 为 `sha256:365305492cf3fddb973b65268d1c7b8c60715240e9fd2dac05aa9091f0c38044` 时使用。常见路径：`--parameter-data-mode new-empty` 之后，已用既有评审夹具包完成 bootstrap。
+
+发布输入是 `schemas/dts/catalog.json` 与磁盘上的 `vendor/wiseeff` YAML。不并入 `src/config/power-management.json`。排除 `common-status.yaml`、`test-ambiguous-a.yaml`、`test-ambiguous-b.yaml`。后继包是完整 as-of 快照：保留 `csub_acme_power` / `pdef_acme_power_iin_max` / `cali_acme_power_v1`，并加入其余厂商定义。
+
+不要第二次 bootstrap。不要跑 `db:seed:m1` 或 `db:seed:all`。不要向 Catalog 表 INSERT。页面提案仍不能发布定义。
+
+API 镜像必须包含 `scripts/compile-vendor-catalog-release.ts`，以及 `scripts/install-catalog-release.ts` 的 advance 参数。若正在运行的镜像仍是只支持 bootstrap 的安装器，先升级到包含这些脚本的 commit。
+
+在 `ops/self-hosted/` 执行：
+
+```bash
+./scripts/compose --env-file .env exec api \
+  npx tsx scripts/compile-vendor-catalog-release.ts --out /tmp/vendor-catalog-successor.json
+```
+
+编译器必须打印 `releaseId=crel_vendor_catalog_1` 且 digest 为 `sha256:efc5336e625f0eb6f994223a5f67a57b119e92bda2edb5c209fc901284f126c7`。digest 不同即停止：厂商 YAML 或编译器已漂移，禁止安装。
+
+```bash
+./scripts/compose --env-file .env exec api \
+  npx tsx scripts/install-catalog-release.ts /tmp/vendor-catalog-successor.json \
+    --mode advance \
+    --expected-current-id crel_acme_1 \
+    --expected-current-digest sha256:365305492cf3fddb973b65268d1c7b8c60715240e9fd2dac05aa9091f0c38044 \
+    --confirm-digest sha256:efc5336e625f0eb6f994223a5f67a57b119e92bda2edb5c209fc901284f126c7
+
+./scripts/compose --env-file .env restart api worker
+```
+
+同一命令因丢失响应而重试时返回 `already-current`。当前指针不是带该 digest 的 `crel_acme_1` 时拒绝。重启后 Catalog 应列出 114 条定义，并仍包含原来的 `iin_max`。
+
 ## 最小参数初始化候选
 
 [最小升级计划](../../docs/zh-CN/exec-plans/active/minimal-parameter-upgrade.md) 为 `plan` 和 `apply` 增加 `--parameter-data-mode new-empty`。本候选仍在隔离验收，不构成生产执行批准。该选项绑定计划/run，仅选择管理期初始化；API/worker 不读取绕过开关，后续正常重启不会清空参数。

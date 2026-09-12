@@ -14,6 +14,8 @@ Use the narrowest command that proves the change while developing. Before finish
 | `npm run catalog:lane:env -- provision --issue <n>` | Isolated pgvector database `wiseeff_lane_<n>` on `127.0.0.1:55438`; rejects compose `5432/wiseeff` | Before any Wayfinder #668 PostgreSQL node. |
 | `npm run catalog:lane:env -- doctor --issue <n>` | pgvector present; `catalog_migration_owner` canary against `public.parameter_specs` when roles exist | Before Hosted for RBAC/migration/catalog-kernel PG evidence. |
 | `npm run catalog:lane:accept -- --issue <n> -- <issue-named command>` | Issue-owned focused tests on the dedicated lane DB; zero collected files is a hard failure | Exact-candidate local gate. Hosted remains H and does not replace this PG/L evidence. |
+| `npm run catalog:compile-vendor [-- --out <bundle.json>]` | Compiles `schemas/dts/catalog.json` minus retired/ambiguous fixtures into successor `crel_vendor_catalog_1` of `crel_acme_1` and prints the frozen digest | After changing vendor YAML, `catalog.json`, or the successor compiler. |
+| `npm run catalog:install-release -- <bundle.json> --confirm-digest sha256:... [--mode advance --expected-current-id ... --expected-current-digest ...]` | Management-only Catalog bootstrap or advance; `DATABASE_URL` required | First fixture publication or vendor successor install. Never from app startup; never a second bootstrap. |
 | `npm test` | Frontend/unit suite (`src/**` only, jsdom) | Frontend-affecting changes. |
 | `npm run test:server` | Backend/unit suite | Backend-affecting changes. |
 | `npm run test:scripts` | Ops/governance script suite (`scripts/**`, `ops/**`, Node) | Script or ops automation changes. |
