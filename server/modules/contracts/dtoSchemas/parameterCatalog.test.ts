@@ -6,6 +6,7 @@ import { buildOpenApiDocument } from "../openapi";
 import { routeManifest } from "../routeManifest";
 import { schemaRegistry } from "../schemaRegistry";
 import {
+  catalogAcceptProposalRequestSchema,
   catalogApiFailureReasons,
   catalogCreateBindingDraftRequestSchema,
   catalogDocumentResponseSchema,
@@ -176,6 +177,22 @@ describe("S8-CON threat matrix", () => {
           placement: { mode: "use-default" }
         },
         reason: "illegal extra placement"
+      }).success
+    ).toBe(false);
+    expect(
+      catalogAcceptProposalRequestSchema.safeParse({
+        repositoryReference: "repo://wiseeff-catalog/acme-power.yaml"
+      }).success
+    ).toBe(true);
+    expect(
+      catalogAcceptProposalRequestSchema.safeParse({
+        publicationReference: { kind: "candidate", candidateId: "ccand_01K" }
+      }).success
+    ).toBe(true);
+    expect(
+      catalogAcceptProposalRequestSchema.safeParse({
+        repositoryReference: "repo://wiseeff-catalog/acme-power.yaml",
+        publicationReference: { kind: "candidate", candidateId: "ccand_01K" }
       }).success
     ).toBe(false);
   });

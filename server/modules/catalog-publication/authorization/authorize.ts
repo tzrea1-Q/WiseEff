@@ -77,11 +77,7 @@ const realUserPrincipalId = (actor: TrustedInvocationContext): string | null => 
 
 const authorPrincipalIdFromCandidate = (
   candidate: PublicationCandidateRecord,
-  impactFacts?: ImpactFacts,
 ): string | null => {
-  if (impactFacts?.authorPrincipalId) {
-    return impactFacts.authorPrincipalId;
-  }
   const allocated = candidate.identityAllocation.authorPrincipalId;
   return typeof allocated === "string" && allocated.trim().length > 0 ? allocated : null;
 };
@@ -265,7 +261,7 @@ export async function authorizePublish(
     return fail("candidate-tampered", "authorization tuple does not match candidate");
   }
 
-  const allocatedAuthor = authorPrincipalIdFromCandidate(candidate.value, input.impactFacts);
+  const allocatedAuthor = authorPrincipalIdFromCandidate(candidate.value);
   if (allocatedAuthor === null || allocatedAuthor !== input.impactFacts.authorPrincipalId) {
     return fail("candidate-tampered", "candidate author does not match impact facts");
   }
@@ -281,7 +277,7 @@ export async function authorizePublish(
   const gate = evaluateApprovalGate({
     riskClass: classified.value,
     actor: input.trustedActor,
-    authorPrincipalId: input.impactFacts.authorPrincipalId,
+    authorPrincipalId: allocatedAuthor,
     publicationEnabled: policy.value.publicationEnabled,
     lowRiskSingleActorPublish: policy.value.lowRiskSingleActorPublish,
   });
@@ -431,6 +427,14 @@ export async function verifyAuthorizationForActivation(
     return fail("candidate-stale", "policy revision is no longer applicable");
   }
 
+  const authorPrincipalId = authorPrincipalIdFromCandidate(candidate.value);
+  if (authorPrincipalId === null) {
+    return fail("candidate-tampered", "candidate author is missing");
+  }
+  if (input.impactFacts && input.impactFacts.authorPrincipalId !== authorPrincipalId) {
+    return fail("candidate-tampered", "candidate author does not match impact facts");
+  }
+
   let riskClass: PublicationRiskClass = "high";
   if (input.impactFacts) {
     const classified = classifyImpact(input.impactFacts);
@@ -438,16 +442,7 @@ export async function verifyAuthorizationForActivation(
       return classified;
     }
     riskClass = classified.value;
-  } else {
-    const authorId = authorPrincipalIdFromCandidate(candidate.value);
-    riskClass =
-      authorId !== null && authorization.actorPrincipalId === authorId ? "low" : "high";
   }
-
-  const authorPrincipalId =
-    input.impactFacts?.authorPrincipalId ??
-    authorPrincipalIdFromCandidate(candidate.value) ??
-    authorization.actorPrincipalId;
 
   const gate = evaluateApprovalGate({
     riskClass,

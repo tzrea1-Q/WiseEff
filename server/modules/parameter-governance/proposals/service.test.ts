@@ -26,6 +26,7 @@ import {
   type SubmitProposalCommand,
   type WithdrawProposalCommand,
 } from "./command";
+import { loadSuccessAuditSnapshot } from "./repositories";
 import { THREAT_MATRIX } from "./threatMatrix";
 
 const dir = path.dirname(fileURLToPath(import.meta.url));
@@ -212,6 +213,52 @@ describe("S5-PRP public command contract", () => {
         actorKind: "platform-admin",
         method: "withdraw",
       },
+    });
+  });
+
+  it("replays a pre-0141 accept audit snapshot that only has repositoryReference", async () => {
+    const historical = {
+      proposalId: "dprop_stable",
+      proposalRevisionId: "dprev_stable",
+      revisionNumber: 1,
+      status: "accepted",
+      etagVersion: 2,
+      organizationId: "org-s5-prp",
+      baseCatalogReleaseId: "crel_acme_1",
+      baseDefinitionRevisionId: "drev_acme_power_iin_max_1",
+      baseDefinitionId: "pdef_acme_power_iin_max",
+      submittedByPersonId: "user-org-admin-proposer",
+      requestedChange: { change: "raise-limit" },
+      publicationIntent: {
+        id: "cpint_historical",
+        repositoryReference: "repo://wiseeff-catalog/schemas/dts/vendor/acme-power.yaml",
+        reviewerPrincipalId: "user-platform-admin-reviewer",
+        successAuditRef: "audit_historical",
+      },
+    };
+    const snapshot = await loadSuccessAuditSnapshot(
+      {
+        query: async () =>
+          ({
+            rows: [{ metadata: { resultSnapshot: historical } }],
+            rowCount: 1,
+          }) as never,
+      },
+      "org-s5-prp",
+      "proposal-accept",
+      "sha256:historical",
+      "dprop_stable",
+    );
+    expect(snapshot).not.toBeNull();
+    expect(snapshot?.publicationIntent).toEqual({
+      id: "cpint_historical",
+      repositoryReference: "repo://wiseeff-catalog/schemas/dts/vendor/acme-power.yaml",
+      publicationReference: {
+        kind: "repository",
+        repositoryReference: "repo://wiseeff-catalog/schemas/dts/vendor/acme-power.yaml",
+      },
+      reviewerPrincipalId: "user-platform-admin-reviewer",
+      successAuditRef: "audit_historical",
     });
   });
 

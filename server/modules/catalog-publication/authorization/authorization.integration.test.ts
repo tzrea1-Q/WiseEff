@@ -262,6 +262,35 @@ describe("catalog publication authorization", () => {
     }
   });
 
+  it("binds the stored candidate author, not caller impactFacts.authorPrincipalId", async () => {
+    const token = uniqueToken("authspoof");
+    const policyRevision = await enablePublicationPolicy(client, {
+      publicationEnabled: true,
+      lowRiskSingleActorPublish: false,
+    });
+    const result = await asCoordinator(client, async () => {
+      const candidate = await persistHandBuiltCandidate(client, {
+        token,
+        authorPrincipalId: REVIEWER,
+      });
+      return authorizePublish(asQueryable(client), {
+        trustedActor: userActor(REVIEWER, reviewerPermissions),
+        candidate: await tupleOf(client, candidate),
+        impactFacts: highFacts(AUTHOR),
+        policyRevision,
+      });
+    });
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error.reason).toBe("candidate-tampered");
+    }
+    const auths = await client.query(
+      `select id from catalog_publication.publication_authorizations where candidate_id = $1`,
+      [`ccand_${token}`],
+    );
+    expect(auths.rowCount).toBe(0);
+  });
+
   it("refuses a stale tuple after candidate impact digest changes and does not copy the old approval", async () => {
     const policyRevision = await enablePublicationPolicy(client, {
       publicationEnabled: true,
@@ -340,6 +369,40 @@ describe("catalog publication authorization", () => {
     expect(verified.ok).toBe(false);
     if (!verified.ok) {
       expect(verified.error.reason).toBe("publication-capability-missing");
+    }
+  });
+
+  it("treats omitted execute-time impactFacts as high risk instead of inferring low from self-approve", async () => {
+    const policyRevision = await enablePublicationPolicy(client, {
+      publicationEnabled: true,
+      lowRiskSingleActorPublish: true,
+    });
+    const authorized = await asCoordinator(client, async () => {
+      const candidate = await persistHandBuiltCandidate(client, {
+        token: uniqueToken("nofacts"),
+        authorPrincipalId: PUBLISHER,
+      });
+      return authorizePublish(asQueryable(client), {
+        trustedActor: userActor(PUBLISHER, publisherPermissions),
+        candidate: await tupleOf(client, candidate),
+        impactFacts: lowFacts(PUBLISHER),
+        policyRevision,
+      });
+    });
+    expect(authorized.ok).toBe(true);
+    if (!authorized.ok) {
+      throw new Error(JSON.stringify(authorized.error));
+    }
+    const verified = await asCoordinator(client, async () =>
+      verifyAuthorizationForActivation(asQueryable(client), {
+        candidateId: authorized.value.candidate.id,
+        authorizationId: authorized.value.authorization.id,
+        trustedActor: userActor(PUBLISHER, publisherPermissions),
+      }),
+    );
+    expect(verified.ok).toBe(false);
+    if (!verified.ok) {
+      expect(verified.error.reason).toBe("publication-self-approval-forbidden");
     }
   });
 

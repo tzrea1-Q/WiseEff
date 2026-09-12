@@ -485,8 +485,29 @@ export const catalogPublicationReferenceSchema = z.union([
 ]);
 
 export const catalogAcceptProposalRequestSchema = catalogObject({
-  repositoryReference: z.string(),
+  repositoryReference: z.string().optional(),
   publicationReference: catalogPublicationReferenceSchema.optional()
+}).superRefine((value, ctx) => {
+  if (value.publicationReference?.kind === "candidate") {
+    if (value.repositoryReference !== undefined) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["repositoryReference"],
+        message: "candidate reference must not include repositoryReference"
+      });
+    }
+    return;
+  }
+  if (value.publicationReference?.kind === "repository") {
+    return;
+  }
+  if (value.repositoryReference === undefined) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["repositoryReference"],
+      message: "repositoryReference"
+    });
+  }
 });
 
 export const catalogRejectProposalRequestSchema = catalogObject({

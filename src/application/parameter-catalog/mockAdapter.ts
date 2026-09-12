@@ -668,7 +668,18 @@ export function createMockCatalogPorts(options: CatalogMockOptions = {}): {
     async acceptProposal(proposalId, body, context) {
       return transitionProposal(proposalId, body, context, "acceptProposal", (parsed, proposal) => {
         const request = catalogAcceptProposalRequestSchema.parse(parsed);
-        if (!proposalToken(request.repositoryReference)) invalidProposal("repositoryReference");
+        if (request.publicationReference?.kind === "candidate") {
+          if (request.repositoryReference !== undefined) invalidProposal("repositoryReference");
+          if (!proposalToken(request.publicationReference.candidateId)) invalidProposal("publicationReference");
+        } else {
+          const repositoryReference =
+            request.publicationReference?.kind === "repository"
+              ? request.publicationReference.repositoryReference
+              : request.repositoryReference;
+          if (repositoryReference === undefined || !proposalToken(repositoryReference)) {
+            invalidProposal("repositoryReference");
+          }
+        }
         const session = proposalSession();
         if (session.personId === proposal.submittedByPersonId) {
           throw catalogApiFailure("proposal-self-approval-forbidden");

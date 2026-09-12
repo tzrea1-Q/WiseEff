@@ -343,7 +343,11 @@ export const loadSuccessAuditSnapshot = async (
       ? {
           id: PublicationIntentId(snapshot.publicationIntent.id),
           repositoryReference: snapshot.publicationIntent.repositoryReference,
-          publicationReference: snapshot.publicationIntent.publicationReference,
+          publicationReference:
+            snapshot.publicationIntent.publicationReference ?? {
+              kind: "repository",
+              repositoryReference: snapshot.publicationIntent.repositoryReference ?? "",
+            },
           reviewerPrincipalId: snapshot.publicationIntent.reviewerPrincipalId,
           successAuditRef: snapshot.publicationIntent.successAuditRef,
         }
@@ -364,18 +368,44 @@ const proposalSnapshotSchema = z.object({
   requestedChange: z.record(z.string(), snapshotJson),
   publicationIntent: z.object({
     id: snapshotToken,
-    repositoryReference: snapshotToken.nullable(),
+    repositoryReference: snapshotToken.nullable().optional(),
     publicationReference: z.discriminatedUnion("kind", [
       z.object({ kind: z.literal("repository"), repositoryReference: snapshotToken }),
       z.object({ kind: z.literal("candidate"), candidateId: snapshotToken }),
-    ]),
+    ]).optional(),
     reviewerPrincipalId: snapshotToken,
     successAuditRef: snapshotToken,
+  }).transform((intent) => {
+    const publicationReference =
+      intent.publicationReference ??
+      (typeof intent.repositoryReference === "string"
+        ? { kind: "repository" as const, repositoryReference: intent.repositoryReference }
+        : undefined);
+    if (!publicationReference) {
+      return {
+        ...intent,
+        repositoryReference: intent.repositoryReference ?? null,
+        publicationReference: { kind: "repository" as const, repositoryReference: "" },
+      };
+    }
+    return {
+      ...intent,
+      publicationReference,
+      repositoryReference:
+        intent.repositoryReference !== undefined
+          ? intent.repositoryReference
+          : publicationReference.kind === "repository"
+            ? publicationReference.repositoryReference
+            : null,
+    };
   }).nullable(),
 }).superRefine((snapshot, context) => {
   if ((snapshot.baseDefinitionId === null) !== (snapshot.baseDefinitionRevisionId === null)
     || (snapshot.status === "accepted") !== (snapshot.publicationIntent !== null)
-    || snapshot.publicationIntent?.reviewerPrincipalId === snapshot.submittedByPersonId) {
+    || snapshot.publicationIntent?.reviewerPrincipalId === snapshot.submittedByPersonId
+    || (snapshot.publicationIntent !== null
+      && snapshot.publicationIntent.publicationReference.kind === "repository"
+      && !snapshot.publicationIntent.publicationReference.repositoryReference)) {
     context.addIssue({ code: "custom", message: "invalid proposal snapshot invariants" });
   }
 });
