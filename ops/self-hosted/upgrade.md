@@ -6,6 +6,38 @@
 
 The host needs Docker Engine and Compose; Node.js is not required. The command reads `ops/self-hosted/.env` but never rewrites it, rotates credentials, seeds data, provisions an admin, or removes a volume. It never runs `compose down -v`, `volume rm`, or `system prune`.
 
+## Vendor catalog successor
+
+Use this only on a host whose current Catalog pointer is the first fixture release `crel_acme_1` with digest `sha256:365305492cf3fddb973b65268d1c7b8c60715240e9fd2dac05aa9091f0c38044`. Typical path: `--parameter-data-mode new-empty` followed by the existing bootstrap of the reviewed fixture bundle.
+
+Publication input is `schemas/dts/catalog.json` plus on-disk `vendor/wiseeff` YAML. `src/config/power-management.json` is not merged. `common-status.yaml`, `test-ambiguous-a.yaml`, and `test-ambiguous-b.yaml` are excluded. The successor is a complete as-of snapshot: it keeps `csub_acme_power` / `pdef_acme_power_iin_max` / `cali_acme_power_v1` and adds the remaining vendor definitions.
+
+Do not bootstrap a second time. Do not run `db:seed:m1` or `db:seed:all`. Do not INSERT Catalog rows. Page proposals still do not publish definitions.
+
+The API image must contain `scripts/compile-vendor-catalog-release.ts` and the advance flags on `scripts/install-catalog-release.ts`. Upgrade to that commit first if the running image still has the bootstrap-only installer.
+
+From `ops/self-hosted/`:
+
+```bash
+./scripts/compose --env-file .env exec api \
+  npx tsx scripts/compile-vendor-catalog-release.ts --out /tmp/vendor-catalog-successor.json
+```
+
+The compiler must print `releaseId=crel_vendor_catalog_1` and digest `sha256:efc5336e625f0eb6f994223a5f67a57b119e92bda2edb5c209fc901284f126c7`. A different digest is a stop: vendor YAML or the compiler drifted; do not install.
+
+```bash
+./scripts/compose --env-file .env exec api \
+  npx tsx scripts/install-catalog-release.ts /tmp/vendor-catalog-successor.json \
+    --mode advance \
+    --expected-current-id crel_acme_1 \
+    --expected-current-digest sha256:365305492cf3fddb973b65268d1c7b8c60715240e9fd2dac05aa9091f0c38044 \
+    --confirm-digest sha256:efc5336e625f0eb6f994223a5f67a57b119e92bda2edb5c209fc901284f126c7
+
+./scripts/compose --env-file .env restart api worker
+```
+
+A lost-response retry of the same command returns `already-current`. A current pointer that is not `crel_acme_1` with that digest is refused. After restart, Catalog should list 114 definitions, including the original `iin_max`.
+
 ## Minimal parameter initialization candidate
 
 The active [minimal upgrade plan](../../docs/exec-plans/active/minimal-parameter-upgrade.md) adds `--parameter-data-mode new-empty` to `plan` and `apply`. This candidate is still under isolated acceptance; it is not a production execution approval. The option is recorded in the plan/run and selects management initialization only. API and worker processes do not read a bypass flag, and subsequent normal restarts never clear parameters.

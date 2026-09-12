@@ -101,6 +101,10 @@ Then log in through the UI with that username and password. Additional admins sh
 
 If bootstrap reports that an admin already exists, use the governance UI or reset the deployment database; the command is intentionally one-shot for safety.
 
+## Publish the vendor Catalog successor
+
+After `--parameter-data-mode new-empty` and the first fixture publication (`crel_acme_1`), compile `schemas/dts/catalog.json` and advance with `install-catalog-release.ts --mode advance`. Do not bootstrap again, do not seed, and do not INSERT Catalog rows. Exact commands live in [Self-Hosted Upgrade](../../ops/self-hosted/upgrade.md#vendor-catalog-successor).
+
 ## Import Demo Seed Data
 
 For internal staging or demo hosts only:
