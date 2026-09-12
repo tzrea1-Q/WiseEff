@@ -12,6 +12,7 @@ import {
   quoteIdent,
 } from "../../catalog-kernel/security/catalogRoleManifest";
 import {
+  adoptionEvidence,
   captureDatabaseError,
   captureRoleStatementError,
   captureSavepointError,
@@ -240,11 +241,21 @@ describe("catalog publication role isolation T03.a", () => {
     );
   });
 
-  it("coordinator can EXECUTE policy revise and guard lock; synchronizer cannot enable policy", async () => {
+  it("coordinator can lock the publication guard but cannot enable publication policy", async () => {
     await withLocalRole(client, CATALOG_PUBLICATION_COORDINATOR_ROLE, async () => {
       await client.query(`select ${PUBLICATION_GUARD_FUNCTION_IDENTITY}`);
+    });
+
+    const coordPolicy = await captureRoleStatementError(
+      client,
+      CATALOG_PUBLICATION_COORDINATOR_ROLE,
+      `select catalog_publication.revise_publication_policy(true, true, 'catalog-capability/v1', 'coord-test')`,
+    );
+    assertSqlstate42501(coordPolicy);
+
+    await withLocalRole(client, CATALOG_MIGRATION_OWNER, async () => {
       const revision = await client.query<{ revise_publication_policy: string }>(
-        `select catalog_publication.revise_publication_policy(false, false, 'catalog-capability/v1', 'coord-test')`,
+        `select catalog_publication.revise_publication_policy(false, false, 'catalog-capability/v1', 'owner-test')`,
       );
       expect(Number(revision.rows[0]?.revise_publication_policy)).toBeGreaterThan(1);
     });
@@ -272,6 +283,15 @@ describe("catalog publication role isolation T03.a", () => {
       `select ${PUBLICATION_GUARD_FUNCTION_IDENTITY}`,
     );
     assertSqlstate42501(readerExecute);
+
+    await withProductionLogin(client, url, "apppol", async (login) => {
+      const appPolicy = await captureDatabaseError(
+        login.query(
+          `select catalog_publication.revise_publication_policy(true, true, 'catalog-capability/v1', 'app')`,
+        ),
+      );
+      assertSqlstate42501(appPolicy);
+    });
   });
 
   it("synchronizer inserts receipts and cannot insert artifacts, jobs, or authorizations", async () => {
@@ -298,8 +318,14 @@ describe("catalog publication role isolation T03.a", () => {
         `insert into parameter_catalog.catalog_activation_receipts (
            id, kind, release_id, release_digest, verification_digest,
            actor_principal_id, adoption_evidence
-         ) values ($1, 'adopted-preexisting', $2, $3, $4, 'sync', '{"source":"cp-02"}'::jsonb)`,
-        [`crct_${token}`, releaseId, releaseDigest, sha256Digest(`verify-${token}`)],
+         ) values ($1, 'adopted-preexisting', $2, $3, $4, 'sync', $5::jsonb)`,
+        [
+          `crct_${token}`,
+          releaseId,
+          releaseDigest,
+          sha256Digest(`verify-${token}`),
+          JSON.stringify(adoptionEvidence()),
+        ],
       );
       expect(receipt.rowCount).toBe(1);
     });

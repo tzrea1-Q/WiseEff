@@ -13,6 +13,9 @@
  * Predecessor pins on artifacts have no FK to catalog_releases so an Artifact
  * may pin a predecessor before that release row exists.
  *
+ * revise_publication_policy stays SECURITY DEFINER for CP-04/12 but EXECUTE is
+ * not granted to the coordinator (or any production LOGIN) in this migration.
+ *
  * Lock protocol for CP-04/05:
  * - Catalog exclusive lock: parameter_catalog.acquire_current_pointer_lock_exclusive()
  * - Publication linearization: catalog_publication.publication_guard
@@ -534,6 +537,38 @@ export async function appendAuthorization(
       reason: "revoke events must reference the approve authorization",
     });
   }
+  const candidate = await getCandidate(db, input.candidateId);
+  if (!candidate.ok) {
+    return candidate;
+  }
+  if (
+    candidate.value.artifactDigest !== input.artifactDigest ||
+    candidate.value.expectedBaseReleaseId !== input.expectedBaseReleaseId ||
+    candidate.value.expectedBaseReleaseDigest !== input.expectedBaseReleaseDigest ||
+    (candidate.value.proposalRevisionId ?? null) !== (input.proposalRevisionId ?? null) ||
+    candidate.value.impactReportDigest !== input.impactReportDigest
+  ) {
+    return fail({
+      kind: "invalid-input",
+      reason: "authorization tuple does not match candidate",
+    });
+  }
+  try {
+    const digest = await db.query<{ digest: string }>(
+      `select catalog_publication.digest_jsonb(capability_contract) as digest
+       from catalog_publication.candidates
+       where id = $1`,
+      [input.candidateId],
+    );
+    if (digest.rows[0]?.digest !== input.capabilityContractDigest) {
+      return fail({
+        kind: "invalid-input",
+        reason: "capability_contract_digest does not match candidate",
+      });
+    }
+  } catch (error) {
+    return fail(mapWriteError(error));
+  }
   try {
     const inserted = await db.query<AuthorizationRow>(
       `insert into catalog_publication.publication_authorizations (
@@ -695,6 +730,12 @@ export async function updateJobExecution(
     push("lease_until = ?", patch.leaseUntil);
   }
   if (patch.fencingToken !== undefined) {
+    if (patch.expectedFencingToken === undefined) {
+      return fail({
+        kind: "invalid-input",
+        reason: "expectedFencingToken is required when fencingToken is set",
+      });
+    }
     push("fencing_token = ?", patch.fencingToken);
   }
   if (patch.attemptCount !== undefined) {
@@ -711,11 +752,16 @@ export async function updateJobExecution(
   }
 
   values.push(jobId);
+  let where = `id = $${values.length}`;
+  if (patch.expectedFencingToken !== undefined) {
+    values.push(patch.expectedFencingToken);
+    where += ` and fencing_token = $${values.length}`;
+  }
   try {
     const updated = await db.query<JobRow>(
       `update catalog_publication.publication_jobs
        set ${assignments.join(", ")}
-       where id = $${values.length}
+       where ${where}
        returning
          id, candidate_id, authorization_id, request_scope, idempotency_key,
          request_digest, status, lease_owner, lease_until, fencing_token,
@@ -724,6 +770,13 @@ export async function updateJobExecution(
     );
     const row = updated.rows[0];
     if (!row) {
+      if (patch.expectedFencingToken !== undefined) {
+        const existing = await getJob(db, jobId);
+        if (existing.ok) {
+          return fail({ kind: "conflict", reason: "fencing-token-mismatch" });
+        }
+        return existing;
+      }
       return fail({ kind: "not-found", entity: "job" });
     }
     return ok(toJob(row));

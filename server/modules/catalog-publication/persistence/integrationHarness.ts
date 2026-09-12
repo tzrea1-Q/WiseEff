@@ -175,6 +175,26 @@ export function sha256Digest(value: string | Uint8Array): string {
   return `sha256:${createHash("sha256").update(value).digest("hex")}`;
 }
 
+export function adoptionEvidence(overrides: Record<string, string> = {}): Record<string, string> {
+  return {
+    source_bundle_digest: sha256Digest("bundle"),
+    verification_digest: sha256Digest("verify-adopt"),
+    data_mode: "populated",
+    collected_at: "2026-09-12T00:00:00.000Z",
+    approved_by: "operator",
+    ...overrides,
+  };
+}
+
+export function bootstrapEvidence(overrides: Record<string, string> = {}): Record<string, string> {
+  return {
+    bootstrap_command: "explicit-bootstrap",
+    approved_by: "operator",
+    recorded_at: "2026-09-12T00:00:00.000Z",
+    ...overrides,
+  };
+}
+
 export function uniqueToken(label: string): string {
   const rand = Math.floor(Math.random() * 1_000_000_000).toString(36);
   return `${label}_${process.pid}_${rand}`.replace(/[^A-Za-z0-9_]/g, "").slice(0, 40);

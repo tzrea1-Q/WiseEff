@@ -41,7 +41,10 @@ export type JsonObject = { readonly [key: string]: ContractJsonValue };
 export type CatalogPublicationStoreError =
   | {
       readonly kind: "conflict";
-      readonly reason: "artifact-digest-bytes-mismatch" | "idempotency-key-conflict";
+      readonly reason:
+        | "artifact-digest-bytes-mismatch"
+        | "idempotency-key-conflict"
+        | "fencing-token-mismatch";
     }
   | {
       readonly kind: "not-found";
@@ -179,6 +182,7 @@ export interface JobExecutionPatch {
   readonly leaseOwner?: string | null;
   readonly leaseUntil?: string | null;
   readonly fencingToken?: number;
+  readonly expectedFencingToken?: number;
   readonly attemptCount?: number;
   readonly lastErrorClass?: string | null;
   readonly lastErrorReason?: string | null;

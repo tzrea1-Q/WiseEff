@@ -208,6 +208,8 @@ Constraints:
 - `candidates_id_artifact_digest_key`: UNIQUE (id, artifact_digest)
 - `candidates_id_artifact_id_artifact_digest_key`: UNIQUE (id, artifact_id, artifact_digest)
 - `candidates_id_check`: CHECK (((id <> ''::text) AND (btrim(id) = id) AND (id !~ '[[:cntrl:]]'::text) AND (id ~~ 'ccand_%'::text)))
+- `candidates_id_expected_base_release_id_expected_base_releas_key`: UNIQUE (id, expected_base_release_id, expected_base_release_digest)
+- `candidates_id_impact_report_digest_key`: UNIQUE (id, impact_report_digest)
 - `candidates_identity_allocation_check`: CHECK ((jsonb_typeof(identity_allocation) = 'object'::text))
 - `candidates_impact_report_digest_check`: CHECK ((impact_report_digest ~ '^sha256:[0-9a-f]{64}$'::text))
 - `candidates_pkey`: PRIMARY KEY (id)
@@ -238,7 +240,10 @@ Constraints:
 - `publication_authorizations_actor_principal_id_check`: CHECK (((actor_principal_id <> ''::text) AND (btrim(actor_principal_id) = actor_principal_id) AND (actor_principal_id !~ '[[:cntrl:]]'::text)))
 - `publication_authorizations_approved_authorization_id_fkey`: FOREIGN KEY (approved_authorization_id) REFERENCES catalog_publication.publication_authorizations(id) ON DELETE RESTRICT
 - `publication_authorizations_artifact_digest_check`: CHECK ((artifact_digest ~ '^sha256:[0-9a-f]{64}$'::text))
+- `publication_authorizations_candidate_id_artifact_digest_fkey`: FOREIGN KEY (candidate_id, artifact_digest) REFERENCES catalog_publication.candidates(id, artifact_digest) ON DELETE RESTRICT
+- `publication_authorizations_candidate_id_expected_base_rele_fkey`: FOREIGN KEY (candidate_id, expected_base_release_id, expected_base_release_digest) REFERENCES catalog_publication.candidates(id, expected_base_release_id, expected_base_release_digest) ON DELETE RESTRICT
 - `publication_authorizations_candidate_id_fkey`: FOREIGN KEY (candidate_id) REFERENCES catalog_publication.candidates(id) ON DELETE RESTRICT
+- `publication_authorizations_candidate_id_impact_report_dige_fkey`: FOREIGN KEY (candidate_id, impact_report_digest) REFERENCES catalog_publication.candidates(id, impact_report_digest) ON DELETE RESTRICT
 - `publication_authorizations_capability_contract_digest_check`: CHECK ((capability_contract_digest ~ '^sha256:[0-9a-f]{64}$'::text))
 - `publication_authorizations_check`: CHECK ((((event_kind = 'approve'::text) AND (approved_authorization_id IS NULL)) OR ((event_kind = 'revoke'::text) AND (approved_authorization_id IS NOT NULL))))
 - `publication_authorizations_event_kind_check`: CHECK ((event_kind = ANY (ARRAY['approve'::text, 'revoke'::text])))
@@ -249,6 +254,7 @@ Constraints:
 - `publication_authorizations_impact_report_digest_check`: CHECK ((impact_report_digest ~ '^sha256:[0-9a-f]{64}$'::text))
 - `publication_authorizations_pkey`: PRIMARY KEY (id)
 - `publication_authorizations_policy_revision_check`: CHECK (((policy_revision > 0) AND (policy_revision <= '9007199254740991'::bigint)))
+- `publication_authorizations_policy_revision_fkey`: FOREIGN KEY (policy_revision) REFERENCES catalog_publication.publication_policy_revisions(revision) ON DELETE RESTRICT
 - `publication_authorizations_proposal_revision_id_check`: CHECK (((proposal_revision_id IS NULL) OR ((proposal_revision_id <> ''::text) AND (btrim(proposal_revision_id) = proposal_revision_id) AND (proposal_revision_id !~ '[[:cntrl:]]'::text))))
 
 ### catalog_publication.publication_guard
@@ -432,7 +438,7 @@ Constraints:
 - `catalog_activation_receipts_authorization_id_candidate_id_fkey`: FOREIGN KEY (authorization_id, candidate_id) REFERENCES catalog_publication.publication_authorizations(id, candidate_id) ON DELETE RESTRICT
 - `catalog_activation_receipts_candidate_id_fkey`: FOREIGN KEY (candidate_id) REFERENCES catalog_publication.candidates(id) ON DELETE RESTRICT
 - `catalog_activation_receipts_check`: CHECK ((((predecessor_release_id IS NULL) AND (predecessor_release_digest IS NULL)) OR ((predecessor_release_id IS NOT NULL) AND (predecessor_release_digest IS NOT NULL))))
-- `catalog_activation_receipts_check1`: CHECK ((((kind = 'online-publication'::text) AND (publication_job_id IS NOT NULL) AND (authorization_id IS NOT NULL) AND (candidate_id IS NOT NULL) AND (adoption_evidence IS NULL)) OR ((kind = 'adopted-preexisting'::text) AND (publication_job_id IS NULL) AND (authorization_id IS NULL) AND (candidate_id IS NULL) AND (adoption_evidence IS NOT NULL) AND (jsonb_typeof(adoption_evidence) = 'object'::text)) OR ((kind = 'bootstrap'::text) AND (publication_job_id IS NULL) AND (authorization_id IS NULL) AND (candidate_id IS NULL) AND (adoption_evidence IS NOT NULL) AND (jsonb_typeof(adoption_evidence) = 'object'::text))))
+- `catalog_activation_receipts_check1`: CHECK ((((kind = 'online-publication'::text) AND (publication_job_id IS NOT NULL) AND (authorization_id IS NOT NULL) AND (candidate_id IS NOT NULL) AND (predecessor_release_id IS NOT NULL) AND (predecessor_release_digest IS NOT NULL) AND (adoption_evidence IS NULL)) OR ((kind = 'adopted-preexisting'::text) AND (publication_job_id IS NULL) AND (authorization_id IS NULL) AND (candidate_id IS NULL) AND (adoption_evidence IS NOT NULL) AND (jsonb_typeof(adoption_evidence) = 'object'::text) AND (adoption_evidence ? 'source_bundle_digest'::text) AND (adoption_evidence ? 'verification_digest'::text) AND (adoption_evidence ? 'data_mode'::text) AND (adoption_evidence ? 'collected_at'::text) AND (adoption_evidence ? 'approved_by'::text) AND (NOT (adoption_evidence ? 'bootstrap_command'::text)) AND ((adoption_evidence ->> 'source_bundle_digest'::text) ~ '^sha256:[0-9a-f]{64}$'::text) AND ((adoption_evidence ->> 'verification_digest'::text) ~ '^sha256:[0-9a-f]{64}$'::text) AND ((adoption_evidence ->> 'data_mode'::text) = ANY (ARRAY['fresh'::text, 'populated'::text, 'restored'::text])) AND ((adoption_evidence ->> 'collected_at'::text) <> ''::text) AND (btrim((adoption_evidence ->> 'collected_at'::text)) = (adoption_evidence ->> 'collected_at'::text)) AND ((adoption_evidence ->> 'approved_by'::text) <> ''::text) AND (btrim((adoption_evidence ->> 'approved_by'::text)) = (adoption_evidence ->> 'approved_by'::text))) OR ((kind = 'bootstrap'::text) AND (publication_job_id IS NULL) AND (authorization_id IS NULL) AND (candidate_id IS NULL) AND (adoption_evidence IS NOT NULL) AND (jsonb_typeof(adoption_evidence) = 'object'::text) AND (adoption_evidence ? 'bootstrap_command'::text) AND (adoption_evidence ? 'approved_by'::text) AND (adoption_evidence ? 'recorded_at'::text) AND (NOT (adoption_evidence ? 'source_bundle_digest'::text)) AND ((adoption_evidence ->> 'bootstrap_command'::text) = 'explicit-bootstrap'::text) AND ((adoption_evidence ->> 'approved_by'::text) <> ''::text) AND (btrim((adoption_evidence ->> 'approved_by'::text)) = (adoption_evidence ->> 'approved_by'::text)) AND ((adoption_evidence ->> 'recorded_at'::text) <> ''::text) AND (btrim((adoption_evidence ->> 'recorded_at'::text)) = (adoption_evidence ->> 'recorded_at'::text)))))
 - `catalog_activation_receipts_id_check`: CHECK (((id <> ''::text) AND (btrim(id) = id) AND (id !~ '[[:cntrl:]]'::text) AND (id ~~ 'crct_%'::text)))
 - `catalog_activation_receipts_kind_check`: CHECK ((kind = ANY (ARRAY['online-publication'::text, 'adopted-preexisting'::text, 'bootstrap'::text])))
 - `catalog_activation_receipts_pkey`: PRIMARY KEY (id)

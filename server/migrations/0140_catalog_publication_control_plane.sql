@@ -14,7 +14,8 @@
 --   catalog_migration_owner (NOLOGIN)
 --     owns catalog_publication and every relation/function in it
 --     owns parameter_catalog.catalog_activation_receipts
---     owns SECURITY DEFINER revise_publication_policy and
+--     owns SECURITY DEFINER revise_publication_policy (EXECUTE not granted
+--       to coordinator; CP-04/12 may grant later) and
 --       acquire_publication_guard_lock
 --   catalog_publication_coordinator_role (NOLOGIN)
 --     USAGE on catalog_publication and parameter_catalog
@@ -22,7 +23,8 @@
 --     INSERT on artifacts, candidates, authorizations, jobs
 --     UPDATE only publication_jobs execution columns
 --     UPDATE on publication_guard
---     EXECUTE revise_publication_policy and acquire_publication_guard_lock
+--     EXECUTE acquire_publication_guard_lock
+--     no EXECUTE revise_publication_policy (CP-04/12; owner-only until then)
 --     no Catalog core DML, no receipt INSERT/UPDATE/DELETE
 --     no SET ROLE to catalog_synchronizer_role or catalog_migration_owner
 --   catalog_synchronizer_role (NOLOGIN)
@@ -55,6 +57,8 @@
 -- because the Artifact exists before materialization.
 
 select pg_catalog.pg_advisory_lock(140014000140);
+
+create extension if not exists pgcrypto;
 
 do $$
 declare
@@ -163,9 +167,24 @@ begin
       message = 'catalog_publication.publication_jobs identity columns are immutable';
   end if;
 
+  if new.fencing_token < old.fencing_token then
+    raise exception using
+      errcode = '23514',
+      message = 'publication job fencing_token must be monotonic',
+      constraint = 'publication_job_fencing_token_monotonic_ck';
+  end if;
+
   return new;
 end;
 $$;
+
+create function catalog_publication.digest_jsonb(value jsonb)
+returns text
+language sql
+immutable
+strict
+set search_path = pg_catalog, public
+return 'sha256:' || encode(digest(convert_to(value::text, 'UTF8'), 'sha256'), 'hex');
 
 create function catalog_publication.assert_authorization_revoke_tuple()
 returns trigger
@@ -173,6 +192,12 @@ language plpgsql
 set search_path = pg_catalog, catalog_publication
 as $$
 declare
+  candidate_artifact_digest text;
+  candidate_base_id text;
+  candidate_base_digest text;
+  candidate_proposal_revision_id text;
+  candidate_impact_digest text;
+  candidate_capability_digest text;
   approved_kind text;
   approved_candidate_id text;
   approved_artifact_digest text;
@@ -183,6 +208,36 @@ declare
   approved_capability_digest text;
   approved_policy_revision bigint;
 begin
+  select
+    artifact_digest,
+    expected_base_release_id,
+    expected_base_release_digest,
+    proposal_revision_id,
+    impact_report_digest,
+    catalog_publication.digest_jsonb(capability_contract)
+  into
+    candidate_artifact_digest,
+    candidate_base_id,
+    candidate_base_digest,
+    candidate_proposal_revision_id,
+    candidate_impact_digest,
+    candidate_capability_digest
+  from catalog_publication.candidates
+  where id = new.candidate_id;
+
+  if not found
+     or candidate_artifact_digest is distinct from new.artifact_digest
+     or candidate_base_id is distinct from new.expected_base_release_id
+     or candidate_base_digest is distinct from new.expected_base_release_digest
+     or candidate_proposal_revision_id is distinct from new.proposal_revision_id
+     or candidate_impact_digest is distinct from new.impact_report_digest
+     or candidate_capability_digest is distinct from new.capability_contract_digest then
+    raise exception using
+      errcode = '23514',
+      message = 'publication authorization tuple must equal the candidate',
+      constraint = 'publication_authorization_candidate_tuple_ck';
+  end if;
+
   if new.event_kind <> 'revoke' then
     return new;
   end if;
@@ -451,6 +506,8 @@ create table catalog_publication.candidates (
   created_at timestamptz not null default now(),
   unique (id, artifact_digest),
   unique (id, artifact_id, artifact_digest),
+  unique (id, expected_base_release_id, expected_base_release_digest),
+  unique (id, impact_report_digest),
   foreign key (artifact_id, artifact_digest)
     references catalog_publication.release_artifacts(id, artifact_digest)
     on delete restrict,
@@ -497,6 +554,15 @@ create table catalog_publication.publication_authorizations (
     references catalog_publication.publication_authorizations(id) on delete restrict,
   created_at timestamptz not null default now(),
   unique (id, candidate_id),
+  foreign key (candidate_id, artifact_digest)
+    references catalog_publication.candidates(id, artifact_digest)
+    on delete restrict,
+  foreign key (candidate_id, expected_base_release_id, expected_base_release_digest)
+    references catalog_publication.candidates(id, expected_base_release_id, expected_base_release_digest)
+    on delete restrict,
+  foreign key (candidate_id, impact_report_digest)
+    references catalog_publication.candidates(id, impact_report_digest)
+    on delete restrict,
   check (
     (event_kind = 'approve' and approved_authorization_id is null)
     or (event_kind = 'revoke' and approved_authorization_id is not null)
@@ -663,19 +729,43 @@ create table parameter_catalog.catalog_activation_receipts (
       and publication_job_id is not null
       and authorization_id is not null
       and candidate_id is not null
+      and predecessor_release_id is not null
+      and predecessor_release_digest is not null
       and adoption_evidence is null)
     or (kind = 'adopted-preexisting'
       and publication_job_id is null
       and authorization_id is null
       and candidate_id is null
       and adoption_evidence is not null
-      and jsonb_typeof(adoption_evidence) = 'object')
+      and jsonb_typeof(adoption_evidence) = 'object'
+      and adoption_evidence ? 'source_bundle_digest'
+      and adoption_evidence ? 'verification_digest'
+      and adoption_evidence ? 'data_mode'
+      and adoption_evidence ? 'collected_at'
+      and adoption_evidence ? 'approved_by'
+      and not (adoption_evidence ? 'bootstrap_command')
+      and adoption_evidence->>'source_bundle_digest' ~ '^sha256:[0-9a-f]{64}$'
+      and adoption_evidence->>'verification_digest' ~ '^sha256:[0-9a-f]{64}$'
+      and adoption_evidence->>'data_mode' in ('fresh', 'populated', 'restored')
+      and adoption_evidence->>'collected_at' <> ''
+      and btrim(adoption_evidence->>'collected_at') = adoption_evidence->>'collected_at'
+      and adoption_evidence->>'approved_by' <> ''
+      and btrim(adoption_evidence->>'approved_by') = adoption_evidence->>'approved_by')
     or (kind = 'bootstrap'
       and publication_job_id is null
       and authorization_id is null
       and candidate_id is null
       and adoption_evidence is not null
-      and jsonb_typeof(adoption_evidence) = 'object')
+      and jsonb_typeof(adoption_evidence) = 'object'
+      and adoption_evidence ? 'bootstrap_command'
+      and adoption_evidence ? 'approved_by'
+      and adoption_evidence ? 'recorded_at'
+      and not (adoption_evidence ? 'source_bundle_digest')
+      and adoption_evidence->>'bootstrap_command' = 'explicit-bootstrap'
+      and adoption_evidence->>'approved_by' <> ''
+      and btrim(adoption_evidence->>'approved_by') = adoption_evidence->>'approved_by'
+      and adoption_evidence->>'recorded_at' <> ''
+      and btrim(adoption_evidence->>'recorded_at') = adoption_evidence->>'recorded_at')
   )
 );
 
@@ -701,7 +791,21 @@ declare
   job_authorization_id text;
   authorization_candidate_id text;
   authorization_kind text;
+  expected_base_id text;
+  expected_base_digest text;
+  target_release_id text;
+  target_release_digest text;
 begin
+  if new.kind = 'bootstrap' then
+    if exists (select 1 from parameter_catalog.catalog_state) then
+      raise exception using
+        errcode = '23514',
+        message = 'bootstrap activation receipt is forbidden when catalog_state exists',
+        constraint = 'catalog_activation_receipt_bootstrap_empty_ck';
+    end if;
+    return new;
+  end if;
+
   if new.kind <> 'online-publication' then
     return new;
   end if;
@@ -730,6 +834,37 @@ begin
       errcode = '23514',
       message = 'online activation receipt must reference an approve authorization for the same candidate',
       constraint = 'catalog_activation_receipt_online_authorization_ck';
+  end if;
+
+  select
+    candidate.expected_base_release_id,
+    candidate.expected_base_release_digest,
+    artifact.target_release_id,
+    artifact.target_release_digest
+  into
+    expected_base_id,
+    expected_base_digest,
+    target_release_id,
+    target_release_digest
+  from catalog_publication.candidates candidate
+  join catalog_publication.release_artifacts artifact
+    on artifact.id = candidate.artifact_id
+  where candidate.id = new.candidate_id;
+
+  if target_release_id is distinct from new.release_id
+     or target_release_digest is distinct from new.release_digest then
+    raise exception using
+      errcode = '23514',
+      message = 'online activation receipt release pin must equal the artifact target pin',
+      constraint = 'catalog_activation_receipt_online_target_ck';
+  end if;
+
+  if expected_base_id is distinct from new.predecessor_release_id
+     or expected_base_digest is distinct from new.predecessor_release_digest then
+    raise exception using
+      errcode = '23514',
+      message = 'online activation receipt predecessor pin must equal the candidate expected base pin',
+      constraint = 'catalog_activation_receipt_online_base_ck';
   end if;
 
   return new;
@@ -816,6 +951,15 @@ insert into catalog_publication.publication_policy_revisions (
 
 insert into catalog_publication.publication_guard (singleton, epoch)
 values (true, 0);
+
+alter table catalog_publication.publication_authorizations
+  add constraint publication_authorizations_policy_revision_fkey
+  foreign key (policy_revision)
+  references catalog_publication.publication_policy_revisions(revision)
+  on delete restrict;
+
+comment on column parameter_catalog.catalog_activation_receipts.adoption_evidence is
+  'adopted-preexisting requires source_bundle_digest, verification_digest, data_mode, collected_at, approved_by. bootstrap requires bootstrap_command=explicit-bootstrap, approved_by, recorded_at and must not reuse adoption keys.';
 
 do $$
 declare
@@ -955,10 +1099,10 @@ to catalog_publication_coordinator_role;
 grant update on table catalog_publication.publication_guard
 to catalog_publication_coordinator_role, catalog_synchronizer_role;
 
-grant execute on function catalog_publication.revise_publication_policy(boolean, boolean, text, text)
-to catalog_publication_coordinator_role;
-
 grant execute on function catalog_publication.acquire_publication_guard_lock()
+to catalog_publication_coordinator_role, catalog_synchronizer_role;
+
+grant execute on function catalog_publication.digest_jsonb(jsonb)
 to catalog_publication_coordinator_role, catalog_synchronizer_role;
 
 alter default privileges for role catalog_migration_owner in schema catalog_publication

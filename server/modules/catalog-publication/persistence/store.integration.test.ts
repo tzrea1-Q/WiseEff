@@ -18,7 +18,9 @@ import {
   PublicationPolicyRevision,
 } from "../../parameter-catalog-contract/index";
 import {
+  adoptionEvidence,
   asQueryable,
+  bootstrapEvidence,
   openEphemeralClient,
   requirePgvectorTestDatabase,
   sha256Digest,
@@ -93,6 +95,12 @@ describe("catalog publication store seam", () => {
     if (!candidate.ok) {
       throw new Error("persistCandidate failed");
     }
+    const digest = await coordinatorDb().query<{ digest: string }>(
+      `select catalog_publication.digest_jsonb(capability_contract) as digest
+       from catalog_publication.candidates
+       where id = $1`,
+      [candidate.value.id],
+    );
     const authorization = await appendAuthorization(coordinatorDb(), {
       id: PublicationAuthorizationId(`cauth_${token}`),
       eventKind: "approve",
@@ -102,9 +110,7 @@ describe("catalog publication store seam", () => {
       expectedBaseReleaseDigest: candidate.value.expectedBaseReleaseDigest,
       proposalRevisionId: null,
       impactReportDigest: candidate.value.impactReportDigest,
-      capabilityContractDigest: sha256DigestOfBytes(
-        JSON.stringify(candidate.value.capabilityContract),
-      ),
+      capabilityContractDigest: digest.rows[0]?.digest ?? "",
       policyRevision: PublicationPolicyRevision(1),
       actorPrincipalId: "user-approver",
       approvedAuthorizationId: null,
@@ -231,6 +237,7 @@ describe("catalog publication store seam", () => {
         status: "running",
         leaseOwner: "worker-1",
         fencingToken: 3,
+        expectedFencingToken: 0,
       });
       expect(execution.ok).toBe(true);
       if (execution.ok) {
@@ -238,6 +245,26 @@ describe("catalog publication store seam", () => {
         expect(execution.value.fencingToken).toBe(3);
         expect(execution.value.candidateId).toBe(created.value.candidateId);
       }
+
+      await client.query("savepoint decrease_fence");
+      const decreased = await updateJobExecution(coordinatorDb(), created.value.id, {
+        fencingToken: 1,
+        expectedFencingToken: 3,
+      });
+      expect(decreased.ok).toBe(false);
+      if (!decreased.ok) {
+        expect(decreased.error.kind).toBe("constraint-violation");
+      }
+      await client.query("rollback to savepoint decrease_fence");
+
+      const stale = await updateJobExecution(coordinatorDb(), created.value.id, {
+        fencingToken: 4,
+        expectedFencingToken: 2,
+      });
+      expect(stale).toEqual({
+        ok: false,
+        error: { kind: "conflict", reason: "fencing-token-mismatch" },
+      });
 
       const loaded = await getJob(coordinatorDb(), created.value.id);
       expect(loaded.ok).toBe(true);
@@ -291,7 +318,7 @@ describe("catalog publication store seam", () => {
           authorizationId: null,
           candidateId: null,
           actorPrincipalId: "coord",
-          adoptionEvidence: { source: "forged" },
+          adoptionEvidence: adoptionEvidence(),
         }),
     );
     expect(coordinatorReceipt.ok).toBe(false);
@@ -314,9 +341,27 @@ describe("catalog publication store seam", () => {
         authorizationId: null,
         candidateId: null,
         actorPrincipalId: "operator",
-        adoptionEvidence: { bundleDigest: sha256Digest("bundle") },
+        adoptionEvidence: adoptionEvidence(),
       });
       expect(adoption.ok).toBe(true);
+
+      await client.query("savepoint empty_adoption");
+      const emptyAdoption = await insertReceipt(coordinatorDb(), {
+        id: CatalogActivationReceiptId(`crct_${token}e`),
+        kind: "adopted-preexisting",
+        releaseId,
+        releaseDigest,
+        predecessorReleaseId: null,
+        predecessorReleaseDigest: null,
+        verificationDigest: sha256Digest(`verify-empty-${token}`),
+        publicationJobId: null,
+        authorizationId: null,
+        candidateId: null,
+        actorPrincipalId: "operator",
+        adoptionEvidence: {},
+      });
+      expect(emptyAdoption.ok).toBe(false);
+      await client.query("rollback to savepoint empty_adoption");
 
       const forgedJob = await insertReceipt(coordinatorDb(), {
         id: CatalogActivationReceiptId(`crct_${token}b`),
@@ -330,7 +375,7 @@ describe("catalog publication store seam", () => {
         authorizationId: null,
         candidateId: null,
         actorPrincipalId: "operator",
-        adoptionEvidence: { bootstrap: true },
+        adoptionEvidence: bootstrapEvidence(),
       });
       expect(forgedJob.ok).toBe(false);
       if (!forgedJob.ok) {
@@ -344,8 +389,25 @@ describe("catalog publication store seam", () => {
 
   it("online receipt requires matching job/auth and getReceiptByJobId reads it", async () => {
     const token = uniqueToken("onl");
-    const releaseId = CatalogReleaseId(`crel_${token}`);
-    const releaseDigest = CatalogReleaseDigest(sha256Digest(`rel-${token}`));
+    const releaseId = CatalogReleaseId(`crel_target_${token}`);
+    const releaseDigest = CatalogReleaseDigest(sha256Digest(`target-${token}`));
+    const baseId = CatalogReleaseId(`crel_base_${token}`);
+    const baseDigest = CatalogReleaseDigest(sha256Digest(`base-${token}`));
+    const seq = 89600 + (process.pid % 300);
+    await client.query(
+      `insert into parameter_catalog.catalog_releases (
+         id, release_sequence, release_version, release_digest,
+         compiled_model_digest, toolchain_digest, published_at
+       ) values ($1, $2, $3, $4, $5, $6, '2026-09-12T00:00:00Z')`,
+      [
+        baseId,
+        seq,
+        `${baseId}-v`,
+        baseDigest,
+        sha256Digest(`${token}-base-model`),
+        sha256Digest(`${token}-base-tool`),
+      ],
+    );
     await client.query(
       `insert into parameter_catalog.catalog_releases (
          id, release_sequence, release_version, release_digest,
@@ -353,7 +415,7 @@ describe("catalog publication store seam", () => {
        ) values ($1, $2, $3, $4, $5, $6, '2026-09-12T00:00:00Z')`,
       [
         releaseId,
-        89600 + (process.pid % 300),
+        seq + 1,
         `${releaseId}-v`,
         releaseDigest,
         sha256Digest(`${token}-model`),
@@ -398,13 +460,31 @@ describe("catalog publication store seam", () => {
       expect(missing.ok).toBe(false);
       await client.query("rollback to savepoint missing_online");
 
+      await client.query("savepoint wrong_pin");
+      const wrongPin = await insertReceipt(coordinatorDb(), {
+        id: CatalogActivationReceiptId(`crct_${token}w`),
+        kind: "online-publication",
+        releaseId: baseId,
+        releaseDigest: baseDigest,
+        predecessorReleaseId: baseId,
+        predecessorReleaseDigest: baseDigest,
+        verificationDigest: sha256Digest(`verify-wrong-${token}`),
+        publicationJobId: job.value.id,
+        authorizationId: chain.authorization.id,
+        candidateId: chain.candidate.id,
+        actorPrincipalId: "sync",
+        adoptionEvidence: null,
+      });
+      expect(wrongPin.ok).toBe(false);
+      await client.query("rollback to savepoint wrong_pin");
+
       const online = await insertReceipt(coordinatorDb(), {
         id: CatalogActivationReceiptId(`crct_${token}`),
         kind: "online-publication",
         releaseId,
         releaseDigest,
-        predecessorReleaseId: null,
-        predecessorReleaseDigest: null,
+        predecessorReleaseId: baseId,
+        predecessorReleaseDigest: baseDigest,
         verificationDigest: sha256Digest(`verify-${token}`),
         publicationJobId: job.value.id,
         authorizationId: chain.authorization.id,
@@ -429,6 +509,34 @@ describe("catalog publication store seam", () => {
         getCandidate(coordinatorDb(), chain.candidate.id),
       );
       expect(candidate.ok).toBe(true);
+    } finally {
+      await client.query("rollback").catch(() => undefined);
+      await client.query("reset role").catch(() => undefined);
+    }
+  });
+
+  it("appendAuthorization rejects a tuple that does not match the candidate", async () => {
+    const token = uniqueToken("authstore");
+    try {
+      const chain = await seedChain(token);
+      const mismatch = await appendAuthorization(coordinatorDb(), {
+        id: PublicationAuthorizationId(`cauth_${token}x`),
+        eventKind: "approve",
+        candidateId: chain.candidate.id,
+        artifactDigest: sha256Digest("other-digest"),
+        expectedBaseReleaseId: chain.candidate.expectedBaseReleaseId,
+        expectedBaseReleaseDigest: chain.candidate.expectedBaseReleaseDigest,
+        proposalRevisionId: null,
+        impactReportDigest: chain.candidate.impactReportDigest,
+        capabilityContractDigest: chain.authorization.capabilityContractDigest,
+        policyRevision: PublicationPolicyRevision(1),
+        actorPrincipalId: "user-approver",
+        approvedAuthorizationId: null,
+      });
+      expect(mismatch.ok).toBe(false);
+      if (!mismatch.ok) {
+        expect(mismatch.error.kind).toBe("invalid-input");
+      }
     } finally {
       await client.query("rollback").catch(() => undefined);
       await client.query("reset role").catch(() => undefined);

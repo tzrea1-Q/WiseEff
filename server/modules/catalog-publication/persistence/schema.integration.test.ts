@@ -14,6 +14,8 @@ import {
 import { applyMigrations } from "../../../shared/database/migrations";
 import { migrationsDir, withTempDatabase } from "../../../testing/tempDatabase";
 import {
+  adoptionEvidence,
+  bootstrapEvidence,
   captureSavepointError,
   openEphemeralClient,
   requirePgvectorTestDatabase,
@@ -113,6 +115,7 @@ const insertApprove = async (
     artifactDigest: string;
     baseId?: string;
     baseDigest?: string;
+    policyRevision?: number;
   },
 ) =>
   client.query(
@@ -120,7 +123,12 @@ const insertApprove = async (
        id, event_kind, candidate_id, artifact_digest, expected_base_release_id,
        expected_base_release_digest, impact_report_digest, capability_contract_digest,
        policy_revision, actor_principal_id
-     ) values ($1, 'approve', $2, $3, $4, $5, $6, $7, 1, 'user-approver')`,
+     ) values (
+       $1, 'approve', $2, $3, $4, $5, $6,
+       (select catalog_publication.digest_jsonb(capability_contract)
+        from catalog_publication.candidates where id = $2),
+       coalesce($7, 1), 'user-approver'
+     )`,
     [
       options.id,
       options.candidateId,
@@ -128,7 +136,7 @@ const insertApprove = async (
       options.baseId ?? "crel_expected_base",
       options.baseDigest ?? sha256Digest("expected-base"),
       sha256Digest(`${options.candidateId}-impact`),
-      sha256Digest("{}"),
+      options.policyRevision ?? 1,
     ],
   );
 
@@ -475,6 +483,73 @@ describe("catalog publication schema constraints", () => {
         [`cjob_${token}`],
       );
       expect(execution.rowCount).toBe(1);
+
+      const decreased = await captureSavepointError(client, () =>
+        client.query(
+          `update catalog_publication.publication_jobs
+           set fencing_token = 0
+           where id = $1`,
+          [`cjob_${token}`],
+        ),
+      );
+      expect(decreased.code).toBe("23514");
+    } finally {
+      await client.query("rollback");
+    }
+  });
+
+  it("T07.a rejects an approve whose artifact_digest does not match the candidate", async () => {
+    const token = uniqueToken("authmm");
+    await client.query("begin");
+    try {
+      const aggregate = sha256Digest(`agg-${token}`);
+      await insertArtifact(client, {
+        id: `cart_${token}`,
+        aggregate,
+        bytes: Buffer.from(token),
+      });
+      await insertCandidate(client, {
+        id: `ccand_${token}`,
+        artifactId: `cart_${token}`,
+        artifactDigest: aggregate,
+      });
+      const mismatch = await captureSavepointError(client, () =>
+        insertApprove(client, {
+          id: `cauth_${token}`,
+          candidateId: `ccand_${token}`,
+          artifactDigest: sha256Digest("other-digest"),
+        }),
+      );
+      expect(["23503", "23514"]).toContain(mismatch.code);
+    } finally {
+      await client.query("rollback");
+    }
+  });
+
+  it("rejects an approve that pins an unknown policy_revision", async () => {
+    const token = uniqueToken("polrev");
+    await client.query("begin");
+    try {
+      const aggregate = sha256Digest(`agg-${token}`);
+      await insertArtifact(client, {
+        id: `cart_${token}`,
+        aggregate,
+        bytes: Buffer.from(token),
+      });
+      await insertCandidate(client, {
+        id: `ccand_${token}`,
+        artifactId: `cart_${token}`,
+        artifactDigest: aggregate,
+      });
+      const unknown = await captureSavepointError(client, () =>
+        insertApprove(client, {
+          id: `cauth_${token}`,
+          candidateId: `ccand_${token}`,
+          artifactDigest: aggregate,
+          policyRevision: 42,
+        }),
+      );
+      expect(unknown.code).toBe("23503");
     } finally {
       await client.query("rollback");
     }
@@ -522,13 +597,20 @@ describe("catalog publication schema constraints", () => {
     }
   });
 
-  it("T07.b / T24: receipt kind CHECKs reject missing online refs, cross-candidate, and forged adoption/bootstrap jobs", async () => {
+  it("T07.b / T24: receipt kind CHECKs reject missing online refs, cross-candidate, forged jobs, empty adoption, and wrong release pins", async () => {
     const token = uniqueToken("rcpt");
     await client.query("begin");
     try {
-      const releaseId = `crel_${token}`;
-      const releaseDigest = sha256Digest(`rel-${token}`);
-      await insertRelease(client, releaseId, 89100 + (process.pid % 1000), releaseDigest);
+      const seq = 89100 + (process.pid % 1000);
+      const baseId = `crel_base_${token}`;
+      const baseDigest = sha256Digest(`base-${token}`);
+      const targetId = `crel_target_${token}`;
+      const targetDigest = sha256Digest(`target-${token}`);
+      const wrongId = `crel_wrong_${token}`;
+      const wrongDigest = sha256Digest(`wrong-${token}`);
+      await insertRelease(client, baseId, seq, baseDigest);
+      await insertRelease(client, targetId, seq + 1, targetDigest);
+      await insertRelease(client, wrongId, seq + 2, wrongDigest);
 
       const firstDigest = sha256Digest(`agg-${token}-1`);
       const secondDigest = sha256Digest(`agg-${token}-2`);
@@ -536,31 +618,47 @@ describe("catalog publication schema constraints", () => {
         id: `cart_${token}1`,
         aggregate: firstDigest,
         bytes: Buffer.from(`${token}-1`),
+        targetId,
+        targetDigest,
+        predecessorId: baseId,
+        predecessorDigest: baseDigest,
       });
       await insertArtifact(client, {
         id: `cart_${token}2`,
         aggregate: secondDigest,
         bytes: Buffer.from(`${token}-2`),
+        targetId,
+        targetDigest,
+        predecessorId: baseId,
+        predecessorDigest: baseDigest,
       });
       await insertCandidate(client, {
         id: `ccand_${token}1`,
         artifactId: `cart_${token}1`,
         artifactDigest: firstDigest,
+        baseId,
+        baseDigest,
       });
       await insertCandidate(client, {
         id: `ccand_${token}2`,
         artifactId: `cart_${token}2`,
         artifactDigest: secondDigest,
+        baseId,
+        baseDigest,
       });
       await insertApprove(client, {
         id: `cauth_${token}1`,
         candidateId: `ccand_${token}1`,
         artifactDigest: firstDigest,
+        baseId,
+        baseDigest,
       });
       await insertApprove(client, {
         id: `cauth_${token}2`,
         candidateId: `ccand_${token}2`,
         artifactDigest: secondDigest,
+        baseId,
+        baseDigest,
       });
       await client.query(
         `insert into catalog_publication.publication_jobs (
@@ -594,7 +692,7 @@ describe("catalog publication schema constraints", () => {
           `insert into parameter_catalog.catalog_activation_receipts (
              id, kind, release_id, release_digest, verification_digest, actor_principal_id
            ) values ($1, 'online-publication', $2, $3, $4, 'sync')`,
-          [`crct_${token}miss`, releaseId, releaseDigest, sha256Digest("verify")],
+          [`crct_${token}miss`, targetId, targetDigest, sha256Digest("verify")],
         ),
       );
       expect(missingOnline.code).toBe("23514");
@@ -602,13 +700,16 @@ describe("catalog publication schema constraints", () => {
       const cross = await captureSavepointError(client, () =>
         client.query(
           `insert into parameter_catalog.catalog_activation_receipts (
-             id, kind, release_id, release_digest, verification_digest,
+             id, kind, release_id, release_digest, predecessor_release_id,
+             predecessor_release_digest, verification_digest,
              publication_job_id, authorization_id, candidate_id, actor_principal_id
-           ) values ($1, 'online-publication', $2, $3, $4, $5, $6, $7, 'sync')`,
+           ) values ($1, 'online-publication', $2, $3, $4, $5, $6, $7, $8, $9, 'sync')`,
           [
             `crct_${token}cross`,
-            releaseId,
-            releaseDigest,
+            targetId,
+            targetDigest,
+            baseId,
+            baseDigest,
             sha256Digest("verify"),
             `cjob_${token}1`,
             `cauth_${token}2`,
@@ -624,15 +725,16 @@ describe("catalog publication schema constraints", () => {
              id, kind, release_id, release_digest, verification_digest,
              publication_job_id, authorization_id, candidate_id, actor_principal_id,
              adoption_evidence
-           ) values ($1, 'adopted-preexisting', $2, $3, $4, $5, $6, $7, 'sync', '{}'::jsonb)`,
+           ) values ($1, 'adopted-preexisting', $2, $3, $4, $5, $6, $7, 'sync', $8::jsonb)`,
           [
             `crct_${token}adoptj`,
-            releaseId,
-            releaseDigest,
+            targetId,
+            targetDigest,
             sha256Digest("verify"),
             `cjob_${token}1`,
             `cauth_${token}1`,
             `ccand_${token}1`,
+            JSON.stringify(adoptionEvidence()),
           ],
         ),
       );
@@ -643,27 +745,61 @@ describe("catalog publication schema constraints", () => {
           `insert into parameter_catalog.catalog_activation_receipts (
              id, kind, release_id, release_digest, verification_digest,
              publication_job_id, actor_principal_id, adoption_evidence
-           ) values ($1, 'bootstrap', $2, $3, $4, $5, 'sync', '{}'::jsonb)`,
+           ) values ($1, 'bootstrap', $2, $3, $4, $5, 'sync', $6::jsonb)`,
           [
             `crct_${token}bootj`,
-            releaseId,
-            releaseDigest,
+            targetId,
+            targetDigest,
             sha256Digest("verify"),
             `cjob_${token}1`,
+            JSON.stringify(bootstrapEvidence()),
           ],
         ),
       );
       expect(forgedBootstrap.code).toBe("23514");
+
+      const emptyAdoption = await captureSavepointError(client, () =>
+        client.query(
+          `insert into parameter_catalog.catalog_activation_receipts (
+             id, kind, release_id, release_digest, verification_digest,
+             actor_principal_id, adoption_evidence
+           ) values ($1, 'adopted-preexisting', $2, $3, $4, 'operator', '{}'::jsonb)`,
+          [`crct_${token}empty`, targetId, targetDigest, sha256Digest("verify-empty")],
+        ),
+      );
+      expect(emptyAdoption.code).toBe("23514");
 
       const illegalAdoption = await captureSavepointError(client, () =>
         client.query(
           `insert into parameter_catalog.catalog_activation_receipts (
              id, kind, release_id, release_digest, verification_digest, actor_principal_id
            ) values ($1, 'adopted-preexisting', $2, $3, $4, 'operator')`,
-          [`crct_${token}bad`, releaseId, releaseDigest, sha256Digest("verify-bad")],
+          [`crct_${token}bad`, targetId, targetDigest, sha256Digest("verify-bad")],
         ),
       );
       expect(illegalAdoption.code).toBe("23514");
+
+      const wrongPin = await captureSavepointError(client, () =>
+        client.query(
+          `insert into parameter_catalog.catalog_activation_receipts (
+             id, kind, release_id, release_digest, predecessor_release_id,
+             predecessor_release_digest, verification_digest,
+             publication_job_id, authorization_id, candidate_id, actor_principal_id
+           ) values ($1, 'online-publication', $2, $3, $4, $5, $6, $7, $8, $9, 'sync')`,
+          [
+            `crct_${token}wrong`,
+            wrongId,
+            wrongDigest,
+            baseId,
+            baseDigest,
+            sha256Digest("verify-wrong"),
+            `cjob_${token}1`,
+            `cauth_${token}1`,
+            `ccand_${token}1`,
+          ],
+        ),
+      );
+      expect(wrongPin.code).toBe("23514");
 
       const legalAdoption = await client.query(
         `insert into parameter_catalog.catalog_activation_receipts (
@@ -672,23 +808,26 @@ describe("catalog publication schema constraints", () => {
          ) values ($1, 'adopted-preexisting', $2, $3, $4, 'operator', $5::jsonb)`,
         [
           `crct_${token}adopt`,
-          releaseId,
-          releaseDigest,
+          targetId,
+          targetDigest,
           sha256Digest("verify-adopt"),
-          JSON.stringify({ bundleDigest: sha256Digest("bundle"), collectedAt: "2026-09-12" }),
+          JSON.stringify(adoptionEvidence()),
         ],
       );
       expect(legalAdoption.rowCount).toBe(1);
 
       const online = await client.query(
         `insert into parameter_catalog.catalog_activation_receipts (
-           id, kind, release_id, release_digest, verification_digest,
+           id, kind, release_id, release_digest, predecessor_release_id,
+           predecessor_release_digest, verification_digest,
            publication_job_id, authorization_id, candidate_id, actor_principal_id
-         ) values ($1, 'online-publication', $2, $3, $4, $5, $6, $7, 'sync')`,
+         ) values ($1, 'online-publication', $2, $3, $4, $5, $6, $7, $8, $9, 'sync')`,
         [
           `crct_${token}on`,
-          releaseId,
-          releaseDigest,
+          targetId,
+          targetDigest,
+          baseId,
+          baseDigest,
           sha256Digest("verify-on"),
           `cjob_${token}1`,
           `cauth_${token}1`,
@@ -696,6 +835,43 @@ describe("catalog publication schema constraints", () => {
         ],
       );
       expect(online.rowCount).toBe(1);
+
+      const legalBootstrap = await client.query(
+        `insert into parameter_catalog.catalog_activation_receipts (
+           id, kind, release_id, release_digest, verification_digest,
+           actor_principal_id, adoption_evidence
+         ) values ($1, 'bootstrap', $2, $3, $4, 'operator', $5::jsonb)`,
+        [
+          `crct_${token}boot`,
+          baseId,
+          baseDigest,
+          sha256Digest("verify-boot"),
+          JSON.stringify(bootstrapEvidence()),
+        ],
+      );
+      expect(legalBootstrap.rowCount).toBe(1);
+
+      await client.query(
+        `insert into parameter_catalog.catalog_state (singleton, current_catalog_release_id)
+         values (true, $1)`,
+        [targetId],
+      );
+      const bootstrapAfterState = await captureSavepointError(client, () =>
+        client.query(
+          `insert into parameter_catalog.catalog_activation_receipts (
+             id, kind, release_id, release_digest, verification_digest,
+             actor_principal_id, adoption_evidence
+           ) values ($1, 'bootstrap', $2, $3, $4, 'operator', $5::jsonb)`,
+          [
+            `crct_${token}boot2`,
+            targetId,
+            targetDigest,
+            sha256Digest("verify-boot2"),
+            JSON.stringify(bootstrapEvidence()),
+          ],
+        ),
+      );
+      expect(bootstrapAfterState.code).toBe("23514");
     } finally {
       await client.query("rollback");
     }
