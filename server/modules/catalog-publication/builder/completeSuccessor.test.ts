@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { compileCatalogRelease } from "../../catalog-kernel/compiler/index";
+import { omittedPredecessorAliasBundle } from "../../catalog-kernel/compiler/__fixtures__/catalogReleaseBundle";
 import {
   CatalogReleaseVersion,
   serializeContract,
@@ -12,6 +13,7 @@ import {
   compileVendorCatalogSuccessor,
 } from "../../../../scripts/compile-vendor-catalog-release";
 import { buildCompleteSuccessor } from "./completeSuccessor";
+import type { BuildCompleteSuccessorInput } from "./types";
 import {
   allocationFor,
   firstAcmePredecessor,
@@ -278,5 +280,230 @@ describe("buildCompleteSuccessor", () => {
       definitionId: "pdef_acme_power_iin_max",
       revisionId: existing.content.revision.id,
     });
+  });
+
+  it("rejects any productPath other than m1 or m2-core", async () => {
+    const predecessor = firstAcmePredecessor();
+    const result = await buildCompleteSuccessor({
+      predecessorArtifact: { digest: predecessor.digest, bytes: predecessor.bytes },
+      changeSet: [pageIntegerChange("iin_min", "Input current minimum")],
+      frozenIdentity: frozenPageIdentity([allocationFor("iin_min")], "path"),
+      productPath: "m2",
+    } as BuildCompleteSuccessorInput);
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error).toEqual({
+        kind: "invalid-input",
+        reason: "productPath must be m1 or m2-core",
+      });
+    }
+  });
+
+  it("passes nested propertyKey to S0-ID without string coercion", async () => {
+    const predecessor = firstAcmePredecessor();
+    const result = await buildCompleteSuccessor({
+      predecessorArtifact: { digest: predecessor.digest, bytes: predecessor.bytes },
+      productPath: "m2-core",
+      changeSet: [
+        {
+          op: "create-subject-with-definitions",
+          kind: "driver",
+          canonicalKey: "driver:acme,aux",
+          selector: { kind: "driver-compatible", value: "acme,aux" },
+          definitions: [
+            {
+              propertyKey: 123 as unknown as string,
+              content: integerContent("Nested", "Nested current."),
+            },
+          ],
+        },
+      ],
+      frozenIdentity: {
+        ...frozenPageIdentity(
+          [
+            {
+              subjectId: "csub_acme_aux",
+              propertyKey: "123",
+              definitionId: "pdef_acme_aux_123",
+              revisionId: "drev_acme_aux_123_1",
+            },
+          ],
+          "nested",
+        ),
+        subjects: [{ canonicalKey: "driver:acme,aux", subjectId: "csub_acme_aux" }],
+      },
+    });
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error).toMatchObject({
+        kind: "invalid-property-key",
+        reason: "not-string",
+      });
+    }
+  });
+
+  it("mints exactly one documentation revision and keeps other identities", async () => {
+    const predecessor = firstAcmePredecessor();
+    const existing = predecessor.first.documents.find(
+      (document) => document.kind === "definition" && document.content.id === "pdef_acme_power_iin_max",
+    );
+    if (existing?.kind !== "definition") throw new Error("fixture definition missing");
+    const result = await buildCompleteSuccessor({
+      predecessorArtifact: { digest: predecessor.digest, bytes: predecessor.bytes },
+      productPath: "m2-core",
+      changeSet: [
+        {
+          op: "revise-definition",
+          definitionId: "pdef_acme_power_iin_max",
+          class: "documentation",
+          content: {
+            displayName: existing.content.revision.displayName,
+            documentation: "Updated documentation for the current limit.",
+            unit: "mA",
+            valueSchema: { type: "integer", minimum: 0 },
+          },
+        },
+      ],
+      frozenIdentity: frozenPageIdentity(
+        [
+          {
+            subjectId: "csub_acme_power",
+            propertyKey: "iin_max",
+            definitionId: "pdef_acme_power_iin_max",
+            revisionId: "drev_acme_power_iin_max_2",
+          },
+        ],
+        "docs",
+      ),
+    });
+    expect(result.ok).toBe(true);
+    if (!result.ok || result.value.kind !== "successor") return;
+    const target = result.value.artifact.bundle.releases.find(
+      (release) => release.manifest.release.id === result.value.artifact.targetReleaseId,
+    );
+    expect(target).toBeDefined();
+    if (!target) return;
+    const revised = target.documents.find(
+      (document) => document.kind === "definition" && document.content.id === "pdef_acme_power_iin_max",
+    );
+    expect(revised?.kind).toBe("definition");
+    if (revised?.kind !== "definition") return;
+    expect(revised.content.id).toBe("pdef_acme_power_iin_max");
+    expect(revised.content.revision.id).toBe("drev_acme_power_iin_max_2");
+    expect(revised.content.revision.number).toBe(2);
+    expect(revised.content.revision.documentation).toBe(
+      "Updated documentation for the current limit.",
+    );
+    const predecessorIds = predecessor.first.documents
+      .map((document) => `${document.kind}:${document.content.id}`)
+      .sort();
+    const successorIds = target.documents
+      .map((document) => `${document.kind}:${document.content.id}`)
+      .sort();
+    expect(successorIds).toEqual(predecessorIds);
+    expect(result.value.impact.definitions.added).toEqual([]);
+    expect(result.value.impact.definitions.changed).toEqual([
+      {
+        definitionId: "pdef_acme_power_iin_max",
+        subjectId: "csub_acme_power",
+        propertyKey: "iin_max",
+        revisionId: "drev_acme_power_iin_max_2",
+        previousRevisionId: "drev_acme_power_iin_max_1",
+        contentClass: "documentation",
+      },
+    ]);
+  });
+
+  it("reports matcher and fallback impact for a new driver without a riskClass field", async () => {
+    const predecessor = firstAcmePredecessor();
+    const result = await buildCompleteSuccessor({
+      predecessorArtifact: { digest: predecessor.digest, bytes: predecessor.bytes },
+      productPath: "m2-core",
+      changeSet: [
+        {
+          op: "create-subject-with-definitions",
+          kind: "driver",
+          canonicalKey: "driver:acme,aux",
+          selector: { kind: "driver-compatible", value: "acme,aux" },
+          definitions: [
+            {
+              propertyKey: "vbat",
+              content: integerContent("Aux battery", "Auxiliary battery voltage."),
+            },
+          ],
+        },
+      ],
+      frozenIdentity: {
+        ...frozenPageIdentity(
+          [
+            {
+              subjectId: "csub_acme_aux",
+              propertyKey: "vbat",
+              definitionId: "pdef_acme_aux_vbat",
+              revisionId: "drev_acme_aux_vbat_1",
+            },
+          ],
+          "drv",
+        ),
+        subjects: [{ canonicalKey: "driver:acme,aux", subjectId: "csub_acme_aux" }],
+      },
+    });
+    expect(result.ok).toBe(true);
+    if (!result.ok || result.value.kind !== "successor") return;
+    expect(result.value.impact.matcher.fallbackImpact).toBe(true);
+    expect(result.value.impact.selectors.added).toContain("acme,aux");
+    expect(result.value.impact.subjects.added).toContain("csub_acme_aux");
+    expect("riskClass" in result.value.candidate).toBe(false);
+    expect("riskClass" in result.value.candidate.identityAllocation).toBe(false);
+    expect(result.value.candidate.identityAllocation.subjects).toEqual([
+      { canonicalKey: "driver:acme,aux", subjectId: "csub_acme_aux" },
+    ]);
+  });
+
+  it("rejects an incomplete predecessor membership as predecessor-incomplete, not retirement", async () => {
+    const bundle = omittedPredecessorAliasBundle();
+    const bytes = new TextEncoder().encode(
+      serializeContract(bundle as unknown as ContractJsonValue),
+    );
+    const result = await buildCompleteSuccessor({
+      predecessorArtifact: { digest: `sha256:${"c".repeat(64)}`, bytes },
+      changeSet: [pageIntegerChange("iin_min", "Input current minimum")],
+      frozenIdentity: frozenPageIdentity([allocationFor("iin_min")], "omit"),
+    });
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error.kind).toBe("predecessor-incomplete");
+      if (result.error.kind === "predecessor-incomplete" && "kind" in result.error.cause) {
+        expect(result.error.cause.kind).toBe("invalid-release");
+        if (result.error.cause.kind === "invalid-release") {
+          expect(
+            result.error.cause.violations.some(
+              (violation) => violation.code === "membership-omitted",
+            ),
+          ).toBe(true);
+        }
+      }
+    }
+  });
+
+  it("rejects persist on a statement-scoped Queryable without Database.transaction", async () => {
+    const predecessor = firstAcmePredecessor();
+    const result = await buildCompleteSuccessor({
+      predecessorArtifact: { digest: predecessor.digest, bytes: predecessor.bytes },
+      changeSet: [pageIntegerChange("iin_min", "Input current minimum")],
+      frozenIdentity: frozenPageIdentity([allocationFor("iin_min")], "pool"),
+      persist: {
+        db: {
+          query: async () => ({ rows: [], rowCount: 0 }),
+        } as never,
+      },
+    });
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error).toMatchObject({
+        kind: "invalid-input",
+        reason: "persist requires a session-bound Database.transaction()",
+      });
+    }
   });
 });

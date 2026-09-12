@@ -18,14 +18,19 @@ import type {
   CatalogReleaseSubjectDocument,
 } from "../../catalog-kernel/compiler/types";
 import { CATALOG_PUBLICATION_COORDINATOR_ROLE, quoteIdent } from "../../catalog-kernel/security/catalogRoleManifest";
-import type { Queryable } from "../../../shared/database/client";
+import type { Database } from "../../../shared/database/client";
 import {
   getArtifactByDigest as loadArtifactByDigest,
   persistArtifact as storePersistArtifact,
   persistCandidate as storePersistCandidate,
   sha256DigestOfBytes,
 } from "../persistence/store";
-import type { JsonObject, PersistArtifactInput, PersistCandidateInput } from "../persistence/types";
+import type {
+  CatalogPublicationStoreError,
+  JsonObject,
+  PersistArtifactInput,
+  PersistCandidateInput,
+} from "../persistence/types";
 import {
   CATALOG_CAPABILITY_ALLOW_LIST,
   CATALOG_CAPABILITY_CONTRACT_REVISION,
@@ -48,7 +53,6 @@ import type {
   CapabilityContract,
   CatalogImpactReport,
   ChangedDefinitionImpactEntry,
-  CreateDefinitionChange,
   CreateSubjectWithDefinitionsChange,
   DefinitionImpactEntry,
   FrozenDefinitionAllocation,
@@ -404,7 +408,12 @@ const buildDefinitionDocument = (
 };
 
 const applyCreateDefinition = (
-  change: CreateDefinitionChange,
+  change: {
+    readonly op?: "create-definition";
+    readonly subjectId: string;
+    readonly propertyKey: unknown;
+    readonly content: unknown;
+  },
   path: string,
   predecessorTarget: CatalogReleaseNode,
   documents: CatalogReleaseDocument[],
@@ -523,6 +532,24 @@ const applyReviseDefinition = (
   };
 };
 
+class PersistRollback extends Error {
+  readonly stage: "artifact" | "candidate";
+  readonly cause: CatalogPublicationStoreError;
+
+  constructor(stage: "artifact" | "candidate", cause: CatalogPublicationStoreError) {
+    super("persist-failed");
+    this.name = "PersistRollback";
+    this.stage = stage;
+    this.cause = cause;
+  }
+}
+
+const isSessionDatabase = (value: unknown): value is Database =>
+  typeof value === "object" &&
+  value !== null &&
+  typeof (value as Database).transaction === "function" &&
+  typeof (value as Database).query === "function";
+
 const persistSuccessor = async (
   persist: BuilderPersistRequest,
   artifactInput: PersistArtifactInput,
@@ -531,36 +558,42 @@ const persistSuccessor = async (
   | SuccessorBuildValue["persistence"]
   | { readonly ok: false; readonly error: BuildCompleteSuccessorError }
 > => {
+  if (!isSessionDatabase(persist.db)) {
+    return {
+      ok: false,
+      error: {
+        kind: "invalid-input",
+        reason: "persist requires a session-bound Database.transaction()",
+      },
+    };
+  }
   const persistArtifactFn = persist.ports?.persistArtifact ?? storePersistArtifact;
   const persistCandidateFn = persist.ports?.persistCandidate ?? storePersistCandidate;
-  const db: Queryable = persist.db;
-  await db.query("begin");
+  // RootDatabase.query is pool-scoped; Database.transaction() is the session-bound seam.
   try {
-    await db.query(`set local role ${quoteIdent(CATALOG_PUBLICATION_COORDINATOR_ROLE)}`);
-    const artifact = await persistArtifactFn(db, artifactInput);
-    if (!artifact.ok) {
-      await db.query("rollback");
+    return await persist.db.transaction(async (tx) => {
+      await tx.query(`set local role ${quoteIdent(CATALOG_PUBLICATION_COORDINATOR_ROLE)}`);
+      const artifact = await persistArtifactFn(tx, artifactInput);
+      if (!artifact.ok) {
+        throw new PersistRollback("artifact", artifact.error);
+      }
+      const candidate = await persistCandidateFn(tx, candidateInput);
+      if (!candidate.ok) {
+        throw new PersistRollback("candidate", candidate.error);
+      }
       return {
-        ok: false,
-        error: { kind: "persist-failed", stage: "artifact", cause: artifact.error },
+        kind: "persisted" as const,
+        artifact: artifact.value,
+        candidate: candidate.value,
       };
-    }
-    const candidate = await persistCandidateFn(db, candidateInput);
-    if (!candidate.ok) {
-      await db.query("rollback");
-      return {
-        ok: false,
-        error: { kind: "persist-failed", stage: "candidate", cause: candidate.error },
-      };
-    }
-    await db.query("commit");
-    return {
-      kind: "persisted",
-      artifact: artifact.value,
-      candidate: candidate.value,
-    };
+    });
   } catch (error) {
-    await db.query("rollback").catch(() => undefined);
+    if (error instanceof PersistRollback) {
+      return {
+        ok: false,
+        error: { kind: "persist-failed", stage: error.stage, cause: error.cause },
+      };
+    }
     return {
       ok: false,
       error: {
@@ -569,8 +602,6 @@ const persistSuccessor = async (
         cause: { detail: error instanceof Error ? error.message : "persist-transaction-failed" },
       },
     };
-  } finally {
-    await db.query("reset role").catch(() => undefined);
   }
 };
 
@@ -578,6 +609,15 @@ export async function buildCompleteSuccessor(
   input: BuildCompleteSuccessorInput,
 ): Promise<BuildCompleteSuccessorResult> {
   const productPath = input.productPath ?? "m1";
+  if (productPath !== "m1" && productPath !== "m2-core") {
+    return fail({ kind: "invalid-input", reason: "productPath must be m1 or m2-core" });
+  }
+  if (input.persist && !isSessionDatabase(input.persist.db)) {
+    return fail({
+      kind: "invalid-input",
+      reason: "persist requires a session-bound Database.transaction()",
+    });
+  }
   const predecessor = await loadPredecessor(input);
   if (!predecessor.ok) return fail(predecessor.error);
 
@@ -637,7 +677,7 @@ export async function buildCompleteSuccessor(
     if (!isRecord(change) || typeof change.op !== "string") {
       return fail({ kind: "invalid-input", reason: "change op must be a tagged union member" });
     }
-    if (productPath === "m1" && change.op !== "create-definition") {
+    if (productPath !== "m2-core" && change.op !== "create-definition") {
       return fail({ kind: "unsupported-change-op", op: change.op });
     }
     if (change.op === "create-definition") {
@@ -750,11 +790,11 @@ export async function buildCompleteSuccessor(
             path: `${path}.definitions[${nestedIndex}]`,
           });
         }
-        const nestedChange: CreateDefinitionChange = {
-          op: "create-definition",
+        const nestedChange = {
+          op: "create-definition" as const,
           subjectId: subjectAllocation.subjectId,
-          propertyKey: String(nested.propertyKey),
-          content: nested.content as SupportedDefinitionContent,
+          propertyKey: nested.propertyKey,
+          content: nested.content,
         };
         const created = applyCreateDefinition(
           nestedChange,
@@ -852,6 +892,10 @@ export async function buildCompleteSuccessor(
       propertyKey: allocation.propertyKey,
       definitionId: allocation.definitionId,
       revisionId: allocation.revisionId,
+    })),
+    subjects: (frozen.subjects ?? []).map((allocation) => ({
+      canonicalKey: allocation.canonicalKey,
+      subjectId: allocation.subjectId,
     })),
   });
   const proposal = input.proposal ?? null;

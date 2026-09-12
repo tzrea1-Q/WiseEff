@@ -14,7 +14,7 @@ import type {
   Result,
 } from "../../parameter-catalog-contract/index";
 import type { CatalogReleaseBundle } from "../../catalog-kernel/compiler/types";
-import type { Queryable } from "../../../shared/database/client";
+import type { Database, Queryable } from "../../../shared/database/client";
 import type {
   CatalogPublicationStoreError,
   JsonObject,
@@ -163,7 +163,7 @@ export type BuilderPersistPorts = {
 };
 
 export type BuilderPersistRequest = {
-  readonly db: Queryable;
+  readonly db: Database;
   readonly ports?: BuilderPersistPorts;
 };
 

@@ -6,14 +6,21 @@ import {
   CatalogArtifactId,
   CatalogReleaseDigest,
   CatalogReleaseId,
+  DefinitionProposalId,
+  DefinitionProposalRevisionId,
 } from "../../parameter-catalog-contract/index";
+import { createDatabase } from "../../../shared/database/client";
 import {
   asQueryable,
   openEphemeralClient,
   requirePgvectorTestDatabase,
   uniqueToken,
 } from "../persistence/integrationHarness";
-import { getArtifactByDigest, getCandidate, persistArtifact } from "../persistence/store";
+import {
+  getArtifactByDigest,
+  getCandidate,
+  persistArtifact,
+} from "../persistence/store";
 import { buildCompleteSuccessor } from "./completeSuccessor";
 import {
   allocationFor,
@@ -39,6 +46,7 @@ describe("catalog publication builder persistence", () => {
   });
 
   const db = () => asQueryable(client);
+  const sessionDb = () => createDatabase(asQueryable(client));
 
   async function persistPredecessor() {
     const predecessor = firstAcmePredecessor();
@@ -66,7 +74,7 @@ describe("catalog publication builder persistence", () => {
       predecessorArtifact: { digest: predecessor.digest },
       changeSet: [pageIntegerChange("iin_min", "Input current minimum")],
       frozenIdentity: frozen,
-      persist: { db: db() },
+      persist: { db: sessionDb() },
     });
     expect(result.ok).toBe(true);
     if (!result.ok || result.value.kind !== "successor") return;
@@ -88,10 +96,11 @@ describe("catalog publication builder persistence", () => {
       expect(candidate.value.artifactDigest).toBe(result.value.artifact.artifactDigest);
       expect(candidate.value.expectedBaseReleaseDigest).toBe(predecessor.digest);
       expect("riskClass" in candidate.value.capabilityContract).toBe(false);
+      expect(candidate.value.identityAllocation.subjects).toEqual([]);
     }
   });
 
-  it("rolls back the successor artifact when persistCandidate fails", async () => {
+  it("rolls back the successor artifact when persistCandidate hits a real FK failure", async () => {
     const { predecessor } = await persistPredecessor();
     const beforeArtifacts = await db().query<{ count: string }>(
       "select count(*)::text as count from catalog_publication.release_artifacts",
@@ -99,24 +108,23 @@ describe("catalog publication builder persistence", () => {
     const beforeCandidates = await db().query<{ count: string }>(
       "select count(*)::text as count from catalog_publication.candidates",
     );
-    const frozen = frozenPageIdentity([allocationFor("iin_min")], uniqueToken("fail"));
+    const frozen = frozenPageIdentity([allocationFor("iin_min")], uniqueToken("fk"));
     const result = await buildCompleteSuccessor({
       predecessorArtifact: { digest: predecessor.digest, bytes: predecessor.bytes },
       changeSet: [pageIntegerChange("iin_min", "Input current minimum")],
       frozenIdentity: frozen,
-      persist: {
-        db: db(),
-        ports: {
-          persistCandidate: async () => ({
-            ok: false,
-            error: { kind: "constraint-violation", sqlstate: "23505", message: "injected" },
-          }),
-        },
+      proposal: {
+        proposalId: DefinitionProposalId("dprop_missing_cp03"),
+        proposalRevisionId: DefinitionProposalRevisionId("dprev_missing_cp03"),
       },
+      persist: { db: sessionDb() },
     });
     expect(result.ok).toBe(false);
     if (!result.ok) {
       expect(result.error.kind).toBe("persist-failed");
+      if (result.error.kind === "persist-failed") {
+        expect(result.error.stage).toBe("candidate");
+      }
     }
     const afterArtifacts = await db().query<{ count: string }>(
       "select count(*)::text as count from catalog_publication.release_artifacts",
@@ -127,8 +135,13 @@ describe("catalog publication builder persistence", () => {
     expect(afterArtifacts.rows[0]?.count).toBe(beforeArtifacts.rows[0]?.count);
     expect(afterCandidates.rows[0]?.count).toBe(beforeCandidates.rows[0]?.count);
 
-    const leftover = await getCandidate(db(), frozen.candidateId);
-    expect(leftover.ok).toBe(false);
+    const leftoverCandidate = await getCandidate(db(), frozen.candidateId);
+    expect(leftoverCandidate.ok).toBe(false);
+    const leftoverArtifact = await db().query<{ count: string }>(
+      "select count(*)::text as count from catalog_publication.release_artifacts where id = $1",
+      [frozen.artifactId],
+    );
+    expect(leftoverArtifact.rows[0]?.count).toBe("0");
     const catalogRows = await db().query<{ count: string }>(
       "select count(*)::text as count from parameter_catalog.catalog_releases",
     );
@@ -143,7 +156,7 @@ describe("catalog publication builder persistence", () => {
       predecessorArtifact: { digest: `sha256:${"b".repeat(64)}` },
       changeSet: [pageIntegerChange("iin_min", "Input current minimum")],
       frozenIdentity: frozenPageIdentity([allocationFor("iin_min")], uniqueToken("miss")),
-      persist: { db: db() },
+      persist: { db: sessionDb() },
     });
     expect(missing).toEqual({ ok: false, error: { kind: "artifact-missing" } });
     const afterArtifacts = await db().query<{ count: string }>(
