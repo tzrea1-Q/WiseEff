@@ -10,9 +10,11 @@ import { jsonCatalogReleaseSource } from "../../catalog-kernel/interface";
 import { installPublishedRelease } from "../../catalog-kernel/install/installer";
 import {
   DefinitionProposalId,
+  DefinitionProposalRevisionId,
   DefinitionRevisionId,
   type CatalogReleasePin,
 } from "../../parameter-catalog-contract/index";
+import { persistHandBuiltCandidate } from "../../catalog-publication/authorization/testHarness";
 import {
   createEphemeralTestDatabase,
   createInMemoryTestDatabase,
@@ -368,6 +370,10 @@ describe("immutable DefinitionProposal workflow", () => {
     expect(accepted.value.publicationIntent).toEqual({
       id: accepted.value.publicationIntent?.id,
       repositoryReference: "repo://wiseeff-catalog/schemas/dts/vendor/acme-power.yaml",
+      publicationReference: {
+        kind: "repository",
+        repositoryReference: "repo://wiseeff-catalog/schemas/dts/vendor/acme-power.yaml",
+      },
       reviewerPrincipalId: REVIEWER,
       successAuditRef: accepted.value.publicationIntent?.successAuditRef,
     });
@@ -415,6 +421,83 @@ describe("immutable DefinitionProposal workflow", () => {
         [submitted.value.proposalId],
       ),
     ).toMatchObject({ rowCount: 1 });
+  });
+
+  it("accepts a candidate publication reference without writing Catalog rows or Authorization", async () => {
+    const submitted = await service.execute(submitCommand());
+    expect(submitted.ok).toBe(true);
+    if (!submitted.ok) return;
+    const catalogBefore = await catalogFootprint();
+    const authBefore = await pool.query<{ count: string }>(
+      `select count(*)::text as count from catalog_publication.publication_authorizations`,
+    );
+
+    const client = await pool.connect();
+    let candidateId = "";
+    try {
+      const candidate = await persistHandBuiltCandidate(client, {
+        proposalId: DefinitionProposalId(submitted.value.proposalId),
+        proposalRevisionId: DefinitionProposalRevisionId(submitted.value.proposalRevisionId),
+        authorPrincipalId: PROPOSER,
+      });
+      candidateId = candidate.id;
+    } finally {
+      client.release();
+    }
+
+    const fakeUrl = await service.execute(
+      acceptCommand(submitted.value.proposalId, submitted.value.etagVersion, {
+        repositoryReference: "repo://forged.git",
+        publicationReference: { kind: "candidate", candidateId },
+      }),
+    );
+    expect(fakeUrl.ok).toBe(false);
+    if (!fakeUrl.ok) {
+      expect(fakeUrl.error).toEqual({ kind: "invalid-command", reason: "repositoryReference" });
+    }
+
+    const accepted = await service.execute(
+      acceptCommand(submitted.value.proposalId, submitted.value.etagVersion, {
+        repositoryReference: undefined,
+        publicationReference: { kind: "candidate", candidateId },
+      }),
+    );
+    expect(accepted.ok).toBe(true);
+    if (!accepted.ok) return;
+    expect(accepted.value.status).toBe("accepted");
+    expect(accepted.value.publicationIntent).toEqual({
+      id: accepted.value.publicationIntent?.id,
+      repositoryReference: null,
+      publicationReference: { kind: "candidate", candidateId },
+      reviewerPrincipalId: REVIEWER,
+      successAuditRef: accepted.value.publicationIntent?.successAuditRef,
+    });
+
+    const intent = await pool.query<{
+      reference_kind: string;
+      repository_reference: string | null;
+      candidate_id: string | null;
+    }>(
+      `
+      select reference_kind, repository_reference, candidate_id
+        from parameter_catalog.catalog_publication_intents
+       where proposal_id = $1
+      `,
+      [submitted.value.proposalId],
+    );
+    expect(intent.rows).toEqual([
+      {
+        reference_kind: "candidate",
+        repository_reference: null,
+        candidate_id: candidateId,
+      },
+    ]);
+
+    const authAfter = await pool.query<{ count: string }>(
+      `select count(*)::text as count from catalog_publication.publication_authorizations`,
+    );
+    expect(authAfter.rows[0]).toEqual(authBefore.rows[0]);
+    expect(await catalogFootprint()).toEqual(catalogBefore);
   });
 
   it("refuses a stale captured base on submit and accept without writing Catalog rows", async () => {

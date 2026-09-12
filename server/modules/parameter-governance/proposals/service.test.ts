@@ -169,7 +169,7 @@ describe("S5-PRP public command contract", () => {
     expect(createAndSubmitCommandKind).toBe("submit");
     expect(createDraftCommandKind).toBe("create-draft");
     expect(submitExistingCommandKind).toBe("submit-existing");
-    expect(THREAT_MATRIX).toHaveLength(9);
+    expect(THREAT_MATRIX).toHaveLength(10);
   });
 
   it("fingerprints canonical payload key order identically", () => {
@@ -212,6 +212,26 @@ describe("S5-PRP public command contract", () => {
         actorKind: "platform-admin",
         method: "withdraw",
       },
+    });
+  });
+
+  it("accepts a tagged candidate publication reference and refuses a fake repository URL on that path", () => {
+    const candidate = validateProposalCommand(
+      acceptCommand({
+        repositoryReference: undefined,
+        publicationReference: { kind: "candidate", candidateId: "ccand_fixture" },
+      }),
+    );
+    expect(candidate.ok).toBe(true);
+    const forged = validateProposalCommand(
+      acceptCommand({
+        repositoryReference: "repo://wiseeff-catalog/forged.yaml",
+        publicationReference: { kind: "candidate", candidateId: "ccand_fixture" },
+      }),
+    );
+    expect(forged).toEqual({
+      ok: false,
+      error: { kind: "invalid-command", reason: "repositoryReference" },
     });
   });
 

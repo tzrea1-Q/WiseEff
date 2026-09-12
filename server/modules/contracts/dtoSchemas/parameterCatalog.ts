@@ -473,8 +473,20 @@ export const catalogWithdrawProposalRequestSchema = catalogObject({
   reason: z.string().optional()
 });
 
+export const catalogPublicationReferenceSchema = z.union([
+  catalogObject({
+    kind: z.literal("repository"),
+    repositoryReference: z.string()
+  }),
+  catalogObject({
+    kind: z.literal("candidate"),
+    candidateId: z.string()
+  })
+]);
+
 export const catalogAcceptProposalRequestSchema = catalogObject({
-  repositoryReference: z.string()
+  repositoryReference: z.string(),
+  publicationReference: catalogPublicationReferenceSchema.optional()
 });
 
 export const catalogRejectProposalRequestSchema = catalogObject({

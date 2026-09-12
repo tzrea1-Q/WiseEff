@@ -110,6 +110,8 @@ export const P02_GATE_ID = "PCAT-DB-P02";
 export const ROLES_MIGRATION = "0138_canonical_parameter_catalog_roles.sql";
 export const VERIFICATION_MIGRATION = "0139_parameter_catalog_verification_core.sql";
 export const PUBLICATION_MIGRATION = "0140_catalog_publication_control_plane.sql";
+export const PUBLICATION_INTENT_REFERENCE_MIGRATION =
+  "0141_catalog_publication_intent_reference.sql";
 export const SCHEMA_MIGRATION = "0137_canonical_parameter_catalog_schema.sql";
 export const FLOOR_MIGRATION = "0136_parameter_execution_principal_deleted_marker.sql";
 

@@ -23014,6 +23014,48 @@
         "properties": {
           "repositoryReference": {
             "type": "string"
+          },
+          "publicationReference": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "repository"
+                    ]
+                  },
+                  "repositoryReference": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "repositoryReference"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "candidate"
+                    ]
+                  },
+                  "candidateId": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "candidateId"
+                ],
+                "additionalProperties": false
+              }
+            ]
           }
         },
         "required": [

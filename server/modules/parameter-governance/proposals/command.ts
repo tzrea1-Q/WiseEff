@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 
 import {
+  CatalogCandidateId,
   serializeContract,
   type CatalogReleasePin,
   type ContractJsonValue,
@@ -88,13 +89,18 @@ export type WithdrawProposalCommand = {
   readonly context: ProposalTrustedContext;
 };
 
+export type PublicationReference =
+  | { readonly kind: "repository"; readonly repositoryReference: string }
+  | { readonly kind: "candidate"; readonly candidateId: string };
+
 export type AcceptProposalCommand = {
   readonly kind: "accept";
   readonly organizationId: string;
   readonly proposalId: DefinitionProposalId;
   readonly expectedEtag: number;
   readonly currentRelease: CatalogReleasePin;
-  readonly repositoryReference: string;
+  readonly repositoryReference?: string;
+  readonly publicationReference?: PublicationReference;
   readonly idempotencyKey: string;
   readonly context: ProposalTrustedContext;
 };
@@ -125,6 +131,49 @@ export type ProposalIdempotencyIdentity = {
 
 const controlFree = (value: string): boolean =>
   value.length > 0 && value.trim() === value && !/[\u0000-\u001F\u007F-\u009F]/u.test(value);
+
+export const publicationReferenceOf = (command: AcceptProposalCommand): PublicationReference => {
+  if (command.publicationReference) {
+    return command.publicationReference;
+  }
+  if (command.repositoryReference) {
+    return { kind: "repository", repositoryReference: command.repositoryReference };
+  }
+  return { kind: "repository", repositoryReference: "" };
+};
+
+export const normalizePublicationReference = (
+  command: AcceptProposalCommand,
+): Result<PublicationReference, ProposalFailure> => {
+  const tagged = command.publicationReference;
+  if (tagged?.kind === "candidate") {
+    if (command.repositoryReference !== undefined) {
+      return invalid("repositoryReference");
+    }
+    try {
+      const candidateId = CatalogCandidateId(tagged.candidateId);
+      if (!tagged.candidateId.startsWith("ccand_")) {
+        return invalid("publicationReference");
+      }
+      return { ok: true, value: { kind: "candidate", candidateId } };
+    } catch {
+      return invalid("publicationReference");
+    }
+  }
+  const repositoryReference =
+    tagged?.kind === "repository" ? tagged.repositoryReference : command.repositoryReference;
+  if (!repositoryReference || !controlFree(repositoryReference)) {
+    return invalid("repositoryReference");
+  }
+  if (
+    tagged?.kind === "repository" &&
+    command.repositoryReference !== undefined &&
+    command.repositoryReference !== tagged.repositoryReference
+  ) {
+    return invalid("repositoryReference");
+  }
+  return { ok: true, value: { kind: "repository", repositoryReference } };
+};
 
 const invalid = (reason: string): Result<never, ProposalFailure> => ({
   ok: false,
@@ -348,9 +397,8 @@ export const validateProposalCommand = (
   const current = validatePin(command.currentRelease, "currentRelease");
   if (!current.ok) return current;
   if (command.kind === "accept") {
-    if (!controlFree(command.repositoryReference)) {
-      return invalid("repositoryReference");
-    }
+    const reference = normalizePublicationReference(command);
+    if (!reference.ok) return reference;
     return { ok: true, value: command };
   }
   if (!controlFree(command.reason)) {
@@ -416,16 +464,19 @@ const commandFingerprintModel = (command: ProposalCommand): ContractJsonValue =>
         expectedEtag: command.expectedEtag,
         context: actorModel(command.context),
       };
-    case "accept":
+    case "accept": {
+      const reference = publicationReferenceOf(command);
       return {
         kind: command.kind,
         organizationId: command.organizationId,
         proposalId: command.proposalId,
         expectedEtag: command.expectedEtag,
         currentRelease: pinModel(command.currentRelease),
-        repositoryReference: command.repositoryReference,
+        publicationReference: reference,
+        repositoryReference: reference.kind === "repository" ? reference.repositoryReference : null,
         context: actorModel(command.context),
       };
+    }
     case "reject":
       return {
         kind: command.kind,
