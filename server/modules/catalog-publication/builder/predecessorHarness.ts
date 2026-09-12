@@ -71,13 +71,14 @@ export const allocationFor = (
 export const frozenPageIdentity = (
   defs: readonly FrozenDefinitionAllocation[],
   suffix = "1",
+  releaseVersion = "1.1.0",
 ): FrozenPublicationIdentity => {
   const predecessor = firstAcmePredecessor();
   return {
     candidateId: CatalogCandidateId(`ccand_page_add_${suffix}`),
     artifactId: CatalogArtifactId(`cart_page_add_${suffix}`),
     releaseId: CatalogReleaseId(`crel_acme_page_${suffix}`),
-    releaseVersion: CatalogReleaseVersion("1.1.0"),
+    releaseVersion: CatalogReleaseVersion(releaseVersion),
     publishedAt: "2026-09-12T00:00:00Z",
     toolchain: predecessor.first.manifest.toolchain,
     definitions: defs,

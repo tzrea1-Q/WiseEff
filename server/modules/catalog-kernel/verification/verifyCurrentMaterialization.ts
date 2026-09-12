@@ -257,7 +257,7 @@ const violation = (
 });
 
 const loadLineageIds = async (
-  client: pg.PoolClient,
+  client: Pick<pg.Client, "query">,
   releaseId: string,
 ): Promise<Set<string>> => {
   const ids = new Set<string>();
@@ -315,10 +315,15 @@ type HeadRow = {
   catalog_release_id: string;
 };
 
-const compareProjection = async (
-  client: pg.PoolClient,
+export type CompareCompiledProjectionOptions = {
+  readonly checkCurrentPointer?: boolean;
+};
+
+export const compareCompiledProjection = async (
+  client: Pick<pg.Client, "query">,
   compiled: CompiledCatalogRelease,
   expected: CatalogReleasePin,
+  options: CompareCompiledProjectionOptions = {},
 ): Promise<CatalogDriftViolation[]> => {
   const documents = targetDocuments(compiled);
   const subjects = documents.filter(
@@ -382,19 +387,21 @@ const compareProjection = async (
     );
   }
 
-  const pointer = await client.query<{ current_catalog_release_id: string | null }>(
-    `select current_catalog_release_id from parameter_catalog.catalog_state`,
-  );
-  const currentId = pointer.rows[0]?.current_catalog_release_id ?? null;
-  if (currentId !== expected.id) {
-    violations.push(
-      violation(
-        "current-pointer-mismatch",
-        "catalog_state",
-        currentId ?? "null",
-        "current-pointer-disagrees-with-expected-pin",
-      ),
+  if (options.checkCurrentPointer !== false) {
+    const pointer = await client.query<{ current_catalog_release_id: string | null }>(
+      `select current_catalog_release_id from parameter_catalog.catalog_state`,
     );
+    const currentId = pointer.rows[0]?.current_catalog_release_id ?? null;
+    if (currentId !== expected.id) {
+      violations.push(
+        violation(
+          "current-pointer-mismatch",
+          "catalog_state",
+          currentId ?? "null",
+          "current-pointer-disagrees-with-expected-pin",
+        ),
+      );
+    }
   }
 
   const materialization = await client.query<{ compiled_fingerprint: string }>(
@@ -804,7 +811,11 @@ export const verifyCurrentMaterialization = async (
       throw new CatalogKernelFailure(pinned.error);
     }
 
-    const violations = await compareProjection(client, compiled.value, command.expected);
+    const violations = await compareCompiledProjection(
+      client,
+      compiled.value,
+      command.expected,
+    );
     if (violations.length > 0) {
       throw new CatalogKernelFailure({
         kind: "drift",
@@ -838,3 +849,32 @@ export type CatalogVerifierAdapter = {
 export const createCatalogVerifier = (pool: pg.Pool): CatalogVerifierAdapter => ({
   verifyCurrentMaterialization: (command) => verifyCurrentMaterialization(pool, command),
 });
+
+/**
+ * Independent staged projection check for a target release that is not yet
+ * current. Reads memberships, aliases, revisions, and release-head mapping
+ * for THIS compiled release. Does not follow the current pointer and does
+ * not treat the writer's stored fingerprint as sufficient on its own.
+ */
+export const verifyStagedReleaseProjection = async (
+  client: Pick<pg.Client, "query">,
+  compiled: CompiledCatalogRelease,
+): Promise<Result<never, CatalogKernelError> | { readonly ok: true }> => {
+  const expected = {
+    id: compiled.release.id,
+    digest: compiled.release.digest,
+  };
+  const violations = await compareCompiledProjection(client, compiled, expected, {
+    checkCurrentPointer: false,
+  });
+  if (violations.length > 0) {
+    return fail({
+      kind: "drift",
+      scope: "candidate-install",
+      expected,
+      actual: null,
+      violations,
+    });
+  }
+  return { ok: true };
+};

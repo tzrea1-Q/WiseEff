@@ -112,6 +112,8 @@ export const VERIFICATION_MIGRATION = "0139_parameter_catalog_verification_core.
 export const PUBLICATION_MIGRATION = "0140_catalog_publication_control_plane.sql";
 export const PUBLICATION_INTENT_REFERENCE_MIGRATION =
   "0141_catalog_publication_intent_reference.sql";
+export const PUBLICATION_ACTIVATION_MIGRATION =
+  "0142_catalog_publication_activation.sql";
 export const SCHEMA_MIGRATION = "0137_canonical_parameter_catalog_schema.sql";
 export const FLOOR_MIGRATION = "0136_parameter_execution_principal_deleted_marker.sql";
 
