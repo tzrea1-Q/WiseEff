@@ -308,7 +308,19 @@ describe("CatalogPage", () => {
     });
     await screen.findByRole("region", { name: "参数定义目录" });
     expect(screen.getByRole("button", { name: "新增定义" })).toBeEnabled();
+    expect(screen.queryByRole("button", { name: "发布到目录" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "复核高风险发布" })).not.toBeInTheDocument();
     authorized.unmount();
+
+    const publisher = renderCatalog({
+      actor: "user",
+      sessionPermissions: ["catalog:publish", "catalog:review-high-risk"]
+    });
+    await screen.findByRole("region", { name: "参数定义目录" });
+    expect(screen.queryByRole("button", { name: "新增定义" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "发布到目录" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "复核高风险发布" })).not.toBeInTheDocument();
+    publisher.unmount();
 
     renderCatalog({
       actor: "agent",

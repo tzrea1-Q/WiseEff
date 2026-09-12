@@ -12,6 +12,8 @@ import type {
   CatalogSubjectResponse
 } from "@/infrastructure/http/parameterCatalogDtos";
 import { catalogSubjectTypeLabel } from "@/features/parameter-catalog/catalogPresentation";
+import { WiseEffApiError } from "@/infrastructure/http/apiClient";
+import { catalogFailureReason } from "@/infrastructure/http/parameterCatalogClient";
 import "@/features/parameter-catalog/parameter-catalog.css";
 
 import { createGovernanceIdempotencyKey } from "./governanceState";
@@ -31,6 +33,7 @@ import {
   publicationFailureCopy,
   publicationFieldError,
   publicationJobIsPending,
+  publicationMustRePreview,
   publicationPreviewIsStale,
   publicationStatusCopy,
   publicationSuccessKind,
@@ -111,6 +114,11 @@ export function PublicationDialog({
   const previewStale = publicationPreviewIsStale(previewFingerprint, draft);
   const selectedSubject = subjects.find((item) => item.id === draft.subjectId) ?? null;
   const publishedSubjects = subjects.filter((item) => item.membership.status === "active");
+  const mustRePreview = publicationMustRePreview({
+    previewStale,
+    jobStatus: job?.status,
+    failureReason: job?.failure?.reason
+  });
 
   const patchDraft = (patch: Partial<PublicationDraft>) => {
     setDraft((current) => ({ ...current, ...patch }));
@@ -222,8 +230,23 @@ export function PublicationDialog({
   }, [open, catalog, catalogReleaseId, currentPersonId, organizationId]);
 
   const captureError = (error: unknown) => {
-    setFailure(publicationFailureCopy(error));
+    const reason = error instanceof WiseEffApiError ? catalogFailureReason(error) : null;
     setFieldError(publicationFieldError(error));
+    if (reason === "needs-rebase") {
+      setFailure(null);
+      setJob((current) => ({
+        id: current?.id ?? "",
+        candidateId: current?.candidateId || candidate?.id || "",
+        status: "needs-rebase",
+        attemptCount: current?.attemptCount ?? 0,
+        effective: false,
+        isCurrent: false,
+        currentness: null,
+        failure: { class: "candidate", reason: "needs-rebase" }
+      }));
+      return;
+    }
+    setFailure(publicationFailureCopy(error));
   };
 
   const saveDraft = async () => {
@@ -281,6 +304,7 @@ export function PublicationDialog({
       setCandidate(created.item);
       setPreviewFingerprint(fingerprintPublicationDraft(draft));
       setJob(null);
+      setIdempotencyKey(null);
       setFailure(null);
       setFieldError(null);
     } catch (error) {
@@ -293,7 +317,16 @@ export function PublicationDialog({
   };
 
   const runPublish = async () => {
-    if (!canPublish || pending || !candidate || previewStale) {
+    if (
+      !canPublish ||
+      pending ||
+      !candidate ||
+      publicationMustRePreview({
+        previewStale,
+        jobStatus: job?.status,
+        failureReason: job?.failure?.reason
+      })
+    ) {
       return;
     }
     if (!gateRef.current.begin()) {
@@ -380,7 +413,9 @@ export function PublicationDialog({
                     {loadError}
                   </p>
                 ) : null}
-                {canPreview ? (
+                {publishedSubjects.length === 0 ? (
+                  <p>{publicationCopy.unpublishedEmpty}</p>
+                ) : canPreview ? (
                   <div className="parameter-catalog-publication-dialog__form">
                     <label>
                       {publicationCopy.subject}
@@ -520,7 +555,7 @@ export function PublicationDialog({
                     </label>
                   </div>
                 ) : (
-                  <p>{publicationCopy.unpublishedEmpty}</p>
+                  <p>{publicationCopy.authorRequired}</p>
                 )}
                 {fieldError ? (
                   <p id={fieldMessageId} className="governance-confirm-dialog__error" role="alert">
@@ -575,7 +610,7 @@ export function PublicationDialog({
                   disabled={pending || !draft.subjectId || !draft.propertyKey.trim() || !draft.displayName.trim()}
                   onClick={() => setConfirm("preview")}
                 >
-                  {job?.status === "needs-rebase" ? publicationCopy.rebase : publicationCopy.preview}
+                  {mustRePreview ? publicationCopy.rebase : publicationCopy.preview}
                 </button>
               ) : null}
               {canPublish ? (
@@ -583,7 +618,10 @@ export function PublicationDialog({
                   type="button"
                   className="button primary sm"
                   disabled={
-                    pending || !candidate || previewStale || publicationJobIsPending(job?.status ?? "cancelled")
+                    pending ||
+                    !candidate ||
+                    mustRePreview ||
+                    publicationJobIsPending(job?.status ?? "cancelled")
                   }
                   title={!canPublish ? "缺少发布权限" : undefined}
                   onClick={() => setConfirm("publish")}

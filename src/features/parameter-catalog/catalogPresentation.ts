@@ -29,7 +29,12 @@ export function catalogMutationActionsForActor(
   actor: CatalogActorKind,
   permissions?: readonly string[] | null
 ): CatalogAuthorizedAction[] {
-  return catalogActionsForSession({ actor, permissions }).filter((action) => action !== "read");
+  return catalogActionsForSession({ actor, permissions }).filter((action) => {
+    if (action === "read" || action === "publish-publication" || action === "review-high-risk-publication") {
+      return false;
+    }
+    return true;
+  });
 }
 
 export function catalogActionAffordances(

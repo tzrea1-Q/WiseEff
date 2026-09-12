@@ -15,6 +15,7 @@ import type { CatalogActorKind } from "@/application/parameter-catalog/authority
 
 import { PublicationDialog } from "./PublicationDialog";
 import { PUBLICATION_JOB_STORAGE_KEY } from "./publicationJobStorage";
+import { publicationCopy } from "./publicationState";
 
 const ready = deriveCatalogDomainState({ document: readyCatalogDocument });
 
@@ -153,9 +154,68 @@ describe("PublicationDialog", () => {
     await confirm("确认预览");
     await user.click(await screen.findByRole("button", { name: "发布到目录" }));
     await confirm("确认发布");
-    expect(await screen.findByText(/重新预览/)).toBeVisible();
+    expect(await screen.findByRole("button", { name: "重新预览" })).toBeVisible();
     expect(screen.getByLabelText("属性键")).toHaveValue("iin_hold");
     expect(screen.getByLabelText("显示名称")).toHaveValue("保持电流");
+  });
+
+  it("blocks republish after needs-rebase until a new candidate and idempotency key exist", async () => {
+    let keySerial = 0;
+    const { createCandidate, publish } = renderDialog({
+      publicationOutcome: "needs-rebase",
+      createIdempotencyKey: () => `key-${++keySerial}`
+    });
+    const user = userEvent.setup();
+    await fillSupportedDefinition(user);
+    await user.click(screen.getByRole("button", { name: "预览发布" }));
+    await confirm("确认预览");
+    await user.click(await screen.findByRole("button", { name: "发布到目录" }));
+    await confirm("确认发布");
+    await waitFor(() => expect(publish).toHaveBeenCalledTimes(1));
+    expect(publish.mock.calls[0]?.[1]).toEqual({ idempotencyKey: "key-1" });
+    expect(await screen.findByRole("button", { name: "发布到目录" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "重新预览" })).toBeEnabled();
+    await user.click(screen.getByRole("button", { name: "重新预览" }));
+    await confirm("确认预览");
+    await waitFor(() => expect(createCandidate).toHaveBeenCalledTimes(2));
+    const firstCandidate = await createCandidate.mock.results[0]?.value;
+    const secondCandidate = await createCandidate.mock.results[1]?.value;
+    expect(firstCandidate.item.id).not.toBe(secondCandidate.item.id);
+    await user.click(await screen.findByRole("button", { name: "发布到目录" }));
+    await confirm("确认发布");
+    await waitFor(() => expect(publish).toHaveBeenCalledTimes(2));
+    expect(publish.mock.calls[1]?.[0]).not.toBe(publish.mock.calls[0]?.[0]);
+    expect(publish.mock.calls[1]?.[1]).toEqual({ idempotencyKey: "key-2" });
+  });
+
+  it("blocks publish of a stale preview until the operator re-previews with a new key", async () => {
+    let keySerial = 0;
+    const { createCandidate, publish } = renderDialog({
+      createIdempotencyKey: () => `stale-${++keySerial}`
+    });
+    const user = userEvent.setup();
+    await fillSupportedDefinition(user);
+    await user.click(screen.getByRole("button", { name: "预览发布" }));
+    await confirm("确认预览");
+    await screen.findByLabelText("发布预览");
+    await user.type(screen.getByLabelText("说明"), "补充约束。");
+    expect(await screen.findByRole("button", { name: "发布到目录" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "重新预览" })).toBeEnabled();
+    await user.click(screen.getByRole("button", { name: "重新预览" }));
+    await confirm("确认预览");
+    await waitFor(() => expect(createCandidate).toHaveBeenCalledTimes(2));
+    await user.click(await screen.findByRole("button", { name: "发布到目录" }));
+    await confirm("确认发布");
+    await waitFor(() => expect(publish).toHaveBeenCalledTimes(1));
+    expect(publish.mock.calls[0]?.[1]).toEqual({ idempotencyKey: "stale-1" });
+  });
+
+  it("does not use unpublished-empty copy for a permission miss when published subjects exist", async () => {
+    renderDialog({ permissions: [] });
+    expect(await screen.findByRole("dialog", { name: "向已发布主体新增定义" })).toBeVisible();
+    expect(screen.queryByText(publicationCopy.unpublishedEmpty)).not.toBeInTheDocument();
+    expect(screen.getByText(publicationCopy.authorRequired)).toBeVisible();
+    expect(screen.queryByLabelText("属性键")).not.toBeInTheDocument();
   });
 
   it("keeps input for policy-disabled and freeze refusals", async () => {

@@ -29,7 +29,7 @@ WiseEff 前端是 Vite、React、TypeScript 单页应用。它同时支持 mock 
 - `src/features/knowledge/`：知识库页面（`/knowledge` 与 `/knowledge-admin`:列表、分栏编辑器、文件上传、修订历史）。
 - `src/test/setup.ts`：Vitest DOM 初始化。
 
-M1 向已发布主体新增定义走会话权限 `catalog:author` / `catalog:publish` / `catalog:review-high-risk`，不把组织管理员默认视为发布人；Agent 只读。运营路径是填写 → 保存草稿（既有 Proposal）→ 预览（`POST /api/v2/catalog/publication-candidates`，带 `X-WiseEff-Catalog-Release`）→ 发布（请求体 `idempotencyKey`）。运营人员不手填内部编号、发布版本、摘要或 Git 地址，也不手工创建 Artifact / Authorization / Job。`publication_enabled` 默认关闭；隔离测试可用 `WISEEFF_CATALOG_TEST_CAPABILITIES` 与 `EPHEMERAL_POLICY_REVISION_CONFIRMATION` 打开，这不是生产启用。
+M1 向已发布主体新增定义走会话权限 `catalog:author` / `catalog:publish` / `catalog:review-high-risk`，不把组织管理员默认视为发布人；Agent 只读。运营路径是填写 → 保存草稿（既有 Proposal）→ 预览（`POST /api/v2/catalog/publication-candidates`，带 `X-WiseEff-Catalog-Release`）→ 发布（请求体 `idempotencyKey`）。运营人员不手填内部编号、发布版本、摘要或 Git 地址，也不手工创建 Artifact / Authorization / Job。`publication_enabled` 默认关闭。隔离本地/测试进程可用 `WISEEFF_CATALOG_TEST_CAPABILITIES` 给指定 principal 叠加能力；`AUTH_MODE=production` 或 `NODE_ENV=production` 时叠加为空，不能挂到生产 AuthContext。`publication_enabled` 仅能以 `EPHEMERAL_POLICY_REVISION_CONFIRMATION` 打开，这不是生产启用。
 
 ## Runtime 模式
 

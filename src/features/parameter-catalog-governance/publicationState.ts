@@ -47,6 +47,7 @@ export const publicationCopy = {
   entry: "新增定义",
   title: "向已发布主体新增定义",
   unpublishedEmpty: "当前没有可新增定义的已发布主体。M1 不提供隐式引导。",
+  authorRequired: "当前会话没有目录编写权限。",
   sharedScope: "该主体全部实例共享。新增正式定义不会自动变更组织登记或放置。",
   subjectKind: "主体类型",
   subjectSelector: "选择器",
@@ -195,6 +196,14 @@ export function publicationPreviewIsStale(savedFingerprint: string | null, draft
     return false;
   }
   return savedFingerprint !== fingerprintPublicationDraft(draft);
+}
+
+export function publicationMustRePreview(input: {
+  previewStale: boolean;
+  jobStatus?: string | null;
+  failureReason?: string | null;
+}): boolean {
+  return input.previewStale || input.jobStatus === "needs-rebase" || input.failureReason === "needs-rebase";
 }
 
 export function publicationSuccessKind(

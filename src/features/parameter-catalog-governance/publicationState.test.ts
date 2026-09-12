@@ -15,6 +15,7 @@ import {
   publicationFailureCopy,
   publicationFieldError,
   publicationJobIsPending,
+  publicationMustRePreview,
   publicationPreviewIsStale,
   publicationStatusCopy,
   publicationSuccessKind
@@ -103,5 +104,40 @@ describe("publication operator state", () => {
     expect(gate.begin()).toBe(false);
     gate.finish();
     expect(gate.begin()).toBe(true);
+  });
+
+  it("requires a new preview when the candidate is stale or needs-rebase", () => {
+    const draft = { ...emptyPublicationDraft(), propertyKey: "iin_hold" };
+    expect(
+      publicationMustRePreview({
+        previewStale: publicationPreviewIsStale(fingerprintPublicationDraft(draft), {
+          ...draft,
+          documentation: "changed"
+        }),
+        jobStatus: "queued",
+        failureReason: null
+      })
+    ).toBe(true);
+    expect(
+      publicationMustRePreview({
+        previewStale: false,
+        jobStatus: "needs-rebase",
+        failureReason: null
+      })
+    ).toBe(true);
+    expect(
+      publicationMustRePreview({
+        previewStale: false,
+        jobStatus: "queued",
+        failureReason: "needs-rebase"
+      })
+    ).toBe(true);
+    expect(
+      publicationMustRePreview({
+        previewStale: false,
+        jobStatus: "queued",
+        failureReason: null
+      })
+    ).toBe(false);
   });
 });

@@ -7,6 +7,9 @@ export function catalogTestCapabilitiesForUser(
   userId: string,
   env: Record<string, string | undefined> = process.env
 ): BackendPermission[] {
+  if (env.AUTH_MODE === "production" || env.NODE_ENV === "production") {
+    return [];
+  }
   const raw = env.WISEEFF_CATALOG_TEST_CAPABILITIES?.trim();
   if (!raw || !userId.trim()) {
     return [];
