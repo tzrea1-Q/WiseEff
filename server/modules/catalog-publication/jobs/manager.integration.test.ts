@@ -148,4 +148,109 @@ describe("CP-07 publication manager production seam", () => {
     expect(snapshot.current).toBe(prepared.candidate.expectedBaseReleaseId);
     expect(snapshot.receiptKinds).not.toContain("online-publication");
   });
+
+  it("clears the activation timer when execute wins and does not unhandled-reject later", async () => {
+    await provisionOnlineActivation(pool, client, "iin_tmr1");
+    const rejections: unknown[] = [];
+    const onReject = (reason: unknown) => {
+      rejections.push(reason);
+    };
+    process.on("unhandledRejection", onReject);
+    const events: string[] = [];
+    try {
+      const claimed = await runPublicationManagerOnce({
+        db,
+        pool,
+        installer: createCatalogInstaller(pool),
+        resolvePublisherActor: async () => userActor("user-catalog-publisher", publisherPermissions),
+        ownerId: "manager-timer-cleared",
+        activationTimeoutMs: 200,
+        log: (fields) => {
+          if (typeof fields.event === "string") events.push(fields.event);
+        },
+      });
+      expect(claimed).toBe("claimed");
+      expect(events).toContain("activated");
+      expect(events).not.toContain("activation-timeout");
+      await new Promise((resolve) => setTimeout(resolve, 350));
+      expect(rejections).toEqual([]);
+    } finally {
+      process.off("unhandledRejection", onReject);
+    }
+  });
+
+  it("reconciles from Receipt when the activation timeout wins and does not crash", async () => {
+    const prepared = await provisionOnlineActivation(pool, client, "iin_tmr2");
+    const inner = createCatalogInstaller(pool);
+    let hangReleased!: () => void;
+    const hang = new Promise<void>((resolve) => {
+      hangReleased = resolve;
+    });
+    const hangingInstaller = {
+      installPublishedRelease: async (
+        command: Parameters<typeof inner.installPublishedRelease>[0],
+      ) => {
+        const result = await inner.installPublishedRelease(command);
+        await hang;
+        return result;
+      },
+      switchBackBeforeTraffic: inner.switchBackBeforeTraffic.bind(inner),
+    };
+    const rejections: unknown[] = [];
+    const onReject = (reason: unknown) => {
+      rejections.push(reason);
+    };
+    process.on("unhandledRejection", onReject);
+    const events: Array<Record<string, string | number | boolean | null>> = [];
+    try {
+      const claimed = await runPublicationManagerOnce({
+        db,
+        pool,
+        installer: hangingInstaller,
+        resolvePublisherActor: async () => userActor("user-catalog-publisher", publisherPermissions),
+        ownerId: "manager-timer-wins",
+        activationTimeoutMs: 40,
+        log: (fields) => {
+          events.push(fields);
+        },
+      });
+      expect(claimed).toBe("claimed");
+      expect(events.some((entry) => entry.event === "activation-timeout")).toBe(true);
+      const receipt = await withPublicationCoordinator(db, (tx) => getReceiptByJobId(tx, prepared.job.id));
+      expect(receipt.ok).toBe(true);
+      const job = await withPublicationCoordinator(db, (tx) => getJob(tx, prepared.job.id));
+      expect(job.ok && job.value.status).toBe("active");
+      hangReleased();
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      expect(rejections).toEqual([]);
+    } finally {
+      hangReleased();
+      process.off("unhandledRejection", onReject);
+    }
+  });
+
+  it("does not label a thrown execute failure as activation-timeout", async () => {
+    await provisionOnlineActivation(pool, client, "iin_tmr3");
+    const events: string[] = [];
+    const claimed = await runPublicationManagerOnce({
+      db,
+      pool,
+      installer: {
+        installPublishedRelease: async () => {
+          throw new Error("installer-boom");
+        },
+        switchBackBeforeTraffic: async () => {
+          throw new Error("installer-boom");
+        },
+      },
+      resolvePublisherActor: async () => userActor("user-catalog-publisher", publisherPermissions),
+      ownerId: "manager-exec-error",
+      activationTimeoutMs: 5_000,
+      log: (fields) => {
+        if (typeof fields.event === "string") events.push(fields.event);
+      },
+    });
+    expect(claimed).toBe("claimed");
+    expect(events).not.toContain("activation-timeout");
+  });
 });

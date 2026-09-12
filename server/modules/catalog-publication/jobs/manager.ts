@@ -140,22 +140,51 @@ export async function runPublicationManagerOnce(options: PublicationManagerOptio
   });
 
   const activationTimeoutMs = options.activationTimeoutMs ?? DEFAULT_ACTIVATION_TIMEOUT_MS;
+  const work = executeClaimedPublicationJob({
+    db: options.db,
+    pool: options.pool,
+    installer: options.installer,
+    claimed: claimed.value,
+    resolvePublisherActor: options.resolvePublisherActor,
+    retryBudget,
+  });
+  void work.catch(() => undefined);
+
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  let timeoutWon = false;
+  const timeout = new Promise<"activation-timeout">((resolve) => {
+    timer = setTimeout(() => {
+      timeoutWon = true;
+      resolve("activation-timeout");
+    }, activationTimeoutMs);
+  });
+  void timeout.catch(() => undefined);
+
   let executed: Awaited<ReturnType<typeof executeClaimedPublicationJob>>;
   try {
-    executed = await Promise.race([
-      executeClaimedPublicationJob({
-        db: options.db,
-        pool: options.pool,
-        installer: options.installer,
-        claimed: claimed.value,
-        resolvePublisherActor: options.resolvePublisherActor,
-        retryBudget,
-      }),
-      new Promise<never>((_, reject) => {
-        setTimeout(() => reject(new Error("activation-timeout")), activationTimeoutMs);
-      }),
-    ]);
-  } catch {
+    const winner = await Promise.race([work, timeout]);
+    if (timer !== undefined && !timeoutWon) {
+      clearTimeout(timer);
+    }
+    if (winner === "activation-timeout") {
+      const recovered = await withPublicationCoordinator(options.db, (tx) =>
+        recoverPublicationJobFromReceipt(tx, options.pool, claimed.value),
+      );
+      executed = recovered ?? { kind: "settled", job: claimed.value };
+      log({
+        jobId: claimed.value.id,
+        fence: claimed.value.fencingToken,
+        attempt: claimed.value.attemptCount,
+        event: "activation-timeout",
+        reasonClass: "timeout",
+      });
+    } else {
+      executed = winner;
+    }
+  } catch (error) {
+    if (timer !== undefined) {
+      clearTimeout(timer);
+    }
     const recovered = await withPublicationCoordinator(options.db, (tx) =>
       recoverPublicationJobFromReceipt(tx, options.pool, claimed.value),
     );
@@ -164,8 +193,8 @@ export async function runPublicationManagerOnce(options: PublicationManagerOptio
       jobId: claimed.value.id,
       fence: claimed.value.fencingToken,
       attempt: claimed.value.attemptCount,
-      event: "activation-timeout",
-      reasonClass: "timeout",
+      event: "execute-error",
+      reasonClass: error instanceof Error ? error.name : "unknown",
     });
   }
 
