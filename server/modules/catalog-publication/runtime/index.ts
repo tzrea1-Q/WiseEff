@@ -15,8 +15,12 @@ export {
   captureCurrentCatalogPin,
   createPinCapturingCatalogRuntime,
 } from "./pinCache";
-export { evaluateDualFactReadiness } from "./readiness";
-export type { DualFactReadinessQuery } from "./readiness";
+export {
+  CATALOG_PUBLICATION_DATA_MODE_ENV,
+  evaluateDualFactReadiness,
+  resolveCatalogPublicationRuntimeOptions,
+} from "./readiness";
+export type { CatalogPublicationRuntimeOptions, DualFactReadinessQuery } from "./readiness";
 export { pinOf } from "./types";
 export type {
   ApplicationFact,

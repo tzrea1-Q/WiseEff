@@ -13,6 +13,7 @@ import {
   quoteIdent,
 } from "../../catalog-kernel/security/catalogRoleManifest";
 import type { AdoptedPreexistingEvidence } from "../../catalog-kernel/interface";
+import { compileCatalogRelease, isCatalogReleaseBundle } from "../../catalog-kernel/compiler/index";
 import { installPublishedRelease } from "../../catalog-kernel/install/installer";
 import {
   readCurrentCatalogPointer,
@@ -68,6 +69,30 @@ export const adoptPreexistingCatalog = async (
   }
   if (input.sourceBytes.byteLength === 0) {
     return invalid("adoption source bytes are missing");
+  }
+
+  let bundle;
+  try {
+    const text = new TextDecoder("utf-8", { fatal: true }).decode(input.sourceBytes);
+    const parsed: unknown = JSON.parse(text);
+    if (!isCatalogReleaseBundle(parsed)) {
+      return invalid("adoption source bytes are not a catalog release bundle");
+    }
+    bundle = parsed;
+  } catch {
+    return invalid("adoption source bytes are unreadable");
+  }
+  const compiled = compileCatalogRelease(bundle);
+  if (!compiled.ok) {
+    return invalid("adoption source bytes failed to compile");
+  }
+  if (
+    compiled.value.aggregateDigest !== input.artifactDigest ||
+    compiled.value.release.id !== input.expectedCurrent.id ||
+    compiled.value.release.digest !== input.expectedCurrent.digest ||
+    compiled.value.aggregateDigest !== input.expectedCurrent.digest
+  ) {
+    return invalid("compiled adoption artifact does not match the expected current pin");
   }
 
   const pointer = await readCurrentCatalogPointer(pool);

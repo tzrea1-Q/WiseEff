@@ -22,6 +22,13 @@ import {
  * only: every new operation re-reads the database current pointer before using
  * a cache entry. An in-flight loadCurrentCatalog(expectedOldPin) fails closed
  * instead of mixing heads.
+ *
+ * Production current-catalog consumers wrapped here: Catalog HTTP
+ * (productionWire), ingest `loadPublishedCatalog`, governance
+ * `assertCurrentPin`. Remaining production kernel loads are pinned-only
+ * (`loadPinnedCatalog` / historical binding releases) or test fixtures:
+ * projectReadAdapter, catalogProjectValueSync pinned path, comparison
+ * contributions, dts-reload CatalogRuntime probe, verification API evidence.
  */
 export class DigestKeyedCatalogRuntimeCache {
   private readonly current = new Map<string, CurrentCatalogSnapshot>();

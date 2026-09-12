@@ -2,9 +2,13 @@ import pg from "pg";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { createCatalogKernel } from "../../catalog-kernel/interface";
-import { installPublishedRelease } from "../../catalog-kernel/install/installer";
+import {
+  installPublishedRelease,
+  installPublishedReleaseForTests,
+} from "../../catalog-kernel/install/installer";
 import {
   bootstrapFirstAcme,
+  buildAuthorizedJob,
   connect,
   domainSnapshot,
   persistPredecessorArtifact,
@@ -64,6 +68,20 @@ describe("catalog publication dual-fact readiness", () => {
     await observer?.end().catch(() => undefined);
     await pool?.end().catch(() => undefined);
     await database?.drop();
+  });
+
+  it("treats populated dual-fact without an application pin as not ready and does not invent P13", async () => {
+    await bootstrapFirstAcme(pool);
+    const dual = await evaluateDualFactReadiness(pool, { dataMode: "populated" });
+    expect(dual.status).toBe("not-ready");
+    if (dual.status !== "not-ready") return;
+    expect(dual.onlinePublicationReady).toBe(false);
+    expect(dual.reasons).toContain("application-pin-absent");
+    expect(dual.application).not.toEqual({
+      kind: "new-empty-without-p13",
+      claimsP13Retired: false,
+    });
+    expect(JSON.stringify(dual)).not.toContain("claimsP13Retired\":true");
   });
 
   it("treats new-empty canonical-installed without a Receipt as not online-publication-ready and does not claim P13", async () => {
@@ -194,5 +212,122 @@ describe("catalog publication dual-fact readiness", () => {
     expect(result.error.kind).toBe("privilege");
     expect(JSON.stringify(result)).not.toMatch(/postgres:\/\//);
     expect(JSON.stringify(result)).not.toContain(database.url);
+  });
+});
+
+describe("catalog publication freeze vs in-flight activation T22", () => {
+  let database: EphemeralTestDatabase;
+  let pool: pg.Pool;
+  let observer: pg.Client;
+
+  beforeEach(async () => {
+    database = await createEphemeralTestDatabase("cp06t22");
+    pool = new pg.Pool({ connectionString: database.url, max: 4 });
+    observer = await connect(database.url);
+  }, 60_000);
+
+  afterEach(async () => {
+    await observer?.end().catch(() => undefined);
+    await pool?.end().catch(() => undefined);
+    await database?.drop();
+  });
+
+  it("linearizes freeze behind an in-flight activation that already holds the guard", async () => {
+    const prepared = await provisionOnlineActivation(pool, observer, "iin_t22a");
+    const second = await buildAuthorizedJob(observer, {
+      predecessorDigest: prepared.predecessor.digest,
+      propertyKey: "iin_t22b",
+    });
+    const freezer = await connect(database.url);
+    let releaseActivation: (() => void) | undefined;
+    try {
+      const held = new Promise<void>((resolve) => {
+        releaseActivation = resolve;
+      });
+      let guardHeld = false;
+      const activating = installPublishedReleaseForTests(pool, prepared.command, {
+        afterGuard: async () => {
+          guardHeld = true;
+          await held;
+        },
+      });
+
+      const deadline = Date.now() + 5_000;
+      while (!guardHeld && Date.now() < deadline) {
+        await new Promise((resolve) => setTimeout(resolve, 20));
+      }
+      expect(guardHeld).toBe(true);
+
+      const freezing = asCoordinator(freezer, async () =>
+        setPublicationFreeze(asQueryable(freezer), {
+          frozen: true,
+          actorPrincipalId: PUBLISHER,
+        }),
+      );
+
+      const waitingDeadline = Date.now() + 1_500;
+      let sawWait = false;
+      while (Date.now() < waitingDeadline) {
+        const waiting = await observer.query<{ waiting: boolean }>(
+          `select exists (
+             select 1 from pg_catalog.pg_stat_activity
+             where datname = current_database()
+               and wait_event_type = 'Lock'
+               and pid <> pg_backend_pid()
+           ) as waiting`,
+        );
+        if (waiting.rows[0]?.waiting) {
+          sawWait = true;
+          break;
+        }
+        await new Promise((resolve) => setTimeout(resolve, 20));
+      }
+      expect(sawWait).toBe(true);
+      releaseActivation?.();
+
+      const activated = await activating;
+      const frozen = await freezing;
+      expect(frozen.ok).toBe(true);
+      if (!frozen.ok) return;
+      expect(frozen.value.frozen).toBe(true);
+
+      const freezeRow = await observer.query<{ frozen: boolean; updated_at: Date }>(
+        `select frozen, updated_at from catalog_publication.publication_freeze where singleton`,
+      );
+      expect(freezeRow.rows[0]?.frozen).toBe(true);
+
+      const receipts = await observer.query<{ created_at: Date }>(
+        `select created_at from parameter_catalog.catalog_activation_receipts order by created_at, id`,
+      );
+      if (receipts.rows.length > 0) {
+        expect(activated.ok).toBe(true);
+        expect(receipts.rows[0]!.created_at.getTime()).toBeLessThanOrEqual(
+          freezeRow.rows[0]!.updated_at.getTime(),
+        );
+      }
+
+      const afterFreeze = await installPublishedRelease(pool, second.command);
+      expect(afterFreeze.ok).toBe(false);
+      if (afterFreeze.ok) return;
+      expect(afterFreeze.error).toMatchObject({
+        kind: "publication-not-authorized",
+        reason: "publication-frozen",
+      });
+      const jobs = await observer.query<{ status: string }>(
+        `select status from catalog_publication.publication_jobs order by created_at, id`,
+      );
+      expect(jobs.rows.length).toBe(2);
+      expect(jobs.rows.every((row) => row.status !== "")).toBe(true);
+
+      await asCoordinator(observer, async () =>
+        setPublicationFreeze(asQueryable(observer), {
+          frozen: false,
+          actorPrincipalId: PUBLISHER,
+        }),
+      );
+    } finally {
+      releaseActivation?.();
+      await freezer.end().catch(() => undefined);
+    }
   });
 });

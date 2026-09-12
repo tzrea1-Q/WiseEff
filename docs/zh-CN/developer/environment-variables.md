@@ -14,6 +14,7 @@
 | `DATABASE_URL` | 本地 PostgreSQL URL | migrations、seeds、API mode、E2E | PostgreSQL 是产品化数据源。Catalog launch lane 不得使用默认 compose URL `postgres://wiseeff:wiseeff@127.0.0.1:5432/wiseeff`；应使用 `npm run catalog:lane:env -- provision --issue <n>`（`wiseeff_lane_<n>`，`127.0.0.1:55438`）。 |
 | `TEST_DATABASE_URL` | 未设置 | Catalog/server 集成测试 | 设置后 catalog harness 与 `catalog:lane:accept` 优先于 `DATABASE_URL`。必须仍是真实 pgvector PostgreSQL，不能是共享 compose 应用库。 |
 | `CATALOG_BASELINE_READONLY_DATABASE_URL` | 未设置 | Catalog 发布基线只读采集 | 仅供 `scripts/inspect-catalog-publication-baseline.ts` 使用的只读 DSN。采集器拒绝 `DATABASE_URL`，要求 `SET TRANSACTION READ ONLY`，若角色对 Catalog/publication 有 INSERT/UPDATE/DELETE 则失败，绝不打印 DSN，也不插入 Artifact。 |
+| `WISEEFF_CATALOG_PUBLICATION_DATA_MODE` | `new-empty` | Catalog 双事实就绪 | Catalog HTTP 与 `/health/ready` catalogPublication 的组合边界 data mode。`populated` 要求真实已批准 runtime pin 且绑定当前 Catalog，不伪造 P13。默认 `new-empty` 不声称 P13 已退役。 |
 | `WISEEFF_API_BASE_URL` | `http://127.0.0.1:8787` | smoke clients | M5/M6 smoke 脚本使用。 |
 | `VITE_WISEEFF_RUNTIME_MODE` | `api`（代码默认与 `.env.example`） | 前端 runtime | `npm run dev` / `npm run dev:all` 也会注入 `api`。前端-only demo/test 可设为 `mock`。 |
 | `VITE_WISEEFF_API_BASE_URL` | `http://127.0.0.1:8787` | 前端 API runtime | 必须指向 API 进程。 |

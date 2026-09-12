@@ -21,6 +21,8 @@ describe("production Catalog composition import ratchet", () => {
     expect(source).toContain("createPinCapturingCatalogRuntime");
     expect(source).toContain("evaluateDualFactReadiness");
     expect(source).toContain("createStartupRuntimePin");
+    expect(source).toContain("resolveCatalogPublicationRuntimeOptions");
+    expect(source).not.toMatch(/evaluateDualFactReadiness\([\s\S]*dataMode:\s*"new-empty"/);
     expect(source).not.toContain("WiseEff Agent");
     expect(source).not.toContain('startsWith("agt-")');
   });

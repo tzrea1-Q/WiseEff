@@ -10,6 +10,8 @@ import {
   captureCurrentCatalogPin,
   createPinCapturingCatalogRuntime,
   evaluateDualFactReadiness,
+  resolveCatalogPublicationRuntimeOptions,
+  type CatalogPublicationRuntimeOptions,
 } from "../catalog-publication/runtime";
 import { createStartupRuntimePin } from "../release-verification/report/service";
 import {
@@ -189,12 +191,12 @@ const notReady = (): CatalogReadinessResult => ({
 const createKernelReadiness = (
   kernel: CatalogKernel,
   pool: pg.Pool,
-  db?: Database,
+  db: Database | undefined,
+  catalogPublication: CatalogPublicationRuntimeOptions,
 ): CatalogReadPorts["readiness"] => {
+  const runtimeOptions = resolveCatalogPublicationRuntimeOptions(catalogPublication);
+  const startupPin = db ? createStartupRuntimePin({ db }) : undefined;
   const current = async (): Promise<CatalogReadinessResult> => {
-    if (db) {
-      createStartupRuntimePin({ db });
-    }
     const pointer = await readCurrentCatalogPointer(pool);
     if (pointer.kind !== "installed") {
       // An absent pointer alone also describes an interrupted installation.
@@ -209,15 +211,30 @@ const createKernelReadiness = (
     ) {
       return notReady();
     }
-    const dual = await evaluateDualFactReadiness(pool, { dataMode: "new-empty" });
+    const dual = await evaluateDualFactReadiness(
+      pool,
+      {
+        dataMode: runtimeOptions.dataMode,
+        application: runtimeOptions.application,
+        readApprovedRuntimePin: startupPin?.readApprovedRuntimePin,
+      },
+      db,
+    );
     if (dual.status === "not-ready") {
-      const catalogReasons = dual.reasons.filter(
-        (reason) =>
+      const catalogReasons = dual.reasons.filter((reason) => {
+        if (
           reason === "missing-receipt" ||
           reason === "receipt-pin-mismatch" ||
           reason === "artifact-pin-mismatch" ||
-          reason === "unsupported-catalog-capability",
-      );
+          reason === "unsupported-catalog-capability"
+        ) {
+          return true;
+        }
+        return (
+          runtimeOptions.dataMode === "populated" &&
+          (reason === "application-pin-absent" || reason === "application-pin-catalog-mismatch")
+        );
+      });
       if (catalogReasons.length > 0) {
         return notReady();
       }
@@ -299,7 +316,8 @@ const lookupChooseParentDestinationModule = async (
 const createReadPorts = (
   pool: pg.Pool | undefined,
   resolveAuth: CatalogApiAuthResolver,
-  db?: Database,
+  db: Database | undefined,
+  catalogPublication: CatalogPublicationRuntimeOptions,
 ): CatalogReadPorts => {
   if (!pool) {
     return {
@@ -325,7 +343,7 @@ const createReadPorts = (
   const usage = createUsageQueries(pool);
   return {
     runtime,
-    readiness: createKernelReadiness(runtime, pool, db),
+    readiness: createKernelReadiness(runtime, pool, db, catalogPublication),
     registration: createRegistrationProjectionFromQueries(queries),
     usage: createUsageProjectionFromQueries(usage),
     timeline: kernelOnlyTimelineComposer,
@@ -466,10 +484,14 @@ export const registerParameterCatalogApi = (
   options: {
     readonly db?: Database;
     readonly resolveAuth: CatalogApiAuthResolver;
+    readonly catalogPublication?: CatalogPublicationRuntimeOptions;
   },
 ): void => {
   const pool = getRootPostgresPool(options.db);
-  registerCatalogReadRoutes(router, createReadPorts(pool, options.resolveAuth, options.db));
+  registerCatalogReadRoutes(
+    router,
+    createReadPorts(pool, options.resolveAuth, options.db, options.catalogPublication ?? {}),
+  );
   registerCatalogGovernanceRoutes(router, createGovernancePorts(pool, options.resolveAuth));
   registerCatalogLegacyRoutes(router, createLegacyOptions(options.db, pool, options.resolveAuth));
 };

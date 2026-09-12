@@ -266,7 +266,8 @@ export function registerOperationsRoutes(
       env: options.env,
       durableQueue: options.durableQueue,
       includeWorkerQueue: true,
-      includeNotificationOutbox: options.env?.NOTIFICATION_WORKER_ENABLED === true
+      includeNotificationOutbox: options.env?.NOTIFICATION_WORKER_ENABLED === true,
+      catalogPublication: { env: process.env },
     })
   );
 
@@ -289,7 +290,8 @@ export function registerOperationsRoutes(
       includeWorkerQueue: true,
       includeNotificationOutbox: options.env?.NOTIFICATION_WORKER_ENABLED === true,
       durableQueue: options.durableQueue,
-      env
+      env,
+      catalogPublication: { env: process.env },
     });
     const dependencies = readyHealth.body.dependencies;
 

@@ -9,6 +9,8 @@ import {
   PUBLISHER,
 } from "../../catalog-kernel/install/publicationTestHarness";
 import { CatalogReleaseDigest } from "../../parameter-catalog-contract/index";
+import { asQueryable } from "../persistence/integrationHarness";
+import { getArtifactByDigest } from "../persistence/store";
 import {
   createEphemeralTestDatabase,
   createInMemoryTestDatabase,
@@ -161,5 +163,72 @@ describe("catalog publication adoption adapter (synthetic fixture)", () => {
     });
     expect(missing.ok).toBe(false);
     expect(await domainSnapshot(observer)).toEqual(before);
+  });
+
+  it("refuses forged bytes that claim the current digest and does not poison the artifact row", async () => {
+    const predecessor = await bootstrapFirstAcme(pool);
+    const before = await domainSnapshot(observer);
+    const fingerprint = await observer.query<{ compiled_fingerprint: string }>(
+      `select compiled_fingerprint from parameter_catalog.catalog_materializations where release_id = $1`,
+      [predecessor.compiled.release.id],
+    );
+    const forged = await adoptPreexistingCatalog(pool, {
+      expectedCurrent: {
+        id: predecessor.compiled.release.id,
+        digest: predecessor.digest,
+      },
+      actorPrincipalId: PUBLISHER,
+      sourceBytes: new TextEncoder().encode(
+        JSON.stringify({ schemaVersion: "1.0.0", forged: true, digest: predecessor.digest }),
+      ),
+      artifactDigest: predecessor.digest,
+      evidenceKind: "synthetic-fixture",
+      adoptionEvidence: {
+        source_bundle_digest: predecessor.digest,
+        verification_digest: fingerprint.rows[0]!.compiled_fingerprint,
+        data_mode: "fresh",
+        collected_at: "2026-09-12T00:00:00.000Z",
+        approved_by: PUBLISHER,
+      },
+    });
+    expect(forged.ok).toBe(false);
+    if (forged.ok) return;
+    expect(forged.error.kind).toBe("adoption-evidence-invalid");
+    const poisoned = await getArtifactByDigest(asQueryable(observer), predecessor.digest);
+    expect(poisoned.ok).toBe(false);
+    if (!poisoned.ok) {
+      expect(poisoned.error.kind).toBe("not-found");
+    }
+    expect(await domainSnapshot(observer)).toEqual(before);
+
+    const trueBundle = await adoptPreexistingCatalog(pool, {
+      expectedCurrent: {
+        id: predecessor.compiled.release.id,
+        digest: predecessor.digest,
+      },
+      actorPrincipalId: PUBLISHER,
+      sourceBytes: predecessor.bytes,
+      artifactDigest: predecessor.digest,
+      evidenceKind: "synthetic-fixture",
+      adoptionEvidence: {
+        source_bundle_digest: predecessor.digest,
+        verification_digest: fingerprint.rows[0]!.compiled_fingerprint,
+        data_mode: "fresh",
+        collected_at: "2026-09-12T00:00:00.000Z",
+        approved_by: PUBLISHER,
+      },
+    });
+    expect(trueBundle.ok).toBe(true);
+    if (!trueBundle.ok) return;
+    expect(["installed", "already-recorded"]).toContain(trueBundle.value.status);
+    const stored = await getArtifactByDigest(asQueryable(observer), predecessor.digest);
+    expect(stored.ok).toBe(true);
+    if (!stored.ok) return;
+    expect(Buffer.from(stored.value.artifactBytes)).toEqual(Buffer.from(predecessor.bytes));
+    const after = await domainSnapshot(observer);
+    expect(after.current).toBe(before.current);
+    expect(after.currentDigest).toBe(before.currentDigest);
+    expect(after.bindings).toBe(before.bindings);
+    expect(after.projectValues).toBe(before.projectValues);
   });
 });

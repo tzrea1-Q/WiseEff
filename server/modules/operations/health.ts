@@ -1,5 +1,11 @@
 import { getRootPostgresPool, type Database } from "../../shared/database/client";
-import { evaluateDualFactReadiness } from "../catalog-publication/runtime";
+import {
+  evaluateDualFactReadiness,
+  resolveCatalogPublicationRuntimeOptions,
+  type CatalogPublicationRuntimeOptions,
+  type DualFactReadiness,
+} from "../catalog-publication/runtime";
+import { createStartupRuntimePin } from "../release-verification/report/service";
 import type { ResolvedXiaozeLlmConfig } from "../../config/xiaozeLlmConfig";
 import { buildDurableQueueHealth, type CombinedDurableQueueHealth } from "../jobs/queueHealth";
 import type { DurableQueueHealth } from "../jobs/queuePort";
@@ -256,6 +262,19 @@ async function checkDtsToolchain(): Promise<DependencyHealth> {
   }
 }
 
+export function catalogPublicationDependencyHealth(dual: DualFactReadiness): DependencyHealth {
+  const reasons =
+    dual.status === "not-ready" ? dual.reasons.join(",") : dual.status;
+  return {
+    ok: dual.onlinePublicationReady,
+    status: dual.onlinePublicationReady ? "ready" : dual.status === "unpublished" ? "missing" : "failed",
+    message: dual.onlinePublicationReady
+      ? "Catalog dual-fact online publication ready."
+      : `Catalog is not online-publication-ready (${reasons}). Drain of old images is CP-12.`,
+    details: { onlinePublicationReady: dual.onlinePublicationReady },
+  };
+}
+
 export async function buildReadyHealth(options: {
   db?: Pick<Database, "query">;
   objectStore?: ObjectStoreHealthCheck;
@@ -264,6 +283,7 @@ export async function buildReadyHealth(options: {
   includeDtsToolchain?: boolean;
   durableQueue?: DurableQueueHealthCheck;
   env?: XiaozeLlmEnv & LogAnalysisLlmEnv;
+  catalogPublication?: DualFactReadiness | CatalogPublicationRuntimeOptions;
 }) {
   const database = await checkDatabase(options.db);
   const objectStore = await checkObjectStore(options.objectStore);
@@ -277,7 +297,7 @@ export async function buildReadyHealth(options: {
       ? buildDurableQueueHealth({ transport: durableQueueTransport, database: workerQueue })
       : undefined;
   const dtsToolchain = options.includeDtsToolchain === false ? undefined : await checkDtsToolchain();
-  const catalogPublication = await checkCatalogPublication(options.db);
+  const catalogPublication = await checkCatalogPublication(options.db, options.catalogPublication);
   const ok =
     database.ok &&
     objectStore.ok &&
@@ -310,22 +330,37 @@ export async function buildReadyHealth(options: {
   };
 }
 
-async function checkCatalogPublication(db?: Pick<Database, "query">): Promise<DependencyHealth | undefined> {
+const isDualFactReadiness = (
+  value: DualFactReadiness | CatalogPublicationRuntimeOptions,
+): value is DualFactReadiness =>
+  "onlinePublicationReady" in value && "status" in value;
+
+async function checkCatalogPublication(
+  db?: Pick<Database, "query">,
+  catalogPublication?: DualFactReadiness | CatalogPublicationRuntimeOptions,
+): Promise<DependencyHealth | undefined> {
+  if (catalogPublication && isDualFactReadiness(catalogPublication)) {
+    return catalogPublicationDependencyHealth(catalogPublication);
+  }
   if (!db) return undefined;
   const pool = getRootPostgresPool(db as Database);
   if (!pool) return undefined;
   try {
-    const dual = await evaluateDualFactReadiness(pool, { dataMode: "new-empty" });
-    const reasons =
-      dual.status === "not-ready" ? dual.reasons.join(",") : dual.status;
-    return {
-      ok: true,
-      status: dual.onlinePublicationReady ? "ready" : dual.status === "unpublished" ? "missing" : "failed",
-      message: dual.onlinePublicationReady
-        ? "Catalog dual-fact online publication ready."
-        : `Catalog is not online-publication-ready (${reasons}). Drain of old images is CP-12.`,
-      details: { onlinePublicationReady: dual.onlinePublicationReady },
-    };
+    const runtime = resolveCatalogPublicationRuntimeOptions({
+      ...(catalogPublication ?? {}),
+      env: catalogPublication && "env" in catalogPublication ? catalogPublication.env : process.env,
+    });
+    const startupPin = createStartupRuntimePin({ db: db as Database });
+    const dual = await evaluateDualFactReadiness(
+      pool,
+      {
+        dataMode: runtime.dataMode,
+        application: runtime.application,
+        readApprovedRuntimePin: startupPin.readApprovedRuntimePin,
+      },
+      db as Database,
+    );
+    return catalogPublicationDependencyHealth(dual);
   } catch {
     return undefined;
   }

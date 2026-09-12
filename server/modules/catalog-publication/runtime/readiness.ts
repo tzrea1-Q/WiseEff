@@ -9,6 +9,7 @@ import {
   readApprovedCatalogPublicationRuntime,
   readApprovedRuntimePin,
   type RuntimePinQuery,
+  type RuntimePinResult,
 } from "../../release-verification/report/runtimePin";
 import { systemRetentionClock, type RetentionClock } from "../../release-verification/report/retention";
 import { digestOf } from "../../release-verification/core/digest";
@@ -23,10 +24,32 @@ import {
   type DualFactReadiness,
 } from "./types";
 
+export const CATALOG_PUBLICATION_DATA_MODE_ENV = "WISEEFF_CATALOG_PUBLICATION_DATA_MODE";
+
+export type CatalogPublicationRuntimeOptions = {
+  readonly dataMode?: "new-empty" | "populated";
+  readonly application?: RuntimePinQuery;
+  readonly env?: NodeJS.Dict<string>;
+};
+
 export type DualFactReadinessQuery = {
   readonly dataMode: "new-empty" | "populated";
   readonly application?: RuntimePinQuery;
   readonly clock?: RetentionClock;
+  readonly readApprovedRuntimePin?: (query: RuntimePinQuery) => Promise<RuntimePinResult>;
+};
+
+export const resolveCatalogPublicationRuntimeOptions = (
+  input: CatalogPublicationRuntimeOptions = {},
+): { readonly dataMode: "new-empty" | "populated"; readonly application?: RuntimePinQuery } => {
+  if (input.dataMode === "populated" || input.dataMode === "new-empty") {
+    return { dataMode: input.dataMode, application: input.application };
+  }
+  const fromEnv = input.env?.[CATALOG_PUBLICATION_DATA_MODE_ENV]?.trim();
+  if (fromEnv === "populated" || fromEnv === "new-empty") {
+    return { dataMode: fromEnv, application: input.application };
+  }
+  return { dataMode: "new-empty", application: input.application };
 };
 
 const asQueryable = (pool: pg.Pool): Queryable => ({
@@ -124,7 +147,9 @@ const evaluateApplicationFact = async (
       reasons: [],
     };
   }
-  const runtime = await readApprovedRuntimePin(db, query.application, clock);
+  const runtime = query.readApprovedRuntimePin
+    ? await query.readApprovedRuntimePin(query.application)
+    : await readApprovedRuntimePin(db, query.application, clock);
   if (runtime.kind !== "present") {
     return { reasons: ["application-pin-absent"] };
   }
