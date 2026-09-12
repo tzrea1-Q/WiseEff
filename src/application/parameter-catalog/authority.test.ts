@@ -2,8 +2,10 @@ import { describe, expect, it } from "vitest";
 
 import {
   catalogActionsForActor,
+  catalogActionsForSession,
   catalogActorForRole,
   catalogActorForSession,
+  catalogAuthorizedActions,
   isCatalogActionEnabled
 } from "./authority";
 import { catalogWritesEnabled, deriveCatalogDomainState } from "./states";
@@ -61,5 +63,50 @@ describe("catalog actor authority", () => {
     expect(isCatalogActionEnabled("org-admin", "resolve-review-item", loading)).toBe(false);
     expect(isCatalogActionEnabled("org-admin", "register-subject", loading)).toBe(false);
     expect(isCatalogActionEnabled("platform-admin", "accept-proposal", loading)).toBe(false);
+  });
+
+  it("does not grant catalog publication actions on the default org-admin or platform-admin matrix", () => {
+    expect(catalogAuthorizedActions).toEqual(
+      expect.arrayContaining([
+        "preview-publication",
+        "publish-publication",
+        "review-high-risk-publication"
+      ])
+    );
+    expect([...catalogActionsForActor("org-admin")]).not.toEqual(
+      expect.arrayContaining(["preview-publication", "publish-publication", "review-high-risk-publication"])
+    );
+    expect([...catalogActionsForActor("platform-admin")]).not.toEqual(
+      expect.arrayContaining(["preview-publication", "publish-publication", "review-high-risk-publication"])
+    );
+    expect(isCatalogActionEnabled("org-admin", "preview-publication", ready)).toBe(false);
+    expect(isCatalogActionEnabled("org-admin", "publish-publication", ready)).toBe(false);
+    expect(isCatalogActionEnabled("platform-admin", "publish-publication", ready)).toBe(false);
+  });
+
+  it("enables publication affordances from session permissions rather than admin role", () => {
+    expect(
+      [...catalogActionsForSession({ actor: "org-admin", permissions: ["catalog:author"] })]
+    ).toContain("preview-publication");
+    expect(
+      [...catalogActionsForSession({ actor: "user", permissions: ["catalog:publish"] })]
+    ).toContain("publish-publication");
+    expect(
+      [...catalogActionsForSession({ actor: "user", permissions: ["catalog:review-high-risk"] })]
+    ).toContain("review-high-risk-publication");
+    expect(isCatalogActionEnabled("user", "preview-publication", ready, ["catalog:author"])).toBe(true);
+    expect(isCatalogActionEnabled("user", "publish-publication", ready, ["catalog:publish"])).toBe(true);
+    expect(isCatalogActionEnabled("org-admin", "preview-publication", unregistered, ["catalog:author"])).toBe(
+      true
+    );
+    expect(isCatalogActionEnabled("org-admin", "preview-publication", loading, ["catalog:author"])).toBe(false);
+  });
+
+  it("keeps Agent read-only even when catalog publication permissions are injected", () => {
+    const injected = ["catalog:author", "catalog:publish", "catalog:review-high-risk"] as const;
+    expect([...catalogActionsForSession({ actor: "agent", permissions: injected })]).toEqual(["read"]);
+    expect(isCatalogActionEnabled("agent", "preview-publication", ready, injected)).toBe(false);
+    expect(isCatalogActionEnabled("agent", "publish-publication", ready, injected)).toBe(false);
+    expect(isCatalogActionEnabled("agent", "review-high-risk-publication", ready, injected)).toBe(false);
   });
 });

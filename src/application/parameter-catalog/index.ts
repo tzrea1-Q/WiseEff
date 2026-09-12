@@ -5,13 +5,16 @@ export {
 } from "./apiAdapter";
 export {
   catalogActionsForActor,
+  catalogActionsForSession,
   catalogActorForRole,
   catalogActorForSession,
   catalogActorKinds,
   catalogAuthorizedActions,
+  catalogPublicationPermissionByAction,
   isCatalogActionEnabled,
   type CatalogActorKind,
-  type CatalogAuthorizedAction
+  type CatalogAuthorizedAction,
+  type CatalogPublicationAction
 } from "./authority";
 export {
   CATALOG_PAGE_PATH,
@@ -56,6 +59,7 @@ export {
   createMockParameterCatalogGovernanceRepository,
   createMockParameterCatalogRepository,
   type CatalogMockOptions,
-  type CatalogMockScenario
+  type CatalogMockScenario,
+  type CatalogPublicationMockOutcome
 } from "./mockAdapter";
 export { requireConditionalWriteContext, requireIdempotentWriteContext } from "./writeContext";

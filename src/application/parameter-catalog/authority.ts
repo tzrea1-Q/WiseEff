@@ -14,9 +14,20 @@ export const catalogAuthorizedActions = [
   "submit-proposal",
   "withdraw-proposal",
   "accept-proposal",
-  "reject-proposal"
+  "reject-proposal",
+  "preview-publication",
+  "publish-publication",
+  "review-high-risk-publication"
 ] as const;
 export type CatalogAuthorizedAction = (typeof catalogAuthorizedActions)[number];
+
+export const catalogPublicationPermissionByAction = {
+  "preview-publication": "catalog:author",
+  "publish-publication": "catalog:publish",
+  "review-high-risk-publication": "catalog:review-high-risk"
+} as const;
+
+export type CatalogPublicationAction = keyof typeof catalogPublicationPermissionByAction;
 
 const ACTOR_ACTIONS: Record<CatalogActorKind, readonly CatalogAuthorizedAction[]> = {
   user: ["read"],
@@ -39,6 +50,25 @@ export function catalogActionsForActor(actor: CatalogActorKind): readonly Catalo
   return ACTOR_ACTIONS[actor];
 }
 
+export function catalogActionsForSession(input: {
+  actor: CatalogActorKind;
+  permissions?: readonly string[] | null;
+}): readonly CatalogAuthorizedAction[] {
+  if (input.actor === "agent") {
+    return catalogActionsForActor("agent");
+  }
+  const actions = [...catalogActionsForActor(input.actor)];
+  const permissions = new Set(input.permissions ?? []);
+  for (const [action, permission] of Object.entries(catalogPublicationPermissionByAction) as Array<
+    [CatalogPublicationAction, (typeof catalogPublicationPermissionByAction)[CatalogPublicationAction]]
+  >) {
+    if (permissions.has(permission) && !actions.includes(action)) {
+      actions.push(action);
+    }
+  }
+  return actions;
+}
+
 /** Map the live shell role onto Catalog authority. Agent is not a platform role. */
 export function catalogActorForRole(roleId: string): CatalogActorKind {
   if (roleId === "platform-admin") {
@@ -57,13 +87,21 @@ export function catalogActorForSession(input: { roleId?: string | null }): Catal
 export function isCatalogActionEnabled(
   actor: CatalogActorKind,
   action: CatalogAuthorizedAction,
-  state: CatalogDomainState
+  state: CatalogDomainState,
+  permissions?: readonly string[] | null
 ): boolean {
-  if (!ACTOR_ACTIONS[actor].includes(action)) {
+  if (!catalogActionsForSession({ actor, permissions }).includes(action)) {
     return false;
   }
   if (action === "read") {
     return true;
+  }
+  if (
+    action === "preview-publication" ||
+    action === "publish-publication" ||
+    action === "review-high-risk-publication"
+  ) {
+    return state.kind === "ready" || state.kind === "unregistered" || state.kind === "empty";
   }
   if (
     state.kind === "unregistered" &&

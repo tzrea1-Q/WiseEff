@@ -1,5 +1,5 @@
 import {
-  catalogActionsForActor,
+  catalogActionsForSession,
   isCatalogActionEnabled,
   type CatalogActorKind,
   type CatalogAuthorizedAction
@@ -25,16 +25,20 @@ export type CatalogActionAffordance = {
   disabledReason: string | null;
 };
 
-export function catalogMutationActionsForActor(actor: CatalogActorKind): CatalogAuthorizedAction[] {
-  return catalogActionsForActor(actor).filter((action) => action !== "read");
+export function catalogMutationActionsForActor(
+  actor: CatalogActorKind,
+  permissions?: readonly string[] | null
+): CatalogAuthorizedAction[] {
+  return catalogActionsForSession({ actor, permissions }).filter((action) => action !== "read");
 }
 
 export function catalogActionAffordances(
   actor: CatalogActorKind,
-  state: CatalogDomainState
+  state: CatalogDomainState,
+  permissions?: readonly string[] | null
 ): CatalogActionAffordance[] {
-  return catalogMutationActionsForActor(actor).map((action) => {
-    const enabled = isCatalogActionEnabled(actor, action, state);
+  return catalogMutationActionsForActor(actor, permissions).map((action) => {
+    const enabled = isCatalogActionEnabled(actor, action, state, permissions);
     return {
       action,
       label: catalogActionLabels[action],

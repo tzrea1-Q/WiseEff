@@ -1,0 +1,235 @@
+import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { afterEach, describe, expect, it, vi } from "vitest";
+
+import {
+  CATALOG_AUTHOR_PERSON_ID,
+  CATALOG_ORGANIZATION_ID,
+  CATALOG_RELEASE_ID,
+  CATALOG_SUBJECT_ID,
+  readyCatalogDocument
+} from "@/application/parameter-catalog/fixtures";
+import { createMockCatalogPorts } from "@/application/parameter-catalog/mockAdapter";
+import { deriveCatalogDomainState } from "@/application/parameter-catalog/states";
+import type { CatalogActorKind } from "@/application/parameter-catalog/authority";
+
+import { PublicationDialog } from "./PublicationDialog";
+import { PUBLICATION_JOB_STORAGE_KEY } from "./publicationJobStorage";
+
+const ready = deriveCatalogDomainState({ document: readyCatalogDocument });
+
+function renderDialog(
+  options: {
+    actor?: CatalogActorKind;
+    permissions?: readonly string[];
+    publicationOutcome?: "queued" | "active" | "active-superseded" | "needs-rebase" | "policy-disabled" | "frozen";
+    createIdempotencyKey?: () => string;
+  } = {}
+) {
+  const ports = createMockCatalogPorts({
+    publicationOutcome: options.publicationOutcome ?? "queued"
+  });
+  const createProposal = vi.spyOn(ports.governance, "createProposal");
+  const createCandidate = vi.spyOn(ports.catalog, "createPublicationCandidate");
+  const publish = vi.spyOn(ports.catalog, "publishPublicationCandidate");
+  const getPublication = vi.spyOn(ports.catalog, "getPublication");
+  const view = render(
+    <PublicationDialog
+      open
+      actor={options.actor ?? "user"}
+      sessionPermissions={options.permissions ?? ["catalog:author", "catalog:publish"]}
+      domainState={ready}
+      catalog={ports.catalog}
+      governance={ports.governance}
+      catalogReleaseId={CATALOG_RELEASE_ID}
+      currentPersonId={CATALOG_AUTHOR_PERSON_ID}
+      organizationId={CATALOG_ORGANIZATION_ID}
+      createIdempotencyKey={options.createIdempotencyKey ?? (() => "pub-key")}
+      onOpenChange={vi.fn()}
+    />
+  );
+  return { ...view, ports, createProposal, createCandidate, publish, getPublication };
+}
+
+async function fillSupportedDefinition(user: ReturnType<typeof userEvent.setup>) {
+  await user.selectOptions(await screen.findByLabelText("已发布主体"), CATALOG_SUBJECT_ID);
+  const propertyKey = screen.getByLabelText("属性键");
+  const displayName = screen.getByLabelText("显示名称");
+  const documentation = screen.getByLabelText("说明");
+  const reason = screen.getByLabelText("草稿原因");
+  await user.clear(propertyKey);
+  await user.type(propertyKey, "iin_hold");
+  await user.clear(displayName);
+  await user.type(displayName, "保持电流");
+  await user.clear(documentation);
+  await user.type(documentation, "最小保持电流。");
+  await user.clear(reason);
+  await user.type(reason, "新增保持电流定义");
+}
+
+async function confirm(label: string) {
+  const user = userEvent.setup();
+  const dialog = await screen.findByRole("dialog", { name: /确认/ });
+  await user.click(within(dialog).getByRole("checkbox"));
+  await user.click(within(dialog).getByRole("button", { name: label }));
+}
+
+describe("PublicationDialog", () => {
+  afterEach(() => {
+    cleanup();
+    window.localStorage.removeItem(PUBLICATION_JOB_STORAGE_KEY);
+  });
+
+  it("hides publish without catalog:publish and does not offer digest or git inputs", async () => {
+    renderDialog({ permissions: ["catalog:author"] });
+    expect(await screen.findByRole("dialog", { name: "向已发布主体新增定义" })).toBeVisible();
+    expect(screen.queryByRole("button", { name: "发布到目录" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "保存草稿" })).toBeVisible();
+    expect(screen.queryByLabelText(/摘要|仓库|Git|digest|release version|内部编号/i)).not.toBeInTheDocument();
+    expect(screen.getByText(/不必填写内部编号/)).toBeVisible();
+  });
+
+  it("saves a draft through existing Proposal resources then previews a typed ChangeSet", async () => {
+    const { createProposal, createCandidate } = renderDialog();
+    const user = userEvent.setup();
+    await fillSupportedDefinition(user);
+    await user.click(screen.getByRole("button", { name: "保存草稿" }));
+    await waitFor(() => expect(createProposal).toHaveBeenCalledTimes(1));
+    expect(createProposal.mock.calls[0]?.[0]).toMatchObject({
+      requestedChange: { kind: "create-definition", propertyKey: "iin_hold" }
+    });
+    await user.click(screen.getByRole("button", { name: "预览发布" }));
+    await confirm("确认预览");
+    await waitFor(() => expect(createCandidate).toHaveBeenCalledTimes(1));
+    expect(createCandidate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        changeSet: [
+          expect.objectContaining({
+            op: "create-definition",
+            subjectId: CATALOG_SUBJECT_ID,
+            propertyKey: "iin_hold"
+          })
+        ]
+      }),
+      { catalogReleaseId: CATALOG_RELEASE_ID }
+    );
+    expect(await screen.findByText("低风险仍需发布权限确认。单人策略未开启时不能自行批准。")).toBeVisible();
+    expect(screen.getByLabelText("发布预览")).toHaveTextContent("新增定义");
+  });
+
+  it("publishes once with idempotencyKey and shows queued processing", async () => {
+    const { publish } = renderDialog({ createIdempotencyKey: () => "pub-once" });
+    const user = userEvent.setup();
+    await fillSupportedDefinition(user);
+    await user.click(screen.getByRole("button", { name: "预览发布" }));
+    await confirm("确认预览");
+    await screen.findByLabelText("发布预览");
+    await user.click(screen.getByRole("button", { name: "发布到目录" }));
+    await confirm("确认发布");
+    await waitFor(() => expect(publish).toHaveBeenCalledTimes(1));
+    expect(publish.mock.calls[0]?.[1]).toEqual({ idempotencyKey: "pub-once" });
+    expect(await screen.findByText(/发布已入队/)).toBeVisible();
+    await user.click(screen.getByRole("button", { name: "发布到目录" }));
+    expect(publish).toHaveBeenCalledTimes(1);
+  });
+
+  it("renders active-superseded as historical success", async () => {
+    renderDialog({ publicationOutcome: "active-superseded" });
+    const user = userEvent.setup();
+    await fillSupportedDefinition(user);
+    await user.click(screen.getByRole("button", { name: "预览发布" }));
+    await confirm("确认预览");
+    await user.click(await screen.findByRole("button", { name: "发布到目录" }));
+    await confirm("确认发布");
+    expect(await screen.findByText(/曾经成功/)).toBeVisible();
+    expect(screen.getByText(/曾经成功/).closest("[data-tone]")).toHaveAttribute("data-tone", "success");
+  });
+
+  it("keeps the filled definition after needs-rebase", async () => {
+    renderDialog({ publicationOutcome: "needs-rebase" });
+    const user = userEvent.setup();
+    await fillSupportedDefinition(user);
+    await user.click(screen.getByRole("button", { name: "预览发布" }));
+    await confirm("确认预览");
+    await user.click(await screen.findByRole("button", { name: "发布到目录" }));
+    await confirm("确认发布");
+    expect(await screen.findByText(/重新预览/)).toBeVisible();
+    expect(screen.getByLabelText("属性键")).toHaveValue("iin_hold");
+    expect(screen.getByLabelText("显示名称")).toHaveValue("保持电流");
+  });
+
+  it("keeps input for policy-disabled and freeze refusals", async () => {
+    const { unmount } = renderDialog({ publicationOutcome: "policy-disabled" });
+    const user = userEvent.setup();
+    await fillSupportedDefinition(user);
+    await user.click(screen.getByRole("button", { name: "预览发布" }));
+    await confirm("确认预览");
+    expect(await screen.findByText(/策略已关闭/)).toBeVisible();
+    expect(screen.getByLabelText("属性键")).toHaveValue("iin_hold");
+    unmount();
+
+    renderDialog({ publicationOutcome: "frozen" });
+    const nextUser = userEvent.setup();
+    await fillSupportedDefinition(nextUser);
+    await nextUser.click(screen.getByRole("button", { name: "预览发布" }));
+    await confirm("确认预览");
+    expect(await screen.findByText(/冻结/)).toBeVisible();
+    expect(screen.getByLabelText("显示名称")).toHaveValue("保持电流");
+  });
+
+  it("restores a saved job after reopen", async () => {
+    window.localStorage.setItem(
+      PUBLICATION_JOB_STORAGE_KEY,
+      JSON.stringify({
+        jobId: "cjob_01KPAGE_1",
+        candidateId: "ccand_01KPAGE_1",
+        catalogReleaseId: CATALOG_RELEASE_ID,
+        userId: CATALOG_AUTHOR_PERSON_ID,
+        organizationId: CATALOG_ORGANIZATION_ID,
+        idempotencyKey: "pub-restore",
+        draft: {
+          subjectId: CATALOG_SUBJECT_ID,
+          propertyKey: "iin_hold",
+          displayName: "保持电流",
+          documentation: "最小保持电流。",
+          valueType: "integer",
+          minimum: "0",
+          maximum: "",
+          unit: "mA",
+          examples: "",
+          reason: "恢复"
+        }
+      })
+    );
+    const ports = createMockCatalogPorts({ publicationOutcome: "queued" });
+    ports.catalog.getPublication = vi.fn(async () => ({
+      item: {
+        id: "cjob_01KPAGE_1",
+        candidateId: "ccand_01KPAGE_1",
+        status: "queued",
+        attemptCount: 0,
+        effective: false,
+        isCurrent: false,
+        currentness: null,
+        failure: null
+      }
+    }));
+    render(
+      <PublicationDialog
+        open
+        actor="user"
+        sessionPermissions={["catalog:author", "catalog:publish"]}
+        domainState={ready}
+        catalog={ports.catalog}
+        governance={ports.governance}
+        catalogReleaseId={CATALOG_RELEASE_ID}
+        currentPersonId={CATALOG_AUTHOR_PERSON_ID}
+        organizationId={CATALOG_ORGANIZATION_ID}
+        onOpenChange={vi.fn()}
+      />
+    );
+    expect(await screen.findByLabelText("属性键")).toHaveValue("iin_hold");
+    await waitFor(() => expect(ports.catalog.getPublication).toHaveBeenCalledWith("cjob_01KPAGE_1"));
+    window.localStorage.removeItem(PUBLICATION_JOB_STORAGE_KEY);
+  });
+});

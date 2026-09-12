@@ -1113,6 +1113,7 @@ function AppShell({
                 }
                 onAuthContextRefresh={hydrateAuthContext}
                 organizationId={organizationId}
+                sessionPermissions={apiAuthPermissions}
                 DebuggingAdminPage={DebuggingAdminPageWithRuntime}
               />
             </div>
@@ -1155,6 +1156,7 @@ function AppShell({
                 }
                 onAuthContextRefresh={hydrateAuthContext}
                 organizationId={organizationId}
+                sessionPermissions={apiAuthPermissions}
                 DebuggingAdminPage={DebuggingAdminPageWithRuntime}
               />
               {showsApplicationFooter ? (

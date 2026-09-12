@@ -1,7 +1,9 @@
 import {
   catalogAcceptProposalRequestSchema,
   catalogCreateProposalRequestSchema,
+  catalogCreatePublicationCandidateRequestSchema,
   catalogLegacyIdentifierTypeSchema,
+  catalogPublishPublicationCandidateRequestSchema,
   catalogRegisterSubjectRequestSchema,
   catalogRejectProposalRequestSchema,
   catalogResolveReviewItemRequestSchema,
@@ -17,11 +19,16 @@ import type {
   CatalogIdempotentWriteContext,
   ParameterCatalogGovernanceRepository
 } from "@/application/ports/ParameterCatalogGovernanceRepository";
-import type { ParameterCatalogRepository } from "@/application/ports/ParameterCatalogRepository";
+import type {
+  CatalogPublicationWriteContext,
+  ParameterCatalogRepository
+} from "@/application/ports/ParameterCatalogRepository";
 import type {
   CatalogDefinitionResponse,
   CatalogListQuery,
   CatalogProposalResponse,
+  CatalogPublicationCandidateResponse,
+  CatalogPublicationJobResponse,
   CatalogRegisterSubjectRequest,
   CatalogRegistrationResponse,
   CatalogReviewItemResponse,
@@ -32,6 +39,8 @@ import { catalogApiFailure } from "./errors";
 import { WiseEffApiError } from "@/infrastructure/http/apiClient";
 import type { CatalogActorKind } from "./authority";
 import {
+  CATALOG_CANDIDATE_ID,
+  CATALOG_JOB_ID,
   CATALOG_ORGANIZATION_ID,
   CATALOG_PLACEMENT_ID,
   CATALOG_REGISTRATION_ID,
@@ -44,6 +53,8 @@ import {
   catalogObservation,
   catalogPlacement,
   catalogProposal,
+  catalogPublicationCandidate,
+  catalogPublicationJob,
   catalogRegistration,
   catalogReviewItem,
   catalogRevision,
@@ -72,10 +83,20 @@ export const catalogMockScenarios = [
 
 export type CatalogMockScenario = (typeof catalogMockScenarios)[number];
 
+export type CatalogPublicationMockOutcome =
+  | "queued"
+  | "active"
+  | "active-superseded"
+  | "needs-rebase"
+  | "policy-disabled"
+  | "frozen"
+  | "unauthorized";
+
 export type CatalogMockOptions = {
   scenario?: CatalogMockScenario;
   currentPersonId?: string;
   getSession?: () => CatalogMockSession;
+  publicationOutcome?: CatalogPublicationMockOutcome;
 };
 
 export type CatalogMockSession = { personId: string; organizationId: string; actorKind: CatalogActorKind; isActive: boolean };
@@ -93,6 +114,10 @@ type MockStore = {
   proposal: CatalogProposalResponse["item"];
   proposals: Map<string, CatalogProposalResponse["item"]>;
   idempotency: Map<string, IdempotencyRecord>;
+  publicationOutcome: CatalogPublicationMockOutcome;
+  candidates: Map<string, CatalogPublicationCandidateResponse["item"]>;
+  jobs: Map<string, CatalogPublicationJobResponse["item"]>;
+  publicationKeys: Map<string, string>;
 };
 
 function clone<T>(value: T): T {
@@ -141,7 +166,11 @@ function createStore(options: CatalogMockOptions): MockStore {
     reviewItem: clone(catalogReviewItem),
     proposal: clone(catalogProposal),
     proposals: new Map([[catalogProposal.id, clone(catalogProposal)]]),
-    idempotency: new Map()
+    idempotency: new Map(),
+    publicationOutcome: options.publicationOutcome ?? "queued",
+    candidates: new Map(),
+    jobs: new Map(),
+    publicationKeys: new Map()
   };
 }
 
@@ -211,6 +240,22 @@ function assertRelease(store: MockStore, catalogReleaseId: string) {
     throw catalogApiFailure("release-drift", {
       catalogReleaseId: store.catalog.item.catalogReleaseId
     });
+  }
+}
+
+function assertPublicationWrite(store: MockStore, context: CatalogPublicationWriteContext) {
+  if (!context.catalogReleaseId.trim()) {
+    throw catalogApiFailure("release-drift");
+  }
+  assertRelease(store, context.catalogReleaseId);
+  if (store.publicationOutcome === "policy-disabled") {
+    throw catalogApiFailure("publication-policy-disabled");
+  }
+  if (store.publicationOutcome === "frozen") {
+    throw catalogApiFailure("publication-frozen");
+  }
+  if (store.publicationOutcome === "unauthorized") {
+    throw catalogApiFailure("publication-capability-missing");
   }
 }
 
@@ -355,6 +400,97 @@ export function createMockCatalogPorts(options: CatalogMockOptions = {}): {
         });
       }
       return clone(mappedLegacyIdentifier);
+    },
+    async createPublicationCandidate(body, context) {
+      assertPublicationWrite(store, context);
+      const parsed = catalogCreatePublicationCandidateRequestSchema.parse(body);
+      const candidate = {
+        ...clone(catalogPublicationCandidate),
+        id: `${CATALOG_CANDIDATE_ID}_${store.candidates.size + 1}`,
+        expectedBaseReleaseId: context.catalogReleaseId,
+        impactSummary: {
+          addedDefinitionCount: parsed.changeSet.length,
+          changedDefinitionCount: 0,
+          addedSubjectCount: 0
+        }
+      };
+      store.candidates.set(candidate.id, candidate);
+      return { item: clone(candidate) };
+    },
+    async getPublicationCandidate(candidateId) {
+      assertReadyForRead(store);
+      const candidate = store.candidates.get(candidateId);
+      if (!candidate) {
+        throw catalogApiFailure("definition-not-found");
+      }
+      return { item: clone(candidate) };
+    },
+    async publishPublicationCandidate(candidateId, body, context) {
+      assertPublicationWrite(store, context);
+      const parsed = catalogPublishPublicationCandidateRequestSchema.parse(body);
+      if (!store.candidates.has(candidateId)) {
+        throw catalogApiFailure("candidate-stale");
+      }
+      if (store.publicationOutcome === "needs-rebase") {
+        throw catalogApiFailure("needs-rebase");
+      }
+      const existingId = store.publicationKeys.get(parsed.idempotencyKey);
+      if (existingId) {
+        const existing = store.jobs.get(existingId);
+        if (!existing || existing.candidateId !== candidateId) {
+          throw catalogApiFailure("idempotency-key-conflict");
+        }
+        return { item: clone(existing) };
+      }
+      const job = {
+        ...clone(catalogPublicationJob),
+        id: `${CATALOG_JOB_ID}_${store.jobs.size + 1}`,
+        candidateId,
+        status:
+          store.publicationOutcome === "active" || store.publicationOutcome === "active-superseded"
+            ? "active"
+            : "queued",
+        effective:
+          store.publicationOutcome === "active" || store.publicationOutcome === "active-superseded",
+        isCurrent: store.publicationOutcome === "active",
+        currentness:
+          store.publicationOutcome === "active"
+            ? "active"
+            : store.publicationOutcome === "active-superseded"
+              ? "active-superseded"
+              : null
+      } as const;
+      store.jobs.set(job.id, job);
+      store.publicationKeys.set(parsed.idempotencyKey, job.id);
+      return { item: clone(job) };
+    },
+    async getPublication(jobId) {
+      assertReadyForRead(store);
+      const job = store.jobs.get(jobId);
+      if (!job) {
+        throw catalogApiFailure("definition-not-found");
+      }
+      if (store.publicationOutcome === "active" || store.publicationOutcome === "active-superseded") {
+        const settled = {
+          ...job,
+          status: "active" as const,
+          effective: true,
+          isCurrent: store.publicationOutcome === "active",
+          currentness: store.publicationOutcome === "active" ? ("active" as const) : ("active-superseded" as const)
+        };
+        store.jobs.set(jobId, settled);
+        return { item: clone(settled) };
+      }
+      if (store.publicationOutcome === "needs-rebase") {
+        const rebased = {
+          ...job,
+          status: "needs-rebase" as const,
+          failure: { class: "candidate", reason: "needs-rebase" as const }
+        };
+        store.jobs.set(jobId, rebased);
+        return { item: clone(rebased) };
+      }
+      return { item: clone(job) };
     }
   };
 
