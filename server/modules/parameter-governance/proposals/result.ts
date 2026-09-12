@@ -5,13 +5,14 @@ import type {
   PublicationIntentId,
   Result as ContractResult,
 } from "../../parameter-catalog-contract/index";
-import type { ProposalPayload } from "./command";
+import type { ProposalPayload, PublicationReference } from "./command";
 
 export type Result<T, E> = ContractResult<T, E>;
 
 export type PublicationIntentResult = {
   readonly id: PublicationIntentId;
-  readonly repositoryReference: string;
+  readonly repositoryReference: string | null;
+  readonly publicationReference: PublicationReference;
   readonly reviewerPrincipalId: string;
   readonly successAuditRef: string;
 };

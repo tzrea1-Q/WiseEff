@@ -473,8 +473,41 @@ export const catalogWithdrawProposalRequestSchema = catalogObject({
   reason: z.string().optional()
 });
 
+export const catalogPublicationReferenceSchema = z.union([
+  catalogObject({
+    kind: z.literal("repository"),
+    repositoryReference: z.string()
+  }),
+  catalogObject({
+    kind: z.literal("candidate"),
+    candidateId: z.string()
+  })
+]);
+
 export const catalogAcceptProposalRequestSchema = catalogObject({
-  repositoryReference: z.string()
+  repositoryReference: z.string().optional(),
+  publicationReference: catalogPublicationReferenceSchema.optional()
+}).superRefine((value, ctx) => {
+  if (value.publicationReference?.kind === "candidate") {
+    if (value.repositoryReference !== undefined) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["repositoryReference"],
+        message: "candidate reference must not include repositoryReference"
+      });
+    }
+    return;
+  }
+  if (value.publicationReference?.kind === "repository") {
+    return;
+  }
+  if (value.repositoryReference === undefined) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["repositoryReference"],
+      message: "repositoryReference"
+    });
+  }
 });
 
 export const catalogRejectProposalRequestSchema = catalogObject({
