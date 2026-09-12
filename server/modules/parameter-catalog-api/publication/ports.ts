@@ -226,9 +226,16 @@ export function bindCatalogPublicationCommands(input: {
       if (!loaded.ok) {
         return { ok: false, error: { kind: "not-found" } };
       }
-      const view = candidateView(loaded.value);
-      if (!view || !inScope(view.authorOrganizationId, command.organizationId)) {
+      const authorOrganizationId = authorOrganizationIdOf(loaded.value);
+      if (authorOrganizationId === null || !inScope(authorOrganizationId, command.organizationId)) {
         return { ok: false, error: { kind: "not-found" } };
+      }
+      if (impactFactsFromAllocation(loaded.value.identityAllocation) === null) {
+        return { ok: false, error: { kind: "reason", reason: "candidate-tampered" } };
+      }
+      const view = candidateView(loaded.value);
+      if (!view) {
+        return { ok: false, error: { kind: "reason", reason: "candidate-tampered" } };
       }
       const enqueued = await enqueuePublicationJob({
         db,

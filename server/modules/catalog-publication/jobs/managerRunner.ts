@@ -5,6 +5,7 @@ import { getAuthContext } from "../../auth/repository";
 import { createCatalogInstaller } from "../../catalog-kernel/install/installer";
 import { createPostgresDatabase, getRootPostgresPool } from "../../../shared/database/client";
 import {
+  assertPublicationManagerProcessFence,
   resolvePublicationManagerOptions,
   readPublicationManagerHealth,
   startPublicationManagerLoop,
@@ -30,9 +31,7 @@ if (!databaseUrl) {
   throw new Error("WISEEFF_PUBLICATION_MANAGER_DATABASE_URL or DATABASE_URL is required");
 }
 
-if (process.env.WISEEFF_CATALOG_SYNCHRONIZER_DATABASE_URL && process.env.WISEEFF_API_PROCESS === "1") {
-  throw new Error("publication manager must not share the API process identity");
-}
+assertPublicationManagerProcessFence(process.env);
 
 const db = createPostgresDatabase(databaseUrl);
 const pool = getRootPostgresPool(db);

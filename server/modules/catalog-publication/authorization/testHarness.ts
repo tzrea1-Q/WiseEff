@@ -24,7 +24,7 @@ import {
   withCommittedRole,
 } from "../persistence/integrationHarness";
 import { persistArtifact, persistCandidate } from "../persistence/store";
-import type { ArtifactSourceKind, PublicationCandidateRecord } from "../persistence/types";
+import type { ArtifactSourceKind, JsonObject, PublicationCandidateRecord } from "../persistence/types";
 import { revisePublicationPolicy } from "./policy";
 import { lowRiskCreateDefinitionFacts } from "./classify";
 import type { AuthorizationCandidateTuple, ImpactFacts } from "./types";
@@ -109,6 +109,8 @@ export async function persistHandBuiltCandidate(
   options: {
     token?: string;
     authorPrincipalId?: string;
+    authorOrganizationId?: string;
+    impactFacts?: ImpactFacts | { readonly [key: string]: unknown };
     sourceKind?: ArtifactSourceKind;
     impactReportDigest?: string;
     proposalId?: DefinitionProposalId | null;
@@ -139,7 +141,12 @@ export async function persistHandBuiltCandidate(
     expectedBaseReleaseDigest: CatalogReleaseDigest(sha256Digest(`base-${token}`)),
     proposalId: options.proposalId ?? null,
     proposalRevisionId: options.proposalRevisionId ?? null,
-    identityAllocation: { authorPrincipalId: options.authorPrincipalId ?? AUTHOR, frozen: true },
+    identityAllocation: {
+      authorPrincipalId: options.authorPrincipalId ?? AUTHOR,
+      ...(options.authorOrganizationId ? { authorOrganizationId: options.authorOrganizationId } : {}),
+      ...(options.impactFacts ? { impactFacts: options.impactFacts as unknown as JsonObject } : {}),
+      frozen: true,
+    },
     impactReportDigest: options.impactReportDigest ?? sha256Digest(`impact-${token}`),
     capabilityContract: { revision: "catalog-capability/v1" },
   });

@@ -162,6 +162,7 @@ export async function buildAuthorizedJob(
     authorPrincipalId?: string;
     publisherUserId?: string;
     impactFacts?: ImpactFacts;
+    authorOrganizationId?: string;
     requestScope?: string;
     enablePolicy?: boolean;
     releaseVersion?: string;
@@ -190,6 +191,7 @@ export async function buildAuthorizedJob(
     token,
     input.releaseVersion ?? "1.1.0",
   );
+  const facts = input.impactFacts ?? lowFacts(authorPrincipalId);
   const built = await buildCompleteSuccessor({
     predecessorArtifact: { digest: input.predecessorDigest },
     changeSet: [pageIntegerChange(input.propertyKey, `Input ${input.propertyKey}`)],
@@ -203,6 +205,8 @@ export async function buildAuthorizedJob(
             identityAllocation: {
               ...candidateInput.identityAllocation,
               authorPrincipalId,
+              authorOrganizationId: input.authorOrganizationId ?? "org-test",
+              impactFacts: facts,
             },
           }),
       },
@@ -212,7 +216,6 @@ export async function buildAuthorizedJob(
     throw new Error(`buildCompleteSuccessor failed: ${JSON.stringify(built)}`);
   }
   const candidate = built.value.persistence.candidate;
-  const facts = input.impactFacts ?? lowFacts(authorPrincipalId);
   const authorized = await asCoordinator(client, async () => {
     const capability = await client.query<{ digest: string }>(
       `select catalog_publication.digest_jsonb(capability_contract) as digest

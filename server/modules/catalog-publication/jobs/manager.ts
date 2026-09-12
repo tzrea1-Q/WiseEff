@@ -18,6 +18,14 @@ export type PublicationManagerEnv = {
   readonly WISEEFF_PUBLICATION_MANAGER_ACTIVATION_TIMEOUT_MS?: string;
 };
 
+export function assertPublicationManagerProcessFence(
+  env: NodeJS.ProcessEnv | Record<string, string | undefined>,
+): void {
+  if (env.WISEEFF_CATALOG_SYNCHRONIZER_DATABASE_URL && env.WISEEFF_API_PROCESS === "1") {
+    throw new Error("publication manager must not share the API process identity");
+  }
+}
+
 export type PublicationManagerOptions = {
   readonly db: Database;
   readonly pool: pg.Pool;

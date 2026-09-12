@@ -13,8 +13,7 @@ import type { CatalogInstallError, CatalogInstallOutcome } from "../../catalog-k
 import { readCurrentCatalogPointer } from "../../catalog-kernel/install/currentPointer";
 import type { PublicationJobId } from "../../parameter-catalog-contract/index";
 import type { Database, Queryable } from "../../../shared/database/client";
-import { lowRiskCreateDefinitionFacts } from "../authorization/classify";
-import type { ImpactFacts } from "../authorization/types";
+import type { ImpactFacts, ImpactOperationFact } from "../authorization/types";
 import {
   getAuthorization,
   getCandidate,
@@ -58,36 +57,95 @@ const RETRYABLE_ERROR_CLASSES = new Set(["lock-contention", "connectivity", "tim
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   value !== null && typeof value === "object" && !Array.isArray(value);
 
+const parseOperation = (value: unknown): ImpactOperationFact | null => {
+  if (!isRecord(value) || typeof value.op !== "string") {
+    return null;
+  }
+  if (value.op === "create-definition") {
+    if (typeof value.supported !== "boolean") {
+      return null;
+    }
+    return { op: "create-definition", supported: value.supported };
+  }
+  if (value.op === "create-subject-with-definitions") {
+    return { op: "create-subject-with-definitions" };
+  }
+  if (value.op === "revise-definition") {
+    if (value.class !== "documentation" && value.class !== "semantic") {
+      return null;
+    }
+    return { op: "revise-definition", class: value.class };
+  }
+  if (value.op === "unknown") {
+    if (typeof value.tag !== "string") {
+      return null;
+    }
+    return { op: "unknown", tag: value.tag };
+  }
+  return null;
+};
+
+const BOOLEAN_FACT_KEYS = [
+  "introducesNewSubject",
+  "changesSelector",
+  "changesAlias",
+  "changesFallback",
+  "tightensExistingContract",
+  "changesUnitOrSemantic",
+  "retiresIdentity",
+  "unknownImpact",
+] as const;
+
+/**
+ * Trusted allocation snapshot only. Missing or truncated facts fail closed as
+ * tampered — never synthesize low-risk from authorPrincipalId alone.
+ */
 export function impactFactsFromAllocation(allocation: JsonObject): ImpactFacts | null {
   const facts = allocation.impactFacts;
-  if (!isRecord(facts) || typeof facts.authorPrincipalId !== "string") {
-    const author = allocation.authorPrincipalId;
-    if (typeof author === "string" && author.trim().length > 0) {
-      return lowRiskCreateDefinitionFacts(author);
-    }
+  if (!isRecord(facts) || typeof facts.authorPrincipalId !== "string" || facts.authorPrincipalId.trim().length === 0) {
     return null;
   }
   if (!Array.isArray(facts.operations) || facts.operations.length === 0) {
     return null;
   }
+  const operations: ImpactOperationFact[] = [];
+  for (const entry of facts.operations) {
+    const parsed = parseOperation(entry);
+    if (parsed === null) {
+      return null;
+    }
+    operations.push(parsed);
+  }
+  const booleans: Record<(typeof BOOLEAN_FACT_KEYS)[number], boolean> = {
+    introducesNewSubject: false,
+    changesSelector: false,
+    changesAlias: false,
+    changesFallback: false,
+    tightensExistingContract: false,
+    changesUnitOrSemantic: false,
+    retiresIdentity: false,
+    unknownImpact: false,
+  };
+  for (const key of BOOLEAN_FACT_KEYS) {
+    const value = facts[key];
+    if (typeof value !== "boolean") {
+      return null;
+    }
+    booleans[key] = value;
+  }
+  if (
+    facts.sourceKind !== "typed-changeset" &&
+    facts.sourceKind !== "vendor-yaml" &&
+    facts.sourceKind !== "repository-bundle" &&
+    facts.sourceKind !== "adopted-preexisting"
+  ) {
+    return null;
+  }
   return {
     authorPrincipalId: facts.authorPrincipalId,
-    operations: facts.operations as ImpactFacts["operations"],
-    introducesNewSubject: facts.introducesNewSubject === true,
-    changesSelector: facts.changesSelector === true,
-    changesAlias: facts.changesAlias === true,
-    changesFallback: facts.changesFallback === true,
-    tightensExistingContract: facts.tightensExistingContract === true,
-    changesUnitOrSemantic: facts.changesUnitOrSemantic === true,
-    retiresIdentity: facts.retiresIdentity === true,
-    unknownImpact: facts.unknownImpact === true,
-    sourceKind:
-      facts.sourceKind === "typed-changeset" ||
-      facts.sourceKind === "vendor-yaml" ||
-      facts.sourceKind === "repository-bundle" ||
-      facts.sourceKind === "adopted-preexisting"
-        ? facts.sourceKind
-        : "typed-changeset",
+    operations,
+    ...booleans,
+    sourceKind: facts.sourceKind,
   };
 }
 
@@ -174,7 +232,7 @@ const classifyInstallError = (
   readonly errorClass: string;
   readonly reason: string;
 } => {
-  if (error.kind === "needs-rebase") {
+  if (error.kind === "needs-rebase" || error.kind === "unsupported-lineage") {
     return { status: "needs-rebase", errorClass: "lineage", reason: "needs-rebase" };
   }
   if (error.kind === "fencing-token-mismatch") {
@@ -198,7 +256,8 @@ const classifyInstallError = (
       reason === "publication-frozen" ||
       reason === "publication-authorization-revoked" ||
       reason === "publication-policy-disabled" ||
-      reason === "publication-capability-missing"
+      reason === "publication-capability-missing" ||
+      reason === "candidate-stale"
     ) {
       return { status: "blocked", errorClass: "authorization", reason };
     }

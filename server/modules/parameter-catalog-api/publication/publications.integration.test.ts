@@ -13,6 +13,7 @@ import {
 import { integerContent } from "../../catalog-publication/builder/predecessorHarness";
 import {
   enablePublicationPolicy,
+  persistHandBuiltCandidate,
   publisherPermissions,
   authorPermissions,
   PUBLISHER,
@@ -342,6 +343,22 @@ describe("CP-07 publication HTTP against real PostgreSQL", () => {
       publicationEnabled: true,
       lowRiskSingleActorPublish: true,
     });
+  });
+
+  it("P0 HTTP enqueue of a truncated allocation is candidate-tampered, not low-risk", async () => {
+    authenticateAs(publisherScope());
+    const truncated = await persistHandBuiltCandidate(client, {
+      authorPrincipalId: PUBLISHER,
+      authorOrganizationId: ORG,
+    });
+    const published = await request("POST", `/api/v2/catalog/publication-candidates/${truncated.id}/publish`, {
+      headers: { [CATALOG_RELEASE_HEADER]: pinId },
+      body: { idempotencyKey: "key-p0-http" },
+    });
+    expect(published.status).toBe(409);
+    expect((published.body as { error: { details: { reason: string } } }).error.details.reason).toBe(
+      "candidate-tampered",
+    );
   });
 
   it("T25 keeps published catalog and jobs readable while the manager is down", async () => {
