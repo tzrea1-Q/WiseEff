@@ -126,6 +126,8 @@ function renderAcmeEnv(answers: SelfHostAnswers, secrets: SelfHostSecrets) {
     "",
     `POSTGRES_PASSWORD=${secrets.postgresPassword}`,
     `DATABASE_URL=postgres://wiseeff:${secrets.postgresPassword}@postgres:5432/wiseeff`,
+    `WISEEFF_CATALOG_BOOTSTRAP_DATABASE_URL=postgres://wiseeff:${secrets.postgresPassword}@postgres:5432/wiseeff`,
+    `WISEEFF_WORKER_DATABASE_URL=postgres://wiseeff:${secrets.postgresPassword}@postgres:5432/wiseeff`,
     "",
     "AUTH_MODE=production",
     "AUTH_PROVIDER=local",

@@ -17,116 +17,7 @@ import {
   requiredAcceptanceCiWorkflowTokens
 } from "./check-acceptance-ci";
 
-const compliantWorkflow = `
-name: CI
-
-on:
-  push:
-    branches: [main]
-  pull_request:
-  workflow_dispatch:
-    inputs:
-      acceptance_mode:
-        type: choice
-        options:
-          - local-non-hdc
-          - target-non-hdc
-          - full-pilot
-
-concurrency:
-  group: ci
-  cancel-in-progress: true
-
-jobs:
-  detect:
-    name: Detect changed paths
-    steps:
-      - run: echo detect
-
-  build-and-test:
-    steps:
-      - name: Acceptance CI metadata (L1)
-        run: npm run acceptance:ci
-      - run: npm run acceptance:quality
-      - run: npm run acceptance:quality-run
-      - uses: actions/upload-artifact@v4
-        with:
-          path: |
-            playwright-report/acceptance
-            test-results/acceptance
-            docs/generated/acceptance-browser-evidence.md
-            docs/generated/acceptance-operation-evidence.md
-            docs/generated/acceptance-operation-evidence/index.json
-            playwright-report/quality
-            test-results/quality
-
-  required:
-    name: Merge bar
-
-  acceptance-smoke:
-    steps:
-      - run: npm run acceptance:smoke
-
-  acceptance-local-non-hdc:
-    if: contains(github.event.pull_request.labels.*.name, 'full-acceptance')
-    name: Acceptance local non-HDC
-    timeout-minutes: 150
-    services:
-      postgres:
-        image: pgvector/pgvector:pg16
-    steps:
-      - name: Check out repository
-        timeout-minutes: 5
-        run: echo checkout
-      - name: Set up Node.js
-        timeout-minutes: 5
-        run: echo node
-      - name: Install dependencies
-        timeout-minutes: 15
-        run: npm ci
-      - name: Install and verify DTS toolchain
-        timeout-minutes: 20
-        uses: ./.github/actions/setup-dts-toolchain
-      - name: Advisory DTS seed compile (dtc)
-        timeout-minutes: 3
-        run: npm run dtc:seed:compile
-      - name: Install Playwright Chromium
-        timeout-minutes: 15
-        run: npx playwright install --with-deps chromium
-      - name: Acceptance CI metadata
-        timeout-minutes: 3
-        run: npm run acceptance:ci
-      - name: Acceptance state models
-        timeout-minutes: 5
-        run: npm run acceptance:models
-      - name: Owned visual and browser acceptance Gate 0
-        timeout-minutes: 65
-        run: npm run acceptance:gate0
-      - name: Acceptance artifact safety
-        id: acceptance_artifact_safety
-        if: always()
-        timeout-minutes: 5
-        run: npm run acceptance:artifacts:finalize -- --root test-results/acceptance-runtime-runs --output test-results/acceptance-runtime-upload/wiseeff-acceptance-local-non-hdc.zip
-      - name: Upload acceptance evidence
-        if: always() && steps.acceptance_artifact_safety.outcome == 'success'
-        timeout-minutes: 5
-        uses: actions/upload-artifact@v4
-        with:
-          path: test-results/acceptance-runtime-upload/wiseeff-acceptance-local-non-hdc.zip
-          if-no-files-found: error
-          compression-level: 0
-
-  target-synthetic-acceptance:
-    name: Target synthetic acceptance
-    if: github.event_name == 'workflow_dispatch' && inputs.acceptance_mode != 'local-non-hdc'
-    steps:
-      - run: npx playwright install --with-deps chromium
-      - run: npm run acceptance:quality-run
-      - run: npm run acceptance:browser -- --mode target-non-hdc --no-start-runtime
-        if: inputs.acceptance_mode == 'target-non-hdc'
-      - run: npm run acceptance:browser -- --mode full-pilot --no-start-runtime
-        if: inputs.acceptance_mode == 'full-pilot'
-`;
+const compliantWorkflow = readFileSync(".github/workflows/ci.yml", "utf8");
 
 const compliantScripts = {
   ...Object.fromEntries(requiredAcceptanceCiScripts.map((script) => [script, "ok"])),
@@ -141,19 +32,19 @@ describe("M5.12 acceptance CI configuration", () => {
 
     expect(budget).toMatchObject({
       status: "passed",
-      jobTimeoutMinutes: 150,
+      jobTimeoutMinutes: 155,
       platformOverheadMinutes: 5,
-      preGate0BudgetMinutes: 71,
+      preGate0BudgetMinutes: 72,
       gate0OwnerMinutes: 60,
       artifactSafetyMinutes: 5,
       artifactUploadMinutes: 5,
-      requiredExclusiveFloorMinutes: 146,
+      requiredExclusiveFloorMinutes: 151,
       missingStepTimeouts: [],
     });
     expect(budget.jobTimeoutMinutes).toBeGreaterThan(budget.requiredExclusiveFloorMinutes);
 
     expect(evaluateAcceptanceLocalNonHdcBudget(
-      workflow.replace("    timeout-minutes: 150", "    timeout-minutes: 146"),
+      workflow.replace("    timeout-minutes: 155", "    timeout-minutes: 151"),
     ).status).toBe("failed");
     expect(evaluateAcceptanceLocalNonHdcBudget(
       workflow.replace(
@@ -174,7 +65,7 @@ describe("M5.12 acceptance CI configuration", () => {
       ),
     )).toMatchObject({
       status: "failed",
-      requiredExclusiveFloorMinutes: 150,
+      requiredExclusiveFloorMinutes: 155,
       missingStepTimeouts: [],
     });
     expect(evaluateAcceptanceLocalNonHdcBudget(
@@ -193,7 +84,7 @@ describe("M5.12 acceptance CI configuration", () => {
       ),
     )).toMatchObject({
       status: "failed",
-      requiredExclusiveFloorMinutes: 150,
+      requiredExclusiveFloorMinutes: 155,
       missingStepTimeouts: [],
     });
   });
@@ -324,8 +215,26 @@ jobs:
       ),
     )).toMatchObject({ status: "failed" });
     expect(evaluateImmutableAcceptanceUpload(
-      compliantWorkflow.replace("if-no-files-found: error", "if-no-files-found: ignore"),
+      compliantWorkflow.replace("if-no-files-found: error\n          compression-level: 0", "if-no-files-found: ignore\n          compression-level: 0"),
     )).toMatchObject({ status: "failed" });
+  });
+
+  it("rejects extra diagnostic uploads, raw fallbacks, skipped safety and late identity", () => {
+    for (const mutate of [
+      ...["v3", "unreviewed"].map((ref) => (w: any) => {
+        w.jobs["acceptance-local-non-hdc"].steps.find((s: any) => s.name === "Upload acceptance evidence").uses = `actions/upload-artifact@${ref}`;
+      }),
+      (w: any) => w.jobs["acceptance-local-non-hdc"].steps.push({ uses: "actions/upload-artifact@v3", with: { path: "." } }),
+      (w: any) => { w.jobs["acceptance-local-non-hdc"].steps.find((s: any) => s.id === "acceptance_diagnostic_upload").with.path = "test-results/**"; },
+      (w: any) => { w.jobs["acceptance-local-non-hdc"].steps.find((s: any) => s.id === "acceptance_diagnostic")["continue-on-error"] = true; },
+      (w: any) => { w.jobs["acceptance-local-non-hdc"].steps.find((s: any) => s.id === "acceptance_diagnostic").shell = "python3 {0}"; },
+      (w: any) => { const steps = w.jobs["acceptance-local-non-hdc"].steps; steps.push(...steps.splice(1, 1)); },
+      (w: any) => { w.jobs["acceptance-local-non-hdc"].steps = w.jobs["acceptance-local-non-hdc"].steps.filter((s: any) => s.id !== "acceptance_diagnostic_fallback"); },
+    ]) {
+      const workflow = YAML.parse(compliantWorkflow);
+      mutate(workflow);
+      expect(evaluateImmutableAcceptanceUpload(YAML.stringify(workflow)).status).toBe("failed");
+    }
   });
 
   it("blocks accidental default full-pilot gates on pull requests", () => {

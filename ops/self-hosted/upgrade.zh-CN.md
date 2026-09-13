@@ -34,7 +34,7 @@ API 镜像必须包含 `scripts/compile-vendor-catalog-release.ts`，以及 `scr
 
 同一命令因丢失响应而重试时返回 `already-current`。当前指针不是带该 digest 的 `crel_acme_1` 时拒绝。重启后 Catalog 应列出 114 条定义，并仍包含原来的 `iin_max`。
 
-上述厂商 `advance` 命令**不是**发布控制面的采集、接管、在线发布或恢复入口。采集只使用 `scripts/inspect-catalog-publication-baseline.ts` 且仅读取 `CATALOG_BASELINE_READONLY_DATABASE_URL`。接管使用同步器 `adopted-preexisting` adapter，不移动指针。在线发布属于 CP-07，此处未启用。恢复仍走升级 recovery 路径。禁止用一个带危险默认值的脚本覆盖这四类操作。首次启用在线发布前清退旧 API/worker 镜像属于 CP-12。
+上述厂商 `advance` 命令**不是**发布控制面的采集、接管、在线发布或恢复入口。采集只使用 `scripts/inspect-catalog-publication-baseline.ts` 且仅读取 `CATALOG_BASELINE_READONLY_DATABASE_URL`。接管使用 `npx tsx scripts/catalog-publication-ops.ts adopt --check|--execute`（封装 `adoptPreexistingCatalog`），不移动指针。在线发布属于 CP-07，默认关闭，直到隔离策略启用。见 [catalog-publication.zh-CN.md](catalog-publication.zh-CN.md)。恢复仍走升级 recovery 路径。禁止用一个带危险默认值的脚本覆盖这四类操作。首次启用在线发布前清退旧 API/worker 镜像属于 CP-12。
 
 `scripts/compile-vendor-catalog-release.ts` 仍是冻结的 D1 编译器，用于 `crel_acme_1` 的后继 `crel_vendor_catalog_1`（`sha256:efc5336e625f0eb6f994223a5f67a57b119e92bda2edb5c209fc901284f126c7`）。它不是后续 vendor 导入的生产身份规则。实例一旦在 `parameter_catalog.catalog_activation_receipts` 中存在任何行（在线发布、接管或 bootstrap Receipt），`install-catalog-release.ts` 的 bootstrap/advance 都会被拒绝（`catalog-install-publication-regime-required`），即使 `publication_enabled` 为 false。Receipt 表仍为空的未接管实例保留历史 D1 bootstrap/advance 合同；不能据此声称 D2 完成。之后的 vendor 复用必须走 CP-09 adapter（`server/modules/catalog-publication/import/`）和 CP-07 授权/任务/manager 路径。不存在 `--skipAuthorization` 开关。
 

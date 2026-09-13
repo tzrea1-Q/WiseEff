@@ -45,7 +45,17 @@ function authContextFromRows(rows: AuthRow[]) {
     throw new ApiError("FORBIDDEN", "User is inactive.");
   }
 
+  const knownRoleIds = new Set<BackendRoleId>([
+    "guest",
+    "hardware-user",
+    "software-user",
+    "hardware-committer",
+    "software-committer",
+    "admin",
+    "platform-admin"
+  ]);
   const roles = rows
+    .filter((row) => knownRoleIds.has(row.role_id))
     .map((row) => ({ projectId: row.project_id, roleId: row.role_id }))
     .sort((left, right) => compareRoles(right.roleId, left.roleId));
 
@@ -75,6 +85,48 @@ function uniquePermissions(permissions: readonly BackendPermission[]): BackendPe
   return [...new Set(permissions)];
 }
 
+const catalogCapabilityPermissions = new Set<BackendPermission>([
+  "catalog:author",
+  "catalog:publish",
+  "catalog:review-high-risk"
+]);
+
+async function loadCatalogCapabilityGrants(
+  db: Queryable,
+  userId: string
+): Promise<BackendPermission[]> {
+  const result = await db.query<{ permission: string }>(
+    `
+    select unnest(roles.permissions) as permission
+    from user_role_bindings
+    join roles on roles.id = user_role_bindings.role_id
+    where user_role_bindings.user_id = $1
+      and roles.id like 'catalog-capability-%'
+    `,
+    [userId]
+  );
+  return result.rows
+    .map((row) => row.permission)
+    .filter((permission): permission is BackendPermission =>
+      catalogCapabilityPermissions.has(permission as BackendPermission)
+    );
+}
+
+async function withCatalogCapabilityGrants(
+  db: Queryable,
+  userId: string,
+  context: AuthContext
+): Promise<AuthContext> {
+  const grants = await loadCatalogCapabilityGrants(db, userId);
+  if (grants.length === 0) {
+    return context;
+  }
+  return {
+    ...context,
+    permissions: uniquePermissions([...context.permissions, ...grants])
+  };
+}
+
 export async function getAuthContext(db: Queryable, userId: string): Promise<AuthContext> {
   const result = await db.query<AuthRow>(
     `
@@ -85,7 +137,7 @@ export async function getAuthContext(db: Queryable, userId: string): Promise<Aut
     [userId]
   );
 
-  return authContextFromRows(result.rows);
+  return withCatalogCapabilityGrants(db, userId, authContextFromRows(result.rows));
 }
 
 export async function getAuthContextForExternalIdentity(
@@ -101,7 +153,11 @@ export async function getAuthContextForExternalIdentity(
     [input.organizationId, input.subject]
   );
   if (subjectResult.rows.length > 0) {
-    return authContextFromRows(subjectResult.rows);
+    return withCatalogCapabilityGrants(
+      db,
+      subjectResult.rows[0].user_id,
+      authContextFromRows(subjectResult.rows)
+    );
   }
 
   if (!input.email?.trim()) {
@@ -117,5 +173,9 @@ export async function getAuthContextForExternalIdentity(
     [input.organizationId, input.email]
   );
 
-  return authContextFromRows(emailResult.rows);
+  return withCatalogCapabilityGrants(
+    db,
+    emailResult.rows[0]?.user_id ?? "",
+    authContextFromRows(emailResult.rows)
+  );
 }

@@ -10,6 +10,7 @@ import {
 } from "../../parameter-catalog-contract/index";
 import {
   CATALOG_PUBLICATION_COORDINATOR_ROLE,
+  CATALOG_SYNCHRONIZER_ROLE,
   quoteIdent,
 } from "../../catalog-kernel/security/catalogRoleManifest";
 import type { AdoptedPreexistingEvidence } from "../../catalog-kernel/interface";
@@ -39,6 +40,22 @@ export type AdoptPreexistingCatalogInput = {
 
 const SHA256_DIGEST = /^sha256:[0-9a-f]{64}$/;
 
+const readPointerAsSynchronizer = async (pool: pg.Pool) => {
+  const client = await pool.connect();
+  try {
+    await client.query("begin");
+    await client.query(`set local role ${quoteIdent(CATALOG_SYNCHRONIZER_ROLE)}`);
+    const pointer = await readCurrentCatalogPointer(client);
+    await client.query("commit");
+    return pointer;
+  } catch (error) {
+    await client.query("rollback").catch(() => undefined);
+    throw error;
+  } finally {
+    client.release();
+  }
+};
+
 const fail = (
   error: CatalogInstallError,
 ): Result<never, CatalogInstallError> => ({ ok: false, error });
@@ -46,15 +63,19 @@ const fail = (
 const invalid = (detail: string): Result<never, CatalogInstallError> =>
   fail({ kind: "adoption-evidence-invalid", detail });
 
+export type AdoptPreexistingCatalogCheck = {
+  readonly expectedCurrent: AdoptPreexistingCatalogInput["expectedCurrent"];
+  readonly artifactDigest: string;
+  readonly evidenceKind: AdoptionEvidenceKind;
+};
+
 /**
- * Saves a verified exact source bundle then calls the unique synchronizer
- * adoption command. Does not advance the Catalog pointer. Synthetic fixtures
- * must set evidenceKind: "synthetic-fixture" and are not target-host evidence.
+ * Read-only adoption preflight. Does not persist an Artifact or write a Receipt.
  */
-export const adoptPreexistingCatalog = async (
+export const checkAdoptPreexistingCatalog = async (
   pool: pg.Pool,
   input: AdoptPreexistingCatalogInput,
-): Promise<Result<CatalogInstallOutcome, CatalogInstallError>> => {
+): Promise<Result<AdoptPreexistingCatalogCheck, CatalogInstallError>> => {
   if (input.evidenceKind !== "synthetic-fixture" && input.evidenceKind !== "target-host") {
     return invalid("adoption evidence kind is required");
   }
@@ -95,13 +116,36 @@ export const adoptPreexistingCatalog = async (
     return invalid("compiled adoption artifact does not match the expected current pin");
   }
 
-  const pointer = await readCurrentCatalogPointer(pool);
+  const pointer = await readPointerAsSynchronizer(pool);
   if (
     pointer.kind !== "installed" ||
     pointer.current.id !== input.expectedCurrent.id ||
     pointer.current.digest !== input.expectedCurrent.digest
   ) {
     return invalid("adoption target is not the current catalog pin");
+  }
+  return {
+    ok: true,
+    value: {
+      expectedCurrent: input.expectedCurrent,
+      artifactDigest: input.artifactDigest,
+      evidenceKind: input.evidenceKind,
+    },
+  };
+};
+
+/**
+ * Saves a verified exact source bundle then calls the unique synchronizer
+ * adoption command. Does not advance the Catalog pointer. Synthetic fixtures
+ * must set evidenceKind: "synthetic-fixture" and are not target-host evidence.
+ */
+export const adoptPreexistingCatalog = async (
+  pool: pg.Pool,
+  input: AdoptPreexistingCatalogInput,
+): Promise<Result<CatalogInstallOutcome, CatalogInstallError>> => {
+  const checked = await checkAdoptPreexistingCatalog(pool, input);
+  if (!checked.ok) {
+    return checked;
   }
 
   const client = await pool.connect();
@@ -141,7 +185,7 @@ export const adoptPreexistingCatalog = async (
     return installed;
   }
 
-  const after = await readCurrentCatalogPointer(pool);
+  const after = await readPointerAsSynchronizer(pool);
   if (
     after.kind !== "installed" ||
     after.current.id !== input.expectedCurrent.id ||

@@ -6,6 +6,10 @@
 
 ## 使用方式
 
+L2 的 `wiseeff-diagnostic-<run>-<attempt>-acceptance-local-non-hdc` 产物是有界的工作流状态快照，与经过安全门禁的完整 ZIP 分开。它记录候选初始化前实测的 checkout SHA/tree、workflow SHA、PR head/base（非 PR 事件使用 push 前驱或定时运行的 head），以及执行、归档、完整上传的结果。首版内部阶段、清理和测试数量仍是 unknown，不读取候选报告或原始日志。发布器失败时只生成 `DIAGNOSTIC_REJECTED`；后备诊断或上传成功不能覆盖先前失败。诊断自身上传在快照中为 pending，最终状态见 Actions 和作业摘要；runner 丢失时可能 incomplete。完整产物的大小、所有权及安全要求保持不变。
+
+修改此通道时运行 `npm run test:scripts -- scripts/acceptance-diagnostic.test.ts scripts/check-acceptance-ci.test.ts` 和 `npm run acceptance:ci`。测试提取并执行实际工作流内的隔离发布器，合成失败只证明诊断行为，不是完整验收通过。新增有界步骤均计入 L2 平台预算（下界 151 分钟、作业上限 155 分钟），Gate0 owner 及原安全扫描/上传预算不变。
+
 - 本页和英文版是相互链接的独立文档；不要在同一篇文档里混写中文和英文正文。
 - 命令、路径、环境变量、API 路径、角色名、状态名和脚本名称保持英文原样，避免复制时出错。
 - 修改相关功能时，请同时更新英文版和中文版；如果只更新一侧，`npm run docs:check` 应阻止完成。
@@ -28,6 +32,8 @@
 | `npm run catalog:lane:accept -- --issue <n> -- <issue-named command>` | 在专用 lane DB 上跑 Issue 点名 focused tests；收集到 0 个文件是硬失败 | 精确候选的本地门禁。Hosted 仍只是 H，不能替代该 PG/L 证据。 |
 | `npm run catalog:compile-vendor [-- --out <bundle.json>]` | 以 `schemas/dts/catalog.json` 去掉退役/歧义夹具，编译 `crel_acme_1` 的后继 `crel_vendor_catalog_1`，并打印冻结 digest | 修改厂商 YAML、`catalog.json` 或 D1 后继编译器后。不是 CP-09 生产导入路径；新正式 ID 由服务端分配不透明身份。 |
 | `npm run catalog:install-release -- <bundle.json> --confirm-digest sha256:... [--mode advance --expected-current-id ... --expected-current-digest ...]` | 仅在 `catalog_activation_receipts` 为空时允许的管理面 Catalog bootstrap 或 advance；需要 `DATABASE_URL`。一旦存在 Receipt，命令失败为 `catalog-install-publication-regime-required` | 未接管实例上的首次夹具发布或历史 D1 厂商后继。禁止由应用启动调用，禁止第二次 bootstrap，禁止 skip-authorization 旁路。 |
+| `npx tsx scripts/catalog-publication-ops.ts <inspect\|adopt\|capabilities\|policy\|freeze>` | 操作员预检/接管/授权/策略/冻结，封装已有 collector、`adoptPreexistingCatalog` 与 `setPublicationFreeze` | 自托管 Catalog 发布操作。见 `ops/self-hosted/catalog-publication.zh-CN.md`。 |
+| `WISEEFF_CATALOG_DELIVERY_ACCEPTANCE=1 npm run catalog:publication:delivery-accept` | 隔离正式镜像 M1：接管、真实账号发布、Receipt/current、DTS ingest、工作台存值、第二次发布、重启回读；ID 绑定本轮 | 正式镜像/Compose 对临时 pgvector。缺前提非零退出。不是生产启用。 |
 | `npm run dtc:check -- --required` | PATH 上存在真实 Device Tree Compiler | M1 seed、DTS 校验或自托管镜像验收前使用。 |
 | `npm run dtc:seed:compile` | Aurora、Nebula、Atlas 三份已提交 overlay 均通过真实 `dtc -@` 编译 | 修改 DTS fixture、seed 生成、验证门禁或 dtc 部署流程后使用。 |
 | `npm run dts:toolchain:bootstrap` | 项目 venv 安装钉扎 dtschema；dtc/fdtoverlay 匹配 `tools/dts-toolchain/versions.json`（复用宿主或构建钉扎 commit 到 `.wiseeff-tools/dts-toolchain`） | 首次本地设置，或修改 requirements/version pin 后。 |
