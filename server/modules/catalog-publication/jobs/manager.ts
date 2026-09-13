@@ -21,9 +21,21 @@ export type PublicationManagerEnv = {
 export function assertPublicationManagerProcessFence(
   env: NodeJS.ProcessEnv | Record<string, string | undefined>,
 ): void {
-  if (env.WISEEFF_CATALOG_SYNCHRONIZER_DATABASE_URL && env.WISEEFF_API_PROCESS === "1") {
+  if (env.WISEEFF_API_PROCESS === "1") {
     throw new Error("publication manager must not share the API process identity");
   }
+  if (env.LOG_WORKER_ENABLED === "true") {
+    throw new Error("publication manager must not share the log worker identity");
+  }
+}
+
+export function assertPublicationManagerEntry(
+  env: NodeJS.ProcessEnv | Record<string, string | undefined>,
+): void {
+  if (env.WISEEFF_PUBLICATION_MANAGER !== "1") {
+    throw new Error("WISEEFF_PUBLICATION_MANAGER=1 is required for the manager entry");
+  }
+  assertPublicationManagerProcessFence(env);
 }
 
 export type PublicationManagerOptions = {

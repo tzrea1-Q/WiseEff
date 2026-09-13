@@ -37,6 +37,7 @@ pnpm-debug.log*
 !.env.local.example
 !ops/self-hosted/.env.example
 !ops/self-hosted/.env.ip-lab.example
+!ops/self-hosted/.env.publication-manager.example
 ops/self-hosted/.build-network.env
 !ops/self-hosted/.build-network.env.example
 

@@ -31,8 +31,10 @@ The stock topology runs exactly one API replica. The wrapper accepts only exact 
 | Catalog cutover/verification controller | `ops/self-hosted/scripts/parameter-catalog-upgrade/` journal and legal actions | Fail-closed plan/execute/inspect/recover/prepare/run over frozen S7-ORC and S10-PER; no gate selection, API migrate, or unknown-commit guess. Apply remains S11-APL. |
 | Advance Catalog from fixture `crel_acme_1` to the vendor YAML successor | Compile then `install-catalog-release.ts --mode advance` inside the API container while receipts are empty; see [upgrade.md](upgrade.md#vendor-catalog-successor) | Pointer advances to `crel_vendor_catalog_1` on an untaken-over instance. After any `catalog_activation_receipts` row, this CLI is refused; later vendor reuse uses CP-09 import + CP-07. Do not bootstrap again, seed, or SQL-insert Catalog rows. |
 | Inspect a preexisting Catalog for publication adoption | `CATALOG_BASELINE_READONLY_DATABASE_URL=... npx tsx scripts/inspect-catalog-publication-baseline.ts` | Read-only evidence JSON+sha256. Does not insert an Artifact, does not accept `DATABASE_URL`, and never prints the DSN. |
-| Adopt a verified preexisting current Catalog | Call the runtime adoption adapter (`mode: "adopted-preexisting"`) with today's verified evidence | Writes a Receipt only. Does not advance the pointer or restore data. |
-| Online Catalog publication | CP-07 HTTP publish routes (not enabled) after freeze is clear | Distinct from inspect, adopt, and restore. |
+| Adopt a verified preexisting current Catalog | From repo root: `npx tsx scripts/catalog-publication-ops.ts adopt --check|--execute ...` with `WISEEFF_PUBLICATION_MANAGER_DATABASE_URL` | Writes a Receipt only. Does not advance the pointer or restore data. See [catalog-publication.md](catalog-publication.md). |
+| Grant or revoke publisher capabilities | `npx tsx scripts/catalog-publication-ops.ts capabilities grant\|revoke\|status ...` | Real `user_role_bindings`, not `WISEEFF_CATALOG_TEST_CAPABILITIES`. |
+| Isolated publication enable/disable (not production) | `npx tsx scripts/catalog-publication-ops.ts policy enable\|disable --actor <id> --confirmation ephemeral-test-only` | Refused on shared database name `wiseeff`. |
+| Online Catalog publication | CP-07 HTTP publish routes after isolated policy enable and freeze is clear | Distinct from inspect, adopt, and restore. Default `publication_enabled` remains false. |
 | Restore from a recovery point | `./scripts/upgrade.sh` recovery / restore drill entries | Restores data. Never reuse inspect or adopt for restore. |
 
 Do not use `setup.sh --force` as an upgrade or restart command. It intentionally replaces `.env` and rotates database/object-store credentials. Do not use `compose down -v`, `docker volume rm`, or `docker system prune` in a data-preserving workflow.
@@ -72,7 +74,7 @@ curl -fsS https://<host>/health/live
 curl -fsS https://<host>/health/ready
 
 # Recent logs
-./scripts/compose --env-file .env logs --tail=200 api worker proxy
+./scripts/compose --env-file .env logs --tail=200 api worker publication-manager proxy
 
 # Follow one service
 ./scripts/compose --env-file .env logs -f worker

@@ -20,6 +20,7 @@ import {
 import { createPostgresDatabase, getRootPostgresPool, type RootDatabase } from "../../../shared/database/client";
 import { withPublicationCoordinator } from "../coordinator";
 import {
+  assertPublicationManagerEntry,
   assertPublicationManagerProcessFence,
   readPublicationManagerHealth,
   resolvePublicationManagerOptions,
@@ -77,7 +78,16 @@ describe("CP-07 publication manager production seam", () => {
         WISEEFF_CATALOG_SYNCHRONIZER_DATABASE_URL: "postgres://synchronizer@127.0.0.1/db",
       }),
     ).toThrow(/must not share the API process identity/);
+    expect(() =>
+      assertPublicationManagerProcessFence({
+        LOG_WORKER_ENABLED: "true",
+      }),
+    ).toThrow(/must not share the log worker identity/);
     expect(() => assertPublicationManagerProcessFence({})).not.toThrow();
+    expect(() => assertPublicationManagerEntry({})).toThrow(/WISEEFF_PUBLICATION_MANAGER=1/);
+    expect(() =>
+      assertPublicationManagerEntry({ WISEEFF_PUBLICATION_MANAGER: "1" }),
+    ).not.toThrow();
     const resolved = resolvePublicationManagerOptions({
       WISEEFF_PUBLICATION_MANAGER_LEASE_MS: "15000",
       WISEEFF_PUBLICATION_MANAGER_RETRY_BUDGET: "3",

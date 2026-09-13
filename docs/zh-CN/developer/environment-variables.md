@@ -15,7 +15,10 @@
 | `TEST_DATABASE_URL` | 未设置 | Catalog/server 集成测试 | 设置后 catalog harness 与 `catalog:lane:accept` 优先于 `DATABASE_URL`。必须仍是真实 pgvector PostgreSQL，不能是共享 compose 应用库。 |
 | `CATALOG_BASELINE_READONLY_DATABASE_URL` | 未设置 | Catalog 发布基线只读采集 | 仅供 `scripts/inspect-catalog-publication-baseline.ts` 使用的只读 DSN。采集器拒绝 `DATABASE_URL`，要求 `SET TRANSACTION READ ONLY`，若角色对 Catalog/publication 有 INSERT/UPDATE/DELETE 则失败，绝不打印 DSN，也不插入 Artifact。 |
 | `WISEEFF_CATALOG_PUBLICATION_DATA_MODE` | `new-empty` | Catalog 双事实就绪 | Catalog HTTP 与 `/health/ready` catalogPublication 的组合边界 data mode。`populated` 要求真实已批准 runtime pin 且绑定当前 Catalog，不伪造 P13。默认 `new-empty` 不声称 P13 已退役。 |
-| `WISEEFF_PUBLICATION_MANAGER_DATABASE_URL` | `DATABASE_URL` | publication manager | 独立 manager 进程 DSN。LOGIN 必须能 `SET ROLE` `catalog_publication_coordinator_role`（认领/job 执行列）和 `catalog_synchronizer_role`（安装器）。绝不是数据库超级用户。普通 API `DATABASE_URL` 不得持有 synchronizer 凭据。 |
+| `WISEEFF_PUBLICATION_MANAGER_ENV_FILE` | `.env.publication-manager` | 自托管 Compose | 仅 `publication-manager` 服务加载的私有 env 文件。 |
+| `WISEEFF_PUBLICATION_MANAGER` | 未设置 | publication manager 进程 | `npm run publication:manager` 必须为 `1`。 |
+| `WISEEFF_API_PROCESS` | 未设置 | API 容器 | API 服务设为 `1`，使 manager 入口拒绝在该进程启动。 |
+| `WISEEFF_PUBLICATION_MANAGER_DATABASE_URL` | 公共 `.env` 中不设置 | publication manager | 只写在 `.env.publication-manager`。LOGIN 必须能 `SET ROLE` `catalog_publication_coordinator_role` 和 `catalog_synchronizer_role`。绝不是数据库超级用户。普通 API `DATABASE_URL` 不得持有 synchronizer 凭据。 |
 | `WISEEFF_PUBLICATION_MANAGER_LEASE_MS` | `30000` | publication manager | Job 租约时长（毫秒）。认领使用 PostgreSQL `now()`，不用 manager 墙上时钟。 |
 | `WISEEFF_PUBLICATION_MANAGER_RETRY_BUDGET` | `5` | publication manager | 锁竞争与可恢复连接错误的有界自动重试。权限、篡改、能力、不完整前驱、基线漂移为终止或 blocked。 |
 | `WISEEFF_PUBLICATION_MANAGER_POLL_INTERVAL_MS` | `1000` | publication manager | 队列为空时的空闲轮询间隔。 |

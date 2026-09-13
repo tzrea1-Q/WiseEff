@@ -67,6 +67,7 @@ services:
     env_file: \${WISEEFF_ENV_FILE:-.env}
     environment:
       <<: *wiseeff-runtime-proxy
+      WISEEFF_API_PROCESS: "1"
     healthcheck:
       test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:8787/health/live"]
     command: ["sh", "-lc", "npx tsx server/index.ts"]
@@ -80,6 +81,18 @@ services:
     depends_on:
       redis:
         condition: service_healthy
+  publication-manager:
+    image: *wiseeff-image
+    build: *wiseeff-build
+    env_file:
+      - \${WISEEFF_ENV_FILE:-.env}
+      - \${WISEEFF_PUBLICATION_MANAGER_ENV_FILE:-.env.publication-manager}
+    environment:
+      WISEEFF_PUBLICATION_MANAGER: "1"
+      WISEEFF_API_PROCESS: "0"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:8791/health/live"]
+    command: ["sh", "-lc", "npm run publication:manager"]
   web:
     image: *wiseeff-image
     build: *wiseeff-build
@@ -202,6 +215,8 @@ LOG_ANALYSIS_API_KEY=
 LOG_ANALYSIS_API_TIMEOUT_MS=30000
 LOG_ANALYSIS_TOKEN_BUDGET=8000
 LOG_ANALYSIS_DETERMINISTIC=false
+WISEEFF_PUBLICATION_MANAGER_ENV_FILE=.env.publication-manager
+WISEEFF_CATALOG_PUBLICATION_DATA_MODE=new-empty
 LOG_WORKER_ENABLED=false
 LOG_ANALYSIS_QUEUE_MODE=durable
 REDIS_URL=redis://redis:6379
@@ -235,6 +250,7 @@ const existingSelfHostedFiles = new Set([
   "ops/self-hosted/.build-network.env.example",
   "ops/self-hosted/build-network/empty-ca.pem",
   "ops/self-hosted/upgrade-protocol.env",
+  "ops/self-hosted/.env.publication-manager.example",
   "ops/self-hosted/images/base-image-bundle.env",
   "ops/self-hosted/images/node-22.21.1-alpine-amd64.tar",
   "ops/self-hosted/Caddyfile.ip-lab",
@@ -318,9 +334,18 @@ describe("self-hosted config metadata", () => {
       missingDockerignoreTokens: [],
       baseImageBundleIssues: [],
       missingEnvKeys: [],
+      envSafetyIssues: [],
       missingProxyTokens: [],
       missingFiles: []
     });
+  });
+
+  it("rejects a publication-manager DSN in the public env example", () => {
+    const result = evaluateWithEnvExample(
+      `${validEnvExample}\nWISEEFF_PUBLICATION_MANAGER_DATABASE_URL=postgres://manager@postgres/wiseeff\n`,
+    );
+    expect(result.status).toBe("failed");
+    expect(result.envSafetyIssues).toContain("public-env-exposes-publication-manager-dsn");
   });
 
   it("reports all missing self-hosted runtime requirements", () => {
@@ -354,7 +379,14 @@ describe("self-hosted config metadata", () => {
       "dts:toolchain:check",
       "dts:config:validate"
     ]);
-    expect(result.missingServices).toEqual(["postgres", "redis", "worker", "web", "proxy"]);
+    expect(result.missingServices).toEqual([
+      "postgres",
+      "redis",
+      "worker",
+      "publication-manager",
+      "web",
+      "proxy"
+    ]);
     expect(result.missingComposeTokens).toEqual(
       expect.arrayContaining([
         "wiseeff-postgres-data:/var/lib/postgresql/data",

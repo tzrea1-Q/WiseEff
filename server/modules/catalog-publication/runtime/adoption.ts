@@ -46,15 +46,19 @@ const fail = (
 const invalid = (detail: string): Result<never, CatalogInstallError> =>
   fail({ kind: "adoption-evidence-invalid", detail });
 
+export type AdoptPreexistingCatalogCheck = {
+  readonly expectedCurrent: AdoptPreexistingCatalogInput["expectedCurrent"];
+  readonly artifactDigest: string;
+  readonly evidenceKind: AdoptionEvidenceKind;
+};
+
 /**
- * Saves a verified exact source bundle then calls the unique synchronizer
- * adoption command. Does not advance the Catalog pointer. Synthetic fixtures
- * must set evidenceKind: "synthetic-fixture" and are not target-host evidence.
+ * Read-only adoption preflight. Does not persist an Artifact or write a Receipt.
  */
-export const adoptPreexistingCatalog = async (
+export const checkAdoptPreexistingCatalog = async (
   pool: pg.Pool,
   input: AdoptPreexistingCatalogInput,
-): Promise<Result<CatalogInstallOutcome, CatalogInstallError>> => {
+): Promise<Result<AdoptPreexistingCatalogCheck, CatalogInstallError>> => {
   if (input.evidenceKind !== "synthetic-fixture" && input.evidenceKind !== "target-host") {
     return invalid("adoption evidence kind is required");
   }
@@ -102,6 +106,29 @@ export const adoptPreexistingCatalog = async (
     pointer.current.digest !== input.expectedCurrent.digest
   ) {
     return invalid("adoption target is not the current catalog pin");
+  }
+  return {
+    ok: true,
+    value: {
+      expectedCurrent: input.expectedCurrent,
+      artifactDigest: input.artifactDigest,
+      evidenceKind: input.evidenceKind,
+    },
+  };
+};
+
+/**
+ * Saves a verified exact source bundle then calls the unique synchronizer
+ * adoption command. Does not advance the Catalog pointer. Synthetic fixtures
+ * must set evidenceKind: "synthetic-fixture" and are not target-host evidence.
+ */
+export const adoptPreexistingCatalog = async (
+  pool: pg.Pool,
+  input: AdoptPreexistingCatalogInput,
+): Promise<Result<CatalogInstallOutcome, CatalogInstallError>> => {
+  const checked = await checkAdoptPreexistingCatalog(pool, input);
+  if (!checked.ok) {
+    return checked;
   }
 
   const client = await pool.connect();

@@ -36,10 +36,6 @@ test.describe("catalog M1 publication operator loop", () => {
   test("lets an authorized operator draft, preview, and publish a non-fixture definition", async ({
     page
   }, testInfo) => {
-    test.skip(
-      !process.env.WISEEFF_CATALOG_TEST_CAPABILITIES?.includes("catalog:author"),
-      "Isolated publication overlay is required; CP-11 owns the full Hosted lane."
-    );
     await openCatalogAt(page, "org-admin");
     const entry = page.getByRole("button", { name: "新增定义" });
     await expect(entry).toBeVisible();
@@ -69,7 +65,8 @@ test.describe("catalog M1 publication operator loop", () => {
     const publishConfirm = page.getByRole("dialog", { name: "确认发布到目录" });
     await publishConfirm.getByRole("checkbox").check();
     await publishConfirm.getByRole("button", { name: "确认发布" }).click();
-    await expect(dialog.getByText(/入队|正在执行|已生效|曾经成功/)).toBeVisible({ timeout: 30_000 });
+    await expect(dialog.getByText(/已生效|曾经成功/)).toBeVisible({ timeout: 120_000 });
+    await expect(dialog.getByText(/入队|正在执行/)).toHaveCount(0);
     await dialog.getByRole("button", { name: "发布到目录" }).click({ trial: true }).catch(() => undefined);
     await catalogScreenshot(page, testInfo, "cp08-authorized-publish");
     expect(fixture.powerSubjectId.length).toBeGreaterThan(0);

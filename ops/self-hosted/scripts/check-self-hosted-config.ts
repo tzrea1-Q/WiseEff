@@ -23,7 +23,15 @@ export const requiredSelfHostedScripts = [
   "dts:config:validate"
 ] as const;
 
-export const requiredSelfHostedServices = ["postgres", "redis", "api", "worker", "web", "proxy"] as const;
+export const requiredSelfHostedServices = [
+  "postgres",
+  "redis",
+  "api",
+  "worker",
+  "publication-manager",
+  "web",
+  "proxy"
+] as const;
 
 export const requiredSelfHostedFiles = [
   "ops/self-hosted/scripts/compose",
@@ -36,6 +44,7 @@ export const requiredSelfHostedFiles = [
   "ops/self-hosted/.build-network.env.example",
   "ops/self-hosted/build-network/empty-ca.pem",
   "ops/self-hosted/upgrade-protocol.env",
+  "ops/self-hosted/.env.publication-manager.example",
   "ops/self-hosted/images/base-image-bundle.env",
   "ops/self-hosted/images/node-22.21.1-alpine-amd64.tar",
   ...requiredIpLabFiles
@@ -63,6 +72,11 @@ export const requiredComposeTokens = [
   "wget -q --spider",
   "wget -q --spider http://127.0.0.1:2019/config/",
   "npm run worker:logs",
+  "npm run publication:manager",
+  "WISEEFF_PUBLICATION_MANAGER: \"1\"",
+  "WISEEFF_API_PROCESS: \"1\"",
+  ".env.publication-manager",
+  "curl -fsS http://127.0.0.1:8791/health/live",
   "npm run preview -- --host 0.0.0.0 --port 5173 --strictPort",
   "80:80",
   "443:443",
@@ -163,6 +177,8 @@ export const requiredEnvKeys = [
   "LOG_ANALYSIS_API_TIMEOUT_MS",
   "LOG_ANALYSIS_TOKEN_BUDGET",
   "LOG_ANALYSIS_DETERMINISTIC",
+  "WISEEFF_PUBLICATION_MANAGER_ENV_FILE",
+  "WISEEFF_CATALOG_PUBLICATION_DATA_MODE",
   "LOG_WORKER_ENABLED",
   "LOG_ANALYSIS_QUEUE_MODE",
   "REDIS_URL",
@@ -214,6 +230,7 @@ export type SelfHostedConfigResult = {
   missingDockerignoreTokens: string[];
   baseImageBundleIssues: string[];
   missingEnvKeys: string[];
+  envSafetyIssues: string[];
   missingProxyTokens: string[];
   missingFiles: string[];
 };
@@ -266,6 +283,10 @@ export function evaluateSelfHostedConfig(input: SelfHostedConfigInput): SelfHost
   }
   const missingDockerignoreTokens = requiredDockerignoreTokens.filter((token) => !dockerignoreText.includes(normalize(token)));
   const missingEnvKeys = requiredEnvKeys.filter((key) => !envKeys.has(key));
+  const envSafetyIssues: string[] = [];
+  if (/(^|\n)WISEEFF_PUBLICATION_MANAGER_DATABASE_URL=/.test(input.envExampleText.replace(/\r\n/g, "\n"))) {
+    envSafetyIssues.push("public-env-exposes-publication-manager-dsn");
+  }
   const missingProxyTokens = requiredProxyTokens.filter((token) => !caddyfileText.includes(normalize(token)));
   const missingFiles = [...requiredSelfHostedStorageFiles, ...requiredSelfHostedFiles].filter(
     (filePath) => !existingFiles.has(filePath)
@@ -281,6 +302,7 @@ export function evaluateSelfHostedConfig(input: SelfHostedConfigInput): SelfHost
       missingDockerignoreTokens.length === 0 &&
       baseImageBundleIssues.length === 0 &&
       missingEnvKeys.length === 0 &&
+      envSafetyIssues.length === 0 &&
       missingProxyTokens.length === 0 &&
       missingFiles.length === 0
         ? "passed"
@@ -293,6 +315,7 @@ export function evaluateSelfHostedConfig(input: SelfHostedConfigInput): SelfHost
     missingDockerignoreTokens,
     baseImageBundleIssues,
     missingEnvKeys,
+    envSafetyIssues,
     missingProxyTokens,
     missingFiles
   };

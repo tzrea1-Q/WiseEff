@@ -2,8 +2,12 @@ export {
   SUPPORTED_CATALOG_CONSUMER_CAPABILITIES,
   catalogConsumerSupportsRevision,
 } from "./capabilities";
-export { adoptPreexistingCatalog } from "./adoption";
-export type { AdoptPreexistingCatalogInput, AdoptionEvidenceKind } from "./adoption";
+export { adoptPreexistingCatalog, checkAdoptPreexistingCatalog } from "./adoption";
+export type {
+  AdoptPreexistingCatalogCheck,
+  AdoptPreexistingCatalogInput,
+  AdoptionEvidenceKind,
+} from "./adoption";
 export {
   isPublicationFrozen,
   readPublicationFreeze,

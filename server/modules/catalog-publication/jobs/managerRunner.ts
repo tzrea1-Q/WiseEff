@@ -5,7 +5,7 @@ import { getAuthContext } from "../../auth/repository";
 import { createCatalogInstaller } from "../../catalog-kernel/install/installer";
 import { createPostgresDatabase, getRootPostgresPool } from "../../../shared/database/client";
 import {
-  assertPublicationManagerProcessFence,
+  assertPublicationManagerEntry,
   resolvePublicationManagerOptions,
   readPublicationManagerHealth,
   startPublicationManagerLoop,
@@ -31,7 +31,7 @@ if (!databaseUrl) {
   throw new Error("WISEEFF_PUBLICATION_MANAGER_DATABASE_URL or DATABASE_URL is required");
 }
 
-assertPublicationManagerProcessFence(process.env);
+assertPublicationManagerEntry(process.env);
 
 const db = createPostgresDatabase(databaseUrl);
 const pool = getRootPostgresPool(db);

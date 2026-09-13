@@ -835,6 +835,9 @@ wiseeff_upgrade_resolve_target() {
 wiseeff_upgrade_collect_runtime() {
   local service container image image_ref project app_image image_ref_variable
   upgrade_runtime_services="postgres redis minio api worker web proxy"
+  if [ -n "$(wiseeff_upgrade_compose ps -q publication-manager 2>/dev/null || true)" ]; then
+    upgrade_runtime_services="${upgrade_runtime_services} publication-manager"
+  fi
   upgrade_compose_project=""
   upgrade_mixed_app_images="false"
   upgrade_runtime_image_id_api=""
@@ -1476,7 +1479,45 @@ wiseeff_upgrade_start_candidate_data_plane() {
     wiseeff_upgrade_candidate_data_plane_up
 }
 
+wiseeff_upgrade_compose_has_service() {
+  local service="$1"
+  wiseeff_upgrade_compose config --services 2>/dev/null | grep -qx "$service"
+}
+
+wiseeff_upgrade_publication_freeze() {
+  local frozen="$1"
+  local actor="${WISEEFF_UPGRADE_ACTOR_PRINCIPAL_ID:-deployment-upgrade}"
+  local action
+  if [ "$frozen" = "true" ]; then
+    action=set
+  else
+    action=clear
+  fi
+  if ! wiseeff_upgrade_compose_has_service api; then
+    return 0
+  fi
+  if ! wiseeff_upgrade_compose exec -T api npx tsx scripts/catalog-publication-ops.ts freeze "$action" --actor "$actor"; then
+    if [ "$frozen" = "true" ]; then
+      return 1
+    fi
+    return 1
+  fi
+  return 0
+}
+
 wiseeff_upgrade_stop_old_stack() {
+  if wiseeff_upgrade_compose_has_service api; then
+    if ! wiseeff_upgrade_run_recovery_action quiesce-publication-freeze wiseeff_upgrade_publication_freeze true; then
+      wiseeff_upgrade_record_failure quiescing publication-manager quiesce-publication-freeze "Publication freeze could not be set before the recovery point was created. Leave freeze set."
+      return 1
+    fi
+  fi
+  if wiseeff_upgrade_compose_has_service publication-manager; then
+    if ! wiseeff_upgrade_run_recovery_action quiesce-publication-manager-stop wiseeff_upgrade_compose stop -t "${WISEEFF_UPGRADE_STOP_TIMEOUT_SECONDS:-60}" publication-manager; then
+      wiseeff_upgrade_record_failure quiescing publication-manager quiesce-publication-manager-stop "The publication manager could not be stopped after freeze. Leave freeze set."
+      return 1
+    fi
+  fi
   if ! wiseeff_upgrade_run_recovery_action quiesce-proxy-stop wiseeff_upgrade_compose stop -t "${WISEEFF_UPGRADE_STOP_TIMEOUT_SECONDS:-60}" proxy; then
     wiseeff_upgrade_record_failure quiescing proxy quiesce-proxy-stop "The proxy could not be stopped before the recovery point was created."
     return 1
@@ -2824,13 +2865,32 @@ wiseeff_upgrade_run_apply() {
   wiseeff_upgrade_set_phase api-ready complete
 
   wiseeff_upgrade_set_phase starting-app-services running
-  if ! WISEEFF_APP_TAG="$upgrade_target_sha" wiseeff_upgrade_compose up -d --force-recreate --no-build --no-deps web worker; then
-    wiseeff_upgrade_mark_recovery_required app-services candidate-app-services-recreate "The candidate web or worker containers could not be recreated."
+  if ! WISEEFF_APP_TAG="$upgrade_target_sha" wiseeff_upgrade_compose up -d --force-recreate --no-build --no-deps web worker publication-manager; then
+    wiseeff_upgrade_mark_recovery_required app-services candidate-app-services-recreate "The candidate web, worker, or publication-manager containers could not be recreated. Leave publication freeze set."
     return 70
   fi
   if ! wiseeff_upgrade_verify_candidate_app_readiness; then
     wiseeff_upgrade_mark_recovery_required
     return 70
+  fi
+  if wiseeff_upgrade_compose_has_service publication-manager; then
+    local manager_attempt
+    manager_attempt=0
+    while [ "$manager_attempt" -lt "${WISEEFF_UPGRADE_HEALTH_ATTEMPTS:-60}" ]; do
+      if wiseeff_upgrade_compose exec -T publication-manager curl -fsS http://127.0.0.1:8791/health/live >/dev/null 2>&1; then
+        break
+      fi
+      manager_attempt=$((manager_attempt + 1))
+      sleep "${WISEEFF_UPGRADE_HEALTH_INTERVAL_SECONDS:-2}"
+    done
+    if [ "$manager_attempt" -ge "${WISEEFF_UPGRADE_HEALTH_ATTEMPTS:-60}" ]; then
+      wiseeff_upgrade_mark_recovery_required publication-manager candidate-publication-manager-live "The candidate publication manager liveness probe failed. Leave publication freeze set."
+      return 70
+    fi
+    if ! wiseeff_upgrade_publication_freeze false; then
+      wiseeff_upgrade_mark_recovery_required publication-manager candidate-publication-unfreeze "Publication freeze could not be cleared after manager liveness. Leave freeze set."
+      return 70
+    fi
   fi
   wiseeff_upgrade_set_phase app-services-ready complete
 
