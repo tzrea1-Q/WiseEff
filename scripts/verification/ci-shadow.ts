@@ -146,7 +146,7 @@ export function buildShadow(input: CiShadowInput, cwd = process.cwd()): ShadowSu
 }
 
 function cli(): void {
-  const input = readFileSync("/dev/stdin", "utf8");
+  const input = readFileSync(0, "utf8");
   requireShadow(Buffer.byteLength(input, "utf8") <= 256 * 1024, "SHADOW_NATIVE_INVALID");
   const value = JSON.parse(input) as CiShadowInput;
   process.stdout.write(`${JSON.stringify(buildShadow(value))}\n`);

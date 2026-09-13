@@ -136,7 +136,9 @@ describe("CI shadow projection", () => {
       expect(reportFiles).toEqual([...files].sort());
       expect(Number(readFileSync(counterFile, "utf8"))).toBe(1);
       expect(nativeSummary).toMatchObject({ command: "frontend", passed: 2, skipped: 0, files: reportFiles.length, identity });
-      expect(shadow).toMatchObject({ status: "observed", planValid: true, actualFullFileCount: reportFiles.length, selectionScope: "full-required", fullFallback: true });
+      writeFileSync(path.join(evidenceRoot, "shadow.json"), JSON.stringify(shadow), { mode: 0o600 });
+      writeFileSync(path.join(evidenceRoot, "fixture-status.txt"), git(["status", "--porcelain=v1", "--untracked-files=all"]), { mode: 0o600 });
+      expect(shadow, `bounded fixture observation: ${JSON.stringify(shadow)}`).toMatchObject({ status: "observed", planValid: true, actualFullFileCount: reportFiles.length, selectionScope: "full-required", fullFallback: true });
       expect(reportSnapshot.equals(readFileSync(reportFile))).toBe(true);
       const steps = (withShadow: boolean) => Object.fromEntries(l1CommandIds["l1-frontend"].map((id) => [id, {
         outcome: "success", outputs: id === "frontend" ? { report: JSON.stringify(nativeSummary), ...(withShadow ? { shadow: JSON.stringify(shadow) } : {}) } : {},
