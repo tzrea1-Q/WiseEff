@@ -697,13 +697,13 @@ describe("parameter catalog boundary checker", () => {
     expect(packageJson.scripts["parameter-catalog-boundaries:check"]).toBe(
       "tsx scripts/check-parameter-catalog-boundaries.ts",
     );
-    expect(workflow).toContain('git fetch --no-tags origin "${PARAMETER_CATALOG_TRUSTED_BASE_SHA}"');
-    expect(workflow).toContain('git rev-parse --verify "${PARAMETER_CATALOG_TRUSTED_BASE_SHA}^{commit}"');
-    expect(workflow).toContain(
+    const l1Static = workflow.split("\n  l1-static:")[1]?.split("\n  l1-frontend:")[0] ?? "";
+    expect(l1Static).toContain('git fetch --no-tags origin "${PARAMETER_CATALOG_TRUSTED_BASE_SHA}"');
+    expect(l1Static).toContain('git rev-parse --verify "${PARAMETER_CATALOG_TRUSTED_BASE_SHA}^{commit}"');
+    expect(l1Static).toContain(
       'npm run parameter-catalog-boundaries:check -- --trusted-base-sha "${PARAMETER_CATALOG_TRUSTED_BASE_SHA}"',
     );
-    const buildAndTest = workflow.split("\n  build-and-test:")[1] ?? "";
-    expect(buildAndTest).toContain("fetch-depth: 0");
+    expect(l1Static).toContain("fetch-depth: 0");
   });
 
   it("stages privately, validates the complete artifact set, and rolls back a partial publish", async () => {
