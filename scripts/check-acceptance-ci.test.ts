@@ -221,6 +221,9 @@ jobs:
 
   it("rejects extra diagnostic uploads, raw fallbacks, skipped safety and late identity", () => {
     for (const mutate of [
+      ...["v3", "unreviewed"].map((ref) => (w: any) => {
+        w.jobs["acceptance-local-non-hdc"].steps.find((s: any) => s.name === "Upload acceptance evidence").uses = `actions/upload-artifact@${ref}`;
+      }),
       (w: any) => w.jobs["acceptance-local-non-hdc"].steps.push({ uses: "actions/upload-artifact@v3", with: { path: "." } }),
       (w: any) => { w.jobs["acceptance-local-non-hdc"].steps.find((s: any) => s.id === "acceptance_diagnostic_upload").with.path = "test-results/**"; },
       (w: any) => { w.jobs["acceptance-local-non-hdc"].steps.find((s: any) => s.id === "acceptance_diagnostic")["continue-on-error"] = true; },

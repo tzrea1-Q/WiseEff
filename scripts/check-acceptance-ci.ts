@@ -215,6 +215,7 @@ export function evaluateImmutableAcceptanceUpload(workflowText: string): Immutab
   if (uploads.length !== 2 || !diagnostic) errors.push("Acceptance must contain only the immutable ZIP and minimal diagnostic uploads.");
   if (!upload) errors.push("Acceptance evidence upload step is missing.");
   else {
+    if (upload.uses !== "actions/upload-artifact@v4") errors.push("Acceptance evidence upload must retain actions/upload-artifact@v4.");
     if (upload.if !== "always() && steps.acceptance_artifact_safety.outcome == 'success'") {
       errors.push("Acceptance evidence upload must depend only on successful immutable artifact safety.");
     }
