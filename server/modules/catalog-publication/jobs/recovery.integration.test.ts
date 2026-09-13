@@ -149,6 +149,8 @@ describe("CP-07 publication job recovery", () => {
     const first = await buildAuthorizedJob(client, {
       predecessorDigest: predecessor.digest,
       propertyKey: "iin_r2",
+      // Historical CP-10 persist wrote impactFacts without M2 addedSubjectCount.
+      impactSummary: { addedDefinitionCount: 1, changedDefinitionCount: 0 },
     });
     const installer = createCatalogInstaller(pool);
     const activatedR2 = await claimAndExecute(installer, "manager-r2");

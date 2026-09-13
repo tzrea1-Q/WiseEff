@@ -42,6 +42,41 @@ const capabilityOf = (candidate: PublicationCandidateRecord): PublicationCandida
   return { revision, allowListId };
 };
 
+const isSummaryCount = (value: unknown): value is Record<string, unknown> =>
+  value !== null && typeof value === "object" && !Array.isArray(value);
+
+const nonnegativeCount = (value: unknown): number | null =>
+  typeof value === "number" && Number.isInteger(value) && value >= 0 ? value : null;
+
+const allocatedSubjectIds = (allocation: PublicationCandidateRecord["identityAllocation"]): string[] => {
+  if (!Array.isArray(allocation.subjects)) {
+    return [];
+  }
+  return allocation.subjects.flatMap((entry) =>
+    isSummaryCount(entry) && typeof entry.subjectId === "string" ? [entry.subjectId] : [],
+  );
+};
+
+const impactSummaryOf = (
+  candidate: PublicationCandidateRecord,
+): PublicationCandidateView["impactSummary"] => {
+  const summary = candidate.identityAllocation.impactSummary;
+  const record = isSummaryCount(summary) ? summary : null;
+  const allocatedIds = allocatedSubjectIds(candidate.identityAllocation);
+  const addedDefinitionCount = nonnegativeCount(record?.addedDefinitionCount) ?? 0;
+  const changedDefinitionCount = nonnegativeCount(record?.changedDefinitionCount) ?? 0;
+  const addedSubjectCount = nonnegativeCount(record?.addedSubjectCount) ?? allocatedIds.length;
+  const addedSubjectIds = Array.isArray(record?.addedSubjectIds)
+    ? record.addedSubjectIds.filter((id): id is string => typeof id === "string")
+    : allocatedIds;
+  return {
+    addedDefinitionCount,
+    changedDefinitionCount,
+    addedSubjectCount,
+    ...(addedSubjectIds.length > 0 ? { addedSubjectIds } : {}),
+  };
+};
+
 const candidateView = (
   candidate: PublicationCandidateRecord,
 ): PublicationCandidateView | null => {
@@ -54,45 +89,16 @@ const candidateView = (
   if (!classified.ok) {
     return null;
   }
-  const summary = candidate.identityAllocation.impactSummary;
-  const addedDefinitionCount =
-    isSummaryCount(summary) && typeof summary.addedDefinitionCount === "number"
-      ? summary.addedDefinitionCount
-      : null;
-  const changedDefinitionCount =
-    isSummaryCount(summary) && typeof summary.changedDefinitionCount === "number"
-      ? summary.changedDefinitionCount
-      : null;
-  const addedSubjectCount =
-    isSummaryCount(summary) && typeof summary.addedSubjectCount === "number"
-      ? summary.addedSubjectCount
-      : null;
-  if (addedDefinitionCount === null || changedDefinitionCount === null || addedSubjectCount === null) {
-    return null;
-  }
-  const addedSubjectIds = Array.isArray(summary && isSummaryCount(summary) ? summary.addedSubjectIds : null)
-    ? ((summary as { addedSubjectIds: unknown[] }).addedSubjectIds.filter(
-        (id): id is string => typeof id === "string",
-      ))
-    : undefined;
   return {
     id: candidate.id,
     expectedBaseReleaseId: candidate.expectedBaseReleaseId,
     expectedBaseReleaseDigest: candidate.expectedBaseReleaseDigest,
     riskClass: classified.value,
-    impactSummary: {
-      addedDefinitionCount,
-      changedDefinitionCount,
-      addedSubjectCount,
-      ...(addedSubjectIds && addedSubjectIds.length > 0 ? { addedSubjectIds } : {}),
-    },
+    impactSummary: impactSummaryOf(candidate),
     capabilityContract: capabilityOf(candidate),
     authorOrganizationId,
   };
 };
-
-const isSummaryCount = (value: unknown): value is Record<string, unknown> =>
-  value !== null && typeof value === "object" && !Array.isArray(value);
 
 const inScope = (
   authorOrganizationId: string,
@@ -304,8 +310,8 @@ export function bindCatalogPublicationCommands(input: {
       if (!candidate.ok) {
         return { ok: false, error: { kind: "not-found" } };
       }
-      const view = candidateView(candidate.value);
-      if (!view || !inScope(view.authorOrganizationId, query.organizationId)) {
+      const authorOrganizationId = authorOrganizationIdOf(candidate.value);
+      if (authorOrganizationId === null || !inScope(authorOrganizationId, query.organizationId)) {
         return { ok: false, error: { kind: "not-found" } };
       }
       return {
@@ -314,7 +320,7 @@ export function bindCatalogPublicationCommands(input: {
           db,
           pool,
           job: loaded.value,
-          authorOrganizationId: view.authorOrganizationId,
+          authorOrganizationId,
         }),
       };
     },

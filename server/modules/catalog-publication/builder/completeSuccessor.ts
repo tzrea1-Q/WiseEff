@@ -101,6 +101,21 @@ const asJsonObject = (value: unknown): JsonObject => {
   return value as JsonObject;
 };
 
+export function impactSummaryFromReport(impact: CatalogImpactReport): {
+  readonly addedDefinitionCount: number;
+  readonly changedDefinitionCount: number;
+  readonly addedSubjectCount: number;
+  readonly addedSubjectIds?: readonly string[];
+} {
+  const addedSubjectIds = [...impact.subjects.added];
+  return {
+    addedDefinitionCount: impact.definitions.added.length,
+    changedDefinitionCount: impact.definitions.changed.length,
+    addedSubjectCount: addedSubjectIds.length,
+    ...(addedSubjectIds.length > 0 ? { addedSubjectIds } : {}),
+  };
+}
+
 const capabilityContract = (): CapabilityContract => {
   const identity = CATALOG_CAPABILITY_ALLOW_LIST;
   return {
@@ -974,6 +989,7 @@ export async function buildCompleteSuccessor(
       canonicalKey: allocation.canonicalKey,
       subjectId: allocation.subjectId,
     })),
+    impactSummary: impactSummaryFromReport(impact),
   });
   const proposal = input.proposal ?? null;
   const artifact = {

@@ -195,6 +195,41 @@ describe("importVendorCatalog", () => {
       "create-subject-with-definitions",
       "create-subject-with-definitions",
     ]);
+    const driverChange = result.value.changeSet.find(
+      (change) => change.op === "create-subject-with-definitions" && change.kind === "driver",
+    );
+    const nodeChange = result.value.changeSet.find(
+      (change) => change.op === "create-subject-with-definitions" && change.kind === "node-type",
+    );
+    expect(driverChange).toMatchObject({
+      op: "create-subject-with-definitions",
+      kind: "driver",
+      nature: "physical-device",
+      cardinality: "multiple",
+    });
+    expect(nodeChange).toMatchObject({
+      op: "create-subject-with-definitions",
+      kind: "node-type",
+    });
+    expect(nodeChange && "nature" in nodeChange).toBe(false);
+    expect(nodeChange && "cardinality" in nodeChange).toBe(false);
+    expect(nodeChange && "family" in nodeChange).toBe(false);
+    expect(result.value.report.appliedDefaults).toEqual([
+      {
+        canonicalKey: "driver:acme,test-charger",
+        nature: "physical-device",
+        cardinality: "multiple",
+        reason: "new-driver-compiler-default",
+      },
+    ]);
+    expect(
+      result.value.report.dispositions.some(
+        (row) =>
+          row.path === "vendor/wiseeff/charger.yaml" &&
+          row.kind === "mapped" &&
+          row.detail === "applied-driver-defaults:nature=physical-device,cardinality=multiple",
+      ),
+    ).toBe(true);
     expect(result.value.frozenIdentity.subjects?.map((entry) => entry.subjectId).sort()).toEqual([
       "csub_opaque_1",
       "csub_opaque_2",
@@ -225,6 +260,18 @@ describe("importVendorCatalog", () => {
     if (charger?.kind !== "subject") return;
     expect(charger.content.id).toBe("csub_opaque_1");
     expect(charger.content.id.startsWith("csub_drv_")).toBe(false);
+    expect(charger.content.subtype).toEqual({
+      nature: "physical-device",
+      cardinality: { kind: "multiple" },
+    });
+    const board = target.documents.find(
+      (document) => document.kind === "subject" && document.content.canonicalKey === "node-type:test-board",
+    );
+    expect(board?.kind).toBe("subject");
+    if (board?.kind === "subject") {
+      expect(board.content.subtype).toEqual({});
+      expect("nature" in board.content.subtype).toBe(false);
+    }
 
     const propertyPaths = result.value.report.dispositions.filter((row) => row.path.includes("#"));
     expect(propertyPaths.some((row) => row.path.endsWith("#iin_limit") && row.kind === "mapped")).toBe(true);
@@ -300,9 +347,11 @@ properties:
       }),
     ]);
     expect(result.value.frozenIdentity.subjects ?? []).toEqual([]);
+    expect(result.value.report.appliedDefaults).toEqual([]);
     expect(result.value.report.identityMap.find((entry) => entry.canonicalKey === "driver:acme,power")?.action).toBe(
       "reuse",
     );
+    expect(result.value.changeSet.some((change) => "nature" in change || "cardinality" in change)).toBe(false);
   });
 
   it("refuses a claimed subject ID that disagrees with the published natural key", async () => {

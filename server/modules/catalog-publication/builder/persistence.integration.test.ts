@@ -97,6 +97,11 @@ describe("catalog publication builder persistence", () => {
       expect(candidate.value.expectedBaseReleaseDigest).toBe(predecessor.digest);
       expect("riskClass" in candidate.value.capabilityContract).toBe(false);
       expect(candidate.value.identityAllocation.subjects).toEqual([]);
+      expect(candidate.value.identityAllocation.impactSummary).toEqual({
+        addedDefinitionCount: 1,
+        changedDefinitionCount: 0,
+        addedSubjectCount: 0,
+      });
     }
   });
 

@@ -766,6 +766,12 @@ describe("buildCompleteSuccessor", () => {
     expect(result.value.impact.subjects.added).toContain("csub_acme_aux");
     expect("riskClass" in result.value.candidate).toBe(false);
     expect("riskClass" in result.value.candidate.identityAllocation).toBe(false);
+    expect(result.value.candidate.identityAllocation.impactSummary).toEqual({
+      addedDefinitionCount: 1,
+      changedDefinitionCount: 0,
+      addedSubjectCount: 1,
+      addedSubjectIds: ["csub_acme_aux"],
+    });
     expect(result.value.candidate.identityAllocation.subjects).toEqual([
       { canonicalKey: "driver:acme,aux", subjectId: "csub_acme_aux" },
     ]);

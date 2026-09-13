@@ -11,7 +11,11 @@ import {
 import type { Database } from "../../shared/database/client";
 import { classifyImpact } from "./authorization/classify";
 import type { ImpactFacts, PublicationRiskClass } from "./authorization/types";
-import { buildCompleteSuccessor, persistSuccessorBuild } from "./builder/completeSuccessor";
+import {
+  buildCompleteSuccessor,
+  impactSummaryFromReport,
+  persistSuccessorBuild,
+} from "./builder/completeSuccessor";
 import { parseBundleBytes, targetReleaseOf } from "./builder/bundleCodec";
 import type { CatalogReleaseNode } from "../catalog-kernel/compiler/types";
 import type {
@@ -405,14 +409,7 @@ export async function previewPublicationCandidate(input: {
     };
   }
 
-  const impactSummary = {
-    addedDefinitionCount: built.value.impact.definitions.added.length,
-    changedDefinitionCount: built.value.impact.definitions.changed.length,
-    addedSubjectCount: built.value.impact.subjects.added.length,
-    ...(built.value.impact.subjects.added.length > 0
-      ? { addedSubjectIds: built.value.impact.subjects.added }
-      : {}),
-  };
+  const impactSummary = impactSummaryFromReport(built.value.impact);
   const persisted = await persistSuccessorBuild(
     {
       db: input.db,

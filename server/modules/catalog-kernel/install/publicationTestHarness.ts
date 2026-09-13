@@ -162,6 +162,12 @@ export async function buildAuthorizedJob(
     authorPrincipalId?: string;
     publisherUserId?: string;
     impactFacts?: ImpactFacts;
+    impactSummary?: {
+      readonly addedDefinitionCount?: number;
+      readonly changedDefinitionCount?: number;
+      readonly addedSubjectCount?: number;
+      readonly addedSubjectIds?: readonly string[];
+    };
     authorOrganizationId?: string;
     requestScope?: string;
     enablePolicy?: boolean;
@@ -207,6 +213,13 @@ export async function buildAuthorizedJob(
               authorPrincipalId,
               authorOrganizationId: input.authorOrganizationId ?? "org-test",
               impactFacts: facts,
+              impactSummary:
+                input.impactSummary ??
+                candidateInput.identityAllocation.impactSummary ?? {
+                  addedDefinitionCount: 1,
+                  changedDefinitionCount: 0,
+                  addedSubjectCount: 0,
+                },
             },
           }),
       },

@@ -6,6 +6,7 @@ export {
 export type {
   ClaimedVendorIdentity,
   ImportVendorCatalogInput,
+  VendorAppliedDriverDefault,
   VendorConversionReport,
   VendorDisposition,
   VendorIdKind,

@@ -43,6 +43,8 @@ import type {
   CatalogChange,
   CreateDefinitionChange,
   CreateSubjectWithDefinitionsChange,
+  DriverCardinality,
+  DriverNature,
   FrozenDefinitionAllocation,
   FrozenPublicationIdentity,
   FrozenSubjectAllocation,
@@ -136,11 +138,19 @@ export type VendorIdentityMapEntry = {
   readonly action: "reuse" | "allocate" | "revise" | "conflict";
 };
 
+export type VendorAppliedDriverDefault = {
+  readonly canonicalKey: string;
+  readonly nature: "physical-device";
+  readonly cardinality: "multiple";
+  readonly reason: "new-driver-compiler-default";
+};
+
 export type VendorConversionReport = {
   readonly inventory: VendorCatalogInventory;
   readonly dispositions: readonly VendorDisposition[];
   readonly identityMap: readonly VendorIdentityMapEntry[];
   readonly blocking: readonly VendorDisposition[];
+  readonly appliedDefaults: readonly VendorAppliedDriverDefault[];
 };
 
 export type VendorImportError =
@@ -347,6 +357,9 @@ const disposition = (
   sourceFields: readonly string[] = [],
 ): VendorDisposition => ({ path, kind, detail, sourceFields });
 
+const DEFAULT_NEW_DRIVER_NATURE = "physical-device" as const satisfies DriverNature;
+const DEFAULT_NEW_DRIVER_CARDINALITY = "multiple" as const satisfies DriverCardinality;
+
 type PreparedSubject = {
   readonly relativePath: string;
   readonly canonicalKey: string;
@@ -357,6 +370,8 @@ type PreparedSubject = {
   readonly existing: CatalogReleaseSubjectDocument | null;
   readonly subjectId: string;
   readonly allocated: boolean;
+  readonly nature?: DriverNature;
+  readonly cardinality?: DriverCardinality;
   readonly definitions: NestedDefinitionDraft[];
 };
 
@@ -570,6 +585,7 @@ export async function importVendorCatalog(
     ...inventoryFileDispositions(inventory.files),
   ];
   const identityMap: VendorIdentityMapEntry[] = [];
+  const appliedDefaults: VendorAppliedDriverDefault[] = [];
   const allocate = input.identity?.allocateId ?? allocateOpaqueId;
   const claimed = input.claimedIdentities ?? [];
   const preparedSubjects: PreparedSubject[] = [];
@@ -730,6 +746,8 @@ export async function importVendorCatalog(
 
     let subjectId: string;
     let allocated = false;
+    let nature: DriverNature | undefined;
+    let cardinality: DriverCardinality | undefined;
     if (existing) {
       subjectId = existing.content.id;
       identityMap.push({ canonicalKey, publishedId: subjectId, action: "reuse" });
@@ -746,6 +764,24 @@ export async function importVendorCatalog(
       usedSubjectIds.add(subjectId);
       identityMap.push({ canonicalKey, publishedId: subjectId, action: "allocate" });
       subjectAllocations.push({ canonicalKey, subjectId });
+      if (isDriver) {
+        nature = DEFAULT_NEW_DRIVER_NATURE;
+        cardinality = DEFAULT_NEW_DRIVER_CARDINALITY;
+        appliedDefaults.push({
+          canonicalKey,
+          nature,
+          cardinality,
+          reason: "new-driver-compiler-default",
+        });
+        dispositions.push(
+          disposition(
+            file.relativePath,
+            "mapped",
+            "applied-driver-defaults:nature=physical-device,cardinality=multiple",
+            ["nature", "cardinality"],
+          ),
+        );
+      }
     }
 
     for (const extra of extraSelectors) {
@@ -1033,6 +1069,8 @@ export async function importVendorCatalog(
       existing,
       subjectId,
       allocated,
+      ...(nature ? { nature } : {}),
+      ...(cardinality ? { cardinality } : {}),
       definitions: nested,
     });
   }
@@ -1045,6 +1083,7 @@ export async function importVendorCatalog(
     dispositions,
     identityMap,
     blocking,
+    appliedDefaults,
   };
   if (blocking.length > 0) {
     return {
@@ -1064,6 +1103,9 @@ export async function importVendorCatalog(
       kind: subject.kind,
       canonicalKey: subject.canonicalKey,
       selector: { kind: subject.selectorKind, value: subject.selectorValue },
+      ...(subject.kind === "driver" && subject.nature && subject.cardinality
+        ? { nature: subject.nature, cardinality: subject.cardinality }
+        : {}),
       definitions: subject.definitions,
     }));
   const changeSet: CatalogChange[] = [...subjectChanges, ...createOnExisting, ...revises];
@@ -1126,6 +1168,7 @@ export async function importVendorCatalog(
                 ? { authorOrganizationId: input.authorOrganizationId }
                 : {}),
               impactFacts: facts as unknown as JsonObject,
+              impactSummary: candidateInput.identityAllocation.impactSummary,
               vendorEvidence: {
                 listedInputHash: inventory.listedInputHash,
                 vendorContentHash: inventory.vendorContentHash,
