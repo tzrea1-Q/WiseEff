@@ -18,7 +18,8 @@
 | `WISEEFF_PUBLICATION_MANAGER_ENV_FILE` | `.env.publication-manager` | 自托管 Compose | 仅 `publication-manager` 服务加载的私有 env 文件。 |
 | `WISEEFF_PUBLICATION_MANAGER` | 未设置 | publication manager 进程 | `npm run publication:manager` 必须为 `1`。 |
 | `WISEEFF_API_PROCESS` | 未设置 | API 容器 | API 服务设为 `1`，使 manager 入口拒绝在该进程启动。 |
-| `WISEEFF_PUBLICATION_MANAGER_DATABASE_URL` | 公共 `.env` 中不设置 | publication manager | 只写在 `.env.publication-manager`。LOGIN 必须能 `SET ROLE` `catalog_publication_coordinator_role` 和 `catalog_synchronizer_role`。绝不是数据库超级用户。普通 API `DATABASE_URL` 不得持有 synchronizer 凭据。 |
+| `WISEEFF_PUBLICATION_MANAGER_DATABASE_URL` | 公共 `.env` 中不设置 | publication manager | 只写在 `.env.publication-manager`。LOGIN 必须能 `SET ROLE` `catalog_publication_coordinator_role` 和 `catalog_synchronizer_role`。绝不是数据库超级用户。不得复制普通 API `DATABASE_URL`。缺此键时 manager 保持未配置（`503 { configured: false }`），升级 freeze 失败闭合。 |
+| `WISEEFF_WORKER_DATABASE_URL` | 未设置 | 日志 worker / `inspect-login worker` | 日志 worker 专用 LOGIN。隔离交付设为 `wiseeff_worker`。`inspect-login worker` 拒绝回退到 `DATABASE_URL`。 |
 | `WISEEFF_PUBLICATION_MANAGER_LEASE_MS` | `30000` | publication manager | Job 租约时长（毫秒）。认领使用 PostgreSQL `now()`，不用 manager 墙上时钟。 |
 | `WISEEFF_PUBLICATION_MANAGER_RETRY_BUDGET` | `5` | publication manager | 锁竞争与可恢复连接错误的有界自动重试。权限、篡改、能力、不完整前驱、基线漂移为终止或 blocked。 |
 | `WISEEFF_PUBLICATION_MANAGER_POLL_INTERVAL_MS` | `1000` | publication manager | 队列为空时的空闲轮询间隔。 |

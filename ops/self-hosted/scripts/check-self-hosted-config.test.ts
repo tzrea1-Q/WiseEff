@@ -85,7 +85,6 @@ services:
     image: *wiseeff-image
     build: *wiseeff-build
     env_file:
-      - \${WISEEFF_ENV_FILE:-.env}
       - \${WISEEFF_PUBLICATION_MANAGER_ENV_FILE:-.env.publication-manager}
     environment:
       WISEEFF_PUBLICATION_MANAGER: "1"

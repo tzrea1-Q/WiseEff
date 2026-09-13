@@ -75,7 +75,7 @@ export const requiredComposeTokens = [
   "npm run publication:manager",
   "WISEEFF_PUBLICATION_MANAGER: \"1\"",
   "WISEEFF_API_PROCESS: \"1\"",
-  ".env.publication-manager",
+  "WISEEFF_PUBLICATION_MANAGER_ENV_FILE:-.env.publication-manager",
   "curl -fsS http://127.0.0.1:8791/health/live",
   "npm run preview -- --host 0.0.0.0 --port 5173 --strictPort",
   "80:80",

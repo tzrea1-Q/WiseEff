@@ -37,6 +37,20 @@ describe("catalog-publication-ops argv", () => {
     expect(parsed.ok).toBe(false);
   });
 
+  it("parses provision-logins", () => {
+    expect(parseCatalogPublicationOpsArgv(["provision-logins"])).toEqual({
+      ok: true,
+      command: { name: "provision-logins" },
+    });
+  });
+
+  it("parses inspect-login worker", () => {
+    expect(parseCatalogPublicationOpsArgv(["inspect-login", "worker"])).toEqual({
+      ok: true,
+      command: { name: "inspect-login", which: "worker" },
+    });
+  });
+
   it("parses freeze set with actor", () => {
     const parsed = parseCatalogPublicationOpsArgv(["freeze", "set", "--actor", "deployment-upgrade"]);
     expect(parsed).toEqual({

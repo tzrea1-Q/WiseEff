@@ -29,7 +29,7 @@
 | `npm run catalog:compile-vendor [-- --out <bundle.json>]` | 以 `schemas/dts/catalog.json` 去掉退役/歧义夹具，编译 `crel_acme_1` 的后继 `crel_vendor_catalog_1`，并打印冻结 digest | 修改厂商 YAML、`catalog.json` 或 D1 后继编译器后。不是 CP-09 生产导入路径；新正式 ID 由服务端分配不透明身份。 |
 | `npm run catalog:install-release -- <bundle.json> --confirm-digest sha256:... [--mode advance --expected-current-id ... --expected-current-digest ...]` | 仅在 `catalog_activation_receipts` 为空时允许的管理面 Catalog bootstrap 或 advance；需要 `DATABASE_URL`。一旦存在 Receipt，命令失败为 `catalog-install-publication-regime-required` | 未接管实例上的首次夹具发布或历史 D1 厂商后继。禁止由应用启动调用，禁止第二次 bootstrap，禁止 skip-authorization 旁路。 |
 | `npx tsx scripts/catalog-publication-ops.ts <inspect\|adopt\|capabilities\|policy\|freeze>` | 操作员预检/接管/授权/策略/冻结，封装已有 collector、`adoptPreexistingCatalog` 与 `setPublicationFreeze` | 自托管 Catalog 发布操作。见 `ops/self-hosted/catalog-publication.zh-CN.md`。 |
-| `WISEEFF_CATALOG_DELIVERY_ACCEPTANCE=1 npm run catalog:publication:delivery-accept` | 隔离交付 M1：诚实终态，不以 skip 当通过 | 正式镜像/Compose 闭环。缺前提非零退出。不是生产启用。 |
+| `WISEEFF_CATALOG_DELIVERY_ACCEPTANCE=1 npm run catalog:publication:delivery-accept` | 隔离正式镜像 M1：接管、真实账号发布、Receipt/current、DTS ingest、工作台存值、第二次发布、重启回读；ID 绑定本轮 | 正式镜像/Compose 对临时 pgvector。缺前提非零退出。不是生产启用。 |
 | `npm run dtc:check -- --required` | PATH 上存在真实 Device Tree Compiler | M1 seed、DTS 校验或自托管镜像验收前使用。 |
 | `npm run dtc:seed:compile` | Aurora、Nebula、Atlas 三份已提交 overlay 均通过真实 `dtc -@` 编译 | 修改 DTS fixture、seed 生成、验证门禁或 dtc 部署流程后使用。 |
 | `npm run dts:toolchain:bootstrap` | 项目 venv 安装钉扎 dtschema；dtc/fdtoverlay 匹配 `tools/dts-toolchain/versions.json`（复用宿主或构建钉扎 commit 到 `.wiseeff-tools/dts-toolchain`） | 首次本地设置，或修改 requirements/version pin 后。 |

@@ -18,6 +18,8 @@ cd /srv/wiseeff/ops/self-hosted
 
 `publication_enabled` 默认 `false`。隔离启用不是生产授权。
 
+setup/upgrade 在缺少私有文件时写入**未配置 stub**，绝不复制 `DATABASE_URL`。缺少 `WISEEFF_PUBLICATION_MANAGER_DATABASE_URL` 时 manager 健康检查为 `503 { configured: false }`，`freeze` 失败闭合。用 `npx tsx scripts/catalog-publication-ops.ts provision-logins` 创建专用 LOGIN，只把 manager URL 写入私有文件。不要把“上线前再换账号”当成已交付。
+
 ## 1. 部署管理进程
 
 与 api/worker/web 使用同一应用镜像。容器内命令：`npm run publication:manager`。
@@ -79,7 +81,7 @@ npx tsx scripts/catalog-publication-ops.ts policy enable --actor <user-id> \
 
 ## 6. 升级/恢复冻结
 
-`./scripts/upgrade.sh apply` 先冻结发布，再停止 `publication-manager`，再停 proxy/队列/api/worker/web。失败或超时保持冻结。仅在候选 manager 存活后解冻。
+`./scripts/upgrade.sh apply` **在宿主机**用私有 manager DSN 冻结（`npx tsx scripts/catalog-publication-ops.ts freeze`），不 `compose exec` 进 manager 容器。因此无 manager 的 PR #827 旧栈、或 manager 已停止/崩溃，仍可冻结。缺少专用 LOGIN 失败闭合，不会把 API 凭据写回。冻结后再停止 Compose 中存在的 `publication-manager`。失败或超时保持冻结。仅在候选 manager 存活后解冻。
 
 普通重启不得用镜像内 vendor 包覆盖数据库 current。恢复走 `./scripts/upgrade.sh` recovery，不用接管，也不用 pointer-only rollback。
 
@@ -87,7 +89,9 @@ npx tsx scripts/catalog-publication-ops.ts policy enable --actor <user-id> \
 
 ```bash
 cd /srv/wiseeff
-WISEEFF_CATALOG_DELIVERY_ACCEPTANCE=1 npm run catalog:publication:delivery-accept
+WISEEFF_CATALOG_DELIVERY_ACCEPTANCE=1 \
+  WISEEFF_CATALOG_BOOTSTRAP_DATABASE_URL='postgres://wiseeff:...@127.0.0.1:55438/postgres' \
+  npm run catalog:publication:delivery-accept
 ```
 
-缺前提非零退出。等待超时仍为排队/执行中视为失败。不是 GitHub L1 的静默 skip，也不是生产启用。
+该 runner 构建正式 `ops/self-hosted/Dockerfile` 镜像，在临时 pgvector 库上发放互不相同的 API/worker/manager LOGIN，按标准 Compose 加隔离 overlay 启动，然后执行接管 → 真实本地登录 → 页内发布 → Receipt/current → DTS ingest → 工作台存值 → 第二次发布 → 服务重启 → 历史回读。断言绑定本轮 Candidate/Job/Release。排队/执行中超时视为失败。缺前提非零退出。不是生产启用，也不是 GitHub L1 的静默 skip。拒绝 `127.0.0.1:5432/wiseeff` 以及共享 g668 库名 `wiseeff`。

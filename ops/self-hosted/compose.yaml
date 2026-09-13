@@ -169,7 +169,6 @@ services:
     mem_limit: 384m
     memswap_limit: 576m
     env_file:
-      - ${WISEEFF_ENV_FILE:-.env}
       - ${WISEEFF_PUBLICATION_MANAGER_ENV_FILE:-.env.publication-manager}
     environment:
       <<: *wiseeff-runtime-proxy

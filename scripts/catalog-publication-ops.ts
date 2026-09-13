@@ -11,12 +11,25 @@ import {
   type AdoptPreexistingCatalogInput,
   type AdoptionEvidenceKind,
 } from "../server/modules/catalog-publication/runtime/index";
+import {
+  publicationManagerDatabaseUrlReusesApiLogin,
+  resolvePublicationManagerDatabaseUrl,
+} from "../server/modules/catalog-publication/runtime/managerDatabaseUrl";
+import {
+  inspectLoginBoundary,
+  provisionPublicationRuntimeLogins,
+} from "../server/modules/catalog-publication/runtime/provisionRuntimeLogins";
 import { revisePublicationPolicy } from "../server/modules/catalog-publication/authorization/policy";
 import { EPHEMERAL_POLICY_REVISION_CONFIRMATION } from "../server/modules/catalog-publication/authorization/types";
 import { createUserInvocation } from "../server/modules/auth/trustedInvocation";
 import { getAuthContext } from "../server/modules/auth/repository";
 import { createPostgresDatabase, getRootPostgresPool } from "../server/shared/database/client";
 import { asQueryable } from "../server/modules/catalog-kernel/install/publicationActivation";
+import { CATALOG_CAPABILITY_CONTRACT_REVISION } from "../server/modules/catalog-publication/builder/types";
+import {
+  CatalogReleaseDigest,
+  CatalogReleaseId,
+} from "../server/modules/parameter-catalog-contract/index";
 
 const CATALOG_CAPABILITIES = [
   "catalog:author",
@@ -54,7 +67,9 @@ export type CatalogPublicationOpsCommand =
       readonly name: "freeze";
       readonly action: "status" | "set" | "clear";
       readonly actor: string;
-    };
+    }
+  | { readonly name: "provision-logins" }
+  | { readonly name: "inspect-login"; readonly which: "api" | "worker" | "manager" };
 
 const usage = `Usage:
   npx tsx scripts/catalog-publication-ops.ts inspect
@@ -62,9 +77,12 @@ const usage = `Usage:
   npx tsx scripts/catalog-publication-ops.ts capabilities grant|revoke|status --user-id <id> --organization-id <id> --capability catalog:author|catalog:publish|catalog:review-high-risk
   npx tsx scripts/catalog-publication-ops.ts policy status|enable|disable --actor <userId>
   npx tsx scripts/catalog-publication-ops.ts freeze status|set|clear --actor <userId>
+  npx tsx scripts/catalog-publication-ops.ts provision-logins
+  npx tsx scripts/catalog-publication-ops.ts inspect-login api|worker|manager
 
 inspect reads CATALOG_BASELINE_READONLY_DATABASE_URL only.
-adopt/capabilities/policy/freeze use WISEEFF_PUBLICATION_MANAGER_DATABASE_URL (or DATABASE_URL for freeze/policy/capabilities).
+adopt/capabilities/policy/freeze/provision use dedicated DSNs. Manager commands refuse DATABASE_URL reuse.
+provision-logins uses WISEEFF_CATALOG_BOOTSTRAP_DATABASE_URL (superuser, one-shot).
 policy enable requires an ephemeral database name and EPHEMERAL_POLICY_REVISION_CONFIRMATION; it is not production enablement.
 `;
 
@@ -159,29 +177,41 @@ export const parseCatalogPublicationOpsArgv = (
     }
     return { ok: true, command: { name: "freeze", action: sub, actor } };
   }
+  if (command === "provision-logins") {
+    return { ok: true, command: { name: "provision-logins" } };
+  }
+  if (command === "inspect-login") {
+    if (sub !== "api" && sub !== "worker" && sub !== "manager") {
+      return { ok: false, message: usage };
+    }
+    return { ok: true, command: { name: "inspect-login", which: sub } };
+  }
   return { ok: false, message: usage };
 };
 
 const managerPool = (): pg.Pool => {
-  const url = process.env.WISEEFF_PUBLICATION_MANAGER_DATABASE_URL ?? process.env.DATABASE_URL;
-  if (!url) {
-    throw new Error("WISEEFF_PUBLICATION_MANAGER_DATABASE_URL or DATABASE_URL is required");
-  }
   if (process.env.WISEEFF_API_PROCESS === "1") {
     throw new Error("catalog-publication-ops adopt/freeze must not run inside the API process identity");
   }
-  return new pg.Pool({ connectionString: url });
+  const resolved = resolvePublicationManagerDatabaseUrl(process.env);
+  if (!resolved.ok) {
+    throw new Error(resolved.error.message);
+  }
+  return new pg.Pool({ connectionString: resolved.url });
 };
 
 const roleIdFor = (capability: string): string => `catalog-capability-${capability.replace(/:/g, "-")}`;
 
 const adoptInput = (command: Extract<CatalogPublicationOpsCommand, { name: "adopt" }>): AdoptPreexistingCatalogInput => {
-  const sourceBytes = readFileSync(command.bundlePath);
+  const sourceBytes = Buffer.from(readFileSync(command.bundlePath, "utf8"), "utf8");
   return {
-    expectedCurrent: { id: command.expectedId, digest: command.expectedDigest },
+    expectedCurrent: {
+      id: CatalogReleaseId(command.expectedId),
+      digest: CatalogReleaseDigest(command.expectedDigest),
+    },
     actorPrincipalId: command.actor,
     sourceBytes,
-    artifactDigest: command.expectedDigest,
+    artifactDigest: CatalogReleaseDigest(command.expectedDigest),
     evidenceKind: command.evidenceKind,
     adoptionEvidence: {
       source_bundle_digest: command.expectedDigest,
@@ -264,10 +294,82 @@ export const runCatalogPublicationOps = async (
     }
   }
 
-  if (command.name === "policy") {
-    const url = process.env.WISEEFF_PUBLICATION_MANAGER_DATABASE_URL ?? process.env.DATABASE_URL;
-    if (!url) {
+  if (command.name === "provision-logins") {
+    const bootstrap = process.env.WISEEFF_CATALOG_BOOTSTRAP_DATABASE_URL?.trim();
+    if (!bootstrap) {
+      return {
+        exitCode: 2,
+        payload: { message: "WISEEFF_CATALOG_BOOTSTRAP_DATABASE_URL is required for one-shot LOGIN provisioning" },
+      };
+    }
+    const provisioned = await provisionPublicationRuntimeLogins(bootstrap);
+    return {
+      exitCode: 0,
+      payload: {
+        database: provisioned.database,
+        apiRole: provisioned.apiRole,
+        workerRole: provisioned.workerRole,
+        managerRole: provisioned.managerRole,
+        apiUrl: provisioned.apiUrl,
+        workerUrl: provisioned.workerUrl,
+        managerUrl: provisioned.managerUrl,
+      },
+    };
+  }
+
+  if (command.name === "inspect-login") {
+    if (command.which === "manager") {
+      const resolved = resolvePublicationManagerDatabaseUrl(process.env);
+      if (!resolved.ok) {
+        return { exitCode: 2, payload: resolved.error };
+      }
+      const boundary = await inspectLoginBoundary(resolved.url);
+      return { exitCode: 0, payload: boundary };
+    }
+    if (command.which === "worker") {
+      const workerUrl = process.env.WISEEFF_WORKER_DATABASE_URL?.trim() ?? "";
+      const apiUrl = process.env.DATABASE_URL?.trim() ?? "";
+      if (!workerUrl) {
+        return {
+          exitCode: 2,
+          payload: { message: "WISEEFF_WORKER_DATABASE_URL is required; do not reuse DATABASE_URL" },
+        };
+      }
+      if (apiUrl && publicationManagerDatabaseUrlReusesApiLogin(workerUrl, apiUrl)) {
+        return {
+          exitCode: 2,
+          payload: { message: "WISEEFF_WORKER_DATABASE_URL must not reuse the API DATABASE_URL login" },
+        };
+      }
+      const boundary = await inspectLoginBoundary(workerUrl);
+      return { exitCode: 0, payload: boundary };
+    }
+    const apiUrl = process.env.DATABASE_URL?.trim();
+    if (!apiUrl) {
       return { exitCode: 2, payload: { message: "DATABASE_URL is required" } };
+    }
+    const boundary = await inspectLoginBoundary(apiUrl);
+    return { exitCode: 0, payload: boundary };
+  }
+
+  if (command.name === "policy") {
+    const url =
+      command.action === "status"
+        ? (() => {
+            const resolved = resolvePublicationManagerDatabaseUrl(process.env);
+            return resolved.ok ? resolved.url : process.env.WISEEFF_CATALOG_BOOTSTRAP_DATABASE_URL?.trim();
+          })()
+        : process.env.WISEEFF_CATALOG_BOOTSTRAP_DATABASE_URL?.trim();
+    if (!url) {
+      return {
+        exitCode: 2,
+        payload: {
+          message:
+            command.action === "status"
+              ? "manager or bootstrap DSN is required"
+              : "WISEEFF_CATALOG_BOOTSTRAP_DATABASE_URL is required to revise policy",
+        },
+      };
     }
     const db = createPostgresDatabase(url);
     try {
@@ -291,7 +393,7 @@ export const runCatalogPublicationOps = async (
         trustedActor: createUserInvocation(actor),
         publicationEnabled: command.action === "enable",
         lowRiskSingleActorPublish: command.action === "enable",
-        capabilityContractRevision: "1",
+        capabilityContractRevision: CATALOG_CAPABILITY_CONTRACT_REVISION,
         isolatedInstanceConfirmation: EPHEMERAL_POLICY_REVISION_CONFIRMATION,
       });
       return { exitCode: revised.ok ? 0 : 1, payload: revised };
@@ -300,10 +402,11 @@ export const runCatalogPublicationOps = async (
     }
   }
 
-  const url = process.env.WISEEFF_PUBLICATION_MANAGER_DATABASE_URL ?? process.env.DATABASE_URL;
-  if (!url) {
-    return { exitCode: 2, payload: { message: "DATABASE_URL is required" } };
+  const resolved = resolvePublicationManagerDatabaseUrl(process.env);
+  if (!resolved.ok) {
+    return { exitCode: 2, payload: resolved.error };
   }
+  const url = resolved.url;
   const db = createPostgresDatabase(url);
   const pool = getRootPostgresPool(db);
   try {

@@ -10,6 +10,7 @@ import {
 } from "../../parameter-catalog-contract/index";
 import {
   CATALOG_PUBLICATION_COORDINATOR_ROLE,
+  CATALOG_SYNCHRONIZER_ROLE,
   quoteIdent,
 } from "../../catalog-kernel/security/catalogRoleManifest";
 import type { AdoptedPreexistingEvidence } from "../../catalog-kernel/interface";
@@ -38,6 +39,22 @@ export type AdoptPreexistingCatalogInput = {
 };
 
 const SHA256_DIGEST = /^sha256:[0-9a-f]{64}$/;
+
+const readPointerAsSynchronizer = async (pool: pg.Pool) => {
+  const client = await pool.connect();
+  try {
+    await client.query("begin");
+    await client.query(`set local role ${quoteIdent(CATALOG_SYNCHRONIZER_ROLE)}`);
+    const pointer = await readCurrentCatalogPointer(client);
+    await client.query("commit");
+    return pointer;
+  } catch (error) {
+    await client.query("rollback").catch(() => undefined);
+    throw error;
+  } finally {
+    client.release();
+  }
+};
 
 const fail = (
   error: CatalogInstallError,
@@ -99,7 +116,7 @@ export const checkAdoptPreexistingCatalog = async (
     return invalid("compiled adoption artifact does not match the expected current pin");
   }
 
-  const pointer = await readCurrentCatalogPointer(pool);
+  const pointer = await readPointerAsSynchronizer(pool);
   if (
     pointer.kind !== "installed" ||
     pointer.current.id !== input.expectedCurrent.id ||
@@ -168,7 +185,7 @@ export const adoptPreexistingCatalog = async (
     return installed;
   }
 
-  const after = await readCurrentCatalogPointer(pool);
+  const after = await readPointerAsSynchronizer(pool);
   if (
     after.kind !== "installed" ||
     after.current.id !== input.expectedCurrent.id ||

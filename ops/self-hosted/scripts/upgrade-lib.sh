@@ -1484,21 +1484,74 @@ wiseeff_upgrade_compose_has_service() {
   wiseeff_upgrade_compose config --services 2>/dev/null | grep -qx "$service"
 }
 
+wiseeff_upgrade_manager_env_file() {
+  local name="${WISEEFF_PUBLICATION_MANAGER_ENV_FILE:-.env.publication-manager}"
+  case "$name" in
+    /*) printf '%s\n' "$name" ;;
+    *) printf '%s\n' "${upgrade_compose_dir}/${name}" ;;
+  esac
+}
+
+wiseeff_upgrade_ensure_publication_manager_env() {
+  local path
+  path="$(wiseeff_upgrade_manager_env_file)"
+  if [ -f "$path" ]; then
+    return 0
+  fi
+  umask 077
+  cat > "$path" <<'EOF'
+WISEEFF_PUBLICATION_MANAGER=1
+WISEEFF_PUBLICATION_MANAGER_HEALTH_PORT=8791
+# Unconfigured on purpose: no WISEEFF_PUBLICATION_MANAGER_DATABASE_URL.
+EOF
+  chmod 600 "$path"
+}
+
+wiseeff_upgrade_read_manager_database_url() {
+  local path="$1"
+  local raw
+  raw="$(awk -F= '
+    $1 ~ /^[[:space:]]*#/ { next }
+    gsub(/^[[:space:]]+|[[:space:]]+$/, "", $1)
+    $1 == "WISEEFF_PUBLICATION_MANAGER_DATABASE_URL" {
+      print substr($0, index($0, "=") + 1)
+      exit
+    }
+  ' "$path")"
+  raw="${raw#"${raw%%[![:space:]]*}"}"
+  raw="${raw%"${raw##*[![:space:]]}"}"
+  raw="${raw%\"}"
+  raw="${raw#\"}"
+  raw="${raw%\'}"
+  raw="${raw#\'}"
+  printf '%s\n' "$raw"
+}
+
 wiseeff_upgrade_publication_freeze() {
   local frozen="$1"
   local actor="${WISEEFF_UPGRADE_ACTOR_PRINCIPAL_ID:-deployment-upgrade}"
-  local action
+  local action path manager_url
   if [ "$frozen" = "true" ]; then
     action=set
   else
     action=clear
   fi
-  if wiseeff_upgrade_compose_has_service publication-manager &&
-    [ -n "$(wiseeff_upgrade_compose ps -q publication-manager 2>/dev/null || true)" ]; then
-    wiseeff_upgrade_compose exec -T publication-manager npx tsx scripts/catalog-publication-ops.ts freeze "$action" --actor "$actor"
-    return $?
+  wiseeff_upgrade_ensure_publication_manager_env || return 1
+  path="$(wiseeff_upgrade_manager_env_file)"
+  manager_url="$(wiseeff_upgrade_read_manager_database_url "$path")"
+  if [ -z "$manager_url" ]; then
+    printf '%s\n' "publication freeze refused: dedicated manager LOGIN is not provisioned" >&2
+    return 1
   fi
-  return 1
+  (
+    cd "${upgrade_repo_root}"
+    env -u LOG_WORKER_ENABLED \
+      WISEEFF_API_PROCESS=0 \
+      WISEEFF_PUBLICATION_MANAGER=1 \
+      WISEEFF_PUBLICATION_MANAGER_DATABASE_URL="$manager_url" \
+      DATABASE_URL="$(wiseeff_upgrade_env_value DATABASE_URL)" \
+      npx tsx scripts/catalog-publication-ops.ts freeze "$action" --actor "$actor"
+  )
 }
 
 wiseeff_upgrade_stop_old_stack() {

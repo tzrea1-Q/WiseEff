@@ -3,6 +3,17 @@ export {
   catalogConsumerSupportsRevision,
 } from "./capabilities";
 export { adoptPreexistingCatalog, checkAdoptPreexistingCatalog } from "./adoption";
+export {
+  resolvePublicationManagerDatabaseUrl,
+  publicationManagerDatabaseUrlReusesApiLogin,
+} from "./managerDatabaseUrl";
+export {
+  provisionPublicationRuntimeLogins,
+  inspectLoginBoundary,
+  PUBLICATION_API_LOGIN,
+  PUBLICATION_MANAGER_LOGIN,
+  PUBLICATION_WORKER_LOGIN,
+} from "./provisionRuntimeLogins";
 export type {
   AdoptPreexistingCatalogCheck,
   AdoptPreexistingCatalogInput,

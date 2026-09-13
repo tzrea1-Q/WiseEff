@@ -3397,6 +3397,157 @@ describe("upgrade.sh public interface", () => {
     expect(result.stderr).toContain("requires --run-id");
   });
 
+  it("backfills a stub manager env without a DSN and freeze fails closed", () => {
+    const directory = mkdtempSync(join(tmpdir(), "wiseeff-upgrade-manager-stub-"));
+    const result = spawnSync("bash", ["-c", `
+      source ops/self-hosted/scripts/upgrade-lib.sh
+      upgrade_compose_dir="$WISEEFF_TEST_COMPOSE_DIR"
+      upgrade_repo_root="$PWD"
+      wiseeff_upgrade_ensure_publication_manager_env
+      path="$(wiseeff_upgrade_manager_env_file)"
+      cat "$path"
+      echo '---'
+      if wiseeff_upgrade_publication_freeze true; then
+        echo freeze-ok
+        exit 0
+      fi
+      echo freeze-refused
+    `], {
+      encoding: "utf8",
+      env: {
+        ...process.env,
+        WISEEFF_TEST_COMPOSE_DIR: directory,
+        WISEEFF_PUBLICATION_MANAGER_ENV_FILE: join(directory, ".env.publication-manager"),
+      },
+    });
+
+    expect(result.status).toBe(0);
+    expect(result.stdout).toContain("WISEEFF_PUBLICATION_MANAGER=1");
+    expect(result.stdout).not.toMatch(/^[^#]*WISEEFF_PUBLICATION_MANAGER_DATABASE_URL=/m);
+    expect(result.stdout).toContain("freeze-refused");
+    expect(result.stderr).toContain("dedicated manager LOGIN is not provisioned");
+  });
+
+  it("freezes from the host using the private manager DSN without a manager container", () => {
+    const directory = mkdtempSync(join(tmpdir(), "wiseeff-upgrade-freeze-host-"));
+    const managerEnv = join(directory, ".env.publication-manager");
+    writeFileSync(
+      managerEnv,
+      "WISEEFF_PUBLICATION_MANAGER=1\nWISEEFF_PUBLICATION_MANAGER_DATABASE_URL=postgres://wiseeff_publication_manager:secret@postgres:5432/lab\n",
+      { mode: 0o600 },
+    );
+    const bin = join(directory, "bin");
+    mkdirSync(bin);
+    writeFileSync(
+      join(bin, "npx"),
+      `#!/bin/sh
+printf '%s\\n' "$*" > "$WISEEFF_TEST_NPX_LOG"
+printf '%s\\n' "$WISEEFF_PUBLICATION_MANAGER_DATABASE_URL" > "$WISEEFF_TEST_NPX_DSN"
+printf '%s\\n' "$WISEEFF_API_PROCESS" > "$WISEEFF_TEST_NPX_API"
+exit 0
+`,
+      { mode: 0o755 },
+    );
+
+    const result = spawnSync("bash", ["-c", `
+      source ops/self-hosted/scripts/upgrade-lib.sh
+      upgrade_compose_dir="$WISEEFF_TEST_COMPOSE_DIR"
+      upgrade_repo_root="$PWD"
+      wiseeff_upgrade_env_value() { printf '%s\\n' "postgres://wiseeff_api:api@postgres:5432/lab"; }
+      wiseeff_upgrade_publication_freeze true
+    `], {
+      encoding: "utf8",
+      env: {
+        ...process.env,
+        PATH: `${bin}:${process.env.PATH ?? ""}`,
+        WISEEFF_TEST_COMPOSE_DIR: directory,
+        WISEEFF_PUBLICATION_MANAGER_ENV_FILE: managerEnv,
+        WISEEFF_TEST_NPX_LOG: join(directory, "npx.log"),
+        WISEEFF_TEST_NPX_DSN: join(directory, "npx.dsn"),
+        WISEEFF_TEST_NPX_API: join(directory, "npx.api"),
+      },
+    });
+
+    expect(result.status).toBe(0);
+    expect(readFileSync(join(directory, "npx.log"), "utf8")).toContain(
+      "scripts/catalog-publication-ops.ts freeze set",
+    );
+    expect(readFileSync(join(directory, "npx.dsn"), "utf8").trim()).toBe(
+      "postgres://wiseeff_publication_manager:secret@postgres:5432/lab",
+    );
+    expect(readFileSync(join(directory, "npx.api"), "utf8").trim()).toBe("0");
+    expect(result.stdout).not.toContain("secret");
+    expect(result.stderr).not.toContain("secret");
+  });
+
+  it("sets freeze on a first-intro stack that has api but no manager container", () => {
+    const directory = mkdtempSync(join(tmpdir(), "wiseeff-upgrade-first-intro-"));
+    const runDir = join(directory, "run");
+    mkdirSync(runDir);
+    const managerEnv = join(directory, ".env.publication-manager");
+    writeFileSync(
+      managerEnv,
+      "WISEEFF_PUBLICATION_MANAGER=1\nWISEEFF_PUBLICATION_MANAGER_DATABASE_URL=postgres://wiseeff_publication_manager:secret@postgres:5432/lab\n",
+      { mode: 0o600 },
+    );
+    writeFileSync(join(directory, "actions.log"), "");
+
+    const result = spawnSync("bash", ["-c", `
+      source ops/self-hosted/scripts/upgrade-lib.sh
+      upgrade_compose_dir="$WISEEFF_TEST_COMPOSE_DIR"
+      upgrade_repo_root="$PWD"
+      upgrade_run_dir="$WISEEFF_TEST_RUN_DIR"
+      upgrade_run_id=first-intro
+      wiseeff_upgrade_compose() {
+        if [ "$1" = "config" ] && [ "$2" = "--services" ]; then
+          printf '%s\\n' postgres redis minio api worker web proxy
+          return 0
+        fi
+        printf 'compose %s\\n' "$*" >> "$WISEEFF_TEST_COMPOSE_DIR/actions.log"
+        return 0
+      }
+      wiseeff_upgrade_queue_command() {
+        printf 'queue %s\\n' "$*" >> "$WISEEFF_TEST_COMPOSE_DIR/actions.log"
+        return 0
+      }
+      wiseeff_upgrade_publication_freeze() {
+        printf 'freeze %s\\n' "$1" >> "$WISEEFF_TEST_COMPOSE_DIR/actions.log"
+        return 0
+      }
+      wiseeff_upgrade_stop_old_stack
+      cat "$WISEEFF_TEST_COMPOSE_DIR/actions.log"
+    `], {
+      encoding: "utf8",
+      env: {
+        ...process.env,
+        WISEEFF_TEST_COMPOSE_DIR: directory,
+        WISEEFF_TEST_RUN_DIR: runDir,
+        WISEEFF_PUBLICATION_MANAGER_ENV_FILE: managerEnv,
+        WISEEFF_UPGRADE_STOP_TIMEOUT_SECONDS: "1",
+      },
+    });
+
+    expect(result.status).toBe(0);
+    expect(result.stdout).toContain("freeze true");
+    expect(result.stdout).not.toContain("publication-manager");
+  });
+
+  it("leaves freeze set when candidate recreate fails after freeze", () => {
+    const implementation = readFileSync("ops/self-hosted/scripts/upgrade-lib.sh", "utf8");
+    const unfreezeIndex = implementation.indexOf("wiseeff_upgrade_publication_freeze false");
+    const recreateFailIndex = implementation.indexOf(
+      "The candidate web, worker, or publication-manager containers could not be recreated. Leave publication freeze set.",
+    );
+    const migrateApiFailIndex = implementation.indexOf("The candidate API container could not be recreated.");
+    expect(unfreezeIndex).toBeGreaterThan(0);
+    expect(recreateFailIndex).toBeGreaterThan(0);
+    expect(recreateFailIndex).toBeLessThan(unfreezeIndex);
+    expect(migrateApiFailIndex).toBeGreaterThan(0);
+    expect(migrateApiFailIndex).toBeLessThan(unfreezeIndex);
+    expect(implementation).toContain("Leave freeze set.");
+    expect(implementation.match(/wiseeff_upgrade_publication_freeze false/g)?.length).toBe(1);
+  });
+
   it("keeps destructive volume and reset operations outside the upgrade module", () => {
     const implementation = readFileSync("ops/self-hosted/scripts/upgrade-lib.sh", "utf8");
 

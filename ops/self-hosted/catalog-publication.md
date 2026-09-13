@@ -18,6 +18,8 @@ Use `./scripts/compose` rather than raw `docker compose`. Configuration sources:
 
 `publication_enabled` defaults to `false`. Isolated enablement is not production authorization.
 
+Setup and upgrade write `.env.publication-manager` as an **unconfigured stub** when the private file is missing. They never copy `DATABASE_URL`. Missing `WISEEFF_PUBLICATION_MANAGER_DATABASE_URL` keeps the manager health endpoint at `503 { configured: false }` and makes `freeze` fail closed. Provision dedicated LOGINs with `npx tsx scripts/catalog-publication-ops.ts provision-logins` and write only the manager URL into the private file. Do not treat “replace the account before production” as delivery.
+
 ## 1. Deploy the manager
 
 Same application image as api/worker/web. Command inside the image: `npm run publication:manager`.
@@ -98,7 +100,7 @@ Enable is refused unless `current_database()` matches the ephemeral test name pa
 
 ## 6. Freeze for upgrade / restore
 
-`./scripts/upgrade.sh apply` sets publication freeze, then stops `publication-manager`, then the existing proxy/queue/api/worker/web quiesce. Failure or timeout leaves freeze set. Unfreeze runs only after the candidate manager is live.
+`./scripts/upgrade.sh apply` sets publication freeze **from the host** using the private manager DSN (`npx tsx scripts/catalog-publication-ops.ts freeze`). It does not `compose exec` into a manager container, so a PR #827 stack with no manager, or a stopped/crashed manager, can still freeze. Missing dedicated LOGIN fails closed and does not copy API credentials. After freeze, upgrade stops `publication-manager` only when that service exists in Compose. Failure or timeout leaves freeze set. Unfreeze runs only after the candidate manager is live.
 
 Manual:
 
@@ -114,7 +116,9 @@ Ordinary restart must not install a vendor bundle over database current. Restore
 
 ```bash
 cd /srv/wiseeff
-WISEEFF_CATALOG_DELIVERY_ACCEPTANCE=1 npm run catalog:publication:delivery-accept
+WISEEFF_CATALOG_DELIVERY_ACCEPTANCE=1 \
+  WISEEFF_CATALOG_BOOTSTRAP_DATABASE_URL='postgres://wiseeff:...@127.0.0.1:55438/postgres' \
+  npm run catalog:publication:delivery-accept
 ```
 
-Missing prerequisites exit non-zero. Queued/running after the wait is failure. This runner is not production enablement and is not a silent skip on GitHub L1.
+The runner builds the formal `ops/self-hosted/Dockerfile` image, provisions distinct API/worker/manager LOGINs on an ephemeral pgvector database, starts the stock Compose services plus the isolated overlay (`e2e/acceptance/helpers/compose.catalog-delivery.yaml`), then executes adopt → real local login → in-product publish → Receipt/current → DTS ingest → workbench save → second publish → service restart → history reread. Assertions bind this run's Candidate/Job/Release IDs. Queued/running after the wait is failure. Missing prerequisites exit non-zero. This runner is not production enablement and is not a silent skip on GitHub L1. It refuses `127.0.0.1:5432/wiseeff` and the shared g668 database name `wiseeff`.

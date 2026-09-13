@@ -690,42 +690,52 @@ EOF
   echo "Admin username: $(env_value WISEEFF_LAB_ADMIN_USERNAME)"
 }
 
+publication_manager_env_path() {
+  local name="${WISEEFF_PUBLICATION_MANAGER_ENV_FILE:-.env.publication-manager}"
+  case "${name}" in
+    /*) printf '%s\n' "${name}" ;;
+    *) printf '%s\n' "${compose_dir}/${name}" ;;
+  esac
+}
+
 write_publication_manager_env() {
-  local manager_env="${compose_dir}/.env.publication-manager"
+  local manager_env
+  manager_env="$(publication_manager_env_path)"
   if [ -f "${manager_env}" ] && [ "${force}" != "true" ]; then
     echo "Keeping ${manager_env}."
     return 0
   fi
-  local db_url
-  db_url="$(awk -F= '/^DATABASE_URL=/{print substr($0, index($0, "=") + 1); exit}' "${env_file}")"
   umask 077
-  cat > "${manager_env}" <<EOF
+  cat > "${manager_env}" <<'EOF'
 WISEEFF_PUBLICATION_MANAGER=1
-WISEEFF_PUBLICATION_MANAGER_DATABASE_URL=${db_url}
 WISEEFF_PUBLICATION_MANAGER_LEASE_MS=30000
 WISEEFF_PUBLICATION_MANAGER_RETRY_BUDGET=5
 WISEEFF_PUBLICATION_MANAGER_POLL_INTERVAL_MS=1000
 WISEEFF_PUBLICATION_MANAGER_ACTIVATION_TIMEOUT_MS=60000
 WISEEFF_PUBLICATION_MANAGER_HEALTH_PORT=8791
 WISEEFF_UPGRADE_ACTOR_PRINCIPAL_ID=deployment-upgrade
+# WISEEFF_PUBLICATION_MANAGER_DATABASE_URL is intentionally unset.
+# Run: npx tsx scripts/catalog-publication-ops.ts provision-logins
+# using WISEEFF_CATALOG_BOOTSTRAP_DATABASE_URL, then write the dedicated
+# manager URL into this file. Do not copy DATABASE_URL.
 EOF
   chmod 600 "${manager_env}"
-  echo "Wrote ${manager_env} (mode 600). Replace DATABASE_URL with a dedicated manager LOGIN before production."
+  echo "Wrote unconfigured ${manager_env} (mode 600). Manager stays disabled until a dedicated LOGIN is provisioned."
 }
 
 run_init() {
   apply_profile_defaults
+  if [ -z "${section}" ] && [ -f "${env_file}" ] && [ "${force}" != "true" ] && [ "${print_env}" != "true" ]; then
+    echo "${env_file} already exists. Keeping it. Use --force to overwrite or pass a section name."
+    write_publication_manager_env
+    return 0
+  fi
   if [ -z "${host}" ]; then
     host="$(detect_host)"
   fi
   if [ -z "${host}" ]; then
     echo "Could not detect a host. Re-run with --ip <address>." >&2
     exit 1
-  fi
-  if [ -z "${section}" ] && [ -f "${env_file}" ] && [ "${force}" != "true" ] && [ "${print_env}" != "true" ]; then
-    echo "${env_file} already exists. Keeping it. Use --force to overwrite or pass a section name."
-    write_publication_manager_env
-    return 0
   fi
   if [ "${profile}" = "acme" ] && [[ ! "${tls_email}" == *"@"* ]]; then
     echo "ACME profile requires --tls-email." >&2
