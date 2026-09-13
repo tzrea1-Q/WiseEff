@@ -8,16 +8,17 @@ import {
   fstatSync,
   fsyncSync,
   lstatSync,
+  linkSync,
   mkdirSync,
   openSync,
+  readSync,
   readFileSync,
   realpathSync,
-  renameSync,
   unlinkSync,
   writeFileSync,
   type Stats,
 } from "node:fs";
-import { Writable } from "node:stream";
+import { Transform, Writable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -25,7 +26,7 @@ import { isDeepStrictEqual } from "node:util";
 import { parseArgs } from "node:util";
 
 import { validateWorkspaceLinks } from "../check-workspace-links";
-import { validateNativeReport, readPrivateReport } from "../ci-required-results";
+import { validateNativeReport } from "../ci-required-results";
 import { buildVitestInvocation } from "../run-vitest";
 import { stopOwnedProcessGroup, waitForOwnedProcessGroupExit } from "../owned-process-group";
 import { createPreview, type Preview } from "./plan";
@@ -46,8 +47,10 @@ const LOCK_NAMES: Record<TaskId, string> = {
 };
 const SCRIPT_BUDGET_MS = 5 * 60 * 1_000;
 const FRONTEND_BUDGET_MS = 10 * 60 * 1_000;
-const TERMINATION_GRACE_MS = 5_000;
-const VERIFY_GRACE_MS = 1_000;
+const TERMINATION_GRACE_MS = 1_000;
+const VERIFY_GRACE_MS = 250;
+const CLEANUP_WINDOW_MS = 6_000;
+const STREAM_SETTLEMENT_GRACE_MS = 1_000;
 const DISCOVERY_LIMIT = 4 * 1024 * 1024;
 const LOG_LIMIT = 16 * 1024 * 1024;
 const RECORD_LIMIT = 64 * 1024;
@@ -275,6 +278,84 @@ function ensureDirectory(directory: string, mode: number): void {
   if (!stat.isDirectory() || stat.isSymbolicLink() || (uid !== undefined && stat.uid !== uid) || (stat.mode & 0o777) !== mode) fail("UNSAFE_DIRECTORY");
 }
 
+type DirectoryObservation = { path: string; dev: number; ino: number; uid: number; mode: number };
+
+function observeDirectory(directory: string, expectedMode: number): DirectoryObservation {
+  ensurePathAncestors(ROOT, directory);
+  let stat: Stats;
+  try { stat = lstatSync(directory); } catch { fail("PATH_UNAVAILABLE"); }
+  const uid = process.getuid?.();
+  if (!stat.isDirectory() || stat.isSymbolicLink() || (uid !== undefined && stat.uid !== uid) || (stat.mode & 0o777) !== expectedMode) fail("UNSAFE_DIRECTORY");
+  return { path: directory, dev: stat.dev, ino: stat.ino, uid: stat.uid, mode: stat.mode & 0o777 };
+}
+
+function observeDirectories(entries: Array<[string, number]>): DirectoryObservation[] {
+  return entries.map(([directory, mode]) => observeDirectory(directory, mode));
+}
+
+function verifyDirectories(observations: DirectoryObservation[]): void {
+  for (const expected of observations) {
+    const current = observeDirectory(expected.path, expected.mode);
+    if (current.dev !== expected.dev || current.ino !== expected.ino || current.uid !== expected.uid || current.mode !== expected.mode) fail("DIRECTORY_CHANGED");
+  }
+}
+
+function captureDirectoryIdentities(root: string, targetDirectory: string): DirectoryObservation[] {
+  const absoluteRoot = path.resolve(root);
+  const absoluteTarget = path.resolve(targetDirectory);
+  const relative = path.relative(absoluteRoot, absoluteTarget);
+  if (relative.startsWith("..") || path.isAbsolute(relative)) fail("FOREIGN_PATH");
+  const parts = relative ? relative.split(path.sep) : [];
+  const observations: DirectoryObservation[] = [];
+  let current = absoluteRoot;
+  for (const part of ["", ...parts]) {
+    if (part) current = path.join(current, part);
+    let stat: Stats;
+    try { stat = lstatSync(current); } catch { fail("PATH_UNAVAILABLE"); }
+    const uid = process.getuid?.();
+    if (!stat.isDirectory() || stat.isSymbolicLink() || (uid !== undefined && stat.uid !== uid)) fail("UNSAFE_DIRECTORY");
+    observations.push({ path: current, dev: stat.dev, ino: stat.ino, uid: stat.uid, mode: stat.mode & 0o777 });
+  }
+  return observations;
+}
+
+function verifyDirectoryIdentities(observations: DirectoryObservation[]): void {
+  for (const expected of observations) {
+    let current: Stats;
+    try { current = lstatSync(expected.path); } catch { fail("PATH_UNAVAILABLE"); }
+    if (!current.isDirectory() || current.isSymbolicLink() || current.dev !== expected.dev || current.ino !== expected.ino
+      || current.uid !== expected.uid || (current.mode & 0o777) !== expected.mode) fail("DIRECTORY_CHANGED");
+  }
+}
+
+function readOwnedBytes(file: string, limit: number, expectedMode: number, minimum = 1): Buffer {
+  const ancestors = captureDirectoryIdentities(ROOT, path.dirname(file));
+  let fd: number;
+  try { fd = openSync(file, constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0)); } catch { fail("NATIVE_REPORT_UNAVAILABLE"); }
+  try {
+    const before = fstatSync(fd);
+    const uid = process.getuid?.();
+    if (!before.isFile() || before.isSymbolicLink() || before.nlink !== 1 || (uid !== undefined && before.uid !== uid)
+      || (before.mode & 0o777) !== expectedMode || before.size < minimum || before.size > limit) fail("UNSAFE_FILE");
+    const data = Buffer.alloc(before.size);
+    let offset = 0;
+    while (offset < data.length) {
+      const bytes = readSync(fd, data, offset, data.length - offset, offset);
+      if (bytes <= 0) fail("FILE_CHANGED");
+      offset += bytes;
+    }
+    const after = fstatSync(fd);
+    const leaf = lstatSync(file);
+    if (!after.isFile() || after.isSymbolicLink() || after.nlink !== before.nlink || after.uid !== before.uid
+      || after.dev !== before.dev || after.ino !== before.ino || after.size !== before.size
+      || after.mtimeMs !== before.mtimeMs || (after.mode & 0o777) !== expectedMode
+      || !leaf.isFile() || leaf.isSymbolicLink() || leaf.dev !== before.dev || leaf.ino !== before.ino
+      || leaf.uid !== before.uid || leaf.nlink !== before.nlink || (leaf.mode & 0o777) !== expectedMode) fail("FILE_CHANGED");
+    verifyDirectoryIdentities(ancestors);
+    return data;
+  } finally { closeSync(fd); }
+}
+
 function createOwnedEmptyFile(file: string): void {
   ensurePathAncestors(ROOT, path.dirname(file));
   const fd = openSync(file, constants.O_CREAT | constants.O_EXCL | constants.O_WRONLY | (constants.O_NOFOLLOW ?? 0), 0o600);
@@ -434,23 +515,21 @@ async function waitForGroupAbsent(pid: number, graceMs: number): Promise<boolean
   }
 }
 
-class BoundedFileCapture extends Writable {
+class BoundedFileCapture extends Transform {
   readonly chunks: Buffer[] = [];
   bytes = 0;
-  constructor(private readonly file: Writable, private readonly limit: number, private readonly existingBytes = 0) {
+  constructor(private readonly limit: number, private readonly existingBytes = 0, private readonly retain = true) {
     super();
-    file.once("error", (error) => this.destroy(error));
   }
-  override _write(chunk: Buffer, _encoding: BufferEncoding, callback: (error?: Error | null) => void): void {
+  override _transform(chunk: Buffer, _encoding: BufferEncoding, callback: (error?: Error | null, data?: Buffer) => void): void {
     const value = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
     if (this.existingBytes + this.bytes + value.length > this.limit) {
       callback(new RunError("OUTPUT_LIMIT"));
       return;
     }
     this.bytes += value.length;
-    this.chunks.push(value);
-    if (this.file.write(value)) callback();
-    else this.file.once("drain", () => callback());
+    if (this.retain) this.chunks.push(value);
+    callback(null, value);
   }
   text(): string { return Buffer.concat(this.chunks).toString("utf8"); }
 }
@@ -476,6 +555,13 @@ export type NativeRunResult = {
   lifecycleSettled: boolean;
   error: string | null;
 };
+
+type StreamSettlement = { results: PromiseSettledResult<unknown>[]; closed: boolean; timedOut: boolean };
+
+function isClosed(stream: { closed?: boolean; writableFinished?: boolean }): boolean {
+  const state = stream as { closed?: boolean; writableFinished?: boolean };
+  return state.closed === true && (state.writableFinished === undefined || state.writableFinished === true);
+}
 
 export async function runNative(options: NativeRunOptions): Promise<NativeRunResult> {
   const startedMs = Date.now();
@@ -515,36 +601,40 @@ export async function runNative(options: NativeRunOptions): Promise<NativeRunRes
   const pid = child.pid;
   const readIdentity = options.readProcessIdentity ?? fixedProcessIdentity;
   const identity = readIdentity(pid);
-  const stdoutCapture = new BoundedFileCapture(stdoutFile, options.stdoutLimit, options.stdoutExistingBytes ?? 0);
-  const stderrCapture = new BoundedFileCapture(stderrFile, LOG_LIMIT, options.stderrExistingBytes ?? 0);
+  const stdoutCapture = new BoundedFileCapture(options.stdoutLimit, options.stdoutExistingBytes ?? 0, true);
+  const stderrCapture = new BoundedFileCapture(LOG_LIMIT, options.stderrExistingBytes ?? 0, false);
   const controller = new AbortController();
   let timeoutHandle: NodeJS.Timeout | undefined;
   let failure: Error | undefined;
-  const onFileError = (error: Error) => {
-    failure ??= error;
-    if (!controller.signal.aborted) controller.abort(error);
+  let cleanupDeadline: number | undefined;
+  let cleanupStarted = false;
+  const stickyFailure = (error: unknown) => {
+    failure ??= asError(error);
+    cleanupDeadline ??= Date.now() + CLEANUP_WINDOW_MS;
+    cleanupStarted = true;
+    if (!controller.signal.aborted) controller.abort(failure);
   };
-  stdoutFile.once("error", onFileError);
-  stderrFile.once("error", onFileError);
-  const closeFile = (file: Writable): Promise<void> => new Promise((resolve, reject) => {
-    file.end((error?: Error) => error ? reject(error) : resolve());
-  });
-  const stdoutDone = pipeline(child.stdout, stdoutCapture).catch((error) => { failure ??= asError(error); throw error; }).finally(() => closeFile(stdoutFile));
-  const stderrDone = pipeline(child.stderr, stderrCapture).catch((error) => { failure ??= asError(error); throw error; }).finally(() => closeFile(stderrFile));
+  const onPipelineFailure = (error: unknown) => {
+    stickyFailure(error);
+    return Promise.reject(error);
+  };
+  const onCancel = () => stickyFailure(options.cancelSignal?.reason instanceof Error ? options.cancelSignal.reason : new RunError("OWNER_CANCELLED"));
+  const stdoutDone = pipeline(child.stdout, stdoutCapture, stdoutFile).catch(onPipelineFailure);
+  const stderrDone = pipeline(child.stderr, stderrCapture, stderrFile).catch(onPipelineFailure);
+  void stdoutDone.catch(() => undefined);
+  void stderrDone.catch(() => undefined);
   if (!identity) {
     failure = new RunError("CHILD_IDENTITY_UNAVAILABLE");
     child.stdout.destroy(failure);
     child.stderr.destroy(failure);
-    const settled = await settleStreams([stdoutDone, stderrDone], [child.stdout, child.stderr], [stdoutFile, stderrFile]);
-    for (const result of settled) if (result.status === "rejected") failure ??= asError(result.reason);
+    const settled = await settleStreams([stdoutDone, stderrDone], [child.stdout, child.stderr, stdoutFile, stderrFile], Date.now() + CLEANUP_WINDOW_MS);
+    for (const result of settled.results) if (result.status === "rejected") failure ??= asError(result.reason);
     const finishedMs = Date.now();
     return {
       phase: { startedAt: new Date(startedMs).toISOString(), finishedAt: new Date(finishedMs).toISOString(), wallMs: finishedMs - startedMs, exitCode: child.exitCode, signal: child.signalCode, stdoutBytes: stdoutCapture.bytes, stderrBytes: stderrCapture.bytes, lifecycleSettled: false },
       stdout: stdoutCapture.text(), lifecycleSettled: false, error: errorCode(failure),
     };
   }
-  const cancelReason = () => options.cancelSignal?.reason instanceof Error ? options.cancelSignal.reason : new RunError("OWNER_CANCELLED");
-  const onCancel = () => controller.abort(cancelReason());
   if (options.cancelSignal?.aborted) onCancel();
   else options.cancelSignal?.addEventListener("abort", onCancel, { once: true });
   const wait = waitForOwnedProcessGroupExit(child, {
@@ -554,37 +644,46 @@ export async function runNative(options: NativeRunOptions): Promise<NativeRunRes
     terminateGraceMs: TERMINATION_GRACE_MS,
     verifyGraceMs: VERIFY_GRACE_MS,
   });
-  timeoutHandle = setTimeout(() => controller.abort(new RunError("NATIVE_TIMEOUT")), Math.max(1, options.deadlineAt - Date.now()));
-  const outputFailure = Promise.race([stdoutDone, stderrDone]).catch((error) => {
-    if (!controller.signal.aborted) controller.abort(asError(error));
-  });
+  timeoutHandle = setTimeout(() => stickyFailure(new RunError("NATIVE_TIMEOUT")), Math.max(1, options.deadlineAt - Date.now()));
   let exitCode: number | null = null;
   let signal: NodeJS.Signals | null = null;
   try {
     exitCode = await wait;
   } catch (error) {
     failure ??= asError(error);
+    cleanupDeadline ??= Date.now() + CLEANUP_WINDOW_MS;
     if (!controller.signal.aborted) controller.abort(failure);
     await wait.catch((waitError) => { failure ??= asError(waitError); });
   }
   clearTimeout(timeoutHandle);
-  const settled = await settleStreams([stdoutDone, stderrDone, outputFailure], [child.stdout, child.stderr], [stdoutFile, stderrFile]);
-  for (const result of settled) if (result.status === "rejected") failure ??= asError(result.reason);
+  const settled = await settleStreams(
+    [stdoutDone, stderrDone],
+    [child.stdout, child.stderr, stdoutFile, stderrFile],
+    cleanupDeadline ?? Date.now() + STREAM_SETTLEMENT_GRACE_MS,
+  );
+  for (const result of settled.results) if (result.status === "rejected") failure ??= asError(result.reason);
   options.cancelSignal?.removeEventListener("abort", onCancel);
   signal = child.signalCode;
-  const finishedMs = Date.now();
   let groupSettled = false;
   try {
     groupSettled = await waitForGroupAbsent(pid, VERIFY_GRACE_MS);
-    if (!groupSettled && sameIdentity(identity, readIdentity(pid))) {
-      await stopOwnedProcessGroup(child, { expectedProcessIdentity: identity, readProcessIdentity: readIdentity });
+    const cleanupRemaining = cleanupDeadline === undefined ? Number.POSITIVE_INFINITY : cleanupDeadline - Date.now();
+    if (!groupSettled && !cleanupStarted && cleanupRemaining > 4_750 && sameIdentity(identity, readIdentity(pid))) {
+      cleanupStarted = true;
+      await stopOwnedProcessGroup(child, {
+        expectedProcessIdentity: identity,
+        readProcessIdentity: readIdentity,
+        terminateGraceMs: TERMINATION_GRACE_MS,
+        verifyGraceMs: VERIFY_GRACE_MS,
+      });
       groupSettled = await waitForGroupAbsent(pid, VERIFY_GRACE_MS);
     }
   } catch (error) {
     failure ??= asError(error);
   }
   if (!groupSettled) failure ??= new RunError("CHILD_GROUP_UNSETTLED");
-  if (failure && failure.message === "NATIVE_TIMEOUT") signal = signal ?? "SIGTERM";
+  if (settled.timedOut) failure ??= new RunError("STREAM_SETTLEMENT_TIMEOUT");
+  const finishedMs = Date.now();
   const phase: PhaseObservation = {
     startedAt: new Date(startedMs).toISOString(),
     finishedAt: new Date(finishedMs).toISOString(),
@@ -593,9 +692,9 @@ export async function runNative(options: NativeRunOptions): Promise<NativeRunRes
     signal,
     stdoutBytes: stdoutCapture.bytes,
     stderrBytes: stderrCapture.bytes,
-    lifecycleSettled: groupSettled,
+    lifecycleSettled: groupSettled && settled.closed && !settled.timedOut,
   };
-  return { phase, stdout: stdoutCapture.text(), lifecycleSettled: groupSettled, error: failure ? errorCode(failure) : null };
+  return { phase, stdout: stdoutCapture.text(), lifecycleSettled: phase.lifecycleSettled, error: failure ? errorCode(failure) : null };
 }
 
 function openOwnedAppend(file: string): ReturnType<typeof createWriteStream> {
@@ -609,25 +708,28 @@ function openOwnedAppend(file: string): ReturnType<typeof createWriteStream> {
     try { closeSync(fd); } catch { /* preserve the original failure */ }
     throw error;
   }
-  return createWriteStream(file, { fd, autoClose: true });
+  return createWriteStream(file, { fd, autoClose: true, emitClose: true });
 }
 
 async function settleStreams(
   promises: Promise<unknown>[],
-  streams: Array<{ destroy(error?: Error): void }>,
-  files: Array<{ destroy(error?: Error): void }>,
-): Promise<PromiseSettledResult<unknown>[]> {
+  streams: Array<{ destroy(error?: Error): void; closed?: boolean; writableFinished?: boolean }>,
+  deadlineAt: number,
+): Promise<StreamSettlement> {
   const all = Promise.allSettled(promises);
-  let timer: NodeJS.Timeout | undefined;
-  const timeout = new Promise<boolean>((resolve) => { timer = setTimeout(() => resolve(true), VERIFY_GRACE_MS); });
-  const timedOut = await Promise.race([all.then(() => false), timeout]);
-  if (timer) clearTimeout(timer);
-  if (!timedOut) return all;
+  const remaining = Math.max(1, deadlineAt - Date.now());
+  const result = await Promise.race([
+    all.then((results) => ({ results, timedOut: false as const })),
+    new Promise<{ results: PromiseSettledResult<unknown>[]; timedOut: true; closed: false }>((resolve) => setTimeout(() => resolve({ results: [], closed: false, timedOut: true }), remaining)),
+  ]);
+  if (!result.timedOut) return { results: result.results, closed: streams.every((stream) => isClosed(stream)), timedOut: false };
   const reason = new RunError("STREAM_SETTLEMENT_TIMEOUT");
   streams.forEach((stream) => stream.destroy(reason));
-  files.forEach((file) => file.destroy());
-  const settled = await Promise.race([all, new Promise<undefined>((resolve) => setTimeout(() => resolve(undefined), VERIFY_GRACE_MS))]);
-  return settled ?? [];
+  const settled = await Promise.race([
+    all,
+    new Promise<PromiseSettledResult<unknown>[]>((resolve) => setTimeout(() => resolve([]), STREAM_SETTLEMENT_GRACE_MS)),
+  ]);
+  return { results: settled, closed: streams.every((stream) => isClosed(stream)), timedOut: true };
 }
 
 function asError(error: unknown): Error {
@@ -699,20 +801,42 @@ function newRecord(input: {
   };
 }
 
-function writeAtomicRecord(runDirectory: string, value: RunRecord): void {
+export function writeAtomicRecord(runDirectory: string, value: RunRecord): void {
   const json = JSON.stringify(value);
   if (Buffer.byteLength(json, "utf8") > RECORD_LIMIT) fail("RECORD_TOO_LARGE");
   const temporary = path.join(runDirectory, `${RECORD_NAME}.${process.pid}.tmp`);
+  const final = path.join(runDirectory, RECORD_NAME);
   ensurePathAncestors(ROOT, runDirectory);
+  const ancestors = captureDirectoryIdentities(ROOT, runDirectory);
+  verifyDirectoryIdentities(ancestors);
   const fd = openSync(temporary, constants.O_CREAT | constants.O_EXCL | constants.O_WRONLY | (constants.O_NOFOLLOW ?? 0), 0o600);
   try {
     writeFileSync(fd, `${json}\n`, "utf8");
     fsyncSync(fd);
   } finally { closeSync(fd); }
-  renameSync(temporary, path.join(runDirectory, RECORD_NAME));
+  const temporaryStat = checkRegularFile(temporary, RECORD_LIMIT, 0o600);
+  verifyDirectoryIdentities(ancestors);
+  linkSync(temporary, final);
+  const linkedStat = checkRegularFile(final, RECORD_LIMIT, 0o600);
+  if (linkedStat.dev !== temporaryStat.dev || linkedStat.ino !== temporaryStat.ino || linkedStat.nlink !== 2) fail("RECORD_PUBLICATION");
+  unlinkSync(temporary);
+  const publishedStat = checkRegularFile(final, RECORD_LIMIT, 0o600);
+  if (publishedStat.dev !== temporaryStat.dev || publishedStat.ino !== temporaryStat.ino || publishedStat.nlink !== 1) fail("RECORD_PUBLICATION");
+  verifyDirectoryIdentities(ancestors);
 }
 
-type RunStorage = { runId: string; directory: string; nativeReport: string; stdout: string; stderr: string; lockPath: string; lockFd: number; lockStat: Stats; lockText: string };
+type RunStorage = {
+  runId: string;
+  directory: string;
+  nativeReport: string;
+  stdout: string;
+  stderr: string;
+  lockPath: string;
+  lockFd: number;
+  lockStat: Stats;
+  lockText: string;
+  directories: DirectoryObservation[];
+};
 
 export function disposeOwnedLock(lockPath: string, lockFd: number, original: Stats, expectedText: string): boolean {
   let removed = false;
@@ -733,8 +857,10 @@ export function disposeOwnedLock(lockPath: string, lockFd: number, original: Sta
 }
 
 function createStorage(task: TaskId): RunStorage {
-  ensureDirectory(path.join(ROOT, "work"), 0o755);
+  const workDirectory = path.join(ROOT, "work");
+  ensureDirectory(workDirectory, 0o755);
   ensureDirectory(RUNS_DIRECTORY, 0o755);
+  const directories = observeDirectories([[ROOT, 0o755], [workDirectory, 0o755], [RUNS_DIRECTORY, 0o755]]);
   const lockPath = path.join(RUNS_DIRECTORY, LOCK_NAMES[task]);
   if (!fixedProcessIdentity(process.pid)) fail("OWNER_IDENTITY_UNAVAILABLE");
   let lockFd: number;
@@ -765,21 +891,24 @@ function createStorage(task: TaskId): RunStorage {
       }
     }
   }
-  ensurePathAncestors(ROOT, directory);
-  const runStat = lstatSync(directory);
-  const uid = process.getuid?.();
-  if (!runStat.isDirectory() || runStat.isSymbolicLink() || (uid !== undefined && runStat.uid !== uid) || (runStat.mode & 0o777) !== 0o700) {
+  let runObservation: DirectoryObservation;
+  try { runObservation = observeDirectory(directory, 0o700); }
+  catch (error) {
     disposeOwnedLock(lockPath, lockFd, lockStat, expectedLockText);
-    fail("UNSAFE_DIRECTORY");
+    throw error;
   }
   const identity = fixedProcessIdentity(process.pid);
+  if (!identity) {
+    disposeOwnedLock(lockPath, lockFd, lockStat, expectedLockText);
+    fail("OWNER_IDENTITY_UNAVAILABLE");
+  }
   const text = JSON.stringify({ schemaVersion: 1, taskId: task, pid: process.pid, runId, identity });
   try {
     writeFileSync(lockFd, text, "utf8");
     fsyncSync(lockFd);
     expectedLockText = text;
     for (const name of [STDOUT_NAME, STDERR_NAME, NATIVE_REPORT_NAME]) createOwnedEmptyFile(path.join(directory, name));
-    return { runId, directory, nativeReport: path.join(directory, NATIVE_REPORT_NAME), stdout: path.join(directory, STDOUT_NAME), stderr: path.join(directory, STDERR_NAME), lockPath, lockFd, lockStat, lockText: text };
+    return { runId, directory, nativeReport: path.join(directory, NATIVE_REPORT_NAME), stdout: path.join(directory, STDOUT_NAME), stderr: path.join(directory, STDERR_NAME), lockPath, lockFd, lockStat, lockText: text, directories: [...directories, runObservation] };
   } catch (error) {
     disposeOwnedLock(lockPath, lockFd, lockStat, expectedLockText);
     throw error;
@@ -797,7 +926,7 @@ function fileHash(file: string, maxBytes: number): { sha256: string; bytes: numb
   return { sha256: digest(value), bytes: value.length };
 }
 
-function parseDiscovery(text: string, files: string[]): string[] {
+export function parseDiscovery(text: string, files: string[]): string[] {
   if (Buffer.byteLength(text, "utf8") > DISCOVERY_LIMIT) fail("DISCOVERY_TOO_LARGE");
   let value: unknown;
   try { value = JSON.parse(text); } catch { fail("DISCOVERY_INVALID"); }
@@ -862,10 +991,7 @@ export async function runFreshTask(options: { base: string; task: TaskId; force?
   let mode: "mock" | "api";
   try {
     mkdirSync(tempDirectory, { mode: 0o700 });
-    ensurePathAncestors(ROOT, tempDirectory);
-    const tempStat = lstatSync(tempDirectory);
-    const uid = process.getuid?.();
-    if (!tempStat.isDirectory() || tempStat.isSymbolicLink() || (uid !== undefined && tempStat.uid !== uid) || (tempStat.mode & 0o777) !== 0o700) fail("UNSAFE_DIRECTORY");
+    storage.directories.push(observeDirectory(tempDirectory, 0o700));
     ({ env, mode } = childEnvironment(spec, tempDirectory));
   } catch (error) {
     releaseStorage(storage);
@@ -883,6 +1009,7 @@ export async function runFreshTask(options: { base: string; task: TaskId; force?
     const workspaceErrors = await validateWorkspaceLinks(ROOT);
     if (workspaceErrors.length > 0) throw new RunError("WORKSPACE_LINKS_INVALID");
     const deadlineAt = Date.now() + spec.budgetMs;
+    verifyDirectories(storage.directories);
     const discovery = await runNative({ argv: discoveryArgv, env, cwd: ROOT, stdoutPath: storage.stdout, stderrPath: storage.stderr, stdoutLimit: DISCOVERY_LIMIT, stdoutExistingBytes: 0, stderrExistingBytes: 0, deadlineAt, cancelSignal: ownerCancellation.signal });
     applyPhase(record, "discovery", discovery.phase);
     lifecycleSettled &&= discovery.lifecycleSettled;
@@ -894,14 +1021,15 @@ export async function runFreshTask(options: { base: string; task: TaskId; force?
     if (ownerCancellation.signal.aborted) throw ownerCancellation.signal.reason;
     const stdoutExistingBytes = lstatSync(storage.stdout).size;
     const stderrExistingBytes = lstatSync(storage.stderr).size;
+    verifyDirectories(storage.directories);
     const execution = await runNative({ argv: runArgv, env, cwd: ROOT, stdoutPath: storage.stdout, stderrPath: storage.stderr, stdoutLimit: LOG_LIMIT, stdoutExistingBytes, stderrExistingBytes, deadlineAt, cancelSignal: ownerCancellation.signal });
     applyPhase(record, "execution", execution.phase);
     lifecycleSettled &&= execution.lifecycleSettled;
     if (execution.error) throw new RunError(execution.error);
     let nativeBytes: Buffer;
     try {
-      checkRegularFile(storage.nativeReport, NATIVE_REPORT_LIMIT, 0o600);
-      nativeBytes = readPrivateReport(storage.nativeReport);
+      verifyDirectories(storage.directories);
+      nativeBytes = readOwnedBytes(storage.nativeReport, NATIVE_REPORT_LIMIT, 0o600);
     } catch { throw new RunError("NATIVE_REPORT_UNAVAILABLE"); }
     if (nativeBytes.length > NATIVE_REPORT_LIMIT) throw new RunError("NATIVE_REPORT_TOO_LARGE");
     const reportHash = digest(nativeBytes);
@@ -923,6 +1051,7 @@ export async function runFreshTask(options: { base: string; task: TaskId; force?
     const afterPreview = createPreview({ cwd: ROOT, base: options.base });
     const afterSources = inspectSources();
     const afterDependencies = dependencyObservation();
+    verifyDirectories(storage.directories);
     if (!isDeepStrictEqual(preview, afterPreview) || !isDeepStrictEqual(sources, afterSources) || !isDeepStrictEqual(dependencies, afterDependencies)) throw new RunError("SOURCE_DRIFT");
     record.claimedStatus = "passed";
   } catch (error) {
@@ -936,6 +1065,7 @@ export async function runFreshTask(options: { base: string; task: TaskId; force?
   record.finishedAt = finishedAt;
   record.wallMs = Date.parse(finishedAt) - Date.parse(record.startedAt);
   try {
+    verifyDirectories(storage.directories);
     const stdout = fileHash(storage.stdout, LOG_LIMIT);
     const stderr = fileHash(storage.stderr, LOG_LIMIT);
     record.logs = { stdoutSha256: stdout.sha256, stderrSha256: stderr.sha256, stdoutBytes: stdout.bytes, stderrBytes: stderr.bytes };
@@ -955,7 +1085,7 @@ export async function runFreshTask(options: { base: string; task: TaskId; force?
     releaseStorage(storage);
   }
   try { writeAtomicRecord(storage.directory, record); }
-  catch (error) { record.complete = false; record.claimedStatus = "failed"; record.error = errorCode(asError(error)); try { writeAtomicRecord(storage.directory, record); } catch { /* preserve the incomplete directory */ } }
+  catch (error) { record.complete = false; record.claimedStatus = "failed"; record.error = errorCode(asError(error)); }
   const terminal = terminalFromRecord(record);
   return { exitCode: record.complete && record.claimedStatus === "passed" ? 0 : 1, terminal, record };
 }

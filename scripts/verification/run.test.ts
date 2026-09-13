@@ -1,4 +1,5 @@
-import { fstatSync, mkdtempSync, openSync, constants as fsConstants, readFileSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from "node:fs";
+import { existsSync, fstatSync, mkdtempSync, openSync, constants as fsConstants, readFileSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from "node:fs";
+import { spawnSync } from "node:child_process";
 import path from "node:path";
 import { Writable } from "node:stream";
 
@@ -10,11 +11,13 @@ import {
   disposeOwnedLock,
   ensurePathAncestors,
   implementationRoot,
+  parseDiscovery,
   parseRunArgs,
   renderTerminal,
   runNative,
   taskSpec,
   TASK_IDS,
+  writeAtomicRecord,
   type TerminalResult,
 } from "./run";
 
@@ -39,6 +42,21 @@ function nativeOptions(directory: string, script: string, overrides: Partial<Par
     deadlineAt: Date.now() + 2_000,
     ...overrides,
   };
+}
+
+class DelayedCloseWritable extends Writable {
+  constructor(private readonly closeError: Error | undefined = undefined) {
+    super({ autoDestroy: true });
+  }
+  override _write(_chunk: Buffer, _encoding: BufferEncoding, callback: (error?: Error | null) => void): void { callback(); }
+  override _destroy(_error: Error | null, callback: (error?: Error | null) => void): void {
+    setTimeout(() => callback(this.closeError), 80);
+  }
+}
+
+class DelayedFinalWritable extends Writable {
+  override _write(_chunk: Buffer, _encoding: BufferEncoding, callback: (error?: Error | null) => void): void { callback(); }
+  override _final(callback: (error?: Error | null) => void): void { setTimeout(() => callback(new Error("delayed final failure")), 80); }
 }
 
 afterEach(() => {
@@ -77,6 +95,22 @@ describe("fresh local verification runner", () => {
     expect(argv.slice(0, 2)).toEqual(["--max-old-space-size=768", "/repo/node_modules/vitest/vitest.mjs"]);
   });
 
+  it("refuses a foreign-root CLI before touching a fixed-entry marker", () => {
+    const foreign = mkdtempSync(path.join(implementationRoot, "work", "verification-runs", "eff04-foreign-"));
+    const marker = path.join(foreign, "marker");
+    writeFileSync(marker, "untouched", { mode: 0o600 });
+    const cli = path.join(implementationRoot, "node_modules/.bin/tsx");
+    const result = spawnSync(cli, [path.join(implementationRoot, "scripts/verification/run.ts"), "--base", "a".repeat(40), "--task", TASK_IDS[0]], {
+      cwd: foreign,
+      env: { PATH: `${path.dirname(process.execPath)}:/usr/bin:/bin`, TMPDIR: foreign },
+      encoding: "utf8",
+    });
+    expect(result.status).toBe(1);
+    expect(result.stdout).toContain("NON_ROOT_CWD");
+    expect(readFileSync(marker, "utf8")).toBe("untouched");
+    rmSync(foreign, { recursive: true, force: true });
+  });
+
   it("keeps both bounded native phase logs and settles cancellation", async () => {
     const directory = fixtureDirectory();
     const first = await runNative(nativeOptions(directory, "process.stdout.write('discovery\\n')"));
@@ -108,6 +142,22 @@ describe("fresh local verification runner", () => {
     expect(unknown.phase.lifecycleSettled).toBe(false);
   });
 
+  it("passes only the rebuilt environment to an actual child and rejects unknown mode", async () => {
+    const directory = fixtureDirectory();
+    const spec = taskSpec("feedback-frontend-client");
+    const { env } = buildFreshChildEnvironment(spec, directory, {
+      PATH: "/foreign/bin",
+      npm_execpath: "/foreign/npm",
+      VITE_WISEEFF_RUNTIME_MODE: "mock",
+      NODE_V8_COVERAGE: "/foreign/coverage",
+    });
+    expect(() => buildFreshChildEnvironment(spec, directory, { VITE_WISEEFF_RUNTIME_MODE: "unknown" })).toThrow("UNKNOWN_RUNTIME_MODE");
+    const marker = path.join(directory, "env-marker.json");
+    const child = await runNative(nativeOptions(directory, `require('node:fs').writeFileSync(${JSON.stringify(marker)}, JSON.stringify({path: process.env.PATH, npm: process.env.npm_execpath, coverage: process.env.NODE_V8_COVERAGE, mode: process.env.VITE_WISEEFF_RUNTIME_MODE}))`, { env }));
+    expect(child.error).toBeNull();
+    expect(JSON.parse(readFileSync(marker, "utf8"))).toEqual({ path: `${path.dirname(process.execPath)}:/usr/bin:/bin:/usr/sbin:/sbin`, mode: "mock" });
+  });
+
   it("turns native log write and close errors into a failed phase", async () => {
     const directory = fixtureDirectory();
     const writeFailure = await runNative(nativeOptions(directory, "process.stdout.write('write')", {
@@ -119,6 +169,77 @@ describe("fresh local verification runner", () => {
       openLog: () => new Writable({ write: (_chunk, _encoding, callback) => callback(), final: (callback) => callback(new Error("log close failed")) }),
     }));
     expect(closeFailure.error).not.toBeNull();
+
+    const delayedFinal = await runNative(nativeOptions(directory, "process.stdout.write('final')", {
+      openLog: () => new DelayedFinalWritable(),
+    }));
+    expect(delayedFinal.error).not.toBeNull();
+  });
+
+  it("waits for an exited leader's held pipes and keeps timeout failure sticky", async () => {
+    const directory = fixtureDirectory();
+    const started = Date.now();
+    const survivor = await runNative(nativeOptions(directory, "const {spawn}=require('node:child_process'); spawn(process.execPath,['-e','setTimeout(()=>{},120)'],{stdio:['ignore','inherit','inherit']}); process.stdout.write('leader');"));
+    expect(survivor.error).toBeNull();
+    expect(Date.now() - started).toBeGreaterThanOrEqual(80);
+
+    const timedOut = await runNative(nativeOptions(directory, "setInterval(() => {}, 1000)", {
+      deadlineAt: Date.now() + 30,
+      stdoutExistingBytes: readFileSync(path.join(directory, "stdout.log")).byteLength,
+      stderrExistingBytes: readFileSync(path.join(directory, "stderr.log")).byteLength,
+      openLog: () => new DelayedCloseWritable(),
+    }));
+    expect(timedOut.error).toContain("NATIVE_TIMEOUT");
+    expect(timedOut.phase.lifecycleSettled).toBe(true);
+  });
+
+  it("does not signal a child after its ownership identity changes", async () => {
+    const directory = fixtureDirectory();
+    let identityReads = 0;
+    const marker = path.join(directory, "natural-completion");
+    const changed = await runNative(nativeOptions(directory, `setTimeout(() => require('node:fs').writeFileSync(${JSON.stringify(marker)}, 'done'), 120)`, {
+      cancelSignal: (() => {
+        const controller = new AbortController();
+        setTimeout(() => controller.abort(new Error("changed owner")), 20);
+        return controller.signal;
+      })(),
+      readProcessIdentity: () => identityReads++ === 0 ? { startToken: "initial", commandSha256: "initial" } : undefined,
+    }));
+    expect(changed.error).toContain("CHILD_FAILED");
+    expect(existsSync(marker)).toBe(true);
+  });
+
+  it("parses actual discovery output, rejects duplicate or missing files, and preserves nonzero exit", async () => {
+    const directory = fixtureDirectory();
+    const file = path.join(implementationRoot, "scripts/ci-changed-paths.test.ts");
+    const output = await runNative(nativeOptions(directory, `process.stdout.write(${JSON.stringify(JSON.stringify([{ file }]))})`));
+    expect(output.error).toBeNull();
+    expect(parseDiscovery(output.stdout, [file])).toEqual([file]);
+    expect(() => parseDiscovery(JSON.stringify([{ file }, { file }]), [file])).toThrow("DISCOVERY_FILES");
+    expect(() => parseDiscovery(JSON.stringify([]), [file])).toThrow("DISCOVERY_EMPTY");
+    const failed = await runNative(nativeOptions(directory, "process.stdout.write('{\"testResults\":[]}'); process.exit(7)", {
+      stdoutExistingBytes: readFileSync(path.join(directory, "stdout.log")).byteLength,
+      stderrExistingBytes: readFileSync(path.join(directory, "stderr.log")).byteLength,
+    }));
+    expect(failed.phase.exitCode).toBe(7);
+    expect(failed.phase.lifecycleSettled).toBe(true);
+  });
+
+  it("waits for actual destination close and retains late stderr failure", async () => {
+    const directory = fixtureDirectory();
+    const started = Date.now();
+    const clean = await runNative(nativeOptions(directory, "process.stdout.write('delayed close')", {
+      openLog: () => new DelayedCloseWritable(),
+    }));
+    expect(clean.error).toBeNull();
+    expect(Date.now() - started).toBeGreaterThanOrEqual(60);
+
+    const lateFailure = await runNative(nativeOptions(directory, "process.stdout.write('stdout done')", {
+      openLog: (file) => file.endsWith("stderr.log") ? new DelayedCloseWritable(new Error("late stderr close")) : new DelayedCloseWritable(),
+      stdoutExistingBytes: readFileSync(path.join(directory, "stdout.log")).byteLength,
+      stderrExistingBytes: readFileSync(path.join(directory, "stderr.log")).byteLength,
+    }));
+    expect(lateFailure.error).not.toBeNull();
   });
 
   it("refuses unsafe ancestors and preserves a replacement lock", () => {
@@ -134,6 +255,14 @@ describe("fresh local verification runner", () => {
     writeFileSync(lockPath, "replacement", { mode: 0o600 });
     expect(disposeOwnedLock(lockPath, lockFd, original, "")).toBe(false);
     expect(readFileSync(lockPath, "utf8")).toBe("replacement");
+  });
+
+  it("never overwrites an existing final record during publication", () => {
+    const directory = fixtureDirectory();
+    const finalPath = path.join(directory, "record.json");
+    writeFileSync(finalPath, "foreign-record", { mode: 0o600 });
+    expect(() => writeAtomicRecord(directory, { marker: "candidate" })).toThrow();
+    expect(readFileSync(finalPath, "utf8")).toBe("foreign-record");
   });
 
   it("renders only bounded registered terminal fields", () => {

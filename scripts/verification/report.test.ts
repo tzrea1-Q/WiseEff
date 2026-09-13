@@ -1,9 +1,74 @@
+import { createHash, randomUUID } from "node:crypto";
+import { chmodSync, linkSync, mkdirSync, mkdtempSync, readFileSync, rmSync, unlinkSync, writeFileSync } from "node:fs";
+import path from "node:path";
 import { describe, expect, it } from "vitest";
 
 import { implementationRoot, SOURCE_PATHS, taskSpec } from "./run";
-import { parseReportArgs, parseRunRecord, renderRecordedReport, type RecordedReport } from "./report";
+import { captureDirectoryIdentities, parseReportArgs, parseRunRecord, readOwned, readRecordedReport, renderRecordedReport, verifyDirectoryIdentities, type RecordedReport } from "./report";
 
 const RUN_ID = "00000000-0000-4000-8000-000000000000";
+
+function sha256(value: string | Buffer): string { return createHash("sha256").update(value).digest("hex"); }
+
+function sourceDigest(entries: Array<[string, Buffer]>): string {
+  const digest = createHash("sha256");
+  for (const [name, data] of entries) {
+    const nameBytes = Buffer.from(name, "utf8");
+    const length = Buffer.alloc(8);
+    length.writeBigUInt64BE(BigInt(nameBytes.length));
+    digest.update(length).update(nameBytes);
+    length.writeBigUInt64BE(BigInt(data.length));
+    digest.update(length).update(data);
+  }
+  return digest.digest("hex");
+}
+
+function forgedRecord(directory: string): Record<string, unknown> {
+  const sources = SOURCE_PATHS.map((relative) => [relative, readFileSync(path.join(implementationRoot, relative))] as [string, Buffer]);
+  const spec = taskSpec("ci-changed-paths");
+  const files = spec.files.map((file) => path.join(implementationRoot, file));
+  const vitest = path.join(implementationRoot, "node_modules/vitest/vitest.mjs");
+  const common = ["--config", path.join(implementationRoot, spec.config), ...files];
+  const phase = { startedAt: new Date(0).toISOString(), finishedAt: new Date(1).toISOString(), wallMs: 1, exitCode: 0, signal: null, stdoutBytes: 0, stderrBytes: 0, lifecycleSettled: true };
+  const nativeBytes = Buffer.from("{\"forged\":true}\n");
+  return {
+    schemaVersion: 1,
+    complete: true,
+    scope: "fresh-local-feedback",
+    runId: path.basename(directory),
+    root: implementationRoot,
+    taskId: "ci-changed-paths",
+    acceptedBase: "a".repeat(40),
+    head: "b".repeat(40),
+    tree: "c".repeat(40),
+    executedSha: "d".repeat(40),
+    headTree: "e".repeat(40),
+    sourceDigest: sourceDigest(sources),
+    sourceFiles: sources.map(([file, data]) => ({ path: file, bytes: data.length, sha256: sha256(data) })),
+    policyDigest: "f".repeat(64),
+    nodeVersion: process.version,
+    dependencies: { packageVersion: "0.1.0", vitestVersion: "4.1.5", packageJsonSha256: "1".repeat(64), vitestPackageSha256: "2".repeat(64), vitestEntrySha256: "3".repeat(64) },
+    childEnvRuntimeMode: "api",
+    testConfigRuntimeMode: null,
+    discoveryArgv: [vitest, "list", "--filesOnly", "--json", ...common],
+    runArgv: [vitest, "run", ...common, "--reporter=default", "--reporter=json", `--outputFile=${path.join(directory, "native-report.json")}`],
+    discovery: phase,
+    execution: phase,
+    startedAt: new Date(0).toISOString(),
+    finishedAt: new Date(1).toISOString(),
+    wallMs: 1,
+    activityBudgetMs: 1,
+    exitCode: 0,
+    signal: null,
+    native: { discoveredFiles: files, files: 1, passed: 1, skipped: 0, reportSha256: sha256(nativeBytes) },
+    logs: { stdoutSha256: sha256(Buffer.alloc(0)), stderrSha256: sha256(Buffer.alloc(0)), stdoutBytes: 0, stderrBytes: 0 },
+    claimedStatus: "passed",
+    error: null,
+    memo: "disabled",
+    acceptancePending: true,
+    tokenUsage: null,
+  };
+}
 
 function validRecord(discovery: Record<string, unknown> = phase()): Record<string, unknown> {
   const spec = taskSpec("ci-changed-paths");
@@ -113,5 +178,59 @@ describe("recorded local verification report", () => {
     expect(output.claimedStatus).toBe("passed");
     expect(output.status).toBe("record-readable");
     expect(output.freshness).toBe("unverified");
+  });
+
+  it("reads the native file through one owned descriptor and rejects a mode change", () => {
+    const directory = mkdtempSync(path.join(implementationRoot, "work", "verification-runs", "eff04-report-"));
+    const file = path.join(directory, "native-report.json");
+    try {
+      writeFileSync(file, "{\"ok\":true}\n", { mode: 0o600 });
+      expect(readOwned(file, 1024, 0o600)).toEqual(Buffer.from("{\"ok\":true}\n"));
+      const hardlink = path.join(directory, "native-report-hardlink.json");
+      linkSync(file, hardlink);
+      expect(() => readOwned(file, 1024, 0o600)).toThrow("REPORT_FILE");
+      unlinkSync(hardlink);
+      chmodSync(file, 0o644);
+      expect(() => readOwned(file, 1024, 0o600)).toThrow("REPORT_FILE");
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("rejects a group/world-writable root snapshot and changed ancestor mode", () => {
+    const root = mkdtempSync(path.join(implementationRoot, "work", "verification-runs", "eff04-root-"));
+    const child = path.join(root, "child");
+    try {
+      mkdirSync(child, { mode: 0o755 });
+      chmodSync(root, 0o777);
+      expect(() => captureDirectoryIdentities(root, child, new Map([[root, 0o755]]))).toThrow("REPORT_FILE");
+      chmodSync(root, 0o755);
+      const observations = captureDirectoryIdentities(root, child, new Map([[root, 0o755]]));
+      chmodSync(root, 0o700);
+      expect(() => verifyDirectoryIdentities(observations)).toThrow("REPORT_CHANGED");
+    } finally {
+      chmodSync(root, 0o700);
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("reads a self-consistent forged record only as unverified recorded data", () => {
+    const runId = randomUUID();
+    const directory = path.join(implementationRoot, "work", "verification-runs", runId);
+    const nativeBytes = Buffer.from("{\"forged\":true}\n");
+    try {
+      mkdirSync(directory, { mode: 0o700 });
+      writeFileSync(path.join(directory, "record.json"), `${JSON.stringify(forgedRecord(directory))}\n`, { mode: 0o600 });
+      writeFileSync(path.join(directory, "stdout.log"), "", { mode: 0o600 });
+      writeFileSync(path.join(directory, "stderr.log"), "", { mode: 0o600 });
+      writeFileSync(path.join(directory, "native-report.json"), nativeBytes, { mode: 0o600 });
+      const report = readRecordedReport(runId);
+      expect(report.status).toBe("record-readable");
+      expect(report.scope).toBe("recorded-local-data");
+      expect(report.freshness).toBe("unverified");
+      expect(report.claimedStatus).toBe("passed");
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
   });
 });

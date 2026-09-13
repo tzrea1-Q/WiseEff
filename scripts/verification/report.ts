@@ -13,7 +13,6 @@ import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { parseArgs } from "node:util";
 
-import { readPrivateReport } from "../ci-required-results";
 import {
   implementationRoot,
   SOURCE_PATHS,
@@ -116,27 +115,52 @@ function ensureAncestors(root: string, target: string): void {
   }
 }
 
-function assertOwnedFile(file: string, limit: number, mode: number, minimum = 0): void {
-  ensureAncestors(ROOT, path.dirname(file));
-  let fd: number;
-  try { fd = openSync(file, constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0)); } catch { fail("REPORT_FILE"); }
-  try {
-    const stat = fstatSync(fd);
+type DirectoryObservation = { path: string; dev: number; ino: number; uid: number; mode: number };
+
+export function captureDirectoryIdentities(root: string, targetDirectory: string, expectedModes = new Map<string, number>()): DirectoryObservation[] {
+  const absoluteRoot = path.resolve(root);
+  const absoluteTarget = path.resolve(targetDirectory);
+  const relative = path.relative(absoluteRoot, absoluteTarget);
+  if (relative.startsWith("..") || path.isAbsolute(relative)) fail("FOREIGN_PATH");
+  const observations: DirectoryObservation[] = [];
+  let current = absoluteRoot;
+  for (const part of ["", ...(relative ? relative.split(path.sep) : [])]) {
+    if (part) current = path.join(current, part);
+    let stat: Stats;
+    try { stat = lstatSync(current); } catch { fail("REPORT_FILE"); }
     const uid = process.getuid?.();
-    if (!stat.isFile() || stat.isSymbolicLink() || stat.nlink !== 1 || (uid !== undefined && stat.uid !== uid)
-      || (stat.mode & 0o777) !== mode || stat.size < minimum || stat.size > limit) fail("REPORT_FILE");
-  } finally { closeSync(fd); }
+    const mode = stat.mode & 0o777;
+    const expectedMode = expectedModes.get(current);
+    if (!stat.isDirectory() || stat.isSymbolicLink() || (uid !== undefined && stat.uid !== uid)
+      || (expectedMode !== undefined && mode !== expectedMode)) fail("REPORT_FILE");
+    observations.push({ path: current, dev: stat.dev, ino: stat.ino, uid: stat.uid, mode });
+  }
+  return observations;
 }
 
-function readOwned(file: string, limit: number, mode = 0o600, minimum = 1): Buffer {
+export function verifyDirectoryIdentities(observations: DirectoryObservation[]): void {
+  for (const expected of observations) {
+    let stat: Stats;
+    try { stat = lstatSync(expected.path); } catch { fail("REPORT_CHANGED"); }
+    if (!stat.isDirectory() || stat.isSymbolicLink() || stat.dev !== expected.dev || stat.ino !== expected.ino
+      || stat.uid !== expected.uid || (stat.mode & 0o777) !== expected.mode) fail("REPORT_CHANGED");
+  }
+}
+
+export function readOwned(file: string, limit: number, mode = 0o600, minimum = 1): Buffer {
+  const ancestors = captureDirectoryIdentities(ROOT, path.dirname(file));
   ensureAncestors(ROOT, path.dirname(file));
   let fd: number;
   try { fd = openSync(file, constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0)); } catch { fail("REPORT_FILE"); }
   try {
     const stat = fstatSync(fd);
+    let leafBefore: Stats;
+    try { leafBefore = lstatSync(file); } catch { fail("REPORT_FILE"); }
     const uid = process.getuid?.();
     if (!stat.isFile() || stat.isSymbolicLink() || stat.nlink !== 1 || (uid !== undefined && stat.uid !== uid)
-      || (stat.mode & 0o777) !== mode || stat.size < minimum || stat.size > limit) fail("REPORT_FILE");
+      || (stat.mode & 0o777) !== mode || stat.size < minimum || stat.size > limit
+      || !leafBefore.isFile() || leafBefore.isSymbolicLink() || leafBefore.dev !== stat.dev || leafBefore.ino !== stat.ino
+      || leafBefore.uid !== stat.uid || leafBefore.nlink !== stat.nlink || (leafBefore.mode & 0o777) !== mode) fail("REPORT_FILE");
     const data = Buffer.alloc(stat.size);
     let offset = 0;
     while (offset < data.length) {
@@ -145,7 +169,14 @@ function readOwned(file: string, limit: number, mode = 0o600, minimum = 1): Buff
       offset += bytes;
     }
     const after = fstatSync(fd);
-    if (data.length !== stat.size || after.size !== stat.size || after.mtimeMs !== stat.mtimeMs) fail("REPORT_CHANGED");
+    let leafAfter: Stats;
+    try { leafAfter = lstatSync(file); } catch { fail("REPORT_CHANGED"); }
+    if (data.length !== stat.size || !after.isFile() || after.isSymbolicLink() || after.nlink !== stat.nlink
+      || after.uid !== stat.uid || after.dev !== stat.dev || after.ino !== stat.ino || after.size !== stat.size
+      || after.mtimeMs !== stat.mtimeMs || after.ctimeMs !== stat.ctimeMs || (after.mode & 0o777) !== mode
+      || !leafAfter.isFile() || leafAfter.isSymbolicLink() || leafAfter.dev !== stat.dev || leafAfter.ino !== stat.ino
+      || leafAfter.uid !== stat.uid || leafAfter.nlink !== stat.nlink || (leafAfter.mode & 0o777) !== mode) fail("REPORT_CHANGED");
+    verifyDirectoryIdentities(ancestors);
     return data;
   } finally { closeSync(fd); }
 }
@@ -255,6 +286,13 @@ function runDirectory(runId: string): string {
 
 export function readRecordedReport(runId: string): RecordedReport {
   const directory = runDirectory(runId);
+  const expectedModes = new Map([
+    [ROOT, 0o755],
+    [path.join(ROOT, "work"), 0o755],
+    [RUNS_DIRECTORY, 0o755],
+    [directory, 0o700],
+  ]);
+  const directories = captureDirectoryIdentities(ROOT, directory, expectedModes);
   const recordBytes = readOwned(path.join(directory, RECORD_NAME), RECORD_LIMIT);
   let parsed: unknown;
   try { parsed = JSON.parse(recordBytes.toString("utf8")); } catch { fail("RECORD_JSON"); }
@@ -275,9 +313,9 @@ export function readRecordedReport(runId: string): RecordedReport {
   if (hash(stdout) !== item.logs.stdoutSha256 || hash(stderr) !== item.logs.stderrSha256 || stdout.length !== item.logs.stdoutBytes || stderr.length !== item.logs.stderrBytes) fail("LOG_HASH");
   if (!item.native.reportSha256) fail("NATIVE_REPORT_UNAVAILABLE");
   const nativePath = path.join(directory, NATIVE_REPORT_NAME);
-  assertOwnedFile(nativePath, NATIVE_REPORT_LIMIT, 0o600);
-  const nativeBytes = readPrivateReport(nativePath);
+  const nativeBytes = readOwned(nativePath, NATIVE_REPORT_LIMIT, 0o600);
   if (nativeBytes.length > NATIVE_REPORT_LIMIT || hash(nativeBytes) !== item.native.reportSha256) fail("NATIVE_REPORT_HASH");
+  verifyDirectoryIdentities(directories);
   return {
     version: 1,
     status: "record-readable",
