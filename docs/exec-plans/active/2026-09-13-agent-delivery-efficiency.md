@@ -1,7 +1,7 @@
 # Agent Delivery and Verification Efficiency
 
 > Chinese: [Chinese](../../zh-CN/exec-plans/active/2026-09-13-agent-delivery-efficiency.md)
-> Status: **Active — prerequisite PR #830 merged; W0 is refreshed for its second Hosted candidate. W2 requires review-driven repair; later waves retain local candidates. No activation or performance claim.**
+> Status: **Active — PRs #830 and #829 merged. Current-main checker/collection repair is in pre-seal review; W1 and Git preview have independently reviewed local candidates. CI shadow is in Scratch; execution/reporting requires a new reviewed design. No activation or performance claim.**
 > Date: 2026-09-13. Tracking Issue: [#828](https://github.com/tzrea1-Q/WiseEff/issues/828).
 > Accepted base, freshly fetched on 2026-09-13: `1059acb57379bd120d0d2b1a4b4733d4c2e02901`. This equals the supplied design's historical reference; it is not permission to reset later work.
 
@@ -13,11 +13,21 @@ Implement the user's supplied 2026-09-13 engineering design in bounded waves: sa
 
 | Delivery level | Completion means | Current status |
 | --- | --- | --- |
-| A: tools and process | Reviewed and verified diagnostics, equivalent scheduling, shadow plan, execution/reporting and routing are delivered | EFF-01 prerequisite and refresh complete, awaiting final review and second Hosted; EFF-02/08 have local reviewed candidates; EFF-03/04 remain in Scratch |
+| A: tools and process | Reviewed and verified diagnostics, equivalent scheduling, shadow plan, execution/reporting and routing are delivered | EFF-01 merged; EFF-02/03-preview/07/08 have local reviewed candidates; EFF-03 CI shadow in Scratch, EFF-04 awaiting design challenge |
 | B: module activation | Each explicitly named module passes its own observation and independent-review gates | No module enabled; `observation-pending` |
 | C: measured effect | Comparable real task/CI samples support wall-clock, resource and usage conclusions | Insufficient samples; token usage `unknown` |
 
 A can be delivered while B/C remain open. Do not manufacture samples or call the entire program complete merely because tooling merged.
+
+## Continuation checkpoint — 2026-09-14
+
+The user renewed completion authorization, including blocker resolution. Fresh accepted main is `9dc751690a615b162bb41feef6392289b2ca7f6a`, tree `a0edd814abc6fd73b03d0470641e416b04031195`; no rollback to the original baseline is authorized. PR #830 merged as `75f3514b213f07f177773a077021e1485f9f173b`. W0 [PR #829](https://github.com/tzrea1-Q/WiseEff/pull/829), head `fb6087f1fdb352953f63b46ca711cee5775e2607`, merged as `ef88c0964e158d7effbd0ce6062260e5eb1c5a21` after [Hosted 34762290769](https://github.com/tzrea1-Q/WiseEff/actions/runs/34762290769), attempt 1, succeeded on actual checkout `41de2cbb95d788168d97d7b8e52711ffbd0dfa63`, tree `652590339d4a16415d935b624753fa7c68421a11`. Native frontend/scripts/bridge/backend pass counts were 3411/1279/134/4168, with respectively 0/21 existing optional/4 platform/0 skips. Unselected L2 and target work remained skipped. Workflow elapsed was 1061 seconds and summed job elapsed 30.85 minutes; neither is billed usage or proven savings.
+
+The [claimed main-red prerequisite](https://github.com/tzrea1-Q/WiseEff/issues/828#issuecomment-5655466658) repairs only [16 exact existing boundary identities and M1 collection isolation](../../agents/catalog-runtime-boundary-relocation.md). Code head `e31226b6cc06c2278230b810bb1becd8dbc1f32a`, tree `d55df1260ea99a60fa38a3101a5e9f5af7c29fc8`, retains production bytes and original allowances. Local boundary tests passed 82/82; collection-runner tests passed 53/53. On committed collection repair `07be2ecddba7614724728c7bf05dae1826793034`, native collection lists 196 tests/39 files and isolated missing-evidence M1 fails 1/1 as required. Build and direct document governance passed. Final dual code review and Hosted remain pending at this documentation checkpoint.
+
+W1 local head `51aaa732e93b31d3e047b72d568581b7b4d90ab0` passed independent Standards/Spec after correcting its first Hosted engineering failures; old PR #831 is closed pending prerequisite refresh and a reviewed second candidate. Git preview `7286c02ed9d25b75a8cf020aa614e9c26cfc843c`, tree `645a764b9252f67ec1c461d6dfa5e37ea1f15da3`, passed both independent reviews, 22 focused tests and build; it is non-executable local preview only, unmerged. Previous rejected executor/report candidates remain rejected. A separate CI shadow Scratch stack reuses only reviewed W1 and preview dependencies; it cannot publish a combined PR before those predecessors merge.
+
+Main [push 34764166242](https://github.com/tzrea1-Q/WiseEff/actions/runs/34764166242) and [schedule 34775305726](https://github.com/tzrea1-Q/WiseEff/actions/runs/34775305726), both at `9dc751690a615b162bb41feef6392289b2ca7f6a`, failed Build and test, local non-HDC acceptance and Merge bar; Quality passed. The collection failure is distinct from earlier browser failures and archive size failures. One owned local Gate 0 diagnostic on the collection candidate is in progress; its results cannot stand in for main or Hosted acceptance. All four feedback modules remain shadow/observation-pending, enforce and memo off. Full-main acceptance, measured benefit, billed runner-minutes and whole-program tokens remain unestablished/unknown. The prior checkpoints below are retained as historical evidence.
 
 ## Delivery ledger — 2026-09-13 checkpoint
 
@@ -268,6 +278,7 @@ Final report gives actual Issue/PR/base/head/executed tree/merge/run/attempt; ru
 | Quality/testing | Update in EFF-02–08 | `docs/developer/verification-matrix.md`, `docs/zh-CN/developer/verification-matrix.md`, `docs/design-docs/testing-strategy.md`, `docs/zh-CN/design-docs/testing-strategy.md`: equivalent groups, profile/zero-test/full fallback, isolation and evidence. |
 | Reliability/runbooks | Review in EFF-01/04/06 | `docs/runbooks/manual-acceptance.md`, `docs/zh-CN/manual-acceptance.md`, `docs/developer/local-development.md`, `docs/zh-CN/developer/local-development.md`: update only affected diagnostic/log/environment/rollback procedures. |
 | Security/governance | Update/Review | `docs/agents/agent-delivery-protocol.md`, `docs/zh-CN/agents/agent-delivery-protocol.md` updated minimally in EFF-04/08; `docs/SECURITY.md`, `docs/zh-CN/SECURITY.md` reviewed for unchanged ownership/redaction authority. |
+| Main-red identity prerequisite | Updated | Separate linked `docs/agents/catalog-runtime-boundary-relocation.md` and Chinese companion record the independently accepted 16-pair identity scope, preserved inventories, collection isolation and rollback. Original 23-pair decision remains unchanged. |
 | Frontend/design | No change | `docs/FRONTEND.md`, `docs/zh-CN/frontend.md`, `docs/design-docs/ui-design-system.md`: no user-facing redesign; browser proof remains required. |
 | Generated artifacts | Review per wave | `docs/generated/acceptance-operation-evidence.md`, `docs/generated/db-schema.md`: retain existing authority; no fabricated operation evidence or schema change. |
 | References | No change | `docs/references/productization-api-contract-draft.md`: no API contract change or duplicate engineering manual. |

@@ -1,7 +1,7 @@
 # 智能体开发与验证效率优化
 
 > English: [English](../../../exec-plans/active/2026-09-13-agent-delivery-efficiency.md)
-> 状态：**活跃——前置 PR #830 已合入；W0 已刷新，准备第二轮 Hosted 候选。W2 按审查返工，后续波次保留本地候选。不声称裁剪启用或性能改善。**
+> 状态：**活跃——PR #830、#829 已合入。当前 main 的 checker/收集修复正封板审查；W1 和 Git 预览有独立审查通过的本地候选。CI shadow 在 Scratch，执行/摘要需新的设计审查。不声称裁剪启用或性能改善。**
 > 日期：2026-09-13。真实跟踪 Issue：[#828](https://github.com/tzrea1-Q/WiseEff/issues/828)。
 > 2026-09-13 重新 fetch 后的真实 accepted base：`1059acb57379bd120d0d2b1a4b4733d4c2e02901`。它恰好等于附件的历史参考值，不构成强制回退后续工作的授权。
 
@@ -13,11 +13,21 @@
 
 | 交付层级 | 完成含义 | 当前状态 |
 | --- | --- | --- |
-| A：工具与流程 | 诊断、等价调度、影子计划、执行/摘要与路由已审查、验证并交付 | EFF-01 已完成前置合入及刷新，等待最终审查和第二轮 Hosted；EFF-02/08 有本地已审候选；EFF-03/04 仍在 Scratch |
+| A：工具与流程 | 诊断、等价调度、影子计划、执行/摘要与路由已审查、验证并交付 | EFF-01 已合入；EFF-02/03-preview/07/08 有本地已审候选；EFF-03 CI shadow 在 Scratch，EFF-04 待设计质询 |
 | B：模块启用 | 每个明确模块独立满足观察与审查门槛 | 无已启用模块；`observation-pending` |
 | C：效果验证 | 同类真实任务/CI 样本支持墙钟、资源与 usage 结论 | 样本不足；token usage 为 `unknown` |
 
 A 可先交付，B/C 继续开放。不得制造样本，也不能因工具合入就宣称整个项目全面完成。
+
+## 继续执行检查点——2026-09-14
+
+用户再次授权完成项目并解决阻塞。最新 accepted main 为 `9dc751690a615b162bb41feef6392289b2ca7f6a`，tree `a0edd814abc6fd73b03d0470641e416b04031195`，不授权回退初始基线。PR #830 已合入为 `75f3514b213f07f177773a077021e1485f9f173b`。W0 [PR #829](https://github.com/tzrea1-Q/WiseEff/pull/829) 的 head 为 `fb6087f1fdb352953f63b46ca711cee5775e2607`，经 [Hosted 34762290769](https://github.com/tzrea1-Q/WiseEff/actions/runs/34762290769) attempt 1 成功后合入为 `ef88c0964e158d7effbd0ce6062260e5eb1c5a21`。实际执行 checkout 为 `41de2cbb95d788168d97d7b8e52711ffbd0dfa63`，tree `652590339d4a16415d935b624753fa7c68421a11`。前端/scripts/bridge/后端原生 pass 数为 3411/1279/134/4168，对应 skip 为 0/21 个既有可选/4 个平台/0；未选中 L2 和目标工作保持 skipped。工作流耗时 1061 秒，job 耗时之和 30.85 分钟，均非计费 usage 或已证实收益。
+
+[已领取的 main-red 前置修复](https://github.com/tzrea1-Q/WiseEff/issues/828#issuecomment-5655466658) 仅修复 [16 对精确已有边界身份及 M1 收集隔离](../../agents/catalog-runtime-boundary-relocation.md)。代码 head `e31226b6cc06c2278230b810bb1becd8dbc1f32a`、tree `d55df1260ea99a60fa38a3101a5e9f5af7c29fc8` 保持业务字节和原 allowance。边界定向测试 82/82、收集运行器测试 53/53 通过。在已提交收集修复 `07be2ecddba7614724728c7bf05dae1826793034`，原生收集列出 39 个文件中的 196 项；单独缺证据的 M1 按要求 1/1 失败。build 和直接文档治理通过。本检查点的最终代码双审和 Hosted 仍待完成。
+
+W1 本地 head `51aaa732e93b31d3e047b72d568581b7b4d90ab0` 修复首轮 Hosted 工程失败后，通过独立 Standards/Spec；旧 PR #831 已关闭，待前置刷新及已审第二候选。Git 预览 `7286c02ed9d25b75a8cf020aa614e9c26cfc843c`、tree `645a764b9252f67ec1c461d6dfa5e37ea1f15da3` 通过两项独立审查、22 项定向测试和 build；它仅为不可执行的本地预览，尚未合入。此前被拒执行器/摘要候选保持拒绝。独立 CI shadow Scratch 仅复用已审 W1/预览依赖，不能在前置合入前发布合并大 PR。
+
+当前 main `9dc751690a615b162bb41feef6392289b2ca7f6a` 的 [push 34764166242](https://github.com/tzrea1-Q/WiseEff/actions/runs/34764166242) 和 [schedule 34775305726](https://github.com/tzrea1-Q/WiseEff/actions/runs/34775305726) 均为 Build and test、local non-HDC acceptance、Merge bar 失败，Quality 成功。收集失败与更早的浏览器失败、归档大小失败分别记录。一次自有本地 Gate 0 正在收集修复候选上诊断，不冒充 main 或 Hosted 验收。四个 feedback 模块均为 shadow/observation-pending，enforce、memo 关闭。完整 main 验收、效果、计费 runner-minutes 和全项目 token 仍未建立或 unknown。以下保留历史检查点。
 
 ## 交付台账——2026-09-13 检查点
 
@@ -268,6 +278,7 @@ W0 先补安全诊断；W1 只改等价调度；W2 交付 shadow 和统一执行
 | 质量/测试 | Update，EFF-02—08 | `docs/developer/verification-matrix.md`、`docs/zh-CN/developer/verification-matrix.md`、`docs/design-docs/testing-strategy.md`、`docs/zh-CN/design-docs/testing-strategy.md`：等价组、profile/zero-test/full、隔离与证据。 |
 | 可靠性/运行手册 | Review，EFF-01/04/06 | `docs/runbooks/manual-acceptance.md`、`docs/zh-CN/manual-acceptance.md`、`docs/developer/local-development.md`、`docs/zh-CN/developer/local-development.md`：仅更新受影响诊断/日志/环境/回退程序。 |
 | 安全/治理 | Update/Review | `docs/agents/agent-delivery-protocol.md`、`docs/zh-CN/agents/agent-delivery-protocol.md` 在 EFF-04/08 最小更新；复核 `docs/SECURITY.md`、`docs/zh-CN/SECURITY.md` 的所有权/脱敏权威不变。 |
+| main-red 身份前置修复 | 已更新 | 独立互链的 `docs/agents/catalog-runtime-boundary-relocation.md` 及中文文件记录独立接受的 16 对身份范围、原清单保留、收集隔离及回退；原 23 对决定不变。 |
 | 前端/设计 | No change | `docs/FRONTEND.md`、`docs/zh-CN/frontend.md`、`docs/design-docs/ui-design-system.md`：无界面重设计；真实浏览器要求保留。 |
 | 生成物 | Review，每波 | `docs/generated/acceptance-operation-evidence.md`、`docs/generated/db-schema.md`：保留既有权威；不造 operation 证据或 schema 变化。 |
 | 参考 | No change | `docs/references/productization-api-contract-draft.md`：无 API 变化，不另建重复工程手册。 |
