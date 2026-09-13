@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { expect, type APIRequestContext } from "playwright/test";
+import { getSpecReviewTaskById } from "../../../server/modules/parameter-specs/repository";
 
 import { pickReviewCandidate } from "./acceptanceTaskLookup";
 import { authHeadersForRole, type AcceptanceRoleId } from "./bearerAuth";
@@ -225,7 +226,7 @@ export async function resolveOpenSpecReviews(
     items: Array<{
       id: string;
       propertyKey?: string | null;
-      sourceEvidence?: { propertyKey?: string; nodeLocator?: string; compatible?: string | string[] };
+      sourceEvidence?: { propertyKey?: string; nodeLocator?: string };
       candidateSchemas?: Array<{ id: string; propertyKey?: string; label?: string }>;
       candidates?: Array<{ id: string; propertyKey?: string | null; label?: string }>;
     }>;
@@ -277,8 +278,13 @@ export async function resolveOpenSpecReviews(
         constraints = { minLength: length, maxLength: length };
       }
       if (detailBody.item.lifecycle !== "active") {
-        const sourceCompatible = task.sourceEvidence?.compatible;
-        const compatible = (Array.isArray(sourceCompatible) ? sourceCompatible[0] : sourceCompatible)?.trim();
+        const persistedTask = await withPgClient((client) =>
+          getSpecReviewTaskById(client, { organizationId, taskId: task.id })
+        );
+        expect(persistedTask, `review ${task.id} requires persisted fixture evidence`).toBeTruthy();
+        const sourceCompatible = persistedTask!.sourceEvidence.compatible;
+        const firstCompatible = Array.isArray(sourceCompatible) ? sourceCompatible[0] : sourceCompatible;
+        const compatible = typeof firstCompatible === "string" ? firstCompatible.trim() : undefined;
         expect(compatible, `review ${task.id} requires compatible evidence for coverage`).toBeTruthy();
         const activate = await request.post(
           apiRoute(`/api/v2/parameter-specs/${encodeURIComponent(parameterSpecId)}/activate`),
