@@ -453,8 +453,8 @@ export function evaluateL1CiWorkflow(workflowText: string): { status: "passed" |
 '`;
   const trustedBase = "9b3ba7df7e21f5589684bc92c872da593ad4c246";
   const catalogCommand = 'set -euo pipefail\ngit fetch --no-tags origin "${PARAMETER_CATALOG_TRUSTED_BASE_SHA}"\ntest "$(git rev-parse --verify "${PARAMETER_CATALOG_TRUSTED_BASE_SHA}^{commit}")" = "${PARAMETER_CATALOG_TRUSTED_BASE_SHA}"\nnpm run parameter-catalog-boundaries:check -- --trusted-base-sha "${PARAMETER_CATALOG_TRUSTED_BASE_SHA}"';
-  const expectedStepProjection = (ids: readonly string[]) => "{" + ids.map((id) => '"' + id + '":' + "${{toJSON(steps." + id + ")}}").join(",") + "}";
-  const normalizeStepProjection = (value: unknown) => typeof value === "string" ? value.replace(/\s+/g, "") : "";
+  const expectedStepProjection = (ids: readonly string[]) => "{" + ids.map((id) => '"' + id + '":${{ toJSON(steps.' + id + ') }}').join(", ") + "}";
+  const normalizeStepProjection = (value: unknown) => typeof value === "string" ? value.trim() : "";
   for (const id of l1Jobs) {
     const job = jobs?.[id];
     if (!job) { errors.push(`Missing ${id}.`); continue; }
