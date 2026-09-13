@@ -7,6 +7,7 @@ import {
   evaluateAcceptanceLocalNonHdcBudget,
   evaluateAcceptanceCiConfiguration,
   evaluateImmutableAcceptanceUpload,
+  evaluateL1CiWorkflow,
   findAcceptanceEnvironmentHelperLoads,
   findForbiddenAcceptanceDotenvImports,
   findForbiddenPlaywrightImports,
@@ -16,6 +17,7 @@ import {
   requiredAcceptanceCiScripts,
   requiredAcceptanceCiWorkflowTokens
 } from "./check-acceptance-ci";
+import { l1CommandIds } from "./ci-required-results";
 
 const compliantWorkflow = readFileSync(".github/workflows/ci.yml", "utf8");
 
@@ -24,6 +26,100 @@ const compliantScripts = {
   "acceptance:smoke":
     "playwright test --config playwright.acceptance.config.ts --grep \"@ci-smoke|warm vite entry graph\" e2e/acceptance/runtime-warmup.spec.ts e2e/acceptance/shell-navigation.acceptance.spec.ts e2e/acceptance/auth-runtime.acceptance.spec.ts e2e/acceptance/parameter-home.acceptance.spec.ts"
 };
+
+describe("equivalent fixed L1 scheduling", () => {
+  it("maps every original L1 command and prerequisite to four jobs with stable strict aggregates", () => {
+    expect(evaluateL1CiWorkflow(readFileSync(".github/workflows/ci.yml", "utf8"))).toEqual({ status: "passed", errors: [] });
+  });
+  it.each(["build", "docs", "ui", "lint", "metadata", "catalog", "contract", "logs"])("rejects removal of the original %s command", (id) => {
+    const workflow = YAML.parse(readFileSync(".github/workflows/ci.yml", "utf8"));
+    const job = workflow.jobs[id === "docs" ? "l1-server" : "l1-static"];
+    job.steps = job.steps.filter((step: { id: string }) => step.id !== id);
+    expect(evaluateL1CiWorkflow(YAML.stringify(workflow)).status).toBe("failed");
+  });
+  it("runs the complete documentation check after vector setup and before backend tests", () => {
+    const workflow = YAML.parse(readFileSync(".github/workflows/ci.yml", "utf8"));
+    const docsJobs = Object.entries(workflow.jobs).filter(([, job]) => (job as { steps: { id?: string }[] }).steps.some((step) => step.id === "docs"));
+    expect(docsJobs.map(([id]) => id)).toEqual(["l1-server"]);
+    const job = workflow.jobs["l1-server"];
+    const ids = job.steps.map((step: { id: string }) => step.id);
+    expect(ids.indexOf("docs")).toBeGreaterThan(ids.indexOf("vector"));
+    expect(ids.indexOf("docs")).toBeLessThan(ids.indexOf("server"));
+    expect(job.steps.find((step: { id: string }) => step.id === "docs").run).toBe("npm run docs:check");
+  });
+  it.each(["service", "connection", "static"])("rejects documentation schema validation losing its PG prerequisite: %s", (mutation) => {
+    const workflow = YAML.parse(readFileSync(".github/workflows/ci.yml", "utf8"));
+    const job = Object.values(workflow.jobs).find((value) => (value as { steps: { id?: string }[] }).steps.some((step) => step.id === "docs")) as { services?: unknown; env?: Record<string, string>; steps: { id: string }[] };
+    if (mutation === "service") delete job.services;
+    if (mutation === "connection" && job.env) delete job.env.DATABASE_URL;
+    if (mutation === "static") {
+      const docs = job.steps.find((step) => step.id === "docs");
+      job.steps = job.steps.filter((step) => step.id !== "docs");
+      workflow.jobs["l1-static"].steps.splice(6, 0, docs);
+    }
+    expect(evaluateL1CiWorkflow(YAML.stringify(workflow)).status).toBe("failed");
+  });
+  it.each(["l1-scripts", "l1-server"])("requires PG, DTS and receipt safety in %s", (id) => {
+    const source = readFileSync(".github/workflows/ci.yml", "utf8");
+    for (const mutation of ["database", "toolchain", "advisory", "receipt", "vector"]) {
+      const workflow = YAML.parse(source);
+      const job = workflow.jobs[id];
+      if (mutation === "database") delete job.services;
+      if (mutation === "toolchain") job.steps.find((step: { id: string }) => step.id === "toolchain").uses = "echo skipped";
+      if (mutation === "advisory") job.steps.find((step: { id: string }) => step.id === "install")["continue-on-error"] = true;
+      if (mutation === "receipt") job.outputs.receipt = "";
+      if (mutation === "vector") job.steps.find((step: { id: string }) => step.id === "vector").run += "\ntrue";
+      expect(evaluateL1CiWorkflow(YAML.stringify(workflow)).status).toBe("failed");
+    }
+  });
+  it.each(["build-and-test", "required"])("rejects skip, missing needs, altered source identity and npm installation in %s", (id) => {
+    const source = readFileSync(".github/workflows/ci.yml", "utf8");
+    for (const mutation of ["condition", "needs", "install", "identity"]) {
+      const workflow = YAML.parse(source);
+      if (mutation === "condition") workflow.jobs[id].if = "success()";
+      if (mutation === "needs") workflow.jobs[id].needs.pop();
+      if (mutation === "install") workflow.jobs[id].steps.push({ run: "npm ci" });
+      if (mutation === "identity") workflow.env.EFF_HEAD_SHA = "${{ github.sha }}";
+      expect(evaluateL1CiWorkflow(YAML.stringify(workflow)).status).toBe("failed");
+    }
+  });
+  it.each(["missing", "extra", "wrong-source", "raw-context"])("rejects invalid L1 receipt projection: %s", (mutation) => {
+    const workflow = YAML.parse(compliantWorkflow);
+    const receipt = workflow.jobs["l1-server"].steps.find((step: { id: string }) => step.id === "receipt");
+    const expression = (id: string) => "${{ toJSON(steps." + id + ") }}";
+    const projection = String(receipt.env.EFF_STEPS).trim();
+    if (mutation === "missing") receipt.env.EFF_STEPS = projection.replace('"docs":' + expression("docs") + ", ", "");
+    if (mutation === "extra") receipt.env.EFF_STEPS = projection.replace(/}$/, ', "unexpected":' + expression("server") + "}");
+    if (mutation === "wrong-source") receipt.env.EFF_STEPS = projection.replace('"docs":' + expression("docs"), '"docs":' + expression("vector"));
+    if (mutation === "raw-context") receipt.env.EFF_STEPS = "${{toJSON(steps)}}";
+    expect(evaluateL1CiWorkflow(YAML.stringify(workflow)).status).toBe("failed");
+  });
+  it("projects every fixed L1 step from its same-named GitHub step context", () => {
+    const workflow = YAML.parse(compliantWorkflow);
+    const expression = (id: string) => "${{ toJSON(steps." + id + ") }}";
+    for (const [jobId, commandIds] of Object.entries(l1CommandIds)) {
+      const receipt = workflow.jobs[jobId].steps.find((step: { id: string }) => step.id === "receipt");
+      const expected = "{" + commandIds.map((id) => '"' + id + '":' + expression(id)).join(", ") + "}";
+      expect(String(receipt.env.EFF_STEPS).trim()).toBe(expected);
+    }
+  });
+  it("rejects whitespace inserted into a projected JSON key", () => {
+    const workflow = YAML.parse(compliantWorkflow);
+    const receipt = workflow.jobs["l1-server"].steps.find((step: { id: string }) => step.id === "receipt");
+    receipt.env.EFF_STEPS = String(receipt.env.EFF_STEPS).replace('"docs"', '"do cs"');
+    expect(evaluateL1CiWorkflow(YAML.stringify(workflow)).status).toBe("failed");
+  });
+  it("retains all events, modes, full acceptance labeling and PR-only cancellation", () => {
+    const workflow = YAML.parse(readFileSync(".github/workflows/ci.yml", "utf8"));
+    expect(Object.keys(workflow.on).sort()).toEqual(["pull_request", "push", "schedule", "workflow_dispatch"]);
+    expect(workflow.on.push).toEqual({ branches: ["main"] });
+    expect(workflow.on.pull_request.types).toEqual(["opened", "synchronize", "reopened", "labeled"]);
+    expect(workflow.on.schedule).toEqual([{ cron: "30 18 * * *" }]);
+    expect(workflow.on.workflow_dispatch.inputs.acceptance_mode.options).toEqual(["local-non-hdc", "target-non-hdc", "full-pilot", "minimal-upgrade"]);
+    expect(workflow.concurrency["cancel-in-progress"]).toBe("${{ github.event_name == 'pull_request' }}");
+    expect(workflow.jobs.detect.steps.find((step: { id: string }) => step.id === "paths").run).toContain('echo "run_l2=true"');
+  });
+});
 
 describe("M5.12 acceptance CI configuration", () => {
   it("keeps the L2 platform budget strictly above bounded prelude, Gate0 owner, and always finalization", () => {

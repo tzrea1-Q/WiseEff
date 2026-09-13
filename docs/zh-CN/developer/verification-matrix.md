@@ -21,12 +21,13 @@ L2 的 `wiseeff-diagnostic-<run>-<attempt>-acceptance-local-non-hdc` 产物是�
 - 阅读英文版中的完整细节、表格和命令，再用本页确认中文语境下的执行边界。
 - 任何 target-environment readiness、pilot-ready、release-ready 结论都必须有真实目标环境证据，不能由本地 skip 代替。
 - 永久注销用户必须执行 API 模式的 `PERM-USER-MGMT-001`，证明 PostgreSQL 外键策略（账号自有数据 `CASCADE`、历史保留数据可空 `SET NULL`）、无 PII 的注销审计，以及非 Admin 调用 `DELETE /api/v1/users/:userId` 返回 401/403。Mock 模式浏览器通过不能满足这一 API/数据库门禁。
-- M5.12：PR 合入门槛是 L1 + `@ci-smoke`（产品路径）+ 一次 `acceptance:quality-run`（UI/产品路径）。L2 事件把 `acceptance-quality` 当兄弟 job；`acceptance-local-non-hdc` 通过权威 `acceptance:gate0` 让 visual 与 full browser 共用一个独占运行时，并在 `main` / 夜间 / 标签 `full-acceptance` / 手动 `local-non-hdc` 归档证据。fresh finalizer 成功后只上传 `test-results/acceptance-runtime-upload/wiseeff-acceptance-local-non-hdc.zip`，live runs root 绝不作为 upload 输入。文档-only 只跑 `docs:check` 与哨兵 `Merge bar`。以后若打开 branch protection，required check 只设 `Merge bar`。
+- M5.12：PR 合入门槛是 L1 + `@ci-smoke`（产品路径）+ 一次 `acceptance:quality-run`（UI/产品路径）。L1 固定拆为 `l1-static`、`l1-frontend`、`l1-scripts`、`l1-server`，保留全部原命令；脚本和后端分别使用 pgvector 服务与已验证 DTS 工具链，唯一的 L1 `docs:check` 在 `l1-server` 的 vector 设置之后、后端测试之前运行。每个测试命令发现配置中的完整文件集，并生成本次私有原生 JSON 报告；报告、命令结果、实际执行 SHA/tree/run/attempt 必须一致。必需检查缺失、跳过、取消、零测试或全部必需测试跳过均失败。`Build and test` 与 `Merge bar` 始终运行，文档-only 也要求二者成功。L2 事件继续使用 `acceptance-quality` 兄弟 job；`acceptance-local-non-hdc` 通过权威 `acceptance:gate0` 让 visual 与 full browser 共用独占运行时，在 `main` / 夜间 / 标签 `full-acceptance` / 手动 `local-non-hdc` 归档证据。完整证据 finalizer 成功后只上传 `test-results/acceptance-runtime-upload/wiseeff-acceptance-local-non-hdc.zip`，live runs root 绝不作为 upload 输入。以后若打开 branch protection，required check 只设 `Merge bar`。
 
 ## 补充命令
 
 | 命令 | 证明内容 | 使用场景 |
 | --- | --- | --- |
+| `npm run verify:plan -- --base <40-hex-SHA> [--head <40-hex-SHA>]` | 对 clean 已提交仓库输出有界、只读的 JSON 影响预览，核对 base、逻辑 head、实际 checkout SHA/tree 和唯一 diff base。完整必需任务保留，`executable:false`、`acceptancePending:true`、shadow/observation-pending，memo 禁用。 | 从仓库根目录在提交后运行。拒绝 dirty、冲突、shallow、partial 和不安全 Git 配置，不自动 fetch。head 默认实际 HEAD；指定不同 head 时，实际 HEAD 必须恰以提供的 base/head 为有序双亲。不执行测试，不探测 npm/运行环境。`verify:run`、`verify:report`、edit profile、输出路径与 enforce 参数尚不可用，真实验证继续使用原生命令。本地原始路径不自动上传。 |
 | `npm run catalog:lane:env -- provision --issue <n>` | 在 `127.0.0.1:55438` 上隔离 pgvector 数据库 `wiseeff_lane_<n>`；拒绝 compose `5432/wiseeff` | 任何 Wayfinder #668 PostgreSQL 节点开始前。 |
 | `npm run catalog:lane:env -- doctor --issue <n>` | pgvector 可用；角色存在时 `catalog_migration_owner` 能对 `public.parameter_specs` 做 canary | RBAC/migration/catalog-kernel PG 证据的 Hosted 前。 |
 | `npm run catalog:lane:accept -- --issue <n> -- <issue-named command>` | 在专用 lane DB 上跑 Issue 点名 focused tests；收集到 0 个文件是硬失败 | 精确候选的本地门禁。Hosted 仍只是 H，不能替代该 PG/L 证据。 |
