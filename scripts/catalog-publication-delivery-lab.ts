@@ -409,7 +409,7 @@ export function writeDeliveryEnvFiles(input: {
 }): { readonly publicEnv: string; readonly managerEnv: string; readonly workerEnv: string } {
   mkdirSync(input.dir, { mode: 0o700, recursive: true });
   const minioUser = "wiseeff";
-  const minioPassword = randomBytes(12).toString("base64url");
+  const minioPassword = randomBytes(12).toString("hex");
   const publicEnv = path.join(input.dir, ".env");
   const managerEnv = path.join(input.dir, ".env.publication-manager");
   const workerEnv = path.join(input.dir, ".env.worker");

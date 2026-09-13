@@ -124,7 +124,10 @@ const readCatalog = async (page: Page) => {
 
 const readDefinition = async (page: Page, propertyKey: string): Promise<CatalogDefinitionView> => {
   const headers = await authHeader(page);
-  const res = await page.request.get(`${evidence.apiOrigin}/api/v2/catalog/definitions?limit=200`, { headers });
+  const res = await page.request.get(
+    `${evidence.apiOrigin}/api/v2/catalog/subjects/${encodeURIComponent(evidence.subjectId)}/definitions`,
+    { headers },
+  );
   expect(res.status(), await res.text()).toBe(200);
   const body = (await res.json()) as { items?: CatalogDefinitionView[] };
   return assertUniqueDefinition(body.items, { propertyKey, subjectId: evidence.subjectId });
