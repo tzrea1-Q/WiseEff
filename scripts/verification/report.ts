@@ -98,15 +98,34 @@ function ensureRoot(): void {
 function requireRealpath(file: string): string { return realpathSync(file); }
 
 function ensureAncestors(root: string, target: string): void {
-  const relative = path.relative(path.resolve(root), path.resolve(target));
+  const absoluteRoot = path.resolve(root);
+  const absoluteTarget = path.resolve(target);
+  const relative = path.relative(absoluteRoot, absoluteTarget);
   if (relative.startsWith("..") || path.isAbsolute(relative)) fail("FOREIGN_PATH");
-  let current = path.resolve(root);
-  for (const part of relative ? relative.split(path.sep) : []) {
+  let current = absoluteRoot;
+  let rootStat: Stats;
+  try { rootStat = lstatSync(absoluteRoot); } catch { fail("PATH_UNAVAILABLE"); }
+  const uid = process.getuid?.();
+  if (rootStat.isSymbolicLink() || !rootStat.isDirectory() || (uid !== undefined && rootStat.uid !== uid)) fail("RUN_DIRECTORY");
+  const parts = relative ? relative.split(path.sep) : [];
+  for (const [index, part] of parts.entries()) {
     current = path.join(current, part);
     let stat: Stats;
     try { stat = lstatSync(current); } catch { fail("PATH_UNAVAILABLE"); }
-    if (stat.isSymbolicLink()) fail("SYMLINK_PATH");
+    if (stat.isSymbolicLink() || (uid !== undefined && stat.uid !== uid) || (index < parts.length - 1 && !stat.isDirectory())) fail("RUN_DIRECTORY");
   }
+}
+
+function assertOwnedFile(file: string, limit: number, mode: number, minimum = 0): void {
+  ensureAncestors(ROOT, path.dirname(file));
+  let fd: number;
+  try { fd = openSync(file, constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0)); } catch { fail("REPORT_FILE"); }
+  try {
+    const stat = fstatSync(fd);
+    const uid = process.getuid?.();
+    if (!stat.isFile() || stat.isSymbolicLink() || stat.nlink !== 1 || (uid !== undefined && stat.uid !== uid)
+      || (stat.mode & 0o777) !== mode || stat.size < minimum || stat.size > limit) fail("REPORT_FILE");
+  } finally { closeSync(fd); }
 }
 
 function readOwned(file: string, limit: number, mode = 0o600, minimum = 1): Buffer {
@@ -165,7 +184,7 @@ function inspectCurrentSources(): { sourceDigest: string; sourceFiles: SourceFil
   return { sourceDigest: framedDigest(entries), sourceFiles };
 }
 
-function parseRunRecord(value: unknown, runId: string): RunRecord {
+export function parseRunRecord(value: unknown, runId: string): RunRecord {
   const item = record(value);
   exactKeys(item, [
     "schemaVersion", "complete", "scope", "runId", "root", "taskId", "acceptedBase", "head", "tree", "executedSha", "headTree", "sourceDigest", "sourceFiles", "policyDigest", "nodeVersion", "dependencies", "childEnvRuntimeMode", "testConfigRuntimeMode", "discoveryArgv", "runArgv", "discovery", "execution", "startedAt", "finishedAt", "wallMs", "activityBudgetMs", "exitCode", "signal", "native", "logs", "claimedStatus", "error", "memo", "acceptancePending", "tokenUsage",
@@ -187,8 +206,9 @@ function parseRunRecord(value: unknown, runId: string): RunRecord {
   });
   if (sourceFiles.map((entry) => entry.path).join("\0") !== SOURCE_PATHS.join("\0")) fail("RECORD_SOURCE");
   const dependencies = record(item.dependencies);
-  exactKeys(dependencies, ["packageVersion", "vitestVersion"]);
+  exactKeys(dependencies, ["packageVersion", "vitestVersion", "packageJsonSha256", "vitestPackageSha256", "vitestEntrySha256"]);
   stringValue(dependencies.packageVersion); stringValue(dependencies.vitestVersion);
+  stringValue(dependencies.packageJsonSha256, SHA256); stringValue(dependencies.vitestPackageSha256, SHA256); stringValue(dependencies.vitestEntrySha256, SHA256);
   const argv = (value: unknown): string[] => {
     if (!Array.isArray(value) || value.some((entry) => typeof entry !== "string" || entry.includes("\0"))) fail("RECORD_SCHEMA");
     return value as string[];
@@ -204,6 +224,10 @@ function parseRunRecord(value: unknown, runId: string): RunRecord {
     if (typeof entry.lifecycleSettled !== "boolean") fail("RECORD_SCHEMA");
     return entry as unknown as RunRecord["discovery"];
   };
+  item.discoveryArgv = argv(item.discoveryArgv);
+  item.runArgv = argv(item.runArgv);
+  item.discovery = phase(item.discovery);
+  item.execution = phase(item.execution);
   const native = record(item.native);
   exactKeys(native, ["discoveredFiles", "files", "passed", "skipped", "reportSha256"]);
   if (!Array.isArray(native.discoveredFiles) || native.discoveredFiles.some((entry) => typeof entry !== "string") || integerValue(native.files) < 0 || integerValue(native.passed) < 0 || integerValue(native.skipped) < 0
@@ -239,8 +263,9 @@ export function readRecordedReport(runId: string): RecordedReport {
   const expectedFiles = spec.files.map((file) => path.join(ROOT, file));
   if (item.native.discoveredFiles.length !== expectedFiles.length || item.native.discoveredFiles.some((file, index) => file !== expectedFiles[index])) fail("RECORD_NATIVE_FILES");
   const expectedCommon = ["--config", path.join(ROOT, spec.config), ...expectedFiles];
-  const expectedDiscovery = [path.join(ROOT, "node_modules/vitest/vitest.mjs"), "list", "--filesOnly", "--json", ...expectedCommon];
-  const expectedRun = [path.join(ROOT, "node_modules/vitest/vitest.mjs"), "run", ...expectedCommon, "--reporter=default", "--reporter=json", `--outputFile=${path.join(directory, NATIVE_REPORT_NAME)}`];
+  const nodeFlags = spec.testConfigRuntimeMode === "mock" ? ["--max-old-space-size=768"] : [];
+  const expectedDiscovery = [...nodeFlags, path.join(ROOT, "node_modules/vitest/vitest.mjs"), "list", "--filesOnly", "--json", ...expectedCommon];
+  const expectedRun = [...nodeFlags, path.join(ROOT, "node_modules/vitest/vitest.mjs"), "run", ...expectedCommon, "--reporter=default", "--reporter=json", `--outputFile=${path.join(directory, NATIVE_REPORT_NAME)}`];
   if (JSON.stringify(item.discoveryArgv) !== JSON.stringify(expectedDiscovery) || JSON.stringify(item.runArgv) !== JSON.stringify(expectedRun)) fail("RECORD_ARGV");
   if (!item.discovery || !item.execution || !item.discovery.lifecycleSettled || !item.execution.lifecycleSettled) fail("RECORD_LIFECYCLE");
   const source = inspectCurrentSources();
@@ -249,7 +274,9 @@ export function readRecordedReport(runId: string): RecordedReport {
   const stderr = readOwned(path.join(directory, STDERR_NAME), LOG_LIMIT, 0o600, 0);
   if (hash(stdout) !== item.logs.stdoutSha256 || hash(stderr) !== item.logs.stderrSha256 || stdout.length !== item.logs.stdoutBytes || stderr.length !== item.logs.stderrBytes) fail("LOG_HASH");
   if (!item.native.reportSha256) fail("NATIVE_REPORT_UNAVAILABLE");
-  const nativeBytes = readPrivateReport(path.join(directory, NATIVE_REPORT_NAME));
+  const nativePath = path.join(directory, NATIVE_REPORT_NAME);
+  assertOwnedFile(nativePath, NATIVE_REPORT_LIMIT, 0o600);
+  const nativeBytes = readPrivateReport(nativePath);
   if (nativeBytes.length > NATIVE_REPORT_LIMIT || hash(nativeBytes) !== item.native.reportSha256) fail("NATIVE_REPORT_HASH");
   return {
     version: 1,
@@ -271,6 +298,13 @@ export function readRecordedReport(runId: string): RecordedReport {
 }
 
 export function parseReportArgs(argv: string[]): { runId: string } {
+  const seen = new Set<string>();
+  for (const token of argv) {
+    if (!token.startsWith("--") || token === "--") continue;
+    const name = token.slice(2).split("=", 1)[0];
+    if (seen.has(name)) fail("DUPLICATE_ARGUMENT");
+    seen.add(name);
+  }
   let values: { run?: string };
   try {
     ({ values } = parseArgs({ args: argv, strict: true, allowPositionals: false, options: { run: { type: "string" } } }));

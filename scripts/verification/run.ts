@@ -73,7 +73,7 @@ export const SOURCE_PATHS = [
   "scripts/ci-required-results.ts",
 ] as const;
 
-type ProcessIdentity = { startToken: string; commandSha256: string };
+export type ProcessIdentity = { startToken: string; commandSha256: string };
 export type TaskSpec = {
   id: TaskId;
   config: string;
@@ -109,7 +109,13 @@ export type RunRecord = {
   sourceFiles: SourceFileObservation[];
   policyDigest: string;
   nodeVersion: string;
-  dependencies: { packageVersion: string; vitestVersion: string };
+  dependencies: {
+    packageVersion: string;
+    vitestVersion: string;
+    packageJsonSha256: string;
+    vitestPackageSha256: string;
+    vitestEntrySha256: string;
+  };
   childEnvRuntimeMode: "mock" | "api";
   testConfigRuntimeMode: "mock" | null;
   discoveryArgv: string[];
@@ -188,6 +194,7 @@ function isTaskId(value: unknown): value is TaskId {
 }
 
 export function parseRunArgs(argv: string[]): { base: string; task: TaskId; force: boolean } {
+  rejectDuplicateOptions(argv);
   let values: { base?: string; task?: string; force?: boolean };
   try {
     ({ values } = parseArgs({
@@ -201,6 +208,16 @@ export function parseRunArgs(argv: string[]): { base: string; task: TaskId; forc
   }
   if (typeof values.base !== "string" || !FULL_SHA.test(values.base) || !isTaskId(values.task)) fail("INVALID_ARGUMENTS");
   return { base: values.base, task: values.task, force: values.force === true };
+}
+
+function rejectDuplicateOptions(argv: string[]): void {
+  const seen = new Set<string>();
+  for (const token of argv) {
+    if (!token.startsWith("--") || token === "--") continue;
+    const name = token.slice(2).split("=", 1)[0];
+    if (seen.has(name)) fail("DUPLICATE_ARGUMENT");
+    seen.add(name);
+  }
 }
 
 function ensureRoot(): void {
@@ -217,18 +234,24 @@ function ensureRoot(): void {
   ensurePathAncestors(ROOT, ROOT);
 }
 
-function ensurePathAncestors(root: string, target: string): void {
+export function ensurePathAncestors(root: string, target: string): void {
   const absoluteRoot = path.resolve(root);
   const absoluteTarget = path.resolve(target);
   const relative = path.relative(absoluteRoot, absoluteTarget);
   if (relative.startsWith("..") || path.isAbsolute(relative)) fail("FOREIGN_PATH");
+  let rootStat: Stats;
+  try { rootStat = lstatSync(absoluteRoot); } catch { fail("PATH_UNAVAILABLE"); }
+  const uid = process.getuid?.();
+  if (rootStat.isSymbolicLink()) fail("SYMLINK_PATH");
+  if (!rootStat.isDirectory() || (uid !== undefined && rootStat.uid !== uid)) fail("UNSAFE_DIRECTORY");
   let current = absoluteRoot;
   const parts = relative ? relative.split(path.sep) : [];
-  for (const part of parts) {
+  for (const [index, part] of parts.entries()) {
     current = path.join(current, part);
     let stat: Stats;
     try { stat = lstatSync(current); } catch { fail("PATH_UNAVAILABLE"); }
     if (stat.isSymbolicLink()) fail("SYMLINK_PATH");
+    if ((uid !== undefined && stat.uid !== uid) || (index < parts.length - 1 && !stat.isDirectory())) fail("UNSAFE_DIRECTORY");
   }
 }
 
@@ -248,7 +271,8 @@ function ensureDirectory(directory: string, mode: number): void {
   if (!existsSync(absolute)) mkdirSync(absolute, { recursive: true, mode });
   ensurePathAncestors(ROOT, absolute);
   const stat = lstatSync(absolute);
-  if (!stat.isDirectory() || stat.isSymbolicLink()) fail("UNSAFE_DIRECTORY");
+  const uid = process.getuid?.();
+  if (!stat.isDirectory() || stat.isSymbolicLink() || (uid !== undefined && stat.uid !== uid) || (stat.mode & 0o777) !== mode) fail("UNSAFE_DIRECTORY");
 }
 
 function createOwnedEmptyFile(file: string): void {
@@ -289,20 +313,25 @@ function inspectSources(): { sourceDigest: string; sourceFiles: SourceFileObserv
   return { sourceDigest: framedDigest(entries), sourceFiles };
 }
 
-function readPackageVersion(relative: string): string {
-  const file = path.join(ROOT, relative);
-  checkRegularFile(file, 512 * 1024);
-  let value: unknown;
-  try { value = JSON.parse(readFileSync(file, "utf8")); } catch { fail("DEPENDENCY_METADATA"); }
-  if (!value || typeof value !== "object" || Array.isArray(value) || typeof (value as { version?: unknown }).version !== "string") fail("DEPENDENCY_METADATA");
-  return (value as { version: string }).version;
-}
-
 function dependencyObservation(): RunRecord["dependencies"] {
-  const packageVersion = readPackageVersion("package.json");
-  const vitestVersion = readPackageVersion("node_modules/vitest/package.json");
-  checkRegularFile(path.join(ROOT, "node_modules/vitest/vitest.mjs"), 512 * 1024);
-  return { packageVersion, vitestVersion };
+  const observed = (relative: string, limit: number) => {
+    const file = path.join(ROOT, relative);
+    const stat = checkRegularFile(file, limit);
+    const bytes = Buffer.from(readFileSync(file, "utf8"), "utf8");
+    if (bytes.length !== stat.size) fail("DEPENDENCY_CHANGED");
+    return { bytes, sha256: digest(bytes) };
+  };
+  const packageJson = observed("package.json", 512 * 1024);
+  const vitestPackage = observed("node_modules/vitest/package.json", 512 * 1024);
+  const vitestEntry = observed("node_modules/vitest/vitest.mjs", 512 * 1024);
+  let packageVersion: string;
+  let vitestVersion: string;
+  try {
+    packageVersion = JSON.parse(packageJson.bytes.toString("utf8")).version;
+    vitestVersion = JSON.parse(vitestPackage.bytes.toString("utf8")).version;
+  } catch { fail("DEPENDENCY_METADATA"); }
+  if (typeof packageVersion !== "string" || typeof vitestVersion !== "string") fail("DEPENDENCY_METADATA");
+  return { packageVersion, vitestVersion, packageJsonSha256: packageJson.sha256, vitestPackageSha256: vitestPackage.sha256, vitestEntrySha256: vitestEntry.sha256 };
 }
 
 function fixedVitestPath(): string {
@@ -320,18 +349,18 @@ function validateTaskInputs(spec: TaskSpec): string[] {
   return files;
 }
 
-function childEnvironment(spec: TaskSpec, tempDirectory: string): { env: NodeJS.ProcessEnv; mode: "mock" | "api" } {
+export function buildFreshChildEnvironment(spec: TaskSpec, tempDirectory: string, inherited: NodeJS.ProcessEnv = process.env): { env: NodeJS.ProcessEnv; mode: "mock" | "api" } {
   for (const key of REJECTED_STARTUP_ENV) {
-    if (process.env[key]?.trim()) fail("HOST_STARTUP_INJECTION");
+    if (inherited[key]?.trim()) fail("HOST_STARTUP_INJECTION");
   }
-  for (const [key, value] of Object.entries(process.env)) {
+  for (const [key, value] of Object.entries(inherited)) {
     if (key.startsWith("DYLD_") && value?.trim()) fail("HOST_STARTUP_INJECTION");
   }
-  const invocation = buildVitestInvocation([], process.env, process.platform);
+  const invocation = buildVitestInvocation([], inherited, process.platform);
   const mode = invocation.env.VITE_WISEEFF_RUNTIME_MODE;
   if (mode !== "mock" && mode !== "api") fail("UNKNOWN_RUNTIME_MODE");
   const env: NodeJS.ProcessEnv = {};
-  for (const key of ALLOWED_HOST_ENV) if (process.env[key] !== undefined) env[key] = process.env[key];
+  for (const key of ALLOWED_HOST_ENV) if (inherited[key] !== undefined) env[key] = inherited[key];
   const nodeDirectory = path.dirname(process.execPath);
   env.PATH = `${nodeDirectory}:/usr/bin:/bin:/usr/sbin:/sbin`;
   env.TMPDIR = tempDirectory;
@@ -340,6 +369,18 @@ function childEnvironment(spec: TaskSpec, tempDirectory: string): { env: NodeJS.
   env.VITE_WISEEFF_RUNTIME_MODE = mode;
   if (spec.testConfigRuntimeMode === "mock") env.VITE_WISEEFF_TEST_CONFIG_RUNTIME_MODE = "mock";
   return { env, mode };
+}
+
+function childEnvironment(spec: TaskSpec, tempDirectory: string): { env: NodeJS.ProcessEnv; mode: "mock" | "api" } {
+  return buildFreshChildEnvironment(spec, tempDirectory);
+}
+
+export function buildFreshArgv(spec: TaskSpec, phase: "discovery" | "execution", files: string[], vitest: string, nativeReportPath?: string): string[] {
+  const nodeFlags = spec.testConfigRuntimeMode === "mock" ? ["--max-old-space-size=768"] : [];
+  const common = ["--config", path.join(ROOT, spec.config), ...files];
+  if (phase === "discovery") return [...nodeFlags, vitest, "list", "--filesOnly", "--json", ...common];
+  if (!nativeReportPath) fail("NATIVE_REPORT_UNAVAILABLE");
+  return [...nodeFlags, vitest, "run", ...common, "--reporter=default", "--reporter=json", `--outputFile=${nativeReportPath}`];
 }
 
 function fixedProcessIdentity(pid: number): ProcessIdentity | undefined {
@@ -396,12 +437,13 @@ async function waitForGroupAbsent(pid: number, graceMs: number): Promise<boolean
 class BoundedFileCapture extends Writable {
   readonly chunks: Buffer[] = [];
   bytes = 0;
-  constructor(private readonly file: ReturnType<typeof createWriteStream>, private readonly limit: number) {
+  constructor(private readonly file: Writable, private readonly limit: number, private readonly existingBytes = 0) {
     super();
+    file.once("error", (error) => this.destroy(error));
   }
   override _write(chunk: Buffer, _encoding: BufferEncoding, callback: (error?: Error | null) => void): void {
     const value = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
-    if (this.bytes + value.length > this.limit) {
+    if (this.existingBytes + this.bytes + value.length > this.limit) {
       callback(new RunError("OUTPUT_LIMIT"));
       return;
     }
@@ -413,49 +455,102 @@ class BoundedFileCapture extends Writable {
   text(): string { return Buffer.concat(this.chunks).toString("utf8"); }
 }
 
-type NativeRunOptions = {
+export type NativeRunOptions = {
   argv: string[];
   env: NodeJS.ProcessEnv;
   cwd: string;
   stdoutPath: string;
   stderrPath: string;
   stdoutLimit: number;
+  stdoutExistingBytes?: number;
+  stderrExistingBytes?: number;
   deadlineAt: number;
+  cancelSignal?: AbortSignal;
+  readProcessIdentity?: (pid: number) => ProcessIdentity | undefined;
+  openLog?: (file: string) => Writable;
 };
 
-type NativeRunResult = {
+export type NativeRunResult = {
   phase: PhaseObservation;
   stdout: string;
   lifecycleSettled: boolean;
   error: string | null;
 };
 
-async function runNative(options: NativeRunOptions): Promise<NativeRunResult> {
+export async function runNative(options: NativeRunOptions): Promise<NativeRunResult> {
   const startedMs = Date.now();
-  const child = spawn(process.execPath, options.argv, {
-    cwd: options.cwd,
-    env: options.env,
-    detached: true,
-    shell: false,
-    stdio: ["ignore", "pipe", "pipe"],
-  });
-  if (!child.pid || !child.stdout || !child.stderr) fail("CHILD_LAUNCH_FAILED");
+  let stdoutFile: Writable | undefined;
+  let stderrFile: Writable | undefined;
+  try {
+    const openLog = options.openLog ?? openOwnedAppend;
+    stdoutFile = openLog(options.stdoutPath);
+    stderrFile = openLog(options.stderrPath);
+  } catch (error) {
+    stdoutFile?.destroy();
+    stderrFile?.destroy();
+    throw error;
+  }
+  if (!stdoutFile || !stderrFile) {
+    stdoutFile?.destroy();
+    stderrFile?.destroy();
+    fail("LOG_OPEN_FAILED");
+  }
+  let child: ChildProcess;
+  try {
+    child = spawn(process.execPath, options.argv, {
+      cwd: options.cwd,
+      env: options.env,
+      detached: true,
+      shell: false,
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+  } catch (error) {
+    stdoutFile.destroy(); stderrFile.destroy();
+    throw error;
+  }
+  if (!child.pid || !child.stdout || !child.stderr) {
+    stdoutFile.destroy(); stderrFile.destroy();
+    fail("CHILD_LAUNCH_FAILED");
+  }
   const pid = child.pid;
-  const identity = fixedProcessIdentity(pid);
-  if (!identity) fail("CHILD_IDENTITY_UNAVAILABLE");
-  const stdoutFile = createWriteStream(options.stdoutPath, { flags: "w", mode: 0o600 });
-  const stderrFile = createWriteStream(options.stderrPath, { flags: "w", mode: 0o600 });
-  const stdoutCapture = new BoundedFileCapture(stdoutFile, options.stdoutLimit);
-  const stderrCapture = new BoundedFileCapture(stderrFile, LOG_LIMIT);
+  const readIdentity = options.readProcessIdentity ?? fixedProcessIdentity;
+  const identity = readIdentity(pid);
+  const stdoutCapture = new BoundedFileCapture(stdoutFile, options.stdoutLimit, options.stdoutExistingBytes ?? 0);
+  const stderrCapture = new BoundedFileCapture(stderrFile, LOG_LIMIT, options.stderrExistingBytes ?? 0);
   const controller = new AbortController();
   let timeoutHandle: NodeJS.Timeout | undefined;
   let failure: Error | undefined;
-  const stdoutDone = pipeline(child.stdout, stdoutCapture).catch((error) => { failure ??= asError(error); throw error; }).finally(() => new Promise<void>((resolve) => stdoutFile.end(() => resolve())));
-  const stderrDone = pipeline(child.stderr, stderrCapture).catch((error) => { failure ??= asError(error); throw error; }).finally(() => new Promise<void>((resolve) => stderrFile.end(() => resolve())));
+  const onFileError = (error: Error) => {
+    failure ??= error;
+    if (!controller.signal.aborted) controller.abort(error);
+  };
+  stdoutFile.once("error", onFileError);
+  stderrFile.once("error", onFileError);
+  const closeFile = (file: Writable): Promise<void> => new Promise((resolve, reject) => {
+    file.end((error?: Error) => error ? reject(error) : resolve());
+  });
+  const stdoutDone = pipeline(child.stdout, stdoutCapture).catch((error) => { failure ??= asError(error); throw error; }).finally(() => closeFile(stdoutFile));
+  const stderrDone = pipeline(child.stderr, stderrCapture).catch((error) => { failure ??= asError(error); throw error; }).finally(() => closeFile(stderrFile));
+  if (!identity) {
+    failure = new RunError("CHILD_IDENTITY_UNAVAILABLE");
+    child.stdout.destroy(failure);
+    child.stderr.destroy(failure);
+    const settled = await settleStreams([stdoutDone, stderrDone], [child.stdout, child.stderr], [stdoutFile, stderrFile]);
+    for (const result of settled) if (result.status === "rejected") failure ??= asError(result.reason);
+    const finishedMs = Date.now();
+    return {
+      phase: { startedAt: new Date(startedMs).toISOString(), finishedAt: new Date(finishedMs).toISOString(), wallMs: finishedMs - startedMs, exitCode: child.exitCode, signal: child.signalCode, stdoutBytes: stdoutCapture.bytes, stderrBytes: stderrCapture.bytes, lifecycleSettled: false },
+      stdout: stdoutCapture.text(), lifecycleSettled: false, error: errorCode(failure),
+    };
+  }
+  const cancelReason = () => options.cancelSignal?.reason instanceof Error ? options.cancelSignal.reason : new RunError("OWNER_CANCELLED");
+  const onCancel = () => controller.abort(cancelReason());
+  if (options.cancelSignal?.aborted) onCancel();
+  else options.cancelSignal?.addEventListener("abort", onCancel, { once: true });
   const wait = waitForOwnedProcessGroupExit(child, {
     signal: controller.signal,
     expectedProcessIdentity: identity,
-    readProcessIdentity: fixedProcessIdentity,
+    readProcessIdentity: readIdentity,
     terminateGraceMs: TERMINATION_GRACE_MS,
     verifyGraceMs: VERIFY_GRACE_MS,
   });
@@ -473,14 +568,16 @@ async function runNative(options: NativeRunOptions): Promise<NativeRunResult> {
     await wait.catch((waitError) => { failure ??= asError(waitError); });
   }
   clearTimeout(timeoutHandle);
-  await Promise.allSettled([stdoutDone, stderrDone, outputFailure]);
+  const settled = await settleStreams([stdoutDone, stderrDone, outputFailure], [child.stdout, child.stderr], [stdoutFile, stderrFile]);
+  for (const result of settled) if (result.status === "rejected") failure ??= asError(result.reason);
+  options.cancelSignal?.removeEventListener("abort", onCancel);
   signal = child.signalCode;
   const finishedMs = Date.now();
   let groupSettled = false;
   try {
     groupSettled = await waitForGroupAbsent(pid, VERIFY_GRACE_MS);
-    if (!groupSettled && sameIdentity(identity, fixedProcessIdentity(pid))) {
-      await stopOwnedProcessGroup(child, { expectedProcessIdentity: identity, readProcessIdentity: fixedProcessIdentity });
+    if (!groupSettled && sameIdentity(identity, readIdentity(pid))) {
+      await stopOwnedProcessGroup(child, { expectedProcessIdentity: identity, readProcessIdentity: readIdentity });
       groupSettled = await waitForGroupAbsent(pid, VERIFY_GRACE_MS);
     }
   } catch (error) {
@@ -499,6 +596,38 @@ async function runNative(options: NativeRunOptions): Promise<NativeRunResult> {
     lifecycleSettled: groupSettled,
   };
   return { phase, stdout: stdoutCapture.text(), lifecycleSettled: groupSettled, error: failure ? errorCode(failure) : null };
+}
+
+function openOwnedAppend(file: string): ReturnType<typeof createWriteStream> {
+  const stat = checkRegularFile(file, LOG_LIMIT, 0o600);
+  const fd = openSync(file, constants.O_WRONLY | constants.O_APPEND | (constants.O_NOFOLLOW ?? 0));
+  try {
+    const opened = fstatSync(fd);
+    const uid = process.getuid?.();
+    if (!opened.isFile() || opened.nlink !== 1 || (uid !== undefined && opened.uid !== uid) || (opened.mode & 0o777) !== 0o600 || opened.ino !== stat.ino || opened.dev !== stat.dev) fail("UNSAFE_FILE");
+  } catch (error) {
+    try { closeSync(fd); } catch { /* preserve the original failure */ }
+    throw error;
+  }
+  return createWriteStream(file, { fd, autoClose: true });
+}
+
+async function settleStreams(
+  promises: Promise<unknown>[],
+  streams: Array<{ destroy(error?: Error): void }>,
+  files: Array<{ destroy(error?: Error): void }>,
+): Promise<PromiseSettledResult<unknown>[]> {
+  const all = Promise.allSettled(promises);
+  let timer: NodeJS.Timeout | undefined;
+  const timeout = new Promise<boolean>((resolve) => { timer = setTimeout(() => resolve(true), VERIFY_GRACE_MS); });
+  const timedOut = await Promise.race([all.then(() => false), timeout]);
+  if (timer) clearTimeout(timer);
+  if (!timedOut) return all;
+  const reason = new RunError("STREAM_SETTLEMENT_TIMEOUT");
+  streams.forEach((stream) => stream.destroy(reason));
+  files.forEach((file) => file.destroy());
+  const settled = await Promise.race([all, new Promise<undefined>((resolve) => setTimeout(() => resolve(undefined), VERIFY_GRACE_MS))]);
+  return settled ?? [];
 }
 
 function asError(error: unknown): Error {
@@ -585,11 +714,28 @@ function writeAtomicRecord(runDirectory: string, value: RunRecord): void {
 
 type RunStorage = { runId: string; directory: string; nativeReport: string; stdout: string; stderr: string; lockPath: string; lockFd: number; lockStat: Stats; lockText: string };
 
+export function disposeOwnedLock(lockPath: string, lockFd: number, original: Stats, expectedText: string): boolean {
+  let removed = false;
+  try {
+    const current = lstatSync(lockPath);
+    const uid = process.getuid?.();
+    const owned = current.isFile() && !current.isSymbolicLink() && current.nlink === 1
+      && (current.mode & 0o777) === 0o600 && (uid === undefined || current.uid === uid)
+      && current.dev === original.dev && current.ino === original.ino
+      && readFileSync(lockPath, "utf8") === expectedText;
+    if (owned) {
+      unlinkSync(lockPath);
+      removed = true;
+    }
+  } catch { /* retain the lock whenever its ownership or replacement is uncertain */ }
+  try { closeSync(lockFd); } catch { /* the descriptor may already be closed */ }
+  return removed;
+}
+
 function createStorage(task: TaskId): RunStorage {
   ensureDirectory(path.join(ROOT, "work"), 0o755);
   ensureDirectory(RUNS_DIRECTORY, 0o755);
   const lockPath = path.join(RUNS_DIRECTORY, LOCK_NAMES[task]);
-  const lockText = JSON.stringify({ schemaVersion: 1, taskId: task, pid: process.pid, runId: "pending", identity: fixedProcessIdentity(process.pid) });
   if (!fixedProcessIdentity(process.pid)) fail("OWNER_IDENTITY_UNAVAILABLE");
   let lockFd: number;
   try {
@@ -598,6 +744,8 @@ function createStorage(task: TaskId): RunStorage {
     if ((error as NodeJS.ErrnoException).code === "EEXIST") fail("TASK_LOCK_BUSY");
     fail("TASK_LOCK_UNAVAILABLE");
   }
+  const lockStat = fstatSync(lockFd);
+  let expectedLockText = "";
   let runId: string;
   let directory: string;
   for (;;) {
@@ -605,14 +753,18 @@ function createStorage(task: TaskId): RunStorage {
     if (!RUN_ID.test(runId)) continue;
     directory = path.join(RUNS_DIRECTORY, runId);
     try { mkdirSync(directory, { mode: 0o700 }); break; }
-    catch (error) { if ((error as NodeJS.ErrnoException).code !== "EEXIST") { closeSync(lockFd); unlinkSync(lockPath); fail("RUN_DIRECTORY_UNAVAILABLE"); } }
+    catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "EEXIST") {
+        disposeOwnedLock(lockPath, lockFd, lockStat, expectedLockText);
+        fail("RUN_DIRECTORY_UNAVAILABLE");
+      }
+    }
   }
   ensurePathAncestors(ROOT, directory);
   const runStat = lstatSync(directory);
   const uid = process.getuid?.();
   if (!runStat.isDirectory() || runStat.isSymbolicLink() || (uid !== undefined && runStat.uid !== uid) || (runStat.mode & 0o777) !== 0o700) {
-    closeSync(lockFd);
-    try { unlinkSync(lockPath); } catch { /* retain the lock when its disposition is uncertain */ }
+    disposeOwnedLock(lockPath, lockFd, lockStat, expectedLockText);
     fail("UNSAFE_DIRECTORY");
   }
   const identity = fixedProcessIdentity(process.pid);
@@ -620,30 +772,17 @@ function createStorage(task: TaskId): RunStorage {
   try {
     writeFileSync(lockFd, text, "utf8");
     fsyncSync(lockFd);
+    expectedLockText = text;
     for (const name of [STDOUT_NAME, STDERR_NAME, NATIVE_REPORT_NAME]) createOwnedEmptyFile(path.join(directory, name));
-    const lockStat = fstatSync(lockFd);
     return { runId, directory, nativeReport: path.join(directory, NATIVE_REPORT_NAME), stdout: path.join(directory, STDOUT_NAME), stderr: path.join(directory, STDERR_NAME), lockPath, lockFd, lockStat, lockText: text };
   } catch (error) {
-    closeSync(lockFd);
-    try { unlinkSync(lockPath); } catch { /* retain the lock if its disposition is uncertain */ }
+    disposeOwnedLock(lockPath, lockFd, lockStat, expectedLockText);
     throw error;
   }
 }
 
 function releaseStorage(storage: RunStorage): boolean {
-  try {
-    const current = lstatSync(storage.lockPath);
-    const original = storage.lockStat;
-    const uid = process.getuid?.();
-    if (!current.isFile() || current.isSymbolicLink() || current.nlink !== 1 || (current.mode & 0o777) !== 0o600 || (uid !== undefined && current.uid !== uid)
-      || current.dev !== original.dev || current.ino !== original.ino || readFileSync(storage.lockPath, "utf8") !== storage.lockText) return false;
-    unlinkSync(storage.lockPath);
-    closeSync(storage.lockFd);
-    return true;
-  } catch {
-    try { closeSync(storage.lockFd); } catch { /* already closed */ }
-    return false;
-  }
+  return disposeOwnedLock(storage.lockPath, storage.lockFd, storage.lockStat, storage.lockText);
 }
 
 function fileHash(file: string, maxBytes: number): { sha256: string; bytes: number } {
@@ -710,22 +849,36 @@ export async function runFreshTask(options: { base: string; task: TaskId; force?
   const dependencies = dependencyObservation();
   const files = validateTaskInputs(spec);
   const vitest = fixedVitestPath();
-  const common = ["--config", path.join(ROOT, spec.config), ...files];
-  const discoveryArgv = [vitest, "list", "--filesOnly", "--json", ...common];
+  const discoveryArgv = buildFreshArgv(spec, "discovery", files, vitest);
   const storage = createStorage(spec.id);
   const startedAt = new Date().toISOString();
   const tempDirectory = path.join(storage.directory, "tmp");
-  mkdirSync(tempDirectory, { mode: 0o700 });
-  ensurePathAncestors(ROOT, tempDirectory);
-  const { env, mode } = childEnvironment(spec, tempDirectory);
-  const runArgv = [vitest, "run", ...common, "--reporter=default", "--reporter=json", `--outputFile=${storage.nativeReport}`];
+  let env: NodeJS.ProcessEnv;
+  let mode: "mock" | "api";
+  try {
+    mkdirSync(tempDirectory, { mode: 0o700 });
+    ensurePathAncestors(ROOT, tempDirectory);
+    const tempStat = lstatSync(tempDirectory);
+    const uid = process.getuid?.();
+    if (!tempStat.isDirectory() || tempStat.isSymbolicLink() || (uid !== undefined && tempStat.uid !== uid) || (tempStat.mode & 0o777) !== 0o700) fail("UNSAFE_DIRECTORY");
+    ({ env, mode } = childEnvironment(spec, tempDirectory));
+  } catch (error) {
+    releaseStorage(storage);
+    throw error;
+  }
+  const runArgv = buildFreshArgv(spec, "execution", files, vitest, storage.nativeReport);
   const record = newRecord({ runId: storage.runId, task: spec, preview, sources, dependencies, mode, discoveryArgv, runArgv, startedAt, budgetMs: spec.budgetMs });
   let lifecycleSettled = true;
+  const ownerCancellation = new AbortController();
+  const onOwnerSignal = () => ownerCancellation.abort(new RunError("OWNER_CANCELLED"));
+  process.once("SIGINT", onOwnerSignal);
+  process.once("SIGTERM", onOwnerSignal);
   try {
+    if (ownerCancellation.signal.aborted) throw ownerCancellation.signal.reason;
     const workspaceErrors = await validateWorkspaceLinks(ROOT);
     if (workspaceErrors.length > 0) throw new RunError("WORKSPACE_LINKS_INVALID");
     const deadlineAt = Date.now() + spec.budgetMs;
-    const discovery = await runNative({ argv: discoveryArgv, env, cwd: ROOT, stdoutPath: storage.stdout, stderrPath: storage.stderr, stdoutLimit: DISCOVERY_LIMIT, deadlineAt });
+    const discovery = await runNative({ argv: discoveryArgv, env, cwd: ROOT, stdoutPath: storage.stdout, stderrPath: storage.stderr, stdoutLimit: DISCOVERY_LIMIT, stdoutExistingBytes: 0, stderrExistingBytes: 0, deadlineAt, cancelSignal: ownerCancellation.signal });
     applyPhase(record, "discovery", discovery.phase);
     lifecycleSettled &&= discovery.lifecycleSettled;
     if (discovery.error) throw new RunError(discovery.error);
@@ -733,12 +886,18 @@ export async function runFreshTask(options: { base: string; task: TaskId; force?
     record.native.discoveredFiles = parseDiscovery(discovery.stdout, files);
     const remaining = deadlineAt - Date.now();
     if (remaining <= 0) throw new RunError("NATIVE_TIMEOUT");
-    const execution = await runNative({ argv: runArgv, env, cwd: ROOT, stdoutPath: storage.stdout, stderrPath: storage.stderr, stdoutLimit: LOG_LIMIT, deadlineAt });
+    if (ownerCancellation.signal.aborted) throw ownerCancellation.signal.reason;
+    const stdoutExistingBytes = lstatSync(storage.stdout).size;
+    const stderrExistingBytes = lstatSync(storage.stderr).size;
+    const execution = await runNative({ argv: runArgv, env, cwd: ROOT, stdoutPath: storage.stdout, stderrPath: storage.stderr, stdoutLimit: LOG_LIMIT, stdoutExistingBytes, stderrExistingBytes, deadlineAt, cancelSignal: ownerCancellation.signal });
     applyPhase(record, "execution", execution.phase);
     lifecycleSettled &&= execution.lifecycleSettled;
     if (execution.error) throw new RunError(execution.error);
     let nativeBytes: Buffer;
-    try { nativeBytes = readPrivateReport(storage.nativeReport); } catch { throw new RunError("NATIVE_REPORT_UNAVAILABLE"); }
+    try {
+      checkRegularFile(storage.nativeReport, NATIVE_REPORT_LIMIT, 0o600);
+      nativeBytes = readPrivateReport(storage.nativeReport);
+    } catch { throw new RunError("NATIVE_REPORT_UNAVAILABLE"); }
     if (nativeBytes.length > NATIVE_REPORT_LIMIT) throw new RunError("NATIVE_REPORT_TOO_LARGE");
     const reportHash = digest(nativeBytes);
     record.native.reportSha256 = reportHash;
@@ -758,13 +917,16 @@ export async function runFreshTask(options: { base: string; task: TaskId; force?
     if (record.native.skipped !== 0) throw new RunError("REQUIRED_TEST_SKIPPED");
     const afterPreview = createPreview({ cwd: ROOT, base: options.base });
     const afterSources = inspectSources();
-    if (!isDeepStrictEqual(preview, afterPreview) || !isDeepStrictEqual(sources, afterSources)) throw new RunError("SOURCE_DRIFT");
+    const afterDependencies = dependencyObservation();
+    if (!isDeepStrictEqual(preview, afterPreview) || !isDeepStrictEqual(sources, afterSources) || !isDeepStrictEqual(dependencies, afterDependencies)) throw new RunError("SOURCE_DRIFT");
     record.claimedStatus = "passed";
   } catch (error) {
     const code = errorCode(asError(error));
     record.error = code;
     record.claimedStatus = "failed";
   }
+  process.removeListener("SIGINT", onOwnerSignal);
+  process.removeListener("SIGTERM", onOwnerSignal);
   const finishedAt = new Date().toISOString();
   record.finishedAt = finishedAt;
   record.wallMs = Date.parse(finishedAt) - Date.parse(record.startedAt);
@@ -777,7 +939,8 @@ export async function runFreshTask(options: { base: string; task: TaskId; force?
     record.claimedStatus = "failed";
     lifecycleSettled = false;
   }
-  const canComplete = record.claimedStatus === "passed" || (record.error !== null && record.native.reportSha256 !== null && lifecycleSettled);
+  const canComplete = (record.claimedStatus === "passed" && record.native.reportSha256 !== null && lifecycleSettled)
+    || (record.error !== null && record.native.reportSha256 !== null && lifecycleSettled);
   record.complete = canComplete;
   if (record.complete && !releaseStorage(storage)) {
     record.complete = false;
