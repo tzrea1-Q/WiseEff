@@ -28,6 +28,25 @@ describe("catalog publication impact classification", () => {
     ).toEqual({ ok: true, value: "high" });
   });
 
+  it("classifies backend-confirmed documentation revise as low", () => {
+    expect(
+      classifyImpact({
+        ...lowRiskCreateDefinitionFacts(author),
+        operations: [{ op: "revise-definition", class: "documentation" }],
+      }),
+    ).toEqual({ ok: true, value: "low" });
+  });
+
+  it("classifies requested documentation that backend confirmed as semantic as high", () => {
+    expect(
+      classifyImpact({
+        ...lowRiskCreateDefinitionFacts(author),
+        operations: [{ op: "revise-definition", class: "semantic" }],
+        changesUnitOrSemantic: true,
+      }),
+    ).toEqual({ ok: true, value: "high" });
+  });
+
   it("classifies new subject, selector, alias, fallback, tightening, unit, and retirement as high", () => {
     const cases: ImpactFacts[] = [
       { ...lowRiskCreateDefinitionFacts(author), introducesNewSubject: true },

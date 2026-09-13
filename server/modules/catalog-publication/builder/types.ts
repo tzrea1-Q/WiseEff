@@ -73,6 +73,9 @@ export type NestedDefinitionDraft = {
   readonly content: SupportedDefinitionContent;
 };
 
+export type DriverNature = "physical-device" | "logical-service";
+export type DriverCardinality = "multiple" | "singleton-per-project";
+
 export type CreateSubjectWithDefinitionsChange = {
   readonly op: "create-subject-with-definitions";
   readonly kind: "driver" | "node-type";
@@ -81,6 +84,8 @@ export type CreateSubjectWithDefinitionsChange = {
     readonly kind: "driver-compatible" | "node-type-name";
     readonly value: string;
   };
+  readonly nature?: DriverNature;
+  readonly cardinality?: DriverCardinality;
   readonly definitions: readonly NestedDefinitionDraft[];
 };
 
@@ -333,9 +338,15 @@ export type BuildCompleteSuccessorError =
     }
   | {
       readonly kind: "conflict";
-      readonly reason: "duplicate-natural-key";
-      readonly subjectId: string;
-      readonly propertyKey: string;
+      readonly reason:
+        | "duplicate-natural-key"
+        | "duplicate-canonical-key"
+        | "duplicate-selector"
+        | "duplicate-alias";
+      readonly subjectId?: string;
+      readonly propertyKey?: string;
+      readonly canonicalKey?: string;
+      readonly selector?: string;
     }
   | {
       readonly kind: "unsupported-catalog-capability";

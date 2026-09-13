@@ -7,7 +7,9 @@ import { catalogPublicationJob } from "@/application/parameter-catalog/fixtures"
 
 import {
   buildCreateDefinitionChangeSet,
+  buildPublicationChangeSet,
   canExecutePublicationAction,
+  canSavePublicationDraft,
   createPublicationSubmitGate,
   emptyPublicationDraft,
   fingerprintPublicationDraft,
@@ -29,6 +31,9 @@ describe("publication operator state", () => {
     expect(canExecutePublicationAction("org-admin", "preview-publication", ready, ["catalog:author"])).toBe(
       true
     );
+    expect(canSavePublicationDraft("org-admin", ready, ["catalog:author"])).toBe(true);
+    expect(canSavePublicationDraft("user", ready, ["catalog:author"])).toBe(false);
+    expect(canSavePublicationDraft("platform-admin", ready, ["catalog:author"])).toBe(false);
     expect(
       canExecutePublicationAction("agent", "publish-publication", ready, ["catalog:publish"])
     ).toBe(false);
@@ -62,6 +67,63 @@ describe("publication operator state", () => {
       }
     ]);
     expect(JSON.stringify(buildCreateDefinitionChangeSet(draft))).not.toMatch(/git|digest|releaseVersion/i);
+  });
+
+  it("builds nested create-subject definitions without a published subjectId", () => {
+    const draft = {
+      ...emptyPublicationDraft(),
+      mode: "create-subject" as const,
+      subjectKind: "driver" as const,
+      selectorValue: "acme,aux",
+      nature: "physical-device" as const,
+      cardinality: "multiple" as const,
+      propertyKey: "vbat",
+      displayName: "辅助电池",
+      documentation: "辅助电池电压。",
+      valueType: "integer" as const,
+      unit: "mV" as const
+    };
+    expect(buildPublicationChangeSet(draft)).toEqual([
+      {
+        op: "create-subject-with-definitions",
+        kind: "driver",
+        canonicalKey: "driver:acme,aux",
+        selector: { kind: "driver-compatible", value: "acme,aux" },
+        nature: "physical-device",
+        cardinality: "multiple",
+        definitions: [
+          {
+            propertyKey: "vbat",
+            content: {
+              displayName: "辅助电池",
+              documentation: "辅助电池电压。",
+              unit: "mV",
+              valueSchema: { type: "integer" }
+            }
+          }
+        ]
+      }
+    ]);
+    expect(JSON.stringify(buildPublicationChangeSet(draft))).not.toMatch(/csub_|subjectId/i);
+  });
+
+  it("builds a revise-definition ChangeSet from the selected definition", () => {
+    const draft = {
+      ...emptyPublicationDraft(),
+      mode: "revise-definition" as const,
+      definitionId: "pdef_01KGPIOINT",
+      reviseClass: "semantic" as const,
+      displayName: "保持电流",
+      documentation: "新约束。",
+      valueType: "integer" as const,
+      maximum: "3000",
+      unit: "mA" as const
+    };
+    expect(buildPublicationChangeSet(draft)[0]).toMatchObject({
+      op: "revise-definition",
+      definitionId: "pdef_01KGPIOINT",
+      class: "semantic"
+    });
   });
 
   it("invalidates preview when the draft body changes", () => {

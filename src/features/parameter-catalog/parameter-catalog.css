@@ -418,6 +418,29 @@
   overflow: auto;
 }
 
+.parameter-catalog-publication-dialog__modes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3) var(--space-4);
+  margin: 0;
+  padding: var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+}
+
+.parameter-catalog-publication-dialog__modes legend {
+  padding: 0 var(--space-1);
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+}
+
+.parameter-catalog-publication-dialog__modes label {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: var(--space-2);
+}
+
 .parameter-catalog-publication-dialog__form,
 .parameter-catalog-publication-dialog__preview,
 .parameter-catalog-publication-dialog__meta {

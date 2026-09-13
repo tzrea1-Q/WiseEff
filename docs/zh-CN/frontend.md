@@ -23,13 +23,13 @@ WiseEff 前端是 Vite、React、TypeScript 单页应用。它同时支持 mock 
 - `src/features/log-analysis/`：`LogsPage`（上传、结论卡、证据链、原始日志查看器）与 `LogDashboardPage`。样式在同目录 `log-analysis.css`（由页面 import；#476）。
 - `src/features/parameter-review/`：`ParameterReviewPage`、`ParameterSubmissionsPage`、提交历史 diff 与评审专用 UI 原子。样式在同目录 `parameter-review.css`（#479）。
 - `src/features/parameter-catalog/`：挂在 `/parameter-admin/specs` 的规范 Parameter definitions 页面模块（`CatalogPage`）。项目运营仍由 `ParameterAdminNextPage` 负责。
-- `src/features/parameter-catalog-governance/`：挂在同一 `CatalogPage` 上的 Registration、Review Queue、Proposal，以及 M1 向已发布主体新增定义的发布闭环。
+- `src/features/parameter-catalog-governance/`：挂在同一 `CatalogPage` 上的 Registration、Review Queue、Proposal，以及 M1/M2 发布闭环（新增定义、新增主体及首批定义、文档/受支持语义修订）。
 - `src/components/project-configuration-workbench/`：配置工作台。样式在同目录 `configuration-workbench.css`（#484）；共享 `.workbench-page` / `.workbench-sheet` 仍在 `src/styles.css`。
 - `src/features/product-feedback/`：应用壳层共享的 `FeedbackDialog` 与 `/feedback-admin` 反馈处理 UI。
 - `src/features/knowledge/`：知识库页面（`/knowledge` 与 `/knowledge-admin`:列表、分栏编辑器、文件上传、修订历史）。
 - `src/test/setup.ts`：Vitest DOM 初始化。
 
-M1 向已发布主体新增定义走会话权限 `catalog:author` / `catalog:publish` / `catalog:review-high-risk`，不把组织管理员默认视为发布人；Agent 只读。运营路径是填写 → 保存草稿（既有 Proposal）→ 预览（`POST /api/v2/catalog/publication-candidates`，带 `X-WiseEff-Catalog-Release`）→ 发布（请求体 `idempotencyKey`）。运营人员不手填内部编号、发布版本、摘要或 Git 地址，也不手工创建 Artifact / Authorization / Job。`publication_enabled` 默认关闭。隔离本地/测试进程可用 `WISEEFF_CATALOG_TEST_CAPABILITIES` 给指定 principal 叠加能力；`AUTH_MODE=production` 或 `NODE_ENV=production` 时叠加为空，不能挂到生产 AuthContext。`publication_enabled` 仅能以 `EPHEMERAL_POLICY_REVISION_CONFIRMATION` 打开，这不是生产启用。
+M1/M2 发布走同一四条冻结路由与会话权限 `catalog:author` / `catalog:publish` / `catalog:review-high-risk`，不把组织管理员默认视为发布人；Agent 只读。ChangeSet 白名单为 `create-definition`、`create-subject-with-definitions`、`revise-definition`。嵌套定义不带已发布 `subjectId`。`class: documentation|semantic` 由后端比较持久内容确认，客户端标签只是意图；假文档请求改单位/schema 不能走低风险。新主体、选择器/别名、fallback 与语义修订均为高风险，必须由另一位 `catalog:review-high-risk` 主体批准。M2 草稿仅组织管理员加 catalog 叠加可写；平台管理员不能创建草稿。新主体发布成功后的组织登记是既有独立命令：目录成功而登记失败保留 Catalog/Receipt，并显示 `registration-followup-failed`。运营路径是填写 → 保存草稿（既有 Proposal）→ 预览（`POST /api/v2/catalog/publication-candidates`，带 `X-WiseEff-Catalog-Release`）→ 发布（请求体 `idempotencyKey`）。运营人员不手填内部编号、发布版本、摘要或 Git 地址，也不手工创建 Artifact / Authorization / Job。`publication_enabled` 默认关闭。隔离本地/测试进程可用 `WISEEFF_CATALOG_TEST_CAPABILITIES` 给指定 principal 叠加能力；`AUTH_MODE=production` 或 `NODE_ENV=production` 时叠加为空，不能挂到生产 AuthContext。`publication_enabled` 仅能以 `EPHEMERAL_POLICY_REVISION_CONFIRMATION` 打开，这不是生产启用。
 
 ## Runtime 模式
 

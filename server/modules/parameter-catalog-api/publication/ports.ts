@@ -11,7 +11,7 @@ import { CATALOG_CAPABILITY_CONTRACT_REVISION } from "../../catalog-publication/
 import { withPublicationCoordinator } from "../../catalog-publication/coordinator";
 import { enqueuePublicationJob } from "../../catalog-publication/enqueue";
 import { impactFactsFromAllocation } from "../../catalog-publication/jobs/execute";
-import { parseM1ChangeSet, previewPublicationCandidate } from "../../catalog-publication/preview";
+import { parsePublicationChangeSet, previewPublicationCandidate } from "../../catalog-publication/preview";
 import {
   getCandidate,
   getJob,
@@ -54,22 +54,45 @@ const candidateView = (
   if (!classified.ok) {
     return null;
   }
-  const definitions = candidate.identityAllocation.definitions;
-  const added = Array.isArray(definitions) ? definitions.length : 0;
+  const summary = candidate.identityAllocation.impactSummary;
+  const addedDefinitionCount =
+    isSummaryCount(summary) && typeof summary.addedDefinitionCount === "number"
+      ? summary.addedDefinitionCount
+      : null;
+  const changedDefinitionCount =
+    isSummaryCount(summary) && typeof summary.changedDefinitionCount === "number"
+      ? summary.changedDefinitionCount
+      : null;
+  const addedSubjectCount =
+    isSummaryCount(summary) && typeof summary.addedSubjectCount === "number"
+      ? summary.addedSubjectCount
+      : null;
+  if (addedDefinitionCount === null || changedDefinitionCount === null || addedSubjectCount === null) {
+    return null;
+  }
+  const addedSubjectIds = Array.isArray(summary && isSummaryCount(summary) ? summary.addedSubjectIds : null)
+    ? ((summary as { addedSubjectIds: unknown[] }).addedSubjectIds.filter(
+        (id): id is string => typeof id === "string",
+      ))
+    : undefined;
   return {
     id: candidate.id,
     expectedBaseReleaseId: candidate.expectedBaseReleaseId,
     expectedBaseReleaseDigest: candidate.expectedBaseReleaseDigest,
     riskClass: classified.value,
     impactSummary: {
-      addedDefinitionCount: added,
-      changedDefinitionCount: 0,
-      addedSubjectCount: 0,
+      addedDefinitionCount,
+      changedDefinitionCount,
+      addedSubjectCount,
+      ...(addedSubjectIds && addedSubjectIds.length > 0 ? { addedSubjectIds } : {}),
     },
     capabilityContract: capabilityOf(candidate),
     authorOrganizationId,
   };
 };
+
+const isSummaryCount = (value: unknown): value is Record<string, unknown> =>
+  value !== null && typeof value === "object" && !Array.isArray(value);
 
 const inScope = (
   authorOrganizationId: string,
@@ -165,7 +188,7 @@ export function bindCatalogPublicationCommands(input: {
           error: { kind: "forbidden", reason: "publication-capability-missing" },
         };
       }
-      const parsed = parseM1ChangeSet(command.changeSet);
+      const parsed = parsePublicationChangeSet(command.changeSet);
       if ("error" in parsed) {
         return { ok: false, error: mapPreviewError(parsed.error.kind, parsed.error.kind) };
       }

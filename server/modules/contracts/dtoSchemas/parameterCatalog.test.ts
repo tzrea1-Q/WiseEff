@@ -9,6 +9,7 @@ import {
   catalogAcceptProposalRequestSchema,
   catalogApiFailureReasons,
   catalogCreateBindingDraftRequestSchema,
+  catalogCreatePublicationCandidateRequestSchema,
   catalogDocumentResponseSchema,
   catalogFailureClientBehaviors,
   catalogKernelReadOperations,
@@ -129,6 +130,57 @@ describe("S8-CON threat matrix", () => {
       "createPublicationCandidate"
     );
     expect(parameterCatalogClientMethodByRouteId["catalog.getPublication"]).toBe("getPublication");
+  });
+
+  it("accepts M2 create-subject and revise-definition on the frozen candidate request", () => {
+    expect(
+      catalogCreatePublicationCandidateRequestSchema.parse({
+        changeSet: [
+          {
+            op: "create-subject-with-definitions",
+            kind: "driver",
+            canonicalKey: "driver:acme,aux",
+            selector: { kind: "driver-compatible", value: "acme,aux" },
+            nature: "physical-device",
+            cardinality: "multiple",
+            definitions: [
+              {
+                propertyKey: "vbat",
+                content: {
+                  displayName: "Aux",
+                  documentation: "Aux voltage.",
+                  unit: "mA",
+                  valueSchema: { type: "integer", minimum: 0 }
+                }
+              }
+            ]
+          }
+        ]
+      }).changeSet[0]?.op
+    ).toBe("create-subject-with-definitions");
+    expect(
+      catalogCreatePublicationCandidateRequestSchema.safeParse({
+        changeSet: [
+          {
+            op: "create-subject-with-definitions",
+            kind: "driver",
+            canonicalKey: "driver:acme,aux",
+            selector: { kind: "driver-compatible", value: "acme,aux" },
+            definitions: [
+              {
+                subjectId: "csub_acme_power",
+                propertyKey: "vbat",
+                content: {
+                  displayName: "Aux",
+                  documentation: "Aux voltage.",
+                  valueSchema: { type: "integer" }
+                }
+              }
+            ]
+          }
+        ]
+      }).success
+    ).toBe(false);
   });
 
   it("fails closed when a canonical client method is missing for a catalog route", () => {

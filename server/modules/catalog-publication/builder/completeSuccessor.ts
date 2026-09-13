@@ -64,10 +64,20 @@ import type {
 
 const SHA256_DIGEST = /^sha256:[0-9a-f]{64}$/;
 const CREATE_DEFINITION_KEYS = new Set(["op", "subjectId", "propertyKey", "content"]);
-const CREATE_SUBJECT_KEYS = new Set(["op", "kind", "canonicalKey", "selector", "definitions"]);
+const CREATE_SUBJECT_KEYS = new Set([
+  "op",
+  "kind",
+  "canonicalKey",
+  "selector",
+  "definitions",
+  "nature",
+  "cardinality",
+]);
 const REVISE_KEYS = new Set(["op", "definitionId", "class", "content"]);
 const SELECTOR_KEYS = new Set(["kind", "value"]);
 const NESTED_DEFINITION_KEYS = new Set(["propertyKey", "content"]);
+const DRIVER_NATURES = new Set(["physical-device", "logical-service"]);
+const DRIVER_CARDINALITIES = new Set(["multiple", "singleton-per-project"]);
 
 const ok = <T>(value: T): { readonly ok: true; readonly value: T } => ({ ok: true, value });
 const fail = (error: BuildCompleteSuccessorError): BuildCompleteSuccessorResult => ({
@@ -223,6 +233,7 @@ const tighterConstraint = (
 const buildImpact = (
   predecessor: CatalogReleaseNode,
   successor: CatalogReleaseNode,
+  requestedClasses: ReadonlyMap<string, "documentation" | "semantic"> = new Map(),
 ): CatalogImpactReport => {
   const predDefs = new Map(
     definitionDocuments(predecessor).map((document) => [document.content.id, document]),
@@ -271,6 +282,7 @@ const buildImpact = (
       ...entry,
       previousRevisionId: previous.content.revision.id,
       contentClass: contentClassOf(previous.content.revision, current.content.revision),
+      ...(requestedClasses.has(id) ? { requestedClass: requestedClasses.get(id) } : {}),
     });
     if (tighterConstraint(previous.content.revision.valueSchema, current.content.revision.valueSchema)) {
       existingContractsTighten = true;
@@ -550,7 +562,7 @@ const isSessionDatabase = (value: unknown): value is Database =>
   typeof (value as Database).transaction === "function" &&
   typeof (value as Database).query === "function";
 
-const persistSuccessor = async (
+export const persistSuccessorBuild = async (
   persist: BuilderPersistRequest,
   artifactInput: PersistArtifactInput,
   candidateInput: PersistCandidateInput,
@@ -671,6 +683,7 @@ export async function buildCompleteSuccessor(
   });
 
   let noopRevise: CatalogReleaseDefinitionDocument | null = null;
+  const requestedClasses = new Map<string, "documentation" | "semantic">();
 
   for (const [index, change] of sortedChanges.entries()) {
     const path = `changeSet[${index}]`;
@@ -705,6 +718,7 @@ export async function buildCompleteSuccessor(
         continue;
       }
       const next = revised as CatalogReleaseDefinitionDocument;
+      requestedClasses.set(next.content.id, change.class);
       const position = documents.findIndex(
         (document) => document.kind === "definition" && document.content.id === next.content.id,
       );
@@ -731,6 +745,30 @@ export async function buildCompleteSuccessor(
           path: `${path}.selector`,
         });
       }
+      const expectedSelectorKind =
+        subjectChange.kind === "driver" ? "driver-compatible" : "node-type-name";
+      if (subjectChange.selector.kind !== expectedSelectorKind) {
+        return fail({
+          kind: "invalid-input",
+          reason: "selector kind must match subject kind",
+        });
+      }
+      if (subjectChange.kind === "driver") {
+        if (
+          !DRIVER_NATURES.has(subjectChange.nature ?? "") ||
+          !DRIVER_CARDINALITIES.has(subjectChange.cardinality ?? "")
+        ) {
+          return fail({
+            kind: "invalid-input",
+            reason: "driver nature and cardinality are required",
+          });
+        }
+      } else if (subjectChange.nature !== undefined || subjectChange.cardinality !== undefined) {
+        return fail({
+          kind: "invalid-input",
+          reason: "node-type must not declare driver nature or cardinality",
+        });
+      }
       const selectorParsed =
         subjectChange.selector.kind === "driver-compatible"
           ? parseCanonicalCompatibleSelector(subjectChange.selector.value)
@@ -749,6 +787,45 @@ export async function buildCompleteSuccessor(
           naturalKey: subjectChange.canonicalKey,
         });
       }
+      const existingSubjectIds = new Set(
+        documents
+          .filter((document): document is CatalogReleaseSubjectDocument => document.kind === "subject")
+          .map((document) => document.content.id),
+      );
+      if (existingSubjectIds.has(subjectAllocation.subjectId)) {
+        return fail({
+          kind: "conflict",
+          reason: "duplicate-canonical-key",
+          subjectId: subjectAllocation.subjectId,
+          canonicalKey: subjectChange.canonicalKey,
+        });
+      }
+      const existingCanonicalKeys = new Set(
+        documents
+          .filter((document): document is CatalogReleaseSubjectDocument => document.kind === "subject")
+          .map((document) => document.content.canonicalKey),
+      );
+      if (existingCanonicalKeys.has(subjectChange.canonicalKey)) {
+        return fail({
+          kind: "conflict",
+          reason: "duplicate-canonical-key",
+          canonicalKey: subjectChange.canonicalKey,
+        });
+      }
+      const claimedSelectors = new Set(
+        documents.flatMap((document) => {
+          if (document.kind === "subject") return [document.content.selector.value];
+          if (document.kind === "alias") return [document.content.normalizedSelector];
+          return [];
+        }),
+      );
+      if (claimedSelectors.has(selectorParsed.value)) {
+        return fail({
+          kind: "conflict",
+          reason: "duplicate-selector",
+          selector: selectorParsed.value,
+        });
+      }
       const subjectContent = {
         id: subjectAllocation.subjectId,
         kind: subjectChange.kind,
@@ -762,8 +839,8 @@ export async function buildCompleteSuccessor(
         subtype:
           subjectChange.kind === "driver"
             ? {
-                nature: "physical-device" as const,
-                cardinality: { kind: "multiple" as const },
+                nature: subjectChange.nature as "physical-device" | "logical-service",
+                cardinality: { kind: subjectChange.cardinality as "multiple" | "singleton-per-project" },
               }
             : {},
         tombstone: null,
@@ -871,7 +948,7 @@ export async function buildCompleteSuccessor(
     });
   }
 
-  const impact = buildImpact(predecessorTarget, successor);
+  const impact = buildImpact(predecessorTarget, successor, requestedClasses);
   const impactReportDigest = canonicalDigest(impact as unknown as ContractJsonValue);
   const contract = capabilityContract();
   const artifactBytes = encodeBundleBytes(bundle);
@@ -927,7 +1004,7 @@ export async function buildCompleteSuccessor(
 
   let persistence: SuccessorBuildValue["persistence"] = { kind: "not-requested" };
   if (input.persist) {
-    const persisted = await persistSuccessor(input.persist, artifact, candidate);
+    const persisted = await persistSuccessorBuild(input.persist, artifact, candidate);
     if ("ok" in persisted && persisted.ok === false) {
       return fail(persisted.error);
     }

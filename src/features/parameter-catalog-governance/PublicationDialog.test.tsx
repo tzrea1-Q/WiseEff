@@ -13,6 +13,8 @@ import { createMockCatalogPorts } from "@/application/parameter-catalog/mockAdap
 import { deriveCatalogDomainState } from "@/application/parameter-catalog/states";
 import type { CatalogActorKind } from "@/application/parameter-catalog/authority";
 
+import { catalogApiFailure } from "@/application/parameter-catalog/errors";
+
 import { PublicationDialog } from "./PublicationDialog";
 import { PUBLICATION_JOB_STORAGE_KEY } from "./publicationJobStorage";
 import { publicationCopy } from "./publicationState";
@@ -82,7 +84,7 @@ describe("PublicationDialog", () => {
   });
 
   it("hides publish without catalog:publish and does not offer digest or git inputs", async () => {
-    renderDialog({ permissions: ["catalog:author"] });
+    renderDialog({ actor: "org-admin", permissions: ["catalog:author"] });
     expect(await screen.findByRole("dialog", { name: "向已发布主体新增定义" })).toBeVisible();
     expect(screen.queryByRole("button", { name: "发布到目录" })).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "保存草稿" })).toBeVisible();
@@ -91,7 +93,10 @@ describe("PublicationDialog", () => {
   });
 
   it("saves a draft through existing Proposal resources then previews a typed ChangeSet", async () => {
-    const { createProposal, createCandidate } = renderDialog();
+    const { createProposal, createCandidate } = renderDialog({
+      actor: "org-admin",
+      permissions: ["catalog:author", "catalog:publish"]
+    });
     const user = userEvent.setup();
     await fillSupportedDefinition(user);
     await user.click(screen.getByRole("button", { name: "保存草稿" }));
@@ -208,6 +213,71 @@ describe("PublicationDialog", () => {
     await confirm("确认发布");
     await waitFor(() => expect(publish).toHaveBeenCalledTimes(1));
     expect(publish.mock.calls[0]?.[1]).toEqual({ idempotencyKey: "stale-1" });
+  });
+
+  it("previews a new driver as high risk without a published subjectId", async () => {
+    const { createCandidate } = renderDialog({
+      actor: "org-admin",
+      permissions: ["catalog:author", "catalog:publish"]
+    });
+    const user = userEvent.setup();
+    await user.click(await screen.findByLabelText("新增主体"));
+    expect(await screen.findByRole("dialog", { name: "新增主体及首批定义" })).toBeVisible();
+    await user.selectOptions(screen.getByLabelText("主体类型"), "driver");
+    await user.type(screen.getByLabelText("选择器"), "acme,aux");
+    await user.clear(screen.getByLabelText("属性键"));
+    await user.type(screen.getByLabelText("属性键"), "vbat");
+    await user.clear(screen.getByLabelText("显示名称"));
+    await user.type(screen.getByLabelText("显示名称"), "辅助电池");
+    await user.clear(screen.getByLabelText("说明"));
+    await user.type(screen.getByLabelText("说明"), "辅助电池电压。");
+    await user.click(screen.getByRole("button", { name: "预览发布" }));
+    await confirm("确认预览");
+    await waitFor(() => expect(createCandidate).toHaveBeenCalledTimes(1));
+    const body = createCandidate.mock.calls[0]?.[0] as { changeSet: Array<Record<string, unknown>> };
+    expect(body.changeSet[0]).toMatchObject({
+      op: "create-subject-with-definitions",
+      kind: "driver"
+    });
+    expect(JSON.stringify(body.changeSet[0])).not.toMatch(/csub_acme|subjectId/i);
+    expect(await screen.findByText(/新驱动可能改变节点类型回退匹配/)).toBeVisible();
+    expect(screen.getByLabelText("发布预览")).toHaveTextContent("高");
+  });
+
+  it("keeps catalog success visible when registration followup fails", async () => {
+    const { ports } = renderDialog({
+      actor: "org-admin",
+      permissions: ["catalog:author", "catalog:publish"],
+      publicationOutcome: "active"
+    });
+    const register = vi.spyOn(ports.governance, "createRegistration").mockRejectedValueOnce(
+      catalogApiFailure("placement-conflict")
+    );
+    const user = userEvent.setup();
+    await user.click(await screen.findByLabelText("新增主体"));
+    await user.type(screen.getByLabelText("选择器"), "acme,aux");
+    await user.clear(screen.getByLabelText("属性键"));
+    await user.type(screen.getByLabelText("属性键"), "vbat");
+    await user.clear(screen.getByLabelText("显示名称"));
+    await user.type(screen.getByLabelText("显示名称"), "辅助电池");
+    await user.click(screen.getByRole("button", { name: "预览发布" }));
+    await confirm("确认预览");
+    await user.click(await screen.findByRole("button", { name: "发布到目录" }));
+    await confirm("确认发布");
+    expect(await screen.findByText(/目录发布已生效/)).toBeVisible();
+    await user.click(screen.getByRole("button", { name: "登记到本组织" }));
+    expect(await screen.findByText(/组织登记失败/)).toBeVisible();
+    expect(screen.getByText(/目录发布已生效/)).toBeVisible();
+    expect(register).toHaveBeenCalledTimes(1);
+  });
+
+  it("shows catalog-new-version is not project-adopted for semantic revise", async () => {
+    renderDialog({ actor: "org-admin", permissions: ["catalog:author", "catalog:publish"] });
+    const user = userEvent.setup();
+    await user.click(await screen.findByLabelText("修订定义"));
+    expect(await screen.findByRole("dialog", { name: "修订已有定义" })).toBeVisible();
+    await user.selectOptions(screen.getByLabelText("修订类别"), "semantic");
+    expect(screen.getByText(/目录有新版本并不等于项目已采用/)).toBeVisible();
   });
 
   it("does not use unpublished-empty copy for a permission miss when published subjects exist", async () => {

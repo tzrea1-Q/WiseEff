@@ -17,8 +17,31 @@ export type PublicationValueType = (typeof publicationSupportedValueTypes)[numbe
 export const publicationSupportedUnits = ["mA", "mV", "ms", "uOhm"] as const;
 export type PublicationUnit = (typeof publicationSupportedUnits)[number];
 
+export const publicationModes = ["create-definition", "create-subject", "revise-definition"] as const;
+export type PublicationMode = (typeof publicationModes)[number];
+
+export const publicationSubjectKinds = ["driver", "node-type"] as const;
+export type PublicationSubjectKind = (typeof publicationSubjectKinds)[number];
+
+export const publicationDriverNatures = ["physical-device", "logical-service"] as const;
+export type PublicationDriverNature = (typeof publicationDriverNatures)[number];
+
+export const publicationDriverCardinalities = ["multiple", "singleton-per-project"] as const;
+export type PublicationDriverCardinality = (typeof publicationDriverCardinalities)[number];
+
+export const publicationReviseClasses = ["documentation", "semantic"] as const;
+export type PublicationReviseClass = (typeof publicationReviseClasses)[number];
+
 export type PublicationDraft = {
+  mode: PublicationMode;
   subjectId: string;
+  subjectKind: PublicationSubjectKind;
+  canonicalKey: string;
+  selectorValue: string;
+  nature: PublicationDriverNature;
+  cardinality: PublicationDriverCardinality;
+  definitionId: string;
+  reviseClass: PublicationReviseClass;
   propertyKey: string;
   displayName: string;
   documentation: string;
@@ -31,7 +54,15 @@ export type PublicationDraft = {
 };
 
 export const emptyPublicationDraft = (): PublicationDraft => ({
+  mode: "create-definition",
   subjectId: "",
+  subjectKind: "driver",
+  canonicalKey: "",
+  selectorValue: "",
+  nature: "physical-device",
+  cardinality: "multiple",
+  definitionId: "",
+  reviseClass: "documentation",
   propertyKey: "",
   displayName: "",
   documentation: "",
@@ -46,7 +77,33 @@ export const emptyPublicationDraft = (): PublicationDraft => ({
 export const publicationCopy = {
   entry: "新增定义",
   title: "向已发布主体新增定义",
+  titleCreateSubject: "新增主体及首批定义",
+  titleRevise: "修订已有定义",
+  mode: "变更类型",
+  modeCreateDefinition: "新增定义",
+  modeCreateSubject: "新增主体",
+  modeRevise: "修订定义",
   unpublishedEmpty: "当前没有可新增定义的已发布主体。M1 不提供隐式引导。",
+  subjectKindPick: "主体类型",
+  selectorValue: "选择器",
+  nature: "驱动性质",
+  naturePhysical: "物理设备",
+  natureLogical: "逻辑服务",
+  cardinality: "实例基数",
+  cardinalityMultiple: "可多个",
+  cardinalitySingleton: "每项目单例",
+  definition: "已发布定义",
+  reviseClass: "修订类别",
+  reviseDocumentation: "文档修订",
+  reviseSemantic: "语义修订",
+  catalogNotAdopted: "目录有新版本并不等于项目已采用。既有绑定与项目值仍钉在旧修订上。",
+  fallbackImpact: "新驱动可能改变节点类型回退匹配，必须由另一位高风险复核人批准。",
+  neverLowCreate: "新增主体不能按低风险发布。",
+  registerFollowup: "登记到本组织",
+  registerFollowupHint: "目录发布已成功。组织登记是独立命令，失败不会撤回目录。",
+  registerFollowupFailed: "目录发布已成功，但组织登记失败。可重试登记，不会回滚目录。",
+  registerFollowupRetry: "重试登记",
+  registerFollowupSuccess: "组织登记已完成。",
   authorRequired: "当前会话没有目录编写权限。",
   sharedScope: "该主体全部实例共享。新增正式定义不会自动变更组织登记或放置。",
   subjectKind: "主体类型",
@@ -109,7 +166,15 @@ export type PublicationJobStatus = CatalogPublicationJobResponse["item"]["status
 
 export function fingerprintPublicationDraft(draft: PublicationDraft): string {
   return JSON.stringify({
+    mode: draft.mode,
     subjectId: draft.subjectId,
+    subjectKind: draft.subjectKind,
+    canonicalKey: (draft.canonicalKey ?? "").trim(),
+    selectorValue: (draft.selectorValue ?? "").trim(),
+    nature: draft.nature,
+    cardinality: draft.cardinality,
+    definitionId: draft.definitionId,
+    reviseClass: draft.reviseClass,
     propertyKey: draft.propertyKey.trim(),
     displayName: draft.displayName.trim(),
     documentation: draft.documentation.trim(),
@@ -119,6 +184,24 @@ export function fingerprintPublicationDraft(draft: PublicationDraft): string {
     unit: draft.unit,
     examples: draft.examples.trim()
   });
+}
+
+export function publicationDialogTitle(mode: PublicationMode): string {
+  if (mode === "create-subject") {
+    return publicationCopy.titleCreateSubject;
+  }
+  if (mode === "revise-definition") {
+    return publicationCopy.titleRevise;
+  }
+  return publicationCopy.title;
+}
+
+export function canSavePublicationDraft(
+  actor: CatalogActorKind,
+  state: CatalogDomainState,
+  permissions?: readonly string[] | null
+): boolean {
+  return actor === "org-admin" && canExecutePublicationAction(actor, "preview-publication", state, permissions);
 }
 
 export function canExecutePublicationAction(
@@ -159,9 +242,7 @@ function parseExamples(value: string, valueType: PublicationValueType): Array<nu
   });
 }
 
-export function buildCreateDefinitionChangeSet(
-  draft: PublicationDraft
-): CatalogCreatePublicationCandidateRequest["changeSet"] {
+export function definitionContentOf(draft: PublicationDraft) {
   const valueSchema =
     draft.valueType === "string"
       ? { type: "string" as const }
@@ -175,20 +256,66 @@ export function buildCreateDefinitionChangeSet(
             : {})
         };
   const examples = parseExamples(draft.examples, draft.valueType);
+  return {
+    displayName: draft.displayName.trim(),
+    documentation: draft.documentation.trim(),
+    ...(draft.unit ? { unit: draft.unit } : {}),
+    valueSchema,
+    ...(examples ? { examples } : {})
+  };
+}
+
+export function buildCreateDefinitionChangeSet(
+  draft: PublicationDraft
+): CatalogCreatePublicationCandidateRequest["changeSet"] {
   return [
     {
       op: "create-definition",
       subjectId: draft.subjectId,
       propertyKey: draft.propertyKey.trim(),
-      content: {
-        displayName: draft.displayName.trim(),
-        documentation: draft.documentation.trim(),
-        ...(draft.unit ? { unit: draft.unit } : {}),
-        valueSchema,
-        ...(examples ? { examples } : {})
-      }
+      content: definitionContentOf(draft)
     }
   ];
+}
+
+export function buildPublicationChangeSet(
+  draft: PublicationDraft
+): CatalogCreatePublicationCandidateRequest["changeSet"] {
+  if (draft.mode === "create-subject") {
+    const selectorKind = draft.subjectKind === "driver" ? "driver-compatible" : "node-type-name";
+    const selectorValue = draft.selectorValue.trim();
+    const canonicalKey =
+      draft.canonicalKey.trim() ||
+      `${draft.subjectKind === "driver" ? "driver" : "node-type"}:${selectorValue}`;
+    return [
+      {
+        op: "create-subject-with-definitions",
+        kind: draft.subjectKind,
+        canonicalKey,
+        selector: { kind: selectorKind, value: selectorValue },
+        ...(draft.subjectKind === "driver"
+          ? { nature: draft.nature, cardinality: draft.cardinality }
+          : {}),
+        definitions: [
+          {
+            propertyKey: draft.propertyKey.trim(),
+            content: definitionContentOf(draft)
+          }
+        ]
+      }
+    ];
+  }
+  if (draft.mode === "revise-definition") {
+    return [
+      {
+        op: "revise-definition",
+        definitionId: draft.definitionId,
+        class: draft.reviseClass,
+        content: definitionContentOf(draft)
+      }
+    ];
+  }
+  return buildCreateDefinitionChangeSet(draft);
 }
 
 export function publicationPreviewIsStale(savedFingerprint: string | null, draft: PublicationDraft): boolean {

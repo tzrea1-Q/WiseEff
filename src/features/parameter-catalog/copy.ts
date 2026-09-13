@@ -132,6 +132,8 @@ export function catalogErrorCopy(reason: CatalogApiFailureReason | "unknown"): s
     case "candidate-stale":
     case "candidate-tampered":
       return "预览候选已失效，请重新预览。输入已保留。";
+    case "registration-followup-failed":
+      return "目录发布已成功，但组织登记失败。可重试登记，不会回滚目录。";
     default:
       return "目录加载失败，请稍后重试。";
   }

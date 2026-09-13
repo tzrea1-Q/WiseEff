@@ -50,6 +50,9 @@ export const classifyImpact = (
       }
       continue;
     }
+    if (operation.op === "revise-definition" && operation.class === "documentation") {
+      continue;
+    }
     onlySupportedCreateDefinition = false;
   }
 

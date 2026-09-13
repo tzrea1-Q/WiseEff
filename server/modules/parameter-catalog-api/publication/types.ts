@@ -49,6 +49,7 @@ export type PublicationCandidateView = {
     readonly addedDefinitionCount: number;
     readonly changedDefinitionCount: number;
     readonly addedSubjectCount: number;
+    readonly addedSubjectIds?: readonly string[];
   };
   readonly capabilityContract: {
     readonly revision: string;

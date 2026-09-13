@@ -1,4 +1,4 @@
-export { buildCompleteSuccessor } from "./completeSuccessor";
+export { buildCompleteSuccessor, persistSuccessorBuild } from "./completeSuccessor";
 export {
   CATALOG_CAPABILITY_ALLOW_LIST,
   CATALOG_CAPABILITY_CONTRACT_REVISION,

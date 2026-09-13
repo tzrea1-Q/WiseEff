@@ -404,14 +404,24 @@ export function createMockCatalogPorts(options: CatalogMockOptions = {}): {
     async createPublicationCandidate(body, context) {
       assertPublicationWrite(store, context);
       const parsed = catalogCreatePublicationCandidateRequestSchema.parse(body);
+      const addedSubjects = parsed.changeSet.filter((change) => change.op === "create-subject-with-definitions");
+      const revised = parsed.changeSet.filter((change) => change.op === "revise-definition");
+      const semantic = revised.some((change) => change.op === "revise-definition" && change.class === "semantic");
       const candidate = {
         ...clone(catalogPublicationCandidate),
         id: `${CATALOG_CANDIDATE_ID}_${store.candidates.size + 1}`,
         expectedBaseReleaseId: context.catalogReleaseId,
+        riskClass: addedSubjects.length > 0 || semantic ? ("high" as const) : ("low" as const),
         impactSummary: {
-          addedDefinitionCount: parsed.changeSet.length,
-          changedDefinitionCount: 0,
-          addedSubjectCount: 0
+          addedDefinitionCount: parsed.changeSet.filter((change) => change.op === "create-definition").length
+            + addedSubjects.reduce(
+              (count, change) =>
+                change.op === "create-subject-with-definitions" ? count + change.definitions.length : count,
+              0
+            ),
+          changedDefinitionCount: revised.length,
+          addedSubjectCount: addedSubjects.length,
+          ...(addedSubjects.length > 0 ? { addedSubjectIds: [`csub_new_${store.candidates.size + 1}`] } : {})
         }
       };
       store.candidates.set(candidate.id, candidate);

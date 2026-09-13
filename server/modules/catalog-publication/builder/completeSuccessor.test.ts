@@ -310,6 +310,8 @@ describe("buildCompleteSuccessor", () => {
           kind: "driver",
           canonicalKey: "driver:acme,aux",
           selector: { kind: "driver-compatible", value: "acme,aux" },
+          nature: "physical-device",
+          cardinality: "multiple",
           definitions: [
             {
               propertyKey: 123 as unknown as string,
@@ -410,8 +412,315 @@ describe("buildCompleteSuccessor", () => {
         revisionId: "drev_acme_power_iin_max_2",
         previousRevisionId: "drev_acme_power_iin_max_1",
         contentClass: "documentation",
+        requestedClass: "documentation",
       },
     ]);
+  });
+
+  it("confirms documentation class from persisted content and records the client intent", async () => {
+    const predecessor = firstAcmePredecessor();
+    const existing = predecessor.first.documents.find(
+      (document) => document.kind === "definition" && document.content.id === "pdef_acme_power_iin_max",
+    );
+    if (existing?.kind !== "definition") throw new Error("fixture definition missing");
+    const result = await buildCompleteSuccessor({
+      predecessorArtifact: { digest: predecessor.digest, bytes: predecessor.bytes },
+      productPath: "m2-core",
+      changeSet: [
+        {
+          op: "revise-definition",
+          definitionId: "pdef_acme_power_iin_max",
+          class: "documentation",
+          content: {
+            displayName: existing.content.revision.displayName,
+            documentation: "Updated documentation for the current limit.",
+            unit: "mA",
+            valueSchema: { type: "integer", minimum: 0 },
+          },
+        },
+      ],
+      frozenIdentity: frozenPageIdentity(
+        [
+          {
+            subjectId: "csub_acme_power",
+            propertyKey: "iin_max",
+            definitionId: "pdef_acme_power_iin_max",
+            revisionId: "drev_acme_power_iin_max_2",
+          },
+        ],
+        "docs-class",
+      ),
+    });
+    expect(result.ok).toBe(true);
+    if (!result.ok || result.value.kind !== "successor") return;
+    expect(result.value.impact.definitions.changed).toEqual([
+      {
+        definitionId: "pdef_acme_power_iin_max",
+        subjectId: "csub_acme_power",
+        propertyKey: "iin_max",
+        revisionId: "drev_acme_power_iin_max_2",
+        previousRevisionId: "drev_acme_power_iin_max_1",
+        contentClass: "documentation",
+        requestedClass: "documentation",
+      },
+    ]);
+  });
+
+  it("does not confirm a documentation class when unit or schema actually change", async () => {
+    const predecessor = firstAcmePredecessor();
+    const existing = predecessor.first.documents.find(
+      (document) => document.kind === "definition" && document.content.id === "pdef_acme_power_iin_max",
+    );
+    if (existing?.kind !== "definition") throw new Error("fixture definition missing");
+    const result = await buildCompleteSuccessor({
+      predecessorArtifact: { digest: predecessor.digest, bytes: predecessor.bytes },
+      productPath: "m2-core",
+      changeSet: [
+        {
+          op: "revise-definition",
+          definitionId: "pdef_acme_power_iin_max",
+          class: "documentation",
+          content: {
+            displayName: existing.content.revision.displayName,
+            documentation: existing.content.revision.documentation,
+            unit: "mV",
+            valueSchema: { type: "integer", minimum: 0, maximum: 5000 },
+          },
+        },
+      ],
+      frozenIdentity: frozenPageIdentity(
+        [
+          {
+            subjectId: "csub_acme_power",
+            propertyKey: "iin_max",
+            definitionId: "pdef_acme_power_iin_max",
+            revisionId: "drev_acme_power_iin_max_2",
+          },
+        ],
+        "fake-doc",
+      ),
+    });
+    expect(result.ok).toBe(true);
+    if (!result.ok || result.value.kind !== "successor") return;
+    expect(result.value.impact.definitions.changed[0]).toMatchObject({
+      contentClass: "semantic",
+      requestedClass: "documentation",
+    });
+    expect(result.value.impact.existingContractsTighten).toBe(true);
+  });
+
+  it("rejects nested create-subject definitions that carry a published subjectId", async () => {
+    const predecessor = firstAcmePredecessor();
+    const result = await buildCompleteSuccessor({
+      predecessorArtifact: { digest: predecessor.digest, bytes: predecessor.bytes },
+      productPath: "m2-core",
+      changeSet: [
+        {
+          op: "create-subject-with-definitions",
+          kind: "driver",
+          canonicalKey: "driver:acme,aux",
+          selector: { kind: "driver-compatible", value: "acme,aux" },
+          nature: "physical-device",
+          cardinality: "multiple",
+          definitions: [
+            {
+              subjectId: "csub_acme_power",
+              propertyKey: "vbat",
+              content: integerContent("Aux battery", "Auxiliary battery voltage."),
+            } as never,
+          ],
+        },
+      ],
+      frozenIdentity: {
+        ...frozenPageIdentity(
+          [
+            {
+              subjectId: "csub_acme_aux",
+              propertyKey: "vbat",
+              definitionId: "pdef_acme_aux_vbat",
+              revisionId: "drev_acme_aux_vbat_1",
+            },
+          ],
+          "nested-id",
+        ),
+        subjects: [{ canonicalKey: "driver:acme,aux", subjectId: "csub_acme_aux" }],
+      },
+    });
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error).toMatchObject({
+        kind: "unsupported-catalog-capability",
+        detail: "unknown-field",
+      });
+    }
+  });
+
+  it("rejects a driver without a closed nature/cardinality and a node-type with a new family", async () => {
+    const predecessor = firstAcmePredecessor();
+    const missingNature = await buildCompleteSuccessor({
+      predecessorArtifact: { digest: predecessor.digest, bytes: predecessor.bytes },
+      productPath: "m2-core",
+      changeSet: [
+        {
+          op: "create-subject-with-definitions",
+          kind: "driver",
+          canonicalKey: "driver:acme,aux",
+          selector: { kind: "driver-compatible", value: "acme,aux" },
+          definitions: [
+            {
+              propertyKey: "vbat",
+              content: integerContent("Aux battery", "Auxiliary battery voltage."),
+            },
+          ],
+        },
+      ],
+      frozenIdentity: {
+        ...frozenPageIdentity(
+          [
+            {
+              subjectId: "csub_acme_aux",
+              propertyKey: "vbat",
+              definitionId: "pdef_acme_aux_vbat",
+              revisionId: "drev_acme_aux_vbat_1",
+            },
+          ],
+          "no-nat",
+        ),
+        subjects: [{ canonicalKey: "driver:acme,aux", subjectId: "csub_acme_aux" }],
+      },
+    });
+    expect(missingNature.ok).toBe(false);
+    if (!missingNature.ok) {
+      expect(missingNature.error).toMatchObject({
+        kind: "invalid-input",
+        reason: "driver nature and cardinality are required",
+      });
+    }
+
+    const nodeFamily = await buildCompleteSuccessor({
+      predecessorArtifact: { digest: predecessor.digest, bytes: predecessor.bytes },
+      productPath: "m2-core",
+      changeSet: [
+        {
+          op: "create-subject-with-definitions",
+          kind: "node-type",
+          canonicalKey: "node-type:aux-node",
+          selector: { kind: "node-type-name", value: "aux-node" },
+          family: "invented",
+          definitions: [
+            {
+              propertyKey: "status",
+              content: integerContent("Status", "Node status."),
+            },
+          ],
+        } as never,
+      ],
+      frozenIdentity: {
+        ...frozenPageIdentity(
+          [
+            {
+              subjectId: "csub_aux_node",
+              propertyKey: "status",
+              definitionId: "pdef_aux_node_status",
+              revisionId: "drev_aux_node_status_1",
+            },
+          ],
+          "fam",
+        ),
+        subjects: [{ canonicalKey: "node-type:aux-node", subjectId: "csub_aux_node" }],
+      },
+    });
+    expect(nodeFamily.ok).toBe(false);
+    if (!nodeFamily.ok) {
+      expect(nodeFamily.error.kind).toBe("unsupported-catalog-capability");
+    }
+  });
+
+  it("rejects selector and canonical-key reuse without last-wins", async () => {
+    const predecessor = firstAcmePredecessor();
+    const selectorReuse = await buildCompleteSuccessor({
+      predecessorArtifact: { digest: predecessor.digest, bytes: predecessor.bytes },
+      productPath: "m2-core",
+      changeSet: [
+        {
+          op: "create-subject-with-definitions",
+          kind: "driver",
+          canonicalKey: "driver:acme,other",
+          selector: { kind: "driver-compatible", value: "acme,power" },
+          nature: "physical-device",
+          cardinality: "multiple",
+          definitions: [
+            {
+              propertyKey: "vbat",
+              content: integerContent("Other battery", "Colliding selector."),
+            },
+          ],
+        },
+      ],
+      frozenIdentity: {
+        ...frozenPageIdentity(
+          [
+            {
+              subjectId: "csub_acme_other",
+              propertyKey: "vbat",
+              definitionId: "pdef_acme_other_vbat",
+              revisionId: "drev_acme_other_vbat_1",
+            },
+          ],
+          "sel",
+        ),
+        subjects: [{ canonicalKey: "driver:acme,other", subjectId: "csub_acme_other" }],
+      },
+    });
+    expect(selectorReuse.ok).toBe(false);
+    if (!selectorReuse.ok) {
+      expect(selectorReuse.error).toMatchObject({
+        kind: "conflict",
+        reason: "duplicate-selector",
+      });
+    }
+
+    const keyReuse = await buildCompleteSuccessor({
+      predecessorArtifact: { digest: predecessor.digest, bytes: predecessor.bytes },
+      productPath: "m2-core",
+      changeSet: [
+        {
+          op: "create-subject-with-definitions",
+          kind: "driver",
+          canonicalKey: "driver:acme,power",
+          selector: { kind: "driver-compatible", value: "acme,aux" },
+          nature: "physical-device",
+          cardinality: "multiple",
+          definitions: [
+            {
+              propertyKey: "vbat",
+              content: integerContent("Power alias", "Colliding canonical key."),
+            },
+          ],
+        },
+      ],
+      frozenIdentity: {
+        ...frozenPageIdentity(
+          [
+            {
+              subjectId: "csub_acme_dup",
+              propertyKey: "vbat",
+              definitionId: "pdef_acme_dup_vbat",
+              revisionId: "drev_acme_dup_vbat_1",
+            },
+          ],
+          "key",
+        ),
+        subjects: [{ canonicalKey: "driver:acme,power", subjectId: "csub_acme_dup" }],
+      },
+    });
+    expect(keyReuse.ok).toBe(false);
+    if (!keyReuse.ok) {
+      expect(keyReuse.error).toMatchObject({
+        kind: "conflict",
+        reason: "duplicate-canonical-key",
+      });
+    }
   });
 
   it("reports matcher and fallback impact for a new driver without a riskClass field", async () => {
@@ -425,6 +734,8 @@ describe("buildCompleteSuccessor", () => {
           kind: "driver",
           canonicalKey: "driver:acme,aux",
           selector: { kind: "driver-compatible", value: "acme,aux" },
+          nature: "physical-device",
+          cardinality: "multiple",
           definitions: [
             {
               propertyKey: "vbat",

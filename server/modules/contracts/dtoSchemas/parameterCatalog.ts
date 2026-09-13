@@ -592,8 +592,39 @@ export const catalogCreateDefinitionChangeSchema = catalogObject({
   content: catalogSupportedDefinitionContentSchema
 });
 
+export const catalogNestedDefinitionDraftSchema = catalogObject({
+  propertyKey: z.string(),
+  content: catalogSupportedDefinitionContentSchema
+});
+
+export const catalogCreateSubjectWithDefinitionsChangeSchema = catalogObject({
+  op: z.literal("create-subject-with-definitions"),
+  kind: z.enum(["driver", "node-type"]),
+  canonicalKey: z.string(),
+  selector: catalogObject({
+    kind: z.enum(["driver-compatible", "node-type-name"]),
+    value: z.string()
+  }),
+  nature: z.enum(["physical-device", "logical-service"]).optional(),
+  cardinality: z.enum(["multiple", "singleton-per-project"]).optional(),
+  definitions: z.array(catalogNestedDefinitionDraftSchema).min(1).max(32)
+});
+
+export const catalogReviseDefinitionChangeSchema = catalogObject({
+  op: z.literal("revise-definition"),
+  definitionId: z.string(),
+  class: z.enum(["documentation", "semantic"]),
+  content: catalogSupportedDefinitionContentSchema
+});
+
+export const catalogChangeSchema = z.union([
+  catalogCreateDefinitionChangeSchema,
+  catalogCreateSubjectWithDefinitionsChangeSchema,
+  catalogReviseDefinitionChangeSchema
+]);
+
 export const catalogCreatePublicationCandidateRequestSchema = catalogObject({
-  changeSet: z.array(catalogCreateDefinitionChangeSchema).min(1).max(32),
+  changeSet: z.array(catalogChangeSchema).min(1).max(32),
   proposalId: z.string().optional(),
   proposalRevisionId: z.string().optional()
 });
@@ -605,7 +636,8 @@ export const catalogPublishPublicationCandidateRequestSchema = catalogObject({
 export const catalogPublicationImpactSummaryDtoSchema = catalogObject({
   addedDefinitionCount: z.number().int().nonnegative(),
   changedDefinitionCount: z.number().int().nonnegative(),
-  addedSubjectCount: z.number().int().nonnegative()
+  addedSubjectCount: z.number().int().nonnegative(),
+  addedSubjectIds: z.array(z.string()).optional()
 });
 
 export const catalogPublicationCapabilityContractDtoSchema = catalogObject({

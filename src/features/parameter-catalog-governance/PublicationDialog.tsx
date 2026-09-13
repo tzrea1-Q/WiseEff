@@ -7,6 +7,7 @@ import type { ParameterCatalogRepository } from "@/application/ports/ParameterCa
 import { ConfirmDialog } from "@/components/common/ConfirmDialog";
 import { ModalDialog } from "@/components/common/ModalDialog";
 import type {
+  CatalogDefinitionResponse,
   CatalogPublicationCandidateResponse,
   CatalogPublicationJobResponse,
   CatalogSubjectResponse
@@ -23,13 +24,18 @@ import {
   writeStoredPublicationJob
 } from "./publicationJobStorage";
 import {
-  buildCreateDefinitionChangeSet,
+  buildPublicationChangeSet,
+  definitionContentOf,
   canExecutePublicationAction,
+  canSavePublicationDraft,
   createPublicationSubmitGate,
   emptyPublicationDraft,
   fingerprintPublicationDraft,
   publicationApprovalCopy,
   publicationCopy,
+  publicationDialogTitle,
+  publicationDriverCardinalities,
+  publicationDriverNatures,
   publicationFailureCopy,
   publicationFieldError,
   publicationJobIsPending,
@@ -40,13 +46,17 @@ import {
   publicationSupportedUnits,
   publicationSupportedValueTypes,
   type PublicationDraft,
+  type PublicationReviseClass,
+  type PublicationSubjectKind,
   type PublicationSubmitGate,
   type PublicationUnit,
   type PublicationValueType
 } from "./publicationState";
 
 type SubjectItem = CatalogSubjectResponse["item"];
+type DefinitionItem = CatalogDefinitionResponse["item"];
 type ConfirmKind = "preview" | "publish";
+type FollowupStatus = "idle" | "failed" | "succeeded";
 
 export type PublicationDialogProps = {
   open: boolean;
@@ -85,6 +95,7 @@ export function PublicationDialog({
     domainState,
     sessionPermissions
   );
+  const canSaveDraft = canSavePublicationDraft(actor, domainState, sessionPermissions);
   const canPublish = canExecutePublicationAction(
     actor,
     "publish-publication",
@@ -97,6 +108,8 @@ export function PublicationDialog({
   const formId = useId();
   const [draft, setDraft] = useState<PublicationDraft>(emptyPublicationDraft);
   const [subjects, setSubjects] = useState<SubjectItem[]>([]);
+  const [definitions, setDefinitions] = useState<DefinitionItem[]>([]);
+  const [followup, setFollowup] = useState<FollowupStatus>("idle");
   const [loadError, setLoadError] = useState<string | null>(null);
   const [proposalId, setProposalId] = useState<string | null>(null);
   const [candidate, setCandidate] = useState<CatalogPublicationCandidateResponse["item"] | null>(null);
@@ -175,18 +188,23 @@ export function PublicationDialog({
     let cancelled = false;
     void (async () => {
       try {
-        const listed = await catalog.listSubjects({ catalogReleaseId });
+        const [listed, listedDefinitions] = await Promise.all([
+          catalog.listSubjects({ catalogReleaseId }),
+          catalog.listDefinitions({ catalogReleaseId })
+        ]);
         if (cancelled) {
           return;
         }
         setSubjects([...listed.items]);
+        setDefinitions([...listedDefinitions.items]);
         setLoadError(listed.items.length === 0 ? publicationCopy.unpublishedEmpty : null);
         const stored = readStoredPublicationJob({
           userId: currentPersonId,
           organizationId
         });
         if (stored && stored.catalogReleaseId === catalogReleaseId) {
-          setDraft(stored.draft);
+          const restoredDraft = { ...emptyPublicationDraft(), ...stored.draft };
+          setDraft(restoredDraft);
           setCandidate({
             id: stored.candidateId,
             expectedBaseReleaseId: stored.catalogReleaseId,
@@ -205,7 +223,7 @@ export function PublicationDialog({
             currentness: null,
             failure: null
           });
-          setPreviewFingerprint(fingerprintPublicationDraft(stored.draft));
+          setPreviewFingerprint(fingerprintPublicationDraft(restoredDraft));
           setIdempotencyKey(stored.idempotencyKey);
           startPolling(stored.jobId);
           return;
@@ -217,6 +235,7 @@ export function PublicationDialog({
         setJob(null);
         setIdempotencyKey(null);
         setDraftSaved(false);
+        setFollowup("idle");
       } catch {
         if (!cancelled) {
           setLoadError("主体列表加载失败，请稍后重试。");
@@ -250,7 +269,16 @@ export function PublicationDialog({
   };
 
   const saveDraft = async () => {
-    if (!canPreview || pending || !draft.subjectId || !draft.propertyKey.trim() || !draft.reason.trim()) {
+    if (!canSaveDraft || pending || !draft.propertyKey.trim() || !draft.reason.trim()) {
+      return;
+    }
+    if (draft.mode === "create-definition" && !draft.subjectId) {
+      return;
+    }
+    if (draft.mode === "revise-definition" && !draft.definitionId) {
+      return;
+    }
+    if (draft.mode === "create-subject" && !draft.selectorValue.trim()) {
       return;
     }
     if (!gateRef.current.begin()) {
@@ -262,10 +290,16 @@ export function PublicationDialog({
         {
           base: { catalogReleaseId },
           requestedChange: {
-            kind: "create-definition",
-            subjectId: draft.subjectId,
+            kind:
+              draft.mode === "create-subject"
+                ? "create-subject-with-definitions"
+                : draft.mode === "revise-definition"
+                  ? "revise-definition"
+                  : "create-definition",
+            ...(draft.mode === "create-definition" ? { subjectId: draft.subjectId } : {}),
+            ...(draft.mode === "revise-definition" ? { definitionId: draft.definitionId } : {}),
             propertyKey: draft.propertyKey.trim(),
-            content: buildCreateDefinitionChangeSet(draft)[0]?.content
+            content: definitionContentOf(draft)
           },
           reason: draft.reason.trim()
         },
@@ -286,7 +320,16 @@ export function PublicationDialog({
   };
 
   const runPreview = async () => {
-    if (!canPreview || pending || !draft.subjectId || !draft.propertyKey.trim()) {
+    if (!canPreview || pending || !draft.propertyKey.trim() || !draft.displayName.trim()) {
+      return;
+    }
+    if (draft.mode === "create-definition" && !draft.subjectId) {
+      return;
+    }
+    if (draft.mode === "revise-definition" && !draft.definitionId) {
+      return;
+    }
+    if (draft.mode === "create-subject" && !draft.selectorValue.trim()) {
       return;
     }
     if (!gateRef.current.begin()) {
@@ -296,7 +339,7 @@ export function PublicationDialog({
     try {
       const created = await catalog.createPublicationCandidate(
         {
-          changeSet: buildCreateDefinitionChangeSet(draft),
+          changeSet: buildPublicationChangeSet(draft),
           ...(proposalId ? { proposalId } : {})
         },
         { catalogReleaseId }
@@ -364,7 +407,41 @@ export function PublicationDialog({
     }
   };
 
+  const runRegistrationFollowup = async () => {
+    const subjectId = candidate?.impactSummary.addedSubjectIds?.[0];
+    if (!subjectId || pending || !job || !publicationSuccessKind(job)) {
+      return;
+    }
+    if (!gateRef.current.begin()) {
+      return;
+    }
+    setPending(true);
+    try {
+      await governance.createRegistration(
+        organizationId,
+        {
+          subjectId,
+          placement: { mode: "use-default" },
+          reason: draft.reason.trim() || "目录发布后登记"
+        },
+        {
+          catalogReleaseId,
+          idempotencyKey: (createIdempotencyKey ?? createGovernanceIdempotencyKey)()
+        }
+      );
+      setFollowup("succeeded");
+      setFailure(null);
+    } catch {
+      setFollowup("failed");
+    } finally {
+      gateRef.current.finish();
+      setPending(false);
+    }
+  };
+
   const status = job ? publicationStatusCopy(job) : null;
+  const catalogSucceeded = job ? publicationSuccessKind(job) : null;
+  const addedSubjectId = candidate?.impactSummary.addedSubjectIds?.[0] ?? null;
   const describedById = `${formId}-help`;
   const fieldMessageId = `${formId}-field`;
 
@@ -379,7 +456,7 @@ export function PublicationDialog({
       >
         {({ titleId, descriptionId }) => (
           <>
-            <h2 id={titleId}>{publicationCopy.title}</h2>
+            <h2 id={titleId}>{publicationDialogTitle(draft.mode)}</h2>
             <div className="confirm-dialog__scroll">
               <div id={descriptionId} className="governance-confirm-dialog__body">
                 <p id={describedById}>{publicationCopy.noInternalIds}</p>
@@ -413,10 +490,164 @@ export function PublicationDialog({
                     {loadError}
                   </p>
                 ) : null}
-                {publishedSubjects.length === 0 ? (
+                {draft.mode === "create-definition" && publishedSubjects.length === 0 ? (
                   <p>{publicationCopy.unpublishedEmpty}</p>
                 ) : canPreview ? (
                   <div className="parameter-catalog-publication-dialog__form">
+                    <fieldset className="parameter-catalog-publication-dialog__modes">
+                      <legend>{publicationCopy.mode}</legend>
+                      <label>
+                        <input
+                          type="radio"
+                          name={`${formId}-mode`}
+                          value="create-definition"
+                          checked={draft.mode === "create-definition"}
+                          onChange={() => patchDraft({ mode: "create-definition" })}
+                        />
+                        {publicationCopy.modeCreateDefinition}
+                      </label>
+                      <label>
+                        <input
+                          type="radio"
+                          name={`${formId}-mode`}
+                          value="create-subject"
+                          checked={draft.mode === "create-subject"}
+                          onChange={() => patchDraft({ mode: "create-subject", subjectId: "", unit: "mA" })}
+                        />
+                        {publicationCopy.modeCreateSubject}
+                      </label>
+                      <label>
+                        <input
+                          type="radio"
+                          name={`${formId}-mode`}
+                          value="revise-definition"
+                          checked={draft.mode === "revise-definition"}
+                          onChange={() => patchDraft({ mode: "revise-definition", unit: "" })}
+                        />
+                        {publicationCopy.modeRevise}
+                      </label>
+                    </fieldset>
+                    {draft.mode === "create-subject" ? (
+                      <>
+                        <label>
+                          {publicationCopy.subjectKindPick}
+                          <select
+                            aria-label={publicationCopy.subjectKindPick}
+                            value={draft.subjectKind}
+                            onChange={(event) =>
+                              patchDraft({ subjectKind: event.target.value as PublicationSubjectKind })
+                            }
+                          >
+                            <option value="driver">{publicationCopy.driver}</option>
+                            <option value="node-type">{publicationCopy.nodeType}</option>
+                          </select>
+                        </label>
+                        <label>
+                          {publicationCopy.selectorValue}
+                          <input
+                            aria-label={publicationCopy.selectorValue}
+                            value={draft.selectorValue}
+                            onChange={(event) => patchDraft({ selectorValue: event.target.value })}
+                          />
+                        </label>
+                        {draft.subjectKind === "driver" ? (
+                          <>
+                            <label>
+                              {publicationCopy.nature}
+                              <select
+                                aria-label={publicationCopy.nature}
+                                value={draft.nature}
+                                onChange={(event) =>
+                                  patchDraft({ nature: event.target.value as PublicationDraft["nature"] })
+                                }
+                              >
+                                {publicationDriverNatures.map((nature) => (
+                                  <option key={nature} value={nature}>
+                                    {nature === "physical-device"
+                                      ? publicationCopy.naturePhysical
+                                      : publicationCopy.natureLogical}
+                                  </option>
+                                ))}
+                              </select>
+                            </label>
+                            <label>
+                              {publicationCopy.cardinality}
+                              <select
+                                aria-label={publicationCopy.cardinality}
+                                value={draft.cardinality}
+                                onChange={(event) =>
+                                  patchDraft({
+                                    cardinality: event.target.value as PublicationDraft["cardinality"]
+                                  })
+                                }
+                              >
+                                {publicationDriverCardinalities.map((cardinality) => (
+                                  <option key={cardinality} value={cardinality}>
+                                    {cardinality === "multiple"
+                                      ? publicationCopy.cardinalityMultiple
+                                      : publicationCopy.cardinalitySingleton}
+                                  </option>
+                                ))}
+                              </select>
+                            </label>
+                          </>
+                        ) : null}
+                        <p>{publicationCopy.neverLowCreate}</p>
+                      </>
+                    ) : draft.mode === "revise-definition" ? (
+                      <>
+                        <label>
+                          {publicationCopy.definition}
+                          <select
+                            aria-label={publicationCopy.definition}
+                            value={draft.definitionId}
+                            onChange={(event) => {
+                              const next = definitions.find((item) => item.id === event.target.value);
+                              const schema = next?.currentRevision.valueShape.schema as {
+                                type?: string;
+                                minimum?: number;
+                                maximum?: number;
+                              } | undefined;
+                              patchDraft({
+                                definitionId: event.target.value,
+                                subjectId: next?.subject.id ?? "",
+                                propertyKey: next?.propertyKey ?? "",
+                                displayName: next?.propertyKey ?? "",
+                                documentation: next?.currentRevision.documentation ?? "",
+                                valueType:
+                                  schema?.type === "number" || schema?.type === "string"
+                                    ? schema.type
+                                    : "integer",
+                                minimum: schema?.minimum !== undefined ? String(schema.minimum) : "",
+                                maximum: schema?.maximum !== undefined ? String(schema.maximum) : "",
+                                unit: ""
+                              });
+                            }}
+                          >
+                            <option value="">选择定义</option>
+                            {definitions.map((item) => (
+                              <option key={item.id} value={item.id}>
+                                {item.subject.canonicalName} · {item.propertyKey}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                        <label>
+                          {publicationCopy.reviseClass}
+                          <select
+                            aria-label={publicationCopy.reviseClass}
+                            value={draft.reviseClass}
+                            onChange={(event) =>
+                              patchDraft({ reviseClass: event.target.value as PublicationReviseClass })
+                            }
+                          >
+                            <option value="documentation">{publicationCopy.reviseDocumentation}</option>
+                            <option value="semantic">{publicationCopy.reviseSemantic}</option>
+                          </select>
+                        </label>
+                        {draft.reviseClass === "semantic" ? <p>{publicationCopy.catalogNotAdopted}</p> : null}
+                      </>
+                    ) : (
                     <label>
                       {publicationCopy.subject}
                       <select
@@ -434,7 +665,8 @@ export function PublicationDialog({
                         ))}
                       </select>
                     </label>
-                    {selectedSubject ? (
+                    )}
+                    {selectedSubject && draft.mode === "create-definition" ? (
                       <dl className="parameter-catalog-publication-dialog__meta">
                         <div>
                           <dt>{publicationCopy.subjectKind}</dt>
@@ -483,6 +715,7 @@ export function PublicationDialog({
                       <select
                         aria-label={publicationCopy.valueType}
                         value={draft.valueType}
+                        disabled={draft.mode === "revise-definition" && draft.reviseClass === "documentation"}
                         onChange={(event) =>
                           patchDraft({ valueType: event.target.value as PublicationValueType })
                         }
@@ -506,6 +739,7 @@ export function PublicationDialog({
                             aria-label={publicationCopy.minimum}
                             inputMode="decimal"
                             value={draft.minimum}
+                            disabled={draft.mode === "revise-definition" && draft.reviseClass === "documentation"}
                             onChange={(event) => patchDraft({ minimum: event.target.value })}
                           />
                         </label>
@@ -515,6 +749,7 @@ export function PublicationDialog({
                             aria-label={publicationCopy.maximum}
                             inputMode="decimal"
                             value={draft.maximum}
+                            disabled={draft.mode === "revise-definition" && draft.reviseClass === "documentation"}
                             onChange={(event) => patchDraft({ maximum: event.target.value })}
                           />
                         </label>
@@ -525,6 +760,7 @@ export function PublicationDialog({
                       <select
                         aria-label={publicationCopy.unit}
                         value={draft.unit}
+                        disabled={draft.mode === "revise-definition" && draft.reviseClass === "documentation"}
                         onChange={(event) =>
                           patchDraft({ unit: event.target.value as "" | PublicationUnit })
                         }
@@ -575,6 +811,10 @@ export function PublicationDialog({
                       <dd>{candidate.impactSummary.changedDefinitionCount}</dd>
                     </div>
                     <div>
+                      <dt>{publicationCopy.addedSubjects}</dt>
+                      <dd>{candidate.impactSummary.addedSubjectCount}</dd>
+                    </div>
+                    <div>
                       <dt>{publicationCopy.risk}</dt>
                       <dd>
                         {candidate.riskClass === "high" ? publicationCopy.riskHigh : publicationCopy.riskLow}
@@ -590,10 +830,25 @@ export function PublicationDialog({
                     </div>
                   </dl>
                 ) : null}
+                {candidate && !previewStale && candidate.riskClass === "high" && candidate.impactSummary.addedSubjectCount > 0 ? (
+                  <p>{publicationCopy.fallbackImpact}</p>
+                ) : null}
+                {candidate && !previewStale && draft.mode === "revise-definition" && draft.reviseClass === "semantic" ? (
+                  <p>{publicationCopy.catalogNotAdopted}</p>
+                ) : null}
+                {catalogSucceeded && addedSubjectId ? (
+                  <p data-registration-followup={followup}>
+                    {followup === "failed"
+                      ? publicationCopy.registerFollowupFailed
+                      : followup === "succeeded"
+                        ? publicationCopy.registerFollowupSuccess
+                        : publicationCopy.registerFollowupHint}
+                  </p>
+                ) : null}
               </div>
             </div>
             <div className="dialog-actions">
-              {canPreview ? (
+              {canSaveDraft ? (
                 <button
                   type="button"
                   className="button subtle sm"
@@ -607,7 +862,14 @@ export function PublicationDialog({
                 <button
                   type="button"
                   className="button sm"
-                  disabled={pending || !draft.subjectId || !draft.propertyKey.trim() || !draft.displayName.trim()}
+                  disabled={
+                    pending ||
+                    !draft.propertyKey.trim() ||
+                    !draft.displayName.trim() ||
+                    (draft.mode === "create-definition" && !draft.subjectId) ||
+                    (draft.mode === "revise-definition" && !draft.definitionId) ||
+                    (draft.mode === "create-subject" && !draft.selectorValue.trim())
+                  }
                   onClick={() => setConfirm("preview")}
                 >
                   {mustRePreview ? publicationCopy.rebase : publicationCopy.preview}
@@ -627,6 +889,16 @@ export function PublicationDialog({
                   onClick={() => setConfirm("publish")}
                 >
                   {pending ? publicationCopy.processing : publicationCopy.publish}
+                </button>
+              ) : null}
+              {catalogSucceeded && addedSubjectId && followup !== "succeeded" ? (
+                <button
+                  type="button"
+                  className="button sm"
+                  disabled={pending}
+                  onClick={() => void runRegistrationFollowup()}
+                >
+                  {followup === "failed" ? publicationCopy.registerFollowupRetry : publicationCopy.registerFollowup}
                 </button>
               ) : null}
               {job && publicationJobIsPending(job.status) ? (
