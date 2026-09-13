@@ -1840,10 +1840,10 @@ describe("immutable Catalog Release bundle contract", () => {
       packageEntrypoint: "server/modules/parameter-catalog-contract/index.ts",
       serializationGolden: {
         path: "server/modules/parameter-catalog-contract/__fixtures__/serialization-golden.json",
-        gitBlobOid: "c856ec070286a32c59ff13d8aef545139435c96c",
-        byteLength: 1528,
+        gitBlobOid: "2b6c1ce58b993a761c12bf84e15eea57187560e3",
+        byteLength: 1563,
         rawSha256:
-          "0979a58a624cf160181425de92816fb1dd8bb285ea27896ba1f95287f6143d75",
+          "1172d550699aa67f46c03212954be4d430e33483494cddd11b8e7626d23f9367",
       },
       constructors: {
         compatible: "parseCanonicalCompatibleSelector",
@@ -3491,7 +3491,7 @@ describe("immutable Catalog Release bundle contract", () => {
 
     expect(generatedSchemaBytes).toBe(expectedBytes);
     expect(createHash("sha256").update(expectedBytes).digest("hex")).toBe(
-      "4a1b82ed3ea4c158d242371755138c9fc580f3ccadc7f3d9a0f3a7186c950038",
+      "802babb1762cf172706f570ba211e0e107c233880a17f73c00db4c52c30ddb96",
     );
 
     const standaloneSchema = JSON.parse(generatedSchemaBytes) as JsonObject;
