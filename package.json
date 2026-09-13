@@ -88,6 +88,8 @@
     "catalog:lane:accept": "tsx scripts/catalog-lane-env.ts accept",
     "catalog:compile-vendor": "tsx scripts/compile-vendor-catalog-release.ts",
     "catalog:install-release": "tsx scripts/install-catalog-release.ts",
+    "catalog:publication:ops": "tsx scripts/catalog-publication-ops.ts",
+    "catalog:publication:delivery-accept": "tsx scripts/run-catalog-publication-delivery-acceptance.ts",
     "parameter-identities:migrate": "tsx scripts/migrate-parameter-identities.ts",
     "parameter-identities:cutover": "tsx scripts/apply-parameter-identity-cutover.ts",
     "parameter-identities:check": "tsx scripts/check-parameter-identity-cutover.ts",

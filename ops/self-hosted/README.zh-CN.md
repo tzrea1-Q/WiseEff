@@ -28,6 +28,8 @@
 
 ## 图形化监控
 
+`publication-manager` 与 api/worker/web 使用同一应用镜像，命令为 `npm run publication:manager`，凭据只来自 `.env.publication-manager`。详见 [catalog-publication.zh-CN.md](catalog-publication.zh-CN.md)。
+
 WiseEff 主服务启动后，在服务器的 `ops/self-hosted/` 目录执行：
 
 ```bash

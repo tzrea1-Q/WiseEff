@@ -1,4 +1,8 @@
 import type { CatalogReleasePin } from "../../parameter-catalog-contract/index";
+import {
+  PARAMETER_GOVERNANCE_WRITER_ROLE,
+  quoteIdent,
+} from "../../catalog-kernel/security/catalogRoleManifest";
 
 import type { RegistrationFailure } from "./failures";
 import { mapGuardDatabaseError } from "./failures";
@@ -16,15 +20,19 @@ export const assertCatalogSubjectActive = async (
   expectedRelease: CatalogReleasePin,
   subjectId: string,
 ): Promise<Result<true, RegistrationFailure>> => {
+  await client.query("savepoint catalog_subject_guard");
   try {
+    await client.query(`set local role ${quoteIdent(PARAMETER_GOVERNANCE_WRITER_ROLE)}`);
     await client.query(ASSERT_CATALOG_SUBJECT_ACTIVE_SQL, [
       expectedRelease.id,
       expectedRelease.digest,
       subjectId,
       "active",
     ]);
+    await client.query("rollback to savepoint catalog_subject_guard");
     return { ok: true, value: true };
   } catch (error) {
+    await client.query("rollback to savepoint catalog_subject_guard").catch(() => undefined);
     const mapped = mapGuardDatabaseError(error, expectedRelease, subjectId);
     if (mapped) return { ok: false, error: mapped };
     throw error;

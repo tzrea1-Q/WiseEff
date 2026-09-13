@@ -1,0 +1,55 @@
+# Isolated Catalog delivery overlay. Merged on top of ops/self-hosted/compose.yaml.
+# Diff vs stock (network / port / topology only):
+# - postgres.profiles: do not start the shared compose postgres:16-alpine (127.0.0.1:5432/wiseeff)
+# - proxy/web/api loopback port publishes and WISEEFF_SITE_HOST
+# - extra_hosts: host.docker.internal for the ephemeral pgvector instance
+# - api/worker/manager depends_on: drop postgres health wait (postgres is not in this project)
+#
+# Privilege, migration, and process commands stay on stock:
+# - stock api command is `npx tsx server/index.ts` (official migrate is setup/upgrade one-shot)
+# - stock worker DATABASE_URL comes from WISEEFF_WORKER_DATABASE_URL
+# This overlay must not replace those.
+services:
+  postgres:
+    profiles: ["stock-postgres"]
+
+  proxy:
+    ports: !override
+      - "127.0.0.1:${WISEEFF_ISOLATED_PUBLIC_PORT:-18080}:80"
+    environment:
+      WISEEFF_SITE_HOST: 127.0.0.1
+
+  api:
+    depends_on: !override
+      redis:
+        condition: service_healthy
+      minio-init:
+        condition: service_completed_successfully
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    ports:
+      - "127.0.0.1:${WISEEFF_ISOLATED_API_PORT:-18787}:8787"
+
+  worker:
+    depends_on: !override
+      redis:
+        condition: service_healthy
+      minio-init:
+        condition: service_completed_successfully
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  publication-manager:
+    depends_on: !override
+      redis:
+        condition: service_healthy
+      minio-init:
+        condition: service_completed_successfully
+      api:
+        condition: service_started
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  web:
+    ports:
+      - "127.0.0.1:${WISEEFF_ISOLATED_WEB_PORT:-15173}:5173"

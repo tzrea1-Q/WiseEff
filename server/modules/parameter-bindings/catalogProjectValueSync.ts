@@ -41,6 +41,10 @@ export type CatalogBindingView = {
   id: string;
   parameterSpecId: string;
   parameterSpecVersionId: string;
+  definitionId: string;
+  effectiveRevisionId: string;
+  currentValueId: string;
+  projectId: string;
   propertyKey: string;
   driverModule: string | null;
   logicalNodeId: string | null;
@@ -568,6 +572,10 @@ export async function listCatalogBindingRowsForProject(
       id: row.pin.bindingId,
       parameterSpecId: row.pin.definitionId,
       parameterSpecVersionId: row.pin.definitionRevisionId,
+      definitionId: row.pin.definitionId,
+      effectiveRevisionId: row.pin.definitionRevisionId,
+      currentValueId: row.pin.currentValueId,
+      projectId: row.pin.projectId,
       propertyKey: row.propertyKey,
       driverModule: loc?.module_name ?? null,
       logicalNodeId: row.pin.logicalNodeId,

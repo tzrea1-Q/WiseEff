@@ -4,8 +4,9 @@ import { createUserInvocation } from "../../auth/trustedInvocation";
 import { getAuthContext } from "../../auth/repository";
 import { createCatalogInstaller } from "../../catalog-kernel/install/installer";
 import { createPostgresDatabase, getRootPostgresPool } from "../../../shared/database/client";
+import { resolvePublicationManagerDatabaseUrl } from "../runtime/managerDatabaseUrl";
 import {
-  assertPublicationManagerProcessFence,
+  assertPublicationManagerEntry,
   resolvePublicationManagerOptions,
   readPublicationManagerHealth,
   startPublicationManagerLoop,
@@ -26,63 +27,95 @@ const log = (fields: Record<string, string | number | boolean | null>) => {
   process.stdout.write(`${JSON.stringify(redact(fields))}\n`);
 };
 
-const databaseUrl = process.env.WISEEFF_PUBLICATION_MANAGER_DATABASE_URL ?? process.env.DATABASE_URL;
-if (!databaseUrl) {
-  throw new Error("WISEEFF_PUBLICATION_MANAGER_DATABASE_URL or DATABASE_URL is required");
-}
+assertPublicationManagerEntry(process.env);
 
-assertPublicationManagerProcessFence(process.env);
-
-const db = createPostgresDatabase(databaseUrl);
-const pool = getRootPostgresPool(db);
-if (!pool) {
-  throw new Error("publication manager requires a root PostgreSQL pool");
-}
-
-const resolved = resolvePublicationManagerOptions(process.env);
-const installer = createCatalogInstaller(pool);
-const stop = startPublicationManagerLoop({
-  db,
-  pool,
-  installer,
-  resolvePublisherActor: async (principalId) => {
-    try {
-      return createUserInvocation(await getAuthContext(db, principalId));
-    } catch {
-      return null;
-    }
-  },
-  ...resolved,
-  log,
-});
-
+const resolvedUrl = resolvePublicationManagerDatabaseUrl(process.env);
 const healthPort = Number(process.env.WISEEFF_PUBLICATION_MANAGER_HEALTH_PORT ?? "8791");
-const server = createServer(async (request, response) => {
-  if (request.method === "GET" && request.url === "/health/live") {
-    try {
-      const health = await readPublicationManagerHealth(db);
-      response.statusCode = 200;
-      response.setHeader("Content-Type", "application/json");
-      response.end(JSON.stringify({ ok: true, service: "wiseeff-publication-manager", ...health }));
-    } catch {
+
+if (!resolvedUrl.ok) {
+  log({ event: "unconfigured", code: resolvedUrl.error.code, configured: false });
+  const server = createServer((request, response) => {
+    if (request.method === "GET" && request.url === "/health/live") {
       response.statusCode = 503;
       response.setHeader("Content-Type", "application/json");
-      response.end(JSON.stringify({ ok: false, service: "wiseeff-publication-manager" }));
+      response.end(
+        JSON.stringify({
+          ok: false,
+          configured: false,
+          service: "wiseeff-publication-manager",
+          code: resolvedUrl.error.code,
+        }),
+      );
+      return;
     }
-    return;
+    response.statusCode = 404;
+    response.setHeader("Content-Type", "application/json");
+    response.end(JSON.stringify({ error: "not_found" }));
+  });
+  server.listen(healthPort, "127.0.0.1");
+  const shutdown = () => {
+    server.close();
+  };
+  process.on("SIGTERM", shutdown);
+  process.on("SIGINT", shutdown);
+} else {
+  const db = createPostgresDatabase(resolvedUrl.url);
+  const pool = getRootPostgresPool(db);
+  if (!pool) {
+    throw new Error("publication manager requires a root PostgreSQL pool");
   }
-  response.statusCode = 404;
-  response.setHeader("Content-Type", "application/json");
-  response.end(JSON.stringify({ error: "not_found" }));
-});
+  const superuser = await pool.query<{ rolsuper: boolean }>(
+    `select rolsuper from pg_roles where rolname = current_user`,
+  );
+  if (superuser.rows[0]?.rolsuper === true) {
+    throw new Error("publication manager LOGIN must not be a superuser");
+  }
+  const resolved = resolvePublicationManagerOptions(process.env);
+  const installer = createCatalogInstaller(pool);
+  const stop = startPublicationManagerLoop({
+    db,
+    pool,
+    installer,
+    resolvePublisherActor: async (principalId) => {
+      try {
+        return createUserInvocation(await getAuthContext(db, principalId));
+      } catch {
+        return null;
+      }
+    },
+    ...resolved,
+    log,
+  });
 
-server.listen(healthPort, "127.0.0.1");
+  const server = createServer(async (request, response) => {
+    if (request.method === "GET" && request.url === "/health/live") {
+      try {
+        const health = await readPublicationManagerHealth(db);
+        response.statusCode = 200;
+        response.setHeader("Content-Type", "application/json");
+        response.end(
+          JSON.stringify({ ok: true, configured: true, service: "wiseeff-publication-manager", ...health }),
+        );
+      } catch {
+        response.statusCode = 503;
+        response.setHeader("Content-Type", "application/json");
+        response.end(JSON.stringify({ ok: false, configured: true, service: "wiseeff-publication-manager" }));
+      }
+      return;
+    }
+    response.statusCode = 404;
+    response.setHeader("Content-Type", "application/json");
+    response.end(JSON.stringify({ error: "not_found" }));
+  });
 
-const shutdown = () => {
-  stop();
-  server.close();
-  void db.close();
-};
+  server.listen(healthPort, "127.0.0.1");
 
-process.on("SIGTERM", shutdown);
-process.on("SIGINT", shutdown);
+  const shutdown = () => {
+    stop();
+    server.close();
+    void db.close();
+  };
+
+  process.on("SIGTERM", shutdown);
+  process.on("SIGINT", shutdown);
+}
