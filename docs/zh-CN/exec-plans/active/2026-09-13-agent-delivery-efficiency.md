@@ -27,6 +27,14 @@ CI shadow 无冲突集成上述真实 accepted main。独立已审代码检查�
 
 main 验收单独记录。较早 `60f2752e78b3dc45466836b4f7b3233f0e908a2a` 的 push run 34785552162 通过 L1/Quality/visual，但列出 58 个浏览器失败。原有归档大小检查拒绝完整产物；最小诊断上传成功并未覆盖两类失败，该通道中的原生详细总数和清理仍为 unknown。工作流墙钟 2442 秒，已执行 job 时长总和 66.9667 分钟。后续 W1 main 运行继续单独跟踪。未增加原始目录后备上传、扫描放宽或重试。
 
+### 首次 shadow Hosted 失败与输入读取修正
+
+[PR #835](https://github.com/tzrea1-Q/WiseEff/pull/835) 首次 [run 34789687505](https://github.com/tzrea1-Q/WiseEff/actions/runs/34789687505) attempt 1 在 head `11bf5f871c46a49c74b5f6ee5fdd2770c3d41105` 失败；实际合并 checkout `792eca13758c655fdcf3b48b250b3524f676d9ff` 的 tree 为 `fb486a18a8d12d10fd074fc900c8b5acb64b0c76`，父节点依次为真实 base/head。脚本 1524 项通过、21 项既有可选跳过、一项原生 shadow 夹具失败；bridge 因此前失败未执行。前后端、Quality、Smoke 通过，Build and test/Merge bar 失败。解析后的前后端观察均为 `SHADOW_ADAPTER_FAILED`，脚本和 bridge 观察缺失。墙钟 707 秒，已执行 job 时长总和 34.75 分钟，不是计费 usage 或效果比较。
+
+本地 Linux Node 22.21.1 管道探针复现了重开 `/dev/stdin` 时的 `ENXIO`，读取描述符 `0` 则返回相同 JSON。隔离容器禁用网络、只读运行，结束后已移除并确认不存在。这证明了匹配的传输反例；Hosted 适配器 stderr 原本被抑制，故其精确栈不可得。修正直接读取继承的描述符，保留 256 KiB 输入检查、全部原生验证和拒绝语义。现有 `readFileSync` 类型声明增加实际支持的数字描述符；`a798e07aa10b4b3d4d9e250ff0230f72e56280aa` 的编译 Red 证明需要这一行类型修正。原生夹具保留 observed 断言并保存有界诊断信息，没有放宽断言、排除、门禁、重试策略或依赖。
+
+修正后的运行时代码 `a798e07aa10b4b3d4d9e250ff0230f72e56280aa` 通过六文件 199 项测试及 acceptance 元数据检查；类型修正完整的 `49bc60e97e9ec325c37bd72044c152d8e8635a7c` 通过原有构建（22.0427 秒）及直接文档检查。此检查点的最终独立审查和修正 head 的 Hosted 尚待完成。早先失败运行继续保留，不混同身份或证据层级，也不声称启用或完整 main 已通过。
+
 ## W1 接受与已提交树预览集成——2026-09-14
 
 [PR #831](https://github.com/tzrea1-Q/WiseEff/pull/831) 经 [Hosted 34786627881](https://github.com/tzrea1-Q/WiseEff/actions/runs/34786627881) attempt1 的全部选中原 GitHub Actions 门禁通过后，合入为 `915f70a04c674c9d9634b72960f036be1defa486`。base `60f2752e78b3dc45466836b4f7b3233f0e908a2a` 与独立已审 head `425c5d0958a6dc8e565e973b0b3d6fbd63330297` 是实际 checkout `2eeb1cb6598ec176f5c51a1c1ce2cc786bef66fc` 的两个有序父提交，其 tree `8cddbc12cb00582dec3697c87cda45064b654f68` 与合入 tree 相同。前端/scripts/bridge/后端通过3411/1410/134/4180，skip 为0/21项既有可选/4项平台/0；Quality100、Smoke4通过，未选中 L2/目标/minimal 仍为 skipped。完整集成已获 Standards/Spec PASS，12文件完整源码包已交付，远端分支已不存在，干净的专用本地 main 已同步。main 完整验收另行判断。
