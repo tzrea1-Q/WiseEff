@@ -1,7 +1,7 @@
 # Agent Delivery and Verification Efficiency
 
 > Chinese: [Chinese](../../zh-CN/exec-plans/active/2026-09-13-agent-delivery-efficiency.md)
-> Status: **Active — PRs #830, #829 and #833 merged. W1 is refreshing on the verified prerequisite; Git preview has a reviewed local candidate, CI shadow is in final review, and fresh execution/reporting remains in Scratch after independent rejection. No activation or measured-benefit claim.**
+> Status: **Active — PRs #830, #829, #833 and #831 merged. Committed-tree preview is integrating on accepted W1; CI shadow has independent code PASS, and fresh execution/reporting remains in Scratch under its accepted correction. No activation or measured-benefit claim.**
 > Date: 2026-09-13. Tracking Issue: [#828](https://github.com/tzrea1-Q/WiseEff/issues/828).
 > Accepted base, freshly fetched on 2026-09-13: `1059acb57379bd120d0d2b1a4b4733d4c2e02901`. This equals the supplied design's historical reference; it is not permission to reset later work.
 
@@ -13,11 +13,21 @@ Implement the user's supplied 2026-09-13 engineering design in bounded waves: sa
 
 | Delivery level | Completion means | Current status |
 | --- | --- | --- |
-| A: tools and process | Reviewed and verified diagnostics, equivalent scheduling, shadow plan, execution/reporting and routing are delivered | EFF-01 merged; EFF-02/03-preview/07/08 have local reviewed candidates; EFF-03 CI shadow in re-review, EFF-04 in repair under a separately challenged fresh-only design |
+| A: tools and process | Reviewed and verified diagnostics, equivalent scheduling, shadow plan, execution/reporting and routing are delivered | EFF-01/02 merged; EFF-03 preview/CI shadow and EFF-07/08 have local reviewed candidates; EFF-04 correction and final integration remain pending |
 | B: module activation | Each explicitly named module passes its own observation and independent-review gates | No module enabled; `observation-pending` |
 | C: measured effect | Comparable real task/CI samples support wall-clock, resource and usage conclusions | Insufficient samples; token usage `unknown` |
 
 A can be delivered while B/C remain open. Do not manufacture samples or call the entire program complete merely because tooling merged.
+
+## W1 accepted and committed-tree preview integration — 2026-09-14
+
+[PR #831](https://github.com/tzrea1-Q/WiseEff/pull/831) merged as `915f70a04c674c9d9634b72960f036be1defa486` after [Hosted 34786627881](https://github.com/tzrea1-Q/WiseEff/actions/runs/34786627881), attempt1, passed all selected original GitHub Actions gates. Base `60f2752e78b3dc45466836b4f7b3233f0e908a2a` and independently reviewed head `425c5d0958a6dc8e565e973b0b3d6fbd63330297` are the ordered parents of actual checkout `2eeb1cb6598ec176f5c51a1c1ce2cc786bef66fc`; its tree `8cddbc12cb00582dec3697c87cda45064b654f68` equals the merge tree. Frontend/scripts/bridge/backend passed3411/1410/134/4180, with0/21 existing optional/4 platform/0 skips. Quality100 andSmoke4 passed; unselected L2/target/minimal remained skipped. Standards/Spec passed the complete integration, its12-file full source package was delivered, the remote branch is absent, and clean dedicated local main was synchronized. Main full acceptance is separate.
+
+Workflow elapsed approximation719s and summed executed-job elapsed34.0333min are one observation, not billing or a statistically verified gain. Backend403s was the longest L1 group, followed by its9s aggregate; Quality659s became the overall critical path. Different #833 and #831 candidates/runners are not a controlled performance pair. Keep Quality serial until actual isolation, native inventory, safe artifact contracts and comparable owned evidence support changing it. Whole-program tokens and billed runner-minutes remain unknown.
+
+This separate EFF-03 preview integrates reviewed `7286c02ed9d25b75a8cf020aa614e9c26cfc843c` onto accepted W1. `npm run verify:plan -- --base <full-sha> [--head <full-sha>]` produces bounded, nonexecuting JSON for a clean committed repository root. Git metadata is validated before filters/status/diff; unresolved, dirty, shallow, partial, sparse, unmerged, gitlink, foreign-root or unsafe-config facts refuse a valid plan. Dirty-worktree planning is outside this minimum profile. Unknown/deleted/shared/policy effects widen conservatively; all17 original tasks remain required and four feedback modules remain observation-pending, memo/enforce off. Planning installs no dependencies, initializes no database and changes no CI selection. Existing commands remain the execution path until the separate run/report candidate lands. The three-category manual historical diff audit remains bound to its actual commits, not new Hosted or activation evidence. Refreshed focused checks, build, direct documentation governance and independent integration review precede this preview's own PR/Hosted.
+
+CI shadow `4b9393617a49928e95980898f09cc22a377aff39` has independent Standards/Spec code PASS, including the29-case actual CLI settlement table, but has not merged. Executor correction has reproduced and fixed three specific lifecycle/publication failures; its remaining composed matrix and final review are pending. Browser fixture `fff3807b6783bbe3aa08b348050c23e359050ab4` has independent dual code PASS for the separately recorded2/2 representative run, not full browser acceptance. Older entries below are historical checkpoints and do not override this current status.
 
 ## Prerequisite merge and equivalent L1 refresh — 2026-09-14
 

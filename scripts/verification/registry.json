@@ -1,0 +1,45 @@
+{
+  "schemaVersion": 1,
+  "modules": [
+    {
+      "id": "feedback-domain",
+      "status": "observation-pending",
+      "risk": "R3",
+      "paths": ["src/domain/productFeedback/", "src/application/ports/ProductFeedbackRepository.ts"],
+      "dependencies": [],
+      "consumers": ["src/app/appRuntime.ts", "src/app/appRuntime.test.ts", "src/app/routes.tsx", "src/App.tsx"],
+      "tasks": {"frontend-tests": ["src/infrastructure/http/productFeedbackClient.test.ts"], "backend-tests": ["server/modules/product-feedback/"]},
+      "browser": {"spec": "e2e/acceptance/product-feedback.acceptance.spec.ts", "pages": ["/feedback-admin", "sidebar"], "roles": ["Admin", "Hardware User"], "flows": ["submit", "triage", "forbidden-admin-read"], "environment": "owned-postgres-browser"}
+    },
+    {
+      "id": "feedback-client",
+      "status": "observation-pending",
+      "risk": "R2",
+      "paths": ["src/infrastructure/http/productFeedbackClient.ts", "src/infrastructure/http/productFeedbackClient.test.ts"],
+      "dependencies": ["feedback-domain"],
+      "consumers": ["src/app/appRuntime.ts", "src/app/appRuntime.test.ts"],
+      "tasks": {"frontend-tests": ["src/infrastructure/http/productFeedbackClient.test.ts"]},
+      "browser": {"spec": "e2e/acceptance/product-feedback.acceptance.spec.ts", "pages": ["/feedback-admin", "sidebar"], "roles": ["Admin", "Hardware User"], "flows": ["submit", "triage", "forbidden-admin-read"], "environment": "owned-postgres-browser"}
+    },
+    {
+      "id": "feedback-ui",
+      "status": "observation-pending",
+      "risk": "R2",
+      "paths": ["src/features/product-feedback/"],
+      "dependencies": ["feedback-client", "feedback-domain"],
+      "consumers": ["src/app/routes.tsx", "src/App.tsx"],
+      "tasks": {"frontend-tests": ["src/features/product-feedback/FeedbackAdminDrawer.test.tsx", "src/features/product-feedback/FeedbackAdminPage.test.tsx", "src/features/product-feedback/FeedbackDialog.styles.test.ts", "src/features/product-feedback/FeedbackDialog.test.tsx", "src/app/appRuntime.test.ts"]},
+      "browser": {"spec": "e2e/acceptance/product-feedback.acceptance.spec.ts", "pages": ["/feedback-admin", "sidebar"], "roles": ["Admin", "Hardware User"], "flows": ["submit", "triage", "forbidden-admin-read"], "environment": "owned-postgres-browser"}
+    },
+    {
+      "id": "feedback-server",
+      "status": "observation-pending",
+      "risk": "R2",
+      "paths": ["server/modules/product-feedback/", "e2e/acceptance/product-feedback.acceptance.spec.ts"],
+      "dependencies": ["feedback-domain"],
+      "consumers": ["server/app.ts"],
+      "tasks": {"backend-tests": ["server/modules/product-feedback/policy.test.ts", "server/modules/product-feedback/schemas.test.ts", "server/modules/product-feedback/service.test.ts", "server/modules/product-feedback/repository.test.ts", "server/modules/product-feedback/routes.test.ts"]},
+      "browser": {"spec": "e2e/acceptance/product-feedback.acceptance.spec.ts", "pages": ["/feedback-admin", "sidebar"], "roles": ["Admin", "Hardware User"], "flows": ["submit", "triage", "forbidden-admin-read"], "environment": "owned-postgres-browser"}
+    }
+  ]
+}

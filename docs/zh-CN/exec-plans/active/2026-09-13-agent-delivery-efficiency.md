@@ -1,7 +1,7 @@
 # 智能体开发与验证效率优化
 
 > English: [English](../../../exec-plans/active/2026-09-13-agent-delivery-efficiency.md)
-> 状态：**活跃——PR #830、#829、#833 已合入。W1 正在已验证的前置修复上刷新；Git 预览有已审本地候选，CI shadow 在最终复审，fresh 执行/摘要被独立审查拒绝后继续留在 Scratch。不声称裁剪启用或效果已验证。**
+> 状态：**活跃——PR #830、#829、#833、#831 已合入。已提交树预览正在 accepted W1 上集成；CI shadow 已获独立代码 PASS，fresh 执行/摘要仍按已接受的修正方案留在 Scratch。不声称裁剪启用或效果已验证。**
 > 日期：2026-09-13。真实跟踪 Issue：[#828](https://github.com/tzrea1-Q/WiseEff/issues/828)。
 > 2026-09-13 重新 fetch 后的真实 accepted base：`1059acb57379bd120d0d2b1a4b4733d4c2e02901`。它恰好等于附件的历史参考值，不构成强制回退后续工作的授权。
 
@@ -13,11 +13,21 @@
 
 | 交付层级 | 完成含义 | 当前状态 |
 | --- | --- | --- |
-| A：工具与流程 | 诊断、等价调度、影子计划、执行/摘要与路由已审查、验证并交付 | EFF-01 已合入；EFF-02/03-preview/07/08 有本地已审候选；EFF-03 CI shadow 在复审，EFF-04 按另行质询通过的 fresh-only 设计修复 |
+| A：工具与流程 | 诊断、等价调度、影子计划、执行/摘要与路由已审查、验证并交付 | EFF-01/02 已合入；EFF-03 预览/CI shadow、EFF-07/08 有本地已审候选；EFF-04 修正和最终集成仍待完成 |
 | B：模块启用 | 每个明确模块独立满足观察与审查门槛 | 无已启用模块；`observation-pending` |
 | C：效果验证 | 同类真实任务/CI 样本支持墙钟、资源与 usage 结论 | 样本不足；token usage 为 `unknown` |
 
 A 可先交付，B/C 继续开放。不得制造样本，也不能因工具合入就宣称整个项目全面完成。
+
+## W1 接受与已提交树预览集成——2026-09-14
+
+[PR #831](https://github.com/tzrea1-Q/WiseEff/pull/831) 经 [Hosted 34786627881](https://github.com/tzrea1-Q/WiseEff/actions/runs/34786627881) attempt1 的全部选中原 GitHub Actions 门禁通过后，合入为 `915f70a04c674c9d9634b72960f036be1defa486`。base `60f2752e78b3dc45466836b4f7b3233f0e908a2a` 与独立已审 head `425c5d0958a6dc8e565e973b0b3d6fbd63330297` 是实际 checkout `2eeb1cb6598ec176f5c51a1c1ce2cc786bef66fc` 的两个有序父提交，其 tree `8cddbc12cb00582dec3697c87cda45064b654f68` 与合入 tree 相同。前端/scripts/bridge/后端通过3411/1410/134/4180，skip 为0/21项既有可选/4项平台/0；Quality100、Smoke4通过，未选中 L2/目标/minimal 仍为 skipped。完整集成已获 Standards/Spec PASS，12文件完整源码包已交付，远端分支已不存在，干净的专用本地 main 已同步。main 完整验收另行判断。
+
+工作流近似耗时719秒，实际执行 job 耗时合计34.0333分钟；这是一次观察，不是计费或统计验证的收益。后端403秒是最长 L1 组，之后汇总9秒；Quality659秒成为整体关键路径。#833 和 #831 的候选/runner 不同，不构成受控性能配对。Quality 保持串行，直到真实隔离、原生清单、安全产物契约及可比自有环境证据支持改变。全项目 token 与计费 runner-minutes 仍为 unknown。
+
+本次独立 EFF-03 预览将已审 `7286c02ed9d25b75a8cf020aa614e9c26cfc843c` 集成到 accepted W1。`npm run verify:plan -- --base <full-sha> [--head <full-sha>]` 为干净且已提交的仓库根目录生成有大小上限、不执行任务的 JSON。Git 元数据先于 filter/status/diff 校验；无法解析、dirty、浅历史、partial、sparse、未合并索引、gitlink、外部根目录或不安全配置事实均拒绝有效计划。dirty 工作区计划不属于本次最小配置。未知/删除/共享/策略影响保守扩大，全部17项原任务仍必需，四个 feedback 模块均为 observation-pending，memo/enforce 关闭。计划不安装依赖、不初始化数据库、不改变 CI 选择；另行 run/report 候选合入前继续使用已有执行命令。三类手工历史差异核验仍绑定其实际提交，不作为新 Hosted 或启用证据。新的定向检查、构建、直接文档治理和独立集成审查先于本预览自身的 PR/Hosted。
+
+CI shadow `4b9393617a49928e95980898f09cc22a377aff39` 已获独立 Standards/Spec 代码 PASS，含29场景实际 CLI 收尾表，尚未合入。执行器修正已真实复现并解决三个具体生命周期/发布失败，其余组合矩阵与最终审查仍待完成。浏览器夹具 `fff3807b6783bbe3aa08b348050c23e359050ab4` 已就另行记录的2/2代表性运行获得独立双审代码 PASS，不代表完整浏览器验收。以下旧条目均为历史检查点，不覆盖当前状态。
 
 ## 前置合入与等价 L1 刷新——2026-09-14
 
