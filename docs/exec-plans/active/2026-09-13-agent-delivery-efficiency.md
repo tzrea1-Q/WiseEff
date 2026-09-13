@@ -13,7 +13,7 @@ Implement the user's supplied 2026-09-13 engineering design in bounded waves: sa
 
 | Delivery level | Completion means | Current status |
 | --- | --- | --- |
-| A: tools and process | Reviewed and verified diagnostics, equivalent scheduling, shadow plan, execution/reporting and routing are delivered | EFF-01 awaits its prerequisite and integration refresh; EFF-02/08 have local reviewed candidates; EFF-03/04 remain in Scratch |
+| A: tools and process | Reviewed and verified diagnostics, equivalent scheduling, shadow plan, execution/reporting and routing are delivered | EFF-01 prerequisite and refresh complete, awaiting final review and second Hosted; EFF-02/08 have local reviewed candidates; EFF-03/04 remain in Scratch |
 | B: module activation | Each explicitly named module passes its own observation and independent-review gates | No module enabled; `observation-pending` |
 | C: measured effect | Comparable real task/CI samples support wall-clock, resource and usage conclusions | Insufficient samples; token usage `unknown` |
 
