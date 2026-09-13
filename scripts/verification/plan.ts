@@ -208,8 +208,7 @@ function validateRegistryShape(value: unknown): RegistryModule[] {
       || browser.environment !== "owned-postgres-browser") return fail("INVALID_REGISTRY");
     return { id: item.id, status: "observation-pending", risk: item.risk as "R2" | "R3", paths, dependencies, consumers, tasks, browser: browser as RegistryModule["browser"] } as RegistryModule;
   });
-  if (new Set(modules.flatMap(module => module.dependencies)).size !== modules.flatMap(module => module.dependencies).length
-    || modules.some(module => module.dependencies.some(id => !ids.has(id)))) return fail("INVALID_REGISTRY");
+  if (modules.some(module => module.dependencies.some(id => !ids.has(id)))) return fail("INVALID_REGISTRY");
   const visiting = new Set<string>(); const visited = new Set<string>();
   const visit = (id: string): void => {
     if (visiting.has(id)) return fail("REGISTRY_CYCLE");
