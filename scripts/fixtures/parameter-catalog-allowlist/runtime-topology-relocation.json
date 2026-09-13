@@ -1,0 +1,549 @@
+{
+  "schemaVersion": 1,
+  "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
+  "fixtureSha256": "fe3cd2abe9181517332612938f00082db864d66f6f9b284d5f43b3051b5fe951",
+  "files": [
+    {
+      "file": "server/modules/parameter-topology/ingestService.ts",
+      "sourceBlobOid": "30e4e8107a7dbf11a0a4c81e9aab355f303e43f1",
+      "destinationBlobOid": "1f28235a496dfc57b649966b714588155eae982b",
+      "pairs": [
+        {
+          "old": {
+            "id": "S12-TOP:legacy-parameter-spec-identifier:163fa82c6c71c3c2:38c4ce7ed9b26a17",
+            "rule": "legacy-parameter-spec-identifier",
+            "file": "server/modules/parameter-topology/ingestService.ts",
+            "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation.",
+            "family": "S12-TOP",
+            "line": 657,
+            "column": 13,
+            "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
+            "trustedBlobOid": "30e4e8107a7dbf11a0a4c81e9aab355f303e43f1",
+            "byteStart": 21153,
+            "byteEnd": 21168,
+            "token": "parameterSpecId",
+            "evidence": "parameterSpecId"
+          },
+          "new": {
+            "id": "S12-TOP:legacy-parameter-spec-identifier:163fa82c6c71c3c2:52e2399b9b1d0ed3",
+            "family": "S12-TOP",
+            "rule": "legacy-parameter-spec-identifier",
+            "file": "server/modules/parameter-topology/ingestService.ts",
+            "line": 675,
+            "column": 13,
+            "byteStart": 21707,
+            "byteEnd": 21722,
+            "token": "parameterSpecId",
+            "evidence": "parameterSpecId",
+            "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation.",
+            "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
+            "trustedBlobOid": "1f28235a496dfc57b649966b714588155eae982b"
+          },
+          "sliceSha256": "7a3053e4a80662e27c0866024a253e904b8270e6464c30e625cf3481433c260b"
+        },
+        {
+          "old": {
+            "id": "S12-TOP:legacy-parameter-spec-identifier:46d59b5cf0492571:100c31478d6fee70",
+            "rule": "legacy-parameter-spec-identifier",
+            "file": "server/modules/parameter-topology/ingestService.ts",
+            "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation.",
+            "family": "S12-TOP",
+            "line": 665,
+            "column": 57,
+            "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
+            "trustedBlobOid": "30e4e8107a7dbf11a0a4c81e9aab355f303e43f1",
+            "byteStart": 21367,
+            "byteEnd": 21382,
+            "token": "parameterSpecId",
+            "evidence": "parameterSpecId"
+          },
+          "new": {
+            "id": "S12-TOP:legacy-parameter-spec-identifier:46d59b5cf0492571:8ec045e92b222684",
+            "family": "S12-TOP",
+            "rule": "legacy-parameter-spec-identifier",
+            "file": "server/modules/parameter-topology/ingestService.ts",
+            "line": 683,
+            "column": 57,
+            "byteStart": 21921,
+            "byteEnd": 21936,
+            "token": "parameterSpecId",
+            "evidence": "parameterSpecId",
+            "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation.",
+            "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
+            "trustedBlobOid": "1f28235a496dfc57b649966b714588155eae982b"
+          },
+          "sliceSha256": "7a3053e4a80662e27c0866024a253e904b8270e6464c30e625cf3481433c260b"
+        },
+        {
+          "old": {
+            "id": "S12-TOP:legacy-parameter-spec-identifier:bdcb597d7f2627a3:ce052e596f4b7bd6",
+            "rule": "legacy-parameter-spec-identifier",
+            "file": "server/modules/parameter-topology/ingestService.ts",
+            "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation.",
+            "family": "S12-TOP",
+            "line": 668,
+            "column": 28,
+            "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
+            "trustedBlobOid": "30e4e8107a7dbf11a0a4c81e9aab355f303e43f1",
+            "byteStart": 21514,
+            "byteEnd": 21529,
+            "token": "parameterSpecId",
+            "evidence": "parameterSpecId"
+          },
+          "new": {
+            "id": "S12-TOP:legacy-parameter-spec-identifier:bdcb597d7f2627a3:492bb70ef177cd53",
+            "family": "S12-TOP",
+            "rule": "legacy-parameter-spec-identifier",
+            "file": "server/modules/parameter-topology/ingestService.ts",
+            "line": 686,
+            "column": 28,
+            "byteStart": 22068,
+            "byteEnd": 22083,
+            "token": "parameterSpecId",
+            "evidence": "parameterSpecId",
+            "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation.",
+            "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
+            "trustedBlobOid": "1f28235a496dfc57b649966b714588155eae982b"
+          },
+          "sliceSha256": "7a3053e4a80662e27c0866024a253e904b8270e6464c30e625cf3481433c260b"
+        },
+        {
+          "old": {
+            "id": "S12-TOP:legacy-parameter-spec-identifier:5cb5fe5680ebe7f3:e6596e74594c0b6c",
+            "rule": "legacy-parameter-spec-identifier",
+            "file": "server/modules/parameter-topology/ingestService.ts",
+            "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation.",
+            "family": "S12-TOP",
+            "line": 683,
+            "column": 11,
+            "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
+            "trustedBlobOid": "30e4e8107a7dbf11a0a4c81e9aab355f303e43f1",
+            "byteStart": 22170,
+            "byteEnd": 22185,
+            "token": "parameterSpecId",
+            "evidence": "parameterSpecId"
+          },
+          "new": {
+            "id": "S12-TOP:legacy-parameter-spec-identifier:5cb5fe5680ebe7f3:9621020291aabbfb",
+            "family": "S12-TOP",
+            "rule": "legacy-parameter-spec-identifier",
+            "file": "server/modules/parameter-topology/ingestService.ts",
+            "line": 701,
+            "column": 11,
+            "byteStart": 22724,
+            "byteEnd": 22739,
+            "token": "parameterSpecId",
+            "evidence": "parameterSpecId",
+            "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation.",
+            "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
+            "trustedBlobOid": "1f28235a496dfc57b649966b714588155eae982b"
+          },
+          "sliceSha256": "7a3053e4a80662e27c0866024a253e904b8270e6464c30e625cf3481433c260b"
+        },
+        {
+          "old": {
+            "id": "S12-TOP:legacy-parameter-spec-identifier:4b6b5b99ff04afee:f4e24e3ff73a2c90",
+            "rule": "legacy-parameter-spec-identifier",
+            "file": "server/modules/parameter-topology/ingestService.ts",
+            "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation.",
+            "family": "S12-TOP",
+            "line": 683,
+            "column": 37,
+            "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
+            "trustedBlobOid": "30e4e8107a7dbf11a0a4c81e9aab355f303e43f1",
+            "byteStart": 22196,
+            "byteEnd": 22211,
+            "token": "parameterSpecId",
+            "evidence": "parameterSpecId"
+          },
+          "new": {
+            "id": "S12-TOP:legacy-parameter-spec-identifier:4b6b5b99ff04afee:66251b76771706a6",
+            "family": "S12-TOP",
+            "rule": "legacy-parameter-spec-identifier",
+            "file": "server/modules/parameter-topology/ingestService.ts",
+            "line": 701,
+            "column": 37,
+            "byteStart": 22750,
+            "byteEnd": 22765,
+            "token": "parameterSpecId",
+            "evidence": "parameterSpecId",
+            "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation.",
+            "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
+            "trustedBlobOid": "1f28235a496dfc57b649966b714588155eae982b"
+          },
+          "sliceSha256": "7a3053e4a80662e27c0866024a253e904b8270e6464c30e625cf3481433c260b"
+        },
+        {
+          "old": {
+            "id": "S12-TOP:legacy-parameter-spec-identifier:3b7de99749915dd0:0ca5ca2dae36db12",
+            "rule": "legacy-parameter-spec-identifier",
+            "file": "server/modules/parameter-topology/ingestService.ts",
+            "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation.",
+            "family": "S12-TOP",
+            "line": 684,
+            "column": 11,
+            "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
+            "trustedBlobOid": "30e4e8107a7dbf11a0a4c81e9aab355f303e43f1",
+            "byteStart": 22223,
+            "byteEnd": 22245,
+            "token": "parameterSpecVersionId",
+            "evidence": "parameterSpecVersionId"
+          },
+          "new": {
+            "id": "S12-TOP:legacy-parameter-spec-identifier:3b7de99749915dd0:0586f61962ea126a",
+            "family": "S12-TOP",
+            "rule": "legacy-parameter-spec-identifier",
+            "file": "server/modules/parameter-topology/ingestService.ts",
+            "line": 702,
+            "column": 11,
+            "byteStart": 22777,
+            "byteEnd": 22799,
+            "token": "parameterSpecVersionId",
+            "evidence": "parameterSpecVersionId",
+            "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation.",
+            "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
+            "trustedBlobOid": "1f28235a496dfc57b649966b714588155eae982b"
+          },
+          "sliceSha256": "32f2243e487cca95424e0ad99e5c52560474b07d987d29b54b1faae23f19edf8"
+        },
+        {
+          "old": {
+            "id": "S12-TOP:legacy-parameter-spec-identifier:f2814ef82097ab50:d9d2d3d023f884da",
+            "rule": "legacy-parameter-spec-identifier",
+            "file": "server/modules/parameter-topology/ingestService.ts",
+            "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation.",
+            "family": "S12-TOP",
+            "line": 690,
+            "column": 11,
+            "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
+            "trustedBlobOid": "30e4e8107a7dbf11a0a4c81e9aab355f303e43f1",
+            "byteStart": 22463,
+            "byteEnd": 22485,
+            "token": "parameterSpecVersionId",
+            "evidence": "parameterSpecVersionId"
+          },
+          "new": {
+            "id": "S12-TOP:legacy-parameter-spec-identifier:f2814ef82097ab50:8a05dc45449a962e",
+            "family": "S12-TOP",
+            "rule": "legacy-parameter-spec-identifier",
+            "file": "server/modules/parameter-topology/ingestService.ts",
+            "line": 708,
+            "column": 11,
+            "byteStart": 23017,
+            "byteEnd": 23039,
+            "token": "parameterSpecVersionId",
+            "evidence": "parameterSpecVersionId",
+            "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation.",
+            "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
+            "trustedBlobOid": "1f28235a496dfc57b649966b714588155eae982b"
+          },
+          "sliceSha256": "32f2243e487cca95424e0ad99e5c52560474b07d987d29b54b1faae23f19edf8"
+        },
+        {
+          "old": {
+            "id": "S12-TOP:legacy-parameter-spec-identifier:163fa82c6c71c3c2:1dd83bfd9798b874",
+            "rule": "legacy-parameter-spec-identifier",
+            "file": "server/modules/parameter-topology/ingestService.ts",
+            "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation.",
+            "family": "S12-TOP",
+            "line": 711,
+            "column": 13,
+            "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
+            "trustedBlobOid": "30e4e8107a7dbf11a0a4c81e9aab355f303e43f1",
+            "byteStart": 23233,
+            "byteEnd": 23248,
+            "token": "parameterSpecId",
+            "evidence": "parameterSpecId"
+          },
+          "new": {
+            "id": "S12-TOP:legacy-parameter-spec-identifier:163fa82c6c71c3c2:5eb0d0380e73c748",
+            "family": "S12-TOP",
+            "rule": "legacy-parameter-spec-identifier",
+            "file": "server/modules/parameter-topology/ingestService.ts",
+            "line": 729,
+            "column": 13,
+            "byteStart": 23787,
+            "byteEnd": 23802,
+            "token": "parameterSpecId",
+            "evidence": "parameterSpecId",
+            "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation.",
+            "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
+            "trustedBlobOid": "1f28235a496dfc57b649966b714588155eae982b"
+          },
+          "sliceSha256": "7a3053e4a80662e27c0866024a253e904b8270e6464c30e625cf3481433c260b"
+        },
+        {
+          "old": {
+            "id": "S12-TOP:legacy-parameter-spec-identifier:99787b2d706ffc11:79c4caea655b2520",
+            "rule": "legacy-parameter-spec-identifier",
+            "file": "server/modules/parameter-topology/ingestService.ts",
+            "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation.",
+            "family": "S12-TOP",
+            "line": 711,
+            "column": 39,
+            "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
+            "trustedBlobOid": "30e4e8107a7dbf11a0a4c81e9aab355f303e43f1",
+            "byteStart": 23259,
+            "byteEnd": 23274,
+            "token": "parameterSpecId",
+            "evidence": "parameterSpecId"
+          },
+          "new": {
+            "id": "S12-TOP:legacy-parameter-spec-identifier:99787b2d706ffc11:eb30069d5813842a",
+            "family": "S12-TOP",
+            "rule": "legacy-parameter-spec-identifier",
+            "file": "server/modules/parameter-topology/ingestService.ts",
+            "line": 729,
+            "column": 39,
+            "byteStart": 23813,
+            "byteEnd": 23828,
+            "token": "parameterSpecId",
+            "evidence": "parameterSpecId",
+            "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation.",
+            "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
+            "trustedBlobOid": "1f28235a496dfc57b649966b714588155eae982b"
+          },
+          "sliceSha256": "7a3053e4a80662e27c0866024a253e904b8270e6464c30e625cf3481433c260b"
+        },
+        {
+          "old": {
+            "id": "S12-TOP:legacy-parameter-spec-identifier:b199bd80c18445ce:2730cf8464f37a9c",
+            "rule": "legacy-parameter-spec-identifier",
+            "file": "server/modules/parameter-topology/ingestService.ts",
+            "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation.",
+            "family": "S12-TOP",
+            "line": 741,
+            "column": 11,
+            "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
+            "trustedBlobOid": "30e4e8107a7dbf11a0a4c81e9aab355f303e43f1",
+            "byteStart": 24398,
+            "byteEnd": 24413,
+            "token": "parameterSpecId",
+            "evidence": "parameterSpecId"
+          },
+          "new": {
+            "id": "S12-TOP:legacy-parameter-spec-identifier:b199bd80c18445ce:b6daa944a57b26a5",
+            "family": "S12-TOP",
+            "rule": "legacy-parameter-spec-identifier",
+            "file": "server/modules/parameter-topology/ingestService.ts",
+            "line": 771,
+            "column": 11,
+            "byteStart": 25495,
+            "byteEnd": 25510,
+            "token": "parameterSpecId",
+            "evidence": "parameterSpecId",
+            "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation.",
+            "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
+            "trustedBlobOid": "1f28235a496dfc57b649966b714588155eae982b"
+          },
+          "sliceSha256": "7a3053e4a80662e27c0866024a253e904b8270e6464c30e625cf3481433c260b"
+        },
+        {
+          "old": {
+            "id": "S12-TOP:legacy-parameter-spec-identifier:2bf990707c966e93:94b9b7f2e8c288b7",
+            "rule": "legacy-parameter-spec-identifier",
+            "file": "server/modules/parameter-topology/ingestService.ts",
+            "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation.",
+            "family": "S12-TOP",
+            "line": 742,
+            "column": 11,
+            "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
+            "trustedBlobOid": "30e4e8107a7dbf11a0a4c81e9aab355f303e43f1",
+            "byteStart": 24425,
+            "byteEnd": 24447,
+            "token": "parameterSpecVersionId",
+            "evidence": "parameterSpecVersionId"
+          },
+          "new": {
+            "id": "S12-TOP:legacy-parameter-spec-identifier:2bf990707c966e93:17afb3a723ae5c04",
+            "family": "S12-TOP",
+            "rule": "legacy-parameter-spec-identifier",
+            "file": "server/modules/parameter-topology/ingestService.ts",
+            "line": 772,
+            "column": 11,
+            "byteStart": 25522,
+            "byteEnd": 25544,
+            "token": "parameterSpecVersionId",
+            "evidence": "parameterSpecVersionId",
+            "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation.",
+            "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
+            "trustedBlobOid": "1f28235a496dfc57b649966b714588155eae982b"
+          },
+          "sliceSha256": "32f2243e487cca95424e0ad99e5c52560474b07d987d29b54b1faae23f19edf8"
+        },
+        {
+          "old": {
+            "id": "S12-TOP:legacy-parameter-spec-identifier:409d5038341ae42f:cc4203a288e6b543",
+            "rule": "legacy-parameter-spec-identifier",
+            "file": "server/modules/parameter-topology/ingestService.ts",
+            "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation.",
+            "family": "S12-TOP",
+            "line": 759,
+            "column": 11,
+            "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
+            "trustedBlobOid": "30e4e8107a7dbf11a0a4c81e9aab355f303e43f1",
+            "byteStart": 25169,
+            "byteEnd": 25184,
+            "token": "parameterSpecId",
+            "evidence": "parameterSpecId"
+          },
+          "new": {
+            "id": "S12-TOP:legacy-parameter-spec-identifier:409d5038341ae42f:de9f2109366e7ce4",
+            "family": "S12-TOP",
+            "rule": "legacy-parameter-spec-identifier",
+            "file": "server/modules/parameter-topology/ingestService.ts",
+            "line": 789,
+            "column": 11,
+            "byteStart": 26226,
+            "byteEnd": 26241,
+            "token": "parameterSpecId",
+            "evidence": "parameterSpecId",
+            "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation.",
+            "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
+            "trustedBlobOid": "1f28235a496dfc57b649966b714588155eae982b"
+          },
+          "sliceSha256": "7a3053e4a80662e27c0866024a253e904b8270e6464c30e625cf3481433c260b"
+        },
+        {
+          "old": {
+            "id": "S12-TOP:legacy-parameter-spec-identifier:97e7e48b84bcfa23:aa945df025e33daf",
+            "rule": "legacy-parameter-spec-identifier",
+            "file": "server/modules/parameter-topology/ingestService.ts",
+            "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation.",
+            "family": "S12-TOP",
+            "line": 760,
+            "column": 11,
+            "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
+            "trustedBlobOid": "30e4e8107a7dbf11a0a4c81e9aab355f303e43f1",
+            "byteStart": 25196,
+            "byteEnd": 25218,
+            "token": "parameterSpecVersionId",
+            "evidence": "parameterSpecVersionId"
+          },
+          "new": {
+            "id": "S12-TOP:legacy-parameter-spec-identifier:97e7e48b84bcfa23:51c521e06d384416",
+            "family": "S12-TOP",
+            "rule": "legacy-parameter-spec-identifier",
+            "file": "server/modules/parameter-topology/ingestService.ts",
+            "line": 790,
+            "column": 11,
+            "byteStart": 26253,
+            "byteEnd": 26275,
+            "token": "parameterSpecVersionId",
+            "evidence": "parameterSpecVersionId",
+            "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation.",
+            "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
+            "trustedBlobOid": "1f28235a496dfc57b649966b714588155eae982b"
+          },
+          "sliceSha256": "32f2243e487cca95424e0ad99e5c52560474b07d987d29b54b1faae23f19edf8"
+        },
+        {
+          "old": {
+            "id": "S12-TOP:legacy-parameter-spec-identifier:40e3ddd4eec2159a:73a5806ac844ece8",
+            "rule": "legacy-parameter-spec-identifier",
+            "file": "server/modules/parameter-topology/ingestService.ts",
+            "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation.",
+            "family": "S12-TOP",
+            "line": 766,
+            "column": 11,
+            "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
+            "trustedBlobOid": "30e4e8107a7dbf11a0a4c81e9aab355f303e43f1",
+            "byteStart": 25412,
+            "byteEnd": 25434,
+            "token": "parameterSpecVersionId",
+            "evidence": "parameterSpecVersionId"
+          },
+          "new": {
+            "id": "S12-TOP:legacy-parameter-spec-identifier:40e3ddd4eec2159a:7a204403125a731e",
+            "family": "S12-TOP",
+            "rule": "legacy-parameter-spec-identifier",
+            "file": "server/modules/parameter-topology/ingestService.ts",
+            "line": 796,
+            "column": 11,
+            "byteStart": 26469,
+            "byteEnd": 26491,
+            "token": "parameterSpecVersionId",
+            "evidence": "parameterSpecVersionId",
+            "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation.",
+            "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
+            "trustedBlobOid": "1f28235a496dfc57b649966b714588155eae982b"
+          },
+          "sliceSha256": "32f2243e487cca95424e0ad99e5c52560474b07d987d29b54b1faae23f19edf8"
+        },
+        {
+          "old": {
+            "id": "S12-TOP:legacy-parameter-spec-identifier:12509e4edb96cdc7:7acdbe393ff6c1f1",
+            "rule": "legacy-parameter-spec-identifier",
+            "file": "server/modules/parameter-topology/ingestService.ts",
+            "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation.",
+            "family": "S12-TOP",
+            "line": 787,
+            "column": 13,
+            "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
+            "trustedBlobOid": "30e4e8107a7dbf11a0a4c81e9aab355f303e43f1",
+            "byteStart": 26159,
+            "byteEnd": 26174,
+            "token": "parameterSpecId",
+            "evidence": "parameterSpecId"
+          },
+          "new": {
+            "id": "S12-TOP:legacy-parameter-spec-identifier:12509e4edb96cdc7:60d941222e3c087a",
+            "family": "S12-TOP",
+            "rule": "legacy-parameter-spec-identifier",
+            "file": "server/modules/parameter-topology/ingestService.ts",
+            "line": 817,
+            "column": 13,
+            "byteStart": 27216,
+            "byteEnd": 27231,
+            "token": "parameterSpecId",
+            "evidence": "parameterSpecId",
+            "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation.",
+            "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
+            "trustedBlobOid": "1f28235a496dfc57b649966b714588155eae982b"
+          },
+          "sliceSha256": "7a3053e4a80662e27c0866024a253e904b8270e6464c30e625cf3481433c260b"
+        }
+      ]
+    },
+    {
+      "file": "server/modules/parameter-topology/schemas.ts",
+      "sourceBlobOid": "4e10ae4b663012ac0fec7b611db828c508569555",
+      "destinationBlobOid": "d6669310903a9d00a8ce9b923e4fa9ec63f80ef2",
+      "pairs": [
+        {
+          "old": {
+            "id": "S12-TOP:legacy-effective-governance-contract:fafa8cd8420b503d:0a9a6ca42cbfae2b",
+            "rule": "legacy-effective-governance-contract",
+            "file": "server/modules/parameter-topology/schemas.ts",
+            "reason": "Legacy Effective or Governance catalog projection remains in a consumer contract.",
+            "family": "S12-TOP",
+            "line": 67,
+            "column": 36,
+            "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
+            "trustedBlobOid": "4e10ae4b663012ac0fec7b611db828c508569555",
+            "byteStart": 2436,
+            "byteEnd": 2447,
+            "token": "view:effective",
+            "evidence": "effective"
+          },
+          "new": {
+            "id": "S12-TOP:legacy-effective-governance-contract:fafa8cd8420b503d:2a3b40de90985d3e",
+            "family": "S12-TOP",
+            "rule": "legacy-effective-governance-contract",
+            "file": "server/modules/parameter-topology/schemas.ts",
+            "line": 71,
+            "column": 36,
+            "byteStart": 2598,
+            "byteEnd": 2609,
+            "token": "view:effective",
+            "evidence": "effective",
+            "reason": "Legacy Effective or Governance catalog projection remains in a consumer contract.",
+            "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
+            "trustedBlobOid": "d6669310903a9d00a8ce9b923e4fa9ec63f80ef2"
+          },
+          "sliceSha256": "392a9d004c9ff7439866fccc4c754ffdfd1a33ff69a4fc2f511df8bcdec3d15f"
+        }
+      ]
+    }
+  ]
+}

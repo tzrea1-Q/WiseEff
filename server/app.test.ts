@@ -608,9 +608,12 @@ describe("WiseEff API", () => {
       code: "FORBIDDEN",
       message: "Parameter view permission is required."
     });
-    expect(calls).toHaveLength(1);
+    expect(calls).toHaveLength(2);
     expect(calls[0].text).toContain("from users");
     expect(calls[0].values).toEqual(["user-no-parameter-view"]);
+    expect(calls[1].text).toContain("from user_role_bindings");
+    expect(calls[1].text).toContain("roles.id like 'catalog-capability-%'");
+    expect(calls[1].values).toEqual(["user-no-parameter-view"]);
   });
 
   it("uses production bearer auth for /me without development fallback", async () => {

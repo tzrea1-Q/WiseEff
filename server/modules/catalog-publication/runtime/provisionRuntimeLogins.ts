@@ -20,9 +20,9 @@ export const PUBLICATION_RUNTIME_OWNERSHIP_PREFIX = "wiseeff-publication-runtime
 
 /** Workbench Binding/Value DML on the API LOGIN. Not Catalog-core immutability. */
 export const WORKBENCH_BINDING_RELATIONS = [
-  "project_parameter_bindings",
-  "project_parameter_values",
-  "binding_history_events",
+  "parameter_catalog.project_parameter_bindings",
+  "parameter_catalog.project_parameter_values",
+  "parameter_catalog.binding_history_events",
 ] as const;
 
 export type PublicationRuntimeLoginMode = "official" | "lab";
@@ -407,7 +407,7 @@ export async function provisionPublicationRuntimeLogins(
       }
       for (const table of WORKBENCH_BINDING_RELATIONS) {
         await admin.query(
-          `grant insert, update, delete on table parameter_catalog.${quoteIdent(table)} to ${quoteIdent(names.api)}`,
+          `grant insert, update, delete on table ${table} to ${quoteIdent(names.api)}`,
         );
       }
 
