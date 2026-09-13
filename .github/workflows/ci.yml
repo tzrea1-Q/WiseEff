@@ -659,8 +659,9 @@ jobs:
     runs-on: ubuntu-latest
     # Enforced by acceptance:ci: 5m platform overhead + 71m bounded prelude
     # + the 60m Gate0 owner + 5m safety scan + 5m upload = 146m. The job
-    # budget must remain strictly greater than that complete platform path.
-    timeout-minutes: 150
+    # + 1m identity + 4m diagnostic generation/fallback/upload/settlement = 151m.
+    # Keep the job budget strictly greater than the complete platform path.
+    timeout-minutes: 155
 
     services:
       postgres:
@@ -684,6 +685,26 @@ jobs:
       - name: Check out repository
         timeout-minutes: 5
         uses: actions/checkout@v4
+
+      - name: Observe acceptance execution identity
+        id: acceptance_execution_identity
+        timeout-minutes: 1
+        shell: /usr/bin/python3 -I {0}
+        run: |
+          import os, re, subprocess, sys
+          try:
+              values = []
+              for ref in ("HEAD", "HEAD^{tree}"):
+                  result = subprocess.run(["/usr/bin/git", "rev-parse", "--verify", ref],
+                                          capture_output=True, timeout=10, check=True)
+                  value = result.stdout.decode("ascii").strip()
+                  if not re.fullmatch(r"[0-9a-f]{40}", value):
+                      raise ValueError()
+                  values.append(value)
+              with open(os.environ["GITHUB_OUTPUT"], "a") as output:
+                  output.write("sha=" + values[0] + "\ntree=" + values[1] + "\n")
+          except Exception:
+              sys.exit("EXECUTION_IDENTITY_UNAVAILABLE")
 
       - name: Set up Node.js
         timeout-minutes: 5
@@ -718,6 +739,7 @@ jobs:
         run: npm run acceptance:models
 
       - name: Owned visual and browser acceptance Gate 0
+        id: acceptance_gate0
         timeout-minutes: 65
         run: npm run acceptance:gate0
 
@@ -728,6 +750,7 @@ jobs:
         run: npm run acceptance:artifacts:finalize -- --root test-results/acceptance-runtime-runs --output test-results/acceptance-runtime-upload/wiseeff-acceptance-local-non-hdc.zip
 
       - name: Upload acceptance evidence
+        id: acceptance_evidence_upload
         if: always() && steps.acceptance_artifact_safety.outcome == 'success'
         timeout-minutes: 5
         uses: actions/upload-artifact@v4
@@ -736,6 +759,156 @@ jobs:
           path: test-results/acceptance-runtime-upload/wiseeff-acceptance-local-non-hdc.zip
           if-no-files-found: error
           compression-level: 0
+
+      # Bootstrap publisher: only workflow-owned context, never candidate files,
+      # reports, titles, paths, exceptions or environment dumps. Internal cleanup
+      # and phase facts remain unknown until an accepted-base publisher exists.
+      - name: Generate minimal acceptance diagnostic
+        id: acceptance_diagnostic
+        if: always()
+        timeout-minutes: 1
+        shell: /usr/bin/python3 -I {0}
+        env:
+          EFF_RUN_ID: ${{ github.run_id }}
+          EFF_ATTEMPT: ${{ github.run_attempt }}
+          EFF_WORKFLOW_SHA: ${{ github.workflow_sha }}
+          EFF_BASE: ${{ github.event.pull_request.base.sha || github.event.before || github.sha }}
+          EFF_PR_HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
+          EFF_EXECUTED_SHA: ${{ steps.acceptance_execution_identity.outputs.sha }}
+          EFF_TREE: ${{ steps.acceptance_execution_identity.outputs.tree }}
+          EFF_EXECUTION: ${{ steps.acceptance_gate0.outcome }}
+          EFF_ARCHIVE: ${{ steps.acceptance_artifact_safety.outcome }}
+          EFF_UPLOAD: ${{ steps.acceptance_evidence_upload.outcome }}
+        run: |
+          import datetime, json, os, pathlib, re, sys, tempfile
+          try:
+              def identity(key, pattern):
+                  value = os.environ.get(key, "")
+                  if value == "":
+                      return None
+                  if not re.fullmatch(pattern, value):
+                      raise ValueError()
+                  return value
+
+              def outcome(key):
+                  value = os.environ.get(key, "")
+                  if value not in ("", "success", "failure", "cancelled", "skipped"):
+                      raise ValueError()
+                  return value or "unknown"
+
+              record = {
+                  "schemaVersion": 1, "scope": "workflow-context-only",
+                  "identity": {
+                      "runId": identity("EFF_RUN_ID", r"[1-9][0-9]{0,19}"),
+                      "attempt": identity("EFF_ATTEMPT", r"[1-9][0-9]{0,9}"),
+                      "job": "acceptance-local-non-hdc",
+                      "workflowSha": identity("EFF_WORKFLOW_SHA", r"[0-9a-f]{40}"),
+                      "acceptedBase": identity("EFF_BASE", r"[0-9a-f]{40}"),
+                      "prHead": identity("EFF_PR_HEAD", r"[0-9a-f]{40}"),
+                      "executedSha": identity("EFF_EXECUTED_SHA", r"[0-9a-f]{40}"),
+                      "tree": identity("EFF_TREE", r"[0-9a-f]{40}"),
+                  },
+                  "states": {
+                      "execution": outcome("EFF_EXECUTION"), "cleanup": "unknown",
+                      "diagnostic": "generated", "archive": outcome("EFF_ARCHIVE"),
+                      "upload": outcome("EFF_UPLOAD"), "diagnosticUpload": "pending",
+                  },
+                  "firstFailedStage": None, "code": "WORKFLOW_SNAPSHOT",
+                  "exitCode": None, "signal": None, "startedAt": None,
+                  "recordedAt": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+                  "testCounts": None, "failureIds": [], "detailsSuppressed": True,
+                  "missingEvidence": ["phase-details", "cleanup", "test-counts", "diagnostic-upload-terminal"],
+              }
+              for stage in ("execution", "archive", "upload"):
+                  if record["states"][stage] == "failure":
+                      record["firstFailedStage"] = stage
+                      record["code"] = stage.upper() + "_FAILED"
+                      break
+              if record["states"]["execution"] in ("unknown", "skipped", "cancelled") or any(
+                      value is None for value in record["identity"].values()):
+                  record["code"] = "EXECUTION_INCOMPLETE"
+              payload = json.dumps(record, indent=2) + "\n"
+              summary = "Acceptance diagnostic: " + record["code"] + "\n\n" + json.dumps(record["states"]) + "\n"
+              if len(payload.encode()) > 65536 or len(summary.encode()) > 4096:
+                  raise ValueError()
+              root = os.environ["RUNNER_TEMP"]
+              if "\n" in root or "\r" in root:
+                  raise ValueError()
+              directory = pathlib.Path(tempfile.mkdtemp(prefix="wiseeff-diagnostic-", dir=root))
+              destination = directory / "diagnostic.json"
+              with destination.open("x") as output:
+                  output.write(payload)
+              destination.chmod(0o600)
+              with open(os.environ["GITHUB_OUTPUT"], "a") as output:
+                  output.write("path=" + str(destination) + "\n")
+              with open(os.environ["GITHUB_STEP_SUMMARY"], "a") as output:
+                  output.write(summary)
+          except Exception:
+              sys.exit("DIAGNOSTIC_REJECTED")
+
+      - name: Generate fixed diagnostic rejection
+        id: acceptance_diagnostic_fallback
+        if: always() && steps.acceptance_diagnostic.outcome != 'success'
+        timeout-minutes: 1
+        shell: /usr/bin/python3 -I {0}
+        env:
+          EFF_RUN_ID: ${{ github.run_id }}
+          EFF_ATTEMPT: ${{ github.run_attempt }}
+        run: |
+          import json, os, pathlib, re, sys, tempfile
+          try:
+              def number(key, pattern):
+                  value = os.environ.get(key, "")
+                  return value if re.fullmatch(pattern, value) else None
+              record = {"schemaVersion": 1, "scope": "workflow-context-only",
+                        "identity": {"runId": number("EFF_RUN_ID", r"[1-9][0-9]{0,19}"),
+                                     "attempt": number("EFF_ATTEMPT", r"[1-9][0-9]{0,9}"),
+                                     "job": "acceptance-local-non-hdc"},
+                        "code": "DIAGNOSTIC_REJECTED", "detailsSuppressed": True}
+              root = os.environ["RUNNER_TEMP"]
+              if "\n" in root or "\r" in root:
+                  raise ValueError()
+              directory = pathlib.Path(tempfile.mkdtemp(prefix="wiseeff-diagnostic-rejected-", dir=root))
+              destination = directory / "diagnostic.json"
+              with destination.open("x") as output:
+                  output.write(json.dumps(record) + "\n")
+              destination.chmod(0o600)
+              with open(os.environ["GITHUB_OUTPUT"], "a") as output:
+                  output.write("path=" + str(destination) + "\n")
+              with open(os.environ["GITHUB_STEP_SUMMARY"], "a") as output:
+                  output.write("Acceptance diagnostic: DIAGNOSTIC_REJECTED\n")
+          except Exception:
+              sys.exit("DIAGNOSTIC_REJECTED")
+
+      - name: Upload minimal acceptance diagnostic
+        id: acceptance_diagnostic_upload
+        if: always() && (steps.acceptance_diagnostic.outcome == 'success' || steps.acceptance_diagnostic_fallback.outcome == 'success')
+        timeout-minutes: 1
+        uses: actions/upload-artifact@v4
+        with:
+          name: wiseeff-diagnostic-${{ github.run_id }}-${{ github.run_attempt }}-acceptance-local-non-hdc
+          path: ${{ steps.acceptance_diagnostic.outcome == 'success' && steps.acceptance_diagnostic.outputs.path || steps.acceptance_diagnostic_fallback.outputs.path }}
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Settle diagnostic upload outcome
+        if: always()
+        timeout-minutes: 1
+        shell: /usr/bin/python3 -I {0}
+        env:
+          EFF_UPLOAD: ${{ steps.acceptance_diagnostic_upload.outcome }}
+        run: |
+          import os, sys
+          try:
+              status = os.environ.get("EFF_UPLOAD", "")
+              if status not in ("success", "failure", "cancelled", "skipped"):
+                  status = "unknown"
+              with open(os.environ["GITHUB_STEP_SUMMARY"], "a") as output:
+                  output.write("Minimal diagnostic upload: " + status + "\n")
+              if status != "success":
+                  sys.exit(1)
+          except Exception:
+              sys.exit("DIAGNOSTIC_UPLOAD_INCOMPLETE")
 
   target-synthetic-acceptance:
     name: Target synthetic acceptance

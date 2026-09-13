@@ -1,0 +1,290 @@
+# Agent Delivery and Verification Efficiency
+
+> Chinese: [Chinese](../../zh-CN/exec-plans/active/2026-09-13-agent-delivery-efficiency.md)
+> Status: **Active — prerequisite PR #830 and W0 PR #829 merged; W1 is refreshed for integration review. W2 requires review-driven repair; later waves retain local candidates. No activation or performance claim.**
+> Date: 2026-09-13. Tracking Issue: [#828](https://github.com/tzrea1-Q/WiseEff/issues/828).
+> Accepted base, freshly fetched on 2026-09-13: `1059acb57379bd120d0d2b1a4b4733d4c2e02901`. This equals the supplied design's historical reference; it is not permission to reset later work.
+
+## Goal and design authority
+
+Implement the user's supplied 2026-09-13 engineering design in bounded waves: safe failure diagnostics, equivalent L1 parallel execution, an explainable shadow verification plan, common execution/reporting, task routing, and measured test/browser improvements. The attachment is design input; authorization comes from the user's request and remains bounded by the [delivery protocol](../../agents/agent-delivery-protocol.md), [plan rules](../../PLANS.md), and [verification matrix](../../developer/verification-matrix.md). This maintained English/Chinese pair owns the design; workers receive only their packet and relevant sections.
+
+`EFF-00`–`EFF-09` are work packages and `EFF-T01`–`EFF-T58` are regression observations. They are not GitHub Issues, acceptance operation IDs or ADRs. Every package maps to real Issue #828 and its actual wave PR/evidence; PRs and run IDs remain pending until created. Do not rename, reopen or unlock frozen Catalog/Wayfinder nodes. The [completed 2026-08-18 CI feedback-loop plan](../completed/2026-08-18-ci-feedback-loop-optimization.md), #523–#525, remains historical completed work.
+
+| Delivery level | Completion means | Current status |
+| --- | --- | --- |
+| A: tools and process | Reviewed and verified diagnostics, equivalent scheduling, shadow plan, execution/reporting and routing are delivered | EFF-01 merged; EFF-02 refreshed for integration review; EFF-08 has a local reviewed candidate; EFF-03/04 remain in Scratch |
+| B: module activation | Each explicitly named module passes its own observation and independent-review gates | No module enabled; `observation-pending` |
+| C: measured effect | Comparable real task/CI samples support wall-clock, resource and usage conclusions | Insufficient samples; token usage `unknown` |
+
+A can be delivered while B/C remain open. Do not manufacture samples or call the entire program complete merely because tooling merged.
+
+## Delivery ledger — 2026-09-13 checkpoint
+
+This append-only checkpoint describes observed candidates, not acceptance of a later tree. The parent records refreshed seals and merge evidence in the next checkpoint. All development dispatches after the user's model clarification explicitly use `gpt-5.6-luna` with `xhigh`; separate reviewers are identified by role.
+
+| Lane | Exact local candidate / remote evidence | State and evidence boundary |
+| --- | --- | --- |
+| Baseline fixture prerequisite | `27320fdfdc38e92193faf9799f70e11f7cb37368`, tree `6887ac7b8c43048fb1ba93dde047083cdb7ed172`; [PR #830](https://github.com/tzrea1-Q/WiseEff/pull/830), [run 34760791346](https://github.com/tzrea1-Q/WiseEff/actions/runs/34760791346), attempt 1 | Explicit user exception permits only `89600` → `89900` in the publication store test. All 44 assertions and production code are unchanged. Controlled PID 1033 on an owned local pgvector cluster reproduced 5 pass/1 failure at base and 6 pass/0 skip at candidate. Build, documentation/schema checks and independent Standards/Spec passed. Hosted pending. |
+| EFF-01 / W0 | `66e572a4c45bd5d4db164380a2200e7ee6c10ac4`, tree `26b7acc0e03a07922e57fe688ca285eb6a741346`; [PR #829](https://github.com/tzrea1-Q/WiseEff/pull/829), [run 34758486310](https://github.com/tzrea1-Q/WiseEff/actions/runs/34758486310), attempt 1 | Independent Standards/Spec, 30 focused tests, 47 sanitizer/finalizer tests and build passed locally. Hosted frontend 3411 passed; scripts 1279 passed/21 existing optional skips; bridge 134 passed/4 platform skips; backend 4167 passed/1 fixture failure. Build and test and Merge bar failed; Quality/Smoke passed; unselected L2/target jobs skipped. Executed merge SHA `4eaf0ae4df5a0d80a76c642389f2e43dd91bf1e9` has the candidate tree. Diagnostic L2 upload was not exercised by this PR. |
+| EFF-02 / W1 | `4d3e8ab29cc403773a6341a59cc1d741ef3a5bb7`, tree `4a467e83122fe1938c71a1b1eb4535b52985172c` | Local independent Standards/Spec passed after restoring the complete PG-backed docs check in the backend child. 64 focused tests, acceptance metadata and build passed. No PR/Hosted/merge; refresh after W0. |
+| EFF-03/04 / W2 | Planner checkpoint `25435360f01fc016931785c6cd650215ecb5e145`; runner/report still mutable | Scratch only. All four feedback modules remain shadow/observation-pending; memo disabled. Candidate and full checks remain required. No final independent review or Hosted claim. |
+| EFF-08 / W3 | `805edbed4a68eea9f45d4d61e08ce2fc67f3fcec`, tree `f1ff3cdba6aafc93c3d26fc16bf5ae600d46e1e1` | Combined independent R1 review passed. Routing walkthroughs with actual W2 commands and integrated docs checks remain pending. No PR/Hosted/merge. |
+
+The failed W0 run is retained without retry. Its mandatory post-prerequisite main refresh consumes the protocol's exceptional second Hosted allowance; it is not permission to rerun unrelated broad failures. Fixture arithmetic found 300 colliding residues out of a complete 1200-period before the change and none after; this is not a measured flaky-run frequency. Its initial zero-test CLI setup failure was excluded from Red. Owned fixture PostgreSQL was stopped and verified absent; temporary connection credentials were removed, local evidence retained.
+
+Observations remain separate from effects: one full local frontend run passed 3411 tests in 441 files, process wall 78.211 seconds. The top three suites are DOM integrations; no pure split is justified by that alone. Two unchanged Quality observations each passed 100 tests; native durations were 506.951 and 502.668 seconds. Shared state stays serial until isolation and benefit are proven. Type feedback measured three cold and three warm runs per command; cold clears only owned incremental compiler caches. Under concurrent host load, full-build median cold/warm was 24.958/27.991 seconds, and its unchanged type phase 10.070/12.727 seconds. This supports evaluating an edit-only entry, not a CI savings claim. Billed runner-minutes and whole-program token usage remain unknown.
+
+### Integration checkpoint after prerequisite merge
+
+PR #830 merged as `75f3514b213f07f177773a077021e1485f9f173b`; origin/main and the clean dedicated local main were synchronized, and the remote feature branch was verified absent. Its run 34760791346 attempt 1 passed Detect, Build and test, Quality, Smoke and Merge bar; unselected L2/target/minimal probe remained skipped. Actual checkout `d24340b3bcce9cd27c7837fb3bd09cab0eaee983` has tree `6887ac7b8c43048fb1ba93dde047083cdb7ed172`. Native counts: frontend 3411 passed; scripts 1261 passed/21 optional skips; bridge 134 passed/4 platform skips; backend 4168 passed/0 skipped. The workflow end-to-end approximation was 1056 seconds and summed completed job elapsed 30.9833 minutes, neither a billing measure nor an optimization claim. [Attestation](https://github.com/tzrea1-Q/WiseEff/issues/828#issuecomment-5653792520) retains Issue #828 open. New main [run 34761775820](https://github.com/tzrea1-Q/WiseEff/actions/runs/34761775820) is in progress; full-main acceptance is not yet established.
+
+W0 merged that prerequisite into its Scratch lineage at `8a28db47050fc1c84386b4498ad60f62748ae6ef`. The four focused files passed 77 tests with no skips, acceptance metadata and original build passed, and direct document governance passed on this refresh with the checkpoint docs dirty. No W0 runtime code changed from the initial reviewed candidate. Exact refreshed Hosted will run the complete `docs:check` in `Build and test / Documentation governance` on job-owned pgvector; local document governance is not schema evidence. An earlier local unset-environment docs invocation reached the default database for a read-only extension probe and skipped schema verification; it is excluded from schema success and is not repeated.
+
+W2 checkpoint `61e3e5638248b3b9e528bb2f999a675dfb4eed4d` failed both independent reviews. Bounded pure fixtures exposed discovery argv overwriting a temporary test, shadow file trimming, incomplete evidence accepted as complete and environment/PG-boundary gaps. No candidate source or external database was modified by those experiments. A consolidated repair packet keeps W2 in Scratch. The complete Standards review was reassigned because the prior reviewer authored the earlier planner; self-review is not counted. EFF-07 type-entry candidate `d3872b68f25e21851d71d23b9ec426b27243cd3d` passed independent combined R1 review and local type-error Red/Green in both TS reference projects, full build and document governance; it has no PR/Hosted/merge yet.
+
+### W0 attestation and W1 refresh
+
+PR #829 merged as `ef88c0964e158d7effbd0ce6062260e5eb1c5a21` on 2026-09-13. Accepted base was `75f3514b213f07f177773a077021e1485f9f173b`, head `fb6087f1fdb352953f63b46ca711cee5775e2607`. Independent Standards and Spec passed that head. Refreshed [run 34762290769](https://github.com/tzrea1-Q/WiseEff/actions/runs/34762290769), attempt 1, passed every selected original check from GitHub Actions. Actual checkout `41de2cbb95d788168d97d7b8e52711ffbd0dfa63` has tree `652590339d4a16415d935b624753fa7c68421a11` and the exact base/head parents. Full schema documentation was current on its owned Hosted pgvector. Native frontend/scripts/bridge/backend counts were 3411/1279/134/4168 passed, with only the existing 21 scripts and 4 bridge optional/platform skips. Unselected L2/target/minimal jobs remained skipped.
+
+Workflow elapsed approximation was 1061 seconds; summed completed job elapsed was 30.85 minutes. Billed runner-minutes and total tokens remain unknown. The remote feature branch is absent, origin/main and the clean dedicated local main are synchronized, and Issue #828 remains open. New main [run 34763446467](https://github.com/tzrea1-Q/WiseEff/actions/runs/34763446467) is in progress; this PR result does not establish full-main acceptance or exercise L2 diagnostics.
+
+W1 refresh uses accepted main `ef88c0964e158d7effbd0ce6062260e5eb1c5a21`. Its sole textual conflict combines the reviewed four-group L1 matrix row with the accepted W0 diagnostic L2 row. The complete L1 `docs:check` remains assigned to `l1-server` after its owned pgvector precondition; local refresh runs direct document governance only. Runtime/test merge results require focused checks and both independent delta reviews before any PR. No selector, memo or browser sharding is enabled.
+
+## EFF-00 accepted facts and open evidence
+
+The parent captured these current facts; preserve the raw local audit in the wave evidence directory and refresh drift-prone facts before integration:
+
+| Observation | Accepted record and consequence |
+| --- | --- |
+| Checkout and ownership | Parent checkout was clean and detached, then became `codex/efficiency-w0`; the initial audit found 143 existing worktrees and one newly created worktree, with dirty work in 11 locations. Preserve every inherited change. This documentation lane is `codex/efficiency-plan`, created clean from the accepted base. |
+| Duplicate ownership | No same-goal open Issue/PR or active plan was found before #828 was created and claimed. The only open PR was #824, with no shared business paths for W0. Recheck before each wave. |
+| Protection | The main protection API returned `404 Branch not protected`; `rules/branches/main` returned `[]`. This is the observed configuration, not permission to weaken checks or bypass them. Preserve check names and sources. |
+| Existing gate limitation | Current `Merge bar` checks failure/cancelled plus Detect success; it does not yet prove that every required group actually succeeded. EFF-02 must close required skipped/missing false-green cases. Do not describe that stronger behavior as already implemented. |
+| Existing implementation | Layered CI, stale-PR cancellation, separate Quality/L2, DTS tooling cache, path classification, backend template/worker databases, Gate 0 and its safe immutable archive path already exist. Reuse their actual seams. |
+| Local environment | macOS 26.5.1 arm64, 10 CPUs, 24 GiB; Node 22.22.3, npm 10.9.8, Codex CLI 0.148.0. `.nvmrc` requires Node 22. Lockfile resolves Vitest 4.1.5, Playwright 1.59.1, TypeScript 5.9.3, Vite 7.3.2. Lock resolution does not prove each binary is installed or runnable. |
+| Latest relevant main run | [34744323465](https://github.com/tzrea1-Q/WiseEff/actions/runs/34744323465) is failed. The archive exceeded the existing 256 MiB ZIP safety limit; the root cause of 57 browser failures remains unknown. Keep artifact and browser causes separate. No current full-acceptance success is claimed. |
+| Sampling coverage | Parent's local `work/efficiency/eff00-audit/` ledger contains N=10 real recent runs, but only N=2 successful PR samples; all 3 sampled main runs failed. This is insufficient comparable evidence for activation or performance conclusions. |
+| Reference performance | The attachment reports PR #827 run [34743588364](https://github.com/tzrea1-Q/WiseEff/actions/runs/34743588364): workflow ~17m03s, L1 16m07s, frontend 5m32s, backend 5m38s, scripts 1m31s, build 1m03s, install 21s; Quality 10m44s with 8m29s quality execution. These are historical single-sample observations awaiting the EFF-00 comparable-run ledger, not P50/P95 or proof of current improvement. |
+
+EFF-00 writes local `baseline.json` and `baseline.md` with sources, base/head/tree, run/attempt, event, job/step times, sampling method, missing values and ownership. Inspect approximately 10 comparable recent runs, actual tools, database/extensions, toolchain and network/proxy availability without recording credentials. Classify failures as `product/code`, `fixture`, `environment`, `timeout`, `artifact`, `pre-existing`, or `unknown`; multiple causes are allowed. Claim unrelated repairs before doing them. A missing remote fact blocks the dependent claim, not independent pure tooling.
+
+## Invariants and scope
+
+- Preserve required-check names, sources and strict intended semantics; do not delete checks, alter protection, bypass, force-push, treat required skipped/neutral/missing/cancelled/timed_out as success, or hide a failure with `continue-on-error` or a final successful command.
+- Equivalent L1 splitting retains every existing required command, environment, assertion and test. Selection starts in shadow. A policy/workflow/registry change cannot use its own new rules to skip validation. Unknown influence expands coverage; unknown commit/diff facts invalidate a plan.
+- Preserve main/nightly/full-acceptance/manual modes and stateful L2 cancellation semantics. Do not automatically cancel in-flight main L2, introduce merge queues or change label triggers. If a queue is already enabled at execution time, honor its real `merge_group` contract.
+- Keep diagnostics separate from full evidence and preserve redaction, scanning and resource ownership. Never upload raw directories after finalizer failure; diagnostic success cannot overwrite execution, cleanup, archive or upload failure.
+- Bind every result to accepted base, PR head, actual executed SHA/tree, dirty inputs, run and attempt. Zero selected tests or all required cases skipped are failures. Required PostgreSQL/extensions/toolchains absent means blocked/failed.
+- No general platform, remote result cache, new daemon, package-manager migration, framework-major upgrade, adjacent business refactor, enlarged excludes, reduced assertions, automatic golden/screenshots, weakened scanner or broad retries.
+- Reuse existing database templates, Gate 0, task entry points and evidence contracts. Shared state remains serial; isolate browser resources before sharding.
+- Do not touch production/target databases, cutover/enablement, real devices, restore/cleanup/traffic switching, global Codex settings or tool permissions. Never publish secrets, full sessions or private reasoning in diagnostics/usage reports.
+- Preserve others' dirty work and unknown resources. Subagents own only Scratch paths; the parent owns review collection, sealing, PRs, merge and attestation. No independent review means no claim of it.
+
+## Git & PR Workflow
+
+This plan explicitly uses multiple bounded Scratch branches under `codex/efficiency-*`, each based on freshly accepted main. W0 parent branch is `codex/efficiency-w0`; its R1 plan-registration lane is `codex/efficiency-plan`. Later lane paths and bases must be frozen in their own packets before edits. Initial merge order is W0 → W1 → W2 → W3 → independent W4 slices → eligible W5 activation/reporting. Implementation subagents commit only; they do not open/merge PRs or mutate main.
+
+Use `PREFLIGHT → THREAT-READY` for R3, then `SCRATCH → PRESEAL-REVIEW → SEALED → INTEGRATION-READY → HOSTED → MERGED → ATTESTED → CLOSED`. R1 gets a bounded independent combined review. R2/R3 get independent Standards and Spec reviews of the same Scratch SHA, consolidated by the parent. R3 additionally needs an independently challenged threat matrix before implementation. A byte/lineage change after seal invalidates that seal and its evidence.
+
+Initial shared CI/registry/report-core implementation WIP is at most 2; one heavy local task per worktree and at most 2 heavy local lanes. Reserve review/integration capacity. Path-disjoint work can progress during Hosted; record if none exists. Target one seal, one final review round and one Hosted run; protocol exceptions retain their stated limits. Wait on state changes/events with bounded waits/backoff, not repeated unchanged logs. Do not repeatedly run broad tests merely to produce evidence.
+
+Each ≤~6 KiB packet states goal/non-goal, real Issue, base/head, risk/invariants, allowed/read-only/forbidden paths, relevant sections/source seams, Red/Green, exact existing commands and evidence levels, stop/rollback boundary and next transition. Preserve security constraints if a packet must be split. R3 diagnostics/gate/selector/resource seams are separate from R1 documentation; pure memo is at least R2, R3 when evidence authenticity is touched.
+
+Before each PR: fetch current main, inspect collisions, finish focused checks and all required local evidence, collect all reviews, fix once as a consolidated set, refresh, rerun affected checks and identifier/generated-file checks, then seal/open. Inspect actual Hosted jobs and identities, merge only when the required result is valid, then verify merge SHA, main visibility, Issue state, branch disposition and a clean dedicated main checkout. A remote-permission failure yields a complete local candidate and explicit uncreated/unmerged status. Only the affected dependency stops for unresolved high-risk conflict, missing authorization or external evidence.
+
+## Technical design
+
+### D1 — Minimal failure diagnostics (EFF-01)
+
+Project existing structured runner/Gate 0 phase facts into five independent states: `execution / cleanup / diagnostic / archive / upload`, preserving every failure and first known failure stage. Initially keep the full archive format and ownership lifecycle unchanged. Allowed fields: schema version; trusted run/attempt/job IDs; candidate SHA/tree; enum phase/status; exit/signal; start/end; registered task/test IDs; validated relative source locations; normalized error/rejection codes; cleanup projection; suppressed/truncated flags. Missing information is unknown.
+
+The first independently threat-reviewed W0 bootstrap narrows its input to `workflow-context-only`: an inline `/usr/bin/python3 -I` publisher reads no candidate report, records actual SHA/tree immediately after checkout and before npm, and leaves unobserved phase/cleanup/test-count fields unknown. It does not yet claim detailed runner-report projection. Parent local validation is underway (28 focused tests, `acceptance:ci`, build passed before this documentation integration); those are not same-candidate Hosted or merge evidence. The L2 budget adds 1 minute identity and 4 minutes generation/fallback/upload/settlement: its previous required floor 146 becomes 151 minutes, and the job budget becomes 155 minutes. No old step budget is shortened. Detailed report ingestion remains a separately reviewed EFF-01 extension if needed.
+
+Raw stderr, environment, request/response, DB URLs, browser HTML/storage, tokens, proxy authentication and workstation absolute paths never enter this projection. Test titles, paths and exception text are untrusted. Defaults: JSON ≤64 KiB, human summary ≤4 KiB, ≤20 failure IDs; optional excerpts ≤1,200 characters only after dedicated allowlist/redaction validation. Prefer no free-form excerpt; uncertain safety emits only a fixed code.
+
+Candidate diagnostics must pass accepted-policy validation. Generator/validator failure falls back to trusted workflow run/attempt/job context and literal `DIAGNOSTIC_REJECTED`, without echoing rejected bytes. Bounded final steps attempt minimal upload; full evidence uploads only through the existing safe finalizer. Execution/cleanup failures remain failures, even when summary upload succeeds. SIGKILL, runner loss and finalization timeout can leave incomplete evidence. Adversarial cases include synthetic credentials, ANSI/title injection, oversized/malformed/missing reports, path traversal/symlinks, double failure, timeout and cleanup failure. Never use real secrets in tests.
+
+### D2 — Equivalent L1 split (EFF-02)
+
+Start with fixed `static-build`, `frontend-tests`, `backend-tests`, `scripts-bridge-tests` groups alongside existing Quality/Smoke. Record the complete old-step→new-group inventory, including `acceptance:ci`, DTS toolchain, advisory seed compile, build, docs, UI ratchet, lint, frontend, pgvector, scripts, trusted-base boundary, bridge, backend, contract and logs eval. Preserve the exact existing advisory exception only. Scripts/docs/schema/contract checks may need PG/toolchain: trace each dependency and provision independently, not a shared mutable database.
+
+Keep outward `Build and test` as a strict aggregate and retain `Merge bar`. Always settle aggregation, explicitly depend on every required group, validate expected group identities and complete reports, and require every selected group to be `success`. An unselected group is `not-selected`; required skipped/neutral/missing/cancelled/timed_out never passes. Detect/plan failure must not create an empty green gate. Preserve full/manual/Quality/Smoke/L2 event relationships. Report longest path and test inventories; parallel wall-clock savings do not by themselves prove lower runner-minutes or token cost.
+
+### D3 — Explainable shadow planner (EFF-03/05)
+
+Proposed entry points below are **not implemented at accepted base**. Until EFF-03/04 lands, use existing commands in the verification matrix:
+
+| Proposed command | Contract |
+| --- | --- |
+| `npm run verify:plan -- --base <ref> --profile <edit\|candidate\|pr\|full> --mode <shadow\|enforce> --out <file>` | Read-only fact/plan computation; no dependency installation, database boot or source edits; output only to the explicitly requested controlled non-source location. |
+| `npm run verify:run -- --plan <file> [--group <name>] [--force]` | Validate identity and execute reviewed registered commands with argument arrays; stream full local logs and return bounded summaries. |
+| `npm run verify:report -- --run <dir> --format <summary\|json>` | Aggregate recorded results; no implicit rerun or model call. |
+
+Prefer a thin `scripts/verify.ts` and small `scripts/verification/` boundaries, actual TypeScript/Zod facilities, existing GitHub Actions/Vitest/Playwright and Gate 0. These are proposed paths, not claims of existing files; adjust the plan when implementation selects real paths. No generic DAG engine or new rule language.
+
+CI uses immutable base/PR head/executed checkout SHA/tree. Local edit/candidate combines merge-base branch changes with staged, unstaged and allowed untracked source, including content, deletions and modes. Parse NUL-delimited name-status; include both rename paths and base-side ownership/consumers of deleted files. Validate refs/paths without shell interpolation. Bounded fetch may establish missing history; unconfirmed base/diff blocks valid planning. Empty/unknown paths fall back broad, never docs-only. User input may expand coverage but cannot reduce risk.
+
+The reviewed module model contains stable ID, paths, dependencies, explicit consumers, test tasks, browser page/role/operation/success/refusal flows, environment, risk escalation, shadow/activation state and approval. Discover real paths/tests first. Selection is direct ownership + reverse-dependency closure + explicit consumers + key browser flows + risk + event requirements. Deduplicate task ID/config/selection arguments while retaining all reasons. Static imports/`related` are only hints; dynamic imports, SQL, fixtures, templates, routes, environment and cross-process APIs need explicit mapping or broad fallback.
+
+| Changed boundary | Default requirement |
+| --- | --- |
+| Truly inert docs | Existing docs/link rules; executable fixtures/source-locked docs are not inert. |
+| Independent UI/backend module | Module, consumers, required type/build/contract, real PG and relevant browser flows; shrink only after individual activation. |
+| Shared UI/routes/CSS/tokens/root provider | Full frontend and affected Quality/Smoke. |
+| DTO/OpenAPI/auth/RBAC/database/schema/migrations/kernel/Catalog core | Full L1 + Quality/Smoke + stated high-risk integration; bring L2 forward where explicitly required. No first pilot here. |
+| Package/lock/toolchain/TS/Vite/Vitest/Playwright/CI/policy/registry | Broad L1 and relevant browser/engineering regressions; no self-skipping. |
+| Delete/rename/unresolved dynamic dependency/unknown path | Expand to boundary or full. |
+| Main/nightly/full-acceptance | Preserve existing full semantics. |
+
+Plan fields: `schemaVersion`, `acceptedBase`, `prHead`, `executedSha`, `tree`, `dirtyInputDigest`, `diffBase`, profile/mode, policy version/digest, registry digest, changed statuses/paths, affected modules, risk, selected tasks, required groups, not-selected reasons, fallback reasons, environments, timestamp and content digest. Digests associate/expire records; they are not signatures or replacements for Catalog source-lock/fingerprint.
+
+Never trust arbitrary PR plan JSON. Accepted-base rules set the minimum; candidate policy can only add requirements for its own PR. If base lacks the new planner, preserve old full execution and emit shadow only. No `pull_request_target`, elevated token or claim that scripts defeat arbitrary workflow-write authority is needed.
+
+Shadow computes the would-select set while the old full required suite actually runs. Derive selected coverage/timing from the same full report; do not rerun it to create samples. Historical replay requires the historical commit/policy/diff, not today's graph applied retroactively.
+
+Per-module activation requires ≥10 substantive real changes (reconstructable historical candidates allowed), ≥3 real Hosted observations, coverage of direct/consumer/test-fixture/boundary-or-delete-rename categories, ≥6 independent applicable forced-rule counterexamples, zero unexplained omissions/zero-test/dependency gaps, independent review, and ≥1 usable full-main integration result with relevant main-red fixed or shown unrelated. Counts alone do not satisfy missing categories. Inject only into isolated fixtures/throwaway branches; never merge deliberate errors or generate empty commits/repeated Hosted samples. Until met: `observation-pending`, shadow/full. Record module/scope/policy/samples/counterexamples/review/rollback. One omission, unexplained false green, unknown required group or related main regression returns that module to shadow/full; automatic transitions only expand coverage.
+
+### D4 — Execution, local memo and results (EFF-04)
+
+Run narrow Red/Green inside development, required type/build/PG/browser when candidate-ready, replanned affected checks after refresh, and fresh required Hosted on the final candidate. Issue-specific evidence overrides generic planning. Install dependencies according to lockfile only when missing/mismatched; do not borrow mutable sibling-worktree `node_modules`.
+
+Commands come from a reviewed whitelist, use argument arrays, and reject arbitrary shell strings or unsafe output paths. `--force` means rerun selected tasks, never bypass identity/safety or activate policy. Stream logs to unique gitignored `work/verification/<run-id>/` or checked equivalent; summary contains task/status/duration/counts/first useful failure ID/log path/registered next command. Complete results atomically; partial/interrupted JSON cannot pass. All selected tasks need complete matching results, not merely the final command's exit code.
+
+Start with memo disabled, then whitelist side-effect-free pure tests on the same workstation/workspace identity. Never reuse success for PG, browser, migrations, cleanup, backup/restore, devices, external APIs, final Hosted or target evidence. Keys include source content (dirty/untracked/deletion/modes), tests/fixtures/config, lockfile, actual tools, OS/architecture, command ID/arguments, policy and nonsecret environment. If dependencies cannot be enumerated, hash all controlled source inputs or disable memo. HEAD alone is insufficient; secret-dependent tasks cannot memo and secrets/stable secret hashes must not be recorded. Build/typechecking uses native incrementality and checks actual outputs, never a receipt substitute.
+
+A valid hit is `reused-local` linked to its original run; it is not fresh passed evidence. Failure, cancellation, timeout, unknown environment, missing report/log, corrupt/incomplete records, changed task version or worktree invalidate reuse. Reviewers can require fresh execution. Per-task result includes identity/group/reasons/environment/start/end/exit/signal/status/counts/reportRefs/log/reusedFrom/missingEvidence; statuses are `passed/failed/blocked/cancelled/not-selected/reused-local`, unknown numbers are null with reasons. Keep base/head/executed SHA/tree distinct and write reports outside source-lock paths before sealing any durable documentation.
+
+### D5 — Browser and measured hotspots (EFF-06/07)
+
+Preserve browser-real evidence on actual affected routes, roles, key operations and success/refusal paths; backend/API/auth changes may require browser flows even without `src/` changes. UI-visible changes keep playwright-cli snapshot/screenshot, interactions, console/network checks at 1440×900, 768×1024 and 390×844. Locate actual acceptance IDs/operation IDs; never invent EFF IDs as product coverage.
+
+Profile Top 20 test files and initialization phases: test body, transform/import, DOM/provider setup, fixtures, DB template/clone/migration, browser startup and waiting. Use installed-version-supported reporter fields. Trial at most Top 3 valuable hotspots; each PR changes attributable variables. Candidates include truly pure Node/jsdom separation, backend pure/PG separation, reduced heavy imports, fixtures, state-readiness waits, native type/build layering, existing DB template reuse and data-backed heap/worker settings. Preserve test IDs/assertions/error detection, TS references and cold build; no increased excludes, integration-to-mock conversion, silent skipped PG or speculative heap diagnosis. For each candidate run equal-input cold and warm experiments at least 3 times each, with memory/connections/process cleanup observed. No reproducible benefit is a valid result.
+
+Quality is the first isolation/sharding pilot; full Gate 0 redesign is outside default scope. Each group owns independent PG/object store/ports or runner/seed/API/frontend/report paths, valid warmup, pinned browser/fonts/OS/viewports/screenshots. Shared-state tests remain serial. Begin one worker per shard; inspect file distribution before assuming a large spec splits evenly. Split scenarios only after proving beforeAll/fixture equivalence. Aggregate every expected shard with matching run/attempt/SHA/config, rejecting missing/duplicate reports. Sanitize blob/trace attachments before upload/merge; never upload raw directories just to merge reports.
+
+Prove cleanup after success, test/start/seed failure, lost response, timeout and cancellation. Run marker + recorded ownership + resource name must agree; reject unknown PID/DB/path rather than global kill/drop. Reuse Gate 0 proofs. If isolation or benefit is unproved, retain serial and record the reason. Restore serial/one worker as rollback while retaining safe diagnostics/measurements.
+
+### D6 — Task routing, usage and delivery (EFF-08/09)
+
+Keep root instructions short: invariants, directory routes, implemented commands and evidence boundaries. Update module/verification/protocol pages only where needed, in linked languages; do not embed this entire plan in AGENTS or modify global configuration. Verify actual Codex version, cwd/override/discovery/size behavior; do not assume root invocation loads all deeper instructions. Model/reasoning choices follow user configuration, not fixed plan prices/models. Exercise one UI, backend and engineering-script task and a fresh-session recovery from compact state.
+
+Only collect official observable usage numbers/task/model/version/session-turn terminal identity/time, deduplicated by unique terminal event. Missing usage/subagents remain unknown with coverage stated. Respect cached-input-as-input-subset and reasoning/output semantics to avoid double counting. Do not inspect undocumented internals as a stable API, publish private reasoning/full tool contents, or convert wait/log bytes to token totals.
+
+Every code delivery includes complete contents of every authorized changed code file, preferably an exact-candidate source package with actual path, file digests, summary and added/modified/deleted/renamed manifests. Include only the authorized committed change set; exclude credentials, `.env`, runtime logs, DBs and unrelated source. Represent deletions explicitly, not empty replacement files. Full source delivery is distinct from repeatedly feeding every file to reviewers.
+
+## Work packages and wave gates
+
+Every row maps to Issue #828; actual PR/base/head/merge/run/reviewer results are appended by the owning parent. EFF-01 bootstrap is in local validation; other implementation rows are pending at plan registration. Before starting each row, write its bounded packet with exact allowed paths and commands; proposed path families here are not blanket edit authority.
+
+| Package / wave / risk | Goal, bounded seam and required Red → Green | Gate, stop and rollback |
+| --- | --- | --- |
+| EFF-00 / W0 / R1 | Fresh baseline/ownership/protection/environment/run ledger; investigate existing red and duplicate claims; add this plan pair/index. Missing facts become explicit unknown instead of invented evidence. | Local baseline files and traceable timing; unresolved main-red blocks affected activation only. No production/global changes. |
+| EFF-01 / W0 / R3 | D1 safe diagnostics through CI/Gate 0/finalizer seams. Start EFF-T01–T09 negative cases, then bounded projection/fallback/upload. | Existing sanitizer/finalizer/CI tests, `acceptance:ci`, affected build/docs, isolated failure rehearsal and exact Hosted. Revert only new diagnostic wiring if unsafe; never raw upload. |
+| EFF-02 / W1 / R3 | D2 old-step inventory and four fixed L1 groups; strict stable aggregate truth table, EFF-T10–T18. CI/CI-ratchet/tests and matching docs only. | Exercise each group, CI script regressions, docs and complete equivalent Hosted L1; no task loss or hidden duplication. Restore serial if aggregate equivalence fails. |
+| EFF-03 / W2 / R3 | D3 planner/model/registry, compatible path-classifier adapter, shadow reports; EFF-T19–T31, deterministic facts and ≥3 actual historical diff categories manually reviewed. | Existing execution remains full; no network install/DB initialization during planning. Invalid policy/diff blocks plan; remove consumption and retain old classification on rollback. |
+| EFF-04 / W2 / R2–R3 | D4 run/report, environment/count guards, atomic records; EFF-T32–T40. Pure memo is a separately reviewable optional slice, disabled until correctness is proven. | Exact inputs invalidate correctly; no PG/browser/Hosted reuse or shell/path injection; usage unknown accepted. Disable memo/directly use old scripts on rollback. |
+| EFF-05 / W5 / R3 | Activate a small explicit ordinary UI/internal-backend allowlist only after EFF-02/03/04 and D3 module gates; rerun EFF-T19–T31 enabled plus EFF-T41–T43. | Old/full conservative union validates the activation PR. Missing 10/3/6/categories/full-main/review remains `observation-pending`; omission immediately widens full/shadow. |
+| EFF-06 / W4 / R3 | D5 measured Quality isolation then bounded shards and complete safe aggregation; EFF-T44–T49. | Preserve test/role/viewport inventory, warmup, cleanup ownership and report safety; prove benefit or retain serial. Restore one-worker original project grouping if unstable. |
+| EFF-07 / W4 / actual highest risk | After EFF-00/04 measurement, optimize at most Top 3 test/build hotspots in separate attributable PRs; EFF-T50–T54. Does not wait for EFF-05. | Equal inventories/assertions, cold build, required PG, memory/process checks; ≥3 cold + ≥3 warm runs. Revert unhelpful variables while preserving data. |
+| EFF-08 / W3 / R1 unless risk seam changes | After real commands exist, D6 compact packets/routes/protocol/matrix and usage summaries; EFF-T55–T58 and UI/backend/script walkthroughs. | Actual cwd routing and valid commands, safety constraints and independent reviews remain discoverable; revert broken routing, never global config. |
+| EFF-09 / W5 / R1 report, activation separately R3 | Roll up real Issue/PR/SHA/runs/reviews, module state, comparable measurements, current-main broad acceptance, owned-resource disposition and complete source package. | Four separate final claims: merged implementation; per-module shadow/enforce; measured effect/sample sufficiency; current main acceptance. Record blocked/not-run and real rollback PR/CI; no force-push. |
+
+W0 first establishes safe failure visibility; W1 changes scheduling without trimming; W2 adds shadow plan and common execution/reporting; W3 connects task/docs; W4 uses measurements for browser isolation and hotspots in separate PRs; W5 enables only sufficiently observed modules and reports remainder. Do not combine all waves into one oversized PR. Ordinary checkpoints proceed under existing authorization; external blockers stop only their dependent work.
+
+## Regression acceptance matrix
+
+These are required behavior observations, not 58 mandatory new test files. Reuse/parameterize existing tests, include behavioral negative cases, and map each ID to a real test/command/run as it is implemented. None is a passing result merely because it appears here.
+
+| ID | Trigger → required observation | Package |
+| --- | --- | --- |
+| EFF-T01 | Main acceptance fails, safety passes → execution stays failed; minimal diagnostic and controlled full evidence readable. | 01 |
+| EFF-T02 | Acceptance and full scan fail → failures distinct; raw package not uploaded; minimal diagnostic available. | 01 |
+| EFF-T03 | Synthetic token/Cookie/DB credentials → reject/remove; no leaked upload. | 01 |
+| EFF-T04 | Malicious title/ANSI/forged path → no execution, format injection or unvalidated path output. | 01 |
+| EFF-T05 | Huge log/excess failures → bounded sizes/counts with explicit truncation/suppression. | 01 |
+| EFF-T06 | Missing/corrupt report → fixed code/unknown, never invented passed. | 01 |
+| EFF-T07 | Diagnostic validator fails → fixed refusal, no rejected content leak. | 01 |
+| EFF-T08 | Cleanup/upload fails → original outcome preserved and separate terminal states traceable. | 01 |
+| EFF-T09 | Runner killed/finalization times out → incomplete/cancelled is not complete evidence. | 01 |
+| EFF-T10 | All required groups succeed → L1 and Merge bar succeed correctly. | 02 |
+| EFF-T11 | Any required group fails → aggregate fails; sibling results remain diagnosable. | 02 |
+| EFF-T12 | Required group skipped/neutral → no default-GitHub false green. | 02 |
+| EFF-T13 | Required group cancelled/missing/timed_out → aggregate non-success identifies absence. | 02 |
+| EFF-T14 | Invalid plan/Detect fails → no empty green gate. | 02/03 |
+| EFF-T15 | Valid docs-only → required docs pass; other groups explain not-selected. | 02 |
+| EFF-T16 | Full-acceptance/main/nightly/manual → original required sets and target modes preserved. | 02/05 |
+| EFF-T17 | Protection requires Build and test/Merge bar → names, sources, strict semantics preserved without removing protection. | 02 |
+| EFF-T18 | Migrate all old L1 tasks → command/environment/test inventory complete, no hidden duplication. | 02 |
+| EFF-T19 | Single-module change → direct tests and explicit consumers selected. | 03/05 |
+| EFF-T20 | Shared DTO/API changes → all registered consumers, contracts and key flows selected. | 03/05 |
+| EFF-T21 | Auth/RBAC/migration/kernel change → risk elevated, key real-environment checks preserved. | 03/05 |
+| EFF-T22 | Global CSS/shared UI/root provider → full relevant frontend Quality/Smoke retained. | 03/05 |
+| EFF-T23 | Package/lock/toolchain/test config → conservative broad fallback. | 03/05 |
+| EFF-T24 | Delete module/test → base ownership and consumers still contribute. | 03/05 |
+| EFF-T25 | Rename/space/newline paths → lossless parse and old/new union. | 03 |
+| EFF-T26 | Empty diff/unknown path → conservative full, never docs-only. | 03 |
+| EFF-T27 | Shallow history/base unavailable → explicit block or expansion on confirmed facts; no fabricated diff. | 03 |
+| EFF-T28 | Staged/unstaged/untracked source → local plan contains changes and different identity. | 03/04 |
+| EFF-T29 | Dynamic import/fixture/SQL/runtime config → explicit mapping or broad fallback. | 03/05 |
+| EFF-T30 | PR edits policy → old minimum plus candidate additions; no self-skipping. | 03/05 |
+| EFF-T31 | Duplicate/unknown task, dependency cycle/undeclared module → deterministic nonempty handling; invalid config blocks. | 03 |
+| EFF-T32 | Selected test collects zero/all required skipped → hard failure identifies runner/path/prerequisite. | 04 |
+| EFF-T33 | Required PG/extension/toolchain absent → failed/blocked, not all-skip success. | 04/07 |
+| EFF-T34 | Identical pure test/input → local reused-local links original run. | 04 |
+| EFF-T35 | Same HEAD, changed source/fixture/config/mode → invalidate and rerun. | 04 |
+| EFF-T36 | Lock/actual tools/OS/environment differs → invalidate with explainable environment identity. | 04 |
+| EFF-T37 | Corrupt/incomplete result or missing logs/reports → no success reuse. | 04 |
+| EFF-T38 | PG/browser/migration/Hosted reuse request → reject; actually run required checks. | 04 |
+| EFF-T39 | Argument injection/output traversal → whitelist and argv reject; no arbitrary shell. | 04 |
+| EFF-T40 | Multiple worktrees/concurrent reports → independent identity/paths; no overwrite; controlled resources. | 04 |
+| EFF-T41 | Shadow full finds related unselected failure → omission recorded, activation blocked, rule/counterexample added. | 05 |
+| EFF-T42 | Insufficient samples/categories → remain shadow; no fake activation. | 05 |
+| EFF-T43 | Enforce omission/rollback needed → immediately widen full/shadow, keep honest results. | 05 |
+| EFF-T44 | Concurrent Quality shards → isolated DB/object/ports/runtime/reports. | 06 |
+| EFF-T45 | Shard startup/seed/execution fails → diagnostic, bounded owned cleanup, no collateral deletion. | 06 |
+| EFF-T46 | Wrong marker/unknown PID/DB → refuse cleanup, no global kill/drop. | 06 |
+| EFF-T47 | Missing/duplicate/wrong-SHA shard report → aggregation fails. | 06 |
+| EFF-T48 | Warmup/fonts/viewports/screenshot baseline → preserve original environment/coverage; no automatic updates. | 06 |
+| EFF-T49 | Serial versus shard inventory → same required tests, no accidental omissions. | 06 |
+| EFF-T50 | Node/jsdom split → DOM/provider tests stay in proper environment with same assertions. | 07 |
+| EFF-T51 | Backend pure/PG split → real integration connects; missing PG fails; pure tests avoid needless setup. | 07 |
+| EFF-T52 | New type entry versus old build → TS references covered; cold build detects same errors. | 07 |
+| EFF-T53 | Worker/heap/fixture optimization → no OOM/connection exhaustion/residual state; repeatable benefit. | 07 |
+| EFF-T54 | Timing/retry/wait changes → actual readiness, not larger timeout or ignored failure. | 07 |
+| EFF-T55 | Root/module/cwd/override routing → applicable constraints discoverable, no assumed universal loading. | 08 |
+| EFF-T56 | New-session packet recovery → current state and real evidence recover without full repository reread. | 08 |
+| EFF-T57 | Missing usage/duplicate terminal/missing subagent → unknown plus coverage; no double count/estimate. | 04/08 |
+| EFF-T58 | Full source delivery → all changed complete files match candidate; no secrets or diff-only substitute. | 08/09 |
+
+## Measurement and final reporting
+
+Targets are hypotheses: comparable ordinary-product L1 feedback ≥25% faster (reference total CI ~11–12 minutes); eligible selective PRs 5–8 minutes; focused pure/component P50 ≤60 seconds; plan P50 ≤10 seconds; added run/report overhead ≤5% with absolute overhead stated for short tasks; observed noncached-input/repeated-tool reduction ≥20% only after real usage exists. Explain single-run runner-resource increases >20% and report shadow overhead separately. Preserve known-counterexample omission count at zero; one omission rolls back, not a proof of mathematical completeness.
+
+Aim for ≥10 real samples per principal change category; with N<20 report median/range/N, not misleading P95. Separate cold/warm, task class/scope/runner and queue effects. Job elapsed is completed-minus-started; workflow updated-minus-created is an approximate end-to-end observation with settlement delay, not exact billing. Sum parallel job duration only for explicitly labeled runner-time, never wall-clock. Real billed runner-minutes require their actual source; missing usage/cost is unknown. Do not derive tokens from waiting or log volume.
+
+Final report gives actual Issue/PR/base/head/executed tree/merge/run/attempt; run/not-run/blocked/not-selected checks; independent reviewer identity/scope/conclusion; local versus Hosted versus target evidence; wall/runner/token methods and sample sufficiency; owned temporary-resource disposition; exact source package; and rollback. Current main's relevant full acceptance is its own status, never inferred from focused, historical, synthetic or PR evidence. Preserve append-only historical results and correct them through new records.
+
+## Documentation Impact Matrix
+
+| Area | Status | Exact paths and planned disposition |
+| --- | --- | --- |
+| Repository maps | Update in EFF-08 | `AGENTS.md`, `docs/zh-CN/root/AGENTS.md`: short routing and real new commands; preserve all safety rules. |
+| Planning docs | Update in EFF-00/09 | `docs/PLANS.md`, `docs/zh-CN/PLANS.md`, this plan and its Chinese companion: baseline, wave/PR/state/observation records and truthful archival. |
+| Product specs | No change | `docs/product-specs/product-spec.md`, `docs/zh-CN/product-specs/product-spec.md`: engineering delivery only, no product behavior/enablement. |
+| Architecture docs | No change | `ARCHITECTURE.md`, `docs/zh-CN/root/ARCHITECTURE.md`: existing runtime/port boundaries retained. |
+| Quality/testing | Update in EFF-02–08 | `docs/developer/verification-matrix.md`, `docs/zh-CN/developer/verification-matrix.md`, `docs/design-docs/testing-strategy.md`, `docs/zh-CN/design-docs/testing-strategy.md`: equivalent groups, profile/zero-test/full fallback, isolation and evidence. |
+| Reliability/runbooks | Review in EFF-01/04/06 | `docs/runbooks/manual-acceptance.md`, `docs/zh-CN/manual-acceptance.md`, `docs/developer/local-development.md`, `docs/zh-CN/developer/local-development.md`: update only affected diagnostic/log/environment/rollback procedures. |
+| Security/governance | Update/Review | `docs/agents/agent-delivery-protocol.md`, `docs/zh-CN/agents/agent-delivery-protocol.md` updated minimally in EFF-04/08; `docs/SECURITY.md`, `docs/zh-CN/SECURITY.md` reviewed for unchanged ownership/redaction authority. |
+| Frontend/design | No change | `docs/FRONTEND.md`, `docs/zh-CN/frontend.md`, `docs/design-docs/ui-design-system.md`: no user-facing redesign; browser proof remains required. |
+| Generated artifacts | Review per wave | `docs/generated/acceptance-operation-evidence.md`, `docs/generated/db-schema.md`: retain existing authority; no fabricated operation evidence or schema change. |
+| References | No change | `docs/references/productization-api-contract-draft.md`: no API contract change or duplicate engineering manual. |
+| Residual work | Review in EFF-00/09 | `docs/exec-plans/tech-debt-tracker.md`, `docs/zh-CN/exec-plans/tech-debt-tracker.md`: prefer existing entries for unexplained main-red/hotspots/observation residuals; do not reopen completed plans. |
+
+## Documentation Update Gate
+
+Run real `npm run docs:check` before completing a package/plan; state whether the schema part ran or skipped without PG/pgvector. CI changes also require `npm run acceptance:ci`; Quality metadata changes require `npm run acceptance:quality` (metadata is not browser evidence). Confirm commands exist and paths/test counts are real. Both languages and affected indices must be coherent on the same candidate before seal. No new `verify:*` example may claim implementation before its entry exists.
+
+Resolve every Update/Review row with an update or explicit unchanged-with-evidence disposition before archival, and record genuine residuals in the existing debt system. Do not mark the full program completed while B/C evidence remains pending. No source commit may contain raw logs, tokens, complete environment/session/rollout, DB dump or bulky generated runtime reports.
+
+The initial R1 registration changes only this pair and one link in each planning index. It does not modify any runtime command, protected gate, business flow, acceptance ID or operation ID. Its own evidence is documentation/static only; parent validation, independent review, Hosted/merge and later wave evidence must be recorded separately.
