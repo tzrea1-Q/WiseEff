@@ -256,7 +256,7 @@ export async function resolveOpenSpecReviews(
       expect(parameterSpecId).toBeTruthy();
 
       const detailResponse = await request.get(
-        apiRoute(`/api/v2/parameter-specs/${encodeURIComponent(parameterSpecId)}`),
+        apiRoute(`/api/v2/parameter-specs/${encodeURIComponent(parameterSpecId)}?view=governance`),
         { headers: adminHeaders() }
       );
       expect(detailResponse.ok()).toBe(true);
