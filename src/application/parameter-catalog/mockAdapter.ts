@@ -407,11 +407,24 @@ export function createMockCatalogPorts(options: CatalogMockOptions = {}): {
       const addedSubjects = parsed.changeSet.filter((change) => change.op === "create-subject-with-definitions");
       const revised = parsed.changeSet.filter((change) => change.op === "revise-definition");
       const semantic = revised.some((change) => change.op === "revise-definition" && change.class === "semantic");
+      const fakeDocumentation = revised.some((change) => {
+        if (change.op !== "revise-definition" || change.class !== "documentation") {
+          return false;
+        }
+        const current = store.definition.currentRevision;
+        const currentSchema = current.valueShape.schema as Record<string, unknown>;
+        const nextSchema = change.content.valueSchema as Record<string, unknown>;
+        if (JSON.stringify(currentSchema) !== JSON.stringify(nextSchema)) {
+          return true;
+        }
+        return Boolean(change.content.unit);
+      });
       const candidate = {
         ...clone(catalogPublicationCandidate),
         id: `${CATALOG_CANDIDATE_ID}_${store.candidates.size + 1}`,
         expectedBaseReleaseId: context.catalogReleaseId,
-        riskClass: addedSubjects.length > 0 || semantic ? ("high" as const) : ("low" as const),
+        riskClass:
+          addedSubjects.length > 0 || semantic || fakeDocumentation ? ("high" as const) : ("low" as const),
         impactSummary: {
           addedDefinitionCount: parsed.changeSet.filter((change) => change.op === "create-definition").length
             + addedSubjects.reduce(

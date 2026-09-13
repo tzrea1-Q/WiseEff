@@ -1,9 +1,14 @@
 import { describe, expect, it } from "vitest";
 
 import { catalogApiFailure } from "@/application/parameter-catalog/errors";
-import { readyCatalogDocument } from "@/application/parameter-catalog/fixtures";
+import {
+  CATALOG_DEFINITION_ID,
+  CATALOG_RELEASE_ID,
+  catalogPublicationJob,
+  readyCatalogDocument
+} from "@/application/parameter-catalog/fixtures";
+import { createMockCatalogPorts } from "@/application/parameter-catalog/mockAdapter";
 import { deriveCatalogDomainState } from "@/application/parameter-catalog/states";
-import { catalogPublicationJob } from "@/application/parameter-catalog/fixtures";
 
 import {
   buildCreateDefinitionChangeSet,
@@ -201,5 +206,28 @@ describe("publication operator state", () => {
         failureReason: null
       })
     ).toBe(false);
+  });
+
+  it("does not treat a fake documentation class that mutates unit or schema as low", async () => {
+    const { catalog } = createMockCatalogPorts();
+    const created = await catalog.createPublicationCandidate(
+      {
+        changeSet: [
+          {
+            op: "revise-definition",
+            definitionId: CATALOG_DEFINITION_ID,
+            class: "documentation",
+            content: {
+              displayName: "GPIO interrupt",
+              documentation: "GPIO interrupt",
+              unit: "mV",
+              valueSchema: { type: "integer", minimum: 0, maximum: 9 }
+            }
+          }
+        ]
+      },
+      { catalogReleaseId: CATALOG_RELEASE_ID }
+    );
+    expect(created.item.riskClass).toBe("high");
   });
 });
