@@ -46,7 +46,9 @@ describe("CI shadow projection", () => {
 
   it("runs the unchanged W1 CLI once in a clean two-file Git fixture and preserves receipt bytes", () => {
     const root = mkdtempSync(path.join(os.tmpdir(), "wiseeff-shadow-fixture-"));
-    const evidenceRoot = mkdtempSync(path.join(os.tmpdir(), "wiseeff-shadow-evidence-"));
+    const evidenceDirectory = path.resolve("work/efficiency/ci-shadow-p2");
+    mkdirSync(evidenceDirectory, { recursive: true, mode: 0o700 });
+    const evidenceRoot = mkdtempSync(path.join(evidenceDirectory, "native-"));
     chmodSync(evidenceRoot, 0o700);
     const gitEnv = { ...process.env, GIT_CONFIG_NOSYSTEM: "1", GIT_CONFIG_GLOBAL: "/dev/null", GIT_TERMINAL_PROMPT: "0" };
     const git = (args: string[]) => execFileSync("/usr/bin/git", ["-c", "user.name=WiseEff fixture", "-c", "user.email=fixture@example.invalid", ...args], { cwd: root, env: gitEnv, encoding: "utf8" }).trim();
@@ -67,11 +69,21 @@ describe("CI shadow projection", () => {
       writeFileSync(first, 'import { expect, it } from "vitest"; it("fixture one", () => expect(1).toBe(1));\n');
       writeFileSync(second, 'import { expect, it } from "vitest"; it("fixture two", () => expect(2).toBe(2));\n');
       const counterFile = path.join(evidenceRoot, "native-invocations.txt");
+      const invocationFile = path.join(evidenceRoot, "vitest-invocations.jsonl");
       const snapshotFile = path.join(evidenceRoot, "native-report.snapshot.json");
       const reportPathFile = path.join(evidenceRoot, "native-report.path");
       writeFileSync(counterFile, "0");
+      writeFileSync(invocationFile, "");
       const vitest = path.resolve(process.cwd(), "node_modules/vitest/vitest.mjs");
       writeFileSync(path.join(root, "package.json"), JSON.stringify({ name: "wiseeff-shadow-fixture", private: true, type: "module", scripts: { test: "node scripts/native-shim.cjs" } }));
+      writeFileSync(path.join(root, "vitest.config.ts"), [
+        'import { appendFileSync } from "node:fs";',
+        'import { defineConfig } from "vitest/config";',
+        `const invocationFile = ${JSON.stringify(invocationFile)};`,
+        'const phase = process.argv.includes("list") ? "list" : process.argv.includes("run") ? "run" : "other";',
+        'appendFileSync(invocationFile, JSON.stringify({ phase, argv: process.argv }) + "\\n");',
+        'export default defineConfig({ test: { environment: "node", include: ["src/fixture-one.test.ts", "src/fixture-two.test.ts"] } });',
+      ].join("\n"));
       writeFileSync(path.join(root, "scripts/native-shim.cjs"), [
         "const { copyFileSync, readFileSync, writeFileSync } = require('node:fs');",
         "const { spawnSync } = require('node:child_process');",
@@ -95,9 +107,6 @@ describe("CI shadow projection", () => {
       git(["merge", "--no-ff", "fixture-head", "-m", "fixture ordered merge"]);
       const sha = git(["rev-parse", "HEAD"]);
       const tree = git(["rev-parse", "HEAD^{tree}"]);
-      const discovered = JSON.parse(execFileSync(process.execPath, [vitest, "list", "--filesOnly", "--json"], { cwd: root, encoding: "utf8", env: gitEnv }));
-      const files = discovered.map((entry: { file: string }) => entry.file);
-      expect(files).toEqual([realpathSync(first), realpathSync(second)]);
       const identity = { event: "pull_request" as const, mode: "", fullAcceptance: false, ref: "refs/pull/828/merge", base, head, sha, tree, runId: "828", attempt: "1" };
       const runnerTemp = mkdtempSync(path.join(evidenceRoot, "runner-"));
       chmodSync(runnerTemp, 0o700);
@@ -117,9 +126,17 @@ describe("CI shadow projection", () => {
       const shadow = outputValue("shadow");
       const reportFile = readFileSync(reportPathFile, "utf8");
       const reportSnapshot = readFileSync(snapshotFile);
+      const invocations = readFileSync(invocationFile, "utf8").trim().split("\n").filter(Boolean).map((line) => JSON.parse(line));
+      const listInvocations = invocations.filter((invocation: { phase: string }) => invocation.phase === "list");
+      const runInvocations = invocations.filter((invocation: { phase: string }) => invocation.phase === "run");
+      const files = [realpathSync(first), realpathSync(second)];
+      const reportFiles = (JSON.parse(reportSnapshot.toString("utf8")).testResults as Array<{ name: string }>).map((result) => result.name).sort();
+      expect(listInvocations).toHaveLength(1);
+      expect(runInvocations).toHaveLength(1);
+      expect(reportFiles).toEqual([...files].sort());
       expect(Number(readFileSync(counterFile, "utf8"))).toBe(1);
-      expect(nativeSummary).toMatchObject({ command: "frontend", passed: 2, skipped: 0, files: 2, identity });
-      expect(shadow).toMatchObject({ status: "observed", planValid: true, actualFullFileCount: 2, selectionScope: "full-required", fullFallback: true });
+      expect(nativeSummary).toMatchObject({ command: "frontend", passed: 2, skipped: 0, files: reportFiles.length, identity });
+      expect(shadow).toMatchObject({ status: "observed", planValid: true, actualFullFileCount: reportFiles.length, selectionScope: "full-required", fullFallback: true });
       expect(reportSnapshot.equals(readFileSync(reportFile))).toBe(true);
       const steps = (withShadow: boolean) => Object.fromEntries(l1CommandIds["l1-frontend"].map((id) => [id, {
         outcome: "success", outputs: id === "frontend" ? { report: JSON.stringify(nativeSummary), ...(withShadow ? { shadow: JSON.stringify(shadow) } : {}) } : {},
@@ -150,16 +167,15 @@ describe("CI shadow projection", () => {
         return { stdoutBytes: stdout.length, stderrBytes: stderr.length, stdoutSha256: sha256(stdout), stderrSha256: sha256(stderr) };
       };
       const fixtureFiles = [...files, ...sourceFiles.map((file) => path.join(root, file))].map((file) => ({ file, sha256: sha256(readFileSync(file)) }));
-      writeFileSync("work/efficiency/ci-shadow-settlement-native-evidence.json", JSON.stringify({ syntheticFixture: true, fixtureRunId: identity.runId, fixtureAttempt: identity.attempt,
+      writeFileSync(path.join(evidenceRoot, "native-evidence.json"), JSON.stringify({ syntheticFixture: true, fixtureRunId: identity.runId, fixtureAttempt: identity.attempt,
         base, head, mergeSha: sha, mergeTree: tree, orderedParents: git(["rev-list", "--parents", "-n", "1", sha]).split(" "), discoveryFileCount: files.length,
-        nativeInvocationCount: Number(readFileSync(counterFile, "utf8")), nativeExit: w1.status, nativeWallMs: w1FinishedAt - w1StartedAt, nativeReportSnapshotSha256: sha256(reportSnapshot), projectedReportSha256: nativeSummary.sha256,
+        discoveryInvocationCount: listInvocations.length, nativeInvocationCount: Number(readFileSync(counterFile, "utf8")), nativeExit: w1.status, nativeWallMs: w1FinishedAt - w1StartedAt, nativeReportSnapshotSha256: sha256(reportSnapshot), projectedReportSha256: nativeSummary.sha256,
         receiptNativeOnlyExit: nativeOnlyReceipt.status, receiptNativeOnlyWallMs: nativeOnlyFinishedAt - nativeOnlyStartedAt, receiptNativeOnlySha256: sha256(nativeOnlyBytes),
         receiptShadowSiblingExit: shadowSiblingReceipt.status, receiptShadowSiblingWallMs: shadowSiblingFinishedAt - shadowSiblingStartedAt, receiptShadowSiblingSha256: sha256(shadowSiblingBytes), receiptBytesEqual: nativeOnlyBytes.equals(shadowSiblingBytes), preShadowReceipt: "not-emitted",
         privateLogIndex: { w1: logIndex("w1"), receiptNativeOnly: logIndex("native-only-receipt"), receiptShadowSibling: logIndex("shadow-sibling-receipt") },
         sourceHashes: Object.fromEntries(sourceFiles.map((file) => [file, sha256(readFileSync(path.join(root, file)))])), fixtureFiles }));
     } finally {
       rmSync(root, { recursive: true, force: true });
-      rmSync(evidenceRoot, { recursive: true, force: true });
     }
   });
 

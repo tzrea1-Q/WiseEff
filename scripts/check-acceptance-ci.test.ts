@@ -137,6 +137,38 @@ describe("equivalent fixed L1 scheduling", () => {
     results.env.EFF_SHADOW = projection.replace(`"${field}"`, `"${field}-unmapped"`);
     expect(evaluateL1CiWorkflow(YAML.stringify(workflow)).status).toBe("failed");
   });
+  const projectionExpression = (path: string) => "${{ toJSON(" + path + ") }}";
+  const projectionMutationCases = [
+    { projection: "EFF_NEEDS", key: "detect", expressionPath: "needs.detect", wrongPath: "needs.l1-server", extraPath: "needs.detect" },
+    ...["l1-static", "l1-frontend", "l1-scripts", "l1-server"].flatMap((job) => [
+      { projection: "EFF_NEEDS", key: `${job}.result`, expressionPath: `needs.${job}.result`, wrongPath: "needs.detect.result", extraPath: `needs.${job}.outputs.receipt` },
+      { projection: "EFF_NEEDS", key: `${job}.receipt`, expressionPath: `needs.${job}.outputs.receipt`, wrongPath: job === "l1-server" ? "needs.l1-static.outputs.receipt" : "needs.l1-server.outputs.receipt", extraPath: `needs.${job}.result` },
+    ]),
+    { projection: "EFF_SHADOW", key: "detect", expressionPath: "needs.detect", wrongPath: "needs.l1-server", extraPath: "needs.detect" },
+    { projection: "EFF_SHADOW", key: "l1-frontend.result", expressionPath: "needs.l1-frontend.result", wrongPath: "needs.detect.result", extraPath: "needs.l1-frontend.outputs.shadow_frontend" },
+    { projection: "EFF_SHADOW", key: "l1-frontend.shadow_frontend", expressionPath: "needs.l1-frontend.outputs.shadow_frontend", wrongPath: "needs.l1-server.outputs.shadow_server", extraPath: "needs.l1-frontend.result" },
+    { projection: "EFF_SHADOW", key: "l1-scripts.result", expressionPath: "needs.l1-scripts.result", wrongPath: "needs.detect.result", extraPath: "needs.l1-scripts.outputs.shadow_scripts" },
+    { projection: "EFF_SHADOW", key: "l1-scripts.shadow_scripts", expressionPath: "needs.l1-scripts.outputs.shadow_scripts", wrongPath: "needs.l1-server.outputs.shadow_server", extraPath: "needs.l1-scripts.result" },
+    { projection: "EFF_SHADOW", key: "l1-scripts.shadow_bridge", expressionPath: "needs.l1-scripts.outputs.shadow_bridge", wrongPath: "needs.l1-frontend.outputs.shadow_frontend", extraPath: "needs.l1-scripts.result" },
+    { projection: "EFF_SHADOW", key: "l1-server.result", expressionPath: "needs.l1-server.result", wrongPath: "needs.detect.result", extraPath: "needs.l1-server.outputs.shadow_server" },
+    { projection: "EFF_SHADOW", key: "l1-server.shadow_server", expressionPath: "needs.l1-server.outputs.shadow_server", wrongPath: "needs.l1-frontend.outputs.shadow_frontend", extraPath: "needs.l1-server.result" },
+  ] as const;
+  const projectionMutations = ["missing", "extra", "wrong", "hardcoded"] as const;
+  const applyProjectionMutation = (projection: string, descriptor: (typeof projectionMutationCases)[number], mutation: (typeof projectionMutations)[number]) => {
+    const expression = projectionExpression(descriptor.expressionPath);
+    const target = descriptor.key.includes(".") ? `"${descriptor.key.split(".")[1]}":${expression}` : `"${descriptor.key}":${expression}`;
+    if (mutation === "missing") return projection.replace(target, "");
+    if (mutation === "wrong") return projection.replace(target, target.replace(expression, projectionExpression(descriptor.wrongPath)));
+    if (mutation === "hardcoded") return projection.replace(target, target.replace(expression, '"success"'));
+    return projection.replace(target, `${target},"unmapped":${projectionExpression(descriptor.extraPath)}`);
+  };
+  it.each(projectionMutationCases.flatMap((descriptor) => projectionMutations.map((mutation) => [descriptor, mutation] as const)))
+    ("rejects %s %s projection mutation for %s", (descriptor, mutation) => {
+      const workflow = YAML.parse(compliantWorkflow);
+      const results = workflow.jobs["build-and-test"].steps.find((step: { id: string }) => step.id === "results");
+      results.env[descriptor.projection] = applyProjectionMutation(String(results.env[descriptor.projection]), descriptor, mutation);
+      expect(evaluateL1CiWorkflow(YAML.stringify(workflow)).status).toBe("failed");
+    });
   it("rejects whitespace inserted into a projected JSON key", () => {
     const workflow = YAML.parse(compliantWorkflow);
     const receipt = workflow.jobs["l1-server"].steps.find((step: { id: string }) => step.id === "receipt");

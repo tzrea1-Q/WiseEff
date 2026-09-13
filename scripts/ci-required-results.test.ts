@@ -1,4 +1,4 @@
-import { chmodSync, existsSync, linkSync, mkdtempSync, writeFileSync, symlinkSync, rmSync } from "node:fs";
+import { chmodSync, linkSync, mkdirSync, mkdtempSync, writeFileSync, symlinkSync, rmSync } from "node:fs";
 import { execFileSync, spawnSync } from "node:child_process";
 import os from "node:os";
 import path from "node:path";
@@ -124,6 +124,16 @@ describe("L1 invocation receipts", () => {
     forged.nativeReportSha256 = "f".repeat(64);
     expect(() => assertShadowResults({ identity, needs: { ...needs, "l1-server": { result: "success", outputs: { shadow_server: JSON.stringify(forged) } } }, nativeNeeds })).toThrow();
   });
+  it("rejects selection projections from unavailable and not-applicable shadows", () => {
+    const unavailable = createUnavailableShadow({ identity, command: "frontend", native: report("frontend"), error: "SHADOW_PLAN_INVALID" });
+    const unavailableSelected = { ...unavailable, modules: unavailable.modules.map((module, index) => index === 0 ? { ...module, selected: true, wouldSelectFileCount: 1, matchedCount: 1 } : module) };
+    expect(() => assertShadowSummary(unavailableSelected, identity, "frontend", report("frontend"))).toThrow();
+
+    const mainIdentity = { ...identity, event: "push", base: "", head: "", ref: "refs/heads/main" };
+    const notApplicable = createNotApplicableShadow({ identity: mainIdentity, command: "frontend" });
+    const notApplicableSelected = { ...notApplicable, modules: notApplicable.modules.map((module, index) => index === 0 ? { ...module, selected: true } : module) };
+    expect(() => assertShadowSummary(notApplicableSelected, mainIdentity, "frontend")).toThrow();
+  });
   it("keeps native Detect authoritative and settles every child before observing", () => {
     const native = (command: string) => report(command);
     const observed = (command: string) => ({ ...createUnavailableShadow({ identity, command: command as "frontend" | "scripts" | "bridge" | "server", native: native(command), error: "SHADOW_PLAN_INVALID" }),
@@ -226,7 +236,6 @@ describe("L1 invocation receipts", () => {
     const oversized = invoke({ EFF_SHADOW: "x".repeat(70 * 1024) });
     const unknown = invoke({ EFF_SHADOW: JSON.stringify({ identity: mainIdentity, needs: {} }) });
     const originalFailure = invoke({ EFF_SHADOW: "{}", EFF_NEEDS: JSON.stringify({ ...nativeNeeds, "l1-server": { result: "failure", outputs: { receipt: "" } } }) });
-    writeFileSync("work/efficiency/ci-shadow-repair-aggregate-cli-evidence.json", JSON.stringify({ argv: "node --experimental-strip-types scripts/ci-required-results.ts l1", pathOnly: true, clean: clean.status, malformedShadow: malformed.status, oversizedShadow: oversized.status, unknownShadow: unknown.status, originalFailure: originalFailure.status }));
     rmSync(env.GITHUB_OUTPUT, { force: true });
     expect(clean.status).toBe(0);
     expect(malformed.status).toBe(0);
@@ -238,43 +247,83 @@ describe("L1 invocation receipts", () => {
     expect(oversized.stdout).toContain("CI shadow: not-applicable; planValid:false");
     expect(unknown.stdout).toContain("CI shadow: not-applicable; planValid:false");
   });
-  it("prints unavailable and exits with native truth for applicable CLI counterexamples", () => {
+  it("records the applicable CLI shadow settlement matrix with stdout and exit", () => {
     const sha = execFileSync("git", ["rev-parse", "HEAD"], { encoding: "utf8" }).trim();
     const tree = execFileSync("git", ["rev-parse", "HEAD^{tree}"], { encoding: "utf8" }).trim();
     const prIdentity = { ...identity, sha, tree };
     const nativeReport = (command: string) => ({ ...report(command), identity: prIdentity });
-    const nativeSteps = (job: string) => Object.fromEntries(l1CommandIds[job].map((id) => [id, {
-      outcome: "success", outputs: { report: JSON.stringify(nativeReport(id)) },
+    const nativeSteps = (job: string, nativeIdentity = prIdentity) => Object.fromEntries(l1CommandIds[job].map((id) => [id, {
+      outcome: "success", outputs: { report: JSON.stringify({ ...report(id), identity: nativeIdentity }) },
     }]));
     const nativeNeeds = { detect: { result: "success", outputs: flags },
       ...Object.fromEntries(Object.keys(l1CommandIds).map((job) => [job, { result: "success", outputs: { receipt: JSON.stringify(createL1Receipt({ identity: prIdentity, job, steps: nativeSteps(job) })) } }])) };
-    const unavailable = (command: string) => JSON.stringify(createUnavailableShadow({ identity: prIdentity, command: command as "frontend" | "scripts" | "bridge" | "server", native: nativeReport(command), error: "SHADOW_PLAN_INVALID" }));
-    const allUnavailable = JSON.stringify({
+    const shadow = (command: string, value = createUnavailableShadow({ identity: prIdentity, command: command as "frontend" | "scripts" | "bridge" | "server", native: nativeReport(command), error: "SHADOW_PLAN_INVALID" })) => JSON.stringify(value);
+    const allUnavailable = {
       detect: { result: "success", outputs: flags },
-      "l1-frontend": { result: "success", outputs: { shadow_frontend: unavailable("frontend") } },
-      "l1-scripts": { result: "success", outputs: { shadow_scripts: unavailable("scripts"), shadow_bridge: unavailable("bridge") } },
-      "l1-server": { result: "success", outputs: { shadow_server: unavailable("server") } },
-    });
-    const suppressed = JSON.stringify({ detect: { result: "success", outputs: { ...flags, docs_only: "true", run_l1: "false", run_quality: "false", run_smoke: "false", run_l2: "false" } } });
-    const directory = mkdtempSync(path.join(os.tmpdir(), "wiseeff-shadow-cli-"));
-    const baseEnv = { ...process.env, GITHUB_EVENT_NAME: "pull_request", GITHUB_REF: "refs/pull/828/merge", GITHUB_SHA: sha,
-      GITHUB_RUN_ID: "100", GITHUB_RUN_ATTEMPT: "1", EFF_BASE_SHA: "1".repeat(40), EFF_HEAD_SHA: "2".repeat(40), EFF_MODE: "", EFF_FULL_ACCEPTANCE: "false",
-      EFF_NEEDS: JSON.stringify(nativeNeeds) };
-    const invoke = (shadow: string) => {
-      const output = path.join(directory, `${String(Date.now())}-${Math.random()}.out`);
-      return spawnSync(process.execPath, ["--experimental-strip-types", "scripts/ci-required-results.ts", "l1"], { cwd: process.cwd(), env: { ...baseEnv, EFF_SHADOW: shadow, GITHUB_OUTPUT: output }, encoding: "utf8" });
+      "l1-frontend": { result: "success", outputs: { shadow_frontend: shadow("frontend") } },
+      "l1-scripts": { result: "success", outputs: { shadow_scripts: shadow("scripts"), shadow_bridge: shadow("bridge") } },
+      "l1-server": { result: "success", outputs: { shadow_server: shadow("server") } },
     };
-    try {
-      const refusal = invoke(allUnavailable);
-      const detectBypass = invoke(suppressed);
-      const cases = [refusal, detectBypass].map((result) => ({ status: result.status, stdout: result.stdout, stderr: result.stderr }));
-      const evidence = path.resolve("work/efficiency/ci-shadow-settlement-red-before.json");
-      if (!existsSync(evidence)) writeFileSync(evidence, JSON.stringify({ candidate: "bec050199d1f9af7fb25f78047cd0ac20aa85176", cases }));
-      expect(refusal.status).toBe(0);
-      expect(refusal.stdout).toContain("CI shadow: unavailable; planValid:false");
-      expect(detectBypass.status).toBe(0);
-      expect(detectBypass.stdout).toContain("CI shadow: unavailable; planValid:false");
-    } finally { rmSync(directory, { recursive: true, force: true }); }
+    const observed = (command: string) => ({ ...createUnavailableShadow({ identity: prIdentity, command: command as "frontend" | "scripts" | "bridge" | "server", native: nativeReport(command), error: "SHADOW_PLAN_INVALID" }),
+      status: "observed" as const, error: null, planValid: true, selectionScope: "module-subset" as const,
+      selectionDigest: "c".repeat(64), policyDigest: "a".repeat(64), registryDigest: "b".repeat(64) });
+    const allObserved = {
+      detect: { result: "success", outputs: flags },
+      "l1-frontend": { result: "success", outputs: { shadow_frontend: shadow("frontend", observed("frontend")) } },
+      "l1-scripts": { result: "success", outputs: { shadow_scripts: shadow("scripts", observed("scripts")), shadow_bridge: shadow("bridge", observed("bridge")) } },
+      "l1-server": { result: "success", outputs: { shadow_server: shadow("server", observed("server")) } },
+    };
+    const clone = <T>(value: T): T => JSON.parse(JSON.stringify(value)) as T;
+    const childNames = ["frontend", "scripts", "bridge", "server"] as const;
+    const childLocation = (command: typeof childNames[number]) => command === "frontend" ? ["l1-frontend", "shadow_frontend"] as const
+      : command === "scripts" ? ["l1-scripts", "shadow_scripts"] as const
+        : command === "bridge" ? ["l1-scripts", "shadow_bridge"] as const : ["l1-server", "shadow_server"] as const;
+    const mutateChild = (command: typeof childNames[number], mutation: (value: Record<string, unknown>) => unknown) => {
+      const value = clone(allObserved) as Record<string, { outputs: Record<string, string> }>;
+      const [job, output] = childLocation(command);
+      value[job].outputs[output] = JSON.stringify(mutation(JSON.parse(value[job].outputs[output])));
+      return value;
+    };
+    const mainIdentity = { ...prIdentity, event: "push" as const, base: "", head: "", ref: "refs/heads/main" };
+    const mainFlags = { docs_only: "false", run_l1: "true", run_quality: "true", run_smoke: "false", run_l2: "true" };
+    const mainNeeds = { detect: { result: "success", outputs: mainFlags },
+      ...Object.fromEntries(Object.keys(l1CommandIds).map((job) => [job, { result: "success", outputs: { receipt: JSON.stringify(createL1Receipt({ identity: mainIdentity, job, steps: nativeSteps(job, mainIdentity) })) } }])) };
+    const cases: Array<{ name: string; shadow: unknown; needs?: unknown; event?: "pull_request" | "push"; expectedExit: number; expectedState: "observed" | "unavailable" | "not-applicable" | null }> = [
+      { name: "all-observed", shadow: allObserved, expectedExit: 0, expectedState: "observed" },
+      { name: "all-unavailable", shadow: allUnavailable, expectedExit: 0, expectedState: "unavailable" },
+      ...childNames.flatMap((command) => [
+        { name: `${command}-missing`, shadow: (() => { const value = clone(allObserved); const [job, output] = childLocation(command); delete value[job].outputs[output]; return value; })(), expectedExit: 0, expectedState: "unavailable" as const },
+        { name: `${command}-unavailable`, shadow: (() => { const value = clone(allObserved); const [job, output] = childLocation(command); value[job].outputs[output] = shadow(command); return value; })(), expectedExit: 0, expectedState: "unavailable" as const },
+        { name: `${command}-malformed`, shadow: mutateChild(command, () => ({})), expectedExit: 0, expectedState: "unavailable" as const },
+        { name: `${command}-wrong-identity`, shadow: mutateChild(command, (value) => ({ ...value, identity: { ...prIdentity, sha: "f".repeat(40) } })), expectedExit: 0, expectedState: "unavailable" as const },
+      ]),
+      { name: "count-contradiction", shadow: mutateChild("frontend", (value) => ({ ...value, modules: (value.modules as Array<Record<string, unknown>>).map((module, index) => index === 0 ? { ...module, matchedCount: 2 } : module) })), expectedExit: 0, expectedState: "unavailable" },
+      { name: "vector-contradiction", shadow: mutateChild("server", (value) => ({ ...value, modules: (value.modules as Array<Record<string, unknown>>).map((module, index) => index === 0 ? { ...module, selected: true } : module) })), expectedExit: 0, expectedState: "unavailable" },
+      { name: "digest-contradiction", shadow: mutateChild("frontend", (value) => ({ ...value, nativeReportSha256: "f".repeat(64) })), expectedExit: 0, expectedState: "unavailable" },
+      { name: "full-fallback-contradiction", shadow: mutateChild("frontend", (value) => ({ ...value, fullFallback: true, selectionScope: "full-required" })), expectedExit: 0, expectedState: "unavailable" },
+      { name: "envelope-contradiction", shadow: (() => { const value = clone(allObserved); value["l1-server"].outputs.unknown = "{}"; return value; })(), expectedExit: 0, expectedState: "unavailable" },
+      ...(["failure", "cancelled", "skipped"] as const).map((result) => ({ name: `native-${result}`, shadow: allObserved, needs: { ...clone(nativeNeeds), "l1-server": result === "skipped" ? { result } : { result, outputs: { receipt: "" } } }, expectedExit: 1, expectedState: null })),
+    ];
+    cases.push({ name: "non-pr-not-applicable", shadow: {}, needs: mainNeeds, event: "push", expectedExit: 0, expectedState: "not-applicable" });
+    const evidenceDirectory = path.resolve("work/efficiency/ci-shadow-p2");
+    mkdirSync(evidenceDirectory, { recursive: true, mode: 0o700 });
+    const evidenceRoot = mkdtempSync(path.join(evidenceDirectory, "cli-"));
+    const baseEnv = (event: "pull_request" | "push", needs: unknown) => ({ ...process.env, GITHUB_EVENT_NAME: event, GITHUB_REF: event === "push" ? "refs/heads/main" : "refs/pull/828/merge", GITHUB_SHA: sha,
+      GITHUB_RUN_ID: "100", GITHUB_RUN_ATTEMPT: "1", EFF_BASE_SHA: event === "push" ? "" : "1".repeat(40), EFF_HEAD_SHA: event === "push" ? "" : "2".repeat(40), EFF_MODE: "", EFF_FULL_ACCEPTANCE: "false", EFF_NEEDS: JSON.stringify(needs) });
+    const invoke = (testCase: (typeof cases)[number], index: number) => {
+      const output = path.join(evidenceRoot, `${String(index).padStart(2, "0")}-${testCase.name}.output`);
+      const result = spawnSync(process.execPath, ["--experimental-strip-types", "scripts/ci-required-results.ts", "l1"], { cwd: process.cwd(), env: { ...baseEnv(testCase.event ?? "pull_request", testCase.needs ?? nativeNeeds), EFF_SHADOW: JSON.stringify(testCase.shadow), GITHUB_OUTPUT: output }, encoding: "utf8" });
+      writeFileSync(path.join(evidenceRoot, `${String(index).padStart(2, "0")}-${testCase.name}.stdout`), result.stdout ?? "");
+      writeFileSync(path.join(evidenceRoot, `${String(index).padStart(2, "0")}-${testCase.name}.stderr`), result.stderr ?? "");
+      return result;
+    };
+    const results = cases.map((testCase, index) => ({ testCase, result: invoke(testCase, index) }));
+    writeFileSync(path.join(evidenceRoot, "cases.json"), JSON.stringify({ identity: prIdentity, evidenceRoot, cases: results.map(({ testCase, result }) => ({ name: testCase.name, expectedExit: testCase.expectedExit, expectedState: testCase.expectedState, actualExit: result.status, stdout: result.stdout, stderr: result.stderr })) }));
+    for (const { testCase, result } of results) {
+      expect(result.status, testCase.name).toBe(testCase.expectedExit);
+      if (testCase.expectedState) expect(result.stdout, testCase.name).toContain(`CI shadow: ${testCase.expectedState}; planValid:${testCase.expectedState === "observed" ? "true" : "false"}`);
+      else expect(result.stdout, testCase.name).not.toContain("CI shadow:");
+    }
   });
   it("reads only a fresh private regular report and rejects symlinks and missing reports", () => {
     const directory = mkdtempSync(path.join(os.tmpdir(), "ci-report-test-"));

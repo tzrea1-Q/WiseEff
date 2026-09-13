@@ -240,12 +240,14 @@ export function assertShadowSummary(value: unknown, expected: Identity, command:
     requireCi(summary.planValid === false && typeof summary.error === "string" && shadowErrors.includes(summary.error as typeof shadowErrors[number]), "SHADOW_STATUS");
     requireCi(!summary.fullFallback && summary.selectionScope === "unavailable" && summary.selectionDigest === null
       && summary.policyDigest === null && summary.registryDigest === null, "SHADOW_SELECTION");
+    requireCi(modules.every((module) => !module.selected && module.wouldSelectFileCount === 0 && module.matchedCount === 0), "SHADOW_SELECTION");
     for (const key of ["nativeReportSha256", "actualFilesSha256"]) requireCi(summary[key] === null || (typeof summary[key] === "string" && /^[a-f0-9]{64}$/.test(String(summary[key]))), "SHADOW_DIGEST");
   } else {
     requireCi(summary.status === "not-applicable" && summary.planValid === false && summary.error === "NOT_APPLICABLE"
       && !summary.fullFallback && summary.selectionScope === "not-applicable" && summary.selectionDigest === null
       && summary.policyDigest === null && summary.registryDigest === null && summary.nativeReportSha256 === null
       && summary.actualFilesSha256 === null && summary.actualFullFileCount === 0, "SHADOW_STATUS");
+    requireCi(modules.every((module) => !module.selected && module.wouldSelectFileCount === 0 && module.matchedCount === 0), "SHADOW_SELECTION");
   }
   if (native) {
     requireCi(summary.command === native.command, "SHADOW_NATIVE_MISMATCH");
