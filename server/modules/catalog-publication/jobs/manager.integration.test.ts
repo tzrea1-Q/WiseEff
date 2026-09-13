@@ -209,7 +209,7 @@ describe("CP-07 publication manager production seam", () => {
         installer: hangingInstaller,
         resolvePublisherActor: async () => userActor("user-catalog-publisher", publisherPermissions),
         ownerId: "manager-timer-wins",
-        activationTimeoutMs: 40,
+        activationTimeoutMs: 2_000,
         log: (fields) => {
           events.push(fields);
         },

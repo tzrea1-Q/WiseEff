@@ -58,7 +58,8 @@ type SqlClass = "auth" | "kernel" | "business" | "transaction" | "other";
 function classify(sql: string): SqlClass {
   if (/^\s*(begin|commit|rollback|set\s|reset\s)/i.test(sql)) return "transaction";
   if (/parameter_catalog\.(organization_subject_registrations|subject_placements|parameter_review_evidence|parameter_review_items|project_parameter_bindings|project_parameter_values)\b/i.test(sql)) return "business";
-  if (/parameter_catalog\.(catalog_state|catalog_releases|catalog_materializations|catalog_release_subjects|catalog_subjects|catalog_release_subject_aliases|catalog_subject_aliases|catalog_release_definition_heads|parameter_definitions|definition_revisions)\b/i.test(sql)) return "kernel";
+  if (/parameter_catalog\.(catalog_state|catalog_releases|catalog_materializations|catalog_release_subjects|catalog_subjects|catalog_release_subject_aliases|catalog_subject_aliases|catalog_release_definition_heads|parameter_definitions|definition_revisions|catalog_activation_receipts)\b/i.test(sql)) return "kernel";
+  if (/catalog_publication\.(publication_policies|release_artifacts)\b/i.test(sql)) return "kernel";
   if (/\b(users|user_role_bindings|role_permissions|roles|organizations|local_auth_sessions)\b/i.test(sql)) return "auth";
   return "other";
 }
