@@ -1,7 +1,7 @@
 # 智能体开发与验证效率优化
 
 > English: [English](../../../exec-plans/active/2026-09-13-agent-delivery-efficiency.md)
-> 状态：**活跃——EFF-00 基线与 EFF-01 首版本地验证进行中；尚未合入或取得 Hosted 验证，不声称裁剪启用或性能改善。**
+> 状态：**活跃——前置 PR #830 已合入；W0 已刷新，准备第二轮 Hosted 候选。W2 按审查返工，后续波次保留本地候选。不声称裁剪启用或性能改善。**
 > 日期：2026-09-13。真实跟踪 Issue：[#828](https://github.com/tzrea1-Q/WiseEff/issues/828)。
 > 2026-09-13 重新 fetch 后的真实 accepted base：`1059acb57379bd120d0d2b1a4b4733d4c2e02901`。它恰好等于附件的历史参考值，不构成强制回退后续工作的授权。
 
@@ -13,11 +13,35 @@
 
 | 交付层级 | 完成含义 | 当前状态 |
 | --- | --- | --- |
-| A：工具与流程 | 诊断、等价调度、影子计划、执行/摘要与路由已审查、验证并交付 | EFF-01 首版本地验证；其余工具待实现 |
+| A：工具与流程 | 诊断、等价调度、影子计划、执行/摘要与路由已审查、验证并交付 | EFF-01 等待前置修复和集成刷新；EFF-02/08 有本地已审候选；EFF-03/04 仍在 Scratch |
 | B：模块启用 | 每个明确模块独立满足观察与审查门槛 | 无已启用模块；`observation-pending` |
 | C：效果验证 | 同类真实任务/CI 样本支持墙钟、资源与 usage 结论 | 样本不足；token usage 为 `unknown` |
 
 A 可先交付，B/C 继续开放。不得制造样本，也不能因工具合入就宣称整个项目全面完成。
+
+## 交付台账——2026-09-13 检查点
+
+本追加检查点记录已观察候选，不替后续 tree 作验收。父协调者在下一检查点记录刷新后的封板和合入证据。用户补充模型要求后的开发派遣均显式使用 `gpt-5.6-luna`、`xhigh`；独立审查者按角色标识。
+
+| Lane | 精确本地候选／远端证据 | 状态与证据边界 |
+| --- | --- | --- |
+| 基线夹具前置修复 | `27320fdfdc38e92193faf9799f70e11f7cb37368`，tree `6887ac7b8c43048fb1ba93dde047083cdb7ed172`；[PR #830](https://github.com/tzrea1-Q/WiseEff/pull/830)、[run 34760791346](https://github.com/tzrea1-Q/WiseEff/actions/runs/34760791346)，attempt 1 | 用户明确例外仅允许 publication store 测试的 `89600` → `89900`。44 个断言和业务代码不变。在自有本地 pgvector 集群固定 PID 1033，base 为 5 pass/1 failure，候选为 6 pass/0 skip。build、文档/schema 检查及独立 Standards/Spec 通过，Hosted 待完成。 |
+| EFF-01／W0 | `66e572a4c45bd5d4db164380a2200e7ee6c10ac4`，tree `26b7acc0e03a07922e57fe688ca285eb6a741346`；[PR #829](https://github.com/tzrea1-Q/WiseEff/pull/829)、[run 34758486310](https://github.com/tzrea1-Q/WiseEff/actions/runs/34758486310)，attempt 1 | 本地独立 Standards/Spec、30 项 focused、47 项 sanitizer/finalizer 和 build 通过。Hosted 前端 3411 pass；scripts 1279 pass/21 个既有可选 skip；bridge 134 pass/4 个平台 skip；后端 4167 pass/1 个夹具失败。Build and test 与 Merge bar 失败，Quality/Smoke 通过，未选中 L2/target 为 skipped。实际 merge 执行 SHA `4eaf0ae4df5a0d80a76c642389f2e43dd91bf1e9` 的 tree 与候选一致。本 PR 未执行 L2 最小诊断上传。 |
+| EFF-02／W1 | `4d3e8ab29cc403773a6341a59cc1d741ef3a5bb7`，tree `4a467e83122fe1938c71a1b1eb4535b52985172c` | 恢复 backend 子任务中完整 PG-backed docs 检查后，本地独立 Standards/Spec 通过。64 项 focused、验收元数据和 build 通过。无 PR/Hosted/合入，W0 后刷新。 |
+| EFF-03/04／W2 | 计划器检查点 `25435360f01fc016931785c6cd650215ecb5e145`；执行器/摘要仍可变 | 仅 Scratch。四个 feedback 模块均为 shadow/observation-pending，memo 关闭，候选和完整检查仍必需。无最终独立审查或 Hosted 结论。 |
+| EFF-08／W3 | `805edbed4a68eea9f45d4d61e08ce2fc67f3fcec`，tree `f1ff3cdba6aafc93c3d26fc16bf5ae600d46e1e1` | R1 独立合并审查通过；使用真实 W2 命令的路由演练及集成文档检查待完成。无 PR/Hosted/合入。 |
+
+保留失败的 W0 run，不重试。前置修复后的强制 main 刷新使用协议例外允许的第二轮 Hosted，不授权无关广域失败重跑。夹具算术穷举完整 1200 周期，修改前 300 个余数碰撞、修改后为零；它不是实测 flaky 频率。初次零测试 CLI 配置失败未计入 Red。自有夹具 PostgreSQL 已停止并核实不存在，临时连接凭据已移除，本地证据保留。
+
+观察与效果分开：本地一次完整前端运行在 441 个文件中通过 3411 项测试，进程墙钟 78.211 秒。最慢三个套件均为 DOM 集成，仅此不足以支持 pure 拆分。两次同源码 Quality 观察各通过 100 项，原生耗时 506.951 和 502.668 秒；隔离与收益未经证明前，共享状态继续串行。类型反馈对每条命令各测三次 cold 和三次 warm，cold 仅清除自有编译增量缓存。并发主机负载下，完整构建 cold/warm 中位数为 24.958/27.991 秒，原样类型阶段为 10.070/12.727 秒。这支持评估 edit-only 入口，不构成 CI 节省声明。计费 runner-minutes 和全项目 token usage 仍为 unknown。
+
+### 前置合入后的集成检查点
+
+PR #830 已合入为 `75f3514b213f07f177773a077021e1485f9f173b`；origin/main 和干净的专用本地 main 已同步，远端特性分支已核实不存在。run 34760791346 attempt 1 的 Detect、Build and test、Quality、Smoke、Merge bar 成功，未选中的 L2/target/minimal probe 保持 skipped。实际 checkout `d24340b3bcce9cd27c7837fb3bd09cab0eaee983` 的 tree 为 `6887ac7b8c43048fb1ba93dde047083cdb7ed172`。原生计数：前端 3411 pass；scripts 1261 pass/21 个可选 skip；bridge 134 pass/4 个平台 skip；后端 4168 pass/0 skip。工作流端到端近似值 1056 秒，各已完成 job 耗时之和 30.9833 分钟，均非计费口径或优化收益声明。[Attestation](https://github.com/tzrea1-Q/WiseEff/issues/828#issuecomment-5653792520) 保持 Issue #828 开放。新 main [run 34761775820](https://github.com/tzrea1-Q/WiseEff/actions/runs/34761775820) 正在执行，尚未建立完整 main 验收结论。
+
+W0 在 `8a28db47050fc1c84386b4498ad60f62748ae6ef` 将前置修复合入 Scratch lineage。本次刷新运行时检查点文档有 dirty；四个 focused 文件 77 项全通过、无 skip，验收元数据、原完整 build 和直接文档治理检查通过。W0 运行时代码相对首个受审候选未变。精确刷新候选的 Hosted 将在 `Build and test / Documentation governance` 的 job 自有 pgvector 上执行完整 `docs:check`；本地文档治理不冒充 schema 证据。此前一次清空环境变量的本地 docs 调用仍对默认数据库做了只读扩展探测，并跳过 schema 验证；它不计为 schema 成功，也不再重复。
+
+W2 检查点 `61e3e5638248b3b9e528bb2f999a675dfb4eed4d` 未通过两项独立审查。有边界的纯 fixture 暴露了 discovery 参数覆写临时测试、shadow 文件裁剪、不完整证据被判 complete、环境及 PG 边界缺口；实验未修改候选源码或外部数据库。合并返工包使 W2 保持 Scratch。原 Standards 审查者编写过早期 planner，已更换为覆盖完整候选的独立审查者，不计自审。EFF-07 类型入口候选 `d3872b68f25e21851d71d23b9ec426b27243cd3d` 已通过独立 R1 合并审查、两个 TS 引用项目的真实类型错误 Red/Green、完整 build 与文档治理；尚无 PR/Hosted/合入。
 
 ## EFF-00 真实事实与待补证据
 

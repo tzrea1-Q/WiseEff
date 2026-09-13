@@ -1,7 +1,7 @@
 # Agent Delivery and Verification Efficiency
 
 > Chinese: [Chinese](../../zh-CN/exec-plans/active/2026-09-13-agent-delivery-efficiency.md)
-> Status: **Active — EFF-00 baseline and EFF-01 bootstrap local validation underway; not merged or Hosted-validated. No activation or performance claim.**
+> Status: **Active — prerequisite PR #830 merged; W0 is refreshed for its second Hosted candidate. W2 requires review-driven repair; later waves retain local candidates. No activation or performance claim.**
 > Date: 2026-09-13. Tracking Issue: [#828](https://github.com/tzrea1-Q/WiseEff/issues/828).
 > Accepted base, freshly fetched on 2026-09-13: `1059acb57379bd120d0d2b1a4b4733d4c2e02901`. This equals the supplied design's historical reference; it is not permission to reset later work.
 
@@ -13,11 +13,35 @@ Implement the user's supplied 2026-09-13 engineering design in bounded waves: sa
 
 | Delivery level | Completion means | Current status |
 | --- | --- | --- |
-| A: tools and process | Reviewed and verified diagnostics, equivalent scheduling, shadow plan, execution/reporting and routing are delivered | EFF-01 bootstrap in local validation; remaining tools pending |
+| A: tools and process | Reviewed and verified diagnostics, equivalent scheduling, shadow plan, execution/reporting and routing are delivered | EFF-01 awaits its prerequisite and integration refresh; EFF-02/08 have local reviewed candidates; EFF-03/04 remain in Scratch |
 | B: module activation | Each explicitly named module passes its own observation and independent-review gates | No module enabled; `observation-pending` |
 | C: measured effect | Comparable real task/CI samples support wall-clock, resource and usage conclusions | Insufficient samples; token usage `unknown` |
 
 A can be delivered while B/C remain open. Do not manufacture samples or call the entire program complete merely because tooling merged.
+
+## Delivery ledger — 2026-09-13 checkpoint
+
+This append-only checkpoint describes observed candidates, not acceptance of a later tree. The parent records refreshed seals and merge evidence in the next checkpoint. All development dispatches after the user's model clarification explicitly use `gpt-5.6-luna` with `xhigh`; separate reviewers are identified by role.
+
+| Lane | Exact local candidate / remote evidence | State and evidence boundary |
+| --- | --- | --- |
+| Baseline fixture prerequisite | `27320fdfdc38e92193faf9799f70e11f7cb37368`, tree `6887ac7b8c43048fb1ba93dde047083cdb7ed172`; [PR #830](https://github.com/tzrea1-Q/WiseEff/pull/830), [run 34760791346](https://github.com/tzrea1-Q/WiseEff/actions/runs/34760791346), attempt 1 | Explicit user exception permits only `89600` → `89900` in the publication store test. All 44 assertions and production code are unchanged. Controlled PID 1033 on an owned local pgvector cluster reproduced 5 pass/1 failure at base and 6 pass/0 skip at candidate. Build, documentation/schema checks and independent Standards/Spec passed. Hosted pending. |
+| EFF-01 / W0 | `66e572a4c45bd5d4db164380a2200e7ee6c10ac4`, tree `26b7acc0e03a07922e57fe688ca285eb6a741346`; [PR #829](https://github.com/tzrea1-Q/WiseEff/pull/829), [run 34758486310](https://github.com/tzrea1-Q/WiseEff/actions/runs/34758486310), attempt 1 | Independent Standards/Spec, 30 focused tests, 47 sanitizer/finalizer tests and build passed locally. Hosted frontend 3411 passed; scripts 1279 passed/21 existing optional skips; bridge 134 passed/4 platform skips; backend 4167 passed/1 fixture failure. Build and test and Merge bar failed; Quality/Smoke passed; unselected L2/target jobs skipped. Executed merge SHA `4eaf0ae4df5a0d80a76c642389f2e43dd91bf1e9` has the candidate tree. Diagnostic L2 upload was not exercised by this PR. |
+| EFF-02 / W1 | `4d3e8ab29cc403773a6341a59cc1d741ef3a5bb7`, tree `4a467e83122fe1938c71a1b1eb4535b52985172c` | Local independent Standards/Spec passed after restoring the complete PG-backed docs check in the backend child. 64 focused tests, acceptance metadata and build passed. No PR/Hosted/merge; refresh after W0. |
+| EFF-03/04 / W2 | Planner checkpoint `25435360f01fc016931785c6cd650215ecb5e145`; runner/report still mutable | Scratch only. All four feedback modules remain shadow/observation-pending; memo disabled. Candidate and full checks remain required. No final independent review or Hosted claim. |
+| EFF-08 / W3 | `805edbed4a68eea9f45d4d61e08ce2fc67f3fcec`, tree `f1ff3cdba6aafc93c3d26fc16bf5ae600d46e1e1` | Combined independent R1 review passed. Routing walkthroughs with actual W2 commands and integrated docs checks remain pending. No PR/Hosted/merge. |
+
+The failed W0 run is retained without retry. Its mandatory post-prerequisite main refresh consumes the protocol's exceptional second Hosted allowance; it is not permission to rerun unrelated broad failures. Fixture arithmetic found 300 colliding residues out of a complete 1200-period before the change and none after; this is not a measured flaky-run frequency. Its initial zero-test CLI setup failure was excluded from Red. Owned fixture PostgreSQL was stopped and verified absent; temporary connection credentials were removed, local evidence retained.
+
+Observations remain separate from effects: one full local frontend run passed 3411 tests in 441 files, process wall 78.211 seconds. The top three suites are DOM integrations; no pure split is justified by that alone. Two unchanged Quality observations each passed 100 tests; native durations were 506.951 and 502.668 seconds. Shared state stays serial until isolation and benefit are proven. Type feedback measured three cold and three warm runs per command; cold clears only owned incremental compiler caches. Under concurrent host load, full-build median cold/warm was 24.958/27.991 seconds, and its unchanged type phase 10.070/12.727 seconds. This supports evaluating an edit-only entry, not a CI savings claim. Billed runner-minutes and whole-program token usage remain unknown.
+
+### Integration checkpoint after prerequisite merge
+
+PR #830 merged as `75f3514b213f07f177773a077021e1485f9f173b`; origin/main and the clean dedicated local main were synchronized, and the remote feature branch was verified absent. Its run 34760791346 attempt 1 passed Detect, Build and test, Quality, Smoke and Merge bar; unselected L2/target/minimal probe remained skipped. Actual checkout `d24340b3bcce9cd27c7837fb3bd09cab0eaee983` has tree `6887ac7b8c43048fb1ba93dde047083cdb7ed172`. Native counts: frontend 3411 passed; scripts 1261 passed/21 optional skips; bridge 134 passed/4 platform skips; backend 4168 passed/0 skipped. The workflow end-to-end approximation was 1056 seconds and summed completed job elapsed 30.9833 minutes, neither a billing measure nor an optimization claim. [Attestation](https://github.com/tzrea1-Q/WiseEff/issues/828#issuecomment-5653792520) retains Issue #828 open. New main [run 34761775820](https://github.com/tzrea1-Q/WiseEff/actions/runs/34761775820) is in progress; full-main acceptance is not yet established.
+
+W0 merged that prerequisite into its Scratch lineage at `8a28db47050fc1c84386b4498ad60f62748ae6ef`. The four focused files passed 77 tests with no skips, acceptance metadata and original build passed, and direct document governance passed on this refresh with the checkpoint docs dirty. No W0 runtime code changed from the initial reviewed candidate. Exact refreshed Hosted will run the complete `docs:check` in `Build and test / Documentation governance` on job-owned pgvector; local document governance is not schema evidence. An earlier local unset-environment docs invocation reached the default database for a read-only extension probe and skipped schema verification; it is excluded from schema success and is not repeated.
+
+W2 checkpoint `61e3e5638248b3b9e528bb2f999a675dfb4eed4d` failed both independent reviews. Bounded pure fixtures exposed discovery argv overwriting a temporary test, shadow file trimming, incomplete evidence accepted as complete and environment/PG-boundary gaps. No candidate source or external database was modified by those experiments. A consolidated repair packet keeps W2 in Scratch. The complete Standards review was reassigned because the prior reviewer authored the earlier planner; self-review is not counted. EFF-07 type-entry candidate `d3872b68f25e21851d71d23b9ec426b27243cd3d` passed independent combined R1 review and local type-error Red/Green in both TS reference projects, full build and document governance; it has no PR/Hosted/merge yet.
 
 ## EFF-00 accepted facts and open evidence
 
