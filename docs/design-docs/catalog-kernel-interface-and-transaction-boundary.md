@@ -6,6 +6,14 @@ Status: accepted target contract, completed after joint acceptance, for [Choose 
 
 This decision consumes the accepted ADR-0040/0041/0042 superset at [`9fe269d4facc31b49fc1e0535d2d51ba7140644b`](https://github.com/tzrea1-Q/WiseEff/tree/9fe269d4facc31b49fc1e0535d2d51ba7140644b). Those decisions remain authoritative for domain and relational semantics. This document decides the deep module seam, types, transaction ownership, permissions, cache behavior, and test surface. It creates no production code, migration, HTTP route, UI, or implementation ticket and reserves no ADR number.
 
+2026-09-12 addendum ([ADR-0043](../adr/0043-catalog-authoring-and-online-publication.md)):
+
+- **Current vs this page:** on `origin/main` `063b12c49`, `installPublishedRelease` already implements bootstrap/advance, `expectedCurrent`, exclusive lock, and a kernel-owned transaction. The sentence above that those operations remain tagged `permission-denied` pending S3-INS / S3-VFY is historical relative to the landed installer. This addendum does not reopen Wayfinder #668 nodes.
+- Callers still cannot pass an open transaction or coordinate Catalog tables.
+- Online publication extends `installPublishedRelease` inside that boundary with Candidate Authorization checks, a pre-commit projection recompute over the same uncommitted transaction, and an immutable Activation Receipt committed with pointer/heads. There is no second current pointer and no cut-then-verify window.
+- Authoring, Candidate freeze, and approval live outside the Kernel in `catalog-publication`. The Kernel consumes an immutable published source plus the proofs ADR-0043 requires; it is not the approval service.
+- `adopted-preexisting` is a distinct install kind for an already-current baseline. It is not a general unsigned-bundle backdoor.
+
 ## Decision summary
 
 The **Catalog Kernel** is one routes-less deep module. It owns deterministic Catalog Release compilation, full release validation, atomic materialization, exact release snapshots, selector matching, definition lookup, independent materialization verification, and disposable snapshot caches behind one public seam. Callers never coordinate catalog tables, pass an open transaction, select a revision head, apply aliases, or infer current lifecycle.

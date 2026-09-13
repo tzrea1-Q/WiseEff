@@ -677,9 +677,22 @@ Canonical launch 要求后续 release plan 在同一 candidate revision 上证�
 | R6/R8 cutover truth | R6 是 ReviewEvidence 加 Archive/mapping evidence；R8 是 DefinitionProposal 加 Archive/mapping evidence；只有独立证明的 occurrence graph 才能创建自身 ParameterObservation。 |
 | 双语/OpenAPI 一致性 | 中英文 DTO、矩阵、reason token、header 与 follow-up impact 指向同一合同。 |
 
+## 2026-09-12 发布补记
+
+[ADR-0043](../../adr/0043-catalog-authoring-and-online-publication.md) 扩展本合同时，不改写规范读命名空间，也不改变“Proposal 接受不物化 Catalog 行”。
+
+- 组织 Admin **不会**自动成为 Catalog 发布者。新增能力：`catalog:author`、`catalog:publish`、`catalog:review-high-risk`。请求体中的角色/风险/批准标志均不可信。
+- 第一版发布合同中，Agent 仍只读 Catalog。
+- 冻结路由（随后经现有 OpenAPI 机制生成，不另手写一份合同）：`POST /api/v2/catalog/publication-candidates`、`GET /api/v2/catalog/publication-candidates/{candidateId}`、`POST /api/v2/catalog/publication-candidates/{candidateId}/publish`、`GET /api/v2/catalog/publications/{jobId}`。
+- 新增 `details.reason` 见[控制面](catalog-authoring-and-publication-control-plane.md)。既有 reason 保留。
+- Accept 可以记录带标签的 publication reference（`repository` 或 `candidate`）。用假 Git URL 填 `repositoryReference` 被禁止。
+- “已生效”来自 Receipt 读取，不是 Proposal `accepted`，也不是 job `queued`。
+- 自托管低风险单人发布受策略门禁约束，且仍需要真实的 `catalog:publish` 授权。高风险自审仍然禁止。
+- Registration 仍是独立聚合。后续登记失败不得把已经成功的 Catalog 发布显示成全部回滚。
+
 ## 决策完整性
 
-本 API 决策不存在剩余产品语义选择：
+除 ADR-0043 拥有的发布控制面增补外，本 API 决策不存在剩余产品语义选择：
 
 - namespace/versioning 已固定；
 - pre-registration visibility 已固定；
