@@ -214,7 +214,7 @@ test.describe("Product feedback browser acceptance", () => {
     // @operation PFB-SUBMIT-001
     await page.goto("/parameters");
 
-    await page.getByRole("button", { name: "问题反馈" }).click();
+    await page.getByRole("complementary", { name: "主导航侧边栏" }).getByRole("button", { name: "问题反馈" }).click();
     const dialog = page.getByRole("dialog", { name: "问题反馈" });
     await expect(dialog).toBeVisible();
     await dialog.getByLabel("问题描述").fill(submitDescription);
