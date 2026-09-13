@@ -17,6 +17,7 @@ import {
   checkAdoptPreexistingCatalog,
 } from "../server/modules/catalog-publication/runtime/adoption";
 import {
+  dropLabRuntimeLogins,
   inspectLoginBoundary,
   provisionPublicationRuntimeLogins,
 } from "../server/modules/catalog-publication/runtime/provisionRuntimeLogins";
@@ -197,7 +198,18 @@ export async function provisionDeliveryDatabase(bootstrapUrl: string): Promise<{
   process.env.DATABASE_URL = bootstrapUrl;
   const ephemeral = await createEphemeralTestDatabase("ra04m1");
   assertIsolatedPostgresUrl(ephemeral.url, "ephemeral delivery database");
-  const provisioned = await provisionPublicationRuntimeLogins(ephemeral.url);
+  const runToken = ephemeral.url.replace(/[^a-z0-9]/gi, "").slice(-16).toLowerCase();
+  const provisioned = await provisionPublicationRuntimeLogins(ephemeral.url, {
+    mode: "lab",
+    runToken,
+  });
+  const dropOwned = async () => {
+    const cleanup = await dropLabRuntimeLogins(ephemeral.url, runToken);
+    await ephemeral.drop();
+    if (cleanup.failed.length > 0) {
+      throw new Error(`lab LOGIN cleanup failed for ${cleanup.failed.join(",")}`);
+    }
+  };
   const apiBoundary = await inspectLoginBoundary(provisioned.apiUrl);
   const workerBoundary = await inspectLoginBoundary(provisioned.workerUrl);
   const managerBoundary = await inspectLoginBoundary(provisioned.managerUrl);
@@ -252,6 +264,14 @@ export async function provisionDeliveryDatabase(bootstrapUrl: string): Promise<{
       organizationId: DELIVERY_PUBLISHER.organizationId,
       capability: "catalog:publish",
     });
+    for (const roleId of ["hardware-committer", "software-committer", "software-user"] as const) {
+      await admin.query(
+        `insert into user_role_bindings (id, user_id, organization_id, project_id, role_id)
+         values ($1, $2, $3, $4, $5)
+         on conflict (id) do nothing`,
+        [`urb-ra04-publisher-${roleId}`, DELIVERY_PUBLISHER.userId, DELIVERY_PUBLISHER.organizationId, DELIVERY_PUBLISHER.projectId, roleId],
+      );
+    }
   } finally {
     await admin.end();
   }
@@ -325,7 +345,7 @@ export async function provisionDeliveryDatabase(bootstrapUrl: string): Promise<{
 
   return {
     databaseUrl: ephemeral.url,
-    drop: ephemeral.drop,
+    drop: dropOwned,
     apiUrl: provisioned.apiUrl,
     workerUrl: provisioned.workerUrl,
     managerUrl: provisioned.managerUrl,
@@ -398,6 +418,7 @@ HOST=0.0.0.0
 PORT=8787
 POSTGRES_PASSWORD=unused-isolated
 DATABASE_URL=${input.apiUrl}
+WISEEFF_WORKER_DATABASE_URL=${input.workerUrl}
 AUTH_MODE=production
 AUTH_PROVIDER=local
 AUTH_OIDC_ISSUER=

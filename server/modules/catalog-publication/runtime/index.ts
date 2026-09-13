@@ -10,6 +10,9 @@ export {
 export {
   provisionPublicationRuntimeLogins,
   inspectLoginBoundary,
+  dropLabRuntimeLogins,
+  publicationRuntimeLoginNames,
+  publicationRuntimeOwnershipComment,
   PUBLICATION_API_LOGIN,
   PUBLICATION_MANAGER_LOGIN,
   PUBLICATION_WORKER_LOGIN,

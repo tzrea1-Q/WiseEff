@@ -591,6 +591,10 @@ PORT=8787
 
 POSTGRES_PASSWORD=${postgres_password}
 DATABASE_URL=postgres://wiseeff:${postgres_password}@postgres:5432/wiseeff
+WISEEFF_CATALOG_BOOTSTRAP_DATABASE_URL=postgres://wiseeff:${postgres_password}@postgres:5432/wiseeff
+# Replace with the dedicated worker LOGIN from provision-logins. First-boot uses
+# the bootstrap owner only until dedicated LOGINs exist.
+WISEEFF_WORKER_DATABASE_URL=postgres://wiseeff:${postgres_password}@postgres:5432/wiseeff
 
 AUTH_MODE=production
 AUTH_PROVIDER=local
@@ -811,6 +815,21 @@ prepare_build_network() {
   build_network_prepared="true"
 }
 
+run_official_migrate() {
+  local bootstrap
+  bootstrap="$(env_value WISEEFF_CATALOG_BOOTSTRAP_DATABASE_URL)"
+  if [ -z "${bootstrap}" ]; then
+    echo "WISEEFF_CATALOG_BOOTSTRAP_DATABASE_URL is required for the one-shot official migrate." >&2
+    exit 1
+  fi
+  echo "Applying official migrations with the bootstrap LOGIN (not the API/worker LOGIN)."
+  (
+    DATABASE_URL="${bootstrap}"
+    export DATABASE_URL
+    "${script_dir}/compose" --env-file "${env_file}" run --rm --no-deps -e DATABASE_URL api npm run db:migrate
+  )
+}
+
 run_up() {
   local build_flag=(--build)
   if [ "${skip_build}" = "true" ]; then
@@ -818,7 +837,9 @@ run_up() {
   else
     echo "Building and starting the stack. The first image build can take several minutes."
   fi
-  "${script_dir}/compose" --env-file "${env_file}" up -d "${build_flag[@]}"
+  "${script_dir}/compose" --env-file "${env_file}" up -d "${build_flag[@]}" postgres redis minio minio-init
+  run_official_migrate
+  "${script_dir}/compose" --env-file "${env_file}" up -d api worker publication-manager web proxy
 }
 
 wait_for_live() {

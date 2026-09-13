@@ -776,7 +776,7 @@ describe("upgrade.sh public interface", () => {
     expect(result.stdout.split("\n").filter(Boolean)).toEqual([
       "command:wiseeff-app:candidate run --rm --no-deps api node --import tsx scripts/parameter-data-mode.ts prepare 82344044b436a8dafecefbb85dfd724cecb05e3f",
       "record:parameter_preparation=verified",
-      "command:wiseeff-app:candidate run --rm --no-deps api npm run db:migrate",
+      "command:wiseeff-app:candidate run --rm --no-deps -e DATABASE_URL api npm run db:migrate",
       "command:wiseeff-app:candidate run --rm --no-deps api node --import tsx scripts/parameter-data-mode.ts initialize 82344044b436a8dafecefbb85dfd724cecb05e3f",
       "record:parameter_initialization=verified",
     ]);
@@ -3534,18 +3534,85 @@ exit 0
 
   it("leaves freeze set when candidate recreate fails after freeze", () => {
     const implementation = readFileSync("ops/self-hosted/scripts/upgrade-lib.sh", "utf8");
-    const unfreezeIndex = implementation.indexOf("wiseeff_upgrade_publication_freeze false");
-    const recreateFailIndex = implementation.indexOf(
+    const applyBody = implementation.split("wiseeff_upgrade_run_apply()")[1] ?? "";
+    const unfreezeIndex = applyBody.indexOf("wiseeff_upgrade_publication_freeze false");
+    const recreateFailIndex = applyBody.indexOf(
       "The candidate web, worker, or publication-manager containers could not be recreated. Leave publication freeze set.",
     );
-    const migrateApiFailIndex = implementation.indexOf("The candidate API container could not be recreated.");
+    const migrateApiFailIndex = applyBody.indexOf("The candidate API container could not be recreated.");
+    const queueFailIndex = applyBody.indexOf("The candidate durable queue could not be resumed.");
+    const proxyFailIndex = applyBody.indexOf("The candidate proxy could not be recreated.");
+    const verifyCallIndex = applyBody.indexOf("wiseeff_upgrade_verify_final_state");
     expect(unfreezeIndex).toBeGreaterThan(0);
     expect(recreateFailIndex).toBeGreaterThan(0);
     expect(recreateFailIndex).toBeLessThan(unfreezeIndex);
     expect(migrateApiFailIndex).toBeGreaterThan(0);
     expect(migrateApiFailIndex).toBeLessThan(unfreezeIndex);
+    expect(queueFailIndex).toBeGreaterThan(0);
+    expect(queueFailIndex).toBeLessThan(unfreezeIndex);
+    expect(proxyFailIndex).toBeGreaterThan(0);
+    expect(proxyFailIndex).toBeLessThan(unfreezeIndex);
+    expect(verifyCallIndex).toBeGreaterThan(0);
+    expect(verifyCallIndex).toBeLessThan(unfreezeIndex);
     expect(implementation).toContain("Leave freeze set.");
-    expect(implementation.match(/wiseeff_upgrade_publication_freeze false/g)?.length).toBe(1);
+    expect(implementation).toContain("wiseeff_upgrade_isolate_publication");
+    expect(implementation).toContain("publication_freeze_owned");
+  });
+
+  it("isolates publication on recovery-required even after a later failure", () => {
+    const directory = mkdtempSync(join(tmpdir(), "wiseeff-upgrade-isolate-"));
+    const runDir = join(directory, "run");
+    mkdirSync(runDir);
+    writeFileSync(join(directory, "actions.log"), "");
+    const result = spawnSync("bash", ["-c", `
+      source ops/self-hosted/scripts/upgrade-lib.sh
+      upgrade_compose_dir="$WISEEFF_TEST_COMPOSE_DIR"
+      upgrade_repo_root="$PWD"
+      upgrade_run_dir="$WISEEFF_TEST_RUN_DIR"
+      upgrade_run_id=isolate-pub
+      wiseeff_upgrade_state_write() { printf '%s' "$2" > "$upgrade_run_dir/$1"; }
+      wiseeff_upgrade_state_read() { cat "$upgrade_run_dir/$1" 2>/dev/null || true; }
+      wiseeff_upgrade_record_failure() { :; }
+      wiseeff_upgrade_set_phase() { :; }
+      wiseeff_upgrade_write_status() { :; }
+      wiseeff_upgrade_recovery_next_action() { printf 'recover-candidate'; }
+      wiseeff_upgrade_run_recovery_action() { shift; "$@"; }
+      wiseeff_upgrade_compose() {
+        if [ "$1" = "config" ] && [ "$2" = "--services" ]; then
+          printf '%s\\n' postgres redis minio api worker web proxy publication-manager
+          return 0
+        fi
+        printf 'compose %s\\n' "$*" >> "$WISEEFF_TEST_COMPOSE_DIR/actions.log"
+        return 0
+      }
+      wiseeff_upgrade_queue_command() { printf 'queue %s\\n' "$*" >> "$WISEEFF_TEST_COMPOSE_DIR/actions.log"; return 0; }
+      wiseeff_upgrade_publication_freeze() { printf 'freeze %s\\n' "$1" >> "$WISEEFF_TEST_COMPOSE_DIR/actions.log"; return 0; }
+      wiseeff_upgrade_mark_recovery_required queue candidate-queue-resume "queue failed after manager live"
+      cat "$WISEEFF_TEST_COMPOSE_DIR/actions.log"
+    `], {
+      encoding: "utf8",
+      env: {
+        ...process.env,
+        WISEEFF_TEST_COMPOSE_DIR: directory,
+        WISEEFF_TEST_RUN_DIR: runDir,
+        WISEEFF_UPGRADE_STOP_TIMEOUT_SECONDS: "1",
+      },
+    });
+    expect(result.status).toBe(0);
+    expect(result.stdout).toContain("freeze true");
+    expect(result.stdout).toContain("publication-manager");
+  });
+
+  it("writes the RA-03 failure-sequence counterexample into the upgrade module", () => {
+    const implementation = readFileSync("ops/self-hosted/scripts/upgrade-lib.sh", "utf8");
+    const markRecovery = implementation.indexOf("wiseeff_upgrade_mark_recovery_required()");
+    const isolateCall = implementation.indexOf("wiseeff_upgrade_isolate_publication", markRecovery);
+    const unfreezeAfterVerify = implementation.indexOf(
+      "Publication freeze could not be cleared after final verification",
+    );
+    expect(markRecovery).toBeGreaterThan(0);
+    expect(isolateCall).toBeGreaterThan(markRecovery);
+    expect(unfreezeAfterVerify).toBeGreaterThan(0);
   });
 
   it("keeps destructive volume and reset operations outside the upgrade module", () => {

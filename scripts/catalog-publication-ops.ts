@@ -19,6 +19,7 @@ import {
   inspectLoginBoundary,
   provisionPublicationRuntimeLogins,
 } from "../server/modules/catalog-publication/runtime/provisionRuntimeLogins";
+import { writeRuntimeLoginSecrets } from "../server/modules/catalog-publication/runtime/runtimeLoginSecrets";
 import { revisePublicationPolicy } from "../server/modules/catalog-publication/authorization/policy";
 import { EPHEMERAL_POLICY_REVISION_CONFIRMATION } from "../server/modules/catalog-publication/authorization/types";
 import { createUserInvocation } from "../server/modules/auth/trustedInvocation";
@@ -68,7 +69,13 @@ export type CatalogPublicationOpsCommand =
       readonly action: "status" | "set" | "clear";
       readonly actor: string;
     }
-  | { readonly name: "provision-logins" }
+  | {
+      readonly name: "provision-logins";
+      readonly mode: "official" | "lab";
+      readonly runToken?: string;
+      readonly rotatePasswords: boolean;
+      readonly credentialDir?: string;
+    }
   | { readonly name: "inspect-login"; readonly which: "api" | "worker" | "manager" };
 
 const usage = `Usage:
@@ -77,12 +84,13 @@ const usage = `Usage:
   npx tsx scripts/catalog-publication-ops.ts capabilities grant|revoke|status --user-id <id> --organization-id <id> --capability catalog:author|catalog:publish|catalog:review-high-risk
   npx tsx scripts/catalog-publication-ops.ts policy status|enable|disable --actor <userId>
   npx tsx scripts/catalog-publication-ops.ts freeze status|set|clear --actor <userId>
-  npx tsx scripts/catalog-publication-ops.ts provision-logins
+  npx tsx scripts/catalog-publication-ops.ts provision-logins [--mode official|lab] [--run-token TOKEN] [--rotate-passwords] [--credential-dir DIR]
   npx tsx scripts/catalog-publication-ops.ts inspect-login api|worker|manager
 
 inspect reads CATALOG_BASELINE_READONLY_DATABASE_URL only.
 adopt/capabilities/policy/freeze/provision use dedicated DSNs. Manager commands refuse DATABASE_URL reuse.
 provision-logins uses WISEEFF_CATALOG_BOOTSTRAP_DATABASE_URL (superuser, one-shot).
+Credentials are written to --credential-dir or WISEEFF_PUBLICATION_CREDENTIAL_DIR; stdout has no DSNs.
 policy enable requires an ephemeral database name and EPHEMERAL_POLICY_REVISION_CONFIRMATION; it is not production enablement.
 `;
 
@@ -178,7 +186,20 @@ export const parseCatalogPublicationOpsArgv = (
     return { ok: true, command: { name: "freeze", action: sub, actor } };
   }
   if (command === "provision-logins") {
-    return { ok: true, command: { name: "provision-logins" } };
+    const mode = (flag(argv, "--mode") ?? "official") as "official" | "lab";
+    if (mode !== "official" && mode !== "lab") {
+      return { ok: false, message: usage };
+    }
+    return {
+      ok: true,
+      command: {
+        name: "provision-logins",
+        mode,
+        runToken: flag(argv, "--run-token"),
+        rotatePasswords: has(argv, "--rotate-passwords"),
+        credentialDir: flag(argv, "--credential-dir") ?? process.env.WISEEFF_PUBLICATION_CREDENTIAL_DIR,
+      },
+    };
   }
   if (command === "inspect-login") {
     if (sub !== "api" && sub !== "worker" && sub !== "manager") {
@@ -302,7 +323,40 @@ export const runCatalogPublicationOps = async (
         payload: { message: "WISEEFF_CATALOG_BOOTSTRAP_DATABASE_URL is required for one-shot LOGIN provisioning" },
       };
     }
-    const provisioned = await provisionPublicationRuntimeLogins(bootstrap);
+    const provisioned = await provisionPublicationRuntimeLogins(bootstrap, {
+      mode: command.mode,
+      runToken: command.runToken,
+      rotatePasswords: command.rotatePasswords,
+    });
+    if (!provisioned.passwordsDelivered) {
+      return {
+        exitCode: 0,
+        payload: {
+          database: provisioned.database,
+          apiRole: provisioned.apiRole,
+          workerRole: provisioned.workerRole,
+          managerRole: provisioned.managerRole,
+          passwordsDelivered: false,
+          reused: provisioned.reused,
+          message: "existing owned LOGINs were verified; passwords were not rotated",
+        },
+      };
+    }
+    if (!command.credentialDir) {
+      return {
+        exitCode: 2,
+        payload: {
+          message: "WISEEFF_PUBLICATION_CREDENTIAL_DIR or --credential-dir is required; DSNs are not printed",
+        },
+      };
+    }
+    const files = writeRuntimeLoginSecrets({
+      directory: command.credentialDir,
+      apiUrl: provisioned.apiUrl,
+      workerUrl: provisioned.workerUrl,
+      managerUrl: provisioned.managerUrl,
+      overwrite: command.rotatePasswords,
+    });
     return {
       exitCode: 0,
       payload: {
@@ -310,9 +364,11 @@ export const runCatalogPublicationOps = async (
         apiRole: provisioned.apiRole,
         workerRole: provisioned.workerRole,
         managerRole: provisioned.managerRole,
-        apiUrl: provisioned.apiUrl,
-        workerUrl: provisioned.workerUrl,
-        managerUrl: provisioned.managerUrl,
+        passwordsDelivered: true,
+        created: provisioned.created,
+        reused: provisioned.reused,
+        credentialDir: files.directory,
+        files: { api: files.api, worker: files.worker, manager: files.manager },
       },
     };
   }

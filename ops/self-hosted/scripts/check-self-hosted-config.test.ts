@@ -78,6 +78,8 @@ services:
     environment:
       <<: *wiseeff-runtime-proxy
     command: ["sh", "-lc", "npm run worker:logs"]
+    environment:
+      DATABASE_URL: \${WISEEFF_WORKER_DATABASE_URL:?set WISEEFF_WORKER_DATABASE_URL in ops/self-hosted/.env}
     depends_on:
       redis:
         condition: service_healthy
@@ -179,6 +181,8 @@ HOST=0.0.0.0
 PORT=8787
 POSTGRES_PASSWORD=
 DATABASE_URL=
+WISEEFF_WORKER_DATABASE_URL=
+WISEEFF_CATALOG_BOOTSTRAP_DATABASE_URL=
 AUTH_MODE=production
 AUTH_PROVIDER=oidc
 AUTH_OIDC_ISSUER=https://id.example.com/realms/wiseeff

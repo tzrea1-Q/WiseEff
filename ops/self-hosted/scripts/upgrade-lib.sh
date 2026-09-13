@@ -1370,7 +1370,7 @@ wiseeff_upgrade_initialize_parameters() {
     fi
     wiseeff_upgrade_state_write parameter_preparation verified
   fi
-  if ! wiseeff_upgrade_compose_for_image "$upgrade_candidate_image_tag" run --rm --no-deps api npm run db:migrate ||
+  if ! wiseeff_upgrade_run_official_migrate ||
     ! wiseeff_upgrade_parameter_management initialize; then
     wiseeff_upgrade_mark_recovery_required database parameter-initialization-failed "Management migration or unpublished-state verification failed; candidate traffic remains isolated."
     return 70
@@ -1527,15 +1527,10 @@ wiseeff_upgrade_read_manager_database_url() {
   printf '%s\n' "$raw"
 }
 
-wiseeff_upgrade_publication_freeze() {
-  local frozen="$1"
+wiseeff_upgrade_publication_ops() {
+  local action="$1"
   local actor="${WISEEFF_UPGRADE_ACTOR_PRINCIPAL_ID:-deployment-upgrade}"
-  local action path manager_url
-  if [ "$frozen" = "true" ]; then
-    action=set
-  else
-    action=clear
-  fi
+  local path manager_url
   wiseeff_upgrade_ensure_publication_manager_env || return 1
   path="$(wiseeff_upgrade_manager_env_file)"
   manager_url="$(wiseeff_upgrade_read_manager_database_url "$path")"
@@ -1554,8 +1549,71 @@ wiseeff_upgrade_publication_freeze() {
   )
 }
 
+wiseeff_upgrade_publication_freeze() {
+  local frozen="$1"
+  if [ "$frozen" = "true" ]; then
+    wiseeff_upgrade_publication_ops set
+  else
+    wiseeff_upgrade_publication_ops clear
+  fi
+}
+
+wiseeff_upgrade_publication_is_frozen() {
+  local payload
+  payload="$(wiseeff_upgrade_publication_ops status 2>/dev/null || true)"
+  printf '%s' "$payload" | grep -q '"frozen":true'
+}
+
+wiseeff_upgrade_isolate_publication() {
+  if wiseeff_upgrade_publication_freeze true; then
+    wiseeff_upgrade_state_write publication_freeze_held true
+    wiseeff_upgrade_state_write publication_freeze_pending false
+  else
+    wiseeff_upgrade_state_write publication_freeze_held false
+    wiseeff_upgrade_state_write publication_freeze_pending true
+    printf '%s\n' "publication freeze could not be confirmed; isolating the manager and recording a pending freeze" >&2
+  fi
+  if wiseeff_upgrade_compose_has_service publication-manager; then
+    if wiseeff_upgrade_run_recovery_action isolate-publication-manager \
+      wiseeff_upgrade_compose stop -t "${WISEEFF_UPGRADE_STOP_TIMEOUT_SECONDS:-60}" publication-manager; then
+      wiseeff_upgrade_state_write publication_manager_isolated true
+    else
+      wiseeff_upgrade_state_write publication_manager_isolated false
+    fi
+  else
+    wiseeff_upgrade_state_write publication_manager_isolated true
+  fi
+  return 0
+}
+
+wiseeff_upgrade_run_official_migrate() {
+  local bootstrap
+  bootstrap="$(wiseeff_upgrade_env_value WISEEFF_CATALOG_BOOTSTRAP_DATABASE_URL)"
+  if [ -z "$bootstrap" ]; then
+    bootstrap="$(wiseeff_upgrade_env_value DATABASE_URL)"
+  fi
+  (
+    DATABASE_URL="$bootstrap"
+    export DATABASE_URL
+    wiseeff_upgrade_compose_for_image "$upgrade_candidate_image_tag" run --rm --no-deps -e DATABASE_URL api npm run db:migrate
+  )
+}
+
+wiseeff_upgrade_publication_manager_ready() {
+  local body
+  body="$(wiseeff_upgrade_compose exec -T publication-manager curl -fsS http://127.0.0.1:8791/health/live 2>/dev/null || true)"
+  printf '%s' "$body" | grep -q '"ok":true' || return 1
+  printf '%s' "$body" | grep -q '"configured":true' || return 1
+  return 0
+}
+
 wiseeff_upgrade_stop_old_stack() {
   if wiseeff_upgrade_compose_has_service api; then
+    if wiseeff_upgrade_publication_is_frozen; then
+      wiseeff_upgrade_state_write publication_freeze_owned false
+    else
+      wiseeff_upgrade_state_write publication_freeze_owned true
+    fi
     if ! wiseeff_upgrade_run_recovery_action quiesce-publication-freeze wiseeff_upgrade_publication_freeze true; then
       wiseeff_upgrade_record_failure quiescing publication-manager quiesce-publication-freeze "Publication freeze could not be set before the recovery point was created. Leave freeze set."
       return 1
@@ -2105,6 +2163,12 @@ wiseeff_upgrade_complete_candidate() {
     wiseeff_upgrade_mark_recovery_required
     return 70
   fi
+  if [ "$(wiseeff_upgrade_state_read publication_freeze_owned)" = "true" ]; then
+    if ! wiseeff_upgrade_publication_freeze false; then
+      wiseeff_upgrade_mark_recovery_required publication-manager candidate-publication-unfreeze "Publication freeze could not be cleared after final verification. Leave freeze set."
+      return 70
+    fi
+  fi
   if [ "$completion_action" = "recover-candidate" ]; then
     wiseeff_upgrade_state_write recovery_verified true
   fi
@@ -2219,6 +2283,7 @@ wiseeff_upgrade_run_recover_candidate() {
   else
     worker_stop_status=$?
   fi
+  wiseeff_upgrade_isolate_publication
   wiseeff_upgrade_state_write recovery_proxy_stopped "$([ "$proxy_stop_status" -eq 0 ] && printf true || printf false)"
   wiseeff_upgrade_state_write recovery_queue_paused "$([ "$queue_pause_status" -eq 0 ] && [ "$worker_stop_status" -eq 0 ] && printf true || printf false)"
   if [ "$proxy_stop_status" -ne 0 ] || [ "$queue_pause_status" -ne 0 ] || [ "$worker_stop_status" -ne 0 ]; then
@@ -2500,6 +2565,7 @@ wiseeff_upgrade_run_rollback() {
   else
     app_stop_status=$?
   fi
+  wiseeff_upgrade_isolate_publication
   wiseeff_upgrade_state_write recovery_proxy_stopped "$([ "$proxy_stop_status" -eq 0 ] && printf true || printf false)"
   wiseeff_upgrade_state_write recovery_queue_paused "$([ "$queue_pause_status" -eq 0 ] && printf true || printf false)"
   if [ "$proxy_stop_status" -ne 0 ] || [ "$queue_pause_status" -ne 0 ] || [ "$app_stop_status" -ne 0 ]; then
@@ -2703,6 +2769,7 @@ wiseeff_upgrade_mark_recovery_required() {
       queue_pause_status="$worker_stop_status"
     fi
   fi
+  wiseeff_upgrade_isolate_publication
   wiseeff_upgrade_state_write recovery_proxy_stopped "$([ "$proxy_stop_status" -eq 0 ] && printf true || printf false)"
   wiseeff_upgrade_state_write recovery_queue_paused "$([ "$queue_pause_status" -eq 0 ] && printf true || printf false)"
   wiseeff_upgrade_state_write outcome recovery-required
@@ -2728,7 +2795,10 @@ wiseeff_upgrade_verify_final_state() {
     wiseeff_upgrade_record_failure "$phase" image candidate-image-unavailable "The candidate application image could not be resolved to a local Docker image identity."
     return 1
   fi
-  for service in postgres redis minio api worker web proxy; do
+  for service in postgres redis minio api worker web proxy publication-manager; do
+    if [ "$service" = "publication-manager" ] && ! wiseeff_upgrade_compose_has_service publication-manager; then
+      continue
+    fi
     after="$(wiseeff_upgrade_compose ps -q "$service" 2>/dev/null || true)"
     if [ -z "$after" ]; then
       wiseeff_upgrade_record_failure "$phase" "$service" candidate-container-missing "The candidate service has no running Compose container during final verification."
@@ -2739,7 +2809,7 @@ wiseeff_upgrade_verify_final_state() {
       wiseeff_upgrade_record_failure "$phase" "$service" candidate-container-not-recreated "The candidate service still uses its pre-upgrade container identity."
       return 1
     fi
-    if [ "$service" = "api" ] || [ "$service" = "worker" ] || [ "$service" = "web" ]; then
+    if [ "$service" = "api" ] || [ "$service" = "worker" ] || [ "$service" = "web" ] || [ "$service" = "publication-manager" ]; then
       actual_image="$(wiseeff_upgrade_docker inspect -f '{{.Image}}' "$after" 2>/dev/null || true)"
       if [ "$actual_image" != "$expected_image" ]; then
         wiseeff_upgrade_record_failure "$phase" "$service" candidate-image-identity "The candidate service image identity does not match the built candidate application image."
@@ -2905,6 +2975,9 @@ wiseeff_upgrade_run_apply() {
   wiseeff_upgrade_set_phase migrating running
   if [ "${upgrade_parameter_data_mode:-}" = "new-empty" ]; then
     wiseeff_upgrade_initialize_parameters || return 70
+  elif ! wiseeff_upgrade_run_official_migrate; then
+    wiseeff_upgrade_mark_recovery_required database official-migrate-failed "Official migrate with the bootstrap LOGIN failed; candidate traffic remains isolated."
+    return 70
   fi
   if ! WISEEFF_APP_TAG="$upgrade_target_sha" wiseeff_upgrade_compose up -d --force-recreate --no-build api; then
     wiseeff_upgrade_mark_recovery_required api candidate-api-recreate "The candidate API container could not be recreated."
@@ -2929,18 +3002,14 @@ wiseeff_upgrade_run_apply() {
     local manager_attempt
     manager_attempt=0
     while [ "$manager_attempt" -lt "${WISEEFF_UPGRADE_HEALTH_ATTEMPTS:-60}" ]; do
-      if wiseeff_upgrade_compose exec -T publication-manager curl -fsS http://127.0.0.1:8791/health/live >/dev/null 2>&1; then
+      if wiseeff_upgrade_publication_manager_ready; then
         break
       fi
       manager_attempt=$((manager_attempt + 1))
       sleep "${WISEEFF_UPGRADE_HEALTH_INTERVAL_SECONDS:-2}"
     done
     if [ "$manager_attempt" -ge "${WISEEFF_UPGRADE_HEALTH_ATTEMPTS:-60}" ]; then
-      wiseeff_upgrade_mark_recovery_required publication-manager candidate-publication-manager-live "The candidate publication manager liveness probe failed. Leave publication freeze set."
-      return 70
-    fi
-    if ! wiseeff_upgrade_publication_freeze false; then
-      wiseeff_upgrade_mark_recovery_required publication-manager candidate-publication-unfreeze "Publication freeze could not be cleared after manager liveness. Leave freeze set."
+      wiseeff_upgrade_mark_recovery_required publication-manager candidate-publication-manager-live "The candidate publication manager was not configured and ready. Leave publication freeze set."
       return 70
     fi
   fi
@@ -2966,6 +3035,12 @@ wiseeff_upgrade_run_apply() {
   if ! wiseeff_upgrade_verify_final_state; then
     wiseeff_upgrade_mark_recovery_required
     return 70
+  fi
+  if [ "$(wiseeff_upgrade_state_read publication_freeze_owned)" = "true" ]; then
+    if ! wiseeff_upgrade_publication_freeze false; then
+      wiseeff_upgrade_mark_recovery_required publication-manager candidate-publication-unfreeze "Publication freeze could not be cleared after final verification. Leave freeze set."
+      return 70
+    fi
   fi
 
   wiseeff_upgrade_state_write outcome completed

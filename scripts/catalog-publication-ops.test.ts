@@ -40,7 +40,36 @@ describe("catalog-publication-ops argv", () => {
   it("parses provision-logins", () => {
     expect(parseCatalogPublicationOpsArgv(["provision-logins"])).toEqual({
       ok: true,
-      command: { name: "provision-logins" },
+      command: {
+        name: "provision-logins",
+        mode: "official",
+        runToken: undefined,
+        rotatePasswords: false,
+        credentialDir: process.env.WISEEFF_PUBLICATION_CREDENTIAL_DIR,
+      },
+    });
+  });
+
+  it("parses provision-logins lab mode with credential dir", () => {
+    expect(
+      parseCatalogPublicationOpsArgv([
+        "provision-logins",
+        "--mode",
+        "lab",
+        "--run-token",
+        "abc123xyz",
+        "--credential-dir",
+        "/tmp/creds",
+      ]),
+    ).toEqual({
+      ok: true,
+      command: {
+        name: "provision-logins",
+        mode: "lab",
+        runToken: "abc123xyz",
+        rotatePasswords: false,
+        credentialDir: "/tmp/creds",
+      },
     });
   });
 

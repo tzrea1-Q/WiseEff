@@ -1,3 +1,4 @@
+import { randomBytes } from "node:crypto";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import pg from "pg";
 
@@ -6,15 +7,19 @@ import {
   CATALOG_MIGRATION_OWNER,
   CATALOG_PUBLICATION_COORDINATOR_ROLE,
   CATALOG_SYNCHRONIZER_ROLE,
+  PARAMETER_GOVERNANCE_WRITER_ROLE,
   quoteIdent,
 } from "../../catalog-kernel/security/catalogRoleManifest";
 import { captureDatabaseError } from "../persistence/integrationHarness";
 import { createEphemeralTestDatabase } from "../../../testing/testDatabase";
 import {
+  dropLabRuntimeLogins,
   inspectLoginBoundary,
   provisionPublicationRuntimeLogins,
 } from "./provisionRuntimeLogins";
 import { resolvePublicationManagerDatabaseUrl } from "./managerDatabaseUrl";
+
+const token = `t${randomBytes(5).toString("hex")}`;
 
 describe("publication runtime logins", () => {
   let url: string;
@@ -25,10 +30,14 @@ describe("publication runtime logins", () => {
     const opened = await createEphemeralTestDatabase("ra04login");
     url = opened.url;
     drop = opened.drop;
-    provisioned = await provisionPublicationRuntimeLogins(url);
+    provisioned = await provisionPublicationRuntimeLogins(url, { mode: "lab", runToken: token });
   }, 120_000);
 
   afterAll(async () => {
+    const cleanup = await dropLabRuntimeLogins(url, token);
+    if (cleanup.failed.length > 0) {
+      throw new Error(`lab LOGIN cleanup failed: ${cleanup.failed.join(",")}`);
+    }
     await drop?.();
   });
 
@@ -57,11 +66,17 @@ describe("publication runtime logins", () => {
     expect(manager.inherit).toBe(false);
     expect(api.memberOf).toContain(CATALOG_PUBLICATION_COORDINATOR_ROLE);
     expect(api.memberOf).toContain(CATALOG_BASELINE_READER_ROLE);
+    expect(api.memberOf).toContain(PARAMETER_GOVERNANCE_WRITER_ROLE);
     expect(api.memberOf).not.toContain(CATALOG_SYNCHRONIZER_ROLE);
     expect(worker.memberOf).not.toContain(CATALOG_SYNCHRONIZER_ROLE);
     expect(worker.memberOf).not.toContain(CATALOG_PUBLICATION_COORDINATOR_ROLE);
+    expect(worker.memberOf).not.toContain(PARAMETER_GOVERNANCE_WRITER_ROLE);
     expect(manager.memberOf).toContain(CATALOG_PUBLICATION_COORDINATOR_ROLE);
     expect(manager.memberOf).toContain(CATALOG_SYNCHRONIZER_ROLE);
+    expect(api.catalogDml).toEqual([]);
+    expect(api.publicationDml).toEqual([]);
+    expect(worker.catalogDml).toEqual([]);
+    expect(manager.catalogDml).toEqual([]);
 
     const apiClient = new pg.Client({ connectionString: provisioned.apiUrl });
     await apiClient.connect();
@@ -93,10 +108,12 @@ describe("publication runtime logins", () => {
     const managerClient = new pg.Client({ connectionString: provisioned.managerUrl });
     await managerClient.connect();
     try {
-      await managerClient.query(`set role ${quoteIdent(CATALOG_PUBLICATION_COORDINATOR_ROLE)}`);
-      await managerClient.query("reset role");
-      await managerClient.query(`set role ${quoteIdent(CATALOG_SYNCHRONIZER_ROLE)}`);
-      await managerClient.query("reset role");
+      await managerClient.query("begin");
+      await managerClient.query(`set local role ${quoteIdent(CATALOG_PUBLICATION_COORDINATOR_ROLE)}`);
+      await managerClient.query("rollback");
+      await managerClient.query("begin");
+      await managerClient.query(`set local role ${quoteIdent(CATALOG_SYNCHRONIZER_ROLE)}`);
+      await managerClient.query("rollback");
       const deniedOwner = await captureDatabaseError(
         managerClient.query(`set role ${quoteIdent(CATALOG_MIGRATION_OWNER)}`),
       );
