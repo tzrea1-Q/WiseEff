@@ -18,7 +18,7 @@ import {
   writeFileSync,
   type Stats,
 } from "node:fs";
-import { Transform, Writable } from "node:stream";
+import { Transform, Writable, type Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -28,7 +28,7 @@ import { parseArgs } from "node:util";
 import { validateWorkspaceLinks } from "../check-workspace-links";
 import { validateNativeReport } from "../ci-required-results";
 import { buildVitestInvocation } from "../run-vitest";
-import { stopOwnedProcessGroup, waitForOwnedProcessGroupExit } from "../owned-process-group";
+import { stopOwnedProcessGroup } from "../owned-process-group";
 import { createPreview, type Preview } from "./plan";
 
 export const TASK_IDS = ["ci-changed-paths", "feedback-frontend-client"] as const;
@@ -50,7 +50,6 @@ const FRONTEND_BUDGET_MS = 10 * 60 * 1_000;
 const TERMINATION_GRACE_MS = 1_000;
 const VERIFY_GRACE_MS = 250;
 const CLEANUP_WINDOW_MS = 6_000;
-const STREAM_SETTLEMENT_GRACE_MS = 1_000;
 const DISCOVERY_LIMIT = 4 * 1024 * 1024;
 const LOG_LIMIT = 16 * 1024 * 1024;
 const RECORD_LIMIT = 64 * 1024;
@@ -491,10 +490,6 @@ function fixedProcessIdentity(pid: number): ProcessIdentity | undefined {
   } catch { return undefined; }
 }
 
-function sameIdentity(expected: ProcessIdentity, current: ProcessIdentity | undefined): boolean {
-  return current?.startToken === expected.startToken && current.commandSha256 === expected.commandSha256;
-}
-
 async function processGroupExists(pid: number): Promise<boolean> {
   try {
     process.kill(-pid, 0);
@@ -558,141 +553,114 @@ export type NativeRunResult = {
 
 type StreamSettlement = { results: PromiseSettledResult<unknown>[]; closed: boolean; timedOut: boolean };
 
-function isClosed(stream: { closed?: boolean; writableFinished?: boolean }): boolean {
-  const state = stream as { closed?: boolean; writableFinished?: boolean };
-  return state.closed === true && (state.writableFinished === undefined || state.writableFinished === true);
-}
-
 export async function runNative(options: NativeRunOptions): Promise<NativeRunResult> {
   const startedMs = Date.now();
-  let stdoutFile: Writable | undefined;
-  let stderrFile: Writable | undefined;
-  try {
-    const openLog = options.openLog ?? openOwnedAppend;
-    stdoutFile = openLog(options.stdoutPath);
-    stderrFile = openLog(options.stderrPath);
-  } catch (error) {
-    stdoutFile?.destroy();
-    stderrFile?.destroy();
-    throw error;
-  }
-  if (!stdoutFile || !stderrFile) {
-    stdoutFile?.destroy();
-    stderrFile?.destroy();
-    fail("LOG_OPEN_FAILED");
-  }
-  let child: ChildProcess;
-  try {
-    child = spawn(process.execPath, options.argv, {
-      cwd: options.cwd,
-      env: options.env,
-      detached: true,
-      shell: false,
-      stdio: ["ignore", "pipe", "pipe"],
-    });
-  } catch (error) {
-    stdoutFile.destroy(); stderrFile.destroy();
-    throw error;
-  }
-  if (!child.pid || !child.stdout || !child.stderr) {
-    stdoutFile.destroy(); stderrFile.destroy();
-    fail("CHILD_LAUNCH_FAILED");
-  }
-  const pid = child.pid;
+  let child: ChildProcess | undefined;
+  let identity: ProcessIdentity | undefined;
   const readIdentity = options.readProcessIdentity ?? fixedProcessIdentity;
-  const identity = readIdentity(pid);
   const stdoutCapture = new BoundedFileCapture(options.stdoutLimit, options.stdoutExistingBytes ?? 0, true);
   const stderrCapture = new BoundedFileCapture(LOG_LIMIT, options.stderrExistingBytes ?? 0, false);
-  const controller = new AbortController();
-  let timeoutHandle: NodeJS.Timeout | undefined;
+  const streams: Array<Readable | Writable> = [];
+  const observations: Promise<unknown>[] = [];
+  const helperTimers = new Set<NodeJS.Timeout>();
+  let activityTimer: NodeJS.Timeout | undefined;
   let failure: Error | undefined;
   let cleanupDeadline: number | undefined;
-  let cleanupStarted = false;
+  let cleanup: Promise<void> | undefined;
+  let cleanupFailed = false;
+  let notifyFailure!: () => void;
+  const failed = new Promise<void>(resolve => { notifyFailure = resolve; });
+  const helperWait = (delay: number) => new Promise<void>(resolve => {
+    const timer = setTimeout(() => { helperTimers.delete(timer); resolve(); }, delay);
+    helperTimers.add(timer);
+  });
   const stickyFailure = (error: unknown) => {
     failure ??= asError(error);
-    cleanupDeadline ??= Date.now() + CLEANUP_WINDOW_MS;
-    cleanupStarted = true;
-    if (!controller.signal.aborted) controller.abort(failure);
+    if (cleanupDeadline !== undefined) return;
+    cleanupDeadline = Date.now() + CLEANUP_WINDOW_MS;
+    clearTimeout(activityTimer);
+    // This is the sole signaling owner. Its promise is never raced away.
+    cleanup = (async () => {
+      try {
+        if (child?.pid && identity) await stopOwnedProcessGroup(child, {
+          expectedProcessIdentity: identity, readProcessIdentity: readIdentity,
+          terminateGraceMs: TERMINATION_GRACE_MS, verifyGraceMs: VERIFY_GRACE_MS, wait: helperWait,
+        });
+      } catch (cleanupError) {
+        cleanupFailed = true;
+        failure ??= asError(cleanupError);
+      } finally {
+        for (const timer of helperTimers) clearTimeout(timer);
+        helperTimers.clear();
+      }
+    })();
+    for (const stream of streams) if (!stream.destroyed) stream.destroy(failure);
+    notifyFailure();
   };
-  const onPipelineFailure = (error: unknown) => {
-    stickyFailure(error);
-    return Promise.reject(error);
+  const observe = <T extends Readable | Writable>(stream: T): T => {
+    streams.push(stream);
+    stream.on("error", stickyFailure);
+    observations.push(new Promise<void>(resolve => {
+      const close = () => { stream.removeListener("error", stickyFailure); resolve(); };
+      if (stream.closed) close();
+      else stream.once("close", close);
+    }));
+    return stream;
   };
+  try {
+    const openLog = options.openLog ?? openOwnedAppend;
+    const stdoutFile = observe(openLog(options.stdoutPath));
+    const stderrFile = observe(openLog(options.stderrPath));
+    child = spawn(process.execPath, options.argv, {
+      cwd: options.cwd, env: options.env, detached: true, shell: false, stdio: ["ignore", "pipe", "pipe"],
+    });
+    child.on("error", stickyFailure);
+    observations.push(new Promise<void>(resolve => child!.once("close", () => resolve())));
+    if (child.stdout) observe(child.stdout);
+    if (child.stderr) observe(child.stderr);
+    if (!child.pid || !child.stdout || !child.stderr) throw new RunError("CHILD_LAUNCH_FAILED");
+    identity = readIdentity(child.pid);
+    for (const pending of [pipeline(child.stdout, stdoutCapture, stdoutFile), pipeline(child.stderr, stderrCapture, stderrFile)]) {
+      observations.push(pending.catch(error => { stickyFailure(error); }));
+    }
+    if (!identity) throw new RunError("CHILD_IDENTITY_UNAVAILABLE");
+  } catch (error) { stickyFailure(error); }
   const onCancel = () => stickyFailure(options.cancelSignal?.reason instanceof Error ? options.cancelSignal.reason : new RunError("OWNER_CANCELLED"));
-  const stdoutDone = pipeline(child.stdout, stdoutCapture, stdoutFile).catch(onPipelineFailure);
-  const stderrDone = pipeline(child.stderr, stderrCapture, stderrFile).catch(onPipelineFailure);
-  void stdoutDone.catch(() => undefined);
-  void stderrDone.catch(() => undefined);
-  if (!identity) {
-    failure = new RunError("CHILD_IDENTITY_UNAVAILABLE");
-    child.stdout.destroy(failure);
-    child.stderr.destroy(failure);
-    const settled = await settleStreams([stdoutDone, stderrDone], [child.stdout, child.stderr, stdoutFile, stderrFile], Date.now() + CLEANUP_WINDOW_MS);
-    for (const result of settled.results) if (result.status === "rejected") failure ??= asError(result.reason);
-    const finishedMs = Date.now();
-    return {
-      phase: { startedAt: new Date(startedMs).toISOString(), finishedAt: new Date(finishedMs).toISOString(), wallMs: finishedMs - startedMs, exitCode: child.exitCode, signal: child.signalCode, stdoutBytes: stdoutCapture.bytes, stderrBytes: stderrCapture.bytes, lifecycleSettled: false },
-      stdout: stdoutCapture.text(), lifecycleSettled: false, error: errorCode(failure),
-    };
-  }
   if (options.cancelSignal?.aborted) onCancel();
   else options.cancelSignal?.addEventListener("abort", onCancel, { once: true });
-  const wait = waitForOwnedProcessGroupExit(child, {
-    signal: controller.signal,
-    expectedProcessIdentity: identity,
-    readProcessIdentity: readIdentity,
-    terminateGraceMs: TERMINATION_GRACE_MS,
-    verifyGraceMs: VERIFY_GRACE_MS,
-  });
-  timeoutHandle = setTimeout(() => stickyFailure(new RunError("NATIVE_TIMEOUT")), Math.max(1, options.deadlineAt - Date.now()));
-  let exitCode: number | null = null;
-  let signal: NodeJS.Signals | null = null;
+  if (!failure) activityTimer = setTimeout(() => stickyFailure(new RunError("NATIVE_TIMEOUT")), Math.max(1, options.deadlineAt - Date.now()));
+  const all = Promise.allSettled(observations);
+  await Promise.race([all, failed]);
+  let groupSettled = !child;
   try {
-    exitCode = await wait;
-  } catch (error) {
-    failure ??= asError(error);
-    cleanupDeadline ??= Date.now() + CLEANUP_WINDOW_MS;
-    if (!controller.signal.aborted) controller.abort(failure);
-    await wait.catch((waitError) => { failure ??= asError(waitError); });
-  }
-  clearTimeout(timeoutHandle);
-  const settled = await settleStreams(
-    [stdoutDone, stderrDone],
-    [child.stdout, child.stderr, stdoutFile, stderrFile],
-    cleanupDeadline ?? Date.now() + STREAM_SETTLEMENT_GRACE_MS,
-  );
-  for (const result of settled.results) if (result.status === "rejected") failure ??= asError(result.reason);
+    if (!failure && child?.pid) groupSettled = await waitForGroupAbsent(child.pid, Math.min(VERIFY_GRACE_MS, Math.max(0, options.deadlineAt - Date.now())));
+    if (!failure && !groupSettled) stickyFailure(new RunError("CHILD_GROUP_UNSETTLED"));
+  } catch (error) { stickyFailure(error); }
+  await cleanup;
+  const settled = await settleStreams(observations, streams, cleanupDeadline ?? options.deadlineAt);
+  if (settled.timedOut) stickyFailure(new RunError("STREAM_SETTLEMENT_TIMEOUT"));
+  await cleanup;
+  try {
+    if (child?.pid && identity) groupSettled = await waitForGroupAbsent(child.pid, Math.min(VERIFY_GRACE_MS, Math.max(0, (cleanupDeadline ?? options.deadlineAt) - Date.now())));
+    else if (child) groupSettled = child.pid === undefined && child.exitCode === null && child.signalCode === null && streams.every(stream => stream.closed);
+  } catch (error) { groupSettled = false; stickyFailure(error); }
+  await cleanup;
+  clearTimeout(activityTimer);
   options.cancelSignal?.removeEventListener("abort", onCancel);
-  signal = child.signalCode;
-  let groupSettled = false;
-  try {
-    groupSettled = await waitForGroupAbsent(pid, VERIFY_GRACE_MS);
-    const cleanupRemaining = cleanupDeadline === undefined ? Number.POSITIVE_INFINITY : cleanupDeadline - Date.now();
-    if (!groupSettled && !cleanupStarted && cleanupRemaining > 4_750 && sameIdentity(identity, readIdentity(pid))) {
-      cleanupStarted = true;
-      await stopOwnedProcessGroup(child, {
-        expectedProcessIdentity: identity,
-        readProcessIdentity: readIdentity,
-        terminateGraceMs: TERMINATION_GRACE_MS,
-        verifyGraceMs: VERIFY_GRACE_MS,
-      });
-      groupSettled = await waitForGroupAbsent(pid, VERIFY_GRACE_MS);
-    }
-  } catch (error) {
-    failure ??= asError(error);
+  if (child) {
+    if (!groupSettled || settled.timedOut) child.unref();
+    if (groupSettled) child.removeListener("error", stickyFailure);
   }
-  if (!groupSettled) failure ??= new RunError("CHILD_GROUP_UNSETTLED");
-  if (settled.timedOut) failure ??= new RunError("STREAM_SETTLEMENT_TIMEOUT");
   const finishedMs = Date.now();
   const phase: PhaseObservation = {
     startedAt: new Date(startedMs).toISOString(),
     finishedAt: new Date(finishedMs).toISOString(),
     wallMs: finishedMs - startedMs,
-    exitCode,
-    signal,
+    exitCode: child?.exitCode ?? null,
+    signal: child?.signalCode ?? null,
     stdoutBytes: stdoutCapture.bytes,
     stderrBytes: stderrCapture.bytes,
-    lifecycleSettled: groupSettled && settled.closed && !settled.timedOut,
+    lifecycleSettled: groupSettled && settled.closed && !settled.timedOut && !cleanupFailed,
   };
   return { phase, stdout: stdoutCapture.text(), lifecycleSettled: phase.lifecycleSettled, error: failure ? errorCode(failure) : null };
 }
@@ -717,19 +685,14 @@ async function settleStreams(
   deadlineAt: number,
 ): Promise<StreamSettlement> {
   const all = Promise.allSettled(promises);
-  const remaining = Math.max(1, deadlineAt - Date.now());
-  const result = await Promise.race([
-    all.then((results) => ({ results, timedOut: false as const })),
-    new Promise<{ results: PromiseSettledResult<unknown>[]; timedOut: true; closed: false }>((resolve) => setTimeout(() => resolve({ results: [], closed: false, timedOut: true }), remaining)),
-  ]);
-  if (!result.timedOut) return { results: result.results, closed: streams.every((stream) => isClosed(stream)), timedOut: false };
-  const reason = new RunError("STREAM_SETTLEMENT_TIMEOUT");
-  streams.forEach((stream) => stream.destroy(reason));
-  const settled = await Promise.race([
-    all,
-    new Promise<PromiseSettledResult<unknown>[]>((resolve) => setTimeout(() => resolve([]), STREAM_SETTLEMENT_GRACE_MS)),
-  ]);
-  return { results: settled, closed: streams.every((stream) => isClosed(stream)), timedOut: true };
+  let timer: NodeJS.Timeout | undefined;
+  try {
+    const result = await Promise.race([
+      all.then(results => ({ results, timedOut: false })),
+      new Promise<StreamSettlement>(resolve => { timer = setTimeout(() => resolve({ results: [], closed: false, timedOut: true }), Math.max(0, deadlineAt - Date.now())); }),
+    ]);
+    return { ...result, closed: streams.every(stream => stream.closed === true) };
+  } finally { clearTimeout(timer); }
 }
 
 function asError(error: unknown): Error {
@@ -802,26 +765,38 @@ function newRecord(input: {
 }
 
 export function writeAtomicRecord(runDirectory: string, value: RunRecord): void {
-  const json = JSON.stringify(value);
-  if (Buffer.byteLength(json, "utf8") > RECORD_LIMIT) fail("RECORD_TOO_LARGE");
+  const json = `${JSON.stringify(value)}\n`;
+  const writtenBytes = Buffer.byteLength(json, "utf8");
+  if (writtenBytes > RECORD_LIMIT) fail("RECORD_TOO_LARGE");
   const temporary = path.join(runDirectory, `${RECORD_NAME}.${process.pid}.tmp`);
   const final = path.join(runDirectory, RECORD_NAME);
   ensurePathAncestors(ROOT, runDirectory);
   const ancestors = captureDirectoryIdentities(ROOT, runDirectory);
   verifyDirectoryIdentities(ancestors);
   const fd = openSync(temporary, constants.O_CREAT | constants.O_EXCL | constants.O_WRONLY | (constants.O_NOFOLLOW ?? 0), 0o600);
+  let original: Stats;
   try {
-    writeFileSync(fd, `${json}\n`, "utf8");
+    original = fstatSync(fd);
+    writeFileSync(fd, json, "utf8");
     fsyncSync(fd);
   } finally { closeSync(fd); }
-  const temporaryStat = checkRegularFile(temporary, RECORD_LIMIT, 0o600);
+  const checkPublicationLeaf = (file: string, links: number) => {
+    verifyDirectoryIdentities(ancestors);
+    const stat = lstatSync(file);
+    if (!stat.isFile() || stat.isSymbolicLink() || stat.dev !== original.dev || stat.ino !== original.ino
+      || stat.uid !== original.uid || stat.uid !== process.getuid?.() || (stat.mode & 0o777) !== 0o600
+      || stat.nlink !== links || stat.size !== writtenBytes) fail("RECORD_PUBLICATION");
+  };
+  checkPublicationLeaf(temporary, 1);
   verifyDirectoryIdentities(ancestors);
   linkSync(temporary, final);
-  const linkedStat = checkRegularFile(final, RECORD_LIMIT, 0o600);
-  if (linkedStat.dev !== temporaryStat.dev || linkedStat.ino !== temporaryStat.ino || linkedStat.nlink !== 2) fail("RECORD_PUBLICATION");
+  checkPublicationLeaf(final, 2);
+  checkPublicationLeaf(temporary, 2);
+  // Recheck ownership at disposal after validating both publication links.
+  checkPublicationLeaf(temporary, 2);
   unlinkSync(temporary);
   const publishedStat = checkRegularFile(final, RECORD_LIMIT, 0o600);
-  if (publishedStat.dev !== temporaryStat.dev || publishedStat.ino !== temporaryStat.ino || publishedStat.nlink !== 1) fail("RECORD_PUBLICATION");
+  if (publishedStat.dev !== original.dev || publishedStat.ino !== original.ino || publishedStat.size !== writtenBytes) fail("RECORD_PUBLICATION");
   verifyDirectoryIdentities(ancestors);
 }
 
@@ -1000,6 +975,8 @@ export async function runFreshTask(options: { base: string; task: TaskId; force?
   const runArgv = buildFreshArgv(spec, "execution", files, vitest, storage.nativeReport);
   const record = newRecord({ runId: storage.runId, task: spec, preview, sources, dependencies, mode, discoveryArgv, runArgv, startedAt, budgetMs: spec.budgetMs });
   let lifecycleSettled = true;
+  let stableNativeAttempt = false;
+  let postchecksPassed = false;
   const ownerCancellation = new AbortController();
   const onOwnerSignal = () => ownerCancellation.abort(new RunError("OWNER_CANCELLED"));
   process.once("SIGINT", onOwnerSignal);
@@ -1026,11 +1003,15 @@ export async function runFreshTask(options: { base: string; task: TaskId; force?
     applyPhase(record, "execution", execution.phase);
     lifecycleSettled &&= execution.lifecycleSettled;
     if (execution.error) throw new RunError(execution.error);
+    if (execution.phase.signal || execution.phase.exitCode === null) throw new RunError("NATIVE_CHILD_FAILED");
+    stableNativeAttempt = true;
+    if (execution.phase.exitCode !== 0) record.error = "NATIVE_CHILD_FAILED";
     let nativeBytes: Buffer;
     try {
       verifyDirectories(storage.directories);
       nativeBytes = readOwnedBytes(storage.nativeReport, NATIVE_REPORT_LIMIT, 0o600);
     } catch { throw new RunError("NATIVE_REPORT_UNAVAILABLE"); }
+    if (nativeBytes.length === 0) throw new RunError("NATIVE_REPORT_UNAVAILABLE");
     if (nativeBytes.length > NATIVE_REPORT_LIMIT) throw new RunError("NATIVE_REPORT_TOO_LARGE");
     const reportHash = digest(nativeBytes);
     record.native.reportSha256 = reportHash;
@@ -1046,17 +1027,21 @@ export async function runFreshTask(options: { base: string; task: TaskId; force?
     record.native.files = native.files;
     record.native.passed = native.passed;
     record.native.skipped = native.skipped;
-    if (record.execution?.exitCode !== 0 || record.execution.signal) throw new RunError("NATIVE_CHILD_FAILED");
     if (record.native.skipped !== 0) throw new RunError("REQUIRED_TEST_SKIPPED");
+    record.claimedStatus = record.error === null ? "passed" : "failed";
+  } catch (error) {
+    record.error ??= errorCode(asError(error));
+    record.claimedStatus = "failed";
+  }
+  try {
     const afterPreview = createPreview({ cwd: ROOT, base: options.base });
     const afterSources = inspectSources();
     const afterDependencies = dependencyObservation();
     verifyDirectories(storage.directories);
     if (!isDeepStrictEqual(preview, afterPreview) || !isDeepStrictEqual(sources, afterSources) || !isDeepStrictEqual(dependencies, afterDependencies)) throw new RunError("SOURCE_DRIFT");
-    record.claimedStatus = "passed";
+    postchecksPassed = true;
   } catch (error) {
-    const code = errorCode(asError(error));
-    record.error = code;
+    record.error ??= errorCode(asError(error));
     record.claimedStatus = "failed";
   }
   process.removeListener("SIGINT", onOwnerSignal);
@@ -1065,6 +1050,7 @@ export async function runFreshTask(options: { base: string; task: TaskId; force?
   record.finishedAt = finishedAt;
   record.wallMs = Date.parse(finishedAt) - Date.parse(record.startedAt);
   try {
+    if (!lifecycleSettled) throw new RunError("LIFECYCLE_UNSETTLED");
     verifyDirectories(storage.directories);
     const stdout = fileHash(storage.stdout, LOG_LIMIT);
     const stderr = fileHash(storage.stderr, LOG_LIMIT);
@@ -1074,9 +1060,7 @@ export async function runFreshTask(options: { base: string; task: TaskId; force?
     record.claimedStatus = "failed";
     lifecycleSettled = false;
   }
-  const canComplete = (record.claimedStatus === "passed" && record.native.reportSha256 !== null && lifecycleSettled)
-    || (record.error !== null && record.native.reportSha256 !== null && lifecycleSettled);
-  record.complete = canComplete;
+  record.complete = stableNativeAttempt && postchecksPassed && record.native.reportSha256 !== null && lifecycleSettled && !ownerCancellation.signal.aborted;
   if (record.complete && !releaseStorage(storage)) {
     record.complete = false;
     record.claimedStatus = "failed";

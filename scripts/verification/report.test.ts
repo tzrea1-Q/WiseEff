@@ -1,7 +1,13 @@
 import { createHash, randomUUID } from "node:crypto";
-import { chmodSync, linkSync, mkdirSync, mkdtempSync, readFileSync, rmSync, unlinkSync, writeFileSync } from "node:fs";
+import { chmodSync, linkSync, mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, unlinkSync, writeFileSync } from "node:fs";
+import * as fs from "node:fs";
 import path from "node:path";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+
+vi.mock("node:fs", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("node:fs")>();
+  return { ...actual, fstatSync: vi.fn(actual.fstatSync), readSync: vi.fn(actual.readSync) };
+});
 
 import { implementationRoot, SOURCE_PATHS, taskSpec } from "./run";
 import { captureDirectoryIdentities, parseReportArgs, parseRunRecord, readOwned, readRecordedReport, renderRecordedReport, verifyDirectoryIdentities, type RecordedReport } from "./report";
@@ -117,6 +123,15 @@ function phase(): Record<string, unknown> {
   return { startedAt: new Date(0).toISOString(), finishedAt: new Date(1).toISOString(), wallMs: 1, exitCode: 0, signal: null, stdoutBytes: 0, stderrBytes: 0, lifecycleSettled: true };
 }
 
+function reportDirectory(prefix: string): string {
+  const parent = path.join(implementationRoot, "work", "verification-runs");
+  if (!fs.existsSync(parent)) mkdirSync(parent, { recursive: true, mode: 0o755 });
+  const stat = fs.lstatSync(parent);
+  const uid = process.getuid?.();
+  if (!stat.isDirectory() || stat.isSymbolicLink() || (uid !== undefined && stat.uid !== uid) || (stat.mode & 0o777) !== 0o755) throw new Error("UNSAFE_TEST_RUN_DIRECTORY");
+  return mkdtempSync(path.join(parent, prefix));
+}
+
 describe("recorded local verification report", () => {
   it("accepts only a strict UUID run selector", () => {
     expect(parseReportArgs(["--run", "00000000-0000-4000-8000-000000000000"])).toEqual({
@@ -181,7 +196,7 @@ describe("recorded local verification report", () => {
   });
 
   it("reads the native file through one owned descriptor and rejects a mode change", () => {
-    const directory = mkdtempSync(path.join(implementationRoot, "work", "verification-runs", "eff04-report-"));
+    const directory = reportDirectory("eff04-report-");
     const file = path.join(directory, "native-report.json");
     try {
       writeFileSync(file, "{\"ok\":true}\n", { mode: 0o600 });
@@ -198,7 +213,7 @@ describe("recorded local verification report", () => {
   });
 
   it("rejects a group/world-writable root snapshot and changed ancestor mode", () => {
-    const root = mkdtempSync(path.join(implementationRoot, "work", "verification-runs", "eff04-root-"));
+    const root = reportDirectory("eff04-root-");
     const child = path.join(root, "child");
     try {
       mkdirSync(child, { mode: 0o755 });
@@ -232,5 +247,72 @@ describe("recorded local verification report", () => {
     } finally {
       rmSync(directory, { recursive: true, force: true });
     }
+  });
+
+  it("rejects oversize and uid changes through the real descriptor checks", () => {
+    const directory = reportDirectory("eff04-read-checks-");
+    const file = path.join(directory, "native-report.json");
+    try {
+      writeFileSync(file, "0123456789", { mode: 0o600 });
+      expect(() => readOwned(file, 4, 0o600)).toThrow("REPORT_FILE");
+      const fstatMock = fs.fstatSync as unknown as { getMockImplementation: () => typeof fs.fstatSync; mockImplementation: (implementation: typeof fs.fstatSync) => void };
+      const originalFstat = fstatMock.getMockImplementation()!;
+      const targetInode = fs.lstatSync(file).ino;
+      fstatMock.mockImplementation(((fd: number) => {
+        const stat = originalFstat(fd);
+        return stat.ino === targetInode
+          ? Object.assign({}, stat, { uid: stat.uid + 1, isFile: stat.isFile.bind(stat), isSymbolicLink: stat.isSymbolicLink.bind(stat) })
+          : stat;
+      }) as typeof fs.fstatSync);
+      try { expect(() => readOwned(file, 1024, 0o600)).toThrow("REPORT_FILE"); }
+      finally { fstatMock.mockImplementation(originalFstat); }
+    } finally { rmSync(directory, { recursive: true, force: true }); }
+  });
+
+  it("rejects an active leaf replacement after a delegated fd read", () => {
+    const directory = reportDirectory("eff04-leaf-race-");
+    const file = path.join(directory, "native-report.json");
+    const moved = `${file}.original`;
+    try {
+      writeFileSync(file, "{\"ok\":true}\n", { mode: 0o600 });
+      const readMock = fs.readSync as unknown as { getMockImplementation: () => typeof fs.readSync; mockImplementation: (implementation: typeof fs.readSync) => void };
+      const originalRead = readMock.getMockImplementation()!;
+      let raced = false;
+      readMock.mockImplementation(((fd: number, buffer: Buffer, offset: number, length: number, position: number | null) => {
+        const bytes = originalRead(fd, buffer, offset, length, position);
+        if (!raced) { raced = true; renameSync(file, moved); writeFileSync(file, "foreign\n", { mode: 0o600 }); }
+        return bytes;
+      }) as typeof fs.readSync);
+      try { expect(() => readOwned(file, 1024, 0o600)).toThrow("REPORT_CHANGED"); }
+      finally { readMock.mockImplementation(originalRead); }
+      expect(readFileSync(file, "utf8")).toBe("foreign\n");
+    } finally { rmSync(directory, { recursive: true, force: true }); }
+  });
+
+  it("rejects an active ancestor replacement after a delegated fd read", () => {
+    const root = reportDirectory("eff04-ancestor-race-");
+    const ancestor = path.join(root, "child");
+    const file = path.join(ancestor, "native-report.json");
+    const moved = `${ancestor}.original`;
+    try {
+      mkdirSync(ancestor, { mode: 0o700 });
+      writeFileSync(file, "{\"ok\":true}\n", { mode: 0o600 });
+      const readMock = fs.readSync as unknown as { getMockImplementation: () => typeof fs.readSync; mockImplementation: (implementation: typeof fs.readSync) => void };
+      const originalRead = readMock.getMockImplementation()!;
+      let raced = false;
+      readMock.mockImplementation(((fd: number, buffer: Buffer, offset: number, length: number, position: number | null) => {
+        const bytes = originalRead(fd, buffer, offset, length, position);
+        if (!raced) {
+          raced = true;
+          renameSync(ancestor, moved);
+          mkdirSync(ancestor, { mode: 0o700 });
+          writeFileSync(file, "foreign\n", { mode: 0o600 });
+        }
+        return bytes;
+      }) as typeof fs.readSync);
+      try { expect(() => readOwned(file, 1024, 0o600)).toThrow("REPORT_CHANGED"); }
+      finally { readMock.mockImplementation(originalRead); }
+      expect(readFileSync(file, "utf8")).toBe("foreign\n");
+    } finally { rmSync(root, { recursive: true, force: true }); }
   });
 });
