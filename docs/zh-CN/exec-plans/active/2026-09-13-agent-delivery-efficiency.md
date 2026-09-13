@@ -1,7 +1,7 @@
 # 智能体开发与验证效率优化
 
 > English: [English](../../../exec-plans/active/2026-09-13-agent-delivery-efficiency.md)
-> 状态：**活跃——PR #830、#829 已合入。当前 main 的 checker/收集修复正封板审查；W1 和 Git 预览有独立审查通过的本地候选。CI shadow 在 Scratch，执行/摘要需新的设计审查。不声称裁剪启用或性能改善。**
+> 状态：**活跃——PR #830、#829 已合入。PR #833 已退回 Scratch，其后端阻塞已通过本地完整后端集合。W1 和 Git 预览有已审本地候选；CI shadow 在复审，fresh 执行/摘要在修复。不声称裁剪启用或性能改善。**
 > 日期：2026-09-13。真实跟踪 Issue：[#828](https://github.com/tzrea1-Q/WiseEff/issues/828)。
 > 2026-09-13 重新 fetch 后的真实 accepted base：`1059acb57379bd120d0d2b1a4b4733d4c2e02901`。它恰好等于附件的历史参考值，不构成强制回退后续工作的授权。
 
@@ -13,11 +13,25 @@
 
 | 交付层级 | 完成含义 | 当前状态 |
 | --- | --- | --- |
-| A：工具与流程 | 诊断、等价调度、影子计划、执行/摘要与路由已审查、验证并交付 | EFF-01 已合入；EFF-02/03-preview/07/08 有本地已审候选；EFF-03 CI shadow 在 Scratch，EFF-04 待设计质询 |
+| A：工具与流程 | 诊断、等价调度、影子计划、执行/摘要与路由已审查、验证并交付 | EFF-01 已合入；EFF-02/03-preview/07/08 有本地已审候选；EFF-03 CI shadow 在复审，EFF-04 按另行质询通过的 fresh-only 设计修复 |
 | B：模块启用 | 每个明确模块独立满足观察与审查门槛 | 无已启用模块；`observation-pending` |
 | C：效果验证 | 同类真实任务/CI 样本支持墙钟、资源与 usage 结论 | 样本不足；token usage 为 `unknown` |
 
 A 可先交付，B/C 继续开放。不得制造样本，也不能因工具合入就宣称整个项目全面完成。
+
+## 后端前置修复跟进——2026-09-14
+
+[PR #833](https://github.com/tzrea1-Q/WiseEff/pull/833) 在 Scratch 修复期间保持关闭。首轮 [Hosted 34778960993](https://github.com/tzrea1-Q/WiseEff/actions/runs/34778960993) attempt1 实际 checkout 为 `33c15d4c43e86dac5a20648a18e0618222fa5750`、tree 为 `bd9f8d0491579a325f8315af0cac3dab5138905f`，父提交为 main `9dc751690a615b162bb41feef6392289b2ca7f6a` 与已审 head `1daf8bd52ab5b56902adff379a6f30fe631e95d4`。它在出现六项明确后端失败后被原有 Build and test 20 分钟上限取消。前端3411、scripts1338（21项既有可选跳过）、bridge134（4项平台跳过）、schema、Quality、Smoke 通过；后端没有完整终态计数，contract/log evaluation 未完成，Merge bar 失败。工作流耗时1284秒、job 耗时合计34.7667分钟是观察值，不是计费或收益。
+
+[已领取的跟进](https://github.com/tzrea1-Q/WiseEff/issues/828#issuecomment-5655955231) 在原 head 上复现6失败、0通过、66项定向未执行。独立源码诊断确认夹具前提缺口：auth 查询断言遗漏新增 capability 查询；受限 Agent 登录缺少读取 `roles(id, permissions)` 的权限；四处写回测试向既有 AuditTx 契约传入了根 Database。另一静态误报来自固定 Catalog schema 与表名分开书写。限定候选保留全部原有安全断言，增加精确 auth 查询断言，使用既有事务包装，仅授予夹具所需两列读取，并将原来三张固定授权表写成完整限定名。原扫描器、allowances、生产 auth/事务代码、权限集合、workflow 和 timeout 不变。Catalog/Wayfinder 冻结节点及 #824 未改动。
+
+代码 `69fd38c152108f610786b269e9337e57f73a24bc`、tree `4c5fe2bd5f72cb63b619ba942d723907699361ca` 通过完整原有后端集合：**4180/4180项、539文件、零失败/跳过**，配置两 worker，进程墙钟277.6545秒。该集合包含五份失败文件及两份既有 provisioner/ACL 文件。原生报告 SHA256 为 `c7f4d303f892e8ed3533a6f8f42c3b0a85bda7ee37a6131bb9c2e34b85d57083`。build 与直接文档治理通过。独立设计和 Standards 代码审查通过；本检查点的最终 Spec/封板及新 Hosted 仍待完成。早期诊断控制器设置了未被读取的 worker 变量，实际使用本机默认4；其计数/耗时真实，但不构成 worker 对比。临时 PG 仅为自有本地 pgvector 容器及一次性原生测试夹具，不构成生产/目标操作证据。
+
+CI shadow 返工 `bec050199d1f9af7fb25f78047cd0ac20aa85176` 在首次双审 FAIL 后进入独立复审。Fresh 执行器 `0a111f62befc5e2c1c9c86a193f493e9f04a3e0f` 同样双审失败：取消/管道收尾、存储、依赖复核和必要反例测试需要修复；其10/29项原生通过不能证明这些约束。两者均未合入。路由候选 `5418af9474415fec111994accda5e46250e6271b` 另在自有夹具上通过此前 blocked 的四文件后端路由检查24/24、零跳过、3.2427秒；这不是完整后端证据。
+
+收集修复代码 `07be2ecddba7614724728c7bf05dae1826793034` 的自有本地 Gate0 诊断终态失败：browser95通过/58失败/43跳过，visual16通过/4失败，均无 flaky。完整产物收尾达到 ZIP 条目数量安全上限，没有上传原始目录兜底。API/frontend 已停止，随后移除了自有容器和临时连接凭据，保留私有取证文件。独立侧栏定位器候选 `fd9804d753ec1cca1e4c1368cb8525bbec606235` 在新的自有运行时通过原有三个 feedback 场景加 warmup 共4/4，清理完成；后续夹具改动不能继承该 SHA 的通过。当前 main 仍为9dc且完整验收失败。这些失败不授权更新 golden、重试或遗漏必需场景。
+
+四个 feedback 模块均保持 `observation-pending`，预期为 shadow/full，enforce 和 memo 关闭。两次历史观察中 Quality 比 L1 提前322秒/517秒完成，因而 W1 之前的浏览器分片没有已证明的关键路径收益；保留有状态 Quality 串行，等待已接受 W1 的观察支持限定试验。计费 runner-minutes 和全项目 token usage 仍为 `unknown`。以下旧检查点保留原有证据边界。
 
 ## 继续执行检查点——2026-09-14
 

@@ -1,7 +1,7 @@
 # Agent Delivery and Verification Efficiency
 
 > Chinese: [Chinese](../../zh-CN/exec-plans/active/2026-09-13-agent-delivery-efficiency.md)
-> Status: **Active — PRs #830 and #829 merged. Current-main checker/collection repair is in pre-seal review; W1 and Git preview have independently reviewed local candidates. CI shadow is in Scratch; execution/reporting requires a new reviewed design. No activation or performance claim.**
+> Status: **Active — PRs #830 and #829 merged. PR #833 returned to Scratch; its backend blockers now pass the complete local backend collection. W1 and Git preview have reviewed local candidates; CI shadow is in re-review and fresh execution/reporting is being repaired. No activation or performance claim.**
 > Date: 2026-09-13. Tracking Issue: [#828](https://github.com/tzrea1-Q/WiseEff/issues/828).
 > Accepted base, freshly fetched on 2026-09-13: `1059acb57379bd120d0d2b1a4b4733d4c2e02901`. This equals the supplied design's historical reference; it is not permission to reset later work.
 
@@ -13,11 +13,25 @@ Implement the user's supplied 2026-09-13 engineering design in bounded waves: sa
 
 | Delivery level | Completion means | Current status |
 | --- | --- | --- |
-| A: tools and process | Reviewed and verified diagnostics, equivalent scheduling, shadow plan, execution/reporting and routing are delivered | EFF-01 merged; EFF-02/03-preview/07/08 have local reviewed candidates; EFF-03 CI shadow in Scratch, EFF-04 awaiting design challenge |
+| A: tools and process | Reviewed and verified diagnostics, equivalent scheduling, shadow plan, execution/reporting and routing are delivered | EFF-01 merged; EFF-02/03-preview/07/08 have local reviewed candidates; EFF-03 CI shadow in re-review, EFF-04 in repair under a separately challenged fresh-only design |
 | B: module activation | Each explicitly named module passes its own observation and independent-review gates | No module enabled; `observation-pending` |
 | C: measured effect | Comparable real task/CI samples support wall-clock, resource and usage conclusions | Insufficient samples; token usage `unknown` |
 
 A can be delivered while B/C remain open. Do not manufacture samples or call the entire program complete merely because tooling merged.
+
+## Backend prerequisite follow-up — 2026-09-14
+
+[PR #833](https://github.com/tzrea1-Q/WiseEff/pull/833) is closed during Scratch repair. Its first [Hosted run 34778960993](https://github.com/tzrea1-Q/WiseEff/actions/runs/34778960993), attempt1, checked out `33c15d4c43e86dac5a20648a18e0618222fa5750`, tree `bd9f8d0491579a325f8315af0cac3dab5138905f`, over main `9dc751690a615b162bb41feef6392289b2ca7f6a` and reviewed head `1daf8bd52ab5b56902adff379a6f30fe631e95d4`. The original 20-minute Build and test limit canceled it after six explicit backend failures. Frontend3411, scripts1338 with21 existing optional skips, bridge134 with4 platform skips, schema, Quality and Smoke passed; backend had no complete terminal count, contract/log evaluation remained incomplete, and Merge bar failed. Workflow elapsed1284s and summed job elapsed34.7667min are observed durations, not billing or benefit.
+
+The [claimed follow-up](https://github.com/tzrea1-Q/WiseEff/issues/828#issuecomment-5655955231) reproduced six failures, zero passes and66 deselected tests on the exact old head. Independent source diagnosis found fixture prerequisites: auth query expectations omitted the new capability lookup; the restricted Agent login lacked read access to `roles(id, permissions)`; four writeback test calls passed a root Database where the existing service requires AuditTx. A separate static false positive came from splitting a fixed Catalog schema and table name. The bounded candidate preserves every original security assertion, adds exact auth-query assertions, uses existing transaction wrappers, grants only the two fixture columns, and writes the same three fixed grant relations as qualified literals. The original scanner, allowances, production auth/transaction code, privilege set, workflow and timeout stay unchanged. Frozen Catalog/Wayfinder nodes and #824 remain untouched.
+
+Code `69fd38c152108f610786b269e9337e57f73a24bc`, tree `4c5fe2bd5f72cb63b619ba942d723907699361ca`, passed the complete original backend collection: **4180/4180 tests,539 files, zero failed/skipped**, process wall277.6545s with configured two workers. This includes the five failing files and both existing provisioner/ACL files. Native SHA256 is `c7f4d303f892e8ed3533a6f8f42c3b0a85bda7ee37a6131bb9c2e34b85d57083`. Build and direct document governance passed. Independent design and Standards code review passed; final Spec/seal and a new Hosted remain pending at this documentation checkpoint. Earlier diagnostic controllers set an unused worker variable and used the local default4; their counts/times remain real but do not establish a worker comparison. Temporary PG uses an owned local pgvector container and disposable native fixtures only; no production/target operation is evidence here.
+
+CI shadow repair `bec050199d1f9af7fb25f78047cd0ac20aa85176` is in independent re-review after its first dual FAIL. Fresh executor `0a111f62befc5e2c1c9c86a193f493e9f04a3e0f` also failed dual review: cancellation/pipe settlement, storage, dependency re-observation and required negative tests need repair. Its10/29 native passes do not establish those invariants. Neither candidate is merged. Routing candidate `5418af9474415fec111994accda5e46250e6271b` additionally passed its previously blocked four-file backend routing check24/24, zero skips, in3.2427s on an owned fixture; this is not full backend evidence.
+
+The owned local Gate0 diagnosis on collection code `07be2ecddba7614724728c7bf05dae1826793034` ended failed: browser95 passed/58 failed/43 skipped and visual16 passed/4 failed, with no flaky tests. Complete artifact finalization hit the ZIP entry-count safety limit; no raw fallback was uploaded. API/frontend stopped; the owned container and temporary connection credential were later removed, while private forensic files were retained. A separate sidebar-locator candidate `fd9804d753ec1cca1e4c1368cb8525bbec606235` passed its three original feedback cases plus warmup4/4 on a fresh owned runtime with cleanup complete; later fixture work does not inherit that SHA's pass. Current main remains9dc with failed complete acceptance. These failures do not authorize golden updates, retries or omission of required scenarios.
+
+All four feedback modules remain `observation-pending`, intended shadow/full, enforce and memo off. Historical Quality finished322s/517s before L1 in two observed runs, so pre-W1 browser sharding has no demonstrated critical-path benefit; retain serial stateful Quality until accepted W1 observations justify a bounded experiment. Billed runner-minutes and whole-program token usage remain `unknown`. The earlier checkpoints below retain their original evidence boundaries.
 
 ## Continuation checkpoint — 2026-09-14
 
