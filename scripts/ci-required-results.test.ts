@@ -304,7 +304,12 @@ describe("L1 invocation receipts", () => {
       { name: "envelope-contradiction", shadow: (() => { const value = clone(allObserved); value["l1-server"].outputs.unknown = "{}"; return value; })(), expectedExit: 0, expectedState: "unavailable" },
       ...(["failure", "cancelled", "skipped"] as const).map((result) => ({ name: `native-${result}`, shadow: allObserved, needs: { ...clone(nativeNeeds), "l1-server": result === "skipped" ? { result } : { result, outputs: { receipt: "" } } }, expectedExit: 1, expectedState: null })),
     ];
-    cases.push({ name: "non-pr-not-applicable", shadow: {}, needs: mainNeeds, event: "push", expectedExit: 0, expectedState: "not-applicable" });
+    const docsDetect = { result: "success", outputs: { docs_only: "true", run_l1: "false", run_quality: "false", run_smoke: "false", run_l2: "false" } };
+    cases.push(
+      { name: "non-pr-not-applicable", shadow: {}, needs: mainNeeds, event: "push", expectedExit: 0, expectedState: "not-applicable" },
+      { name: "docs-pr-not-applicable", shadow: {}, needs: { detect: docsDetect, ...Object.fromEntries(Object.keys(l1CommandIds).map((job) => [job, { result: "skipped" }])) }, expectedExit: 0, expectedState: "not-applicable" },
+      { name: "forged-shadow-detect-suppression", shadow: { detect: docsDetect }, expectedExit: 0, expectedState: "unavailable" },
+    );
     const evidenceDirectory = path.resolve("work/efficiency/ci-shadow-p2");
     mkdirSync(evidenceDirectory, { recursive: true, mode: 0o700 });
     const evidenceRoot = mkdtempSync(path.join(evidenceDirectory, "cli-"));
