@@ -491,8 +491,11 @@ function runCandidateRecoveryFixture(options: {
     wiseeff_upgrade_compose_for_image() {
       image="$1"
       shift
-      service="\${!#}"
-      trace "\${service}-up image=\${image}"
+      for arg in "\$@"; do
+        case "\$arg" in
+          worker|web|proxy|api|publication-manager) trace "\${arg}-up image=\${image}" ;;
+        esac
+      done
       return 0
     }
     wiseeff_upgrade_queue_command_for_image() {

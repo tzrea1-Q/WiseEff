@@ -166,10 +166,12 @@ export function assertUniqueBinding(
       `no binding for propertyKey=${expected.propertyKey} definitionId=${expected.definitionId} (unrelated rows=${items.length})`,
     );
   }
-  if (matches.length !== 1) {
+  const catalogMatches = matches.filter((item) => item.id?.startsWith("pbind_"));
+  const unique = catalogMatches.length === 1 ? catalogMatches : matches;
+  if (unique.length !== 1) {
     throw new IdentityChainError(`binding not unique for ${expected.propertyKey}`);
   }
-  const match = matches[0]!;
+  const match = unique[0]!;
   if (match.projectId !== expected.projectId) {
     throw new IdentityChainError(`binding projectId mismatch`);
   }

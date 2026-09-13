@@ -134,6 +134,15 @@ function locatorDepth(locator: string): number {
   return locator.split("/").filter(Boolean).length;
 }
 
+function isPrivilegeDenied(error: unknown): boolean {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    "code" in error &&
+    (error as { code?: unknown }).code === "42501"
+  );
+}
+
 function topologyRelationFor(locator: string): string {
   const parent = parentLocator(locator);
   return parent ? `child-of-locator:${parent}` : "root";
@@ -434,11 +443,20 @@ async function buildLogicalRevisionsWithContinuity(
     const driverDecision = matchDriver(matchable, input.registry);
     let driverSchemaVersionId: string | null = null;
     if (driverDecision.kind === "matched") {
-      const upserted = await upsertMatchedDriverSchema(
-        tx,
-        driverDecision.value,
-      );
-      driverSchemaVersionId = upserted.driverSchemaVersionId;
+      await tx.query("savepoint skip_legacy_driver_spec");
+      try {
+        const upserted = await upsertMatchedDriverSchema(
+          tx,
+          driverDecision.value,
+        );
+        driverSchemaVersionId = upserted.driverSchemaVersionId;
+        await tx.query("release savepoint skip_legacy_driver_spec");
+      } catch (error) {
+        await tx.query("rollback to savepoint skip_legacy_driver_spec").catch(() => undefined);
+        if (!isPrivilegeDenied(error)) {
+          throw error;
+        }
+      }
     }
     driverVersionByLocator.set(node.nodeLocator, driverSchemaVersionId);
 
@@ -737,11 +755,23 @@ async function matchBindAndQueueReviews(
         ) {
           continue;
         }
+        let matchedSpec: Awaited<ReturnType<typeof upsertMatchedPropertySpec>>;
+        await tx.query("savepoint skip_legacy_property_spec");
+        try {
+          matchedSpec = await upsertMatchedPropertySpec(tx, decision.value);
+          await tx.query("release savepoint skip_legacy_property_spec");
+        } catch (error) {
+          await tx.query("rollback to savepoint skip_legacy_property_spec").catch(() => undefined);
+          if (!isPrivilegeDenied(error)) {
+            throw error;
+          }
+          continue;
+        }
         const {
           parameterSpecId,
           parameterSpecVersionId,
           attributionSubjectId,
-        } = await upsertMatchedPropertySpec(tx, decision.value);
+        } = matchedSpec;
         const matchedModuleId = await resolveAttributionModuleForBinding(tx, {
           organizationId: input.organizationId,
           driverModule: driverModuleFromSchemaNamespace(

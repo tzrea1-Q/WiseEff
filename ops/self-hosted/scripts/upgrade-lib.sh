@@ -1484,6 +1484,13 @@ wiseeff_upgrade_compose_has_service() {
   wiseeff_upgrade_compose config --services 2>/dev/null | grep -qx "$service"
 }
 
+wiseeff_upgrade_with_optional_publication_manager() {
+  printf '%s' "$*"
+  if wiseeff_upgrade_compose_has_service publication-manager; then
+    printf ' publication-manager'
+  fi
+}
+
 wiseeff_upgrade_manager_env_file() {
   local name="${WISEEFF_PUBLICATION_MANAGER_ENV_FILE:-.env.publication-manager}"
   case "$name" in
@@ -2327,7 +2334,7 @@ wiseeff_upgrade_run_recover_candidate() {
   fi
 
   wiseeff_upgrade_set_phase candidate-recovery-starting-worker recovery-required
-  if ! wiseeff_upgrade_compose_for_image "$candidate_image" up -d --force-recreate --no-build --no-deps worker publication-manager; then
+  if ! wiseeff_upgrade_compose_for_image "$candidate_image" up -d --force-recreate --no-build --no-deps $(wiseeff_upgrade_with_optional_publication_manager worker); then
     wiseeff_upgrade_record_failure candidate-recovery-starting-worker worker candidate-worker-recreate "The candidate worker or publication-manager could not be recreated during candidate recovery."
     wiseeff_upgrade_mark_recovery_required
     return 70
@@ -2407,7 +2414,7 @@ wiseeff_upgrade_run_resume() {
   fi
   if [ "$phase" = "api-ready" ]; then
     wiseeff_upgrade_set_phase starting-app-services running
-    if ! wiseeff_upgrade_compose_for_image "$candidate_image" up -d --force-recreate --no-build --no-deps web worker publication-manager; then
+    if ! wiseeff_upgrade_compose_for_image "$candidate_image" up -d --force-recreate --no-build --no-deps $(wiseeff_upgrade_with_optional_publication_manager web worker); then
       wiseeff_upgrade_mark_recovery_required app-services candidate-app-services-recreate "The candidate web, worker, or publication-manager containers could not be recreated during resume."
       return 70
     fi
@@ -2990,7 +2997,7 @@ wiseeff_upgrade_run_apply() {
   wiseeff_upgrade_set_phase api-ready complete
 
   wiseeff_upgrade_set_phase starting-app-services running
-  if ! WISEEFF_APP_TAG="$upgrade_target_sha" wiseeff_upgrade_compose up -d --force-recreate --no-build --no-deps web worker publication-manager; then
+  if ! WISEEFF_APP_TAG="$upgrade_target_sha" wiseeff_upgrade_compose up -d --force-recreate --no-build --no-deps $(wiseeff_upgrade_with_optional_publication_manager web worker); then
     wiseeff_upgrade_mark_recovery_required app-services candidate-app-services-recreate "The candidate web, worker, or publication-manager containers could not be recreated. Leave publication freeze set."
     return 70
   fi

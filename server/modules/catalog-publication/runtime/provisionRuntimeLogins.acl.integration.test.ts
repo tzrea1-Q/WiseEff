@@ -21,6 +21,7 @@ import pg from "pg";
 import {
   CATALOG_PUBLICATION_COORDINATOR_ROLE,
   CATALOG_SYNCHRONIZER_ROLE,
+  PARAMETER_GOVERNANCE_WRITER_ROLE,
   quoteIdent,
 } from "../../catalog-kernel/security/catalogRoleManifest";
 import { captureDatabaseError } from "../persistence/integrationHarness";
@@ -98,9 +99,32 @@ describe("publication runtime login ACL threat matrix", () => {
       for (const sql of catalogDml) {
         await assert42501(api, sql);
       }
+      await api.query(
+        "insert into parameter_catalog.project_parameter_bindings select * from parameter_catalog.project_parameter_bindings where false",
+      );
+      await api.query(
+        "insert into parameter_catalog.project_parameter_values select * from parameter_catalog.project_parameter_values where false",
+      );
+      await api.query(
+        "insert into parameter_catalog.binding_history_events select * from parameter_catalog.binding_history_events where false",
+      );
       await assert42501(api, "insert into catalog_publication.publication_jobs select * from catalog_publication.publication_jobs where false");
       await assert42501(api, "update catalog_publication.publication_jobs set id = id where false");
       await assert42501(api, "delete from catalog_publication.publication_jobs where false");
+
+      await assert42501(
+        api,
+        "select parameter_catalog.assert_catalog_subject_active('crel_x','sha256:x','csub_x','active')",
+      );
+      await api.query("begin");
+      await api.query(`set local role ${quoteIdent(PARAMETER_GOVERNANCE_WRITER_ROLE)}`);
+      const guard = await captureDatabaseError(
+        api.query(
+          "select parameter_catalog.assert_catalog_subject_active('crel_x','sha256:x','csub_x','active')",
+        ),
+      );
+      expect(guard.code).not.toBe("42501");
+      await api.query("rollback");
 
       await api.query("begin");
       await api.query(`set local role ${quoteIdent(CATALOG_PUBLICATION_COORDINATOR_ROLE)}`);
@@ -117,6 +141,10 @@ describe("publication runtime login ACL threat matrix", () => {
     await worker.connect();
     try {
       await assert42501(worker, "select * from parameter_catalog.catalog_state");
+      await assert42501(
+        worker,
+        "insert into parameter_catalog.project_parameter_bindings select * from parameter_catalog.project_parameter_bindings where false",
+      );
       for (const sql of catalogDml.slice(0, 4)) {
         await assert42501(worker, sql);
       }

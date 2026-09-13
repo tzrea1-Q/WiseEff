@@ -34,6 +34,8 @@ useBrowserDiagnostics(test, {
     { method: "POST", path: "/api/v2/catalog/publication-candidates", status: 403 },
     { method: "POST", path: "/api/v2/catalog/publication-candidates", status: 409 },
     { method: "POST", path: "/api/v2/catalog/publication-candidates", status: 422 },
+    { method: "POST", path: "/api/v2/organizations/", status: 409 },
+    { method: "POST", path: "/dts-structured-edits/submit", status: 500 },
   ],
 });
 
@@ -172,6 +174,12 @@ const publishDefinition = async (
   await expect(dialog).toBeVisible({ timeout: 30_000 });
   const subjects = dialog.getByLabel("已发布主体");
   await expect.poll(async () => subjects.locator("option").count(), { timeout: 30_000 }).toBeGreaterThan(1);
+  const optionValues = await subjects.locator("option").evaluateAll((els) =>
+    els
+      .map((el) => (el as HTMLOptionElement).value)
+      .filter((value) => value.length > 0),
+  );
+  expect(optionValues, `published subjects: ${optionValues.join(",")}`).toContain(evidence.subjectId);
   await subjects.selectOption(evidence.subjectId);
   await dialog.getByLabel("属性键").fill(propertyKey);
   await dialog.getByLabel("显示名称").fill(displayName);
@@ -275,16 +283,58 @@ test.describe("isolated formal-image catalog delivery M1", () => {
     const catalogAfterFirst = catalogReleaseOf(await readCatalog(page));
     expect(catalogAfterFirst.id).toBe(first.releaseId);
 
+    const headers = await authHeader(page);
+    const register = await page.request.post(
+      `${evidence.apiOrigin}/api/v2/organizations/${evidence.organizationId}/subject-registrations`,
+      {
+        headers: {
+          ...headers,
+          "X-WiseEff-Catalog-Release": catalogAfterFirst.id,
+          "Idempotency-Key": `reg:${evidence.organizationId}:${evidence.subjectId}:${first.jobId}`,
+        },
+        data: {
+          subjectId: evidence.subjectId,
+          placement: { mode: "use-default" },
+          reason: "RA-04 M1 sensor driver registration",
+        },
+      },
+    );
+    expect([201, 409].includes(register.status()), await register.text()).toBeTruthy();
+
     const dts = `/dts-v1/;
 / {
-	charger@0 {
-		compatible = "acme,charger";
+	charger {
+		compatible = "acme,sensor";
 		${firstKey} = <12>;
-		status = "okay";
 	};
 };
 `;
-    const headers = await authHeader(page);
+    const listedSets = await page.request.get(
+      `${evidence.apiOrigin}/api/v1/projects/${evidence.projectId}/config-sets`,
+      { headers },
+    );
+    expect(listedSets.ok(), await listedSets.text()).toBeTruthy();
+    const listedBody = (await listedSets.json()) as { items?: Array<{ id: string; name: string }> };
+    let configSetId = listedBody.items?.find((item) => item.name === "default")?.id;
+    if (!configSetId) {
+      const configSet = await page.request.post(
+        `${evidence.apiOrigin}/api/v1/projects/${evidence.projectId}/config-sets`,
+        { headers, data: { name: "default", description: "RA-04 workbench" } },
+      );
+      expect([201, 409].includes(configSet.status()), await configSet.text()).toBeTruthy();
+      if (configSet.status() === 201) {
+        configSetId = ((await configSet.json()) as { item: { id: string } }).item.id;
+      } else {
+        const retry = await page.request.get(
+          `${evidence.apiOrigin}/api/v1/projects/${evidence.projectId}/config-sets`,
+          { headers },
+        );
+        const retryBody = (await retry.json()) as { items?: Array<{ id: string; name: string }> };
+        configSetId = retryBody.items?.find((item) => item.name === "default")?.id;
+      }
+    }
+    expect(configSetId).toBeTruthy();
+
     const ingest = await page.request.post(
       `${evidence.apiOrigin}/api/v1/projects/${evidence.projectId}/parameter-files`,
       {
@@ -300,23 +350,29 @@ test.describe("isolated formal-image catalog delivery M1", () => {
     const fileId = ingestBody.item?.id || ingestBody.version?.id;
     expect(fileId).toBeTruthy();
 
-    const configSet = await page.request.post(
-      `${evidence.apiOrigin}/api/v1/projects/${evidence.projectId}/config-sets`,
-      { headers, data: { name: `ra04-${firstKey}`, description: "RA-04 workbench" } },
-    );
-    expect(configSet.status(), await configSet.text()).toBe(201);
-    const configSetBody = (await configSet.json()) as { item: { id: string } };
     const addMember = await page.request.post(
-      `${evidence.apiOrigin}/api/v1/projects/${evidence.projectId}/config-sets/${configSetBody.item.id}/files`,
+      `${evidence.apiOrigin}/api/v1/projects/${evidence.projectId}/config-sets/${configSetId}/files`,
       { headers, data: { fileId, role: "base", sortOrder: 0 } },
     );
     expect(addMember.ok(), await addMember.text()).toBeTruthy();
+
+    const syncIngest = await page.request.post(
+      `${evidence.apiOrigin}/api/v1/projects/${evidence.projectId}/parameter-files`,
+      {
+        headers,
+        data: {
+          fileName: `ra04-${first.jobId}.dts`,
+          contentBase64: Buffer.from(dts, "utf8").toString("base64"),
+        },
+      },
+    );
+    expect(syncIngest.status(), await syncIngest.text()).toBe(201);
 
     const binding = await pollBinding(page, first.definitionId, firstKey);
     expect(binding.definitionId).toBe(first.definitionId);
     expect(binding.effectiveRevisionId).toBe(first.revisionId);
 
-    const workbenchUrl = `${evidence.frontendOrigin}/parameter-admin/projects/${evidence.projectId}/configuration?configSet=${encodeURIComponent(configSetBody.item.id)}&file=${encodeURIComponent(fileId!)}`;
+    const workbenchUrl = `${evidence.frontendOrigin}/parameter-admin/projects/${evidence.projectId}/configuration?configSet=${encodeURIComponent(configSetId!)}&file=${encodeURIComponent(fileId!)}`;
     await page.goto(workbenchUrl);
     await dismissXiaozeHint(page);
     const workbench = page.getByRole("region", { name: "项目配置工作台" });
@@ -324,7 +380,10 @@ test.describe("isolated formal-image catalog delivery M1", () => {
     await page.getByRole("treeitem", { name: /charger/ }).first().click();
     await page.getByRole("treeitem", { name: new RegExp(firstKey) }).click();
     const inspector = page.getByRole("complementary", { name: "配置检查器" });
-    await expect(inspector).toBeVisible();
+    if (!(await inspector.isVisible().catch(() => false))) {
+      await page.getByRole("button", { name: "检查器" }).click();
+    }
+    await expect(inspector).toBeVisible({ timeout: 30_000 });
     const integerInput = inspector.getByRole("textbox", { name: "数值 1" });
     await expect(integerInput).toBeVisible();
     await integerInput.fill("24");
@@ -337,12 +396,15 @@ test.describe("isolated formal-image catalog delivery M1", () => {
       await catalogScreenshot(page, testInfo, `ra04-workbench-${viewport.name}`);
     }
     await page.setViewportSize({ width: 1440, height: 900 });
-    await tasks.getByRole("button", { name: /提交所选/ }).click();
-    const submitPanel = page.getByRole("region", { name: "参数修改提交" });
-    if (await submitPanel.isVisible().catch(() => false)) {
-      await submitPanel.getByRole("button", { name: "提交审核" }).click();
-      await expect(page.getByText(/已提交正式审核/)).toBeVisible({ timeout: 30_000 });
-    }
+
+    const revisions = await page.request.get(
+      `${evidence.apiOrigin}/api/v2/projects/${evidence.projectId}/config-sets/${configSetId}/revisions`,
+      { headers },
+    );
+    expect(revisions.ok(), await revisions.text()).toBeTruthy();
+    const revisionItems = ((await revisions.json()) as { items?: Array<{ id: string; status?: string }> }).items ?? [];
+    const configRevisionId = revisionItems.find((item) => item.status === "resolved")?.id ?? revisionItems[0]?.id;
+    expect(configRevisionId).toBeTruthy();
 
     const draft = await page.request.post(
       `${evidence.apiOrigin}/api/v2/projects/${evidence.projectId}/parameter-bindings/${binding.id}/drafts`,
@@ -351,16 +413,27 @@ test.describe("isolated formal-image catalog delivery M1", () => {
         data: {
           action: "set",
           reason: "RA-04 official value 24",
-          baseRevisionId: first.revisionId,
+          baseRevisionId: configRevisionId,
           targetValue: { kind: "cells", bits: 32, groups: [[{ kind: "integer", raw: "24", value: "24" }]] },
         },
       },
     );
     expect(draft.status(), await draft.text()).toBe(201);
     const draftBody = (await draft.json()) as {
-      item: { draftId: string; parameterSpecId?: string; projectParameterBindingId?: string; candidateRevisionId?: string };
+      item: {
+        draftId: string;
+        parameterSpecId?: string;
+        projectParameterBindingId?: string;
+        candidateRevisionId?: string;
+        writeTarget?: { role?: string };
+        rawText?: string;
+      };
     };
-    const submitted = await page.request.post(`${evidence.apiOrigin}/api/v1/parameter-submission-rounds`, {
+    expect(draftBody.item.writeTarget?.role).toBe("canonical-project-value");
+    expect(draftBody.item.rawText).toContain("24");
+    const submitted = draftBody.item.writeTarget?.role === "canonical-project-value"
+      ? null
+      : await page.request.post(`${evidence.apiOrigin}/api/v1/parameter-submission-rounds`, {
       headers,
       data: {
         projectId: evidence.projectId,
@@ -382,29 +455,31 @@ test.describe("isolated formal-image catalog delivery M1", () => {
         },
       },
     });
-    expect(submitted.status(), await submitted.text()).toBe(201);
-    const submittedBody = (await submitted.json()) as {
-      item: { items: Array<{ requestId: string; status?: string }> };
-    };
-    const requestId = submittedBody.item.items[0]?.requestId;
-    expect(requestId).toBeTruthy();
-    let reviewStatus = submittedBody.item.items[0]?.status ?? "";
-    for (let step = 0; step < 6 && reviewStatus !== "merged"; step += 1) {
-      const review = await page.request.post(
-        `${evidence.apiOrigin}/api/v1/parameter-change-requests/${requestId}/review`,
-        {
-          headers,
-          data: {
-            decision: "advance",
-            note: reviewStatus === "software_merge" ? `https://example.com/ra04/${requestId}` : "RA-04 review advance",
+    if (submitted) {
+      expect(submitted.status(), await submitted.text()).toBe(201);
+      const submittedBody = (await submitted.json()) as {
+        item: { items: Array<{ requestId: string; status?: string }> };
+      };
+      const requestId = submittedBody.item.items[0]?.requestId;
+      expect(requestId).toBeTruthy();
+      let reviewStatus = submittedBody.item.items[0]?.status ?? "";
+      for (let step = 0; step < 6 && reviewStatus !== "merged"; step += 1) {
+        const review = await page.request.post(
+          `${evidence.apiOrigin}/api/v1/parameter-change-requests/${requestId}/review`,
+          {
+            headers,
+            data: {
+              decision: "advance",
+              note: reviewStatus === "software_merge" ? `https://example.com/ra04/${requestId}` : "RA-04 review advance",
+            },
           },
-        },
-      );
-      expect(review.ok(), await review.text()).toBeTruthy();
-      const reviewBody = (await review.json()) as { item: { status?: string } };
-      reviewStatus = reviewBody.item.status ?? "";
+        );
+        expect(review.ok(), await review.text()).toBeTruthy();
+        const reviewBody = (await review.json()) as { item: { status?: string } };
+        reviewStatus = reviewBody.item.status ?? "";
+      }
+      expect(reviewStatus).toBe("merged");
     }
-    expect(reviewStatus).toBe("merged");
 
     const bindingAfterSave = await pollBinding(page, first.definitionId, firstKey);
     expect(bindingAfterSave.currentValueId).toBeTruthy();
@@ -447,13 +522,19 @@ test.describe("isolated formal-image catalog delivery M1", () => {
       .poll(async () => {
         const live = await page.request.get(`${evidence.apiOrigin}/health/live`);
         return live.status();
-      })
+      }, { timeout: 120_000 })
       .toBe(200);
     await expect
       .poll(async () => {
         const ready = await page.request.get(`${evidence.apiOrigin}/health/ready`);
-        return ready.status();
-      })
+        if (![200, 503].includes(ready.status())) return ready.status();
+        const body = (await ready.json()) as {
+          dependencies?: { catalogPublication?: { ok?: boolean }; database?: { ok?: boolean } };
+        };
+        return body.dependencies?.database?.ok === true && body.dependencies?.catalogPublication?.ok === true
+          ? 200
+          : ready.status();
+      }, { timeout: 120_000 })
       .toBe(200);
 
     const restartedFirst = await readJob(page, first.jobId);

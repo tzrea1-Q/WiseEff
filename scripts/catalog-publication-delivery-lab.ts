@@ -25,7 +25,7 @@ import { createPostgresDatabase } from "../server/shared/database/client";
 import { isForbiddenComposeAppPostgres } from "../ops/self-hosted/storage/recoveryPoint";
 import { createEphemeralTestDatabase } from "../server/testing/testDatabase";
 import {
-  CHARGER_SUBJECT_ID,
+  SENSOR_SUBJECT_ID,
   installPublishedCatalogMatchChain,
   retiredPowerSubjectSuccessorBundle,
 } from "../server/modules/catalog-kernel/runtime/catalogChain.fixture";
@@ -240,6 +240,42 @@ export async function provisionDeliveryDatabase(bootstrapUrl: string): Promise<{
       [`urb-ra04-publisher-admin`, DELIVERY_PUBLISHER.userId, DELIVERY_PUBLISHER.organizationId],
     );
     await admin.query(
+      `insert into attribution_subjects (
+         id, organization_id, subject_kind, display_name, source_key
+       ) values ($1, $2, 'driver-registration', 'RA04 sensor driver', 'compatible:acme,sensor')
+       on conflict (id) do nothing`,
+      ["attr-ra04-sensor", DELIVERY_PUBLISHER.organizationId],
+    );
+    await admin.query(
+      `insert into driver_registrations (attribution_subject_id, driver_nature, instance_cardinality)
+       values ($1, 'physical-device', 'multiple')
+       on conflict (attribution_subject_id) do nothing`,
+      ["attr-ra04-sensor"],
+    );
+    await admin.query(
+      `insert into parameter_modules (
+         id, organization_id, name, path, depth, sort_order, kind, origin, attribution_subject_id, source_key
+       ) values
+         ($1, $3, 'RA04 Drivers', $1, 1, 0, 'driver-group', 'curated', $4, 'compatible:acme,sensor'),
+         ($2, $3, 'RA04 Node type', $2, 1, 0, 'node-type', 'curated', $4, null)
+       on conflict (id) do nothing`,
+      [
+        "pmod-ra04-driver",
+        "pmod-ra04-node-type",
+        DELIVERY_PUBLISHER.organizationId,
+        "attr-ra04-sensor",
+      ],
+    );
+    const driverGroup = await admin.query<{ id: string }>(
+      `select id from parameter_modules
+        where organization_id = $1 and kind = 'driver-group'
+        order by depth asc, id asc limit 1`,
+      [DELIVERY_PUBLISHER.organizationId],
+    );
+    if (!driverGroup.rows[0]?.id) {
+      fail("delivery lab has no driver-group parameter module for default registration.", 1);
+    }
+    await admin.query(
       `insert into projects (id, organization_id, name, code, status)
        values ($1, $2, $3, $4, 'initialized')
        on conflict (id) do nothing`,
@@ -285,7 +321,7 @@ export async function provisionDeliveryDatabase(bootstrapUrl: string): Promise<{
     const chain = await installPublishedCatalogMatchChain(pool);
     adoptedReleaseId = chain.pinF.id;
     adoptedDigest = chain.pinF.digest;
-    subjectId = CHARGER_SUBJECT_ID;
+    subjectId = SENSOR_SUBJECT_ID;
     const bundle = retiredPowerSubjectSuccessorBundle();
     const compiled = compileCatalogRelease(bundle);
     if (!compiled.ok) {
