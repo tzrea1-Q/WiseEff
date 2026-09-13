@@ -1,7 +1,7 @@
 # Agent Delivery and Verification Efficiency
 
 > Chinese: [Chinese](../../zh-CN/exec-plans/active/2026-09-13-agent-delivery-efficiency.md)
-> Status: **Active — prerequisite PR #830 and W0 PR #829 merged; W1 is refreshed for integration review. W2 requires review-driven repair; later waves retain local candidates. No activation or performance claim.**
+> Status: **Active — prerequisite PR #830 and W0 PR #829 merged; W1 is back in review after its first Hosted failure. W2 returned to threat design before a new Scratch implementation; later waves retain local candidates. No activation or performance claim.**
 > Date: 2026-09-13. Tracking Issue: [#828](https://github.com/tzrea1-Q/WiseEff/issues/828).
 > Accepted base, freshly fetched on 2026-09-13: `1059acb57379bd120d0d2b1a4b4733d4c2e02901`. This equals the supplied design's historical reference; it is not permission to reset later work.
 
@@ -13,7 +13,7 @@ Implement the user's supplied 2026-09-13 engineering design in bounded waves: sa
 
 | Delivery level | Completion means | Current status |
 | --- | --- | --- |
-| A: tools and process | Reviewed and verified diagnostics, equivalent scheduling, shadow plan, execution/reporting and routing are delivered | EFF-01 merged; EFF-02 refreshed for integration review; EFF-08 has a local reviewed candidate; EFF-03/04 remain in Scratch |
+| A: tools and process | Reviewed and verified diagnostics, equivalent scheduling, shadow plan, execution/reporting and routing are delivered | EFF-01 merged; EFF-02 awaits review of its corrected candidate; EFF-08 has a local reviewed candidate; EFF-03/04 remain in redesigned Scratch |
 | B: module activation | Each explicitly named module passes its own observation and independent-review gates | No module enabled; `observation-pending` |
 | C: measured effect | Comparable real task/CI samples support wall-clock, resource and usage conclusions | Insufficient samples; token usage `unknown` |
 
@@ -50,6 +50,20 @@ PR #829 merged as `ef88c0964e158d7effbd0ce6062260e5eb1c5a21` on 2026-09-13. Acce
 Workflow elapsed approximation was 1061 seconds; summed completed job elapsed was 30.85 minutes. Billed runner-minutes and total tokens remain unknown. The remote feature branch is absent, origin/main and the clean dedicated local main are synchronized, and Issue #828 remains open. New main [run 34763446467](https://github.com/tzrea1-Q/WiseEff/actions/runs/34763446467) is in progress; this PR result does not establish full-main acceptance or exercise L2 diagnostics.
 
 W1 refresh uses accepted main `ef88c0964e158d7effbd0ce6062260e5eb1c5a21`. Its sole textual conflict combines the reviewed four-group L1 matrix row with the accepted W0 diagnostic L2 row. The complete L1 `docs:check` remains assigned to `l1-server` after its owned pgvector precondition; local refresh runs direct document governance only. Runtime/test merge results require focused checks and both independent delta reviews before any PR. No selector, memo or browser sharding is enabled.
+
+### W1 first Hosted failure and bounded recovery
+
+[PR #831](https://github.com/tzrea1-Q/WiseEff/pull/831) was opened on `4da08326b4ab34ab25347f740df7c73f1ff95d84`, tree `eca3dc042446cc897190efcc9a4009ae6e21f71c`, after 82 focused tests, build and both independent reviews passed. [Run 34763864420](https://github.com/tzrea1-Q/WiseEff/actions/runs/34763864420), attempt 1, failed at actual checkout `d17cec6878d2ed9790a326482cfec148cd877ce0` with that tree and base/head parents. Frontend 3411 and backend 4168 tests passed, and backend schema documentation was current. Scripts had 1330 passed/21 existing skips/1 failure; bridge was not run. Quality and Smoke succeeded; both stable aggregators correctly failed. Workflow elapsed approximation 664 seconds and summed job elapsed 33.2833 minutes are not an equivalent successful performance sample.
+
+The parent collected both failures before the final correction: a workflow guard still searched the old aggregate job for trusted-base checkout depth, and GitHub added an anonymous platform step to the two service-backed jobs' `steps` context. The latter made strict receipt keys reject an otherwise successful backend invocation. PR #831 was closed and returned to Scratch. `462ae0243a25cf13b6484f872a58e98cac15a24a` scopes the engineering guard to the real `l1-static` job, preserving all 75 assertions and the trusted-base requirements. No Catalog business, source-lock, allowlist, fixture or frozen node changed.
+
+After an independent R3 design challenge, `5591b788f5cab80699abc1c7e65293fe8a757fe3`, tree `21ed4ab41e6f85beaacce47473a4e0c310965c39`, explicitly projects all 30 named steps across four workflow receipts. The runtime validator remains byte-identical; the structural ratchet rejects missing/extra/wrong-source projection entries, while selected child failures still block aggregation. Four focused files passed 114 tests, no skips; acceptance metadata, build and direct document governance passed on that clean code candidate. This checkpoint is a documentation-only follow-up; final independent review and exact-candidate Hosted remain required. The platform context failure supports the exceptional second Hosted candidate after resealing; the first run is retained and never retried. No third Hosted push is authorized by this correction packet.
+
+W2's `fbc550c7be65f723087fae2d576daf9260e1a98a` failed both independent reviews again on native evidence truth and project npm configuration; empty groups, pure-task container probes and advisory handling also needed correction. The same-invariant P1 circuit breaker returned it to THREAT-READY. A newly challenged design makes native validation shared between execution and aggregation, binds invocation/run/plan identity, rejects uncontrolled npm configuration and zero execution, and limits the advisory exception. Implementation resumes only within that design. Local tooling is W2a; CI shadow projection is a separate W2b PR before W3 integration. Memo remains disabled.
+
+EFF-06 retains serial Quality after a bounded measured assessment failed its independent isolation-design challenge. Two-runtime lifecycle, shared generated-file settlement, exact safe ZIP publication, native test identity and paired same-environment cost evidence remain unproven. The two 100-test historical observations justify hotspot investigation, not sharding or a no-benefit claim. No new runtime/DB/browser resources were started for this assessment.
+
+Main [run 34761775820](https://github.com/tzrea1-Q/WiseEff/actions/runs/34761775820), attempt 1, executed `75f3514b213f07f177773a077021e1485f9f173b` / tree `6887ac7b8c43048fb1ba93dde047083cdb7ed172` and failed L2: visual passed, browser reported 57 inventoried failures, and the complete ZIP exceeded the unchanged safety limit. Individual browser causes remain unknown without the missing full artifact; equal failure totals do not prove identical causes. W0 main run 34763446467 has successful L1/Quality and ongoing L2 at this checkpoint. Full-main acceptance and module activation remain unestablished.
 
 ## EFF-00 accepted facts and open evidence
 

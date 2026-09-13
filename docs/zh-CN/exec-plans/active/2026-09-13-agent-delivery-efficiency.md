@@ -1,7 +1,7 @@
 # 智能体开发与验证效率优化
 
 > English: [English](../../../exec-plans/active/2026-09-13-agent-delivery-efficiency.md)
-> 状态：**活跃——前置 PR #830 和 W0 PR #829 已合入；W1 已刷新，准备集成审查。W2 按审查返工，后续波次保留本地候选。不声称裁剪启用或性能改善。**
+> 状态：**活跃——前置 PR #830 和 W0 PR #829 已合入；W1 首轮 Hosted 失败后重新审查。W2 返回威胁设计后开始新的 Scratch 实现，后续波次保留本地候选。不声称裁剪启用或性能改善。**
 > 日期：2026-09-13。真实跟踪 Issue：[#828](https://github.com/tzrea1-Q/WiseEff/issues/828)。
 > 2026-09-13 重新 fetch 后的真实 accepted base：`1059acb57379bd120d0d2b1a4b4733d4c2e02901`。它恰好等于附件的历史参考值，不构成强制回退后续工作的授权。
 
@@ -13,7 +13,7 @@
 
 | 交付层级 | 完成含义 | 当前状态 |
 | --- | --- | --- |
-| A：工具与流程 | 诊断、等价调度、影子计划、执行/摘要与路由已审查、验证并交付 | EFF-01 已合入；EFF-02 已刷新，准备集成审查；EFF-08 有本地已审候选；EFF-03/04 仍在 Scratch |
+| A：工具与流程 | 诊断、等价调度、影子计划、执行/摘要与路由已审查、验证并交付 | EFF-01 已合入；EFF-02 等待修正候选审查；EFF-08 有本地已审候选；EFF-03/04 仍在重新设计后的 Scratch |
 | B：模块启用 | 每个明确模块独立满足观察与审查门槛 | 无已启用模块；`observation-pending` |
 | C：效果验证 | 同类真实任务/CI 样本支持墙钟、资源与 usage 结论 | 样本不足；token usage 为 `unknown` |
 
@@ -50,6 +50,20 @@ PR #829 于 2026-09-13 合入为 `ef88c0964e158d7effbd0ce6062260e5eb1c5a21`。ac
 工作流耗时近似值为 1061 秒，各已完成 job 耗时之和为 30.85 分钟；计费 runner-minutes 和总 token 仍为 unknown。远端特性分支已不存在，origin/main 和干净的专用本地 main 已同步，Issue #828 保持开放。新 main [run 34763446467](https://github.com/tzrea1-Q/WiseEff/actions/runs/34763446467) 正在执行；本 PR 结果不构成完整 main 验收，也未执行 L2 诊断。
 
 W1 使用 accepted main `ef88c0964e158d7effbd0ce6062260e5eb1c5a21` 刷新。唯一文本冲突合并受审的四组 L1 矩阵行和已接受的 W0 诊断 L2 行。完整 L1 `docs:check` 仍映射至 `l1-server`，在其自有 pgvector 前置步骤后运行；本地刷新仅直接执行文档治理。自动合并后的运行时代码和测试必须通过窄检查及两项独立增量审查，才可创建 PR。选择器、memo 和浏览器分片均未启用。
+
+### W1 首轮 Hosted 失败与有界恢复
+
+[PR #831](https://github.com/tzrea1-Q/WiseEff/pull/831) 在 82 项 focused、build 和两项独立审查通过后，以 `4da08326b4ab34ab25347f740df7c73f1ff95d84`、tree `eca3dc042446cc897190efcc9a4009ae6e21f71c` 创建。[Run 34763864420](https://github.com/tzrea1-Q/WiseEff/actions/runs/34763864420) attempt 1 失败；实际 checkout `d17cec6878d2ed9790a326482cfec148cd877ce0` 的 tree 及 base/head 双亲一致。前端 3411、后端 4168 项通过，后端 schema 文档为 current；scripts 为 1330 pass/21 个既有 skip/1 failure，bridge 未运行。Quality、Smoke 成功，两项稳定聚合门禁正确失败。工作流耗时近似值 664 秒、各 job 耗时之和 33.2833 分钟，不构成等价成功的性能样本。
+
+父代理收齐两个失败后再完成最终修正：一个工作流守卫仍在旧聚合 job 中寻找可信基线 checkout 深度；GitHub 还在两个有 service 的 job 的 `steps` 上下文中加入匿名平台步骤，导致严格回执拒绝本已成功的后端调用。PR #831 已关闭并返回 Scratch。`462ae0243a25cf13b6484f872a58e98cac15a24a` 将工程守卫限定在真实的 `l1-static` job，全部 75 个断言及可信基线要求保留；没有修改 Catalog 业务、source-lock、allowlist、夹具或冻结节点。
+
+独立 R3 设计挑战通过后，`5591b788f5cab80699abc1c7e65293fe8a757fe3`、tree `21ed4ab41e6f85beaacce47473a4e0c310965c39` 在四组工作流回执中显式投影全部 30 个命名步骤。运行时校验器字节不变；结构守卫拒绝缺失、多余及错误来源的投影项，所选 child 失败仍阻止聚合。该干净代码候选的四个 focused 文件 114 项通过、无 skip，验收元数据、build 和直接文档治理通过。本检查点仅追加文档；最终独立审查及精确候选 Hosted 仍必需。平台上下文失败支持重新封板后的第二轮 Hosted 例外，首轮 run 保留且不重试；本修正包不授权第三次 Hosted push。
+
+W2 的 `fbc550c7be65f723087fae2d576daf9260e1a98a` 再次未通过两项独立审查，问题涉及原生证据真实性、项目 npm 配置，以及空分组、纯任务容器探测和 advisory 处理。同不变量 P1 熔断使其返回 THREAT-READY。新设计已独立挑战：执行与汇总共用原生校验，绑定 invocation/run/plan，拒绝不受控 npm 配置和零执行，限制 advisory 例外；仅在此设计内重新实现。本地工具为 W2a，CI shadow 投影另作 W2b PR，在 W3 集成前完成。memo 仍关闭。
+
+EFF-06 在有实际测量的有界评估未通过独立隔离设计挑战后，保留 Quality 串行。双 runtime 生命周期、共享生成文件收尾、精确安全 ZIP、原生测试身份及同环境配对成本证据仍未建立。两份各 100 项通过的历史观察支持热点调查，不支持启用分片，也不是无收益结论。本评估未启动新的 runtime/DB/browser 资源。
+
+Main [run 34761775820](https://github.com/tzrea1-Q/WiseEff/actions/runs/34761775820) attempt 1 实际执行 `75f3514b213f07f177773a077021e1485f9f173b`、tree `6887ac7b8c43048fb1ba93dde047083cdb7ed172`，L2 失败：visual 成功，browser 报告 57 个 inventoried failures，完整 ZIP 超过未改变的安全限制。缺少完整产物，单项浏览器原因仍为 unknown；失败总数相同不能证明原因相同。本检查点时 W0 main run 34763446467 的 L1/Quality 成功，L2 仍执行中；完整 main 验收和模块启用尚未成立。
 
 ## EFF-00 真实事实与待补证据
 
