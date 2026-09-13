@@ -17,6 +17,7 @@ import {
   requiredAcceptanceCiScripts,
   requiredAcceptanceCiWorkflowTokens
 } from "./check-acceptance-ci";
+import { l1CommandIds } from "./ci-required-results";
 
 const compliantWorkflow = readFileSync(".github/workflows/ci.yml", "utf8");
 
@@ -80,6 +81,26 @@ describe("equivalent fixed L1 scheduling", () => {
       if (mutation === "install") workflow.jobs[id].steps.push({ run: "npm ci" });
       if (mutation === "identity") workflow.env.EFF_HEAD_SHA = "${{ github.sha }}";
       expect(evaluateL1CiWorkflow(YAML.stringify(workflow)).status).toBe("failed");
+    }
+  });
+  it.each(["missing", "extra", "wrong-source", "raw-context"])("rejects invalid L1 receipt projection: %s", (mutation) => {
+    const workflow = YAML.parse(compliantWorkflow);
+    const receipt = workflow.jobs["l1-server"].steps.find((step: { id: string }) => step.id === "receipt");
+    const expression = (id: string) => "${{toJSON(steps." + id + ")}}";
+    const projection = String(receipt.env.EFF_STEPS).replace(/\s+/g, "");
+    if (mutation === "missing") receipt.env.EFF_STEPS = projection.replace('"docs":' + expression("docs") + ",", "");
+    if (mutation === "extra") receipt.env.EFF_STEPS = projection.replace(/}$/, ',"unexpected":' + expression("server") + "}");
+    if (mutation === "wrong-source") receipt.env.EFF_STEPS = projection.replace('"docs":' + expression("docs"), '"docs":' + expression("vector"));
+    if (mutation === "raw-context") receipt.env.EFF_STEPS = "${{toJSON(steps)}}";
+    expect(evaluateL1CiWorkflow(YAML.stringify(workflow)).status).toBe("failed");
+  });
+  it("projects every fixed L1 step from its same-named GitHub step context", () => {
+    const workflow = YAML.parse(compliantWorkflow);
+    const expression = (id: string) => "${{toJSON(steps." + id + ")}}";
+    for (const [jobId, commandIds] of Object.entries(l1CommandIds)) {
+      const receipt = workflow.jobs[jobId].steps.find((step: { id: string }) => step.id === "receipt");
+      const expected = "{" + commandIds.map((id) => '"' + id + '":' + expression(id)).join(",") + "}";
+      expect(String(receipt.env.EFF_STEPS).replace(/\s+/g, "")).toBe(expected);
     }
   });
   it("retains all events, modes, full acceptance labeling and PR-only cancellation", () => {

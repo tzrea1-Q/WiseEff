@@ -77,6 +77,10 @@ describe("L1 invocation receipts", () => {
     }
     for (const result of ["skipped", "cancelled", "missing", "failure"]) expect(() => assertL1Results({ identity, needs: { ...needs, "l1-server": { result } } })).toThrow();
   });
+  it("rejects a failed selected child even when its receipt is forged green", () => {
+    const needs = { detect: { result: "success", outputs: flags }, ...receipts() };
+    expect(() => assertL1Results({ identity, needs: { ...needs, "l1-server": { ...needs["l1-server"], result: "failure" } } })).toThrow();
+  });
   it("does not turn a native report or digest into proof of a failed/missing command", () => {
     const selected = steps("l1-frontend");
     expect(() => createL1Receipt({ identity, job: "l1-frontend", steps: { ...selected, frontend: { ...selected.frontend, outcome: "failure" } } })).toThrow();
@@ -90,6 +94,15 @@ describe("L1 invocation receipts", () => {
     expect(() => createL1Receipt({ identity, job: "l1-scripts", steps: selected })).not.toThrow();
     selected.toolchain.outcome = "failure";
     expect(() => createL1Receipt({ identity, job: "l1-scripts", steps: selected })).toThrow();
+  });
+  it.each([
+    ["l1-server", "ff4d3c7da48c45f7b33975d69db251e5"],
+    ["l1-scripts", "24111a62073a40ca8fdefe3a90fe6230"],
+  ] as const)("rejects Hosted toJSON(steps) extras and accepts the explicit %s projection", (job, generatedId) => {
+    const hostedSteps = { ...steps(job), [generatedId]: { outcome: "success" } };
+    expect(() => createL1Receipt({ identity, job, steps: hostedSteps })).toThrow();
+    const projectedSteps = Object.fromEntries(l1CommandIds[job].map((id) => [id, hostedSteps[id]]));
+    expect(() => createL1Receipt({ identity, job, steps: projectedSteps })).not.toThrow();
   });
   it("accepts the always-running docs-only aggregate without fake test receipts", () => {
     expect(() => assertL1Results({ identity, needs: { detect: docNeeds.detect, ...Object.fromEntries(Object.keys(l1CommandIds).map((job) => [job, { result: "skipped" }])) } })).not.toThrow();

@@ -453,6 +453,8 @@ export function evaluateL1CiWorkflow(workflowText: string): { status: "passed" |
 '`;
   const trustedBase = "9b3ba7df7e21f5589684bc92c872da593ad4c246";
   const catalogCommand = 'set -euo pipefail\ngit fetch --no-tags origin "${PARAMETER_CATALOG_TRUSTED_BASE_SHA}"\ntest "$(git rev-parse --verify "${PARAMETER_CATALOG_TRUSTED_BASE_SHA}^{commit}")" = "${PARAMETER_CATALOG_TRUSTED_BASE_SHA}"\nnpm run parameter-catalog-boundaries:check -- --trusted-base-sha "${PARAMETER_CATALOG_TRUSTED_BASE_SHA}"';
+  const expectedStepProjection = (ids: readonly string[]) => "{" + ids.map((id) => '"' + id + '":' + "${{toJSON(steps." + id + ")}}").join(",") + "}";
+  const normalizeStepProjection = (value: unknown) => typeof value === "string" ? value.replace(/\s+/g, "") : "";
   for (const id of l1Jobs) {
     const job = jobs?.[id];
     if (!job) { errors.push(`Missing ${id}.`); continue; }
@@ -470,7 +472,8 @@ export function evaluateL1CiWorkflow(workflowText: string): { status: "passed" |
     check(step("checkout")?.uses === "actions/checkout@v4" && step("checkout")?.with?.["fetch-depth"] === 0, `${id} needs full checkout history.`);
     check(step("node")?.uses === "actions/setup-node@v4" && step("node")?.with?.["node-version-file"] === ".nvmrc"
       && step("node")?.with?.cache === "npm", `${id} needs existing Node/npm setup.`);
-    check(step("receipt")?.env?.EFF_STEPS === "${{ toJSON(steps) }}" && job.outputs?.receipt === "${{ steps.receipt.outputs.receipt }}", `${id} must publish its invocation receipt.`);
+    check(normalizeStepProjection(step("receipt")?.env?.EFF_STEPS) === expectedStepProjection(l1CommandIds[id])
+      && job.outputs?.receipt === "${{ steps.receipt.outputs.receipt }}", `${id} must project its fixed named steps into the invocation receipt.`);
     if (id === "l1-scripts" || id === "l1-server") {
       check(job.services?.postgres?.image === "pgvector/pgvector:pg16" && job.env?.DATABASE_URL === "postgres://wiseeff:wiseeff@127.0.0.1:5432/wiseeff", `${id} requires the real PG/vector service.`);
       check(step("toolchain")?.uses === "./.github/actions/setup-dts-toolchain", `${id} requires verified DTS tooling.`);

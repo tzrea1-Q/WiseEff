@@ -254,7 +254,18 @@ jobs:
         id: receipt
         if: always()
         env:
-          EFF_STEPS: ${{ toJSON(steps) }}
+          EFF_STEPS: >-
+            {"checkout":${{ toJSON(steps.checkout) }},
+            "node":${{ toJSON(steps.node) }},
+            "install":${{ toJSON(steps.install) }},
+            "eslint_cache":${{ toJSON(steps.eslint_cache) }},
+            "metadata":${{ toJSON(steps.metadata) }},
+            "build":${{ toJSON(steps.build) }},
+            "ui":${{ toJSON(steps.ui) }},
+            "lint":${{ toJSON(steps.lint) }},
+            "catalog":${{ toJSON(steps.catalog) }},
+            "contract":${{ toJSON(steps.contract) }},
+            "logs":${{ toJSON(steps.logs) }}}
         run: node --experimental-strip-types scripts/ci-required-results.ts receipt
 
   l1-frontend:
@@ -287,7 +298,11 @@ jobs:
         id: receipt
         if: always()
         env:
-          EFF_STEPS: ${{ toJSON(steps) }}
+          EFF_STEPS: >-
+            {"checkout":${{ toJSON(steps.checkout) }},
+            "node":${{ toJSON(steps.node) }},
+            "install":${{ toJSON(steps.install) }},
+            "frontend":${{ toJSON(steps.frontend) }}}
         run: node --experimental-strip-types scripts/ci-required-results.ts receipt
 
   l1-scripts:
@@ -363,7 +378,15 @@ jobs:
         id: receipt
         if: always()
         env:
-          EFF_STEPS: ${{ toJSON(steps) }}
+          EFF_STEPS: >-
+            {"checkout":${{ toJSON(steps.checkout) }},
+            "node":${{ toJSON(steps.node) }},
+            "install":${{ toJSON(steps.install) }},
+            "toolchain":${{ toJSON(steps.toolchain) }},
+            "advisory":${{ toJSON(steps.advisory) }},
+            "vector":${{ toJSON(steps.vector) }},
+            "scripts":${{ toJSON(steps.scripts) }},
+            "bridge":${{ toJSON(steps.bridge) }}}
         run: node --experimental-strip-types scripts/ci-required-results.ts receipt
 
   l1-server:
@@ -436,7 +459,14 @@ jobs:
         id: receipt
         if: always()
         env:
-          EFF_STEPS: ${{ toJSON(steps) }}
+          EFF_STEPS: >-
+            {"checkout":${{ toJSON(steps.checkout) }},
+            "node":${{ toJSON(steps.node) }},
+            "install":${{ toJSON(steps.install) }},
+            "toolchain":${{ toJSON(steps.toolchain) }},
+            "vector":${{ toJSON(steps.vector) }},
+            "docs":${{ toJSON(steps.docs) }},
+            "server":${{ toJSON(steps.server) }}}
         run: node --experimental-strip-types scripts/ci-required-results.ts receipt
 
   build-and-test:
