@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -19,6 +20,7 @@ import {
 } from "../../catalog-kernel/install/publicationTestHarness";
 import { authorizePublish } from "../authorization/authorize";
 import { asCoordinator, enablePublicationPolicy } from "../authorization/testHarness";
+import type { ImpactFacts } from "../authorization/types";
 import { allocationFor, frozenPageIdentity, pageIntegerChange } from "../builder/predecessorHarness";
 import { buildCompleteSuccessor } from "../builder/completeSuccessor";
 import { createJob, getCandidate, getJob, persistCandidate } from "../persistence/store";
@@ -33,7 +35,10 @@ import {
   createEphemeralTestDatabase,
   type EphemeralTestDatabase,
 } from "../../../testing/testDatabase";
-import { compileVendorCatalogSuccessor } from "../../../../scripts/compile-vendor-catalog-release";
+import {
+  compileVendorCatalogSuccessor,
+  FIRST_ACME_RELEASE_ID,
+} from "../../../../scripts/compile-vendor-catalog-release";
 import { installCatalogRelease } from "../../../../scripts/install-catalog-release";
 import { runPublicationManagerOnce } from "../jobs/manager";
 import { PublicationJobId } from "../../parameter-catalog-contract/index";
@@ -201,6 +206,196 @@ describe("vendor import coexistence", () => {
       ownerId: uniqueToken("mgr"),
     });
 
+  const pageFacts = (authorPrincipalId = PUBLISHER): ImpactFacts => ({
+    authorPrincipalId,
+    operations: [{ op: "create-definition", supported: true }],
+    introducesNewSubject: false,
+    changesSelector: false,
+    changesAlias: false,
+    changesFallback: false,
+    tightensExistingContract: false,
+    changesUnitOrSemantic: false,
+    retiresIdentity: false,
+    unknownImpact: false,
+    sourceKind: "typed-changeset",
+  });
+
+  const publicationCounts = async () => {
+    const result = await client.query<{ artifacts: string; candidates: string }>(`
+      select
+        (select count(*)::text from catalog_publication.release_artifacts) as artifacts,
+        (select count(*)::text from catalog_publication.candidates) as candidates
+    `);
+    return result.rows[0]!;
+  };
+
+  const bindingValueSnapshot = async () => {
+    const bindings = await client.query({
+      text: `select id, organization_id, catalog_release_id, project_id, logical_node_id,
+                    registration_id, subject_id, definition_id, effective_revision_id, current_value_id
+               from parameter_catalog.project_parameter_bindings
+              order by id`,
+    });
+    const values = await client.query({
+      text: `select id, binding_id, definition_id, definition_revision_id, source_ref,
+                    config_revision_id, value_digest, value_kind, value::text as value
+               from parameter_catalog.project_parameter_values
+              order by id`,
+    });
+    return { bindings: bindings.rows, values: values.rows };
+  };
+
+  const seedAcmeBinding = async () => {
+    const token = uniqueToken("t19");
+    const orgId = `org_${token}`;
+    const projectId = `prj_${token}`;
+    const attributionId = `asub_${token}`;
+    const moduleId = `pmod_${token}`;
+    const registrationId = `reg_${token}`;
+    const placementId = `place_${token}`;
+    const bindingId = `bind_${token}`;
+    const valueId = `pval_${token}`;
+    const valueDigest = sha256Digest(`t19-value-${token}`);
+    await client.query("begin");
+    try {
+      await client.query(`insert into public.organizations (id, name) values ($1, $2)`, [
+        orgId,
+        "CP-09 T19",
+      ]);
+      await client.query(
+        `insert into public.projects (id, organization_id, name, code) values ($1, $2, $3, $4)`,
+        [projectId, orgId, "CP-09 T19", token.slice(0, 12)],
+      );
+      await client.query(
+        `insert into public.attribution_subjects (
+           id, organization_id, subject_kind, display_name, source_key
+         ) values ($1, $2, 'driver-registration', $3, 'compatible:acme,power')`,
+        [attributionId, orgId, "CP-09 T19"],
+      );
+      await client.query(
+        `insert into public.driver_registrations (
+           attribution_subject_id, driver_nature, instance_cardinality
+         ) values ($1, 'physical-device', 'multiple')`,
+        [attributionId],
+      );
+      await client.query(
+        `insert into public.parameter_modules (
+           id, organization_id, name, path, depth, kind, origin, attribution_subject_id
+         ) values ($1, $2, $3, $1, 1, 'driver-group', 'curated', $4)`,
+        [moduleId, orgId, "CP-09 T19", attributionId],
+      );
+      await client.query(
+        `insert into parameter_catalog.organization_subject_registrations (
+           id, organization_id, subject_id, status, registration_method, proof, current_placement_id
+         ) values ($1, $2, 'csub_acme_power', 'active', 'explicit', '{}', $3)`,
+        [registrationId, orgId, placementId],
+      );
+      await client.query(
+        `insert into parameter_catalog.subject_placements (
+           id, registration_id, organization_id, module_id, origin
+         ) values ($1, $2, $3, $4, 'curated')`,
+        [placementId, registrationId, orgId, moduleId],
+      );
+      await client.query(
+        `insert into parameter_catalog.project_parameter_bindings (
+           id, organization_id, catalog_release_id, project_id, logical_node_id, registration_id,
+           subject_id, definition_id, effective_revision_id, current_value_id
+         ) values ($1, $2, $3, $4, 'logical-cp09-t19', $5, 'csub_acme_power', 'pdef_acme_power_iin_max',
+                   'drev_acme_power_iin_max_1', $6)`,
+        [bindingId, orgId, FIRST_ACME_RELEASE_ID, projectId, registrationId, valueId],
+      );
+      await client.query(
+        `insert into parameter_catalog.project_parameter_values (
+           id, binding_id, definition_id, definition_revision_id,
+           source_ref, config_revision_id, value_digest, value_kind, value
+         ) values ($1, $2, 'pdef_acme_power_iin_max', 'drev_acme_power_iin_max_1',
+                   'source-cp09-t19', 'config-cp09-t19', $3, 'number', '7')`,
+        [valueId, bindingId, valueDigest],
+      );
+      await client.query("set constraints all immediate");
+      await client.query("commit");
+    } catch (error) {
+      await client.query("rollback").catch(() => undefined);
+      throw error;
+    }
+    return { bindingId, valueId, valueDigest, catalogReleaseId: FIRST_ACME_RELEASE_ID };
+  };
+
+  const activatePage = async (input: {
+    predecessor: { digest: string; bytes: Uint8Array };
+    propertyKey: string;
+    releaseVersion: string;
+    label: string;
+  }) => {
+    const facts = pageFacts();
+    const built = await buildCompleteSuccessor({
+      predecessorArtifact: { digest: input.predecessor.digest, bytes: input.predecessor.bytes },
+      changeSet: [pageIntegerChange(input.propertyKey, `Page ${input.propertyKey}`)],
+      frozenIdentity: frozenPageIdentity(
+        [allocationFor(input.propertyKey)],
+        uniqueToken(input.label),
+        input.releaseVersion,
+      ),
+      persist: {
+        db: createDatabase(asQueryable(client)),
+        ports: {
+          persistCandidate: async (tx, candidateInput) =>
+            persistCandidate(tx, {
+              ...candidateInput,
+              identityAllocation: {
+                ...candidateInput.identityAllocation,
+                authorPrincipalId: PUBLISHER,
+                authorOrganizationId: "org-test",
+                impactFacts: facts,
+              },
+            }),
+        },
+      },
+    });
+    if (!built.ok || built.value.kind !== "successor" || built.value.persistence.kind !== "persisted") {
+      throw new Error(`page ${input.propertyKey} failed: ${JSON.stringify(built)}`);
+    }
+    const policyRevision = await enablePublicationPolicy(client, {
+      publicationEnabled: true,
+      lowRiskSingleActorPublish: true,
+    });
+    const authorized = await asCoordinator(client, async () => {
+      const capability = await client.query<{ digest: string }>(
+        `select catalog_publication.digest_jsonb(capability_contract) as digest
+           from catalog_publication.candidates where id = $1`,
+        [built.value.persistence.candidate.id],
+      );
+      return authorizePublish(asQueryable(client), {
+        trustedActor: userActor(PUBLISHER, publisherPermissions),
+        candidate: {
+          candidateId: built.value.persistence.candidate.id,
+          artifactDigest: built.value.candidate.artifactDigest,
+          expectedBaseReleaseId: built.value.candidate.expectedBaseReleaseId,
+          expectedBaseReleaseDigest: built.value.candidate.expectedBaseReleaseDigest,
+          proposalRevisionId: built.value.candidate.proposalRevisionId,
+          impactReportDigest: built.value.candidate.impactReportDigest,
+          capabilityContractDigest: capability.rows[0]!.digest,
+        },
+        impactFacts: facts,
+        policyRevision,
+      });
+    });
+    if (!authorized.ok) throw new Error(JSON.stringify(authorized.error));
+    const job = await asCoordinator(client, () =>
+      createJob(asQueryable(client), {
+        id: PublicationJobId(`cjob_${uniqueToken(input.label)}`),
+        candidateId: built.value.persistence.candidate.id,
+        authorizationId: authorized.value.authorization.id,
+        requestScope: "instance:cp-09",
+        idempotencyKey: `${input.label}-${uniqueToken("k")}`,
+        requestDigest: sha256Digest(`${input.label}-${uniqueToken("d")}`),
+      }),
+    );
+    if (!job.ok) throw new Error(JSON.stringify(job.error));
+    expect(await runManager()).toBe("claimed");
+    return built.value;
+  };
+
   it("A: vendor import successor of acme keeps acme identities and activates through CP-07", async () => {
     const predecessor = await bootstrapFirstAcme(pool);
     await persistPredecessorArtifact(client, predecessor);
@@ -348,6 +543,7 @@ describe("vendor import coexistence", () => {
       },
       schemasRoot: vendorPrepared.schemasRoot,
       identity: vendorIdentity("reimport"),
+      authorPrincipalId: AUTHOR,
     });
     expect(reimport.ok).toBe(true);
     if (!reimport.ok) return;
@@ -600,6 +796,7 @@ describe("vendor import coexistence", () => {
       predecessorArtifact: { digest: predecessor.digest, bytes: predecessor.bytes },
       schemasRoot,
       identity: vendorIdentity("hash"),
+      authorPrincipalId: AUTHOR,
       persist: { db: createDatabase(asQueryable(client)) },
     });
     expect(imported.ok).toBe(false);
@@ -608,4 +805,102 @@ describe("vendor import coexistence", () => {
     }
     expect(await domainSnapshot(client)).toEqual(before);
   }, 120_000);
+
+  it("T18 refuses missing, unreadable, or mismatched predecessor Artifact without Catalog writes", async () => {
+    const predecessor = await bootstrapFirstAcme(pool);
+    const schemasRoot = writeChargerTree();
+    const before = await domainSnapshot(client);
+    const beforeCounts = await publicationCounts();
+
+    const missing = await importVendorCatalog({
+      predecessorArtifact: { digest: predecessor.digest },
+      schemasRoot,
+      identity: vendorIdentity("t18miss"),
+      authorPrincipalId: AUTHOR,
+      persist: { db: createDatabase(asQueryable(client)) },
+    });
+    expect(missing).toEqual({ ok: false, error: { kind: "artifact-missing" } });
+
+    const garbage = new TextEncoder().encode("{not-a-catalog-bundle");
+    const unreadable = await importVendorCatalog({
+      predecessorArtifact: {
+        digest: `sha256:${createHash("sha256").update(garbage).digest("hex")}`,
+        bytes: garbage,
+      },
+      schemasRoot,
+      identity: vendorIdentity("t18bad"),
+      authorPrincipalId: AUTHOR,
+      persist: { db: createDatabase(asQueryable(client)) },
+    });
+    expect(unreadable.ok).toBe(false);
+    if (!unreadable.ok) {
+      expect(unreadable.error.kind).toBe("predecessor-incomplete");
+    }
+
+    const mismatch = await importVendorCatalog({
+      predecessorArtifact: { digest: `sha256:${"a".repeat(64)}`, bytes: predecessor.bytes },
+      schemasRoot,
+      identity: vendorIdentity("t18mis"),
+      authorPrincipalId: AUTHOR,
+      persist: { db: createDatabase(asQueryable(client)) },
+    });
+    expect(mismatch.ok).toBe(false);
+    if (!mismatch.ok) {
+      expect(mismatch.error.kind).toBe("artifact-digest-mismatch");
+    }
+
+    expect(await domainSnapshot(client)).toEqual(before);
+    expect(await publicationCounts()).toEqual(beforeCounts);
+  }, 120_000);
+
+  it("T19 keeps page A and B and pre-existing Binding/value pins across vendor import", async () => {
+    const predecessor = await bootstrapFirstAcme(pool);
+    await persistPredecessorArtifact(client, predecessor);
+    await seedAcmeBinding();
+    const bindingBefore = await bindingValueSnapshot();
+    expect(bindingBefore.bindings).toHaveLength(1);
+    expect(bindingBefore.values).toHaveLength(1);
+    expect(bindingBefore.bindings[0]).toMatchObject({
+      catalog_release_id: FIRST_ACME_RELEASE_ID,
+      definition_id: "pdef_acme_power_iin_max",
+      effective_revision_id: "drev_acme_power_iin_max_1",
+      subject_id: "csub_acme_power",
+    });
+
+    const pageA = await activatePage({
+      predecessor: { digest: predecessor.digest, bytes: predecessor.bytes },
+      propertyKey: "page_a",
+      releaseVersion: "1.1.0",
+      label: "t19a",
+    });
+
+    const vendorPrepared = await persistVendorCandidate(
+      "t19v",
+      { digest: pageA.artifact.artifactDigest, bytes: pageA.artifact.artifactBytes },
+      "1.2.0",
+    );
+    await authorizeVendor(vendorPrepared.candidate, vendorPrepared.imported.impactFacts);
+    expect(await runManager()).toBe("claimed");
+    if (vendorPrepared.imported.built.kind !== "successor") {
+      throw new Error("vendor successor missing");
+    }
+
+    await activatePage({
+      predecessor: {
+        digest: vendorPrepared.imported.built.artifact.artifactDigest,
+        bytes: vendorPrepared.imported.built.artifact.artifactBytes,
+      },
+      propertyKey: "page_b",
+      releaseVersion: "1.3.0",
+      label: "t19b",
+    });
+
+    const keys = await client.query<{ property_key: string }>(
+      "select property_key from parameter_catalog.parameter_definitions order by property_key",
+    );
+    expect(keys.rows.map((row) => row.property_key)).toEqual(
+      expect.arrayContaining(["iin_max", "page_a", "iin_limit", "page_b"]),
+    );
+    expect(await bindingValueSnapshot()).toEqual(bindingBefore);
+  }, 180_000);
 });

@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -90,6 +91,13 @@ const identity = (label: string, releaseVersion = "1.2.0") => ({
   allocateId: sequentialIds(label),
 });
 
+const AUTHOR_PRINCIPAL = "user-catalog-author";
+
+const importOpts = (label: string, releaseVersion?: string) => ({
+  identity: identity(label, releaseVersion),
+  authorPrincipalId: AUTHOR_PRINCIPAL,
+});
+
 describe("inventoryVendorCatalog", () => {
   it("selects catalog.json schemaPaths rather than walking the vendor directory", () => {
     const repoSchemas = path.join(process.cwd(), "schemas/dts");
@@ -179,7 +187,7 @@ describe("importVendorCatalog", () => {
     const result = await importVendorCatalog({
       predecessorArtifact: { digest: predecessor.digest, bytes: predecessor.bytes },
       schemasRoot,
-      identity: identity("opaque"),
+      ...importOpts("opaque"),
     });
     expect(result.ok).toBe(true);
     if (!result.ok || result.value.kind !== "successor") return;
@@ -232,7 +240,7 @@ describe("importVendorCatalog", () => {
     const first = await importVendorCatalog({
       predecessorArtifact: { digest: predecessor.digest, bytes: predecessor.bytes },
       schemasRoot,
-      identity: identity("first"),
+      ...importOpts("first"),
     });
     expect(first.ok).toBe(true);
     if (!first.ok || first.value.kind !== "successor" || first.value.built.kind !== "successor") return;
@@ -244,7 +252,7 @@ describe("importVendorCatalog", () => {
     const second = await importVendorCatalog({
       predecessorArtifact: { digest: successorDigest, bytes: successorBytes },
       schemasRoot,
-      identity: identity("second"),
+      ...importOpts("second"),
     });
     expect(second.ok).toBe(true);
     if (!second.ok) return;
@@ -280,7 +288,7 @@ properties:
     const result = await importVendorCatalog({
       predecessorArtifact: { digest: predecessor.digest, bytes: predecessor.bytes },
       schemasRoot,
-      identity: identity("acmeadd"),
+      ...importOpts("acmeadd"),
     });
     expect(result.ok).toBe(true);
     if (!result.ok || result.value.kind !== "successor") return;
@@ -318,7 +326,7 @@ properties:
     const result = await importVendorCatalog({
       predecessorArtifact: { digest: predecessor.digest, bytes: predecessor.bytes },
       schemasRoot,
-      identity: identity("claim"),
+      ...importOpts("claim"),
       claimedIdentities: [{ canonicalKey: "driver:acme,power", subjectId: "csub_forged_other" }],
     });
     expect(result.ok).toBe(false);
@@ -350,7 +358,7 @@ properties:
     const result = await importVendorCatalog({
       predecessorArtifact: { digest: predecessor.digest, bytes: predecessor.bytes },
       schemasRoot,
-      identity: identity("alias"),
+      ...importOpts("alias"),
     });
     expect(result.ok).toBe(false);
     if (result.ok) return;
@@ -365,7 +373,7 @@ properties:
     const first = await importVendorCatalog({
       predecessorArtifact: { digest: predecessor.digest, bytes: predecessor.bytes },
       schemasRoot,
-      identity: identity("doc1"),
+      ...importOpts("doc1"),
     });
     expect(first.ok).toBe(true);
     if (!first.ok || first.value.kind !== "successor" || first.value.built.kind !== "successor") return;
@@ -386,7 +394,7 @@ properties:
         bytes: first.value.built.artifact.artifactBytes,
       },
       schemasRoot,
-      identity: identity("doc2", "1.3.0"),
+      ...importOpts("doc2", "1.3.0"),
     });
     expect(second.ok).toBe(true);
     if (!second.ok || second.value.kind !== "successor") return;
@@ -409,7 +417,7 @@ properties:
     const first = await importVendorCatalog({
       predecessorArtifact: { digest: predecessor.digest, bytes: predecessor.bytes },
       schemasRoot,
-      identity: identity("sem1"),
+      ...importOpts("sem1"),
     });
     expect(first.ok).toBe(true);
     if (!first.ok || first.value.kind !== "successor" || first.value.built.kind !== "successor") return;
@@ -430,7 +438,7 @@ properties:
         bytes: first.value.built.artifact.artifactBytes,
       },
       schemasRoot,
-      identity: identity("sem2", "1.3.0"),
+      ...importOpts("sem2", "1.3.0"),
     });
     expect(second.ok).toBe(true);
     if (!second.ok || second.value.kind !== "successor") return;
@@ -445,7 +453,7 @@ properties:
     const result = await importVendorCatalog({
       predecessorArtifact: { digest: predecessor.digest, bytes: predecessor.bytes },
       schemasRoot: path.join(process.cwd(), "schemas/dts"),
-      identity: identity("repo"),
+      ...importOpts("repo"),
     });
     expect(result.ok).toBe(false);
     if (result.ok) return;
@@ -479,13 +487,188 @@ properties:
     const result = await importVendorCatalog({
       predecessorArtifact: { digest: predecessor.digest, bytes: predecessor.bytes },
       schemasRoot,
-      identity: identity("cons"),
+      ...importOpts("cons"),
     });
     expect(result.ok).toBe(false);
     if (result.ok) return;
     expect(result.error.kind).toBe("import-blocked");
     if (result.error.kind !== "import-blocked") return;
     expect(result.error.report.blocking.some((row) => row.detail.startsWith("unhandled-constraint"))).toBe(true);
+  });
+
+  it("reconciles each supported source property to a named successor definition", async () => {
+    const predecessor = firstAcmePredecessor();
+    const charger = `$id: wiseeff/test-charger.yaml
+title: acme,test-charger
+source: vendor
+lifecycle: active
+version: 1
+schemaNamespace: vendor/acme,test-charger
+compatible:
+  - acme,test-charger
+properties:
+  iin_limit:
+    valueShape: integer
+    units: mA
+    constraints: {}
+    exampleValue: 1200
+    documentation: Vendor input current limit.
+  status:
+    valueShape: integer
+    documentation: Node enablement is not a parameter.
+`;
+    const board = boardYaml;
+    const ambiguous = `$id: wiseeff/test-ambiguous-a.yaml
+title: Ambiguous fixture A
+source: vendor
+lifecycle: active
+version: 1
+schemaNamespace: vendor/test-ambiguous-a
+compatible:
+  - wiseeff,test-ambiguous
+properties:
+  shared_prop:
+    valueShape: integer
+    documentation: Excluded fixture property.
+`;
+    const schemasRoot = writeTree(
+      {
+        "charger.yaml": charger,
+        "board.yaml": board,
+        "test-ambiguous-a.yaml": ambiguous,
+      },
+      [
+        "vendor/wiseeff/charger.yaml",
+        "vendor/wiseeff/board.yaml",
+        "vendor/wiseeff/test-ambiguous-a.yaml",
+      ],
+    );
+    const result = await importVendorCatalog({
+      predecessorArtifact: { digest: predecessor.digest, bytes: predecessor.bytes },
+      schemasRoot,
+      ...importOpts("acct"),
+    });
+    expect(result.ok).toBe(true);
+    if (!result.ok || result.value.kind !== "successor" || result.value.built.kind !== "successor") return;
+
+    const propertyKind = (propertyPath: string) => {
+      const row = result.value.report.dispositions.find((entry) => entry.path === propertyPath);
+      expect(row, propertyPath).toBeDefined();
+      return row!.kind;
+    };
+    expect(propertyKind("vendor/wiseeff/charger.yaml#iin_limit")).toBe("mapped");
+    expect(propertyKind("vendor/wiseeff/charger.yaml#status")).toBe("structural-non-param");
+    expect(propertyKind("vendor/wiseeff/board.yaml#board_rev")).toBe("mapped");
+    expect(propertyKind("vendor/wiseeff/test-ambiguous-a.yaml#shared_prop")).toBe("excluded");
+    expect(
+      result.value.report.dispositions.find((row) => row.path === "vendor/wiseeff/charger.yaml#iin_limit.exampleValue")
+        ?.kind,
+    ).toBe("structural-non-param");
+    expect(
+      result.value.report.dispositions.find((row) => row.path === "vendor/wiseeff/charger.yaml#iin_limit.constraints")
+        ?.kind,
+    ).toBe("structural-non-param");
+
+    const listedProperties = [
+      "vendor/wiseeff/charger.yaml#iin_limit",
+      "vendor/wiseeff/charger.yaml#status",
+      "vendor/wiseeff/board.yaml#board_rev",
+      "vendor/wiseeff/test-ambiguous-a.yaml#shared_prop",
+    ];
+    for (const propertyPath of listedProperties) {
+      expect(["mapped", "structural-non-param", "excluded", "unsupported", "conflict"]).toContain(
+        propertyKind(propertyPath),
+      );
+    }
+
+    const target = result.value.built.artifact.bundle.releases.find(
+      (release) => release.manifest.release.id === result.value.built.artifact.targetReleaseId,
+    );
+    expect(target).toBeDefined();
+    if (!target) return;
+    const mapped = result.value.report.dispositions.filter((row) => {
+      const fragment = row.path.split("#")[1];
+      return row.kind === "mapped" && fragment !== undefined && !fragment.includes(".");
+    });
+    expect(mapped.map((row) => row.path).sort()).toEqual([
+      "vendor/wiseeff/board.yaml#board_rev",
+      "vendor/wiseeff/charger.yaml#iin_limit",
+    ]);
+    for (const row of mapped) {
+      const propertyKey = row.path.split("#")[1]!;
+      const allocated = result.value.report.identityMap.find(
+        (entry) => entry.propertyKey === propertyKey && entry.action === "allocate",
+      );
+      expect(allocated, propertyKey).toBeDefined();
+      const document = target.documents.find(
+        (entry) => entry.kind === "definition" && entry.content.propertyKey === propertyKey,
+      );
+      expect(document?.kind).toBe("definition");
+      if (document?.kind !== "definition") continue;
+      expect(document.content.id).toBe(allocated!.publishedId);
+      expect(document.content.subjectId).toBe(
+        result.value.report.identityMap.find(
+          (entry) => entry.canonicalKey !== undefined && entry.publishedId === document.content.subjectId,
+        )?.publishedId,
+      );
+    }
+    expect(target.documents.some((entry) => entry.kind === "definition" && entry.content.propertyKey === "status")).toBe(
+      false,
+    );
+    expect(
+      target.documents.some((entry) => entry.kind === "definition" && entry.content.propertyKey === "shared_prop"),
+    ).toBe(false);
+  });
+
+  it("T18 refuses a missing predecessor Artifact without building a successor", async () => {
+    const predecessor = firstAcmePredecessor();
+    const schemasRoot = writeTree({ "charger.yaml": chargerYaml }, ["vendor/wiseeff/charger.yaml"]);
+    const result = await importVendorCatalog({
+      predecessorArtifact: { digest: predecessor.digest },
+      schemasRoot,
+      ...importOpts("t18miss"),
+    });
+    expect(result).toEqual({ ok: false, error: { kind: "artifact-missing" } });
+  });
+
+  it("T18 refuses unreadable predecessor bytes as predecessor-incomplete", async () => {
+    const bytes = new TextEncoder().encode("{not-a-catalog-bundle");
+    const digest = `sha256:${createHash("sha256").update(bytes).digest("hex")}`;
+    const result = await importVendorCatalog({
+      predecessorArtifact: { digest, bytes },
+      schemasRoot: writeTree({ "charger.yaml": chargerYaml }, ["vendor/wiseeff/charger.yaml"]),
+      ...importOpts("t18bad"),
+    });
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.error.kind).toBe("predecessor-incomplete");
+  });
+
+  it("T18 refuses a predecessor digest mismatch", async () => {
+    const predecessor = firstAcmePredecessor();
+    const result = await importVendorCatalog({
+      predecessorArtifact: { digest: `sha256:${"a".repeat(64)}`, bytes: predecessor.bytes },
+      schemasRoot: writeTree({ "charger.yaml": chargerYaml }, ["vendor/wiseeff/charger.yaml"]),
+      ...importOpts("t18mis"),
+    });
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.error.kind).toBe("artifact-digest-mismatch");
+  });
+
+  it("refuses an omitted author principal instead of defaulting vendor-import", async () => {
+    const predecessor = firstAcmePredecessor();
+    const result = await importVendorCatalog({
+      predecessorArtifact: { digest: predecessor.digest, bytes: predecessor.bytes },
+      schemasRoot: writeTree({ "charger.yaml": chargerYaml }, ["vendor/wiseeff/charger.yaml"]),
+      identity: identity("noauthor"),
+    });
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.error).toEqual({
+      kind: "invalid-input",
+      reason: "authorPrincipalId is required",
+    });
   });
 
   it("does not parse opaque IDs to infer canonical identity", () => {

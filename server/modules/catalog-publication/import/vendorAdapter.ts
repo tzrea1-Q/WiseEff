@@ -549,6 +549,10 @@ const inventoryFileDispositions = (files: readonly VendorFileInventory[]): Vendo
 export async function importVendorCatalog(
   input: ImportVendorCatalogInput,
 ): Promise<{ readonly ok: true; readonly value: VendorImportValue } | { readonly ok: false; readonly error: VendorImportError }> {
+  const authorPrincipalId = input.authorPrincipalId?.trim() ?? "";
+  if (authorPrincipalId.length === 0) {
+    return { ok: false, error: { kind: "invalid-input", reason: "authorPrincipalId is required" } };
+  }
   const inventoried = inventoryVendorCatalog(input.schemasRoot);
   if (!inventoried.ok) {
     return { ok: false, error: inventoried.error };
@@ -575,6 +579,19 @@ export async function importVendorCatalog(
   const subjectAllocations: FrozenSubjectAllocation[] = [];
   const usedDefinitionIds = new Set(index.definitionsById.keys());
   const usedSubjectIds = new Set(index.subjectsById.keys());
+
+  for (const file of inventory.files) {
+    if (!file.listed || !file.excluded || !file.onDisk) continue;
+    const parsed = parseVendorYamlFile(path.join(input.schemasRoot, file.relativePath));
+    if ("error" in parsed) continue;
+    for (const propertyKey of Object.keys(parsed.properties ?? {})) {
+      dispositions.push(
+        disposition(`${file.relativePath}#${propertyKey}`, "excluded", "listed excluded fixture property", [
+          "properties",
+        ]),
+      );
+    }
+  }
 
   const inputFiles = inventory.files.filter((file) => file.disposition === "input");
   for (const file of inputFiles) {
@@ -1079,7 +1096,6 @@ export async function importVendorCatalog(
     definitions: definitionAllocations,
     subjects: subjectAllocations,
   };
-  const authorPrincipalId = input.authorPrincipalId ?? "vendor-import";
   const facts = vendorImpactFacts(authorPrincipalId, changeSet);
   const classified = classifyImpact(facts);
   if (!classified.ok) {
