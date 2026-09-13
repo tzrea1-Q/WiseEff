@@ -1,5 +1,5 @@
 import { execFileSync, spawnSync } from "node:child_process";
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, expect, it } from "vitest";
@@ -140,6 +140,23 @@ it("refuses unknown committed registry modules", () => {
   execFileSync("git", ["add", "scripts/verification/registry.json"], { cwd });
   execFileSync("git", ["commit", "-qm", "unknown-registry"], { cwd });
   expect(() => createPreview({ cwd, base })).toThrow("INVALID_REGISTRY");
+});
+
+it("accepts shared dependencies in the fixed four-module registry", () => {
+  const { cwd, base } = fixture();
+  const registry = JSON.parse(readFileSync(new URL("./registry.json", import.meta.url), "utf8")) as { modules: Array<{ paths: string[]; consumers: string[]; tasks: Record<string, string[]>; browser: { spec: string } }> };
+  for (const file of registry.modules.flatMap(module => [...module.paths, ...module.consumers, ...Object.values(module.tasks).flat(), module.browser.spec])) {
+    const materialized = file.endsWith("/") ? `${file}fixture.ts` : file;
+    mkdirSync(path.dirname(path.join(cwd, materialized)), { recursive: true });
+    writeFileSync(path.join(cwd, materialized), "fixture\n");
+  }
+  mkdirSync(path.join(cwd, "scripts/verification"), { recursive: true });
+  writeFileSync(path.join(cwd, "scripts/verification/registry.json"), readFileSync(new URL("./registry.json", import.meta.url)));
+  execFileSync("git", ["add", "."], { cwd });
+  execFileSync("git", ["commit", "-qm", "shared-dependencies"], { cwd });
+  const preview = createPreview({ cwd, base });
+  expect(preview.selection.fullFallback).toBe(true);
+  expect(preview.selection.modules).toEqual(["feedback-client", "feedback-domain", "feedback-server", "feedback-ui"]);
 });
 
 it("runs the bounded plan CLI in an owned fixture", () => {
