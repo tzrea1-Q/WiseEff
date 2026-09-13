@@ -20,6 +20,7 @@ import { startLogWorkerLoop, type LogWorkerWebhooks, type ProcessLogWorkerOption
 
 type RawWorkerEnv = {
   DATABASE_URL?: string;
+  WISEEFF_WORKER_DATABASE_URL?: string;
   LOG_ANALYSIS_QUEUE_MODE?: "polling" | "durable";
   REDIS_URL?: string;
   OBJECT_STORE_MODE?: "local" | "s3";
@@ -83,10 +84,18 @@ export function resolveLogWorkerObservabilityConfig(raw: RawWorkerEnv) {
   };
 }
 
-export function validateLogWorkerConfig(raw: RawWorkerEnv) {
-  if (!raw.DATABASE_URL?.trim()) {
-    throw new Error("DATABASE_URL is required to start the log worker.");
+export function resolveLogWorkerDatabaseUrl(raw: RawWorkerEnv): string {
+  const dedicated = raw.WISEEFF_WORKER_DATABASE_URL?.trim() ?? "";
+  if (!dedicated) {
+    throw new Error(
+      "WISEEFF_WORKER_DATABASE_URL is required to start the log worker; refusing to use API DATABASE_URL.",
+    );
   }
+  return dedicated;
+}
+
+export function validateLogWorkerConfig(raw: RawWorkerEnv) {
+  resolveLogWorkerDatabaseUrl(raw);
   if ((raw.LOG_ANALYSIS_QUEUE_MODE ?? "polling") === "durable" && !raw.REDIS_URL?.trim()) {
     throw new Error("REDIS_URL is required when LOG_ANALYSIS_QUEUE_MODE=durable.");
   }
@@ -165,9 +174,17 @@ export function createLogWorkerRuntime({
 export async function createLogWorkerRuntimeFromEnv(raw: NodeJS.ProcessEnv = process.env) {
   await import("dotenv/config");
   const env = loadServerEnv(raw);
-  validateLogWorkerConfig(env);
+  const workerUrl = resolveLogWorkerDatabaseUrl({
+    DATABASE_URL: env.DATABASE_URL,
+    WISEEFF_WORKER_DATABASE_URL: raw.WISEEFF_WORKER_DATABASE_URL,
+  });
+  validateLogWorkerConfig({
+    ...env,
+    DATABASE_URL: workerUrl,
+    WISEEFF_WORKER_DATABASE_URL: workerUrl,
+  });
 
-  const db = createPostgresDatabase(env.DATABASE_URL!, { tracing: defaultTracingBoundary });
+  const db = createPostgresDatabase(workerUrl, { tracing: defaultTracingBoundary });
   await resolveParameterIdentityMode(db);
 
   const metrics = createMetricsRegistry({ serviceName: "wiseeff-log-worker" });

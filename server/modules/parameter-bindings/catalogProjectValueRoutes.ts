@@ -172,6 +172,10 @@ export function registerCatalogProjectValueConsumerRoutes(
         id: row.id,
         parameterSpecId: row.parameterSpecId,
         parameterSpecVersionId: row.parameterSpecVersionId,
+        definitionId: row.definitionId,
+        effectiveRevisionId: row.effectiveRevisionId,
+        currentValueId: row.currentValueId,
+        projectId: row.projectId,
         propertyKey: row.propertyKey,
         driverModule: row.driverModule,
         logicalNodeId: row.logicalNodeId,
@@ -188,7 +192,16 @@ export function registerCatalogProjectValueConsumerRoutes(
       })
     );
     const seen = new Set(catalogItems.map((item) => item.id));
-    return { status: 200, body: { items: [...catalogItems, ...original.items.filter((item) => !seen.has(item.id))] } };
+    const catalogDefinitions = new Set(
+      catalogItems.map((item) => item.definitionId ?? item.parameterSpecId),
+    );
+    const extras = original.items.filter(
+      (item) =>
+        !seen.has(item.id) &&
+        !catalogDefinitions.has(item.parameterSpecId) &&
+        !(item.definitionId && catalogDefinitions.has(item.definitionId)),
+    );
+    return { status: 200, body: { items: catalogItems.length > 0 ? [...catalogItems, ...extras] : original.items } };
   });
 
   router.post("/api/v2/projects/:projectId/parameter-bindings/:bindingId/drafts", async (request) => {

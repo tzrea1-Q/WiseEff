@@ -1,4 +1,4 @@
-import { chmodSync, mkdtempSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -154,5 +154,54 @@ describe("setup.sh", () => {
   it("exits 2 when non-interactive setup has no host and no env", () => {
     const result = runSetup(["--non-interactive", "init", "--env-file", "/tmp/wiseeff-does-not-exist.env"]);
     expect(result.status).toBe(2);
+  });
+
+  it("backfills an unconfigured manager env without copying DATABASE_URL when .env already exists", () => {
+    const directory = mkdtempSync(join(tmpdir(), "wiseeff-setup-manager-backfill-"));
+    const envFile = join(directory, "runtime.env");
+    const managerEnv = join(directory, ".env.publication-manager");
+    writeFileSync(
+      envFile,
+      [
+        "WISEEFF_SITE_HOST=203.0.113.10",
+        "WISEEFF_PUBLIC_URL=http://203.0.113.10",
+        "POSTGRES_PASSWORD=probe",
+        "DATABASE_URL=postgres://wiseeff:probe@postgres:5432/wiseeff",
+        "AUTH_PROVIDER=local",
+        "",
+      ].join("\n"),
+      { mode: 0o600 },
+    );
+
+    const result = runSetup(["--non-interactive", "init", "--env-file", envFile], {
+      WISEEFF_PUBLICATION_MANAGER_ENV_FILE: managerEnv,
+      WISEEFF_OPERATION_LOCK_DIR: join(directory, "lock"),
+    });
+
+    expect(result.status).toBe(0);
+    expect(result.stdout).toContain("already exists");
+    expect(result.stdout).toContain("unconfigured");
+    const written = readFileSync(managerEnv, "utf8");
+    expect(written).toContain("WISEEFF_PUBLICATION_MANAGER=1");
+    expect(written).not.toMatch(/^[^#]*DATABASE_URL=/m);
+    expect(written).not.toMatch(/^[^#]*WISEEFF_PUBLICATION_MANAGER_DATABASE_URL=/m);
+    expect(written).not.toContain("postgres://wiseeff:probe");
+  });
+
+  it("does not overwrite an existing private manager env without --force", () => {
+    const directory = mkdtempSync(join(tmpdir(), "wiseeff-setup-manager-keep-"));
+    const envFile = join(directory, "runtime.env");
+    const managerEnv = join(directory, ".env.publication-manager");
+    writeFileSync(envFile, "DATABASE_URL=postgres://wiseeff:probe@postgres:5432/wiseeff\n", { mode: 0o600 });
+    writeFileSync(managerEnv, "WISEEFF_PUBLICATION_MANAGER=1\n# existing private file\n", { mode: 0o600 });
+
+    const result = runSetup(["--non-interactive", "init", "--env-file", envFile], {
+      WISEEFF_PUBLICATION_MANAGER_ENV_FILE: managerEnv,
+      WISEEFF_OPERATION_LOCK_DIR: join(directory, "lock"),
+    });
+
+    expect(result.status).toBe(0);
+    expect(result.stdout).toContain("Keeping");
+    expect(readFileSync(managerEnv, "utf8")).toContain("existing private file");
   });
 });
