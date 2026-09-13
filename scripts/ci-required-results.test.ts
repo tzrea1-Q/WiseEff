@@ -2,7 +2,8 @@ import { chmodSync, linkSync, mkdtempSync, writeFileSync, symlinkSync, rmSync } 
 import os from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { assertL1Results, assertRequiredResults, createL1Receipt, l1CommandIds, readPrivateReport, validateNativeReport } from "./ci-required-results";
+import { assertL1Results, assertRequiredResults, assertShadowResults, createL1Receipt, l1CommandIds, readPrivateReport, validateNativeReport } from "./ci-required-results";
+import { createNotApplicableShadow, createUnavailableShadow } from "./verification/ci-shadow";
 
 const identity = {
   event: "pull_request", mode: "", fullAcceptance: false, ref: "refs/pull/828/merge",
@@ -106,6 +107,26 @@ describe("L1 invocation receipts", () => {
   });
   it("accepts the always-running docs-only aggregate without fake test receipts", () => {
     expect(() => assertL1Results({ identity, needs: { detect: docNeeds.detect, ...Object.fromEntries(Object.keys(l1CommandIds).map((job) => [job, { result: "skipped" }])) } })).not.toThrow();
+  });
+  it("validates shadow siblings against the already-verified native reports", () => {
+    const native = (command: string) => report(command);
+    const shadow = (command: string) => JSON.stringify(createUnavailableShadow({ identity, command: command as "frontend" | "scripts" | "bridge" | "server", native: native(command), error: "SHADOW_PLAN_INVALID" }));
+    const needs = {
+      detect: { result: "success", outputs: flags },
+      "l1-frontend": { result: "success", outputs: { shadow_frontend: shadow("frontend") } },
+      "l1-scripts": { result: "success", outputs: { shadow_scripts: shadow("scripts"), shadow_bridge: shadow("bridge") } },
+      "l1-server": { result: "success", outputs: { shadow_server: shadow("server") } },
+    };
+    const nativeNeeds = { detect: { result: "success", outputs: flags }, ...receipts() };
+    expect(() => assertShadowResults({ identity, needs, nativeNeeds })).not.toThrow();
+    const forged = JSON.parse(needs["l1-server"].outputs.shadow_server);
+    forged.nativeReportSha256 = "f".repeat(64);
+    expect(() => assertShadowResults({ identity, needs: { ...needs, "l1-server": { result: "success", outputs: { shadow_server: JSON.stringify(forged) } } }, nativeNeeds })).toThrow();
+  });
+  it("keeps non-PR shadow explicitly not applicable", () => {
+    const mainIdentity = { ...identity, event: "push", base: "", head: "", ref: "refs/heads/main" };
+    const shadow = createNotApplicableShadow({ identity: mainIdentity, command: "frontend" });
+    expect(shadow).toMatchObject({ status: "not-applicable", planValid: false, error: "NOT_APPLICABLE" });
   });
   it("reads only a fresh private regular report and rejects symlinks and missing reports", () => {
     const directory = mkdtempSync(path.join(os.tmpdir(), "ci-report-test-"));
