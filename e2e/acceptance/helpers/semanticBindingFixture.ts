@@ -225,7 +225,7 @@ export async function resolveOpenSpecReviews(
     items: Array<{
       id: string;
       propertyKey?: string | null;
-      sourceEvidence?: { propertyKey?: string; nodeLocator?: string };
+      sourceEvidence?: { propertyKey?: string; nodeLocator?: string; compatible?: string | string[] };
       candidateSchemas?: Array<{ id: string; propertyKey?: string; label?: string }>;
       candidates?: Array<{ id: string; propertyKey?: string | null; label?: string }>;
     }>;
@@ -277,6 +277,9 @@ export async function resolveOpenSpecReviews(
         constraints = { minLength: length, maxLength: length };
       }
       if (detailBody.item.lifecycle !== "active") {
+        const sourceCompatible = task.sourceEvidence?.compatible;
+        const compatible = (Array.isArray(sourceCompatible) ? sourceCompatible[0] : sourceCompatible)?.trim();
+        expect(compatible, `review ${task.id} requires compatible evidence for coverage`).toBeTruthy();
         const activate = await request.post(
           apiRoute(`/api/v2/parameter-specs/${encodeURIComponent(parameterSpecId)}/activate`),
           {
@@ -285,7 +288,11 @@ export async function resolveOpenSpecReviews(
               valueShape: shape,
               constraints,
               documentation: `${input.reason} occurrence-derived spec`,
-              reason: `${input.reason} activate occurrence-derived spec`
+              reason: `${input.reason} activate occurrence-derived spec`,
+              coverageClaim: {
+                kind: "overlay-property",
+                upsertOverlay: { compatible, createPropertyLink: true }
+              }
             }
           }
         );
