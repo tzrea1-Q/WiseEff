@@ -33,6 +33,9 @@ import {
 } from "./provisionRuntimeLogins";
 
 const catalogDml = [
+  "insert into parameter_catalog.catalog_subjects select * from parameter_catalog.catalog_subjects where false",
+  "insert into parameter_catalog.catalog_releases select * from parameter_catalog.catalog_releases where false",
+  "insert into parameter_catalog.catalog_activation_receipts select * from parameter_catalog.catalog_activation_receipts where false",
   "update parameter_catalog.catalog_subjects set id = id where false",
   "delete from parameter_catalog.catalog_subjects where false",
   "update parameter_catalog.parameter_definitions set id = id where false",
@@ -172,6 +175,27 @@ describe("publication runtime login ACL threat matrix", () => {
       await api.end();
     }
   }, 120_000);
+
+  it("T5b: official provision refuses an unknown same-name role", async () => {
+    const admin = new pg.Client({ connectionString: url });
+    await admin.connect();
+    const stranger = `wiseeff_ra_${token}_stranger`;
+    openedRoles.push(stranger);
+    try {
+      await admin.query(
+        `create role ${quoteIdent(stranger)} login password 'stranger-secret' nosuperuser noinherit`,
+      );
+      await admin.query(`comment on role ${quoteIdent(stranger)} is 'not-ours'`);
+      await expect(
+        provisionPublicationRuntimeLogins(url, {
+          mode: "official",
+          names: { api: stranger, worker: `wiseeff_ra_${token}_w2`, manager: `wiseeff_ra_${token}_m2` },
+        }),
+      ).rejects.toThrow(/ownership comment/);
+    } finally {
+      await admin.end();
+    }
+  }, 60_000);
 
   it("T5: unrelated same-name cluster role is not mutated", async () => {
     const admin = new pg.Client({ connectionString: url });

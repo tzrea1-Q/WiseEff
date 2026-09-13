@@ -2327,8 +2327,8 @@ wiseeff_upgrade_run_recover_candidate() {
   fi
 
   wiseeff_upgrade_set_phase candidate-recovery-starting-worker recovery-required
-  if ! wiseeff_upgrade_compose_for_image "$candidate_image" up -d --force-recreate --no-build --no-deps worker; then
-    wiseeff_upgrade_record_failure candidate-recovery-starting-worker worker candidate-worker-recreate "The candidate worker could not be recreated during candidate recovery."
+  if ! wiseeff_upgrade_compose_for_image "$candidate_image" up -d --force-recreate --no-build --no-deps worker publication-manager; then
+    wiseeff_upgrade_record_failure candidate-recovery-starting-worker worker candidate-worker-recreate "The candidate worker or publication-manager could not be recreated during candidate recovery."
     wiseeff_upgrade_mark_recovery_required
     return 70
   fi
@@ -2407,8 +2407,8 @@ wiseeff_upgrade_run_resume() {
   fi
   if [ "$phase" = "api-ready" ]; then
     wiseeff_upgrade_set_phase starting-app-services running
-    if ! wiseeff_upgrade_compose_for_image "$candidate_image" up -d --force-recreate --no-build --no-deps web worker; then
-      wiseeff_upgrade_mark_recovery_required app-services candidate-app-services-recreate "The candidate web or worker containers could not be recreated during resume."
+    if ! wiseeff_upgrade_compose_for_image "$candidate_image" up -d --force-recreate --no-build --no-deps web worker publication-manager; then
+      wiseeff_upgrade_mark_recovery_required app-services candidate-app-services-recreate "The candidate web, worker, or publication-manager containers could not be recreated during resume."
       return 70
     fi
     if ! wiseeff_upgrade_verify_candidate_app_readiness; then

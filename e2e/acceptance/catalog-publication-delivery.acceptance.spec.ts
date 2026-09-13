@@ -160,12 +160,13 @@ const publishDefinition = async (
 
   await page.goto(`${evidence.frontendOrigin}/parameter-admin/specs`);
   await dismissXiaozeHint(page);
+  await page.getByRole("button", { name: "关闭" }).click({ timeout: 2_000 }).catch(() => undefined);
   await expect(catalogPage(page)).toBeVisible({ timeout: 30_000 });
   const entry = page.getByRole("button", { name: "新增定义" });
   await expect(entry).toBeVisible();
-  await entry.click();
+  await entry.click({ force: true });
   const dialog = page.getByRole("dialog", { name: "向已发布主体新增定义" });
-  await expect(dialog).toBeVisible();
+  await expect(dialog).toBeVisible({ timeout: 30_000 });
   const subjects = dialog.getByLabel("已发布主体");
   await expect.poll(async () => subjects.locator("option").count(), { timeout: 30_000 }).toBeGreaterThan(1);
   await subjects.selectOption(evidence.subjectId);
@@ -217,6 +218,9 @@ const pollBinding = async (page: Page, definitionId: string, propertyKey: string
       { headers },
     );
     lastStatus = bindings.status();
+    if (lastStatus === 403 || lastStatus === 404) {
+      assertBindingGetOk(lastStatus);
+    }
     if (bindings.ok()) {
       const list = (await bindings.json()) as { items?: ProjectBindingView[] };
       lastItems = list.items;
@@ -226,8 +230,10 @@ const pollBinding = async (page: Page, definitionId: string, propertyKey: string
           definitionId,
           projectId: evidence.projectId,
         });
-      } catch {
-        // keep polling until match or timeout
+      } catch (error) {
+        if (attempt === 29) {
+          throw error;
+        }
       }
     }
     await page.waitForTimeout(2_000);

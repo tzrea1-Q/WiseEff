@@ -323,6 +323,14 @@ export const runCatalogPublicationOps = async (
         payload: { message: "WISEEFF_CATALOG_BOOTSTRAP_DATABASE_URL is required for one-shot LOGIN provisioning" },
       };
     }
+    if (!command.credentialDir) {
+      return {
+        exitCode: 2,
+        payload: {
+          message: "WISEEFF_PUBLICATION_CREDENTIAL_DIR or --credential-dir is required before provisioning; DSNs are not printed",
+        },
+      };
+    }
     const provisioned = await provisionPublicationRuntimeLogins(bootstrap, {
       mode: command.mode,
       runToken: command.runToken,
@@ -339,14 +347,6 @@ export const runCatalogPublicationOps = async (
           passwordsDelivered: false,
           reused: provisioned.reused,
           message: "existing owned LOGINs were verified; passwords were not rotated",
-        },
-      };
-    }
-    if (!command.credentialDir) {
-      return {
-        exitCode: 2,
-        payload: {
-          message: "WISEEFF_PUBLICATION_CREDENTIAL_DIR or --credential-dir is required; DSNs are not printed",
         },
       };
     }
