@@ -7,6 +7,7 @@ import {
   evaluateAcceptanceLocalNonHdcBudget,
   evaluateAcceptanceCiConfiguration,
   evaluateImmutableAcceptanceUpload,
+  evaluateL1CiWorkflow,
   findAcceptanceEnvironmentHelperLoads,
   findForbiddenAcceptanceDotenvImports,
   findForbiddenPlaywrightImports,
@@ -133,6 +134,51 @@ const compliantScripts = {
   "acceptance:smoke":
     "playwright test --config playwright.acceptance.config.ts --grep \"@ci-smoke|warm vite entry graph\" e2e/acceptance/runtime-warmup.spec.ts e2e/acceptance/shell-navigation.acceptance.spec.ts e2e/acceptance/auth-runtime.acceptance.spec.ts e2e/acceptance/parameter-home.acceptance.spec.ts"
 };
+
+describe("equivalent fixed L1 scheduling", () => {
+  it("maps every original L1 command and prerequisite to four jobs with stable strict aggregates", () => {
+    expect(evaluateL1CiWorkflow(readFileSync(".github/workflows/ci.yml", "utf8"))).toEqual({ status: "passed", errors: [] });
+  });
+  it.each(["build", "docs", "ui", "lint", "metadata", "catalog", "contract", "logs"])("rejects removal of the original %s command", (id) => {
+    const workflow = YAML.parse(readFileSync(".github/workflows/ci.yml", "utf8"));
+    workflow.jobs["l1-static"].steps = workflow.jobs["l1-static"].steps.filter((step: { id: string }) => step.id !== id);
+    expect(evaluateL1CiWorkflow(YAML.stringify(workflow)).status).toBe("failed");
+  });
+  it.each(["l1-scripts", "l1-server"])("requires PG, DTS and receipt safety in %s", (id) => {
+    const source = readFileSync(".github/workflows/ci.yml", "utf8");
+    for (const mutation of ["database", "toolchain", "advisory", "receipt", "vector"]) {
+      const workflow = YAML.parse(source);
+      const job = workflow.jobs[id];
+      if (mutation === "database") delete job.services;
+      if (mutation === "toolchain") job.steps.find((step: { id: string }) => step.id === "toolchain").uses = "echo skipped";
+      if (mutation === "advisory") job.steps.find((step: { id: string }) => step.id === "install")["continue-on-error"] = true;
+      if (mutation === "receipt") job.outputs.receipt = "";
+      if (mutation === "vector") job.steps.find((step: { id: string }) => step.id === "vector").run += "\ntrue";
+      expect(evaluateL1CiWorkflow(YAML.stringify(workflow)).status).toBe("failed");
+    }
+  });
+  it.each(["build-and-test", "required"])("rejects skip, missing needs, altered source identity and npm installation in %s", (id) => {
+    const source = readFileSync(".github/workflows/ci.yml", "utf8");
+    for (const mutation of ["condition", "needs", "install", "identity"]) {
+      const workflow = YAML.parse(source);
+      if (mutation === "condition") workflow.jobs[id].if = "success()";
+      if (mutation === "needs") workflow.jobs[id].needs.pop();
+      if (mutation === "install") workflow.jobs[id].steps.push({ run: "npm ci" });
+      if (mutation === "identity") workflow.env.EFF_HEAD_SHA = "${{ github.sha }}";
+      expect(evaluateL1CiWorkflow(YAML.stringify(workflow)).status).toBe("failed");
+    }
+  });
+  it("retains all events, modes, full acceptance labeling and PR-only cancellation", () => {
+    const workflow = YAML.parse(readFileSync(".github/workflows/ci.yml", "utf8"));
+    expect(Object.keys(workflow.on).sort()).toEqual(["pull_request", "push", "schedule", "workflow_dispatch"]);
+    expect(workflow.on.push).toEqual({ branches: ["main"] });
+    expect(workflow.on.pull_request.types).toEqual(["opened", "synchronize", "reopened", "labeled"]);
+    expect(workflow.on.schedule).toEqual([{ cron: "30 18 * * *" }]);
+    expect(workflow.on.workflow_dispatch.inputs.acceptance_mode.options).toEqual(["local-non-hdc", "target-non-hdc", "full-pilot", "minimal-upgrade"]);
+    expect(workflow.concurrency["cancel-in-progress"]).toBe("${{ github.event_name == 'pull_request' }}");
+    expect(workflow.jobs.detect.steps.find((step: { id: string }) => step.id === "paths").run).toContain('echo "run_l2=true"');
+  });
+});
 
 describe("M5.12 acceptance CI configuration", () => {
   it("keeps the L2 platform budget strictly above bounded prelude, Gate0 owner, and always finalization", () => {
