@@ -32,6 +32,9 @@ stock 拓扑只运行一个 API 副本。wrapper 对 `up --scale api=...`、`up 
 | 将夹具 `crel_acme_1` 推进到厂商 YAML 后继 Catalog | 仅当 Receipt 表为空时，在 API 容器内编译后执行 `install-catalog-release.ts --mode advance`；见 [upgrade.zh-CN.md](upgrade.zh-CN.md#厂商-catalog-后继发布) | 未接管实例上指针前进到 `crel_vendor_catalog_1`。一旦 `catalog_activation_receipts` 有行，该 CLI 被拒绝；之后的 vendor 复用走 CP-09 import + CP-07。禁止再次 bootstrap、seed 或向 Catalog 表 INSERT。 |
 | 只读采集已有 Catalog 以便接管 | `CATALOG_BASELINE_READONLY_DATABASE_URL=... npx tsx scripts/inspect-catalog-publication-baseline.ts` | 只输出证据 JSON+sha256。不插入 Artifact，不接受 `DATABASE_URL`，绝不打印 DSN。 |
 | 接管已核验的当前 Catalog | 仓库根目录：`npx tsx scripts/catalog-publication-ops.ts adopt --check|--execute ...`，使用 `WISEEFF_PUBLICATION_MANAGER_DATABASE_URL` | 只写 Receipt。不推进指针，也不做数据恢复。见 [catalog-publication.zh-CN.md](catalog-publication.zh-CN.md)。 |
+| 授予或撤销发布者能力 | `npx tsx scripts/catalog-publication-ops.ts capabilities grant\|revoke\|status ...` | 真实 `user_role_bindings`，不是 `WISEEFF_CATALOG_TEST_CAPABILITIES`。 |
+| 隔离启用/停用发布（不是生产） | `npx tsx scripts/catalog-publication-ops.ts policy enable\|disable --actor <id> --confirmation ephemeral-test-only` | 共享库名 `wiseeff` 上拒绝。 |
+| 在线 Catalog 发布 | 隔离策略启用且 freeze 清除后的 CP-07 HTTP 发布路由 | 与预检、接管、恢复分开。默认 `publication_enabled` 仍为 false。 |
 | 在线 Catalog 发布 | CP-07 HTTP 发布路由（尚未启用），且维护冻结必须解除 | 与采集、接管、恢复是不同命令。 |
 | 从恢复点恢复 | `./scripts/upgrade.sh` 的 recovery / restore drill 入口 | 恢复数据。禁止用采集或接管命令代替恢复。 |
 

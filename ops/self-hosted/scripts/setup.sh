@@ -655,6 +655,8 @@ LOG_ANALYSIS_API_TIMEOUT_MS=30000
 LOG_ANALYSIS_TOKEN_BUDGET=8000
 LOG_ANALYSIS_DETERMINISTIC=${log_det}
 
+WISEEFF_PUBLICATION_MANAGER_ENV_FILE=.env.publication-manager
+WISEEFF_CATALOG_PUBLICATION_DATA_MODE=new-empty
 LOG_WORKER_ENABLED=false
 LOG_ANALYSIS_QUEUE_MODE=durable
 REDIS_URL=redis://redis:6379
@@ -683,8 +685,32 @@ EOF
   printf '%s\n' "${body}" > "${env_file}"
   chmod 600 "${env_file}"
   echo "Wrote ${env_file} (mode 600)."
+  write_publication_manager_env
   echo "URL: $(env_value WISEEFF_PUBLIC_URL)"
   echo "Admin username: $(env_value WISEEFF_LAB_ADMIN_USERNAME)"
+}
+
+write_publication_manager_env() {
+  local manager_env="${compose_dir}/.env.publication-manager"
+  if [ -f "${manager_env}" ] && [ "${force}" != "true" ]; then
+    echo "Keeping ${manager_env}."
+    return 0
+  fi
+  local db_url
+  db_url="$(awk -F= '/^DATABASE_URL=/{print substr($0, index($0, "=") + 1); exit}' "${env_file}")"
+  umask 077
+  cat > "${manager_env}" <<EOF
+WISEEFF_PUBLICATION_MANAGER=1
+WISEEFF_PUBLICATION_MANAGER_DATABASE_URL=${db_url}
+WISEEFF_PUBLICATION_MANAGER_LEASE_MS=30000
+WISEEFF_PUBLICATION_MANAGER_RETRY_BUDGET=5
+WISEEFF_PUBLICATION_MANAGER_POLL_INTERVAL_MS=1000
+WISEEFF_PUBLICATION_MANAGER_ACTIVATION_TIMEOUT_MS=60000
+WISEEFF_PUBLICATION_MANAGER_HEALTH_PORT=8791
+WISEEFF_UPGRADE_ACTOR_PRINCIPAL_ID=deployment-upgrade
+EOF
+  chmod 600 "${manager_env}"
+  echo "Wrote ${manager_env} (mode 600). Replace DATABASE_URL with a dedicated manager LOGIN before production."
 }
 
 run_init() {
@@ -698,6 +724,7 @@ run_init() {
   fi
   if [ -z "${section}" ] && [ -f "${env_file}" ] && [ "${force}" != "true" ] && [ "${print_env}" != "true" ]; then
     echo "${env_file} already exists. Keeping it. Use --force to overwrite or pass a section name."
+    write_publication_manager_env
     return 0
   fi
   if [ "${profile}" = "acme" ] && [[ ! "${tls_email}" == *"@"* ]]; then

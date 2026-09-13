@@ -1493,16 +1493,12 @@ wiseeff_upgrade_publication_freeze() {
   else
     action=clear
   fi
-  if ! wiseeff_upgrade_compose_has_service api; then
-    return 0
+  if wiseeff_upgrade_compose_has_service publication-manager &&
+    [ -n "$(wiseeff_upgrade_compose ps -q publication-manager 2>/dev/null || true)" ]; then
+    wiseeff_upgrade_compose exec -T publication-manager npx tsx scripts/catalog-publication-ops.ts freeze "$action" --actor "$actor"
+    return $?
   fi
-  if ! wiseeff_upgrade_compose exec -T api npx tsx scripts/catalog-publication-ops.ts freeze "$action" --actor "$actor"; then
-    if [ "$frozen" = "true" ]; then
-      return 1
-    fi
-    return 1
-  fi
-  return 0
+  return 1
 }
 
 wiseeff_upgrade_stop_old_stack() {
@@ -1875,12 +1871,15 @@ wiseeff_upgrade_previous_image_id_for() {
 
 wiseeff_upgrade_recreate_previous_app_services() {
   local service tag
-  for service in api worker web; do
+  for service in api worker web publication-manager; do
     tag="$(wiseeff_upgrade_previous_image_tag_for "$service")"
-    [ -n "$tag" ] || {
+    if [ -z "$tag" ]; then
+      if [ "$service" = "publication-manager" ]; then
+        continue
+      fi
       wiseeff_upgrade_record_failure old-stack-restore "$service" "restore-${service}-image-missing" "The previous ${service} image identity is missing."
       return 1
-    }
+    fi
     if ! wiseeff_upgrade_compose_for_image "$tag" up -d --force-recreate --no-build --no-deps "$service"; then
       wiseeff_upgrade_record_failure old-stack-restore "$service" "restore-${service}-recreate" "The previous ${service} container could not be recreated."
       return 1

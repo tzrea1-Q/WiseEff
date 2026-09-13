@@ -247,7 +247,7 @@ export const runCatalogPublicationOps = async (
           `insert into user_role_bindings (id, user_id, organization_id, role_id)
            values ($1, $2, $3, $4)
            on conflict (id) do nothing`,
-          [`${roleId}:${command.userId}`, command.userId, command.organizationId, roleId],
+          [`${roleId}:${command.organizationId}:${command.userId}`, command.userId, command.organizationId, roleId],
         );
         await client.query("commit");
         return { exitCode: 0, payload: { granted: true, userId: command.userId, capability: command.capability } };
