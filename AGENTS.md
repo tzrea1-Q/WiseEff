@@ -54,6 +54,7 @@ This file is the short map for agents working in this repository. Keep it small.
 - Reliability, deployment, jobs, health checks, or operations: read `docs/RELIABILITY.md`.
 - Test strategy or quality gates: read `docs/QUALITY_SCORE.md` and `docs/design-docs/testing-strategy.md`.
 - Planning work: use `docs/PLANS.md`, then create or update a plan under `docs/exec-plans/active/`.
+- Task/resume routing: from a subdirectory, verify the real `cwd` and walk repository root -> cwd, explicitly checking `AGENTS.override.md`, `AGENTS.md`, and configured fallback names at every directory; record selected and missing instruction paths in the [delivery control record](docs/agents/agent-delivery-protocol.md) and read only the task packet's scoped sections. Instruction inheritance follows this walk; sibling or module files require an explicit hit in it.
 
 ## Current Product Shape
 
