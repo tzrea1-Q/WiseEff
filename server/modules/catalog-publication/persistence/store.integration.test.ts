@@ -393,7 +393,7 @@ describe("catalog publication store seam", () => {
     const releaseDigest = CatalogReleaseDigest(sha256Digest(`target-${token}`));
     const baseId = CatalogReleaseId(`crel_base_${token}`);
     const baseDigest = CatalogReleaseDigest(sha256Digest(`base-${token}`));
-    const seq = 89600 + (process.pid % 300);
+    const seq = 89900;
     await client.query(
       `insert into parameter_catalog.catalog_releases (
          id, release_sequence, release_version, release_digest,
