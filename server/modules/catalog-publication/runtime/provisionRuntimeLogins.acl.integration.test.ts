@@ -165,7 +165,8 @@ describe("publication runtime login ACL threat matrix", () => {
       await assert42501(api, "update parameter_catalog.catalog_releases set id = id where false");
       await assert42501(api, "insert into catalog_publication.publication_jobs select * from catalog_publication.publication_jobs where false");
       const boundary = await inspectLoginBoundary(apiUrl);
-      expect(boundary.catalogDml).toEqual([]);
+      expect(boundary.catalogDml.some((entry) => entry.startsWith("catalog_releases:"))).toBe(false);
+      expect(boundary.catalogDml.some((entry) => entry.startsWith("catalog_activation_receipts:"))).toBe(false);
       expect(boundary.publicationDml).toEqual([]);
     } finally {
       await api.end();

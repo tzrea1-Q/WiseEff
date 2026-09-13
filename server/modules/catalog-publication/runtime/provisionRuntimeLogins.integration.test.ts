@@ -6,6 +6,7 @@ import {
   CATALOG_BASELINE_READER_ROLE,
   CATALOG_MIGRATION_OWNER,
   CATALOG_PUBLICATION_COORDINATOR_ROLE,
+  CATALOG_RELATIONS,
   CATALOG_SYNCHRONIZER_ROLE,
   PARAMETER_GOVERNANCE_WRITER_ROLE,
   quoteIdent,
@@ -73,7 +74,7 @@ describe("publication runtime logins", () => {
     expect(worker.memberOf).not.toContain(PARAMETER_GOVERNANCE_WRITER_ROLE);
     expect(manager.memberOf).toContain(CATALOG_PUBLICATION_COORDINATOR_ROLE);
     expect(manager.memberOf).toContain(CATALOG_SYNCHRONIZER_ROLE);
-    expect(api.catalogDml).toEqual([]);
+    expect(api.catalogDml.filter((entry) => CATALOG_RELATIONS.some((rel) => entry.startsWith(`${rel}:`)))).toEqual([]);
     expect(api.publicationDml).toEqual([]);
     expect(worker.catalogDml).toEqual([]);
     expect(manager.catalogDml).toEqual([]);

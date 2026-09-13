@@ -6,6 +6,7 @@ import {
   CATALOG_MIGRATION_OWNER,
   CATALOG_PUBLICATION_COORDINATOR_ROLE,
   CATALOG_SYNCHRONIZER_ROLE,
+  GOVERNANCE_RELATIONS,
   LEGACY_STRUCTURAL_TABLES,
   PARAMETER_GOVERNANCE_WRITER_ROLE,
   quoteIdent,
@@ -392,6 +393,11 @@ export async function provisionPublicationRuntimeLogins(
       await convergeCatalogWriteGrants(admin, names.api);
       await convergeCatalogWriteGrants(admin, names.worker);
       await convergeCatalogWriteGrants(admin, names.manager);
+      for (const table of GOVERNANCE_RELATIONS) {
+        await admin.query(
+          `grant insert, update, delete on table parameter_catalog.${quoteIdent(table)} to ${quoteIdent(names.api)}`,
+        );
+      }
 
       await grantMembership(admin, CATALOG_PUBLICATION_COORDINATOR_ROLE, names.api);
       await grantMembership(admin, PARAMETER_GOVERNANCE_WRITER_ROLE, names.api);
