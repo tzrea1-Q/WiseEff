@@ -200,7 +200,7 @@ export function evaluateImmutableAcceptanceUpload(workflowText: string): Immutab
   const steps = workflow.jobs?.["acceptance-local-non-hdc"]?.steps;
   if (!Array.isArray(steps)) return { status: "failed", errors: ["Acceptance local non-HDC steps are missing."] };
   const safety = steps.find((step) => step.name === ACCEPTANCE_ARTIFACT_SAFETY_STEP);
-  const uploads = steps.filter((step) => step.uses === "actions/upload-artifact@v4");
+  const uploads = steps.filter((step) => String(step.uses).startsWith("actions/upload-artifact@"));
   const upload = uploads.find((step) => step.name === ACCEPTANCE_ARTIFACT_UPLOAD_STEP);
   const archivePath = "test-results/acceptance-runtime-upload/wiseeff-acceptance-local-non-hdc.zip";
   const finalizerCommand = `npm run acceptance:artifacts:finalize -- --root test-results/acceptance-runtime-runs --output ${archivePath}`;
@@ -211,7 +211,8 @@ export function evaluateImmutableAcceptanceUpload(workflowText: string): Immutab
     if (safety.run !== finalizerCommand) errors.push("Acceptance artifact safety must run the exact immutable archive finalizer.");
     if (safety["continue-on-error"] === true) errors.push("Acceptance artifact safety cannot continue on error.");
   }
-  if (uploads.length !== 1) errors.push("Acceptance local non-HDC must contain exactly one upload-artifact step.");
+  const diagnostic = uploads.find((step) => step.id === "acceptance_diagnostic_upload");
+  if (uploads.length !== 2 || !diagnostic) errors.push("Acceptance must contain only the immutable ZIP and minimal diagnostic uploads.");
   if (!upload) errors.push("Acceptance evidence upload step is missing.");
   else {
     if (upload.if !== "always() && steps.acceptance_artifact_safety.outcome == 'success'") {
@@ -222,6 +223,32 @@ export function evaluateImmutableAcceptanceUpload(workflowText: string): Immutab
     if (withInput?.path !== archivePath) errors.push("Acceptance evidence upload must name the exact immutable ZIP archive.");
     if (withInput?.["if-no-files-found"] !== "error") errors.push("Acceptance evidence upload must fail when the archive is absent.");
     if (Number(withInput?.["compression-level"]) !== 0) errors.push("Acceptance evidence upload must not recompress the frozen ZIP.");
+  }
+  const diagnosticIds = ["acceptance_diagnostic", "acceptance_diagnostic_fallback", "acceptance_diagnostic_upload"];
+  for (const id of diagnosticIds) {
+    const matches = steps.filter((step) => step.id === id);
+    if (matches.length !== 1 || matches[0]["continue-on-error"] !== undefined
+      || matches[0]["timeout-minutes"] !== 1) errors.push(`Invalid bounded diagnostic step: ${id}.`);
+  }
+  const generation = steps.find((step) => step.id === "acceptance_diagnostic");
+  const fallback = steps.find((step) => step.id === "acceptance_diagnostic_fallback");
+  if (generation?.if !== "always()" || generation.shell !== "/usr/bin/python3 -I {0}") {
+    errors.push("Diagnostic generation must always use the isolated system interpreter.");
+  }
+  if (fallback?.if !== "always() && steps.acceptance_diagnostic.outcome != 'success'"
+    || fallback.shell !== "/usr/bin/python3 -I {0}") errors.push("Diagnostic fallback must preserve generator failure.");
+  const observed = steps.findIndex((step) => step.id === "acceptance_execution_identity");
+  if (observed !== 1 || steps[0].uses !== "actions/checkout@v4"
+    || steps[observed]?.shell !== "/usr/bin/python3 -I {0}") errors.push("Observe execution identity immediately after checkout.");
+  if (diagnostic) {
+    const input = diagnostic.with as Record<string, unknown> | undefined;
+    if (diagnostic.uses !== "actions/upload-artifact@v4"
+      || diagnostic.if !== "always() && (steps.acceptance_diagnostic.outcome == 'success' || steps.acceptance_diagnostic_fallback.outcome == 'success')"
+      || input?.path !== "${{ steps.acceptance_diagnostic.outcome == 'success' && steps.acceptance_diagnostic.outputs.path || steps.acceptance_diagnostic_fallback.outputs.path }}"
+      || input?.["if-no-files-found"] !== "error"
+      || input?.name !== "wiseeff-diagnostic-${{ github.run_id }}-${{ github.run_attempt }}-acceptance-local-non-hdc") {
+      errors.push("Minimal diagnostics must upload only the exact private generated file with run/attempt identity.");
+    }
   }
   return { status: errors.length === 0 ? "passed" : "failed", errors };
 }

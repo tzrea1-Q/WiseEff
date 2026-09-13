@@ -4,6 +4,10 @@
 
 Use the narrowest command that proves the change while developing. Before finishing, broaden to the gate that matches the risk and touched surface.
 
+The L2 `wiseeff-diagnostic-<run>-<attempt>-acceptance-local-non-hdc` artifact is a bounded workflow-context snapshot, independent of the safety-gated full ZIP. It records checkout-observed SHA/tree before candidate setup, workflow SHA, PR head/base (push predecessor or scheduled head on non-PR events), and execution/archive/full-upload outcomes. Internal phase, cleanup and test counts remain unknown in this bootstrap channel; it never reads candidate reports or raw logs. A failed publisher produces only `DIAGNOSTIC_REJECTED`; neither fallback nor upload success overrides an earlier failed step. Its own upload is pending inside the snapshot and settles in Actions and the job summary. A lost runner can leave it incomplete. The complete archive keeps its existing size, ownership and safety requirements.
+
+For changes to this channel, run `npm run test:scripts -- scripts/acceptance-diagnostic.test.ts scripts/check-acceptance-ci.test.ts` and `npm run acceptance:ci`. These extract and exercise the real isolated workflow publisher; synthetic failures are diagnostic checks, not full acceptance. All bounded diagnostic steps count toward the L2 platform budget (151-minute floor, 155-minute job ceiling); the Gate0 owner and existing scan/upload allowances are unchanged.
+
 ## Common Commands
 
 | Command | Proves | Use when |
