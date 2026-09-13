@@ -19,7 +19,10 @@ export type PermissionKey =
   | "admin:access"
   | "users:manage"
   | "platform:access"
-  | "platform:schema-promote";
+  | "platform:schema-promote"
+  | "catalog:author"
+  | "catalog:publish"
+  | "catalog:review-high-risk";
 
 export type RoleCapability = "view" | "edit" | "publish" | "manage-permissions";
 

@@ -13,6 +13,7 @@ import { CatalogPage } from "@/features/parameter-catalog";
 
 import { createGovernanceIdempotencyKey } from "./governanceState";
 import { ProposalPanel } from "./ProposalPanel";
+import { PublicationDialog } from "./PublicationDialog";
 import { RegistrationDialog } from "./RegistrationDialog";
 import { ReviewQueue } from "./ReviewQueue";
 
@@ -21,6 +22,7 @@ export type CatalogOrganizationSurfaceProps = {
   governance: ParameterCatalogGovernanceRepository;
   actor?: CatalogActorKind;
   roleId?: string;
+  sessionPermissions?: readonly string[] | null;
   search: string;
   onAnchorChange: (href: string, mode: "push" | "replace") => void;
   organizationId?: string;
@@ -32,6 +34,7 @@ export function CatalogOrganizationSurface({
   governance,
   actor: actorProp,
   roleId,
+  sessionPermissions,
   search,
   onAnchorChange,
   organizationId,
@@ -48,7 +51,12 @@ export function CatalogOrganizationSurface({
 
   const handleAction = useCallback(
     (next: CatalogAuthorizedAction, context?: { subjectId?: string | null; registrationId?: string | null }) => {
-      if (next === "register-subject" || next === "update-placement") {
+      if (
+        next === "register-subject" ||
+        next === "update-placement" ||
+        next === "preview-publication" ||
+        next === "publish-publication"
+      ) {
         setAction(next);
         setActionRegistrationId(context?.registrationId ?? null);
       }
@@ -75,6 +83,7 @@ export function CatalogOrganizationSurface({
         key={surfaceEpoch}
         repository={catalog}
         actor={actor}
+        sessionPermissions={sessionPermissions}
         search={search}
         onAnchorChange={onAnchorChange}
         onDomainStateChange={setDomainState}
@@ -135,6 +144,30 @@ export function CatalogOrganizationSurface({
             if (!open) {
               setAction(null);
               setActionRegistrationId(null);
+            }
+          }}
+        />
+      ) : null}
+      {catalogReleaseId &&
+      domainState &&
+      organizationId &&
+      (action === "preview-publication" || action === "publish-publication") ? (
+        <PublicationDialog
+          open
+          actor={actor}
+          sessionPermissions={sessionPermissions}
+          domainState={domainState}
+          catalog={catalog}
+          governance={governance}
+          catalogReleaseId={catalogReleaseId}
+          currentPersonId={currentPersonId}
+          organizationId={organizationId}
+          createIdempotencyKey={createGovernanceIdempotencyKey}
+          onCompleted={() => setSurfaceEpoch((value) => value + 1)}
+          onRefreshEvidence={() => setSurfaceEpoch((value) => value + 1)}
+          onOpenChange={(open) => {
+            if (!open) {
+              setAction(null);
             }
           }}
         />

@@ -98,6 +98,83 @@ describe("parameter catalog client contract", () => {
     }
   });
 
+  it("posts a typed ChangeSet to publication-candidates with the catalog release header", async () => {
+    const fetchMock = vi.fn<typeof fetch>(async () =>
+      jsonResponse({
+        item: {
+          id: "ccand_01KPAGE",
+          expectedBaseReleaseId: "crel_01K42",
+          expectedBaseReleaseDigest: "sha256:abc",
+          riskClass: "low",
+          impactSummary: {
+            addedDefinitionCount: 1,
+            changedDefinitionCount: 0,
+            addedSubjectCount: 0
+          },
+          capabilityContract: {
+            revision: "catalog-capability/v1",
+            allowListId: "page-m1-definition-content"
+          }
+        }
+      }, 201)
+    );
+    const client = createParameterCatalogClient({ baseUrl: "", fetchImpl: fetchMock });
+    await client.createPublicationCandidate(
+      {
+        changeSet: [
+          {
+            op: "create-definition",
+            subjectId: "csub_acme_power",
+            propertyKey: "iin_min",
+            content: {
+              displayName: "Input min",
+              documentation: "Minimum input current.",
+              unit: "mA",
+              valueSchema: { type: "integer", minimum: 0 }
+            }
+          }
+        ]
+      },
+      { catalogReleaseId: "crel_01K42" }
+    );
+    const init = fetchMock.mock.calls[0]?.[1] as RequestInit;
+    const headers = init.headers as Record<string, string>;
+    expect(fetchMock.mock.calls[0]?.[0]).toBe("/api/v2/catalog/publication-candidates");
+    expect(headers["X-WiseEff-Catalog-Release"]).toBe("crel_01K42");
+    expect(JSON.parse(String(init.body))).toMatchObject({
+      changeSet: [{ op: "create-definition", propertyKey: "iin_min" }]
+    });
+  });
+
+  it("publishes with idempotencyKey in the body and reads job currentness", async () => {
+    const fetchMock = vi.fn<typeof fetch>(async () =>
+      jsonResponse({
+        item: {
+          id: "cjob_01KPAGE",
+          candidateId: "ccand_01KPAGE",
+          status: "queued",
+          attemptCount: 0,
+          effective: false,
+          isCurrent: false,
+          currentness: null,
+          failure: null
+        }
+      }, 201)
+    );
+    const client = createParameterCatalogClient({ baseUrl: "", fetchImpl: fetchMock });
+    await client.publishPublicationCandidate(
+      "ccand_01KPAGE",
+      { idempotencyKey: "pub-1" },
+      { catalogReleaseId: "crel_01K42" }
+    );
+    expect(fetchMock.mock.calls[0]?.[0]).toBe(
+      "/api/v2/catalog/publication-candidates/ccand_01KPAGE/publish"
+    );
+    expect(JSON.parse(String((fetchMock.mock.calls[0]?.[1] as RequestInit).body))).toEqual({
+      idempotencyKey: "pub-1"
+    });
+  });
+
   it("branches on stable details.reason and never parses the human message", () => {
     const error = new WiseEffApiError(
       "CONFLICT",

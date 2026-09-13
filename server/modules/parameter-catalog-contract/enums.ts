@@ -66,7 +66,8 @@ export const verificationPurposes = freezeRegistry([
   "isolated-candidate-acceptance",
   "public-release",
   "legacy-read-sunset",
-  "p16-cleanup"
+  "p16-cleanup",
+  "catalog-publication-runtime"
 ]);
 export type VerificationPurpose = (typeof verificationPurposes)[number];
 

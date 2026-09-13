@@ -4,7 +4,7 @@ import { THREAT_MATRIX } from "./threatMatrix";
 
 describe("S5-PRP threat matrix", () => {
   it("freezes the required DefinitionProposal rows before production sealing", () => {
-    expect(THREAT_MATRIX.map((row) => row.id)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9]);
+    expect(THREAT_MATRIX.map((row) => row.id)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
     expect(THREAT_MATRIX.map((row) => row.name)).toEqual([
       "submit-success",
       "withdraw-proposer-only",
@@ -14,6 +14,7 @@ describe("S5-PRP threat matrix", () => {
       "intent-only-publication",
       "lost-response-replay",
       "create-draft-then-submit-existing",
+      "candidate-publication-reference",
       "submit-existing-not-create-and-submit",
     ]);
     for (const row of THREAT_MATRIX) {

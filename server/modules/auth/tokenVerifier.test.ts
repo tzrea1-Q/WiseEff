@@ -70,6 +70,25 @@ describe("production token verifier", () => {
     );
   });
 
+  it("accepts catalog publication capabilities from signed claims without default role grants", async () => {
+    const verifier = createTokenVerifier({ issuer: "wiseeff-test", secret: "test-secret", now: () => now });
+
+    await expect(
+      verifier.verify(
+        `Bearer ${sign({
+          iss: "wiseeff-test",
+          sub: "u-catalog",
+          org: "org-prod",
+          exp,
+          roles: [{ projectId: null, roleId: "admin" }],
+          permissions: ["parameter:view", "catalog:author", "catalog:publish"]
+        })}`
+      )
+    ).resolves.toMatchObject({
+      permissions: ["parameter:view", "catalog:author", "catalog:publish"]
+    });
+  });
+
   it("rejects expired tokens", async () => {
     const verifier = createTokenVerifier({ issuer: "wiseeff-test", secret: "test-secret", now: () => now });
 

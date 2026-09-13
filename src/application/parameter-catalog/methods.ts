@@ -8,7 +8,11 @@ export const PARAMETER_CATALOG_REPOSITORY_METHODS = [
   "listDefinitionRevisions",
   "getDefinitionRevision",
   "listDefinitionTimeline",
-  "getLegacyIdentifier"
+  "getLegacyIdentifier",
+  "createPublicationCandidate",
+  "getPublicationCandidate",
+  "publishPublicationCandidate",
+  "getPublication"
 ] as const;
 
 export const PARAMETER_CATALOG_GOVERNANCE_REPOSITORY_METHODS = [

@@ -924,10 +924,10 @@
           "mergedImplementationSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
           "packageEntrypoint": "server/modules/parameter-catalog-contract/index.ts",
           "serializationGolden": {
-            "byteLength": 1528,
-            "gitBlobOid": "c856ec070286a32c59ff13d8aef545139435c96c",
+            "byteLength": 1563,
+            "gitBlobOid": "2b6c1ce58b993a761c12bf84e15eea57187560e3",
             "path": "server/modules/parameter-catalog-contract/__fixtures__/serialization-golden.json",
-            "rawSha256": "0979a58a624cf160181425de92816fb1dd8bb285ea27896ba1f95287f6143d75"
+            "rawSha256": "1172d550699aa67f46c03212954be4d430e33483494cddd11b8e7626d23f9367"
           }
         },
         "schemaVersion": "1.0.0",

@@ -23,7 +23,10 @@ export type CatalogMaterializationStage =
   | "revisions"
   | "heads"
   | "pointer"
-  | "evidence";
+  | "evidence"
+  | "staged-verify"
+  | "receipt"
+  | "job-status";
 
 export class CatalogMaterializationInjectedFailure extends Error {
   readonly stage: CatalogMaterializationStage;

@@ -478,6 +478,48 @@ describe("S8-GOV one-command HTTP mapping", () => {
     expect(accepted.status).toBe(200);
   });
 
+  it("threads a candidate publicationReference without a Git URL", async () => {
+    const { ports, calls, commands } = createHarness({ scope: platformAdmin });
+    const accepted = await handleCatalogGovernance(
+      ports,
+      request("POST", "/api/v2/catalog/definition-proposals/dprop_s8_gov/accept", {
+        headers: {
+          [CATALOG_RELEASE_HEADER]: pin.id,
+          [CATALOG_IDEMPOTENCY_HEADER]: "accept-candidate",
+          [CATALOG_IF_MATCH_HEADER]: '"dprop_s8_gov-v1"',
+        },
+        body: { publicationReference: { kind: "candidate", candidateId: "ccand_s8_gov" } },
+      }),
+    );
+    expect(accepted.status).toBe(200);
+    expect(calls).toEqual(["executeProposal"]);
+    expect(commands[0]).toMatchObject({
+      kind: "accept",
+      publicationReference: { kind: "candidate", candidateId: "ccand_s8_gov" },
+    });
+    expect(commands[0]).not.toHaveProperty("repositoryReference");
+  });
+
+  it("rejects a candidate publicationReference combined with a repository URL", async () => {
+    const { ports, calls } = createHarness({ scope: platformAdmin });
+    const rejected = await handleCatalogGovernance(
+      ports,
+      request("POST", "/api/v2/catalog/definition-proposals/dprop_s8_gov/accept", {
+        headers: {
+          [CATALOG_RELEASE_HEADER]: pin.id,
+          [CATALOG_IDEMPOTENCY_HEADER]: "accept-forged",
+          [CATALOG_IF_MATCH_HEADER]: '"dprop_s8_gov-v1"',
+        },
+        body: {
+          repositoryReference: "repo://wiseeff-catalog/acme-power.yaml",
+          publicationReference: { kind: "candidate", candidateId: "ccand_s8_gov" },
+        },
+      }),
+    );
+    expect(rejected.status).toBe(400);
+    expect(calls).toEqual([]);
+  });
+
   it("returns catalog-not-ready instead of an empty write when the pin is missing", async () => {
     const { ports, calls } = createHarness({ pin: null });
     const response = await handleCatalogGovernance(

@@ -677,9 +677,22 @@ Failure of any gate extends the read adapter. It does not restore legacy writes 
 | R6/R8 cutover truth | R6 is ReviewEvidence with Archive/mapping evidence; R8 is DefinitionProposal with Archive/mapping evidence; only an independently proven occurrence graph may create its own ParameterObservation. |
 | Bilingual/OpenAPI parity | English and Chinese DTOs, matrices, reason tokens, headers, and follow-up impact name the same contract. |
 
+## 2026-09-12 publication addendum
+
+[ADR-0043](../adr/0043-catalog-authoring-and-online-publication.md) extends this contract without rewriting the canonical read namespace or the rule that Proposal acceptance does not materialize Catalog rows.
+
+- Organization Admin is **not** automatically a Catalog publisher. New capabilities: `catalog:author`, `catalog:publish`, `catalog:review-high-risk`. Request-body role/risk/approval flags are untrusted.
+- Agent remains Catalog-read-only in the first publication contract.
+- Frozen routes (generated later through the existing OpenAPI mechanism, not a hand-written second contract): `POST /api/v2/catalog/publication-candidates`, `GET /api/v2/catalog/publication-candidates/{candidateId}`, `POST /api/v2/catalog/publication-candidates/{candidateId}/publish`, `GET /api/v2/catalog/publications/{jobId}`.
+- New `details.reason` values are listed in the [control plane](catalog-authoring-and-publication-control-plane.md). Existing reasons stay.
+- Accept may record a tagged publication reference (`repository` or `candidate`). Filling `repositoryReference` with a fake Git URL is forbidden.
+- “In effect” is a Receipt read, not Proposal `accepted` and not job `queued`.
+- Self-hosted low-risk single-actor publish is policy-gated and still requires a real `catalog:publish` grant. High-risk self-approval stays forbidden.
+- Registration remains a separate aggregate. A later registration failure must not present a successful Catalog publish as rolled back.
+
 ## Decision completeness
 
-The API decision has no remaining product-semantic choice:
+The API decision has no remaining product-semantic choice **except** the publication-control-plane additions owned by ADR-0043:
 
 - namespace and versioning are fixed;
 - pre-registration visibility is fixed;

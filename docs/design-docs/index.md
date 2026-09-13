@@ -16,6 +16,7 @@ The [technical entry](full-stack-architecture.md) and [test-design entry](testin
 | Status | Document | Purpose |
 | --- | --- | --- |
 | Locked decision | [Parameter Catalog Verification, Upgrade, and Retirement Gates](parameter-catalog-verification-upgrade-retirement-gates.md) | One Release Verification seam, V01-V17 and D01-D09 release gates, API/browser acceptance, self-hosted recovery, observability, evidence hierarchy, and staged legacy retirement. |
+| Locked CP-00 contract | [Catalog Authoring and Publication Control Plane](catalog-authoring-and-publication-control-plane.md) | In-product ChangeSet authoring, frozen Artifact/Candidate/Authorization/Job/Receipt, unique synchronizer activation, and dual application/Catalog readiness. Not implementation evidence. |
 | Current | [Technical Compendium](full-stack-architecture.md) | Integrated Markdown: 13 chapters, 22 Mermaid diagrams, interfaces, domain relationships, sequences, concurrency, failure recovery and operations. |
 | Current | [Domain Model](domain-model.md) | Entities, state machines, and consistency rules. |
 | Locked target contract | [Catalog Kernel Interface and Transaction Boundary](catalog-kernel-interface-and-transaction-boundary.md) | Deep catalog module seam, tagged results, transaction ownership, permissions, caches, and test surface for the Wayfinder replacement; implementation status is established by the technical entry and current source, not this contract label. |

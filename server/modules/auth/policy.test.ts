@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { canPerform, compareRoles, permissionsForRoles } from "./policy";
+import { BACKEND_PERMISSIONS, BACKEND_ROLE_IDS } from "./types";
 
 describe("auth policy", () => {
   it("orders roles by operational authority", () => {
@@ -82,5 +83,17 @@ describe("auth policy", () => {
     expect(canPerform("software-committer", "logs:archive")).toBe(false);
     expect(canPerform("admin", "logs:analyze")).toBe(true);
     expect(canPerform("admin", "logs:archive")).toBe(true);
+  });
+
+  it("freezes catalog publication capabilities without default role grants", () => {
+    const catalogPermissions = ["catalog:author", "catalog:publish", "catalog:review-high-risk"] as const;
+    expect(BACKEND_PERMISSIONS).toEqual(expect.arrayContaining([...catalogPermissions]));
+    for (const roleId of BACKEND_ROLE_IDS) {
+      const granted = permissionsForRoles([roleId]);
+      expect(granted).not.toEqual(expect.arrayContaining([...catalogPermissions]));
+      for (const permission of catalogPermissions) {
+        expect(canPerform(roleId, permission)).toBe(false);
+      }
+    }
   });
 });

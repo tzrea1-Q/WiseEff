@@ -73,6 +73,7 @@ const PURPOSES_REQUIRING_APPROVAL = new Set([
   "public-release",
   "legacy-read-sunset",
   "p16-cleanup",
+  "catalog-publication-runtime",
 ]);
 
 export type ReleaseVerificationService = {

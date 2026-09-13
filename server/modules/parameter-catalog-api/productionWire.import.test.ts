@@ -18,7 +18,18 @@ describe("production Catalog composition import ratchet", () => {
     expect(source).toContain("unavailableUsageProjection");
     expect(source).toContain("unavailableGovernanceQueryPorts");
     expect(source).toContain("resolveCatalogReleasePin");
+    expect(source).toContain("createPinCapturingCatalogRuntime");
+    expect(source).toContain("evaluateDualFactReadiness");
+    expect(source).toContain("createStartupRuntimePin");
+    expect(source).toContain("resolveCatalogPublicationRuntimeOptions");
+    expect(source).not.toMatch(/evaluateDualFactReadiness\([\s\S]*dataMode:\s*"new-empty"/);
     expect(source).not.toContain("WiseEff Agent");
     expect(source).not.toContain('startsWith("agt-")');
+    expect(source).toContain("registerCatalogPublicationRoutes");
+    expect(source).toContain("bindCatalogPublicationCommands");
+    expect(source).not.toContain("createCatalogInstaller");
+    expect(source).not.toContain("installPublishedRelease");
+    expect(source).not.toContain("catalog_synchronizer_role");
+    expect(source).not.toMatch(/set\s+local\s+role\s+catalog_synchronizer_role/i);
   });
 });

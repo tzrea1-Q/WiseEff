@@ -1,10 +1,10 @@
 export const compiledReleaseGolden = Object.freeze({
   compilerContractFingerprint:
-    "sha256:6f6f3d3ce0f0b6e564e3f00f972bab36f8da20074b13bf8ac4ca7b0401975a7d",
+    "sha256:2b237c10efee3af834ef3b36cdbd7ff9c26c85787a823760ed225d134826bd7a",
   compiledReleaseDigest:
-    "sha256:a1ba67f385d3d361898713b44f78d5bc1f2cb93cf9cd3d0964798c5093651768",
+    "sha256:907d4cc31b42f76cec7456096389ae2cb5e626c1d6ab0929aacee95c6df606fc",
   toolchainDigest:
-    "sha256:5faa4121a05481e64f53cb53b9bcb42ec2d21880673cd6256af81583a5b90d69",
+    "sha256:4e953d8715f9f86eb0aa6572329cfca7e9eaca4e1d9a61c2bca6383042889858",
   materializationFingerprint:
     "sha256:3fa3f90d0fd0774aa306d1a7c970794f0d0ace7122de0d82850b610156bcca74",
   byteLength: 7903,

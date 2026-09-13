@@ -593,8 +593,20 @@ Physical filenames, table names, SQL text, CLI flag spelling, storage vendor, an
 - **Use Prometheus zero counts alone for sunset.** Rejected because bounded metrics retention cannot prove all supported deployments or an uninterrupted 30-day interval; immutable daily rollups and deployment inventory are required.
 - **Allow partial PostgreSQL-only rollback.** Rejected because database/object/Redis state would cross recovery boundaries.
 
+## 2026-09-12 Catalog data-publication addendum
+
+[ADR-0043](../adr/0043-catalog-authoring-and-online-publication.md) does **not** delete digest comparison, rewrite old reports, or waive P13.
+
+- Application approval facts remain this module’s purpose-scoped reports and `readApprovedRuntimePin` (exact P13 state, `writerRetirementFingerprint`, `runtimePinGeneration`, and pins).
+- Catalog activation facts are the current Catalog ID/digest, Artifact, predecessor, Candidate Authorization, projection verification, and Activation Receipt (or a one-time `adopted-preexisting` proof).
+- Process readiness is the conjunction of both. A report that pinned Catalog A does not approve successor Catalog B.
+- `new-empty` is a data mode. It is not proof that P13 writer retirement has occurred, and it must not bundle [#824](https://github.com/tzrea1-Q/WiseEff/pull/824).
+- Ordinary startup stays verify-only. It must not auto-install a vendor bundle from the application image over the database current Catalog.
+- Application upgrade/recovery must freeze new Catalog publication, wait or bound-abort in-flight jobs, then take the recovery point. Hiding a UI button is not that freeze.
+- Incompatible old images must remain not-ready rather than skip these checks.
+
 ## Decision completeness
 
-This contract leaves no known verification architecture, purpose-specific report applicability, P12/P13 ordering, post-retirement P11 rerun, runtime-pin selection, isolated candidate acceptance, public-release authorization, database invariant, API/browser gate, rollback proof, observability, evidence-level, compatibility-window, or legacy-deletion choice open for issue #679.
+This contract leaves no known verification architecture, purpose-specific report applicability, P12/P13 ordering, post-retirement P11 rerun, runtime-pin selection, isolated candidate acceptance, public-release authorization, database invariant, API/browser gate, rollback proof, observability, evidence-level, compatibility-window, or legacy-deletion choice open for issue #679. Catalog **content** publication after an already-approved application pin is owned by ADR-0043 and must be combined with, not substituted for, this module.
 
 The prior single-report cycle is superseded: pre-activation never claims live API/browser success, P13 always causes a new complete V01-V17 + D01-D09 attempt, startup binds only its approved post-retirement report, and public traffic waits for a later aggregate report and purpose-specific approval. This restores issue #678 at `1839398b0d4fe1c77dec5c8fe8ef7835a2dc210d` without changing #673 or #677 authority. Later work may choose implementation mechanics, but it cannot reopen Platform-only structural authority, R0-R10 outcomes, V01-V17, D01-D09, zero unexplained/unqueryable thresholds, all 11 consumer families, one-page UX, API ownership, three browser viewports, minimum two-release/90-day/30-day thresholds, no-dual-write/read/lazy-repair rule, cross-store recovery, protected-history retention, or staged retirement without a new explicit product decision.

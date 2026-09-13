@@ -39,7 +39,10 @@ const permissionIds = new Set<BackendPermission>([
   "logs:feedback",
   "parameter:review",
   "admin:access",
-  "users:manage"
+  "users:manage",
+  "catalog:author",
+  "catalog:publish",
+  "catalog:review-high-risk"
 ]);
 
 function readBearerToken(authorization: string | string[] | undefined) {

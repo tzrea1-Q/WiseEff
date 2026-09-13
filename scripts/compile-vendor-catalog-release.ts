@@ -7,9 +7,12 @@
  * - Exclude common-status.yaml and test-ambiguous-*.yaml.
  * - Predecessor identities from crel_acme_1 stay in the successor snapshot.
  * - Opaque ids are deterministic slugs; collisions fail closed.
+ *
+ * D1-only: do not extend this slug rule to later official IDs. Production
+ * vendor reuse is `server/modules/catalog-publication/import/`.
  */
 import { createHash } from "node:crypto";
-import { readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { parse as parseYaml, stringify } from "yaml";
@@ -31,6 +34,12 @@ import type {
   CatalogReleaseDocument,
   CatalogReleaseNode,
 } from "../server/modules/catalog-kernel/compiler/types";
+import {
+  EXCLUDED_SCHEMA_BASENAMES,
+  vendorDirectoryHash,
+  vendorValueSchemaFor,
+  type VendorYamlDocument,
+} from "../server/modules/catalog-publication/import/vendorYaml";
 
 export const VENDOR_SUCCESSOR_RELEASE_ID = "crel_vendor_catalog_1";
 export const VENDOR_SUCCESSOR_VERSION = "1.1.0";
@@ -42,11 +51,7 @@ export const FIRST_ACME_RELEASE_DIGEST =
 export const VENDOR_SUCCESSOR_AGGREGATE_DIGEST =
   "sha256:efc5336e625f0eb6f994223a5f67a57b119e92bda2edb5c209fc901284f126c7";
 
-export const EXCLUDED_SCHEMA_BASENAMES = Object.freeze([
-  "common-status.yaml",
-  "test-ambiguous-a.yaml",
-  "test-ambiguous-b.yaml",
-] as const);
+export { EXCLUDED_SCHEMA_BASENAMES };
 
 const EXCLUDED = new Set<string>(EXCLUDED_SCHEMA_BASENAMES);
 
@@ -63,52 +68,11 @@ const sha256 = (bytes: string | Uint8Array): string =>
 
 const canonicalDigest = (value: ContractJsonValue): string => sha256(serializeContract(value));
 
-type VendorDocument = {
-  $id?: string;
-  title?: string;
-  source?: string;
-  lifecycle?: string;
-  version?: number;
-  schemaNamespace?: string;
-  compatible?: string[];
-  nodename?: string[];
-  properties?: Record<
-    string,
-    {
-      valueShape?: string | { kind?: string };
-      units?: string;
-      documentation?: string;
-    }
-  >;
-};
-
 const slug = (value: string): string => {
   if (value === "/") return "root";
   const normalized = value.replace(/[^A-Za-z0-9]+/g, "_").replace(/^_|_$/g, "");
   if (!normalized) throw new Error(`catalog-vendor-empty-slug:${value}`);
   return normalized;
-};
-
-const valueSchemaFor = (shape: string): Record<string, ContractJsonValue> => {
-  switch (shape) {
-    case "bool":
-      return { type: "boolean" };
-    case "empty":
-      return { type: "null" };
-    case "string-list":
-      return { type: "array", items: { type: "string" } };
-    case "u32-array":
-      return { type: "array", items: { type: "integer", minimum: 0 } };
-    case "phandle-list":
-      return { type: "array" };
-    case "bytes":
-      return { type: "string" };
-    case "mixed":
-    case "unknown":
-      return { description: shape };
-    default:
-      throw new Error(`catalog-vendor-unsupported-value-shape:${shape}`);
-  }
 };
 
 const revisionModel = (document: Extract<CatalogReleaseDocument, { kind: "definition" }>): ContractJsonValue => {
@@ -174,19 +138,6 @@ const refreshSuccessorSource = (release: DeepMutable<CatalogReleaseNode>): void 
   refreshReleaseAggregateDigest(release);
 };
 
-const vendorDirHash = (vendorDir: string): string => {
-  const hash = createHash("sha256");
-  for (const name of readdirSync(vendorDir)
-    .filter((entry) => entry.endsWith(".yaml") || entry.endsWith(".yml"))
-    .sort()) {
-    hash.update(name);
-    hash.update("\0");
-    hash.update(readFileSync(path.join(vendorDir, name), "utf8"));
-    hash.update("\0");
-  }
-  return hash.digest("hex");
-};
-
 const firstAcmeRelease = (): CatalogReleaseNode => {
   const fixture = validCatalogReleaseBundle();
   return structuredClone(fixture.releases[0]!);
@@ -205,7 +156,7 @@ const vendorDocuments = (schemasRoot: string): CatalogReleaseDocument[] => {
     schemaPaths: string[];
   };
   const vendorDir = path.join(schemasRoot, "vendor/wiseeff");
-  const observedHash = vendorDirHash(vendorDir);
+  const observedHash = vendorDirectoryHash(vendorDir);
   if (observedHash !== catalog.vendorContentHash) {
     throw new Error(
       `catalog-vendor-hash-mismatch:catalog=${catalog.vendorContentHash}:disk=${observedHash}`,
@@ -228,7 +179,7 @@ const vendorDocuments = (schemasRoot: string): CatalogReleaseDocument[] => {
     if (!loaded || typeof loaded !== "object") {
       throw new Error(`catalog-vendor-schema-unreadable:${relativePath}`);
     }
-    const document = loaded as VendorDocument;
+    const document = loaded as VendorYamlDocument;
     if (document.lifecycle && document.lifecycle !== "active") continue;
 
     const compatibles = document.compatible ?? [];
@@ -312,7 +263,7 @@ const vendorDocuments = (schemasRoot: string): CatalogReleaseDocument[] => {
       const shapeValue = property.valueShape;
       const shape =
         typeof shapeValue === "string" ? shapeValue : shapeValue?.kind ?? "unknown";
-      const valueSchema = valueSchemaFor(shape);
+      const valueSchema = vendorValueSchemaFor(shape);
       const definitionId = claimId(
         usedIds,
         `pdef_${subjectSlug}_${slug(propertyKey)}`,

@@ -52,3 +52,4 @@ See also: [`CONTEXT.md`](../../CONTEXT.md), [`docs/design-docs/domain-model.md`]
 | [0040](0040-canonical-parameter-catalog-relational-model.md) | Canonical parameter catalog separates stable identity from release-scoped state |
 | [0041](0041-platform-schema-catalog-releases-materialize-before-runtime.md) | Platform schema catalog releases materialize before runtime |
 | [0042](0042-organizations-register-canonical-subjects-once.md) | Organization registration and placement |
+| [0043](0043-catalog-authoring-and-online-publication.md) | Catalog definitions are authored in-product and activated by one synchronizer |

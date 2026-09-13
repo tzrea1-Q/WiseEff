@@ -488,6 +488,20 @@ cleanup transaction 不能仅因为对象不是 current，就删除 Audit、immu
 
 历史 fixture source `6c3adfc35c0e3be6d5d381013dace9408190380e` 与原 checksum 保持 immutable evidence，不是 executable trust。S0-FIX 必须先 append 一个只改原 18 files 的 repair commit `R`，再由第 19 个 external source-lock test 固定 `R`、全部 path/mode/per-file hash 与新的 length-framed bundle checksum `B`。PostgreSQL-aware lexer 拒绝 transaction/session escape，并显式 deny `COMMIT WORK`、`END`、`PREPARE TRANSACTION`、`SAVEPOINT`、`RELEASE SAVEPOINT`、`COPY ... FROM STDIN`、`\i`、`\ir`、`\gexec`、`\gset`、`\copy`、`\connect`、`\!` 与 `\q`。`synthetic-fixture-verify.sql` 在 candidate mutation 前、candidate application/validation 后且 rollback 前、rollback 后各执行一次；cleanup fail closed，只有完整清理后才输出 `CLEANUP_OK`；closed-world secret scan 覆盖 source 和 generated artifacts。Real PostgreSQL 与 `test:scripts` 属于实现门禁；local synthetic rehearsal 绝不是 target、release 或 production evidence。
 
+## 2026-09-12 既有 Catalog 接管补记
+
+[ADR-0043](../../adr/0043-catalog-authoring-and-online-publication.md) 为控制面出现之前已经安装的 Catalog 增加一次性 `adopted-preexisting` 证明。它绑定精确当前 ID/digest、精确源 Artifact 字节、独立投影校验、data mode、采集时间与操作批准时间。它证明“今天核验并接管了这份已安装发布”，不证明过去已经跑过新审批流，也不是未签名包的通用激活器。
+
+本程序不得：
+
+- 从数据库额外行拼出一份 Release；
+- 在 digest 不相等时用相似 fixture 代替主机 Artifact 字节；
+- 对已有 current Catalog 的实例再次 bootstrap 或 seed；
+- 把 [#824](https://github.com/tzrea1-Q/WiseEff/pull/824) 作为编写/发布的一部分恢复或合入；
+- 把 `new-empty` 说成 populated-data cutover 或 P13 退休。
+
+候选写入/流量之后的仅指针回滚仍然禁止。业务上的 Catalog 错误使用前向后继 Release。灾备恢复仍然要求 Artifact、投影、授权/Receipt 与业务存储一并恢复。
+
 ## 决策完整性
 
 本文没有为 [Choose populated-data cutover, archive, and rollback strategy](https://github.com/tzrea1-Q/WiseEff/issues/678) 留下 migration、Archive、activation、dual-read comparison 或 rollback 未决问题。exact physical table name、SQL、CLI flag、failure-code spelling 与 implementation slice 属于后续 specification。[Choose the catalog kernel interface and transaction boundary](https://github.com/tzrea1-Q/WiseEff/issues/673) 仍负责 Catalog Kernel interface；[Choose the parameter API and legacy-identifier transition](https://github.com/tzrea1-Q/WiseEff/issues/677) 负责 exact HTTP/DTO transition response 与 compatibility duration；[Choose verification, upgrade, and legacy-retirement gates](https://github.com/tzrea1-Q/WiseEff/issues/679) 负责最终 independent release/legacy-deletion gate。这些交接可以增加细节，但不能把 P11 comparison 改成 optional、缩小 D01-D09/inventory coverage、允许非零 unexplained/unqueryable result，也不能弱化本文的 disposition、evidence boundary、zero-write rollback rule、whole-state restore boundary 或 pre-startup synchronization/verifier ordering。

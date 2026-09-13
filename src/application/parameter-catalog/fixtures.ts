@@ -7,6 +7,8 @@ import type {
   CatalogObservationResponse,
   CatalogPlacementResponse,
   CatalogProposalResponse,
+  CatalogPublicationCandidateResponse,
+  CatalogPublicationJobResponse,
   CatalogRegistrationResponse,
   CatalogReviewItemResponse,
   CatalogSubjectResponse
@@ -24,6 +26,8 @@ export const CATALOG_PROPOSAL_ID = "pprp_01KDOC";
 export const CATALOG_OBSERVATION_ID = "pobs_01KOBS";
 export const CATALOG_AUTHOR_PERSON_ID = "user_author";
 export const CATALOG_REVIEWER_PERSON_ID = "user_reviewer";
+export const CATALOG_CANDIDATE_ID = "ccand_01KPAGE";
+export const CATALOG_JOB_ID = "cjob_01KPAGE";
 
 export const readyCatalogDocument: Exclude<CatalogDocumentResponse, { item: null }> = {
   item: {
@@ -189,6 +193,33 @@ export const catalogProposal: CatalogProposalResponse["item"] = {
   acceptedByPersonId: null,
   publicationIntentRef: null,
   version: 1
+};
+
+export const catalogPublicationCandidate: CatalogPublicationCandidateResponse["item"] = {
+  id: CATALOG_CANDIDATE_ID,
+  expectedBaseReleaseId: CATALOG_RELEASE_ID,
+  expectedBaseReleaseDigest: "sha256:abc",
+  riskClass: "low",
+  impactSummary: {
+    addedDefinitionCount: 1,
+    changedDefinitionCount: 0,
+    addedSubjectCount: 0
+  },
+  capabilityContract: {
+    revision: "catalog-capability/v1",
+    allowListId: "page-m1-definition-content"
+  }
+};
+
+export const catalogPublicationJob: CatalogPublicationJobResponse["item"] = {
+  id: CATALOG_JOB_ID,
+  candidateId: CATALOG_CANDIDATE_ID,
+  status: "queued",
+  attemptCount: 0,
+  effective: false,
+  isCurrent: false,
+  currentness: null,
+  failure: null
 };
 
 export const mappedLegacyIdentifier: CatalogLegacyIdentifierResponse = {

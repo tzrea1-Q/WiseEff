@@ -60,7 +60,10 @@ export const catalogActionLabels = {
   "submit-proposal": "提交修订",
   "withdraw-proposal": "撤回修订",
   "accept-proposal": "接受修订",
-  "reject-proposal": "驳回修订"
+  "reject-proposal": "驳回修订",
+  "preview-publication": "新增定义",
+  "publish-publication": "发布到目录",
+  "review-high-risk-publication": "复核高风险发布"
 } as const satisfies Record<CatalogAuthorizedAction, string>;
 
 export const catalogSubjectTypeLabels = {
@@ -110,6 +113,27 @@ export function catalogErrorCopy(reason: CatalogApiFailureReason | "unknown"): s
       return "当前范围不可见该目录项。";
     case "release-drift":
       return "目录发布已变化，请刷新后重新确认。";
+    case "publication-not-authorized":
+      return "当前身份不能发布目录候选。";
+    case "publication-capability-missing":
+      return "缺少目录编写或发布权限。";
+    case "publication-self-approval-forbidden":
+      return "单人策略未开启时，不能自行批准本次发布，请由其他具备发布权限的人员确认。";
+    case "publication-policy-disabled":
+      return "目录发布策略已关闭，输入已保留。";
+    case "publication-frozen":
+      return "目录发布已冻结，请等待解冻后再试。输入已保留。";
+    case "needs-rebase":
+      return "基线已变化，请重新预览并确认新的候选，不能悄悄刷新后再次发布。输入已保留。";
+    case "unsupported-catalog-capability":
+      return "本次变更包含当前不支持的能力，请调整后重新预览。输入已保留。";
+    case "publication-authorization-revoked":
+      return "发布授权已撤销，请重新预览并确认。输入已保留。";
+    case "candidate-stale":
+    case "candidate-tampered":
+      return "预览候选已失效，请重新预览。输入已保留。";
+    case "registration-followup-failed":
+      return "目录发布已成功，但组织登记失败。可重试登记，不会回滚目录。";
     default:
       return "目录加载失败，请稍后重试。";
   }

@@ -14,6 +14,7 @@ import {
   type Result,
   type SwitchBackResult,
 } from "../../parameter-catalog-contract/index";
+
 import { compileCatalogRelease } from "../compiler/index";
 import type { CatalogReleaseBundle, CompiledCatalogRelease } from "../compiler/types";
 import type {
@@ -38,8 +39,21 @@ import {
   materializeCompiledRelease,
   unwrapMaterializationKernelError,
   type CatalogMaterializationStage,
-  type MaterializeReleaseOptions,
 } from "./materializeRelease";
+import {
+  activateOnlinePublication,
+  adoptPreexistingCurrent,
+  publicationRegimeActive,
+  setSynchronizerRole,
+  type PublicationActivationOptions,
+  type PublicationActivationTestOptions,
+} from "./publicationActivation";
+import {
+  CatalogInstallFailure,
+  PublicationActivationFailure,
+  type CatalogInstallError,
+  type CatalogInstallOutcome,
+} from "./publicationTypes";
 
 export type ThreatMatrixRow = {
   readonly id: number;
@@ -163,18 +177,21 @@ export type TrafficActivationGuard = {
   }): Promise<TrafficActivationProof>;
 };
 
-export type CatalogInstallerOptions = MaterializeReleaseOptions & {
+export type CatalogInstallerOptions = PublicationActivationOptions & {
   readonly trafficActivationGuard?: TrafficActivationGuard;
 };
 
+export type CatalogInstallerTestOptions = CatalogInstallerOptions &
+  PublicationActivationTestOptions;
+
 const absent = { kind: "absent" as const };
 
-const ok = <T>(value: T): Result<T, CatalogKernelError> => ({
+const ok = <T>(value: T): Result<T, CatalogInstallError> => ({
   ok: true,
   value,
 });
 
-const fail = <T>(error: CatalogKernelError): Result<T, CatalogKernelError> => ({
+const fail = <T>(error: CatalogInstallError): Result<T, CatalogInstallError> => ({
   ok: false,
   error,
 });
@@ -203,19 +220,22 @@ const compilePublishedRelease = async (
     const bundle = await parseBundle(source);
     return compileCatalogRelease(bundle);
   } catch (error) {
-    return fail({
-      kind: "invalid-release",
-      phase: "source",
-      violations: [
-        {
-          code: "manifest-unreadable",
-          location: { kind: "present", value: "manifest" },
-          subjectId: absent,
-          detail:
-            error instanceof Error ? error.message : "catalog-release-source-unreadable",
-        },
-      ],
-    });
+    return {
+      ok: false,
+      error: {
+        kind: "invalid-release",
+        phase: "source",
+        violations: [
+          {
+            code: "manifest-unreadable",
+            location: { kind: "present", value: "manifest" },
+            subjectId: absent,
+            detail:
+              error instanceof Error ? error.message : "catalog-release-source-unreadable",
+          },
+        ],
+      },
+    };
   }
 };
 
@@ -241,9 +261,15 @@ const storageFailure = (
 const mapWriteError = (
   error: unknown,
   operation: "installPublishedRelease" | "switchBackBeforeTraffic",
-): CatalogKernelError => {
+): CatalogInstallError => {
   if (error instanceof CatalogKernelFailure) {
     return error.kernelError;
+  }
+  if (error instanceof CatalogInstallFailure) {
+    return error.installError;
+  }
+  if (error instanceof PublicationActivationFailure) {
+    return error.activationError;
   }
   const materialized = unwrapMaterializationKernelError(error);
   if (materialized) {
@@ -251,6 +277,18 @@ const mapWriteError = (
   }
   if (isSynchronizationBusyError(error)) {
     return SYNCHRONIZATION_BUSY;
+  }
+  if (error instanceof pg.DatabaseError && error.code === "42501") {
+    return { kind: "permission-denied", operation: operation };
+  }
+  if (error instanceof pg.DatabaseError && error.code === "PCA06") {
+    const actualMatch = /actual_fence=([^ ]+)/.exec(error.detail ?? "");
+    const expectedMatch = /expected_fence=([^ ]+)/.exec(error.detail ?? "");
+    return {
+      kind: "fencing-token-mismatch",
+      expected: Number(expectedMatch?.[1] ?? Number.NaN),
+      actual: actualMatch?.[1] === "missing" ? null : Number(actualMatch?.[1] ?? Number.NaN),
+    };
   }
   if (error instanceof CatalogMaterializationInjectedFailure) {
     return storageFailure(operation, true);
@@ -323,8 +361,13 @@ const recastPointer = (
 ): CatalogReleaseIdentity | null =>
   pointer.kind === "installed" ? pointer.current : null;
 
+type LegacyInstallCommand = Extract<
+  InstallPublishedReleaseCommand,
+  { mode: "bootstrap" | "advance" }
+>;
+
 const assertExpectedDigest = (
-  command: InstallPublishedReleaseCommand,
+  command: LegacyInstallCommand,
   compiled: CompiledCatalogRelease,
 ): void => {
   if (command.expectedTargetDigest !== compiled.aggregateDigest) {
@@ -498,7 +541,7 @@ const loadVerifiedCurrentInstall = async (
 
 const evaluateInstallLineage = async (
   client: pg.PoolClient,
-  command: InstallPublishedReleaseCommand,
+  command: LegacyInstallCommand,
   compiled: CompiledCatalogRelease,
 ): Promise<"install" | "already-current"> => {
   const pointer = await readCurrentCatalogPointer(client);
@@ -595,12 +638,16 @@ const withCatalogWriteTransaction = async <T>(
   pool: pg.Pool,
   operation: "installPublishedRelease" | "switchBackBeforeTraffic",
   work: (client: pg.PoolClient) => Promise<T>,
-): Promise<Result<T, CatalogKernelError>> => {
+  session?: { readonly synchronizer?: boolean },
+): Promise<Result<T, CatalogInstallError>> => {
   const client = await pool.connect();
   try {
     await client.query("begin");
     try {
       await client.query("set constraints all deferred");
+      if (session?.synchronizer) {
+        await setSynchronizerRole(client);
+      }
       await acquireCurrentPointerLockExclusive(client);
       const value = await work(client);
       await client.query("commit");
@@ -614,11 +661,49 @@ const withCatalogWriteTransaction = async <T>(
   }
 };
 
+const productionInstallOptions = (
+  options?: CatalogInstallerOptions,
+): CatalogInstallerOptions => ({
+  failAfter: options?.failAfter,
+  trafficActivationGuard: options?.trafficActivationGuard,
+});
+
 export const installPublishedRelease = async (
   pool: pg.Pool,
   command: InstallPublishedReleaseCommand,
   options?: CatalogInstallerOptions,
-): Promise<Result<InstallResult, CatalogKernelError>> => {
+): Promise<Result<CatalogInstallOutcome, CatalogInstallError>> =>
+  installPublishedReleaseInternal(pool, command, productionInstallOptions(options));
+
+export const installPublishedReleaseForTests = async (
+  pool: pg.Pool,
+  command: InstallPublishedReleaseCommand,
+  options?: CatalogInstallerTestOptions,
+): Promise<Result<CatalogInstallOutcome, CatalogInstallError>> =>
+  installPublishedReleaseInternal(pool, command, options);
+
+const installPublishedReleaseInternal = async (
+  pool: pg.Pool,
+  command: InstallPublishedReleaseCommand,
+  options?: CatalogInstallerTestOptions,
+): Promise<Result<CatalogInstallOutcome, CatalogInstallError>> => {
+  if (command.mode === "online-publication") {
+    return withCatalogWriteTransaction(
+      pool,
+      "installPublishedRelease",
+      (client) => activateOnlinePublication(client, command, options),
+      { synchronizer: true },
+    );
+  }
+  if (command.mode === "adopted-preexisting") {
+    return withCatalogWriteTransaction(
+      pool,
+      "installPublishedRelease",
+      (client) => adoptPreexistingCurrent(client, command, options),
+      { synchronizer: true },
+    );
+  }
+
   const compiled = await compilePublishedRelease(command.source);
   if (!compiled.ok) {
     return compiled;
@@ -633,6 +718,12 @@ export const installPublishedRelease = async (
     pool,
     "installPublishedRelease",
     async (client) => {
+      if (await publicationRegimeActive(client)) {
+        throw new PublicationActivationFailure({
+          kind: "publication-regime-required",
+          receiptsPresent: true,
+        });
+      }
       const lineage = await evaluateInstallLineage(client, command, compiled.value);
       if (lineage === "already-current") {
         return loadVerifiedCurrentInstall(client, compiled.value);
@@ -702,7 +793,7 @@ export const switchBackBeforeTraffic = async (
   pool: pg.Pool,
   command: PreTrafficSwitchBackCommand,
   options?: CatalogInstallerOptions,
-): Promise<Result<SwitchBackResult, CatalogKernelError>> =>
+): Promise<Result<SwitchBackResult, CatalogInstallError>> =>
   withCatalogWriteTransaction(pool, "switchBackBeforeTraffic", async (client) => {
     const pointer = await readCurrentCatalogPointer(client);
     if (pointer.kind === "empty") {
@@ -764,10 +855,10 @@ export const switchBackBeforeTraffic = async (
 export type CatalogInstaller = {
   installPublishedRelease(
     command: InstallPublishedReleaseCommand,
-  ): Promise<Result<InstallResult, CatalogKernelError>>;
+  ): Promise<Result<CatalogInstallOutcome, CatalogInstallError>>;
   switchBackBeforeTraffic(
     command: PreTrafficSwitchBackCommand,
-  ): Promise<Result<SwitchBackResult, CatalogKernelError>>;
+  ): Promise<Result<SwitchBackResult, CatalogInstallError>>;
 };
 
 export const createCatalogInstaller = (
@@ -775,9 +866,25 @@ export const createCatalogInstaller = (
   options?: CatalogInstallerOptions,
 ): CatalogInstaller => ({
   installPublishedRelease: (command) =>
-    installPublishedRelease(pool, command, options),
+    installPublishedRelease(pool, command, productionInstallOptions(options)),
+  switchBackBeforeTraffic: (command) =>
+    switchBackBeforeTraffic(pool, command, productionInstallOptions(options)),
+});
+
+export const createCatalogInstallerForTests = (
+  pool: pg.Pool,
+  options?: CatalogInstallerTestOptions,
+): CatalogInstaller => ({
+  installPublishedRelease: (command) =>
+    installPublishedReleaseForTests(pool, command, options),
   switchBackBeforeTraffic: (command) =>
     switchBackBeforeTraffic(pool, command, options),
 });
 
 export type { CatalogMaterializationStage };
+export type {
+  AlreadyRecordedResult,
+  CatalogInstallError,
+  CatalogInstallOutcome,
+  PublicationActivationError,
+} from "./publicationTypes";

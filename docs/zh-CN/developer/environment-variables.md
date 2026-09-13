@@ -13,6 +13,14 @@
 | `PORT` | `8787` | API 启动 | API mode 前端默认访问 `127.0.0.1:8787`。 |
 | `DATABASE_URL` | 本地 PostgreSQL URL | migrations、seeds、API mode、E2E | PostgreSQL 是产品化数据源。Catalog launch lane 不得使用默认 compose URL `postgres://wiseeff:wiseeff@127.0.0.1:5432/wiseeff`；应使用 `npm run catalog:lane:env -- provision --issue <n>`（`wiseeff_lane_<n>`，`127.0.0.1:55438`）。 |
 | `TEST_DATABASE_URL` | 未设置 | Catalog/server 集成测试 | 设置后 catalog harness 与 `catalog:lane:accept` 优先于 `DATABASE_URL`。必须仍是真实 pgvector PostgreSQL，不能是共享 compose 应用库。 |
+| `CATALOG_BASELINE_READONLY_DATABASE_URL` | 未设置 | Catalog 发布基线只读采集 | 仅供 `scripts/inspect-catalog-publication-baseline.ts` 使用的只读 DSN。采集器拒绝 `DATABASE_URL`，要求 `SET TRANSACTION READ ONLY`，若角色对 Catalog/publication 有 INSERT/UPDATE/DELETE 则失败，绝不打印 DSN，也不插入 Artifact。 |
+| `WISEEFF_CATALOG_PUBLICATION_DATA_MODE` | `new-empty` | Catalog 双事实就绪 | Catalog HTTP 与 `/health/ready` catalogPublication 的组合边界 data mode。`populated` 要求真实已批准 runtime pin 且绑定当前 Catalog，不伪造 P13。默认 `new-empty` 不声称 P13 已退役。 |
+| `WISEEFF_PUBLICATION_MANAGER_DATABASE_URL` | `DATABASE_URL` | publication manager | 独立 manager 进程 DSN。LOGIN 必须能 `SET ROLE` `catalog_publication_coordinator_role`（认领/job 执行列）和 `catalog_synchronizer_role`（安装器）。绝不是数据库超级用户。普通 API `DATABASE_URL` 不得持有 synchronizer 凭据。 |
+| `WISEEFF_PUBLICATION_MANAGER_LEASE_MS` | `30000` | publication manager | Job 租约时长（毫秒）。认领使用 PostgreSQL `now()`，不用 manager 墙上时钟。 |
+| `WISEEFF_PUBLICATION_MANAGER_RETRY_BUDGET` | `5` | publication manager | 锁竞争与可恢复连接错误的有界自动重试。权限、篡改、能力、不完整前驱、基线漂移为终止或 blocked。 |
+| `WISEEFF_PUBLICATION_MANAGER_POLL_INTERVAL_MS` | `1000` | publication manager | 队列为空时的空闲轮询间隔。 |
+| `WISEEFF_PUBLICATION_MANAGER_ACTIVATION_TIMEOUT_MS` | `60000` | publication manager | 持有执行锁的激活超时。丢失的 commit 响应从 Receipt 对账，不宣告终止失败。 |
+| `WISEEFF_PUBLICATION_MANAGER_HEALTH_PORT` | `8791` | publication manager | 回环存活端口（`/health/live`），报告最老 queued 年龄、attempt 与 rebase 计数。API `/health/ready` 不得仅因该进程停止而变为 503。 |
 | `WISEEFF_API_BASE_URL` | `http://127.0.0.1:8787` | smoke clients | M5/M6 smoke 脚本使用。 |
 | `VITE_WISEEFF_RUNTIME_MODE` | `api`（代码默认与 `.env.example`） | 前端 runtime | `npm run dev` / `npm run dev:all` 也会注入 `api`。前端-only demo/test 可设为 `mock`。 |
 | `VITE_WISEEFF_API_BASE_URL` | `http://127.0.0.1:8787` | 前端 API runtime | 必须指向 API 进程。 |

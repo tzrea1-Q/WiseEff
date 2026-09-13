@@ -407,3 +407,155 @@
   color: var(--pcat-text);
   background: var(--pcat-surface);
 }
+
+.parameter-catalog-publication-dialog {
+  width: min(40rem, calc(100vw - var(--space-8)));
+  max-height: min(88vh, 52rem);
+}
+
+.parameter-catalog-publication-dialog .confirm-dialog__scroll {
+  max-height: min(64vh, 36rem);
+  overflow: auto;
+}
+
+.parameter-catalog-publication-dialog__modes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3) var(--space-4);
+  margin: 0;
+  padding: var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+}
+
+.parameter-catalog-publication-dialog__modes legend {
+  padding: 0 var(--space-1);
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+}
+
+.parameter-catalog-publication-dialog__modes label {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.parameter-catalog-publication-dialog__form,
+.parameter-catalog-publication-dialog__preview,
+.parameter-catalog-publication-dialog__meta {
+  display: grid;
+  gap: var(--space-3);
+  min-width: 0;
+}
+
+.parameter-catalog-publication-dialog__form label,
+.parameter-catalog-publication-dialog__form select,
+.parameter-catalog-publication-dialog__form input,
+.parameter-catalog-publication-dialog__form textarea {
+  display: grid;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+.parameter-catalog-publication-dialog__form input,
+.parameter-catalog-publication-dialog__form select,
+.parameter-catalog-publication-dialog__form textarea {
+  width: 100%;
+  min-height: 32px;
+  padding: var(--space-2) var(--space-3);
+  color: var(--text);
+  background: var(--surface-sunken);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  font: 400 var(--text-base) / var(--leading-base) var(--font-sans);
+}
+
+.parameter-catalog-publication-dialog__form input:hover,
+.parameter-catalog-publication-dialog__form select:hover,
+.parameter-catalog-publication-dialog__form textarea:hover {
+  border-color: var(--border-strong);
+}
+
+.parameter-catalog-publication-dialog__form input:focus-visible,
+.parameter-catalog-publication-dialog__form select:focus-visible,
+.parameter-catalog-publication-dialog__form textarea:focus-visible {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: var(--ring);
+}
+
+.parameter-catalog-publication-dialog__form input:disabled,
+.parameter-catalog-publication-dialog__form select:disabled,
+.parameter-catalog-publication-dialog__form textarea:disabled,
+.parameter-catalog-publication-dialog__form button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.parameter-catalog-publication-dialog__form textarea {
+  min-height: 4.5rem;
+  resize: vertical;
+}
+
+.parameter-catalog-publication-dialog__meta,
+.parameter-catalog-publication-dialog__preview {
+  grid-template-columns: minmax(5rem, 7rem) minmax(0, 1fr);
+  padding: var(--space-3);
+  background: var(--surface-sunken);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+}
+
+.parameter-catalog-publication-dialog__meta div,
+.parameter-catalog-publication-dialog__preview div {
+  display: contents;
+}
+
+.parameter-catalog-publication-dialog__meta dt,
+.parameter-catalog-publication-dialog__preview dt {
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+  line-height: var(--leading-sm);
+}
+
+.parameter-catalog-publication-dialog__meta dd,
+.parameter-catalog-publication-dialog__preview dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+  font-size: var(--text-base);
+  line-height: var(--leading-base);
+}
+
+.parameter-catalog-publication-dialog__status {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.parameter-catalog-publication-dialog__status[data-tone="success"] {
+  color: var(--text);
+  background: var(--success-soft);
+  border: 1px solid color-mix(in srgb, var(--success) 35%, var(--border));
+  border-radius: var(--radius-md);
+  padding: var(--space-2) var(--space-3);
+}
+
+.parameter-catalog-publication-dialog__status[data-tone="warning"],
+.parameter-catalog-publication-dialog__status[data-tone="info"] {
+  color: var(--text);
+  background: var(--warning-soft);
+  border: 1px solid color-mix(in srgb, var(--warning) 35%, var(--border));
+  border-radius: var(--radius-md);
+  padding: var(--space-2) var(--space-3);
+}
+
+@media (max-width: 768px) {
+  .parameter-catalog-publication-dialog {
+    width: calc(100vw - var(--space-8));
+  }
+
+  .parameter-catalog-publication-dialog__meta,
+  .parameter-catalog-publication-dialog__preview {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

@@ -166,6 +166,35 @@ export type PublicationIntentId = Branded<string, "PublicationIntentId">;
 export const PublicationIntentId = (value: string): PublicationIntentId =>
   brandString<"PublicationIntentId">(value);
 
+export type CatalogArtifactId = Branded<string, "CatalogArtifactId">;
+export const CatalogArtifactId = (value: string): CatalogArtifactId =>
+  brandString<"CatalogArtifactId">(value);
+
+export type CatalogCandidateId = Branded<string, "CatalogCandidateId">;
+export const CatalogCandidateId = (value: string): CatalogCandidateId =>
+  brandString<"CatalogCandidateId">(value);
+
+export type PublicationAuthorizationId = Branded<string, "PublicationAuthorizationId">;
+export const PublicationAuthorizationId = (value: string): PublicationAuthorizationId =>
+  brandString<"PublicationAuthorizationId">(value);
+
+export type PublicationJobId = Branded<string, "PublicationJobId">;
+export const PublicationJobId = (value: string): PublicationJobId =>
+  brandString<"PublicationJobId">(value);
+
+export type CatalogActivationReceiptId = Branded<string, "CatalogActivationReceiptId">;
+export const CatalogActivationReceiptId = (value: string): CatalogActivationReceiptId =>
+  brandString<"CatalogActivationReceiptId">(value);
+
+export type PublicationPolicyRevision = Branded<number, "PublicationPolicyRevision">;
+export const PublicationPolicyRevision = (value: number): PublicationPolicyRevision => {
+  const branded = brandNumber<"PublicationPolicyRevision">(value);
+  if (branded <= 0) {
+    throw new TypeError("PublicationPolicyRevision must be positive");
+  }
+  return branded;
+};
+
 export type ParameterBindingId = Branded<string, "ParameterBindingId">;
 export const ParameterBindingId = (value: string): ParameterBindingId =>
   brandString<"ParameterBindingId">(value);

@@ -159,3 +159,31 @@ curl -fsS \
 ```
 
 Catalog writes send `X-WiseEff-Catalog-Release` and `Idempotency-Key`. Mutable review/placement/proposal writes also send `If-Match`. Clients must not send `X-WiseEff-Role` or other self-asserted actor headers. Branch on `error.details.reason`; do not parse `message`.
+
+Publication preview and enqueue (returns a job, not a new Definition):
+
+```bash
+curl -fsS \
+  -H "Authorization: $AUTHORIZATION" \
+  -H "X-WiseEff-Catalog-Release: crel_01K42" \
+  -H "Content-Type: application/json" \
+  -d '{"changeSet":[{"op":"create-definition","subjectId":"csub_acme_power","propertyKey":"iin_min","content":{"displayName":"Input min","documentation":"Minimum input current.","unit":"mA","valueSchema":{"type":"integer","minimum":0}}}]}' \
+  "$WISEEFF_API_BASE_URL/api/v2/catalog/publication-candidates"
+
+curl -fsS \
+  -H "Authorization: $AUTHORIZATION" \
+  "$WISEEFF_API_BASE_URL/api/v2/catalog/publication-candidates/ccand_01KPAGE"
+
+curl -fsS \
+  -H "Authorization: $AUTHORIZATION" \
+  -H "X-WiseEff-Catalog-Release: crel_01K42" \
+  -H "Content-Type: application/json" \
+  -d '{"idempotencyKey":"publish-iin-min-1"}' \
+  "$WISEEFF_API_BASE_URL/api/v2/catalog/publication-candidates/ccand_01KPAGE/publish"
+
+curl -fsS \
+  -H "Authorization: $AUTHORIZATION" \
+  "$WISEEFF_API_BASE_URL/api/v2/catalog/publications/cjob_01KPAGE"
+```
+
+There are no cancel or retry publication routes. `publication_enabled` stays false until a later enablement lane. Ordinary API processes must not hold catalog synchronizer credentials; run `npm run publication:manager` as the independent manager entry.
