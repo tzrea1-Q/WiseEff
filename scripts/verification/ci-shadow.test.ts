@@ -1,9 +1,10 @@
 import { createHash } from "node:crypto";
 import { execFileSync, spawnSync } from "node:child_process";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, copyFileSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { validateNativeReport } from "../ci-required-results";
+import { l1CommandIds, validateNativeReport } from "../ci-required-results";
 import { createShadowObservation, createUnavailableShadow } from "./ci-shadow";
 
 const identity = {
@@ -43,39 +44,123 @@ describe("CI shadow projection", () => {
     expect(shadow.modules.every((module) => module.selected && module.wouldSelectFileCount === 2 && module.matchedCount === 2)).toBe(true);
   });
 
-  it("runs one installed-Vitest two-file native group and projects its validated report", () => {
-    const root = mkdtempSync(path.join(process.cwd(), "work/efficiency/ci-shadow-native-"));
+  it("runs the unchanged W1 CLI once in a clean two-file Git fixture and preserves receipt bytes", () => {
+    const root = mkdtempSync(path.join(os.tmpdir(), "wiseeff-shadow-fixture-"));
+    const evidenceRoot = mkdtempSync(path.join(os.tmpdir(), "wiseeff-shadow-evidence-"));
+    chmodSync(evidenceRoot, 0o700);
+    const gitEnv = { ...process.env, GIT_CONFIG_NOSYSTEM: "1", GIT_CONFIG_GLOBAL: "/dev/null", GIT_TERMINAL_PROMPT: "0" };
+    const git = (args: string[]) => execFileSync("/usr/bin/git", ["-c", "user.name=WiseEff fixture", "-c", "user.email=fixture@example.invalid", ...args], { cwd: root, env: gitEnv, encoding: "utf8" }).trim();
+    const sourceFiles = ["scripts/ci-required-results.ts", "scripts/verification/ci-shadow.ts", "scripts/verification/plan.ts", "scripts/verification/selection.ts", "scripts/verification/registry.json", "scripts/verify.ts"];
     try {
-      const first = path.join(root, "first.test.ts");
-      const second = path.join(root, "second.test.ts");
-      const config = path.join(root, "vitest.config.ts");
-      writeFileSync(first, 'import { expect, it } from "vitest"; it("first", () => expect(1).toBe(1));\n');
-      writeFileSync(second, 'import { expect, it } from "vitest"; it("second", () => expect(2).toBe(2));\n');
-      writeFileSync(config, 'import { defineConfig } from "vitest/config"; export default defineConfig({ test: { environment: "node" } });\n');
+      mkdirSync(path.join(root, "scripts/verification"), { recursive: true });
+      mkdirSync(path.join(root, "src"), { recursive: true });
+      for (const file of sourceFiles) {
+        const destination = path.join(root, file);
+        mkdirSync(path.dirname(destination), { recursive: true });
+        copyFileSync(path.resolve(process.cwd(), file), destination);
+        expect(readFileSync(destination).equals(readFileSync(path.resolve(process.cwd(), file)))).toBe(true);
+      }
+      symlinkSync(path.resolve(process.cwd(), "node_modules"), path.join(root, "node_modules"), "dir");
+      writeFileSync(path.join(root, ".gitignore"), "node_modules/\n");
+      const first = path.join(root, "src/fixture-one.test.ts");
+      const second = path.join(root, "src/fixture-two.test.ts");
+      writeFileSync(first, 'import { expect, it } from "vitest"; it("fixture one", () => expect(1).toBe(1));\n');
+      writeFileSync(second, 'import { expect, it } from "vitest"; it("fixture two", () => expect(2).toBe(2));\n');
+      const counterFile = path.join(evidenceRoot, "native-invocations.txt");
+      const snapshotFile = path.join(evidenceRoot, "native-report.snapshot.json");
+      const reportPathFile = path.join(evidenceRoot, "native-report.path");
+      writeFileSync(counterFile, "0");
       const vitest = path.resolve(process.cwd(), "node_modules/vitest/vitest.mjs");
-      const discovered = JSON.parse(execFileSync(process.execPath, [vitest, "list", "--filesOnly", "--json", "--root", root, "--config", config, first, second], { cwd: process.cwd(), encoding: "utf8" }));
+      writeFileSync(path.join(root, "package.json"), JSON.stringify({ name: "wiseeff-shadow-fixture", private: true, type: "module", scripts: { test: "node scripts/native-shim.cjs" } }));
+      writeFileSync(path.join(root, "scripts/native-shim.cjs"), [
+        "const { copyFileSync, readFileSync, writeFileSync } = require('node:fs');",
+        "const { spawnSync } = require('node:child_process');",
+        `const vitest = ${JSON.stringify(vitest)}; const counter = ${JSON.stringify(counterFile)}; const snapshot = ${JSON.stringify(snapshotFile)}; const reportPath = ${JSON.stringify(reportPathFile)};`,
+        "const args = process.argv.slice(2); const output = args.find((arg) => arg.startsWith('--outputFile='))?.slice('--outputFile='.length);",
+        "writeFileSync(counter, String(Number(readFileSync(counter, 'utf8') || '0') + 1));",
+        "const result = spawnSync(process.execPath, [vitest, 'run', ...args], { stdio: 'inherit', env: process.env });",
+        "if (result.status === 0 && output) { copyFileSync(output, snapshot); writeFileSync(reportPath, output); }",
+        "process.exitCode = result.status ?? 1;",
+      ].join("\n"));
+      git(["init", "-b", "main"]);
+      git(["add", "."]);
+      git(["commit", "-m", "fixture base"]);
+      const base = git(["rev-parse", "HEAD"]);
+      git(["switch", "-c", "fixture-head"]);
+      writeFileSync(first, `${readFileSync(first, "utf8")}\n// fixture-head change\n`);
+      git(["add", "src/fixture-one.test.ts"]);
+      git(["commit", "-m", "fixture head"]);
+      const head = git(["rev-parse", "HEAD"]);
+      git(["switch", "main"]);
+      git(["merge", "--no-ff", "fixture-head", "-m", "fixture ordered merge"]);
+      const sha = git(["rev-parse", "HEAD"]);
+      const tree = git(["rev-parse", "HEAD^{tree}"]);
+      const discovered = JSON.parse(execFileSync(process.execPath, [vitest, "list", "--filesOnly", "--json"], { cwd: root, encoding: "utf8", env: gitEnv }));
       const files = discovered.map((entry: { file: string }) => entry.file);
-      expect(files).toEqual([first, second]);
-      const reportFile = path.join(root, "native-report.json");
-      const startedAt = Date.now();
-      const result = spawnSync(process.execPath, [vitest, "run", "--root", root, "--config", config, "--reporter=json", `--outputFile=${reportFile}`, first, second], { cwd: process.cwd(), encoding: "utf8", env: { ...process.env, CI: "true" } });
-      const finishedAt = Date.now();
-      const bytes = readFileSync(reportFile);
-      const nativeReport = JSON.parse(bytes.toString("utf8"));
-      const summary = validateNativeReport(nativeReport, files, { command: "frontend", root: process.cwd(), startedAt, finishedAt, platform: process.platform, missingPathDts: false, missingRehearsalContainer: false });
-      const native = { version: 1 as const, command: "frontend", identity, ...summary, sha256: createHash("sha256").update(bytes).digest("hex"), filesSha256: createHash("sha256").update(JSON.stringify([...files].sort())).digest("hex") };
-      const relativeFirst = path.relative(process.cwd(), first).replaceAll("\\", "/");
-      const relativeSecond = path.relative(process.cwd(), second).replaceAll("\\", "/");
-      const nativeRegistry = registry.map((module) => module.id === "feedback-client" ? { ...module, tasks: { "frontend-tests": [relativeFirst, relativeSecond] } } : module);
-      const shadow = createShadowObservation({ identity, command: "frontend", files, native, selection, registry: nativeRegistry, policyDigest: "c".repeat(64), registryDigest: "d".repeat(64), root: process.cwd() });
-      const evidence = { executionCount: 1, discoveryFileCount: files.length, nativeExit: result.status, nativePassed: summary.passed, nativeSkipped: summary.skipped, nativeFiles: summary.files, nativeReportSha256: native.sha256, actualFilesSha256: native.filesSha256, shadowStatus: shadow.status, shadowPlanValid: shadow.planValid };
-      writeFileSync("work/efficiency/ci-shadow-repair-native-evidence.json", JSON.stringify(evidence));
-      expect(result.status).toBe(0);
-      expect(summary).toMatchObject({ passed: 2, skipped: 0, files: 2 });
-      expect(shadow).toMatchObject({ status: "observed", planValid: true, actualFullFileCount: 2 });
-      expect(shadow.modules[0]).toMatchObject({ wouldSelectFileCount: 2, matchedCount: 2 });
-      expect(readFileSync(reportFile).equals(bytes)).toBe(true);
-    } finally { rmSync(root, { recursive: true, force: true }); }
+      expect(files).toEqual([realpathSync(first), realpathSync(second)]);
+      const identity = { event: "pull_request" as const, mode: "", fullAcceptance: false, ref: "refs/pull/828/merge", base, head, sha, tree, runId: "828", attempt: "1" };
+      const runnerTemp = mkdtempSync(path.join(evidenceRoot, "runner-"));
+      chmodSync(runnerTemp, 0o700);
+      const w1Output = path.join(evidenceRoot, "w1-output");
+      const env = { ...process.env, GITHUB_EVENT_NAME: identity.event, GITHUB_REF: identity.ref, GITHUB_SHA: identity.sha, GITHUB_RUN_ID: identity.runId,
+        GITHUB_RUN_ATTEMPT: identity.attempt, EFF_BASE_SHA: identity.base, EFF_HEAD_SHA: identity.head, EFF_MODE: "", EFF_FULL_ACCEPTANCE: "false",
+        GITHUB_JOB: "l1-frontend", RUNNER_TEMP: runnerTemp, GITHUB_OUTPUT: w1Output, CI: "true" };
+      const w1StartedAt = Date.now();
+      const w1 = spawnSync(process.execPath, ["--experimental-strip-types", "scripts/ci-required-results.ts", "test", "frontend"], { cwd: root, env, encoding: "utf8" });
+      const w1FinishedAt = Date.now();
+      writeFileSync(path.join(evidenceRoot, "w1.stdout"), w1.stdout ?? "");
+      writeFileSync(path.join(evidenceRoot, "w1.stderr"), w1.stderr ?? "");
+      expect(w1.status).toBe(0);
+      const output = readFileSync(w1Output, "utf8");
+      const outputValue = (key: string) => JSON.parse(output.split("\n").find((line) => line.startsWith(`${key}=`))!.slice(key.length + 1));
+      const nativeSummary = outputValue("report");
+      const shadow = outputValue("shadow");
+      const reportFile = readFileSync(reportPathFile, "utf8");
+      const reportSnapshot = readFileSync(snapshotFile);
+      expect(Number(readFileSync(counterFile, "utf8"))).toBe(1);
+      expect(nativeSummary).toMatchObject({ command: "frontend", passed: 2, skipped: 0, files: 2, identity });
+      expect(shadow).toMatchObject({ status: "observed", planValid: true, actualFullFileCount: 2, selectionScope: "full-required", fullFallback: true });
+      expect(reportSnapshot.equals(readFileSync(reportFile))).toBe(true);
+      const steps = (withShadow: boolean) => Object.fromEntries(l1CommandIds["l1-frontend"].map((id) => [id, {
+        outcome: "success", outputs: id === "frontend" ? { report: JSON.stringify(nativeSummary), ...(withShadow ? { shadow: JSON.stringify(shadow) } : {}) } : {},
+      }]));
+      const receipt = (withShadow: boolean, name: string) => {
+        const result = spawnSync(process.execPath, ["--experimental-strip-types", "scripts/ci-required-results.ts", "receipt"], {
+          cwd: root, env: { ...env, EFF_STEPS: JSON.stringify(steps(withShadow)), GITHUB_OUTPUT: path.join(evidenceRoot, name) }, encoding: "utf8",
+        });
+        writeFileSync(path.join(evidenceRoot, `${name}.stdout`), result.stdout ?? "");
+        writeFileSync(path.join(evidenceRoot, `${name}.stderr`), result.stderr ?? "");
+        return result;
+      };
+      const nativeOnlyStartedAt = Date.now();
+      const nativeOnlyReceipt = receipt(false, "native-only-receipt");
+      const nativeOnlyFinishedAt = Date.now();
+      const shadowSiblingStartedAt = Date.now();
+      const shadowSiblingReceipt = receipt(true, "shadow-sibling-receipt");
+      const shadowSiblingFinishedAt = Date.now();
+      const nativeOnlyBytes = readFileSync(path.join(evidenceRoot, "native-only-receipt"));
+      const shadowSiblingBytes = readFileSync(path.join(evidenceRoot, "shadow-sibling-receipt"));
+      expect(nativeOnlyReceipt.status).toBe(0);
+      expect(shadowSiblingReceipt.status).toBe(0);
+      expect(nativeOnlyBytes.equals(shadowSiblingBytes)).toBe(true);
+      const sha256 = (value: string | Buffer) => createHash("sha256").update(value).digest("hex");
+      const logIndex = (name: string) => {
+        const stdout = readFileSync(path.join(evidenceRoot, `${name}.stdout`));
+        const stderr = readFileSync(path.join(evidenceRoot, `${name}.stderr`));
+        return { stdoutBytes: stdout.length, stderrBytes: stderr.length, stdoutSha256: sha256(stdout), stderrSha256: sha256(stderr) };
+      };
+      const fixtureFiles = [...files, ...sourceFiles.map((file) => path.join(root, file))].map((file) => ({ file, sha256: sha256(readFileSync(file)) }));
+      writeFileSync("work/efficiency/ci-shadow-settlement-native-evidence.json", JSON.stringify({ syntheticFixture: true, fixtureRunId: identity.runId, fixtureAttempt: identity.attempt,
+        base, head, mergeSha: sha, mergeTree: tree, orderedParents: git(["rev-list", "--parents", "-n", "1", sha]).split(" "), discoveryFileCount: files.length,
+        nativeInvocationCount: Number(readFileSync(counterFile, "utf8")), nativeExit: w1.status, nativeWallMs: w1FinishedAt - w1StartedAt, nativeReportSnapshotSha256: sha256(reportSnapshot), projectedReportSha256: nativeSummary.sha256,
+        receiptNativeOnlyExit: nativeOnlyReceipt.status, receiptNativeOnlyWallMs: nativeOnlyFinishedAt - nativeOnlyStartedAt, receiptNativeOnlySha256: sha256(nativeOnlyBytes),
+        receiptShadowSiblingExit: shadowSiblingReceipt.status, receiptShadowSiblingWallMs: shadowSiblingFinishedAt - shadowSiblingStartedAt, receiptShadowSiblingSha256: sha256(shadowSiblingBytes), receiptBytesEqual: nativeOnlyBytes.equals(shadowSiblingBytes), preShadowReceipt: "not-emitted",
+        privateLogIndex: { w1: logIndex("w1"), receiptNativeOnly: logIndex("native-only-receipt"), receiptShadowSibling: logIndex("shadow-sibling-receipt") },
+        sourceHashes: Object.fromEntries(sourceFiles.map((file) => [file, sha256(readFileSync(path.join(root, file)))])), fixtureFiles }));
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+      rmSync(evidenceRoot, { recursive: true, force: true });
+    }
   });
 
   it("records an invalid fixed-code observation without claiming a plan", () => {

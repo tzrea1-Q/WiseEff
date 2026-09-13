@@ -123,6 +123,20 @@ describe("equivalent fixed L1 scheduling", () => {
       expect(evaluateL1CiWorkflow(YAML.stringify(workflow)).status).toBe("failed");
     }
   });
+  it.each(["detect", "l1-static", "l1-frontend", "l1-scripts", "l1-server"])("rejects EFF_NEEDS projection drift for %s", (field) => {
+    const workflow = YAML.parse(compliantWorkflow);
+    const results = workflow.jobs["build-and-test"].steps.find((step: { id: string }) => step.id === "results");
+    const projection = String(results.env.EFF_NEEDS);
+    results.env.EFF_NEEDS = projection.replace(`"${field}"`, `"${field}-unmapped"`);
+    expect(evaluateL1CiWorkflow(YAML.stringify(workflow)).status).toBe("failed");
+  });
+  it.each(["detect", "l1-frontend", "l1-scripts", "l1-server"])("rejects EFF_SHADOW projection drift for %s", (field) => {
+    const workflow = YAML.parse(compliantWorkflow);
+    const results = workflow.jobs["build-and-test"].steps.find((step: { id: string }) => step.id === "results");
+    const projection = String(results.env.EFF_SHADOW);
+    results.env.EFF_SHADOW = projection.replace(`"${field}"`, `"${field}-unmapped"`);
+    expect(evaluateL1CiWorkflow(YAML.stringify(workflow)).status).toBe("failed");
+  });
   it("rejects whitespace inserted into a projected JSON key", () => {
     const workflow = YAML.parse(compliantWorkflow);
     const receipt = workflow.jobs["l1-server"].steps.find((step: { id: string }) => step.id === "receipt");

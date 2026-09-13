@@ -189,6 +189,11 @@ export type ShadowSummary = {
   policyDigest: string | null; registryDigest: string | null; nativeReportSha256: string | null; actualFilesSha256: string | null;
   actualFullFileCount: number; modules: ShadowModule[];
 };
+export type ShadowSettlement = {
+  status: "observed" | "unavailable" | "not-applicable";
+  planValid: boolean;
+  error: string | null;
+};
 const shadowCommands = ["frontend", "scripts", "bridge", "server"] as const;
 const shadowErrors = ["SHADOW_PLAN_INVALID", "SHADOW_ADAPTER_FAILED", "SHADOW_IDENTITY_MISMATCH", "SHADOW_NATIVE_INVALID"] as const;
 function shadowModules(value: unknown): ShadowModule[] {
@@ -218,7 +223,7 @@ export function assertShadowSummary(value: unknown, expected: Identity, command:
   requireCi(Number.isSafeInteger(summary.actualFullFileCount) && Number(summary.actualFullFileCount) >= 0, "SHADOW_COUNTER");
   const modules = shadowModules(summary.modules);
   for (const module of modules) requireCi(module.actualFullFileCount === summary.actualFullFileCount && module.matchedCount <= module.actualFullFileCount
-    && module.wouldSelectFileCount <= module.actualFullFileCount
+    && module.wouldSelectFileCount <= module.actualFullFileCount && module.matchedCount === module.wouldSelectFileCount
     && (module.selected || (module.wouldSelectFileCount === 0 && module.matchedCount === 0)), "SHADOW_COUNTER");
   if (summary.status === "observed") {
     requireCi(summary.planValid === true && summary.error === null, "SHADOW_STATUS");
@@ -227,10 +232,14 @@ export function assertShadowSummary(value: unknown, expected: Identity, command:
     for (const key of ["policyDigest", "registryDigest", "nativeReportSha256", "actualFilesSha256"])
       requireCi(typeof summary[key] === "string" && /^[a-f0-9]{64}$/.test(String(summary[key])), "SHADOW_DIGEST");
     requireCi(Number(summary.actualFullFileCount) > 0, "SHADOW_COUNTER");
+    if (summary.fullFallback) {
+      requireCi(modules.every((module) => module.selected && module.wouldSelectFileCount === summary.actualFullFileCount
+        && module.matchedCount === summary.actualFullFileCount), "SHADOW_COUNTER");
+    }
   } else if (summary.status === "unavailable") {
     requireCi(summary.planValid === false && typeof summary.error === "string" && shadowErrors.includes(summary.error as typeof shadowErrors[number]), "SHADOW_STATUS");
-    requireCi(!summary.fullFallback && summary.selectionScope === "unavailable" && summary.selectionDigest === null, "SHADOW_SELECTION");
-    for (const key of ["policyDigest", "registryDigest"]) requireCi(summary[key] === null || (typeof summary[key] === "string" && /^[a-f0-9]{64}$/.test(String(summary[key]))), "SHADOW_DIGEST");
+    requireCi(!summary.fullFallback && summary.selectionScope === "unavailable" && summary.selectionDigest === null
+      && summary.policyDigest === null && summary.registryDigest === null, "SHADOW_SELECTION");
     for (const key of ["nativeReportSha256", "actualFilesSha256"]) requireCi(summary[key] === null || (typeof summary[key] === "string" && /^[a-f0-9]{64}$/.test(String(summary[key]))), "SHADOW_DIGEST");
   } else {
     requireCi(summary.status === "not-applicable" && summary.planValid === false && summary.error === "NOT_APPLICABLE"
@@ -239,7 +248,8 @@ export function assertShadowSummary(value: unknown, expected: Identity, command:
       && summary.actualFilesSha256 === null && summary.actualFullFileCount === 0, "SHADOW_STATUS");
   }
   if (native) {
-    requireCi(summary.command === native.command && summary.nativeReportSha256 === native.sha256
+    requireCi(summary.command === native.command, "SHADOW_NATIVE_MISMATCH");
+    if (summary.status !== "not-applicable") requireCi(summary.nativeReportSha256 === native.sha256
       && summary.actualFilesSha256 === native.filesSha256 && summary.actualFullFileCount === native.files, "SHADOW_NATIVE_MISMATCH");
   }
 }
@@ -248,25 +258,37 @@ function shadowInput(value: unknown): RecordValue {
   exactKeys(input, ["identity", "needs", "nativeNeeds"]);
   return input;
 }
-export function assertShadowResults(input: unknown): void {
+export function assertShadowResults(input: unknown): ShadowSummary[] {
   const value = shadowInput(input);
   const identity = readIdentity(value.identity);
   const needs = record(value.needs);
   const nativeNeeds = record(value.nativeNeeds);
-  const flags = flagsFor(identity, needs);
-  if (!flags.run_l1) return;
+  const nativeFlags = flagsFor(identity, nativeNeeds);
+  if (identity.event !== "pull_request" || !nativeFlags.run_l1) return [];
   const expectedJobs = ["detect", "l1-frontend", "l1-scripts", "l1-server"];
   exactKeys(needs, expectedJobs);
+  const nativeDetect = record(nativeNeeds.detect);
+  const detect = record(needs.detect);
+  exactKeys(detect, ["result", "outputs"]);
+  requireCi(detect.result === nativeDetect.result, "SHADOW_DETECT_MISMATCH");
+  const nativeDetectOutputs = record(nativeDetect.outputs);
+  const detectOutputs = record(detect.outputs);
+  exactKeys(detectOutputs, flagNames);
+  exactKeys(nativeDetectOutputs, flagNames);
+  for (const name of flagNames) requireCi(detectOutputs[name] === nativeDetectOutputs[name], "SHADOW_DETECT_MISMATCH");
   const projections: Array<[string, string]> = [["l1-frontend", "shadow_frontend"], ["l1-scripts", "shadow_scripts"], ["l1-scripts", "shadow_bridge"], ["l1-server", "shadow_server"]];
+  const nativeJobs = new Map(expectedJobs.slice(1).map((job) => [job, record(nativeNeeds[job])]));
   for (const [job, keys] of [["l1-frontend", ["shadow_frontend"]], ["l1-scripts", ["shadow_scripts", "shadow_bridge"]], ["l1-server", ["shadow_server"]]] as const) {
     const needed = record(needs[job]);
-    requireCi(needed.result === "success", "SHADOW_REQUIRED_RESULT");
+    requireCi(needed.result === nativeJobs.get(job)?.result, "SHADOW_REQUIRED_RESULT");
+    exactKeys(needed, ["result", "outputs"]);
     exactKeys(record(needed.outputs), keys);
   }
   let common: string | undefined;
+  const summaries: ShadowSummary[] = [];
   for (const [job, key] of projections) {
     const needed = record(needs[job]);
-    requireCi(needed.result === "success", "SHADOW_REQUIRED_RESULT");
+    requireCi(needed.result === nativeJobs.get(job)?.result, "SHADOW_REQUIRED_RESULT");
     const outputs = record(needed.outputs);
     const shadow = parseJson(outputs[key]);
     const command = key.replace("shadow_", "");
@@ -276,19 +298,45 @@ export function assertShadowResults(input: unknown): void {
     assertTestSummary(native, command, identity);
     assertShadowSummary(shadow, identity, command, identity.event === "pull_request" ? native : undefined);
     const summary = shadow as ShadowSummary;
-    const association = JSON.stringify({ policyDigest: summary.policyDigest, registryDigest: summary.registryDigest,
-      selectionDigest: summary.selectionDigest, selectionScope: summary.selectionScope, fullFallback: summary.fullFallback, activationEligible: summary.activationEligible });
-    if (common === undefined) common = association; else requireCi(common === association, "SHADOW_ASSOCIATION_MISMATCH");
+    summaries.push(summary);
+    if (summary.status === "observed") {
+      const association = JSON.stringify({ policyDigest: summary.policyDigest, registryDigest: summary.registryDigest,
+        selectionDigest: summary.selectionDigest, selectionScope: summary.selectionScope, fullFallback: summary.fullFallback, activationEligible: summary.activationEligible,
+        selectedModules: summary.modules.map((module) => [module.id, module.selected]) });
+      if (common === undefined) common = association; else requireCi(common === association, "SHADOW_ASSOCIATION_MISMATCH");
+    }
+  }
+  return summaries;
+}
+function shadowFailure(error: unknown): typeof shadowErrors[number] {
+  return error instanceof Error && shadowErrors.includes(error.message as typeof shadowErrors[number])
+    ? error.message as typeof shadowErrors[number] : "SHADOW_PLAN_INVALID";
+}
+export function settleShadowResults(input: unknown): ShadowSettlement {
+  try {
+    const raw = record(input);
+    const identity = readIdentity(raw.identity);
+    const nativeNeeds = record(raw.nativeNeeds);
+    const flags = flagsFor(identity, nativeNeeds);
+    if (identity.event !== "pull_request" || !flags.run_l1) return { status: "not-applicable", planValid: false, error: "NOT_APPLICABLE" };
+    const value = shadowInput(raw);
+    const summaries = assertShadowResults(value);
+    const unavailable = summaries.find((summary) => summary.status !== "observed");
+    if (unavailable) return { status: "unavailable", planValid: false, error: unavailable.status === "unavailable" ? unavailable.error : "SHADOW_PLAN_INVALID" };
+    return { status: "observed", planValid: true, error: null };
+  } catch (error) {
+    return { status: "unavailable", planValid: false, error: shadowFailure(error) };
   }
 }
-function settleShadowResults(input: unknown): boolean {
-  try { assertShadowResults(input); return true; } catch { return false; }
-}
-function settleShadowEnvironment(value: unknown, identity: Identity, nativeNeeds: unknown): boolean {
+function settleShadowEnvironment(value: unknown, identity: Identity, nativeNeeds: unknown): ShadowSettlement {
   try {
-    if (typeof value !== "string" || Buffer.byteLength(value) > 64 * 1024) return false;
+    const flags = flagsFor(identity, record(nativeNeeds));
+    if (identity.event !== "pull_request" || !flags.run_l1) return { status: "not-applicable", planValid: false, error: "NOT_APPLICABLE" };
+    if (typeof value !== "string" || Buffer.byteLength(value) > 64 * 1024) return { status: "unavailable", planValid: false, error: "SHADOW_PLAN_INVALID" };
     return settleShadowResults({ identity, needs: parseJson(value), nativeNeeds });
-  } catch { return false; }
+  } catch (error) {
+    return { status: "unavailable", planValid: false, error: shadowFailure(error) };
+  }
 }
 export function createL1Receipt(input: unknown) {
   const value = record(input);
@@ -432,8 +480,8 @@ function main() {
   const input = { identity, needs: parseJson(process.env.EFF_NEEDS) };
   if (mode === "l1") {
     assertL1Results(input);
-    const shadowValid = settleShadowEnvironment(process.env.EFF_SHADOW, identity, input.needs);
-    console.log(`CI shadow: ${shadowValid ? "observed" : "unavailable"}; planValid:${shadowValid}`);
+    const shadow = settleShadowEnvironment(process.env.EFF_SHADOW, identity, input.needs);
+    console.log(`CI shadow: ${shadow.status}; planValid:${shadow.planValid}`);
     writeOutput("identity", identity);
   }
   else if (mode === "required") assertRequiredResults(input);

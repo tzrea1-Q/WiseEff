@@ -1,9 +1,9 @@
-import { chmodSync, linkSync, mkdtempSync, writeFileSync, symlinkSync, rmSync } from "node:fs";
+import { chmodSync, existsSync, linkSync, mkdtempSync, writeFileSync, symlinkSync, rmSync } from "node:fs";
 import { execFileSync, spawnSync } from "node:child_process";
 import os from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { assertL1Results, assertRequiredResults, assertShadowResults, assertShadowSummary, createL1Receipt, l1CommandIds, readPrivateReport, validateNativeReport } from "./ci-required-results";
+import { assertL1Results, assertRequiredResults, assertShadowResults, assertShadowSummary, createL1Receipt, l1CommandIds, readPrivateReport, settleShadowResults, validateNativeReport } from "./ci-required-results";
 import { createNotApplicableShadow, createUnavailableShadow } from "./verification/ci-shadow";
 
 const identity = {
@@ -124,6 +124,57 @@ describe("L1 invocation receipts", () => {
     forged.nativeReportSha256 = "f".repeat(64);
     expect(() => assertShadowResults({ identity, needs: { ...needs, "l1-server": { result: "success", outputs: { shadow_server: JSON.stringify(forged) } } }, nativeNeeds })).toThrow();
   });
+  it("keeps native Detect authoritative and settles every child before observing", () => {
+    const native = (command: string) => report(command);
+    const observed = (command: string) => ({ ...createUnavailableShadow({ identity, command: command as "frontend" | "scripts" | "bridge" | "server", native: native(command), error: "SHADOW_PLAN_INVALID" }),
+      status: "observed" as const, error: null, planValid: true, fullFallback: false, selectionScope: "module-subset" as const,
+      selectionDigest: "c".repeat(64), policyDigest: "a".repeat(64), registryDigest: "b".repeat(64) });
+    const shadowNeeds = {
+      detect: { result: "success", outputs: flags },
+      "l1-frontend": { result: "success", outputs: { shadow_frontend: JSON.stringify(observed("frontend")) } },
+      "l1-scripts": { result: "success", outputs: { shadow_scripts: JSON.stringify(observed("scripts")), shadow_bridge: JSON.stringify(observed("bridge")) } },
+      "l1-server": { result: "success", outputs: { shadow_server: JSON.stringify(observed("server")) } },
+    };
+    const nativeNeeds = { detect: { result: "success", outputs: flags }, ...receipts() };
+    const invoke = (payload: typeof shadowNeeds) => assertShadowResults({ identity, needs: payload, nativeNeeds });
+    expect(() => invoke(shadowNeeds)).not.toThrow();
+    expect(settleShadowResults({ identity, needs: shadowNeeds, nativeNeeds })).toEqual({ status: "observed", planValid: true, error: null });
+
+    const suppressed = { ...shadowNeeds, detect: { result: "success", outputs: { ...flags, docs_only: "true", run_l1: "false", run_quality: "false", run_smoke: "false", run_l2: "false" } } };
+    expect(() => invoke(suppressed)).toThrow();
+    const unknownDetect = { ...shadowNeeds, detect: { result: "success", outputs: { ...flags, extra: "false" } } };
+    expect(() => invoke(unknownDetect)).toThrow();
+    const unknownEnvelope = { ...shadowNeeds, "l1-server": { result: "success", outputs: { shadow_server: shadowNeeds["l1-server"].outputs.shadow_server, unknown: "{}" } } };
+    expect(() => invoke(unknownEnvelope)).toThrow();
+
+    const unavailable = JSON.parse(shadowNeeds["l1-server"].outputs.shadow_server);
+    unavailable.status = "unavailable";
+    unavailable.error = "SHADOW_PLAN_INVALID";
+    unavailable.planValid = false;
+    unavailable.fullFallback = false;
+    unavailable.selectionScope = "unavailable";
+    unavailable.selectionDigest = null;
+    unavailable.policyDigest = null;
+    unavailable.registryDigest = null;
+    unavailable.modules = unavailable.modules.map((module: Record<string, unknown>) => ({ ...module, selected: false, wouldSelectFileCount: 0, matchedCount: 0 }));
+    const childUnavailable = { ...shadowNeeds, "l1-server": { result: "success", outputs: { shadow_server: JSON.stringify(unavailable) } } };
+    expect(() => invoke(childUnavailable)).not.toThrow();
+    expect(settleShadowResults({ identity, needs: childUnavailable, nativeNeeds })).toEqual({ status: "unavailable", planValid: false, error: "SHADOW_PLAN_INVALID" });
+
+    const impossibleFallback = JSON.parse(shadowNeeds["l1-server"].outputs.shadow_server);
+    impossibleFallback.fullFallback = true;
+    impossibleFallback.selectionScope = "full-required";
+    impossibleFallback.modules = impossibleFallback.modules.map((module: Record<string, unknown>) => ({ ...module, selected: false, wouldSelectFileCount: 0, matchedCount: 0 }));
+    expect(() => invoke({ ...shadowNeeds, "l1-server": { result: "success", outputs: { shadow_server: JSON.stringify(impossibleFallback) } } })).toThrow();
+
+    const mismatchedCounts = JSON.parse(shadowNeeds["l1-server"].outputs.shadow_server);
+    mismatchedCounts.modules[0].matchedCount = mismatchedCounts.modules[0].wouldSelectFileCount + 1;
+    expect(() => invoke({ ...shadowNeeds, "l1-server": { result: "success", outputs: { shadow_server: JSON.stringify(mismatchedCounts) } } })).toThrow();
+
+    const mixedVector = JSON.parse(shadowNeeds["l1-server"].outputs.shadow_server);
+    mixedVector.modules[0].selected = true;
+    expect(() => invoke({ ...shadowNeeds, "l1-server": { result: "success", outputs: { shadow_server: JSON.stringify(mixedVector) } } })).toThrow();
+  });
   it("rejects a mixed common shadow policy association while retaining command-specific native hashes", () => {
     const native = (command: string) => report(command);
     const observed = (command: string) => ({ ...createUnavailableShadow({ identity, command: command as "frontend" | "scripts" | "bridge" | "server", native: native(command), error: "SHADOW_PLAN_INVALID" }),
@@ -182,6 +233,48 @@ describe("L1 invocation receipts", () => {
     expect(oversized.status).toBe(0);
     expect(unknown.status).toBe(0);
     expect(originalFailure.status).not.toBe(0);
+    expect(clean.stdout).toContain("CI shadow: not-applicable; planValid:false");
+    expect(malformed.stdout).toContain("CI shadow: not-applicable; planValid:false");
+    expect(oversized.stdout).toContain("CI shadow: not-applicable; planValid:false");
+    expect(unknown.stdout).toContain("CI shadow: not-applicable; planValid:false");
+  });
+  it("prints unavailable and exits with native truth for applicable CLI counterexamples", () => {
+    const sha = execFileSync("git", ["rev-parse", "HEAD"], { encoding: "utf8" }).trim();
+    const tree = execFileSync("git", ["rev-parse", "HEAD^{tree}"], { encoding: "utf8" }).trim();
+    const prIdentity = { ...identity, sha, tree };
+    const nativeReport = (command: string) => ({ ...report(command), identity: prIdentity });
+    const nativeSteps = (job: string) => Object.fromEntries(l1CommandIds[job].map((id) => [id, {
+      outcome: "success", outputs: { report: JSON.stringify(nativeReport(id)) },
+    }]));
+    const nativeNeeds = { detect: { result: "success", outputs: flags },
+      ...Object.fromEntries(Object.keys(l1CommandIds).map((job) => [job, { result: "success", outputs: { receipt: JSON.stringify(createL1Receipt({ identity: prIdentity, job, steps: nativeSteps(job) })) } }])) };
+    const unavailable = (command: string) => JSON.stringify(createUnavailableShadow({ identity: prIdentity, command: command as "frontend" | "scripts" | "bridge" | "server", native: nativeReport(command), error: "SHADOW_PLAN_INVALID" }));
+    const allUnavailable = JSON.stringify({
+      detect: { result: "success", outputs: flags },
+      "l1-frontend": { result: "success", outputs: { shadow_frontend: unavailable("frontend") } },
+      "l1-scripts": { result: "success", outputs: { shadow_scripts: unavailable("scripts"), shadow_bridge: unavailable("bridge") } },
+      "l1-server": { result: "success", outputs: { shadow_server: unavailable("server") } },
+    });
+    const suppressed = JSON.stringify({ detect: { result: "success", outputs: { ...flags, docs_only: "true", run_l1: "false", run_quality: "false", run_smoke: "false", run_l2: "false" } } });
+    const directory = mkdtempSync(path.join(os.tmpdir(), "wiseeff-shadow-cli-"));
+    const baseEnv = { ...process.env, GITHUB_EVENT_NAME: "pull_request", GITHUB_REF: "refs/pull/828/merge", GITHUB_SHA: sha,
+      GITHUB_RUN_ID: "100", GITHUB_RUN_ATTEMPT: "1", EFF_BASE_SHA: "1".repeat(40), EFF_HEAD_SHA: "2".repeat(40), EFF_MODE: "", EFF_FULL_ACCEPTANCE: "false",
+      EFF_NEEDS: JSON.stringify(nativeNeeds) };
+    const invoke = (shadow: string) => {
+      const output = path.join(directory, `${String(Date.now())}-${Math.random()}.out`);
+      return spawnSync(process.execPath, ["--experimental-strip-types", "scripts/ci-required-results.ts", "l1"], { cwd: process.cwd(), env: { ...baseEnv, EFF_SHADOW: shadow, GITHUB_OUTPUT: output }, encoding: "utf8" });
+    };
+    try {
+      const refusal = invoke(allUnavailable);
+      const detectBypass = invoke(suppressed);
+      const cases = [refusal, detectBypass].map((result) => ({ status: result.status, stdout: result.stdout, stderr: result.stderr }));
+      const evidence = path.resolve("work/efficiency/ci-shadow-settlement-red-before.json");
+      if (!existsSync(evidence)) writeFileSync(evidence, JSON.stringify({ candidate: "bec050199d1f9af7fb25f78047cd0ac20aa85176", cases }));
+      expect(refusal.status).toBe(0);
+      expect(refusal.stdout).toContain("CI shadow: unavailable; planValid:false");
+      expect(detectBypass.status).toBe(0);
+      expect(detectBypass.stdout).toContain("CI shadow: unavailable; planValid:false");
+    } finally { rmSync(directory, { recursive: true, force: true }); }
   });
   it("reads only a fresh private regular report and rejects symlinks and missing reports", () => {
     const directory = mkdtempSync(path.join(os.tmpdir(), "ci-report-test-"));
