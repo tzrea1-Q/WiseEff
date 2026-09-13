@@ -109,7 +109,7 @@ function ensureAncestors(root: string, target: string): void {
   }
 }
 
-function readOwned(file: string, limit: number, mode = 0o600): Buffer {
+function readOwned(file: string, limit: number, mode = 0o600, minimum = 1): Buffer {
   ensureAncestors(ROOT, path.dirname(file));
   let fd: number;
   try { fd = openSync(file, constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0)); } catch { fail("REPORT_FILE"); }
@@ -117,7 +117,7 @@ function readOwned(file: string, limit: number, mode = 0o600): Buffer {
     const stat = fstatSync(fd);
     const uid = process.getuid?.();
     if (!stat.isFile() || stat.isSymbolicLink() || stat.nlink !== 1 || (uid !== undefined && stat.uid !== uid)
-      || (stat.mode & 0o777) !== mode || stat.size <= 0 || stat.size > limit) fail("REPORT_FILE");
+      || (stat.mode & 0o777) !== mode || stat.size < minimum || stat.size > limit) fail("REPORT_FILE");
     const data = Buffer.alloc(stat.size);
     let offset = 0;
     while (offset < data.length) {
@@ -245,8 +245,8 @@ export function readRecordedReport(runId: string): RecordedReport {
   if (!item.discovery || !item.execution || !item.discovery.lifecycleSettled || !item.execution.lifecycleSettled) fail("RECORD_LIFECYCLE");
   const source = inspectCurrentSources();
   if (source.sourceDigest !== item.sourceDigest || JSON.stringify(source.sourceFiles) !== JSON.stringify(item.sourceFiles)) fail("SOURCE_DRIFT");
-  const stdout = readOwned(path.join(directory, STDOUT_NAME), LOG_LIMIT);
-  const stderr = readOwned(path.join(directory, STDERR_NAME), LOG_LIMIT);
+  const stdout = readOwned(path.join(directory, STDOUT_NAME), LOG_LIMIT, 0o600, 0);
+  const stderr = readOwned(path.join(directory, STDERR_NAME), LOG_LIMIT, 0o600, 0);
   if (hash(stdout) !== item.logs.stdoutSha256 || hash(stderr) !== item.logs.stderrSha256 || stdout.length !== item.logs.stdoutBytes || stderr.length !== item.logs.stderrBytes) fail("LOG_HASH");
   if (!item.native.reportSha256) fail("NATIVE_REPORT_UNAVAILABLE");
   const nativeBytes = readPrivateReport(path.join(directory, NATIVE_REPORT_NAME));
