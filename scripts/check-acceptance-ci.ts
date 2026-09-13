@@ -457,10 +457,10 @@ export function evaluateL1CiWorkflow(workflowText: string): { status: "passed" |
   const normalizeStepProjection = (value: unknown) => typeof value === "string" ? value.trim() : "";
   const expectedNeedsProjection = "{\"detect\":${{ toJSON(needs.detect) }}, \"l1-static\":{\"result\":${{ toJSON(needs.l1-static.result) }},\"outputs\":{\"receipt\":${{ toJSON(needs.l1-static.outputs.receipt) }}}}, \"l1-frontend\":{\"result\":${{ toJSON(needs.l1-frontend.result) }},\"outputs\":{\"receipt\":${{ toJSON(needs.l1-frontend.outputs.receipt) }}}}, \"l1-scripts\":{\"result\":${{ toJSON(needs.l1-scripts.result) }},\"outputs\":{\"receipt\":${{ toJSON(needs.l1-scripts.outputs.receipt) }}}}, \"l1-server\":{\"result\":${{ toJSON(needs.l1-server.result) }},\"outputs\":{\"receipt\":${{ toJSON(needs.l1-server.outputs.receipt) }}}}}";
   const expectedShadowProjection = "{\"detect\":${{ toJSON(needs.detect) }}, \"l1-frontend\":{\"result\":${{ toJSON(needs.l1-frontend.result) }},\"outputs\":{\"shadow_frontend\":${{ toJSON(needs.l1-frontend.outputs.shadow_frontend) }}}}, \"l1-scripts\":{\"result\":${{ toJSON(needs.l1-scripts.result) }},\"outputs\":{\"shadow_scripts\":${{ toJSON(needs.l1-scripts.outputs.shadow_scripts) }},\"shadow_bridge\":${{ toJSON(needs.l1-scripts.outputs.shadow_bridge) }}}}, \"l1-server\":{\"result\":${{ toJSON(needs.l1-server.result) }},\"outputs\":{\"shadow_server\":${{ toJSON(needs.l1-server.outputs.shadow_server) }}}}}";
-  const shadowOutputs: Record<string, string> = {
-    "l1-frontend": "${{ steps.frontend.outputs.shadow }}",
-    "l1-scripts": "${{ steps.scripts.outputs.shadow }}",
-    "l1-server": "${{ steps.server.outputs.shadow }}",
+  const shadowOutputs: Record<string, Record<string, string>> = {
+    "l1-frontend": { shadow_frontend: "${{ steps.frontend.outputs.shadow }}" },
+    "l1-scripts": { shadow_scripts: "${{ steps.scripts.outputs.shadow }}", shadow_bridge: "${{ steps.bridge.outputs.shadow }}" },
+    "l1-server": { shadow_server: "${{ steps.server.outputs.shadow }}" },
   };
   const expectedJobOutputs: Record<string, string[]> = {
     "l1-static": ["receipt"], "l1-frontend": ["receipt", "shadow_frontend"],
@@ -498,10 +498,7 @@ export function evaluateL1CiWorkflow(workflowText: string): { status: "passed" |
       check(step("catalog")?.env?.PARAMETER_CATALOG_TRUSTED_BASE_SHA === trustedBase && step("catalog")?.run?.trim() === catalogCommand, "Static trusted-base ratchet changed.");
       check(step("eslint_cache")?.uses === "actions/cache@v4" && step("eslint_cache")?.with?.path === "node_modules/.cache/eslint", "ESLint cache must be retained.");
     }
-    if (shadowOutputs[id]) {
-      const output = id === "l1-frontend" ? "shadow_frontend" : id === "l1-scripts" ? "shadow_scripts" : "shadow_server";
-      check(job.outputs?.[output] === shadowOutputs[id], `${id} must publish its fixed shadow sibling output.`);
-    }
+    for (const [output, expression] of Object.entries(shadowOutputs[id] ?? {})) check(job.outputs?.[output] === expression, `${id}/${output} must publish its fixed shadow sibling output.`);
     check(JSON.stringify(Object.keys(job.outputs ?? {}).sort()) === JSON.stringify(expectedJobOutputs[id]!.sort()), `${id} must retain only fixed receipt and shadow job outputs.`);
   }
   const gateNeeds = {

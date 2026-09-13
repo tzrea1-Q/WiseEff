@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, expect, it } from "vitest";
-import { createPreview } from "./plan";
+import { assertCiMergeIdentity, createPreview } from "./plan";
 
 const roots: string[] = [];
 function fixture() {
@@ -213,6 +213,36 @@ it("binds an explicit logical head to exact merge parents", () => {
   const preview = createPreview({ cwd, base, head: logical });
   expect(preview).toMatchObject({ head: logical, executedSha: actual });
   expect(() => createPreview({ cwd, base, head: base })).toThrow("HEAD_BINDING_INVALID");
+});
+
+it("requires CI execution to be the exact ordered base/PR-head merge", () => {
+  const merged = fixture();
+  writeFileSync(path.join(merged.cwd, "logical.txt"), "logical\n");
+  execFileSync("git", ["add", "logical.txt"], { cwd: merged.cwd });
+  execFileSync("git", ["commit", "-qm", "logical"], { cwd: merged.cwd });
+  const prHead = execFileSync("git", ["rev-parse", "HEAD"], { cwd: merged.cwd, encoding: "utf8" }).trim();
+  execFileSync("git", ["checkout", "-q", "--detach", merged.base], { cwd: merged.cwd });
+  execFileSync("git", ["merge", "--no-ff", "--no-edit", prHead], { cwd: merged.cwd, stdio: "ignore" });
+  const executionSha = execFileSync("git", ["rev-parse", "HEAD"], { cwd: merged.cwd, encoding: "utf8" }).trim();
+  const executionTree = execFileSync("git", ["rev-parse", "HEAD^{tree}"], { cwd: merged.cwd, encoding: "utf8" }).trim();
+  const valid = { cwd: merged.cwd, acceptedBase: merged.base, prHead, executionSha, executionTree };
+  expect(() => assertCiMergeIdentity(valid)).not.toThrow();
+  expect(() => assertCiMergeIdentity({ ...valid, acceptedBase: prHead, prHead: merged.base })).toThrow();
+  expect(() => assertCiMergeIdentity({ ...valid, executionTree: "0".repeat(40) })).toThrow();
+
+  const oneParent = fixture();
+  const oneParentSha = execFileSync("git", ["rev-parse", "HEAD"], { cwd: oneParent.cwd, encoding: "utf8" }).trim();
+  const oneParentTree = execFileSync("git", ["rev-parse", "HEAD^{tree}"], { cwd: oneParent.cwd, encoding: "utf8" }).trim();
+  expect(() => assertCiMergeIdentity({ cwd: oneParent.cwd, acceptedBase: oneParent.base, prHead: oneParentSha, executionSha: oneParentSha, executionTree: oneParentTree })).toThrow();
+  expect(() => assertCiMergeIdentity({ ...valid, executionSha: "0".repeat(40) })).toThrow();
+
+  const shallowSource = fixture();
+  const shallow = mkdtempSync(`${tmpdir()}/git-preview-shallow-`);
+  roots.push(shallow);
+  execFileSync("git", ["clone", "-q", "--depth", "1", `file://${shallowSource.cwd}`, shallow], { stdio: "ignore" });
+  const shallowSha = execFileSync("git", ["rev-parse", "HEAD"], { cwd: shallow, encoding: "utf8" }).trim();
+  const shallowTree = execFileSync("git", ["rev-parse", "HEAD^{tree}"], { cwd: shallow, encoding: "utf8" }).trim();
+  expect(() => assertCiMergeIdentity({ cwd: shallow, acceptedBase: shallowSha, prHead: shallowSha, executionSha: shallowSha, executionTree: shallowTree })).toThrow();
 });
 
 it("refuses a symlinked committed registry instead of following it", () => {

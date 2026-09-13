@@ -9,7 +9,7 @@ import {
   type NativeSummary,
   type ShadowSummary,
 } from "../ci-required-results";
-import { createPreview, type Preview } from "./plan";
+import { assertCiMergeIdentity, createPreview, type Preview } from "./plan";
 import type { RegistryModule, Selection } from "./selection";
 
 const commands = ["frontend", "scripts", "bridge", "server"] as const;
@@ -53,11 +53,12 @@ function fixedModules(selection: Selection, registry: readonly ShadowModuleInput
     const selected = selection.moduleStates[index]!.selected;
     const paths = selected && selection.tasks.includes(task) ? module.tasks[task] ?? [] : [];
     requireShadow(Array.isArray(paths) && new Set(paths).size === paths.length && paths.every((file) => typeof file === "string"), "SHADOW_PLAN_INVALID");
+    const selectedFiles = selection.fullFallback && selected ? files : files.filter((file) => paths.some((pattern) => matches(file, pattern)));
     return {
       id, status: "observation-pending" as const, selected,
-      wouldSelectFileCount: paths.length,
+      wouldSelectFileCount: selectedFiles.length,
       actualFullFileCount: files.length,
-      matchedCount: files.filter((file) => paths.some((pattern) => matches(file, pattern))).length,
+      matchedCount: selectedFiles.length,
     };
   });
 }
@@ -70,10 +71,13 @@ export function createShadowObservation(input: ObservationInput): ShadowSummary 
   const files = relativeFiles(root, input.files);
   requireShadow(digest(JSON.stringify([...input.files].sort())) === input.native.filesSha256 && input.native.files === files.length, "SHADOW_NATIVE_INVALID");
   const modules = fixedModules(input.selection, input.registry, files, input.command);
+  const selectionDigest = digest(JSON.stringify(input.selection));
   return {
     version: 1, scope: "ci-shadow", effectiveMode: "shadow", activation: "observation-pending", memo: "disabled",
     status: "observed", error: null, planValid: true,
-    identity: input.identity, command: input.command, policyDigest: input.policyDigest, registryDigest: input.registryDigest,
+    identity: input.identity, command: input.command, fullFallback: input.selection.fullFallback,
+    selectionScope: input.selection.fullFallback ? "full-required" : "module-subset", selectionDigest, activationEligible: false,
+    policyDigest: input.policyDigest, registryDigest: input.registryDigest,
     nativeReportSha256: input.native.sha256, actualFilesSha256: input.native.filesSha256,
     actualFullFileCount: files.length, modules,
   };
@@ -84,7 +88,8 @@ export function createUnavailableShadow(input: { identity: Identity; command: Sh
   return {
     version: 1, scope: "ci-shadow", effectiveMode: "shadow", activation: "observation-pending", memo: "disabled",
     status: "unavailable", error: input.error, planValid: false,
-    identity: input.identity, command: input.command, policyDigest: null, registryDigest: null,
+    identity: input.identity, command: input.command, fullFallback: false, selectionScope: "unavailable", selectionDigest: null, activationEligible: false,
+    policyDigest: null, registryDigest: null,
     nativeReportSha256: native?.sha256 ?? null, actualFilesSha256: native?.filesSha256 ?? null,
     actualFullFileCount: native?.files ?? 0,
     modules: shadowModuleIds.map((id) => ({ id, status: "observation-pending" as const, selected: false, wouldSelectFileCount: 0, actualFullFileCount: native?.files ?? 0, matchedCount: 0 })),
@@ -95,7 +100,8 @@ export function createNotApplicableShadow(input: { identity: Identity; command: 
   return {
     version: 1, scope: "ci-shadow", effectiveMode: "shadow", activation: "observation-pending", memo: "disabled",
     status: "not-applicable", error: "NOT_APPLICABLE", planValid: false,
-    identity: input.identity, command: input.command, policyDigest: null, registryDigest: null,
+    identity: input.identity, command: input.command, fullFallback: false, selectionScope: "not-applicable", selectionDigest: null, activationEligible: false,
+    policyDigest: null, registryDigest: null,
     nativeReportSha256: null, actualFilesSha256: null, actualFullFileCount: 0,
     modules: shadowModuleIds.map((id) => ({ id, status: "observation-pending" as const, selected: false, wouldSelectFileCount: 0, actualFullFileCount: 0, matchedCount: 0 })),
   };
@@ -127,12 +133,14 @@ export function buildShadow(input: CiShadowInput, cwd = process.cwd()): ShadowSu
   assertTestSummary(input.native, command, identity);
   if (identity.event !== "pull_request") return createNotApplicableShadow({ identity, command });
   try {
+    assertCiMergeIdentity({ cwd, acceptedBase: identity.base, prHead: identity.head, executionSha: identity.sha, executionTree: identity.tree });
     const preview: Preview = createPreview({ cwd, base: identity.base, head: identity.head });
     requireShadow(preview.executedSha === identity.sha && preview.tree === identity.tree && preview.acceptedBase === identity.base && preview.head === identity.head, "SHADOW_IDENTITY_MISMATCH");
     return createShadowObservation({ identity, command, files: input.files as string[], native: input.native, selection: preview.selection,
       registry: readRegistry(cwd), policyDigest: preview.policyDigest, registryDigest: preview.registryDigest, root: cwd });
   } catch (error) {
-    const code = error instanceof Error && shadowErrors.includes(error.message as typeof shadowErrors[number]) ? error.message as typeof shadowErrors[number] : "SHADOW_PLAN_INVALID";
+    const code = error instanceof Error && error.message === "CI_IDENTITY_MISMATCH" ? "SHADOW_IDENTITY_MISMATCH"
+      : error instanceof Error && shadowErrors.includes(error.message as typeof shadowErrors[number]) ? error.message as typeof shadowErrors[number] : "SHADOW_PLAN_INVALID";
     return createUnavailableShadow({ identity, command, native: input.native, error: code });
   }
 }

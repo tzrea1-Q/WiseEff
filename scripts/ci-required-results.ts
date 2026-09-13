@@ -184,6 +184,8 @@ export type ShadowSummary = {
   version: 1; scope: "ci-shadow"; effectiveMode: "shadow"; activation: "observation-pending"; memo: "disabled";
   status: "observed" | "unavailable" | "not-applicable"; error: string | null;
   planValid: boolean; identity: Identity; command: "frontend" | "scripts" | "bridge" | "server";
+  fullFallback: boolean; selectionScope: "full-required" | "module-subset" | "unavailable" | "not-applicable";
+  selectionDigest: string | null; activationEligible: false;
   policyDigest: string | null; registryDigest: string | null; nativeReportSha256: string | null; actualFilesSha256: string | null;
   actualFullFileCount: number; modules: ShadowModule[];
 };
@@ -207,26 +209,32 @@ function shadowModules(value: unknown): ShadowModule[] {
 }
 export function assertShadowSummary(value: unknown, expected: Identity, command: string, native?: NativeSummary): asserts value is ShadowSummary {
   const summary = record(value);
-  exactKeys(summary, ["version", "scope", "effectiveMode", "activation", "memo", "status", "error", "planValid", "identity", "command", "policyDigest", "registryDigest",
+  exactKeys(summary, ["version", "scope", "effectiveMode", "activation", "memo", "status", "error", "planValid", "identity", "command", "fullFallback", "selectionScope", "selectionDigest", "activationEligible", "policyDigest", "registryDigest",
     "nativeReportSha256", "actualFilesSha256", "actualFullFileCount", "modules"]);
   sameIdentity(summary.identity, expected);
   requireCi(summary.version === 1 && summary.scope === "ci-shadow" && summary.effectiveMode === "shadow"
     && summary.activation === "observation-pending" && summary.memo === "disabled" && shadowCommands.includes(command as typeof shadowCommands[number])
-    && summary.command === command, "SHADOW_IDENTITY_MISMATCH");
+    && summary.command === command && summary.activationEligible === false && typeof summary.fullFallback === "boolean", "SHADOW_IDENTITY_MISMATCH");
   requireCi(Number.isSafeInteger(summary.actualFullFileCount) && Number(summary.actualFullFileCount) >= 0, "SHADOW_COUNTER");
   const modules = shadowModules(summary.modules);
-  for (const module of modules) requireCi(module.actualFullFileCount === summary.actualFullFileCount && module.matchedCount <= module.actualFullFileCount, "SHADOW_COUNTER");
+  for (const module of modules) requireCi(module.actualFullFileCount === summary.actualFullFileCount && module.matchedCount <= module.actualFullFileCount
+    && module.wouldSelectFileCount <= module.actualFullFileCount
+    && (module.selected || (module.wouldSelectFileCount === 0 && module.matchedCount === 0)), "SHADOW_COUNTER");
   if (summary.status === "observed") {
     requireCi(summary.planValid === true && summary.error === null, "SHADOW_STATUS");
+    requireCi(((summary.fullFallback && summary.selectionScope === "full-required") || (!summary.fullFallback && summary.selectionScope === "module-subset"))
+      && typeof summary.selectionDigest === "string" && /^[a-f0-9]{64}$/.test(String(summary.selectionDigest)), "SHADOW_SELECTION");
     for (const key of ["policyDigest", "registryDigest", "nativeReportSha256", "actualFilesSha256"])
       requireCi(typeof summary[key] === "string" && /^[a-f0-9]{64}$/.test(String(summary[key])), "SHADOW_DIGEST");
     requireCi(Number(summary.actualFullFileCount) > 0, "SHADOW_COUNTER");
   } else if (summary.status === "unavailable") {
     requireCi(summary.planValid === false && typeof summary.error === "string" && shadowErrors.includes(summary.error as typeof shadowErrors[number]), "SHADOW_STATUS");
+    requireCi(!summary.fullFallback && summary.selectionScope === "unavailable" && summary.selectionDigest === null, "SHADOW_SELECTION");
     for (const key of ["policyDigest", "registryDigest"]) requireCi(summary[key] === null || (typeof summary[key] === "string" && /^[a-f0-9]{64}$/.test(String(summary[key]))), "SHADOW_DIGEST");
     for (const key of ["nativeReportSha256", "actualFilesSha256"]) requireCi(summary[key] === null || (typeof summary[key] === "string" && /^[a-f0-9]{64}$/.test(String(summary[key]))), "SHADOW_DIGEST");
   } else {
     requireCi(summary.status === "not-applicable" && summary.planValid === false && summary.error === "NOT_APPLICABLE"
+      && !summary.fullFallback && summary.selectionScope === "not-applicable" && summary.selectionDigest === null
       && summary.policyDigest === null && summary.registryDigest === null && summary.nativeReportSha256 === null
       && summary.actualFilesSha256 === null && summary.actualFullFileCount === 0, "SHADOW_STATUS");
   }
@@ -250,6 +258,12 @@ export function assertShadowResults(input: unknown): void {
   const expectedJobs = ["detect", "l1-frontend", "l1-scripts", "l1-server"];
   exactKeys(needs, expectedJobs);
   const projections: Array<[string, string]> = [["l1-frontend", "shadow_frontend"], ["l1-scripts", "shadow_scripts"], ["l1-scripts", "shadow_bridge"], ["l1-server", "shadow_server"]];
+  for (const [job, keys] of [["l1-frontend", ["shadow_frontend"]], ["l1-scripts", ["shadow_scripts", "shadow_bridge"]], ["l1-server", ["shadow_server"]]] as const) {
+    const needed = record(needs[job]);
+    requireCi(needed.result === "success", "SHADOW_REQUIRED_RESULT");
+    exactKeys(record(needed.outputs), keys);
+  }
+  let common: string | undefined;
   for (const [job, key] of projections) {
     const needed = record(needs[job]);
     requireCi(needed.result === "success", "SHADOW_REQUIRED_RESULT");
@@ -261,7 +275,20 @@ export function assertShadowResults(input: unknown): void {
     const native = record(reports[command]);
     assertTestSummary(native, command, identity);
     assertShadowSummary(shadow, identity, command, identity.event === "pull_request" ? native : undefined);
+    const summary = shadow as ShadowSummary;
+    const association = JSON.stringify({ policyDigest: summary.policyDigest, registryDigest: summary.registryDigest,
+      selectionDigest: summary.selectionDigest, selectionScope: summary.selectionScope, fullFallback: summary.fullFallback, activationEligible: summary.activationEligible });
+    if (common === undefined) common = association; else requireCi(common === association, "SHADOW_ASSOCIATION_MISMATCH");
   }
+}
+function settleShadowResults(input: unknown): boolean {
+  try { assertShadowResults(input); return true; } catch { return false; }
+}
+function settleShadowEnvironment(value: unknown, identity: Identity, nativeNeeds: unknown): boolean {
+  try {
+    if (typeof value !== "string" || Buffer.byteLength(value) > 64 * 1024) return false;
+    return settleShadowResults({ identity, needs: parseJson(value), nativeNeeds });
+  } catch { return false; }
 }
 export function createL1Receipt(input: unknown) {
   const value = record(input);
@@ -346,7 +373,9 @@ function unavailableShadow(identity: Identity, command: NativeSummary["command"]
   return {
     version: 1, scope: "ci-shadow", effectiveMode: "shadow", activation: "observation-pending", memo: "disabled",
     status: notApplicable ? "not-applicable" : "unavailable", error: notApplicable ? "NOT_APPLICABLE" : error,
-    planValid: false, identity, command: command as ShadowSummary["command"], policyDigest: null, registryDigest: null,
+    planValid: false, identity, command: command as ShadowSummary["command"], fullFallback: false,
+    selectionScope: notApplicable ? "not-applicable" : "unavailable", selectionDigest: null, activationEligible: false,
+    policyDigest: null, registryDigest: null,
     nativeReportSha256: notApplicable ? null : native.sha256, actualFilesSha256: notApplicable ? null : native.filesSha256,
     actualFullFileCount: notApplicable ? 0 : native.files,
     modules: shadowModuleIds.map((id) => ({ id, status: "observation-pending" as const, selected: false,
@@ -401,7 +430,12 @@ function main() {
   if (mode === "test") return runTest(command, identity);
   if (mode === "receipt") return writeOutput("receipt", createL1Receipt({ identity, job: process.env.GITHUB_JOB, steps: parseJson(process.env.EFF_STEPS) }));
   const input = { identity, needs: parseJson(process.env.EFF_NEEDS) };
-  if (mode === "l1") { assertL1Results(input); if (process.env.EFF_SHADOW) assertShadowResults({ identity, needs: parseJson(process.env.EFF_SHADOW), nativeNeeds: input.needs }); writeOutput("identity", identity); }
+  if (mode === "l1") {
+    assertL1Results(input);
+    const shadowValid = settleShadowEnvironment(process.env.EFF_SHADOW, identity, input.needs);
+    console.log(`CI shadow: ${shadowValid ? "observed" : "unavailable"}; planValid:${shadowValid}`);
+    writeOutput("identity", identity);
+  }
   else if (mode === "required") assertRequiredResults(input);
   else throw new Error("CI_UNKNOWN_COMMAND");
   console.log(`CI ${mode}: required results and execution identity verified.`);

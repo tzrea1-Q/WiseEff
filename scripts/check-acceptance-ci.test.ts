@@ -103,6 +103,26 @@ describe("equivalent fixed L1 scheduling", () => {
       expect(String(receipt.env.EFF_STEPS).trim()).toBe(expected);
     }
   });
+  it.each([
+    ["l1-frontend", "shadow_frontend", "frontend"],
+    ["l1-scripts", "shadow_scripts", "scripts"],
+    ["l1-scripts", "shadow_bridge", "bridge"],
+    ["l1-server", "shadow_server", "server"],
+  ] as const)("rejects %s/%s shadow producer mapping drift", (jobId, output, stepId) => {
+    const source = compliantWorkflow;
+    for (const mutation of ["missing", "wrong", "hardcoded", "extra"]) {
+      const workflow = YAML.parse(source);
+      const outputs = workflow.jobs[jobId].outputs;
+      if (mutation === "missing") delete outputs[output];
+      if (mutation === "wrong") {
+        const wrongStep = stepId === "bridge" ? "scripts" : stepId === "server" ? "frontend" : "server";
+        outputs[output] = "${{ steps." + wrongStep + ".outputs.shadow }}";
+      }
+      if (mutation === "hardcoded") outputs[output] = "shadow";
+      if (mutation === "extra") outputs.unmapped = "${{ steps." + stepId + ".outputs.shadow }}";
+      expect(evaluateL1CiWorkflow(YAML.stringify(workflow)).status).toBe("failed");
+    }
+  });
   it("rejects whitespace inserted into a projected JSON key", () => {
     const workflow = YAML.parse(compliantWorkflow);
     const receipt = workflow.jobs["l1-server"].steps.find((step: { id: string }) => step.id === "receipt");
