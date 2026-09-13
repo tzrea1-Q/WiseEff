@@ -82,8 +82,8 @@ const loadLogin = (): LoginSecrets => {
   return JSON.parse(readFileSync(path, "utf8")) as LoginSecrets;
 };
 
-const evidence = loadEvidence();
-const login = loadLogin();
+let evidence: DeliveryEvidence;
+let login: LoginSecrets;
 
 const authHeader = async (page: Page) => {
   const token = await page.evaluate(() => window.localStorage.getItem("wiseeff.localAuthToken"));
@@ -258,6 +258,11 @@ const pollBinding = async (page: Page, definitionId: string, propertyKey: string
 };
 
 test.describe("isolated formal-image catalog delivery M1", () => {
+  test.beforeAll(() => {
+    evidence = loadEvidence();
+    login = loadLogin();
+  });
+
   test("completes adopt-bound publish, DTS ingest, workbench save, second publish, restart reread", async ({
     page,
   }, testInfo) => {

@@ -38,6 +38,12 @@ concurrency:
 permissions:
   contents: read
 
+env:
+  EFF_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+  EFF_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+  EFF_MODE: ${{ inputs.acceptance_mode }}
+  EFF_FULL_ACCEPTANCE: ${{ github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'full-acceptance') }}
+
 jobs:
   minimal-upgrade:
     name: Minimal upgrade terminal probe
@@ -174,13 +180,139 @@ jobs:
       - name: Documentation governance
         run: npm run docs:check
 
-  build-and-test:
-    name: Build and test
+  l1-static:
+    name: L1 static and build
     needs: detect
     if: needs.detect.outputs.run_l1 == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    outputs:
+      receipt: ${{ steps.receipt.outputs.receipt }}
 
+    steps:
+      - name: Check out repository
+        id: checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Node.js
+        id: node
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - name: Install dependencies
+        id: install
+        run: npm ci
+
+      - name: Cache ESLint
+        id: eslint_cache
+        uses: actions/cache@v4
+        with:
+          path: node_modules/.cache/eslint
+          key: eslint-${{ runner.os }}-${{ hashFiles('eslint.config.js', 'package-lock.json') }}
+          restore-keys: |
+            eslint-${{ runner.os }}-
+
+      - name: Acceptance CI metadata (L1)
+        id: metadata
+        run: npm run acceptance:ci
+
+      - name: Build
+        id: build
+        run: npm run build
+
+      - name: UI standards ratchet
+        id: ui
+        run: npm run ui:check
+
+      - name: Lint
+        id: lint
+        run: npm run lint
+
+      - name: Verify parameter Catalog trusted base and boundary ratchet
+        id: catalog
+        env:
+          PARAMETER_CATALOG_TRUSTED_BASE_SHA: 9b3ba7df7e21f5589684bc92c872da593ad4c246
+        run: |
+          set -euo pipefail
+          git fetch --no-tags origin "${PARAMETER_CATALOG_TRUSTED_BASE_SHA}"
+          test "$(git rev-parse --verify "${PARAMETER_CATALOG_TRUSTED_BASE_SHA}^{commit}")" = "${PARAMETER_CATALOG_TRUSTED_BASE_SHA}"
+          npm run parameter-catalog-boundaries:check -- --trusted-base-sha "${PARAMETER_CATALOG_TRUSTED_BASE_SHA}"
+
+      - name: Contract check
+        id: contract
+        run: npm run contract:check
+
+      - name: Log analysis behavior eval
+        id: logs
+        run: npm run logs:eval
+
+      - name: Record complete L1 invocation
+        id: receipt
+        if: always()
+        env:
+          EFF_STEPS: >-
+            {"checkout":${{ toJSON(steps.checkout) }},
+            "node":${{ toJSON(steps.node) }},
+            "install":${{ toJSON(steps.install) }},
+            "eslint_cache":${{ toJSON(steps.eslint_cache) }},
+            "metadata":${{ toJSON(steps.metadata) }},
+            "build":${{ toJSON(steps.build) }},
+            "ui":${{ toJSON(steps.ui) }},
+            "lint":${{ toJSON(steps.lint) }},
+            "catalog":${{ toJSON(steps.catalog) }},
+            "contract":${{ toJSON(steps.contract) }},
+            "logs":${{ toJSON(steps.logs) }}}
+        run: node --experimental-strip-types scripts/ci-required-results.ts receipt
+
+  l1-frontend:
+    name: L1 frontend
+    needs: detect
+    if: needs.detect.outputs.run_l1 == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    outputs:
+      receipt: ${{ steps.receipt.outputs.receipt }}
+    steps:
+      - name: Check out repository
+        id: checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Set up Node.js
+        id: node
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - name: Install dependencies
+        id: install
+        run: npm ci
+      - name: Frontend tests
+        id: frontend
+        run: node --experimental-strip-types scripts/ci-required-results.ts test frontend
+      - name: Record complete L1 invocation
+        id: receipt
+        if: always()
+        env:
+          EFF_STEPS: >-
+            {"checkout":${{ toJSON(steps.checkout) }},
+            "node":${{ toJSON(steps.node) }},
+            "install":${{ toJSON(steps.install) }},
+            "frontend":${{ toJSON(steps.frontend) }}}
+        run: node --experimental-strip-types scripts/ci-required-results.ts receipt
+
+  l1-scripts:
+    name: L1 scripts and bridge
+    needs: detect
+    if: needs.detect.outputs.run_l1 == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    outputs:
+      receipt: ${{ steps.receipt.outputs.receipt }}
     services:
       postgres:
         image: pgvector/pgvector:pg16
@@ -195,59 +327,32 @@ jobs:
           --health-interval 10s
           --health-timeout 5s
           --health-retries 5
-
     env:
       DATABASE_URL: postgres://wiseeff:wiseeff@127.0.0.1:5432/wiseeff
-
     steps:
       - name: Check out repository
+        id: checkout
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-
       - name: Set up Node.js
+        id: node
         uses: actions/setup-node@v4
         with:
           node-version-file: .nvmrc
           cache: npm
-
       - name: Install dependencies
+        id: install
         run: npm ci
-
-      - name: Cache ESLint
-        uses: actions/cache@v4
-        with:
-          path: node_modules/.cache/eslint
-          key: eslint-${{ runner.os }}-${{ hashFiles('eslint.config.js', 'package-lock.json') }}
-          restore-keys: |
-            eslint-${{ runner.os }}-
-
-      - name: Acceptance CI metadata (L1)
-        run: npm run acceptance:ci
-
       - name: Install and verify DTS toolchain
+        id: toolchain
         uses: ./.github/actions/setup-dts-toolchain
-
       - name: Advisory DTS seed compile (dtc)
+        id: advisory
         continue-on-error: true
         run: npm run dtc:seed:compile
-
-      - name: Build
-        run: npm run build
-
-      - name: Documentation governance
-        run: npm run docs:check
-
-      - name: UI standards ratchet
-        run: npm run ui:check
-
-      - name: Lint
-        run: npm run lint
-
-      - name: Frontend tests
-        run: npm test
-
       - name: Enable pgvector extension
+        id: vector
         run: |
           node --input-type=module -e '
             import pg from "pg";
@@ -263,30 +368,125 @@ jobs:
             }
             await client.end();
           '
-
       - name: Script tests
-        run: npm run test:scripts
-
-      - name: Verify parameter Catalog trusted base and boundary ratchet
-        env:
-          PARAMETER_CATALOG_TRUSTED_BASE_SHA: 9b3ba7df7e21f5589684bc92c872da593ad4c246
-        run: |
-          set -euo pipefail
-          git fetch --no-tags origin "${PARAMETER_CATALOG_TRUSTED_BASE_SHA}"
-          test "$(git rev-parse --verify "${PARAMETER_CATALOG_TRUSTED_BASE_SHA}^{commit}")" = "${PARAMETER_CATALOG_TRUSTED_BASE_SHA}"
-          npm run parameter-catalog-boundaries:check -- --trusted-base-sha "${PARAMETER_CATALOG_TRUSTED_BASE_SHA}"
-
+        id: scripts
+        run: node --experimental-strip-types scripts/ci-required-results.ts test scripts
       - name: Device bridge tests
-        run: npm run bridge:test
+        id: bridge
+        run: node --experimental-strip-types scripts/ci-required-results.ts test bridge
+      - name: Record complete L1 invocation
+        id: receipt
+        if: always()
+        env:
+          EFF_STEPS: >-
+            {"checkout":${{ toJSON(steps.checkout) }},
+            "node":${{ toJSON(steps.node) }},
+            "install":${{ toJSON(steps.install) }},
+            "toolchain":${{ toJSON(steps.toolchain) }},
+            "advisory":${{ toJSON(steps.advisory) }},
+            "vector":${{ toJSON(steps.vector) }},
+            "scripts":${{ toJSON(steps.scripts) }},
+            "bridge":${{ toJSON(steps.bridge) }}}
+        run: node --experimental-strip-types scripts/ci-required-results.ts receipt
+
+  l1-server:
+    name: L1 backend
+    needs: detect
+    if: needs.detect.outputs.run_l1 == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    outputs:
+      receipt: ${{ steps.receipt.outputs.receipt }}
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: wiseeff
+          POSTGRES_PASSWORD: wiseeff
+          POSTGRES_DB: wiseeff
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U wiseeff -d wiseeff"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      DATABASE_URL: postgres://wiseeff:wiseeff@127.0.0.1:5432/wiseeff
+    steps:
+      - name: Check out repository
+        id: checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Set up Node.js
+        id: node
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - name: Install dependencies
+        id: install
+        run: npm ci
+      - name: Install and verify DTS toolchain
+        id: toolchain
+        uses: ./.github/actions/setup-dts-toolchain
+      - name: Enable pgvector extension
+        id: vector
+        run: |
+          node --input-type=module -e '
+            import pg from "pg";
+            const client = new pg.Client({ connectionString: process.env.DATABASE_URL });
+            await client.connect();
+            await client.query("create extension if not exists vector");
+            const row = await client.query(
+              "select extname from pg_extension where extname = $1",
+              ["vector"],
+            );
+            if (row.rowCount !== 1) {
+              throw new Error("pgvector extension was not created");
+            }
+            await client.end();
+          '
+      - name: Documentation governance
+        id: docs
+        run: npm run docs:check
 
       - name: Backend tests
-        run: npm run test:server
+        id: server
+        run: node --experimental-strip-types scripts/ci-required-results.ts test server
+      - name: Record complete L1 invocation
+        id: receipt
+        if: always()
+        env:
+          EFF_STEPS: >-
+            {"checkout":${{ toJSON(steps.checkout) }},
+            "node":${{ toJSON(steps.node) }},
+            "install":${{ toJSON(steps.install) }},
+            "toolchain":${{ toJSON(steps.toolchain) }},
+            "vector":${{ toJSON(steps.vector) }},
+            "docs":${{ toJSON(steps.docs) }},
+            "server":${{ toJSON(steps.server) }}}
+        run: node --experimental-strip-types scripts/ci-required-results.ts receipt
 
-      - name: Contract check
-        run: npm run contract:check
-
-      - name: Log analysis behavior eval
-        run: npm run logs:eval
+  build-and-test:
+    name: Build and test
+    if: always()
+    needs: [detect, l1-static, l1-frontend, l1-scripts, l1-server]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      identity: ${{ steps.results.outputs.identity }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+      - name: Verify every required L1 result and invocation
+        id: results
+        env:
+          EFF_NEEDS: ${{ toJSON(needs) }}
+        run: node --experimental-strip-types scripts/ci-required-results.ts l1
 
   acceptance-quality:
     name: Acceptance quality
@@ -865,25 +1065,11 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
       - name: Check jobs that were supposed to run
-        run: |
-          python3 - <<'PY'
-          import sys
-          results = {
-            "detect": "${{ needs.detect.result }}",
-            "build-and-test": "${{ needs.build-and-test.result }}",
-            "acceptance-quality": "${{ needs.acceptance-quality.result }}",
-            "acceptance-smoke": "${{ needs.acceptance-smoke.result }}",
-            "acceptance-local-non-hdc": "${{ needs.acceptance-local-non-hdc.result }}",
-            "target-synthetic-acceptance": "${{ needs.target-synthetic-acceptance.result }}",
-            "minimal-upgrade": "${{ needs.minimal-upgrade.result }}",
-          }
-          print(results)
-          failed = [name for name, result in results.items() if result in ("failure", "cancelled")]
-          if failed:
-              print("failed or cancelled:", ", ".join(failed))
-              sys.exit(1)
-          if results["detect"] != "success":
-              print("detect must report success")
-              sys.exit(1)
-          PY
+        env:
+          EFF_NEEDS: ${{ toJSON(needs) }}
+        run: node --experimental-strip-types scripts/ci-required-results.ts required
