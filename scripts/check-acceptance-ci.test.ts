@@ -141,7 +141,30 @@ describe("equivalent fixed L1 scheduling", () => {
   });
   it.each(["build", "docs", "ui", "lint", "metadata", "catalog", "contract", "logs"])("rejects removal of the original %s command", (id) => {
     const workflow = YAML.parse(readFileSync(".github/workflows/ci.yml", "utf8"));
-    workflow.jobs["l1-static"].steps = workflow.jobs["l1-static"].steps.filter((step: { id: string }) => step.id !== id);
+    const job = workflow.jobs[id === "docs" ? "l1-server" : "l1-static"];
+    job.steps = job.steps.filter((step: { id: string }) => step.id !== id);
+    expect(evaluateL1CiWorkflow(YAML.stringify(workflow)).status).toBe("failed");
+  });
+  it("runs the complete documentation check after vector setup and before backend tests", () => {
+    const workflow = YAML.parse(readFileSync(".github/workflows/ci.yml", "utf8"));
+    const docsJobs = Object.entries(workflow.jobs).filter(([, job]) => (job as { steps: { id?: string }[] }).steps.some((step) => step.id === "docs"));
+    expect(docsJobs.map(([id]) => id)).toEqual(["l1-server"]);
+    const job = workflow.jobs["l1-server"];
+    const ids = job.steps.map((step: { id: string }) => step.id);
+    expect(ids.indexOf("docs")).toBeGreaterThan(ids.indexOf("vector"));
+    expect(ids.indexOf("docs")).toBeLessThan(ids.indexOf("server"));
+    expect(job.steps.find((step: { id: string }) => step.id === "docs").run).toBe("npm run docs:check");
+  });
+  it.each(["service", "connection", "static"])("rejects documentation schema validation losing its PG prerequisite: %s", (mutation) => {
+    const workflow = YAML.parse(readFileSync(".github/workflows/ci.yml", "utf8"));
+    const job = Object.values(workflow.jobs).find((value) => (value as { steps: { id?: string }[] }).steps.some((step) => step.id === "docs")) as { services?: unknown; env?: Record<string, string>; steps: { id: string }[] };
+    if (mutation === "service") delete job.services;
+    if (mutation === "connection" && job.env) delete job.env.DATABASE_URL;
+    if (mutation === "static") {
+      const docs = job.steps.find((step) => step.id === "docs");
+      job.steps = job.steps.filter((step) => step.id !== "docs");
+      workflow.jobs["l1-static"].steps.splice(6, 0, docs);
+    }
     expect(evaluateL1CiWorkflow(YAML.stringify(workflow)).status).toBe("failed");
   });
   it.each(["l1-scripts", "l1-server"])("requires PG, DTS and receipt safety in %s", (id) => {

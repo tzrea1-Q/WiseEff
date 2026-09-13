@@ -11,10 +11,10 @@ type Identity = {
 };
 export const l1Jobs = ["l1-static", "l1-frontend", "l1-scripts", "l1-server"] as const;
 export const l1CommandIds: Record<string, readonly string[]> = {
-  "l1-static": ["checkout", "node", "install", "eslint_cache", "metadata", "build", "docs", "ui", "lint", "catalog", "contract", "logs"],
+  "l1-static": ["checkout", "node", "install", "eslint_cache", "metadata", "build", "ui", "lint", "catalog", "contract", "logs"],
   "l1-frontend": ["checkout", "node", "install", "frontend"],
   "l1-scripts": ["checkout", "node", "install", "toolchain", "advisory", "vector", "scripts", "bridge"],
-  "l1-server": ["checkout", "node", "install", "toolchain", "vector", "server"],
+  "l1-server": ["checkout", "node", "install", "toolchain", "vector", "docs", "server"],
 };
 const testCommands: Record<string, { job: string; args: string[]; config?: string }> = {
   frontend: { job: "l1-frontend", args: ["test"] },

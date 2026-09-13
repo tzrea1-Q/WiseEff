@@ -224,10 +224,6 @@ jobs:
         id: build
         run: npm run build
 
-      - name: Documentation governance
-        id: docs
-        run: npm run docs:check
-
       - name: UI standards ratchet
         id: ui
         run: npm run ui:check
@@ -429,6 +425,10 @@ jobs:
             }
             await client.end();
           '
+      - name: Documentation governance
+        id: docs
+        run: npm run docs:check
+
       - name: Backend tests
         id: server
         run: node --experimental-strip-types scripts/ci-required-results.ts test server

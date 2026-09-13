@@ -21,7 +21,7 @@
 
 ## CI 执行完整性（EFF-02）
 
-L1 固定拆分保留原验证集合，选择性验证仍未启用。静态与构建、前端测试、脚本与设备桥测试、后端测试分别运行；脚本和后端各自保留 PostgreSQL/vector 与 DTS 前提，只有种子编译仍属 advisory。`Build and test` 和 `Merge bar` 保留名称并始终运行，包括文档-only 修改。现有 main、夜间、标签和手动验收语义保持不变。
+L1 固定拆分保留原验证集合，选择性验证仍未启用。静态与构建、前端测试、脚本与设备桥测试、后端测试分别运行；脚本和后端各自保留 PostgreSQL/vector 与 DTS 前提，唯一的 L1 `docs:check` 在 `l1-server` 的 vector 设置之后、后端测试之前运行，只有种子编译仍属 advisory。`Build and test` 和 `Merge bar` 保留名称并始终运行，包括文档-only 修改。现有 main、夜间、标签和手动验收语义保持不变。
 
 CI 包装入口先通过 Vitest `list --filesOnly` 发现完整文件集，再使用原 npm 命令和默认/JSON reporter，在新建私有目录中运行。原生报告的文件与断言计数必须与发现集合一致；零执行、报告缺失、必需断言跳过或执行身份不一致均失败。Vitest 的嵌套 suite 数不能当作文件数。可选跳过仅限 PATH 工具缺失时的确切厂商 DTS suite、命名容器缺失时的确切演练 suite，以及非 macOS 平台上的四个具名设备桥用例。历史跳过数量不是允许额度，报告分别记录跳过与通过。
 
