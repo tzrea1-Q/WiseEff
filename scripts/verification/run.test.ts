@@ -206,12 +206,15 @@ async function invokeSignalledFixture(fixture: string, scenario: MatrixScenario)
   delete env.NODE_OPTIONS;
   const child = spawn(tsx, [path.join(fixture, "scripts/verification/run.ts"), "--base", fixtureGit(fixture, ["rev-parse", "HEAD"]), "--task", "ci-changed-paths"], { cwd: fixture, env, stdio: ["ignore", "pipe", "pipe"] });
   let stdout = ""; let stderr = "";
+  let closed = false;
+  const closure = new Promise<number | null>(resolve => child.once("close", code => { closed = true; resolve(code); }));
+  child.once("error", error => { stderr += `${error.name}: ${error.message}\n`; });
   child.stdout?.setEncoding("utf8"); child.stderr?.setEncoding("utf8");
   child.stdout?.on("data", chunk => { stdout += chunk; }); child.stderr?.on("data", chunk => { stderr += chunk; });
   const marker = path.join(fixture, "phase-marker.log");
   const deadline = Date.now() + 10_000;
   let markerPid: number | undefined;
-  while (Date.now() < deadline) {
+  while (!closed && Date.now() < deadline) {
     if (existsSync(marker)) {
       const line = readFileSync(marker, "utf8").split(/\r?\n/u).find(value => value.startsWith(`${scenario.signalPhase}:`));
       const match = line?.match(/:pid:(\d+)$/u);
@@ -225,7 +228,7 @@ async function invokeSignalledFixture(fixture: string, scenario: MatrixScenario)
     try { process.kill(markerPid, 0); ownedChildAlive = true; } catch { /* do not signal after the owned child has exited or is uncertain */ }
   }
   if (markerObserved && ownedChildAlive && child.pid !== undefined && child.exitCode === null && child.signalCode === null) child.kill(scenario.signal);
-  const status = await new Promise<number | null>(resolve => child.once("close", (code) => resolve(code)));
+  const status = await closure;
   let markerSettled = true;
   if (markerPid !== undefined) {
     markerSettled = false;
@@ -680,11 +683,11 @@ describe("fresh local verification runner", () => {
       openLog: () => { const stream = new VeryDelayedCloseWritable(); destinations.push(stream); return stream; },
     }));
     const returnedAt = Date.now();
+    await Promise.all(destinations.map(stream => stream.closed ? Promise.resolve() : new Promise<void>(resolve => stream.once("close", resolve))));
     expect(result.error).toContain("NATIVE_TIMEOUT");
     expect(result.lifecycleSettled).toBe(false);
     expect(returnedAt - started).toBeGreaterThanOrEqual(5_500);
     expect(returnedAt - started).toBeLessThan(7_000);
-    await Promise.all(destinations.map(stream => stream.closed ? Promise.resolve() : new Promise<void>(resolve => stream.once("close", resolve))));
     expect(destinations.every(stream => stream.closed)).toBe(true);
   }, 20_000);
 
