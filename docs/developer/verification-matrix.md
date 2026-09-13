@@ -21,6 +21,7 @@ Use the narrowest command that proves the change while developing. Before finish
 | `npm run test:scripts` | Ops/governance script suite (`scripts/**`, `ops/**`, Node) | Script or ops automation changes. |
 | `npm run bridge:test` | Device bridge workspace suite (`packages/**`, Node) | Device bridge or device-command-core changes. |
 | `npm run test:all` | Frontend, script, device-bridge, and backend unit suites | Shared contracts or broad behavior. |
+| `npm run typecheck` | TypeScript project references from `tsconfig.json` (`tsconfig.app.json` and `tsconfig.node.json`) with the same 4096 MiB heap as the build's first phase | Edit-only TypeScript feedback; run `npm run build` before handoff because this omits the Vite production build. |
 | `npm run build` | TypeScript and Vite production build | TypeScript, routing, shared type, or package changes. |
 | `npm run docs:check` | Documentation governance | Any non-trivial plan or documentation structure change. |
 | `npm run ui:check` | UI design-system ratchet: per-rule counts of raw colors/z-index/font-size/box-shadow/ease keywords outside the token block, `window.confirm`, hand-rolled modal backdrops, and a fixed english-chrome list must not exceed `scripts/ui-standards-baseline.json` | Frontend changes touching styling, tokens, dialogs, motion, or visible UI copy. When a count drops below its baseline, ratchet with `npm run ui:check -- --update-baseline` in the same change. |
