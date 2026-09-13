@@ -9,6 +9,7 @@ import {
   type ReviewReason,
 } from "../../parameter-catalog-contract/index";
 import { createCatalogKernel } from "../../catalog-kernel/interface";
+import { createPinCapturingCatalogRuntime } from "../../catalog-publication/runtime";
 
 import { authorizeReviewQueueRead } from "./authorize";
 import { groupReviewEvidence, projectReviewQueueItem, reviewItemIdFor } from "./group";
@@ -181,7 +182,7 @@ const assertCurrentPin = async (
   pool: pg.Pool,
   capturedRelease: CatalogReleasePin,
 ): Promise<Result<void, ReviewQueueFailure>> => {
-  const kernel = createCatalogKernel(pool);
+  const kernel = createPinCapturingCatalogRuntime(pool, createCatalogKernel(pool));
   const current = await kernel.loadCurrentCatalog(capturedRelease);
   if (current.ok) return { ok: true, value: undefined };
   const actual =

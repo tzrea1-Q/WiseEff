@@ -57,4 +57,10 @@ describe("new-empty management observation", () => {
     const { db } = observation(inventory, { states: "0", releases: "1", subjects: "0", definitions: "0" });
     await expect(runParameterDataMode(db, { phase: "initialize", sourceSha })).rejects.toThrow("partial-catalog");
   });
+
+  it("documents that new-empty initialize is observe-only and does not require a fake P13 pin", async () => {
+    const source = await readFile(new URL("./parameter-data-mode.ts", import.meta.url), "utf8");
+    expect(source).toContain("does not claim P13 writer retirement");
+    expect(source).toContain("Existing published data is never reset");
+  });
 });

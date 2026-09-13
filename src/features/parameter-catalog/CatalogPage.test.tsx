@@ -75,6 +75,22 @@ function wrapAfterGate(repository: ParameterCatalogRepository, gate: Promise<voi
     getLegacyIdentifier: async (legacyType, legacyId) => {
       await gate;
       return repository.getLegacyIdentifier(legacyType, legacyId);
+    },
+    createPublicationCandidate: async (body, context) => {
+      await gate;
+      return repository.createPublicationCandidate(body, context);
+    },
+    getPublicationCandidate: async (candidateId) => {
+      await gate;
+      return repository.getPublicationCandidate(candidateId);
+    },
+    publishPublicationCandidate: async (candidateId, body, context) => {
+      await gate;
+      return repository.publishPublicationCandidate(candidateId, body, context);
+    },
+    getPublication: async (jobId) => {
+      await gate;
+      return repository.getPublication(jobId);
     }
   };
 }
@@ -129,6 +145,7 @@ function renderCatalog(
   options: {
     scenario?: CatalogMockScenario;
     actor?: CatalogActorKind;
+    sessionPermissions?: readonly string[];
     search?: string;
     layoutMode?: CatalogLayoutMode;
     includeReview?: boolean;
@@ -143,6 +160,7 @@ function renderCatalog(
     <CatalogHarness
       repository={repository}
       actor={options.actor ?? "org-admin"}
+      sessionPermissions={options.sessionPermissions}
       initialSearch={options.search ?? ""}
       layoutMode={options.layoutMode ?? "desktop"}
       organizationId={options.includeReview ? CATALOG_ORGANIZATION_ID : undefined}
@@ -259,6 +277,7 @@ describe("CatalogPage", () => {
     expect(screen.getByRole("button", { name: "处理审核" })).toBeEnabled();
     expect(screen.getByRole("button", { name: "登记主体" })).toBeEnabled();
     expect(screen.queryByRole("button", { name: "接受修订" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "新增定义" })).not.toBeInTheDocument();
     orgAdmin.unmount();
 
     const platformAdmin = renderCatalog({ actor: "platform-admin" });
@@ -273,7 +292,42 @@ describe("CatalogPage", () => {
     expect(screen.queryByRole("button", { name: "提出定义修订" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "登记主体" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "接受修订" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "新增定义" })).not.toBeInTheDocument();
     expect(screen.getByLabelText("目录发布")).toHaveTextContent(CATALOG_RELEASE_ID);
+  });
+
+  it("hides the M1 publication entry without catalog:author and shows it from session permissions", async () => {
+    const { unmount } = renderCatalog({ actor: "org-admin" });
+    await screen.findByRole("region", { name: "参数定义目录" });
+    expect(screen.queryByRole("button", { name: "新增定义" })).not.toBeInTheDocument();
+    unmount();
+
+    const authorized = renderCatalog({
+      actor: "user",
+      sessionPermissions: ["catalog:author"]
+    });
+    await screen.findByRole("region", { name: "参数定义目录" });
+    expect(screen.getByRole("button", { name: "新增定义" })).toBeEnabled();
+    expect(screen.queryByRole("button", { name: "发布到目录" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "复核高风险发布" })).not.toBeInTheDocument();
+    authorized.unmount();
+
+    const publisher = renderCatalog({
+      actor: "user",
+      sessionPermissions: ["catalog:publish", "catalog:review-high-risk"]
+    });
+    await screen.findByRole("region", { name: "参数定义目录" });
+    expect(screen.queryByRole("button", { name: "新增定义" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "发布到目录" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "复核高风险发布" })).not.toBeInTheDocument();
+    publisher.unmount();
+
+    renderCatalog({
+      actor: "agent",
+      sessionPermissions: ["catalog:author", "catalog:publish"]
+    });
+    await screen.findByRole("region", { name: "参数定义目录" });
+    expect(screen.queryByRole("button", { name: "新增定义" })).not.toBeInTheDocument();
   });
 
   it("lets Org Admin see register-subject on an unregistered Subject while other roles cannot", async () => {

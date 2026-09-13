@@ -19,10 +19,10 @@ const productionSources = async (): Promise<readonly { name: string; source: str
 };
 
 describe("S10-RPT threat matrix", () => {
-  it("freezes the eight R3 observations before production report assembly", () => {
-    expect(THREAT_MATRIX).toHaveLength(8);
+  it("freezes the nine R3 observations before production report assembly", () => {
+    expect(THREAT_MATRIX).toHaveLength(9);
     expect(Object.isFrozen(THREAT_MATRIX)).toBe(true);
-    expect(THREAT_MATRIX.map((row) => row.id)).toEqual([1, 2, 3, 4, 5, 6, 7, 8]);
+    expect(THREAT_MATRIX.map((row) => row.id)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9]);
     expect(THREAT_MATRIX.map((row) => row.name)).toEqual([
       "wrong-purpose-predecessor",
       "self-approval-or-verifier-as-approval",
@@ -32,6 +32,7 @@ describe("S10-RPT threat matrix", () => {
       "public-release-missing-predecessor-digest",
       "retention-closed-expired-not-present",
       "assemble-cannot-execute-gates-or-broaden-applicability",
+      "combo-runtime-pin-does-not-approve-later-catalog",
     ]);
   });
 

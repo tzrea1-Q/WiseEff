@@ -104,7 +104,10 @@ const permissionLabels: Record<PermissionKey, string> = {
   "admin:access": "访问应用后台",
   "users:manage": "管理用户权限",
   "platform:access": "访问平台控制台",
-  "platform:schema-promote": "晋升驱动 schema 覆盖"
+  "platform:schema-promote": "晋升驱动 schema 覆盖",
+  "catalog:author": "编写目录草稿",
+  "catalog:publish": "发布已授权目录候选",
+  "catalog:review-high-risk": "复核高风险目录发布"
 };
 
 type UserColumnFilterKey = "user" | "title" | "role" | "status" | "lastActive";

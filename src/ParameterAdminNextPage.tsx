@@ -69,6 +69,7 @@ export type ParameterAdminNextPageProps = {
   relatedKnowledge?: SpecRelatedKnowledgeSource;
   runtime?: AppRuntime;
   catalogOrganizationId?: string;
+  sessionPermissions?: readonly string[] | null;
 };
 
 /**
@@ -96,7 +97,8 @@ export function ParameterAdminNextPage({
   onNewProject,
   relatedKnowledge,
   runtime,
-  catalogOrganizationId
+  catalogOrganizationId,
+  sessionPermissions
 }: ParameterAdminNextPageProps) {
   const topology = useMemo(
     () => parameterTopologyRepository ?? resolveParameterTopologyRepository(runtimeMode),
@@ -155,6 +157,7 @@ export function ParameterAdminNextPage({
         actor={catalogActorForSession({
           roleId: migrateLegacyRoleId(state?.activeRoleId ?? "")
         })}
+        sessionPermissions={sessionPermissions}
         search={search}
         onAnchorChange={handleCatalogAnchorChange}
         organizationId={catalogOrganizationId}

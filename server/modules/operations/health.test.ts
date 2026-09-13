@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { resolveXiaozeLlmConfig } from "../../config/xiaozeLlmConfig";
 import type { Queryable } from "../../shared/database/client";
-import { buildLiveHealth, buildReadyHealth } from "./health";
+import { catalogPublicationDependencyHealth, buildLiveHealth, buildReadyHealth } from "./health";
 
 describe("operations health", () => {
   it("reports liveness without checking dependencies", () => {
@@ -10,6 +10,42 @@ describe("operations health", () => {
       ok: true,
       service: "wiseeff-api",
       status: "live"
+    });
+  });
+
+  it("sets catalogPublication.ok from dual-fact without flipping process readiness", async () => {
+    const db: Pick<Queryable, "query"> = {
+      query: async <Row,>() => ({ rows: [{ ok: 1 } as Row], rowCount: 1 }),
+    };
+    const objectStore = {
+      checkHealth: async () => ({ ok: true as const, status: "ready" as const }),
+    };
+    const dual = {
+      status: "not-ready" as const,
+      onlinePublicationReady: false as const,
+      reasons: ["legacy-d1-without-receipt"] as const,
+    };
+    expect(catalogPublicationDependencyHealth(dual)).toMatchObject({
+      ok: false,
+      status: "failed",
+      details: { onlinePublicationReady: false },
+    });
+    await expect(
+      buildReadyHealth({
+        db,
+        objectStore,
+        includeDtsToolchain: false,
+        catalogPublication: dual,
+      }),
+    ).resolves.toMatchObject({
+      status: 200,
+      body: {
+        ok: true,
+        status: "ready",
+        dependencies: {
+          catalogPublication: { ok: false, status: "failed" },
+        },
+      },
     });
   });
 

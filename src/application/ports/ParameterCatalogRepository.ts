@@ -1,4 +1,5 @@
 import type {
+  CatalogCreatePublicationCandidateRequest,
   CatalogDefinitionListResponse,
   CatalogDefinitionResponse,
   CatalogDefinitionRevisionListResponse,
@@ -7,11 +8,15 @@ import type {
   CatalogDocumentResponse,
   CatalogLegacyIdentifierResponse,
   CatalogListQuery,
+  CatalogPublicationCandidateResponse,
+  CatalogPublicationJobResponse,
+  CatalogPublishPublicationCandidateRequest,
   CatalogSubjectListResponse,
   CatalogSubjectResponse
 } from "@/infrastructure/http/parameterCatalogDtos";
 
 export type {
+  CatalogCreatePublicationCandidateRequest,
   CatalogDefinitionListResponse,
   CatalogDefinitionResponse,
   CatalogDefinitionRevisionListResponse,
@@ -20,11 +25,19 @@ export type {
   CatalogDocumentResponse,
   CatalogLegacyIdentifierResponse,
   CatalogListQuery,
+  CatalogPublicationCandidateResponse,
+  CatalogPublicationJobResponse,
+  CatalogPublishPublicationCandidateRequest,
   CatalogSubjectListResponse,
   CatalogSubjectResponse
 };
 
-/** CatalogRead + DefinitionTimeline + LegacyLink. Closed canonical catalog read seam. */
+/** Release pin for the four frozen publication routes. Idempotency for publish lives in the body. */
+export type CatalogPublicationWriteContext = {
+  catalogReleaseId: string;
+};
+
+/** CatalogRead + DefinitionTimeline + LegacyLink + frozen publication commands. */
 export interface ParameterCatalogRepository {
   getCatalog(query?: CatalogListQuery): Promise<CatalogDocumentResponse>;
   listSubjects(query?: CatalogListQuery): Promise<CatalogSubjectListResponse>;
@@ -49,4 +62,15 @@ export interface ParameterCatalogRepository {
     query?: CatalogListQuery
   ): Promise<CatalogDefinitionTimelineResponse>;
   getLegacyIdentifier(legacyType: string, legacyId: string): Promise<CatalogLegacyIdentifierResponse>;
+  createPublicationCandidate(
+    body: CatalogCreatePublicationCandidateRequest,
+    context: CatalogPublicationWriteContext
+  ): Promise<CatalogPublicationCandidateResponse>;
+  getPublicationCandidate(candidateId: string): Promise<CatalogPublicationCandidateResponse>;
+  publishPublicationCandidate(
+    candidateId: string,
+    body: CatalogPublishPublicationCandidateRequest,
+    context: CatalogPublicationWriteContext
+  ): Promise<CatalogPublicationJobResponse>;
+  getPublication(jobId: string): Promise<CatalogPublicationJobResponse>;
 }

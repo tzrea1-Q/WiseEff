@@ -21,6 +21,7 @@ const PURPOSES_REQUIRING_APPROVAL: ReadonlySet<VerificationPurpose> = new Set([
   "public-release",
   "legacy-read-sunset",
   "p16-cleanup",
+  "catalog-publication-runtime",
 ]);
 
 export const requiredPredecessorPurposes = (
@@ -36,6 +37,7 @@ export const requiredPredecessorPurposes = (
     case "pre-activation":
     case "post-retirement-runtime":
     case "isolated-candidate-acceptance":
+    case "catalog-publication-runtime":
       return [];
   }
 };
@@ -56,6 +58,8 @@ export const allowedPredecessorPurposes = (
       return ["public-release"];
     case "p16-cleanup":
       return ["public-release", "legacy-read-sunset"];
+    case "catalog-publication-runtime":
+      return ["post-retirement-runtime"];
   }
 };
 

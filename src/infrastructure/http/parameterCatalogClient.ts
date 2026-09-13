@@ -8,6 +8,10 @@ import {
   catalogCreateBindingDraftRequestSchema,
   catalogCreateNodeEnablementDraftRequestSchema,
   catalogCreateProposalRequestSchema,
+  catalogCreatePublicationCandidateRequestSchema,
+  catalogPublishPublicationCandidateRequestSchema,
+  catalogPublicationCandidateResponseSchema,
+  catalogPublicationJobResponseSchema,
   catalogDefinitionListResponseSchema,
   catalogDefinitionResponseSchema,
   catalogDefinitionRevisionListResponseSchema,
@@ -59,6 +63,8 @@ import type {
   CatalogCreateBindingDraftRequest,
   CatalogCreateNodeEnablementDraftRequest,
   CatalogCreateProposalRequest,
+  CatalogCreatePublicationCandidateRequest,
+  CatalogPublishPublicationCandidateRequest,
   CatalogListQuery,
   CatalogRegisterSubjectRequest,
   CatalogRejectProposalRequest,
@@ -482,6 +488,49 @@ export function createParameterCatalogClient(options: CatalogClientOptions = {})
           context
         }
       ),
+    createPublicationCandidate: (
+      body: CatalogCreatePublicationCandidateRequest,
+      context: Pick<CatalogWriteContext, "catalogReleaseId">
+    ) =>
+      request(
+        "POST",
+        canonical("catalog.createPublicationCandidate"),
+        catalogPublicationCandidateResponseSchema,
+        "CatalogPublicationCandidateResponse",
+        {
+          body: catalogCreatePublicationCandidateRequestSchema.parse(body),
+          context
+        }
+      ),
+    getPublicationCandidate: (candidateId: string) =>
+      request(
+        "GET",
+        canonical("catalog.getPublicationCandidate", { candidateId }),
+        catalogPublicationCandidateResponseSchema,
+        "CatalogPublicationCandidateResponse"
+      ),
+    publishPublicationCandidate: (
+      candidateId: string,
+      body: CatalogPublishPublicationCandidateRequest,
+      context: Pick<CatalogWriteContext, "catalogReleaseId">
+    ) =>
+      request(
+        "POST",
+        canonical("catalog.publishPublicationCandidate", { candidateId }),
+        catalogPublicationJobResponseSchema,
+        "CatalogPublicationJobResponse",
+        {
+          body: catalogPublishPublicationCandidateRequestSchema.parse(body),
+          context
+        }
+      ),
+    getPublication: (jobId: string) =>
+      request(
+        "GET",
+        canonical("catalog.getPublication", { jobId }),
+        catalogPublicationJobResponseSchema,
+        "CatalogPublicationJobResponse"
+      ),
     getLegacyIdentifier: (legacyType: string, legacyId: string) =>
       request(
         "GET",
@@ -588,6 +637,10 @@ export function createParameterCatalogClient(options: CatalogClientOptions = {})
     "catalog.withdrawProposal": "withdrawProposal",
     "catalog.acceptProposal": "acceptProposal",
     "catalog.rejectProposal": "rejectProposal",
+    "catalog.createPublicationCandidate": "createPublicationCandidate",
+    "catalog.getPublicationCandidate": "getPublicationCandidate",
+    "catalog.publishPublicationCandidate": "publishPublicationCandidate",
+    "catalog.getPublication": "getPublication",
     "catalog.getLegacyIdentifier": "getLegacyIdentifier"
   };
   void _methodCoverage;

@@ -16,7 +16,7 @@ import type {
   SubmitProposalCommand,
   WithdrawProposalCommand,
 } from "./command";
-import { fingerprintProposalCommand } from "./command";
+import { fingerprintProposalCommand, publicationReferenceOf } from "./command";
 import { writeSuccessAudit } from "./audit";
 import type { ProposalFailure } from "./failures";
 import type {
@@ -415,9 +415,12 @@ const writeAccept = async (
   await testHooks?.afterStatusBeforeSuccessAudit?.();
   const intentId = `cpint_${randomUUID()}`;
   const auditId = `audit_${randomUUID()}`;
+  const publicationReference = publicationReferenceOf(command);
   const publicationIntent: PublicationIntentResult = {
     id: PublicationIntentId(intentId),
-    repositoryReference: command.repositoryReference,
+    repositoryReference:
+      publicationReference.kind === "repository" ? publicationReference.repositoryReference : null,
+    publicationReference,
     reviewerPrincipalId: command.context.principalId,
     successAuditRef: auditId,
   };
@@ -428,7 +431,7 @@ const writeAccept = async (
     proposalId: proposal.id,
     proposalRevisionId: revision.id,
     baseCatalogReleaseId: proposal.base_catalog_release_id,
-    repositoryReference: command.repositoryReference,
+    publicationReference,
     reviewerPrincipalId: command.context.principalId,
     successAuditRef: auditId,
   });

@@ -118,6 +118,17 @@ export const canonicalCatalogRelations = [
   "parameter_catalog.parameter_observation_matches",
 ] as const;
 
+export const publicationCatalogRelations = [
+  "parameter_catalog.catalog_activation_receipts",
+  "catalog_publication.release_artifacts",
+  "catalog_publication.candidates",
+  "catalog_publication.publication_authorizations",
+  "catalog_publication.publication_jobs",
+  "catalog_publication.publication_policies",
+  "catalog_publication.publication_policy_revisions",
+  "catalog_publication.publication_guard",
+] as const;
+
 export const legacyCatalogLookupKinds = legacyLookupIdentifierTypes;
 export const legacyCatalogMappingSourceKinds = legacyMappingSourceKinds;
 
@@ -686,7 +697,7 @@ function scanStringValue(
     }
   }
 
-  for (const relation of canonicalCatalogRelations) {
+  for (const relation of [...canonicalCatalogRelations, ...publicationCatalogRelations]) {
     if (sqlWritePattern(relation).test(sqlStructure) || sqlReadPattern(relation).test(sqlStructure)) {
       add("canonical-catalog-raw-access", node, `${relation}: ${normalized}`, `canonical:${relation}`);
     }

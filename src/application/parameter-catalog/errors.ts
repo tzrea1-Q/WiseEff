@@ -21,7 +21,23 @@ const FAILURE_CODE: Record<CatalogApiFailureReason, string> = {
   "legacy-surface-retired": "GONE",
   "legacy-id-ambiguous": "CONFLICT",
   forbidden: "FORBIDDEN",
-  "migration-diagnostics-not-public": "NOT_FOUND"
+  "migration-diagnostics-not-public": "NOT_FOUND",
+  "publication-not-authorized": "FORBIDDEN",
+  "publication-capability-missing": "FORBIDDEN",
+  "publication-self-approval-forbidden": "FORBIDDEN",
+  "publication-policy-disabled": "FORBIDDEN",
+  "publication-frozen": "CONFLICT",
+  "candidate-stale": "CONFLICT",
+  "candidate-tampered": "CONFLICT",
+  "needs-rebase": "CONFLICT",
+  "unsupported-catalog-capability": "VALIDATION_FAILED",
+  "publication-authorization-revoked": "CONFLICT",
+  "idempotency-key-conflict": "CONFLICT",
+  "artifact-missing": "CONFLICT",
+  "predecessor-incomplete": "CONFLICT",
+  "activation-receipt-mismatch": "CONFLICT",
+  "adoption-evidence-invalid": "CONFLICT",
+  "registration-followup-failed": "INTERNAL_ERROR"
 };
 
 export function catalogApiFailure(

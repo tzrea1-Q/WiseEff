@@ -99,6 +99,7 @@ export type PageProps = {
   onDashboardProjectChange?: (projectId: string | null) => void;
   onAuthContextRefresh?: (context: AuthContextDto) => void;
   organizationId?: string;
+  sessionPermissions?: readonly string[] | null;
 };
 
 /**
@@ -148,6 +149,7 @@ export function PageRouter({
   onDashboardProjectChange,
   onAuthContextRefresh,
   organizationId,
+  sessionPermissions,
   onFeedback,
   onNewProject,
   TopBarProjectId,
@@ -330,6 +332,7 @@ export function PageRouter({
           relatedKnowledge={specRelatedKnowledge}
           runtime={runtime}
           catalogOrganizationId={organizationId}
+          sessionPermissions={sessionPermissions}
         />
       );
     }

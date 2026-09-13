@@ -3,6 +3,8 @@ export {
   createDraftCommandKind,
   fingerprintProposalCommand,
   isCreateLikeProposalCommand,
+  normalizePublicationReference,
+  publicationReferenceOf,
   proposalAuditTargetId,
   proposalCommandFamily,
   proposalHasTargetId,
@@ -13,6 +15,7 @@ export {
 export type {
   AcceptProposalCommand,
   CreateDraftProposalCommand,
+  PublicationReference,
   ProposalCommand,
   ProposalIdempotencyIdentity,
   ProposalPayload,

@@ -28,7 +28,7 @@ import {
 } from "./fixtures";
 import { reportAuthorizesPurpose } from "./lineage";
 import { createStartupRuntimePin, createVerificationReportService } from "./service";
-import { P13_RETIRED_STATE } from "./runtimePin";
+import { P13_RETIRED_STATE, readApprovedCatalogPublicationRuntime } from "./runtimePin";
 import type { ReportRefusal } from "./errors";
 
 const databaseAvailable = await isTestDatabaseAvailable();
@@ -383,6 +383,74 @@ describe("S10-RPT lineage-aware reports", () => {
       subject,
     });
     expect(startupPresent.kind).toBe("present");
+  });
+
+  it("does not let a combo or post-retirement report that pins Catalog A approve Catalog B", async () => {
+    const targetId = nextTarget("combo-pin");
+    const subject = sharedSubject(targetId);
+    const pinsA = reportPins();
+    const pinsB = {
+      ...pinsA,
+      catalog: {
+        ...pinsA.catalog,
+        releaseId: "crel-later-catalog",
+        releaseDigest: "sha256:later-catalog",
+      },
+    };
+    const retired = await assemblePurpose(
+      validPrepare({
+        subject,
+        pins: pinsA,
+        purpose: "post-retirement-runtime",
+        lineage: reportLineage({
+          phaseSnapshot: "P13",
+          p12State: "completed",
+          p13State: P13_RETIRED_STATE,
+          writerRetirementFingerprint: "retire-fp-combo",
+          runtimePinGeneration: "pin-combo",
+        }),
+      }),
+    );
+    await approveDistinct(retired.report.digest, "post-retirement-runtime", `${targetId}-post`);
+    const combo = await assemblePurpose(
+      validPrepare({
+        subject,
+        pins: pinsA,
+        purpose: "catalog-publication-runtime",
+        lineage: reportLineage({
+          phaseSnapshot: "P13",
+          p12State: "completed",
+          p13State: P13_RETIRED_STATE,
+          writerRetirementFingerprint: "retire-fp-combo",
+          runtimePinGeneration: "pin-combo",
+        }),
+      }),
+    );
+    await approveDistinct(combo.report.digest, "catalog-publication-runtime", `${targetId}-combo`);
+    const reports = reportService();
+    const queryA = {
+      p13State: P13_RETIRED_STATE,
+      writerRetirementFingerprint: "retire-fp-combo",
+      runtimePinGeneration: "pin-combo",
+      pins: pinsA,
+      subject,
+    };
+    const queryB = { ...queryA, pins: pinsB };
+    const runtimeA = await reports.readApprovedRuntimePin(queryA);
+    const runtimeB = await reports.readApprovedRuntimePin(queryB);
+    expect(runtimeA.kind).toBe("present");
+    expect(runtimeB).toEqual({ kind: "absent", reason: "missing" });
+    const comboA = await readApprovedCatalogPublicationRuntime(db, queryA, {
+      now: () => new Date("2026-09-04T00:00:00.000Z"),
+    });
+    const comboB = await readApprovedCatalogPublicationRuntime(db, queryB, {
+      now: () => new Date("2026-09-04T00:00:00.000Z"),
+    });
+    expect(comboA.kind).toBe("present");
+    if (comboA.kind === "present") {
+      expect(comboA.report.purpose).toBe("catalog-publication-runtime");
+    }
+    expect(comboB).toEqual({ kind: "absent", reason: "missing" });
   });
 
   it("returns the same digest for the same canonical inputs and excludes assembledAt", async () => {

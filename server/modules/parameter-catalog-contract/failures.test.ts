@@ -146,7 +146,23 @@ describe("parameter catalog stable failures", () => {
       "legacy-surface-retired",
       "legacy-id-ambiguous",
       "forbidden",
-      "migration-diagnostics-not-public"
+      "migration-diagnostics-not-public",
+      "publication-not-authorized",
+      "publication-capability-missing",
+      "publication-self-approval-forbidden",
+      "publication-policy-disabled",
+      "publication-frozen",
+      "candidate-stale",
+      "candidate-tampered",
+      "needs-rebase",
+      "unsupported-catalog-capability",
+      "publication-authorization-revoked",
+      "idempotency-key-conflict",
+      "artifact-missing",
+      "predecessor-incomplete",
+      "activation-receipt-mismatch",
+      "adoption-evidence-invalid",
+      "registration-followup-failed"
     ]);
     expect(comparatorFailureCodes).toEqual([
       "PCAT-CMP-CORPUS-COVERAGE",

@@ -72,6 +72,7 @@ type TimelineItem = CatalogDefinitionTimelineResponse["items"][number];
 export type CatalogPageProps = {
   repository: ParameterCatalogRepository;
   actor: CatalogActorKind;
+  sessionPermissions?: readonly string[] | null;
   search?: string;
   onAnchorChange?: (href: string, mode: "push" | "replace") => void;
   onDomainStateChange?: (state: CatalogDomainState) => void;
@@ -142,6 +143,7 @@ function pickCollection(
 export function CatalogPage({
   repository,
   actor,
+  sessionPermissions,
   search,
   onAnchorChange,
   onDomainStateChange,
@@ -339,7 +341,7 @@ export function CatalogPage({
     error
   });
   const writesEnabled = catalogWritesEnabled(domainState);
-  const actions = catalogActionAffordances(actor, domainState);
+  const actions = catalogActionAffordances(actor, domainState, sessionPermissions);
   const onDomainStateChangeRef = useRef(onDomainStateChange);
   onDomainStateChangeRef.current = onDomainStateChange;
   const lastNotifiedDomainState = useRef("");

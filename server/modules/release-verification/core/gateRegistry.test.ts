@@ -53,7 +53,7 @@ describe("closed Release Verification gate registry", () => {
       successorPurpose: "isolated-candidate-acceptance",
     });
     expect(preActivation).toHaveLength(RELEASE_VERIFICATION_GATES.length);
-    expect(verificationPurposes).toHaveLength(6);
+    expect(verificationPurposes).toHaveLength(7);
   });
 
   it("records mode-proved not-applicable instead of a waiver", () => {

@@ -252,7 +252,10 @@ export function buildWiseEffRouter(options: WiseEffServerOptions = {}) {
   });
   registerParameterCatalogApi(router, {
     db: options.db,
-    resolveAuth: authResolver
+    resolveAuth: authResolver,
+    catalogPublication: {
+      env: process.env,
+    },
   });
 
   router.get("/metrics", async () => {
@@ -262,7 +265,8 @@ export function buildWiseEffRouter(options: WiseEffServerOptions = {}) {
       includeWorkerQueue: true,
       includeNotificationOutbox: options.env?.NOTIFICATION_WORKER_ENABLED === true,
       durableQueue: options.durableQueue,
-      env: options.env
+      env: options.env,
+      catalogPublication: { env: process.env },
     });
     const readiness = readyHealth.body.status === "ready" ? "ready" : "not_ready";
     metrics.setReadinessStatus(readiness);

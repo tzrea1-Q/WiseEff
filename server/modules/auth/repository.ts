@@ -1,7 +1,8 @@
 import type { Queryable } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
+import { catalogTestCapabilitiesForUser } from "./catalogTestCapabilities";
 import { compareRoles, permissionsForRoles } from "./policy";
-import type { AuthContext, BackendRoleId } from "./types";
+import type { AuthContext, BackendPermission, BackendRoleId } from "./types";
 
 type AuthRow = {
   user_id: string;
@@ -63,8 +64,15 @@ function authContextFromRows(rows: AuthRow[]) {
       name: first.organization_name
     },
     roles,
-    permissions: permissionsForRoles(roles.map((role) => role.roleId))
+    permissions: uniquePermissions([
+      ...permissionsForRoles(roles.map((role) => role.roleId)),
+      ...catalogTestCapabilitiesForUser(first.user_id)
+    ])
   };
+}
+
+function uniquePermissions(permissions: readonly BackendPermission[]): BackendPermission[] {
+  return [...new Set(permissions)];
 }
 
 export async function getAuthContext(db: Queryable, userId: string): Promise<AuthContext> {

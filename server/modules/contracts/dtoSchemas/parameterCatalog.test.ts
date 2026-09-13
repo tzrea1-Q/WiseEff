@@ -6,8 +6,10 @@ import { buildOpenApiDocument } from "../openapi";
 import { routeManifest } from "../routeManifest";
 import { schemaRegistry } from "../schemaRegistry";
 import {
+  catalogAcceptProposalRequestSchema,
   catalogApiFailureReasons,
   catalogCreateBindingDraftRequestSchema,
+  catalogCreatePublicationCandidateRequestSchema,
   catalogDocumentResponseSchema,
   catalogFailureClientBehaviors,
   catalogKernelReadOperations,
@@ -100,6 +102,85 @@ describe("S8-CON threat matrix", () => {
     expect(catalogFailureClientBehaviors["catalog-not-ready"]).toBe("disable-writes-retry-after");
     expect(catalogFailureClientBehaviors["legacy-surface-retired"]).toBe("migrate-to-successor-no-retry");
     expect(catalogFailureClientBehaviors["migration-diagnostics-not-public"]).toBe("treat-as-not-found");
+    expect(catalogFailureClientBehaviors["publication-policy-disabled"]).toBe("publication-disabled");
+    expect(catalogFailureClientBehaviors["idempotency-key-conflict"]).toBe("new-idempotency-key");
+    expect(catalogFailureClientBehaviors["needs-rebase"]).toBe("rebase-candidate");
+    expect(catalogFailureClientBehaviors["activation-receipt-mismatch"]).toBe("inspect-receipt-no-retry");
+  });
+
+  it("freezes the four CP-00 publication routes without v3, /admin, cancel, or retry", () => {
+    const publication = parameterCatalogCanonicalRoutes.filter((route) =>
+      route.path.includes("publication")
+    );
+    expect(publication.map((route) => `${route.method} ${route.path}`)).toEqual([
+      "POST /api/v2/catalog/publication-candidates",
+      "GET /api/v2/catalog/publication-candidates/:candidateId",
+      "POST /api/v2/catalog/publication-candidates/:candidateId/publish",
+      "GET /api/v2/catalog/publications/:jobId"
+    ]);
+    expect(
+      parameterCatalogCanonicalRoutes.some((route) => route.path.includes("/admin") || route.path.includes("/v3/"))
+    ).toBe(false);
+    expect(
+      parameterCatalogCanonicalRoutes.some((route) =>
+        route.path.includes("cancel") || route.path.endsWith("/retry")
+      )
+    ).toBe(false);
+    expect(parameterCatalogClientMethodByRouteId["catalog.createPublicationCandidate"]).toBe(
+      "createPublicationCandidate"
+    );
+    expect(parameterCatalogClientMethodByRouteId["catalog.getPublication"]).toBe("getPublication");
+  });
+
+  it("accepts M2 create-subject and revise-definition on the frozen candidate request", () => {
+    expect(
+      catalogCreatePublicationCandidateRequestSchema.parse({
+        changeSet: [
+          {
+            op: "create-subject-with-definitions",
+            kind: "driver",
+            canonicalKey: "driver:acme,aux",
+            selector: { kind: "driver-compatible", value: "acme,aux" },
+            nature: "physical-device",
+            cardinality: "multiple",
+            definitions: [
+              {
+                propertyKey: "vbat",
+                content: {
+                  displayName: "Aux",
+                  documentation: "Aux voltage.",
+                  unit: "mA",
+                  valueSchema: { type: "integer", minimum: 0 }
+                }
+              }
+            ]
+          }
+        ]
+      }).changeSet[0]?.op
+    ).toBe("create-subject-with-definitions");
+    expect(
+      catalogCreatePublicationCandidateRequestSchema.safeParse({
+        changeSet: [
+          {
+            op: "create-subject-with-definitions",
+            kind: "driver",
+            canonicalKey: "driver:acme,aux",
+            selector: { kind: "driver-compatible", value: "acme,aux" },
+            definitions: [
+              {
+                subjectId: "csub_acme_power",
+                propertyKey: "vbat",
+                content: {
+                  displayName: "Aux",
+                  documentation: "Aux voltage.",
+                  valueSchema: { type: "integer" }
+                }
+              }
+            ]
+          }
+        ]
+      }).success
+    ).toBe(false);
   });
 
   it("fails closed when a canonical client method is missing for a catalog route", () => {
@@ -176,6 +257,22 @@ describe("S8-CON threat matrix", () => {
           placement: { mode: "use-default" }
         },
         reason: "illegal extra placement"
+      }).success
+    ).toBe(false);
+    expect(
+      catalogAcceptProposalRequestSchema.safeParse({
+        repositoryReference: "repo://wiseeff-catalog/acme-power.yaml"
+      }).success
+    ).toBe(true);
+    expect(
+      catalogAcceptProposalRequestSchema.safeParse({
+        publicationReference: { kind: "candidate", candidateId: "ccand_01K" }
+      }).success
+    ).toBe(true);
+    expect(
+      catalogAcceptProposalRequestSchema.safeParse({
+        repositoryReference: "repo://wiseeff-catalog/acme-power.yaml",
+        publicationReference: { kind: "candidate", candidateId: "ccand_01K" }
       }).success
     ).toBe(false);
   });

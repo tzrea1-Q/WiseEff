@@ -168,13 +168,21 @@ export function fingerprintGovernanceDraft(value: unknown): string {
 export function canExecuteGovernanceAction(
   actor: CatalogActorKind,
   action: CatalogAuthorizedAction,
-  state: CatalogDomainState
+  state: CatalogDomainState,
+  permissions?: readonly string[] | null
 ): boolean {
-  return isCatalogActionEnabled(actor, action, state);
+  return isCatalogActionEnabled(actor, action, state, permissions);
 }
 
 export function writeActionNeedsIfMatch(action: CatalogAuthorizedAction): boolean {
-  return action !== "read" && action !== "register-subject" && action !== "create-proposal";
+  return (
+    action !== "read" &&
+    action !== "register-subject" &&
+    action !== "create-proposal" &&
+    action !== "preview-publication" &&
+    action !== "publish-publication" &&
+    action !== "review-high-risk-publication"
+  );
 }
 
 export function placementIntentFromChoice(

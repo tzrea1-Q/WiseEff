@@ -1,5 +1,7 @@
 import pg from "pg";
 
+import type { TrustedInvocationContext } from "../auth/trustedInvocation";
+import type { ImpactFacts } from "../catalog-publication/authorization/types";
 import { compileCatalogRelease } from "./compiler/index";
 import type { CatalogReleaseBundle } from "./compiler/types";
 import {
@@ -12,6 +14,7 @@ import {
   type Result,
   CatalogAliasId,
   CatalogCanonicalKey,
+  CatalogCandidateId,
   CatalogCursor,
   CatalogEventTime,
   CatalogPageLimit,
@@ -23,6 +26,8 @@ import {
   CatalogTimelineFactId,
   DefinitionRevisionId,
   ParameterDefinitionId,
+  PublicationAuthorizationId,
+  PublicationJobId,
 } from "../parameter-catalog-contract/index";
 import { loadCurrentCatalogSnapshot } from "./runtime/currentSnapshot";
 import {
@@ -397,6 +402,14 @@ export interface PinnedCatalogSnapshot extends CatalogSnapshot {
   readonly pin: CatalogReleasePin;
 }
 
+export type AdoptedPreexistingEvidence = {
+  readonly source_bundle_digest: string;
+  readonly verification_digest: string;
+  readonly data_mode: "fresh" | "populated" | "restored";
+  readonly collected_at: string;
+  readonly approved_by: string;
+};
+
 export type InstallPublishedReleaseCommand =
   | {
       readonly mode: "bootstrap";
@@ -408,6 +421,22 @@ export type InstallPublishedReleaseCommand =
       readonly source: CatalogReleaseSource;
       readonly expectedCurrent: CatalogReleasePin;
       readonly expectedTargetDigest: CatalogReleaseDigest;
+    }
+  | {
+      readonly mode: "online-publication";
+      readonly jobId: PublicationJobId;
+      readonly candidateId: CatalogCandidateId;
+      readonly authorizationId: PublicationAuthorizationId;
+      readonly expectedCurrent: CatalogReleasePin;
+      readonly fencingToken: number;
+      readonly trustedActor: TrustedInvocationContext;
+      readonly impactFacts?: ImpactFacts;
+    }
+  | {
+      readonly mode: "adopted-preexisting";
+      readonly expectedCurrent: CatalogReleasePin;
+      readonly actorPrincipalId: string;
+      readonly adoptionEvidence: AdoptedPreexistingEvidence;
     };
 
 export interface PreTrafficSwitchBackCommand {
@@ -527,6 +556,7 @@ export const createCatalogKernel = (pool: pg.Pool): CatalogKernel => ({
 export {
   CatalogAliasId,
   CatalogCanonicalKey,
+  CatalogCandidateId,
   CatalogCursor,
   CatalogEventTime,
   CatalogPageLimit,
@@ -538,4 +568,6 @@ export {
   CatalogTimelineFactId,
   DefinitionRevisionId,
   ParameterDefinitionId,
+  PublicationAuthorizationId,
+  PublicationJobId,
 };

@@ -26,8 +26,10 @@ import {
   type ReviewReason,
 } from "../../parameter-catalog-contract/index";
 import type {
+  AcceptProposalCommand,
   CreateDraftProposalCommand,
   ProposalTrustedContext,
+  PublicationReference,
   SubmitExistingProposalCommand,
 } from "../../parameter-governance/proposals/command";
 import type { RegistrationCommand } from "../../parameter-governance/registration/command";
@@ -1053,6 +1055,23 @@ async function handleWithdrawProposal(
   });
 }
 
+function acceptProposalCommandFromBody(
+  body: {
+    repositoryReference?: string;
+    publicationReference?: PublicationReference;
+  },
+  base: Omit<AcceptProposalCommand, "kind" | "repositoryReference" | "publicationReference">,
+): AcceptProposalCommand {
+  return {
+    kind: "accept",
+    ...base,
+    ...(body.publicationReference ? { publicationReference: body.publicationReference } : {}),
+    ...(body.repositoryReference !== undefined
+      ? { repositoryReference: body.repositoryReference }
+      : {}),
+  };
+}
+
 async function handleAcceptOrRejectProposal(
   ports: CatalogGovernancePorts,
   scope: TrustedGovernanceScope,
@@ -1082,16 +1101,22 @@ async function handleAcceptOrRejectProposal(
   if (etagHeader !== proposalEtag(proposalId, expectedEtag)) return revisionConflict(request.requestId);
   const command: ProposalCommand =
     kind === "accept"
-      ? {
-          kind: "accept",
-          organizationId: scope.organizationId,
-          proposalId,
-          expectedEtag,
-          currentRelease: pin.pin,
-          repositoryReference: (parsed.data as { repositoryReference: string }).repositoryReference,
-          idempotencyKey,
-          context,
-        }
+      ? acceptProposalCommandFromBody(
+          parsed.data as {
+            repositoryReference?: string;
+            publicationReference?:
+              | { kind: "repository"; repositoryReference: string }
+              | { kind: "candidate"; candidateId: string };
+          },
+          {
+            organizationId: scope.organizationId,
+            proposalId,
+            expectedEtag,
+            currentRelease: pin.pin,
+            idempotencyKey,
+            context,
+          },
+        )
       : {
           kind: "reject",
           organizationId: scope.organizationId,

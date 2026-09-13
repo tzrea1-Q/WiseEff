@@ -14,6 +14,7 @@ import {
 import {
   proposalIdempotencyIdentity,
   type ProposalCommand,
+  type PublicationReference,
 } from "./command";
 import type { ProposalFailure } from "./failures";
 import { mapWriterDatabaseError } from "./failures";
@@ -55,7 +56,9 @@ export type PublicationIntentRow = {
   id: string;
   proposal_id: string;
   proposal_revision_id: string;
-  repository_reference: string;
+  repository_reference: string | null;
+  reference_kind: "repository" | "candidate";
+  candidate_id: string | null;
   reviewer_principal_id: string;
   success_audit_ref: string;
 };
@@ -291,7 +294,7 @@ export const loadPublicationIntent = async (
 ): Promise<PublicationIntentRow | null> => {
   const result = await client.query<PublicationIntentRow>(
     `select id, proposal_id, proposal_revision_id, repository_reference,
-            reviewer_principal_id, success_audit_ref
+            reference_kind, candidate_id, reviewer_principal_id, success_audit_ref
      from parameter_catalog.catalog_publication_intents
      where proposal_id = $1`,
     [proposalId],
@@ -340,6 +343,11 @@ export const loadSuccessAuditSnapshot = async (
       ? {
           id: PublicationIntentId(snapshot.publicationIntent.id),
           repositoryReference: snapshot.publicationIntent.repositoryReference,
+          publicationReference:
+            snapshot.publicationIntent.publicationReference ?? {
+              kind: "repository",
+              repositoryReference: snapshot.publicationIntent.repositoryReference ?? "",
+            },
           reviewerPrincipalId: snapshot.publicationIntent.reviewerPrincipalId,
           successAuditRef: snapshot.publicationIntent.successAuditRef,
         }
@@ -358,11 +366,46 @@ const proposalSnapshotSchema = z.object({
   baseCatalogReleaseId: snapshotToken, baseDefinitionRevisionId: snapshotToken.nullable(),
   baseDefinitionId: snapshotToken.nullable(), submittedByPersonId: snapshotToken,
   requestedChange: z.record(z.string(), snapshotJson),
-  publicationIntent: z.object({ id: snapshotToken, repositoryReference: snapshotToken, reviewerPrincipalId: snapshotToken, successAuditRef: snapshotToken }).nullable(),
+  publicationIntent: z.object({
+    id: snapshotToken,
+    repositoryReference: snapshotToken.nullable().optional(),
+    publicationReference: z.discriminatedUnion("kind", [
+      z.object({ kind: z.literal("repository"), repositoryReference: snapshotToken }),
+      z.object({ kind: z.literal("candidate"), candidateId: snapshotToken }),
+    ]).optional(),
+    reviewerPrincipalId: snapshotToken,
+    successAuditRef: snapshotToken,
+  }).transform((intent) => {
+    const publicationReference =
+      intent.publicationReference ??
+      (typeof intent.repositoryReference === "string"
+        ? { kind: "repository" as const, repositoryReference: intent.repositoryReference }
+        : undefined);
+    if (!publicationReference) {
+      return {
+        ...intent,
+        repositoryReference: intent.repositoryReference ?? null,
+        publicationReference: { kind: "repository" as const, repositoryReference: "" },
+      };
+    }
+    return {
+      ...intent,
+      publicationReference,
+      repositoryReference:
+        intent.repositoryReference !== undefined
+          ? intent.repositoryReference
+          : publicationReference.kind === "repository"
+            ? publicationReference.repositoryReference
+            : null,
+    };
+  }).nullable(),
 }).superRefine((snapshot, context) => {
   if ((snapshot.baseDefinitionId === null) !== (snapshot.baseDefinitionRevisionId === null)
     || (snapshot.status === "accepted") !== (snapshot.publicationIntent !== null)
-    || snapshot.publicationIntent?.reviewerPrincipalId === snapshot.submittedByPersonId) {
+    || snapshot.publicationIntent?.reviewerPrincipalId === snapshot.submittedByPersonId
+    || (snapshot.publicationIntent !== null
+      && snapshot.publicationIntent.publicationReference.kind === "repository"
+      && !snapshot.publicationIntent.publicationReference.repositoryReference)) {
     context.addIssue({ code: "custom", message: "invalid proposal snapshot invariants" });
   }
 });
@@ -456,26 +499,37 @@ export const insertPublicationIntent = async (
     readonly proposalId: string;
     readonly proposalRevisionId: string;
     readonly baseCatalogReleaseId: string;
-    readonly repositoryReference: string;
+    readonly publicationReference: PublicationReference;
     readonly reviewerPrincipalId: string;
     readonly successAuditRef: string;
   },
 ): Promise<PublicationIntentRow> => {
+  const repositoryReference =
+    input.publicationReference.kind === "repository"
+      ? input.publicationReference.repositoryReference
+      : null;
+  const candidateId =
+    input.publicationReference.kind === "candidate"
+      ? input.publicationReference.candidateId
+      : null;
   const result = await client.query<PublicationIntentRow>(
     `insert into parameter_catalog.catalog_publication_intents (
        id, proposal_id, proposal_revision_id, base_catalog_release_id,
-       repository_reference, reviewer_principal_id, success_audit_ref
-     ) values ($1,$2,$3,$4,$5,$6,$7)
+       repository_reference, reviewer_principal_id, success_audit_ref,
+       reference_kind, candidate_id
+     ) values ($1,$2,$3,$4,$5,$6,$7,$8,$9)
      returning id, proposal_id, proposal_revision_id, repository_reference,
-               reviewer_principal_id, success_audit_ref`,
+               reference_kind, candidate_id, reviewer_principal_id, success_audit_ref`,
     [
       input.id,
       input.proposalId,
       input.proposalRevisionId,
       input.baseCatalogReleaseId,
-      input.repositoryReference,
+      repositoryReference,
       input.reviewerPrincipalId,
       input.successAuditRef,
+      input.publicationReference.kind,
+      candidateId,
     ],
   );
   return result.rows[0]!;
@@ -484,6 +538,10 @@ export const insertPublicationIntent = async (
 export const intentResult = (row: PublicationIntentRow): PublicationIntentResult => ({
   id: PublicationIntentId(row.id),
   repositoryReference: row.repository_reference,
+  publicationReference:
+    row.reference_kind === "candidate" && row.candidate_id
+      ? { kind: "candidate", candidateId: row.candidate_id }
+      : { kind: "repository", repositoryReference: row.repository_reference ?? "" },
   reviewerPrincipalId: row.reviewer_principal_id,
   successAuditRef: row.success_audit_ref,
 });

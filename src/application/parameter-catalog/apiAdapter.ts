@@ -24,7 +24,12 @@ export function createApiParameterCatalogRepository(
       client.getDefinitionRevision(definitionId, revisionId, query),
     listDefinitionTimeline: (definitionId, query) =>
       client.listDefinitionTimeline(definitionId, query),
-    getLegacyIdentifier: (legacyType, legacyId) => client.getLegacyIdentifier(legacyType, legacyId)
+    getLegacyIdentifier: (legacyType, legacyId) => client.getLegacyIdentifier(legacyType, legacyId),
+    createPublicationCandidate: (body, context) => client.createPublicationCandidate(body, context),
+    getPublicationCandidate: (candidateId) => client.getPublicationCandidate(candidateId),
+    publishPublicationCandidate: (candidateId, body, context) =>
+      client.publishPublicationCandidate(candidateId, body, context),
+    getPublication: (jobId) => client.getPublication(jobId)
   };
 }
 

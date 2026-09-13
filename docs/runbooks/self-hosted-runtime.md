@@ -103,7 +103,7 @@ If bootstrap reports that an admin already exists, use the governance UI or rese
 
 ## Publish the vendor Catalog successor
 
-After `--parameter-data-mode new-empty` and the first fixture publication (`crel_acme_1`), compile `schemas/dts/catalog.json` and advance with `install-catalog-release.ts --mode advance`. Do not bootstrap again, do not seed, and do not INSERT Catalog rows. Exact commands live in [Self-Hosted Upgrade](../../ops/self-hosted/upgrade.md#vendor-catalog-successor).
+After `--parameter-data-mode new-empty` and the first fixture publication (`crel_acme_1`), compile `schemas/dts/catalog.json` and advance with `install-catalog-release.ts --mode advance` **only while `catalog_activation_receipts` is empty**. That D1 CLI contract is for untaken-over instances. After any activation Receipt exists, the same bootstrap/advance entry is refused; vendor reuse uses the CP-09 import adapter and CP-07 authorize/job/manager path. Do not bootstrap again, do not seed, and do not INSERT Catalog rows. Exact D1 commands live in [Self-Hosted Upgrade](../../ops/self-hosted/upgrade.md#vendor-catalog-successor).
 
 ## Import Demo Seed Data
 

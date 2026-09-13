@@ -87,6 +87,18 @@ describe("parseInstallCatalogReleaseArgs", () => {
     ).toThrow("catalog-install-usage");
   });
 
+  it("rejects skipAuthorization and other unknown flags", () => {
+    expect(() =>
+      parseInstallCatalogReleaseArgs([
+        "/tmp/bundle.json",
+        "--confirm-digest",
+        FIRST_ACME_RELEASE_DIGEST,
+        "--skipAuthorization",
+        "true",
+      ]),
+    ).toThrow("catalog-install-usage");
+  });
+
   it("rejects an unknown mode", () => {
     expect(() =>
       parseInstallCatalogReleaseArgs([

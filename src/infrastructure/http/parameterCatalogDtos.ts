@@ -6,6 +6,10 @@ import type {
   bindingHistoryListResponseSchema,
   catalogAcceptProposalRequestSchema,
   catalogCreateProposalRequestSchema,
+  catalogCreatePublicationCandidateRequestSchema,
+  catalogPublishPublicationCandidateRequestSchema,
+  catalogPublicationCandidateResponseSchema,
+  catalogPublicationJobResponseSchema,
   catalogCreateBindingDraftRequestSchema,
   catalogCreateNodeEnablementDraftRequestSchema,
   catalogDefinitionListResponseSchema,
@@ -67,6 +71,16 @@ export type CatalogReviewResolutionResponse = z.infer<typeof catalogReviewResolu
 export type CatalogProposalListResponse = z.infer<typeof catalogProposalListResponseSchema>;
 export type CatalogProposalResponse = z.infer<typeof catalogProposalResponseSchema>;
 export type CatalogCreateProposalRequest = z.infer<typeof catalogCreateProposalRequestSchema>;
+export type CatalogCreatePublicationCandidateRequest = z.infer<
+  typeof catalogCreatePublicationCandidateRequestSchema
+>;
+export type CatalogPublishPublicationCandidateRequest = z.infer<
+  typeof catalogPublishPublicationCandidateRequestSchema
+>;
+export type CatalogPublicationCandidateResponse = z.infer<
+  typeof catalogPublicationCandidateResponseSchema
+>;
+export type CatalogPublicationJobResponse = z.infer<typeof catalogPublicationJobResponseSchema>;
 export type CatalogSubmitProposalRequest = z.infer<typeof catalogSubmitProposalRequestSchema>;
 export type CatalogWithdrawProposalRequest = z.infer<typeof catalogWithdrawProposalRequestSchema>;
 export type CatalogAcceptProposalRequest = z.infer<typeof catalogAcceptProposalRequestSchema>;

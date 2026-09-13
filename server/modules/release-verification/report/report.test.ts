@@ -83,6 +83,13 @@ describe("S10-RPT report lineage helpers", () => {
     const pre = sampleReport({ purpose: "pre-activation" });
     expect(reportAuthorizesPurpose(pre, "pre-activation")).toBe(true);
     expect(reportAuthorizesPurpose(pre, "public-release")).toBe(false);
+    expect(requiredPredecessorPurposes("catalog-publication-runtime")).toEqual([]);
+    expect(allowedPredecessorPurposes("catalog-publication-runtime")).toEqual([
+      "post-retirement-runtime",
+    ]);
+    const combo = sampleReport({ purpose: "catalog-publication-runtime" });
+    expect(reportAuthorizesPurpose(combo, "catalog-publication-runtime")).toBe(true);
+    expect(reportAuthorizesPurpose(combo, "post-retirement-runtime")).toBe(false);
   });
 
   it("keeps canonical report digests stable across assembledAt and opaque ids", () => {

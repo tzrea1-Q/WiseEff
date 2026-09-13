@@ -34,7 +34,10 @@ export const BACKEND_PERMISSIONS = [
   "admin:access",
   "users:manage",
   "platform:access",
-  "platform:schema-promote"
+  "platform:schema-promote",
+  "catalog:author",
+  "catalog:publish",
+  "catalog:review-high-risk"
 ] as const;
 
 export type BackendPermission = (typeof BACKEND_PERMISSIONS)[number];

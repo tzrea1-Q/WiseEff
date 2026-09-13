@@ -125,6 +125,8 @@ export async function runParameterDataMode(db: Database, input: {
     if (!projection || projection.identity.digest !== pointer.current.digest) {
       throw new Error("parameter-data-mode-catalog-drift");
     }
+    // Canonical-installed new-empty observes the existing pointer. It does not
+    // reset catalogs and does not claim P13 writer retirement.
     return { parameterDataMode: "new-empty", state: "canonical-installed", migrationsApplied: applied.rows.length } as const;
   });
 }

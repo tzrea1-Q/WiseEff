@@ -16,6 +16,7 @@ import {
   type CatalogSnapshot,
 } from "../catalog-kernel/interface";
 import { readCurrentCatalogPointer } from "../catalog-kernel/install/currentPointer";
+import { createPinCapturingCatalogRuntime } from "../catalog-publication/runtime";
 import {
   CatalogReleaseDigest,
   CatalogReleaseId,
@@ -173,7 +174,7 @@ export async function loadPublishedCatalog(pool: pg.Pool): Promise<CatalogSnapsh
   if (pointer.kind !== "installed") {
     return null;
   }
-  const loaded = await createCatalogKernel(pool).loadCurrentCatalog(
+  const loaded = await createPinCapturingCatalogRuntime(pool, createCatalogKernel(pool)).loadCurrentCatalog(
     pinOf(pointer.current.id, pointer.current.digest),
   );
   return loaded.ok ? loaded.value : null;

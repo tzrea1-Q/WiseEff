@@ -77,6 +77,14 @@ export const THREAT_MATRIX: readonly ThreatMatrixRow[] = Object.freeze([
   }),
   freezeRow({
     id: 9,
+    name: "candidate-publication-reference",
+    initialState: "submitted proposal; frozen Candidate for the same revision",
+    action: "accept with tagged publicationReference kind=candidate and no repository URL",
+    expected: "intent stores candidate_id with null repository_reference; no Authorization; Catalog pointer and release counts unchanged",
+    leftover: "self-accept remains proposal-self-approval-forbidden; policy-off cannot mint an Authorization via accept",
+  }),
+  freezeRow({
+    id: 10,
     name: "submit-existing-not-create-and-submit",
     initialState: "internal kind:submit adapter still used by existing callers",
     action: "compare submit-existing against kind:submit create-and-submit",
