@@ -3,6 +3,7 @@ import { existsSync, lstatSync, readFileSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import path from "node:path";
 import { isDeepStrictEqual } from "node:util";
+import { fileURLToPath } from "node:url";
 import {
   feedbackModuleIds,
   requiredGroups,
@@ -14,7 +15,6 @@ import {
 } from "./selection";
 
 export const registryPath = "scripts/verification/registry.json";
-const POLICY_VERSION = "eff03-git-preview-v1";
 const OUTPUT_LIMIT = 64 * 1024;
 const GIT_LIMIT = 8 * 1024 * 1024;
 const GIT_TIMEOUT = 15_000;
@@ -28,6 +28,7 @@ export function fail(code: string): never { throw new PreviewError(code); }
 type GitResult = { status: number | null; stdout: Buffer; error: Error | undefined };
 type ConfigEntry = { key: string; value: string };
 type Snapshot = { head: string; tree: string; status: string };
+type RepositoryMetadata = Pick<Snapshot, "head" | "tree">;
 type RegistryRead = { modules: RegistryModule[]; complete: boolean } | null;
 
 const gitBase = [
@@ -86,11 +87,49 @@ function strictConfig(cwd: string): void {
   }
 }
 
-function requireRepositoryMetadata(cwd: string): void {
+function nulRecords(text: string, code: string): string[] {
+  if (!text) return [];
+  if (!text.endsWith("\0")) return fail(code);
+  const body = text.slice(0, -1);
+  if (!body) return fail(code);
+  const records = body.split("\0");
+  if (records.some(record => !record)) return fail(code);
+  return records;
+}
+
+function inspectIndex(cwd: string): void {
+  const records = nulRecords(decode(gitChecked(cwd, ["ls-files", "--stage", "--full-name", "-z"])), "INVALID_INDEX");
+  for (const record of records) {
+    const tab = record.indexOf("\t");
+    const left = tab < 0 ? "" : record.slice(0, tab);
+    const file = tab < 0 ? "" : record.slice(tab + 1);
+    const fields = left.split(" ");
+    if (fields.length !== 3 || !/^(?:100644|100755|120000|160000)$/.test(fields[0])
+      || !/^[a-f0-9]{40}$/.test(fields[1]) || fields[1] === "0".repeat(40) || !/^[0-3]$/.test(fields[2]) || !file) return fail("INVALID_INDEX");
+    if (fields[0] === "160000") return fail("GITLINK_UNSUPPORTED");
+    if (fields[2] !== "0") return fail("UNMERGED_INDEX");
+  }
+}
+
+function inspectHeadTree(cwd: string, head: string): void {
+  const records = nulRecords(decode(gitChecked(cwd, ["ls-tree", "-r", "--full-tree", "-z", head])), "AMBIGUOUS_TREE");
+  for (const record of records) {
+    const tab = record.indexOf("\t");
+    const left = tab < 0 ? "" : record.slice(0, tab);
+    const file = tab < 0 ? "" : record.slice(tab + 1);
+    const fields = left.split(" ");
+    if (fields.length !== 3 || !/^(?:100644|100755|120000|160000)$/.test(fields[0])
+      || fields[1] !== (fields[0] === "160000" ? "commit" : "blob") || !/^[a-f0-9]{40}$/.test(fields[2]) || !file) return fail("AMBIGUOUS_TREE");
+    if (fields[0] === "160000") return fail("GITLINK_UNSUPPORTED");
+  }
+}
+
+function requireRepositoryMetadata(cwd: string): RepositoryMetadata {
   strictConfig(cwd);
   if (decode(gitChecked(cwd, ["rev-parse", "--is-inside-work-tree"])).trim() !== "true"
     || decode(gitChecked(cwd, ["rev-parse", "--is-shallow-repository"])).trim() !== "false"
     || decode(gitChecked(cwd, ["rev-parse", "--show-object-format"])).trim() !== "sha1") return fail("UNCONFIRMED_REPOSITORY");
+  if (decode(gitChecked(cwd, ["rev-parse", "--show-prefix"])) !== "\n") return fail("NON_ROOT_CWD");
   for (const relative of ["shallow", "info/grafts", "objects/info/alternates", "info/sparse-checkout"]) {
     const file = path.resolve(cwd, decode(gitChecked(cwd, ["rev-parse", "--path-format=absolute", "--git-path", relative])).trim());
     if (existsSync(file)) {
@@ -101,13 +140,17 @@ function requireRepositoryMetadata(cwd: string): void {
   }
   const files = decode(gitChecked(cwd, ["ls-files", "-v", "-z"])).split("\0").filter(Boolean);
   if (files.some(entry => /^[a-zS] /.test(entry))) return fail("INDEX_STATE_UNSUPPORTED");
+  const head = decode(gitChecked(cwd, ["rev-parse", "--verify", "HEAD^{commit}"])).trim();
+  const tree = decode(gitChecked(cwd, ["rev-parse", "--verify", "HEAD^{tree}"])).trim();
+  if (!validSha(head) || !validSha(tree)) return fail("UNCONFIRMED_GIT_STATE");
+  inspectIndex(cwd);
+  inspectHeadTree(cwd, head);
+  return { head, tree };
 }
 
 function snapshot(cwd: string): Snapshot {
-  const head = decode(gitChecked(cwd, ["rev-parse", "--verify", "HEAD^{commit}"])).trim();
-  const tree = decode(gitChecked(cwd, ["rev-parse", "--verify", "HEAD^{tree}"])).trim();
+  const { head, tree } = requireRepositoryMetadata(cwd);
   const status = decode(gitChecked(cwd, ["status", "--porcelain=v1", "-z", "--untracked-files=all", "--ignore-submodules=none"]));
-  if (!validSha(head) || !validSha(tree)) return fail("UNCONFIRMED_GIT_STATE");
   return { head, tree, status };
 }
 
@@ -259,6 +302,28 @@ function readRegistry(cwd: string, commit: string): RegistryRead {
   return { modules, complete: idsComplete && verifyDeclaredPaths(cwd, commit, modules) };
 }
 
+function updateFrame(digest: ReturnType<typeof createHash>, value: Buffer): void {
+  const length = Buffer.alloc(8);
+  length.writeBigUInt64BE(BigInt(value.length));
+  digest.update(length).update(value);
+}
+
+function policyDigest(): string {
+  const sources = [
+    ["plan.ts", new URL("./plan.ts", import.meta.url)],
+    ["selection.ts", new URL("./selection.ts", import.meta.url)],
+    ["verify.ts", new URL("../verify.ts", import.meta.url)],
+  ] as const;
+  const digest = createHash("sha256");
+  try {
+    for (const [name, source] of sources) {
+      updateFrame(digest, Buffer.from(name, "utf8"));
+      updateFrame(digest, Buffer.from(readFileSync(fileURLToPath(source), "latin1"), "latin1"));
+    }
+  } catch { return fail("POLICY_SOURCE_UNAVAILABLE"); }
+  return digest.digest("hex");
+}
+
 function ensureBoundedPreview(preview: Preview): Preview {
   if (Buffer.byteLength(JSON.stringify(preview), "utf8") > OUTPUT_LIMIT) return fail("OUTPUT_TOO_LARGE");
   return preview;
@@ -293,7 +358,6 @@ export type Preview = {
 export function createPreview(options: { cwd: string; base: string; head?: string }): Preview {
   const cwd = path.resolve(options.cwd);
   if (!validSha(options.base)) return fail("INVALID_BASE");
-  requireRepositoryMetadata(cwd);
   const before = snapshot(cwd);
   if (before.status) return fail("DIRTY_WORKTREE");
   const base = committedObject(cwd, options.base);
@@ -309,11 +373,11 @@ export function createPreview(options: { cwd: string; base: string; head?: strin
   const after = snapshot(cwd);
   if (before.head !== after.head || before.tree !== after.tree || before.status !== after.status) return fail("CONCURRENT_DRIFT");
   const registryDigest = hash({ base: baseRegistry, head: headRegistry });
-  const policyDigest = hash(POLICY_VERSION);
+  const policyDigestValue = policyDigest();
   const preview: Preview = {
     schemaVersion: 1, scope: "local-git-preview", executable: false, acceptancePending: true, environment: "unobserved", effectiveMode: "shadow",
     activation: "observation-pending", memo: "disabled", runId: null, attempt: null, acceptedBase: base, head: logical, headTree: logicalTree,
-    executedSha: actualHead, tree: before.tree, diffBase, changed, registryDigest, policyDigest, requiredTasks: [...requiredTasks], requiredGroups: [...requiredGroups],
+    executedSha: actualHead, tree: before.tree, diffBase, changed, registryDigest, policyDigest: policyDigestValue, requiredTasks: [...requiredTasks], requiredGroups: [...requiredGroups],
     selection, impact: selection,
   };
   return ensureBoundedPreview(preview);

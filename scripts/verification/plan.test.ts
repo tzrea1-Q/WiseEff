@@ -1,7 +1,9 @@
+import { createHash } from "node:crypto";
 import { execFileSync, spawnSync } from "node:child_process";
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { afterEach, expect, it } from "vitest";
 import { createPreview } from "./plan";
 
@@ -13,6 +15,43 @@ function fixture() {
   git("init", "-q"); git("config", "user.name", "preview"); git("config", "user.email", "preview@example.invalid");
   writeFileSync(`${cwd}/README.md`, "preview\n"); git("add", "."); git("commit", "-qm", "fixture");
   return { cwd, base: git("rev-parse", "HEAD") };
+}
+
+function submoduleFixture(dirty = true) {
+  const cwd = mkdtempSync(`${tmpdir()}/git-preview-submodule-`);
+  roots.push(cwd);
+  const git = (repo: string, ...args: string[]) => execFileSync("git", args, { cwd: repo, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }).trim();
+  const child = path.join(cwd, "module");
+  mkdirSync(child);
+  git(cwd, "init", "-q"); git(cwd, "config", "user.name", "preview"); git(cwd, "config", "user.email", "preview@example.invalid");
+  git(child, "init", "-q"); git(child, "config", "user.name", "preview"); git(child, "config", "user.email", "preview@example.invalid");
+  writeFileSync(path.join(child, ".gitattributes"), "tracked.txt filter=fixture\n");
+  writeFileSync(path.join(child, "tracked.txt"), "original\n"); git(child, "add", "."); git(child, "commit", "-qm", "child fixture");
+  writeFileSync(path.join(cwd, ".gitmodules"), "[submodule \"module\"]\n\tpath = module\n\turl = ./module\n");
+  writeFileSync(path.join(cwd, "root.txt"), "root\n"); git(cwd, "add", "."); git(cwd, "commit", "-qm", "parent fixture");
+  const base = git(cwd, "rev-parse", "HEAD");
+  const marker = path.join(child, ".git", "preview-filter-marker");
+  git(child, "config", "filter.fixture.clean", `printf executed > '${marker}'; cat`);
+  if (dirty) writeFileSync(path.join(child, "tracked.txt"), "modified\n");
+  return { cwd, child, base, marker };
+}
+
+function fixedPolicyDigest() {
+  const digest = createHash("sha256");
+  const updateFrame = (value: Buffer) => {
+    const length = Buffer.alloc(8);
+    length.writeBigUInt64BE(BigInt(value.length));
+    digest.update(length).update(value);
+  };
+  for (const [name, source] of [
+    ["plan.ts", new URL("./plan.ts", import.meta.url)],
+    ["selection.ts", new URL("./selection.ts", import.meta.url)],
+    ["verify.ts", new URL("../verify.ts", import.meta.url)],
+  ] as const) {
+    updateFrame(Buffer.from(name, "utf8"));
+    updateFrame(Buffer.from(readFileSync(fileURLToPath(source), "latin1"), "latin1"));
+  }
+  return digest.digest("hex");
 }
 
 afterEach(() => roots.splice(0).forEach(root => rmSync(root, { recursive: true, force: true })));
@@ -37,6 +76,73 @@ it("refuses dirty tracked, staged, and untracked inputs", () => {
     if (kind === "untracked") writeFileSync(path.join(cwd, "untracked.txt"), "untracked\n");
     expect(() => createPreview({ cwd, base })).toThrow("DIRTY_WORKTREE");
   }
+});
+
+it("refuses a dirty gitlink before recursive status can run child filters", () => {
+  const { cwd, base, marker } = submoduleFixture();
+  let previewResult: string | null = null;
+  try { createPreview({ cwd, base }); } catch (error) { previewResult = error instanceof Error ? error.message : "UNKNOWN"; }
+  console.log(JSON.stringify({ previewResult, filterMarkerExists: existsSync(marker) }));
+  expect(previewResult).toBe("GITLINK_UNSUPPORTED");
+  expect(existsSync(marker)).toBe(false);
+});
+
+it("refuses an unchanged initialized gitlink before status", () => {
+  const { cwd, base, marker } = submoduleFixture(false);
+  expect(() => createPreview({ cwd, base })).toThrow("GITLINK_UNSUPPORTED");
+  expect(existsSync(marker)).toBe(false);
+});
+
+it("refuses a staged gitlink from the complete index inventory", () => {
+  const { cwd, child, base, marker } = submoduleFixture(false);
+  writeFileSync(path.join(child, "new.txt"), "new\n");
+  execFileSync("git", ["add", "new.txt"], { cwd: child });
+  execFileSync("git", ["commit", "-qm", "child update"], { cwd: child });
+  execFileSync("git", ["add", "module"], { cwd });
+  rmSync(marker, { force: true });
+  expect(() => createPreview({ cwd, base })).toThrow("GITLINK_UNSUPPORTED");
+  expect(existsSync(marker)).toBe(false);
+});
+
+it("refuses a staged deletion when HEAD still contains a gitlink", () => {
+  const { cwd, base, marker } = submoduleFixture(false);
+  execFileSync("git", ["rm", "-q", "--cached", "module"], { cwd });
+  expect(() => createPreview({ cwd, base })).toThrow("GITLINK_UNSUPPORTED");
+  expect(existsSync(marker)).toBe(false);
+});
+
+it("refuses unmerged index stages before status", () => {
+  const { cwd, base } = fixture();
+  const trunk = execFileSync("git", ["branch", "--show-current"], { cwd, encoding: "utf8" }).trim();
+  execFileSync("git", ["checkout", "-qb", "conflict-side"], { cwd });
+  writeFileSync(path.join(cwd, "README.md"), "side\n");
+  execFileSync("git", ["add", "README.md"], { cwd });
+  execFileSync("git", ["commit", "-qm", "side"], { cwd });
+  execFileSync("git", ["checkout", "-q", trunk], { cwd });
+  writeFileSync(path.join(cwd, "README.md"), "trunk\n");
+  execFileSync("git", ["add", "README.md"], { cwd });
+  execFileSync("git", ["commit", "-qm", "trunk"], { cwd });
+  spawnSync("git", ["merge", "conflict-side"], { cwd, stdio: "ignore" });
+  expect(() => createPreview({ cwd, base })).toThrow("UNMERGED_INDEX");
+});
+
+it("requires the canonical Git root before index or status inspection", () => {
+  const { cwd, base } = fixture();
+  const nested = path.join(cwd, "nested");
+  mkdirSync(nested);
+  expect(() => createPreview({ cwd: nested, base })).toThrow("NON_ROOT_CWD");
+});
+
+it("hashes the fixed implementation sources with independent framing", () => {
+  const { cwd, base } = fixture();
+  mkdirSync(path.join(cwd, "scripts/verification"), { recursive: true });
+  writeFileSync(path.join(cwd, "scripts/verification/plan.ts"), "fake policy\n");
+  writeFileSync(path.join(cwd, "scripts/verification/selection.ts"), "fake policy\n");
+  writeFileSync(path.join(cwd, "scripts/verify.ts"), "fake policy\n");
+  execFileSync("git", ["add", "."], { cwd });
+  execFileSync("git", ["commit", "-qm", "lookalike policy files"], { cwd });
+  const preview = createPreview({ cwd, base });
+  expect(preview.policyDigest).toBe(fixedPolicyDigest());
 });
 
 it("uses only the fixed Git boundary under hostile PATH and startup variables", () => {
