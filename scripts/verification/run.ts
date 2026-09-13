@@ -1064,12 +1064,12 @@ export async function runFreshTask(options: { base: string; task: TaskId; force?
   if (record.complete && !releaseStorage(storage)) {
     record.complete = false;
     record.claimedStatus = "failed";
-    record.error = "LOCK_DISPOSITION_FAILED";
+    record.error ??= "LOCK_DISPOSITION_FAILED";
   } else if (!record.complete && lifecycleSettled) {
     releaseStorage(storage);
   }
   try { writeAtomicRecord(storage.directory, record); }
-  catch (error) { record.complete = false; record.claimedStatus = "failed"; record.error = errorCode(asError(error)); }
+  catch (error) { record.complete = false; record.claimedStatus = "failed"; record.error ??= errorCode(asError(error)); }
   const terminal = terminalFromRecord(record);
   return { exitCode: record.complete && record.claimedStatus === "passed" ? 0 : 1, terminal, record };
 }

@@ -69,6 +69,7 @@ type MatrixScenario = {
   drift?: "metadata" | "entry";
   signalPhase?: "discovery" | "execution";
   signal?: "SIGINT" | "SIGTERM";
+  storageFailure?: "lock" | "publication";
 };
 
 type FixtureRun = {
@@ -93,7 +94,7 @@ function fixtureGit(cwd: string, args: string[]): string {
 }
 
 function fixtureEntry(scenarioPath: string): string {
-  return `import { appendFileSync, readFileSync, unlinkSync } from "node:fs";
+  return `import { appendFileSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
 import path from "node:path";
 const root = process.cwd();
 const scenario = JSON.parse(readFileSync(${JSON.stringify(scenarioPath)}, "utf8"));
@@ -111,6 +112,14 @@ if (phase === "discovery") {
   if (scenario.drift === "metadata") appendFileSync(${JSON.stringify(path.join(path.dirname(scenarioPath), "node_modules/vitest/package.json"))}, "\\n");
   if (scenario.drift === "entry") appendFileSync(${JSON.stringify(path.join(path.dirname(scenarioPath), "node_modules/vitest/vitest.mjs"))}, "\\n");
   const output = process.argv.find(value => value.startsWith("--outputFile="))?.slice("--outputFile=".length);
+  if (output && scenario.storageFailure === "lock") {
+    const lock = path.join(path.dirname(path.dirname(output)), "ci-changed-paths.lock");
+    unlinkSync(lock);
+    writeFileSync(lock, "fixture-replacement-lock", { mode: 0o600 });
+  }
+  if (output && scenario.storageFailure === "publication") {
+    writeFileSync(path.join(path.dirname(output), "record.json"), "fixture-existing-record", { mode: 0o600 });
+  }
   if (scenario.report === "missing" && output) { try { unlinkSync(output); } catch {} }
   else if (scenario.report !== "empty" && output) {
     const assertion = scenario.report === "allskip" ? { status: "skipped", failureMessages: [] } : { status: "passed", failureMessages: [] };
@@ -494,10 +503,21 @@ describe("fresh local verification runner", () => {
     const directory = fixtureDirectory();
     const leaderGone = path.join(directory, "leader-gone");
     const started = Date.now();
-    const survivor = await runNative(nativeOptions(directory, `const {spawn}=require('node:child_process'); spawn(process.execPath,['-e',${JSON.stringify(`setTimeout(()=>require('node:fs').writeFileSync(${JSON.stringify(leaderGone)}, 'gone'),120)`) }],{stdio:['ignore','inherit','inherit']}); process.stdout.write('leader');`));
+    const descendant = `setTimeout(() => {
+      const parentPid = Number(process.argv[1]);
+      let parentGone = false;
+      try { process.kill(parentPid, 0); } catch (error) { parentGone = error.code === 'ESRCH'; }
+      require('node:fs').writeFileSync(${JSON.stringify(leaderGone)}, JSON.stringify({ parentPid, parentGone }));
+      process.stdout.write('descendant-held-pipes');
+      setTimeout(() => process.exit(0), 40);
+    }, 600);`;
+    const survivor = await runNative(nativeOptions(directory, `const {spawn}=require('node:child_process'); const child=spawn(process.execPath,['-e',${JSON.stringify(descendant)},String(process.pid)],{stdio:['ignore','inherit','inherit']}); child.unref(); process.stdout.write('leader'); setTimeout(()=>process.exit(0),300);`));
     expect(survivor.error).toBeNull();
-    expect(Date.now() - started).toBeGreaterThanOrEqual(80);
-    expect(readFileSync(leaderGone, "utf8")).toBe("gone");
+    expect(survivor.phase.exitCode).toBe(0);
+    expect(survivor.lifecycleSettled).toBe(true);
+    expect(Date.now() - started).toBeGreaterThanOrEqual(600);
+    expect(JSON.parse(readFileSync(leaderGone, "utf8"))).toEqual({ parentPid: expect.any(Number), parentGone: true });
+    expect(survivor.stdout).toContain("descendant-held-pipes");
 
     const timedOut = await runNative(nativeOptions(directory, "setInterval(() => {}, 1000)", {
       deadlineAt: Date.now() + 30,
@@ -720,6 +740,8 @@ describe("fresh local verification runner", () => {
       { name: "sigterm-discovery", report: "valid", signalPhase: "discovery", signal: "SIGTERM", complete: false, error: "OWNER_CANCELLED" },
       { name: "sigint-execution", report: "valid", signalPhase: "execution", signal: "SIGINT", complete: false, error: "OWNER_CANCELLED" },
       { name: "sigterm-execution", report: "valid", signalPhase: "execution", signal: "SIGTERM", complete: false, error: "OWNER_CANCELLED" },
+      { name: "native-failure-lock-replacement", report: "valid", exitCode: 7, storageFailure: "lock", complete: false, error: "NATIVE_CHILD_FAILED" },
+      { name: "cancel-publication-collision", report: "valid", signalPhase: "execution", signal: "SIGTERM", storageFailure: "publication", complete: false, error: "OWNER_CANCELLED" },
     ];
     const failures: string[] = [];
     try {
@@ -727,6 +749,23 @@ describe("fresh local verification runner", () => {
         const result = scenario.signalPhase ? await invokeSignalledFixture(fixture.root, scenario) : invokeFixture(fixture.root, scenario);
         copyFixtureEvidence(result, fixture.sourceHashes, invocationRoot);
         const record = result.record;
+        const lock = path.join(fixture.root, "work/verification-runs/ci-changed-paths.lock");
+        if (scenario.storageFailure === "publication") {
+          const terminal = JSON.parse(result.stdout.trim().split(/\r?\n/u).at(-1) ?? "{}");
+          if (result.status !== 1 || terminal.status !== "failed" || terminal.error !== scenario.error || record !== null)
+            failures.push(`${scenario.name}:original-failure`);
+          const finalPath = path.join(fixture.root, "work/verification-runs", result.runId!, "record.json");
+          if (readFileSync(finalPath, "utf8") !== "fixture-existing-record") failures.push(`${scenario.name}:foreign-record`);
+          if (!result.markerObserved || result.markerSettled !== true || existsSync(lock)) failures.push(`${scenario.name}:lifecycle`);
+          continue;
+        }
+        if (scenario.storageFailure === "lock") {
+          if (readFileSync(lock, "utf8") !== "fixture-replacement-lock" || lstatSync(lock).uid !== process.getuid?.())
+            throw new Error("UNOWNED_FIXTURE_REPLACEMENT");
+          unlinkSync(lock); // Only the test-created replacement, after its evidence was captured.
+          if (result.status !== 1 || record?.claimedStatus !== "failed" || record.execution?.exitCode !== 7)
+            failures.push(`${scenario.name}:original-native-exit`);
+        }
         if (!record) { failures.push(`${scenario.name}:missing-record`); continue; }
         if (record.complete !== scenario.complete) failures.push(`${scenario.name}:complete=${String(record.complete)}`);
         if (scenario.error && record.error !== scenario.error) failures.push(`${scenario.name}:error=${String(record.error)}`);
@@ -737,7 +776,6 @@ describe("fresh local verification runner", () => {
         if (scenario.name === "nonzero-plausible-green" && (record.execution?.exitCode !== 7 || record.native.reportSha256 === null)) failures.push(`${scenario.name}:failure-dominance`);
         if (scenario.name === "malformed-nonzero" && (record.execution?.exitCode !== 7 || record.native.reportSha256 === null)) failures.push(`${scenario.name}:malformed-dominance`);
         if (scenario.signalPhase && (!result.markerObserved || result.markerPid === undefined || result.markerSettled !== true)) failures.push(`${scenario.name}:handshake-lifecycle`);
-        const lock = path.join(fixture.root, "work/verification-runs/ci-changed-paths.lock");
         if (existsSync(lock)) failures.push(`${scenario.name}:lock-retained`);
       }
     } finally {
