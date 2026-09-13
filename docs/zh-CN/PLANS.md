@@ -6,6 +6,7 @@
 
 ## 使用方式
 
+- [智能体开发与验证效率优化](exec-plans/active/2026-09-13-agent-delivery-efficiency.md)：#828；先完成 EFF-00 基线与 W0 诊断，再交付等价 L1、影子工具和实测优化。模块启用在证据门槛满足前保持 `observation-pending`。
 - [Catalog 第二轮交付](exec-plans/active/2026-09-05-catalog-r2-delivery.md)：#814–#820 的 Policy、批量查询、Proposal、Agent 与浏览器证据修复；OP-09 不在本轮执行范围。
 
 - 本页和英文版是相互链接的独立文档；不要在同一篇文档里混写中文和英文正文。
