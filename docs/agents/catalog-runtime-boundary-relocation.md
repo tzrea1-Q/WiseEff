@@ -2,6 +2,16 @@
 
 > Chinese: [Chinese](../zh-CN/agents/catalog-runtime-boundary-relocation.md)
 
+## Post-cutover test identity follow-up
+
+The independently accepted follow-up fixes exactly 29 occurrence identities moved by four reviewed transaction wrappers in `server/modules/parameter-topology/postCutoverWorkflow.integration.test.ts`. Final checking of candidate `fc776086a9c163ec048a231133cc6292bbfbda8c` found 29 new and 29 stale identities, so that candidate was rejected before publication. All original test assertions and raw SQL slices remain; the transaction behavior was reviewed separately. This is an explicit identity decision, not blanket SQL equivalence or permission for future source changes.
+
+The [fixed 29-pair record](../../scripts/fixtures/parameter-catalog-allowlist/post-cutover-test-relocation.json), SHA256 `9a68e55a93d17118275f71334dd5890ebdae5ad75582d6c9d590f6163134a647`, binds historical blob `765b2c38cddc76ddb0b242ee06215872f12c1897` to destination blob `3be455785b71abf93e0f600a979bd82098de4105`. Independent Standards and Spec design review checked every raw slice, metadata field and complete blob. The old 23- and 16-pair records remain unchanged. A private fixed configuration reuses the validator below; all 68 source and 68 destination endpoints are distinct across all three records. All pairs must validate before aliases are applied. Whole-file drift, partial/tampered/swapped/duplicate/cross-record identities and allowance growth fail closed; there is no caller-supplied relocation policy.
+
+Implementation `135a4edada7fcff307136496619813c2e6f66769`, tree `5388cb81093c3a2810331f757e14431343748219`, passed 93 tests in the same three focused files and the direct checker: 3513/3513 allowances, 68 relocations, no new/stale/growth/metadata errors. The new seam first failed one real assertion with 25 passing tests. Build and direct documentation governance passed. The 3519-entry original fixture and six removals are unchanged. Backend code remains byte-identical to independently reviewed `69fd38c152108f610786b269e9337e57f73a24bc`, where the original complete backend passed 4180/4180; that is separately bound earlier evidence, not a repeated run on this commit. Final code review and Hosted belong to the active plan checkpoint.
+
+## Original runtime topology identity decision
+
 This bounded prerequisite belongs to [EFF Issue #828](https://github.com/tzrea1-Q/WiseEff/issues/828) and the [active efficiency plan](../exec-plans/active/2026-09-13-agent-delivery-efficiency.md). The user authorized continuing EFF and resolving its blockers. Independent Standards and Spec design review accepted these exact 16 existing occurrence identities before implementation. This decision does not approve Catalog runtime behavior, readiness, frozen milestones or target operations.
 
 At accepted main `9dc751690a615b162bb41feef6392289b2ca7f6a`, the boundary checker found 3513 occurrences but recognized only 3497: PR #832 moved 15 existing legacy identifier occurrences in `server/modules/parameter-topology/ingestService.ts` and one effective-view literal in `server/modules/parameter-topology/schemas.ts`. Their raw slices and allowance metadata are unchanged. Surrounding error-handling behavior did change; this record makes no SQL or runtime equivalence claim. Production source stays byte-for-byte unchanged by this repair.

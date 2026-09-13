@@ -2,6 +2,16 @@
 
 > English: [English](../../agents/catalog-runtime-boundary-relocation.md)
 
+## Post-cutover 测试身份跟进
+
+独立接受的后续决定仅固定 `server/modules/parameter-topology/postCutoverWorkflow.integration.test.ts` 中四处已审事务包装移动的 29 个出现位置身份。候选 `fc776086a9c163ec048a231133cc6292bbfbda8c` 的最终检查发现 29 new、29 stale，因此在发布前被拒绝。全部原测试断言和原始 SQL 切片保留，事务行为另行审查。这是明确的身份决定，不是对 SQL 整体等价或后续源码修改的许可。
+
+[固定 29 对记录](../../../scripts/fixtures/parameter-catalog-allowlist/post-cutover-test-relocation.json) 的 SHA256 为 `9a68e55a93d17118275f71334dd5890ebdae5ad75582d6c9d590f6163134a647`，绑定历史 blob `765b2c38cddc76ddb0b242ee06215872f12c1897` 与目标 blob `3be455785b71abf93e0f600a979bd82098de4105`。独立 Standards、Spec 设计审查逐项核对了原始切片、元数据和完整 blob。原 23 对与 16 对记录不变；私有固定配置复用下述校验器，三份记录的 68 个源端点和 68 个目标端点共 136 个均不重复，全部校验后才应用别名。完整文件漂移、不完整/篡改/交换/重复/跨记录身份及 allowance 增长均拒绝通过，不提供调用者自定义位移策略。
+
+实现 `135a4edada7fcff307136496619813c2e6f66769`、tree `5388cb81093c3a2810331f757e14431343748219` 在相同三个定向文件通过 93 项测试，直接 checker 为 3513/3513 allowance、68 对 relocation，无 new/stale/growth/metadata 错误。新增契约先出现 1 项真实断言失败、25 项通过。build 和直接文档治理通过。原 3519 条 fixture 与六项移除未变。后端代码与独立审查的 `69fd38c152108f610786b269e9337e57f73a24bc` 逐字节相同，后者完整原有后端通过 4180/4180；这是单独绑定的既往证据，不冒充本提交重跑。最终代码审查与 Hosted 记入活跃计划检查点。
+
+## 原运行时拓扑身份决定
+
 本前置修复属于 [EFF Issue #828](https://github.com/tzrea1-Q/WiseEff/issues/828) 和[活跃效率计划](../exec-plans/active/2026-09-13-agent-delivery-efficiency.md)。用户授权继续 EFF 并解决阻塞；独立 Standards 与 Spec 在实现前接受了这 16 对已有出现位置的精确身份。此决定不批准 Catalog 运行时行为、就绪状态、冻结里程碑或目标操作。
 
 在 accepted main `9dc751690a615b162bb41feef6392289b2ca7f6a`，边界检查发现 3513 处但仅识别 3497 处：PR #832 移动了 `server/modules/parameter-topology/ingestService.ts` 中 15 处已有 legacy 标识符及 `server/modules/parameter-topology/schemas.ts` 中 1 处 effective-view 字面量。原始切片和 allowance 元数据未变。周围错误处理行为确有变化，本记录不声明 SQL 或运行时等价。本修复保持业务源码逐字节不变。

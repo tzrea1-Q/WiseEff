@@ -19,6 +19,14 @@
 
 A 可先交付，B/C 继续开放。不得制造样本，也不能因工具合入就宣称整个项目全面完成。
 
+## 最终前置身份跟进——2026-09-14
+
+最终检查在 push 前拒绝了 `fc776086a9c163ec048a231133cc6292bbfbda8c`：已审测试事务包装还移动了 29 个已有出现位置身份。[独立固定身份决定](../../agents/catalog-runtime-boundary-relocation.md#post-cutover-测试身份跟进) 保留每个原始切片、allowance 和原 39 对记录。实现 `135a4edada7fcff307136496619813c2e6f66769`、tree `5388cb81093c3a2810331f757e14431343748219` 通过 93 项定向测试、3513 条 allowance 与 68 对 relocation 的直接检查、build 及直接文档治理；新增 29-record 契约先证明了真实断言失败。五文件增量不修改后端源码，下述完整 4180 项后端证据仍绑定 `69fd38c152108f610786b269e9337e57f73a24bc`。
+
+父代理已收齐精确五文件代码增量的独立 Standards、Spec PASS，包括有限畸形输入反例及独立重算的记录/blob/端点证据。原候选与后端增量也已分别通过两个独立角色审查；最终中英文文档单独复核。尚无第二轮 Hosted 或合入。PR #833 在新候选封板前仍保持关闭及原远端 head，已接受的一次第二轮 Hosted 例外尚未使用。刷新 origin/main 后仍为 `9dc751690a615b162bb41feef6392289b2ca7f6a`；实际保护查询没有受保护分支配置或有效规则。父代理仍要求全部原有选中门禁成功，不使用 bypass，不将 skipped/missing/cancelled 算作通过。
+
+CI shadow 第二轮审查拒绝了将 unavailable 观察判为有效的布尔结算。新候选 `170399645bc781ec2c37de974f38afed6c9f4653` 使用原生 Detect 权威和 observed/unavailable/not-applicable 三态，待独立审查。执行器 `a0c51833052bbdea1b7f1dbe8dc1427e0b11a1e8` 被真实延迟关闭反例拒绝，现按独立质询过的有限生命周期/存储设计实现。两者均留在 Scratch。另一路语义浏览器夹具诊断在修复草稿读取后暴露缺少显式 coverage；随后尝试读取实际 review DTO 不存在的字段，仍为 2 项中 1 项失败，均不是浏览器验收通过。处理这些问题未删除断言、golden、安全限制或必需检查。
+
 ## 后端前置修复跟进——2026-09-14
 
 [PR #833](https://github.com/tzrea1-Q/WiseEff/pull/833) 在 Scratch 修复期间保持关闭。首轮 [Hosted 34778960993](https://github.com/tzrea1-Q/WiseEff/actions/runs/34778960993) attempt1 实际 checkout 为 `33c15d4c43e86dac5a20648a18e0618222fa5750`、tree 为 `bd9f8d0491579a325f8315af0cac3dab5138905f`，父提交为 main `9dc751690a615b162bb41feef6392289b2ca7f6a` 与已审 head `1daf8bd52ab5b56902adff379a6f30fe631e95d4`。它在出现六项明确后端失败后被原有 Build and test 20 分钟上限取消。前端3411、scripts1338（21项既有可选跳过）、bridge134（4项平台跳过）、schema、Quality、Smoke 通过；后端没有完整终态计数，contract/log evaluation 未完成，Merge bar 失败。工作流耗时1284秒、job 耗时合计34.7667分钟是观察值，不是计费或收益。
