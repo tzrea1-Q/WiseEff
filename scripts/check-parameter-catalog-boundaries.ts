@@ -30,7 +30,10 @@ import {
 } from "./parameter-catalog-allowlist/index";
 import { compareBoundaryInventory, formatBoundaryReport } from "./parameter-catalog-allowlist/deterministicOutput";
 import { applyReviewedExactRelocation } from "./parameter-catalog-allowlist/exactRelocation";
-import { applyReviewedRuntimeTopologyRelocation } from "./parameter-catalog-allowlist/runtimeTopologyRelocation";
+import {
+  applyReviewedPostCutoverRelocation,
+  applyReviewedRuntimeTopologyRelocation,
+} from "./parameter-catalog-allowlist/runtimeTopologyRelocation";
 import {
   allowlistShardSchema,
   boundaryViolationFixtureSchema,
@@ -356,9 +359,16 @@ export async function checkParameterCatalogBoundaries(
     relocated.violations,
     relocated.relocations,
   );
+  const postCutoverRelocated = await applyReviewedPostCutoverRelocation(
+    repoRoot,
+    fixture,
+    allowlist.entries,
+    runtimeTopologyRelocated.violations,
+    [...relocated.relocations, ...runtimeTopologyRelocated.relocations],
+  );
   return {
-    ...compareBoundaryInventory(runtimeTopologyRelocated.violations, allowlist.entries, fixture.violations),
-    relocations: [...relocated.relocations, ...runtimeTopologyRelocated.relocations],
+    ...compareBoundaryInventory(postCutoverRelocated.violations, allowlist.entries, fixture.violations),
+    relocations: [...relocated.relocations, ...runtimeTopologyRelocated.relocations, ...postCutoverRelocated.relocations],
   };
 }
 

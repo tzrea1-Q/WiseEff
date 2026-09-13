@@ -10,8 +10,12 @@ import { boundaryViolationSchema, type AllowlistEntry, type BoundaryViolation, t
 const trustedBaseSha = "9b3ba7df7e21f5589684bc92c872da593ad4c246";
 const fixtureSha256 = "fe3cd2abe9181517332612938f00082db864d66f6f9b284d5f43b3051b5fe951";
 const reviewedRecordSha256 = "7c99527e2473aac06b64fc3e3db892d1b866843a8092bf39c058bdc5e81afaa2";
+// Materialized from the independently accepted fixed 29-pair post-cutover proposal.
+const postCutoverRecordSha256 = "9a68e55a93d17118275f71334dd5890ebdae5ad75582d6c9d590f6163134a647";
 export const runtimeTopologyRelocationRecordPath =
   "scripts/fixtures/parameter-catalog-allowlist/runtime-topology-relocation.json";
+export const postCutoverRelocationRecordPath =
+  "scripts/fixtures/parameter-catalog-allowlist/post-cutover-test-relocation.json";
 
 const ingestServiceFile = "server/modules/parameter-topology/ingestService.ts";
 const schemasFile = "server/modules/parameter-topology/schemas.ts";
@@ -31,7 +35,7 @@ const relocationSchema = z.object({
   schemaVersion: z.literal(1),
   trustedBaseSha: z.literal(trustedBaseSha),
   fixtureSha256: z.literal(fixtureSha256),
-  files: z.array(relocationFileSchema).length(2),
+  files: z.array(relocationFileSchema),
 }).strict();
 
 export type RuntimeTopologyRelocationRecord = z.infer<typeof relocationSchema>;
@@ -49,28 +53,70 @@ type RelocationInput = {
   existingRelocations?: readonly RuntimeTopologyRelocation[];
 };
 
-const reviewedFiles = [
-  { file: ingestServiceFile, pairs: 15 },
-  { file: schemasFile, pairs: 1 },
-] as const;
+type RelocationConfig = {
+  recordPath: string;
+  recordSha256: string;
+  files: readonly { file: string; pairs: number }[];
+  totalPairs: number;
+  rejectAllowanceGrowth?: boolean;
+};
+
+const runtimeTopologyConfig: RelocationConfig = {
+  recordPath: runtimeTopologyRelocationRecordPath,
+  recordSha256: reviewedRecordSha256,
+  files: [
+    { file: ingestServiceFile, pairs: 15 },
+    { file: schemasFile, pairs: 1 },
+  ],
+  totalPairs: 16,
+};
+
+const postCutoverConfig: RelocationConfig = {
+  recordPath: postCutoverRelocationRecordPath,
+  recordSha256: postCutoverRecordSha256,
+  files: [{ file: "server/modules/parameter-topology/postCutoverWorkflow.integration.test.ts", pairs: 29 }],
+  totalPairs: 29,
+  rejectAllowanceGrowth: true,
+};
 
 /** Validate the independently reviewed 16-pair identity map before granting any alias. */
 export function validateRuntimeTopologyRelocation(value: unknown, input: RelocationInput) {
+  return validateRelocationRecord(value, input, runtimeTopologyConfig);
+}
+
+/** Validate the independently reviewed 29-pair post-cutover identity map before granting any alias. */
+export function validatePostCutoverRelocation(value: unknown, input: RelocationInput) {
+  return validateRelocationRecord(value, input, postCutoverConfig);
+}
+
+function validateRelocationRecord(value: unknown, input: RelocationInput, config: RelocationConfig) {
   requireMatch(
-    sha256(Buffer.from(`${JSON.stringify(value, null, 2)}\n`, "utf8")) === reviewedRecordSha256,
+    sha256(Buffer.from(`${JSON.stringify(value, null, 2)}\n`, "utf8")) === config.recordSha256,
     "reviewed record integrity",
   );
   const record = relocationSchema.parse(value);
   requireMatch(input.fixture.trustedBaseSha === trustedBaseSha, "fixture base");
 
-  for (const [index, expected] of reviewedFiles.entries()) {
+  for (const [index, expected] of config.files.entries()) {
     const section = record.files[index];
     requireMatch(section.file === expected.file && section.pairs.length === expected.pairs, "reviewed file inventory");
   }
+  requireMatch(record.files.length === config.files.length, "reviewed file inventory");
 
   const baselineById = uniqueById(input.fixture.violations);
   const allowanceById = uniqueById(input.allowances);
   const discoveredById = uniqueById(input.discovered);
+  if (config.rejectAllowanceGrowth) {
+    for (const allowance of input.allowances) {
+      const baseline = baselineById.get(allowance.id);
+      requireMatch(baseline !== undefined && isDeepStrictEqual(allowance, {
+        id: baseline.id,
+        rule: baseline.rule,
+        file: baseline.file,
+        reason: baseline.reason,
+      }), "allowance growth");
+    }
+  }
   const priorOldIds = new Set<string>();
   const priorObservedIds = new Set<string>();
   for (const relocation of input.existingRelocations ?? []) {
@@ -126,7 +172,7 @@ export function validateRuntimeTopologyRelocation(value: unknown, input: Relocat
       pairs.push(pair);
     }
   }
-  requireMatch(oldIds.size === 16 && newIds.size === 16, "complete reviewed mapping");
+  requireMatch(oldIds.size === config.totalPairs && newIds.size === config.totalPairs, "complete reviewed mapping");
   requireMatch([...oldIds].every((id) => !newIds.has(id)), "source and destination overlap");
   return pairs;
 }
@@ -139,13 +185,34 @@ export async function applyReviewedRuntimeTopologyRelocation(
   discovered: readonly BoundaryViolation[],
   existingRelocations: readonly RuntimeTopologyRelocation[] = [],
 ) {
-  const targetFiles = new Set<string>(reviewedFiles.map(({ file }) => file));
+  return applyRelocationRecord(repoRoot, fixture, allowances, discovered, existingRelocations, runtimeTopologyConfig);
+}
+
+export async function applyReviewedPostCutoverRelocation(
+  repoRoot: string,
+  fixture: BoundaryViolationFixture,
+  allowances: readonly AllowlistEntry[],
+  discovered: readonly BoundaryViolation[],
+  existingRelocations: readonly RuntimeTopologyRelocation[] = [],
+) {
+  return applyRelocationRecord(repoRoot, fixture, allowances, discovered, existingRelocations, postCutoverConfig);
+}
+
+async function applyRelocationRecord(
+  repoRoot: string,
+  fixture: BoundaryViolationFixture,
+  allowances: readonly AllowlistEntry[],
+  discovered: readonly BoundaryViolation[],
+  existingRelocations: readonly RuntimeTopologyRelocation[],
+  config: RelocationConfig,
+) {
+  const targetFiles = new Set<string>(config.files.map(({ file }) => file));
   if (!fixture.violations.some((violation) => targetFiles.has(violation.file))) {
     return { violations: discovered, relocations: [] as RuntimeTopologyRelocation[] };
   }
 
-  const bytes = await readFile(resolve(repoRoot, runtimeTopologyRelocationRecordPath));
-  requireMatch(sha256(bytes) === reviewedRecordSha256, "reviewed record integrity");
+  const bytes = await readFile(resolve(repoRoot, config.recordPath));
+  requireMatch(sha256(bytes) === config.recordSha256, "reviewed record integrity");
   const value = JSON.parse(bytes.toString("utf8"));
   const record = relocationSchema.parse(value) as RuntimeTopologyRelocationRecord;
   const sourceByFile = new Map<string, Buffer>();
@@ -157,14 +224,14 @@ export async function applyReviewedRuntimeTopologyRelocation(
     );
     destinationByFile.set(section.file, await readFile(resolve(repoRoot, section.file)));
   }
-  const pairs = validateRuntimeTopologyRelocation(value, {
+  const pairs = validateRelocationRecord(value, {
     fixture,
     allowances,
     discovered,
     sourceByFile,
     destinationByFile,
     existingRelocations,
-  });
+  }, config);
   const aliases = new Map(pairs.map((pair) => [pair.new.id, pair.old]));
   return {
     violations: discovered.map((violation) => aliases.get(violation.id) ?? violation),

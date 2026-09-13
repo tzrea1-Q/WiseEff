@@ -9,8 +9,11 @@ import { compareBoundaryInventory } from "./deterministicOutput";
 import { loadAllowlistIndex, loadBoundaryViolationFixture } from "./index";
 import {
   applyReviewedRuntimeTopologyRelocation,
+  applyReviewedPostCutoverRelocation,
+  postCutoverRelocationRecordPath,
   runtimeTopologyRelocationRecordPath,
   type RuntimeTopologyRelocationRecord,
+  validatePostCutoverRelocation,
   validateRuntimeTopologyRelocation,
 } from "./runtimeTopologyRelocation";
 import type { BoundaryViolation } from "./schema";
@@ -18,6 +21,9 @@ import type { BoundaryViolation } from "./schema";
 const repoRoot = process.cwd();
 const record: RuntimeTopologyRelocationRecord = JSON.parse(
   await readFile(`${repoRoot}/${runtimeTopologyRelocationRecordPath}`, "utf8"),
+);
+const postCutoverRecord: RuntimeTopologyRelocationRecord = JSON.parse(
+  await readFile(`${repoRoot}/${postCutoverRelocationRecordPath}`, "utf8"),
 );
 const fixture = await loadBoundaryViolationFixture(repoRoot);
 const allowlist = await loadAllowlistIndex(repoRoot);
@@ -29,6 +35,15 @@ const sourceByFile = new Map(
 );
 const destinationByFile = new Map(
   await Promise.all(record.files.map(async (section) => [section.file, await readFile(`${repoRoot}/${section.file}`)] as const)),
+);
+const postCutoverSourceByFile = new Map(
+  postCutoverRecord.files.map((section) => [
+    section.file,
+    execFileSync("git", ["show", `${postCutoverRecord.trustedBaseSha}:${section.file}`], { cwd: repoRoot }),
+  ]),
+);
+const postCutoverDestinationByFile = new Map(
+  await Promise.all(postCutoverRecord.files.map(async (section) => [section.file, await readFile(`${repoRoot}/${section.file}`)] as const)),
 );
 let discovered: BoundaryViolation[];
 
@@ -43,6 +58,17 @@ function input() {
     discovered: structuredClone(discovered),
     sourceByFile: new Map([...sourceByFile].map(([file, bytes]) => [file, Buffer.from(bytes)])),
     destinationByFile: new Map([...destinationByFile].map(([file, bytes]) => [file, Buffer.from(bytes)])),
+  };
+}
+
+function postCutoverInput() {
+  const ids = new Set(postCutoverRecord.files.flatMap((section) => section.pairs.map((pair) => pair.new.id)));
+  return {
+    fixture: structuredClone(fixture),
+    allowances: structuredClone(allowlist.entries),
+    discovered: structuredClone(discovered.filter((entry) => ids.has(entry.id))),
+    sourceByFile: new Map([...postCutoverSourceByFile].map(([file, bytes]) => [file, Buffer.from(bytes)])),
+    destinationByFile: new Map([...postCutoverDestinationByFile].map(([file, bytes]) => [file, Buffer.from(bytes)])),
   };
 }
 
@@ -136,6 +162,61 @@ describe("exact reviewed runtime topology occurrence relocation", () => {
         await writeFile(path, kind === "partial" ? "{" : `${JSON.stringify(record)}\n`);
       }
       await expect(applyReviewedRuntimeTopologyRelocation(root, fixture, allowlist.entries, discovered)).rejects.toThrow(
+        kind === "missing" ? "ENOENT" : "reviewed record integrity",
+      );
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("exact reviewed post-cutover test occurrence relocation", () => {
+  it("binds all 29 fixed destinations before granting aliases", () => {
+    const result = validatePostCutoverRelocation(postCutoverRecord, postCutoverInput());
+    expect(result).toHaveLength(29);
+    expect(new Set(result.map((pair) => pair.old.id)).size).toBe(29);
+    expect(new Set(result.map((pair) => pair.new.id)).size).toBe(29);
+  });
+
+  it.each(["duplicate", "swapped", "partial", "tampered"])("rejects %s raw identity mapping", (kind) => {
+    const altered = structuredClone(postCutoverRecord);
+    if (kind === "duplicate") altered.files[0].pairs[1] = structuredClone(altered.files[0].pairs[0]);
+    if (kind === "swapped") [altered.files[0].pairs[0].new, altered.files[0].pairs[1].new] = [altered.files[0].pairs[1].new, altered.files[0].pairs[0].new];
+    if (kind === "partial") altered.files[0].pairs.pop();
+    if (kind === "tampered") altered.files[0].pairs[0].new.token += " changed";
+    expect(() => validatePostCutoverRelocation(altered, postCutoverInput())).toThrow();
+  });
+
+  it("rejects cross-record IDs and allowance growth", () => {
+    const pair = postCutoverRecord.files[0].pairs[0];
+    expect(() => validatePostCutoverRelocation(postCutoverRecord, {
+      ...postCutoverInput(), existingRelocations: [{ id: pair.old.id, observed: pair.new }],
+    })).toThrow("cross-record");
+    const altered = postCutoverInput();
+    altered.allowances = [...altered.allowances, {
+      id: postCutoverRecord.files[0].pairs[0].new.id,
+      rule: postCutoverRecord.files[0].pairs[0].new.rule,
+      file: postCutoverRecord.files[0].pairs[0].new.file,
+      reason: postCutoverRecord.files[0].pairs[0].new.reason,
+    }];
+    expect(() => validatePostCutoverRelocation(postCutoverRecord, altered)).toThrow("allowance growth");
+  });
+
+  it.each(["source", "destination"] as const)("rejects %s whole-file drift", (kind) => {
+    const altered = postCutoverInput();
+    altered[`${kind}ByFile` as "sourceByFile" | "destinationByFile"].get(postCutoverRecord.files[0].file)![0] ^= 1;
+    expect(() => validatePostCutoverRelocation(postCutoverRecord, altered)).toThrow("whole-file blob");
+  });
+
+  it.each(["missing", "changed", "partial"])("rejects a %s post-cutover record at the filesystem entry", async (kind) => {
+    const root = await mkdtemp(join(tmpdir(), "post-cutover-relocation-"));
+    try {
+      if (kind !== "missing") {
+        const path = join(root, postCutoverRelocationRecordPath);
+        await mkdir(dirname(path), { recursive: true });
+        await writeFile(path, kind === "partial" ? "{" : `${JSON.stringify(postCutoverRecord)}\n`);
+      }
+      await expect(applyReviewedPostCutoverRelocation(root, fixture, allowlist.entries, discovered)).rejects.toThrow(
         kind === "missing" ? "ENOENT" : "reviewed record integrity",
       );
     } finally {
