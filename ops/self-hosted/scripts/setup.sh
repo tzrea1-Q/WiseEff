@@ -591,6 +591,10 @@ PORT=8787
 
 POSTGRES_PASSWORD=${postgres_password}
 DATABASE_URL=postgres://wiseeff:${postgres_password}@postgres:5432/wiseeff
+WISEEFF_CATALOG_BOOTSTRAP_DATABASE_URL=postgres://wiseeff:${postgres_password}@postgres:5432/wiseeff
+# Replace with the dedicated worker LOGIN from provision-logins. First-boot uses
+# the bootstrap owner only until dedicated LOGINs exist.
+WISEEFF_WORKER_DATABASE_URL=postgres://wiseeff:${postgres_password}@postgres:5432/wiseeff
 
 AUTH_MODE=production
 AUTH_PROVIDER=local
@@ -655,6 +659,8 @@ LOG_ANALYSIS_API_TIMEOUT_MS=30000
 LOG_ANALYSIS_TOKEN_BUDGET=8000
 LOG_ANALYSIS_DETERMINISTIC=${log_det}
 
+WISEEFF_PUBLICATION_MANAGER_ENV_FILE=.env.publication-manager
+WISEEFF_CATALOG_PUBLICATION_DATA_MODE=new-empty
 LOG_WORKER_ENABLED=false
 LOG_ANALYSIS_QUEUE_MODE=durable
 REDIS_URL=redis://redis:6379
@@ -683,22 +689,57 @@ EOF
   printf '%s\n' "${body}" > "${env_file}"
   chmod 600 "${env_file}"
   echo "Wrote ${env_file} (mode 600)."
+  write_publication_manager_env
   echo "URL: $(env_value WISEEFF_PUBLIC_URL)"
   echo "Admin username: $(env_value WISEEFF_LAB_ADMIN_USERNAME)"
 }
 
+publication_manager_env_path() {
+  local name="${WISEEFF_PUBLICATION_MANAGER_ENV_FILE:-.env.publication-manager}"
+  case "${name}" in
+    /*) printf '%s\n' "${name}" ;;
+    *) printf '%s\n' "${compose_dir}/${name}" ;;
+  esac
+}
+
+write_publication_manager_env() {
+  local manager_env
+  manager_env="$(publication_manager_env_path)"
+  if [ -f "${manager_env}" ] && [ "${force}" != "true" ]; then
+    echo "Keeping ${manager_env}."
+    return 0
+  fi
+  umask 077
+  cat > "${manager_env}" <<'EOF'
+WISEEFF_PUBLICATION_MANAGER=1
+WISEEFF_PUBLICATION_MANAGER_LEASE_MS=30000
+WISEEFF_PUBLICATION_MANAGER_RETRY_BUDGET=5
+WISEEFF_PUBLICATION_MANAGER_POLL_INTERVAL_MS=1000
+WISEEFF_PUBLICATION_MANAGER_ACTIVATION_TIMEOUT_MS=60000
+WISEEFF_PUBLICATION_MANAGER_HEALTH_PORT=8791
+WISEEFF_UPGRADE_ACTOR_PRINCIPAL_ID=deployment-upgrade
+# WISEEFF_PUBLICATION_MANAGER_DATABASE_URL is intentionally unset.
+# Run: npx tsx scripts/catalog-publication-ops.ts provision-logins
+# using WISEEFF_CATALOG_BOOTSTRAP_DATABASE_URL, then write the dedicated
+# manager URL into this file. Do not copy DATABASE_URL.
+EOF
+  chmod 600 "${manager_env}"
+  echo "Wrote unconfigured ${manager_env} (mode 600). Manager stays disabled until a dedicated LOGIN is provisioned."
+}
+
 run_init() {
   apply_profile_defaults
+  if [ -z "${section}" ] && [ -f "${env_file}" ] && [ "${force}" != "true" ] && [ "${print_env}" != "true" ]; then
+    echo "${env_file} already exists. Keeping it. Use --force to overwrite or pass a section name."
+    write_publication_manager_env
+    return 0
+  fi
   if [ -z "${host}" ]; then
     host="$(detect_host)"
   fi
   if [ -z "${host}" ]; then
     echo "Could not detect a host. Re-run with --ip <address>." >&2
     exit 1
-  fi
-  if [ -z "${section}" ] && [ -f "${env_file}" ] && [ "${force}" != "true" ] && [ "${print_env}" != "true" ]; then
-    echo "${env_file} already exists. Keeping it. Use --force to overwrite or pass a section name."
-    return 0
   fi
   if [ "${profile}" = "acme" ] && [[ ! "${tls_email}" == *"@"* ]]; then
     echo "ACME profile requires --tls-email." >&2
@@ -774,6 +815,21 @@ prepare_build_network() {
   build_network_prepared="true"
 }
 
+run_official_migrate() {
+  local bootstrap
+  bootstrap="$(env_value WISEEFF_CATALOG_BOOTSTRAP_DATABASE_URL)"
+  if [ -z "${bootstrap}" ]; then
+    echo "WISEEFF_CATALOG_BOOTSTRAP_DATABASE_URL is required for the one-shot official migrate." >&2
+    exit 1
+  fi
+  echo "Applying official migrations with the bootstrap LOGIN (not the API/worker LOGIN)."
+  (
+    DATABASE_URL="${bootstrap}"
+    export DATABASE_URL
+    "${script_dir}/compose" --env-file "${env_file}" run --rm --no-deps -e DATABASE_URL api npm run db:migrate
+  )
+}
+
 run_up() {
   local build_flag=(--build)
   if [ "${skip_build}" = "true" ]; then
@@ -781,7 +837,9 @@ run_up() {
   else
     echo "Building and starting the stack. The first image build can take several minutes."
   fi
-  "${script_dir}/compose" --env-file "${env_file}" up -d "${build_flag[@]}"
+  "${script_dir}/compose" --env-file "${env_file}" up -d "${build_flag[@]}" postgres redis minio minio-init
+  run_official_migrate
+  "${script_dir}/compose" --env-file "${env_file}" up -d api worker publication-manager web proxy
 }
 
 wait_for_live() {

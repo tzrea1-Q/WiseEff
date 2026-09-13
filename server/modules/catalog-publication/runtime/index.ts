@@ -2,8 +2,26 @@ export {
   SUPPORTED_CATALOG_CONSUMER_CAPABILITIES,
   catalogConsumerSupportsRevision,
 } from "./capabilities";
-export { adoptPreexistingCatalog } from "./adoption";
-export type { AdoptPreexistingCatalogInput, AdoptionEvidenceKind } from "./adoption";
+export { adoptPreexistingCatalog, checkAdoptPreexistingCatalog } from "./adoption";
+export {
+  resolvePublicationManagerDatabaseUrl,
+  publicationManagerDatabaseUrlReusesApiLogin,
+} from "./managerDatabaseUrl";
+export {
+  provisionPublicationRuntimeLogins,
+  inspectLoginBoundary,
+  dropLabRuntimeLogins,
+  publicationRuntimeLoginNames,
+  publicationRuntimeOwnershipComment,
+  PUBLICATION_API_LOGIN,
+  PUBLICATION_MANAGER_LOGIN,
+  PUBLICATION_WORKER_LOGIN,
+} from "./provisionRuntimeLogins";
+export type {
+  AdoptPreexistingCatalogCheck,
+  AdoptPreexistingCatalogInput,
+  AdoptionEvidenceKind,
+} from "./adoption";
 export {
   isPublicationFrozen,
   readPublicationFreeze,

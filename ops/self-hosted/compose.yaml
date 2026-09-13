@@ -83,7 +83,7 @@ services:
       - "9001"
 
   minio-init:
-    image: minio/mc:latest
+    image: minio/mc:RELEASE.2024-11-21T17-21-54Z
     mem_limit: 128m
     memswap_limit: 128m
     depends_on:
@@ -113,6 +113,7 @@ services:
       HOST: 0.0.0.0
       PORT: 8787
       LOG_WORKER_ENABLED: "false"
+      WISEEFF_API_PROCESS: "1"
     depends_on:
       postgres:
         condition: service_healthy
@@ -129,7 +130,7 @@ services:
       interval: 10s
       timeout: 5s
       retries: 12
-    command: ["sh", "-lc", "npm run db:migrate && npx tsx server/index.ts"]
+    command: ["sh", "-lc", "npx tsx server/index.ts"]
 
   worker:
     image: *wiseeff-image
@@ -143,6 +144,8 @@ services:
       LOG_WORKER_ENABLED: "true"
       LOG_WORKER_OBSERVABILITY_HOST: 0.0.0.0
       LOG_WORKER_OBSERVABILITY_PORT: 8788
+      DATABASE_URL: ${WISEEFF_WORKER_DATABASE_URL:?set WISEEFF_WORKER_DATABASE_URL in ops/self-hosted/.env}
+      WISEEFF_WORKER_DATABASE_URL: ${WISEEFF_WORKER_DATABASE_URL:?set WISEEFF_WORKER_DATABASE_URL in ops/self-hosted/.env}
     depends_on:
       postgres:
         condition: service_healthy
@@ -160,6 +163,38 @@ services:
       timeout: 5s
       retries: 12
     command: ["sh", "-lc", "npm run worker:logs"]
+
+  publication-manager:
+    image: *wiseeff-image
+    build: *wiseeff-build
+    restart: unless-stopped
+    mem_limit: 384m
+    memswap_limit: 576m
+    env_file:
+      - ${WISEEFF_PUBLICATION_MANAGER_ENV_FILE:-.env.publication-manager}
+    environment:
+      <<: *wiseeff-runtime-proxy
+      WISEEFF_PUBLICATION_MANAGER: "1"
+      WISEEFF_API_PROCESS: "0"
+      LOG_WORKER_ENABLED: "false"
+      WISEEFF_PUBLICATION_MANAGER_HEALTH_PORT: "8791"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio-init:
+        condition: service_completed_successfully
+      api:
+        condition: service_started
+    expose:
+      - "8791"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:8791/health/live"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+    command: ["sh", "-lc", "npm run publication:manager"]
 
   web:
     image: *wiseeff-image

@@ -58,13 +58,14 @@ describe("log worker runner", () => {
         OBJECT_STORE_MODE: "local",
         OBJECT_STORE_ROOT: ".wiseeff-object-store"
       })
-    ).toThrow("DATABASE_URL is required to start the log worker.");
+    ).toThrow("WISEEFF_WORKER_DATABASE_URL is required to start the log worker");
   });
 
   it("refuses to start without local object store configuration", () => {
     expect(() =>
       validateLogWorkerConfig({
         DATABASE_URL: "postgres://wiseeff:wiseeff@localhost:5432/wiseeff",
+        WISEEFF_WORKER_DATABASE_URL: "postgres://wiseeff_worker:wiseeff@localhost:5432/wiseeff",
         OBJECT_STORE_MODE: "local",
         OBJECT_STORE_ROOT: " "
       })
@@ -75,6 +76,7 @@ describe("log worker runner", () => {
     expect(() =>
       validateLogWorkerConfig({
         DATABASE_URL: "postgres://wiseeff:wiseeff@localhost:5432/wiseeff",
+        WISEEFF_WORKER_DATABASE_URL: "postgres://wiseeff_worker:wiseeff@localhost:5432/wiseeff",
         OBJECT_STORE_MODE: "s3",
         OBJECT_STORAGE_ENDPOINT: "https://storage.example.com",
         OBJECT_STORAGE_BUCKET: "wiseeff-pilot",
@@ -88,6 +90,7 @@ describe("log worker runner", () => {
     expect(() =>
       validateLogWorkerConfig({
         DATABASE_URL: "postgres://wiseeff:wiseeff@localhost:5432/wiseeff",
+        WISEEFF_WORKER_DATABASE_URL: "postgres://wiseeff_worker:wiseeff@localhost:5432/wiseeff",
         OBJECT_STORE_MODE: "local",
         OBJECT_STORE_ROOT: ".wiseeff-object-store",
         LOG_ANALYSIS_QUEUE_MODE: "durable"
@@ -99,6 +102,7 @@ describe("log worker runner", () => {
     expect(() =>
       validateLogWorkerConfig({
         DATABASE_URL: "postgres://wiseeff:wiseeff@localhost:5432/wiseeff",
+        WISEEFF_WORKER_DATABASE_URL: "postgres://wiseeff_worker:wiseeff@localhost:5432/wiseeff",
         OBJECT_STORE_MODE: "local",
         OBJECT_STORE_ROOT: ".wiseeff-object-store",
         LOG_ANALYSIS_QUEUE_MODE: "polling"
@@ -141,6 +145,7 @@ describe("log worker runner", () => {
 
     const runtime = await createLogWorkerRuntimeFromEnv({
       DATABASE_URL: "postgres://wiseeff:wiseeff@localhost:5432/wiseeff",
+      WISEEFF_WORKER_DATABASE_URL: "postgres://wiseeff_worker:wiseeff@localhost:5432/wiseeff",
       OBJECT_STORE_MODE: "s3",
       OBJECT_STORAGE_ENDPOINT: "https://storage.example.com",
       OBJECT_STORAGE_BUCKET: "wiseeff-pilot",
@@ -155,6 +160,7 @@ describe("log worker runner", () => {
 
     expect(loadServerEnv).toHaveBeenCalledWith({
       DATABASE_URL: "postgres://wiseeff:wiseeff@localhost:5432/wiseeff",
+      WISEEFF_WORKER_DATABASE_URL: "postgres://wiseeff_worker:wiseeff@localhost:5432/wiseeff",
       OBJECT_STORE_MODE: "s3",
       OBJECT_STORAGE_ENDPOINT: "https://storage.example.com",
       OBJECT_STORAGE_BUCKET: "wiseeff-pilot",
@@ -174,7 +180,7 @@ describe("log worker runner", () => {
       expect.objectContaining({ tracing: expect.any(Object) })
     );
     expect(createPostgresDatabase).toHaveBeenCalledWith(
-      "postgres://wiseeff:wiseeff@localhost:5432/wiseeff",
+      "postgres://wiseeff_worker:wiseeff@localhost:5432/wiseeff",
       expect.objectContaining({ tracing: expect.any(Object) })
     );
   });

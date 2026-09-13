@@ -36,6 +36,7 @@ M6.6 release-candidate procedures live in [releases/](releases/). Use them after
 - `postgres`: PostgreSQL source of truth.
 - `api`: WiseEff API, bound to `0.0.0.0:8787` inside the compose network.
 - `worker`: dedicated log-analysis worker through `npm run worker:logs`.
+- `publication-manager`: unique Catalog synchronizer loop through `npm run publication:manager`. Credentials come only from `.env.publication-manager`.
 - `web`: Vite preview serving the built frontend.
 - `proxy`: Caddy reverse proxy and TLS termination.
 

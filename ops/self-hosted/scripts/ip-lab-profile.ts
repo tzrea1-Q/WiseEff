@@ -183,6 +183,8 @@ export function renderIpLabEnv(input: IpLabInitInput) {
     "",
     `POSTGRES_PASSWORD=${input.postgresPassword}`,
     `DATABASE_URL=postgres://wiseeff:${input.postgresPassword}@postgres:5432/wiseeff`,
+    `WISEEFF_CATALOG_BOOTSTRAP_DATABASE_URL=postgres://wiseeff:${input.postgresPassword}@postgres:5432/wiseeff`,
+    `WISEEFF_WORKER_DATABASE_URL=postgres://wiseeff:${input.postgresPassword}@postgres:5432/wiseeff`,
     "",
     "AUTH_MODE=production",
     "AUTH_PROVIDER=local",
