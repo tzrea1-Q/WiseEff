@@ -1,6 +1,8 @@
 import { parseArgs } from "node:util";
 import { pathToFileURL } from "node:url";
 import { createPreview, PreviewError, type Preview } from "./verification/plan";
+import { reportCommand, ReportError } from "./verification/report";
+import { runCommand, RunError } from "./verification/run";
 
 const OUTPUT_LIMIT = 64 * 1024;
 
@@ -26,10 +28,18 @@ export function main(argv = process.argv.slice(2)): number {
   return 0;
 }
 
+export async function cli(argv = process.argv.slice(2)): Promise<number> {
+  const command = argv[0];
+  if (command === "plan") return main(argv);
+  if (command === "run") return runCommand(argv.slice(1));
+  if (command === "report") return reportCommand(argv.slice(1));
+  throw new PreviewError("INVALID_ARGUMENTS");
+}
+
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
-  try { process.exitCode = main(); }
+  try { process.exitCode = await cli(); }
   catch (error) {
-    const code = error instanceof PreviewError ? error.code : "INVALID_ARGUMENTS";
+    const code = error instanceof PreviewError || error instanceof RunError || error instanceof ReportError ? error.code : "INVALID_ARGUMENTS";
     process.stdout.write(`${JSON.stringify({ error: code })}\n`);
     process.exitCode = 1;
   }
