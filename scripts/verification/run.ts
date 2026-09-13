@@ -744,7 +744,12 @@ function createStorage(task: TaskId): RunStorage {
     if ((error as NodeJS.ErrnoException).code === "EEXIST") fail("TASK_LOCK_BUSY");
     fail("TASK_LOCK_UNAVAILABLE");
   }
-  const lockStat = fstatSync(lockFd);
+  let lockStat: Stats;
+  try { lockStat = fstatSync(lockFd); }
+  catch (error) {
+    try { closeSync(lockFd); } catch { /* retain the lock when descriptor state is uncertain */ }
+    throw error;
+  }
   let expectedLockText = "";
   let runId: string;
   let directory: string;

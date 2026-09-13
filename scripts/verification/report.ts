@@ -249,7 +249,7 @@ function runDirectory(runId: string): string {
   let stat: Stats;
   try { stat = lstatSync(directory); } catch { fail("RUN_UNAVAILABLE"); }
   const uid = process.getuid?.();
-  if (!stat.isDirectory() || stat.isSymbolicLink() || (uid !== undefined && stat.uid !== uid) || (stat.mode & 0o077) !== 0) fail("RUN_DIRECTORY");
+  if (!stat.isDirectory() || stat.isSymbolicLink() || (uid !== undefined && stat.uid !== uid) || (stat.mode & 0o777) !== 0o700) fail("RUN_DIRECTORY");
   return directory;
 }
 
