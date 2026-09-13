@@ -2,6 +2,7 @@ import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import YAML from "yaml";
+import { l1CommandIds, l1Jobs } from "./ci-required-results";
 
 export const requiredAcceptanceCiScripts = [
   "acceptance:ci",
@@ -394,7 +395,7 @@ export function runAcceptanceCiConfigurationCheck() {
   const packageJson = JSON.parse(readFileSync("package.json", "utf8")) as AcceptanceCiConfigurationInput["packageJson"];
   const workflowText = readFileSync(".github/workflows/ci.yml", "utf8");
   const smokeTagCount = countCiSmokeTags(readAcceptanceSpecSources());
-  const result = evaluateAcceptanceCiConfiguration({
+  const configuration = evaluateAcceptanceCiConfiguration({
     packageJson,
     workflowText,
     smokeTagCount,
@@ -404,9 +405,101 @@ export function runAcceptanceCiConfigurationCheck() {
       ...readAcceptanceConfigurationSources(),
     ],
   });
-
+  const l1Equivalence = evaluateL1CiWorkflow(workflowText);
+  const result = { ...configuration, l1Equivalence,
+    status: configuration.status === "passed" && l1Equivalence.status === "passed" ? "passed" : "failed" };
   console.log(JSON.stringify(result, null, 2));
   return result;
+}
+
+export function evaluateL1CiWorkflow(workflowText: string): { status: "passed" | "failed"; errors: string[] } {
+  const errors: string[] = [];
+  type Step = { id?: string; name?: string; run?: string; uses?: string; if?: string; "continue-on-error"?: boolean;
+    with?: Record<string, unknown>; env?: Record<string, unknown> };
+  type Job = { name?: string; needs?: string | string[]; if?: string; "runs-on"?: string; steps?: Step[];
+    "continue-on-error"?: boolean; "timeout-minutes"?: number;
+    outputs?: Record<string, string>; services?: Record<string, { image?: string }>; env?: Record<string, string> };
+  let workflow: { jobs: Record<string, Job>; env?: Record<string, string> };
+  try { workflow = YAML.parse(workflowText) as typeof workflow; }
+  catch { return { status: "failed", errors: ["Malformed L1 workflow."] }; }
+  const jobs = workflow?.jobs;
+  const check = (valid: unknown, message: string) => { if (!valid) errors.push(message); };
+  const cli = "node --experimental-strip-types scripts/ci-required-results.ts";
+  const identityEnvironment = {
+    EFF_BASE_SHA: "${{ github.event.pull_request.base.sha }}", EFF_HEAD_SHA: "${{ github.event.pull_request.head.sha }}",
+    EFF_MODE: "${{ inputs.acceptance_mode }}",
+    EFF_FULL_ACCEPTANCE: "${{ github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'full-acceptance') }}",
+  };
+  for (const [key, expression] of Object.entries(identityEnvironment)) check(workflow?.env?.[key] === expression, `L1 identity field ${key} must come from workflow context.`);
+  const commands: Record<string, string> = {
+    install: "npm ci", metadata: "npm run acceptance:ci", build: "npm run build", docs: "npm run docs:check",
+    ui: "npm run ui:check", lint: "npm run lint", contract: "npm run contract:check", logs: "npm run logs:eval",
+    advisory: "npm run dtc:seed:compile", receipt: `${cli} receipt`,
+    ...Object.fromEntries(["frontend", "scripts", "bridge", "server"].map((id) => [id, `${cli} test ${id}`])),
+  };
+  const vectorCommand = `node --input-type=module -e '
+  import pg from "pg";
+  const client = new pg.Client({ connectionString: process.env.DATABASE_URL });
+  await client.connect();
+  await client.query("create extension if not exists vector");
+  const row = await client.query(
+    "select extname from pg_extension where extname = $1",
+    ["vector"],
+  );
+  if (row.rowCount !== 1) {
+    throw new Error("pgvector extension was not created");
+  }
+  await client.end();
+'`;
+  const trustedBase = "9b3ba7df7e21f5589684bc92c872da593ad4c246";
+  const catalogCommand = 'set -euo pipefail\ngit fetch --no-tags origin "${PARAMETER_CATALOG_TRUSTED_BASE_SHA}"\ntest "$(git rev-parse --verify "${PARAMETER_CATALOG_TRUSTED_BASE_SHA}^{commit}")" = "${PARAMETER_CATALOG_TRUSTED_BASE_SHA}"\nnpm run parameter-catalog-boundaries:check -- --trusted-base-sha "${PARAMETER_CATALOG_TRUSTED_BASE_SHA}"';
+  const expectedStepProjection = (ids: readonly string[]) => "{" + ids.map((id) => '"' + id + '":${{ toJSON(steps.' + id + ') }}').join(", ") + "}";
+  const normalizeStepProjection = (value: unknown) => typeof value === "string" ? value.trim() : "";
+  for (const id of l1Jobs) {
+    const job = jobs?.[id];
+    if (!job) { errors.push(`Missing ${id}.`); continue; }
+    check(job.needs === "detect" && job.if === "needs.detect.outputs.run_l1 == 'true'", `${id} must retain fixed L1 selection.`);
+    check(job["runs-on"] === "ubuntu-latest", `${id} must retain the runner platform.`);
+    check(job["continue-on-error"] === undefined && job["timeout-minutes"] === 20, `${id} must retain timeout and strict job failure semantics.`);
+    const steps = job.steps ?? [];
+    check(JSON.stringify(steps.map((step) => step.id)) === JSON.stringify([...l1CommandIds[id], "receipt"]), `${id} lost, reordered, or added an unmapped command.`);
+    for (const step of steps) {
+      check(step["continue-on-error"] === (step.id === "advisory" ? true : undefined), `${id}/${step.id} changed failure semantics.`);
+      check(step.if === (step.id === "receipt" ? "always()" : undefined), `${id}/${step.id} changed execution conditions.`);
+      if (step.id && commands[step.id]) check(step.run === commands[step.id], `${id}/${step.id} changed the original command.`);
+    }
+    const step = (key: string) => steps.find((item) => item.id === key);
+    check(step("checkout")?.uses === "actions/checkout@v4" && step("checkout")?.with?.["fetch-depth"] === 0, `${id} needs full checkout history.`);
+    check(step("node")?.uses === "actions/setup-node@v4" && step("node")?.with?.["node-version-file"] === ".nvmrc"
+      && step("node")?.with?.cache === "npm", `${id} needs existing Node/npm setup.`);
+    check(normalizeStepProjection(step("receipt")?.env?.EFF_STEPS) === expectedStepProjection(l1CommandIds[id])
+      && job.outputs?.receipt === "${{ steps.receipt.outputs.receipt }}", `${id} must project its fixed named steps into the invocation receipt.`);
+    if (id === "l1-scripts" || id === "l1-server") {
+      check(job.services?.postgres?.image === "pgvector/pgvector:pg16" && job.env?.DATABASE_URL === "postgres://wiseeff:wiseeff@127.0.0.1:5432/wiseeff", `${id} requires the real PG/vector service.`);
+      check(step("toolchain")?.uses === "./.github/actions/setup-dts-toolchain", `${id} requires verified DTS tooling.`);
+      check(step("vector")?.run?.trim() === vectorCommand, `${id} requires the original vector create/read assertion.`);
+    }
+    if (id === "l1-static") {
+      check(step("catalog")?.env?.PARAMETER_CATALOG_TRUSTED_BASE_SHA === trustedBase && step("catalog")?.run?.trim() === catalogCommand, "Static trusted-base ratchet changed.");
+      check(step("eslint_cache")?.uses === "actions/cache@v4" && step("eslint_cache")?.with?.path === "node_modules/.cache/eslint", "ESLint cache must be retained.");
+    }
+  }
+  const gateNeeds = {
+    "build-and-test": ["detect", ...l1Jobs],
+    required: ["detect", "build-and-test", "acceptance-quality", "acceptance-smoke", "acceptance-local-non-hdc", "target-synthetic-acceptance", "minimal-upgrade"],
+  };
+  for (const [id, needs] of Object.entries(gateNeeds)) {
+    const job = jobs?.[id];
+    const steps = job?.steps ?? [];
+    check(job?.if === "always()" && job?.name === (id === "required" ? "Merge bar" : "Build and test"), `${id} stable gate must always run.`);
+    check(job?.["continue-on-error"] === undefined && job?.["timeout-minutes"] === 5, `${id} must retain timeout and strict job failure semantics.`);
+    check(JSON.stringify(job?.needs) === JSON.stringify(needs), `${id} has missing or unmapped dependencies.`);
+    check(steps.length === 3 && steps[0]?.uses === "actions/checkout@v4" && steps[1]?.uses === "actions/setup-node@v4"
+      && steps[1]?.with?.["node-version-file"] === ".nvmrc" && steps[2]?.run === `${cli} ${id === "required" ? "required" : "l1"}`
+      && steps[2]?.env?.EFF_NEEDS === "${{ toJSON(needs) }}" && steps.every((step) => step.if === undefined && step["continue-on-error"] === undefined), `${id} must validate exact results without npm installation or failure suppression.`);
+  }
+  check(jobs?.["build-and-test"]?.outputs?.identity === "${{ steps.results.outputs.identity }}", "Build and test must publish its verified execution identity.");
+  return { status: errors.length ? "failed" : "passed", errors };
 }
 
 function listTypeScriptFiles(root: string): string[] {
