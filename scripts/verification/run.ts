@@ -574,7 +574,7 @@ function writeAtomicRecord(runDirectory: string, value: RunRecord): void {
   const json = JSON.stringify(value);
   if (Buffer.byteLength(json, "utf8") > RECORD_LIMIT) fail("RECORD_TOO_LARGE");
   const temporary = path.join(runDirectory, `${RECORD_NAME}.${process.pid}.tmp`);
-  ensurePathAncestors(ROOT, temporary);
+  ensurePathAncestors(ROOT, runDirectory);
   const fd = openSync(temporary, constants.O_CREAT | constants.O_EXCL | constants.O_WRONLY | (constants.O_NOFOLLOW ?? 0), 0o600);
   try {
     writeFileSync(fd, `${json}\n`, "utf8");
