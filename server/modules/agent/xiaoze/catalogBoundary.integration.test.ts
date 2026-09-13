@@ -591,6 +591,7 @@ describe("R2-AGT real authenticated Catalog execution", () => {
         public.user_password_credentials, public.auth_sessions, public.projects,
         public.agent_sessions, public.agent_messages, public.agent_tool_calls,
         public.agent_approvals, public.audit_events to %I`, role);
+      await ddl("grant select (id, permissions) on public.roles to %I", role);
       // The real failure-terminal thread persistence also updates its session.
       await ddl("grant update on public.users, public.agent_sessions to %I", role);
       await ddl("grant insert, update on public.auth_sessions, public.agent_tool_calls to %I", role);
