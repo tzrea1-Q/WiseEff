@@ -2741,7 +2741,7 @@ describe.skipIf(!databaseAvailable)("post-cutover semantic workflow (temp DB)", 
             ["semantic-writeback-system-refusal", system]
           ] as const) {
             await expect(
-              writebackMergedParameterValue(db, objectStore as never, auth, {
+              db.transaction((tx) => writebackMergedParameterValue(asAuditTx(tx), objectStore as never, auth, {
                 projectId: PROJECT,
                 parameterDefinitionId: seeded.specId,
                 mergedValue: mergedGpioValue,
@@ -2754,7 +2754,7 @@ describe.skipIf(!databaseAvailable)("post-cutover semantic workflow (temp DB)", 
                 refusalSink,
                 toolchain: passToolchain,
                 skipSemanticGates: true
-              })
+              }))
             ).rejects.toMatchObject({ code: "FORBIDDEN", status: 403 });
             expect(await writebackState()).toEqual(beforeWriteback);
             expect(put).not.toHaveBeenCalled();
@@ -2778,7 +2778,7 @@ describe.skipIf(!databaseAvailable)("post-cutover semantic workflow (temp DB)", 
         );
         put.mockClear();
         await withRefusalSink(connectionString, async (refusalSink) => {
-          const systemWriteback = await writebackMergedParameterValue(db, objectStore as never, auth, {
+          const systemWriteback = await db.transaction((tx) => writebackMergedParameterValue(asAuditTx(tx), objectStore as never, auth, {
             projectId: PROJECT,
             parameterDefinitionId: seeded.specId,
             mergedValue: mergedGpioValue,
@@ -2791,7 +2791,7 @@ describe.skipIf(!databaseAvailable)("post-cutover semantic workflow (temp DB)", 
             refusalSink,
             toolchain: passToolchain,
             skipSemanticGates: true
-          });
+          }));
           expect(systemWriteback.skipped).toBe(false);
           if (!systemWriteback.skipped) {
             const exactVersion = await db.query<{ created_by_user_id: string | null }>(
@@ -2809,7 +2809,7 @@ describe.skipIf(!databaseAvailable)("post-cutover semantic workflow (temp DB)", 
         });
         expect(put).toHaveBeenCalledTimes(1);
         put.mockClear();
-        const writeback = await writebackMergedParameterValue(db, objectStore as never, auth, {
+        const writeback = await db.transaction((tx) => writebackMergedParameterValue(asAuditTx(tx), objectStore as never, auth, {
           projectId: PROJECT,
           parameterDefinitionId: seeded.specId,
           mergedValue: mergedGpioValue,
@@ -2837,7 +2837,7 @@ describe.skipIf(!databaseAvailable)("post-cutover semantic workflow (temp DB)", 
             },
           },
           skipSemanticGates: true,
-        });
+        }));
         expect(writeback.skipped).toBe(false);
         if (!writeback.skipped) {
           expect(writeback.candidateRevisionId).toBeTruthy();
@@ -3177,8 +3177,8 @@ describe.skipIf(!databaseAvailable)("post-cutover semantic workflow (temp DB)", 
         };
 
         await expect(
-          writebackMergedParameterValue(
-            db,
+          db.transaction((tx) => writebackMergedParameterValue(
+            asAuditTx(tx),
             objectStore as never,
             auth,
             {
@@ -3211,7 +3211,7 @@ describe.skipIf(!databaseAvailable)("post-cutover semantic workflow (temp DB)", 
               },
               skipSemanticGates: true,
             }
-          )
+          ))
         ).rejects.toMatchObject({
           code: "CONFLICT",
           status: 409

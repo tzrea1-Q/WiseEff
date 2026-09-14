@@ -7,6 +7,7 @@
     "packages/*"
   ],
   "scripts": {
+    "verify:plan": "tsx scripts/verify.ts plan",
     "dev": "VITE_WISEEFF_RUNTIME_MODE=api VITE_WISEEFF_API_BASE_URL=http://127.0.0.1:8787 vite --host 127.0.0.1",
     "dev:all": "tsx scripts/run-dev-all.ts",
     "dev:api": "tsx watch server/index.ts",

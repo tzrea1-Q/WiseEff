@@ -85,12 +85,12 @@ describe("auth context factory", () => {
 
   it("uses verified OIDC email claims for migration-only account linking", async () => {
     const user = { ...developmentAuthContext.user, id: "u-by-email", email: "mapped@example.com" };
-    const calls: Array<{ values?: unknown[] }> = [];
+    const calls: Array<{ text: string; values?: unknown[] }> = [];
     const db: Database = {
-      query: async <Row,>(_text: string, values?: unknown[]): Promise<QueryResult<Row>> => {
-        calls.push({ values });
+      query: async <Row,>(text: string, values?: unknown[]): Promise<QueryResult<Row>> => {
+        calls.push({ text, values });
         const rows =
-          calls.length === 1
+          calls.length === 1 || text.includes("from user_role_bindings")
             ? []
             : [
                 {
@@ -131,7 +131,10 @@ describe("auth context factory", () => {
     });
     expect(calls.map((call) => call.values)).toEqual([
       [developmentAuthContext.user.organizationId, "oidc-subject"],
-      [developmentAuthContext.user.organizationId, "mapped@example.com"]
+      [developmentAuthContext.user.organizationId, "mapped@example.com"],
+      ["u-by-email"]
     ]);
+    expect(calls[2].text).toContain("from user_role_bindings");
+    expect(calls[2].text).toContain("roles.id like 'catalog-capability-%'");
   });
 });
