@@ -271,6 +271,16 @@ Quality 是首个隔离/分片试点，完整 Gate 0 重构不默认纳入。每
 
 每次代码交付提供全部授权修改代码文件的完整内容，优先精确候选源码包，附真实路径、摘要、文件 digest、新增/修改/删除/重命名清单。仅含授权提交变更，排除凭据、`.env`、运行日志、数据库和无关源码；删除显式列清单，不造空文件。完整源码交付与反复把所有文件灌入审查上下文分开。
 
+### EFF-08 检查点——2026-09-14 路由与恢复
+
+[English checkpoint](../../../exec-plans/active/2026-09-13-agent-delivery-efficiency.md#eff-08-checkpoint--2026-09-14-routing-and-recovery)
+
+本次有界路由候选位于 `codex/efficiency-w3`，base 为 `aed7e54686e7642655b3b8c30369b9c4ad07f771`，HEAD 为 `66e093a58ca599541e7c3cb9f9112947feca2cbd`，tree 为 `03437e2517706981f89686122d93ea6f0c2a1c61`；本次文档改动前 worktree clean。四文件路由增量是 `AGENTS.md`、`docs/zh-CN/root/AGENTS.md`、`docs/agents/agent-delivery-protocol.md`、`docs/zh-CN/agents/agent-delivery-protocol.md`。从仓库根到真实任务 cwd 的实际链路中，每层依次检查 `AGENTS.override.md`、`AGENTS.md`、已配置 fallback 名称，并选取首个非空文件；已检查候选和选中路径必须写入交付记录。这是可观察的发现链，不声称从根目录启动会自动加载所有深层指令。
+
+任务/恢复 packet 限制为 ≤6 KiB，携带精确 cwd、branch、base/head/tree、所有权、可编辑路径、范围引用、命令/预期 exit、证据级别、结果引用、缺失证据、阻塞者/负责人和下一状态。完整日志、凭据、数据库、原始工具内容和私有推理留在 packet 外。每个有界单元最多记录一个运行时报告的数值 usage；本检查点没有已验证 token 或节省总量，缺失、重复或子任务 usage 均保持 `unknown` 并注明覆盖范围。
+
+保留的恢复证据是历史且有界独立证据：在 `636ebbd093ab89e3c8b760dcec134fe7d6ca4b60`，三个 UI 文件覆盖 15 个观察、两个脚本覆盖 54 个观察；后续 PostgreSQL 切片在 `5418af9474415fec111994accda5e46250e6271b` 覆盖 24/4 且零失败。这些是历史恢复观察，不是本次新执行，也不证明模块已启用。Issue #835 已合入，#836 Hosted/最终集成仍 pending；本检查点不新增 PostgreSQL、启用或最终合入声明。父协调者仍需在合入后完成精确源码包及其有界检查。
+
 ## 工作包与波次门禁
 
 每行均映射 Issue #828；真实 PR/base/head/merge/run/reviewer 由父协调者追加。计划登记时 EFF-01 首版处于本地验证，其余实现项 pending。每项开始前先写精确可写路径和真实命令任务包；这里的拟议路径族不是无限编辑授权。

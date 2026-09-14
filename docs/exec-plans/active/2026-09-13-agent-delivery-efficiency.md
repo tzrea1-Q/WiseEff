@@ -271,6 +271,16 @@ Only collect official observable usage numbers/task/model/version/session-turn t
 
 Every code delivery includes complete contents of every authorized changed code file, preferably an exact-candidate source package with actual path, file digests, summary and added/modified/deleted/renamed manifests. Include only the authorized committed change set; exclude credentials, `.env`, runtime logs, DBs and unrelated source. Represent deletions explicitly, not empty replacement files. Full source delivery is distinct from repeatedly feeding every file to reviewers.
 
+### EFF-08 checkpoint — 2026-09-14 routing and recovery
+
+[中文检查点](../../zh-CN/exec-plans/active/2026-09-13-agent-delivery-efficiency.md#eff-08-检查点-2026-09-14-路由与恢复)
+
+The bounded routing candidate is branch `codex/efficiency-w3`, base `aed7e54686e7642655b3b8c30369b9c4ad07f771`, HEAD `66e093a58ca599541e7c3cb9f9112947feca2cbd`, tree `03437e2517706981f89686122d93ea6f0c2a1c61`, with a clean worktree before this documentation change. Its four-file routing delta is `AGENTS.md`, `docs/zh-CN/root/AGENTS.md`, `docs/agents/agent-delivery-protocol.md`, and `docs/zh-CN/agents/agent-delivery-protocol.md`. From the repository root to the real task cwd, each directory checks `AGENTS.override.md`, then `AGENTS.md`, then configured fallback names and selects the first non-empty file; checked candidates and selected paths belong in the delivery record. This is an observable discovery chain, not a claim that a root invocation loads every deeper instruction.
+
+The task/recovery packet is bounded to ≤6 KiB and carries the exact cwd, branch, base/head/tree, ownership, editable paths, scoped references, command/expected exit, evidence level, result references, missing evidence, blocker/owner and next transition. Full logs, credentials, databases, raw tool contents and private reasoning stay outside the packet. One runtime-reported numeric usage sample is allowed per bounded unit; this checkpoint has no verified token or savings total, and missing, duplicate or child usage remains `unknown` with coverage stated.
+
+The retained recovery evidence is historical and independently bounded: at `636ebbd093ab89e3c8b760dcec134fe7d6ca4b60`, three UI files covered 15 observations and two scripts covered 54 observations; the later PostgreSQL slice at `5418af9474415fec111994accda5e46250e6271b` covered 24/4 with zero failures. These are historical recovery observations, not new execution or proof of module activation. Issue #835 is merged, while #836 Hosted/final integration remains pending; this checkpoint makes no new PostgreSQL, activation, or final-merge claim. Parent closure still requires the exact post-merge source package and its scoped checks.
+
 ## Work packages and wave gates
 
 Every row maps to Issue #828; actual PR/base/head/merge/run/reviewer results are appended by the owning parent. EFF-01 bootstrap is in local validation; other implementation rows are pending at plan registration. Before starting each row, write its bounded packet with exact allowed paths and commands; proposed path families here are not blanket edit authority.
