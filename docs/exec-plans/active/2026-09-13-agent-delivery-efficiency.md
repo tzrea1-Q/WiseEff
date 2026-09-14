@@ -1,7 +1,7 @@
 # Agent Delivery and Verification Efficiency
 
 > Chinese: [Chinese](../../zh-CN/exec-plans/active/2026-09-13-agent-delivery-efficiency.md)
-> Status: **Active — PRs #830, #829, #833, #831, #834 and #835 merged. Fresh execution/reporting PR #836 is correcting a cold-checkout test prerequisite after its first Hosted failure. Routing, type feedback and browser fixtures await separate delivery. No activation or measured-benefit claim.**
+> Status: **Active — PRs #830, #829, #833, #831, #834, #835 and #836 merged. Routing is in final integration; type feedback and browser fixtures await separate delivery. No activation or measured-benefit claim.**
 > Date: 2026-09-13. Tracking Issue: [#828](https://github.com/tzrea1-Q/WiseEff/issues/828).
 > Accepted base, freshly fetched on 2026-09-13: `1059acb57379bd120d0d2b1a4b4733d4c2e02901`. This equals the supplied design's historical reference; it is not permission to reset later work.
 
@@ -13,11 +13,19 @@ Implement the user's supplied 2026-09-13 engineering design in bounded waves: sa
 
 | Delivery level | Completion means | Current status |
 | --- | --- | --- |
-| A: tools and process | Reviewed and verified diagnostics, equivalent scheduling, shadow plan, execution/reporting and routing are delivered | EFF-01/02/03 merged; EFF-04 is integrating its reviewed correction; EFF-07/08 and browser fixtures have reviewed local candidates awaiting delivery |
+| A: tools and process | Reviewed and verified diagnostics, equivalent scheduling, shadow plan, execution/reporting and routing are delivered | EFF-01/02/03/04 merged; EFF-08 is integrating on accepted execution/reporting; EFF-07 and browser fixtures await delivery |
 | B: module activation | Each explicitly named module passes its own observation and independent-review gates | No module enabled; `observation-pending` |
 | C: measured effect | Comparable real task/CI samples support wall-clock, resource and usage conclusions | Insufficient samples; token usage `unknown` |
 
 A can be delivered while B/C remain open. Do not manufacture samples or call the entire program complete merely because tooling merged.
+
+## Execution accepted and routing integration — 2026-09-14
+
+[PR #836](https://github.com/tzrea1-Q/WiseEff/pull/836) merged as `0dd8157682393df0514b10625660fe4cd91a406f` after corrected-head [run 34794729894](https://github.com/tzrea1-Q/WiseEff/actions/runs/34794729894), attempt 1, passed all nine selected original GitHub Actions checks. Base `aed7e54686e7642655b3b8c30369b9c4ad07f771` and head `9f8639542be150b74812a3b62c4bb56f63c21cfe` are the ordered parents of actual checkout `75ada0ee7d8b6770b6bc7d8f57688640a72dbb5a`; candidate, checkout and merged tree are `d6a9e6858a00a4d2da35d37ca4fe85cbe1f6711d`. Frontend 3411/441 files, scripts 1560/110 plus 21 existing optional skips, bridge 134/21 plus 4 platform skips, backend 4180/539 with zero skips, Quality 100 and Smoke 4 passed. The cold-checkout fixture passed with all assertions retained, and independent Standards/Spec passed. Complete ten-file ZIP SHA256 is `5dd698781a97184f2eeeeec543f10dca946463e0ef423e7c7fa33d5cb0f6c030`, with no deletes/renames. Remote branch absence and clean local main synchronization were verified.
+
+On that exact head, local 102/5 focused tests, unchanged build and metadata/docs passed. Fresh tasks produced 10/1 and 29/5, zero skips, at UUIDs `432ae04f-845f-4e9d-980a-9a00a8ffc8e9` and `d6c8cac1-30ba-42a4-8c41-4a1743ba30dc`; saved readers remain freshness-unverified. Hosted wall approximation was 734 seconds and summed executed-job elapsed 34.3667 minutes, not billing or controlled gain. Earlier aed7 main full run 34792256282 passed L1/Quality/visual but inventoried 58 browser failures; the original archive-size guard refused the full artifact while minimal diagnostic upload succeeded. That run's wall was 2664 seconds, sum job elapsed 73.15 minutes; detailed native totals/cleanup remain unknown. Newly merged main's full acceptance is separately pending.
+
+Routing has normally integrated this accepted main. Its four original instruction/protocol blobs retain the reviewed `5418af9474415fec111994accda5e46250e6271b` delta; the existing matrix owns actual plan/run/report command scopes. Final routing checks, one independent combined R1 review, full six-file source package and separate docs-only PR remain pending at this checkpoint. Module activation and memo remain disabled; historical records below retain their original identities.
 
 ## Fresh executor Hosted fixture prerequisite — 2026-09-14
 
