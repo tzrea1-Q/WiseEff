@@ -219,7 +219,7 @@ R3 经过 `PREFLIGHT → THREAT-READY`，再进入 `SCRATCH → PRESEAL-REVIEW �
 
 从既有结构化运行器/Gate 0 阶段事实投影 `execution / cleanup / diagnostic / archive / upload` 五种独立状态，保留全部失败与首个已知失败阶段；首批不改完整归档格式或资源生命周期。允许字段：schema version、可信 run/attempt/job ID、候选 SHA/tree、枚举 phase/status、exit/signal、起止时间、注册 task/test ID、已校验相对源码位置、规范化错误/拒绝码、清理投影、suppressed/truncated。缺失为 unknown。
 
-首个已独立威胁审查的 W0 实现将输入限定为 `workflow-context-only`：workflow 内嵌 `/usr/bin/python3 -I` publisher 不读候选报告，在 checkout 后、npm 前记录真实 SHA/tree，未观察的 phase/cleanup/test-count 保持 unknown，尚不声称详细报告投影。父本地验证进行中（本文档集成前 28 项 focused、`acceptance:ci`、build 已通过），不冒充同候选 Hosted 或合入证据。L2 新增 identity 1 分钟及 generation/fallback/upload/settlement 4 分钟，原必需预算下限 146 变为 151，总 job 预算变为 155 分钟；不缩短任何旧步骤预算。详细报告读取如有需要，作为 EFF-01 独立审查扩展。
+经独立威胁审查的 W0 最小实现已由 #829 合入。输入限定为 `workflow-context-only`：workflow 内嵌 `/usr/bin/python3 -I` 发布器不读候选报告，在 checkout 后、npm 前记录真实 SHA/tree，未观察的阶段、清理和测试数量保持 unknown。精确候选 `fb6087f1fdb352953f63b46ca711cee5775e2607` 通过 77 项窄测试、build、元数据/文档、独立双审和选中 Hosted run 34762290769 attempt 1。后续 main 自然失败另行证明：完整归档被拒绝时，安全最小诊断仍能上传；这不证明详细报告投影。L2 新增身份记录 1 分钟和生成/兜底/上传/结算 4 分钟，原必需预算下限 146 变为 151，总 job 预算变为 155 分钟；不缩短任何旧步骤预算。详细报告读取如有需要仍是单独审查的扩展，回归台账保留未实演的失败注入限制。
 
 原始 stderr、环境、请求响应、DB URL、浏览器 HTML/storage、令牌、代理认证和工作站绝对路径不得进入投影。标题、路径、异常文本均不可信。默认 JSON ≤64 KiB、人读摘要 ≤4 KiB、失败 ID ≤20；可选摘录每条 ≤1,200 字符，仅在专用白名单/脱敏校验后输出。优先不用自由文本；安全无法确认仅输出固定码。
 
@@ -407,18 +407,18 @@ EFF-07 新增 `npm run typecheck`，内容精确等于原 build 的 4096 MiB `ts
 
 | 领域 | 状态 | 精确路径与处置 |
 | --- | --- | --- |
-| 仓库入口 | Update，EFF-08 | `AGENTS.md`、`docs/zh-CN/root/AGENTS.md`：短路由和实际新命令，保留安全规则。 |
-| 计划治理 | Update，EFF-00/09 | `docs/PLANS.md`、`docs/zh-CN/PLANS.md`、本计划与英文对应：基线、波次/PR/状态/观察与真实归档。 |
+| 仓库入口 | #837 已更新 | `AGENTS.md`、`docs/zh-CN/root/AGENTS.md`：实际 cwd 发现、精简任务包和完整源码交付，保留原安全规则。 |
+| 计划治理 | #829 及最终文档切片更新 | `docs/PLANS.md`、`docs/zh-CN/PLANS.md` 已链接本活跃计划。本计划文件对维护当前状态，新互链回归台账记录 58 项观察。B/C 保持活跃，无需移入完成目录或重写索引。 |
 | 产品规格 | No change | `docs/product-specs/product-spec.md`、`docs/zh-CN/product-specs/product-spec.md`：仅工程交付，无产品行为/启用变化。 |
 | 架构 | No change | `ARCHITECTURE.md`、`docs/zh-CN/root/ARCHITECTURE.md`：既有 runtime/port 边界保留。 |
-| 质量/测试 | Update，EFF-02—08 | `docs/developer/verification-matrix.md`、`docs/zh-CN/developer/verification-matrix.md`、`docs/design-docs/testing-strategy.md`、`docs/zh-CN/design-docs/testing-strategy.md`：等价组、profile/zero-test/full、隔离与证据。 |
-| 可靠性/运行手册 | Review，EFF-01/04/06 | `docs/runbooks/manual-acceptance.md`、`docs/zh-CN/manual-acceptance.md`、`docs/developer/local-development.md`、`docs/zh-CN/developer/local-development.md`：仅更新受影响诊断/日志/环境/回退程序。 |
-| 安全/治理 | Update/Review | `docs/agents/agent-delivery-protocol.md`、`docs/zh-CN/agents/agent-delivery-protocol.md` 在 EFF-04/08 最小更新；复核 `docs/SECURITY.md`、`docs/zh-CN/SECURITY.md` 的所有权/脱敏权威不变。 |
+| 质量/测试 | 已更新 | 两份验证矩阵维护已实现命令、严格数量、full/shadow 和夹具证据；两份 testing-strategy 在 #831 更新等价组及原有前置条件。不增加重复验证手册。 |
+| 可靠性/运行手册 | 已审查，无变化 | `docs/runbooks/manual-acceptance.md`、`docs/zh-CN/manual-acceptance.md` 及两份 local-development 保留原 Gate 0、环境和所有权程序；EFF 复用这些程序，命令/诊断增量记入现有矩阵。没有运维或目标环境程序变化。 |
+| 安全/治理 | 已更新/审查 | 两份交付协议由 #837 更新。`docs/SECURITY.md`、`docs/zh-CN/SECURITY.md` 没有 EFF 差异，上游既有修改保留；所有权、脱敏、源码锁和独立审查权威不变。 |
 | main-red 身份前置修复 | 已更新 | 独立互链的 `docs/agents/catalog-runtime-boundary-relocation.md` 及中文文件记录独立接受的 16 对身份范围、原清单保留、收集隔离及回退；原 23 对决定不变。 |
 | 前端/设计 | No change | `docs/FRONTEND.md`、`docs/zh-CN/frontend.md`、`docs/design-docs/ui-design-system.md`：无界面重设计；真实浏览器要求保留。 |
-| 生成物 | Review，每波 | `docs/generated/acceptance-operation-evidence.md`、`docs/generated/db-schema.md`：保留既有权威；不造 operation 证据或 schema 变化。 |
+| 生成物 | 已审查，无变化 | `docs/generated/acceptance-operation-evidence.md`、`docs/generated/db-schema.md` 没有 EFF 差异，不制造 operation 证据或 schema 输出。工程 PR 的选中 Hosted job 在其自有 PostgreSQL 前置条件下执行完整 schema 检查。 |
 | 参考 | No change | `docs/references/productization-api-contract-draft.md`：无 API 变化，不另建重复工程手册。 |
-| 余留 | Review，EFF-00/09 | `docs/exec-plans/tech-debt-tracker.md`、`docs/zh-CN/exec-plans/tech-debt-tracker.md`：main-red/热点/观察余项优先复用既有条目，不重开历史完成计划。 |
+| 余留 | 已审查，保留已有开放责任 | 现有 [TD-075/TD-076/TD-118](../../../exec-plans/tech-debt-tracker.md) 覆盖验收治理、夹具债务和共享浏览器下限，中文 tracker 另有互链。本计划及 #828 维护 EFF 观察条件；不新增债务编号、裁剪套件或重开已关闭 TD-122。 |
 
 ## 文档更新门禁
 
@@ -426,4 +426,4 @@ EFF-07 新增 `npm run typecheck`，内容精确等于原 build 的 4096 MiB `ts
 
 归档前每个 Update/Review 行必须更新或明确记录“无变化及证据”，真实余项进入既有技术债。B/C 未满足不把全项目标 completed。源码不得提交原始日志、令牌、完整环境/会话/rollout、数据库 dump 或大型运行报告。
 
-本轮 R1 登记仅修改本文件对和两份计划索引各一条链接，不改变运行命令、门禁、业务流程、acceptance ID 或 operation ID。自身证据仅为文档/静态检查；父验证、独立审查、Hosted/merge 与后续实现证据分开记录。
+首次 R1 登记修改本文件对和两份计划索引各一条链接，保留为历史。最终 EFF-09 文档仅修改本计划对和互链回归台账对。父协调者在 A 交付收口前，将最终 clean head/tree、直接 `node_modules/.bin/tsx scripts/check-doc-governance.ts`、`npm run acceptance:ci`、独立 R1 审查和选中 Hosted 结果记入 #828 证明。直接本地文档治理不冒充 `docs:check` 的 schema 证明，也不探测无所有权的默认端口数据库。最近工程 PR 的完整 Hosted schema 证据单独标识，文档 PR 不重跑，也不将它算作新执行。最终源码存在后在外部记录源码包身份，避免为写入自身结果而改变已测源码。

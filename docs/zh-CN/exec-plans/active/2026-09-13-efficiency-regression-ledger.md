@@ -2,7 +2,7 @@
 
 > English: [English](../../../exec-plans/active/2026-09-13-efficiency-regression-ledger.md)
 > 计划：[智能体交付与验证效率](2026-09-13-agent-delivery-efficiency.md)
-> 准备快照：accepted main 为 `b3ec95a4c9e327d384ce482be05c92ca0227e63a`；类型 PR #838、浏览器及最终文档候选仍 pending。最终父检查点及 Issue #828 证明记录取代此准备状态。
+> 准备快照：accepted base 为 `01703ba69f883b22e8b819182223c5fd35b90184`；#838 已合并，浏览器及最终文档候选仍 pending。最终父检查点及 Issue #828 证明记录取代此准备状态。
 
 本表将设计的 58 个场景映射到有界证据，每行只说明列出的观察及限制，不表示全部场景、模块启用或当前 main 全量验收通过。不为填表增加执行。
 
@@ -24,64 +24,64 @@ PASS 表示所述有限行为有相符证据，PARTIAL 表示仅有部分证据�
 
 | 场景 | 状态 | 具体证据 | 限制或剩余条件 |
 | --- | --- | --- | --- |
-| EFF-T01 | PARTIAL | `scripts/acceptance-diagnostic.test.ts:55-67` 实际运行 `acceptance_diagnostic` workflow step，并检查 primary execution failure、unknown cleanup、generated diagnostic、archive failure、skipped upload 及 suppressed details。 | 这是 workflow-context-only 证据，不是当前 full acceptance 执行；最终索引仍需绑定精确 base/head/run。 |
-| EFF-T02 | PARTIAL | W0 记录了 acceptance/full 失败分离和有界诊断。 | raw package refusal 与完整受控失败路径还没有一份当前端到端证据。 |
-| EFF-T03 | PARTIAL | `scripts/acceptance-diagnostic.test.ts:83-94` 用 synthetic token、Cookie、DB URL、authorization 运行 workflow diagnostic，并验证生成的 text/summary 不含这些值。该步骤明确是 `workflow-context-only`，不读取 candidate report 或 raw log。 | 这只证明 diagnostic step 的有界脱敏，不是完整 candidate-report/raw-log 拒绝路径；其余 workflow 行为保持未声明。 |
-| EFF-T04 | PARTIAL | `scripts/acceptance-diagnostic.test.ts:83-94` 提供 ANSI/title/path-injection 文本，`:96-102` 拒绝 malformed/oversized status 且不反射。 | 这些测试没有证明原始 acceptance 场景完整的 no-execution/path-validation 行为；只保留 diagnostic boundary 证据。 |
-| EFF-T05 | PARTIAL | `scripts/acceptance-diagnostic.test.ts:96-102` 检查 70,000 字符 status 被拒，`:83-94` 检查输出字节上限。 | 过多失败/日志行为及全流程 truncation 没有由这些 workflow-context-only 测试独立证明。 |
-| EFF-T06 | PARTIAL | `scripts/acceptance-diagnostic.test.ts:111-116` 运行 fallback generation，并检查 fixed `DIAGNOSTIC_REJECTED` 输出不反射 synthetic input。 | 它没有读取 missing/corrupt candidate report；请求的 report-validation 场景仍未验证。 |
-| EFF-T07 | PARTIAL | `scripts/acceptance-diagnostic.test.ts:96-102` 证明 malformed status 以 fixed `DIAGNOSTIC_REJECTED` 拒绝；`:141-152` 证明失败的 diagnostic upload 会以 failure settle。 | 没有读取或执行 candidate diagnostic-validator failure；不得提升为完整 validator 场景。 |
-| EFF-T08 | UNKNOWN | 审计要求区分 cleanup/upload，但接受包没有独立观察内部 cleanup/upload 失败。 | 没有有界失败 artifact 前不得声称保留原始结果；不要强行重演。 |
-| EFF-T09 | NOT OBSERVED | 没有保留有效的 runner-kill 或 finalization-timeout 注入。 | incomplete/cancelled 必须继续视为非完成；本台账不执行进程 kill。 |
-| EFF-T10 | PASS | `scripts/ci-required-results.test.ts:73` 检查每个固定 command/report 具有同一 run、attempt、SHA、tree；L（`work/efficiency/cold-fixture-correction/final/process.json`）记录正向 receipt fixture，H（`work/efficiency/hosted/pr-831-second/summary.json`，run `34786627881`）记录四个 L1 分组和两个稳定 aggregate 全部通过。 | L 是一个 native receipt fixture，H 是历史 Hosted L1 证据；这不是 current-main 或 module activation 证据。 |
-| EFF-T11 | PASS | `scripts/ci-required-results.test.ts:82` 拒绝带伪造 green receipt 的 failed selected child；其 `:250` CLI matrix 的 `native-failure` 在 `:305`，由 L 覆盖，并在 shadow 消费前退出。 | 没有保留 Hosted sibling-failure 实验；PASS 仅针对具体拒绝路径。 |
-| EFF-T12 | PARTIAL | `scripts/ci-required-results.test.ts:73` 配合 `:80` 的 selected `skipped` 及 `:305` 的 `native-skipped` CLI 行由 L 覆盖，并拒绝 skipped 证据。 | 这些文件没有显式 `neutral` 行；不得声称执行了 neutral。 |
-| EFF-T13 | PARTIAL | `scripts/ci-required-results.test.ts:30` 即使对 unselected job 也拒绝该状态，`:73` 覆盖 receipt identity，`:250`/`:305` 的 `native-cancelled` 由 L 覆盖 cancelled、missing、empty-result 拒绝。 | 没有显式 `timed_out` 行，也没有 Hosted cancellation 证明。 |
-| EFF-T14 | PASS | `scripts/ci-required-results.test.ts:50` 拒绝 unknown event、mode、failed Detect、unmapped job；C flags 在 `:33`、shadow suppression 在 `:137`，L 的 native 结果覆盖五个 unknown flag、failed Detect、invalid event/mode/job 及 suppression。 | 这是索引中的拒绝集合，不证明所有可能的 invalid plan。 |
-| EFF-T15 | PASS | `scripts/ci-required-results.test.ts:24` 接受带稳定 Build and test 的 docs-only，`:27` 检查 required gate，`:109` 拒绝 fake receipt；L 含 `:310` CLI 行，H 记录相应 native L1 执行。 | H 本身不是 docs-only PR；证据范围是已测试的 selection/receipt 行为。 |
-| EFF-T16 | PARTIAL | `scripts/ci-required-results.test.ts:36` 检查 complete main L1、Quality、L2，`:42` 保留 manual-dispatch requirements，`:59` 检查 label，`scripts/check-acceptance-ci.test.ts:178` 检查 routing；C 由 L 覆盖，原始 C/A 行为由 H 覆盖。 | 这些是 fixture 和历史 L1 证据，不是当前 main/nightly/manual/target 运行；L2/target/minimal 仍不声明。 |
-| EFF-T17 | PASS | `scripts/check-acceptance-ci.test.ts:75` 拒绝 required set 中的 skip、missing needs、altered source identity、npm installation；H 记录 aggregate mutation 和稳定 check name。 | 这是 native contract/aggregate 证据，不是新的远程 protection-settings audit。 |
-| EFF-T18 | PASS | `scripts/check-acceptance-ci.test.ts:31` 将每个原始 L1 command/prerequisite 映射到四个 job 和严格 aggregate；projection 在 `:97`，removal 在 `:34`，H 记录 inventory/projection/removal 及 full L1 执行。 | 此处没有独立重数所称 30-command inventory，也没有基于 timing 的 no-duplication 证明。 |
-| EFF-T19 | PARTIAL | EFF03 审查 planner selection、direct tests 和显式 consumers；#835 提供真实 Hosted shadow run。 | 4 个模块仍是 observation policy，不是 enabled enforcement；当前最终源身份待绑定。 |
-| EFF-T20 | PARTIAL | 审查 planner 路径和 native 证据包含 shared-consumer selection。 | 没有对所有 DTO/API 路径建立新的宽消费者运行证据。 |
-| EFF-T21 | PARTIAL | auth/RBAC/migration/kernel 风险有 risk-aware selection。 | 有界 EFF03 包没有一致证明所有 required real-environment checks。 |
-| EFF-T22 | PARTIAL | Hosted 摘要保留相关 frontend Quality/Smoke coverage。 | 没有覆盖每个 global CSS/provider 变更；enforcement 仍关闭。 |
-| EFF-T23 | NOT VERIFIED | 允许读取的 `plan.test.ts`/`selection.test.ts` 中没有专门执行 package、lock、toolchain 或 test-config change fallback 的 scoped test。 | 该 conservative rule 保持未验证，直到绑定具体 test/command。 |
-| EFF-T24 | PARTIAL | `scripts/verification/plan.test.ts:188-202` 实际覆盖 newline path 和 deletion full fallback；planner 还有固定 registry/consumer 模型。 | 没有证明所有 delete-module/test consumer 场景，保持 partial。 |
-| EFF-T25 | PARTIAL | `scripts/verification/plan.test.ts:188-202` 实际覆盖 newline path preservation 与 deletion handling。 | rename、spacing、完整 old/new union coverage 尚未全部证明。 |
-| EFF-T26 | PARTIAL | `scripts/verification/selection.test.ts:14-29` 绑定 unknown/deletion/registry-missing 和 shared-path full-fallback 场景。 | 原始要求还包括 empty diff；本索引没有证明该 exact empty-diff fixture，因此保持 PARTIAL。 |
-| EFF-T27 | PARTIAL | `scripts/verification/plan.test.ts:218-246` 检查 exact ordered merge identity 并拒绝 shallow clone。 | 完整行还要求 base-unavailable refusal；此处只绑定 shallow/merge identity 部分。 |
-| EFF-T28 | REFUSAL ONLY | `scripts/verification/plan.test.ts:71-78` 对 tracked、staged、untracked input 验证 `DIRTY_WORKTREE`。 | dirty planning 明确未实现/被拒绝；这不是原始 dirty-source 场景的 PASS。 |
-| EFF-T29 | PARTIAL | 审查 contract 对 dynamic import、fixture、SQL、runtime-config 风险有显式 mapping/fallback。 | 当前限定证据不能证明每条 runtime path 都被正确选择。 |
-| EFF-T30 | NOT VERIFIED | 允许的 scoped tests 证明 merge identity 与 registry/path selection，但本包没有直接执行 PR edits policy（old minimum 加 candidate additions）的当前 test/command。 | policy claim 保持未验证；EFF05 activation 与其分开。 |
-| EFF-T31 | NOT VERIFIED | `scripts/verification/plan.test.ts:265-279` 验证 unknown committed registry module 被拒；`scripts/verification/selection.test.ts:14-29` 验证 unknown/shared path 扩大到 full。registry 是固定的，限定证据中没有 dependency graph/cycle 测试或实现。 | 不得声称一般 dependency-cycle/undeclared-module coverage；只保留 unknown-registry/path fallback 事实。 |
-| EFF-T32 | PASS | M 的 `discovery-zero`、`native-zero`、`all-skipped` 行在 `727-729`，以及 native validator `scripts/ci-required-results.test.ts:369`，由 L 的 composed CLI/native-validator 结果覆盖，并拒绝不完整 failed record。 | 这证明索引中的 refusal/guard 场景；complete failed record 不算 passed，也不从中推断 Hosted runtime-path 结果。 |
-| EFF-T33 | BLOCKED | PostgreSQL 缺失时，既有 PG-required 路径正确失败/阻塞。 | 新 runner 没有 PG adapter；不得改写为 all-skip 成功，也不要在本台账添加 adapter。 |
-| EFF-T34 | NOT ADOPTED | memo/reuse 明确关闭，pure identical-input reuse 没有启用。 | 不得声称 local-reuse PASS；继续作为 optional/deferred。 |
-| EFF-T35 | PARTIAL | M 的 `success/failure-metadata-drift` 与 `success/failure-entry-drift` 行在 `735-738` 由 L 覆盖；dependency metadata/entry drift 阻止 completeness，并保持首个 error。 | source/fixture/config/mode 的 rerun 组合没有全部由该有界 artifact 证明。 |
-| EFF-T36 | PARTIAL | `scripts/verification/run.test.ts:379` 将 rebuilt environment 只传给 actual child 并拒绝 unknown mode；`:312` 的 env/argv 检查及 M drift 行由 L 覆盖。 | 没有保留 lockfile/OS/tool-version cross-product 或 cache-invalidation 证明。 |
-| EFF-T37 | PASS | M 的 empty/missing/stale/malformed report 行及 `scripts/verification/report.test.ts:170` 的 nested phase validation 由 L 覆盖；`:232` 覆盖 forged record，并使 self-consistent green claim 保持 unverified。 | 不证明每一种 missing-log 或 corrupt-input 组合。 |
-| EFF-T38 | PARTIAL | `scripts/verification/run.test.ts:300` 只接受一个 fixed task 和完整 base SHA，拒绝 unknown task 与 `--reuse`；L 覆盖该边界，N（`work/efficiency/cold-fixture-correction/native-tasks/process.json`）fresh 执行两个支持的 task。 | 没有 PG/browser/migration/Hosted adapter run，也没有四请求 reuse matrix。 |
-| EFF-T39 | PASS | `scripts/verification/run.test.ts:300` 拒绝 unknown/duplicate argument，`:312` 拒绝 startup injection；`scripts/verification/report.test.ts:136` 只接受 strict UUID selector。L 覆盖 unknown/duplicate args、`NODE_OPTIONS` injection、traversal rejection 及 fixed frontend heap argv。 | 这是索引中的 argv/path refusal 集合，不是所有 shell-metacharacter 组合。 |
-| EFF-T40 | PARTIAL | `scripts/verification/run.test.ts:581` 拒绝 unsafe ancestor 并保留 replacement lock，`:596` 不覆盖已有 final record，M 的 storage/cancel 及 leader `:502` 由 L 覆盖；N 提供 distinct UUID。 | 没有保留同时多-worktree workload 或 resource benchmark。 |
-| EFF-T41 | OBSERVATION-PENDING | #835 提供 full-required policy 下的 4 个 native command observation；它们不是 4 个 module activation sample，enforcement 仍关闭。 | 若 shadow 发现相关未选失败，应扩大 full/shadow 并阻塞 activation；当前没有 enabled module run。 |
-| EFF-T42 | OBSERVATION-PENDING | 没有限定证据证明每个模块已有所需 10/3/6 samples/categories；native command 数量不能替代它们。 | 保持 shadow，不制造样本。 |
-| EFF-T43 | NOT ADOPTED | enforce/rollback activation 关闭；conservative full union 仍是安全 fallback。 | 不得声称 omission=0 或 enabled rollback PASS。 |
-| EFF-T44 | NOT ADOPTED | 没有 concurrent Quality-shard 实现；serial 是当前接受选择。 | 没有 isolated DB/object/port/runtime/report 证据。 |
-| EFF-T45 | NOT OBSERVED | 没有 shard startup/seed/execution failure packet。 | bounded cleanup 仍只是未验证 policy，不是执行证据。 |
-| EFF-T46 | NOT ADOPTED | 没有 shard cleanup 实现，亦没有 marker/unknown-PID/DB refusal 运行。 | 不要为了填行添加 global kill/drop。 |
-| EFF-T47 | NOT ADOPTED | 没有 shard report aggregation 实现或 duplicate/wrong-SHA rejection 运行。 | serial 证据不能替代 shard aggregation。 |
-| EFF-T48 | PARTIAL | 既有 Quality/Smoke 证据保留 serial UI baseline。 | shard warmup、fonts、viewports、screenshot-baseline preservation 没有实现或重跑。 |
-| EFF-T49 | NOT ADOPTED | 原 serial inventory 继续作为 fallback。 | 没有 shard-versus-serial equivalence 证据。 |
-| EFF-T50 | NOT ADOPTED | 当前切片没有采用 Node/jsdom split。 | DOM/provider tests 保持现有环境；不得声称已 split。 |
-| EFF-T51 | NOT ADOPTED | proposed pure/PG split 没有采用。既有 PG-required coverage 在没有 PostgreSQL 时失败/阻塞，新 runner 也没有 PG adapter，但这不等于实现了 split。 | 保持原 backend 环境边界；pure/PG 不得标为 PASS。 |
-| EFF-T52 | HISTORICAL ONLY | `work/efficiency/eff07-observation/type-feedback-evaluation.json` 记录了 head `66e572a4c45bd5d4db164380a2200e7ee6c10ac4`、tree `26b7acc0e03a07922e57fe688ca285eb6a741346` 的 12 次 cold/warm timing 观察。这些 timing 与两个 TypeScript-project Red→Green checks 分开。 | type candidate 仍未合并；这不能证明当前 type-entry optimization、global C 或 full-main 结果。 |
-| EFF-T53 | NOT ADOPTED | 没有采用 worker/heap/fixture optimization。 | 不得声称有可重复的 OOM/connection/residual-state 收益。 |
-| EFF-T54 | NOT ADOPTED | 没有采用 timing/retry/wait change。 | 更大的 timeout 或忽略 failure 不构成 readiness 证据。 |
-| EFF-T55 | PARTIAL | EFF08 审查 route `5418af9474415fec111994accda5e46250e6271b`，包括旧 UI/scripts 与后续 PG 证据。 | 这些源没有重跑；当前 routing 与 override 身份仍需最终 source settlement。 |
-| EFF-T56 | PARTIAL | 已审查 compact packet/protocol/recovery 文档中的新会话恢复路径。 | 没有保留最终候选的当前、无需完整重读的 recovery execution。 |
-| EFF-T57 | UNKNOWN | 有 bounded usage coverage，但 whole-program token usage、duplicate-terminal、missing-subagent accounting 仍不可用。 | token usage 和节省保持 unknown；不得估算或重复计数。 |
-| EFF-T58 | PENDING | 已有各 PR source package 和 hash，包括 #835 与 #836。 | 最终 source union、bundle identity、字节/hash 校验、清理以及排除 secrets/logs/DB 仍待完成。 |
+| EFF-T01 | PARTIAL | `scripts/acceptance-diagnostic.test.ts:55-67` 实际执行 `acceptance_diagnostic` 工作流步骤，检查主执行失败、未知清理、生成诊断、归档失败、跳过上传和已抑制细节。 | 证据仅限 `workflow-context-only`，不是当前完整验收执行；最终索引仍须绑定精确 base/head/run。 |
+| EFF-T02 | PARTIAL | W0 记录了验收失败与完整失败的区分，以及有界诊断。 | 尚无当前端到端证据同时覆盖原始产物包拒绝和完整受控失败路径。 |
+| EFF-T03 | PARTIAL | `scripts/acceptance-diagnostic.test.ts:83-94` 使用合成 token、Cookie、DB URL 和 authorization 执行工作流诊断，并验证生成的文本/摘要不含这些值；该步骤明确为 `workflow-context-only`，不读取候选报告或原始日志。 | 这只证明诊断步骤的有界脱敏，不证明完整的候选报告/原始日志拒绝路径；其余工作流行为不作声明。 |
+| EFF-T04 | PARTIAL | `scripts/acceptance-diagnostic.test.ts:83-94` 提供 ANSI/title/path-injection 文本，`:96-102` 拒绝格式错误或超大的 status 且不反射。 | 未证明原始验收场景完整的不执行/路径校验行为；仅保留诊断边界证据。 |
+| EFF-T05 | PARTIAL | `scripts/acceptance-diagnostic.test.ts:96-102` 拒绝 70,000 字符的 status，`:83-94` 检查输出字节上限。 | 超量失败/日志及全流程截断未由这些 `workflow-context-only` 测试独立证明。 |
+| EFF-T06 | PARTIAL | `scripts/acceptance-diagnostic.test.ts:111-116` 执行保守回退生成，并检查固定的 `DIAGNOSTIC_REJECTED` 输出不反射合成输入。 | 没有读取缺失或损坏的候选报告；要求的报告校验场景仍未验证。 |
+| EFF-T07 | PARTIAL | `scripts/acceptance-diagnostic.test.ts:96-102` 证明格式错误的 status 以固定的 `DIAGNOSTIC_REJECTED` 拒绝；`:141-152` 证明诊断上传失败会以失败状态收敛。 | 没有读取或执行候选诊断验证器失败；不得提升为完整验证器场景。 |
+| EFF-T08 | UNKNOWN | 审计要求区分清理和上传，但接受包没有独立观察内部清理/上传失败。 | 在获得有界失败产物前，不声称原始结果得到保留，也不强行重演。 |
+| EFF-T09 | NOT OBSERVED | 没有保留有效的 runner 终止或最终化超时注入。 | 不完整/已取消仍视为未完成；本台账不执行进程终止。 |
+| EFF-T10 | PASS | `scripts/ci-required-results.test.ts:73` 检查每个固定命令/报告使用同一 run、attempt、SHA、tree；L（`work/efficiency/cold-fixture-correction/final/process.json`）记录正向原生回执夹具，H（`work/efficiency/hosted/pr-831-second/summary.json`，run `34786627881`）记录四个 L1 分组和两个稳定聚合结果全部通过。 | L 是一个原生回执夹具，H 是历史 Hosted L1 证据；不代表当前 main 或模块启用。 |
+| EFF-T11 | PASS | `scripts/ci-required-results.test.ts:82` 拒绝带伪造 `green receipt` 的失败已选子任务；`:250` 的 CLI 矩阵中，`native-failure` 位于 `:305`，由 L 覆盖，并在 `shadow` 消费前退出。 | 没有 Hosted 兄弟任务失败实验；PASS 仅针对该具体拒绝路径。 |
+| EFF-T12 | PARTIAL | `scripts/ci-required-results.test.ts:73` 配合 `:80` 的 selected `skipped` 及 `:305` 的 `native-skipped` CLI 行由 L 覆盖，并拒绝 skipped 证据。 | 这些文件没有显式的 `neutral` 行；不得声称执行 `neutral`。 |
+| EFF-T13 | PARTIAL | `scripts/ci-required-results.test.ts:30` 即使对未选中的 job 也拒绝该状态，`:73` 覆盖回执身份，`:250`/`:305` 的 `native-cancelled` 由 L 覆盖取消、缺失和空结果拒绝。 | 没有显式的 `timed_out` 行，也没有 Hosted 取消证明。 |
+| EFF-T14 | PASS | `scripts/ci-required-results.test.ts:50` 拒绝 unknown event、mode、failed Detect 和 unmapped job；C flags 在 `:33`，`shadow` 抑制在 `:137`，L 的原生结果覆盖五个 unknown flag、failed Detect、invalid event/mode/job 及抑制。 | 这是索引中的拒绝集合，不证明所有可能的无效计划。 |
+| EFF-T15 | PASS | `scripts/ci-required-results.test.ts:24` 接受带稳定 `Build and test` 的 docs-only，`:27` 检查 required gate，`:109` 拒绝伪造回执；L 含 `:310` CLI 行，H 记录相应的原生 L1 执行。 | H 本身不是 docs-only PR；证据范围限于已测试的选择/回执行为。 |
+| EFF-T16 | PARTIAL | `scripts/ci-required-results.test.ts:36` 检查完整 main L1、Quality、L2，`:42` 保留手动触发要求，`:59` 检查标签，`scripts/check-acceptance-ci.test.ts:178` 检查路由；C 由 L 覆盖，原始 C/A 行为由 H 覆盖。 | 这些是夹具和历史 L1 证据，不是当前 main/nightly/manual/target 运行；L2/target/minimal 不作声明。 |
+| EFF-T17 | PASS | `scripts/check-acceptance-ci.test.ts:75` 拒绝 required set 中的 skip、missing needs、altered source identity 和 npm installation；H 记录 aggregate mutation 和稳定 check name。 | 这是原生契约/聚合证据，不是新的远程保护设置审计。 |
+| EFF-T18 | PASS | `scripts/check-acceptance-ci.test.ts:31` 将每个原始 L1 命令/前置条件映射到四个 job 和严格聚合；投影在 `:97`，移除在 `:34`，H 记录清单、投影、移除及完整 L1 执行。 | 此处没有独立重新计数所谓的 30 条命令清单，也没有基于计时的无重复证明。 |
+| EFF-T19 | PARTIAL | EFF03 审查了规划器选择、直接测试和显式消费者；#835 提供真实 Hosted `shadow` 运行。 | 四个模块仍是观察策略，不是已启用的强制执行；最终源身份待绑定。 |
+| EFF-T20 | PARTIAL | 审查的规划器路径和原生证据包含共享消费者选择。 | 没有对所有 DTO/API 路径建立新的宽消费者运行证据。 |
+| EFF-T21 | PARTIAL | auth/RBAC/migration/kernel 风险采用按风险选择。 | 有界 EFF03 包没有一致证明所有必需的真实环境检查。 |
+| EFF-T22 | PARTIAL | Hosted 摘要保留相关前端 Quality/Smoke 覆盖。 | 没有覆盖每个全局 CSS/提供方变更；强制执行仍关闭。 |
+| EFF-T23 | NOT VERIFIED | 允许读取的 `plan.test.ts`/`selection.test.ts` 中，没有专门执行依赖包、锁文件、工具链或测试配置变更回退的有界测试。 | 保守规则保持未验证，直到绑定具体测试/命令。 |
+| EFF-T24 | PARTIAL | `scripts/verification/plan.test.ts:188-202` 实际覆盖换行路径和删除时完整回退；规划器仍有固定 registry/consumer 模型。 | 未证明所有删除模块/测试消费者场景，保持 PARTIAL。 |
+| EFF-T25 | PARTIAL | `scripts/verification/plan.test.ts:188-202` 实际覆盖换行路径保持和删除处理。 | 重命名、间距以及完整的新旧并集覆盖尚未全部证明。 |
+| EFF-T26 | PARTIAL | `scripts/verification/selection.test.ts:14-29` 绑定 unknown/deletion/registry-missing 和共享路径完整回退场景。 | 原始要求还包括空 diff；本索引没有证明精确的空 diff 夹具，因此保持 PARTIAL。 |
+| EFF-T27 | PARTIAL | `scripts/verification/plan.test.ts:218-246` 检查精确的有序合并身份并拒绝浅克隆。 | 完整行还要求基础不可用时拒绝；此处只绑定浅克隆/合并身份部分。 |
+| EFF-T28 | REFUSAL ONLY | `scripts/verification/plan.test.ts:71-78` 对 tracked、staged、untracked 输入验证 `DIRTY_WORKTREE`。 | 脏规划明确未实现/被拒绝；这不是原始脏源码场景的 PASS。 |
+| EFF-T29 | PARTIAL | 审查契约对 dynamic import、fixture、SQL、runtime-config 风险有显式映射/回退。 | 当前限定证据不能证明每条运行时路径都被正确选择。 |
+| EFF-T30 | NOT VERIFIED | 允许的有界测试证明合并身份与 registry/路径选择，但本包没有直接执行 PR 编辑策略（旧的最小集合加候选新增项）的当前测试/命令。 | 策略声明保持未验证；EFF05 启用与其分开。 |
+| EFF-T31 | NOT VERIFIED | `scripts/verification/plan.test.ts:265-279` 验证 unknown committed registry module 被拒；`scripts/verification/selection.test.ts:14-29` 验证 unknown/shared path 扩大到完整集合。registry 是固定的，限定证据中没有依赖图/循环依赖测试或实现。 | 不得声称一般依赖循环/未声明模块覆盖；只保留 unknown-registry/path 回退事实。 |
+| EFF-T32 | PASS | M 的 `discovery-zero`、`native-zero`、`all-skipped` 行在 `727-729`，以及原生验证器 `scripts/ci-required-results.test.ts:369`，由 L 的组合 CLI/原生验证器结果覆盖，并拒绝不完整失败记录。 | 这证明索引中的拒绝/保护场景；完整失败记录不算通过，也不能由此推断 Hosted 运行时路径结果。 |
+| EFF-T33 | BLOCKED | 缺少 PostgreSQL 时，既有 PG-required 路径正确失败/阻塞。 | 新 runner 没有 PG adapter；不得改写为全跳过成功，也不要在本台账添加 adapter。 |
+| EFF-T34 | NOT ADOPTED | memo/reuse 明确关闭，pure 的相同输入复用没有启用。 | 不得声称 local-reuse PASS；继续作为可选/延期项。 |
+| EFF-T35 | PARTIAL | M 的 `success/failure-metadata-drift` 与 `success/failure-entry-drift` 行在 `735-738` 由 L 覆盖；依赖元数据/入口漂移阻止完整性，并保留首个错误。 | source/fixture/config/mode 的重跑组合没有全部由该有界产物证明。 |
+| EFF-T36 | PARTIAL | `scripts/verification/run.test.ts:379` 将重建环境只传给实际子任务并拒绝 unknown mode；`:312` 的环境变量/参数检查及 M 漂移行由 L 覆盖。 | 没有保留锁文件/操作系统/工具版本组合或缓存失效证明。 |
+| EFF-T37 | PASS | M 的空/缺失/过期/损坏报告行及 `scripts/verification/report.test.ts:170` 的嵌套阶段校验由 L 覆盖；`:232` 覆盖伪造记录，并使自洽 green 声明保持未验证。 | 不证明每一种缺失日志或损坏输入组合。 |
+| EFF-T38 | PARTIAL | `scripts/verification/run.test.ts:300` 只接受一个固定任务和完整 base SHA，拒绝 unknown task 与 `--reuse`；L 覆盖该边界，N（`work/efficiency/cold-fixture-correction/native-tasks/process.json`）以新鲜任务执行两个受支持任务。 | 没有 PG/browser/migration/Hosted adapter 运行，也没有四请求复用矩阵。 |
+| EFF-T39 | PASS | `scripts/verification/run.test.ts:300` 拒绝 unknown/duplicate argument，`:312` 拒绝启动注入；`scripts/verification/report.test.ts:136` 只接受严格 UUID 选择器。L 覆盖 unknown/duplicate 参数、`NODE_OPTIONS` 注入、路径遍历拒绝及固定前端堆参数。 | 这是索引中的参数/路径拒绝集合，不是所有 shell 元字符组合。 |
+| EFF-T40 | PARTIAL | `scripts/verification/run.test.ts:581` 拒绝不安全祖先并保留替换锁，`:596` 不覆盖已有最终记录，M 的存储/取消及主任务 `:502` 由 L 覆盖；N 提供不同的 UUID。 | 没有保留同时多工作树负载或资源基准。 |
+| EFF-T41 | OBSERVATION-PENDING | #835 在 full-required 策略下提供四个原生命令观察；它们不是四个模块启用样本，强制执行仍关闭。 | 若 `shadow` 发现相关未选失败，应扩大 full/`shadow` 并阻塞启用；当前没有已启用模块运行。 |
+| EFF-T42 | OBSERVATION-PENDING | 没有限定证据证明每个模块已有所需的 10/3/6 个样本/类别；原生命令数量不能替代这些样本。 | 保持 `shadow`，不制造样本。 |
+| EFF-T43 | NOT ADOPTED | enforce/rollback 启用关闭；保守完整并集仍是安全回退。 | 不得声称 omission=0 或已启用 rollback PASS。 |
+| EFF-T44 | NOT ADOPTED | 没有并发 Quality 分片实现；串行是当前接受的选择。 | 没有隔离的 DB/对象存储/端口/运行时/报告证据。 |
+| EFF-T45 | NOT OBSERVED | 没有分片启动/播种/执行失败数据包。 | 有界清理仍只是未验证策略，不是执行证据。 |
+| EFF-T46 | NOT ADOPTED | 没有分片清理实现，也没有标记/未知 PID/DB 拒绝运行。 | 不要为了填行添加全局 kill/drop。 |
+| EFF-T47 | NOT ADOPTED | 没有分片报告聚合实现，也没有重复或错误 SHA 拒绝运行。 | 串行证据不能替代分片报告聚合。 |
+| EFF-T48 | PARTIAL | 既有 Quality/Smoke 证据保留串行 UI 基线。 | 分片预热、字体、视口和截图基线保持没有实现或重跑。 |
+| EFF-T49 | NOT ADOPTED | 原串行清单继续作为保守回退。 | 没有分片与串行等价性证据。 |
+| EFF-T50 | NOT ADOPTED | 当前切片没有采用 Node/jsdom 拆分。 | DOM/提供方测试保持现有环境；不得声称已经拆分。 |
+| EFF-T51 | NOT ADOPTED | 提议的 pure/PG 拆分没有采用。既有 PG-required 覆盖在没有 PostgreSQL 时失败/阻塞，新 runner 也没有 PG adapter，但这不等于实现了该拆分。 | 保持原后端环境边界；pure/PG 不得标为 PASS。 |
+| EFF-T52 | PASS（契约）；HISTORICAL ONLY（计时） | 两个被引用的 TypeScript 项目都在两条命令入口中产生 TS2322 Red，随后恢复 Green。PR #838 的 head `7fc675e13fe88888c998ae12297428f50764a48d` 的本地 `typecheck` 为 11.5993s、未改动 `build` 为 24.5690s；独立 R1 审查与 Hosted 的 9 项门禁分别通过（run `34796686417` attempt 1），并合入 `01703ba69f883b22e8b819182223c5fd35b90184`。`work/efficiency/eff07-observation/type-feedback-evaluation.json` 绑定 head `66e572a4c45bd5d4db164380a2200e7ee6c10ac4`、tree `26b7acc0e03a07922e57fe688ca285eb6a741346` 的 12 次历史冷/暖计时观察。 | `alias` 保留原 `compiler phase` 和 `full-build` 要求；不受控的主机负载与小样本分组不能证明当前 head 速度、CI 节省、global C 或当前 main 全量验收。计时属于历史 N=3 分组，与两个项目的 Red/Green 检查分开。 |
+| EFF-T53 | NOT ADOPTED | 没有采用 worker/heap/fixture 优化。 | 不得声称有可重复的 OOM/connection/residual-state 收益。 |
+| EFF-T54 | NOT ADOPTED | 没有采用计时/重试/等待调整。 | 更大的超时或忽略失败不构成就绪证明。 |
+| EFF-T55 | PARTIAL | PR #837 head `0138b450af9116cde25b28096ff9f3ee569bb017` 保留了在 `5418af9474415fec111994accda5e46250e6271b` 审查的四个路由/协议内容块；实际从 root 到 cwd 的发现过程在没有覆盖指令时选中 root 的 `AGENTS.md`，并检查三个已实现入口。独立 R1 审查和三个选中的 docs-only 门禁通过，合入 `b3ec95a4c9e327d384ce482be05c92ca0227e63a`。 | 这是已观察的发现路径，不是所有覆盖指令/模块组合；历史 UI/scripts/PG 恢复结果未重放，九个运行时 job 未选中/跳过。 |
+| EFF-T56 | PARTIAL | 已审查紧凑数据包、协议和恢复文档中的新会话恢复路径。 | 没有保留最终候选的当前恢复执行，且无需完整重读的证据也不存在。 |
+| EFF-T57 | UNKNOWN | 存在有界使用覆盖，但全程序 token 使用量、终端重复和缺失子任务统计仍不可用。 | token 使用量和节省保持 unknown；不得估算或重复计数。 |
+| EFF-T58 | PENDING | 已有各 PR 的源码包和 hash，包括 #835、#836、#837、#838 及浏览器候选。 | 最终源码并集、bundle 身份、字节/hash 校验、清理以及排除 secrets/logs/DB 仍待完成。 |
 
 ## 交付边界
 
