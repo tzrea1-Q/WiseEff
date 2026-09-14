@@ -1,7 +1,7 @@
 # Agent Delivery and Verification Efficiency
 
 > Chinese: [Chinese](../../zh-CN/exec-plans/active/2026-09-13-agent-delivery-efficiency.md)
-> Status: **Active — PRs #830, #829, #833, #831 and #834 merged. CI shadow is integrating on the accepted preview; fresh execution/reporting is completing its correction matrix. Routing, type feedback and browser fixtures await separate delivery. No activation or measured-benefit claim.**
+> Status: **Active — PRs #830, #829, #833, #831, #834 and #835 merged. Fresh execution/reporting PR #836 is correcting a cold-checkout test prerequisite after its first Hosted failure. Routing, type feedback and browser fixtures await separate delivery. No activation or measured-benefit claim.**
 > Date: 2026-09-13. Tracking Issue: [#828](https://github.com/tzrea1-Q/WiseEff/issues/828).
 > Accepted base, freshly fetched on 2026-09-13: `1059acb57379bd120d0d2b1a4b4733d4c2e02901`. This equals the supplied design's historical reference; it is not permission to reset later work.
 
@@ -13,11 +13,25 @@ Implement the user's supplied 2026-09-13 engineering design in bounded waves: sa
 
 | Delivery level | Completion means | Current status |
 | --- | --- | --- |
-| A: tools and process | Reviewed and verified diagnostics, equivalent scheduling, shadow plan, execution/reporting and routing are delivered | EFF-01/02 and EFF-03 preview merged; CI shadow is integrating; EFF-07/08 have reviewed local candidates; EFF-04 correction and final integration remain pending |
+| A: tools and process | Reviewed and verified diagnostics, equivalent scheduling, shadow plan, execution/reporting and routing are delivered | EFF-01/02/03 merged; EFF-04 is integrating its reviewed correction; EFF-07/08 and browser fixtures have reviewed local candidates awaiting delivery |
 | B: module activation | Each explicitly named module passes its own observation and independent-review gates | No module enabled; `observation-pending` |
 | C: measured effect | Comparable real task/CI samples support wall-clock, resource and usage conclusions | Insufficient samples; token usage `unknown` |
 
 A can be delivered while B/C remain open. Do not manufacture samples or call the entire program complete merely because tooling merged.
+
+## Fresh executor Hosted fixture prerequisite — 2026-09-14
+
+[PR #836](https://github.com/tzrea1-Q/WiseEff/pull/836) first [run 34793079528](https://github.com/tzrea1-Q/WiseEff/actions/runs/34793079528), attempt 1, checked out `988f978074362f0f86ace8d295aba3ba35d387b3`, with ordered base `aed7e54686e7642655b3b8c30369b9c4ad07f771` and head `55b86395bde604b0851db58598781e667738f2b6`; tree `e38161fdf8c343c14c31e2c04568d0ec4be07077` matches the candidate. The scripts job completed 1559 passed, one failed and 21 existing optional skips across 110 files; bridge was not run. The foreign-root test called `mkdtemp` before creating its parent directory and raised `ENOENT` before its refusal/marker assertions. Other fixture calls already use the owned-parent initializer. This is a cold-checkout fixture prerequisite, not a demonstrated runtime guard failure. The first failed result remains retained; remaining job settlement is separate.
+
+The correction changes only that test call to the existing `testRunsDirectory()` helper, preserving its directory/owner/mode validation and every runtime/marker/refusal assertion. A named local run passed one test with 24 deselected in 1.5699 seconds; its parent directory already existed, so only a fresh Hosted checkout proves the original cold condition. The earlier exact 55b candidate passed 102/5 focused tests, full build and metadata/docs, then fresh native tasks 10/1 and 29/5 with no skips at UUIDs `91b9437a-9f2b-4ffd-8fd0-d37b91b1c35c` and `1410fc89-85cc-4e56-a138-f5ef95c7874a`; both saved readers explicitly reported unverified freshness. These remain 55b evidence. Corrected-head focused/build/docs, independent review, two fresh task observations and meaningful Hosted are pending at this checkpoint. No identical-head retry, directory removal, assertion weakening, gate or runtime change is used.
+
+## CI shadow accepted and fresh execution integration — 2026-09-14
+
+[PR #835](https://github.com/tzrea1-Q/WiseEff/pull/835) merged as `aed7e54686e7642655b3b8c30369b9c4ad07f771` after corrected-head [run 34791485027](https://github.com/tzrea1-Q/WiseEff/actions/runs/34791485027), attempt 1, passed all nine original selected GitHub Actions checks. Accepted base `4ef53e5c1551747d76350cd324068fb413d462c2` and reviewed head `32d14b7e93d306dfcf905b71d7ed503e7a6d4a52` are the ordered parents of actual checkout `e3dbfff629ea91c7777a7f5728f31a74dfb22efc`; checkout/candidate/merge tree is `513f0967be7d9ebe9863acfbde4b89bd690a0fd1`. Frontend 3411/441 files, scripts 1525/108 plus 21 existing optional skips, bridge 134/21 plus 4 platform skips, backend 4180/539 with no skips, Quality 100 and Smoke 4 passed. Four fresh native observations report observed/full-required, with full fallback and no activation eligibility. Independent Standards/Spec passed the complete 14-path candidate. The complete source ZIP SHA256 is `e95760c8b1148ec5ce078c6a1d7d499eba978d1ed847d7fb9c3309479e96c8d5`, with no deletes/renames. Remote branch removal and clean local-main synchronization were verified.
+
+Workflow wall approximation was 694 seconds and summed executed-job elapsed 33.7833 minutes; billing and whole-program tokens remain unknown. This policy-changing PR is not a module activation sample. Latest completed full-main evidence before this merge is `4ef53e5c1551747d76350cd324068fb413d462c2`, push run 34789007486: L1/Quality passed, 58 browser failures were inventoried, and the original archive-size guard rejected full upload. Diagnostic artifact 10328261976 passed digest/identity verification; detailed cleanup and native totals remain unknown. Main full acceptance remains separate and red at that revision.
+
+EFF-04 code `56df0b6e06785503fd30ea0bf54dfe06d7b3c88f` has independent Standards/Spec PASS after closing process/log settlement, exact publication ownership and sticky first-error findings. The permanent composed fixture has 19 actual synthetic rows; it is not 19 new module observations. This candidate normally merges accepted main and exposes only two fixed fresh local tasks plus an explicitly unverified saved-record reader, documented below. Integrated focused/build/docs checks, final independent review, the fresh 10/1 and 29/5 expected native task observations, its own PR/Hosted and merge remain pending at this checkpoint. Earlier checkpoint text below is historical.
 
 ## Preview accepted and CI shadow integration — 2026-09-14
 
@@ -211,15 +225,15 @@ Keep outward `Build and test` as a strict aggregate and retain `Merge bar`. Alwa
 
 ### D3 — Explainable shadow planner (EFF-03/05)
 
-Proposed entry points below are **not implemented at accepted base**. Until EFF-03/04 lands, use existing commands in the verification matrix:
+The implemented minimum profile uses the following exact commands. Broader edit profiles, arbitrary plan input, group selection, output-path/format options and enforcement from the original design remain unimplemented. Use the native verification matrix for every other task:
 
-| Proposed command | Contract |
+| Implemented command | Contract |
 | --- | --- |
-| `npm run verify:plan -- --base <ref> --profile <edit\|candidate\|pr\|full> --mode <shadow\|enforce> --out <file>` | Read-only fact/plan computation; no dependency installation, database boot or source edits; output only to the explicitly requested controlled non-source location. |
-| `npm run verify:run -- --plan <file> [--group <name>] [--force]` | Validate identity and execute reviewed registered commands with argument arrays; stream full local logs and return bounded summaries. |
-| `npm run verify:report -- --run <dir> --format <summary\|json>` | Aggregate recorded results; no implicit rerun or model call. |
+| `npm run verify:plan -- --base <40-hex-SHA> [--head <40-hex-SHA>]` | Bounded read-only JSON for a clean committed root, retaining the full required task set and pending acceptance. No tests, environment probe or automatic fetch. |
+| `npm run verify:run -- --base <40-hex-SHA> --task <ci-changed-paths\|feedback-frontend-client> [--force]` | Fresh discovery and execution of one fixed manual task, with exact identities, local native evidence and bounded terminal output. Even `--force` is always fresh; it does not execute or discharge a full plan. |
+| `npm run verify:report -- --run <UUID>` | Read the saved owned record under `work/verification-runs/<UUID>` as recorded-local-data/freshness-unverified. No implicit rerun, result reuse, acceptance grant or model call. |
 
-Prefer a thin `scripts/verify.ts` and small `scripts/verification/` boundaries, actual TypeScript/Zod facilities, existing GitHub Actions/Vitest/Playwright and Gate 0. These are proposed paths, not claims of existing files; adjust the plan when implementation selects real paths. No generic DAG engine or new rule language.
+The thin `scripts/verify.ts` dispatches the existing preview and separate `scripts/verification/run.ts`/`report.ts` boundaries. Fixed task definitions reuse native Vitest invocation/report validation and owned process cleanup. PG, browser, Hosted and target execution keep their existing native entry points. Memo and module enforcement remain disabled. The larger design below is a future contract, not a claim that dirty planning or arbitrary adapters exist.
 
 CI uses immutable base/PR head/executed checkout SHA/tree. Local edit/candidate combines merge-base branch changes with staged, unstaged and allowed untracked source, including content, deletions and modes. Parse NUL-delimited name-status; include both rename paths and base-side ownership/consumers of deleted files. Validate refs/paths without shell interpolation. Bounded fetch may establish missing history; unconfirmed base/diff blocks valid planning. Empty/unknown paths fall back broad, never docs-only. User input may expand coverage but cannot reduce risk.
 
