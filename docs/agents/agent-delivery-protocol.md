@@ -81,12 +81,31 @@ The parent keeps one compact durable record for the wave and one for each lane. 
 Wave: goal, accepted-main, stop-boundary, deadline-lower-bound,
       lanes-in-merge-order, shared-resources, development-WIP,
       review-slots, next-Hosted-lane
-Lane: node, issue, risk, state, base, head, editable/read-only/forbidden paths,
-      threat-matrix, focused/local/PG/browser/Hosted/target/release gates,
-      repair-cycles, fingerprint-count, PR/CI state, blocker, next-transition
-Seal: base, head, tree/path-set, lineage, generated hashes, fingerprint,
+Lane: node, issue, goal, risk, state, cwd/branch,
+      original base/head/tree/dirty ownership, editable/read-only/forbidden paths,
+      scoped document sections, threat-matrix,
+      focused/local/PG/browser/Hosted/target/release gates,
+      exact native command/test paths/expected non-zero counts,
+      profile/mode/direct command, evidence level, result/log refs,
+      repair-cycles, fingerprint-count, PR/CI state,
+      independent review identities/status, missing evidence, blocker/owner,
+      source bundle manifest, delete/rename list, next-state/next-transition
+Seal: base, head, tree/path-set, lineage, dirty ownership, generated hashes,
+      source bundle manifest, delete/rename list, fingerprint,
       completed reviews, evidence commands/results, explicit skips
 ```
+
+### Compact task packets and recovery
+
+The lane record is the task packet and recovery handoff. Keep its default dispatch summary at or below 6 KiB: carry exact identities, paths, commands, evidence references, blockers, and the next transition; keep full logs local and link to bounded excerpts. A packet's command entry names the existing native command and exact test paths, declares the expected non-zero count, and records the observed exit status and collected test count. Use `unknown` when the runtime has not supplied a count. These fields extend the existing delivery obligation; they are a record shape, not a new gate service.
+
+The packet records the runtime profile, execution mode, and direct command actually used, then labels the evidence level separately: documentation/static, local pure/fake, real local PostgreSQL, browser-real, Hosted/CI, target-host, release, or production approval. It also records scoped document sections so a resumed agent can load the smallest applicable slice. Unaccepted future verification commands remain pending; use the existing native `npm` command surface as the executable fallback. A required `build` remains a candidate/Hosted gate when the contract calls for it; edit-only feedback does not discharge that gate.
+
+The original base, head, tree, and dirty ownership identify what the handoff inherited. The source bundle manifest lists only the exact tracked files changed by the candidate, plus the manifest itself, and records every delete or rename. Environment files, credentials, logs, databases, and unrelated files stay outside the bundle. Review entries name each independent reviewer or task and its status; missing evidence names its owner, blocker, and next state.
+
+### Bounded runtime usage
+
+Record one runtime-reported numeric terminal-usage sample for each bounded unit. Missing, duplicate, or child coverage remains `unknown`; a bounded sample never becomes a whole-program cost or savings claim. Complete JSONL may contain reasoning, so keep full event streams local with no collection or upload, and publish only the bounded result metadata needed by the control record and evidence contract. A startup probe describes only the startup unit and its observed events; it does not establish model loading or program-wide usage.
 
 Agents report only state transitions, blockers, and final structured evidence. They do not stream routine narration or paste successful full logs. The parent waits on task/CI events with a cursor or bounded event wait and does not poll unchanged state. A failure report includes the command, exit status, smallest useful excerpt, classification, and next owner.
 
