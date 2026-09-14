@@ -1,0 +1,153 @@
+{
+  "schemaVersion": 1,
+  "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
+  "fixtureSha256": "fe3cd2abe9181517332612938f00082db864d66f6f9b284d5f43b3051b5fe951",
+  "files": [
+    {
+      "file": "server/modules/debugging/routes.ts",
+      "sourceBlobOid": "5b6c9134b2411deec2fbfa3f50f6e75591a6738b",
+      "destinationBlobOid": "9ba18c28a2a353573e6049ca2c68f6c791310445",
+      "pairs": [
+        {
+          "old": {
+            "id": "S12-DBG:legacy-catalog-route:88956bcd36330569:603750d60b859bf4",
+            "rule": "legacy-catalog-route",
+            "file": "server/modules/debugging/routes.ts",
+            "reason": "Legacy structural Catalog or governance route remains pending retirement or exact adaptation.",
+            "family": "S12-DBG",
+            "line": 306,
+            "column": 14,
+            "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
+            "trustedBlobOid": "5b6c9134b2411deec2fbfa3f50f6e75591a6738b",
+            "byteStart": 12312,
+            "byteEnd": 12346,
+            "token": "route:/api/v1/debugging/reload-targets",
+            "evidence": "/api/v1/debugging/reload-targets"
+          },
+          "new": {
+            "id": "S12-DBG:legacy-catalog-route:88956bcd36330569:0ad756544a636712",
+            "family": "S12-DBG",
+            "rule": "legacy-catalog-route",
+            "file": "server/modules/debugging/routes.ts",
+            "line": 313,
+            "column": 14,
+            "byteStart": 12810,
+            "byteEnd": 12844,
+            "token": "route:/api/v1/debugging/reload-targets",
+            "evidence": "/api/v1/debugging/reload-targets",
+            "reason": "Legacy structural Catalog or governance route remains pending retirement or exact adaptation.",
+            "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
+            "trustedBlobOid": "9ba18c28a2a353573e6049ca2c68f6c791310445"
+          },
+          "sliceSha256": "49c88fa77c8cc2b00f90ce13dbead6560a26c256340b99fa4a1b4564cc0f2e10"
+        },
+        {
+          "old": {
+            "id": "S12-DBG:legacy-catalog-route:d4ce347ccd8d25d3:4114fe2a57d39ec5",
+            "rule": "legacy-catalog-route",
+            "file": "server/modules/debugging/routes.ts",
+            "reason": "Legacy structural Catalog or governance route remains pending retirement or exact adaptation.",
+            "family": "S12-DBG",
+            "line": 311,
+            "column": 15,
+            "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
+            "trustedBlobOid": "5b6c9134b2411deec2fbfa3f50f6e75591a6738b",
+            "byteStart": 12493,
+            "byteEnd": 12530,
+            "token": "route:/api/v1/debugging/parameters/reload",
+            "evidence": "/api/v1/debugging/parameters/reload"
+          },
+          "new": {
+            "id": "S12-DBG:legacy-catalog-route:d4ce347ccd8d25d3:bba62e0752d80da2",
+            "family": "S12-DBG",
+            "rule": "legacy-catalog-route",
+            "file": "server/modules/debugging/routes.ts",
+            "line": 318,
+            "column": 15,
+            "byteStart": 12991,
+            "byteEnd": 13028,
+            "token": "route:/api/v1/debugging/parameters/reload",
+            "evidence": "/api/v1/debugging/parameters/reload",
+            "reason": "Legacy structural Catalog or governance route remains pending retirement or exact adaptation.",
+            "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
+            "trustedBlobOid": "9ba18c28a2a353573e6049ca2c68f6c791310445"
+          },
+          "sliceSha256": "34519afe9574ce68f1218ef88f78334f8481e50bfac6beb8cfce4fcb26f43b33"
+        }
+      ]
+    },
+    {
+      "file": "server/modules/debugging/catalogSplitRepository.ts",
+      "sourceBlobOid": "fe8c89f25adf1949d432574cf89832b1c5e34ce2",
+      "destinationBlobOid": "0ee59467a5cefc9a5f6c612a4cf82aa65a83f4d1",
+      "pairs": [
+        {
+          "old": {
+            "id": "S12-DBG:unresolved-boundary-expression:6530eb6978b218f4:3e1bed36c91414db",
+            "rule": "unresolved-boundary-expression",
+            "file": "server/modules/debugging/catalogSplitRepository.ts",
+            "reason": "A database, route, or module-loader boundary expression cannot be resolved statically.",
+            "family": "S12-DBG",
+            "line": 305,
+            "column": 5,
+            "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
+            "trustedBlobOid": "fe8c89f25adf1949d432574cf89832b1c5e34ce2",
+            "byteStart": 7874,
+            "byteEnd": 8174,
+            "token": "unresolved:database",
+            "evidence": "database: ` select ${debugRuntimeNodeColumns} from debug_nodes n inner join debug_node_bindings b on b.node_id = n.id left join debug_node_modules dm on dm.id = n.debug_node_module_id and dm.organization_id = n.organization_id where ${cond…"
+          },
+          "new": {
+            "id": "S12-DBG:unresolved-boundary-expression:6530eb6978b218f4:2f8b3bca36ee59f8",
+            "family": "S12-DBG",
+            "rule": "unresolved-boundary-expression",
+            "file": "server/modules/debugging/catalogSplitRepository.ts",
+            "line": 346,
+            "column": 5,
+            "byteStart": 9156,
+            "byteEnd": 9456,
+            "token": "unresolved:database",
+            "evidence": "database: ` select ${debugRuntimeNodeColumns} from debug_nodes n inner join debug_node_bindings b on b.node_id = n.id left join debug_node_modules dm on dm.id = n.debug_node_module_id and dm.organization_id = n.organization_id where ${cond…",
+            "reason": "A database, route, or module-loader boundary expression cannot be resolved statically.",
+            "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
+            "trustedBlobOid": "0ee59467a5cefc9a5f6c612a4cf82aa65a83f4d1"
+          },
+          "sliceSha256": "b1f2b1e4ff754bb07f7a7c53b2f242febfbd2eb12172b97c26ae530f6ba356de"
+        },
+        {
+          "old": {
+            "id": "S12-DBG:unresolved-boundary-expression:6530eb6978b218f4:43afc3cea2a099e2",
+            "rule": "unresolved-boundary-expression",
+            "file": "server/modules/debugging/catalogSplitRepository.ts",
+            "reason": "A database, route, or module-loader boundary expression cannot be resolved statically.",
+            "family": "S12-DBG",
+            "line": 565,
+            "column": 5,
+            "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
+            "trustedBlobOid": "fe8c89f25adf1949d432574cf89832b1c5e34ce2",
+            "byteStart": 15471,
+            "byteEnd": 15694,
+            "token": "unresolved:database",
+            "evidence": "database: ` select ${debugNodeBindingColumns} from debug_node_bindings where organization_id = $1 and node_id = $2 and protocol = $3 ${input.includeDisabled ? \"\" : \"and enabled = true\"} limit 1 `"
+          },
+          "new": {
+            "id": "S12-DBG:unresolved-boundary-expression:6530eb6978b218f4:d96f2ce779c9d430",
+            "family": "S12-DBG",
+            "rule": "unresolved-boundary-expression",
+            "file": "server/modules/debugging/catalogSplitRepository.ts",
+            "line": 678,
+            "column": 5,
+            "byteStart": 19169,
+            "byteEnd": 19392,
+            "token": "unresolved:database",
+            "evidence": "database: ` select ${debugNodeBindingColumns} from debug_node_bindings where organization_id = $1 and node_id = $2 and protocol = $3 ${input.includeDisabled ? \"\" : \"and enabled = true\"} limit 1 `",
+            "reason": "A database, route, or module-loader boundary expression cannot be resolved statically.",
+            "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
+            "trustedBlobOid": "0ee59467a5cefc9a5f6c612a4cf82aa65a83f4d1"
+          },
+          "sliceSha256": "1fe25bbab32d08e1df2f35332d4925465cad04b4411e781df35a651853120b6b"
+        }
+      ]
+    }
+  ]
+}

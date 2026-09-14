@@ -53,7 +53,7 @@ type RelocationInput = {
   existingRelocations?: readonly RuntimeTopologyRelocation[];
 };
 
-type RelocationConfig = {
+export type RelocationConfig = {
   recordPath: string;
   recordSha256: string;
   files: readonly { file: string; pairs: number }[];
@@ -77,6 +77,12 @@ const postCutoverConfig: RelocationConfig = {
   files: [{ file: "server/modules/parameter-topology/postCutoverWorkflow.integration.test.ts", pairs: 29 }],
   totalPairs: 29,
   rejectAllowanceGrowth: true,
+};
+
+/** Validate the independently reviewed 16-pair identity map before granting any alias. */
+export type RelocationOutcome = {
+  violations: BoundaryViolation[];
+  relocations: RuntimeTopologyRelocation[];
 };
 
 /** Validate the independently reviewed 16-pair identity map before granting any alias. */
@@ -185,7 +191,7 @@ export async function applyReviewedRuntimeTopologyRelocation(
   discovered: readonly BoundaryViolation[],
   existingRelocations: readonly RuntimeTopologyRelocation[] = [],
 ) {
-  return applyRelocationRecord(repoRoot, fixture, allowances, discovered, existingRelocations, runtimeTopologyConfig);
+  return runReviewedRelocationRecord(repoRoot, fixture, allowances, discovered, existingRelocations, runtimeTopologyConfig);
 }
 
 export async function applyReviewedPostCutoverRelocation(
@@ -195,7 +201,24 @@ export async function applyReviewedPostCutoverRelocation(
   discovered: readonly BoundaryViolation[],
   existingRelocations: readonly RuntimeTopologyRelocation[] = [],
 ) {
-  return applyRelocationRecord(repoRoot, fixture, allowances, discovered, existingRelocations, postCutoverConfig);
+  return runReviewedRelocationRecord(repoRoot, fixture, allowances, discovered, existingRelocations, postCutoverConfig);
+}
+
+/**
+ * Shared runner for a reviewed relocation record: validates every pair against the fixture,
+ * the current scan and the existing allowances, then aliases each new occurrence back to its
+ * reviewed source id. Sibling records (for example the Issue #846 debugging relocation)
+ * register a `RelocationConfig` and call this instead of re-implementing the checks.
+ */
+export async function runReviewedRelocationRecord(
+  repoRoot: string,
+  fixture: BoundaryViolationFixture,
+  allowances: readonly AllowlistEntry[],
+  discovered: readonly BoundaryViolation[],
+  existingRelocations: readonly RuntimeTopologyRelocation[],
+  config: RelocationConfig,
+): Promise<RelocationOutcome> {
+  return applyRelocationRecord(repoRoot, fixture, allowances, discovered, existingRelocations, config);
 }
 
 async function applyRelocationRecord(

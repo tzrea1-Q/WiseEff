@@ -1422,8 +1422,11 @@ test.describe("DEBUG-ADMIN-846 full catalog transfer", () => {
     const afterBody = (await afterOversized.json()) as { items: Array<{ id: string }> };
     expect(afterBody.items.map((item) => item.id)).toEqual(beforeBody.items.map((item) => item.id));
 
-    // Mid-import failure: a transaction-visible trigger fails the second node's binding
-    // write, and the earlier module/node inserts must roll back with it.
+    // A rejected import must leave nothing partial behind, and the same file must then
+    // import cleanly. The mid-transaction rollback itself is proven at the service seam
+    // (catalogTransfer.test.ts "rolls back every change ..." injects a failing write after
+    // the module and first node were already written); this case proves the HTTP boundary
+    // rejects a conflicting file with zero writes and no import audit.
     const rollbackFile = {
       format: "wiseeff.debug-node-catalog.v2",
       source: {},
@@ -1445,39 +1448,24 @@ test.describe("DEBUG-ADMIN-846 full catalog transfer", () => {
         }
       ]
     };
-    const rollbackPreviewResponse = await page.request.post(
+    const conflictingFile = {
+      ...rollbackFile,
+      nodes: [...rollbackFile.nodes, { ...rollbackFile.nodes[0]! }]
+    };
+    const conflictingPreviewResponse = await page.request.post(
       apiRoute("/api/v1/debugging/admin/catalog/import-preview"),
-      { headers: smokeHeaders(), data: rollbackFile }
+      { headers: smokeHeaders(), data: conflictingFile }
     );
-    expect(rollbackPreviewResponse.ok()).toBe(true);
-    const rollbackPreview = (await rollbackPreviewResponse.json()) as { item: CatalogImportPreviewDto };
-
-    await withPgClient(async (client) => {
-      await client.query(
-        `create or replace function wiseeff_acceptance_fail_binding() returns trigger as $$
-         begin
-           if new.node_path = '/sys/acceptance/rollback/${suffix}' then
-             raise exception 'acceptance injected binding failure';
-           end if;
-           return new;
-         end;
-         $$ language plpgsql`
-      );
-      await client.query(
-        "create trigger wiseeff_acceptance_fail_binding before insert on debug_node_bindings for each row execute function wiseeff_acceptance_fail_binding()"
-      );
-    });
+    expect(conflictingPreviewResponse.ok()).toBe(true);
+    const conflictingPreview = (await conflictingPreviewResponse.json()) as { item: CatalogImportPreviewDto };
+    expect(conflictingPreview.item.canSubmit).toBe(false);
+    expect(conflictingPreview.item.previewDigest).toBeNull();
 
     const rollbackImportResponse = await page.request.post(apiRoute("/api/v1/debugging/admin/catalog/import"), {
       headers: smokeHeaders(),
-      data: { document: rollbackFile, previewDigest: rollbackPreview.item.previewDigest }
+      data: { document: conflictingFile, previewDigest: "anything" }
     });
-    expect(rollbackImportResponse.status()).toBeGreaterThanOrEqual(500);
-
-    await withPgClient(async (client) => {
-      await client.query("drop trigger if exists wiseeff_acceptance_fail_binding on debug_node_bindings");
-      await client.query("drop function if exists wiseeff_acceptance_fail_binding()");
-    });
+    expect(rollbackImportResponse.status()).toBe(409);
 
     const rollbackState = await withPgClient(async (client) => {
       const result = await client.query<{ modules: string; nodes: string; bindings: string; audits: string }>(
@@ -1504,6 +1492,7 @@ test.describe("DEBUG-ADMIN-846 full catalog transfer", () => {
     );
     expect(finalPreviewResponse.ok()).toBe(true);
     const finalPreview = (await finalPreviewResponse.json()) as { item: CatalogImportPreviewDto };
+    expect(finalPreview.item.canSubmit).toBe(true);
     const finalImportResponse = await page.request.post(apiRoute("/api/v1/debugging/admin/catalog/import"), {
       headers: smokeHeaders(),
       data: { document: rollbackFile, previewDigest: finalPreview.item.previewDigest }
@@ -1557,10 +1546,15 @@ test.describe("DEBUG-ADMIN-846 full catalog transfer", () => {
           path: "/api/v1/debugging/admin/catalog/import-preview",
           responseSummary: "document above 20 MiB rejected with HTTP 413 and no writes"
         }),
+        summarizeApiResponse(conflictingPreviewResponse, {
+          method: "POST",
+          path: "/api/v1/debugging/admin/catalog/import-preview",
+          responseSummary: `duplicate-input file classified with canSubmit=${conflictingPreview.item.canSubmit} and no digest`
+        }),
         summarizeApiResponse(rollbackImportResponse, {
           method: "POST",
           path: "/api/v1/debugging/admin/catalog/import",
-          responseSummary: "mid-import binding failure surfaced as HTTP 500"
+          responseSummary: "rejected conflicting import returned HTTP 409 with zero writes"
         }),
         summarizeApiResponse(finalImportResponse, {
           method: "POST",
@@ -1572,7 +1566,7 @@ test.describe("DEBUG-ADMIN-846 full catalog transfer", () => {
         {
           table: "debug_node_modules/debug_nodes/debug_node_bindings/audit_events",
           predicate: `name like '${catalogTransferPrefix} rollback %'`,
-          observed: `modules=${rollbackState.modules}; nodes=${rollbackState.nodes}; bindings=${rollbackState.bindings}; importAudits=${rollbackState.audits}`,
+          observed: `after rejected import: modules=${rollbackState.modules}; nodes=${rollbackState.nodes}; bindings=${rollbackState.bindings}; importAudits=${rollbackState.audits}`,
           rowCount: Number(rollbackState.nodes)
         },
         {
@@ -1584,7 +1578,7 @@ test.describe("DEBUG-ADMIN-846 full catalog transfer", () => {
       ],
       audit: [],
       notes:
-        "Verified the preview digest guard rejects both a changed file and a changed target with 409, that a raw document without a digest cannot bypass the preview requirement, that a read-only user is denied all three catalog transfer routes with 403, that a document above the 20 MiB contract is rejected with 413 without touching the catalog, and that an injected mid-import binding failure rolls back every module, node, binding and audit write before a clean retry succeeds."
+        "Verified the preview digest guard rejects both a changed file and a changed target with 409, that a raw document without a digest cannot bypass the preview requirement, that a read-only user is denied all three catalog transfer routes with 403, and that a document above the 20 MiB contract is rejected with 413 without touching the catalog. A conflicting file is refused with 409 and leaves zero module, node, binding or import-audit rows, after which the same clean file previews and imports successfully. The mid-transaction rollback that a database failure forces is proven separately at the service seam in catalogTransfer.test.ts."
     });
   });
 });
