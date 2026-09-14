@@ -330,7 +330,7 @@ describe("fresh local verification runner", () => {
   });
 
   it("refuses a foreign-root CLI before touching a fixed-entry marker", () => {
-    const foreign = mkdtempSync(path.join(implementationRoot, "work", "verification-runs", "eff04-foreign-"));
+    const foreign = mkdtempSync(path.join(testRunsDirectory(), "eff04-foreign-"));
     const marker = path.join(foreign, "marker");
     writeFileSync(marker, "untouched", { mode: 0o600 });
     const cli = path.join(implementationRoot, "node_modules/.bin/tsx");

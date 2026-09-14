@@ -1,7 +1,7 @@
 # 智能体开发与验证效率优化
 
 > English: [English](../../../exec-plans/active/2026-09-13-agent-delivery-efficiency.md)
-> 状态：**活跃——PR #830、#829、#833、#831、#834、#835 已合入。fresh 执行/摘要代码通过独立双审，正在已接受 CI shadow 上集成。路由、类型反馈和浏览器夹具等待分批交付。不声称裁剪启用或效果已验证。**
+> 状态：**活跃——PR #830、#829、#833、#831、#834、#835 已合入。fresh 执行/摘要 PR #836 首次 Hosted 失败后，正在修正干净 checkout 的测试前置条件。路由、类型反馈和浏览器夹具等待分批交付。不声称裁剪启用或效果已验证。**
 > 日期：2026-09-13。真实跟踪 Issue：[#828](https://github.com/tzrea1-Q/WiseEff/issues/828)。
 > 2026-09-13 重新 fetch 后的真实 accepted base：`1059acb57379bd120d0d2b1a4b4733d4c2e02901`。它恰好等于附件的历史参考值，不构成强制回退后续工作的授权。
 
@@ -18,6 +18,12 @@
 | C：效果验证 | 同类真实任务/CI 样本支持墙钟、资源与 usage 结论 | 样本不足；token usage 为 `unknown` |
 
 A 可先交付，B/C 继续开放。不得制造样本，也不能因工具合入就宣称整个项目全面完成。
+
+## fresh 执行器 Hosted 夹具前置条件——2026-09-14
+
+[PR #836](https://github.com/tzrea1-Q/WiseEff/pull/836) 首次 [run 34793079528](https://github.com/tzrea1-Q/WiseEff/actions/runs/34793079528) attempt 1 实际 checkout 为 `988f978074362f0f86ace8d295aba3ba35d387b3`，有序双亲为 base `aed7e54686e7642655b3b8c30369b9c4ad07f771` 与 head `55b86395bde604b0851db58598781e667738f2b6`，tree `e38161fdf8c343c14c31e2c04568d0ec4be07077` 与候选一致。脚本 job 在 110 文件中通过 1559 项、失败一项、保留 21 项既有可选跳过；bridge 未执行。foreign-root 测试在父目录创建前调用 `mkdtemp`，因 `ENOENT` 在拒绝/marker 断言之前失败。其他夹具调用已经使用所属父目录初始化函数。这是干净 checkout 的夹具前置条件，不是已证明的运行时防护失败。首次失败继续保留，其余 job 终态单独结算。
+
+修正仅将该调用接入已有 `testRunsDirectory()`，保留目录/owner/mode 校验及全部运行时、marker、拒绝断言。本地命名测试一项通过、24 项未选中，耗时 1.5699 秒；其父目录原已存在，故原始冷启动条件须由新鲜 Hosted checkout 验证。早先准确 55b 候选通过 102/5 窄测试、完整构建、元数据/文档，然后完成新鲜原生任务 10/1 与 29/5，零跳过，UUID 分别为 `91b9437a-9f2b-4ffd-8fd0-d37b91b1c35c`、`1410fc89-85cc-4e56-a138-f5ef95c7874a`，保存报告均明确标注新鲜度未验证。这些仍绑定 55b。此检查点的修正 head 窄测试/构建/文档、独立审查、两组新鲜任务和有效 Hosted 均待完成。不重试相同 head，不删除目录、不放宽断言，不改变门禁或运行时代码。
 
 ## CI shadow 接受与 fresh 执行集成——2026-09-14
 

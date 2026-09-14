@@ -1,7 +1,7 @@
 # Agent Delivery and Verification Efficiency
 
 > Chinese: [Chinese](../../zh-CN/exec-plans/active/2026-09-13-agent-delivery-efficiency.md)
-> Status: **Active — PRs #830, #829, #833, #831, #834 and #835 merged. Fresh execution/reporting has independent code PASS and is integrating on accepted CI shadow. Routing, type feedback and browser fixtures await separate delivery. No activation or measured-benefit claim.**
+> Status: **Active — PRs #830, #829, #833, #831, #834 and #835 merged. Fresh execution/reporting PR #836 is correcting a cold-checkout test prerequisite after its first Hosted failure. Routing, type feedback and browser fixtures await separate delivery. No activation or measured-benefit claim.**
 > Date: 2026-09-13. Tracking Issue: [#828](https://github.com/tzrea1-Q/WiseEff/issues/828).
 > Accepted base, freshly fetched on 2026-09-13: `1059acb57379bd120d0d2b1a4b4733d4c2e02901`. This equals the supplied design's historical reference; it is not permission to reset later work.
 
@@ -18,6 +18,12 @@ Implement the user's supplied 2026-09-13 engineering design in bounded waves: sa
 | C: measured effect | Comparable real task/CI samples support wall-clock, resource and usage conclusions | Insufficient samples; token usage `unknown` |
 
 A can be delivered while B/C remain open. Do not manufacture samples or call the entire program complete merely because tooling merged.
+
+## Fresh executor Hosted fixture prerequisite — 2026-09-14
+
+[PR #836](https://github.com/tzrea1-Q/WiseEff/pull/836) first [run 34793079528](https://github.com/tzrea1-Q/WiseEff/actions/runs/34793079528), attempt 1, checked out `988f978074362f0f86ace8d295aba3ba35d387b3`, with ordered base `aed7e54686e7642655b3b8c30369b9c4ad07f771` and head `55b86395bde604b0851db58598781e667738f2b6`; tree `e38161fdf8c343c14c31e2c04568d0ec4be07077` matches the candidate. The scripts job completed 1559 passed, one failed and 21 existing optional skips across 110 files; bridge was not run. The foreign-root test called `mkdtemp` before creating its parent directory and raised `ENOENT` before its refusal/marker assertions. Other fixture calls already use the owned-parent initializer. This is a cold-checkout fixture prerequisite, not a demonstrated runtime guard failure. The first failed result remains retained; remaining job settlement is separate.
+
+The correction changes only that test call to the existing `testRunsDirectory()` helper, preserving its directory/owner/mode validation and every runtime/marker/refusal assertion. A named local run passed one test with 24 deselected in 1.5699 seconds; its parent directory already existed, so only a fresh Hosted checkout proves the original cold condition. The earlier exact 55b candidate passed 102/5 focused tests, full build and metadata/docs, then fresh native tasks 10/1 and 29/5 with no skips at UUIDs `91b9437a-9f2b-4ffd-8fd0-d37b91b1c35c` and `1410fc89-85cc-4e56-a138-f5ef95c7874a`; both saved readers explicitly reported unverified freshness. These remain 55b evidence. Corrected-head focused/build/docs, independent review, two fresh task observations and meaningful Hosted are pending at this checkpoint. No identical-head retry, directory removal, assertion weakening, gate or runtime change is used.
 
 ## CI shadow accepted and fresh execution integration — 2026-09-14
 
