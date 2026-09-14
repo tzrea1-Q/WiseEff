@@ -1,7 +1,7 @@
 # 智能体开发与验证效率优化
 
 > English: [English](../../../exec-plans/active/2026-09-13-agent-delivery-efficiency.md)
-> 状态：**活跃——PR #830、#829、#833、#831 已合入。已提交树预览正在 accepted W1 上集成；CI shadow 已获独立代码 PASS，fresh 执行/摘要仍按已接受的修正方案留在 Scratch。不声称裁剪启用或效果已验证。**
+> 状态：**活跃——PR #830、#829、#833、#831、#834 已合入。CI shadow 正在已接受预览上集成；fresh 执行/摘要正在完成修正矩阵。路由、类型反馈和浏览器夹具等待分批交付。不声称裁剪启用或效果已验证。**
 > 日期：2026-09-13。真实跟踪 Issue：[#828](https://github.com/tzrea1-Q/WiseEff/issues/828)。
 > 2026-09-13 重新 fetch 后的真实 accepted base：`1059acb57379bd120d0d2b1a4b4733d4c2e02901`。它恰好等于附件的历史参考值，不构成强制回退后续工作的授权。
 
@@ -13,11 +13,27 @@
 
 | 交付层级 | 完成含义 | 当前状态 |
 | --- | --- | --- |
-| A：工具与流程 | 诊断、等价调度、影子计划、执行/摘要与路由已审查、验证并交付 | EFF-01/02 已合入；EFF-03 预览/CI shadow、EFF-07/08 有本地已审候选；EFF-04 修正和最终集成仍待完成 |
+| A：工具与流程 | 诊断、等价调度、影子计划、执行/摘要与路由已审查、验证并交付 | EFF-01/02、EFF-03 预览已合入；CI shadow 正在集成；EFF-07/08 有本地已审候选；EFF-04 修正和最终集成仍待完成 |
 | B：模块启用 | 每个明确模块独立满足观察与审查门槛 | 无已启用模块；`observation-pending` |
 | C：效果验证 | 同类真实任务/CI 样本支持墙钟、资源与 usage 结论 | 样本不足；token usage 为 `unknown` |
 
 A 可先交付，B/C 继续开放。不得制造样本，也不能因工具合入就宣称整个项目全面完成。
+
+## 预览接受与 CI shadow 集成——2026-09-14
+
+[PR #834](https://github.com/tzrea1-Q/WiseEff/pull/834) 在 [run 34788103778](https://github.com/tzrea1-Q/WiseEff/actions/runs/34788103778) attempt 1 的九项原有选中检查全部由 GitHub Actions 返回成功后，合入为 `4ef53e5c1551747d76350cd324068fb413d462c2`。base 为 `915f70a04c674c9d9634b72960f036be1defa486`，head 为 `84f3033f327615351e3b977cd04379c92168f2be`，实际 checkout 为 `742e70fc887718b2d15199ece33ee560ee8b28fc`；执行、候选及合入 tree 均为 `f7340bdcd81a03c7474295a0f3f5f5573275e0d7`。原生结果：前端 3411/441 文件、脚本 1432/107 加 21 项既有可选跳过、bridge 134/21 加 4 项平台跳过、后端 4180/539 且无跳过、Quality 100、Smoke 4。独立 Standards 与 Spec 均通过。工作流墙钟 607 秒，已执行 job 时长总和 31.6167 分钟；仅为观察值，不是账单或受控效果比较。11 文件完整源码包 SHA256 为 `f753dbdbb02ee286066de9894151e07019076441940a618a5a0ef6d72e1b59b5`，无删除或重命名。本地 main 已同步，远端特性分支已移除。
+
+CI shadow 无冲突集成上述真实 accepted main。独立已审代码检查点 `4b9393617a49928e95980898f09cc22a377aff39` 在原生门禁通过后增加三个明确观察状态：适用且新鲜的 `observed`、证据失败的 `unavailable`、纯文档/非 PR 的 `not-applicable`。仅 `observed` 允许 `planValid:true`，两种拒绝状态均不选择模块或报告非零选择计数；unavailable 可保留已验证的原生完整数量。适用性由原生 Detect 决定，原生失败保留原退出码。全部原命令继续执行，四模块保持 observation-pending，enforce/memo 关闭。此文档检查点的最终集成测试、独立审查、PR 与 Hosted 尚待完成。永久原生夹具及 29 个 CLI 反例属于故障注入证据，不计启用样本。
+
+main 验收单独记录。较早 `60f2752e78b3dc45466836b4f7b3233f0e908a2a` 的 push run 34785552162 通过 L1/Quality/visual，但列出 58 个浏览器失败。原有归档大小检查拒绝完整产物；最小诊断上传成功并未覆盖两类失败，该通道中的原生详细总数和清理仍为 unknown。工作流墙钟 2442 秒，已执行 job 时长总和 66.9667 分钟。后续 W1 main 运行继续单独跟踪。未增加原始目录后备上传、扫描放宽或重试。
+
+### 首次 shadow Hosted 失败与输入读取修正
+
+[PR #835](https://github.com/tzrea1-Q/WiseEff/pull/835) 首次 [run 34789687505](https://github.com/tzrea1-Q/WiseEff/actions/runs/34789687505) attempt 1 在 head `11bf5f871c46a49c74b5f6ee5fdd2770c3d41105` 失败；实际合并 checkout `792eca13758c655fdcf3b48b250b3524f676d9ff` 的 tree 为 `fb486a18a8d12d10fd074fc900c8b5acb64b0c76`，父节点依次为真实 base/head。脚本 1524 项通过、21 项既有可选跳过、一项原生 shadow 夹具失败；bridge 因此前失败未执行。前后端、Quality、Smoke 通过，Build and test/Merge bar 失败。解析后的前后端观察均为 `SHADOW_ADAPTER_FAILED`，脚本和 bridge 观察缺失。墙钟 707 秒，已执行 job 时长总和 34.75 分钟，不是计费 usage 或效果比较。
+
+本地 Linux Node 22.21.1 管道探针复现了重开 `/dev/stdin` 时的 `ENXIO`，读取描述符 `0` 则返回相同 JSON。隔离容器禁用网络、只读运行，结束后已移除并确认不存在。这证明了匹配的传输反例；Hosted 适配器 stderr 原本被抑制，故其精确栈不可得。修正直接读取继承的描述符，保留 256 KiB 输入检查、全部原生验证和拒绝语义。现有 `readFileSync` 类型声明增加实际支持的数字描述符；`a798e07aa10b4b3d4d9e250ff0230f72e56280aa` 的编译 Red 证明需要这一行类型修正。原生夹具保留 observed 断言并保存有界诊断信息，没有放宽断言、排除、门禁、重试策略或依赖。
+
+修正后的运行时代码 `a798e07aa10b4b3d4d9e250ff0230f72e56280aa` 通过六文件 199 项测试及 acceptance 元数据检查；类型修正完整的 `49bc60e97e9ec325c37bd72044c152d8e8635a7c` 通过原有构建（22.0427 秒）及直接文档检查。此检查点的最终独立审查和修正 head 的 Hosted 尚待完成。早先失败运行继续保留，不混同身份或证据层级，也不声称启用或完整 main 已通过。
 
 ## W1 接受与已提交树预览集成——2026-09-14
 
