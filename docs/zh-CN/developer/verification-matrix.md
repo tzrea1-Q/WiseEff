@@ -37,7 +37,9 @@ EFF 夹具工作复用原有自有 Gate0 runtime 与原生验收配置，保持�
 
 | 命令 | 证明内容 | 使用场景 |
 | --- | --- | --- |
-| `npm run verify:plan -- --base <40-hex-SHA> [--head <40-hex-SHA>]` | 对 clean 已提交仓库输出有界、只读的 JSON 影响预览，核对 base、逻辑 head、实际 checkout SHA/tree 和唯一 diff base。完整必需任务保留，`executable:false`、`acceptancePending:true`、shadow/observation-pending，memo 禁用。 | 从仓库根目录在提交后运行。拒绝 dirty、冲突、shallow、partial 和不安全 Git 配置，不自动 fetch。head 默认实际 HEAD；指定不同 head 时，实际 HEAD 必须恰以提供的 base/head 为有序双亲。不执行测试，不探测 npm/运行环境。`verify:run`、`verify:report`、edit profile、输出路径与 enforce 参数尚不可用，真实验证继续使用原生命令。本地原始路径不自动上传。 |
+| `npm run verify:plan -- --base <40-hex-SHA> [--head <40-hex-SHA>]` | 对 clean 已提交仓库输出有界、只读的 JSON 影响预览，核对 base、逻辑 head、实际 checkout SHA/tree 和唯一 diff base。完整必需任务保留，`executable:false`、`acceptancePending:true`、shadow/observation-pending，memo 禁用。 | 从仓库根目录在提交后运行。拒绝 dirty、冲突、shallow、partial 和不安全 Git 配置，不自动 fetch。head 默认实际 HEAD；指定不同 head 时，实际 HEAD 必须恰以提供的 base/head 为有序双亲。不执行测试，不探测 npm/运行环境。edit profile、输出路径与 enforce 参数尚不可用。本地原始路径不自动上传。 |
+| `npm run verify:run -- --base <40-hex-SHA> --task <ci-changed-paths\|feedback-frontend-client> [--force]` | 重新发现并执行一个固定本地任务：原有 changed-path 脚本文件，或五个反馈前端/client 文件。核对 Git、源码、依赖、环境身份和非零原生计数；任务失败与清理错误保持失败。 | 从 clean 已提交仓库根目录运行。每次调用均重新执行，`--force` 也相同。手工任务不代表完整验证计划或验收门禁。所属完整日志、原生 JSON 与 `record.json` 保存在 `work/verification-runs/<UUID>/`；没有 PG、浏览器、Hosted、目标环境或缓存结果适配器。 |
+| `npm run verify:report -- --run <UUID>` | 有界校验并读取已保存本地记录，标注 `scope:recorded-local-data`、`freshness:unverified`、memo 禁用及验收待完成。 | 使用新执行返回的 UUID。此命令不运行测试，不能授权复用或当前验收；缺失、畸形或身份不匹配证据均拒绝。其他验证继续使用原生命令。 |
 | `npm run catalog:lane:env -- provision --issue <n>` | 在 `127.0.0.1:55438` 上隔离 pgvector 数据库 `wiseeff_lane_<n>`；拒绝 compose `5432/wiseeff` | 任何 Wayfinder #668 PostgreSQL 节点开始前。 |
 | `npm run catalog:lane:env -- doctor --issue <n>` | pgvector 可用；角色存在时 `catalog_migration_owner` 能对 `public.parameter_specs` 做 canary | RBAC/migration/catalog-kernel PG 证据的 Hosted 前。 |
 | `npm run catalog:lane:accept -- --issue <n> -- <issue-named command>` | 在专用 lane DB 上跑 Issue 点名 focused tests；收集到 0 个文件是硬失败 | 精确候选的本地门禁。Hosted 仍只是 H，不能替代该 PG/L 证据。 |
