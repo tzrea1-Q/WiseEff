@@ -81,12 +81,31 @@ R3 应只覆盖真正高风险的窄 seam，不能自动扩散到整个 program�
 Wave: goal, accepted-main, stop-boundary, deadline-lower-bound,
       lanes-in-merge-order, shared-resources, development-WIP,
       review-slots, next-Hosted-lane
-Lane: node, issue, risk, state, base, head, editable/read-only/forbidden paths,
-      threat-matrix, focused/local/PG/browser/Hosted/target/release gates,
-      repair-cycles, fingerprint-count, PR/CI state, blocker, next-transition
-Seal: base, head, tree/path-set, lineage, generated hashes, fingerprint,
+Lane: node, issue, goal, risk, state, cwd/branch,
+      original base/head/tree/dirty ownership, editable/read-only/forbidden paths,
+      scoped document sections, threat-matrix,
+      focused/local/PG/browser/Hosted/target/release gates,
+      exact native command/test paths/expected non-zero counts,
+      profile/mode/direct command, evidence level, result/log refs,
+      repair-cycles, fingerprint-count, PR/CI state,
+      independent review identities/status, missing evidence, blocker/owner,
+      source bundle manifest, delete/rename list, next-state/next-transition
+Seal: base, head, tree/path-set, lineage, dirty ownership, generated hashes,
+      source bundle manifest, delete/rename list, fingerprint,
       completed reviews, evidence commands/results, explicit skips
 ```
+
+### 紧凑任务包与恢复
+
+Lane 记录就是任务包和恢复交接记录。默认派发摘要保持在 6 KiB 以内：携带精确身份、路径、命令、证据引用、阻塞项和下一转换；完整日志留在本地，并链接有界摘录。任务包的命令项写明现有 native 命令和精确测试路径，声明预期 non-zero 数量，并记录实际 exit status 和收集到的测试数量。运行时没有提供数量时使用 `unknown`。这些字段扩展既有交付义务；它们是记录形状，不是新的门禁服务。
+
+任务包记录实际使用的 runtime profile、执行 mode 和 direct command，再单独标记证据层级：documentation/static、local pure/fake、real local PostgreSQL、browser-real、Hosted/CI、target-host、release 或 production approval。任务包还记录 scoped document sections，使恢复的智能体只需加载适用的最小切片。尚未验收的未来验证命令保持 pending；可执行回退使用现有 native `npm` 命令面。合同要求时，`build` 仍是 candidate/Hosted 门禁；仅有 edit-only feedback 不能完成该门禁。
+
+原始 base、head、tree 和 dirty ownership 说明交接继承的内容。source bundle manifest 只列出 candidate 确切变更的 tracked files 及 manifest 本身，并记录全部 delete 或 rename。环境文件、凭据、日志、数据库和无关文件留在 bundle 之外。审查条目写明每个独立 reviewer 或 task 及其状态；缺失证据写明 owner、blocker 和 next state。
+
+### 有界运行时用量
+
+每个有界单元只记录一次运行时报告的 numeric terminal-usage 样本。缺失、重复或 child coverage 保持为 `unknown`；有界样本不能推导整个程序的成本或节省。完整 JSONL 可能含 reasoning，因此完整事件流只留在本地，不收集或上传，只发布控制记录和证据合同所需的有界结果元数据。startup probe 只描述 startup 单元及其观测事件，不能证明 model loading 或全程序用量。
 
 智能体只报告状态转换、blocker 与最终结构化证据，不流式播报常规过程，也不粘贴成功的完整日志。父会话通过 cursor 或有界事件等待 task/CI 更新，不轮询未变化状态。失败报告只包含命令、exit status、最小必要片段、分类和 next owner。
 

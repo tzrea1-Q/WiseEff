@@ -1,7 +1,7 @@
 # 智能体开发与验证效率优化
 
 > English: [English](../../../exec-plans/active/2026-09-13-agent-delivery-efficiency.md)
-> 状态：**活跃——PR #830、#829、#833、#831、#834、#835 已合入。fresh 执行/摘要 PR #836 首次 Hosted 失败后，正在修正干净 checkout 的测试前置条件。路由、类型反馈和浏览器夹具等待分批交付。不声称裁剪启用或效果已验证。**
+> 状态：**活跃——PR #830、#829、#833、#831、#834、#835、#836 已合入。路由进入最终集成；类型反馈和浏览器夹具等待分批交付。不声称裁剪启用或效果已验证。**
 > 日期：2026-09-13。真实跟踪 Issue：[#828](https://github.com/tzrea1-Q/WiseEff/issues/828)。
 > 2026-09-13 重新 fetch 后的真实 accepted base：`1059acb57379bd120d0d2b1a4b4733d4c2e02901`。它恰好等于附件的历史参考值，不构成强制回退后续工作的授权。
 
@@ -13,11 +13,19 @@
 
 | 交付层级 | 完成含义 | 当前状态 |
 | --- | --- | --- |
-| A：工具与流程 | 诊断、等价调度、影子计划、执行/摘要与路由已审查、验证并交付 | EFF-01/02/03 已合入；EFF-04 正在集成已审修正；EFF-07/08 和浏览器夹具有本地已审候选等待交付 |
+| A：工具与流程 | 诊断、等价调度、影子计划、执行/摘要与路由已审查、验证并交付 | EFF-01/02/03/04 已合入；EFF-08 正在已接受执行/摘要上集成；EFF-07 和浏览器夹具待交付 |
 | B：模块启用 | 每个明确模块独立满足观察与审查门槛 | 无已启用模块；`observation-pending` |
 | C：效果验证 | 同类真实任务/CI 样本支持墙钟、资源与 usage 结论 | 样本不足；token usage 为 `unknown` |
 
 A 可先交付，B/C 继续开放。不得制造样本，也不能因工具合入就宣称整个项目全面完成。
+
+## 执行入口接受与路由集成——2026-09-14
+
+[PR #836](https://github.com/tzrea1-Q/WiseEff/pull/836) 在修正 head 的 [run 34794729894](https://github.com/tzrea1-Q/WiseEff/actions/runs/34794729894) attempt 1 中，九项原有选中检查均由 GitHub Actions 返回成功后，合入为 `0dd8157682393df0514b10625660fe4cd91a406f`。base `aed7e54686e7642655b3b8c30369b9c4ad07f771` 与 head `9f8639542be150b74812a3b62c4bb56f63c21cfe` 是实际 checkout `75ada0ee7d8b6770b6bc7d8f57688640a72dbb5a` 的有序双亲；候选、执行、合入 tree 均为 `d6a9e6858a00a4d2da35d37ca4fe85cbe1f6711d`。前端 3411/441 文件、脚本 1560/110 加 21 项既有可选跳过、bridge 134/21 加 4 项平台跳过、后端 4180/539 且零跳过、Quality 100、Smoke 4 通过。冷启动夹具保留全部断言后通过，独立 Standards/Spec 均通过；十文件完整源码包 SHA256 为 `5dd698781a97184f2eeeeec543f10dca946463e0ef423e7c7fa33d5cb0f6c030`，无删除/重命名。远端分支不存在、本地 main 干净同步均已核实。
+
+同 head 的本地 102/5 窄测试、原 build、元数据/文档均通过；新鲜任务 10/1 与 29/5、零跳过，UUID 为 `432ae04f-845f-4e9d-980a-9a00a8ffc8e9`、`d6c8cac1-30ba-42a4-8c41-4a1743ba30dc`，历史读取器仍标记新鲜度未验证。Hosted 近似墙钟 734 秒、已执行 job 时长总和 34.3667 分钟，不是账单或受控收益。此前 aed7 main 完整运行 34792256282 通过 L1/Quality/visual，但记录 58 项浏览器失败；原 archive-size 门禁拒绝完整产物，最小诊断上传成功。该次墙钟 2664 秒、job 时长总和 73.15 分钟，原生完整数量/清理细节仍 unknown；新 main 完整验收独立 pending。
+
+路由已正常集成该 accepted main，四个原指令/协议文件保留已审 `5418af9474415fec111994accda5e46250e6271b` 的差异，现有矩阵维护实际 plan/run/report 命令范围。最终路由检查、一次独立 R1 合并审查、六文件完整源码包及单独文档 PR 在本检查点仍 pending。模块启用与 memo 关闭；下方历史记录保留原身份。
 
 ## fresh 执行器 Hosted 夹具前置条件——2026-09-14
 
@@ -284,6 +292,16 @@ Quality 是首个隔离/分片试点，完整 Gate 0 重构不默认纳入。每
 只采集官方可观察 usage 数值、task/model/version、session-turn 终态身份和时间，以唯一终态去重。缺 usage/子代理记 unknown 并说明覆盖；cached-input 属于 input 子集，reasoning/output 按实际语义避免双算。不把未公开内部结构当稳定 API，不公开私有推理/完整工具内容，不把等待或日志字节换算 token。
 
 每次代码交付提供全部授权修改代码文件的完整内容，优先精确候选源码包，附真实路径、摘要、文件 digest、新增/修改/删除/重命名清单。仅含授权提交变更，排除凭据、`.env`、运行日志、数据库和无关源码；删除显式列清单，不造空文件。完整源码交付与反复把所有文件灌入审查上下文分开。
+
+### EFF-08 检查点——2026-09-14 路由与恢复
+
+[English checkpoint](../../../exec-plans/active/2026-09-13-agent-delivery-efficiency.md#eff-08-checkpoint--2026-09-14-routing-and-recovery)
+
+本次有界路由候选位于 `codex/efficiency-w3`，base 为 `aed7e54686e7642655b3b8c30369b9c4ad07f771`，HEAD 为 `66e093a58ca599541e7c3cb9f9112947feca2cbd`，tree 为 `03437e2517706981f89686122d93ea6f0c2a1c61`；本次文档改动前 worktree clean。四文件路由增量是 `AGENTS.md`、`docs/zh-CN/root/AGENTS.md`、`docs/agents/agent-delivery-protocol.md`、`docs/zh-CN/agents/agent-delivery-protocol.md`。从仓库根到真实任务 cwd 的实际链路中，每层依次检查 `AGENTS.override.md`、`AGENTS.md`、已配置 fallback 名称，并选取首个非空文件；已检查候选和选中路径必须写入交付记录。这是可观察的发现链，不声称从根目录启动会自动加载所有深层指令。
+
+任务/恢复 packet 限制为 ≤6 KiB，携带精确 cwd、branch、base/head/tree、所有权、可编辑路径、范围引用、命令/预期 exit、证据级别、结果引用、缺失证据、阻塞者/负责人和下一状态。完整日志、凭据、数据库、原始工具内容和私有推理留在 packet 外。每个有界单元最多记录一个运行时报告的数值 usage；本检查点没有已验证 token 或节省总量，缺失、重复或子任务 usage 均保持 `unknown` 并注明覆盖范围。
+
+保留的恢复证据是历史且有界独立证据：在 `636ebbd093ab89e3c8b760dcec134fe7d6ca4b60`，三个 UI 文件覆盖 15 个观察、两个脚本覆盖 54 个观察；后续 PostgreSQL 切片在 `5418af9474415fec111994accda5e46250e6271b` 覆盖 24/4 且零失败。这些是历史恢复观察，不是本次新执行，也不证明模块已启用。PR #835 已合入，#836 Hosted/最终集成仍 pending；本检查点不新增 PostgreSQL、启用或最终合入声明。父协调者仍需在合入后完成精确源码包及其有界检查。
 
 ## 工作包与波次门禁
 
