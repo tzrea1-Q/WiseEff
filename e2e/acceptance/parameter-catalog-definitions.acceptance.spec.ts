@@ -107,12 +107,15 @@ test.describe("restored definition workspace and governed authoring", () => {
 
     // The workspace is writable in this lane or the actions are honestly absent:
     // never a hidden control that pretends to be a security boundary.
+    // The collection can render before the domain state settles, and the row
+    // actions appear only once writes are enabled.
+    await expect(region).toHaveAttribute("data-writes-enabled", "true");
     const writesEnabled = (await region.getAttribute("data-writes-enabled")) === "true";
     const retire = table.getByRole("button", { name: /^(弃用|恢复) /u }).first();
     const correct = table.getByRole("button", { name: /^纠错 /u }).first();
     if (writesEnabled) {
-      await expect(retire).toBeVisible();
-      await expect(correct).toBeVisible();
+      await expect(retire).toBeVisible({ timeout: 15_000 });
+      await expect(correct).toBeVisible({ timeout: 15_000 });
       await correct.click();
       const dialog = page.getByRole("dialog");
       await expect(dialog).toContainText("身份纠错");

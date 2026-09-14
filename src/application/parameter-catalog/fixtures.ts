@@ -199,7 +199,6 @@ export const catalogProposal: CatalogProposalResponse["item"] = {
   submittedByPersonId: CATALOG_AUTHOR_PERSON_ID,
   acceptedByPersonId: null,
   publicationIntentRef: null,
-  createdAt: "2026-08-31T00:30:00Z",
   version: 1
 };
 

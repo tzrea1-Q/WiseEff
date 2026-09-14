@@ -24719,6 +24719,9 @@
                     "null"
                   ]
                 },
+                "createdAt": {
+                  "type": "string"
+                },
                 "version": {
                   "type": "number"
                 }
@@ -24907,6 +24910,9 @@
                   "string",
                   "null"
                 ]
+              },
+              "createdAt": {
+                "type": "string"
               },
               "version": {
                 "type": "number"
