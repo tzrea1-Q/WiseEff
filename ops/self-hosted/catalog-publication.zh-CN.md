@@ -18,7 +18,7 @@ cd /srv/wiseeff/ops/self-hosted
 
 `publication_enabled` 默认 `false`。隔离启用不是生产授权。
 
-setup/upgrade 在缺少私有文件时写入**未配置 stub**，绝不复制 `DATABASE_URL`。缺少 `WISEEFF_PUBLICATION_MANAGER_DATABASE_URL` 时 manager 健康检查为 `503 { configured: false }`，`freeze` 失败闭合。用 `npx tsx scripts/catalog-publication-ops.ts provision-logins --credential-dir <0700 目录>` 创建专用 LOGIN。stdout 只有角色和路径，DSN 写入 `0600` 文件。把 manager DSN 写入 `.env.publication-manager`，把 API DSN 写入公共 `.env` 的 `DATABASE_URL`，把 worker DSN 写入 `WISEEFF_WORKER_DATABASE_URL`。不要把“上线前再换账号”当成已交付。默认重复运行只核验已拥有的 LOGIN，不改密码；轮换凭据必须显式 `--rotate-passwords`。
+setup/upgrade 在缺少私有文件时写入**未配置 stub**，绝不复制 `DATABASE_URL`。stub 在任何 Compose 解析之前写入，这样首次引入 `publication-manager` 时仍能 `stop proxy`。缺少 `WISEEFF_PUBLICATION_MANAGER_DATABASE_URL` 时 manager 健康检查为 `503 { configured: false }`。若旧栈已经跑过 `publication-manager`，升级 freeze 在缺少专用 LOGIN 时失败闭合。首次引入（旧栈没有 manager 容器且没有 manager DSN）会跳过 freeze，不启动 `publication-manager`，也不要求 `configured: true`；在创建 `catalog_publication` 的迁移之后再 provision LOGIN。用 `npx tsx scripts/catalog-publication-ops.ts provision-logins --credential-dir <0700 目录>` 创建专用 LOGIN。stdout 只有角色和路径，DSN 写入 `0600` 文件。把 manager DSN 写入 `.env.publication-manager`，把 API DSN 写入公共 `.env` 的 `DATABASE_URL`，把 worker DSN 写入 `WISEEFF_WORKER_DATABASE_URL`。不要把“上线前再换账号”当成已交付。默认重复运行只核验已拥有的 LOGIN，不改密码；轮换凭据必须显式 `--rotate-passwords`。
 
 ## 1. 部署管理进程
 
@@ -81,7 +81,7 @@ npx tsx scripts/catalog-publication-ops.ts policy enable --actor <user-id> \
 
 ## 6. 升级/恢复冻结
 
-`./scripts/upgrade.sh apply` **在宿主机**用私有 manager DSN 冻结（`npx tsx scripts/catalog-publication-ops.ts freeze`），不 `compose exec` 进 manager 容器。因此无 manager 的 PR #827 旧栈、或 manager 已停止/崩溃，仍可冻结。缺少专用 LOGIN 失败闭合，不会把 API 凭据写回。冻结后再停止 Compose 中存在的 `publication-manager`。失败或超时保持冻结并隔离 `publication-manager`。解冻是升级**成功提交点**：只在公共探测和最终校验之后、且本次升级拥有该冻结时执行（不清除操作员原有冻结）。
+`./scripts/upgrade.sh apply` 用私有 manager DSN，通过候选镜像的 `compose run --no-deps api` 冻结（`npx tsx scripts/catalog-publication-ops.ts freeze`）。这样使用镜像内 `node_modules` 和 Compose DNS 解析 `postgres`，不 `compose exec` 进 manager 容器，也不要求宿主机有 `npx`/`pg`。无 manager 的 PR #827 旧栈、或 manager 已停止/崩溃，只要有专用 LOGIN 仍可冻结。旧栈已经跑过 `publication-manager` 时，缺少专用 LOGIN 失败闭合。首次引入且没有该 LOGIN 时跳过 freeze，以免卡住创建 `catalog_publication` 的升级。冻结后只在容器确实存在时停止 `publication-manager`。回滚时若恢复后的 Compose 没有该服务，不得 `up publication-manager`，也不得拿 API 的 previous 镜像标签顶替。失败或超时保持冻结并隔离 `publication-manager`。解冻是升级**成功提交点**：只在公共探测和最终校验之后、且本次升级拥有该冻结时执行（不清除操作员原有冻结）。
 
 普通重启不得用镜像内 vendor 包覆盖数据库 current。恢复走 `./scripts/upgrade.sh` recovery，不用接管，也不用 pointer-only rollback。
 

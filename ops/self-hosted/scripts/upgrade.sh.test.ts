@@ -3535,6 +3535,241 @@ exit 0
     expect(result.stdout).not.toContain("publication-manager");
   });
 
+  it("writes a manager stub before Compose parse and skips freeze on first-intro without a DSN", () => {
+    const directory = mkdtempSync(join(tmpdir(), "wiseeff-upgrade-first-intro-stub-"));
+    const runDir = join(directory, "run");
+    mkdirSync(runDir);
+    const managerEnv = join(directory, ".env.publication-manager");
+    writeFileSync(join(directory, "actions.log"), "");
+
+    const result = spawnSync("bash", ["-c", `
+      source ops/self-hosted/scripts/upgrade-lib.sh
+      upgrade_compose_dir="$WISEEFF_TEST_COMPOSE_DIR"
+      upgrade_repo_root="$PWD"
+      upgrade_run_dir="$WISEEFF_TEST_RUN_DIR"
+      upgrade_run_id=first-intro-unconfigured
+      wiseeff_upgrade_compose() {
+        if [ "$1" = "config" ] && [ "$2" = "--services" ]; then
+          if [ ! -f "$WISEEFF_PUBLICATION_MANAGER_ENV_FILE" ]; then
+            echo "env file $WISEEFF_PUBLICATION_MANAGER_ENV_FILE not found" >&2
+            return 1
+          fi
+          printf '%s\\n' postgres redis minio api worker web proxy publication-manager
+          return 0
+        fi
+        printf 'compose %s\\n' "$*" >> "$WISEEFF_TEST_COMPOSE_DIR/actions.log"
+        return 0
+      }
+      wiseeff_upgrade_queue_command() {
+        printf 'queue %s\\n' "$*" >> "$WISEEFF_TEST_COMPOSE_DIR/actions.log"
+        return 0
+      }
+      wiseeff_upgrade_publication_freeze() {
+        printf 'freeze %s\\n' "$1" >> "$WISEEFF_TEST_COMPOSE_DIR/actions.log"
+        return 1
+      }
+      if ! wiseeff_upgrade_stop_old_stack; then
+        echo stop-failed
+        exit 1
+      fi
+      echo "skipped=$(wiseeff_upgrade_state_read publication_freeze_skipped)"
+      echo "owned=$(wiseeff_upgrade_state_read publication_freeze_owned)"
+      cat "$WISEEFF_TEST_COMPOSE_DIR/actions.log"
+      test -f "$WISEEFF_PUBLICATION_MANAGER_ENV_FILE"
+      grep -q '^WISEEFF_PUBLICATION_MANAGER=1' "$WISEEFF_PUBLICATION_MANAGER_ENV_FILE"
+      if grep -E '^[[:space:]]*WISEEFF_PUBLICATION_MANAGER_DATABASE_URL=' "$WISEEFF_PUBLICATION_MANAGER_ENV_FILE"; then
+        echo dsn-copied
+        exit 1
+      fi
+    `], {
+      encoding: "utf8",
+      env: {
+        ...process.env,
+        WISEEFF_TEST_COMPOSE_DIR: directory,
+        WISEEFF_TEST_RUN_DIR: runDir,
+        WISEEFF_PUBLICATION_MANAGER_ENV_FILE: managerEnv,
+        WISEEFF_UPGRADE_STOP_TIMEOUT_SECONDS: "1",
+      },
+    });
+
+    expect(result.status).toBe(0);
+    expect(result.stdout).toContain("skipped=first-intro-unconfigured");
+    expect(result.stdout).toContain("owned=false");
+    expect(result.stdout).toContain("compose stop");
+    expect(result.stdout).toContain("queue pause");
+    expect(result.stdout).not.toContain("freeze ");
+    expect(result.stdout).not.toContain("dsn-copied");
+    expect(existsSync(managerEnv)).toBe(true);
+    expect(readFileSync(managerEnv, "utf8")).not.toMatch(/^[^#]*WISEEFF_PUBLICATION_MANAGER_DATABASE_URL=/m);
+  });
+
+  it("still fail-closes freeze when a previous manager existed but no DSN is provisioned", () => {
+    const directory = mkdtempSync(join(tmpdir(), "wiseeff-upgrade-subsequent-no-dsn-"));
+    const runDir = join(directory, "run");
+    mkdirSync(runDir);
+    writeFileSync(join(runDir, "previous_had_publication_manager"), "true\n");
+    const managerEnv = join(directory, ".env.publication-manager");
+    writeFileSync(managerEnv, "WISEEFF_PUBLICATION_MANAGER=1\n", { mode: 0o600 });
+
+    const result = spawnSync("bash", ["-c", `
+      source ops/self-hosted/scripts/upgrade-lib.sh
+      upgrade_compose_dir="$WISEEFF_TEST_COMPOSE_DIR"
+      upgrade_repo_root="$PWD"
+      upgrade_run_dir="$WISEEFF_TEST_RUN_DIR"
+      upgrade_run_id=subsequent-no-dsn
+      wiseeff_upgrade_state_write phase quiescing
+      wiseeff_upgrade_compose() {
+        if [ "$1" = "config" ] && [ "$2" = "--services" ]; then
+          printf '%s\\n' postgres redis minio api worker web proxy publication-manager
+          return 0
+        fi
+        return 0
+      }
+      if wiseeff_upgrade_stop_old_stack; then
+        echo stop-ok
+        exit 0
+      fi
+      echo stop-failed
+      echo "code=$(wiseeff_upgrade_state_read failure_code)"
+    `], {
+      encoding: "utf8",
+      env: {
+        ...process.env,
+        WISEEFF_TEST_COMPOSE_DIR: directory,
+        WISEEFF_TEST_RUN_DIR: runDir,
+        WISEEFF_PUBLICATION_MANAGER_ENV_FILE: managerEnv,
+        WISEEFF_UPGRADE_STOP_TIMEOUT_SECONDS: "1",
+      },
+    });
+
+    expect(result.status).toBe(0);
+    expect(result.stdout).toContain("stop-failed");
+    expect(result.stdout).toContain("code=quiesce-publication-freeze");
+    expect(result.stderr).toContain("dedicated manager LOGIN is not provisioned");
+  });
+
+  it("does not recreate publication-manager on rollback when the previous compose has no such service", () => {
+    const directory = mkdtempSync(join(tmpdir(), "wiseeff-upgrade-rollback-no-manager-"));
+    const runDir = join(directory, "run");
+    mkdirSync(runDir);
+    writeFileSync(join(runDir, "previous_image_tag"), "wiseeff-app:wiseeff-previous-api-run\n");
+    writeFileSync(join(runDir, "previous_image_tag_api"), "wiseeff-app:wiseeff-previous-api-run\n");
+    writeFileSync(join(runDir, "previous_image_tag_worker"), "wiseeff-app:wiseeff-previous-worker-run\n");
+    writeFileSync(join(runDir, "previous_image_tag_web"), "wiseeff-app:wiseeff-previous-web-run\n");
+    writeFileSync(join(directory, "actions.log"), "");
+
+    const result = spawnSync("bash", ["-c", `
+      source ops/self-hosted/scripts/upgrade-lib.sh
+      upgrade_compose_dir="$WISEEFF_TEST_COMPOSE_DIR"
+      upgrade_run_dir="$WISEEFF_TEST_RUN_DIR"
+      upgrade_run_id=rollback-no-manager
+      wiseeff_upgrade_compose() {
+        if [ "$1" = "config" ] && [ "$2" = "--services" ]; then
+          printf '%s\\n' postgres redis minio api worker web proxy
+          return 0
+        fi
+        return 0
+      }
+      wiseeff_upgrade_compose_for_image() {
+        printf 'up %s\\n' "$*" >> "$WISEEFF_TEST_COMPOSE_DIR/actions.log"
+        return 0
+      }
+      wiseeff_upgrade_recreate_previous_app_services
+      cat "$WISEEFF_TEST_COMPOSE_DIR/actions.log"
+    `], {
+      encoding: "utf8",
+      env: {
+        ...process.env,
+        WISEEFF_TEST_COMPOSE_DIR: directory,
+        WISEEFF_TEST_RUN_DIR: runDir,
+      },
+    });
+
+    expect(result.status).toBe(0);
+    expect(result.stdout).toContain("wiseeff-previous-api-run");
+    expect(result.stdout).toContain("wiseeff-previous-worker-run");
+    expect(result.stdout).toContain("wiseeff-previous-web-run");
+    expect(result.stdout).not.toContain("publication-manager");
+  });
+
+  it("omits an unconfigured publication-manager from candidate app-service startup", () => {
+    const directory = mkdtempSync(join(tmpdir(), "wiseeff-upgrade-unconfigured-manager-"));
+    const managerEnv = join(directory, ".env.publication-manager");
+    writeFileSync(
+      managerEnv,
+      "WISEEFF_PUBLICATION_MANAGER=1\n# WISEEFF_PUBLICATION_MANAGER_DATABASE_URL=\n",
+      { mode: 0o600 },
+    );
+
+    const result = spawnSync("bash", ["-c", `
+      source ops/self-hosted/scripts/upgrade-lib.sh
+      upgrade_compose_dir="$WISEEFF_TEST_COMPOSE_DIR"
+      wiseeff_upgrade_compose() {
+        if [ "$1" = "config" ] && [ "$2" = "--services" ]; then
+          printf '%s\\n' postgres redis minio api worker web proxy publication-manager
+          return 0
+        fi
+        return 0
+      }
+      printf 'services=%s\\n' "$(wiseeff_upgrade_with_optional_publication_manager web worker)"
+    `], {
+      encoding: "utf8",
+      env: {
+        ...process.env,
+        WISEEFF_TEST_COMPOSE_DIR: directory,
+        WISEEFF_PUBLICATION_MANAGER_ENV_FILE: managerEnv,
+      },
+    });
+
+    expect(result.status).toBe(0);
+    expect(result.stdout).toContain("services=web worker");
+    expect(result.stdout).not.toContain("publication-manager");
+  });
+
+  it("runs freeze through compose run on the candidate image instead of host npx", () => {
+    const directory = mkdtempSync(join(tmpdir(), "wiseeff-upgrade-freeze-compose-"));
+    const managerEnv = join(directory, ".env.publication-manager");
+    writeFileSync(
+      managerEnv,
+      "WISEEFF_PUBLICATION_MANAGER=1\nWISEEFF_PUBLICATION_MANAGER_DATABASE_URL=postgres://wiseeff_publication_manager:secret@postgres:5432/lab\n",
+      { mode: 0o600 },
+    );
+    writeFileSync(join(directory, "actions.log"), "");
+
+    const result = spawnSync("bash", ["-c", `
+      source ops/self-hosted/scripts/upgrade-lib.sh
+      upgrade_compose_dir="$WISEEFF_TEST_COMPOSE_DIR"
+      upgrade_repo_root="$PWD"
+      upgrade_candidate_image_tag=wiseeff-app:candidate
+      wiseeff_upgrade_env_value() { printf '%s\\n' "postgres://wiseeff_api:api@postgres:5432/lab"; }
+      wiseeff_upgrade_compose_for_image() {
+        printf '%s\\n' "$*" >> "$WISEEFF_TEST_COMPOSE_DIR/actions.log"
+        printf '%s\\n' "$WISEEFF_PUBLICATION_MANAGER_DATABASE_URL" > "$WISEEFF_TEST_COMPOSE_DIR/run.dsn"
+        printf '%s\\n' "$WISEEFF_API_PROCESS" > "$WISEEFF_TEST_COMPOSE_DIR/run.api"
+        return 0
+      }
+      wiseeff_upgrade_publication_freeze true
+      cat "$WISEEFF_TEST_COMPOSE_DIR/actions.log"
+    `], {
+      encoding: "utf8",
+      env: {
+        ...process.env,
+        WISEEFF_TEST_COMPOSE_DIR: directory,
+        WISEEFF_PUBLICATION_MANAGER_ENV_FILE: managerEnv,
+      },
+    });
+
+    expect(result.status).toBe(0);
+    expect(result.stdout).toContain("run --rm --no-deps");
+    expect(result.stdout).toContain("scripts/catalog-publication-ops.ts freeze set");
+    expect(result.stdout).not.toContain("secret");
+    expect(result.stderr).not.toContain("secret");
+    expect(readFileSync(join(directory, "run.dsn"), "utf8").trim()).toBe(
+      "postgres://wiseeff_publication_manager:secret@postgres:5432/lab",
+    );
+    expect(readFileSync(join(directory, "run.api"), "utf8").trim()).toBe("0");
+  });
+
   it("leaves freeze set when candidate recreate fails after freeze", () => {
     const implementation = readFileSync("ops/self-hosted/scripts/upgrade-lib.sh", "utf8");
     const applyBody = implementation.split("wiseeff_upgrade_run_apply()")[1] ?? "";
