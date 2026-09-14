@@ -1,7 +1,7 @@
 # Agent Delivery and Verification Efficiency
 
 > Chinese: [Chinese](../../zh-CN/exec-plans/active/2026-09-13-agent-delivery-efficiency.md)
-> Status: **Active — PRs #830, #829, #833, #831, #834, #835 and #836 merged. Routing is in final integration; type feedback and browser fixtures await separate delivery. No activation or measured-benefit claim.**
+> Status: **Active — PRs #830, #829, #833, #831, #834, #835, #836 and #837 merged. Type feedback is in final integration; browser fixtures await separate delivery. No activation or measured-benefit claim.**
 > Date: 2026-09-13. Tracking Issue: [#828](https://github.com/tzrea1-Q/WiseEff/issues/828).
 > Accepted base, freshly fetched on 2026-09-13: `1059acb57379bd120d0d2b1a4b4733d4c2e02901`. This equals the supplied design's historical reference; it is not permission to reset later work.
 
@@ -13,7 +13,7 @@ Implement the user's supplied 2026-09-13 engineering design in bounded waves: sa
 
 | Delivery level | Completion means | Current status |
 | --- | --- | --- |
-| A: tools and process | Reviewed and verified diagnostics, equivalent scheduling, shadow plan, execution/reporting and routing are delivered | EFF-01/02/03/04 merged; EFF-08 is integrating on accepted execution/reporting; EFF-07 and browser fixtures await delivery |
+| A: tools and process | Reviewed and verified diagnostics, equivalent scheduling, shadow plan, execution/reporting and routing are delivered | EFF-01/02/03/04/08 merged; EFF-07 type feedback is integrating; browser fixtures and final attestation remain pending |
 | B: module activation | Each explicitly named module passes its own observation and independent-review gates | No module enabled; `observation-pending` |
 | C: measured effect | Comparable real task/CI samples support wall-clock, resource and usage conclusions | Insufficient samples; token usage `unknown` |
 
@@ -388,6 +388,8 @@ These are required behavior observations, not 58 mandatory new test files. Reuse
 | EFF-T58 | Full source delivery → all changed complete files match candidate; no secrets or diff-only substitute. | 08/09 |
 
 ## Edit-only type feedback candidate — 2026-09-14
+
+This candidate normally integrates routing [PR #837](https://github.com/tzrea1-Q/WiseEff/pull/837), accepted main `b3ec95a4c9e327d384ce482be05c92ca0227e63a`. Its head `0138b450af9116cde25b28096ff9f3ee569bb017` on base `0dd8157682393df0514b10625660fe4cd91a406f` passed combined independent R1 review and [run 34796067544](https://github.com/tzrea1-Q/WiseEff/actions/runs/34796067544), attempt 1; actual checkout `b3d37c067023f12337cc8eb63c03c3b6a6bbe4af` and merged tree `56096bff648856c5f93b5d2f121b81263d47a27f` match. Native Detect reported docs-only; its three selected GitHub Actions gates passed, and nine runtime jobs stayed unselected/skipped. No native tests ran in that documentation PR. Its six-file complete source ZIP SHA256 is `56095b5ee40afc48417ef1bd1d361a418a8cbe6bf9dbe67284ad4e5e85b2887d`, no deletes/renames; remote branch and clean local main disposition were verified. Wall approximation 110 seconds and sum executed-job elapsed 1.05 minutes are documentation observations, not runtime savings. The separate type candidate still requires fresh compiler/build checks and its own review/Hosted; current main full acceptance is independent.
 
 EFF-07 adds `npm run typecheck` as exactly the existing build's 4096 MiB `tsc -b` phase. The full `npm run build`, its Vite phase, project references, dependencies, test environments and all final gates remain unchanged. The linked verification matrix distinguishes edit feedback from completed build evidence. Reviewed code `40b32b19b754d108855884db8973e4cc1f1ad2ad` contains one package entry and two language rows. Genuine temporary errors in each referenced TypeScript project were rejected by both entries; those fixtures were removed before Green. Final main integration, compiler/build checks, independent combined review and its own PR/Hosted remain pending at this checkpoint.
 
