@@ -18,6 +18,7 @@
 - 任何 target-environment readiness、pilot-ready、release-ready 结论都必须有真实目标环境证据，不能由本地 skip 代替。
 - 表格列多选筛选复用 `ColumnFilter`：见 [表格列多选筛选 UX](../design-docs/ux-table-column-filter.md)。
 - 前端视觉与交互标准见 [UI 设计系统](../design-docs/ui-design-system.md)；前端可见变更的完成门禁见 [UI 质量检查清单](../developer/ui-quality-checklist.md)。
+- 任务/恢复路由：从仓库子目录开始工作时，先确认真实 `cwd`，再将仓库根到 cwd 作为仓库级指令发现链；每个目录依次检查 `AGENTS.override.md`、`AGENTS.md` 和已配置的 fallback 名称，只选第一个非空文件。把检查候选和已选路径记入[交付控制记录](../agents/agent-delivery-protocol.md)，并只阅读任务包指定的小节。全局指导另行适用；旁侧或模块文档必须在这条链中被明确命中。
 
 ## Agent skills
 
