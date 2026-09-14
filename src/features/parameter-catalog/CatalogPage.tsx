@@ -8,10 +8,14 @@ import {
   type CatalogEmptyReason
 } from "@/application/parameter-catalog/states";
 import {
+  CATALOG_DEFAULT_PAGE_SIZE,
+  CATALOG_PAGE_SIZES,
   buildCatalogHref,
   parseCatalogUrlAnchor,
+  parseCatalogPageSize,
   readLegacyCatalogBookmark,
   withCatalogReleasePin,
+  type CatalogPageSize,
   type CatalogUrlAnchor
 } from "@/application/parameter-catalog/urlAnchor";
 import type { CatalogActorKind, CatalogAuthorizedAction } from "@/application/parameter-catalog/authority";
@@ -33,6 +37,12 @@ import type {
   CatalogSubjectResponse
 } from "@/infrastructure/http/parameterCatalogDtos";
 import { useCatalogLayoutMode, type CatalogLayoutMode } from "./catalogLayout";
+import { CatalogModuleNavigator } from "./CatalogModuleNavigator";
+import {
+  buildCatalogModuleTree,
+  filterDefinitionIdsByModule,
+  subjectIdsForModule
+} from "./catalogModuleScope";
 import {
   catalogActionAffordances,
   catalogEmptyMessage,
@@ -47,20 +57,34 @@ import {
 import {
   catalogDefinitionsLabel,
   catalogDetailLabel,
+  catalogHistoryCloseLabel,
+  catalogHistoryLabel,
+  catalogHistoryOpenLabel,
   catalogListLabel,
   catalogLoadingLabel,
+  catalogModuleScopeAll,
+  catalogModuleScopeClear,
+  catalogModuleScopeHint,
+  catalogNavigatorLabel,
+  catalogNextPageLabel,
   catalogPageLabel,
+  catalogPageSizeLabel,
+  catalogPaginationLabel,
+  catalogPendingWorkCloseLabel,
+  catalogPendingWorkLabel,
+  catalogPendingWorkOpenLabel,
+  catalogPreviousPageLabel,
   catalogRefreshLabel,
-  catalogReviewWorkLabel,
+  catalogReleaseLabel,
+  catalogResultCountLabel,
   catalogSearchClearLabel,
   catalogSearchLabel,
   catalogSearchSubmitLabel,
   catalogSelectDefinitionHint,
   catalogSheetTabs,
+  catalogStateBadges,
   catalogSubjectsLabel,
-  catalogTimelineLabel,
-  catalogReleaseLabel,
-  catalogStateBadges
+  catalogTimelineLabel
 } from "./copy";
 import "./parameter-catalog.css";
 
@@ -99,7 +123,7 @@ type CatalogSnapshot = {
   review: CatalogReviewItemListResponse | null;
 };
 
-type InspectorTab = "detail" | "timeline";
+type InspectorTab = "detail" | "history";
 
 function searchFromHref(href: string): string {
   const queryIndex = href.indexOf("?");
@@ -140,6 +164,15 @@ function pickCollection(
   return subjects;
 }
 
+/**
+ * Restored organization definition workspace (issue #847).
+ *
+ * The definition table owns the main work area: a module navigator sits beside
+ * it and every collection control (search, lifecycle and module filters, page
+ * size, pagination, truthful count) narrows the complete result set before it is
+ * paged. Definition history and pending governance work open on demand instead
+ * of occupying the workspace by default.
+ */
 export function CatalogPage({
   repository,
   actor,
@@ -158,16 +191,25 @@ export function CatalogPage({
   );
   const resolvedSearch = search ?? internalSearch;
   const anchor = useMemo(() => parseCatalogUrlAnchor(resolvedSearch), [resolvedSearch]);
+  const pageSize: CatalogPageSize =
+    parseCatalogPageSize(anchor.pageSize === null ? null : String(anchor.pageSize)) ??
+    CATALOG_DEFAULT_PAGE_SIZE;
+  const activeLifecycles = useMemo(
+    () => (anchor.lifecycle ? anchor.lifecycle.split(",").filter(Boolean) : []),
+    [anchor.lifecycle]
+  );
 
-  const [searchInput, setSearchInput] = useState("");
-  const [searchQuery, setSearchQuery] = useState("");
-  const [lifecycleFilter, setLifecycleFilter] = useState<string[]>([]);
+  const [searchInput, setSearchInput] = useState(anchor.q ?? "");
   const [snapshot, setSnapshot] = useState<CatalogSnapshot | null>(null);
   const [inFlight, setInFlight] = useState(true);
   const [error, setError] = useState<unknown>();
   const [unpublished, setUnpublished] = useState(false);
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [pendingOpen, setPendingOpen] = useState(false);
   const [inspectorOpen, setInspectorOpen] = useState(false);
   const [inspectorTab, setInspectorTab] = useState<InspectorTab>("detail");
+  /** Cursors already traversed, so Previous is exact rather than guessed. */
+  const [cursorTrail, setCursorTrail] = useState<readonly string[]>([]);
   const listReviewItemsRef = useRef(listReviewItems);
   listReviewItemsRef.current = listReviewItems;
   const repositoryRef = useRef(repository);
@@ -202,6 +244,20 @@ export function CatalogPage({
     return () => window.removeEventListener("popstate", onPopState);
   }, [search]);
 
+  useEffect(() => {
+    setSearchInput(anchor.q ?? "");
+  }, [anchor.q]);
+
+  const reviewItemCount = snapshot?.review?.items.length ?? 0;
+
+  // Pending governance work is never hidden when it exists: the count-bearing
+  // action reveals it, but an organization with open work sees the queue.
+  useEffect(() => {
+    if (reviewItemCount > 0) {
+      setPendingOpen(true);
+    }
+  }, [reviewItemCount]);
+
   const load = useCallback(async () => {
     setInFlight(true);
     setUnpublished(false);
@@ -214,19 +270,30 @@ export function CatalogPage({
         const target = mapped.item.target;
         commitAnchor(
           {
+            ...currentAnchor,
             subjectId: target.kind === "catalog-subject" ? target.id : currentAnchor.subjectId,
-            definitionId: target.kind === "parameter-definition" ? target.id : currentAnchor.definitionId,
-            catalogReleaseId: currentAnchor.catalogReleaseId,
-            reviewItemId: currentAnchor.reviewItemId
+            definitionId: target.kind === "parameter-definition" ? target.id : currentAnchor.definitionId
           },
           "replace"
         );
         return;
       }
       const pin = withCatalogReleasePin(undefined, currentAnchor.catalogReleaseId);
-      const query: CatalogListQuery = { ...pin };
-      if (searchQuery.trim()) {
-        query.search = searchQuery.trim();
+      const listQuery: CatalogListQuery = {
+        ...pin,
+        limit: currentAnchor.pageSize ?? CATALOG_DEFAULT_PAGE_SIZE
+      };
+      if (currentAnchor.q) {
+        listQuery.search = currentAnchor.q;
+      }
+      if (currentAnchor.lifecycle) {
+        listQuery.lifecycle = currentAnchor.lifecycle;
+      }
+      if (currentAnchor.cursor) {
+        listQuery.cursor = currentAnchor.cursor;
+      }
+      if (currentAnchor.moduleNodeId) {
+        listQuery.placementModuleId = currentAnchor.moduleNodeId;
       }
       const document = await catalog.getCatalog(pin);
       if (document.item === null) {
@@ -235,47 +302,56 @@ export function CatalogPage({
         setUnpublished(true);
         return;
       }
-      const subjects = await catalog.listSubjects(query);
+      // The navigator needs every organization placement, so the subject
+      // inventory is complete while the definition table stays paged.
+      const subjects = await catalog.listSubjects({ ...pin, limit: 100 });
       let subject: SubjectItem | null = null;
       let definition: DefinitionItem | null = null;
-      let definitions: CatalogDefinitionListResponse = {
-        items: [],
-        nextCursor: null,
-        catalogReleaseId: document.item.catalogReleaseId
-      };
-      let timeline: CatalogDefinitionTimelineResponse | null = null;
       let revisions: RevisionItem[] = [];
-      const subjectsEmptyReason = emptyCollectionReason(subjects);
+      let timeline: CatalogDefinitionTimelineResponse | null = null;
 
       if (currentAnchor.definitionId) {
         const definitionResponse = await catalog.getDefinition(currentAnchor.definitionId, pin);
         definition = definitionResponse.item;
-        timeline = await catalog.listDefinitionTimeline(currentAnchor.definitionId, query);
-        const revisionList = await catalog.listDefinitionRevisions(currentAnchor.definitionId, query);
-        revisions = revisionList.items;
+        if (historyOpen) {
+          const revisionList = await catalog.listDefinitionRevisions(currentAnchor.definitionId, {
+            ...pin,
+            limit: 50
+          });
+          revisions = revisionList.items;
+          timeline = await catalog.listDefinitionTimeline(currentAnchor.definitionId, {
+            ...pin,
+            limit: 50
+          });
+        }
       }
 
-      const subjectId = currentAnchor.subjectId ?? definition?.subject.id ?? null;
-      if (subjectsEmptyReason === "no-registrations" && !subjectId) {
+      const subjectsEmptyReason = emptyCollectionReason(subjects);
+      let definitions: CatalogDefinitionListResponse;
+      if (subjectsEmptyReason === "no-registrations" && !currentAnchor.subjectId && !definition) {
         definitions = {
           items: [],
           nextCursor: null,
           catalogReleaseId: document.item.catalogReleaseId,
+          totalCount: 0,
+          hasMore: false,
           emptyReason: "no-registrations"
         };
-      } else if (subjectId) {
+      } else {
+        definitions = await catalog.listDefinitions(listQuery);
+      }
+
+      const subjectId = currentAnchor.subjectId ?? definition?.subject.id ?? null;
+      if (subjectId) {
         const subjectResponse = await catalog.getSubject(subjectId, pin);
         subject = subjectResponse.item;
-        definitions = await catalog.listSubjectDefinitions(subjectId, query);
-      } else {
-        definitions = await catalog.listDefinitions(query);
       }
 
       let review: CatalogReviewItemListResponse | null = null;
       const reviewLoader = listReviewItemsRef.current;
       if (reviewLoader && organizationId) {
         try {
-          review = await reviewLoader(organizationId, query);
+          review = await reviewLoader(organizationId, pin);
         } catch {
           review = null;
         }
@@ -297,7 +373,7 @@ export function CatalogPage({
     } finally {
       setInFlight(false);
     }
-  }, [commitAnchor, organizationId, resolvedSearch, searchQuery]);
+  }, [commitAnchor, historyOpen, organizationId, resolvedSearch]);
 
   useEffect(() => {
     void load();
@@ -310,12 +386,8 @@ export function CatalogPage({
     if (anchor.catalogReleaseId) {
       return;
     }
-    const catalogReleaseId = snapshot.document.item.catalogReleaseId;
     commitAnchor(
-      {
-        ...anchor,
-        catalogReleaseId
-      },
+      { ...anchor, catalogReleaseId: snapshot.document.item.catalogReleaseId },
       "replace"
     );
   }, [anchor, commitAnchor, snapshot]);
@@ -355,46 +427,70 @@ export function CatalogPage({
     lastNotifiedDomainState.current = key;
     onDomainStateChangeRef.current?.(domainState);
   }, [domainState]);
+
   const statusMessage = catalogStateMessage(domainState);
   const reviewEmptyReason = emptyCollectionReason(snapshot?.review ?? null);
-  const listEmptyReason =
-    emptyCollectionReason(snapshot?.definitions ?? null) ??
-    emptyCollectionReason(snapshot?.subjects ?? null);
+  const listEmptyReason = emptyCollectionReason(snapshot?.definitions ?? null);
+  const definitions = snapshot?.definitions.items ?? [];
+  const subjects = snapshot?.subjects.items ?? [];
+  const navigatorNodes = useMemo(() => buildCatalogModuleTree(subjects), [subjects]);
+  // Client scope mirrors the server traversal so visible rows always agree with
+  // the reported count for the same query.
   const visibleDefinitions = useMemo(() => {
-    const items = snapshot?.definitions.items ?? [];
-    if (lifecycleFilter.length === 0) {
-      return items;
+    if (!anchor.moduleNodeId) {
+      return definitions;
     }
-    return items.filter((item) => lifecycleFilter.includes(item.lifecycle));
-  }, [lifecycleFilter, snapshot?.definitions.items]);
+    const scoped = filterDefinitionIdsByModule(subjects, anchor.moduleNodeId);
+    return definitions.filter((item) => scoped.has(item.subject.id));
+  }, [anchor.moduleNodeId, definitions, subjects]);
+  const totalCount = snapshot?.definitions.totalCount ?? null;
+  const scopedSubjectCount = anchor.moduleNodeId
+    ? subjectIdsForModule(subjects, anchor.moduleNodeId).size
+    : subjects.length;
   const filterEmptyReason: CatalogEmptyReason | null =
-    visibleDefinitions.length === 0 && (lifecycleFilter.length > 0 || Boolean(searchQuery.trim()))
+    visibleDefinitions.length === 0 &&
+    (activeLifecycles.length > 0 || Boolean(anchor.q) || Boolean(anchor.moduleNodeId))
       ? "no-filter-match"
       : listEmptyReason;
   const compactList = layoutMode === "mobile";
+  const noOrgRegistrations =
+    !anchor.subjectId &&
+    subjects.length > 0 &&
+    subjects.every((item) => item.registration.status === "unregistered");
+  const pageEmptyReason =
+    domainState.kind === "empty"
+      ? domainState.emptyReason
+      : filterEmptyReason && visibleDefinitions.length === 0
+        ? filterEmptyReason
+        : noOrgRegistrations
+          ? "no-registrations"
+          : null;
 
-  const selectSubject = (subjectId: string) => {
+  const selectModuleNode = (moduleId: string | null) => {
+    setCursorTrail([]);
     commitAnchor(
       {
-        subjectId,
-        definitionId: null,
-        catalogReleaseId:
-          snapshot?.document.item.catalogReleaseId ?? anchor.catalogReleaseId,
-        reviewItemId: anchor.reviewItemId
+        ...anchor,
+        moduleNodeId: moduleId,
+        cursor: null,
+        subjectId: null,
+        definitionId: null
       },
       "push"
     );
+  };
+
+  const selectSubject = (subjectId: string) => {
+    commitAnchor({ ...anchor, subjectId, definitionId: null, cursor: null }, "push");
     setInspectorOpen(false);
   };
 
   const selectDefinition = (item: DefinitionItem) => {
     commitAnchor(
       {
-        subjectId: item.subject.id || subject?.id || anchor.subjectId,
-        definitionId: item.id,
-        catalogReleaseId:
-          snapshot?.document.item.catalogReleaseId ?? anchor.catalogReleaseId,
-        reviewItemId: anchor.reviewItemId
+        ...anchor,
+        subjectId: item.subject.id || anchor.subjectId,
+        definitionId: item.id
       },
       "push"
     );
@@ -405,12 +501,48 @@ export function CatalogPage({
   };
 
   const submitSearch = () => {
-    setSearchQuery(searchInput.trim());
+    setCursorTrail([]);
+    commitAnchor({ ...anchor, q: searchInput.trim() || null, cursor: null }, "push");
   };
 
   const clearSearch = () => {
     setSearchInput("");
-    setSearchQuery("");
+    setCursorTrail([]);
+    commitAnchor({ ...anchor, q: null, cursor: null }, "replace");
+  };
+
+  const toggleLifecycleFilter = (value: string) => {
+    const next = toggleFilterValue(activeLifecycles, value);
+    setCursorTrail([]);
+    commitAnchor(
+      { ...anchor, lifecycle: next.length > 0 ? [...next].sort().join(",") : null, cursor: null },
+      "push"
+    );
+  };
+
+  const clearLifecycleFilter = () => {
+    setCursorTrail([]);
+    commitAnchor({ ...anchor, lifecycle: null, cursor: null }, "push");
+  };
+
+  const changePageSize = (size: CatalogPageSize) => {
+    setCursorTrail([]);
+    commitAnchor({ ...anchor, pageSize: size, cursor: null }, "push");
+  };
+
+  const goToNextPage = () => {
+    const next = snapshot?.definitions.nextCursor ?? null;
+    if (!next) return;
+    setCursorTrail((trail) => [...trail, anchor.cursor ?? ""]);
+    commitAnchor({ ...anchor, cursor: next }, "push");
+  };
+
+  const goToPreviousPage = () => {
+    if (cursorTrail.length === 0) return;
+    const trail = [...cursorTrail];
+    const previous = trail.pop() ?? "";
+    setCursorTrail(trail);
+    commitAnchor({ ...anchor, cursor: previous || null }, "push");
   };
 
   const columns: Column<DefinitionItem>[] = [
@@ -421,10 +553,37 @@ export function CatalogPage({
       sortAccessor: (row) => row.propertyKey
     },
     {
+      key: "displayName",
+      header: "显示名",
+      render: (row) => row.currentRevision.displayName || "—",
+      sortAccessor: (row) => row.currentRevision.displayName ?? ""
+    },
+    {
       key: "subject",
       header: "主体",
       render: (row) => row.subject.canonicalName,
       sortAccessor: (row) => row.subject.canonicalName
+    },
+    {
+      key: "module",
+      header: "所属模块",
+      render: (row) =>
+        row.registration.status === "unregistered"
+          ? "未登记"
+          : row.registration.placement?.displayName ?? "未建立",
+      sortAccessor: (row) =>
+        row.registration.status === "unregistered" ? "" : row.registration.placement?.displayName ?? "",
+      headerFilter: {
+        label: "所属模块",
+        groupLabel: "所属模块筛选",
+        values: moduleFilterValues(subjects),
+        selectedValues: anchor.moduleNodeId ? [anchor.moduleNodeId] : [],
+        renderLabel: (value) => moduleFilterLabel(subjects, value),
+        onToggle: (value) => selectModuleNode(value === anchor.moduleNodeId ? null : value),
+        onClear: () => selectModuleNode(null),
+        getValue: (row) =>
+          row.registration.status === "unregistered" ? "" : row.registration.placement?.id ?? ""
+      }
     },
     {
       key: "lifecycle",
@@ -438,10 +597,10 @@ export function CatalogPage({
       headerFilter: {
         label: "生命周期",
         values: ["active", "deprecated", "retired"],
-        selectedValues: lifecycleFilter,
+        selectedValues: activeLifecycles,
         renderLabel: catalogLifecycleLabel,
-        onToggle: (value) => setLifecycleFilter((current) => toggleFilterValue(current, value)),
-        onClear: () => setLifecycleFilter([]),
+        onToggle: toggleLifecycleFilter,
+        onClear: clearLifecycleFilter,
         getValue: (row) => row.lifecycle
       }
     },
@@ -456,18 +615,21 @@ export function CatalogPage({
   const definition = snapshot?.definition ?? null;
   const subject = snapshot?.subject ?? null;
   const release = snapshot?.document.item;
-  const noOrgRegistrations =
-    !anchor.subjectId &&
-    (snapshot?.subjects.items.length ?? 0) > 0 &&
-    (snapshot?.subjects.items.every((item) => item.registration.status === "unregistered") ?? false);
-  const pageEmptyReason =
-    domainState.kind === "empty"
-      ? domainState.emptyReason
-      : filterEmptyReason && visibleDefinitions.length === 0
-        ? filterEmptyReason
-        : noOrgRegistrations
-          ? "no-registrations"
-          : null;
+  const showListEmptyState =
+    pageEmptyReason !== null &&
+    pageEmptyReason !== "no-review-work" &&
+    !(pageEmptyReason === "no-registrations" && subjects.length > 0);
+
+  const detailBody = (
+    <CatalogDetailBody
+      definition={definition}
+      subject={subject}
+      state={domainState}
+      revisions={snapshot?.revisions ?? []}
+      historyOpen={historyOpen}
+      onToggleHistory={() => setHistoryOpen((value) => !value)}
+    />
+  );
 
   return (
     <div
@@ -510,7 +672,7 @@ export function CatalogPage({
           <button type="submit" className="button sm">
             {catalogSearchSubmitLabel}
           </button>
-          {searchQuery ? (
+          {anchor.q ? (
             <button type="button" className="button ghost sm" onClick={clearSearch}>
               {catalogSearchClearLabel}
             </button>
@@ -539,6 +701,21 @@ export function CatalogPage({
               {action.label}
             </button>
           ))}
+          <button
+            type="button"
+            className="button subtle sm"
+            data-catalog-action="toggle-pending-work"
+            aria-expanded={pendingOpen}
+            aria-controls="parameter-catalog-pending-work"
+            onClick={() => setPendingOpen((value) => !value)}
+          >
+            {pendingOpen ? catalogPendingWorkCloseLabel : catalogPendingWorkOpenLabel}
+            {reviewItemCount > 0 ? (
+              <span className="parameter-catalog__badge" data-tone="warning">
+                {reviewItemCount}
+              </span>
+            ) : null}
+          </button>
           <button type="button" className="button subtle sm" onClick={() => void load()}>
             {catalogRefreshLabel}
           </button>
@@ -556,20 +733,39 @@ export function CatalogPage({
         </div>
       ) : null}
 
-      {reviewEmptyReason ? (
-        <div
-          className="parameter-catalog__banner"
-          data-catalog-empty={reviewEmptyReason}
-          role="status"
+      {pendingOpen ? (
+        <section
+          id="parameter-catalog-pending-work"
+          className="parameter-catalog__pending"
+          aria-label={catalogPendingWorkLabel}
         >
-          <p>{catalogEmptyMessage(reviewEmptyReason)}</p>
-        </div>
-      ) : snapshot?.review && snapshot.review.items.length > 0 ? (
-        <div className="parameter-catalog__banner" role="status">
-          <p>
-            {catalogReviewWorkLabel} {snapshot.review.items.length} 项
-          </p>
-        </div>
+          <h2 className="parameter-catalog__pane-title">{catalogPendingWorkLabel}</h2>
+          {reviewEmptyReason ? (
+            <div data-catalog-empty={reviewEmptyReason} role="status">
+              <SectionEmpty message={catalogEmptyMessage(reviewEmptyReason)} />
+            </div>
+          ) : reviewItemCount === 0 ? (
+            <p className="parameter-catalog__muted">{catalogEmptyMessage("no-review-work")}</p>
+          ) : (
+            <ul className="parameter-catalog__pending-list">
+              {(snapshot?.review?.items ?? []).map((item) => (
+                <li key={item.id}>
+                  <button
+                    type="button"
+                    className="button ghost sm"
+                    onClick={() => commitAnchor({ ...anchor, reviewItemId: item.id }, "push")}
+                  >
+                    {item.observation?.propertyKey ?? item.id}
+                  </button>
+                  <span className="parameter-catalog__muted">{item.reason}</span>
+                  <span className="parameter-catalog__badge" data-tone="warning">
+                    {item.status}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
       ) : null}
 
       {inFlight && !snapshot ? (
@@ -578,94 +774,179 @@ export function CatalogPage({
         <SectionError message={statusMessage ?? "目录加载失败，请稍后重试。"} onRetry={() => void load()} />
       ) : unpublished ? null : (
         <div className="parameter-catalog__workspace">
-          <section className="parameter-catalog__pane parameter-catalog__pane--list" aria-label={catalogListLabel}>
-            <h2 className="parameter-catalog__pane-title">{catalogListLabel}</h2>
-            {pageEmptyReason === "no-registrations" && (snapshot?.subjects.items.length ?? 0) > 0 ? (
-              <SectionEmpty message={catalogEmptyMessage("no-registrations")} />
+          <section className="parameter-catalog__navigator" aria-label={catalogNavigatorLabel}>
+            <div className="parameter-catalog__navigator-head">
+              <h2 className="parameter-catalog__pane-title">{catalogNavigatorLabel}</h2>
+              {anchor.moduleNodeId ? (
+                <button type="button" className="button ghost sm" onClick={() => selectModuleNode(null)}>
+                  {catalogModuleScopeClear}
+                </button>
+              ) : null}
+            </div>
+            <p className="parameter-catalog__muted">{catalogModuleScopeHint}</p>
+            <button
+              type="button"
+              className="parameter-catalog__module-option"
+              aria-pressed={!anchor.moduleNodeId}
+              onClick={() => selectModuleNode(null)}
+            >
+              <span>{catalogModuleScopeAll}</span>
+              <span className="parameter-catalog__module-count">{subjects.length}</span>
+            </button>
+            <CatalogModuleNavigator
+              nodes={navigatorNodes}
+              selectedModuleId={anchor.moduleNodeId}
+              onSelect={selectModuleNode}
+            />
+            {anchor.moduleNodeId ? (
+              <p className="parameter-catalog__muted" data-catalog-module-scope="true">
+                {`已选模块子树 · ${scopedSubjectCount} 个主体`}
+              </p>
             ) : null}
-            {pageEmptyReason && pageEmptyReason !== "no-review-work" && !(pageEmptyReason === "no-registrations" && (snapshot?.subjects.items.length ?? 0) > 0) ? (
+            <h3 className="parameter-catalog__muted">{catalogSubjectsLabel}</h3>
+            <ul className="parameter-catalog__subjects" aria-label={catalogSubjectsLabel}>
+              {subjects.map((item) => (
+                <li key={item.id}>
+                  <button
+                    type="button"
+                    className="parameter-catalog__subject"
+                    aria-pressed={item.id === subject?.id}
+                    onClick={() => selectSubject(item.id)}
+                  >
+                    <span className="parameter-catalog__subject-name">{item.canonicalName}</span>
+                    <span className="parameter-catalog__subject-meta">
+                      {catalogSubjectTypeLabel(item.type)} · {catalogRegistrationLabel(item.registration.status)}
+                    </span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </section>
+
+          <section className="parameter-catalog__pane parameter-catalog__pane--list" aria-label={catalogListLabel}>
+            <header className="parameter-catalog__list-head">
+              <h2 className="parameter-catalog__pane-title">{catalogListLabel}</h2>
+              <p
+                className="parameter-catalog__count"
+                data-catalog-count="true"
+                role="status"
+                aria-label={catalogResultCountLabel}
+              >
+                {totalCount === null
+                  ? "结果计数不可用"
+                  : `共 ${totalCount} 项 · 第 ${cursorTrail.length + 1} 页`}
+              </p>
+            </header>
+            {showListEmptyState ? (
               <div data-catalog-empty={pageEmptyReason}>
                 <SectionEmpty message={catalogEmptyMessage(pageEmptyReason)} />
               </div>
+            ) : compactList ? (
+              <div className="parameter-catalog__cards parameter-catalog__table-wrap--mobile">
+                {visibleDefinitions.map((item) => (
+                  <button
+                    key={item.id}
+                    type="button"
+                    className="parameter-catalog__card"
+                    aria-pressed={item.id === definition?.id}
+                    onClick={() => selectDefinition(item)}
+                  >
+                    <span className="parameter-catalog__subject-name">{item.propertyKey}</span>
+                    <span className="parameter-catalog__subject-meta">
+                      {item.subject.canonicalName} · {catalogLifecycleLabel(item.lifecycle)}
+                    </span>
+                  </button>
+                ))}
+              </div>
             ) : (
-              <>
-                <h3 className="parameter-catalog__muted">{catalogSubjectsLabel}</h3>
-                <ul className="parameter-catalog__subjects" aria-label={catalogSubjectsLabel}>
-                  {(snapshot?.subjects.items ?? []).map((item) => (
-                    <li key={item.id}>
-                      <button
-                        type="button"
-                        className="parameter-catalog__subject"
-                        aria-pressed={item.id === subject?.id}
-                        onClick={() => selectSubject(item.id)}
-                      >
-                        <span className="parameter-catalog__subject-name">{item.canonicalName}</span>
-                        <span className="parameter-catalog__subject-meta">
-                          {catalogSubjectTypeLabel(item.type)} · {catalogRegistrationLabel(item.registration.status)}
-                        </span>
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-                <h3 className="parameter-catalog__muted">{catalogDefinitionsLabel}</h3>
-                {filterEmptyReason && visibleDefinitions.length === 0 ? (
-                  <div data-catalog-empty={filterEmptyReason}>
-                    <SectionEmpty message={catalogEmptyMessage(filterEmptyReason)} />
-                  </div>
-                ) : compactList ? (
-                  <div className="parameter-catalog__cards parameter-catalog__table-wrap--mobile">
-                    {visibleDefinitions.map((item) => (
-                      <button
-                        key={item.id}
-                        type="button"
-                        className="parameter-catalog__card"
-                        aria-pressed={item.id === definition?.id}
-                        onClick={() => selectDefinition(item)}
-                      >
-                        <span className="parameter-catalog__subject-name">{item.propertyKey}</span>
-                        <span className="parameter-catalog__subject-meta">
-                          {item.subject.canonicalName} · {catalogLifecycleLabel(item.lifecycle)}
-                        </span>
-                      </button>
-                    ))}
-                  </div>
-                ) : (
-                  <div className="parameter-catalog__table-wrap--desktop">
-                    <DataTable
-                      rows={visibleDefinitions}
-                      rowKey={(row) => row.id}
-                      columns={columns}
-                      selectedRowKey={definition?.id}
-                      onRowClick={selectDefinition}
-                      aria-label={catalogDefinitionsLabel}
-                      emptyState={
-                        filterEmptyReason ? (
-                          <div data-catalog-empty={filterEmptyReason}>
-                            <SectionEmpty message={catalogEmptyMessage(filterEmptyReason)} />
-                          </div>
-                        ) : undefined
-                      }
-                    />
-                  </div>
-                )}
-              </>
+              <div className="parameter-catalog__table-wrap--desktop">
+                <DataTable
+                  rows={visibleDefinitions}
+                  rowKey={(row) => row.id}
+                  columns={columns}
+                  selectedRowKey={definition?.id}
+                  onRowClick={selectDefinition}
+                  aria-label={catalogDefinitionsLabel}
+                  pageSize={Math.max(visibleDefinitions.length, 1)}
+                  renderRowActions={(row) => (
+                    <button
+                      type="button"
+                      className="button ghost sm"
+                      aria-label={`编辑 ${row.propertyKey}`}
+                      data-catalog-row-action="edit"
+                      onClick={() => selectDefinition(row)}
+                    >
+                      编辑
+                    </button>
+                  )}
+                  emptyState={
+                    filterEmptyReason ? (
+                      <div data-catalog-empty={filterEmptyReason}>
+                        <SectionEmpty message={catalogEmptyMessage(filterEmptyReason)} />
+                      </div>
+                    ) : undefined
+                  }
+                />
+              </div>
             )}
+            <nav className="parameter-catalog__pagination" aria-label={catalogPaginationLabel}>
+              <label className="parameter-catalog__page-size">
+                <span>{catalogPageSizeLabel}</span>
+                <select
+                  value={pageSize}
+                  aria-label={catalogPageSizeLabel}
+                  onChange={(event) =>
+                    changePageSize(parseCatalogPageSize(event.target.value) ?? CATALOG_DEFAULT_PAGE_SIZE)
+                  }
+                >
+                  {CATALOG_PAGE_SIZES.map((size) => (
+                    <option key={size} value={size}>
+                      {size}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <div className="parameter-catalog__page-buttons">
+                <button
+                  type="button"
+                  className="button subtle sm"
+                  aria-label={catalogPreviousPageLabel}
+                  disabled={cursorTrail.length === 0 || inFlight}
+                  onClick={goToPreviousPage}
+                >
+                  {catalogPreviousPageLabel}
+                </button>
+                <button
+                  type="button"
+                  className="button subtle sm"
+                  aria-label={catalogNextPageLabel}
+                  disabled={!snapshot?.definitions.hasMore || inFlight}
+                  onClick={goToNextPage}
+                >
+                  {catalogNextPageLabel}
+                </button>
+              </div>
+            </nav>
           </section>
 
           <section className="parameter-catalog__pane parameter-catalog__pane--detail" aria-label={catalogDetailLabel}>
             <h2 className="parameter-catalog__pane-title">{catalogDetailLabel}</h2>
-            <CatalogDetailBody
-              definition={definition}
-              subject={subject}
-              state={domainState}
-              revisions={snapshot?.revisions ?? []}
-            />
+            {detailBody}
           </section>
 
-          <section className="parameter-catalog__pane parameter-catalog__pane--timeline" aria-label={catalogTimelineLabel}>
-            <h2 className="parameter-catalog__pane-title">{catalogTimelineLabel}</h2>
-            <CatalogTimelineBody timeline={snapshot?.timeline ?? null} />
-          </section>
+          {historyOpen && definition ? (
+            <section
+              className="parameter-catalog__history"
+              aria-label={catalogTimelineLabel}
+              data-catalog-history-region="true"
+            >
+              <h2 className="parameter-catalog__pane-title">{catalogHistoryLabel}</h2>
+              <CatalogHistoryBody
+                timeline={snapshot?.timeline ?? null}
+                revisions={snapshot?.revisions ?? []}
+              />
+            </section>
+          ) : null}
         </div>
       )}
 
@@ -675,7 +956,7 @@ export function CatalogPage({
           onClose={() => setInspectorOpen(false)}
           title={definition?.propertyKey ?? catalogDetailLabel}
         >
-          <div className="parameter-catalog__sheet-tabs" role="tablist" aria-label="详情与时间线">
+          <div className="parameter-catalog__sheet-tabs" role="tablist" aria-label="详情与历史">
             <button
               type="button"
               className="button ghost sm"
@@ -689,39 +970,66 @@ export function CatalogPage({
               type="button"
               className="button ghost sm"
               role="tab"
-              aria-selected={inspectorTab === "timeline"}
-              onClick={() => setInspectorTab("timeline")}
+              aria-selected={inspectorTab === "history"}
+              onClick={() => {
+                setInspectorTab("history");
+                setHistoryOpen(true);
+              }}
             >
               {catalogSheetTabs.timeline}
             </button>
           </div>
           {inspectorTab === "detail" ? (
-            <CatalogDetailBody
-              definition={definition}
-              subject={subject}
-              state={domainState}
+            detailBody
+          ) : (
+            <CatalogHistoryBody
+              timeline={snapshot?.timeline ?? null}
               revisions={snapshot?.revisions ?? []}
             />
-          ) : (
-            <CatalogTimelineBody timeline={snapshot?.timeline ?? null} />
           )}
         </WorkbenchSheet>
       ) : null}
-
     </div>
   );
+}
+
+function moduleFilterValues(subjects: readonly SubjectItem[]): string[] {
+  const ids = new Set<string>();
+  for (const subject of subjects) {
+    const placement =
+      subject.registration.status === "unregistered" ? undefined : subject.registration.placement;
+    if (placement?.id) {
+      ids.add(placement.id);
+    }
+  }
+  return [...ids];
+}
+
+function moduleFilterLabel(subjects: readonly SubjectItem[], placementId: string): string {
+  for (const subject of subjects) {
+    const placement =
+      subject.registration.status === "unregistered" ? undefined : subject.registration.placement;
+    if (placement?.id === placementId) {
+      return placement.displayName;
+    }
+  }
+  return placementId;
 }
 
 function CatalogDetailBody({
   definition,
   subject,
   state,
-  revisions
+  revisions,
+  historyOpen,
+  onToggleHistory
 }: {
   definition: DefinitionItem | null;
   subject: SubjectItem | null;
   state: CatalogDomainState;
   revisions: RevisionItem[];
+  historyOpen: boolean;
+  onToggleHistory: () => void;
 }) {
   if (!definition) {
     return <p className="parameter-catalog__muted">{catalogSelectDefinitionHint}</p>;
@@ -747,18 +1055,20 @@ function CatalogDetailBody({
       <dl className="parameter-catalog__dl">
         <dt>主体</dt>
         <dd>{definition.subject.canonicalName}</dd>
-        <dt>主体类型</dt>
-        <dd>{catalogSubjectTypeLabel(definition.subject.type)}</dd>
         <dt>主体编号</dt>
         <dd>{definition.subject.id}</dd>
         <dt>定义编号</dt>
         <dd>{definition.id}</dd>
+        <dt>显示名</dt>
+        <dd>{revision.displayName || "未设置"}</dd>
         <dt>当前修订</dt>
-        <dd>{`修订 #${revision.revisionNumber}${revisions.length > 0 ? ` · 共 ${revisions.length} 条` : ""}`}</dd>
+        <dd>{`修订 #${revision.revisionNumber}`}</dd>
         <dt>纳入发布</dt>
         <dd>{revision.publishedInCatalogReleaseId}</dd>
         <dt>取值形状</dt>
         <dd>{catalogValueShapeLabel(schema)}</dd>
+        <dt>单位</dt>
+        <dd>{revision.unit?.symbol ?? "未设置"}</dd>
         <dt>说明</dt>
         <dd>{revision.documentation ?? "无"}</dd>
         <dt>使用</dt>
@@ -772,11 +1082,7 @@ function CatalogDetailBody({
           {registration.status !== "unregistered" && registration.id ? ` · ${registration.id}` : ""}
         </dd>
         <dt>放置</dt>
-        <dd>
-          {registration.status === "unregistered"
-            ? "未建立"
-            : placement?.displayName ?? "未建立"}
-        </dd>
+        <dd>{registration.status === "unregistered" ? "未建立" : placement?.displayName ?? "未建立"}</dd>
         {subject?.aliases?.length ? (
           <>
             <dt>别名</dt>
@@ -784,6 +1090,48 @@ function CatalogDetailBody({
           </>
         ) : null}
       </dl>
+      <button
+        type="button"
+        className="button subtle sm"
+        data-catalog-history-toggle="true"
+        aria-expanded={historyOpen}
+        onClick={onToggleHistory}
+      >
+        {historyOpen ? catalogHistoryCloseLabel : catalogHistoryOpenLabel}
+        {revisions.length > 0 ? <span className="parameter-catalog__badge">{revisions.length}</span> : null}
+      </button>
+    </div>
+  );
+}
+
+function CatalogHistoryBody({
+  timeline,
+  revisions
+}: {
+  timeline: CatalogDefinitionTimelineResponse | null;
+  revisions: RevisionItem[];
+}) {
+  return (
+    <div className="parameter-catalog__history-body">
+      <h3 className="parameter-catalog__muted">{catalogHistoryLabel}</h3>
+      {revisions.length === 0 ? (
+        <p className="parameter-catalog__muted">暂无历史修订。</p>
+      ) : (
+        <ol className="parameter-catalog__revisions">
+          {revisions.map((item) => (
+            <li key={item.id} className="parameter-catalog__revision">
+              <strong>{`修订 #${item.revisionNumber}`}</strong>
+              <span className="parameter-catalog__anchor-id">{item.publishedInCatalogReleaseId}</span>
+            </li>
+          ))}
+        </ol>
+      )}
+      {timeline ? (
+        <>
+          <h3 className="parameter-catalog__muted">{catalogTimelineLabel}</h3>
+          <CatalogTimelineBody timeline={timeline} />
+        </>
+      ) : null}
     </div>
   );
 }

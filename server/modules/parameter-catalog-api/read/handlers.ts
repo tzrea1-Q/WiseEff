@@ -1,4 +1,5 @@
 import type {
+  CatalogPageInfo,
   CatalogSnapshot,
   CurrentCatalogSnapshot,
 } from "../../catalog-kernel/interface";
@@ -43,6 +44,7 @@ import {
   catalogPageLimit,
   defaultDefinitionLifecycles,
   defaultSubjectLifecycles,
+  fingerprintIdSelection,
   headerValue,
   mergeIdSelection,
   parseCatalogListQuery,
@@ -54,6 +56,7 @@ import {
 } from "./query";
 import type {
   CatalogDocumentFacts,
+  CatalogIdSelection,
   CatalogReadPorts,
   CatalogReadRequest,
   CatalogReadResponse,
@@ -116,16 +119,53 @@ function hiddenId(selection: { kind: "all" } | { kind: "only"; ids: readonly str
   return selection.kind === "only" && !selection.ids.includes(id);
 }
 
+/**
+ * Resolve the optional organization module subtree to a trusted subject
+ * selection. An unknown module is a not-found rather than an empty selection,
+ * because an empty selection would render as "this module has no definitions".
+ */
+async function resolvePlacementSelection(
+  ports: CatalogReadPorts,
+  scope: TrustedCatalogScope,
+  query: { readonly placementModuleId?: string },
+): Promise<
+  | { readonly ok: true; readonly selection: CatalogIdSelection<CatalogSubjectId>; readonly moduleName: string | null }
+  | { readonly ok: false; readonly response: CatalogReadResponse }
+> {
+  if (!query.placementModuleId) {
+    return { ok: true, selection: { kind: "all" }, moduleName: null };
+  }
+  const subtree = await ports.registration.selectPlacementSubtreeSubjectIds({
+    organizationId: scope.organizationId,
+    principalId: scope.principalId,
+    moduleId: query.placementModuleId,
+  });
+  const allowed = scope.subjects.kind === "all" ? null : new Set<string>(scope.subjects.ids);
+  const subjectIds = allowed
+    ? subtree.subjectIds.filter((id) => allowed.has(id))
+    : subtree.subjectIds;
+  return {
+    ok: true,
+    selection: { kind: "only", ids: subjectIds, fingerprint: fingerprintIdSelection(subjectIds) },
+    moduleName: subtree.moduleName,
+  };
+}
+
 function listEnvelope(
   items: readonly unknown[],
   next: OptionalValue<CatalogCursor>,
   catalogReleaseId: string,
   emptyReason: ReturnType<typeof emptyReasonFor>,
+  pageInfo: CatalogPageInfo,
+  extra: Readonly<Record<string, unknown>> = {},
 ): unknown {
   return {
     items: [...items],
     nextCursor: nextCursorValue(next),
     catalogReleaseId,
+    totalCount: pageInfo.totalCount,
+    hasMore: pageInfo.hasMore,
+    ...extra,
     ...(emptyReason ? { emptyReason } : {}),
   };
 }
@@ -279,7 +319,16 @@ async function handleListSubjects(
       ? catalogSubjectUniverse(snapshot)
       : undefined,
   });
-  const selection = mergeIdSelection(scope.subjects, registrationSelection);
+  // A module subtree resolves to trusted subject ids before pagination, so the
+  // module selection filters the complete result set rather than a loaded page.
+  const placementSelection = await resolvePlacementSelection(ports, scope, parsed.query);
+  if (!placementSelection.ok) {
+    return placementSelection.response;
+  }
+  const selection = mergeIdSelection(
+    mergeIdSelection(scope.subjects, registrationSelection),
+    placementSelection.selection,
+  );
   const result = snapshot.listSubjects({
     selection,
     kinds: subjectKinds(parsed.query.type),
@@ -310,7 +359,11 @@ async function handleListSubjects(
     );
   }
   const extraFiltered = Boolean(
-    parsed.query.type || parsed.query.lifecycle || parsed.query.search || parsed.query.cursor.kind === "present",
+    parsed.query.type ||
+      parsed.query.lifecycle ||
+      parsed.query.search ||
+      parsed.query.cursor.kind === "present" ||
+      parsed.query.placementModuleId,
   );
   const filtered = extraFiltered || Boolean(parsed.query.registration);
   const noRegistrations =
@@ -321,6 +374,8 @@ async function handleListSubjects(
       result.page.next,
       snapshot.release.id,
       emptyReasonFor(items.length, "subjects", filtered, { noRegistrations }),
+      result.page.pageInfo,
+      placementSelection.moduleName ? { placementModuleName: placementSelection.moduleName } : {},
     ),
     snapshot.release.id,
     request.requestId,
@@ -382,9 +437,14 @@ async function handleListDefinitions(
   } catch {
     return validationFailed(request.requestId, "lifecycle");
   }
-  let definitionScope: { kind: "all" } | { kind: "subject"; subjectId: CatalogSubjectId } = {
-    kind: "all",
-  };
+  const placementSelection = await resolvePlacementSelection(ports, scope, parsed.query);
+  if (!placementSelection.ok) {
+    return placementSelection.response;
+  }
+  let definitionScope:
+    | { kind: "all" }
+    | { kind: "subject"; subjectId: CatalogSubjectId }
+    | { kind: "subjects"; subjectIds: readonly CatalogSubjectId[] } = { kind: "all" };
   if (scopedSubjectId) {
     const parsedSubject = asSubjectId(scopedSubjectId, request.requestId);
     if (!parsedSubject.ok) {
@@ -399,6 +459,15 @@ async function handleListDefinitions(
       return notFound(request.requestId, "subject-not-published");
     }
     definitionScope = { kind: "subject", subjectId: parsed.query.subjectId };
+  } else if (placementSelection.selection.kind === "only") {
+    definitionScope = { kind: "subjects", subjectIds: placementSelection.selection.ids };
+  } else if (parsed.query.subjectIds) {
+    for (const candidate of parsed.query.subjectIds) {
+      if (hiddenId(scope.subjects, candidate)) {
+        return notFound(request.requestId, "subject-not-published");
+      }
+    }
+    definitionScope = { kind: "subjects", subjectIds: parsed.query.subjectIds };
   }
 
   const registrationSelection = await ports.registration.selectDefinitionIds({
@@ -456,10 +525,19 @@ async function handleListDefinitions(
       parsed.query.search ||
       parsed.query.propertyKey ||
       parsed.query.subjectId ||
+      parsed.query.subjectIds ||
+      parsed.query.placementModuleId ||
       parsed.query.cursor.kind === "present",
   );
   return catalogReadOk(
-    listEnvelope(items, page.next, snapshot.release.id, emptyReasonFor(items.length, "definitions", filtered)),
+    listEnvelope(
+      items,
+      page.next,
+      snapshot.release.id,
+      emptyReasonFor(items.length, "definitions", filtered),
+      page.pageInfo,
+      placementSelection.moduleName ? { placementModuleName: placementSelection.moduleName } : {},
+    ),
     snapshot.release.id,
     request.requestId,
   );
@@ -543,6 +621,7 @@ async function handleListRevisions(
       result.page.next,
       snapshot.release.id,
       emptyReasonFor(items.length, "revisions", parsed.query.cursor.kind === "present"),
+      result.page.pageInfo,
     ),
     snapshot.release.id,
     request.requestId,
@@ -616,6 +695,7 @@ async function handleListTimeline(
       composed.next,
       snapshot.release.id,
       emptyReasonFor(composed.items.length, "timeline", parsed.query.cursor.kind === "present"),
+      result.page.pageInfo,
     ),
     snapshot.release.id,
     request.requestId,

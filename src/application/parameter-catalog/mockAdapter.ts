@@ -139,7 +139,9 @@ function collection<T>(items: T[], emptyReason?: Parameters<typeof emptyCatalogC
   return {
     items: clone(items),
     nextCursor: null as string | null,
-    catalogReleaseId: CATALOG_RELEASE_ID
+    catalogReleaseId: CATALOG_RELEASE_ID,
+    totalCount: items.length,
+    hasMore: false
   };
 }
 
@@ -509,10 +511,13 @@ export function createMockCatalogPorts(options: CatalogMockOptions = {}): {
     },
     async listPublications() {
       assertReadyForRead(store);
+      const items = [...store.jobs.values()].map((job) => clone(job));
       return {
-        items: [...store.jobs.values()].map((job) => clone(job)),
+        items,
         nextCursor: null,
-        catalogReleaseId: CATALOG_RELEASE_ID
+        catalogReleaseId: CATALOG_RELEASE_ID,
+        totalCount: items.length,
+        hasMore: false
       };
     },
     async getPublication(jobId) {

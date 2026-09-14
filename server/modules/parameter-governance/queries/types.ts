@@ -142,7 +142,7 @@ export type CatalogDefinitionIndexEntry = {
 
 export type GovernanceQueryFailure =
   | { readonly kind: "invalid-query"; readonly reason: string }
-  | { readonly kind: "not-found"; readonly resource: "registration" | "placement" | "observation" | "proposal" | "organization" }
+  | { readonly kind: "not-found"; readonly resource: "registration" | "placement" | "observation" | "proposal" | "organization" | "module" }
   | {
       readonly kind: "missing-required-placement";
       readonly registrationId: string;
@@ -177,6 +177,17 @@ export type DefinitionSelectionQuery = {
   readonly registration?: RegistrationFilter;
   readonly catalogDefinitions: readonly CatalogDefinitionIndexEntry[];
   readonly authScope: GovernanceQueryAuthScope;
+};
+
+export type PlacementSubtreeSelectionQuery = {
+  readonly organizationId: string;
+  readonly moduleId: string;
+  readonly authScope: GovernanceQueryAuthScope;
+};
+
+export type PlacementSubtreeSelection = {
+  readonly moduleName: string | null;
+  readonly subjectIds: readonly CatalogSubjectId[];
 };
 
 export type ListRegistrationsQuery = {

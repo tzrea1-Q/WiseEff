@@ -8,6 +8,7 @@ import {
   listRegistrations,
   projectRegistrations,
   selectDefinitionIds,
+  selectPlacementSubtreeSubjectIds,
   selectSubjectIds,
 } from "./registration";
 import type {
@@ -27,6 +28,8 @@ import type {
   ListProposalsQuery,
   ListRegistrationsQuery,
   ObservationList,
+  PlacementSubtreeSelection,
+  PlacementSubtreeSelectionQuery,
   ProjectRegistrationsQuery,
   ProposalList,
   RegistrationList,
@@ -68,6 +71,8 @@ export type {
   ListRegistrationsQuery,
   ObservationList,
   ObservationRecognition,
+  PlacementSubtreeSelection,
+  PlacementSubtreeSelectionQuery,
   ProjectRegistrationsQuery,
   ProposalList,
   RegistrationFilter,
@@ -93,6 +98,9 @@ export type GovernanceCatalogQueries = {
   readonly selectDefinitionIds: (
     query: DefinitionSelectionQuery,
   ) => Promise<Result<DefinitionIdSelection, GovernanceQueryFailure>>;
+  readonly selectPlacementSubtreeSubjectIds: (
+    query: PlacementSubtreeSelectionQuery,
+  ) => Promise<Result<PlacementSubtreeSelection, GovernanceQueryFailure>>;
   readonly listRegistrations: (
     query: ListRegistrationsQuery,
   ) => Promise<Result<RegistrationList, GovernanceQueryFailure>>;
@@ -123,6 +131,8 @@ export function createGovernanceCatalogQueries(
     projectRegistrations: (query) => projectRegistrations(client, query),
     selectSubjectIds: (query) => selectSubjectIds(client, query),
     selectDefinitionIds: (query) => selectDefinitionIds(client, query),
+    selectPlacementSubtreeSubjectIds: (query) =>
+      selectPlacementSubtreeSubjectIds(client, query),
     listRegistrations: (query) => listRegistrations(client, query),
     getRegistration: (query) => getRegistration(client, query),
     getPlacement: (query) => getPlacement(client, query),

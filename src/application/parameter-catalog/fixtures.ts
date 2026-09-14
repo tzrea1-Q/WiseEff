@@ -57,9 +57,11 @@ const revision = {
   definitionId: CATALOG_DEFINITION_ID,
   revisionNumber: 6,
   contentDigest: "sha256:rev",
+  displayName: "GPIO 中断上限",
   valueShape: { kind: "json-schema" as const, schema: { type: "integer" } },
   constraints: { kind: "none" as const },
   documentation: "GPIO interrupt",
+  unit: { kind: "symbol" as const, symbol: "us" },
   publishedInCatalogReleaseId: CATALOG_RELEASE_ID
 };
 
@@ -120,6 +122,8 @@ export const retiredDefinition: CatalogDefinitionResponse["item"] = {
 export const catalogRevision: CatalogDefinitionRevisionResponse["item"] = revision;
 
 export const catalogTimeline: CatalogDefinitionTimelineResponse = {
+  totalCount: 1,
+  hasMore: false,
   items: [
     {
       id: "tfact_01KGPIOINT",
@@ -238,11 +242,20 @@ export const mappedLegacyIdentifier: CatalogLegacyIdentifierResponse = {
 
 export function emptyCatalogCollection<T>(
   emptyReason: "no-registrations" | "no-definitions" | "no-review-work" | "no-filter-match"
-): { items: T[]; nextCursor: null; catalogReleaseId: string; emptyReason: typeof emptyReason } {
+): {
+  items: T[];
+  nextCursor: null;
+  catalogReleaseId: string;
+  totalCount: number;
+  hasMore: boolean;
+  emptyReason: typeof emptyReason;
+} {
   return {
     items: [],
     nextCursor: null,
     catalogReleaseId: CATALOG_RELEASE_ID,
+    totalCount: 0,
+    hasMore: false,
     emptyReason
   };
 }

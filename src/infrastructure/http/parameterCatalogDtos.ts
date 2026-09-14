@@ -110,6 +110,10 @@ export type CatalogListQuery = {
   registration?: string;
   search?: string;
   subjectId?: string;
+  /** Explicit trusted multi-subject scope, applied before pagination. */
+  subjectIds?: readonly string[];
+  /** Organization module subtree filter, resolved server-side before pagination. */
+  placementModuleId?: string;
   propertyKey?: string;
   catalogReleaseId?: string;
 };

@@ -19,6 +19,8 @@ import type {
   GovernanceQueryFailure,
   GovernanceRegistrationRecord,
   ListRegistrationsQuery,
+  PlacementSubtreeSelection,
+  PlacementSubtreeSelectionQuery,
   ProjectRegistrationsQuery,
   RegistrationList,
   RegistrationProjectionPage,
@@ -303,6 +305,65 @@ export const selectDefinitionIds = async (
     ok: true,
     value: expandDefinitionSelection(subjects.value, query.catalogDefinitions),
   };
+};
+
+/**
+ * Resolve one organization module subtree to the Catalog subjects placed at or
+ * below it. The recursion is cycle-guarded and depth-bounded, so a malformed
+ * module graph cannot hang a read. An unknown module is a not-found, never an
+ * empty selection that would read as "this module has no definitions".
+ */
+export const selectPlacementSubtreeSubjectIds = async (
+  source: import("pg").Pool | import("pg").PoolClient | GovernanceQueryable,
+  query: PlacementSubtreeSelectionQuery,
+): Promise<Result<PlacementSubtreeSelection, GovernanceQueryFailure>> => {
+  if (!isUsableToken(query.moduleId)) {
+    return fail({ kind: "invalid-query", reason: "moduleId" });
+  }
+  const scoped = assertOrgScope(query.organizationId, query.authScope);
+  if (!scoped.ok) return scoped;
+  return runQuery<PlacementSubtreeSelection>(source, "selectPlacementSubtreeSubjectIds", async (client) => {
+    const module = await client.query<{ name: string }>(
+      `select name
+         from public.parameter_modules
+        where id = $1 and organization_id = $2`,
+      [query.moduleId, query.organizationId],
+    );
+    if (module.rows.length === 0) {
+      return fail({ kind: "not-found", resource: "module" });
+    }
+    const result = await client.query<{ subject_id: string }>(
+      `with recursive subtree as (
+         select module.id, 0 as depth
+           from public.parameter_modules module
+          where module.id = $1
+            and module.organization_id = $2
+         union all
+         select child.id, subtree.depth + 1
+           from public.parameter_modules child
+           join subtree on child.parent_id = subtree.id
+          where child.organization_id = $2
+            and subtree.depth < 64
+       )
+       select distinct registration.subject_id
+         from parameter_catalog.organization_subject_registrations registration
+         join parameter_catalog.subject_placements placement
+           on placement.registration_id = registration.id
+          and placement.organization_id = registration.organization_id
+         join subtree on subtree.id = placement.module_id
+        where registration.organization_id = $2
+          and registration.status = 'active'
+        order by registration.subject_id`,
+      [query.moduleId, query.organizationId],
+    );
+    return {
+      ok: true,
+      value: {
+        moduleName: module.rows[0]?.name ?? null,
+        subjectIds: result.rows.map((row) => CatalogSubjectId(row.subject_id)),
+      },
+    };
+  });
 };
 
 export const listRegistrations = async (

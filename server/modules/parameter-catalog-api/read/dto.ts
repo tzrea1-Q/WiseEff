@@ -99,9 +99,11 @@ export function mapDefinitionRevision(
     definitionId: revision.definitionId,
     revisionNumber: revision.revisionNumber,
     contentDigest: revision.contentDigest,
+    displayName: revision.content.displayName ?? "",
     valueShape: revision.content.valueShape,
     constraints: revision.content.constraints,
     documentation: optionalString(revision.content.documentation),
+    unit: revision.content.unit.kind === "present" ? revision.content.unit.value : null,
     publishedInCatalogReleaseId: revision.publishedIn.id,
   });
 }

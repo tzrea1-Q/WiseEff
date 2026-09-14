@@ -37,7 +37,9 @@ export const CATALOG_EXPECTED_API_FAILURES: ExpectedApiFailure[] = [
   { method: "PATCH", path: "/api/v2/organizations", status: 409 },
   { method: "POST", path: "/api/v2/catalog/definition-proposals", status: 403 },
   { method: "POST", path: "/api/v2/catalog/definition-proposals", status: 409 },
-  { method: "POST", path: "/api/v2/catalog/definition-proposals", status: 404 }
+  { method: "POST", path: "/api/v2/catalog/definition-proposals", status: 404 },
+  // An actor without catalog publication capability is refused by the server.
+  { method: "GET", path: "/api/v2/catalog/publications", status: 403 }
 ];
 
 export type CatalogBrowserActor = "org-admin" | "user" | "platform-admin" | "guest" | "org-b-admin";

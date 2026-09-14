@@ -28,6 +28,11 @@ import type {
 
 export const CATALOG_READ_DEFAULT_PAGE_LIMIT = 50;
 export const CATALOG_READ_MAX_PAGE_LIMIT = 100;
+/**
+ * Upper bound on an explicit multi-subject scope. The collection query resolves
+ * a module subtree server-side, so this only guards a caller-supplied scope.
+ */
+export const CATALOG_READ_MAX_SUBJECT_SCOPE = 500;
 
 const present = <T>(value: T): { readonly kind: "present"; readonly value: T } => ({
   kind: "present",
@@ -39,6 +44,17 @@ const SUBJECT_KINDS = new Set<CatalogSubjectKind>(["driver", "node-type"]);
 const SUBJECT_LIFECYCLES = new Set<SubjectLifecycle>(["active", "retired"]);
 const DEFINITION_LIFECYCLES = new Set<DefinitionLifecycle>(["active", "deprecated", "retired"]);
 const REGISTRATION_FILTERS = new Set(["unregistered", "active", "retired"]);
+
+export function queryArray(
+  query: Record<string, string | string[]>,
+  key: string,
+): string[] | undefined {
+  const value = query[key];
+  if (value === undefined) {
+    return undefined;
+  }
+  return Array.isArray(value) ? value : [value];
+}
 
 export function queryValue(
   query: Record<string, string | string[]>,
@@ -117,6 +133,8 @@ export function parseCatalogListQuery(
   const registrationRaw = queryValue(request.query, "registration");
   const searchRaw = queryValue(request.query, "search");
   const subjectIdRaw = queryValue(request.query, "subjectId");
+  const subjectIdsRaw = queryArray(request.query, "subjectIds");
+  const placementModuleIdRaw = queryValue(request.query, "placementModuleId");
   const propertyKeyRaw = queryValue(request.query, "propertyKey");
 
   let limit = CATALOG_READ_DEFAULT_PAGE_LIMIT;
@@ -153,6 +171,26 @@ export function parseCatalogListQuery(
     }
   }
 
+  let subjectIds: readonly CatalogSubjectId[] | undefined;
+  if (subjectIdsRaw !== undefined) {
+    if (subjectIdsRaw.length > CATALOG_READ_MAX_SUBJECT_SCOPE) {
+      return { ok: false, response: validationFailed(request.requestId, "subjectIds") };
+    }
+    const parsedIds: CatalogSubjectId[] = [];
+    for (const raw of subjectIdsRaw) {
+      try {
+        parsedIds.push(CatalogSubjectId(raw));
+      } catch {
+        return { ok: false, response: validationFailed(request.requestId, "subjectIds") };
+      }
+    }
+    subjectIds = [...new Set(parsedIds)];
+  }
+
+  if (placementModuleIdRaw !== undefined && placementModuleIdRaw.length === 0) {
+    return { ok: false, response: validationFailed(request.requestId, "placementModuleId") };
+  }
+
   let propertyKey: PropertyKey | undefined;
   if (propertyKeyRaw !== undefined) {
     try {
@@ -180,6 +218,8 @@ export function parseCatalogListQuery(
       registration: registrationRaw,
       search: searchRaw,
       subjectId,
+      subjectIds,
+      placementModuleId: placementModuleIdRaw,
       propertyKey,
     },
   };

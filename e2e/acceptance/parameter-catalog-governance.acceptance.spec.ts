@@ -46,6 +46,11 @@ test.describe("canonical parameter catalog governance interactions", () => {
       await ingestOpenReview(fixture.pool, fixture.chain.pinF.id);
       await page.reload();
       await expect(catalogPage(page)).toBeVisible();
+      // Pending work is disclosed from the count-bearing action.
+      const pending = page.getByRole("button", { name: /打开待处理工作/ });
+      if (await pending.isVisible().catch(() => false)) {
+        await pending.click();
+      }
     }
     const listedBefore = await catalogJson(
       page.request,
@@ -116,7 +121,9 @@ test.describe("canonical parameter catalog governance interactions", () => {
     if (before === 0) {
       await waitForCatalogState(page, "unregistered");
       await expect(page.getByText(/尚未登记/).first()).toBeVisible();
-      await page.getByRole("button", { name: catalogUiCopy.actionLabels["register-subject"] }).click();
+      await page
+        .getByRole("button", { name: catalogUiCopy.actionLabels["register-subject"], exact: true })
+        .click();
       const dialog = page.getByRole("dialog", { name: "登记主体" });
       await expect(dialog).toBeVisible();
       await expect(dialog.getByText("使用默认根放置")).toBeVisible();
@@ -181,6 +188,7 @@ test.describe("canonical parameter catalog governance interactions", () => {
       })
     );
     await expect(page.getByRole("region", { name: "定义详情" })).toContainText("iin_max");
+    await page.getByRole("button", { name: /查看历史/ }).click();
     await expect(page.getByRole("list", { name: "定义时间线" })).toBeVisible();
 
     await openCatalogAt(page, "platform-admin");

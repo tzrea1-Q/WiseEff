@@ -119,6 +119,16 @@ export type RegistrationProjectionPort = {
     readonly principalId?: string;
     readonly catalogSubjectIds?: readonly CatalogSubjectId[];
   }): Promise<CatalogIdSelection<CatalogSubjectId>>;
+  /**
+   * Resolve an organization module subtree to the subjects placed at or below
+   * it. This must run before pagination so a module selection filters the
+   * complete result set rather than the first loaded page.
+   */
+  selectPlacementSubtreeSubjectIds(input: {
+    readonly organizationId: string;
+    readonly moduleId: string;
+    readonly principalId?: string;
+  }): Promise<{ readonly subjectIds: readonly CatalogSubjectId[]; readonly moduleName: string | null }>;
   selectDefinitionIds(input: {
     readonly organizationId: string;
     readonly registration?: string;
@@ -194,5 +204,9 @@ export type CatalogListQuery = {
   readonly registration?: string;
   readonly search?: string;
   readonly subjectId?: CatalogSubjectId;
+  /** Trusted multi-subject scope, applied before pagination. */
+  readonly subjectIds?: readonly CatalogSubjectId[];
+  /** Organization module subtree filter, resolved to subjects before pagination. */
+  readonly placementModuleId?: string;
   readonly propertyKey?: PropertyKey;
 };

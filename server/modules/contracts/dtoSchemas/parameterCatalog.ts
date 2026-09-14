@@ -248,6 +248,14 @@ function catalogItemsEnvelopeSchema<T extends z.ZodTypeAny>(itemSchema: T) {
     items: z.array(itemSchema),
     nextCursor: z.string().nullable(),
     catalogReleaseId: z.string(),
+    /**
+     * Truthful scoped count for the filtered query, before paging. A missing
+     * count is an unavailable state for the UI, never a zero result.
+     */
+    totalCount: z.number().int().nonnegative(),
+    hasMore: z.boolean(),
+    /** Resolved organization module name when a module subtree filter applied. */
+    placementModuleName: z.string().optional(),
     emptyReason: catalogEmptyReasonSchema.optional()
   });
 }
@@ -321,9 +329,13 @@ export const catalogDefinitionRevisionDtoSchema = catalogObject({
   definitionId: z.string(),
   revisionNumber: z.number().int().positive(),
   contentDigest: z.string(),
+  /** Editable display name; empty string means the author left it unset. */
+  displayName: z.string(),
   valueShape: catalogValueShapeSchema,
   constraints: catalogConstraintsSchema,
   documentation: z.string().nullable(),
+  /** Symbol unit descriptor, absent when the definition declares no unit. */
+  unit: catalogObject({ kind: z.literal("symbol"), symbol: z.string() }).nullable(),
   publishedInCatalogReleaseId: z.string()
 });
 
@@ -1442,7 +1454,13 @@ export const parameterCatalogSchemaRegistry = {
         schema: { type: "string", enum: [...subjectLifecycles] }
       },
       { name: "registration", in: "query" },
-      { name: "placement", in: "query" },
+      {
+        name: "placementModuleId",
+        in: "query",
+        schema: { type: "string" },
+        description:
+          "Organization module id; selects subjects placed at or below the module subtree before pagination."
+      },
       { name: "search", in: "query" },
       ...pageQueryParameters
     ],
@@ -1471,6 +1489,20 @@ export const parameterCatalogSchemaRegistry = {
     requestParameters: [
       { name: "catalogReleaseId", in: "query" },
       { name: "subjectId", in: "query" },
+      {
+        name: "subjectIds",
+        in: "query",
+        schema: { type: "array", items: { type: "string" } },
+        description:
+          "Explicit trusted multi-subject scope, applied before pagination. Repeated query parameter."
+      },
+      {
+        name: "placementModuleId",
+        in: "query",
+        schema: { type: "string" },
+        description:
+          "Organization module id; selects definitions of subjects placed at or below the module subtree before pagination."
+      },
       { name: "propertyKey", in: "query" },
       { name: "registration", in: "query" },
       {

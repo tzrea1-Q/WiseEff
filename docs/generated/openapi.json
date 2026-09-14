@@ -5940,9 +5940,10 @@
             }
           },
           {
-            "name": "placement",
+            "name": "placementModuleId",
             "in": "query",
             "required": false,
+            "description": "Organization module id; selects subjects placed at or below the module subtree before pagination.",
             "schema": {
               "type": "string"
             }
@@ -6169,6 +6170,27 @@
             "name": "subjectId",
             "in": "query",
             "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "subjectIds",
+            "in": "query",
+            "required": false,
+            "description": "Explicit trusted multi-subject scope, applied before pagination. Repeated query parameter.",
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "name": "placementModuleId",
+            "in": "query",
+            "required": false,
+            "description": "Organization module id; selects definitions of subjects placed at or below the module subtree before pagination.",
             "schema": {
               "type": "string"
             }
@@ -16444,6 +16466,15 @@
           "catalogReleaseId": {
             "type": "string"
           },
+          "totalCount": {
+            "type": "number"
+          },
+          "hasMore": {
+            "type": "boolean"
+          },
+          "placementModuleName": {
+            "type": "string"
+          },
           "emptyReason": {
             "type": "string",
             "enum": [
@@ -16457,7 +16488,9 @@
         "required": [
           "items",
           "nextCursor",
-          "catalogReleaseId"
+          "catalogReleaseId",
+          "totalCount",
+          "hasMore"
         ],
         "additionalProperties": false,
         "x-wiseeff-schema": "ProjectParameterBindingListResponse"
@@ -16509,6 +16542,15 @@
           "catalogReleaseId": {
             "type": "string"
           },
+          "totalCount": {
+            "type": "number"
+          },
+          "hasMore": {
+            "type": "boolean"
+          },
+          "placementModuleName": {
+            "type": "string"
+          },
           "emptyReason": {
             "type": "string",
             "enum": [
@@ -16522,7 +16564,9 @@
         "required": [
           "items",
           "nextCursor",
-          "catalogReleaseId"
+          "catalogReleaseId",
+          "totalCount",
+          "hasMore"
         ],
         "additionalProperties": false,
         "x-wiseeff-schema": "BindingHistoryListResponse"
@@ -16570,6 +16614,15 @@
           "catalogReleaseId": {
             "type": "string"
           },
+          "totalCount": {
+            "type": "number"
+          },
+          "hasMore": {
+            "type": "boolean"
+          },
+          "placementModuleName": {
+            "type": "string"
+          },
           "emptyReason": {
             "type": "string",
             "enum": [
@@ -16583,7 +16636,9 @@
         "required": [
           "items",
           "nextCursor",
-          "catalogReleaseId"
+          "catalogReleaseId",
+          "totalCount",
+          "hasMore"
         ],
         "additionalProperties": false,
         "x-wiseeff-schema": "BindingCompareListResponse"
@@ -20944,6 +20999,15 @@
           "catalogReleaseId": {
             "type": "string"
           },
+          "totalCount": {
+            "type": "number"
+          },
+          "hasMore": {
+            "type": "boolean"
+          },
+          "placementModuleName": {
+            "type": "string"
+          },
           "emptyReason": {
             "type": "string",
             "enum": [
@@ -20957,7 +21021,9 @@
         "required": [
           "items",
           "nextCursor",
-          "catalogReleaseId"
+          "catalogReleaseId",
+          "totalCount",
+          "hasMore"
         ],
         "additionalProperties": false,
         "x-wiseeff-schema": "CatalogSubjectListResponse"
@@ -21189,6 +21255,9 @@
                     "contentDigest": {
                       "type": "string"
                     },
+                    "displayName": {
+                      "type": "string"
+                    },
                     "valueShape": {
                       "type": "object",
                       "properties": {
@@ -21230,6 +21299,28 @@
                         "null"
                       ]
                     },
+                    "unit": {
+                      "type": [
+                        "object",
+                        "null"
+                      ],
+                      "properties": {
+                        "kind": {
+                          "type": "string",
+                          "enum": [
+                            "symbol"
+                          ]
+                        },
+                        "symbol": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "kind",
+                        "symbol"
+                      ],
+                      "additionalProperties": false
+                    },
                     "publishedInCatalogReleaseId": {
                       "type": "string"
                     }
@@ -21239,9 +21330,11 @@
                     "definitionId",
                     "revisionNumber",
                     "contentDigest",
+                    "displayName",
                     "valueShape",
                     "constraints",
                     "documentation",
+                    "unit",
                     "publishedInCatalogReleaseId"
                   ],
                   "additionalProperties": false
@@ -21375,6 +21468,15 @@
           "catalogReleaseId": {
             "type": "string"
           },
+          "totalCount": {
+            "type": "number"
+          },
+          "hasMore": {
+            "type": "boolean"
+          },
+          "placementModuleName": {
+            "type": "string"
+          },
           "emptyReason": {
             "type": "string",
             "enum": [
@@ -21388,7 +21490,9 @@
         "required": [
           "items",
           "nextCursor",
-          "catalogReleaseId"
+          "catalogReleaseId",
+          "totalCount",
+          "hasMore"
         ],
         "additionalProperties": false,
         "x-wiseeff-schema": "CatalogDefinitionListResponse"
@@ -21452,6 +21556,9 @@
                   "contentDigest": {
                     "type": "string"
                   },
+                  "displayName": {
+                    "type": "string"
+                  },
                   "valueShape": {
                     "type": "object",
                     "properties": {
@@ -21493,6 +21600,28 @@
                       "null"
                     ]
                   },
+                  "unit": {
+                    "type": [
+                      "object",
+                      "null"
+                    ],
+                    "properties": {
+                      "kind": {
+                        "type": "string",
+                        "enum": [
+                          "symbol"
+                        ]
+                      },
+                      "symbol": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "symbol"
+                    ],
+                    "additionalProperties": false
+                  },
                   "publishedInCatalogReleaseId": {
                     "type": "string"
                   }
@@ -21502,9 +21631,11 @@
                   "definitionId",
                   "revisionNumber",
                   "contentDigest",
+                  "displayName",
                   "valueShape",
                   "constraints",
                   "documentation",
+                  "unit",
                   "publishedInCatalogReleaseId"
                 ],
                 "additionalProperties": false
@@ -21655,6 +21786,9 @@
                 "contentDigest": {
                   "type": "string"
                 },
+                "displayName": {
+                  "type": "string"
+                },
                 "valueShape": {
                   "type": "object",
                   "properties": {
@@ -21696,6 +21830,28 @@
                     "null"
                   ]
                 },
+                "unit": {
+                  "type": [
+                    "object",
+                    "null"
+                  ],
+                  "properties": {
+                    "kind": {
+                      "type": "string",
+                      "enum": [
+                        "symbol"
+                      ]
+                    },
+                    "symbol": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "kind",
+                    "symbol"
+                  ],
+                  "additionalProperties": false
+                },
                 "publishedInCatalogReleaseId": {
                   "type": "string"
                 }
@@ -21705,9 +21861,11 @@
                 "definitionId",
                 "revisionNumber",
                 "contentDigest",
+                "displayName",
                 "valueShape",
                 "constraints",
                 "documentation",
+                "unit",
                 "publishedInCatalogReleaseId"
               ],
               "additionalProperties": false
@@ -21720,6 +21878,15 @@
             ]
           },
           "catalogReleaseId": {
+            "type": "string"
+          },
+          "totalCount": {
+            "type": "number"
+          },
+          "hasMore": {
+            "type": "boolean"
+          },
+          "placementModuleName": {
             "type": "string"
           },
           "emptyReason": {
@@ -21735,7 +21902,9 @@
         "required": [
           "items",
           "nextCursor",
-          "catalogReleaseId"
+          "catalogReleaseId",
+          "totalCount",
+          "hasMore"
         ],
         "additionalProperties": false,
         "x-wiseeff-schema": "CatalogDefinitionRevisionListResponse"
@@ -21756,6 +21925,9 @@
                 "type": "number"
               },
               "contentDigest": {
+                "type": "string"
+              },
+              "displayName": {
                 "type": "string"
               },
               "valueShape": {
@@ -21799,6 +21971,28 @@
                   "null"
                 ]
               },
+              "unit": {
+                "type": [
+                  "object",
+                  "null"
+                ],
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "symbol"
+                    ]
+                  },
+                  "symbol": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "symbol"
+                ],
+                "additionalProperties": false
+              },
               "publishedInCatalogReleaseId": {
                 "type": "string"
               }
@@ -21808,9 +22002,11 @@
               "definitionId",
               "revisionNumber",
               "contentDigest",
+              "displayName",
               "valueShape",
               "constraints",
               "documentation",
+              "unit",
               "publishedInCatalogReleaseId"
             ],
             "additionalProperties": false
@@ -21902,6 +22098,15 @@
           "catalogReleaseId": {
             "type": "string"
           },
+          "totalCount": {
+            "type": "number"
+          },
+          "hasMore": {
+            "type": "boolean"
+          },
+          "placementModuleName": {
+            "type": "string"
+          },
           "emptyReason": {
             "type": "string",
             "enum": [
@@ -21915,7 +22120,9 @@
         "required": [
           "items",
           "nextCursor",
-          "catalogReleaseId"
+          "catalogReleaseId",
+          "totalCount",
+          "hasMore"
         ],
         "additionalProperties": false,
         "x-wiseeff-schema": "CatalogDefinitionTimelineResponse"
@@ -22000,6 +22207,15 @@
           "catalogReleaseId": {
             "type": "string"
           },
+          "totalCount": {
+            "type": "number"
+          },
+          "hasMore": {
+            "type": "boolean"
+          },
+          "placementModuleName": {
+            "type": "string"
+          },
           "emptyReason": {
             "type": "string",
             "enum": [
@@ -22013,7 +22229,9 @@
         "required": [
           "items",
           "nextCursor",
-          "catalogReleaseId"
+          "catalogReleaseId",
+          "totalCount",
+          "hasMore"
         ],
         "additionalProperties": false,
         "x-wiseeff-schema": "CatalogRegistrationListResponse"
@@ -22332,6 +22550,15 @@
           "catalogReleaseId": {
             "type": "string"
           },
+          "totalCount": {
+            "type": "number"
+          },
+          "hasMore": {
+            "type": "boolean"
+          },
+          "placementModuleName": {
+            "type": "string"
+          },
           "emptyReason": {
             "type": "string",
             "enum": [
@@ -22345,7 +22572,9 @@
         "required": [
           "items",
           "nextCursor",
-          "catalogReleaseId"
+          "catalogReleaseId",
+          "totalCount",
+          "hasMore"
         ],
         "additionalProperties": false,
         "x-wiseeff-schema": "CatalogObservationListResponse"
@@ -22630,6 +22859,15 @@
           "catalogReleaseId": {
             "type": "string"
           },
+          "totalCount": {
+            "type": "number"
+          },
+          "hasMore": {
+            "type": "boolean"
+          },
+          "placementModuleName": {
+            "type": "string"
+          },
           "emptyReason": {
             "type": "string",
             "enum": [
@@ -22643,7 +22881,9 @@
         "required": [
           "items",
           "nextCursor",
-          "catalogReleaseId"
+          "catalogReleaseId",
+          "totalCount",
+          "hasMore"
         ],
         "additionalProperties": false,
         "x-wiseeff-schema": "CatalogReviewItemListResponse"
@@ -23185,6 +23425,15 @@
           "catalogReleaseId": {
             "type": "string"
           },
+          "totalCount": {
+            "type": "number"
+          },
+          "hasMore": {
+            "type": "boolean"
+          },
+          "placementModuleName": {
+            "type": "string"
+          },
           "emptyReason": {
             "type": "string",
             "enum": [
@@ -23198,7 +23447,9 @@
         "required": [
           "items",
           "nextCursor",
-          "catalogReleaseId"
+          "catalogReleaseId",
+          "totalCount",
+          "hasMore"
         ],
         "additionalProperties": false,
         "x-wiseeff-schema": "CatalogProposalListResponse"
@@ -24745,6 +24996,15 @@
           "catalogReleaseId": {
             "type": "string"
           },
+          "totalCount": {
+            "type": "number"
+          },
+          "hasMore": {
+            "type": "boolean"
+          },
+          "placementModuleName": {
+            "type": "string"
+          },
           "emptyReason": {
             "type": "string",
             "enum": [
@@ -24758,7 +25018,9 @@
         "required": [
           "items",
           "nextCursor",
-          "catalogReleaseId"
+          "catalogReleaseId",
+          "totalCount",
+          "hasMore"
         ],
         "additionalProperties": false,
         "x-wiseeff-schema": "CatalogPublicationJobListResponse"

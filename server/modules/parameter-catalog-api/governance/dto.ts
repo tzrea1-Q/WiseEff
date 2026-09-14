@@ -179,12 +179,18 @@ export function listEnvelope<T>(
   items: T[];
   nextCursor: null;
   catalogReleaseId: string;
+  totalCount: number;
+  hasMore: boolean;
   emptyReason?: "no-registrations" | "no-review-work" | "no-filter-match";
 } {
+  // Governance lists are not yet cursor-paged, so the honest total is the
+  // returned item count and there is never a further page.
   return {
     items: [...items],
     nextCursor: null,
     catalogReleaseId,
+    totalCount: items.length,
+    hasMore: false,
     ...(items.length === 0 && emptyReason ? { emptyReason } : {}),
   };
 }

@@ -53,6 +53,9 @@ export const unregisteredProjectionForTests: RegistrationProjectionPort = {
     }
     return { kind: "all" };
   },
+  async selectPlacementSubtreeSubjectIds({ organizationId, moduleId }) {
+    return { moduleName: `${organizationId}:${moduleId}`, subjectIds: [] };
+  },
 };
 
 /** @deprecated Test constructor. Use unregisteredProjectionForTests. */
@@ -95,6 +98,12 @@ export const unavailableRegistrationProjection: RegistrationProjectionPort = {
   },
   async selectDefinitionIds() {
     throw new CatalogProjectionError({ kind: "query-unavailable", operation: "selectDefinitionIds" });
+  },
+  async selectPlacementSubtreeSubjectIds() {
+    throw new CatalogProjectionError({
+      kind: "query-unavailable",
+      operation: "selectPlacementSubtreeSubjectIds",
+    });
   },
 };
 
@@ -198,6 +207,18 @@ export function createRegistrationProjectionFromQueries(
         organizationId: input.organizationId,
         registration,
         catalogDefinitions: input.catalogDefinitions ?? [],
+        authScope: { organizationId: input.organizationId, principalId },
+      });
+      if (!result.ok) {
+        throw new CatalogProjectionError(result.error);
+      }
+      return result.value;
+    },
+    async selectPlacementSubtreeSubjectIds(input) {
+      const principalId = requirePrincipal(input.principalId, "selectPlacementSubtreeSubjectIds");
+      const result = await queries.selectPlacementSubtreeSubjectIds({
+        organizationId: input.organizationId,
+        moduleId: input.moduleId,
         authScope: { organizationId: input.organizationId, principalId },
       });
       if (!result.ok) {

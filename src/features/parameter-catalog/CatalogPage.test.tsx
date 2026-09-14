@@ -4,6 +4,9 @@ import { useCallback, useState, type ComponentProps } from "react";
 import { describe, expect, it, vi } from "vitest";
 
 import {
+  catalogResultCountLabel,
+} from "./copy";
+import {
   CATALOG_DEFINITION_ID,
   CATALOG_ORGANIZATION_ID,
   CATALOG_RELEASE_ID,
@@ -201,7 +204,13 @@ describe("CatalogPage", () => {
     expect(page).toHaveAttribute("data-catalog-release", CATALOG_RELEASE_ID);
     expect(within(page).getByRole("region", { name: "目录列表" })).toBeVisible();
     expect(within(page).getByRole("region", { name: "定义详情" })).toBeVisible();
-    expect(within(page).getByRole("region", { name: "定义时间线" })).toBeVisible();
+    // The module navigator owns the side rail and the table keeps the rest.
+    expect(within(page).getByRole("navigation", { name: "参数定义模块树" })).toBeVisible();
+    expect(within(page).getByRole("status", { name: catalogResultCountLabel })).toHaveTextContent(/共 \d+ 项/);
+    expect(within(page).getByRole("navigation", { name: "分页" })).toBeVisible();
+    // History and pending work open on demand instead of owning the workspace.
+    expect(screen.queryByRole("region", { name: "定义时间线" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "待处理工作" })).not.toBeInTheDocument();
     expect(within(page).getByLabelText("目录发布")).toHaveTextContent("2026.08.3");
     expect(within(page).getByLabelText("目录发布")).toHaveTextContent(CATALOG_RELEASE_ID);
     expect(screen.queryByRole("button", { name: /生效|治理|Effective|Governance/ })).not.toBeInTheDocument();
@@ -229,7 +238,7 @@ describe("CatalogPage", () => {
       [...hrefs].reverse().find((href) => href.includes("definitionId=")) ??
       "";
     const parsed = parseCatalogUrlAnchor(selected.slice(selected.indexOf("?")));
-    expect(parsed).toEqual({
+    expect(parsed).toMatchObject({
       subjectId: CATALOG_SUBJECT_ID,
       definitionId: CATALOG_DEFINITION_ID,
       catalogReleaseId: CATALOG_RELEASE_ID,
@@ -244,6 +253,7 @@ describe("CatalogPage", () => {
   });
 
   it("opens formal identity, revision, usage, registration, and placement from a deep link", async () => {
+    const user = userEvent.setup();
     renderCatalog({
       search: buildCatalogHref({
         subjectId: CATALOG_SUBJECT_ID,
@@ -263,7 +273,8 @@ describe("CatalogPage", () => {
     expect(within(detail).getByText(/已登记/)).toBeInTheDocument();
     expect(within(detail).getByText("Root")).toBeInTheDocument();
 
-    const timeline = screen.getByRole("region", { name: "定义时间线" });
+    await user.click(await screen.findByRole("button", { name: /查看历史/ }));
+    const timeline = await screen.findByRole("region", { name: "定义时间线" });
     expect(within(timeline).getByText("目录发布")).toBeInTheDocument();
     expect(within(timeline).getByText("Published")).toBeInTheDocument();
   });
@@ -399,7 +410,10 @@ describe("CatalogPage", () => {
     expect((await screen.findAllByText(catalogEmptyMessages["no-filter-match"])).length).toBeGreaterThan(0);
     unmountFilter();
 
+    const reviewUser = userEvent.setup();
     renderCatalog({ scenario: "empty-no-review-work", includeReview: true });
+    const pendingToggle = await screen.findByRole("button", { name: /打开待处理工作/ });
+    await reviewUser.click(pendingToggle);
     expect((await screen.findAllByText(catalogEmptyMessages["no-review-work"])).length).toBeGreaterThan(0);
     expect(screen.getByRole("region", { name: "参数定义目录" })).toHaveAttribute("data-empty-reason", "no-review-work");
   });
@@ -423,7 +437,8 @@ describe("CatalogPage", () => {
     expect(screen.getByRole("button", { name: "提出定义修订" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "调整放置" })).toBeDisabled();
     expect(within(screen.getByRole("region", { name: "定义详情" })).getByText(/修订 #6/)).toBeInTheDocument();
-    expect(within(screen.getByRole("region", { name: "定义时间线" })).getByText("目录发布")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: /查看历史/ }));
+    expect(within(await screen.findByRole("region", { name: "定义时间线" })).getByText("目录发布")).toBeInTheDocument();
     await user.hover(screen.getByRole("button", { name: "提出定义修订" }));
     expect(screen.getByRole("button", { name: "提出定义修订" })).toHaveAttribute(
       "title",

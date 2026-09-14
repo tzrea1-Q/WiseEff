@@ -121,6 +121,10 @@ function appendQuery(path: string, query?: CatalogListQuery) {
   if (query.registration) params.set("registration", query.registration);
   if (query.search) params.set("search", query.search);
   if (query.subjectId) params.set("subjectId", query.subjectId);
+  for (const subjectId of query.subjectIds ?? []) {
+    params.append("subjectIds", subjectId);
+  }
+  if (query.placementModuleId) params.set("placementModuleId", query.placementModuleId);
   if (query.propertyKey) params.set("propertyKey", query.propertyKey);
   if (query.catalogReleaseId) params.set("catalogReleaseId", query.catalogReleaseId);
   const encoded = params.toString();
