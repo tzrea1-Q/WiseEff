@@ -185,7 +185,7 @@ cd /srv/wiseeff/ops/self-hosted
 ./scripts/upgrade.sh apply --ref <sha> --non-interactive --yes
 ```
 
-只有 checkout SHA 等于解析出的目标、API/worker/web 都引用该 commit 的精确目标镜像，并且公网健康探测通过时，`apply` 才会成功 no-op。若上一次构建失败后只有 checkout 被更新，本次会进入正常构建/重建流程，不会误报 `already running`。健康的同 SHA 服务仍需要主动全量重建时才加 `--restart`。
+只有 checkout SHA 等于解析出的目标、API/worker/web 都引用该 commit 的精确目标镜像，并且公网健康探测通过时，`apply` 才会成功 no-op。若运行中的 API 镜像标签是 40 位 commit SHA，则 previous 用该镜像，而不是 apply 前被切到目标的 checkout。当前 checkout 不是目标时，apply 会检出目标并 re-exec 本 launcher，使候选 `upgrade-lib.sh` 负责排空、迁移和就绪检查。若上一次构建失败后只有 checkout 被更新，本次会进入正常构建/重建流程，不会误报 `already running`。健康的同 SHA 服务仍需要主动全量重建时才加 `--restart`。
 
 恢复点默认写到 `/var/backups/wiseeff/upgrades/<run-id>`，被 Git 忽略的 journal 写到 `ops/self-hosted/.state/upgrades/<run-id>`。主机有专用且受保护的文件系统时可用 `--backup-root`、`--state-dir` 覆盖。环境文件权限必须保持 `600`。
 

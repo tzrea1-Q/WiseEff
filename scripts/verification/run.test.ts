@@ -427,6 +427,7 @@ describe("fresh local verification runner", () => {
 
   it("kills a finite TERM-ignoring child and proves the owned group is absent", async () => {
     const directory = fixtureDirectory();
+    const ready = path.join(directory, "ready");
     const signals: NodeJS.Signals[] = [];
     const originalKill = process.kill.bind(process);
     const kill = vi.spyOn(process, "kill").mockImplementation(((pid: number, signal?: number | NodeJS.Signals) => {
@@ -434,16 +435,24 @@ describe("fresh local verification runner", () => {
       return originalKill(pid, signal as number | NodeJS.Signals | undefined);
     }) as typeof process.kill);
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(new Error("cancelled by test")), 30);
+    const script = `process.on('SIGTERM', () => {}); require('node:fs').writeFileSync(${JSON.stringify(ready)}, '1'); setTimeout(() => process.exit(0), 4000); setInterval(() => {}, 1000)`;
+    const pending = runNative(nativeOptions(directory, script, {
+      cancelSignal: controller.signal,
+      deadlineAt: Date.now() + 10_000,
+    }));
     try {
-      const result = await runNative(nativeOptions(directory, "process.on('SIGTERM', () => {}); setTimeout(() => process.exit(0), 4000); setInterval(() => {}, 1000)", { cancelSignal: controller.signal }));
-      clearTimeout(timer);
+      const readyDeadline = Date.now() + 2_000;
+      while (!existsSync(ready) && Date.now() < readyDeadline) {
+        await new Promise((resolve) => setTimeout(resolve, 10));
+      }
+      expect(existsSync(ready)).toBe(true);
+      controller.abort(new Error("cancelled by test"));
+      const result = await pending;
       expect(result.error).toBe("CHILD_FAILED");
       expect(result.lifecycleSettled).toBe(true);
       expect(signals).toContain("SIGTERM");
       expect(signals).toContain("SIGKILL");
     } finally {
-      clearTimeout(timer);
       kill.mockRestore();
     }
   });

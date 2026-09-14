@@ -216,7 +216,7 @@ chmod 600 .build-network.env
 ./scripts/compose --env-file .env ps
 ```
 
-完成不可变 SHA 升级后应优先使用 `start`。如果没有固定 `WISEEFF_APP_TAG`，普通 `up` 可能解析默认的 `wiseeff-app:local`，而不是 commit 镜像。升级后的容器缺失时，应保留剩余容器和镜像证据，并按[自托管升级](upgrade.zh-CN.md)处理，不要猜测标签。
+完成不可变 SHA 升级后应优先使用 `start`。`./scripts/compose up` 在未设置 `WISEEFF_APP_TAG` 时从正在运行的 `api` 容器推断标签，这样补起 `publication-manager` 会使用同一 commit 镜像，而不是 `wiseeff-app:local`。显式 `WISEEFF_APP_TAG` 优先。若容器缺失且无法检查运行中的 API 镜像，应保留剩余容器和镜像证据，并按[自托管升级](upgrade.zh-CN.md)处理，不要猜测标签。
 
 ### 重启一个或多个已有服务
 

@@ -27,6 +27,9 @@ Same application image as api/worker/web. Command inside the image: `npm run pub
 ```bash
 ./scripts/compose --env-file .env ps -a
 ./scripts/compose --env-file .env logs --tail=200 publication-manager
+# Recreate after an upgrade. The compose wrapper infers WISEEFF_APP_TAG from the
+# running api container so this does not fall back to wiseeff-app:local.
+./scripts/compose --env-file .env up -d --no-deps --no-build publication-manager
 curl -fsS http://127.0.0.1:8791/health/live   # from inside the manager container
 ```
 

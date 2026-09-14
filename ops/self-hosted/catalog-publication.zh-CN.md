@@ -27,6 +27,8 @@ setup/upgrade 在缺少私有文件时写入**未配置 stub**，绝不复制 `D
 ```bash
 ./scripts/compose --env-file .env ps -a
 ./scripts/compose --env-file .env logs --tail=200 publication-manager
+# 升级后重建。compose 包装器从正在运行的 api 容器推断 WISEEFF_APP_TAG，不会回落到 wiseeff-app:local。
+./scripts/compose --env-file .env up -d --no-deps --no-build publication-manager
 ```
 
 API 设置 `WISEEFF_API_PROCESS=1`，日志 worker 设置 `LOG_WORKER_ENABLED=true`，两者都不加载 `.env.publication-manager`。管理入口要求 `WISEEFF_PUBLICATION_MANAGER=1`。

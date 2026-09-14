@@ -970,6 +970,77 @@ describe("upgrade.sh public interface", () => {
     expect(reloadIndex).toBeGreaterThan(checkoutIndex);
   });
 
+  it("uses the running API commit image as previous SHA when checkout is already the target", () => {
+    const running = "c332ed3cc2893cadc10d50e235f291bb8fd1ac30";
+    const target = "2d5a6f29f45bb75a2b3623e5b9a3022035223b5f";
+    const result = spawnSync("bash", ["-c", `
+      source ops/self-hosted/scripts/upgrade-lib.sh
+      upgrade_ref=origin/main
+      upgrade_runtime_image_ref_api="wiseeff-app:${running}"
+      wiseeff_upgrade_prepare_git_transport() { :; }
+      wiseeff_upgrade_validate_protocol() { return 0; }
+      wiseeff_upgrade_git() {
+        case "$*" in
+          "rev-parse HEAD") printf '%s\\n' "${target}" ;;
+          cat-file*) return 0 ;;
+          "fetch origin --prune") return 0 ;;
+          "rev-parse origin/main^{commit}") printf '%s\\n' "${target}" ;;
+          *) return 0 ;;
+        esac
+      }
+      wiseeff_upgrade_resolve_target
+      printf '%s' "$upgrade_previous_sha"
+    `], { encoding: "utf8", env: { ...process.env } });
+
+    expect(result.status).toBe(0);
+    expect(result.stdout).toBe(running);
+  });
+
+  it("re-execs the target upgrade launcher when apply starts on a previous checkout", () => {
+    const current = "c332ed3cc2893cadc10d50e235f291bb8fd1ac30";
+    const target = "2d5a6f29f45bb75a2b3623e5b9a3022035223b5f";
+    const result = spawnSync("bash", ["-c", `
+      source ops/self-hosted/scripts/upgrade-lib.sh
+      upgrade_launcher=/bin/true
+      upgrade_launcher_argv=(apply --ref ${target})
+      upgrade_target_sha=${target}
+      upgrade_repo_root="$PWD"
+      wiseeff_upgrade_git() {
+        case "$*" in
+          "rev-parse HEAD") printf '%s\\n' "${current}" ;;
+          "checkout --detach ${target}") printf 'checked-out\\n'; return 0 ;;
+          *) return 0 ;;
+        esac
+      }
+      wiseeff_upgrade_release_lock() { printf 'unlocked\\n'; }
+      wiseeff_upgrade_exec_self() { printf 'reexec=%s\\n' "$WISEEFF_UPGRADE_REEXEC"; exit 73; }
+      wiseeff_upgrade_reexec_if_needed
+    `], { encoding: "utf8", env: { ...process.env } });
+
+    expect(result.status).toBe(73);
+    expect(result.stdout).toContain("checked-out");
+    expect(result.stdout).toContain("unlocked");
+    expect(result.stdout).toContain("reexec=1");
+  });
+
+  it("does not re-exec when already on the target checkout", () => {
+    const target = "2d5a6f29f45bb75a2b3623e5b9a3022035223b5f";
+    const result = spawnSync("bash", ["-c", `
+      source ops/self-hosted/scripts/upgrade-lib.sh
+      upgrade_launcher=/bin/true
+      upgrade_launcher_argv=(apply)
+      upgrade_target_sha=${target}
+      wiseeff_upgrade_git() { printf '%s\\n' "${target}"; }
+      wiseeff_upgrade_exec_self() { printf 'unexpected-reexec\\n'; exit 73; }
+      wiseeff_upgrade_reexec_if_needed
+      printf 'stayed\\n'
+    `], { encoding: "utf8", env: { ...process.env } });
+
+    expect(result.status).toBe(0);
+    expect(result.stdout).toContain("stayed");
+    expect(result.stdout).not.toContain("unexpected-reexec");
+  });
+
   it("documents the small operator interface without touching the runtime", () => {
     const result = runUpgrade(["--help"]);
 

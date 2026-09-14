@@ -782,10 +782,18 @@ wiseeff_upgrade_validate_protocol() {
 }
 
 wiseeff_upgrade_resolve_target() {
+  local running_tag
   upgrade_previous_sha="$(wiseeff_upgrade_git rev-parse HEAD)" || {
     wiseeff_upgrade_die 10 "Could not resolve the current checkout commit."
     return $?
   }
+  # A checkout moved to the target before apply must not hide the running image.
+  running_tag="${upgrade_runtime_image_ref_api:-}"
+  running_tag="${running_tag##*:}"
+  if [[ "$running_tag" =~ ^[a-f0-9]{40}$ ]] &&
+    wiseeff_upgrade_git cat-file -e "${running_tag}^{commit}" 2>/dev/null; then
+    upgrade_previous_sha="$running_tag"
+  fi
   if [ "${upgrade_parameter_data_mode:-}" = "new-empty" ]; then
     # The running source owns rollback identity; a newly checked-out controller
     # must not turn its own HEAD into the previous deployment version.
@@ -793,7 +801,8 @@ wiseeff_upgrade_resolve_target() {
       wiseeff_upgrade_die 10 "new-empty requires one source application image across API, worker and web."
       return 10
     fi
-    upgrade_previous_sha="${upgrade_runtime_image_ref_api##*:}"
+    upgrade_previous_sha="${upgrade_runtime_image_ref_api:-}"
+    upgrade_previous_sha="${upgrade_previous_sha##*:}"
     if ! [[ "$upgrade_previous_sha" =~ ^[a-f0-9]{40}$ ]]; then
       # Controlled rollback preserves immutable images under per-run aliases.
       # Recover source identity only when the retained source-SHA image is still
@@ -801,7 +810,7 @@ wiseeff_upgrade_resolve_target() {
       local retained_source_sha retained_source_image
       retained_source_sha=82344044b436a8dafecefbb85dfd724cecb05e3f
       retained_source_image=""
-      case "$upgrade_runtime_image_ref_api" in
+      case "${upgrade_runtime_image_ref_api:-}" in
         "$(wiseeff_upgrade_app_image_name)":wiseeff-previous-api-*)
           retained_source_image="$(wiseeff_upgrade_docker image inspect --format '{{.Id}}' \
             "$(wiseeff_upgrade_app_image_name):${retained_source_sha}" 2>/dev/null || true)"
@@ -2968,12 +2977,36 @@ wiseeff_upgrade_wait_public_probe() {
   return 1
 }
 
+wiseeff_upgrade_exec_self() {
+  exec "$upgrade_launcher" "${upgrade_launcher_argv[@]}"
+}
+
+wiseeff_upgrade_reexec_if_needed() {
+  local current
+  [ "${WISEEFF_UPGRADE_REEXEC:-}" = "1" ] && return 0
+  [ -n "${upgrade_launcher:-}" ] || return 0
+  [ -n "${upgrade_target_sha:-}" ] || return 0
+  current="$(wiseeff_upgrade_git rev-parse HEAD)" || return 1
+  [ "$current" != "$upgrade_target_sha" ] || return 0
+  if ! wiseeff_upgrade_git checkout --detach "$upgrade_target_sha"; then
+    wiseeff_upgrade_die 10 "The target checkout could not be selected before re-executing the upgrade controller."
+    return $?
+  fi
+  trap - EXIT
+  wiseeff_upgrade_release_lock || true
+  export WISEEFF_UPGRADE_REEXEC=1
+  wiseeff_upgrade_exec_self
+}
+
 wiseeff_upgrade_run_apply() {
   wiseeff_upgrade_acquire_lock
   trap wiseeff_upgrade_release_lock EXIT
   upgrade_run_dir=""
 
   if ! wiseeff_upgrade_preflight; then
+    return 10
+  fi
+  if ! wiseeff_upgrade_reexec_if_needed; then
     return 10
   fi
   if [ "$upgrade_previous_sha" = "$upgrade_target_sha" ] &&
