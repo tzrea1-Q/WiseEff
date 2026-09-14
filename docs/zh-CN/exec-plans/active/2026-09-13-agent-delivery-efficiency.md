@@ -1,7 +1,7 @@
 # 智能体开发与验证效率优化
 
 > English: [English](../../../exec-plans/active/2026-09-13-agent-delivery-efficiency.md)
-> 状态：**活跃——PR #830、#829、#833、#831、#834、#835、#836、#837 已合入。类型反馈进入最终集成；浏览器夹具等待分批交付。不声称裁剪启用或效果已验证。**
+> 状态：**活跃——PR #830、#829、#833、#831、#834、#835、#836、#837、#838 已合入。浏览器夹具进入最终集成；最终证据与文档仍待结算。不声称裁剪启用或效果已验证。**
 > 日期：2026-09-13。真实跟踪 Issue：[#828](https://github.com/tzrea1-Q/WiseEff/issues/828)。
 > 2026-09-13 重新 fetch 后的真实 accepted base：`1059acb57379bd120d0d2b1a4b4733d4c2e02901`。它恰好等于附件的历史参考值，不构成强制回退后续工作的授权。
 
@@ -13,7 +13,7 @@
 
 | 交付层级 | 完成含义 | 当前状态 |
 | --- | --- | --- |
-| A：工具与流程 | 诊断、等价调度、影子计划、执行/摘要与路由已审查、验证并交付 | EFF-01/02/03/04/08 已合入；EFF-07 类型反馈正在集成；浏览器夹具与最终证明仍待完成 |
+| A：工具与流程 | 诊断、等价调度、影子计划、执行/摘要与路由已审查、验证并交付 | EFF-01/02/03/04/07/08 已合入；浏览器夹具验证/交付与最终证明仍待完成 |
 | B：模块启用 | 每个明确模块独立满足观察与审查门槛 | 无已启用模块；`observation-pending` |
 | C：效果验证 | 同类真实任务/CI 样本支持墙钟、资源与 usage 结论 | 样本不足；token usage 为 `unknown` |
 
@@ -402,6 +402,16 @@ EFF-07 新增 `npm run typecheck`，内容精确等于原 build 的 4096 MiB `ts
 主要变更类别争取 ≥10 个真实样本；N<20 报中位数/范围/N，不用 P95 掩饰不足。冷/热、类别/范围/runner、队列分别统计。job elapsed = completed−started；workflow updated−created 是含结算延迟的近似端到端观察，不等于计费。并行 job 相加只可称明确口径的 runner-time，不能称墙钟；真实计费 runner-minutes 必须有实际来源，无 usage/cost 填 unknown。等待/日志量不换算 token。
 
 最终列出真实 Issue/PR/base/head/executed tree/merge/run/attempt；已运行/未运行/blocked/not-selected 检查；独立 reviewer/范围/结论；local、Hosted、target 证据；wall/runner/token 口径和样本充分性；本轮自有临时资源处置；精确源码包和回退方式。当前 main 的相关完整验收独立报告，不能从 focused、历史、synthetic 或 PR 结果推断。历史结果只追加更正与新记录。
+
+## 浏览器夹具交付候选——2026-09-14
+
+本候选正常集成已接受的类型反馈 [PR #838](https://github.com/tzrea1-Q/WiseEff/pull/838)，合入为 `01703ba69f883b22e8b819182223c5fd35b90184`。base `b3ec95a4c9e327d384ce482be05c92ca0227e63a` 与已审 head `7fc675e13fe88888c998ae12297428f50764a48d` 是 [run 34796686417](https://github.com/tzrea1-Q/WiseEff/actions/runs/34796686417) attempt 1 实际 checkout `56717e28ecdfa73593b817736112717df7f89ca6` 的有序双亲；执行/候选/合入 tree 为 `83db9a1accf309b9164325592f97d7e0b004fa30`。九项原有选中 GitHub Actions 检查均通过：前端 3411/441 文件、脚本 1560/110 加 21 项既有可选跳过、bridge 134/21 加 4 项平台跳过、后端 4180/539 且零跳过、Quality 100、Smoke 4。未选中 L2/target/minimal 仍 skipped。独立 R1 Standards/Spec 均通过，同 head 本地 typecheck 与原完整 build 通过；五文件完整源码包 SHA256 为 `c46c50556c119b94e831b4ec2164b91e45bb058e52f5853b7a27df0c0e1eb494`，无删除/重命名。远端分支不存在、本地 main 干净同步已核实。近似工作流墙钟 615 秒、已执行 job 时长总和 32.6667 分钟仅为一次观察，不是账单或受控收益。本独立浏览器候选仍需新鲜六项原生证据、build/docs、独立双审及自身 Hosted；main 全量验收单独报告。
+
+本 EFF 阻塞修复仅涉及三个测试/夹具路径。反馈入口将具名按钮限定到实际导航侧栏，保留原三项场景和 28 个断言。共享语义夹具以治理视图打开草稿，通过原 store/事务 helper 读取精确持久化 review task，以非空 compatible 值提供原 API 要求的显式 overlay 覆盖声明；不改 DTO、SQL、ACL、生产服务或规范 Catalog 启用。代码 `fff3807b6783bbe3aa08b348050c23e359050ab4` 已通过独立 Standards/Spec；自有运行 `full-20260913t213711774z-fff3807b6783-85fe78c8` 的上传/列表/同步代表项加 warmup 为 2/2，无跳过/flaky，原生 8.1232 秒，嵌套及外层清理完成。这不能证明所有调用方或关闭所有历史语义失败。
+
+原模拟器测试的整行否定正则在回读成功后命中了参数名称/描述中的刻意文本“Readback mismatch probe”。自有新鲜 Red 位于 `22d2c0bfe738f129771dfcf20912a968fbd866b1`，运行 `full-20260914t002830662z-22d2c0bfe738-ab41d2ed`：warmup 通过、原场景失败，原生 48.0234 秒；失败资源按既有策略保留。修正 `7c6511d9224214245953be2d520ae6af417c9087` 检查真实状态单元格，并独立断言没有匹配的 `.node-row-error`；原正则、全部写入/回读/回滚/审计断言保留，字面断言数由 50 增至 51。新鲜 Green `full-20260914t003458715z-7c6511d92242-1abc7470` 为 2/2，无跳过/flaky，原生 39.3822 秒，清理完成；原生报告 SHA256 为 `6f0fc2d4e3fa04aa27562a8e8f441746d01bb94a370ecffe51e25c243a3294b5`。仅使用自有模拟器，不涉及目标数据库、真实设备、恢复或冻结节点操作。
+
+最终接受 main 刷新后，此独立候选仍需执行验证矩阵中的六项原生集合、原 build、元数据/文档、独立双审及自身选中的 Hosted 检查，不复用旧 PG/browser 通过。main 完整验收独立报告；冻结 Catalog 前置条件和根因未明的 Knowledge/DTS/Xiaoze 失败不会因这些夹具修正而关闭。不引入浏览器分片、更大超时、重试、exclude、golden 变化或收益声明。
 
 ## 文档影响矩阵
 
