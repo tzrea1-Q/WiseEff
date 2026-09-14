@@ -31,7 +31,7 @@ A 可先交付，B/C 继续开放。不得制造样本，也不能因工具合�
 
 原获取顺序的受控复现证明缺少同步。首个探针通过并保留记录，说明快速重载不一定替换节点。下一输入通过既有repository接口和公开加载状态，让首次effective working-tip-1加载可见。节点仍在原首次tray等待后获取，点击时连接，重载后断开，原选择断言失败且当前节点未选中。这是本地受控复现，不是Hosted实际事件顺序的证明。最终最小fixture在Red/Green中使用相同释放顺序：仅移除拟增加的首次tip等待时失败（0通过/1失败/24项过滤跳过，exit1，6.054580583秒），加回后通过（1通过/0失败/24项过滤跳过，exit0，4.202227959秒）。对应源码SHA256为 `7577f95c5d685fdc7bc84e09cf6e6a7b75813ba29566620f4377e37d96bc02d2` 和 `c0c8f3bfe341e1877afd7530bdf9f1b73447d72beb564488c536758d24060bde`，基于base720/treebf235；明确属于dirty-source诊断变体，不是已提交最终验收。console探针和冗余已resolve deferred均已删除，原全部尾部断言和角色/草稿夹具保留。最终候选仍需父代理精确head上的整个文件/build/docs检查、独立R1和Hosted交付。
 
-该Green之后，测试唯一差异是编译擦除的显式`vi.fn<ParameterTopologyRepository["getTopology"]>`类型注解。最终测试源码SHA256为 `dd0e7ea1506e65852a9851e16ad5ab033f09bbb018c6f851c22023b6b704d73b`，没有将此前聚焦Green改称执行这些字节。父代理整个文件和build证据必须绑定已提交的含类型注解候选。
+该Green之后，测试唯一差异是显式TypeScript `vi.fn<ParameterTopologyRepository["getTopology"]>`类型注解；它保留在源码中，仅在编译阶段擦除。最终测试源码SHA256为 `dd0e7ea1506e65852a9851e16ad5ab033f09bbb018c6f851c22023b6b704d73b`，没有将此前聚焦Green改称执行这些字节。父代理整个文件和build证据必须绑定已提交的含类型注解候选。
 
 ## 较早交付结算——2026-09-14
 
