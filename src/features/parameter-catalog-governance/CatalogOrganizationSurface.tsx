@@ -49,6 +49,7 @@ export function CatalogOrganizationSurface({
   const [actionRegistrationId, setActionRegistrationId] = useState<string | null>(null);
   const [surfaceEpoch, setSurfaceEpoch] = useState(0);
   const [publicationSurface, setPublicationSurface] = useState<PublicationSurfaceItem | null>(null);
+  const [publicationSurfaceLoad, setPublicationSurfaceLoad] = useState<"loading" | "ready" | "error">("loading");
   const [publicationHistory, setPublicationHistory] = useState<CatalogPublicationJobResponse["item"][]>([]);
   const catalogReleaseId = domainState?.catalogReleaseId ?? anchor.catalogReleaseId ?? "";
   const subjectId = anchor.subjectId ?? "";
@@ -79,9 +80,11 @@ export function CatalogOrganizationSurface({
         if (cancelled) return;
         setPublicationSurface(surface.item);
         setPublicationHistory([...history.items]);
+        setPublicationSurfaceLoad("ready");
       } catch {
         if (!cancelled) {
           setPublicationSurface(null);
+          setPublicationSurfaceLoad("error");
         }
       }
     })();
@@ -107,7 +110,12 @@ export function CatalogOrganizationSurface({
 
   return (
     <div className="parameter-catalog-organization">
-      {surfaceStatus ? (
+      {publicationSurfaceLoad === "error" ? (
+        <section className="parameter-catalog__banner" data-tone="danger" aria-label={publicationSurfaceCopy.title}>
+          <p>{publicationSurfaceCopy.fetchFailed}</p>
+          <p>{publicationSurfaceCopy.nextStep}：刷新页面后重试。不要把超时当成已生效。</p>
+        </section>
+      ) : surfaceStatus ? (
         <section
           className="parameter-catalog__banner"
           data-tone={surfaceStatus.tone}

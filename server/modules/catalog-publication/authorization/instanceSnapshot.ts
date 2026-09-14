@@ -12,30 +12,14 @@ const asText = (value: unknown): string | null => {
   return trimmed.length > 0 ? trimmed : null;
 };
 
-export async function collectPublicationPolicyInstanceSnapshot(
+export async function collectPublicationPolicyControlFacts(
   db: Queryable,
-): Promise<PublicationPolicyInstanceSnapshot> {
-  const identity = await db.query<{ database_oid: string; database_name: string }>(
-    `select d.oid::text as database_oid, current_database() as database_name
-       from pg_catalog.pg_database d
-      where d.datname = current_database()`,
-  );
-  const databaseOid = asText(identity.rows[0]?.database_oid) ?? "";
-  const databaseName = asText(identity.rows[0]?.database_name) ?? "";
-
-  const current = await db.query<{
-    current_catalog_release_id: string;
-    release_digest: string;
-  }>(
-    `select
-       state.current_catalog_release_id,
-       release.release_digest
-     from parameter_catalog.catalog_state state
-     join parameter_catalog.catalog_releases release
-       on release.id = state.current_catalog_release_id`,
-  );
-  const currentReleaseId = asText(current.rows[0]?.current_catalog_release_id);
-  const currentReleaseDigest = asText(current.rows[0]?.release_digest);
+  current: { readonly id: string | null; readonly digest: string | null },
+): Promise<
+  Omit<PublicationPolicyInstanceSnapshot, "databaseOid" | "databaseName" | "ephemeralName">
+> {
+  const currentReleaseId = asText(current.id);
+  const currentReleaseDigest = asText(current.digest);
 
   const artifact =
     currentReleaseId && currentReleaseDigest
@@ -77,9 +61,6 @@ export async function collectPublicationPolicyInstanceSnapshot(
     receiptKinds.length > 0;
 
   return {
-    databaseOid,
-    databaseName,
-    ephemeralName: isEphemeralTestDatabaseName(databaseName),
     currentReleaseId,
     currentReleaseDigest,
     artifactDigest,
@@ -91,5 +72,39 @@ export async function collectPublicationPolicyInstanceSnapshot(
     lowRiskSingleActorPublish: policy.ok ? policy.value.lowRiskSingleActorPublish : false,
     frozen: freeze?.frozen === true,
     capabilityContractRevision: policy.ok ? policy.value.capabilityContractRevision : null,
+  };
+}
+
+export async function collectPublicationPolicyInstanceSnapshot(
+  db: Queryable,
+): Promise<PublicationPolicyInstanceSnapshot> {
+  const identity = await db.query<{ database_oid: string; database_name: string }>(
+    `select d.oid::text as database_oid, current_database() as database_name
+       from pg_catalog.pg_database d
+      where d.datname = current_database()`,
+  );
+  const databaseOid = asText(identity.rows[0]?.database_oid) ?? "";
+  const databaseName = asText(identity.rows[0]?.database_name) ?? "";
+
+  const current = await db.query<{
+    current_catalog_release_id: string;
+    release_digest: string;
+  }>(
+    `select
+       state.current_catalog_release_id,
+       release.release_digest
+     from parameter_catalog.catalog_state state
+     join parameter_catalog.catalog_releases release
+       on release.id = state.current_catalog_release_id`,
+  );
+  const facts = await collectPublicationPolicyControlFacts(db, {
+    id: asText(current.rows[0]?.current_catalog_release_id),
+    digest: asText(current.rows[0]?.release_digest),
+  });
+  return {
+    databaseOid,
+    databaseName,
+    ephemeralName: isEphemeralTestDatabaseName(databaseName),
+    ...facts,
   };
 }

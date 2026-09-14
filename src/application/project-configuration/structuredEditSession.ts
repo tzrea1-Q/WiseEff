@@ -431,8 +431,11 @@ export function createStructuredEditSession(
       submitStatus = "";
       emit();
       try {
-        const catalogResult = input.catalogSave ? await input.catalogSave(selected, trimmedReason) : null;
-        if (catalogResult && catalogResult.savedKeys.length > 0) {
+        if (input.catalogSave) {
+          const catalogResult = await input.catalogSave(selected, trimmedReason);
+          if (!catalogResult || catalogResult.savedKeys.length !== selected.length) {
+            throw new Error("正式项目值未完整写入所选变更。");
+          }
           drafts = clearSubmittedDrafts(drafts, catalogResult.savedKeys);
           submitStatus = `已写入正式项目值 ${catalogResult.currentValueId}`;
           validateStatus = "";

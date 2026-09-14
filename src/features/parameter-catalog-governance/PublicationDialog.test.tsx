@@ -47,6 +47,18 @@ function renderDialog(
       catalogReleaseId={CATALOG_RELEASE_ID}
       currentPersonId={CATALOG_AUTHOR_PERSON_ID}
       organizationId={CATALOG_ORGANIZATION_ID}
+      publicationSurface={{
+        publicationEnabled: true,
+        lowRiskSingleActorPublish: false,
+        policyRevision: 1,
+        frozen: false,
+        adopted: true,
+        currentReleaseId: CATALOG_RELEASE_ID,
+        authoringAllowed: (options.permissions ?? ["catalog:author", "catalog:publish"]).includes("catalog:author"),
+        publishingAllowed: (options.permissions ?? ["catalog:author", "catalog:publish"]).includes("catalog:publish"),
+        reviewHighRiskAllowed: false,
+        blockers: []
+      }}
       createIdempotencyKey={options.createIdempotencyKey ?? (() => "pub-key")}
       onOpenChange={vi.fn()}
     />
@@ -355,6 +367,18 @@ describe("PublicationDialog", () => {
         catalogReleaseId={CATALOG_RELEASE_ID}
         currentPersonId={CATALOG_AUTHOR_PERSON_ID}
         organizationId={CATALOG_ORGANIZATION_ID}
+        publicationSurface={{
+          publicationEnabled: true,
+          lowRiskSingleActorPublish: false,
+          policyRevision: 1,
+          frozen: false,
+          adopted: true,
+          currentReleaseId: CATALOG_RELEASE_ID,
+          authoringAllowed: true,
+          publishingAllowed: true,
+          reviewHighRiskAllowed: false,
+          blockers: []
+        }}
         onOpenChange={vi.fn()}
       />
     );

@@ -92,8 +92,8 @@ export function PublicationDialog({
   onCompleted,
   onRefreshEvidence
 }: PublicationDialogProps) {
-  const surfaceAllowsAuthoring = publicationSurface ? publicationSurface.authoringAllowed : true;
-  const surfaceAllowsPublishing = publicationSurface ? publicationSurface.publishingAllowed : true;
+  const surfaceAllowsAuthoring = publicationSurface?.authoringAllowed === true;
+  const surfaceAllowsPublishing = publicationSurface?.publishingAllowed === true;
   const canPreview =
     surfaceAllowsAuthoring &&
     canExecutePublicationAction(actor, "preview-publication", domainState, sessionPermissions);

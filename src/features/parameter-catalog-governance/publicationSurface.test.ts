@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { publicationSurfaceMessage } from "./publicationSurface";
+import { publicationSurfaceCopy, publicationSurfaceMessage } from "./publicationSurface";
 import type { PublicationSurfaceItem } from "./publicationSurface";
 
 const base = (): PublicationSurfaceItem => ({
@@ -35,5 +35,9 @@ describe("publication surface copy", () => {
     expect(publicationSurfaceMessage({ ...base(), blockers: ["publication-capability-missing"] }).message).toContain(
       "权限"
     );
+  });
+
+  it("keeps fetch-failed copy distinct from a ready surface", () => {
+    expect(publicationSurfaceCopy.fetchFailed).toContain("无法读取发布状态");
   });
 });

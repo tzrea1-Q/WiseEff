@@ -244,6 +244,29 @@ describe("createStructuredEditSession", () => {
     expect(session.rows).toEqual([]);
   });
 
+  it("fails closed when catalogSave does not persist every selected row", async () => {
+    const storage = createMemoryStorage();
+    const session = createStructuredEditSession({ storage, now: () => "2026-01-01T00:00:00.000Z" });
+    session.setStructure(NODES, "file-board");
+    await session.hydrate(SCOPE);
+    session.change(
+      { fileId: "file-board", nodePath: "board", propertyName: "model" },
+      { rawText: "24", normalizedValue: "24", valid: true }
+    );
+    session.setReason("official save");
+    const submitStructuredEdits = vi.fn();
+    await expect(
+      session.submit({
+        projectId: SCOPE.projectId,
+        fileId: SCOPE.fileId,
+        fileName: "aurora-board.dts",
+        dtsRepository: { submitStructuredEdits },
+        catalogSave: async () => ({ savedKeys: [], currentValueId: "ppv_none" })
+      })
+    ).rejects.toThrow(/未完整写入/);
+    expect(submitStructuredEdits).not.toHaveBeenCalled();
+  });
+
   it("preserves drafts when submitStructuredEdits fails", async () => {
     const session = createStructuredEditSession({ storage: createMemoryStorage() });
     session.setStructure(NODES, "file-board");

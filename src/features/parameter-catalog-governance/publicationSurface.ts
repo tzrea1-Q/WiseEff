@@ -15,7 +15,8 @@ export const publicationSurfaceCopy = {
   authorOnly: "可以保存草稿并预览，但发布需要 catalog:publish。",
   reviewRequired: "高风险变更需要另一位具备 catalog:review-high-risk 的人员批准。",
   ready: "策略已启用，目录已接管。按权限编写、预览并发布。",
-  noOps: "本页不提供提权、改策略表、解除 freeze 或数据库 provisioning。"
+  noOps: "本页不提供提权、改策略表、解除 freeze 或数据库 provisioning。",
+  fetchFailed: "无法读取发布状态，编写和发布已暂停。"
 } as const;
 
 export function publicationSurfaceMessage(surface: PublicationSurfaceItem): {

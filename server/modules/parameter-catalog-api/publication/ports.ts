@@ -18,7 +18,7 @@ import {
   getReceiptByJobId,
   listJobs,
 } from "../../catalog-publication/persistence/store";
-import { inspectPublicationPolicy } from "../../catalog-publication/authorization/policy";
+import { collectPublicationPolicyControlFacts } from "../../catalog-publication/authorization/instanceSnapshot";
 import type { PublicationCandidateRecord, PublicationJobRecord } from "../../catalog-publication/persistence/types";
 import { readCurrentCatalogPointer } from "../../catalog-kernel/install/currentPointer";
 import type { Database } from "../../../shared/database/client";
@@ -304,7 +304,14 @@ export function bindCatalogPublicationCommands(input: {
       };
     },
     async getPublicationSurface(query) {
-      const snapshot = await withPublicationCoordinator(db, (tx) => inspectPublicationPolicy(tx));
+      const pointer = pool ? await readCurrentCatalogPointer(pool) : { kind: "absent" as const };
+      const current =
+        pointer.kind === "installed"
+          ? { id: pointer.current.id, digest: pointer.current.digest }
+          : { id: null, digest: null };
+      const snapshot = await withPublicationCoordinator(db, (tx) =>
+        collectPublicationPolicyControlFacts(tx, current),
+      );
       const canAuthor = query.permissions.includes("catalog:author");
       const canPublish = query.permissions.includes("catalog:publish");
       const canReview = query.permissions.includes("catalog:review-high-risk");

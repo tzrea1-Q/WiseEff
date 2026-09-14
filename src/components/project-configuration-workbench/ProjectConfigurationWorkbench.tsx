@@ -1191,31 +1191,39 @@ export function ProjectConfigurationWorkbench({
               let revisionId = revisionGate.selectedRevisionId;
               if (!revisionId && selectedConfigSet) {
                 const revisions = await topologyRepository.listConfigRevisions(project.id, selectedConfigSet.id);
-                revisionId = revisions.find((item) => item.status === "resolved")?.id ?? revisions[0]?.id ?? null;
+                revisionId = revisions.find((item) => item.status === "resolved")?.id ?? null;
               }
-              if (!revisionId) return null;
+              if (!revisionId) {
+                throw new Error("没有已解析的配置修订，无法写入正式项目值。");
+              }
               const bindings = await topologyRepository.listBindings(project.id, revisionId);
-              const row = rows[0];
-              if (!row) return null;
-              const matches = bindings.filter((item) => item.propertyKey === row.propertyName);
-              const catalogMatches = matches.filter(
-                (item) => item.id.startsWith("pbind_") || Boolean(item.definitionId)
-              );
-              const unique = catalogMatches.length === 1 ? catalogMatches[0] : null;
-              if (!unique) return null;
-              const integer = row.normalizedValue.replace(/[<>;]/g, "").trim();
-              const saved = await topologyRepository.createBindingDraft(project.id, unique.id, {
-                baseRevisionId: revisionId,
-                action: "set",
-                reason,
-                targetValue: /^-?\d+$/.test(integer)
-                  ? { kind: "cells", bits: 32, groups: [[{ kind: "integer", raw: integer, value: integer }]] }
-                  : { kind: "strings", values: [integer] }
-              });
-              if (saved.writeTarget.role !== "canonical-project-value") {
-                throw new Error("工作台保存未写入正式项目值。");
+              const savedKeys: string[] = [];
+              let currentValueId = "";
+              for (const row of rows) {
+                const matches = bindings.filter((item) => item.propertyKey === row.propertyName);
+                const catalogMatches = matches.filter(
+                  (item) => item.id.startsWith("pbind_") || Boolean(item.definitionId)
+                );
+                if (catalogMatches.length !== 1) {
+                  throw new Error(`属性 ${row.propertyName} 没有唯一正式绑定，不能提交。`);
+                }
+                const unique = catalogMatches[0]!;
+                const integer = row.normalizedValue.replace(/[<>;]/g, "").trim();
+                const saved = await topologyRepository.createBindingDraft(project.id, unique.id, {
+                  baseRevisionId: revisionId,
+                  action: "set",
+                  reason,
+                  targetValue: /^-?\d+$/.test(integer)
+                    ? { kind: "cells", bits: 32, groups: [[{ kind: "integer", raw: integer, value: integer }]] }
+                    : { kind: "strings", values: [integer] }
+                });
+                if (saved.writeTarget.role !== "canonical-project-value") {
+                  throw new Error("工作台保存未写入正式项目值。");
+                }
+                savedKeys.push(row.key);
+                currentValueId = saved.draftId;
               }
-              return { savedKeys: [row.key], currentValueId: saved.draftId };
+              return { savedKeys, currentValueId };
             }
           : undefined
       });
