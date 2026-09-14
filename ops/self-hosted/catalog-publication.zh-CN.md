@@ -139,7 +139,7 @@ overlay **只覆盖网络/端口/拓扑**（loopback 端口、`host.docker.inter
 
 | 步骤 | 命令 / 页面 | 是否写入 | 成功信号 | 失败停止点 |
 | --- | --- | --- | --- | --- |
-| 1. 升级后状态读取 | `./scripts/compose --env-file .env ps -a`；镜像内 `curl` manager `/health/live`；`policy status`；`freeze status` | 否 | 运行镜像/标签、角色、current Release、策略版本、freeze | 已经跑过 `publication-manager` 的栈缺少专用 LOGIN |
+| 1. 升级后状态读取 | `./scripts/collect-catalog-publication-status.sh`（或 `compose ps`、镜像内 `curl` manager `/health/live`、`policy status`、`freeze status`） | 否 | 运行镜像/标签、角色、current Release、策略版本、freeze；JSON `pinsForPolicyCheck` | 已经跑过 `publication-manager` 的栈缺少专用 LOGIN |
 | 2. 源包与接管检查 | 只读 `inspect`；`adopt --check` | 否 | JSON 身份与源包一致 | 漂移、缺历史或缺 Artifact |
 | 3. 接管 + ACL + 能力 | `adopt --execute`；`capabilities grant` | 是 | Receipt `adopted-preexisting`；capability status true | 不要把能力写进默认 `admin`；不用测试 capability |
 | 4. 策略检查 / 启用 / 停用 | 用**最新** status 引脚 `policy check enable` 再 `policy enable`；可选 `--low-risk-single-actor` | 是 | `publication_enabled=true`；freeze 不变 | 陈旧引脚、未接管、在正式库名上使用 ephemeral 确认 |
@@ -147,3 +147,20 @@ overlay **只覆盖网络/端口/拓扑**（loopback 端口、`host.docker.inter
 | 6. 异常停用 | `policy disable`；维护时 `freeze set`；恢复走升级 recovery | 是 | 发布关闭；Catalog 与项目值保留 | 不要删历史或再次 bootstrap |
 
 现场启用在上述写入被观测到之前保持 **待授权 / 未执行**。
+
+## 9. 采集当前主机事实（只读）
+
+任何 adopt/enable/grant 之前先跑。使用 `./scripts/compose run --rm --no-deps`（与升级 freeze 同一身份），不要 `compose exec` 进正在服务的 API 跑 Catalog 操作。stdout 与 JSON 报告会脱敏 DSN。
+
+```bash
+cd /srv/wiseeff/ops/self-hosted
+chmod +x ./scripts/collect-catalog-publication-status.sh
+./scripts/collect-catalog-publication-status.sh \
+  --out ./catalog-publication-status.json
+# 可选：
+#   --readonly-dsn-file /path/to/readonly.dsn
+#   --bundle /path/to/catalog-release-bundle.json --verification-digest sha256:...
+#   --user-id usr_... --organization-id org_...
+```
+
+报告含健康检查、LOGIN inspect、`policy status` / `freeze status`，以及 `pinsForPolicyCheck`。交回 `catalog-publication-status.json`（权限 0600）。不要粘贴 `.env` 或 DSN 文件。若 `ops_cli_present` 失败，说明当前镜像还没有 `scripts/catalog-publication-ops.ts`，必须先升级再 inspect/adopt/policy。

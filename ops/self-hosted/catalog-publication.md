@@ -167,7 +167,7 @@ Work directory unless noted: `/srv/wiseeff/ops/self-hosted`. CLI runs inside the
 
 | Step | Command / page | Writes? | Success | Stop |
 | --- | --- | --- | --- | --- |
-| 1. Read post-upgrade state | `./scripts/compose --env-file .env ps -a`; image `curl` manager `/health/live`; `policy status`; `freeze status` | No | Running image/tag, roles, current Release, policy revision, freeze | Missing manager LOGIN on a stack that already had `publication-manager` |
+| 1. Read post-upgrade state | `./scripts/collect-catalog-publication-status.sh` (or `compose ps`, image `curl` manager `/health/live`, `policy status`, `freeze status`) | No | Running image/tag, roles, current Release, policy revision, freeze; JSON `pinsForPolicyCheck` | Missing manager LOGIN on a stack that already had `publication-manager` |
 | 2. Inspect source bundle / adopt check | `inspect` with `CATALOG_BASELINE_READONLY_DATABASE_URL`; `adopt --check` with expected id/digest/bundle | No | JSON identity matches the collected bundle | Drift, missing history, or missing Artifact bytes |
 | 3. Adopt + ACL + capabilities | `adopt --execute`; `capabilities grant` for `catalog:author` / `catalog:publish` (and `catalog:review-high-risk` if needed) | Yes | Receipt kind `adopted-preexisting`; capability status true | Do not GRANT to default `admin`; do not use test capabilities |
 | 4. Policy check / enable / disable | `policy check enable` then `policy enable` with the **fresh** status pins; optional `--low-risk-single-actor` | Yes | `publication_enabled=true`; freeze unchanged | Stale pins, not adopted, ephemeral confirmation on a durable name |
@@ -175,3 +175,20 @@ Work directory unless noted: `/srv/wiseeff/ops/self-hosted`. CLI runs inside the
 | 6. Abnormal stop | `policy disable`; `freeze set` if maintenance; upgrade recovery for restore | Yes | Publication closed; Catalog/values retained | Do not DROP history or re-bootstrap |
 
 Field enablement remains **pending authorization / pending execution** until those writes are observed on the target.
+
+## 9. Collect current-host facts (read-only)
+
+Run this before any adopt/enable/grant. It uses `./scripts/compose run --rm --no-deps` (same identity as upgrade freeze) and never `compose exec` into the live API for Catalog ops. Stdout and the JSON report redact DSNs.
+
+```bash
+cd /srv/wiseeff/ops/self-hosted
+chmod +x ./scripts/collect-catalog-publication-status.sh
+./scripts/collect-catalog-publication-status.sh \
+  --out ./catalog-publication-status.json
+# optional:
+#   --readonly-dsn-file /path/to/readonly.dsn
+#   --bundle /path/to/catalog-release-bundle.json --verification-digest sha256:...
+#   --user-id usr_... --organization-id org_...
+```
+
+The report includes health, LOGIN inspect, `policy status` / `freeze status`, and `pinsForPolicyCheck`. Return `catalog-publication-status.json` (mode 0600). Do not paste `.env` or DSN files. If `ops_cli_present` fails, the running image predates `scripts/catalog-publication-ops.ts` and must be upgraded before inspect/adopt/policy.

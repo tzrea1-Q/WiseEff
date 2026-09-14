@@ -17,6 +17,8 @@ test-results/
 
 # Self-hosted upgrade journals and local recovery points
 ops/self-hosted/.state/
+ops/self-hosted/catalog-publication-status.json
+ops/self-hosted/catalog-publication-status-*.json
 
 # Local logs
 *.log
