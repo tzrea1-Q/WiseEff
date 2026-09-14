@@ -893,6 +893,13 @@ export const routeManifest = [
     stability: "mvp"
   },
   {
+    id: "debugging.admin.previewCatalogImport",
+    method: "POST",
+    path: "/api/v1/debugging/admin/catalog/import-preview",
+    module: "debugging",
+    stability: "mvp"
+  },
+  {
     id: "debugging.admin.importCatalog",
     method: "POST",
     path: "/api/v1/debugging/admin/catalog/import",

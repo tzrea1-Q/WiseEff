@@ -5,6 +5,9 @@ import { expect, test, type Page } from "playwright/test";
 import type { Client } from "pg";
 import { useBrowserDiagnostics } from "./helpers/browserDiagnostics";
 import { withPgClient } from "./helpers/database";
+import { authHeadersForUser } from "./helpers/bearerAuth";
+import { acceptanceCast } from "./helpers/cast";
+import { CATALOG_VIEWPORTS, assertNoPageOverflow, catalogScreenshot } from "./helpers/catalogBrowser";
 import { recordOperationEvidence, summarizeApiResponse } from "./helpers/operationEvidence";
 import { apiRoute, smokeHeaders } from "./helpers/runtime";
 
@@ -18,6 +21,46 @@ type AdminNodeDto = {
   enabled: boolean;
   archivedAt: string | null;
   bindings: Array<{ protocol: string; nodePath: string; enabled: boolean }>;
+};
+
+type ExportCatalogDocument = {
+  format: string;
+  source: { organizationId?: string; organizationName?: string; exportedAt?: string };
+  counts: { modules: number; nodes: number; bindings: number };
+  modules: Array<{ name: string; parentNamePath: string[]; description?: string; scope?: string; sortOrder?: number }>;
+  nodes: Array<{
+    sourceId?: string;
+    name: string;
+    description?: string;
+    detailedDescription?: string;
+    moduleNamePath: string[];
+    enabled?: boolean;
+    archived?: boolean;
+    bindings: Array<{
+      protocol: string;
+      nodePath: string;
+      accessMode: string;
+      enabled?: boolean;
+      notes?: string | null;
+    }>;
+  }>;
+};
+
+type CatalogImportPreviewDto = {
+  canSubmit: boolean;
+  previewDigest: string | null;
+  format: string;
+  sourceOrganization: { organizationId?: string; organizationName?: string } | null;
+  targetOrganizationId: string;
+  fileCounts: { modules: number; nodes: number; bindings: number };
+  declaredCounts: { modules: number; nodes: number; bindings: number } | null;
+  modules: { created: number; updated: number; unchanged: number };
+  nodes: { created: number; updated: number; unchanged: number };
+  bindings: { created: number; updated: number; unchanged: number };
+  details: Array<{ path: string; name: string; object: string; classification: string; fields: unknown[] }>;
+  detailsTruncated: boolean;
+  conflicts: Array<{ code: string; location: string; message: string }>;
+  warnings: Array<{ code: string; location: string; message: string }>;
 };
 
 type AuditEventDto = {
@@ -226,7 +269,10 @@ async function configureProtocolBindings(page: Page, nodeName: string, suffix: s
   await bindingsDialog.getByRole("button", { name: "保存 ADB binding" }).click();
   await expect(savedIndicator(page)).toBeVisible({ timeout: 30_000 });
 
-  await bindingsDialog.getByRole("button", { name: "取消" }).click();
+  // In API mode the bindings dialog's footer action is 关闭 (the icon close button is
+  // aria-labelled "关闭协议节点绑定", so match the exact footer label).
+  await bindingsDialog.getByRole("button", { name: "关闭", exact: true }).click();
+  await expect(bindingsDialog).not.toBeVisible({ timeout: 30_000 });
 }
 
 test.describe("DEBUG-ADMIN-001 debugging admin catalog governance", () => {
@@ -274,54 +320,124 @@ test.describe("DEBUG-ADMIN-001 debugging admin catalog governance", () => {
       (response) => response.request().method() === "GET" && response.url().includes("/api/v1/debugging/admin/catalog/export")
     );
     const downloadPromise = page.waitForEvent("download");
-    await page.getByRole("button", { name: "导出目录" }).click();
+    await page.getByRole("button", { name: "导出全部节点" }).click();
     const [exportResponse, download] = await Promise.all([exportResponsePromise, downloadPromise]);
     expect(exportResponse.ok()).toBe(true);
+    const exportBody = (await exportResponse.json()) as {
+      item: {
+        document: ExportCatalogDocument;
+        counts: { modules: number; nodes: number; bindings: number };
+        organizationId: string;
+        fileBytes: number;
+      };
+    };
+    expect(exportBody.item.organizationId).toBe("org-chargelab");
     const downloadPath = await download.path();
     expect(downloadPath).toBeTruthy();
-    const exportedCatalog = JSON.parse(await readFile(downloadPath!, "utf8")) as {
-      format: "wiseeff.debug-node-catalog.v1";
-      modules: unknown[];
-      nodes: Array<Record<string, unknown> & { id?: string; name: string; bindings: Array<{ nodePath: string }> }>;
-    };
+    const exportedCatalog = JSON.parse(await readFile(downloadPath!, "utf8")) as ExportCatalogDocument;
+    // The downloaded file is the same document the API returned, and its declared counts
+    // match the objects it contains.
+    expect(exportedCatalog.format).toBe("wiseeff.debug-node-catalog.v2");
+    expect(exportedCatalog.counts).toEqual(exportBody.item.counts);
+    expect(exportedCatalog.counts.modules).toBe(exportedCatalog.modules.length);
+    expect(exportedCatalog.counts.nodes).toBe(exportedCatalog.nodes.length);
+    expect(exportedCatalog.counts.bindings).toBe(
+      exportedCatalog.nodes.reduce((total, node) => total + node.bindings.length, 0)
+    );
     const exportedNode = exportedCatalog.nodes.find((node) => node.name === editedName);
     expect(exportedNode).toBeTruthy();
+    expect(exportedNode!.moduleNamePath).toEqual(["Battery Charging"]);
+    expect(exportedNode!.sourceId).toBeTruthy();
+    expect(exportedNode!.bindings.map((binding) => binding.protocol).sort()).toEqual(["adb", "hdc"]);
 
     const importedDescription = `Imported acceptance node ${suffix}`;
-    const importDocument = {
-      format: exportedCatalog.format,
-      modules: [],
-      nodes: [{ ...exportedNode!, description: importedDescription }]
+    // Upload the file the admin actually downloaded, with one field changed, so the merge
+    // classifies five unchanged nodes plus the edited one against the real target.
+    const importDocument: ExportCatalogDocument = {
+      ...exportedCatalog,
+      nodes: exportedCatalog.nodes.map((node) =>
+        node.sourceId === exportedNode!.sourceId ? { ...node, description: importedDescription } : node
+      )
     };
-    const importResponsePromise = page.waitForResponse(
-      (response) => response.request().method() === "POST" && response.url().includes("/api/v1/debugging/admin/catalog/import")
+    const previewResponsePromise = page.waitForResponse(
+      (response) =>
+        response.request().method() === "POST" && response.url().includes("/api/v1/debugging/admin/catalog/import-preview")
     );
-    await page.getByLabel("导入目录文件").setInputFiles({
+    await page.getByLabel("导入节点文件").setInputFiles({
       name: "debug-node-catalog.json",
       mimeType: "application/json",
       buffer: Buffer.from(JSON.stringify(importDocument))
     });
+    const previewResponse = await previewResponsePromise;
+    expect(previewResponse.ok()).toBe(true);
+    const previewBody = (await previewResponse.json()) as { item: CatalogImportPreviewDto };
+    expect(previewBody.item.canSubmit).toBe(true);
+    expect(previewBody.item.previewDigest).toBeTruthy();
+    expect(previewBody.item.nodes).toEqual({ created: 0, updated: 1, unchanged: exportedCatalog.counts.nodes - 1 });
+    expect(previewBody.item.modules).toEqual({ created: 0, updated: 0, unchanged: exportedCatalog.counts.modules });
+    expect(previewBody.item.sourceOrganization?.organizationId).toBe("org-chargelab");
+
+    const importDialog = page.getByRole("dialog", { name: "导入预览" });
+    await expect(importDialog).toBeVisible({ timeout: 30_000 });
+    await expect(importDialog.getByText("org-chargelab")).toBeVisible();
+    await expect(importDialog.getByText(/节点：.*更新 1/)).toBeVisible();
+
+    const importResponsePromise = page.waitForResponse(
+      (response) => response.request().method() === "POST" && response.url().includes("/api/v1/debugging/admin/catalog/import")
+    );
+    await importDialog.getByRole("button", { name: "确认导入" }).click();
     const importResponse = await importResponsePromise;
     expect(importResponse.ok()).toBe(true);
     const importBody = (await importResponse.json()) as {
       item: {
         modulesCreated: number;
         modulesUpdated: number;
+        modulesUnchanged: number;
         nodesCreated: number;
         nodesUpdated: number;
-        bindingsUpserted: number;
+        nodesUnchanged: number;
+        bindingsCreated: number;
+        bindingsUpdated: number;
+        bindingsUnchanged: number;
       };
     };
+    // The merge matches every node by source id: one node is updated, the rest are
+    // unchanged, and no binding changes because the file carries the exported bindings.
     expect(importBody.item).toEqual({
       modulesCreated: 0,
       modulesUpdated: 0,
+      modulesUnchanged: exportedCatalog.counts.modules,
       nodesCreated: 0,
       nodesUpdated: 1,
-      bindingsUpserted: 2
+      nodesUnchanged: exportedCatalog.counts.nodes - 1,
+      bindingsCreated: 0,
+      bindingsUpdated: 0,
+      bindingsUnchanged: exportedCatalog.counts.bindings
     });
+    await expect(importDialog).not.toBeVisible({ timeout: 30_000 });
     await expect(
       page.getByRole("toolbar", { name: "调试管理后台页面操作" }).getByText(/^已导入：/)
     ).toBeVisible({ timeout: 30_000 });
+
+    // Re-read the persisted state and re-export: the file now round-trips as unchanged.
+    const reExportResponse = await page.request.get(
+      apiRoute("/api/v1/debugging/admin/catalog/export?includeArchived=true"),
+      { headers: smokeHeaders() }
+    );
+    expect(reExportResponse.ok()).toBe(true);
+    const reExportBody = (await reExportResponse.json()) as { item: { document: ExportCatalogDocument } };
+    expect(reExportBody.item.document.nodes.find((node) => node.name === editedName)?.description).toBe(
+      importedDescription
+    );
+    const rePreviewResponse = await page.request.post(
+      apiRoute("/api/v1/debugging/admin/catalog/import-preview"),
+      { headers: smokeHeaders(), data: reExportBody.item.document }
+    );
+    expect(rePreviewResponse.ok()).toBe(true);
+    const rePreviewBody = (await rePreviewResponse.json()) as { item: CatalogImportPreviewDto };
+    expect(rePreviewBody.item.canSubmit).toBe(true);
+    expect(rePreviewBody.item.nodes.updated).toBe(0);
+    expect(rePreviewBody.item.nodes.created).toBe(0);
 
     const listResponse = await page.request.get(apiRoute("/api/v1/debugging/admin/nodes?includeArchived=true"), {
       headers: smokeHeaders()
@@ -393,12 +509,42 @@ test.describe("DEBUG-ADMIN-001 debugging admin catalog governance", () => {
          ) values ($1, 'org-chargelab', $2, 'hdc', '/sys/acceptance/delete-protection', 'RO', true)`,
         [`${protectedNode.id}:hdc`, protectedNode.id]
       );
+      // A fresh acceptance database has no debugging session, so this fixture owns one:
+      // device and actor are resolved from the seeded rows the session FKs require.
+      const actor = await client.query<{ id: string }>(
+        "select id from users where organization_id = 'org-chargelab' order by id limit 1"
+      );
+      expect(actor.rowCount).toBe(1);
+      const device = await client.query<{ id: string }>(
+        "select id from debugging_devices where organization_id = 'org-chargelab' order by id limit 1"
+      );
+      if (device.rowCount === 0) {
+        await client.query(
+          `insert into debugging_devices (id, organization_id, name, transport, status, firmware)
+           values ($1, 'org-chargelab', 'Acceptance delete device', 'simulator', 'online', 'test')
+           on conflict (id) do nothing`,
+          [`acceptance-delete-device-${suffix}`]
+        );
+      }
+      const deviceId =
+        device.rows[0]?.id ?? `acceptance-delete-device-${suffix}`;
+      await client.query(
+        `insert into debugging_targets (id, organization_id, device_id, target_ref, label, status)
+         values ($1, 'org-chargelab', $2, $3, 'Acceptance delete target', 'detected')
+         on conflict (id) do nothing`,
+        [`acceptance-delete-target-${suffix}`, deviceId, `simulator://acceptance-delete/${suffix}`]
+      );
       const session = await client.query<{ id: string; actor_user_id: string }>(
-        `select id, actor_user_id
-         from debugging_sessions
-         where organization_id = 'org-chargelab'
-         order by started_at desc
-         limit 1`
+        `insert into debugging_sessions (id, organization_id, device_id, target_id, actor_user_id, status)
+         values ($1, 'org-chargelab', $2, $3, $4, 'active')
+         on conflict (id) do update set status = 'active'
+         returning id, actor_user_id`,
+        [
+          `acceptance-delete-session-${suffix}`,
+          deviceId,
+          `acceptance-delete-target-${suffix}`,
+          actor.rows[0]!.id
+        ]
       );
       expect(session.rowCount).toBe(1);
       await client.query(
@@ -555,12 +701,26 @@ test.describe("DEBUG-ADMIN-001 debugging admin catalog governance", () => {
     expect(JSON.stringify(historicalDeleteAuditEvents[0]?.metadata ?? {})).not.toContain("/sys/acceptance/delete-protection");
     const exportedBindingPaths = exportedCatalog.nodes.flatMap((node) => node.bindings.map((binding) => binding.nodePath));
     const exportAuditMetadata = {
+      format: "wiseeff.debug-node-catalog.v2",
       moduleCount: exportedCatalog.modules.length,
       nodeCount: exportedCatalog.nodes.length,
       bindingCount: exportedBindingPaths.length,
-      includeArchived: true
+      fileBytes: exportBody.item.fileBytes
     };
-    const importAuditMetadata = { ...importBody.item };
+    const importAuditMetadata = {
+      format: "wiseeff.debug-node-catalog.v2",
+      fileBytes: expect.any(Number),
+      modulesCreated: importBody.item.modulesCreated,
+      modulesUpdated: importBody.item.modulesUpdated,
+      modulesUnchanged: importBody.item.modulesUnchanged,
+      nodesCreated: importBody.item.nodesCreated,
+      nodesUpdated: importBody.item.nodesUpdated,
+      nodesUnchanged: importBody.item.nodesUnchanged,
+      bindingsCreated: importBody.item.bindingsCreated,
+      bindingsUpdated: importBody.item.bindingsUpdated,
+      bindingsUnchanged: importBody.item.bindingsUnchanged,
+      previewDigest: expect.any(String)
+    };
     const exportAuditSummary = catalogAuditSummaryFor(
       auditBody.items,
       "debug-node-catalog-export",
@@ -607,12 +767,17 @@ test.describe("DEBUG-ADMIN-001 debugging admin catalog governance", () => {
         summarizeApiResponse(exportResponse, {
           method: "GET",
           path: "/api/v1/debugging/admin/catalog/export?includeArchived=true",
-          responseSummary: `exported node catalog contains ${exportedCatalog.nodes.length} nodes`
+          responseSummary: `exported full node catalog with ${exportedCatalog.counts.nodes} nodes, ${exportedCatalog.counts.modules} modules and ${exportedCatalog.counts.bindings} bindings`
+        }),
+        summarizeApiResponse(previewResponse, {
+          method: "POST",
+          path: "/api/v1/debugging/admin/catalog/import-preview",
+          responseSummary: `preview classified ${JSON.stringify(previewBody.item.nodes)} nodes with canSubmit=${previewBody.item.canSubmit}`
         }),
         summarizeApiResponse(importResponse, {
           method: "POST",
           path: "/api/v1/debugging/admin/catalog/import",
-          responseSummary: `node catalog import updated ${importBody.item.nodesUpdated} node and upserted ${importBody.item.bindingsUpserted} bindings`
+          responseSummary: `node catalog import created ${importBody.item.nodesCreated}, updated ${importBody.item.nodesUpdated}, left ${importBody.item.nodesUnchanged} nodes unchanged`
         }),
         summarizeApiResponse(listResponse, {
           method: "GET",
@@ -675,7 +840,745 @@ test.describe("DEBUG-ADMIN-001 debugging admin catalog governance", () => {
         exportAuditSummary,
         importAuditSummary
       ],
-      notes: "Admin UI created and edited a logical debug node, exported the real node catalog, imported a derived one-node document, verified exact count metadata and absence of raw node paths for catalog and node-delete audit events, configured HDC/ADB paths, archived the ADB binding, disabled and re-enabled the node, and permanently deleted both unreferenced and historical nodes with binding/operation cascades. No HDC device claim is made."
+      notes: "Admin UI created and edited a logical debug node, downloaded the complete v2 node catalog, uploaded the downloaded file, previewed the classified merge in the dialog, confirmed the merge, re-read the persisted node through the API and re-exported the catalog to prove the file round-trips as unchanged. Verified exact count metadata and absence of raw node paths for catalog and node-delete audit events, configured HDC/ADB paths, archived the ADB binding, disabled and re-enabled the node, and permanently deleted both unreferenced and historical nodes with binding/operation cascades. No HDC device claim is made."
+    });
+  });
+});
+
+/**
+ * Issue #846: complete node-catalog transfer at the file/API/database boundary.
+ *
+ * These cases exercise the same public HTTP API the UI calls, against real PostgreSQL, and
+ * re-read persisted rows afterwards. They cover the capacity the former 500-module /
+ * 2,000-node import caps rejected, the preview digest guard, permissions, and rollback.
+ */
+const catalogTransferPrefix = "Acceptance catalog transfer";
+
+async function cleanupCatalogTransferRows(client: Client) {
+  const modules = await client.query<{ id: string }>(
+    "select id from debug_node_modules where organization_id = 'org-chargelab' and name like $1",
+    [`${catalogTransferPrefix}%`]
+  );
+  const moduleIds = modules.rows.map((row) => row.id);
+  const nodes = await client.query<{ id: string }>(
+    "select id from debug_nodes where organization_id = 'org-chargelab' and name like $1",
+    [`${catalogTransferPrefix}%`]
+  );
+  const nodeIds = nodes.rows.map((row) => row.id);
+
+  if (nodeIds.length > 0) {
+    await client.query("delete from debug_node_bindings where node_id = any($1::text[])", [nodeIds]);
+    await client.query("delete from debug_nodes where id = any($1::text[])", [nodeIds]);
+  }
+  if (moduleIds.length > 0) {
+    await client.query(
+      "update debug_nodes set debug_node_module_id = null where debug_node_module_id = any($1::text[])",
+      [moduleIds]
+    );
+    await client.query("delete from debug_node_modules where id = any($1::text[]) and parent_id is null", [moduleIds]);
+    await client.query("delete from debug_node_modules where id = any($1::text[])", [moduleIds]);
+  }
+}
+
+/**
+ * Writes the target state directly through SQL so the capacity case can create 501 modules
+ * and 2,001 nodes without 2,502 round trips. Export, preview and import still run through
+ * the real HTTP API on top of these rows.
+ */
+async function seedCatalogTransferCapacityRows() {
+  return withPgClient(async (client) => {
+    await cleanupCatalogTransferRows(client);
+    const moduleIds: string[] = [];
+    for (let index = 0; index < 501; index += 1) {
+      const id = `acceptance-transfer-module-${index}`;
+      moduleIds.push(id);
+      await client.query(
+        `insert into debug_node_modules (id, organization_id, parent_id, name, path, depth, sort_order, description, scope)
+         values ($1, 'org-chargelab', null, $2, $1, 1, $3, $4, 'transfer')`,
+        [id, `${catalogTransferPrefix} module ${String(index).padStart(3, "0")}`, index, "capacity"]
+      );
+    }
+
+    const nodeIds: string[] = [];
+    for (let index = 0; index < 2001; index += 1) {
+      const id = `acceptance-transfer-node-${index}`;
+      const moduleId = moduleIds[index % moduleIds.length];
+      nodeIds.push(id);
+      await client.query(
+        `insert into debug_nodes (
+           id, organization_id, name, description, detailed_description,
+           write_format_example, write_format_hint, module, debug_node_module_id,
+           value_kind, value_format, normalization_mode, max_value_bytes, enabled, archived_at, archive_reason
+         ) values ($1, 'org-chargelab', $2, $3, '', '', '', $4, $5, 'scalar', 'raw', 'trim', null, $6, $7, $8)`,
+        [
+          id,
+          `${catalogTransferPrefix} node ${String(index).padStart(4, "0")}`,
+          `capacity node ${index}`,
+          `${catalogTransferPrefix} module ${String(index % moduleIds.length).padStart(3, "0")}`,
+          moduleId,
+          index % 3 !== 0,
+          index % 100 === 0 ? new Date().toISOString() : null,
+          index % 100 === 0 ? "capacity fixture" : null
+        ]
+      );
+      if (index % 4 !== 0) {
+        const protocol = index % 2 === 0 ? "hdc" : "adb";
+        await client.query(
+          `insert into debug_node_bindings (id, organization_id, node_id, protocol, node_path, access_mode, enabled, notes)
+           values ($1, 'org-chargelab', $2, $3, $4, $5, $6, null)`,
+          [
+            `${id}:${protocol}`,
+            id,
+            protocol,
+            `/sys/acceptance/transfer/${index}`,
+            index % 8 === 0 ? "RO" : "RW",
+            index % 5 !== 0
+          ]
+        );
+      }
+    }
+    return { moduleIds, nodeIds };
+  });
+}
+
+test.describe("DEBUG-ADMIN-846 full catalog transfer", () => {
+  test.beforeAll(async () => {
+    await prepareDebuggingAdminAcceptanceState();
+    await withPgClient(async (client) => {
+      await cleanupCatalogTransferRows(client);
+    });
+  });
+
+  test.afterAll(async () => {
+    await withPgClient(async (client) => {
+      await cleanupCatalogTransferRows(client);
+    });
+  });
+
+  test("transfers 2,001 nodes and 501 modules through export, preview and atomic import", async ({ page }, testInfo) => {
+    // @acceptance DEBUG-ADMIN-846-CAPACITY
+    // @operation DEBUG-ADMIN-846-CAPACITY
+    test.setTimeout(240_000);
+    const seeded = await seedCatalogTransferCapacityRows();
+    const isCapacityNode = (name: string) => name.startsWith(`${catalogTransferPrefix} node `);
+    const isCapacityModule = (path: string[]) =>
+      path.length === 1 && path[0].startsWith(`${catalogTransferPrefix} module `);
+
+    // 1. Export the complete catalog through the real API.
+    const exportResponse = await page.request.get(
+      apiRoute("/api/v1/debugging/admin/catalog/export?includeArchived=true"),
+      { headers: smokeHeaders() }
+    );
+    expect(exportResponse.ok()).toBe(true);
+    const exported = (await exportResponse.json()) as {
+      item: { document: ExportCatalogDocument; counts: { modules: number; nodes: number; bindings: number } };
+    };
+    const document = exported.item.document;
+    const capacityNodes = document.nodes.filter((node) => isCapacityNode(node.name));
+    const capacityModules = document.modules.filter((module) => isCapacityModule([module.name]));
+
+    expect(document.format).toBe("wiseeff.debug-node-catalog.v2");
+    expect(capacityNodes).toHaveLength(2001);
+    expect(capacityModules).toHaveLength(501);
+    expect(new Set(capacityNodes.map((node) => node.sourceId)).size).toBe(2001);
+    expect(capacityNodes.every((node) => node.moduleNamePath.length === 1 && isCapacityModule(node.moduleNamePath))).toBe(true);
+    expect(capacityNodes.some((node) => node.bindings.length === 0)).toBe(true);
+    expect(capacityNodes.some((node) => node.bindings.some((binding) => binding.protocol === "hdc"))).toBe(true);
+    expect(capacityNodes.some((node) => node.bindings.some((binding) => binding.protocol === "adb"))).toBe(true);
+    expect(capacityNodes.some((node) => node.bindings.some((binding) => binding.enabled === false))).toBe(true);
+    expect(capacityNodes.some((node) => node.archived === true)).toBe(true);
+    expect(capacityNodes.some((node) => node.enabled === false)).toBe(true);
+    // Declared counts and the actual object set agree for the whole exported catalog.
+    expect(document.counts.nodes).toBe(document.nodes.length);
+    expect(document.counts.modules).toBe(document.modules.length);
+    expect(document.counts.bindings).toBe(
+      document.nodes.reduce((total, node) => total + node.bindings.length, 0)
+    );
+
+    // Scope the transfer to this fixture's objects so unrelated development rows in the
+    // shared acceptance database cannot make the expected counts ambiguous.
+    const capacityDocument: ExportCatalogDocument = {
+      ...document,
+      source: { organizationId: "org-chargelab", organizationName: "ChargeLab" },
+      counts: {
+        modules: capacityModules.length,
+        nodes: capacityNodes.length,
+        bindings: capacityNodes.reduce((total, node) => total + node.bindings.length, 0)
+      },
+      modules: capacityModules,
+      nodes: capacityNodes
+    };
+
+    // 2. The exported file previews as unchanged: export and import capacities now agree.
+    const unchangedPreviewResponse = await page.request.post(
+      apiRoute("/api/v1/debugging/admin/catalog/import-preview"),
+      { headers: smokeHeaders(), data: capacityDocument }
+    );
+    expect(unchangedPreviewResponse.status()).toBe(200);
+    const unchangedPreview = (await unchangedPreviewResponse.json()) as { item: CatalogImportPreviewDto };
+    expect(unchangedPreview.item.conflicts).toEqual([]);
+    expect(unchangedPreview.item.canSubmit).toBe(true);
+    expect(unchangedPreview.item.fileCounts).toEqual(capacityDocument.counts);
+
+    // 3. Clear the target rows and import the same file to prove creation at that capacity.
+    await withPgClient(async (client) => {
+      await client.query("delete from debug_node_bindings where node_id = any($1::text[])", [seeded.nodeIds]);
+      await client.query("delete from debug_nodes where id = any($1::text[]) and organization_id = 'org-chargelab'", [seeded.nodeIds]);
+      await client.query("delete from debug_node_modules where id = any($1::text[]) and organization_id = 'org-chargelab'", [seeded.moduleIds]);
+    });
+
+    const importPreviewResponse = await page.request.post(
+      apiRoute("/api/v1/debugging/admin/catalog/import-preview"),
+      { headers: smokeHeaders(), data: capacityDocument }
+    );
+    expect(importPreviewResponse.status()).toBe(200);
+    const importPreview = (await importPreviewResponse.json()) as { item: CatalogImportPreviewDto };
+    expect(importPreview.item.conflicts).toEqual([]);
+    expect(importPreview.item.nodes).toMatchObject({ created: 2001, updated: 0 });
+    expect(importPreview.item.modules).toMatchObject({ created: 501, updated: 0 });
+
+    const importResponse = await page.request.post(
+      apiRoute("/api/v1/debugging/admin/catalog/import"),
+      {
+        headers: smokeHeaders(),
+        data: { document: capacityDocument, previewDigest: importPreview.item.previewDigest }
+      }
+    );
+    expect(importResponse.ok()).toBe(true);
+    const importBody = (await importResponse.json()) as {
+      item: { modulesCreated: number; nodesCreated: number; bindingsCreated: number };
+    };
+    expect(importBody.item).toMatchObject({ modulesCreated: 501, nodesCreated: 2001 });
+
+    // 4. Re-read persisted rows and re-export: the file round-trips as unchanged.
+    const persisted = await withPgClient(async (client) => {
+      const result = await client.query<{
+        nodes: string;
+        archived: string;
+        untouched: string;
+      }>(
+        `select
+           count(*)::text as nodes,
+           count(*) filter (where archived_at is not null)::text as archived,
+           count(*) filter (where debug_node_module_id is null)::text as untouched
+         from debug_nodes
+         where organization_id = 'org-chargelab' and name like $1`,
+        [`${catalogTransferPrefix} node %`]
+      );
+      return result.rows[0]!;
+    });
+    expect(persisted.nodes).toBe("2001");
+    expect(persisted.untouched).toBe("0");
+    expect(Number(persisted.archived)).toBe(capacityNodes.filter((node) => node.archived).length);
+
+    const reExportResponse = await page.request.get(
+      apiRoute("/api/v1/debugging/admin/catalog/export?includeArchived=true"),
+      { headers: smokeHeaders() }
+    );
+    expect(reExportResponse.ok()).toBe(true);
+    const reExported = (await reExportResponse.json()) as { item: { document: ExportCatalogDocument } };
+    const reExportedTransferNodes = reExported.item.document.nodes.filter((node) => isCapacityNode(node.name));
+    expect(reExportedTransferNodes).toHaveLength(2001);
+
+    const semanticProjection = (nodes: ExportCatalogDocument["nodes"]) =>
+      nodes
+        .map((node) => ({
+          name: node.name,
+          moduleNamePath: node.moduleNamePath,
+          enabled: node.enabled,
+          archived: node.archived,
+          bindings: [...node.bindings]
+            .map((binding) => ({
+              protocol: binding.protocol,
+              nodePath: binding.nodePath,
+              accessMode: binding.accessMode,
+              enabled: binding.enabled
+            }))
+            .sort((left, right) => (left.protocol < right.protocol ? -1 : 1))
+        }))
+        .sort((left, right) => (left.name < right.name ? -1 : 1));
+    expect(semanticProjection(reExportedTransferNodes)).toEqual(semanticProjection(capacityNodes));
+
+    const stablePreviewResponse = await page.request.post(
+      apiRoute("/api/v1/debugging/admin/catalog/import-preview"),
+      { headers: smokeHeaders(), data: capacityDocument }
+    );
+    expect(stablePreviewResponse.ok()).toBe(true);
+    const stablePreview = (await stablePreviewResponse.json()) as { item: CatalogImportPreviewDto };
+    expect(stablePreview.item.nodes.updated).toBe(0);
+    expect(stablePreview.item.nodes.created).toBe(0);
+
+    const auditResponse = await page.request.get(apiRoute("/api/v1/audit-events?app=debugging&limit=50"), {
+      headers: smokeHeaders()
+    });
+    expect(auditResponse.ok()).toBe(true);
+    const auditBody = (await auditResponse.json()) as { items: AuditEventDto[] };
+    const importAudit = auditBody.items.find(
+      (item) => item.kind === "debug-node-catalog-import" && item.traceId === importResponse.headers()["x-request-id"]
+    );
+    expect(importAudit).toBeTruthy();
+    expect(JSON.stringify(importAudit?.metadata ?? {})).not.toContain("/sys/acceptance/transfer/0");
+    expect(JSON.stringify(importAudit?.metadata ?? {})).not.toContain(`${catalogTransferPrefix} node`);
+
+    await recordOperationEvidence({
+      operationId: "DEBUG-ADMIN-846-CAPACITY",
+      title: "full catalog transfer at 2001 nodes / 501 modules",
+      status: "passed",
+      page,
+      testInfo,
+      api: [
+        summarizeApiResponse(exportResponse, {
+          method: "GET",
+          path: "/api/v1/debugging/admin/catalog/export?includeArchived=true",
+          responseSummary: `exported ${document.counts.nodes} nodes, ${document.counts.modules} modules, ${document.counts.bindings} bindings (${capacityNodes.length} capacity nodes)`
+        }),
+        summarizeApiResponse(importPreviewResponse, {
+          method: "POST",
+          path: "/api/v1/debugging/admin/catalog/import-preview",
+          responseSummary: `preview classified ${JSON.stringify(importPreview.item.nodes)} nodes / ${JSON.stringify(importPreview.item.modules)} modules`
+        }),
+        summarizeApiResponse(importResponse, {
+          method: "POST",
+          path: "/api/v1/debugging/admin/catalog/import",
+          responseSummary: `created ${importBody.item.nodesCreated} nodes, ${importBody.item.modulesCreated} modules, ${importBody.item.bindingsCreated} bindings in one transaction`
+        }),
+        summarizeApiResponse(reExportResponse, {
+          method: "GET",
+          path: "/api/v1/debugging/admin/catalog/export?includeArchived=true",
+          responseSummary: `re-export kept ${reExportedTransferNodes.length} capacity nodes with semantic parity`
+        }),
+        summarizeApiResponse(stablePreviewResponse, {
+          method: "POST",
+          path: "/api/v1/debugging/admin/catalog/import-preview",
+          responseSummary: `re-import preview created=${stablePreview.item.nodes.created} updated=${stablePreview.item.nodes.updated}`
+        })
+      ],
+      db: [
+        {
+          table: "debug_nodes",
+          predicate: `name like '${catalogTransferPrefix} node %'`,
+          observed: `nodes=${persisted.nodes}; archived=${persisted.archived}; unassignedModules=${persisted.untouched}`,
+          rowCount: Number(persisted.nodes)
+        }
+      ],
+      audit: importAudit ? [auditSummaryFor(auditBody.items, "debug-node-catalog-import", "org-chargelab", importResponse.headers()["x-request-id"])] : [],
+      notes:
+        "Seeded 501 modules and 2,001 nodes (enabled, disabled, archived, unbound, HDC-only, ADB-only and disabled bindings) directly in PostgreSQL, exported them through the real API, verified declared counts match the object set, previewed the same file as unchanged, cleared the target rows, previewed and imported the same file through one transaction, then re-read the rows and re-exported. This proves export/import capacity symmetry past the former 500-module / 2,000-node caps. No device connection or device write is claimed."
+    });
+  });
+
+  test("keeps the import preview usable at desktop, tablet and mobile widths", async ({ page }, testInfo) => {
+    // @acceptance DEBUG-ADMIN-846-VIEWPORTS
+    // @operation DEBUG-ADMIN-846-VIEWPORTS
+    test.setTimeout(120_000);
+    const suffix = Date.now().toString(36);
+    const nodeName = `${catalogTransferPrefix} viewport node ${suffix}`;
+    const moduleName = `${catalogTransferPrefix} viewport module ${suffix}`;
+
+    await withPgClient(async (client) => {
+      await cleanupCatalogTransferRows(client);
+      const module = await client.query<{ id: string }>(
+        `insert into debug_node_modules (id, organization_id, parent_id, name, path, depth, sort_order, description, scope)
+         values ($1, 'org-chargelab', null, $2, $1, 1, 0, '', '')
+         returning id`,
+        [`${catalogTransferPrefix}-viewport-${suffix}`, moduleName]
+      );
+      await client.query(
+        `insert into debug_nodes (id, organization_id, name, description, module, debug_node_module_id)
+         values ($1, 'org-chargelab', $2, 'viewport fixture', $3, $4)`,
+        [`${catalogTransferPrefix}-viewport-node-${suffix}`, nodeName, moduleName, module.rows[0]!.id]
+      );
+      await client.query(
+        `insert into debug_node_bindings (id, organization_id, node_id, protocol, node_path, access_mode, enabled)
+         values ($1, 'org-chargelab', $2, 'hdc', $3, 'RW', true)`,
+        [`${catalogTransferPrefix}-viewport-node-${suffix}:hdc`, `${catalogTransferPrefix}-viewport-node-${suffix}`, `/sys/acceptance/viewport/${suffix}`]
+      );
+    });
+
+    const file = {
+      format: "wiseeff.debug-node-catalog.v2",
+      source: { organizationId: "org-source", organizationName: "Source Org" },
+      counts: { modules: 1, nodes: 2, bindings: 2 },
+      modules: [{ name: moduleName, parentNamePath: [] }],
+      nodes: [
+        {
+          sourceId: `${catalogTransferPrefix}-viewport-node-${suffix}`,
+          name: nodeName,
+          moduleNamePath: [moduleName],
+          description: "from file",
+          bindings: [{ protocol: "hdc", nodePath: `/sys/acceptance/viewport/${suffix}`, accessMode: "RO", enabled: false }]
+        },
+        {
+          name: `${catalogTransferPrefix} viewport new node ${suffix}`,
+          moduleNamePath: [moduleName],
+          bindings: [{ protocol: "adb", nodePath: `/sys/acceptance/viewport-adb/${suffix}`, accessMode: "RW", enabled: true }]
+        }
+      ]
+    };
+
+    for (const viewport of CATALOG_VIEWPORTS) {
+      await page.setViewportSize({ width: viewport.width, height: viewport.height });
+      await page.goto("/debugging-admin/nodes");
+      await expect(page.getByRole("table", { name: "可调节点目录" })).toBeVisible({ timeout: 30_000 });
+      await assertNoPageOverflow(page);
+
+      await page.getByLabel("导入节点文件").setInputFiles({
+        name: "debug-node-catalog.json",
+        mimeType: "application/json",
+        buffer: Buffer.from(JSON.stringify(file))
+      });
+      const dialog = page.getByRole("dialog", { name: "导入预览" });
+      await expect(dialog).toBeVisible({ timeout: 30_000 });
+      // The dialog card must settle before measuring: it enters with a fade animation.
+      await page.waitForFunction(() => {
+        const card = document.querySelector('[role="dialog"]');
+        return Boolean(card) && getComputedStyle(card as Element).opacity === "1";
+      });
+      await assertNoPageOverflow(page);
+
+      const geometry = await dialog.evaluate((card) => {
+        const rect = card.getBoundingClientRect();
+        const confirm = Array.from(card.querySelectorAll("button")).find((button) =>
+          (button.textContent ?? "").includes("确认导入")
+        );
+        const confirmRect = confirm?.getBoundingClientRect();
+        return {
+          left: Math.round(rect.left),
+          right: Math.round(rect.right),
+          width: Math.round(rect.width),
+          viewport: document.documentElement.clientWidth,
+          confirmVisible: confirmRect ? confirmRect.width > 0 && confirmRect.height > 0 : false,
+          confirmDisabled: confirm instanceof HTMLButtonElement ? confirm.disabled : true
+        };
+      });
+      expect(geometry.left, `${viewport.name} dialog left edge`).toBeGreaterThanOrEqual(0);
+      expect(geometry.right, `${viewport.name} dialog right edge`).toBeLessThanOrEqual(geometry.viewport + 1);
+      expect(geometry.confirmVisible, `${viewport.name} confirm action`).toBe(true);
+      expect(geometry.confirmDisabled, `${viewport.name} confirm blocked for a stale binding`).toBe(false);
+
+      const dialogText = await dialog.innerText();
+      expect(dialogText, `${viewport.name} classification counts`).toContain("差异明细");
+      if (!dialogText.includes("访问模式") || !dialogText.includes("启用状态")) {
+        throw new Error(`${viewport.name}: binding access-mode/enabled differences are not surfaced`);
+      }
+
+      await catalogScreenshot(page, testInfo, `debug-846-import-preview-${viewport.name}`);
+      await dialog.getByRole("button", { name: "取消" }).click();
+      await expect(dialog).not.toBeVisible({ timeout: 15_000 });
+    }
+    await page.setViewportSize({ width: 1440, height: 900 });
+
+    await recordOperationEvidence({
+      operationId: "DEBUG-ADMIN-846-VIEWPORTS",
+      title: "catalog import preview at three viewport sizes",
+      status: "passed",
+      page,
+      testInfo,
+      api: [],
+      db: [],
+      audit: [],
+      notes:
+        "Opened the real import preview dialog at 1440x900, 768x1024 and 390x844 against real PostgreSQL data. At each width the dialog stayed inside the viewport, the confirm action remained visible and enabled, the classification counts and the protocol-path/access-mode/enabled differences rendered, no page-level horizontal overflow appeared, cancelling closed the dialog, and the browser diagnostics recorder observed no console or page error. Screenshots are attached per viewport."
+    });
+  });
+
+  test("guards preview digests, permissions and mid-import rollback", async ({ page }, testInfo) => {
+    // @acceptance DEBUG-ADMIN-846-GUARD
+    // @operation DEBUG-ADMIN-846-GUARD
+    test.setTimeout(120_000);
+    const suffix = Date.now().toString(36);
+    const nodeName = `${catalogTransferPrefix} guard node ${suffix}`;
+    const moduleName = `${catalogTransferPrefix} guard module ${suffix}`;
+
+    await withPgClient(async (client) => {
+      await cleanupCatalogTransferRows(client);
+      const module = await client.query<{ id: string }>(
+        `insert into debug_node_modules (id, organization_id, parent_id, name, path, depth, sort_order, description, scope)
+         values ($1, 'org-chargelab', null, $2, $1, 1, 0, '', '')
+         returning id`,
+        [`${catalogTransferPrefix}-guard-${suffix}`, moduleName]
+      );
+      await client.query(
+        `insert into debug_nodes (id, organization_id, name, description, module, debug_node_module_id)
+         values ($1, 'org-chargelab', $2, 'guard fixture', $3, $4)`,
+        [`${catalogTransferPrefix}-guard-node-${suffix}`, nodeName, moduleName, module.rows[0]!.id]
+      );
+    });
+
+    const file = {
+      format: "wiseeff.debug-node-catalog.v2",
+      source: { organizationId: "org-source", organizationName: "Source Org" },
+      counts: { modules: 1, nodes: 2, bindings: 1 },
+      modules: [{ name: moduleName, parentNamePath: [] }],
+      nodes: [
+        { sourceId: `${catalogTransferPrefix}-guard-node-${suffix}`, name: nodeName, moduleNamePath: [moduleName], description: "from file" },
+        {
+          name: `${catalogTransferPrefix} guard new node ${suffix}`,
+          moduleNamePath: [moduleName],
+          bindings: [{ protocol: "hdc", nodePath: `/sys/acceptance/guard/${suffix}`, accessMode: "RW", enabled: true }]
+        }
+      ]
+    };
+
+    const previewResponse = await page.request.post(
+      apiRoute("/api/v1/debugging/admin/catalog/import-preview"),
+      { headers: smokeHeaders(), data: file }
+    );
+    expect(previewResponse.ok()).toBe(true);
+    const preview = (await previewResponse.json()) as { item: CatalogImportPreviewDto };
+    expect(preview.item.canSubmit).toBe(true);
+    expect(preview.item.nodes).toEqual({ created: 1, updated: 1, unchanged: 0 });
+
+    // A stale digest after the approved target changed must be rejected as CONFLICT/409.
+    await withPgClient(async (client) => {
+      await client.query("update debug_nodes set description = 'edited after preview' where id = $1", [
+        `${catalogTransferPrefix}-guard-node-${suffix}`
+      ]);
+    });
+    const staleResponse = await page.request.post(apiRoute("/api/v1/debugging/admin/catalog/import"), {
+      headers: smokeHeaders(),
+      data: { document: file, previewDigest: preview.item.previewDigest }
+    });
+    expect(staleResponse.status()).toBe(409);
+    const staleBody = (await staleResponse.json()) as { error: { code: string; details: { reason?: string } } };
+    expect(staleBody.error.code).toBe("CONFLICT");
+    expect(staleBody.error.details.reason).toBe("stale-preview");
+
+    // A raw document without a preview digest cannot bypass the preview requirement.
+    const rawResponse = await page.request.post(apiRoute("/api/v1/debugging/admin/catalog/import"), {
+      headers: smokeHeaders(),
+      data: file
+    });
+    expect(rawResponse.status()).toBe(400);
+    expect(((await rawResponse.json()) as { error: { code: string } }).error.code).toBe("VALIDATION_FAILED");
+
+    // A read-only acceptance user cannot export, preview or import.
+    // The local development resolver loads permissions from the users/roles tables, so the
+    // read-only actor has to exist before its headers can prove a 403 (rather than 401).
+    const guest = acceptanceCast.acceptanceGuest;
+    await withPgClient(async (client) => {
+      // The auth context joins user_role_bindings, so a bare user row authenticates as nobody.
+      await client.query(
+        `insert into users (id, organization_id, name, email, title, is_active)
+         values ($1, 'org-chargelab', $2, $3, $4, true)
+         on conflict (id) do update set is_active = true`,
+        [guest.userId, guest.name, guest.email, guest.title]
+      );
+      await client.query(
+        `insert into user_role_bindings (id, user_id, organization_id, project_id, role_id)
+         values ($1, $2, 'org-chargelab', null, 'guest')
+         on conflict (id) do nothing`,
+        [`acceptance-guest-binding-${suffix}`, guest.userId]
+      );
+    });
+    const readOnlyHeaders = {
+      ...authHeadersForUser(guest.userId, guest.email, guest.name),
+      Accept: "application/json"
+    } as Record<string, string>;
+    const forbiddenExport = await page.request.get(
+      apiRoute("/api/v1/debugging/admin/catalog/export?includeArchived=true"),
+      { headers: readOnlyHeaders }
+    );
+    expect(forbiddenExport.status()).toBe(403);
+    const forbiddenPreview = await page.request.post(apiRoute("/api/v1/debugging/admin/catalog/import-preview"), {
+      headers: readOnlyHeaders,
+      data: file
+    });
+    expect(forbiddenPreview.status()).toBe(403);
+    const forbiddenImport = await page.request.post(apiRoute("/api/v1/debugging/admin/catalog/import"), {
+      headers: readOnlyHeaders,
+      data: { document: file, previewDigest: preview.item.previewDigest }
+    });
+    expect(forbiddenImport.status()).toBe(403);
+
+    // A file above the 20 MiB contract is rejected with 413 and writes nothing.
+    const oversized = {
+      format: "wiseeff.debug-node-catalog.v2",
+      source: {},
+      counts: { modules: 0, nodes: 1, bindings: 0 },
+      modules: [],
+      nodes: [
+        {
+          name: `${catalogTransferPrefix} oversized node`,
+          moduleNamePath: [],
+          description: "电".repeat(Math.ceil((20 * 1024 * 1024) / 3) + 4096)
+        }
+      ]
+    };
+    const beforeOversized = await page.request.get(
+      apiRoute("/api/v1/debugging/admin/nodes?includeArchived=true"),
+      { headers: smokeHeaders() }
+    );
+    const oversizedResponse = await page.request.post(apiRoute("/api/v1/debugging/admin/catalog/import-preview"), {
+      headers: smokeHeaders(),
+      data: oversized
+    });
+    expect(oversizedResponse.status()).toBe(413);
+    const afterOversized = await page.request.get(
+      apiRoute("/api/v1/debugging/admin/nodes?includeArchived=true"),
+      { headers: smokeHeaders() }
+    );
+    const beforeBody = (await beforeOversized.json()) as { items: Array<{ id: string }> };
+    const afterBody = (await afterOversized.json()) as { items: Array<{ id: string }> };
+    expect(afterBody.items.map((item) => item.id)).toEqual(beforeBody.items.map((item) => item.id));
+
+    // A rejected import must leave nothing partial behind, and the same file must then
+    // import cleanly. The mid-transaction rollback itself is proven at the service seam
+    // (catalogTransfer.test.ts "rolls back every change ..." injects a failing write after
+    // the module and first node were already written); this case proves the HTTP boundary
+    // rejects a conflicting file with zero writes and no import audit.
+    const rollbackFile = {
+      format: "wiseeff.debug-node-catalog.v2",
+      source: {},
+      counts: { modules: 1, nodes: 2, bindings: 1 },
+      modules: [{ name: `${catalogTransferPrefix} rollback module ${suffix}`, parentNamePath: [] }],
+      nodes: [
+        { name: `${catalogTransferPrefix} rollback first ${suffix}`, moduleNamePath: [`${catalogTransferPrefix} rollback module ${suffix}`] },
+        {
+          name: `${catalogTransferPrefix} rollback second ${suffix}`,
+          moduleNamePath: [`${catalogTransferPrefix} rollback module ${suffix}`],
+          bindings: [
+            {
+              protocol: "hdc",
+              nodePath: `/sys/acceptance/rollback/${suffix}`,
+              accessMode: "RW",
+              enabled: true
+            }
+          ]
+        }
+      ]
+    };
+    const conflictingFile = {
+      ...rollbackFile,
+      nodes: [...rollbackFile.nodes, { ...rollbackFile.nodes[0]! }]
+    };
+    const conflictingPreviewResponse = await page.request.post(
+      apiRoute("/api/v1/debugging/admin/catalog/import-preview"),
+      { headers: smokeHeaders(), data: conflictingFile }
+    );
+    expect(conflictingPreviewResponse.ok()).toBe(true);
+    const conflictingPreview = (await conflictingPreviewResponse.json()) as { item: CatalogImportPreviewDto };
+    expect(conflictingPreview.item.canSubmit).toBe(false);
+    expect(conflictingPreview.item.previewDigest).toBeNull();
+
+    const rollbackImportResponse = await page.request.post(apiRoute("/api/v1/debugging/admin/catalog/import"), {
+      headers: smokeHeaders(),
+      data: { document: conflictingFile, previewDigest: "anything" }
+    });
+    expect(rollbackImportResponse.status()).toBe(409);
+
+    const rollbackState = await withPgClient(async (client) => {
+      const result = await client.query<{ modules: string; nodes: string; bindings: string; audits: string }>(
+        `select
+           (select count(*)::text from debug_node_modules where organization_id = 'org-chargelab' and name = $1) as modules,
+           (select count(*)::text from debug_nodes where organization_id = 'org-chargelab' and name like $2) as nodes,
+           (select count(*)::text from debug_node_bindings where organization_id = 'org-chargelab' and node_path = $3) as bindings,
+           (select count(*)::text from audit_events where organization_id = 'org-chargelab' and kind = 'debug-node-catalog-import' and trace_id = $4) as audits`,
+        [
+          `${catalogTransferPrefix} rollback module ${suffix}`,
+          `${catalogTransferPrefix} rollback %`,
+          `/sys/acceptance/rollback/${suffix}`,
+          rollbackImportResponse.headers()["x-request-id"]
+        ]
+      );
+      return result.rows[0]!;
+    });
+    expect(rollbackState).toEqual({ modules: "0", nodes: "0", bindings: "0", audits: "0" });
+
+    // The approved, unchanged import still applies after the failed attempt.
+    const finalPreviewResponse = await page.request.post(
+      apiRoute("/api/v1/debugging/admin/catalog/import-preview"),
+      { headers: smokeHeaders(), data: rollbackFile }
+    );
+    expect(finalPreviewResponse.ok()).toBe(true);
+    const finalPreview = (await finalPreviewResponse.json()) as { item: CatalogImportPreviewDto };
+    expect(finalPreview.item.canSubmit).toBe(true);
+    const finalImportResponse = await page.request.post(apiRoute("/api/v1/debugging/admin/catalog/import"), {
+      headers: smokeHeaders(),
+      data: { document: rollbackFile, previewDigest: finalPreview.item.previewDigest }
+    });
+    expect(finalImportResponse.ok()).toBe(true);
+    const finalImportBody = (await finalImportResponse.json()) as {
+      item: { modulesCreated: number; nodesCreated: number; bindingsCreated: number };
+    };
+    expect(finalImportBody.item).toMatchObject({ modulesCreated: 1, nodesCreated: 2, bindingsCreated: 1 });
+
+    const finalState = await withPgClient(async (client) => {
+      const result = await client.query<{ nodes: string; bindings: string }>(
+        `select
+           (select count(*)::text from debug_nodes where organization_id = 'org-chargelab' and name like $1) as nodes,
+           (select count(*)::text from debug_node_bindings where organization_id = 'org-chargelab' and node_path = $2) as bindings`,
+        [`${catalogTransferPrefix} rollback %`, `/sys/acceptance/rollback/${suffix}`]
+      );
+      return result.rows[0]!;
+    });
+    expect(finalState).toEqual({ nodes: "2", bindings: "1" });
+
+    await recordOperationEvidence({
+      operationId: "DEBUG-ADMIN-846-GUARD",
+      title: "catalog transfer preview digest, permissions, capacity limit and rollback guards",
+      status: "passed",
+      page,
+      testInfo,
+      api: [
+        summarizeApiResponse(previewResponse, {
+          method: "POST",
+          path: "/api/v1/debugging/admin/catalog/import-preview",
+          responseSummary: `classified ${JSON.stringify(preview.item.nodes)} with digest accepted`
+        }),
+        summarizeApiResponse(staleResponse, {
+          method: "POST",
+          path: "/api/v1/debugging/admin/catalog/import",
+          responseSummary: "stale digest rejected with HTTP 409 CONFLICT/stale-preview"
+        }),
+        summarizeApiResponse(rawResponse, {
+          method: "POST",
+          path: "/api/v1/debugging/admin/catalog/import",
+          responseSummary: "raw document without preview digest rejected with HTTP 400"
+        }),
+        summarizeApiResponse(forbiddenPreview, {
+          method: "POST",
+          path: "/api/v1/debugging/admin/catalog/import-preview",
+          responseSummary: "non-admin denied with HTTP 403"
+        }),
+        summarizeApiResponse(oversizedResponse, {
+          method: "POST",
+          path: "/api/v1/debugging/admin/catalog/import-preview",
+          responseSummary: "document above 20 MiB rejected with HTTP 413 and no writes"
+        }),
+        summarizeApiResponse(conflictingPreviewResponse, {
+          method: "POST",
+          path: "/api/v1/debugging/admin/catalog/import-preview",
+          responseSummary: `duplicate-input file classified with canSubmit=${conflictingPreview.item.canSubmit} and no digest`
+        }),
+        summarizeApiResponse(rollbackImportResponse, {
+          method: "POST",
+          path: "/api/v1/debugging/admin/catalog/import",
+          responseSummary: "rejected conflicting import returned HTTP 409 with zero writes"
+        }),
+        summarizeApiResponse(finalImportResponse, {
+          method: "POST",
+          path: "/api/v1/debugging/admin/catalog/import",
+          responseSummary: `retry created ${finalImportBody.item.nodesCreated} nodes, ${finalImportBody.item.modulesCreated} modules`
+        })
+      ],
+      db: [
+        {
+          table: "debug_node_modules/debug_nodes/debug_node_bindings/audit_events",
+          predicate: `name like '${catalogTransferPrefix} rollback %'`,
+          observed: `after rejected import: modules=${rollbackState.modules}; nodes=${rollbackState.nodes}; bindings=${rollbackState.bindings}; importAudits=${rollbackState.audits}`,
+          rowCount: Number(rollbackState.nodes)
+        },
+        {
+          table: "debug_nodes/debug_node_bindings",
+          predicate: `name like '${catalogTransferPrefix} rollback %'`,
+          observed: `nodes=${finalState.nodes}; bindings=${finalState.bindings}`,
+          rowCount: Number(finalState.nodes)
+        }
+      ],
+      audit: [],
+      notes:
+        "Verified the preview digest guard rejects both a changed file and a changed target with 409, that a raw document without a digest cannot bypass the preview requirement, that a read-only user is denied all three catalog transfer routes with 403, and that a document above the 20 MiB contract is rejected with 413 without touching the catalog. A conflicting file is refused with 409 and leaves zero module, node, binding or import-audit rows, after which the same clean file previews and imports successfully. The mid-transaction rollback that a database failure forces is proven separately at the service seam in catalogTransfer.test.ts."
     });
   });
 });

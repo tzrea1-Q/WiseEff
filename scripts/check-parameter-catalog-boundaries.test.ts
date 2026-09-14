@@ -25,6 +25,7 @@ import {
   postCutoverRelocationRecordPath,
   runtimeTopologyRelocationRecordPath,
 } from "./parameter-catalog-allowlist/runtimeTopologyRelocation";
+import { debuggingTransferRelocationRecordPath } from "./parameter-catalog-allowlist/debuggingTransferRelocation";
 
 const originalRelocationRecord = JSON.parse(
   await readFile(`${process.cwd()}/${exactRelocationRecordPath}`, "utf8"),
@@ -34,6 +35,9 @@ const runtimeTopologyRelocationRecord = JSON.parse(
 ) as { files: Array<{ file: string; pairs: Array<{ old: { id: string } }> }> };
 const postCutoverRelocationRecord = JSON.parse(
   await readFile(`${process.cwd()}/${postCutoverRelocationRecordPath}`, "utf8"),
+) as { files: Array<{ file: string; pairs: Array<{ old: { id: string } }> }> };
+const debuggingTransferRelocationRecord = JSON.parse(
+  await readFile(`${process.cwd()}/${debuggingTransferRelocationRecordPath}`, "utf8"),
 ) as { files: Array<{ file: string; pairs: Array<{ old: { id: string } }> }> };
 
 describe("parameter catalog boundary checker", () => {
@@ -784,18 +788,36 @@ describe("parameter catalog boundary checker", () => {
       const originalIds = new Set(originalRelocationRecord.pairs.map((pair) => pair.old.id));
       const runtimeIds = new Set(runtimeTopologyRelocationRecord.files.flatMap((file) => file.pairs.map((pair) => pair.old.id)));
       const postCutoverIds = new Set(postCutoverRelocationRecord.files.flatMap((file) => file.pairs.map((pair) => pair.old.id)));
+      const debuggingTransferIds = new Set(
+        debuggingTransferRelocationRecord.files.flatMap((file) => file.pairs.map((pair) => pair.old.id)),
+      );
       const originalRelocations = report.relocations.filter((entry) => originalIds.has(entry.id));
       const runtimeRelocations = report.relocations.filter((entry) => runtimeIds.has(entry.id));
       const postCutoverRelocations = report.relocations.filter((entry) => postCutoverIds.has(entry.id));
+      const debuggingTransferRelocations = report.relocations.filter((entry) => debuggingTransferIds.has(entry.id));
       expect(originalRelocations).toHaveLength(23);
       expect(runtimeRelocations).toHaveLength(16);
       expect(postCutoverRelocations).toHaveLength(29);
       expect(runtimeRelocations.filter((entry) => entry.observed.file === "server/modules/parameter-topology/ingestService.ts")).toHaveLength(15);
       expect(runtimeRelocations.filter((entry) => entry.observed.file === "server/modules/parameter-topology/schemas.ts")).toHaveLength(1);
       expect(postCutoverRelocations.every((entry) => entry.observed.file === "server/modules/parameter-topology/postCutoverWorkflow.integration.test.ts")).toBe(true);
-      expect(new Set(report.relocations.map((entry) => entry.id)).size).toBe(68);
-      expect(new Set(report.relocations.map((entry) => entry.observed.id)).size).toBe(68);
-      expect(new Set(report.relocations.flatMap((entry) => [entry.id, entry.observed.id])).size).toBe(136);
+      // Issue #846 added one reviewed record: four S12-DBG occurrences whose byte offsets
+      // moved when the debugging catalog transfer added a route handler and repository
+      // functions above them. No new allowance is granted; each pair is an existing
+      // allowance restated at its new position.
+      expect(debuggingTransferRelocations).toHaveLength(4);
+      expect(
+        debuggingTransferRelocations.every((entry) =>
+          [
+            "server/modules/debugging/routes.ts",
+            "server/modules/debugging/catalogSplitRepository.ts",
+          ].includes(entry.observed.file),
+        ),
+      ).toBe(true);
+      expect(debuggingTransferRelocations.every((entry) => entry.id !== entry.observed.id)).toBe(true);
+      expect(new Set(report.relocations.map((entry) => entry.id)).size).toBe(72);
+      expect(new Set(report.relocations.map((entry) => entry.observed.id)).size).toBe(72);
+      expect(new Set(report.relocations.flatMap((entry) => [entry.id, entry.observed.id])).size).toBe(144);
       expect(report.summary).toEqual({
         violations: 3_513,
         allowlisted: 3_513,

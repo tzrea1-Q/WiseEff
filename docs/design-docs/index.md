@@ -37,6 +37,7 @@ The [technical entry](full-stack-architecture.md) and [test-design entry](testin
 | Locked design | [Organization Administration](2026-08-19-organization-administration-design.md) | Home-organization tenant operations: membership, onboarding, display name. Distinct from Organization-scoped governance (ADR-0037). |
 | Locked decisions | [Parameter governance deferred questions](2026-07-30-parameter-governance-deferred-questions.md) | D1–D8 plus TD-117 / TD-063 locked 2026-08-18 (ADR-0032–0035). Implementation input only; no code in that lock. |
 | Current | [DTS Follow-up Scheme (Hardening + Import)](2026-07-15-dts-followup-scheme.md) | Post–P0–P3.1 follow-up scheme: hardening closeout (B) and import-wizard TD-035 alignment (C); Git publish deferred. |
+| Current | [Debug Node Catalog Transfer](debug-node-catalog-transfer.md) | Full `wiseeff.debug-node-catalog.v2` export, presence-aware v1/v2 import semantics, server-side preview classification, preview-digest concurrency guard, atomic audited merge, and the 20 MiB document contract. |
 | Current | [Table Column Multi-Select Filter UX](ux-table-column-filter.md) | Standard header funnel + checkbox filter (`ColumnFilter`); reuse for all similar table column filters. |
 | Current | [UI Design System](ui-design-system.md) | Operational visual standard: design tokens, component contracts, interaction states, motion, layout, and content language for every product surface. |
 

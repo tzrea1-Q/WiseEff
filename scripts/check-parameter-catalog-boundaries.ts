@@ -34,6 +34,7 @@ import {
   applyReviewedPostCutoverRelocation,
   applyReviewedRuntimeTopologyRelocation,
 } from "./parameter-catalog-allowlist/runtimeTopologyRelocation";
+import { applyReviewedDebuggingTransferRelocation } from "./parameter-catalog-allowlist/debuggingTransferRelocation";
 import {
   allowlistShardSchema,
   boundaryViolationFixtureSchema,
@@ -366,9 +367,21 @@ export async function checkParameterCatalogBoundaries(
     runtimeTopologyRelocated.violations,
     [...relocated.relocations, ...runtimeTopologyRelocated.relocations],
   );
+  const debuggingTransferRelocated = await applyReviewedDebuggingTransferRelocation(
+    repoRoot,
+    fixture,
+    allowlist.entries,
+    postCutoverRelocated.violations,
+    [...relocated.relocations, ...runtimeTopologyRelocated.relocations, ...postCutoverRelocated.relocations],
+  );
   return {
-    ...compareBoundaryInventory(postCutoverRelocated.violations, allowlist.entries, fixture.violations),
-    relocations: [...relocated.relocations, ...runtimeTopologyRelocated.relocations, ...postCutoverRelocated.relocations],
+    ...compareBoundaryInventory(debuggingTransferRelocated.violations, allowlist.entries, fixture.violations),
+    relocations: [
+      ...relocated.relocations,
+      ...runtimeTopologyRelocated.relocations,
+      ...postCutoverRelocated.relocations,
+      ...debuggingTransferRelocated.relocations,
+    ],
   };
 }
 

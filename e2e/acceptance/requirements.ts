@@ -468,6 +468,24 @@ export const acceptanceRequirements: AcceptanceRequirement[] = [
     required: true
   },
   {
+    id: "DEBUG-ADMIN-846-CAPACITY",
+    workflow: "E",
+    title: "A complete org node catalog of 2,001 nodes and 501 modules exports, previews, imports atomically, and re-exports with semantic parity, so export and import capacity agree.",
+    required: true
+  },
+  {
+    id: "DEBUG-ADMIN-846-VIEWPORTS",
+    workflow: "E",
+    title: "The node-catalog import preview dialog stays usable and complete at desktop, tablet and mobile widths.",
+    required: true
+  },
+  {
+    id: "DEBUG-ADMIN-846-GUARD",
+    workflow: "E",
+    title: "Catalog transfer enforces preview digests, admin-only access, the 20 MiB document contract, and full rollback when a mid-import write fails.",
+    required: true
+  },
+  {
     id: "BRIDGE-WIN-001",
     workflow: "E",
     title: "Windows-first local bridge panel covers missing/pairing/startup/online states with same-origin download CTA.",
