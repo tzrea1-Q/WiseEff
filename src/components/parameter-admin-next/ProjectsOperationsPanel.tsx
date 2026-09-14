@@ -111,7 +111,14 @@ export function ProjectsOperationsPanel({
       listConfigRevisions: (projectId: string, configSetId: string) =>
         application.listConfigRevisions(projectId, configSetId),
       validateRevision: (projectId: string, revisionId: string) =>
-        application.validateRevision(projectId, revisionId)
+        application.validateRevision(projectId, revisionId),
+      listBindings: (projectId: string, revisionId: string) =>
+        application.listBindings(projectId, revisionId),
+      createBindingDraft: (
+        projectId: string,
+        bindingId: string,
+        input: Parameters<typeof application.createBindingDraft>[2]
+      ) => application.createBindingDraft(projectId, bindingId, input)
     }),
     [application]
   );

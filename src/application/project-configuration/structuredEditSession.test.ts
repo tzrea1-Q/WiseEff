@@ -216,6 +216,34 @@ describe("createStructuredEditSession", () => {
     expect(session.submitStatus).toMatch(/已提交变更请求/);
   });
 
+  it("writes catalog official values through catalogSave and does not call structured edits", async () => {
+    const storage = createMemoryStorage();
+    const session = createStructuredEditSession({ storage, now: () => "2026-01-01T00:00:00.000Z" });
+    session.setStructure(NODES, "file-board");
+    await session.hydrate(SCOPE);
+    session.change(
+      { fileId: "file-board", nodePath: "board", propertyName: "model" },
+      { rawText: "24", normalizedValue: "24", valid: true }
+    );
+    session.setReason("official save");
+    const submitStructuredEdits = vi.fn();
+    const catalogSave = vi.fn().mockResolvedValue({
+      savedKeys: ["file-board::board::model"],
+      currentValueId: "ppv_24"
+    });
+    const round = await session.submit({
+      projectId: SCOPE.projectId,
+      fileId: SCOPE.fileId,
+      fileName: "aurora-board.dts",
+      dtsRepository: { submitStructuredEdits },
+      catalogSave
+    });
+    expect(submitStructuredEdits).not.toHaveBeenCalled();
+    expect(round.status).toBe("canonical-project-value");
+    expect(session.submitStatus).toMatch(/正式项目值/);
+    expect(session.rows).toEqual([]);
+  });
+
   it("preserves drafts when submitStructuredEdits fails", async () => {
     const session = createStructuredEditSession({ storage: createMemoryStorage() });
     session.setStructure(NODES, "file-board");

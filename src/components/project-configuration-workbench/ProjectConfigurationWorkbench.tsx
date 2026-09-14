@@ -103,7 +103,10 @@ export type ProjectConfigurationWorkbenchProps = {
    * Optional topology seam for config-set revision list/select/validate.
    * Omit in unit tests that do not exercise the gate; the operations surface must pass it.
    */
-  topologyRepository?: Pick<ParameterTopologyRepository, "listConfigRevisions" | "validateRevision">;
+  topologyRepository?: Pick<
+    ParameterTopologyRepository,
+    "listConfigRevisions" | "validateRevision" | "listBindings" | "createBindingDraft"
+  >;
 };
 
 export function ProjectConfigurationWorkbench({
@@ -1182,7 +1185,39 @@ export function ProjectConfigurationWorkbench({
         projectId: project.id,
         fileId: selectedMember.fileId,
         fileName: selectedMember.fileName,
-        dtsRepository
+        dtsRepository,
+        catalogSave: topologyRepository
+          ? async (rows, reason) => {
+              let revisionId = revisionGate.selectedRevisionId;
+              if (!revisionId && selectedConfigSet) {
+                const revisions = await topologyRepository.listConfigRevisions(project.id, selectedConfigSet.id);
+                revisionId = revisions.find((item) => item.status === "resolved")?.id ?? revisions[0]?.id ?? null;
+              }
+              if (!revisionId) return null;
+              const bindings = await topologyRepository.listBindings(project.id, revisionId);
+              const row = rows[0];
+              if (!row) return null;
+              const matches = bindings.filter((item) => item.propertyKey === row.propertyName);
+              const catalogMatches = matches.filter(
+                (item) => item.id.startsWith("pbind_") || Boolean(item.definitionId)
+              );
+              const unique = catalogMatches.length === 1 ? catalogMatches[0] : null;
+              if (!unique) return null;
+              const integer = row.normalizedValue.replace(/[<>;]/g, "").trim();
+              const saved = await topologyRepository.createBindingDraft(project.id, unique.id, {
+                baseRevisionId: revisionId,
+                action: "set",
+                reason,
+                targetValue: /^-?\d+$/.test(integer)
+                  ? { kind: "cells", bits: 32, groups: [[{ kind: "integer", raw: integer, value: integer }]] }
+                  : { kind: "strings", values: [integer] }
+              });
+              if (saved.writeTarget.role !== "canonical-project-value") {
+                throw new Error("工作台保存未写入正式项目值。");
+              }
+              return { savedKeys: [row.key], currentValueId: saved.draftId };
+            }
+          : undefined
       });
       workspaceLoadSession.retryMembers();
       workspaceLoadSession.retryStructure();
@@ -1191,7 +1226,18 @@ export function ProjectConfigurationWorkbench({
     } catch {
       // submitError is projected from the session snapshot
     }
-  }, [canEdit, dtsRepository, project.id, selectedMember, structuredEditSession, submittingEdits, workspaceLoadSession]);
+  }, [
+    canEdit,
+    dtsRepository,
+    project.id,
+    revisionGate.selectedRevisionId,
+    selectedConfigSet,
+    selectedMember,
+    structuredEditSession,
+    submittingEdits,
+    topologyRepository,
+    workspaceLoadSession
+  ]);
 
   const unifiedDiffText = useMemo(() => {
     if (canvasMode !== "unified-diff" || !historySource) return "";
