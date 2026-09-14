@@ -131,6 +131,8 @@ export type GovernanceProposalRecord = {
   readonly submittedByPersonId: string | null;
   readonly acceptedByPersonId: string | null;
   readonly publicationIntentRef: string | null;
+  /** Creation time; the list is ordered newest first by it. */
+  readonly createdAt?: string;
 };
 
 export type ProposalList = {
@@ -230,6 +232,8 @@ export type ListProposalsQuery = {
   readonly organizationId: string;
   readonly observedCatalogReleaseId: string;
   readonly authScope: GovernanceQueryAuthScope;
+  /** Bounded page size; the proposal panel pages this list. */
+  readonly limit?: number;
 };
 
 export type GetProposalQuery = {

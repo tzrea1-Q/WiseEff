@@ -191,6 +191,8 @@ test.describe("canonical parameter catalog governance interactions", () => {
       await expect(catalogPage(page)).toBeVisible();
       await expect(page.getByRole("region", { name: "定义修订" })).toBeVisible();
     }
+    // The list is newest-first and bounded, so this run's draft is the first
+    // actionable row. Submitting exactly one row keeps the operation scoped.
     await page
       .getByRole("region", { name: "定义修订" })
       .getByRole("button", { name: "提交修订" })

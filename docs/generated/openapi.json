@@ -22225,6 +22225,9 @@
                                 "string",
                                 "null"
                               ]
+                            },
+                            "moduleId": {
+                              "type": "string"
                             }
                           },
                           "required": [
@@ -22423,6 +22426,9 @@
                               "string",
                               "null"
                             ]
+                          },
+                          "moduleId": {
+                            "type": "string"
                           }
                         },
                         "required": [
@@ -22689,6 +22695,9 @@
                                 "string",
                                 "null"
                               ]
+                            },
+                            "moduleId": {
+                              "type": "string"
                             }
                           },
                           "required": [
@@ -22990,6 +22999,9 @@
                               "string",
                               "null"
                             ]
+                          },
+                          "moduleId": {
+                            "type": "string"
                           }
                         },
                         "required": [
@@ -23471,6 +23483,9 @@
                         "string",
                         "null"
                       ]
+                    },
+                    "moduleId": {
+                      "type": "string"
                     }
                   },
                   "required": [
@@ -23637,6 +23652,9 @@
                       "string",
                       "null"
                     ]
+                  },
+                  "moduleId": {
+                    "type": "string"
                   }
                 },
                 "required": [
@@ -23711,6 +23729,9 @@
                   "string",
                   "null"
                 ]
+              },
+              "moduleId": {
+                "type": "string"
               }
             },
             "required": [
@@ -24575,6 +24596,9 @@
                           "string",
                           "null"
                         ]
+                      },
+                      "moduleId": {
+                        "type": "string"
                       }
                     },
                     "required": [

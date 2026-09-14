@@ -505,6 +505,12 @@ export const catalogProposalDtoSchema = catalogObject({
   submittedByPersonId: z.string().nullable(),
   acceptedByPersonId: z.string().nullable(),
   publicationIntentRef: z.string().nullable(),
+  /**
+   * Creation time, present on list projections. A command result reports the
+   * proposal it just wrote and omits it; the list is ordered newest first by it
+   * whenever it is present.
+   */
+  createdAt: z.string().optional(),
   version: z.number().int().positive()
 });
 

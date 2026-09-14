@@ -189,6 +189,7 @@ export const catalogProposal: CatalogProposalResponse["item"] = {
   organizationId: CATALOG_ORGANIZATION_ID,
   status: "submitted",
   etag: "etag-p1",
+  createdAt: "2026-08-31T00:00:00Z",
   base: {
     catalogReleaseId: CATALOG_RELEASE_ID,
     definitionId: CATALOG_DEFINITION_ID,
@@ -198,6 +199,7 @@ export const catalogProposal: CatalogProposalResponse["item"] = {
   submittedByPersonId: CATALOG_AUTHOR_PERSON_ID,
   acceptedByPersonId: null,
   publicationIntentRef: null,
+  createdAt: "2026-08-31T00:30:00Z",
   version: 1
 };
 

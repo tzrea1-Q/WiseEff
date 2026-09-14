@@ -170,6 +170,7 @@ export function mapProposalRecord(
     base: record.base,
     requestedChange: record.requestedChange,
     submittedByPersonId: record.submittedByPersonId,
+    createdAt: record.createdAt,
     acceptedByPersonId: record.acceptedByPersonId,
     publicationIntentRef: record.publicationIntentRef,
     version: record.version,
