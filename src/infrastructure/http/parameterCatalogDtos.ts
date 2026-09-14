@@ -9,7 +9,9 @@ import type {
   catalogCreatePublicationCandidateRequestSchema,
   catalogPublishPublicationCandidateRequestSchema,
   catalogPublicationCandidateResponseSchema,
+  catalogPublicationJobListResponseSchema,
   catalogPublicationJobResponseSchema,
+  catalogPublicationSurfaceResponseSchema,
   catalogCreateBindingDraftRequestSchema,
   catalogCreateNodeEnablementDraftRequestSchema,
   catalogDefinitionListResponseSchema,
@@ -81,6 +83,8 @@ export type CatalogPublicationCandidateResponse = z.infer<
   typeof catalogPublicationCandidateResponseSchema
 >;
 export type CatalogPublicationJobResponse = z.infer<typeof catalogPublicationJobResponseSchema>;
+export type CatalogPublicationJobListResponse = z.infer<typeof catalogPublicationJobListResponseSchema>;
+export type CatalogPublicationSurfaceResponse = z.infer<typeof catalogPublicationSurfaceResponseSchema>;
 export type CatalogSubmitProposalRequest = z.infer<typeof catalogSubmitProposalRequestSchema>;
 export type CatalogWithdrawProposalRequest = z.infer<typeof catalogWithdrawProposalRequestSchema>;
 export type CatalogAcceptProposalRequest = z.infer<typeof catalogAcceptProposalRequestSchema>;

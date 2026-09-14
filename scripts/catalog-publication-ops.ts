@@ -20,8 +20,15 @@ import {
   provisionPublicationRuntimeLogins,
 } from "../server/modules/catalog-publication/runtime/provisionRuntimeLogins";
 import { writeRuntimeLoginSecrets } from "../server/modules/catalog-publication/runtime/runtimeLoginSecrets";
-import { revisePublicationPolicy } from "../server/modules/catalog-publication/authorization/policy";
-import { EPHEMERAL_POLICY_REVISION_CONFIRMATION } from "../server/modules/catalog-publication/authorization/types";
+import {
+  checkPublicationPolicyRevision,
+  inspectPublicationPolicy,
+  revisePublicationPolicy,
+} from "../server/modules/catalog-publication/authorization/policy";
+import {
+  EPHEMERAL_POLICY_REVISION_CONFIRMATION,
+  MANAGED_INSTANCE_POLICY_CONFIRMATION,
+} from "../server/modules/catalog-publication/authorization/types";
 import { createUserInvocation } from "../server/modules/auth/trustedInvocation";
 import { getAuthContext } from "../server/modules/auth/repository";
 import { createPostgresDatabase, getRootPostgresPool } from "../server/shared/database/client";
@@ -60,9 +67,17 @@ export type CatalogPublicationOpsCommand =
     }
   | {
       readonly name: "policy";
-      readonly action: "status" | "enable" | "disable";
+      readonly action: "status" | "check" | "enable" | "disable";
+      readonly target?: "enable" | "disable";
       readonly actor: string;
       readonly confirmation?: string;
+      readonly expectedDatabaseOid?: string;
+      readonly expectedCurrentId?: string;
+      readonly expectedCurrentDigest?: string;
+      readonly expectedPolicyRevision?: string;
+      readonly expectedFrozen?: boolean;
+      readonly expectedAdopted?: boolean;
+      readonly lowRiskSingleActorPublish?: boolean;
     }
   | {
       readonly name: "freeze";
@@ -82,7 +97,10 @@ const usage = `Usage:
   npx tsx scripts/catalog-publication-ops.ts inspect
   npx tsx scripts/catalog-publication-ops.ts adopt --check|--execute --expected-id <id> --expected-digest sha256:... --bundle <file> --actor <userId> --verification-digest sha256:... --data-mode fresh|populated|restored [--evidence-kind synthetic-fixture]
   npx tsx scripts/catalog-publication-ops.ts capabilities grant|revoke|status --user-id <id> --organization-id <id> --capability catalog:author|catalog:publish|catalog:review-high-risk
-  npx tsx scripts/catalog-publication-ops.ts policy status|enable|disable --actor <userId>
+  npx tsx scripts/catalog-publication-ops.ts policy status
+  npx tsx scripts/catalog-publication-ops.ts policy check enable|disable --actor <userId> --expected-database-oid <oid> --expected-id <crel> --expected-digest sha256:... --expected-policy-revision <n> --expected-frozen true|false --expected-adopted true|false [--low-risk-single-actor|--no-low-risk-single-actor]
+  npx tsx scripts/catalog-publication-ops.ts policy enable|disable --actor <userId> --confirmation ephemeral-test-only [--low-risk-single-actor|--no-low-risk-single-actor]
+  npx tsx scripts/catalog-publication-ops.ts policy enable|disable --actor <userId> --expected-database-oid <oid> --expected-id <crel> --expected-digest sha256:... --expected-policy-revision <n> --expected-frozen true|false --expected-adopted true|false [--low-risk-single-actor|--no-low-risk-single-actor]
   npx tsx scripts/catalog-publication-ops.ts freeze status|set|clear --actor <userId>
   npx tsx scripts/catalog-publication-ops.ts provision-logins [--mode official|lab] [--run-token TOKEN] [--rotate-passwords] [--credential-dir DIR]
   npx tsx scripts/catalog-publication-ops.ts inspect-login api|worker|manager
@@ -91,7 +109,8 @@ inspect reads CATALOG_BASELINE_READONLY_DATABASE_URL only.
 adopt/capabilities/policy/freeze/provision use dedicated DSNs. Manager commands refuse DATABASE_URL reuse.
 provision-logins uses WISEEFF_CATALOG_BOOTSTRAP_DATABASE_URL (superuser, one-shot).
 Credentials are written to --credential-dir or WISEEFF_PUBLICATION_CREDENTIAL_DIR; stdout has no DSNs.
-policy enable requires an ephemeral database name and EPHEMERAL_POLICY_REVISION_CONFIRMATION; it is not production enablement.
+ephemeral policy enable requires an ephemeral database name and EPHEMERAL_POLICY_REVISION_CONFIRMATION.
+managed-instance policy enable requires observed identity pins; it does not default-enable low-risk single-actor publish.
 `;
 
 const flag = (argv: string[], name: string): string | undefined => {
@@ -101,6 +120,23 @@ const flag = (argv: string[], name: string): string | undefined => {
 };
 
 const has = (argv: string[], name: string): boolean => argv.includes(name);
+
+const boolFlag = (argv: string[], name: string): boolean | undefined => {
+  const raw = flag(argv, name);
+  if (raw === undefined) return undefined;
+  if (raw === "true") return true;
+  if (raw === "false") return false;
+  return undefined;
+};
+
+const parseLowRiskFlag = (argv: string[]): boolean | undefined => {
+  if (has(argv, "--low-risk-single-actor") && has(argv, "--no-low-risk-single-actor")) {
+    return undefined;
+  }
+  if (has(argv, "--low-risk-single-actor")) return true;
+  if (has(argv, "--no-low-risk-single-actor")) return false;
+  return undefined;
+};
 
 export const parseCatalogPublicationOpsArgv = (
   argv: string[],
@@ -158,20 +194,50 @@ export const parseCatalogPublicationOpsArgv = (
     return { ok: true, command: { name: "capabilities", action: sub, userId, organizationId, capability } };
   }
   if (command === "policy") {
-    if (sub !== "status" && sub !== "enable" && sub !== "disable") {
+    if (sub !== "status" && sub !== "check" && sub !== "enable" && sub !== "disable") {
       return { ok: false, message: usage };
     }
     const actor = flag(argv, "--actor") ?? "";
     if (sub !== "status" && !actor) {
-      return { ok: false, message: "policy enable/disable requires --actor" };
+      return { ok: false, message: "policy check/enable/disable requires --actor" };
+    }
+    const target =
+      sub === "check"
+        ? argv[2] === "enable" || argv[2] === "disable"
+          ? argv[2]
+          : undefined
+        : sub === "enable" || sub === "disable"
+          ? sub
+          : undefined;
+    if (sub === "check" && target === undefined) {
+      return { ok: false, message: "policy check requires enable or disable" };
+    }
+    const expectedFrozen = boolFlag(argv, "--expected-frozen");
+    const expectedAdopted = boolFlag(argv, "--expected-adopted");
+    if (
+      (flag(argv, "--expected-frozen") !== undefined && expectedFrozen === undefined) ||
+      (flag(argv, "--expected-adopted") !== undefined && expectedAdopted === undefined)
+    ) {
+      return { ok: false, message: "--expected-frozen and --expected-adopted must be true or false" };
+    }
+    if (has(argv, "--low-risk-single-actor") && has(argv, "--no-low-risk-single-actor")) {
+      return { ok: false, message: "low-risk single-actor flags are mutually exclusive" };
     }
     return {
       ok: true,
       command: {
         name: "policy",
         action: sub,
+        target,
         actor,
         confirmation: flag(argv, "--confirmation"),
+        expectedDatabaseOid: flag(argv, "--expected-database-oid"),
+        expectedCurrentId: flag(argv, "--expected-id"),
+        expectedCurrentDigest: flag(argv, "--expected-digest"),
+        expectedPolicyRevision: flag(argv, "--expected-policy-revision"),
+        expectedFrozen,
+        expectedAdopted,
+        lowRiskSingleActorPublish: parseLowRiskFlag(argv),
       },
     };
   }
@@ -430,28 +496,111 @@ export const runCatalogPublicationOps = async (
     const db = createPostgresDatabase(url);
     try {
       if (command.action === "status") {
-        const policy = await db.query<{
-          publication_enabled: boolean;
-          low_risk_single_actor_publish: boolean;
-        }>(`select publication_enabled, low_risk_single_actor_publish from catalog_publication.publication_policies where singleton`);
-        return { exitCode: 0, payload: policy.rows[0] ?? null };
-      }
-      if (command.confirmation !== EPHEMERAL_POLICY_REVISION_CONFIRMATION) {
+        const snapshot = await inspectPublicationPolicy(db);
         return {
-          exitCode: 3,
+          exitCode: 0,
           payload: {
-            message: "policy enable/disable is isolated-only; pass --confirmation matching EPHEMERAL_POLICY_REVISION_CONFIRMATION",
+            kind: "catalog-publication-policy-status",
+            databaseOid: snapshot.databaseOid,
+            databaseName: snapshot.databaseName,
+            currentReleaseId: snapshot.currentReleaseId,
+            currentReleaseDigest: snapshot.currentReleaseDigest,
+            artifactDigest: snapshot.artifactDigest,
+            artifactSourceKind: snapshot.artifactSourceKind,
+            adopted: snapshot.adopted,
+            receiptKinds: snapshot.receiptKinds,
+            policyRevision: snapshot.policyRevision,
+            publicationEnabled: snapshot.publicationEnabled,
+            lowRiskSingleActorPublish: snapshot.lowRiskSingleActorPublish,
+            frozen: snapshot.frozen,
+            capabilityContractRevision: snapshot.capabilityContractRevision,
           },
         };
       }
       const actor = await getAuthContext(db, command.actor);
-      const revised = await revisePublicationPolicy(db, {
-        trustedActor: createUserInvocation(actor),
-        publicationEnabled: command.action === "enable",
-        lowRiskSingleActorPublish: command.action === "enable",
+      const trustedActor = createUserInvocation(actor);
+      const enabling = (command.target ?? command.action) === "enable";
+      const snapshot = await inspectPublicationPolicy(db);
+      const lowRisk =
+        command.lowRiskSingleActorPublish ?? snapshot.lowRiskSingleActorPublish;
+      if (command.confirmation === EPHEMERAL_POLICY_REVISION_CONFIRMATION) {
+        if (command.action === "check") {
+          return {
+            exitCode: 2,
+            payload: { message: "ephemeral confirmation is execute-only; managed check uses identity pins" },
+          };
+        }
+        const revised = await revisePublicationPolicy(db, {
+          trustedActor,
+          publicationEnabled: enabling,
+          lowRiskSingleActorPublish: lowRisk,
+          capabilityContractRevision: CATALOG_CAPABILITY_CONTRACT_REVISION,
+          isolatedInstanceConfirmation: EPHEMERAL_POLICY_REVISION_CONFIRMATION,
+        });
+        return { exitCode: revised.ok ? 0 : 1, payload: revised };
+      }
+      const expectedPolicyRevision = Number(command.expectedPolicyRevision);
+      if (
+        !command.expectedDatabaseOid ||
+        !command.expectedCurrentId ||
+        !command.expectedCurrentDigest ||
+        !Number.isInteger(expectedPolicyRevision) ||
+        command.expectedFrozen === undefined ||
+        command.expectedAdopted === undefined
+      ) {
+        return {
+          exitCode: 2,
+          payload: {
+            message:
+              "managed instance policy revision requires --expected-database-oid --expected-id --expected-digest --expected-policy-revision --expected-frozen --expected-adopted",
+          },
+        };
+      }
+      const managed = {
+        confirmation: MANAGED_INSTANCE_POLICY_CONFIRMATION,
+        expectedDatabaseOid: command.expectedDatabaseOid,
+        expectedCurrentId: command.expectedCurrentId,
+        expectedCurrentDigest: command.expectedCurrentDigest,
+        expectedPolicyRevision,
+        expectedFrozen: command.expectedFrozen,
+        expectedAdopted: command.expectedAdopted,
+      } as const;
+      const input = {
+        trustedActor,
+        publicationEnabled: enabling,
+        lowRiskSingleActorPublish: lowRisk,
         capabilityContractRevision: CATALOG_CAPABILITY_CONTRACT_REVISION,
-        isolatedInstanceConfirmation: EPHEMERAL_POLICY_REVISION_CONFIRMATION,
-      });
+        mode: command.action === "check" ? ("check" as const) : ("execute" as const),
+        managedInstance: managed,
+      };
+      if (command.action === "check") {
+        const checked = await checkPublicationPolicyRevision(db, input);
+        if (!checked.ok) {
+          return { exitCode: 1, payload: checked };
+        }
+        return {
+          exitCode: checked.value.refusals.length === 0 ? 0 : 1,
+          payload: {
+            kind: "catalog-publication-policy-check",
+            action: checked.value.action,
+            identity: {
+              databaseOid: checked.value.snapshot.databaseOid,
+              databaseName: checked.value.snapshot.databaseName,
+              currentReleaseId: checked.value.snapshot.currentReleaseId,
+              currentReleaseDigest: checked.value.snapshot.currentReleaseDigest,
+              artifactDigest: checked.value.snapshot.artifactDigest,
+              adopted: checked.value.snapshot.adopted,
+              policyRevision: checked.value.snapshot.policyRevision,
+              frozen: checked.value.snapshot.frozen,
+              publicationEnabled: checked.value.snapshot.publicationEnabled,
+              lowRiskSingleActorPublish: checked.value.snapshot.lowRiskSingleActorPublish,
+            },
+            intended: checked.value.intended,
+            refusals: checked.value.refusals,
+          },
+        };
+      }
+      const revised = await revisePublicationPolicy(db, input);
       return { exitCode: revised.ok ? 0 : 1, payload: revised };
     } finally {
       await db.close();

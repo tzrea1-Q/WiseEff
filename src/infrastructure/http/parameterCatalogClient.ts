@@ -11,7 +11,9 @@ import {
   catalogCreatePublicationCandidateRequestSchema,
   catalogPublishPublicationCandidateRequestSchema,
   catalogPublicationCandidateResponseSchema,
+  catalogPublicationJobListResponseSchema,
   catalogPublicationJobResponseSchema,
+  catalogPublicationSurfaceResponseSchema,
   catalogDefinitionListResponseSchema,
   catalogDefinitionResponseSchema,
   catalogDefinitionRevisionListResponseSchema,
@@ -531,6 +533,20 @@ export function createParameterCatalogClient(options: CatalogClientOptions = {})
         catalogPublicationJobResponseSchema,
         "CatalogPublicationJobResponse"
       ),
+    getPublicationSurface: () =>
+      request(
+        "GET",
+        canonical("catalog.getPublicationSurface"),
+        catalogPublicationSurfaceResponseSchema,
+        "CatalogPublicationSurfaceResponse"
+      ),
+    listPublications: (query?: CatalogListQuery) =>
+      request(
+        "GET",
+        appendQuery(canonical("catalog.listPublications"), query),
+        catalogPublicationJobListResponseSchema,
+        "CatalogPublicationJobListResponse"
+      ),
     getLegacyIdentifier: (legacyType: string, legacyId: string) =>
       request(
         "GET",
@@ -641,6 +657,8 @@ export function createParameterCatalogClient(options: CatalogClientOptions = {})
     "catalog.getPublicationCandidate": "getPublicationCandidate",
     "catalog.publishPublicationCandidate": "publishPublicationCandidate",
     "catalog.getPublication": "getPublication",
+    "catalog.getPublicationSurface": "getPublicationSurface",
+    "catalog.listPublications": "listPublications",
     "catalog.getLegacyIdentifier": "getLegacyIdentifier"
   };
   void _methodCoverage;

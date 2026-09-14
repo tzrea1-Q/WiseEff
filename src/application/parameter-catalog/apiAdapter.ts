@@ -29,7 +29,9 @@ export function createApiParameterCatalogRepository(
     getPublicationCandidate: (candidateId) => client.getPublicationCandidate(candidateId),
     publishPublicationCandidate: (candidateId, body, context) =>
       client.publishPublicationCandidate(candidateId, body, context),
-    getPublication: (jobId) => client.getPublication(jobId)
+    getPublication: (jobId) => client.getPublication(jobId),
+    getPublicationSurface: () => client.getPublicationSurface(),
+    listPublications: (query) => client.listPublications(query)
   };
 }
 

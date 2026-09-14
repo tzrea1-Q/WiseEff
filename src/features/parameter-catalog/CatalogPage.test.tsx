@@ -91,6 +91,14 @@ function wrapAfterGate(repository: ParameterCatalogRepository, gate: Promise<voi
     getPublication: async (jobId) => {
       await gate;
       return repository.getPublication(jobId);
+    },
+    getPublicationSurface: async () => {
+      await gate;
+      return repository.getPublicationSurface();
+    },
+    listPublications: async (query) => {
+      await gate;
+      return repository.listPublications(query);
     }
   };
 }

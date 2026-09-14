@@ -162,6 +162,7 @@ describe("parameter catalog stable failures", () => {
       "predecessor-incomplete",
       "activation-receipt-mismatch",
       "adoption-evidence-invalid",
+      "catalog-not-adopted",
       "registration-followup-failed"
     ]);
     expect(comparatorFailureCodes).toEqual([

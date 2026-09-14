@@ -337,6 +337,47 @@ export async function createEphemeralTestDatabase(label: string): Promise<Epheme
   };
 }
 
+const COMPOSE_APP_PORT = 5432;
+const COMPOSE_APP_DATABASE = "wiseeff";
+
+const isForbiddenComposeAppPostgres = (connectionString: string): boolean => {
+  try {
+    const url = new URL(connectionString);
+    const host = url.hostname.toLowerCase();
+    const port = url.port === "" ? COMPOSE_APP_PORT : Number(url.port);
+    const database = url.pathname.replace(/^\//, "").split("/")[0] ?? "";
+    const loopback = host === "127.0.0.1" || host === "localhost";
+    return loopback && port === COMPOSE_APP_PORT && database === COMPOSE_APP_DATABASE;
+  } catch {
+    return true;
+  }
+};
+
+/**
+ * Clone the migrations template into a disposable database whose name is not
+ * an ephemeral test name. Refuses the shared compose 5432/wiseeff cluster.
+ */
+export async function createManagedInstanceTestDatabase(label: string): Promise<EphemeralTestDatabase> {
+  if (isForbiddenComposeAppPostgres(resolveTestDatabaseUrl())) {
+    throw new Error(
+      "managed-instance policy tests refuse the shared compose postgres://127.0.0.1:5432/wiseeff cluster",
+    );
+  }
+  const safeLabel = label.replace(/[^a-z0-9]/gi, "").slice(0, 6) || "mgr";
+  const rand = Math.floor(Math.random() * 1_000_000_000).toString(36);
+  const name = `wiseeffm${safeLabel}${process.pid}${rand}`.slice(0, 63).toLowerCase();
+  await cloneTemplateDatabase(name);
+  let dropped = false;
+  return {
+    url: connectionStringFor(name),
+    drop: async () => {
+      if (dropped) return;
+      dropped = true;
+      await dropDatabase(name);
+    }
+  };
+}
+
 export async function createInMemoryTestDatabase(
   connectionString?: string
 ): Promise<InMemoryTestDatabase> {

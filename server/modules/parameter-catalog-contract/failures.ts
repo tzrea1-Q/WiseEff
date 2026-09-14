@@ -173,6 +173,7 @@ export const apiFailureReasons = freezeRegistry([
   "predecessor-incomplete",
   "activation-receipt-mismatch",
   "adoption-evidence-invalid",
+  "catalog-not-adopted",
   "registration-followup-failed"
 ]);
 export type ApiFailureReason = (typeof apiFailureReasons)[number];

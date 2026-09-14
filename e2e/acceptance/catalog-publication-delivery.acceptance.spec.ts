@@ -169,7 +169,7 @@ const publishDefinition = async (
   await expect(catalogPage(page)).toBeVisible({ timeout: 30_000 });
   const entry = page.getByRole("button", { name: "新增定义" });
   await expect(entry).toBeVisible();
-  await entry.click({ force: true });
+  await entry.click();
   const dialog = page.getByRole("dialog", { name: "向已发布主体新增定义" });
   await expect(dialog).toBeVisible({ timeout: 30_000 });
   const subjects = dialog.getByLabel("已发布主体");
@@ -402,89 +402,25 @@ test.describe("isolated formal-image catalog delivery M1", () => {
     }
     await page.setViewportSize({ width: 1440, height: 900 });
 
-    const revisions = await page.request.get(
-      `${evidence.apiOrigin}/api/v2/projects/${evidence.projectId}/config-sets/${configSetId}/revisions`,
-      { headers },
+    const saveRequest = page.waitForResponse(
+      (response) =>
+        response.request().method() === "POST" &&
+        response.url().includes(`/parameter-bindings/${binding.id}/drafts`),
+      { timeout: 60_000 },
     );
-    expect(revisions.ok(), await revisions.text()).toBeTruthy();
-    const revisionItems = ((await revisions.json()) as { items?: Array<{ id: string; status?: string }> }).items ?? [];
-    const configRevisionId = revisionItems.find((item) => item.status === "resolved")?.id ?? revisionItems[0]?.id;
-    expect(configRevisionId).toBeTruthy();
-
-    const draft = await page.request.post(
-      `${evidence.apiOrigin}/api/v2/projects/${evidence.projectId}/parameter-bindings/${binding.id}/drafts`,
-      {
-        headers,
-        data: {
-          action: "set",
-          reason: "RA-04 official value 24",
-          baseRevisionId: configRevisionId,
-          targetValue: { kind: "cells", bits: 32, groups: [[{ kind: "integer", raw: "24", value: "24" }]] },
-        },
-      },
-    );
-    expect(draft.status(), await draft.text()).toBe(201);
-    const draftBody = (await draft.json()) as {
+    await tasks.getByRole("button", { name: /提交所选/ }).click();
+    const draftResponse = await saveRequest;
+    expect(draftResponse.status(), await draftResponse.text()).toBe(201);
+    const draftBody = (await draftResponse.json()) as {
       item: {
         draftId: string;
-        parameterSpecId?: string;
-        projectParameterBindingId?: string;
-        candidateRevisionId?: string;
         writeTarget?: { role?: string };
         rawText?: string;
       };
     };
     expect(draftBody.item.writeTarget?.role).toBe("canonical-project-value");
-    expect(draftBody.item.rawText).toContain("24");
-    const submitted = draftBody.item.writeTarget?.role === "canonical-project-value"
-      ? null
-      : await page.request.post(`${evidence.apiOrigin}/api/v1/parameter-submission-rounds`, {
-      headers,
-      data: {
-        projectId: evidence.projectId,
-        items: [
-          {
-            draftId: draftBody.item.draftId,
-            projectParameterBindingId: binding.id,
-            parameterSpecId: draftBody.item.parameterSpecId,
-            action: "set",
-            targetValue: "24",
-            reason: "RA-04 official value 24",
-          },
-        ],
-        reason: "RA-04 official value 24",
-        assignees: {
-          hardwareCommitterId: evidence.publisherUserId,
-          softwareCommitterId: evidence.publisherUserId,
-          softwareUserId: evidence.publisherUserId,
-        },
-      },
-    });
-    if (submitted) {
-      expect(submitted.status(), await submitted.text()).toBe(201);
-      const submittedBody = (await submitted.json()) as {
-        item: { items: Array<{ requestId: string; status?: string }> };
-      };
-      const requestId = submittedBody.item.items[0]?.requestId;
-      expect(requestId).toBeTruthy();
-      let reviewStatus = submittedBody.item.items[0]?.status ?? "";
-      for (let step = 0; step < 6 && reviewStatus !== "merged"; step += 1) {
-        const review = await page.request.post(
-          `${evidence.apiOrigin}/api/v1/parameter-change-requests/${requestId}/review`,
-          {
-            headers,
-            data: {
-              decision: "advance",
-              note: reviewStatus === "software_merge" ? `https://example.com/ra04/${requestId}` : "RA-04 review advance",
-            },
-          },
-        );
-        expect(review.ok(), await review.text()).toBeTruthy();
-        const reviewBody = (await review.json()) as { item: { status?: string } };
-        reviewStatus = reviewBody.item.status ?? "";
-      }
-      expect(reviewStatus).toBe("merged");
-    }
+    expect(draftBody.item.rawText).toMatch(/24/);
+    await expect(tasks.getByRole("status")).toContainText(/已提交|已写入|提交/, { timeout: 30_000 });
 
     const bindingAfterSave = await pollBinding(page, first.definitionId, firstKey);
     expect(bindingAfterSave.currentValueId).toBeTruthy();
@@ -492,6 +428,7 @@ test.describe("isolated formal-image catalog delivery M1", () => {
     assertOfficialProjectValue(bindingAfterSave, {
       currentValueId: bindingAfterSave.currentValueId!,
       revisionId: first.revisionId,
+      value: "24",
     });
 
     const firstChain: CatalogIdentityChain = buildIdentityChain({
@@ -552,6 +489,7 @@ test.describe("isolated formal-image catalog delivery M1", () => {
     assertOfficialProjectValue(bindingAfterRestart, {
       currentValueId: bindingAfterSave.currentValueId!,
       revisionId: first.revisionId,
+      value: "24",
     });
 
     await page.goto(`${evidence.frontendOrigin}/parameter-admin/specs`);

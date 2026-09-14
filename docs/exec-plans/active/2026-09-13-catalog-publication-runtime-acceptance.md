@@ -16,7 +16,7 @@ Operators must not write ad-hoc TypeScript, SQL-patch Catalog rows, or depend on
 
 This wave does **not** authorize: business-server login, real customer DSN, production account mutation, `publication_enabled=true` on a shared `wiseeff` database, CP-12 target-host enablement, reopening #824, or a GitHub PR/merge until the user authorizes it.
 
-`publication_enabled` remains default `false`. Isolated enablement uses `revisePublicationPolicy` only on an ephemeral database name (`wiseeff_<alnum>_<n>_<n>`) with `EPHEMERAL_POLICY_REVISION_CONFIRMATION`. That is not production authorization.
+`publication_enabled` remains default `false`. Isolated enablement uses `revisePublicationPolicy` on an ephemeral database name with `EPHEMERAL_POLICY_REVISION_CONFIRMATION`. Durable instances use the managed-instance check/execute path with observed OID/current/digest/policy/freeze/adopted pins. Low-risk single-actor publish is not bundled with enable. Neither path is production authorization until an operator executes it on the target host.
 
 ## Four findings
 

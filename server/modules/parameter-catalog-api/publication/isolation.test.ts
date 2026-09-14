@@ -77,7 +77,7 @@ describe("CP-07 publication HTTP isolation", () => {
       expect(handlers?.source, `${routeId} -> ${command}`).toContain(command);
     }
 
-    expect(catalogPublicationRouteIds).toHaveLength(4);
+    expect(catalogPublicationRouteIds).toHaveLength(6);
     expect(
       parameterCatalogCanonicalRoutes.filter((route) =>
         route.path.includes("/admin") || route.path.endsWith("/cancel") || route.path.endsWith("/retry"),
@@ -87,6 +87,8 @@ describe("CP-07 publication HTTP isolation", () => {
       "/api/v2/catalog/publication-candidates",
       "/api/v2/catalog/publication-candidates/:candidateId",
       "/api/v2/catalog/publication-candidates/:candidateId/publish",
+      "/api/v2/catalog/publication-surface",
+      "/api/v2/catalog/publications",
       "/api/v2/catalog/publications/:jobId",
     ]);
   });

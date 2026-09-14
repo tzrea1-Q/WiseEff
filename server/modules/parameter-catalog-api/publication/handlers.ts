@@ -3,7 +3,13 @@ import {
   catalogPublishPublicationCandidateRequestSchema,
 } from "../../contracts/dtoSchemas/parameterCatalog";
 import type { CatalogReleasePin } from "../../parameter-catalog-contract/index";
-import { itemEnvelope, mapPublicationCandidate, mapPublicationJob } from "./dto";
+import {
+  itemEnvelope,
+  itemsEnvelope,
+  mapPublicationCandidate,
+  mapPublicationJob,
+  mapPublicationSurface,
+} from "./dto";
 import {
   catalogNotReady,
   catalogPublicationOk,
@@ -217,6 +223,43 @@ async function dispatch(
       body: itemEnvelope(mapPublicationJob(result.value)),
       requestId: request.requestId,
       catalogReleaseId: pin.pin.id,
+    });
+  }
+
+  if (command === "getPublicationSurface") {
+    const result = await ports.getPublicationSurface({
+      organizationId: scope.organizationId,
+      actorKind: scope.actorKind,
+      permissions: scope.permissions,
+    });
+    if (!result.ok) {
+      return mapPublicationFailure(result.error, request.requestId);
+    }
+    return catalogPublicationOk({
+      body: itemEnvelope(mapPublicationSurface(result.value)),
+      requestId: request.requestId,
+      catalogReleaseId: result.value.currentReleaseId ?? "",
+    });
+  }
+
+  if (command === "listPublications") {
+    const rawLimit = request.query.limit;
+    const limitValue = Array.isArray(rawLimit) ? rawLimit[0] : rawLimit;
+    const limit = limitValue ? Number(limitValue) : 20;
+    const result = await ports.listPublications({
+      organizationId: scope.organizationId,
+      actorKind: scope.actorKind,
+      permissions: scope.permissions,
+      limit: Number.isInteger(limit) ? limit : 20,
+    });
+    if (!result.ok) {
+      return mapPublicationFailure(result.error, request.requestId);
+    }
+    const pin = await ports.currentRelease();
+    return catalogPublicationOk({
+      body: itemsEnvelope(result.value.map(mapPublicationJob), pin?.id ?? ""),
+      requestId: request.requestId,
+      catalogReleaseId: pin?.id ?? "",
     });
   }
 

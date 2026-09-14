@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 import {
   catalogActorForRole,
@@ -14,8 +14,10 @@ import { CatalogPage } from "@/features/parameter-catalog";
 import { createGovernanceIdempotencyKey } from "./governanceState";
 import { ProposalPanel } from "./ProposalPanel";
 import { PublicationDialog } from "./PublicationDialog";
+import { publicationSurfaceCopy, publicationSurfaceMessage, type PublicationSurfaceItem } from "./publicationSurface";
 import { RegistrationDialog } from "./RegistrationDialog";
 import { ReviewQueue } from "./ReviewQueue";
+import type { CatalogPublicationJobResponse } from "@/infrastructure/http/parameterCatalogDtos";
 
 export type CatalogOrganizationSurfaceProps = {
   catalog: ParameterCatalogRepository;
@@ -46,6 +48,8 @@ export function CatalogOrganizationSurface({
   const [action, setAction] = useState<CatalogAuthorizedAction | null>(null);
   const [actionRegistrationId, setActionRegistrationId] = useState<string | null>(null);
   const [surfaceEpoch, setSurfaceEpoch] = useState(0);
+  const [publicationSurface, setPublicationSurface] = useState<PublicationSurfaceItem | null>(null);
+  const [publicationHistory, setPublicationHistory] = useState<CatalogPublicationJobResponse["item"][]>([]);
   const catalogReleaseId = domainState?.catalogReleaseId ?? anchor.catalogReleaseId ?? "";
   const subjectId = anchor.subjectId ?? "";
 
@@ -64,6 +68,28 @@ export function CatalogOrganizationSurface({
     []
   );
 
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const [surface, history] = await Promise.all([
+          catalog.getPublicationSurface(),
+          catalog.listPublications({ limit: 20 })
+        ]);
+        if (cancelled) return;
+        setPublicationSurface(surface.item);
+        setPublicationHistory([...history.items]);
+      } catch {
+        if (!cancelled) {
+          setPublicationSurface(null);
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [catalog, surfaceEpoch]);
+
   const handleSelectReviewItem = useCallback(
     (id: string | null) => {
       onAnchorChange(
@@ -77,8 +103,20 @@ export function CatalogOrganizationSurface({
     [anchor, onAnchorChange]
   );
 
+  const surfaceStatus = publicationSurface ? publicationSurfaceMessage(publicationSurface) : null;
+
   return (
     <div className="parameter-catalog-organization">
+      {surfaceStatus ? (
+        <section
+          className="parameter-catalog__banner"
+          data-tone={surfaceStatus.tone}
+          aria-label={publicationSurfaceCopy.title}
+        >
+          <p>{surfaceStatus.message}</p>
+          <p>{publicationSurfaceCopy.nextStep}：{surfaceStatus.next}</p>
+        </section>
+      ) : null}
       <CatalogPage
         key={surfaceEpoch}
         repository={catalog}
@@ -120,6 +158,24 @@ export function CatalogOrganizationSurface({
               setSurfaceEpoch((value) => value + 1);
             }}
           />
+          <section className="parameter-catalog__history" aria-label={publicationSurfaceCopy.history}>
+            <h2>{publicationSurfaceCopy.history}</h2>
+            {publicationHistory.length === 0 ? (
+              <p>{publicationSurfaceCopy.historyEmpty}</p>
+            ) : (
+              <ul>
+                {publicationHistory.map((job) => (
+                  <li key={job.id}>
+                    <code>{job.id}</code>
+                    <span>{job.status}</span>
+                    {job.currentness ? <span>{job.currentness}</span> : null}
+                    {job.effective ? <span>receipt</span> : null}
+                    {job.sourceKind ? <span>{job.sourceKind}</span> : null}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
         </div>
       ) : null}
       {organizationId &&
@@ -162,6 +218,7 @@ export function CatalogOrganizationSurface({
           catalogReleaseId={catalogReleaseId}
           currentPersonId={currentPersonId}
           organizationId={organizationId}
+          publicationSurface={publicationSurface}
           createIdempotencyKey={createGovernanceIdempotencyKey}
           onCompleted={() => setSurfaceEpoch((value) => value + 1)}
           onRefreshEvidence={() => setSurfaceEpoch((value) => value + 1)}

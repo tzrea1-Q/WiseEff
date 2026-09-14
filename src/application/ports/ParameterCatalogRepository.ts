@@ -12,7 +12,9 @@ import type {
   CatalogPublicationJobResponse,
   CatalogPublishPublicationCandidateRequest,
   CatalogSubjectListResponse,
-  CatalogSubjectResponse
+  CatalogSubjectResponse,
+  CatalogPublicationJobListResponse,
+  CatalogPublicationSurfaceResponse
 } from "@/infrastructure/http/parameterCatalogDtos";
 
 export type {
@@ -26,7 +28,9 @@ export type {
   CatalogLegacyIdentifierResponse,
   CatalogListQuery,
   CatalogPublicationCandidateResponse,
+  CatalogPublicationJobListResponse,
   CatalogPublicationJobResponse,
+  CatalogPublicationSurfaceResponse,
   CatalogPublishPublicationCandidateRequest,
   CatalogSubjectListResponse,
   CatalogSubjectResponse
@@ -73,4 +77,6 @@ export interface ParameterCatalogRepository {
     context: CatalogPublicationWriteContext
   ): Promise<CatalogPublicationJobResponse>;
   getPublication(jobId: string): Promise<CatalogPublicationJobResponse>;
+  getPublicationSurface(): Promise<CatalogPublicationSurfaceResponse>;
+  listPublications(query?: CatalogListQuery): Promise<CatalogPublicationJobListResponse>;
 }

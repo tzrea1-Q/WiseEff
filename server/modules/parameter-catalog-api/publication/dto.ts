@@ -1,8 +1,9 @@
 import {
   catalogPublicationCandidateDtoSchema,
   catalogPublicationJobDtoSchema,
+  catalogPublicationSurfaceDtoSchema,
 } from "../../contracts/dtoSchemas/parameterCatalog";
-import type { PublicationCandidateView, PublicationJobView } from "./types";
+import type { PublicationCandidateView, PublicationJobView, PublicationSurfaceView } from "./types";
 
 export function mapPublicationCandidate(
   view: PublicationCandidateView,
@@ -32,6 +33,19 @@ export function mapPublicationJob(
   });
 }
 
+export function mapPublicationSurface(
+  view: PublicationSurfaceView,
+): ReturnType<typeof catalogPublicationSurfaceDtoSchema.parse> {
+  return catalogPublicationSurfaceDtoSchema.parse(view);
+}
+
 export function itemEnvelope<T>(item: T): { item: T } {
   return { item };
+}
+
+export function itemsEnvelope<T>(
+  items: readonly T[],
+  catalogReleaseId: string,
+): { items: T[]; nextCursor: null; catalogReleaseId: string } {
+  return { items: [...items], nextCursor: null, catalogReleaseId };
 }

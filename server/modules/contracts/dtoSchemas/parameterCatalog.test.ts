@@ -108,7 +108,7 @@ describe("S8-CON threat matrix", () => {
     expect(catalogFailureClientBehaviors["activation-receipt-mismatch"]).toBe("inspect-receipt-no-retry");
   });
 
-  it("freezes the four CP-00 publication routes without v3, /admin, cancel, or retry", () => {
+  it("freezes publication routes without v3, /admin, cancel, or retry", () => {
     const publication = parameterCatalogCanonicalRoutes.filter((route) =>
       route.path.includes("publication")
     );
@@ -116,6 +116,8 @@ describe("S8-CON threat matrix", () => {
       "POST /api/v2/catalog/publication-candidates",
       "GET /api/v2/catalog/publication-candidates/:candidateId",
       "POST /api/v2/catalog/publication-candidates/:candidateId/publish",
+      "GET /api/v2/catalog/publication-surface",
+      "GET /api/v2/catalog/publications",
       "GET /api/v2/catalog/publications/:jobId"
     ]);
     expect(

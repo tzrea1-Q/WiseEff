@@ -65,6 +65,7 @@ export const catalogApiFailureReasons = [
   "predecessor-incomplete",
   "activation-receipt-mismatch",
   "adoption-evidence-invalid",
+  "catalog-not-adopted",
   "registration-followup-failed"
 ] as const;
 export type CatalogApiFailureReason = (typeof catalogApiFailureReasons)[number];
@@ -104,6 +105,7 @@ export const catalogFailureClientBehaviors = {
   "predecessor-incomplete": "rebuild-complete-successor",
   "activation-receipt-mismatch": "inspect-receipt-no-retry",
   "adoption-evidence-invalid": "inspect-adoption-evidence",
+  "catalog-not-adopted": "inspect-adoption-evidence",
   "registration-followup-failed": "retry-registration-keep-catalog"
 } as const satisfies Record<CatalogApiFailureReason, string>;
 export type CatalogFailureClientBehavior =
@@ -667,7 +669,30 @@ export const catalogPublicationJobDtoSchema = catalogObject({
   effective: z.boolean(),
   isCurrent: z.boolean(),
   currentness: closedEnum(catalogPublicationCurrentness).nullable(),
-  failure: catalogPublicationFailureDtoSchema.nullable()
+  failure: catalogPublicationFailureDtoSchema.nullable(),
+  createdAt: z.string().optional(),
+  sourceKind: z.string().optional()
+});
+
+export const catalogPublicationBlockerSchema = closedEnum([
+  "publication-policy-disabled",
+  "publication-frozen",
+  "catalog-not-adopted",
+  "publication-capability-missing",
+  "publication-not-authorized"
+] as const);
+
+export const catalogPublicationSurfaceDtoSchema = catalogObject({
+  publicationEnabled: z.boolean(),
+  lowRiskSingleActorPublish: z.boolean(),
+  policyRevision: z.number().int(),
+  frozen: z.boolean(),
+  adopted: z.boolean(),
+  currentReleaseId: z.string().nullable(),
+  authoringAllowed: z.boolean(),
+  publishingAllowed: z.boolean(),
+  reviewHighRiskAllowed: z.boolean(),
+  blockers: z.array(catalogPublicationBlockerSchema)
 });
 
 export const catalogLegacyIdentifierDtoSchema = catalogObject({
@@ -807,6 +832,12 @@ export const catalogPublicationCandidateResponseSchema = itemEnvelopeSchema(
 export const catalogPublicationJobResponseSchema = itemEnvelopeSchema(
   catalogPublicationJobDtoSchema
 ).superRefine(rejectLegacySpecKeys);
+export const catalogPublicationJobListResponseSchema = catalogItemsEnvelopeSchema(
+  catalogPublicationJobDtoSchema
+);
+export const catalogPublicationSurfaceResponseSchema = itemEnvelopeSchema(
+  catalogPublicationSurfaceDtoSchema
+).superRefine(rejectLegacySpecKeys);
 export const catalogLegacyIdentifierResponseSchema = itemEnvelopeSchema(
   catalogLegacyIdentifierDtoSchema
 ).superRefine(rejectLegacySpecKeys);
@@ -872,6 +903,8 @@ export const parameterCatalogDtoSchemaCatalog = {
   CatalogPublicationCandidateResponse: catalogPublicationCandidateResponseSchema,
   CatalogPublishPublicationCandidateRequest: catalogPublishPublicationCandidateRequestSchema,
   CatalogPublicationJobResponse: catalogPublicationJobResponseSchema,
+  CatalogPublicationJobListResponse: catalogPublicationJobListResponseSchema,
+  CatalogPublicationSurfaceResponse: catalogPublicationSurfaceResponseSchema,
   CatalogLegacyIdentifierResponse: catalogLegacyIdentifierResponseSchema,
   CatalogLegacyGoneResponse: catalogLegacyGoneResponseSchema,
   ProjectParameterBindingListResponse: projectParameterBindingListResponseSchema,
@@ -1139,6 +1172,20 @@ export const parameterCatalogCanonicalRoutes = [
     stability: "mvp"
   },
   {
+    id: "catalog.getPublicationSurface",
+    method: "GET",
+    path: "/api/v2/catalog/publication-surface",
+    module: "catalog",
+    stability: "mvp"
+  },
+  {
+    id: "catalog.listPublications",
+    method: "GET",
+    path: "/api/v2/catalog/publications",
+    module: "catalog",
+    stability: "mvp"
+  },
+  {
     id: "catalog.getPublication",
     method: "GET",
     path: "/api/v2/catalog/publications/:jobId",
@@ -1192,6 +1239,8 @@ export const parameterCatalogRouteGates: Record<
   "catalog.createPublicationCandidate": ["PCAT-API-10", "PCAT-API-11"],
   "catalog.getPublicationCandidate": ["PCAT-API-11"],
   "catalog.publishPublicationCandidate": ["PCAT-API-10", "PCAT-API-11"],
+  "catalog.getPublicationSurface": ["PCAT-API-11"],
+  "catalog.listPublications": ["PCAT-API-11"],
   "catalog.getPublication": ["PCAT-API-11"],
   "catalog.getLegacyIdentifier": ["PCAT-API-07"]
 };
@@ -1240,6 +1289,8 @@ export const parameterCatalogClientMethodByRouteId = {
   "catalog.createPublicationCandidate": "createPublicationCandidate",
   "catalog.getPublicationCandidate": "getPublicationCandidate",
   "catalog.publishPublicationCandidate": "publishPublicationCandidate",
+  "catalog.getPublicationSurface": "getPublicationSurface",
+  "catalog.listPublications": "listPublications",
   "catalog.getPublication": "getPublication",
   "catalog.getLegacyIdentifier": "getLegacyIdentifier"
 } as const satisfies Record<ParameterCatalogCanonicalRouteId, string>;
@@ -1614,6 +1665,21 @@ export const parameterCatalogSchemaRegistry = {
     successStatus: 201,
     additionalResponses: catalogPublicationWriteErrors,
     requestParameters: [catalogReleaseRequestHeader],
+    successHeaders: [catalogReleaseResponseHeader]
+  },
+  "catalog.getPublicationSurface": {
+    summary: "Read instance publication policy, adoption, freeze, and session-capable actions",
+    tags: ["catalog"],
+    responseBody: "CatalogPublicationSurfaceResponse",
+    additionalResponses: catalogReadErrors,
+    successHeaders: [catalogReleaseResponseHeader]
+  },
+  "catalog.listPublications": {
+    summary: "List publication jobs visible in the caller organization",
+    tags: ["catalog"],
+    responseBody: "CatalogPublicationJobListResponse",
+    additionalResponses: catalogReadErrors,
+    requestParameters: pageQueryParameters,
     successHeaders: [catalogReleaseResponseHeader]
   },
   "catalog.getPublication": {

@@ -89,17 +89,50 @@ npx tsx scripts/catalog-publication-ops.ts capabilities revoke \
 
 This binds a dedicated `catalog-capability-*` role. It does not add `catalog:publish` to the default `admin` role.
 
-## 5. Policy status / isolated enable / disable
+## 5. Policy status / isolated enable / managed-instance enable / disable
+
+Run these from the **application image** (`./scripts/compose --env-file .env run --no-deps --rm api npx tsx scripts/catalog-publication-ops.ts …`) so the host does not need `npx`/`tsx`. Use `WISEEFF_CATALOG_BOOTSTRAP_DATABASE_URL` from the image env, never paste DSNs on the command line.
 
 ```bash
 npx tsx scripts/catalog-publication-ops.ts policy status
+```
+
+Status prints non-secret identity: database OID, database name, current Release ID/digest, Artifact digest, adoption, policy revision, `publication_enabled`, `low_risk_single_actor_publish`, freeze. It is not enablement.
+
+**Ephemeral / isolated lab only:**
+
+```bash
 npx tsx scripts/catalog-publication-ops.ts policy enable --actor <user-id> \
-  --confirmation ephemeral-test-only
+  --confirmation ephemeral-test-only [--low-risk-single-actor]
 npx tsx scripts/catalog-publication-ops.ts policy disable --actor <user-id> \
   --confirmation ephemeral-test-only
 ```
 
-Enable is refused unless `current_database()` matches the ephemeral test name pattern and the confirmation token matches. Closing publication does not delete Catalog rows and does not restore legacy `advance` after a Receipt exists.
+Enable is refused unless `current_database()` matches the ephemeral test name pattern and the confirmation token matches. `--low-risk-single-actor` is independent and defaults to the current policy value (not bundled on).
+
+**Durable / non-ephemeral instance:** check then execute against observed identity. Do not use the ephemeral confirmation. Re-run status after any drift; do not reuse a stale check.
+
+```bash
+npx tsx scripts/catalog-publication-ops.ts policy check enable --actor <user-id> \
+  --expected-database-oid <oid> \
+  --expected-id <crel_...> \
+  --expected-digest sha256:... \
+  --expected-policy-revision <n> \
+  --expected-frozen true|false \
+  --expected-adopted true \
+  [--low-risk-single-actor|--no-low-risk-single-actor]
+
+npx tsx scripts/catalog-publication-ops.ts policy enable --actor <user-id> \
+  --expected-database-oid <oid> \
+  --expected-id <crel_...> \
+  --expected-digest sha256:... \
+  --expected-policy-revision <n> \
+  --expected-frozen true|false \
+  --expected-adopted true \
+  [--low-risk-single-actor|--no-low-risk-single-actor]
+```
+
+Enable requires exact Catalog adoption (current Artifact + Receipt). It does not advance `current`, does not clear freeze, and does not require a prior online publication. Disable keeps Catalog, Artifact, Receipt, and project values. Closing publication does not restore legacy `advance` after a Receipt exists.
 
 ## 6. Freeze for upgrade / restore
 
@@ -127,3 +160,18 @@ WISEEFF_CATALOG_DELIVERY_ACCEPTANCE=1 \
 The runner builds the formal `ops/self-hosted/Dockerfile` image, provisions distinct **lab run-scoped** API/worker/manager LOGINs on an ephemeral pgvector database (it does not ALTER the cluster-global `wiseeff_api` / `wiseeff_worker` / `wiseeff_publication_manager` names), starts the stock Compose services plus the isolated overlay (`e2e/acceptance/helpers/compose.catalog-delivery.yaml`), then executes adopt → real local login → in-product publish → Receipt/current → DTS ingest → workbench save → second publish → service restart → history reread. Assertions bind this run's Candidate/Job/Receipt/Release/Definition/Binding/ProjectValue IDs. Queued/running after the wait is failure. Missing prerequisites exit non-zero. This runner is not production enablement and is not a silent skip on GitHub L1. It refuses `127.0.0.1:5432/wiseeff` and the shared g668 database name `wiseeff`.
 
 The overlay is **network/port/topology only** (loopback ports, `host.docker.internal`, postgres profile off). Stock `api` command is `npx tsx server/index.ts`; official migrate is a setup/upgrade one-shot with `WISEEFF_CATALOG_BOOTSTRAP_DATABASE_URL`. Stock `worker` `DATABASE_URL` comes from `WISEEFF_WORKER_DATABASE_URL`. The overlay must not replace those process or privilege seams.
+
+## 8. Target-host operator sheet (authorized writes only)
+
+Work directory unless noted: `/srv/wiseeff/ops/self-hosted`. CLI runs inside the application image. Do not put credentials on the command line, in logs, or in tickets.
+
+| Step | Command / page | Writes? | Success | Stop |
+| --- | --- | --- | --- | --- |
+| 1. Read post-upgrade state | `./scripts/compose --env-file .env ps -a`; image `curl` manager `/health/live`; `policy status`; `freeze status` | No | Running image/tag, roles, current Release, policy revision, freeze | Missing manager LOGIN on a stack that already had `publication-manager` |
+| 2. Inspect source bundle / adopt check | `inspect` with `CATALOG_BASELINE_READONLY_DATABASE_URL`; `adopt --check` with expected id/digest/bundle | No | JSON identity matches the collected bundle | Drift, missing history, or missing Artifact bytes |
+| 3. Adopt + ACL + capabilities | `adopt --execute`; `capabilities grant` for `catalog:author` / `catalog:publish` (and `catalog:review-high-risk` if needed) | Yes | Receipt kind `adopted-preexisting`; capability status true | Do not GRANT to default `admin`; do not use test capabilities |
+| 4. Policy check / enable / disable | `policy check enable` then `policy enable` with the **fresh** status pins; optional `--low-risk-single-actor` | Yes | `publication_enabled=true`; freeze unchanged | Stale pins, not adopted, ephemeral confirmation on a durable name |
+| 5. Page business loop | `/parameter-admin/specs` create/revise/preview/publish; workbench "Submit selected" control | Yes | Receipt `effective`; official value content; history after restart | Queued/running after timeout is failure; do not POST save APIs by hand |
+| 6. Abnormal stop | `policy disable`; `freeze set` if maintenance; upgrade recovery for restore | Yes | Publication closed; Catalog/values retained | Do not DROP history or re-bootstrap |
+
+Field enablement remains **pending authorization / pending execution** until those writes are observed on the target.
