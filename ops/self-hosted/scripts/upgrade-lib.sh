@@ -383,6 +383,15 @@ wiseeff_upgrade_compose() {
   "${upgrade_script_dir}/compose" --env-file "$upgrade_env_file" "$@"
 }
 
+wiseeff_upgrade_reload_implementation() {
+  local dir="${upgrade_script_dir:-}"
+  if [ -z "$dir" ]; then
+    dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+  fi
+  # shellcheck source=upgrade-lib.sh
+  source "${dir}/upgrade-lib.sh"
+}
+
 wiseeff_upgrade_git() {
   if [ -n "${upgrade_git_proxy:-}" ]; then
     git -C "$upgrade_repo_root" -c "http.proxy=${upgrade_git_proxy}" "$@"
@@ -1257,6 +1266,9 @@ wiseeff_upgrade_build_candidate() {
     "The commit-addressed candidate image built successfully." \
     "No build-diagnostic action is required." || return $?
   wiseeff_upgrade_state_write build_status passed || return $?
+  # Apply started from the previous checkout; load the candidate implementation
+  # before quiesce/migrate/readiness so first-intro fixes actually run.
+  wiseeff_upgrade_reload_implementation || return $?
 }
 
 wiseeff_upgrade_sanitize_diagnostic_stream() {
@@ -1894,13 +1906,16 @@ wiseeff_upgrade_probe_worker() {
 }
 
 wiseeff_upgrade_verify_parameter_catalog() {
-  if [ -n "${upgrade_target_sha:-}" ] &&
+  local output=""
+  if [ "${upgrade_parameter_data_mode:-}" = "new-empty" ] &&
+    [ -n "${upgrade_target_sha:-}" ] &&
     wiseeff_upgrade_git cat-file -e "${upgrade_target_sha}:scripts/parameter-data-mode.ts" 2>/dev/null; then
-    if wiseeff_upgrade_compose exec -T api node --import tsx scripts/parameter-data-mode.ts initialize "$upgrade_target_sha"; then
+    if output="$(wiseeff_upgrade_compose exec -T api node --import tsx scripts/parameter-data-mode.ts initialize "$upgrade_target_sha" 2>&1)"; then
       return 0
     fi
+    output="$(printf '%s' "$output" | wiseeff_upgrade_sanitize_diagnostic_stream | tr '\r\n\t' '   ' | cut -c1-200)"
     wiseeff_upgrade_record_failure "$(wiseeff_upgrade_state_read phase)" api candidate-parameter-catalog \
-      "The candidate parameter-data-mode initialize gate failed."
+      "The candidate parameter-data-mode initialize gate failed. ${output}"
     return 1
   fi
   if wiseeff_upgrade_compose exec -T api npm run parameter-definitions:check -- --catalog-only; then

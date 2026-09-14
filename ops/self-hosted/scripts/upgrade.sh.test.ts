@@ -864,6 +864,112 @@ describe("upgrade.sh public interface", () => {
     );
   });
 
+  it("does not run new-empty initialize on a populated unchanged upgrade", () => {
+    const runDir = mkdtempSync(join(tmpdir(), "wiseeff-upgrade-populated-catalog-gate-"));
+    const result = runLibrary(
+      `
+      upgrade_run_dir="$1"
+      upgrade_run_id=populated-catalog-gate
+      upgrade_target_sha=2ee24b651ace3649e7ca8012205da9db43736c6c
+      upgrade_parameter_data_mode=""
+      wiseeff_upgrade_state_write phase starting-app-services
+      wiseeff_upgrade_probe_api() { return 0; }
+      wiseeff_upgrade_probe_worker() { return 0; }
+      wiseeff_upgrade_probe_web() { return 0; }
+      wiseeff_upgrade_git() {
+        [ "$1" = "cat-file" ] && return 0
+        return 0
+      }
+      wiseeff_upgrade_compose() {
+        printf '%s\\n' "$*" >> "$upgrade_run_dir/compose.log"
+        return 0
+      }
+      if wiseeff_upgrade_verify_candidate_app_readiness; then exit 0; else exit $?; fi
+      `,
+      [runDir],
+    );
+
+    expect(result.status).toBe(0);
+    expect(readFileSync(join(runDir, "compose.log"), "utf8")).toContain(
+      "exec -T api npm run parameter-definitions:check -- --catalog-only",
+    );
+    expect(readFileSync(join(runDir, "compose.log"), "utf8")).not.toContain(
+      "parameter-data-mode.ts initialize",
+    );
+  });
+
+  it("runs parameter-data-mode initialize only for new-empty candidate readiness", () => {
+    const runDir = mkdtempSync(join(tmpdir(), "wiseeff-upgrade-new-empty-catalog-gate-"));
+    const result = runLibrary(
+      `
+      upgrade_run_dir="$1"
+      upgrade_run_id=new-empty-catalog-gate
+      upgrade_target_sha=2ee24b651ace3649e7ca8012205da9db43736c6c
+      upgrade_parameter_data_mode=new-empty
+      wiseeff_upgrade_state_write phase starting-app-services
+      wiseeff_upgrade_probe_api() { return 0; }
+      wiseeff_upgrade_probe_worker() { return 0; }
+      wiseeff_upgrade_probe_web() { return 0; }
+      wiseeff_upgrade_git() {
+        [ "$1" = "cat-file" ] && return 0
+        return 0
+      }
+      wiseeff_upgrade_compose() {
+        printf '%s\\n' "$*" >> "$upgrade_run_dir/compose.log"
+        return 0
+      }
+      if wiseeff_upgrade_verify_candidate_app_readiness; then exit 0; else exit $?; fi
+      `,
+      [runDir],
+    );
+
+    expect(result.status).toBe(0);
+    expect(readFileSync(join(runDir, "compose.log"), "utf8")).toContain(
+      "parameter-data-mode.ts initialize 2ee24b651ace3649e7ca8012205da9db43736c6c",
+    );
+    expect(readFileSync(join(runDir, "compose.log"), "utf8")).not.toContain(
+      "parameter-definitions:check",
+    );
+  });
+
+  it("records parameter-data-mode initialize stderr on new-empty failure", () => {
+    const runDir = mkdtempSync(join(tmpdir(), "wiseeff-upgrade-initialize-stderr-"));
+    const result = runLibrary(
+      `
+      upgrade_run_dir="$1"
+      upgrade_run_id=initialize-stderr
+      upgrade_target_sha=2ee24b651ace3649e7ca8012205da9db43736c6c
+      upgrade_parameter_data_mode=new-empty
+      wiseeff_upgrade_state_write phase starting-app-services
+      wiseeff_upgrade_git() {
+        [ "$1" = "cat-file" ] && return 0
+        return 0
+      }
+      wiseeff_upgrade_compose() {
+        printf 'parameter-data-mode-partial-catalog\\n' >&2
+        return 1
+      }
+      if wiseeff_upgrade_verify_parameter_catalog; then exit 0; else exit $?; fi
+      `,
+      [runDir],
+    );
+
+    expect(result.status).not.toBe(0);
+    expect(readFileSync(join(runDir, "failure_code"), "utf8")).toBe("candidate-parameter-catalog\n");
+    expect(readFileSync(join(runDir, "failure_summary"), "utf8")).toContain(
+      "parameter-data-mode-partial-catalog",
+    );
+  });
+
+  it("reloads the candidate upgrade-lib after target checkout", () => {
+    const implementation = readFileSync("ops/self-hosted/scripts/upgrade-lib.sh", "utf8");
+    const buildBody = implementation.split("wiseeff_upgrade_build_candidate()")[1] ?? "";
+    const checkoutIndex = buildBody.indexOf("wiseeff_upgrade_git checkout --detach");
+    const reloadIndex = buildBody.indexOf("wiseeff_upgrade_reload_implementation");
+    expect(checkoutIndex).toBeGreaterThan(0);
+    expect(reloadIndex).toBeGreaterThan(checkoutIndex);
+  });
+
   it("documents the small operator interface without touching the runtime", () => {
     const result = runUpgrade(["--help"]);
 
