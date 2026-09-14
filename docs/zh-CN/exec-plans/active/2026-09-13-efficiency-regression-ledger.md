@@ -57,7 +57,7 @@ PASS 表示所述有限行为有相符证据，PARTIAL 表示仅有部分证据�
 | EFF-T12 | PARTIAL | `scripts/ci-required-results.test.ts:73` 配合 `:80` 的 selected `skipped` 及 `:305` 的 `native-skipped` CLI 行由 L 覆盖，并拒绝 skipped 证据。 | 这些文件没有显式的 `neutral` 行；不得声称执行 `neutral`。 |
 | EFF-T13 | PARTIAL | `scripts/ci-required-results.test.ts:30` 即使对未选中的 job 也拒绝该状态，`:73` 覆盖回执身份，`:250`/`:305` 的 `native-cancelled` 由 L 覆盖取消、缺失和空结果拒绝。 | 没有显式的 `timed_out` 行，也没有 Hosted 取消证明。 |
 | EFF-T14 | PASS | `scripts/ci-required-results.test.ts:50` 拒绝 unknown event、mode、failed Detect 和 unmapped job；C flags 在 `:33`，`shadow` 抑制在 `:137`，L 的原生结果覆盖五个 unknown flag、failed Detect、invalid event/mode/job 及抑制。 | 这是索引中的拒绝集合，不证明所有可能的无效计划。 |
-| EFF-T15 | PASS | `scripts/ci-required-results.test.ts:24` 接受带稳定 `Build and test` 的 docs-only，`:27` 检查 required gate，`:109` 拒绝伪造回执；L 含 `:310` CLI 行，H 记录相应的原生 L1 执行。 | H 本身不是 docs-only PR；证据范围限于已测试的选择/回执行为。 |
+| EFF-T15 | PASS | `scripts/ci-required-results.test.ts:24` 接受带稳定 `Build and test` 的 docs-only，`:27` 检查必需门禁，`:109` 接受无需制造测试回执的纯文档聚合；L 含 `:310` CLI 行，H 记录相应原生 L1 执行。 | H 本身不是纯文档 PR，证据限于所测选择/回执行为。 |
 | EFF-T16 | PARTIAL | `scripts/ci-required-results.test.ts:36` 检查完整 main L1、Quality、L2，`:42` 保留手动触发要求，`:59` 检查标签，`scripts/check-acceptance-ci.test.ts:178` 检查路由；C 由 L 覆盖，原始 C/A 行为由 H 覆盖。 | 这些是夹具和历史 L1 证据，不是当前 main/nightly/manual/target 运行；L2/target/minimal 不作声明。 |
 | EFF-T17 | PASS | `scripts/check-acceptance-ci.test.ts:75` 拒绝 required set 中的 skip、missing needs、altered source identity 和 npm installation；H 记录 aggregate mutation 和稳定 check name。 | 这是原生契约/聚合证据，不是新的远程保护设置审计。 |
 | EFF-T18 | PASS | `scripts/check-acceptance-ci.test.ts:31` 将每个原始 L1 命令/前置条件映射到四个 job 和严格聚合；投影在 `:97`，移除在 `:34`，H 记录清单、投影、移除及完整 L1 执行。 | 此处没有独立重新计数所谓的 30 条命令清单，也没有基于计时的无重复证明。 |
@@ -74,8 +74,8 @@ PASS 表示所述有限行为有相符证据，PARTIAL 表示仅有部分证据�
 | EFF-T29 | PARTIAL | 审查契约对 dynamic import、fixture、SQL、runtime-config 风险有显式映射/回退。 | 当前限定证据不能证明每条运行时路径都被正确选择。 |
 | EFF-T30 | NOT VERIFIED | 允许的有界测试证明合并身份与 registry/路径选择，但本包没有直接执行 PR 编辑策略（旧的最小集合加候选新增项）的当前测试/命令。 | 策略声明保持未验证；EFF05 启用与其分开。 |
 | EFF-T31 | NOT VERIFIED | `scripts/verification/plan.test.ts:265-279` 验证 unknown committed registry module 被拒；`scripts/verification/selection.test.ts:14-29` 验证 unknown/shared path 扩大到完整集合。registry 是固定的，限定证据中没有依赖图/循环依赖测试或实现。 | 不得声称一般依赖循环/未声明模块覆盖；只保留 unknown-registry/path 回退事实。 |
-| EFF-T32 | PASS | M 的 `discovery-zero`、`native-zero`、`all-skipped` 行在 `727-729`，以及原生验证器 `scripts/ci-required-results.test.ts:369`，由 L 的组合 CLI/原生验证器结果覆盖，并拒绝不完整失败记录。 | 这证明索引中的拒绝/保护场景；完整失败记录不算通过，也不能由此推断 Hosted 运行时路径结果。 |
-| EFF-T33 | BLOCKED | 缺少 PostgreSQL 时，既有 PG-required 路径正确失败/阻塞。 | 新 runner 没有 PG adapter；不得改写为全跳过成功，也不要在本台账添加 adapter。 |
+| EFF-T32 | PASS | M 的 `discovery-zero`、`native-zero`、`all-skipped` 位于 `727-729`，连同原生验证器 `scripts/ci-required-results.test.ts:369` 由 L 覆盖。空发现以 `complete:false` 失败；稳定的原生零测试/全跳过则记为 `complete:true`、失败结果且 CLI 非零退出。 | 完整不代表通过。这些仅是索引中的拒绝/保护场景，不是 Hosted 运行时路径实演。 |
+| EFF-T33 | PARTIAL | A 的 `scripts/check-acceptance-ci.test.ts:50,62` 在 H 覆盖前置配置变异反例；C 的 `scripts/ci-required-results.test.ts:93` 在 L 拒绝必需工具链失败。 | 实际缺少 PostgreSQL/扩展时的执行仍未验证。缺前置条件必须失败关闭，但策略要求不是已观察的缺 PG 结果；新运行器没有 PG 适配器，此处不新增。 |
 | EFF-T34 | NOT ADOPTED | memo/reuse 明确关闭，pure 的相同输入复用没有启用。 | 不得声称 local-reuse PASS；继续作为可选/延期项。 |
 | EFF-T35 | PARTIAL | M 的 `success/failure-metadata-drift` 与 `success/failure-entry-drift` 行在 `735-738` 由 L 覆盖；依赖元数据/入口漂移阻止完整性，并保留首个错误。 | source/fixture/config/mode 的重跑组合没有全部由该有界产物证明。 |
 | EFF-T36 | PARTIAL | `scripts/verification/run.test.ts:379` 将重建环境只传给实际子任务并拒绝 unknown mode；`:312` 的环境变量/参数检查及 M 漂移行由 L 覆盖。 | 没有保留锁文件/操作系统/工具版本组合或缓存失效证明。 |
@@ -93,7 +93,7 @@ PASS 表示所述有限行为有相符证据，PARTIAL 表示仅有部分证据�
 | EFF-T48 | PARTIAL | 既有 Quality/Smoke 证据保留串行 UI 基线。 | 分片预热、字体、视口和截图基线保持没有实现或重跑。 |
 | EFF-T49 | NOT ADOPTED | 原串行清单继续作为保守回退。 | 没有分片与串行等价性证据。 |
 | EFF-T50 | NOT ADOPTED | 当前切片没有采用 Node/jsdom 拆分。 | DOM/提供方测试保持现有环境；不得声称已经拆分。 |
-| EFF-T51 | NOT ADOPTED | 提议的 pure/PG 拆分没有采用。既有 PG-required 覆盖在没有 PostgreSQL 时失败/阻塞，新 runner 也没有 PG adapter，但这不等于实现了该拆分。 | 保持原后端环境边界；pure/PG 不得标为 PASS。 |
+| EFF-T51 | NOT ADOPTED | 未采用纯测试/PG 拆分，新运行器也没有 PG 适配器。T33 所列配置/工具链检查不证明实际缺 PG 执行或已经拆分。 | 保留原后端必需环境及缺前置条件失败关闭的策略，不声称拆分 PASS 或已做缺 PG 实验。 |
 | EFF-T52 | PASS（契约）；HISTORICAL ONLY（计时） | 两个被引用的 TypeScript 项目都在两条命令入口中产生 TS2322 Red，随后恢复 Green。PR #838 的 head `7fc675e13fe88888c998ae12297428f50764a48d` 的本地 `typecheck` 为 11.5993s、未改动 `build` 为 24.5690s；独立 R1 审查与 Hosted 的 9 项门禁分别通过（run `34796686417` attempt 1），并合入 `01703ba69f883b22e8b819182223c5fd35b90184`。`work/efficiency/eff07-observation/type-feedback-evaluation.json` 绑定 head `66e572a4c45bd5d4db164380a2200e7ee6c10ac4`、tree `26b7acc0e03a07922e57fe688ca285eb6a741346` 的 12 次历史冷/暖计时观察。 | `alias` 保留原 `compiler phase` 和 `full-build` 要求；不受控的主机负载与小样本分组不能证明当前 head 速度、CI 节省、global C 或当前 main 全量验收。计时属于历史 N=3 分组，与两个项目的 Red/Green 检查分开。 |
 | EFF-T53 | NOT ADOPTED | 没有采用 worker 数量、堆内存或夹具性能优化。 | 不得声称已改善内存耗尽、连接耗尽或残留状态问题。 |
 | EFF-T54 | NOT ADOPTED | 没有采用计时/重试/等待调整。 | 更大的超时或忽略失败不构成就绪证明。 |
