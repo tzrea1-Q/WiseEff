@@ -1,7 +1,7 @@
 # Agent Delivery and Verification Efficiency
 
 > Chinese: [Chinese](../../zh-CN/exec-plans/active/2026-09-13-agent-delivery-efficiency.md)
-> Status: **Active — PRs #830, #829, #833 and #831 merged. Committed-tree preview is integrating on accepted W1; CI shadow has independent code PASS, and fresh execution/reporting remains in Scratch under its accepted correction. No activation or measured-benefit claim.**
+> Status: **Active — PRs #830, #829, #833, #831 and #834 merged. CI shadow is integrating on the accepted preview; fresh execution/reporting is completing its correction matrix. Routing, type feedback and browser fixtures await separate delivery. No activation or measured-benefit claim.**
 > Date: 2026-09-13. Tracking Issue: [#828](https://github.com/tzrea1-Q/WiseEff/issues/828).
 > Accepted base, freshly fetched on 2026-09-13: `1059acb57379bd120d0d2b1a4b4733d4c2e02901`. This equals the supplied design's historical reference; it is not permission to reset later work.
 
@@ -13,11 +13,27 @@ Implement the user's supplied 2026-09-13 engineering design in bounded waves: sa
 
 | Delivery level | Completion means | Current status |
 | --- | --- | --- |
-| A: tools and process | Reviewed and verified diagnostics, equivalent scheduling, shadow plan, execution/reporting and routing are delivered | EFF-01/02 merged; EFF-03 preview/CI shadow and EFF-07/08 have local reviewed candidates; EFF-04 correction and final integration remain pending |
+| A: tools and process | Reviewed and verified diagnostics, equivalent scheduling, shadow plan, execution/reporting and routing are delivered | EFF-01/02 and EFF-03 preview merged; CI shadow is integrating; EFF-07/08 have reviewed local candidates; EFF-04 correction and final integration remain pending |
 | B: module activation | Each explicitly named module passes its own observation and independent-review gates | No module enabled; `observation-pending` |
 | C: measured effect | Comparable real task/CI samples support wall-clock, resource and usage conclusions | Insufficient samples; token usage `unknown` |
 
 A can be delivered while B/C remain open. Do not manufacture samples or call the entire program complete merely because tooling merged.
+
+## Preview accepted and CI shadow integration — 2026-09-14
+
+[PR #834](https://github.com/tzrea1-Q/WiseEff/pull/834) merged as `4ef53e5c1551747d76350cd324068fb413d462c2` after [run 34788103778](https://github.com/tzrea1-Q/WiseEff/actions/runs/34788103778), attempt 1, passed all nine selected original checks from GitHub Actions. Base was `915f70a04c674c9d9634b72960f036be1defa486`, head `84f3033f327615351e3b977cd04379c92168f2be`, actual checkout `742e70fc887718b2d15199ece33ee560ee8b28fc`; checkout, candidate and merged tree are `f7340bdcd81a03c7474295a0f3f5f5573275e0d7`. Native results: frontend 3411/441 files, scripts 1432/107 plus 21 existing optional skips, bridge 134/21 plus 4 platform skips, backend 4180/539 with no skips, Quality 100 and Smoke 4. Independent Standards and Spec passed. Workflow wall was 607 seconds and summed executed job elapsed 31.6167 minutes; these are observations, not billing or a controlled performance comparison. Complete 11-file source ZIP SHA256 is `f753dbdbb02ee286066de9894151e07019076441940a618a5a0ef6d72e1b59b5`; no deletes or renames. Local main was synchronized and the remote feature branch removed.
+
+CI shadow integrates that exact accepted main without conflict. Its independently reviewed code checkpoint `4b9393617a49928e95980898f09cc22a377aff39` adds three explicit observation states after the unchanged native gate: applicable/fresh `observed`, evidence failure `unavailable`, and docs/non-PR `not-applicable`. Only `observed` permits `planValid:true`; neither refusal state selects modules or reports nonzero selection counts; unavailable may retain the verified full native count. Native Detect controls applicability, and native failure retains its original exit. All original commands still run, all four modules remain observation-pending, and enforce/memo remain disabled. Final integrated tests, independent review, PR and Hosted are pending at this documentation checkpoint. The permanent native fixture and 29 CLI counterexamples are fault-injection evidence, not activation samples.
+
+Main acceptance is separate. The earlier `60f2752e78b3dc45466836b4f7b3233f0e908a2a` push run 34785552162 passed L1/Quality/visual but inventoried 58 browser failures. The unchanged archive-size guard rejected the full artifact; minimal diagnostic upload succeeded without overriding either failure, and detailed native totals/cleanup remain unknown in that channel. Its workflow wall was 2442 seconds, summed executed job elapsed 66.9667 minutes. The later W1 main run remains separately tracked. No raw-directory fallback, scanner relaxation or retry was added.
+
+### First shadow Hosted failure and transport correction
+
+[PR #835](https://github.com/tzrea1-Q/WiseEff/pull/835) first [run 34789687505](https://github.com/tzrea1-Q/WiseEff/actions/runs/34789687505), attempt 1, failed at head `11bf5f871c46a49c74b5f6ee5fdd2770c3d41105`; actual merge checkout `792eca13758c655fdcf3b48b250b3524f676d9ff` has tree `fb486a18a8d12d10fd074fc900c8b5acb64b0c76` and ordered base/head parents. Scripts passed 1524 tests with 21 existing optional skips and one failing native shadow fixture; bridge was not run after that failure. Frontend/backend, Quality and Smoke passed, while Build and test/Merge bar failed. Parsed frontend/server outputs show `SHADOW_ADAPTER_FAILED`; scripts/bridge observations are absent. Wall was 707 seconds, summed executed job elapsed 34.75 minutes, not billed usage or a performance comparison.
+
+A local Linux Node 22.21.1 pipe probe reproduced `ENXIO` when reopening `/dev/stdin`, while reading descriptor `0` returned the same JSON. The isolated, network-disabled, read-only container was removed and verified absent. This establishes a matching transport counterexample; Hosted adapter stderr was suppressed, so its exact stack is unavailable. The fix reads the inherited descriptor directly, retaining the 256 KiB input check, all native validation and refusal semantics. The existing ambient `readFileSync` declaration now accepts the supported numeric descriptor: compiler Red at `a798e07aa10b4b3d4d9e250ff0230f72e56280aa` required that one-line type correction. The existing real fixture keeps its observed-state assertion and saves bounded diagnostic context. No assertion, exclusion, gate, retry policy or dependency was loosened.
+
+The corrected runtime at `a798e07aa10b4b3d4d9e250ff0230f72e56280aa` passed 199 tests in six files and acceptance metadata; the type-complete `49bc60e97e9ec325c37bd72044c152d8e8635a7c` passed the unchanged build (22.0427 seconds) and direct docs. Final independent review and a meaningful corrected-head Hosted run remain pending at this checkpoint. The earlier failed run is retained; these are separate identities and evidence levels, with no activation or complete-main claim.
 
 ## W1 accepted and committed-tree preview integration — 2026-09-14
 
