@@ -29,6 +29,10 @@ L2 的 `wiseeff-diagnostic-<run>-<attempt>-acceptance-local-non-hdc` 产物是�
 - 永久注销用户必须执行 API 模式的 `PERM-USER-MGMT-001`，证明 PostgreSQL 外键策略（账号自有数据 `CASCADE`、历史保留数据可空 `SET NULL`）、无 PII 的注销审计，以及非 Admin 调用 `DELETE /api/v1/users/:userId` 返回 401/403。Mock 模式浏览器通过不能满足这一 API/数据库门禁。
 - M5.12：PR 合入门槛是 L1 + `@ci-smoke`（产品路径）+ 一次 `acceptance:quality-run`（UI/产品路径）。L1 固定拆为 `l1-static`、`l1-frontend`、`l1-scripts`、`l1-server`，保留全部原命令；脚本和后端分别使用 pgvector 服务与已验证 DTS 工具链，唯一的 L1 `docs:check` 在 `l1-server` 的 vector 设置之后、后端测试之前运行。每个测试命令发现配置中的完整文件集，并生成本次私有原生 JSON 报告；报告、命令结果、实际执行 SHA/tree/run/attempt 必须一致。必需检查缺失、跳过、取消、零测试或全部必需测试跳过均失败。`Build and test` 与 `Merge bar` 始终运行，文档-only 也要求二者成功。L2 事件继续使用 `acceptance-quality` 兄弟 job；`acceptance-local-non-hdc` 通过权威 `acceptance:gate0` 让 visual 与 full browser 共用独占运行时，在 `main` / 夜间 / 标签 `full-acceptance` / 手动 `local-non-hdc` 归档证据。完整证据 finalizer 成功后只上传 `test-results/acceptance-runtime-upload/wiseeff-acceptance-local-non-hdc.zip`，live runs root 绝不作为 upload 输入。以后若打开 branch protection，required check 只设 `Merge bar`。
 
+## 有界浏览器夹具检查
+
+EFF 夹具工作复用原有自有 Gate0 runtime 与原生验收配置，保持一个 worker、仅模拟器调试及原 warmup 依赖。有界回归集包括 `product-feedback.acceptance.spec.ts` 原三项、`parameter-files.acceptance.spec.ts` 的上传/列表/同步项，以及 `debugging-simulator.acceptance.spec.ts` 的读/写/替代回读/回滚/审计项：五个场景加 warmup，必须取得六项实际原生结果，且无跳过或 flaky。保留嵌套临时语义 runtime 的清理 manifest 和产物 finalizer。旧 SHA 结果、无 descriptor 运行及模拟器回滚不能当作当前 main 全量或目标/设备验收。本次夹具修复不引入分片、重试、golden 更新或覆盖裁剪。
+
 ## 补充命令
 
 | 命令 | 证明内容 | 使用场景 |

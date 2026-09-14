@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { expect, type APIRequestContext } from "playwright/test";
+import { getSpecReviewTaskById } from "../../../server/modules/parameter-specs/repository";
 
 import { pickReviewCandidate } from "./acceptanceTaskLookup";
 import { authHeadersForRole, type AcceptanceRoleId } from "./bearerAuth";
@@ -256,7 +257,7 @@ export async function resolveOpenSpecReviews(
       expect(parameterSpecId).toBeTruthy();
 
       const detailResponse = await request.get(
-        apiRoute(`/api/v2/parameter-specs/${encodeURIComponent(parameterSpecId)}`),
+        apiRoute(`/api/v2/parameter-specs/${encodeURIComponent(parameterSpecId)}?view=governance`),
         { headers: adminHeaders() }
       );
       expect(detailResponse.ok()).toBe(true);
@@ -277,6 +278,14 @@ export async function resolveOpenSpecReviews(
         constraints = { minLength: length, maxLength: length };
       }
       if (detailBody.item.lifecycle !== "active") {
+        const persistedTask = await withPgClient((client) =>
+          getSpecReviewTaskById(client, { organizationId, taskId: task.id })
+        );
+        expect(persistedTask, `review ${task.id} requires persisted fixture evidence`).toBeTruthy();
+        const sourceCompatible = persistedTask!.sourceEvidence.compatible;
+        const firstCompatible = Array.isArray(sourceCompatible) ? sourceCompatible[0] : sourceCompatible;
+        const compatible = typeof firstCompatible === "string" ? firstCompatible.trim() : undefined;
+        expect(compatible, `review ${task.id} requires compatible evidence for coverage`).toBeTruthy();
         const activate = await request.post(
           apiRoute(`/api/v2/parameter-specs/${encodeURIComponent(parameterSpecId)}/activate`),
           {
@@ -285,7 +294,11 @@ export async function resolveOpenSpecReviews(
               valueShape: shape,
               constraints,
               documentation: `${input.reason} occurrence-derived spec`,
-              reason: `${input.reason} activate occurrence-derived spec`
+              reason: `${input.reason} activate occurrence-derived spec`,
+              coverageClaim: {
+                kind: "overlay-property",
+                upsertOverlay: { compatible, createPropertyLink: true }
+              }
             }
           }
         );
