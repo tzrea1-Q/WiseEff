@@ -363,6 +363,14 @@ W0 先补安全诊断；W1 只改等价调度；W2 交付 shadow 和统一执行
 
 最终列出真实 Issue/PR/base/head/executed tree/merge/run/attempt；已运行/未运行/blocked/not-selected 检查；独立 reviewer/范围/结论；local、Hosted、target 证据；wall/runner/token 口径和样本充分性；本轮自有临时资源处置；精确源码包和回退方式。当前 main 的相关完整验收独立报告，不能从 focused、历史、synthetic 或 PR 结果推断。历史结果只追加更正与新记录。
 
+## 浏览器夹具交付候选——2026-09-14
+
+本 EFF 阻塞修复仅涉及三个测试/夹具路径。反馈入口将具名按钮限定到实际导航侧栏，保留原三项场景和 28 个断言。共享语义夹具以治理视图打开草稿，通过原 store/事务 helper 读取精确持久化 review task，以非空 compatible 值提供原 API 要求的显式 overlay 覆盖声明；不改 DTO、SQL、ACL、生产服务或规范 Catalog 启用。代码 `fff3807b6783bbe3aa08b348050c23e359050ab4` 已通过独立 Standards/Spec；自有运行 `full-20260913t213711774z-fff3807b6783-85fe78c8` 的上传/列表/同步代表项加 warmup 为 2/2，无跳过/flaky，原生 8.1232 秒，嵌套及外层清理完成。这不能证明所有调用方或关闭所有历史语义失败。
+
+原模拟器测试的整行否定正则在回读成功后命中了参数名称/描述中的刻意文本“Readback mismatch probe”。自有新鲜 Red 位于 `22d2c0bfe738f129771dfcf20912a968fbd866b1`，运行 `full-20260914t002830662z-22d2c0bfe738-ab41d2ed`：warmup 通过、原场景失败，原生 48.0234 秒；失败资源按既有策略保留。修正 `7c6511d9224214245953be2d520ae6af417c9087` 检查真实状态单元格，并独立断言没有匹配的 `.node-row-error`；原正则、全部写入/回读/回滚/审计断言保留，字面断言数由 50 增至 51。新鲜 Green `full-20260914t003458715z-7c6511d92242-1abc7470` 为 2/2，无跳过/flaky，原生 39.3822 秒，清理完成；原生报告 SHA256 为 `6f0fc2d4e3fa04aa27562a8e8f441746d01bb94a370ecffe51e25c243a3294b5`。仅使用自有模拟器，不涉及目标数据库、真实设备、恢复或冻结节点操作。
+
+最终接受 main 刷新后，此独立候选仍需执行验证矩阵中的六项原生集合、原 build、元数据/文档、独立双审及自身选中的 Hosted 检查，不复用旧 PG/browser 通过。main 完整验收独立报告；冻结 Catalog 前置条件和根因未明的 Knowledge/DTS/Xiaoze 失败不会因这些夹具修正而关闭。不引入浏览器分片、更大超时、重试、exclude、golden 变化或收益声明。
+
 ## 文档影响矩阵
 
 | 领域 | 状态 | 精确路径与处置 |

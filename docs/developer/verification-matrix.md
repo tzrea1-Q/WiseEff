@@ -14,6 +14,10 @@ The `Build and test` aggregator first enforces existing native L1 receipts and r
 
 All original L1 commands still execute. The four feedback modules remain `observation-pending`, with enforcement and memo disabled; policy changes validate themselves with the unchanged full requirements. Summary paths and fields are fixed and bounded, and rejected evidence is never replaced by raw-directory upload. Test this boundary with `npm run test:scripts -- scripts/check-acceptance-ci.test.ts scripts/ci-required-results.test.ts scripts/verification/ci-shadow.test.ts scripts/verification/plan.test.ts scripts/verification/selection.test.ts scripts/ci-changed-paths.test.ts` plus `npm run acceptance:ci` and the original build. The finite native fixture inside these tests proves receipt wiring; it is not a real module activation sample.
 
+## Focused browser fixture checks
+
+For EFF fixture work, use the original owned Gate0 runtime and native acceptance configuration, with one worker, simulator-only debugging and the existing warmup dependency. The bounded regression set is the three original `product-feedback.acceptance.spec.ts` cases, `parameter-files.acceptance.spec.ts`'s uploads/lists/syncs case, and `debugging-simulator.acceptance.spec.ts`'s reads/writes/alternate-readback/rollback/audit case: five scenarios plus warmup, with six actual native results required and no skipped/flaky cases. Preserve the disposable nested semantic runtime's cleanup manifest and artifact finalizer. Old SHA results, descriptor-free runs and simulator rollback are not current full-main or target/device acceptance. These fixture repairs do not introduce sharding, retries, golden updates or reduced coverage.
+
 ## Common Commands
 
 | Command | Proves | Use when |
