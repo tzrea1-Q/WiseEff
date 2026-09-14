@@ -120,6 +120,7 @@ describe("debugging admin client", () => {
       details: [],
       detailsTruncated: false,
       conflicts: [],
+      countConflicts: [],
       warnings: []
     };
     const summary = {

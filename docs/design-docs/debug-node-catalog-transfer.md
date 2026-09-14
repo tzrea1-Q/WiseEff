@@ -60,11 +60,18 @@ preserves the target description even though the schema fills in `""`.
 
 Export and the import planner both call `loadCatalogTargetSnapshot`, which reads every
 module, **every** persisted node (archived, disabled and unbound included) and every
-binding for the organization. Nothing filters by the current table page, search box,
-module selection, protocol filter or tree expansion state, and the response `counts` are
-derived from the same object set. A node whose `debug_node_module_id` does not resolve
-inside the organization is reported as a located blocking conflict instead of being
-silently exported or skipped, so a file can never claim completeness while dropping rows.
+binding for the organization through one consistent snapshot: on the production root pool
+the reads run in a dedicated `READ ONLY REPEATABLE READ` transaction, and inside a
+caller-owned transaction they join its snapshot. Nothing filters by the current table page,
+search box, module selection, protocol filter or tree expansion state, and the response
+`counts` are derived from the same object set.
+
+The target's own integrity is part of that contract. A node whose `debug_node_module_id`
+does not resolve inside the organization, a module with a missing or cyclic parent, or a
+binding whose node is absent makes the catalog unrepresentable, so **export fails the whole
+operation** with `VALIDATION_FAILED` and a located issue list instead of writing a file
+that silently omits or misplaces a row. Preview and import report the same conditions as
+located blocking conflicts.
 
 ## Export capacity
 
@@ -80,7 +87,10 @@ returned.
 ## Preview and execute share one plan
 
 `buildCatalogImportPlan` validates the file, matches it against the snapshot and
-classifies every object exactly once:
+classifies every object exactly once. Node classification describes the **node row** (name
+and the nine node fields); binding-only changes are classified and counted on the binding,
+so a node whose attributes are untouched is reported `unchanged` next to its `updated`
+binding rather than being counted twice:
 
 - **modules** match by full parent-name path + name; only the fields the file declares are
   compared and written, so a round trip is not reported as an update;
@@ -92,9 +102,15 @@ classifies every object exactly once:
 
 Blocking conflicts (the whole file is rejected, no automatic guessing) are: duplicate
 module path, dangling module parent, dangling node module, duplicate source id, id and
-name-path matching different targets, two file entries claiming the same target, duplicate
-source id, duplicate binding protocol, a cyclic or dangling target module reference, and
-any target node whose module reference does not resolve.
+name-path matching different targets, two file entries claiming the same target, two
+otherwise-identical new nodes in one file, duplicate binding protocol, two persisted target
+nodes sharing one module/name identity (an ambiguous match is never resolved by picking the
+first row), a cyclic or dangling target module reference, an orphan target binding, and any
+target node whose module reference does not resolve.
+
+A v2 file whose `counts` contradict the objects it carries is equally blocking: the admin
+cannot tell which half is authoritative, so the preview reports `count-conflicts` and
+nothing may be submitted.
 
 Archive state never silently changes: a newly created archived node stays archived and is
 stamped with the current operator and time, while an existing target keeps its own archive

@@ -39,10 +39,10 @@ separate confirmed defect and is not claimed as its root cause.
 
 | Level | Evidence |
 | --- | --- |
-| Real local PostgreSQL | `server/modules/debugging/catalogTransfer.test.ts` (22 cases: full export, v1/v2 semantics, conflicts, digest guard, archive rules, idempotence, rollback, 2,001/501 capacity, 20 MiB boundary) |
+| Real local PostgreSQL | `server/modules/debugging/catalogTransfer.test.ts` (24 cases: full export, export refusal over an unrepresentable target, v1/v2 semantics, conflicts incl. ambiguous target and duplicate input, declared-count mismatch, digest guard, archive rules, idempotence, rollback, 2,001/501 capacity, 20 MiB boundary) |
 | Route contract | `server/modules/debugging/routes.test.ts`, `schemas.test.ts`, `server/shared/http/server.test.ts`, `server/modules/contracts/routeParity.test.ts` |
-| Browser-real | `e2e/acceptance/debugging-admin.acceptance.spec.ts` → `DEBUG-ADMIN-001`, `DEBUG-ADMIN-846-CAPACITY`, `DEBUG-ADMIN-846-GUARD` (4 passed, real API + PostgreSQL) |
-| Browser UI | `work/846-ui-checks/*` at 1440×900, 768×1024, 390×844 with `work/846-ui-check.mts`: download, upload, preview, cancel, confirm, error path, focus, console/network |
+| Browser-real | `e2e/acceptance/debugging-admin.acceptance.spec.ts` → `DEBUG-ADMIN-001`, `DEBUG-ADMIN-846-CAPACITY`, `DEBUG-ADMIN-846-VIEWPORTS`, `DEBUG-ADMIN-846-GUARD` (5 passed, real API + PostgreSQL) |
+| Browser UI | Committed three-viewport case inside the acceptance spec, plus `work/846-ui-checks/*` at 1440×900, 768×1024, 390×844 from `work/846-ui-check.mts` (ignored evidence path): download, upload, preview, cancel, confirm, unknown-outcome notice, error path, focus, console/network |
 
 ## Documentation Impact Matrix
 
@@ -57,7 +57,7 @@ separate confirmed defect and is not claimed as its root cause.
 | Reliability / runbooks | `docs/runbooks/*` | No change — no new operator procedure |
 | Security | `docs/SECURITY.md`, `docs/security/*` | Review — permission, audit and redaction behavior follows existing rules |
 | Frontend / design | `docs/design-docs/ui-design-system.md`, `docs/developer/ui-quality-checklist.md` | Review — reused `ModalDialog` tiers and design tokens |
-| Generated | `docs/generated/openapi.json` | Review — route/schema registry updated; regeneration belongs to the release artifact step |
+| Generated | `docs/generated/openapi.json` | Update — regenerated from the route/schema registry and verified with `npm run contract:check` |
 | References | `docs/references/*` | No change |
 
 ## Documentation Update Gate
@@ -74,6 +74,7 @@ DATABASE_URL=<scratch pg> npx vitest run --config vitest.server.config.ts \
   server/modules/debugging/schemas.test.ts server/shared/http/server.test.ts \
   server/modules/contracts/routeParity.test.ts
 npx vitest run src/DebuggingAdminPage.test.tsx src/components/admin/DebugNodeCatalogImportDialog.test.tsx
+npm run ui:check && npm run contract:check
 npx playwright test --config playwright.acceptance.config.ts e2e/acceptance/debugging-admin.acceptance.spec.ts
 npx tsx work/846-ui-check.mts
 npm run typecheck && npm run build && npm run docs:check
@@ -81,11 +82,12 @@ npm run typecheck && npm run build && npm run docs:check
 
 ## Success
 
-The candidate is reviewable when the focused suites, `npm run build`, `npm run docs:check`
-and the four acceptance cases pass on the recorded SHA, and the browser evidence shows no
-overflow, blocked action or console error at all three viewports.
+The candidate is reviewable when the focused suites, `npm run build`, `npm run ui:check`,
+`npm run contract:check`, `npm run docs:check` and the five acceptance cases pass on the
+recorded SHA, and the browser evidence shows no overflow, blocked action or console error
+at all three viewports.
 
 ## Open items
 
 - The original deployment's missing-entry report is **not reproduced**; no root cause is claimed.
-- `docs/generated/openapi.json` still carries the pre-change catalog schema names; regenerate it in the release artifact step rather than hand-editing the generated file.
+- None beyond the un-reproduced field report below.

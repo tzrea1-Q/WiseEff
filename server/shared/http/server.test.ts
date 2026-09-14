@@ -60,7 +60,7 @@ describe("createHttpServer", () => {
     expect(seen.body).toBeUndefined();
   });
 
-  it("accepts a body within the configured bound and falls back to the transport default", async () => {
+  it("accepts a body within a declared route bound", async () => {
     const seen: { body?: unknown } = {};
     const baseUrl = await listen(
       createHttpServer(echoRouter(seen), {
@@ -76,5 +76,21 @@ describe("createHttpServer", () => {
 
     expect(response.status).toBe(200);
     expect(seen.body).toEqual({ payload: "x".repeat(64) });
+  });
+
+  it("leaves routes without a declared limit unbounded", async () => {
+    const seen: { body?: unknown } = {};
+    const baseUrl = await listen(createHttpServer(echoRouter(seen)));
+
+    // Comfortably larger than the old blanket transport cap: existing upload routes must
+    // not inherit the catalog transfer contract.
+    const response = await fetch(`${baseUrl}/api/v1/unlimited`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ payload: "x".repeat(30 * 1024 * 1024) })
+    });
+
+    expect(response.status).toBe(200);
+    expect((seen.body as { payload: string }).payload.length).toBe(30 * 1024 * 1024);
   });
 });

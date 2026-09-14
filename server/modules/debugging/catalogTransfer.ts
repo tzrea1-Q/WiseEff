@@ -13,7 +13,7 @@
  */
 import { createHash } from "node:crypto";
 import { ApiError } from "../../shared/http/errors";
-import type { Database } from "../../shared/database/client";
+import { createDatabase, getRootPostgresPool, type Database } from "../../shared/database/client";
 import type { AuthContext } from "../auth/types";
 import { withAuditedWrite } from "../audit/auditedWrite";
 import { requireDebugAdmin } from "./policy";
@@ -168,6 +168,8 @@ export type CatalogImportPreview = {
   details: CatalogImportDifferenceDetail[];
   detailsTruncated: boolean;
   conflicts: CatalogImportConflict[];
+  /** Declared-count contradictions, kept separate from identity/reference conflicts. */
+  countConflicts: CatalogImportConflict[];
   warnings: CatalogImportWarning[];
 };
 
@@ -299,6 +301,8 @@ export type CatalogTargetSnapshot = {
   danglingModuleParentRefs: Array<{ moduleId: string; moduleName: string; parentId: string }>;
   /** Module parent chains that never reach an organization root. */
   cyclicModuleRefs: Array<{ moduleId: string }>;
+  /** Bindings whose node was not part of the same node read. */
+  orphanBindingNodeIds: string[];
 };
 
 type PlannedModuleWrite = {
@@ -372,8 +376,12 @@ function assertWithinDocumentCapacity(input: unknown) {
   return bytes;
 }
 
-const V2_MODULE_FIELDS = ["description", "scope", "sortOrder"] as const;
-const V2_NODE_FIELDS = [
+/**
+ * One inventory of the optional fields each object type can declare. v1 and v2 share it;
+ * only the fields v1's schema actually carries are ever reported for a v1 document.
+ */
+const CATALOG_MODULE_FIELDS = ["description", "scope", "sortOrder"] as const;
+const CATALOG_NODE_FIELDS = [
   "description",
   "detailedDescription",
   "writeFormatExample",
@@ -386,7 +394,12 @@ const V2_NODE_FIELDS = [
   "archived",
   "archiveReason"
 ] as const;
-const V2_BINDING_FIELDS = ["enabled", "notes"] as const;
+const CATALOG_BINDING_FIELDS = ["enabled", "notes"] as const;
+
+/** v1's schema predates `archived`/`archiveReason`, so those never appear in a v1 file. */
+const V1_NODE_FIELDS = CATALOG_NODE_FIELDS.filter(
+  (field) => field !== "archived" && field !== "archiveReason"
+);
 
 function normalizeV2Document(input: DebugCatalogV2Document, raw: unknown): NormalizedCatalogDocument {
   const fileBytes = assertWithinDocumentCapacity(raw);
@@ -404,7 +417,7 @@ function normalizeV2Document(input: DebugCatalogV2Document, raw: unknown): Norma
       description: module.description,
       scope: module.scope,
       sortOrder: module.sortOrder,
-      declaredFields: declaredFieldNames(module, V2_MODULE_FIELDS)
+      declaredFields: declaredFieldNames(module, CATALOG_MODULE_FIELDS)
     })),
     nodes: input.nodes.map((node) => ({
       sourceId: node.sourceId,
@@ -421,33 +434,19 @@ function normalizeV2Document(input: DebugCatalogV2Document, raw: unknown): Norma
       enabled: node.enabled,
       archived: node.archived,
       archiveReason: node.archiveReason,
-      declaredFields: declaredFieldNames(node, V2_NODE_FIELDS),
+      declaredFields: declaredFieldNames(node, CATALOG_NODE_FIELDS),
       bindings: node.bindings?.map((binding) => ({
         protocol: binding.protocol,
         nodePath: binding.nodePath,
         accessMode: binding.accessMode,
         enabled: binding.enabled,
         notes: binding.notes,
-        declaredFields: declaredFieldNames(binding, V2_BINDING_FIELDS)
+        declaredFields: declaredFieldNames(binding, CATALOG_BINDING_FIELDS)
       }))
     })),
     fileBytes
   };
 }
-
-const V1_MODULE_FIELDS = ["description", "scope", "sortOrder"] as const;
-const V1_NODE_FIELDS = [
-  "description",
-  "detailedDescription",
-  "writeFormatExample",
-  "writeFormatHint",
-  "valueKind",
-  "valueFormat",
-  "normalizationMode",
-  "maxValueBytes",
-  "enabled"
-] as const;
-const V1_BINDING_FIELDS = ["enabled", "notes"] as const;
 
 type ParsedV1Document = {
   format: string;
@@ -493,7 +492,7 @@ function normalizeV1Document(input: ParsedV1Document, raw: unknown): NormalizedC
       description: module.description,
       scope: module.scope,
       sortOrder: module.sortOrder,
-      declaredFields: declaredFieldNames(rawModules[index], V1_MODULE_FIELDS)
+      declaredFields: declaredFieldNames(rawModules[index], CATALOG_MODULE_FIELDS)
     })),
     nodes: input.nodes.map((node, nodeIndex) => {
       const rawNode = rawNodes[nodeIndex] as { bindings?: Array<Record<string, unknown>> } | undefined;
@@ -530,7 +529,7 @@ function normalizeV1Document(input: ParsedV1Document, raw: unknown): NormalizedC
           accessMode: binding.accessMode,
           enabled: binding.enabled,
           notes: binding.notes,
-          declaredFields: declaredFieldNames(rawBindings[bindingIndex], V1_BINDING_FIELDS)
+          declaredFields: declaredFieldNames(rawBindings[bindingIndex], CATALOG_BINDING_FIELDS)
         }))
       };
     }),
@@ -561,11 +560,11 @@ export function parseDebugCatalogTransferDocument(input: unknown): NormalizedCat
   return normalizeV2Document(parsed.data, input);
 }
 
-export function loosePathKey(namePath: string[]) {
+function loosePathKey(namePath: string[]) {
   return JSON.stringify(namePath);
 }
 
-export function catalogNodeKey(moduleNamePath: string[], nodeName: string) {
+function catalogNodeKey(moduleNamePath: string[], nodeName: string) {
   return `${loosePathKey(moduleNamePath)}::${nodeName}`;
 }
 
@@ -594,7 +593,7 @@ function canonicalize(value: unknown): unknown {
   return value;
 }
 
-export function canonicalJson(value: unknown) {
+function canonicalJson(value: unknown) {
   return JSON.stringify(canonicalize(value));
 }
 
@@ -647,15 +646,63 @@ function toTargetBindingState(record: DebugNodeBindingRecord): TargetBindingStat
  * whether to take concurrency control first: preview reads directly, execute reads after
  * the transaction has serialized concurrent catalog writers.
  */
-export async function loadCatalogTargetSnapshot(
+/**
+ * Reads the org target state through one consistent database moment.
+ *
+ * A root pool handle (production) gets a dedicated connection whose transaction owns a
+ * READ ONLY REPEATABLE READ snapshot, so modules, nodes and bindings cannot come from
+ * different moments. A caller-owned transaction — the import transaction, or an externally
+ * transactional test harness — already owns its snapshot, so the reads simply join it.
+ */
+async function readConsistentTargetRows(db: Database, organizationId: string) {
+  const pool = getRootPostgresPool(db);
+  if (!pool) {
+    return readCatalogTargetRows(db, organizationId);
+  }
+
+  const connection = await pool.connect();
+  try {
+    await connection.query("begin transaction isolation level repeatable read read only");
+    const rows = await readCatalogTargetRows(createDatabase({
+      query: async (text, values) => {
+        const result = await connection.query(text, values);
+        return { rows: result.rows as never[], rowCount: result.rowCount };
+      }
+    }), organizationId);
+    await connection.query("commit");
+    return rows;
+  } catch (error) {
+    await connection.query("rollback").catch(() => undefined);
+    throw error;
+  } finally {
+    connection.release();
+  }
+}
+
+async function readCatalogTargetRows(db: Database, organizationId: string) {
+  // Sequential on purpose: these reads share one transaction/connection, so issuing them
+  // concurrently would be a queued-query hazard rather than real parallelism.
+  const moduleRecords = await listDebugNodeModules(db, { organizationId });
+  const nodeRecords = await listAllDebugNodes(db, { organizationId });
+  const bindingRecords = await listAllDebugNodeBindings(db, { organizationId });
+  return { moduleRecords, nodeRecords, bindingRecords };
+}
+
+/**
+ * Reads the whole org target state needed to classify an import.
+ *
+ * A transaction that owns only this connection (the pooled production handle) is opened as
+ * READ ONLY REPEATABLE READ, so the three reads observe one consistent database snapshot and
+ * the document, its counts and the statistics all describe the same moment. Inside a
+ * caller-owned transaction (the import transaction, or an externally transactional test
+ * harness) the enclosing transaction already owns the snapshot, so the reads join it.
+ */
+async function loadCatalogTargetSnapshot(
   db: Database,
   input: { organizationId: string }
 ): Promise<CatalogTargetSnapshot> {
-  const [moduleRecords, nodeRecords, bindingRecords] = await Promise.all([
-    listDebugNodeModules(db, { organizationId: input.organizationId }),
-    listAllDebugNodes(db, { organizationId: input.organizationId }),
-    listAllDebugNodeBindings(db, { organizationId: input.organizationId })
-  ]);
+  const rows = await readConsistentTargetRows(db, input.organizationId);
+  const { moduleRecords, nodeRecords, bindingRecords } = rows;
 
   const modules = moduleRecords.map(toTargetModuleState);
   const moduleById = new Map(modules.map((module) => [module.id, module]));
@@ -692,7 +739,10 @@ export async function loadCatalogTargetSnapshot(
 
   const moduleIdByPathKey = new Map<string, string>();
   for (const module of modules) {
-    moduleIdByPathKey.set(loosePathKey(modulePathById.get(module.id) ?? [module.name]), module.id);
+    const pathKey = loosePathKey(modulePathById.get(module.id) ?? [module.name]);
+    if (!moduleIdByPathKey.has(pathKey)) {
+      moduleIdByPathKey.set(pathKey, module.id);
+    }
   }
 
   const danglingModuleParentRefs: Array<{ moduleId: string; moduleName: string; parentId: string }> = [];
@@ -712,10 +762,12 @@ export async function loadCatalogTargetSnapshot(
   }
 
   const bindingsByNodeId = new Map<string, TargetBindingState[]>();
+  const orphanBindingNodeIds: string[] = [];
   for (const binding of bindingRecords) {
     if (!nodeIds.has(binding.nodeId)) {
-      // Org-scoped reads cannot produce a binding whose node is missing; skip defensively
-      // so a phantom reference never becomes part of a merge plan.
+      // The node vanished between the node read and the binding read inside this snapshot;
+      // report it instead of quietly dropping the binding from the plan.
+      orphanBindingNodeIds.push(binding.nodeId);
       continue;
     }
     const list = bindingsByNodeId.get(binding.nodeId) ?? [];
@@ -735,8 +787,62 @@ export async function loadCatalogTargetSnapshot(
     moduleIdByPathKey,
     danglingNodeModuleRefs,
     danglingModuleParentRefs,
-    cyclicModuleRefs
+    cyclicModuleRefs,
+    orphanBindingNodeIds
   };
+}
+
+type TargetIntegrityIssue = {
+  code: string;
+  location: string;
+  object: "module" | "node";
+  message: string;
+};
+
+/** Every way the persisted target itself cannot be represented as a complete catalog. */
+function targetIntegrityIssues(target: CatalogTargetSnapshot): TargetIntegrityIssue[] {
+  return [
+    ...target.danglingNodeModuleRefs.map((dangling) => ({
+      code: "dangling-target-module-reference",
+      location: `debug_nodes/${dangling.nodeId}`,
+      object: "node" as const,
+      message: `Target node "${dangling.nodeName}" references module ${dangling.moduleId}, which is not in this organization.`
+    })),
+    ...target.danglingModuleParentRefs.map((dangling) => ({
+      code: "dangling-target-module-parent",
+      location: `debug_node_modules/${dangling.moduleId}`,
+      object: "module" as const,
+      message: `Target module "${dangling.moduleName}" references missing parent ${dangling.parentId}.`
+    })),
+    ...target.cyclicModuleRefs.map((cyclic) => ({
+      code: "cyclic-target-module",
+      location: `debug_node_modules/${cyclic.moduleId}`,
+      object: "module" as const,
+      message: "Target module parent chain does not reach an organization root."
+    })),
+    ...[...new Set(target.orphanBindingNodeIds)].map((nodeId) => ({
+      code: "orphan-target-binding",
+      location: `debug_node_bindings/${nodeId}`,
+      object: "node" as const,
+      message: `Target bindings reference node ${nodeId}, which is not in this organization.`
+    }))
+  ];
+}
+
+/**
+ * Export must not claim completeness while omitting data. An unresolvable target relation
+ * fails the whole export with a located error rather than producing a partial file.
+ */
+function assertExportableTarget(target: CatalogTargetSnapshot) {
+  const issues = targetIntegrityIssues(target);
+  if (issues.length === 0) {
+    return;
+  }
+  throw new ApiError(
+    "VALIDATION_FAILED",
+    "The target catalog contains module or binding references that cannot be exported completely.",
+    { issues }
+  );
 }
 
 type WorkingModule = {
@@ -769,7 +875,7 @@ function countDocumentObjects(document: NormalizedCatalogDocument): DebugCatalog
  * by preview and execute. Conflicts are collected rather than thrown so the admin sees
  * every blocking problem at once; a non-empty conflict list means nothing may be applied.
  */
-export function buildCatalogImportPlan(input: {
+function buildCatalogImportPlan(input: {
   organizationId: string;
   document: NormalizedCatalogDocument;
   target: CatalogTargetSnapshot;
@@ -778,29 +884,8 @@ export function buildCatalogImportPlan(input: {
   const conflicts: CatalogImportConflict[] = [];
   const warnings: CatalogImportWarning[] = [];
 
-  for (const dangling of target.danglingNodeModuleRefs) {
-    conflicts.push({
-      code: "dangling-target-module-reference",
-      location: `debug_nodes/${dangling.nodeId}`,
-      object: "node",
-      message: `Target node "${dangling.nodeName}" references module ${dangling.moduleId}, which is not in this organization.`
-    });
-  }
-  for (const dangling of target.danglingModuleParentRefs) {
-    conflicts.push({
-      code: "dangling-target-module-parent",
-      location: `debug_node_modules/${dangling.moduleId}`,
-      object: "module",
-      message: `Target module "${dangling.moduleName}" references missing parent ${dangling.parentId}.`
-    });
-  }
-  for (const cyclic of target.cyclicModuleRefs) {
-    conflicts.push({
-      code: "cyclic-target-module",
-      location: `debug_node_modules/${cyclic.moduleId}`,
-      object: "module",
-      message: "Target module parent chain does not reach an organization root."
-    });
+  for (const issue of targetIntegrityIssues(target)) {
+    conflicts.push(issue);
   }
 
   const workingModules = new Map<string, WorkingModule>();
@@ -819,6 +904,7 @@ export function buildCatalogImportPlan(input: {
 
   const nodeByKey = new Map<string, WorkingNode>();
   const nodeById = new Map<string, WorkingNode>();
+  const ambiguousTargetNodeKeys = new Map<string, WorkingNode[]>();
   for (const node of target.nodes) {
     const modulePath = node.moduleId ? target.modulePathById.get(node.moduleId) ?? [] : [];
     const working: WorkingNode = {
@@ -828,9 +914,25 @@ export function buildCatalogImportPlan(input: {
       modulePath
     };
     nodeById.set(working.id, working);
-    if (!nodeByKey.has(working.key)) {
+    const existingForKey = nodeByKey.get(working.key);
+    if (!existingForKey) {
       nodeByKey.set(working.key, working);
+      continue;
     }
+    const bucket = ambiguousTargetNodeKeys.get(working.key) ?? [existingForKey];
+    bucket.push(working);
+    ambiguousTargetNodeKeys.set(working.key, bucket);
+  }
+
+  // Two persisted target nodes sharing one module/name identity make matching guesswork, so
+  // the whole file is blocked instead of silently picking the first row.
+  for (const [key, nodes] of ambiguousTargetNodeKeys) {
+    conflicts.push({
+      code: "ambiguous-target-node",
+      location: `debug_nodes/${nodes.map((node) => node.id).join(",")}`,
+      object: "node",
+      message: `${nodes.length} target nodes share the identity ${key}; resolve the duplicate before importing.`
+    });
   }
 
   const modules = planModuleWrites({ document, conflicts, workingModules });
@@ -1002,6 +1104,7 @@ function planNodeWrites(input: {
   const { document, conflicts, warnings, target, modules, nodeByKey, nodeById } = input;
   const plannedModuleKeys = new Set(modules.map((module) => module.key));
   const claimedTargets = new Map<string, string>();
+  const claimedCreates = new Map<string, string>();
   const claimedSourceIds = new Map<string, number>();
   const resolutions: PlannedNodeResolution[] = [];
 
@@ -1072,6 +1175,20 @@ function planNodeWrites(input: {
         return;
       }
       claimedTargets.set(existing.id, location);
+    } else {
+      // Two file entries that would create the same identity are a duplicate input, not two
+      // new nodes.
+      const claimedCreate = claimedCreates.get(key);
+      if (claimedCreate) {
+        conflicts.push({
+          code: "duplicate-input-node",
+          location,
+          object: "node",
+          message: `Node "${node.name}" appears more than once for module ${namePath.join(" / ") || "(root)"} (also ${claimedCreate}).`
+        });
+        return;
+      }
+      claimedCreates.set(key, location);
     }
 
     const targetNodeState = existing
@@ -1352,6 +1469,7 @@ export async function exportDebugCatalogFull(
   const organizationId = organizationIdFor(auth);
 
   const snapshot = await loadCatalogTargetSnapshot(db, { organizationId });
+  assertExportableTarget(snapshot);
   const modulePathById = snapshot.modulePathById;
 
   const modules: DebugCatalogModuleExport[] = snapshot.modules
@@ -1474,12 +1592,13 @@ function classificationCounts(
  * Renders the plan the admin reviews. Every difference detail is derived from the same
  * classification execute applies, so the preview cannot drift from the merge.
  */
-export function renderCatalogImportPreview(
+function renderCatalogImportPreview(
   document: NormalizedCatalogDocument,
   plan: CatalogImportPlan,
   target: CatalogTargetSnapshot
 ): CatalogImportPreview {
-  const canSubmit = plan.conflicts.length === 0;
+  const countConflicts = declaredCountConflicts(document, plan.fileCounts);
+  const canSubmit = plan.conflicts.length === 0 && countConflicts.length === 0;
   const details: CatalogImportDifferenceDetail[] = [];
 
   for (const module of plan.modules) {
@@ -1537,8 +1656,34 @@ export function renderCatalogImportPreview(
     details: details.slice(0, MAX_CATALOG_PREVIEW_DETAIL_ITEMS),
     detailsTruncated: details.length > MAX_CATALOG_PREVIEW_DETAIL_ITEMS,
     conflicts: plan.conflicts,
+    countConflicts,
     warnings: plan.warnings
   };
+}
+
+/**
+ * A v2 file that declares counts different from the objects it carries is self-contradictory:
+ * the admin cannot tell which half is authoritative, so the whole file is blocked.
+ */
+function declaredCountConflicts(
+  document: NormalizedCatalogDocument,
+  actual: DebugCatalogV2Counts
+): CatalogImportConflict[] {
+  if (!document.declaredCounts) {
+    return [];
+  }
+  const conflicts: CatalogImportConflict[] = [];
+  for (const key of ["modules", "nodes", "bindings"] as const) {
+    const declared = document.declaredCounts[key];
+    if (declared !== actual[key]) {
+      conflicts.push({
+        code: "declared-count-mismatch",
+        location: "counts",
+        message: `The file declares ${declared} ${key} but contains ${actual[key]}.`
+      });
+    }
+  }
+  return conflicts;
 }
 
 /**
@@ -1664,11 +1809,11 @@ export async function previewDebugCatalogImport(
  * instead of row locks so a large import never blocks unrelated admin node edits on rows
  * it does not touch; correctness still comes from re-verifying the approved target state.
  */
-export async function lockCatalogWriter(tx: Database, organizationId: string) {
+async function lockCatalogWriter(tx: Database, organizationId: string) {
   await tx.query("select pg_advisory_xact_lock($1::bigint)", [advisoryLockKey(organizationId)]);
 }
 
-export function advisoryLockKey(organizationId: string) {
+function advisoryLockKey(organizationId: string) {
   const digest = createHash("sha256").update(`wiseeff.debug-node-catalog:${organizationId}`).digest();
   return digest.readBigInt64BE(0).toString();
 }
@@ -1711,9 +1856,10 @@ export async function importDebugCatalog(
     const target = await loadCatalogTargetSnapshot(tx, { organizationId });
     const plan = buildCatalogImportPlan({ organizationId, document, target });
 
-    if (plan.conflicts.length > 0) {
+    const blockingConflicts = [...plan.conflicts, ...declaredCountConflicts(document, plan.fileCounts)];
+    if (blockingConflicts.length > 0) {
       throw new ApiError("CONFLICT", "The document has blocking conflicts and cannot be imported.", {
-        conflicts: plan.conflicts
+        conflicts: blockingConflicts
       });
     }
     if (plan.previewDigest !== requestedDigest) {
@@ -1723,7 +1869,7 @@ export async function importDebugCatalog(
         { reason: "stale-preview" }
       );
     }
-    await assertTargetsUnchanged(tx, organizationId, plan);
+    await assertTargetsUnchanged(tx, organizationId, plan, target);
 
     const summary = await applyCatalogImportPlan(tx, auth, plan);
 
@@ -1761,7 +1907,12 @@ export async function importDebugCatalog(
  * changed after the preview, including a node the file would create that now already
  * exists under the same module/name identity.
  */
-async function assertTargetsUnchanged(tx: Database, organizationId: string, plan: CatalogImportPlan) {
+async function assertTargetsUnchanged(
+  tx: Database,
+  organizationId: string,
+  plan: CatalogImportPlan,
+  target: CatalogTargetSnapshot
+) {
   const approvedModuleIds = plan.modules.flatMap((module) => (module.targetId ? [module.targetId] : []));
   const approvedNodeIds = plan.nodes.flatMap((node) => (node.targetId ? [node.targetId] : []));
 
@@ -1791,24 +1942,18 @@ async function assertTargetsUnchanged(tx: Database, organizationId: string, plan
     }
   }
 
-  const createdNodes = plan.nodes.filter((node) => node.classification === "created");
-  if (createdNodes.length > 0) {
-    // One read for every node the file would create, so a 2,000+ node import does not
-    // issue one statement per node just to prove the name/module identity is still free.
-    const names = [...new Set(createdNodes.map((node) => node.name))];
-    const existing = await tx.query<{ name: string; module_name: string }>(
-      `select n.name, coalesce(m.name, n.module, '') as module_name, n.module
-       from debug_nodes n
-       left join debug_node_modules m on m.id = n.debug_node_module_id and m.organization_id = n.organization_id
-       where n.organization_id = $1
-         and n.name = any($2::text[])`,
-      [organizationId, names]
-    );
-    const occupied = new Set(existing.rows.map((row) => catalogNodeKey([row.module_name], row.name)));
-    for (const node of createdNodes) {
-      if (occupied.has(node.key)) {
-        throw staleConflict(`node "${node.name}" now exists in the target organization`);
-      }
+  // Every identity the plan would create is already indexed by the in-transaction target
+  // snapshot, so no extra per-node read is needed and nested or root placements cannot slip
+  // past a leaf-name comparison.
+  const occupied = new Set(
+    target.nodes.map((node) => {
+      const modulePath = node.moduleId ? target.modulePathById.get(node.moduleId) ?? [] : [];
+      return catalogNodeKey(modulePath, node.name);
+    })
+  );
+  for (const node of plan.nodes) {
+    if (node.classification === "created" && occupied.has(node.key)) {
+      throw staleConflict(`node "${node.name}" now exists in the target organization`);
     }
   }
 }

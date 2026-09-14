@@ -647,6 +647,7 @@ describe("debugging routes", () => {
       details: [],
       detailsTruncated: false,
       conflicts: [],
+      countConflicts: [],
       warnings: []
     };
     catalogTransferMocks.previewDebugCatalogImport.mockResolvedValue(item);

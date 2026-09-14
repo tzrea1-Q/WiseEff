@@ -40,8 +40,8 @@
 }
 
 .debug-catalog-import-dialog__counts li[data-classification="conflict"] {
-  border-color: var(--danger, #c0392b);
-  color: var(--danger, #c0392b);
+  border-color: var(--danger);
+  color: var(--danger);
 }
 
 .debug-catalog-import-dialog__breakdown {
@@ -112,9 +112,17 @@
   overflow-wrap: anywhere;
 }
 
+.debug-catalog-import-dialog__notice {
+  margin: var(--space-2) 0 0;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--warning, var(--border));
+  border-radius: var(--radius-md);
+  font-size: var(--text-sm);
+}
+
 .debug-catalog-import-dialog__error {
   margin: 0;
-  color: var(--danger, #c0392b);
+  color: var(--danger);
 }
 
 @media (max-width: 480px) {

@@ -1002,6 +1002,18 @@ export const acceptanceOperations: AcceptanceOperation[] = [
     assertions: ["api", "db", "audit"]
   },
   {
+    id: "DEBUG-ADMIN-846-VIEWPORTS",
+    priority: "P1",
+    area: "debugging",
+    route: "/debugging-admin/nodes",
+    roles: ["Admin"],
+    action: "Review the catalog import preview dialog at desktop, tablet and mobile widths, confirming the card fits, the confirm action stays reachable, and the classification and field differences render.",
+    coverage: "automated",
+    acceptanceIds: ["DEBUG-ADMIN-846-VIEWPORTS"],
+    specFiles: ["e2e/acceptance/debugging-admin.acceptance.spec.ts"],
+    assertions: ["ui", "api"]
+  },
+  {
     id: "DEBUG-ADMIN-846-GUARD",
     priority: "P1",
     area: "debugging",

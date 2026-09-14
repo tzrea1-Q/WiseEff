@@ -139,6 +139,18 @@ function isStalePreviewError(error: unknown) {
 }
 
 /**
+ * A lost response or dropped connection leaves the real outcome unknown: the request may
+ * or may not have committed. The UI must not claim either way, so it asks the server to
+ * re-classify the same file, which is the only way to observe the actual state.
+ */
+function isUnknownSubmitOutcome(error: unknown) {
+  if (error instanceof TypeError) {
+    return true;
+  }
+  return typeof navigator !== "undefined" && navigator.onLine === false;
+}
+
+/**
  * Surfaces the server's structured reason instead of collapsing every failure into a
  * locatable-less "import failed" message.
  */
@@ -255,6 +267,8 @@ export function DebuggingAdminPage({
   const [catalogImportLoading, setCatalogImportLoading] = useState(false);
   const [catalogImportSubmitting, setCatalogImportSubmitting] = useState(false);
   const [catalogImportError, setCatalogImportError] = useState("");
+  // Survives a successful re-preview: "the outcome is unknown" must stay visible.
+  const [catalogImportNotice, setCatalogImportNotice] = useState("");
 
   const isApiMode = runtimeMode === "api";
   const canEditAdminCatalog = !isApiMode || apiAuthPermissions.includes("debugging:admin");
@@ -723,6 +737,7 @@ export function DebuggingAdminPage({
     setCatalogImportDocument(null);
     setCatalogImportFileName("");
     setCatalogImportError("");
+    setCatalogImportNotice("");
   };
 
   const openCatalogImportPreview = async (document: DebugCatalogDocument, fileName: string) => {
@@ -755,6 +770,7 @@ export function DebuggingAdminPage({
     }
 
     setAdminError("");
+    setCatalogImportNotice("");
     try {
       const text = await readFileText(file);
       if (new TextEncoder().encode(text).length > DEBUG_CATALOG_MAX_DOCUMENT_BYTES) {
@@ -791,6 +807,7 @@ export function DebuggingAdminPage({
     importInFlightRef.current = true;
     setCatalogImportSubmitting(true);
     setCatalogImportError("");
+    setCatalogImportNotice("");
     const document = catalogImportDocument;
     const digest = catalogImportPreview.previewDigest;
     try {
@@ -813,9 +830,15 @@ export function DebuggingAdminPage({
         ].join("，")
       );
     } catch (error) {
-      setCatalogImportError(describeCatalogTransferError(error, "导入失败。"));
-      // A stale preview cannot be reused: ask the server for the current classification.
-      if (isStalePreviewError(error)) {
+      // Both a stale preview and a lost response are resolved by the same action: ask the
+      // server to re-classify the file. A stale preview means re-review; an unknown outcome
+      // means "check the current state", never "it rolled back" or "it succeeded".
+      const unknownOutcome = isUnknownSubmitOutcome(error);
+      setCatalogImportError(unknownOutcome ? "" : describeCatalogTransferError(error, "导入失败。"));
+      if (unknownOutcome) {
+        setCatalogImportNotice("提交结果未知（连接中断）。不要重复提交：下面的预览是当前节点库的真实状态。");
+      }
+      if (unknownOutcome || isStalePreviewError(error)) {
         void openCatalogImportPreview(document, catalogImportFileName);
       }
     } finally {
@@ -986,6 +1009,7 @@ export function DebuggingAdminPage({
             loading={catalogImportLoading}
             submitting={catalogImportSubmitting}
             error={catalogImportError}
+            notice={catalogImportNotice}
             onCancel={closeCatalogImport}
             onConfirm={() => void confirmCatalogImport()}
             onReloadPreview={() => {

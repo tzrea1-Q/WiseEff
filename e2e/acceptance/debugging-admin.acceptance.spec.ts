@@ -7,6 +7,7 @@ import { useBrowserDiagnostics } from "./helpers/browserDiagnostics";
 import { withPgClient } from "./helpers/database";
 import { authHeadersForUser } from "./helpers/bearerAuth";
 import { acceptanceCast } from "./helpers/cast";
+import { CATALOG_VIEWPORTS, assertNoPageOverflow, catalogScreenshot } from "./helpers/catalogBrowser";
 import { recordOperationEvidence, summarizeApiResponse } from "./helpers/operationEvidence";
 import { apiRoute, smokeHeaders } from "./helpers/runtime";
 
@@ -1163,6 +1164,121 @@ test.describe("DEBUG-ADMIN-846 full catalog transfer", () => {
       audit: importAudit ? [auditSummaryFor(auditBody.items, "debug-node-catalog-import", "org-chargelab", importResponse.headers()["x-request-id"])] : [],
       notes:
         "Seeded 501 modules and 2,001 nodes (enabled, disabled, archived, unbound, HDC-only, ADB-only and disabled bindings) directly in PostgreSQL, exported them through the real API, verified declared counts match the object set, previewed the same file as unchanged, cleared the target rows, previewed and imported the same file through one transaction, then re-read the rows and re-exported. This proves export/import capacity symmetry past the former 500-module / 2,000-node caps. No device connection or device write is claimed."
+    });
+  });
+
+  test("keeps the import preview usable at desktop, tablet and mobile widths", async ({ page }, testInfo) => {
+    // @acceptance DEBUG-ADMIN-846-VIEWPORTS
+    // @operation DEBUG-ADMIN-846-VIEWPORTS
+    test.setTimeout(120_000);
+    const suffix = Date.now().toString(36);
+    const nodeName = `${catalogTransferPrefix} viewport node ${suffix}`;
+    const moduleName = `${catalogTransferPrefix} viewport module ${suffix}`;
+
+    await withPgClient(async (client) => {
+      await cleanupCatalogTransferRows(client);
+      const module = await client.query<{ id: string }>(
+        `insert into debug_node_modules (id, organization_id, parent_id, name, path, depth, sort_order, description, scope)
+         values ($1, 'org-chargelab', null, $2, $1, 1, 0, '', '')
+         returning id`,
+        [`${catalogTransferPrefix}-viewport-${suffix}`, moduleName]
+      );
+      await client.query(
+        `insert into debug_nodes (id, organization_id, name, description, module, debug_node_module_id)
+         values ($1, 'org-chargelab', $2, 'viewport fixture', $3, $4)`,
+        [`${catalogTransferPrefix}-viewport-node-${suffix}`, nodeName, moduleName, module.rows[0]!.id]
+      );
+      await client.query(
+        `insert into debug_node_bindings (id, organization_id, node_id, protocol, node_path, access_mode, enabled)
+         values ($1, 'org-chargelab', $2, 'hdc', $3, 'RW', true)`,
+        [`${catalogTransferPrefix}-viewport-node-${suffix}:hdc`, `${catalogTransferPrefix}-viewport-node-${suffix}`, `/sys/acceptance/viewport/${suffix}`]
+      );
+    });
+
+    const file = {
+      format: "wiseeff.debug-node-catalog.v2",
+      source: { organizationId: "org-source", organizationName: "Source Org" },
+      counts: { modules: 1, nodes: 2, bindings: 2 },
+      modules: [{ name: moduleName, parentNamePath: [] }],
+      nodes: [
+        {
+          sourceId: `${catalogTransferPrefix}-viewport-node-${suffix}`,
+          name: nodeName,
+          moduleNamePath: [moduleName],
+          description: "from file",
+          bindings: [{ protocol: "hdc", nodePath: `/sys/acceptance/viewport/${suffix}`, accessMode: "RO", enabled: false }]
+        },
+        {
+          name: `${catalogTransferPrefix} viewport new node ${suffix}`,
+          moduleNamePath: [moduleName],
+          bindings: [{ protocol: "adb", nodePath: `/sys/acceptance/viewport-adb/${suffix}`, accessMode: "RW", enabled: true }]
+        }
+      ]
+    };
+
+    for (const viewport of CATALOG_VIEWPORTS) {
+      await page.setViewportSize({ width: viewport.width, height: viewport.height });
+      await page.goto("/debugging-admin/nodes");
+      await expect(page.getByRole("table", { name: "可调节点目录" })).toBeVisible({ timeout: 30_000 });
+      await assertNoPageOverflow(page);
+
+      await page.getByLabel("导入节点文件").setInputFiles({
+        name: "debug-node-catalog.json",
+        mimeType: "application/json",
+        buffer: Buffer.from(JSON.stringify(file))
+      });
+      const dialog = page.getByRole("dialog", { name: "导入预览" });
+      await expect(dialog).toBeVisible({ timeout: 30_000 });
+      // The dialog card must settle before measuring: it enters with a fade animation.
+      await page.waitForFunction(() => {
+        const card = document.querySelector('[role="dialog"]');
+        return Boolean(card) && getComputedStyle(card as Element).opacity === "1";
+      });
+      await assertNoPageOverflow(page);
+
+      const geometry = await dialog.evaluate((card) => {
+        const rect = card.getBoundingClientRect();
+        const confirm = Array.from(card.querySelectorAll("button")).find((button) =>
+          (button.textContent ?? "").includes("确认导入")
+        );
+        const confirmRect = confirm?.getBoundingClientRect();
+        return {
+          left: Math.round(rect.left),
+          right: Math.round(rect.right),
+          width: Math.round(rect.width),
+          viewport: document.documentElement.clientWidth,
+          confirmVisible: confirmRect ? confirmRect.width > 0 && confirmRect.height > 0 : false,
+          confirmDisabled: confirm instanceof HTMLButtonElement ? confirm.disabled : true
+        };
+      });
+      expect(geometry.left, `${viewport.name} dialog left edge`).toBeGreaterThanOrEqual(0);
+      expect(geometry.right, `${viewport.name} dialog right edge`).toBeLessThanOrEqual(geometry.viewport + 1);
+      expect(geometry.confirmVisible, `${viewport.name} confirm action`).toBe(true);
+      expect(geometry.confirmDisabled, `${viewport.name} confirm blocked for a stale binding`).toBe(false);
+
+      const dialogText = await dialog.innerText();
+      expect(dialogText, `${viewport.name} classification counts`).toContain("差异明细");
+      if (!dialogText.includes("访问模式") || !dialogText.includes("启用状态")) {
+        throw new Error(`${viewport.name}: binding access-mode/enabled differences are not surfaced`);
+      }
+
+      await catalogScreenshot(page, testInfo, `debug-846-import-preview-${viewport.name}`);
+      await dialog.getByRole("button", { name: "取消" }).click();
+      await expect(dialog).not.toBeVisible({ timeout: 15_000 });
+    }
+    await page.setViewportSize({ width: 1440, height: 900 });
+
+    await recordOperationEvidence({
+      operationId: "DEBUG-ADMIN-846-VIEWPORTS",
+      title: "catalog import preview at three viewport sizes",
+      status: "passed",
+      page,
+      testInfo,
+      api: [],
+      db: [],
+      audit: [],
+      notes:
+        "Opened the real import preview dialog at 1440x900, 768x1024 and 390x844 against real PostgreSQL data. At each width the dialog stayed inside the viewport, the confirm action remained visible and enabled, the classification counts and the protocol-path/access-mode/enabled differences rendered, no page-level horizontal overflow appeared, cancelling closed the dialog, and the browser diagnostics recorder observed no console or page error. Screenshots are attached per viewport."
     });
   });
 

@@ -23,12 +23,12 @@ export type MultipartBody = {
 };
 
 /**
- * Upper bound applied while collecting a request body. It exists so an oversized
- * upload is rejected with 413 during bounded collection instead of after the whole
- * payload has already been buffered in memory. Feature-level limits (for example the
- * 20 MiB debug catalog transfer contract) are enforced closer to the route.
+ * Default body collection bound. It stays unbounded so no existing route gains a new
+ * failure mode; routes that declare a contract limit (for example the 20 MiB debug catalog
+ * transfer) opt in through `maxBodyBytes`, which rejects an oversized payload with 413
+ * during bounded collection instead of after the whole body has been buffered.
  */
-export const DEFAULT_MAX_REQUEST_BODY_BYTES = 25 * 1024 * 1024;
+export const DEFAULT_MAX_REQUEST_BODY_BYTES = Number.POSITIVE_INFINITY;
 
 async function readRequestBytes(request: IncomingMessage, maxBytes = DEFAULT_MAX_REQUEST_BODY_BYTES) {
   const chunks: Buffer[] = [];

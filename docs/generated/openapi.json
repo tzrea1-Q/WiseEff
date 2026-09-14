@@ -11871,7 +11871,7 @@
     "/api/v1/debugging/admin/catalog/export": {
       "get": {
         "operationId": "debugging.admin.exportCatalog",
-        "summary": "Export debug node catalog",
+        "summary": "Export the complete debug node catalog",
         "tags": [
           "debugging"
         ],
@@ -11892,6 +11892,55 @@
           "403": {
             "$ref": "#/components/responses/ErrorResponse"
           },
+          "413": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
+    "/api/v1/debugging/admin/catalog/import-preview": {
+      "post": {
+        "operationId": "debugging.admin.previewCatalogImport",
+        "summary": "Preview a debug node catalog import without writing",
+        "tags": [
+          "debugging"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DebugCatalogTransferRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DebugCatalogImportPreviewResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "409": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "413": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
           "500": {
             "$ref": "#/components/responses/ErrorResponse"
           }
@@ -11901,7 +11950,7 @@
     "/api/v1/debugging/admin/catalog/import": {
       "post": {
         "operationId": "debugging.admin.importCatalog",
-        "summary": "Import debug node catalog",
+        "summary": "Merge-import a previewed debug node catalog",
         "tags": [
           "debugging"
         ],
@@ -11910,7 +11959,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/DebugCatalogImportRequest"
+                "$ref": "#/components/schemas/DebugCatalogImportExecuteRequest"
               }
             }
           }
@@ -11930,6 +11979,12 @@
             "$ref": "#/components/responses/ErrorResponse"
           },
           "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "409": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "413": {
             "$ref": "#/components/responses/ErrorResponse"
           },
           "500": {
@@ -18962,9 +19017,17 @@
         "type": "object",
         "x-wiseeff-schema": "DebugCatalogExportResponse"
       },
-      "DebugCatalogImportRequest": {
+      "DebugCatalogTransferRequest": {
         "type": "object",
-        "x-wiseeff-schema": "DebugCatalogImportRequest"
+        "x-wiseeff-schema": "DebugCatalogTransferRequest"
+      },
+      "DebugCatalogImportPreviewResponse": {
+        "type": "object",
+        "x-wiseeff-schema": "DebugCatalogImportPreviewResponse"
+      },
+      "DebugCatalogImportExecuteRequest": {
+        "type": "object",
+        "x-wiseeff-schema": "DebugCatalogImportExecuteRequest"
       },
       "DebugCatalogImportResponse": {
         "type": "object",

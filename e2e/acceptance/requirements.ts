@@ -474,6 +474,12 @@ export const acceptanceRequirements: AcceptanceRequirement[] = [
     required: true
   },
   {
+    id: "DEBUG-ADMIN-846-VIEWPORTS",
+    workflow: "E",
+    title: "The node-catalog import preview dialog stays usable and complete at desktop, tablet and mobile widths.",
+    required: true
+  },
+  {
     id: "DEBUG-ADMIN-846-GUARD",
     workflow: "E",
     title: "Catalog transfer enforces preview digests, admin-only access, the 20 MiB document contract, and full rollback when a mid-import write fails.",

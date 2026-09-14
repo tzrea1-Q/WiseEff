@@ -33,10 +33,10 @@
 
 | Level | Evidence |
 | --- | --- |
-| 真实本地 PostgreSQL | `server/modules/debugging/catalogTransfer.test.ts`（22 个用例：全量导出、v1/v2 语义、冲突、摘要保护、归档规则、幂等、回滚、2,001/501 容量、20 MiB 边界） |
+| 真实本地 PostgreSQL | `server/modules/debugging/catalogTransfer.test.ts`（24 个用例：全量导出、目标不可完整表示时拒绝导出、v1/v2 语义、冲突（含目标歧义与重复输入）、声明计数不符、摘要保护、归档规则、幂等、回滚、2,001/501 容量、20 MiB 边界） |
 | 路由合同 | `server/modules/debugging/routes.test.ts`、`schemas.test.ts`、`server/shared/http/server.test.ts`、`server/modules/contracts/routeParity.test.ts` |
-| 真实浏览器 | `e2e/acceptance/debugging-admin.acceptance.spec.ts` → `DEBUG-ADMIN-001`、`DEBUG-ADMIN-846-CAPACITY`、`DEBUG-ADMIN-846-GUARD`（4 个通过，真实 API + PostgreSQL） |
-| 浏览器界面 | `work/846-ui-checks/*`（1440×900、768×1024、390×844）配合 `work/846-ui-check.mts`：下载、上传、预览、取消、确认、错误路径、焦点、控制台/网络 |
+| 真实浏览器 | `e2e/acceptance/debugging-admin.acceptance.spec.ts` → `DEBUG-ADMIN-001`、`DEBUG-ADMIN-846-CAPACITY`、`DEBUG-ADMIN-846-VIEWPORTS`、`DEBUG-ADMIN-846-GUARD`（5 个通过，真实 API + PostgreSQL） |
+| 浏览器界面 | 验收 spec 内置三视口用例；另有 `work/846-ui-check.mts` 产出的 `work/846-ui-checks/*`（1440×900、768×1024、390×844，忽略目录）：下载、上传、预览、取消、确认、结果未知提示、错误路径、焦点、控制台/网络 |
 
 ## 文档影响矩阵
 
@@ -51,7 +51,7 @@
 | 可靠性 / runbook | `docs/runbooks/*` | No change —— 无新增运维流程 |
 | 安全 | `docs/SECURITY.md`、`docs/security/*` | Review —— 权限、审计与脱敏行为沿用既有规则 |
 | 前端 / 设计 | `docs/design-docs/ui-design-system.md`、`docs/developer/ui-quality-checklist.md` | Review —— 复用 `ModalDialog` 尺寸层级与设计令牌 |
-| 生成物 | `docs/generated/openapi.json` | Review —— 路由/schema registry 已更新；重新生成属于发布产物步骤 |
+| 生成物 | `docs/generated/openapi.json` | Update —— 已由路由/schema registry 重新生成，并通过 `npm run contract:check` 校验 |
 | 参考 | `docs/references/*` | No change |
 
 ## 文档更新门
@@ -74,10 +74,11 @@ npm run typecheck && npm run build && npm run docs:check
 
 ## 完成标准
 
-当聚焦测试套件、`npm run build`、`npm run docs:check` 与四个验收用例在记录的 SHA 上全部通过，
-且三尺寸浏览器证据显示无溢出、无被阻断操作、无控制台错误时，候选进入可评审状态。
+当聚焦测试套件、`npm run build`、`npm run ui:check`、`npm run contract:check`、`npm run docs:check`
+与五个验收用例在记录的 SHA 上全部通过，且三尺寸浏览器证据显示无溢出、无被阻断操作、无控制台错误时，
+候选进入可评审状态。
 
 ## 未结事项
 
 - 原部署的条目缺失报告**未复现**；本轮不声明根因。
-- `docs/generated/openapi.json` 仍保留变更前的 catalog schema 名称；应在发布产物步骤重新生成，而不是手工修改生成文件。
+- 除下方未复现的现场报告外，无其他未结事项。

@@ -386,6 +386,7 @@ describe("/debugging-admin API mode", () => {
             ],
             detailsTruncated: false,
             conflicts: [],
+            countConflicts: [],
             warnings: []
           }
         });
@@ -463,6 +464,7 @@ describe("/debugging-admin API mode", () => {
         bindings: { created: 0, updated: 0, unchanged: 0 },
         details: [],
         detailsTruncated: false,
+        countConflicts: [],
         conflicts: [
           {
             code: "duplicate-target-claim",
@@ -495,6 +497,74 @@ describe("/debugging-admin API mode", () => {
       "/api/v1/debugging/admin/catalog/import",
       expect.anything()
     );
+  });
+
+  it("treats a lost submit response as unknown and re-previews instead of claiming a result", async () => {
+    const apiClient = renderDebuggingAdminPage();
+    const importDocument = {
+      format: "wiseeff.debug-node-catalog.v2",
+      source: {},
+      counts: { modules: 0, nodes: 1, bindings: 0 },
+      modules: [],
+      nodes: [{ name: "Imported node", moduleNamePath: [], description: "" }]
+    };
+    const preview = {
+      canSubmit: true,
+      previewDigest: "digest-lost",
+      format: "wiseeff.debug-node-catalog.v2",
+      sourceOrganization: null,
+      targetOrganizationId: "org-chargelab",
+      fileCounts: { modules: 0, nodes: 1, bindings: 0 },
+      declaredCounts: { modules: 0, nodes: 1, bindings: 0 },
+      modules: { created: 0, updated: 0, unchanged: 0 },
+      nodes: { created: 1, updated: 0, unchanged: 0 },
+      bindings: { created: 0, updated: 0, unchanged: 0 },
+      details: [],
+      detailsTruncated: false,
+      conflicts: [],
+      countConflicts: [],
+      warnings: []
+    };
+    let previewCalls = 0;
+    apiClient.post.mockImplementation((path: string) => {
+      if (path.endsWith("/import-preview")) {
+        previewCalls += 1;
+        // The second preview reflects the state after the lost response: the node now
+        // exists, so the file has nothing left to create.
+        return Promise.resolve({
+          item: previewCalls === 1
+            ? preview
+            : {
+                ...preview,
+                previewDigest: "digest-after",
+                nodes: { created: 0, updated: 0, unchanged: 1 }
+              }
+        });
+      }
+      return Promise.reject(new TypeError("Failed to fetch"));
+    });
+
+    await screen.findByText("Fast charge current");
+    fireEvent.change(screen.getByLabelText("导入节点文件") as HTMLInputElement, {
+      target: {
+        files: [
+          {
+            name: "lost.json",
+            type: "application/json",
+            text: async () => JSON.stringify(importDocument)
+          } as File
+        ]
+      }
+    });
+
+    const dialog = await screen.findByRole("dialog", { name: "导入预览" });
+    fireEvent.click(within(dialog).getByRole("button", { name: "确认导入" }));
+
+    // The UI must not claim success or rollback, and must ask the server for the truth.
+    await waitFor(() => expect(within(dialog).getByRole("status")).toHaveTextContent("提交结果未知"));
+    expect(within(dialog).getByRole("status")).toHaveTextContent("不要重复提交");
+    await waitFor(() => expect(previewCalls).toBeGreaterThanOrEqual(2));
+    expect(await within(dialog).findByText(/不变 1/)).toBeInTheDocument();
   });
 
   it("reports an invalid JSON file without calling the preview endpoint", async () => {

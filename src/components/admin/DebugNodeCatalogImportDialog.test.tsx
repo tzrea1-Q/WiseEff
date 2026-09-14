@@ -39,6 +39,7 @@ function buildPreview(overrides: Partial<CatalogImportPreview> = {}): CatalogImp
     ],
     detailsTruncated: false,
     conflicts: [],
+    countConflicts: [],
     warnings: [],
     ...overrides
   };

@@ -392,7 +392,7 @@ describe.skipIf(!databaseAvailable)("catalogTransfer", () => {
     expect(after.document.counts).toMatchObject({ modules: 3, nodes: 6 });
   });
 
-  it("reports a dangling target module reference and a dangling target module parent", async () => {
+  it("fails the export instead of claiming completeness over an unrepresentable target", async () => {
     const seeded = await seedDebugCatalog(db);
     // Model a target-only integrity break the schema still permits: an org-scoped module
     // whose parent row belongs to a different organization.
@@ -406,31 +406,30 @@ describe.skipIf(!databaseAvailable)("catalogTransfer", () => {
     );
     await db.query("update debug_nodes set debug_node_module_id = 'cross-org-module' where id = $1", [seeded.unbound.id]);
 
-    const exported = await exportDebugCatalogFull(db, adminAuth(), { requestId: "req-export" });
-    // No node is silently dropped from the file: the whole set stays present.
-    expect(exported.counts.nodes).toBe(6);
-    expect(exported.document.nodes.find((node) => node.sourceId === seeded.unbound.id)).toBeTruthy();
+    // Export must not emit a file that silently omits or misplaces the node.
+    await expect(exportDebugCatalogFull(db, adminAuth(), { requestId: "req-export" })).rejects.toMatchObject({
+      code: "VALIDATION_FAILED",
+      details: expect.objectContaining({
+        issues: expect.arrayContaining([
+          expect.objectContaining({
+            code: "dangling-target-module-parent",
+            location: "debug_node_modules/cross-org-module"
+          })
+        ])
+      })
+    });
 
-    const preview = await previewDebugCatalogImport(db, adminAuth(), exported.document, { requestId: "req-preview" });
+    const preview = await previewDebugCatalogImport(
+      db,
+      adminAuth(),
+      { format: DEBUG_CATALOG_FORMAT_V2, source: {}, counts: { modules: 0, nodes: 0, bindings: 0 }, modules: [], nodes: [] },
+      { requestId: "req-preview" }
+    );
     expect(preview.canSubmit).toBe(false);
     expect(preview.previewDigest).toBeNull();
     expect(preview.conflicts).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          code: "dangling-target-module-parent",
-          location: "debug_node_modules/cross-org-module"
-        })
-      ])
+      expect.arrayContaining([expect.objectContaining({ code: "dangling-target-module-parent" })])
     );
-
-    await expect(
-      importDebugCatalog(
-        db,
-        adminAuth(),
-        { document: exported.document, previewDigest: "whatever" },
-        { requestId: "req-import" }
-      )
-    ).rejects.toMatchObject({ code: "CONFLICT" });
   });
 
   it("previews a complete org catalog re-import as unchanged with no writes and no audit", async () => {
@@ -527,6 +526,7 @@ describe.skipIf(!databaseAvailable)("catalogTransfer", () => {
     const document = {
       ...exported.document,
       source: { organizationId: "org-9", organizationName: "Other Org", exportedAt: "2026-01-01T00:00:00.000Z" },
+      counts: { ...exported.document.counts, nodes: exported.document.counts.nodes + 1 },
       nodes: [
         ...exported.document.nodes.map((node) =>
           node.sourceId === seeded.enabled.id
@@ -823,6 +823,20 @@ describe.skipIf(!databaseAvailable)("catalogTransfer", () => {
         }
       },
       {
+        name: "two identical new nodes in one file",
+        code: "duplicate-input-node",
+        document: {
+          format: DEBUG_CATALOG_FORMAT_V2,
+          source: {},
+          counts: { modules: 1, nodes: 2, bindings: 0 },
+          modules: [{ name: "Battery" }],
+          nodes: [
+            { name: "Brand new", moduleNamePath: ["Battery"] },
+            { name: "Brand new", moduleNamePath: ["Battery"] }
+          ]
+        }
+      },
+      {
         name: "duplicate binding protocol",
         code: "duplicate-binding-protocol",
         document: {
@@ -859,6 +873,90 @@ describe.skipIf(!databaseAvailable)("catalogTransfer", () => {
     const listed = await listDebugNodes(db, { organizationId: "org-1" });
     expect(listed).toHaveLength(1);
     expect(listed[0]).toMatchObject({ id: node.id, name: "Cycle count", moduleId: battery.id });
+  });
+
+  it("refuses a file whose declared counts contradict the objects it carries", async () => {
+    const battery = await createDebugNodeModule(db, { organizationId: "org-1", name: "Battery" });
+    const node = await createDebugNode(db, { organizationId: "org-1", name: "Cycle count", module: battery.name, moduleId: battery.id });
+    const document = {
+      format: DEBUG_CATALOG_FORMAT_V2,
+      source: {},
+      counts: { modules: 1, nodes: 5, bindings: 3 },
+      modules: [{ name: "Battery" }],
+      nodes: [{ sourceId: node.id, name: "Cycle count", moduleNamePath: ["Battery"] }]
+    };
+
+    const preview = await previewDebugCatalogImport(db, adminAuth(), document, { requestId: "req-counts" });
+    expect(preview.canSubmit).toBe(false);
+    expect(preview.previewDigest).toBeNull();
+    expect(preview.countConflicts.map((conflict) => conflict.code)).toEqual([
+      "declared-count-mismatch",
+      "declared-count-mismatch"
+    ]);
+    expect(preview.countConflicts.map((conflict) => conflict.message)).toEqual(
+      expect.arrayContaining([
+        expect.stringContaining("declares 5 nodes but contains 1"),
+        expect.stringContaining("declares 3 bindings but contains 0")
+      ])
+    );
+
+    await expect(
+      importDebugCatalog(db, adminAuth(), { document, previewDigest: "anything" }, { requestId: "req-counts-import" })
+    ).rejects.toMatchObject({ code: "CONFLICT" });
+    const listed = await listDebugNodes(db, { organizationId: "org-1" });
+    expect(listed).toEqual([expect.objectContaining({ id: node.id, name: "Cycle count" })]);
+  });
+
+  it("blocks matching when two target nodes share one module and name identity", async () => {
+    // The unique index only covers (organization, parent module name, name), so the legacy
+    // name-only column can still produce two rows the file cannot disambiguate.
+    const first = await createDebugNode(db, { organizationId: "org-1", name: "Ambiguous node", module: "Legacy" });
+    const second = await createDebugNode(db, { organizationId: "org-1", name: "Ambiguous node", module: "Legacy" });
+    await db.query(
+      "update debug_nodes set module = 'Legacy' where id = any($1::text[])",
+      [[first.id, second.id]]
+    );
+
+    const preview = await previewDebugCatalogImport(
+      db,
+      adminAuth(),
+      {
+        format: DEBUG_CATALOG_FORMAT_V2,
+        source: {},
+        counts: { modules: 0, nodes: 1, bindings: 0 },
+        modules: [],
+        nodes: [{ name: "Ambiguous node", moduleNamePath: ["Legacy"], description: "from file" }]
+      },
+      { requestId: "req-ambiguous" }
+    );
+
+    expect(preview.canSubmit).toBe(false);
+    expect(preview.previewDigest).toBeNull();
+    expect(preview.conflicts).toEqual(
+      expect.arrayContaining([expect.objectContaining({ code: "ambiguous-target-node" })])
+    );
+
+    await expect(
+      importDebugCatalog(
+        db,
+        adminAuth(),
+        {
+          document: {
+            format: DEBUG_CATALOG_FORMAT_V2,
+            source: {},
+            counts: { modules: 0, nodes: 1, bindings: 0 },
+            modules: [],
+            nodes: [{ name: "Ambiguous node", moduleNamePath: ["Legacy"], description: "from file" }]
+          },
+          previewDigest: "anything"
+        },
+        { requestId: "req-ambiguous-import" }
+      )
+    ).rejects.toMatchObject({ code: "CONFLICT" });
+
+    const listed = await listDebugNodes(db, { organizationId: "org-1" });
+    expect(listed.map((item) => item.description)).toEqual(["", ""]);
+    expect(second.id).not.toBe(first.id);
   });
 
   it("rejects an import whose document or target changed after the preview", async () => {

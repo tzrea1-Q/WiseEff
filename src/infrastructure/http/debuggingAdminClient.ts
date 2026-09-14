@@ -181,6 +181,8 @@ export type CatalogImportPreview = {
   details: CatalogImportDifferenceDetail[];
   detailsTruncated: boolean;
   conflicts: CatalogImportConflict[];
+  /** Declared-count contradictions, separate from identity/reference conflicts. */
+  countConflicts: CatalogImportConflict[];
   warnings: CatalogImportWarning[];
 };
 
