@@ -57,6 +57,7 @@ L2 的 `wiseeff-diagnostic-<run>-<attempt>-acceptance-local-non-hdc` 产物是�
 | `npm run test:server -- server/modules/dts/goldenPowerFixture.test.ts server/modules/parameters/seedM1DtsFiles.test.ts server/modules/parameter-specs/matcher.test.ts --run` | 锁定黄金拓扑计数：**176** 属性 occurrence、**528** 行 `dts_properties` seed | 修改 DTS seed fixture、ingest 或 matcher 覆盖后。 |
 | `npm run test:scripts -- scripts/vendorDtSchemaGenerator.test.ts --run` | 黄金 DTB 真实 `dt-validate`；负例 DTB 按预期失败 | 修改厂商 dt-schema 生成或 linux-binding schema 后。（`test:server` 不包含 `scripts/**`，直接传该路径会静默零执行。） |
 | `npm run test:scripts` | ops/治理脚本套件（`scripts/**`、`ops/**`，Node 环境） | 修改脚本或 ops 自动化后。 |
+| `npm run typecheck` | 使用与 `npm run build` 第一阶段相同的 4096 MiB 堆空间，检查 `tsconfig.json` 引用的 TypeScript 项目（`tsconfig.app.json` 和 `tsconfig.node.json`） | 仅用于编辑反馈；交付前仍须运行 `npm run build`，因为此命令不包含 Vite 生产构建。 |
 | `npm run selfhost:setup` | 按向导答案渲染自托管 `.env` | 本机已有 Node.js 22 时使用。服务器用 `ops/self-hosted/scripts/setup.sh`。 |
 | `npm run selfhost:doctor` | 校验已生成的 `.env` 与 Caddyfile | 配置完成后、或 `compose up` 前。 |
 | `npm run selfhost:ip-lab:init` | 为无域名 IP 实验室生成 `ops/self-hosted/.env` | 兼容辅助。优先 `setup.sh` 或 `selfhost:setup`。 |
