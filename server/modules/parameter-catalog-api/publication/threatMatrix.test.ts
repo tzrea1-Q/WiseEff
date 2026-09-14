@@ -28,6 +28,6 @@ describe("CP-07 publication threat matrix", () => {
       expect(row.expected.length).toBeGreaterThan(0);
       expect(row.leftover.length).toBeGreaterThan(0);
     }
-    expect(catalogPublicationRouteIds).toHaveLength(4);
+    expect(catalogPublicationRouteIds).toHaveLength(6);
   });
 });
