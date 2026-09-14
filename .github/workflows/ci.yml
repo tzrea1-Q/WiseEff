@@ -177,6 +177,10 @@ jobs:
               ;;
           esac
 
+      - name: Record CI shadow scope
+        id: shadow-summary
+        run: node_modules/.bin/tsx scripts/verification/ci-shadow.ts --scope
+
       - name: Documentation governance
         run: npm run docs:check
 
@@ -276,6 +280,7 @@ jobs:
     timeout-minutes: 20
     outputs:
       receipt: ${{ steps.receipt.outputs.receipt }}
+      shadow_frontend: ${{ steps.frontend.outputs.shadow }}
     steps:
       - name: Check out repository
         id: checkout
@@ -313,6 +318,8 @@ jobs:
     timeout-minutes: 20
     outputs:
       receipt: ${{ steps.receipt.outputs.receipt }}
+      shadow_scripts: ${{ steps.scripts.outputs.shadow }}
+      shadow_bridge: ${{ steps.bridge.outputs.shadow }}
     services:
       postgres:
         image: pgvector/pgvector:pg16
@@ -397,6 +404,7 @@ jobs:
     timeout-minutes: 20
     outputs:
       receipt: ${{ steps.receipt.outputs.receipt }}
+      shadow_server: ${{ steps.server.outputs.shadow }}
     services:
       postgres:
         image: pgvector/pgvector:pg16
@@ -485,7 +493,17 @@ jobs:
       - name: Verify every required L1 result and invocation
         id: results
         env:
-          EFF_NEEDS: ${{ toJSON(needs) }}
+          EFF_NEEDS: >-
+            {"detect":${{ toJSON(needs.detect) }},
+            "l1-static":{"result":${{ toJSON(needs.l1-static.result) }},"outputs":{"receipt":${{ toJSON(needs.l1-static.outputs.receipt) }}}},
+            "l1-frontend":{"result":${{ toJSON(needs.l1-frontend.result) }},"outputs":{"receipt":${{ toJSON(needs.l1-frontend.outputs.receipt) }}}},
+            "l1-scripts":{"result":${{ toJSON(needs.l1-scripts.result) }},"outputs":{"receipt":${{ toJSON(needs.l1-scripts.outputs.receipt) }}}},
+            "l1-server":{"result":${{ toJSON(needs.l1-server.result) }},"outputs":{"receipt":${{ toJSON(needs.l1-server.outputs.receipt) }}}}}
+          EFF_SHADOW: >-
+            {"detect":${{ toJSON(needs.detect) }},
+            "l1-frontend":{"result":${{ toJSON(needs.l1-frontend.result) }},"outputs":{"shadow_frontend":${{ toJSON(needs.l1-frontend.outputs.shadow_frontend) }}}},
+            "l1-scripts":{"result":${{ toJSON(needs.l1-scripts.result) }},"outputs":{"shadow_scripts":${{ toJSON(needs.l1-scripts.outputs.shadow_scripts) }},"shadow_bridge":${{ toJSON(needs.l1-scripts.outputs.shadow_bridge) }}}},
+            "l1-server":{"result":${{ toJSON(needs.l1-server.result) }},"outputs":{"shadow_server":${{ toJSON(needs.l1-server.outputs.shadow_server) }}}}}
         run: node --experimental-strip-types scripts/ci-required-results.ts l1
 
   acceptance-quality:
