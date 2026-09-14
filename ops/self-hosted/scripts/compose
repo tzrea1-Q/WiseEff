@@ -70,5 +70,48 @@ validate_api_scale() {
   done
 }
 
+wiseeff_compose_command() {
+  local argument compose_command=""
+  local expects_global_option_value=false
+  for argument in "$@"; do
+    if [ -z "$compose_command" ]; then
+      if [ "$expects_global_option_value" = "true" ]; then
+        expects_global_option_value=false
+        continue
+      fi
+      case "$argument" in
+        --ansi | --env-file | -f | --file | --parallel | --profile | --progress | --project-directory | -p | --project-name)
+          expects_global_option_value=true
+          continue
+          ;;
+        -*)
+          continue
+          ;;
+        *)
+          printf '%s\n' "$argument"
+          return 0
+          ;;
+      esac
+    fi
+  done
+}
+
+wiseeff_compose_infer_app_tag() {
+  local cid image tag
+  [ -z "${WISEEFF_APP_TAG:-}" ] || return 0
+  cid="$(docker ps -q --filter "label=com.docker.compose.service=api" 2>/dev/null | head -1 || true)"
+  [ -n "$cid" ] || return 0
+  image="$(docker inspect -f '{{.Config.Image}}' "$cid" 2>/dev/null || true)"
+  tag="${image##*:}"
+  [ -n "$tag" ] || return 0
+  [ "$tag" != "$image" ] || return 0
+  export WISEEFF_APP_TAG="$tag"
+}
+
 validate_api_scale "$@"
+case "$(wiseeff_compose_command "$@")" in
+  up | run | create)
+    wiseeff_compose_infer_app_tag || true
+    ;;
+esac
 wiseeff_compose_exec "${compose_dir}" "${compose_file}" "$@"

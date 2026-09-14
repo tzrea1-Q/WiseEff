@@ -873,4 +873,6 @@ wiseeff_upgrade_main() {
     "$catalog_operator_ref"
 }
 
+upgrade_launcher="$0"
+upgrade_launcher_argv=("$@")
 wiseeff_upgrade_main "$@"

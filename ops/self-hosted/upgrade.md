@@ -185,7 +185,7 @@ The command asks for the literal word `upgrade` immediately before it stops traf
 ./scripts/upgrade.sh apply --ref <sha> --non-interactive --yes
 ```
 
-`apply` reports a successful no-op only when the checkout SHA equals the resolved target, API/worker/web all reference the exact commit-addressed target image, and the public health probe passes. A checkout updated after an earlier failed build therefore enters the normal build/recreate flow instead of printing `already running`. Pass `--restart` only when a same-SHA healthy stack still needs intentional full recreation.
+`apply` reports a successful no-op only when the checkout SHA equals the resolved target, API/worker/web all reference the exact commit-addressed target image, and the public health probe passes. Previous identity is the running API image tag when that tag is a 40-character commit SHA, not a checkout that was moved to the target before apply. When the current checkout is not the target, apply checks out the target and re-execs this launcher so the candidate `upgrade-lib.sh` runs for quiesce, migrate, and readiness. A checkout updated after an earlier failed build therefore enters the normal build/recreate flow instead of printing `already running`. Pass `--restart` only when a same-SHA healthy stack still needs intentional full recreation.
 
 The recovery root defaults to `/var/backups/wiseeff/upgrades/<run-id>` and the ignored journal to `ops/self-hosted/.state/upgrades/<run-id>`. Override them with `--backup-root` and `--state-dir` when the host has a secured dedicated filesystem. The environment file must remain mode `600`.
 

@@ -215,7 +215,7 @@ Use only when a container was removed and the Compose-resolved application image
 ./scripts/compose --env-file .env ps
 ```
 
-After an immutable-SHA upgrade, prefer `start`. A generic `up` can resolve the default `wiseeff-app:local` tag instead of the commit-addressed image if `WISEEFF_APP_TAG` is not pinned. If an upgraded container is missing, preserve the remaining container/image evidence and follow [Self-Hosted Upgrade](upgrade.md) rather than guessing a tag.
+After an immutable-SHA upgrade, prefer `start`. `./scripts/compose up` infers `WISEEFF_APP_TAG` from the running `api` container when unset, so a missing `publication-manager` can be created with the same commit image instead of `wiseeff-app:local`. An explicit `WISEEFF_APP_TAG` still wins. If an upgraded container is missing and no running API image can be inspected, preserve the remaining container/image evidence and follow [Self-Hosted Upgrade](upgrade.md) rather than guessing a tag.
 
 ### Restart one or more existing services
 

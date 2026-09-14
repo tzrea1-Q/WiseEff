@@ -65,7 +65,16 @@ describe("self-hosted Compose entry", () => {
     const invocation = join(directory, "docker-invocation");
     writeFileSync(
       docker,
-      `#!/bin/sh\nif [ "$1" = "compose" ] && [ "$2" = "version" ]; then\n  printf '%s\\n' 'Docker Compose version v2.39.1'\n  exit 0\nfi\nprintf '%s\\n' "$@" > '${invocation}'\n`
+      `#!/bin/sh
+if [ "$1" = "compose" ] && [ "$2" = "version" ]; then
+  printf '%s\\n' 'Docker Compose version v2.39.1'
+  exit 0
+fi
+if [ "$1" = "ps" ] || [ "$1" = "inspect" ]; then
+  exit 0
+fi
+printf '%s\\n' "$@" > '${invocation}'
+`
     );
     chmodSync(docker, 0o755);
 
@@ -76,6 +85,79 @@ describe("self-hosted Compose entry", () => {
 
     expect(result.status).toBe(0);
     expect(readFileSync(invocation, "utf8")).toBe(["compose", ...arguments_].join("\n") + "\n");
+  });
+
+  it("infers WISEEFF_APP_TAG from the running API image before up", () => {
+    const directory = mkdtempSync(join(tmpdir(), "wiseeff-selfhost-compose-tag-"));
+    const docker = join(directory, "docker");
+    const invocation = join(directory, "docker-invocation");
+    const tag = "2d5a6f29f45bb75a2b3623e5b9a3022035223b5f";
+    writeFileSync(
+      docker,
+      `#!/bin/sh
+if [ "$1" = "compose" ] && [ "$2" = "version" ]; then
+  printf '%s\\n' 'Docker Compose version v2.39.1'
+  exit 0
+fi
+if [ "$1" = "ps" ]; then
+  printf '%s\\n' 'api-container'
+  exit 0
+fi
+if [ "$1" = "inspect" ]; then
+  printf '%s\\n' 'wiseeff-app:${tag}'
+  exit 0
+fi
+printf '%s\\n' "TAG=${"$"}{WISEEFF_APP_TAG}" > '${invocation}'
+printf '%s\\n' "$@" >> '${invocation}'
+`
+    );
+    chmodSync(docker, 0o755);
+
+    const result = spawnSync(
+      "bash",
+      ["ops/self-hosted/scripts/compose", "up", "-d", "--no-deps", "publication-manager"],
+      {
+        encoding: "utf8",
+        env: { ...process.env, PATH: `${directory}:${process.env.PATH ?? ""}` },
+      },
+    );
+
+    expect(result.status).toBe(0);
+    expect(readFileSync(invocation, "utf8")).toContain(`TAG=${tag}`);
+    expect(readFileSync(invocation, "utf8")).toContain("publication-manager");
+  });
+
+  it("does not override an explicit WISEEFF_APP_TAG", () => {
+    const directory = mkdtempSync(join(tmpdir(), "wiseeff-selfhost-compose-explicit-tag-"));
+    const docker = join(directory, "docker");
+    const invocation = join(directory, "docker-invocation");
+    writeFileSync(
+      docker,
+      `#!/bin/sh
+if [ "$1" = "compose" ] && [ "$2" = "version" ]; then
+  printf '%s\\n' 'Docker Compose version v2.39.1'
+  exit 0
+fi
+if [ "$1" = "ps" ] || [ "$1" = "inspect" ]; then
+  printf '%s\\n' 'should-not-inspect'
+  exit 1
+fi
+printf '%s\\n' "TAG=${"$"}{WISEEFF_APP_TAG}" > '${invocation}'
+`
+    );
+    chmodSync(docker, 0o755);
+
+    const result = spawnSync("bash", ["ops/self-hosted/scripts/compose", "up", "-d", "publication-manager"], {
+      encoding: "utf8",
+      env: {
+        ...process.env,
+        PATH: `${directory}:${process.env.PATH ?? ""}`,
+        WISEEFF_APP_TAG: "explicit-tag",
+      },
+    });
+
+    expect(result.status).toBe(0);
+    expect(readFileSync(invocation, "utf8").trim()).toBe("TAG=explicit-tag");
   });
 
   it("rejects standalone Compose v1 because restricted builds require BuildKit secrets", () => {
