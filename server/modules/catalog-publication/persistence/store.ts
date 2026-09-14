@@ -633,6 +633,28 @@ export async function getAuthorization(
   }
 }
 
+export async function listJobs(
+  db: Queryable,
+  limit: number,
+): Promise<CatalogPublicationStoreResult<PublicationJobRecord[]>> {
+  try {
+    const bounded = Number.isInteger(limit) && limit > 0 ? Math.min(limit, 100) : 20;
+    const result = await db.query<JobRow>(
+      `select
+         id, candidate_id, authorization_id, request_scope, idempotency_key,
+         request_digest, status, lease_owner, lease_until, fencing_token,
+         attempt_count, last_error_class, last_error_reason, created_at, updated_at
+       from catalog_publication.publication_jobs
+       order by created_at desc
+       limit $1`,
+      [bounded],
+    );
+    return ok(result.rows.map(toJob));
+  } catch (error) {
+    return fail(mapWriteError(error));
+  }
+}
+
 export async function getJob(
   db: Queryable,
   jobId: PublicationJobId,

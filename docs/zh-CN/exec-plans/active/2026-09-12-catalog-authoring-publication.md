@@ -64,17 +64,17 @@ CP-10 在 M1 路径稳定后
 | CP-00 合同 | R3 设计 / R1 文档 | **本候选** | 文档影响矩阵所列文档 | 可审阅文档。不改产品代码。 |
 | CP-01 只读核验 | R1 | **本候选** | `docs/references/catalog-publication-baseline-verification.md` 及中文配对 | 不登录主机、不写 Catalog、不用 fixture 冒充安装包 |
 | CP-01 Artifact 写入接管 | R3 | 被主机证据与 CP-00/02 阻断 | publication 接管 adapter | 不 bootstrap/seed/SQL 插入 Catalog |
-| CP-02 | R3 | 未派发 | 下一个 migration、`catalog-kernel/security/`、publication 持久化、生成 schema | 共享文件只由本 lane 拥有 |
-| CP-03 | R3 | 未派发 | `server/modules/catalog-publication/builder/` | 不写 Catalog |
-| CP-04 | R3 | 未派发 | auth 策略、proposals、publication authorization | 角色不由请求体决定；不用假仓库 URL |
-| CP-05 | R3 | 未派发 | `catalog-kernel/install/` | 不另造 materializer；不先切再验证 |
-| CP-06 | R3 | 未派发 | `productionWire.ts`、release-verification、`parameter-data-mode.ts`、自托管门禁 | 不删除 P13/digest 检查 |
-| CP-07 | R3 执行 / R2 HTTP | 未派发 | publication 模块、catalog-api 路由、生成 DTO | handler 不是同步器 |
-| CP-08 | R2 | 未派发 | `src/features/parameter-catalog-governance/` 与 ports | mock ≠ 验收 |
-| CP-09 | R2 转换 / R3 激活 | 未派发 | vendor 导入适配器 | CP-07 之后不维持第二个 writer |
-| CP-10 | R2 / matcher R3 | 未派发 | Builder 操作 + UI | 不静默切换 Binding |
-| CP-11 | R3 | 未派发 | 窄测试、e2e | 独立测试者不得先改实现再自称通过 |
-| CP-12 | Temporal / 运维 | 未派发 | runbook、经授权的主机 | 默认交可审阅候选，不是业务机执行权 |
+| CP-02 | R3 | 已在 main 实现（PR #827+） | publication schema/roles | 不改已执行 migration |
+| CP-03 | R3 | 已在 main 实现 | Builder | Web 不写 Catalog |
+| CP-04 | R3 | 已在 main 实现；本波次补正式实例策略路径 | auth 策略 | 保留 ephemeral 确认；正式启用用身份引脚 |
+| CP-05 | R3 | 已在 main 实现 | installer + Receipt | 不另造 materializer |
+| CP-06 | R3 | 已在 main 实现 | dual readiness / freeze | 默认 `publication_enabled=false` |
+| CP-07 | R3/R2 | 已在 main 实现；本波次补 surface/list | jobs/API/manager | handler 不是同步器 |
+| CP-08 | R2 | 已实现；本波次把 `/parameter-admin/specs` 接到 surface/history | governance UI | mock ≠ 验收 |
+| CP-09 | R2/R3 | adapter 已实现；页面展示导入历史，不新建上传平台 | vendor 导入 | 不维持第二个 writer |
+| CP-10 | R2 | ChangeSet 与页面入口已实现 | 新主体/修订 | 不静默切换 Binding |
+| CP-11 | R3 | 隔离 M1 已有；本波次收紧页面点击保存与值内容断言 | e2e | Hosted/target 仍分开 |
+| CP-12 | Temporal / 运维 | 手册已更新；本波次未执行目标主机启用 | runbook | 默认仍是可审阅候选 |
 
 本波次之后的 frontier：CP-00 可审阅；CP-01 主机接管 **blocked**（未访问主机）。只有对本候选完成独立审查并另行授权后，才派发 CP-02。未经该授权不得创建 GitHub Issue、开 PR 或打 ready 标签。
 

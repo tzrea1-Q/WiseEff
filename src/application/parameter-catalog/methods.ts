@@ -12,7 +12,9 @@ export const PARAMETER_CATALOG_REPOSITORY_METHODS = [
   "createPublicationCandidate",
   "getPublicationCandidate",
   "publishPublicationCandidate",
-  "getPublication"
+  "getPublication",
+  "getPublicationSurface",
+  "listPublications"
 ] as const;
 
 export const PARAMETER_CATALOG_GOVERNANCE_REPOSITORY_METHODS = [

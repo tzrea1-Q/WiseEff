@@ -361,6 +361,25 @@ describe("CP-07 publication HTTP against real PostgreSQL", () => {
     );
   });
 
+  it("GET publication-surface reads current pin without coordinator catalog_state", async () => {
+    authenticateAs(publisherScope());
+    const response = await request("GET", "/api/v2/catalog/publication-surface");
+    expect(response.status, JSON.stringify(response.body)).toBe(200);
+    const item = (response.body as {
+      item: {
+        currentReleaseId: string | null;
+        adopted: boolean;
+        publicationEnabled: boolean;
+        authoringAllowed: boolean;
+        blockers: string[];
+      };
+    }).item;
+    expect(item.currentReleaseId).toBe(pinId);
+    expect(item.publicationEnabled).toBe(true);
+    expect(item.adopted).toBe(false);
+    expect(item.authoringAllowed).toBe(false);
+  });
+
   it("T25 keeps published catalog and jobs readable while the manager is down", async () => {
     authenticateAs(publisherScope());
     const created = await request("POST", "/api/v2/catalog/publication-candidates", {

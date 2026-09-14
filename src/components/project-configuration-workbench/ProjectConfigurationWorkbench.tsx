@@ -103,7 +103,10 @@ export type ProjectConfigurationWorkbenchProps = {
    * Optional topology seam for config-set revision list/select/validate.
    * Omit in unit tests that do not exercise the gate; the operations surface must pass it.
    */
-  topologyRepository?: Pick<ParameterTopologyRepository, "listConfigRevisions" | "validateRevision">;
+  topologyRepository?: Pick<
+    ParameterTopologyRepository,
+    "listConfigRevisions" | "validateRevision" | "listBindings" | "createBindingDraft"
+  >;
 };
 
 export function ProjectConfigurationWorkbench({
@@ -1182,7 +1185,47 @@ export function ProjectConfigurationWorkbench({
         projectId: project.id,
         fileId: selectedMember.fileId,
         fileName: selectedMember.fileName,
-        dtsRepository
+        dtsRepository,
+        catalogSave: topologyRepository
+          ? async (rows, reason) => {
+              let revisionId = revisionGate.selectedRevisionId;
+              if (!revisionId && selectedConfigSet) {
+                const revisions = await topologyRepository.listConfigRevisions(project.id, selectedConfigSet.id);
+                revisionId = revisions.find((item) => item.status === "resolved")?.id ?? null;
+              }
+              if (!revisionId) {
+                throw new Error("没有已解析的配置修订，无法写入正式项目值。");
+              }
+              const bindings = await topologyRepository.listBindings(project.id, revisionId);
+              const savedKeys: string[] = [];
+              let currentValueId = "";
+              for (const row of rows) {
+                const matches = bindings.filter((item) => item.propertyKey === row.propertyName);
+                const catalogMatches = matches.filter(
+                  (item) => item.id.startsWith("pbind_") || Boolean(item.definitionId)
+                );
+                if (catalogMatches.length !== 1) {
+                  throw new Error(`属性 ${row.propertyName} 没有唯一正式绑定，不能提交。`);
+                }
+                const unique = catalogMatches[0]!;
+                const integer = row.normalizedValue.replace(/[<>;]/g, "").trim();
+                const saved = await topologyRepository.createBindingDraft(project.id, unique.id, {
+                  baseRevisionId: revisionId,
+                  action: "set",
+                  reason,
+                  targetValue: /^-?\d+$/.test(integer)
+                    ? { kind: "cells", bits: 32, groups: [[{ kind: "integer", raw: integer, value: integer }]] }
+                    : { kind: "strings", values: [integer] }
+                });
+                if (saved.writeTarget.role !== "canonical-project-value") {
+                  throw new Error("工作台保存未写入正式项目值。");
+                }
+                savedKeys.push(row.key);
+                currentValueId = saved.draftId;
+              }
+              return { savedKeys, currentValueId };
+            }
+          : undefined
       });
       workspaceLoadSession.retryMembers();
       workspaceLoadSession.retryStructure();
@@ -1191,7 +1234,18 @@ export function ProjectConfigurationWorkbench({
     } catch {
       // submitError is projected from the session snapshot
     }
-  }, [canEdit, dtsRepository, project.id, selectedMember, structuredEditSession, submittingEdits, workspaceLoadSession]);
+  }, [
+    canEdit,
+    dtsRepository,
+    project.id,
+    revisionGate.selectedRevisionId,
+    selectedConfigSet,
+    selectedMember,
+    structuredEditSession,
+    submittingEdits,
+    topologyRepository,
+    workspaceLoadSession
+  ]);
 
   const unifiedDiffText = useMemo(() => {
     if (canvasMode !== "unified-diff" || !historySource) return "";

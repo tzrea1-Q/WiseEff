@@ -14,5 +14,10 @@ export const SUPPORTED_CATALOG_CONSUMER_CAPABILITIES = Object.freeze({
   valueValidator: "parameter-bindings/projectValue",
 });
 
+const SUPPORTED_CATALOG_CONSUMER_REVISIONS = new Set([
+  "catalog-capability/v1",
+  CATALOG_CAPABILITY_CONTRACT_REVISION,
+]);
+
 export const catalogConsumerSupportsRevision = (revision: string): boolean =>
-  revision === SUPPORTED_CATALOG_CONSUMER_CAPABILITIES.revision;
+  SUPPORTED_CATALOG_CONSUMER_REVISIONS.has(revision);

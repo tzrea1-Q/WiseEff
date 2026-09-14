@@ -64,22 +64,61 @@ WISEEFF_PUBLICATION_MANAGER_DATABASE_URL='...' \
 
 不要使用 `WISEEFF_CATALOG_TEST_CAPABILITIES`（`AUTH_MODE=production` 或 `NODE_ENV=production` 时为空）。
 
+grant/revoke 写 `public.roles` / `user_role_bindings`，用 `WISEEFF_CATALOG_BOOTSTRAP_DATABASE_URL`（bootstrap 超管），不要用 NOINHERIT 的 manager LOGIN。
+
 ```bash
+npx tsx scripts/catalog-publication-ops.ts capabilities grant \
+  --user-id <user-id> --organization-id <org-id> --capability catalog:author
 npx tsx scripts/catalog-publication-ops.ts capabilities grant \
   --user-id <user-id> --organization-id <org-id> --capability catalog:publish
 ```
 
 绑定独立 `catalog-capability-*` 角色，不把 `catalog:publish` 写进默认 `admin`。
 
-## 5. 策略状态 / 隔离启用 / 停用
+## 5. 策略状态 / 隔离启用 / 正式实例启用 / 停用
+
+在**应用镜像内**执行（`./scripts/compose --env-file .env run --no-deps --rm api npx tsx scripts/catalog-publication-ops.ts …`），不要假设宿主机有 `npx`/`tsx`。DSN 来自镜像环境变量，不要写在命令行。
 
 ```bash
 npx tsx scripts/catalog-publication-ops.ts policy status
+```
+
+状态读取 `DATABASE_URL`（API LOGIN 对 `catalog_state` 的 `SELECT`）。不要用 NOINHERIT 的 manager LOGIN 做 status，那个身份对 `catalog_state` 会 42501。freeze 的 `set`/`clear`/`status` 仍走 manager DSN，并 `SET LOCAL ROLE catalog_publication_coordinator_role`。
+
+状态输出非敏感身份：数据库 OID、库名、当前 Release ID/digest、Artifact digest、接管、策略版本、`publication_enabled`、`low_risk_single_actor_publish`、freeze。状态读取不是启用。
+
+**仅隔离临时库：**
+
+```bash
 npx tsx scripts/catalog-publication-ops.ts policy enable --actor <user-id> \
+  --confirmation ephemeral-test-only [--low-risk-single-actor]
+npx tsx scripts/catalog-publication-ops.ts policy disable --actor <user-id> \
   --confirmation ephemeral-test-only
 ```
 
-仅当 `current_database()` 符合临时库名模式且确认口令匹配时才能启用。这不是生产启用。
+仅当 `current_database()` 符合临时库名模式且确认口令匹配时才能走这条路径。`--low-risk-single-actor` 是独立选择，默认保持当前值，不与启用捆绑。
+
+**非临时实例：** 必须先 check 再 execute，引脚来自刚读到的 status，不能套用过期确认。不要使用 ephemeral 确认口令。
+
+```bash
+npx tsx scripts/catalog-publication-ops.ts policy check enable --actor <user-id> \
+  --expected-database-oid <oid> \
+  --expected-id <crel_...> \
+  --expected-digest sha256:... \
+  --expected-policy-revision <n> \
+  --expected-frozen true|false \
+  --expected-adopted true \
+  [--low-risk-single-actor|--no-low-risk-single-actor]
+npx tsx scripts/catalog-publication-ops.ts policy enable --actor <user-id> \
+  --expected-database-oid <oid> \
+  --expected-id <crel_...> \
+  --expected-digest sha256:... \
+  --expected-policy-revision <n> \
+  --expected-frozen true|false \
+  --expected-adopted true
+```
+
+启用要求当前目录已精确接管（Artifact + Receipt）。不推进 current，不清除 freeze，也不要求先成功发布一条定义。停用不删除 Catalog、Artifact、Receipt 或项目值。Receipt 存在后关闭发布不会恢复非法 legacy `advance`。
 
 ## 6. 升级/恢复冻结
 
@@ -99,3 +138,35 @@ WISEEFF_CATALOG_DELIVERY_ACCEPTANCE=1 \
 该 runner 构建正式 `ops/self-hosted/Dockerfile` 镜像，在临时 pgvector 库上发放**按 run 作用域命名**的 API/worker/manager LOGIN（不改集群级 `wiseeff_api` / `wiseeff_worker` / `wiseeff_publication_manager`），按标准 Compose 加隔离 overlay 启动，然后执行接管 → 真实本地登录 → 页内发布 → Receipt/current → DTS ingest → 工作台存值 → 第二次发布 → 服务重启 → 历史回读。断言绑定本轮 Candidate/Job/Receipt/Release/Definition/Binding/ProjectValue。排队/执行中超时视为失败。缺前提非零退出。不是生产启用，也不是 GitHub L1 的静默 skip。拒绝 `127.0.0.1:5432/wiseeff` 以及共享 g668 库名 `wiseeff`。
 
 overlay **只覆盖网络/端口/拓扑**（loopback 端口、`host.docker.internal`、关闭共享 postgres）。标准 `api` 命令是 `npx tsx server/index.ts`；正式迁移是 setup/upgrade 用 `WISEEFF_CATALOG_BOOTSTRAP_DATABASE_URL` 的一次性入口。标准 `worker` 的 `DATABASE_URL` 来自 `WISEEFF_WORKER_DATABASE_URL`。overlay 不得替换这些进程或权限缝。
+
+## 8. 目标主机操作员执行单（仅在已授权时写入）
+
+工作目录除非另有说明：`/srv/wiseeff/ops/self-hosted`。命令在应用镜像内执行。凭据不得进入命令行、日志或工单。
+
+| 步骤 | 命令 / 页面 | 是否写入 | 成功信号 | 失败停止点 |
+| --- | --- | --- | --- | --- |
+| 1. 升级后状态读取 | `./scripts/collect-catalog-publication-status.sh`（或 `compose ps`、镜像内 `curl` manager `/health/live`、`policy status`、`freeze status`） | 否 | 运行镜像/标签、角色、current Release、策略版本、freeze；JSON `pinsForPolicyCheck` | 已经跑过 `publication-manager` 的栈缺少专用 LOGIN |
+| 2. 源包与接管检查 | 只读 `inspect`；`adopt --check` | 否 | JSON 身份与源包一致 | 漂移、缺历史或缺 Artifact |
+| 3. 接管 + ACL + 能力 | `adopt --execute`；组织 Admin 默认已有 `catalog:author` / `catalog:publish` / `catalog:review-high-risk`。只给非 admin 发布人 grant | 是 | Receipt `adopted-preexisting`；组织 Admin 重新登录后可编写并自批 | 不用测试 capability；不要授给 platform-admin |
+| 4. 策略检查 / 启用 / 停用 | 用**最新** status 引脚 `policy check enable` 再 `policy enable`；可选 `--low-risk-single-actor` | 是 | `publication_enabled=true`；freeze 不变 | 陈旧引脚、未接管、在正式库名上使用 ephemeral 确认 |
+| 5. 页面业务闭环 | `/parameter-admin/specs` 编写/预览/发布；工作台 `提交所选` | 是 | Receipt `effective`；正式值内容；重启后历史仍在 | 排队/执行中超时即失败；禁止手工 POST 保存 API |
+| 6. 异常停用 | `policy disable`；维护时 `freeze set`；恢复走升级 recovery | 是 | 发布关闭；Catalog 与项目值保留 | 不要删历史或再次 bootstrap |
+
+现场启用在上述写入被观测到之前保持 **待授权 / 未执行**。
+
+## 9. 采集当前主机事实（只读）
+
+任何 adopt/enable/grant 之前先跑。使用 `./scripts/compose run --rm --no-deps`（与升级 freeze 同一身份），不要 `compose exec` 进正在服务的 API 跑 Catalog 操作。stdout 与 JSON 报告会脱敏 DSN。
+
+```bash
+cd /srv/wiseeff/ops/self-hosted
+chmod +x ./scripts/collect-catalog-publication-status.sh
+./scripts/collect-catalog-publication-status.sh \
+  --out ./catalog-publication-status.json
+# 可选：
+#   --readonly-dsn-file /path/to/readonly.dsn
+#   --bundle /path/to/catalog-release-bundle.json --verification-digest sha256:...
+#   --user-id usr_... --organization-id org_...
+```
+
+报告含健康检查、LOGIN inspect、`policy status` / `freeze status`，以及 `pinsForPolicyCheck`。交回 `catalog-publication-status.json`（权限 0600）。不要粘贴 `.env` 或 DSN 文件。若 `ops_cli_present` 失败，说明当前镜像还没有 `scripts/catalog-publication-ops.ts`，必须先升级再 inspect/adopt/policy。

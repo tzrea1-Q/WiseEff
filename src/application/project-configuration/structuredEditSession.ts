@@ -35,11 +35,17 @@ export type StructuredEditIdentity = {
   propertyName: string;
 };
 
+export type CatalogSessionSaveResult = {
+  savedKeys: string[];
+  currentValueId: string;
+};
+
 export type StructuredEditSubmitInput = {
   projectId: string;
   fileId: string;
   fileName: string;
   dtsRepository: Pick<DtsStructuredRepository, "submitStructuredEdits">;
+  catalogSave?: (rows: SessionDraftRow[], reason: string) => Promise<CatalogSessionSaveResult | null>;
 };
 
 export type StructuredEditSessionSnapshot = {
@@ -425,6 +431,23 @@ export function createStructuredEditSession(
       submitStatus = "";
       emit();
       try {
+        if (input.catalogSave) {
+          const catalogResult = await input.catalogSave(selected, trimmedReason);
+          if (!catalogResult || catalogResult.savedKeys.length !== selected.length) {
+            throw new Error("正式项目值未完整写入所选变更。");
+          }
+          drafts = clearSubmittedDrafts(drafts, catalogResult.savedKeys);
+          submitStatus = `已写入正式项目值 ${catalogResult.currentValueId}`;
+          validateStatus = "";
+          emit();
+          persist();
+          return {
+            id: catalogResult.currentValueId,
+            projectId: input.projectId,
+            status: "canonical-project-value",
+            items: []
+          };
+        }
         const round = await input.dtsRepository.submitStructuredEdits(input.projectId, {
           edits: aggregate.edits,
           reason: trimmedReason

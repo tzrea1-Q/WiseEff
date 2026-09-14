@@ -408,6 +408,36 @@
   background: var(--pcat-surface);
 }
 
+.parameter-catalog__history {
+  display: grid;
+  gap: var(--space-2);
+  min-width: 0;
+  padding: var(--space-3) var(--space-4);
+  background: var(--pcat-surface);
+  border: 1px solid var(--pcat-border);
+  border-radius: var(--radius-md);
+}
+
+.parameter-catalog__history h2 {
+  margin: 0;
+  font-size: var(--font-size-md);
+}
+
+.parameter-catalog__history ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: var(--space-2);
+}
+
+.parameter-catalog__history li {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
 .parameter-catalog-publication-dialog {
   width: min(40rem, calc(100vw - var(--space-8)));
   max-height: min(88vh, 52rem);

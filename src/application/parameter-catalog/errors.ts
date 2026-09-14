@@ -37,6 +37,7 @@ const FAILURE_CODE: Record<CatalogApiFailureReason, string> = {
   "predecessor-incomplete": "CONFLICT",
   "activation-receipt-mismatch": "CONFLICT",
   "adoption-evidence-invalid": "CONFLICT",
+  "catalog-not-adopted": "CONFLICT",
   "registration-followup-failed": "INTERNAL_ERROR"
 };
 

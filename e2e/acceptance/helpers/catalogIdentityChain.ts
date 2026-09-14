@@ -32,6 +32,8 @@ export type ProjectBindingView = {
   readonly effectiveRevisionId?: string;
   readonly currentValueId?: string;
   readonly propertyKey?: string;
+  readonly rawValue?: string | number | null;
+  readonly effectiveValue?: unknown;
 };
 
 export type CatalogIdentityChain = {
@@ -182,15 +184,32 @@ export function assertUniqueBinding(
   return match;
 }
 
+const valueText = (binding: ProjectBindingView): string => {
+  if (binding.rawValue !== undefined && binding.rawValue !== null) {
+    return String(binding.rawValue);
+  }
+  if (typeof binding.effectiveValue === "string" || typeof binding.effectiveValue === "number") {
+    return String(binding.effectiveValue);
+  }
+  if (binding.effectiveValue && typeof binding.effectiveValue === "object") {
+    return JSON.stringify(binding.effectiveValue);
+  }
+  return "";
+};
+
 export function assertOfficialProjectValue(
   binding: ProjectBindingView,
-  expected: { readonly currentValueId: string; readonly revisionId: string },
+  expected: { readonly currentValueId: string; readonly revisionId: string; readonly value: string },
 ): void {
   if (!binding.currentValueId || binding.currentValueId !== expected.currentValueId) {
     throw new IdentityChainError("official ProjectValue was not saved (draft-only is not enough)");
   }
   if (binding.effectiveRevisionId !== expected.revisionId) {
     throw new IdentityChainError("binding effectiveRevisionId does not match the published revision");
+  }
+  const observed = valueText(binding);
+  if (!observed.includes(expected.value)) {
+    throw new IdentityChainError(`official ProjectValue content is ${observed}, required ${expected.value}`);
   }
 }
 

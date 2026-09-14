@@ -16,7 +16,9 @@ import {
   getCandidate,
   getJob,
   getReceiptByJobId,
+  listJobs,
 } from "../../catalog-publication/persistence/store";
+import { collectPublicationPolicyControlFacts } from "../../catalog-publication/authorization/instanceSnapshot";
 import type { PublicationCandidateRecord, PublicationJobRecord } from "../../catalog-publication/persistence/types";
 import { readCurrentCatalogPointer } from "../../catalog-kernel/install/currentPointer";
 import type { Database } from "../../../shared/database/client";
@@ -27,6 +29,7 @@ import type {
   CatalogPublicationPorts,
   PublicationCandidateView,
   PublicationJobView,
+  PublicationSurfaceView,
 } from "./types";
 
 const authorOrganizationIdOf = (candidate: PublicationCandidateRecord): string | null => {
@@ -38,7 +41,7 @@ const capabilityOf = (candidate: PublicationCandidateRecord): PublicationCandida
   const contract = candidate.capabilityContract;
   const revision =
     typeof contract.revision === "string" ? contract.revision : CATALOG_CAPABILITY_CONTRACT_REVISION;
-  const allowListId = typeof contract.allowListId === "string" ? contract.allowListId : "page-m1-definition-content";
+  const allowListId = typeof contract.allowListId === "string" ? contract.allowListId : "page-historical-definition-content";
   return { revision, allowListId };
 };
 
@@ -180,7 +183,12 @@ export function bindCatalogPublicationCommands(input: {
   readonly pool?: CatalogPointerPool;
 }): Pick<
   CatalogPublicationPorts,
-  "previewCandidate" | "getCandidate" | "publishCandidate" | "getPublication"
+  | "previewCandidate"
+  | "getCandidate"
+  | "publishCandidate"
+  | "getPublication"
+  | "getPublicationSurface"
+  | "listPublications"
 > {
   const { db, pool } = input;
   return {
@@ -295,6 +303,83 @@ export function bindCatalogPublicationCommands(input: {
         }),
       };
     },
+    async getPublicationSurface(query) {
+      const pointer = pool ? await readCurrentCatalogPointer(pool) : { kind: "absent" as const };
+      const current =
+        pointer.kind === "installed"
+          ? { id: pointer.current.id, digest: pointer.current.digest }
+          : { id: null, digest: null };
+      const snapshot = await withPublicationCoordinator(db, (tx) =>
+        collectPublicationPolicyControlFacts(tx, current),
+      );
+      const canAuthor = query.permissions.includes("catalog:author");
+      const canPublish = query.permissions.includes("catalog:publish");
+      const canReview = query.permissions.includes("catalog:review-high-risk");
+      const blockers: PublicationSurfaceView["blockers"][number][] = [];
+      if (query.actorKind === "agent") {
+        blockers.push("publication-not-authorized");
+      }
+      if (!snapshot.publicationEnabled) {
+        blockers.push("publication-policy-disabled");
+      }
+      if (snapshot.frozen) {
+        blockers.push("publication-frozen");
+      }
+      if (!snapshot.adopted) {
+        blockers.push("catalog-not-adopted");
+      }
+      if (!canAuthor && !canPublish && !canReview) {
+        blockers.push("publication-capability-missing");
+      }
+      return {
+        ok: true as const,
+        value: {
+          publicationEnabled: snapshot.publicationEnabled,
+          lowRiskSingleActorPublish: snapshot.lowRiskSingleActorPublish,
+          policyRevision: snapshot.policyRevision,
+          frozen: snapshot.frozen,
+          adopted: snapshot.adopted,
+          currentReleaseId: snapshot.currentReleaseId,
+          authoringAllowed: canAuthor && snapshot.publicationEnabled && !snapshot.frozen && snapshot.adopted,
+          publishingAllowed:
+            canPublish && snapshot.publicationEnabled && !snapshot.frozen && snapshot.adopted,
+          reviewHighRiskAllowed:
+            canReview && snapshot.publicationEnabled && !snapshot.frozen && snapshot.adopted,
+          blockers,
+        },
+      };
+    },
+    async listPublications(query) {
+      if (
+        !query.permissions.includes("catalog:author") &&
+        !query.permissions.includes("catalog:publish") &&
+        !query.permissions.includes("catalog:review-high-risk")
+      ) {
+        return { ok: false as const, error: { kind: "forbidden" as const, reason: "publication-capability-missing" } };
+      }
+      const loaded = await withPublicationCoordinator(db, (tx) => listJobs(tx, query.limit ?? 20));
+      if (!loaded.ok) {
+        return { ok: false as const, error: { kind: "not-found" as const } };
+      }
+      const views: PublicationJobView[] = [];
+      for (const job of loaded.value) {
+        const candidate = await withPublicationCoordinator(db, (tx) => getCandidate(tx, job.candidateId));
+        if (!candidate.ok) continue;
+        const authorOrganizationId = authorOrganizationIdOf(candidate.value);
+        if (authorOrganizationId === null || !inScope(authorOrganizationId, query.organizationId)) {
+          continue;
+        }
+        views.push(
+          await jobView({
+            db,
+            pool,
+            job,
+            authorOrganizationId,
+          }),
+        );
+      }
+      return { ok: true as const, value: views };
+    },
     async getPublication(query) {
       let jobId: ReturnType<typeof PublicationJobId>;
       try {
@@ -329,12 +414,19 @@ export function bindCatalogPublicationCommands(input: {
 
 export const unavailablePublicationCommandPorts: Pick<
   CatalogPublicationPorts,
-  "previewCandidate" | "getCandidate" | "publishCandidate" | "getPublication"
+  | "previewCandidate"
+  | "getCandidate"
+  | "publishCandidate"
+  | "getPublication"
+  | "getPublicationSurface"
+  | "listPublications"
 > = {
   previewCandidate: async () => ({ ok: false, error: { kind: "reason", reason: "catalog-not-ready" } }),
   getCandidate: async () => ({ ok: false, error: { kind: "not-found" } }),
   publishCandidate: async () => ({ ok: false, error: { kind: "reason", reason: "catalog-not-ready" } }),
   getPublication: async () => ({ ok: false, error: { kind: "not-found" } }),
+  getPublicationSurface: async () => ({ ok: false, error: { kind: "reason", reason: "catalog-not-ready" } }),
+  listPublications: async () => ({ ok: false, error: { kind: "not-found" } }),
 };
 
 export const pinOf = (id: string, digest: string): CatalogReleasePin => ({

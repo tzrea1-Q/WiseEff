@@ -487,6 +487,34 @@ export function createMockCatalogPorts(options: CatalogMockOptions = {}): {
       store.publicationKeys.set(parsed.idempotencyKey, job.id);
       return { item: clone(job) };
     },
+    async getPublicationSurface() {
+      assertReadyForRead(store);
+      return {
+        item: {
+          publicationEnabled: store.publicationOutcome !== "policy-disabled",
+          lowRiskSingleActorPublish: false,
+          policyRevision: 1,
+          frozen: store.publicationOutcome === "frozen",
+          adopted: true,
+          currentReleaseId: CATALOG_RELEASE_ID,
+          authoringAllowed: store.publicationOutcome !== "policy-disabled" && store.publicationOutcome !== "frozen",
+          publishingAllowed: store.publicationOutcome !== "policy-disabled" && store.publicationOutcome !== "frozen",
+          reviewHighRiskAllowed: false,
+          blockers: [
+            ...(store.publicationOutcome === "policy-disabled" ? (["publication-policy-disabled"] as const) : []),
+            ...(store.publicationOutcome === "frozen" ? (["publication-frozen"] as const) : [])
+          ]
+        }
+      };
+    },
+    async listPublications() {
+      assertReadyForRead(store);
+      return {
+        items: [...store.jobs.values()].map((job) => clone(job)),
+        nextCursor: null,
+        catalogReleaseId: CATALOG_RELEASE_ID
+      };
+    },
     async getPublication(jobId) {
       assertReadyForRead(store);
       const job = store.jobs.get(jobId);

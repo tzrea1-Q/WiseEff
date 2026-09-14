@@ -50,7 +50,9 @@ export type PublicationAuthorizationReason =
   | "candidate-tampered"
   | "publication-authorization-revoked"
   | "unsupported-catalog-capability"
-  | "artifact-missing";
+  | "artifact-missing"
+  | "adoption-evidence-invalid"
+  | "publication-instance-stale";
 
 export type PublicationAuthorizationFailure = {
   readonly reason: PublicationAuthorizationReason;
@@ -154,11 +156,63 @@ export type RevokedPublicationAuthorization = {
 };
 
 export const EPHEMERAL_POLICY_REVISION_CONFIRMATION = "ephemeral-test-only" as const;
+export const MANAGED_INSTANCE_POLICY_CONFIRMATION = "managed-instance-policy-revision" as const;
+
+export type PublicationPolicyInstanceSnapshot = {
+  readonly databaseOid: string;
+  readonly databaseName: string;
+  readonly ephemeralName: boolean;
+  readonly currentReleaseId: string | null;
+  readonly currentReleaseDigest: string | null;
+  readonly artifactDigest: string | null;
+  readonly artifactSourceKind: string | null;
+  readonly adopted: boolean;
+  readonly receiptKinds: readonly string[];
+  readonly policyRevision: number;
+  readonly publicationEnabled: boolean;
+  readonly lowRiskSingleActorPublish: boolean;
+  readonly frozen: boolean;
+  readonly capabilityContractRevision: string | null;
+};
+
+export type ManagedInstancePolicyPins = {
+  readonly confirmation: typeof MANAGED_INSTANCE_POLICY_CONFIRMATION;
+  readonly expectedDatabaseOid: string;
+  readonly expectedCurrentId: string;
+  readonly expectedCurrentDigest: string;
+  readonly expectedPolicyRevision: number;
+  readonly expectedFrozen: boolean;
+  readonly expectedAdopted: boolean;
+};
+
+export type PublicationPolicyRevisionFailureReason =
+  | "publication-policy-disabled"
+  | "publication-not-authorized"
+  | "publication-capability-missing"
+  | "adoption-evidence-invalid"
+  | "publication-instance-stale";
 
 export type RevisePublicationPolicyInput = {
   readonly trustedActor: TrustedInvocationContext;
   readonly publicationEnabled: boolean;
   readonly lowRiskSingleActorPublish: boolean;
   readonly capabilityContractRevision: string;
-  readonly isolatedInstanceConfirmation: typeof EPHEMERAL_POLICY_REVISION_CONFIRMATION;
+} & (
+  | {
+      readonly isolatedInstanceConfirmation: typeof EPHEMERAL_POLICY_REVISION_CONFIRMATION;
+    }
+  | {
+      readonly mode: "check" | "execute";
+      readonly managedInstance: ManagedInstancePolicyPins;
+    }
+);
+
+export type PublicationPolicyCheckResult = {
+  readonly snapshot: PublicationPolicyInstanceSnapshot;
+  readonly action: "enable" | "disable";
+  readonly intended: {
+    readonly publicationEnabled: boolean;
+    readonly lowRiskSingleActorPublish: boolean;
+  };
+  readonly refusals: readonly { readonly reason: PublicationPolicyRevisionFailureReason; readonly detail: string }[];
 };

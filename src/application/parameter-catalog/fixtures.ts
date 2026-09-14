@@ -206,8 +206,8 @@ export const catalogPublicationCandidate: CatalogPublicationCandidateResponse["i
     addedSubjectCount: 0
   },
   capabilityContract: {
-    revision: "catalog-capability/v1",
-    allowListId: "page-m1-definition-content"
+    revision: "catalog-capability/v2",
+    allowListId: "page-historical-definition-content"
   }
 };
 

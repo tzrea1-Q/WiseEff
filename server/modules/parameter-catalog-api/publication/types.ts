@@ -134,4 +134,34 @@ export type CatalogPublicationPorts = {
     readonly organizationId: string;
     readonly actorKind: TrustedPublicationActorKind;
   }) => Promise<{ ok: true; value: PublicationJobView } | { ok: false; error: CatalogPublicationFailure }>;
+  readonly getPublicationSurface: (input: {
+    readonly organizationId: string;
+    readonly actorKind: TrustedPublicationActorKind;
+    readonly permissions: readonly BackendPermission[];
+  }) => Promise<{ ok: true; value: PublicationSurfaceView } | { ok: false; error: CatalogPublicationFailure }>;
+  readonly listPublications: (input: {
+    readonly organizationId: string;
+    readonly actorKind: TrustedPublicationActorKind;
+    readonly permissions: readonly BackendPermission[];
+    readonly limit?: number;
+  }) => Promise<{ ok: true; value: readonly PublicationJobView[] } | { ok: false; error: CatalogPublicationFailure }>;
+};
+
+export type PublicationSurfaceView = {
+  readonly publicationEnabled: boolean;
+  readonly lowRiskSingleActorPublish: boolean;
+  readonly policyRevision: number;
+  readonly frozen: boolean;
+  readonly adopted: boolean;
+  readonly currentReleaseId: string | null;
+  readonly authoringAllowed: boolean;
+  readonly publishingAllowed: boolean;
+  readonly reviewHighRiskAllowed: boolean;
+  readonly blockers: readonly (
+    | "publication-policy-disabled"
+    | "publication-frozen"
+    | "catalog-not-adopted"
+    | "publication-capability-missing"
+    | "publication-not-authorized"
+  )[];
 };

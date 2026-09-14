@@ -74,7 +74,56 @@ describe("catalog publication capability allow-list", () => {
     });
   });
 
-  it("rejects $ref, pattern, format, mixed, and boolean vendor shapes", () => {
+  it("accepts historical DTS/spec shapes including boolean, arrays, mixed, and multiline docs", () => {
+    expect(
+      validateSupportedDefinitionContent(
+        {
+          displayName: " Flag ",
+          documentation: "Line one.\nLine two.",
+          valueSchema: { type: "boolean" },
+          examples: [true],
+        },
+        "content",
+      ),
+    ).toMatchObject({
+      ok: true,
+      value: { displayName: "Flag", valueSchema: { type: "boolean" } },
+    });
+    expect(
+      validateSupportedDefinitionContent(
+        {
+          displayName: "Names",
+          documentation: "x",
+          valueSchema: { type: "array", items: { type: "string" } },
+          examples: [["a", "b"]],
+        },
+        "content",
+      ).ok,
+    ).toBe(true);
+    expect(
+      validateSupportedDefinitionContent(
+        {
+          displayName: "Cells",
+          documentation: "x",
+          unit: "µA",
+          valueSchema: { type: "array", items: { type: "integer", minimum: 0 } },
+        },
+        "content",
+      ).ok,
+    ).toBe(true);
+    expect(
+      validateSupportedDefinitionContent(
+        {
+          displayName: "Mixed",
+          documentation: "x",
+          valueSchema: { description: "mixed" },
+        },
+        "content",
+      ).ok,
+    ).toBe(true);
+  });
+
+  it("rejects $ref, pattern, and format instead of dropping them", () => {
     const cases: readonly { content: unknown; detail: string }[] = [
       {
         content: {
@@ -99,22 +148,6 @@ describe("catalog publication capability allow-list", () => {
           valueSchema: { type: "string", format: "uri" },
         },
         detail: "unknown-json-schema-keyword",
-      },
-      {
-        content: {
-          displayName: "Mixed",
-          documentation: "x",
-          valueSchema: { description: "mixed" },
-        },
-        detail: "unsupported-value-schema-type",
-      },
-      {
-        content: {
-          displayName: "Flag",
-          documentation: "x",
-          valueSchema: { type: "boolean" },
-        },
-        detail: "unsupported-value-schema-type",
       },
     ];
     for (const entry of cases) {
@@ -145,7 +178,7 @@ describe("catalog publication capability allow-list", () => {
       {
         displayName: "Input current limit",
         documentation: "x",
-        unit: "amperes",
+        unit: `${"u".repeat(40)}`,
         valueSchema: { type: "integer", minimum: 0 },
       },
       "content",
@@ -190,11 +223,14 @@ describe("catalog publication capability allow-list", () => {
       CATALOG_CAPABILITY_CONTRACT_REVISION,
     );
     expect(capabilityAllowListIdentity()).toEqual(CATALOG_CAPABILITY_ALLOW_LIST);
-    expect(CATALOG_CAPABILITY_ALLOW_LIST.units).toEqual(["mA", "mV", "ms", "uOhm"]);
+    expect(CATALOG_CAPABILITY_ALLOW_LIST.units).toEqual(["non-empty-short-string"]);
     expect(CATALOG_CAPABILITY_ALLOW_LIST.valueTypes).toEqual([
       "integer",
       "number",
       "string",
+      "boolean",
+      "null",
+      "array",
     ]);
   });
 });

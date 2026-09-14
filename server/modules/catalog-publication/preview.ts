@@ -253,7 +253,7 @@ export function m1ImpactFacts(
       newMatchableProperties: [],
     },
     existingContractsTighten: false,
-    capabilityContractRevision: "catalog-capability/v1",
+    capabilityContractRevision: "catalog-capability/v2",
   });
 }
 

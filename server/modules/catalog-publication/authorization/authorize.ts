@@ -76,6 +76,17 @@ const realUserPrincipalId = (actor: TrustedInvocationContext): string | null => 
   return trusted.principal.user.id;
 };
 
+const isOrgAdmin = (actor: TrustedInvocationContext): boolean => {
+  const trusted = assertTrustedInvocationContext(actor);
+  if (trusted.initiator !== "user") {
+    return false;
+  }
+  return trusted.principal.roles.some((role) => role.roleId === "admin");
+};
+
+const orgAdminMaySelfPublish = (actor: TrustedInvocationContext): boolean =>
+  isOrgAdmin(actor) && hasPermission(actor, "catalog:publish");
+
 const authorPrincipalIdFromCandidate = (
   candidate: PublicationCandidateRecord,
 ): string | null => {
@@ -207,6 +218,9 @@ const evaluateApprovalGate = (input: {
 
   if (input.riskClass === "high") {
     if (actorId === input.authorPrincipalId) {
+      if (orgAdminMaySelfPublish(input.actor)) {
+        return null;
+      }
       return { reason: "publication-self-approval-forbidden" };
     }
     if (!hasPermission(input.actor, "catalog:review-high-risk")) {
@@ -216,6 +230,9 @@ const evaluateApprovalGate = (input: {
   }
 
   if (actorId === input.authorPrincipalId) {
+    if (orgAdminMaySelfPublish(input.actor)) {
+      return null;
+    }
     if (!input.lowRiskSingleActorPublish) {
       return { reason: "publication-self-approval-forbidden" };
     }
@@ -442,14 +459,17 @@ export async function verifyAuthorizationForActivation(
     return fail("candidate-tampered", "candidate author does not match impact facts");
   }
 
-  let riskClass: PublicationRiskClass = "high";
-  if (input.impactFacts) {
-    const classified = classifyImpact(input.impactFacts);
-    if (!classified.ok) {
-      return classified;
-    }
-    riskClass = classified.value;
+  if (!input.impactFacts) {
+    return fail(
+      "unsupported-catalog-capability",
+      "unknown impact cannot be classified as low or approved as high",
+    );
   }
+  const classified = classifyImpact(input.impactFacts);
+  if (!classified.ok) {
+    return classified;
+  }
+  const riskClass = classified.value;
 
   const gate = evaluateApprovalGate({
     riskClass,

@@ -76,7 +76,12 @@ describe("CP-10 M2 publication HTTP", () => {
       userId,
       organizationId: ORG,
       permissions: [...permissions],
-      roleId: actorKind === "platform-admin" ? "platform-admin" : "admin",
+      roleId:
+        actorKind === "platform-admin"
+          ? "platform-admin"
+          : actorKind === "org-admin"
+            ? "admin"
+            : "hardware-user",
     });
     return {
       principalId: userId,
@@ -264,7 +269,7 @@ describe("CP-10 M2 publication HTTP", () => {
     expect(item.riskClass).toBe("high");
     expect(item.impactSummary.addedSubjectCount).toBe(1);
 
-    authenticateAs(scopeFor(AUTHOR, [...authorPermissions, ...publisherPermissions, ...reviewerPermissions]));
+    authenticateAs(scopeFor(AUTHOR, [...authorPermissions, ...publisherPermissions, ...reviewerPermissions], "user"));
     const selfPublish = await request("POST", `/api/v2/catalog/publication-candidates/${item.id}/publish`, {
       headers: { [CATALOG_RELEASE_HEADER]: pinId },
       body: { idempotencyKey: "key-self-high" },

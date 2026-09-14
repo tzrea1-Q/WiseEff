@@ -16,7 +16,7 @@
 
 本轮**不授权**：登录业务服务器、使用真实客户 DSN、改生产账号、在共享库名 `wiseeff` 上打开 `publication_enabled`、CP-12 目标机启用、重开 #824，以及在用户另行授权前开 GitHub PR/合入。
 
-`publication_enabled` 默认保持 `false`。隔离启用只允许在临时库名（`wiseeff_<alnum>_<n>_<n>`）上使用 `EPHEMERAL_POLICY_REVISION_CONFIRMATION`。这不是生产启用授权。
+`publication_enabled` 默认保持 `false`。隔离启用只允许在临时库名上使用 `EPHEMERAL_POLICY_REVISION_CONFIRMATION`。正式实例走带观测 OID/current/digest/policy/freeze/adopted 引脚的 check/execute 路径。低风险单人发布不与启用捆绑。在目标主机由操作员执行之前，两条路径都不是生产启用。
 
 ## 四个发现
 

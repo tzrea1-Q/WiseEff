@@ -7,6 +7,8 @@ export const catalogPublicationCommandByRouteId = {
   "catalog.createPublicationCandidate": "previewCandidate",
   "catalog.getPublicationCandidate": "getCandidate",
   "catalog.publishPublicationCandidate": "publishCandidate",
+  "catalog.getPublicationSurface": "getPublicationSurface",
+  "catalog.listPublications": "listPublications",
   "catalog.getPublication": "getPublication",
 } as const;
 

@@ -1,40 +1,41 @@
 /**
- * M1 page allow-list: narrower than the vendor compiler.
+ * Page allow-list aligned with historical spec-editor / DTS value shapes.
  *
- * Proven consumers:
- * - acme fixture valueSchema `{ type: "integer", minimum: 0 }` and unit `mA`
- * - runtime snapshot copies valueSchema/unit/examples as opaque json-schema content
- * - ProjectValue stores string/number payloads and does not interpret format, pattern, or $ref
- * - vendor YAML already stores units mV/ms/uOhm as catalog unit strings
- *
- * Unknown fields fail closed. Mixed/boolean/array vendor shapes stay compiler-only.
+ * Accepts the D1 vendorValueSchemaFor mapping (bool, empty, string-list,
+ * u32-array, phandle-list, bytes, mixed) plus the original scalar integer/
+ * number/string schemas. Units are non-empty short strings (mV, µA, …).
+ * `$ref`, pattern, and format stay forbidden.
  */
 import type { Result } from "../../parameter-catalog-contract/index";
 
 import type {
   BuildCompleteSuccessorError,
   CapabilityAllowListIdentity,
-  M1AllowedUnit,
   SupportedDefinitionContent,
   SupportedValueSchema,
 } from "./types";
 import {
+  CATALOG_CAPABILITY_ALLOW_LIST_ID,
   CATALOG_CAPABILITY_CONTRACT_REVISION,
   M1_ALLOWED_UNITS,
   M1_VALUE_SCHEMA_TYPES,
+  MAX_DEFINITION_UNIT_CHARS,
 } from "./types";
 
 export { CATALOG_CAPABILITY_CONTRACT_REVISION };
 
 export const CATALOG_CAPABILITY_ALLOW_LIST: CapabilityAllowListIdentity = {
   revision: CATALOG_CAPABILITY_CONTRACT_REVISION,
-  id: "page-m1-definition-content",
+  id: CATALOG_CAPABILITY_ALLOW_LIST_ID,
   valueTypes: M1_VALUE_SCHEMA_TYPES,
   units: M1_ALLOWED_UNITS,
   jsonSchemaKeywords: {
     integer: ["type", "minimum", "maximum"],
     number: ["type", "minimum", "maximum"],
     string: ["type"],
+    boolean: ["type"],
+    null: ["type"],
+    array: ["type", "items"],
   },
   budgets: {
     maxDisplayNameChars: 128,
@@ -48,7 +49,12 @@ const CONTENT_KEYS = new Set(["displayName", "documentation", "unit", "valueSche
 const INTEGER_SCHEMA_KEYS = new Set(["type", "minimum", "maximum"]);
 const NUMBER_SCHEMA_KEYS = new Set(["type", "minimum", "maximum"]);
 const STRING_SCHEMA_KEYS = new Set(["type"]);
-const UNITS = new Set<string>(M1_ALLOWED_UNITS);
+const BOOLEAN_SCHEMA_KEYS = new Set(["type"]);
+const NULL_SCHEMA_KEYS = new Set(["type"]);
+const ARRAY_SCHEMA_KEYS = new Set(["type", "items"]);
+const ARRAY_ITEM_KEYS = new Set(["type", "minimum", "maximum"]);
+const MIXED_SCHEMA_KEYS = new Set(["description"]);
+const DOCUMENTATION_FORBIDDEN = /[\u0000\u007F-\u009F]/u;
 
 const ok = <T>(value: T): Result<T, BuildCompleteSuccessorError> => ({ ok: true, value });
 
@@ -147,6 +153,58 @@ const validateValueSchema = (
     }
     return ok({ type: "string" });
   }
+  if (type === "boolean") {
+    const extras = extraKeys(value, BOOLEAN_SCHEMA_KEYS);
+    if (extras.length > 0) {
+      return capabilityFail("unknown-json-schema-keyword", `${path}.${extras[0]}`);
+    }
+    return ok({ type: "boolean" });
+  }
+  if (type === "null") {
+    const extras = extraKeys(value, NULL_SCHEMA_KEYS);
+    if (extras.length > 0) {
+      return capabilityFail("unknown-json-schema-keyword", `${path}.${extras[0]}`);
+    }
+    return ok({ type: "null" });
+  }
+  if (type === "array") {
+    const extras = extraKeys(value, ARRAY_SCHEMA_KEYS);
+    if (extras.length > 0) {
+      return capabilityFail("unknown-json-schema-keyword", `${path}.${extras[0]}`);
+    }
+    if (value.items === undefined) {
+      return ok({ type: "array" });
+    }
+    if (!isRecord(value.items)) {
+      return capabilityFail("unsupported-value-schema-type", `${path}.items`);
+    }
+    const itemExtras = extraKeys(value.items, ARRAY_ITEM_KEYS);
+    if (itemExtras.length > 0) {
+      return capabilityFail("unknown-json-schema-keyword", `${path}.items.${itemExtras[0]}`);
+    }
+    if (value.items.type === "string") {
+      if (value.items.minimum !== undefined || value.items.maximum !== undefined) {
+        return capabilityFail("unknown-json-schema-keyword", `${path}.items`);
+      }
+      return ok({ type: "array", items: { type: "string" } });
+    }
+    if (value.items.type === "integer") {
+      const bounds = validateBounds(value.items, `${path}.items`, true);
+      if (!bounds.ok) return bounds;
+      return ok({ type: "array", items: { type: "integer", ...bounds.value } });
+    }
+    return capabilityFail("unsupported-value-schema-type", `${path}.items`);
+  }
+  if (type === undefined && typeof value.description === "string") {
+    const extras = extraKeys(value, MIXED_SCHEMA_KEYS);
+    if (extras.length > 0) {
+      return capabilityFail("unknown-json-schema-keyword", `${path}.${extras[0]}`);
+    }
+    if (value.description.trim().length === 0) {
+      return capabilityFail("unsupported-value-schema-type", path);
+    }
+    return ok({ description: value.description });
+  }
   return capabilityFail("unsupported-value-schema-type", path);
 };
 
@@ -154,6 +212,9 @@ const exampleMatchesSchema = (
   schema: SupportedValueSchema,
   example: unknown,
 ): boolean => {
+  if (!("type" in schema)) {
+    return true;
+  }
   if (schema.type === "integer") {
     if (!isIntegerNumber(example)) return false;
     if (schema.minimum !== undefined && example < schema.minimum) return false;
@@ -165,6 +226,18 @@ const exampleMatchesSchema = (
     if (schema.minimum !== undefined && example < schema.minimum) return false;
     if (schema.maximum !== undefined && example > schema.maximum) return false;
     return true;
+  }
+  if (schema.type === "boolean") {
+    return typeof example === "boolean";
+  }
+  if (schema.type === "null") {
+    return example === null;
+  }
+  if (schema.type === "array") {
+    if (!Array.isArray(example)) return false;
+    const items = schema.items;
+    if (!items) return true;
+    return example.every((entry) => exampleMatchesSchema(items, entry));
   }
   return typeof example === "string";
 };
@@ -180,17 +253,19 @@ export const validateSupportedDefinitionContent = (
   if (extras.length > 0) {
     return capabilityFail("unknown-field", `${path}.${extras[0]}`);
   }
-  if (!isContractDisplayName(content.displayName)) {
+  const displayName =
+    typeof content.displayName === "string" ? content.displayName.trim() : content.displayName;
+  if (!isContractDisplayName(displayName)) {
     return capabilityFail("invalid-display-name", `${path}.displayName`);
   }
-  if (content.displayName.length > CATALOG_CAPABILITY_ALLOW_LIST.budgets.maxDisplayNameChars) {
+  if (displayName.length > CATALOG_CAPABILITY_ALLOW_LIST.budgets.maxDisplayNameChars) {
     return capabilityFail("resource-budget-exceeded", `${path}.displayName`);
   }
   if (typeof content.documentation !== "string") {
     return capabilityFail("invalid-documentation", `${path}.documentation`);
   }
   if (
-    /[\u0000-\u001F\u007F-\u009F]/u.test(content.documentation) ||
+    DOCUMENTATION_FORBIDDEN.test(content.documentation) ||
     content.documentation.length > CATALOG_CAPABILITY_ALLOW_LIST.budgets.maxDocumentationChars
   ) {
     return capabilityFail(
@@ -200,16 +275,22 @@ export const validateSupportedDefinitionContent = (
       `${path}.documentation`,
     );
   }
-  let unit: M1AllowedUnit | undefined;
+  let unit: string | undefined;
   if (content.unit !== undefined) {
-    if (typeof content.unit !== "string" || !UNITS.has(content.unit)) {
+    if (
+      typeof content.unit !== "string" ||
+      content.unit.trim().length === 0 ||
+      content.unit.trim() !== content.unit ||
+      content.unit.length > MAX_DEFINITION_UNIT_CHARS ||
+      DOCUMENTATION_FORBIDDEN.test(content.unit)
+    ) {
       return capabilityFail("unsupported-unit", `${path}.unit`);
     }
-    unit = content.unit as M1AllowedUnit;
+    unit = content.unit;
   }
   const schema = validateValueSchema(content.valueSchema, `${path}.valueSchema`);
   if (!schema.ok) return schema;
-  let examples: readonly (number | string)[] | undefined;
+  let examples: readonly (number | string | boolean | null)[] | undefined;
   if (content.examples !== undefined) {
     if (!Array.isArray(content.examples)) {
       return capabilityFail("invalid-examples", `${path}.examples`);
@@ -222,10 +303,10 @@ export const validateSupportedDefinitionContent = (
         return capabilityFail("example-does-not-match-schema", `${path}.examples[${index}]`);
       }
     }
-    examples = content.examples as readonly (number | string)[];
+    examples = content.examples as readonly (number | string | boolean | null)[];
   }
   return ok({
-    displayName: content.displayName,
+    displayName,
     documentation: content.documentation,
     ...(unit !== undefined ? { unit } : {}),
     valueSchema: schema.value,

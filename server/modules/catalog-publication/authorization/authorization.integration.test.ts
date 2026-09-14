@@ -164,7 +164,7 @@ describe("catalog publication authorization", () => {
         authorPrincipalId: PUBLISHER,
       });
       return authorizePublish(asQueryable(client), {
-        trustedActor: userActor(PUBLISHER, publisherPermissions),
+        trustedActor: userActor(PUBLISHER, publisherPermissions, { roleId: "hardware-user" }),
         candidate: await tupleOf(client, candidate),
         impactFacts: lowFacts(PUBLISHER),
         policyRevision,
@@ -174,6 +174,27 @@ describe("catalog publication authorization", () => {
       ok: false,
       error: { reason: "publication-self-approval-forbidden" },
     });
+  });
+
+  it("allows Org Admin to self-approve low-risk when the single-actor policy is off", async () => {
+    const token = uniqueToken("lowadm");
+    const policyRevision = await enablePublicationPolicy(client, {
+      publicationEnabled: true,
+      lowRiskSingleActorPublish: false,
+    });
+    const result = await asCoordinator(client, async () => {
+      const candidate = await persistHandBuiltCandidate(client, {
+        token,
+        authorPrincipalId: PUBLISHER,
+      });
+      return authorizePublish(asQueryable(client), {
+        trustedActor: userActor(PUBLISHER, publisherPermissions, { roleId: "admin" }),
+        candidate: await tupleOf(client, candidate),
+        impactFacts: lowFacts(PUBLISHER),
+        policyRevision,
+      });
+    });
+    expect(result.ok).toBe(true);
   });
 
   it("refuses authorization when publication_enabled is false", async () => {
@@ -209,7 +230,7 @@ describe("catalog publication authorization", () => {
         authorPrincipalId: REVIEWER,
       });
       return authorizePublish(asQueryable(client), {
-        trustedActor: userActor(REVIEWER, reviewerPermissions),
+        trustedActor: userActor(REVIEWER, reviewerPermissions, { roleId: "hardware-committer" }),
         candidate: await tupleOf(client, candidate),
         impactFacts: highFacts(REVIEWER),
         policyRevision,
@@ -219,6 +240,20 @@ describe("catalog publication authorization", () => {
       ok: false,
       error: { reason: "publication-self-approval-forbidden" },
     });
+
+    const adminSelfHigh = await asCoordinator(client, async () => {
+      const candidate = await persistHandBuiltCandidate(client, {
+        token: uniqueToken("highad"),
+        authorPrincipalId: PUBLISHER,
+      });
+      return authorizePublish(asQueryable(client), {
+        trustedActor: userActor(PUBLISHER, publisherPermissions, { roleId: "admin" }),
+        candidate: await tupleOf(client, candidate),
+        impactFacts: highFacts(PUBLISHER),
+        policyRevision,
+      });
+    });
+    expect(adminSelfHigh.ok).toBe(true);
 
     const worker = await asCoordinator(client, async () => {
       const candidate = await persistHandBuiltCandidate(client, {
@@ -402,7 +437,7 @@ describe("catalog publication authorization", () => {
     );
     expect(verified.ok).toBe(false);
     if (!verified.ok) {
-      expect(verified.error.reason).toBe("publication-self-approval-forbidden");
+      expect(verified.error.reason).toBe("unsupported-catalog-capability");
     }
   });
 

@@ -60,7 +60,7 @@ describe("strong M1 identity-chain red cases", () => {
     expect(() =>
       assertOfficialProjectValue(
         { id: "b1", projectId: "aurora", logicalNodeId: "n1", definitionId: "pdef_1", effectiveRevisionId: "drev_1", currentValueId: undefined },
-        { currentValueId: "pv_saved", revisionId: "drev_1" },
+        { currentValueId: "pv_saved", revisionId: "drev_1", value: "24" },
       ),
     ).toThrow(/official ProjectValue/);
   });
@@ -69,9 +69,26 @@ describe("strong M1 identity-chain red cases", () => {
     expect(() =>
       assertOfficialProjectValue(
         { id: "b1", projectId: "aurora", logicalNodeId: "n1", definitionId: "pdef_1", effectiveRevisionId: "drev_1", currentValueId: "pv_other" },
-        { currentValueId: "pv_saved", revisionId: "drev_1" },
+        { currentValueId: "pv_saved", revisionId: "drev_1", value: "24" },
       ),
     ).toThrow(/official ProjectValue/);
+  });
+
+  it("fails when currentValueId moved but typed content is still 12", () => {
+    expect(() =>
+      assertOfficialProjectValue(
+        {
+          id: "b1",
+          projectId: "aurora",
+          logicalNodeId: "n1",
+          definitionId: "pdef_1",
+          effectiveRevisionId: "drev_1",
+          currentValueId: "pv_saved",
+          rawValue: "12",
+        },
+        { currentValueId: "pv_saved", revisionId: "drev_1", value: "24" },
+      ),
+    ).toThrow(/content is 12/);
   });
 
   it("does not treat isCurrent=false alone as superseded", () => {

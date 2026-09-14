@@ -64,17 +64,17 @@ Do not ship page-direct Catalog writes before CP-05/06. Downstream may write con
 | CP-00 contract | R3 design / R1 docs | **this candidate** | docs listed in the Documentation Impact Matrix | Reviewable docs. No product code. |
 | CP-01 read-only verify | R1 | **this candidate** | `docs/references/catalog-publication-baseline-verification.md` and Chinese pair | No host login, no Catalog writes, no fixture-as-install |
 | CP-01 Artifact adopt write | R3 | blocked on host evidence + CP-00/02 | publication adopt adapter | No bootstrap/seed/SQL Catalog inserts |
-| CP-02 | R3 | not dispatched | next migration, `catalog-kernel/security/`, publication persistence, generated schema | Shared files owned only here |
-| CP-03 | R3 | not dispatched | `server/modules/catalog-publication/builder/` | No Catalog writes |
-| CP-04 | R3 | not dispatched | auth policy, proposals, publication authorization | No request-body roles; no fake repository URLs |
-| CP-05 | R3 | not dispatched | `catalog-kernel/install/` | No second materializer; no cut-then-verify |
-| CP-06 | R3 | not dispatched | `productionWire.ts`, release-verification, `parameter-data-mode.ts`, self-hosted gates | No deleting P13/digest checks |
-| CP-07 | R3 exec / R2 HTTP | not dispatched | publication module, catalog-api routes, generated DTO | Handler is not the synchronizer |
-| CP-08 | R2 | not dispatched | `src/features/parameter-catalog-governance/` and ports | Mock ≠ acceptance |
-| CP-09 | R2 transform / R3 activate | not dispatched | vendor import adapter | No second writer after CP-07 |
-| CP-10 | R2 / matcher R3 | not dispatched | Builder ops + UI | No silent Binding cutover |
-| CP-11 | R3 | not dispatched | focused tests, e2e | Independent tester does not patch then self-pass |
-| CP-12 | Temporal / ops | not dispatched | runbooks, authorized host | Default is reviewable candidate, not business-host execution |
+| CP-02 | R3 | implemented on main (PR #827+) | publication schema/roles | Do not edit executed migrations |
+| CP-03 | R3 | implemented on main | Builder | No Catalog writes from web |
+| CP-04 | R3 | implemented on main; managed-instance policy path in this wave | auth policy | Ephemeral confirmation retained; durable enable uses identity pins |
+| CP-05 | R3 | implemented on main | installer + Receipt | No second materializer |
+| CP-06 | R3 | implemented on main | dual readiness / freeze | Default `publication_enabled=false` |
+| CP-07 | R3/R2 | implemented on main; surface/list routes in this wave | jobs/API/manager | Handler is not the synchronizer |
+| CP-08 | R2 | implemented; this wave adapts `/parameter-admin/specs` to surface/history | governance UI | Mock ≠ acceptance |
+| CP-09 | R2/R3 | implemented adapter; page shows imported history, no new upload platform | vendor import | No second writer |
+| CP-10 | R2 | implemented ChangeSet ops + UI; this wave keeps page entries | new subjects/revisions | No silent Binding cutover |
+| CP-11 | R3 | isolated M1 exists; this wave tightens page-click save and identity-chain value content | e2e | Hosted/target remain separate |
+| CP-12 | Temporal / ops | operator handbook updated; target enablement not executed in this wave | runbooks | Default remains reviewable candidate |
 
 Frontier after this wave: CP-00 reviewable; CP-01 host adoption **blocked** (host not accessed). Next dispatch only after independent review of this candidate and a separate authorization: CP-02. Do not create GitHub Issues, open a PR, or apply ready labels without that authorization.
 

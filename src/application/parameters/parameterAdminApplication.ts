@@ -171,6 +171,15 @@ export type ParameterAdminApplication = {
     projectId: string,
     revisionId: string,
   ): Promise<ValidationRun>;
+  listBindings(
+    projectId: string,
+    revisionId: string,
+  ): ReturnType<ParameterTopologyRepository["listBindings"]>;
+  createBindingDraft(
+    projectId: string,
+    bindingId: string,
+    input: Parameters<ParameterTopologyRepository["createBindingDraft"]>[2],
+  ): ReturnType<ParameterTopologyRepository["createBindingDraft"]>;
 
   asDtsStructuredRepository(): DtsStructuredRepository | null;
   asParameterFileRepository(): ParameterFileRepository | null;
@@ -357,6 +366,12 @@ export function createParameterAdminApplication({
     },
     validateRevision(projectId, revisionId) {
       return topology.validateRevision(projectId, revisionId);
+    },
+    listBindings(projectId, revisionId) {
+      return topology.listBindings(projectId, revisionId);
+    },
+    createBindingDraft(projectId, bindingId, input) {
+      return topology.createBindingDraft(projectId, bindingId, input);
     },
 
     asDtsStructuredRepository() {

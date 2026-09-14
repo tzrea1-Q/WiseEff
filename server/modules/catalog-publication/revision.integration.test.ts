@@ -209,6 +209,7 @@ describe("CP-10 definition revision and new-subject PG", () => {
     readonly authorPrincipalId: string;
     readonly publisherUserId: string;
     readonly publisherPermissions: readonly string[];
+    readonly publisherRoleId?: "admin" | "hardware-user" | "hardware-committer";
     readonly token: string;
   }) {
     const pointer = await client.query<{ id: string; digest: string }>(
@@ -333,7 +334,9 @@ describe("CP-10 definition revision and new-subject PG", () => {
         [built.value.candidate.id],
       );
       return authorizePublish(asQueryable(client), {
-        trustedActor: userActor(input.publisherUserId, input.publisherPermissions as never),
+        trustedActor: userActor(input.publisherUserId, input.publisherPermissions as never, {
+          roleId: input.publisherRoleId ?? "admin",
+        }),
         candidate: {
           candidateId: built.value.candidate.id,
           artifactDigest: built.value.candidate.artifactDigest,
@@ -469,6 +472,7 @@ describe("CP-10 definition revision and new-subject PG", () => {
       authorPrincipalId: AUTHOR,
       publisherUserId: AUTHOR,
       publisherPermissions: ["catalog:publish", "catalog:review-high-risk", "parameter:view"],
+      publisherRoleId: "hardware-user",
       token: `${token}a`,
     });
     await expect(authorAttempt).rejects.toThrow(/publication-self-approval-forbidden|authorize failed/);

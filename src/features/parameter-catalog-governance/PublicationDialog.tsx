@@ -23,6 +23,7 @@ import {
   readStoredPublicationJob,
   writeStoredPublicationJob
 } from "./publicationJobStorage";
+import { publicationSurfaceMessage, type PublicationSurfaceItem } from "./publicationSurface";
 import {
   buildPublicationChangeSet,
   definitionContentOf,
@@ -44,12 +45,12 @@ import {
   publicationStatusCopy,
   publicationSuccessKind,
   publicationSupportedUnits,
+  publicationValueTypeLabel,
   publicationSupportedValueTypes,
   type PublicationDraft,
   type PublicationReviseClass,
   type PublicationSubjectKind,
   type PublicationSubmitGate,
-  type PublicationUnit,
   type PublicationValueType
 } from "./publicationState";
 
@@ -68,6 +69,7 @@ export type PublicationDialogProps = {
   catalogReleaseId: string;
   currentPersonId: string;
   organizationId: string;
+  publicationSurface?: PublicationSurfaceItem | null;
   createIdempotencyKey?: () => string;
   onOpenChange: (open: boolean) => void;
   onCompleted?: () => void;
@@ -84,24 +86,22 @@ export function PublicationDialog({
   catalogReleaseId,
   currentPersonId,
   organizationId,
+  publicationSurface,
   createIdempotencyKey,
   onOpenChange,
   onCompleted,
   onRefreshEvidence
 }: PublicationDialogProps) {
-  const canPreview = canExecutePublicationAction(
-    actor,
-    "preview-publication",
-    domainState,
-    sessionPermissions
-  );
-  const canSaveDraft = canSavePublicationDraft(actor, domainState, sessionPermissions);
-  const canPublish = canExecutePublicationAction(
-    actor,
-    "publish-publication",
-    domainState,
-    sessionPermissions
-  );
+  const surfaceAllowsAuthoring = publicationSurface?.authoringAllowed === true;
+  const surfaceAllowsPublishing = publicationSurface?.publishingAllowed === true;
+  const canPreview =
+    surfaceAllowsAuthoring &&
+    canExecutePublicationAction(actor, "preview-publication", domainState, sessionPermissions);
+  const canSaveDraft =
+    surfaceAllowsAuthoring && canSavePublicationDraft(actor, domainState, sessionPermissions);
+  const canPublish =
+    surfaceAllowsPublishing &&
+    canExecutePublicationAction(actor, "publish-publication", domainState, sessionPermissions);
   const gateRef = useRef<PublicationSubmitGate>(createPublicationSubmitGate());
   const pollRef = useRef<number | null>(null);
   const completedRef = useRef(false);
@@ -122,6 +122,7 @@ export function PublicationDialog({
     null
   );
   const [confirm, setConfirm] = useState<ConfirmKind | null>(null);
+  const [leaveConfirm, setLeaveConfirm] = useState(false);
   const [draftSaved, setDraftSaved] = useState(false);
 
   const previewStale = publicationPreviewIsStale(previewFingerprint, draft);
@@ -132,6 +133,31 @@ export function PublicationDialog({
     jobStatus: job?.status,
     failureReason: job?.failure?.reason
   });
+  const succeeded = job ? publicationSuccessKind(job) : null;
+  const draftDirty =
+    !succeeded &&
+    fingerprintPublicationDraft(draft) !== fingerprintPublicationDraft(emptyPublicationDraft());
+
+  useEffect(() => {
+    if (!open || !draftDirty) {
+      return undefined;
+    }
+    const onBeforeUnload = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      event.returnValue = "";
+    };
+    window.addEventListener("beforeunload", onBeforeUnload);
+    return () => window.removeEventListener("beforeunload", onBeforeUnload);
+  }, [open, draftDirty]);
+
+  const requestClose = () => {
+    if (draftDirty && !leaveConfirm) {
+      setLeaveConfirm(true);
+      return;
+    }
+    setLeaveConfirm(false);
+    onOpenChange(false);
+  };
 
   const patchDraft = (patch: Partial<PublicationDraft>) => {
     setDraft((current) => ({ ...current, ...patch }));
@@ -449,7 +475,7 @@ export function PublicationDialog({
     <>
       <ModalDialog
         open={open}
-        onDismiss={pending ? undefined : () => onOpenChange(false)}
+        onDismiss={pending ? undefined : requestClose}
         className="confirm-dialog governance-confirm-dialog parameter-catalog-publication-dialog"
         backdropClassName="param-admin-modal-backdrop"
         describedBy
@@ -461,6 +487,11 @@ export function PublicationDialog({
               <div id={descriptionId} className="governance-confirm-dialog__body">
                 <p id={describedById}>{publicationCopy.noInternalIds}</p>
                 <p>{publicationCopy.requiredApproval}</p>
+                {publicationSurface ? (
+                  <p role="status" data-tone={publicationSurfaceMessage(publicationSurface).tone}>
+                    {publicationSurfaceMessage(publicationSurface).message}
+                  </p>
+                ) : null}
                 {status ? (
                   <p
                     role="status"
@@ -722,16 +753,12 @@ export function PublicationDialog({
                       >
                         {publicationSupportedValueTypes.map((type) => (
                           <option key={type} value={type}>
-                            {type === "integer"
-                              ? publicationCopy.valueTypeInteger
-                              : type === "number"
-                                ? publicationCopy.valueTypeNumber
-                                : publicationCopy.valueTypeString}
+                            {publicationValueTypeLabel(type)}
                           </option>
                         ))}
                       </select>
                     </label>
-                    {draft.valueType !== "string" ? (
+                    {draft.valueType === "integer" || draft.valueType === "number" ? (
                       <>
                         <label>
                           {publicationCopy.minimum}
@@ -757,21 +784,19 @@ export function PublicationDialog({
                     ) : null}
                     <label>
                       {publicationCopy.unit}
-                      <select
+                      <input
                         aria-label={publicationCopy.unit}
+                        list="publication-unit-options"
                         value={draft.unit}
                         disabled={draft.mode === "revise-definition" && draft.reviseClass === "documentation"}
-                        onChange={(event) =>
-                          patchDraft({ unit: event.target.value as "" | PublicationUnit })
-                        }
-                      >
-                        <option value="">{publicationCopy.unitNone}</option>
+                        onChange={(event) => patchDraft({ unit: event.target.value })}
+                        placeholder={publicationCopy.unitNone}
+                      />
+                      <datalist id="publication-unit-options">
                         {publicationSupportedUnits.map((unit) => (
-                          <option key={unit} value={unit}>
-                            {unit}
-                          </option>
+                          <option key={unit} value={unit} />
                         ))}
-                      </select>
+                      </datalist>
                     </label>
                     <label>
                       {publicationCopy.examples}
@@ -924,7 +949,7 @@ export function PublicationDialog({
                 type="button"
                 className="button ghost sm"
                 disabled={pending}
-                onClick={() => onOpenChange(false)}
+                onClick={requestClose}
               >
                 关闭
               </button>
@@ -950,6 +975,18 @@ export function PublicationDialog({
           void runPreview();
         }}
         onCancel={() => setConfirm(null)}
+      />
+      <ConfirmDialog
+        open={leaveConfirm}
+        title="离开未保存的编写"
+        description={<p>当前正文尚未发布。离开将保留本机定位，但不把未保存内容当作已生效。</p>}
+        confirmLabel="离开"
+        cancelLabel="继续编写"
+        onConfirm={() => {
+          setLeaveConfirm(false);
+          onOpenChange(false);
+        }}
+        onCancel={() => setLeaveConfirm(false)}
       />
     </>
   );
