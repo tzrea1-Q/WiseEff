@@ -228,10 +228,10 @@ async function applyRelocationRecord(
   discovered: readonly BoundaryViolation[],
   existingRelocations: readonly RuntimeTopologyRelocation[],
   config: RelocationConfig,
-) {
+): Promise<RelocationOutcome> {
   const targetFiles = new Set<string>(config.files.map(({ file }) => file));
   if (!fixture.violations.some((violation) => targetFiles.has(violation.file))) {
-    return { violations: discovered, relocations: [] as RuntimeTopologyRelocation[] };
+    return { violations: [...discovered], relocations: [] as RuntimeTopologyRelocation[] };
   }
 
   const bytes = await readFile(resolve(repoRoot, config.recordPath));
