@@ -990,6 +990,30 @@ export const acceptanceOperations: AcceptanceOperation[] = [
     assertions: ["ui", "api", "db", "audit"]
   },
   {
+    id: "DEBUG-ADMIN-846-CAPACITY",
+    priority: "P1",
+    area: "debugging",
+    route: "/debugging-admin/nodes",
+    roles: ["Admin"],
+    action: "Export the complete node catalog, preview the file, import 2,001 nodes and 501 modules in one transaction, then re-read and re-export with semantic parity.",
+    coverage: "automated",
+    acceptanceIds: ["DEBUG-ADMIN-846-CAPACITY"],
+    specFiles: ["e2e/acceptance/debugging-admin.acceptance.spec.ts"],
+    assertions: ["api", "db", "audit"]
+  },
+  {
+    id: "DEBUG-ADMIN-846-GUARD",
+    priority: "P1",
+    area: "debugging",
+    route: "/debugging-admin/nodes",
+    roles: ["Admin", "Guest Viewer"],
+    action: "Preview a catalog file, reject a stale preview digest and a raw document, deny non-admins, reject a document above the 20 MiB contract, and roll back every write after an injected mid-import failure.",
+    coverage: "automated",
+    acceptanceIds: ["DEBUG-ADMIN-846-GUARD"],
+    specFiles: ["e2e/acceptance/debugging-admin.acceptance.spec.ts"],
+    assertions: ["api", "db"]
+  },
+  {
     id: "BRIDGE-WIN-001",
     priority: "P1",
     area: "debugging",

@@ -2,9 +2,12 @@ import { describe, expect, it } from "vitest";
 import {
   createDebugSessionBodySchema,
   DEBUG_CATALOG_FORMAT_V1,
+  DEBUG_CATALOG_FORMAT_V2,
   debugCatalogDocumentSchema,
+  debugCatalogV2DocumentSchema,
   debugParameterNodeBindingSchema,
   detectTargetsBodySchema,
+  executeDebugCatalogImportBodySchema,
   exportDebugCatalogQuerySchema,
   importDebugCatalogBodySchema,
   listDebuggingParametersQuerySchema,
@@ -188,6 +191,107 @@ describe("debugging admin schemas", () => {
         ]
       })
     ).toThrow();
+  });
+
+  it("accepts a v2 catalog document with source, counts and presence-aware optional fields", () => {
+    const parsed = debugCatalogV2DocumentSchema.parse({
+      format: DEBUG_CATALOG_FORMAT_V2,
+      source: { organizationId: "org-1", organizationName: "ChargeLab", exportedAt: "2026-01-01T00:00:00.000Z" },
+      counts: { modules: 1, nodes: 1, bindings: 1 },
+      modules: [{ name: "Battery", parentNamePath: [], sortOrder: 2 }],
+      nodes: [
+        {
+          sourceId: "node-1",
+          name: "Cycle count",
+          moduleNamePath: ["Battery"],
+          bindings: [{ protocol: "hdc", nodePath: "/sys/hdc/cycles", accessMode: "RO" }]
+        }
+      ]
+    });
+
+    expect(parsed.format).toBe(DEBUG_CATALOG_FORMAT_V2);
+    // Omitted optionals stay absent: parsing must not turn "keep" into "clear" or a default.
+    expect(parsed.nodes[0]).not.toHaveProperty("description");
+    expect(parsed.nodes[0]).not.toHaveProperty("enabled");
+    expect(parsed.nodes[0]).not.toHaveProperty("maxValueBytes");
+  });
+
+  it("allows explicit clears and rejects unknown fields or unsupported versions", () => {
+    const cleared = debugCatalogV2DocumentSchema.parse({
+      format: DEBUG_CATALOG_FORMAT_V2,
+      source: {},
+      counts: { modules: 0, nodes: 1, bindings: 1 },
+      modules: [],
+      nodes: [
+        {
+          name: "Cycle count",
+          moduleNamePath: [],
+          description: "",
+          maxValueBytes: null,
+          bindings: [{ protocol: "adb", nodePath: "/sys/adb/cycles", accessMode: "RO", notes: null }]
+        }
+      ]
+    });
+    expect(cleared.nodes[0].description).toBe("");
+    expect(cleared.nodes[0].maxValueBytes).toBeNull();
+    expect(cleared.nodes[0].bindings?.[0].notes).toBeNull();
+
+    expect(() =>
+      debugCatalogV2DocumentSchema.parse({
+        format: DEBUG_CATALOG_FORMAT_V2,
+        source: {},
+        counts: { modules: 0, nodes: 0, bindings: 0 },
+        modules: [],
+        nodes: [],
+        unexpected: true
+      })
+    ).toThrow();
+
+    expect(() =>
+      debugCatalogV2DocumentSchema.parse({
+        format: "wiseeff.debug-node-catalog.v3",
+        source: {},
+        counts: { modules: 0, nodes: 0, bindings: 0 },
+        modules: [],
+        nodes: [],
+      })
+    ).toThrow();
+
+    expect(() =>
+      debugCatalogV2DocumentSchema.parse({
+        format: DEBUG_CATALOG_FORMAT_V2,
+        source: {},
+        counts: { modules: 0, nodes: 0, bindings: 0 },
+        modules: [],
+        nodes: [{ name: "Unknown field", moduleNamePath: [], module: "Battery" }]
+      })
+    ).toThrow();
+
+    expect(() =>
+      importDebugCatalogBodySchema.parse({
+        format: DEBUG_CATALOG_FORMAT_V1,
+        modules: [],
+        nodes: [],
+        unexpected: true
+      })
+    ).toThrow();
+  });
+
+  it("requires the previewed document and digest together on the execute body", () => {
+    const document = {
+      format: DEBUG_CATALOG_FORMAT_V2,
+      source: {},
+      counts: { modules: 0, nodes: 0, bindings: 0 },
+      modules: [],
+      nodes: []
+    };
+
+    expect(executeDebugCatalogImportBodySchema.parse({ document, previewDigest: "abc" })).toMatchObject({
+      previewDigest: "abc"
+    });
+    expect(() => executeDebugCatalogImportBodySchema.parse({ document })).toThrow();
+    expect(() => executeDebugCatalogImportBodySchema.parse({ previewDigest: "abc" })).toThrow();
+    expect(() => executeDebugCatalogImportBodySchema.parse({ document, previewDigest: "abc", preview: {} })).toThrow();
   });
 
 });

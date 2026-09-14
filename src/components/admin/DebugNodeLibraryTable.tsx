@@ -140,7 +140,7 @@ export function DebugNodeLibraryTable({
               disabled={!canEdit || loading}
               title={canEdit ? undefined : "缺少 debugging:admin 权限"}
             >
-              导出目录
+              导出全部节点
             </button>
           ) : null}
           {onImport ? (
@@ -151,7 +151,7 @@ export function DebugNodeLibraryTable({
               disabled={!canEdit || loading}
               title={canEdit ? undefined : "缺少 debugging:admin 权限"}
             >
-              导入目录
+              导入节点
             </button>
           ) : null}
           {onManageModules ? (

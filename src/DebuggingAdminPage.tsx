@@ -20,10 +20,14 @@ import {
 import type { DtsReloadRepository } from "@/application/ports/DtsReloadRepository";
 import { ReloadConfigurationAdminPanel } from "@/components/admin/ReloadConfigurationAdminPanel";
 import { DebuggingAdminScopeNav } from "@/components/admin/DebuggingAdminScopeNav";
+import { DebugNodeCatalogImportDialog } from "@/components/admin/DebugNodeCatalogImportDialog";
 import {
   createDebuggingAdminClient,
-  DEBUG_CATALOG_FORMAT_V1,
-  type DebugCatalogDocument
+  DEBUG_CATALOG_FORMAT_V2,
+  DEBUG_CATALOG_MAX_DOCUMENT_BYTES,
+  type CatalogImportPreview,
+  type DebugCatalogDocument,
+  type DebugCatalogV2Document
 } from "@/infrastructure/http/debuggingAdminClient";
 import { WiseEffApiError } from "@/infrastructure/http/apiClient";
 import { wiseEffRuntimeMode, type WiseEffRuntimeMode } from "@/infrastructure/http/runtimeMode";
@@ -54,7 +58,7 @@ function downloadJson(fileName: string, value: unknown) {
 function catalogDocumentFromLibrary(
   nodes: readonly DebugNodeRegistryEntry[],
   moduleNodes: readonly FlatModuleNode[]
-): DebugCatalogDocument {
+): DebugCatalogV2Document {
   const byId = new Map(moduleNodes.map((module) => [module.id, module]));
   const namePath = (moduleId: string | undefined): string[] => {
     if (!moduleId) {
@@ -71,8 +75,18 @@ function catalogDocumentFromLibrary(
     return names;
   };
 
-  return {
-    format: DEBUG_CATALOG_FORMAT_V1,
+  const namePaths = new Map(moduleNodes.map((module) => [module.id, namePath(module.id)]));
+  const document: DebugCatalogV2Document = {
+    format: DEBUG_CATALOG_FORMAT_V2,
+    source: {
+      organizationName: "本地演示数据（非服务器全量节点）",
+      exportedAt: new Date().toISOString()
+    },
+    counts: {
+      modules: moduleNodes.length,
+      nodes: nodes.length,
+      bindings: nodes.reduce((total, node) => total + (node.bindings ?? []).length, 0)
+    },
     modules: moduleNodes.map((module) => ({
       name: module.name,
       parentNamePath: namePath(module.parentId ?? undefined),
@@ -81,15 +95,13 @@ function catalogDocumentFromLibrary(
       sortOrder: module.sortOrder
     })),
     nodes: nodes.map((node) => ({
-      id: node.id,
+      sourceId: node.id,
       name: node.name,
       description: node.description,
       detailedDescription: node.detailedDescription,
       writeFormatExample: node.writeFormatExample,
       writeFormatHint: node.writeFormatHint,
-      module: node.module,
-      moduleId: node.moduleId,
-      moduleNamePath: node.modulePath ?? namePath(node.moduleId) ?? (node.module ? [node.module] : []),
+      moduleNamePath: node.modulePath ?? namePaths.get(node.moduleId ?? "") ?? (node.module ? [node.module] : []),
       enabled: node.enabled,
       bindings: (node.bindings ?? []).map((binding) => ({
         protocol: binding.protocol,
@@ -100,6 +112,7 @@ function catalogDocumentFromLibrary(
       }))
     }))
   };
+  return document;
 }
 
 function nodeWriteBodyFromDraft(draft: DebugNodeDraft) {
@@ -113,6 +126,45 @@ function nodeWriteBodyFromDraft(draft: DebugNodeDraft) {
     module: draft.module,
     enabled: draft.enabled
   };
+}
+
+function catalogTransferDetails(error: unknown) {
+  return error && typeof error === "object" && "details" in error
+    ? (error as { details?: Record<string, unknown> }).details
+    : undefined;
+}
+
+function isStalePreviewError(error: unknown) {
+  return catalogTransferDetails(error)?.reason === "stale-preview";
+}
+
+/**
+ * Surfaces the server's structured reason instead of collapsing every failure into a
+ * locatable-less "import failed" message.
+ */
+function describeCatalogTransferError(error: unknown, fallback: string) {
+  if (error instanceof Error && "code" in error) {
+    const code = String((error as { code?: unknown }).code ?? "");
+    if (code === "PAYLOAD_TOO_LARGE") {
+      return `文件超过服务器容量上限（HTTP 413）。${fallback}`;
+    }
+    if (code === "FORBIDDEN") {
+      return "当前账号没有节点库管理权限（HTTP 403）。";
+    }
+    if (code === "CONFLICT") {
+      const conflicts = catalogTransferDetails(error)?.conflicts;
+      if (Array.isArray(conflicts) && conflicts.length > 0) {
+        const first = conflicts[0] as { location?: string; message?: string };
+        return `存在阻断冲突：${first.location ?? ""} ${first.message ?? ""}`.trim();
+      }
+      return "目标节点库在预览后发生变化，请重新预览后再确认（HTTP 409）。";
+    }
+    if (code === "VALIDATION_FAILED") {
+      return `文件校验未通过（HTTP 400）。${error.message}`;
+    }
+    return `${fallback}${error.message ? ` ${error.message}` : ""}`;
+  }
+  return fallback;
 }
 
 function mockNodesFromParameters(parameters: readonly DebugParameter[]): DebugNodeRegistryEntry[] {
@@ -195,6 +247,14 @@ export function DebuggingAdminPage({
   const bindingsNodeRef = useRef<DebugNodeRegistryEntry | null>(null);
   const importInputRef = useRef<HTMLInputElement | null>(null);
   const deleteInFlightRef = useRef(false);
+  const importInFlightRef = useRef(false);
+  const [catalogImportFileName, setCatalogImportFileName] = useState("");
+  const [catalogImportDocument, setCatalogImportDocument] = useState<DebugCatalogDocument | null>(null);
+  const [catalogImportPreview, setCatalogImportPreview] = useState<CatalogImportPreview | null>(null);
+  const [catalogImportOpen, setCatalogImportOpen] = useState(false);
+  const [catalogImportLoading, setCatalogImportLoading] = useState(false);
+  const [catalogImportSubmitting, setCatalogImportSubmitting] = useState(false);
+  const [catalogImportError, setCatalogImportError] = useState("");
 
   const isApiMode = runtimeMode === "api";
   const canEditAdminCatalog = !isApiMode || apiAuthPermissions.includes("debugging:admin");
@@ -635,43 +695,132 @@ export function DebuggingAdminPage({
       setAdminLoading(true);
       setAdminError("");
       try {
-        const document = await debuggingAdminClient.exportCatalog();
-        downloadJson("debug-node-catalog.json", document);
-        flashSaved("已导出目录");
-      } catch {
-        setAdminError("导出目录失败。");
+        const exported = await debuggingAdminClient.exportCatalog();
+        downloadJson("debug-node-catalog.json", exported.document);
+        flashSaved(
+          `已导出全部节点：节点 ${exported.counts.nodes}，模块 ${exported.counts.modules}，绑定 ${exported.counts.bindings}`
+        );
+      } catch (error) {
+        setAdminError(describeCatalogTransferError(error, "导出全部节点失败。"));
       } finally {
         setAdminLoading(false);
       }
       return;
     }
 
-    downloadJson("debug-node-catalog.json", catalogDocumentFromLibrary(library, moduleNodes));
-    flashSaved("已导出目录");
+    // Demo mode carries local demonstration data only; the file records that in `source`.
+    const demoDocument = catalogDocumentFromLibrary(library, moduleNodes);
+    downloadJson("debug-node-catalog.json", demoDocument);
+    flashSaved(
+      `已导出本地演示数据：节点 ${demoDocument.counts.nodes}，模块 ${demoDocument.counts.modules}，绑定 ${demoDocument.counts.bindings}`
+    );
   };
 
-  const importCatalogFile = async (file: File) => {
+  const closeCatalogImport = () => {
+    if (catalogImportSubmitting) return;
+    setCatalogImportOpen(false);
+    setCatalogImportPreview(null);
+    setCatalogImportDocument(null);
+    setCatalogImportFileName("");
+    setCatalogImportError("");
+  };
+
+  const openCatalogImportPreview = async (document: DebugCatalogDocument, fileName: string) => {
+    if (!debuggingAdminClient || !canEditAdminCatalog) {
+      return;
+    }
+    setCatalogImportLoading(true);
+    setCatalogImportError("");
+    try {
+      const preview = await debuggingAdminClient.previewCatalogImport(document);
+      setCatalogImportDocument(document);
+      setCatalogImportFileName(fileName);
+      setCatalogImportPreview(preview);
+      setCatalogImportOpen(true);
+    } catch (error) {
+      setCatalogImportDocument(null);
+      setCatalogImportPreview(null);
+      setCatalogImportFileName(fileName);
+      setCatalogImportError(describeCatalogTransferError(error, "导入预览失败。"));
+      setCatalogImportOpen(true);
+    } finally {
+      setCatalogImportLoading(false);
+    }
+  };
+
+  const selectCatalogImportFile = async (file: File) => {
     if (!isApiMode || !debuggingAdminClient || !canEditAdminCatalog) {
       setAdminError("导入仅在 API 模式下可用。");
       return;
     }
 
-    setAdminLoading(true);
     setAdminError("");
     try {
-      const parsed = JSON.parse(await readFileText(file)) as unknown;
-      const result = await debuggingAdminClient.importCatalog(parsed as DebugCatalogDocument);
+      const text = await readFileText(file);
+      if (new TextEncoder().encode(text).length > DEBUG_CATALOG_MAX_DOCUMENT_BYTES) {
+        setCatalogImportFileName(file.name);
+        setCatalogImportDocument(null);
+        setCatalogImportPreview(null);
+        setCatalogImportError(
+          `文件超过 ${Math.round(DEBUG_CATALOG_MAX_DOCUMENT_BYTES / (1024 * 1024))} MiB 上限，已在上传前拒绝。`
+        );
+        setCatalogImportOpen(true);
+        return;
+      }
+      const parsed = JSON.parse(text) as DebugCatalogDocument;
+      await openCatalogImportPreview(parsed, file.name);
+    } catch (error) {
+      setCatalogImportFileName(file.name);
+      setCatalogImportDocument(null);
+      setCatalogImportPreview(null);
+      setCatalogImportError(
+        error instanceof SyntaxError ? "文件不是有效的 JSON。" : describeCatalogTransferError(error, "读取文件失败。")
+      );
+      setCatalogImportOpen(true);
+    }
+  };
+
+  const confirmCatalogImport = async () => {
+    if (!debuggingAdminClient || !canEditAdminCatalog) return;
+    if (importInFlightRef.current) return;
+    if (!catalogImportDocument || !catalogImportPreview?.previewDigest) {
+      setCatalogImportError("请先重新预览文件，再确认导入。");
+      return;
+    }
+
+    importInFlightRef.current = true;
+    setCatalogImportSubmitting(true);
+    setCatalogImportError("");
+    const document = catalogImportDocument;
+    const digest = catalogImportPreview.previewDigest;
+    try {
+      const result = await debuggingAdminClient.importCatalog(document, digest);
       const [nodes, loadedModules] = await Promise.all([
         debuggingAdminClient.listNodes({ includeArchived: true }),
         debuggingAdminClient.listModules()
       ]);
       setAdminNodes(nodes);
       setAdminModuleNodes(loadedModules);
-      flashSaved(`已导入：新增 ${result.nodesCreated}，更新 ${result.nodesUpdated}`);
-    } catch {
-      setAdminError("导入目录失败。");
+      setCatalogImportOpen(false);
+      setCatalogImportPreview(null);
+      setCatalogImportDocument(null);
+      setCatalogImportFileName("");
+      flashSaved(
+        [
+          `已导入：新增 ${result.nodesCreated + result.modulesCreated + result.bindingsCreated}`,
+          `更新 ${result.nodesUpdated + result.modulesUpdated + result.bindingsUpdated}`,
+          `不变 ${result.nodesUnchanged + result.modulesUnchanged + result.bindingsUnchanged}`
+        ].join("，")
+      );
+    } catch (error) {
+      setCatalogImportError(describeCatalogTransferError(error, "导入失败。"));
+      // A stale preview cannot be reused: ask the server for the current classification.
+      if (isStalePreviewError(error)) {
+        void openCatalogImportPreview(document, catalogImportFileName);
+      }
     } finally {
-      setAdminLoading(false);
+      importInFlightRef.current = false;
+      setCatalogImportSubmitting(false);
     }
   };
 
@@ -819,16 +968,32 @@ export function DebuggingAdminPage({
               type="file"
               accept="application/json,.json"
               hidden
-              aria-label="导入目录文件"
+              aria-label="导入节点文件"
               onChange={(event) => {
                 const file = event.target.files?.[0];
                 event.target.value = "";
                 if (file) {
-                  void importCatalogFile(file);
+                  void selectCatalogImportFile(file);
                 }
               }}
             />
           </main>
+
+          <DebugNodeCatalogImportDialog
+            open={catalogImportOpen}
+            fileName={catalogImportFileName}
+            preview={catalogImportPreview}
+            loading={catalogImportLoading}
+            submitting={catalogImportSubmitting}
+            error={catalogImportError}
+            onCancel={closeCatalogImport}
+            onConfirm={() => void confirmCatalogImport()}
+            onReloadPreview={() => {
+              if (catalogImportDocument) {
+                void openCatalogImportPreview(catalogImportDocument, catalogImportFileName);
+              }
+            }}
+          />
 
           <DebugNodeEditorDialog
             open={editorMode !== null}

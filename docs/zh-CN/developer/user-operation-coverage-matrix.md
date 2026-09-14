@@ -88,7 +88,9 @@
 - `KB-REC-001`：Hardware User 在 `/logs` 查看已完成分析的「相关知识」区块（仅已发布条目、引用深链进入 `/knowledge`、草稿与归档永不出现），断言覆盖 UI、API、DB（`e2e/acceptance/knowledge.acceptance.spec.ts`）。
 - `KB-XREF-001`：Hardware User 在 `/knowledge` 管理条目的参数定义引用并在定义详情看到已发布的引用条目（草稿永不出现；废弃后 chip 存续带「已废弃」徽章），断言覆盖 UI、API、DB、审计（`e2e/acceptance/knowledge.acceptance.spec.ts`）。
 - `PARAM-HOME-001`：Admin 在 `/parameter-home` 加载 dashboard summary/hotspots API，并切换页面内时间窗口与热榜维度（`e2e/acceptance/parameter-home.acceptance.spec.ts`）。
-- `DEBUG-ADMIN-001`：Admin 在 `/debugging-admin/nodes` 通过 API mode 完成调试节点新增、编辑、禁用/恢复、HDC/ADB binding 维护，以及节点、binding、operation 历史的级联永久删除，断言覆盖 UI、API、DB 和 audit。
+- `DEBUG-ADMIN-001`：Admin 在 `/debugging-admin/nodes` 通过 API mode 完成调试节点新增、编辑、禁用/恢复、HDC/ADB binding 维护，以及节点、binding、operation 历史的级联永久删除，并下载完整节点目录文件、上传该文件预览并确认合并、重新读取与重新导出，断言覆盖 UI、API、DB 和 audit。
+- `DEBUG-ADMIN-846-CAPACITY`：Admin 导出全量节点目录，预览 2,001 节点 / 501 模块的文件，在一次事务内导入并在重新读取与再导出后核对语义一致，断言覆盖 API、DB 与 audit。
+- `DEBUG-ADMIN-846-GUARD`：Admin 与只读用户经公开 API 验证预览摘要校验、原始文档拒绝、跨角色权限、20 MiB 容量上限与导入中途失败回滚，断言覆盖 API 与 DB。
 - `XIAOZE-PERCEPTION-001`：Admin 在 `/parameters` 向小泽提问，验收基于页面上下文与感知工具的只读 grounded 回答（`e2e/acceptance/xiaoze-perception.acceptance.spec.ts`）。
 - `XIAOZE-PERCEPTION-AUTHZ-001`：Guest 用户询问无权限项目时，小泽返回安全非数据回答，不泄露越权内容。
 - `XIAOZE-POPUP-MOVE-001`：Admin 在 `/parameters` 关闭态拖动悬浮球、展开态整体移动悬浮球和非模态弹窗，并继续覆盖缩放、复位、恢复、业务页面操作和切换；手机保持全屏，自动化归属 `e2e/acceptance/xiaoze-popup-layout.acceptance.spec.ts`。

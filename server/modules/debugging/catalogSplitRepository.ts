@@ -270,6 +270,47 @@ export async function getDebugNode(
   return result.rows[0] ? toDebugNodeRecord(result.rows[0]) : null;
 }
 
+/**
+ * Reads every persisted org node regardless of archived state, filter or module-tree
+ * position. Catalog export and the import planner use this single authoritative path so
+ * the file, the preview classification and the merge plan all share one snapshot.
+ */
+export async function listAllDebugNodes(
+  db: Queryable,
+  input: { organizationId: string }
+): Promise<DebugNodeRecord[]> {
+  const result = await db.query<DebugNodeRow>(
+    `
+    select ${debugNodeColumns}
+    from debug_nodes n
+    left join debug_node_modules dm on dm.id = n.debug_node_module_id and dm.organization_id = n.organization_id
+    where n.organization_id = $1
+    order by n.id asc
+    `,
+    [input.organizationId]
+  );
+
+  return result.rows.map(toDebugNodeRecord);
+}
+
+/** Reads every binding of the organization in one round trip, for snapshot-based planning. */
+export async function listAllDebugNodeBindings(
+  db: Queryable,
+  input: { organizationId: string }
+): Promise<DebugNodeBindingRecord[]> {
+  const result = await db.query<DebugNodeBindingRow>(
+    `
+    select ${debugNodeBindingColumns}
+    from debug_node_bindings
+    where organization_id = $1
+    order by node_id asc, protocol asc
+    `,
+    [input.organizationId]
+  );
+
+  return result.rows.map(toDebugNodeBindingRecord);
+}
+
 export async function listRuntimeDebugNodes(
   db: Queryable,
   input: {
@@ -332,6 +373,9 @@ export async function createDebugNode(
     normalizationMode?: DebugNormalizationMode;
     maxValueBytes?: number | null;
     enabled?: boolean;
+    archivedAt?: string | null;
+    archivedBy?: string | null;
+    archiveReason?: string | null;
   }
 ): Promise<DebugNodeRecord> {
   const result = await db.query<DebugNodeRow>(
@@ -339,9 +383,10 @@ export async function createDebugNode(
     insert into debug_nodes (
       id, organization_id, name, description, detailed_description,
       write_format_example, write_format_hint, module, debug_node_module_id,
-      value_kind, value_format, normalization_mode, max_value_bytes, enabled
+      value_kind, value_format, normalization_mode, max_value_bytes, enabled,
+      archived_at, archived_by, archive_reason
     )
-    values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+    values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
     returning ${debugNodeReturningColumns}
     `,
     [
@@ -358,7 +403,10 @@ export async function createDebugNode(
       input.valueFormat ?? DEBUG_VALUE_FORMAT_RAW,
       input.normalizationMode ?? DEBUG_NORMALIZATION_MODE_TRIM,
       input.maxValueBytes ?? null,
-      input.enabled ?? true
+      input.enabled ?? true,
+      input.archivedAt ?? null,
+      input.archivedBy ?? null,
+      input.archiveReason ?? null
     ]
   );
 
@@ -428,6 +476,71 @@ export async function updateDebugNode(
       input.archivedAt ?? null,
       input.archivedBy ?? null,
       input.archiveReason ?? null
+    ]
+  );
+
+  return result.rows[0] ? toDebugNodeRecord(result.rows[0]) : null;
+}
+
+/**
+ * Same as `updateDebugNode`, but a `null` `maxValueBytes` clears the column instead of
+ * keeping it. Presence-aware v2 documents must be able to express "clear this value".
+ */
+export async function updateDebugNodePresence(
+  db: Queryable,
+  input: {
+    organizationId: string;
+    nodeId: string;
+    name?: string;
+    description?: string;
+    detailedDescription?: string;
+    writeFormatExample?: string;
+    writeFormatHint?: string;
+    module?: string;
+    moduleId?: string | null;
+    valueKind?: DebugValueKind;
+    valueFormat?: DebugValueFormat;
+    normalizationMode?: DebugNormalizationMode;
+    maxValueBytes?: number | null;
+    enabled?: boolean;
+  }
+): Promise<DebugNodeRecord | null> {
+  const result = await db.query<DebugNodeRow>(
+    `
+    update debug_nodes
+    set
+      name = coalesce($3, name),
+      description = coalesce($4, description),
+      detailed_description = coalesce($5, detailed_description),
+      write_format_example = coalesce($6, write_format_example),
+      write_format_hint = coalesce($7, write_format_hint),
+      module = coalesce($8, module),
+      debug_node_module_id = coalesce($9, debug_node_module_id),
+      value_kind = coalesce($10, value_kind),
+      value_format = coalesce($11, value_format),
+      normalization_mode = coalesce($12, normalization_mode),
+      max_value_bytes = case when $13::boolean then $14::integer else max_value_bytes end,
+      enabled = coalesce($15, enabled),
+      updated_at = now()
+    where organization_id = $1 and id = $2
+    returning ${debugNodeReturningColumns}
+    `,
+    [
+      input.organizationId,
+      input.nodeId,
+      input.name ?? null,
+      input.description ?? null,
+      input.detailedDescription ?? null,
+      input.writeFormatExample ?? null,
+      input.writeFormatHint ?? null,
+      input.module ?? null,
+      input.moduleId ?? null,
+      input.valueKind ?? null,
+      input.valueFormat ?? null,
+      input.normalizationMode ?? null,
+      input.maxValueBytes !== undefined,
+      input.maxValueBytes ?? null,
+      input.enabled ?? null
     ]
   );
 
@@ -587,8 +700,14 @@ export async function upsertDebugNodeBinding(
     accessMode?: DebugAccessMode;
     enabled?: boolean;
     notes?: string | null;
+    /**
+     * When false, an omitted `notes` keeps the stored value instead of clearing it. The
+     * catalog transfer path sets this so "omitted" can be told apart from "cleared".
+     */
+    preserveOmittedNotes?: boolean;
   }
 ): Promise<DebugNodeBindingRecord | null> {
+  const preserveOmittedNotes = input.preserveOmittedNotes === true;
   const result = await db.query<DebugNodeBindingRow>(
     `
     insert into debug_node_bindings (
@@ -617,7 +736,7 @@ export async function upsertDebugNodeBinding(
     set node_path = excluded.node_path,
       access_mode = excluded.access_mode,
       enabled = excluded.enabled,
-      notes = excluded.notes,
+      notes = case when $9::boolean then debug_node_bindings.notes else excluded.notes end,
       updated_at = now()
     where debug_node_bindings.organization_id = excluded.organization_id
     returning ${debugNodeBindingColumns}
@@ -630,7 +749,8 @@ export async function upsertDebugNodeBinding(
       input.nodePath,
       input.accessMode ?? "RW",
       input.enabled ?? true,
-      input.notes ?? null
+      input.notes ?? null,
+      preserveOmittedNotes
     ]
   );
 

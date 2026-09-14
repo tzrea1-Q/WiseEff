@@ -1297,17 +1297,24 @@ export const schemaRegistry: Record<string, ContractSchemaRef> = {
     additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse" }
   },
   "debugging.admin.exportCatalog": {
-    summary: "Export debug node catalog",
+    summary: "Export the complete debug node catalog",
     tags: ["debugging"],
     responseBody: "DebugCatalogExportResponse",
-    additionalResponses: { "403": "ErrorResponse" }
+    additionalResponses: { "403": "ErrorResponse", "413": "ErrorResponse" }
+  },
+  "debugging.admin.previewCatalogImport": {
+    summary: "Preview a debug node catalog import without writing",
+    tags: ["debugging"],
+    requestBody: "DebugCatalogTransferRequest",
+    responseBody: "DebugCatalogImportPreviewResponse",
+    additionalResponses: { "400": "ErrorResponse", "403": "ErrorResponse", "409": "ErrorResponse", "413": "ErrorResponse" }
   },
   "debugging.admin.importCatalog": {
-    summary: "Import debug node catalog",
+    summary: "Merge-import a previewed debug node catalog",
     tags: ["debugging"],
-    requestBody: "DebugCatalogImportRequest",
+    requestBody: "DebugCatalogImportExecuteRequest",
     responseBody: "DebugCatalogImportResponse",
-    additionalResponses: { "403": "ErrorResponse" }
+    additionalResponses: { "400": "ErrorResponse", "403": "ErrorResponse", "409": "ErrorResponse", "413": "ErrorResponse" }
   },
   "debugging.admin.listModules": {
     summary: "List debug node module registry entries",

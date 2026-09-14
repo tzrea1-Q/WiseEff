@@ -44,7 +44,8 @@ import type { TrustedRefusalAuditSink } from "./modules/audit/trustedRefusalSink
 import { registerProductFeedbackRoutes } from "./modules/product-feedback/routes";
 import { registerUserRoutes } from "./modules/users/routes";
 import { registerParameterCatalogApi } from "./modules/parameter-catalog-api/productionWire";
-import { createHttpServer } from "./shared/http/server";
+import { createHttpServer, DEFAULT_MAX_REQUEST_BODY_BYTES } from "./shared/http/server";
+import { DEBUG_CATALOG_MAX_DOCUMENT_BYTES } from "./modules/debugging/schemas";
 import { createRouter, type RouteRequest } from "./shared/http/router";
 import type { Database } from "./shared/database/client";
 import type { ServerEnv } from "./config/env";
@@ -321,7 +322,28 @@ export function buildWiseEffRouter(options: WiseEffServerOptions = {}) {
 
 export function createWiseEffServer(options: WiseEffServerOptions = {}) {
   const { router, metrics, tracing } = buildWiseEffRouter(options);
-  return attachDeviceBridgeServer(createHttpServer(router, { metrics, tracing }), options);
+  return attachDeviceBridgeServer(
+    createHttpServer(router, { metrics, tracing, maxBodyBytes: resolveRouteBodyLimit }),
+    options
+  );
+}
+
+/**
+ * The debug-node catalog transfer routes accept a 20 MiB document contract (counted in
+ * UTF-8 file bytes) inside a JSON envelope, so their body collection bound sits just above
+ * that contract. Every other route keeps the default transport bound.
+ */
+/** Transport headroom over the 20 MiB document contract: JSON envelope and formatting. */
+export const DEBUG_CATALOG_HTTP_BODY_LIMIT_BYTES = DEBUG_CATALOG_MAX_DOCUMENT_BYTES + 2 * 1024 * 1024;
+
+export function resolveRouteBodyLimit({ method, path }: { method: string; path: string }) {
+  if (
+    method === "POST" &&
+    (path === "/api/v1/debugging/admin/catalog/import" || path === "/api/v1/debugging/admin/catalog/import-preview")
+  ) {
+    return DEBUG_CATALOG_HTTP_BODY_LIMIT_BYTES;
+  }
+  return DEFAULT_MAX_REQUEST_BODY_BYTES;
 }
 
 async function refreshParameterTopologyMetrics(db: Database | undefined, metrics: MetricsRegistry) {

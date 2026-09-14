@@ -22,14 +22,16 @@ import type {
   NodeOperationRecord
 } from "./types";
 
-const catalogImportExportMocks = vi.hoisted(() => ({
-  exportDebugCatalog: vi.fn(),
+const catalogTransferMocks = vi.hoisted(() => ({
+  exportDebugCatalogFull: vi.fn(),
+  previewDebugCatalogImport: vi.fn(),
   importDebugCatalog: vi.fn()
 }));
 
-vi.mock("./catalogImportExport", () => ({
-  exportDebugCatalog: (...args: unknown[]) => catalogImportExportMocks.exportDebugCatalog(...args),
-  importDebugCatalog: (...args: unknown[]) => catalogImportExportMocks.importDebugCatalog(...args)
+vi.mock("./catalogTransfer", () => ({
+  exportDebugCatalogFull: (...args: unknown[]) => catalogTransferMocks.exportDebugCatalogFull(...args),
+  previewDebugCatalogImport: (...args: unknown[]) => catalogTransferMocks.previewDebugCatalogImport(...args),
+  importDebugCatalog: (...args: unknown[]) => catalogTransferMocks.importDebugCatalog(...args)
 }));
 
 const serviceMocks = vi.hoisted(() => ({
@@ -605,11 +607,16 @@ describe("debugging routes", () => {
     );
   });
 
-  it("GET /api/v1/debugging/admin/catalog/export returns the catalog document", async () => {
+  it("GET /api/v1/debugging/admin/catalog/export returns the full v2 catalog document", async () => {
     const db = makeDb();
     const gateway = makeGateway();
-    const item = { format: "wiseeff.debug-node-catalog.v1", modules: [], nodes: [] };
-    catalogImportExportMocks.exportDebugCatalog.mockResolvedValue(item);
+    const item = {
+      document: { format: "wiseeff.debug-node-catalog.v2", source: {}, counts: { modules: 0, nodes: 0, bindings: 0 }, modules: [], nodes: [] },
+      counts: { modules: 0, nodes: 0, bindings: 0 },
+      organizationId: "org-1",
+      fileBytes: 128
+    };
+    catalogTransferMocks.exportDebugCatalogFull.mockResolvedValue(item);
 
     const response = await requestJson<{ item: typeof item }>(
       makeServer({ db, gateway }),
@@ -618,46 +625,115 @@ describe("debugging routes", () => {
 
     expect(response.status).toBe(200);
     expect(response.body).toEqual({ item });
-    expect(catalogImportExportMocks.exportDebugCatalog).toHaveBeenCalledWith(db, makeAuth(), {
-      requestId: "test-request",
-      includeArchived: true
+    expect(catalogTransferMocks.exportDebugCatalogFull).toHaveBeenCalledWith(db, makeAuth(), {
+      requestId: "test-request"
     });
   });
 
-  it("POST /api/v1/debugging/admin/catalog/import applies a v1 catalog document", async () => {
+  it("POST /api/v1/debugging/admin/catalog/import-preview forwards the document for a read-only preview", async () => {
     const db = makeDb();
     const gateway = makeGateway();
-    const item = { modulesCreated: 1, modulesUpdated: 0, nodesCreated: 1, nodesUpdated: 0, bindingsUpserted: 1 };
-    catalogImportExportMocks.importDebugCatalog.mockResolvedValue(item);
+    const item = {
+      canSubmit: true,
+      previewDigest: "digest-1",
+      format: "wiseeff.debug-node-catalog.v2",
+      sourceOrganization: null,
+      targetOrganizationId: "org-1",
+      fileCounts: { modules: 1, nodes: 1, bindings: 1 },
+      declaredCounts: null,
+      modules: { created: 1, updated: 0, unchanged: 0 },
+      nodes: { created: 1, updated: 0, unchanged: 0 },
+      bindings: { created: 1, updated: 0, unchanged: 0 },
+      details: [],
+      detailsTruncated: false,
+      conflicts: [],
+      warnings: []
+    };
+    catalogTransferMocks.previewDebugCatalogImport.mockResolvedValue(item);
     const body = {
-      format: "wiseeff.debug-node-catalog.v1",
+      format: "wiseeff.debug-node-catalog.v2",
+      source: {},
+      counts: { modules: 1, nodes: 1, bindings: 1 },
       modules: [{ name: "Battery" }],
-      nodes: [
-        {
-          name: "Cycle count",
-          module: "Battery",
-          bindings: [{ protocol: "hdc", nodePath: "/sys/hdc/cycles", accessMode: "RO" }]
-        }
-      ]
+      nodes: [{ name: "Cycle count", moduleNamePath: ["Battery"] }]
     };
 
     const response = await requestJson<{ item: typeof item }>(
       makeServer({ db, gateway }),
-      "/api/v1/debugging/admin/catalog/import",
+      "/api/v1/debugging/admin/catalog/import-preview",
       { method: "POST", body: JSON.stringify(body) }
     );
 
     expect(response.status).toBe(200);
     expect(response.body).toEqual({ item });
-    expect(catalogImportExportMocks.importDebugCatalog).toHaveBeenCalledWith(
+    expect(catalogTransferMocks.previewDebugCatalogImport).toHaveBeenCalledWith(
       db,
       makeAuth(),
-      expect.objectContaining({
-        format: "wiseeff.debug-node-catalog.v1",
-        nodes: [expect.objectContaining({ name: "Cycle count" })]
-      }),
+      expect.objectContaining({ format: "wiseeff.debug-node-catalog.v2" }),
       { requestId: "test-request" }
     );
+  });
+
+  it("POST /api/v1/debugging/admin/catalog/import requires the previewed document and digest", async () => {
+    const db = makeDb();
+    const gateway = makeGateway();
+    const item = {
+      modulesCreated: 1,
+      modulesUpdated: 0,
+      modulesUnchanged: 0,
+      nodesCreated: 1,
+      nodesUpdated: 0,
+      nodesUnchanged: 0,
+      bindingsCreated: 1,
+      bindingsUpdated: 0,
+      bindingsUnchanged: 0
+    };
+    catalogTransferMocks.importDebugCatalog.mockResolvedValue(item);
+    const document = {
+      format: "wiseeff.debug-node-catalog.v2",
+      source: {},
+      counts: { modules: 1, nodes: 1, bindings: 1 },
+      modules: [{ name: "Battery" }],
+      nodes: [{ name: "Cycle count", moduleNamePath: ["Battery"] }]
+    };
+
+    const response = await requestJson<{ item: typeof item }>(
+      makeServer({ db, gateway }),
+      "/api/v1/debugging/admin/catalog/import",
+      { method: "POST", body: JSON.stringify({ document, previewDigest: "digest-1" }) }
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual({ item });
+    expect(catalogTransferMocks.importDebugCatalog).toHaveBeenCalledWith(
+      db,
+      makeAuth(),
+      { document: expect.objectContaining({ format: "wiseeff.debug-node-catalog.v2" }), previewDigest: "digest-1" },
+      { requestId: "test-request" }
+    );
+  });
+
+  it("POST /api/v1/debugging/admin/catalog/import rejects a raw document without a preview digest", async () => {
+    const db = makeDb();
+    const gateway = makeGateway();
+    const document = {
+      format: "wiseeff.debug-node-catalog.v2",
+      source: {},
+      counts: { modules: 0, nodes: 0, bindings: 0 },
+      modules: [],
+      nodes: []
+    };
+
+    const response = await requestJson<{ error: { code: string; details: { missing: string[] } } }>(
+      makeServer({ db, gateway }),
+      "/api/v1/debugging/admin/catalog/import",
+      { method: "POST", body: JSON.stringify(document) }
+    );
+
+    expect(response.status).toBe(400);
+    expect(response.body.error.code).toBe("VALIDATION_FAILED");
+    expect(response.body.error.details.issues).toBeTruthy();
+    expect(catalogTransferMocks.importDebugCatalog).not.toHaveBeenCalled();
   });
 
   it("admin module routes list, create, update, and delete debug modules", async () => {

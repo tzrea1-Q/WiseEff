@@ -1,0 +1,169 @@
+.debug-catalog-import-dialog__body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  max-height: min(60vh, 520px);
+  overflow-y: auto;
+}
+
+.debug-catalog-import-dialog__scope {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: var(--space-2);
+  margin: 0;
+}
+
+.debug-catalog-import-dialog__scope dt {
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+}
+
+.debug-catalog-import-dialog__scope dd {
+  margin: 0;
+  font-size: var(--text-sm);
+}
+
+.debug-catalog-import-dialog__counts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.debug-catalog-import-dialog__counts li {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-full);
+  padding: var(--space-1) var(--space-3);
+  font-size: var(--text-sm);
+}
+
+.debug-catalog-import-dialog__counts li[data-classification="conflict"] {
+  border-color: var(--danger, #c0392b);
+  color: var(--danger, #c0392b);
+}
+
+.debug-catalog-import-dialog__breakdown {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+}
+
+.debug-catalog-import-dialog__conflicts ul,
+.debug-catalog-import-dialog__warnings ul {
+  margin: 0;
+  padding-left: var(--space-4);
+  font-size: var(--text-sm);
+}
+
+.debug-catalog-import-dialog__conflicts code,
+.debug-catalog-import-dialog__warnings code {
+  font-family: var(--font-mono);
+}
+
+.debug-catalog-import-dialog__body table {
+  width: 100%;
+  table-layout: fixed;
+  border-collapse: collapse;
+  font-size: var(--text-sm);
+}
+
+/* Explicit column budget: location and field-change cells must wrap on word/character
+   boundaries instead of squeezing 分类/位置 headers into one character per line. */
+.debug-catalog-import-dialog__body th:nth-child(1),
+.debug-catalog-import-dialog__body td:nth-child(1) {
+  width: 16%;
+}
+
+.debug-catalog-import-dialog__body th:nth-child(2),
+.debug-catalog-import-dialog__body td:nth-child(2) {
+  width: 30%;
+}
+
+.debug-catalog-import-dialog__body th:nth-child(3),
+.debug-catalog-import-dialog__body td:nth-child(3) {
+  width: 12%;
+}
+
+.debug-catalog-import-dialog__body th:nth-child(4),
+.debug-catalog-import-dialog__body td:nth-child(4) {
+  width: 42%;
+}
+
+.debug-catalog-import-dialog__body th {
+  white-space: nowrap;
+}
+
+.debug-catalog-import-dialog__body th,
+.debug-catalog-import-dialog__body td {
+  border-bottom: 1px solid var(--border);
+  padding: var(--space-2);
+  text-align: left;
+  vertical-align: top;
+}
+
+.debug-catalog-import-dialog__body td code {
+  font-family: var(--font-mono);
+  overflow-wrap: anywhere;
+}
+
+.debug-catalog-import-dialog__body td:last-child {
+  overflow-wrap: anywhere;
+}
+
+.debug-catalog-import-dialog__error {
+  margin: 0;
+  color: var(--danger, #c0392b);
+}
+
+@media (max-width: 480px) {
+  /* Below the sm breakpoint the four-column table is unreadable, so each row becomes a
+     stacked card and each cell repeats its column label from `data-label`. */
+  .debug-catalog-import-dialog__body thead {
+    display: none;
+  }
+
+  .debug-catalog-import-dialog__body table,
+  .debug-catalog-import-dialog__body tbody,
+  .debug-catalog-import-dialog__body tr,
+  .debug-catalog-import-dialog__body td {
+    display: block;
+    /* Reset the desktop fixed-column budget and width caps: in the stacked layout every
+       cell owns the full row width. */
+    table-layout: auto;
+    width: 100%;
+    max-width: 100%;
+  }
+
+  .debug-catalog-import-dialog__body h3 {
+    white-space: normal;
+  }
+
+  .debug-catalog-import-dialog__body {
+    max-height: min(70vh, 560px);
+  }
+
+  .debug-catalog-import-dialog__breakdown,
+  .debug-catalog-import-dialog__scope dd {
+    overflow-wrap: anywhere;
+  }
+
+  .debug-catalog-import-dialog__body tr {
+    border-bottom: 1px solid var(--border);
+    padding: var(--space-2) 0;
+  }
+
+  .debug-catalog-import-dialog__body td {
+    border-bottom: none;
+    padding: 0 0 var(--space-1);
+    font-size: var(--text-sm);
+  }
+
+  .debug-catalog-import-dialog__body td[data-label]::before {
+    content: attr(data-label) "：";
+    color: var(--text-muted);
+    font-size: var(--text-xs);
+    margin-right: var(--space-1);
+  }
+}

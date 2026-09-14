@@ -114,8 +114,9 @@ M2 日志与 M3 调试运行时/catalog API 以认证用户的 `organization_id`
 | `DELETE` | `/api/v1/debugging/admin/nodes/:nodeId` | 在同一事务永久删除启用或禁用节点、其全部 `node_operations`、对应 operation event、不再共享的 snapshot 与 HDC/ADB binding；共享 session/snapshot、无关 operation 和审计证据保留。成功返回 `204`。 |
 | `PUT` / `PATCH` | `/api/v1/debugging/admin/nodes/:nodeId/bindings/:protocol` | Upsert 或更新 HDC/ADB 节点 binding。 |
 | `POST` | `/api/v1/debugging/admin/nodes/:nodeId/bindings/:protocol/archive` | 禁用单个 protocol binding，不影响节点及另一协议。 |
-| `GET` | `/api/v1/debugging/admin/catalog/export` | 导出本组织调试节点目录（模块、节点、bindings）为 `wiseeff.debug-node-catalog.v1`。要求 `debugging:admin`。写入 `debug-node-catalog-export` 审计，不包含原始 node path。 |
-| `POST` | `/api/v1/debugging/admin/catalog/import` | 合并导入 v1 目录文档：模块按父路径+名称 upsert，节点按 id 或 名称+模块路径匹配。要求 `debugging:admin`。写入 `debug-node-catalog-import` 审计，不包含原始 node path。 |
+| `GET` | `/api/v1/debugging/admin/catalog/export` | 导出本组织**全部**调试节点目录（所有模块、所有已持久化节点（含归档/禁用/无绑定）、所有 binding）为 `wiseeff.debug-node-catalog.v2`。响应的 `item` 含 `document`、`counts`（`modules`/`nodes`/`bindings`）、`organizationId` 与 `fileBytes`；文档内 `counts` 始终与对象集合一致。导出结果不受搜索、模块、协议、分页或树展开状态影响。要求 `debugging:admin`。写入 `debug-node-catalog-export` 审计（仅计数、字节数与格式，不含原始 node path）。超过 20 MiB 文件容量约定时整次导出返回 `413 PAYLOAD_TOO_LARGE`，不产出截断文件。 |
+| `POST` | `/api/v1/debugging/admin/catalog/import-preview` | 只读服务端预览 v1 或 v2 目录文档：把每个模块、节点、binding 分类为 `created`/`updated`/`unchanged`，返回阻断 `conflicts`、`warnings`、逐对象字段差异与 `previewDigest`。不写节点库、不写导入审计。要求 `debugging:admin`。格式、字段或引用错误返回 `400 VALIDATION_FAILED` 并带对象/数组/字段定位；超过 20 MiB 返回 `413`。 |
+| `POST` | `/api/v1/debugging/admin/catalog/import` | 原子合并导入已预览的目录文档。请求体为 `{ document, previewDigest }`；`import-preview` 返回的摘要为必填，原始文档无法绕过预览（`400 VALIDATION_FAILED`），文件或目标在预览后变化返回 `409 CONFLICT` 且 `details.reason: "stale-preview"`。匹配顺序为源节点 ID 优先，其次唯一「完整模块名称路径 + 节点名称」；模块按完整路径匹配，binding 按目标节点 + 协议匹配。缺失节点新增，唯一匹配节点原地更新（保留目标 ID 与历史引用），目标端独有模块、节点与 binding 永不删除或覆盖；已有目标的归档状态保持不变。所有模块、节点、binding 与 `debug-node-catalog-import` 审计在同一事务提交，中途失败全部回滚。要求 `debugging:admin`。 |
 
 遗留 `/api/v1/debugging/admin/parameters*` 已退役并返回 `404`，不再出现在 route manifest、OpenAPI 或前端 Admin client 中。这里只移除无人使用的治理接口；`debugging_parameters`、`debugging_parameter_node_bindings`、repository/service、历史行、binding、operation 与审计证据继续保留，用于历史解释和迁移。
 

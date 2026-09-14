@@ -27,10 +27,10 @@ import {
   writeDebugNodeAdminBodySchema,
   writeDebugNodeModuleAdminBodySchema,
   writeNodeBodySchema,
-  exportDebugCatalogQuerySchema,
+  executeDebugCatalogImportBodySchema,
   importDebugCatalogBodySchema
 } from "./schemas";
-import { exportDebugCatalog, importDebugCatalog } from "./catalogImportExport";
+import { exportDebugCatalogFull, importDebugCatalog, previewDebugCatalogImport } from "./catalogTransfer";
 import { createDebuggingService } from "./service";
 
 const paramsWithSessionIdSchema = z.object({
@@ -282,14 +282,21 @@ export function registerDebuggingRoutes(
     return { status: 200, body: { item } };
   });
 
+  // Export is always the complete catalog. A legacy `?includeArchived=` query parameter is
+  // accepted and ignored: archived nodes are always included, never filtered out.
   router.get("/api/v1/debugging/admin/catalog/export", async (request) => {
     const db = requireDb(options.db);
     const auth = await options.getCurrentAuthContext(request);
-    const query = parseWithSchema(exportDebugCatalogQuerySchema, request.query);
-    const item = await exportDebugCatalog(db, auth, {
-      requestId: request.requestId,
-      includeArchived: query.includeArchived
-    });
+    const item = await exportDebugCatalogFull(db, auth, { requestId: request.requestId });
+
+    return { status: 200, body: { item } };
+  });
+
+  router.post("/api/v1/debugging/admin/catalog/import-preview", async (request) => {
+    const db = requireDb(options.db);
+    const auth = await options.getCurrentAuthContext(request);
+    const body = parseWithSchema(importDebugCatalogBodySchema, request.body);
+    const item = await previewDebugCatalogImport(db, auth, body, { requestId: request.requestId });
 
     return { status: 200, body: { item } };
   });
@@ -297,7 +304,7 @@ export function registerDebuggingRoutes(
   router.post("/api/v1/debugging/admin/catalog/import", async (request) => {
     const db = requireDb(options.db);
     const auth = await options.getCurrentAuthContext(request);
-    const body = parseWithSchema(importDebugCatalogBodySchema, request.body);
+    const body = parseWithSchema(executeDebugCatalogImportBodySchema, request.body);
     const item = await importDebugCatalog(db, auth, body, { requestId: request.requestId });
 
     return { status: 200, body: { item } };

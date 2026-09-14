@@ -182,6 +182,15 @@ export const moveDebugNodeModuleBodySchema = z.object({
 });
 
 export const DEBUG_CATALOG_FORMAT_V1 = "wiseeff.debug-node-catalog.v1" as const;
+export const DEBUG_CATALOG_FORMAT_V2 = "wiseeff.debug-node-catalog.v2" as const;
+
+/**
+ * Contract file-size ceiling for one debug-node catalog document, counted in UTF-8
+ * bytes. It replaces the former 500-module / 2,000-node count limits so export and
+ * import accept the same documents instead of the service producing files it cannot
+ * read back.
+ */
+export const DEBUG_CATALOG_MAX_DOCUMENT_BYTES = 20 * 1024 * 1024;
 
 export const debugCatalogModuleSchema = z.object({
   name: nonEmptyString,
@@ -189,7 +198,7 @@ export const debugCatalogModuleSchema = z.object({
   description: z.string().trim().default(""),
   scope: z.string().trim().default(""),
   sortOrder: z.number().int().optional()
-});
+}).strict();
 
 const debugCatalogNodeSchema = z
   .object({
@@ -209,19 +218,118 @@ const debugCatalogNodeSchema = z
     enabled: z.boolean().default(true),
     bindings: z.array(debugParameterNodeBindingSchema).default([])
   })
+  .strict()
   .refine((value) => Boolean(value.module ?? value.moduleId ?? value.moduleNamePath?.length), {
     message: "Either module, moduleId, or moduleNamePath is required.",
     path: ["module"]
   });
 
-export const debugCatalogDocumentSchema = z.object({
-  format: z.literal(DEBUG_CATALOG_FORMAT_V1),
-  modules: z.array(debugCatalogModuleSchema).max(500).default([]),
-  nodes: z.array(debugCatalogNodeSchema).max(2000).default([])
-});
+export const debugCatalogDocumentSchema = z
+  .object({
+    format: z.literal(DEBUG_CATALOG_FORMAT_V1),
+    modules: z.array(debugCatalogModuleSchema).default([]),
+    nodes: z.array(debugCatalogNodeSchema).default([])
+  })
+  .strict();
 
-export const importDebugCatalogBodySchema = debugCatalogDocumentSchema;
+const catalogNullableTextSchema = z
+  .union([z.string(), z.null()])
+  .transform((value) => (value === null ? null : value.trim()));
 
+const catalogTextSchema = z.string().trim();
+
+const catalogModuleNamePathSchema = z.array(nonEmptyString);
+
+/** v2 binding: `notes` accepts an explicit `null` so a clear is distinguishable from omission. */
+const debugCatalogV2BindingSchema = z
+  .object({
+    protocol: z.enum(debugConnectionProtocols),
+    nodePath: nodePathSchema,
+    accessMode: z.enum(debugAccessModes),
+    enabled: z.boolean().default(true),
+    notes: catalogNullableTextSchema.optional()
+  })
+  .strict();
+
+/**
+ * v2 module entry. `sortOrder` is optional and presence-aware: an omitted value keeps the
+ * target ordering, while a provided value applies.
+ */
+const debugCatalogV2ModuleSchema = z
+  .object({
+    name: nonEmptyString,
+    parentNamePath: catalogModuleNamePathSchema.default([]),
+    description: catalogTextSchema.optional(),
+    scope: catalogTextSchema.optional(),
+    sortOrder: z.number().int().optional()
+  })
+  .strict();
+
+/**
+ * v2 node entry. Optional fields carry presence semantics: an omitted field keeps the
+ * matched target value, `""` clears a clearable text field, and `null` clears a nullable
+ * field. Zod defaults are deliberately absent so parsing never turns "omitted" into
+ * "cleared"; declared v2 content is complete for the fields it does provide.
+ */
+const debugCatalogV2NodeSchema = z
+  .object({
+    sourceId: nonEmptyString.optional(),
+    name: nonEmptyString,
+    description: catalogTextSchema.optional(),
+    detailedDescription: catalogTextSchema.optional(),
+    writeFormatExample: catalogTextSchema.optional(),
+    writeFormatHint: catalogTextSchema.optional(),
+    moduleNamePath: catalogModuleNamePathSchema,
+    valueKind: debugValueKindSchema.optional(),
+    valueFormat: debugValueFormatSchema.optional(),
+    normalizationMode: debugNormalizationModeSchema.optional(),
+    maxValueBytes: z.number().int().positive().nullable().optional(),
+    enabled: z.boolean().optional(),
+    archived: z.boolean().optional(),
+    archiveReason: catalogNullableTextSchema.optional(),
+    bindings: z.array(debugCatalogV2BindingSchema).optional()
+  })
+  .strict();
+
+const debugCatalogV2SourceSchema = z
+  .object({
+    organizationId: nonEmptyString.optional(),
+    organizationName: nonEmptyString.optional(),
+    exportedAt: z.string().trim().optional()
+  })
+  .strict();
+
+const debugCatalogV2CountsSchema = z
+  .object({
+    modules: z.number().int().nonnegative(),
+    nodes: z.number().int().nonnegative(),
+    bindings: z.number().int().nonnegative()
+  })
+  .strict();
+
+export const debugCatalogV2DocumentSchema = z
+  .object({
+    format: z.literal(DEBUG_CATALOG_FORMAT_V2),
+    source: debugCatalogV2SourceSchema,
+    counts: debugCatalogV2CountsSchema,
+    modules: z.array(debugCatalogV2ModuleSchema),
+    nodes: z.array(debugCatalogV2NodeSchema)
+  })
+  .strict();
+
+/** Any catalog document this service can read: current v2 plus the supported legacy v1 shape. */
+export const anyDebugCatalogDocumentSchema = z.union([debugCatalogV2DocumentSchema, debugCatalogDocumentSchema]);
+
+export const importDebugCatalogBodySchema = anyDebugCatalogDocumentSchema;
+
+export const executeDebugCatalogImportBodySchema = z
+  .object({
+    document: anyDebugCatalogDocumentSchema,
+    previewDigest: nonEmptyString
+  })
+  .strict();
+
+/** Legacy export query shape: the route accepts it but export is always the full catalog. */
 export const exportDebugCatalogQuerySchema = z.object({
   includeArchived: booleanQuerySchema
 });
@@ -233,3 +341,8 @@ export type ListDebugNodesAdminQuery = z.infer<typeof listDebugNodesAdminQuerySc
 export type DebugCatalogDocument = z.infer<typeof debugCatalogDocumentSchema>;
 export type DebugCatalogModule = z.infer<typeof debugCatalogModuleSchema>;
 export type DebugCatalogNode = z.infer<typeof debugCatalogNodeSchema>;
+export type DebugCatalogV2Document = z.infer<typeof debugCatalogV2DocumentSchema>;
+export type DebugCatalogV2Module = z.infer<typeof debugCatalogV2ModuleSchema>;
+export type DebugCatalogV2Node = z.infer<typeof debugCatalogV2NodeSchema>;
+export type AnyDebugCatalogDocument = z.infer<typeof anyDebugCatalogDocumentSchema>;
+export type ExecuteDebugCatalogImportBody = z.infer<typeof executeDebugCatalogImportBodySchema>;

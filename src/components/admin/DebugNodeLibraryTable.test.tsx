@@ -102,8 +102,8 @@ describe("DebugNodeLibraryTable", () => {
       onImport: vi.fn()
     });
 
-    expect(screen.getByRole("button", { name: "导出目录" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "导入目录" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "导出全部节点" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "导入节点" })).toBeInTheDocument();
 
     const row = screen.getByRole("row", { name: /Cycle count/ });
     row.focus();

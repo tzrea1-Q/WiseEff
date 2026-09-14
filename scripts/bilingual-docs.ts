@@ -91,5 +91,7 @@ export const developerFacingBilingualDocs: BilingualDocEntry[] = [
   { en: "docs/exec-plans/completed/README.md", zh: "docs/zh-CN/exec-plans/completed/README.md", tier: "planning", status: "required" },
   { en: "docs/exec-plans/tech-debt-tracker.md", zh: "docs/zh-CN/exec-plans/tech-debt-tracker.md", tier: "planning", status: "required" },
   { en: "docs/design-docs/parameter-catalog-verification-upgrade-retirement-gates.md", zh: "docs/zh-CN/design-docs/parameter-catalog-verification-upgrade-retirement-gates.md", tier: "architecture", status: "required" },
-  { en: "docs/design-docs/catalog-authoring-and-publication-control-plane.md", zh: "docs/zh-CN/design-docs/catalog-authoring-and-publication-control-plane.md", tier: "architecture", status: "required" }
+  { en: "docs/design-docs/catalog-authoring-and-publication-control-plane.md", zh: "docs/zh-CN/design-docs/catalog-authoring-and-publication-control-plane.md", tier: "architecture", status: "required" },
+  { en: "docs/design-docs/debug-node-catalog-transfer.md", zh: "docs/zh-CN/design-docs/debug-node-catalog-transfer.md", tier: "architecture", status: "required" },
+  { en: "docs/exec-plans/active/2026-09-14-debug-node-catalog-transfer.md", zh: "docs/zh-CN/exec-plans/active/2026-09-14-debug-node-catalog-transfer.md", tier: "planning", status: "required" }
 ];

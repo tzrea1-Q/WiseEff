@@ -22,10 +22,26 @@ export type MultipartBody = {
   files: Array<{ fieldName: string; fileName: string; contentType: string; bytes: Buffer }>;
 };
 
-async function readRequestBytes(request: IncomingMessage) {
+/**
+ * Upper bound applied while collecting a request body. It exists so an oversized
+ * upload is rejected with 413 during bounded collection instead of after the whole
+ * payload has already been buffered in memory. Feature-level limits (for example the
+ * 20 MiB debug catalog transfer contract) are enforced closer to the route.
+ */
+export const DEFAULT_MAX_REQUEST_BODY_BYTES = 25 * 1024 * 1024;
+
+async function readRequestBytes(request: IncomingMessage, maxBytes = DEFAULT_MAX_REQUEST_BODY_BYTES) {
   const chunks: Buffer[] = [];
+  let length = 0;
   for await (const chunk of request) {
-    chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+    const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+    length += buffer.length;
+    if (length > maxBytes) {
+      throw new ApiError("PAYLOAD_TOO_LARGE", `Request body exceeds the ${maxBytes} byte transport limit.`, {
+        maxBytes
+      });
+    }
+    chunks.push(buffer);
   }
 
   return Buffer.concat(chunks);
@@ -111,12 +127,12 @@ function parseMultipartBody(bytes: Buffer, boundary: string): MultipartBody {
   return { kind: "multipart", fields, files };
 }
 
-async function readBody(request: IncomingMessage): Promise<unknown> {
+async function readBody(request: IncomingMessage, maxBytes = DEFAULT_MAX_REQUEST_BODY_BYTES): Promise<unknown> {
   if (request.method === "GET" || request.method === "DELETE") {
     return undefined;
   }
 
-  const bytes = await readRequestBytes(request);
+  const bytes = await readRequestBytes(request, maxBytes);
   if (bytes.length === 0) {
     return undefined;
   }
@@ -247,7 +263,12 @@ function clientIpFromRequest(request: IncomingMessage) {
 
 export function createHttpServer(
   router: { handle(request: RouteRequest): Promise<RouteResponse>; matchRoutePattern?: (method: HttpMethod, path: string) => string | undefined },
-  options: { metrics?: MetricsRegistry; tracing?: Pick<TracingBoundary, "withSpan"> } = {}
+  options: {
+    metrics?: MetricsRegistry;
+    tracing?: Pick<TracingBoundary, "withSpan">;
+    /** Per-request body collection bound; returns the default when the route has no declared limit. */
+    maxBodyBytes?: (request: { method: string; path: string }) => number;
+  } = {}
 ) {
   const server = createServer(async (request, response) => {
     const startedAt = Date.now();
@@ -265,6 +286,7 @@ export function createHttpServer(
       const url = new URL(request.url ?? "/", "http://localhost");
       const method = request.method as HttpMethod;
       const route = router.matchRoutePattern?.(method, url.pathname) ?? url.pathname;
+      const maxBodyBytes = options.maxBodyBytes?.({ method, path: url.pathname }) ?? DEFAULT_MAX_REQUEST_BODY_BYTES;
       const spanAttributes: Record<string, string | number | boolean> = {
         method: request.method ?? "GET",
         route,
@@ -280,7 +302,7 @@ export function createHttpServer(
             headers: request.headers,
             requestId,
             clientIp: clientIpFromRequest(request),
-            body: await readBody(request)
+            body: await readBody(request, maxBodyBytes)
           });
           spanAttributes.status = routeResponse.status;
           return routeResponse;

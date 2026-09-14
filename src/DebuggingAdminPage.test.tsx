@@ -31,7 +31,25 @@ function createDebuggingAdminApiMock() {
       }
       if (path.startsWith("/api/v1/debugging/admin/catalog/export")) {
         return Promise.resolve({
-          item: { format: "wiseeff.debug-node-catalog.v1", modules: [], nodes: [seedNode] }
+          item: {
+            document: {
+              format: "wiseeff.debug-node-catalog.v2",
+              source: { organizationId: "org-chargelab", organizationName: "ChargeLab" },
+              counts: { modules: 1, nodes: 1, bindings: 1 },
+              modules: [{ name: "Battery Charging", parentNamePath: [] }],
+              nodes: [
+                {
+                  sourceId: "node-1",
+                  name: "Fast charge current",
+                  moduleNamePath: ["Battery Charging"],
+                  bindings: [{ protocol: "hdc", nodePath: "/sys/hdc/current", accessMode: "RW", enabled: true }]
+                }
+              ]
+            },
+            counts: { modules: 1, nodes: 1, bindings: 1 },
+            organizationId: "org-chargelab",
+            fileBytes: 512
+          }
         });
       }
       return Promise.resolve({ items: [seedNode] });
@@ -305,35 +323,202 @@ describe("/debugging-admin API mode", () => {
     expect(apiClient.put).not.toHaveBeenCalled();
   });
 
-  it("exports the node catalog from the library heading", async () => {
+  it("exports the full node catalog from the library heading", async () => {
     const apiClient = renderDebuggingAdminPage();
 
     await screen.findByText("Fast charge current");
-    fireEvent.click(screen.getByRole("button", { name: "导出目录" }));
+    fireEvent.click(screen.getByRole("button", { name: "导出全部节点" }));
 
     await waitFor(() =>
       expect(apiClient.get).toHaveBeenCalledWith("/api/v1/debugging/admin/catalog/export?includeArchived=true")
     );
+    expect(await screen.findByText(/已导出全部节点：节点 1，模块 1，绑定 1/)).toBeInTheDocument();
   });
 
-  it("imports a catalog JSON file through the hidden file input", async () => {
+  it("previews an imported file and only writes after explicit confirmation", async () => {
     const apiClient = renderDebuggingAdminPage();
-    apiClient.post.mockResolvedValue({
-      item: { modulesCreated: 0, modulesUpdated: 0, nodesCreated: 1, nodesUpdated: 0, bindingsUpserted: 0 }
+    const importDocument = {
+      format: "wiseeff.debug-node-catalog.v2",
+      source: { organizationId: "org-source", organizationName: "Source Org" },
+      counts: { modules: 0, nodes: 1, bindings: 1 },
+      modules: [],
+      nodes: [
+        {
+          sourceId: "source-node",
+          name: "Imported node",
+          moduleNamePath: [],
+          bindings: [
+            { protocol: "hdc", nodePath: "/sys/hdc/imported", accessMode: "RW", enabled: true },
+            { protocol: "adb", nodePath: "/sys/adb/imported", accessMode: "RO", enabled: false }
+          ]
+        }
+      ]
+    };
+    apiClient.post.mockImplementation((path: string) => {
+      if (path.endsWith("/import-preview")) {
+        return Promise.resolve({
+          item: {
+            canSubmit: true,
+            previewDigest: "digest-1",
+            format: "wiseeff.debug-node-catalog.v2",
+            sourceOrganization: { organizationId: "org-source", organizationName: "Source Org" },
+            targetOrganizationId: "org-chargelab",
+            fileCounts: { modules: 0, nodes: 1, bindings: 2 },
+            declaredCounts: { modules: 0, nodes: 1, bindings: 2 },
+            modules: { created: 0, updated: 0, unchanged: 0 },
+            nodes: { created: 1, updated: 0, unchanged: 0 },
+            bindings: { created: 2, updated: 0, unchanged: 0 },
+            details: [
+              {
+                path: "nodes//Imported node",
+                name: "Imported node",
+                object: "node",
+                classification: "created",
+                fields: []
+              },
+              {
+                path: "nodes/[\"\"]::Imported node/bindings/adb",
+                name: "adb",
+                object: "binding",
+                classification: "created",
+                fields: []
+              }
+            ],
+            detailsTruncated: false,
+            conflicts: [],
+            warnings: []
+          }
+        });
+      }
+      return Promise.resolve({
+        item: {
+          modulesCreated: 0,
+          modulesUpdated: 0,
+          modulesUnchanged: 0,
+          nodesCreated: 1,
+          nodesUpdated: 0,
+          nodesUnchanged: 0,
+          bindingsCreated: 2,
+          bindingsUpdated: 0,
+          bindingsUnchanged: 0
+        }
+      });
     });
-    const document = { format: "wiseeff.debug-node-catalog.v1", modules: [], nodes: [] };
 
     await screen.findByText("Fast charge current");
-    const fileInput = screen.getByLabelText("导入目录文件") as HTMLInputElement;
+    const fileInput = screen.getByLabelText("导入节点文件") as HTMLInputElement;
     const file = {
       name: "debug-node-catalog.json",
       type: "application/json",
-      text: async () => JSON.stringify(document)
+      text: async () => JSON.stringify(importDocument)
     } as File;
     fireEvent.change(fileInput, { target: { files: [file] } });
 
+    const dialog = await screen.findByRole("dialog", { name: "导入预览" });
+    expect(within(dialog).getByText("Source Org")).toBeInTheDocument();
+    const counts = within(dialog).getByRole("list", { name: "导入分类统计" });
+    const countText = (classification: string) =>
+      counts.querySelector(`[data-classification="${classification}"]`)?.textContent?.replace(/\s+/g, " ").trim();
+    expect(countText("created")).toBe("新增 3");
+    expect(countText("updated")).toBe("更新 0");
+    expect(countText("unchanged")).toBe("不变 0");
+    expect(countText("conflict")).toBe("冲突 0");
+    expect(apiClient.post).toHaveBeenCalledWith("/api/v1/debugging/admin/catalog/import-preview", importDocument);
+    // Preview alone must not write.
+    expect(apiClient.post).not.toHaveBeenCalledWith(
+      "/api/v1/debugging/admin/catalog/import",
+      expect.anything()
+    );
+
+    fireEvent.click(within(dialog).getByRole("button", { name: "确认导入" }));
     await waitFor(() =>
-      expect(apiClient.post).toHaveBeenCalledWith("/api/v1/debugging/admin/catalog/import", document)
+      expect(apiClient.post).toHaveBeenCalledWith("/api/v1/debugging/admin/catalog/import", {
+        document: importDocument,
+        previewDigest: "digest-1"
+      })
+    );
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "导入预览" })).not.toBeInTheDocument());
+  });
+
+  it("keeps blocking conflicts unconfirmable and writes nothing", async () => {
+    const apiClient = renderDebuggingAdminPage();
+    const importDocument = {
+      format: "wiseeff.debug-node-catalog.v2",
+      source: {},
+      counts: { modules: 1, nodes: 1, bindings: 0 },
+      modules: [{ name: "Battery" }],
+      nodes: [{ name: "Cycle count", moduleNamePath: ["Battery"] }]
+    };
+    apiClient.post.mockResolvedValue({
+      item: {
+        canSubmit: false,
+        previewDigest: null,
+        format: "wiseeff.debug-node-catalog.v2",
+        sourceOrganization: null,
+        targetOrganizationId: "org-chargelab",
+        fileCounts: { modules: 1, nodes: 1, bindings: 0 },
+        declaredCounts: { modules: 1, nodes: 1, bindings: 0 },
+        modules: { created: 0, updated: 0, unchanged: 1 },
+        nodes: { created: 0, updated: 1, unchanged: 0 },
+        bindings: { created: 0, updated: 0, unchanged: 0 },
+        details: [],
+        detailsTruncated: false,
+        conflicts: [
+          {
+            code: "duplicate-target-claim",
+            location: "nodes[1]",
+            message: "Node \"Cycle count\" resolves to the same target node as nodes[0]."
+          }
+        ],
+        warnings: []
+      }
+    });
+
+    await screen.findByText("Fast charge current");
+    const fileInput = screen.getByLabelText("导入节点文件") as HTMLInputElement;
+    fireEvent.change(fileInput, {
+      target: {
+        files: [
+          {
+            name: "conflict.json",
+            type: "application/json",
+            text: async () => JSON.stringify(importDocument)
+          } as File
+        ]
+      }
+    });
+
+    const dialog = await screen.findByRole("dialog", { name: "导入预览" });
+    expect(within(dialog).getByText(/阻断冲突/)).toBeInTheDocument();
+    expect(within(dialog).getByRole("button", { name: "确认导入" })).toBeDisabled();
+    expect(apiClient.post).not.toHaveBeenCalledWith(
+      "/api/v1/debugging/admin/catalog/import",
+      expect.anything()
+    );
+  });
+
+  it("reports an invalid JSON file without calling the preview endpoint", async () => {
+    const apiClient = renderDebuggingAdminPage();
+
+    await screen.findByText("Fast charge current");
+    const fileInput = screen.getByLabelText("导入节点文件") as HTMLInputElement;
+    fireEvent.change(fileInput, {
+      target: {
+        files: [
+          {
+            name: "broken.json",
+            type: "application/json",
+            text: async () => "{ not json"
+          } as File
+        ]
+      }
+    });
+
+    const dialog = await screen.findByRole("dialog", { name: "导入预览" });
+    expect(within(dialog).getByRole("alert")).toHaveTextContent("文件不是有效的 JSON。");
+    expect(apiClient.post).not.toHaveBeenCalledWith(
+      "/api/v1/debugging/admin/catalog/import-preview",
+      expect.anything()
     );
   });
 
