@@ -2,11 +2,30 @@
 
 > English: [English](../../../exec-plans/active/2026-09-13-efficiency-regression-ledger.md)
 > 计划：[智能体交付与验证效率](2026-09-13-agent-delivery-efficiency.md)
-> 准备快照：accepted base 为 `01703ba69f883b22e8b819182223c5fd35b90184`；#838 已合并，浏览器及最终文档候选仍 pending。最终父检查点及 Issue #828 证明记录取代此准备状态。
+> 已接受实现快照：main `e45dc3ab941fb081ff0d6edb07668c63fffb7cc0`，tree `b58755ee3b9a94cbc76169caed9dc95d42a93f72`，截至 #839 的十个实现 PR 均已合入。本文档候选在 Issue #828 单独接受精确 head 审查、Hosted、合入和最终源码证明。
 
 本表将设计的 58 个场景映射到有界证据，每行只说明列出的观察及限制，不表示全部场景、模块启用或当前 main 全量验收通过。不为填表增加执行。
 
 PASS 表示所述有限行为有相符证据，PARTIAL 表示仅有部分证据。REFUSAL ONLY 与 NOT ADOPTED 区分已拒绝和未采用的接口；NOT VERIFIED、NOT OBSERVED、UNKNOWN、BLOCKED 保留缺失证明或前置条件。HISTORICAL ONLY 不证明当前源码；OBSERVATION-PENDING 保持禁用，PENDING 等待后续交付结算。
+
+## 已接受的实现身份
+
+所有行均属于 [Issue #828](https://github.com/tzrea1-Q/WiseEff/issues/828)。所链 Hosted 均为 attempt 1，在表列实际 checkout 上成功，tree 与已审 head 及合入 tree 一致。#837 只选择三个文档门禁，没有执行原生测试；其余行通过各自原有选中工程门禁。既有可选/平台跳过及未选中 L2/target/minimal 任务仍单列。上游 #832 与开放草稿 #824 不属于 EFF 交付行。
+
+| PR / 范围 | Accepted base | 已审 head | 实际 checkout | Tree | 合入 | Hosted |
+| --- | --- | --- | --- | --- | --- | --- |
+| [#830](https://github.com/tzrea1-Q/WiseEff/pull/830) / 授权夹具修复 | `1059acb57379bd120d0d2b1a4b4733d4c2e02901` | `27320fdfdc38e92193faf9799f70e11f7cb37368` | `d24340b3bcce9cd27c7837fb3bd09cab0eaee983` | `6887ac7b8c43048fb1ba93dde047083cdb7ed172` | `75f3514b213f07f177773a077021e1485f9f173b` | [34760791346](https://github.com/tzrea1-Q/WiseEff/actions/runs/34760791346) |
+| [#829](https://github.com/tzrea1-Q/WiseEff/pull/829) / EFF-00/01 | `75f3514b213f07f177773a077021e1485f9f173b` | `fb6087f1fdb352953f63b46ca711cee5775e2607` | `41de2cbb95d788168d97d7b8e52711ffbd0dfa63` | `652590339d4a16415d935b624753fa7c68421a11` | `ef88c0964e158d7effbd0ce6062260e5eb1c5a21` | [34762290769](https://github.com/tzrea1-Q/WiseEff/actions/runs/34762290769) |
+| [#833](https://github.com/tzrea1-Q/WiseEff/pull/833) / main 前置修复 | `9dc751690a615b162bb41feef6392289b2ca7f6a` | `a7841dc64d3f9a1b5e34ead72fa3d5f5eb68241a` | `087e82df4555a0b6abc76e8cb38b66d5a2719d82` | `7c105b5cc510f30f5d227da1acee3ad268632c64` | `60f2752e78b3dc45466836b4f7b3233f0e908a2a` | [34784471686](https://github.com/tzrea1-Q/WiseEff/actions/runs/34784471686) |
+| [#831](https://github.com/tzrea1-Q/WiseEff/pull/831) / EFF-02 | `60f2752e78b3dc45466836b4f7b3233f0e908a2a` | `425c5d0958a6dc8e565e973b0b3d6fbd63330297` | `2eeb1cb6598ec176f5c51a1c1ce2cc786bef66fc` | `8cddbc12cb00582dec3697c87cda45064b654f68` | `915f70a04c674c9d9634b72960f036be1defa486` | [34786627881](https://github.com/tzrea1-Q/WiseEff/actions/runs/34786627881) |
+| [#834](https://github.com/tzrea1-Q/WiseEff/pull/834) / EFF-03 预览 | `915f70a04c674c9d9634b72960f036be1defa486` | `84f3033f327615351e3b977cd04379c92168f2be` | `742e70fc887718b2d15199ece33ee560ee8b28fc` | `f7340bdcd81a03c7474295a0f3f5f5573275e0d7` | `4ef53e5c1551747d76350cd324068fb413d462c2` | [34788103778](https://github.com/tzrea1-Q/WiseEff/actions/runs/34788103778) |
+| [#835](https://github.com/tzrea1-Q/WiseEff/pull/835) / EFF-03 影子观察 | `4ef53e5c1551747d76350cd324068fb413d462c2` | `32d14b7e93d306dfcf905b71d7ed503e7a6d4a52` | `e3dbfff629ea91c7777a7f5728f31a74dfb22efc` | `513f0967be7d9ebe9863acfbde4b89bd690a0fd1` | `aed7e54686e7642655b3b8c30369b9c4ad07f771` | [34791485027](https://github.com/tzrea1-Q/WiseEff/actions/runs/34791485027) |
+| [#836](https://github.com/tzrea1-Q/WiseEff/pull/836) / EFF-04 | `aed7e54686e7642655b3b8c30369b9c4ad07f771` | `9f8639542be150b74812a3b62c4bb56f63c21cfe` | `75ada0ee7d8b6770b6bc7d8f57688640a72dbb5a` | `d6a9e6858a00a4d2da35d37ca4fe85cbe1f6711d` | `0dd8157682393df0514b10625660fe4cd91a406f` | [34794729894](https://github.com/tzrea1-Q/WiseEff/actions/runs/34794729894) |
+| [#837](https://github.com/tzrea1-Q/WiseEff/pull/837) / EFF-08 | `0dd8157682393df0514b10625660fe4cd91a406f` | `0138b450af9116cde25b28096ff9f3ee569bb017` | `b3d37c067023f12337cc8eb63c03c3b6a6bbe4af` | `56096bff648856c5f93b5d2f121b81263d47a27f` | `b3ec95a4c9e327d384ce482be05c92ca0227e63a` | [34796067544](https://github.com/tzrea1-Q/WiseEff/actions/runs/34796067544) |
+| [#838](https://github.com/tzrea1-Q/WiseEff/pull/838) / EFF-07 类型入口 | `b3ec95a4c9e327d384ce482be05c92ca0227e63a` | `7fc675e13fe88888c998ae12297428f50764a48d` | `56717e28ecdfa73593b817736112717df7f89ca6` | `83db9a1accf309b9164325592f97d7e0b004fa30` | `01703ba69f883b22e8b819182223c5fd35b90184` | [34796686417](https://github.com/tzrea1-Q/WiseEff/actions/runs/34796686417) |
+| [#839](https://github.com/tzrea1-Q/WiseEff/pull/839) / EFF-06/07 夹具 | `01703ba69f883b22e8b819182223c5fd35b90184` | `1aca4c6aeb6569a4ea237db3ed97e4202f5ba6dc` | `060ffc04ff56bc55a389afc762de135105579fb5` | `b58755ee3b9a94cbc76169caed9dc95d42a93f72` | `e45dc3ab941fb081ff0d6edb07668c63fffb7cc0` | [34798669471](https://github.com/tzrea1-Q/WiseEff/actions/runs/34798669471) |
+
+各行均已收集独立 Standards/Spec 通过结果。R1 的 #837/#838 使用一次独立合并审查；其余实现行分别审查。最终 #839 由 `eff_main_red_design` 做 Standards、`eff09_browser_remaining_luna` 做 Spec，独立于父实现者。具体审查文件与历史失败保留在父证据目录及所链 #828 证明中。后续纯文档 head 须经过自身独立审查和选中 Hosted，再在外部结算身份。
 
 ## 固定证据引用
 
@@ -76,12 +95,12 @@ PASS 表示所述有限行为有相符证据，PARTIAL 表示仅有部分证据�
 | EFF-T50 | NOT ADOPTED | 当前切片没有采用 Node/jsdom 拆分。 | DOM/提供方测试保持现有环境；不得声称已经拆分。 |
 | EFF-T51 | NOT ADOPTED | 提议的 pure/PG 拆分没有采用。既有 PG-required 覆盖在没有 PostgreSQL 时失败/阻塞，新 runner 也没有 PG adapter，但这不等于实现了该拆分。 | 保持原后端环境边界；pure/PG 不得标为 PASS。 |
 | EFF-T52 | PASS（契约）；HISTORICAL ONLY（计时） | 两个被引用的 TypeScript 项目都在两条命令入口中产生 TS2322 Red，随后恢复 Green。PR #838 的 head `7fc675e13fe88888c998ae12297428f50764a48d` 的本地 `typecheck` 为 11.5993s、未改动 `build` 为 24.5690s；独立 R1 审查与 Hosted 的 9 项门禁分别通过（run `34796686417` attempt 1），并合入 `01703ba69f883b22e8b819182223c5fd35b90184`。`work/efficiency/eff07-observation/type-feedback-evaluation.json` 绑定 head `66e572a4c45bd5d4db164380a2200e7ee6c10ac4`、tree `26b7acc0e03a07922e57fe688ca285eb6a741346` 的 12 次历史冷/暖计时观察。 | `alias` 保留原 `compiler phase` 和 `full-build` 要求；不受控的主机负载与小样本分组不能证明当前 head 速度、CI 节省、global C 或当前 main 全量验收。计时属于历史 N=3 分组，与两个项目的 Red/Green 检查分开。 |
-| EFF-T53 | NOT ADOPTED | 没有采用 worker/heap/fixture 优化。 | 不得声称有可重复的 OOM/connection/residual-state 收益。 |
+| EFF-T53 | NOT ADOPTED | 没有采用 worker 数量、堆内存或夹具性能优化。 | 不得声称已改善内存耗尽、连接耗尽或残留状态问题。 |
 | EFF-T54 | NOT ADOPTED | 没有采用计时/重试/等待调整。 | 更大的超时或忽略失败不构成就绪证明。 |
 | EFF-T55 | PARTIAL | PR #837 head `0138b450af9116cde25b28096ff9f3ee569bb017` 保留了在 `5418af9474415fec111994accda5e46250e6271b` 审查的四个路由/协议内容块；实际从 root 到 cwd 的发现过程在没有覆盖指令时选中 root 的 `AGENTS.md`，并检查三个已实现入口。独立 R1 审查和三个选中的 docs-only 门禁通过，合入 `b3ec95a4c9e327d384ce482be05c92ca0227e63a`。 | 这是已观察的发现路径，不是所有覆盖指令/模块组合；历史 UI/scripts/PG 恢复结果未重放，九个运行时 job 未选中/跳过。 |
-| EFF-T56 | PARTIAL | 已审查紧凑数据包、协议和恢复文档中的新会话恢复路径。 | 没有保留最终候选的当前恢复执行，且无需完整重读的证据也不存在。 |
-| EFF-T57 | UNKNOWN | 存在有界使用覆盖，但全程序 token 使用量、终端重复和缺失子任务统计仍不可用。 | token 使用量和节省保持 unknown；不得估算或重复计数。 |
-| EFF-T58 | PENDING | 已有各 PR 的源码包和 hash，包括 #835、#836、#837、#838 及浏览器候选。 | 最终源码并集、bundle 身份、字节/hash 校验、清理以及排除 secrets/logs/DB 仍待完成。 |
+| EFF-T56 | PARTIAL | 已审查精简任务包、协议和恢复文档中的新会话恢复路径。 | 未保留最终候选上无需全量重读即可恢复的新执行证明。 |
+| EFF-T57 | UNKNOWN | 有限使用量证据不覆盖整个项目，也不足以证明重复终态去重和缺失子代理计数。 | 全项目 token 使用量和节省保持 unknown，不估算或重复计数。 |
+| EFF-T58 | PASS（已接受实现并集）；最终文档外部证明 | 十个已接受 PR 在 `e45dc3ab941fb081ff0d6edb07668c63fffb7cc0` 汇总51个完整文件，ZIP SHA256 `7d88448361764684d065faa71a1ad8f42646a22349693dc3dffb5b4ec0aeb39d`；完整字节/hash/mode 及逐 PR 身份已验证并交付，无删除/重命名、日志/凭据/数据库或无关源码。自有容器/密码处置记入父计划。 | 最终53文件总包新增本台账对，绑定之后真实文档合入，存在后在 #828 外部记录 hash。不声称自引用源码/hash，也不打包整个仓库。 |
 
 ## 交付边界
 

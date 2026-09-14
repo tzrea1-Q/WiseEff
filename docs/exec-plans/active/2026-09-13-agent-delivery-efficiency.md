@@ -1,7 +1,7 @@
 # Agent Delivery and Verification Efficiency
 
 > Chinese: [Chinese](../../zh-CN/exec-plans/active/2026-09-13-agent-delivery-efficiency.md)
-> Status: **Active — PRs #830, #829, #833, #831, #834, #835, #836, #837 and #838 merged. Browser fixtures are in final integration; final evidence and documentation settlement remain. No activation or measured-benefit claim.**
+> Status: **Active observation — all ten bounded implementation PRs through #839 merged; this EFF-09 documentation record receives its own final attestation in #828. All modules remain shadow/observation-pending; B/C and full-main success are not established.**
 > Date: 2026-09-13. Tracking Issue: [#828](https://github.com/tzrea1-Q/WiseEff/issues/828).
 > Accepted base, freshly fetched on 2026-09-13: `1059acb57379bd120d0d2b1a4b4733d4c2e02901`. This equals the supplied design's historical reference; it is not permission to reset later work.
 
@@ -13,11 +13,64 @@ Implement the user's supplied 2026-09-13 engineering design in bounded waves: sa
 
 | Delivery level | Completion means | Current status |
 | --- | --- | --- |
-| A: tools and process | Reviewed and verified diagnostics, equivalent scheduling, shadow plan, execution/reporting and routing are delivered | EFF-01/02/03/04/07/08 merged; browser fixture verification/delivery and final attestation remain pending |
+| A: tools and process | Reviewed and verified diagnostics, equivalent scheduling, shadow plan, execution/reporting and routing are delivered | Minimum implementation and bounded browser repairs merged in ten PRs; this final documentation slice settles through its own #828 attestation |
 | B: module activation | Each explicitly named module passes its own observation and independent-review gates | No module enabled; `observation-pending` |
 | C: measured effect | Comparable real task/CI samples support wall-clock, resource and usage conclusions | Insufficient samples; token usage `unknown` |
 
 A can be delivered while B/C remain open. Do not manufacture samples or call the entire program complete merely because tooling merged.
+
+## Current delivery settlement — 2026-09-14
+
+Accepted implementation main is `e45dc3ab941fb081ff0d6edb07668c63fffb7cc0`, tree `b58755ee3b9a94cbc76169caed9dc95d42a93f72`. The [58-scenario ledger](2026-09-13-efficiency-regression-ledger.md) binds every implementation PR to its real base/head/checkout/tree/merge/run/attempt and separates proved behavior from partial, refused, unadopted and pending scenarios. The ten implementation PRs are #830, #829, #833, #831, #834–#839. This EFF-09 four-file documentation slice and its final source bundle receive their own independent R1/Hosted/exact-merge attestation in [#828](https://github.com/tzrea1-Q/WiseEff/issues/828); it does not change runtime or policy. Historical checkpoint sections below retain the status that existed then and do not override this settlement.
+
+| Work package | Delivered boundary and remaining condition |
+| --- | --- |
+| EFF-00 | Actual initial fetched base1059, protected inherited dirty work/worktrees, live permissions/claims and failed-run classification; #829 registration, separately authorized fixture #830 and prerequisite #833. The historical design SHA never forced a rollback. |
+| EFF-01 | #829 context-only minimal diagnostic, strict separation from full artifacts and sticky original failures. Detailed report ingestion and unobserved runner-loss/double-failure experiments are not claimed. |
+| EFF-02 | #831 equivalent four L1 groups preserve all30 original commands, native receipts, stable check names/source and strict aggregation. No selective reduction. |
+| EFF-03 | #834 clean-committed-tree preview and #835 bounded CI shadow are merged. Unknown/unsafe Git refuses planning; full native requirements remain. Dirty planning, arbitrary adapters and enforcement are unavailable. |
+| EFF-04 | #836 two fixed fresh tasks and an explicitly unverified saved-record reader are merged. Native discovery/count, lifecycle, ownership, atomic publication and refusal checks passed; memo remains disabled. |
+| EFF-05 | Observation-pending for all four modules below. Missing categories/10/3/6/full-main/review is a dependency, not code to fabricate. |
+| EFF-06 | Retain original serial stateful Quality and shared browser suite. #839 repairs observed fixture mismatches; no sharding/isolation performance implementation or equivalence claim. |
+| EFF-07 | #838 reuses the compiler phase for edit feedback; full build remains required. #839 retains real simulator behavior. No speculative Node/jsdom, pure-PG, worker/heap or timeout/retry tuning was adopted. |
+| EFF-08 | #837 compact packets, actual cwd routing, real command links, historical three-domain recovery and honest usage boundaries are merged. No global configuration or tool-permission change. |
+| EFF-09 | This linked plan/ledger pair records A/B/C, exact delivery, main failures, metrics, resources and rollback. Final documentation SHA/run/merge/package identity is external to its own source, recorded after actual settlement. |
+
+| Module in committed registry | Current execution | Enforcement / memo | Activation evidence |
+| --- | --- | --- | --- |
+| `feedback-domain` | full + shadow | disabled / disabled | observation-pending |
+| `feedback-client` | full + shadow | disabled / disabled | observation-pending |
+| `feedback-ui` | full + shadow | disabled / disabled | observation-pending |
+| `feedback-server` | full + shadow | disabled / disabled | observation-pending |
+
+Four command receipts from #835 are not four module samples. Each module still needs at least10 substantive real changes,3 Hosted observations,6 applicable independent counterexamples and all required categories, independent activation review and a usable full-main result with relevant main-red resolved or proved unrelated. No enabled-mode observation or omission=0 claim exists. Future real work supplies observations; no empty commits or repeated Hosted runs are scheduled to fill counts.
+
+[PR #839](https://github.com/tzrea1-Q/WiseEff/pull/839) passed independent Standards/Spec and run34798669471 attempt1, actual checkout `060ffc04ff56bc55a389afc762de135105579fb5`, then merged to the accepted implementation main above. On exact head `1aca4c6aeb6569a4ea237db3ed97e4202f5ba6dc`, owned run `full-20260914t015738338z-1aca4c6aeb65-0d16c94d` passed six original selected cases including warmup, zero failed/skipped/flaky and retry0. Native67.582662s and outer127.086795s are different scopes. Native report SHA256 is `bcc8ee43b5b888280d1050e22b7f649f162d5c16a2e78fdc4de0f867313af3ea`; root and nested terminal cleanup was complete. Build22.8290s and metadata/direct docs passed. Hosted frontend3411, scripts1560 plus21 optional skips, bridge134 plus4 platform skips, backend4180 zero skips, Quality100 and Smoke4 passed; full schema was checked. L2/target/minimal were unselected/skipped, not passed. This does not establish all shared-helper callers or full-main success.
+
+The latest completed predecessor [main run34797424920](https://github.com/tzrea1-Q/WiseEff/actions/runs/34797424920), attempt1, executed `01703ba69f883b22e8b819182223c5fd35b90184`, tree `83db9a1accf309b9164325592f97d7e0b004fa30`, with predecessor base `b3ec95a4c9e327d384ce482be05c92ca0227e63a`. L1/Quality/visual passed; L2/Merge failed with58 inventoried browser failures and the unchanged archive-size refusal. Diagnostic10330966621 has verified ZIP SHA256 `f77510a4d9de06a6ea9a21a76016bf0bdca6247e917442308703eba114dab9c5`. Its snapshot keeps cleanup/native totals unknown and its own upload pending; actual diagnostic upload succeeded without overriding either failure. Workflow2767s and sum executed-job elapsed80.3833min are separate from billing. Current implementation e45 [main run34799403948](https://github.com/tzrea1-Q/WiseEff/actions/runs/34799403948) remains in progress at this pre-seal checkpoint; its result cannot be inferred from local6/6 or PR green. The final #828 attestation refreshes current-main status; older b3/0dd/aed failures retain their identities.
+
+Remaining main-red requires bounded diagnosis: historical Knowledge POST/GET500, DTS deploy500 and Xiaoze persisted-outcome symptoms lack a confirmed current root cause. Frozen Catalog locators and role-faithful prerequisites depend on external #824/launch evidence. The six-case repair does not close these groups; identical failure counts do not establish identical causes. #828 retains EFF observation ownership and links existing open [TD-075/076/118](../tech-debt-tracker.md) for governance/fixtures/shared-browser debt. TD-122 stays closed. No permission, environment, target/device/Catalog enablement or full-artifact safety boundary is bypassed to make these green.
+
+The following are N=1 observations for each accepted PR, with changing scope and uncontrolled runner variance. Workflow elapsed is updated-minus-created, including settlement; summed executed-job elapsed excludes unselected jobs and is neither wall-clock nor billing. Failed/rejected candidates and main runs are retained separately, so this table is not the whole-program cost and supports no controlled percentage gain.
+
+| Accepted PR / run | Workflow seconds | Sum executed-job minutes |
+| --- | --- | --- |
+| [#830](https://github.com/tzrea1-Q/WiseEff/actions/runs/34760791346) | 1056 | 30.9833 |
+| [#829](https://github.com/tzrea1-Q/WiseEff/actions/runs/34762290769) | 1061 | 30.8500 |
+| [#833](https://github.com/tzrea1-Q/WiseEff/actions/runs/34784471686) | 1094 | 29.6667 |
+| [#831](https://github.com/tzrea1-Q/WiseEff/actions/runs/34786627881) | 719 | 34.0333 |
+| [#834](https://github.com/tzrea1-Q/WiseEff/actions/runs/34788103778) | 607 | 31.6167 |
+| [#835](https://github.com/tzrea1-Q/WiseEff/actions/runs/34791485027) | 694 | 33.7833 |
+| [#836](https://github.com/tzrea1-Q/WiseEff/actions/runs/34794729894) | 734 | 34.3667 |
+| [#837](https://github.com/tzrea1-Q/WiseEff/actions/runs/34796067544) | 110 | 1.0500 |
+| [#838](https://github.com/tzrea1-Q/WiseEff/actions/runs/34796686417) | 615 | 32.6667 |
+| [#839](https://github.com/tzrea1-Q/WiseEff/actions/runs/34798669471) | 656 | 32.4000 |
+
+The exact9f fresh commands recorded outer2.7528s versus timed run interval1.422s (10/1), and outer4.0240s versus2.853s (29/5). Differences1.3308s/1.1710s include npm/Node startup, Git/dependency checks, storage setup and final publication; they are not a controlled direct-run baseline. The ≤5% overhead target and P50 goals are unverified. Historical type N=3 cold/warm groups below justify a narrow edit command, not whole-delivery savings. Quality became the longest selected job in W1 (659s); that single observation does not justify unproved sharding. Whole-program token usage, subagent usage coverage and billed runner-minutes are unknown.
+
+At02:32:14UTC, the last owned container `d1bfe7dd8f3d107b5abc54a7f8dbc09c743dbb228a4aa05d55522e1dd8fae9a5`, owner label `bede0fa3-8179-47e2-b482-da4ad1dfd603`, was stopped/removed after its last six-case consumer, with exact absence verified. Its tmpfs DB storage was destroyed; the private0600 password file was removed after owner/inode verification. Earlier owned fixture/diagnostic containers were also disposed. Source worktrees/branches, descriptors, bounded logs, failed-run forensic artifacts, shared images and inherited resources remain. Final docs replaced only its own temporary dependency symlink with an independent lockfile `npm ci`; the borrowed target was untouched.
+
+The accepted ten-PR union contains51 complete source files at e45/treeb587, ZIP SHA256 `7d88448361764684d065faa71a1ad8f42646a22349693dc3dffb5b4ec0aeb39d`, with per-PR lineage and verified full bytes/hashes/modes, no deletes/renames or logs/credentials/DB/unrelated upstream paths. Final documentation adds the two ledger files; the exact final53-file union is packaged and attested only after its merge. Revert individual wave deltas through normal reviewed PRs and original selected CI. Keep full coverage first; return to original serial scheduling if necessary. No bypass, force-push or rewritten failure history is a rollback mechanism.
 
 ## Execution accepted and routing integration — 2026-09-14
 
