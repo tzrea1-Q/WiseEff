@@ -41,7 +41,7 @@ const capabilityOf = (candidate: PublicationCandidateRecord): PublicationCandida
   const contract = candidate.capabilityContract;
   const revision =
     typeof contract.revision === "string" ? contract.revision : CATALOG_CAPABILITY_CONTRACT_REVISION;
-  const allowListId = typeof contract.allowListId === "string" ? contract.allowListId : "page-m1-definition-content";
+  const allowListId = typeof contract.allowListId === "string" ? contract.allowListId : "page-historical-definition-content";
   return { revision, allowListId };
 };
 

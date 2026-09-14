@@ -86,7 +86,7 @@ describe("buildCompleteSuccessor", () => {
     expect(result.value.impact.matcher.fallbackImpact).toBe(false);
     expect(result.value.impact.matcher.existingMatchRulesChanged).toBe(false);
     expect("riskClass" in result.value.candidate).toBe(false);
-    expect(result.value.capabilityContract.revision).toBe("catalog-capability/v1");
+    expect(result.value.capabilityContract.revision).toBe("catalog-capability/v2");
   });
 
   it("fails closed for missing predecessor bytes and digest mismatch without persisting", async () => {
@@ -184,9 +184,9 @@ describe("buildCompleteSuccessor", () => {
           subjectId: "csub_acme_power",
           propertyKey: "iin_min",
           content: {
-            displayName: "Mixed",
-            documentation: "Vendor mixed shape.",
-            valueSchema: { description: "mixed" },
+            displayName: "Pattern",
+            documentation: "Vendor pattern shape.",
+            valueSchema: { type: "string", pattern: "^[0-9]+$" },
           } as never,
         },
       ],

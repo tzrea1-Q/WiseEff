@@ -45,12 +45,12 @@ import {
   publicationStatusCopy,
   publicationSuccessKind,
   publicationSupportedUnits,
+  publicationValueTypeLabel,
   publicationSupportedValueTypes,
   type PublicationDraft,
   type PublicationReviseClass,
   type PublicationSubjectKind,
   type PublicationSubmitGate,
-  type PublicationUnit,
   type PublicationValueType
 } from "./publicationState";
 
@@ -753,16 +753,12 @@ export function PublicationDialog({
                       >
                         {publicationSupportedValueTypes.map((type) => (
                           <option key={type} value={type}>
-                            {type === "integer"
-                              ? publicationCopy.valueTypeInteger
-                              : type === "number"
-                                ? publicationCopy.valueTypeNumber
-                                : publicationCopy.valueTypeString}
+                            {publicationValueTypeLabel(type)}
                           </option>
                         ))}
                       </select>
                     </label>
-                    {draft.valueType !== "string" ? (
+                    {draft.valueType === "integer" || draft.valueType === "number" ? (
                       <>
                         <label>
                           {publicationCopy.minimum}
@@ -788,21 +784,19 @@ export function PublicationDialog({
                     ) : null}
                     <label>
                       {publicationCopy.unit}
-                      <select
+                      <input
                         aria-label={publicationCopy.unit}
+                        list="publication-unit-options"
                         value={draft.unit}
                         disabled={draft.mode === "revise-definition" && draft.reviseClass === "documentation"}
-                        onChange={(event) =>
-                          patchDraft({ unit: event.target.value as "" | PublicationUnit })
-                        }
-                      >
-                        <option value="">{publicationCopy.unitNone}</option>
+                        onChange={(event) => patchDraft({ unit: event.target.value })}
+                        placeholder={publicationCopy.unitNone}
+                      />
+                      <datalist id="publication-unit-options">
                         {publicationSupportedUnits.map((unit) => (
-                          <option key={unit} value={unit}>
-                            {unit}
-                          </option>
+                          <option key={unit} value={unit} />
                         ))}
-                      </select>
+                      </datalist>
                     </label>
                     <label>
                       {publicationCopy.examples}

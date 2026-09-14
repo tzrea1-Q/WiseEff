@@ -85,10 +85,15 @@ describe("auth policy", () => {
     expect(canPerform("admin", "logs:archive")).toBe(true);
   });
 
-  it("freezes catalog publication capabilities without default role grants", () => {
+  it("grants catalog publication capabilities on Org Admin only", () => {
     const catalogPermissions = ["catalog:author", "catalog:publish", "catalog:review-high-risk"] as const;
     expect(BACKEND_PERMISSIONS).toEqual(expect.arrayContaining([...catalogPermissions]));
-    for (const roleId of BACKEND_ROLE_IDS) {
+    expect(permissionsForRoles(["admin"])).toEqual(expect.arrayContaining([...catalogPermissions]));
+    for (const permission of catalogPermissions) {
+      expect(canPerform("admin", permission)).toBe(true);
+      expect(canPerform("platform-admin", permission)).toBe(false);
+    }
+    for (const roleId of BACKEND_ROLE_IDS.filter((id) => id !== "admin")) {
       const granted = permissionsForRoles([roleId]);
       expect(granted).not.toEqual(expect.arrayContaining([...catalogPermissions]));
       for (const permission of catalogPermissions) {

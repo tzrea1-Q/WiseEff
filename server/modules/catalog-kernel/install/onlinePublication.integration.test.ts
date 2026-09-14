@@ -251,7 +251,7 @@ describe("atomic online Catalog publication", () => {
     if (!result.ok) {
       expect(result.error).toMatchObject({
         kind: "publication-not-authorized",
-        reason: "publication-self-approval-forbidden",
+        reason: "unsupported-catalog-capability",
       });
     }
     expect(await domainSnapshot(observer)).toEqual(before);

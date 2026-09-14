@@ -107,7 +107,8 @@ const usage = `Usage:
 
 inspect reads CATALOG_BASELINE_READONLY_DATABASE_URL only.
 policy status reads DATABASE_URL (API LOGIN SELECT on catalog_state). Do not use the NOINHERIT manager LOGIN for status.
-adopt/capabilities/policy revise/freeze/provision use dedicated DSNs. Manager commands refuse DATABASE_URL reuse.
+adopt/freeze use the manager LOGIN. capabilities grant/revoke/status write public.roles via bootstrap.
+policy revise uses bootstrap. Manager commands refuse DATABASE_URL reuse.
 provision-logins uses WISEEFF_CATALOG_BOOTSTRAP_DATABASE_URL (superuser, one-shot).
 Credentials are written to --credential-dir or WISEEFF_PUBLICATION_CREDENTIAL_DIR; stdout has no DSNs.
 ephemeral policy enable requires an ephemeral database name and EPHEMERAL_POLICY_REVISION_CONFIRMATION.
@@ -357,7 +358,17 @@ export const runCatalogPublicationOps = async (
   }
 
   if (command.name === "capabilities") {
-    const pool = managerPool();
+    const bootstrap = process.env.WISEEFF_CATALOG_BOOTSTRAP_DATABASE_URL?.trim();
+    if (!bootstrap) {
+      return {
+        exitCode: 2,
+        payload: {
+          message:
+            "WISEEFF_CATALOG_BOOTSTRAP_DATABASE_URL is required for capabilities grant/revoke/status; the manager LOGIN cannot write public.roles",
+        },
+      };
+    }
+    const pool = new pg.Pool({ connectionString: bootstrap });
     const client = await pool.connect();
     try {
       const roleId = roleIdFor(command.capability);

@@ -24,13 +24,22 @@ import type {
   ReleaseArtifactRecord,
 } from "../persistence/types";
 
-export const CATALOG_CAPABILITY_CONTRACT_REVISION = "catalog-capability/v1" as const;
+export const CATALOG_CAPABILITY_CONTRACT_REVISION = "catalog-capability/v2" as const;
+export const CATALOG_CAPABILITY_ALLOW_LIST_ID = "page-historical-definition-content" as const;
 
-export const M1_VALUE_SCHEMA_TYPES = ["integer", "number", "string"] as const;
+export const M1_VALUE_SCHEMA_TYPES = [
+  "integer",
+  "number",
+  "string",
+  "boolean",
+  "null",
+  "array",
+] as const;
 export type M1ValueSchemaType = (typeof M1_VALUE_SCHEMA_TYPES)[number];
 
-export const M1_ALLOWED_UNITS = ["mA", "mV", "ms", "uOhm"] as const;
-export type M1AllowedUnit = (typeof M1_ALLOWED_UNITS)[number];
+export const M1_ALLOWED_UNITS = ["non-empty-short-string"] as const;
+export type M1AllowedUnit = string;
+export const MAX_DEFINITION_UNIT_CHARS = 32;
 
 export type SupportedIntegerSchema = {
   readonly type: "integer";
@@ -48,17 +57,40 @@ export type SupportedStringSchema = {
   readonly type: "string";
 };
 
+export type SupportedBooleanSchema = {
+  readonly type: "boolean";
+};
+
+export type SupportedNullSchema = {
+  readonly type: "null";
+};
+
+export type SupportedArraySchema = {
+  readonly type: "array";
+  readonly items?:
+    | { readonly type: "string" }
+    | { readonly type: "integer"; readonly minimum?: number; readonly maximum?: number };
+};
+
+export type SupportedMixedSchema = {
+  readonly description: string;
+};
+
 export type SupportedValueSchema =
   | SupportedIntegerSchema
   | SupportedNumberSchema
-  | SupportedStringSchema;
+  | SupportedStringSchema
+  | SupportedBooleanSchema
+  | SupportedNullSchema
+  | SupportedArraySchema
+  | SupportedMixedSchema;
 
 export type SupportedDefinitionContent = {
   readonly displayName: string;
   readonly documentation: string;
   readonly unit?: M1AllowedUnit;
   readonly valueSchema: SupportedValueSchema;
-  readonly examples?: readonly (number | string)[];
+  readonly examples?: readonly (number | string | boolean | null)[];
 };
 
 export type CreateDefinitionChange = {
@@ -183,13 +215,16 @@ export type BuildCompleteSuccessorInput = {
 
 export type CapabilityAllowListIdentity = {
   readonly revision: typeof CATALOG_CAPABILITY_CONTRACT_REVISION;
-  readonly id: "page-m1-definition-content";
+  readonly id: typeof CATALOG_CAPABILITY_ALLOW_LIST_ID;
   readonly valueTypes: readonly M1ValueSchemaType[];
-  readonly units: readonly M1AllowedUnit[];
+  readonly units: readonly (typeof M1_ALLOWED_UNITS)[number][];
   readonly jsonSchemaKeywords: {
     readonly integer: readonly ["type", "minimum", "maximum"];
     readonly number: readonly ["type", "minimum", "maximum"];
     readonly string: readonly ["type"];
+    readonly boolean: readonly ["type"];
+    readonly null: readonly ["type"];
+    readonly array: readonly ["type", "items"];
   };
   readonly budgets: {
     readonly maxDisplayNameChars: number;
@@ -201,7 +236,7 @@ export type CapabilityAllowListIdentity = {
 
 export type CapabilityContract = JsonObject & {
   readonly revision: typeof CATALOG_CAPABILITY_CONTRACT_REVISION;
-  readonly allowListId: "page-m1-definition-content";
+  readonly allowListId: typeof CATALOG_CAPABILITY_ALLOW_LIST_ID;
   readonly allowListDigest: string;
   readonly valueTypes: readonly ContractJsonValue[];
   readonly units: readonly ContractJsonValue[];

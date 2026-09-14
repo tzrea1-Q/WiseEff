@@ -45,9 +45,9 @@ Current frontend permissions include:
 - `users:manage`
 - `platform:access` (platform console; `platform-admin` only)
 - `platform:schema-promote` (cross-org overlay promotion; `platform-admin` only)
-- `catalog:author` (create Catalog drafts / ChangeSets / Candidate preview; not granted on default role matrices)
-- `catalog:publish` (approve within policy or request execution of an authorized Candidate; not granted on `admin` / `platform-admin` / Agent defaults)
-- `catalog:review-high-risk` (independent high-risk Candidate approval by a different real principal; not granted on default role matrices)
+- `catalog:author` (create Catalog drafts / ChangeSets / Candidate preview; granted on Org Admin `admin`, not on `platform-admin` / Agent defaults)
+- `catalog:publish` (approve within policy or request execution of an authorized Candidate; granted on Org Admin `admin`; not on `platform-admin` / Agent defaults)
+- `catalog:review-high-risk` (independent high-risk Candidate approval; granted on Org Admin `admin`. Non-admin authors still cannot satisfy this with a second synthetic identity)
 
 `platform-admin` is the first cross-organization role. It keeps a home organization on `AuthContext` and does **not** widen access to other tenants' parameters, logs, users, or projects. It unlocks platform-scoped rows (`organization_id IS NULL`) and one bounded aggregate read (promotion candidates). Only a caller who already holds `platform-admin` may grant or revoke that role. Platform-scoped audit events may use a null `organization_id` and fan out one organization-scoped event per affected tenant; ordinary list endpoints still filter by the caller's organization.
 

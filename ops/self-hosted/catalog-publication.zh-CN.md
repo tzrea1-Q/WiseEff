@@ -64,7 +64,11 @@ WISEEFF_PUBLICATION_MANAGER_DATABASE_URL='...' \
 
 不要使用 `WISEEFF_CATALOG_TEST_CAPABILITIES`（`AUTH_MODE=production` 或 `NODE_ENV=production` 时为空）。
 
+grant/revoke 写 `public.roles` / `user_role_bindings`，用 `WISEEFF_CATALOG_BOOTSTRAP_DATABASE_URL`（bootstrap 超管），不要用 NOINHERIT 的 manager LOGIN。
+
 ```bash
+npx tsx scripts/catalog-publication-ops.ts capabilities grant \
+  --user-id <user-id> --organization-id <org-id> --capability catalog:author
 npx tsx scripts/catalog-publication-ops.ts capabilities grant \
   --user-id <user-id> --organization-id <org-id> --capability catalog:publish
 ```
@@ -143,7 +147,7 @@ overlay **只覆盖网络/端口/拓扑**（loopback 端口、`host.docker.inter
 | --- | --- | --- | --- | --- |
 | 1. 升级后状态读取 | `./scripts/collect-catalog-publication-status.sh`（或 `compose ps`、镜像内 `curl` manager `/health/live`、`policy status`、`freeze status`） | 否 | 运行镜像/标签、角色、current Release、策略版本、freeze；JSON `pinsForPolicyCheck` | 已经跑过 `publication-manager` 的栈缺少专用 LOGIN |
 | 2. 源包与接管检查 | 只读 `inspect`；`adopt --check` | 否 | JSON 身份与源包一致 | 漂移、缺历史或缺 Artifact |
-| 3. 接管 + ACL + 能力 | `adopt --execute`；`capabilities grant` | 是 | Receipt `adopted-preexisting`；capability status true | 不要把能力写进默认 `admin`；不用测试 capability |
+| 3. 接管 + ACL + 能力 | `adopt --execute`；组织 Admin 默认已有 `catalog:author` / `catalog:publish` / `catalog:review-high-risk`。只给非 admin 发布人 grant | 是 | Receipt `adopted-preexisting`；组织 Admin 重新登录后可编写并自批 | 不用测试 capability；不要授给 platform-admin |
 | 4. 策略检查 / 启用 / 停用 | 用**最新** status 引脚 `policy check enable` 再 `policy enable`；可选 `--low-risk-single-actor` | 是 | `publication_enabled=true`；freeze 不变 | 陈旧引脚、未接管、在正式库名上使用 ephemeral 确认 |
 | 5. 页面业务闭环 | `/parameter-admin/specs` 编写/预览/发布；工作台 `提交所选` | 是 | Receipt `effective`；正式值内容；重启后历史仍在 | 排队/执行中超时即失败；禁止手工 POST 保存 API |
 | 6. 异常停用 | `policy disable`；维护时 `freeze set`；恢复走升级 recovery | 是 | 发布关闭；Catalog 与项目值保留 | 不要删历史或再次 bootstrap |

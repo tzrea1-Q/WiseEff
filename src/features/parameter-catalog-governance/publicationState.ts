@@ -11,11 +11,22 @@ import type {
 import { WiseEffApiError } from "@/infrastructure/http/apiClient";
 import { catalogFailureReason } from "@/infrastructure/http/parameterCatalogClient";
 
-export const publicationSupportedValueTypes = ["integer", "number", "string"] as const;
+export const publicationSupportedValueTypes = [
+  "integer",
+  "number",
+  "string",
+  "boolean",
+  "empty",
+  "u32-array",
+  "string-list",
+  "bytes",
+  "phandle-list",
+  "mixed"
+] as const;
 export type PublicationValueType = (typeof publicationSupportedValueTypes)[number];
 
-export const publicationSupportedUnits = ["mA", "mV", "ms", "uOhm"] as const;
-export type PublicationUnit = (typeof publicationSupportedUnits)[number];
+export const publicationSupportedUnits = ["mA", "mV", "ms", "uOhm", "µA"] as const;
+export type PublicationUnit = string;
 
 export const publicationModes = ["create-definition", "create-subject", "revise-definition"] as const;
 export type PublicationMode = (typeof publicationModes)[number];
@@ -48,7 +59,7 @@ export type PublicationDraft = {
   valueType: PublicationValueType;
   minimum: string;
   maximum: string;
-  unit: "" | PublicationUnit;
+  unit: string;
   examples: string;
   reason: string;
 };
@@ -69,7 +80,7 @@ export const emptyPublicationDraft = (): PublicationDraft => ({
   valueType: "integer",
   minimum: "",
   maximum: "",
-  unit: "mA",
+  unit: "",
   examples: "",
   reason: ""
 });
@@ -113,6 +124,16 @@ export const publicationCopy = {
   displayName: "显示名称",
   documentation: "说明",
   valueType: "取值类型",
+  valueTypeInteger: "整数",
+  valueTypeNumber: "数值",
+  valueTypeString: "字符串",
+  valueTypeBoolean: "布尔值",
+  valueTypeEmpty: "空属性",
+  valueTypeU32Array: "整数数组",
+  valueTypeStringList: "字符串列表",
+  valueTypeBytes: "字节数组",
+  valueTypePhandleList: "句柄引用",
+  valueTypeMixed: "混合类型",
   minimum: "最小值",
   maximum: "最大值",
   unit: "单位",
@@ -155,9 +176,6 @@ export const publicationCopy = {
   confirmPublish: "确认发布",
   previewAck: "我已确认按当前正文冻结预览，不会手填摘要或仓库地址",
   publishAck: "我已确认按当前预览发布，重复点击不会代替后端幂等",
-  valueTypeInteger: "整数",
-  valueTypeNumber: "数值",
-  valueTypeString: "字符串",
   driver: "驱动",
   nodeType: "节点类型"
 } as const;
@@ -242,25 +260,95 @@ function parseExamples(value: string, valueType: PublicationValueType): Array<nu
   });
 }
 
+export function publicationValueTypeLabel(type: PublicationValueType): string {
+  switch (type) {
+    case "integer":
+      return publicationCopy.valueTypeInteger;
+    case "number":
+      return publicationCopy.valueTypeNumber;
+    case "string":
+      return publicationCopy.valueTypeString;
+    case "boolean":
+      return publicationCopy.valueTypeBoolean;
+    case "empty":
+      return publicationCopy.valueTypeEmpty;
+    case "u32-array":
+      return publicationCopy.valueTypeU32Array;
+    case "string-list":
+      return publicationCopy.valueTypeStringList;
+    case "bytes":
+      return publicationCopy.valueTypeBytes;
+    case "phandle-list":
+      return publicationCopy.valueTypePhandleList;
+    case "mixed":
+      return publicationCopy.valueTypeMixed;
+  }
+}
+
+function valueSchemaOf(draft: PublicationDraft) {
+  if (draft.valueType === "boolean") {
+    return { type: "boolean" as const };
+  }
+  if (draft.valueType === "empty") {
+    return { type: "null" as const };
+  }
+  if (draft.valueType === "string" || draft.valueType === "bytes") {
+    return { type: "string" as const };
+  }
+  if (draft.valueType === "string-list") {
+    return { type: "array" as const, items: { type: "string" as const } };
+  }
+  if (draft.valueType === "u32-array") {
+    return { type: "array" as const, items: { type: "integer" as const, minimum: 0 } };
+  }
+  if (draft.valueType === "phandle-list") {
+    return { type: "array" as const };
+  }
+  if (draft.valueType === "mixed") {
+    return { description: "mixed" };
+  }
+  return {
+    type: draft.valueType,
+    ...(parseOptionalNumber(draft.minimum) !== undefined ? { minimum: parseOptionalNumber(draft.minimum) } : {}),
+    ...(parseOptionalNumber(draft.maximum) !== undefined ? { maximum: parseOptionalNumber(draft.maximum) } : {})
+  };
+}
+
+function examplesOf(draft: PublicationDraft) {
+  if (draft.valueType === "boolean") {
+    const tokens = draft.examples
+      .split(/[,\n]/u)
+      .map((part) => part.trim().toLowerCase())
+      .filter(Boolean);
+    const values = tokens
+      .map((token) => (token === "true" || token === "1" ? true : token === "false" || token === "0" ? false : null))
+      .filter((value): value is boolean => value !== null);
+    return values.length > 0 ? values : undefined;
+  }
+  const scalarType: PublicationValueType =
+    draft.valueType === "number"
+      ? "number"
+      : draft.valueType === "integer" || draft.valueType === "u32-array"
+        ? "integer"
+        : "string";
+  const parsed = parseExamples(draft.examples, scalarType);
+  if (!parsed) {
+    return undefined;
+  }
+  if (draft.valueType === "u32-array" || draft.valueType === "string-list" || draft.valueType === "phandle-list") {
+    return [parsed];
+  }
+  return parsed;
+}
+
 export function definitionContentOf(draft: PublicationDraft) {
-  const valueSchema =
-    draft.valueType === "string"
-      ? { type: "string" as const }
-      : {
-          type: draft.valueType,
-          ...(parseOptionalNumber(draft.minimum) !== undefined
-            ? { minimum: parseOptionalNumber(draft.minimum) }
-            : {}),
-          ...(parseOptionalNumber(draft.maximum) !== undefined
-            ? { maximum: parseOptionalNumber(draft.maximum) }
-            : {})
-        };
-  const examples = parseExamples(draft.examples, draft.valueType);
+  const examples = examplesOf(draft);
+  const unit = draft.unit.trim();
   return {
     displayName: draft.displayName.trim(),
-    documentation: draft.documentation.trim(),
-    ...(draft.unit ? { unit: draft.unit } : {}),
-    valueSchema,
+    documentation: draft.documentation,
+    ...(unit ? { unit } : {}),
+    valueSchema: valueSchemaOf(draft),
     ...(examples ? { examples } : {})
   };
 }

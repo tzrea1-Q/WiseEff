@@ -44,9 +44,9 @@ OIDC token 必须包含身份和组织声明。只有当 token 包含 `email_ver
 - `users:manage`
 - `platform:access`（平台控制台；仅 `platform-admin`）
 - `platform:schema-promote`（跨组织覆盖晋升；仅 `platform-admin`）
-- `catalog:author`（创建 Catalog 草稿 / ChangeSet / Candidate 预览；不授予默认角色矩阵）
-- `catalog:publish`（在策略允许时批准，或请求执行已授权 Candidate；不授予 `admin` / `platform-admin` / Agent 默认矩阵）
-- `catalog:review-high-risk`（由另一真实 principal 独立批准高风险 Candidate；不授予默认角色矩阵）
+- `catalog:author`（创建 Catalog 草稿 / ChangeSet / Candidate 预览；授予组织 Admin `admin`，不授予 `platform-admin` / Agent 默认矩阵）
+- `catalog:publish`（在策略允许时批准，或请求执行已授权 Candidate；授予组织 Admin `admin`，不授予 `platform-admin` / Agent 默认矩阵）
+- `catalog:review-high-risk`（独立批准高风险 Candidate；授予组织 Admin `admin`。非 admin 编写者仍不能用第二个合成身份满足此项）
 
 `platform-admin` 是第一个跨组织角色。`AuthContext` 仍绑定主组织，**不会**扩大对其他租户参数、日志、用户或项目的访问。它解锁平台作用域行（`organization_id IS NULL`）以及一个有界聚合读（晋升候选）。只有已持有 `platform-admin` 的调用方才能授予或撤销该角色。平台级审计事件可将 `organization_id` 置空，并向每个受影响租户扇出一条组织作用域事件；普通列表接口仍按调用方组织过滤。
 

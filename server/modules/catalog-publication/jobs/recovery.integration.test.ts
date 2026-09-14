@@ -559,7 +559,7 @@ describe("CP-07 publication job recovery", () => {
       db,
       candidateId: high.id,
       idempotencyKey: "key-p0-high-self",
-      trustedActor: userActor(AUTHOR, publisherPermissions),
+      trustedActor: userActor(AUTHOR, publisherPermissions, { roleId: "hardware-user" }),
     });
     expect(selfHigh.ok).toBe(false);
     if (!selfHigh.ok) {

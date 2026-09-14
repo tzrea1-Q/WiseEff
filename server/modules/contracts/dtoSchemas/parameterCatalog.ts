@@ -576,15 +576,47 @@ export const catalogSupportedValueSchemaSchema = z.union([
   }),
   catalogObject({
     type: z.literal("string")
+  }),
+  catalogObject({
+    type: z.literal("boolean")
+  }),
+  catalogObject({
+    type: z.literal("null")
+  }),
+  catalogObject({
+    type: z.literal("array"),
+    items: z
+      .union([
+        catalogObject({ type: z.literal("string") }),
+        catalogObject({
+          type: z.literal("integer"),
+          minimum: z.number().optional(),
+          maximum: z.number().optional()
+        })
+      ])
+      .optional()
+  }),
+  catalogObject({
+    description: z.string().min(1)
   })
 ]);
 
 export const catalogSupportedDefinitionContentSchema = catalogObject({
   displayName: z.string(),
   documentation: z.string(),
-  unit: z.enum(["mA", "mV", "ms", "uOhm"]).optional(),
+  unit: z.string().min(1).max(32).optional(),
   valueSchema: catalogSupportedValueSchemaSchema,
-  examples: z.array(z.union([z.number(), z.string()])).optional()
+  examples: z
+    .array(
+      z.union([
+        z.number(),
+        z.string(),
+        z.boolean(),
+        z.null(),
+        z.array(z.union([z.number(), z.string(), z.boolean()]))
+      ])
+    )
+    .optional()
 });
 
 export const catalogCreateDefinitionChangeSchema = catalogObject({

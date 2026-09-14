@@ -74,6 +74,27 @@ describe("publication operator state", () => {
     expect(JSON.stringify(buildCreateDefinitionChangeSet(draft))).not.toMatch(/git|digest|releaseVersion/i);
   });
 
+  it("maps historical DTS shapes and keeps multiline documentation", () => {
+    const draft = {
+      ...emptyPublicationDraft(),
+      subjectId: "csub_acme_power",
+      propertyKey: "enable",
+      displayName: "Enable",
+      documentation: "Line one.\nLine two.",
+      valueType: "boolean" as const,
+      unit: "µA",
+      examples: "true"
+    };
+    expect(buildCreateDefinitionChangeSet(draft)[0]).toMatchObject({
+      content: {
+        documentation: "Line one.\nLine two.",
+        unit: "µA",
+        valueSchema: { type: "boolean" },
+        examples: [true]
+      }
+    });
+  });
+
   it("builds nested create-subject definitions without a published subjectId", () => {
     const draft = {
       ...emptyPublicationDraft(),

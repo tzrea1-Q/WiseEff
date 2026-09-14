@@ -76,6 +76,8 @@ WISEEFF_PUBLICATION_MANAGER_DATABASE_URL='...' \
 
 Do not use `WISEEFF_CATALOG_TEST_CAPABILITIES` (empty when `AUTH_MODE=production` or `NODE_ENV=production`).
 
+Grant/revoke write `public.roles` / `user_role_bindings`. Use `WISEEFF_CATALOG_BOOTSTRAP_DATABASE_URL` (bootstrap superuser), not the NOINHERIT manager LOGIN.
+
 ```bash
 npx tsx scripts/catalog-publication-ops.ts capabilities grant \
   --user-id <user-id> --organization-id <org-id> --capability catalog:author
@@ -171,7 +173,7 @@ Work directory unless noted: `/srv/wiseeff/ops/self-hosted`. CLI runs inside the
 | --- | --- | --- | --- | --- |
 | 1. Read post-upgrade state | `./scripts/collect-catalog-publication-status.sh` (or `compose ps`, image `curl` manager `/health/live`, `policy status`, `freeze status`) | No | Running image/tag, roles, current Release, policy revision, freeze; JSON `pinsForPolicyCheck` | Missing manager LOGIN on a stack that already had `publication-manager` |
 | 2. Inspect source bundle / adopt check | `inspect` with `CATALOG_BASELINE_READONLY_DATABASE_URL`; `adopt --check` with expected id/digest/bundle | No | JSON identity matches the collected bundle | Drift, missing history, or missing Artifact bytes |
-| 3. Adopt + ACL + capabilities | `adopt --execute`; `capabilities grant` for `catalog:author` / `catalog:publish` (and `catalog:review-high-risk` if needed) | Yes | Receipt kind `adopted-preexisting`; capability status true | Do not GRANT to default `admin`; do not use test capabilities |
+| 3. Adopt + ACL + capabilities | `adopt --execute`; Org Admin already has `catalog:author` / `catalog:publish` / `catalog:review-high-risk`. Grant those only for non-admin publishers | Yes | Receipt kind `adopted-preexisting`; Org Admin can author and self-approve after re-login | Do not use test capabilities; do not grant platform-admin |
 | 4. Policy check / enable / disable | `policy check enable` then `policy enable` with the **fresh** status pins; optional `--low-risk-single-actor` | Yes | `publication_enabled=true`; freeze unchanged | Stale pins, not adopted, ephemeral confirmation on a durable name |
 | 5. Page business loop | `/parameter-admin/specs` create/revise/preview/publish; workbench "Submit selected" control | Yes | Receipt `effective`; official value content; history after restart | Queued/running after timeout is failure; do not POST save APIs by hand |
 | 6. Abnormal stop | `policy disable`; `freeze set` if maintenance; upgrade recovery for restore | Yes | Publication closed; Catalog/values retained | Do not DROP history or re-bootstrap |
