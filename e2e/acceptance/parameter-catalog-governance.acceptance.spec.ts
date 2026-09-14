@@ -171,11 +171,31 @@ test.describe("canonical parameter catalog governance interactions", () => {
     // visible and satisfy a text-only wait. Poll the persisted count so this
     // run's create is committed before it is read back.
     await expect.poll(() => countProposals(fixture.pool)).toBe(beforeProposals + 1);
-    await expect(proposal.getByText("草稿").first()).toBeVisible();
     const created = await latestOrganizationProposal(fixture.pool, fixture.organizationId);
     expect(created).not.toBeNull();
     expect(created?.status).toBe("draft");
-    await proposal.getByRole("button", { name: "提交修订" }).first().click();
+    // The panel list is release/page scoped and can be mid-refresh here; the
+    // persisted status is the authoritative observation for this operation.
+    await expect
+      .poll(async () => {
+        const latest = await latestOrganizationProposal(fixture.pool, fixture.organizationId);
+        return latest?.id === created?.id ? latest.status : "";
+      })
+      .toBe("draft");
+    // The panel loads once per mount and reloads after its own writes, so a
+    // reused lane can need one explicit revisit before this run's draft is in
+    // the list. Reload once rather than waiting on a stale list.
+    const submitButton = proposal.getByRole("button", { name: "提交修订" }).first();
+    if (!(await submitButton.isVisible().catch(() => false))) {
+      await page.reload();
+      await expect(catalogPage(page)).toBeVisible();
+      await expect(page.getByRole("region", { name: "定义修订" })).toBeVisible();
+    }
+    await page
+      .getByRole("region", { name: "定义修订" })
+      .getByRole("button", { name: "提交修订" })
+      .first()
+      .click();
     await confirmGovernanceDialog(page, "确认提交");
     await expect(proposal.getByText("已提交").first()).toBeVisible();
     await expect
@@ -204,7 +224,10 @@ test.describe("canonical parameter catalog governance interactions", () => {
     await confirmGovernanceDialog(page, "确认接受");
     await expect(platformProposal.getByText(/发布意图已记录|已接受/).first()).toBeVisible();
     await expect
-      .poll(async () => (await latestOrganizationProposal(fixture.pool, fixture.organizationId))?.status)
+      .poll(async () => {
+        const latest = await latestOrganizationProposal(fixture.pool, fixture.organizationId);
+        return latest?.id === created?.id ? latest.status : "";
+      })
       .toBe("accepted");
     const accepted = await latestOrganizationProposal(fixture.pool, fixture.organizationId);
     expect(accepted?.id).toBe(created?.id);

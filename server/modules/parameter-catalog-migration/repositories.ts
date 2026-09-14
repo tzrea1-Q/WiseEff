@@ -67,7 +67,7 @@ export const loadDefinitionInRelease = async (
             definition.property_key,
             head.revision_id,
             revision.content as revision_content,
-            subject.status as subject_status,
+            membership.lifecycle as subject_status,
             subject.canonical_key as subject_name
        from parameter_catalog.parameter_definitions definition
        join parameter_catalog.catalog_release_definition_heads head
@@ -76,6 +76,9 @@ export const loadDefinitionInRelease = async (
        join parameter_catalog.definition_revisions revision
          on revision.id = head.revision_id
         and revision.definition_id = definition.id
+       left join parameter_catalog.catalog_release_subjects membership
+         on membership.subject_id = definition.subject_id
+        and membership.release_id = head.release_id
        left join parameter_catalog.catalog_subjects subject
          on subject.id = definition.subject_id
       where definition.id = $2`,
@@ -85,13 +88,14 @@ export const loadDefinitionInRelease = async (
 };
 
 export type SubjectRow = { id: string; kind: string; status: string; canonical_key: string };
+export type SubjectIdentityRow = { id: string; kind: string; canonical_key: string };
 
 export const loadSubjectById = async (
   client: MigrationClient,
   subjectId: string,
-): Promise<SubjectRow | null> => {
-  const result = await client.query<SubjectRow>(
-    `select id, kind, status, canonical_key
+): Promise<SubjectIdentityRow | null> => {
+  const result = await client.query<SubjectIdentityRow>(
+    `select id, kind, canonical_key
        from parameter_catalog.catalog_subjects
       where id = $1`,
     [subjectId],
@@ -105,7 +109,7 @@ export const loadSubjectInRelease = async (
   subjectId: string,
 ): Promise<SubjectRow | null> => {
   const result = await client.query<SubjectRow>(
-    `select subject.id, subject.kind, subject.status, subject.canonical_key
+    `select subject.id, subject.kind, membership.lifecycle as status, subject.canonical_key
        from parameter_catalog.catalog_subjects subject
        join parameter_catalog.catalog_release_subjects membership
          on membership.subject_id = subject.id
@@ -514,6 +518,11 @@ export const insertReplacement = async (
     readonly manifest: readonly FrozenProjectTip[];
     readonly approvalPrincipalId: string;
     readonly reason: string;
+    readonly candidateId: string;
+    readonly publicationJobId: string;
+    readonly authorizationId: string;
+    readonly successorReleaseId: string;
+    readonly successorReleaseDigest: string;
   },
 ): Promise<void> => {
   await client.query(
@@ -522,8 +531,10 @@ export const insertReplacement = async (
        old_definition_id, old_subject_id, old_property_key, old_revision_id,
        new_definition_id, new_subject_id, new_property_key, new_revision_id,
        preview_fingerprint, preview_catalog_release_id, preview_catalog_release_digest,
-       source_preview_id, frozen_manifest, approval_principal_id, reason
-     ) values ($1,$2,$3,1,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16::jsonb,$17,$18)`,
+       source_preview_id, frozen_manifest, candidate_id, publication_job_id,
+       authorization_id, successor_release_id, successor_release_digest,
+       approval_principal_id, reason
+     ) values ($1,$2,$3,1,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16::jsonb,$17,$18,$19,$20,$21,$22,$23)`,
     [
       input.id,
       input.organizationId,
@@ -541,6 +552,11 @@ export const insertReplacement = async (
       input.previewReleaseDigest,
       input.sourcePreviewId,
       JSON.stringify(input.manifest),
+      input.candidateId,
+      input.publicationJobId,
+      input.authorizationId,
+      input.successorReleaseId,
+      input.successorReleaseDigest,
       input.approvalPrincipalId,
       input.reason,
     ],
@@ -818,13 +834,15 @@ export const insertReplacementValue = async (
     readonly valueKind: string;
     readonly value: unknown;
     readonly replacedFromValueId: string;
+    readonly replacedFromDefinitionId: string;
   },
 ): Promise<void> => {
   await client.query(
     `insert into parameter_catalog.project_parameter_values (
        id, binding_id, definition_id, definition_revision_id, source_ref,
-       config_revision_id, value_digest, value_kind, value, replaced_from_value_id
-     ) values ($1,$2,$3,$4,$5,$6,$7,$8,$9::jsonb,$10)`,
+       config_revision_id, value_digest, value_kind, value, replaced_from_value_id,
+       replaced_from_definition_id
+     ) values ($1,$2,$3,$4,$5,$6,$7,$8,$9::jsonb,$10,$11)`,
     [
       input.id,
       input.bindingId,
@@ -836,6 +854,7 @@ export const insertReplacementValue = async (
       input.valueKind,
       JSON.stringify(input.value),
       input.replacedFromValueId,
+      input.replacedFromDefinitionId,
     ],
   );
 };

@@ -14,6 +14,7 @@ import { createParameterCatalogClient } from "@/infrastructure/http/parameterCat
 import { createApiCatalogPorts } from "./apiAdapter";
 import {
   CATALOG_AUTHOR_PERSON_ID,
+  CATALOG_MODULE_ID,
   CATALOG_ORGANIZATION_ID,
   CATALOG_PLACEMENT_ID,
   CATALOG_REGISTRATION_ID,
@@ -571,7 +572,9 @@ describe("catalog API and mock adapter parity", () => {
       placement: {
         id: CATALOG_PLACEMENT_ID,
         displayName: "Charging ICs",
-        parentPlacementId: CATALOG_PLACEMENT_ID
+        parentPlacementId: CATALOG_PLACEMENT_ID,
+        // The placement names the organization module a module-subtree filter selects.
+        moduleId: CATALOG_MODULE_ID
       }
     });
     expect(registered.item.registration?.placement).not.toEqual(catalogPlacement);

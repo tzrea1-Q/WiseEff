@@ -11,7 +11,10 @@ export type CatalogNavigatorNode = {
 };
 
 type PlacementLink = {
+  /** Placement id, used to reconstruct the placement forest. */
   placementId: string;
+  /** Organization module the placement points at; this is what the server filters on. */
+  moduleId: string;
   displayName: string;
   parentPlacementId: string | null;
   subjectId: string;
@@ -25,6 +28,7 @@ function placementLinks(subjects: readonly SubjectItem[]): PlacementLink[] {
     if (!placement?.id) continue;
     links.push({
       placementId: placement.id,
+      moduleId: placement.moduleId || placement.id,
       displayName: placement.displayName || placement.id,
       parentPlacementId: placement.parentPlacementId ?? null,
       subjectId: subject.id
@@ -65,7 +69,12 @@ export function buildCatalogModuleTree(subjects: readonly SubjectItem[]): Catalo
       .map((link) => {
         const children = build(link.placementId, depth + 1);
         return {
-          id: link.placementId,
+          /**
+           * The navigator value is the organization module id, because the
+           * server resolves a module subtree to its placed subjects before
+           * pagination. The placement id only reconstructs the forest.
+           */
+          id: link.moduleId,
           displayName: link.displayName,
           subjectCount:
             children.reduce((total, child) => total + child.subjectCount, 0) + 1,
@@ -89,11 +98,12 @@ export function subjectIdsForModule(
     let current: string | null = link.placementId;
     let depth = 0;
     while (current && depth <= 64) {
-      if (current === moduleNodeId) {
+      const node = byId.get(current);
+      if (node?.moduleId === moduleNodeId) {
         result.add(link.subjectId);
         break;
       }
-      current = byId.get(current)?.parentPlacementId ?? null;
+      current = node?.parentPlacementId ?? null;
       depth += 1;
     }
   }

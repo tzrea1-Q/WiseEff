@@ -286,10 +286,17 @@ describe("S6-WFA production Catalog isolation", () => {
       if (file === "projectReadAdapter.ts") {
         const rowImport = 'import type { BindingRow } from "../binding/repositories";';
         expect(source.split(rowImport), file).toHaveLength(2);
-        expect(source.match(/parameter_catalog\.project_parameter_bindings/g), file).toHaveLength(1);
-        expect(source, file).toMatch(/from parameter_catalog\.project_parameter_bindings\s+where organization_id = \$1 and project_id = \$2/);
+        expect(
+          source.match(/parameter_catalog\.current_project_parameter_bindings/g),
+          file,
+        ).toHaveLength(1);
+        expect(source, file).toMatch(
+          /from parameter_catalog\.current_project_parameter_bindings\s+where organization_id = \$1 and project_id = \$2/,
+        );
         expect(source, file).not.toMatch(/\b(insert\s+into|update|delete\s+from)\b/i);
-        isolatedSource = source.replace(rowImport, "").replace("parameter_catalog.project_parameter_bindings", "binding_owned_read");
+        isolatedSource = source
+          .replace(rowImport, "")
+          .replace("parameter_catalog.current_project_parameter_bindings", "binding_owned_read");
       }
       expect(isolatedSource, file).not.toContain("from \"../binding/repositories\"");
       expect(source, file).not.toContain("from \"../values/repositories\"");

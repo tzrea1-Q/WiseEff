@@ -56,9 +56,9 @@ describe("R2-SCOPE actual role bindings → root HTTP → PostgreSQL usage", () 
       client.query = function (...args: Parameters<typeof query>) {
         const input = args[0];
         const sql = typeof input === "string" ? input : input && "text" in input ? String(input.text) : "";
-        if (measuring && /parameter_catalog\.(organization_subject_registrations|subject_placements|parameter_review_evidence|parameter_review_items|project_parameter_bindings|project_parameter_values)\b/.test(sql)) {
+        if (measuring && /parameter_catalog\.(organization_subject_registrations|subject_placements|parameter_review_evidence|parameter_review_items|current_project_parameter_bindings|project_parameter_bindings|project_parameter_values)\b/.test(sql)) {
           businessSql.push(sql);
-          if (/from parameter_catalog\.project_parameter_bindings binding/.test(sql)) {
+          if (/from parameter_catalog\.current_project_parameter_bindings binding/.test(sql)) {
             const values = args[1] as unknown;
             usageParameters.push({ definitions: Array.isArray(values) ? values[1] : undefined, projects: Array.isArray(values) ? values[3] : undefined });
           }

@@ -43,6 +43,8 @@ const allowedCatalogIdentifiers = new Set([
   "project_parameter_bindings",
   "project_parameter_values",
   "organization_subject_registrations",
+  // #847 definition-replacement projection: current-only resolution seam.
+  "resolve_current_binding",
 ]);
 
 const snapshotRelease = {

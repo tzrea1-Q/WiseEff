@@ -284,7 +284,14 @@ export const catalogDocumentDtoSchema = catalogObject({
 export const catalogPlacementDtoSchema = catalogObject({
   id: z.string(),
   displayName: z.string(),
-  parentPlacementId: z.string().nullable()
+  parentPlacementId: z.string().nullable(),
+  /**
+   * Organization module the placement points at, so a module-subtree collection
+   * filter can name the module rather than the retained placement. Optional so
+   * a projection that cannot name the module stays valid; the read surface then
+   * falls back to the placement identity rather than inventing a module.
+   */
+  moduleId: z.string().optional()
 });
 
 export const catalogRegistrationProjectionSchema = z.union([

@@ -55,6 +55,12 @@ export type GovernancePlacementRecord = {
   readonly id: string;
   readonly displayName: string;
   readonly parentPlacementId: string | null;
+  /**
+   * The organization module a retained placement points at. The module tree is
+   * the unit a module-subtree collection filter selects, so the read surface
+   * names it whenever the projection can.
+   */
+  readonly moduleId?: string;
 };
 
 export type GovernanceRegistrationRecord = {

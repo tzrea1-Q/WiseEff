@@ -58,7 +58,6 @@ import {
   loadSubjectInRelease,
   markReplacementProjectBlocked,
   markReplacementProjectCompleted,
-  recordReplacementPublication,
   reserveGovernanceIdempotency,
   updateReplacementStatus,
   consumeReplacementPreview,
@@ -787,6 +786,14 @@ export function createParameterCatalogMigrationService(
           await block("pending-work-conflict", { reason: "review" });
           continue;
         }
+        if (
+          frozen.sourceRef.length === 0 ||
+          frozen.configRevisionId.length === 0 ||
+          isPlaceholderSource(frozen.sourceRef)
+        ) {
+          await block("missing-source-provenance", { sourceRef: frozen.sourceRef });
+          continue;
+        }
         if (frozen.coupledBindingIds.length > 0) {
           await block("coupled-source-impact", { bindingIds: frozen.coupledBindingIds });
           continue;
@@ -844,6 +851,7 @@ export function createParameterCatalogMigrationService(
           valueKind: frozen.valueKind,
           value: liveTip.value,
           replacedFromValueId: row.old_value_id,
+          replacedFromDefinitionId: replacement.old_definition_id,
         });
         await insertReplacementHistoryEvent(tx, {
           id: `bhist_${newValueId.slice("pval_".length)}`,
@@ -902,7 +910,10 @@ export function createParameterCatalogMigrationService(
       }
       const fingerprint = createCommandFingerprint(command);
 
-      const phaseA = await db.transaction(async (tx) => {
+      // Phase A: reserve the organization-scoped idempotency identity and
+      // validate the frozen preview.  Nothing is consumed yet, so a retry with
+      // the same key after a transient publication failure is safe.
+      const preflight = await db.transaction(async (tx) => {
         const reserved = await reserveGovernanceIdempotency(tx, {
           organizationId: command.organizationId,
           family: DEFINITION_REPLACEMENT_EXECUTE_FAMILY,
@@ -919,12 +930,17 @@ export function createParameterCatalogMigrationService(
         if (reserved.state === "committed" && reserved.result_ref) {
           return { kind: "replay" as const, replacementId: reserved.result_ref };
         }
-
         const preview = await loadReplacementPreview(tx, command.organizationId, command.previewId);
         if (!preview) return { kind: "missing-preview" as const };
-        if (preview.consumed_by_replacement_id) return { kind: "consumed" as const };
+        if (preview.consumed_by_replacement_id) {
+          return { kind: "replay" as const, replacementId: preview.consumed_by_replacement_id };
+        }
         if (preview.preview_fingerprint !== command.previewFingerprint) {
-          return { kind: "stale" as const };
+          return {
+            kind: "stale" as const,
+            expectedFingerprint: preview.preview_fingerprint,
+            attemptedFingerprint: command.previewFingerprint,
+          };
         }
         if (new Date(preview.expires_at).getTime() <= now().getTime()) {
           return { kind: "expired" as const };
@@ -933,11 +949,83 @@ export function createParameterCatalogMigrationService(
         if (!current || current.id !== preview.preview_catalog_release_id) {
           return { kind: "drift" as const, actualId: current?.id ?? null };
         }
+        return { kind: "ready" as const, preview };
+      });
 
+      if (preflight.kind === "conflict") {
+        return fail({
+          kind: "revision-conflict",
+          idempotencyKey: command.idempotencyKey,
+          storedFingerprint: preflight.storedFingerprint,
+          attemptedFingerprint: preflight.attemptedFingerprint,
+        });
+      }
+      if (preflight.kind === "missing-preview") return fail({ kind: "not-found" });
+      if (preflight.kind === "stale") {
+        return fail({
+          kind: "stale-preview",
+          expectedFingerprint: preflight.expectedFingerprint,
+          actualFingerprint: preflight.attemptedFingerprint,
+        });
+      }
+      if (preflight.kind === "expired") {
+        return fail({ kind: "preview-unavailable", reason: "preview-expired" });
+      }
+      if (preflight.kind === "drift") {
+        return fail({
+          kind: "release-drift",
+          expected: command.expectedRelease,
+          actual: {
+            ...command.expectedRelease,
+            id: CatalogReleaseId(preflight.actualId ?? command.expectedRelease.id),
+          },
+        });
+      }
+      if (preflight.kind === "replay") {
+        const stored = await loadReplacement(db, command.organizationId, preflight.replacementId);
+        if (!stored) return fail({ kind: "not-found" });
+        return ok(await replacementView(db, stored));
+      }
+
+      const preview = preflight.preview;
+      if (!input.publication || !command.trustedActor) {
+        return fail({ kind: "publication-unavailable", jobId: null });
+      }
+
+      // Phase B: mint the publication job through the existing
+      // Candidate/Authorization enqueue path and let the publication manager
+      // (or the injected test driver) activate it.
+      const enqueued = await input.publication.enqueueReplacementPublication({
+        organizationId: command.organizationId,
+        candidateId: preview.candidate_id,
+        idempotencyKey: command.idempotencyKey,
+        trustedActor: command.trustedActor,
+      });
+      if (!enqueued.ok) return fail(enqueued.error);
+      const activation = input.publication.activateReplacementPublication
+        ? await input.publication.activateReplacementPublication({
+            jobId: enqueued.value.publicationJobId,
+          })
+        : { kind: "pending" as const, jobId: enqueued.value.publicationJobId };
+      if (activation.kind === "blocked") {
+        return fail({ kind: "preview-unavailable", reason: "needs-rebase" });
+      }
+      if (activation.kind !== "active") {
+        // The replacement row has hard, deferred FKs to the minted definition
+        // and revision, so it can only be written once the successor release is
+        // published and materialized.  The frozen preview (and therefore the
+        // operator's exact manifest) is retained for a same-key retry.
+        return fail({ kind: "publication-unavailable", jobId: enqueued.value.publicationJobId });
+      }
+
+      // Phase C: record the approved replacement and its per-project manifest.
+      const finalized = await db.transaction(async (tx) => {
+        const reloaded = await loadReplacementPreview(tx, command.organizationId, command.previewId);
+        if (!reloaded) return { kind: "missing-preview" as const };
         const registration = await loadRegistration(
           tx,
           command.organizationId,
-          preview.new_subject_id,
+          reloaded.new_subject_id,
         );
         const registrationRequired = registration === null || registration.status !== "active";
         const blockerByProject = new Map<
@@ -945,44 +1033,51 @@ export function createParameterCatalogMigrationService(
           { reason: string; evidence: Record<string, unknown> }
         >();
         if (registrationRequired) {
-          for (const tip of preview.manifest) {
+          for (const tip of reloaded.manifest) {
             blockerByProject.set(tip.projectId, {
               reason: "registration-required",
-              evidence: { organizationId: command.organizationId, subjectId: preview.new_subject_id },
+              evidence: {
+                organizationId: command.organizationId,
+                subjectId: reloaded.new_subject_id,
+              },
             });
           }
         }
-
         const replacementId = mintReplacementId();
         await insertReplacement(tx, {
           id: replacementId,
           organizationId: command.organizationId,
           status: registrationRequired ? "blocked" : "pending",
-          oldDefinitionId: preview.old_definition_id,
-          oldSubjectId: preview.old_subject_id,
-          oldPropertyKey: preview.old_property_key,
-          oldRevisionId: preview.old_revision_id,
-          newDefinitionId: preview.new_definition_id,
-          newSubjectId: preview.new_subject_id,
-          newPropertyKey: preview.new_property_key,
-          newRevisionId: preview.new_revision_id,
-          previewFingerprint: preview.preview_fingerprint,
-          previewReleaseId: preview.preview_catalog_release_id,
-          previewReleaseDigest: preview.preview_catalog_release_digest,
-          sourcePreviewId: preview.id,
-          manifest: preview.manifest,
+          oldDefinitionId: reloaded.old_definition_id,
+          oldSubjectId: reloaded.old_subject_id,
+          oldPropertyKey: reloaded.old_property_key,
+          oldRevisionId: reloaded.old_revision_id,
+          newDefinitionId: reloaded.new_definition_id,
+          newSubjectId: reloaded.new_subject_id,
+          newPropertyKey: reloaded.new_property_key,
+          newRevisionId: reloaded.new_revision_id,
+          previewFingerprint: reloaded.preview_fingerprint,
+          previewReleaseId: reloaded.preview_catalog_release_id,
+          previewReleaseDigest: reloaded.preview_catalog_release_digest,
+          sourcePreviewId: reloaded.id,
+          manifest: reloaded.manifest,
           approvalPrincipalId: command.context.principalId,
-          reason: preview.reason,
+          reason: reloaded.reason,
+          candidateId: enqueued.value.candidateId,
+          publicationJobId: enqueued.value.publicationJobId,
+          authorizationId: enqueued.value.authorizationId,
+          successorReleaseId: activation.releaseId,
+          successorReleaseDigest: activation.releaseDigest,
         });
         await insertReplacementProjects(tx, {
           replacementId,
           organizationId: command.organizationId,
-          oldDefinitionId: preview.old_definition_id,
-          newDefinitionId: preview.new_definition_id,
-          manifest: preview.manifest,
+          oldDefinitionId: reloaded.old_definition_id,
+          newDefinitionId: reloaded.new_definition_id,
+          manifest: reloaded.manifest,
           blockerByProject,
         });
-        await consumeReplacementPreview(tx, preview.id, replacementId);
+        await consumeReplacementPreview(tx, reloaded.id, replacementId);
         await commitGovernanceIdempotency(tx, {
           organizationId: command.organizationId,
           family: DEFINITION_REPLACEMENT_EXECUTE_FAMILY,
@@ -990,98 +1085,19 @@ export function createParameterCatalogMigrationService(
           resultKind: "definition-replacement",
           resultRef: replacementId,
         });
-        return { kind: "created" as const, replacementId, candidateId: preview.candidate_id };
+        return { kind: "created" as const, replacementId };
       });
+      if (finalized.kind === "missing-preview") return fail({ kind: "not-found" });
 
-      if (phaseA.kind === "conflict") {
-        return fail({
-          kind: "revision-conflict",
-          idempotencyKey: command.idempotencyKey,
-          storedFingerprint: phaseA.storedFingerprint,
-          attemptedFingerprint: phaseA.attemptedFingerprint,
-        });
-      }
-      if (phaseA.kind === "missing-preview") return fail({ kind: "not-found" });
-      if (phaseA.kind === "consumed") {
-        return fail({ kind: "preview-unavailable", reason: "preview-consumed" });
-      }
-      if (phaseA.kind === "stale") {
-        return fail({
-          kind: "stale-preview",
-          expectedFingerprint: command.previewFingerprint,
-          actualFingerprint: command.previewFingerprint,
-        });
-      }
-      if (phaseA.kind === "expired") {
-        return fail({ kind: "preview-unavailable", reason: "preview-expired" });
-      }
-      if (phaseA.kind === "drift") {
-        return fail({
-          kind: "release-drift",
-          expected: command.expectedRelease,
-          actual: {
-            ...command.expectedRelease,
-            id: CatalogReleaseId(phaseA.actualId ?? command.expectedRelease.id),
-          },
-        });
-      }
-
-      const replacementId = phaseA.replacementId;
-      if (phaseA.kind === "replay") {
-        const view = await replacementView(db, (await loadReplacement(db, command.organizationId, replacementId))!);
-        return ok(view);
-      }
-
-      // Publication: mint the job through the existing Candidate/Authorization
-      // enqueue path (its own coordinator transaction).
-      if (input.publication && phaseA.candidateId && command.trustedActor) {
-        const enqueued = await input.publication.enqueueReplacementPublication({
-          organizationId: command.organizationId,
-          candidateId: phaseA.candidateId,
-          idempotencyKey: command.idempotencyKey,
-          trustedActor: command.trustedActor,
-        });
-        if (!enqueued.ok) return fail(enqueued.error);
-        await db.transaction(async (tx) => {
-          await recordReplacementPublication(tx, replacementId, {
-            candidateId: enqueued.value.candidateId,
-            publicationJobId: enqueued.value.publicationJobId,
-            authorizationId: enqueued.value.authorizationId,
-          });
-        });
-        if (input.publication.activateReplacementPublication) {
-          const state = await input.publication.activateReplacementPublication({
-            jobId: enqueued.value.publicationJobId,
-          });
-          if (state.kind === "active") {
-            return advance(
-              command.organizationId,
-              command.context.principalId,
-              replacementId,
-              null,
-              `definition-replacement:${replacementId}`,
-            );
-          }
-          const reason = state.kind === "blocked" ? state.reason : "pending";
-          await db.transaction(async (tx) => {
-            await updateReplacementStatus(tx, replacementId, {
-              status: state.kind === "blocked" ? "blocked" : "pending",
-            });
-            if (state.kind === "blocked") {
-              const rows = await loadReplacementProjects(tx, replacementId);
-              for (const row of rows) {
-                if (row.status === "completed") continue;
-                await markReplacementProjectBlocked(tx, row.id, {
-                  reason,
-                  evidence: { jobId: enqueued.value.publicationJobId },
-                });
-              }
-            }
-          });
-        }
-      }
-
-      return ok(await replacementView(db, (await loadReplacement(db, command.organizationId, replacementId))!));
+      // Phase D: after an exact impact confirmation, eligible projects advance
+      // automatically; blocked projects are retained for continuation.
+      return advance(
+        command.organizationId,
+        command.context.principalId,
+        finalized.replacementId,
+        null,
+        `definition-replacement:${finalized.replacementId}`,
+      );
     };
 
   // -------------------------------------------------------------------------

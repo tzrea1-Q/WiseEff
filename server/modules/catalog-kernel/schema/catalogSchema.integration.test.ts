@@ -181,7 +181,7 @@ describe("canonical parameter Catalog schema", () => {
     expect(result.rows.map((row) => row.table_name)).toEqual(expected);
   });
 
-  it("materializes exactly the frozen 44 canonical relations", async () => {
+  it("materializes exactly the frozen canonical relations", async () => {
     const expected = [
       "binding_history_events",
       "catalog_activation_receipts",
@@ -199,6 +199,9 @@ describe("canonical parameter Catalog schema", () => {
       "catalog_subjects",
       "definition_proposal_revisions",
       "definition_proposals",
+      "definition_replacement_previews",
+      "definition_replacement_projects",
+      "definition_replacements",
       "definition_revisions",
       "governance_command_idempotency",
       "legacy_identities",

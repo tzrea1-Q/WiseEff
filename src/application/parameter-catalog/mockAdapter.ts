@@ -42,6 +42,7 @@ import {
   CATALOG_CANDIDATE_ID,
   CATALOG_JOB_ID,
   CATALOG_ORGANIZATION_ID,
+  CATALOG_MODULE_ID,
   CATALOG_PLACEMENT_ID,
   CATALOG_REGISTRATION_ID,
   CATALOG_RELEASE_ID,
@@ -217,7 +218,8 @@ function placementFromIntent(intent: CatalogPlacementIntent): CatalogPlacement {
   return {
     id: CATALOG_PLACEMENT_ID,
     displayName: intent.displayName,
-    parentPlacementId: intent.parentPlacementId
+    parentPlacementId: intent.parentPlacementId,
+    moduleId: CATALOG_MODULE_ID
   };
 }
 

@@ -11,9 +11,12 @@ import { randomUUID } from "node:crypto";
 import pg from "pg";
 
 import { PublicationJobId, type CatalogReleasePin } from "../../parameter-catalog-contract/index";
+import { CatalogArtifactId, CatalogReleaseId } from "../../parameter-catalog-contract/index";
 import { compileCatalogRelease } from "../../catalog-kernel/compiler/index";
 import { validCatalogReleaseBundle } from "../../catalog-kernel/compiler/__fixtures__/catalogReleaseBundle";
 import type { CatalogReleaseBundle } from "../../catalog-kernel/compiler/types";
+import { firstAcmePredecessor } from "../../catalog-publication/builder/predecessorHarness";
+import { persistArtifact } from "../../catalog-publication/persistence/store";
 import {
   createCatalogKernel,
   jsonCatalogReleaseSource,
@@ -91,7 +94,7 @@ export type MigrationHarness = {
   readonly database: EphemeralTestDatabase;
   readonly db: Database;
   readonly pool: pg.Pool;
-  readonly client: pg.Client;
+  readonly client: pg.PoolClient;
   readonly migration: CatalogDefinitionMigrationPorts;
   readonly pin: () => CatalogReleasePin;
   readonly snapshot: () => CatalogSnapshot;
@@ -258,10 +261,27 @@ export async function createMigrationHarness(): Promise<MigrationHarness> {
   if (!installed.ok || installed.value.status !== "installed") {
     throw new Error(`predecessor bootstrap failed: ${JSON.stringify(installed)}`);
   }
-  await enablePublicationPolicy(client, {
+  await enablePublicationPolicy(client as unknown as pg.Client, {
     publicationEnabled: true,
     lowRiskSingleActorPublish: true,
   });
+  // The bootstrap install does not persist a publication Artifact row, but the
+  // complete-successor preview requires one for the predecessor digest.
+  const predecessor = firstAcmePredecessor();
+  const storedArtifact = await persistArtifact(pool, {
+    id: CatalogArtifactId(`cart_drepl_pred_${randomUUID().replace(/-/g, "").slice(0, 12)}`),
+    artifactDigest: predecessor.digest as never,
+    artifactBytes: predecessor.bytes,
+    sourceKind: "repository-bundle",
+    targetReleaseId: CatalogReleaseId(predecessor.compiled.release.id) as never,
+    targetReleaseDigest: predecessor.digest as never,
+    predecessorReleaseId: null,
+    predecessorReleaseDigest: null,
+    toolchain: { ...predecessor.first.manifest.toolchain },
+  });
+  if (!storedArtifact.ok) {
+    throw new Error(`predecessor artifact persist failed: ${JSON.stringify(storedArtifact.error)}`);
+  }
 
   const kernel = createCatalogKernel(pool);
   let currentPin: CatalogReleasePin = {
@@ -516,6 +536,8 @@ export const subjectChange = (input: {
     kind: "driver",
     canonicalKey: input.canonicalKey,
     selector: { kind: "driver-compatible", value: input.selector },
+    nature: "physical-device",
+    cardinality: "multiple",
     definitions: [{ propertyKey: input.propertyKey, content: input.content }],
   }) as unknown as CatalogChange;
 

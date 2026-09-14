@@ -497,10 +497,10 @@ const createGovernancePorts = (
  * Publication ports for the definition identity correction migration.
  *
  * The API process only *enqueues* the publication job through the existing
- * Candidate/Authorization path (CP-07 isolation: `installPublishedRelease`
- * belongs to the publication-manager process, ADR-0043 §5).  Activation is
- * therefore left to the manager, and `continue` performs the project advance
- * once the successor release is current and materialized.
+ * Candidate/Authorization path (CP-07 isolation: release installation belongs
+ * to the publication-manager process, ADR-0043 §5).  Activation is therefore
+ * left to the manager, and `continue` performs the project advance once the
+ * successor release is current and materialized.
  */
 const createReplacementPublicationPorts = (
   db: Database,

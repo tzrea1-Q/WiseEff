@@ -14,6 +14,16 @@ The plan of record is [Parameter definition workspace restoration and governed i
 
 The frozen freeze statement fixes migration `0144`'s relation names. Where the plan of record's earlier architecture sketch names the per-project relation `parameter_catalog.project_parameter_binding_replacements`, this ADR records the frozen name `parameter_catalog.definition_replacement_projects`. Renaming either relation requires an explicit re-freeze recorded in the matrix, not an implementation choice.
 
+### Persisted relations
+
+The frozen design names two relations. The implementation adds one more,
+`parameter_catalog.definition_replacement_previews`, because the frozen HTTP
+contract returns a `previewId` and an `expiresAt` from preview and `create`
+binds to that exact preview identity; the preview therefore has to be persisted.
+It is a preview-evidence relation only: it stores the frozen fingerprint, the
+minted successor Candidate reference, the per-project frozen tips and the
+computed impact/blockers, and it never holds Catalog truth.
+
 ## Context
 
 [ADR-0017](0017-definition-identity-is-correctable.md) established that definition identity is correctable and that the identifier is a surrogate, not a meaning. [ADR-0033](0033-identity-mapping-uses-protected-re-resolve.md) established protected re-resolve for identity mistakes, and [ADR-0034](0034-referenced-property-key-rename-is-a-source-cutover.md) established that a referenced property-key rename is a staged source-rewriting cutover rather than an in-place edit.

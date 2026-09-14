@@ -17,26 +17,50 @@
 -- ---------------------------------------------------------------------------
 
 alter table parameter_catalog.project_parameter_values
+  drop constraint if exists project_parameter_values_id_definition_unique;
+alter table parameter_catalog.project_parameter_values
   add constraint project_parameter_values_id_definition_unique
   unique (id, definition_id);
 
 alter table parameter_catalog.project_parameter_values
-  add column replaced_from_value_id text;
+  add column if not exists replaced_from_value_id text;
 
 alter table parameter_catalog.project_parameter_values
+  add column if not exists replaced_from_definition_id text;
+
+-- The carried-forward source row belongs to the OLD definition, so the
+-- ownership proof needs both its id and its definition id.  A composite FK on
+-- `(replaced_from_value_id, definition_id)` alone could never resolve, because
+-- `definition_id` on the new row is the replacement definition.
+alter table parameter_catalog.project_parameter_values
+  drop constraint if exists project_parameter_value_replacement_source_fk;
+alter table parameter_catalog.project_parameter_values
   add constraint project_parameter_value_replacement_source_fk
-  foreign key (replaced_from_value_id, definition_id)
+  foreign key (replaced_from_value_id, replaced_from_definition_id)
   references parameter_catalog.project_parameter_values(id, definition_id)
   on delete restrict;
 
 alter table parameter_catalog.project_parameter_values
+  drop constraint if exists project_parameter_value_replacement_source_ck;
+alter table parameter_catalog.project_parameter_values
   add constraint project_parameter_value_replacement_source_ck
   check (replaced_from_value_id is null or replaced_from_value_id <> id);
+
+alter table parameter_catalog.project_parameter_values
+  drop constraint if exists project_parameter_value_replacement_source_pair_ck;
+alter table parameter_catalog.project_parameter_values
+  add constraint project_parameter_value_replacement_source_pair_ck
+  check ((replaced_from_value_id is null) = (replaced_from_definition_id is null));
 
 comment on column parameter_catalog.project_parameter_values.replaced_from_value_id is
   'Old-definition ProjectValue this carried-forward row replaces. Null for an ordinary append.';
 
+comment on column parameter_catalog.project_parameter_values.replaced_from_definition_id is
+  'Definition id of the replaced source row; proves the carried-forward row is a real old-definition value.';
+
 -- 3.2 needs a tenant-complete candidate key on the Binding relation.
+alter table parameter_catalog.project_parameter_bindings
+  drop constraint if exists project_parameter_bindings_id_org_project_unique;
 alter table parameter_catalog.project_parameter_bindings
   add constraint project_parameter_bindings_id_org_project_unique
   unique (id, organization_id, project_id);
@@ -49,7 +73,7 @@ alter table parameter_catalog.project_parameter_bindings
 -- preview identity.  The preview therefore has to be persisted.
 -- ---------------------------------------------------------------------------
 
-create table parameter_catalog.definition_replacement_previews (
+create table if not exists parameter_catalog.definition_replacement_previews (
   id text primary key
     check (id like 'drpv_%' and id <> '' and btrim(id) = id and id !~ '[[:cntrl:]]'),
   organization_id text not null references public.organizations(id) on delete restrict,
@@ -104,7 +128,7 @@ create table parameter_catalog.definition_replacement_previews (
     deferrable initially deferred
 );
 
-create function parameter_catalog.protect_definition_replacement_preview_identity()
+create or replace function parameter_catalog.protect_definition_replacement_preview_identity()
 returns trigger
 language plpgsql
 set search_path = pg_catalog, parameter_catalog
@@ -141,6 +165,7 @@ begin
 end;
 $$;
 
+drop trigger if exists definition_replacement_preview_identity_immutable on parameter_catalog.definition_replacement_previews;
 create trigger definition_replacement_preview_identity_immutable
 before update or delete on parameter_catalog.definition_replacement_previews
 for each row execute function parameter_catalog.protect_definition_replacement_preview_identity();
@@ -149,7 +174,7 @@ for each row execute function parameter_catalog.protect_definition_replacement_p
 -- 3.1 Definition replacements: the approved replacement record.
 -- ---------------------------------------------------------------------------
 
-create table parameter_catalog.definition_replacements (
+create table if not exists parameter_catalog.definition_replacements (
   id text primary key
     check (id like 'drep_%' and id <> '' and btrim(id) = id and id !~ '[[:cntrl:]]'),
   organization_id text not null references public.organizations(id) on delete restrict,
@@ -243,11 +268,11 @@ create table parameter_catalog.definition_replacements (
 -- One current successor per old definition.  A `failed` row is excluded so a
 -- fresh preview may retry; `blocked` deliberately holds the slot so continuation,
 -- not a second replacement, is the correction path.
-create unique index definition_replacements_current_successor_unique
+create unique index if not exists definition_replacements_current_successor_unique
 on parameter_catalog.definition_replacements (old_definition_id)
 where status in ('pending', 'executing', 'completed', 'blocked');
 
-create function parameter_catalog.protect_definition_replacement_identity()
+create or replace function parameter_catalog.protect_definition_replacement_identity()
 returns trigger
 language plpgsql
 set search_path = pg_catalog, parameter_catalog
@@ -283,6 +308,7 @@ begin
 end;
 $$;
 
+drop trigger if exists definition_replacement_identity_immutable on parameter_catalog.definition_replacements;
 create trigger definition_replacement_identity_immutable
 before update or delete on parameter_catalog.definition_replacements
 for each row execute function parameter_catalog.protect_definition_replacement_identity();
@@ -290,7 +316,7 @@ for each row execute function parameter_catalog.protect_definition_replacement_i
 -- No replacement chains: the target definition must not itself be the source of
 -- another current (non-failed) replacement.  The current-selection rule follows
 -- the completed edge exactly once.
-create function parameter_catalog.assert_definition_replacement_no_chain()
+create or replace function parameter_catalog.assert_definition_replacement_no_chain()
 returns trigger
 language plpgsql
 set search_path = pg_catalog, parameter_catalog
@@ -312,6 +338,7 @@ begin
 end;
 $$;
 
+drop trigger if exists definition_replacement_no_chain_ck on parameter_catalog.definition_replacements;
 create constraint trigger definition_replacement_no_chain_ck
 after insert or update of new_definition_id, status
 on parameter_catalog.definition_replacements
@@ -322,7 +349,7 @@ for each row execute function parameter_catalog.assert_definition_replacement_no
 -- 3.2 Per-project scope manifest with old-to-new pairing.
 -- ---------------------------------------------------------------------------
 
-create table parameter_catalog.definition_replacement_projects (
+create table if not exists parameter_catalog.definition_replacement_projects (
   id text primary key
     check (id like 'drepp_%' and id <> '' and btrim(id) = id and id !~ '[[:cntrl:]]'),
   replacement_id text not null,
@@ -384,10 +411,10 @@ create table parameter_catalog.definition_replacement_projects (
     check ((new_binding_id is null and new_value_id is null) or (new_binding_id is not null and new_value_id is not null))
 );
 
-create index definition_replacement_projects_org_idx
+create index if not exists definition_replacement_projects_org_idx
 on parameter_catalog.definition_replacement_projects (organization_id, project_id);
 
-create function parameter_catalog.protect_definition_replacement_project_identity()
+create or replace function parameter_catalog.protect_definition_replacement_project_identity()
 returns trigger
 language plpgsql
 set search_path = pg_catalog, parameter_catalog
@@ -411,13 +438,14 @@ begin
 end;
 $$;
 
+drop trigger if exists definition_replacement_project_identity_immutable on parameter_catalog.definition_replacement_projects;
 create trigger definition_replacement_project_identity_immutable
 before update or delete on parameter_catalog.definition_replacement_projects
 for each row execute function parameter_catalog.protect_definition_replacement_project_identity();
 
 -- A completed project may only be written inside the transaction that inserts
 -- both its Binding and its first value, so a retry cannot duplicate either.
-create function parameter_catalog.assert_definition_replacement_project_complete_is_final()
+create or replace function parameter_catalog.assert_definition_replacement_project_complete_is_final()
 returns trigger
 language plpgsql
 set search_path = pg_catalog, parameter_catalog
@@ -432,6 +460,7 @@ begin
 end;
 $$;
 
+drop trigger if exists definition_replacement_project_completed_is_final on parameter_catalog.definition_replacement_projects;
 create trigger definition_replacement_project_completed_is_final
 before update on parameter_catalog.definition_replacement_projects
 for each row execute function parameter_catalog.assert_definition_replacement_project_complete_is_final();
@@ -440,7 +469,7 @@ for each row execute function parameter_catalog.assert_definition_replacement_pr
 -- 4. Current-selection rule: the projection and the exact-id resolver.
 -- ---------------------------------------------------------------------------
 
-create view parameter_catalog.current_project_parameter_bindings as
+create or replace view parameter_catalog.current_project_parameter_bindings as
 select binding.*
 from parameter_catalog.project_parameter_bindings binding
 where not exists (
@@ -453,7 +482,7 @@ where not exists (
 comment on view parameter_catalog.current_project_parameter_bindings is
   'Effective current Bindings: every Binding except one that a completed definition replacement superseded. Historical, pinned and revision-addressed reads address the exact Binding id and never consult this view.';
 
-create function parameter_catalog.is_replaced_current_binding(p_binding_id text)
+create or replace function parameter_catalog.is_replaced_current_binding(p_binding_id text)
 returns boolean
 language sql
 stable
@@ -467,7 +496,7 @@ select exists (
 );
 $$;
 
-create function parameter_catalog.resolve_current_binding(
+create or replace function parameter_catalog.resolve_current_binding(
   p_project_id text,
   p_logical_node_id text,
   p_definition_id text
@@ -500,7 +529,7 @@ select coalesce(
 );
 $$;
 
-create function parameter_catalog.assert_value_target_binding_is_current()
+create or replace function parameter_catalog.assert_value_target_binding_is_current()
 returns trigger
 language plpgsql
 set search_path = pg_catalog, parameter_catalog
@@ -521,7 +550,156 @@ begin
 end;
 $$;
 
+drop trigger if exists project_value_current_binding_ck on parameter_catalog.project_parameter_values;
 create constraint trigger project_value_current_binding_ck
 after insert on parameter_catalog.project_parameter_values
 deferrable initially deferred
 for each row execute function parameter_catalog.assert_value_target_binding_is_current();
+
+-- ---------------------------------------------------------------------------
+-- Ownership and least-privilege ACL, matching the 0137/0140 style: every new
+-- relation and function is owned by the NOLOGIN catalog_migration_owner, and
+-- nothing is granted to PUBLIC or to any runtime role.  The capability writes
+-- through the migration owner boundary only.
+-- ---------------------------------------------------------------------------
+
+do $$
+declare
+  obj record;
+begin
+  for obj in
+    select case when class.relkind = 'S' then 'sequence' else 'table' end as kind,
+           format('%I.%I', namespace.nspname, class.relname) as object_id
+    from pg_catalog.pg_class class
+    join pg_catalog.pg_namespace namespace on namespace.oid = class.relnamespace
+    where namespace.nspname = 'parameter_catalog'
+      and class.relname in (
+        'definition_replacements',
+        'definition_replacement_projects',
+        'definition_replacement_previews',
+        'current_project_parameter_bindings'
+      )
+  loop
+    execute format('alter %s %s owner to catalog_migration_owner', obj.kind, obj.object_id);
+  end loop;
+
+  for obj in
+    select format(
+             '%I.%I(%s)',
+             namespace.nspname,
+             procedure.proname,
+             pg_catalog.pg_get_function_identity_arguments(procedure.oid)
+           ) as object_id
+    from pg_catalog.pg_proc procedure
+    join pg_catalog.pg_namespace namespace on namespace.oid = procedure.pronamespace
+    where namespace.nspname = 'parameter_catalog'
+      and procedure.proname in (
+        'protect_definition_replacement_preview_identity',
+        'protect_definition_replacement_identity',
+        'assert_definition_replacement_no_chain',
+        'protect_definition_replacement_project_identity',
+        'assert_definition_replacement_project_complete_is_final',
+        'assert_value_target_binding_is_current',
+        'resolve_current_binding',
+        'is_replaced_current_binding'
+      )
+  loop
+    execute format('alter function %s owner to catalog_migration_owner', obj.object_id);
+  end loop;
+end;
+$$;
+
+revoke all on table
+  parameter_catalog.definition_replacements,
+  parameter_catalog.definition_replacement_projects,
+  parameter_catalog.definition_replacement_previews,
+  parameter_catalog.current_project_parameter_bindings
+from public;
+
+revoke all on table
+  parameter_catalog.definition_replacements,
+  parameter_catalog.definition_replacement_projects,
+  parameter_catalog.definition_replacement_previews,
+  parameter_catalog.current_project_parameter_bindings
+from catalog_synchronizer_role;
+
+revoke all on table
+  parameter_catalog.definition_replacements,
+  parameter_catalog.definition_replacement_projects,
+  parameter_catalog.definition_replacement_previews,
+  parameter_catalog.current_project_parameter_bindings
+from parameter_governance_writer_role;
+
+revoke all on table
+  parameter_catalog.definition_replacements,
+  parameter_catalog.definition_replacement_projects,
+  parameter_catalog.definition_replacement_previews,
+  parameter_catalog.current_project_parameter_bindings
+from catalog_publication_coordinator_role;
+
+revoke all on table
+  parameter_catalog.definition_replacements,
+  parameter_catalog.definition_replacement_projects,
+  parameter_catalog.definition_replacement_previews,
+  parameter_catalog.current_project_parameter_bindings
+from catalog_baseline_reader_role;
+
+revoke all on function
+  parameter_catalog.protect_definition_replacement_preview_identity(),
+  parameter_catalog.protect_definition_replacement_identity(),
+  parameter_catalog.assert_definition_replacement_no_chain(),
+  parameter_catalog.protect_definition_replacement_project_identity(),
+  parameter_catalog.assert_definition_replacement_project_complete_is_final(),
+  parameter_catalog.assert_value_target_binding_is_current(),
+  parameter_catalog.resolve_current_binding(text, text, text),
+  parameter_catalog.is_replaced_current_binding(text)
+from public;
+
+revoke all on function
+  parameter_catalog.protect_definition_replacement_preview_identity(),
+  parameter_catalog.protect_definition_replacement_identity(),
+  parameter_catalog.assert_definition_replacement_no_chain(),
+  parameter_catalog.protect_definition_replacement_project_identity(),
+  parameter_catalog.assert_definition_replacement_project_complete_is_final(),
+  parameter_catalog.assert_value_target_binding_is_current(),
+  parameter_catalog.resolve_current_binding(text, text, text),
+  parameter_catalog.is_replaced_current_binding(text)
+from catalog_synchronizer_role;
+
+revoke all on function
+  parameter_catalog.protect_definition_replacement_preview_identity(),
+  parameter_catalog.protect_definition_replacement_identity(),
+  parameter_catalog.assert_definition_replacement_no_chain(),
+  parameter_catalog.protect_definition_replacement_project_identity(),
+  parameter_catalog.assert_definition_replacement_project_complete_is_final(),
+  parameter_catalog.assert_value_target_binding_is_current(),
+  parameter_catalog.resolve_current_binding(text, text, text),
+  parameter_catalog.is_replaced_current_binding(text)
+from parameter_governance_writer_role;
+
+revoke all on function
+  parameter_catalog.protect_definition_replacement_preview_identity(),
+  parameter_catalog.protect_definition_replacement_identity(),
+  parameter_catalog.assert_definition_replacement_no_chain(),
+  parameter_catalog.protect_definition_replacement_project_identity(),
+  parameter_catalog.assert_definition_replacement_project_complete_is_final(),
+  parameter_catalog.assert_value_target_binding_is_current(),
+  parameter_catalog.resolve_current_binding(text, text, text),
+  parameter_catalog.is_replaced_current_binding(text)
+from catalog_publication_coordinator_role;
+
+revoke all on function
+  parameter_catalog.protect_definition_replacement_preview_identity(),
+  parameter_catalog.protect_definition_replacement_identity(),
+  parameter_catalog.assert_definition_replacement_no_chain(),
+  parameter_catalog.protect_definition_replacement_project_identity(),
+  parameter_catalog.assert_definition_replacement_project_complete_is_final(),
+  parameter_catalog.assert_value_target_binding_is_current(),
+  parameter_catalog.resolve_current_binding(text, text, text),
+  parameter_catalog.is_replaced_current_binding(text)
+from catalog_baseline_reader_role;
+
+alter default privileges for role catalog_migration_owner in schema parameter_catalog
+  revoke all on tables from public;
+alter default privileges in schema parameter_catalog
+  revoke all on tables from public;

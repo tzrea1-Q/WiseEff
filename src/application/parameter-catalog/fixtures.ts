@@ -21,6 +21,7 @@ export const CATALOG_DEFINITION_ID = "pdef_01KGPIOINT";
 export const CATALOG_REVISION_ID = "drev_01K6";
 export const CATALOG_REGISTRATION_ID = "sreg_01KACME";
 export const CATALOG_PLACEMENT_ID = "splc_01KROOT";
+export const CATALOG_MODULE_ID = "mod_01KMODULE";
 export const CATALOG_REVIEW_ITEM_ID = "prev_01KAMBIG";
 export const CATALOG_PROPOSAL_ID = "pprp_01KDOC";
 export const CATALOG_OBSERVATION_ID = "pobs_01KOBS";
@@ -49,7 +50,8 @@ export const readyCatalogDocument: Exclude<CatalogDocumentResponse, { item: null
 const placement = {
   id: CATALOG_PLACEMENT_ID,
   displayName: "Root",
-  parentPlacementId: null
+  parentPlacementId: null,
+  moduleId: CATALOG_MODULE_ID
 };
 
 const revision = {

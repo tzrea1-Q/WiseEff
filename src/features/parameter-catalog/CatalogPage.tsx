@@ -592,7 +592,9 @@ export function CatalogPage({
         onToggle: (value) => selectModuleNode(value === anchor.moduleNodeId ? null : value),
         onClear: () => selectModuleNode(null),
         getValue: (row) =>
-          row.registration.status === "unregistered" ? "" : row.registration.placement?.id ?? ""
+          row.registration.status === "unregistered"
+            ? ""
+            : row.registration.placement?.moduleId ?? ""
       }
     },
     {
@@ -1046,22 +1048,22 @@ function moduleFilterValues(subjects: readonly SubjectItem[]): string[] {
   for (const subject of subjects) {
     const placement =
       subject.registration.status === "unregistered" ? undefined : subject.registration.placement;
-    if (placement?.id) {
-      ids.add(placement.id);
+    if (placement?.moduleId) {
+      ids.add(placement.moduleId);
     }
   }
   return [...ids];
 }
 
-function moduleFilterLabel(subjects: readonly SubjectItem[], placementId: string): string {
+function moduleFilterLabel(subjects: readonly SubjectItem[], moduleId: string): string {
   for (const subject of subjects) {
     const placement =
       subject.registration.status === "unregistered" ? undefined : subject.registration.placement;
-    if (placement?.id === placementId) {
+    if (placement?.moduleId === moduleId) {
       return placement.displayName;
     }
   }
-  return placementId;
+  return moduleId;
 }
 
 function CatalogDetailBody({

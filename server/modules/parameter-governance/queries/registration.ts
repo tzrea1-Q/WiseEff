@@ -91,6 +91,7 @@ const mapPlacement = (
       id: row.placement_id,
       displayName: row.module_name,
       parentPlacementId: row.parent_placement_id,
+      ...(row.module_id ? { moduleId: row.module_id } : {}),
     },
   };
 };
