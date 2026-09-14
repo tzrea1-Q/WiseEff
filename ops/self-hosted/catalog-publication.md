@@ -97,6 +97,8 @@ Run these from the **application image** (`./scripts/compose --env-file .env run
 npx tsx scripts/catalog-publication-ops.ts policy status
 ```
 
+Status reads `DATABASE_URL` (API LOGIN `SELECT` on `catalog_state`). Do not use the NOINHERIT manager LOGIN for status; that LOGIN 42501s on `catalog_state`. Freeze `set`/`clear`/`status` still use the manager DSN and `SET LOCAL ROLE catalog_publication_coordinator_role`.
+
 Status prints non-secret identity: database OID, database name, current Release ID/digest, Artifact digest, adoption, policy revision, `publication_enabled`, `low_risk_single_actor_publish`, freeze. It is not enablement.
 
 **Ephemeral / isolated lab only:**

@@ -79,6 +79,8 @@ npx tsx scripts/catalog-publication-ops.ts capabilities grant \
 npx tsx scripts/catalog-publication-ops.ts policy status
 ```
 
+状态读取 `DATABASE_URL`（API LOGIN 对 `catalog_state` 的 `SELECT`）。不要用 NOINHERIT 的 manager LOGIN 做 status，那个身份对 `catalog_state` 会 42501。freeze 的 `set`/`clear`/`status` 仍走 manager DSN，并 `SET LOCAL ROLE catalog_publication_coordinator_role`。
+
 状态输出非敏感身份：数据库 OID、库名、当前 Release ID/digest、Artifact digest、接管、策略版本、`publication_enabled`、`low_risk_single_actor_publish`、freeze。状态读取不是启用。
 
 **仅隔离临时库：**

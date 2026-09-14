@@ -106,7 +106,8 @@ const usage = `Usage:
   npx tsx scripts/catalog-publication-ops.ts inspect-login api|worker|manager
 
 inspect reads CATALOG_BASELINE_READONLY_DATABASE_URL only.
-adopt/capabilities/policy/freeze/provision use dedicated DSNs. Manager commands refuse DATABASE_URL reuse.
+policy status reads DATABASE_URL (API LOGIN SELECT on catalog_state). Do not use the NOINHERIT manager LOGIN for status.
+adopt/capabilities/policy revise/freeze/provision use dedicated DSNs. Manager commands refuse DATABASE_URL reuse.
 provision-logins uses WISEEFF_CATALOG_BOOTSTRAP_DATABASE_URL (superuser, one-shot).
 Credentials are written to --credential-dir or WISEEFF_PUBLICATION_CREDENTIAL_DIR; stdout has no DSNs.
 ephemeral policy enable requires an ephemeral database name and EPHEMERAL_POLICY_REVISION_CONFIRMATION.
@@ -274,6 +275,25 @@ export const parseCatalogPublicationOpsArgv = (
     return { ok: true, command: { name: "inspect-login", which: sub } };
   }
   return { ok: false, message: usage };
+};
+
+/** API LOGIN has SELECT on catalog_state; manager LOGIN is NOINHERIT and does not. */
+export const resolvePolicyStatusDatabaseUrl = (
+  env: NodeJS.ProcessEnv,
+): { readonly ok: true; readonly url: string } | { readonly ok: false; readonly message: string } => {
+  const api = env.DATABASE_URL?.trim();
+  if (api) {
+    return { ok: true, url: api };
+  }
+  const bootstrap = env.WISEEFF_CATALOG_BOOTSTRAP_DATABASE_URL?.trim();
+  if (bootstrap) {
+    return { ok: true, url: bootstrap };
+  }
+  return {
+    ok: false,
+    message:
+      "DATABASE_URL is required for policy status; the manager LOGIN cannot SELECT catalog_state",
+  };
 };
 
 const managerPool = (): pg.Pool => {
@@ -478,8 +498,8 @@ export const runCatalogPublicationOps = async (
     const url =
       command.action === "status"
         ? (() => {
-            const resolved = resolvePublicationManagerDatabaseUrl(process.env);
-            return resolved.ok ? resolved.url : process.env.WISEEFF_CATALOG_BOOTSTRAP_DATABASE_URL?.trim();
+            const resolved = resolvePolicyStatusDatabaseUrl(process.env);
+            return resolved.ok ? resolved.url : undefined;
           })()
         : process.env.WISEEFF_CATALOG_BOOTSTRAP_DATABASE_URL?.trim();
     if (!url) {
@@ -488,7 +508,7 @@ export const runCatalogPublicationOps = async (
         payload: {
           message:
             command.action === "status"
-              ? "manager or bootstrap DSN is required"
+              ? "DATABASE_URL is required for policy status; the manager LOGIN cannot SELECT catalog_state"
               : "WISEEFF_CATALOG_BOOTSTRAP_DATABASE_URL is required to revise policy",
         },
       };
@@ -616,10 +636,24 @@ export const runCatalogPublicationOps = async (
   const pool = getRootPostgresPool(db);
   try {
     if (command.action === "status") {
-      const freeze = await db.query<{ frozen: boolean }>(
-        `select frozen from catalog_publication.publication_freeze where singleton`,
-      );
-      return { exitCode: 0, payload: freeze.rows[0] ?? null };
+      if (!pool) {
+        return { exitCode: 1, payload: { message: "root pool required" } };
+      }
+      const client = await pool.connect();
+      try {
+        await client.query("begin");
+        await client.query("set local role catalog_publication_coordinator_role");
+        const freeze = await client.query<{ frozen: boolean }>(
+          `select frozen from catalog_publication.publication_freeze where singleton`,
+        );
+        await client.query("rollback");
+        return { exitCode: 0, payload: freeze.rows[0] ?? null };
+      } catch (error) {
+        await client.query("rollback").catch(() => undefined);
+        throw error;
+      } finally {
+        client.release();
+      }
     }
     if (!pool) {
       return { exitCode: 1, payload: { message: "root pool required" } };

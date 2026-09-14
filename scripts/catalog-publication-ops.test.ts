@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { parseCatalogPublicationOpsArgv } from "./catalog-publication-ops";
+import { parseCatalogPublicationOpsArgv, resolvePolicyStatusDatabaseUrl } from "./catalog-publication-ops";
 
 describe("catalog-publication-ops argv", () => {
   it("parses inspect", () => {
@@ -118,6 +118,20 @@ describe("catalog-publication-ops argv", () => {
       expectedAdopted: true,
       expectedFrozen: false,
       lowRiskSingleActorPublish: undefined,
+    });
+  });
+
+  it("reads policy status through DATABASE_URL, not the manager LOGIN", () => {
+    expect(
+      resolvePolicyStatusDatabaseUrl({
+        DATABASE_URL: "postgres://wiseeff_api:x@postgres:5432/wiseeff",
+        WISEEFF_PUBLICATION_MANAGER_DATABASE_URL: "postgres://wiseeff_publication_manager:x@postgres:5432/wiseeff",
+        WISEEFF_CATALOG_BOOTSTRAP_DATABASE_URL: "postgres://wiseeff:x@postgres:5432/wiseeff",
+      }),
+    ).toEqual({ ok: true, url: "postgres://wiseeff_api:x@postgres:5432/wiseeff" });
+    expect(resolvePolicyStatusDatabaseUrl({ WISEEFF_PUBLICATION_MANAGER_DATABASE_URL: "postgres://manager:x@postgres/db" })).toEqual({
+      ok: false,
+      message: "DATABASE_URL is required for policy status; the manager LOGIN cannot SELECT catalog_state",
     });
   });
 

@@ -287,6 +287,46 @@ ops_in_image() {
   compose_cmd "${run_opts[@]}" api npx tsx scripts/catalog-publication-ops.ts "$@"
 }
 
+# policy status must run as the API LOGIN (SELECT catalog_state). The manager LOGIN
+# is NOINHERIT and 42501s on catalog_state. Omit the manager DSN so current images
+# that still prefer manager-or-bootstrap for status fall back to DATABASE_URL.
+ops_api_read() {
+  local saved_manager_url="${WISEEFF_PUBLICATION_MANAGER_DATABASE_URL:-}"
+  local saved_manager_flag="${WISEEFF_PUBLICATION_MANAGER:-}"
+  local saved_bootstrap="${WISEEFF_CATALOG_BOOTSTRAP_DATABASE_URL:-}"
+  export WISEEFF_API_PROCESS=0
+  export LOG_WORKER_ENABLED=false
+  export WISEEFF_PUBLICATION_MANAGER=0
+  unset WISEEFF_PUBLICATION_MANAGER_DATABASE_URL
+  if [ -n "${DATABASE_URL:-}" ]; then
+    export WISEEFF_CATALOG_BOOTSTRAP_DATABASE_URL="$DATABASE_URL"
+  fi
+  local -a run_opts
+  run_opts=(
+    run --rm --no-deps
+    -e WISEEFF_API_PROCESS
+    -e LOG_WORKER_ENABLED
+  )
+  if [ -n "${DATABASE_URL:-}" ]; then
+    run_opts+=(-e DATABASE_URL)
+    run_opts+=(-e WISEEFF_CATALOG_BOOTSTRAP_DATABASE_URL)
+  fi
+  set +e
+  compose_cmd "${run_opts[@]}" api npx tsx scripts/catalog-publication-ops.ts "$@"
+  local code=$?
+  set -e
+  export WISEEFF_PUBLICATION_MANAGER="$saved_manager_flag"
+  if [ -n "$saved_manager_url" ]; then
+    export WISEEFF_PUBLICATION_MANAGER_DATABASE_URL="$saved_manager_url"
+  fi
+  if [ -n "$saved_bootstrap" ]; then
+    export WISEEFF_CATALOG_BOOTSTRAP_DATABASE_URL="$saved_bootstrap"
+  elif [ -n "${WISEEFF_CATALOG_BOOTSTRAP_DATABASE_URL:-}" ]; then
+    unset WISEEFF_CATALOG_BOOTSTRAP_DATABASE_URL
+  fi
+  return "$code"
+}
+
 export DATABASE_URL="$(strip_url "$(read_env_key "$env_file" DATABASE_URL || true)")"
 export WISEEFF_WORKER_DATABASE_URL="$(strip_url "$(read_env_key "$env_file" WISEEFF_WORKER_DATABASE_URL || true)")"
 if [ "$manager_dsn_configured" = "true" ]; then
@@ -331,9 +371,11 @@ fi
 if [ -n "${WISEEFF_WORKER_DATABASE_URL:-}" ]; then
   probe inspect_login_worker ops_in_image inspect-login worker
 fi
+if [ -n "${DATABASE_URL:-}" ]; then
+  probe policy_status ops_api_read policy status
+fi
 if [ "$manager_dsn_configured" = "true" ]; then
   probe inspect_login_manager ops_in_image inspect-login manager
-  probe policy_status ops_in_image policy status
   probe freeze_status ops_in_image freeze status
 fi
 if [ -n "${CATALOG_BASELINE_READONLY_DATABASE_URL:-}" ]; then
@@ -476,6 +518,17 @@ next_actions = []
 if not manager_configured:
     next_actions.append(
         "provision dedicated manager LOGIN; copy manager DSN into .env.publication-manager; do not copy DATABASE_URL"
+    )
+api_login = probes.get("inspect_login_api", {})
+api_payload = api_login.get("payload") if isinstance(api_login, dict) else None
+if isinstance(api_payload, dict) and api_payload.get("superuser") is True:
+    next_actions.append(
+        "DATABASE_URL is still the bootstrap superuser; put official wiseeff_api / wiseeff_worker DSNs in .env and recreate api/worker before enable"
+    )
+worker_login = probes.get("inspect_login_worker", {})
+if isinstance(worker_login, dict) and worker_login.get("exitCode") not in (0, None) and not worker_login.get("skipped"):
+    next_actions.append(
+        "WISEEFF_WORKER_DATABASE_URL reuses the API login; copy worker.dsn into .env and recreate worker"
     )
 if isinstance(policy_payload, dict):
     if policy_payload.get("adopted") is False:

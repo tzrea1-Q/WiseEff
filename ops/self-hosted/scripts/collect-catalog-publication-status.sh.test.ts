@@ -248,6 +248,11 @@ describe("collect-catalog-publication-status.sh", () => {
 
     const argv = readFileSync(argvLog, "utf8");
     expect(argv).toContain("policy status");
+    const policyArgv = argv
+      .split("\n")
+      .filter((line) => line.includes("policy status"))
+      .join("\n");
+    expect(policyArgv).not.toContain("WISEEFF_PUBLICATION_MANAGER_DATABASE_URL");
     expect(argv).toContain("adopt --check");
     expect(argv).not.toContain("policy enable");
     expect(argv).not.toContain("adopt --execute");
