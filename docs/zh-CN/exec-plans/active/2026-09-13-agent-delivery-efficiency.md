@@ -1,7 +1,7 @@
 # 智能体开发与验证效率优化
 
 > English: [English](../../../exec-plans/active/2026-09-13-agent-delivery-efficiency.md)
-> 状态：**活跃——PR #830、#829、#833、#831、#834 已合入。CI shadow 正在已接受预览上集成；fresh 执行/摘要正在完成修正矩阵。路由、类型反馈和浏览器夹具等待分批交付。不声称裁剪启用或效果已验证。**
+> 状态：**活跃——PR #830、#829、#833、#831、#834、#835 已合入。fresh 执行/摘要 PR #836 首次 Hosted 失败后，正在修正干净 checkout 的测试前置条件。路由、类型反馈和浏览器夹具等待分批交付。不声称裁剪启用或效果已验证。**
 > 日期：2026-09-13。真实跟踪 Issue：[#828](https://github.com/tzrea1-Q/WiseEff/issues/828)。
 > 2026-09-13 重新 fetch 后的真实 accepted base：`1059acb57379bd120d0d2b1a4b4733d4c2e02901`。它恰好等于附件的历史参考值，不构成强制回退后续工作的授权。
 
@@ -13,11 +13,25 @@
 
 | 交付层级 | 完成含义 | 当前状态 |
 | --- | --- | --- |
-| A：工具与流程 | 诊断、等价调度、影子计划、执行/摘要与路由已审查、验证并交付 | EFF-01/02、EFF-03 预览已合入；CI shadow 正在集成；EFF-07/08 有本地已审候选；EFF-04 修正和最终集成仍待完成 |
+| A：工具与流程 | 诊断、等价调度、影子计划、执行/摘要与路由已审查、验证并交付 | EFF-01/02/03 已合入；EFF-04 正在集成已审修正；EFF-07/08 和浏览器夹具有本地已审候选等待交付 |
 | B：模块启用 | 每个明确模块独立满足观察与审查门槛 | 无已启用模块；`observation-pending` |
 | C：效果验证 | 同类真实任务/CI 样本支持墙钟、资源与 usage 结论 | 样本不足；token usage 为 `unknown` |
 
 A 可先交付，B/C 继续开放。不得制造样本，也不能因工具合入就宣称整个项目全面完成。
+
+## fresh 执行器 Hosted 夹具前置条件——2026-09-14
+
+[PR #836](https://github.com/tzrea1-Q/WiseEff/pull/836) 首次 [run 34793079528](https://github.com/tzrea1-Q/WiseEff/actions/runs/34793079528) attempt 1 实际 checkout 为 `988f978074362f0f86ace8d295aba3ba35d387b3`，有序双亲为 base `aed7e54686e7642655b3b8c30369b9c4ad07f771` 与 head `55b86395bde604b0851db58598781e667738f2b6`，tree `e38161fdf8c343c14c31e2c04568d0ec4be07077` 与候选一致。脚本 job 在 110 文件中通过 1559 项、失败一项、保留 21 项既有可选跳过；bridge 未执行。foreign-root 测试在父目录创建前调用 `mkdtemp`，因 `ENOENT` 在拒绝/marker 断言之前失败。其他夹具调用已经使用所属父目录初始化函数。这是干净 checkout 的夹具前置条件，不是已证明的运行时防护失败。首次失败继续保留，其余 job 终态单独结算。
+
+修正仅将该调用接入已有 `testRunsDirectory()`，保留目录/owner/mode 校验及全部运行时、marker、拒绝断言。本地命名测试一项通过、24 项未选中，耗时 1.5699 秒；其父目录原已存在，故原始冷启动条件须由新鲜 Hosted checkout 验证。早先准确 55b 候选通过 102/5 窄测试、完整构建、元数据/文档，然后完成新鲜原生任务 10/1 与 29/5，零跳过，UUID 分别为 `91b9437a-9f2b-4ffd-8fd0-d37b91b1c35c`、`1410fc89-85cc-4e56-a138-f5ef95c7874a`，保存报告均明确标注新鲜度未验证。这些仍绑定 55b。此检查点的修正 head 窄测试/构建/文档、独立审查、两组新鲜任务和有效 Hosted 均待完成。不重试相同 head，不删除目录、不放宽断言，不改变门禁或运行时代码。
+
+## CI shadow 接受与 fresh 执行集成——2026-09-14
+
+[PR #835](https://github.com/tzrea1-Q/WiseEff/pull/835) 的修正 head [run 34791485027](https://github.com/tzrea1-Q/WiseEff/actions/runs/34791485027) attempt 1 通过全部九项原有选中 GitHub Actions 检查后，合入为 `aed7e54686e7642655b3b8c30369b9c4ad07f771`。accepted base `4ef53e5c1551747d76350cd324068fb413d462c2` 与已审 head `32d14b7e93d306dfcf905b71d7ed503e7a6d4a52` 是实际 checkout `e3dbfff629ea91c7777a7f5728f31a74dfb22efc` 的有序双亲；执行、候选和合入 tree 均为 `513f0967be7d9ebe9863acfbde4b89bd690a0fd1`。前端 3411/441 文件、脚本 1525/108 加 21 项既有可选跳过、bridge 134/21 加 4 项平台跳过、后端 4180/539 且无跳过、Quality 100、Smoke 4 均通过。四组新鲜原生观察均为 observed/full-required，完整回退且没有启用资格。独立 Standards/Spec 通过完整 14 路径候选。完整源码包 SHA256 为 `e95760c8b1148ec5ce078c6a1d7d499eba978d1ed847d7fb9c3309479e96c8d5`，无删除或重命名。已核验远端分支移除及 clean 本地 main 同步。
+
+工作流近似墙钟 694 秒，已执行 job 时长总和 33.7833 分钟；账单及项目总 token 为 unknown。修改策略的本 PR 不计模块启用样本。此次合入前最新完成的完整 main 证据是 `4ef53e5c1551747d76350cd324068fb413d462c2` 的 push run 34789007486：L1/Quality 通过，登记 58 个浏览器失败，原有归档大小检查拒绝完整上传。诊断 artifact 10328261976 已校验摘要及身份；详细清理和原生总数仍为 unknown。完整 main 验收在该版本仍失败，单独记账。
+
+EFF-04 代码 `56df0b6e06785503fd30ea0bf54dfe06d7b3c88f` 在关闭进程/日志结算、精确发布所有权及首错保持问题后，获得独立 Standards/Spec PASS。永久组合夹具有 19 个实际合成场景，不是 19 个新模块观察。本候选正常合并 accepted main，仅提供下文记录的两个固定 fresh 本地任务和明确标注未验证新鲜度的记录读取。此检查点的集成窄测试/构建/文档检查、最终独立审查、预期 10/1 和 29/5 的两组新鲜原生任务、自有 PR/Hosted 与合入仍待完成。下方较早检查点均为历史记录。
 
 ## 预览接受与 CI shadow 集成——2026-09-14
 
@@ -211,15 +225,15 @@ R3 经过 `PREFLIGHT → THREAT-READY`，再进入 `SCRATCH → PRESEAL-REVIEW �
 
 ### D3 — 可解释影子计划（EFF-03/05）
 
-以下入口在 accepted base **尚未实现**；EFF-03/04 合入前使用验证矩阵中的真实已有命令：
+已实现的最小 profile 使用以下准确命令。原方案中的 edit profile、任意计划输入、分组选项、输出路径/格式选项及 enforce 尚未实现。其他任务继续使用验证矩阵中的原生命令：
 
-| 拟新增命令 | 契约 |
+| 已实现命令 | 契约 |
 | --- | --- |
-| `npm run verify:plan -- --base <ref> --profile <edit\|candidate\|pr\|full> --mode <shadow\|enforce> --out <file>` | 只读计算事实/计划，不安装依赖、启动数据库或编辑源码；仅向显式指定的受控非源码位置写出计划。 |
-| `npm run verify:run -- --plan <file> [--group <name>] [--force]` | 校验身份，通过参数数组执行已审查任务；完整日志流式落本地，返回有限摘要。 |
-| `npm run verify:report -- --run <dir> --format <summary\|json>` | 聚合已有结果，不隐式重跑、不调用模型。 |
+| `npm run verify:plan -- --base <40-hex-SHA> [--head <40-hex-SHA>]` | 对 clean 已提交根目录输出有界只读 JSON，保留完整必需任务集和验收待完成状态。不执行测试、不探测环境、不自动 fetch。 |
+| `npm run verify:run -- --base <40-hex-SHA> --task <ci-changed-paths\|feedback-frontend-client> [--force]` | 重新发现并执行一个固定手工任务，记录准确身份、本地原生证据及有界终端输出。`--force` 也始终重新执行，不执行或替代完整计划。 |
+| `npm run verify:report -- --run <UUID>` | 读取 `work/verification-runs/<UUID>` 中的所属记录，标注 recorded-local-data/freshness-unverified。不隐式重跑、复用结果、授予验收或调用模型。 |
 
-优先薄入口 `scripts/verify.ts` 与小型 `scripts/verification/` 边界，复用 TypeScript/Zod、GitHub Actions/Vitest/Playwright 和 Gate 0。这里是拟议落点，不是已存在文件声明；实现选定真实路径后同步本计划。不建立通用 DAG 引擎或新规则语言。
+薄入口 `scripts/verify.ts` 分派原有预览及独立的 `scripts/verification/run.ts`、`report.ts`。固定任务定义复用原生 Vitest 调用、报告校验与所属进程清理。PG、浏览器、Hosted 和目标环境保持原生入口，memo 与模块 enforce 继续关闭。下文较大设计属于未来契约，不代表已经实现 dirty 计划或任意适配器。
 
 CI 绑定不可变 base/PR head/实际 checkout SHA/tree。本地 edit/candidate 合并 merge-base 分支变化、staged、unstaged 与允许范围 untracked 源码，包含内容、删除、文件模式。NUL name-status 无损解析；重命名旧新路径并集，删除用 base 归属/消费者。校验 refs/路径，不拼接 shell。必要时有限 fetch 补历史；base/diff 无法确认阻止有效计划。空/未知路径广域回退，不误判 docs-only。用户输入只能扩大覆盖，不能压低风险。
 
