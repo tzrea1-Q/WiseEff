@@ -455,6 +455,21 @@ export function evaluateL1CiWorkflow(workflowText: string): { status: "passed" |
   const catalogCommand = 'set -euo pipefail\ngit fetch --no-tags origin "${PARAMETER_CATALOG_TRUSTED_BASE_SHA}"\ntest "$(git rev-parse --verify "${PARAMETER_CATALOG_TRUSTED_BASE_SHA}^{commit}")" = "${PARAMETER_CATALOG_TRUSTED_BASE_SHA}"\nnpm run parameter-catalog-boundaries:check -- --trusted-base-sha "${PARAMETER_CATALOG_TRUSTED_BASE_SHA}"';
   const expectedStepProjection = (ids: readonly string[]) => "{" + ids.map((id) => '"' + id + '":${{ toJSON(steps.' + id + ') }}').join(", ") + "}";
   const normalizeStepProjection = (value: unknown) => typeof value === "string" ? value.trim() : "";
+  const expectedNeedsProjection = "{\"detect\":${{ toJSON(needs.detect) }}, \"l1-static\":{\"result\":${{ toJSON(needs.l1-static.result) }},\"outputs\":{\"receipt\":${{ toJSON(needs.l1-static.outputs.receipt) }}}}, \"l1-frontend\":{\"result\":${{ toJSON(needs.l1-frontend.result) }},\"outputs\":{\"receipt\":${{ toJSON(needs.l1-frontend.outputs.receipt) }}}}, \"l1-scripts\":{\"result\":${{ toJSON(needs.l1-scripts.result) }},\"outputs\":{\"receipt\":${{ toJSON(needs.l1-scripts.outputs.receipt) }}}}, \"l1-server\":{\"result\":${{ toJSON(needs.l1-server.result) }},\"outputs\":{\"receipt\":${{ toJSON(needs.l1-server.outputs.receipt) }}}}}";
+  const expectedShadowProjection = "{\"detect\":${{ toJSON(needs.detect) }}, \"l1-frontend\":{\"result\":${{ toJSON(needs.l1-frontend.result) }},\"outputs\":{\"shadow_frontend\":${{ toJSON(needs.l1-frontend.outputs.shadow_frontend) }}}}, \"l1-scripts\":{\"result\":${{ toJSON(needs.l1-scripts.result) }},\"outputs\":{\"shadow_scripts\":${{ toJSON(needs.l1-scripts.outputs.shadow_scripts) }},\"shadow_bridge\":${{ toJSON(needs.l1-scripts.outputs.shadow_bridge) }}}}, \"l1-server\":{\"result\":${{ toJSON(needs.l1-server.result) }},\"outputs\":{\"shadow_server\":${{ toJSON(needs.l1-server.outputs.shadow_server) }}}}}";
+  const shadowOutputs: Record<string, Record<string, string>> = {
+    "l1-frontend": { shadow_frontend: "${{ steps.frontend.outputs.shadow }}" },
+    "l1-scripts": { shadow_scripts: "${{ steps.scripts.outputs.shadow }}", shadow_bridge: "${{ steps.bridge.outputs.shadow }}" },
+    "l1-server": { shadow_server: "${{ steps.server.outputs.shadow }}" },
+  };
+  const expectedJobOutputs: Record<string, string[]> = {
+    "l1-static": ["receipt"], "l1-frontend": ["receipt", "shadow_frontend"],
+    "l1-scripts": ["receipt", "shadow_scripts", "shadow_bridge"], "l1-server": ["receipt", "shadow_server"],
+  };
+  const shadowScope = jobs?.detect?.steps?.find((step) => step.id === "shadow-summary");
+  check(shadowScope?.run === "node_modules/.bin/tsx scripts/verification/ci-shadow.ts --scope" && shadowScope.if === undefined
+    && shadowScope["continue-on-error"] === undefined, "Detect must record the fixed CI shadow scope without changing scheduling outputs.");
+  check(JSON.stringify(Object.keys(jobs?.detect?.outputs ?? {}).sort()) === JSON.stringify(["docs_only", "run_l1", "run_l2", "run_quality", "run_smoke"]), "Detect must retain exactly its five scheduling outputs.");
   for (const id of l1Jobs) {
     const job = jobs?.[id];
     if (!job) { errors.push(`Missing ${id}.`); continue; }
@@ -483,6 +498,8 @@ export function evaluateL1CiWorkflow(workflowText: string): { status: "passed" |
       check(step("catalog")?.env?.PARAMETER_CATALOG_TRUSTED_BASE_SHA === trustedBase && step("catalog")?.run?.trim() === catalogCommand, "Static trusted-base ratchet changed.");
       check(step("eslint_cache")?.uses === "actions/cache@v4" && step("eslint_cache")?.with?.path === "node_modules/.cache/eslint", "ESLint cache must be retained.");
     }
+    for (const [output, expression] of Object.entries(shadowOutputs[id] ?? {})) check(job.outputs?.[output] === expression, `${id}/${output} must publish its fixed shadow sibling output.`);
+    check(JSON.stringify(Object.keys(job.outputs ?? {}).sort()) === JSON.stringify(expectedJobOutputs[id]!.sort()), `${id} must retain only fixed receipt and shadow job outputs.`);
   }
   const gateNeeds = {
     "build-and-test": ["detect", ...l1Jobs],
@@ -496,7 +513,9 @@ export function evaluateL1CiWorkflow(workflowText: string): { status: "passed" |
     check(JSON.stringify(job?.needs) === JSON.stringify(needs), `${id} has missing or unmapped dependencies.`);
     check(steps.length === 3 && steps[0]?.uses === "actions/checkout@v4" && steps[1]?.uses === "actions/setup-node@v4"
       && steps[1]?.with?.["node-version-file"] === ".nvmrc" && steps[2]?.run === `${cli} ${id === "required" ? "required" : "l1"}`
-      && steps[2]?.env?.EFF_NEEDS === "${{ toJSON(needs) }}" && steps.every((step) => step.if === undefined && step["continue-on-error"] === undefined), `${id} must validate exact results without npm installation or failure suppression.`);
+      && steps[2]?.env?.EFF_NEEDS === (id === "build-and-test" ? expectedNeedsProjection : "${{ toJSON(needs) }}")
+      && (id === "required" || steps[2]?.env?.EFF_SHADOW === expectedShadowProjection)
+      && steps.every((step) => step.if === undefined && step["continue-on-error"] === undefined), `${id} must validate exact results without npm installation or failure suppression.`);
   }
   check(jobs?.["build-and-test"]?.outputs?.identity === "${{ steps.results.outputs.identity }}", "Build and test must publish its verified execution identity.");
   return { status: errors.length ? "failed" : "passed", errors };

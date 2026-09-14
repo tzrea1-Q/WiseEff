@@ -1,8 +1,10 @@
-import { chmodSync, linkSync, mkdtempSync, writeFileSync, symlinkSync, rmSync } from "node:fs";
+import { chmodSync, linkSync, mkdirSync, mkdtempSync, writeFileSync, symlinkSync, rmSync } from "node:fs";
+import { execFileSync, spawnSync } from "node:child_process";
 import os from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { assertL1Results, assertRequiredResults, createL1Receipt, l1CommandIds, readPrivateReport, validateNativeReport } from "./ci-required-results";
+import { assertL1Results, assertRequiredResults, assertShadowResults, assertShadowSummary, createL1Receipt, l1CommandIds, readPrivateReport, settleShadowResults, validateNativeReport } from "./ci-required-results";
+import { createNotApplicableShadow, createUnavailableShadow } from "./verification/ci-shadow";
 
 const identity = {
   event: "pull_request", mode: "", fullAcceptance: false, ref: "refs/pull/828/merge",
@@ -106,6 +108,227 @@ describe("L1 invocation receipts", () => {
   });
   it("accepts the always-running docs-only aggregate without fake test receipts", () => {
     expect(() => assertL1Results({ identity, needs: { detect: docNeeds.detect, ...Object.fromEntries(Object.keys(l1CommandIds).map((job) => [job, { result: "skipped" }])) } })).not.toThrow();
+  });
+  it("validates shadow siblings against the already-verified native reports", () => {
+    const native = (command: string) => report(command);
+    const shadow = (command: string) => JSON.stringify(createUnavailableShadow({ identity, command: command as "frontend" | "scripts" | "bridge" | "server", native: native(command), error: "SHADOW_PLAN_INVALID" }));
+    const needs = {
+      detect: { result: "success", outputs: flags },
+      "l1-frontend": { result: "success", outputs: { shadow_frontend: shadow("frontend") } },
+      "l1-scripts": { result: "success", outputs: { shadow_scripts: shadow("scripts"), shadow_bridge: shadow("bridge") } },
+      "l1-server": { result: "success", outputs: { shadow_server: shadow("server") } },
+    };
+    const nativeNeeds = { detect: { result: "success", outputs: flags }, ...receipts() };
+    expect(() => assertShadowResults({ identity, needs, nativeNeeds })).not.toThrow();
+    const forged = JSON.parse(needs["l1-server"].outputs.shadow_server);
+    forged.nativeReportSha256 = "f".repeat(64);
+    expect(() => assertShadowResults({ identity, needs: { ...needs, "l1-server": { result: "success", outputs: { shadow_server: JSON.stringify(forged) } } }, nativeNeeds })).toThrow();
+  });
+  it("rejects selection projections from unavailable and not-applicable shadows", () => {
+    const unavailable = createUnavailableShadow({ identity, command: "frontend", native: report("frontend"), error: "SHADOW_PLAN_INVALID" });
+    const unavailableSelected = { ...unavailable, modules: unavailable.modules.map((module, index) => index === 0 ? { ...module, selected: true, wouldSelectFileCount: 1, matchedCount: 1 } : module) };
+    expect(() => assertShadowSummary(unavailableSelected, identity, "frontend", report("frontend"))).toThrow();
+
+    const mainIdentity = { ...identity, event: "push", base: "", head: "", ref: "refs/heads/main" };
+    const notApplicable = createNotApplicableShadow({ identity: mainIdentity, command: "frontend" });
+    const notApplicableSelected = { ...notApplicable, modules: notApplicable.modules.map((module, index) => index === 0 ? { ...module, selected: true } : module) };
+    expect(() => assertShadowSummary(notApplicableSelected, mainIdentity, "frontend")).toThrow();
+  });
+  it("keeps native Detect authoritative and settles every child before observing", () => {
+    const native = (command: string) => report(command);
+    const observed = (command: string) => ({ ...createUnavailableShadow({ identity, command: command as "frontend" | "scripts" | "bridge" | "server", native: native(command), error: "SHADOW_PLAN_INVALID" }),
+      status: "observed" as const, error: null, planValid: true, fullFallback: false, selectionScope: "module-subset" as const,
+      selectionDigest: "c".repeat(64), policyDigest: "a".repeat(64), registryDigest: "b".repeat(64) });
+    const shadowNeeds = {
+      detect: { result: "success", outputs: flags },
+      "l1-frontend": { result: "success", outputs: { shadow_frontend: JSON.stringify(observed("frontend")) } },
+      "l1-scripts": { result: "success", outputs: { shadow_scripts: JSON.stringify(observed("scripts")), shadow_bridge: JSON.stringify(observed("bridge")) } },
+      "l1-server": { result: "success", outputs: { shadow_server: JSON.stringify(observed("server")) } },
+    };
+    const nativeNeeds = { detect: { result: "success", outputs: flags }, ...receipts() };
+    const invoke = (payload: typeof shadowNeeds) => assertShadowResults({ identity, needs: payload, nativeNeeds });
+    expect(() => invoke(shadowNeeds)).not.toThrow();
+    expect(settleShadowResults({ identity, needs: shadowNeeds, nativeNeeds })).toEqual({ status: "observed", planValid: true, error: null });
+
+    const suppressed = { ...shadowNeeds, detect: { result: "success", outputs: { ...flags, docs_only: "true", run_l1: "false", run_quality: "false", run_smoke: "false", run_l2: "false" } } };
+    expect(() => invoke(suppressed)).toThrow();
+    const unknownDetect = { ...shadowNeeds, detect: { result: "success", outputs: { ...flags, extra: "false" } } };
+    expect(() => invoke(unknownDetect)).toThrow();
+    const unknownEnvelope = { ...shadowNeeds, "l1-server": { result: "success", outputs: { shadow_server: shadowNeeds["l1-server"].outputs.shadow_server, unknown: "{}" } } };
+    expect(() => invoke(unknownEnvelope)).toThrow();
+
+    const unavailable = JSON.parse(shadowNeeds["l1-server"].outputs.shadow_server);
+    unavailable.status = "unavailable";
+    unavailable.error = "SHADOW_PLAN_INVALID";
+    unavailable.planValid = false;
+    unavailable.fullFallback = false;
+    unavailable.selectionScope = "unavailable";
+    unavailable.selectionDigest = null;
+    unavailable.policyDigest = null;
+    unavailable.registryDigest = null;
+    unavailable.modules = unavailable.modules.map((module: Record<string, unknown>) => ({ ...module, selected: false, wouldSelectFileCount: 0, matchedCount: 0 }));
+    const childUnavailable = { ...shadowNeeds, "l1-server": { result: "success", outputs: { shadow_server: JSON.stringify(unavailable) } } };
+    expect(() => invoke(childUnavailable)).not.toThrow();
+    expect(settleShadowResults({ identity, needs: childUnavailable, nativeNeeds })).toEqual({ status: "unavailable", planValid: false, error: "SHADOW_PLAN_INVALID" });
+
+    const impossibleFallback = JSON.parse(shadowNeeds["l1-server"].outputs.shadow_server);
+    impossibleFallback.fullFallback = true;
+    impossibleFallback.selectionScope = "full-required";
+    impossibleFallback.modules = impossibleFallback.modules.map((module: Record<string, unknown>) => ({ ...module, selected: false, wouldSelectFileCount: 0, matchedCount: 0 }));
+    expect(() => invoke({ ...shadowNeeds, "l1-server": { result: "success", outputs: { shadow_server: JSON.stringify(impossibleFallback) } } })).toThrow();
+
+    const mismatchedCounts = JSON.parse(shadowNeeds["l1-server"].outputs.shadow_server);
+    mismatchedCounts.modules[0].matchedCount = mismatchedCounts.modules[0].wouldSelectFileCount + 1;
+    expect(() => invoke({ ...shadowNeeds, "l1-server": { result: "success", outputs: { shadow_server: JSON.stringify(mismatchedCounts) } } })).toThrow();
+
+    const mixedVector = JSON.parse(shadowNeeds["l1-server"].outputs.shadow_server);
+    mixedVector.modules[0].selected = true;
+    expect(() => invoke({ ...shadowNeeds, "l1-server": { result: "success", outputs: { shadow_server: JSON.stringify(mixedVector) } } })).toThrow();
+  });
+  it("rejects a mixed common shadow policy association while retaining command-specific native hashes", () => {
+    const native = (command: string) => report(command);
+    const observed = (command: string) => ({ ...createUnavailableShadow({ identity, command: command as "frontend" | "scripts" | "bridge" | "server", native: native(command), error: "SHADOW_PLAN_INVALID" }),
+      status: "observed" as const, error: null, planValid: true, fullFallback: false, selectionScope: "module-subset" as const,
+      selectionDigest: "c".repeat(64), policyDigest: "a".repeat(64), registryDigest: "b".repeat(64) });
+    const shadowNeeds = {
+      detect: { result: "success", outputs: flags },
+      "l1-frontend": { result: "success", outputs: { shadow_frontend: JSON.stringify(observed("frontend")) } },
+      "l1-scripts": { result: "success", outputs: { shadow_scripts: JSON.stringify(observed("scripts")), shadow_bridge: JSON.stringify(observed("bridge")) } },
+      "l1-server": { result: "success", outputs: { shadow_server: JSON.stringify(observed("server")) } },
+    };
+    const nativeNeeds = { detect: { result: "success", outputs: flags }, ...receipts() };
+    expect(() => assertShadowResults({ identity, needs: shadowNeeds, nativeNeeds })).not.toThrow();
+    expect(() => assertShadowSummary({ ...observed("frontend"), selectionDigest: null, fullFallback: true, selectionScope: "full-required" }, identity, "frontend", native("frontend"))).toThrow();
+    const mixed = JSON.parse(shadowNeeds["l1-server"].outputs.shadow_server);
+    mixed.registryDigest = "d".repeat(64);
+    expect(() => assertShadowResults({ identity, needs: { ...shadowNeeds, "l1-server": { result: "success", outputs: { shadow_server: JSON.stringify(mixed) } } }, nativeNeeds })).toThrow();
+    const extra = { ...shadowNeeds, "l1-server": { result: "success", outputs: { shadow_server: shadowNeeds["l1-server"].outputs.shadow_server, unknown: "{}" } } };
+    expect(() => assertShadowResults({ identity, needs: extra, nativeNeeds })).toThrow();
+    const impossible = JSON.parse(shadowNeeds["l1-frontend"].outputs.shadow_frontend);
+    impossible.modules[0].selected = false;
+    impossible.modules[0].matchedCount = 1;
+    expect(() => assertShadowResults({ identity, needs: { ...shadowNeeds, "l1-frontend": { result: "success", outputs: { shadow_frontend: JSON.stringify(impossible) } } }, nativeNeeds })).toThrow();
+    const oversized = JSON.parse(shadowNeeds["l1-frontend"].outputs.shadow_frontend);
+    oversized.modules[0].wouldSelectFileCount = oversized.actualFullFileCount + 1;
+    expect(() => assertShadowResults({ identity, needs: { ...shadowNeeds, "l1-frontend": { result: "success", outputs: { shadow_frontend: JSON.stringify(oversized) } } }, nativeNeeds })).toThrow();
+  });
+  it("keeps non-PR shadow explicitly not applicable", () => {
+    const mainIdentity = { ...identity, event: "push", base: "", head: "", ref: "refs/heads/main" };
+    const shadow = createNotApplicableShadow({ identity: mainIdentity, command: "frontend" });
+    expect(shadow).toMatchObject({ status: "not-applicable", planValid: false, error: "NOT_APPLICABLE" });
+  });
+  it("keeps malformed shadow outside the original standalone aggregate result", () => {
+    const sha = execFileSync("git", ["rev-parse", "HEAD"], { encoding: "utf8" }).trim();
+    const tree = execFileSync("git", ["rev-parse", "HEAD^{tree}"], { encoding: "utf8" }).trim();
+    const mainIdentity = { ...identity, event: "push", base: "", head: "", ref: "refs/heads/main", sha, tree };
+    const nativeSteps = (job: string) => Object.fromEntries(l1CommandIds[job].map((id) => [id, {
+      outcome: "success", outputs: { report: JSON.stringify({ ...report(id), identity: mainIdentity }) },
+    }]));
+    const nativeNeeds = { detect: { result: "success", outputs: { docs_only: "false", run_l1: "true", run_quality: "true", run_smoke: "false", run_l2: "true" } },
+      ...Object.fromEntries(Object.keys(l1CommandIds).map((job) => [job, { result: "success", outputs: { receipt: JSON.stringify(createL1Receipt({ identity: mainIdentity, job, steps: nativeSteps(job) })) } }])),
+    };
+    const env = { ...process.env, PATH: "/usr/bin:/bin", GITHUB_EVENT_NAME: "push", GITHUB_REF: "refs/heads/main", GITHUB_SHA: sha,
+      GITHUB_RUN_ID: "100", GITHUB_RUN_ATTEMPT: "1", EFF_BASE_SHA: "", EFF_HEAD_SHA: "", EFF_MODE: "", EFF_FULL_ACCEPTANCE: "false",
+      EFF_NEEDS: JSON.stringify(nativeNeeds), GITHUB_OUTPUT: path.join(os.tmpdir(), "wiseeff-ci-shadow-aggregate-output") };
+    const invoke = (extra: Record<string, string>) => spawnSync(process.execPath, ["--experimental-strip-types", "scripts/ci-required-results.ts", "l1"], { cwd: process.cwd(), env: { ...env, ...extra }, encoding: "utf8" });
+    const clean = invoke({});
+    const malformed = invoke({ EFF_SHADOW: "{}" });
+    const oversized = invoke({ EFF_SHADOW: "x".repeat(70 * 1024) });
+    const unknown = invoke({ EFF_SHADOW: JSON.stringify({ identity: mainIdentity, needs: {} }) });
+    const originalFailure = invoke({ EFF_SHADOW: "{}", EFF_NEEDS: JSON.stringify({ ...nativeNeeds, "l1-server": { result: "failure", outputs: { receipt: "" } } }) });
+    rmSync(env.GITHUB_OUTPUT, { force: true });
+    expect(clean.status).toBe(0);
+    expect(malformed.status).toBe(0);
+    expect(oversized.status).toBe(0);
+    expect(unknown.status).toBe(0);
+    expect(originalFailure.status).not.toBe(0);
+    expect(clean.stdout).toContain("CI shadow: not-applicable; planValid:false");
+    expect(malformed.stdout).toContain("CI shadow: not-applicable; planValid:false");
+    expect(oversized.stdout).toContain("CI shadow: not-applicable; planValid:false");
+    expect(unknown.stdout).toContain("CI shadow: not-applicable; planValid:false");
+  });
+  it("records the applicable CLI shadow settlement matrix with stdout and exit", () => {
+    const sha = execFileSync("git", ["rev-parse", "HEAD"], { encoding: "utf8" }).trim();
+    const tree = execFileSync("git", ["rev-parse", "HEAD^{tree}"], { encoding: "utf8" }).trim();
+    const prIdentity = { ...identity, sha, tree };
+    const nativeReport = (command: string) => ({ ...report(command), identity: prIdentity });
+    const nativeSteps = (job: string, nativeIdentity = prIdentity) => Object.fromEntries(l1CommandIds[job].map((id) => [id, {
+      outcome: "success", outputs: { report: JSON.stringify({ ...report(id), identity: nativeIdentity }) },
+    }]));
+    const nativeNeeds = { detect: { result: "success", outputs: flags },
+      ...Object.fromEntries(Object.keys(l1CommandIds).map((job) => [job, { result: "success", outputs: { receipt: JSON.stringify(createL1Receipt({ identity: prIdentity, job, steps: nativeSteps(job) })) } }])) };
+    const shadow = (command: string, value = createUnavailableShadow({ identity: prIdentity, command: command as "frontend" | "scripts" | "bridge" | "server", native: nativeReport(command), error: "SHADOW_PLAN_INVALID" })) => JSON.stringify(value);
+    const allUnavailable = {
+      detect: { result: "success", outputs: flags },
+      "l1-frontend": { result: "success", outputs: { shadow_frontend: shadow("frontend") } },
+      "l1-scripts": { result: "success", outputs: { shadow_scripts: shadow("scripts"), shadow_bridge: shadow("bridge") } },
+      "l1-server": { result: "success", outputs: { shadow_server: shadow("server") } },
+    };
+    const observed = (command: string) => ({ ...createUnavailableShadow({ identity: prIdentity, command: command as "frontend" | "scripts" | "bridge" | "server", native: nativeReport(command), error: "SHADOW_PLAN_INVALID" }),
+      status: "observed" as const, error: null, planValid: true, selectionScope: "module-subset" as const,
+      selectionDigest: "c".repeat(64), policyDigest: "a".repeat(64), registryDigest: "b".repeat(64) });
+    const allObserved = {
+      detect: { result: "success", outputs: flags },
+      "l1-frontend": { result: "success", outputs: { shadow_frontend: shadow("frontend", observed("frontend")) } },
+      "l1-scripts": { result: "success", outputs: { shadow_scripts: shadow("scripts", observed("scripts")), shadow_bridge: shadow("bridge", observed("bridge")) } },
+      "l1-server": { result: "success", outputs: { shadow_server: shadow("server", observed("server")) } },
+    };
+    const clone = <T>(value: T): T => JSON.parse(JSON.stringify(value)) as T;
+    const childNames = ["frontend", "scripts", "bridge", "server"] as const;
+    const childLocation = (command: typeof childNames[number]) => command === "frontend" ? ["l1-frontend", "shadow_frontend"] as const
+      : command === "scripts" ? ["l1-scripts", "shadow_scripts"] as const
+        : command === "bridge" ? ["l1-scripts", "shadow_bridge"] as const : ["l1-server", "shadow_server"] as const;
+    const mutateChild = (command: typeof childNames[number], mutation: (value: Record<string, unknown>) => unknown) => {
+      const value = clone(allObserved) as Record<string, { outputs: Record<string, string> }>;
+      const [job, output] = childLocation(command);
+      value[job].outputs[output] = JSON.stringify(mutation(JSON.parse(value[job].outputs[output])));
+      return value;
+    };
+    const mainIdentity = { ...prIdentity, event: "push" as const, base: "", head: "", ref: "refs/heads/main" };
+    const mainFlags = { docs_only: "false", run_l1: "true", run_quality: "true", run_smoke: "false", run_l2: "true" };
+    const mainNeeds = { detect: { result: "success", outputs: mainFlags },
+      ...Object.fromEntries(Object.keys(l1CommandIds).map((job) => [job, { result: "success", outputs: { receipt: JSON.stringify(createL1Receipt({ identity: mainIdentity, job, steps: nativeSteps(job, mainIdentity) })) } }])) };
+    const cases: Array<{ name: string; shadow: unknown; needs?: unknown; event?: "pull_request" | "push"; expectedExit: number; expectedState: "observed" | "unavailable" | "not-applicable" | null }> = [
+      { name: "all-observed", shadow: allObserved, expectedExit: 0, expectedState: "observed" },
+      { name: "all-unavailable", shadow: allUnavailable, expectedExit: 0, expectedState: "unavailable" },
+      ...childNames.flatMap((command) => [
+        { name: `${command}-missing`, shadow: (() => { const value = clone(allObserved); const [job, output] = childLocation(command); delete value[job].outputs[output]; return value; })(), expectedExit: 0, expectedState: "unavailable" as const },
+        { name: `${command}-unavailable`, shadow: (() => { const value = clone(allObserved); const [job, output] = childLocation(command); value[job].outputs[output] = shadow(command); return value; })(), expectedExit: 0, expectedState: "unavailable" as const },
+        { name: `${command}-malformed`, shadow: mutateChild(command, () => ({})), expectedExit: 0, expectedState: "unavailable" as const },
+        { name: `${command}-wrong-identity`, shadow: mutateChild(command, (value) => ({ ...value, identity: { ...prIdentity, sha: "f".repeat(40) } })), expectedExit: 0, expectedState: "unavailable" as const },
+      ]),
+      { name: "count-contradiction", shadow: mutateChild("frontend", (value) => ({ ...value, modules: (value.modules as Array<Record<string, unknown>>).map((module, index) => index === 0 ? { ...module, matchedCount: 2 } : module) })), expectedExit: 0, expectedState: "unavailable" },
+      { name: "vector-contradiction", shadow: mutateChild("server", (value) => ({ ...value, modules: (value.modules as Array<Record<string, unknown>>).map((module, index) => index === 0 ? { ...module, selected: true } : module) })), expectedExit: 0, expectedState: "unavailable" },
+      { name: "digest-contradiction", shadow: mutateChild("frontend", (value) => ({ ...value, nativeReportSha256: "f".repeat(64) })), expectedExit: 0, expectedState: "unavailable" },
+      { name: "full-fallback-contradiction", shadow: mutateChild("frontend", (value) => ({ ...value, fullFallback: true, selectionScope: "full-required" })), expectedExit: 0, expectedState: "unavailable" },
+      { name: "envelope-contradiction", shadow: (() => { const value = clone(allObserved); value["l1-server"].outputs.unknown = "{}"; return value; })(), expectedExit: 0, expectedState: "unavailable" },
+      ...(["failure", "cancelled", "skipped"] as const).map((result) => ({ name: `native-${result}`, shadow: allObserved, needs: { ...clone(nativeNeeds), "l1-server": result === "skipped" ? { result } : { result, outputs: { receipt: "" } } }, expectedExit: 1, expectedState: null })),
+    ];
+    const docsDetect = { result: "success", outputs: { docs_only: "true", run_l1: "false", run_quality: "false", run_smoke: "false", run_l2: "false" } };
+    cases.push(
+      { name: "non-pr-not-applicable", shadow: {}, needs: mainNeeds, event: "push", expectedExit: 0, expectedState: "not-applicable" },
+      { name: "docs-pr-not-applicable", shadow: {}, needs: { detect: docsDetect, ...Object.fromEntries(Object.keys(l1CommandIds).map((job) => [job, { result: "skipped" }])) }, expectedExit: 0, expectedState: "not-applicable" },
+      { name: "forged-shadow-detect-suppression", shadow: { detect: docsDetect }, expectedExit: 0, expectedState: "unavailable" },
+    );
+    const evidenceDirectory = path.resolve("work/efficiency/ci-shadow-p2");
+    mkdirSync(evidenceDirectory, { recursive: true, mode: 0o700 });
+    const evidenceRoot = mkdtempSync(path.join(evidenceDirectory, "cli-"));
+    const baseEnv = (event: "pull_request" | "push", needs: unknown) => ({ ...process.env, GITHUB_EVENT_NAME: event, GITHUB_REF: event === "push" ? "refs/heads/main" : "refs/pull/828/merge", GITHUB_SHA: sha,
+      GITHUB_RUN_ID: "100", GITHUB_RUN_ATTEMPT: "1", EFF_BASE_SHA: event === "push" ? "" : "1".repeat(40), EFF_HEAD_SHA: event === "push" ? "" : "2".repeat(40), EFF_MODE: "", EFF_FULL_ACCEPTANCE: "false", EFF_NEEDS: JSON.stringify(needs) });
+    const invoke = (testCase: (typeof cases)[number], index: number) => {
+      const output = path.join(evidenceRoot, `${String(index).padStart(2, "0")}-${testCase.name}.output`);
+      const result = spawnSync(process.execPath, ["--experimental-strip-types", "scripts/ci-required-results.ts", "l1"], { cwd: process.cwd(), env: { ...baseEnv(testCase.event ?? "pull_request", testCase.needs ?? nativeNeeds), EFF_SHADOW: JSON.stringify(testCase.shadow), GITHUB_OUTPUT: output }, encoding: "utf8" });
+      writeFileSync(path.join(evidenceRoot, `${String(index).padStart(2, "0")}-${testCase.name}.stdout`), result.stdout ?? "");
+      writeFileSync(path.join(evidenceRoot, `${String(index).padStart(2, "0")}-${testCase.name}.stderr`), result.stderr ?? "");
+      return result;
+    };
+    const results = cases.map((testCase, index) => ({ testCase, result: invoke(testCase, index) }));
+    writeFileSync(path.join(evidenceRoot, "cases.json"), JSON.stringify({ identity: prIdentity, evidenceRoot, cases: results.map(({ testCase, result }) => ({ name: testCase.name, expectedExit: testCase.expectedExit, expectedState: testCase.expectedState, actualExit: result.status, stdout: result.stdout, stderr: result.stderr })) }));
+    for (const { testCase, result } of results) {
+      expect(result.status, testCase.name).toBe(testCase.expectedExit);
+      if (testCase.expectedState) expect(result.stdout, testCase.name).toContain(`CI shadow: ${testCase.expectedState}; planValid:${testCase.expectedState === "observed" ? "true" : "false"}`);
+      else expect(result.stdout, testCase.name).not.toContain("CI shadow:");
+    }
   });
   it("reads only a fresh private regular report and rejects symlinks and missing reports", () => {
     const directory = mkdtempSync(path.join(os.tmpdir(), "ci-report-test-"));

@@ -8,6 +8,12 @@ The L2 `wiseeff-diagnostic-<run>-<attempt>-acceptance-local-non-hdc` artifact is
 
 For changes to this channel, run `npm run test:scripts -- scripts/acceptance-diagnostic.test.ts scripts/check-acceptance-ci.test.ts` and `npm run acceptance:ci`. These extract and exercise the real isolated workflow publisher; synthetic failures are diagnostic checks, not full acceptance. All bounded diagnostic steps count toward the L2 platform budget (151-minute floor, 155-minute job ceiling); the Gate0 owner and existing scan/upload allowances are unchanged.
 
+## CI shadow observations
+
+The `Build and test` aggregator first enforces existing native L1 receipts and required outcomes. Only after that gate succeeds does it publish a bounded, non-authoritative shadow summary. Applicable PRs with four fresh matching native observations report `observed` and `planValid:true`; missing, malformed or mismatched evidence reports `unavailable` and `planValid:false`. Documentation-only and non-PR runs report `not-applicable` and `planValid:false`. Native Detect output determines applicability. An unavailable observation cannot suppress a native failure or make a valid plan.
+
+All original L1 commands still execute. The four feedback modules remain `observation-pending`, with enforcement and memo disabled; policy changes validate themselves with the unchanged full requirements. Summary paths and fields are fixed and bounded, and rejected evidence is never replaced by raw-directory upload. Test this boundary with `npm run test:scripts -- scripts/check-acceptance-ci.test.ts scripts/ci-required-results.test.ts scripts/verification/ci-shadow.test.ts scripts/verification/plan.test.ts scripts/verification/selection.test.ts scripts/ci-changed-paths.test.ts` plus `npm run acceptance:ci` and the original build. The finite native fixture inside these tests proves receipt wiring; it is not a real module activation sample.
+
 ## Common Commands
 
 | Command | Proves | Use when |

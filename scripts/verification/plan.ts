@@ -385,4 +385,17 @@ export function createPreview(options: { cwd: string; base: string; head?: strin
 
 export const createPlan = createPreview;
 
+export function assertCiMergeIdentity(options: {
+  cwd: string; acceptedBase: string; prHead: string; executionSha: string; executionTree: string;
+}): void {
+  if (![options.acceptedBase, options.prHead, options.executionSha, options.executionTree].every(validSha)) return fail("CI_IDENTITY_MISMATCH");
+  const metadata = requireRepositoryMetadata(options.cwd);
+  if (metadata.head !== options.executionSha || metadata.tree !== options.executionTree) return fail("CI_IDENTITY_MISMATCH");
+  committedObject(options.cwd, options.acceptedBase);
+  committedObject(options.cwd, options.prHead);
+  committedObject(options.cwd, options.executionSha);
+  const parents = decode(gitChecked(options.cwd, ["rev-list", "--parents", "-n", "1", options.executionSha])).trim().split(" ");
+  if (parents.length !== 3 || parents[0] !== options.executionSha || parents[1] !== options.acceptedBase || parents[2] !== options.prHead) return fail("CI_IDENTITY_MISMATCH");
+}
+
 export function isSameSelection(left: Selection, right: Selection): boolean { return isDeepStrictEqual(left, right); }

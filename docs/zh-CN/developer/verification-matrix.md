@@ -15,6 +15,12 @@ L2 的 `wiseeff-diagnostic-<run>-<attempt>-acceptance-local-non-hdc` 产物是�
 - 修改相关功能时，请同时更新英文版和中文版；如果只更新一侧，`npm run docs:check` 应阻止完成。
 - 若中文页与源码、测试或英文页冲突，以源码、测试和当前英文页为准，并在同一变更中修正中文页。
 
+## CI shadow 观察
+
+`Build and test` 汇总器先强制校验现有原生 L1 回执和必需结果，通过后才发布有界、无放行权的 shadow 摘要。适用的 PR 若有四份新鲜且匹配的原生观察，返回 `observed`、`planValid:true`；证据缺失、畸形或不匹配时返回 `unavailable`、`planValid:false`。纯文档和非 PR 运行返回 `not-applicable`、`planValid:false`。适用范围由原生 Detect 输出确定，观察不可用不能掩盖原生失败或生成有效计划。
+
+原有 L1 命令全部继续执行。四个反馈模块保持 `observation-pending`，enforce 与 memo 关闭；策略变更仍以原有完整要求验证自身。摘要路径和字段固定且有界，被拒绝的证据不能回退为原始目录上传。此边界使用 `npm run test:scripts -- scripts/check-acceptance-ci.test.ts scripts/ci-required-results.test.ts scripts/verification/ci-shadow.test.ts scripts/verification/plan.test.ts scripts/verification/selection.test.ts scripts/ci-changed-paths.test.ts`、`npm run acceptance:ci` 和原有 build 验证。测试内的有限原生夹具证明回执接线，不计作真实模块启用样本。
+
 ## 关键阅读点
 
 - 先确认该文档属于哪个决策面：developer。
