@@ -21,6 +21,10 @@ A 可先交付，B/C 继续开放。不得制造样本，也不能因工具合�
 
 ## 交付后的 main 观察与有界夹具领取——2026-09-14
 
+夹具PR打开前，实时main-ref检查拒绝了过时720基线。外部 [PR #841](https://github.com/tzrea1-Q/WiseEff/pull/841) 已合入为 **`2ee24b651ace3649e7ca8012205da9db43736c6c`**，有序双亲为720和 `d3ff58b6870044d1abf77992d7895464a0fd58e1`。其六条自托管/环境文档路径通过无冲突的正常merge完整保留；本候选相对新accepted base仍只有三条允许的测试/计划路径。没有修改外部Catalog实现，也不把它算作EFF所属源码改动。自然main [run34803521127](https://github.com/tzrea1-Q/WiseEff/actions/runs/34803521127) 在集成检查点仍运行中。夹具首次Hosted之前必须在新基线上更新父代理精确head验证和独立增量审查，旧绿灯不冒充新执行。
+
+较早720的 [run34801295912](https://github.com/tzrea1-Q/WiseEff/actions/runs/34801295912) attempt1现已失败结束：frontend/Build and test如后文所述失败，L2/Merge记录44项浏览器清单失败，原archive-size门禁拒绝完整产物。最小诊断10332631528（664字节）上传成功，身份和ZIP SHA256 `ccf4190a4c8c9f0a8ceb95e5a8bf87807543c902363d4a9eb124a43703916911` 已按basee45/source720/treebf235/run/attempt核实；详细原生数量与清理仍unknown。workflow2670秒、已执行job时长之和75.1分钟是单独失败运行观察，不是账单，也不证明新夹具已经Hosted/合入。此前十一PR源码包仍是精确的历史720产物；后续并集必须使用实际最终merge并排除无关上游路径。
+
 最终文档 [PR #840](https://github.com/tzrea1-Q/WiseEff/pull/840) 合入为已接受 main `720b61476c1a04c6af4f59876db0fea57e219fed`，tree `bf23559e04952cc813593b29802caf9ad7d2c7f8`。base `e45dc3ab941fb081ff0d6edb07668c63fffb7cc0` 和独立已审 head `02e41c33f81e52035ef0a1ad1f9dd067bcab9724` 是 [run34801076313](https://github.com/tzrea1-Q/WiseEff/actions/runs/34801076313) attempt1 实际 checkout `a071bc020edcdd414d40ff89131f0a317e4f3915` 的有序双亲。实际 docs-only 选中 Detect changed paths、Build and test、Merge bar 并通过；九个运行时 job 未选中而 skipped，没有原生测试。workflow72秒、已执行job时长之和1.05分钟是单次观察，不是账单或受控收益。独立R1接受修正文档；另行机械审查核实最终53文件源码并集及ZIP SHA256 `d5dedfe1bd024404296de6477aa6247d387579a83b9a6b35e7f62fb67ea7bca3`，无删除/重命名或私有运行产物。#828继续OPEN；封板中的MERGED状态属于PR #840。
 
 已结束的工程main [run34799403948](https://github.com/tzrea1-Q/WiseEff/actions/runs/34799403948) attempt1 执行e45/treeb587，accepted base017。L1、Quality和visual通过；L2/Merge失败，记录44项浏览器清单失败，原archive-size安全门禁拒绝完整产物。最小诊断10331867127（666字节）上传成功，已核实run/base/head/执行/tree/attempt及ZIP SHA256 `0ed900df9b424d8bc58132449b5bc43b9de2ba2fe852be1ba233d42c34c89aea`。详细原生数量和清理终态仍unknown。workflow2515秒、已执行job时长之和71.1833分钟不能证明相对前驱58项失败的受控收益。没有原始目录后备上传或失败状态覆盖。
