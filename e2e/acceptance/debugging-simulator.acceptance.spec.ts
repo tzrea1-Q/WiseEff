@@ -540,7 +540,8 @@ test.describe("M5.4 manual flow E - debugging simulator loop", () => {
     const alternateReadbackRow = parameterRow(page, "Readback mismatch probe");
     await expect(alternateReadbackRow).toContainText("写入已执行", { timeout: 30_000 });
     await expect(alternateReadbackRow).toContainText("1", { timeout: 30_000 });
-    await expect(alternateReadbackRow).not.toContainText(/readback mismatch|回读不一致/i);
+    await expect(alternateReadbackRow.locator('td[data-label="状态"]')).not.toContainText(/readback mismatch|回读不一致/i);
+    await expect(alternateReadbackRow.locator(".node-row-error").filter({ hasText: /readback mismatch|回读不一致/i })).toHaveCount(0);
     const alternateReadbackSheet = await openParameterSheet(page, "Readback mismatch probe");
     await expect(alternateReadbackSheet).toContainText("写入已执行");
     await expect(alternateReadbackSheet).toContainText("回读值：1");
