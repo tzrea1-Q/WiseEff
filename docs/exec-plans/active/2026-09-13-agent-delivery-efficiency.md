@@ -355,6 +355,12 @@ These are required behavior observations, not 58 mandatory new test files. Reuse
 | EFF-T57 | Missing usage/duplicate terminal/missing subagent → unknown plus coverage; no double count/estimate. | 04/08 |
 | EFF-T58 | Full source delivery → all changed complete files match candidate; no secrets or diff-only substitute. | 08/09 |
 
+## Edit-only type feedback candidate — 2026-09-14
+
+EFF-07 adds `npm run typecheck` as exactly the existing build's 4096 MiB `tsc -b` phase. The full `npm run build`, its Vite phase, project references, dependencies, test environments and all final gates remain unchanged. The linked verification matrix distinguishes edit feedback from completed build evidence. Reviewed code `40b32b19b754d108855884db8973e4cc1f1ad2ad` contains one package entry and two language rows. Genuine temporary errors in each referenced TypeScript project were rejected by both entries; those fixtures were removed before Green. Final main integration, compiler/build checks, independent combined review and its own PR/Hosted remain pending at this checkpoint.
+
+The historical measurement identity is `66e572a4c45bd5d4db164380a2200e7ee6c10ac4`, tree `26b7acc0e03a07922e57fe688ca285eb6a741346`, Node 22.22.3. Twelve successful observations comprise three cold and three warm runs per command, separately from the two project Red/Green checks. Build medians were 24.9584 seconds cold (range 19.7086–48.0473) and 27.9905 warm (19.0264–39.0767); type-phase medians were 10.0697 cold (9.9535–22.7207) and 12.7272 warm (9.4969–36.0767). Cold removed only two owned incremental compiler caches; OS/dependency caches remained warm and concurrent host load was uncontrolled. These N=3 groups justify offering a narrow command, not a current-head speed claim, CI saving or completion of level C. Tokens and billed runner-minutes are unknown. No DOM/pure-PG split, worker/heap tuning or browser sharding is adopted from these timings.
+
 ## Measurement and final reporting
 
 Targets are hypotheses: comparable ordinary-product L1 feedback ≥25% faster (reference total CI ~11–12 minutes); eligible selective PRs 5–8 minutes; focused pure/component P50 ≤60 seconds; plan P50 ≤10 seconds; added run/report overhead ≤5% with absolute overhead stated for short tasks; observed noncached-input/repeated-tool reduction ≥20% only after real usage exists. Explain single-run runner-resource increases >20% and report shadow overhead separately. Preserve known-counterexample omission count at zero; one omission rolls back, not a proof of mathematical completeness.
