@@ -195,15 +195,15 @@ R3 经过 `PREFLIGHT → THREAT-READY`，再进入 `SCRATCH → PRESEAL-REVIEW �
 
 ### D3 — 可解释影子计划（EFF-03/05）
 
-以下入口在 accepted base **尚未实现**；EFF-03/04 合入前使用验证矩阵中的真实已有命令：
+已实现的最小 profile 使用以下准确命令。原方案中的 edit profile、任意计划输入、分组选项、输出路径/格式选项及 enforce 尚未实现。其他任务继续使用验证矩阵中的原生命令：
 
-| 拟新增命令 | 契约 |
+| 已实现命令 | 契约 |
 | --- | --- |
-| `npm run verify:plan -- --base <ref> --profile <edit\|candidate\|pr\|full> --mode <shadow\|enforce> --out <file>` | 只读计算事实/计划，不安装依赖、启动数据库或编辑源码；仅向显式指定的受控非源码位置写出计划。 |
-| `npm run verify:run -- --plan <file> [--group <name>] [--force]` | 校验身份，通过参数数组执行已审查任务；完整日志流式落本地，返回有限摘要。 |
-| `npm run verify:report -- --run <dir> --format <summary\|json>` | 聚合已有结果，不隐式重跑、不调用模型。 |
+| `npm run verify:plan -- --base <40-hex-SHA> [--head <40-hex-SHA>]` | 对 clean 已提交根目录输出有界只读 JSON，保留完整必需任务集和验收待完成状态。不执行测试、不探测环境、不自动 fetch。 |
+| `npm run verify:run -- --base <40-hex-SHA> --task <ci-changed-paths\|feedback-frontend-client> [--force]` | 重新发现并执行一个固定手工任务，记录准确身份、本地原生证据及有界终端输出。`--force` 也始终重新执行，不执行或替代完整计划。 |
+| `npm run verify:report -- --run <UUID>` | 读取 `work/verification-runs/<UUID>` 中的所属记录，标注 recorded-local-data/freshness-unverified。不隐式重跑、复用结果、授予验收或调用模型。 |
 
-优先薄入口 `scripts/verify.ts` 与小型 `scripts/verification/` 边界，复用 TypeScript/Zod、GitHub Actions/Vitest/Playwright 和 Gate 0。这里是拟议落点，不是已存在文件声明；实现选定真实路径后同步本计划。不建立通用 DAG 引擎或新规则语言。
+薄入口 `scripts/verify.ts` 分派原有预览及独立的 `scripts/verification/run.ts`、`report.ts`。固定任务定义复用原生 Vitest 调用、报告校验与所属进程清理。PG、浏览器、Hosted 和目标环境保持原生入口，memo 与模块 enforce 继续关闭。下文较大设计属于未来契约，不代表已经实现 dirty 计划或任意适配器。
 
 CI 绑定不可变 base/PR head/实际 checkout SHA/tree。本地 edit/candidate 合并 merge-base 分支变化、staged、unstaged 与允许范围 untracked 源码，包含内容、删除、文件模式。NUL name-status 无损解析；重命名旧新路径并集，删除用 base 归属/消费者。校验 refs/路径，不拼接 shell。必要时有限 fetch 补历史；base/diff 无法确认阻止有效计划。空/未知路径广域回退，不误判 docs-only。用户输入只能扩大覆盖，不能压低风险。
 

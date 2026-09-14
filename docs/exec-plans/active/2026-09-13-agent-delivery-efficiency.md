@@ -195,15 +195,15 @@ Keep outward `Build and test` as a strict aggregate and retain `Merge bar`. Alwa
 
 ### D3 — Explainable shadow planner (EFF-03/05)
 
-Proposed entry points below are **not implemented at accepted base**. Until EFF-03/04 lands, use existing commands in the verification matrix:
+The implemented minimum profile uses the following exact commands. Broader edit profiles, arbitrary plan input, group selection, output-path/format options and enforcement from the original design remain unimplemented. Use the native verification matrix for every other task:
 
-| Proposed command | Contract |
+| Implemented command | Contract |
 | --- | --- |
-| `npm run verify:plan -- --base <ref> --profile <edit\|candidate\|pr\|full> --mode <shadow\|enforce> --out <file>` | Read-only fact/plan computation; no dependency installation, database boot or source edits; output only to the explicitly requested controlled non-source location. |
-| `npm run verify:run -- --plan <file> [--group <name>] [--force]` | Validate identity and execute reviewed registered commands with argument arrays; stream full local logs and return bounded summaries. |
-| `npm run verify:report -- --run <dir> --format <summary\|json>` | Aggregate recorded results; no implicit rerun or model call. |
+| `npm run verify:plan -- --base <40-hex-SHA> [--head <40-hex-SHA>]` | Bounded read-only JSON for a clean committed root, retaining the full required task set and pending acceptance. No tests, environment probe or automatic fetch. |
+| `npm run verify:run -- --base <40-hex-SHA> --task <ci-changed-paths\|feedback-frontend-client> [--force]` | Fresh discovery and execution of one fixed manual task, with exact identities, local native evidence and bounded terminal output. Even `--force` is always fresh; it does not execute or discharge a full plan. |
+| `npm run verify:report -- --run <UUID>` | Read the saved owned record under `work/verification-runs/<UUID>` as recorded-local-data/freshness-unverified. No implicit rerun, result reuse, acceptance grant or model call. |
 
-Prefer a thin `scripts/verify.ts` and small `scripts/verification/` boundaries, actual TypeScript/Zod facilities, existing GitHub Actions/Vitest/Playwright and Gate 0. These are proposed paths, not claims of existing files; adjust the plan when implementation selects real paths. No generic DAG engine or new rule language.
+The thin `scripts/verify.ts` dispatches the existing preview and separate `scripts/verification/run.ts`/`report.ts` boundaries. Fixed task definitions reuse native Vitest invocation/report validation and owned process cleanup. PG, browser, Hosted and target execution keep their existing native entry points. Memo and module enforcement remain disabled. The larger design below is a future contract, not a claim that dirty planning or arbitrary adapters exist.
 
 CI uses immutable base/PR head/executed checkout SHA/tree. Local edit/candidate combines merge-base branch changes with staged, unstaged and allowed untracked source, including content, deletions and modes. Parse NUL-delimited name-status; include both rename paths and base-side ownership/consumers of deleted files. Validate refs/paths without shell interpolation. Bounded fetch may establish missing history; unconfirmed base/diff blocks valid planning. Empty/unknown paths fall back broad, never docs-only. User input may expand coverage but cannot reduce risk.
 
