@@ -1,7 +1,7 @@
 # 智能体开发与验证效率优化
 
 > English: [English](../../../exec-plans/active/2026-09-13-agent-delivery-efficiency.md)
-> 状态：**活跃——PR #830、#829、#833、#831、#834、#835、#836、#837、#838 已合入。浏览器夹具进入最终集成；最终证据与文档仍待结算。不声称裁剪启用或效果已验证。**
+> 状态：**活跃观察——截至 #839 的十个有界实现 PR 均已合入，本 EFF-09 文档在 #828 接受自身最终证明。所有模块保持 shadow/observation-pending，B/C 和完整 main 成功尚未成立。**
 > 日期：2026-09-13。真实跟踪 Issue：[#828](https://github.com/tzrea1-Q/WiseEff/issues/828)。
 > 2026-09-13 重新 fetch 后的真实 accepted base：`1059acb57379bd120d0d2b1a4b4733d4c2e02901`。它恰好等于附件的历史参考值，不构成强制回退后续工作的授权。
 
@@ -13,11 +13,64 @@
 
 | 交付层级 | 完成含义 | 当前状态 |
 | --- | --- | --- |
-| A：工具与流程 | 诊断、等价调度、影子计划、执行/摘要与路由已审查、验证并交付 | EFF-01/02/03/04/07/08 已合入；浏览器夹具验证/交付与最终证明仍待完成 |
+| A：工具与流程 | 诊断、等价调度、影子计划、执行/摘要与路由已审查、验证并交付 | 最小实现及有界浏览器修复已分十个 PR 合入，本最终文档切片通过自身 #828 证明结算 |
 | B：模块启用 | 每个明确模块独立满足观察与审查门槛 | 无已启用模块；`observation-pending` |
 | C：效果验证 | 同类真实任务/CI 样本支持墙钟、资源与 usage 结论 | 样本不足；token usage 为 `unknown` |
 
 A 可先交付，B/C 继续开放。不得制造样本，也不能因工具合入就宣称整个项目全面完成。
+
+## 当前交付结算——2026-09-14
+
+已接受的实现 main 为 `e45dc3ab941fb081ff0d6edb07668c63fffb7cc0`，tree `b58755ee3b9a94cbc76169caed9dc95d42a93f72`。[58 项回归台账](2026-09-13-efficiency-regression-ledger.md) 将每个实现 PR 绑定真实 base/head/checkout/tree/merge/run/attempt，区分已证明、部分证明、接口拒绝、未采用和待观察场景。十个实现 PR 为 #830、#829、#833、#831、#834—#839。本 EFF-09 四文件文档切片及最终源码包在 [#828](https://github.com/tzrea1-Q/WiseEff/issues/828) 另行记录自身独立 R1、Hosted 和精确合入证明，不改变运行时或策略。下方历史检查点保留当时状态，不覆盖本结算。
+
+| 工作包 | 已交付边界与剩余条件 |
+| --- | --- |
+| EFF-00 | 真实首次 fetch 基线1059、既有脏文件/工作树保护、实际权限/领取和失败归因；#829 登记，独立授权夹具 #830 与前置修复 #833。历史设计 SHA 从未强制回退后续工作。 |
+| EFF-01 | #829 上下文最小诊断、与完整产物分离及原失败保留。未声称详细报告读取或未实演的 runner 丢失/双故障场景。 |
+| EFF-02 | #831 四组等价 L1 保留原30条命令、原生凭据、稳定门禁名称/来源及严格聚合，没有选择性裁剪。 |
+| EFF-03 | #834 干净已提交树预览与 #835 有界 CI 影子观察已合入。未知/不安全 Git 拒绝计划，完整原生要求保留；脏树规划、任意适配器和强制裁剪不可用。 |
+| EFF-04 | #836 两个固定新鲜任务和明确未验证新鲜度的历史读取器已合入；原生发现/数量、生命周期、所有权、原子发布及拒绝检查通过，memo 关闭。 |
+| EFF-05 | 下方四模块均 observation-pending。缺失类别、10/3/6、完整 main 或审查是依赖条件，不是可以虚构的代码任务。 |
+| EFF-06 | 保留原有状态 Quality 和共享浏览器套件串行。#839 修复已观察夹具不匹配，没有实现或声称分片/隔离收益及等价性。 |
+| EFF-07 | #838 复用编译阶段提供编辑反馈，最终仍需完整 build；#839 保留真实模拟器行为。没有采用猜测性的 Node/jsdom、纯测试/PG、worker/heap 或超时/重试调整。 |
+| EFF-08 | #837 精简任务包、实际 cwd 路由、真实命令链接、历史三类恢复及诚实 usage 边界已合入，没有全局配置或工具权限变化。 |
+| EFF-09 | 本互链计划/台账记录 A/B/C、精确交付、main 失败、指标、资源和回退。最终文档 SHA/run/merge/源码包在真实结算后外部记录，不写入自身被测源码。 |
+
+| 已提交注册表模块 | 当前执行 | enforce / memo | 启用证据 |
+| --- | --- | --- | --- |
+| `feedback-domain` | full + shadow | disabled / disabled | observation-pending |
+| `feedback-client` | full + shadow | disabled / disabled | observation-pending |
+| `feedback-ui` | full + shadow | disabled / disabled | observation-pending |
+| `feedback-server` | full + shadow | disabled / disabled | observation-pending |
+
+#835 四份命令凭据不等于四个模块样本。每模块仍需至少10次实质真实变更、3次 Hosted、6个适用独立反例、全部必需类别、独立启用审查和可用完整 main 结果，并修复或证实相关 main-red 无关。没有已启用模式观察，也不声称漏选为零。由未来真实工作提供样本，不安排空提交或重复 Hosted 凑数。
+
+[PR #839](https://github.com/tzrea1-Q/WiseEff/pull/839) 通过独立 Standards/Spec 和 run34798669471 attempt1，实际 checkout `060ffc04ff56bc55a389afc762de135105579fb5`，随后合入上述实现 main。精确 head `1aca4c6aeb6569a4ea237db3ed97e4202f5ba6dc` 的自有运行 `full-20260914t015738338z-1aca4c6aeb65-0d16c94d` 通过包括原预热在内的六项原场景，零失败/跳过/flaky，retry0。原生67.582662秒和外层127.086795秒是不同口径；原生报告 SHA256 为 `bcc8ee43b5b888280d1050e22b7f649f162d5c16a2e78fdc4de0f867313af3ea`，根及嵌套终态清理完整。build22.8290秒、元数据和直接文档检查通过。Hosted 前端3411、脚本1560加21既有可选跳过、bridge134加4平台跳过、后端4180且零跳过、Quality100、Smoke4通过，完整 schema 已检查。L2/target/minimal 未选中而跳过，不是通过；这些结果不证明全部共享 helper 调用方或完整 main 成功。
+
+最新已结束前驱 [main run34797424920](https://github.com/tzrea1-Q/WiseEff/actions/runs/34797424920) attempt1 执行 `01703ba69f883b22e8b819182223c5fd35b90184`，tree `83db9a1accf309b9164325592f97d7e0b004fa30`，前驱 base 为 `b3ec95a4c9e327d384ce482be05c92ca0227e63a`。L1/Quality/visual 通过，L2/Merge 失败，记录58项浏览器失败且原 archive-size 门禁拒绝完整产物。诊断10330966621的 ZIP SHA256 已核实为 `f77510a4d9de06a6ea9a21a76016bf0bdca6247e917442308703eba114dab9c5`。快照保留清理/原生完整数量 unknown、自身上传 pending，实际诊断上传成功未覆盖两项失败。workflow2767秒、已执行 job 时长之和80.3833分钟，与账单分开。当前实现 e45 的 [main run34799403948](https://github.com/tzrea1-Q/WiseEff/actions/runs/34799403948) 在本封板前检查点仍运行中，不能从本地6/6或 PR 绿灯推断；最终 #828 证明刷新当前 main，较早 b3/0dd/aed 失败保留各自身份。
+
+剩余 main-red 仍需有界诊断：历史 Knowledge POST/GET500、DTS deploy500 和 Xiaoze 持久化结果症状尚无已确认的当前根因；冻结 Catalog 定位器和符合角色权限的前置条件依赖外部 #824/启动证据。六项修复不能关闭这些类别，同数量失败也不证明同根因。#828 保留 EFF 观察责任，并链接现有开放 [TD-075/076/118](../../../exec-plans/tech-debt-tracker.md) 跟踪治理/夹具/共享浏览器债务；TD-122 保持关闭。不为获得绿灯绕过权限、环境、目标/设备/Catalog 启用或完整产物安全边界。
+
+下表每个已接受 PR 仅 N=1，范围变化且 runner 波动未受控。workflow 时长为 updated−created，含结算；已执行 job 时长之和排除未选中任务，既不是墙钟，也不是账单。失败/拒绝候选及 main 运行另行保留，因此本表不是全项目成本，不支持受控百分比收益。
+
+| 已接受 PR / run | Workflow 秒 | 已执行 job 分钟之和 |
+| --- | --- | --- |
+| [#830](https://github.com/tzrea1-Q/WiseEff/actions/runs/34760791346) | 1056 | 30.9833 |
+| [#829](https://github.com/tzrea1-Q/WiseEff/actions/runs/34762290769) | 1061 | 30.8500 |
+| [#833](https://github.com/tzrea1-Q/WiseEff/actions/runs/34784471686) | 1094 | 29.6667 |
+| [#831](https://github.com/tzrea1-Q/WiseEff/actions/runs/34786627881) | 719 | 34.0333 |
+| [#834](https://github.com/tzrea1-Q/WiseEff/actions/runs/34788103778) | 607 | 31.6167 |
+| [#835](https://github.com/tzrea1-Q/WiseEff/actions/runs/34791485027) | 694 | 33.7833 |
+| [#836](https://github.com/tzrea1-Q/WiseEff/actions/runs/34794729894) | 734 | 34.3667 |
+| [#837](https://github.com/tzrea1-Q/WiseEff/actions/runs/34796067544) | 110 | 1.0500 |
+| [#838](https://github.com/tzrea1-Q/WiseEff/actions/runs/34796686417) | 615 | 32.6667 |
+| [#839](https://github.com/tzrea1-Q/WiseEff/actions/runs/34798669471) | 656 | 32.4000 |
+
+精确9f的两个新鲜命令分别为外层2.7528秒、运行记录区间1.422秒（10/1），以及外层4.0240秒、记录区间2.853秒（29/5）。差值1.3308秒/1.1710秒包括 npm/Node 启动、Git/依赖核验、存储准备和最终发布，不是受控的直接运行基线；≤5%开销和 P50 目标尚未验证。下方历史类型 N=3 冷暖分组支持提供窄编辑入口，不证明完整交付节省。W1 的 Quality 成为最长选中 job（659秒），单次观察不足以支持未经证明的分片。全项目 token usage、子代理 usage 完整覆盖和真实计费 runner-minutes 均 unknown。
+
+02:32:14UTC，在最后六项消费者结束后，停止并移除最后自有容器 `d1bfe7dd8f3d107b5abc54a7f8dbc09c743dbb228a4aa05d55522e1dd8fae9a5`，owner label 为 `bede0fa3-8179-47e2-b482-da4ad1dfd603`，精确 ID 不存在已核实。其 tmpfs 数据库存储随容器销毁，私有0600密码文件核验 owner/inode 后移除。较早自有夹具/诊断容器也已处置。源码工作树/分支、描述符、有界日志、失败取证产物、共享镜像和用户既有资源保留。最终文档仅移除自身临时依赖链接并按 lockfile 独立执行 `npm ci`，借用目标目录未改动。
+
+十个已接受 PR 的源码并集为 e45/treeb587 上的51个完整文件，ZIP SHA256 `7d88448361764684d065faa71a1ad8f42646a22349693dc3dffb5b4ec0aeb39d`，含逐 PR 身份及完整字节/hash/mode 验证，无删除/重命名、日志/凭据/数据库或无关上游路径。最终文档新增两个台账文件，精确53文件总包须在合入后打包并证明。按工作包通过普通独立审查 PR 和原选中 CI 回退，优先保留完整覆盖，必要时恢复原串行调度。bypass、force-push 或重写失败历史都不是回退方式。
 
 ## 执行入口接受与路由集成——2026-09-14
 
@@ -219,7 +272,7 @@ R3 经过 `PREFLIGHT → THREAT-READY`，再进入 `SCRATCH → PRESEAL-REVIEW �
 
 从既有结构化运行器/Gate 0 阶段事实投影 `execution / cleanup / diagnostic / archive / upload` 五种独立状态，保留全部失败与首个已知失败阶段；首批不改完整归档格式或资源生命周期。允许字段：schema version、可信 run/attempt/job ID、候选 SHA/tree、枚举 phase/status、exit/signal、起止时间、注册 task/test ID、已校验相对源码位置、规范化错误/拒绝码、清理投影、suppressed/truncated。缺失为 unknown。
 
-首个已独立威胁审查的 W0 实现将输入限定为 `workflow-context-only`：workflow 内嵌 `/usr/bin/python3 -I` publisher 不读候选报告，在 checkout 后、npm 前记录真实 SHA/tree，未观察的 phase/cleanup/test-count 保持 unknown，尚不声称详细报告投影。父本地验证进行中（本文档集成前 28 项 focused、`acceptance:ci`、build 已通过），不冒充同候选 Hosted 或合入证据。L2 新增 identity 1 分钟及 generation/fallback/upload/settlement 4 分钟，原必需预算下限 146 变为 151，总 job 预算变为 155 分钟；不缩短任何旧步骤预算。详细报告读取如有需要，作为 EFF-01 独立审查扩展。
+经独立威胁审查的 W0 最小实现已由 #829 合入。输入限定为 `workflow-context-only`：workflow 内嵌 `/usr/bin/python3 -I` 发布器不读候选报告，在 checkout 后、npm 前记录真实 SHA/tree，未观察的阶段、清理和测试数量保持 unknown。精确候选 `fb6087f1fdb352953f63b46ca711cee5775e2607` 通过 77 项窄测试、build、元数据/文档、独立双审和选中 Hosted run 34762290769 attempt 1。后续 main 自然失败另行证明：完整归档被拒绝时，安全最小诊断仍能上传；这不证明详细报告投影。L2 新增身份记录 1 分钟和生成/兜底/上传/结算 4 分钟，原必需预算下限 146 变为 151，总 job 预算变为 155 分钟；不缩短任何旧步骤预算。详细报告读取如有需要仍是单独审查的扩展，回归台账保留未实演的失败注入限制。
 
 原始 stderr、环境、请求响应、DB URL、浏览器 HTML/storage、令牌、代理认证和工作站绝对路径不得进入投影。标题、路径、异常文本均不可信。默认 JSON ≤64 KiB、人读摘要 ≤4 KiB、失败 ID ≤20；可选摘录每条 ≤1,200 字符，仅在专用白名单/脱敏校验后输出。优先不用自由文本；安全无法确认仅输出固定码。
 
@@ -417,18 +470,18 @@ EFF-07 新增 `npm run typecheck`，内容精确等于原 build 的 4096 MiB `ts
 
 | 领域 | 状态 | 精确路径与处置 |
 | --- | --- | --- |
-| 仓库入口 | Update，EFF-08 | `AGENTS.md`、`docs/zh-CN/root/AGENTS.md`：短路由和实际新命令，保留安全规则。 |
-| 计划治理 | Update，EFF-00/09 | `docs/PLANS.md`、`docs/zh-CN/PLANS.md`、本计划与英文对应：基线、波次/PR/状态/观察与真实归档。 |
+| 仓库入口 | #837 已更新 | `AGENTS.md`、`docs/zh-CN/root/AGENTS.md`：实际 cwd 发现、精简任务包和完整源码交付，保留原安全规则。 |
+| 计划治理 | #829 及最终文档切片更新 | `docs/PLANS.md`、`docs/zh-CN/PLANS.md` 已链接本活跃计划。本计划文件对维护当前状态，新互链回归台账记录 58 项观察。B/C 保持活跃，无需移入完成目录或重写索引。 |
 | 产品规格 | No change | `docs/product-specs/product-spec.md`、`docs/zh-CN/product-specs/product-spec.md`：仅工程交付，无产品行为/启用变化。 |
 | 架构 | No change | `ARCHITECTURE.md`、`docs/zh-CN/root/ARCHITECTURE.md`：既有 runtime/port 边界保留。 |
-| 质量/测试 | Update，EFF-02—08 | `docs/developer/verification-matrix.md`、`docs/zh-CN/developer/verification-matrix.md`、`docs/design-docs/testing-strategy.md`、`docs/zh-CN/design-docs/testing-strategy.md`：等价组、profile/zero-test/full、隔离与证据。 |
-| 可靠性/运行手册 | Review，EFF-01/04/06 | `docs/runbooks/manual-acceptance.md`、`docs/zh-CN/manual-acceptance.md`、`docs/developer/local-development.md`、`docs/zh-CN/developer/local-development.md`：仅更新受影响诊断/日志/环境/回退程序。 |
-| 安全/治理 | Update/Review | `docs/agents/agent-delivery-protocol.md`、`docs/zh-CN/agents/agent-delivery-protocol.md` 在 EFF-04/08 最小更新；复核 `docs/SECURITY.md`、`docs/zh-CN/SECURITY.md` 的所有权/脱敏权威不变。 |
+| 质量/测试 | 已更新 | 两份验证矩阵维护已实现命令、严格数量、full/shadow 和夹具证据；两份 testing-strategy 在 #831 更新等价组及原有前置条件。不增加重复验证手册。 |
+| 可靠性/运行手册 | 已审查，无变化 | `docs/runbooks/manual-acceptance.md`、`docs/zh-CN/manual-acceptance.md` 及两份 local-development 保留原 Gate 0、环境和所有权程序；EFF 复用这些程序，命令/诊断增量记入现有矩阵。没有运维或目标环境程序变化。 |
+| 安全/治理 | 已更新/审查 | 两份交付协议由 #837 更新。`docs/SECURITY.md`、`docs/zh-CN/SECURITY.md` 没有 EFF 差异，上游既有修改保留；所有权、脱敏、源码锁和独立审查权威不变。 |
 | main-red 身份前置修复 | 已更新 | 独立互链的 `docs/agents/catalog-runtime-boundary-relocation.md` 及中文文件记录独立接受的 16 对身份范围、原清单保留、收集隔离及回退；原 23 对决定不变。 |
 | 前端/设计 | No change | `docs/FRONTEND.md`、`docs/zh-CN/frontend.md`、`docs/design-docs/ui-design-system.md`：无界面重设计；真实浏览器要求保留。 |
-| 生成物 | Review，每波 | `docs/generated/acceptance-operation-evidence.md`、`docs/generated/db-schema.md`：保留既有权威；不造 operation 证据或 schema 变化。 |
+| 生成物 | 已审查，无变化 | `docs/generated/acceptance-operation-evidence.md`、`docs/generated/db-schema.md` 没有 EFF 差异，不制造 operation 证据或 schema 输出。工程 PR 的选中 Hosted job 在其自有 PostgreSQL 前置条件下执行完整 schema 检查。 |
 | 参考 | No change | `docs/references/productization-api-contract-draft.md`：无 API 变化，不另建重复工程手册。 |
-| 余留 | Review，EFF-00/09 | `docs/exec-plans/tech-debt-tracker.md`、`docs/zh-CN/exec-plans/tech-debt-tracker.md`：main-red/热点/观察余项优先复用既有条目，不重开历史完成计划。 |
+| 余留 | 已审查，保留已有开放责任 | 现有 [TD-075/TD-076/TD-118](../../../exec-plans/tech-debt-tracker.md) 覆盖验收治理、夹具债务和共享浏览器下限，中文 tracker 另有互链。本计划及 #828 维护 EFF 观察条件；不新增债务编号、裁剪套件或重开已关闭 TD-122。 |
 
 ## 文档更新门禁
 
@@ -436,4 +489,4 @@ EFF-07 新增 `npm run typecheck`，内容精确等于原 build 的 4096 MiB `ts
 
 归档前每个 Update/Review 行必须更新或明确记录“无变化及证据”，真实余项进入既有技术债。B/C 未满足不把全项目标 completed。源码不得提交原始日志、令牌、完整环境/会话/rollout、数据库 dump 或大型运行报告。
 
-本轮 R1 登记仅修改本文件对和两份计划索引各一条链接，不改变运行命令、门禁、业务流程、acceptance ID 或 operation ID。自身证据仅为文档/静态检查；父验证、独立审查、Hosted/merge 与后续实现证据分开记录。
+首次 R1 登记修改本文件对和两份计划索引各一条链接，保留为历史。最终 EFF-09 文档仅修改本计划对和互链回归台账对。父协调者在 A 交付收口前，将最终 clean head/tree、直接 `node_modules/.bin/tsx scripts/check-doc-governance.ts`、`npm run acceptance:ci`、独立 R1 审查和选中 Hosted 结果记入 #828 证明。直接本地文档治理不冒充 `docs:check` 的 schema 证明，也不探测无所有权的默认端口数据库。最近工程 PR 的完整 Hosted schema 证据单独标识，文档 PR 不重跑，也不将它算作新执行。最终源码存在后在外部记录源码包身份，避免为写入自身结果而改变已测源码。
