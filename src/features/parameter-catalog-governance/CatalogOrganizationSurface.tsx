@@ -11,13 +11,19 @@ import type { ParameterCatalogGovernanceRepository } from "@/application/ports/P
 import type { ParameterCatalogRepository } from "@/application/ports/ParameterCatalogRepository";
 import { CatalogPage } from "@/features/parameter-catalog";
 
+import { DefinitionCorrectionDialog } from "./DefinitionCorrectionDialog";
+import { DefinitionLifecycleDialog, type DefinitionLifecycleIntent } from "./DefinitionLifecycleDialog";
+
 import { createGovernanceIdempotencyKey } from "./governanceState";
 import { ProposalPanel } from "./ProposalPanel";
 import { PublicationDialog } from "./PublicationDialog";
 import { publicationSurfaceCopy, publicationSurfaceMessage, type PublicationSurfaceItem } from "./publicationSurface";
 import { RegistrationDialog } from "./RegistrationDialog";
 import { ReviewQueue } from "./ReviewQueue";
-import type { CatalogPublicationJobResponse } from "@/infrastructure/http/parameterCatalogDtos";
+import type {
+  CatalogDefinitionResponse,
+  CatalogPublicationJobResponse
+} from "@/infrastructure/http/parameterCatalogDtos";
 
 export type CatalogOrganizationSurfaceProps = {
   catalog: ParameterCatalogRepository;
@@ -51,8 +57,19 @@ export function CatalogOrganizationSurface({
   const [publicationSurface, setPublicationSurface] = useState<PublicationSurfaceItem | null>(null);
   const [publicationSurfaceLoad, setPublicationSurfaceLoad] = useState<"loading" | "ready" | "error">("loading");
   const [publicationHistory, setPublicationHistory] = useState<CatalogPublicationJobResponse["item"][]>([]);
+  const [lifecycle, setLifecycle] = useState<{
+    intent: DefinitionLifecycleIntent;
+    definition: CatalogDefinitionResponse["item"];
+  } | null>(null);
+  const [correction, setCorrection] = useState<CatalogDefinitionResponse["item"] | null>(null);
   const catalogReleaseId = domainState?.catalogReleaseId ?? anchor.catalogReleaseId ?? "";
   const subjectId = anchor.subjectId ?? "";
+  const [catalogSubjects, setCatalogSubjects] = useState<
+    Awaited<ReturnType<ParameterCatalogRepository["listSubjects"]>>["items"]
+  >([]);
+  const [replacementHistory, setReplacementHistory] = useState<
+    Awaited<ReturnType<ParameterCatalogRepository["listDefinitionReplacements"]>>["items"]
+  >([]);
 
   const handleAction = useCallback(
     (next: CatalogAuthorizedAction, context?: { subjectId?: string | null; registrationId?: string | null }) => {
@@ -68,6 +85,31 @@ export function CatalogOrganizationSurface({
     },
     []
   );
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const [listed, replacements] = await Promise.all([
+          catalog.listSubjects({ limit: 100 }),
+          catalog.listDefinitionReplacements({ limit: 100 })
+        ]);
+        if (!cancelled) {
+          setCatalogSubjects([...listed.items]);
+          setReplacementHistory([...replacements.items]);
+        }
+      } catch {
+        if (!cancelled) {
+          setCatalogSubjects([]);
+          setReplacementHistory([]);
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [catalog, surfaceEpoch]);
+
 
   useEffect(() => {
     let cancelled = false;
@@ -138,6 +180,13 @@ export function CatalogOrganizationSurface({
         listReviewItems={
           organizationId ? (orgId, query) => governance.listReviewItems(orgId, query) : undefined
         }
+        onDefinitionCommand={(command, definition) => {
+          if (command === "correct-identity") {
+            setCorrection(definition);
+            return;
+          }
+          setLifecycle({ intent: command, definition });
+        }}
       />
       {domainState && catalogReleaseId && organizationId ? (
         <div className="parameter-catalog__governance">
@@ -166,6 +215,20 @@ export function CatalogOrganizationSurface({
               setSurfaceEpoch((value) => value + 1);
             }}
           />
+          {replacementHistory.length > 0 ? (
+            <section className="parameter-catalog__history" aria-label="身份纠错记录">
+              <h2>身份纠错记录</h2>
+              <ul>
+                {replacementHistory.map((replacement) => (
+                  <li key={replacement.id}>
+                    <code>{replacement.id}</code>
+                    <span>{replacement.status}</span>
+                    <span>{`${replacement.oldIdentity.propertyKey} → ${replacement.newIdentity.propertyKey}`}</span>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          ) : null}
           <section className="parameter-catalog__history" aria-label={publicationSurfaceCopy.history}>
             <h2>{publicationSurfaceCopy.history}</h2>
             {publicationHistory.length === 0 ? (
@@ -233,6 +296,46 @@ export function CatalogOrganizationSurface({
           onOpenChange={(open) => {
             if (!open) {
               setAction(null);
+            }
+          }}
+        />
+      ) : null}
+      {lifecycle && catalogReleaseId && domainState ? (
+        <DefinitionLifecycleDialog
+          open
+          intent={lifecycle.intent}
+          actor={actor}
+          sessionPermissions={sessionPermissions}
+          domainState={domainState}
+          catalog={catalog}
+          catalogReleaseId={catalogReleaseId}
+          definition={lifecycle.definition}
+          createIdempotencyKey={createGovernanceIdempotencyKey}
+          onCompleted={() => setSurfaceEpoch((value) => value + 1)}
+          onRefreshEvidence={() => setSurfaceEpoch((value) => value + 1)}
+          onOpenChange={(open) => {
+            if (!open) {
+              setLifecycle(null);
+            }
+          }}
+        />
+      ) : null}
+      {correction && catalogReleaseId && domainState ? (
+        <DefinitionCorrectionDialog
+          open
+          actor={actor}
+          sessionPermissions={sessionPermissions}
+          domainState={domainState}
+          catalog={catalog}
+          catalogReleaseId={catalogReleaseId}
+          definition={correction}
+          subjects={catalogSubjects}
+          createIdempotencyKey={createGovernanceIdempotencyKey}
+          onCompleted={() => setSurfaceEpoch((value) => value + 1)}
+          onRefreshEvidence={() => setSurfaceEpoch((value) => value + 1)}
+          onOpenChange={(open) => {
+            if (!open) {
+              setCorrection(null);
             }
           }}
         />

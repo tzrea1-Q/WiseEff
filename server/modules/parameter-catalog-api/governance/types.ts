@@ -1,4 +1,6 @@
 import type { PlacementIntent } from "../../parameter-catalog-contract/index";
+import type { TrustedInvocationContext } from "../../auth/trustedInvocation";
+import type { CatalogDefinitionMigrationPorts } from "../../parameter-catalog-migration/service";
 import type {
   RegistrationCommand,
   TrustedInvocationContext as RegistrationTrustedContext,
@@ -19,9 +21,14 @@ import type { ProposalCommand } from "../../parameter-governance/proposals/comma
 import type { ProposalFailure } from "../../parameter-governance/proposals/failures";
 import type { ProposalResult } from "../../parameter-governance/proposals/result";
 import type { CatalogReleasePin, Result } from "../../parameter-catalog-contract/index";
-import type { catalogGovernanceCommandByRouteId } from "./mapping";
+import type {
+  catalogDefinitionReplacementCommandByRouteId,
+  catalogGovernanceCommandByRouteId,
+} from "./mapping";
 
-export type CatalogGovernanceRouteId = keyof typeof catalogGovernanceCommandByRouteId;
+export type CatalogGovernanceRouteId =
+  | keyof typeof catalogGovernanceCommandByRouteId
+  | keyof typeof catalogDefinitionReplacementCommandByRouteId;
 
 export type CatalogGovernanceRequest = {
   readonly method: string;
@@ -55,6 +62,12 @@ export type TrustedGovernanceScope = {
   readonly canReviewProposals: boolean;
   readonly defaultDestinationModuleId: string;
   readonly defaultSubjectKind: "driver" | "node-type";
+  /**
+   * Trusted invocation brand for the authenticated principal, when the
+   * composition root can build one.  Used only by capabilities that must mint a
+   * publication job through the existing enqueue path.
+   */
+  readonly trustedActor?: TrustedInvocationContext;
 };
 
 export type CatalogGovernanceAuthResult =
@@ -157,6 +170,12 @@ export type CatalogGovernancePorts = {
   readonly getProposal: (
     input: CatalogGovernanceQueryScope & { readonly proposalId: string },
   ) => Promise<ProposalRecord | null>;
+  /**
+   * Definition identity correction migration (#847).  Absent when the
+   * composition root does not compose the capability; the routes then answer a
+   * typed `catalog-not-ready` instead of pretending the capability exists.
+   */
+  readonly definitionMigration?: CatalogDefinitionMigrationPorts;
 };
 
 export type { PlacementIntent, RegistrationTrustedContext };

@@ -104,6 +104,14 @@ export type CatalogPageProps = {
     action: CatalogAuthorizedAction,
     context?: { subjectId?: string | null; registrationId?: string | null }
   ) => void;
+  /**
+   * Definition-scoped governance commands that need the selected definition.
+   * The surface owns the dialogs so one row action opens one wide editor.
+   */
+  onDefinitionCommand?: (
+    command: "retire-definition" | "restore-definition" | "correct-identity",
+    definition: DefinitionItem
+  ) => void;
   layoutMode?: CatalogLayoutMode;
   organizationId?: string;
   listReviewItems?: (
@@ -181,6 +189,7 @@ export function CatalogPage({
   onAnchorChange,
   onDomainStateChange,
   onAction,
+  onDefinitionCommand,
   layoutMode: layoutOverride,
   organizationId,
   listReviewItems
@@ -870,15 +879,48 @@ export function CatalogPage({
                   aria-label={catalogDefinitionsLabel}
                   pageSize={Math.max(visibleDefinitions.length, 1)}
                   renderRowActions={(row) => (
-                    <button
-                      type="button"
-                      className="button ghost sm"
-                      aria-label={`编辑 ${row.propertyKey}`}
-                      data-catalog-row-action="edit"
-                      onClick={() => selectDefinition(row)}
-                    >
-                      编辑
-                    </button>
+                    <span className="parameter-catalog__row-actions">
+                      <button
+                        type="button"
+                        className="button ghost sm"
+                        aria-label={`编辑 ${row.propertyKey}`}
+                        data-catalog-row-action="edit"
+                        onClick={() => selectDefinition(row)}
+                      >
+                        编辑
+                      </button>
+                      {writesEnabled ? (
+                        <>
+                          <button
+                            type="button"
+                            className="button ghost sm"
+                            aria-label={`纠错 ${row.propertyKey}`}
+                            data-catalog-row-action="correct-identity"
+                            disabled={!onDefinitionCommand}
+                            onClick={() => onDefinitionCommand?.("correct-identity", row)}
+                          >
+                            身份纠错
+                          </button>
+                          <button
+                            type="button"
+                            className="button ghost sm"
+                            aria-label={`${row.lifecycle === "retired" ? "恢复" : "弃用"} ${row.propertyKey}`}
+                            data-catalog-row-action={
+                              row.lifecycle === "retired" ? "restore-definition" : "retire-definition"
+                            }
+                            disabled={!onDefinitionCommand}
+                            onClick={() =>
+                              onDefinitionCommand?.(
+                                row.lifecycle === "retired" ? "restore-definition" : "retire-definition",
+                                row
+                              )
+                            }
+                          >
+                            {row.lifecycle === "retired" ? "恢复" : "弃用"}
+                          </button>
+                        </>
+                      ) : null}
+                    </span>
                   )}
                   emptyState={
                     filterEmptyReason ? (

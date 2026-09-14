@@ -41,7 +41,9 @@ function openApiPath(path: string) {
 }
 
 describe("S8-CON threat matrix", () => {
-  it("keeps PCAT-API-01..12 as the frozen public gate set", () => {
+  it("keeps PCAT-API-01..13 as the frozen public gate set", () => {
+    // PCAT-API-13 is the definition identity correction migration gate added by
+    // issue #847 decision 12; the 01..12 set stays frozen and unchanged.
     expect([...pcatApiGates]).toEqual([
       "PCAT-API-01",
       "PCAT-API-02",
@@ -54,7 +56,8 @@ describe("S8-CON threat matrix", () => {
       "PCAT-API-09",
       "PCAT-API-10",
       "PCAT-API-11",
-      "PCAT-API-12"
+      "PCAT-API-12",
+      "PCAT-API-13"
     ]);
   });
 

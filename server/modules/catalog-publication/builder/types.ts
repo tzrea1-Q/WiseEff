@@ -88,15 +88,24 @@ export type SupportedValueSchema =
 export type SupportedDefinitionContent = {
   readonly displayName: string;
   readonly documentation: string;
+  /** Optional author description; preserved when absent on a revise. */
+  readonly description?: string;
   readonly unit?: M1AllowedUnit;
   readonly valueSchema: SupportedValueSchema;
   readonly examples?: readonly (number | string | boolean | null)[];
+  /**
+   * Lifecycle the revision is minted with. Absent means `active` for a new
+   * definition; the reversible lifecycle operations set it explicitly.
+   */
+  readonly lifecycle?: "active" | "retired";
 };
 
 export type CreateDefinitionChange = {
   readonly op: "create-definition";
   readonly subjectId: string;
   readonly propertyKey: string;
+  /** Only `active` is authorable at creation. */
+  readonly lifecycle?: "active";
   readonly content: SupportedDefinitionContent;
 };
 
@@ -128,10 +137,48 @@ export type ReviseDefinitionChange = {
   readonly content: SupportedDefinitionContent;
 };
 
+/**
+ * Definition lifecycle (issue #847 decision 10). Reversible soft retirement on
+ * the existing typed authoring contract: `retire-definition` publishes `retired`
+ * for the same permanent identity and key, `restore-definition` publishes
+ * `active` for the same identity and key. Neither rewrites identity, revisions
+ * or history, and `deprecated` stays a distinct existing state.
+ */
+export type RetireDefinitionChange = {
+  readonly op: "retire-definition";
+  readonly definitionId: string;
+  readonly class?: "documentation" | "semantic";
+  readonly reason?: string;
+  readonly content: SupportedDefinitionContent;
+};
+
+export type RestoreDefinitionChange = {
+  readonly op: "restore-definition";
+  readonly definitionId: string;
+  readonly class?: "documentation" | "semantic";
+  readonly reason?: string;
+  readonly content: SupportedDefinitionContent;
+};
+
+/** The two reversible lifecycle operations share this shape. */
+export type DefinitionLifecycleChange = RetireDefinitionChange | RestoreDefinitionChange;
+
+export const DEFINITION_LIFECYCLE_CHANGE_OPS = [
+  "retire-definition",
+  "restore-definition",
+] as const;
+
+export const isDefinitionLifecycleChange = (
+  change: CatalogChange,
+): change is DefinitionLifecycleChange =>
+  change.op === "retire-definition" || change.op === "restore-definition";
+
 export type CatalogChange =
   | CreateDefinitionChange
   | CreateSubjectWithDefinitionsChange
-  | ReviseDefinitionChange;
+  | ReviseDefinitionChange
+  | RetireDefinitionChange
+  | RestoreDefinitionChange;
 
 export type BuilderProductPath = "m1" | "m2-core";
 
@@ -229,6 +276,7 @@ export type CapabilityAllowListIdentity = {
   readonly budgets: {
     readonly maxDisplayNameChars: number;
     readonly maxDocumentationChars: number;
+    readonly maxDescriptionChars: number;
     readonly maxExamples: number;
     readonly maxChangeSetOps: number;
   };

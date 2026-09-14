@@ -7,6 +7,15 @@ import type {
   catalogAcceptProposalRequestSchema,
   catalogCreateProposalRequestSchema,
   catalogCreatePublicationCandidateRequestSchema,
+  catalogCreateReplacementRequestSchema,
+  catalogContinueReplacementRequestSchema,
+  catalogReplacementDtoSchema,
+  catalogReplacementListResponseSchema,
+  catalogReplacementPreviewDtoSchema,
+  catalogReplacementPreviewRequestSchema,
+  catalogReplacementPreviewResponseSchema,
+  catalogReplacementProjectDtoSchema,
+  catalogReplacementResponseSchema,
   catalogPublishPublicationCandidateRequestSchema,
   catalogPublicationCandidateResponseSchema,
   catalogPublicationJobListResponseSchema,
@@ -47,6 +56,19 @@ import type {
   projectParameterBindingListResponseSchema
 } from "@wiseeff/dto-schemas";
 
+export type CatalogReplacement = z.infer<typeof catalogReplacementDtoSchema>;
+export type CatalogReplacementProject = z.infer<typeof catalogReplacementProjectDtoSchema>;
+export type CatalogReplacementPreview = z.infer<typeof catalogReplacementPreviewDtoSchema>;
+export type CatalogReplacementResponse = z.infer<typeof catalogReplacementResponseSchema>;
+export type CatalogReplacementPreviewResponse = z.infer<typeof catalogReplacementPreviewResponseSchema>;
+export type CatalogReplacementListResponse = z.infer<typeof catalogReplacementListResponseSchema>;
+export type CatalogReplacementPreviewRequest = z.infer<typeof catalogReplacementPreviewRequestSchema>;
+export type CatalogCreateReplacementRequest = z.infer<
+  typeof catalogCreateReplacementRequestSchema
+>;
+export type CatalogContinueReplacementRequest = z.infer<
+  typeof catalogContinueReplacementRequestSchema
+>;
 export type CatalogDocumentResponse = z.infer<typeof catalogDocumentResponseSchema>;
 export type CatalogSubjectListResponse = z.infer<typeof catalogSubjectListResponseSchema>;
 export type CatalogSubjectResponse = z.infer<typeof catalogSubjectResponseSchema>;

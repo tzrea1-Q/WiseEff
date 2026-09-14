@@ -7,6 +7,7 @@ import type { ParameterCatalogRepository } from "@/application/ports/ParameterCa
 import type { ParameterCatalogClient } from "@/infrastructure/http/parameterCatalogClient";
 
 import { requireConditionalWriteContext, requireIdempotentWriteContext } from "./writeContext";
+import type { CatalogWriteContext } from "@/infrastructure/http/parameterCatalogClient";
 
 export function createApiParameterCatalogRepository(
   client: ParameterCatalogClient
@@ -31,7 +32,22 @@ export function createApiParameterCatalogRepository(
       client.publishPublicationCandidate(candidateId, body, context),
     getPublication: (jobId) => client.getPublication(jobId),
     getPublicationSurface: () => client.getPublicationSurface(),
-    listPublications: (query) => client.listPublications(query)
+    listPublications: (query) => client.listPublications(query),
+    previewDefinitionReplacement: (body, context) =>
+      client.previewDefinitionReplacement(body, {
+        catalogReleaseId: context.catalogReleaseId
+      } as CatalogWriteContext),
+    listDefinitionReplacements: (query) => client.listDefinitionReplacements(query),
+    createDefinitionReplacement: (body, context) =>
+      client.createDefinitionReplacement(body, {
+        catalogReleaseId: context.catalogReleaseId
+      } as CatalogWriteContext),
+    getDefinitionReplacement: (replacementId) =>
+      client.getDefinitionReplacement(replacementId),
+    continueDefinitionReplacement: (replacementId, body, context) =>
+      client.continueDefinitionReplacement(replacementId, body, {
+        catalogReleaseId: context.catalogReleaseId
+      } as CatalogWriteContext)
   };
 }
 

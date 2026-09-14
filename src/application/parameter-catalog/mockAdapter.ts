@@ -520,6 +520,38 @@ export function createMockCatalogPorts(options: CatalogMockOptions = {}): {
         hasMore: false
       };
     },
+    /**
+     * The identity correction migration is a governance capability that the mock
+     * runtime does not own: mock mode must never invent migration authority. The
+     * explicit mock adapter therefore fails closed with the same typed shape the
+     * API uses for an unsupported capability.
+     */
+    async previewDefinitionReplacement() {
+      assertReadyForRead(store);
+      throw catalogApiFailure("unsupported-catalog-capability");
+    },
+    async listDefinitionReplacements() {
+      assertReadyForRead(store);
+      return {
+        items: [],
+        nextCursor: null,
+        catalogReleaseId: CATALOG_RELEASE_ID,
+        totalCount: 0,
+        hasMore: false
+      };
+    },
+    async createDefinitionReplacement() {
+      assertReadyForRead(store);
+      throw catalogApiFailure("unsupported-catalog-capability");
+    },
+    async getDefinitionReplacement() {
+      assertReadyForRead(store);
+      throw catalogApiFailure("definition-not-found");
+    },
+    async continueDefinitionReplacement() {
+      assertReadyForRead(store);
+      throw catalogApiFailure("unsupported-catalog-capability");
+    },
     async getPublication(jobId) {
       assertReadyForRead(store);
       const job = store.jobs.get(jobId);

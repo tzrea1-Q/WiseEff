@@ -1,6 +1,7 @@
 export {
   appendProjectValue,
   createProjectValueService,
+  isReplacedCurrentBinding,
   mutateExistingProjectValue,
   readProjectValueHistory,
 } from "./service";

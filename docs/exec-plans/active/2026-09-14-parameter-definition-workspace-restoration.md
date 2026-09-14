@@ -15,18 +15,24 @@ Wave 1 (collection contract, complete-name projection) and Wave 3 items 7–9 pl
 - **Restored workspace (frontend).** `CatalogPage` is composed as module navigator + wide definition table + on-demand detail/history + count-bearing pending work; search, searchable module and lifecycle column filters, 20/50/100 page sizes, previous/next with an exact cursor trail, and a truthful scoped count applied before pagination; the permanent three-way peer grid that produced the 328 px table is gone, replaced by a readable table floor plus horizontal scroll.
 - **Real evidence.** Dedicated lane `wiseeff_lane_847`; focused server tests green on it including the new `collectionQuery.integration.test.ts`; `typecheck`, `build`, `ui:check`, `contract:check`, `docs:check`; real-API browser acceptance on `/parameter-admin/specs` at three viewports.
 
+### Implemented in this run — definitions and migration
+
+- **Description content contract (decision 6, partial).** `description` is a first-class definition content field end to end: change-set contract, capability budgets (`maxDescriptionChars`), the compiler revision content pointers (`/description` in `schemas/dts/catalog-release/stable-id-rules.json`), the release JSON schema, the builder's revision digest model, and the publication draft. The remaining decision-6 fields (`schemaDefault`, `examples` round-trip through the draft but not the editor, editable `constraints`, explicit clear-vs-unchanged semantics) are still open.
+- **Definition lifecycle (decision 10).** `retire-definition` and `restore-definition` are typed authoring operations on the existing complete-successor contract: canonical soft retirement blocks new matching/use while preserving the permanent identity, key, revisions, pinned historical references and project values; restoration publishes `active` for the same identity and key; `deprecated` remains a distinct existing state and is never written by these operations. `retiresIdentity` is now derived from the change set so the risk classifier sees a retire as an identity-affecting act. Evidence: `server/modules/catalog-publication/builder/definitionLifecycle.test.ts`.
+- **Single-dialog lifecycle activation (decisions 7–8).** `DefinitionLifecycleDialog` captures the candidate, shows the shared impact plus the usage counts, requires a reason, publishes through the existing governed pipeline, polls the publication job, and reports the **actual** activation result including `active-superseded`. A rejected request keeps the input (`data-preserve-input`).
+- **Identity correction preview/execute/continue (decisions 12–17, S2).** Shared HTTP contract (five routes, `PCAT-API-13`), `DefinitionCorrectionDialog` (explicit authorized project manifest, exact impact preview, per-project compatibility and blockers, single confirmed execute, per-project outcome reporting and a continuation path for blocked projects). The persistence layer, module, consumer alignment and threat-matrix execution are owned by the sealed R3 lane and reported separately.
+- **Current-selection port surface (decision 14/18, frontend half).** `ParameterCatalogRepository` plus the API adapter expose `previewDefinitionReplacement`, `listDefinitionReplacements`, `createDefinitionReplacement`, `getDefinitionReplacement` and `continueDefinitionReplacement`; the explicit mock adapter fails closed with `unsupported-catalog-capability` so mock mode can never invent migration authority.
+
 ### Not implemented in this run
 
 | Item | State |
 | --- | --- |
-| Complete editable content contract (`description`, `schemaDefault`, `examples`, editable `constraints`, clear-vs-unchanged semantics) | Not started |
-| Definition lifecycle `retired` / restore / shared-impact confirmation (decision 10) | Not started; server lifecycle authoring and impact confirmation unimplemented |
-| Single-dialog Save-and-activate inside the editor (decisions 7–9) | Not started; publication remains the existing two-step dialog |
-| Definition identity correction migration (decisions 12–17, S2) | Design frozen only (`2026-09-14-definition-identity-correction-threat-matrix.md`): no migration `0144`, no route, no UI, and no threat-matrix row executed |
-| Current-selection protection across binding consumers (decision 18) | Not started; consumer audit recorded in the threat matrix |
+| Remaining decision-6 content fields (`schemaDefault`, editable `constraints`, editor-level `examples`, clear-vs-unchanged semantics) | Not started |
 | Browse-other-subjects, explicit placement intent, registration-only continuation (decision 5, stories 6–8) | Partial: registration/placement remain the existing dialogs and still never receive `placementOptions` |
+| Reviewed replacement confirmation / high-risk approval reuse inside the correction dialog | Partial: the dialog relies on the existing publication risk classification and does not yet show a separate high-risk approval state |
+| Browser acceptance for the lifecycle and correction dialogs at three viewports | Not yet run for the new dialogs |
 
-This plan is therefore **not** eligible for `completed/`. The evidence above establishes the S1 collection behaviour of the restored workspace; it does not establish the definition lifecycle, same-dialog activation, or governed identity migration that decision 10 and decisions 12–17 require.
+The evidence above establishes the S1 collection behaviour, the definition lifecycle contract, and the correction workflow's interface. The R3 sealed lane's consumer alignment and threat-matrix execution are reported in its own section below.
 
 ## Goal
 

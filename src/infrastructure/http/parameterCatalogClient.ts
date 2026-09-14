@@ -9,6 +9,12 @@ import {
   catalogCreateNodeEnablementDraftRequestSchema,
   catalogCreateProposalRequestSchema,
   catalogCreatePublicationCandidateRequestSchema,
+  catalogCreateReplacementRequestSchema,
+  catalogContinueReplacementRequestSchema,
+  catalogReplacementListResponseSchema,
+  catalogReplacementPreviewRequestSchema,
+  catalogReplacementPreviewResponseSchema,
+  catalogReplacementResponseSchema,
   catalogPublishPublicationCandidateRequestSchema,
   catalogPublicationCandidateResponseSchema,
   catalogPublicationJobListResponseSchema,
@@ -58,6 +64,11 @@ import {
   type CatalogFailureClientBehavior,
   type ParameterCatalogCanonicalRouteId
 } from "@wiseeff/dto-schemas";
+import type {
+  CatalogContinueReplacementRequest,
+  CatalogCreateReplacementRequest,
+  CatalogReplacementPreviewRequest
+} from "./parameterCatalogDtos";
 import { WiseEffApiError } from "./apiClient";
 import { parseContractDto } from "./parseContractDto";
 import type {
@@ -78,7 +89,7 @@ import type {
   CatalogWithdrawProposalRequest
 } from "./parameterCatalogDtos";
 
-type CatalogWriteContext = {
+export type CatalogWriteContext = {
   catalogReleaseId: string;
   idempotencyKey: string;
   ifMatch?: string;
@@ -601,6 +612,55 @@ export function createParameterCatalogClient(options: CatalogClientOptions = {})
           context
         }
       ),
+
+    previewDefinitionReplacement: (
+      body: CatalogReplacementPreviewRequest,
+      context: CatalogWriteContext
+    ) =>
+      request(
+        "POST",
+        canonical("catalog.previewDefinitionReplacement"),
+        catalogReplacementPreviewResponseSchema,
+        "CatalogReplacementPreviewResponse",
+        { body: catalogReplacementPreviewRequestSchema.parse(body), context }
+      ),
+    listDefinitionReplacements: (query?: CatalogListQuery) =>
+      request(
+        "GET",
+        appendQuery(canonical("catalog.listDefinitionReplacements"), query),
+        catalogReplacementListResponseSchema,
+        "CatalogReplacementListResponse"
+      ),
+    createDefinitionReplacement: (
+      body: CatalogCreateReplacementRequest,
+      context: CatalogWriteContext
+    ) =>
+      request(
+        "POST",
+        canonical("catalog.createDefinitionReplacement"),
+        catalogReplacementResponseSchema,
+        "CatalogReplacementResponse",
+        { body: catalogCreateReplacementRequestSchema.parse(body), context }
+      ),
+    getDefinitionReplacement: (replacementId: string) =>
+      request(
+        "GET",
+        canonical("catalog.getDefinitionReplacement", { replacementId }),
+        catalogReplacementResponseSchema,
+        "CatalogReplacementResponse"
+      ),
+    continueDefinitionReplacement: (
+      replacementId: string,
+      body: CatalogContinueReplacementRequest,
+      context: CatalogWriteContext
+    ) =>
+      request(
+        "POST",
+        canonical("catalog.continueDefinitionReplacement", { replacementId }),
+        catalogReplacementResponseSchema,
+        "CatalogReplacementResponse",
+        { body: catalogContinueReplacementRequestSchema.parse(body), context }
+      ),
     createNodeEnablementDraft: (
       projectId: string,
       body: CatalogCreateNodeEnablementDraftRequest,
@@ -663,7 +723,12 @@ export function createParameterCatalogClient(options: CatalogClientOptions = {})
     "catalog.getPublication": "getPublication",
     "catalog.getPublicationSurface": "getPublicationSurface",
     "catalog.listPublications": "listPublications",
-    "catalog.getLegacyIdentifier": "getLegacyIdentifier"
+    "catalog.getLegacyIdentifier": "getLegacyIdentifier",
+    "catalog.previewDefinitionReplacement": "previewDefinitionReplacement",
+    "catalog.listDefinitionReplacements": "listDefinitionReplacements",
+    "catalog.createDefinitionReplacement": "createDefinitionReplacement",
+    "catalog.getDefinitionReplacement": "getDefinitionReplacement",
+    "catalog.continueDefinitionReplacement": "continueDefinitionReplacement"
   };
   void _methodCoverage;
 

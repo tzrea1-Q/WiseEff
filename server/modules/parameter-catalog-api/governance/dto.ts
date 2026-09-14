@@ -3,6 +3,8 @@ import {
   catalogPlacementDtoSchema,
   catalogProposalDtoSchema,
   catalogRegistrationDtoSchema,
+  catalogReplacementDtoSchema,
+  catalogReplacementPreviewDtoSchema,
   catalogReviewItemDtoSchema,
   catalogReviewResolutionDtoSchema,
 } from "../../contracts/dtoSchemas/parameterCatalog";
@@ -10,8 +12,55 @@ import type { RegistrationResult } from "../../parameter-governance/registration
 import type { ReviewQueueItem } from "../../parameter-governance/review/types";
 import type { ReviewResolutionResult } from "../../parameter-governance/resolveReviewItem/result";
 import type { ProposalResult } from "../../parameter-governance/proposals/result";
+import type {
+  DefinitionReplacementPreviewView,
+  DefinitionReplacementView,
+} from "../../parameter-catalog-migration/types";
 import type { ObservationRecord, ProposalRecord, RegistrationRecord } from "./types";
 import { quoteEtag } from "./query";
+
+export function replacementEtag(replacementId: string, version: number): string {
+  return quoteEtag(`${replacementId}-v${version}`);
+}
+
+export function mapDefinitionReplacement(
+  view: DefinitionReplacementView,
+): ReturnType<typeof catalogReplacementDtoSchema.parse> {
+  return catalogReplacementDtoSchema.parse({
+    id: view.id,
+    status: view.status,
+    organizationId: view.organizationId,
+    oldIdentity: view.oldIdentity,
+    newIdentity: view.newIdentity,
+    previewFingerprint: view.previewFingerprint,
+    catalogReleaseId: view.catalogReleaseId,
+    candidateId: view.candidateId,
+    publicationJobId: view.publicationJobId,
+    authorizationId: view.authorizationId,
+    reason: view.reason,
+    etag: replacementEtag(view.id, view.version),
+    version: view.version,
+    projects: [...view.projects],
+    createdAt: view.createdAt,
+  });
+}
+
+export function mapDefinitionReplacementPreview(
+  view: DefinitionReplacementPreviewView,
+): ReturnType<typeof catalogReplacementPreviewDtoSchema.parse> {
+  return catalogReplacementPreviewDtoSchema.parse({
+    previewId: view.previewId,
+    previewFingerprint: view.previewFingerprint,
+    organizationId: view.organizationId,
+    oldIdentity: view.oldIdentity,
+    newIdentity: view.newIdentity,
+    catalogReleaseId: view.catalogReleaseId,
+    impact: view.impact,
+    blockers: [...view.blockers],
+    projects: [...view.projects],
+    expiresAt: view.expiresAt,
+  });
+}
 
 export function mapRegistrationRecord(
   record: RegistrationRecord,

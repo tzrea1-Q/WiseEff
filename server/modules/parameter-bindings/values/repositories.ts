@@ -117,15 +117,40 @@ export const loadBindingById = async (
   bindingId: string,
   lock: "update" | "share" | "none" = "none",
 ): Promise<BindingTipRow | null> => {
+  // A locked read addresses the *current* Binding, so it goes through the
+  // replacement projection: a stale writer then loses its row lock instead of
+  // appending to a Binding a completed replacement superseded.  PostgreSQL
+  // accepts FOR UPDATE through this view and locks the underlying base row
+  // (verified empirically).  The unlocked read stays on the base relation so
+  // historical, pinned and revision-addressed callers keep addressing the exact
+  // Binding id.
+  const relation =
+    lock === "none"
+      ? "parameter_catalog.project_parameter_bindings"
+      : "parameter_catalog.current_project_parameter_bindings";
   const lockSql = lock === "update" ? " for update" : lock === "share" ? " for share" : "";
   const result = await client.query<BindingTipRow>(
     `select id, organization_id, catalog_release_id, project_id, logical_node_id,
             registration_id, subject_id, definition_id, effective_revision_id, current_value_id
-       from parameter_catalog.project_parameter_bindings
+       from ${relation}
       where id = $1${lockSql}`,
     [bindingId],
   );
   return result.rows[0] ?? null;
+};
+
+/** True when a completed definition replacement superseded this Binding.  The
+ * port layer uses this to reject a write naming a replaced Binding before it
+ * appends anything. */
+export const loadBindingReplacementState = async (
+  client: ValueClient,
+  bindingId: string,
+): Promise<boolean> => {
+  const result = await client.query<{ replaced: boolean }>(
+    `select parameter_catalog.is_replaced_current_binding($1) as replaced`,
+    [bindingId],
+  );
+  return result.rows[0]?.replaced === true;
 };
 
 export const loadProjectValueById = async (
@@ -224,7 +249,8 @@ export const casCurrentTip = async (
         set current_value_id = $3,
             updated_at = now()
       where id = $1
-        and current_value_id = $2`,
+        and current_value_id = $2
+        and not parameter_catalog.is_replaced_current_binding(id)`,
     [input.bindingId, input.expectedTip, input.nextTip],
   );
   return (result.rowCount ?? 0) === 1;

@@ -26,7 +26,8 @@ export const pcatApiGates = [
   "PCAT-API-09",
   "PCAT-API-10",
   "PCAT-API-11",
-  "PCAT-API-12"
+  "PCAT-API-12",
+  "PCAT-API-13"
 ] as const;
 export type PcatApiGate = (typeof pcatApiGates)[number];
 
@@ -616,6 +617,8 @@ export const catalogSupportedValueSchemaSchema = z.union([
 export const catalogSupportedDefinitionContentSchema = catalogObject({
   displayName: z.string(),
   documentation: z.string(),
+  /** Optional author description, distinct from long-form documentation. */
+  description: z.string().max(512).optional(),
   unit: z.string().min(1).max(32).optional(),
   valueSchema: catalogSupportedValueSchemaSchema,
   examples: z
@@ -629,13 +632,6 @@ export const catalogSupportedDefinitionContentSchema = catalogObject({
       ])
     )
     .optional()
-});
-
-export const catalogCreateDefinitionChangeSchema = catalogObject({
-  op: z.literal("create-definition"),
-  subjectId: z.string(),
-  propertyKey: z.string(),
-  content: catalogSupportedDefinitionContentSchema
 });
 
 export const catalogNestedDefinitionDraftSchema = catalogObject({
@@ -663,10 +659,47 @@ export const catalogReviseDefinitionChangeSchema = catalogObject({
   content: catalogSupportedDefinitionContentSchema
 });
 
+export const catalogCreateDefinitionChangeSchema = catalogObject({
+  op: z.literal("create-definition"),
+  subjectId: z.string(),
+  propertyKey: z.string(),
+  /**
+   * Lifecycle intent for a newly minted definition. `retired` is rejected by the
+   * builder; the field exists so a create and a restore share one contract.
+   */
+  lifecycle: z.enum(["active"]).optional(),
+  content: catalogSupportedDefinitionContentSchema
+});
+
+/**
+ * Reversible definition lifecycle. Decision 10 of #847 maps the historical
+ * deprecate action to canonical soft retirement: `retire-definition` publishes
+ * `retired` for the same identity and key, and `restore-definition` publishes
+ * `active` for the same identity and key. Neither rewrites history or the
+ * permanent identity, and `deprecated` stays a distinct existing state.
+ */
+export const catalogRetireDefinitionChangeSchema = catalogObject({
+  op: z.literal("retire-definition"),
+  definitionId: z.string(),
+  class: z.enum(["documentation", "semantic"]).optional(),
+  reason: z.string().min(1).max(512).optional(),
+  content: catalogSupportedDefinitionContentSchema
+});
+
+export const catalogRestoreDefinitionChangeSchema = catalogObject({
+  op: z.literal("restore-definition"),
+  definitionId: z.string(),
+  class: z.enum(["documentation", "semantic"]).optional(),
+  reason: z.string().min(1).max(512).optional(),
+  content: catalogSupportedDefinitionContentSchema
+});
+
 export const catalogChangeSchema = z.union([
   catalogCreateDefinitionChangeSchema,
   catalogCreateSubjectWithDefinitionsChangeSchema,
-  catalogReviseDefinitionChangeSchema
+  catalogReviseDefinitionChangeSchema,
+  catalogRetireDefinitionChangeSchema,
+  catalogRestoreDefinitionChangeSchema
 ]);
 
 export const catalogCreatePublicationCandidateRequestSchema = catalogObject({
@@ -913,6 +946,139 @@ export const catalogProposalUnavailableResponseSchema = z.object({
   })
 });
 
+// ---------------------------------------------------------------------------
+// Definition identity correction migration (#847 decisions 12-17, S2).
+// One high-level governance contract: preview, create, read, continue, list.
+// It coordinates the existing authoring/publication/binding/value/audit
+// capabilities and never authors Catalog truth directly.
+// ---------------------------------------------------------------------------
+
+export const catalogReplacementStatusSchema = z.enum([
+  "pending",
+  "executing",
+  "completed",
+  "blocked",
+  "failed"
+]);
+
+export const catalogReplacementProjectStatusSchema = z.enum([
+  "completed",
+  "blocked",
+  "failed",
+  "pending"
+]);
+
+export const catalogReplacementIdentitySchema = catalogObject({
+  definitionId: z.string(),
+  subjectId: z.string(),
+  subjectName: z.string(),
+  propertyKey: z.string(),
+  revisionId: z.string()
+});
+
+export const catalogReplacementProjectDtoSchema = catalogObject({
+  projectId: z.string(),
+  projectName: z.string(),
+  status: catalogReplacementProjectStatusSchema,
+  blockerReason: z.string().nullable(),
+  oldBindingId: z.string(),
+  oldValueId: z.string(),
+  newBindingId: z.string().nullable(),
+  newValueId: z.string().nullable(),
+  valueKind: z.string(),
+  compatible: z.boolean(),
+  attemptCount: z.number().int().nonnegative(),
+  registrationRequired: z.boolean()
+});
+
+export const catalogReplacementPreviewRequestSchema = catalogObject({
+  oldDefinitionId: z.string(),
+  newSubjectId: z.string(),
+  newPropertyKey: z.string(),
+  displayName: z.string(),
+  documentation: z.string(),
+  description: z.string().max(512).optional(),
+  unit: z.string().min(1).max(32).optional(),
+  valueSchema: catalogSupportedValueSchemaSchema,
+  examples: z
+    .array(
+      z.union([
+        z.number(),
+        z.string(),
+        z.boolean(),
+        z.null(),
+        z.array(z.union([z.number(), z.string(), z.boolean()]))
+      ])
+    )
+    .optional(),
+  projectIds: z.array(z.string()).min(1).max(200),
+  reason: z.string().min(1).max(512)
+});
+
+export const catalogCreateReplacementRequestSchema = catalogObject({
+  previewId: z.string(),
+  previewFingerprint: z.string(),
+  idempotencyKey: z.string().min(1),
+  confirmationNote: z.string().max(512).optional()
+});
+
+export const catalogContinueReplacementRequestSchema = catalogObject({
+  idempotencyKey: z.string().min(1),
+  projectIds: z.array(z.string()).min(1).max(200).optional(),
+  reason: z.string().max(512).optional()
+});
+
+export const catalogReplacementDtoSchema = catalogObject({
+  id: z.string(),
+  status: catalogReplacementStatusSchema,
+  organizationId: z.string(),
+  oldIdentity: catalogReplacementIdentitySchema,
+  newIdentity: catalogReplacementIdentitySchema,
+  previewFingerprint: z.string(),
+  catalogReleaseId: z.string(),
+  candidateId: z.string().nullable(),
+  publicationJobId: z.string().nullable(),
+  authorizationId: z.string().nullable(),
+  reason: z.string(),
+  etag: z.string(),
+  version: z.number().int().positive(),
+  projects: z.array(catalogReplacementProjectDtoSchema),
+  createdAt: z.string()
+});
+
+export const catalogReplacementPreviewDtoSchema = catalogObject({
+  previewId: z.string(),
+  previewFingerprint: z.string(),
+  organizationId: z.string(),
+  oldIdentity: catalogReplacementIdentitySchema,
+  newIdentity: catalogReplacementIdentitySchema,
+  catalogReleaseId: z.string(),
+  impact: catalogObject({
+    selectedProjectCount: z.number().int().nonnegative(),
+    compatibleProjectCount: z.number().int().nonnegative(),
+    blockedProjectCount: z.number().int().nonnegative(),
+    coupledDefinitionCount: z.number().int().nonnegative(),
+    sourceFormatSupported: z.boolean(),
+    oldDefinitionLifecycle: catalogDefinitionLifecycleSchema,
+    oldDefinitionCurrentReferenceCount: z.number().int().nonnegative(),
+    targetRegistrationRequired: z.boolean()
+  }),
+  blockers: z.array(z.string()),
+  projects: z.array(catalogReplacementProjectDtoSchema),
+  expiresAt: z.string().nullable()
+});
+
+export const catalogReplacementResponseSchema = itemEnvelopeSchema(
+  catalogReplacementDtoSchema
+).superRefine(rejectLegacySpecKeys);
+export const catalogReplacementPreviewResponseSchema = itemEnvelopeSchema(
+  catalogReplacementPreviewDtoSchema
+).superRefine(rejectLegacySpecKeys);
+export const catalogReplacementListResponseSchema = catalogItemsEnvelopeSchema(
+  catalogReplacementDtoSchema
+);
+
+
 export const parameterCatalogDtoSchemaCatalog = {
   CatalogProposalUnavailableResponse: catalogProposalUnavailableResponseSchema,
   CatalogDocumentResponse: catalogDocumentResponseSchema,
@@ -949,6 +1115,18 @@ export const parameterCatalogDtoSchemaCatalog = {
   CatalogPublicationJobResponse: catalogPublicationJobResponseSchema,
   CatalogPublicationJobListResponse: catalogPublicationJobListResponseSchema,
   CatalogPublicationSurfaceResponse: catalogPublicationSurfaceResponseSchema,
+  CatalogReplacementStatus: catalogReplacementStatusSchema,
+  CatalogReplacementProjectStatus: catalogReplacementProjectStatusSchema,
+  CatalogReplacementIdentity: catalogReplacementIdentitySchema,
+  CatalogReplacementProject: catalogReplacementProjectDtoSchema,
+  CatalogReplacement: catalogReplacementDtoSchema,
+  CatalogReplacementPreview: catalogReplacementPreviewDtoSchema,
+  CatalogReplacementPreviewRequest: catalogReplacementPreviewRequestSchema,
+  CatalogCreateReplacementRequest: catalogCreateReplacementRequestSchema,
+  CatalogContinueReplacementRequest: catalogContinueReplacementRequestSchema,
+  CatalogReplacementResponse: catalogReplacementResponseSchema,
+  CatalogReplacementPreviewResponse: catalogReplacementPreviewResponseSchema,
+  CatalogReplacementListResponse: catalogReplacementListResponseSchema,
   CatalogLegacyIdentifierResponse: catalogLegacyIdentifierResponseSchema,
   CatalogLegacyGoneResponse: catalogLegacyGoneResponseSchema,
   ProjectParameterBindingListResponse: projectParameterBindingListResponseSchema,
@@ -1242,6 +1420,41 @@ export const parameterCatalogCanonicalRoutes = [
     path: "/api/v2/catalog/legacy-identifiers/:legacyType/:legacyId",
     module: "catalog",
     stability: "mvp"
+  },
+  {
+    id: "catalog.previewDefinitionReplacement",
+    method: "POST",
+    path: "/api/v2/catalog/definition-replacements/preview",
+    module: "catalog",
+    stability: "mvp"
+  },
+  {
+    id: "catalog.listDefinitionReplacements",
+    method: "GET",
+    path: "/api/v2/catalog/definition-replacements",
+    module: "catalog",
+    stability: "mvp"
+  },
+  {
+    id: "catalog.createDefinitionReplacement",
+    method: "POST",
+    path: "/api/v2/catalog/definition-replacements",
+    module: "catalog",
+    stability: "mvp"
+  },
+  {
+    id: "catalog.getDefinitionReplacement",
+    method: "GET",
+    path: "/api/v2/catalog/definition-replacements/:replacementId",
+    module: "catalog",
+    stability: "mvp"
+  },
+  {
+    id: "catalog.continueDefinitionReplacement",
+    method: "POST",
+    path: "/api/v2/catalog/definition-replacements/:replacementId/continue",
+    module: "catalog",
+    stability: "mvp"
   }
 ] as const;
 
@@ -1286,6 +1499,11 @@ export const parameterCatalogRouteGates: Record<
   "catalog.getPublicationSurface": ["PCAT-API-11"],
   "catalog.listPublications": ["PCAT-API-11"],
   "catalog.getPublication": ["PCAT-API-11"],
+  "catalog.previewDefinitionReplacement": ["PCAT-API-13"],
+  "catalog.listDefinitionReplacements": ["PCAT-API-13"],
+  "catalog.createDefinitionReplacement": ["PCAT-API-13"],
+  "catalog.getDefinitionReplacement": ["PCAT-API-13"],
+  "catalog.continueDefinitionReplacement": ["PCAT-API-13"],
   "catalog.getLegacyIdentifier": ["PCAT-API-07"]
 };
 
@@ -1336,7 +1554,12 @@ export const parameterCatalogClientMethodByRouteId = {
   "catalog.getPublicationSurface": "getPublicationSurface",
   "catalog.listPublications": "listPublications",
   "catalog.getPublication": "getPublication",
-  "catalog.getLegacyIdentifier": "getLegacyIdentifier"
+  "catalog.getLegacyIdentifier": "getLegacyIdentifier",
+  "catalog.previewDefinitionReplacement": "previewDefinitionReplacement",
+  "catalog.listDefinitionReplacements": "listDefinitionReplacements",
+  "catalog.createDefinitionReplacement": "createDefinitionReplacement",
+  "catalog.getDefinitionReplacement": "getDefinitionReplacement",
+  "catalog.continueDefinitionReplacement": "continueDefinitionReplacement"
 } as const satisfies Record<ParameterCatalogCanonicalRouteId, string>;
 
 export const parameterCatalogProjectBindingRouteIds = [
@@ -1428,6 +1651,53 @@ const catalogPublicationWriteErrors = {
 const proposalWriteErrors = { ...catalogWriteErrors, "503": "CatalogProposalUnavailableResponse" } as const;
 
 export const parameterCatalogSchemaRegistry = {
+  "catalog.previewDefinitionReplacement": {
+    summary:
+      "Preview a definition identity correction: exact impact, compatibility, project manifest and blockers",
+    tags: ["catalog"],
+    requestBody: "CatalogReplacementPreviewRequest",
+    responseBody: "CatalogReplacementPreviewResponse",
+    additionalResponses: catalogWriteErrors,
+    successHeaders: [catalogReleaseResponseHeader],
+    requiresCatalogReleaseHeader: true
+  },
+  "catalog.listDefinitionReplacements": {
+    summary: "List definition replacements owned by the caller's organization",
+    tags: ["catalog"],
+    responseBody: "CatalogReplacementListResponse",
+    additionalResponses: catalogReadErrors,
+    requestParameters: [{ name: "catalogReleaseId", in: "query" }],
+    successHeaders: [catalogReleaseResponseHeader]
+  },
+  "catalog.createDefinitionReplacement": {
+    summary:
+      "Execute an approved replacement: publish the replacement identity then migrate the selected projects",
+    tags: ["catalog"],
+    requestBody: "CatalogCreateReplacementRequest",
+    responseBody: "CatalogReplacementResponse",
+    additionalResponses: catalogWriteErrors,
+    successHeaders: [catalogReleaseResponseHeader, catalogEtagResponseHeader],
+    requiresCatalogReleaseHeader: true,
+    requiresIdempotencyKeyHeader: true
+  },
+  "catalog.getDefinitionReplacement": {
+    summary: "Read one definition replacement with its per-project progress",
+    tags: ["catalog"],
+    responseBody: "CatalogReplacementResponse",
+    additionalResponses: catalogReadErrors,
+    successHeaders: [catalogReleaseResponseHeader]
+  },
+  "catalog.continueDefinitionReplacement": {
+    summary: "Continue blocked projects of an approved replacement",
+    tags: ["catalog"],
+    requestBody: "CatalogContinueReplacementRequest",
+    responseBody: "CatalogReplacementResponse",
+    additionalResponses: catalogWriteErrors,
+    successHeaders: [catalogReleaseResponseHeader, catalogEtagResponseHeader],
+    requiresCatalogReleaseHeader: true,
+    requiresIfMatchHeader: true,
+    requiresIdempotencyKeyHeader: true
+  },
   "catalog.get": {
     summary: "Get the current catalog readiness document",
     tags: ["catalog"],
@@ -1772,5 +2042,25 @@ export const parameterCatalogSchemaRegistry = {
       { name: CATALOG_WARNING_HEADER, required: true },
       { name: CATALOG_LEGACY_CONTRACT_HEADER, required: true }
     ]
+  },
+  "catalog.retireDefinition": {
+    summary: "Soft-retire one canonical definition identity in one publication",
+    tags: ["catalog"],
+    requestBody: "CatalogDefinitionLifecycleChangeRequest",
+    responseBody: "CatalogDefinitionLifecycleChangeResponse",
+    successStatus: 201,
+    additionalResponses: catalogPublicationWriteErrors,
+    requestParameters: [catalogReleaseRequestHeader, catalogIdempotencyHeader],
+    successHeaders: [catalogReleaseResponseHeader, catalogEtagResponseHeader]
+  },
+  "catalog.restoreDefinition": {
+    summary: "Restore a soft-retired canonical definition identity to active",
+    tags: ["catalog"],
+    requestBody: "CatalogDefinitionLifecycleChangeRequest",
+    responseBody: "CatalogDefinitionLifecycleChangeResponse",
+    successStatus: 201,
+    additionalResponses: catalogPublicationWriteErrors,
+    requestParameters: [catalogReleaseRequestHeader, catalogIdempotencyHeader],
+    successHeaders: [catalogReleaseResponseHeader, catalogEtagResponseHeader]
   }
 } as const;

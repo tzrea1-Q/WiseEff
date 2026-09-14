@@ -45,6 +45,7 @@ export type ProtectedReferenceWriteback = {
 export type ProtectedReferenceBlock =
   | { readonly kind: "typed-block"; readonly reason: "legacy-parameter-spec-id" }
   | { readonly kind: "typed-block"; readonly reason: "missing-binding" }
+  | { readonly kind: "typed-block"; readonly reason: "binding-replaced" }
   | { readonly kind: "typed-block"; readonly reason: "missing-current-value" }
   | { readonly kind: "typed-block"; readonly reason: "revision-disagreement" }
   | { readonly kind: "typed-block"; readonly reason: "invalid-command"; readonly field: string }

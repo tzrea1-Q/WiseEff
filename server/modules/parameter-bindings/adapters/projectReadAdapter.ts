@@ -59,7 +59,7 @@ export async function readProjectProtectedParameters(
   const listed = await pool.query<BindingRow>(
     `select id, organization_id, catalog_release_id, project_id, logical_node_id,
             registration_id, subject_id, definition_id, effective_revision_id, current_value_id
-       from parameter_catalog.project_parameter_bindings
+       from parameter_catalog.current_project_parameter_bindings
       where organization_id = $1 and project_id = $2
       order by id`,
     [auth.organization.id, projectId]

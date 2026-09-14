@@ -1,4 +1,6 @@
 import type {
+  CatalogContinueReplacementRequest,
+  CatalogCreateReplacementRequest,
   CatalogCreatePublicationCandidateRequest,
   CatalogDefinitionListResponse,
   CatalogDefinitionResponse,
@@ -14,10 +16,20 @@ import type {
   CatalogSubjectListResponse,
   CatalogSubjectResponse,
   CatalogPublicationJobListResponse,
-  CatalogPublicationSurfaceResponse
+  CatalogPublicationSurfaceResponse,
+  CatalogReplacementListResponse,
+  CatalogReplacementPreviewRequest,
+  CatalogReplacementPreviewResponse,
+  CatalogReplacementResponse
 } from "@/infrastructure/http/parameterCatalogDtos";
 
 export type {
+  CatalogContinueReplacementRequest,
+  CatalogCreateReplacementRequest,
+  CatalogReplacementListResponse,
+  CatalogReplacementPreviewRequest,
+  CatalogReplacementPreviewResponse,
+  CatalogReplacementResponse,
   CatalogCreatePublicationCandidateRequest,
   CatalogDefinitionListResponse,
   CatalogDefinitionResponse,
@@ -79,4 +91,19 @@ export interface ParameterCatalogRepository {
   getPublication(jobId: string): Promise<CatalogPublicationJobResponse>;
   getPublicationSurface(): Promise<CatalogPublicationSurfaceResponse>;
   listPublications(query?: CatalogListQuery): Promise<CatalogPublicationJobListResponse>;
+  previewDefinitionReplacement(
+    body: CatalogReplacementPreviewRequest,
+    context: CatalogPublicationWriteContext
+  ): Promise<CatalogReplacementPreviewResponse>;
+  listDefinitionReplacements(query?: CatalogListQuery): Promise<CatalogReplacementListResponse>;
+  createDefinitionReplacement(
+    body: CatalogCreateReplacementRequest,
+    context: { catalogReleaseId: string }
+  ): Promise<CatalogReplacementResponse>;
+  getDefinitionReplacement(replacementId: string): Promise<CatalogReplacementResponse>;
+  continueDefinitionReplacement(
+    replacementId: string,
+    body: CatalogContinueReplacementRequest,
+    context: { catalogReleaseId: string }
+  ): Promise<CatalogReplacementResponse>;
 }

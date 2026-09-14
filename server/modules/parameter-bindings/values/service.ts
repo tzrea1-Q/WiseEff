@@ -19,6 +19,7 @@ import {
   insertProjectValue,
   insertSuccessAudit,
   loadBindingById,
+  loadBindingReplacementState,
   loadHistoryByRevision,
   loadOwnedSourceRefs,
   loadProjectValueById,
@@ -460,3 +461,16 @@ export const createProjectValueService = (pool: pg.Pool): ProjectValueService =>
   readHistory: (query) => readProjectValueHistory(pool, query),
   mutateExisting: (command) => mutateExistingProjectValue(pool, command),
 });
+
+/** True when a completed definition replacement superseded this Binding.  The
+ * write port rejects a write naming a replaced Binding with this before it
+ * appends anything. */
+export const isReplacedCurrentBinding = async (
+  session: pg.Pool | ValueClient,
+  bindingId: string,
+): Promise<boolean> => {
+  if (!controlFree(bindingId)) {
+    return false;
+  }
+  return loadBindingReplacementState(session, bindingId);
+};

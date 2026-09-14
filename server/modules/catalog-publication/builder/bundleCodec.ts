@@ -58,6 +58,7 @@ export const revisionContentModel = (
   if (revision.successorDefinitionId !== undefined) {
     model["/successorDefinitionId"] = revision.successorDefinitionId;
   }
+  if (revision.description !== undefined) model["/description"] = revision.description;
   if (revision.unit !== undefined) model["/unit"] = revision.unit;
   if (revision.examples !== undefined) {
     model["/examples"] = revision.examples as ContractJsonValue;

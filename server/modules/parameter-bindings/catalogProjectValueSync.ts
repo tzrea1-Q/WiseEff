@@ -395,7 +395,7 @@ export async function findCatalogBindingRow(
     `
     select id, organization_id, catalog_release_id, project_id, logical_node_id,
            registration_id, subject_id, definition_id, effective_revision_id, current_value_id
-      from parameter_catalog.project_parameter_bindings
+      from parameter_catalog.current_project_parameter_bindings
      where organization_id = $1
        and project_id = $2
        and id = $3
@@ -551,7 +551,7 @@ export async function listCatalogBindingRowsForProject(
         end as instance_name,
         placement.module_id,
         module.name as module_name
-      from parameter_catalog.project_parameter_bindings b
+      from parameter_catalog.current_project_parameter_bindings b
       left join dts_logical_node_revisions lnr
         on lnr.logical_node_id = b.logical_node_id
        and ($2::text is null or lnr.config_revision_id = $2)
@@ -720,7 +720,7 @@ export async function listCatalogBindingsForImport(
         when v.value_kind = 'string' then trim(both '"' from v.value::text)
         else coalesce(v.value::text, '')
       end as current_value
-    from parameter_catalog.project_parameter_bindings b
+    from parameter_catalog.current_project_parameter_bindings b
     join parameter_catalog.parameter_definitions d on d.id = b.definition_id
     join parameter_catalog.${VALUES_RELATION} v on v.id = b.current_value_id
     where b.organization_id = $1

@@ -110,13 +110,15 @@ export const loadBindingByComposite = async (
     readonly definitionId: string;
   },
 ): Promise<BindingRow | null> => {
+  // Current resolution goes through the replacement projection: a queried old
+  // definition resolves to the replacement's new Binding (exactly one hop), so
+  // a stale caller never locks or reuses the superseded row.  The insert below
+  // stays an INSERT because Binding identity is immutable.
   const result = await client.query<BindingRow>(
     `select id, organization_id, catalog_release_id, project_id, logical_node_id,
             registration_id, subject_id, definition_id, effective_revision_id, current_value_id
        from parameter_catalog.project_parameter_bindings
-      where project_id = $1
-        and logical_node_id = $2
-        and definition_id = $3
+      where id = parameter_catalog.resolve_current_binding($1, $2, $3)
       for update`,
     [input.projectId, input.logicalNodeId, input.definitionId],
   );
