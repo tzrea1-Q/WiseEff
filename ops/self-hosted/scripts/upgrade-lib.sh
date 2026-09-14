@@ -788,7 +788,8 @@ wiseeff_upgrade_resolve_target() {
     return $?
   }
   # A checkout moved to the target before apply must not hide the running image.
-  running_tag="${upgrade_runtime_image_ref_api##*:}"
+  running_tag="${upgrade_runtime_image_ref_api:-}"
+  running_tag="${running_tag##*:}"
   if [[ "$running_tag" =~ ^[a-f0-9]{40}$ ]] &&
     wiseeff_upgrade_git cat-file -e "${running_tag}^{commit}" 2>/dev/null; then
     upgrade_previous_sha="$running_tag"
@@ -800,7 +801,8 @@ wiseeff_upgrade_resolve_target() {
       wiseeff_upgrade_die 10 "new-empty requires one source application image across API, worker and web."
       return 10
     fi
-    upgrade_previous_sha="${upgrade_runtime_image_ref_api##*:}"
+    upgrade_previous_sha="${upgrade_runtime_image_ref_api:-}"
+    upgrade_previous_sha="${upgrade_previous_sha##*:}"
     if ! [[ "$upgrade_previous_sha" =~ ^[a-f0-9]{40}$ ]]; then
       # Controlled rollback preserves immutable images under per-run aliases.
       # Recover source identity only when the retained source-SHA image is still
@@ -808,7 +810,7 @@ wiseeff_upgrade_resolve_target() {
       local retained_source_sha retained_source_image
       retained_source_sha=82344044b436a8dafecefbb85dfd724cecb05e3f
       retained_source_image=""
-      case "$upgrade_runtime_image_ref_api" in
+      case "${upgrade_runtime_image_ref_api:-}" in
         "$(wiseeff_upgrade_app_image_name)":wiseeff-previous-api-*)
           retained_source_image="$(wiseeff_upgrade_docker image inspect --format '{{.Id}}' \
             "$(wiseeff_upgrade_app_image_name):${retained_source_sha}" 2>/dev/null || true)"
