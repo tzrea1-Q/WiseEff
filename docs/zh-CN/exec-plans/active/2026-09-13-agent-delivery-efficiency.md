@@ -1,7 +1,7 @@
 # 智能体开发与验证效率优化
 
 > English: [English](../../../exec-plans/active/2026-09-13-agent-delivery-efficiency.md)
-> 状态：**活跃观察——截至 #839 的十个有界实现 PR 均已合入，本 EFF-09 文档在 #828 接受自身最终证明。所有模块保持 shadow/observation-pending，B/C 和完整 main 成功尚未成立。**
+> 状态：**活跃观察——截至 #840 的十一个有界 PR 已合入。自然 main 运行后另行领取前端测试同步调查。所有模块保持 shadow/observation-pending，B/C 和完整 main 成功尚未成立。**
 > 日期：2026-09-13。真实跟踪 Issue：[#828](https://github.com/tzrea1-Q/WiseEff/issues/828)。
 > 2026-09-13 重新 fetch 后的真实 accepted base：`1059acb57379bd120d0d2b1a4b4733d4c2e02901`。它恰好等于附件的历史参考值，不构成强制回退后续工作的授权。
 
@@ -13,13 +13,27 @@
 
 | 交付层级 | 完成含义 | 当前状态 |
 | --- | --- | --- |
-| A：工具与流程 | 诊断、等价调度、影子计划、执行/摘要与路由已审查、验证并交付 | 最小实现及有界浏览器修复已分十个 PR 合入，本最终文档切片通过自身 #828 证明结算 |
+| A：工具与流程 | 诊断、等价调度、影子计划、执行/摘要与路由已审查、验证并交付 | 最小实现及有界浏览器修复已分十个 PR 合入，最终文档另由 #840 合入；随后 main-red 夹具调查保持有界并单独交付。 |
 | B：模块启用 | 每个明确模块独立满足观察与审查门槛 | 无已启用模块；`observation-pending` |
 | C：效果验证 | 同类真实任务/CI 样本支持墙钟、资源与 usage 结论 | 样本不足；token usage 为 `unknown` |
 
 A 可先交付，B/C 继续开放。不得制造样本，也不能因工具合入就宣称整个项目全面完成。
 
-## 当前交付结算——2026-09-14
+## 交付后的 main 观察与有界夹具领取——2026-09-14
+
+最终文档 [PR #840](https://github.com/tzrea1-Q/WiseEff/pull/840) 合入为已接受 main `720b61476c1a04c6af4f59876db0fea57e219fed`，tree `bf23559e04952cc813593b29802caf9ad7d2c7f8`。base `e45dc3ab941fb081ff0d6edb07668c63fffb7cc0` 和独立已审 head `02e41c33f81e52035ef0a1ad1f9dd067bcab9724` 是 [run34801076313](https://github.com/tzrea1-Q/WiseEff/actions/runs/34801076313) attempt1 实际 checkout `a071bc020edcdd414d40ff89131f0a317e4f3915` 的有序双亲。实际 docs-only 选中 Detect changed paths、Build and test、Merge bar 并通过；九个运行时 job 未选中而 skipped，没有原生测试。workflow72秒、已执行job时长之和1.05分钟是单次观察，不是账单或受控收益。独立R1接受修正文档；另行机械审查核实最终53文件源码并集及ZIP SHA256 `d5dedfe1bd024404296de6477aa6247d387579a83b9a6b35e7f62fb67ea7bca3`，无删除/重命名或私有运行产物。#828继续OPEN；封板中的MERGED状态属于PR #840。
+
+已结束的工程main [run34799403948](https://github.com/tzrea1-Q/WiseEff/actions/runs/34799403948) attempt1 执行e45/treeb587，accepted base017。L1、Quality和visual通过；L2/Merge失败，记录44项浏览器清单失败，原archive-size安全门禁拒绝完整产物。最小诊断10331867127（666字节）上传成功，已核实run/base/head/执行/tree/attempt及ZIP SHA256 `0ed900df9b424d8bc58132449b5bc43b9de2ba2fe852be1ba233d42c34c89aea`。详细原生数量和清理终态仍unknown。workflow2515秒、已执行job时长之和71.1833分钟不能证明相对前驱58项失败的受控收益。没有原始目录后备上传或失败状态覆盖。
+
+最终main自然运行 [run34801295912](https://github.com/tzrea1-Q/WiseEff/actions/runs/34801295912) attempt1 在L2结束前暴露一项前端失败（3410通过/1失败，441文件）。原同项目shared-working-tip场景轮询缓存节点的`aria-selected`；保存证据显示false和版本working-tip-1，但不能证明缓存节点是否仍连接。组件异步加载能够替换工作台，支持一个具体测试生命周期假设，尚不能证明flaky或产品缺陷。十一项EFF PR未修改相关源码blob；调度归因也未证明。
+
+父代理检查竞争领取后，已[领取](https://github.com/tzrea1-Q/WiseEff/issues/828#issuecomment-5658576831)基于720的独立R1 Scratch任务包。目标是观察原重载/选择顺序，仅修复已证明的测试同步缺陷。实现者唯一源码路径为`src/components/parameter-topology/ApiProjectTopologyWorkspace.test.tsx`，父代理文档范围是本互链计划文件对。使用既有deferred/repository接口和相同受控Red/Green顺序，保留全部两次create、草稿、版本、提交及角色断言。本包不授权产品/Catalog/Wayfinder、超时、重试、sleep、skip或exclude修改。若已稳定且连接的当前节点仍失败，停止夹具修复并报告实际产品边界。独立原场景、整个原文件、未改动build、直接文档治理、acceptance元数据、独立合并R1审查、精确完整源码包及原选中Hosted门禁均须在正常集成前完成。现有A交付保留；模块证据、B/C和完整main验收继续分别判断。
+
+原获取顺序的受控复现证明缺少同步。首个探针通过并保留记录，说明快速重载不一定替换节点。下一输入通过既有repository接口和公开加载状态，让首次effective working-tip-1加载可见。节点仍在原首次tray等待后获取，点击时连接，重载后断开，原选择断言失败且当前节点未选中。这是本地受控复现，不是Hosted实际事件顺序的证明。最终最小fixture在Red/Green中使用相同释放顺序：仅移除拟增加的首次tip等待时失败（0通过/1失败/24项过滤跳过，exit1，6.054580583秒），加回后通过（1通过/0失败/24项过滤跳过，exit0，4.202227959秒）。对应源码SHA256为 `7577f95c5d685fdc7bc84e09cf6e6a7b75813ba29566620f4377e37d96bc02d2` 和 `c0c8f3bfe341e1877afd7530bdf9f1b73447d72beb564488c536758d24060bde`，基于base720/treebf235；明确属于dirty-source诊断变体，不是已提交最终验收。console探针和冗余已resolve deferred均已删除，原全部尾部断言和角色/草稿夹具保留。最终候选仍需父代理精确head上的整个文件/build/docs检查、独立R1和Hosted交付。
+
+该Green之后，测试唯一差异是编译擦除的显式`vi.fn<ParameterTopologyRepository["getTopology"]>`类型注解。最终测试源码SHA256为 `dd0e7ea1506e65852a9851e16ad5ab033f09bbb018c6f851c22023b6b704d73b`，没有将此前聚焦Green改称执行这些字节。父代理整个文件和build证据必须绑定已提交的含类型注解候选。
+
+## 较早交付结算——2026-09-14
 
 已接受的实现 main 为 `e45dc3ab941fb081ff0d6edb07668c63fffb7cc0`，tree `b58755ee3b9a94cbc76169caed9dc95d42a93f72`。[58 项回归台账](2026-09-13-efficiency-regression-ledger.md) 将每个实现 PR 绑定真实 base/head/checkout/tree/merge/run/attempt，区分已证明、部分证明、接口拒绝、未采用和待观察场景。十个实现 PR 为 #830、#829、#833、#831、#834—#839。本 EFF-09 四文件文档切片及最终源码包在 [#828](https://github.com/tzrea1-Q/WiseEff/issues/828) 另行记录自身独立 R1、Hosted 和精确合入证明，不改变运行时或策略。下方历史检查点保留当时状态，不覆盖本结算。
 

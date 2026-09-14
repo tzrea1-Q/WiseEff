@@ -1062,6 +1062,16 @@ describe("ApiProjectTopologyWorkspace", () => {
         policyTarget: null
       }))
     });
+    const loadTopology = repository.getTopology;
+    repository.getTopology = vi.fn<ParameterTopologyRepository["getTopology"]>(async (...args) => {
+      if (args[2] === "working-tip-1" && args[3] === "effective") {
+        // Keep the first reload visible so it replaces the outgoing tree.
+        await waitFor(() =>
+          expect(screen.getByRole("region", { name: "DTS 参数工作台" })).toHaveAttribute("aria-busy", "true")
+        );
+      }
+      return loadTopology(...args);
+    });
     const { fireEvent } = await import("@testing-library/react");
 
     render(
@@ -1088,10 +1098,21 @@ describe("ApiProjectTopologyWorkspace", () => {
     });
     await screen.findByRole("region", { name: "参数修改提交" });
 
+    // The draft tray can appear before the first working-tip reload settles.
+    await waitFor(() =>
+      expect(screen.getByRole("region", { name: "DTS 参数工作台" })).toHaveAttribute(
+        "data-revision-id",
+        "working-tip-1"
+      )
+    );
     workspace = screen.getByRole("region", { name: "DTS 参数工作台" });
     const mt5788 = within(workspace).getByRole("treeitem", { name: /未分类 · mt5788/ });
     fireEvent.click(mt5788);
-    await waitFor(() => expect(mt5788).toHaveAttribute("aria-selected", "true"));
+    await waitFor(() =>
+      expect(within(screen.getByRole("region", { name: "DTS 参数工作台" })).getByRole(
+        "treeitem", { name: /未分类 · mt5788/ }
+      )).toHaveAttribute("aria-selected", "true")
+    );
     await createGpioDraftFromWorkbench(workspace, fireEvent, {
       reason: "Second binding draft",
       rawValue: "<&gpio6 16 0>",
