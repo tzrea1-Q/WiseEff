@@ -1,7 +1,7 @@
 # Agent Delivery and Verification Efficiency
 
 > Chinese: [Chinese](../../zh-CN/exec-plans/active/2026-09-13-agent-delivery-efficiency.md)
-> Status: **Active — PRs #830, #829, #833, #831 and #834 merged. CI shadow is integrating on the accepted preview; fresh execution/reporting is completing its correction matrix. Routing, type feedback and browser fixtures await separate delivery. No activation or measured-benefit claim.**
+> Status: **Active — PRs #830, #829, #833, #831, #834 and #835 merged. Fresh execution/reporting has independent code PASS and is integrating on accepted CI shadow. Routing, type feedback and browser fixtures await separate delivery. No activation or measured-benefit claim.**
 > Date: 2026-09-13. Tracking Issue: [#828](https://github.com/tzrea1-Q/WiseEff/issues/828).
 > Accepted base, freshly fetched on 2026-09-13: `1059acb57379bd120d0d2b1a4b4733d4c2e02901`. This equals the supplied design's historical reference; it is not permission to reset later work.
 
@@ -13,11 +13,19 @@ Implement the user's supplied 2026-09-13 engineering design in bounded waves: sa
 
 | Delivery level | Completion means | Current status |
 | --- | --- | --- |
-| A: tools and process | Reviewed and verified diagnostics, equivalent scheduling, shadow plan, execution/reporting and routing are delivered | EFF-01/02 and EFF-03 preview merged; CI shadow is integrating; EFF-07/08 have reviewed local candidates; EFF-04 correction and final integration remain pending |
+| A: tools and process | Reviewed and verified diagnostics, equivalent scheduling, shadow plan, execution/reporting and routing are delivered | EFF-01/02/03 merged; EFF-04 is integrating its reviewed correction; EFF-07/08 and browser fixtures have reviewed local candidates awaiting delivery |
 | B: module activation | Each explicitly named module passes its own observation and independent-review gates | No module enabled; `observation-pending` |
 | C: measured effect | Comparable real task/CI samples support wall-clock, resource and usage conclusions | Insufficient samples; token usage `unknown` |
 
 A can be delivered while B/C remain open. Do not manufacture samples or call the entire program complete merely because tooling merged.
+
+## CI shadow accepted and fresh execution integration — 2026-09-14
+
+[PR #835](https://github.com/tzrea1-Q/WiseEff/pull/835) merged as `aed7e54686e7642655b3b8c30369b9c4ad07f771` after corrected-head [run 34791485027](https://github.com/tzrea1-Q/WiseEff/actions/runs/34791485027), attempt 1, passed all nine original selected GitHub Actions checks. Accepted base `4ef53e5c1551747d76350cd324068fb413d462c2` and reviewed head `32d14b7e93d306dfcf905b71d7ed503e7a6d4a52` are the ordered parents of actual checkout `e3dbfff629ea91c7777a7f5728f31a74dfb22efc`; checkout/candidate/merge tree is `513f0967be7d9ebe9863acfbde4b89bd690a0fd1`. Frontend 3411/441 files, scripts 1525/108 plus 21 existing optional skips, bridge 134/21 plus 4 platform skips, backend 4180/539 with no skips, Quality 100 and Smoke 4 passed. Four fresh native observations report observed/full-required, with full fallback and no activation eligibility. Independent Standards/Spec passed the complete 14-path candidate. The complete source ZIP SHA256 is `e95760c8b1148ec5ce078c6a1d7d499eba978d1ed847d7fb9c3309479e96c8d5`, with no deletes/renames. Remote branch removal and clean local-main synchronization were verified.
+
+Workflow wall approximation was 694 seconds and summed executed-job elapsed 33.7833 minutes; billing and whole-program tokens remain unknown. This policy-changing PR is not a module activation sample. Latest completed full-main evidence before this merge is `4ef53e5c1551747d76350cd324068fb413d462c2`, push run 34789007486: L1/Quality passed, 58 browser failures were inventoried, and the original archive-size guard rejected full upload. Diagnostic artifact 10328261976 passed digest/identity verification; detailed cleanup and native totals remain unknown. Main full acceptance remains separate and red at that revision.
+
+EFF-04 code `56df0b6e06785503fd30ea0bf54dfe06d7b3c88f` has independent Standards/Spec PASS after closing process/log settlement, exact publication ownership and sticky first-error findings. The permanent composed fixture has 19 actual synthetic rows; it is not 19 new module observations. This candidate normally merges accepted main and exposes only two fixed fresh local tasks plus an explicitly unverified saved-record reader, documented below. Integrated focused/build/docs checks, final independent review, the fresh 10/1 and 29/5 expected native task observations, its own PR/Hosted and merge remain pending at this checkpoint. Earlier checkpoint text below is historical.
 
 ## Preview accepted and CI shadow integration — 2026-09-14
 
