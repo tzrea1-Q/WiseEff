@@ -379,6 +379,7 @@ wiseeff_upgrade_release_lock() {
 }
 
 wiseeff_upgrade_compose() {
+  wiseeff_upgrade_ensure_publication_manager_env || return 1
   "${upgrade_script_dir}/compose" --env-file "$upgrade_env_file" "$@"
 }
 
@@ -837,6 +838,11 @@ wiseeff_upgrade_collect_runtime() {
   upgrade_runtime_services="postgres redis minio api worker web proxy"
   if [ -n "$(wiseeff_upgrade_compose ps -q publication-manager 2>/dev/null || true)" ]; then
     upgrade_runtime_services="${upgrade_runtime_services} publication-manager"
+    if [ -n "${upgrade_run_dir:-}" ]; then
+      wiseeff_upgrade_state_write previous_had_publication_manager true
+    fi
+  elif [ -n "${upgrade_run_dir:-}" ]; then
+    wiseeff_upgrade_state_write previous_had_publication_manager false
   fi
   upgrade_compose_project=""
   upgrade_mixed_app_images="false"
@@ -1130,13 +1136,16 @@ wiseeff_upgrade_app_image_name() {
 wiseeff_upgrade_tag_previous_images() {
   local image_repo tag image_id service
   image_repo="$(wiseeff_upgrade_app_image_name)"
-  for service in api worker web; do
+  for service in api worker web publication-manager; do
     tag="${image_repo}:wiseeff-previous-${service}-${upgrade_run_id}"
     image_id="$(wiseeff_upgrade_state_read "image_${service}")"
-    [ -n "$image_id" ] || {
+    if [ -z "$image_id" ]; then
+      if [ "$service" = "publication-manager" ]; then
+        continue
+      fi
       wiseeff_upgrade_die 20 "Current ${service} image identity is unavailable."
       return $?
-    }
+    fi
     wiseeff_upgrade_docker tag "$image_id" "$tag" || return $?
     wiseeff_upgrade_state_write "previous_image_tag_${service}" "$tag" || return $?
     wiseeff_upgrade_state_write "previous_image_id_${service}" "$image_id" || return $?
@@ -1486,7 +1495,7 @@ wiseeff_upgrade_compose_has_service() {
 
 wiseeff_upgrade_with_optional_publication_manager() {
   printf '%s' "$*"
-  if wiseeff_upgrade_compose_has_service publication-manager; then
+  if wiseeff_upgrade_compose_has_service publication-manager && wiseeff_upgrade_manager_is_configured; then
     printf ' publication-manager'
   fi
 }
@@ -1502,6 +1511,11 @@ wiseeff_upgrade_manager_env_file() {
 wiseeff_upgrade_ensure_publication_manager_env() {
   local path
   path="$(wiseeff_upgrade_manager_env_file)"
+  case "$path" in
+    ""|"/"|"/.env.publication-manager")
+      return 0
+      ;;
+  esac
   if [ -f "$path" ]; then
     return 0
   fi
@@ -1512,6 +1526,18 @@ WISEEFF_PUBLICATION_MANAGER_HEALTH_PORT=8791
 # Unconfigured on purpose: no WISEEFF_PUBLICATION_MANAGER_DATABASE_URL.
 EOF
   chmod 600 "$path"
+}
+
+wiseeff_upgrade_manager_is_configured() {
+  local path url
+  path="$(wiseeff_upgrade_manager_env_file)"
+  [ -f "$path" ] || return 1
+  url="$(wiseeff_upgrade_read_manager_database_url "$path")"
+  [ -n "$url" ]
+}
+
+wiseeff_upgrade_previous_had_publication_manager() {
+  [ "$(wiseeff_upgrade_state_read previous_had_publication_manager)" = "true" ]
 }
 
 wiseeff_upgrade_read_manager_database_url() {
@@ -1545,14 +1571,36 @@ wiseeff_upgrade_publication_ops() {
     printf '%s\n' "publication freeze refused: dedicated manager LOGIN is not provisioned" >&2
     return 1
   fi
+  local image="${upgrade_candidate_image_tag:-}"
+  if [ -z "$image" ] && [ -n "${upgrade_run_dir:-}" ]; then
+    image="$(wiseeff_upgrade_state_read candidate_image_tag)"
+  fi
   (
-    cd "${upgrade_repo_root}"
-    env -u LOG_WORKER_ENABLED \
-      WISEEFF_API_PROCESS=0 \
-      WISEEFF_PUBLICATION_MANAGER=1 \
-      WISEEFF_PUBLICATION_MANAGER_DATABASE_URL="$manager_url" \
-      DATABASE_URL="$(wiseeff_upgrade_env_value DATABASE_URL)" \
-      npx tsx scripts/catalog-publication-ops.ts freeze "$action" --actor "$actor"
+    DATABASE_URL="$(wiseeff_upgrade_env_value DATABASE_URL)"
+    export DATABASE_URL
+    export WISEEFF_API_PROCESS=0
+    export LOG_WORKER_ENABLED=false
+    export WISEEFF_PUBLICATION_MANAGER=1
+    export WISEEFF_PUBLICATION_MANAGER_DATABASE_URL="$manager_url"
+    if [ -n "$image" ]; then
+      # Candidate image has node_modules; Compose DNS resolves postgres.
+      # Pass -e NAME so the DSN is not copied onto argv.
+      wiseeff_upgrade_compose_for_image "$image" run --rm --no-deps \
+        -e WISEEFF_API_PROCESS \
+        -e LOG_WORKER_ENABLED \
+        -e WISEEFF_PUBLICATION_MANAGER \
+        -e WISEEFF_PUBLICATION_MANAGER_DATABASE_URL \
+        -e DATABASE_URL \
+        api npx tsx scripts/catalog-publication-ops.ts freeze "$action" --actor "$actor"
+    else
+      cd "${upgrade_repo_root}"
+      env -u LOG_WORKER_ENABLED \
+        WISEEFF_API_PROCESS=0 \
+        WISEEFF_PUBLICATION_MANAGER=1 \
+        WISEEFF_PUBLICATION_MANAGER_DATABASE_URL="$manager_url" \
+        DATABASE_URL="$DATABASE_URL" \
+        npx tsx scripts/catalog-publication-ops.ts freeze "$action" --actor "$actor"
+    fi
   )
 }
 
@@ -1580,7 +1628,8 @@ wiseeff_upgrade_isolate_publication() {
     wiseeff_upgrade_state_write publication_freeze_pending true
     printf '%s\n' "publication freeze could not be confirmed; isolating the manager and recording a pending freeze" >&2
   fi
-  if wiseeff_upgrade_compose_has_service publication-manager; then
+  if wiseeff_upgrade_compose_has_service publication-manager &&
+    [ -n "$(wiseeff_upgrade_compose ps -q publication-manager 2>/dev/null || true)" ]; then
     if wiseeff_upgrade_run_recovery_action isolate-publication-manager \
       wiseeff_upgrade_compose stop -t "${WISEEFF_UPGRADE_STOP_TIMEOUT_SECONDS:-60}" publication-manager; then
       wiseeff_upgrade_state_write publication_manager_isolated true
@@ -1615,22 +1664,33 @@ wiseeff_upgrade_publication_manager_ready() {
 }
 
 wiseeff_upgrade_stop_old_stack() {
-  if wiseeff_upgrade_compose_has_service api; then
-    if wiseeff_upgrade_publication_is_frozen; then
-      wiseeff_upgrade_state_write publication_freeze_owned false
-    else
-      wiseeff_upgrade_state_write publication_freeze_owned true
-    fi
-    if ! wiseeff_upgrade_run_recovery_action quiesce-publication-freeze wiseeff_upgrade_publication_freeze true; then
-      wiseeff_upgrade_record_failure quiescing publication-manager quiesce-publication-freeze "Publication freeze could not be set before the recovery point was created. Leave freeze set."
-      return 1
-    fi
+  local require_freeze=false
+  wiseeff_upgrade_ensure_publication_manager_env || return 1
+  if wiseeff_upgrade_previous_had_publication_manager || wiseeff_upgrade_manager_is_configured; then
+    require_freeze=true
   fi
-  if wiseeff_upgrade_compose_has_service publication-manager; then
-    if ! wiseeff_upgrade_run_recovery_action quiesce-publication-manager-stop wiseeff_upgrade_compose stop -t "${WISEEFF_UPGRADE_STOP_TIMEOUT_SECONDS:-60}" publication-manager; then
-      wiseeff_upgrade_record_failure quiescing publication-manager quiesce-publication-manager-stop "The publication manager could not be stopped after freeze. Leave freeze set."
-      return 1
+  if [ "$require_freeze" = "true" ]; then
+    if wiseeff_upgrade_compose_has_service api; then
+      if wiseeff_upgrade_publication_is_frozen; then
+        wiseeff_upgrade_state_write publication_freeze_owned false
+      else
+        wiseeff_upgrade_state_write publication_freeze_owned true
+      fi
+      if ! wiseeff_upgrade_run_recovery_action quiesce-publication-freeze wiseeff_upgrade_publication_freeze true; then
+        wiseeff_upgrade_record_failure quiescing publication-manager quiesce-publication-freeze "Publication freeze could not be set before the recovery point was created. Leave freeze set."
+        return 1
+      fi
     fi
+    if wiseeff_upgrade_compose_has_service publication-manager &&
+      [ -n "$(wiseeff_upgrade_compose ps -q publication-manager 2>/dev/null || true)" ]; then
+      if ! wiseeff_upgrade_run_recovery_action quiesce-publication-manager-stop wiseeff_upgrade_compose stop -t "${WISEEFF_UPGRADE_STOP_TIMEOUT_SECONDS:-60}" publication-manager; then
+        wiseeff_upgrade_record_failure quiescing publication-manager quiesce-publication-manager-stop "The publication manager could not be stopped after freeze. Leave freeze set."
+        return 1
+      fi
+    fi
+  else
+    wiseeff_upgrade_state_write publication_freeze_owned false
+    wiseeff_upgrade_state_write publication_freeze_skipped first-intro-unconfigured
   fi
   if ! wiseeff_upgrade_run_recovery_action quiesce-proxy-stop wiseeff_upgrade_compose stop -t "${WISEEFF_UPGRADE_STOP_TIMEOUT_SECONDS:-60}" proxy; then
     wiseeff_upgrade_record_failure quiescing proxy quiesce-proxy-stop "The proxy could not be stopped before the recovery point was created."
@@ -1836,8 +1896,12 @@ wiseeff_upgrade_probe_worker() {
 wiseeff_upgrade_verify_parameter_catalog() {
   if [ -n "${upgrade_target_sha:-}" ] &&
     wiseeff_upgrade_git cat-file -e "${upgrade_target_sha}:scripts/parameter-data-mode.ts" 2>/dev/null; then
-    wiseeff_upgrade_compose exec -T api node --import tsx scripts/parameter-data-mode.ts initialize "$upgrade_target_sha"
-    return $?
+    if wiseeff_upgrade_compose exec -T api node --import tsx scripts/parameter-data-mode.ts initialize "$upgrade_target_sha"; then
+      return 0
+    fi
+    wiseeff_upgrade_record_failure "$(wiseeff_upgrade_state_read phase)" api candidate-parameter-catalog \
+      "The candidate parameter-data-mode initialize gate failed."
+    return 1
   fi
   if wiseeff_upgrade_compose exec -T api npm run parameter-definitions:check -- --catalog-only; then
     return 0
@@ -1990,13 +2054,20 @@ wiseeff_upgrade_previous_image_id_for() {
 wiseeff_upgrade_recreate_previous_app_services() {
   local service tag
   for service in api worker web publication-manager; do
-    tag="$(wiseeff_upgrade_previous_image_tag_for "$service")"
-    if [ -z "$tag" ]; then
-      if [ "$service" = "publication-manager" ]; then
+    if [ "$service" = "publication-manager" ]; then
+      if ! wiseeff_upgrade_compose_has_service publication-manager; then
         continue
       fi
-      wiseeff_upgrade_record_failure old-stack-restore "$service" "restore-${service}-image-missing" "The previous ${service} image identity is missing."
-      return 1
+      tag="$(wiseeff_upgrade_state_read previous_image_tag_publication-manager)"
+      if [ -z "$tag" ]; then
+        continue
+      fi
+    else
+      tag="$(wiseeff_upgrade_previous_image_tag_for "$service")"
+      if [ -z "$tag" ]; then
+        wiseeff_upgrade_record_failure old-stack-restore "$service" "restore-${service}-image-missing" "The previous ${service} image identity is missing."
+        return 1
+      fi
     fi
     if ! wiseeff_upgrade_compose_for_image "$tag" up -d --force-recreate --no-build --no-deps "$service"; then
       wiseeff_upgrade_record_failure old-stack-restore "$service" "restore-${service}-recreate" "The previous ${service} container could not be recreated."
@@ -2803,8 +2874,10 @@ wiseeff_upgrade_verify_final_state() {
     return 1
   fi
   for service in postgres redis minio api worker web proxy publication-manager; do
-    if [ "$service" = "publication-manager" ] && ! wiseeff_upgrade_compose_has_service publication-manager; then
-      continue
+    if [ "$service" = "publication-manager" ]; then
+      if ! wiseeff_upgrade_compose_has_service publication-manager || ! wiseeff_upgrade_manager_is_configured; then
+        continue
+      fi
     fi
     after="$(wiseeff_upgrade_compose ps -q "$service" 2>/dev/null || true)"
     if [ -z "$after" ]; then
@@ -3005,7 +3078,7 @@ wiseeff_upgrade_run_apply() {
     wiseeff_upgrade_mark_recovery_required
     return 70
   fi
-  if wiseeff_upgrade_compose_has_service publication-manager; then
+  if wiseeff_upgrade_compose_has_service publication-manager && wiseeff_upgrade_manager_is_configured; then
     local manager_attempt
     manager_attempt=0
     while [ "$manager_attempt" -lt "${WISEEFF_UPGRADE_HEALTH_ATTEMPTS:-60}" ]; do
