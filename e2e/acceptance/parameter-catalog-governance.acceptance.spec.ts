@@ -167,14 +167,20 @@ test.describe("canonical parameter catalog governance interactions", () => {
     await proposal.getByRole("textbox", { name: "原因" }).fill("op08 documentation proposal");
     await proposal.getByRole("button", { name: "继续确认" }).click();
     await confirmGovernanceDialog(page, "确认提出修订");
+    // The lane is reused across runs, so an earlier Proposal can already be
+    // visible and satisfy a text-only wait. Poll the persisted count so this
+    // run's create is committed before it is read back.
+    await expect.poll(() => countProposals(fixture.pool)).toBe(beforeProposals + 1);
     await expect(proposal.getByText("草稿").first()).toBeVisible();
     const created = await latestOrganizationProposal(fixture.pool, fixture.organizationId);
     expect(created).not.toBeNull();
     expect(created?.status).toBe("draft");
-    expect(await countProposals(fixture.pool)).toBe(beforeProposals + 1);
     await proposal.getByRole("button", { name: "提交修订" }).first().click();
     await confirmGovernanceDialog(page, "确认提交");
-    await expect(proposal.getByText("已提交")).toBeVisible();
+    await expect(proposal.getByText("已提交").first()).toBeVisible();
+    await expect
+      .poll(async () => (await latestOrganizationProposal(fixture.pool, fixture.organizationId))?.status)
+      .toBe("submitted");
     const submitted = await latestOrganizationProposal(fixture.pool, fixture.organizationId);
     expect(submitted?.id).toBe(created?.id);
     expect(submitted?.status).toBe("submitted");
@@ -197,6 +203,9 @@ test.describe("canonical parameter catalog governance interactions", () => {
     await platformProposal.getByRole("button", { name: "接受修订" }).first().click();
     await confirmGovernanceDialog(page, "确认接受");
     await expect(platformProposal.getByText(/发布意图已记录|已接受/).first()).toBeVisible();
+    await expect
+      .poll(async () => (await latestOrganizationProposal(fixture.pool, fixture.organizationId))?.status)
+      .toBe("accepted");
     const accepted = await latestOrganizationProposal(fixture.pool, fixture.organizationId);
     expect(accepted?.id).toBe(created?.id);
     expect(accepted?.status).toBe("accepted");

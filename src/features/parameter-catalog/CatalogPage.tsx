@@ -250,13 +250,6 @@ export function CatalogPage({
 
   const reviewItemCount = snapshot?.review?.items.length ?? 0;
 
-  // Pending governance work is never hidden when it exists: the count-bearing
-  // action reveals it, but an organization with open work sees the queue.
-  useEffect(() => {
-    if (reviewItemCount > 0) {
-      setPendingOpen(true);
-    }
-  }, [reviewItemCount]);
 
   const load = useCallback(async () => {
     setInFlight(true);
@@ -327,6 +320,12 @@ export function CatalogPage({
       }
 
       const subjectsEmptyReason = emptyCollectionReason(subjects);
+      // A selected subject (from the navigator) or a selected definition scopes
+      // the table to that subject server-side, before pagination. The subject
+      // route is used rather than the `subjectIds` query so the scope is a
+      // scope, not a filter: an empty result reports "no-definitions" instead of
+      // "no-filter-match".
+      const scopedSubjectId = currentAnchor.subjectId ?? definition?.subject.id ?? null;
       let definitions: CatalogDefinitionListResponse;
       if (subjectsEmptyReason === "no-registrations" && !currentAnchor.subjectId && !definition) {
         definitions = {
@@ -337,11 +336,13 @@ export function CatalogPage({
           hasMore: false,
           emptyReason: "no-registrations"
         };
+      } else if (scopedSubjectId) {
+        definitions = await catalog.listSubjectDefinitions(scopedSubjectId, listQuery);
       } else {
         definitions = await catalog.listDefinitions(listQuery);
       }
 
-      const subjectId = currentAnchor.subjectId ?? definition?.subject.id ?? null;
+      const subjectId = scopedSubjectId;
       if (subjectId) {
         const subjectResponse = await catalog.getSubject(subjectId, pin);
         subject = subjectResponse.item;
@@ -929,10 +930,15 @@ export function CatalogPage({
             </nav>
           </section>
 
-          <section className="parameter-catalog__pane parameter-catalog__pane--detail" aria-label={catalogDetailLabel}>
-            <h2 className="parameter-catalog__pane-title">{catalogDetailLabel}</h2>
-            {detailBody}
-          </section>
+          {layoutMode === "desktop" ? (
+            <section
+              className="parameter-catalog__pane parameter-catalog__pane--detail"
+              aria-label={catalogDetailLabel}
+            >
+              <h2 className="parameter-catalog__pane-title">{catalogDetailLabel}</h2>
+              {detailBody}
+            </section>
+          ) : null}
 
           {historyOpen && definition ? (
             <section

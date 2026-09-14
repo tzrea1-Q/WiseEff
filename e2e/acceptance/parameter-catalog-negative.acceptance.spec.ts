@@ -170,6 +170,11 @@ test.describe("canonical parameter catalog negative and responsive contract", ()
       const region = catalogPage(target);
       await expect(region).toBeVisible({ timeout: 30_000 });
       await expect(region).toHaveAttribute("data-catalog-state", "ready");
+      // The workspace pins the resolved catalog release into the URL and reloads
+      // once. Wait for that settled second read so the digest cannot catch the
+      // transient loading state of the pin commit.
+      await expect(target).toHaveURL(/catalogReleaseId=/);
+      await expect(region).toHaveAttribute("data-catalog-state", "ready");
       const state = await region.getAttribute("data-catalog-state");
       const actions = await target.locator("[data-catalog-action]").evaluateAll((nodes) =>
         nodes.map((node) => ({
@@ -198,9 +203,39 @@ test.describe("canonical parameter catalog negative and responsive contract", ()
       await mockPage.goto(`${mock.runtime.frontendUrl}${CATALOG_PAGE_PATH}`, { waitUntil: "domcontentloaded" });
       const mockDigest = await collectDigest(mockPage, "mock-admin");
       expect(mockDigest.state).toBe(apiDigest.state);
+      // The mock frontend runs with `VITE_WISEEFF_RUNTIME_MODE=mock`, so it has no
+      // authenticated session and therefore no `catalog:author`/`catalog:publish`
+      // permission; the permission gate itself is asserted in
+      // `src/features/parameter-catalog/CatalogPage.test.tsx`. The signed-in API
+      // page may therefore additionally expose the permission-gated publication
+      // actions. Every other action must still match exactly, in order, with the
+      // same disabled state, and the mock must never expose authority that the
+      // API session does not have.
+      const publicationGatedActions = new Set([
+        "preview-publication",
+        "publish-publication",
+        "review-high-risk-publication"
+      ]);
+      const apiActions = apiDigest.actions.map((action) => ({
+        action: action.action,
+        disabled: action.disabled
+      }));
+      const mockActions = mockDigest.actions.map((action) => ({
+        action: action.action,
+        disabled: action.disabled
+      }));
+      expect(mockActions).toEqual(
+        apiActions.filter((action) => action.action === null || !publicationGatedActions.has(action.action))
+      );
+      const apiActionNames = new Set(apiActions.map((action) => action.action));
       expect(
-        mockDigest.actions.map((action) => ({ action: action.action, disabled: action.disabled }))
-      ).toEqual(apiDigest.actions.map((action) => ({ action: action.action, disabled: action.disabled })));
+        mockActions.filter((action) => action.action === null || !apiActionNames.has(action.action))
+      ).toEqual([]);
+      expect(
+        apiActions
+          .filter((action) => !mockActions.some((mockAction) => mockAction.action === action.action))
+          .every((action) => action.action !== null && publicationGatedActions.has(action.action))
+      ).toBe(true);
       await catalogScreenshot(mockPage, testInfo, "pcat-ui-13-mock");
       outcome = "success";
     } finally {
