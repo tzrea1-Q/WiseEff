@@ -1,7 +1,7 @@
 # Agent Delivery and Verification Efficiency
 
 > Chinese: [Chinese](../../zh-CN/exec-plans/active/2026-09-13-agent-delivery-efficiency.md)
-> Status: **Active — PRs #830, #829, #833, #831, #834, #835, #836 and #837 merged. Type feedback is in final integration; browser fixtures await separate delivery. No activation or measured-benefit claim.**
+> Status: **Active — PRs #830, #829, #833, #831, #834, #835, #836, #837 and #838 merged. Browser fixtures are in final integration; final evidence and documentation settlement remain. No activation or measured-benefit claim.**
 > Date: 2026-09-13. Tracking Issue: [#828](https://github.com/tzrea1-Q/WiseEff/issues/828).
 > Accepted base, freshly fetched on 2026-09-13: `1059acb57379bd120d0d2b1a4b4733d4c2e02901`. This equals the supplied design's historical reference; it is not permission to reset later work.
 
@@ -13,7 +13,7 @@ Implement the user's supplied 2026-09-13 engineering design in bounded waves: sa
 
 | Delivery level | Completion means | Current status |
 | --- | --- | --- |
-| A: tools and process | Reviewed and verified diagnostics, equivalent scheduling, shadow plan, execution/reporting and routing are delivered | EFF-01/02/03/04/08 merged; EFF-07 type feedback is integrating; browser fixtures and final attestation remain pending |
+| A: tools and process | Reviewed and verified diagnostics, equivalent scheduling, shadow plan, execution/reporting and routing are delivered | EFF-01/02/03/04/07/08 merged; browser fixture verification/delivery and final attestation remain pending |
 | B: module activation | Each explicitly named module passes its own observation and independent-review gates | No module enabled; `observation-pending` |
 | C: measured effect | Comparable real task/CI samples support wall-clock, resource and usage conclusions | Insufficient samples; token usage `unknown` |
 
@@ -404,6 +404,8 @@ Aim for ≥10 real samples per principal change category; with N<20 report media
 Final report gives actual Issue/PR/base/head/executed tree/merge/run/attempt; run/not-run/blocked/not-selected checks; independent reviewer identity/scope/conclusion; local versus Hosted versus target evidence; wall/runner/token methods and sample sufficiency; owned temporary-resource disposition; exact source package; and rollback. Current main's relevant full acceptance is its own status, never inferred from focused, historical, synthetic or PR evidence. Preserve append-only historical results and correct them through new records.
 
 ## Browser fixture delivery candidate — 2026-09-14
+
+This candidate normally integrates accepted type feedback [PR #838](https://github.com/tzrea1-Q/WiseEff/pull/838), merge `01703ba69f883b22e8b819182223c5fd35b90184`. Base `b3ec95a4c9e327d384ce482be05c92ca0227e63a` and reviewed head `7fc675e13fe88888c998ae12297428f50764a48d` are the ordered parents of actual [run 34796686417](https://github.com/tzrea1-Q/WiseEff/actions/runs/34796686417) attempt 1 checkout `56717e28ecdfa73593b817736112717df7f89ca6`; checkout/candidate/merge tree is `83db9a1accf309b9164325592f97d7e0b004fa30`. All nine selected original GitHub Actions checks passed: frontend 3411/441 files, scripts 1560/110 plus 21 existing optional skips, bridge 134/21 plus 4 platform skips, backend 4180/539 with zero skips, Quality 100 and Smoke 4. Unselected L2/target/minimal stayed skipped. Combined independent R1 Standards/Spec passed; typecheck and unchanged full build passed locally on that exact head. Complete five-file ZIP SHA256 is `c46c50556c119b94e831b4ec2164b91e45bb058e52f5853b7a27df0c0e1eb494`, no deletes/renames. Remote branch absence and clean local-main synchronization were verified. Workflow wall approximation 615 seconds and summed executed-job elapsed 32.6667 minutes are one observation, not billing or a controlled gain. This separate browser candidate requires fresh six-case native evidence, build/docs, dual review and its own Hosted; main full acceptance remains separate.
 
 This bounded EFF blocker lane changes three test/fixture paths only. Feedback scopes its named button to the actual navigation sidebar, preserving three original cases and 28 assertions. The shared semantic fixture opens its draft in governance view and reads the exact persisted review task through the existing store/transaction helper; a nonempty compatible value supplies the original API's explicit overlay coverage claim. It changes no DTO, SQL, ACL, production service or canonical Catalog enablement. Code `fff3807b6783bbe3aa08b348050c23e359050ab4` passed independent Standards/Spec and the representative uploads/lists/syncs case plus warmup (2/2, no skips/flaky, native 8.1232 seconds) on owned run `full-20260913t213711774z-fff3807b6783-85fe78c8`, with nested and outer cleanup complete. This does not prove every caller or all previous semantic failures.
 
