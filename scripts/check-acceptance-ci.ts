@@ -2,6 +2,7 @@ import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import YAML from "yaml";
+import { isForbiddenComposeAppPostgres } from "../server/testing/testDatabase";
 import { l1CommandIds, l1Jobs } from "./ci-required-results";
 
 export const requiredAcceptanceCiScripts = [
@@ -422,7 +423,7 @@ export function evaluateL1CiWorkflow(workflowText: string): { status: "passed" |
     with?: Record<string, unknown>; env?: Record<string, unknown> };
   type Job = { name?: string; needs?: string | string[]; if?: string; "runs-on"?: string; steps?: Step[];
     "continue-on-error"?: boolean; "timeout-minutes"?: number;
-    outputs?: Record<string, string>; services?: Record<string, { image?: string }>; env?: Record<string, string> };
+    outputs?: Record<string, string>; services?: Record<string, { image?: string; env?: Record<string, string> }>; env?: Record<string, string> };
   let workflow: { jobs: Record<string, Job>; env?: Record<string, string> };
   try { workflow = YAML.parse(workflowText) as typeof workflow; }
   catch { return { status: "failed", errors: ["Malformed L1 workflow."] }; }
@@ -494,7 +495,27 @@ export function evaluateL1CiWorkflow(workflowText: string): { status: "passed" |
     check(normalizeStepProjection(step("receipt")?.env?.EFF_STEPS) === expectedStepProjection(l1CommandIds[id])
       && job.outputs?.receipt === "${{ steps.receipt.outputs.receipt }}", `${id} must project its fixed named steps into the invocation receipt.`);
     if (id === "l1-scripts" || id === "l1-server") {
-      check(job.services?.postgres?.image === "pgvector/pgvector:pg16" && job.env?.DATABASE_URL === "postgres://wiseeff:wiseeff@127.0.0.1:5432/wiseeff", `${id} requires the real PG/vector service.`);
+      check(job.services?.postgres?.image === "pgvector/pgvector:pg16", `${id} requires the real PG/vector service.`);
+      if (id === "l1-server") {
+        // This job runs the managed-instance publication policy specs, which refuse
+        // the shared compose app database by name and port. It must therefore use a
+        // dedicated database that its own ephemeral service container creates.
+        const databaseUrl = job.env?.DATABASE_URL ?? "";
+        const databaseName = /^postgres(?:ql)?:\/\/[^/]+\/([^/?#]+)/u.exec(databaseUrl)?.[1] ?? "";
+        check(
+          !isForbiddenComposeAppPostgres(databaseUrl),
+          "l1-server must not point the backend suite at the forbidden shared compose app database.",
+        );
+        check(
+          databaseName !== "" && job.services?.postgres?.env?.POSTGRES_DB === databaseName,
+          "l1-server must create the database its DATABASE_URL names.",
+        );
+      } else {
+        check(
+          job.env?.DATABASE_URL === "postgres://wiseeff:wiseeff@127.0.0.1:5432/wiseeff",
+          `${id} requires the real PG/vector service.`,
+        );
+      }
       check(step("toolchain")?.uses === "./.github/actions/setup-dts-toolchain", `${id} requires verified DTS tooling.`);
       check(step("vector")?.run?.trim() === vectorCommand, `${id} requires the original vector create/read assertion.`);
     }

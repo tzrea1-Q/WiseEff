@@ -411,16 +411,21 @@ jobs:
         env:
           POSTGRES_USER: wiseeff
           POSTGRES_PASSWORD: wiseeff
-          POSTGRES_DB: wiseeff
+          # Deliberately not named `wiseeff`. The managed-instance publication
+          # policy specs in this job refuse the shared compose app database on
+          # loopback:5432 (server/testing/testDatabase.ts,
+          # isForbiddenComposeAppPostgres), so this ephemeral, job-dedicated
+          # service creates its own database for the backend suite instead.
+          POSTGRES_DB: wiseeff_l1_server
         ports:
           - 5432:5432
         options: >-
-          --health-cmd "pg_isready -U wiseeff -d wiseeff"
+          --health-cmd "pg_isready -U wiseeff -d wiseeff_l1_server"
           --health-interval 10s
           --health-timeout 5s
           --health-retries 5
     env:
-      DATABASE_URL: postgres://wiseeff:wiseeff@127.0.0.1:5432/wiseeff
+      DATABASE_URL: postgres://wiseeff:wiseeff@127.0.0.1:5432/wiseeff_l1_server
     steps:
       - name: Check out repository
         id: checkout

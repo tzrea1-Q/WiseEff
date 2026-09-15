@@ -72,6 +72,25 @@ describe("equivalent fixed L1 scheduling", () => {
       expect(evaluateL1CiWorkflow(YAML.stringify(workflow)).status).toBe("failed");
     }
   });
+  it("keeps the backend suite off the forbidden shared compose app database", () => {
+    const source = readFileSync(".github/workflows/ci.yml", "utf8");
+    const forbidden = "postgres://wiseeff:wiseeff@127.0.0.1:5432/wiseeff";
+    const compliant = YAML.parse(source);
+    expect(compliant.jobs["l1-server"].env.DATABASE_URL).not.toBe(forbidden);
+    expect(compliant.jobs["l1-server"].services.postgres.env.POSTGRES_DB).not.toBe("wiseeff");
+
+    const forbiddenUrl = YAML.parse(source);
+    forbiddenUrl.jobs["l1-server"].env.DATABASE_URL = forbidden;
+    const forbiddenResult = evaluateL1CiWorkflow(YAML.stringify(forbiddenUrl));
+    expect(forbiddenResult.status).toBe("failed");
+    expect(forbiddenResult.errors.join(" ")).toContain("forbidden shared compose app database");
+
+    const mismatchedDatabase = YAML.parse(source);
+    mismatchedDatabase.jobs["l1-server"].services.postgres.env.POSTGRES_DB = "wiseeff_somewhere_else";
+    const mismatchedResult = evaluateL1CiWorkflow(YAML.stringify(mismatchedDatabase));
+    expect(mismatchedResult.status).toBe("failed");
+    expect(mismatchedResult.errors.join(" ")).toContain("must create the database its DATABASE_URL names");
+  });
   it.each(["build-and-test", "required"])("rejects skip, missing needs, altered source identity and npm installation in %s", (id) => {
     const source = readFileSync(".github/workflows/ci.yml", "utf8");
     for (const mutation of ["condition", "needs", "install", "identity"]) {
