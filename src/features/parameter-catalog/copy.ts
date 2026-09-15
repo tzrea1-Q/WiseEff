@@ -25,6 +25,7 @@ export const catalogPendingWorkLabel = "待处理工作";
 export const catalogPendingWorkOpenLabel = "打开待处理工作";
 export const catalogPendingWorkCloseLabel = "收起待处理工作";
 export const catalogDetailLabel = "定义详情";
+export const catalogDetailCloseLabel = "关闭定义详情";
 export const catalogTimelineLabel = "定义时间线";
 export const catalogReleaseLabel = "目录发布";
 export const catalogSearchLabel = "搜索参数定义";

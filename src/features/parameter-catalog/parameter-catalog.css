@@ -427,12 +427,6 @@
   box-shadow: var(--shadow-1);
 }
 
-.parameter-catalog[data-catalog-layout="tablet"] .parameter-catalog__pane--timeline,
-.parameter-catalog[data-catalog-layout="mobile"] .parameter-catalog__pane--detail,
-.parameter-catalog[data-catalog-layout="mobile"] .parameter-catalog__pane--timeline {
-  display: none;
-}
-
 /* Narrow screens use compact, collapsible navigation above the table. */
 .parameter-catalog[data-catalog-layout="mobile"] .parameter-catalog__navigator {
   max-height: 16rem;
@@ -573,6 +567,18 @@
   display: flex;
   gap: var(--space-2);
   margin-bottom: var(--space-3);
+}
+
+/* The detail dialog tabs read as buttons and show which pane is selected. */
+.parameter-catalog__sheet-tabs [role="tab"] {
+  background: var(--pcat-surface);
+  border-color: var(--border-strong);
+}
+
+.parameter-catalog__sheet-tabs [role="tab"][aria-selected="true"] {
+  color: var(--pcat-accent);
+  background: var(--pcat-accent-soft);
+  border-color: color-mix(in srgb, var(--pcat-accent) 35%, var(--pcat-border));
 }
 
 .parameter-catalog[data-catalog-layout="desktop"] .parameter-catalog__table-wrap--mobile,

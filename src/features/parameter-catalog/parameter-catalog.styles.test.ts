@@ -32,29 +32,18 @@ describe("parameter catalog layout contract", () => {
     expect(table["min-width"]).toBe("48rem");
   });
 
-  it("hides overflow panes at narrow viewports instead of stacking mixed views", () => {
+  it("keeps narrow-screen navigation and identity text manageable", () => {
+    // The detail and timeline are disclosed in one dialog at every viewport, so
+    // there is no inline detail/timeline pane left to hide here.
     const styles = readStylesheet(stylesheet);
-    const tabletTimeline = declarationsFor(
-      styles,
-      ".parameter-catalog[data-catalog-layout=\"tablet\"] .parameter-catalog__pane--timeline"
-    );
-    const mobileDetail = declarationsFor(
-      styles,
-      ".parameter-catalog[data-catalog-layout=\"mobile\"] .parameter-catalog__pane--detail"
-    );
-    const mobileTimeline = declarationsFor(
-      styles,
-      ".parameter-catalog[data-catalog-layout=\"mobile\"] .parameter-catalog__pane--timeline"
-    );
+    const inlineDetailPane = declarationsFor(styles, ".parameter-catalog__pane--detail");
     const mobileNavigator = declarationsFor(
       styles,
       ".parameter-catalog[data-catalog-layout=\"mobile\"] .parameter-catalog__navigator"
     );
     const identity = declarationsFor(styles, ".parameter-catalog__identity");
 
-    expect(tabletTimeline.display).toBe("none");
-    expect(mobileDetail.display).toBe("none");
-    expect(mobileTimeline.display).toBe("none");
+    expect(inlineDetailPane).toEqual({});
     expect(mobileNavigator["max-height"]).toBe("16rem");
     expect(identity["overflow-wrap"]).toBe("anywhere");
     expect(identity["word-break"]).toBe("break-word");

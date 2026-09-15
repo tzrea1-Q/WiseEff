@@ -203,7 +203,8 @@ describe("CatalogPage", () => {
     expect(page).toHaveAttribute("data-catalog-layout", "desktop");
     expect(page).toHaveAttribute("data-catalog-release", CATALOG_RELEASE_ID);
     expect(within(page).getByRole("region", { name: "目录列表" })).toBeVisible();
-    expect(within(page).getByRole("region", { name: "定义详情" })).toBeVisible();
+    // The detail is disclosed in a dialog, never inline on the page.
+    expect(within(page).queryByRole("region", { name: "定义详情" })).not.toBeInTheDocument();
     // The module navigator owns the side rail and the table keeps the rest.
     expect(within(page).getByRole("navigation", { name: "参数定义模块树" })).toBeVisible();
     expect(within(page).getByRole("status", { name: catalogResultCountLabel })).toHaveTextContent(/共 \d+ 项/);

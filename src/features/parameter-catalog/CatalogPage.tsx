@@ -57,6 +57,7 @@ import {
 } from "./catalogPresentation";
 import {
   catalogDefinitionsLabel,
+  catalogDetailCloseLabel,
   catalogDetailLabel,
   catalogHistoryCloseLabel,
   catalogHistoryLabel,
@@ -222,10 +223,10 @@ export function CatalogPage({
   const [inFlight, setInFlight] = useState(true);
   const [error, setError] = useState<unknown>();
   const [unpublished, setUnpublished] = useState(false);
-  const [historyOpen, setHistoryOpen] = useState(false);
   const [pendingOpen, setPendingOpen] = useState(false);
   const [inspectorOpen, setInspectorOpen] = useState(false);
   const [inspectorTab, setInspectorTab] = useState<InspectorTab>("detail");
+  const historyOpen = inspectorTab === "history";
   /** Cursors already traversed, so Previous is exact rather than guessed. */
   const [cursorTrail, setCursorTrail] = useState<readonly string[]>([]);
   const listReviewItemsRef = useRef(listReviewItems);
@@ -394,6 +395,17 @@ export function CatalogPage({
     }
   }, [commitAnchor, historyOpen, organizationId, resolvedSearch]);
 
+  /** A deep link opens the detail dialog once for the definition it names. */
+  const autoOpenedDefinitionId = useRef<string | null>(null);
+  useEffect(() => {
+    const selectedId = snapshot?.definition?.id ?? null;
+    if (!anchor.definitionId || !selectedId || selectedId !== anchor.definitionId) return;
+    if (autoOpenedDefinitionId.current === selectedId) return;
+    autoOpenedDefinitionId.current = selectedId;
+    setInspectorTab("detail");
+    setInspectorOpen(true);
+  }, [anchor.definitionId, snapshot?.definition?.id]);
+
   useEffect(() => {
     void load();
   }, [load]);
@@ -530,9 +542,7 @@ export function CatalogPage({
       "push"
     );
     setInspectorTab("detail");
-    if (layoutMode !== "desktop") {
-      setInspectorOpen(true);
-    }
+    setInspectorOpen(true);
   };
 
   const submitSearch = () => {
@@ -658,7 +668,7 @@ export function CatalogPage({
       state={domainState}
       revisions={snapshot?.revisions ?? []}
       historyOpen={historyOpen}
-      onToggleHistory={() => setHistoryOpen((value) => !value)}
+      onToggleHistory={() => setInspectorTab((tab) => (tab === "history" ? "detail" : "history"))}
     />
   );
 
@@ -970,37 +980,15 @@ export function CatalogPage({
             </nav>
           </section>
 
-          {layoutMode === "desktop" ? (
-            <section
-              className="parameter-catalog__pane parameter-catalog__pane--detail"
-              aria-label={catalogDetailLabel}
-            >
-              <h2 className="parameter-catalog__pane-title">{catalogDetailLabel}</h2>
-              {detailBody}
-            </section>
-          ) : null}
-
-          {historyOpen && definition ? (
-            <section
-              className="parameter-catalog__history"
-              aria-label={catalogTimelineLabel}
-              data-catalog-history-region="true"
-            >
-              <h2 className="parameter-catalog__pane-title">{catalogHistoryLabel}</h2>
-              <CatalogHistoryBody
-                timeline={snapshot?.timeline ?? null}
-                revisions={snapshot?.revisions ?? []}
-              />
-            </section>
-          ) : null}
         </div>
       )}
 
-      {layoutMode !== "desktop" ? (
+      {definition ? (
         <WorkbenchSheet
           open={inspectorOpen}
           onClose={() => setInspectorOpen(false)}
-          title={definition?.propertyKey ?? catalogDetailLabel}
+          closeLabel={catalogDetailCloseLabel}
+          title={definition.propertyKey || catalogDetailLabel}
         >
           <div className="parameter-catalog__sheet-tabs" role="tablist" aria-label="详情与历史">
             <button
@@ -1019,20 +1007,23 @@ export function CatalogPage({
               aria-selected={inspectorTab === "history"}
               onClick={() => {
                 setInspectorTab("history");
-                setHistoryOpen(true);
               }}
             >
               {catalogSheetTabs.timeline}
             </button>
           </div>
-          {inspectorTab === "detail" ? (
-            detailBody
-          ) : (
-            <CatalogHistoryBody
-              timeline={snapshot?.timeline ?? null}
-              revisions={snapshot?.revisions ?? []}
-            />
-          )}
+          <div role="region" aria-label={catalogDetailLabel} data-catalog-detail-region="true">
+            {inspectorTab === "detail" ? (
+              detailBody
+            ) : (
+              <section aria-label={catalogTimelineLabel} data-catalog-history-region="true">
+                <CatalogHistoryBody
+                  timeline={snapshot?.timeline ?? null}
+                  revisions={snapshot?.revisions ?? []}
+                />
+              </section>
+            )}
+          </div>
         </WorkbenchSheet>
       ) : null}
     </div>
