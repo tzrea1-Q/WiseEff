@@ -640,12 +640,6 @@ export function CatalogPage({
         onClear: clearLifecycleFilter,
         getValue: (row) => row.lifecycle
       }
-    },
-    {
-      key: "usage",
-      header: "使用",
-      render: (row) =>
-        `策略 ${row.usageSummary.policyCount} · 项目 ${row.usageSummary.projectCount} · 当前值 ${row.usageSummary.currentValueCount}`
     }
   ];
 
