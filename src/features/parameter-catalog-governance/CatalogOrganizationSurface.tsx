@@ -206,6 +206,15 @@ export function CatalogOrganizationSurface({
                   onRefreshEvidence={() => setSurfaceEpoch((value) => value + 1)}
                 />
               </div>
+              <div className="dialog-actions">
+                <button
+                  type="button"
+                  className="button subtle"
+                  onClick={() => setPendingWorkOpen(false)}
+                >
+                  关闭
+                </button>
+              </div>
             </>
           )}
         </ModalDialog>
