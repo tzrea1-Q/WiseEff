@@ -12,7 +12,7 @@ import {
 import { deriveCatalogDomainState } from "@/application/parameter-catalog/states";
 import { WiseEffApiError } from "@/infrastructure/http/apiClient";
 
-import { DefinitionCorrectionSection } from "./DefinitionCorrectionSection";
+import { DefinitionEditorBody } from "./DefinitionEditorBody";
 
 const ready = deriveCatalogDomainState({ document: readyCatalogDocument });
 
@@ -21,7 +21,7 @@ const ready = deriveCatalogDomainState({ document: readyCatalogDocument });
  * identity and migrates an explicitly selected, authorized project manifest
  * through preview -> confirm -> execute -> continue.
  */
-describe("DefinitionCorrectionSection", () => {
+describe("DefinitionEditorBody", () => {
   function renderDialog() {
     const ports = createMockCatalogPorts({ scenario: "ready" });
     const preview = vi
@@ -185,7 +185,9 @@ describe("DefinitionCorrectionSection", () => {
         }
       } as never);
     const view = render(
-      <DefinitionCorrectionSection
+      <DefinitionEditorBody
+        authoringAllowed
+        history={<div />}
         actor="org-admin"
         sessionPermissions={["catalog:author", "catalog:publish"]}
         domainState={ready}
@@ -205,7 +207,7 @@ describe("DefinitionCorrectionSection", () => {
     const button = screen.getByRole("button", { name: "预演影响" });
 
     expect(button).toBeDisabled();
-    await user.type(screen.getByLabelText("受影响项目编号"), "proj-a, proj-b");
+    await user.type(screen.getByLabelText("受影响项目"), "proj-a, proj-b");
     expect(button).toBeEnabled();
     expect(preview).not.toHaveBeenCalled();
 
@@ -218,10 +220,10 @@ describe("DefinitionCorrectionSection", () => {
     const user = userEvent.setup();
     const { preview, execute, continueReplacement } = renderDialog();
 
-    await user.clear(screen.getByLabelText("替代属性键"));
-    await user.type(screen.getByLabelText("替代属性键"), "gpio-int-v2");
-    await user.type(screen.getByLabelText("受影响项目编号"), "proj-a, proj-b");
-    await user.type(screen.getByLabelText("纠错原因"), "identity was mis-authored");
+    await user.clear(screen.getByLabelText("属性键"));
+    await user.type(screen.getByLabelText("属性键"), "gpio-int-v2");
+    await user.type(screen.getByLabelText("受影响项目"), "proj-a, proj-b");
+    await user.type(screen.getByLabelText("修改原因"), "identity was mis-authored");
     await user.click(screen.getByRole("button", { name: "预演影响" }));
 
     await waitFor(() => expect(preview).toHaveBeenCalledTimes(1));
@@ -320,7 +322,9 @@ describe("DefinitionCorrectionSection", () => {
     } as never);
 
     render(
-      <DefinitionCorrectionSection
+      <DefinitionEditorBody
+        authoringAllowed
+        history={<div />}
         actor="org-admin"
         sessionPermissions={["catalog:author", "catalog:publish"]}
         domainState={ready}
@@ -332,9 +336,9 @@ describe("DefinitionCorrectionSection", () => {
       />
     );
 
-    await user.type(screen.getByLabelText("替代属性键"), "gpio-int-v3");
-    await user.type(screen.getByLabelText("受影响项目编号"), "proj-a");
-    await user.type(screen.getByLabelText("纠错原因"), "activation retry");
+    await user.type(screen.getByLabelText("属性键"), "gpio-int-v3");
+    await user.type(screen.getByLabelText("受影响项目"), "proj-a");
+    await user.type(screen.getByLabelText("修改原因"), "activation retry");
     await user.click(screen.getByRole("button", { name: "预演影响" }));
     await screen.findByRole("region", { name: "纠错影响预览" });
     await user.click(screen.getByRole("button", { name: "确认并执行迁移" }));

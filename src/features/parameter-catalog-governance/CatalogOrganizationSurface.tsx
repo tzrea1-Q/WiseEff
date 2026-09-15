@@ -11,7 +11,8 @@ import type { ParameterCatalogGovernanceRepository } from "@/application/ports/P
 import type { ParameterCatalogRepository } from "@/application/ports/ParameterCatalogRepository";
 import { CatalogPage } from "@/features/parameter-catalog";
 
-import { DefinitionCorrectionSection } from "./DefinitionCorrectionSection";
+import { CatalogHistoryBody } from "../parameter-catalog/CatalogPage";
+import { DefinitionEditorBody } from "./DefinitionEditorBody";
 import { DefinitionLifecycleDialog, type DefinitionLifecycleIntent } from "./DefinitionLifecycleDialog";
 
 import { createGovernanceIdempotencyKey } from "./governanceState";
@@ -173,7 +174,6 @@ export function CatalogOrganizationSurface({
         listReviewItems={
           organizationId ? (orgId, query) => governance.listReviewItems(orgId, query) : undefined
         }
-        definitionAuthoringAllowed={publicationSurfaceAllowsAuthoring(publicationSurface)}
         definitionPublishingAllowed={publicationSurfaceAllowsPublishing(publicationSurface)}
         onDefinitionCommand={(command, definition) => {
           // Identity correction now lives inside the definition's own 编辑 dialog
@@ -183,8 +183,8 @@ export function CatalogOrganizationSurface({
         }}
         renderDefinitionEditor={
           domainState
-            ? (definition) => (
-          <DefinitionCorrectionSection
+            ? (definition, history) => (
+          <DefinitionEditorBody
             actor={actor}
             sessionPermissions={sessionPermissions}
             domainState={domainState}
@@ -195,6 +195,13 @@ export function CatalogOrganizationSurface({
             createIdempotencyKey={createGovernanceIdempotencyKey}
             onCompleted={() => setSurfaceEpoch((value) => value + 1)}
             onRefreshEvidence={() => setSurfaceEpoch((value) => value + 1)}
+            authoringAllowed={publicationSurfaceAllowsAuthoring(publicationSurface)}
+            history={
+              <CatalogHistoryBody
+                timeline={history.timeline}
+                revisions={history.revisions}
+              />
+            }
           />
               )
             : undefined

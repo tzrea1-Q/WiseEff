@@ -199,37 +199,68 @@
    use: 42px rows on a 2px rhythm, a 28px disclosure column, a muted row label
    with an ink branch label, a 10px right-aligned count, and a left rule for
    nested levels. */
-/* The identity-correction form lives inside the editor dialog, where it needs
-   the explicit stacked field layout the centred dialog used to provide. */
-.definition-correction {
+/* One dialog body for a definition: the identity header, the identity/content
+   form, and the read-only facts behind 更多信息. */
+.definition-editor {
   display: grid;
   gap: var(--space-3);
-  margin-top: var(--space-4);
-  padding-top: var(--space-3);
-  border-top: 1px solid var(--pcat-border);
 }
 
-.definition-correction label {
+.definition-editor__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.definition-editor__subject {
+  font-weight: 700;
+  color: var(--pcat-text);
+}
+
+.definition-editor__id {
+  color: var(--pcat-muted);
+  font-size: 10px;
+  overflow-wrap: anywhere;
+}
+
+.definition-editor__form,
+.definition-editor__form label,
+.definition-editor__more dl {
   display: grid;
   gap: var(--space-1);
 }
 
-.definition-correction input,
-.definition-correction select,
-.definition-correction textarea {
+.definition-editor__form {
+  gap: var(--space-3);
+}
+
+.definition-editor__form input,
+.definition-editor__form select,
+.definition-editor__form textarea {
   width: 100%;
 }
 
-.definition-correction fieldset {
+.definition-editor__fields {
   display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
   gap: var(--space-2);
-  margin: 0;
-  padding: 0;
-  border: 0;
 }
 
-.definition-correction h3 {
-  margin: 0;
+.definition-editor__more summary,
+.definition-editor__history summary {
+  cursor: pointer;
+  color: var(--pcat-secondary);
+  font-size: var(--text-sm);
+}
+
+.definition-editor__more {
+  border-top: 1px solid var(--pcat-border);
+  padding-top: var(--space-2);
+}
+
+.definition-editor__more dl {
+  margin-top: var(--space-2);
 }
 
 /* Compact cards keep their own edit entry beside the card. */

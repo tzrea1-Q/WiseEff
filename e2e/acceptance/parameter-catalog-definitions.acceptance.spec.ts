@@ -97,7 +97,7 @@ test.describe("restored definition workspace and governed authoring", () => {
     await catalogScreenshot(page, testInfo, "pcat-ui-16-history");
   });
 
-  test("offers one deliberate lifecycle action and one identity-correction action per definition", async ({
+  test("offers one deliberate lifecycle action and one merged editor dialog per definition", async ({
     page
   }, testInfo) => {
     // @acceptance PCAT-UI-17
@@ -133,13 +133,16 @@ test.describe("restored definition workspace and governed authoring", () => {
     const dialog = page.getByRole("dialog");
     await expect(dialog.getByRole("region", { name: "定义详情" })).toBeVisible();
     if (permissions.authoringAllowed) {
-      await expect(dialog.locator('[data-definition-correction="true"]')).toBeVisible();
-      // Explicit manifest: preview stays disabled until projects and a reason exist.
+      await expect(dialog.locator(".definition-editor__form")).toBeVisible();
+      // Explicit manifest and an actual change: preview stays disabled until the
+      // identity changes, projects are named and a reason exists.
       await expect(dialog.getByRole("button", { name: "预演影响" })).toBeDisabled();
-      await dialog.getByLabel("受影响项目编号").fill("proj-a");
+      await dialog.getByLabel("属性键").fill(`pcat-ui-17-${Date.now()}`);
+      await dialog.getByLabel("受影响项目").fill("proj-a");
+      await dialog.getByLabel("修改原因").fill("op08 merged editor preview");
       await expect(dialog.getByRole("button", { name: "预演影响" })).toBeEnabled();
     } else {
-      await expect(dialog.locator('[data-definition-correction="true"]')).toHaveCount(0);
+      await expect(dialog.locator(".definition-editor__form")).toHaveCount(0);
     }
     await dialog.getByRole("button", { name: /关闭/ }).click();
     await catalogScreenshot(page, testInfo, "pcat-ui-17-lifecycle");

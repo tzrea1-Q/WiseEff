@@ -98,10 +98,13 @@ export type CatalogPageProps = {
   onDomainStateChange?: (state: CatalogDomainState) => void;
   onOpenPendingWork?: () => void;
   /**
-   * Identity correction for the definition shown in the editor dialog. The page
-   * owns the dialog; the organization surface owns the governed command.
+   * Editor body for the definition dialog. The page owns the dialog and the
+   * loaded history; the organization surface owns the governed write command.
    */
-  renderDefinitionEditor?: (definition: DefinitionItem) => ReactNode;
+  renderDefinitionEditor?: (
+    definition: DefinitionItem,
+    history: { revisions: RevisionItem[]; timeline: CatalogDefinitionTimelineResponse | null }
+  ) => ReactNode;
   onAction?: (
     action: CatalogAuthorizedAction,
     context?: { subjectId?: string | null; registrationId?: string | null }
@@ -119,7 +122,6 @@ export type CatalogPageProps = {
    * and publication for this session. The row actions must mirror the server:
    * a visible control that the server would refuse is not a security boundary.
    */
-  definitionAuthoringAllowed?: boolean;
   definitionPublishingAllowed?: boolean;
   layoutMode?: CatalogLayoutMode;
   organizationId?: string;
@@ -200,7 +202,6 @@ export function CatalogPage({
   onOpenPendingWork,
   renderDefinitionEditor,
   onDefinitionCommand,
-  definitionAuthoringAllowed = false,
   definitionPublishingAllowed = false,
   layoutMode: layoutOverride,
   organizationId,
@@ -968,8 +969,13 @@ export function CatalogPage({
               />
             </section>
           ) : null}
-          {renderDefinitionEditor && definitionAuthoringAllowed ? (
-            <div data-definition-editor="true">{renderDefinitionEditor(definition)}</div>
+          {renderDefinitionEditor ? (
+            <div data-definition-editor="true">
+              {renderDefinitionEditor(definition, {
+                revisions: snapshot?.revisions ?? [],
+                timeline: snapshot?.timeline ?? null
+              })}
+            </div>
           ) : null}
         </WorkbenchSheet>
       ) : null}
@@ -1088,7 +1094,7 @@ function CatalogDetailBody({
   );
 }
 
-function CatalogHistoryBody({
+export function CatalogHistoryBody({
   timeline,
   revisions
 }: {

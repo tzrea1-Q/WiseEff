@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 
 import type { CatalogActorKind } from "@/application/parameter-catalog/authority";
 import { catalogStateFromFailure, type CatalogDomainState } from "@/application/parameter-catalog/states";
@@ -13,10 +13,20 @@ import type {
   CatalogSubjectResponse
 } from "@/infrastructure/http/parameterCatalogDtos";
 
+import {
+  catalogLifecycleLabel,
+  catalogRegistrationLabel,
+  catalogValueShapeLabel
+} from "../parameter-catalog/catalogPresentation";
+import {
+  catalogHistoryCloseLabel,
+  catalogHistoryOpenLabel
+} from "../parameter-catalog/copy";
+
 import { canExecutePublicationAction } from "./publicationState";
 import { createGovernanceIdempotencyKey } from "./governanceState";
 
-export type DefinitionCorrectionSectionProps = {
+export type DefinitionEditorBodyProps = {
   actor: CatalogActorKind;
   sessionPermissions?: readonly string[] | null;
   domainState: CatalogDomainState;
@@ -32,6 +42,10 @@ export type DefinitionCorrectionSectionProps = {
   createIdempotencyKey?: () => string;
   onCompleted?: () => void;
   onRefreshEvidence?: () => void | Promise<void>;
+  /** Read-only history the page loaded for this definition. */
+  history: ReactNode;
+  /** Server gate: without it the dialog only reads. */
+  authoringAllowed: boolean;
 };
 
 type Phase = "compose" | "preview" | "executed";
@@ -62,15 +76,18 @@ const projectStatusLabel = {
 } as const;
 
 /**
- * Definition identity correction (issue #847 decisions 12-17).
+ * One dialog body for a definition: read it, then correct it (issue #847
+ * decisions 12-17).
  *
- * Identity is corrected by publishing a replacement identity and migrating an
- * explicitly selected, authorized project manifest. The workflow is
- * preview -> confirm -> execute -> continue, it never rewrites the old identity,
- * and it reports per-project progress rather than claiming an instance-wide
- * transaction.
+ * The identity fields are the form: 主体/属性键/显示名 show what the definition
+ * is today and are the values a correction changes. Publishing a replacement
+ * identity and migrating an explicitly selected, authorized project manifest is
+ * the write path (preview -> confirm -> execute -> continue); it never rewrites
+ * the old identity and reports per-project progress instead of claiming an
+ * instance-wide transaction. Read-only facts sit behind 更多信息 and the loaded
+ * history behind 查看历史 so the dialog stays short.
  */
-export function DefinitionCorrectionSection({
+export function DefinitionEditorBody({
   actor,
   sessionPermissions,
   domainState,
@@ -80,9 +97,12 @@ export function DefinitionCorrectionSection({
   subjects,
   createIdempotencyKey,
   onCompleted,
-  onRefreshEvidence
-}: DefinitionCorrectionSectionProps) {
+  onRefreshEvidence,
+  history,
+  authoringAllowed
+}: DefinitionEditorBodyProps) {
   const [phase, setPhase] = useState<Phase>("compose");
+  const [historyOpen, setHistoryOpen] = useState(false);
   const [subjectId, setSubjectId] = useState(definition.subject.id);
   const [propertyKey, setPropertyKey] = useState(definition.propertyKey);
   const [displayName, setDisplayName] = useState(definition.currentRevision.displayName);
@@ -125,6 +145,7 @@ export function DefinitionCorrectionSection({
     setError("");
     setPreviewIdempotencyKey(null);
     setIdempotencyKey(null);
+    setHistoryOpen(false);
   }, [definition]);
 
   const selectedProjects = useMemo(
@@ -136,10 +157,20 @@ export function DefinitionCorrectionSection({
     [projectIdsText]
   );
 
+  const definitionSubject = useMemo(
+    () => subjects.find((subject) => subject.id === definition.subject.id),
+    [definition.subject.id, subjects]
+  );
+
   const selectableSubjects = useMemo(
     () => subjects.filter((subject) => subject.membership.status === "active"),
     [subjects]
   );
+
+  /** The form edits the definition's identity, so "unchanged" is a real state. */
+  const identityChanged =
+    subjectId !== definition.subject.id || propertyKey.trim() !== definition.propertyKey;
+  const contentChanged = displayName.trim() !== definition.currentRevision.displayName;
 
   const runPreview = async () => {
     if (!allowed || pending) return;
@@ -265,79 +296,104 @@ export function DefinitionCorrectionSection({
   return (
     <>
       <section
-        className="definition-correction"
-        aria-label="身份纠错"
-        data-definition-correction="true"
+        className="definition-editor"
+        role="region"
+        aria-label="定义详情"
+        data-catalog-detail-region="true"
       >
-        <h3>身份纠错</h3>
-        <p>
-          纠错会发布一个新的替代身份，并把选定项目的当前引用迁移到新身份。旧身份、旧修订、旧取值与历史审计保持不变，不会被重写。
-        </p>
-        <dl className="parameter-catalog__dl">
-          <dt>原定义</dt>
-          <dd>{definition.id}</dd>
-          <dt>原属性键</dt>
-          <dd>{definition.propertyKey}</dd>
-          <dt>原主体</dt>
-          <dd>{definition.subject.canonicalName}</dd>
-        </dl>
+        <header className="definition-editor__head">
+          <span className="parameter-catalog__badge" data-tone={definition.lifecycle === "active" ? undefined : "retired"}>
+            {catalogLifecycleLabel(definition.lifecycle)}
+          </span>
+          <span className="definition-editor__subject">{definition.subject.canonicalName}</span>
+          <span className="parameter-catalog__muted">{`修订 #${definition.currentRevision.revisionNumber}`}</span>
+          <code className="definition-editor__id">{definition.id}</code>
+        </header>
 
-        {phase === "compose" ? (
-          <>
-            <label>
-              <span>替代主体</span>
-              <select
-                value={subjectId}
-                aria-label="替代主体"
-                onChange={(event) => setSubjectId(event.target.value)}
-              >
-                {selectableSubjects.map((subject) => (
-                  <option key={subject.id} value={subject.id}>
-                    {subject.canonicalName}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label>
-              <span>替代属性键</span>
-              <input
-                value={propertyKey}
-                aria-label="替代属性键"
-                onChange={(event) => setPropertyKey(event.target.value)}
-              />
-            </label>
-            <label>
-              <span>显示名</span>
-              <input
-                value={displayName}
-                aria-label="显示名"
-                onChange={(event) => setDisplayName(event.target.value)}
-              />
-            </label>
-            <fieldset>
-              <legend>受影响项目（仅限本组织）</legend>
-              <p>
-                迁移只覆盖你在此显式选择的项目；其他组织与未选项目保持不变。多个项目用逗号分隔。
-              </p>
+        {authoringAllowed ? (
+          <div className="definition-editor__form">
+            <div className="definition-editor__fields">
               <label>
-                <span>项目编号</span>
+                <span>主体</span>
+                <select
+                  value={subjectId}
+                  aria-label="主体"
+                  onChange={(event) => setSubjectId(event.target.value)}
+                >
+                  {selectableSubjects.map((subject) => (
+                    <option key={subject.id} value={subject.id}>
+                      {subject.canonicalName}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                <span>属性键</span>
                 <input
-                  value={projectIdsText}
-                  aria-label="受影响项目编号"
-                  onChange={(event) => setProjectIdsText(event.target.value)}
+                  value={propertyKey}
+                  aria-label="属性键"
+                  onChange={(event) => setPropertyKey(event.target.value)}
                 />
               </label>
-            </fieldset>
+              <label>
+                <span>显示名</span>
+                <input
+                  value={displayName}
+                  aria-label="显示名"
+                  onChange={(event) => setDisplayName(event.target.value)}
+                />
+              </label>
+            </div>
             <label>
-              <span>纠错原因</span>
+              <span>受影响项目</span>
+              <input
+                value={projectIdsText}
+                aria-label="受影响项目"
+                placeholder="项目编号，多个用逗号分隔"
+                onChange={(event) => setProjectIdsText(event.target.value)}
+              />
+            </label>
+            <label>
+              <span>修改原因</span>
               <textarea
                 value={reason}
-                aria-label="纠错原因"
+                aria-label="修改原因"
                 onChange={(event) => setReason(event.target.value)}
               />
             </label>
-          </>
-        ) : null}
+            <p className="parameter-catalog__muted" data-definition-editor-hint="true">
+              {identityChanged
+                ? "保存会发布替代身份，并把选定项目的当前引用迁移过去；旧身份与历史保持不变。"
+                : contentChanged
+                  ? "只有主体或属性键的变更会进入迁移；显示名随新身份一起发布。"
+                  : "未做任何修改。"}
+            </p>
+            {phase === "compose" ? (
+              <div className="dialog-actions">
+                <button
+                  type="button"
+                  className="button primary"
+                  data-correction-action="preview"
+                  disabled={
+                    !allowed ||
+                    pending ||
+                    (!identityChanged && !contentChanged) ||
+                    selectedProjects.length === 0 ||
+                    !reason.trim()
+                  }
+                  title={allowed ? undefined : "当前会话缺少发布能力。"}
+                  onClick={() => void runPreview()}
+                >
+                  {pending ? "正在预演…" : "预演影响"}
+                </button>
+              </div>
+            ) : null}
+          </div>
+        ) : (
+          <p className="parameter-catalog__muted">
+            当前会话缺少目录编写能力，只能查看该定义。
+          </p>
+        )}
 
         {phase === "preview" && preview ? (
           <section aria-label="纠错影响预览" data-correction-preview="true">
@@ -383,6 +439,25 @@ export function DefinitionCorrectionSection({
                 ))}
               </tbody>
             </table>
+            <div className="dialog-actions">
+              <button
+                type="button"
+                className="button ghost"
+                disabled={pending}
+                onClick={() => setPhase("compose")}
+              >
+                返回修改
+              </button>
+              <button
+                type="button"
+                className="button primary"
+                data-correction-action="execute"
+                disabled={pending}
+                onClick={() => setConfirmOpen(true)}
+              >
+                确认并执行迁移
+              </button>
+            </div>
           </section>
         ) : null}
 
@@ -433,29 +508,64 @@ export function DefinitionCorrectionSection({
           </p>
         ) : null}
 
-        <div className="dialog-actions">
-          {phase === "compose" ? (
-            <button
-              type="button"
-              className="button primary"
-              data-correction-action="preview"
-              disabled={!allowed || pending || selectedProjects.length === 0}
-              title={allowed ? undefined : "当前会话缺少发布能力。"}
-              onClick={() => void runPreview()}
-            >
-              {pending ? "正在预演…" : "预演影响"}
-            </button>
-          ) : null}
-          {phase === "preview" ? (
-            <button
-              type="button"
-              className="button primary"
-              data-correction-action="execute"
-              disabled={pending}
-              onClick={() => setConfirmOpen(true)}
-            >
-              确认并执行迁移
-            </button>
+        <details className="definition-editor__more">
+          <summary>更多信息</summary>
+          <dl className="parameter-catalog__dl">
+            <dt>主体编号</dt>
+            <dd>{definition.subject.id}</dd>
+            <dt>定义编号</dt>
+            <dd>{definition.id}</dd>
+            <dt>当前修订</dt>
+            <dd>{`修订 #${definition.currentRevision.revisionNumber}`}</dd>
+            <dt>纳入发布</dt>
+            <dd>{definition.currentRevision.publishedInCatalogReleaseId}</dd>
+            <dt>取值形状</dt>
+            <dd>{catalogValueShapeLabel(definition.currentRevision.valueShape.schema as never)}</dd>
+            <dt>单位</dt>
+            <dd>{definition.currentRevision.unit?.symbol ?? "未设置"}</dd>
+            <dt>说明</dt>
+            <dd>{definition.currentRevision.documentation ?? "无"}</dd>
+            <dt>使用</dt>
+            <dd>
+              策略 {definition.usageSummary.policyCount} · 项目 {definition.usageSummary.projectCount} · 当前值{" "}
+              {definition.usageSummary.currentValueCount}
+            </dd>
+            <dt>登记</dt>
+            <dd>
+              {catalogRegistrationLabel(definition.registration.status)}
+              {definition.registration.status !== "unregistered" && definition.registration.id
+                ? ` · ${definition.registration.id}`
+                : ""}
+            </dd>
+            <dt>放置</dt>
+            <dd>
+              {definition.registration.status === "unregistered"
+                ? "未建立"
+                : definition.registration.placement?.displayName ?? "未建立"}
+            </dd>
+            {definitionSubject?.aliases?.length ? (
+              <>
+                <dt>别名</dt>
+                <dd>{definitionSubject.aliases.join("、")}</dd>
+              </>
+            ) : null}
+          </dl>
+        </details>
+
+        <div className="definition-editor__history">
+          <button
+            type="button"
+            className="button subtle sm"
+            data-catalog-history-toggle="true"
+            aria-expanded={historyOpen}
+            onClick={() => setHistoryOpen((value) => !value)}
+          >
+            {historyOpen ? catalogHistoryCloseLabel : catalogHistoryOpenLabel}
+          </button>
+          {historyOpen ? (
+            <section aria-label="定义时间线" data-catalog-history-region="true">
+              {history}
+            </section>
           ) : null}
         </div>
       </section>
