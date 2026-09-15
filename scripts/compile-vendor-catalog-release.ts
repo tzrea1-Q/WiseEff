@@ -49,7 +49,7 @@ export const FIRST_ACME_RELEASE_ID = "crel_acme_1";
 export const FIRST_ACME_RELEASE_DIGEST =
   "sha256:365305492cf3fddb973b65268d1c7b8c60715240e9fd2dac05aa9091f0c38044";
 export const VENDOR_SUCCESSOR_AGGREGATE_DIGEST =
-  "sha256:5f0e7bcd6c537f3a0574dc5541e1199f5537061bef4ad5551ec4f5e9565bec64";
+  "sha256:efc5336e625f0eb6f994223a5f67a57b119e92bda2edb5c209fc901284f126c7";
 
 export { EXCLUDED_SCHEMA_BASENAMES };
 
@@ -312,8 +312,6 @@ const vendorDocuments = (schemasRoot: string): CatalogReleaseDocument[] => {
 };
 
 export const compileVendorCatalogSuccessor = (repoRoot = process.cwd()) => {
-
-
   const predecessor = firstAcmeRelease();
   const firstBundle: CatalogReleaseBundle = {
     schemaVersion: "1.0.0",
@@ -348,31 +346,6 @@ export const compileVendorCatalogSuccessor = (repoRoot = process.cwd()) => {
     ...structuredClone(predecessor.documents),
     ...added,
   ] as DeepMutable<CatalogReleaseDocument>[];
-
-  // Issue #849 scope item 4: retire the acme sample while keeping crel_acme_1 and
-  // its activation history intact. Retirement is expressed as a tombstone on the
-  // carried-forward subject and alias; the withdrawnByReleaseId points at the
-  // release that withdrew them, and successorId is deliberately omitted because
-  // acme never evolved into a real vendor subject of the same name.
-  for (const document of successor.documents) {
-    if (document.kind === "subject" && document.content.id === "csub_acme_power") {
-      document.content.lifecycle = "retired";
-      document.content.tombstone = {
-        reason: "acme-sample-retired",
-        withdrawnByReleaseId: VENDOR_SUCCESSOR_RELEASE_ID,
-        previousSelector: "acme,power",
-      };
-    }
-    if (document.kind === "alias" && document.content.id === "cali_acme_power_v1") {
-      document.content.lifecycle = "retired";
-      document.content.tombstone = {
-        reason: "acme-sample-retired",
-        withdrawnByReleaseId: VENDOR_SUCCESSOR_RELEASE_ID,
-        previousSelector: "acme,power-v1",
-      };
-    }
-  }
-
   refreshSuccessorSource(successor);
 
   const bundle: CatalogReleaseBundle = {

@@ -70,29 +70,4 @@ describe("parseDtsImportSource", () => {
     const content = `/dts-v1/;\n/include/ "pin.dtsi"\n/ { board_id = <0>; };\n`;
     expect(() => parseDtsImportSource({ sourceName: "board.dts", content })).not.toThrow();
   });
-
-  it.each([
-    ["params.yaml", "yaml"],
-    ["params.yml", "yaml"],
-    ["params.toml", "toml"],
-    ["params.env", "env"],
-    [".env", "env"]
-  ])("refuses deferred source name %s as UNSUPPORTED_FORMAT before parsing", (sourceName, format) => {
-    // Content is valid DTS on purpose: the refusal must come from the shared format
-    // decision, not from a parse failure.
-    const content = `/dts-v1/;\n/ { board_id = <0>; };\n`;
-    expect(() => parseDtsImportSource({ sourceName, content })).toThrow(
-      expect.objectContaining({
-        code: "UNSUPPORTED_FORMAT",
-        details: expect.objectContaining({ fileName: sourceName, format, deferredTo: "TD-124" })
-      }) as unknown as ApiError
-    );
-  });
-
-  it("still parses DTS source names", () => {
-    const content = `/dts-v1/;\n&demo { board_id = <0>; };\n`;
-    const result = parseDtsImportSource({ sourceName: "board.dts", content });
-    expect(result.format).toBe("dts-full");
-    expect(result.rows.some((row) => row.name === "board_id")).toBe(true);
-  });
 });

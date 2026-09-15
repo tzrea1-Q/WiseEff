@@ -199,7 +199,7 @@ export type LoadedCatalogSnapshot = CurrentCatalogSnapshot | PinnedCatalogSnapsh
 export type CatalogListQuery = {
   readonly cursor: OptionalValue<CatalogCursor>;
   readonly limit: number;
-  readonly type?: "driver" | "node-type" | "configuration-schema";
+  readonly type?: "driver" | "node-type";
   readonly lifecycle?: string;
   readonly registration?: string;
   readonly search?: string;

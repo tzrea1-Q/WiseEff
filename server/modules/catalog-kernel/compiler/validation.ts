@@ -957,20 +957,10 @@ function validateOwnershipAndLifecycle(
       continue;
     }
     if (!subject) continue;
-    // Exhaustive per-kind mapping. An unknown kind yields `null` so the comparison
-    // below reports a violation instead of silently inheriting node-type semantics.
-    const expectedSelectorKind = ((): string | null => {
-      switch (subject.content.kind) {
-        case "driver":
-          return rules.selectorRules.selectorKindBySubjectKind.driver;
-        case "node-type":
-          return rules.selectorRules.selectorKindBySubjectKind["node-type"];
-        case "configuration-schema":
-          return rules.selectorRules.selectorKindBySubjectKind["configuration-schema"];
-        default:
-          return null;
-      }
-    })();
+    const expectedSelectorKind =
+      subject.content.kind === "driver"
+        ? rules.selectorRules.selectorKindBySubjectKind.driver
+        : rules.selectorRules.selectorKindBySubjectKind["node-type"];
     const actualSelectorKind =
       document.kind === "alias"
         ? document.content.selectorKind

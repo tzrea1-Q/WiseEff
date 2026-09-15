@@ -14,15 +14,145 @@ import {
   createDisposableParameterCatalogDatabase,
   type ParameterCatalogDatabase,
 } from "../../testing/parameterCatalog";
-import {
-  firstReleaseBundle,
-  populatedCutoverGraph,
-  seedPopulatedCutover,
-} from "../../testing/parameterCatalog/cutoverPopulatedFixture";
 import { createLocalArchiveObjectStore } from "./archive";
 import type { FrozenP0Graph } from "./classifier";
 import { executeCutover, inspectCutover, planCutover, recoverCutover } from "./orchestrator";
 import { assertRecordedAction, captureInventoryDump, dumpsEqual } from "./recovery";
+
+const populatedCutoverGraph = (): FrozenP0Graph => ({
+  catalog: "parameter-catalog-p0-graph",
+  identities: [
+    {
+      id: "s7orc-lid-r1",
+      sourceSystem: "wiseeff-v1",
+      sourceKind: "parameter-spec",
+      ownerScopeKind: "platform",
+      ownerScopeId: "platform",
+      sourceId: "s7orc-spec-r1",
+    },
+    {
+      id: "s7orc-lid-r10",
+      sourceSystem: "wiseeff-v1",
+      sourceKind: "parameter-spec",
+      ownerScopeKind: "platform",
+      ownerScopeId: "platform",
+      sourceId: "s7orc-spec-r10",
+    },
+  ],
+  specs: [
+    {
+      id: "s7orc-spec-r1",
+      organizationId: null,
+      sourceKind: "dts",
+      specificationKey: "s7orc.r1.status",
+      attributionSubjectId: null,
+      definitionLifecycle: "active",
+      propertyKey: "status",
+    },
+    {
+      id: "s7orc-spec-r10",
+      organizationId: null,
+      sourceKind: "dts",
+      specificationKey: "s7orc.r10.unknown",
+      attributionSubjectId: null,
+      definitionLifecycle: "active",
+      propertyKey: "s7orc,unknown",
+    },
+  ],
+  specVersions: [
+    {
+      id: "s7orc-ver-r1",
+      parameterSpecId: "s7orc-spec-r1",
+      version: 1,
+      lifecycle: "active",
+      versionStatus: "active",
+    },
+    {
+      id: "s7orc-ver-r10",
+      parameterSpecId: "s7orc-spec-r10",
+      version: 1,
+      lifecycle: "active",
+      versionStatus: "active",
+    },
+  ],
+  subjects: [],
+  driverRegistrations: [],
+  nodeTypeDefinitions: [],
+  driverSchemas: [],
+  driverSchemaVersions: [],
+  dtsPropertySpecs: [],
+  modules: [],
+  placements: [],
+  bindings: [],
+  bindingRevisions: [],
+});
+
+const firstReleaseBundle = (): CatalogReleaseBundle => {
+  const full = validCatalogReleaseBundle();
+  const first = structuredClone(full.releases[0]!);
+  return {
+    schemaVersion: full.schemaVersion,
+    targetReleaseId: first.manifest.release.id,
+    releases: [first],
+  };
+};
+
+const seedPopulatedCutover = async (client: pg.Client, graph: FrozenP0Graph): Promise<void> => {
+  for (const spec of graph.specs) {
+    await client.query(
+      `
+      insert into public.parameter_specs (
+        id, organization_id, source_kind, specification_key,
+        attribution_subject_id, definition_lifecycle, property_key
+      ) values ($1, $2, $3, $4, $5, $6, $7)
+      `,
+      [
+        spec.id,
+        spec.organizationId,
+        spec.sourceKind,
+        spec.specificationKey,
+        spec.attributionSubjectId,
+        spec.definitionLifecycle,
+        spec.propertyKey,
+      ],
+    );
+  }
+  for (const version of graph.specVersions) {
+    await client.query(
+      `
+      insert into public.parameter_spec_versions (
+        id, parameter_spec_id, version, display_name, description, value_shape,
+        lifecycle, version_status
+      ) values ($1, $2, $3, $4, $4, '{}', $5, $6)
+      `,
+      [
+        version.id,
+        version.parameterSpecId,
+        version.version,
+        version.id,
+        version.lifecycle,
+        version.versionStatus,
+      ],
+    );
+  }
+  for (const identity of graph.identities) {
+    await client.query(
+      `
+      insert into parameter_catalog.legacy_identities (
+        id, source_system, source_kind, owner_scope_kind, owner_scope_id, source_id
+      ) values ($1, $2, $3, $4, $5, $6)
+      `,
+      [
+        identity.id,
+        identity.sourceSystem,
+        identity.sourceKind,
+        identity.ownerScopeKind,
+        identity.ownerScopeId,
+        identity.sourceId,
+      ],
+    );
+  }
+};
 
 const CATALOG_TEST_TIMEOUT_MS = 60_000;
 const CATALOG_HOOK_TIMEOUT_MS = 120_000;

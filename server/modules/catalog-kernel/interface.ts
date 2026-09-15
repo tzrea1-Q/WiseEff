@@ -47,9 +47,6 @@ type KernelBrand<Name extends string> = string & { readonly __s3RunBrand: Name }
 
 export type DriverCompatible = KernelBrand<"DriverCompatible">;
 export type NormalizedNodeTypeName = KernelBrand<"NormalizedNodeTypeName">;
-/** Governed software-configuration model identifier (Issue #849 D09). */
-export type NormalizedConfigurationSchemaId =
-  KernelBrand<"NormalizedConfigurationSchemaId">;
 export type PropertyKey = KernelBrand<"PropertyKey">;
 export type DefinitionContentDigest = KernelBrand<"DefinitionContentDigest">;
 
@@ -57,16 +54,9 @@ export const DriverCompatible = (value: string): DriverCompatible =>
   value as DriverCompatible;
 export const NormalizedNodeTypeName = (value: string): NormalizedNodeTypeName =>
   value as NormalizedNodeTypeName;
-export const NormalizedConfigurationSchemaId = (
-  value: string,
-): NormalizedConfigurationSchemaId =>
-  value as NormalizedConfigurationSchemaId;
 export const PropertyKey = (value: string): PropertyKey => value as PropertyKey;
 
-export type CatalogSubjectKind =
-  | "driver"
-  | "node-type"
-  | "configuration-schema";
+export type CatalogSubjectKind = "driver" | "node-type";
 export type SubjectLifecycle = "active" | "retired";
 export type DefinitionLifecycle = "active" | "deprecated" | "retired";
 
@@ -88,10 +78,7 @@ export type ParameterValue = Readonly<Record<string, unknown>> | string | number
 
 export type DefinitionMatchingMetadata = {
   readonly sourceProperty: string;
-  readonly selectorKind:
-    | "driver-compatible"
-    | "node-type-name"
-    | "configuration-schema-id";
+  readonly selectorKind: "driver-compatible" | "node-type-name";
   readonly notes: OptionalValue<string>;
 };
 
@@ -144,10 +131,6 @@ export type CatalogSubjectSelectorSnapshot =
   | {
       readonly kind: "node-type-name";
       readonly value: NormalizedNodeTypeName;
-    }
-  | {
-      readonly kind: "configuration-schema-id";
-      readonly value: NormalizedConfigurationSchemaId;
     };
 
 export interface CatalogTombstoneSummary {
@@ -172,11 +155,7 @@ export interface SubjectAliasSnapshot {
   readonly id: CatalogAliasId;
   readonly selector:
     | { readonly kind: "driver-compatible"; readonly value: DriverCompatible }
-    | { readonly kind: "node-type-name"; readonly value: NormalizedNodeTypeName }
-    | {
-        readonly kind: "configuration-schema-id";
-        readonly value: NormalizedConfigurationSchemaId;
-      };
+    | { readonly kind: "node-type-name"; readonly value: NormalizedNodeTypeName };
   readonly subjectId: CatalogSubjectId;
   readonly membership: CatalogAliasMembershipSnapshot;
 }
@@ -248,11 +227,6 @@ export interface CatalogDefinitionPublicationFact {
 
 export interface SubjectSelector {
   readonly driverCompatibles: readonly DriverCompatible[];
-  /**
-   * Governed software-configuration model identifiers observed on the source
-   * (Issue #849 D09). Optional so device callers are unaffected.
-   */
-  readonly configurationSchemaIds?: readonly NormalizedConfigurationSchemaId[];
   readonly nodeTypeFallback:
     | { readonly kind: "present"; readonly name: NormalizedNodeTypeName }
     | { readonly kind: "absent" };

@@ -55,8 +55,7 @@
   ],
   "subjectKinds": [
     "driver",
-    "node-type",
-    "configuration-schema"
+    "node-type"
   ],
   "verificationPurposes": [
     "pre-activation",

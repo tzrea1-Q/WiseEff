@@ -116,11 +116,7 @@ export type CatalogKernelError =
     }
   | {
       readonly kind: "invalid-selector";
-      readonly field:
-        | "driver-compatible"
-        | "node-type-name"
-        | "configuration-schema-id"
-        | "property-key";
+      readonly field: "driver-compatible" | "node-type-name" | "property-key";
     }
   | {
       readonly kind: "permission-denied";

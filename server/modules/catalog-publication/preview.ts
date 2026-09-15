@@ -27,7 +27,6 @@ import type {
   ReviseDefinitionChange,
   SupportedDefinitionContent,
 } from "./builder/types";
-import { CATALOG_CAPABILITY_CONTRACT_REVISION } from "./builder/types";
 import { persistCandidate as storePersistCandidate } from "./persistence/store";
 import { persistArtifact as storePersistArtifact } from "./persistence/store";
 import { getArtifactByDigest } from "./persistence/store";
@@ -287,7 +286,7 @@ export function m1ImpactFacts(
       newMatchableProperties: [],
     },
     existingContractsTighten: false,
-    capabilityContractRevision: CATALOG_CAPABILITY_CONTRACT_REVISION,
+    capabilityContractRevision: "catalog-capability/v2",
   });
 }
 

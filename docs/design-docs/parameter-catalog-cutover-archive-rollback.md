@@ -6,8 +6,6 @@ Date: 2026-09-01
 
 ## Status and scope
 
-[ADR-0045](../adr/0045-configuration-schema-subject-and-seed-rebuild.md) defines a separate, explicitly scoped archive-rebuild destination profile for the [seed unification plan](../exec-plans/active/2026-09-14-parameter-unification-and-seed-parity.md). Its value oracle is the reviewed seed manifest, with archive completeness, non-parameter preservation and canonical-consumer coverage, rather than old/new configured-value equivalence. This does not reclassify R0–R10 or mark the normal P11–P16 sequence complete; all other deployments retain this contract. Implementation and target execution remain pending.
-
 Accepted decision artifact for [Choose populated-data cutover, archive, and rollback strategy](https://github.com/tzrea1-Q/WiseEff/issues/678) in [Wayfinder: replace the parameter catalog with one canonical definition model](https://github.com/tzrea1-Q/WiseEff/issues/668). The joint-acceptance correction makes the P11 read-only dual-read comparison a mandatory pre-switch gate and registers this bilingual pair in documentation governance.
 
 This document decides the migration, archive, activation, and recovery contract for fresh and populated PostgreSQL databases. It is not a production migration, cutover script, migration number, release-readiness claim, or authorization to delete production data. Implementation begins only after the Wayfinder map is collapsed through the repository's normal specification and implementation planning workflow.

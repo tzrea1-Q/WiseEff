@@ -47,15 +47,6 @@ No ADR or design-doc change landed in #826. That gap is why CP-00 exists.
 | R-F13 | `readApprovedRuntimePin` still requires exact P13 / writer-retirement fingerprint / pin match | Unchanged by #826 |
 | R-F14 | `parameter-data-mode` new-empty path is read-only toward an installed Catalog | Unchanged by #826 |
 
-> **Later change (Issue #849, after `063b12c49`).** The vendor successor now retires the
-> acme sample: `csub_acme_power` and alias `cali_acme_power_v1` are carried forward with
-> tombstones (`withdrawnByReleaseId` = `crel_vendor_catalog_1`, no `successorId`), while
-> `crel_acme_1` and its activation history stay byte-identical. The R-F4 row above records
-> the value that was verified at `063b12c49`; the current compiler digest is
-> `sha256:5f0e7bcd6c537f3a0574dc5541e1199f5537061bef4ad5551ec4f5e9565bec64`, and the live
-> operator pin is `ops/self-hosted/upgrade.md`. Counts are unchanged (48 subjects, 1 alias,
-> 114 definitions/revisions) because a retired member is still a retained member.
-
 ### User-reported, **not** host-verified
 
 | ID | Report | Use |

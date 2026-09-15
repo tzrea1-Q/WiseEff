@@ -27,12 +27,6 @@ export type GovernanceAuditAction =
   | "identity-mapping-reopened"
   | "config-revision-validated"
   | "binding-edited"
-  | "value-drafted"
-  | "value-draft-removed"
-  | "value-change-submitted"
-  | "value-change-reviewed"
-  | "value-change-applied"
-  | "value-change-withdrawn"
   | "enablement-changed"
   | "baseline-mutated"
   | "identity-migrated";

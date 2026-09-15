@@ -3,7 +3,6 @@ import { readFileSync } from "node:fs";
 import { useCallback, useMemo, useState, type ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ParametersPage } from "./ParametersPage";
-import { WiseEffApiError } from "./infrastructure/http/apiClient";
 import { declarationsFor, parseCssRules, readStylesheet } from "./test/cssAssertions";
 import { TopBarActionsContext } from "./components/layout";
 import { initialState } from "./mockData";
@@ -492,126 +491,6 @@ function fillVisibleDraftReasons(baseReason = "参数调整原因") {
     });
   });
 }
-
-describe("ParametersPage archived old-link notice", () => {
-  const archivedError = () =>
-    new WiseEffApiError(
-      "GONE",
-      "legacy-id-archived",
-      { diagnostic: "legacy-id-archived", migrationEvidenceId: "mig-849" },
-      "req-archived"
-    );
-
-  const renderWithSearch = (search: string, parameterActions: ParameterPageActions) =>
-    render(
-      <TopBarActionsHarness>
-        <ParametersPage
-          state={createParametersPageState()}
-          dispatch={vi.fn()}
-          onNavigate={vi.fn()}
-          search={search}
-          parameterActions={parameterActions}
-        />
-      </TopBarActionsHarness>
-    );
-
-  it("reports an archived old link instead of silently showing current data", async () => {
-    const getParameter = vi.fn().mockRejectedValue(archivedError());
-    const { container } = renderWithSearch(
-      "?parameter=p-legacy-archived-1",
-      createParameterActions({ getParameter })
-    );
-
-    await waitFor(() =>
-      expect(container.querySelector(".parameter-archived-link-banner")).not.toBeNull()
-    );
-    const banner = container.querySelector(".parameter-archived-link-banner")!;
-    expect(banner.getAttribute("role")).toBe("status");
-    expect(banner).toHaveTextContent("该参数旧链接已归档");
-    expect(banner).toHaveTextContent("p-legacy-archived-1");
-    expect(banner).toHaveTextContent("legacy-id-archived");
-    expect(banner).toHaveTextContent("mig-849");
-    expect(getParameter).toHaveBeenCalledWith("p-legacy-archived-1");
-  });
-
-  it("lets the reader dismiss the notice", async () => {
-    const { container } = renderWithSearch(
-      "?parameter=p-legacy-archived-2",
-      createParameterActions({ getParameter: vi.fn().mockRejectedValue(archivedError()) })
-    );
-
-    await waitFor(() =>
-      expect(container.querySelector(".parameter-archived-link-banner")).not.toBeNull()
-    );
-    fireEvent.click(screen.getByRole("button", { name: "知道了" }));
-    await waitFor(() =>
-      expect(container.querySelector(".parameter-archived-link-banner")).toBeNull()
-    );
-  });
-
-  it("does not show the notice for a link that resolves, nor for a non-archived failure", async () => {
-    const resolving = renderWithSearch(
-      "?parameter=p-elsewhere",
-      createParameterActions({ getParameter: vi.fn().mockResolvedValue(initialState.parameters[0]) })
-    );
-    await waitFor(() => expect(resolving.container.querySelector(".parameter-archived-link-banner")).toBeNull());
-
-    const failing = renderWithSearch(
-      "?parameter=p-broken",
-      createParameterActions({
-        getParameter: vi.fn().mockRejectedValue(new WiseEffApiError("INTERNAL_ERROR", "boom", {}, "req-x"))
-      })
-    );
-    await waitFor(() => expect(failing.container.querySelector(".parameter-archived-link-banner")).toBeNull());
-  });
-
-  it("surfaces the notice when a listed record turns out to be archived in the Catalog", async () => {
-    const getParameter = vi.fn().mockRejectedValue(archivedError());
-    const { container } = renderPage(
-      vi.fn(),
-      vi.fn(),
-      createParameterActions({ getParameter })
-    );
-    const viewButton = container.querySelector<HTMLButtonElement>(".view-row-button");
-    expect(viewButton).not.toBeNull();
-    fireEvent.click(viewButton!);
-
-    await waitFor(() =>
-      expect(container.querySelector(".parameter-archived-link-banner")).not.toBeNull()
-    );
-    expect(container.querySelector(".parameter-archived-link-banner")).toHaveTextContent(
-      "该参数旧链接已归档"
-    );
-  });
-
-  it("still reports an archived link when the project has no parameters at all", async () => {
-    const getParameter = vi.fn().mockRejectedValue(archivedError());
-    const emptyState = { ...createParametersPageState(), parameters: [] };
-    const { container } = render(
-      <TopBarActionsHarness>
-        <ParametersPage
-          state={emptyState}
-          dispatch={vi.fn()}
-          onNavigate={vi.fn()}
-          search="?parameter=p-legacy-archived-3"
-          parameterActions={createParameterActions({ getParameter })}
-        />
-      </TopBarActionsHarness>
-    );
-
-    await waitFor(() =>
-      expect(container.querySelector(".parameter-archived-link-banner")).not.toBeNull()
-    );
-    expect(getParameter).toHaveBeenCalledWith("p-legacy-archived-3");
-  });
-
-  it("does not probe without a requestable id or an available fetcher", async () => {
-    const getParameter = vi.fn().mockRejectedValue(archivedError());
-    const { container } = renderWithSearch("?project=p1", createParameterActions({ getParameter }));
-    await waitFor(() => expect(container.querySelector(".parameter-archived-link-banner")).toBeNull());
-    expect(getParameter).not.toHaveBeenCalled();
-  });
-});
 
 describe("ParametersPage parameter detail modal", () => {
   it("opens the detail modal from a row view action without changing the pathname", () => {

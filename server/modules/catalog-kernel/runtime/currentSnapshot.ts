@@ -51,7 +51,6 @@ import type {
 } from "../interface";
 import {
   DriverCompatible,
-  NormalizedConfigurationSchemaId,
   NormalizedNodeTypeName,
   PropertyKey as toPropertyKey,
 } from "../interface";
@@ -75,10 +74,7 @@ type SubjectRow = {
   canonical_key: string;
   lifecycle: SubjectLifecycle;
   selector_snapshot: {
-    kind:
-      | "driver-compatible"
-      | "node-type-name"
-      | "configuration-schema-id";
+    kind: "driver-compatible" | "node-type-name";
     values?: string[];
     value?: string;
   };
@@ -88,10 +84,7 @@ type SubjectRow = {
 type AliasRow = {
   id: string;
   subject_id: string;
-  selector_kind:
-    | "driver-compatible"
-    | "node-type-name"
-    | "configuration-schema-id";
+  selector_kind: "driver-compatible" | "node-type-name";
   normalized_selector: string;
   lifecycle: SubjectLifecycle;
   tombstone_provenance: { reason?: string } | null;
@@ -141,10 +134,7 @@ const catalogDefinitionRelation = `parameter_catalog.${["parameter", "definition
 const mapContent = (raw: Record<string, unknown>): DefinitionContent => {
   const matching = (raw.matching ?? {}) as {
     sourceProperty?: string;
-    selectorKind?:
-      | "driver-compatible"
-      | "node-type-name"
-      | "configuration-schema-id";
+    selectorKind?: "driver-compatible" | "node-type-name";
     notes?: string;
   };
   const unit = typeof raw.unit === "string" ? raw.unit : undefined;
@@ -902,15 +892,10 @@ const loadProjection = async (
             kind: "driver-compatible" as const,
             values: (subject.selector_snapshot.values ?? []).map(DriverCompatible),
           }
-        : subject.selector_snapshot.kind === "node-type-name"
-          ? {
-              kind: "node-type-name" as const,
-              value: NormalizedNodeTypeName(subject.selector_snapshot.value ?? ""),
-            }
-          : {
-              kind: "configuration-schema-id" as const,
-              value: NormalizedConfigurationSchemaId(subject.selector_snapshot.value ?? ""),
-            };
+        : {
+            kind: "node-type-name" as const,
+            value: NormalizedNodeTypeName(subject.selector_snapshot.value ?? ""),
+          };
     const subjectAliases: SubjectAliasSnapshot[] = aliases.rows
       .filter((alias) => alias.subject_id === subject.id)
       .map((alias) => ({
@@ -922,15 +907,10 @@ const loadProjection = async (
                 kind: "driver-compatible" as const,
                 value: DriverCompatible(alias.normalized_selector),
               }
-            : alias.selector_kind === "node-type-name"
-              ? {
-                  kind: "node-type-name" as const,
-                  value: NormalizedNodeTypeName(alias.normalized_selector),
-                }
-              : {
-                  kind: "configuration-schema-id" as const,
-                  value: NormalizedConfigurationSchemaId(alias.normalized_selector),
-                },
+            : {
+                kind: "node-type-name" as const,
+                value: NormalizedNodeTypeName(alias.normalized_selector),
+              },
         membership: {
           release: identity,
           lifecycle: alias.lifecycle,

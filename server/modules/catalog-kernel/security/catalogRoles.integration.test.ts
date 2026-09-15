@@ -36,7 +36,6 @@ import {
   PUBLICATION_ACTIVATION_MIGRATION,
   PUBLICATION_RUNTIME_MIGRATION,
   DEFINITION_REPLACEMENT_MIGRATION,
-  CONFIGURATION_SCHEMA_MIGRATION,
   PUBLICATION_MIGRATION,
   ROLES_MIGRATION,
   SCHEMA_MIGRATION,
@@ -1222,9 +1221,6 @@ describe("0138 Catalog role migration paths", () => {
         });
         await applyMigrations(db, migrationsDir, {
           through: DEFINITION_REPLACEMENT_MIGRATION,
-        });
-        await applyMigrations(db, migrationsDir, {
-          through: CONFIGURATION_SCHEMA_MIGRATION,
         });
         upgrade = await aclFingerprint(db);
       },
