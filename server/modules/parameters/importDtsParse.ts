@@ -1,6 +1,7 @@
 import { parseDts, resolveDts } from "../dts";
 import { nodePathToParameterIdentity } from "./pathMapper";
 import { ApiError } from "../../shared/http/errors";
+import { refuseDeferredProjectSourceFormat } from "../parameter-files/service";
 
 export type DtsImportParseRow = {
   name: string;
@@ -37,11 +38,15 @@ function sourceNodePathFor(nodePath: string, propertyName: string): string {
 /**
  * Parse a full DTS source into import preview rows using the server CST resolver.
  * `/include/` is not a hard reject here — config-set resolution owns include diagnostics.
+ *
+ * The source name is checked first with the shared deferred-format decision: a YAML/TOML/ENV
+ * file is refused with `UNSUPPORTED_FORMAT` instead of being attempt-parsed as DTS.
  */
 export function parseDtsImportSource(
   input: ParseDtsImportSourceInput,
   options: { maxContentBytes?: number } = {}
 ): DtsImportParseResult {
+  refuseDeferredProjectSourceFormat(input.sourceName);
   const maxBytes = options.maxContentBytes ?? DEFAULT_MAX_CONTENT_BYTES;
   const byteLength = Buffer.byteLength(input.content, "utf8");
   if (byteLength > maxBytes) {

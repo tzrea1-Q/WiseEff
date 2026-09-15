@@ -24,7 +24,7 @@ import type {
   ReleaseArtifactRecord,
 } from "../persistence/types";
 
-export const CATALOG_CAPABILITY_CONTRACT_REVISION = "catalog-capability/v2" as const;
+export const CATALOG_CAPABILITY_CONTRACT_REVISION = "catalog-capability/v3" as const;
 export const CATALOG_CAPABILITY_ALLOW_LIST_ID = "page-historical-definition-content" as const;
 
 export const M1_VALUE_SCHEMA_TYPES = [
@@ -119,10 +119,13 @@ export type DriverCardinality = "multiple" | "singleton-per-project";
 
 export type CreateSubjectWithDefinitionsChange = {
   readonly op: "create-subject-with-definitions";
-  readonly kind: "driver" | "node-type";
+  readonly kind: "driver" | "node-type" | "configuration-schema";
   readonly canonicalKey: string;
   readonly selector: {
-    readonly kind: "driver-compatible" | "node-type-name";
+    readonly kind:
+      | "driver-compatible"
+      | "node-type-name"
+      | "configuration-schema-id";
     readonly value: string;
   };
   readonly nature?: DriverNature;
@@ -310,7 +313,10 @@ export type MatcherImpactFacts = {
     readonly subjectId: string;
     readonly propertyKey: string;
     readonly sourceProperty: string;
-    readonly selectorKind: "driver-compatible" | "node-type-name";
+    readonly selectorKind:
+      | "driver-compatible"
+      | "node-type-name"
+      | "configuration-schema-id";
   }[];
 };
 

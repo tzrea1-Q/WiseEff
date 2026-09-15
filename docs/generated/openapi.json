@@ -5833,6 +5833,430 @@
         }
       }
     },
+    "/api/v2/projects/{projectId}/parameter-value-drafts": {
+      "get": {
+        "operationId": "parameterTopology.listProjectValueDrafts",
+        "summary": "List the calling user's pending canonical value drafts for a project",
+        "tags": [
+          "parameters"
+        ],
+        "parameters": [
+          {
+            "name": "projectId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectValueDraftListResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "404": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
+    "/api/v2/projects/{projectId}/parameter-value-drafts/{draftId}": {
+      "delete": {
+        "operationId": "parameterTopology.removeProjectValueDraft",
+        "summary": "Remove one pending canonical value draft",
+        "tags": [
+          "parameters"
+        ],
+        "parameters": [
+          {
+            "name": "projectId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "draftId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectValueDraftRemovedResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "404": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
+    "/api/v2/projects/{projectId}/parameter-bindings/{bindingId}/change-history": {
+      "get": {
+        "operationId": "parameterTopology.getBindingChangeHistory",
+        "summary": "Read canonical binding change history with exact value and revision pins",
+        "tags": [
+          "parameters"
+        ],
+        "parameters": [
+          {
+            "name": "projectId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "bindingId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BindingChangeHistoryListResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "404": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
+    "/api/v2/projects/{projectId}/parameter-bindings/{bindingId}/export": {
+      "get": {
+        "operationId": "parameterTopology.exportProjectBinding",
+        "summary": "Export the exact canonical project-source bytes for a binding's pinned revision",
+        "tags": [
+          "parameters"
+        ],
+        "parameters": [
+          {
+            "name": "projectId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "bindingId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BindingExportResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "404": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "409": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
+    "/api/v2/projects/{projectId}/parameter-value-drafts/{draftId}/submit": {
+      "post": {
+        "operationId": "parameterTopology.submitProjectValueChangeRequest",
+        "summary": "Freeze a pending canonical value draft into a reviewable change request",
+        "tags": [
+          "parameters"
+        ],
+        "parameters": [
+          {
+            "name": "projectId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "draftId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SubmitProjectValueChangeRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectValueChangeRequestResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "404": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "409": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
+    "/api/v2/projects/{projectId}/parameter-value-change-requests": {
+      "get": {
+        "operationId": "parameterTopology.listProjectValueChangeRequests",
+        "summary": "List canonical value change requests for a project",
+        "tags": [
+          "parameters"
+        ],
+        "parameters": [
+          {
+            "name": "projectId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectValueChangeRequestListResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "404": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
+    "/api/v2/projects/{projectId}/parameter-value-change-requests/{requestId}/review": {
+      "post": {
+        "operationId": "parameterTopology.reviewProjectValueChangeRequest",
+        "summary": "Approve (apply) or reject one pending canonical value change request",
+        "tags": [
+          "parameters"
+        ],
+        "parameters": [
+          {
+            "name": "projectId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "requestId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReviewProjectValueChangeRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectValueChangeRequestResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "404": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "409": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
+    "/api/v2/projects/{projectId}/parameter-value-change-requests/{requestId}/withdraw": {
+      "post": {
+        "operationId": "parameterTopology.withdrawProjectValueChangeRequest",
+        "summary": "Withdraw one pending canonical value change request as its submitter",
+        "tags": [
+          "parameters"
+        ],
+        "parameters": [
+          {
+            "name": "projectId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "requestId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectValueChangeRequestResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "404": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "409": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
     "/api/v2/catalog": {
       "get": {
         "operationId": "catalog.get",
@@ -5915,7 +6339,8 @@
               "type": "string",
               "enum": [
                 "driver",
-                "node-type"
+                "node-type",
+                "configuration-schema"
               ]
             }
           },
@@ -17038,6 +17463,12 @@
               },
               "targetValue": {
                 "type": "string"
+              },
+              "reason": {
+                "type": "string"
+              },
+              "updatedAt": {
+                "type": "string"
               }
             },
             "required": [
@@ -17046,7 +17477,9 @@
               "definitionId",
               "effectiveRevisionId",
               "currentValueId",
-              "targetValue"
+              "targetValue",
+              "reason",
+              "updatedAt"
             ],
             "additionalProperties": false
           }
@@ -17123,6 +17556,514 @@
         ],
         "additionalProperties": false,
         "x-wiseeff-schema": "NodeEnablementDraftResponse"
+      },
+      "ProjectValueDraftListResponse": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "bindingId": {
+                  "type": "string"
+                },
+                "definitionId": {
+                  "type": "string"
+                },
+                "effectiveRevisionId": {
+                  "type": "string"
+                },
+                "currentValueId": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "targetValue": {
+                  "type": "string"
+                },
+                "reason": {
+                  "type": "string"
+                },
+                "updatedAt": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "bindingId",
+                "definitionId",
+                "effectiveRevisionId",
+                "currentValueId",
+                "targetValue",
+                "reason",
+                "updatedAt"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "additionalProperties": false,
+        "x-wiseeff-schema": "ProjectValueDraftListResponse"
+      },
+      "ProjectValueDraftRemovedResponse": {
+        "type": "object",
+        "properties": {
+          "item": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "id"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "item"
+        ],
+        "additionalProperties": false,
+        "x-wiseeff-schema": "ProjectValueDraftRemovedResponse"
+      },
+      "BindingChangeHistoryListResponse": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "bindingId": {
+                  "type": "string"
+                },
+                "definitionId": {
+                  "type": "string"
+                },
+                "oldDefinitionRevisionId": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "newDefinitionRevisionId": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "oldCurrentValueId": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "newCurrentValueId": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "reason": {
+                  "type": "string"
+                },
+                "successAuditRef": {
+                  "type": "string"
+                },
+                "catalogReleaseId": {
+                  "type": "string"
+                },
+                "createdAt": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "bindingId",
+                "definitionId",
+                "oldDefinitionRevisionId",
+                "newDefinitionRevisionId",
+                "oldCurrentValueId",
+                "newCurrentValueId",
+                "reason",
+                "successAuditRef",
+                "catalogReleaseId",
+                "createdAt"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "additionalProperties": false,
+        "x-wiseeff-schema": "BindingChangeHistoryListResponse"
+      },
+      "BindingExportResponse": {
+        "type": "object",
+        "properties": {
+          "item": {
+            "type": "object",
+            "properties": {
+              "bindingId": {
+                "type": "string"
+              },
+              "projectId": {
+                "type": "string"
+              },
+              "definitionId": {
+                "type": "string"
+              },
+              "definitionRevisionId": {
+                "type": "string"
+              },
+              "catalogReleaseId": {
+                "type": "string"
+              },
+              "configRevisionId": {
+                "type": "string"
+              },
+              "currentValueId": {
+                "type": "string"
+              },
+              "configSetId": {
+                "type": "string"
+              },
+              "sourceRef": {
+                "type": "string"
+              },
+              "files": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "name": {
+                      "type": "string"
+                    },
+                    "format": {
+                      "type": "string",
+                      "enum": [
+                        "dts",
+                        "json"
+                      ]
+                    },
+                    "versionNumber": {
+                      "type": "number"
+                    },
+                    "content": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "name",
+                    "format",
+                    "versionNumber",
+                    "content"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            },
+            "required": [
+              "bindingId",
+              "projectId",
+              "definitionId",
+              "definitionRevisionId",
+              "catalogReleaseId",
+              "configRevisionId",
+              "currentValueId",
+              "configSetId",
+              "sourceRef",
+              "files"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "item"
+        ],
+        "additionalProperties": false,
+        "x-wiseeff-schema": "BindingExportResponse"
+      },
+      "SubmitProjectValueChangeRequest": {
+        "type": "object",
+        "properties": {
+          "assignedToUserId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "additionalProperties": false,
+        "x-wiseeff-schema": "SubmitProjectValueChangeRequest"
+      },
+      "ProjectValueChangeRequestResponse": {
+        "type": "object",
+        "properties": {
+          "item": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "projectId": {
+                "type": "string"
+              },
+              "draftId": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "bindingId": {
+                "type": "string"
+              },
+              "definitionId": {
+                "type": "string"
+              },
+              "effectiveRevisionId": {
+                "type": "string"
+              },
+              "status": {
+                "type": "string",
+                "enum": [
+                  "pending",
+                  "approved",
+                  "rejected",
+                  "withdrawn"
+                ]
+              },
+              "targetValue": {
+                "type": "string"
+              },
+              "reason": {
+                "type": "string"
+              },
+              "submitterUserId": {
+                "type": "string"
+              },
+              "assignedToUserId": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "reviewerUserId": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "reviewerNote": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "appliedValueId": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "applyOutcome": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "enum": [
+                  "committed",
+                  "replayed"
+                ]
+              },
+              "createdAt": {
+                "type": "string"
+              },
+              "updatedAt": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "projectId",
+              "draftId",
+              "bindingId",
+              "definitionId",
+              "effectiveRevisionId",
+              "status",
+              "targetValue",
+              "reason",
+              "submitterUserId",
+              "assignedToUserId",
+              "reviewerUserId",
+              "reviewerNote",
+              "appliedValueId",
+              "applyOutcome",
+              "createdAt",
+              "updatedAt"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "item"
+        ],
+        "additionalProperties": false,
+        "x-wiseeff-schema": "ProjectValueChangeRequestResponse"
+      },
+      "ProjectValueChangeRequestListResponse": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "projectId": {
+                  "type": "string"
+                },
+                "draftId": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "bindingId": {
+                  "type": "string"
+                },
+                "definitionId": {
+                  "type": "string"
+                },
+                "effectiveRevisionId": {
+                  "type": "string"
+                },
+                "status": {
+                  "type": "string",
+                  "enum": [
+                    "pending",
+                    "approved",
+                    "rejected",
+                    "withdrawn"
+                  ]
+                },
+                "targetValue": {
+                  "type": "string"
+                },
+                "reason": {
+                  "type": "string"
+                },
+                "submitterUserId": {
+                  "type": "string"
+                },
+                "assignedToUserId": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "reviewerUserId": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "reviewerNote": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "appliedValueId": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "applyOutcome": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "enum": [
+                    "committed",
+                    "replayed"
+                  ]
+                },
+                "createdAt": {
+                  "type": "string"
+                },
+                "updatedAt": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "projectId",
+                "draftId",
+                "bindingId",
+                "definitionId",
+                "effectiveRevisionId",
+                "status",
+                "targetValue",
+                "reason",
+                "submitterUserId",
+                "assignedToUserId",
+                "reviewerUserId",
+                "reviewerNote",
+                "appliedValueId",
+                "applyOutcome",
+                "createdAt",
+                "updatedAt"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "additionalProperties": false,
+        "x-wiseeff-schema": "ProjectValueChangeRequestListResponse"
+      },
+      "ReviewProjectValueChangeRequest": {
+        "type": "object",
+        "properties": {
+          "decision": {
+            "type": "string",
+            "enum": [
+              "approve",
+              "reject"
+            ]
+          },
+          "note": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "decision"
+        ],
+        "additionalProperties": false,
+        "x-wiseeff-schema": "ReviewProjectValueChangeRequest"
       },
       "LogFileUploadRequest": {
         "type": "object",
@@ -22141,7 +23082,8 @@
                   "type": "string",
                   "enum": [
                     "driver",
-                    "node-type"
+                    "node-type",
+                    "configuration-schema"
                   ]
                 },
                 "canonicalName": {
@@ -22342,7 +23284,8 @@
                 "type": "string",
                 "enum": [
                   "driver",
-                  "node-type"
+                  "node-type",
+                  "configuration-schema"
                 ]
               },
               "canonicalName": {
@@ -22519,7 +23462,8 @@
                       "type": "string",
                       "enum": [
                         "driver",
-                        "node-type"
+                        "node-type",
+                        "configuration-schema"
                       ]
                     },
                     "canonicalName": {
@@ -22823,7 +23767,8 @@
                     "type": "string",
                     "enum": [
                       "driver",
-                      "node-type"
+                      "node-type",
+                      "configuration-schema"
                     ]
                   },
                   "canonicalName": {

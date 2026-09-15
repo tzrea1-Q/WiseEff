@@ -20,6 +20,7 @@ import type {
 } from "@/domain/parameters/types";
 import type { WiseEffRuntimeMode } from "@/infrastructure/http/runtimeMode";
 import { WiseEffApiError } from "@/infrastructure/http/apiClient";
+import { archivedParameterLinkNotice } from "@/domain/parameters/archivedLink";
 import { toUserErrorMessage } from "@/infrastructure/http/userErrorMessage";
 
 export const parameterRuntimeFailureNotification = "参数操作未完成，请稍后重试。";
@@ -227,6 +228,13 @@ export function createParameterRuntimeActions({
       try {
         return await requireRepository(repository).getParameter(parameterId);
       } catch (error) {
+        // An archived old link is a documented outcome, not a runtime failure.
+        // Rethrowing it unchanged keeps the archived classification available to
+        // the surface that renders the notice, and avoids a misleading failure
+        // notification for a record the Catalog deliberately archived.
+        if (archivedParameterLinkNotice(parameterId, error)) {
+          throw error;
+        }
         const message = formatParameterRuntimeError(error);
         notifyFailure(dispatch, {}, message);
         throw new Error(message);

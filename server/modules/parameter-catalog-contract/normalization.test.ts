@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   canonicalIdentityFailureReasons,
   parseCanonicalCompatibleSelector,
+  parseCanonicalConfigurationSchemaId,
   parseCanonicalNodeName,
   parseCanonicalPropertyKey,
   type CanonicalIdentityFailureReason,
@@ -156,5 +157,65 @@ describe("canonical parameter identity parsing", () => {
     expect(rejectPropertyKey("bad/property")).toBe("invalid-syntax");
     expect(rejectPropertyKey("bad\tkey")).toBe("control-character");
     expect(rejectPropertyKey("'STATUS'")).toBe("quoted-source-token");
+  });
+});
+
+describe("governed configuration model identifier", () => {
+  it("accepts an explicit namespaced model identifier", () => {
+    for (const value of [
+      "wiseeff.charger.cv",
+      "acme/battery-thermal-v2",
+      "vendor_charger_v2",
+      "ChargerCvV2"
+    ]) {
+      const parsed = parseCanonicalConfigurationSchemaId(value);
+      expect(parsed.ok, value).toBe(true);
+    }
+  });
+
+  it.each([
+    "charge.dts",
+    "overlay.dtsi",
+    "model.yaml",
+    "model.yml",
+    "params.toml",
+    "settings.json",
+    "charger.csv",
+    "book.xlsx",
+    "legacy.ini",
+    "firmware.bin",
+    "notes.txt",
+    "config.xml",
+    "runtime.conf",
+    ".env",
+    "sub/dir/config.env"
+  ])("refuses the filename or extension shape %s", (value) => {
+    // A filename, extension or uploaded declaration can never allocate a governed
+    // model identity (Issue #849 T4).
+    const parsed = parseCanonicalConfigurationSchemaId(value);
+    expect(parsed.ok, value).toBe(false);
+  });
+
+  it.each([
+    ["driver,compatible", "invalid-syntax"],
+    ["chip@0", "unit-address-present"],
+    ["wild*card", "wildcard-forbidden"],
+    ["", "empty"],
+    [" leading", "surrounding-whitespace"],
+    ["tab\tinside", "control-character"],
+    ["café.model", "non-ascii"],
+    [" quoted.model ", "surrounding-whitespace"],
+    ["\"quoted.model\"", "quoted-source-token"]
+  ])("refuses %s with %s", (value, reason) => {
+    const parsed = parseCanonicalConfigurationSchemaId(value);
+    expect(parsed.ok).toBe(false);
+    if (!parsed.ok) expect(parsed.error).toBe(reason);
+  });
+
+  it("never accepts a driver compatible list as a model identifier", () => {
+    // The two namespaces must stay disjoint by construction.
+    const compatibleList = parseCanonicalCompatibleSelector("acme,power");
+    expect(compatibleList.ok).toBe(true);
+    expect(parseCanonicalConfigurationSchemaId("acme,power").ok).toBe(false);
   });
 });

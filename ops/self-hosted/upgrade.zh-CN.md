@@ -19,7 +19,7 @@ API 镜像必须包含 `scripts/compile-vendor-catalog-release.ts`，以及 `scr
   npx tsx scripts/compile-vendor-catalog-release.ts --out /tmp/vendor-catalog-successor.json
 ```
 
-编译器必须打印 `releaseId=crel_vendor_catalog_1` 且 digest 为 `sha256:efc5336e625f0eb6f994223a5f67a57b119e92bda2edb5c209fc901284f126c7`。digest 不同即停止：厂商 YAML 或编译器已漂移，禁止安装。
+编译器必须打印 `releaseId=crel_vendor_catalog_1` 且 digest 为 `sha256:5f0e7bcd6c537f3a0574dc5541e1199f5537061bef4ad5551ec4f5e9565bec64`。digest 不同即停止：厂商 YAML 或编译器已漂移，禁止安装。
 
 ```bash
 ./scripts/compose --env-file .env exec api \
@@ -27,16 +27,18 @@ API 镜像必须包含 `scripts/compile-vendor-catalog-release.ts`，以及 `scr
     --mode advance \
     --expected-current-id crel_acme_1 \
     --expected-current-digest sha256:365305492cf3fddb973b65268d1c7b8c60715240e9fd2dac05aa9091f0c38044 \
-    --confirm-digest sha256:efc5336e625f0eb6f994223a5f67a57b119e92bda2edb5c209fc901284f126c7
+    --confirm-digest sha256:5f0e7bcd6c537f3a0574dc5541e1199f5537061bef4ad5551ec4f5e9565bec64
 
 ./scripts/compose --env-file .env restart api worker
 ```
 
 同一命令因丢失响应而重试时返回 `already-current`。当前指针不是带该 digest 的 `crel_acme_1` 时拒绝。重启后 Catalog 应列出 114 条定义，并仍包含原来的 `iin_max`。
 
+该 advance 同时**退役 acme 样例**：`csub_acme_power` 与别名 `cali_acme_power_v1` 携带 tombstone 进入 `crel_vendor_catalog_1`（`reason=acme-sample-retired`，且不含后继主体，因为 acme 从未演化为同名真实厂商主体），而 `crel_acme_1` 中两者仍为 `active`。advance 之后，运行时解析 `acme,power` 返回 `retired` 而非实时匹配。这是预期行为，也是本 runbook 的 pin digest 从早先的 `sha256:efc5336e…` 变更的原因。编译器计数仍为 48 subjects / 1 alias / 114 definitions，因为被退役成员仍是被保留成员。
+
 上述厂商 `advance` 命令**不是**发布控制面的采集、接管、在线发布或恢复入口。采集只使用 `scripts/inspect-catalog-publication-baseline.ts` 且仅读取 `CATALOG_BASELINE_READONLY_DATABASE_URL`。接管使用 `npx tsx scripts/catalog-publication-ops.ts adopt --check|--execute`（封装 `adoptPreexistingCatalog`），不移动指针。在线发布属于 CP-07，默认关闭，直到隔离策略启用。见 [catalog-publication.zh-CN.md](catalog-publication.zh-CN.md)。恢复仍走升级 recovery 路径。禁止用一个带危险默认值的脚本覆盖这四类操作。首次启用在线发布前清退旧 API/worker 镜像属于 CP-12。
 
-`scripts/compile-vendor-catalog-release.ts` 仍是冻结的 D1 编译器，用于 `crel_acme_1` 的后继 `crel_vendor_catalog_1`（`sha256:efc5336e625f0eb6f994223a5f67a57b119e92bda2edb5c209fc901284f126c7`）。它不是后续 vendor 导入的生产身份规则。实例一旦在 `parameter_catalog.catalog_activation_receipts` 中存在任何行（在线发布、接管或 bootstrap Receipt），`install-catalog-release.ts` 的 bootstrap/advance 都会被拒绝（`catalog-install-publication-regime-required`），即使 `publication_enabled` 为 false。Receipt 表仍为空的未接管实例保留历史 D1 bootstrap/advance 合同；不能据此声称 D2 完成。之后的 vendor 复用必须走 CP-09 adapter（`server/modules/catalog-publication/import/`）和 CP-07 授权/任务/manager 路径。不存在 `--skipAuthorization` 开关。
+`scripts/compile-vendor-catalog-release.ts` 仍是冻结的 D1 编译器，用于 `crel_acme_1` 的后继 `crel_vendor_catalog_1`（`sha256:5f0e7bcd6c537f3a0574dc5541e1199f5537061bef4ad5551ec4f5e9565bec64`）。它不是后续 vendor 导入的生产身份规则。实例一旦在 `parameter_catalog.catalog_activation_receipts` 中存在任何行（在线发布、接管或 bootstrap Receipt），`install-catalog-release.ts` 的 bootstrap/advance 都会被拒绝（`catalog-install-publication-regime-required`），即使 `publication_enabled` 为 false。Receipt 表仍为空的未接管实例保留历史 D1 bootstrap/advance 合同；不能据此声称 D2 完成。之后的 vendor 复用必须走 CP-09 adapter（`server/modules/catalog-publication/import/`）和 CP-07 授权/任务/manager 路径。不存在 `--skipAuthorization` 开关。
 
 ## 最小参数初始化候选
 

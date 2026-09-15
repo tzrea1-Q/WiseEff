@@ -60,6 +60,13 @@ import {
   parameterCatalogClientMethodByRouteId,
   parameterCatalogLegacyWriteRouteIds,
   projectParameterBindingListResponseSchema,
+  projectValueDraftListResponseSchema,
+  projectValueDraftRemovedResponseSchema,
+  catalogSubmitValueChangeRequestSchema,
+  catalogReviewValueChangeRequestSchema,
+  catalogValueChangeRequestListResponseSchema,
+  catalogValueChangeRequestResponseSchema,
+  catalogBindingChangeHistoryListResponseSchema,
   type CatalogApiFailureReason,
   type CatalogFailureClientBehavior,
   type ParameterCatalogCanonicalRouteId
@@ -578,6 +585,92 @@ export function createParameterCatalogClient(options: CatalogClientOptions = {})
         appendQuery(`/api/v2/projects/${encodeURIComponent(projectId)}/parameter-bindings`, query),
         projectParameterBindingListResponseSchema,
         "ProjectParameterBindingListResponse"
+      ),
+    listProjectValueDrafts: (projectId: string) =>
+      request(
+        "GET",
+        `/api/v2/projects/${encodeURIComponent(projectId)}/parameter-value-drafts`,
+        projectValueDraftListResponseSchema,
+        "ProjectValueDraftListResponse"
+      ),
+    /**
+     * Canonical pending-draft removal. The legacy `DELETE /api/v1/parameter-drafts/:id`
+     * targets a different table, so a tray that removed a canonical draft through it
+     * silently left the draft alive on the server.
+     */
+    /**
+     * The route enforces auth and project edit permission but no catalog-release or
+     * idempotency header (unlike the publication routes), so the context is optional
+     * and the request layer simply omits the headers when it is absent.
+     */
+    deleteProjectValueDraft: (
+      projectId: string,
+      draftId: string,
+      context: Partial<CatalogWriteContext> = {}
+    ) =>
+      request(
+        "DELETE",
+        `/api/v2/projects/${encodeURIComponent(projectId)}/parameter-value-drafts/${encodeURIComponent(draftId)}`,
+        projectValueDraftRemovedResponseSchema,
+        "ProjectValueDraftRemovedResponse",
+        { context }
+      ),
+    submitProjectValueDraft: (
+      projectId: string,
+      draftId: string,
+      body: { assignedToUserId?: string | null } = {},
+      context: CatalogWriteContext
+    ) =>
+      request(
+        "POST",
+        `/api/v2/projects/${encodeURIComponent(projectId)}/parameter-value-drafts/${encodeURIComponent(draftId)}/submit`,
+        catalogValueChangeRequestResponseSchema,
+        "ProjectValueChangeRequestResponse",
+        { body: catalogSubmitValueChangeRequestSchema.parse(body), context }
+      ),
+    listProjectValueChangeRequests: (projectId: string, query?: { status?: string }) =>
+      request(
+        "GET",
+        appendQuery(
+          `/api/v2/projects/${encodeURIComponent(projectId)}/parameter-value-change-requests`,
+          query as CatalogListQuery | undefined
+        ),
+        catalogValueChangeRequestListResponseSchema,
+        "ProjectValueChangeRequestListResponse"
+      ),
+    reviewProjectValueChangeRequest: (
+      projectId: string,
+      requestId: string,
+      body: { decision: "approve" | "reject"; note?: string | null },
+      context: CatalogWriteContext
+    ) =>
+      request(
+        "POST",
+        `/api/v2/projects/${encodeURIComponent(projectId)}/parameter-value-change-requests/${encodeURIComponent(requestId)}/review`,
+        catalogValueChangeRequestResponseSchema,
+        "ProjectValueChangeRequestResponse",
+        { body: catalogReviewValueChangeRequestSchema.parse(body), context }
+      ),
+    withdrawProjectValueChangeRequest: (
+      projectId: string,
+      requestId: string,
+      context: CatalogWriteContext
+    ) =>
+      request(
+        "POST",
+        `/api/v2/projects/${encodeURIComponent(projectId)}/parameter-value-change-requests/${encodeURIComponent(requestId)}/withdraw`,
+        catalogValueChangeRequestResponseSchema,
+        "ProjectValueChangeRequestResponse",
+        { context }
+      ),
+    getCanonicalBindingChangeHistory: (projectId: string, bindingId: string, limit?: number) =>
+      request(
+        "GET",
+        `/api/v2/projects/${encodeURIComponent(projectId)}/parameter-bindings/${encodeURIComponent(bindingId)}/change-history${
+          limit === undefined ? "" : `?limit=${encodeURIComponent(String(limit))}`
+        }`,
+        catalogBindingChangeHistoryListResponseSchema,
+        "BindingChangeHistoryListResponse"
       ),
     getBindingHistory: (projectId: string, bindingId: string, query?: CatalogListQuery) =>
       request(
