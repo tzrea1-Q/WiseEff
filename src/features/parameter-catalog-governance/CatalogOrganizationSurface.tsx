@@ -15,7 +15,6 @@ import { DefinitionCorrectionDialog } from "./DefinitionCorrectionDialog";
 import { DefinitionLifecycleDialog, type DefinitionLifecycleIntent } from "./DefinitionLifecycleDialog";
 
 import { createGovernanceIdempotencyKey } from "./governanceState";
-import { ProposalPanel } from "./ProposalPanel";
 import { PublicationDialog } from "./PublicationDialog";
 import {
   publicationSurfaceAllowsAuthoring,
@@ -26,10 +25,7 @@ import {
 } from "./publicationSurface";
 import { RegistrationDialog } from "./RegistrationDialog";
 import { ReviewQueue } from "./ReviewQueue";
-import type {
-  CatalogDefinitionResponse,
-  CatalogPublicationJobResponse
-} from "@/infrastructure/http/parameterCatalogDtos";
+import type { CatalogDefinitionResponse } from "@/infrastructure/http/parameterCatalogDtos";
 
 export type CatalogOrganizationSurfaceProps = {
   catalog: ParameterCatalogRepository;
@@ -62,7 +58,6 @@ export function CatalogOrganizationSurface({
   const [surfaceEpoch, setSurfaceEpoch] = useState(0);
   const [publicationSurface, setPublicationSurface] = useState<PublicationSurfaceItem | null>(null);
   const [publicationSurfaceLoad, setPublicationSurfaceLoad] = useState<"loading" | "ready" | "error">("loading");
-  const [publicationHistory, setPublicationHistory] = useState<CatalogPublicationJobResponse["item"][]>([]);
   const [lifecycle, setLifecycle] = useState<{
     intent: DefinitionLifecycleIntent;
     definition: CatalogDefinitionResponse["item"];
@@ -72,9 +67,6 @@ export function CatalogOrganizationSurface({
   const subjectId = anchor.subjectId ?? "";
   const [catalogSubjects, setCatalogSubjects] = useState<
     Awaited<ReturnType<ParameterCatalogRepository["listSubjects"]>>["items"]
-  >([]);
-  const [replacementHistory, setReplacementHistory] = useState<
-    Awaited<ReturnType<ParameterCatalogRepository["listDefinitionReplacements"]>>["items"]
   >([]);
 
   const handleAction = useCallback(
@@ -96,18 +88,13 @@ export function CatalogOrganizationSurface({
     let cancelled = false;
     void (async () => {
       try {
-        const [listed, replacements] = await Promise.all([
-          catalog.listSubjects({ limit: 100 }),
-          catalog.listDefinitionReplacements({ limit: 100 })
-        ]);
+        const listed = await catalog.listSubjects({ limit: 100 });
         if (!cancelled) {
           setCatalogSubjects([...listed.items]);
-          setReplacementHistory([...replacements.items]);
         }
       } catch {
         if (!cancelled) {
           setCatalogSubjects([]);
-          setReplacementHistory([]);
         }
       }
     })();
@@ -121,13 +108,9 @@ export function CatalogOrganizationSurface({
     let cancelled = false;
     void (async () => {
       try {
-        const [surface, history] = await Promise.all([
-          catalog.getPublicationSurface(),
-          catalog.listPublications({ limit: 20 })
-        ]);
+        const surface = await catalog.getPublicationSurface();
         if (cancelled) return;
         setPublicationSurface(surface.item);
-        setPublicationHistory([...history.items]);
         setPublicationSurfaceLoad("ready");
       } catch {
         if (!cancelled) {
@@ -208,53 +191,6 @@ export function CatalogOrganizationSurface({
             onSelectReviewItem={handleSelectReviewItem}
             onRefreshEvidence={() => setSurfaceEpoch((value) => value + 1)}
           />
-          <ProposalPanel
-            actor={actor}
-            domainState={domainState}
-            repository={governance}
-            catalogReleaseId={catalogReleaseId}
-            currentPersonId={currentPersonId}
-            definitionId={anchor.definitionId ?? undefined}
-            createIdempotencyKey={createGovernanceIdempotencyKey}
-            onRefreshEvidence={async () => {
-              const current = await catalog.getCatalog();
-              if (current.item === null) return;
-              onAnchorChange(buildCatalogHref({ ...anchor, catalogReleaseId: current.item.catalogReleaseId }), "replace");
-              setSurfaceEpoch((value) => value + 1);
-            }}
-          />
-          {replacementHistory.length > 0 ? (
-            <section className="parameter-catalog__history" aria-label="身份纠错记录">
-              <h2>身份纠错记录</h2>
-              <ul>
-                {replacementHistory.map((replacement) => (
-                  <li key={replacement.id}>
-                    <code>{replacement.id}</code>
-                    <span>{replacement.status}</span>
-                    <span>{`${replacement.oldIdentity.propertyKey} → ${replacement.newIdentity.propertyKey}`}</span>
-                  </li>
-                ))}
-              </ul>
-            </section>
-          ) : null}
-          <section className="parameter-catalog__history" aria-label={publicationSurfaceCopy.history}>
-            <h2>{publicationSurfaceCopy.history}</h2>
-            {publicationHistory.length === 0 ? (
-              <p>{publicationSurfaceCopy.historyEmpty}</p>
-            ) : (
-              <ul>
-                {publicationHistory.map((job) => (
-                  <li key={job.id}>
-                    <code>{job.id}</code>
-                    <span>{job.status}</span>
-                    {job.currentness ? <span>{job.currentness}</span> : null}
-                    {job.effective ? <span>receipt</span> : null}
-                    {job.sourceKind ? <span>{job.sourceKind}</span> : null}
-                  </li>
-                ))}
-              </ul>
-            )}
-          </section>
         </div>
       ) : null}
       {organizationId &&

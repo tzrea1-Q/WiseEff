@@ -21,8 +21,6 @@ export function publicationSurfaceAllowsPublishing(
 
 export const publicationSurfaceCopy = {
   title: "发布状态",
-  history: "发布记录",
-  historyEmpty: "当前组织还没有可见的发布任务。",
   nextStep: "下一步",
   policyDisabled: "实例发布策略已关闭。日常编写入口仍可查看，但不能预览或发布。",
   frozen: "目录发布处于维护冻结。请等待解冻，不要在本页解除运维 freeze。",
