@@ -23,7 +23,10 @@ import {
   publicationSurfaceAdvisory,
   type PublicationSurfaceItem
 } from "./publicationSurface";
+import { catalogPendingWorkLabel } from "../parameter-catalog/copy";
 import { RegistrationDialog } from "./RegistrationDialog";
+import { ModalDialog } from "@/components/common/ModalDialog";
+
 import { ReviewQueue } from "./ReviewQueue";
 import type { CatalogDefinitionResponse } from "@/infrastructure/http/parameterCatalogDtos";
 
@@ -56,6 +59,7 @@ export function CatalogOrganizationSurface({
   const [action, setAction] = useState<CatalogAuthorizedAction | null>(null);
   const [actionRegistrationId, setActionRegistrationId] = useState<string | null>(null);
   const [surfaceEpoch, setSurfaceEpoch] = useState(0);
+  const [pendingWorkOpen, setPendingWorkOpen] = useState(false);
   const [publicationSurface, setPublicationSurface] = useState<PublicationSurfaceItem | null>(null);
   const [publicationSurfaceLoad, setPublicationSurfaceLoad] = useState<"loading" | "ready" | "error">("loading");
   const [lifecycle, setLifecycle] = useState<{
@@ -165,6 +169,7 @@ export function CatalogOrganizationSurface({
         onAnchorChange={onAnchorChange}
         onDomainStateChange={setDomainState}
         onAction={handleAction}
+        onOpenPendingWork={() => setPendingWorkOpen(true)}
         organizationId={organizationId}
         listReviewItems={
           organizationId ? (orgId, query) => governance.listReviewItems(orgId, query) : undefined
@@ -180,18 +185,30 @@ export function CatalogOrganizationSurface({
         }}
       />
       {domainState && catalogReleaseId && organizationId ? (
-        <div className="parameter-catalog__governance">
-          <ReviewQueue
-            actor={actor}
-            domainState={domainState}
-            repository={governance}
-            organizationId={organizationId}
-            catalogReleaseId={catalogReleaseId}
-            selectedReviewItemId={anchor.reviewItemId ?? undefined}
-            onSelectReviewItem={handleSelectReviewItem}
-            onRefreshEvidence={() => setSurfaceEpoch((value) => value + 1)}
-          />
-        </div>
+        <ModalDialog
+          open={pendingWorkOpen}
+          onDismiss={() => setPendingWorkOpen(false)}
+          className="confirm-dialog governance-confirm-dialog parameter-catalog__pending-dialog"
+          describedBy
+        >
+          {({ titleId, descriptionId }) => (
+            <>
+              <h2 id={titleId}>{catalogPendingWorkLabel}</h2>
+              <div id={descriptionId} className="confirm-dialog__scroll">
+                <ReviewQueue
+                  actor={actor}
+                  domainState={domainState}
+                  repository={governance}
+                  organizationId={organizationId}
+                  catalogReleaseId={catalogReleaseId}
+                  selectedReviewItemId={anchor.reviewItemId ?? undefined}
+                  onSelectReviewItem={handleSelectReviewItem}
+                  onRefreshEvidence={() => setSurfaceEpoch((value) => value + 1)}
+                />
+              </div>
+            </>
+          )}
+        </ModalDialog>
       ) : null}
       {organizationId &&
       catalogReleaseId &&

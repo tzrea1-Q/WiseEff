@@ -72,9 +72,7 @@ import {
   catalogPageLabel,
   catalogPageSizeLabel,
   catalogPaginationLabel,
-  catalogPendingWorkCloseLabel,
   catalogPendingWorkLabel,
-  catalogPendingWorkOpenLabel,
   catalogPreviousPageLabel,
   catalogRefreshLabel,
   catalogReleaseLabel,
@@ -101,6 +99,7 @@ export type CatalogPageProps = {
   search?: string;
   onAnchorChange?: (href: string, mode: "push" | "replace") => void;
   onDomainStateChange?: (state: CatalogDomainState) => void;
+  onOpenPendingWork?: () => void;
   onAction?: (
     action: CatalogAuthorizedAction,
     context?: { subjectId?: string | null; registrationId?: string | null }
@@ -197,6 +196,7 @@ export function CatalogPage({
   onAnchorChange,
   onDomainStateChange,
   onAction,
+  onOpenPendingWork,
   onDefinitionCommand,
   definitionAuthoringAllowed = false,
   definitionPublishingAllowed = false,
@@ -223,7 +223,6 @@ export function CatalogPage({
   const [inFlight, setInFlight] = useState(true);
   const [error, setError] = useState<unknown>();
   const [unpublished, setUnpublished] = useState(false);
-  const [pendingOpen, setPendingOpen] = useState(false);
   const [inspectorOpen, setInspectorOpen] = useState(false);
   const [inspectorTab, setInspectorTab] = useState<InspectorTab>("detail");
   const historyOpen = inspectorTab === "history";
@@ -444,7 +443,11 @@ export function CatalogPage({
     error
   });
   const writesEnabled = catalogWritesEnabled(domainState);
-  const actions = catalogActionAffordances(actor, domainState, sessionPermissions);
+  // Review work is processed through the single pending-work dialog, so the
+  // standalone review action is not offered separately.
+  const actions = catalogActionAffordances(actor, domainState, sessionPermissions).filter(
+    (action) => action.action !== "resolve-review-item"
+  );
   const onDomainStateChangeRef = useRef(onDomainStateChange);
   onDomainStateChangeRef.current = onDomainStateChange;
   const lastNotifiedDomainState = useRef("");
@@ -745,12 +748,10 @@ export function CatalogPage({
           <button
             type="button"
             className="button subtle sm"
-            data-catalog-action="toggle-pending-work"
-            aria-expanded={pendingOpen}
-            aria-controls="parameter-catalog-pending-work"
-            onClick={() => setPendingOpen((value) => !value)}
+            data-catalog-action="open-pending-work"
+            onClick={() => onOpenPendingWork?.()}
           >
-            {pendingOpen ? catalogPendingWorkCloseLabel : catalogPendingWorkOpenLabel}
+            {catalogPendingWorkLabel}
             {reviewItemCount > 0 ? (
               <span className="parameter-catalog__badge" data-tone="warning">
                 {reviewItemCount}
@@ -772,41 +773,6 @@ export function CatalogPage({
         >
           <p>{statusMessage}</p>
         </div>
-      ) : null}
-
-      {pendingOpen ? (
-        <section
-          id="parameter-catalog-pending-work"
-          className="parameter-catalog__pending"
-          aria-label={catalogPendingWorkLabel}
-        >
-          <h2 className="parameter-catalog__pane-title">{catalogPendingWorkLabel}</h2>
-          {reviewEmptyReason ? (
-            <div data-catalog-empty={reviewEmptyReason} role="status">
-              <SectionEmpty message={catalogEmptyMessage(reviewEmptyReason)} />
-            </div>
-          ) : reviewItemCount === 0 ? (
-            <p className="parameter-catalog__muted">{catalogEmptyMessage("no-review-work")}</p>
-          ) : (
-            <ul className="parameter-catalog__pending-list">
-              {(snapshot?.review?.items ?? []).map((item) => (
-                <li key={item.id}>
-                  <button
-                    type="button"
-                    className="button ghost sm"
-                    onClick={() => commitAnchor({ ...anchor, reviewItemId: item.id }, "push")}
-                  >
-                    {item.observation?.propertyKey ?? item.id}
-                  </button>
-                  <span className="parameter-catalog__muted">{item.reason}</span>
-                  <span className="parameter-catalog__badge" data-tone="warning">
-                    {item.status}
-                  </span>
-                </li>
-              ))}
-            </ul>
-          )}
-        </section>
       ) : null}
 
       {inFlight && !snapshot ? (

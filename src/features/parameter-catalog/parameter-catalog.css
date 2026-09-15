@@ -255,6 +255,17 @@
    with an outline strong enough to read as a button. The cell keeps its
    content-driven width and wraps, so the table never overflows the pane and no
    action is clipped. */
+/* The pending-work dialog holds the review queue table, so it needs more room
+   than the default governance dialog width. */
+.confirm-dialog.parameter-catalog__pending-dialog {
+  width: min(960px, calc(100vw - 48px));
+  max-height: min(720px, calc(100vh - 96px));
+}
+
+.parameter-catalog__pending-dialog .parameter-catalog__review {
+  min-width: 0;
+}
+
 .parameter-catalog__row-actions {
   display: inline-flex;
   flex-wrap: wrap;

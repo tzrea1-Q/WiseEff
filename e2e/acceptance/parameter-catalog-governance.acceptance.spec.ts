@@ -46,8 +46,9 @@ test.describe("canonical parameter catalog governance interactions", () => {
       await ingestOpenReview(fixture.pool, fixture.chain.pinF.id);
       await page.reload();
       await expect(catalogPage(page)).toBeVisible();
-      // Pending work is disclosed from the count-bearing action.
-      const pending = page.getByRole("button", { name: /打开待处理工作/ });
+      // Pending work is disclosed from the single count-bearing action, which
+      // opens the review queue in a dialog.
+      const pending = page.getByRole("button", { name: /待处理工作/ });
       if (await pending.isVisible().catch(() => false)) {
         await pending.click();
       }
