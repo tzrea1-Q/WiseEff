@@ -24,6 +24,7 @@ import type { TrustedRefusalAuditSink } from "../audit/trustedRefusalSink";
 import type { DtsValue } from "../dts/types";
 import { renderDtsValue } from "../dts/valueAst";
 import { type DtsToolchainRunner } from "../parameter-files/dtsToolchain";
+import { ingestDtsFileVersion } from "../parameter-files/structuralIngest";
 import type { Database, Queryable } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
 import { canEditParameters } from "../parameter-kernel/policy";
@@ -661,6 +662,8 @@ export async function createBindingDraft(
     ],
   );
 
+  await ingestDtsFileVersion(db, candidateOverlayVersionId, candidateOverlayContent);
+
   const overlayOrderFromMembers = members
     .filter((m) => m.role === "overlay")
     .sort(
@@ -1259,6 +1262,8 @@ async function createNodeEnablementDraftInTransaction(
       attribution.approvalId,
     ],
   );
+
+  await ingestDtsFileVersion(db, candidateOverlayVersionId, candidateOverlayContent);
 
   const overlayOrderFromMembers = members
     .filter((m) => m.role === "overlay")

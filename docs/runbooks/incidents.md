@@ -32,6 +32,22 @@ Collect only the minimum evidence needed for diagnosis and audit:
 
 Never paste bearer tokens, provider keys, raw uploaded logs, raw parameter values, or raw device payloads into incident notes.
 
+## Missing DTS writeback node index
+
+`parameter-sensitive-node-identity-mismatch` during a typed edit can indicate a historical writeback version with no `dts_nodes`, even though its config revision has semantic node occurrences. New binding/enablement drafts and merge writebacks now index each generated version in the same transaction. Existing versions require an explicit repair; deployment alone does not backfill them.
+
+Use [repair-dts-structural-index.ts](../../scripts/repair-dts-structural-index.ts) inside the updated API container, whose environment already supplies `DATABASE_URL`. Supply the project, file, exact failing version, recorded SHA-256, and complete node locator from the incident evidence:
+
+```bash
+node --import tsx scripts/repair-dts-structural-index.ts \
+  PROJECT FILE VERSION SHA256 '/complete/node/path'
+# After inspecting ready-dry-run, repeat the same command with --apply.
+```
+
+The default is a read-only dry run. Apply locks the exact version, verifies embedded source bytes against the recorded checksum and size, and reconstructs only an entirely absent structural index. It leaves source bytes, versions, current pointers, semantic revisions, values, and drafts unchanged. A transactional System-job audit (`dts-structural-index-repaired`) records the checksum and counts; audit failure rolls back the index. Keep the returned trace ID with the operator's incident record.
+
+`skipped-existing-index` means no rows were changed; it does **not** prove an existing partial or ambiguous index is healthy. Unsupported include/delete semantics, missing source, checksum mismatch, or an absent/ambiguous requested node stop recovery. Do not fall back to a newer version or disable the identity guard. After `repaired`, rerun the exact-version diagnostic and retry the original edit. Only target-server evidence closes the incident.
+
 ## Handoff
 
 When escalating, include:

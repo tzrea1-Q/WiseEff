@@ -6,6 +6,7 @@
  */
 
 import { createHash, randomUUID } from "node:crypto";
+import { ingestDtsFileVersion } from "../parameter-files/structuralIngest";
 
 import {
   parseDts,
@@ -739,6 +740,8 @@ export async function applyLockedOverlayWriteback(
     [overlayMember.file_id, candidateOverlayVersionId],
   );
 
+  await ingestDtsFileVersion(db, candidateOverlayVersionId, candidateOverlayContent);
+
   const overlayOrderFromMembers = members
     .filter((member) => member.role === "overlay")
     .sort(
@@ -1041,6 +1044,8 @@ export async function applyLockedEnablementWriteback(
     `,
     [overlayMember.file_id, candidateOverlayVersionId],
   );
+
+  await ingestDtsFileVersion(db, candidateOverlayVersionId, candidateOverlayContent);
 
   const overlayOrderFromMembers = members
     .filter((member) => member.role === "overlay")

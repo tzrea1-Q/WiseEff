@@ -17,6 +17,22 @@
 - 阅读英文版中的完整细节、表格和命令，再用本页确认中文语境下的执行边界。
 - 任何 target-environment readiness、pilot-ready、release-ready 结论都必须有真实目标环境证据，不能由本地 skip 代替。
 
+## DTS 写回版本缺少节点索引
+
+编辑时出现 `parameter-sensitive-node-identity-mismatch`，可能是历史写回版本没有 `dts_nodes`，但配置修订中仍有语义节点记录。新建参数草稿、启停草稿及提交写回现在会在同一事务中生成节点索引。历史版本需要显式修复；仅部署新版不会自动补建。
+
+在已更新的 API 容器内执行[修复脚本](../../../scripts/repair-dts-structural-index.ts)，使用容器已有的 `DATABASE_URL`。从事故证据中填写项目、文件名、报错的精确版本、记录的 SHA-256 和完整节点路径：
+
+```bash
+node --import tsx scripts/repair-dts-structural-index.ts \
+  PROJECT FILE VERSION SHA256 '/complete/node/path'
+# 检查结果为 ready-dry-run 后，在同一命令末尾加 --apply 正式执行。
+```
+
+默认使用只读事务试运行。正式执行锁定指定版本，核对内嵌源文件的校验和及字节数，仅补建完全缺失的结构索引。源文件内容、版本、当前指针、语义修订、参数值和草稿保持不变。事务内以系统维护任务身份写入 `dts-structural-index-repaired` 审计，记录校验和及数量；审计失败则回滚索引。将返回的跟踪 ID 与操作人记录一起保存。
+
+`skipped-existing-index` 表示未修改任何记录，不能证明已有的部分索引或重复索引正常。遇到不支持的 include/delete 语义、源文件缺失、校验和不符或目标节点无法唯一解析时，停止修复。不要改用较新版本或关闭身份校验。返回 `repaired` 后，重新执行精确版本诊断并重试原编辑操作；事故关闭仍需服务器上的实际验证。
+
 ## 同类中文文档
 
 - [docs/zh-CN/runbooks/README.md](README.md)
