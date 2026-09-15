@@ -2,6 +2,23 @@ import type { CatalogPublicationSurfaceResponse } from "@/infrastructure/http/pa
 
 export type PublicationSurfaceItem = CatalogPublicationSurfaceResponse["item"];
 
+/**
+ * The server's publication surface is the authority for whether this session can
+ * author or publish definitions. Row actions must mirror it; a control that the
+ * server would refuse is not a security boundary (issue #847 story 36).
+ */
+export function publicationSurfaceAllowsAuthoring(
+  surface: PublicationSurfaceItem | null | undefined
+): boolean {
+  return surface?.authoringAllowed === true;
+}
+
+export function publicationSurfaceAllowsPublishing(
+  surface: PublicationSurfaceItem | null | undefined
+): boolean {
+  return surface?.publishingAllowed === true;
+}
+
 export const publicationSurfaceCopy = {
   title: "发布状态",
   history: "发布记录",

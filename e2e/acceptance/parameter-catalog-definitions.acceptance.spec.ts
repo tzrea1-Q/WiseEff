@@ -8,6 +8,7 @@ import {
   CATALOG_VIEWPORTS,
   assertNoPageOverflow,
   catalogHref,
+  catalogJson,
   catalogPage,
   catalogScreenshot,
   openCatalogAt,
@@ -105,16 +106,26 @@ test.describe("restored definition workspace and governed authoring", () => {
     const table = region.getByRole("table", { name: "参数定义列表" });
     await expect(table).toBeVisible();
 
-    // The workspace is writable in this lane or the actions are honestly absent:
-    // never a hidden control that pretends to be a security boundary.
-    // The collection can render before the domain state settles, and the row
-    // actions appear only once writes are enabled.
+    // The row actions must mirror the server's publication surface exactly: a
+    // control the server would refuse must not be offered, and a permitted
+    // control must be reachable. The collection can also render before the
+    // domain state settles.
     await expect(region).toHaveAttribute("data-writes-enabled", "true");
-    const writesEnabled = (await region.getAttribute("data-writes-enabled")) === "true";
+    const surface = await catalogJson(page.request, "GET", "/api/v2/catalog/publication-surface");
+    expect(surface.status).toBe(200);
+    const permissions = (
+      surface.body as { item: { authoringAllowed: boolean; publishingAllowed: boolean } }
+    ).item;
     const retire = table.getByRole("button", { name: /^(弃用|恢复) /u }).first();
     const correct = table.getByRole("button", { name: /^纠错 /u }).first();
-    if (writesEnabled) {
+
+    if (permissions.publishingAllowed) {
       await expect(retire).toBeVisible({ timeout: 15_000 });
+    } else {
+      await expect(retire).toHaveCount(0);
+    }
+
+    if (permissions.authoringAllowed) {
       await expect(correct).toBeVisible({ timeout: 15_000 });
       await correct.click();
       const dialog = page.getByRole("dialog");
@@ -125,7 +136,6 @@ test.describe("restored definition workspace and governed authoring", () => {
       await expect(dialog.getByRole("button", { name: "预演影响" })).toBeEnabled();
       await dialog.getByRole("button", { name: "关闭" }).click();
     } else {
-      await expect(retire).toHaveCount(0);
       await expect(correct).toHaveCount(0);
     }
     await catalogScreenshot(page, testInfo, "pcat-ui-17-lifecycle");

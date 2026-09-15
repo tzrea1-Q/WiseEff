@@ -112,6 +112,13 @@ export type CatalogPageProps = {
     command: "retire-definition" | "restore-definition" | "correct-identity",
     definition: DefinitionItem
   ) => void;
+  /**
+   * Whether the server's publication surface actually permits entity authoring
+   * and publication for this session. The row actions must mirror the server:
+   * a visible control that the server would refuse is not a security boundary.
+   */
+  definitionAuthoringAllowed?: boolean;
+  definitionPublishingAllowed?: boolean;
   layoutMode?: CatalogLayoutMode;
   organizationId?: string;
   listReviewItems?: (
@@ -190,6 +197,8 @@ export function CatalogPage({
   onDomainStateChange,
   onAction,
   onDefinitionCommand,
+  definitionAuthoringAllowed = false,
+  definitionPublishingAllowed = false,
   layoutMode: layoutOverride,
   organizationId,
   listReviewItems
@@ -891,36 +900,34 @@ export function CatalogPage({
                       >
                         编辑
                       </button>
-                      {writesEnabled ? (
-                        <>
-                          <button
-                            type="button"
-                            className="button ghost sm"
-                            aria-label={`纠错 ${row.propertyKey}`}
-                            data-catalog-row-action="correct-identity"
-                            disabled={!onDefinitionCommand}
-                            onClick={() => onDefinitionCommand?.("correct-identity", row)}
-                          >
-                            身份纠错
-                          </button>
-                          <button
-                            type="button"
-                            className="button ghost sm"
-                            aria-label={`${row.lifecycle === "retired" ? "恢复" : "弃用"} ${row.propertyKey}`}
-                            data-catalog-row-action={
-                              row.lifecycle === "retired" ? "restore-definition" : "retire-definition"
-                            }
-                            disabled={!onDefinitionCommand}
-                            onClick={() =>
-                              onDefinitionCommand?.(
-                                row.lifecycle === "retired" ? "restore-definition" : "retire-definition",
-                                row
-                              )
-                            }
-                          >
-                            {row.lifecycle === "retired" ? "恢复" : "弃用"}
-                          </button>
-                        </>
+                      {definitionAuthoringAllowed && onDefinitionCommand ? (
+                        <button
+                          type="button"
+                          className="button ghost sm"
+                          aria-label={`纠错 ${row.propertyKey}`}
+                          data-catalog-row-action="correct-identity"
+                          onClick={() => onDefinitionCommand("correct-identity", row)}
+                        >
+                          身份纠错
+                        </button>
+                      ) : null}
+                      {definitionPublishingAllowed && onDefinitionCommand ? (
+                        <button
+                          type="button"
+                          className="button ghost sm"
+                          aria-label={`${row.lifecycle === "retired" ? "恢复" : "弃用"} ${row.propertyKey}`}
+                          data-catalog-row-action={
+                            row.lifecycle === "retired" ? "restore-definition" : "retire-definition"
+                          }
+                          onClick={() =>
+                            onDefinitionCommand(
+                              row.lifecycle === "retired" ? "restore-definition" : "retire-definition",
+                              row
+                            )
+                          }
+                        >
+                          {row.lifecycle === "retired" ? "恢复" : "弃用"}
+                        </button>
                       ) : null}
                     </span>
                   )}

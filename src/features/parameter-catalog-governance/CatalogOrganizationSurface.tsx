@@ -17,7 +17,13 @@ import { DefinitionLifecycleDialog, type DefinitionLifecycleIntent } from "./Def
 import { createGovernanceIdempotencyKey } from "./governanceState";
 import { ProposalPanel } from "./ProposalPanel";
 import { PublicationDialog } from "./PublicationDialog";
-import { publicationSurfaceCopy, publicationSurfaceMessage, type PublicationSurfaceItem } from "./publicationSurface";
+import {
+  publicationSurfaceAllowsAuthoring,
+  publicationSurfaceAllowsPublishing,
+  publicationSurfaceCopy,
+  publicationSurfaceMessage,
+  type PublicationSurfaceItem
+} from "./publicationSurface";
 import { RegistrationDialog } from "./RegistrationDialog";
 import { ReviewQueue } from "./ReviewQueue";
 import type {
@@ -180,6 +186,8 @@ export function CatalogOrganizationSurface({
         listReviewItems={
           organizationId ? (orgId, query) => governance.listReviewItems(orgId, query) : undefined
         }
+        definitionAuthoringAllowed={publicationSurfaceAllowsAuthoring(publicationSurface)}
+        definitionPublishingAllowed={publicationSurfaceAllowsPublishing(publicationSurface)}
         onDefinitionCommand={(command, definition) => {
           if (command === "correct-identity") {
             setCorrection(definition);
