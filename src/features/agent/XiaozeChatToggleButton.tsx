@@ -32,7 +32,7 @@ export function XiaozeChatToggleButton() {
         aria-label={isOpen ? closeLabel : openLabel}
         aria-describedby="xiaoze-launcher-drag-instructions"
         aria-pressed={isOpen}
-        title="点击打开或关闭小泽；拖动可移动小泽"
+        title="点击打开或关闭小泽；拖动可移动小泽（快捷键 ⌘J / Ctrl+J）"
         onClick={() => {
           const next = !isOpen;
           writeXiaozePopupOpenSession(next);

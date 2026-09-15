@@ -76,11 +76,11 @@ function KnowledgeDraftApprovalContent({
           ) : null}
         </div>
         <AlertDialogFooter>
-          <AlertDialogCancel type="button" onClick={() => resolve({ decision: "reject", reason: "Rejected in Xiaoze chat." })}>
-            Reject
+          <AlertDialogCancel type="button" onClick={() => resolve({ decision: "reject", reason: XIAOZE_APPROVAL_DEFAULT_REJECT_REASON })}>
+            拒绝
           </AlertDialogCancel>
           <AlertDialogAction type="button" onClick={() => resolve({ decision: "approve", editedArgs })}>
-            Approve
+            批准
           </AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>

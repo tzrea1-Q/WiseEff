@@ -12293,25 +12293,21 @@ td small {
   overflow: hidden;
   transform: translate3d(0, 100%, 0);
   opacity: 0;
-  filter: blur(10px);
   transition:
     transform var(--xiaoze-popup-open-ms, 400ms) var(--ease-out),
     opacity calc(var(--xiaoze-popup-open-ms, 400ms) * 0.82) var(--ease-out),
-    filter var(--xiaoze-popup-open-ms, 400ms) var(--ease-out),
     box-shadow var(--xiaoze-popup-open-ms, 400ms) var(--ease-out);
-  will-change: transform, opacity, filter;
+  will-change: transform, opacity;
 }
 
 .xiaoze-popup-layer[data-motion="visible"] .xiaoze-popup-window {
   transform: translate3d(0, 0, 0);
   opacity: 1;
-  filter: blur(0);
 }
 
 .xiaoze-popup-layer[data-motion="leaving"] .xiaoze-popup-window {
   transform: translate3d(0, 100%, 0);
   opacity: 0;
-  filter: blur(6px);
   transition-duration: var(--xiaoze-popup-close-ms, 360ms);
   transition-timing-function: var(--ease-in-out);
 }
@@ -12332,7 +12328,7 @@ td small {
   background:
     radial-gradient(circle at top right, color-mix(in srgb, var(--secondary-container) 12%, transparent), transparent 34%),
     radial-gradient(circle at 12% 0%, color-mix(in srgb, var(--accent) 10%, transparent), transparent 42%),
-    linear-gradient(180deg, #f8faff 0%, var(--surface) 36%, #fcfdff 100%);
+    linear-gradient(180deg, color-mix(in srgb, var(--surface) 94%, var(--bg)) 0%, var(--surface) 36%, var(--surface) 100%);
   border: 1px solid var(--xiaoze-border);
   box-shadow: var(--xiaoze-shadow);
 }
@@ -12358,7 +12354,7 @@ td small {
     max-width: var(--copilot-popup-max-width);
     max-height: var(--copilot-popup-max-height);
     border-radius: 22px;
-    transform: translate3d(14px, 22px, 0) scale(0.9);
+    transform: translate3d(14px, 22px, 0) scale(0.94);
     transform-origin: bottom right;
   }
 
@@ -12368,7 +12364,6 @@ td small {
 
   .xiaoze-popup-layer[data-motion="leaving"] .xiaoze-popup-window {
     transform: translate3d(10px, 16px, 0) scale(0.94);
-    filter: blur(4px);
   }
 }
 
@@ -12441,8 +12436,14 @@ body.xiaoze-launcher-drag-active {
 }
 
 .xiaoze-chat-toggle[data-state="closed"] .xiaoze-chat-toggle__halo {
+  opacity: 0.8;
+  animation: xiaoze-toggle-halo 2.4s var(--ease-in-out) 2 forwards;
+}
+
+.xiaoze-chat-toggle:hover .xiaoze-chat-toggle__halo,
+.xiaoze-chat-toggle:focus-visible .xiaoze-chat-toggle__halo {
   opacity: 1;
-  animation: xiaoze-toggle-halo 2.8s var(--ease-in-out) infinite;
+  transform: scale(1.06);
 }
 
 .xiaoze-chat-toggle__surface {
@@ -12761,6 +12762,12 @@ body.xiaoze-popup-drag-active {
   border: 1px solid var(--xiaoze-border-strong) !important;
   background: color-mix(in srgb, var(--surface) 96%, transparent) !important;
   box-shadow: var(--xiaoze-shadow-soft) !important;
+  transition: border-color var(--duration-fast) var(--ease-out), box-shadow var(--duration-fast) var(--ease-out);
+}
+
+.copilotKitPopup .copilotKitInput:focus-within {
+  border-color: var(--ring) !important;
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--ring) 25%, transparent), var(--xiaoze-shadow-soft) !important;
 }
 
 .copilotKitPopup [data-testid="copilot-chat-textarea"]:focus-visible {
@@ -12825,9 +12832,71 @@ body.xiaoze-popup-drag-active {
   word-break: break-word;
 }
 
+/* ── Xiaoze code block & copy ── */
+.copilotKitPopup .xiaoze-code-block {
+  margin: var(--space-2) 0;
+  border: 1px solid var(--xiaoze-border-strong);
+  border-radius: var(--xiaoze-radius-md);
+  background: color-mix(in srgb, var(--surface) 95%, var(--accent) 5%);
+  overflow: hidden;
+}
+
+.copilotKitPopup .xiaoze-code-block__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 5px 12px;
+  border-bottom: 1px solid var(--xiaoze-border);
+  background: color-mix(in srgb, var(--surface) 88%, transparent);
+}
+
+.copilotKitPopup .xiaoze-code-block__lang {
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  text-transform: lowercase;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+}
+
+.copilotKitPopup .xiaoze-code-block__copy {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 8px;
+  border: 1px solid var(--xiaoze-border);
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--surface) 90%, transparent);
+  color: var(--text-secondary);
+  font-size: var(--text-xs);
+  font-weight: 500;
+  cursor: pointer;
+  transition: all var(--duration-fast) var(--ease-out);
+}
+
+.copilotKitPopup .xiaoze-code-block__copy:hover {
+  border-color: var(--xiaoze-brand);
+  background: var(--xiaoze-surface-muted);
+  color: var(--xiaoze-brand);
+}
+
+.copilotKitPopup .xiaoze-code-block pre {
+  margin: 0 !important;
+  padding: 10px 12px !important;
+  font-family: var(--font-mono);
+  font-size: var(--text-xs) !important;
+  line-height: 1.55;
+  color: var(--text) !important;
+  overflow-x: auto;
+  white-space: pre !important;
+  word-break: normal !important;
+  background: transparent !important;
+  border: 0 !important;
+}
+
 .xiaoze-streaming-markdown {
   display: block;
-  color: #1e293b;
+  color: var(--text);
   font-size: var(--text-md);
   line-height: 1.65;
 }
@@ -12969,6 +13038,64 @@ body.xiaoze-popup-drag-active {
   color: var(--text-muted);
   font-size: var(--text-sm);
   line-height: 1.5;
+}
+
+/* ── Starter prompt pills ── */
+.xiaoze-welcome__prompts {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin-top: 4px;
+}
+
+.xiaoze-welcome__prompts-title {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: var(--text-xs);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.xiaoze-welcome__prompt-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.xiaoze-welcome__prompt-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 6px 12px;
+  border: 1px solid var(--xiaoze-border);
+  border-radius: var(--radius-full);
+  background: color-mix(in srgb, var(--surface) 90%, transparent);
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
+  cursor: pointer;
+  touch-action: manipulation;
+  transition: all var(--duration-fast) var(--ease-out);
+}
+
+.xiaoze-welcome__prompt-pill:hover {
+  border-color: var(--xiaoze-brand);
+  background: var(--xiaoze-surface-muted);
+  color: var(--xiaoze-brand);
+  transform: translateY(-1px);
+  box-shadow: var(--xiaoze-shadow-soft);
+}
+
+.xiaoze-welcome__prompt-pill:active {
+  transform: scale(0.98);
+}
+
+.xiaoze-welcome__prompt-pill:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
 }
 
 /* ── Header ── */
@@ -13252,7 +13379,7 @@ body.xiaoze-popup-drag-active {
   padding: 0;
   border: 1px solid var(--xiaoze-border);
   border-radius: var(--xiaoze-radius-md);
-  background: rgba(248, 250, 252, 0.92);
+  background: color-mix(in srgb, var(--surface) 92%, transparent);
   color: var(--text-muted);
   cursor: pointer;
   touch-action: manipulation;
@@ -13264,14 +13391,14 @@ body.xiaoze-popup-drag-active {
 }
 
 .xiaoze-thread-history__delete:hover {
-  border-color: rgba(220, 38, 38, 0.28);
-  background: rgba(254, 242, 242, 0.96);
-  color: #dc2626;
+  border-color: color-mix(in srgb, var(--danger) 28%, transparent);
+  background: color-mix(in srgb, var(--danger) 8%, var(--surface));
+  color: var(--danger);
   box-shadow: var(--xiaoze-shadow-soft);
 }
 
 .xiaoze-thread-history__delete:focus-visible {
-  outline: 2px solid rgba(220, 38, 38, 0.35);
+  outline: 2px solid color-mix(in srgb, var(--danger) 35%, transparent);
   outline-offset: 2px;
 }
 
@@ -13284,7 +13411,7 @@ body.xiaoze-popup-drag-active {
   padding: var(--space-3) var(--space-3) var(--space-3) 14px;
   border: 1px solid var(--xiaoze-border);
   border-radius: var(--xiaoze-radius-md);
-  background: rgba(248, 250, 252, 0.92);
+  background: color-mix(in srgb, var(--surface) 92%, transparent);
   color: inherit;
   font: inherit;
   text-align: left;
@@ -13422,7 +13549,7 @@ body.xiaoze-popup-drag-active {
 }
 
 .xiaoze-assistant-message.copilotKitAssistantMessage .copilotKitMarkdown {
-  color: #1e293b;
+  color: var(--text);
   font-size: var(--text-md);
   line-height: 1.65;
   max-width: 100%;
@@ -13463,7 +13590,7 @@ body.xiaoze-popup-drag-active {
   padding: 2px var(--space-2);
   border: 1px solid color-mix(in srgb, var(--app-secondary) 28%, transparent);
   border-radius: var(--radius-full);
-  background: rgba(236, 252, 255, 0.8);
+  background: color-mix(in srgb, var(--accent) 10%, var(--surface));
   color: var(--app-secondary);
   font-size: var(--text-sm);
   line-height: 1.5;
@@ -13474,14 +13601,14 @@ body.xiaoze-popup-drag-active {
 
 .xiaoze-citation-sources__link:hover {
   border-color: color-mix(in srgb, var(--app-secondary) 55%, transparent);
-  background: rgba(220, 248, 255, 0.95);
+  background: color-mix(in srgb, var(--accent) 16%, var(--surface));
   text-decoration: underline;
 }
 
 .xiaoze-citation-sources__chip {
-  color: #475569;
+  color: var(--text-secondary);
   border-color: color-mix(in srgb, var(--text-muted) 30%, transparent);
-  background: rgba(241, 245, 249, 0.9);
+  background: color-mix(in srgb, var(--text-muted) 12%, var(--surface));
 }
 
 /* ── Reasoning ── */
@@ -13490,7 +13617,7 @@ body.xiaoze-popup-drag-active {
   padding: 11px var(--space-3);
   border: 1px solid color-mix(in srgb, var(--app-secondary) 18%, transparent);
   border-radius: var(--xiaoze-radius-md);
-  background: linear-gradient(135deg, rgba(244, 247, 255, 0.96), rgba(236, 252, 255, 0.92));
+  background: linear-gradient(135deg, color-mix(in srgb, var(--surface) 88%, var(--app-secondary) 12%), color-mix(in srgb, var(--surface) 94%, var(--app-secondary) 6%));
 }
 
 .xiaoze-reasoning-message.is-streaming {
@@ -13506,7 +13633,7 @@ body.xiaoze-popup-drag-active {
   padding: 0;
   border: 0;
   background: transparent;
-  color: #0f4c5c;
+  color: var(--text);
   font: inherit;
   font-size: var(--text-base);
   font-weight: 600;
@@ -13812,9 +13939,9 @@ body.xiaoze-popup-drag-active {
 .xiaoze-prompt-debug {
   margin: 0;
   padding: 10px var(--space-3);
-  border: 1px solid rgba(59, 130, 246, 0.24);
+  border: 1px solid color-mix(in srgb, var(--accent) 24%, transparent);
   border-radius: var(--xiaoze-radius-md);
-  background: linear-gradient(135deg, rgba(239, 246, 255, 0.95), rgba(238, 242, 255, 0.9));
+  background: linear-gradient(135deg, color-mix(in srgb, var(--surface) 90%, var(--accent) 10%), color-mix(in srgb, var(--surface) 95%, var(--accent) 5%));
 }
 
 .xiaoze-prompt-debug__header {
@@ -13832,7 +13959,7 @@ body.xiaoze-popup-drag-active {
   padding: 0;
   border: 0;
   background: transparent;
-  color: #1d4ed8;
+  color: var(--accent);
   font: inherit;
   font-size: var(--text-base);
   font-weight: 600;
@@ -13847,15 +13974,15 @@ body.xiaoze-popup-drag-active {
   width: 28px;
   height: 28px;
   flex-shrink: 0;
-  border: 1px solid rgba(59, 130, 246, 0.24);
+  border: 1px solid color-mix(in srgb, var(--accent) 24%, transparent);
   border-radius: var(--radius-md);
   background: color-mix(in srgb, var(--surface) 72%, transparent);
-  color: #1d4ed8;
+  color: var(--accent);
   cursor: pointer;
 }
 
 .xiaoze-prompt-debug__copy:hover {
-  background: rgba(219, 234, 254, 0.9);
+  background: color-mix(in srgb, var(--accent) 14%, var(--surface));
 }
 
 .xiaoze-prompt-debug__icon {
@@ -13865,8 +13992,8 @@ body.xiaoze-popup-drag-active {
   width: 24px;
   height: 24px;
   border-radius: var(--radius-md);
-  background: rgba(59, 130, 246, 0.14);
-  color: #1d4ed8;
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  color: var(--accent);
 }
 
 .xiaoze-prompt-debug__label {
@@ -13875,7 +14002,7 @@ body.xiaoze-popup-drag-active {
 
 .xiaoze-prompt-debug__chevron {
   transition: transform var(--duration-base) var(--ease-in-out);
-  color: #1d4ed8;
+  color: var(--accent);
 }
 
 .xiaoze-prompt-debug__chevron.is-open {
@@ -13885,14 +14012,14 @@ body.xiaoze-popup-drag-active {
 .xiaoze-prompt-debug__body {
   margin-top: 10px;
   padding-top: 10px;
-  border-top: 1px solid rgba(59, 130, 246, 0.22);
+  border-top: 1px solid color-mix(in srgb, var(--accent) 22%, transparent);
   display: grid;
   gap: 10px;
 }
 
 .xiaoze-prompt-debug__section-title {
   margin: 0 0 6px;
-  color: #1e3a8a;
+  color: var(--text);
   font-size: var(--text-xs);
   font-weight: 700;
   letter-spacing: 0.04em;
@@ -13904,7 +14031,7 @@ body.xiaoze-popup-drag-active {
   padding: 10px;
   border-radius: var(--radius-md);
   background: color-mix(in srgb, var(--surface) 72%, transparent);
-  color: #1e293b;
+  color: var(--text);
   font-size: var(--text-xs);
   line-height: 1.45;
   white-space: pre-wrap;
@@ -13957,27 +14084,27 @@ body.xiaoze-popup-drag-active {
 
 @media (max-width: 640px) {
   .xiaoze-chat-header {
-    grid-template-columns: 1fr auto;
-    grid-template-areas:
-      "actions brand"
-      "actions close";
-    row-gap: var(--space-2);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-2);
+    padding: var(--space-2-5) var(--space-3);
   }
 
   .xiaoze-chat-header__actions--start {
-    grid-area: actions;
-    flex-direction: column;
-    align-items: stretch;
+    flex-direction: row;
+    align-items: center;
+    gap: var(--space-1-5);
   }
 
   .xiaoze-chat-header__brand {
-    grid-area: brand;
-    justify-self: end;
+    justify-self: center;
   }
 
   .xiaoze-chat-header__actions--end {
-    grid-area: close;
-    justify-self: end;
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
   }
 
   .xiaoze-chat-header__button span {
