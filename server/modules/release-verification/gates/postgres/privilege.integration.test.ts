@@ -10,6 +10,7 @@ import {
 } from "../../../../testing/testDatabase";
 import {
   CATALOG_MIGRATION_OWNER,
+  CATALOG_PUBLICATION_COORDINATOR_ROLE,
   CATALOG_SYNCHRONIZER_ROLE,
   PARAMETER_GOVERNANCE_WRITER_ROLE,
 } from "../../../catalog-kernel/security/catalogRoleManifest";
@@ -194,10 +195,14 @@ describe("P01/P02 SQLSTATE privilege gates", () => {
     const token = (process.env.WISEEFF_TEST_RUN_TOKEN ?? `pid${process.pid}`).replace(/[^a-z0-9]/giu, "");
     const writerLogin = `p01_writer_${token}`;
     const managerLogin = `p01_manager_${token}`;
+    const coordinatorLogin = `p01_coord_${token}`;
     const inheritingLogin = `p01_inherit_${token}`;
     const ownerLogin = `p01_owner_${token}`;
     const created: string[] = [];
     const createLogin = async (name: string, inherit: boolean) => {
+      // Roles are cluster-global and do not roll back with this fixture, so a run killed
+      // before its `finally` can leave the name behind; converge instead of failing.
+      await db.query(`drop role if exists ${quoteIdent(name)}`).catch(() => undefined);
       await db.query(
         `create role ${quoteIdent(name)} login ${inherit ? "inherit" : "noinherit"}
          nosuperuser nocreatedb nocreaterole nobypassrls`,
@@ -209,6 +214,12 @@ describe("P01/P02 SQLSTATE privilege gates", () => {
       await db.query(`grant ${quoteIdent(PARAMETER_GOVERNANCE_WRITER_ROLE)} to ${quoteIdent(writerLogin)}`);
       await createLogin(managerLogin, false);
       await db.query(`grant ${quoteIdent(CATALOG_SYNCHRONIZER_ROLE)} to ${quoteIdent(managerLogin)}`);
+      // The provisioner really does grant coordinator to the API login; P01 does not cover
+      // it, and this asserts that boundary rather than leaving it implicit.
+      await createLogin(coordinatorLogin, false);
+      await db.query(
+        `grant ${quoteIdent(CATALOG_PUBLICATION_COORDINATOR_ROLE)} to ${quoteIdent(coordinatorLogin)}`,
+      );
       const documented = await runP01(db);
       expect(documented.status).toBe("passed");
       expect(documented.failureCode).toBeNull();
@@ -224,12 +235,16 @@ describe("P01/P02 SQLSTATE privilege gates", () => {
       expect(afterRevoke.status).toBe("passed");
 
       // NOINHERIT is not enough for the schema owner: any login membership is an
-      // assume path, which is why this one still fails.
+      // assume path. Revoking it again proves that membership is the cause rather than
+      // some unrelated cluster state.
       await createLogin(ownerLogin, false);
       await db.query(`grant ${quoteIdent(CATALOG_MIGRATION_OWNER)} to ${quoteIdent(ownerLogin)}`);
       const owner = await runP01(db);
       expect(owner.status).toBe("failed");
       expect(owner.failureCode).toBe("PCAT-PRIV-CATALOG-IMMUTABILITY-BYPASS");
+      await db.query(`revoke ${quoteIdent(CATALOG_MIGRATION_OWNER)} from ${quoteIdent(ownerLogin)}`);
+      const afterOwnerRevoke = await runP01(db);
+      expect(afterOwnerRevoke.status).toBe("passed");
     } finally {
       for (const name of created) {
         await db.query(`drop role if exists ${quoteIdent(name)}`).catch(() => undefined);

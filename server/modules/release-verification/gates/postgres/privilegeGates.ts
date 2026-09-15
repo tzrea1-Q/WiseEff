@@ -144,9 +144,15 @@ export const runP01 = async (db: Database): Promise<GateResult> => {
   //   assume path: the session can `SET ROLE` into schema ownership. Zero members.
   // - `catalog_synchronizer_role` and `parameter_governance_writer_role` are meant to
   //   be assumed explicitly by the composition roots (`SET LOCAL ROLE`) through
-  //   documented `NOINHERIT` memberships. What must never exist is a login that
-  //   *inherits* one of them, because then it uses the privileges without that audited
-  //   path. So the check is inheritance, not membership.
+  //   documented `NOINHERIT` memberships, so membership alone is not a violation. What
+  //   is flagged is a login that inherits one of them directly.
+  //
+  // Known limit, pre-existing and not introduced here: both queries read direct
+  // `pg_auth_members` rows, so reachability through an intermediate role (for example a
+  // login that inherits a NOLOGIN role which is itself a member of a privileged role)
+  // is not detected even though `pg_has_role(..., 'SET')` would be true. Closing that
+  // needs a `pg_has_role`-based reachability check against an allow-list of documented
+  // composition-root logins, which is a gate change of its own.
   const schemaOwnerMembers = await db.query<{ member: string; granted: string }>(
     `
     select member.rolname as member, granted.rolname as granted
