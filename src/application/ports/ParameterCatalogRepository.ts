@@ -1,4 +1,6 @@
 import type {
+  CatalogContinueReplacementRequest,
+  CatalogCreateReplacementRequest,
   CatalogCreatePublicationCandidateRequest,
   CatalogDefinitionListResponse,
   CatalogDefinitionResponse,
@@ -14,10 +16,20 @@ import type {
   CatalogSubjectListResponse,
   CatalogSubjectResponse,
   CatalogPublicationJobListResponse,
-  CatalogPublicationSurfaceResponse
+  CatalogPublicationSurfaceResponse,
+  CatalogReplacementListResponse,
+  CatalogReplacementPreviewRequest,
+  CatalogReplacementPreviewResponse,
+  CatalogReplacementResponse
 } from "@/infrastructure/http/parameterCatalogDtos";
 
 export type {
+  CatalogContinueReplacementRequest,
+  CatalogCreateReplacementRequest,
+  CatalogReplacementListResponse,
+  CatalogReplacementPreviewRequest,
+  CatalogReplacementPreviewResponse,
+  CatalogReplacementResponse,
   CatalogCreatePublicationCandidateRequest,
   CatalogDefinitionListResponse,
   CatalogDefinitionResponse,
@@ -39,6 +51,16 @@ export type {
 /** Release pin for the four frozen publication routes. Idempotency for publish lives in the body. */
 export type CatalogPublicationWriteContext = {
   catalogReleaseId: string;
+};
+
+/**
+ * Identity correction commands are catalog write routes: every one carries an
+ * idempotency key, and `create`/`continue` are additionally fenced with
+ * `If-Match` (the frozen preview fingerprint, then the replacement ETag).
+ */
+export type CatalogReplacementWriteContext = CatalogPublicationWriteContext & {
+  idempotencyKey: string;
+  ifMatch?: string;
 };
 
 /** CatalogRead + DefinitionTimeline + LegacyLink + frozen publication commands. */
@@ -79,4 +101,19 @@ export interface ParameterCatalogRepository {
   getPublication(jobId: string): Promise<CatalogPublicationJobResponse>;
   getPublicationSurface(): Promise<CatalogPublicationSurfaceResponse>;
   listPublications(query?: CatalogListQuery): Promise<CatalogPublicationJobListResponse>;
+  previewDefinitionReplacement(
+    body: CatalogReplacementPreviewRequest,
+    context: CatalogReplacementWriteContext
+  ): Promise<CatalogReplacementPreviewResponse>;
+  listDefinitionReplacements(query?: CatalogListQuery): Promise<CatalogReplacementListResponse>;
+  createDefinitionReplacement(
+    body: CatalogCreateReplacementRequest,
+    context: CatalogReplacementWriteContext
+  ): Promise<CatalogReplacementResponse>;
+  getDefinitionReplacement(replacementId: string): Promise<CatalogReplacementResponse>;
+  continueDefinitionReplacement(
+    replacementId: string,
+    body: CatalogContinueReplacementRequest,
+    context: CatalogReplacementWriteContext
+  ): Promise<CatalogReplacementResponse>;
 }

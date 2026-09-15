@@ -2,10 +2,25 @@ import type { CatalogPublicationSurfaceResponse } from "@/infrastructure/http/pa
 
 export type PublicationSurfaceItem = CatalogPublicationSurfaceResponse["item"];
 
+/**
+ * The server's publication surface is the authority for whether this session can
+ * author or publish definitions. Row actions must mirror it; a control that the
+ * server would refuse is not a security boundary (issue #847 story 36).
+ */
+export function publicationSurfaceAllowsAuthoring(
+  surface: PublicationSurfaceItem | null | undefined
+): boolean {
+  return surface?.authoringAllowed === true;
+}
+
+export function publicationSurfaceAllowsPublishing(
+  surface: PublicationSurfaceItem | null | undefined
+): boolean {
+  return surface?.publishingAllowed === true;
+}
+
 export const publicationSurfaceCopy = {
   title: "发布状态",
-  history: "发布记录",
-  historyEmpty: "当前组织还没有可见的发布任务。",
   nextStep: "下一步",
   policyDisabled: "实例发布策略已关闭。日常编写入口仍可查看，但不能预览或发布。",
   frozen: "目录发布处于维护冻结。请等待解冻，不要在本页解除运维 freeze。",
@@ -14,16 +29,22 @@ export const publicationSurfaceCopy = {
   notAuthorized: "当前身份不能发起目录发布。",
   authorOnly: "可以保存草稿并预览，但发布需要 catalog:publish。",
   reviewRequired: "高风险变更需要另一位具备 catalog:review-high-risk 的人员批准。",
-  ready: "策略已启用，目录已接管。按权限编写、预览并发布。",
   noOps: "本页不提供提权、改策略表、解除 freeze 或数据库 provisioning。",
   fetchFailed: "无法读取发布状态，编写和发布已暂停。"
 } as const;
 
-export function publicationSurfaceMessage(surface: PublicationSurfaceItem): {
+/**
+ * Guidance for the publication surface, shown only when something needs the
+ * operator's attention. A healthy surface (policy enabled, catalog adopted, no
+ * blockers, publishing allowed) returns `null`: the enabled state is stated by
+ * the usable actions themselves, so the banner and the publish dialog stay
+ * silent instead of restating it.
+ */
+export function publicationSurfaceAdvisory(surface: PublicationSurfaceItem): {
   tone: "info" | "warning" | "danger";
   message: string;
   next: string;
-} {
+} | null {
   if (surface.blockers.includes("publication-not-authorized")) {
     return { tone: "warning", message: publicationSurfaceCopy.notAuthorized, next: publicationSurfaceCopy.noOps };
   }
@@ -42,5 +63,5 @@ export function publicationSurfaceMessage(surface: PublicationSurfaceItem): {
   if (surface.authoringAllowed && !surface.publishingAllowed) {
     return { tone: "info", message: publicationSurfaceCopy.authorOnly, next: publicationSurfaceCopy.reviewRequired };
   }
-  return { tone: "info", message: publicationSurfaceCopy.ready, next: publicationSurfaceCopy.noOps };
+  return null;
 }

@@ -18,6 +18,7 @@ import {
   CatalogReleaseDigest,
   CatalogReleaseId,
   CatalogSubjectId,
+  PublicationJobId,
   type CatalogReleasePin,
   type CatalogSubjectKind,
   type PlacementIntent,
@@ -34,7 +35,12 @@ import type { Database } from "../../shared/database/client";
 import { getRootPostgresPool } from "../../shared/database/client";
 import type { MappingQueryable } from "../catalog-cutover/mapping";
 
-import { registerCatalogGovernanceRoutes } from "./governance/routes";
+import { registerCatalogGovernanceRoutes, registerCatalogDefinitionReplacementRoutes } from "./governance/routes";
+import { createParameterCatalogMigrationService } from "../parameter-catalog-migration/service";
+import type { ReplacementPublicationPorts } from "../parameter-catalog-migration/types";
+import { enqueuePublicationJob } from "../catalog-publication/enqueue";
+import { withPublicationCoordinator } from "../catalog-publication/coordinator";
+import { getJob, getReceiptByJobId } from "../catalog-publication/persistence/store";
 import {
   bindCatalogGovernanceCommands,
   bindGovernanceCatalogQueryPorts,
@@ -158,6 +164,7 @@ const governanceScope = (auth: AuthContext): TrustedGovernanceScope => {
     canReviewProposals: actorKind === "platform-admin",
     defaultDestinationModuleId: "",
     defaultSubjectKind: "driver",
+    trustedActor: createUserInvocation(auth),
   };
 };
 
@@ -382,6 +389,7 @@ const createReadPorts = (
 const createGovernancePorts = (
   pool: pg.Pool | undefined,
   resolveAuth: CatalogApiAuthResolver,
+  db?: Database,
 ): CatalogGovernancePorts => {
   const commands = pool
     ? bindCatalogGovernanceCommands({
@@ -446,7 +454,14 @@ const createGovernancePorts = (
       return pinOf(pointer.current.id, pointer.current.digest);
     },
     ...commands,
-    resolveSubjectKind: kernel
+    ...(db
+      ? {
+          definitionMigration: createParameterCatalogMigrationService({
+            db,
+            publication: createReplacementPublicationPorts(db),
+          }),
+        }
+      : {}),    resolveSubjectKind: kernel
       ? async (subjectId) => {
           const pointer = await readCurrentCatalogPointer(pool!);
           if (pointer.kind !== "installed") {
@@ -480,6 +495,90 @@ const createGovernancePorts = (
     ...(queries ? bindGovernanceCatalogQueryPorts(queries) : unavailableGovernanceQueryPorts),
   };
 };
+
+/**
+ * Publication ports for the definition identity correction migration.
+ *
+ * The API process only *enqueues* the publication job through the existing
+ * Candidate/Authorization path (CP-07 isolation: release installation belongs
+ * to the publication-manager process, ADR-0043 §5).  Activation is therefore
+ * left to the manager, and `continue` performs the project advance once the
+ * successor release is current and materialized.
+ */
+const createReplacementPublicationPorts = (
+  db: Database,
+): ReplacementPublicationPorts => ({
+  async enqueueReplacementPublication({ organizationId, candidateId, idempotencyKey, trustedActor }) {
+    const enqueued = await enqueuePublicationJob({
+      db,
+      candidateId,
+      idempotencyKey,
+      trustedActor,
+      requestScope: `organization:${organizationId}:definition-replacement`,
+    });
+    if (!enqueued.ok) {
+      if (enqueued.error.kind === "not-found") {
+        return { ok: false as const, error: { kind: "not-found" as const } };
+      }
+      if (enqueued.error.kind === "idempotency-key-conflict") {
+        return {
+          ok: false as const,
+          error: {
+            kind: "revision-conflict" as const,
+            idempotencyKey,
+            storedFingerprint: "idempotency-key-conflict",
+            attemptedFingerprint: "idempotency-key-conflict",
+          },
+        };
+      }
+      if (enqueued.error.kind === "authorization") {
+        return {
+          ok: false as const,
+          error: { kind: "preview-unavailable" as const, reason: "unsupported-catalog-capability" },
+        };
+      }
+      return {
+        ok: false as const,
+        error: { kind: "invalid-command" as const, reason: enqueued.error.reason },
+      };
+    }
+    return {
+      ok: true as const,
+      value: {
+        candidateId: enqueued.value.candidate.id,
+        publicationJobId: enqueued.value.job.id,
+        authorizationId: enqueued.value.job.authorizationId,
+        replayed: enqueued.value.replayed,
+      },
+    };
+  },
+  /**
+   * Observe activation instead of performing it.  The publication manager owns
+   * the install (CP-07 isolation, ADR-0043 §5); the API only reports the
+   * activation receipt the manager wrote.  Until that receipt exists the caller
+   * keeps the frozen preview and answers a retryable "not ready", so a same-key
+   * retry can persist the approved replacement once the successor is current.
+   */
+  async activateReplacementPublication({ jobId }) {
+    const observed = await withPublicationCoordinator(db, (tx) =>
+      getJob(tx, PublicationJobId(jobId)),
+    );
+    if (observed.ok && observed.value.status === "needs-rebase") {
+      return { kind: "blocked" as const, jobId, reason: "needs-rebase" };
+    }
+    const receipt = await withPublicationCoordinator(db, (tx) =>
+      getReceiptByJobId(tx, PublicationJobId(jobId)),
+    );
+    if (!receipt.ok) {
+      return { kind: "pending" as const, jobId };
+    }
+    return {
+      kind: "active" as const,
+      releaseId: receipt.value.releaseId,
+      releaseDigest: receipt.value.releaseDigest,
+    };
+  },
+});
 
 const createPublicationPorts = (
   db: Database | undefined,
@@ -544,7 +643,11 @@ export const registerParameterCatalogApi = (
     router,
     createReadPorts(pool, options.resolveAuth, options.db, options.catalogPublication ?? {}),
   );
-  registerCatalogGovernanceRoutes(router, createGovernancePorts(pool, options.resolveAuth));
+  registerCatalogGovernanceRoutes(router, createGovernancePorts(pool, options.resolveAuth, options.db));
+  registerCatalogDefinitionReplacementRoutes(
+    router,
+    createGovernancePorts(pool, options.resolveAuth, options.db),
+  );
   registerCatalogPublicationRoutes(
     router,
     createPublicationPorts(options.db, options.resolveAuth),

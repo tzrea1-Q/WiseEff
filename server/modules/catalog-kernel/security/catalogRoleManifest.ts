@@ -52,6 +52,9 @@ export const CATALOG_RELATIONS = [
   "catalog_state",
   "catalog_subject_aliases",
   "catalog_subjects",
+  "definition_replacement_previews",
+  "definition_replacement_projects",
+  "definition_replacements",
   "definition_revisions",
   parameterDefinitionsRel,
 ] as const;
@@ -116,6 +119,13 @@ export const PUBLICATION_ACTIVATION_MIGRATION =
   "0142_catalog_publication_activation.sql";
 export const PUBLICATION_RUNTIME_MIGRATION =
   "0143_catalog_publication_runtime.sql";
+/**
+ * Issue #847 decision 12: the definition identity correction migration is the
+ * last ACL-affecting migration, so the upgrade-path ACL fingerprint check must
+ * include it to stay comparable with a fresh database.
+ */
+export const DEFINITION_REPLACEMENT_MIGRATION =
+  "0144_definition_replacement.sql";
 export const SCHEMA_MIGRATION = "0137_canonical_parameter_catalog_schema.sql";
 export const FLOOR_MIGRATION = "0136_parameter_execution_principal_deleted_marker.sql";
 

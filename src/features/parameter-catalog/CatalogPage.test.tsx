@@ -4,6 +4,9 @@ import { useCallback, useState, type ComponentProps } from "react";
 import { describe, expect, it, vi } from "vitest";
 
 import {
+  catalogResultCountLabel,
+} from "./copy";
+import {
   CATALOG_DEFINITION_ID,
   CATALOG_ORGANIZATION_ID,
   CATALOG_RELEASE_ID,
@@ -200,8 +203,15 @@ describe("CatalogPage", () => {
     expect(page).toHaveAttribute("data-catalog-layout", "desktop");
     expect(page).toHaveAttribute("data-catalog-release", CATALOG_RELEASE_ID);
     expect(within(page).getByRole("region", { name: "目录列表" })).toBeVisible();
-    expect(within(page).getByRole("region", { name: "定义详情" })).toBeVisible();
-    expect(within(page).getByRole("region", { name: "定义时间线" })).toBeVisible();
+    // The detail is disclosed in a dialog, never inline on the page.
+    expect(within(page).queryByRole("region", { name: "定义详情" })).not.toBeInTheDocument();
+    // The module navigator owns the side rail and the table keeps the rest.
+    expect(within(page).getByRole("navigation", { name: "参数定义模块树" })).toBeVisible();
+    expect(within(page).getByRole("status", { name: catalogResultCountLabel })).toHaveTextContent(/共 \d+ 项/);
+    expect(within(page).getByRole("navigation", { name: "分页" })).toBeVisible();
+    // History and pending work open on demand instead of owning the workspace.
+    expect(screen.queryByRole("region", { name: "定义时间线" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "待处理工作" })).not.toBeInTheDocument();
     expect(within(page).getByLabelText("目录发布")).toHaveTextContent("2026.08.3");
     expect(within(page).getByLabelText("目录发布")).toHaveTextContent(CATALOG_RELEASE_ID);
     expect(screen.queryByRole("button", { name: /生效|治理|Effective|Governance/ })).not.toBeInTheDocument();
@@ -229,7 +239,7 @@ describe("CatalogPage", () => {
       [...hrefs].reverse().find((href) => href.includes("definitionId=")) ??
       "";
     const parsed = parseCatalogUrlAnchor(selected.slice(selected.indexOf("?")));
-    expect(parsed).toEqual({
+    expect(parsed).toMatchObject({
       subjectId: CATALOG_SUBJECT_ID,
       definitionId: CATALOG_DEFINITION_ID,
       catalogReleaseId: CATALOG_RELEASE_ID,
@@ -244,6 +254,7 @@ describe("CatalogPage", () => {
   });
 
   it("opens formal identity, revision, usage, registration, and placement from a deep link", async () => {
+    const user = userEvent.setup();
     renderCatalog({
       search: buildCatalogHref({
         subjectId: CATALOG_SUBJECT_ID,
@@ -263,7 +274,8 @@ describe("CatalogPage", () => {
     expect(within(detail).getByText(/已登记/)).toBeInTheDocument();
     expect(within(detail).getByText("Root")).toBeInTheDocument();
 
-    const timeline = screen.getByRole("region", { name: "定义时间线" });
+    await user.click(await screen.findByRole("button", { name: /查看历史/ }));
+    const timeline = await screen.findByRole("region", { name: "定义时间线" });
     expect(within(timeline).getByText("目录发布")).toBeInTheDocument();
     expect(within(timeline).getByText("Published")).toBeInTheDocument();
   });
@@ -280,9 +292,13 @@ describe("CatalogPage", () => {
 
     const orgAdmin = renderCatalog({ actor: "org-admin" });
     await screen.findByRole("region", { name: "参数定义目录" });
-    expect(screen.getByRole("button", { name: "提出定义修订" })).toBeEnabled();
+    // Definition proposals have no surface on this page, so the toolbar offers
+    // no proposal action; the remaining write entry points stay reachable.
+    expect(screen.queryByRole("button", { name: "提出定义修订" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "提交修订" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "撤回修订" })).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "调整放置" })).toBeEnabled();
-    expect(screen.getByRole("button", { name: "处理审核" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "待处理工作" })).toBeEnabled();
     expect(screen.getByRole("button", { name: "登记主体" })).toBeEnabled();
     expect(screen.queryByRole("button", { name: "接受修订" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "新增定义" })).not.toBeInTheDocument();
@@ -359,8 +375,8 @@ describe("CatalogPage", () => {
 
   it("lets an administrator select the first published, unregistered subject from the list", async () => {
     renderCatalog({ actor: "org-admin", scenario: "unregistered" });
-    const subjects = await screen.findByRole("list", { name: "主体列表" });
-    await userEvent.click(within(subjects).getAllByRole("button")[0]);
+    const subjectLeaves = await screen.findAllByRole("button", { name: /^选择主体 / });
+    await userEvent.click(subjectLeaves[0]!);
     await waitFor(() => expect(screen.getByRole("region", { name: "参数定义目录" })).toHaveAttribute("data-catalog-state", "unregistered"));
     expect(screen.getByRole("button", { name: "登记主体" })).toBeEnabled();
   });
@@ -400,7 +416,9 @@ describe("CatalogPage", () => {
     unmountFilter();
 
     renderCatalog({ scenario: "empty-no-review-work", includeReview: true });
-    expect((await screen.findAllByText(catalogEmptyMessages["no-review-work"])).length).toBeGreaterThan(0);
+    // The review queue itself is disclosed by the host dialog; this page reports
+    // the empty reason and offers the single count-bearing entry point.
+    expect(await screen.findByRole("button", { name: /待处理工作/ })).toBeInTheDocument();
     expect(screen.getByRole("region", { name: "参数定义目录" })).toHaveAttribute("data-empty-reason", "no-review-work");
   });
 
@@ -420,12 +438,13 @@ describe("CatalogPage", () => {
     expect(page).toHaveAttribute("data-catalog-state", "retired");
     expect(page).toHaveAttribute("data-writes-enabled", "false");
     expect(screen.getAllByText(/已退役或已弃用，历史记录仍可阅读/).length).toBeGreaterThan(0);
-    expect(screen.getByRole("button", { name: "提出定义修订" })).toBeDisabled();
+    expect(screen.queryByRole("button", { name: "提出定义修订" })).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "调整放置" })).toBeDisabled();
     expect(within(screen.getByRole("region", { name: "定义详情" })).getByText(/修订 #6/)).toBeInTheDocument();
-    expect(within(screen.getByRole("region", { name: "定义时间线" })).getByText("目录发布")).toBeInTheDocument();
-    await user.hover(screen.getByRole("button", { name: "提出定义修订" }));
-    expect(screen.getByRole("button", { name: "提出定义修订" })).toHaveAttribute(
+    await user.click(screen.getByRole("button", { name: /查看历史/ }));
+    expect(within(await screen.findByRole("region", { name: "定义时间线" })).getByText("目录发布")).toBeInTheDocument();
+    await user.hover(screen.getByRole("button", { name: "调整放置" }));
+    expect(screen.getByRole("button", { name: "调整放置" })).toHaveAttribute(
       "title",
       expect.stringMatching(/禁止新增操作|写入已暂停|已退役/)
     );
@@ -448,13 +467,15 @@ describe("CatalogPage", () => {
     renderCatalog({ repository });
     await screen.findByRole("button", { name: /southchip,sc8562/ });
     blocked = true;
-    await user.click(screen.getByRole("button", { name: "刷新" }));
+    // A scope change reloads the collection; there is no refresh button.
+    await user.selectOptions(screen.getByLabelText("每页条数"), "20");
     const page = screen.getByRole("region", { name: "参数定义目录" });
     await waitFor(() => expect(page).toHaveAttribute("data-catalog-state", "loading"));
     expect(page).toHaveAttribute("data-writes-enabled", "false");
     expect(page).toHaveAttribute("data-catalog-release", CATALOG_RELEASE_ID);
     expect(screen.getAllByText("正在刷新目录发布，写入已暂停").length).toBeGreaterThan(0);
-    expect(screen.getByRole("button", { name: "提出定义修订" })).toBeDisabled();
+    expect(screen.queryByRole("button", { name: "提出定义修订" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "调整放置" })).toBeDisabled();
     expect(screen.getByRole("button", { name: /southchip,sc8562/ })).toBeInTheDocument();
     gate.resolve();
     await waitFor(() => expect(page).toHaveAttribute("data-catalog-state", "ready"));
@@ -468,10 +489,11 @@ describe("CatalogPage", () => {
     await user.click(screen.getByRole("button", { name: /southchip,sc8562/ }));
     const table = await screen.findByRole("table", { name: "参数定义列表" });
     await user.click(within(table).getByText("gpio-int"));
-    const sheet = await screen.findByRole("dialog", { name: "gpio-int" });
-    expect(within(sheet).getByRole("tab", { name: "详情" })).toBeVisible();
-    expect(within(sheet).getByRole("tab", { name: "时间线" })).toBeVisible();
-    await user.click(within(sheet).getByRole("tab", { name: "时间线" }));
+    const sheet = await screen.findByRole("dialog", { name: /gpio-int/ });
+    // One editor dialog: the definition reads there and history is disclosed
+    // from its own toggle rather than a second tab.
+    expect(within(sheet).getByRole("region", { name: "定义详情" })).toBeVisible();
+    await user.click(within(sheet).getByRole("button", { name: /查看历史/ }));
     expect(within(sheet).getByText("目录发布")).toBeVisible();
     unmount();
 
@@ -486,7 +508,7 @@ describe("CatalogPage", () => {
     });
     const mobile = await screen.findByRole("region", { name: "参数定义目录" });
     expect(mobile).toHaveAttribute("data-catalog-layout", "mobile");
-    expect(await screen.findByRole("dialog", { name: "gpio-int" })).toBeVisible();
+    expect(await screen.findByRole("dialog", { name: /gpio-int/ })).toBeVisible();
   });
 
   it("does not invent a fifth empty reason or leak mixed peer query keys", async () => {

@@ -47,6 +47,10 @@ const catalogStructuralTokens = [
 const allowedCatalogIdentifiers = new Set([
   "project_parameter_bindings",
   "binding_history_events",
+  // #847 definition-replacement projection: current-only reads and the
+  // replaced-binding guard.
+  "current_project_parameter_bindings",
+  "is_replaced_current_binding",
 ]);
 
 const snapshotRelease = {

@@ -10,6 +10,12 @@
   --pcat-danger-soft: var(--danger-soft);
   --pcat-warning: var(--warning);
   --pcat-warning-soft: var(--warning-soft);
+  /* The module navigator mirrors the workbench navigator's hierarchy (ink branch
+     labels, secondary row text, muted meta) through the shared tokens. */
+  --pcat-nav-ink: var(--text);
+  --pcat-nav-item: var(--text-secondary);
+  --pcat-nav-meta: var(--text-muted);
+  --pcat-nav-chevron: var(--text-muted);
   --pcat-success: var(--success);
   --pcat-success-soft: var(--success-soft);
 
@@ -135,6 +141,11 @@
   line-height: var(--leading-base);
 }
 
+/*
+ * Restored workspace (issue #847). The definition table owns all remaining
+ * width beside a 240-520px module navigator; detail is a third track only when
+ * the viewport can afford it, and history/pending work are on demand.
+ */
 .parameter-catalog__workspace {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
@@ -144,14 +155,441 @@
 }
 
 .parameter-catalog[data-catalog-layout="desktop"] .parameter-catalog__workspace {
-  grid-template-columns: minmax(0, 1.05fr) minmax(0, 1.2fr) minmax(0, 0.95fr);
+  grid-template-columns: minmax(15rem, 20rem) minmax(0, 1fr);
   align-items: stretch;
 }
 
 @media (min-width: 1100px) {
   .parameter-catalog:not([data-catalog-layout="tablet"]):not([data-catalog-layout="mobile"]) .parameter-catalog__workspace {
-    grid-template-columns: minmax(0, 1.05fr) minmax(0, 1.2fr) minmax(0, 0.95fr);
+    grid-template-columns: minmax(15rem, 20rem) minmax(0, 1fr);
   }
+}
+
+@media (min-width: 1600px) {
+  .parameter-catalog[data-catalog-layout="desktop"] .parameter-catalog__workspace,
+  .parameter-catalog:not([data-catalog-layout="tablet"]):not([data-catalog-layout="mobile"]) .parameter-catalog__workspace {
+    grid-template-columns: minmax(15rem, 20rem) minmax(0, 1.6fr) minmax(0, 1fr);
+  }
+}
+
+.parameter-catalog__navigator {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  min-width: 0;
+  min-height: 0;
+  max-height: 100%;
+  padding: var(--space-4);
+  overflow: auto;
+  background: var(--pcat-surface);
+  border: 1px solid var(--pcat-border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-1);
+}
+
+.parameter-catalog__navigator-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+/* The module navigator mirrors the workbench navigator the other admin pages
+   use: 42px rows on a 2px rhythm, a 28px disclosure column, a muted row label
+   with an ink branch label, a 10px right-aligned count, and a left rule for
+   nested levels. */
+/* One dialog body for a definition: the identity header, the identity/content
+   form, and the read-only facts behind 更多信息. */
+.definition-editor {
+  display: grid;
+  gap: var(--space-3);
+}
+
+.definition-editor__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.definition-editor__subject {
+  font-weight: 700;
+  color: var(--pcat-text);
+}
+
+.definition-editor__id {
+  color: var(--pcat-muted);
+  font-size: var(--text-xs);
+  overflow-wrap: anywhere;
+}
+
+.definition-editor__form,
+.definition-editor__form label,
+.definition-editor__more dl {
+  display: grid;
+  gap: var(--space-1);
+}
+
+.definition-editor__form {
+  gap: var(--space-3);
+}
+
+/* The editor fields use the same field treatment as the other governed dialogs
+   (the workbench sheet scope provides no input styling of its own). */
+.definition-editor__form input,
+.definition-editor__form select,
+.definition-editor__form textarea {
+  width: 100%;
+  min-height: 36px;
+  padding: var(--space-2);
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--outline);
+  border-radius: var(--radius-md);
+  font: inherit;
+  font-size: var(--text-base);
+  font-weight: 400;
+  outline: 0;
+}
+
+.definition-editor__form textarea {
+  min-height: 64px;
+  resize: vertical;
+}
+
+.definition-editor__form input:focus,
+.definition-editor__form select:focus,
+.definition-editor__form textarea:focus {
+  border-color: var(--app-primary);
+  box-shadow: var(--ring);
+}
+
+.definition-editor__form input:disabled,
+.definition-editor__form select:disabled,
+.definition-editor__form textarea:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.definition-editor__fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
+  gap: var(--space-2);
+}
+
+.definition-editor__more summary,
+.definition-editor__history summary {
+  cursor: pointer;
+  color: var(--pcat-secondary);
+  font-size: var(--text-sm);
+}
+
+.definition-editor__more {
+  border-top: 1px solid var(--pcat-border);
+  padding-top: var(--space-2);
+}
+
+.definition-editor__more dl {
+  margin-top: var(--space-2);
+}
+
+/* Compact cards keep their own edit entry beside the card. */
+.parameter-catalog__card-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.parameter-catalog__card-row .parameter-catalog__card {
+  min-width: 0;
+}
+
+.parameter-catalog__tree {
+  display: grid;
+  gap: var(--space-1);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.parameter-catalog__tree-node {
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.parameter-catalog__tree .parameter-catalog__tree {
+  margin: var(--space-1) 0 0 var(--space-4);
+  padding-left: var(--space-2);
+  border-left: 1px solid var(--pcat-border);
+}
+
+.parameter-catalog__tree-row {
+  display: grid;
+  grid-template-columns: minmax(28px, auto) minmax(0, 1fr);
+  align-items: center;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+.parameter-catalog__tree-toggle {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  color: var(--pcat-nav-chevron);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  font-size: var(--text-base);
+  line-height: 1;
+  cursor: pointer;
+}
+
+button.parameter-catalog__tree-toggle:hover {
+  color: var(--pcat-accent);
+  background: var(--pcat-accent-soft);
+  border-color: color-mix(in srgb, var(--pcat-accent) 24%, transparent);
+}
+
+.parameter-catalog__tree-select {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-1);
+  width: 100%;
+  min-width: 0;
+  min-height: 42px;
+  padding: var(--space-2);
+  color: var(--pcat-nav-item);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  font: 400 var(--text-sm) / 1.35 var(--font-sans);
+  text-align: left;
+  cursor: pointer;
+  transition:
+    color var(--duration-fast) var(--ease-out),
+    background var(--duration-fast) var(--ease-out),
+    border-color var(--duration-fast) var(--ease-out);
+}
+
+.parameter-catalog__tree-select:hover {
+  color: var(--pcat-accent);
+  background: var(--pcat-accent-soft);
+  border-color: color-mix(in srgb, var(--pcat-accent) 24%, transparent);
+}
+
+.parameter-catalog__tree-select[aria-pressed="true"] {
+  color: var(--pcat-accent);
+  background: var(--pcat-accent-soft);
+  border-color: color-mix(in srgb, var(--pcat-accent) 35%, var(--pcat-border));
+  border-left: 3px solid var(--pcat-accent);
+}
+
+.parameter-catalog__tree-select:focus-visible,
+.parameter-catalog__tree-toggle:focus-visible {
+  outline: none;
+  box-shadow: var(--ring);
+}
+
+/* Branch labels read as structure; subject leaves stay muted supporting text. */
+.parameter-catalog__tree-select[data-catalog-node-kind="module"] .parameter-catalog__tree-label,
+.parameter-catalog__tree-select--group .parameter-catalog__tree-label {
+  font-weight: 700;
+  color: var(--pcat-nav-ink);
+}
+
+/* The pending-work dialog holds the review queue table, so it needs more room
+   than the default governance dialog width. */
+.confirm-dialog.parameter-catalog__pending-dialog {
+  width: min(960px, calc(100vw - 48px));
+  max-height: min(720px, calc(100vh - 96px));
+}
+
+.parameter-catalog__pending-dialog .parameter-catalog__review {
+  min-width: 0;
+}
+
+/* Single-action footer: keep it on the trailing edge like the other dialogs. */
+.confirm-dialog.parameter-catalog__pending-dialog .dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+/* Row actions use the same secondary button shape as the other admin tables,
+   with an outline strong enough to read as a button. The cell keeps its
+   content-driven width and wraps, so the table never overflows the pane and no
+   action is clipped. */
+.parameter-catalog__row-actions {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--space-1);
+}
+
+.parameter-catalog__row-actions .button {
+  white-space: nowrap;
+}
+
+.parameter-catalog__row-actions .button.subtle {
+  border-color: var(--border-strong);
+}
+
+/* The actions cell is the last, narrowest column; trimming its padding keeps the
+   table at the pane width so no action is clipped. */
+.parameter-catalog table td[data-label="操作"] {
+  padding-left: var(--space-2);
+  padding-right: var(--space-2);
+}
+
+.parameter-catalog__tree-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* A subject leaf inside the module tree: name plus its type/registration meta. */
+.parameter-catalog__tree-select[data-catalog-node-kind="subject"] {
+  gap: var(--space-2);
+  font-size: var(--text-sm);
+}
+
+.parameter-catalog__tree-select[data-catalog-node-kind="subject"] .parameter-catalog__tree-label {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.parameter-catalog__tree-select[data-catalog-node-kind="subject"] .parameter-catalog__subject-meta {
+  flex: 0 0 auto;
+  overflow: hidden;
+  color: var(--pcat-nav-meta);
+  font-size: var(--text-xs);
+  line-height: 1.3;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+/* The unregistered group is a branch label, not a filter value. */
+.parameter-catalog__tree-select--group {
+  cursor: default;
+  color: var(--pcat-nav-item);
+}
+
+.parameter-catalog__tree-select--group:hover {
+  background: transparent;
+}
+
+.parameter-catalog__module-count {
+  flex: 0 0 auto;
+  min-width: 0;
+  max-width: 120px;
+  overflow: hidden;
+  color: var(--pcat-nav-meta);
+  font-size: var(--text-xs);
+  line-height: 1.3;
+  text-align: right;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.parameter-catalog__list-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+.parameter-catalog__count {
+  margin: 0;
+  color: var(--pcat-secondary);
+  font-size: var(--text-sm);
+  line-height: var(--leading-sm);
+}
+
+.parameter-catalog__pagination {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding-top: var(--space-2);
+  border-top: 1px solid var(--pcat-border);
+}
+
+.parameter-catalog__page-size {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--pcat-secondary);
+  font-size: var(--text-sm);
+}
+
+.parameter-catalog__page-size select {
+  height: 28px;
+  padding: 0 var(--space-2);
+  color: var(--pcat-text);
+  background: var(--surface-sunken);
+  border: 1px solid var(--pcat-border);
+  border-radius: var(--radius-sm);
+  font: 400 var(--text-sm) / var(--leading-sm) var(--font-sans);
+}
+
+.parameter-catalog__page-buttons {
+  display: inline-flex;
+  gap: var(--space-2);
+}
+
+.parameter-catalog__pending {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-4);
+  background: var(--surface-sunken);
+  border: 1px solid var(--pcat-border);
+  border-radius: var(--radius-md);
+}
+
+.parameter-catalog__pending-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.parameter-catalog__pending-list li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.parameter-catalog__history-body,
+.parameter-catalog__revisions {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.parameter-catalog__revision {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-2);
+  padding: var(--space-1) 0;
+  border-bottom: 1px solid var(--pcat-border);
+  font-size: var(--text-sm);
 }
 
 .parameter-catalog__pane {
@@ -168,11 +606,9 @@
   box-shadow: var(--shadow-1);
 }
 
-.parameter-catalog[data-catalog-layout="tablet"] .parameter-catalog__pane--detail,
-.parameter-catalog[data-catalog-layout="tablet"] .parameter-catalog__pane--timeline,
-.parameter-catalog[data-catalog-layout="mobile"] .parameter-catalog__pane--detail,
-.parameter-catalog[data-catalog-layout="mobile"] .parameter-catalog__pane--timeline {
-  display: none;
+/* Narrow screens use compact, collapsible navigation above the table. */
+.parameter-catalog[data-catalog-layout="mobile"] .parameter-catalog__navigator {
+  max-height: 16rem;
 }
 
 .parameter-catalog__pane-title {
@@ -180,48 +616,6 @@
   font-size: var(--text-lg);
   font-weight: 600;
   line-height: var(--leading-lg);
-}
-
-.parameter-catalog__subjects {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-1);
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-
-.parameter-catalog__subject {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: var(--space-1);
-  width: 100%;
-  min-width: 0;
-  padding: var(--space-2) var(--space-3);
-  text-align: left;
-  background: transparent;
-  border: 1px solid transparent;
-  border-radius: var(--radius-md);
-  cursor: pointer;
-}
-
-.parameter-catalog__subject:hover:not(:disabled) {
-  background: color-mix(in srgb, var(--pcat-accent-soft) 45%, var(--pcat-surface));
-}
-
-.parameter-catalog__subject:active:not(:disabled) {
-  background: var(--pcat-accent-soft);
-}
-
-.parameter-catalog__subject:focus-visible {
-  outline: none;
-  box-shadow: var(--ring);
-}
-
-.parameter-catalog__subject[aria-pressed="true"] {
-  background: var(--pcat-accent-soft);
-  border-color: color-mix(in srgb, var(--pcat-accent) 35%, var(--pcat-border));
 }
 
 .parameter-catalog__subject-name,
@@ -354,6 +748,18 @@
   margin-bottom: var(--space-3);
 }
 
+/* The detail dialog tabs read as buttons and show which pane is selected. */
+.parameter-catalog__sheet-tabs [role="tab"] {
+  background: var(--pcat-surface);
+  border-color: var(--border-strong);
+}
+
+.parameter-catalog__sheet-tabs [role="tab"][aria-selected="true"] {
+  color: var(--pcat-accent);
+  background: var(--pcat-accent-soft);
+  border-color: color-mix(in srgb, var(--pcat-accent) 35%, var(--pcat-border));
+}
+
 .parameter-catalog[data-catalog-layout="desktop"] .parameter-catalog__table-wrap--mobile,
 .parameter-catalog[data-catalog-layout="tablet"] .parameter-catalog__table-wrap--mobile {
   display: none;
@@ -363,10 +769,19 @@
   display: none;
 }
 
-.parameter-catalog .data-table-wrap,
-.parameter-catalog table {
+/*
+ * The restored table keeps a readable floor and scrolls horizontally instead of
+ * squeezing columns; paging already bounds the row count.
+ */
+.parameter-catalog .data-table-wrap {
   min-width: 0;
   max-width: 100%;
+  overflow-x: auto;
+}
+
+.parameter-catalog table {
+  min-width: 48rem;
+  width: max(100%, 48rem);
 }
 
 .parameter-catalog-organization {

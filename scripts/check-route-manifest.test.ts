@@ -42,7 +42,7 @@ describe("catalog route manifest freeze", () => {
     ).toEqual([]);
   });
 
-  it("keeps the twelve PCAT-API identifiers in the frozen contract", () => {
-    expect(pcatApiGates).toHaveLength(12);
+  it("keeps the thirteen PCAT-API identifiers in the frozen contract", () => {
+    expect(pcatApiGates).toHaveLength(13);
   });
 });

@@ -80,6 +80,12 @@ const asSupportedContent = (value: unknown): SupportedDefinitionContent | null =
   if (!isRecord(value.valueSchema) || typeof value.valueSchema.type !== "string") {
     return null;
   }
+  if (value.description !== undefined && typeof value.description !== "string") {
+    return null;
+  }
+  if (value.lifecycle !== undefined && value.lifecycle !== "active" && value.lifecycle !== "retired") {
+    return null;
+  }
   return value as unknown as SupportedDefinitionContent;
 };
 
@@ -115,6 +121,25 @@ export function parsePublicationChangeSet(
         op: "create-definition",
         subjectId: entry.subjectId,
         propertyKey: entry.propertyKey,
+        content,
+      });
+      continue;
+    }
+    if (entry.op === "retire-definition" || entry.op === "restore-definition") {
+      const content = asSupportedContent(entry.content);
+      if (
+        typeof entry.definitionId !== "string" ||
+        (entry.class !== undefined && entry.class !== "documentation" && entry.class !== "semantic") ||
+        (entry.reason !== undefined && typeof entry.reason !== "string") ||
+        content === null
+      ) {
+        return { error: { kind: "invalid-input", reason: "changeSet" } };
+      }
+      changes.push({
+        op: entry.op,
+        definitionId: entry.definitionId,
+        ...(entry.class !== undefined ? { class: entry.class } : {}),
+        ...(entry.reason !== undefined ? { reason: entry.reason } : {}),
         content,
       });
       continue;
@@ -213,6 +238,12 @@ export function publicationImpactFacts(
           class: confirmedClass.get(change.definitionId) ?? change.class,
         };
       }
+      if (change.op === "retire-definition" || change.op === "restore-definition") {
+        return {
+          op: "revise-definition" as const,
+          class: confirmedClass.get(change.definitionId) ?? change.class ?? "semantic",
+        };
+      }
       return { op: "create-subject-with-definitions" as const };
     }),
     introducesNewSubject: impact.subjects.added.length > 0,
@@ -224,7 +255,9 @@ export function publicationImpactFacts(
     changesFallback: impact.matcher.fallbackImpact,
     tightensExistingContract: impact.existingContractsTighten,
     changesUnitOrSemantic: impact.definitions.changed.some((entry) => entry.contentClass === "semantic"),
-    retiresIdentity: false,
+    retiresIdentity: changeSet.some(
+      (change) => change.op === "retire-definition",
+    ),
     unknownImpact: false,
     sourceKind: "typed-changeset",
   };

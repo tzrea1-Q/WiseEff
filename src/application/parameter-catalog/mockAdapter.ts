@@ -42,6 +42,7 @@ import {
   CATALOG_CANDIDATE_ID,
   CATALOG_JOB_ID,
   CATALOG_ORGANIZATION_ID,
+  CATALOG_MODULE_ID,
   CATALOG_PLACEMENT_ID,
   CATALOG_REGISTRATION_ID,
   CATALOG_RELEASE_ID,
@@ -139,7 +140,9 @@ function collection<T>(items: T[], emptyReason?: Parameters<typeof emptyCatalogC
   return {
     items: clone(items),
     nextCursor: null as string | null,
-    catalogReleaseId: CATALOG_RELEASE_ID
+    catalogReleaseId: CATALOG_RELEASE_ID,
+    totalCount: items.length,
+    hasMore: false
   };
 }
 
@@ -215,7 +218,8 @@ function placementFromIntent(intent: CatalogPlacementIntent): CatalogPlacement {
   return {
     id: CATALOG_PLACEMENT_ID,
     displayName: intent.displayName,
-    parentPlacementId: intent.parentPlacementId
+    parentPlacementId: intent.parentPlacementId,
+    moduleId: CATALOG_MODULE_ID
   };
 }
 
@@ -509,11 +513,46 @@ export function createMockCatalogPorts(options: CatalogMockOptions = {}): {
     },
     async listPublications() {
       assertReadyForRead(store);
+      const items = [...store.jobs.values()].map((job) => clone(job));
       return {
-        items: [...store.jobs.values()].map((job) => clone(job)),
+        items,
         nextCursor: null,
-        catalogReleaseId: CATALOG_RELEASE_ID
+        catalogReleaseId: CATALOG_RELEASE_ID,
+        totalCount: items.length,
+        hasMore: false
       };
+    },
+    /**
+     * The identity correction migration is a governance capability that the mock
+     * runtime does not own: mock mode must never invent migration authority. The
+     * explicit mock adapter therefore fails closed with the same typed shape the
+     * API uses for an unsupported capability.
+     */
+    async previewDefinitionReplacement() {
+      assertReadyForRead(store);
+      throw catalogApiFailure("unsupported-catalog-capability");
+    },
+    async listDefinitionReplacements() {
+      assertReadyForRead(store);
+      return {
+        items: [],
+        nextCursor: null,
+        catalogReleaseId: CATALOG_RELEASE_ID,
+        totalCount: 0,
+        hasMore: false
+      };
+    },
+    async createDefinitionReplacement() {
+      assertReadyForRead(store);
+      throw catalogApiFailure("unsupported-catalog-capability");
+    },
+    async getDefinitionReplacement() {
+      assertReadyForRead(store);
+      throw catalogApiFailure("definition-not-found");
+    },
+    async continueDefinitionReplacement() {
+      assertReadyForRead(store);
+      throw catalogApiFailure("unsupported-catalog-capability");
     },
     async getPublication(jobId) {
       assertReadyForRead(store);

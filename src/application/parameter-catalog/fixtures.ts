@@ -21,6 +21,7 @@ export const CATALOG_DEFINITION_ID = "pdef_01KGPIOINT";
 export const CATALOG_REVISION_ID = "drev_01K6";
 export const CATALOG_REGISTRATION_ID = "sreg_01KACME";
 export const CATALOG_PLACEMENT_ID = "splc_01KROOT";
+export const CATALOG_MODULE_ID = "mod_01KMODULE";
 export const CATALOG_REVIEW_ITEM_ID = "prev_01KAMBIG";
 export const CATALOG_PROPOSAL_ID = "pprp_01KDOC";
 export const CATALOG_OBSERVATION_ID = "pobs_01KOBS";
@@ -49,7 +50,8 @@ export const readyCatalogDocument: Exclude<CatalogDocumentResponse, { item: null
 const placement = {
   id: CATALOG_PLACEMENT_ID,
   displayName: "Root",
-  parentPlacementId: null
+  parentPlacementId: null,
+  moduleId: CATALOG_MODULE_ID
 };
 
 const revision = {
@@ -57,9 +59,11 @@ const revision = {
   definitionId: CATALOG_DEFINITION_ID,
   revisionNumber: 6,
   contentDigest: "sha256:rev",
+  displayName: "GPIO 中断上限",
   valueShape: { kind: "json-schema" as const, schema: { type: "integer" } },
   constraints: { kind: "none" as const },
   documentation: "GPIO interrupt",
+  unit: { kind: "symbol" as const, symbol: "us" },
   publishedInCatalogReleaseId: CATALOG_RELEASE_ID
 };
 
@@ -120,6 +124,8 @@ export const retiredDefinition: CatalogDefinitionResponse["item"] = {
 export const catalogRevision: CatalogDefinitionRevisionResponse["item"] = revision;
 
 export const catalogTimeline: CatalogDefinitionTimelineResponse = {
+  totalCount: 1,
+  hasMore: false,
   items: [
     {
       id: "tfact_01KGPIOINT",
@@ -183,6 +189,7 @@ export const catalogProposal: CatalogProposalResponse["item"] = {
   organizationId: CATALOG_ORGANIZATION_ID,
   status: "submitted",
   etag: "etag-p1",
+  createdAt: "2026-08-31T00:00:00Z",
   base: {
     catalogReleaseId: CATALOG_RELEASE_ID,
     definitionId: CATALOG_DEFINITION_ID,
@@ -238,11 +245,20 @@ export const mappedLegacyIdentifier: CatalogLegacyIdentifierResponse = {
 
 export function emptyCatalogCollection<T>(
   emptyReason: "no-registrations" | "no-definitions" | "no-review-work" | "no-filter-match"
-): { items: T[]; nextCursor: null; catalogReleaseId: string; emptyReason: typeof emptyReason } {
+): {
+  items: T[];
+  nextCursor: null;
+  catalogReleaseId: string;
+  totalCount: number;
+  hasMore: boolean;
+  emptyReason: typeof emptyReason;
+} {
   return {
     items: [],
     nextCursor: null,
     catalogReleaseId: CATALOG_RELEASE_ID,
+    totalCount: 0,
+    hasMore: false,
     emptyReason
   };
 }

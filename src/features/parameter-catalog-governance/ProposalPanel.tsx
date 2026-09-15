@@ -71,15 +71,25 @@ export function ProposalPanel({
     setLoading(true);
     setError(null);
     try {
-      const response = await repository.listProposals();
-      setItems([...response.items]);
+      // Bounded, organization-wide: a proposal raised against an earlier
+      // release must stay reachable so its author can still withdraw it after
+      // the catalog advances. The bound is what keeps the list from growing
+      // past the panel's own pagination.
+      const response = await repository.listProposals({ limit: 50 });
+      // Order by the authoritative creation time so the newest draft is the
+      // first actionable row, matching the persisted projection order.
+      setItems(
+        [...response.items].sort((left, right) =>
+          (right.createdAt ?? "").localeCompare(left.createdAt ?? "")
+        )
+      );
     } catch {
       setError("定义修订加载失败，请稍后重试。");
       setItems([]);
     } finally {
       setLoading(false);
     }
-  }, [repository]);
+  }, [catalogReleaseId, repository]);
 
   useEffect(() => {
     void load();

@@ -1,7 +1,7 @@
 import type { HttpMethod, WiseEffRouter } from "../../../shared/http/router";
 
 import { handleCatalogGovernance } from "./handlers";
-import { catalogGovernanceRoutes } from "./mapping";
+import { catalogDefinitionReplacementRoutes, catalogGovernanceRoutes } from "./mapping";
 import type { CatalogGovernancePorts, CatalogGovernanceRequest } from "./types";
 
 function addRoute(
@@ -23,11 +23,12 @@ function addRoute(
   add.call(router, path, handler);
 }
 
-export function registerCatalogGovernanceRoutes(
+function registerRoutes(
   router: WiseEffRouter,
   ports: CatalogGovernancePorts,
+  routes: ReadonlyArray<{ readonly method: HttpMethod; readonly path: string }>,
 ): void {
-  for (const route of catalogGovernanceRoutes) {
+  for (const route of routes) {
     addRoute(router, route.method, route.path, async (request) => {
       const catalogRequest: CatalogGovernanceRequest = {
         method: request.method,
@@ -44,8 +45,34 @@ export function registerCatalogGovernanceRoutes(
   }
 }
 
+export function registerCatalogGovernanceRoutes(
+  router: WiseEffRouter,
+  ports: CatalogGovernancePorts,
+): void {
+  registerRoutes(router, ports, catalogGovernanceRoutes);
+}
+
+/**
+ * Definition identity correction migration routes (`PCAT-API-13`).  Registered
+ * separately so the frozen PCAT-API-04..06 route set stays exactly 19 routes.
+ */
+export function registerCatalogDefinitionReplacementRoutes(
+  router: WiseEffRouter,
+  ports: CatalogGovernancePorts,
+): void {
+  registerRoutes(router, ports, catalogDefinitionReplacementRoutes);
+}
+
 export const catalogGovernanceRouteManifest = catalogGovernanceRoutes.map((route) => ({
   id: route.id,
   method: route.method,
   path: route.path,
 }));
+
+export const catalogDefinitionReplacementRouteManifest = catalogDefinitionReplacementRoutes.map(
+  (route) => ({
+    id: route.id,
+    method: route.method,
+    path: route.path,
+  }),
+);

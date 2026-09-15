@@ -40,6 +40,7 @@ import type {
   DefinitionRevisionSnapshot,
   DefinitionTimelineQuery,
   MatchResult,
+  CatalogPageInfo,
   ParameterDefinitionSnapshot,
   PropertyKey,
   SubjectAliasSnapshot,
@@ -123,6 +124,10 @@ const pageQuery = (query: object): ContractJsonValue =>
 
 const searchHaystack = (parts: readonly string[], search: string): boolean =>
   parts.some((part) => part.toLowerCase().includes(search.toLowerCase()));
+
+const optionalText = (
+  value: { readonly kind: "present"; readonly value: string } | { readonly kind: "absent" },
+): string => (value.kind === "present" ? value.value : "");
 
 const catalogDefinitionRelation = `parameter_catalog.${["parameter", "definitions"].join("_")}`;
 
@@ -384,6 +389,8 @@ export class CapturedCatalogSnapshot implements CatalogSnapshot {
         return { status: "unknown", target: "subject" };
       }
     }
+    const scopedSubjectIds =
+      query.scope.kind === "subjects" ? new Set<string>(query.scope.subjectIds) : null;
     const fingerprint = fingerprintCatalogQuery(
       pageQuery({
         selection: query.selection,
@@ -393,9 +400,12 @@ export class CapturedCatalogSnapshot implements CatalogSnapshot {
         search: query.search,
       }),
     );
-    const scoped = query.scope.kind === "subject";
+    const scoped = query.scope.kind !== "all";
     const filtered = this.definitions.filter((definition) => {
       if (scopedSubjectId && definition.subjectId !== scopedSubjectId) {
+        return false;
+      }
+      if (scopedSubjectIds && !scopedSubjectIds.has(definition.subjectId)) {
         return false;
       }
       if (query.selection.kind === "only" && !query.selection.ids.includes(definition.id)) {
@@ -415,7 +425,7 @@ export class CapturedCatalogSnapshot implements CatalogSnapshot {
       }
       if (query.search.kind === "present") {
         return searchHaystack(
-          [definition.propertyKey, definition.selectedRevision.content.displayName],
+          this.definitionSearchParts(definition),
           query.search.value,
         );
       }
@@ -434,6 +444,32 @@ export class CapturedCatalogSnapshot implements CatalogSnapshot {
       return paged;
     }
     return { status: "found", scope: query.scope, page: paged.page };
+  }
+
+  /**
+   * Search vocabulary for definitions: the established parameter vocabulary
+   * (property key, display name) plus the authoritative subject and placement
+   * attribution facts the canonical model already holds.
+   */
+  private definitionSearchParts(definition: ParameterDefinitionSnapshot): readonly string[] {
+    const revision = definition.selectedRevision.content;
+    const subject = this.subjects.find((candidate) => candidate.id === definition.subjectId);
+    const aliases =
+      subject && "aliases" in subject && Array.isArray(subject.aliases)
+        ? (subject.aliases as readonly SubjectAliasSnapshot[]).map((alias) => alias.selector.value)
+        : [];
+    return [
+      definition.propertyKey,
+      definition.id,
+      revision.displayName ?? "",
+      optionalText(revision.description),
+      optionalText(revision.documentation),
+      revision.matching.sourceProperty,
+      optionalText(revision.matching.notes),
+      subject?.canonicalKey ?? "",
+      subject?.id ?? "",
+      ...aliases,
+    ];
   }
 
   getDefinitionRevision(input: {
@@ -521,6 +557,7 @@ export class CapturedCatalogSnapshot implements CatalogSnapshot {
           readonly items: readonly T[];
           readonly next: { readonly kind: "present"; readonly value: CatalogCursor } | { readonly kind: "absent" };
           readonly release: CatalogReleaseIdentity;
+          readonly pageInfo: CatalogPageInfo;
         };
       } {
     const sorted = [...items].sort((left, right) =>
@@ -543,22 +580,23 @@ export class CapturedCatalogSnapshot implements CatalogSnapshot {
     }
     const sliced = sorted.slice(start, start + page.limit);
     const last = sliced.at(-1);
+    const hasMore = Boolean(last) && start + sliced.length < sorted.length;
     return {
       status: "ok",
       page: {
         items: sliced,
-        next:
-          last && start + sliced.length < sorted.length
-            ? present(
-                encodeCatalogCursor({
-                  releaseId: this.release.id,
-                  digest: this.release.digest,
-                  queryFingerprint,
-                  last: order(last),
-                }),
-              )
-            : absent,
+        next: hasMore && last
+          ? present(
+              encodeCatalogCursor({
+                releaseId: this.release.id,
+                digest: this.release.digest,
+                queryFingerprint,
+                last: order(last),
+              }),
+            )
+          : absent,
         release: this.release,
+        pageInfo: { totalCount: sorted.length, hasMore },
       },
     };
   }

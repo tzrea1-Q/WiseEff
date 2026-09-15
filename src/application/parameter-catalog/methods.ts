@@ -14,7 +14,12 @@ export const PARAMETER_CATALOG_REPOSITORY_METHODS = [
   "publishPublicationCandidate",
   "getPublication",
   "getPublicationSurface",
-  "listPublications"
+  "listPublications",
+  "previewDefinitionReplacement",
+  "listDefinitionReplacements",
+  "createDefinitionReplacement",
+  "getDefinitionReplacement",
+  "continueDefinitionReplacement"
 ] as const;
 
 export const PARAMETER_CATALOG_GOVERNANCE_REPOSITORY_METHODS = [

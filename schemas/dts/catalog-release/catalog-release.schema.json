@@ -385,6 +385,9 @@
         "documentation": {
           "type": "string"
         },
+        "description": {
+          "type": "string"
+        },
         "unit": {
           "$ref": "#/$defs/contractString"
         },

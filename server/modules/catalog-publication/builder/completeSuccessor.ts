@@ -57,6 +57,8 @@ import type {
   DefinitionImpactEntry,
   FrozenDefinitionAllocation,
   FrozenPublicationIdentity,
+  CatalogChange,
+  DefinitionLifecycleChange,
   ReviseDefinitionChange,
   SuccessorBuildValue,
   SupportedDefinitionContent,
@@ -74,10 +76,29 @@ const CREATE_SUBJECT_KEYS = new Set([
   "cardinality",
 ]);
 const REVISE_KEYS = new Set(["op", "definitionId", "class", "content"]);
+const LIFECYCLE_CHANGE_KEYS = new Set(["op", "definitionId", "class", "content", "reason"]);
 const SELECTOR_KEYS = new Set(["kind", "value"]);
 const NESTED_DEFINITION_KEYS = new Set(["propertyKey", "content"]);
 const DRIVER_NATURES = new Set(["physical-device", "logical-service"]);
 const DRIVER_CARDINALITIES = new Set(["multiple", "singleton-per-project"]);
+
+/**
+ * Deterministic change ordering. Lifecycle operations sort with revisions of the
+ * same definition so a retire and a content revise of one definition cannot
+ * interleave arbitrarily.
+ */
+const changeSortKey = (change: CatalogChange): string => {
+  if (change.op === "create-definition") {
+    return `create\0${change.subjectId}\0${change.propertyKey}`;
+  }
+  if (change.op === "revise-definition") {
+    return `revise\0${change.definitionId}`;
+  }
+  if (change.op === "retire-definition" || change.op === "restore-definition") {
+    return `revise\0${change.definitionId}`;
+  }
+  return `subject\0${change.canonicalKey}`;
+};
 
 const ok = <T>(value: T): { readonly ok: true; readonly value: T } => ({ ok: true, value });
 const fail = (error: BuildCompleteSuccessorError): BuildCompleteSuccessorResult => ({
@@ -403,9 +424,10 @@ const buildDefinitionDocument = (
   const revision = {
     id: allocation.revisionId,
     number: 1,
-    lifecycle: "active" as const,
+    lifecycle: content.lifecycle ?? ("active" as const),
     displayName: content.displayName,
     documentation: content.documentation,
+    ...(content.description !== undefined ? { description: content.description } : {}),
     ...(content.unit !== undefined ? { unit: content.unit } : {}),
     valueSchema: content.valueSchema,
     matching: {
@@ -490,6 +512,88 @@ const applyCreateDefinition = (
   return buildDefinitionDocument(subject, parsed.value, content.value, allocation);
 };
 
+/**
+ * Apply one reversible lifecycle change. The new revision keeps the permanent
+ * identity, subject and property key, and only the lifecycle value (plus any
+ * documentation-class content the caller supplied) differs. A change that would
+ * not alter the revision is a typed no-op so the caller cannot mint an empty
+ * successor.
+ */
+const applyDefinitionLifecycleChange = (
+  change: DefinitionLifecycleChange,
+  targetLifecycle: "retired" | "active",
+  path: string,
+  documents: CatalogReleaseDocument[],
+  allocations: Map<string, FrozenDefinitionAllocation>,
+):
+  | BuildCompleteSuccessorError
+  | { readonly kind: "noop"; readonly document: CatalogReleaseDefinitionDocument }
+  | CatalogReleaseDefinitionDocument => {
+  const extra = extraKeys(change as unknown as Record<string, unknown>, LIFECYCLE_CHANGE_KEYS);
+  if (extra.length > 0) {
+    return { kind: "unsupported-catalog-capability", detail: "unknown-field", path: `${path}.${extra[0]}` };
+  }
+  if (change.class !== undefined && change.class !== "documentation" && change.class !== "semantic") {
+    return { kind: "invalid-input", reason: "lifecycle class must be documentation or semantic" };
+  }
+  const content = validateSupportedDefinitionContent(change.content, `${path}.content`);
+  if (!content.ok) return content.error;
+  const current = documents.find(
+    (document): document is CatalogReleaseDefinitionDocument =>
+      document.kind === "definition" && document.content.id === change.definitionId,
+  );
+  if (!current) {
+    return { kind: "invalid-input", reason: `definition not found:${change.definitionId}` };
+  }
+  if (current.content.revision.lifecycle === targetLifecycle) {
+    return { kind: "noop", document: current };
+  }
+  const allocation = allocations.get(
+    naturalKey(current.content.subjectId, current.content.propertyKey),
+  );
+  if (!allocation) {
+    return {
+      kind: "identity-allocation-missing",
+      naturalKey: naturalKey(current.content.subjectId, current.content.propertyKey),
+    };
+  }
+  const nextRevisionFields = {
+    ...current.content.revision,
+    lifecycle: targetLifecycle,
+    displayName: content.value.displayName,
+    documentation: content.value.documentation,
+    ...(content.value.description !== undefined
+      ? { description: content.value.description }
+      : current.content.revision.description !== undefined
+        ? { description: current.content.revision.description }
+        : {}),
+    ...(content.value.unit !== undefined
+      ? { unit: content.value.unit }
+      : current.content.revision.unit !== undefined
+        ? { unit: current.content.revision.unit }
+        : {}),
+    valueSchema: content.value.valueSchema,
+    ...(content.value.examples !== undefined
+      ? { examples: content.value.examples }
+      : current.content.revision.examples !== undefined
+        ? { examples: current.content.revision.examples }
+        : {}),
+  };
+  const nextDigest = canonicalDigest(revisionContentModel(nextRevisionFields));
+  const revision = {
+    ...nextRevisionFields,
+    id: allocation.revisionId,
+    number: current.content.revision.number + 1,
+    contentDigest: nextDigest,
+  };
+  const definitionContent = { ...current.content, revision };
+  return {
+    ...current,
+    content: definitionContent,
+    normalizedDigest: canonicalDigest(definitionContent as unknown as ContractJsonValue),
+  };
+};
+
 const applyReviseDefinition = (
   change: ReviseDefinitionChange,
   path: string,
@@ -519,6 +623,11 @@ const applyReviseDefinition = (
     ...current.content.revision,
     displayName: content.value.displayName,
     documentation: content.value.documentation,
+    ...(content.value.description !== undefined
+      ? { description: content.value.description }
+      : current.content.revision.description !== undefined
+        ? { description: current.content.revision.description }
+        : {}),
     ...(content.value.unit !== undefined
       ? { unit: content.value.unit }
       : current.content.revision.unit !== undefined
@@ -682,18 +791,8 @@ export async function buildCompleteSuccessor(
   );
 
   const sortedChanges = [...input.changeSet].sort((left, right) => {
-    const leftKey =
-      left.op === "create-definition"
-        ? `create\0${left.subjectId}\0${left.propertyKey}`
-        : left.op === "revise-definition"
-          ? `revise\0${left.definitionId}`
-          : `subject\0${left.canonicalKey}`;
-    const rightKey =
-      right.op === "create-definition"
-        ? `create\0${right.subjectId}\0${right.propertyKey}`
-        : right.op === "revise-definition"
-          ? `revise\0${right.definitionId}`
-          : `subject\0${right.canonicalKey}`;
+    const leftKey = changeSortKey(left);
+    const rightKey = changeSortKey(right);
     return leftKey < rightKey ? -1 : leftKey > rightKey ? 1 : 0;
   });
 
@@ -721,6 +820,30 @@ export async function buildCompleteSuccessor(
         return fail(created);
       }
       documents.push(created as CatalogReleaseDefinitionDocument);
+      continue;
+    }
+    if (change.op === "retire-definition" || change.op === "restore-definition") {
+      const targetLifecycle = change.op === "retire-definition" ? "retired" : "active";
+      const next = applyDefinitionLifecycleChange(
+        change,
+        targetLifecycle,
+        path,
+        documents,
+        allocations,
+      );
+      if ("kind" in next && next.kind !== "definition" && next.kind !== "noop") {
+        return fail(next as BuildCompleteSuccessorError);
+      }
+      if ("kind" in next && next.kind === "noop") {
+        noopRevise = next.document;
+        continue;
+      }
+      const applied = next as CatalogReleaseDefinitionDocument;
+      requestedClasses.set(applied.content.id, change.class ?? "semantic");
+      const position = documents.findIndex(
+        (document) => document.kind === "definition" && document.content.id === applied.content.id,
+      );
+      if (position >= 0) documents[position] = applied;
       continue;
     }
     if (change.op === "revise-definition") {

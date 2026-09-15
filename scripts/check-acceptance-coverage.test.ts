@@ -123,14 +123,23 @@ describe("acceptance coverage checker", () => {
       "PCAT-UI-12",
       "PCAT-UI-13",
       "PCAT-UI-14",
-      "PCAT-UI-15"
+      "PCAT-UI-15",
+      "PCAT-UI-16",
+      "PCAT-UI-17"
     ];
 
     expect(
       acceptanceRequirements
         .filter((requirement) => requirement.id.startsWith("PCAT-UI-"))
         .map((requirement) => ({ id: requirement.id, workflow: requirement.workflow, required: requirement.required }))
-    ).toEqual(expectedIds.map((id) => ({ id, workflow: "C", required: true })));
+    ).toEqual(
+      expectedIds.map((id) => ({
+        id,
+        workflow: "C",
+        // PCAT-UI-10 and PCAT-UI-15 retired their removed-panel journeys in #847.
+        required: id !== "PCAT-UI-10" && id !== "PCAT-UI-15"
+      }))
+    );
   });
 
   it("planned markers never satisfy a required requirement", () => {

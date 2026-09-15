@@ -57,7 +57,7 @@ function inventoryBundle() {
 type SqlClass = "auth" | "kernel" | "business" | "transaction" | "other";
 function classify(sql: string): SqlClass {
   if (/^\s*(begin|commit|rollback|set\s|reset\s)/i.test(sql)) return "transaction";
-  if (/parameter_catalog\.(organization_subject_registrations|subject_placements|parameter_review_evidence|parameter_review_items|project_parameter_bindings|project_parameter_values)\b/i.test(sql)) return "business";
+  if (/parameter_catalog\.(organization_subject_registrations|subject_placements|parameter_review_evidence|parameter_review_items|current_project_parameter_bindings|project_parameter_bindings|project_parameter_values)\b/i.test(sql)) return "business";
   if (/parameter_catalog\.(catalog_state|catalog_releases|catalog_materializations|catalog_release_subjects|catalog_subjects|catalog_release_subject_aliases|catalog_subject_aliases|catalog_release_definition_heads|parameter_definitions|definition_revisions|catalog_activation_receipts)\b/i.test(sql)) return "kernel";
   if (/catalog_publication\.(publication_policies|release_artifacts)\b/i.test(sql)) return "kernel";
   if (/\b(users|user_role_bindings|role_permissions|roles|organizations|local_auth_sessions)\b/i.test(sql)) return "auth";
@@ -91,7 +91,7 @@ describe("R2-BATCH root HTTP SQL budget", () => {
         const input = args[0];
         const sql = typeof input === "string" ? input : input && "text" in input ? String(input.text) : "<non-text query>";
         const rejectProjection = projectionFailure === "usage"
-          ? /from parameter_catalog\.project_parameter_bindings binding/.test(sql)
+          ? /from parameter_catalog\.current_project_parameter_bindings binding/.test(sql)
           : projectionFailure === "registration" && /from parameter_catalog\.organization_subject_registrations registration/.test(sql);
         if (rejectProjection) {
           injectedFailures += 1;
@@ -277,7 +277,7 @@ describe("R2-BATCH root HTTP SQL budget", () => {
     expect(counts.kernel).toBeGreaterThan(0);
     expect(counts.business, "prefilter + three registration/review + one usage query, irrespective of rows").toBe(5);
     const projectedSubjects = statements.find((entry) => entry.batchIds && /organization_subject_registrations/.test(entry.sql));
-    const projectedDefinitions = statements.find((entry) => entry.batchIds && /project_parameter_bindings/.test(entry.sql));
+    const projectedDefinitions = statements.find((entry) => entry.batchIds && /current_project_parameter_bindings/.test(entry.sql));
     expect(projectedSubjects?.batchIds?.slice().sort()).toEqual([...new Set<string>(body.items.map((item: { subject: { id: string } }) => item.subject.id))].sort());
     expect(projectedDefinitions?.batchIds?.slice().sort()).toEqual(body.items.map((item: { id: string }) => item.id).sort());
     for (const statement of statements.filter((entry) => entry.batchIds)) {

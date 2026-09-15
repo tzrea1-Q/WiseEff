@@ -112,7 +112,7 @@ export const summarizeUsage = async (
              where value.id is not null
                and value.source_ref is distinct from $3
            )::text as current_value_count
-         from parameter_catalog.project_parameter_bindings binding
+         from parameter_catalog.current_project_parameter_bindings binding
          left join parameter_catalog.${valuesRelation} value
            on value.id = binding.current_value_id
         where binding.organization_id = $1

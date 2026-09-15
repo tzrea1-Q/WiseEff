@@ -87,6 +87,8 @@ export interface CatalogReleaseDefinitionDocument {
       readonly successorDefinitionId?: string;
       readonly displayName: string;
       readonly documentation: string;
+      /** Optional author description, distinct from long-form documentation. */
+      readonly description?: string;
       readonly unit?: string;
       readonly valueSchema: Readonly<Record<string, ContractJsonValue>>;
       readonly matching: {

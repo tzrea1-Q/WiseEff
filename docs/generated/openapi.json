@@ -5940,9 +5940,10 @@
             }
           },
           {
-            "name": "placement",
+            "name": "placementModuleId",
             "in": "query",
             "required": false,
+            "description": "Organization module id; selects subjects placed at or below the module subtree before pagination.",
             "schema": {
               "type": "string"
             }
@@ -6169,6 +6170,27 @@
             "name": "subjectId",
             "in": "query",
             "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "subjectIds",
+            "in": "query",
+            "required": false,
+            "description": "Explicit trusted multi-subject scope, applied before pagination. Repeated query parameter.",
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "name": "placementModuleId",
+            "in": "query",
+            "required": false,
+            "description": "Organization module id; selects definitions of subjects placed at or below the module subtree before pagination.",
             "schema": {
               "type": "string"
             }
@@ -8761,6 +8783,327 @@
             "$ref": "#/components/responses/ErrorResponse"
           },
           "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
+    "/api/v2/catalog/definition-replacements/preview": {
+      "post": {
+        "operationId": "catalog.previewDefinitionReplacement",
+        "summary": "Preview a definition identity correction: exact impact, compatibility, project manifest and blockers",
+        "tags": [
+          "catalog"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CatalogReplacementPreviewRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CatalogReplacementPreviewResponse"
+                }
+              }
+            },
+            "headers": {
+              "X-WiseEff-Catalog-Release": {
+                "description": "Catalog release that produced this response.",
+                "required": true,
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "401": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "404": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "409": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "503": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
+    "/api/v2/catalog/definition-replacements": {
+      "get": {
+        "operationId": "catalog.listDefinitionReplacements",
+        "summary": "List definition replacements owned by the caller's organization",
+        "tags": [
+          "catalog"
+        ],
+        "parameters": [
+          {
+            "name": "catalogReleaseId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CatalogReplacementListResponse"
+                }
+              }
+            },
+            "headers": {
+              "X-WiseEff-Catalog-Release": {
+                "description": "Catalog release that produced this response.",
+                "required": true,
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "401": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "404": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "503": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      },
+      "post": {
+        "operationId": "catalog.createDefinitionReplacement",
+        "summary": "Execute an approved replacement: publish the replacement identity then migrate the selected projects",
+        "tags": [
+          "catalog"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CatalogCreateReplacementRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CatalogReplacementResponse"
+                }
+              }
+            },
+            "headers": {
+              "X-WiseEff-Catalog-Release": {
+                "description": "Catalog release that produced this response.",
+                "required": true,
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "ETag": {
+                "description": "Opaque ETag for If-Match on the next mutation.",
+                "required": true,
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "401": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "404": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "409": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "503": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
+    "/api/v2/catalog/definition-replacements/{replacementId}": {
+      "get": {
+        "operationId": "catalog.getDefinitionReplacement",
+        "summary": "Read one definition replacement with its per-project progress",
+        "tags": [
+          "catalog"
+        ],
+        "parameters": [
+          {
+            "name": "replacementId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CatalogReplacementResponse"
+                }
+              }
+            },
+            "headers": {
+              "X-WiseEff-Catalog-Release": {
+                "description": "Catalog release that produced this response.",
+                "required": true,
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "401": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "404": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "503": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
+    "/api/v2/catalog/definition-replacements/{replacementId}/continue": {
+      "post": {
+        "operationId": "catalog.continueDefinitionReplacement",
+        "summary": "Continue blocked projects of an approved replacement",
+        "tags": [
+          "catalog"
+        ],
+        "parameters": [
+          {
+            "name": "replacementId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CatalogContinueReplacementRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CatalogReplacementResponse"
+                }
+              }
+            },
+            "headers": {
+              "X-WiseEff-Catalog-Release": {
+                "description": "Catalog release that produced this response.",
+                "required": true,
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "ETag": {
+                "description": "Opaque ETag for If-Match on the next mutation.",
+                "required": true,
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "401": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "404": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "409": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "503": {
             "$ref": "#/components/responses/ErrorResponse"
           }
         }
@@ -16444,6 +16787,15 @@
           "catalogReleaseId": {
             "type": "string"
           },
+          "totalCount": {
+            "type": "number"
+          },
+          "hasMore": {
+            "type": "boolean"
+          },
+          "placementModuleName": {
+            "type": "string"
+          },
           "emptyReason": {
             "type": "string",
             "enum": [
@@ -16457,7 +16809,9 @@
         "required": [
           "items",
           "nextCursor",
-          "catalogReleaseId"
+          "catalogReleaseId",
+          "totalCount",
+          "hasMore"
         ],
         "additionalProperties": false,
         "x-wiseeff-schema": "ProjectParameterBindingListResponse"
@@ -16509,6 +16863,15 @@
           "catalogReleaseId": {
             "type": "string"
           },
+          "totalCount": {
+            "type": "number"
+          },
+          "hasMore": {
+            "type": "boolean"
+          },
+          "placementModuleName": {
+            "type": "string"
+          },
           "emptyReason": {
             "type": "string",
             "enum": [
@@ -16522,7 +16885,9 @@
         "required": [
           "items",
           "nextCursor",
-          "catalogReleaseId"
+          "catalogReleaseId",
+          "totalCount",
+          "hasMore"
         ],
         "additionalProperties": false,
         "x-wiseeff-schema": "BindingHistoryListResponse"
@@ -16570,6 +16935,15 @@
           "catalogReleaseId": {
             "type": "string"
           },
+          "totalCount": {
+            "type": "number"
+          },
+          "hasMore": {
+            "type": "boolean"
+          },
+          "placementModuleName": {
+            "type": "string"
+          },
           "emptyReason": {
             "type": "string",
             "enum": [
@@ -16583,7 +16957,9 @@
         "required": [
           "items",
           "nextCursor",
-          "catalogReleaseId"
+          "catalogReleaseId",
+          "totalCount",
+          "hasMore"
         ],
         "additionalProperties": false,
         "x-wiseeff-schema": "BindingCompareListResponse"
@@ -20680,6 +21056,983 @@
         "type": "object",
         "x-wiseeff-schema": "DeviceBridgeToolReleaseManifestResponse"
       },
+      "CatalogReplacementPreviewRequest": {
+        "type": "object",
+        "properties": {
+          "oldDefinitionId": {
+            "type": "string"
+          },
+          "newSubjectId": {
+            "type": "string"
+          },
+          "newPropertyKey": {
+            "type": "string"
+          },
+          "displayName": {
+            "type": "string"
+          },
+          "documentation": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "unit": {
+            "type": "string"
+          },
+          "valueSchema": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "enum": [
+                      "integer"
+                    ]
+                  },
+                  "minimum": {
+                    "type": "number"
+                  },
+                  "maximum": {
+                    "type": "number"
+                  }
+                },
+                "required": [
+                  "type"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "enum": [
+                      "number"
+                    ]
+                  },
+                  "minimum": {
+                    "type": "number"
+                  },
+                  "maximum": {
+                    "type": "number"
+                  }
+                },
+                "required": [
+                  "type"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "enum": [
+                      "string"
+                    ]
+                  }
+                },
+                "required": [
+                  "type"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "enum": [
+                      "boolean"
+                    ]
+                  }
+                },
+                "required": [
+                  "type"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "enum": [
+                      "null"
+                    ]
+                  }
+                },
+                "required": [
+                  "type"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "enum": [
+                      "array"
+                    ]
+                  },
+                  "items": {
+                    "anyOf": [
+                      {
+                        "type": "object",
+                        "properties": {
+                          "type": {
+                            "type": "string",
+                            "enum": [
+                              "string"
+                            ]
+                          }
+                        },
+                        "required": [
+                          "type"
+                        ],
+                        "additionalProperties": false
+                      },
+                      {
+                        "type": "object",
+                        "properties": {
+                          "type": {
+                            "type": "string",
+                            "enum": [
+                              "integer"
+                            ]
+                          },
+                          "minimum": {
+                            "type": "number"
+                          },
+                          "maximum": {
+                            "type": "number"
+                          }
+                        },
+                        "required": [
+                          "type"
+                        ],
+                        "additionalProperties": false
+                      }
+                    ]
+                  }
+                },
+                "required": [
+                  "type"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "description": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "description"
+                ],
+                "additionalProperties": false
+              }
+            ]
+          },
+          "examples": {
+            "type": "array",
+            "items": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                },
+                {
+                  "type": "array",
+                  "items": {
+                    "anyOf": [
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "boolean"
+                      }
+                    ]
+                  }
+                }
+              ]
+            }
+          },
+          "projectIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "reason": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "oldDefinitionId",
+          "newSubjectId",
+          "newPropertyKey",
+          "displayName",
+          "documentation",
+          "valueSchema",
+          "projectIds",
+          "reason"
+        ],
+        "additionalProperties": false,
+        "x-wiseeff-schema": "CatalogReplacementPreviewRequest"
+      },
+      "CatalogReplacementPreviewResponse": {
+        "type": "object",
+        "properties": {
+          "item": {
+            "type": "object",
+            "properties": {
+              "previewId": {
+                "type": "string"
+              },
+              "previewFingerprint": {
+                "type": "string"
+              },
+              "organizationId": {
+                "type": "string"
+              },
+              "oldIdentity": {
+                "type": "object",
+                "properties": {
+                  "definitionId": {
+                    "type": "string"
+                  },
+                  "subjectId": {
+                    "type": "string"
+                  },
+                  "subjectName": {
+                    "type": "string"
+                  },
+                  "propertyKey": {
+                    "type": "string"
+                  },
+                  "revisionId": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "definitionId",
+                  "subjectId",
+                  "subjectName",
+                  "propertyKey",
+                  "revisionId"
+                ],
+                "additionalProperties": false
+              },
+              "newIdentity": {
+                "type": "object",
+                "properties": {
+                  "definitionId": {
+                    "type": "string"
+                  },
+                  "subjectId": {
+                    "type": "string"
+                  },
+                  "subjectName": {
+                    "type": "string"
+                  },
+                  "propertyKey": {
+                    "type": "string"
+                  },
+                  "revisionId": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "definitionId",
+                  "subjectId",
+                  "subjectName",
+                  "propertyKey",
+                  "revisionId"
+                ],
+                "additionalProperties": false
+              },
+              "catalogReleaseId": {
+                "type": "string"
+              },
+              "impact": {
+                "type": "object",
+                "properties": {
+                  "selectedProjectCount": {
+                    "type": "number"
+                  },
+                  "compatibleProjectCount": {
+                    "type": "number"
+                  },
+                  "blockedProjectCount": {
+                    "type": "number"
+                  },
+                  "coupledDefinitionCount": {
+                    "type": "number"
+                  },
+                  "sourceFormatSupported": {
+                    "type": "boolean"
+                  },
+                  "oldDefinitionLifecycle": {
+                    "type": "string",
+                    "enum": [
+                      "active",
+                      "deprecated",
+                      "retired"
+                    ]
+                  },
+                  "oldDefinitionCurrentReferenceCount": {
+                    "type": "number"
+                  },
+                  "targetRegistrationRequired": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "selectedProjectCount",
+                  "compatibleProjectCount",
+                  "blockedProjectCount",
+                  "coupledDefinitionCount",
+                  "sourceFormatSupported",
+                  "oldDefinitionLifecycle",
+                  "oldDefinitionCurrentReferenceCount",
+                  "targetRegistrationRequired"
+                ],
+                "additionalProperties": false
+              },
+              "blockers": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "projects": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "projectId": {
+                      "type": "string"
+                    },
+                    "projectName": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "completed",
+                        "blocked",
+                        "failed",
+                        "pending"
+                      ]
+                    },
+                    "blockerReason": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "oldBindingId": {
+                      "type": "string"
+                    },
+                    "oldValueId": {
+                      "type": "string"
+                    },
+                    "newBindingId": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "newValueId": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "valueKind": {
+                      "type": "string"
+                    },
+                    "compatible": {
+                      "type": "boolean"
+                    },
+                    "attemptCount": {
+                      "type": "number"
+                    },
+                    "registrationRequired": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "projectId",
+                    "projectName",
+                    "status",
+                    "blockerReason",
+                    "oldBindingId",
+                    "oldValueId",
+                    "newBindingId",
+                    "newValueId",
+                    "valueKind",
+                    "compatible",
+                    "attemptCount",
+                    "registrationRequired"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "expiresAt": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            },
+            "required": [
+              "previewId",
+              "previewFingerprint",
+              "organizationId",
+              "oldIdentity",
+              "newIdentity",
+              "catalogReleaseId",
+              "impact",
+              "blockers",
+              "projects",
+              "expiresAt"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "item"
+        ],
+        "additionalProperties": false,
+        "x-wiseeff-schema": "CatalogReplacementPreviewResponse"
+      },
+      "CatalogReplacementListResponse": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "status": {
+                  "type": "string",
+                  "enum": [
+                    "pending",
+                    "executing",
+                    "completed",
+                    "blocked",
+                    "failed"
+                  ]
+                },
+                "organizationId": {
+                  "type": "string"
+                },
+                "oldIdentity": {
+                  "type": "object",
+                  "properties": {
+                    "definitionId": {
+                      "type": "string"
+                    },
+                    "subjectId": {
+                      "type": "string"
+                    },
+                    "subjectName": {
+                      "type": "string"
+                    },
+                    "propertyKey": {
+                      "type": "string"
+                    },
+                    "revisionId": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "definitionId",
+                    "subjectId",
+                    "subjectName",
+                    "propertyKey",
+                    "revisionId"
+                  ],
+                  "additionalProperties": false
+                },
+                "newIdentity": {
+                  "type": "object",
+                  "properties": {
+                    "definitionId": {
+                      "type": "string"
+                    },
+                    "subjectId": {
+                      "type": "string"
+                    },
+                    "subjectName": {
+                      "type": "string"
+                    },
+                    "propertyKey": {
+                      "type": "string"
+                    },
+                    "revisionId": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "definitionId",
+                    "subjectId",
+                    "subjectName",
+                    "propertyKey",
+                    "revisionId"
+                  ],
+                  "additionalProperties": false
+                },
+                "previewFingerprint": {
+                  "type": "string"
+                },
+                "catalogReleaseId": {
+                  "type": "string"
+                },
+                "candidateId": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "publicationJobId": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "authorizationId": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "reason": {
+                  "type": "string"
+                },
+                "etag": {
+                  "type": "string"
+                },
+                "version": {
+                  "type": "number"
+                },
+                "projects": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "projectId": {
+                        "type": "string"
+                      },
+                      "projectName": {
+                        "type": "string"
+                      },
+                      "status": {
+                        "type": "string",
+                        "enum": [
+                          "completed",
+                          "blocked",
+                          "failed",
+                          "pending"
+                        ]
+                      },
+                      "blockerReason": {
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      },
+                      "oldBindingId": {
+                        "type": "string"
+                      },
+                      "oldValueId": {
+                        "type": "string"
+                      },
+                      "newBindingId": {
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      },
+                      "newValueId": {
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      },
+                      "valueKind": {
+                        "type": "string"
+                      },
+                      "compatible": {
+                        "type": "boolean"
+                      },
+                      "attemptCount": {
+                        "type": "number"
+                      },
+                      "registrationRequired": {
+                        "type": "boolean"
+                      }
+                    },
+                    "required": [
+                      "projectId",
+                      "projectName",
+                      "status",
+                      "blockerReason",
+                      "oldBindingId",
+                      "oldValueId",
+                      "newBindingId",
+                      "newValueId",
+                      "valueKind",
+                      "compatible",
+                      "attemptCount",
+                      "registrationRequired"
+                    ],
+                    "additionalProperties": false
+                  }
+                },
+                "createdAt": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "status",
+                "organizationId",
+                "oldIdentity",
+                "newIdentity",
+                "previewFingerprint",
+                "catalogReleaseId",
+                "candidateId",
+                "publicationJobId",
+                "authorizationId",
+                "reason",
+                "etag",
+                "version",
+                "projects",
+                "createdAt"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "nextCursor": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "catalogReleaseId": {
+            "type": "string"
+          },
+          "totalCount": {
+            "type": "number"
+          },
+          "hasMore": {
+            "type": "boolean"
+          },
+          "placementModuleName": {
+            "type": "string"
+          },
+          "emptyReason": {
+            "type": "string",
+            "enum": [
+              "no-registrations",
+              "no-definitions",
+              "no-review-work",
+              "no-filter-match"
+            ]
+          }
+        },
+        "required": [
+          "items",
+          "nextCursor",
+          "catalogReleaseId",
+          "totalCount",
+          "hasMore"
+        ],
+        "additionalProperties": false,
+        "x-wiseeff-schema": "CatalogReplacementListResponse"
+      },
+      "CatalogCreateReplacementRequest": {
+        "type": "object",
+        "properties": {
+          "previewId": {
+            "type": "string"
+          },
+          "previewFingerprint": {
+            "type": "string"
+          },
+          "idempotencyKey": {
+            "type": "string"
+          },
+          "confirmationNote": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "previewId",
+          "previewFingerprint",
+          "idempotencyKey"
+        ],
+        "additionalProperties": false,
+        "x-wiseeff-schema": "CatalogCreateReplacementRequest"
+      },
+      "CatalogReplacementResponse": {
+        "type": "object",
+        "properties": {
+          "item": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "status": {
+                "type": "string",
+                "enum": [
+                  "pending",
+                  "executing",
+                  "completed",
+                  "blocked",
+                  "failed"
+                ]
+              },
+              "organizationId": {
+                "type": "string"
+              },
+              "oldIdentity": {
+                "type": "object",
+                "properties": {
+                  "definitionId": {
+                    "type": "string"
+                  },
+                  "subjectId": {
+                    "type": "string"
+                  },
+                  "subjectName": {
+                    "type": "string"
+                  },
+                  "propertyKey": {
+                    "type": "string"
+                  },
+                  "revisionId": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "definitionId",
+                  "subjectId",
+                  "subjectName",
+                  "propertyKey",
+                  "revisionId"
+                ],
+                "additionalProperties": false
+              },
+              "newIdentity": {
+                "type": "object",
+                "properties": {
+                  "definitionId": {
+                    "type": "string"
+                  },
+                  "subjectId": {
+                    "type": "string"
+                  },
+                  "subjectName": {
+                    "type": "string"
+                  },
+                  "propertyKey": {
+                    "type": "string"
+                  },
+                  "revisionId": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "definitionId",
+                  "subjectId",
+                  "subjectName",
+                  "propertyKey",
+                  "revisionId"
+                ],
+                "additionalProperties": false
+              },
+              "previewFingerprint": {
+                "type": "string"
+              },
+              "catalogReleaseId": {
+                "type": "string"
+              },
+              "candidateId": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "publicationJobId": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "authorizationId": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "reason": {
+                "type": "string"
+              },
+              "etag": {
+                "type": "string"
+              },
+              "version": {
+                "type": "number"
+              },
+              "projects": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "projectId": {
+                      "type": "string"
+                    },
+                    "projectName": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "completed",
+                        "blocked",
+                        "failed",
+                        "pending"
+                      ]
+                    },
+                    "blockerReason": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "oldBindingId": {
+                      "type": "string"
+                    },
+                    "oldValueId": {
+                      "type": "string"
+                    },
+                    "newBindingId": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "newValueId": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "valueKind": {
+                      "type": "string"
+                    },
+                    "compatible": {
+                      "type": "boolean"
+                    },
+                    "attemptCount": {
+                      "type": "number"
+                    },
+                    "registrationRequired": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "projectId",
+                    "projectName",
+                    "status",
+                    "blockerReason",
+                    "oldBindingId",
+                    "oldValueId",
+                    "newBindingId",
+                    "newValueId",
+                    "valueKind",
+                    "compatible",
+                    "attemptCount",
+                    "registrationRequired"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "createdAt": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "status",
+              "organizationId",
+              "oldIdentity",
+              "newIdentity",
+              "previewFingerprint",
+              "catalogReleaseId",
+              "candidateId",
+              "publicationJobId",
+              "authorizationId",
+              "reason",
+              "etag",
+              "version",
+              "projects",
+              "createdAt"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "item"
+        ],
+        "additionalProperties": false,
+        "x-wiseeff-schema": "CatalogReplacementResponse"
+      },
+      "CatalogContinueReplacementRequest": {
+        "type": "object",
+        "properties": {
+          "idempotencyKey": {
+            "type": "string"
+          },
+          "projectIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "reason": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "idempotencyKey"
+        ],
+        "additionalProperties": false,
+        "x-wiseeff-schema": "CatalogContinueReplacementRequest"
+      },
       "CatalogDocumentResponse": {
         "anyOf": [
           {
@@ -20872,6 +22225,9 @@
                                 "string",
                                 "null"
                               ]
+                            },
+                            "moduleId": {
+                              "type": "string"
                             }
                           },
                           "required": [
@@ -20944,6 +22300,15 @@
           "catalogReleaseId": {
             "type": "string"
           },
+          "totalCount": {
+            "type": "number"
+          },
+          "hasMore": {
+            "type": "boolean"
+          },
+          "placementModuleName": {
+            "type": "string"
+          },
           "emptyReason": {
             "type": "string",
             "enum": [
@@ -20957,7 +22322,9 @@
         "required": [
           "items",
           "nextCursor",
-          "catalogReleaseId"
+          "catalogReleaseId",
+          "totalCount",
+          "hasMore"
         ],
         "additionalProperties": false,
         "x-wiseeff-schema": "CatalogSubjectListResponse"
@@ -21059,6 +22426,9 @@
                               "string",
                               "null"
                             ]
+                          },
+                          "moduleId": {
+                            "type": "string"
                           }
                         },
                         "required": [
@@ -21189,6 +22559,9 @@
                     "contentDigest": {
                       "type": "string"
                     },
+                    "displayName": {
+                      "type": "string"
+                    },
                     "valueShape": {
                       "type": "object",
                       "properties": {
@@ -21230,6 +22603,28 @@
                         "null"
                       ]
                     },
+                    "unit": {
+                      "type": [
+                        "object",
+                        "null"
+                      ],
+                      "properties": {
+                        "kind": {
+                          "type": "string",
+                          "enum": [
+                            "symbol"
+                          ]
+                        },
+                        "symbol": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "kind",
+                        "symbol"
+                      ],
+                      "additionalProperties": false
+                    },
                     "publishedInCatalogReleaseId": {
                       "type": "string"
                     }
@@ -21239,9 +22634,11 @@
                     "definitionId",
                     "revisionNumber",
                     "contentDigest",
+                    "displayName",
                     "valueShape",
                     "constraints",
                     "documentation",
+                    "unit",
                     "publishedInCatalogReleaseId"
                   ],
                   "additionalProperties": false
@@ -21298,6 +22695,9 @@
                                 "string",
                                 "null"
                               ]
+                            },
+                            "moduleId": {
+                              "type": "string"
                             }
                           },
                           "required": [
@@ -21375,6 +22775,15 @@
           "catalogReleaseId": {
             "type": "string"
           },
+          "totalCount": {
+            "type": "number"
+          },
+          "hasMore": {
+            "type": "boolean"
+          },
+          "placementModuleName": {
+            "type": "string"
+          },
           "emptyReason": {
             "type": "string",
             "enum": [
@@ -21388,7 +22797,9 @@
         "required": [
           "items",
           "nextCursor",
-          "catalogReleaseId"
+          "catalogReleaseId",
+          "totalCount",
+          "hasMore"
         ],
         "additionalProperties": false,
         "x-wiseeff-schema": "CatalogDefinitionListResponse"
@@ -21452,6 +22863,9 @@
                   "contentDigest": {
                     "type": "string"
                   },
+                  "displayName": {
+                    "type": "string"
+                  },
                   "valueShape": {
                     "type": "object",
                     "properties": {
@@ -21493,6 +22907,28 @@
                       "null"
                     ]
                   },
+                  "unit": {
+                    "type": [
+                      "object",
+                      "null"
+                    ],
+                    "properties": {
+                      "kind": {
+                        "type": "string",
+                        "enum": [
+                          "symbol"
+                        ]
+                      },
+                      "symbol": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "symbol"
+                    ],
+                    "additionalProperties": false
+                  },
                   "publishedInCatalogReleaseId": {
                     "type": "string"
                   }
@@ -21502,9 +22938,11 @@
                   "definitionId",
                   "revisionNumber",
                   "contentDigest",
+                  "displayName",
                   "valueShape",
                   "constraints",
                   "documentation",
+                  "unit",
                   "publishedInCatalogReleaseId"
                 ],
                 "additionalProperties": false
@@ -21561,6 +22999,9 @@
                               "string",
                               "null"
                             ]
+                          },
+                          "moduleId": {
+                            "type": "string"
                           }
                         },
                         "required": [
@@ -21655,6 +23096,9 @@
                 "contentDigest": {
                   "type": "string"
                 },
+                "displayName": {
+                  "type": "string"
+                },
                 "valueShape": {
                   "type": "object",
                   "properties": {
@@ -21696,6 +23140,28 @@
                     "null"
                   ]
                 },
+                "unit": {
+                  "type": [
+                    "object",
+                    "null"
+                  ],
+                  "properties": {
+                    "kind": {
+                      "type": "string",
+                      "enum": [
+                        "symbol"
+                      ]
+                    },
+                    "symbol": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "kind",
+                    "symbol"
+                  ],
+                  "additionalProperties": false
+                },
                 "publishedInCatalogReleaseId": {
                   "type": "string"
                 }
@@ -21705,9 +23171,11 @@
                 "definitionId",
                 "revisionNumber",
                 "contentDigest",
+                "displayName",
                 "valueShape",
                 "constraints",
                 "documentation",
+                "unit",
                 "publishedInCatalogReleaseId"
               ],
               "additionalProperties": false
@@ -21720,6 +23188,15 @@
             ]
           },
           "catalogReleaseId": {
+            "type": "string"
+          },
+          "totalCount": {
+            "type": "number"
+          },
+          "hasMore": {
+            "type": "boolean"
+          },
+          "placementModuleName": {
             "type": "string"
           },
           "emptyReason": {
@@ -21735,7 +23212,9 @@
         "required": [
           "items",
           "nextCursor",
-          "catalogReleaseId"
+          "catalogReleaseId",
+          "totalCount",
+          "hasMore"
         ],
         "additionalProperties": false,
         "x-wiseeff-schema": "CatalogDefinitionRevisionListResponse"
@@ -21756,6 +23235,9 @@
                 "type": "number"
               },
               "contentDigest": {
+                "type": "string"
+              },
+              "displayName": {
                 "type": "string"
               },
               "valueShape": {
@@ -21799,6 +23281,28 @@
                   "null"
                 ]
               },
+              "unit": {
+                "type": [
+                  "object",
+                  "null"
+                ],
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "symbol"
+                    ]
+                  },
+                  "symbol": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "symbol"
+                ],
+                "additionalProperties": false
+              },
               "publishedInCatalogReleaseId": {
                 "type": "string"
               }
@@ -21808,9 +23312,11 @@
               "definitionId",
               "revisionNumber",
               "contentDigest",
+              "displayName",
               "valueShape",
               "constraints",
               "documentation",
+              "unit",
               "publishedInCatalogReleaseId"
             ],
             "additionalProperties": false
@@ -21902,6 +23408,15 @@
           "catalogReleaseId": {
             "type": "string"
           },
+          "totalCount": {
+            "type": "number"
+          },
+          "hasMore": {
+            "type": "boolean"
+          },
+          "placementModuleName": {
+            "type": "string"
+          },
           "emptyReason": {
             "type": "string",
             "enum": [
@@ -21915,7 +23430,9 @@
         "required": [
           "items",
           "nextCursor",
-          "catalogReleaseId"
+          "catalogReleaseId",
+          "totalCount",
+          "hasMore"
         ],
         "additionalProperties": false,
         "x-wiseeff-schema": "CatalogDefinitionTimelineResponse"
@@ -21966,6 +23483,9 @@
                         "string",
                         "null"
                       ]
+                    },
+                    "moduleId": {
+                      "type": "string"
                     }
                   },
                   "required": [
@@ -22000,6 +23520,15 @@
           "catalogReleaseId": {
             "type": "string"
           },
+          "totalCount": {
+            "type": "number"
+          },
+          "hasMore": {
+            "type": "boolean"
+          },
+          "placementModuleName": {
+            "type": "string"
+          },
           "emptyReason": {
             "type": "string",
             "enum": [
@@ -22013,7 +23542,9 @@
         "required": [
           "items",
           "nextCursor",
-          "catalogReleaseId"
+          "catalogReleaseId",
+          "totalCount",
+          "hasMore"
         ],
         "additionalProperties": false,
         "x-wiseeff-schema": "CatalogRegistrationListResponse"
@@ -22121,6 +23652,9 @@
                       "string",
                       "null"
                     ]
+                  },
+                  "moduleId": {
+                    "type": "string"
                   }
                 },
                 "required": [
@@ -22195,6 +23729,9 @@
                   "string",
                   "null"
                 ]
+              },
+              "moduleId": {
+                "type": "string"
               }
             },
             "required": [
@@ -22332,6 +23869,15 @@
           "catalogReleaseId": {
             "type": "string"
           },
+          "totalCount": {
+            "type": "number"
+          },
+          "hasMore": {
+            "type": "boolean"
+          },
+          "placementModuleName": {
+            "type": "string"
+          },
           "emptyReason": {
             "type": "string",
             "enum": [
@@ -22345,7 +23891,9 @@
         "required": [
           "items",
           "nextCursor",
-          "catalogReleaseId"
+          "catalogReleaseId",
+          "totalCount",
+          "hasMore"
         ],
         "additionalProperties": false,
         "x-wiseeff-schema": "CatalogObservationListResponse"
@@ -22630,6 +24178,15 @@
           "catalogReleaseId": {
             "type": "string"
           },
+          "totalCount": {
+            "type": "number"
+          },
+          "hasMore": {
+            "type": "boolean"
+          },
+          "placementModuleName": {
+            "type": "string"
+          },
           "emptyReason": {
             "type": "string",
             "enum": [
@@ -22643,7 +24200,9 @@
         "required": [
           "items",
           "nextCursor",
-          "catalogReleaseId"
+          "catalogReleaseId",
+          "totalCount",
+          "hasMore"
         ],
         "additionalProperties": false,
         "x-wiseeff-schema": "CatalogReviewItemListResponse"
@@ -23037,6 +24596,9 @@
                           "string",
                           "null"
                         ]
+                      },
+                      "moduleId": {
+                        "type": "string"
                       }
                     },
                     "required": [
@@ -23157,6 +24719,9 @@
                     "null"
                   ]
                 },
+                "createdAt": {
+                  "type": "string"
+                },
                 "version": {
                   "type": "number"
                 }
@@ -23185,6 +24750,15 @@
           "catalogReleaseId": {
             "type": "string"
           },
+          "totalCount": {
+            "type": "number"
+          },
+          "hasMore": {
+            "type": "boolean"
+          },
+          "placementModuleName": {
+            "type": "string"
+          },
           "emptyReason": {
             "type": "string",
             "enum": [
@@ -23198,7 +24772,9 @@
         "required": [
           "items",
           "nextCursor",
-          "catalogReleaseId"
+          "catalogReleaseId",
+          "totalCount",
+          "hasMore"
         ],
         "additionalProperties": false,
         "x-wiseeff-schema": "CatalogProposalListResponse"
@@ -23334,6 +24910,9 @@
                   "string",
                   "null"
                 ]
+              },
+              "createdAt": {
+                "type": "string"
               },
               "version": {
                 "type": "number"
@@ -23549,6 +25128,12 @@
                     "propertyKey": {
                       "type": "string"
                     },
+                    "lifecycle": {
+                      "type": "string",
+                      "enum": [
+                        "active"
+                      ]
+                    },
                     "content": {
                       "type": "object",
                       "properties": {
@@ -23556,6 +25141,9 @@
                           "type": "string"
                         },
                         "documentation": {
+                          "type": "string"
+                        },
+                        "description": {
                           "type": "string"
                         },
                         "unit": {
@@ -23841,6 +25429,9 @@
                               "documentation": {
                                 "type": "string"
                               },
+                              "description": {
+                                "type": "string"
+                              },
                               "unit": {
                                 "type": "string"
                               },
@@ -24091,6 +25682,9 @@
                         "documentation": {
                           "type": "string"
                         },
+                        "description": {
+                          "type": "string"
+                        },
                         "unit": {
                           "type": "string"
                         },
@@ -24300,6 +25894,498 @@
                     "op",
                     "definitionId",
                     "class",
+                    "content"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "op": {
+                      "type": "string",
+                      "enum": [
+                        "retire-definition"
+                      ]
+                    },
+                    "definitionId": {
+                      "type": "string"
+                    },
+                    "class": {
+                      "type": "string",
+                      "enum": [
+                        "documentation",
+                        "semantic"
+                      ]
+                    },
+                    "reason": {
+                      "type": "string"
+                    },
+                    "content": {
+                      "type": "object",
+                      "properties": {
+                        "displayName": {
+                          "type": "string"
+                        },
+                        "documentation": {
+                          "type": "string"
+                        },
+                        "description": {
+                          "type": "string"
+                        },
+                        "unit": {
+                          "type": "string"
+                        },
+                        "valueSchema": {
+                          "anyOf": [
+                            {
+                              "type": "object",
+                              "properties": {
+                                "type": {
+                                  "type": "string",
+                                  "enum": [
+                                    "integer"
+                                  ]
+                                },
+                                "minimum": {
+                                  "type": "number"
+                                },
+                                "maximum": {
+                                  "type": "number"
+                                }
+                              },
+                              "required": [
+                                "type"
+                              ],
+                              "additionalProperties": false
+                            },
+                            {
+                              "type": "object",
+                              "properties": {
+                                "type": {
+                                  "type": "string",
+                                  "enum": [
+                                    "number"
+                                  ]
+                                },
+                                "minimum": {
+                                  "type": "number"
+                                },
+                                "maximum": {
+                                  "type": "number"
+                                }
+                              },
+                              "required": [
+                                "type"
+                              ],
+                              "additionalProperties": false
+                            },
+                            {
+                              "type": "object",
+                              "properties": {
+                                "type": {
+                                  "type": "string",
+                                  "enum": [
+                                    "string"
+                                  ]
+                                }
+                              },
+                              "required": [
+                                "type"
+                              ],
+                              "additionalProperties": false
+                            },
+                            {
+                              "type": "object",
+                              "properties": {
+                                "type": {
+                                  "type": "string",
+                                  "enum": [
+                                    "boolean"
+                                  ]
+                                }
+                              },
+                              "required": [
+                                "type"
+                              ],
+                              "additionalProperties": false
+                            },
+                            {
+                              "type": "object",
+                              "properties": {
+                                "type": {
+                                  "type": "string",
+                                  "enum": [
+                                    "null"
+                                  ]
+                                }
+                              },
+                              "required": [
+                                "type"
+                              ],
+                              "additionalProperties": false
+                            },
+                            {
+                              "type": "object",
+                              "properties": {
+                                "type": {
+                                  "type": "string",
+                                  "enum": [
+                                    "array"
+                                  ]
+                                },
+                                "items": {
+                                  "anyOf": [
+                                    {
+                                      "type": "object",
+                                      "properties": {
+                                        "type": {
+                                          "type": "string",
+                                          "enum": [
+                                            "string"
+                                          ]
+                                        }
+                                      },
+                                      "required": [
+                                        "type"
+                                      ],
+                                      "additionalProperties": false
+                                    },
+                                    {
+                                      "type": "object",
+                                      "properties": {
+                                        "type": {
+                                          "type": "string",
+                                          "enum": [
+                                            "integer"
+                                          ]
+                                        },
+                                        "minimum": {
+                                          "type": "number"
+                                        },
+                                        "maximum": {
+                                          "type": "number"
+                                        }
+                                      },
+                                      "required": [
+                                        "type"
+                                      ],
+                                      "additionalProperties": false
+                                    }
+                                  ]
+                                }
+                              },
+                              "required": [
+                                "type"
+                              ],
+                              "additionalProperties": false
+                            },
+                            {
+                              "type": "object",
+                              "properties": {
+                                "description": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "description"
+                              ],
+                              "additionalProperties": false
+                            }
+                          ]
+                        },
+                        "examples": {
+                          "type": "array",
+                          "items": {
+                            "anyOf": [
+                              {
+                                "type": "number"
+                              },
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "boolean"
+                              },
+                              {
+                                "type": "null"
+                              },
+                              {
+                                "type": "array",
+                                "items": {
+                                  "anyOf": [
+                                    {
+                                      "type": "number"
+                                    },
+                                    {
+                                      "type": "string"
+                                    },
+                                    {
+                                      "type": "boolean"
+                                    }
+                                  ]
+                                }
+                              }
+                            ]
+                          }
+                        }
+                      },
+                      "required": [
+                        "displayName",
+                        "documentation",
+                        "valueSchema"
+                      ],
+                      "additionalProperties": false
+                    }
+                  },
+                  "required": [
+                    "op",
+                    "definitionId",
+                    "content"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "op": {
+                      "type": "string",
+                      "enum": [
+                        "restore-definition"
+                      ]
+                    },
+                    "definitionId": {
+                      "type": "string"
+                    },
+                    "class": {
+                      "type": "string",
+                      "enum": [
+                        "documentation",
+                        "semantic"
+                      ]
+                    },
+                    "reason": {
+                      "type": "string"
+                    },
+                    "content": {
+                      "type": "object",
+                      "properties": {
+                        "displayName": {
+                          "type": "string"
+                        },
+                        "documentation": {
+                          "type": "string"
+                        },
+                        "description": {
+                          "type": "string"
+                        },
+                        "unit": {
+                          "type": "string"
+                        },
+                        "valueSchema": {
+                          "anyOf": [
+                            {
+                              "type": "object",
+                              "properties": {
+                                "type": {
+                                  "type": "string",
+                                  "enum": [
+                                    "integer"
+                                  ]
+                                },
+                                "minimum": {
+                                  "type": "number"
+                                },
+                                "maximum": {
+                                  "type": "number"
+                                }
+                              },
+                              "required": [
+                                "type"
+                              ],
+                              "additionalProperties": false
+                            },
+                            {
+                              "type": "object",
+                              "properties": {
+                                "type": {
+                                  "type": "string",
+                                  "enum": [
+                                    "number"
+                                  ]
+                                },
+                                "minimum": {
+                                  "type": "number"
+                                },
+                                "maximum": {
+                                  "type": "number"
+                                }
+                              },
+                              "required": [
+                                "type"
+                              ],
+                              "additionalProperties": false
+                            },
+                            {
+                              "type": "object",
+                              "properties": {
+                                "type": {
+                                  "type": "string",
+                                  "enum": [
+                                    "string"
+                                  ]
+                                }
+                              },
+                              "required": [
+                                "type"
+                              ],
+                              "additionalProperties": false
+                            },
+                            {
+                              "type": "object",
+                              "properties": {
+                                "type": {
+                                  "type": "string",
+                                  "enum": [
+                                    "boolean"
+                                  ]
+                                }
+                              },
+                              "required": [
+                                "type"
+                              ],
+                              "additionalProperties": false
+                            },
+                            {
+                              "type": "object",
+                              "properties": {
+                                "type": {
+                                  "type": "string",
+                                  "enum": [
+                                    "null"
+                                  ]
+                                }
+                              },
+                              "required": [
+                                "type"
+                              ],
+                              "additionalProperties": false
+                            },
+                            {
+                              "type": "object",
+                              "properties": {
+                                "type": {
+                                  "type": "string",
+                                  "enum": [
+                                    "array"
+                                  ]
+                                },
+                                "items": {
+                                  "anyOf": [
+                                    {
+                                      "type": "object",
+                                      "properties": {
+                                        "type": {
+                                          "type": "string",
+                                          "enum": [
+                                            "string"
+                                          ]
+                                        }
+                                      },
+                                      "required": [
+                                        "type"
+                                      ],
+                                      "additionalProperties": false
+                                    },
+                                    {
+                                      "type": "object",
+                                      "properties": {
+                                        "type": {
+                                          "type": "string",
+                                          "enum": [
+                                            "integer"
+                                          ]
+                                        },
+                                        "minimum": {
+                                          "type": "number"
+                                        },
+                                        "maximum": {
+                                          "type": "number"
+                                        }
+                                      },
+                                      "required": [
+                                        "type"
+                                      ],
+                                      "additionalProperties": false
+                                    }
+                                  ]
+                                }
+                              },
+                              "required": [
+                                "type"
+                              ],
+                              "additionalProperties": false
+                            },
+                            {
+                              "type": "object",
+                              "properties": {
+                                "description": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "description"
+                              ],
+                              "additionalProperties": false
+                            }
+                          ]
+                        },
+                        "examples": {
+                          "type": "array",
+                          "items": {
+                            "anyOf": [
+                              {
+                                "type": "number"
+                              },
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "boolean"
+                              },
+                              {
+                                "type": "null"
+                              },
+                              {
+                                "type": "array",
+                                "items": {
+                                  "anyOf": [
+                                    {
+                                      "type": "number"
+                                    },
+                                    {
+                                      "type": "string"
+                                    },
+                                    {
+                                      "type": "boolean"
+                                    }
+                                  ]
+                                }
+                              }
+                            ]
+                          }
+                        }
+                      },
+                      "required": [
+                        "displayName",
+                        "documentation",
+                        "valueSchema"
+                      ],
+                      "additionalProperties": false
+                    }
+                  },
+                  "required": [
+                    "op",
+                    "definitionId",
                     "content"
                   ],
                   "additionalProperties": false
@@ -24745,6 +26831,15 @@
           "catalogReleaseId": {
             "type": "string"
           },
+          "totalCount": {
+            "type": "number"
+          },
+          "hasMore": {
+            "type": "boolean"
+          },
+          "placementModuleName": {
+            "type": "string"
+          },
           "emptyReason": {
             "type": "string",
             "enum": [
@@ -24758,7 +26853,9 @@
         "required": [
           "items",
           "nextCursor",
-          "catalogReleaseId"
+          "catalogReleaseId",
+          "totalCount",
+          "hasMore"
         ],
         "additionalProperties": false,
         "x-wiseeff-schema": "CatalogPublicationJobListResponse"
@@ -24850,6 +26947,14 @@
         ],
         "additionalProperties": false,
         "x-wiseeff-schema": "CatalogLegacyIdentifierResponse"
+      },
+      "CatalogDefinitionLifecycleChangeRequest": {
+        "type": "object",
+        "x-wiseeff-schema": "CatalogDefinitionLifecycleChangeRequest"
+      },
+      "CatalogDefinitionLifecycleChangeResponse": {
+        "type": "object",
+        "x-wiseeff-schema": "CatalogDefinitionLifecycleChangeResponse"
       }
     },
     "responses": {

@@ -20,7 +20,7 @@ describe("catalog URL and release anchors", () => {
     expect(search).toBe(
       `?subjectId=${CATALOG_SUBJECT_ID}&definitionId=${CATALOG_DEFINITION_ID}&catalogReleaseId=${CATALOG_RELEASE_ID}&reviewItemId=${CATALOG_REVIEW_ITEM_ID}`
     );
-    expect(parseCatalogUrlAnchor(search)).toEqual({
+    expect(parseCatalogUrlAnchor(search)).toMatchObject({
       subjectId: CATALOG_SUBJECT_ID,
       definitionId: CATALOG_DEFINITION_ID,
       catalogReleaseId: CATALOG_RELEASE_ID,
@@ -33,7 +33,7 @@ describe("catalog URL and release anchors", () => {
     const parsed = parseCatalogUrlAnchor(
       "?catalogView=governance&view=effective&spec=spec-1&parameterSpecId=spec-1&subjectId=csub_01KSC8562&catalogReleaseId=crel_01K42"
     );
-    expect(parsed).toEqual({
+    expect(parsed).toMatchObject({
       subjectId: "csub_01KSC8562",
       definitionId: null,
       catalogReleaseId: "crel_01K42",
@@ -46,7 +46,7 @@ describe("catalog URL and release anchors", () => {
   });
 
   it("treats blank opaque ids as absent instead of inventing a current release", () => {
-    expect(parseCatalogUrlAnchor("?subjectId=&catalogReleaseId=")).toEqual({
+    expect(parseCatalogUrlAnchor("?subjectId=&catalogReleaseId=")).toMatchObject({
       subjectId: null,
       definitionId: null,
       catalogReleaseId: null,

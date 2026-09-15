@@ -184,6 +184,9 @@
         "contentDigest": {
           "$ref": "#/$defs/digest"
         },
+        "description": {
+          "type": "string"
+        },
         "displayName": {
           "$ref": "#/$defs/contractString"
         },
@@ -673,6 +676,7 @@
             "/successorDefinitionId",
             "/displayName",
             "/documentation",
+            "/description",
             "/unit",
             "/valueSchema",
             "/matching",

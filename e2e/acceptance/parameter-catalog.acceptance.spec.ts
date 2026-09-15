@@ -161,6 +161,9 @@ test.describe("canonical parameter catalog page", () => {
         catalogReleaseId: fixture.chain.pinC.id
       }).slice(CATALOG_PAGE_PATH.length)
     );
+    // History opens on demand (issue #847); the collection workspace no longer
+    // keeps a permanent timeline peer in the main work area.
+    await page.getByRole("button", { name: /查看历史/ }).click();
     const timeline = page.getByRole("list", { name: "定义时间线" });
     await expect(timeline.getByText("目录发布").first()).toBeVisible();
     const facts = timeline.locator("li");
@@ -206,8 +209,15 @@ test.describe("canonical parameter catalog page", () => {
 
     await openCatalogAt(page, "org-admin");
     await assertReleaseVisible();
-    await expect(page.getByRole("button", { name: catalogUiCopy.actionLabels["register-subject"] })).toBeVisible();
-    await expect(page.getByRole("button", { name: catalogUiCopy.actionLabels["create-proposal"] })).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: catalogUiCopy.actionLabels["register-subject"], exact: true })
+    ).toBeVisible();
+    // The definition-editor dialog owns definition changes; the toolbar offers the
+    // organization actions that still have a surface on this page.
+    await expect(
+      page.getByRole("button", { name: catalogUiCopy.actionLabels["update-placement"], exact: true })
+    ).toBeVisible();
+    await expect(page.getByRole("button", { name: catalogUiCopy.actionLabels["create-proposal"] })).toHaveCount(0);
     await expect(page.getByRole("button", { name: catalogUiCopy.actionLabels["accept-proposal"] })).toHaveCount(0);
     const userWrite = await catalogJson(page.request, "POST", `/api/v2/organizations/${fixture.organizationId}/subject-registrations`, {
       actor: "user",
@@ -224,13 +234,17 @@ test.describe("canonical parameter catalog page", () => {
     await assertReleaseVisible();
     await expect(page.getByRole("button", { name: catalogUiCopy.actionLabels["accept-proposal"] }).first()).toBeVisible();
     await expect(page.getByRole("button", { name: catalogUiCopy.actionLabels["reject-proposal"] }).first()).toBeVisible();
-    await expect(page.getByRole("button", { name: catalogUiCopy.actionLabels["register-subject"] })).toHaveCount(0);
+    await expect(
+      page.getByRole("button", { name: catalogUiCopy.actionLabels["register-subject"], exact: true })
+    ).toHaveCount(0);
     await catalogScreenshot(page, testInfo, "pcat-ui-06-platform-admin");
 
     await signInCatalogActor(page, "guest", CATALOG_PAGE_PATH);
     await expect(page.getByRole("heading", { name: "无权访问该页面" })).toBeVisible();
     await expect(catalogPage(page)).toHaveCount(0);
-    await expect(page.getByRole("button", { name: catalogUiCopy.actionLabels["register-subject"] })).toHaveCount(0);
+    await expect(
+      page.getByRole("button", { name: catalogUiCopy.actionLabels["register-subject"], exact: true })
+    ).toHaveCount(0);
     await expect(page.getByRole("button", { name: catalogUiCopy.actionLabels["accept-proposal"] })).toHaveCount(0);
     const guestWrite = await catalogJson(page.request, "POST", `/api/v2/organizations/${fixture.organizationId}/subject-registrations`, {
       actor: "guest",
@@ -293,9 +307,13 @@ test.describe("canonical parameter catalog page", () => {
     await openCatalogAt(page, "org-b-admin");
     await waitForCatalogState(page, /ready|empty|unregistered/);
     await expect(page.getByRole("region", { name: "目录列表", exact: true })).toBeVisible();
-    await expect(page.getByRole("list", { name: "主体列表" })).toHaveCount(0);
-    await expect(page.getByText(catalogUiCopy.emptyMessages["no-registrations"]).first()).toBeVisible();
-    await expect(page.getByText(catalogUiCopy.emptyMessages["no-review-work"]).first()).toBeVisible();
+    await expect(page.getByRole("navigation", { name: "参数定义模块树" })).toBeVisible();
+    await expect(page.getByRole("status", { name: "结果计数" })).toContainText(/共 \d+ 项/);
+    // The restored rail renders one module tree whose leaves are the subject
+    // inventory; a scoped organization never sees a hidden or empty collection.
+    await expect(page.locator('[data-catalog-subject-node="true"]')).toHaveCount(2);
+    await expect(page.getByText(catalogUiCopy.emptyMessages["no-registrations"])).toHaveCount(0);
+    await expect(page.getByText(catalogUiCopy.emptyMessages["no-definitions"])).toHaveCount(0);
 
     await openCatalogAt(page, "org-admin");
     await selectSubjectByName(page, CHARGER_SUBJECT);
@@ -322,7 +340,9 @@ test.describe("canonical parameter catalog page", () => {
     await waitForCatalogState(page, "retired");
     await expect(catalogPage(page)).toHaveAttribute("data-writes-enabled", "false");
     await expect(page.getByText(/已退役或已弃用，历史记录仍可阅读|该主体已退役/).first()).toBeVisible();
-    await expect(page.getByRole("button", { name: catalogUiCopy.actionLabels["create-proposal"] })).toBeDisabled();
+    await expect(
+      page.getByRole("button", { name: catalogUiCopy.actionLabels["update-placement"], exact: true })
+    ).toBeDisabled();
     await expect(page.getByRole("region", { name: "定义详情" })).toContainText(fixture.xDefinitionId);
     const retiredWrite = await catalogJson(page.request, "POST", `/api/v2/organizations/${fixture.organizationId}/subject-registrations`, {
       headers: {
@@ -353,18 +373,20 @@ test.describe("canonical parameter catalog page", () => {
       );
       await expect(catalogPage(page)).toBeVisible();
       await assertNoPageOverflow(page);
+      // One editor dialog carries the definition and its history at every viewport.
+      const editor = page.getByRole("dialog");
+      await expect(editor).toBeVisible();
+      await expect(editor.getByRole("region", { name: "定义详情" })).toBeVisible();
+      await editor.getByRole("button", { name: /查看历史/ }).click();
+      await expect(editor.getByText("目录发布").first()).toBeVisible();
+      await assertNoPageOverflow(page);
       if (viewport.name === "desktop") {
-        await expect(page.getByRole("region", { name: "定义详情" })).toBeVisible();
-        await expect(page.getByRole("region", { name: "定义时间线" })).toBeVisible();
+        // The module navigator and the honest count own the restored rail.
+        await expect(page.getByRole("navigation", { name: "参数定义模块树" })).toBeVisible();
+        await expect(page.getByRole("status", { name: "结果计数" })).toBeVisible();
+        await expect(page.getByRole("navigation", { name: "分页" })).toBeVisible();
         await page.getByRole("searchbox", { name: "搜索参数定义" }).focus();
         await expect(page.getByRole("searchbox", { name: "搜索参数定义" })).toBeFocused();
-      } else {
-        const sheet = page.getByRole("dialog");
-        await expect(sheet).toBeVisible();
-        await sheet.getByRole("tab", { name: "时间线" }).click();
-        await expect(sheet.getByText("目录发布")).toBeVisible();
-        await sheet.getByRole("tab", { name: "详情" }).focus();
-        await expect(sheet.getByRole("tab", { name: "详情" })).toBeFocused();
       }
       await catalogScreenshot(page, testInfo, `pcat-ui-14-${viewport.name}`);
     }

@@ -31,7 +31,19 @@ export function createApiParameterCatalogRepository(
       client.publishPublicationCandidate(candidateId, body, context),
     getPublication: (jobId) => client.getPublication(jobId),
     getPublicationSurface: () => client.getPublicationSurface(),
-    listPublications: (query) => client.listPublications(query)
+    listPublications: (query) => client.listPublications(query),
+    // Identity correction commands are catalog write routes: the idempotency key
+    // and the create/continue If-Match fence must reach the client unchanged, or
+    // the root API answers 409 revision-conflict before the command is read.
+    previewDefinitionReplacement: (body, context) =>
+      client.previewDefinitionReplacement(body, context),
+    listDefinitionReplacements: (query) => client.listDefinitionReplacements(query),
+    createDefinitionReplacement: (body, context) =>
+      client.createDefinitionReplacement(body, context),
+    getDefinitionReplacement: (replacementId) =>
+      client.getDefinitionReplacement(replacementId),
+    continueDefinitionReplacement: (replacementId, body, context) =>
+      client.continueDefinitionReplacement(replacementId, body, context)
   };
 }
 

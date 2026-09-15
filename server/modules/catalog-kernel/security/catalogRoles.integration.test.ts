@@ -34,6 +34,8 @@ import {
   PARAMETER_GOVERNANCE_WRITER_ROLE,
   PUBLICATION_INTENT_REFERENCE_MIGRATION,
   PUBLICATION_ACTIVATION_MIGRATION,
+  PUBLICATION_RUNTIME_MIGRATION,
+  DEFINITION_REPLACEMENT_MIGRATION,
   PUBLICATION_MIGRATION,
   ROLES_MIGRATION,
   SCHEMA_MIGRATION,
@@ -1192,7 +1194,7 @@ describe("0138 Catalog role migration paths", () => {
     );
   }, 120_000);
 
-  it("T13: fresh current schema and 0137-then-0138-then-0139-then-0140-then-0141-then-0142 upgrade produce the same ACL fingerprint", async () => {
+  it("T13: fresh current schema and the stepwise 0137-to-0144 upgrade produce the same ACL fingerprint", async () => {
     let fresh = "";
     let upgrade = "";
 
@@ -1213,6 +1215,12 @@ describe("0138 Catalog role migration paths", () => {
         });
         await applyMigrations(db, migrationsDir, {
           through: PUBLICATION_ACTIVATION_MIGRATION,
+        });
+        await applyMigrations(db, migrationsDir, {
+          through: PUBLICATION_RUNTIME_MIGRATION,
+        });
+        await applyMigrations(db, migrationsDir, {
+          through: DEFINITION_REPLACEMENT_MIGRATION,
         });
         upgrade = await aclFingerprint(db);
       },

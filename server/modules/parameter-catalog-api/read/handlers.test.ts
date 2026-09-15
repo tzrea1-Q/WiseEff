@@ -125,6 +125,7 @@ const page = <T>(items: readonly T[], next: typeof cursor | null = cursor) => ({
   items,
   next: next ? { kind: "present" as const, value: next } : { kind: "absent" as const },
   release,
+  pageInfo: { totalCount: items.length, hasMore: next !== null },
 });
 
 function createHarness(options: {

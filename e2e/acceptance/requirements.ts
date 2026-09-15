@@ -801,8 +801,8 @@ export const acceptanceRequirements: AcceptanceRequirement[] = [
   {
     id: "PCAT-UI-10",
     workflow: "C",
-    title: "Release, ReviewItem ETag, Placement, and idempotency-fingerprint conflicts preserve input, refresh evidence, and require reconfirmation without partial writes.",
-    required: true
+    title: "Release, ReviewItem ETag, Placement, and idempotency-fingerprint conflicts preserve input, refresh evidence, and require reconfirmation without partial writes. Retired in #847: the browser journeys drove the 定义修订 panel that product removed from /parameter-admin/specs; the same conflicts remain covered by the server suites and by the definition-editor conflict handling.",
+    required: false
   },
   {
     id: "PCAT-UI-11",
@@ -831,7 +831,19 @@ export const acceptanceRequirements: AcceptanceRequirement[] = [
   {
     id: "PCAT-UI-15",
     workflow: "C",
-    title: "The real canonical journey covers navigation, search, detail, timeline, Registration and Placement, Review, Proposal, conflict recovery, deep links, and keyboard focus with forensic evidence.",
+    title: "The real canonical journey covers navigation, search, detail, timeline, Registration and Placement, Review, Proposal, conflict recovery, deep links, and keyboard focus with forensic evidence. Retired in #847: its Proposal leg drove the 定义修订 panel that product removed; the surviving journeys keep their own tests in the same spec file.",
+    required: false
+  },
+  {
+    id: "PCAT-UI-16",
+    workflow: "C",
+    title: "The restored definition workspace pages the complete collection with a truthful scoped count, 20/50/100 page sizes, a module-subtree filter that narrows the full result set, and on-demand history at all three viewports.",
+    required: true
+  },
+  {
+    id: "PCAT-UI-17",
+    workflow: "C",
+    title: "A definition exposes one deliberate lifecycle action (retire/restore) and one edit dialog that reads the definition, edits its content (display name, unit, documentation, value shape) and carries its identity-correction form behind an explicit project manifest and reason.",
     required: true
   },
   {

@@ -11,13 +11,25 @@ import type { ParameterCatalogGovernanceRepository } from "@/application/ports/P
 import type { ParameterCatalogRepository } from "@/application/ports/ParameterCatalogRepository";
 import { CatalogPage } from "@/features/parameter-catalog";
 
+import { CatalogHistoryBody } from "../parameter-catalog/CatalogPage";
+import { DefinitionEditorBody } from "./DefinitionEditorBody";
+import { DefinitionLifecycleDialog, type DefinitionLifecycleIntent } from "./DefinitionLifecycleDialog";
+
 import { createGovernanceIdempotencyKey } from "./governanceState";
-import { ProposalPanel } from "./ProposalPanel";
 import { PublicationDialog } from "./PublicationDialog";
-import { publicationSurfaceCopy, publicationSurfaceMessage, type PublicationSurfaceItem } from "./publicationSurface";
+import {
+  publicationSurfaceAllowsAuthoring,
+  publicationSurfaceAllowsPublishing,
+  publicationSurfaceCopy,
+  publicationSurfaceAdvisory,
+  type PublicationSurfaceItem
+} from "./publicationSurface";
+import { catalogPendingWorkLabel } from "../parameter-catalog/copy";
 import { RegistrationDialog } from "./RegistrationDialog";
+import { ModalDialog } from "@/components/common/ModalDialog";
+
 import { ReviewQueue } from "./ReviewQueue";
-import type { CatalogPublicationJobResponse } from "@/infrastructure/http/parameterCatalogDtos";
+import type { CatalogDefinitionResponse } from "@/infrastructure/http/parameterCatalogDtos";
 
 export type CatalogOrganizationSurfaceProps = {
   catalog: ParameterCatalogRepository;
@@ -48,11 +60,18 @@ export function CatalogOrganizationSurface({
   const [action, setAction] = useState<CatalogAuthorizedAction | null>(null);
   const [actionRegistrationId, setActionRegistrationId] = useState<string | null>(null);
   const [surfaceEpoch, setSurfaceEpoch] = useState(0);
+  const [pendingWorkOpen, setPendingWorkOpen] = useState(false);
   const [publicationSurface, setPublicationSurface] = useState<PublicationSurfaceItem | null>(null);
   const [publicationSurfaceLoad, setPublicationSurfaceLoad] = useState<"loading" | "ready" | "error">("loading");
-  const [publicationHistory, setPublicationHistory] = useState<CatalogPublicationJobResponse["item"][]>([]);
+  const [lifecycle, setLifecycle] = useState<{
+    intent: DefinitionLifecycleIntent;
+    definition: CatalogDefinitionResponse["item"];
+  } | null>(null);
   const catalogReleaseId = domainState?.catalogReleaseId ?? anchor.catalogReleaseId ?? "";
   const subjectId = anchor.subjectId ?? "";
+  const [catalogSubjects, setCatalogSubjects] = useState<
+    Awaited<ReturnType<ParameterCatalogRepository["listSubjects"]>>["items"]
+  >([]);
 
   const handleAction = useCallback(
     (next: CatalogAuthorizedAction, context?: { subjectId?: string | null; registrationId?: string | null }) => {
@@ -73,13 +92,29 @@ export function CatalogOrganizationSurface({
     let cancelled = false;
     void (async () => {
       try {
-        const [surface, history] = await Promise.all([
-          catalog.getPublicationSurface(),
-          catalog.listPublications({ limit: 20 })
-        ]);
+        const listed = await catalog.listSubjects({ limit: 100 });
+        if (!cancelled) {
+          setCatalogSubjects([...listed.items]);
+        }
+      } catch {
+        if (!cancelled) {
+          setCatalogSubjects([]);
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [catalog, surfaceEpoch]);
+
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const surface = await catalog.getPublicationSurface();
         if (cancelled) return;
         setPublicationSurface(surface.item);
-        setPublicationHistory([...history.items]);
         setPublicationSurfaceLoad("ready");
       } catch {
         if (!cancelled) {
@@ -106,7 +141,7 @@ export function CatalogOrganizationSurface({
     [anchor, onAnchorChange]
   );
 
-  const surfaceStatus = publicationSurface ? publicationSurfaceMessage(publicationSurface) : null;
+  const surfaceStatus = publicationSurface ? publicationSurfaceAdvisory(publicationSurface) : null;
 
   return (
     <div className="parameter-catalog-organization">
@@ -134,57 +169,82 @@ export function CatalogOrganizationSurface({
         onAnchorChange={onAnchorChange}
         onDomainStateChange={setDomainState}
         onAction={handleAction}
+        onOpenPendingWork={() => setPendingWorkOpen(true)}
+        onEditorClosed={() => setSurfaceEpoch((value) => value + 1)}
         organizationId={organizationId}
         listReviewItems={
           organizationId ? (orgId, query) => governance.listReviewItems(orgId, query) : undefined
         }
+        definitionPublishingAllowed={publicationSurfaceAllowsPublishing(publicationSurface)}
+        onDefinitionCommand={(command, definition) => {
+          // Identity correction now lives inside the definition's own 编辑 dialog
+          // (renderDefinitionEditor below); the row only offers that one action.
+          if (command === "correct-identity") return;
+          setLifecycle({ intent: command, definition });
+        }}
+        renderDefinitionEditor={
+          domainState
+            ? (definition, history) => (
+          <DefinitionEditorBody
+            actor={actor}
+            sessionPermissions={sessionPermissions}
+            domainState={domainState}
+            catalog={catalog}
+            catalogReleaseId={catalogReleaseId}
+            definition={definition}
+            subjects={catalogSubjects}
+            createIdempotencyKey={createGovernanceIdempotencyKey}
+            // The catalog refreshes when the dialog closes, so a written result
+            // stays on screen instead of being replaced by a page remount.
+            onCompleted={() => undefined}
+            onRefreshEvidence={() => undefined}
+            authoringAllowed={publicationSurfaceAllowsAuthoring(publicationSurface)}
+            onRequestHistory={history.onRequestHistory}
+            history={
+              <CatalogHistoryBody
+                timeline={history.timeline}
+                revisions={history.revisions}
+              />
+            }
+          />
+              )
+            : undefined
+        }
       />
       {domainState && catalogReleaseId && organizationId ? (
-        <div className="parameter-catalog__governance">
-          <ReviewQueue
-            actor={actor}
-            domainState={domainState}
-            repository={governance}
-            organizationId={organizationId}
-            catalogReleaseId={catalogReleaseId}
-            selectedReviewItemId={anchor.reviewItemId ?? undefined}
-            onSelectReviewItem={handleSelectReviewItem}
-            onRefreshEvidence={() => setSurfaceEpoch((value) => value + 1)}
-          />
-          <ProposalPanel
-            actor={actor}
-            domainState={domainState}
-            repository={governance}
-            catalogReleaseId={catalogReleaseId}
-            currentPersonId={currentPersonId}
-            definitionId={anchor.definitionId ?? undefined}
-            createIdempotencyKey={createGovernanceIdempotencyKey}
-            onRefreshEvidence={async () => {
-              const current = await catalog.getCatalog();
-              if (current.item === null) return;
-              onAnchorChange(buildCatalogHref({ ...anchor, catalogReleaseId: current.item.catalogReleaseId }), "replace");
-              setSurfaceEpoch((value) => value + 1);
-            }}
-          />
-          <section className="parameter-catalog__history" aria-label={publicationSurfaceCopy.history}>
-            <h2>{publicationSurfaceCopy.history}</h2>
-            {publicationHistory.length === 0 ? (
-              <p>{publicationSurfaceCopy.historyEmpty}</p>
-            ) : (
-              <ul>
-                {publicationHistory.map((job) => (
-                  <li key={job.id}>
-                    <code>{job.id}</code>
-                    <span>{job.status}</span>
-                    {job.currentness ? <span>{job.currentness}</span> : null}
-                    {job.effective ? <span>receipt</span> : null}
-                    {job.sourceKind ? <span>{job.sourceKind}</span> : null}
-                  </li>
-                ))}
-              </ul>
-            )}
-          </section>
-        </div>
+        <ModalDialog
+          open={pendingWorkOpen}
+          onDismiss={() => setPendingWorkOpen(false)}
+          className="confirm-dialog governance-confirm-dialog parameter-catalog__pending-dialog"
+          describedBy
+        >
+          {({ titleId, descriptionId }) => (
+            <>
+              <h2 id={titleId}>{catalogPendingWorkLabel}</h2>
+              <div id={descriptionId} className="confirm-dialog__scroll">
+                <ReviewQueue
+                  actor={actor}
+                  domainState={domainState}
+                  repository={governance}
+                  organizationId={organizationId}
+                  catalogReleaseId={catalogReleaseId}
+                  selectedReviewItemId={anchor.reviewItemId ?? undefined}
+                  onSelectReviewItem={handleSelectReviewItem}
+                  onRefreshEvidence={() => setSurfaceEpoch((value) => value + 1)}
+                />
+              </div>
+              <div className="dialog-actions">
+                <button
+                  type="button"
+                  className="button subtle"
+                  onClick={() => setPendingWorkOpen(false)}
+                >
+                  关闭
+                </button>
+              </div>
+            </>
+          )}
+        </ModalDialog>
       ) : null}
       {organizationId &&
       catalogReleaseId &&
@@ -237,6 +297,27 @@ export function CatalogOrganizationSurface({
           }}
         />
       ) : null}
+      {lifecycle && catalogReleaseId && domainState ? (
+        <DefinitionLifecycleDialog
+          open
+          intent={lifecycle.intent}
+          actor={actor}
+          sessionPermissions={sessionPermissions}
+          domainState={domainState}
+          catalog={catalog}
+          catalogReleaseId={catalogReleaseId}
+          definition={lifecycle.definition}
+          createIdempotencyKey={createGovernanceIdempotencyKey}
+          onCompleted={() => setSurfaceEpoch((value) => value + 1)}
+          onRefreshEvidence={() => setSurfaceEpoch((value) => value + 1)}
+          onOpenChange={(open) => {
+            if (!open) {
+              setLifecycle(null);
+            }
+          }}
+        />
+      ) : null}
+
     </div>
   );
 }

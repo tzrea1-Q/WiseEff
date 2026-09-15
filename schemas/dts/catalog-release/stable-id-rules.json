@@ -166,6 +166,7 @@
       "/successorDefinitionId",
       "/displayName",
       "/documentation",
+      "/description",
       "/unit",
       "/valueSchema",
       "/matching",

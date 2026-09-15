@@ -93,10 +93,21 @@ export interface CatalogPageRequest {
   readonly after: OptionalValue<CatalogCursor>;
 }
 
+/**
+ * Truthful scoped count for a filtered Catalog collection query. Callers must
+ * never derive a total from `items.length`; a missing count is an error state,
+ * not zero.
+ */
+export interface CatalogPageInfo {
+  readonly totalCount: number;
+  readonly hasMore: boolean;
+}
+
 export interface CatalogPage<T> {
   readonly items: readonly T[];
   readonly next: OptionalValue<CatalogCursor>;
   readonly release: CatalogReleaseIdentity;
+  readonly pageInfo: CatalogPageInfo;
 }
 
 export type CatalogPageFailure = {
@@ -231,7 +242,13 @@ export interface SubjectListQuery {
 
 export type DefinitionListScope =
   | { readonly kind: "all" }
-  | { readonly kind: "subject"; readonly subjectId: CatalogSubjectId };
+  | { readonly kind: "subject"; readonly subjectId: CatalogSubjectId }
+  /**
+   * Module-subtree and multi-subject collection queries resolve their subject
+   * scope before pagination, so the definition list can be restricted to a
+   * trusted subject selection without one request per subject.
+   */
+  | { readonly kind: "subjects"; readonly subjectIds: readonly CatalogSubjectId[] };
 
 export interface DefinitionListQuery {
   readonly selection: CatalogIdSelection<ParameterDefinitionId>;

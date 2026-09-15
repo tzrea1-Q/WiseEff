@@ -1,8 +1,11 @@
 import {
   catalogAcceptProposalRequestSchema,
+  catalogContinueReplacementRequestSchema,
   catalogCreateProposalRequestSchema,
+  catalogCreateReplacementRequestSchema,
   catalogRegisterSubjectRequestSchema,
   catalogRejectProposalRequestSchema,
+  catalogReplacementPreviewRequestSchema,
   catalogResolveReviewItemRequestSchema,
   catalogRestoreRegistrationRequestSchema,
   catalogRetireRegistrationRequestSchema,
@@ -34,12 +37,18 @@ import type {
 } from "../../parameter-governance/proposals/command";
 import type { RegistrationCommand } from "../../parameter-governance/registration/command";
 import type { RegistrationFailure } from "../../parameter-governance/registration/failures";
+import type { DefinitionReplacementFailure } from "../../parameter-catalog-migration/types";
+import type { SupportedDefinitionContent } from "../../catalog-publication/builder/types";
 import type { ReviewQueueFailure, ReviewQueueTrustedContext } from "../../parameter-governance/review/types";
 import type { ResolveReviewItemCommand } from "../../parameter-governance/resolveReviewItem/command";
 import type { GovernanceFailure } from "../../parameter-governance/resolveReviewItem/failures";
 import type { ProposalCommand } from "../../parameter-governance/proposals/command";
 import type { ProposalFailure } from "../../parameter-governance/proposals/failures";
 import {
+  catalogDefinitionReplacementCommandByRouteId,
+  catalogDefinitionReplacementIfMatchRouteIds,
+  catalogDefinitionReplacementRoutes,
+  catalogDefinitionReplacementWriteRouteIds,
   catalogGovernanceCommandByRouteId,
   catalogGovernanceIfMatchRouteIds,
   catalogGovernanceRoutes,
@@ -47,6 +56,9 @@ import {
   type CatalogGovernanceCommandName,
 } from "./mapping";
 import {
+  listEnvelope,
+  mapDefinitionReplacement,
+  mapDefinitionReplacementPreview,
   mapObservation,
   mapPlacement,
   mapProposalRecord,
@@ -55,10 +67,10 @@ import {
   mapRegistrationResult,
   mapReviewItem,
   mapReviewResolution,
-  listEnvelope,
   placementEtag,
   proposalEtag,
   registrationEtag,
+  replacementEtag,
   reviewEtag,
 } from "./dto";
 import {
@@ -94,11 +106,19 @@ import type {
   TrustedGovernanceScope,
 } from "./types";
 
-const ifMatchRequired = new Set<string>(catalogGovernanceIfMatchRouteIds);
-const writeRoutes = new Set<string>(catalogGovernanceWriteRouteIds);
+const ifMatchRequired = new Set<string>([
+  ...catalogGovernanceIfMatchRouteIds,
+  ...catalogDefinitionReplacementIfMatchRouteIds,
+]);
+const writeRoutes = new Set<string>([
+  ...catalogGovernanceWriteRouteIds,
+  ...catalogDefinitionReplacementWriteRouteIds,
+]);
 const reviewReasonSet = new Set<string>(reviewReasons);
 
-const catalogGovernanceRouteTable = catalogGovernanceRoutes
+const allGovernanceRoutes = [...catalogGovernanceRoutes, ...catalogDefinitionReplacementRoutes];
+
+const catalogGovernanceRouteTable = allGovernanceRoutes
   .map((route) => {
     const segments = route.path.split("/").filter(Boolean);
     return {
@@ -151,7 +171,12 @@ export function matchCatalogGovernanceRoute(
 }
 
 function asCommandName(id: CatalogGovernanceRouteId): CatalogGovernanceCommandName {
-  return catalogGovernanceCommandByRouteId[id];
+  if (id in catalogGovernanceCommandByRouteId) {
+    return catalogGovernanceCommandByRouteId[id as keyof typeof catalogGovernanceCommandByRouteId];
+  }
+  return catalogDefinitionReplacementCommandByRouteId[
+    id as keyof typeof catalogDefinitionReplacementCommandByRouteId
+  ];
 }
 
 function reviewContext(scope: TrustedGovernanceScope): ReviewQueueTrustedContext {
@@ -430,6 +455,82 @@ function mapProposalFailure(error: ProposalFailure, requestId: string): CatalogG
       return notFound(requestId);
     case "invalid-transition":
       return revisionConflict(requestId);
+  }
+}
+
+function mapDefinitionReplacementFailure(
+  error: DefinitionReplacementFailure,
+  requestId: string,
+): CatalogGovernanceResponse {
+  switch (error.kind) {
+    case "not-found":
+      return notFound(requestId);
+    case "permission-denied":
+      return forbidden(requestId);
+    case "invalid-command":
+      return validationFailed(requestId, error.reason);
+    case "release-drift":
+      return releaseDrift(requestId, error.expected.id, error.actual.id);
+    case "synchronization-busy":
+      return catalogNotReady(requestId);
+    case "stale-preview":
+      return catalogGovernanceError({
+        status: 409,
+        code: "CONFLICT",
+        message: "The preview is stale. Refresh and reconfirm before continuing.",
+        reason: "revision-conflict",
+        requestId,
+        details: {
+          expectedFingerprint: error.expectedFingerprint,
+          actualFingerprint: error.actualFingerprint,
+          retryable: false,
+        },
+      });
+    case "revision-conflict":
+      return catalogGovernanceError({
+        status: 409,
+        code: "CONFLICT",
+        message: "The resource changed. Refresh and reconfirm before continuing.",
+        reason: "revision-conflict",
+        requestId,
+        details: {
+          storedFingerprint: error.storedFingerprint,
+          attemptedFingerprint: error.attemptedFingerprint,
+          retryable: false,
+        },
+      });
+    case "target-identity-conflict":
+      return conflict(requestId, "subject-retired");
+    case "registration-required":
+      return conflict(requestId, "registration-required");
+    case "preview-unavailable":
+      return catalogGovernanceError({
+        status: 409,
+        code: "CONFLICT",
+        message: "The preview cannot be produced for this request.",
+        reason: "candidate-stale",
+        requestId,
+        details: { preview: error.reason, retryable: false },
+      });
+    case "publication-unavailable":
+      return catalogNotReady(requestId);
+    case "one-current-successor":
+    case "replacement-chain":
+      return revisionConflict(requestId);
+    case "incompatible-value":
+    case "pending-work-conflict":
+    case "unsupported-source-format":
+    case "missing-source-provenance":
+    case "ambiguous-source-match":
+    case "coupled-source-impact":
+      return catalogGovernanceError({
+        status: 409,
+        code: "CONFLICT",
+        message: "The replacement was refused for the affected project.",
+        reason: "registration-required",
+        requestId,
+        details: { ...error, retryable: false },
+      });
   }
 }
 
@@ -1137,6 +1238,205 @@ async function handleAcceptOrRejectProposal(
   });
 }
 
+function migrationContext(
+  scope: TrustedGovernanceScope,
+  organizationId: string,
+): import("../../parameter-catalog-migration/types").TrustedMigrationContext | null {
+  if (scope.actorKind !== "org-admin") {
+    return null;
+  }
+  return { actorKind: "org-admin", principalId: scope.principalId, organizationId };
+}
+
+function supportedContentFromPreview(
+  parsed: {
+    displayName: string;
+    documentation: string;
+    description?: string;
+    unit?: string;
+    valueSchema: unknown;
+    examples?: unknown[];
+  },
+): SupportedDefinitionContent {
+  return {
+    displayName: parsed.displayName,
+    documentation: parsed.documentation,
+    ...(parsed.description === undefined ? {} : { description: parsed.description }),
+    ...(parsed.unit === undefined ? {} : { unit: parsed.unit }),
+    valueSchema: parsed.valueSchema as SupportedDefinitionContent["valueSchema"],
+    ...(parsed.examples === undefined
+      ? {}
+      : { examples: parsed.examples as SupportedDefinitionContent["examples"] }),
+  };
+}
+
+async function handlePreviewDefinitionReplacement(
+  ports: CatalogGovernancePorts,
+  scope: TrustedGovernanceScope,
+  request: CatalogGovernanceRequest,
+): Promise<CatalogGovernanceResponse> {
+  const denied = authorizeOrganizationWrite(scope, request);
+  if (denied) return denied;
+  const migration = ports.definitionMigration;
+  if (!migration) return catalogNotReady(request.requestId);
+  const parsed = catalogReplacementPreviewRequestSchema.safeParse(request.body);
+  if (!parsed.success) return validationFailed(request.requestId, "body");
+  const pin = await requirePin(ports, request, { requireHeader: true });
+  if (!pin.ok) return pin.response;
+  const organizationId = request.params.organizationId ?? scope.organizationId;
+  const context = migrationContext(scope, organizationId);
+  if (!context) return forbidden(request.requestId);
+  const result = await migration.previewDefinitionReplacement({
+    organizationId,
+    oldDefinitionId: parsed.data.oldDefinitionId,
+    newSubjectId: parsed.data.newSubjectId,
+    newPropertyKey: parsed.data.newPropertyKey,
+    proposedContent: supportedContentFromPreview(parsed.data),
+    projectIds: parsed.data.projectIds,
+    reason: parsed.data.reason,
+    expectedRelease: pin.pin,
+    context,
+  });
+  if (!result.ok) return mapDefinitionReplacementFailure(result.error, request.requestId);
+  return catalogGovernanceOk({
+    status: 201,
+    body: { item: mapDefinitionReplacementPreview(result.value) },
+    requestId: request.requestId,
+    catalogReleaseId: result.value.catalogReleaseId,
+  });
+}
+
+// `catalog.createDefinitionReplacement` dispatches executeDefinitionReplacement:
+// confirm one frozen preview and mint the replacement identity through the
+// existing publication path.
+async function handleExecuteDefinitionReplacement(
+  ports: CatalogGovernancePorts,
+  scope: TrustedGovernanceScope,
+  request: CatalogGovernanceRequest,
+): Promise<CatalogGovernanceResponse> {
+  const denied = authorizeOrganizationWrite(scope, request);
+  if (denied) return denied;
+  const migration = ports.definitionMigration;
+  if (!migration) return catalogNotReady(request.requestId);
+  const parsed = catalogCreateReplacementRequestSchema.safeParse(request.body);
+  if (!parsed.success) return validationFailed(request.requestId, "body");
+  const pin = await requirePin(ports, request, { requireHeader: true });
+  if (!pin.ok) return pin.response;
+  const offered = ifMatchHeader(request.headers);
+  if (!offered || unquoteEtag(offered) !== parsed.data.previewFingerprint) {
+    return revisionConflict(request.requestId);
+  }
+  const organizationId = request.params.organizationId ?? scope.organizationId;
+  const context = migrationContext(scope, organizationId);
+  if (!context) return forbidden(request.requestId);
+  const result = await migration.createDefinitionReplacement({
+    organizationId,
+    previewId: parsed.data.previewId,
+    previewFingerprint: parsed.data.previewFingerprint,
+    idempotencyKey: parsed.data.idempotencyKey,
+    expectedRelease: pin.pin,
+    context,
+    ...(scope.trustedActor ? { trustedActor: scope.trustedActor } : {}),
+  });
+  if (!result.ok) return mapDefinitionReplacementFailure(result.error, request.requestId);
+  return catalogGovernanceOk({
+    status: 202,
+    body: { item: mapDefinitionReplacement(result.value) },
+    requestId: request.requestId,
+    catalogReleaseId: result.value.catalogReleaseId,
+    etag: replacementEtag(result.value.id, result.value.version),
+  });
+}
+
+async function handleGetDefinitionReplacement(
+  ports: CatalogGovernancePorts,
+  scope: TrustedGovernanceScope,
+  request: CatalogGovernanceRequest,
+): Promise<CatalogGovernanceResponse> {
+  const denied = authorizeRead(scope, request);
+  if (denied) return denied;
+  const migration = ports.definitionMigration;
+  if (!migration) return catalogNotReady(request.requestId);
+  const pin = await requirePin(ports, request, { requireHeader: false });
+  if (!pin.ok) return pin.response;
+  const result = await migration.getDefinitionReplacement({
+    organizationId: request.params.organizationId ?? scope.organizationId,
+    replacementId: request.params.replacementId ?? "",
+  });
+  if (!result.ok) return mapDefinitionReplacementFailure(result.error, request.requestId);
+  return catalogGovernanceOk({
+    body: { item: mapDefinitionReplacement(result.value) },
+    requestId: request.requestId,
+    catalogReleaseId: result.value.catalogReleaseId,
+    etag: replacementEtag(result.value.id, result.value.version),
+  });
+}
+
+async function handleListDefinitionReplacements(
+  ports: CatalogGovernancePorts,
+  scope: TrustedGovernanceScope,
+  request: CatalogGovernanceRequest,
+): Promise<CatalogGovernanceResponse> {
+  const denied = authorizeRead(scope, request);
+  if (denied) return denied;
+  const migration = ports.definitionMigration;
+  if (!migration) return catalogNotReady(request.requestId);
+  const pin = await requirePin(ports, request, { requireHeader: false });
+  if (!pin.ok) return pin.response;
+  const result = await migration.listDefinitionReplacements({
+    organizationId: request.params.organizationId ?? scope.organizationId,
+  });
+  if (!result.ok) return mapDefinitionReplacementFailure(result.error, request.requestId);
+  return catalogGovernanceOk({
+    body: listEnvelope(result.value.items.map(mapDefinitionReplacement), pin.pin.id),
+    requestId: request.requestId,
+    catalogReleaseId: pin.pin.id,
+  });
+}
+
+async function handleContinueDefinitionReplacement(
+  ports: CatalogGovernancePorts,
+  scope: TrustedGovernanceScope,
+  request: CatalogGovernanceRequest,
+): Promise<CatalogGovernanceResponse> {
+  const denied = authorizeOrganizationWrite(scope, request);
+  if (denied) return denied;
+  const migration = ports.definitionMigration;
+  if (!migration) return catalogNotReady(request.requestId);
+  const parsed = catalogContinueReplacementRequestSchema.safeParse(request.body);
+  if (!parsed.success) return validationFailed(request.requestId, "body");
+  const pin = await requirePin(ports, request, { requireHeader: true });
+  if (!pin.ok) return pin.response;
+  const offered = ifMatchHeader(request.headers);
+  if (!offered) return revisionConflict(request.requestId);
+  const organizationId = request.params.organizationId ?? scope.organizationId;
+  const context = migrationContext(scope, organizationId);
+  if (!context) return forbidden(request.requestId);
+  const replacementId = request.params.replacementId ?? "";
+  const current = await migration.getDefinitionReplacement({ organizationId, replacementId });
+  if (!current.ok) return mapDefinitionReplacementFailure(current.error, request.requestId);
+  const expectedVersion = parseEtagVersion(offered);
+  if (expectedVersion === null || expectedVersion !== current.value.version) {
+    return revisionConflict(request.requestId);
+  }
+  const result = await migration.continueDefinitionReplacement({
+    organizationId,
+    replacementId,
+    projectIds: parsed.data.projectIds ?? null,
+    idempotencyKey: parsed.data.idempotencyKey,
+    expectedRelease: pin.pin,
+    context,
+  });
+  if (!result.ok) return mapDefinitionReplacementFailure(result.error, request.requestId);
+  return catalogGovernanceOk({
+    status: 202,
+    body: { item: mapDefinitionReplacement(result.value) },
+    requestId: request.requestId,
+    catalogReleaseId: result.value.catalogReleaseId,
+    etag: replacementEtag(result.value.id, result.value.version),
+  });
+}
+
 export async function handleCatalogGovernance(
   ports: CatalogGovernancePorts,
   rawRequest: CatalogGovernanceRequest,
@@ -1199,6 +1499,16 @@ export async function handleCatalogGovernance(
       return handleAcceptOrRejectProposal(ports, auth.scope, scopedRequest, "accept");
     case "catalog.rejectProposal":
       return handleAcceptOrRejectProposal(ports, auth.scope, scopedRequest, "reject");
+    case "catalog.previewDefinitionReplacement":
+      return handlePreviewDefinitionReplacement(ports, auth.scope, scopedRequest);
+    case "catalog.createDefinitionReplacement":
+      return handleExecuteDefinitionReplacement(ports, auth.scope, scopedRequest);
+    case "catalog.getDefinitionReplacement":
+      return handleGetDefinitionReplacement(ports, auth.scope, scopedRequest);
+    case "catalog.listDefinitionReplacements":
+      return handleListDefinitionReplacements(ports, auth.scope, scopedRequest);
+    case "catalog.continueDefinitionReplacement":
+      return handleContinueDefinitionReplacement(ports, auth.scope, scopedRequest);
   }
   return notFound(request.requestId);
   } catch (error) {

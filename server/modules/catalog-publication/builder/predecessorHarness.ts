@@ -68,6 +68,17 @@ export const allocationFor = (
   revisionId: `drev_acme_power_${propertyKey}_1`,
 });
 
+/** Allocation for a successor revision of an existing definition. */
+export const allocationForRevision = (
+  propertyKey: string,
+  revisionNumber: number,
+): FrozenDefinitionAllocation => ({
+  subjectId: "csub_acme_power",
+  propertyKey,
+  definitionId: `pdef_acme_power_${propertyKey}`,
+  revisionId: `drev_acme_power_${propertyKey}_${revisionNumber}`,
+});
+
 export const frozenPageIdentity = (
   defs: readonly FrozenDefinitionAllocation[],
   suffix = "1",

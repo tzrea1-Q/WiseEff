@@ -173,6 +173,11 @@
 
 ## 同类中文文档
 
+
+## #847 新增操作（identity correction 成功路径）
+
+`PCAT-DEFINITION-COLLECTION-001`、`PCAT-DEFINITION-LIFECYCLE-001`、`PCAT-IDENTITY-CORRECTION-001` 已在英文页登记。其中 `PCAT-IDENTITY-CORRECTION-001` 现在要求：在明确选择的授权项目清单与原因之外，还要在真实 API + 真实发布管理器上完整完成纠错（预览 → 执行 → 逐项目结果），并保证迁移后的取值保留 `.dts` 源位置、旧绑定/旧取值/旧定义不变。自动化证据：`e2e/acceptance/parameter-catalog-definitions.acceptance.spec.ts`、`src/features/parameter-catalog-governance/DefinitionCorrectionDialog.test.tsx`、`server/modules/parameter-catalog-migration/provenance.integration.test.ts`；记录式真实浏览器证据：`work/ui-checks/847/correction-{form,preview,result}-{desktop,tablet,mobile}.png`。
+
 - [docs/zh-CN/developer/README.md](README.md)
 - [docs/zh-CN/developer/local-development.md](local-development.md)
 - [docs/zh-CN/developer/environment-variables.md](environment-variables.md)

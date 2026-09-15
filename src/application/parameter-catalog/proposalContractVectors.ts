@@ -15,9 +15,21 @@ function check(condition: boolean, message: string): asserts condition {
   if (!condition) throw new Error(message);
 }
 
+/**
+ * `createdAt` is a list-projection field: a write command reports the resource
+ * it just wrote and legitimately has no creation time to report yet, so a
+ * read-back is allowed to add it. Every other field must match exactly.
+ */
+const LIST_ONLY_FIELDS = new Set(["createdAt"]);
+
 function equal(actual: unknown, expected: unknown, message: string) {
   const canonical = (value: unknown): unknown => Array.isArray(value) ? value.map(canonical)
-    : value !== null && typeof value === "object" ? Object.fromEntries(Object.entries(value).sort(([a], [b]) => a.localeCompare(b)).map(([key, item]) => [key, canonical(item)])) : value;
+    : value !== null && typeof value === "object" ? Object.fromEntries(
+        Object.entries(value)
+          .filter(([key]) => !LIST_ONLY_FIELDS.has(key))
+          .sort(([a], [b]) => a.localeCompare(b))
+          .map(([key, item]) => [key, canonical(item)])
+      ) : value;
   check(JSON.stringify(canonical(actual)) === JSON.stringify(canonical(expected)), `${message}: ${JSON.stringify(actual)}`);
 }
 

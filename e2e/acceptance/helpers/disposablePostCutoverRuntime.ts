@@ -202,7 +202,10 @@ export function prepareNestedObjectStoreRoot(
   if (!databaseName.startsWith(databasePrefix)) {
     throw new Error("Nested object-store ownership requires an exact disposable database identity.");
   }
-  const containerRoot = mkdtempSync(path.join(tmpdir(), "wiseeff-disposable-object-store-"));
+  // macOS `tmpdir()` is `/var/folders/...` while `/var` is a symlink to
+  // `/private/var`. Resolve the freshly created container before recording the
+  // owned root so the strict-descendant guard compares real paths on both sides.
+  const containerRoot = realpathSync(mkdtempSync(path.join(tmpdir(), "wiseeff-disposable-object-store-")));
   return materializeNestedObjectStoreRoot(buildNestedObjectStoreOwnership(databaseName, containerRoot));
 }
 
@@ -989,6 +992,29 @@ function nestedCleanupPending() {
     database: { status: "retained" as const, reason: "Nested database cleanup did not complete." },
     objectStore: { status: "retained" as const, reason: "Nested object-store cleanup did not complete." },
   };
+}
+
+/**
+ * Stops a detached disposable child and its process group. The nested-manifest
+ * refactor removed this helper while leaving the non-nested cleanup path calling
+ * it, so a local run without the Gate0 manifest crashed on dispose.
+ */
+async function stopRuntime(child: ChildProcess) {
+  if (child.exitCode != null || !child.pid) return;
+  const signal = (name: NodeJS.Signals) => {
+    try {
+      if (process.platform === "win32") child.kill(name);
+      else process.kill(-child.pid!, name);
+    } catch {
+      // Process already stopped.
+    }
+  };
+  signal("SIGTERM");
+  await Promise.race([
+    new Promise((resolve) => child.once("exit", resolve)),
+    new Promise((resolve) => setTimeout(resolve, 3_000)),
+  ]);
+  if (child.exitCode == null) signal("SIGKILL");
 }
 
 async function stopAndRecordNestedProcesses(

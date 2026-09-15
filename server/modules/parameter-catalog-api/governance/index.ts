@@ -3,8 +3,14 @@ export {
   catalogGovernanceCommandByRouteId,
   catalogGovernanceRouteIds,
   catalogGovernanceRoutes,
+  catalogDefinitionReplacementRoutes,
 } from "./mapping";
-export { registerCatalogGovernanceRoutes, catalogGovernanceRouteManifest } from "./routes";
+export {
+  registerCatalogGovernanceRoutes,
+  registerCatalogDefinitionReplacementRoutes,
+  catalogGovernanceRouteManifest,
+  catalogDefinitionReplacementRouteManifest,
+} from "./routes";
 export { createCatalogGovernanceHttpServer, listenCatalogGovernanceHttpServer } from "./http";
 export {
   bindCatalogGovernanceCommands,

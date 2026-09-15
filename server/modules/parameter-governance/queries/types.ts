@@ -55,6 +55,12 @@ export type GovernancePlacementRecord = {
   readonly id: string;
   readonly displayName: string;
   readonly parentPlacementId: string | null;
+  /**
+   * The organization module a retained placement points at. The module tree is
+   * the unit a module-subtree collection filter selects, so the read surface
+   * names it whenever the projection can.
+   */
+  readonly moduleId?: string;
 };
 
 export type GovernanceRegistrationRecord = {
@@ -125,6 +131,8 @@ export type GovernanceProposalRecord = {
   readonly submittedByPersonId: string | null;
   readonly acceptedByPersonId: string | null;
   readonly publicationIntentRef: string | null;
+  /** Creation time; the list is ordered newest first by it. */
+  readonly createdAt?: string;
 };
 
 export type ProposalList = {
@@ -142,7 +150,7 @@ export type CatalogDefinitionIndexEntry = {
 
 export type GovernanceQueryFailure =
   | { readonly kind: "invalid-query"; readonly reason: string }
-  | { readonly kind: "not-found"; readonly resource: "registration" | "placement" | "observation" | "proposal" | "organization" }
+  | { readonly kind: "not-found"; readonly resource: "registration" | "placement" | "observation" | "proposal" | "organization" | "module" }
   | {
       readonly kind: "missing-required-placement";
       readonly registrationId: string;
@@ -179,6 +187,17 @@ export type DefinitionSelectionQuery = {
   readonly authScope: GovernanceQueryAuthScope;
 };
 
+export type PlacementSubtreeSelectionQuery = {
+  readonly organizationId: string;
+  readonly moduleId: string;
+  readonly authScope: GovernanceQueryAuthScope;
+};
+
+export type PlacementSubtreeSelection = {
+  readonly moduleName: string | null;
+  readonly subjectIds: readonly CatalogSubjectId[];
+};
+
 export type ListRegistrationsQuery = {
   readonly organizationId: string;
   readonly observedCatalogReleaseId: string;
@@ -213,6 +232,8 @@ export type ListProposalsQuery = {
   readonly organizationId: string;
   readonly observedCatalogReleaseId: string;
   readonly authScope: GovernanceQueryAuthScope;
+  /** Bounded page size; the proposal panel pages this list. */
+  readonly limit?: number;
 };
 
 export type GetProposalQuery = {

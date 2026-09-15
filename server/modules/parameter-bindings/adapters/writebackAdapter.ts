@@ -1,7 +1,7 @@
 import type pg from "pg";
 
 import type { ProjectValueConflict } from "../values";
-import { appendProjectValue } from "../values";
+import { appendProjectValue, isReplacedCurrentBinding } from "../values";
 
 import {
   blocked,
@@ -73,6 +73,9 @@ export const writebackProtectedReference = async (
   }
   if (!controlFree(command.source.configRevisionId)) {
     return blocked({ kind: "typed-block", reason: "invalid-command", field: "configRevisionId" });
+  }
+  if (await isReplacedCurrentBinding(session, binding.value.id)) {
+    return blocked({ kind: "typed-block", reason: "binding-replaced" });
   }
 
   const appended = await appendProjectValue(session, {

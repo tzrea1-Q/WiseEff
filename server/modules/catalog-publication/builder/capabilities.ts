@@ -40,12 +40,20 @@ export const CATALOG_CAPABILITY_ALLOW_LIST: CapabilityAllowListIdentity = {
   budgets: {
     maxDisplayNameChars: 128,
     maxDocumentationChars: 8192,
+    maxDescriptionChars: 512,
     maxExamples: 8,
     maxChangeSetOps: 32,
   },
 };
 
-const CONTENT_KEYS = new Set(["displayName", "documentation", "unit", "valueSchema", "examples"]);
+const CONTENT_KEYS = new Set([
+  "displayName",
+  "documentation",
+  "description",
+  "unit",
+  "valueSchema",
+  "examples",
+]);
 const INTEGER_SCHEMA_KEYS = new Set(["type", "minimum", "maximum"]);
 const NUMBER_SCHEMA_KEYS = new Set(["type", "minimum", "maximum"]);
 const STRING_SCHEMA_KEYS = new Set(["type"]);
@@ -275,6 +283,20 @@ export const validateSupportedDefinitionContent = (
       `${path}.documentation`,
     );
   }
+  let description: string | undefined;
+  if (content.description !== undefined) {
+    const candidate = content.description;
+    if (typeof candidate !== "string") {
+      return capabilityFail("invalid-documentation", `${path}.description`);
+    }
+    if (candidate.length > CATALOG_CAPABILITY_ALLOW_LIST.budgets.maxDescriptionChars) {
+      return capabilityFail("resource-budget-exceeded", `${path}.description`);
+    }
+    if (DOCUMENTATION_FORBIDDEN.test(candidate)) {
+      return capabilityFail("invalid-documentation", `${path}.description`);
+    }
+    description = candidate;
+  }
   let unit: string | undefined;
   if (content.unit !== undefined) {
     if (
@@ -308,6 +330,7 @@ export const validateSupportedDefinitionContent = (
   return ok({
     displayName,
     documentation: content.documentation,
+    ...(description !== undefined ? { description } : {}),
     ...(unit !== undefined ? { unit } : {}),
     valueSchema: schema.value,
     ...(examples !== undefined ? { examples } : {}),

@@ -28,7 +28,19 @@ export type PublicationValueType = (typeof publicationSupportedValueTypes)[numbe
 export const publicationSupportedUnits = ["mA", "mV", "ms", "uOhm", "µA"] as const;
 export type PublicationUnit = string;
 
-export const publicationModes = ["create-definition", "create-subject", "revise-definition"] as const;
+export const publicationModes = [
+  "create-definition",
+  "create-subject",
+  "revise-definition",
+  /**
+   * Issue #847 decision 10: reversible definition lifecycle. `retire-definition`
+   * publishes canonical soft retirement (blocks new matching/use, keeps the
+   * permanent identity, revisions and pinned historical references) and
+   * `restore-definition` publishes `active` for the same identity and key.
+   */
+  "retire-definition",
+  "restore-definition"
+] as const;
 export type PublicationMode = (typeof publicationModes)[number];
 
 export const publicationSubjectKinds = ["driver", "node-type"] as const;
@@ -56,6 +68,8 @@ export type PublicationDraft = {
   propertyKey: string;
   displayName: string;
   documentation: string;
+  /** Optional author description, distinct from long-form documentation. */
+  description: string;
   valueType: PublicationValueType;
   minimum: string;
   maximum: string;
@@ -77,6 +91,7 @@ export const emptyPublicationDraft = (): PublicationDraft => ({
   propertyKey: "",
   displayName: "",
   documentation: "",
+  description: "",
   valueType: "integer",
   minimum: "",
   maximum: "",
@@ -344,9 +359,11 @@ function examplesOf(draft: PublicationDraft) {
 export function definitionContentOf(draft: PublicationDraft) {
   const examples = examplesOf(draft);
   const unit = draft.unit.trim();
+  const description = draft.description.trim();
   return {
     displayName: draft.displayName.trim(),
     documentation: draft.documentation,
+    ...(description ? { description } : {}),
     ...(unit ? { unit } : {}),
     valueSchema: valueSchemaOf(draft),
     ...(examples ? { examples } : {})
@@ -399,6 +416,17 @@ export function buildPublicationChangeSet(
         op: "revise-definition",
         definitionId: draft.definitionId,
         class: draft.reviseClass,
+        content: definitionContentOf(draft)
+      }
+    ];
+  }
+  if (draft.mode === "retire-definition" || draft.mode === "restore-definition") {
+    return [
+      {
+        op: draft.mode,
+        definitionId: draft.definitionId,
+        class: draft.reviseClass,
+        ...(draft.reason.trim() ? { reason: draft.reason.trim() } : {}),
         content: definitionContentOf(draft)
       }
     ];

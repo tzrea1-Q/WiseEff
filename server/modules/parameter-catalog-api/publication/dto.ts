@@ -46,6 +46,20 @@ export function itemEnvelope<T>(item: T): { item: T } {
 export function itemsEnvelope<T>(
   items: readonly T[],
   catalogReleaseId: string,
-): { items: T[]; nextCursor: null; catalogReleaseId: string } {
-  return { items: [...items], nextCursor: null, catalogReleaseId };
+): {
+  items: T[];
+  nextCursor: null;
+  catalogReleaseId: string;
+  totalCount: number;
+  hasMore: boolean;
+} {
+  // The publication history list is not yet cursor-paged, so the honest total is
+  // the returned item count and there is never a further page.
+  return {
+    items: [...items],
+    nextCursor: null,
+    catalogReleaseId,
+    totalCount: items.length,
+    hasMore: false,
+  };
 }

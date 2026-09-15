@@ -9,9 +9,19 @@ type WorkbenchSheetProps = {
   description?: string;
   children: ReactNode;
   footer?: ReactNode;
+  /** Close-button label; callers name the thing being closed. */
+  closeLabel?: string;
 };
 
-export function WorkbenchSheet({ open, onClose, title, description, children, footer }: WorkbenchSheetProps) {
+export function WorkbenchSheet({
+  open,
+  onClose,
+  title,
+  description,
+  children,
+  footer,
+  closeLabel = "关闭草稿"
+}: WorkbenchSheetProps) {
   const closeButtonRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
@@ -51,7 +61,7 @@ export function WorkbenchSheet({ open, onClose, title, description, children, fo
           <h2>{title}</h2>
           {description ? <p>{description}</p> : null}
         </div>
-        <button ref={closeButtonRef} type="button" className="icon-button" aria-label="关闭草稿" onClick={onClose}>
+        <button ref={closeButtonRef} type="button" className="icon-button" aria-label={closeLabel} onClick={onClose}>
           <X aria-hidden="true" />
         </button>
       </header>
