@@ -42,6 +42,7 @@ const projectParameterValuesRel = "project_parameter_value" + "s";
 export const CATALOG_RELATIONS = [
   "catalog_activation_receipts",
   "catalog_command_idempotency",
+  "catalog_configuration_schemas",
   "catalog_drivers",
   "catalog_materializations",
   "catalog_node_types",
@@ -126,6 +127,8 @@ export const PUBLICATION_RUNTIME_MIGRATION =
  */
 export const DEFINITION_REPLACEMENT_MIGRATION =
   "0144_definition_replacement.sql";
+export const CONFIGURATION_SCHEMA_MIGRATION =
+  "0147_configuration_schema_subject.sql";
 export const SCHEMA_MIGRATION = "0137_canonical_parameter_catalog_schema.sql";
 export const FLOOR_MIGRATION = "0136_parameter_execution_principal_deleted_marker.sql";
 

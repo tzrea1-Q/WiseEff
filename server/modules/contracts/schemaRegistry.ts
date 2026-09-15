@@ -870,6 +870,88 @@ export const schemaRegistry: Record<string, ContractSchemaRef> = {
     }
   },
 
+  "parameterTopology.listProjectValueDrafts": {
+    summary: "List the calling user's pending canonical value drafts for a project",
+    tags: ["parameters"],
+    responseBody: "ProjectValueDraftListResponse",
+    additionalResponses: {
+      "403": "ErrorResponse",
+      "404": "ErrorResponse"
+    }
+  },
+  "parameterTopology.removeProjectValueDraft": {
+    summary: "Remove one pending canonical value draft",
+    tags: ["parameters"],
+    responseBody: "ProjectValueDraftRemovedResponse",
+    additionalResponses: {
+      "403": "ErrorResponse",
+      "404": "ErrorResponse"
+    }
+  },
+  "parameterTopology.getBindingChangeHistory": {
+    summary: "Read canonical binding change history with exact value and revision pins",
+    tags: ["parameters"],
+    responseBody: "BindingChangeHistoryListResponse",
+    additionalResponses: {
+      "403": "ErrorResponse",
+      "404": "ErrorResponse"
+    }
+  },
+  "parameterTopology.exportProjectBinding": {
+    summary: "Export the exact canonical project-source bytes for a binding's pinned revision",
+    tags: ["parameters"],
+    responseBody: "BindingExportResponse",
+    additionalResponses: {
+      "403": "ErrorResponse",
+      "404": "ErrorResponse",
+      "409": "ErrorResponse"
+    }
+  },
+  "parameterTopology.submitProjectValueChangeRequest": {
+    summary: "Freeze a pending canonical value draft into a reviewable change request",
+    tags: ["parameters"],
+    requestBody: "SubmitProjectValueChangeRequest",
+    responseBody: "ProjectValueChangeRequestResponse",
+    successStatus: 201,
+    additionalResponses: {
+      "400": "ErrorResponse",
+      "403": "ErrorResponse",
+      "404": "ErrorResponse",
+      "409": "ErrorResponse"
+    }
+  },
+  "parameterTopology.listProjectValueChangeRequests": {
+    summary: "List canonical value change requests for a project",
+    tags: ["parameters"],
+    responseBody: "ProjectValueChangeRequestListResponse",
+    additionalResponses: {
+      "403": "ErrorResponse",
+      "404": "ErrorResponse"
+    }
+  },
+  "parameterTopology.reviewProjectValueChangeRequest": {
+    summary: "Approve (apply) or reject one pending canonical value change request",
+    tags: ["parameters"],
+    requestBody: "ReviewProjectValueChangeRequest",
+    responseBody: "ProjectValueChangeRequestResponse",
+    additionalResponses: {
+      "400": "ErrorResponse",
+      "403": "ErrorResponse",
+      "404": "ErrorResponse",
+      "409": "ErrorResponse"
+    }
+  },
+  "parameterTopology.withdrawProjectValueChangeRequest": {
+    summary: "Withdraw one pending canonical value change request as its submitter",
+    tags: ["parameters"],
+    responseBody: "ProjectValueChangeRequestResponse",
+    additionalResponses: {
+      "403": "ErrorResponse",
+      "404": "ErrorResponse",
+      "409": "ErrorResponse"
+    }
+  },
+
   "logs.uploadFile": {
     summary: "Upload log file",
     tags: ["logs"],

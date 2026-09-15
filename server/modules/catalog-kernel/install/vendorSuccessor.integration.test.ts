@@ -144,6 +144,38 @@ describe("vendor catalog successor advance", () => {
     expect(propertyKeys).not.toContain("fast_charge_current_limit_ma");
     expect(propertyKeys).toHaveLength(114);
 
+    // Issue #849 scope item 4: the advance retires the acme sample without
+    // rewriting crel_acme_1, and without claiming it evolved into a real vendor
+    // subject of the same name.
+    const retiredSubject = await observer.query<{
+      lifecycle: string;
+      tombstone: unknown;
+    }>(
+      `select lifecycle, tombstone_provenance as tombstone
+         from parameter_catalog.catalog_release_subjects
+        where release_id = $1 and subject_id = $2`,
+      [VENDOR_SUCCESSOR_RELEASE_ID, "csub_acme_power"],
+    );
+    expect(retiredSubject.rows).toHaveLength(1);
+    expect(retiredSubject.rows[0]?.lifecycle).toBe("retired");
+    expect(retiredSubject.rows[0]?.tombstone).toEqual({ reason: "acme-sample-retired" });
+
+    const retiredAlias = await observer.query<{ lifecycle: string }>(
+      `select lifecycle
+         from parameter_catalog.catalog_release_subject_aliases
+        where release_id = $1 and alias_id = $2`,
+      [VENDOR_SUCCESSOR_RELEASE_ID, "cali_acme_power_v1"],
+    );
+    expect(retiredAlias.rows[0]?.lifecycle).toBe("retired");
+
+    const predecessorSubject = await observer.query<{ lifecycle: string }>(
+      `select lifecycle
+         from parameter_catalog.catalog_release_subjects
+        where release_id = $1 and subject_id = $2`,
+      [FIRST_ACME_RELEASE_ID, "csub_acme_power"],
+    );
+    expect(predecessorSubject.rows[0]?.lifecycle).toBe("active");
+
     const replay = await installCatalogRelease(
       pool,
       {

@@ -852,7 +852,94 @@ export const catalogBindingDraftDtoSchema = catalogObject({
   definitionId: z.string(),
   effectiveRevisionId: z.string(),
   currentValueId: z.string().nullable(),
-  targetValue: z.string()
+  targetValue: z.string(),
+  // Issue #849: the pending-draft list feeds the workbench draft tray, which shows
+  // the author's reason. Without it here the tray could only render an empty
+  // reason after a reload, because the canonical owner never exposes it.
+  reason: z.string(),
+  // The tray orders and labels drafts by recency, so the timestamp has to be part
+  // of the list contract rather than inferred from request order.
+  updatedAt: z.string()
+});
+
+export const catalogBindingChangeHistoryEntryDtoSchema = catalogObject({
+  id: z.string(),
+  bindingId: z.string(),
+  definitionId: z.string(),
+  oldDefinitionRevisionId: z.string().nullable(),
+  newDefinitionRevisionId: z.string().nullable(),
+  oldCurrentValueId: z.string().nullable(),
+  newCurrentValueId: z.string().nullable(),
+  reason: z.string(),
+  successAuditRef: z.string(),
+  catalogReleaseId: z.string(),
+  createdAt: z.string()
+});
+
+export const catalogBindingChangeHistoryListResponseSchema = catalogObject({
+  items: z.array(catalogBindingChangeHistoryEntryDtoSchema)
+});
+
+export const catalogBindingExportFileSchema = catalogObject({
+  name: z.string(),
+  format: closedEnum(["dts", "json"]),
+  versionNumber: z.number().int(),
+  content: z.string()
+});
+
+export const catalogBindingExportDtoSchema = catalogObject({
+  bindingId: z.string(),
+  projectId: z.string(),
+  definitionId: z.string(),
+  definitionRevisionId: z.string(),
+  catalogReleaseId: z.string(),
+  configRevisionId: z.string(),
+  currentValueId: z.string(),
+  configSetId: z.string(),
+  sourceRef: z.string(),
+  files: z.array(catalogBindingExportFileSchema)
+});
+
+export const catalogBindingExportResponseSchema = itemEnvelopeSchema(
+  catalogBindingExportDtoSchema
+).superRefine(rejectLegacySpecKeys);
+
+export const projectValueDraftListResponseSchema = catalogObject({
+  items: z.array(catalogBindingDraftDtoSchema)
+});
+
+export const catalogValueChangeRequestDtoSchema = catalogObject({
+  id: z.string(),
+  projectId: z.string(),
+  draftId: z.string().nullable(),
+  bindingId: z.string(),
+  definitionId: z.string(),
+  effectiveRevisionId: z.string(),
+  status: closedEnum(["pending", "approved", "rejected", "withdrawn"]),
+  targetValue: z.string(),
+  reason: z.string(),
+  submitterUserId: z.string(),
+  assignedToUserId: z.string().nullable(),
+  reviewerUserId: z.string().nullable(),
+  reviewerNote: z.string().nullable(),
+  appliedValueId: z.string().nullable(),
+  applyOutcome: closedEnum(["committed", "replayed"]).nullable(),
+  createdAt: z.string(),
+  updatedAt: z.string()
+});
+
+export const catalogValueChangeRequestResponseSchema = itemEnvelopeSchema(
+  catalogValueChangeRequestDtoSchema
+).superRefine(rejectLegacySpecKeys);
+export const catalogValueChangeRequestListResponseSchema = catalogObject({
+  items: z.array(catalogValueChangeRequestDtoSchema)
+});
+export const catalogSubmitValueChangeRequestSchema = catalogObject({
+  assignedToUserId: z.string().nullable().optional()
+});
+export const catalogReviewValueChangeRequestSchema = catalogObject({
+  decision: closedEnum(["approve", "reject"]),
+  note: z.string().nullable().optional()
 });
 
 export const catalogCreateNodeEnablementDraftRequestSchema = catalogObject({
@@ -862,7 +949,6 @@ export const catalogCreateNodeEnablementDraftRequestSchema = catalogObject({
   enabled: z.boolean(),
   reason: z.string()
 });
-
 export const catalogNodeEnablementDraftDtoSchema = catalogObject({
   id: z.string(),
   logicalNodeId: z.string(),
@@ -1092,6 +1178,11 @@ export const catalogReplacementListResponseSchema = catalogItemsEnvelopeSchema(
 );
 
 
+
+export const projectValueDraftRemovedResponseSchema = itemEnvelopeSchema(
+  catalogObject({ id: z.string() })
+);
+
 export const parameterCatalogDtoSchemaCatalog = {
   CatalogProposalUnavailableResponse: catalogProposalUnavailableResponseSchema,
   CatalogDocumentResponse: catalogDocumentResponseSchema,
@@ -1137,6 +1228,14 @@ export const parameterCatalogDtoSchemaCatalog = {
   CatalogLegacyIdentifierResponse: catalogLegacyIdentifierResponseSchema,
   CatalogLegacyGoneResponse: catalogLegacyGoneResponseSchema,
   ProjectParameterBindingListResponse: projectParameterBindingListResponseSchema,
+  ProjectValueDraftListResponse: projectValueDraftListResponseSchema,
+  BindingChangeHistoryListResponse: catalogBindingChangeHistoryListResponseSchema,
+  BindingExportResponse: catalogBindingExportResponseSchema,
+  ProjectValueDraftRemovedResponse: projectValueDraftRemovedResponseSchema,
+  ProjectValueChangeRequestResponse: catalogValueChangeRequestResponseSchema,
+  ProjectValueChangeRequestListResponse: catalogValueChangeRequestListResponseSchema,
+  SubmitProjectValueChangeRequest: catalogSubmitValueChangeRequestSchema,
+  ReviewProjectValueChangeRequest: catalogReviewValueChangeRequestSchema,
   BindingHistoryListResponse: bindingHistoryListResponseSchema,
   BindingCompareListResponse: bindingCompareListResponseSchema,
   CreateBindingDraftRequest: catalogCreateBindingDraftRequestSchema,

@@ -5,9 +5,9 @@
     "packageEntrypoint": "server/modules/parameter-catalog-contract/index.ts",
     "serializationGolden": {
       "path": "server/modules/parameter-catalog-contract/__fixtures__/serialization-golden.json",
-      "gitBlobOid": "2b6c1ce58b993a761c12bf84e15eea57187560e3",
-      "byteLength": 1563,
-      "rawSha256": "1172d550699aa67f46c03212954be4d430e33483494cddd11b8e7626d23f9367"
+      "gitBlobOid": "d4950079cfeab8634897140a438e34f9f431c09c",
+      "byteLength": 1591,
+      "rawSha256": "7fd27c52d2c0a0de8f04cbc94386d7ac1d34b0ec73379b34a813cc8434fa70db"
     },
     "constructors": {
       "compatible": "parseCanonicalCompatibleSelector",
@@ -28,11 +28,13 @@
   "closedEnums": {
     "catalogSubjectKinds": [
       "driver",
-      "node-type"
+      "node-type",
+      "configuration-schema"
     ],
     "catalogSubjectSelectorKinds": [
       "driver-compatible",
-      "node-type-name"
+      "node-type-name",
+      "configuration-schema-id"
     ],
     "driverNatures": [
       "physical-device",
@@ -310,7 +312,8 @@
     ],
     "selectorKindBySubjectKind": {
       "driver": "driver-compatible",
-      "node-type": "node-type-name"
+      "node-type": "node-type-name",
+      "configuration-schema": "configuration-schema-id"
     },
     "requirePermanentCanonicalOwnership": true,
     "forbidAliasCanonicalCollision": true

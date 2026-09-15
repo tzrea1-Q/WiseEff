@@ -1,0 +1,28 @@
+/*
+ * Issue #849 demo compatibility baseline for the Nebula project.
+ * DEMONSTRATION SOURCE - not validated real-device firmware and not a device
+ * deployment input. It exists so the two DTS compatibility seeds have real,
+ * reviewable node ownership and exact locators.
+ *
+ * Source property keys are hyphenated; the retired seed names were underscored:
+ *   dts_fast_charge_profile_matrix -> fast-charge-profile-matrix
+ *   battery_thermal_derate_curve   -> battery-thermal-derate-curve
+ * No "compatible" is declared on purpose: the formal subject identity for these
+ * seeds is a reviewed decision (Issue #849 D10) and is not inferred from a label.
+ */
+/dts-v1/;
+/plugin/;
+
+/ {
+	charging_core {
+		fast-charge-profile-matrix =
+			"0", "5000", "1500", "40", "entry",
+			"1", "9000", "3000", "43", "balanced",
+			"2", "12000", "4300", "48", "boost";
+		battery-thermal-derate-curve = <
+			0 38 3800 4350
+			1 42 3000 4300
+			2 45 2400 4260
+		>;
+	};
+};

@@ -574,6 +574,62 @@ export const routeManifest = [
     module: "parameters",
     stability: "mvp"
   },
+  {
+    id: "parameterTopology.listProjectValueDrafts",
+    method: "GET",
+    path: "/api/v2/projects/:projectId/parameter-value-drafts",
+    module: "parameters",
+    stability: "mvp"
+  },
+  {
+    id: "parameterTopology.removeProjectValueDraft",
+    method: "DELETE",
+    path: "/api/v2/projects/:projectId/parameter-value-drafts/:draftId",
+    module: "parameters",
+    stability: "mvp"
+  },
+  {
+    id: "parameterTopology.getBindingChangeHistory",
+    method: "GET",
+    path: "/api/v2/projects/:projectId/parameter-bindings/:bindingId/change-history",
+    module: "parameters",
+    stability: "mvp"
+  },
+  {
+    id: "parameterTopology.exportProjectBinding",
+    method: "GET",
+    path: "/api/v2/projects/:projectId/parameter-bindings/:bindingId/export",
+    module: "parameters",
+    stability: "mvp"
+  },
+  {
+    id: "parameterTopology.submitProjectValueChangeRequest",
+    method: "POST",
+    path: "/api/v2/projects/:projectId/parameter-value-drafts/:draftId/submit",
+    module: "parameters",
+    stability: "mvp"
+  },
+  {
+    id: "parameterTopology.listProjectValueChangeRequests",
+    method: "GET",
+    path: "/api/v2/projects/:projectId/parameter-value-change-requests",
+    module: "parameters",
+    stability: "mvp"
+  },
+  {
+    id: "parameterTopology.reviewProjectValueChangeRequest",
+    method: "POST",
+    path: "/api/v2/projects/:projectId/parameter-value-change-requests/:requestId/review",
+    module: "parameters",
+    stability: "mvp"
+  },
+  {
+    id: "parameterTopology.withdrawProjectValueChangeRequest",
+    method: "POST",
+    path: "/api/v2/projects/:projectId/parameter-value-change-requests/:requestId/withdraw",
+    module: "parameters",
+    stability: "mvp"
+  },
 
   ...parameterCatalogCanonicalRoutes,
 
