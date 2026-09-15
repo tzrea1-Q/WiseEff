@@ -149,7 +149,7 @@
 
 ## Canonical Parameter definitions 替换登记（#668）
 
-`PCAT-UI-01` 到 `PCAT-UI-15` 已在 `e2e/acceptance/requirements.ts` 以 `required=true` 登记。CatalogPage 已挂载到 `/parameter-admin/specs`。OP-08（#810）已把无条件 `test.skip` 和仅 `page.goto` 的用例换成可观察断言，并在本地 Catalog lane（`wiseeff_lane_810`）执行。下表状态是本地 automated 覆盖，不是 Hosted 或目标机证据。PCAT ID 未重新编号。
+`PCAT-UI-01` 到 `PCAT-UI-17` 已在 `e2e/acceptance/requirements.ts` 以 `required=true` 登记。CatalogPage 已挂载到 `/parameter-admin/specs`。OP-08（#810）已把无条件 `test.skip` 和仅 `page.goto` 的用例换成可观察断言，并在本地 Catalog lane（`wiseeff_lane_810`）执行。下表状态是本地 automated 覆盖，不是 Hosted 或目标机证据。PCAT ID 未重新编号。
 
 | Requirement ID | 状态 | 角色 | 路由/交互 | 三视口 | 必需 API / DB / audit / screenshot 证据 | Acceptance owner |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -162,12 +162,12 @@
 | `PCAT-UI-07` | automated | Org Admin；其他角色 negative | unregistered Subject 仍可读，显式 `use-default`/`choose-parent` 注册并保留 ID | 三视口 | release/idempotency API；exactly-one Registration/Placement DB；成功/拒绝审计；选择/结果截图 | `e2e/acceptance/parameter-catalog-governance.acceptance.spec.ts` |
 | `PCAT-UI-08` | automated | authorized reader | 区分 loading/error 和四个 emptyReason；stale-visible loading 禁写 | 三视口 | state API；fixture DB predicate；零 mutation/audit；全部状态截图 | `e2e/acceptance/parameter-catalog.acceptance.spec.ts` |
 | `PCAT-UI-09` | automated | authorized reader；Org Admin negative | retired/deprecated 历史可读，禁止新动作 | 三视口 | lifecycle read + 409；retained DB history；refusal audit；badge/disabled 截图 | `e2e/acceptance/parameter-catalog.acceptance.spec.ts` |
-| `PCAT-UI-10` | automated | Org Admin、Platform Admin | release/ETag/parent/idempotency conflict 保留输入、刷新证据、要求重确认 | 三视口 | exact 409 reason；无 partial DB；durable refusal/no success audit；conflict 截图 | `e2e/acceptance/parameter-catalog-negative.acceptance.spec.ts` |
+| `PCAT-UI-10`（#847 停用：浏览器用例依赖已移除的「定义修订」面板） | automated | Org Admin、Platform Admin | release/ETag/parent/idempotency conflict 保留输入、刷新证据、要求重确认 | 三视口 | exact 409 reason；无 partial DB；durable refusal/no success audit；conflict 截图 | `e2e/acceptance/parameter-catalog-negative.acceptance.spec.ts` |
 | `PCAT-UI-11` | automated | authorized + scope-hidden callers | legacy mapped redirect、410 gone、409 conflict、404 unknown/scope-hidden | 三视口 | status/deprecation/successor headers；mapping-head/Archive DB；必要 operator audit；各 outcome 截图 | `e2e/acceptance/parameter-catalog-negative.acceptance.spec.ts` |
 | `PCAT-UI-12` | automated | Agent | 按 invoking principal 只读，所有治理 mutation/spoof 被拒 | 三视口 | scoped reads + 403；零 DB mutation；trusted refusal audit；只读截图 | `e2e/acceptance/parameter-catalog-negative.acceptance.spec.ts` |
 | `PCAT-UI-13` | automated | 全部表示角色 | API/mock 重放相同状态与权限，不得有 mock-only governance | 三视口 | real API digest；API-half DB；real-half audit/mock no-extra-authority；配对截图 | `e2e/acceptance/parameter-catalog-negative.acceptance.spec.ts` |
 | `PCAT-UI-14` | automated | authorized reader | 单页/list/detail/timeline/queue/dialog 无重叠、溢出、隐藏动作或焦点问题 | 三视口 | critical API success；DB/audit 明确 N/A；snapshot+screenshot；console/page/request failure=0 | `e2e/acceptance/parameter-catalog.acceptance.spec.ts` |
-| `PCAT-UI-15` | automated | Org Admin、Platform Admin、ordinary/Agent negatives | 真实导航、搜索、详情、timeline、queue、registration、proposal、conflict、deep link、keyboard/focus | 三视口 | operation request ledger；final DB predicates；每个 mutation/refusal audit；checkpoint screenshots + runtime/trace/report pins | `e2e/acceptance/parameter-catalog-governance.acceptance.spec.ts` |
+| `PCAT-UI-15`（#847 停用其 Proposal 段：依赖已移除的「定义修订」面板） | automated | Org Admin、Platform Admin、ordinary/Agent negatives | 真实导航、搜索、详情、timeline、queue、registration、proposal、conflict、deep link、keyboard/focus | 三视口 | operation request ledger；final DB predicates；每个 mutation/refusal audit；checkpoint screenshots + runtime/trace/report pins | `e2e/acceptance/parameter-catalog-governance.acceptance.spec.ts` |
 
 职责文件固定为：`e2e/acceptance/parameter-catalog.acceptance.spec.ts`（read/detail/timeline/state/responsive）、`e2e/acceptance/parameter-catalog-governance.acceptance.spec.ts`（Registration/Placement、Review、Proposal）、`e2e/acceptance/parameter-catalog-negative.acceptance.spec.ts`（concurrency、role spoof、legacy、mock parity、fail closed）。15 个 operation 已在 `e2e/acceptance/operationMatrix.ts` 以 `coverage=automated`、完整 assertions、exact owner `specFiles` 登记；`npm run acceptance:operations` 从该 source 生成英文矩阵。OP-08 本地 Catalog lane 证据不是 Hosted、目标机或 OP-09 切流证据。Hosted/target 声明仍须通过 `npm run acceptance:evidence` 的同一 full run/source/runtime 校验。
 

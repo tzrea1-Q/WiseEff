@@ -199,6 +199,7 @@ export function CatalogOrganizationSurface({
             onCompleted={() => undefined}
             onRefreshEvidence={() => undefined}
             authoringAllowed={publicationSurfaceAllowsAuthoring(publicationSurface)}
+            onRequestHistory={history.onRequestHistory}
             history={
               <CatalogHistoryBody
                 timeline={history.timeline}

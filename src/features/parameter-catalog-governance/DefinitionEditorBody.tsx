@@ -54,6 +54,8 @@ export type DefinitionEditorBodyProps = {
   onRefreshEvidence?: () => void | Promise<void>;
   /** Read-only history the page loaded for this definition. */
   history: ReactNode;
+  /** Ask the page to load revisions and the timeline for this definition. */
+  onRequestHistory?: () => void;
   /** Server gate: without it the dialog only reads. */
   authoringAllowed: boolean;
 };
@@ -199,6 +201,7 @@ export function DefinitionEditorBody({
   onCompleted,
   onRefreshEvidence,
   history,
+  onRequestHistory,
   authoringAllowed
 }: DefinitionEditorBodyProps) {
   const [phase, setPhase] = useState<Phase>("compose");
@@ -246,7 +249,10 @@ export function DefinitionEditorBody({
     setPreviewIdempotencyKey(null);
     setIdempotencyKey(null);
     setHistoryOpen(false);
-  }, [definition]);
+    // Reset only when the edited definition changes; a refreshed snapshot yields a
+    // new object for the same definition and must not collapse the disclosure.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [definition.id]);
 
   const selectedProjects = useMemo(
     () =>
@@ -784,7 +790,11 @@ export function DefinitionEditorBody({
             className="button subtle sm"
             data-catalog-history-toggle="true"
             aria-expanded={historyOpen}
-            onClick={() => setHistoryOpen((value) => !value)}
+            onClick={() => {
+              const next = !historyOpen;
+              setHistoryOpen(next);
+              if (next) onRequestHistory?.();
+            }}
           >
             {historyOpen ? catalogHistoryCloseLabel : catalogHistoryOpenLabel}
           </button>

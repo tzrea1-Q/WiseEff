@@ -23,13 +23,23 @@ import {
 
 useBrowserDiagnostics(test, { expectedApiFailures: CATALOG_EXPECTED_API_FAILURES });
 
+/**
+ * Retired in the issue #847 UI loop: the 定义修订 (definition proposal) panel was
+ * removed from /parameter-admin/specs by product decision — definition changes now
+ * happen in the definition editor dialog, and the toolbar no longer offers
+ * 提出定义修订/提交修订/撤回修订. These proposal-surface journeys therefore have no
+ * page to drive; they are kept as fixme with the reason instead of being deleted
+ * silently. The governed proposal API itself is unchanged and still covered by the
+ * server suites.
+ */
 let fixture: CatalogAcceptanceFixture;
 
 test.describe("canonical parameter catalog negative and responsive contract", () => {
   test.beforeAll(async () => {
     fixture = await ensureCatalogAcceptanceFixture();
   });
-  test("preserves conflict input, refreshes evidence, and requires reconfirmation without partial writes", async ({
+  // eslint-disable-next-line playwright/no-skipped-test -- surface removed by product decision (#847)
+  test.fixme("preserves conflict input, refreshes evidence, and requires reconfirmation without partial writes", async ({
     page
   }, testInfo) => {
     // @acceptance PCAT-UI-10
@@ -252,13 +262,13 @@ for (const viewport of [
   { name: "tablet", width: 768, height: 1024 },
   { name: "mobile", width: 390, height: 844 },
 ]) {
-  test(`real sessions reject stale Proposal ETag and require explicit reconfirmation after refresh (${viewport.name})`, async ({ page }, testInfo) => {
+  test.fixme(`real sessions reject stale Proposal ETag and require explicit reconfirmation after refresh (${viewport.name})`, async ({ page }, testInfo) => {
     await page.setViewportSize(viewport);
     await verifyRealProposalConflict(page, testInfo);
   });
 }
 
-test("replays the original committed Proposal after a verified response-phase failure", async ({ browser }, testInfo) => {
+test.fixme("replays the original committed Proposal after a verified response-phase failure", async ({ browser }, testInfo) => {
   const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
   const diagnostics = installBrowserDiagnostics(page, testInfo, {
     expectedApiFailures: [...CATALOG_EXPECTED_API_FAILURES, { method: "POST", path: "/api/v2/catalog/definition-proposals", status: 503 }],
@@ -271,13 +281,13 @@ test("replays the original committed Proposal after a verified response-phase fa
   }
 });
 
-test("compares API and product mock runtime after each actual Proposal browser operation", async ({ page }, testInfo) => {
+test.fixme("compares API and product mock runtime after each actual Proposal browser operation", async ({ page }, testInfo) => {
   const api = await collectProposalOperationTrace(page, testInfo, "api");
   const mock = await collectProposalOperationTrace(page, testInfo, "mock");
   expect(mock).toEqual(api);
 });
 
-test("refreshes a real installer release drift before explicitly withdrawing the historical Proposal", async ({ page }, testInfo) => {
+test.fixme("refreshes a real installer release drift before explicitly withdrawing the historical Proposal", async ({ page }, testInfo) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   await verifyRealProposalConflict(page, testInfo, true);
 });

@@ -105,7 +105,12 @@ export type CatalogPageProps = {
   onEditorClosed?: () => void;
   renderDefinitionEditor?: (
     definition: DefinitionItem,
-    history: { revisions: RevisionItem[]; timeline: CatalogDefinitionTimelineResponse | null }
+    history: {
+      revisions: RevisionItem[];
+      timeline: CatalogDefinitionTimelineResponse | null;
+      /** Ask the page to load revisions and the timeline. */
+      onRequestHistory: () => void;
+    }
   ) => ReactNode;
   onAction?: (
     action: CatalogAuthorizedAction,
@@ -960,7 +965,8 @@ export function CatalogPage({
             <div data-definition-editor="true">
               {renderDefinitionEditor(definition, {
                 revisions: snapshot?.revisions ?? [],
-                timeline: snapshot?.timeline ?? null
+                timeline: snapshot?.timeline ?? null,
+                onRequestHistory: () => setHistoryOpen(true)
               })}
             </div>
           ) : (

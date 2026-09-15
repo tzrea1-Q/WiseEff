@@ -212,7 +212,12 @@ test.describe("canonical parameter catalog page", () => {
     await expect(
       page.getByRole("button", { name: catalogUiCopy.actionLabels["register-subject"], exact: true })
     ).toBeVisible();
-    await expect(page.getByRole("button", { name: catalogUiCopy.actionLabels["create-proposal"] })).toBeVisible();
+    // The definition-editor dialog owns definition changes; the toolbar offers the
+    // organization actions that still have a surface on this page.
+    await expect(
+      page.getByRole("button", { name: catalogUiCopy.actionLabels["update-placement"], exact: true })
+    ).toBeVisible();
+    await expect(page.getByRole("button", { name: catalogUiCopy.actionLabels["create-proposal"] })).toHaveCount(0);
     await expect(page.getByRole("button", { name: catalogUiCopy.actionLabels["accept-proposal"] })).toHaveCount(0);
     const userWrite = await catalogJson(page.request, "POST", `/api/v2/organizations/${fixture.organizationId}/subject-registrations`, {
       actor: "user",
@@ -335,7 +340,9 @@ test.describe("canonical parameter catalog page", () => {
     await waitForCatalogState(page, "retired");
     await expect(catalogPage(page)).toHaveAttribute("data-writes-enabled", "false");
     await expect(page.getByText(/已退役或已弃用，历史记录仍可阅读|该主体已退役/).first()).toBeVisible();
-    await expect(page.getByRole("button", { name: catalogUiCopy.actionLabels["create-proposal"] })).toBeDisabled();
+    await expect(
+      page.getByRole("button", { name: catalogUiCopy.actionLabels["update-placement"], exact: true })
+    ).toBeDisabled();
     await expect(page.getByRole("region", { name: "定义详情" })).toContainText(fixture.xDefinitionId);
     const retiredWrite = await catalogJson(page.request, "POST", `/api/v2/organizations/${fixture.organizationId}/subject-registrations`, {
       headers: {
@@ -366,21 +373,20 @@ test.describe("canonical parameter catalog page", () => {
       );
       await expect(catalogPage(page)).toBeVisible();
       await assertNoPageOverflow(page);
+      // One editor dialog carries the definition and its history at every viewport.
+      const editor = page.getByRole("dialog");
+      await expect(editor).toBeVisible();
+      await expect(editor.getByRole("region", { name: "定义详情" })).toBeVisible();
+      await editor.getByRole("button", { name: /查看历史/ }).click();
+      await expect(editor.getByText("目录发布").first()).toBeVisible();
+      await assertNoPageOverflow(page);
       if (viewport.name === "desktop") {
-        await expect(page.getByRole("region", { name: "定义详情" })).toBeVisible();
         // The module navigator and the honest count own the restored rail.
         await expect(page.getByRole("navigation", { name: "参数定义模块树" })).toBeVisible();
         await expect(page.getByRole("status", { name: "结果计数" })).toBeVisible();
         await expect(page.getByRole("navigation", { name: "分页" })).toBeVisible();
         await page.getByRole("searchbox", { name: "搜索参数定义" }).focus();
         await expect(page.getByRole("searchbox", { name: "搜索参数定义" })).toBeFocused();
-      } else {
-        const sheet = page.getByRole("dialog");
-        await expect(sheet).toBeVisible();
-        await sheet.getByRole("tab", { name: "时间线" }).click();
-        await expect(sheet.getByText("目录发布").first()).toBeVisible();
-        await sheet.getByRole("tab", { name: "详情" }).focus();
-        await expect(sheet.getByRole("tab", { name: "详情" })).toBeFocused();
       }
       await catalogScreenshot(page, testInfo, `pcat-ui-14-${viewport.name}`);
     }

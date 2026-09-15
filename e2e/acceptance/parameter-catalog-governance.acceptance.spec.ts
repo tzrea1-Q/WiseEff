@@ -150,7 +150,14 @@ test.describe("canonical parameter catalog governance interactions", () => {
     await catalogScreenshot(page, testInfo, "pcat-ui-07-register");
   });
 
-  test("covers Registration, Placement, Review, and Proposal journeys with role boundaries", async ({
+  /**
+   * Retired in the issue #847 UI loop: the Proposal half of this journey drove the
+   * 定义修订 panel that product removed from /parameter-admin/specs (definition
+   * changes now publish from the definition editor dialog). The Registration,
+   * Placement and Review legs keep their own tests above; the governed proposal
+   * API remains covered by the server suites.
+   */
+  test.fixme("covers Registration, Placement, Review, and Proposal journeys with role boundaries", async ({
     page
   }, testInfo) => {
     // @acceptance PCAT-UI-15
