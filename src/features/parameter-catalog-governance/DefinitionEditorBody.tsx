@@ -56,6 +56,8 @@ export type DefinitionEditorBodyProps = {
   history: ReactNode;
   /** Ask the page to load revisions and the timeline for this definition. */
   onRequestHistory?: () => void;
+  /** Close callback to dismiss the host dialog. */
+  onClose?: () => void;
   /** Server gate: without it the dialog only reads. */
   authoringAllowed: boolean;
 };
@@ -202,6 +204,7 @@ export function DefinitionEditorBody({
   onRefreshEvidence,
   history,
   onRequestHistory,
+  onClose,
   authoringAllowed
 }: DefinitionEditorBodyProps) {
   const [phase, setPhase] = useState<Phase>("compose");
@@ -467,145 +470,274 @@ export function DefinitionEditorBody({
 
         {authoringAllowed ? (
           <div className="definition-editor__form">
-            <div className="definition-editor__fields">
-              <label>
-                <span>主体</span>
-                <select
-                  value={subjectId}
-                  aria-label="主体"
-                  onChange={(event) => setSubjectId(event.target.value)}
-                >
-                  {selectableSubjects.map((subject) => (
-                    <option key={subject.id} value={subject.id}>
-                      {subject.canonicalName}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label>
-                <span>属性键</span>
-                <input
-                  value={propertyKey}
-                  aria-label="属性键"
-                  onChange={(event) => setPropertyKey(event.target.value)}
-                />
-              </label>
-              <label>
-                <span>显示名</span>
-                <input
-                  value={content.displayName}
-                  aria-label="显示名"
-                  onChange={(event) => setContent({ ...content, displayName: event.target.value })}
-                />
-              </label>
-              <label>
-                <span>单位</span>
-                <input
-                  value={content.unit}
-                  aria-label="单位"
-                  placeholder="例如 mA"
-                  onChange={(event) => setContent({ ...content, unit: event.target.value })}
-                />
-              </label>
-              <label>
-                <span>取值形状</span>
-                <select
-                  value={content.valueType}
-                  aria-label="取值形状"
-                  onChange={(event) =>
-                    setContent({ ...content, valueType: event.target.value as PublicationValueType })
-                  }
-                >
-                  {schemaValueTypes.map((type) => (
-                    <option key={type} value={type}>
-                      {schemaValueTypeLabels[type]}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              {content.valueType === "integer" || content.valueType === "number" ? (
-                <>
-                  <label>
-                    <span>最小值</span>
-                    <input
-                      value={content.minimum}
-                      aria-label="最小值"
-                      onChange={(event) => setContent({ ...content, minimum: event.target.value })}
-                    />
-                  </label>
-                  <label>
-                    <span>最大值</span>
-                    <input
-                      value={content.maximum}
-                      aria-label="最大值"
-                      onChange={(event) => setContent({ ...content, maximum: event.target.value })}
-                    />
-                  </label>
-                </>
-              ) : null}
-              <label>
-                <span>说明</span>
-                <textarea
-                  value={content.documentation}
-                  aria-label="说明"
-                  onChange={(event) => setContent({ ...content, documentation: event.target.value })}
-                />
-              </label>
-            </div>
-            <label>
-              <span>受影响项目</span>
-              <input
-                value={projectIdsText}
-                aria-label="受影响项目"
-                placeholder="项目编号，多个用逗号分隔"
-                onChange={(event) => setProjectIdsText(event.target.value)}
-              />
-            </label>
-            <label>
-              <span>修改原因</span>
-              <textarea
-                value={reason}
-                aria-label="修改原因"
-                onChange={(event) => setReason(event.target.value)}
-              />
-            </label>
-            <p className="parameter-catalog__muted" data-definition-editor-hint="true">
-              {identityChanged
-                ? "保存会发布替代身份，并把选定项目的当前引用迁移过去；旧身份与历史保持不变。"
-                : contentChanged
-                  ? "内容修订只发布新修订，不迁移项目引用。"
-                  : "未做任何修改。"}
-            </p>
-            {phase === "compose" ? (
-              <div className="dialog-actions">
-                {identityChanged ? (
-                  <button
-                    type="button"
-                    className="button primary"
-                    data-correction-action="preview"
-                    disabled={
-                      !allowed ||
-                      pending ||
-                      selectedProjects.length === 0 ||
-                      !reason.trim()
+            <div className="definition-editor__card">
+              <div className="definition-editor__card-header">
+                <span className="definition-editor__card-title">核心属性定义</span>
+                <span className="definition-editor__card-desc">配置参数的所属主体、全局属性键及值类型规范</span>
+              </div>
+              <div className="definition-editor__fields">
+                <label className="definition-editor__field">
+                  <span className="definition-editor__field-label">
+                    主体 <span className="definition-editor__required" aria-hidden="true">*</span>
+                  </span>
+                  <select
+                    value={subjectId}
+                    aria-label="主体"
+                    onChange={(event) => setSubjectId(event.target.value)}
+                  >
+                    {selectableSubjects.map((subject) => (
+                      <option key={subject.id} value={subject.id}>
+                        {subject.canonicalName}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="definition-editor__field">
+                  <span className="definition-editor__field-label">
+                    属性键 <span className="definition-editor__required" aria-hidden="true">*</span>
+                  </span>
+                  <input
+                    value={propertyKey}
+                    aria-label="属性键"
+                    onChange={(event) => setPropertyKey(event.target.value)}
+                  />
+                </label>
+                <label className="definition-editor__field">
+                  <span className="definition-editor__field-label">显示名</span>
+                  <input
+                    value={content.displayName}
+                    aria-label="显示名"
+                    placeholder="输入参数显示名称"
+                    onChange={(event) => setContent({ ...content, displayName: event.target.value })}
+                  />
+                </label>
+                <label className="definition-editor__field">
+                  <span className="definition-editor__field-label">单位</span>
+                  <input
+                    value={content.unit}
+                    aria-label="单位"
+                    placeholder="例如 mA, us, ℃"
+                    onChange={(event) => setContent({ ...content, unit: event.target.value })}
+                  />
+                </label>
+                <label className="definition-editor__field">
+                  <span className="definition-editor__field-label">取值形状</span>
+                  <select
+                    value={content.valueType}
+                    aria-label="取值形状"
+                    onChange={(event) =>
+                      setContent({ ...content, valueType: event.target.value as PublicationValueType })
                     }
-                    title={allowed ? undefined : "当前会话缺少发布能力。"}
-                    onClick={() => void runPreview()}
                   >
-                    {pending ? "正在预演…" : "预演影响"}
-                  </button>
+                    {schemaValueTypes.map((type) => (
+                      <option key={type} value={type}>
+                        {schemaValueTypeLabels[type]}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                {content.valueType === "integer" || content.valueType === "number" ? (
+                  <div className="definition-editor__range-group">
+                    <label className="definition-editor__field">
+                      <span className="definition-editor__field-label">最小值</span>
+                      <input
+                        value={content.minimum}
+                        aria-label="最小值"
+                        placeholder="下限"
+                        onChange={(event) => setContent({ ...content, minimum: event.target.value })}
+                      />
+                    </label>
+                    <label className="definition-editor__field">
+                      <span className="definition-editor__field-label">最大值</span>
+                      <input
+                        value={content.maximum}
+                        aria-label="最大值"
+                        placeholder="上限"
+                        onChange={(event) => setContent({ ...content, maximum: event.target.value })}
+                      />
+                    </label>
+                  </div>
                 ) : (
+                  <div className="definition-editor__field-placeholder" aria-hidden="true" />
+                )}
+                <label className="definition-editor__field definition-editor__field--full">
+                  <span className="definition-editor__field-label">说明</span>
+                  <textarea
+                    value={content.documentation}
+                    aria-label="说明"
+                    rows={2}
+                    placeholder="请详细描述该参数的工程含义、硬件接口与约束要求…"
+                    onChange={(event) => setContent({ ...content, documentation: event.target.value })}
+                  />
+                </label>
+              </div>
+            </div>
+
+            <div className="definition-editor__card">
+              <div className="definition-editor__card-header">
+                <span className="definition-editor__card-title">变更治理与审计</span>
+                <span className="definition-editor__card-desc">配置受影响范围并填写修改原因，保障每次变更可溯</span>
+              </div>
+
+              {identityChanged ? (
+                <div className="definition-editor__banner" data-tone="warning">
+                  <strong>身份纠错变更模式：</strong>
+                  <span>检测到主体或属性键发生变化。保存将发布替代身份，并把选定项目的当前引用迁移至新身份；旧身份与历史版本保持不变。</span>
+                </div>
+              ) : null}
+
+              <div className="definition-editor__governance-stack">
+                <label className="definition-editor__field definition-editor__field--full">
+                  <span className="definition-editor__field-label">
+                    受影响项目 {identityChanged ? <span className="definition-editor__required" aria-hidden="true">*</span> : null}
+                  </span>
+                  <input
+                    value={projectIdsText}
+                    aria-label="受影响项目"
+                    placeholder="输入需要同步迁移引用的项目编号，多个项目用逗号分隔（例如 proj-a, proj-b）"
+                    onChange={(event) => setProjectIdsText(event.target.value)}
+                  />
+                </label>
+                <label className="definition-editor__field definition-editor__field--full">
+                  <span className="definition-editor__field-label">
+                    修改原因 <span className="definition-editor__required" aria-hidden="true">*</span>
+                  </span>
+                  <textarea
+                    value={reason}
+                    aria-label="修改原因"
+                    rows={2}
+                    placeholder="请填写详细的修改原因，该信息将写入不可变发布审计日志…"
+                    onChange={(event) => setReason(event.target.value)}
+                  />
+                </label>
+              </div>
+            </div>
+
+            <div className="definition-editor__disclosures">
+              <details className="definition-editor__more">
+                <summary>更多信息</summary>
+                <dl className="parameter-catalog__dl definition-editor__dl">
+                  <dt>主体编号</dt>
+                  <dd><code>{definition.subject.id}</code></dd>
+                  <dt>定义编号</dt>
+                  <dd><code>{definition.id}</code></dd>
+                  <dt>当前修订</dt>
+                  <dd>{`修订 #${definition.currentRevision.revisionNumber}`}</dd>
+                  <dt>纳入发布</dt>
+                  <dd><code>{definition.currentRevision.publishedInCatalogReleaseId}</code></dd>
+                  <dt>取值形状</dt>
+                  <dd>{catalogValueShapeLabel(definition.currentRevision.valueShape.schema as never)}</dd>
+                  <dt>单位</dt>
+                  <dd>{definition.currentRevision.unit?.symbol ?? "未设置"}</dd>
+                  <dt>说明</dt>
+                  <dd>{definition.currentRevision.documentation ?? "无"}</dd>
+                  <dt>使用</dt>
+                  <dd>
+                    策略 {definition.usageSummary.policyCount} · 项目 {definition.usageSummary.projectCount} · 当前值{" "}
+                    {definition.usageSummary.currentValueCount}
+                  </dd>
+                  <dt>登记</dt>
+                  <dd>
+                    {catalogRegistrationLabel(definition.registration.status)}
+                    {definition.registration.status !== "unregistered" && definition.registration.id
+                      ? ` · ${definition.registration.id}`
+                      : ""}
+                  </dd>
+                  <dt>放置</dt>
+                  <dd>
+                    {definition.registration.status === "unregistered"
+                      ? "未建立"
+                      : definition.registration.placement?.displayName ?? "未建立"}
+                  </dd>
+                  {definitionSubject?.aliases?.length ? (
+                    <>
+                      <dt>别名</dt>
+                      <dd>{definitionSubject.aliases.join("、")}</dd>
+                    </>
+                  ) : null}
+                </dl>
+              </details>
+
+              <div className="definition-editor__history">
+                <div className="definition-editor__history-header">
+                  <span className="definition-editor__history-title">定义时间线与变更历史</span>
                   <button
                     type="button"
-                    className="button primary"
-                    data-editor-action="save-content"
-                    disabled={!allowed || pending || !contentChanged || !reason.trim()}
-                    title={allowed ? undefined : "当前会话缺少发布能力。"}
-                    onClick={() => void saveContentRevision()}
+                    className="button subtle sm"
+                    data-catalog-history-toggle="true"
+                    aria-expanded={historyOpen}
+                    onClick={() => {
+                      const next = !historyOpen;
+                      setHistoryOpen(next);
+                      if (next) onRequestHistory?.();
+                    }}
                   >
-                    {pending ? "正在发布…" : "保存内容修订"}
+                    {historyOpen ? catalogHistoryCloseLabel : catalogHistoryOpenLabel}
                   </button>
-                )}
+                </div>
+                {historyOpen ? (
+                  <section aria-label="定义时间线" data-catalog-history-region="true" className="definition-editor__history-body">
+                    {history}
+                  </section>
+                ) : null}
+              </div>
+            </div>
+
+            {phase === "compose" ? (
+              <div className="definition-editor__footer">
+                <div className="definition-editor__footer-status">
+                  <span
+                    className="definition-editor__status-dot"
+                    data-status={identityChanged ? "warning" : contentChanged ? "info" : "neutral"}
+                  />
+                  <p className="parameter-catalog__muted" data-definition-editor-hint="true">
+                    {identityChanged
+                      ? "保存会发布替代身份，并把选定项目的当前引用迁移过去；旧身份与历史保持不变。"
+                      : contentChanged
+                        ? "内容修订只发布新修订，不迁移项目引用。"
+                        : "未做任何修改。"}
+                  </p>
+                </div>
+                <div className="dialog-actions definition-editor__dialog-actions">
+                  {onClose ? (
+                    <button
+                      type="button"
+                      className="button subtle"
+                      disabled={pending}
+                      onClick={onClose}
+                    >
+                      取消
+                    </button>
+                  ) : null}
+                  {identityChanged ? (
+                    <button
+                      type="button"
+                      className="button primary"
+                      data-correction-action="preview"
+                      disabled={
+                        !allowed ||
+                        pending ||
+                        selectedProjects.length === 0 ||
+                        !reason.trim()
+                      }
+                      title={allowed ? undefined : "当前会话缺少发布能力。"}
+                      onClick={() => void runPreview()}
+                    >
+                      {pending ? "正在预演…" : "预演影响"}
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      className="button primary"
+                      data-editor-action="save-content"
+                      disabled={!allowed || pending || !contentChanged || !reason.trim()}
+                      title={allowed ? undefined : "当前会话缺少发布能力。"}
+                      onClick={() => void saveContentRevision()}
+                    >
+                      {pending ? "正在发布…" : "保存内容修订"}
+                    </button>
+                  )}
+                </div>
               </div>
             ) : null}
           </div>
@@ -616,15 +748,20 @@ export function DefinitionEditorBody({
         )}
 
         {phase === "preview" && preview ? (
-          <section aria-label="纠错影响预览" data-correction-preview="true">
-            <h3>影响预览</h3>
-            <dl className="parameter-catalog__dl">
+          <section aria-label="纠错影响预览" data-correction-preview="true" className="definition-editor__phase-panel">
+            <div className="definition-editor__card-header">
+              <h3 className="definition-editor__card-title">纠错影响预览</h3>
+              <span className="definition-editor__card-desc">核对受影响项目的兼容性与迁移阻挡原因</span>
+            </div>
+            <dl className="parameter-catalog__dl definition-editor__preview-dl">
               <dt>选定项目</dt>
               <dd>{preview.impact.selectedProjectCount}</dd>
               <dt>可迁移</dt>
-              <dd>{preview.impact.compatibleProjectCount}</dd>
+              <dd className="definition-editor__val--success">{preview.impact.compatibleProjectCount}</dd>
               <dt>被阻止</dt>
-              <dd>{preview.impact.blockedProjectCount}</dd>
+              <dd className={preview.impact.blockedProjectCount > 0 ? "definition-editor__val--danger" : ""}>
+                {preview.impact.blockedProjectCount}
+              </dd>
               <dt>旧定义当前引用</dt>
               <dd>{preview.impact.oldDefinitionCurrentReferenceCount}</dd>
               <dt>源格式受支持</dt>
@@ -633,33 +770,35 @@ export function DefinitionEditorBody({
               <dd>{preview.impact.targetRegistrationRequired ? "是" : "否"}</dd>
             </dl>
             {preview.blockers.length > 0 ? (
-              <ul data-correction-blockers="true">
+              <ul data-correction-blockers="true" className="definition-editor__blockers">
                 {preview.blockers.map((blocker) => (
                   <li key={blocker}>{blocker}</li>
                 ))}
               </ul>
             ) : null}
-            <table aria-label="项目迁移预览">
-              <thead>
-                <tr>
-                  <th scope="col">项目</th>
-                  <th scope="col">状态</th>
-                  <th scope="col">取值兼容</th>
-                  <th scope="col">阻止原因</th>
-                </tr>
-              </thead>
-              <tbody>
-                {preview.projects.map((project) => (
-                  <tr key={project.projectId}>
-                    <td>{project.projectName}</td>
-                    <td>{projectStatusLabel[project.status]}</td>
-                    <td>{project.compatible ? "兼容" : "不兼容"}</td>
-                    <td>{project.blockerReason ?? "—"}</td>
+            <div className="definition-editor__table-wrap">
+              <table aria-label="项目迁移预览" className="definition-editor__table">
+                <thead>
+                  <tr>
+                    <th scope="col">项目</th>
+                    <th scope="col">状态</th>
+                    <th scope="col">取值兼容</th>
+                    <th scope="col">阻止原因</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-            <div className="dialog-actions">
+                </thead>
+                <tbody>
+                  {preview.projects.map((project) => (
+                    <tr key={project.projectId}>
+                      <td>{project.projectName}</td>
+                      <td>{projectStatusLabel[project.status]}</td>
+                      <td>{project.compatible ? "兼容" : "不兼容"}</td>
+                      <td>{project.blockerReason ?? "—"}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <div className="dialog-actions definition-editor__dialog-actions">
               <button
                 type="button"
                 className="button ghost"
@@ -682,128 +821,86 @@ export function DefinitionEditorBody({
         ) : null}
 
         {phase === "executed" && replacement ? (
-          <section aria-label="纠错执行结果" data-correction-result={replacement.status}>
-            <h3>执行结果</h3>
-            <ul>
+          <section aria-label="纠错执行结果" data-correction-result={replacement.status} className="definition-editor__phase-panel">
+            <div className="definition-editor__card-header">
+              <h3 className="definition-editor__card-title">纠错执行结果</h3>
+              <span className="definition-editor__card-desc">身份替换已生效，受影响项目引用迁移汇总</span>
+            </div>
+            <ul className="definition-editor__stats-list">
               <li>已完成 {replacement.projects.filter((p) => p.status === "completed").length}</li>
               <li>被阻止 {replacement.projects.filter((p) => p.status === "blocked").length}</li>
               <li>失败 {replacement.projects.filter((p) => p.status === "failed").length}</li>
               <li>待处理 {replacement.projects.filter((p) => p.status === "pending").length}</li>
             </ul>
-            <table aria-label="项目迁移结果">
-              <thead>
-                <tr>
-                  <th scope="col">项目</th>
-                  <th scope="col">状态</th>
-                  <th scope="col">阻止原因</th>
-                </tr>
-              </thead>
-              <tbody>
-                {replacement.projects.map((project) => (
-                  <tr key={project.projectId}>
-                    <td>{project.projectName}</td>
-                    <td>{projectStatusLabel[project.status]}</td>
-                    <td>{project.blockerReason ?? "—"}</td>
+            <div className="definition-editor__table-wrap">
+              <table aria-label="项目迁移结果" className="definition-editor__table">
+                <thead>
+                  <tr>
+                    <th scope="col">项目</th>
+                    <th scope="col">状态</th>
+                    <th scope="col">阻止原因</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-            {blockedCount > 0 ? (
-              <button
-                type="button"
-                className="button subtle"
-                data-correction-continue="true"
-                disabled={pending}
-                onClick={() => void continueBlocked()}
-              >
-                继续处理被阻止的项目
-              </button>
-            ) : null}
+                </thead>
+                <tbody>
+                  {replacement.projects.map((project) => (
+                    <tr key={project.projectId}>
+                      <td>{project.projectName}</td>
+                      <td>{projectStatusLabel[project.status]}</td>
+                      <td>{project.blockerReason ?? "—"}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <div className="dialog-actions definition-editor__dialog-actions">
+              {onClose ? (
+                <button type="button" className="button subtle" onClick={onClose}>
+                  关闭
+                </button>
+              ) : null}
+              {blockedCount > 0 ? (
+                <button
+                  type="button"
+                  className="button subtle"
+                  data-correction-continue="true"
+                  disabled={pending}
+                  onClick={() => void continueBlocked()}
+                >
+                  继续处理被阻止的项目
+                </button>
+              ) : null}
+            </div>
           </section>
         ) : null}
 
         {phase === "content-saved" && publicationJob ? (
-          <section aria-label="内容修订结果" data-editor-result="content">
-            <h3>内容修订结果</h3>
+          <section aria-label="内容修订结果" data-editor-result="content" className="definition-editor__phase-panel">
+            <div className="definition-editor__card-header">
+              <h3 className="definition-editor__card-title">内容修订结果</h3>
+            </div>
             <p>{publicationStatusCopy(publicationJob).message}</p>
             {publicationJobIsPending(publicationJob.status) ? (
               <p className="parameter-catalog__muted">
                 发布任务仍在处理中，状态可能随后更新。
               </p>
             ) : null}
+            {onClose ? (
+              <div className="dialog-actions definition-editor__dialog-actions">
+                <button type="button" className="button subtle" onClick={onClose}>
+                  关闭
+                </button>
+              </div>
+            ) : null}
           </section>
         ) : null}
 
         {error ? (
-          <p role="alert" data-preserve-input="true">
+          <p role="alert" data-preserve-input="true" className="definition-editor__error">
             {error}
           </p>
         ) : null}
 
-        <details className="definition-editor__more">
-          <summary>更多信息</summary>
-          <dl className="parameter-catalog__dl">
-            <dt>主体编号</dt>
-            <dd>{definition.subject.id}</dd>
-            <dt>定义编号</dt>
-            <dd>{definition.id}</dd>
-            <dt>当前修订</dt>
-            <dd>{`修订 #${definition.currentRevision.revisionNumber}`}</dd>
-            <dt>纳入发布</dt>
-            <dd>{definition.currentRevision.publishedInCatalogReleaseId}</dd>
-            <dt>取值形状</dt>
-            <dd>{catalogValueShapeLabel(definition.currentRevision.valueShape.schema as never)}</dd>
-            <dt>单位</dt>
-            <dd>{definition.currentRevision.unit?.symbol ?? "未设置"}</dd>
-            <dt>说明</dt>
-            <dd>{definition.currentRevision.documentation ?? "无"}</dd>
-            <dt>使用</dt>
-            <dd>
-              策略 {definition.usageSummary.policyCount} · 项目 {definition.usageSummary.projectCount} · 当前值{" "}
-              {definition.usageSummary.currentValueCount}
-            </dd>
-            <dt>登记</dt>
-            <dd>
-              {catalogRegistrationLabel(definition.registration.status)}
-              {definition.registration.status !== "unregistered" && definition.registration.id
-                ? ` · ${definition.registration.id}`
-                : ""}
-            </dd>
-            <dt>放置</dt>
-            <dd>
-              {definition.registration.status === "unregistered"
-                ? "未建立"
-                : definition.registration.placement?.displayName ?? "未建立"}
-            </dd>
-            {definitionSubject?.aliases?.length ? (
-              <>
-                <dt>别名</dt>
-                <dd>{definitionSubject.aliases.join("、")}</dd>
-              </>
-            ) : null}
-          </dl>
-        </details>
 
-        <div className="definition-editor__history">
-          <button
-            type="button"
-            className="button subtle sm"
-            data-catalog-history-toggle="true"
-            aria-expanded={historyOpen}
-            onClick={() => {
-              const next = !historyOpen;
-              setHistoryOpen(next);
-              if (next) onRequestHistory?.();
-            }}
-          >
-            {historyOpen ? catalogHistoryCloseLabel : catalogHistoryOpenLabel}
-          </button>
-          {historyOpen ? (
-            <section aria-label="定义时间线" data-catalog-history-region="true">
-              {history}
-            </section>
-          ) : null}
-        </div>
       </section>
       <ConfirmDialog
         open={confirmOpen}

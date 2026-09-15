@@ -200,6 +200,7 @@ export function CatalogOrganizationSurface({
             onRefreshEvidence={() => undefined}
             authoringAllowed={publicationSurfaceAllowsAuthoring(publicationSurface)}
             onRequestHistory={history.onRequestHistory}
+            onClose={history.onClose}
             history={
               <CatalogHistoryBody
                 timeline={history.timeline}

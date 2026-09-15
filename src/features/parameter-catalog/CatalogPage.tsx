@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { CircleX } from "lucide-react";
 
 import {
   catalogWritesEnabled,
@@ -110,6 +111,8 @@ export type CatalogPageProps = {
       timeline: CatalogDefinitionTimelineResponse | null;
       /** Ask the page to load revisions and the timeline. */
       onRequestHistory: () => void;
+      /** Close the editor dialog and clear selection from URL. */
+      onClose?: () => void;
     }
   ) => ReactNode;
   onAction?: (
@@ -964,36 +967,65 @@ export function CatalogPage({
         >
           {({ titleId }) => (
             <>
-              <h2 id={titleId}>{`编辑 ${definition.propertyKey}`.trim()}</h2>
-              <div className="confirm-dialog__scroll">
-            {renderDefinitionEditor ? (
-              <div data-definition-editor="true">
-                {renderDefinitionEditor(definition, {
-                  revisions: snapshot?.revisions ?? [],
-                  timeline: snapshot?.timeline ?? null,
-                  onRequestHistory: () => setHistoryOpen(true)
-                })}
-              </div>
-            ) : (
-              <>
-                <div role="region" aria-label={catalogDetailLabel} data-catalog-detail-region="true">
-                  {detailBody}
+              <div className="parameter-catalog__editor-dialog-head">
+                <div className="parameter-catalog__editor-dialog-title-wrap">
+                  <div className="parameter-catalog__editor-dialog-eyebrow">
+                    <span
+                      className="parameter-catalog__badge"
+                      data-tone={definition.lifecycle === "active" ? undefined : "retired"}
+                    >
+                      {catalogLifecycleLabel(definition.lifecycle)}
+                    </span>
+                    <span className="parameter-catalog__editor-meta-pill">
+                      {definition.subject.canonicalName}
+                    </span>
+                    <span className="parameter-catalog__editor-meta-pill parameter-catalog__muted">
+                      {`修订 #${definition.currentRevision.revisionNumber}`}
+                    </span>
+                    <code className="parameter-catalog__editor-id-pill">{definition.id}</code>
+                  </div>
+                  <h2 id={titleId}>{`编辑 ${definition.propertyKey}`.trim()}</h2>
                 </div>
-                {historyOpen ? (
-                  <section aria-label={catalogTimelineLabel} data-catalog-history-region="true">
-                    <CatalogHistoryBody
-                      timeline={snapshot?.timeline ?? null}
-                      revisions={snapshot?.revisions ?? []}
-                    />
-                  </section>
-                ) : null}
-              </>
-            )}
-              </div>
-              <div className="dialog-actions">
-                <button type="button" className="button subtle" onClick={closeEditor}>
-                  {catalogDetailCloseLabel}
+                <button
+                  type="button"
+                  className="audit-dialog-close-icon"
+                  onClick={closeEditor}
+                  aria-label="关闭"
+                >
+                  <CircleX size={20} strokeWidth={1.75} aria-hidden="true" />
                 </button>
+              </div>
+
+              <div className="confirm-dialog__scroll parameter-catalog__editor-dialog-scroll">
+                {renderDefinitionEditor ? (
+                  <div data-definition-editor="true">
+                    {renderDefinitionEditor(definition, {
+                      revisions: snapshot?.revisions ?? [],
+                      timeline: snapshot?.timeline ?? null,
+                      onRequestHistory: () => setHistoryOpen(true),
+                      onClose: closeEditor
+                    })}
+                  </div>
+                ) : (
+                  <>
+                    <div role="region" aria-label={catalogDetailLabel} data-catalog-detail-region="true">
+                      {detailBody}
+                    </div>
+                    {historyOpen ? (
+                      <section aria-label={catalogTimelineLabel} data-catalog-history-region="true">
+                        <CatalogHistoryBody
+                          timeline={snapshot?.timeline ?? null}
+                          revisions={snapshot?.revisions ?? []}
+                        />
+                      </section>
+                    ) : null}
+                    <div className="dialog-actions">
+                      <button type="button" className="button subtle" onClick={closeEditor}>
+                        {catalogDetailCloseLabel}
+                      </button>
+                    </div>
+                  </>
+                )}
               </div>
             </>
           )}
