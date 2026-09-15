@@ -459,7 +459,6 @@ export async function loadCandidateSemanticGateCounts(
     organizationId: string;
     projectId: string;
     configRevisionId: string;
-    baseConfigRevisionId: string;
     /** Existing binding identities may be edited while their raw surface stays
      * review-only; no identity or binding is created by this narrow exception. */
     excludeUnmatchedIdentities?: ReadonlyArray<{
@@ -831,7 +830,6 @@ export async function applyLockedOverlayWriteback(
     organizationId: auth.organization.id,
     projectId: revision.projectId,
     configRevisionId: ingested.id,
-    baseConfigRevisionId: revision.id,
   });
   if (!deps.skipSemanticGates) {
     const earlyGate = assertCanPromoteCandidateToDraft({
@@ -1137,7 +1135,6 @@ export async function applyLockedEnablementWriteback(
     organizationId: auth.organization.id,
     projectId: revision.projectId,
     configRevisionId: ingested.id,
-    baseConfigRevisionId: revision.id,
   });
   if (!deps.skipSemanticGates) {
     const earlyGate = assertCanPromoteCandidateToDraft({

@@ -136,7 +136,6 @@ async function insertPinnedMember(
     fileName: string;
     versionId: string;
     content: string;
-    versionNumber?: number;
   },
 ) {
   const checksum = createHash("sha256").update(input.content, "utf8").digest("hex");
@@ -154,7 +153,7 @@ async function insertPinnedMember(
     `
     insert into project_parameter_file_versions (
       id, file_id, version_number, storage_key, checksum, size_bytes, parsed_index, origin, created_by_user_id
-    ) values ($1, $2, $7, $3, $4, $5, '{}'::jsonb, 'upload', $6)
+    ) values ($1, $2, 1, $3, $4, $5, '{}'::jsonb, 'upload', $6)
     on conflict (id) do nothing
     `,
     [
@@ -164,7 +163,6 @@ async function insertPinnedMember(
       checksum,
       Buffer.byteLength(input.content, "utf8"),
       USER_ID,
-      input.versionNumber ?? 1,
     ],
   );
   await db.query(`update project_parameter_files set current_version_id = $1 where id = $2`, [
@@ -212,116 +210,6 @@ describe.skipIf(!databaseAvailable)("matcher scope integration", () => {
       await db.rollback();
       db = null;
     }
-  });
-
-  const reviewSource = `/dts-v1/;
-/ { review: review_node { compatible = "wiseeff,unmatched-review"; opaque = <1>; }; };
-&review { opaque = <2>; };
-`;
-
-  it.each([
-    ["unchanged source with shifted offsets", `// unrelated comment\n${reviewSource}`, 0],
-    ["new unmatched property", reviewSource.replace("opaque = <1>;", "opaque = <1>; new_unknown = <3>;"), 1],
-    ["changed effective value", reviewSource.replace("opaque = <2>", "opaque = <3>"), 1],
-    ["changed shadowed value", reviewSource.replace("opaque = <1>", "opaque = <3>"), 1],
-    ["added identical override", `${reviewSource}&review { opaque = <2>; };`, 1],
-    ["changed compatible", reviewSource.replace("wiseeff,unmatched-review", "wiseeff,other-review"), 1],
-    ["changed node locator", reviewSource.replace("review_node", "other_node"), 1],
-    ["changed source reference", reviewSource.replaceAll("review:", "other:").replaceAll("&review", "&other"), 1],
-    ["changed source file", reviewSource, 1],
-  ])("locked baseline review gate: %s", async (_name, content, blocked) => {
-    const ingest = async (source: string, version: number) => {
-      const versionId = `review-version-${version}`;
-      const fileId = _name === "changed source file" && version === 2 ? "other-file" : "review-file";
-      const fileName = `${fileId}.dts`;
-      await insertPinnedMember(db!, {
-        projectId: PROJECT_A, configSetId: CONFIG_SET_A, fileId,
-        fileName, versionId, versionNumber: version, content: source,
-      });
-      const input = manifest(PROJECT_A, CONFIG_SET_A, versionId, fileId);
-      input.entryFile = fileName;
-      input.members[0].fileName = fileName;
-      input.members[0].content = source;
-      return ingestConfigRevision(db!, input, makeAuth());
-    };
-    const baseline = await ingest(reviewSource, 1);
-    const candidate = await ingest(content, 2);
-    expect(candidate.status).toBe("resolved");
-    const input = {
-      organizationId: ORG_ID, projectId: PROJECT_A, configRevisionId: candidate.id,
-      baseConfigRevisionId: baseline.id, excludePropertyKeys: ["compatible"],
-    };
-    expect(await countOpenSpecReviewTasksForRevision(db!, input)).toBe(blocked);
-    expect(await countOpenSpecReviewTasksForRevision(db!, { ...input, unmatchedOnly: true })).toBe(blocked);
-    // The general release gate and persisted review queue retain all unmatched material.
-    expect(await countOpenSpecReviewTasksForRevision(db!, { ...input, baseConfigRevisionId: undefined }))
-      .toBe(content.includes("new_unknown") ? 2 : 1);
-  });
-
-  it.each([
-    "missing baseline", "foreign project", "foreign organization", "foreign config set",
-    "missing occurrence", "wrong effective occurrence", "missing effect", "duplicate effect", "duplicate ordering", "duplicate task",
-    "ambiguous with inferred flag", "project blocker", "platform blocker", "changed member order", "changed file owner",
-  ])("keeps unmatched review blocking with %s", async (fault) => {
-    await insertPinnedMember(db!, {
-      projectId: PROJECT_A, configSetId: CONFIG_SET_A, fileId: "review-file",
-      fileName: "twins.dts", versionId: "review-version", content: reviewSource,
-    });
-    const source = manifest(PROJECT_A, CONFIG_SET_A, "review-version", "review-file");
-    source.members[0].content = reviewSource;
-    const baseline = await ingestConfigRevision(db!, source, makeAuth());
-    const candidate = await ingestConfigRevision(db!, source, makeAuth());
-    const task = (await db!.query<{ id: string }>(
-      `select id from parameter_spec_review_tasks where config_revision_id = $1
-       and source_evidence->>'propertyKey' = 'opaque'`, [candidate.id],
-    )).rows[0].id;
-    const input = { organizationId: ORG_ID, projectId: PROJECT_A, configRevisionId: candidate.id,
-      baseConfigRevisionId: baseline.id, excludePropertyKeys: ["compatible"] };
-    expect(await countOpenSpecReviewTasksForRevision(db!, input)).toBe(0);
-    switch (fault) {
-      case "missing baseline": input.baseConfigRevisionId = "missing"; break;
-      case "foreign project":
-        await db!.query(`update dts_config_revisions set project_id = $2 where id = $1`, [baseline.id, PROJECT_B]); break;
-      case "foreign organization":
-        await db!.query(`update dts_config_revisions set organization_id = $2 where id = $1`, [baseline.id, OTHER_ORG]); break;
-      case "foreign config set":
-        await db!.query(`update dts_config_revisions set config_set_id = $2 where id = $1`, [baseline.id, CONFIG_SET_B]); break;
-      case "missing occurrence":
-        await db!.query(`update parameter_spec_review_tasks set property_occurrence_id = null where id = $1`, [task]); break;
-      case "wrong effective occurrence":
-        await db!.query(`update parameter_spec_review_tasks set property_occurrence_id = po.id,
-          source_evidence = jsonb_set(source_evidence, '{propertyOccurrenceId}', to_jsonb(po.id))
-          from (select id from dts_property_occurrences where config_revision_id = $2
-            and property_name = 'opaque' order by source_order limit 1) po where parameter_spec_review_tasks.id = $1`,
-          [task, candidate.id]); break;
-      case "missing effect":
-        await db!.query(`update dts_occurrence_effects set property_occurrence_id = null
-          where config_revision_id = $1 and property_name = 'opaque' and effect_kind = 'set'`, [candidate.id]); break;
-      case "duplicate effect":
-        await db!.query(`insert into dts_occurrence_effects
-          select $2, config_revision_id, logical_node_revision_id, property_name, effect_kind,
-            node_occurrence_id, property_occurrence_id, source_order + 100
-          from dts_occurrence_effects where config_revision_id = $1 and property_name = 'opaque' and effect_kind = 'override'`,
-          [candidate.id, randomUUID()]); break;
-      case "duplicate task":
-        await db!.query(`insert into parameter_spec_review_tasks (id, organization_id, project_id, config_revision_id,
-          property_occurrence_id, blocker_scope, source_evidence, candidate_schemas, project_count, status)
-          select $2, organization_id, project_id, config_revision_id, property_occurrence_id, blocker_scope,
-            source_evidence, candidate_schemas, project_count, status from parameter_spec_review_tasks where id = $1`,
-          [task, randomUUID()]); break;
-      case "duplicate ordering":
-        await db!.query(`update dts_occurrence_effects set source_order = 0
-          where config_revision_id = $1 and property_name = 'opaque'`, [candidate.id]); break;
-      case "ambiguous with inferred flag":
-        await db!.query(`update parameter_spec_review_tasks set candidate_schemas = '[{"id":"ambiguous"}]' where id = $1`, [task]); break;
-      case "project blocker": case "platform blocker":
-        await db!.query(`update parameter_spec_review_tasks set blocker_scope = $2 where id = $1`, [task, fault.split(" ")[0]]); break;
-      case "changed member order":
-        await db!.query(`update dts_config_revision_members set sort_order = 1 where config_revision_id = $1`, [candidate.id]); break;
-      case "changed file owner":
-        await db!.query(`update project_parameter_files set project_id = $1 where id = 'review-file'`, [PROJECT_B]); break;
-    }
-    expect(await countOpenSpecReviewTasksForRevision(db!, input)).toBe(fault === "duplicate task" ? 2 : 1);
   });
 
   it("same-compatible different-locator nodes keep distinct overrides across re-ingest", async () => {

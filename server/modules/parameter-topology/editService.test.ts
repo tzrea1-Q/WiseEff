@@ -1,11 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
-import { readFileSync } from "node:fs";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import type { AuthContext } from "../auth/types";
-import { parseDtsValue } from "../dts/valueAst";
-import { countOpenSpecReviewTasksForRevision } from "../parameter-specs/repository";
-import { listStructuralPropertyKeys } from "./parameterSurface";
 import type { DtsToolchainRunner } from "../parameter-files/dtsToolchain";
 import { ingestDtsFileVersion } from "../parameter-files/structuralIngest";
 import { resolveDtsNodeCompatible } from "../parameter-kernel/sensitiveNode";
@@ -563,70 +559,6 @@ describe.skipIf(!databaseAvailable)("createBindingDraft", () => {
     await db?.rollback();
     db = undefined;
   });
-
-  it.each(["binding", "enablement"])("retains Aurora baseline reviews through %s draft and merge", async (kind) => {
-    const content = readFileSync(new URL("../../../src/config/dts-seed/aurora-board.dts", import.meta.url), "utf8");
-    await insertPinnedMember(db!, {
-      fileId: "aurora-file", fileName: "aurora-board.dts", versionId: "aurora-source",
-      content, role: "base", sortOrder: 0,
-    });
-    await ingestDtsFileVersion(db!, "aurora-source", content);
-    const revision = await ingestConfigRevision(db!, {
-      organizationId: ORG_ID, projectId: PROJECT_ID, configSetId: CONFIG_SET_ID,
-      entryFile: "aurora-board.dts", includeSearchPaths: ["."], overlayOrder: [],
-      members: [{ fileId: "aurora-file", fileVersionId: "aurora-source", fileName: "aurora-board.dts",
-        role: "base", sortOrder: 0, content }],
-    }, auth);
-    const binding = (await db!.query<{
-      id: string; logical_node_id: string; parameter_spec_id: string; parameter_spec_version_id: string;
-    }>(`select b.id, b.logical_node_id, b.parameter_spec_id, br.parameter_spec_version_id
-      from project_parameter_bindings b
-      join project_parameter_binding_revisions br on br.binding_id = b.id and br.config_revision_id = $1
-      join dts_property_specs ps on ps.parameter_spec_id = b.parameter_spec_id
-      join dts_logical_node_revisions lr on lr.logical_node_id = b.logical_node_id and lr.config_revision_id = $1
-      where lr.node_locator = '/amba/i2c@FDF5E000/sc8562@6E' and ps.property_key = 'gpio_int'`, [revision.id])).rows[0];
-    expect(binding).toBeTruthy();
-    const countReviews = (configRevisionId: string) => countOpenSpecReviewTasksForRevision(db!, {
-      organizationId: ORG_ID, projectId: PROJECT_ID, configRevisionId,
-      excludePropertyKeys: listStructuralPropertyKeys(),
-    });
-    expect(await countReviews(revision.id)).toBe(59);
-    const context = createTestParameterSubmissionContext(auth, `aurora-${kind}`);
-    let draftRevisionId: string;
-    let mergedRevisionId: string;
-    if (kind === "binding") {
-      const lock = await resolveBindingWriteLock(db!, auth, { bindingId: binding.id });
-      const draft = await createBindingDraft(db!, auth, {
-        bindingId: binding.id, baseRevisionId: revision.id,
-        targetValue: parseDtsValue("gpio_int", "<&gpio13 30 0>").value,
-        reason: "Tune SC8562 GPIO",
-      }, { toolchain: passToolchain }, context);
-      expect(draft.candidateOverlayContent).toBe(content.replace("gpio_int = <&gpio13 29 0>", "gpio_int = <&gpio13 30 0>"));
-      draftRevisionId = draft.candidateRevisionId;
-      const merged = await applyLockedOverlayWriteback(db!, auth, {
-        lock, bindingId: binding.id, parameterSpecId: binding.parameter_spec_id,
-        parameterSpecVersionId: binding.parameter_spec_version_id, mergedValue: "<&gpio13 30 0>",
-      }, { toolchain: passToolchain });
-      mergedRevisionId = merged.candidateRevisionId;
-    } else {
-      const lock = await resolveEnablementWriteLock(db!, auth, {
-        projectId: PROJECT_ID, logicalNodeId: binding.logical_node_id, baseRevisionId: revision.id,
-      });
-      const draft = await createNodeEnablementDraft(db!, auth, {
-        projectId: PROJECT_ID, logicalNodeId: binding.logical_node_id, baseRevisionId: revision.id,
-        target: "force-disabled", reason: "Disable SC8562",
-      }, { toolchain: passToolchain }, context);
-      draftRevisionId = draft.candidateRevisionId;
-      const merged = await applyLockedEnablementWriteback(db!, auth, {
-        lock, mergedValue: '"disabled"',
-      }, { toolchain: passToolchain });
-      mergedRevisionId = merged.candidateRevisionId;
-    }
-    expect(await countReviews(draftRevisionId)).toBe(59);
-    expect(await countReviews(mergedRevisionId)).toBe(59);
-    const status = await db!.query<{ status: string }>("select status from dts_config_revisions where id = $1", [mergedRevisionId]);
-    expect(status.rows[0].status).toBe("compiled");
-  }, 120_000);
 
   it("indexes exact source identity for trusted primary-file drafts", async () => {
     const fixture = await seedPrimaryConfigAndBinding(db!, auth);
@@ -1252,7 +1184,7 @@ describe.skipIf(!databaseAvailable)("createBindingDraft", () => {
     expect(candidate.rows[0]?.status).toBe("needs_mapping");
   });
 
-  it.each([true, false])("uses existing baseline review evidence for a binding draft (evidence=%s)", async (hasEvidence) => {
+  it("toolchain pass is not enough when candidate has open spec review / unmatched occurrence", async () => {
     const unmatchedBase = `/dts-v1/;
 / {
 	charging_core: charging_core {
@@ -1276,44 +1208,34 @@ describe.skipIf(!databaseAvailable)("createBindingDraft", () => {
       baseContent: unmatchedBase,
     });
 
-    if (!hasEvidence) {
-      await db!.query(`delete from parameter_spec_review_tasks where config_revision_id = $1
-        and source_evidence->>'propertyKey' = 'bus_only_unmatched_gate'`, [fixture.revision.id]);
-    }
-    const create = () => createBindingDraft(
-      db!,
-      auth,
-      {
-        bindingId: fixture.binding.id,
-        baseRevisionId: fixture.revision.id,
-        targetValue: {
-          kind: "cells",
-          bits: 32,
-          groups: [[{ kind: "integer", raw: "3000", value: "3000" }]],
+    await expect(
+      createBindingDraft(
+        db!,
+        auth,
+        {
+          bindingId: fixture.binding.id,
+          baseRevisionId: fixture.revision.id,
+          targetValue: {
+            kind: "cells",
+            bits: 32,
+            groups: [[{ kind: "integer", raw: "3000", value: "3000" }]],
+          },
+          reason: "Semantic gate must block despite toolchain pass",
         },
-        reason: "Edit a bound value while retaining unrelated baseline review material",
-      },
-      { toolchain: passToolchain },
-      createTestParameterSubmissionContext(auth, "baseline-review-evidence"),
-    );
-    if (!hasEvidence) {
-      await expect(create()).rejects.toMatchObject({ code: "CONFLICT", details: { reason: "unmatched-occurrence" } });
-      expect((await db!.query(`select id from parameter_drafts where project_id = $1`, [PROJECT_ID])).rows).toHaveLength(0);
-      expect((await db!.query(`select id from dts_config_revisions where config_set_id = $1
-        and id <> $2 and status in ('draft', 'compiled')`, [CONFIG_SET_ID, fixture.revision.id])).rows).toHaveLength(0);
-      expect((await db!.query(`select f.id from project_parameter_files f
-        join dts_config_revision_members m on m.file_id = f.id and m.config_revision_id = $1
-        where f.current_version_id <> m.file_version_id`, [fixture.revision.id])).rows).toHaveLength(0);
-      return;
-    }
-    const draft = await create();
-    expect(draft.candidateOverlayContent).toContain("iin_max = <3000>");
+        { toolchain: passToolchain },
+      ),
+    ).rejects.toMatchObject({
+      code: "CONFLICT",
+      details: expect.objectContaining({
+        reason: expect.stringMatching(/open-spec-review|unmatched-occurrence/),
+      }),
+    });
 
     const drafts = await db!.query<{ id: string }>(
       `select id from parameter_drafts where project_parameter_binding_id = $1`,
       [fixture.binding.id],
     );
-    expect(drafts.rows).toHaveLength(1);
+    expect(drafts.rows).toHaveLength(0);
 
     const candidate = await db!.query<{ status: string }>(
       `
@@ -1324,14 +1246,8 @@ describe.skipIf(!databaseAvailable)("createBindingDraft", () => {
       `,
       [CONFIG_SET_ID, fixture.revision.id],
     );
-    expect(candidate.rows[0]?.status).toBe("draft");
-    const reviews = await db!.query<{ count: string }>(
-      `select count(*)::text as count from parameter_spec_review_tasks
-       where organization_id = $1 and status = 'open'
-         and source_evidence->>'propertyKey' = 'bus_only_unmatched_gate'`,
-      [ORG_ID],
-    );
-    expect(Number(reviews.rows[0].count)).toBe(2);
+    expect(candidate.rows[0]?.status).not.toBe("draft");
+    expect(["resolved", "needs_mapping", "invalid"]).toContain(candidate.rows[0]?.status);
   });
 
   it("edits charging_core.iin_max without modifying sibling &amba or other overlay nodes", async () => {
