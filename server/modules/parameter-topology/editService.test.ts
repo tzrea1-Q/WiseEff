@@ -3,6 +3,8 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import type { AuthContext } from "../auth/types";
 import type { DtsToolchainRunner } from "../parameter-files/dtsToolchain";
+import { ingestDtsFileVersion } from "../parameter-files/structuralIngest";
+import { resolveDtsNodeCompatible } from "../parameter-kernel/sensitiveNode";
 import { ApiError } from "../../shared/http/errors";
 import type { InMemoryTestDatabase } from "../../testing/testDatabase";
 import { createInMemoryTestDatabase, isTestDatabaseAvailable } from "../../testing/testDatabase";
@@ -15,8 +17,8 @@ import {
   createNodeEnablementDraft,
   unchangedSourceBytes,
 } from "./editService";
-import { applyLockedOverlayWriteback } from "./overlayWriteback";
-import { resolveBindingWriteLock } from "./writeLock";
+import { applyLockedEnablementWriteback, applyLockedOverlayWriteback } from "./overlayWriteback";
+import { resolveBindingWriteLock, resolveEnablementWriteLock } from "./writeLock";
 import { ingestConfigRevision } from "./ingestService";
 import type { ConfigRevisionManifest } from "./types";
 
@@ -72,6 +74,18 @@ const SPEC_ID = "spec-iin-max";
 const SPEC_VERSION_ID = "specver-iin-max-1";
 
 const databaseAvailable = await isTestDatabaseAvailable();
+
+async function expectCandidateIdentity(db: InMemoryTestDatabase, revisionId: string, fileName: string, compatible: string | null) {
+  const version = await db.query<{ file_version_id: string }>(`
+    select m.file_version_id from dts_config_revision_members m
+    join project_parameter_files f on f.id = m.file_id
+    where m.config_revision_id = $1 and f.file_name = $2`, [revisionId, fileName]);
+  await expect(resolveDtsNodeCompatible(db, {
+    organizationId: ORG_ID, projectId: PROJECT_ID,
+    sourceFileName: fileName, sourceFileVersionId: version.rows[0].file_version_id,
+    sourcePath: { kind: "node-locator", value: "/charging_core" },
+  })).resolves.toBe(compatible);
+}
 
 function makeAuth(): AuthContext {
   return makeTestAuthContext({
@@ -528,7 +542,7 @@ async function seedPrimaryConfigAndBinding(db: InMemoryTestDatabase, auth: AuthC
     },
   });
 
-  return { revision, binding, primaryFileId, primaryChecksum };
+  return { revision, binding, primaryFileId, primaryVersionId, primaryChecksum };
 }
 
 describe.skipIf(!databaseAvailable)("createBindingDraft", () => {
@@ -544,6 +558,30 @@ describe.skipIf(!databaseAvailable)("createBindingDraft", () => {
   afterEach(async () => {
     await db?.rollback();
     db = undefined;
+  });
+
+  it("indexes exact source identity for trusted primary-file drafts", async () => {
+    const fixture = await seedPrimaryConfigAndBinding(db!, auth);
+    await ingestDtsFileVersion(db!, fixture.primaryVersionId, PRIMARY_ONLY_BOARD);
+    const context = createTestParameterSubmissionContext(auth, "consecutive-typed-drafts");
+    const create = (baseRevisionId: string, value: string) => createBindingDraft(db!, auth, {
+      bindingId: fixture.binding.id,
+      baseRevisionId,
+      targetValue: { kind: "cells", bits: 32, groups: [[{ kind: "integer", raw: value, value }]] },
+      reason: "Tune project-primary DTS",
+    }, { toolchain: passToolchain }, context);
+
+    const first = await create(fixture.revision.id, "2400");
+    await expectCandidateIdentity(db!, first.candidateRevisionId, "aurora-board.dts", "wiseeff,charging_core");
+    expect(first.candidateOverlayContent).toContain("iin_max = <2400>;");
+    const indexed = await db!.query<{ node_path: string; compatible: string }>(`
+      select n.node_path, n.compatible from dts_nodes n
+      join dts_config_revision_members m on m.file_version_id = n.file_version_id
+      where m.config_revision_id = $1 and n.node_path = 'charging_core'`, [first.candidateRevisionId]);
+    expect(indexed.rows).toEqual([{ node_path: "charging_core", compatible: "wiseeff,charging_core" }]);
+    const original = await db!.query<{ current_version_id: string }>(
+      "select current_version_id from project_parameter_files where id = $1", [fixture.primaryFileId]);
+    expect(original.rows[0].current_version_id).toBe(fixture.primaryVersionId);
   });
 
   it("writes back into the sole project-primary base member when no overlay exists", async () => {
@@ -2164,6 +2202,19 @@ describe.skipIf(!databaseAvailable)("applyLockedOverlayWriteback", () => {
     db = undefined;
   });
 
+  it("indexes exact source identity after enablement merge writeback", async () => {
+    const fixture = await seedConfigAndBinding(db!, auth);
+    const node = await db!.query<{ logical_node_id: string }>(
+      "select logical_node_id from project_parameter_bindings where id = $1", [fixture.binding.id]);
+    const lock = await resolveEnablementWriteLock(db!, auth, {
+      projectId: PROJECT_ID, logicalNodeId: node.rows[0].logical_node_id, baseRevisionId: fixture.revision.id,
+    });
+    const applied = await applyLockedEnablementWriteback(db!, auth, {
+      lock, mergedValue: '"disabled"',
+    }, { toolchain: passToolchain, skipSemanticGates: true });
+    await expectCandidateIdentity(db!, applied.candidateRevisionId, "edit-overlay.dts", null);
+  });
+
   it("persists product schema_state and policy_state enums on merge writeback", async () => {
     const fixture = await seedConfigAndBinding(db!, auth);
     const writeLock = await resolveBindingWriteLock(db!, auth, { bindingId: fixture.binding.id });
@@ -2182,6 +2233,7 @@ describe.skipIf(!databaseAvailable)("applyLockedOverlayWriteback", () => {
     );
 
     expect(applied.bindingRevisionId).toBeTruthy();
+    await expectCandidateIdentity(db!, applied.candidateRevisionId, "edit-overlay.dts", null);
 
     const stored = await db!.query<{ schema_state: string; policy_state: string }>(
       `select schema_state, policy_state
@@ -2245,6 +2297,7 @@ describe.skipIf(!databaseAvailable)("createNodeEnablementDraft", () => {
     expect(enablement.rawText).toBe('"disabled"');
     expect(enablement.target).toBe("force-disabled");
     expect(enablement.candidateRevisionId).toBeTruthy();
+    await expectCandidateIdentity(db!, enablement.candidateRevisionId, "edit-overlay.dts", null);
 
     const storedEnablement = await db!.query<{
       edit_subject_kind: string;
