@@ -170,6 +170,7 @@ export function CatalogOrganizationSurface({
         onDomainStateChange={setDomainState}
         onAction={handleAction}
         onOpenPendingWork={() => setPendingWorkOpen(true)}
+        onEditorClosed={() => setSurfaceEpoch((value) => value + 1)}
         organizationId={organizationId}
         listReviewItems={
           organizationId ? (orgId, query) => governance.listReviewItems(orgId, query) : undefined
@@ -193,8 +194,10 @@ export function CatalogOrganizationSurface({
             definition={definition}
             subjects={catalogSubjects}
             createIdempotencyKey={createGovernanceIdempotencyKey}
-            onCompleted={() => setSurfaceEpoch((value) => value + 1)}
-            onRefreshEvidence={() => setSurfaceEpoch((value) => value + 1)}
+            // The catalog refreshes when the dialog closes, so a written result
+            // stays on screen instead of being replaced by a page remount.
+            onCompleted={() => undefined}
+            onRefreshEvidence={() => undefined}
             authoringAllowed={publicationSurfaceAllowsAuthoring(publicationSurface)}
             history={
               <CatalogHistoryBody

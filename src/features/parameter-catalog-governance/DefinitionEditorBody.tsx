@@ -7,6 +7,7 @@ import { ConfirmDialog } from "@/components/common/ConfirmDialog";
 import { WiseEffApiError } from "@/infrastructure/http/apiClient";
 import type {
   CatalogDefinitionResponse,
+  CatalogPublicationJobResponse,
   CatalogReplacement,
   CatalogReplacementPreview,
   CatalogReplacementResponse,
@@ -23,7 +24,16 @@ import {
   catalogHistoryOpenLabel
 } from "../parameter-catalog/copy";
 
-import { canExecutePublicationAction } from "./publicationState";
+import {
+  buildPublicationChangeSet,
+  canExecutePublicationAction,
+  definitionContentOf,
+  emptyPublicationDraft,
+  publicationJobIsPending,
+  publicationStatusCopy,
+  type PublicationDraft,
+  type PublicationValueType
+} from "./publicationState";
 import { createGovernanceIdempotencyKey } from "./governanceState";
 
 export type DefinitionEditorBodyProps = {
@@ -48,7 +58,97 @@ export type DefinitionEditorBodyProps = {
   authoringAllowed: boolean;
 };
 
-type Phase = "compose" | "preview" | "executed";
+
+/** Editor state for the definition's content, derived from its current revision. */
+type ContentDraft = Pick<
+  PublicationDraft,
+  "displayName" | "documentation" | "description" | "unit" | "valueType" | "minimum" | "maximum"
+>;
+
+const contentDraftOf = (definition: CatalogDefinitionResponse["item"]): ContentDraft => {
+  const revision = definition.currentRevision;
+  const schema = (revision.valueShape?.schema ?? {}) as {
+    type?: string;
+    minimum?: number;
+    maximum?: number;
+    items?: { type?: string };
+    description?: string;
+  };
+  const { valueType, minimum, maximum } = valueTypeOf(schema);
+  return {
+    displayName: revision.displayName,
+    documentation: revision.documentation ?? "",
+    description: "",
+    unit: revision.unit?.symbol ?? "",
+    valueType,
+    minimum,
+    maximum
+  };
+};
+
+/** Inverse of the publication value-schema mapping, so the revision round-trips. */
+const valueTypeOf = (schema: {
+  type?: string;
+  minimum?: number;
+  maximum?: number;
+  items?: { type?: string };
+  description?: string;
+}): { valueType: PublicationValueType; minimum: string; maximum: string } => {
+  const bounds = {
+    minimum: schema.minimum === undefined ? "" : String(schema.minimum),
+    maximum: schema.maximum === undefined ? "" : String(schema.maximum)
+  };
+  switch (schema.type) {
+    case "integer":
+      return { valueType: "integer", ...bounds };
+    case "number":
+      return { valueType: "number", ...bounds };
+    case "string":
+      return { valueType: "string", ...bounds };
+    case "boolean":
+      return { valueType: "boolean", ...bounds };
+    case "null":
+      return { valueType: "empty", ...bounds };
+    case "array":
+      return schema.items?.type === "string"
+        ? { valueType: "string-list", ...bounds }
+        : { valueType: "u32-array", ...bounds };
+    default:
+      return { valueType: "mixed", ...bounds };
+  }
+};
+
+/** The value shapes an author may pick here; the labels match the publication copy. */
+const schemaValueTypes: readonly PublicationValueType[] = [
+  "integer",
+  "number",
+  "string",
+  "boolean",
+  "empty",
+  "u32-array",
+  "string-list",
+  "mixed"
+];
+
+const schemaValueTypeLabels: Record<PublicationValueType, string> = {
+  integer: "整数",
+  number: "数值",
+  string: "字符串",
+  boolean: "布尔值",
+  empty: "空属性",
+  "u32-array": "整数数组",
+  "string-list": "字符串列表",
+  bytes: "字节数组",
+  "phandle-list": "句柄引用",
+  mixed: "混合类型"
+};
+
+const fingerprintContent = (draft: ContentDraft): string =>
+  [draft.displayName, draft.documentation, draft.unit, draft.valueType, draft.minimum, draft.maximum].join(
+    "\u0000"
+  );
+
+type Phase = "compose" | "preview" | "executed" | "content-saved";
 
 /** Bounded wait for the publication manager to install the successor release. */
 const ACTIVATION_RETRY_LIMIT = 8;
@@ -105,10 +205,7 @@ export function DefinitionEditorBody({
   const [historyOpen, setHistoryOpen] = useState(false);
   const [subjectId, setSubjectId] = useState(definition.subject.id);
   const [propertyKey, setPropertyKey] = useState(definition.propertyKey);
-  const [displayName, setDisplayName] = useState(definition.currentRevision.displayName);
-  const [documentation, setDocumentation] = useState(
-    definition.currentRevision.documentation ?? ""
-  );
+  const [content, setContent] = useState(() => contentDraftOf(definition));
   const [reason, setReason] = useState("");
   /**
    * Free text while composing, parsed into exact project ids on use. Re-joining
@@ -116,6 +213,9 @@ export function DefinitionEditorBody({
    */
   const [projectIdsText, setProjectIdsText] = useState("");
   const [preview, setPreview] = useState<CatalogReplacementPreview | null>(null);
+  const [publicationJob, setPublicationJob] = useState<
+    CatalogPublicationJobResponse["item"] | null
+  >(null);
   const [replacement, setReplacement] = useState<CatalogReplacement | null>(null);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [pending, setPending] = useState(false);
@@ -134,12 +234,12 @@ export function DefinitionEditorBody({
     setPhase("compose");
     setSubjectId(definition.subject.id);
     setPropertyKey(definition.propertyKey);
-    setDisplayName(definition.currentRevision.displayName);
-    setDocumentation(definition.currentRevision.documentation ?? "");
+    setContent(contentDraftOf(definition));
     setReason("");
     setProjectIdsText("");
     setPreview(null);
     setReplacement(null);
+    setPublicationJob(null);
     setConfirmOpen(false);
     setPending(false);
     setError("");
@@ -167,10 +267,19 @@ export function DefinitionEditorBody({
     [subjects]
   );
 
-  /** The form edits the definition's identity, so "unchanged" is a real state. */
+  /** The form edits identity and content, so "unchanged" is a real state. */
   const identityChanged =
     subjectId !== definition.subject.id || propertyKey.trim() !== definition.propertyKey;
-  const contentChanged = displayName.trim() !== definition.currentRevision.displayName;
+  const currentContent = useMemo(() => contentDraftOf(definition), [definition]);
+  const contentChanged = useMemo(
+    () =>
+      fingerprintContent(content) !== fingerprintContent(currentContent),
+    [content, currentContent]
+  );
+  const schemaChanged =
+    content.valueType !== currentContent.valueType ||
+    content.minimum !== currentContent.minimum ||
+    content.maximum !== currentContent.maximum;
 
   const runPreview = async () => {
     if (!allowed || pending) return;
@@ -193,18 +302,58 @@ export function DefinitionEditorBody({
           oldDefinitionId: definition.id,
           newSubjectId: subjectId,
           newPropertyKey: propertyKey.trim(),
-          displayName: displayName.trim(),
-          documentation,
           projectIds: [...selectedProjects],
           reason: reason.trim(),
-          valueSchema: definition.currentRevision.valueShape
-            .schema as never
+          ...definitionContentOf({ ...emptyPublicationDraft(), ...content, mode: "revise-definition", definitionId: definition.id, propertyKey: propertyKey.trim(), reason: reason.trim() })
         },
         { catalogReleaseId, idempotencyKey: key }
       );
       setPreview(response.item);
       setPhase("preview");
       setError("");
+    } catch (caught) {
+      setError(failureText(caught));
+    } finally {
+      setPending(false);
+    }
+  };
+
+  const contentDraft = (): PublicationDraft => ({
+    ...emptyPublicationDraft(),
+    mode: "revise-definition",
+    definitionId: definition.id,
+    // A value-shape change is a semantic revision; wording/unit alone is documentation.
+    reviseClass: schemaChanged ? "semantic" : "documentation",
+    propertyKey: definition.propertyKey,
+    ...content,
+    reason: reason.trim()
+  });
+
+  /** Content-only edit: publish a revision, no project reference moves. */
+  const saveContentRevision = async () => {
+    if (pending) return;
+    if (!reason.trim()) {
+      setError("请填写修改原因，用于审计。");
+      return;
+    }
+    setPending(true);
+    setError("");
+    try {
+      const key = idempotencyKey ?? (createIdempotencyKey ?? createGovernanceIdempotencyKey)();
+      setIdempotencyKey(key);
+      const candidate = await catalog.createPublicationCandidate(
+        { changeSet: buildPublicationChangeSet(contentDraft()) as never },
+        { catalogReleaseId }
+      );
+      const published = await catalog.publishPublicationCandidate(
+        candidate.item.id,
+        { idempotencyKey: key },
+        { catalogReleaseId }
+      );
+      setPublicationJob(published.item);
+      setPhase("content-saved");
+      void onRefreshEvidence?.();
+      onCompleted?.();
     } catch (caught) {
       setError(failureText(caught));
     } finally {
@@ -338,9 +487,62 @@ export function DefinitionEditorBody({
               <label>
                 <span>显示名</span>
                 <input
-                  value={displayName}
+                  value={content.displayName}
                   aria-label="显示名"
-                  onChange={(event) => setDisplayName(event.target.value)}
+                  onChange={(event) => setContent({ ...content, displayName: event.target.value })}
+                />
+              </label>
+              <label>
+                <span>单位</span>
+                <input
+                  value={content.unit}
+                  aria-label="单位"
+                  placeholder="例如 mA"
+                  onChange={(event) => setContent({ ...content, unit: event.target.value })}
+                />
+              </label>
+              <label>
+                <span>取值形状</span>
+                <select
+                  value={content.valueType}
+                  aria-label="取值形状"
+                  onChange={(event) =>
+                    setContent({ ...content, valueType: event.target.value as PublicationValueType })
+                  }
+                >
+                  {schemaValueTypes.map((type) => (
+                    <option key={type} value={type}>
+                      {schemaValueTypeLabels[type]}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              {content.valueType === "integer" || content.valueType === "number" ? (
+                <>
+                  <label>
+                    <span>最小值</span>
+                    <input
+                      value={content.minimum}
+                      aria-label="最小值"
+                      onChange={(event) => setContent({ ...content, minimum: event.target.value })}
+                    />
+                  </label>
+                  <label>
+                    <span>最大值</span>
+                    <input
+                      value={content.maximum}
+                      aria-label="最大值"
+                      onChange={(event) => setContent({ ...content, maximum: event.target.value })}
+                    />
+                  </label>
+                </>
+              ) : null}
+              <label>
+                <span>说明</span>
+                <textarea
+                  value={content.documentation}
+                  aria-label="说明"
+                  onChange={(event) => setContent({ ...content, documentation: event.target.value })}
                 />
               </label>
             </div>
@@ -365,27 +567,39 @@ export function DefinitionEditorBody({
               {identityChanged
                 ? "保存会发布替代身份，并把选定项目的当前引用迁移过去；旧身份与历史保持不变。"
                 : contentChanged
-                  ? "只有主体或属性键的变更会进入迁移；显示名随新身份一起发布。"
+                  ? "内容修订只发布新修订，不迁移项目引用。"
                   : "未做任何修改。"}
             </p>
             {phase === "compose" ? (
               <div className="dialog-actions">
-                <button
-                  type="button"
-                  className="button primary"
-                  data-correction-action="preview"
-                  disabled={
-                    !allowed ||
-                    pending ||
-                    (!identityChanged && !contentChanged) ||
-                    selectedProjects.length === 0 ||
-                    !reason.trim()
-                  }
-                  title={allowed ? undefined : "当前会话缺少发布能力。"}
-                  onClick={() => void runPreview()}
-                >
-                  {pending ? "正在预演…" : "预演影响"}
-                </button>
+                {identityChanged ? (
+                  <button
+                    type="button"
+                    className="button primary"
+                    data-correction-action="preview"
+                    disabled={
+                      !allowed ||
+                      pending ||
+                      selectedProjects.length === 0 ||
+                      !reason.trim()
+                    }
+                    title={allowed ? undefined : "当前会话缺少发布能力。"}
+                    onClick={() => void runPreview()}
+                  >
+                    {pending ? "正在预演…" : "预演影响"}
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    className="button primary"
+                    data-editor-action="save-content"
+                    disabled={!allowed || pending || !contentChanged || !reason.trim()}
+                    title={allowed ? undefined : "当前会话缺少发布能力。"}
+                    onClick={() => void saveContentRevision()}
+                  >
+                    {pending ? "正在发布…" : "保存内容修订"}
+                  </button>
+                )}
               </div>
             ) : null}
           </div>
@@ -498,6 +712,18 @@ export function DefinitionEditorBody({
               >
                 继续处理被阻止的项目
               </button>
+            ) : null}
+          </section>
+        ) : null}
+
+        {phase === "content-saved" && publicationJob ? (
+          <section aria-label="内容修订结果" data-editor-result="content">
+            <h3>内容修订结果</h3>
+            <p>{publicationStatusCopy(publicationJob).message}</p>
+            {publicationJobIsPending(publicationJob.status) ? (
+              <p className="parameter-catalog__muted">
+                发布任务仍在处理中，状态可能随后更新。
+              </p>
             ) : null}
           </section>
         ) : null}

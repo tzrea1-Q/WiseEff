@@ -101,6 +101,8 @@ export type CatalogPageProps = {
    * Editor body for the definition dialog. The page owns the dialog and the
    * loaded history; the organization surface owns the governed write command.
    */
+  /** Called when the editor dialog closes, so the host can refresh its evidence. */
+  onEditorClosed?: () => void;
   renderDefinitionEditor?: (
     definition: DefinitionItem,
     history: { revisions: RevisionItem[]; timeline: CatalogDefinitionTimelineResponse | null }
@@ -200,6 +202,7 @@ export function CatalogPage({
   onDomainStateChange,
   onAction,
   onOpenPendingWork,
+  onEditorClosed,
   renderDefinitionEditor,
   onDefinitionCommand,
   definitionPublishingAllowed = false,
@@ -396,17 +399,6 @@ export function CatalogPage({
     }
   }, [commitAnchor, historyOpen, organizationId, resolvedSearch]);
 
-  /** A deep link opens the detail dialog once for the definition it names. */
-  const autoOpenedDefinitionId = useRef<string | null>(null);
-  useEffect(() => {
-    const selectedId = snapshot?.definition?.id ?? null;
-    if (!anchor.definitionId || !selectedId || selectedId !== anchor.definitionId) return;
-    if (autoOpenedDefinitionId.current === selectedId) return;
-    autoOpenedDefinitionId.current = selectedId;
-    setHistoryOpen(false);
-    setInspectorOpen(true);
-  }, [anchor.definitionId, snapshot?.definition?.id]);
-
   useEffect(() => {
     void load();
   }, [load]);
@@ -423,16 +415,6 @@ export function CatalogPage({
       "replace"
     );
   }, [anchor, commitAnchor, snapshot]);
-
-  useEffect(() => {
-    if (layoutMode === "desktop") {
-      setInspectorOpen(false);
-      return;
-    }
-    if (anchor.definitionId) {
-      setInspectorOpen(true);
-    }
-  }, [anchor.definitionId, layoutMode]);
 
   const collection = snapshot ? pickCollection(snapshot.subjects, snapshot.definitions) : undefined;
   const domainState: CatalogDomainState = deriveCatalogDomainState({
@@ -556,6 +538,7 @@ export function CatalogPage({
       "push"
     );
     setHistoryOpen(false);
+    setClosedDefinitionId(null);
     setInspectorOpen(true);
   };
 
@@ -668,6 +651,17 @@ export function CatalogPage({
   ];
 
   const definition = snapshot?.definition ?? null;
+  /**
+   * A deep link (and Back/Forward onto one) opens the editor for the definition
+   * it names; closing it records that definition so it stays closed.
+   */
+  const [closedDefinitionId, setClosedDefinitionId] = useState<string | null>(null);
+  const editorOpen =
+    definition !== null &&
+    (inspectorOpen ||
+      (Boolean(anchor.definitionId) &&
+        snapshot?.definition?.id === anchor.definitionId &&
+        closedDefinitionId !== anchor.definitionId));
   const subject = snapshot?.subject ?? null;
   const release = snapshot?.document.item;
   const showListEmptyState =
@@ -951,10 +945,14 @@ export function CatalogPage({
         </div>
       )}
 
-      {definition && inspectorOpen ? (
+      {definition && editorOpen ? (
         <WorkbenchSheet
-          open={inspectorOpen}
-          onClose={() => setInspectorOpen(false)}
+          open={editorOpen}
+          onClose={() => {
+            setInspectorOpen(false);
+            setClosedDefinitionId(definition.id);
+            onEditorClosed?.();
+          }}
           closeLabel={catalogDetailCloseLabel}
           title={`编辑 ${definition.propertyKey}`.trim()}
         >

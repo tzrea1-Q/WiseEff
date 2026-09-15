@@ -298,7 +298,7 @@ describe("CatalogPage", () => {
     expect(screen.queryByRole("button", { name: "提交修订" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "撤回修订" })).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "调整放置" })).toBeEnabled();
-    expect(screen.getByRole("button", { name: "处理审核" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "待处理工作" })).toBeEnabled();
     expect(screen.getByRole("button", { name: "登记主体" })).toBeEnabled();
     expect(screen.queryByRole("button", { name: "接受修订" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "新增定义" })).not.toBeInTheDocument();
@@ -415,11 +415,10 @@ describe("CatalogPage", () => {
     expect((await screen.findAllByText(catalogEmptyMessages["no-filter-match"])).length).toBeGreaterThan(0);
     unmountFilter();
 
-    const reviewUser = userEvent.setup();
     renderCatalog({ scenario: "empty-no-review-work", includeReview: true });
-    const pendingToggle = await screen.findByRole("button", { name: /打开待处理工作/ });
-    await reviewUser.click(pendingToggle);
-    expect((await screen.findAllByText(catalogEmptyMessages["no-review-work"])).length).toBeGreaterThan(0);
+    // The review queue itself is disclosed by the host dialog; this page reports
+    // the empty reason and offers the single count-bearing entry point.
+    expect(await screen.findByRole("button", { name: /待处理工作/ })).toBeInTheDocument();
     expect(screen.getByRole("region", { name: "参数定义目录" })).toHaveAttribute("data-empty-reason", "no-review-work");
   });
 
@@ -444,8 +443,8 @@ describe("CatalogPage", () => {
     expect(within(screen.getByRole("region", { name: "定义详情" })).getByText(/修订 #6/)).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: /查看历史/ }));
     expect(within(await screen.findByRole("region", { name: "定义时间线" })).getByText("目录发布")).toBeInTheDocument();
-    await user.hover(screen.getByRole("button", { name: "新增定义" }));
-    expect(screen.getByRole("button", { name: "新增定义" })).toHaveAttribute(
+    await user.hover(screen.getByRole("button", { name: "调整放置" }));
+    expect(screen.getByRole("button", { name: "调整放置" })).toHaveAttribute(
       "title",
       expect.stringMatching(/禁止新增操作|写入已暂停|已退役/)
     );
@@ -468,9 +467,8 @@ describe("CatalogPage", () => {
     renderCatalog({ repository });
     await screen.findByRole("button", { name: /southchip,sc8562/ });
     blocked = true;
-    // A search submit reloads the collection; there is no refresh button.
-    await user.type(screen.getByRole("searchbox", { name: /搜索参数定义/ }), "sc8562");
-    await user.click(screen.getByRole("button", { name: /搜索/ }));
+    // A scope change reloads the collection; there is no refresh button.
+    await user.selectOptions(screen.getByLabelText("每页条数"), "20");
     const page = screen.getByRole("region", { name: "参数定义目录" });
     await waitFor(() => expect(page).toHaveAttribute("data-catalog-state", "loading"));
     expect(page).toHaveAttribute("data-writes-enabled", "false");
@@ -510,7 +508,7 @@ describe("CatalogPage", () => {
     });
     const mobile = await screen.findByRole("region", { name: "参数定义目录" });
     expect(mobile).toHaveAttribute("data-catalog-layout", "mobile");
-    expect(await screen.findByRole("dialog", { name: "gpio-int" })).toBeVisible();
+    expect(await screen.findByRole("dialog", { name: /gpio-int/ })).toBeVisible();
   });
 
   it("does not invent a fifth empty reason or leak mixed peer query keys", async () => {

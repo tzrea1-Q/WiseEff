@@ -201,19 +201,26 @@ describe("DefinitionEditorBody", () => {
     return { ...view, preview, execute, continueReplacement };
   }
 
-  it("requires an explicit project selection and a reason before previewing", async () => {
+  it("requires an identity change, a project manifest and a reason before previewing", async () => {
     const user = userEvent.setup();
     const { preview } = renderDialog();
+
+    // Nothing changed yet: the content path is offered and the migration path is not.
+    expect(screen.getByRole("button", { name: "保存内容修订" })).toBeDisabled();
+    expect(screen.queryByRole("button", { name: "预演影响" })).not.toBeInTheDocument();
+    expect(screen.getByText("未做任何修改。")).toBeInTheDocument();
+
+    // An identity change turns the editor into the migration composer, but the
+    // manifest and the reason are still required.
+    await user.clear(screen.getByLabelText("属性键"));
+    await user.type(screen.getByLabelText("属性键"), "gpio-int-v2");
     const button = screen.getByRole("button", { name: "预演影响" });
-
     expect(button).toBeDisabled();
-    await user.type(screen.getByLabelText("受影响项目"), "proj-a, proj-b");
-    expect(button).toBeEnabled();
     expect(preview).not.toHaveBeenCalled();
 
-    await user.click(button);
-    expect(await screen.findByRole("alert")).toHaveTextContent("纠错原因");
-    expect(preview).not.toHaveBeenCalled();
+    await user.type(screen.getByLabelText("受影响项目"), "proj-a");
+    await user.type(screen.getByLabelText("修改原因"), "identity was mis-authored");
+    expect(button).toBeEnabled();
   });
 
   it("previews the exact manifest, confirms once, and reports per-project outcomes with a continue path", async () => {
