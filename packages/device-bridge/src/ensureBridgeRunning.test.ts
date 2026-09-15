@@ -41,6 +41,8 @@ vi.mock("./windowsService", () => ({
 
 import { buildDarwinLoginShellStartScript, ensureBridgeRunning, probeLocalBridgeHealth } from "./ensureBridgeRunning";
 import { resolveDetachedBridgeStartCommand } from "./bridgeRuntimePaths";
+import { stopLocalBridgeHealthListener, waitForLocalBridgeConnection } from "./localBridgeProcess";
+import { runWindowsServiceCommand } from "./windowsService";
 
 describe("probeLocalBridgeHealth", () => {
   it("returns connected state when health endpoint responds", async () => {
@@ -63,6 +65,26 @@ describe("probeLocalBridgeHealth", () => {
 });
 
 describe("ensureBridgeRunning", () => {
+  it("replaces the old Windows listener on forced re-pairing before accepting connected health", async () => {
+    vi.mocked(runWindowsServiceCommand).mockResolvedValue(0);
+    vi.mocked(waitForLocalBridgeConnection).mockResolvedValue({ connected: true, paired: true });
+    vi.mocked(stopLocalBridgeHealthListener).mockClear();
+    spawnMock.mockClear();
+    try {
+      const result = await ensureBridgeRunning({
+        fetchImpl: vi.fn(async () => new Response(JSON.stringify({ connected: true }))),
+        platform: "win32", execPath: "C:\\Bridge\\node.exe", cliPath: "C:\\Bridge\\cli.js",
+        stdout: { log: vi.fn(), error: vi.fn() }, forceRestart: true
+      });
+      expect(result.exitCode).toBe(0);
+      expect(stopLocalBridgeHealthListener).toHaveBeenCalledWith("win32");
+      expect(spawnMock).toHaveBeenCalledWith("C:\\Bridge\\node.exe", ["C:\\Bridge\\cli.js", "start"], expect.any(Object));
+    } finally {
+      vi.mocked(runWindowsServiceCommand).mockResolvedValue(1);
+      vi.mocked(waitForLocalBridgeConnection).mockResolvedValue(null);
+    }
+  });
+
   it("skips start when health already connected", async () => {
     const stdout = { log: vi.fn(), error: vi.fn() };
     const fetchImpl = vi.fn(async () => ({

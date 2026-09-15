@@ -188,7 +188,13 @@ export function LocalDeviceBridgePanel({
         ) {
           await loadInstallReleases();
         }
-        return { nextHealth, nextBridges, connected: Boolean(nextHealth?.connected) };
+        return {
+          nextHealth,
+          nextBridges,
+          connected: Boolean(nextHealth?.connected && nextBridges.some(
+            (bridge) => !bridge.revokedAt && bridge.id === nextHealth.bridgeId
+          ))
+        };
       } finally {
         if (!options?.silent) {
           setChecking(false);

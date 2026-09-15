@@ -48,6 +48,23 @@ function createConnectDeps(overrides: Partial<{
 }
 
 describe("connectCommand", () => {
+  it("restarts an online process after re-pairing on the same server and web origin", async () => {
+    let config = { ...pairedConfig, webOrigin: pairedConfig.serverUrl };
+    const ensureBridgeRunning = vi.fn(async () => ({ exitCode: 0 }));
+    const result = await runConnectCommand(createConnectDeps({
+      loadConfig: async () => config,
+      saveConfig: async (next) => { config = next as typeof config; },
+      fetchImpl: vi.fn(async () => new Response(JSON.stringify({
+        bridgeId: "bridge-replacement", bridgeToken: "replacement-test-token",
+        tokenExpiresAt: "2099-07-01T00:00:00Z"
+      }))),
+      ensureBridgeRunning
+    }), { server: config.serverUrl, webOrigin: config.webOrigin, code: "123456" });
+    expect(result.exitCode).toBe(0);
+    expect(config.bridgeId).toBe("bridge-replacement");
+    expect(ensureBridgeRunning).toHaveBeenCalledWith(expect.objectContaining({ forceRestart: true }));
+  });
+
   it("persists webOrigin when pairing", async () => {
     let config: BridgeConfig | null = null;
     const saveConfig = vi.fn(async (next: BridgeConfig) => {

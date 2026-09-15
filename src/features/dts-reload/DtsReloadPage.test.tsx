@@ -14,6 +14,8 @@ import { getRequiredRoleForPage } from "@/app/permissions";
 import { TopBarActionsContext } from "@/components/layout";
 import { WiseEffApiError } from "@/infrastructure/http/apiClient";
 import { DEVICE_UNAVAILABLE_MESSAGE } from "@/infrastructure/http/userErrorMessage";
+import * as bridgeClient from "@/infrastructure/http/deviceBridgeClient";
+import * as bridgeLauncher from "@/infrastructure/http/bridgeConnectLauncher";
 
 vi.mock("@/infrastructure/http/bridgeConnectLauncher", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/infrastructure/http/bridgeConnectLauncher")>();
@@ -316,6 +318,69 @@ afterEach(() => {
 });
 
 describe("DtsReloadPage", () => {
+  it.each([
+    { otherCount: 0, revokeOther: false, revokeFails: false },
+    { otherCount: 1, revokeOther: false, revokeFails: false },
+    { otherCount: 1, revokeOther: true, revokeFails: false },
+    { otherCount: 0, revokeOther: false, revokeFails: true }
+  ])("handles bridge revoke and re-pair without restarting the page: %j", async ({ otherCount, revokeOther, revokeFails }) => {
+    const user = userEvent.setup();
+    const currentBridge: bridgeClient.DeviceBridgeRecord = {
+      id: "bridge-old", machineLabel: "Lab PC", platform: "windows", arch: "amd64",
+      clientVersion: "0.1.0", capabilities: {}, createdAt: "2026-09-15T00:00:00Z",
+      lastSeenAt: "2026-09-15T00:00:00Z", revokedAt: null
+    };
+    const otherBridges = otherCount ? [{ ...currentBridge, id: "bridge-other", machineLabel: "Other PC" }] : [];
+    let activeBridges = [currentBridge, ...otherBridges];
+    let health: bridgeClient.LocalBridgeHealthState = {
+      ok: true, paired: true, connected: true, bridgeId: currentBridge.id,
+      updatedAt: "2026-09-15T00:00:00Z", tools: { adb: { available: true }, hdc: { available: true } }
+    };
+    vi.spyOn(bridgeClient, "listMyBridges").mockImplementation(async () => activeBridges);
+    vi.spyOn(bridgeLauncher, "probeLocalBridgeHealthDetailed").mockImplementation(async () => ({ health, reachability: "ok" }));
+    vi.spyOn(bridgeClient, "revokeBridge").mockImplementation(async (id) => {
+      if (revokeFails) throw new Error("撤销失败");
+      const revoked = activeBridges.find((bridge) => bridge.id === id)!;
+      activeBridges = activeBridges.filter((bridge) => bridge.id !== id);
+      return { ...revoked, revokedAt: "2026-09-15T00:01:00Z" };
+    });
+    const connect = vi.spyOn(bridgeLauncher, "connectLocalBridge").mockImplementation(async () => {
+      const replacement = { ...currentBridge, id: "bridge-new" };
+      activeBridges = [replacement, ...otherBridges];
+      health = { ...health, bridgeId: replacement.id, updatedAt: "2026-09-15T00:02:00Z" };
+      return { reachable: true, ok: true };
+    });
+    const poll = vi.spyOn(bridgeLauncher, "pollLocalBridgeHealth").mockImplementation(async () => health);
+    const detectTargets = vi.fn(async (_protocol: "hdc" | "adb", bridgeId?: string) => [
+      { targetRef: "HDC-LAB", label: "Lab device", bridgeId }
+    ]);
+    renderPageWithTopBar(createRepository(), { bridges: undefined, probeBridgeHealth: undefined, detectTargets });
+    await waitFor(() => expect(detectTargets).toHaveBeenCalledWith("hdc", "bridge-old"));
+    await user.click(screen.getByText("管理设备代理"));
+    const currentRow = screen.getByDisplayValue(revokeOther ? "Other PC" : "Lab PC").closest("li")!;
+    await user.click(within(currentRow).getByRole("button", { name: "撤销" }));
+    await user.click(within(await screen.findByRole("dialog", { name: "撤销设备代理" })).getByRole("button", { name: "撤销" }));
+    await screen.findByText(revokeFails ? "撤销失败" : "已撤销");
+    if (revokeOther || revokeFails) {
+      expect(screen.queryByRole("button", { name: "重新配对" })).not.toBeInTheDocument();
+      await user.click(screen.getByRole("button", { name: "重新检测设备" }));
+      expect(detectTargets).toHaveBeenLastCalledWith("hdc", "bridge-old");
+      expect(connect).not.toHaveBeenCalled();
+      return;
+    }
+    detectTargets.mockClear();
+    const repairButton = await screen.findByRole("button", { name: "重新配对" });
+    expect(screen.queryByRole("button", { name: "重新检测设备" })).not.toBeInTheDocument();
+    expect(detectTargets).not.toHaveBeenCalled();
+    await waitFor(() => expect(repairButton).toBeEnabled());
+    await user.click(repairButton);
+    expect(connect).toHaveBeenCalledWith(expect.objectContaining({ code: "123456" }));
+    expect(poll).toHaveBeenCalledWith(expect.objectContaining({ excludeBridgeId: "bridge-old" }));
+    await waitFor(() => expect(detectTargets).toHaveBeenCalledWith("hdc", "bridge-new"));
+    expect(await screen.findByRole("button", { name: "重新检测设备" })).toBeInTheDocument();
+    expect(screen.queryByText("本地 Device Bridge 未连接，请先连接本机后重新检测。")).not.toBeInTheDocument();
+  });
+
   it("requires committer role for the page", () => {
     expect(getRequiredRoleForPage("dts-reload")).toBe("hardware-committer");
   });

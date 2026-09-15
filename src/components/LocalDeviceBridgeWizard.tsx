@@ -191,11 +191,11 @@ export function LocalDeviceBridgeWizard({
 
     setAllowStep2WhileMissing(false);
 
-    if (naturalStep > previousNaturalStep.current) {
+    if (naturalStep > previousNaturalStep.current || viewStep > naturalStep) {
       setViewStep(naturalStep);
     }
     previousNaturalStep.current = naturalStep;
-  }, [naturalStep, panelStatus, allowStep2WhileMissing]);
+  }, [naturalStep, panelStatus, allowStep2WhileMissing, viewStep]);
 
   useEffect(() => {
     if (shouldClearStaleBridgeConnectError({ connectError, health, panelStatus })) {
@@ -274,10 +274,11 @@ export function LocalDeviceBridgeWizard({
         launchSchemeFallback: false
       });
       const nextHealth = await pollLocalBridgeHealth({
-        timeoutMs: shouldLaunchScheme ? 45_000 : 30_000
+        timeoutMs: shouldLaunchScheme ? 45_000 : 30_000,
+        ...(pairingStale && health?.bridgeId ? { excludeBridgeId: health.bridgeId } : {})
       });
       const refreshSnapshot = await onRefresh();
-      const connected = Boolean(nextHealth?.connected || refreshSnapshot.connected);
+      const connected = refreshSnapshot.connected;
       if (connected) {
         onConnectError("");
         onDetect();
@@ -301,6 +302,7 @@ export function LocalDeviceBridgeWizard({
     pairingCode,
     pairingStale,
     panelStatus,
+    health,
     hasRegisteredBridge,
     viewStep
   ]);

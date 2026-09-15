@@ -31,14 +31,14 @@ export function isLocalBridgeTokenExpired(health: LocalBridgeHealthState | null,
 
 export function isLocalBridgePairingStale(input: {
   health: LocalBridgeHealthState | null;
-  registeredBridgeIds: string[];
+  registeredBridgeIds?: string[];
 }) {
   const localBridgeId = input.health?.bridgeId;
   const registeredIds = input.registeredBridgeIds;
   return Boolean(
     input.health?.paired &&
       localBridgeId &&
-      registeredIds.length > 0 &&
+      registeredIds !== undefined &&
       !registeredIds.includes(localBridgeId)
   );
 }
@@ -78,7 +78,7 @@ export function deriveBridgePanelStatus(input: {
   if (
     isLocalBridgePairingStale({
       health: input.health,
-      registeredBridgeIds: input.registeredBridgeIds ?? []
+      registeredBridgeIds: input.registeredBridgeIds
     })
   ) {
     return "not_paired";
@@ -200,7 +200,7 @@ export function shouldClearStaleBridgeConnectError(input: {
   if (!input.connectError) {
     return false;
   }
-  return Boolean(input.health?.connected) || isBridgeOnlinePanelStatus(input.panelStatus);
+  return isBridgeOnlinePanelStatus(input.panelStatus);
 }
 
 const TOOL_MISSING_PATTERNS = [

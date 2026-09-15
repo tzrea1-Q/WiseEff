@@ -184,6 +184,6 @@ export async function runConnectCommand(
     execPath: deps.execPath,
     cliPath: deps.cliPath,
     stdout: deps.stdout,
-    forceRestart: webOriginChanged
+    forceRestart: Boolean(input.code) || webOriginChanged
   });
 }

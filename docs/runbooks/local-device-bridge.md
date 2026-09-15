@@ -208,6 +208,8 @@ Notes:
 
 ## Troubleshooting
 
+- **Reconnecting after revoke**: revoking the current bridge invalidates its pairing. The page returns to **Re-pair**, including when no other bridges remain. Use a new pairing code; device redetection cannot restore revoked authorization. A successful re-pair restarts the local process with the replacement credentials, and the page waits for the replacement bridge before detecting devices. This requires a Bridge build containing the re-pair restart fix; a web/API deployment alone does not upgrade an installed Bridge.
+- **Windows service not found**: the bridge can run as an ordinary background process when the Windows service is unavailable. `Restart-Service WiseEffBridge` only applies when that service is registered. For an older Bridge needing a manual restart, identify the listener on TCP 18787 and confirm its command points to the WiseEff installation before stopping that process; start the installed `wiseeff-bridge.cmd start` launcher, keep its terminal open, then refresh the page and re-pair.
 - **Scheme connect rejected locally**: `wiseeff-bridge` only accepts `https` server URLs (or `http://localhost` / `127.0.0.1` for local dev) and 6-digit pairing codes in `wiseeff-bridge://connect` URLs.
 - **Bridge websocket rejected**: verify token TTL/scopes and server clock skew.
 - **Detect returns only server targets**: confirm bridge is online (`/device-bridges/mine`) and connected to WS path.
