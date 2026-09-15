@@ -112,7 +112,7 @@ describe("parameter catalog client contract", () => {
             addedSubjectCount: 0
           },
           capabilityContract: {
-            revision: "catalog-capability/v2",
+            revision: "catalog-capability/v3",
             allowListId: "page-historical-definition-content"
           }
         }
@@ -187,6 +187,45 @@ describe("parameter catalog client contract", () => {
     expect(catalogFailureClientBehavior("catalog-not-ready")).toBe("disable-writes-retry-after");
     expect(catalogFailureClientBehavior("legacy-surface-retired")).toBe("migrate-to-successor-no-retry");
     expect(catalogFailureClientBehaviors.forbidden).toBe("hide-out-of-scope");
+  });
+
+  it("reads the canonical pending-draft list with its reason, and deletes through the canonical route", async () => {
+    // Issue #849: the tray used to read and delete through the legacy v1 draft
+    // surface, which shares neither the table nor the id space with the canonical
+    // drafts it creates. Both directions must address the canonical owner.
+    const draft = {
+      id: "pvd_01K",
+      bindingId: "pbind_01K",
+      definitionId: "pdef_01K",
+      effectiveRevisionId: "drev_01K",
+      currentValueId: "pval_01K",
+      targetValue: "2000",
+      reason: "raise published input current",
+      updatedAt: "2026-09-15T00:00:00.000Z"
+    };
+    const calls: Array<{ method: string; url: string }> = [];
+    const fetchMock = vi.fn<typeof fetch>(async (input, init) => {
+      calls.push({ method: init?.method ?? "GET", url: String(input) });
+      if ((init?.method ?? "GET") === "DELETE") {
+        return jsonResponse({ item: { id: draft.id } });
+      }
+      return jsonResponse({ items: [draft] });
+    });
+    const client = createParameterCatalogClient({ baseUrl: "", fetchImpl: fetchMock });
+
+    const listed = await client.listProjectValueDrafts("project_1");
+    expect(listed.items?.[0]?.reason).toBe("raise published input current");
+    expect(listed.items?.[0]?.updatedAt).toBe("2026-09-15T00:00:00.000Z");
+
+    await client.deleteProjectValueDraft("project_1", draft.id, {
+      catalogReleaseId: "crel_01K42",
+      idempotencyKey: "key-1"
+    });
+
+    expect(calls.map((call) => `${call.method} ${call.url.replace(/^https?:\/\/[^/]+/, "")}`)).toEqual([
+      "GET /api/v2/projects/project_1/parameter-value-drafts",
+      `DELETE /api/v2/projects/project_1/parameter-value-drafts/${draft.id}`
+    ]);
   });
 
   it("rejects binding drafts that still carry a legacy spec identity", async () => {

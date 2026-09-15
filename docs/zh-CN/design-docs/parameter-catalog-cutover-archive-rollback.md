@@ -6,6 +6,8 @@
 
 ## 状态与范围
 
+[ADR-0045](adr-0045-configuration-schema-subject-and-seed-rebuild.md) 为[种子统一计划](../exec-plans/active/2026-09-14-parameter-unification-and-seed-parity.md)定义独立且范围明确的归档重建目标配置。其值核验依据受审种子清单，同时证明归档完整、非参数保留和全部消费者使用新版，不要求新旧配置值相等。这不改变 R0–R10 分类，也不代表正常 P11–P16 已完成；其他部署继续适用本合同，实现与目标执行均待完成。
+
 本文是 Wayfinder 地图 [Wayfinder: replace the parameter catalog with one canonical definition model](https://github.com/tzrea1-Q/WiseEff/issues/668) 中 [Choose populated-data cutover, archive, and rollback strategy](https://github.com/tzrea1-Q/WiseEff/issues/678) 的已接受决策产物。联合验收补全把 P11 read-only dual-read comparison 锁定为 read switch 前的 mandatory gate，并把本双语文档登记进 documentation governance。
 
 本文决定 fresh 与 populated PostgreSQL 数据库的迁移、归档、激活和恢复合同。它不是生产 migration、cutover 脚本、migration 编号、release readiness 声明，也不授权删除生产数据。只有 Wayfinder 地图按仓库的正常 specification 与 implementation planning 流程折叠后，才能开始实现。

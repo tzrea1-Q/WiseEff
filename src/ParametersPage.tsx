@@ -17,11 +17,13 @@ import { shouldSummarizeComplexParameter } from "./parameterValueKind";
 import { useTopBarActions } from "./components/layout";
 import type { ParameterPageActions } from "./app/routes";
 import type { ProjectInitializationStatus } from "./domain/parameters/types";
+import { archivedParameterLinkNotice, type ArchivedParameterLinkNotice } from "./domain/parameters/archivedLink";
 import {
   findOpenChangeRequestForParameter,
   formatOpenChangeRequestBlockerMessage
 } from "./application/parameters/parameterRuntime";
 import { exportProjectParametersAsExcel } from "./application/parameters/exportProjectParametersExcel";
+import { createCanonicalDraftTraySource } from "./application/parameters/canonicalDraftTraySource";
 import { ModuleTreeSelect } from "./components/common/ModuleTreeSelect";
 import {
   buildParameterModuleTree
@@ -101,19 +103,19 @@ export function ParametersPage({
     () => (isApiMode ? createHttpParameterRepository() : null),
     [isApiMode]
   );
+  // Issue #849 B5: the tray reads and removes canonical pending drafts. The legacy
+  // `parameter-drafts` surface is never written in semantic identity mode, so reading
+  // it meant a persisted canonical draft disappeared from the tray on reload.
+  const canonicalDraftTray = useMemo(
+    () => (isApiMode ? createCanonicalDraftTraySource() : null),
+    [isApiMode]
+  );
   const listDrafts = useMemo(
     () =>
-      parameterRepository
-        ? (projectId: string) => parameterRepository.listDrafts(projectId)
+      canonicalDraftTray
+        ? (projectId: string) => canonicalDraftTray.listDrafts(projectId)
         : undefined,
-    [parameterRepository]
-  );
-  const deleteDraft = useMemo(
-    () =>
-      parameterRepository
-        ? (draftId: string) => parameterRepository.deleteDraft(draftId)
-        : undefined,
-    [parameterRepository]
+    [canonicalDraftTray]
   );
   const [searchQuery, setSearchQuery] = useState("");
   const [riskFilters, setRiskFilters] = useState<Set<ParameterRiskFilter>>(new Set());
@@ -123,12 +125,21 @@ export function ParametersPage({
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [viewingParameterId, setViewingParameterId] = useState<string | null>(null);
   const [viewingParameterDetail, setViewingParameterDetail] = useState<ParameterRecord | null>(null);
+  const [archivedLinkNotice, setArchivedLinkNotice] = useState<ArchivedParameterLinkNotice | null>(null);
   const [comparisonTargetProjectId, setComparisonTargetProjectId] = useState("");
   const [drafts, setDrafts] = useState<Record<string, { targetValue: string; reason: string }>>({});
   const [submittingRound, setSubmittingRound] = useState(false);
   const [stashingRound, setStashingRound] = useState(false);
   const previousUserIdRef = useRef(state.currentUserId);
   const resolvedProjectId = effectiveProjectId || state.activeProjectId;
+  const deleteDraft = useMemo(
+    () =>
+      canonicalDraftTray
+        ? (draftId: string) =>
+            canonicalDraftTray.deleteDraft(resolvedProjectId, draftId)
+        : undefined,
+    [canonicalDraftTray, resolvedProjectId]
+  );
   const selectedProjectParameters = useMemo(
     () => state.parameters.filter((parameter) => parameter.projectId === resolvedProjectId),
     [resolvedProjectId, state.parameters]
@@ -420,6 +431,56 @@ export function ParametersPage({
     }
   }, [contextQuery.parameterId, projectParameters]);
 
+  /**
+   * An old link whose parameter id is no longer in the current project list used
+   * to resolve to nothing at all. Ask the Catalog what happened to it so an
+   * archived record reports "archived" instead of the page silently showing
+   * unrelated current data.
+   *
+   * The probe runs whether or not the list has loaded. That is safe in both
+   * directions: a current id answers 200 and clears the notice, an unrelated id
+   * answers 404 and clears it, and only an archived id produces the banner — so a
+   * still-loading list cannot manufacture a false notice, and a project that
+   * genuinely has no parameters still reports an archived link.
+   */
+  useEffect(() => {
+    const requestedId = contextQuery.parameterId;
+    if (!requestedId) {
+      setArchivedLinkNotice(null);
+      return;
+    }
+    if (activeParameterById.has(requestedId)) {
+      setArchivedLinkNotice(null);
+      return;
+    }
+    const fetchParameter =
+      parameterActions?.getParameter ??
+      (parameterRepository ? (id: string) => parameterRepository.getParameter(id) : undefined);
+    if (!fetchParameter) {
+      return;
+    }
+    let cancelled = false;
+    void fetchParameter(requestedId)
+      .then(() => {
+        // The record exists but belongs to another project; the existing
+        // selection behaviour already covers that case.
+        if (!cancelled) setArchivedLinkNotice(null);
+      })
+      .catch((error: unknown) => {
+        if (cancelled) return;
+        const notice = archivedParameterLinkNotice(requestedId, error);
+        if (notice) setArchivedLinkNotice(notice);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    activeParameterById,
+    contextQuery.parameterId,
+    parameterActions,
+    parameterRepository
+  ]);
+
   useEffect(() => {
     if (!effectiveCanEdit || !contextQuery.logId) {
       return;
@@ -579,7 +640,15 @@ export function ParametersPage({
       .then((detail) => {
         setViewingParameterDetail((current) => (current?.id === parameter.id ? detail : current));
       })
-      .catch(() => {
+      .catch((error: unknown) => {
+        // A record can still be listed while the Catalog already reports its id
+        // as archived. Surface that instead of leaving the stale list copy in
+        // place with no explanation.
+        const notice = archivedParameterLinkNotice(parameter.id, error);
+        if (notice) {
+          setArchivedLinkNotice(notice);
+          return;
+        }
         setViewingParameterDetail((current) => (current?.id === parameter.id ? parameter : current));
       });
   };
@@ -852,6 +921,30 @@ export function ParametersPage({
           <div className="permission-inline-note" role="status">
             <strong>初始化待审阅</strong>
             <span>该项目可查看，初始化通过前暂不可提交普通参数变更。</span>
+          </div>
+        ) : null}
+        {archivedLinkNotice ? (
+          <div className="parameter-archived-link-banner" role="status" aria-live="polite">
+            <div className="parameter-archived-link-banner__body">
+              <strong>该参数旧链接已归档</strong>
+              <span>
+                参数 <code>{archivedLinkNotice.parameterId}</code> 已在 Catalog 切换中归档，不再是当前参数数据，
+                也不会被读入本页的编辑与提交流程。历史记录与发布历史仍然保留。
+              </span>
+              <span className="parameter-archived-link-banner__meta">
+                诊断：{archivedLinkNotice.diagnostic}
+                {archivedLinkNotice.migrationEvidenceId
+                  ? ` · 迁移证据：${archivedLinkNotice.migrationEvidenceId}`
+                  : ""}
+              </span>
+            </div>
+            <button
+              type="button"
+              className="parameter-archived-link-banner__dismiss"
+              onClick={() => setArchivedLinkNotice(null)}
+            >
+              知道了
+            </button>
           </div>
         ) : null}
         {isApiMode ? (

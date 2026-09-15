@@ -10,6 +10,7 @@ import { getRootPostgresPool, type Database, type Queryable } from "../../shared
 import type { AuthContext } from "../auth/types";
 import { createUserInvocation } from "../auth/trustedInvocation";
 import {
+  NormalizedNodeTypeName,
   createCatalogKernel,
   DriverCompatible,
   PropertyKey,
@@ -23,6 +24,8 @@ import {
   ParameterBindingId,
   ParameterDefinitionId,
   SubjectRegistrationId,
+  CatalogSubjectId,
+  parseCanonicalNodeName,
   type CatalogReleasePin,
   type ContractJsonValue,
 } from "../parameter-catalog-contract/index";
@@ -37,6 +40,8 @@ import { parseDtsValue, renderDtsValue } from "../dts/valueAst";
 import { deriveDtsSourceRef, isDtsSourceRef, sourcePathOf } from "../dts/sourceRef";
 import type { DtsValue } from "../dts/types";
 import { isStructuralPropertyKey } from "../parameter-topology/parameterSurface";
+import { loadConfigSetSnapshot } from "../parameter-files/configSetSnapshot";
+import type { ObjectStore } from "../logs/objectStore";
 
 export type CatalogBindingView = {
   id: string;
@@ -215,9 +220,50 @@ export function publishedCatalogOwnsProperty(
   return definition.status === "found";
 }
 
+/**
+ * Resolve the canonical subject for one observed source property.
+ *
+ * A declared `compatible` wins: driver identity is what the source states. The
+ * node-name fallback is consulted only when the source declares no compatible,
+ * because the published Catalog carries node-type subjects that have no driver
+ * selector at all (33 of the 113 vendor definitions). Passing `absent`
+ * unconditionally made every one of those unreachable.
+ */
+export function resolveObservedSubject(
+  snapshot: CatalogSnapshot,
+  input: { readonly compatibles: readonly string[]; readonly nodeName: string | null },
+): { readonly subjectId: string; readonly subjectKind: string } | null {
+  let driverCompatibles: ReturnType<typeof DriverCompatible>[];
+  if (input.compatibles.length > 0) {
+    try {
+      driverCompatibles = input.compatibles.map((value) => DriverCompatible(value));
+    } catch {
+      return null;
+    }
+  } else {
+    driverCompatibles = [];
+  }
+  let nodeTypeFallback:
+    | { readonly kind: "present"; readonly name: ReturnType<typeof NormalizedNodeTypeName> }
+    | { readonly kind: "absent" } = { kind: "absent" };
+  if (driverCompatibles.length === 0 && input.nodeName) {
+    // The contract parser owns the grammar; the kernel brander owns the brand the
+    // snapshot selector expects. Both are needed, and the contract's own branded
+    // alias is not assignable to the kernel's.
+    const parsed = parseCanonicalNodeName(input.nodeName);
+    if (parsed.ok) nodeTypeFallback = { kind: "present", name: NormalizedNodeTypeName(parsed.value) };
+  }
+  const subject = snapshot.resolveSubject({ driverCompatibles, nodeTypeFallback });
+  return subject.status === "matched"
+    ? { subjectId: subject.subject.id, subjectKind: subject.subject.kind }
+    : null;
+}
+
 type ObservedProperty = {
   logicalNodeId: string;
   locator: string;
+  /** DTS node name, used only as the node-type fallback when no compatible exists. */
+  name: string | null;
   compatible: string | null;
   propertyKey: string;
   rawText: string;
@@ -249,7 +295,7 @@ const asWriteClient = (session: WriteSession): ValueClient => {
   return session;
 };
 
-async function listObservedProperties(
+export async function listObservedProperties(
   session: ValueClient,
   configRevisionId: string,
 ): Promise<ObservedProperty[]> {
@@ -258,6 +304,7 @@ async function listObservedProperties(
     select
       lnr.logical_node_id as "logicalNodeId",
       lnr.node_locator as locator,
+      lnr.name,
       lnr.compatible,
       oe.property_name as "propertyKey",
       po.raw_text as "rawText",
@@ -332,20 +379,20 @@ export async function syncPublishedCatalogProjectValues(
     } catch {
       continue;
     }
-    const subject = snapshot.resolveSubject({
-      driverCompatibles,
-      nodeTypeFallback: { kind: "absent" },
+    const subject = resolveObservedSubject(snapshot, {
+      compatibles,
+      nodeName: row.name,
     });
-    if (subject.status !== "matched") continue;
+    if (!subject) continue;
     const definition = snapshot.getDefinition({
-      subjectId: subject.subject.id,
+      subjectId: CatalogSubjectId(subject.subjectId),
       propertyKey: key,
     });
     if (definition.status !== "found") continue;
     const registrationId = await activeRegistrationId(
       write,
       input.organizationId,
-      subject.subject.id,
+      subject.subjectId,
     );
     if (!registrationId) continue;
     const stabilized = await stabilizeCanonicalBinding(writeTarget, {
@@ -791,4 +838,190 @@ export async function listCatalogBindingsForImport(
     projectParameterValueId: row.binding_id,
     currentValue: row.current_value ?? "",
   }));
+}
+
+export type CanonicalBindingChangeHistoryEntry = {
+  id: string;
+  bindingId: string;
+  definitionId: string;
+  oldDefinitionRevisionId: string | null;
+  newDefinitionRevisionId: string | null;
+  oldCurrentValueId: string | null;
+  newCurrentValueId: string | null;
+  reason: string;
+  successAuditRef: string;
+  catalogReleaseId: string;
+  createdAt: string;
+};
+
+/**
+ * Canonical binding change history (Issue #849: "history ... uses exact canonical
+ * source/value revisions").
+ *
+ * `parameter_catalog.binding_history_events` is written by the canonical value owner
+ * on every committed tip/revision change, including the reviewed apply path. Before
+ * this reader it had no read surface at all. Entries expose only canonical ids,
+ * revisions, the recorded reason and the success audit reference — never archived
+ * legacy payloads.
+ */
+export async function readCanonicalBindingChangeHistory(
+  pool: pg.Pool,
+  input: {
+    organizationId: string;
+    projectId: string;
+    bindingId: string;
+    limit?: number;
+  },
+): Promise<CanonicalBindingChangeHistoryEntry[] | null> {
+  const binding = await pool.query<{ id: string; definition_id: string }>(
+    `
+    select id, definition_id
+      from parameter_catalog.project_parameter_bindings
+     where organization_id = $1
+       and project_id = $2
+       and id = $3
+     limit 1
+    `,
+    [input.organizationId, input.projectId, input.bindingId],
+  );
+  const row = binding.rows[0];
+  if (!row) return null;
+
+  const limit = Math.min(Math.max(input.limit ?? 50, 1), 200);
+  const events = await pool.query<{
+    id: string;
+    binding_id: string;
+    definition_id: string;
+    old_effective_revision_id: string | null;
+    new_effective_revision_id: string | null;
+    old_current_value_id: string | null;
+    new_current_value_id: string | null;
+    reason: string;
+    success_audit_ref: string;
+    catalog_release_id: string;
+    created_at: string;
+  }>(
+    `
+    select event.id,
+           event.binding_id,
+           b.definition_id,
+           event.old_effective_revision_id,
+           event.new_effective_revision_id,
+           event.old_current_value_id,
+           event.new_current_value_id,
+           event.reason,
+           event.success_audit_ref,
+           event.catalog_release_id,
+           event.created_at
+      from parameter_catalog.binding_history_events event
+      join parameter_catalog.project_parameter_bindings b on b.id = event.binding_id
+     where event.binding_id = $1
+     order by event.created_at desc, event.id desc
+     limit $2
+    `,
+    [input.bindingId, limit],
+  );
+  return events.rows.map((event) => ({
+    id: event.id,
+    bindingId: event.binding_id,
+    definitionId: event.definition_id,
+    oldDefinitionRevisionId: event.old_effective_revision_id,
+    newDefinitionRevisionId: event.new_effective_revision_id,
+    oldCurrentValueId: event.old_current_value_id,
+    newCurrentValueId: event.new_current_value_id,
+    reason: event.reason,
+    successAuditRef: event.success_audit_ref,
+    catalogReleaseId: event.catalog_release_id,
+    createdAt: event.created_at,
+  }));
+}
+
+export type CanonicalBindingExportFile = {
+  name: string;
+  format: "dts" | "json";
+  versionNumber: number;
+  content: string;
+};
+
+export type CanonicalBindingExport = {
+  bindingId: string;
+  projectId: string;
+  definitionId: string;
+  definitionRevisionId: string;
+  catalogReleaseId: string;
+  configRevisionId: string;
+  currentValueId: string;
+  configSetId: string;
+  sourceRef: string;
+  files: CanonicalBindingExportFile[];
+};
+
+/**
+ * Canonical export (Issue #849: "history, compare, baseline and export operations
+ * use exact canonical source/value revisions").
+ *
+ * Returns the exact stored project-source bytes for the binding's pinned config
+ * revision together with the canonical identity pins, so a reimport can be checked
+ * against the same value/revision rather than against whatever is current later.
+ * Archived legacy payloads are never returned.
+ */
+export async function exportCanonicalBindingSource(
+  db: Database,
+  objectStore: ObjectStore,
+  auth: AuthContext,
+  input: { projectId: string; bindingId: string },
+): Promise<CanonicalBindingExport | null> {
+  const binding = await findCatalogBindingRow(db, {
+    organizationId: auth.organization.id,
+    projectId: input.projectId,
+    bindingId: input.bindingId,
+  });
+  if (!binding) return null;
+
+  const current = await db.query<{ source_ref: string | null; config_revision_id: string | null }>(
+    `
+    select source_ref, config_revision_id
+      from parameter_catalog.project_parameter_values
+     where id = $1
+     limit 1
+    `,
+    [binding.current_value_id],
+  );
+  const sourceRef = current.rows[0]?.source_ref ?? "";
+  const configRevisionId = current.rows[0]?.config_revision_id ?? "";
+  // A project value records either the approved `config-set:<id>` write or the exact
+  // `.dts` file location the occurrence came from, so both shapes must resolve to the
+  // config set the export reads. Accepting only the opaque form silently refused every
+  // value written from a `.dts` source.
+  const configSetId = await resolveConfigSetIdForSource(asValueClient(db), {
+    organizationId: auth.organization.id,
+    projectId: input.projectId,
+    sourceRef,
+  });
+  if (!configSetId || !configRevisionId || configRevisionId === "canonical-binding-identity") {
+    throw new ApiError("CONFLICT", "Project value is missing an actual config-set source.", {
+      bindingId: input.bindingId,
+    });
+  }
+
+  const snapshot = await loadConfigSetSnapshot(db, objectStore, configSetId);
+  const files: CanonicalBindingExportFile[] = snapshot.members.map((member) => ({
+    name: member.fileName,
+    format: member.format,
+    versionNumber: member.versionNumber,
+    content: member.content,
+  }));
+
+  return {
+    bindingId: binding.id,
+    projectId: binding.project_id,
+    definitionId: binding.definition_id,
+    definitionRevisionId: binding.effective_revision_id,
+    catalogReleaseId: binding.catalog_release_id,
+    configRevisionId,
+    currentValueId: binding.current_value_id,
+    configSetId,
+    sourceRef,
+    files,
+  };
 }

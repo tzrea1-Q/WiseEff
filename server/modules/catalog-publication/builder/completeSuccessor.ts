@@ -4,6 +4,7 @@ import {
   DefinitionRevisionId,
   ParameterDefinitionId,
   parseCanonicalCompatibleSelector,
+  parseCanonicalConfigurationSchemaId,
   parseCanonicalNodeName,
   parseCanonicalPropertyKey,
   serializeContract,
@@ -873,8 +874,15 @@ export async function buildCompleteSuccessor(
         });
       }
       const subjectChange = change as CreateSubjectWithDefinitionsChange;
-      if (subjectChange.kind !== "driver" && subjectChange.kind !== "node-type") {
-        return fail({ kind: "invalid-input", reason: "subject kind must be driver or node-type" });
+      if (
+        subjectChange.kind !== "driver" &&
+        subjectChange.kind !== "node-type" &&
+        subjectChange.kind !== "configuration-schema"
+      ) {
+        return fail({
+          kind: "invalid-input",
+          reason: "subject kind must be driver, node-type or configuration-schema",
+        });
       }
       if (!isRecord(subjectChange.selector) || extraKeys(subjectChange.selector, SELECTOR_KEYS).length > 0) {
         return fail({
@@ -884,7 +892,11 @@ export async function buildCompleteSuccessor(
         });
       }
       const expectedSelectorKind =
-        subjectChange.kind === "driver" ? "driver-compatible" : "node-type-name";
+        subjectChange.kind === "driver"
+          ? "driver-compatible"
+          : subjectChange.kind === "node-type"
+            ? "node-type-name"
+            : "configuration-schema-id";
       if (subjectChange.selector.kind !== expectedSelectorKind) {
         return fail({
           kind: "invalid-input",
@@ -904,7 +916,7 @@ export async function buildCompleteSuccessor(
       } else if (subjectChange.nature !== undefined || subjectChange.cardinality !== undefined) {
         return fail({
           kind: "invalid-input",
-          reason: "node-type must not declare driver nature or cardinality",
+          reason: `${subjectChange.kind} must not declare driver nature or cardinality`,
         });
       }
       const selectorParsed =
@@ -912,7 +924,9 @@ export async function buildCompleteSuccessor(
           ? parseCanonicalCompatibleSelector(subjectChange.selector.value)
           : subjectChange.selector.kind === "node-type-name"
             ? parseCanonicalNodeName(subjectChange.selector.value)
-            : { ok: false as const, error: "invalid-syntax" as const };
+            : subjectChange.selector.kind === "configuration-schema-id"
+              ? parseCanonicalConfigurationSchemaId(subjectChange.selector.value)
+              : { ok: false as const, error: "invalid-syntax" as const };
       if (!selectorParsed.ok) {
         return fail({ kind: "invalid-input", reason: `selector-${selectorParsed.error}` });
       }

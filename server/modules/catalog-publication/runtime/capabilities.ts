@@ -14,8 +14,13 @@ export const SUPPORTED_CATALOG_CONSUMER_CAPABILITIES = Object.freeze({
   valueValidator: "parameter-bindings/projectValue",
 });
 
+/**
+ * Historical revisions stay admitted so previously published releases keep their
+ * original interpretation; the current revision adds the third subject kind.
+ */
 const SUPPORTED_CATALOG_CONSUMER_REVISIONS = new Set([
   "catalog-capability/v1",
+  "catalog-capability/v2",
   CATALOG_CAPABILITY_CONTRACT_REVISION,
 ]);
 

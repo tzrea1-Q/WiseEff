@@ -61,7 +61,7 @@ export type TrustedGovernanceScope = {
   readonly canMutateOrganization: boolean;
   readonly canReviewProposals: boolean;
   readonly defaultDestinationModuleId: string;
-  readonly defaultSubjectKind: "driver" | "node-type";
+  readonly defaultSubjectKind: "driver" | "node-type" | "configuration-schema";
   /**
    * Trusted invocation brand for the authenticated principal, when the
    * composition root can build one.  Used only by capabilities that must mint a
@@ -145,10 +145,10 @@ export type CatalogGovernancePorts = {
   ) => Promise<Result<ReviewQueueItem, ReviewQueueFailure>>;
   readonly resolveSubjectKind?: (
     subjectId: string,
-  ) => Promise<"driver" | "node-type" | null>;
+  ) => Promise<"driver" | "node-type" | "configuration-schema" | null>;
   readonly resolveDestinationModuleId?: (input: {
     readonly organizationId: string;
-    readonly subjectKind: "driver" | "node-type";
+    readonly subjectKind: "driver" | "node-type" | "configuration-schema";
     readonly placement: PlacementIntent;
   }) => Promise<string | null>;
   readonly listRegistrations: (

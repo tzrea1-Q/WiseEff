@@ -47,6 +47,15 @@
 | R-F13 | `readApprovedRuntimePin` 仍要求精确 P13 / writer-retirement fingerprint / pin 匹配 | #826 未改 |
 | R-F14 | `parameter-data-mode` 的 new-empty 路径对已安装 Catalog 只读 | #826 未改 |
 
+> **后续变更（Issue #849，晚于 `063b12c49`）。** Vendor 后继现已退役 acme 样例：
+> `csub_acme_power` 与别名 `cali_acme_power_v1` 携带 tombstone 继续保留
+> （`withdrawnByReleaseId` = `crel_vendor_catalog_1`，不含 `successorId`），而
+> `crel_acme_1` 及其激活历史保持逐字节不变。上表 R-F4 记录的是 `063b12c49` 核验时的值；
+> 当前编译器 digest 为
+> `sha256:5f0e7bcd6c537f3a0574dc5541e1199f5537061bef4ad5551ec4f5e9565bec64`，
+> 线上运维 pin 见 `ops/self-hosted/upgrade.md`。计数不变（48 subjects、1 alias、
+> 114 definitions/revisions），因为被退役成员仍是被保留成员。
+
 ### 用户报告，**不是**主机核验
 
 | ID | 报告 | 用途 |

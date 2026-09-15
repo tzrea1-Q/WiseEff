@@ -93,18 +93,29 @@ const maybeFail = (
 const canonicalSubjectKey = (subject: CatalogReleaseSubjectDocument): string =>
   subject.content.selector.value;
 
-const selectorSnapshot = (subject: CatalogReleaseSubjectDocument): string =>
-  JSON.stringify(
-    subject.content.selector.kind === "driver-compatible"
-      ? {
-          kind: "driver-compatible",
-          values: [subject.content.selector.value],
-        }
-      : {
-          kind: "node-type-name",
-          value: subject.content.selector.value,
-        },
-  );
+const selectorSnapshot = (subject: CatalogReleaseSubjectDocument): string => {
+  switch (subject.content.selector.kind) {
+    case "driver-compatible":
+      return JSON.stringify({
+        kind: "driver-compatible",
+        values: [subject.content.selector.value],
+      });
+    case "node-type-name":
+      return JSON.stringify({
+        kind: "node-type-name",
+        value: subject.content.selector.value,
+      });
+    case "configuration-schema-id":
+      return JSON.stringify({
+        kind: "configuration-schema-id",
+        value: subject.content.selector.value,
+      });
+    default:
+      // Unreachable for a compiled release; fail closed rather than defaulting a
+      // third kind into the node-type selector namespace.
+      throw new Error("unsupported catalog subject selector kind");
+  }
+};
 
 const selectorProvenance = (source: string): string =>
   JSON.stringify({ source });
@@ -239,11 +250,18 @@ const stageSubjects = async (
            values ($1,$2,$3)`,
           [subject.content.id, subtype.nature, subtype.cardinality.kind],
         );
-      } else {
+      } else if (subject.content.kind === "node-type") {
         await client.query(
           `insert into parameter_catalog.catalog_node_types (subject_id) values ($1)`,
           [subject.content.id],
         );
+      } else if (subject.content.kind === "configuration-schema") {
+        await client.query(
+          `insert into parameter_catalog.catalog_configuration_schemas (subject_id) values ($1)`,
+          [subject.content.id],
+        );
+      } else {
+        throw new Error("unsupported catalog subject kind during materialization");
       }
       existingSubjects.add(subject.content.id);
     }
