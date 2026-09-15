@@ -468,7 +468,9 @@ describe("CatalogPage", () => {
     renderCatalog({ repository });
     await screen.findByRole("button", { name: /southchip,sc8562/ });
     blocked = true;
-    await user.click(screen.getByRole("button", { name: "刷新" }));
+    // A search submit reloads the collection; there is no refresh button.
+    await user.type(screen.getByRole("searchbox", { name: /搜索参数定义/ }), "sc8562");
+    await user.click(screen.getByRole("button", { name: /搜索/ }));
     const page = screen.getByRole("region", { name: "参数定义目录" });
     await waitFor(() => expect(page).toHaveAttribute("data-catalog-state", "loading"));
     expect(page).toHaveAttribute("data-writes-enabled", "false");

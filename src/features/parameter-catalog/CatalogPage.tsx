@@ -74,7 +74,6 @@ import {
   catalogPaginationLabel,
   catalogPendingWorkLabel,
   catalogPreviousPageLabel,
-  catalogRefreshLabel,
   catalogReleaseLabel,
   catalogResultCountLabel,
   catalogSearchClearLabel,
@@ -766,9 +765,6 @@ export function CatalogPage({
                 {reviewItemCount}
               </span>
             ) : null}
-          </button>
-          <button type="button" className="button subtle sm" onClick={() => void load()}>
-            {catalogRefreshLabel}
           </button>
         </div>
       </div>

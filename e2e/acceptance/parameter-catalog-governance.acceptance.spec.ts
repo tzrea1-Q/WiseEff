@@ -132,7 +132,8 @@ test.describe("canonical parameter catalog governance interactions", () => {
       await dialog.getByRole("button", { name: "继续确认" }).click();
       await confirmGovernanceDialog(page, "确认登记");
       await expect(page.getByRole("dialog", { name: "登记主体" })).toHaveCount(0);
-      await page.getByRole("button", { name: "刷新" }).click();
+      await page.reload();
+      await expect(catalogPage(page)).toBeVisible();
     }
     const after = await countSubjectRegistrations(fixture.pool, fixture.organizationId, fixture.sensorSubjectId);
     expect(after).toBeGreaterThanOrEqual(1);
