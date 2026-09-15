@@ -235,10 +235,41 @@
   gap: var(--space-3);
 }
 
+/* The editor fields use the same field treatment as the other governed dialogs
+   (the workbench sheet scope provides no input styling of its own). */
 .definition-editor__form input,
 .definition-editor__form select,
 .definition-editor__form textarea {
   width: 100%;
+  min-height: 36px;
+  padding: var(--space-2) 10px;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--outline);
+  border-radius: var(--radius-md);
+  font: inherit;
+  font-size: var(--text-base);
+  font-weight: 400;
+  outline: 0;
+}
+
+.definition-editor__form textarea {
+  min-height: 64px;
+  resize: vertical;
+}
+
+.definition-editor__form input:focus,
+.definition-editor__form select:focus,
+.definition-editor__form textarea:focus {
+  border-color: var(--app-primary);
+  box-shadow: var(--ring);
+}
+
+.definition-editor__form input:disabled,
+.definition-editor__form select:disabled,
+.definition-editor__form textarea:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
 }
 
 .definition-editor__fields {
