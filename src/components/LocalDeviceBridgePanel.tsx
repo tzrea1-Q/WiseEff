@@ -134,7 +134,7 @@ export function LocalDeviceBridgePanel({
           probe(),
           bridgesOverride !== undefined && bridgesOverride !== null
             ? Promise.resolve(bridgesOverride)
-            : (listBridges ?? (() => listMyBridges()))().catch(() => [] as DeviceBridgeRecord[])
+            : (listBridges ?? (() => listMyBridges()))()
         ]);
         const nextHealth = healthProbe.health;
         setHealthReachability((current) =>
@@ -195,6 +195,9 @@ export function LocalDeviceBridgePanel({
             (bridge) => !bridge.revokedAt && bridge.id === nextHealth.bridgeId
           ))
         };
+      } catch (error) {
+        setPanelError(formatDebuggingRuntimeError(error));
+        return { connected: false };
       } finally {
         if (!options?.silent) {
           setChecking(false);
@@ -430,7 +433,14 @@ export function LocalDeviceBridgePanel({
           </ul>
         </details>
       ) : null}
-      {panelError ? <p className="node-row-error">{panelError}</p> : null}
+      {panelError ? (
+        <div role="alert">
+          <p className="node-row-error">{panelError}</p>
+          <button className="button subtle" type="button" disabled={checking} onClick={() => void refreshBridgeState()}>
+            刷新代理状态
+          </button>
+        </div>
+      ) : null}
       <ConfirmDialog
         open={revokeCandidate !== null}
         title="撤销设备代理"
