@@ -292,7 +292,11 @@ describe("CatalogPage", () => {
 
     const orgAdmin = renderCatalog({ actor: "org-admin" });
     await screen.findByRole("region", { name: "参数定义目录" });
-    expect(screen.getByRole("button", { name: "提出定义修订" })).toBeEnabled();
+    // Definition proposals have no surface on this page, so the toolbar offers
+    // no proposal action; the remaining write entry points stay reachable.
+    expect(screen.queryByRole("button", { name: "提出定义修订" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "提交修订" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "撤回修订" })).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "调整放置" })).toBeEnabled();
     expect(screen.getByRole("button", { name: "处理审核" })).toBeEnabled();
     expect(screen.getByRole("button", { name: "登记主体" })).toBeEnabled();
@@ -435,13 +439,13 @@ describe("CatalogPage", () => {
     expect(page).toHaveAttribute("data-catalog-state", "retired");
     expect(page).toHaveAttribute("data-writes-enabled", "false");
     expect(screen.getAllByText(/已退役或已弃用，历史记录仍可阅读/).length).toBeGreaterThan(0);
-    expect(screen.getByRole("button", { name: "提出定义修订" })).toBeDisabled();
+    expect(screen.queryByRole("button", { name: "提出定义修订" })).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "调整放置" })).toBeDisabled();
     expect(within(screen.getByRole("region", { name: "定义详情" })).getByText(/修订 #6/)).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: /查看历史/ }));
     expect(within(await screen.findByRole("region", { name: "定义时间线" })).getByText("目录发布")).toBeInTheDocument();
-    await user.hover(screen.getByRole("button", { name: "提出定义修订" }));
-    expect(screen.getByRole("button", { name: "提出定义修订" })).toHaveAttribute(
+    await user.hover(screen.getByRole("button", { name: "新增定义" }));
+    expect(screen.getByRole("button", { name: "新增定义" })).toHaveAttribute(
       "title",
       expect.stringMatching(/禁止新增操作|写入已暂停|已退役/)
     );
@@ -470,7 +474,8 @@ describe("CatalogPage", () => {
     expect(page).toHaveAttribute("data-writes-enabled", "false");
     expect(page).toHaveAttribute("data-catalog-release", CATALOG_RELEASE_ID);
     expect(screen.getAllByText("正在刷新目录发布，写入已暂停").length).toBeGreaterThan(0);
-    expect(screen.getByRole("button", { name: "提出定义修订" })).toBeDisabled();
+    expect(screen.queryByRole("button", { name: "提出定义修订" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "调整放置" })).toBeDisabled();
     expect(screen.getByRole("button", { name: /southchip,sc8562/ })).toBeInTheDocument();
     gate.resolve();
     await waitFor(() => expect(page).toHaveAttribute("data-catalog-state", "ready"));

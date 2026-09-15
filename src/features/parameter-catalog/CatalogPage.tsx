@@ -443,10 +443,19 @@ export function CatalogPage({
     error
   });
   const writesEnabled = catalogWritesEnabled(domainState);
-  // Review work is processed through the single pending-work dialog, so the
-  // standalone review action is not offered separately.
+  /**
+   * Actions that no longer have a surface on this page are not offered as toolbar
+   * buttons: review work is processed through the single pending-work dialog, and
+   * the definition-proposal panel was removed from the workspace.
+   */
+  const retiredActions = new Set<string>([
+    "resolve-review-item",
+    "create-proposal",
+    "submit-proposal",
+    "withdraw-proposal"
+  ]);
   const actions = catalogActionAffordances(actor, domainState, sessionPermissions).filter(
-    (action) => action.action !== "resolve-review-item"
+    (action) => !retiredActions.has(action.action)
   );
   const onDomainStateChangeRef = useRef(onDomainStateChange);
   onDomainStateChangeRef.current = onDomainStateChange;
