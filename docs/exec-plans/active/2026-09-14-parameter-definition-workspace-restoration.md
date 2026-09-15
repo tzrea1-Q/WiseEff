@@ -201,10 +201,26 @@ Blocking. Before this plan moves to `completed/`:
 
 ## Verification commands
 
+### Run profile: batched verification for frontend polish (operator-approved)
+
+The operator approved a narrowed run profile for the remaining frontend polish on this issue: while iterating on small UI changes, do **not** re-run the test suites per change. Batch the verification instead, and run it when the operator says the loop is closed:
+
+- During UI iteration: inspect the change in the running browser at the affected viewports (that is the working feedback loop), keep `typecheck` green, and commit.
+- On the operator's signal: run the full set below once (server suite on the isolated lane, catalog acceptance specs, candidate gates) and report the result with its evidence.
+
+This narrows only the *cadence*, not the evidence contract: no change is reported as verified, and no plan is marked complete, before the batched run above has been executed on the final candidate. Recording the run here is the accepted run profile required by `docs/agents/agent-delivery-protocol.md`.
+
 ```bash
 # Lane
 npm run catalog:lane:env -- provision --issue 847
 npm run catalog:lane:env -- doctor --issue 847
+
+# Isolated test server (avoids the shared g668 template namespace while a
+# parallel session runs its own suite):
+#   docker run -d --name wiseeff-847-pg -p 127.0.0.1:55440:5432 pgvector/pgvector:pg16
+#   DATABASE_URL=postgres://wiseeff:wiseeff@127.0.0.1:55440/wiseeff_isolated_847 npx tsx scripts/migrate.ts
+DATABASE_URL=postgres://wiseeff:wiseeff@127.0.0.1:55440/wiseeff_isolated_847 \
+  TEST_DATABASE_URL=$DATABASE_URL npm run test:server
 
 # Focused server seams (real PostgreSQL lane)
 DATABASE_URL=... TEST_DATABASE_URL=... npx vitest run --config vitest.server.config.ts \
