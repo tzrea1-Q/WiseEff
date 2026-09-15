@@ -12767,7 +12767,8 @@ body.xiaoze-popup-drag-active {
 
 .copilotKitPopup .copilotKitInput:focus-within {
   border-color: var(--ring) !important;
-  box-shadow: 0 0 0 2px color-mix(in srgb, var(--ring) 25%, transparent), var(--xiaoze-shadow-soft) !important;
+  outline: 2px solid var(--ring);
+  outline-offset: -1px;
 }
 
 .copilotKitPopup [data-testid="copilot-chat-textarea"]:focus-visible {
@@ -12845,7 +12846,7 @@ body.xiaoze-popup-drag-active {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 5px 12px;
+  padding: var(--space-1) var(--space-3);
   border-bottom: 1px solid var(--xiaoze-border);
   background: color-mix(in srgb, var(--surface) 88%, transparent);
 }
@@ -12862,8 +12863,8 @@ body.xiaoze-popup-drag-active {
 .copilotKitPopup .xiaoze-code-block__copy {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
-  padding: 3px 8px;
+  gap: var(--space-1);
+  padding: var(--space-1) var(--space-2);
   border: 1px solid var(--xiaoze-border);
   border-radius: var(--radius-sm);
   background: color-mix(in srgb, var(--surface) 90%, transparent);
@@ -12882,7 +12883,7 @@ body.xiaoze-popup-drag-active {
 
 .copilotKitPopup .xiaoze-code-block pre {
   margin: 0 !important;
-  padding: 10px 12px !important;
+  padding: var(--space-2) var(--space-3) !important;
   font-family: var(--font-mono);
   font-size: var(--text-xs) !important;
   line-height: 1.55;
@@ -13045,12 +13046,12 @@ body.xiaoze-popup-drag-active {
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
-  margin-top: 4px;
+  margin-top: var(--space-1);
 }
 
-.xiaoze-welcome__prompts-title {
+.xiaoze-welcome__prompt-title {
   margin: 0;
-  color: var(--text-secondary);
+  color: var(--text-muted);
   font-size: var(--text-xs);
   font-weight: 600;
   letter-spacing: 0.04em;
@@ -13069,8 +13070,8 @@ body.xiaoze-popup-drag-active {
 .xiaoze-welcome__prompt-pill {
   display: inline-flex;
   align-items: center;
-  gap: 5px;
-  padding: 6px 12px;
+  gap: var(--space-1);
+  padding: var(--space-1) var(--space-3);
   border: 1px solid var(--xiaoze-border);
   border-radius: var(--radius-full);
   background: color-mix(in srgb, var(--surface) 90%, transparent);
@@ -13086,7 +13087,7 @@ body.xiaoze-popup-drag-active {
   background: var(--xiaoze-surface-muted);
   color: var(--xiaoze-brand);
   transform: translateY(-1px);
-  box-shadow: var(--xiaoze-shadow-soft);
+  box-shadow: var(--shadow-1);
 }
 
 .xiaoze-welcome__prompt-pill:active {
@@ -14088,13 +14089,13 @@ body.xiaoze-popup-drag-active {
     align-items: center;
     justify-content: space-between;
     gap: var(--space-2);
-    padding: var(--space-2-5) var(--space-3);
+    padding: var(--space-2) var(--space-3);
   }
 
   .xiaoze-chat-header__actions--start {
     flex-direction: row;
     align-items: center;
-    gap: var(--space-1-5);
+    gap: var(--space-1);
   }
 
   .xiaoze-chat-header__brand {
