@@ -5253,7 +5253,7 @@ Indexes:
 | `target_value` | `jsonb` | no | — |
 | `reason` | `text` | no | — |
 | `status` | `text` | no | — |
-| `submitter_user_id` | `text` | no | — |
+| `submitter_user_id` | `text` | yes | — |
 | `assigned_to_user_id` | `text` | yes | — |
 | `reviewer_user_id` | `text` | yes | — |
 | `reviewer_note` | `text` | yes | — |
@@ -5265,7 +5265,7 @@ Indexes:
 
 Constraints:
 
-- `project_parameter_value_change_request_assigned_to_user_id_fkey`: FOREIGN KEY (assigned_to_user_id) REFERENCES users(id) ON DELETE RESTRICT
+- `project_parameter_value_change_request_assigned_to_user_id_fkey`: FOREIGN KEY (assigned_to_user_id) REFERENCES users(id) ON DELETE SET NULL
 - `project_parameter_value_change_requests_action_check`: CHECK ((action = ANY (ARRAY['set'::text, 'delete'::text])))
 - `project_parameter_value_change_requests_apply_outcome_check`: CHECK ((apply_outcome = ANY (ARRAY['committed'::text, 'replayed'::text])))
 - `project_parameter_value_change_requests_binding_fk`: FOREIGN KEY (binding_id) REFERENCES parameter_catalog.project_parameter_bindings(id) ON DELETE RESTRICT DEFERRABLE INITIALLY DEFERRED
@@ -5276,10 +5276,10 @@ Constraints:
 - `project_parameter_value_change_requests_project_fk`: FOREIGN KEY (project_id, organization_id) REFERENCES projects(id, organization_id) ON DELETE RESTRICT DEFERRABLE INITIALLY DEFERRED
 - `project_parameter_value_change_requests_reason_check`: CHECK ((btrim(reason) <> ''::text))
 - `project_parameter_value_change_requests_release_fk`: FOREIGN KEY (catalog_release_id) REFERENCES parameter_catalog.catalog_releases(id) ON DELETE RESTRICT DEFERRABLE INITIALLY DEFERRED
-- `project_parameter_value_change_requests_reviewer_user_id_fkey`: FOREIGN KEY (reviewer_user_id) REFERENCES users(id) ON DELETE RESTRICT
+- `project_parameter_value_change_requests_reviewer_user_id_fkey`: FOREIGN KEY (reviewer_user_id) REFERENCES users(id) ON DELETE SET NULL
 - `project_parameter_value_change_requests_source_ref_check`: CHECK ((btrim(source_ref) <> ''::text))
 - `project_parameter_value_change_requests_status_check`: CHECK ((status = ANY (ARRAY['pending'::text, 'approved'::text, 'rejected'::text, 'withdrawn'::text])))
-- `project_parameter_value_change_requests_submitter_user_id_fkey`: FOREIGN KEY (submitter_user_id) REFERENCES users(id) ON DELETE RESTRICT
+- `project_parameter_value_change_requests_submitter_user_id_fkey`: FOREIGN KEY (submitter_user_id) REFERENCES users(id) ON DELETE SET NULL
 
 Indexes:
 
@@ -5305,7 +5305,7 @@ Indexes:
 | `action` | `text` | no | — |
 | `target_value` | `jsonb` | no | — |
 | `reason` | `text` | no | — |
-| `user_id` | `text` | no | — |
+| `user_id` | `text` | yes | — |
 | `created_at` | `timestamp with time zone` | no | `now()` |
 | `updated_at` | `timestamp with time zone` | no | `now()` |
 
@@ -5320,7 +5320,7 @@ Constraints:
 - `project_parameter_value_drafts_reason_check`: CHECK ((btrim(reason) <> ''::text))
 - `project_parameter_value_drafts_release_fk`: FOREIGN KEY (catalog_release_id) REFERENCES parameter_catalog.catalog_releases(id) ON DELETE RESTRICT DEFERRABLE INITIALLY DEFERRED
 - `project_parameter_value_drafts_source_ref_check`: CHECK ((btrim(source_ref) <> ''::text))
-- `project_parameter_value_drafts_user_id_fkey`: FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE RESTRICT
+- `project_parameter_value_drafts_user_id_fkey`: FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL
 
 Indexes:
 
@@ -5438,7 +5438,7 @@ Constraints:
 - `seed_initialization_runs_pkey`: PRIMARY KEY (organization_id, seed_digest)
 - `seed_initialization_runs_scope_check`: CHECK ((scope = 'atlas-aurora-nebula'::text))
 - `seed_initialization_runs_seed_digest_check`: CHECK (((seed_digest <> ''::text) AND (btrim(seed_digest) = seed_digest)))
-- `seed_initialization_runs_started_by_user_id_fkey`: FOREIGN KEY (started_by_user_id) REFERENCES users(id) ON DELETE RESTRICT
+- `seed_initialization_runs_started_by_user_id_fkey`: FOREIGN KEY (started_by_user_id) REFERENCES users(id) ON DELETE SET NULL
 - `seed_initialization_runs_status_check`: CHECK ((status = ANY (ARRAY['planned'::text, 'running'::text, 'completed'::text, 'failed'::text])))
 - `seed_initialization_runs_target_project_ids_check`: CHECK ((jsonb_typeof(target_project_ids) = 'array'::text))
 
