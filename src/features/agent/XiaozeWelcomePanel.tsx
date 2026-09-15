@@ -1,4 +1,5 @@
 import { BookOpenCheck, ShieldCheck, Sparkles } from "lucide-react";
+import { dispatchXiaozeOpenHandoff } from "./xiaozeOpenHandoff";
 
 const CAPABILITIES = [
   {
@@ -18,7 +19,17 @@ const CAPABILITIES = [
   }
 ] as const;
 
+const STARTER_PROMPTS = [
+  "如何申请参数修改权限？",
+  "帮我分析最近一条错误日志",
+  "检查当前页面相关服务状态"
+] as const;
+
 export function XiaozeWelcomePanel() {
+  const handlePromptClick = (prompt: string) => {
+    dispatchXiaozeOpenHandoff(prompt);
+  };
+
   return (
     <section className="xiaoze-welcome" aria-label="小泽欢迎引导" data-testid="xiaoze-welcome-panel">
       <div className="xiaoze-welcome__hero">
@@ -44,6 +55,22 @@ export function XiaozeWelcomePanel() {
           );
         })}
       </ul>
+      <div className="xiaoze-welcome__prompts" data-testid="xiaoze-starter-prompts">
+        <p className="xiaoze-welcome__prompts-title">您可以试着问我：</p>
+        <div className="xiaoze-welcome__prompt-pills">
+          {STARTER_PROMPTS.map((prompt) => (
+            <button
+              key={prompt}
+              type="button"
+              className="xiaoze-welcome__prompt-pill"
+              onClick={() => handlePromptClick(prompt)}
+            >
+              <Sparkles size={13} aria-hidden="true" />
+              <span>{prompt}</span>
+            </button>
+          ))}
+        </div>
+      </div>
     </section>
   );
 }

@@ -264,6 +264,20 @@ export function XiaozePopupView({
   }, [isPopupOpen]);
 
   useEffect(() => {
+    const handleGlobalShortcut = (event: KeyboardEvent) => {
+      if ((event.metaKey || event.ctrlKey) && !event.altKey && !event.shiftKey && event.key.toLowerCase() === "j") {
+        event.preventDefault();
+        const next = !isPopupOpen;
+        writeXiaozePopupOpenSession(next);
+        setModalOpen?.(next);
+      }
+    };
+
+    window.addEventListener("keydown", handleGlobalShortcut);
+    return () => window.removeEventListener("keydown", handleGlobalShortcut);
+  }, [isPopupOpen, setModalOpen]);
+
+  useEffect(() => {
     if (!isPopupOpen) {
       return;
     }
@@ -271,7 +285,12 @@ export function XiaozePopupView({
     const focusTimer = window.setTimeout(() => {
       const container = containerRef.current;
       if (container && !container.contains(document.activeElement)) {
-        container.focus({ preventScroll: true });
+        const textarea = container.querySelector<HTMLTextAreaElement>('[data-testid="copilot-chat-textarea"]');
+        if (textarea) {
+          textarea.focus({ preventScroll: true });
+        } else {
+          container.focus({ preventScroll: true });
+        }
       }
     }, Math.min(openMs, 280));
 

@@ -3,6 +3,7 @@ import type { Insight } from "@/components/AgentInsightBar";
 import { requestXiaozeSuggestions } from "@/infrastructure/http/xiaozeSuggestionsClient";
 import { supportsXiaozeProactiveInsightPage } from "./xiaozeProactiveInsights";
 import { useXiaozePageContextValue } from "./xiaozePageContext";
+import { dispatchXiaozeOpenHandoff } from "./xiaozeOpenHandoff";
 
 export function useXiaozeSuggestions(options: { enabled: boolean }) {
   const pageContext = useXiaozePageContextValue();
@@ -37,7 +38,7 @@ export function useXiaozeSuggestions(options: { enabled: boolean }) {
               label: "问小泽",
               variant: "primary",
               onClick: () => {
-                document.querySelector<HTMLButtonElement>('[aria-label="打开小泽"]')?.click();
+                dispatchXiaozeOpenHandoff(item.headline);
               }
             }
           ]

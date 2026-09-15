@@ -50,4 +50,18 @@ describe("xiaozeStreamdownComponents", () => {
 
     expect(document.querySelectorAll('[data-streamdown="table-header-cell"]')).toHaveLength(6);
   });
+
+  it("renders code blocks with language badge and interactive copy button", async () => {
+    const codeMarkdown = "```bash\necho hello world\n```";
+    render(
+      <Streamdown mode="static" components={xiaozeStreamdownComponents} controls={{ table: false, code: false }}>
+        {codeMarkdown}
+      </Streamdown>
+    );
+
+    expect(screen.getByTestId("xiaoze-code-block")).toBeInTheDocument();
+    expect(screen.getByText("bash")).toBeInTheDocument();
+    const copyBtn = screen.getByRole("button", { name: "复制代码" });
+    expect(copyBtn).toBeInTheDocument();
+  });
 });

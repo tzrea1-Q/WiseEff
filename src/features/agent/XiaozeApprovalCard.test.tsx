@@ -141,7 +141,7 @@ describe("XiaozeApprovalCard", () => {
     expect(screen.getByText(/温度超过 45 度时降流/)).toBeInTheDocument();
 
     fireEvent.change(screen.getByLabelText("草稿标题"), { target: { value: "快充温控排查经验(已审阅)" } });
-    fireEvent.click(screen.getByRole("button", { name: /approve/i }));
+    fireEvent.click(screen.getByRole("button", { name: "批准" }));
     expect(resolve).toHaveBeenCalledWith({
       decision: "approve",
       editedArgs: expect.objectContaining({ title: "快充温控排查经验(已审阅)", sourceLogId: "log-9" })

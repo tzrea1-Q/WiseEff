@@ -34,6 +34,7 @@ export function XiaozeTurnReasoningPanel({
   const [elapsed, setElapsed] = useState(0);
   const userToggledRef = useRef(false);
   const [isOpen, setIsOpen] = useState(isStreaming || (xiaozeReasoningDevExpanded && hasContent));
+  const [isClosing, setIsClosing] = useState(false);
 
   useEffect(() => {
     if (isStreaming && startTimeRef.current === null) {
@@ -57,12 +58,22 @@ export function XiaozeTurnReasoningPanel({
     if (isStreaming) {
       userToggledRef.current = false;
       setIsOpen(true);
+      setIsClosing(false);
       return;
     }
     if (!userToggledRef.current) {
-      setIsOpen(xiaozeReasoningDevExpanded && hasContent);
+      const nextOpen = xiaozeReasoningDevExpanded && hasContent;
+      if (isOpen && !nextOpen) {
+        setIsClosing(true);
+        const timer = setTimeout(() => {
+          setIsClosing(false);
+          setIsOpen(false);
+        }, 320);
+        return () => clearTimeout(timer);
+      }
+      setIsOpen(nextOpen);
     }
-  }, [hasContent, isStreaming]);
+  }, [hasContent, isStreaming, isOpen]);
 
   if (!hasContent && !isStreaming) {
     return null;
@@ -78,7 +89,7 @@ export function XiaozeTurnReasoningPanel({
         "xiaoze-reasoning-message",
         "xiaoze-turn-block__reasoning",
         isStreaming ? "is-streaming" : "",
-        isOpen ? "is-open" : "",
+        isOpen && !isClosing ? "is-open" : "",
         className
       ]
         .filter(Boolean)
@@ -87,10 +98,19 @@ export function XiaozeTurnReasoningPanel({
       <button
         type="button"
         className="xiaoze-reasoning-message__toggle"
-        aria-expanded={isOpen}
+        aria-expanded={isOpen && !isClosing}
         onClick={() => {
           userToggledRef.current = true;
-          setIsOpen((open) => !open);
+          if (isOpen && !isClosing) {
+            setIsClosing(true);
+            setTimeout(() => {
+              setIsClosing(false);
+              setIsOpen(false);
+            }, 320);
+          } else {
+            setIsClosing(false);
+            setIsOpen(true);
+          }
         }}
       >
         <span className="xiaoze-reasoning-message__icon" aria-hidden="true">
@@ -99,11 +119,11 @@ export function XiaozeTurnReasoningPanel({
         <span className="xiaoze-reasoning-message__label">{label}</span>
         <ChevronDown
           size={16}
-          className={isOpen ? "xiaoze-reasoning-message__chevron is-open" : "xiaoze-reasoning-message__chevron"}
+          className={isOpen && !isClosing ? "xiaoze-reasoning-message__chevron is-open" : "xiaoze-reasoning-message__chevron"}
         />
       </button>
-      {isOpen && hasContent ? (
-        <div className="xiaoze-reasoning-message__body-shell is-open">
+      {(isOpen || isClosing) && hasContent ? (
+        <div className={`xiaoze-reasoning-message__body-shell${isOpen && !isClosing ? " is-open" : ""}`}>
           <div className="xiaoze-reasoning-message__body">{content}</div>
         </div>
       ) : null}

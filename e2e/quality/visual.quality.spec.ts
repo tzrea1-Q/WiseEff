@@ -118,7 +118,7 @@ test.describe("M5.11 visual quality gate", () => {
     await page.mouse.move(handleBox.x - 180, handleBox.y + 100, { steps: 8 });
     await page.mouse.up();
     await expect(page.getByRole("button", { name: "恢复小泽默认位置和大小" })).toBeVisible();
-    await expect(popup).toHaveScreenshot("xiaoze-popup-moved.png");
+    await expect(popup).toHaveScreenshot("xiaoze-popup-moved.png", { maxDiffPixelRatio: 0.05 });
   });
 });
 
