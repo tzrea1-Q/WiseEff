@@ -186,7 +186,6 @@ describe("canonical parameter Catalog schema", () => {
       "binding_history_events",
       "catalog_activation_receipts",
       "catalog_command_idempotency",
-      "catalog_configuration_schemas",
       "catalog_drivers",
       "catalog_materializations",
       "catalog_node_types",

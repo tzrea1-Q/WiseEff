@@ -54,4 +54,3 @@ See also: [`CONTEXT.md`](../../CONTEXT.md), [`docs/design-docs/domain-model.md`]
 | [0042](0042-organizations-register-canonical-subjects-once.md) | Organization registration and placement |
 | [0043](0043-catalog-authoring-and-online-publication.md) | Catalog definitions are authored in-product and activated by one synchronizer |
 | [0044](0044-definition-replacement-preserves-historical-identity.md) | Definition replacement preserves historical identity while migrating current references |
-| [0045](0045-configuration-schema-subject-and-seed-rebuild.md) | Configuration models share the canonical parameter catalog |

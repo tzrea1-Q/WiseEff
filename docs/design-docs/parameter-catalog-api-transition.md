@@ -6,8 +6,6 @@ Status: locked product and compatibility decision for [GitHub issue #677](https:
 
 ## Decision
 
-The accepted destination extension in [ADR-0045](../adr/0045-configuration-schema-subject-and-seed-rebuild.md) adds ConfigurationSchema and a deployment-scoped archive-rebuild alternative. For an explicitly inventoried and verified rebuild only, old links become authorized archived notices immediately; other deployments retain this document's normal legacy-read window. The extension is planned, not shipped runtime behavior or S13 completion evidence.
-
 WiseEff will introduce a canonical `/api/v2/catalog/*` resource namespace instead of changing the meaning of `ParameterSpec` in place or versioning unrelated APIs to `/api/v3`.
 
 The contract separates five concepts that the legacy surface conflates:

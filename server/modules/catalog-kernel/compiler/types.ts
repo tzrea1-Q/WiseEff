@@ -36,14 +36,11 @@ export interface CatalogReleaseSubjectDocument {
   readonly normalizedDigest: string;
   readonly content: {
     readonly id: string;
-    readonly kind: "driver" | "node-type" | "configuration-schema";
+    readonly kind: "driver" | "node-type";
     readonly canonicalKey: string;
     readonly lifecycle: "active" | "retired";
     readonly selector: {
-      readonly kind:
-        | "driver-compatible"
-        | "node-type-name"
-        | "configuration-schema-id";
+      readonly kind: "driver-compatible" | "node-type-name";
       readonly value: string;
       readonly provenance: CatalogReleaseProvenance;
     };
@@ -66,10 +63,7 @@ export interface CatalogReleaseAliasDocument {
   readonly content: {
     readonly id: string;
     readonly subjectId: string;
-    readonly selectorKind:
-      | "driver-compatible"
-      | "node-type-name"
-      | "configuration-schema-id";
+    readonly selectorKind: "driver-compatible" | "node-type-name";
     readonly normalizedSelector: string;
     readonly lifecycle: "active" | "retired";
     readonly selectorProvenance: CatalogReleaseProvenance;
@@ -99,10 +93,7 @@ export interface CatalogReleaseDefinitionDocument {
       readonly valueSchema: Readonly<Record<string, ContractJsonValue>>;
       readonly matching: {
         readonly sourceProperty: string;
-        readonly selectorKind:
-          | "driver-compatible"
-          | "node-type-name"
-          | "configuration-schema-id";
+        readonly selectorKind: "driver-compatible" | "node-type-name";
         readonly notes?: string;
       };
       readonly examples?: readonly ContractJsonValue[];

@@ -9,7 +9,6 @@ import { requestJson } from "../../test/testClient";
 import { parameterImportBatchResponseSchema } from "../contracts/dtoSchemas/parameters";
 import { registerCatalogProjectValueConsumerRoutes } from "./catalogProjectValueRoutes";
 import * as catalogSync from "./catalogProjectValueSync";
-import * as drafts from "./drafts";
 import * as importBatchRepository from "../parameters/importBatchRepository";
 import * as parameterService from "../parameters/service";
 import * as auditedWrite from "../audit/auditedWrite";
@@ -23,8 +22,7 @@ vi.mock("./catalogProjectValueSync", async (importOriginal) => {
     ...actual,
     findCatalogBindingRow: vi.fn(),
     saveCanonicalProjectValue: vi.fn(),
-    listCatalogBindingsForImport: vi.fn(),
-    listCatalogBindingRowsForProject: vi.fn()
+    listCatalogBindingsForImport: vi.fn()
   };
 });
 
@@ -50,20 +48,6 @@ vi.mock("../parameters/service", async (importOriginal) => {
     ...actual,
     applyImportBatch: vi.fn(),
     createImportPreview: vi.fn()
-  };
-});
-
-vi.mock("./drafts", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("./drafts")>();
-  return {
-    ...actual,
-    createCanonicalValueDraft: vi.fn(),
-    listCanonicalValueDraftsForUser: vi.fn(),
-    removeCanonicalValueDraft: vi.fn(),
-    listCanonicalValueChangesForAuth: vi.fn(),
-    reviewCanonicalValueChange: vi.fn(),
-    submitCanonicalValueChange: vi.fn(),
-    withdrawCanonicalValueChange: vi.fn()
   };
 });
 
@@ -538,7 +522,7 @@ describe("catalog published-value import apply route", () => {
     expect(parameterService.createImportPreview).not.toHaveBeenCalled();
   });
 
-  it("keeps an unbound row in the canonical preview without a legacy fallback", async () => {
+  it("still allows a name-only legacy preview when the project has no catalog candidates", async () => {
     const db = makeDb();
     vi.mocked(catalogSync.listCatalogBindingsForImport).mockResolvedValue([]);
     vi.mocked(parameterService.createImportPreview).mockResolvedValue({
@@ -625,7 +609,7 @@ describe("catalog published-value save authorization", () => {
     expect(auditedWrite.withAuditedWrite).not.toHaveBeenCalled();
   });
 
-  it("creates a pending draft and never writes the canonical current value", async () => {
+  it("saves a canonical value when the editor is bound to the target project", async () => {
     const db = makeDb();
     vi.mocked(db.query).mockResolvedValue({
       rows: [{ node_locator: "/charger", compatible: "acme,power" }]
@@ -634,45 +618,37 @@ describe("catalog published-value save authorization", () => {
       ...catalogBinding,
       project_id: "project-a"
     });
-    vi.mocked(drafts.createCanonicalValueDraft).mockResolvedValue({
-      id: "pvdr-1",
+    vi.mocked(catalogSync.saveCanonicalProjectValue).mockResolvedValue({
       bindingId: "pbind-1",
+      currentValueId: "val-2",
       definitionId: "pdef_acme_power_iin_max",
-      effectiveRevisionId: "rev-def-1",
-      currentValueId: "val-1",
-      targetValue: "<2000>"
+      propertyKey: "iin_max",
+      rawText: "<2000>"
     });
     vi.mocked(sensitiveNode.assertTrustedSensitiveNodeWriteAllowed).mockResolvedValue(undefined as never);
 
-    const response = await requestJson<{ item: Record<string, unknown> }>(
+    const response = await requestJson(
       makeServer({ db, auth: projectEditor("project-a") }),
       "/api/v2/projects/project-a/parameter-bindings/pbind-1/drafts",
       { method: "POST", body: JSON.stringify(draftBody) }
     );
 
     expect(response.status).toBe(201);
-    expect(drafts.createCanonicalValueDraft).toHaveBeenCalled();
-    // The draft is pending work: the canonical value must not be written here.
-    expect(catalogSync.saveCanonicalProjectValue).not.toHaveBeenCalled();
-    // The returned draft id is the draft, not the current value id.
-    expect(response.body.item.draftId).toBe("pvdr-1");
-    expect(response.body.item.pending).toBe(true);
-    expect(response.body.item.currentValueId).toBe("val-1");
+    expect(catalogSync.saveCanonicalProjectValue).toHaveBeenCalled();
   });
 
-  it("allows an admin to create a pending draft on any project", async () => {
+  it("still allows an admin to save a canonical value on any project", async () => {
     const db = makeDb();
     vi.mocked(db.query).mockResolvedValue({
       rows: [{ node_locator: "/charger", compatible: "acme,power" }]
     });
     vi.mocked(catalogSync.findCatalogBindingRow).mockResolvedValue(catalogBinding);
-    vi.mocked(drafts.createCanonicalValueDraft).mockResolvedValue({
-      id: "pvdr-2",
+    vi.mocked(catalogSync.saveCanonicalProjectValue).mockResolvedValue({
       bindingId: "pbind-1",
+      currentValueId: "val-2",
       definitionId: "pdef_acme_power_iin_max",
-      effectiveRevisionId: "rev-def-1",
-      currentValueId: "val-1",
-      targetValue: "<2000>"
+      propertyKey: "iin_max",
+      rawText: "<2000>"
     });
     vi.mocked(sensitiveNode.assertTrustedSensitiveNodeWriteAllowed).mockResolvedValue(undefined as never);
 
@@ -683,176 +659,6 @@ describe("catalog published-value save authorization", () => {
     );
 
     expect(response.status).toBe(201);
-    expect(drafts.createCanonicalValueDraft).toHaveBeenCalled();
-    expect(catalogSync.saveCanonicalProjectValue).not.toHaveBeenCalled();
-  });
-});
-
-describe("canonical project binding reads", () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-    vi.spyOn(dbClient, "getRootPostgresPool").mockReturnValue({ query: vi.fn() } as never);
-  });
-
-  it("returns an honest empty list and never falls back to legacy bindings", async () => {
-    const db = makeDb();
-    vi.mocked(db.query).mockResolvedValue({
-      rows: [{ id: "project-1", name: "Project One", code: "P1" }]
-    } as never);
-    vi.mocked(catalogSync.listCatalogBindingRowsForProject).mockResolvedValue([]);
-
-    const response = await requestJson<{ items: unknown[] }>(
-      makeServer({ db }),
-      "/api/v2/projects/project-1/parameter-bindings"
-    );
-
-    expect(response.status).toBe(200);
-    // Canonical-only: an empty canonical Catalog yields an empty current view,
-    // never archived legacy rows presented as current data.
-    expect(response.body).toEqual({ items: [] });
-  });
-
-  it("still hides an unknown or foreign project behind 404", async () => {
-    const db = makeDb();
-    vi.mocked(db.query).mockResolvedValue({ rows: [] } as never);
-
-    const response = await requestJson(
-      makeServer({ db }),
-      "/api/v2/projects/project-missing/parameter-bindings"
-    );
-
-    expect(response.status).toBe(404);
-    expect(catalogSync.listCatalogBindingRowsForProject).not.toHaveBeenCalled();
-  });
-});
-
-describe("canonical import apply boundary", () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-    vi.spyOn(dbClient, "getRootPostgresPool").mockReturnValue({ query: vi.fn() } as never);
-    vi.spyOn(auditedWrite, "withAuditedWrite").mockImplementation(async (db, _auth, _ctx, fn) => {
-      const outcome = await fn(db as never);
-      return outcome.result;
-    });
-  });
-
-  it("refuses rows with no canonical binding instead of a legacy apply fallback", async () => {
-    const db = makeDb();
-    vi.mocked(db.query).mockImplementation(async (sql: unknown) => {
-      if (typeof sql === "string" && sql.includes("from parameter_import_batches")) {
-        return {
-          rows: [
-            {
-              items: [
-                {
-                  id: "item-1",
-                  name: "iin_max",
-                  classification: "added",
-                  projectParameterValueId: "pbind-legacy"
-                }
-              ],
-              project_id: "project-1"
-            }
-          ]
-        } as never;
-      }
-      return { rows: [] } as never;
-    });
-    vi.mocked(catalogSync.findCatalogBindingRow).mockResolvedValue(null);
-
-    const response = await requestJson<{ error?: { code?: string; details?: unknown } }>(
-      makeServer({ db }),
-      "/api/v1/parameter-import-batches/batch-1/apply",
-      { method: "POST", body: JSON.stringify({ selectedItemIds: ["item-1"] }) }
-    );
-
-    expect(response.status).toBe(409);
-    expect(response.body).toMatchObject({
-      error: { code: "CONFLICT", details: { reason: "unbound-canonical-binding", applied: 0 } }
-    });
-    // The legacy whole-batch apply service is never used as a fallback.
-    expect(parameterService.applyImportBatch).not.toHaveBeenCalled();
-    expect(importBatchRepository.markImportBatchApplied).not.toHaveBeenCalled();
-  });
-});
-
-describe("canonical value change request routes", () => {
-  const changeRequest = {
-    id: "pvcr-1",
-    projectId: "project-1",
-    draftId: "pvdr-1",
-    bindingId: "pbind-1",
-    definitionId: "pdef_acme_power_iin_max",
-    effectiveRevisionId: "rev-def-1",
-    status: "pending" as const,
-    targetValue: "<2000>",
-    reason: "raise input current",
-    submitterUserId: "user-1",
-    assignedToUserId: null,
-    reviewerUserId: null,
-    reviewerNote: null,
-    appliedValueId: null,
-    applyOutcome: null,
-    createdAt: "2026-09-15T00:00:00.000Z",
-    updatedAt: "2026-09-15T00:00:00.000Z"
-  };
-
-  beforeEach(() => {
-    vi.clearAllMocks();
-    vi.spyOn(dbClient, "getRootPostgresPool").mockReturnValue({ query: vi.fn() } as never);
-    vi.spyOn(dbClient, "isRootDatabase").mockReturnValue(true);
-    vi.spyOn(auditedWrite, "withAuditedWrite").mockImplementation(async (db, _auth, _ctx, fn) => {
-      const outcome = await fn(db as never);
-      return outcome.result;
-    });
-    vi.spyOn(governanceAudit, "writeTrustedGovernanceAudit").mockResolvedValue(undefined as never);
-  });
-
-  it("submits a pending draft inside the audited write", async () => {
-    const db = makeDb();
-    vi.mocked(drafts.submitCanonicalValueChange).mockResolvedValue(changeRequest);
-
-    const response = await requestJson(
-      makeServer({ db }),
-      "/api/v2/projects/project-1/parameter-value-drafts/pvdr-1/submit",
-      { method: "POST", body: JSON.stringify({}) }
-    );
-
-    expect(response.status).toBe(201);
-    expect(drafts.submitCanonicalValueChange).toHaveBeenCalled();
-  });
-
-  it("rejects an approve without parameter edit permission", async () => {
-    const db = makeDb();
-    const viewer = makeAuth({ permissions: ["parameter:view", "parameter:review"] });
-
-    const response = await requestJson(
-      makeServer({ db, auth: viewer }),
-      "/api/v2/projects/project-1/parameter-value-change-requests/pvcr-1/review",
-      { method: "POST", body: JSON.stringify({ decision: "approve" }) }
-    );
-
-    expect(response.status).toBe(403);
-    expect(drafts.reviewCanonicalValueChange).not.toHaveBeenCalled();
-  });
-
-  it("lets an editor reject a pending request without a sensitive-node check", async () => {
-    const db = makeDb();
-    vi.mocked(drafts.reviewCanonicalValueChange).mockResolvedValue({
-      ...changeRequest,
-      status: "rejected",
-      reviewerUserId: "user-1",
-      reviewerNote: "not now"
-    });
-
-    const response = await requestJson(
-      makeServer({ db }),
-      "/api/v2/projects/project-1/parameter-value-change-requests/pvcr-1/review",
-      { method: "POST", body: JSON.stringify({ decision: "reject", note: "not now" }) }
-    );
-
-    expect(response.status).toBe(200);
-    expect(drafts.reviewCanonicalValueChange).toHaveBeenCalled();
-    expect(sensitiveNode.assertTrustedSensitiveNodeWriteAllowed).not.toHaveBeenCalled();
+    expect(catalogSync.saveCanonicalProjectValue).toHaveBeenCalled();
   });
 });

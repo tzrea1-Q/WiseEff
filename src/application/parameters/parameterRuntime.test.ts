@@ -323,37 +323,6 @@ describe("createParameterRuntimeActions", () => {
     expect(dispatch).not.toHaveBeenCalledWith(expect.objectContaining({ type: "HYDRATE_PARAMETER_RUNTIME" }));
   });
 
-  it("preserves an archived old-link outcome instead of flattening it into a failure", async () => {
-    const dispatch = vi.fn();
-    const archived = new WiseEffApiError(
-      "GONE",
-      "legacy-parameter-id-retired",
-      { diagnostic: "legacy-parameter-id-retired", migrationEvidenceId: "mig-9" },
-      "req-archived"
-    );
-    const repository = createRepository({ getParameter: vi.fn().mockRejectedValue(archived) });
-    const actions = createParameterRuntimeActions({ runtimeMode: "api", repository, dispatch });
-
-    await expect(actions.getParameter("legacy-archived-1")).rejects.toBe(archived);
-    // An archived record is a documented outcome, so no failure notification.
-    expect(dispatch).not.toHaveBeenCalledWith(
-      expect.objectContaining({ type: "ADD_NOTIFICATION" })
-    );
-  });
-
-  it("still flattens a genuine detail-loading failure into a notification", async () => {
-    const dispatch = vi.fn();
-    const repository = createRepository({
-      getParameter: vi.fn().mockRejectedValue(new Error("api down"))
-    });
-    const actions = createParameterRuntimeActions({ runtimeMode: "api", repository, dispatch });
-
-    await expect(actions.getParameter("p-1")).rejects.toThrow();
-    expect(dispatch).toHaveBeenCalledWith(
-      expect.objectContaining({ type: "ADD_NOTIFICATION" })
-    );
-  });
-
   it("can return a refresh failure without dispatching a duplicate notification", async () => {
     const dispatch = vi.fn();
     const repository = createRepository({

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AlertCircle, Info, LoaderCircle } from "lucide-react";
 import type {
+  ParameterDraftDto,
   SubmitParameterChangesInput,
   WorkflowAssigneeCandidates
 } from "@/application/ports/ParameterRepository";
@@ -29,6 +30,7 @@ import { measureStatusSpelling } from "@/domain/parameter-topology/enablementEdi
 import { nodeEnablementLabel } from "@/domain/parameter-topology/nodeEnablement";
 import type { TopologyNodeEnablement } from "@/domain/parameter-topology/types";
 import { resolveParameterTopologyRepository } from "@/application/parameters/parameterTopologyResolve";
+import { createHttpParameterRepository } from "@/infrastructure/http/parameterClient";
 import { presentError } from "@/infrastructure/http/presentError";
 import {
   mapParameterTopologyError,
@@ -45,7 +47,6 @@ import {
 } from "./DtsBindingDraftTray";
 import { DtsNodeEnablementDialog } from "./DtsNodeEnablementDialog";
 import type { PendingEnablementDraft } from "./draftTrayTypes";
-import type { TrayHydrationDraft } from "@/application/parameters/canonicalDraftTray";
 import { DtsParameterWorkbench } from "./DtsParameterWorkbench";
 import { buildDtsWorkbenchRows } from "@/application/parameters/buildDtsWorkbenchRows";
 import { downloadSemanticWorkbenchCsv } from "@/application/parameters/exportSemanticWorkbenchRows";
@@ -71,7 +72,7 @@ export type ApiProjectTopologyWorkspaceProps = {
   /** Test seam — inject parameter file repository instead of resolving from runtime mode. */
   parameterFileRepository?: ParameterFileRepository;
   listConfigSets?: (projectId: string) => Promise<Array<{ id: string; name: string }>>;
-  listDrafts?: (projectId: string) => Promise<readonly TrayHydrationDraft[]>;
+  listDrafts?: (projectId: string) => Promise<ParameterDraftDto[]>;
   /** Server-side draft delete; tray removal must not leave the draft alive on the server. */
   deleteDraft?: (draftId: string) => Promise<void>;
   listWorkflowAssignees?: (projectId: string) => Promise<WorkflowAssigneeCandidates>;
@@ -111,7 +112,7 @@ function pickConfigSet(items: Array<{ id: string; name: string }>) {
 
 function mapServerDraftsToPending(
   projectId: string,
-  drafts: readonly TrayHydrationDraft[],
+  drafts: ParameterDraftDto[],
   bindings: ProjectParameterBinding[],
   effectiveNodes: EffectiveTopologyNode[],
   moduleRegistry: ParameterModuleRegistry,
@@ -208,7 +209,7 @@ function mapServerDraftsToPending(
   });
 }
 
-function resolveSharedWorkingTip(drafts: readonly TrayHydrationDraft[]): string | undefined {
+function resolveSharedWorkingTip(drafts: ParameterDraftDto[]): string | undefined {
   const tips = [
     ...new Set(
       drafts
@@ -355,7 +356,7 @@ export function ApiProjectTopologyWorkspace({
   const pendingDraftsRef = useRef(pendingDrafts);
   pendingDraftsRef.current = pendingDrafts;
   const [submitSuccessNotice, setSubmitSuccessNotice] = useState<string | null>(null);
-  const [serverDrafts, setServerDrafts] = useState<readonly TrayHydrationDraft[] | null>(null);
+  const [serverDrafts, setServerDrafts] = useState<ParameterDraftDto[] | null>(null);
   const [selectedDraftBindingIds, setSelectedDraftBindingIds] = useState<Set<string>>(new Set());
   const [enablementDialogTarget, setEnablementDialogTarget] = useState<{
     logicalNodeId: string;
@@ -420,11 +421,11 @@ export function ApiProjectTopologyWorkspace({
 
   useEffect(() => {
     let cancelled = false;
-    // The draft source is injected by the composition point (ParametersPage). This
-    // component must not build an HTTP client of its own: doing so bypassed the
-    // injectable seams and, before Issue #849, silently read the legacy
-    // `parameter-drafts` surface instead of the canonical pending drafts.
-    const resolveListDrafts = listDraftsRef.current;
+    const resolveListDrafts =
+      listDraftsRef.current ??
+      (runtimeMode === "api"
+        ? (id: string) => createHttpParameterRepository().listDrafts(id)
+        : undefined);
     if (!resolveListDrafts) {
       setServerDrafts([]);
       return undefined;
@@ -888,7 +889,11 @@ export function ApiProjectTopologyWorkspace({
   const handleRemoveDraft = async (draftId: string) => {
     const requestProjectId = projectId;
     const requestGeneration = projectGenerationRef.current;
-    const resolveDeleteDraft = deleteDraftRef.current;
+    const resolveDeleteDraft =
+      deleteDraftRef.current ??
+      (runtimeMode === "api"
+        ? (id: string) => createHttpParameterRepository().deleteDraft(id)
+        : undefined);
     if (!resolveDeleteDraft) {
       throw new Error("草稿删除入口未配置，无法移除服务端草稿。");
     }

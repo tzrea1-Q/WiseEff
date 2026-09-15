@@ -256,6 +256,7 @@ export async function pollLocalBridgeHealth(options: {
   fetchImpl?: typeof fetch;
   intervalMs?: number;
   timeoutMs?: number;
+  excludeBridgeId?: string;
 }): Promise<LocalBridgeHealthState | null> {
   const fetchImpl = options.fetchImpl ?? fetch;
   const intervalMs = options.intervalMs ?? 2000;
@@ -264,7 +265,7 @@ export async function pollLocalBridgeHealth(options: {
 
   while (Date.now() - started < timeoutMs) {
     const health = await probeLocalBridgeHealth(fetchImpl);
-    if (health?.connected) {
+    if (health?.connected && (!options.excludeBridgeId || health.bridgeId !== options.excludeBridgeId)) {
       return health;
     }
     await new Promise((resolve) => setTimeout(resolve, intervalMs));

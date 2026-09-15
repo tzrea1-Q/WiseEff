@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 import { LocalDeviceBridgePanel } from "./LocalDeviceBridgePanel";
@@ -53,4 +53,32 @@ describe("LocalDeviceBridgePanel install manifest loading", () => {
 
     expect(await screen.findByRole("link", { name: /安装 Bridge/ })).toBeInTheDocument();
   });
+});
+
+it("retains confirmed pairing when listing fails and allows retry", async () => {
+  const bridge = { id: "br-local", machineLabel: "本机", platform: "windows", arch: "amd64", revokedAt: null };
+  const probeHealth = async () => ({
+    health: { ok: true as const, connected: true, paired: true, bridgeId: bridge.id, updatedAt: "2026-09-15T00:00:00Z" },
+    reachability: "ok" as const
+  });
+  const listBridges = vi.fn().mockResolvedValue([bridge]);
+  const createCode = vi.fn().mockResolvedValue({ code: "123456", expiresAt: "2099-01-01T00:00:00Z" });
+  const onState = vi.fn();
+  const props = { detecting: false, protocol: "hdc" as const, onDetect: vi.fn(), listBridges,
+    createPairingCode: createCode, onBridgeStateChange: onState };
+  const view = render(<LocalDeviceBridgePanel {...props} probeHealth={probeHealth} />);
+  await screen.findByDisplayValue("本机");
+  createCode.mockClear();
+  listBridges.mockRejectedValueOnce(new Error("代理列表暂时不可用"));
+  view.rerender(<LocalDeviceBridgePanel {...props} probeHealth={async () => probeHealth()} />);
+
+  expect(await screen.findByText(/代理列表暂时不可用/)).toBeInTheDocument();
+  expect(screen.getByDisplayValue("本机")).toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "重新配对", exact: true })).not.toBeInTheDocument();
+  expect(createCode).not.toHaveBeenCalled();
+  expect(onState.mock.lastCall?.[0].bridges).toEqual([bridge]);
+
+  fireEvent.click(screen.getByRole("button", { name: "刷新代理状态" }));
+  await waitFor(() => expect(listBridges).toHaveBeenCalledTimes(3));
+  expect(screen.queryByText(/代理列表暂时不可用/)).not.toBeInTheDocument();
 });

@@ -92,8 +92,7 @@
         "kind": {
           "enum": [
             "driver-compatible",
-            "node-type-name",
-            "configuration-schema-id"
+            "node-type-name"
           ]
         },
         "value": {
@@ -158,8 +157,7 @@
         "kind": {
           "enum": [
             "driver",
-            "node-type",
-            "configuration-schema"
+            "node-type"
           ]
         },
         "canonicalKey": {
@@ -236,64 +234,21 @@
             }
           },
           "else": {
-            "if": {
-              "properties": {
-                "kind": {
-                  "const": "node-type"
-                }
-              },
-              "required": [
-                "kind"
-              ]
-            },
-            "then": {
-              "properties": {
-                "selector": {
-                  "type": "object",
-                  "properties": {
-                    "kind": {
-                      "const": "node-type-name"
-                    }
-                  },
-                  "required": [
-                    "kind"
-                  ]
-                },
-                "subtype": {
-                  "$ref": "#/$defs/nodeTypeSubtype"
-                }
-              }
-            },
-            "else": {
-              "if": {
+            "properties": {
+              "selector": {
+                "type": "object",
                 "properties": {
                   "kind": {
-                    "const": "configuration-schema"
+                    "const": "node-type-name"
                   }
                 },
                 "required": [
                   "kind"
                 ]
               },
-              "then": {
-                "properties": {
-                  "selector": {
-                    "type": "object",
-                    "properties": {
-                      "kind": {
-                        "const": "configuration-schema-id"
-                      }
-                    },
-                    "required": [
-                      "kind"
-                    ]
-                  },
-                  "subtype": {
-                    "$ref": "#/$defs/configurationSchemaSubtype"
-                  }
-                }
-              },
-              "else": false
+              "subtype": {
+                "$ref": "#/$defs/nodeTypeSubtype"
+              }
             }
           }
         }
@@ -321,8 +276,7 @@
         "selectorKind": {
           "enum": [
             "driver-compatible",
-            "node-type-name",
-            "configuration-schema-id"
+            "node-type-name"
           ]
         },
         "normalizedSelector": {
@@ -382,8 +336,7 @@
         "selectorKind": {
           "enum": [
             "driver-compatible",
-            "node-type-name",
-            "configuration-schema-id"
+            "node-type-name"
           ]
         },
         "notes": {
@@ -673,10 +626,6 @@
           "minContains": 1
         }
       }
-    },
-    "configurationSchemaSubtype": {
-      "type": "object",
-      "additionalProperties": false
     }
   }
 }

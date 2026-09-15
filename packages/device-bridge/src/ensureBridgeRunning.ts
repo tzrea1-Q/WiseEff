@@ -131,7 +131,7 @@ export async function ensureBridgeRunning(deps: EnsureBridgeRunningDependencies)
 
   const nodePath = resolveBundledNodePath(deps.cliPath, deps.execPath, deps.platform);
 
-  if (deps.platform === "win32") {
+  if (deps.platform === "win32" && !deps.forceRestart) {
     const serviceExit = await runWindowsServiceCommand("start", {
       platform: deps.platform,
       cliPath: deps.cliPath,

@@ -236,7 +236,6 @@ export const stableCatalogRulesSchema = z
           .object({
             driver: z.literal("driver-compatible"),
             "node-type": z.literal("node-type-name"),
-            "configuration-schema": z.literal("configuration-schema-id"),
           })
           .strict(),
         requirePermanentCanonicalOwnership: z.boolean(),

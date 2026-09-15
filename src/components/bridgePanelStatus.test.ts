@@ -15,6 +15,15 @@ const connectedHealth: LocalBridgeHealthState = {
 };
 
 describe("deriveBridgePanelStatus", () => {
+  it("requires re-pairing when the last registered bridge was revoked, even if local health is still online", () => {
+    const health = { ...connectedHealth, bridgeId: "revoked-bridge" };
+    expect(deriveBridgePanelStatus({ health, bridgeCount: 0, registeredBridgeIds: [] })).toBe("not_paired");
+    expect(deriveBridgePanelStatus({ health, bridgeCount: 0 })).toBe("online_no_device");
+    expect(shouldClearStaleBridgeConnectError({
+      connectError: "重新配对失败", health, panelStatus: "not_paired"
+    })).toBe(false);
+  });
+
   it("returns missing_bridge when remote page cannot reach local health and no bridge is registered on this host", () => {
     expect(
       deriveBridgePanelStatus({

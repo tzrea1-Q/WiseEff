@@ -79,33 +79,6 @@ export const allocationForRevision = (
   revisionId: `drev_acme_power_${propertyKey}_${revisionNumber}`,
 });
 
-/**
- * Issue #849 scope item 4 retires the acme sample in the vendor successor, so a
- * successor built from that predecessor can no longer mint definitions under
- * `csub_acme_power` (`subject-not-active`). These helpers target a vendor subject
- * that stays active, so the same carry-forward assertions remain exercisable.
- */
-export const VENDOR_ACTIVE_SUBJECT_ID = "csub_drv_sc8562";
-
-export const vendorIntegerChange = (
-  propertyKey: string,
-  displayName: string,
-): CreateDefinitionChange => ({
-  op: "create-definition",
-  subjectId: VENDOR_ACTIVE_SUBJECT_ID,
-  propertyKey,
-  content: integerContent(displayName, `${displayName} documentation.`),
-});
-
-export const vendorAllocationFor = (
-  propertyKey: string,
-): FrozenDefinitionAllocation => ({
-  subjectId: VENDOR_ACTIVE_SUBJECT_ID,
-  propertyKey,
-  definitionId: `pdef_sc8562_${propertyKey}`,
-  revisionId: `drev_sc8562_${propertyKey}_1`,
-});
-
 export const frozenPageIdentity = (
   defs: readonly FrozenDefinitionAllocation[],
   suffix = "1",

@@ -166,37 +166,22 @@ export function createHttpParameterRepository(apiClient: ApiClient = createDefau
         );
         return parameterRecordFromDto(response.item);
       } catch (error) {
-        if (error instanceof WiseEffApiError && error.code === "GONE") {
-          // The canonical Catalog answers an archived old link with the
-          // `legacy-id-archived` diagnostic, while the pre-cutover surface used
-          // `legacy-parameter-id-retired`. Both mean the same thing to the caller:
-          // the record was archived and is not current data. Normalizing them here
-          // keeps one archived outcome instead of letting the canonical diagnostic
-          // fall through as a generic error.
-          //
-          // The diagnostic travels in `details.diagnostic` on the workbench route
-          // and in `details.reason` on the operator Catalog route, so all three
-          // carriers are read; the two routes disagree on the field name, and a
-          // missed carrier would silently degrade an archived link to a generic
-          // error.
-          const carriers = [error.details?.diagnostic, error.details?.reason, error.message];
-          const diagnostic = carriers.includes("legacy-id-archived")
-            ? "legacy-id-archived"
-            : carriers.includes("legacy-parameter-id-retired")
-              ? "legacy-parameter-id-retired"
-              : null;
-          if (diagnostic) {
-            throw new WiseEffApiError(
-              "GONE",
-              diagnostic,
-              {
-                ...error.details,
-                diagnostic,
-                migrationEvidenceId: error.details?.migrationEvidenceId
-              },
-              error.requestId
-            );
-          }
+        if (
+          error instanceof WiseEffApiError &&
+          error.code === "GONE" &&
+          (error.message === "legacy-parameter-id-retired" ||
+            error.details?.diagnostic === "legacy-parameter-id-retired")
+        ) {
+          throw new WiseEffApiError(
+            "GONE",
+            "legacy-parameter-id-retired",
+            {
+              ...error.details,
+              diagnostic: "legacy-parameter-id-retired",
+              migrationEvidenceId: error.details?.migrationEvidenceId
+            },
+            error.requestId
+          );
         }
         throw error;
       }

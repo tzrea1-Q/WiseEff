@@ -283,7 +283,6 @@ export const runV05 = async (query: GateQuery): Promise<GateResult> => {
          or (
            (subject.kind = 'driver' and module.kind is distinct from 'driver-group')
            or (subject.kind = 'node-type' and module.kind is distinct from 'node-type')
-           or (subject.kind = 'configuration-schema' and module.kind is distinct from 'business')
          )
     )
     select

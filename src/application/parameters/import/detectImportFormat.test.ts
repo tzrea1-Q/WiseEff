@@ -1,12 +1,7 @@
 import * as XLSX from "xlsx";
 import { describe, expect, it, vi } from "vitest";
-import { presentError } from "@/infrastructure/http/presentError";
 import { IMPORT_TEMPLATE_HEADERS } from "./columnMap";
-import {
-  detectImportFormat,
-  parseImportSource,
-  UnsupportedImportFormatError
-} from "./detectImportFormat";
+import { detectImportFormat, parseImportSource } from "./detectImportFormat";
 
 describe("detectImportFormat", () => {
   it("detects xlsx from PK magic bytes", () => {
@@ -66,46 +61,6 @@ describe("detectImportFormat", () => {
         text: `${IMPORT_TEMPLATE_HEADERS.join(",")}\nfoo,Bar,1,2,,,,,,,`
       })
     ).toBe("spreadsheet");
-  });
-
-  it.each([
-    ["params.yaml", "yaml"],
-    ["params.yml", "yaml"],
-    ["params.toml", "toml"],
-    ["params.env", "env"],
-    [".env", "env"]
-  ])("does not collapse deferred format %s into spreadsheet", (fileName, format) => {
-    expect(detectImportFormat({ fileName, text: "unrelated body" })).toBe("unsupported");
-    expect(detectImportFormat({ fileName })).toBe("unsupported");
-    expect(new UnsupportedImportFormatError(format as "yaml" | "toml" | "env").message).toContain(
-      format.toUpperCase()
-    );
-  });
-
-  it("detects pasted yaml/toml/env bodies that carry no useful file name", () => {
-    expect(detectImportFormat({ fileName: "pasted-import.txt", text: "battery:\n  temp_max: 85" })).toBe(
-      "unsupported"
-    );
-    expect(detectImportFormat({ fileName: "pasted-import.txt", text: "[battery]\ntemp_max = 85" })).toBe(
-      "unsupported"
-    );
-    expect(detectImportFormat({ fileName: "pasted-import.txt", text: "TEMP_MAX=85\nBOARD_ID=1" })).toBe(
-      "unsupported"
-    );
-  });
-
-  it("keeps csv-shaped text on the spreadsheet path even when cells contain colons", () => {
-    const text = [
-      IMPORT_TEMPLATE_HEADERS.join(","),
-      "battery_health_reserve_pct,Battery Safety,Note: keep default,12,,,,,,,"
-    ].join("\n");
-    expect(detectImportFormat({ fileName: "params.csv", text })).toBe("spreadsheet");
-  });
-
-  it("prefers the deferred file name over xlsx magic bytes", () => {
-    expect(detectImportFormat({ fileName: "params.yaml", bytes: new Uint8Array([0x50, 0x4b]) })).toBe(
-      "unsupported"
-    );
   });
 });
 
@@ -182,37 +137,5 @@ describe("parseImportSource", () => {
       module: "Battery Safety",
       sourceFormat: "spreadsheet"
     });
-  });
-
-  it.each([
-    ["params.yaml", "battery:\n  temp_max: 85", "yaml"],
-    ["params.yml", "- name: temp_max", "yaml"],
-    ["params.toml", "[battery]\ntemp_max = 85", "toml"],
-    ["params.env", "TEMP_MAX=85", "env"],
-    [".env", "TEMP_MAX=85", "env"]
-  ])("rejects deferred input %s with an explicit unsupported-format message", async (fileName, text, format) => {
-    let thrown: unknown;
-    try {
-      await parseImportSource({ fileName, text });
-    } catch (error) {
-      thrown = error;
-    }
-
-    expect(thrown).toBeInstanceOf(UnsupportedImportFormatError);
-    const error = thrown as UnsupportedImportFormatError;
-    expect(error.format).toBe(format);
-    expect(error.fileName).toBe(fileName);
-    // The wizard surfaces thrown errors through presentError, which passes CJK product
-    // copy through: the user sees the explicit unsupported-format message, not a parse error.
-    const shown = presentError(error, "解析失败，请检查文件内容。");
-    expect(shown).toContain("暂不支持");
-    expect(shown).toContain(format.toUpperCase());
-    expect(shown).not.toBe("解析失败，请检查文件内容。");
-  });
-
-  it("rejects a pasted yaml body before any spreadsheet parsing", async () => {
-    await expect(
-      parseImportSource({ fileName: "pasted-import.txt", text: "battery:\n  temp_max: 85" })
-    ).rejects.toBeInstanceOf(UnsupportedImportFormatError);
   });
 });

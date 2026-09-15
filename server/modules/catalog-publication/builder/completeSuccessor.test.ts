@@ -1,4 +1,3 @@
-import { CATALOG_CAPABILITY_CONTRACT_REVISION } from "./types";
 import { describe, expect, it } from "vitest";
 
 import { compileCatalogRelease } from "../../catalog-kernel/compiler/index";
@@ -21,8 +20,6 @@ import {
   frozenPageIdentity,
   integerContent,
   pageIntegerChange,
-  vendorAllocationFor,
-  vendorIntegerChange,
 } from "./predecessorHarness";
 
 describe("buildCompleteSuccessor", () => {
@@ -89,7 +86,7 @@ describe("buildCompleteSuccessor", () => {
     expect(result.value.impact.matcher.fallbackImpact).toBe(false);
     expect(result.value.impact.matcher.existingMatchRulesChanged).toBe(false);
     expect("riskClass" in result.value.candidate).toBe(false);
-    expect(result.value.capabilityContract.revision).toBe(CATALOG_CAPABILITY_CONTRACT_REVISION);
+    expect(result.value.capabilityContract.revision).toBe("catalog-capability/v2");
   });
 
   it("fails closed for missing predecessor bytes and digest mismatch without persisting", async () => {
@@ -208,9 +205,9 @@ describe("buildCompleteSuccessor", () => {
     );
     const result = await buildCompleteSuccessor({
       predecessorArtifact: { digest: vendor.compiled.aggregateDigest, bytes },
-      changeSet: [vendorIntegerChange("iin_min", "Input current minimum")],
+      changeSet: [pageIntegerChange("iin_min", "Input current minimum")],
       frozenIdentity: {
-        ...frozenPageIdentity([vendorAllocationFor("iin_min")], "vendor"),
+        ...frozenPageIdentity([allocationFor("iin_min")], "vendor"),
         releaseVersion: CatalogReleaseVersion("1.2.0"),
       },
     });
@@ -230,70 +227,6 @@ describe("buildCompleteSuccessor", () => {
       expect(successorIds.has(id)).toBe(true);
     }
     expect(successorIds.size).toBe(predecessorIds.size + 1);
-  });
-
-  it("carries the retired acme subject and alias forward with their tombstones", async () => {
-    const vendor = compileVendorCatalogSuccessor();
-    const bytes = new TextEncoder().encode(
-      serializeContract(vendor.bundle as unknown as ContractJsonValue),
-    );
-    const predecessorTarget = vendor.bundle.releases.find(
-      (release) => release.manifest.release.id === vendor.bundle.targetReleaseId,
-    );
-    if (!predecessorTarget) throw new Error("vendor successor target missing");
-    const retiredAcme = predecessorTarget.documents.find(
-      (document) => document.kind === "subject" && document.content.id === "csub_acme_power",
-    );
-    expect(retiredAcme?.kind).toBe("subject");
-    if (retiredAcme?.kind !== "subject") return;
-    expect(retiredAcme.content.lifecycle).toBe("retired");
-
-    const result = await buildCompleteSuccessor({
-      predecessorArtifact: { digest: vendor.compiled.aggregateDigest, bytes },
-      changeSet: [vendorIntegerChange("iin_min", "Input current minimum")],
-      frozenIdentity: {
-        ...frozenPageIdentity([vendorAllocationFor("iin_min")], "vendor"),
-        releaseVersion: CatalogReleaseVersion("1.2.0"),
-      },
-    });
-    expect(result.ok).toBe(true);
-    if (!result.ok || result.value.kind !== "successor") return;
-    const successorTarget = result.value.artifact.bundle.releases.find(
-      (release) => release.manifest.release.id === result.value.artifact.targetReleaseId,
-    );
-    if (!successorTarget) throw new Error("built successor target missing");
-    const carriedSubject = successorTarget.documents.find(
-      (document) => document.kind === "subject" && document.content.id === "csub_acme_power",
-    );
-    const carriedAlias = successorTarget.documents.find(
-      (document) => document.kind === "alias" && document.content.id === "cali_acme_power_v1",
-    );
-    expect(carriedSubject?.kind).toBe("subject");
-    expect(carriedAlias?.kind).toBe("alias");
-    if (carriedSubject?.kind !== "subject" || carriedAlias?.kind !== "alias") return;
-    expect(carriedSubject.content.lifecycle).toBe("retired");
-    expect(carriedAlias.content.lifecycle).toBe("retired");
-    expect(carriedSubject.content.tombstone).toEqual(retiredAcme.content.tombstone);
-    expect(carriedSubject.content.tombstone?.successorId).toBeUndefined();
-  });
-
-  it("refuses to mint a definition under the retired acme subject", async () => {
-    const vendor = compileVendorCatalogSuccessor();
-    const bytes = new TextEncoder().encode(
-      serializeContract(vendor.bundle as unknown as ContractJsonValue),
-    );
-    const result = await buildCompleteSuccessor({
-      predecessorArtifact: { digest: vendor.compiled.aggregateDigest, bytes },
-      changeSet: [pageIntegerChange("iin_min", "Input current minimum")],
-      frozenIdentity: {
-        ...frozenPageIdentity([allocationFor("iin_min")], "vendor"),
-        releaseVersion: CatalogReleaseVersion("1.2.0"),
-      },
-    });
-    expect(result.ok).toBe(false);
-    if (!result.ok) {
-      expect(result.error).toEqual({ kind: "subject-not-active", subjectId: "csub_acme_power" });
-    }
   });
 
   it("rejects M2 ops on the default M1 product path", async () => {

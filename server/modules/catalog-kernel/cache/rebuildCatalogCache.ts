@@ -116,7 +116,7 @@ const snapshotPayload = (
 ): string => {
   const subjects = loaded.snapshot.listSubjects({
     selection: { kind: "all" },
-    kinds: ["driver", "node-type", "configuration-schema"],
+    kinds: ["driver", "node-type"],
     lifecycles: ["active", "retired"],
     search: { kind: "absent" },
     page: { limit: CatalogPageLimit(10_000), after: { kind: "absent" } },
