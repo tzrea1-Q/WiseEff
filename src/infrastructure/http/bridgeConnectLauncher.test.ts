@@ -1,8 +1,18 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { buildBridgeConnectUrl, connectLocalBridge, launchBridgeConnect, launchBridgeSchemeForConnect, probeLocalBridgeHealth, requestLocalBridgeConnect } from "./bridgeConnectLauncher";
+import { buildBridgeConnectUrl, connectLocalBridge, launchBridgeConnect, launchBridgeSchemeForConnect, pollLocalBridgeHealth, probeLocalBridgeHealth, requestLocalBridgeConnect } from "./bridgeConnectLauncher";
 
 describe("bridgeConnectLauncher", () => {
+  it("waits for the replacement bridge instead of accepting the revoked bridge's old online health", async () => {
+    const health = { ok: true, paired: true, connected: true, updatedAt: "2026-09-15T00:00:00Z" };
+    const fetchImpl = vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({ ...health, bridgeId: "revoked" })))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ ...health, bridgeId: "replacement" })));
+    const result = await pollLocalBridgeHealth({ fetchImpl, intervalMs: 0, excludeBridgeId: "revoked" });
+    expect(result?.bridgeId).toBe("replacement");
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
+  });
+
   it("launches custom protocol URLs via location.assign", () => {
     const assign = vi.fn();
     const original = window.location;

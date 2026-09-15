@@ -207,6 +207,8 @@ wiseeff-bridge service uninstall
 
 ## 排障建议
 
+- **撤销后重新连接**：撤销当前 Bridge 会使其配对失效。页面会退回“重新配对”，包括没有其他有效代理的情况。请使用新配对码；“重新检测设备”无法恢复已撤销的授权。重新配对成功后，本机进程会使用新凭据重启，页面等待新代理上线后再检测设备。这需要安装包含重新配对重启修复的 Bridge；仅部署网页/API 不会升级已安装的 Bridge。
+- **Windows 找不到服务**：Windows 服务不可用时，Bridge 可以作为普通后台进程运行。只有注册了 `WiseEffBridge` 服务，才能使用 `Restart-Service WiseEffBridge`。旧版 Bridge 如需手动重启，先找到 TCP 18787 的监听进程，确认其命令指向 WiseEff 安装目录，再停止该进程；运行安装目录中的 `wiseeff-bridge.cmd start`，保持终端打开，然后刷新网页并重新配对。
 - **Scheme 本地 connect 被拒绝**：`wiseeff-bridge` 仅接受 `https` 服务端 URL（本地开发可用 `http://localhost` / `127.0.0.1`）及 6 位配对码。
 - **Manifest 缺少 Windows 制品**：检查 `DEVICE_BRIDGE_ARTIFACT_ROOT` 与制品目录结构。
 - **Bridge WebSocket 被拒绝**：检查 token TTL/scope 与服务器时间偏差。
