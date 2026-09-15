@@ -116,6 +116,10 @@ describe("equivalent fixed L1 scheduling", () => {
     expect(rejected((job) => {
       job.env!.DATABASE_URL = "postgres://wiseeff:wiseeff@127.0.0.1:5432/wiseeff_l1_server/extra";
     })).toContain(backendDatabase);
+    // `new URL()` trims a padded scalar; node-postgres does not.
+    expect(rejected((job) => {
+      job.env!.DATABASE_URL = "postgres://wiseeff:wiseeff@127.0.0.1:5432/wiseeff_l1_server ";
+    })).toContain(backendDatabase);
     expect(rejected((job) => { delete job.env!.DATABASE_URL; })).toContain("must define the DATABASE_URL");
     expect(rejected((job) => {
       job.services!.postgres!.env!.POSTGRES_DB = "wiseeff_somewhere_else";

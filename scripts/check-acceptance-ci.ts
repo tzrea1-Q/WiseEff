@@ -425,7 +425,10 @@ export function runAcceptanceCiConfigurationCheck() {
  * silently satisfy the guard by not looking like the compose app database.
  */
 function isJobOwnedBackendDatabaseUrl(value: unknown, serviceDatabase: string): boolean {
-  if (typeof value !== "string" || value.trim() === "" || serviceDatabase === "") return false;
+  if (typeof value !== "string" || serviceDatabase === "") return false;
+  // `new URL()` silently trims a padded scalar while `pg-connection-string` keeps the
+  // padding, so an untrimmed value is rejected rather than normalised.
+  if (value !== value.trim() || serviceDatabase !== serviceDatabase.trim()) return false;
   // node-postgres honours routing overrides in query parameters (`?host=`, `?port=`)
   // that `new URL()` does not surface, so a green check could still aim the suite at
   // another host or port. The lane helper rejects query strings and fragments for the
