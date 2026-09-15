@@ -958,17 +958,6 @@ export function CatalogPage({
           closeLabel={catalogDetailCloseLabel}
           title={`编辑 ${definition.propertyKey}`.trim()}
         >
-          <div role="region" aria-label={catalogDetailLabel} data-catalog-detail-region="true">
-            {detailBody}
-          </div>
-          {historyOpen ? (
-            <section aria-label={catalogTimelineLabel} data-catalog-history-region="true">
-              <CatalogHistoryBody
-                timeline={snapshot?.timeline ?? null}
-                revisions={snapshot?.revisions ?? []}
-              />
-            </section>
-          ) : null}
           {renderDefinitionEditor ? (
             <div data-definition-editor="true">
               {renderDefinitionEditor(definition, {
@@ -976,7 +965,21 @@ export function CatalogPage({
                 timeline: snapshot?.timeline ?? null
               })}
             </div>
-          ) : null}
+          ) : (
+            <>
+              <div role="region" aria-label={catalogDetailLabel} data-catalog-detail-region="true">
+                {detailBody}
+              </div>
+              {historyOpen ? (
+                <section aria-label={catalogTimelineLabel} data-catalog-history-region="true">
+                  <CatalogHistoryBody
+                    timeline={snapshot?.timeline ?? null}
+                    revisions={snapshot?.revisions ?? []}
+                  />
+                </section>
+              ) : null}
+            </>
+          )}
         </WorkbenchSheet>
       ) : null}
     </div>
