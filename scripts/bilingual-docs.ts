@@ -8,6 +8,7 @@ export interface BilingualDocEntry {
 }
 
 export const developerFacingBilingualDocs: BilingualDocEntry[] = [
+  { en: "docs/exec-plans/active/2026-09-15-project-review-role-governance.md", zh: "docs/zh-CN/exec-plans/active/2026-09-15-project-review-role-governance.md", tier: "plan", status: "required" },
   { en: "AGENTS.md", zh: "docs/zh-CN/root/AGENTS.md", tier: "core", status: "required" },
   { en: "README.md", zh: "docs/zh-CN/root/README.md", tier: "core", status: "required" },
   { en: "CONTRIBUTING.md", zh: "docs/zh-CN/root/CONTRIBUTING.md", tier: "core", status: "required" },
