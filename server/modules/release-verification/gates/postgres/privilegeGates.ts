@@ -136,7 +136,30 @@ export const runP01 = async (db: Database): Promise<GateResult> => {
     ),
   ];
 
-  const members = await db.query<{ member: string; granted: string }>(
+  // Two distinct violations, because the documented role model allows one and forbids
+  // the other (docs/SECURITY.md, and the P01 row of
+  // docs/design-docs/parameter-catalog-verification-upgrade-retirement-gates.md):
+  //
+  // - `catalog_migration_owner` owns the schema, so *any* login membership is an
+  //   assume path: the session can `SET ROLE` into schema ownership. Zero members.
+  // - `catalog_synchronizer_role` and `parameter_governance_writer_role` are meant to
+  //   be assumed explicitly by the composition roots (`SET LOCAL ROLE`) through
+  //   documented `NOINHERIT` memberships. What must never exist is a login that
+  //   *inherits* one of them, because then it uses the privileges without that audited
+  //   path. So the check is inheritance, not membership.
+  const schemaOwnerMembers = await db.query<{ member: string; granted: string }>(
+    `
+    select member.rolname as member, granted.rolname as granted
+    from pg_catalog.pg_auth_members membership
+    join pg_catalog.pg_roles granted on granted.oid = membership.roleid
+    join pg_catalog.pg_roles member on member.oid = membership.member
+    where granted.rolname = $1
+      and member.rolcanlogin
+    `,
+    [CATALOG_MIGRATION_OWNER],
+  );
+
+  const inheritingMembers = await db.query<{ member: string; granted: string }>(
     `
     select member.rolname as member, granted.rolname as granted
     from pg_catalog.pg_auth_members membership
@@ -144,12 +167,14 @@ export const runP01 = async (db: Database): Promise<GateResult> => {
     join pg_catalog.pg_roles member on member.oid = membership.member
     where granted.rolname = any($1::text[])
       and member.rolcanlogin
+      and member.rolinherit
     `,
     [[CATALOG_MIGRATION_OWNER, CATALOG_SYNCHRONIZER_ROLE, PARAMETER_GOVERNANCE_WRITER_ROLE]],
   );
 
   const bypasses = probes.filter((item) => item.succeeded || item.sqlstate !== "42501");
-  const violationCount = granted.length + bypasses.length + members.rows.length;
+  const violationCount =
+    granted.length + bypasses.length + schemaOwnerMembers.rows.length + inheritingMembers.rows.length;
   await db.query("reset role").catch(() => undefined);
   return countedResult("PCAT-DB-P01", "PCAT-PRIV-CATALOG-IMMUTABILITY-BYPASS", violationCount, {
     bypassCount: bypasses.length,
@@ -158,7 +183,8 @@ export const runP01 = async (db: Database): Promise<GateResult> => {
       relation: row.relation,
       role: row.role_name,
     })),
-    loginMembers: members.rows,
+    schemaOwnerMembers: schemaOwnerMembers.rows,
+    inheritingMembers: inheritingMembers.rows,
     probeCount: probes.length,
     sqlstateChecksum: checksumProbes(probes),
     sqlstates: probes.map((item) => item.sqlstate),

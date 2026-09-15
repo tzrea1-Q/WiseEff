@@ -8,7 +8,11 @@ import {
   isTestDatabaseAvailable,
   type InMemoryTestDatabase,
 } from "../../../../testing/testDatabase";
-import { PARAMETER_GOVERNANCE_WRITER_ROLE } from "../../../catalog-kernel/security/catalogRoleManifest";
+import {
+  CATALOG_MIGRATION_OWNER,
+  CATALOG_SYNCHRONIZER_ROLE,
+  PARAMETER_GOVERNANCE_WRITER_ROLE,
+} from "../../../catalog-kernel/security/catalogRoleManifest";
 import { createPostgresGateAdapters, loadPackagedMigrationInventory } from "./index";
 import { DEFAULT_MIGRATIONS_DIR } from "./inventory";
 import { catalogRelation, quoteIdent } from "./relations";
@@ -177,5 +181,59 @@ describe("P01/P02 SQLSTATE privilege gates", () => {
     const attempt = expectOk(await service.runVerification(plan.digest));
     expect(attempt.results.find((result) => result.gateId === "PCAT-DB-P01")?.status).toBe("passed");
     expect(attempt.results.find((result) => result.gateId === "PCAT-DB-P02")?.status).toBe("passed");
+  }, 60_000);
+
+  /**
+   * The documented role model (`docs/SECURITY.md`) gives the API login a NOINHERIT
+   * membership in `parameter_governance_writer_role` and the publication manager one in
+   * `catalog_synchronizer_role`, precisely so the composition roots may `SET LOCAL ROLE`.
+   * P01 must accept those and reject the two real bypass shapes: a login that *inherits*
+   * a privileged role, and any login member of the schema-owning migration owner.
+   */
+  it("accepts documented NOINHERIT memberships and rejects inheritance and schema ownership", async () => {
+    const token = (process.env.WISEEFF_TEST_RUN_TOKEN ?? `pid${process.pid}`).replace(/[^a-z0-9]/giu, "");
+    const writerLogin = `p01_writer_${token}`;
+    const managerLogin = `p01_manager_${token}`;
+    const inheritingLogin = `p01_inherit_${token}`;
+    const ownerLogin = `p01_owner_${token}`;
+    const created: string[] = [];
+    const createLogin = async (name: string, inherit: boolean) => {
+      await db.query(
+        `create role ${quoteIdent(name)} login ${inherit ? "inherit" : "noinherit"}
+         nosuperuser nocreatedb nocreaterole nobypassrls`,
+      );
+      created.push(name);
+    };
+    try {
+      await createLogin(writerLogin, false);
+      await db.query(`grant ${quoteIdent(PARAMETER_GOVERNANCE_WRITER_ROLE)} to ${quoteIdent(writerLogin)}`);
+      await createLogin(managerLogin, false);
+      await db.query(`grant ${quoteIdent(CATALOG_SYNCHRONIZER_ROLE)} to ${quoteIdent(managerLogin)}`);
+      const documented = await runP01(db);
+      expect(documented.status).toBe("passed");
+      expect(documented.failureCode).toBeNull();
+
+      await createLogin(inheritingLogin, true);
+      await db.query(`grant ${quoteIdent(CATALOG_SYNCHRONIZER_ROLE)} to ${quoteIdent(inheritingLogin)}`);
+      const inheriting = await runP01(db);
+      expect(inheriting.status).toBe("failed");
+      expect(inheriting.failureCode).toBe("PCAT-PRIV-CATALOG-IMMUTABILITY-BYPASS");
+
+      await db.query(`revoke ${quoteIdent(CATALOG_SYNCHRONIZER_ROLE)} from ${quoteIdent(inheritingLogin)}`);
+      const afterRevoke = await runP01(db);
+      expect(afterRevoke.status).toBe("passed");
+
+      // NOINHERIT is not enough for the schema owner: any login membership is an
+      // assume path, which is why this one still fails.
+      await createLogin(ownerLogin, false);
+      await db.query(`grant ${quoteIdent(CATALOG_MIGRATION_OWNER)} to ${quoteIdent(ownerLogin)}`);
+      const owner = await runP01(db);
+      expect(owner.status).toBe("failed");
+      expect(owner.failureCode).toBe("PCAT-PRIV-CATALOG-IMMUTABILITY-BYPASS");
+    } finally {
+      for (const name of created) {
+        await db.query(`drop role if exists ${quoteIdent(name)}`).catch(() => undefined);
+      }
+    }
   }, 60_000);
 });
