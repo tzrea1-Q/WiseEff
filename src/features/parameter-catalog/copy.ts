@@ -31,7 +31,6 @@ export const catalogSearchLabel = "搜索参数定义";
 export const catalogSearchSubmitLabel = "搜索";
 export const catalogSearchClearLabel = "清除搜索";
 export const catalogRefreshLabel = "刷新";
-export const catalogSubjectsLabel = "主体列表";
 export const catalogDefinitionsLabel = "参数定义列表";
 export const catalogReviewWorkLabel = "待审核事项";
 export const catalogSelectDefinitionHint = "选择一项参数定义以查看身份、修订与时间线。";

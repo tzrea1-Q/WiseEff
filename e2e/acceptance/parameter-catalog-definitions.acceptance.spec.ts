@@ -66,7 +66,9 @@ test.describe("restored definition workspace and governed authoring", () => {
     await expect(count).toContainText(/共 \d+ 项/);
 
     const navigator = region.getByRole("navigation", { name: "参数定义模块树" });
-    const moduleOption = navigator.getByRole("button").first();
+    // The navigator is one tree; its module branches scope the collection and its
+    // subject leaves select a single subject.
+    const moduleOption = navigator.locator('[data-catalog-node-kind="module"]').first();
     if ((await moduleOption.count()) > 0) {
       await moduleOption.click();
       await expect(region.getByText(/已选模块子树/)).toBeVisible();

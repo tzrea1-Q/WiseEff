@@ -4,7 +4,7 @@ import {
   publicationSurfaceAllowsAuthoring,
   publicationSurfaceAllowsPublishing,
   publicationSurfaceCopy,
-  publicationSurfaceMessage
+  publicationSurfaceAdvisory
 } from "./publicationSurface";
 import type { PublicationSurfaceItem } from "./publicationSurface";
 
@@ -23,27 +23,33 @@ const base = (): PublicationSurfaceItem => ({
 
 describe("publication surface copy", () => {
   it("explains policy, freeze, and adoption separately", () => {
-    expect(publicationSurfaceMessage({ ...base(), blockers: ["publication-policy-disabled"] }).message).toContain(
+    expect(publicationSurfaceAdvisory({ ...base(), blockers: ["publication-policy-disabled"] }).message).toContain(
       "策略已关闭"
     );
-    expect(publicationSurfaceMessage({ ...base(), blockers: ["publication-frozen"] }).message).toContain("冻结");
-    expect(publicationSurfaceMessage({ ...base(), blockers: ["catalog-not-adopted"] }).message).toContain("接管");
+    expect(publicationSurfaceAdvisory({ ...base(), blockers: ["publication-frozen"] }).message).toContain("冻结");
+    expect(publicationSurfaceAdvisory({ ...base(), blockers: ["catalog-not-adopted"] }).message).toContain("接管");
   });
 
   it("keeps author-only distinct from missing capability", () => {
-    const authorOnly = publicationSurfaceMessage({
+    const authorOnly = publicationSurfaceAdvisory({
       ...base(),
       publishingAllowed: false,
       blockers: []
     });
     expect(authorOnly.message).toContain("保存草稿");
-    expect(publicationSurfaceMessage({ ...base(), blockers: ["publication-capability-missing"] }).message).toContain(
+    expect(publicationSurfaceAdvisory({ ...base(), blockers: ["publication-capability-missing"] }).message).toContain(
       "权限"
     );
   });
 
-  it("keeps fetch-failed copy distinct from a ready surface", () => {
+  it("keeps fetch-failed copy distinct from an advisory", () => {
     expect(publicationSurfaceCopy.fetchFailed).toContain("无法读取发布状态");
+  });
+
+  it("stays silent when the surface is enabled and unblocked", () => {
+    // Issue #847 follow-up: a healthy surface shows no banner and no publish-dialog
+    // status line, so "policy enabled / catalog adopted" is never restated.
+    expect(publicationSurfaceAdvisory(base())).toBeNull();
   });
 });
 

@@ -159,12 +159,20 @@ export async function waitForCatalogState(page: Page, state: string | RegExp) {
 }
 
 export async function selectSubjectByName(page: Page, name: string | RegExp) {
-  const fromList = page.getByRole("list", { name: "主体列表" }).getByRole("button", { name });
-  if (await fromList.count()) {
-    await fromList.click();
+  // Subjects are leaves of the single module navigator tree; wait for the
+  // collection to settle before falling back to a page-level match.
+  const fromTree = page
+    .getByRole("navigation", { name: "参数定义模块树" })
+    .getByRole("button", { name: /^选择主体 / })
+    .filter({ hasText: name })
+    .first();
+  try {
+    await fromTree.waitFor({ state: "visible", timeout: 20_000 });
+    await fromTree.click();
     return;
+  } catch {
+    await page.getByRole("button", { name }).first().click();
   }
-  await page.getByRole("button", { name }).click();
 }
 
 export async function selectDefinitionByKey(page: Page, propertyKey: string) {

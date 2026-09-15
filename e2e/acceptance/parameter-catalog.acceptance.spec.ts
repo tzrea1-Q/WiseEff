@@ -304,10 +304,9 @@ test.describe("canonical parameter catalog page", () => {
     await expect(page.getByRole("region", { name: "目录列表", exact: true })).toBeVisible();
     await expect(page.getByRole("navigation", { name: "参数定义模块树" })).toBeVisible();
     await expect(page.getByRole("status", { name: "结果计数" })).toContainText(/共 \d+ 项/);
-    // The restored rail renders the organization subject inventory in the module
-    // navigator; a scoped organization never sees a hidden or empty collection.
-    await expect(page.getByRole("list", { name: "主体列表" })).toBeVisible();
-    await expect(page.getByRole("list", { name: "主体列表" }).getByRole("listitem")).toHaveCount(2);
+    // The restored rail renders one module tree whose leaves are the subject
+    // inventory; a scoped organization never sees a hidden or empty collection.
+    await expect(page.locator('[data-catalog-subject-node="true"]')).toHaveCount(2);
     await expect(page.getByText(catalogUiCopy.emptyMessages["no-registrations"])).toHaveCount(0);
     await expect(page.getByText(catalogUiCopy.emptyMessages["no-definitions"])).toHaveCount(0);
 

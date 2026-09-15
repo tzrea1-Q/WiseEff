@@ -23,7 +23,7 @@ import {
   readStoredPublicationJob,
   writeStoredPublicationJob
 } from "./publicationJobStorage";
-import { publicationSurfaceMessage, type PublicationSurfaceItem } from "./publicationSurface";
+import { publicationSurfaceAdvisory, type PublicationSurfaceItem } from "./publicationSurface";
 import {
   buildPublicationChangeSet,
   definitionContentOf,
@@ -94,6 +94,11 @@ export function PublicationDialog({
 }: PublicationDialogProps) {
   const surfaceAllowsAuthoring = publicationSurface?.authoringAllowed === true;
   const surfaceAllowsPublishing = publicationSurface?.publishingAllowed === true;
+  // A healthy surface carries no advisory: it stays silent instead of restating
+  // that publishing is enabled.
+  const publicationAdvisory = publicationSurface
+    ? publicationSurfaceAdvisory(publicationSurface)
+    : null;
   const canPreview =
     surfaceAllowsAuthoring &&
     canExecutePublicationAction(actor, "preview-publication", domainState, sessionPermissions);
@@ -487,9 +492,9 @@ export function PublicationDialog({
               <div id={descriptionId} className="governance-confirm-dialog__body">
                 <p id={describedById}>{publicationCopy.noInternalIds}</p>
                 <p>{publicationCopy.requiredApproval}</p>
-                {publicationSurface ? (
-                  <p role="status" data-tone={publicationSurfaceMessage(publicationSurface).tone}>
-                    {publicationSurfaceMessage(publicationSurface).message}
+                {publicationAdvisory ? (
+                  <p role="status" data-tone={publicationAdvisory.tone}>
+                    {publicationAdvisory.message}
                   </p>
                 ) : null}
                 {status ? (

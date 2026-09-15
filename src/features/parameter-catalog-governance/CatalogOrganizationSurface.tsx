@@ -21,7 +21,7 @@ import {
   publicationSurfaceAllowsAuthoring,
   publicationSurfaceAllowsPublishing,
   publicationSurfaceCopy,
-  publicationSurfaceMessage,
+  publicationSurfaceAdvisory,
   type PublicationSurfaceItem
 } from "./publicationSurface";
 import { RegistrationDialog } from "./RegistrationDialog";
@@ -154,7 +154,7 @@ export function CatalogOrganizationSurface({
     [anchor, onAnchorChange]
   );
 
-  const surfaceStatus = publicationSurface ? publicationSurfaceMessage(publicationSurface) : null;
+  const surfaceStatus = publicationSurface ? publicationSurfaceAdvisory(publicationSurface) : null;
 
   return (
     <div className="parameter-catalog-organization">

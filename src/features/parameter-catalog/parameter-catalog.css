@@ -189,7 +189,6 @@
   gap: var(--space-2);
 }
 
-.parameter-catalog__module-option,
 .parameter-catalog__tree-select {
   display: flex;
   align-items: center;
@@ -207,18 +206,15 @@
   cursor: pointer;
 }
 
-.parameter-catalog__module-option:hover,
 .parameter-catalog__tree-select:hover {
   background: var(--surface-sunken);
 }
 
-.parameter-catalog__module-option[aria-pressed="true"],
 .parameter-catalog__tree-select[aria-pressed="true"] {
   background: var(--pcat-accent-soft);
   border-color: color-mix(in srgb, var(--pcat-accent) 35%, var(--pcat-border));
 }
 
-.parameter-catalog__module-option:focus-visible,
 .parameter-catalog__tree-select:focus-visible,
 .parameter-catalog__tree-toggle:focus-visible {
   outline: none;
@@ -259,6 +255,32 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* A subject leaf inside the module tree: name plus its type/registration meta. */
+.parameter-catalog__tree-select[data-catalog-node-kind="subject"] {
+  gap: var(--space-2);
+  font-size: var(--text-sm);
+}
+
+.parameter-catalog__tree-select[data-catalog-node-kind="subject"] .parameter-catalog__tree-label {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.parameter-catalog__tree-select[data-catalog-node-kind="subject"] .parameter-catalog__subject-meta {
+  flex: 0 0 auto;
+  font-size: var(--text-xs);
+}
+
+/* The unregistered group is a branch label, not a filter value. */
+.parameter-catalog__tree-select--group {
+  cursor: default;
+  color: var(--pcat-secondary);
+}
+
+.parameter-catalog__tree-select--group:hover {
+  background: transparent;
 }
 
 .parameter-catalog__module-count {
@@ -389,58 +411,11 @@
   max-height: 16rem;
 }
 
-.parameter-catalog[data-catalog-layout="mobile"] .parameter-catalog__subjects {
-  max-height: 10rem;
-  overflow: auto;
-}
-
 .parameter-catalog__pane-title {
   margin: 0;
   font-size: var(--text-lg);
   font-weight: 600;
   line-height: var(--leading-lg);
-}
-
-.parameter-catalog__subjects {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-1);
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-
-.parameter-catalog__subject {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: var(--space-1);
-  width: 100%;
-  min-width: 0;
-  padding: var(--space-2) var(--space-3);
-  text-align: left;
-  background: transparent;
-  border: 1px solid transparent;
-  border-radius: var(--radius-md);
-  cursor: pointer;
-}
-
-.parameter-catalog__subject:hover:not(:disabled) {
-  background: color-mix(in srgb, var(--pcat-accent-soft) 45%, var(--pcat-surface));
-}
-
-.parameter-catalog__subject:active:not(:disabled) {
-  background: var(--pcat-accent-soft);
-}
-
-.parameter-catalog__subject:focus-visible {
-  outline: none;
-  box-shadow: var(--ring);
-}
-
-.parameter-catalog__subject[aria-pressed="true"] {
-  background: var(--pcat-accent-soft);
-  border-color: color-mix(in srgb, var(--pcat-accent) 35%, var(--pcat-border));
 }
 
 .parameter-catalog__subject-name,

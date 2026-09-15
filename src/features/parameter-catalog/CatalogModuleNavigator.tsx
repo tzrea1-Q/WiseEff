@@ -2,31 +2,43 @@ import { useState } from "react";
 
 import type { CatalogNavigatorNode } from "./catalogModuleScope";
 
+export type CatalogModuleNavigatorAllOption = {
+  label: string;
+  count: number;
+  selected: boolean;
+  onSelect: () => void;
+};
+
 export type CatalogModuleNavigatorProps = {
   nodes: readonly CatalogNavigatorNode[];
-  selectedModuleId: string | null;
-  onSelect: (moduleId: string) => void;
+  /** Selected module id, or `subject:<subjectId>` for a subject leaf. */
+  selectedId: string | null;
+  onSelectNode: (node: CatalogNavigatorNode) => void;
+  /** Row that clears the scope and returns to the complete collection. */
+  allOption?: CatalogModuleNavigatorAllOption;
   /** Initial expansion depth; deeper nodes stay collapsed for compactness. */
   defaultExpandDepth?: number;
   ariaLabel?: string;
+  emptyMessage?: string;
 };
 
 function TreeNode({
   node,
-  selectedModuleId,
-  onSelect,
+  selectedId,
+  onSelectNode,
   depth,
   defaultExpandDepth
 }: {
   node: CatalogNavigatorNode;
-  selectedModuleId: string | null;
-  onSelect: (moduleId: string) => void;
+  selectedId: string | null;
+  onSelectNode: (node: CatalogNavigatorNode) => void;
   depth: number;
   defaultExpandDepth: number;
 }) {
   const [expanded, setExpanded] = useState(depth < defaultExpandDepth);
-  const selected = node.id === selectedModuleId;
+  const selected = node.id === selectedId;
   const hasChildren = node.children.length > 0;
+  const selectable = node.kind !== "unregistered-group";
 
   return (
     <li className="parameter-catalog__tree-node">
@@ -44,15 +56,36 @@ function TreeNode({
         ) : (
           <span className="parameter-catalog__tree-toggle" aria-hidden="true" />
         )}
-        <button
-          type="button"
-          className="parameter-catalog__tree-select"
-          aria-pressed={selected}
-          onClick={() => onSelect(node.id)}
-        >
-          <span className="parameter-catalog__tree-label">{node.displayName}</span>
-          <span className="parameter-catalog__module-count">{node.subjectCount}</span>
-        </button>
+        {selectable ? (
+          <button
+            type="button"
+            className="parameter-catalog__tree-select"
+            aria-pressed={selected}
+            aria-label={
+              node.kind === "subject" ? `选择主体 ${node.displayName}` : undefined
+            }
+            data-catalog-node-kind={node.kind}
+            {...(node.kind === "subject"
+              ? { "data-catalog-subject-node": "true", "data-catalog-subject-id": node.subjectId }
+              : {})}
+            onClick={() => onSelectNode(node)}
+          >
+            <span className="parameter-catalog__tree-label">{node.displayName}</span>
+            {node.kind === "subject" && node.meta ? (
+              <span className="parameter-catalog__subject-meta">{node.meta}</span>
+            ) : (
+              <span className="parameter-catalog__module-count">{node.subjectCount}</span>
+            )}
+          </button>
+        ) : (
+          <span
+            className="parameter-catalog__tree-select parameter-catalog__tree-select--group"
+            data-catalog-node-kind={node.kind}
+          >
+            <span className="parameter-catalog__tree-label">{node.displayName}</span>
+            <span className="parameter-catalog__module-count">{node.subjectCount}</span>
+          </span>
+        )}
       </div>
       {hasChildren && expanded ? (
         <ul className="parameter-catalog__tree">
@@ -60,8 +93,8 @@ function TreeNode({
             <TreeNode
               key={child.id}
               node={child}
-              selectedModuleId={selectedModuleId}
-              onSelect={onSelect}
+              selectedId={selectedId}
+              onSelectNode={onSelectNode}
               depth={depth + 1}
               defaultExpandDepth={defaultExpandDepth}
             />
@@ -75,34 +108,56 @@ function TreeNode({
 /**
  * Organization module navigator for the restored definition workspace.
  *
- * Selecting a node scopes the collection to the node and its whole subtree;
- * clearing the selection returns to the complete organization collection.
+ * One tree carries the whole navigation: module placements are the branches and
+ * every subject is a leaf (registered subjects under their module, subjects with
+ * no placement yet under one `未登记主体` branch). Selecting a module scopes the
+ * collection to the node and its whole subtree, selecting a subject scopes it to
+ * that subject, and clearing the selection returns to the complete organization
+ * collection.
  */
 export function CatalogModuleNavigator({
   nodes,
-  selectedModuleId,
-  onSelect,
+  selectedId,
+  onSelectNode,
+  allOption,
   defaultExpandDepth = 2,
-  ariaLabel = "参数定义模块树"
+  ariaLabel = "参数定义模块树",
+  emptyMessage = "当前组织还没有模块放置。"
 }: CatalogModuleNavigatorProps) {
   return (
     <nav aria-label={ariaLabel}>
       {nodes.length === 0 ? (
-        <p className="parameter-catalog__muted">当前组织还没有模块放置。</p>
-      ) : (
+        <p className="parameter-catalog__muted">{emptyMessage}</p>
+      ) : null}
       <ul className="parameter-catalog__tree">
+        {allOption ? (
+          <li className="parameter-catalog__tree-node">
+            <div className="parameter-catalog__tree-row">
+              <span className="parameter-catalog__tree-toggle" aria-hidden="true" />
+              <button
+                type="button"
+                className="parameter-catalog__tree-select"
+                aria-pressed={allOption.selected}
+                data-catalog-node-kind="all"
+                onClick={allOption.onSelect}
+              >
+                <span className="parameter-catalog__tree-label">{allOption.label}</span>
+                <span className="parameter-catalog__module-count">{allOption.count}</span>
+              </button>
+            </div>
+          </li>
+        ) : null}
         {nodes.map((node) => (
           <TreeNode
             key={node.id}
             node={node}
-            selectedModuleId={selectedModuleId}
-            onSelect={onSelect}
+            selectedId={selectedId}
+            onSelectNode={onSelectNode}
             depth={0}
             defaultExpandDepth={defaultExpandDepth}
           />
         ))}
       </ul>
-      )}
     </nav>
   );
 }

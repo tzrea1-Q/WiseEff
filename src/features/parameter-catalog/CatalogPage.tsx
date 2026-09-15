@@ -38,6 +38,7 @@ import type {
 } from "@/infrastructure/http/parameterCatalogDtos";
 import { useCatalogLayoutMode, type CatalogLayoutMode } from "./catalogLayout";
 import { CatalogModuleNavigator } from "./CatalogModuleNavigator";
+import type { CatalogNavigatorNode } from "./catalogModuleScope";
 import {
   buildCatalogModuleTree,
   filterDefinitionIdsByModule,
@@ -83,7 +84,6 @@ import {
   catalogSelectDefinitionHint,
   catalogSheetTabs,
   catalogStateBadges,
-  catalogSubjectsLabel,
   catalogTimelineLabel
 } from "./copy";
 import "./parameter-catalog.css";
@@ -452,7 +452,15 @@ export function CatalogPage({
   const listEmptyReason = emptyCollectionReason(snapshot?.definitions ?? null);
   const definitions = snapshot?.definitions.items ?? [];
   const subjects = snapshot?.subjects.items ?? [];
-  const navigatorNodes = useMemo(() => buildCatalogModuleTree(subjects), [subjects]);
+  const describeSubject = useCallback(
+    (item: (typeof subjects)[number]) =>
+      `${catalogSubjectTypeLabel(item.type)} · ${catalogRegistrationLabel(item.registration.status)}`,
+    []
+  );
+  const navigatorNodes = useMemo(
+    () => buildCatalogModuleTree(subjects, describeSubject),
+    [subjects, describeSubject]
+  );
   // Client scope mirrors the server traversal so visible rows always agree with
   // the reported count for the same query.
   const visibleDefinitions = useMemo(() => {
@@ -497,6 +505,14 @@ export function CatalogPage({
       },
       "push"
     );
+  };
+
+  const selectNavigatorNode = (node: CatalogNavigatorNode) => {
+    if (node.subjectId) {
+      selectSubject(node.subjectId);
+      return;
+    }
+    selectModuleNode(node.id);
   };
 
   const selectSubject = (subjectId: string) => {
@@ -805,43 +821,22 @@ export function CatalogPage({
               ) : null}
             </div>
             <p className="parameter-catalog__muted">{catalogModuleScopeHint}</p>
-            <button
-              type="button"
-              className="parameter-catalog__module-option"
-              aria-pressed={!anchor.moduleNodeId}
-              onClick={() => selectModuleNode(null)}
-            >
-              <span>{catalogModuleScopeAll}</span>
-              <span className="parameter-catalog__module-count">{subjects.length}</span>
-            </button>
             <CatalogModuleNavigator
               nodes={navigatorNodes}
-              selectedModuleId={anchor.moduleNodeId}
-              onSelect={selectModuleNode}
+              selectedId={subject ? `subject:${subject.id}` : anchor.moduleNodeId}
+              onSelectNode={selectNavigatorNode}
+              allOption={{
+                label: catalogModuleScopeAll,
+                count: subjects.length,
+                selected: !anchor.moduleNodeId && !subject,
+                onSelect: () => selectModuleNode(null)
+              }}
             />
             {anchor.moduleNodeId ? (
               <p className="parameter-catalog__muted" data-catalog-module-scope="true">
                 {`已选模块子树 · ${scopedSubjectCount} 个主体`}
               </p>
             ) : null}
-            <h3 className="parameter-catalog__muted">{catalogSubjectsLabel}</h3>
-            <ul className="parameter-catalog__subjects" aria-label={catalogSubjectsLabel}>
-              {subjects.map((item) => (
-                <li key={item.id}>
-                  <button
-                    type="button"
-                    className="parameter-catalog__subject"
-                    aria-pressed={item.id === subject?.id}
-                    onClick={() => selectSubject(item.id)}
-                  >
-                    <span className="parameter-catalog__subject-name">{item.canonicalName}</span>
-                    <span className="parameter-catalog__subject-meta">
-                      {catalogSubjectTypeLabel(item.type)} · {catalogRegistrationLabel(item.registration.status)}
-                    </span>
-                  </button>
-                </li>
-              ))}
-            </ul>
           </section>
 
           <section className="parameter-catalog__pane parameter-catalog__pane--list" aria-label={catalogListLabel}>
