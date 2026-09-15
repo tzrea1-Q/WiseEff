@@ -497,7 +497,7 @@ function AppShell({
     [apiAuthPermissions, debuggingAdminCatalogClient, dtsReloadRepositoryClient, runtimeMode]
   );
   const refreshParameterInitializationFromApi = useCallback(async () => {
-    if (runtimeMode !== "api") {
+    if (runtimeMode !== "api" || pageKeyRef.current === "home") {
       return;
     }
     // Admin-only endpoint; non-admins must not probe it (browser diagnostics treat 403 as failure).
@@ -668,9 +668,11 @@ function AppShell({
   );
   const [apiRuntimeSynced, setApiRuntimeSynced] = useState(runtimeMode !== "api");
   const [apiRuntimeRetrying, setApiRuntimeRetrying] = useState(false);
+  const domainDataHydratedRef = useRef(false);
 
   const refreshApiRuntimeData = useCallback(
     async (cancelledRef?: { current: boolean }, roleId = stateRef.current.activeRoleId) => {
+      domainDataHydratedRef.current = true;
       const runtimeRoleId = migrateLegacyRoleId(roleId);
       const debuggingProtocol = pageKeyRef.current === "node-debugging" ? readInitialNodeDebuggingProtocol() : "hdc";
       const canUseDebugging = canPerform(runtimeRoleId, "debugging.use");
@@ -731,21 +733,34 @@ function AppShell({
   }, [state]);
 
   useEffect(() => {
-    if (!apiRuntimeSynced || apiRuntimeFailures.has("parameters") ||
+    if (!apiRuntimeSynced || apiRuntimeFailures.has("parameters") || page.key === "home" ||
       !state.configDraft.projects.some((project) => project.id === state.activeProjectId)) return;
     void hydrateActiveProjectInitialization(state.activeProjectId);
-  }, [apiRuntimeSynced, apiRuntimeFailures, hydrateActiveProjectInitialization, state.activeProjectId, state.configDraft.projects]);
+  }, [apiRuntimeSynced, apiRuntimeFailures, hydrateActiveProjectInitialization, page.key, state.activeProjectId, state.configDraft.projects]);
 
   useEffect(() => {
-    if (runtimeMode !== "api" || apiAuthStatus !== "authenticated") {
+    if (runtimeMode !== "api" || apiAuthStatus !== "authenticated" || page.key === "home") {
       return;
     }
     void refreshParameterInitializationFromApi();
-  }, [apiAuthStatus, refreshParameterInitializationFromApi, runtimeMode]);
+  }, [apiAuthStatus, page.key, refreshParameterInitializationFromApi, runtimeMode]);
 
   useEffect(() => {
     pageKeyRef.current = page.key;
   }, [page.key]);
+
+  useEffect(() => {
+    if (
+      runtimeMode !== "api" ||
+      apiAuthStatus !== "authenticated" ||
+      page.key === "home" ||
+      domainDataHydratedRef.current
+    ) {
+      return;
+    }
+    domainDataHydratedRef.current = true;
+    void refreshApiRuntimeData();
+  }, [apiAuthStatus, page.key, refreshApiRuntimeData, runtimeMode]);
 
   useEffect(() => {
     writeSidebarCollapsedPreference(sidebarCollapsed);
@@ -768,7 +783,12 @@ function AppShell({
         hydrateAuthContext(context);
         setApiAuthStatus("authenticated");
         setApiAuthError("");
-        await refreshApiRuntimeData(cancelledRef, primaryRoleId);
+        if (pageKeyRef.current === "home") {
+          setApiRuntimeSynced(true);
+        } else {
+          domainDataHydratedRef.current = true;
+          await refreshApiRuntimeData(cancelledRef, primaryRoleId);
+        }
       })
       .catch((error) => {
         if (cancelledRef.current) return;
@@ -914,13 +934,19 @@ function AppShell({
       hydrateAuthContext(session.auth);
       setApiAuthStatus("authenticated");
       setApiAuthError("");
-      await refreshApiRuntimeData(undefined, primaryRoleId);
+      if (pageKeyRef.current === "home") {
+        setApiRuntimeSynced(true);
+      } else {
+        domainDataHydratedRef.current = true;
+        await refreshApiRuntimeData(undefined, primaryRoleId);
+      }
       dispatch({ type: "ADD_NOTIFICATION", message: "已登录雷泽账号" });
     },
     [hydrateAuthContext, refreshApiRuntimeData]
   );
 
   const handleLogout = useCallback(async () => {
+    domainDataHydratedRef.current = false;
     const client = appRuntime.authClient;
     try {
       await client.logout?.();

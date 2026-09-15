@@ -9,10 +9,10 @@
 
 .linear-template-home {
   --linear-primary-blue: var(--accent-pressed);
-  --linear-primary-text: #101c2d;
-  --linear-muted-text: var(--shell-nav-text);
-  --linear-grey: #6b7280;
-  --linear-grey-dark: var(--shell-sidebar-border);
+  --linear-primary-text: var(--text, #101c2d);
+  --linear-muted-text: var(--text-secondary, var(--shell-nav-text));
+  --linear-grey: var(--text-muted, #6b7280);
+  --linear-grey-dark: var(--border, var(--shell-sidebar-border));
   --linear-shadow-soft: 0 18px 48px rgba(16, 28, 45, 0.08);
   --linear-nav-height: 64px;
   min-height: 100vh;
@@ -20,18 +20,7 @@
   overflow-x: clip;
   background: #fbfcff;
   color: var(--linear-primary-text);
-  font-family:
-    "SF Pro Display",
-    -apple-system,
-    BlinkMacSystemFont,
-    "Segoe UI",
-    Roboto,
-    Oxygen,
-    Ubuntu,
-    Cantarell,
-    "Open Sans",
-    "Helvetica Neue",
-    sans-serif;
+  font-family: var(--font-sans);
   letter-spacing: 0;
 }
 
@@ -267,6 +256,7 @@
     border-color var(--duration-base) var(--ease-out),
     box-shadow var(--duration-base) var(--ease-out),
     transform var(--duration-base) var(--ease-out);
+  will-change: transform;
 }
 
 .sub-app-card::after {
@@ -503,6 +493,15 @@
   overflow: hidden;
 }
 
+@keyframes platformFlowProgress {
+  from {
+    transform: scaleX(0);
+  }
+  to {
+    transform: scaleX(1);
+  }
+}
+
 .platform-flow-tab-progress {
   position: absolute;
   bottom: 0;
@@ -511,9 +510,15 @@
   height: 2px;
   background: color-mix(in srgb, var(--secondary-container) 70%, transparent);
   transform-origin: left;
-  /* Auto-advance progress tracker: linear so the bar follows the timer honestly. */
-  transition: transform var(--duration-fast) linear;
+  animation: platformFlowProgress 6s linear forwards;
   border-radius: 1px;
+  will-change: transform;
+}
+
+.platform-flow-tablist:hover .platform-flow-tab-progress,
+.platform-flow-tablist:focus-within .platform-flow-tab-progress,
+.platform-flow-tab-progress.is-paused {
+  animation-play-state: paused;
 }
 
 @keyframes platformPanelIn {
@@ -528,14 +533,12 @@
 }
 
 .platform-flow-panel {
-  /* Decorative landing reveal (>400ms allowed for marketing surfaces only);
-     duration derives from the motion tokens and the page-wide reduce block
-     below collapses it. */
-  animation: platformPanelIn calc(var(--duration-slow) * 2.5) var(--ease-out) both;
+  animation: platformPanelIn var(--duration-base) var(--ease-out) both;
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   gap: var(--space-8);
   align-items: start;
+  will-change: transform, opacity;
 }
 
 .platform-flow-preview {
@@ -607,29 +610,29 @@
 
 .linear-fade-item {
   opacity: 0;
-  transform: translateY(-10px);
-  /* Decorative landing stagger; token-derived, reduce-guarded page-wide. */
-  animation: linearFadeIn calc(var(--duration-slow) * 4) var(--ease-out) forwards;
+  transform: translateY(-8px);
+  animation: linearFadeIn var(--duration-slow) var(--ease-out) forwards;
+  will-change: transform, opacity;
 }
 
 .linear-fade-item.delay-1 {
-  animation-delay: var(--duration-slow);
+  animation-delay: 30ms;
 }
 
 .linear-fade-item.delay-2 {
-  animation-delay: calc(var(--duration-slow) * 2);
+  animation-delay: 60ms;
 }
 
 .linear-fade-item.delay-3 {
-  animation-delay: calc(var(--duration-slow) * 3);
+  animation-delay: 90ms;
 }
 
 .linear-fade-item.delay-4 {
-  animation-delay: calc(var(--duration-slow) * 4);
+  animation-delay: 120ms;
 }
 
 .linear-fade-item.delay-5 {
-  animation-delay: calc(var(--duration-slow) * 5);
+  animation-delay: 150ms;
 }
 
 .linear-footer {

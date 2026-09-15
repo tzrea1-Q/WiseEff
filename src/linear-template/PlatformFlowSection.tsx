@@ -82,42 +82,49 @@ const AUTO_INTERVAL = 6000;
 export function PlatformFlowSection() {
   const [activeIndex, setActiveIndex] = useState(0);
   const [isPaused, setIsPaused] = useState(false);
-  const [progress, setProgress] = useState(0);
   const tabRefs = useRef<Array<HTMLButtonElement | null>>([]);
-  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const progressRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pauseTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const activeTab = tabs[activeIndex];
 
-  const clearTimers = useCallback(() => {
-    if (timerRef.current) clearInterval(timerRef.current);
-    if (progressRef.current) clearInterval(progressRef.current);
-    timerRef.current = null;
-    progressRef.current = null;
+  const clearTimer = useCallback(() => {
+    if (timerRef.current) {
+      clearTimeout(timerRef.current);
+      timerRef.current = null;
+    }
   }, []);
 
-  const startAutoRotation = useCallback(() => {
-    clearTimers();
-    setProgress(0);
-    const step = 50;
-    progressRef.current = setInterval(() => {
-      setProgress((p) => Math.min(p + step / AUTO_INTERVAL, 1));
-    }, step);
-    timerRef.current = setInterval(() => {
+  useEffect(() => {
+    if (isPaused) {
+      clearTimer();
+      return;
+    }
+    clearTimer();
+    timerRef.current = setTimeout(() => {
       setActiveIndex((i) => (i + 1) % tabs.length);
-      setProgress(0);
     }, AUTO_INTERVAL);
-  }, [clearTimers]);
+
+    return clearTimer;
+  }, [isPaused, activeIndex, clearTimer]);
 
   useEffect(() => {
-    if (!isPaused) startAutoRotation();
-    return clearTimers;
-  }, [isPaused, activeIndex, startAutoRotation, clearTimers]);
+    return () => {
+      if (pauseTimeoutRef.current) {
+        clearTimeout(pauseTimeoutRef.current);
+      }
+    };
+  }, []);
 
   const selectTab = (nextIndex: number, shouldFocus = false) => {
     const normalizedIndex = (nextIndex + tabs.length) % tabs.length;
     setActiveIndex(normalizedIndex);
     setIsPaused(true);
-    setTimeout(() => setIsPaused(false), AUTO_INTERVAL * 2);
+    if (pauseTimeoutRef.current) {
+      clearTimeout(pauseTimeoutRef.current);
+    }
+    pauseTimeoutRef.current = setTimeout(() => {
+      setIsPaused(false);
+    }, AUTO_INTERVAL * 2);
 
     if (shouldFocus) {
       window.requestAnimationFrame(() => tabRefs.current[normalizedIndex]?.focus());
@@ -169,8 +176,9 @@ export function PlatformFlowSection() {
               {tab.label}
               {index === activeIndex && (
                 <span
-                  className="platform-flow-tab-progress"
-                  style={{ transform: `scaleX(${progress})` }}
+                  key={`progress-${tab.key}`}
+                  className={`platform-flow-tab-progress${isPaused ? " is-paused" : ""}`}
+                  aria-hidden="true"
                 />
               )}
             </button>
