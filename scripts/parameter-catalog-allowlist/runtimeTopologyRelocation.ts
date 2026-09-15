@@ -59,6 +59,13 @@ export type RelocationConfig = {
   files: readonly { file: string; pairs: number }[];
   totalPairs: number;
   rejectAllowanceGrowth?: boolean;
+  /**
+   * Assert that every pair restates the same stable structural anchor. Only a record
+   * whose reviewed change is position-only (insertions above unchanged text) can
+   * promise this; a change that rewrites structure legitimately re-anchors an
+   * occurrence, so the historical records that recorded such changes leave it unset.
+   */
+  requireStableStructuralAnchor?: boolean;
 };
 
 const runtimeTopologyConfig: RelocationConfig = {
@@ -166,6 +173,17 @@ function validateRelocationRecord(value: unknown, input: RelocationInput, config
       }), "existing allowance");
       for (const key of ["file", "family", "rule", "reason", "token", "evidence", "column", "trustedBaseSha"] as const) {
         requireMatch(old[key] === next[key], `unchanged ${key}`);
+      }
+      // The scanner's stable structural anchor (family, rule, base-id) identifies the
+      // legacy debt an occurrence belongs to. A near-miss swap between two occurrences
+      // with identical raw slices cannot be seen by the metadata comparison above, so a
+      // position-only record asserts the anchor separately: a reviewed pair may only
+      // restate the same debt. See RelocationConfig.requireStableStructuralAnchor.
+      if (config.requireStableStructuralAnchor) {
+        requireMatch(
+          next.id.split(":").slice(0, 3).join(":") === old.id.split(":").slice(0, 3).join(":"),
+          "unchanged stable structural anchor",
+        );
       }
       requireMatch(old.file === section.file && next.file === section.file, "reviewed file");
       requireMatch(old.trustedBaseSha === trustedBaseSha && next.trustedBaseSha === trustedBaseSha, "trusted base");

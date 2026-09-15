@@ -854,7 +854,6 @@ export async function createBindingDraft(
     organizationId: auth.organization.id,
     projectId: binding.project_id,
     configRevisionId: candidateRevisionId,
-    baseConfigRevisionId: revision.id,
     excludeUnmatchedIdentities: existingBindingIdentityRows,
   });
   const earlyGate = assertCanPromoteCandidateToDraft({
@@ -1383,7 +1382,6 @@ async function createNodeEnablementDraftInTransaction(
     organizationId: auth.organization.id,
     projectId: input.projectId,
     configRevisionId: candidateRevisionId,
-    baseConfigRevisionId: revision.id,
     excludeUnmatchedIdentities: bindingIdentities.rows.map(
       ({ node_locator: nodeLocator, property_key: propertyKey }) => ({
         nodeLocator,
