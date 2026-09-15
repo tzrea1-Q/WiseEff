@@ -19,7 +19,7 @@ import {
   type RuntimeTopologyRelocation,
 } from "./runtimeTopologyRelocation";
 
-const reviewedRecordSha256 = "9e99562ff8d649a75103682eff1890e7dc3a0439eb693d8caaff1153fa1b46da";
+const reviewedRecordSha256 = "3820ca839394df51fa317198f67ac7f9c4f1cead3c5d378119b51334f6271a65";
 
 export const editServiceVersionIndexRelocationRecordPath =
   "scripts/fixtures/parameter-catalog-allowlist/edit-service-version-index-relocation.json";
@@ -34,6 +34,11 @@ const editServiceVersionIndexConfig: RelocationConfig = {
   ],
   totalPairs: 59,
   rejectAllowanceGrowth: true,
+  // #859 only inserted imports, a version column and helpers above unchanged text, so
+  // every occurrence keeps the structural anchor that identifies its legacy debt. The
+  // record must restate that anchor, which is what makes a slice-identical swap fail
+  // closed instead of passing as an exact identity decision.
+  requireStableStructuralAnchor: true,
 };
 
 /** Validate the reviewed 59-pair identity map before granting any alias. */

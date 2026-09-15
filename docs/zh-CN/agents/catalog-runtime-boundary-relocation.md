@@ -35,4 +35,10 @@ main 上的本地 Red 为 16 new、16 stale。实现 `e31226b6cc06c2278230b810bb
 
 `#859`（“index DTS draft and writeback versions”）在三个 owner-path 文件中于既有 SQL 之上插入 import、带索引的版本列与辅助函数，移动了 59 处已被 allow-list 的 S12-TOP 出现位置，且未改变任何原始切片：`server/modules/parameter-topology/editService.ts` 26 处、`server/modules/parameter-topology/editService.test.ts` 28 处、`server/modules/parameter-topology/overlayWriteback.ts` 5 处。同一变更仅新增 1 处没有基线对应物的出现位置——`editService.test.ts` 中对 `project_parameter_bindings` 的裸读；该处改为返回 fixture 辅助函数已解析出的 logical node id，从而从源码中消除，而非加入 allow-list。
 
-[固定 59 对记录](../../../scripts/fixtures/parameter-catalog-allowlist/edit-service-version-index-relocation.json) 的 SHA256 为 `9e99562ff8d649a75103682eff1890e7dc3a0439eb693d8caaff1153fa1b46da`，逐对绑定未变的 rule、token、evidence、column、完全相同的原始切片，以及完整源/目标 blob。它不授予任何新 allowance、不做跨文件搬运，也不改动 fixture、其摘要、十一个分片、trusted base 或此前保留的六项移除。将该记录视为已审查证据，仍以独立 Standards 与 Spec 对本固定记录的审查为前提。
+[固定 59 对记录](../../../scripts/fixtures/parameter-catalog-allowlist/edit-service-version-index-relocation.json) 的 SHA256 为 `3820ca839394df51fa317198f67ac7f9c4f1cead3c5d378119b51334f6271a65`，逐对绑定未变的 rule、token、evidence、column、完全相同的原始切片，以及完整源/目标 blob。它不授予任何新 allowance、不做跨文件搬运，也不改动 fixture、其摘要、十一个分片、trusted base 或此前保留的六项移除。
+
+由于本次受审改动只涉及位置漂移，该记录同时设置 `requireStableStructuralAnchor`：每一对都必须重申标识其遗留债务的稳定结构锚点（family、rule、base-id）。这关闭了一类近似错过：两个出现位置的原始切片、rule 与 column 完全相同，却属于不同债务——该记录的**早期修订**就曾把 `editService.test.ts` 中两个这样的 `parameterSpecId` 跨锚点错绑，而仅靠元数据比对无法发现。同一锚点内扫描器报告的是可互换的出现位置，因此记录按字节序确定性地做 k 对 k 配对。
+
+四份历史记录不设置该要求。`post-cutover-test-relocation.json` 在把测试体包进受审事务包装的同时移动了出现位置，这会**合理地**改变锚点；其 29 对中有 4 对因此绑定到不同锚点（`e4264dc046478488` 与 `06beca724452ff57` 分别绑定到 `36a9a21c9dc5b76d` 与 `6fa963c3dfea50a0`，均为 `postCutoverWorkflow.integration.test.ts` 中的 `parameterSpecId`）。在那里强制锚点保持会误杀一份合法记录，因此本决定不对其作任何声明：该记录需要自己的评审，本变更既不修改也不重新批准它。
+
+将该记录视为已审查证据，仍以独立 Standards 与 Spec 对本固定记录的审查为前提。
