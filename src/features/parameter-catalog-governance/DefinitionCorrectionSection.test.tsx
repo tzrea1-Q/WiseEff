@@ -12,7 +12,7 @@ import {
 import { deriveCatalogDomainState } from "@/application/parameter-catalog/states";
 import { WiseEffApiError } from "@/infrastructure/http/apiClient";
 
-import { DefinitionCorrectionDialog } from "./DefinitionCorrectionDialog";
+import { DefinitionCorrectionSection } from "./DefinitionCorrectionSection";
 
 const ready = deriveCatalogDomainState({ document: readyCatalogDocument });
 
@@ -21,7 +21,7 @@ const ready = deriveCatalogDomainState({ document: readyCatalogDocument });
  * identity and migrates an explicitly selected, authorized project manifest
  * through preview -> confirm -> execute -> continue.
  */
-describe("DefinitionCorrectionDialog", () => {
+describe("DefinitionCorrectionSection", () => {
   function renderDialog() {
     const ports = createMockCatalogPorts({ scenario: "ready" });
     const preview = vi
@@ -185,8 +185,7 @@ describe("DefinitionCorrectionDialog", () => {
         }
       } as never);
     const view = render(
-      <DefinitionCorrectionDialog
-        open
+      <DefinitionCorrectionSection
         actor="org-admin"
         sessionPermissions={["catalog:author", "catalog:publish"]}
         domainState={ready}
@@ -195,7 +194,6 @@ describe("DefinitionCorrectionDialog", () => {
         definition={activeDefinition}
         subjects={[registeredSubject]}
         createIdempotencyKey={() => "idem-847-correction"}
-        onOpenChange={vi.fn()}
       />
     );
     return { ...view, preview, execute, continueReplacement };
@@ -322,8 +320,7 @@ describe("DefinitionCorrectionDialog", () => {
     } as never);
 
     render(
-      <DefinitionCorrectionDialog
-        open
+      <DefinitionCorrectionSection
         actor="org-admin"
         sessionPermissions={["catalog:author", "catalog:publish"]}
         domainState={ready}
@@ -332,7 +329,6 @@ describe("DefinitionCorrectionDialog", () => {
         definition={activeDefinition}
         subjects={[registeredSubject]}
         createIdempotencyKey={() => "idem-847-activation"}
-        onOpenChange={vi.fn()}
       />
     );
 

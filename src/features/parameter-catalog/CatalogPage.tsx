@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 
 import {
   catalogWritesEnabled,
@@ -79,7 +79,6 @@ import {
   catalogSearchLabel,
   catalogSearchSubmitLabel,
   catalogSelectDefinitionHint,
-  catalogSheetTabs,
   catalogStateBadges,
   catalogTimelineLabel
 } from "./copy";
@@ -98,6 +97,11 @@ export type CatalogPageProps = {
   onAnchorChange?: (href: string, mode: "push" | "replace") => void;
   onDomainStateChange?: (state: CatalogDomainState) => void;
   onOpenPendingWork?: () => void;
+  /**
+   * Identity correction for the definition shown in the editor dialog. The page
+   * owns the dialog; the organization surface owns the governed command.
+   */
+  renderDefinitionEditor?: (definition: DefinitionItem) => ReactNode;
   onAction?: (
     action: CatalogAuthorizedAction,
     context?: { subjectId?: string | null; registrationId?: string | null }
@@ -136,7 +140,6 @@ type CatalogSnapshot = {
   review: CatalogReviewItemListResponse | null;
 };
 
-type InspectorTab = "detail" | "history";
 
 function searchFromHref(href: string): string {
   const queryIndex = href.indexOf("?");
@@ -195,6 +198,7 @@ export function CatalogPage({
   onDomainStateChange,
   onAction,
   onOpenPendingWork,
+  renderDefinitionEditor,
   onDefinitionCommand,
   definitionAuthoringAllowed = false,
   definitionPublishingAllowed = false,
@@ -222,8 +226,7 @@ export function CatalogPage({
   const [error, setError] = useState<unknown>();
   const [unpublished, setUnpublished] = useState(false);
   const [inspectorOpen, setInspectorOpen] = useState(false);
-  const [inspectorTab, setInspectorTab] = useState<InspectorTab>("detail");
-  const historyOpen = inspectorTab === "history";
+  const [historyOpen, setHistoryOpen] = useState(false);
   /** Cursors already traversed, so Previous is exact rather than guessed. */
   const [cursorTrail, setCursorTrail] = useState<readonly string[]>([]);
   const listReviewItemsRef = useRef(listReviewItems);
@@ -399,7 +402,7 @@ export function CatalogPage({
     if (!anchor.definitionId || !selectedId || selectedId !== anchor.definitionId) return;
     if (autoOpenedDefinitionId.current === selectedId) return;
     autoOpenedDefinitionId.current = selectedId;
-    setInspectorTab("detail");
+    setHistoryOpen(false);
     setInspectorOpen(true);
   }, [anchor.definitionId, snapshot?.definition?.id]);
 
@@ -551,7 +554,7 @@ export function CatalogPage({
       },
       "push"
     );
-    setInspectorTab("detail");
+    setHistoryOpen(false);
     setInspectorOpen(true);
   };
 
@@ -678,7 +681,7 @@ export function CatalogPage({
       state={domainState}
       revisions={snapshot?.revisions ?? []}
       historyOpen={historyOpen}
-      onToggleHistory={() => setInspectorTab((tab) => (tab === "history" ? "detail" : "history"))}
+      onToggleHistory={() => setHistoryOpen((value) => !value)}
     />
   );
 
@@ -828,18 +831,29 @@ export function CatalogPage({
             ) : compactList ? (
               <div className="parameter-catalog__cards parameter-catalog__table-wrap--mobile">
                 {visibleDefinitions.map((item) => (
-                  <button
-                    key={item.id}
-                    type="button"
-                    className="parameter-catalog__card"
-                    aria-pressed={item.id === definition?.id}
-                    onClick={() => selectDefinition(item)}
-                  >
-                    <span className="parameter-catalog__subject-name">{item.propertyKey}</span>
-                    <span className="parameter-catalog__subject-meta">
-                      {item.subject.canonicalName} · {catalogLifecycleLabel(item.lifecycle)}
-                    </span>
-                  </button>
+                  <div key={item.id} className="parameter-catalog__card-row">
+                    <button
+                      type="button"
+                      className="parameter-catalog__card"
+                      aria-pressed={item.id === definition?.id}
+                      onClick={() => selectDefinition(item)}
+                    >
+                      <span className="parameter-catalog__subject-name">{item.propertyKey}</span>
+                      <span className="parameter-catalog__subject-meta">
+                        {item.subject.canonicalName} · {catalogLifecycleLabel(item.lifecycle)}
+                      </span>
+                    </button>
+                    {/* Narrow screens keep the same editor entry as the desktop table. */}
+                    <button
+                      type="button"
+                      className="button subtle sm"
+                      aria-label={`编辑 ${item.propertyKey}`}
+                      data-catalog-row-action="edit"
+                      onClick={() => selectDefinition(item)}
+                    >
+                      编辑
+                    </button>
+                  </div>
                 ))}
               </div>
             ) : (
@@ -863,17 +877,6 @@ export function CatalogPage({
                       >
                         编辑
                       </button>
-                      {definitionAuthoringAllowed && onDefinitionCommand ? (
-                        <button
-                          type="button"
-                          className="button subtle sm"
-                          aria-label={`纠错 ${row.propertyKey}`}
-                          data-catalog-row-action="correct-identity"
-                          onClick={() => onDefinitionCommand("correct-identity", row)}
-                        >
-                          身份纠错
-                        </button>
-                      ) : null}
                       {definitionPublishingAllowed && onDefinitionCommand ? (
                         <button
                           type="button"
@@ -947,47 +950,27 @@ export function CatalogPage({
         </div>
       )}
 
-      {definition ? (
+      {definition && inspectorOpen ? (
         <WorkbenchSheet
           open={inspectorOpen}
           onClose={() => setInspectorOpen(false)}
           closeLabel={catalogDetailCloseLabel}
-          title={definition.propertyKey || catalogDetailLabel}
+          title={`编辑 ${definition.propertyKey}`.trim()}
         >
-          <div className="parameter-catalog__sheet-tabs" role="tablist" aria-label="详情与历史">
-            <button
-              type="button"
-              className="button ghost sm"
-              role="tab"
-              aria-selected={inspectorTab === "detail"}
-              onClick={() => setInspectorTab("detail")}
-            >
-              {catalogSheetTabs.detail}
-            </button>
-            <button
-              type="button"
-              className="button ghost sm"
-              role="tab"
-              aria-selected={inspectorTab === "history"}
-              onClick={() => {
-                setInspectorTab("history");
-              }}
-            >
-              {catalogSheetTabs.timeline}
-            </button>
-          </div>
           <div role="region" aria-label={catalogDetailLabel} data-catalog-detail-region="true">
-            {inspectorTab === "detail" ? (
-              detailBody
-            ) : (
-              <section aria-label={catalogTimelineLabel} data-catalog-history-region="true">
-                <CatalogHistoryBody
-                  timeline={snapshot?.timeline ?? null}
-                  revisions={snapshot?.revisions ?? []}
-                />
-              </section>
-            )}
+            {detailBody}
           </div>
+          {historyOpen ? (
+            <section aria-label={catalogTimelineLabel} data-catalog-history-region="true">
+              <CatalogHistoryBody
+                timeline={snapshot?.timeline ?? null}
+                revisions={snapshot?.revisions ?? []}
+              />
+            </section>
+          ) : null}
+          {renderDefinitionEditor && definitionAuthoringAllowed ? (
+            <div data-definition-editor="true">{renderDefinitionEditor(definition)}</div>
+          ) : null}
         </WorkbenchSheet>
       ) : null}
     </div>

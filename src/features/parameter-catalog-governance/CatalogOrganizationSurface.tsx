@@ -11,7 +11,7 @@ import type { ParameterCatalogGovernanceRepository } from "@/application/ports/P
 import type { ParameterCatalogRepository } from "@/application/ports/ParameterCatalogRepository";
 import { CatalogPage } from "@/features/parameter-catalog";
 
-import { DefinitionCorrectionDialog } from "./DefinitionCorrectionDialog";
+import { DefinitionCorrectionSection } from "./DefinitionCorrectionSection";
 import { DefinitionLifecycleDialog, type DefinitionLifecycleIntent } from "./DefinitionLifecycleDialog";
 
 import { createGovernanceIdempotencyKey } from "./governanceState";
@@ -66,7 +66,6 @@ export function CatalogOrganizationSurface({
     intent: DefinitionLifecycleIntent;
     definition: CatalogDefinitionResponse["item"];
   } | null>(null);
-  const [correction, setCorrection] = useState<CatalogDefinitionResponse["item"] | null>(null);
   const catalogReleaseId = domainState?.catalogReleaseId ?? anchor.catalogReleaseId ?? "";
   const subjectId = anchor.subjectId ?? "";
   const [catalogSubjects, setCatalogSubjects] = useState<
@@ -177,12 +176,29 @@ export function CatalogOrganizationSurface({
         definitionAuthoringAllowed={publicationSurfaceAllowsAuthoring(publicationSurface)}
         definitionPublishingAllowed={publicationSurfaceAllowsPublishing(publicationSurface)}
         onDefinitionCommand={(command, definition) => {
-          if (command === "correct-identity") {
-            setCorrection(definition);
-            return;
-          }
+          // Identity correction now lives inside the definition's own 编辑 dialog
+          // (renderDefinitionEditor below); the row only offers that one action.
+          if (command === "correct-identity") return;
           setLifecycle({ intent: command, definition });
         }}
+        renderDefinitionEditor={
+          domainState
+            ? (definition) => (
+          <DefinitionCorrectionSection
+            actor={actor}
+            sessionPermissions={sessionPermissions}
+            domainState={domainState}
+            catalog={catalog}
+            catalogReleaseId={catalogReleaseId}
+            definition={definition}
+            subjects={catalogSubjects}
+            createIdempotencyKey={createGovernanceIdempotencyKey}
+            onCompleted={() => setSurfaceEpoch((value) => value + 1)}
+            onRefreshEvidence={() => setSurfaceEpoch((value) => value + 1)}
+          />
+              )
+            : undefined
+        }
       />
       {domainState && catalogReleaseId && organizationId ? (
         <ModalDialog
@@ -290,26 +306,7 @@ export function CatalogOrganizationSurface({
           }}
         />
       ) : null}
-      {correction && catalogReleaseId && domainState ? (
-        <DefinitionCorrectionDialog
-          open
-          actor={actor}
-          sessionPermissions={sessionPermissions}
-          domainState={domainState}
-          catalog={catalog}
-          catalogReleaseId={catalogReleaseId}
-          definition={correction}
-          subjects={catalogSubjects}
-          createIdempotencyKey={createGovernanceIdempotencyKey}
-          onCompleted={() => setSurfaceEpoch((value) => value + 1)}
-          onRefreshEvidence={() => setSurfaceEpoch((value) => value + 1)}
-          onOpenChange={(open) => {
-            if (!open) {
-              setCorrection(null);
-            }
-          }}
-        />
-      ) : null}
+
     </div>
   );
 }

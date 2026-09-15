@@ -491,10 +491,11 @@ describe("CatalogPage", () => {
     await user.click(screen.getByRole("button", { name: /southchip,sc8562/ }));
     const table = await screen.findByRole("table", { name: "参数定义列表" });
     await user.click(within(table).getByText("gpio-int"));
-    const sheet = await screen.findByRole("dialog", { name: "gpio-int" });
-    expect(within(sheet).getByRole("tab", { name: "详情" })).toBeVisible();
-    expect(within(sheet).getByRole("tab", { name: "时间线" })).toBeVisible();
-    await user.click(within(sheet).getByRole("tab", { name: "时间线" }));
+    const sheet = await screen.findByRole("dialog", { name: /gpio-int/ });
+    // One editor dialog: the definition reads there and history is disclosed
+    // from its own toggle rather than a second tab.
+    expect(within(sheet).getByRole("region", { name: "定义详情" })).toBeVisible();
+    await user.click(within(sheet).getByRole("button", { name: /查看历史/ }));
     expect(within(sheet).getByText("目录发布")).toBeVisible();
     unmount();
 

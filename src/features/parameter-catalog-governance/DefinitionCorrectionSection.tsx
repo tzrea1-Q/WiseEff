@@ -4,7 +4,6 @@ import type { CatalogActorKind } from "@/application/parameter-catalog/authority
 import { catalogStateFromFailure, type CatalogDomainState } from "@/application/parameter-catalog/states";
 import type { ParameterCatalogRepository } from "@/application/ports/ParameterCatalogRepository";
 import { ConfirmDialog } from "@/components/common/ConfirmDialog";
-import { ModalDialog } from "@/components/common/ModalDialog";
 import { WiseEffApiError } from "@/infrastructure/http/apiClient";
 import type {
   CatalogDefinitionResponse,
@@ -17,8 +16,7 @@ import type {
 import { canExecutePublicationAction } from "./publicationState";
 import { createGovernanceIdempotencyKey } from "./governanceState";
 
-export type DefinitionCorrectionDialogProps = {
-  open: boolean;
+export type DefinitionCorrectionSectionProps = {
   actor: CatalogActorKind;
   sessionPermissions?: readonly string[] | null;
   domainState: CatalogDomainState;
@@ -32,7 +30,6 @@ export type DefinitionCorrectionDialogProps = {
    * project that is not in the caller's organization.
    */
   createIdempotencyKey?: () => string;
-  onOpenChange: (open: boolean) => void;
   onCompleted?: () => void;
   onRefreshEvidence?: () => void | Promise<void>;
 };
@@ -73,8 +70,7 @@ const projectStatusLabel = {
  * and it reports per-project progress rather than claiming an instance-wide
  * transaction.
  */
-export function DefinitionCorrectionDialog({
-  open,
+export function DefinitionCorrectionSection({
   actor,
   sessionPermissions,
   domainState,
@@ -83,10 +79,9 @@ export function DefinitionCorrectionDialog({
   definition,
   subjects,
   createIdempotencyKey,
-  onOpenChange,
   onCompleted,
   onRefreshEvidence
-}: DefinitionCorrectionDialogProps) {
+}: DefinitionCorrectionSectionProps) {
   const [phase, setPhase] = useState<Phase>("compose");
   const [subjectId, setSubjectId] = useState(definition.subject.id);
   const [propertyKey, setPropertyKey] = useState(definition.propertyKey);
@@ -116,7 +111,6 @@ export function DefinitionCorrectionDialog({
   );
 
   useEffect(() => {
-    if (!open) return;
     setPhase("compose");
     setSubjectId(definition.subject.id);
     setPropertyKey(definition.propertyKey);
@@ -131,7 +125,7 @@ export function DefinitionCorrectionDialog({
     setError("");
     setPreviewIdempotencyKey(null);
     setIdempotencyKey(null);
-  }, [open, definition]);
+  }, [definition]);
 
   const selectedProjects = useMemo(
     () =>
@@ -270,12 +264,12 @@ export function DefinitionCorrectionDialog({
 
   return (
     <>
-      <ModalDialog
-        open={open}
-        onDismiss={pending ? undefined : () => onOpenChange(false)}
-        className="confirm-dialog governance-confirm-dialog definition-correction-dialog"
+      <section
+        className="definition-correction"
+        aria-label="身份纠错"
+        data-definition-correction="true"
       >
-        <h2>身份纠错</h2>
+        <h3>身份纠错</h3>
         <p>
           纠错会发布一个新的替代身份，并把选定项目的当前引用迁移到新身份。旧身份、旧修订、旧取值与历史审计保持不变，不会被重写。
         </p>
@@ -440,9 +434,6 @@ export function DefinitionCorrectionDialog({
         ) : null}
 
         <div className="dialog-actions">
-          <button type="button" className="button ghost" onClick={() => onOpenChange(false)} disabled={pending}>
-            关闭
-          </button>
           {phase === "compose" ? (
             <button
               type="button"
@@ -467,7 +458,7 @@ export function DefinitionCorrectionDialog({
             </button>
           ) : null}
         </div>
-      </ModalDialog>
+      </section>
       <ConfirmDialog
         open={confirmOpen}
         title="确认执行身份纠错迁移"

@@ -119,7 +119,7 @@ test.describe("restored definition workspace and governed authoring", () => {
       surface.body as { item: { authoringAllowed: boolean; publishingAllowed: boolean } }
     ).item;
     const retire = table.getByRole("button", { name: /^(弃用|恢复) /u }).first();
-    const correct = table.getByRole("button", { name: /^纠错 /u }).first();
+    const edit = table.getByRole("button", { name: /^编辑 /u }).first();
 
     if (permissions.publishingAllowed) {
       await expect(retire).toBeVisible({ timeout: 15_000 });
@@ -127,19 +127,21 @@ test.describe("restored definition workspace and governed authoring", () => {
       await expect(retire).toHaveCount(0);
     }
 
+    // One editor dialog carries both the definition and its correction form.
+    await expect(edit).toBeVisible({ timeout: 15_000 });
+    await edit.click();
+    const dialog = page.getByRole("dialog");
+    await expect(dialog.getByRole("region", { name: "定义详情" })).toBeVisible();
     if (permissions.authoringAllowed) {
-      await expect(correct).toBeVisible({ timeout: 15_000 });
-      await correct.click();
-      const dialog = page.getByRole("dialog");
-      await expect(dialog).toContainText("身份纠错");
+      await expect(dialog.locator('[data-definition-correction="true"]')).toBeVisible();
       // Explicit manifest: preview stays disabled until projects and a reason exist.
       await expect(dialog.getByRole("button", { name: "预演影响" })).toBeDisabled();
       await dialog.getByLabel("受影响项目编号").fill("proj-a");
       await expect(dialog.getByRole("button", { name: "预演影响" })).toBeEnabled();
-      await dialog.getByRole("button", { name: "关闭" }).click();
     } else {
-      await expect(correct).toHaveCount(0);
+      await expect(dialog.locator('[data-definition-correction="true"]')).toHaveCount(0);
     }
+    await dialog.getByRole("button", { name: /关闭/ }).click();
     await catalogScreenshot(page, testInfo, "pcat-ui-17-lifecycle");
   });
 
