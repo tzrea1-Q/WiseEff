@@ -2,6 +2,7 @@ import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import YAML from "yaml";
+import { isForbiddenComposeAppPostgres } from "../server/testing/testDatabase";
 import { l1CommandIds, l1Jobs } from "./ci-required-results";
 
 export const requiredAcceptanceCiScripts = [
@@ -416,13 +417,45 @@ export function runAcceptanceCiConfigurationCheck() {
   return result;
 }
 
+/**
+ * A database URL the backend suite may observe: this job's own loopback service on
+ * 5432, naming exactly the database that service creates, and never the shared
+ * compose app database the managed-instance specs refuse. Host and port are checked
+ * structurally rather than through the guard, so a remote or remapped URL cannot
+ * silently satisfy the guard by not looking like the compose app database.
+ */
+function isJobOwnedBackendDatabaseUrl(value: unknown, serviceDatabase: string): boolean {
+  if (typeof value !== "string" || serviceDatabase === "") return false;
+  // `new URL()` silently trims a padded scalar while `pg-connection-string` keeps the
+  // padding, so an untrimmed value is rejected rather than normalised.
+  if (value !== value.trim() || serviceDatabase !== serviceDatabase.trim()) return false;
+  // node-postgres honours routing overrides in query parameters (`?host=`, `?port=`)
+  // that `new URL()` does not surface, so a green check could still aim the suite at
+  // another host or port. The lane helper rejects query strings and fragments for the
+  // same reason; a job-owned URL is a plain authority plus a single database segment.
+  if (value.includes("?") || value.includes("#")) return false;
+  if (isForbiddenComposeAppPostgres(value)) return false;
+  let url: URL;
+  try {
+    url = new URL(value);
+  } catch {
+    return false;
+  }
+  const port = url.port === "" ? "5432" : url.port;
+  const segments = url.pathname.replace(/^\//, "").split("/");
+  return ["127.0.0.1", "localhost"].includes(url.hostname.toLowerCase())
+    && port === "5432"
+    && segments.length === 1
+    && segments[0] === serviceDatabase;
+}
+
 export function evaluateL1CiWorkflow(workflowText: string): { status: "passed" | "failed"; errors: string[] } {
   const errors: string[] = [];
   type Step = { id?: string; name?: string; run?: string; uses?: string; if?: string; "continue-on-error"?: boolean;
     with?: Record<string, unknown>; env?: Record<string, unknown> };
   type Job = { name?: string; needs?: string | string[]; if?: string; "runs-on"?: string; steps?: Step[];
     "continue-on-error"?: boolean; "timeout-minutes"?: number;
-    outputs?: Record<string, string>; services?: Record<string, { image?: string }>; env?: Record<string, string> };
+    outputs?: Record<string, string>; services?: Record<string, { image?: string; env?: Record<string, string> }>; env?: Record<string, string> };
   let workflow: { jobs: Record<string, Job>; env?: Record<string, string> };
   try { workflow = YAML.parse(workflowText) as typeof workflow; }
   catch { return { status: "failed", errors: ["Malformed L1 workflow."] }; }
@@ -494,7 +527,41 @@ export function evaluateL1CiWorkflow(workflowText: string): { status: "passed" |
     check(normalizeStepProjection(step("receipt")?.env?.EFF_STEPS) === expectedStepProjection(l1CommandIds[id])
       && job.outputs?.receipt === "${{ steps.receipt.outputs.receipt }}", `${id} must project its fixed named steps into the invocation receipt.`);
     if (id === "l1-scripts" || id === "l1-server") {
-      check(job.services?.postgres?.image === "pgvector/pgvector:pg16" && job.env?.DATABASE_URL === "postgres://wiseeff:wiseeff@127.0.0.1:5432/wiseeff", `${id} requires the real PG/vector service.`);
+      check(job.services?.postgres?.image === "pgvector/pgvector:pg16", `${id} requires the real PG/vector service.`);
+      if (id === "l1-server") {
+        // This job runs the managed-instance publication policy specs, which refuse the
+        // shared compose app database by identity. `resolveTestDatabaseUrl()` prefers
+        // TEST_DATABASE_URL over DATABASE_URL and steps inherit both, so every database
+        // URL this job can observe must be its own loopback service database.
+        const serviceDatabase = job.services?.postgres?.env?.POSTGRES_DB ?? "";
+        check(
+          typeof job.env?.DATABASE_URL === "string" && job.env.DATABASE_URL.trim() !== "",
+          "l1-server must define the DATABASE_URL its backend suite runs against.",
+        );
+        const observedDatabaseUrls: Array<[string, unknown]> = [
+          ["workflow TEST_DATABASE_URL", workflow?.env?.TEST_DATABASE_URL],
+          ["job TEST_DATABASE_URL", job.env?.TEST_DATABASE_URL],
+          ["job DATABASE_URL", job.env?.DATABASE_URL],
+        ];
+        for (const step of steps) {
+          const label = step.id ?? step.name ?? "unnamed";
+          observedDatabaseUrls.push([`${label} step TEST_DATABASE_URL`, step.env?.TEST_DATABASE_URL]);
+          observedDatabaseUrls.push([`${label} step DATABASE_URL`, step.env?.DATABASE_URL]);
+        }
+        for (const [label, value] of observedDatabaseUrls) {
+          if (value === undefined) continue;
+          check(
+            isJobOwnedBackendDatabaseUrl(value, serviceDatabase),
+            `l1-server ${label} must be the job's own loopback:5432 service database.`,
+          );
+        }
+        check(serviceDatabase !== "", "l1-server must create the database its backend suite runs against.");
+      } else {
+        check(
+          job.env?.DATABASE_URL === "postgres://wiseeff:wiseeff@127.0.0.1:5432/wiseeff",
+          `${id} requires the real PG/vector service.`,
+        );
+      }
       check(step("toolchain")?.uses === "./.github/actions/setup-dts-toolchain", `${id} requires verified DTS tooling.`);
       check(step("vector")?.run?.trim() === vectorCommand, `${id} requires the original vector create/read assertion.`);
     }

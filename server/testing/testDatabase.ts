@@ -340,7 +340,11 @@ export async function createEphemeralTestDatabase(label: string): Promise<Epheme
 const COMPOSE_APP_PORT = 5432;
 const COMPOSE_APP_DATABASE = "wiseeff";
 
-const isForbiddenComposeAppPostgres = (connectionString: string): boolean => {
+/**
+ * Exported so CI configuration checks can assert that a job running this suite
+ * never points it at the shared compose app database this guard refuses.
+ */
+export const isForbiddenComposeAppPostgres = (connectionString: string): boolean => {
   try {
     const url = new URL(connectionString);
     const host = url.hostname.toLowerCase();
