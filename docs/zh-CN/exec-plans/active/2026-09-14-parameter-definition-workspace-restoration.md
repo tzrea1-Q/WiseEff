@@ -8,6 +8,16 @@
 
 英文计划是权威版本；本页是与之配对的中文维护页，内容按英文计划同步。当前中文页记录范围、基线与门禁，详细的检查清单与证据表格以英文页为准。
 
+## 纠错成功路径闭环（2026-09-15）
+
+在真实浏览器 + 真实 API + 真实发布管理器上完整走通纠错成功路径后，修复了三处此前未被接缝测试覆盖的缺口，均已有测试覆盖：
+
+1. **源格式无法从记录的 source_ref 判定。** dts 摄取记录的是 `config-set:<id>`，而源格式门禁只接受 `.dts`，导致所有项目都以 `unsupported-source-format` 被阻止。现在在预览与执行时都通过取值背后的 DTS occurrence 解析真实 `.dts` 文件与节点定位（追加型取值行不改写），新写入直接记录解析后的 `.dts` 位置，`resolveConfigRevisionForSource` 同时接受两种形态。证据：`provenance.integration.test.ts`、`evaluate.test.ts`、`catalogProjectValueSync.integration.test.ts`。
+2. **浏览器永远到不了服务端写路由。** `apiAdapter` 只转发了 release pin，丢掉了必需的 `Idempotency-Key`/`If-Match`，预览先返回 409 `revision-conflict`；即使通过，`create` 也因 API 把激活留给发布管理器、随后拒绝该发布产生的 release 而无法落库。现在适配器完整转发写上下文，对话框用同一幂等命令 + 刷新后的 release pin 重试，API 通过管理器的激活回执**观察**激活（自身不安装 release，遵守 CP-07），预检也接受该预览自己铸造的后继 release 为当前 release。证据：`DefinitionCorrectionDialog.test.tsx`、`provenance.integration.test.ts` 与下方浏览器记录。
+3. **过期审核工作会永久阻塞纠错。** 属于已被取代 release 的 open `parameter_review_items` 行既不在列表中、也无法再被解决，却按组织全量计入未完成工作。现在只统计被纠错 release 的未完成审核项，与审核队列自身的口径一致（VL-06、ADR-0044 §9）。
+
+**真实浏览器成功路径（已记录）**：专用通道 `wiseeff_lane_847`；浏览器验收库 `wiseeff_i847lane_1_1`（同一 pgvector 服务，`publicationEnabled=true`、`adopted=true`、`authoringAllowed=true`、`publishingAllowed=true`、`blockers=[]`）；发布管理器以独立进程和专用 manager LOGIN 运行。在 `/parameter-admin/specs` → 主体 `charger` → 定义 `iin_final_16660` → **身份纠错**，替代主体 `acme,correction`、新属性键、影响项目 `nebula`、填写原因后：影响预览为 选定项目 1 / 可迁移 1 / 被阻止 0 / 源格式受支持 **是**、无 blocker、项目"待处理/兼容"；执行结果为 `data-correction-result="completed"`、已完成 1 / 被阻止 0 / 失败 0 / 待处理 0；数据库中 `definition_replacements` 为 `completed`，新 `pbind_*`/`pval_*` 继承了 `nebula-board.dts!/charger@0` 与取值 `1000`，旧绑定、旧取值与旧定义保持不变。截图位于 `work/ui-checks/847/correction-{form,preview,result}-{desktop,tablet,mobile}.png`（`work/` 不入库）。控制台仅有握手过程中两次预期内的过渡状态（首次 create 的 503 `catalog-not-ready`、管理器激活后重试的 409 `release-drift`），无 UI 错误态。
+
 ## 目标
 
 在**当前正式目录（canonical Catalog）**之上恢复 2026-09-05 之前的组织参数定义工作区：模块导航位于宽定义表旁，唯一的"新建"入口，紧凑的搜索/列筛选/分页，按需展开的定义历史与带计数的待处理工作，以及带固定操作区的宽编辑器。同一变更恢复定义弃用/恢复，并新增受控的**定义身份纠错**能力：发布替代身份并迁移明确选定的当前引用。

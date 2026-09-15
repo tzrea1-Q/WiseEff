@@ -184,6 +184,11 @@
 
 ## 同类中文文档
 
+
+## #847 新增覆盖（PCAT-UI-16 / PCAT-UI-17）
+
+`PCAT-UI-16`（定义集合工作区分页与真实计数，三视口）与 `PCAT-UI-17`（每行一个弃用/恢复动作 + 一个身份纠错动作）已在 `e2e/acceptance/parameter-catalog-definitions.acceptance.spec.ts` 覆盖。`PCAT-UI-17` 另要求纠错对话框在预览时携带 release pin 与幂等键、在 create/continue 上携带 `If-Match`，并完整走通成功路径：真实浏览器 + 真实 API + 真实发布管理器下，影响预览为 可迁移 1 / 被阻止 0，执行结果为 `completed`、项目"已完成"，迁移后的取值保留 `.dts` 源位置；截图见 `work/ui-checks/847/correction-{form,preview,result}-{desktop,tablet,mobile}.png`（`work/` 不入库）。单元/集成证据：`src/features/parameter-catalog-governance/DefinitionCorrectionDialog.test.tsx`、`server/modules/parameter-catalog-migration/provenance.integration.test.ts`。
+
 - [docs/zh-CN/developer/README.md](README.md)
 - [docs/zh-CN/developer/local-development.md](local-development.md)
 - [docs/zh-CN/developer/environment-variables.md](environment-variables.md)

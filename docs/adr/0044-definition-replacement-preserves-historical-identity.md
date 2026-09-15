@@ -87,6 +87,31 @@ These are the confirmed issue-spec defaults (decision 17); the replacement seman
 5. Incompatible values and pending or conflicting work block the affected project: there is **no** automatic conversion, truncation, default substitution, draft discard, or approval repinning.
 6. A property-key correction reuses the established DTS source-preserving capability (`server/modules/parameter-specs/propertyKeyCutover.ts`); other source formats are not silently declared supported.
 
+### 7. Source format is decided by DTS provenance, not by string-sniffing the recorded ref
+
+The dts ingest path records the write the operator approved — `config-set:<configSetId>` — on the canonical value row, while the actual `.dts` file and node the value came from live in `dts_property_occurrences`. Append-only value rows cannot be backfilled, so the capability resolves the source location from that provenance at preview and execute time (`server/modules/parameter-catalog-migration/evaluate.ts`, `resolveSourceLocation`):
+
+- a recorded ref that already names a `.dts` location is used as-is;
+- a recorded ref that names a real non-`.dts` file (`config/c.yaml`) blocks with `unsupported-source-format`;
+- the opaque `config-set:` ref is resolved through the occurrence, and blocks with `missing-source-provenance` when nothing matched, `ambiguous-source-match` when two occurrences of the key exist at the same location in one file, and `unsupported-source-format` when the matched file is not `.dts`;
+- a resolved location is `<file>.dts` or `<file>.dts!<node locator>`, and the property key stays separate so coupled-source detection compares file plus node.
+
+The failure reasons above are evaluated identically at preview and at execute, and a resolved-at-preview source that no longer resolves is `stale-preview` rather than a silently accepted rewrite. New writes record the resolved `.dts` location directly (`server/modules/parameter-bindings/catalogProjectValueSync.ts`), and `resolveConfigRevisionForSource` accepts both ref shapes so a later canonical save still resolves its config set. Rewriting the source file bytes remains the property-key cutover capability's job; this capability moves the value's provenance to the corrected identity.
+
+### 8. Create observes activation; it never performs the install
+
+Publication of the successor identity stays with the publication manager (CP-07 isolation, ADR-0043 §5). The API enqueues the job through the existing Candidate/Authorization path and then **observes** the manager's Activation Receipt (`server/modules/parameter-catalog-api/productionWire.ts`):
+
+- while no receipt exists the command answers the existing retryable `catalog-not-ready` with the frozen preview retained;
+- once the receipt exists the same keyed command persists the approved replacement, because the preflight accepts the successor release this preview minted as the current release as well as the base release it was previewed against.
+
+The frozen preview, its fingerprint, the manifest and the idempotency identity are unchanged across those attempts, so the retry is one command, not a second approval. The dialog performs that bounded retry itself (refreshing only the release pin) instead of reporting a failure the operator would have to guess about.
+
+### 9. Only the release under correction has open review work
+
+An open `parameter_review_items` row captured for a superseded release is no longer listed and can no longer be resolved through the current-release surface. Counting those leftovers as open work would block every correction on an upgraded instance forever, so `countOpenReviewItems` counts open items captured for the release being corrected, matching the reviewer queue's own rule. Drafts remain release-scoped through their base revision and release.
+
+
 ## Consequences
 
 ### Historical identity and the two history events
@@ -123,6 +148,9 @@ The executable matrix is the frozen threat matrix in `docs/exec-plans/active/202
 - At most one non-`failed` replacement exists per old definition, while a `failed` row may be superseded (`IV-03`).
 - Catalog success followed by registration or preparation failure leaves the current Catalog release and Activation Receipt unchanged and records `blocked` (`PA-01`).
 - Repeated execute or continue with the same idempotency key creates no duplicate binding, value or history row (`RC-01`–`RC-05`).
+- A same-key create retried after the publication manager activated the successor persists exactly one replacement and migrates the manifest exactly once (`PA-02`, `RC-01`).
+- Source format, ambiguity and missing provenance are decided from DTS provenance and block with the documented reason at both preview and execute (`SR-01`–`SR-05`).
+- An open review item captured for a superseded release does not block a correction of the current release and stays untouched (`VL-05`).
 - Cross-organization project, binding and actor selection fails closed (`TN-01`–`TN-04`, `AU-01`–`AU-04`).
 - The old definition is never auto-deprecated, and a scoped usage count never proves global completion (`IV-08`, `IV-09`, `IV-10`).
 - The deferrable constraint triggers inherited from migration `0137` — including `binding_history_event_owner_fk` and `project_parameter_binding_effective_revision_head_fk` — remain deferrable and initially deferred after `0144` (`IV-14`).
