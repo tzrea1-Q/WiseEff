@@ -10,6 +10,12 @@
   --pcat-danger-soft: var(--danger-soft);
   --pcat-warning: var(--warning);
   --pcat-warning-soft: var(--warning-soft);
+  /* The module navigator mirrors the workbench navigator's palette so both
+     read the same in a side-by-side review. */
+  --pcat-nav-ink: #152238;
+  --pcat-nav-item: #52657d;
+  --pcat-nav-meta: #5a6b82;
+  --pcat-nav-chevron: #7f8ea4;
   --pcat-success: var(--success);
   --pcat-success-soft: var(--success-soft);
 
@@ -189,30 +195,93 @@
   gap: var(--space-2);
 }
 
+/* The module navigator mirrors the workbench navigator the other admin pages
+   use: 42px rows on a 2px rhythm, a 28px disclosure column, a muted row label
+   with an ink branch label, a 10px right-aligned count, and a left rule for
+   nested levels. */
+.parameter-catalog__tree {
+  display: grid;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.parameter-catalog__tree-node {
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.parameter-catalog__tree .parameter-catalog__tree {
+  margin: 2px 0 0 14px;
+  padding-left: var(--space-2);
+  border-left: 1px solid var(--pcat-border);
+}
+
+.parameter-catalog__tree-row {
+  display: grid;
+  grid-template-columns: minmax(28px, auto) minmax(0, 1fr);
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+}
+
+.parameter-catalog__tree-toggle {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  color: var(--pcat-nav-chevron);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  font-size: var(--text-base);
+  line-height: 1;
+  cursor: pointer;
+}
+
+button.parameter-catalog__tree-toggle:hover {
+  color: var(--pcat-accent);
+  background: var(--pcat-accent-soft);
+  border-color: color-mix(in srgb, var(--pcat-accent) 24%, transparent);
+}
+
 .parameter-catalog__tree-select {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: var(--space-2);
+  gap: 5px;
   width: 100%;
   min-width: 0;
-  padding: var(--space-1) var(--space-2);
-  color: var(--pcat-text);
+  min-height: 42px;
+  padding: 7px var(--space-2);
+  color: var(--pcat-nav-item);
   background: transparent;
   border: 1px solid transparent;
-  border-radius: var(--radius-sm);
-  font: 400 var(--text-base) / var(--leading-base) var(--font-sans);
+  border-radius: var(--radius-md);
+  font: 400 var(--text-sm) / 1.35 var(--font-sans);
   text-align: left;
   cursor: pointer;
+  transition:
+    color var(--duration-fast) var(--ease-out),
+    background var(--duration-fast) var(--ease-out),
+    border-color var(--duration-fast) var(--ease-out);
 }
 
 .parameter-catalog__tree-select:hover {
-  background: var(--surface-sunken);
+  color: var(--pcat-accent);
+  background: var(--pcat-accent-soft);
+  border-color: color-mix(in srgb, var(--pcat-accent) 24%, transparent);
 }
 
 .parameter-catalog__tree-select[aria-pressed="true"] {
+  color: var(--pcat-accent);
   background: var(--pcat-accent-soft);
   border-color: color-mix(in srgb, var(--pcat-accent) 35%, var(--pcat-border));
+  box-shadow: inset 3px 0 0 var(--pcat-accent);
 }
 
 .parameter-catalog__tree-select:focus-visible,
@@ -221,40 +290,13 @@
   box-shadow: var(--ring);
 }
 
-.parameter-catalog__tree,
-.parameter-catalog__tree-node {
-  margin: 0;
-  padding: 0;
-  list-style: none;
+/* Branch labels read as structure; subject leaves stay muted supporting text. */
+.parameter-catalog__tree-select[data-catalog-node-kind="module"] .parameter-catalog__tree-label,
+.parameter-catalog__tree-select--group .parameter-catalog__tree-label {
+  font-weight: 700;
+  color: var(--pcat-nav-ink);
 }
 
-.parameter-catalog__tree .parameter-catalog__tree {
-  padding-left: var(--space-3);
-}
-
-.parameter-catalog__tree-row {
-  display: flex;
-  align-items: center;
-  gap: var(--space-1);
-  min-width: 0;
-}
-
-.parameter-catalog__tree-toggle {
-  flex: 0 0 1.25rem;
-  width: 1.25rem;
-  padding: 0;
-  color: var(--pcat-muted);
-  background: transparent;
-  border: none;
-  font-size: var(--text-sm);
-  line-height: var(--leading-sm);
-  cursor: pointer;
-}
-
-/* Row actions use the same secondary button shape as the other admin tables,
-   with an outline strong enough to read as a button. The cell keeps its
-   content-driven width and wraps, so the table never overflows the pane and no
-   action is clipped. */
 /* The pending-work dialog holds the review queue table, so it needs more room
    than the default governance dialog width. */
 .confirm-dialog.parameter-catalog__pending-dialog {
@@ -266,6 +308,10 @@
   min-width: 0;
 }
 
+/* Row actions use the same secondary button shape as the other admin tables,
+   with an outline strong enough to read as a button. The cell keeps its
+   content-driven width and wraps, so the table never overflows the pane and no
+   action is clipped. */
 .parameter-catalog__row-actions {
   display: inline-flex;
   flex-wrap: wrap;
@@ -308,13 +354,18 @@
 
 .parameter-catalog__tree-select[data-catalog-node-kind="subject"] .parameter-catalog__subject-meta {
   flex: 0 0 auto;
-  font-size: var(--text-xs);
+  overflow: hidden;
+  color: var(--pcat-nav-meta);
+  font-size: 10px;
+  line-height: 1.3;
+  white-space: nowrap;
+  text-overflow: ellipsis;
 }
 
 /* The unregistered group is a branch label, not a filter value. */
 .parameter-catalog__tree-select--group {
   cursor: default;
-  color: var(--pcat-secondary);
+  color: var(--pcat-nav-item);
 }
 
 .parameter-catalog__tree-select--group:hover {
@@ -323,11 +374,15 @@
 
 .parameter-catalog__module-count {
   flex: 0 0 auto;
-  min-width: 1.5rem;
-  padding: 0 var(--space-1);
-  color: var(--pcat-secondary);
-  font-size: var(--text-xs);
+  min-width: 0;
+  max-width: 120px;
+  overflow: hidden;
+  color: var(--pcat-nav-meta);
+  font-size: 10px;
+  line-height: 1.3;
   text-align: right;
+  white-space: nowrap;
+  text-overflow: ellipsis;
 }
 
 .parameter-catalog__list-head {
