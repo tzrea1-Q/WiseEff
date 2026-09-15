@@ -973,9 +973,10 @@ describe("debugging routes", () => {
     );
   });
 
-  it("POST /api/v1/debugging/nodes/write returns an operation and snapshot when available", async () => {
+  it.each(["hardware-user", "software-user"] as const)("POST /api/v1/debugging/nodes/write accepts %s role permissions", async (roleId) => {
     const db = makeDb();
     const gateway = makeGateway();
+    const auth = makeTestAuthContext({ roleId });
     const operation = operationRecord({
       id: "op-write",
       operationType: "write",
@@ -990,7 +991,7 @@ describe("debugging routes", () => {
     serviceMocks.writeNode.mockResolvedValue({ operation, snapshot });
 
     const response = await requestJson<{ operation: NodeOperationRecord; snapshot: DebugSnapshotRecord }>(
-      makeServer({ db, gateway }),
+      makeServer({ db, gateway, auth }),
       "/api/v1/debugging/nodes/write",
       {
         method: "POST",
@@ -1008,7 +1009,7 @@ describe("debugging routes", () => {
     expect(response.status).toBe(200);
     expect(response.body).toEqual({ operation, snapshot });
     expect(serviceMocks.writeNode).toHaveBeenCalledWith(
-      makeAuth(),
+      auth,
       {
         sessionId: "session-1",
         parameterId: "param-1",

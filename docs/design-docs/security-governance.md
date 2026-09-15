@@ -12,6 +12,8 @@ WiseEff handles parameters, logs, device debugging, and AI tool calls. These wor
 
 Enterprise environments should use OIDC/SSO. Local development may use development or smoke identity modes. Page visibility is not a security boundary. Backend write APIs must authorize actions server-side, validate project or organization boundaries, and preserve audit.
 
+Hardware User (`hardware-user`) and Software User (`software-user`) both have `debugging:write` and `debugging:rollback` for node debugging. These grants retain device confirmation, session ownership, organization scope, validation, snapshots, and audit requirements; they do not grant `debugging:dts-reload`, `debugging:admin`, `parameter:edit-critical`, or review/admin permissions. Existing local-account and production OIDC sessions resolve these permissions from their database role bindings and the backend role policy on each request, so deploying the updated backend enables the grants without recreating accounts or rewriting stored role permissions. The baseline seed keeps fresh installations consistent.
+
 ## Audit
 
 Login/identity events, user and role changes, parameter writes, review decisions, log uploads and reruns, device reads/writes/rollback, Agent tool calls, approvals, and configuration changes need audit.

@@ -113,7 +113,7 @@ describe("acceptance state models", () => {
     });
     const unauthorizedWrite = applyDebuggingModelStep(read, {
       type: "write",
-      actorRole: "hardware-user"
+      actorRole: "guest"
     });
     const rollbackWithoutSnapshot = applyDebuggingModelStep(read, {
       type: "rollback",
@@ -121,11 +121,11 @@ describe("acceptance state models", () => {
     });
     const written = applyDebuggingModelStep(read, {
       type: "write",
-      actorRole: "hardware-committer"
+      actorRole: "hardware-user"
     });
     const rolledBack = applyDebuggingModelStep(written, {
       type: "rollback",
-      actorRole: "hardware-committer"
+      actorRole: "hardware-user"
     });
 
     expect(unauthorizedWrite.violations).toContain("debugging write requires debugging:write");
