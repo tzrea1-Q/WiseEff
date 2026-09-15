@@ -350,16 +350,27 @@ export const countOpenDrafts = async (
   return Number(result.rows[0]?.n ?? 0);
 };
 
+/**
+ * Open review work for the release being corrected.
+ *
+ * The reviewer queue is derived for one catalog release: evidence captured for a
+ * superseded release is no longer listed and can no longer be resolved through
+ * the current-release surface.  Counting those leftovers as open work would block
+ * every correction on an upgraded instance forever, so the guard matches the
+ * queue's own rule and counts items captured for the release under correction.
+ */
 export const countOpenReviewItems = async (
   client: MigrationClient,
   organizationId: string,
+  catalogReleaseId: string,
 ): Promise<number> => {
   const result = await client.query<{ n: string }>(
     `select count(*)::text as n
        from parameter_catalog.parameter_review_items review
       where review.organization_id = $1
-        and review.status = 'open'`,
-    [organizationId],
+        and review.status = 'open'
+        and review.catalog_release_id = $2`,
+    [organizationId, catalogReleaseId],
   );
   return Number(result.rows[0]?.n ?? 0);
 };

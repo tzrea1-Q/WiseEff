@@ -18,6 +18,7 @@ import {
   CatalogReleaseDigest,
   CatalogReleaseId,
   CatalogSubjectId,
+  PublicationJobId,
   type CatalogReleasePin,
   type CatalogSubjectKind,
   type PlacementIntent,
@@ -38,6 +39,8 @@ import { registerCatalogGovernanceRoutes, registerCatalogDefinitionReplacementRo
 import { createParameterCatalogMigrationService } from "../parameter-catalog-migration/service";
 import type { ReplacementPublicationPorts } from "../parameter-catalog-migration/types";
 import { enqueuePublicationJob } from "../catalog-publication/enqueue";
+import { withPublicationCoordinator } from "../catalog-publication/coordinator";
+import { getJob, getReceiptByJobId } from "../catalog-publication/persistence/store";
 import {
   bindCatalogGovernanceCommands,
   bindGovernanceCatalogQueryPorts,
@@ -547,6 +550,32 @@ const createReplacementPublicationPorts = (
         authorizationId: enqueued.value.job.authorizationId,
         replayed: enqueued.value.replayed,
       },
+    };
+  },
+  /**
+   * Observe activation instead of performing it.  The publication manager owns
+   * the install (CP-07 isolation, ADR-0043 §5); the API only reports the
+   * activation receipt the manager wrote.  Until that receipt exists the caller
+   * keeps the frozen preview and answers a retryable "not ready", so a same-key
+   * retry can persist the approved replacement once the successor is current.
+   */
+  async activateReplacementPublication({ jobId }) {
+    const observed = await withPublicationCoordinator(db, (tx) =>
+      getJob(tx, PublicationJobId(jobId)),
+    );
+    if (observed.ok && observed.value.status === "needs-rebase") {
+      return { kind: "blocked" as const, jobId, reason: "needs-rebase" };
+    }
+    const receipt = await withPublicationCoordinator(db, (tx) =>
+      getReceiptByJobId(tx, PublicationJobId(jobId)),
+    );
+    if (!receipt.ok) {
+      return { kind: "pending" as const, jobId };
+    }
+    return {
+      kind: "active" as const,
+      releaseId: receipt.value.releaseId,
+      releaseDigest: receipt.value.releaseDigest,
     };
   },
 });

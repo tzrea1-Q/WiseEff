@@ -17,6 +17,7 @@ import {
   createMigrationHarness,
   integerContent,
   migrationTrustedActor,
+  subjectChange,
   type MigrationHarness,
 } from "./testing/harness";
 
@@ -303,6 +304,87 @@ describe("definition replacement source provenance", () => {
       if (!preview.ok) return;
       expect(preview.value.blockers).toContain(`unsupported-source-format:${P1}`);
       expect(preview.value.impact.sourceFormatSupported).toBe(false);
+    });
+  }, 240_000);
+
+  it("VL-05 ignores an open review item captured for a superseded release", async () => {
+    await withHarness(async (harness) => {
+      const registrationId = await seed(harness);
+      const superseded = harness.pin();
+      // A later publication moves the release on; a review item captured for the
+      // earlier release is no longer listed or resolvable, so it must not block
+      // corrections forever on an upgraded instance.
+      await harness.publishChange(
+        [
+          subjectChange({
+            canonicalKey: "acme,prov-later",
+            selector: "acme,prov-later",
+            propertyKey: "later_max",
+            content: integerContent("Later max", 0),
+          }),
+        ] as never,
+        "prov-supersede",
+      );
+      expect(harness.pin().id).not.toBe(superseded.id);
+      await harness.pool.query(
+        `insert into parameter_catalog.parameter_review_items (
+           id, organization_id, evidence_fingerprint, matcher_revision, catalog_release_id,
+           reason, status, etag_version
+         ) values ($1,$2,'fp-prov-superseded','catalog-matcher/v1',$3,'unknown','open',1)`,
+        ["prit-prov-superseded", ORG, superseded.id],
+      );
+      await insertConfigSet(harness);
+      await insertOccurrence(harness, {
+        id: "oe-provenance-review",
+        propertyKey: PREDECESSOR_PROPERTY_KEY,
+        propertyOccurrenceId: "po-provenance-review",
+        nodeOccurrenceId: "no-provenance-review",
+      });
+      await harness.seedBindingValue({
+        organizationId: ORG,
+        projectId: P1,
+        logicalNodeId: LOGICAL_NODE_ID,
+        registrationId,
+        sources: [{ sourceRef: `config-set:${CONFIG_SET_ID}`, configRevisionId: CONFIG_REVISION_ID }],
+        values: [5],
+      });
+
+      const preview = await harness.migration.previewDefinitionReplacement({
+        organizationId: ORG,
+        oldDefinitionId: PREDECESSOR_DEFINITION_ID,
+        newSubjectId: PREDECESSOR_SUBJECT_ID,
+        newPropertyKey: "iin_superseded_review_max",
+        proposedContent: integerContent("Superseded review max", 0),
+        projectIds: [P1],
+        reason: "VL-05",
+        expectedRelease: harness.pin(),
+        context: context(),
+      });
+      expect(preview.ok).toBe(true);
+      if (!preview.ok) return;
+      expect(preview.value.blockers).not.toContain("pending-work-conflict:review");
+      expect(preview.value.projects[0]?.status).toBe("pending");
+
+      const created = await harness.migration.createDefinitionReplacement({
+        organizationId: ORG,
+        previewId: preview.value.previewId,
+        previewFingerprint: preview.value.previewFingerprint,
+        idempotencyKey: "vl-05-superseded-review",
+        expectedRelease: harness.pin(),
+        context: context(),
+        trustedActor: migrationTrustedActor(),
+      });
+      expect(created.ok).toBe(true);
+      if (!created.ok) return;
+      expect(created.value.projects[0]?.status).toBe("completed");
+
+      // The superseded review row itself is untouched by the correction.
+      const review = await harness.pool.query<{ status: string; catalog_release_id: string }>(
+        `select status, catalog_release_id from parameter_catalog.parameter_review_items where id = $1`,
+        ["prit-prov-superseded"],
+      );
+      expect(review.rows[0]?.status).toBe("open");
+      expect(review.rows[0]?.catalog_release_id).toBe(superseded.id);
     });
   }, 240_000);
 });

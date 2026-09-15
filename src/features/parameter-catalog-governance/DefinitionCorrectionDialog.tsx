@@ -5,10 +5,12 @@ import { catalogStateFromFailure, type CatalogDomainState } from "@/application/
 import type { ParameterCatalogRepository } from "@/application/ports/ParameterCatalogRepository";
 import { ConfirmDialog } from "@/components/common/ConfirmDialog";
 import { ModalDialog } from "@/components/common/ModalDialog";
+import { WiseEffApiError } from "@/infrastructure/http/apiClient";
 import type {
   CatalogDefinitionResponse,
   CatalogReplacement,
   CatalogReplacementPreview,
+  CatalogReplacementResponse,
   CatalogSubjectResponse
 } from "@/infrastructure/http/parameterCatalogDtos";
 
@@ -36,6 +38,24 @@ export type DefinitionCorrectionDialogProps = {
 };
 
 type Phase = "compose" | "preview" | "executed";
+
+/** Bounded wait for the publication manager to install the successor release. */
+const ACTIVATION_RETRY_LIMIT = 8;
+const ACTIVATION_RETRY_DELAY_MS = 1500;
+
+const delay = (ms: number): Promise<void> =>
+  new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
+
+/**
+ * A create answer that only means "the successor publication this command
+ * enqueued is not installed yet": the release is not ready, or the manager
+ * activated the successor so the pinned release moved on.
+ */
+const awaitsSuccessorActivation = (error: unknown): boolean =>
+  error instanceof WiseEffApiError &&
+  (error.details.reason === "catalog-not-ready" || error.details.reason === "release-drift");
 
 const projectStatusLabel = {
   completed: "已完成",
@@ -85,6 +105,7 @@ export function DefinitionCorrectionDialog({
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState("");
+  const [previewIdempotencyKey, setPreviewIdempotencyKey] = useState<string | null>(null);
   const [idempotencyKey, setIdempotencyKey] = useState<string | null>(null);
 
   const allowed = canExecutePublicationAction(
@@ -108,6 +129,7 @@ export function DefinitionCorrectionDialog({
     setConfirmOpen(false);
     setPending(false);
     setError("");
+    setPreviewIdempotencyKey(null);
     setIdempotencyKey(null);
   }, [open, definition]);
 
@@ -137,6 +159,10 @@ export function DefinitionCorrectionDialog({
     }
     setPending(true);
     try {
+      // Preview is a catalog write route: it requires an idempotency key, kept
+      // stable so a retry of the same preview is not a second command.
+      const key = previewIdempotencyKey ?? (createIdempotencyKey ?? createGovernanceIdempotencyKey)();
+      setPreviewIdempotencyKey(key);
       const response = await catalog.previewDefinitionReplacement(
         {
           oldDefinitionId: definition.id,
@@ -149,7 +175,7 @@ export function DefinitionCorrectionDialog({
           valueSchema: definition.currentRevision.valueShape
             .schema as never
         },
-        { catalogReleaseId }
+        { catalogReleaseId, idempotencyKey: key }
       );
       setPreview(response.item);
       setPhase("preview");
@@ -167,14 +193,39 @@ export function DefinitionCorrectionDialog({
     const key = idempotencyKey ?? (createIdempotencyKey ?? createGovernanceIdempotencyKey)();
     setIdempotencyKey(key);
     try {
-      const response = await catalog.createDefinitionReplacement(
-        {
-          previewId: preview.previewId,
-          previewFingerprint: preview.previewFingerprint,
-          idempotencyKey: key
-        },
-        { catalogReleaseId }
-      );
+      // The API enqueues the successor publication and the publication manager
+      // installs it (CP-07 isolation): the first answer is a retryable
+      // "catalog not ready", and once the manager activated the successor the
+      // same command answers release-drift because the fresh release is current.
+      // Retry the same idempotent command with a refreshed release pin instead of
+      // reporting a failure the operator would have to guess about.
+      let releaseId = catalogReleaseId;
+      let response: CatalogReplacementResponse | null = null;
+      for (let attempt = 0; attempt < ACTIVATION_RETRY_LIMIT; attempt += 1) {
+        try {
+          response = await catalog.createDefinitionReplacement(
+            {
+              previewId: preview.previewId,
+              previewFingerprint: preview.previewFingerprint,
+              idempotencyKey: key
+            },
+            // The frozen preview fingerprint is the If-Match: an ETag alone cannot
+            // detect a source or per-project tip change since the preview.
+            { catalogReleaseId: releaseId, idempotencyKey: key, ifMatch: preview.previewFingerprint }
+          );
+          break;
+        } catch (caught) {
+          if (!awaitsSuccessorActivation(caught) || attempt === ACTIVATION_RETRY_LIMIT - 1) {
+            throw caught;
+          }
+          const refreshed = await catalog.getCatalog();
+          releaseId = refreshed.item?.catalogReleaseId ?? releaseId;
+          await delay(ACTIVATION_RETRY_DELAY_MS);
+        }
+      }
+      if (!response) {
+        throw new Error("definition-replacement activation did not complete");
+      }
       setReplacement(response.item);
       setPhase("executed");
       setConfirmOpen(false);
@@ -201,7 +252,8 @@ export function DefinitionCorrectionDialog({
             .filter((project) => project.status === "blocked" || project.status === "pending")
             .map((project) => project.projectId)
         },
-        { catalogReleaseId }
+        // Continue is fenced on the replacement's own ETag version.
+        { catalogReleaseId, idempotencyKey: key, ifMatch: replacement.etag }
       );
       setReplacement(response.item);
       void onRefreshEvidence?.();

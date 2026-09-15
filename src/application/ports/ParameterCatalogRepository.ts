@@ -53,6 +53,16 @@ export type CatalogPublicationWriteContext = {
   catalogReleaseId: string;
 };
 
+/**
+ * Identity correction commands are catalog write routes: every one carries an
+ * idempotency key, and `create`/`continue` are additionally fenced with
+ * `If-Match` (the frozen preview fingerprint, then the replacement ETag).
+ */
+export type CatalogReplacementWriteContext = CatalogPublicationWriteContext & {
+  idempotencyKey: string;
+  ifMatch?: string;
+};
+
 /** CatalogRead + DefinitionTimeline + LegacyLink + frozen publication commands. */
 export interface ParameterCatalogRepository {
   getCatalog(query?: CatalogListQuery): Promise<CatalogDocumentResponse>;
@@ -93,17 +103,17 @@ export interface ParameterCatalogRepository {
   listPublications(query?: CatalogListQuery): Promise<CatalogPublicationJobListResponse>;
   previewDefinitionReplacement(
     body: CatalogReplacementPreviewRequest,
-    context: CatalogPublicationWriteContext
+    context: CatalogReplacementWriteContext
   ): Promise<CatalogReplacementPreviewResponse>;
   listDefinitionReplacements(query?: CatalogListQuery): Promise<CatalogReplacementListResponse>;
   createDefinitionReplacement(
     body: CatalogCreateReplacementRequest,
-    context: { catalogReleaseId: string }
+    context: CatalogReplacementWriteContext
   ): Promise<CatalogReplacementResponse>;
   getDefinitionReplacement(replacementId: string): Promise<CatalogReplacementResponse>;
   continueDefinitionReplacement(
     replacementId: string,
     body: CatalogContinueReplacementRequest,
-    context: { catalogReleaseId: string }
+    context: CatalogReplacementWriteContext
   ): Promise<CatalogReplacementResponse>;
 }

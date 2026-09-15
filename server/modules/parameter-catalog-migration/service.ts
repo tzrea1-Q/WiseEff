@@ -475,7 +475,7 @@ export function createParameterCatalogMigrationService(
         oldDefinition.revision_id,
         release.id,
       );
-      const openReviews = await countOpenReviewItems(db, command.organizationId);
+      const openReviews = await countOpenReviewItems(db, command.organizationId, release.id);
       const registration = await loadRegistration(db, command.organizationId, command.newSubjectId);
       const registrationRequired = registration === null || registration.status !== "active";
 
@@ -785,7 +785,11 @@ export function createParameterCatalogMigrationService(
         replacement.old_revision_id,
         replacement.preview_catalog_release_id,
       );
-      const openReviews = await countOpenReviewItems(tx, organizationId);
+      const openReviews = await countOpenReviewItems(
+        tx,
+        organizationId,
+        replacement.preview_catalog_release_id,
+      );
       const registration = await loadRegistration(tx, organizationId, replacement.new_subject_id);
       const touched: string[] = [];
 
@@ -997,7 +1001,22 @@ export function createParameterCatalogMigrationService(
           return { kind: "expired" as const };
         }
         const current = await loadCurrentReleasePin(tx);
-        if (!current || current.id !== preview.preview_catalog_release_id) {
+        const successorCandidate = preview.candidate_id
+          ? await loadCandidate(tx, preview.candidate_id)
+          : null;
+        const successorReleaseId = successorCandidate
+          ? allocationReleaseId(successorCandidate.identity_allocation)
+          : null;
+        // The preview is still usable while its own base release is current, and
+        // after the publication manager has activated the successor this preview
+        // minted: a same-key retry must be able to persist the approved
+        // replacement once the manager finished the install the API is not
+        // allowed to perform (CP-07 isolation, ADR-0043 §5).
+        if (
+          !current ||
+          (current.id !== preview.preview_catalog_release_id &&
+            current.id !== successorReleaseId)
+        ) {
           return { kind: "drift" as const, actualId: current?.id ?? null };
         }
         return { kind: "ready" as const, preview };

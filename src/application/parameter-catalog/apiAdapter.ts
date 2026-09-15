@@ -7,7 +7,6 @@ import type { ParameterCatalogRepository } from "@/application/ports/ParameterCa
 import type { ParameterCatalogClient } from "@/infrastructure/http/parameterCatalogClient";
 
 import { requireConditionalWriteContext, requireIdempotentWriteContext } from "./writeContext";
-import type { CatalogWriteContext } from "@/infrastructure/http/parameterCatalogClient";
 
 export function createApiParameterCatalogRepository(
   client: ParameterCatalogClient
@@ -33,21 +32,18 @@ export function createApiParameterCatalogRepository(
     getPublication: (jobId) => client.getPublication(jobId),
     getPublicationSurface: () => client.getPublicationSurface(),
     listPublications: (query) => client.listPublications(query),
+    // Identity correction commands are catalog write routes: the idempotency key
+    // and the create/continue If-Match fence must reach the client unchanged, or
+    // the root API answers 409 revision-conflict before the command is read.
     previewDefinitionReplacement: (body, context) =>
-      client.previewDefinitionReplacement(body, {
-        catalogReleaseId: context.catalogReleaseId
-      } as CatalogWriteContext),
+      client.previewDefinitionReplacement(body, context),
     listDefinitionReplacements: (query) => client.listDefinitionReplacements(query),
     createDefinitionReplacement: (body, context) =>
-      client.createDefinitionReplacement(body, {
-        catalogReleaseId: context.catalogReleaseId
-      } as CatalogWriteContext),
+      client.createDefinitionReplacement(body, context),
     getDefinitionReplacement: (replacementId) =>
       client.getDefinitionReplacement(replacementId),
     continueDefinitionReplacement: (replacementId, body, context) =>
-      client.continueDefinitionReplacement(replacementId, body, {
-        catalogReleaseId: context.catalogReleaseId
-      } as CatalogWriteContext)
+      client.continueDefinitionReplacement(replacementId, body, context)
   };
 }
 
