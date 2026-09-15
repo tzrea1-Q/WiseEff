@@ -64,7 +64,6 @@ import {
   catalogHistoryOpenLabel,
   catalogListLabel,
   catalogLoadingLabel,
-  catalogModuleScopeAll,
   catalogModuleScopeClear,
   catalogModuleScopeHint,
   catalogNavigatorLabel,
@@ -789,7 +788,7 @@ export function CatalogPage({
           <section className="parameter-catalog__navigator" aria-label={catalogNavigatorLabel}>
             <div className="parameter-catalog__navigator-head">
               <h2 className="parameter-catalog__pane-title">{catalogNavigatorLabel}</h2>
-              {anchor.moduleNodeId ? (
+              {anchor.moduleNodeId || subject ? (
                 <button type="button" className="button ghost sm" onClick={() => selectModuleNode(null)}>
                   {catalogModuleScopeClear}
                 </button>
@@ -800,12 +799,6 @@ export function CatalogPage({
               nodes={navigatorNodes}
               selectedId={subject ? `subject:${subject.id}` : anchor.moduleNodeId}
               onSelectNode={selectNavigatorNode}
-              allOption={{
-                label: catalogModuleScopeAll,
-                count: subjects.length,
-                selected: !anchor.moduleNodeId && !subject,
-                onSelect: () => selectModuleNode(null)
-              }}
             />
             {anchor.moduleNodeId ? (
               <p className="parameter-catalog__muted" data-catalog-module-scope="true">

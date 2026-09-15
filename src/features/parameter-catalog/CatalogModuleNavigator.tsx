@@ -2,20 +2,11 @@ import { useState } from "react";
 
 import type { CatalogNavigatorNode } from "./catalogModuleScope";
 
-export type CatalogModuleNavigatorAllOption = {
-  label: string;
-  count: number;
-  selected: boolean;
-  onSelect: () => void;
-};
-
 export type CatalogModuleNavigatorProps = {
   nodes: readonly CatalogNavigatorNode[];
   /** Selected module id, or `subject:<subjectId>` for a subject leaf. */
   selectedId: string | null;
   onSelectNode: (node: CatalogNavigatorNode) => void;
-  /** Row that clears the scope and returns to the complete collection. */
-  allOption?: CatalogModuleNavigatorAllOption;
   /** Initial expansion depth; deeper nodes stay collapsed for compactness. */
   defaultExpandDepth?: number;
   ariaLabel?: string;
@@ -119,7 +110,6 @@ export function CatalogModuleNavigator({
   nodes,
   selectedId,
   onSelectNode,
-  allOption,
   defaultExpandDepth = 2,
   ariaLabel = "参数定义模块树",
   emptyMessage = "当前组织还没有模块放置。"
@@ -130,23 +120,6 @@ export function CatalogModuleNavigator({
         <p className="parameter-catalog__muted">{emptyMessage}</p>
       ) : null}
       <ul className="parameter-catalog__tree">
-        {allOption ? (
-          <li className="parameter-catalog__tree-node">
-            <div className="parameter-catalog__tree-row">
-              <span className="parameter-catalog__tree-toggle" aria-hidden="true" />
-              <button
-                type="button"
-                className="parameter-catalog__tree-select"
-                aria-pressed={allOption.selected}
-                data-catalog-node-kind="all"
-                onClick={allOption.onSelect}
-              >
-                <span className="parameter-catalog__tree-label">{allOption.label}</span>
-                <span className="parameter-catalog__module-count">{allOption.count}</span>
-              </button>
-            </div>
-          </li>
-        ) : null}
         {nodes.map((node) => (
           <TreeNode
             key={node.id}
