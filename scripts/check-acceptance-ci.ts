@@ -331,6 +331,9 @@ export function findAcceptanceEnvironmentHelperLoads(
     .sort();
 }
 
+/** Every acceptance spec must load the shared acceptance environment helper. */
+const ACCEPTANCE_ENVIRONMENT_HELPER_COUNT = 35;
+
 export function evaluateAcceptanceCiConfiguration(
   input: AcceptanceCiConfigurationInput
 ): AcceptanceCiConfigurationResult {
@@ -353,7 +356,8 @@ export function evaluateAcceptanceCiConfiguration(
   const forbiddenAcceptanceDotenvImports = findForbiddenAcceptanceDotenvImports(acceptanceEnvironmentSources);
   const acceptanceEnvironmentHelperCount = findAcceptanceEnvironmentHelperLoads(acceptanceEnvironmentSources).length;
   const acceptanceEnvironmentGate = input.acceptanceEnvironmentSources === undefined
-    || (forbiddenAcceptanceDotenvImports.length === 0 && acceptanceEnvironmentHelperCount === 34);
+    || (forbiddenAcceptanceDotenvImports.length === 0 &&
+      acceptanceEnvironmentHelperCount === ACCEPTANCE_ENVIRONMENT_HELPER_COUNT);
   const localNonHdcBudget = evaluateAcceptanceLocalNonHdcBudget(input.workflowText);
   const immutableUploadContract = evaluateImmutableAcceptanceUpload(input.workflowText);
 

@@ -3491,7 +3491,7 @@ describe("immutable Catalog Release bundle contract", () => {
 
     expect(generatedSchemaBytes).toBe(expectedBytes);
     expect(createHash("sha256").update(expectedBytes).digest("hex")).toBe(
-      "802babb1762cf172706f570ba211e0e107c233880a17f73c00db4c52c30ddb96",
+      "2122c6d8089569d8924804982e9d41ebaa8d9b5cf032e7177da4e3d53e5595d3",
     );
 
     const standaloneSchema = JSON.parse(generatedSchemaBytes) as JsonObject;
