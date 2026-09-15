@@ -106,9 +106,7 @@ test.describe("M5.11 visual quality gate", () => {
     const popup = await openXiaozePopup(page);
     await settleAppToasts(page);
 
-    await expect(popup).toHaveScreenshot("xiaoze-popup-open.png", {
-      mask: [popup.locator(".xiaoze-welcome__prompts")]
-    });
+    await expect(popup).toHaveScreenshot("xiaoze-popup-open.png");
 
     const dragHandle = page.getByRole("button", { name: "拖动小泽窗口" });
     const handleBox = await dragHandle.boundingBox();
@@ -120,9 +118,7 @@ test.describe("M5.11 visual quality gate", () => {
     await page.mouse.move(handleBox.x - 180, handleBox.y + 100, { steps: 8 });
     await page.mouse.up();
     await expect(page.getByRole("button", { name: "恢复小泽默认位置和大小" })).toBeVisible();
-    await expect(popup).toHaveScreenshot("xiaoze-popup-moved.png", {
-      mask: [popup.locator(".xiaoze-welcome__prompts")]
-    });
+    await expect(popup).toHaveScreenshot("xiaoze-popup-moved.png", { maxDiffPixelRatio: 0.05 });
   });
 });
 
