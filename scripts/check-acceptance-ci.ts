@@ -417,6 +417,29 @@ export function runAcceptanceCiConfigurationCheck() {
   return result;
 }
 
+/**
+ * A database URL the backend suite may observe: this job's own loopback service on
+ * 5432, naming exactly the database that service creates, and never the shared
+ * compose app database the managed-instance specs refuse. Host and port are checked
+ * structurally rather than through the guard, so a remote or remapped URL cannot
+ * silently satisfy the guard by not looking like the compose app database.
+ */
+function isJobOwnedBackendDatabaseUrl(value: unknown, serviceDatabase: string): boolean {
+  if (typeof value !== "string" || value.trim() === "" || serviceDatabase === "") return false;
+  if (isForbiddenComposeAppPostgres(value)) return false;
+  let url: URL;
+  try {
+    url = new URL(value);
+  } catch {
+    return false;
+  }
+  const port = url.port === "" ? "5432" : url.port;
+  const database = url.pathname.replace(/^\//, "").split("/")[0] ?? "";
+  return ["127.0.0.1", "localhost"].includes(url.hostname.toLowerCase())
+    && port === "5432"
+    && database === serviceDatabase;
+}
+
 export function evaluateL1CiWorkflow(workflowText: string): { status: "passed" | "failed"; errors: string[] } {
   const errors: string[] = [];
   type Step = { id?: string; name?: string; run?: string; uses?: string; if?: string; "continue-on-error"?: boolean;
@@ -497,19 +520,33 @@ export function evaluateL1CiWorkflow(workflowText: string): { status: "passed" |
     if (id === "l1-scripts" || id === "l1-server") {
       check(job.services?.postgres?.image === "pgvector/pgvector:pg16", `${id} requires the real PG/vector service.`);
       if (id === "l1-server") {
-        // This job runs the managed-instance publication policy specs, which refuse
-        // the shared compose app database by name and port. It must therefore use a
-        // dedicated database that its own ephemeral service container creates.
-        const databaseUrl = job.env?.DATABASE_URL ?? "";
-        const databaseName = /^postgres(?:ql)?:\/\/[^/]+\/([^/?#]+)/u.exec(databaseUrl)?.[1] ?? "";
+        // This job runs the managed-instance publication policy specs, which refuse the
+        // shared compose app database by identity. `resolveTestDatabaseUrl()` prefers
+        // TEST_DATABASE_URL over DATABASE_URL and steps inherit both, so every database
+        // URL this job can observe must be its own loopback service database.
+        const serviceDatabase = job.services?.postgres?.env?.POSTGRES_DB ?? "";
         check(
-          !isForbiddenComposeAppPostgres(databaseUrl),
-          "l1-server must not point the backend suite at the forbidden shared compose app database.",
+          typeof job.env?.DATABASE_URL === "string" && job.env.DATABASE_URL.trim() !== "",
+          "l1-server must define the DATABASE_URL its backend suite runs against.",
         );
-        check(
-          databaseName !== "" && job.services?.postgres?.env?.POSTGRES_DB === databaseName,
-          "l1-server must create the database its DATABASE_URL names.",
-        );
+        const observedDatabaseUrls: Array<[string, unknown]> = [
+          ["workflow TEST_DATABASE_URL", workflow?.env?.TEST_DATABASE_URL],
+          ["job TEST_DATABASE_URL", job.env?.TEST_DATABASE_URL],
+          ["job DATABASE_URL", job.env?.DATABASE_URL],
+        ];
+        for (const step of steps) {
+          const label = step.id ?? step.name ?? "unnamed";
+          observedDatabaseUrls.push([`${label} step TEST_DATABASE_URL`, step.env?.TEST_DATABASE_URL]);
+          observedDatabaseUrls.push([`${label} step DATABASE_URL`, step.env?.DATABASE_URL]);
+        }
+        for (const [label, value] of observedDatabaseUrls) {
+          if (value === undefined) continue;
+          check(
+            isJobOwnedBackendDatabaseUrl(value, serviceDatabase),
+            `l1-server ${label} must be the job's own loopback:5432 service database.`,
+          );
+        }
+        check(serviceDatabase !== "", "l1-server must create the database its backend suite runs against.");
       } else {
         check(
           job.env?.DATABASE_URL === "postgres://wiseeff:wiseeff@127.0.0.1:5432/wiseeff",

@@ -72,24 +72,45 @@ describe("equivalent fixed L1 scheduling", () => {
       expect(evaluateL1CiWorkflow(YAML.stringify(workflow)).status).toBe("failed");
     }
   });
-  it("keeps the backend suite off the forbidden shared compose app database", () => {
+  it("keeps the backend suite on the job's own loopback database", () => {
     const source = readFileSync(".github/workflows/ci.yml", "utf8");
     const forbidden = "postgres://wiseeff:wiseeff@127.0.0.1:5432/wiseeff";
     const compliant = YAML.parse(source);
     expect(compliant.jobs["l1-server"].env.DATABASE_URL).not.toBe(forbidden);
     expect(compliant.jobs["l1-server"].services.postgres.env.POSTGRES_DB).not.toBe("wiseeff");
 
-    const forbiddenUrl = YAML.parse(source);
-    forbiddenUrl.jobs["l1-server"].env.DATABASE_URL = forbidden;
-    const forbiddenResult = evaluateL1CiWorkflow(YAML.stringify(forbiddenUrl));
-    expect(forbiddenResult.status).toBe("failed");
-    expect(forbiddenResult.errors.join(" ")).toContain("forbidden shared compose app database");
+    type MutableJob = {
+      env?: Record<string, string>;
+      services?: { postgres?: { env?: Record<string, string> } };
+      steps: Array<{ id?: string; env?: Record<string, string> }>;
+    };
+    const rejected = (mutate: (job: MutableJob) => void) => {
+      const workflow = YAML.parse(source) as { jobs: Record<string, MutableJob> };
+      mutate(workflow.jobs["l1-server"]!);
+      const result = evaluateL1CiWorkflow(YAML.stringify(workflow));
+      expect(result.status).toBe("failed");
+      return result.errors.join(" ");
+    };
+    const backendDatabase = "must be the job's own loopback:5432 service database";
 
-    const mismatchedDatabase = YAML.parse(source);
-    mismatchedDatabase.jobs["l1-server"].services.postgres.env.POSTGRES_DB = "wiseeff_somewhere_else";
-    const mismatchedResult = evaluateL1CiWorkflow(YAML.stringify(mismatchedDatabase));
-    expect(mismatchedResult.status).toBe("failed");
-    expect(mismatchedResult.errors.join(" ")).toContain("must create the database its DATABASE_URL names");
+    expect(rejected((job) => { job.env!.DATABASE_URL = forbidden; })).toContain(`job DATABASE_URL ${backendDatabase}`);
+    expect(rejected((job) => { job.env!.TEST_DATABASE_URL = forbidden; }))
+      .toContain(`job TEST_DATABASE_URL ${backendDatabase}`);
+    expect(rejected((job) => {
+      job.steps.find((step) => step.id === "server")!.env = { TEST_DATABASE_URL: forbidden };
+    })).toContain(`server step TEST_DATABASE_URL ${backendDatabase}`);
+    expect(rejected((job) => {
+      job.env!.DATABASE_URL = "postgres://wiseeff:wiseeff@db.internal:5432/wiseeff_l1_server";
+    })).toContain(backendDatabase);
+    expect(rejected((job) => {
+      job.env!.DATABASE_URL = "postgres://wiseeff:wiseeff@127.0.0.1:5999/wiseeff_l1_server";
+    })).toContain(backendDatabase);
+    expect(rejected((job) => { delete job.env!.DATABASE_URL; })).toContain("must define the DATABASE_URL");
+    expect(rejected((job) => {
+      job.services!.postgres!.env!.POSTGRES_DB = "wiseeff_somewhere_else";
+    })).toContain(backendDatabase);
+    expect(rejected((job) => { job.services!.postgres!.env!.POSTGRES_DB = "wiseeff"; })).toContain(backendDatabase);
+    expect(rejected((job) => { delete job.services; })).toContain("must create the database its backend suite runs against");
   });
   it.each(["build-and-test", "required"])("rejects skip, missing needs, altered source identity and npm installation in %s", (id) => {
     const source = readFileSync(".github/workflows/ci.yml", "utf8");
