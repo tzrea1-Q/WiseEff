@@ -22,7 +22,7 @@ import type { CatalogActorKind, CatalogAuthorizedAction } from "@/application/pa
 import type { ParameterCatalogRepository } from "@/application/ports/ParameterCatalogRepository";
 import { DataTable, type Column } from "@/components/admin";
 import { SectionEmpty, SectionError, SectionSkeleton } from "@/components/common/SectionState";
-import { WorkbenchSheet } from "@/components/WorkbenchSheet";
+import { ModalDialog } from "@/components/common/ModalDialog";
 import { formatAbsolute, formatRelativeOrAbsolute } from "@/domain/format/formatDateTime";
 import { toggleFilterValue } from "@/components/tableFilterUtils";
 import type {
@@ -543,7 +543,6 @@ export function CatalogPage({
       "push"
     );
     setHistoryOpen(false);
-    setClosedDefinitionId(null);
     setInspectorOpen(true);
   };
 
@@ -656,17 +655,24 @@ export function CatalogPage({
   ];
 
   const definition = snapshot?.definition ?? null;
+  const closeEditor = useCallback(() => {
+    setInspectorOpen(false);
+    // Deselect in the URL as well: closing must survive the evidence refresh the
+    // host triggers, which remounts this page and would otherwise reopen the
+    // dialog from the definition still named in the anchor.
+    if (anchor.definitionId) {
+      commitAnchor({ ...anchor, definitionId: null }, "replace");
+    }
+    onEditorClosed?.();
+  }, [anchor, commitAnchor, onEditorClosed]);
   /**
    * A deep link (and Back/Forward onto one) opens the editor for the definition
-   * it names; closing it records that definition so it stays closed.
+   * it names; closing it clears that selection from the URL.
    */
-  const [closedDefinitionId, setClosedDefinitionId] = useState<string | null>(null);
   const editorOpen =
     definition !== null &&
     (inspectorOpen ||
-      (Boolean(anchor.definitionId) &&
-        snapshot?.definition?.id === anchor.definitionId &&
-        closedDefinitionId !== anchor.definitionId));
+      (Boolean(anchor.definitionId) && snapshot?.definition?.id === anchor.definitionId));
   const subject = snapshot?.subject ?? null;
   const release = snapshot?.document.item;
   const showListEmptyState =
@@ -951,40 +957,47 @@ export function CatalogPage({
       )}
 
       {definition && editorOpen ? (
-        <WorkbenchSheet
+        <ModalDialog
           open={editorOpen}
-          onClose={() => {
-            setInspectorOpen(false);
-            setClosedDefinitionId(definition.id);
-            onEditorClosed?.();
-          }}
-          closeLabel={catalogDetailCloseLabel}
-          title={`编辑 ${definition.propertyKey}`.trim()}
+          onDismiss={closeEditor}
+          className="confirm-dialog parameter-catalog__editor-dialog"
         >
-          {renderDefinitionEditor ? (
-            <div data-definition-editor="true">
-              {renderDefinitionEditor(definition, {
-                revisions: snapshot?.revisions ?? [],
-                timeline: snapshot?.timeline ?? null,
-                onRequestHistory: () => setHistoryOpen(true)
-              })}
-            </div>
-          ) : (
+          {({ titleId }) => (
             <>
-              <div role="region" aria-label={catalogDetailLabel} data-catalog-detail-region="true">
-                {detailBody}
+              <h2 id={titleId}>{`编辑 ${definition.propertyKey}`.trim()}</h2>
+              <div className="confirm-dialog__scroll">
+            {renderDefinitionEditor ? (
+              <div data-definition-editor="true">
+                {renderDefinitionEditor(definition, {
+                  revisions: snapshot?.revisions ?? [],
+                  timeline: snapshot?.timeline ?? null,
+                  onRequestHistory: () => setHistoryOpen(true)
+                })}
               </div>
-              {historyOpen ? (
-                <section aria-label={catalogTimelineLabel} data-catalog-history-region="true">
-                  <CatalogHistoryBody
-                    timeline={snapshot?.timeline ?? null}
-                    revisions={snapshot?.revisions ?? []}
-                  />
-                </section>
-              ) : null}
+            ) : (
+              <>
+                <div role="region" aria-label={catalogDetailLabel} data-catalog-detail-region="true">
+                  {detailBody}
+                </div>
+                {historyOpen ? (
+                  <section aria-label={catalogTimelineLabel} data-catalog-history-region="true">
+                    <CatalogHistoryBody
+                      timeline={snapshot?.timeline ?? null}
+                      revisions={snapshot?.revisions ?? []}
+                    />
+                  </section>
+                ) : null}
+              </>
+            )}
+              </div>
+              <div className="dialog-actions">
+                <button type="button" className="button subtle" onClick={closeEditor}>
+                  {catalogDetailCloseLabel}
+                </button>
+              </div>
             </>
           )}
-        </WorkbenchSheet>
+        </ModalDialog>
       ) : null}
     </div>
   );

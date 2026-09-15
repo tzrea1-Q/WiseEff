@@ -143,8 +143,8 @@
 
 /*
  * Restored workspace (issue #847). The definition table owns all remaining
- * width beside a 240-520px module navigator; detail is a third track only when
- * the viewport can afford it, and history/pending work are on demand.
+ * width beside a 240-520px module navigator; the definition itself, its history
+ * and pending work open as dialogs, so there is no third track to reserve.
  */
 .parameter-catalog__workspace {
   display: grid;
@@ -162,13 +162,6 @@
 @media (min-width: 1100px) {
   .parameter-catalog:not([data-catalog-layout="tablet"]):not([data-catalog-layout="mobile"]) .parameter-catalog__workspace {
     grid-template-columns: minmax(15rem, 20rem) minmax(0, 1fr);
-  }
-}
-
-@media (min-width: 1600px) {
-  .parameter-catalog[data-catalog-layout="desktop"] .parameter-catalog__workspace,
-  .parameter-catalog:not([data-catalog-layout="tablet"]):not([data-catalog-layout="mobile"]) .parameter-catalog__workspace {
-    grid-template-columns: minmax(15rem, 20rem) minmax(0, 1.6fr) minmax(0, 1fr);
   }
 }
 
@@ -235,11 +228,12 @@
   gap: var(--space-3);
 }
 
-/* The editor fields use the same field treatment as the other governed dialogs
-   (the workbench sheet scope provides no input styling of its own). */
+/* Governed dialogs that are not `.param-admin-confirm-field` carry no field
+   styling of their own, so the editor form and the lifecycle reason use it here. */
 .definition-editor__form input,
 .definition-editor__form select,
-.definition-editor__form textarea {
+.definition-editor__form textarea,
+.definition-lifecycle-dialog textarea {
   width: 100%;
   min-height: 36px;
   padding: var(--space-2);
@@ -253,16 +247,33 @@
   outline: 0;
 }
 
-.definition-editor__form textarea {
+.definition-editor__form textarea,
+.definition-lifecycle-dialog textarea {
   min-height: 64px;
   resize: vertical;
 }
 
 .definition-editor__form input:focus,
 .definition-editor__form select:focus,
-.definition-editor__form textarea:focus {
+.definition-editor__form textarea:focus,
+.definition-lifecycle-dialog textarea:focus {
   border-color: var(--app-primary);
   box-shadow: var(--ring);
+}
+
+.definition-lifecycle-dialog label {
+  display: grid;
+  gap: var(--space-1);
+}
+
+.definition-lifecycle-dialog textarea {
+  width: 100%;
+}
+
+.definition-lifecycle-dialog .dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-2);
 }
 
 .definition-editor__form input:disabled,
@@ -402,6 +413,17 @@ button.parameter-catalog__tree-toggle:hover {
 .parameter-catalog__tree-select--group .parameter-catalog__tree-label {
   font-weight: 700;
   color: var(--pcat-nav-ink);
+}
+
+/* The definition editor carries the definition, its form and its disclosures, so
+   it needs a wider card than the default confirm dialog. */
+.confirm-dialog.parameter-catalog__editor-dialog {
+  width: min(820px, calc(100vw - 48px));
+  max-height: min(860px, calc(100dvh - 64px));
+}
+
+.parameter-catalog__editor-dialog .definition-editor {
+  min-width: 0;
 }
 
 /* The pending-work dialog holds the review queue table, so it needs more room
