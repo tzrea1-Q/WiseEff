@@ -41,6 +41,8 @@ WiseEff 处理参数、日志、设备调试和 AI 工具调用，所有这些�
 
 当前用户权限设计见 [User Permission Design](../security/user-permission-design.md)。平台角色包括 Guest、Hardware User、Software User、Hardware Committer、Software Committer 和 Admin。动作权限继承与工作流槽位可分配性必须分开判断：Hardware Committer、Software Committer 和 Software User 都包含 Hardware User 的动作权限，但这不代表这些角色自动可被分配到每一个具体工作流槽位。
 
+硬件开发（`hardware-user`）和软件开发（`software-user`）均具备节点调试的 `debugging:write` 和 `debugging:rollback`。这两项授权仍受设备确认、会话归属、组织范围、输入校验、快照及审计约束；不授予 `debugging:dts-reload`、`debugging:admin`、`parameter:edit-critical` 或审阅、管理权限。现有本地账号和生产 OIDC 会话在每次请求时，都会根据数据库中的角色绑定和后端角色策略重新计算权限，因此部署新版后端即可生效，无需重建账号或改写已存储的角色权限。基础角色种子同步更新，保证新安装实例一致。
+
 动作权限示例：
 
 - `parameter.view`

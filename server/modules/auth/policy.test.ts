@@ -1,4 +1,7 @@
 import { describe, expect, it } from "vitest";
+import { makeTestAuthContext } from "../../testing/authContext";
+import { requireDebugRollback, requireDebugWrite } from "../debugging/policy";
+import { baselinePlatformRoles } from "./baselineCatalog";
 import { canPerform, compareRoles, permissionsForRoles } from "./policy";
 import { BACKEND_PERMISSIONS, BACKEND_ROLE_IDS } from "./types";
 
@@ -83,6 +86,28 @@ describe("auth policy", () => {
     expect(canPerform("software-committer", "logs:archive")).toBe(false);
     expect(canPerform("admin", "logs:analyze")).toBe(true);
     expect(canPerform("admin", "logs:archive")).toBe(true);
+  });
+
+  it.each(["hardware-user", "software-user"] as const)("allows %s node writes and rollback without extra privileges", (roleId) => {
+    const auth = makeTestAuthContext({ roleId });
+    expect(() => requireDebugWrite(auth)).not.toThrow();
+    expect(() => requireDebugRollback(auth)).not.toThrow();
+    expect(auth.permissions.filter((permission) => permission.startsWith("debugging:"))).toEqual([
+      "debugging:use", "debugging:view", "debugging:read", "debugging:write", "debugging:rollback"
+    ]);
+    expect(baselinePlatformRoles.find(([id]) => id === roleId)?.[3]).toEqual(auth.permissions);
+    for (const permission of ["parameter:edit-critical", "parameter:review", "admin:access", "users:manage"] as const) {
+      expect(auth.permissions).not.toContain(permission);
+    }
+    const inactiveAuth = { ...auth, user: { ...auth.user, isActive: false } };
+    expect(() => requireDebugWrite(inactiveAuth)).toThrow(/Missing permission: debugging:write/);
+    expect(() => requireDebugRollback(inactiveAuth)).toThrow(/Missing permission: debugging:rollback/);
+  });
+
+  it("keeps guest node writes and rollback forbidden", () => {
+    const auth = makeTestAuthContext({ roleId: "guest" });
+    expect(() => requireDebugWrite(auth)).toThrow(/Missing permission: debugging:write/);
+    expect(() => requireDebugRollback(auth)).toThrow(/Missing permission: debugging:rollback/);
   });
 
   it("grants catalog publication capabilities on Org Admin only", () => {
