@@ -19,6 +19,10 @@ import {
   type EphemeralTestDatabase,
 } from "../../testing/testDatabase";
 import { makeTestAuthContext } from "../../testing/authContext";
+import { createHttpServer } from "../../shared/http/server";
+import { createRouter } from "../../shared/http/router";
+import { requestJson } from "../../test/testClient";
+import { registerCatalogProjectValueConsumerRoutes } from "./catalogProjectValueRoutes";
 import {
   createPostgresDatabase,
   getRootPostgresPool,
@@ -314,6 +318,20 @@ describe("published catalog project values", () => {
     expect(listed[0]?.propertyKey).toBe("iin_max");
     expect(listed[0]?.rawValue).toBe("<1000>");
     expect(listed[0]?.parameterSpecId).toBe("pdef_acme_power_iin_max");
+
+    // The page reads this route with an org-wide business role after topology
+    // loads. Exercise the real route and persisted binding, not a mocked list.
+    const reader = makeTestAuthContext({ userId: USER, organizationId: ORG, roleId: "hardware-user" });
+    const router = createRouter();
+    registerCatalogProjectValueConsumerRoutes(router, { db: root, getCurrentAuthContext: () => reader });
+    const response = await requestJson<{ items: Array<{ id: string; propertyKey: string }> }>(
+      createHttpServer(router),
+      `/api/v2/projects/${PROJECT}/parameter-bindings?revisionId=${revision.id}`,
+    );
+    expect(response.status).toBe(200);
+    expect(response.body.items).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: listed[0]!.id, propertyKey: "iin_max" }),
+    ]));
 
     const saved = await withAuditedWrite(root, auth, { requestId: "req-min-upg-val" }, async (tx) => {
       const result = await saveCanonicalProjectValue(
