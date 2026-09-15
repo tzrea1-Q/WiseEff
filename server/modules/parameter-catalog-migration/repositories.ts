@@ -153,8 +153,38 @@ export type CurrentTipRow = {
   value_digest: string | null;
   source_ref: string | null;
   config_revision_id: string | null;
+  source_occurrence_count: string | number;
+  source_file_name: string | null;
+  source_node_locator: string | null;
   value: unknown;
 };
+
+/**
+ * DTS provenance for one canonical binding: how many occurrences of the
+ * definition's property key exist in the value's config revision at that logical
+ * node, and which project `.dts` file (with node locator) they came from.  The
+ * count is reported even when no file row matched so callers can tell missing
+ * provenance apart from ambiguous provenance.  `binding` and `definition` are
+ * outer-query aliases.
+ */
+const SOURCE_PROVENANCE_LATERAL = `
+  left join lateral (
+    select file.file_name as source_file_name,
+           lnr.node_locator as source_node_locator,
+           row_number() over (order by occurrence.id) as occurrence_rank,
+           count(*) over () as occurrence_count
+      from public.dts_occurrence_effects effect
+      join public.dts_logical_node_revisions lnr
+        on lnr.id = effect.logical_node_revision_id
+      join public.dts_property_occurrences occurrence
+        on occurrence.id = effect.property_occurrence_id
+      left join public.project_parameter_files file
+        on file.current_version_id = occurrence.file_version_id
+     where effect.config_revision_id = value.config_revision_id
+       and lnr.logical_node_id = binding.logical_node_id
+       and effect.property_name = definition.property_key
+       and effect.effect_kind in ('set', 'override')
+  ) provenance on provenance.occurrence_rank = 1`;
 
 export const loadCurrentBindingTips = async (
   client: MigrationClient,
@@ -177,10 +207,16 @@ export const loadCurrentBindingTips = async (
             value.value_digest,
             value.source_ref,
             value.config_revision_id,
+            coalesce(provenance.occurrence_count, 0) as source_occurrence_count,
+            provenance.source_file_name,
+            provenance.source_node_locator,
             value.value
        from parameter_catalog.current_project_parameter_bindings binding
        left join parameter_catalog.project_parameter_values value
          on value.id = binding.current_value_id
+       left join parameter_catalog.parameter_definitions definition
+         on definition.id = binding.definition_id
+       ${SOURCE_PROVENANCE_LATERAL}
       where binding.organization_id = $1
         and binding.project_id = any($2::text[])
         and binding.definition_id = $3
@@ -228,6 +264,9 @@ export type SiblingSourceRow = {
   property_key: string;
   source_ref: string;
   config_revision_id: string;
+  source_occurrence_count: string | number;
+  source_file_name: string | null;
+  source_node_locator: string | null;
 };
 
 export const loadSiblingSourceFacts = async (
@@ -242,12 +281,16 @@ export const loadSiblingSourceFacts = async (
             binding.logical_node_id,
             definition.property_key,
             value.source_ref,
-            value.config_revision_id
+            value.config_revision_id,
+            coalesce(provenance.occurrence_count, 0) as source_occurrence_count,
+            provenance.source_file_name,
+            provenance.source_node_locator
        from parameter_catalog.current_project_parameter_bindings binding
        join parameter_catalog.parameter_definitions definition
          on definition.id = binding.definition_id
        join parameter_catalog.project_parameter_values value
          on value.id = binding.current_value_id
+       ${SOURCE_PROVENANCE_LATERAL}
       where binding.organization_id = $1
         and binding.project_id = any($2::text[])
       order by binding.project_id, binding.logical_node_id, binding.id`,

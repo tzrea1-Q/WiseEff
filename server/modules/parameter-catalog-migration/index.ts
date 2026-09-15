@@ -37,6 +37,10 @@ export {
 } from "./fingerprint";
 export {
   classifySourceFormat,
+  deriveDtsSourceRef,
   detectCoupledSourceImpact,
   evaluateValueCompatibility,
+  resolveSourceLocation,
+  type ResolvedSourceLocation,
+  type SourceProvenanceFacts,
 } from "./evaluate";

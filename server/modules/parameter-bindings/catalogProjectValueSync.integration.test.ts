@@ -293,7 +293,10 @@ describe("published catalog project values", () => {
       [ORG, PROJECT],
     );
     expect(values.rows).toHaveLength(1);
-    expect(values.rows[0]?.source_ref).toBe(`config-set:${CONFIG_SET}`);
+    // The value records the real `.dts` source it came from, not the opaque
+    // config-set write, so identity correction and property-key cutover see a
+    // rewriteable source location.
+    expect(values.rows[0]?.source_ref).toBe("charger.dts!/charger");
     expect(values.rows[0]?.config_revision_id).toBe(revision.id);
     expect(values.rows[0]?.value).toEqual(1000);
 

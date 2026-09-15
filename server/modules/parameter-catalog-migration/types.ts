@@ -87,6 +87,13 @@ export type FrozenProjectTip = {
   readonly currentValueId: string;
   readonly configRevisionId: string;
   readonly sourceRef: string;
+  /**
+   * The source location the corrected value should carry.  Equals `sourceRef`
+   * for a key-less `.dts` location; for a key-bearing recorded ref it is the
+   * same path with the property key substituted.  Frozen with the preview so a
+   * continue never re-decides what to substitute.
+   */
+  readonly rewrittenSourceRef: string;
   readonly valueKind: string;
   readonly valueDigest: string;
   readonly sourceFormat: "dts" | "unsupported";

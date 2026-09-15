@@ -4,6 +4,7 @@
  * coupled-source detection.  Nothing here writes.
  */
 import type { SupportedValueSchema } from "../catalog-publication/builder/types";
+import { deriveDtsSourceRef, isDtsSourceRef } from "../dts/sourceRef";
 
 export type ValueCompatibility =
   | { readonly compatible: true }
@@ -81,17 +82,93 @@ export const evaluateValueCompatibility = (
   }
 };
 
-const DTS_SOURCE_PATTERN = /\.dts(?:$|[?#])/u;
-
 /**
  * Source format gate.  Only `.dts` is rewritten; every other format blocks the
  * project with `unsupported-source-format` (default 6, gate at
  * `server/modules/parameter-specs/propertyKeyCutover.ts`).
  */
-export const classifySourceFormat = (sourceRef: string): "dts" | "unsupported" => {
-  const path = sourceRef.split("!")[0] ?? sourceRef;
-  return DTS_SOURCE_PATTERN.test(path) ? "dts" : "unsupported";
+export const classifySourceFormat = (sourceRef: string): "dts" | "unsupported" =>
+  isDtsSourceRef(sourceRef) ? "dts" : "unsupported";
+
+export { deriveDtsSourceRef };
+
+/**
+ * The canonical source location of a project value, resolved from DTS
+ * provenance when the recorded `source_ref` is opaque.
+ *
+ * The dts ingest path records a config-set reference on the value row because
+ * that is the write the operator approved; the actual `.dts` file (and node) the
+ * value came from lives in `dts_property_occurrences`.  Resolving the file here
+ * keeps append-only value rows immutable while still gating on real `.dts`
+ * provenance, including for rows written before this resolution existed.
+ */
+export type SourceProvenanceFacts = {
+  /** `source_ref` exactly as recorded on the project value row. */
+  readonly recordedSourceRef: string;
+  readonly configRevisionId: string;
+  /** DTS occurrences matching this binding's config revision, node and key. */
+  readonly occurrenceCount: number;
+  /** Project file the matched occurrence belongs to, when one matched. */
+  readonly fileName: string | null;
+  /** Node locator of the matched occurrence, when the config carries one. */
+  readonly nodeLocator: string | null;
 };
+
+export type ResolvedSourceLocation =
+  | { readonly status: "resolved"; readonly sourceRef: string; readonly format: "dts" }
+  | {
+      readonly status: "blocked";
+      readonly reason:
+        | "missing-source-provenance"
+        | "unsupported-source-format"
+        | "ambiguous-source-match";
+    };
+
+export const resolveSourceLocation = (
+  facts: SourceProvenanceFacts,
+): ResolvedSourceLocation => {
+  const recorded = facts.recordedSourceRef.trim();
+  if (recorded.length === 0 || facts.configRevisionId.trim().length === 0) {
+    return { status: "blocked", reason: "missing-source-provenance" };
+  }
+  if (recorded === IDENTITY_PLACEHOLDER_SOURCE) {
+    return { status: "blocked", reason: "missing-source-provenance" };
+  }
+  if (isDtsSourceRef(recorded)) {
+    return { status: "resolved", sourceRef: recorded, format: "dts" };
+  }
+  // A recorded ref that names a real file already states its format.
+  if (!recorded.startsWith(OPAQUE_SOURCE_PREFIX)) {
+    return { status: "blocked", reason: "unsupported-source-format" };
+  }
+  if (facts.occurrenceCount === 0) {
+    return { status: "blocked", reason: "missing-source-provenance" };
+  }
+  if (facts.occurrenceCount > 1) {
+    return { status: "blocked", reason: "ambiguous-source-match" };
+  }
+  const fileName = facts.fileName?.trim() ?? "";
+  if (fileName.length === 0) {
+    return { status: "blocked", reason: "missing-source-provenance" };
+  }
+  if (!isDtsSourceRef(fileName)) {
+    return { status: "blocked", reason: "unsupported-source-format" };
+  }
+  return {
+    status: "resolved",
+    format: "dts",
+    sourceRef: deriveDtsSourceRef({ fileName, nodeLocator: facts.nodeLocator }),
+  };
+};
+
+/** The placeholder identity source; never a real file. */
+export const IDENTITY_PLACEHOLDER_SOURCE = "canonical-binding-identity";
+
+/**
+ * A recorded ref that names a provenance record instead of a file, and so has
+ * to be resolved through the DTS occurrence the value came from.
+ */
+export const OPAQUE_SOURCE_PREFIX = "config-set:";
 
 export type SourceOccurrenceFacts = {
   readonly sourceRef: string;

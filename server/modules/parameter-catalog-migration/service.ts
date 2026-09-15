@@ -26,7 +26,12 @@ import type { Database } from "../../shared/database/client";
 import { withAuditedWrite, type AuditSpec } from "../audit/auditedWrite";
 import { getAuthContext } from "../auth/repository";
 
-import { evaluateValueCompatibility, classifySourceFormat } from "./evaluate";
+import {
+  evaluateValueCompatibility,
+  resolveSourceLocation,
+  type ResolvedSourceLocation,
+  type SourceProvenanceFacts,
+} from "./evaluate";
 import { fingerprintReplacementPreview } from "./fingerprint";
 import {
   commitGovernanceIdempotency,
@@ -208,29 +213,48 @@ const valueSchemaOf = (content: unknown): SupportedDefinitionContent["valueSchem
   return schema as SupportedDefinitionContent["valueSchema"];
 };
 
-const isPlaceholderSource = (sourceRef: string): boolean =>
-  sourceRef === "canonical-binding-identity";
-
 type TipEvaluation = {
   readonly status: "pending" | "blocked";
   readonly reason: string | null;
   readonly compatible: boolean;
 };
 
+/**
+ * The corrected value keeps the same source location; only a key-bearing
+ * recorded ref can name the old property key, so only that form is rewritten.
+ */
+const rewriteSourceRef = (input: {
+  readonly sourceRef: string;
+  readonly oldPropertyKey: string;
+  readonly newPropertyKey: string;
+}): string =>
+  input.oldPropertyKey === input.newPropertyKey
+    ? input.sourceRef
+    : input.sourceRef.replace(input.oldPropertyKey, input.newPropertyKey);
+
+const sourceFactsOf = (row: {
+  readonly source_ref: string | null;
+  readonly config_revision_id: string | null;
+  readonly source_occurrence_count: string | number;
+  readonly source_file_name: string | null;
+  readonly source_node_locator: string | null;
+}): SourceProvenanceFacts => ({
+  recordedSourceRef: row.source_ref ?? "",
+  configRevisionId: row.config_revision_id ?? "",
+  occurrenceCount: Number(row.source_occurrence_count ?? 0),
+  fileName: row.source_file_name,
+  nodeLocator: row.source_node_locator,
+});
+
 const evaluateTip = (input: {
   readonly tip: FrozenProjectTip;
+  readonly source: ResolvedSourceLocation;
   readonly value: unknown;
   readonly schema: SupportedDefinitionContent["valueSchema"] | null;
 }): TipEvaluation => {
   const { tip } = input;
-  if (tip.sourceRef.length === 0 || tip.configRevisionId.length === 0) {
-    return { status: "blocked", reason: "missing-source-provenance", compatible: false };
-  }
-  if (isPlaceholderSource(tip.sourceRef)) {
-    return { status: "blocked", reason: "missing-source-provenance", compatible: false };
-  }
-  if (tip.sourceFormat !== "dts") {
-    return { status: "blocked", reason: "unsupported-source-format", compatible: false };
+  if (input.source.status === "blocked") {
+    return { status: "blocked", reason: input.source.reason, compatible: false };
   }
   if (tip.coupledBindingIds.length > 0) {
     return { status: "blocked", reason: "coupled-source-impact", compatible: false };
@@ -474,32 +498,54 @@ export function createParameterCatalogMigrationService(
       let compatibleCount = 0;
       let coupledDefinitionCount = 0;
 
+      // Resolve every sibling's real source location first: coupling is defined
+      // over the resolved location, and an opaque recorded ref (for example a
+      // `config-set:` write) must compare equal to the location it stands for.
+      const siblingSourceRefs = new Map<string, string>();
+      for (const sibling of siblingFacts) {
+        const resolved = resolveSourceLocation(sourceFactsOf(sibling));
+        if (resolved.status === "resolved") {
+          siblingSourceRefs.set(sibling.binding_id, resolved.sourceRef);
+        }
+      }
+
       for (const tip of tips) {
         const siblings = siblingFacts.filter((sibling) => sibling.project_id === tip.project_id);
+        const source = resolveSourceLocation(sourceFactsOf(tip));
+        const resolvedRef = source.status === "resolved" ? source.sourceRef : (tip.source_ref ?? "");
         const coupled = siblings.filter(
           (sibling) =>
             sibling.binding_id !== tip.binding_id &&
-            sibling.source_ref === (tip.source_ref ?? "") &&
             sibling.logical_node_id === tip.logical_node_id &&
-            sibling.property_key !== oldDefinition.property_key,
+            sibling.property_key !== oldDefinition.property_key &&
+            (siblingSourceRefs.get(sibling.binding_id) === resolvedRef ||
+              sibling.source_ref === (tip.source_ref ?? "")),
         );
-        const sourceRef = tip.source_ref ?? "";
         const frozen: FrozenProjectTip = {
           projectId: tip.project_id,
           bindingId: tip.binding_id,
           logicalNodeId: tip.logical_node_id,
           currentValueId: tip.current_value_id,
           configRevisionId: tip.config_revision_id ?? "",
-          sourceRef,
+          sourceRef: resolvedRef,
+          rewrittenSourceRef:
+            source.status === "resolved"
+              ? rewriteSourceRef({
+                  sourceRef: source.sourceRef,
+                  oldPropertyKey: oldDefinition.property_key,
+                  newPropertyKey: command.newPropertyKey,
+                })
+              : resolvedRef,
           valueKind: tip.value_kind ?? "string",
           valueDigest: tip.value_digest ?? "",
-          sourceFormat: classifySourceFormat(sourceRef || "unsupported"),
+          sourceFormat: source.status === "resolved" ? "dts" : "unsupported",
           coupledBindingIds: coupled.map((sibling) => sibling.binding_id),
         };
         manifest.push(frozen);
         coupledDefinitionCount += frozen.coupledBindingIds.length;
         const evaluation = evaluateTip({
           tip: frozen,
+          source,
           value: tip.value,
           schema: command.proposedContent.valueSchema,
         });
@@ -765,17 +811,37 @@ export function createParameterCatalogMigrationService(
           await block("registration-required", { organizationId, subjectId: replacement.new_subject_id });
           continue;
         }
+        const liveSource = liveTip ? resolveSourceLocation(sourceFactsOf(liveTip)) : null;
+        const staleEvidence = {
+          frozenCurrentValueId: frozen?.currentValueId ?? null,
+          liveCurrentValueId: liveTip?.current_value_id ?? null,
+          frozenSourceRef: frozen?.sourceRef ?? null,
+          liveSourceRef: liveSource?.status === "resolved" ? liveSource.sourceRef : null,
+          liveSourceStatus: liveSource?.status ?? null,
+        };
         if (
           !frozen ||
           !liveTip ||
           liveTip.current_value_id !== frozen.currentValueId ||
-          (liveTip.config_revision_id ?? "") !== frozen.configRevisionId ||
-          (liveTip.source_ref ?? "") !== frozen.sourceRef
+          (liveTip.config_revision_id ?? "") !== frozen.configRevisionId
         ) {
-          await block("stale-preview", {
-            frozenCurrentValueId: frozen?.currentValueId ?? null,
-            liveCurrentValueId: liveTip?.current_value_id ?? null,
-          });
+          await block("stale-preview", staleEvidence);
+          continue;
+        }
+        // A project the preview blocked on its source keeps that reason while the
+        // source is still what it was.  A blocked-to-resolved (or
+        // resolved-to-blocked) flip is source drift, so the frozen preview no
+        // longer holds and the project is stale.
+        if (liveSource === null || liveSource.status === "blocked") {
+          if (frozen.sourceFormat === "dts" || liveSource === null) {
+            await block("stale-preview", staleEvidence);
+            continue;
+          }
+          await block(liveSource.reason, { sourceRef: frozen.sourceRef });
+          continue;
+        }
+        if (frozen.sourceFormat !== "dts" || liveSource.sourceRef !== frozen.sourceRef) {
+          await block("stale-preview", staleEvidence);
           continue;
         }
         if (openDrafts > 0) {
@@ -786,20 +852,8 @@ export function createParameterCatalogMigrationService(
           await block("pending-work-conflict", { reason: "review" });
           continue;
         }
-        if (
-          frozen.sourceRef.length === 0 ||
-          frozen.configRevisionId.length === 0 ||
-          isPlaceholderSource(frozen.sourceRef)
-        ) {
-          await block("missing-source-provenance", { sourceRef: frozen.sourceRef });
-          continue;
-        }
         if (frozen.coupledBindingIds.length > 0) {
           await block("coupled-source-impact", { bindingIds: frozen.coupledBindingIds });
-          continue;
-        }
-        if (classifySourceFormat(frozen.sourceRef) !== "dts") {
-          await block("unsupported-source-format", { sourceRef: frozen.sourceRef });
           continue;
         }
         const conflict = await countBindingForDefinition(
@@ -822,10 +876,7 @@ export function createParameterCatalogMigrationService(
 
         const newValueId = mintReplacementValueId();
         const newBindingId = `pbind_${newValueId.slice("pval_".length)}`;
-        const rewrittenSourceRef =
-          replacement.old_property_key === replacement.new_property_key
-            ? frozen.sourceRef
-            : frozen.sourceRef.replace(replacement.old_property_key, replacement.new_property_key);
+        const rewrittenSourceRef = frozen.rewrittenSourceRef ?? frozen.sourceRef;
         const successAuditRef = `definition-replacement:${replacement.id}:${row.project_id}`;
 
         await insertReplacementBinding(tx, {

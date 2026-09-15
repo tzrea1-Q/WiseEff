@@ -30,6 +30,7 @@ export type ReplacementPreviewFingerprintModel = {
     readonly currentValueId: string;
     readonly configRevisionId: string;
     readonly sourceRef: string;
+    readonly rewrittenSourceRef: string;
   }[];
   readonly previewReleaseId: string;
   readonly capabilityContractDigest: string;
@@ -63,6 +64,7 @@ export const replacementPreviewFingerprintModel = (input: {
       currentValueId: project.currentValueId,
       configRevisionId: project.configRevisionId,
       sourceRef: project.sourceRef,
+      rewrittenSourceRef: project.rewrittenSourceRef,
     })),
   previewReleaseId: input.previewReleaseId,
   capabilityContractDigest: input.capabilityContractDigest,

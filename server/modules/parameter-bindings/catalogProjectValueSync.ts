@@ -34,6 +34,7 @@ import {
 import type { ProjectValuePayload } from "../parameter-bindings/values";
 import type { ValueClient } from "../parameter-bindings/values/repositories";
 import { parseDtsValue, renderDtsValue } from "../dts/valueAst";
+import { deriveDtsSourceRef, isDtsSourceRef, sourcePathOf } from "../dts/sourceRef";
 import type { DtsValue } from "../dts/types";
 import { isStructuralPropertyKey } from "../parameter-topology/parameterSurface";
 
@@ -220,6 +221,7 @@ type ObservedProperty = {
   compatible: string | null;
   propertyKey: string;
   rawText: string;
+  fileName: string | null;
 };
 
 const parseCompatibles = (raw: string | null): string[] => {
@@ -258,10 +260,12 @@ async function listObservedProperties(
       lnr.node_locator as locator,
       lnr.compatible,
       oe.property_name as "propertyKey",
-      po.raw_text as "rawText"
+      po.raw_text as "rawText",
+      file.file_name as "fileName"
     from dts_occurrence_effects oe
     inner join dts_logical_node_revisions lnr on lnr.id = oe.logical_node_revision_id
     inner join dts_property_occurrences po on po.id = oe.property_occurrence_id
+    left join project_parameter_files file on file.current_version_id = po.file_version_id
     where oe.config_revision_id = $1
       and oe.effect_kind in ('set', 'override')
     `,
@@ -307,7 +311,15 @@ export async function syncPublishedCatalogProjectValues(
   const write = asWriteClient(session);
   const writeTarget = isPoolSession(session) ? session : write;
   const observed = await listObservedProperties(write, input.configRevisionId);
-  const sourceRef = `config-set:${input.configSetId}`;
+  // The config-set ref is the write the operator approved; the real `.dts`
+  // source location is the file the occurrence came from.  Recording the file
+  // keeps the value's provenance usable by identity correction and property-key
+  // cutover, which only rewrite `.dts` sources.
+  const configSetSourceRef = `config-set:${input.configSetId}`;
+  const sourceRefFor = (row: ObservedProperty): string =>
+    row.fileName && row.fileName.endsWith(".dts")
+      ? deriveDtsSourceRef({ fileName: row.fileName, nodeLocator: row.locator })
+      : configSetSourceRef;
   let written = 0;
   for (const row of observed) {
     if (isStructuralPropertyKey(row.propertyKey)) continue;
@@ -358,7 +370,7 @@ export async function syncPublishedCatalogProjectValues(
       snapshot,
       binding: stabilized.value.binding,
       definitionRevisionId: definition.definition.selectedRevision.id,
-      source: { sourceRef, configRevisionId: input.configRevisionId },
+      source: { sourceRef: sourceRefFor(row), configRevisionId: input.configRevisionId },
       payload,
       expectedTip: stabilized.value.binding.currentValueId,
     });
@@ -652,6 +664,37 @@ export function parseConfigSetSourceRef(sourceRef: string): string | null {
   return id.length > 0 ? id : null;
 }
 
+/**
+ * The config set a project value belongs to, from either source-ref shape:
+ * the opaque `config-set:<id>` write, or a `.dts` file location (resolved
+ * through the project file the occurrence came from).
+ */
+async function resolveConfigSetIdForSource(
+  session: ValueClient,
+  input: { organizationId: string; projectId: string; sourceRef: string },
+): Promise<string | null> {
+  const fromRef = parseConfigSetSourceRef(input.sourceRef);
+  if (fromRef) return fromRef;
+  if (!isDtsSourceRef(input.sourceRef)) return null;
+  const fileName = sourcePathOf(input.sourceRef).trim();
+  if (fileName.length === 0) return null;
+  const found = await session.query<{ config_set_id: string | null }>(
+    `
+    select config_set_id
+      from project_parameter_files
+     where organization_id = $1
+       and project_id = $2
+       and file_name = $3
+       and format = 'dts'
+       and enabled = true
+     order by updated_at desc
+     limit 1
+    `,
+    [input.organizationId, input.projectId, fileName],
+  );
+  return found.rows[0]?.config_set_id ?? null;
+}
+
 export async function resolveConfigRevisionForSource(
   session: ValueClient,
   input: {
@@ -661,7 +704,7 @@ export async function resolveConfigRevisionForSource(
     configRevisionId: string;
   },
 ): Promise<{ configSetId: string; configRevisionId: string }> {
-  const configSetId = parseConfigSetSourceRef(input.sourceRef);
+  const configSetId = await resolveConfigSetIdForSource(session, input);
   if (!configSetId) {
     throw new ApiError("CONFLICT", "Project value is missing an actual config-set source.", {
       sourceRef: input.sourceRef
