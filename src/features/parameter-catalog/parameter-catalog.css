@@ -251,6 +251,33 @@
   cursor: pointer;
 }
 
+/* Row actions use the same secondary button shape as the other admin tables,
+   with an outline strong enough to read as a button. The cell keeps its
+   content-driven width and wraps, so the table never overflows the pane and no
+   action is clipped. */
+.parameter-catalog__row-actions {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--space-1);
+}
+
+.parameter-catalog__row-actions .button {
+  white-space: nowrap;
+}
+
+.parameter-catalog__row-actions .button.subtle {
+  border-color: var(--border-strong);
+}
+
+/* The actions cell is the last, narrowest column; trimming its padding keeps the
+   table at the pane width so no action is clipped. */
+.parameter-catalog table td[data-label="操作"] {
+  padding-left: var(--space-2);
+  padding-right: var(--space-2);
+}
+
 .parameter-catalog__tree-label {
   overflow: hidden;
   text-overflow: ellipsis;

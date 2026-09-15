@@ -882,7 +882,7 @@ export function CatalogPage({
                     <span className="parameter-catalog__row-actions">
                       <button
                         type="button"
-                        className="button ghost sm"
+                        className="button subtle sm"
                         aria-label={`编辑 ${row.propertyKey}`}
                         data-catalog-row-action="edit"
                         onClick={() => selectDefinition(row)}
@@ -892,7 +892,7 @@ export function CatalogPage({
                       {definitionAuthoringAllowed && onDefinitionCommand ? (
                         <button
                           type="button"
-                          className="button ghost sm"
+                          className="button subtle sm"
                           aria-label={`纠错 ${row.propertyKey}`}
                           data-catalog-row-action="correct-identity"
                           onClick={() => onDefinitionCommand("correct-identity", row)}
@@ -903,7 +903,7 @@ export function CatalogPage({
                       {definitionPublishingAllowed && onDefinitionCommand ? (
                         <button
                           type="button"
-                          className="button ghost sm"
+                          className="button subtle sm"
                           aria-label={`${row.lifecycle === "retired" ? "恢复" : "弃用"} ${row.propertyKey}`}
                           data-catalog-row-action={
                             row.lifecycle === "retired" ? "restore-definition" : "retire-definition"
