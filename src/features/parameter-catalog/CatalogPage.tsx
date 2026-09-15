@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { CircleX } from "lucide-react";
 
 import {
   catalogWritesEnabled,
@@ -22,7 +23,7 @@ import type { CatalogActorKind, CatalogAuthorizedAction } from "@/application/pa
 import type { ParameterCatalogRepository } from "@/application/ports/ParameterCatalogRepository";
 import { DataTable, type Column } from "@/components/admin";
 import { SectionEmpty, SectionError, SectionSkeleton } from "@/components/common/SectionState";
-import { WorkbenchSheet } from "@/components/WorkbenchSheet";
+import { ModalDialog } from "@/components/common/ModalDialog";
 import { formatAbsolute, formatRelativeOrAbsolute } from "@/domain/format/formatDateTime";
 import { toggleFilterValue } from "@/components/tableFilterUtils";
 import type {
@@ -110,6 +111,8 @@ export type CatalogPageProps = {
       timeline: CatalogDefinitionTimelineResponse | null;
       /** Ask the page to load revisions and the timeline. */
       onRequestHistory: () => void;
+      /** Close the editor dialog and clear selection from URL. */
+      onClose?: () => void;
     }
   ) => ReactNode;
   onAction?: (
@@ -543,7 +546,6 @@ export function CatalogPage({
       "push"
     );
     setHistoryOpen(false);
-    setClosedDefinitionId(null);
     setInspectorOpen(true);
   };
 
@@ -656,17 +658,24 @@ export function CatalogPage({
   ];
 
   const definition = snapshot?.definition ?? null;
+  const closeEditor = useCallback(() => {
+    setInspectorOpen(false);
+    // Deselect in the URL as well: closing must survive the evidence refresh the
+    // host triggers, which remounts this page and would otherwise reopen the
+    // dialog from the definition still named in the anchor.
+    if (anchor.definitionId) {
+      commitAnchor({ ...anchor, definitionId: null }, "replace");
+    }
+    onEditorClosed?.();
+  }, [anchor, commitAnchor, onEditorClosed]);
   /**
    * A deep link (and Back/Forward onto one) opens the editor for the definition
-   * it names; closing it records that definition so it stays closed.
+   * it names; closing it clears that selection from the URL.
    */
-  const [closedDefinitionId, setClosedDefinitionId] = useState<string | null>(null);
   const editorOpen =
     definition !== null &&
     (inspectorOpen ||
-      (Boolean(anchor.definitionId) &&
-        snapshot?.definition?.id === anchor.definitionId &&
-        closedDefinitionId !== anchor.definitionId));
+      (Boolean(anchor.definitionId) && snapshot?.definition?.id === anchor.definitionId));
   const subject = snapshot?.subject ?? null;
   const release = snapshot?.document.item;
   const showListEmptyState =
@@ -951,40 +960,76 @@ export function CatalogPage({
       )}
 
       {definition && editorOpen ? (
-        <WorkbenchSheet
+        <ModalDialog
           open={editorOpen}
-          onClose={() => {
-            setInspectorOpen(false);
-            setClosedDefinitionId(definition.id);
-            onEditorClosed?.();
-          }}
-          closeLabel={catalogDetailCloseLabel}
-          title={`编辑 ${definition.propertyKey}`.trim()}
+          onDismiss={closeEditor}
+          className="confirm-dialog parameter-catalog__editor-dialog"
         >
-          {renderDefinitionEditor ? (
-            <div data-definition-editor="true">
-              {renderDefinitionEditor(definition, {
-                revisions: snapshot?.revisions ?? [],
-                timeline: snapshot?.timeline ?? null,
-                onRequestHistory: () => setHistoryOpen(true)
-              })}
-            </div>
-          ) : (
+          {({ titleId }) => (
             <>
-              <div role="region" aria-label={catalogDetailLabel} data-catalog-detail-region="true">
-                {detailBody}
+              <div className="parameter-catalog__editor-dialog-head">
+                <div className="parameter-catalog__editor-dialog-title-wrap">
+                  <div className="parameter-catalog__editor-dialog-eyebrow">
+                    <span
+                      className="parameter-catalog__badge"
+                      data-tone={definition.lifecycle === "active" ? undefined : "retired"}
+                    >
+                      {catalogLifecycleLabel(definition.lifecycle)}
+                    </span>
+                    <span className="parameter-catalog__editor-meta-pill">
+                      {definition.subject.canonicalName}
+                    </span>
+                    <span className="parameter-catalog__editor-meta-pill parameter-catalog__muted">
+                      {`修订 #${definition.currentRevision.revisionNumber}`}
+                    </span>
+                    <code className="parameter-catalog__editor-id-pill">{definition.id}</code>
+                  </div>
+                  <h2 id={titleId}>{`编辑 ${definition.propertyKey}`.trim()}</h2>
+                </div>
+                <button
+                  type="button"
+                  className="audit-dialog-close-icon"
+                  onClick={closeEditor}
+                  aria-label="关闭"
+                >
+                  <CircleX size={20} strokeWidth={1.75} aria-hidden="true" />
+                </button>
               </div>
-              {historyOpen ? (
-                <section aria-label={catalogTimelineLabel} data-catalog-history-region="true">
-                  <CatalogHistoryBody
-                    timeline={snapshot?.timeline ?? null}
-                    revisions={snapshot?.revisions ?? []}
-                  />
-                </section>
-              ) : null}
+
+              <div className="confirm-dialog__scroll parameter-catalog__editor-dialog-scroll">
+                {renderDefinitionEditor ? (
+                  <div data-definition-editor="true">
+                    {renderDefinitionEditor(definition, {
+                      revisions: snapshot?.revisions ?? [],
+                      timeline: snapshot?.timeline ?? null,
+                      onRequestHistory: () => setHistoryOpen(true),
+                      onClose: closeEditor
+                    })}
+                  </div>
+                ) : (
+                  <>
+                    <div role="region" aria-label={catalogDetailLabel} data-catalog-detail-region="true">
+                      {detailBody}
+                    </div>
+                    {historyOpen ? (
+                      <section aria-label={catalogTimelineLabel} data-catalog-history-region="true">
+                        <CatalogHistoryBody
+                          timeline={snapshot?.timeline ?? null}
+                          revisions={snapshot?.revisions ?? []}
+                        />
+                      </section>
+                    ) : null}
+                    <div className="dialog-actions">
+                      <button type="button" className="button subtle" onClick={closeEditor}>
+                        {catalogDetailCloseLabel}
+                      </button>
+                    </div>
+                  </>
+                )}
+              </div>
             </>
           )}
-        </WorkbenchSheet>
+        </ModalDialog>
       ) : null}
     </div>
   );
