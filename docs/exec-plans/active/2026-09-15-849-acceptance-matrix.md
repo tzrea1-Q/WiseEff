@@ -23,7 +23,9 @@ npx vitest run --config vitest.server.config.ts \
 
 These reshape the remaining plan; each is recorded rather than worked around.
 
-**B1 - JSON project sources have no semantic ingest path.** `ingestConfigRevision` is a DTS/config-revision resolver. The canonical value owner has a JSON *value* path, but there is no JSON path that turns a project source file into a config revision, so a JSON seed source cannot be materialized. `materialize.ts` refuses it with `UNSUPPORTED_FORMAT` (details carry `deferredTo`) instead of uploading a non-resolving member or dropping it from the manifest. **Consequence: the two JSON compatibility seeds remain unmaterialized, which is a gap against scope item 2 and testing decision 6.** Closing it is not a local fix: per implementation decision 3 it requires the ConfigurationSchema *source-identity* extension at the Binding boundary (distinguishing a DTS logical-node occurrence from a software configuration instance, with config-set, instance, source-file revision and a format-specific locator). Either that extension is scheduled, or scope item 2's JSON expectations must be renegotiated with the maintainer. This is a decision the maintainer should make, not the implementer.
+**Decision status (2026-09-15).** B1, B4 and B6 are no longer open questions. [ADR-0046](../../adr/0046-source-occurrence-identity-spans-dts-and-software-configuration.md) records the decision for all three and the entries below carry their outcomes; what remains is implementation, not a decision. B3 was withdrawn and B5 is closed for its scope item 1 half.
+
+**B1 - JSON project sources have no semantic ingest path.** `ingestConfigRevision` is a DTS/config-revision resolver. The canonical value owner has a JSON *value* path, but there is no JSON path that turns a project source file into a config revision, so a JSON seed source cannot be materialized. `materialize.ts` refuses it with `UNSUPPORTED_FORMAT` (details carry `deferredTo`) instead of uploading a non-resolving member or dropping it from the manifest. **Consequence: the two JSON compatibility seeds remain unmaterialized, which is a gap against scope item 2 and testing decision 6.** Closing it is not a local fix: per implementation decision 3 it requires the ConfigurationSchema *source-identity* extension at the Binding boundary (distinguishing a DTS logical-node occurrence from a software configuration instance, with config-set, instance, source-file revision and a format-specific locator). **Decided (ADR-0046): schedule that extension; do not renegotiate scope item 2.** The decision introduces one `project_parameter_source_occurrences` layer keyed at least by organization + project + config-set + occurrence-kind + instance-id, plus immutable source-file identity and a JSON Pointer locator; Binding uniqueness becomes `(project_id, source_occurrence_id, definition_id)`; existing DTS bindings are backfilled in place and never re-derive their IDs; and the file-version/config-revision pin stays a ProjectValue concern rather than part of Binding identity. The two JSON compatibility seeds therefore remain in scope and stay unmaterialized until that implementation lands.
 
 **B2 - Canonical binding/value materialization now works when a registration exists; two defects were fixed to get there.** The pipeline is proven end to end on real PostgreSQL: `nodeTypeSubjectBinding.integration.test.ts` installs the real release lineage, registers two node-type subjects, materializes the real DTS slice, and asserts **30 canonical bindings with values** (10 per project, 5 per node-type subject), plus a value row per binding. Two defects had to be fixed first, and both were invisible while nothing reached the write:
 
@@ -96,12 +98,21 @@ passes.
 **What remains is narrow and reported, never silent.** A subject with no available module is neither registered nor
 bound, and the run reports it in `SeedMaterializedProject.unregisteredSubjectIds` next to `registeredSubjectIds`.
 The only open question is whether seed initialization may provision a module for such a subject or must fail closed
-until an operator curates one. In the example slice nothing is unregistered.
+until an operator curates one. **Decided (ADR-0046): it must fail closed.** Seed initialization may not report
+`completed` while a required subject has no free placement module of the correct kind; it records a subject-level
+blocker and stops, and an operator curates the module. `seed_initialization_runs.status` already admits `failed` and
+the run already carries a `blocked` array, so this needs no migration, only a subject-level blocker DTO and the
+corrected completion condition. Automatically provisioning a user-visible `business` module was rejected: it would
+widen trusted-system authority from data initialisation into information-architecture change, and a
+ConfigurationSchema subject has no source-derived topology that could justify a taxonomy position. In the example
+slice nothing is unregistered.
 
 **Measured effect.** The example slice now materializes **33 canonical bindings per seed project**, each owning a
 current value, where it previously wrote zero.
 
 **B4 - The two DTS compatibility seeds cannot be published as-is.** Their reviewed sources declare a `charging_core` node and carry a 3x5 string matrix and a 3x4 cell array. Two independent blockers: the cell array is a **nested array**, which the definition capability allow-list does not accept (only `array<integer>`, `array<number>` and `array<string>` are supported, so this needs a capability revision, the same R3 class as the earlier subject-kind extension); **CORRECTION:** this entry also claimed `charging_core` is not a canonical node name. That is **false**. `parseCanonicalNodeName` accepts `/^[A-Za-z][A-Za-z0-9,._+-]{0,30}$/`, which explicitly allows `_`, and it parses `charging_core`, `batt_l_v800` and `cccv_para0` as valid. The vendor successor itself publishes 15 underscore-bearing node-type names. So the naming half of B4 never existed, no human naming decision is needed for it, and only the nested-array capability blocker remains.
+
+**Decided (ADR-0046): one `catalog-capability/v4`.** It covers recursive/nested arrays, `minItems`/`maxItems`, description-only mixed item schemas and array-level `description`; `v1`/`v2`/`v3` keep their meaning, and a v3 consumer must reject v4 content before install rather than tolerate it. Cardinality may only come from authoritative vendor metadata — the `gpio_int` cell count is the declared `constraints.cells: 3` in `schemas/dts/vendor/wiseeff/mt-mt5788.yaml` and `sc8562.yaml`, whereas the 3 rows of the complex fixtures are observations and must not become a schema bound; the 4/5 columns of those fixtures need reviewed source evidence before they can be invariants, and flattening a cell matrix is not acceptable. The formal subject for `charging_core` is a reviewed NodeType publication decision, not a name-similarity match against the existing `huawei,charging_core` Driver.
 
 ## 2. Status against the Issue's testing decisions
 
@@ -211,14 +222,14 @@ render no banner. Screenshots: `work/ui-checks/849/desktop-archived-notice.png`,
 
 ### 4.3 Next steps, in dependency order
 
-1. **Decide B1 and B6**: schedule the ConfigurationSchema source-identity extension (or renegotiate scope item 2's JSON expectations), and decide whether seed initialization may provision the modules (and attribution subjects) its subjects need, or must resolve to curated ones. Registration permission itself is already settled by the contract (`trusted-system` + `automatic` + `use-default`).
-2. **Land the publication successor carrying the compatibility seeds**, subject to B4 and a maintainer decision on the DTS subject naming. The acme retirement this step used to be blocked on (B3) is **done** — the subject and alias are retired in the vendor successor and verified on real PostgreSQL. The successor builder carries retired members correctly, so any later retirement can rely on that; what is still unproven is carrying a `configuration-schema` member through `buildCompleteSuccessor`.
+1. **Implement B1 and B6** (both decided by ADR-0046): schedule the ConfigurationSchema source-identity implementation, and make seed initialization fail closed with a subject-level blocker when a required placement module is missing. Registration permission itself is already settled by the contract (`trusted-system` + `automatic` + `use-default`).
+2. **Land the publication successor carrying the compatibility seeds**, subject to the ADR-0046 `catalog-capability/v4` and the reviewed NodeType subject publication for `charging_core`. The acme retirement this step used to be blocked on (B3) is **done** — the subject and alias are retired in the vendor successor and verified on real PostgreSQL. The successor builder carries retired members correctly, so any later retirement can rely on that; what is still unproven is carrying a `configuration-schema` member through `buildCompleteSuccessor`.
 3. **Canonical binding/value materialization** once the successor is published (B2). Exit evidence: exact expected Binding sets per project (124 each, 372 total), not totals.
 4. **S2**: the reviewed rebuild-disposition contract (R3 — Spec review before implementation), then plan → apply → status/resume → verify, then interruption and whole-state restore drills.
 5. **B5 frontend wiring**: extend the canonical pending-draft DTO with `updatedAt` and a parameter identity, add the canonical-to-tray adapter, move `ApiProjectTopologyWorkspace` off `createHttpParameterRepository()`, then verify once canonical bindings exist (B2).
 6. **S2 remainder**: execute the Docker-based rehearsal artifact path (needs a compose `wiseeff-postgres-1` plus host `psql`) and a target-host quiescence rehearsal. The operator plan/execute/inspect/recover path and whole-state restore are done.
 7. **PU-05 frontend**: the archived old-link notice is done; the draft tray, review and export remain, followed by the full three-viewport operation matrix for those surfaces.
-6. **PU-08**: bind S1/S2 evidence to one sealed candidate and run Hosted.
+8. **PU-08**: bind S1/S2 evidence to one sealed candidate and run Hosted.
 
 ## Documentation Impact Matrix
 
