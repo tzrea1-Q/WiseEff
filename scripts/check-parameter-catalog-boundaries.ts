@@ -35,6 +35,7 @@ import {
   applyReviewedRuntimeTopologyRelocation,
 } from "./parameter-catalog-allowlist/runtimeTopologyRelocation";
 import { applyReviewedDebuggingTransferRelocation } from "./parameter-catalog-allowlist/debuggingTransferRelocation";
+import { applyReviewedEditServiceVersionIndexRelocation } from "./parameter-catalog-allowlist/editServiceVersionIndexRelocation";
 import {
   allowlistShardSchema,
   boundaryViolationFixtureSchema,
@@ -374,13 +375,26 @@ export async function checkParameterCatalogBoundaries(
     postCutoverRelocated.violations,
     [...relocated.relocations, ...runtimeTopologyRelocated.relocations, ...postCutoverRelocated.relocations],
   );
+  const editServiceVersionIndexRelocated = await applyReviewedEditServiceVersionIndexRelocation(
+    repoRoot,
+    fixture,
+    allowlist.entries,
+    debuggingTransferRelocated.violations,
+    [
+      ...relocated.relocations,
+      ...runtimeTopologyRelocated.relocations,
+      ...postCutoverRelocated.relocations,
+      ...debuggingTransferRelocated.relocations,
+    ],
+  );
   return {
-    ...compareBoundaryInventory(debuggingTransferRelocated.violations, allowlist.entries, fixture.violations),
+    ...compareBoundaryInventory(editServiceVersionIndexRelocated.violations, allowlist.entries, fixture.violations),
     relocations: [
       ...relocated.relocations,
       ...runtimeTopologyRelocated.relocations,
       ...postCutoverRelocated.relocations,
       ...debuggingTransferRelocated.relocations,
+      ...editServiceVersionIndexRelocated.relocations,
     ],
   };
 }

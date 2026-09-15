@@ -373,6 +373,9 @@ async function seedConfigAndBinding(
   return {
     revision,
     binding,
+    // The binding is created with exactly this logical node id, so expose it here
+    // instead of letting callers re-read the legacy binding table for it.
+    logicalNodeId: logicalNodeId!,
     baseFileId,
     overlayFileId,
     baseChecksum,
@@ -2204,10 +2207,8 @@ describe.skipIf(!databaseAvailable)("applyLockedOverlayWriteback", () => {
 
   it("indexes exact source identity after enablement merge writeback", async () => {
     const fixture = await seedConfigAndBinding(db!, auth);
-    const node = await db!.query<{ logical_node_id: string }>(
-      "select logical_node_id from project_parameter_bindings where id = $1", [fixture.binding.id]);
     const lock = await resolveEnablementWriteLock(db!, auth, {
-      projectId: PROJECT_ID, logicalNodeId: node.rows[0].logical_node_id, baseRevisionId: fixture.revision.id,
+      projectId: PROJECT_ID, logicalNodeId: fixture.logicalNodeId, baseRevisionId: fixture.revision.id,
     });
     const applied = await applyLockedEnablementWriteback(db!, auth, {
       lock, mergedValue: '"disabled"',

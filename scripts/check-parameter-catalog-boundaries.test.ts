@@ -26,6 +26,7 @@ import {
   runtimeTopologyRelocationRecordPath,
 } from "./parameter-catalog-allowlist/runtimeTopologyRelocation";
 import { debuggingTransferRelocationRecordPath } from "./parameter-catalog-allowlist/debuggingTransferRelocation";
+import { editServiceVersionIndexRelocationRecordPath } from "./parameter-catalog-allowlist/editServiceVersionIndexRelocation";
 
 const originalRelocationRecord = JSON.parse(
   await readFile(`${process.cwd()}/${exactRelocationRecordPath}`, "utf8"),
@@ -38,6 +39,9 @@ const postCutoverRelocationRecord = JSON.parse(
 ) as { files: Array<{ file: string; pairs: Array<{ old: { id: string } }> }> };
 const debuggingTransferRelocationRecord = JSON.parse(
   await readFile(`${process.cwd()}/${debuggingTransferRelocationRecordPath}`, "utf8"),
+) as { files: Array<{ file: string; pairs: Array<{ old: { id: string } }> }> };
+const editServiceVersionIndexRelocationRecord = JSON.parse(
+  await readFile(`${process.cwd()}/${editServiceVersionIndexRelocationRecordPath}`, "utf8"),
 ) as { files: Array<{ file: string; pairs: Array<{ old: { id: string } }> }> };
 
 describe("parameter catalog boundary checker", () => {
@@ -815,9 +819,37 @@ describe("parameter catalog boundary checker", () => {
         ),
       ).toBe(true);
       expect(debuggingTransferRelocations.every((entry) => entry.id !== entry.observed.id)).toBe(true);
-      expect(new Set(report.relocations.map((entry) => entry.id)).size).toBe(72);
-      expect(new Set(report.relocations.map((entry) => entry.observed.id)).size).toBe(72);
-      expect(new Set(report.relocations.flatMap((entry) => [entry.id, entry.observed.id])).size).toBe(144);
+      // Issue #859 added one reviewed record: 59 S12-TOP occurrences whose byte
+      // offsets moved when draft/writeback version indexing inserted imports and
+      // helpers above them. No new allowance is granted; each pair restates an
+      // existing allowance at its new position, and the one occurrence #859
+      // genuinely added was removed from its source instead.
+      const editServiceVersionIndexIds = new Set(
+        editServiceVersionIndexRelocationRecord.files.flatMap((file) => file.pairs.map((pair) => pair.old.id)),
+      );
+      const editServiceVersionIndexRelocations = report.relocations.filter((entry) =>
+        editServiceVersionIndexIds.has(entry.id),
+      );
+      expect(editServiceVersionIndexRelocations).toHaveLength(59);
+      expect(
+        editServiceVersionIndexRelocations.filter(
+          (entry) => entry.observed.file === "server/modules/parameter-topology/editService.ts",
+        ),
+      ).toHaveLength(26);
+      expect(
+        editServiceVersionIndexRelocations.filter(
+          (entry) => entry.observed.file === "server/modules/parameter-topology/editService.test.ts",
+        ),
+      ).toHaveLength(28);
+      expect(
+        editServiceVersionIndexRelocations.filter(
+          (entry) => entry.observed.file === "server/modules/parameter-topology/overlayWriteback.ts",
+        ),
+      ).toHaveLength(5);
+      expect(editServiceVersionIndexRelocations.every((entry) => entry.id !== entry.observed.id)).toBe(true);
+      expect(new Set(report.relocations.map((entry) => entry.id)).size).toBe(131);
+      expect(new Set(report.relocations.map((entry) => entry.observed.id)).size).toBe(131);
+      expect(new Set(report.relocations.flatMap((entry) => [entry.id, entry.observed.id])).size).toBe(262);
       expect(report.summary).toEqual({
         violations: 3_513,
         allowlisted: 3_513,
