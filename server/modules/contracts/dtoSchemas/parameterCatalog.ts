@@ -918,7 +918,7 @@ export const catalogValueChangeRequestDtoSchema = catalogObject({
   status: closedEnum(["pending", "approved", "rejected", "withdrawn"]),
   targetValue: z.string(),
   reason: z.string(),
-  submitterUserId: z.string(),
+  submitterUserId: z.string().nullable(),
   assignedToUserId: z.string().nullable(),
   reviewerUserId: z.string().nullable(),
   reviewerNote: z.string().nullable(),

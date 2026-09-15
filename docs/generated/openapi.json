@@ -17854,7 +17854,10 @@
                 "type": "string"
               },
               "submitterUserId": {
-                "type": "string"
+                "type": [
+                  "string",
+                  "null"
+                ]
               },
               "assignedToUserId": {
                 "type": [
@@ -17970,7 +17973,10 @@
                   "type": "string"
                 },
                 "submitterUserId": {
-                  "type": "string"
+                  "type": [
+                    "string",
+                    "null"
+                  ]
                 },
                 "assignedToUserId": {
                   "type": [
