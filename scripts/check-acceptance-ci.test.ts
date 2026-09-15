@@ -105,6 +105,17 @@ describe("equivalent fixed L1 scheduling", () => {
     expect(rejected((job) => {
       job.env!.DATABASE_URL = "postgres://wiseeff:wiseeff@127.0.0.1:5999/wiseeff_l1_server";
     })).toContain(backendDatabase);
+    // node-postgres honours these overrides while `new URL()` does not, so a URL with a
+    // query string or a second path segment must never certify as job-owned.
+    expect(rejected((job) => {
+      job.env!.DATABASE_URL = "postgres://wiseeff:wiseeff@127.0.0.1:5432/wiseeff_l1_server?port=5999";
+    })).toContain(backendDatabase);
+    expect(rejected((job) => {
+      job.env!.DATABASE_URL = "postgres://wiseeff:wiseeff@127.0.0.1:5432/wiseeff_l1_server?host=shared.internal";
+    })).toContain(backendDatabase);
+    expect(rejected((job) => {
+      job.env!.DATABASE_URL = "postgres://wiseeff:wiseeff@127.0.0.1:5432/wiseeff_l1_server/extra";
+    })).toContain(backendDatabase);
     expect(rejected((job) => { delete job.env!.DATABASE_URL; })).toContain("must define the DATABASE_URL");
     expect(rejected((job) => {
       job.services!.postgres!.env!.POSTGRES_DB = "wiseeff_somewhere_else";

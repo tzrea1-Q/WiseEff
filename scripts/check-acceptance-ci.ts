@@ -426,6 +426,11 @@ export function runAcceptanceCiConfigurationCheck() {
  */
 function isJobOwnedBackendDatabaseUrl(value: unknown, serviceDatabase: string): boolean {
   if (typeof value !== "string" || value.trim() === "" || serviceDatabase === "") return false;
+  // node-postgres honours routing overrides in query parameters (`?host=`, `?port=`)
+  // that `new URL()` does not surface, so a green check could still aim the suite at
+  // another host or port. The lane helper rejects query strings and fragments for the
+  // same reason; a job-owned URL is a plain authority plus a single database segment.
+  if (value.includes("?") || value.includes("#")) return false;
   if (isForbiddenComposeAppPostgres(value)) return false;
   let url: URL;
   try {
@@ -434,10 +439,11 @@ function isJobOwnedBackendDatabaseUrl(value: unknown, serviceDatabase: string): 
     return false;
   }
   const port = url.port === "" ? "5432" : url.port;
-  const database = url.pathname.replace(/^\//, "").split("/")[0] ?? "";
+  const segments = url.pathname.replace(/^\//, "").split("/");
   return ["127.0.0.1", "localhost"].includes(url.hostname.toLowerCase())
     && port === "5432"
-    && database === serviceDatabase;
+    && segments.length === 1
+    && segments[0] === serviceDatabase;
 }
 
 export function evaluateL1CiWorkflow(workflowText: string): { status: "passed" | "failed"; errors: string[] } {
