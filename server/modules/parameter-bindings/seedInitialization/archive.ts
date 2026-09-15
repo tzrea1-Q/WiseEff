@@ -57,7 +57,7 @@ export const ARCHIVED_PARAMETER_PLANE_RELATIONS: readonly ArchiveRelation[] = [
   { key: "project_parameter_binding_revisions", from: "public.project_parameter_binding_revisions", scope: { kind: "binding" } },
   { key: "project_parameter_file_versions", from: "public.project_parameter_file_versions", scope: { kind: "file" } },
   {
-    key: "canonical_project_parameter_values",
+    key: "canonical_values",
     from: "parameter_catalog.project_parameter_values",
     scope: { kind: "binding" }
   }

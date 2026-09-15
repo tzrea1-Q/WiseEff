@@ -12,7 +12,7 @@ export const S2_SCH_0137_FINGERPRINT =
  * freeze is S2_SCH_0137_FINGERPRINT.
  */
 export const S2_SCH_CONTRACT_FINGERPRINT =
-  "cdd07caa405f8ed8f9403324f8d61d75cab6966c37b8e06ae65768b34fbcfa87";
+  "a3014558167dd261b91699ad15f12497c248dbd5a512a662072731b0a9ee4b61";
 
 const CATALOG_DATABASE_PREFIX = "wiseeff_pcat_";
 const FAKE_ENGINE_PATTERN = /pglite|postgres-js|pg-mem|sqlite|:memory:|memory:\/\//i;

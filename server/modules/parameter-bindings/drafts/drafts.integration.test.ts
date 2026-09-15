@@ -584,7 +584,11 @@ describe("canonical pending value drafts", () => {
       [bindingId]
     );
     expect(exported!.definitionRevisionId).toBe(bindingRow.rows[0]!.effective_revision_id);
-    expect(exported!.sourceRef).toBe(`config-set:${CONFIG_SET}`);
+    // A value written from a `.dts` occurrence records the exact file location as its
+    // provenance (so identity correction and property-key cutover can rewrite it),
+    // while the export still resolves the config set the bytes come from.
+    expect(exported!.sourceRef).toBe("charger.dts!/charger");
+    expect(exported!.configSetId).toBe(CONFIG_SET);
     expect(exported!.files).toHaveLength(1);
 
     const file = exported!.files[0]!;

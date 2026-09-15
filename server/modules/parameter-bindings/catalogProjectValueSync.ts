@@ -989,7 +989,15 @@ export async function exportCanonicalBindingSource(
   );
   const sourceRef = current.rows[0]?.source_ref ?? "";
   const configRevisionId = current.rows[0]?.config_revision_id ?? "";
-  const configSetId = parseConfigSetSourceRef(sourceRef);
+  // A project value records either the approved `config-set:<id>` write or the exact
+  // `.dts` file location the occurrence came from, so both shapes must resolve to the
+  // config set the export reads. Accepting only the opaque form silently refused every
+  // value written from a `.dts` source.
+  const configSetId = await resolveConfigSetIdForSource(asValueClient(db), {
+    organizationId: auth.organization.id,
+    projectId: input.projectId,
+    sourceRef,
+  });
   if (!configSetId || !configRevisionId || configRevisionId === "canonical-binding-identity") {
     throw new ApiError("CONFLICT", "Project value is missing an actual config-set source.", {
       bindingId: input.bindingId,
