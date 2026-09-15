@@ -20,7 +20,9 @@
 
 它们会重塑剩余计划；此处记录而非绕过。
 
-**B1 — JSON 项目源无语义摄取路径。** `ingestConfigRevision` 是 DTS／配置版本解析器。新版值归属**有** JSON 值路径，但没有任何路径能把 JSON 项目源文件变成配置版本，因此 JSON 种子源无法物化。`materialize.ts` 以 `UNSUPPORTED_FORMAT` 明确拒绝（明细带 `deferredTo`），而不是上传无法解析的成员或从清单丢弃。**后果：两个 JSON 兼容种子仍未物化，构成 scope item 2 与测试决定 6 的缺口。** 关闭它并非局部修复：按实现决定 3，它需要 Binding 边界上的 ConfigurationSchema **源身份**扩展（区分 DTS 逻辑节点出现与软件配置实例，含配置集、实例、源文件版本与格式特定 locator）。要么为该扩展排期，要么与维护者重新协商 scope item 2 的 JSON 验收口径。这应由维护者决定，而非实现者单方面决定。
+**决策状态（2026-09-15）。** B1、B4、B6 不再是待决问题。[ADR-0046](../../../adr/0046-source-occurrence-identity-spans-dts-and-software-configuration.md) 记录了三者的决定，各条目下方给出结论；剩下的是实现，而不是决策。B3 已撤回，B5 在其 scope item 1 部分已关闭。
+
+**B1 — JSON 项目源无语义摄取路径。** `ingestConfigRevision` 是 DTS／配置版本解析器。新版值归属**有** JSON 值路径，但没有任何路径能把 JSON 项目源文件变成配置版本，因此 JSON 种子源无法物化。`materialize.ts` 以 `UNSUPPORTED_FORMAT` 明确拒绝（明细带 `deferredTo`），而不是上传无法解析的成员或从清单丢弃。**后果：两个 JSON 兼容种子仍未物化，构成 scope item 2 与测试决定 6 的缺口。** 关闭它并非局部修复：按实现决定 3，它需要 Binding 边界上的 ConfigurationSchema **源身份**扩展（区分 DTS 逻辑节点出现与软件配置实例，含配置集、实例、源文件版本与格式特定 locator）。**已决定（ADR-0046）：为该扩展排期，不重新协商 scope item 2。** 该决定引入统一的 `project_parameter_source_occurrences` 层，身份至少包含 organization + project + config-set + occurrence-kind + instance-id，并额外钉住不可变源文件身份与 JSON Pointer locator；Binding 唯一性收敛为 `(project_id, source_occurrence_id, definition_id)`；既有 DTS 绑定原地 backfill 且永不重新派生其 ID；file-version／config-revision 钉留在 ProjectValue 层，不进入 Binding 身份。因此两个 JSON 兼容种子仍在范围内，并将在该实现落地前保持未物化。
 
 **B2 —— 存在注册时 canonical 绑定／值物化现已可用；为此修复了两个缺陷。** 该管道已在真实 PostgreSQL 上端到端证明：
 `nodeTypeSubjectBinding.integration.test.ts` 安装真实发布谱系、注册两个 node-type 主体、物化真实 DTS 切片，并断言
@@ -84,11 +86,13 @@
 
 **模块本来就在。** DTS ingest 会为每个逻辑节点供给模块，而这些正是放置守卫所要求的 `node-type`／`driver-group` 模块，因此对源声明的主体无需种子期模块供给。`nodeTypeSubjectBinding.integration.test.ts` 此前必须手工构建 attribution subject、模块、注册与放置；该夹具现已全部删除，测试仍然通过。
 
-**真正剩余的很少，且会被报告、绝不被静默丢弃。** 没有可用模块的主体不会被注册、也不会被绑定，运行会在 `SeedMaterializedProject.unregisteredSubjectIds` 中与 `registeredSubjectIds` 一并报告它。唯一未决问题是：种子初始化是否可以为这类主体供给模块，还是必须失败关闭直到运维策展一个。示例切片中没有任何未注册主体。
+**真正剩余的很少，且会被报告、绝不被静默丢弃。** 没有可用模块的主体不会被注册、也不会被绑定，运行会在 `SeedMaterializedProject.unregisteredSubjectIds` 中与 `registeredSubjectIds` 一并报告它。**已决定（ADR-0046）：必须失败关闭。** 任一必需主体没有同类空闲放置模块时，种子初始化不得报告 `completed`；它记录主体级 blocker 并停止，由运维策展模块。`seed_initialization_runs.status` 已允许 `failed`，运行本就带 `blocked` 数组，因此无需迁移，只需主体级 blocker DTO 与修正后的完成条件。自动创建用户可见 `business` 模块被否决：那会把 trusted-system 权限从数据初始化扩大到信息架构变更，而 ConfigurationSchema 主体没有可据以决定 taxonomy 位置的源拓扑证据。示例切片中没有任何未注册主体。
 
 **实测效果。** 示例切片现在**每个种子项目物化 33 条 canonical 绑定**，每条都拥有当前值；此前写入为零。
 
-**B4 — 两个 DTS 兼容种子无法按现状发布。** 其受审源声明 `charging_core` 节点，并携带 3×5 字符串矩阵与 3×4 cell 数组。两个彼此独立的阻塞：cell 数组是**嵌套数组**，定义能力白名单不接受（仅支持 `array<integer>`／`array<number>`／`array<string>`，因此需要能力版本变更，与早前的主体类型扩展同属 R3）；且 `charging_core` **不是规范节点名**（规范文法排除 `_`），因此正式主体需要一次受审命名决定——而 Issue 明确把这类决定保留给人类（"合成解析节点或相似标签都不构成身份证明"）。
+**B4 — 两个 DTS 兼容种子无法按现状发布。** 其受审源声明 `charging_core` 节点，并携带 3×5 字符串矩阵与 3×4 cell 数组。两个彼此独立的阻塞：cell 数组是**嵌套数组**，定义能力白名单不接受（仅支持 `array<integer>`／`array<number>`／`array<string>`，因此需要能力版本变更，与早前的主体类型扩展同属 R3）。**更正：** 该条目还曾声称 `charging_core` 不是规范节点名。这是**错的**——`parseCanonicalNodeName` 的文法 `/^[A-Za-z][A-Za-z0-9,._+-]{0,30}$/` 明确允许 `_`，`charging_core`、`batt_l_v800`、`cccv_para0` 都解析合法，厂商后继本身也发布了 15 个带下划线的 node-type 名称。因此 B4 的命名那一半从不存在，无需人类命名决定，只剩嵌套数组这一个能力阻塞。
+
+**已决定（ADR-0046）：发布一次 `catalog-capability/v4`。** 它覆盖递归／嵌套数组、`minItems`／`maxItems`、仅含 description 的 mixed item schema，以及数组自身的 `description`；`v1`／`v2`／`v3` 保持原义，且 v3 消费者必须在安装前拒绝 v4 内容而非容忍它。基数只能来自权威 vendor 元数据——`gpio_int` 的 cell 数是 `schemas/dts/vendor/wiseeff/mt-mt5788.yaml` 与 `sc8562.yaml` 中声明的 `constraints.cells: 3`，而复杂 fixture 的 3 行是观测，不得成为 schema 约束；这些 fixture 的 4／5 列在成为不变量前需要受审源证据，且把 cell 矩阵扁平化不可接受。`charging_core` 的正式主体是一项受审的 NodeType 发布决策，而不是与既有 `huawei,charging_core` Driver 做名称相似度匹配。
 
 ## 2. Issue 测试决定状态
 
@@ -181,14 +185,14 @@ playwright-cli -s=wiseeff849 open http://127.0.0.1:5173/parameter-admin
 
 ### 4.3 后续步骤（按依赖顺序）
 
-1. **就 B1 与 B6 作出决定**：为 ConfigurationSchema 源身份扩展排期（或重新协商 scope item 2 的 JSON 口径），并决定种子初始化是否可以为其主体供给模块（及 attribution subject），还是必须解析到已策展模块。注册权限本身已由契约确定（`trusted-system` + `automatic` + `use-default`）。
-2. **落地携带兼容种子的发布后继**，取决于 B4 与维护者就 DTS 主体命名的裁定。本步曾被 B3 阻塞，而 B3 已**完成**——acme 主体与别名已在厂商后继中退役，并在真实 PostgreSQL 上核验。后继构建器能正确携带已退役成员，因此后续任何退役都可依赖该行为；尚未验证的是让 `configuration-schema` 成员穿过 `buildCompleteSuccessor`。
+1. **实现 B1 与 B6**（二者均已由 ADR-0046 决定）：为 ConfigurationSchema 源身份实现排期；并让种子初始化在缺少必需放置模块时以主体级 blocker 失败关闭。注册权限本身已由契约确定（`trusted-system` + `automatic` + `use-default`）。
+2. **落地携带兼容种子的发布后继**，取决于 ADR-0046 的 `catalog-capability/v4` 与 `charging_core` 的受审 NodeType 主体发布。本步曾被 B3 阻塞，而 B3 已**完成**——acme 主体与别名已在厂商后继中退役，并在真实 PostgreSQL 上核验。后继构建器能正确携带已退役成员，因此后续任何退役都可依赖该行为；尚未验证的是让 `configuration-schema` 成员穿过 `buildCompleteSuccessor`。
 3. **新版绑定／值物化**：在后继发布后执行（B2）。退出证据：逐项目**精确** Binding 集合（各 124，合计 372）而非总数。
 4. **S2**：先落受审重建处置契约（R3，实施前需 Spec 评阅），再做 plan → apply → status/resume → verify，然后做中断与整套恢复演练。
 5. **B5 前端接线**：为 canonical pending-draft DTO 增补 `updatedAt` 与参数身份，加入 canonical→托盘适配器，把 `ApiProjectTopologyWorkspace` 从 `createHttpParameterRepository()` 上摘下，待 canonical 绑定存在（B2）后验证。
 6. **S2 剩余**：执行基于 Docker 的彩排产物路径（需要 compose `wiseeff-postgres-1` 与宿主机 `psql`）以及目标主机静默彩排。运维 plan／execute／inspect／recover 路径与整套恢复已完成。
 7. **PU-05 前端**：归档旧链接提示已完成；剩余草稿托盘、审阅与导出，随后对这些界面跑完整三尺寸操作矩阵。
-6. **PU-08**：把 S1／S2 证据绑定到同一个 sealed candidate 并跑 Hosted。
+8. **PU-08**：把 S1／S2 证据绑定到同一个 sealed candidate 并跑 Hosted。
 
 ## 文档影响矩阵
 
