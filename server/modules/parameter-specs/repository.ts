@@ -680,6 +680,8 @@ export async function countOpenSpecReviewTasksForRevision(
     configRevisionId: string;
     excludePropertyKeys?: string[];
     unmatchedOnly?: boolean;
+    /** Typed writers only: retain unchanged review material from their locked base. */
+    baseConfigRevisionId?: string;
     /**
      * An explicit binding edit may carry an existing canonical binding even
      * when the re-ingested surface itself is unmatched. Exclude only the
@@ -698,6 +700,72 @@ export async function countOpenSpecReviewTasksForRevision(
     input.configRevisionId,
   ];
   const extraConditions: string[] = [];
+  let unchangedReviewSources = "";
+
+  if (input.baseConfigRevisionId) {
+    values.push(input.baseConfigRevisionId);
+    // Compare complete per-property chains, including shadowed occurrences.
+    // Offsets and global source_order may shift after an unrelated typed edit;
+    // only relative chain order participates. Missing evidence stays blocking.
+    unchangedReviewSources = `with review_sources as (
+      select t.id, t.config_revision_id, cr.config_set_id, lr.compatible,
+        t.source_evidence - array['configRevisionId', 'propertyOccurrenceId', 'logicalNodeId'] as evidence,
+        jsonb_agg(jsonb_build_array(
+          m.file_id, m.role, m.sort_order, n.node_path, n.name, n.unit_address,
+          n.ref_target, n.is_overlay_root, n.labels, po.raw_text, e.effect_kind
+        ) order by e.source_order) as source_chain
+      from parameter_spec_review_tasks t
+      join dts_config_revisions cr on cr.id = t.config_revision_id
+        and cr.organization_id = $1 and cr.project_id = $2
+      join projects p on p.id = cr.project_id and p.organization_id = $1
+      join dts_logical_nodes ln on ln.id = t.source_evidence->>'logicalNodeId'
+        and ln.organization_id = $1 and ln.project_id = $2 and ln.config_set_id = cr.config_set_id
+      join dts_logical_node_revisions lr on lr.logical_node_id = ln.id
+        and lr.config_revision_id = cr.id and lr.node_locator = t.source_evidence->>'nodeLocator'
+      left join dts_occurrence_effects e on e.logical_node_revision_id = lr.id
+        and e.config_revision_id = cr.id and e.property_name = t.source_evidence->>'propertyKey'
+      left join dts_property_occurrences po on po.id = e.property_occurrence_id
+        and po.config_revision_id = cr.id and po.property_name = e.property_name
+      left join dts_node_occurrences n on n.id = e.node_occurrence_id
+        and n.id = po.node_occurrence_id and n.config_revision_id = cr.id
+        and n.file_version_id = po.file_version_id
+      left join dts_config_revision_members m on m.config_revision_id = cr.id
+        and m.file_version_id = po.file_version_id
+      left join project_parameter_file_versions v on v.id = m.file_version_id and v.file_id = m.file_id
+      left join project_parameter_files f on f.id = v.file_id and f.organization_id = $1 and f.project_id = $2
+      where t.organization_id = $1 and t.project_id = $2
+        and t.config_revision_id in ($3, $4) and $3 <> $4
+        and t.blocker_scope = 'revision' and t.status = 'open'
+        and t.candidate_schemas = '[]'::jsonb
+        and t.source_evidence->>'inferred' = 'true'
+        and t.source_evidence->>'organizationId' = $1
+        and t.source_evidence->>'projectId' = $2
+        and t.source_evidence->>'configRevisionId' = t.config_revision_id
+        and t.source_evidence->>'propertyOccurrenceId' = t.property_occurrence_id
+        and jsonb_typeof(t.source_evidence->'compatible') = 'array'
+        and (select count(*) from dts_logical_node_revisions other
+          where other.config_revision_id = cr.id and other.node_locator = lr.node_locator) = 1
+        and (select count(*) from parameter_spec_review_tasks other
+          where other.organization_id = $1 and other.config_revision_id = cr.id
+            and other.blocker_scope = 'revision' and other.status = 'open'
+            and other.source_evidence->>'nodeLocator' = lr.node_locator
+            and other.source_evidence->>'propertyKey' = t.source_evidence->>'propertyKey') = 1
+      group by t.id, cr.config_set_id, lr.id
+      having bool_and(po.id is not null and n.id is not null and f.id is not null
+        and e.effect_kind in ('set', 'override'))
+        and count(distinct e.source_order) = count(*) and count(distinct po.id) = count(*)
+        and (array_agg(e.property_occurrence_id order by e.source_order desc))[1] = t.property_occurrence_id
+    )`;
+    extraConditions.push(`t.id not in (
+      select candidate.id from review_sources candidate
+      join review_sources baseline on baseline.config_revision_id = $4
+        and baseline.config_set_id = candidate.config_set_id
+        and baseline.compatible is not distinct from candidate.compatible
+        and baseline.evidence = candidate.evidence
+        and baseline.source_chain = candidate.source_chain
+      where candidate.config_revision_id = $3
+    )`);
+  }
 
   if (input.excludePropertyKeys && input.excludePropertyKeys.length > 0) {
     values.push(input.excludePropertyKeys);
@@ -739,6 +807,7 @@ export async function countOpenSpecReviewTasksForRevision(
 
   const result = await db.query<{ count: string }>(
     `
+    ${unchangedReviewSources}
     select count(*)::text as count
     from parameter_spec_review_tasks t
     where t.organization_id = $1

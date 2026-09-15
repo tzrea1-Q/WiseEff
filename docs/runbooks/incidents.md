@@ -48,6 +48,12 @@ The default is a read-only dry run. Apply locks the exact version, verifies embe
 
 `skipped-existing-index` means no rows were changed; it does **not** prove an existing partial or ambiguous index is healthy. Unsupported include/delete semantics, missing source, checksum mismatch, or an absent/ambiguous requested node stop recovery. Do not fall back to a newer version or disable the identity guard. After `repaired`, rerun the exact-version diagnostic and retry the original edit. Only target-server evidence closes the incident.
 
+## Typed edits blocked by unchanged unmatched properties
+
+`CONFLICT` with reason `unmatched-occurrence` can occur when the locked baseline already contains unrelated unmatched properties. Typed binding/enablement drafts and merge writebacks retain these only when both revisions have unique open unmatched review evidence and the complete ordered property source chain is unchanged, including file ownership, member precedence, node identity, compatible, and raw property text. Reviews remain open; general baseline validation still counts them. Newly unmatched or changed properties, ambiguous matches, incomplete evidence, and project/platform blockers still block the candidate.
+
+Deploy the updated API and retry the original edit. This change needs no data migration or review-task cleanup. If it still fails, capture the exact reason and compare review evidence against the locked baseline; do not dismiss reviews or disable gates to force the edit through. Local fixture tests do not establish target-server recovery.
+
 ## Handoff
 
 When escalating, include:
