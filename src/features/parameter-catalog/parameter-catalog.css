@@ -308,6 +308,12 @@ button.parameter-catalog__tree-toggle:hover {
   min-width: 0;
 }
 
+/* Single-action footer: keep it on the trailing edge like the other dialogs. */
+.confirm-dialog.parameter-catalog__pending-dialog .dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
 /* Row actions use the same secondary button shape as the other admin tables,
    with an outline strong enough to read as a button. The cell keeps its
    content-driven width and wraps, so the table never overflows the pane and no
