@@ -11,12 +11,46 @@ export type NormalizedNodeTypeName = CanonicalParameterIdentity<
   "NormalizedNodeTypeName"
 >;
 export type PropertyKey = CanonicalParameterIdentity<"PropertyKey">;
+/**
+ * Governed software-configuration model identifier (Issue #849 D09). Platform-owned
+ * and exact. Syntax only bounds the accepted shape; authority comes from the
+ * reviewed publication manifest.
+ */
+export type NormalizedConfigurationSchemaId =
+  CanonicalParameterIdentity<"NormalizedConfigurationSchemaId">;
 
 const asDriverCompatible = (value: string): DriverCompatible =>
   value as DriverCompatible;
 const asNormalizedNodeTypeName = (value: string): NormalizedNodeTypeName =>
   value as NormalizedNodeTypeName;
 const asPropertyKey = (value: string): PropertyKey => value as PropertyKey;
+const asNormalizedConfigurationSchemaId = (
+  value: string
+): NormalizedConfigurationSchemaId =>
+  value as NormalizedConfigurationSchemaId;
+
+/**
+ * Source-file extensions that must never be read as a governed model identity.
+ * A filename or extension is not identity evidence (Issue #849 T4), so any model id
+ * whose final segment is a known source/config extension is refused outright rather
+ * than relying on the author to choose a different spelling.
+ */
+const forbiddenConfigurationSchemaIdSuffixes = Object.freeze([
+  ".dts",
+  ".dtsi",
+  ".yaml",
+  ".yml",
+  ".toml",
+  ".env",
+  ".json",
+  ".csv",
+  ".xlsx",
+  ".ini",
+  ".bin",
+  ".txt",
+  ".xml",
+  ".conf"
+]);
 
 export const canonicalIdentityFailureReasons = Object.freeze([
   "not-string",
@@ -116,6 +150,36 @@ export const parseCanonicalNodeName = (
     return { ok: false, error: "invalid-syntax" };
   }
   return { ok: true, value: asNormalizedNodeTypeName(nodeName) };
+};
+
+/**
+ * Parse a governed configuration-model identifier.
+ *
+ * Deliberately excludes `,` (so a driver compatible list can never read as a model
+ * id), `@` (a unit address) and `*`, and refuses filename/extension shapes, so the
+ * three selector namespaces stay distinguishable by construction and no uploaded
+ * declaration can allocate an identity.
+ */
+export const parseCanonicalConfigurationSchemaId = (
+  input: unknown
+): CanonicalIdentityParseResult<NormalizedConfigurationSchemaId> => {
+  const commonFailure = classifyCommonFailure(input);
+  if (commonFailure !== null) {
+    return { ok: false, error: commonFailure };
+  }
+
+  const modelId = input as string;
+  if (modelId.includes("*")) return { ok: false, error: "wildcard-forbidden" };
+  if (modelId.includes("@")) return { ok: false, error: "unit-address-present" };
+  if (modelId.length > 96) return { ok: false, error: "length-out-of-range" };
+  if (!/^[A-Za-z0-9][A-Za-z0-9+._/-]*$/u.test(modelId)) {
+    return { ok: false, error: "invalid-syntax" };
+  }
+  const lowered = modelId.toLowerCase();
+  if (forbiddenConfigurationSchemaIdSuffixes.some((suffix) => lowered.endsWith(suffix))) {
+    return { ok: false, error: "invalid-syntax" };
+  }
+  return { ok: true, value: asNormalizedConfigurationSchemaId(modelId) };
 };
 
 const structuralPropertyKeys = new Set([

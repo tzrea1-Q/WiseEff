@@ -1,6 +1,12 @@
 import type { BindingDraftResult, NodeEnablementDraftResult } from "@/application/ports/ParameterTopologyRepository";
 
-export type PendingBindingDraftCore = BindingDraftResult & {
+/**
+ * `parameterId` stays optional because the canonical model has no parameter record:
+ * a draft hydrated from the canonical pending-draft list has only a binding identity.
+ * The tray keys off `draftId` and `projectParameterBindingId`, so it never reads this.
+ */
+export type PendingBindingDraftCore = Omit<BindingDraftResult, "parameterId"> & {
+  parameterId?: string;
   projectId: string;
   reason: string;
 };

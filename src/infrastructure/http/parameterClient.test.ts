@@ -391,3 +391,95 @@ describe("createHttpParameterRepository", () => {
     await expect(repository.listParameters()).rejects.toBeInstanceOf(WiseEffApiError);
   });
 });
+
+describe("archived legacy parameter links", () => {
+  const archivedResponse = (diagnostic: string) =>
+    response(
+      {
+        error: {
+          code: "GONE",
+          message: diagnostic,
+          details: { diagnostic, migrationEvidenceId: "mig-1" },
+          requestId: "req-archived"
+        }
+      },
+      410
+    );
+
+  it("surfaces the canonical legacy-id-archived outcome instead of a generic error", async () => {
+    const fetchMock = vi.fn(async () => archivedResponse("legacy-id-archived"));
+    const repository = createHttpParameterRepository(
+      createApiClient({ baseUrl: "", fetchImpl: fetchMock })
+    );
+
+    await expect(repository.getParameter("legacy-1")).rejects.toMatchObject({
+      code: "GONE",
+      message: "legacy-id-archived",
+      details: { diagnostic: "legacy-id-archived", migrationEvidenceId: "mig-1" }
+    });
+  });
+
+  it("still surfaces the pre-cutover legacy-parameter-id-retired outcome", async () => {
+    const fetchMock = vi.fn(async () => archivedResponse("legacy-parameter-id-retired"));
+    const repository = createHttpParameterRepository(
+      createApiClient({ baseUrl: "", fetchImpl: fetchMock })
+    );
+
+    await expect(repository.getParameter("legacy-2")).rejects.toMatchObject({
+      code: "GONE",
+      message: "legacy-parameter-id-retired"
+    });
+  });
+
+  it("does not convert an unrelated 410 into an archived outcome", async () => {
+    const fetchMock = vi.fn(async () =>
+      response(
+        {
+          error: {
+            code: "GONE",
+            message: "some-other-gone",
+            details: { diagnostic: "some-other-gone" },
+            requestId: "req-other"
+          }
+        },
+        410
+      )
+    );
+    const repository = createHttpParameterRepository(
+      createApiClient({ baseUrl: "", fetchImpl: fetchMock })
+    );
+
+    await expect(repository.getParameter("legacy-3")).rejects.toMatchObject({
+      code: "GONE",
+      message: "some-other-gone"
+    });
+  });
+
+  it("recognizes the operator Catalog body that carries the diagnostic in details.reason", async () => {
+    // Exact shape produced by server/modules/parameter-catalog-api/legacy/routes.ts:
+    // the diagnostic is in `details.reason` while `message` is prose, so a client
+    // that only read `details.diagnostic` or the message would miss it entirely.
+    const fetchMock = vi.fn(async () =>
+      response(
+        {
+          error: {
+            code: "GONE",
+            message: "The legacy identifier was archived and is not available for operational reads.",
+            details: { reason: "legacy-id-archived", retryable: false },
+            requestId: "req-reason"
+          }
+        },
+        410
+      )
+    );
+    const repository = createHttpParameterRepository(
+      createApiClient({ baseUrl: "", fetchImpl: fetchMock })
+    );
+
+    await expect(repository.getParameter("legacy-4")).rejects.toMatchObject({
+      code: "GONE",
+      message: "legacy-id-archived",
+      details: { diagnostic: "legacy-id-archived", reason: "legacy-id-archived" }
+    });
+  });
+});

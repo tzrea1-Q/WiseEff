@@ -3,7 +3,11 @@ const freezeRegistry = <const Values extends readonly unknown[]>(values: Values)
   return values;
 };
 
-export const catalogSubjectKinds = freezeRegistry(["driver", "node-type"]);
+export const catalogSubjectKinds = freezeRegistry([
+  "driver",
+  "node-type",
+  "configuration-schema"
+]);
 export type CatalogSubjectKind = (typeof catalogSubjectKinds)[number];
 
 export const driverNatures = freezeRegistry([
@@ -56,7 +60,8 @@ export type CatalogInstallMode = (typeof catalogInstallModes)[number];
 
 export const catalogSubjectSelectorKinds = freezeRegistry([
   "driver-compatible",
-  "node-type-name"
+  "node-type-name",
+  "configuration-schema-id"
 ]);
 export type CatalogSubjectSelectorKind = (typeof catalogSubjectSelectorKinds)[number];
 

@@ -1,0 +1,192 @@
+/**
+ * Issue #849 scope item 2: emit the complete example DTS project-source baseline
+ * from the reviewed seed reconciliation manifest.
+ *
+ * The manifest is the reviewed semantic-alignment artifact (the reconciliation of
+ * the 113 vendor inputs), so deriving the property list from it is not circular:
+ * the generated file is an independent source that is then resolved *against* the
+ * published Catalog release by the integration tests. Deriving the source from the
+ * release instead would make every catalog/vendor mismatch invisible, which is why
+ * this script reads the manifest and never the release.
+ *
+ * Values are the reviewed vendor metadata's own `exampleValue`, emitted verbatim as
+ * the DTS literal. They are not invented and not taken from the release schema: the
+ * vendor YAML already carries a DTS-syntax example for every property, including
+ * `/bits/ 8 <...>` for `bytes`, `<&gpio 16 0>` for `mixed` phandle arrays, and an
+ * empty example for `bool`, which is the DTS presence form (`prop;`).
+ *
+ * Usage:
+ *   npx tsx scripts/generate-vendor-project-source.ts            # writes the files
+ *   npx tsx scripts/generate-vendor-project-source.ts --check    # fails on drift
+ */
+import { readFileSync, writeFileSync } from "node:fs";
+import path from "node:path";
+import { parse as parseYaml } from "yaml";
+
+type ManifestInput = {
+  readonly inputId: string;
+  readonly family: string;
+  readonly propertyKey: string;
+  readonly sourcePath: string;
+  readonly formalSubject: { readonly kind: string; readonly value: string };
+  readonly content: { readonly valueShape?: string };
+};
+
+type Manifest = { readonly inputs: readonly ManifestInput[] };
+
+export const SEED_SOURCE_PROJECTS = ["atlas", "aurora", "nebula"] as const;
+export const VENDOR_SOURCE_FILE_NAME = "vendor-drivers.dts";
+
+type VendorYaml = {
+  readonly properties?: Record<string, { readonly exampleValue?: unknown }>;
+};
+
+/**
+ * The reviewed vendor metadata's own DTS-syntax example for a property. Multi-line
+ * examples are collapsed to one line so the emitted file stays readable; the tokens
+ * are unchanged.
+ */
+const exampleValueFor = (cache: Map<string, VendorYaml>, root: string, sourcePath: string, key: string): string => {
+  let parsed = cache.get(sourcePath);
+  if (!parsed) {
+    parsed = parseYaml(readFileSync(path.join(root, sourcePath), "utf8")) as VendorYaml;
+    cache.set(sourcePath, parsed);
+  }
+  const raw = parsed.properties?.[key]?.exampleValue;
+  if (raw === null || raw === undefined) return "";
+  return String(raw).replace(/\s+/g, " ").trim();
+};
+
+const nodeNameForDriver = (compatible: string): string =>
+  compatible.replace(/[^A-Za-z0-9]/g, "_");
+
+export type GeneratedVendorSource = {
+  readonly text: string;
+  readonly emitted: number;
+  readonly skipped: readonly { readonly propertyKey: string; readonly valueShape: string }[];
+  readonly driverSubjects: number;
+  readonly nodeTypeSubjects: number;
+};
+
+export const generateVendorProjectSource = (
+  manifest: Manifest,
+  root: string = process.cwd(),
+): GeneratedVendorSource => {
+  const vendor = manifest.inputs.filter((entry) => entry.family === "vendor");
+  const bySubject = new Map<string, { kind: string; value: string; props: ManifestInput[] }>();
+  const skipped: { propertyKey: string; valueShape: string }[] = [];
+  const yamlCache = new Map<string, VendorYaml>();
+
+  for (const entry of [...vendor].sort((left, right) => left.inputId.localeCompare(right.inputId))) {
+    const key = `${entry.formalSubject.kind}\u0000${entry.formalSubject.value}`;
+    const bucket = bySubject.get(key) ?? {
+      kind: entry.formalSubject.kind,
+      value: entry.formalSubject.value,
+      props: [],
+    };
+    bucket.props.push(entry);
+    bySubject.set(key, bucket);
+  }
+
+  const drivers = [...bySubject.values()].filter((bucket) => bucket.kind === "driver");
+  const nodeTypes = [...bySubject.values()].filter((bucket) => bucket.kind !== "driver");
+  const emitted = drivers.reduce((n, b) => n + b.props.length, 0) +
+    nodeTypes.reduce((n, b) => n + b.props.length, 0);
+
+  const literalFor = (entry: ManifestInput): string => {
+    const example = exampleValueFor(yamlCache, root, entry.sourcePath, entry.propertyKey);
+    return example.length === 0 ? "" : ` = ${example}`;
+  };
+
+  const nodeBlocks = (buckets: typeof drivers, withCompatible: boolean): string =>
+    buckets
+      .map((bucket) => {
+        const name = withCompatible ? nodeNameForDriver(bucket.value) : bucket.value;
+        const head = withCompatible
+          ? `\t\tcompatible = "${bucket.value}";`
+          : `\t\t/* node-type identity is the node name; no compatible is declared */`;
+        const lines = bucket.props
+          .map((prop) => `\t\t${prop.propertyKey}${literalFor(prop)};`)
+          .join("\n");
+        return `\t${name} {\n${head}\n${lines}\n\t};\n`;
+      })
+      .join("\n");
+
+  const header = `/*
+ * Issue #849 scope item 2 - example DTS project-source baseline for the vendor
+ * slice. GENERATED by scripts/generate-vendor-project-source.ts from the reviewed
+ * seed reconciliation manifest; do not hand-edit.
+ *
+ * Coverage: ${emitted} of ${vendor.length} reviewed vendor inputs are expressed here
+ * (${drivers.length} driver subjects, ${nodeTypes.length} node-type subjects).
+ *
+ * DEMONSTRATION SOURCE - not validated real-device firmware and not a device
+ * deployment input. Every value is the reviewed vendor metadata's own \`exampleValue\`,
+ * emitted as the DTS literal; nothing is invented and nothing is read from the
+ * published Catalog schema.
+ *
+ * The ${skipped.length} inputs with a shape that has no DTS example are the only ones
+ * omitted. The 8 YAML/TOML/ENV compatibility items stay deferred to TD-124.
+ *
+ * Overlay-only by design: an unresolved \`&label\` is an L1 \`dangling-reference\`
+ * warning that self-anchors, and L2 compile uses an ephemeral, non-persisted stub
+ * (server/modules/dts/danglingAnchorStub.ts). No synthetic base tree is committed.
+ */
+/dts-v1/;
+/plugin/;
+
+/ {
+${nodeBlocks(drivers, true)}
+${nodeBlocks(nodeTypes, false)}};
+`;
+
+  return {
+    text: header,
+    emitted,
+    skipped,
+    driverSubjects: drivers.length,
+    nodeTypeSubjects: nodeTypes.length,
+  };
+};
+
+const main = () => {
+  const root = process.cwd();
+  const manifest = JSON.parse(
+    readFileSync(path.join(root, "src/config/seed-reconciliation/manifest.json"), "utf8"),
+  ) as Manifest;
+  const generated = generateVendorProjectSource(manifest, root);
+  const check = process.argv.includes("--check");
+  let drift = 0;
+  for (const project of SEED_SOURCE_PROJECTS) {
+    const target = path.join(root, "src/config/seed-sources", project, VENDOR_SOURCE_FILE_NAME);
+    if (check) {
+      const current = readFileSync(target, "utf8");
+      if (current !== generated.text) {
+        process.stderr.write(`drift: ${target}\n`);
+        drift += 1;
+      }
+      continue;
+    }
+    writeFileSync(target, generated.text, "utf8");
+  }
+  process.stdout.write(
+    `${JSON.stringify(
+      {
+        emitted: generated.emitted,
+        skipped: generated.skipped.length,
+        skippedShapes: [...new Set(generated.skipped.map((s) => s.valueShape))].sort(),
+        driverSubjects: generated.driverSubjects,
+        nodeTypeSubjects: generated.nodeTypeSubjects,
+        check,
+        drift,
+      },
+      null,
+      2,
+    )}\n`,
+  );
+  if (check && drift > 0) process.exitCode = 1;
+};
+
+const invokedDirectly =
+  process.argv[1] && path.resolve(process.argv[1]) === new URL(import.meta.url).pathname;
+if (invokedDirectly) main();

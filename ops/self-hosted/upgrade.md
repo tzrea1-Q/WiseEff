@@ -23,7 +23,7 @@ From `ops/self-hosted/`:
   npx tsx scripts/compile-vendor-catalog-release.ts --out /tmp/vendor-catalog-successor.json
 ```
 
-The compiler must print `releaseId=crel_vendor_catalog_1` and digest `sha256:efc5336e625f0eb6f994223a5f67a57b119e92bda2edb5c209fc901284f126c7`. A different digest is a stop: vendor YAML or the compiler drifted; do not install.
+The compiler must print `releaseId=crel_vendor_catalog_1` and digest `sha256:5f0e7bcd6c537f3a0574dc5541e1199f5537061bef4ad5551ec4f5e9565bec64`. A different digest is a stop: vendor YAML or the compiler drifted; do not install.
 
 ```bash
 ./scripts/compose --env-file .env exec api \
@@ -31,16 +31,18 @@ The compiler must print `releaseId=crel_vendor_catalog_1` and digest `sha256:efc
     --mode advance \
     --expected-current-id crel_acme_1 \
     --expected-current-digest sha256:365305492cf3fddb973b65268d1c7b8c60715240e9fd2dac05aa9091f0c38044 \
-    --confirm-digest sha256:efc5336e625f0eb6f994223a5f67a57b119e92bda2edb5c209fc901284f126c7
+    --confirm-digest sha256:5f0e7bcd6c537f3a0574dc5541e1199f5537061bef4ad5551ec4f5e9565bec64
 
 ./scripts/compose --env-file .env restart api worker
 ```
 
 A lost-response retry of the same command returns `already-current`. A current pointer that is not `crel_acme_1` with that digest is refused. After restart, Catalog should list 114 definitions, including the original `iin_max`.
 
+This advance also **retires the acme sample**: `csub_acme_power` and alias `cali_acme_power_v1` are carried into `crel_vendor_catalog_1` with a tombstone (`reason=acme-sample-retired`, and no successor subject, because acme never evolved into a real vendor subject of the same name), while `crel_acme_1` keeps both of them `active`. After the advance, runtime resolution of `acme,power` reports `retired` rather than a live match. That is intended, and it is why the pinned digest in this runbook moved from the earlier `sha256:efc5336e…` value. The compiler counts stay at 48 subjects / 1 alias / 114 definitions because a retired member is still a retained member.
+
 These vendor `advance` commands are **not** the publication-control-plane inspect, adopt, publish, or restore entries. Inspect uses `scripts/inspect-catalog-publication-baseline.ts` with `CATALOG_BASELINE_READONLY_DATABASE_URL` only. Adopt uses `npx tsx scripts/catalog-publication-ops.ts adopt --check|--execute` (wrapping `adoptPreexistingCatalog`) and does not move the pointer. Online publish is CP-07 and stays disabled until an isolated policy enable. See [catalog-publication.md](catalog-publication.md). Restore remains the upgrade recovery path. Do not reuse one script with a dangerous default for all four. Drain of old API/worker images before first online enablement is CP-12.
 
-`scripts/compile-vendor-catalog-release.ts` remains the frozen D1 compiler for `crel_vendor_catalog_1` (`sha256:efc5336e625f0eb6f994223a5f67a57b119e92bda2edb5c209fc901284f126c7`) as a successor of `crel_acme_1`. It is not the production identity rule for later vendor imports. After an instance has any row in `parameter_catalog.catalog_activation_receipts` (online publication, adoption, or bootstrap receipt), `install-catalog-release.ts` bootstrap/advance is refused (`catalog-install-publication-regime-required`) even when `publication_enabled` is false. Untaken-over instances with an empty receipt table keep the historical D1 bootstrap/advance contract; that is not D2 completion. Further vendor reuse must go through the CP-09 adapter (`server/modules/catalog-publication/import/`) and the CP-07 authorize/job/manager path. There is no `--skipAuthorization` flag.
+`scripts/compile-vendor-catalog-release.ts` remains the frozen D1 compiler for `crel_vendor_catalog_1` (`sha256:5f0e7bcd6c537f3a0574dc5541e1199f5537061bef4ad5551ec4f5e9565bec64`) as a successor of `crel_acme_1`. It is not the production identity rule for later vendor imports. After an instance has any row in `parameter_catalog.catalog_activation_receipts` (online publication, adoption, or bootstrap receipt), `install-catalog-release.ts` bootstrap/advance is refused (`catalog-install-publication-regime-required`) even when `publication_enabled` is false. Untaken-over instances with an empty receipt table keep the historical D1 bootstrap/advance contract; that is not D2 completion. Further vendor reuse must go through the CP-09 adapter (`server/modules/catalog-publication/import/`) and the CP-07 authorize/job/manager path. There is no `--skipAuthorization` flag.
 
 ## Minimal parameter initialization candidate
 

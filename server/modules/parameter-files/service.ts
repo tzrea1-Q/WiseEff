@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { extname } from "node:path";
+import { basename, extname } from "node:path";
 
 import {
   asAuditTx,
@@ -82,16 +82,68 @@ function requireParameterFileAdmin(auth: AuthContext) {
   }
 }
 
+/** Project-source extensions accepted for upload/staging in this round (DTS + JSON only). */
+export const SUPPORTED_PARAMETER_FILE_EXTENSIONS = [".json", ".dts", ".dtsi"] as const;
+
+/**
+ * Project-source formats that are recognized but deliberately deferred this round
+ * (`TD-124`). They are refused with `UNSUPPORTED_FORMAT`, never converted to JSON
+ * and never skipped as success.
+ */
+export const DEFERRED_PROJECT_SOURCE_FORMATS = ["yaml", "toml", "env"] as const;
+export type DeferredProjectSourceFormat = (typeof DEFERRED_PROJECT_SOURCE_FORMATS)[number];
+
+const DEFERRED_EXTENSION_FORMATS: Record<string, DeferredProjectSourceFormat> = {
+  ".yaml": "yaml",
+  ".yml": "yaml",
+  ".toml": "toml",
+  ".env": "env",
+};
+
+/** Lowercased extension, treating a bare dotfile `.env` as an extension. */
+function projectSourceExtension(fileName: string): string {
+  const base = basename(fileName.trim()).toLowerCase();
+  return base === ".env" ? ".env" : extname(base);
+}
+
+/** The deferred format a file name maps to, or `null` when it is not a deferred project source. */
+export function detectDeferredProjectSourceFormat(
+  fileName: string,
+): DeferredProjectSourceFormat | null {
+  return DEFERRED_EXTENSION_FORMATS[projectSourceExtension(fileName)] ?? null;
+}
+
+/**
+ * Single shared pre-staging refusal for deferred project-source formats. Callers that
+ * receive a file name before staging bytes reuse this instead of copying extension lists.
+ */
+export function refuseDeferredProjectSourceFormat(fileName: string): void {
+  const format = detectDeferredProjectSourceFormat(fileName);
+  if (!format) return;
+  throw new ApiError(
+    "UNSUPPORTED_FORMAT",
+    `${format.toUpperCase()} project source files are not supported yet. Supported formats are .json, .dts and .dtsi (deferred: TD-124).`,
+    {
+      fileName,
+      format,
+      deferredTo: "TD-124",
+      supportedExtensions: [...SUPPORTED_PARAMETER_FILE_EXTENSIONS],
+    },
+  );
+}
+
 export function detectFormat(fileName: string): ParameterFileFormat {
-  const extension = extname(fileName).toLowerCase();
+  const extension = projectSourceExtension(fileName);
   if (extension === ".json") return "json";
   if (extension === ".dts" || extension === ".dtsi") return "dts";
+  // Recognized-but-deferred formats must never degrade into the generic unknown-extension error.
+  refuseDeferredProjectSourceFormat(fileName);
   throw new ApiError(
     "VALIDATION_FAILED",
     "Unsupported parameter file extension.",
     {
       fileName,
-      supportedExtensions: [".json", ".dts", ".dtsi"],
+      supportedExtensions: [...SUPPORTED_PARAMETER_FILE_EXTENSIONS],
     },
   );
 }

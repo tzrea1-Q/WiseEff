@@ -61,6 +61,8 @@ const describeSubjectKind = (kind: CatalogSubjectKind): string => {
       return "Driver";
     case "node-type":
       return "NodeType";
+    case "configuration-schema":
+      return "ConfigurationSchema";
     default: {
       const exhaustive: never = kind;
       return exhaustive;
@@ -70,7 +72,11 @@ const describeSubjectKind = (kind: CatalogSubjectKind): string => {
 
 describe("parameter catalog closed literals", () => {
   it("keeps canonical subject and lifecycle values closed", () => {
-    expect(catalogSubjectKinds).toEqual(["driver", "node-type"]);
+    expect(catalogSubjectKinds).toEqual([
+      "driver",
+      "node-type",
+      "configuration-schema"
+    ]);
     expect(subjectLifecycles).toEqual(["active", "retired"]);
     expect(definitionLifecycles).toEqual(["active", "deprecated", "retired"]);
     expect(registrationStatuses).toEqual(["active", "retired"]);
@@ -176,7 +182,8 @@ describe("parameter catalog closed literals", () => {
     expect(catalogInstallModes).toEqual(["bootstrap", "advance"]);
     expect(catalogSubjectSelectorKinds).toEqual([
       "driver-compatible",
-      "node-type-name"
+      "node-type-name",
+      "configuration-schema-id"
     ]);
     expect(catalogVerificationCheckCodes).toEqual([
       "compiled-release",

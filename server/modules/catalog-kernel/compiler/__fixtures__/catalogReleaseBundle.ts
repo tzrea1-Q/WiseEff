@@ -199,7 +199,8 @@ const encodeAuthoritativeSource = (
     "utf8",
   );
 
-const refreshAuthoritativeSource = (
+/** Exported so a suite can author a third-kind release and re-encode its source. */
+export const refreshAuthoritativeSource = (
   release: DeepMutable<CatalogReleaseNode>,
 ): void => {
   for (const document of release.documents) {

@@ -213,7 +213,7 @@ export const catalogPublicationCandidate: CatalogPublicationCandidateResponse["i
     addedSubjectCount: 0
   },
   capabilityContract: {
-    revision: "catalog-capability/v2",
+    revision: "catalog-capability/v3",
     allowListId: "page-historical-definition-content"
   }
 };

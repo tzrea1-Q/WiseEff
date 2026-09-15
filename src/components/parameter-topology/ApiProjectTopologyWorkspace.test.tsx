@@ -253,7 +253,10 @@ describe("ApiProjectTopologyWorkspace", () => {
     expect(httpTestSeams.fetchSentinel).not.toHaveBeenCalled();
     expect(httpTestSeams.fetchCalls).toEqual([]);
     expect(httpTestSeams.createHttpParameterModuleRegistryRepository).toHaveBeenCalled();
-    expect(httpTestSeams.createHttpParameterRepository).toHaveBeenCalled();
+    // Issue #849 B5: this component no longer constructs a draft client at all. The
+    // canonical pending-draft source is injected by ParametersPage, so the legacy
+    // `parameter-drafts` read cannot reappear as an implicit fallback here.
+    expect(httpTestSeams.createHttpParameterRepository).not.toHaveBeenCalled();
     expect(httpTestSeams.resolveParameterFileRepository).toHaveBeenCalledWith("api");
   });
 

@@ -1,5 +1,6 @@
 import {
   parseCanonicalCompatibleSelector,
+  parseCanonicalConfigurationSchemaId,
   parseCanonicalNodeName,
 } from "../../parameter-catalog-contract/index";
 import type {
@@ -19,10 +20,21 @@ type SubjectHit = {
   readonly alias: SubjectAliasSnapshot | null;
 };
 
-const aliasSelectorKind = (
-  kind: CatalogSubjectKind,
-): "driver-compatible" | "node-type-name" =>
-  kind === "driver" ? "driver-compatible" : "node-type-name";
+type SelectorKind =
+  | "driver-compatible"
+  | "node-type-name"
+  | "configuration-schema-id";
+
+/**
+ * Three-way kind mapping. An unrecognised kind yields `null` (no match) rather than
+ * defaulting into the node-type namespace.
+ */
+const aliasSelectorKind = (kind: CatalogSubjectKind): SelectorKind | null => {
+  if (kind === "driver") return "driver-compatible";
+  if (kind === "node-type") return "node-type-name";
+  if (kind === "configuration-schema") return "configuration-schema-id";
+  return null;
+};
 
 const canonicalSelectorValues = (
   subject: CatalogSubjectDetailSnapshot,
@@ -33,7 +45,13 @@ const canonicalSelectorValues = (
   if (kind === "driver") {
     return selector.kind === "driver-compatible" ? selector.values : [];
   }
-  return selector.kind === "node-type-name" ? [selector.value] : [];
+  if (kind === "node-type") {
+    return selector.kind === "node-type-name" ? [selector.value] : [];
+  }
+  if (kind === "configuration-schema") {
+    return selector.kind === "configuration-schema-id" ? [selector.value] : [];
+  }
+  return [];
 };
 
 const compareAliasId = (left: SubjectAliasSnapshot, right: SubjectAliasSnapshot): number =>
@@ -62,6 +80,20 @@ const parsedNodeTypeName = (value: string): string | null => {
   return result.ok ? result.value : null;
 };
 
+const parsedConfigurationSchemaIds = (
+  values: readonly string[],
+): readonly string[] => {
+  const parsed: string[] = [];
+  const seen = new Set<string>();
+  for (const value of values) {
+    const result = parseCanonicalConfigurationSchemaId(value);
+    if (!result.ok || seen.has(result.value)) continue;
+    seen.add(result.value);
+    parsed.push(result.value);
+  }
+  return parsed;
+};
+
 const foldSubjectHit = (
   subject: CatalogSubjectDetailSnapshot,
   kind: CatalogSubjectKind,
@@ -71,11 +103,15 @@ const foldSubjectHit = (
   const canonicalHit = canonicalSelectorValues(subject, kind).some((value) =>
     inputValues.has(value),
   );
-  const aliasHits = subject.aliases.filter(
-    (alias) =>
-      alias.selector.kind === aliasSelectorKind(kind) &&
-      inputValues.has(alias.selector.value),
-  );
+  const expectedAliasKind = aliasSelectorKind(kind);
+  const aliasHits =
+    expectedAliasKind === null
+      ? []
+      : subject.aliases.filter(
+          (alias) =>
+            alias.selector.kind === expectedAliasKind &&
+            inputValues.has(alias.selector.value),
+        );
   if (!canonicalHit && aliasHits.length === 0) return null;
 
   const subjectActive = subject.membership.lifecycle === "active";
@@ -186,6 +222,21 @@ export const resolveCatalogSubject = (
   if (driverDecision.kind === "result") {
     return driverDecision.result;
   }
+  // Software configuration matches only an explicit governed model identifier. It
+  // never inherits the driver compatible namespace and never consumes the node-type
+  // fallback, which stays authoritative for device nodes.
+  const configurationSchemaIds = parsedConfigurationSchemaIds(
+    selector.configurationSchemaIds ?? [],
+  );
+  if (configurationSchemaIds.length > 0) {
+    const configurationDecision = decideHits(
+      collectHits(subjects, "configuration-schema", configurationSchemaIds),
+    );
+    if (configurationDecision.kind === "result") {
+      return configurationDecision.result;
+    }
+  }
+
   if (selector.nodeTypeFallback.kind !== "present") {
     return { status: "unknown", reason: "no-candidate" };
   }
