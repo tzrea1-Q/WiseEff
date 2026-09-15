@@ -35,9 +35,10 @@ create table if not exists project_parameter_value_change_requests (
   target_value jsonb not null,
   reason text not null check (btrim(reason) <> ''),
   status text not null check (status in ('pending', 'approved', 'rejected', 'withdrawn')),
-  submitter_user_id text not null references users(id) on delete restrict,
-  assigned_to_user_id text references users(id) on delete restrict,
-  reviewer_user_id text references users(id) on delete restrict,
+  -- Nullable history policy: account deletion clears attribution, never the record.
+  submitter_user_id text references users(id) on delete set null,
+  assigned_to_user_id text references users(id) on delete set null,
+  reviewer_user_id text references users(id) on delete set null,
   reviewer_note text,
   applied_value_id text,
   apply_outcome text check (apply_outcome in ('committed', 'replayed')),

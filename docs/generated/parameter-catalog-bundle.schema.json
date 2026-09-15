@@ -46,7 +46,8 @@
         "selectorKind": {
           "enum": [
             "driver-compatible",
-            "node-type-name"
+            "node-type-name",
+            "configuration-schema-id"
           ]
         },
         "selectorProvenance": {
@@ -91,6 +92,10 @@
         "normalizedDigest",
         "content"
       ],
+      "type": "object"
+    },
+    "configurationSchemaSubtype": {
+      "additionalProperties": false,
       "type": "object"
     },
     "contractString": {
@@ -480,7 +485,8 @@
         "selectorKind": {
           "enum": [
             "driver-compatible",
-            "node-type-name"
+            "node-type-name",
+            "configuration-schema-id"
           ]
         },
         "sourceProperty": {
@@ -558,7 +564,8 @@
         "kind": {
           "enum": [
             "driver-compatible",
-            "node-type-name"
+            "node-type-name",
+            "configuration-schema-id"
           ]
         },
         "provenance": {
@@ -629,11 +636,13 @@
         "closedEnums": {
           "catalogSubjectKinds": [
             "driver",
-            "node-type"
+            "node-type",
+            "configuration-schema"
           ],
           "catalogSubjectSelectorKinds": [
             "driver-compatible",
-            "node-type-name"
+            "node-type-name",
+            "configuration-schema-id"
           ],
           "definitionLifecycles": [
             "active",
@@ -928,10 +937,10 @@
           "mergedImplementationSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
           "packageEntrypoint": "server/modules/parameter-catalog-contract/index.ts",
           "serializationGolden": {
-            "byteLength": 1563,
-            "gitBlobOid": "2b6c1ce58b993a761c12bf84e15eea57187560e3",
+            "byteLength": 1591,
+            "gitBlobOid": "d4950079cfeab8634897140a438e34f9f431c09c",
             "path": "server/modules/parameter-catalog-contract/__fixtures__/serialization-golden.json",
-            "rawSha256": "1172d550699aa67f46c03212954be4d430e33483494cddd11b8e7626d23f9367"
+            "rawSha256": "7fd27c52d2c0a0de8f04cbc94386d7ac1d34b0ec73379b34a813cc8434fa70db"
           }
         },
         "schemaVersion": "1.0.0",
@@ -956,6 +965,7 @@
           ],
           "requirePermanentCanonicalOwnership": true,
           "selectorKindBySubjectKind": {
+            "configuration-schema": "configuration-schema-id",
             "driver": "driver-compatible",
             "node-type": "node-type-name"
           },
@@ -1012,20 +1022,63 @@
         },
         {
           "else": {
-            "properties": {
-              "selector": {
+            "else": {
+              "else": false,
+              "if": {
                 "properties": {
                   "kind": {
-                    "const": "node-type-name"
+                    "const": "configuration-schema"
                   }
                 },
                 "required": [
                   "kind"
-                ],
-                "type": "object"
+                ]
               },
-              "subtype": {
-                "$ref": "#/$defs/nodeTypeSubtype"
+              "then": {
+                "properties": {
+                  "selector": {
+                    "properties": {
+                      "kind": {
+                        "const": "configuration-schema-id"
+                      }
+                    },
+                    "required": [
+                      "kind"
+                    ],
+                    "type": "object"
+                  },
+                  "subtype": {
+                    "$ref": "#/$defs/configurationSchemaSubtype"
+                  }
+                }
+              }
+            },
+            "if": {
+              "properties": {
+                "kind": {
+                  "const": "node-type"
+                }
+              },
+              "required": [
+                "kind"
+              ]
+            },
+            "then": {
+              "properties": {
+                "selector": {
+                  "properties": {
+                    "kind": {
+                      "const": "node-type-name"
+                    }
+                  },
+                  "required": [
+                    "kind"
+                  ],
+                  "type": "object"
+                },
+                "subtype": {
+                  "$ref": "#/$defs/nodeTypeSubtype"
+                }
               }
             }
           },
@@ -1069,7 +1122,8 @@
         "kind": {
           "enum": [
             "driver",
-            "node-type"
+            "node-type",
+            "configuration-schema"
           ]
         },
         "lifecycle": {

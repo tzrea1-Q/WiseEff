@@ -58,7 +58,7 @@ export type CanonicalValueChangeRequestDto = {
   status: CanonicalChangeRequestStatus;
   targetValue: string;
   reason: string;
-  submitterUserId: string;
+  submitterUserId: string | null;
   assignedToUserId: string | null;
   reviewerUserId: string | null;
   reviewerNote: string | null;
@@ -357,7 +357,9 @@ export async function reviewCanonicalValueChange(
     }
 
     // The applied pending work leaves the draft tray in the same transaction.
-    if (request.draft_id) {
+    // A deleted submitter clears the attribution (and takes unsubmitted drafts with
+    // it), so the consumed draft can only be removed while attribution still exists.
+    if (request.draft_id && request.submitter_user_id) {
       await deleteCanonicalValueDraft(tx, {
         organizationId: auth.organization.id,
         projectId: input.projectId,

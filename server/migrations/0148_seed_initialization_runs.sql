@@ -16,7 +16,7 @@ create table if not exists seed_initialization_runs (
   scope text not null check (scope in ('atlas-aurora-nebula')),
   target_project_ids jsonb not null check (jsonb_typeof(target_project_ids) = 'array'),
   blocked jsonb not null default '[]'::jsonb check (jsonb_typeof(blocked) = 'array'),
-  started_by_user_id text references users(id) on delete restrict,
+  started_by_user_id text references users(id) on delete set null,
   started_at timestamptz not null default now(),
   completed_at timestamptz,
   updated_at timestamptz not null default now(),

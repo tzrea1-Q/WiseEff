@@ -27,7 +27,7 @@ export type CanonicalValueChangeRequestRow = {
   target_value: unknown;
   reason: string;
   status: CanonicalChangeRequestStatus;
-  submitter_user_id: string;
+  submitter_user_id: string | null;
   assigned_to_user_id: string | null;
   reviewer_user_id: string | null;
   reviewer_note: string | null;

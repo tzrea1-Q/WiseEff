@@ -26,7 +26,7 @@ export type CanonicalValueDraftRow = {
   action: CanonicalValueDraftAction;
   target_value: unknown;
   reason: string;
-  user_id: string;
+  user_id: string | null;
   created_at: string;
   updated_at: string;
 };

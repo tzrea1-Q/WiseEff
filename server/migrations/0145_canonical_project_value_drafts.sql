@@ -31,7 +31,8 @@ create table if not exists project_parameter_value_drafts (
   action text not null check (action in ('set', 'delete')),
   target_value jsonb not null,
   reason text not null check (btrim(reason) <> ''),
-  user_id text not null references users(id) on delete restrict,
+  -- Nullable history policy: an account deletion keeps the row and clears attribution.
+  user_id text references users(id) on delete set null,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
   constraint project_parameter_value_drafts_project_fk
