@@ -10,7 +10,7 @@ import {
 } from "./ownedRuntimeDescriptor";
 
 export const CATALOG_ACCEPTANCE_ISSUE_ENV = "WISEEFF_CATALOG_ACCEPTANCE_ISSUE";
-const allowedIssues = new Set(["810", "819", "820", "847"]);
+const allowedIssues = new Set(["810", "819", "820", "847", "853"]);
 
 /** Manual lanes are Issue-bound; Gate0 must prove its complete existing ownership contract. */
 export async function catalogLaneConnectionString(
@@ -18,7 +18,7 @@ export async function catalogLaneConnectionString(
 ): Promise<string> {
   const issue = env[CATALOG_ACCEPTANCE_ISSUE_ENV]?.trim() || "810";
   if (!allowedIssues.has(issue)) {
-    throw new Error("Catalog acceptance requires an explicitly supported Issue lane (810, 819, 820, or 847).");
+    throw new Error("Catalog acceptance requires an explicitly supported Issue lane (810, 819, 820, 847, or 853).");
   }
   const connectionString = env.DATABASE_URL?.trim() || env.TEST_DATABASE_URL?.trim();
   if (!connectionString) throw new Error("Catalog acceptance requires a dedicated PostgreSQL lane URL.");

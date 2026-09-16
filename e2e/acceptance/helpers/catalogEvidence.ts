@@ -58,6 +58,9 @@ const CONFLICT_PLATFORM_IDENTITY_ID = "lid-op08-conflict-platform";
 const CONFLICT_ORG_IDENTITY_ID = "lid-op08-conflict-org";
 const SCOPE_HIDDEN_IDENTITY_ID = "lid-op08-scope-hidden";
 const GONE_ARCHIVE_ID = "archive-op08-gone";
+const GONE_MIGRATION_EVIDENCE_ID = "migration-evidence-op08-gone";
+const ARCHIVED_LINK_PROJECT_ID = "project-op08-archived-link";
+const ARCHIVED_LINK_ORG_B_PROJECT_ID = "project-op08-archived-link-org-b";
 const SOURCE_CHECKSUM = "sha256:op08-catalog-legacy-source";
 const GRAPH_FINGERPRINT = "sha256:op08-catalog-legacy-graph";
 const X_ON_C_DOCUMENTATION = "Documented maximum accepted input current.";
@@ -75,9 +78,12 @@ export type CatalogAcceptanceFixture = {
   xDefinitionId: string;
   yDefinitionId: string;
   reviewSourceIdentity: string;
+  archivedLinkProjectId: string;
+  archivedLinkOrgBProjectId: string;
   legacy: {
     mapped: string;
     gone: string;
+    goneEvidenceId: string;
     conflict: string;
     unknown: string;
     scopeHidden: string;
@@ -149,9 +155,12 @@ async function installCatalogAcceptanceFixture(): Promise<CatalogAcceptanceFixtu
     xDefinitionId: X_DEFINITION_ID,
     yDefinitionId: Y_DEFINITION_ID,
     reviewSourceIdentity: REVIEW_SOURCE_IDENTITY,
+    archivedLinkProjectId: ARCHIVED_LINK_PROJECT_ID,
+    archivedLinkOrgBProjectId: ARCHIVED_LINK_ORG_B_PROJECT_ID,
     legacy: {
       mapped: MAPPED_LEGACY_ID,
       gone: GONE_LEGACY_ID,
+      goneEvidenceId: GONE_MIGRATION_EVIDENCE_ID,
       conflict: CONFLICT_LEGACY_ID,
       unknown: UNKNOWN_LEGACY_ID,
       scopeHidden: SCOPE_HIDDEN_LEGACY_ID
@@ -420,6 +429,33 @@ async function seedLegacyBookmarks(pool: pg.Pool, catalogReleaseId: string): Pro
        )
        on conflict (id) do nothing`,
       [GONE_ARCHIVE_ID, GONE_IDENTITY_ID, SOURCE_CHECKSUM, GRAPH_FINGERPRINT, CUTOVER_RUN_ID, catalogReleaseId]
+    );
+    await client.query(
+      `insert into projects (id, organization_id, name, code, status)
+       values
+         ($1, $2, 'OP-08 archived-link project', 'OP08-ARCHIVED-LINK', 'initialized'),
+         ($3, $4, 'OP-08 archived-link project B', 'OP08-ARCHIVED-LINK-B', 'initialized')
+       on conflict (id) do update set
+         organization_id = excluded.organization_id,
+         name = excluded.name,
+         code = excluded.code,
+         status = excluded.status`,
+      [ARCHIVED_LINK_PROJECT_ID, ACCEPTANCE_ORGANIZATION.id, ARCHIVED_LINK_ORG_B_PROJECT_ID, CATALOG_ORG_B.id]
+    );
+    await client.query(
+      `insert into legacy_parameter_migration_evidence (
+         id, organization_id, legacy_kind, legacy_id, legacy_name,
+         legacy_row_hash, migration_run_id, evidence
+       ) values (
+         $1, $2, 'parameter-spec', $3, 'OP-08 archived legacy parameter',
+         'sha256:op08-gone-row', $4, '{"disposition":"archived"}'::jsonb
+       )
+       on conflict (id) do update set
+         organization_id = excluded.organization_id,
+         legacy_id = excluded.legacy_id,
+         migration_run_id = excluded.migration_run_id,
+         evidence = excluded.evidence`,
+      [GONE_MIGRATION_EVIDENCE_ID, ACCEPTANCE_ORGANIZATION.id, GONE_LEGACY_ID, CUTOVER_RUN_ID]
     );
     await client.query("commit");
   } catch (error) {

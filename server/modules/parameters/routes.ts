@@ -152,16 +152,21 @@ function requireCanView(auth: AuthContext) {
   }
 }
 
-async function rejectRetiredLegacyParameterId(db: Queryable, legacyId: string): Promise<never | void> {
+async function rejectRetiredLegacyParameterId(
+  db: Queryable,
+  organizationId: string,
+  legacyId: string
+): Promise<never | void> {
   const result = await db.query<{ id: string }>(
     `
     select id
     from legacy_parameter_migration_evidence
     where legacy_id = $1
+      and organization_id = $2
     order by created_at asc
     limit 1
     `,
-    [legacyId]
+    [legacyId, organizationId]
   );
   const evidenceId = result.rows[0]?.id;
   if (!evidenceId) {
@@ -416,7 +421,7 @@ export function registerParameterRoutes(
     });
 
     if (!item) {
-      await rejectRetiredLegacyParameterId(db, params.parameterId);
+      await rejectRetiredLegacyParameterId(db, auth.organization.id, params.parameterId);
       throw new ApiError("NOT_FOUND", "Parameter was not found.", { parameterId: params.parameterId });
     }
 
@@ -434,7 +439,7 @@ export function registerParameterRoutes(
     });
 
     if (items.length === 0) {
-      await rejectRetiredLegacyParameterId(db, params.parameterId);
+      await rejectRetiredLegacyParameterId(db, auth.organization.id, params.parameterId);
     }
 
     return {

@@ -4,17 +4,23 @@ import { expect, test } from "playwright/test";
 import { installBrowserDiagnostics, useBrowserDiagnostics } from "./helpers/browserDiagnostics";
 import { collectProposalOperationTrace, startCatalogScenarioRuntime, verifyCommittedProposalResponseFailure, verifyRealProposalConflict } from "./helpers/catalogConcurrency";
 import {
+  assertNoPageOverflow,
   CATALOG_EXPECTED_API_FAILURES,
   CATALOG_PAGE_PATH,
+  CATALOG_VIEWPORTS,
   catalogJson,
   catalogPage,
   catalogScreenshot,
   catalogUiCopy,
   confirmGovernanceDialog,
+  dismissXiaozeHint,
   signInCatalogActor,
   openCatalogAt
 } from "./helpers/catalogBrowser";
+import { createBearerTokenForUser } from "./helpers/bearerAuth";
 import {
+  CATALOG_ORG_B,
+  CATALOG_ORG_B_ADMIN,
   countProposals,
   countSubjectRegistrations,
   ensureCatalogAcceptanceFixture,
@@ -85,6 +91,9 @@ test.describe("canonical parameter catalog negative and responsive contract", ()
   }, testInfo) => {
     // @acceptance PCAT-UI-11
     // @operation PCAT-LEGACY-LINK-001
+    await page.route("**/api/v1/agent/xiaoze/suggest", (route) =>
+      route.fulfill({ status: 200, contentType: "application/json", body: '{"suggestions":[]}' })
+    );
     const mapped = await catalogJson(
       page.request,
       "GET",
@@ -108,6 +117,60 @@ test.describe("canonical parameter catalog negative and responsive contract", ()
     );
     expect(gone.status).toBe(410);
     expect(JSON.stringify(gone.body)).not.toMatch(/archive-op08-gone|candidate/i);
+
+    for (const viewport of CATALOG_VIEWPORTS) {
+      await page.setViewportSize({ width: viewport.width, height: viewport.height });
+      await signInCatalogActor(
+        page,
+        "org-admin",
+        `/parameters?project=${encodeURIComponent(fixture.archivedLinkProjectId)}&parameter=${encodeURIComponent(fixture.legacy.gone)}`
+      );
+      await dismissXiaozeHint(page);
+      const archivedNotice = page.locator(".parameter-archived-link-banner");
+      await expect(archivedNotice).toBeVisible({ timeout: 30_000 });
+      await expect(archivedNotice).toContainText("该参数旧链接已归档");
+      await expect(archivedNotice).toContainText(fixture.legacy.gone);
+      await expect(archivedNotice).toContainText("legacy-parameter-id-retired");
+      await expect(archivedNotice).toContainText(fixture.legacy.goneEvidenceId);
+      await expect(archivedNotice).not.toContainText(/archive-op08-gone|candidate/i);
+      await expect(page.getByRole("dialog", { name: "修改草稿" })).toHaveCount(0);
+      await assertNoPageOverflow(page);
+      await catalogScreenshot(page, testInfo, `pcat-ui-11-archived-notice-${viewport.name}`);
+      await archivedNotice.getByRole("button", { name: "知道了" }).click();
+      await expect(archivedNotice).toHaveCount(0);
+    }
+
+    const scopeHidden = await catalogJson(
+      page.request,
+      "GET",
+      `/api/v1/parameters/${fixture.legacy.gone}`,
+      { actor: "org-b-admin" }
+    );
+    expect(scopeHidden.status).toBe(404);
+    expect(JSON.stringify(scopeHidden.body)).not.toContain(fixture.legacy.goneEvidenceId);
+
+    const orgBAuthorization = createBearerTokenForUser(
+      CATALOG_ORG_B_ADMIN.userId,
+      CATALOG_ORG_B_ADMIN.email,
+      CATALOG_ORG_B_ADMIN.name,
+      CATALOG_ORG_B.id
+    );
+    expect(orgBAuthorization).not.toBeNull();
+    const scopeHiddenResponse = page.waitForResponse(
+      (response) =>
+        response.request().method() === "GET" &&
+        new URL(response.url()).pathname === `/api/v1/parameters/${fixture.legacy.gone}` &&
+        response.request().headers().authorization === orgBAuthorization
+    );
+    await signInCatalogActor(
+      page,
+      "org-b-admin",
+      `/parameters?project=${encodeURIComponent(fixture.archivedLinkOrgBProjectId)}&parameter=${encodeURIComponent(fixture.legacy.gone)}`
+    );
+    expect((await scopeHiddenResponse).status()).toBe(404);
+    await expect(page.locator(".parameter-archived-link-banner")).toHaveCount(0);
+    await expect(page.getByRole("dialog", { name: "修改草稿" })).toHaveCount(0);
+    await expect(page.getByText(fixture.legacy.goneEvidenceId)).toHaveCount(0);
 
     const conflict = await catalogJson(
       page.request,
