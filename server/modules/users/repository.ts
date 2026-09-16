@@ -176,7 +176,7 @@ export async function lockUserById(db: Queryable, input: { organizationId: strin
     select id
     from users
     where organization_id = $1 and id = $2
-    for update
+    for no key update
     `,
     [input.organizationId, input.userId]
   );

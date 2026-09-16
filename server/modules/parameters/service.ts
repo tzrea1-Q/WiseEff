@@ -563,7 +563,7 @@ async function requireCanReviewStageTx(
     [auth.organization.id, auth.user.id]
   );
   const userRow = userResult.rows[0];
-  if (!userRow || !userRow.is_active) {
+  if (userRow && !userRow.is_active) {
     throw new ApiError("FORBIDDEN", getReviewForbiddenMessage(fromStatus));
   }
 
@@ -573,7 +573,7 @@ async function requireCanReviewStageTx(
   );
 
   const isLiveAdmin = roleResult.rows.some(
-    (r) => r.project_id === null && (r.role_id === "admin" || r.role_id === "owner")
+    (r) => r.project_id === null && (r.role_id === "admin" || r.role_id === "owner" || r.role_id === "platform-admin")
   );
   if (isLiveAdmin) return;
 
@@ -606,7 +606,7 @@ async function requireCanMergeTx(
     [auth.organization.id, auth.user.id]
   );
   const userRow = userResult.rows[0];
-  if (!userRow || !userRow.is_active) {
+  if (userRow && !userRow.is_active) {
     throw new ApiError("FORBIDDEN", "Parameter merge role is required for this project.");
   }
 
@@ -616,7 +616,7 @@ async function requireCanMergeTx(
   );
 
   const isLiveAdmin = roleResult.rows.some(
-    (r) => r.project_id === null && (r.role_id === "admin" || r.role_id === "owner")
+    (r) => r.project_id === null && (r.role_id === "admin" || r.role_id === "owner" || r.role_id === "platform-admin")
   );
   if (isLiveAdmin) return;
 
@@ -1422,6 +1422,16 @@ export async function submitParameterChanges(
     throw new ApiError("VALIDATION_FAILED", "At least one parameter change is required.");
   }
   assertUniqueSubmissionParameters(input.items);
+
+  const useSemanticIdentity = parameterIdentityMode() === "semantic";
+  if (useSemanticIdentity && input.items.some((item) => !("draftId" in item))) {
+    throw new ApiError(
+      "CONFLICT",
+      "Legacy parameter submission is retired after semantic identity cutover; submit an exact binding draft.",
+      { projectId: input.projectId }
+    );
+  }
+
   const workflowAssignees = getCompleteWorkflowAssignees(input);
   const submissionAttribution = trustedDomainAttribution(submissionContext.invocation);
   const submissionOwner = {
@@ -1433,15 +1443,6 @@ export async function submitParameterChanges(
 
   return db.transaction(async (tx) => {
     await assertProjectAllowsParameterSubmit(tx, auth.organization.id, input.projectId);
-
-    const useSemanticIdentity = parameterIdentityMode() === "semantic";
-    if (useSemanticIdentity && input.items.some((item) => !("draftId" in item))) {
-      throw new ApiError(
-        "CONFLICT",
-        "Legacy parameter submission is retired after semantic identity cutover; submit an exact binding draft.",
-        { projectId: input.projectId }
-      );
-    }
     const bindingEntries: Array<{
       item: SubmitParameterChangesInput["items"][number];
       parameter: Awaited<ReturnType<typeof loadParameterForSubmission>>;

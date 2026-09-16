@@ -49,11 +49,9 @@ function isOrgAdmin(auth: AuthContext) {
 }
 
 export function canEditParameters(auth: AuthContext, projectId?: string) {
-  if (!isActive(auth)) return false;
+  if (!isActive(auth) || !hasPermission(auth, "parameter:edit")) return false;
   if (isOrgAdmin(auth)) return true;
-  if (projectId === undefined) {
-    return hasPermission(auth, "parameter:edit");
-  }
+  if (projectId === undefined) return true;
   const hasOrgEdit = auth.roles.some(
     (b) => b.projectId === null && projectEditRoles.includes(b.roleId)
   );
@@ -64,22 +62,18 @@ export function canEditParameters(auth: AuthContext, projectId?: string) {
 }
 
 export function canEditCriticalParameters(auth: AuthContext, projectId?: string) {
-  if (!isActive(auth)) return false;
-  if (hasPermission(auth, "parameter:edit-critical")) return true;
-  if (projectId !== undefined) {
-    return auth.roles.some(
-      (b) => b.projectId === projectId && criticalEditRoles.includes(b.roleId)
-    );
-  }
-  return false;
+  if (!isActive(auth) || !hasPermission(auth, "parameter:edit-critical")) return false;
+  if (isOrgAdmin(auth)) return true;
+  if (projectId === undefined) return true;
+  return auth.roles.some(
+    (b) => (b.projectId === projectId || b.projectId === null) && criticalEditRoles.includes(b.roleId)
+  );
 }
 
 export function canReviewParameters(auth: AuthContext, projectId?: string) {
-  if (!isActive(auth)) return false;
+  if (!isActive(auth) || !hasPermission(auth, "parameter:review")) return false;
   if (isOrgAdmin(auth)) return true;
-  if (projectId === undefined) {
-    return hasPermission(auth, "parameter:review");
-  }
+  if (projectId === undefined) return true;
   const hasOrgReview = auth.roles.some(
     (b) => b.projectId === null && criticalEditRoles.includes(b.roleId)
   );

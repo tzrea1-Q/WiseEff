@@ -151,6 +151,12 @@ async function withRefusalSink<T>(
   }
 }
 
+const ASSIGNEES = {
+  hardwareCommitterId: USER,
+  softwareCommitterId: USER,
+  softwareUserId: USER
+};
+
 function makeAuth(): AuthContext {
   return makeTestAuthContext({
     userId: USER,
@@ -203,6 +209,14 @@ async function seedPreCutoverGraph(db: Database) {
     `insert into projects (id, organization_id, name, code, status)
      values ($1, $2, 'PCW Project', 'PCW', 'initialized')`,
     [PROJECT, ORG]
+  );
+  await db.query(
+    `insert into user_role_bindings (id, user_id, organization_id, project_id, role_id)
+     values ('urb-pcw-admin', $1, $2, null, 'admin'),
+            ('urb-pcw-hw', $1, $2, $3, 'hardware-committer'),
+            ('urb-pcw-sw-c', $1, $2, $3, 'software-committer'),
+            ('urb-pcw-sw-u', $1, $2, $3, 'software-user')`,
+    [USER, ORG, PROJECT]
   );
   await db.query(
     `insert into dts_config_set (id, organization_id, project_id, name, description)
@@ -1560,6 +1574,7 @@ describe.skipIf(!databaseAvailable)("post-cutover semantic workflow (temp DB)", 
         const submit = (overrides: Record<string, string> = {}, projectId = PROJECT) =>
           submitParameterChanges(db, makeAuth(), {
             projectId,
+            assignees: ASSIGNEES,
             items: [
               {
                 draftId,
@@ -1723,6 +1738,7 @@ describe.skipIf(!databaseAvailable)("post-cutover semantic workflow (temp DB)", 
         const submitDelete = () =>
           submitParameterChanges(db, makeAuth(), {
             projectId: PROJECT,
+            assignees: ASSIGNEES,
             items: [
               {
                 draftId,
@@ -1899,6 +1915,7 @@ describe.skipIf(!databaseAvailable)("post-cutover semantic workflow (temp DB)", 
         try {
           const submission = submitParameterChanges(submitDb, makeAuth(), {
             projectId: PROJECT,
+            assignees: ASSIGNEES,
             items: [
               {
                 draftId,
@@ -2051,6 +2068,7 @@ describe.skipIf(!databaseAvailable)("post-cutover semantic workflow (temp DB)", 
         try {
           const submission = submitParameterChanges(submitDb, makeAuth(), {
             projectId: PROJECT,
+            assignees: ASSIGNEES,
             items: [{
               draftId,
               projectParameterBindingId: seeded.bindingId,
@@ -3906,6 +3924,7 @@ describe.skipIf(!databaseAvailable)("post-cutover semantic workflow (temp DB)", 
             auth,
             {
               projectId: PROJECT,
+              assignees: ASSIGNEES,
               items: [
                 {
                   draftId: systemDraft.draftId,
@@ -3923,7 +3942,7 @@ describe.skipIf(!databaseAvailable)("post-cutover semantic workflow (temp DB)", 
             }
           )
         );
-        expect(submitted).toMatchObject({ status: "submitted" });
+        expect(submitted).toMatchObject({ status: "hardware_review" });
       });
     },
     120_000
