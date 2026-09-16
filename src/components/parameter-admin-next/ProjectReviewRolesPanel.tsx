@@ -30,10 +30,12 @@ const ALL_WORKFLOW_ROLES: ProjectWorkflowRoleId[] = [
   "software-user"
 ];
 
+const defaultUserGovernanceClient = createUserGovernanceClient();
+
 export function ProjectReviewRolesPanel({
   projectId,
   onBack,
-  userGovernanceClient = createUserGovernanceClient()
+  userGovernanceClient = defaultUserGovernanceClient
 }: ProjectReviewRolesPanelProps) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);

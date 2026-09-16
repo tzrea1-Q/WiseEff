@@ -87,6 +87,9 @@ export default defineConfig({
   },
   server: {
     allowedHosts: resolvePreviewAllowedHosts(),
+    fs: {
+      allow: [projectRoot, path.resolve(projectRoot, "../..")]
+    },
     proxy: {
       "/api": {
         target: "http://127.0.0.1:8787",
