@@ -322,7 +322,7 @@ export const acceptanceRequirements: AcceptanceRequirement[] = [
   {
     id: "PROJ-CONFIG-READINESS-001",
     workflow: "C",
-    title: "At PC 1440x900, server-owned release readiness for the selected Config set provides the command-bar summary and Issues task dock with ordered blockers/warnings and remediation locators, fails closed for blocked/unavailable/stale or locally dirty sessions, and does not reconstruct release permission from unrelated client counts.",
+    title: "At PC 1440x900, server-owned release readiness for the selected Config set provides the command-bar summary and Issues task dock with ordered blockers/warnings and remediation locators, fails closed on baseline create/release for blocked/unavailable/stale or locally dirty sessions, and does not reconstruct release permission from unrelated client counts.",
     required: false
   },
   {
