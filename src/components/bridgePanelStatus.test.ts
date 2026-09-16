@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { deriveBridgePanelStatus, deriveLocalBridgeBindingState, formatDetectFailureMessage, isToolMissingDetectError, shouldClearStaleBridgeConnectError, canConnectBridgeWithoutPairingCode, shouldFetchBridgePairingCode, resolvePairingCodeForBridgeConnect, bridgeServerUrlMismatch, bridgePanelStatusHint, FOREIGN_ACCOUNT_REBIND_HINT } from "./bridgePanelStatus";
+import { deriveBridgePanelStatus, deriveLocalBridgeBindingState, formatDetectFailureMessage, isToolMissingDetectError, shouldClearStaleBridgeConnectError, canConnectBridgeWithoutPairingCode, shouldFetchBridgePairingCode, resolvePairingCodeForBridgeConnect, bridgeServerUrlMismatch, bridgePanelStatusHint, FOREIGN_ACCOUNT_REBIND_HINT, shouldPromptLocalBridgeUpgrade, isBridgeClientVersionBehind } from "./bridgePanelStatus";
 import type { LocalBridgeHealthState } from "../infrastructure/http/deviceBridgeClient";
 
 const connectedHealth: LocalBridgeHealthState = {
@@ -143,6 +143,47 @@ describe("deriveBridgePanelStatus", () => {
     ).toBe("token_invalid");
     expect(bridgePanelStatusHint("not_paired", "hdc", { pairingStale: true })).toBe(FOREIGN_ACCOUNT_REBIND_HINT);
     expect(bridgePanelStatusHint("not_paired", "hdc", { pairingStale: true })).not.toContain("配对已失效");
+  });
+
+  it("prompts an upgrade when the running Bridge is older than the recommended release", () => {
+    const health = {
+      ok: true as const,
+      paired: true,
+      connected: true,
+      bridgeId: "br-A",
+      updatedAt: "2026-09-16T00:00:00.000Z"
+    };
+    expect(
+      shouldPromptLocalBridgeUpgrade({
+        health,
+        bridges: [{ id: "br-A", clientVersion: "0.1.0", revokedAt: null }],
+        recommendedVersion: "0.1.1",
+        hasReleaseCatalog: true
+      })
+    ).toBe(true);
+    expect(
+      shouldPromptLocalBridgeUpgrade({
+        health: { ...health, clientVersion: "0.1.1" },
+        recommendedVersion: "0.1.1",
+        hasReleaseCatalog: true
+      })
+    ).toBe(false);
+    expect(
+      shouldPromptLocalBridgeUpgrade({
+        health: null,
+        recommendedVersion: "0.1.1",
+        hasReleaseCatalog: true
+      })
+    ).toBe(false);
+    expect(
+      shouldPromptLocalBridgeUpgrade({
+        health,
+        recommendedVersion: "0.1.1",
+        hasReleaseCatalog: false
+      })
+    ).toBe(false);
+    expect(isBridgeClientVersionBehind("0.1.0", "0.1.1")).toBe(true);
+    expect(isBridgeClientVersionBehind(null, "0.1.1")).toBe(true);
   });
 
   it("returns not_paired when local bridge token auth fails", () => {

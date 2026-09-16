@@ -368,6 +368,8 @@ Primary connect flow: click the connect-local-device CTA → optional first-run 
 
 A live local Bridge whose `bridgeId` is absent from the current user's `/device-bridges/mine` is a **foreign-account rebind**, not an expired token. The wizard asks the current account to re-pair with a freshly issued pairing code, waits for a replacement `bridgeId`, refreshes `/mine`, and only then auto-detects. Final success or failure is classified from the latest health plus the latest current-user bridge list; the pre-connect stale flag must not be reused as a pairing-expired error.
 
+When a reachable local Bridge reports a `clientVersion` older than the release catalog `recommendedVersion` (or reports no version, as 0.1.0 does), the panel shows a persistent upgrade notice with the host installer download. This is independent of re-pair failure copy.
+
 Phase B (Step 3 tools): health JSON includes `tools.adb` / `tools.hdc`. When the selected protocol tool is missing, `deriveBridgePanelStatus()` returns `tools_missing` and `LocalDeviceBridgeToolsPanel` shows an install-tools CTA via `bridgeToolInstallLauncher.ts` (`wiseeff-bridge://install-tools`, 120s poll). Detect failures mentioning missing adb/hdc map to the tools install CTA instead of the bridge-missing copy.
 
 CLI `pair` / `start` / `connect` commands are collapsed under **Advanced · CLI**. Portable zip/tar artifacts remain under **Other platforms** when installers are the primary CTA.

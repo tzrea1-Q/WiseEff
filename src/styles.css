@@ -8324,6 +8324,22 @@ td small {
   font-weight: 700;
 }
 
+.local-device-bridge-panel__upgrade-notice {
+  display: grid;
+  gap: var(--space-3);
+}
+
+.local-device-bridge-panel__upgrade-notice p {
+  margin: 0;
+}
+
+.local-device-bridge-panel__upgrade-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  align-items: center;
+}
+
 .local-device-bridge-panel__install-cta {
   color: var(--primary-foreground);
   background: var(--app-primary);

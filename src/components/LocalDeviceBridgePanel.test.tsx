@@ -144,3 +144,55 @@ it("asks the current user to rebind a live local bridge owned by another account
   expect(await screen.findByText(/Bridge 在线/)).toBeInTheDocument();
   expect(screen.queryByText(/配对已失效/)).not.toBeInTheDocument();
 });
+
+it("prompts to install the latest Bridge when local health is an older client", async () => {
+  vi.mocked(listReleases).mockResolvedValue({
+    recommendedVersion: "0.1.1",
+    minCompatibleVersion: "0.1.0",
+    items: [
+      {
+        platform: "darwin",
+        arch: "arm64",
+        artifactKind: "installer",
+        version: "0.1.1",
+        downloadUrl: "/downloads/device-bridge/0.1.1/darwin/arm64/WiseEffBridge_0.1.1_darwin_arm64.pkg"
+      }
+    ]
+  } as never);
+
+  render(
+    <LocalDeviceBridgePanel
+      detecting={false}
+      protocol="hdc"
+      onDetect={() => undefined}
+      listBridges={async () => [
+        {
+          id: "br-A",
+          machineLabel: "本机",
+          platform: "darwin",
+          arch: "arm64",
+          clientVersion: "0.1.0",
+          capabilities: {},
+          createdAt: "2026-09-16T00:00:00.000Z",
+          lastSeenAt: "2026-09-16T00:00:00.000Z",
+          revokedAt: null
+        }
+      ]}
+      probeHealth={async () => ({
+        health: {
+          ok: true,
+          paired: true,
+          connected: true,
+          bridgeId: "br-A",
+          updatedAt: "2026-09-16T00:00:00.000Z",
+          tools: { adb: { available: true }, hdc: { available: true } }
+        },
+        reachability: "ok"
+      })}
+    />
+  );
+
+  expect(await screen.findByText("请升级本机 Bridge")).toBeInTheDocument();
+  expect(screen.getByText(/推荐版本 0\.1\.1/)).toBeInTheDocument();
+  expect(screen.getByRole("link", { name: /安装 Bridge|下载最新安装包/ })).toBeInTheDocument();
+});

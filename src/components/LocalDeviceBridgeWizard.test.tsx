@@ -273,6 +273,54 @@ describe("LocalDeviceBridgeWizard", () => {
     expect(screen.queryByText("HDC 工具")).not.toBeInTheDocument();
   });
 
+  it("shows an upgrade notice with a download action when the running Bridge is behind", () => {
+    render(
+      <LocalDeviceBridgeWizard
+        panelStatus="online_no_device"
+        protocol="hdc"
+        health={{
+          ok: true,
+          paired: true,
+          connected: true,
+          bridgeId: "br-A",
+          clientVersion: "0.1.0",
+          updatedAt: "2026-09-16T00:00:00.000Z",
+          tools: {
+            adb: { available: true, version: "adb", source: "system" },
+            hdc: { available: true, version: "hdc", source: "system" }
+          }
+        }}
+        bridges={[{ id: "br-A", machineLabel: "本机", platform: "darwin", arch: "arm64", clientVersion: "0.1.0", capabilities: {}, createdAt: "2026-09-16T00:00:00.000Z", lastSeenAt: null, revokedAt: null }]}
+        recommendedVersion="0.1.1"
+        hostRelease={{
+          platform: "darwin",
+          arch: "arm64",
+          version: "0.1.1",
+          downloadUrl: "/downloads/device-bridge/0.1.1/darwin/arm64/WiseEffBridge_0.1.1_darwin_arm64.pkg",
+          artifactKind: "installer"
+        }}
+        installerAlternates={[]}
+        portableReleases={[]}
+        pairingCode={null}
+        pairingCodeLoading={false}
+        checking={false}
+        detecting={false}
+        connectError=""
+        onConnectError={() => undefined}
+        onRefresh={async () => ({ connected: true })}
+        onDetect={() => undefined}
+      />
+    );
+
+    expect(screen.getByText("请升级本机 Bridge")).toBeInTheDocument();
+    expect(screen.getByText(/当前本机版本 0\.1\.0/)).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "安装 Bridge（macOS Apple Silicon）" })).toHaveAttribute(
+      "href",
+      expect.stringContaining("/downloads/device-bridge/0.1.1/")
+    );
+    expect(screen.getByRole("button", { name: "查看安装步骤" })).toBeInTheDocument();
+  });
+
   it("lets users return to step 1 from later wizard steps", async () => {
     const loadInstallReleases = vi.fn(async () => undefined);
 

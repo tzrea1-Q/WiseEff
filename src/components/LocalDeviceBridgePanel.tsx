@@ -86,6 +86,7 @@ export function LocalDeviceBridgePanel({
   const [revokingBridgeId, setRevokingBridgeId] = useState<string | null>(null);
   const [revokeCandidate, setRevokeCandidate] = useState<DeviceBridgeRecord | null>(null);
   const [releasesLoading, setReleasesLoading] = useState(false);
+  const [recommendedVersion, setRecommendedVersion] = useState<string | null>(null);
   const installReleasesLoadedRef = useRef(false);
   const lastEmittedBridgeStateRef = useRef<LocalDeviceBridgePanelState | null>(null);
   const bridgesRef = useRef<DeviceBridgeRecord[]>(bridgesOverride ?? []);
@@ -102,6 +103,11 @@ export function LocalDeviceBridgePanel({
       const primary = items ? pickBridgeReleaseForHost(items, hostTarget) : null;
       const nextAlternates = items ? listInstallerBridgeReleases(items, primary) : [];
       const nextPortables = items ? listPortableBridgeReleases(items, null) : [];
+      const nextRecommended =
+        typeof manifest?.recommendedVersion === "string" && manifest.recommendedVersion.trim()
+          ? manifest.recommendedVersion
+          : null;
+      setRecommendedVersion((current) => (current === nextRecommended ? current : nextRecommended));
       setHostRelease((current) =>
         current?.downloadUrl === primary?.downloadUrl && current?.version === primary?.version ? current : primary
       );
@@ -191,16 +197,9 @@ export function LocalDeviceBridgePanel({
           });
         }
 
-        const hostTarget = detectBrowserBridgeTarget();
-        const registeredBridgeCountForHost = countActiveBridgesForPlatform(nextBridges, hostTarget.platform);
-        // Only fetch install releases once while waiting for Bridge — silent polls must not
-        // re-hit /releases every 3s (that toggles loading state and remounts CTAs → focus jump).
-        if (
-          !nextHealth &&
-          registeredBridgeCountForHost === 0 &&
-          bridgesOverride === undefined &&
-          (!options?.silent || !installReleasesLoadedRef.current)
-        ) {
+        // Fetch the install catalog once so an already-running old Bridge can be
+        // compared with recommendedVersion. Silent polls must not re-hit /releases.
+        if (!installReleasesLoadedRef.current && !options?.silent) {
           await loadInstallReleases();
         }
         const registeredBridgeIds = nextBridges.filter((bridge) => !bridge.revokedAt).map((bridge) => bridge.id);
@@ -382,6 +381,8 @@ export function LocalDeviceBridgePanel({
         healthReachability={healthReachability}
         protocol={protocol}
         health={health}
+        bridges={activeBridges}
+        recommendedVersion={recommendedVersion}
         hostRelease={hostRelease}
         installerAlternates={installerAlternates}
         portableReleases={portableReleases}
