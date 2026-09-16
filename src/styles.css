@@ -9607,15 +9607,15 @@ td small {
 }
 
 .parameter-draft-status-badge--saved {
-  color: #027a48;
-  background: #ecfdf3;
-  border: 1px solid #a6f4c5;
+  color: var(--success);
+  background: var(--success-soft);
+  border: 1px solid color-mix(in srgb, var(--success) 24%, transparent);
 }
 
 .parameter-draft-status-badge--unsaved {
-  color: #b54708;
-  background: #fffaeb;
-  border: 1px solid #fedf89;
+  color: var(--warning);
+  background: var(--warning-soft);
+  border: 1px solid color-mix(in srgb, var(--warning) 24%, transparent);
 }
 
 .draft-card-actions {
@@ -9628,7 +9628,7 @@ td small {
   display: inline-flex;
   align-items: center;
   margin-left: var(--space-3);
-  color: #027a48;
+  color: var(--success);
   font-size: var(--text-sm);
   font-weight: 500;
 }
