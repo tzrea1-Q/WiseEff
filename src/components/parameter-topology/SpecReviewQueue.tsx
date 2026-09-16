@@ -1,7 +1,10 @@
-import { ChevronLeft, ChevronRight, Pencil, Search } from "lucide-react";
+import { ChevronLeft, ChevronRight, Pencil } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
 import { ColumnFilter } from "@/components/ColumnFilter";
+import { SearchField } from "@/components/common/SearchField";
+import { filterItems } from "@/lib/search";
+import { specReviewTaskSearchProfile } from "@/lib/search/profiles";
 import { HorizontalDragScroll } from "@/components/HorizontalDragScroll";
 import { buildPathModuleFilterNodes } from "@/application/parameters/buildModuleFilterNodes";
 import {
@@ -100,10 +103,9 @@ function filterTasks(
   filters: QueueFilters,
   moduleFilterNodes: readonly TreeFilterNode[]
 ): SpecReviewTaskView[] {
-  const query = filters.q.trim().toLowerCase();
   const selectedModuleIds = moduleFilterIdsForValues(moduleFilterNodes, filters.driverModules);
   const allowedModuleIds = collectTreeFilterSelectedDescendantIds(moduleFilterNodes, selectedModuleIds);
-  return tasks.filter((task) => {
+  const scoped = tasks.filter((task) => {
     if (filters.driverModules.length > 0) {
       const driver = task.driverModule?.trim() || "";
       const matchingNodeIds = moduleFilterNodes
@@ -117,14 +119,18 @@ function filterTasks(
     if (filters.matchStatuses.length > 0) {
       if (!filters.matchStatuses.includes(matchStatusLabel(task))) return false;
     }
-    if (!query) return true;
-    const nodeName = nodeNameFromEvidence(task.evidence) ?? "";
-    return (
-      task.propertyKey.toLowerCase().includes(query) ||
-      nodeName.toLowerCase().includes(query) ||
-      (task.driverModule ?? "").toLowerCase().includes(query)
-    );
+    return true;
   });
+  if (!filters.q.trim()) {
+    return scoped;
+  }
+  const searchable = scoped.map((task) => ({
+    task,
+    propertyKey: task.propertyKey,
+    nodeName: nodeNameFromEvidence(task.evidence) ?? "",
+    driverModule: task.driverModule
+  }));
+  return filterItems(searchable, filters.q, specReviewTaskSearchProfile).map((item) => item.task);
 }
 
 /**
@@ -241,16 +247,12 @@ export function SpecReviewQueue({
         </div>
 
         <div className="parameters-table-toolbar">
-          <label className="parameters-table-search">
-            <Search size={16} aria-hidden="true" />
-            <input
-              aria-label="搜索审核任务"
-              type="search"
-              value={filters.q}
-              onChange={(event) => patchFilters((current) => ({ ...current, q: event.target.value }))}
-              placeholder="搜索参数名或节点"
-            />
-          </label>
+          <SearchField
+            value={filters.q}
+            onValueChange={(value) => patchFilters((current) => ({ ...current, q: value }))}
+            placeholder="搜索参数名或节点"
+            ariaLabel="搜索审核任务"
+          />
           <div className="parameters-table-filters param-admin-library-filters">
             {filtersActive ? (
               <button aria-label="清除筛选" className="clear-filters" type="button" onClick={clearFilters}>

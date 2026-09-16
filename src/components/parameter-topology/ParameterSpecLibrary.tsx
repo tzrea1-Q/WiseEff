@@ -1,6 +1,9 @@
-import { Check, ChevronLeft, ChevronRight, Pencil, Search } from "lucide-react";
+import { Check, ChevronLeft, ChevronRight, Pencil } from "lucide-react";
 import { useMemo, useState, type ReactNode } from "react";
 import { ColumnFilter } from "@/components/ColumnFilter";
+import { SearchField } from "@/components/common/SearchField";
+import { filterItems } from "@/lib/search";
+import { parameterSpecLibrarySearchProfile } from "@/lib/search/profiles";
 import { HorizontalDragScroll } from "@/components/HorizontalDragScroll";
 import { buildPathModuleFilterNodes } from "@/application/parameters/buildModuleFilterNodes";
 import {
@@ -273,25 +276,8 @@ export function filterParameterSpecLibrary(
   specs: readonly ParameterSpecLibraryRow[],
   filters: ParameterSpecLibraryFilters
 ): ParameterSpecLibraryRow[] {
-  const q = filters.q.trim().toLowerCase();
-  return specs.filter((spec) => {
-    if (q) {
-      const haystack = [
-        spec.propertyKey,
-        formatSpecAttributionLabel(spec),
-        ...specAttributionFilterValues(spec),
-        spec.driverModule,
-        spec.compatible,
-        spec.schemaSource,
-        spec.valueType
-      ]
-        .filter(Boolean)
-        .join(" ")
-        .toLowerCase();
-      if (!haystack.includes(q)) {
-        return false;
-      }
-    }
+  const searched = filters.q.trim() ? filterItems(specs, filters.q, parameterSpecLibrarySearchProfile) : specs;
+  return searched.filter((spec) => {
     if (!matchesSelected(filters.driverModules, spec.driverModule)) return false;
     if (!matchesSelected(filters.compatibles, spec.compatible)) return false;
     if (!matchesSelected(filters.schemaSources, spec.schemaSource)) return false;
@@ -507,17 +493,13 @@ export function ParameterSpecLibrary({
         )}
 
         <div className="parameters-table-toolbar">
-          <label className="parameters-table-search">
-            <Search size={16} aria-hidden="true" />
-            <input
-              aria-label={PARAMETER_ADMIN_UI.specLibrarySearch}
-              type="search"
-              value={filters.q}
-              disabled={loading}
-              onChange={(event) => setFilters((current) => ({ ...current, q: event.target.value }))}
-              placeholder="搜索属性键，如 gpio_int"
-            />
-          </label>
+          <SearchField
+            value={filters.q}
+            onValueChange={(value) => setFilters((current) => ({ ...current, q: value }))}
+            disabled={loading}
+            placeholder="搜索属性键，如 gpio_int"
+            ariaLabel={PARAMETER_ADMIN_UI.specLibrarySearch}
+          />
           <div className="parameters-table-filters param-admin-library-filters">
             {filtersActive ? (
               <button aria-label="清除筛选" className="clear-filters" type="button" onClick={clearFilters}>

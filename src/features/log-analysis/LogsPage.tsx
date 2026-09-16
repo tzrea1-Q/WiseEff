@@ -3,6 +3,7 @@ import { useTopBarActions } from "@/components/layout";
 import { toggleFilterValue, uniqueFilterValues, type HeaderFilterState } from "@/components/tableFilterUtils";
 import { type PageProps } from "@/app/routes";
 import { ModalDialog } from "@/components/common/ModalDialog";
+import { SearchField } from "@/components/common/SearchField";
 import { RelatedKnowledgeSection } from "@/features/log-analysis/RelatedKnowledgeSection";
 import type { LogDomain } from "@/domain/logs/types";
 import { isSupportedLogUploadFileName, mockLogUploadAccept } from "@/domain/logs/uploadExtensions";
@@ -22,7 +23,6 @@ import {
   ListChecks,
   MessageSquareText,
   RotateCcw,
-  Search,
   Sparkles,
   Upload,
   X
@@ -1129,19 +1129,14 @@ function RawLogViewer({
     <section className="rawlog-viewer" aria-label="原始日志">
       <SectionLabel icon={<FileText size={16} />} label="原始日志" />
       <div className="rawlog-toolbar">
-        <label>
-          <Search size={15} />
-          <input
-            aria-controls="rawlog-content"
-            aria-label="在日志中搜索"
-            onChange={(event: ChangeEvent<HTMLInputElement>) => onSearchQueryChange(event.target.value)}
-            onKeyDown={handleSearchKeyDown}
-            placeholder="在日志中搜索..."
-            ref={searchInputRef}
-            type="search"
-            value={searchQuery}
-          />
-        </label>
+        <SearchField
+          ref={searchInputRef}
+          value={searchQuery}
+          onValueChange={onSearchQueryChange}
+          onKeyDown={handleSearchKeyDown}
+          placeholder="在日志中搜索..."
+          ariaLabel="在日志中搜索"
+        />
         <button aria-label="上一个匹配" disabled={matchLines.length === 0} type="button" onClick={() => moveMatch(-1)}>
           ↑
         </button>
@@ -1151,11 +1146,6 @@ function RawLogViewer({
         <output aria-live="polite" role="status">
           {searchQuery.trim() === "" ? "" : matchLines.length === 0 ? "无匹配。按 Esc 清空" : `${activeMatchIndex + 1} / ${matchLines.length} 匹配`}
         </output>
-        {searchQuery ? (
-          <button aria-label="清空搜索" type="button" onClick={() => onSearchQueryChange("")}>
-            <X size={15} />
-          </button>
-        ) : null}
       </div>
       <div className="rawlog-viewer__body" id="rawlog-content">
         <table className="rawlog-table" role="grid">

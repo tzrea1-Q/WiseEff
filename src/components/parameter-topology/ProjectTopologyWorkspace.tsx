@@ -9,6 +9,7 @@ import type {
 } from "@/domain/parameter-topology/types";
 import { buildProvenanceLabels } from "@/domain/parameter-topology/buildProvenanceLabels";
 import { ModalDialog } from "@/components/common/ModalDialog";
+import { SearchField } from "@/components/common/SearchField";
 import {
   BindingDetailPanel,
   type BindingEditValidation
@@ -246,13 +247,11 @@ export function ProjectTopologyWorkspace({
         </div>
         <label>
           搜索项目参数
-          <input
-            type="search"
-            role="searchbox"
-            aria-label="搜索项目参数"
+          <SearchField
             value={searchQuery}
-            onChange={(event) => setSearchQuery(event.target.value)}
+            onValueChange={setSearchQuery}
             placeholder="gpio_int"
+            ariaLabel="搜索项目参数"
           />
         </label>
         <button

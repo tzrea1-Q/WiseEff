@@ -16,7 +16,7 @@ WiseEff frontend is a Vite, React, TypeScript SPA. It supports a rich mock-backe
 - `src/application/ports/`: frontend-facing business interfaces.
 - `src/infrastructure/mock/`: mock state and mock implementations for demos/tests. Failures throw `WiseEffApiError` via `mockApiError` so application `error.code` branches work in mock mode as well as API mode (TD-109; leftover `Object.assign` paths closed in #483). `createPrototypeState` lives in `prototypeState.ts` (#486); `src/mockData.ts` is a test-facing re-export.
 - `src/infrastructure/http/`: API client, DTOs, auth client, runtime mode.
-- `src/components/`: reusable UI, layout, tables, dialogs, filters, charts.
+- `src/components/`: reusable UI, layout, tables, dialogs, filters, charts. Search inputs use `SearchField` (`src/components/common/SearchField.tsx`). Local structured filtering uses `src/lib/search/` plus a Search Profile in `src/lib/search/profiles.ts`. Catalog, Knowledge, Audit API, workbench unified search, and raw log / DTS source find keep their existing engines and only reuse the SearchField chrome.
 - `src/features/agent/`: Xiaoze CopilotKit surface (`XiaozeProvider`, `useXiaozePageContext`, `XiaozeApprovalCard`, frontend tools).
 - `src/features/log-analysis/`: `LogsPage` (upload, conclusion, evidence chain, raw viewer) and `LogDashboardPage`. Feature styles live in colocated `log-analysis.css` (imported from the pages; #476).
 - `src/features/parameter-review/`: `ParameterReviewPage`, `ParameterSubmissionsPage`, submission-history diff, and review-specific UI atoms. Feature styles live in colocated `parameter-review.css` (#479).

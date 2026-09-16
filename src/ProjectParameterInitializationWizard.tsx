@@ -4,6 +4,9 @@ import type { Dispatch } from "react";
 import type { AppAction } from "@/application/state/appState";
 import { HorizontalDragScroll } from "@/components/HorizontalDragScroll";
 import { ModalDialog } from "@/components/common/ModalDialog";
+import { SearchField } from "@/components/common/SearchField";
+import { filterItems } from "@/lib/search";
+import { projectAdminSearchProfile } from "@/lib/search/profiles";
 import { ColumnFilter } from "./components/ColumnFilter";
 import { ConfirmDialog } from "./components/common/ConfirmDialog";
 import { toggleFilterValue, uniqueFilterValues, type HeaderFilterState } from "./components/tableFilterUtils";
@@ -99,17 +102,10 @@ export function ProjectParameterInitializationWizard({ state, dispatch, onClose 
     [initializationConfig.parameterLibrary]
   );
   const supplementSourceProjectIds = sourceProjectIds.filter((projectId) => projectId !== primarySourceProjectId);
-  const filteredSourceProjects = useMemo(() => {
-    const normalizedQuery = sourceProjectSearchQuery.trim().toLowerCase();
-    if (!normalizedQuery) {
-      return projects;
-    }
-
-    return projects.filter((project) => {
-      const haystack = `${project.name} ${project.code} ${project.id}`.toLowerCase();
-      return haystack.includes(normalizedQuery);
-    });
-  }, [projects, sourceProjectSearchQuery]);
+  const filteredSourceProjects = useMemo(
+    () => filterItems(projects, sourceProjectSearchQuery, projectAdminSearchProfile),
+    [projects, sourceProjectSearchQuery]
+  );
   const scopePool = useMemo(
     () =>
       getInitializationScopeParameters(initializationConfig, {
@@ -404,20 +400,17 @@ export function ProjectParameterInitializationWizard({ state, dispatch, onClose 
               </label>
             </div>
             <div className="project-init-source-toolbar">
-              <label className="project-init-source-search">
-                <span className="sr-only">搜索来源项目</span>
-                <input
-                  type="search"
-                  value={sourceProjectSearchQuery}
-                  disabled={startFromEmpty}
-                  placeholder="搜索项目名称或代号"
-                  aria-label="搜索来源项目"
-                  onChange={(event) => {
-                    setError("");
-                    setSourceProjectSearchQuery(event.target.value);
-                  }}
-                />
-              </label>
+              <SearchField
+                className="project-init-source-search"
+                value={sourceProjectSearchQuery}
+                disabled={startFromEmpty}
+                placeholder="搜索项目名称或代号"
+                ariaLabel="搜索来源项目"
+                onValueChange={(value) => {
+                  setError("");
+                  setSourceProjectSearchQuery(value);
+                }}
+              />
               <span className="project-init-source-toolbar__meta" aria-live="polite">
                 {sourceProjectSearchQuery.trim()
                   ? `显示 ${filteredSourceProjects.length} / ${projects.length} 个项目`

@@ -1,4 +1,6 @@
 import type { LogRecord, LogStatus, TimeWindow } from "@/domain/logs/types";
+import { filterItems } from "@/lib/search";
+import { logAdminRecordSearchProfile } from "@/lib/search/profiles";
 
 function startOfDay(date: Date): Date {
   const copy = new Date(date.getTime());
@@ -52,7 +54,7 @@ function sortAccessor(log: LogRecord, key: string): string | number {
 }
 
 export function applyTableFilters(logs: LogRecord[], filters: LogTableFilters): LogRecord[] {
-  const query = filters.tableQuery.trim().toLowerCase();
+  const query = filters.tableQuery;
   const statusFilters = Array.isArray(filters.statusFilter)
     ? filters.statusFilter
     : filters.statusFilter === "all"
@@ -63,13 +65,8 @@ export function applyTableFilters(logs: LogRecord[], filters: LogTableFilters): 
     : filters.moduleFilter === "all"
       ? []
       : [filters.moduleFilter];
-  const filtered = logs.filter((log) => {
-    if (query) {
-      const haystack = `${log.reportId} ${log.fileName}`.toLowerCase();
-      if (!haystack.includes(query)) {
-        return false;
-      }
-    }
+  const searched = query.trim() ? filterItems(logs, query, logAdminRecordSearchProfile) : logs;
+  const filtered = searched.filter((log) => {
     if (statusFilters.length > 0 && !statusFilters.includes(log.status)) {
       return false;
     }

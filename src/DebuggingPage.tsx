@@ -1,4 +1,4 @@
-import { Pencil, Search, Send } from "lucide-react";
+import { Pencil, Send } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { AppAction } from "@/application/state/appState";
 import { presentError } from "@/infrastructure/http/presentError";
@@ -12,6 +12,9 @@ import { WorkbenchSheet } from "./components/WorkbenchSheet";
 import { useTopBarActions } from "./components/layout";
 import type { DebugParameter, PrototypeState } from "@/domain/prototype/types";
 import { RiskBadge, Badge, riskLabels } from "./workbenchUi";
+import { SearchField } from "@/components/common/SearchField";
+import { createSearchIndex } from "@/lib/search";
+import { debugParameterSearchProfile } from "@/lib/search/profiles";
 
 const riskFilterValues = ["High", "Medium", "Low"] as const;
 type RiskFilter = (typeof riskFilterValues)[number];
@@ -76,16 +79,18 @@ export function DebuggingPage({ state, dispatch, debuggingActions }: DebuggingPa
     return () => window.clearInterval(id);
   }, []);
 
-  const normalizedQuery = searchQuery.trim().toLowerCase();
+  const debugSearchIndex = useMemo(
+    () => createSearchIndex(debugParameters, debugParameterSearchProfile),
+    [debugParameters]
+  );
 
   const filteredRows = useMemo(() => {
-    return debugParameters.filter((p) => {
-      const matchesSearch = !normalizedQuery || [p.name, p.key].some((v) => v.toLowerCase().includes(normalizedQuery));
-      const matchesRisk = riskFilters.size === 0 || riskFilters.has(p.risk);
-      const matchesStatus = statusFilters.size === 0 || statusFilters.has(p.status);
-      return matchesSearch && matchesRisk && matchesStatus;
-    });
-  }, [debugParameters, normalizedQuery, riskFilters, statusFilters]);
+    return debugSearchIndex.search(searchQuery).filter((hit) => {
+      const matchesRisk = riskFilters.size === 0 || riskFilters.has(hit.item.risk);
+      const matchesStatus = statusFilters.size === 0 || statusFilters.has(hit.item.status);
+      return matchesRisk && matchesStatus;
+    }).map((hit) => hit.item);
+  }, [debugSearchIndex, riskFilters, searchQuery, statusFilters]);
 
   const visibleRows = useMemo(() => {
     if (!sort) return filteredRows;
@@ -323,16 +328,12 @@ export function DebuggingPage({ state, dispatch, debuggingActions }: DebuggingPa
           </div>
           <section className="parameters-table parameters-table--column-filters" aria-label="实时可调参数">
             <div className="parameters-table-toolbar">
-              <label className="parameters-table-search">
-                <Search size={16} aria-hidden="true" />
-                <input
-                  type="search"
-                  placeholder="按名称 / Key 搜索"
-                  aria-label="按名称 / Key 搜索"
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                />
-              </label>
+              <SearchField
+                value={searchQuery}
+                onValueChange={setSearchQuery}
+                placeholder="搜索名称、Key、描述、模块或路径"
+                ariaLabel="搜索名称、Key、描述、模块或路径"
+              />
               <span className="parameters-table-count">显示 {visibleRows.length} / {debugParameters.length} 个参数</span>
             </div>
 

@@ -1,5 +1,7 @@
 import { HorizontalDragScroll } from "@/components/HorizontalDragScroll";
 import type { ProjectParameterBinding } from "@/domain/parameter-topology/types";
+import { filterItems } from "@/lib/search";
+import { projectBindingSearchProfile } from "@/lib/search/profiles";
 
 function formatEffectiveValue(binding: ProjectParameterBinding): string {
   if (binding.rawValue.trim()) {
@@ -44,21 +46,7 @@ export function BindingPropertyTable({
   onSelectBinding,
   searchQuery
 }: BindingPropertyTableProps) {
-  const needle = searchQuery.trim().toLocaleLowerCase();
-  const rows = needle
-    ? bindings.filter((binding) => {
-        const haystack = [
-          binding.propertyKey,
-          binding.driverModule ?? "",
-          binding.instanceName ?? "",
-          binding.locator ?? "",
-          binding.rawValue
-        ]
-          .join(" ")
-          .toLocaleLowerCase();
-        return haystack.includes(needle);
-      })
-    : bindings;
+  const rows = filterItems(bindings, searchQuery, projectBindingSearchProfile);
 
   return (
     <HorizontalDragScroll className="binding-property-table" tabIndex={0} role="region" aria-label="参数绑定表">

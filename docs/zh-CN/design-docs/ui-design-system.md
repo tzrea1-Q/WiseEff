@@ -31,6 +31,7 @@
 | Toast | `src/components/common/toast/ToastProvider.tsx`(`useToast()`) | 单一 portal 队列、success/info/danger 三语气、右下角、4 秒自动消失 + 悬停暂停、`--z-toast` |
 | 表格 | `src/components/admin/DataTable.tsx` | 标准列表外壳:分页、`aria-sort`、键盘行导航、筛选空态、集成 `ColumnFilter` |
 | 列筛选 | `src/components/ColumnFilter.tsx` | 规格:[表格列多选筛选 UX](ux-table-column-filter.md) |
+| 搜索框 | `src/components/common/SearchField.tsx` | 唯一搜索输入外观；过滤在 `src/lib/search/` 的 Profile 中，不在输入组件里 |
 | 加载/空/错误 | `src/components/common/SectionState.tsx`(认证启动期另有 `AppShellSkeleton`) | 骨架 + 空态 + 可重试错误三件套;parameter-home 转为 re-export 同一组件 |
 | 局部令牌派生 | `src/features/parameter-home/parameter-home.css` | 用 `color-mix()` 从全局令牌派生局部语义色,不发明新字面量 |
 | 图标 | `lucide-react` | 不用 emoji,不用 `✓`/`↗` 等文本字符当图标 |

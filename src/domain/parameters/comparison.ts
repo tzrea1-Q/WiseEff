@@ -1,4 +1,6 @@
 import type { ParameterRecord, RiskLevel } from "./types";
+import { filterItems } from "@/lib/search";
+import { comparisonRowSearchProfile } from "@/lib/search/profiles";
 
 export type ComparisonRowStatus = "drift" | "synced";
 
@@ -115,18 +117,8 @@ function formatValue(value: string | null, unit: string) {
   return `${value} ${unit}`.trim();
 }
 
-function normalize(value: string) {
-  return value.trim().toLowerCase();
-}
-
 function matchesQuery(row: ComparisonRow, query: string) {
-  const normalizedQuery = normalize(query);
-  if (!normalizedQuery) {
-    return true;
-  }
-  return [row.key, row.module, row.description, row.baseValue, row.targetValue].some((value) =>
-    normalize(value).includes(normalizedQuery)
-  );
+  return filterItems([row], query, comparisonRowSearchProfile).length > 0;
 }
 
 export function buildComparisonData({ parameters, baseProjectId, targetProjectId, filters }: BuildComparisonDataInput) {

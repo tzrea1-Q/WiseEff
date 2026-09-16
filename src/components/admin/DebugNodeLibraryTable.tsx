@@ -1,4 +1,6 @@
-import { Search } from "lucide-react";
+import { SearchField } from "@/components/common/SearchField";
+import { filterItems } from "@/lib/search";
+import { debugNodeSearchProfile } from "@/lib/search/profiles";
 import { useMemo } from "react";
 import { buildParameterModuleFilterNodes } from "@/application/parameters/buildModuleFilterNodes";
 import { DataTable, type DataTableSort } from "@/components/admin/DataTable";
@@ -25,26 +27,15 @@ const PROTOCOL_OPTIONS: Array<{ value: DebugNodeLibrarySearch["protocol"]; label
 
 const LIBRARY_PAGE_SIZE = 50;
 
-function nodeSearchHaystack(node: DebugNodeRegistryEntry) {
-  const bindingPaths = (node.bindings ?? []).map((binding) => binding.nodePath).join(" ");
-  return `${node.name} ${node.description} ${node.detailedDescription} ${node.module} ${bindingPaths}`.toLowerCase();
-}
-
 function filterNodes(
   nodes: readonly DebugNodeRegistryEntry[],
   search: DebugNodeLibrarySearch,
   moduleNodes: readonly FlatModuleNode[]
 ) {
   const byModule = filterDebugNodesByModuleTree(nodes, moduleNodes, search.modules);
+  const searched = search.q.trim() ? filterItems(byModule, search.q, debugNodeSearchProfile) : byModule;
 
-  return byModule.filter((node) => {
-    if (search.q.trim()) {
-      const needle = search.q.trim().toLowerCase();
-      if (!nodeSearchHaystack(node).includes(needle)) {
-        return false;
-      }
-    }
-
+  return searched.filter((node) => {
     if (search.protocol !== "all" && nodeBindingStatus(node.bindings, search.protocol) === "missing") {
       return false;
     }
@@ -195,17 +186,13 @@ export function DebugNodeLibraryTable({
         }
         toolbar={
           <div className="parameters-table-toolbar">
-            <label className="parameters-table-search">
-              <Search size={16} aria-hidden="true" />
-              <input
-                aria-label="搜索可调节点"
-                type="search"
-                value={search.q}
-                onChange={(event) => onUpdateSearch({ q: event.target.value })}
-                placeholder="搜索节点名称、模块、说明或路径"
-                disabled={loading}
-              />
-            </label>
+            <SearchField
+              value={search.q}
+              onValueChange={(value) => onUpdateSearch({ q: value })}
+              placeholder="搜索节点名称、模块、说明或路径"
+              ariaLabel="搜索可调节点"
+              disabled={loading}
+            />
             <div className="parameters-table-filters param-admin-library-filters">
               <LibrarySelectFilter
                 ariaLabel="协议筛选"

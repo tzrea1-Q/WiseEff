@@ -163,7 +163,7 @@ describe("/debugging 单栏骨架", () => {
   it("将风险和状态筛选合并到表头，搜索框仍独立存在", () => {
     renderDebuggingPage();
 
-    expect(screen.getByRole("searchbox", { name: "按名称 / Key 搜索" })).toBeInTheDocument();
+    expect(screen.getByRole("searchbox", { name: "搜索名称、Key、描述、模块或路径" })).toBeInTheDocument();
     expect(document.querySelector(".parameters-table-filters")).not.toBeInTheDocument();
 
     expect(screen.queryByRole("button", { name: "筛选模块" })).not.toBeInTheDocument();

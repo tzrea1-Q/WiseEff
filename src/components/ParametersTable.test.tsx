@@ -129,17 +129,55 @@ describe("ParametersTable", () => {
   it("filters rows by name, description, or module search text", () => {
     setup();
 
-    fireEvent.change(screen.getByPlaceholderText(/按名称 \/ 描述 \/ 模块搜索/), { target: { value: "charge" } });
+    fireEvent.change(screen.getByPlaceholderText(/搜索参数名、描述、模块或路径/), { target: { value: "fast_charge" } });
 
     expect(screen.getByText("fast_charge_current_limit_ma")).toBeInTheDocument();
     expect(screen.queryByText("battery_temp_target_c")).not.toBeInTheDocument();
     expect(screen.queryByText("soc_estimation_smoothing")).not.toBeInTheDocument();
   });
 
+  it("finds a parameter by Chinese description when the name does not match", () => {
+    setup({
+      rows: [
+        ...rows,
+        {
+          ...rows[0],
+          id: "p-cn",
+          name: "cpu_current_limit",
+          description: "低温场景限制 CPU 峰值放电电流",
+          module: "Thermal"
+        }
+      ]
+    });
+
+    fireEvent.change(screen.getByLabelText("搜索参数名、描述、模块或路径"), { target: { value: "低温" } });
+
+    expect(screen.getByText("cpu_current_limit")).toBeInTheDocument();
+    expect(screen.queryByText("fast_charge_current_limit_ma")).not.toBeInTheDocument();
+  });
+
+  it("matches mixed tokens across name and description fields", () => {
+    setup({
+      rows: [
+        {
+          ...rows[0],
+          id: "p-cn",
+          name: "cpu_current_limit",
+          description: "低温场景限制 CPU 峰值放电电流",
+          module: "Thermal"
+        }
+      ]
+    });
+
+    fireEvent.change(screen.getByLabelText("搜索参数名、描述、模块或路径"), { target: { value: "cpu 电流" } });
+
+    expect(screen.getByText("cpu_current_limit")).toBeInTheDocument();
+  });
+
   it("renders an empty state and can clear the search filter", () => {
     setup();
 
-    fireEvent.change(screen.getByLabelText("按名称 / 描述 / 模块搜索"), { target: { value: "motor" } });
+    fireEvent.change(screen.getByLabelText("搜索参数名、描述、模块或路径"), { target: { value: "motor" } });
 
     expect(screen.getByText("没有匹配的参数")).toBeInTheDocument();
 
@@ -347,7 +385,7 @@ describe("ParametersTable", () => {
   it("selects only filtered visible modified rows from the header checkbox", () => {
     const { onSelectedIdsChange } = setup({ modifiedIds: new Set(["p1", "p2", "p3"]) });
 
-    fireEvent.change(screen.getByLabelText("按名称 / 描述 / 模块搜索"), { target: { value: "charge" } });
+    fireEvent.change(screen.getByLabelText("搜索参数名、描述、模块或路径"), { target: { value: "fast_charge" } });
     fireEvent.click(screen.getByRole("checkbox", { name: "全选已修改项" }));
 
     expect(onSelectedIdsChange).toHaveBeenCalledTimes(1);
@@ -413,7 +451,7 @@ describe("ParametersTable", () => {
     expect(firstColumn.position).toBe("sticky");
     expect(firstColumn.left).toBe("0");
     expect(nameColumn.left).toBe("48px");
-    expect(declarationFor(styles, ".parameters-table-search:focus-within", "box-shadow")).toBeTruthy();
+    expect(declarationFor(styles, ".search-field:focus-within", "box-shadow")).toBeTruthy();
   });
 
   it("does not force desktop horizontal scrolling with a wide table min-width", () => {
@@ -519,7 +557,7 @@ describe("ParametersTable", () => {
 
   it("keeps debugging toolbar search from stretching vertically on narrow viewports (TD-107)", () => {
     const styles = readStylesheet("src/styles.css");
-    const searchSelector = ".debugging-page .parameters-table-search";
+    const searchSelector = ".debugging-page .search-field";
     const narrow = { within: "(max-width: 960px)" };
 
     const desktop = declarationsFor(styles, searchSelector);
@@ -531,7 +569,7 @@ describe("ParametersTable", () => {
     expect(mobile.width).toBe("100%");
     expect(mobile["max-width"]).toBe("none");
     expect(mobile["min-width"]).toBe("0");
-    expect(mobile.height).toBe("auto");
+    expect(mobile.height).toBeUndefined();
     expect(mobile["flex-basis"]).toBeUndefined();
   });
 });

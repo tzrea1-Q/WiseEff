@@ -31,6 +31,7 @@ Quality benchmark: a focused, dense, fast workbench in the spirit of Linear — 
 | Toast | `src/components/common/toast/ToastProvider.tsx` (`useToast()`) | Single portal queue, tones success/info/danger, bottom-right, 4s auto-dismiss with hover pause, `--z-toast` |
 | Table | `src/components/admin/DataTable.tsx` | Standard list shell: pagination, `aria-sort`, keyboard row navigation, filter empty state, `ColumnFilter` integration |
 | Column filter | `src/components/ColumnFilter.tsx` | Spec: [Table Column Multi-Select Filter UX](ux-table-column-filter.md) |
+| Search field | `src/components/common/SearchField.tsx` | One search-input chrome; filtering lives in `src/lib/search/` profiles, not in the input |
 | Loading/Empty/Error | `src/components/common/SectionState.tsx` (+ `AppShellSkeleton` for auth bootstrap) | Skeleton + empty + error-with-retry trio; parameter-home re-exports the same components |
 | Local token derivation | `src/features/parameter-home/parameter-home.css` | Derive scoped tokens from global tokens via `color-mix()`; never invent new literals |
 | Icons | `lucide-react` | No emoji glyphs, no `✓`/`↗` text characters as icons |

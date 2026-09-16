@@ -436,7 +436,7 @@ export async function expectVisibleFormControlAffordances(page: Page) {
       return borderVisible || hasBackground || hasShadow;
     };
 
-    /** Nested search fields put chrome on the wrapper (e.g. `.parameters-table-search`). */
+    /** Nested search fields put chrome on the wrapper (e.g. `.search-field`). */
     const hasAncestorAffordance = (element: Element) => {
       let current = element.parentElement;
       let depth = 0;

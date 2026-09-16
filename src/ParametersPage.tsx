@@ -41,6 +41,8 @@ import type { ParameterTopologyRepository } from "@/application/ports/ParameterT
 import { useTopologyLayoutMode } from "@/components/parameter-topology/useTopologyLayoutMode";
 import { createHttpParameterRepository } from "@/infrastructure/http/parameterClient";
 import { buildParameterModuleFilterNodes } from "@/application/parameters/buildModuleFilterNodes";
+import { createSearchIndex } from "@/lib/search";
+import { parameterRecordSearchProfile } from "@/lib/search/profiles";
 
 type ParameterRiskFilter = "All" | "High" | "Medium" | "Low";
 
@@ -184,16 +186,18 @@ export function ParametersPage({
     () => buildParameterModuleTree(projectParameters, state.configDraft?.parameterModules ?? []),
     [projectParameters, state.configDraft?.parameterModules]
   );
+  const parameterSearchIndex = useMemo(
+    () => createSearchIndex(projectParameters, parameterRecordSearchProfile),
+    [projectParameters]
+  );
+  const searchedParameters = useMemo(
+    () => parameterSearchIndex.search(searchQuery).map((hit) => hit.item),
+    [parameterSearchIndex, searchQuery]
+  );
   const moduleFilterNodes = useMemo<TreeFilterNode[]>(
     () => {
-      const searchScope = searchQuery.trim().toLocaleLowerCase();
-      const scopedRows = projectParameters
-        .filter((parameter) => {
-          const matchesSearch = !searchScope || [parameter.name, parameter.description, parameter.module]
-            .some((value) => value.toLocaleLowerCase().includes(searchScope));
-          const matchesRisk = riskFilters.size === 0 || riskFilters.has(parameter.risk);
-          return matchesSearch && matchesRisk;
-        })
+      const scopedRows = searchedParameters
+        .filter((parameter) => riskFilters.size === 0 || riskFilters.has(parameter.risk))
         .map((parameter) => ({
           moduleId: parameterModuleId(parameter),
           moduleName: parameter.module,
@@ -209,7 +213,7 @@ export function ParametersPage({
         }))
       );
     },
-    [moduleNodes, projectParameters, riskFilters, searchQuery]
+    [moduleNodes, riskFilters, searchedParameters]
   );
   const allowedModuleIds = useMemo(
     () => collectTreeFilterSelectedDescendantIds(moduleFilterNodes, Array.from(moduleFilters)),
@@ -223,19 +227,15 @@ export function ParametersPage({
     () => new Set(selectedIds),
     [selectedIds]
   );
-  const normalizedSearchQuery = searchQuery.trim().toLowerCase();
   const filteredParameters = useMemo(
     () =>
-      projectParameters.filter((parameter) => {
-        const matchesSearch =
-          !normalizedSearchQuery ||
-          [parameter.name, parameter.description, parameter.module].some((value) => value.toLowerCase().includes(normalizedSearchQuery));
+      searchedParameters.filter((parameter) => {
         const matchesRisk = riskFilters.size === 0 || riskFilters.has(parameter.risk);
         const matchesModule =
           moduleFilters.size === 0 || allowedModuleIds.has(parameterModuleId(parameter));
-        return matchesSearch && matchesRisk && matchesModule;
+        return matchesRisk && matchesModule;
       }),
-    [allowedModuleIds, moduleFilters.size, normalizedSearchQuery, projectParameters, riskFilters]
+    [allowedModuleIds, moduleFilters.size, riskFilters, searchedParameters]
   );
   const searchParameters = useMemo(
     () => filteredParameters.filter((parameter) => !modifiedIds.has(parameter.id)),

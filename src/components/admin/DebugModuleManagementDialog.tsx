@@ -1,4 +1,4 @@
-import { CircleX, Plus, Search } from "lucide-react";
+import { CircleX, Plus } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { DebugNodeRegistryEntry } from "@/domain/debugging/types";
 import type { FlatModuleNode } from "@/domain/modules/moduleTree";
@@ -7,6 +7,7 @@ import { countDebugNodesByModuleId, debugNodesInModuleId } from "@/debugAdminMod
 import type { ParameterModuleDraft } from "@/powerManagementConfig";
 import { HorizontalDragScroll } from "@/components/HorizontalDragScroll";
 import { ModalDialog } from "@/components/common/ModalDialog";
+import { SearchField } from "@/components/common/SearchField";
 import { DebugModuleMoveDialog } from "./DebugModuleMoveDialog";
 import { ModuleCreateDialog } from "./ModuleCreateDialog";
 import { ModuleEditDialog } from "./ModuleEditDialog";
@@ -148,16 +149,13 @@ export function DebugModuleManagementDialog({
 
         <div className="param-admin-module-dialog-body">
           <div className="param-admin-module-toolbar">
-            <label className="param-admin-module-search">
-              <Search size={16} aria-hidden="true" />
-              <input
-                aria-label="搜索模块"
-                type="search"
-                placeholder="搜索名称、描述或范围"
-                value={moduleQuery}
-                onChange={(event) => setModuleQuery(event.target.value)}
-              />
-            </label>
+            <SearchField
+              className="param-admin-module-search"
+              value={moduleQuery}
+              onValueChange={setModuleQuery}
+              placeholder="搜索名称、描述或范围"
+              ariaLabel="搜索模块"
+            />
             <button className="button subtle" type="button" onClick={startAddRoot}>
               <Plus size={16} aria-hidden="true" />
               新增根模块

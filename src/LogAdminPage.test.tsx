@@ -163,7 +163,7 @@ describe("LogAdminPage M3 skeleton", () => {
   it("keeps log search standalone and moves source filtering into the header", async () => {
     renderPage();
 
-    expect(screen.getByPlaceholderText(/搜索 RPT-/)).toBeInTheDocument();
+    expect(screen.getByPlaceholderText(/搜索报告号/)).toBeInTheDocument();
     expect(screen.queryByRole("combobox", { name: "来源模块" })).not.toBeInTheDocument();
 
     const table = screen.getByRole("table", { name: "日志分析记录" });
@@ -208,7 +208,7 @@ describe("LogAdminPage M3 skeleton", () => {
 
   it("resets filters when 重置 button is clicked", async () => {
     renderPage();
-    const search = screen.getByPlaceholderText(/搜索 RPT-/);
+    const search = screen.getByPlaceholderText(/搜索报告号/);
 
     await userEvent.type(search, "nonexistent");
     expect(screen.getByText(/未匹配任何记录/)).toBeInTheDocument();

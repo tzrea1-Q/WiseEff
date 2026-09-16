@@ -18,7 +18,7 @@ WiseEff 前端是 Vite、React、TypeScript 单页应用。它同时支持 mock 
 - `src/application/ports/`：前端调用业务能力的接口。
 - `src/infrastructure/mock/`：mock state 和 mock repository/gateway。失败经 `mockApiError` 抛 `WiseEffApiError`（TD-109；reattribute/rename 余量已在 #483 关闭）。`createPrototypeState` 在 `prototypeState.ts`（#486）；`src/mockData.ts` 只给测试做 re-export。
 - `src/infrastructure/http/`：HTTP API client、DTO、auth client、runtime mode。
-- `src/components/`：复用 UI、表格、弹窗、过滤器、图表。
+- `src/components/`：复用 UI、表格、弹窗、过滤器、图表。搜索输入使用 `SearchField`（`src/components/common/SearchField.tsx`）。本地结构化过滤使用 `src/lib/search/` 以及 `src/lib/search/profiles.ts` 中的 Search Profile。Catalog、知识库、审计 API、工作台统一搜索，以及日志正文 / DTS 源码查找继续使用原有检索引擎，只复用 SearchField 外观。
 - `src/features/agent/`：Xiaoze（小泽）CopilotKit 表面（`XiaozeProvider`、`useXiaozePageContext`、`XiaozeApprovalCard`、前端工具）。
 - `src/features/log-analysis/`：`LogsPage`（上传、结论卡、证据链、原始日志查看器）与 `LogDashboardPage`。样式在同目录 `log-analysis.css`（由页面 import；#476）。
 - `src/features/parameter-review/`：`ParameterReviewPage`、`ParameterSubmissionsPage`、提交历史 diff 与评审专用 UI 原子。样式在同目录 `parameter-review.css`（#479）。

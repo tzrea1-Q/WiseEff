@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { CircleX } from "lucide-react";
+import { SearchField } from "@/components/common/SearchField";
 
 import {
   catalogWritesEnabled,
@@ -725,11 +726,10 @@ export function CatalogPage({
             submitSearch();
           }}
         >
-          <input
-            type="search"
+          <SearchField
             value={searchInput}
-            onChange={(event) => setSearchInput(event.target.value)}
-            aria-label={catalogSearchLabel}
+            onValueChange={setSearchInput}
+            ariaLabel={catalogSearchLabel}
             placeholder={catalogSearchLabel}
           />
           <button type="submit" className="button sm">

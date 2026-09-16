@@ -1,5 +1,5 @@
 import { ChevronDown, ChevronLeft, ChevronRight, ChevronUp, ChevronsUpDown } from "lucide-react";
-import { useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { HorizontalDragScroll } from "@/components/HorizontalDragScroll";
 import { cn } from "@/lib/utils";
 import { ColumnFilter } from "../ColumnFilter";
@@ -98,6 +98,10 @@ export function DataTable<TData>({
   const [sort, setSort] = useState<SortState>(null);
   const [generatedFilters, setGeneratedFilters] = useState<HeaderFilterState>({});
   const [page, setPage] = useState(1);
+  const rowsSignature = useMemo(() => rows.map(rowKey).join("\0"), [rowKey, rows]);
+  useEffect(() => {
+    setPage(1);
+  }, [rowsSignature]);
   const activeSort = controlledSort ? { key: controlledSort.key, dir: controlledSort.direction } : sort;
   const tableLabel = ariaLabelProp ?? ariaLabel;
   const hasActions = Boolean(renderRowActions);

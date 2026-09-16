@@ -3,6 +3,9 @@ import { useEffect, useMemo, useState } from "react";
 
 import { PARAMETER_ADMIN_UI } from "@/application/parameters/parameterAdminUiCopy";
 import { ModalDialog } from "@/components/common/ModalDialog";
+import { SearchField } from "@/components/common/SearchField";
+import { filterItems } from "@/lib/search";
+import { specReviewLibraryItemSearchProfile } from "@/lib/search/profiles";
 
 import {
   matchStatusLabel,
@@ -70,15 +73,7 @@ export function SpecReviewTaskDialog({
   }, [task.id]);
 
   const options = useMemo(() => {
-    const query = draft.libraryQuery.trim().toLowerCase();
-    const filteredLibrary = librarySpecs.filter((item) => {
-      if (!query) return true;
-      return (
-        item.label.toLowerCase().includes(query) ||
-        (item.propertyKey ?? "").toLowerCase().includes(query) ||
-        (item.driverModule ?? "").toLowerCase().includes(query)
-      );
-    });
+    const filteredLibrary = filterItems(librarySpecs, draft.libraryQuery, specReviewLibraryItemSearchProfile);
     return [
       ...task.candidates,
       ...filteredLibrary.filter((item) => !task.candidates.some((candidate) => candidate.id === item.id))
@@ -200,11 +195,11 @@ export function SpecReviewTaskDialog({
                 <div className="def-group-fields">
                   <label>
                     {PARAMETER_ADMIN_UI.searchSpecLibrary}
-                    <input
-                      aria-label={PARAMETER_ADMIN_UI.searchSpecLibrary}
+                    <SearchField
+                      ariaLabel={PARAMETER_ADMIN_UI.searchSpecLibrary}
                       value={draft.libraryQuery}
-                      onChange={(event) =>
-                        setDraft((current) => ({ ...current, libraryQuery: event.target.value }))
+                      onValueChange={(value) =>
+                        setDraft((current) => ({ ...current, libraryQuery: value }))
                       }
                       placeholder={PARAMETER_ADMIN_UI.searchSpecPlaceholder}
                       disabled={isPending}

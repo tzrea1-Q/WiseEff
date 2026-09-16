@@ -18,6 +18,7 @@ import {
 import { dispatchXiaozeOpenHandoff } from "@/features/agent/xiaozeOpenHandoff";
 import { DataTable, PageInsightBar, type Column } from "@/components/admin";
 import { Button } from "@/components/ui/button";
+import { SearchField } from "@/components/common/SearchField";
 import { presentError } from "@/infrastructure/http/presentError";
 import { KnowledgeExtractionBadge, KnowledgeStatusBadge, KnowledgeTagList } from "./badges";
 import { KnowledgeEntryDetailDialog } from "./KnowledgeEntryDetailDialog";
@@ -338,13 +339,13 @@ export function KnowledgePage({
             void runSearch();
           }}
         >
-          <input
-            type="search"
+          <SearchField
+            className="knowledge-search"
             value={searchInput}
-            onChange={(event) => setSearchInput(event.target.value)}
+            onValueChange={setSearchInput}
             placeholder="检索已发布知识(支持中文与英文全文)"
-            aria-label="检索知识库"
-            className="h-9 w-96 max-w-full rounded-md border border-border bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            ariaLabel="检索知识库"
+            loading={searching}
           />
           <Button type="submit" size="sm" disabled={searching} aria-busy={searching || undefined}>
             检索

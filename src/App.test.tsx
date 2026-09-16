@@ -2064,7 +2064,7 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
 
     expectSelectValue(projectSelect, "aurora");
     expect(screen.queryByRole("complementary", { name: "参数筛选" })).not.toBeInTheDocument();
-    expect(screen.getByRole("searchbox", { name: "按名称 / 描述 / 模块搜索" })).toBeInTheDocument();
+    expect(screen.getByRole("searchbox", { name: "搜索参数名、描述、模块或路径" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "筛选重要性" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "筛选模块" })).toBeInTheDocument();
 

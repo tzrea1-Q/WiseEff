@@ -1,11 +1,12 @@
 import type { FlatModuleNode, ModuleTreeNode } from "@/domain/modules/moduleTree";
+import { matchesProfile } from "@/lib/search";
+import { moduleNodeSearchProfile } from "@/lib/search/profiles";
 
 export function moduleMatchesQuery(node: FlatModuleNode, query: string) {
-  if (!query) {
+  if (!query.trim()) {
     return true;
   }
-  const haystack = [node.name, node.description ?? "", node.scope ?? ""].join(" ").toLowerCase();
-  return haystack.includes(query.trim().toLowerCase());
+  return matchesProfile(node, query, moduleNodeSearchProfile);
 }
 
 export function siblingNames(moduleNodes: readonly FlatModuleNode[], parentId: string | null, excludeId?: string) {
@@ -15,14 +16,13 @@ export function siblingNames(moduleNodes: readonly FlatModuleNode[], parentId: s
 }
 
 export function filterTreeNodes(tree: readonly ModuleTreeNode[], query: string): ModuleTreeNode[] {
-  const normalized = query.trim().toLowerCase();
-  if (!normalized) {
+  if (!query.trim()) {
     return [...tree];
   }
 
   const walk = (node: ModuleTreeNode): ModuleTreeNode | null => {
     const children = node.children.map(walk).filter((item): item is ModuleTreeNode => item !== null);
-    if (moduleMatchesQuery(node, normalized) || children.length > 0) {
+    if (moduleMatchesQuery(node, query) || children.length > 0) {
       return { ...node, children };
     }
     return null;

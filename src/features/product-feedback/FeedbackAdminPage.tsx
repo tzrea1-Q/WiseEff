@@ -10,6 +10,9 @@ import {
 } from "@/domain/productFeedback/types";
 import { DataTable, PageInsightBar, type Column } from "@/components/admin";
 import { Button } from "@/components/ui/button";
+import { SearchField } from "@/components/common/SearchField";
+import { filterItems } from "@/lib/search";
+import { productFeedbackSearchProfile } from "@/lib/search/profiles";
 import { cn } from "@/lib/utils";
 import { presentError } from "@/infrastructure/http/presentError";
 import { FeedbackAdminDrawer } from "./FeedbackAdminDrawer";
@@ -50,18 +53,11 @@ function submitterLabel(feedback: ProductFeedback) {
   return feedback.submitterUserId ?? "内测用户";
 }
 
-function includesQuery(feedback: ProductFeedback, query: string) {
-  const haystack = [
-    feedback.pageTitle,
-    feedback.pagePath,
-    feedback.description,
-    submitterLabel(feedback),
-    productFeedbackStatusLabels[feedback.status],
-    productFeedbackTypeLabels[feedback.feedbackType]
-  ]
-    .join(" ")
-    .toLocaleLowerCase();
-  return haystack.includes(query.toLocaleLowerCase());
+function searchableFeedback(feedback: ProductFeedback) {
+  return {
+    ...feedback,
+    submitterUserId: submitterLabel(feedback)
+  };
 }
 
 export function FeedbackAdminPage({ productFeedbackRepository }: FeedbackAdminPageProps) {
@@ -91,13 +87,14 @@ export function FeedbackAdminPage({ productFeedbackRepository }: FeedbackAdminPa
   }, [productFeedbackRepository]);
 
   const filteredRows = useMemo(
-    () =>
-      rows.filter((feedback) => {
+    () => {
+      const scoped = rows.filter((feedback) => {
         if (statusFilter !== "all" && feedback.status !== statusFilter) return false;
         if (typeFilter !== "all" && feedback.feedbackType !== typeFilter) return false;
-        if (query.trim() && !includesQuery(feedback, query.trim())) return false;
         return true;
-      }),
+      });
+      return filterItems(scoped.map(searchableFeedback), query, productFeedbackSearchProfile);
+    },
     [query, rows, statusFilter, typeFilter]
   );
   const openCount = useMemo(() => rows.filter((feedback) => feedback.status === "open").length, [rows]);
@@ -234,13 +231,12 @@ export function FeedbackAdminPage({ productFeedbackRepository }: FeedbackAdminPa
                   </option>
                 ))}
               </select>
-              <input
-                type="search"
+              <SearchField
+                className="feedback-admin-search"
                 value={query}
-                onChange={(event) => setQuery(event.target.value)}
+                onValueChange={setQuery}
                 placeholder="搜索页面、路径、描述或提交人"
-                aria-label="搜索反馈"
-                className="h-7 w-64 rounded-md border border-border bg-background px-2.5 text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                ariaLabel="搜索反馈"
               />
               {hasActiveFilters ? (
                 <button

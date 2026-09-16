@@ -6,6 +6,8 @@ import {
 import { debugNodeModuleId } from "@/debugAdminModules";
 import type { DebugParameter, DebugParameterNodeBinding } from "@/domain/debugging/types";
 import { collectSubtreeModuleIds, type FlatModuleNode } from "@/domain/modules/moduleTree";
+import { filterItems } from "@/lib/search";
+import { debugParameterLibrarySearchProfile } from "@/lib/search/profiles";
 import type { RiskLevel } from "@/domain/parameters/types";
 import type { DebugNormalizationMode, DebugValueFormat, DebugValueKind } from "@/debugValueKind";
 
@@ -70,16 +72,9 @@ export function filterDebugParameterLibrary(
 ) {
   const allowedModuleIds =
     search.modules.length > 0 ? collectSubtreeModuleIds(moduleNodes, search.modules) : null;
+  const searched = search.q.trim() ? filterItems(rows, search.q, debugParameterLibrarySearchProfile) : rows;
 
-  return rows.filter((row) => {
-    if (search.q) {
-      const needle = search.q.toLowerCase();
-      const haystack = `${row.name} ${row.key} ${row.module} ${row.description ?? ""}`.toLowerCase();
-      if (!haystack.includes(needle)) {
-        return false;
-      }
-    }
-
+  return searched.filter((row) => {
     if (search.risk !== "all" && riskToFilter[row.risk] !== search.risk) {
       return false;
     }

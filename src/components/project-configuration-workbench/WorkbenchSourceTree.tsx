@@ -1,5 +1,6 @@
 import type { RefObject } from "react";
-import { ChevronLeft, ChevronRight, FileCode2, Search } from "lucide-react";
+import { ChevronLeft, ChevronRight, FileCode2 } from "lucide-react";
+import { SearchField } from "@/components/common/SearchField";
 
 import type {
   ConfigSetRole,
@@ -151,17 +152,16 @@ export function WorkbenchSourceTree({
           onSearchSubmit();
         }}
       >
-        <input
+        <SearchField
           ref={searchInputRef}
-          type="search"
           value={searchDraft}
-          onChange={(event) => onSearchDraftChange(event.target.value)}
+          onValueChange={onSearchDraftChange}
           placeholder="文件名 / 路径 / 属性…"
-          aria-label="统一搜索查询"
+          ariaLabel="统一搜索查询"
+          loading={searchLoading}
         />
         <div className="configuration-workbench__search-actions">
           <button className="button subtle" type="submit" disabled={searchLoading}>
-            <Search size={14} aria-hidden="true" />
             {searchLoading ? "搜索中…" : "搜索"}
           </button>
         </div>
