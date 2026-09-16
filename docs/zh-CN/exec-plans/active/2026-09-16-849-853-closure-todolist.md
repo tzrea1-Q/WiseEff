@@ -2,7 +2,7 @@
 
 > English: [English](../../../exec-plans/active/2026-09-16-849-853-closure-todolist.md)
 
-状态：执行中；用户于 2026-09-16 确认 P0 并授权 T0.6。本执行顺序中的 T1.1 及后续工作尚未开始。
+状态：T0.6 本地交付完成，等待用户确认；未开 PR／合并。T1.1 及后续工作尚未开始。
 基线：2026-09-16 实时核验的 `origin/main@4010a600fbc6108ce84860d053eb6d88d7d484cc`。
 规格：[#849](https://github.com/tzrea1-Q/WiseEff/issues/849)。唯一执行状态：[#853](https://github.com/tzrea1-Q/WiseEff/issues/853)。本文件细化执行顺序和验收条件；每项交付后同步 Issue 及中英版本。
 
@@ -21,7 +21,7 @@ T0.1–T0.5 已分别通过 #869、#870、#872、#876、#875 交付，另有 mai
 每个未勾选条目都是一个确认节点。先检查并复用已有实现，再补缺口。条目内包含实施、相关测试、必要独立评审和证据记录。本地候选完成后仍须如实记录其 PR／Hosted／合并状态。
 
 - [x] **P0 — 创建完整清单并记录单 PC 修订。** 建立中英清单，将用户修订同步到 #849/#853，并链接已有计划；执行文档和 diff 检查，提交本准备项供用户确认。不据此关闭 T0.6。
-- [ ] **T0.6 — 当前文档与验收定义对账。** 按最新 main 和合并 PR 核对三份 active 文档，解决 B1/B4/B5、源文件、归档、S2、Hosted 的矛盾叙述，保留带日期的历史证据。把本项目的视口循环、需求／操作 ID 和中英覆盖地图同步为单 PC；执行受影响检查、`docs:check`、`git diff --check`。后续 schema 工作前重新核对 migration/ADR/TD 编号（0150 已存在）。后续 todo 继续遵守文档同步门禁。
+- [x] **T0.6 — 当前文档与验收定义对账。** 按最新 main 和合并 PR 核对三份 active 文档，解决 B1/B4/B5、源文件、归档、S2、Hosted 的矛盾叙述，保留带日期的历史证据。把本项目的视口循环、需求／操作 ID 和中英覆盖地图同步为单 PC；执行受影响检查、`docs:check`、`git diff --check`。后续 schema 工作前重新核对 migration/ADR/TD 编号（0150 已存在）。后续 todo 继续遵守文档同步门禁。
 - [ ] **T1.1 — B1 来源身份与 DTS/JSON 完整流程。** schema 实施前完成威胁矩阵与独立 Spec 评审。按已决方案增加 source-occurrence identity，DTS 原位回填且不改变既有 Binding ID，覆盖 observations/matches、`resolve_current_binding()`、`protect_binding_identity()`，证明过渡读取等值后切换。版本 pin 保持属于 ProjectValue；校准 SQL/ACL 与触发器顺序，在完整矩阵通过前保留 `logical_node_id`；JSON ingest 归属 `parameter-files`，DTS ingest 归属 `parameter-topology`。验证 instance/config-set/file 隔离及精确 JSON Pointer/DTS locator，通过真实鉴权、专用 PostgreSQL 和源存储走完 import preview → candidate → 真实草稿 → 提交／审批／生效 → 源重解析 → 导出／重导入。重复／歧义键、不支持语法、缺失／过期定位、危险写回均被拒绝；保留标量、精度、数组／cells、字面点号／斜线键、重复节点及无关源内容。序列化变化可审阅，延期格式继续明确拒绝。
 - [ ] **T1.2 — B4 capability v4 与 charging_core 主体。** 能力实施前完成 R3 威胁矩阵与独立 Spec 评审。 支持递归／嵌套数组、mixed item schema、数组 description 和元数据声明的 min/max 基数，限定深度／容器容量并对未知关键词 fail-closed；发布受审 NodeType 主体。v1/v2/v3 历史含义不变，v3 consumer 在写入前拒绝 v4。不从示例／观测行数推导约束，不扁平化 cell matrix。通过编译器、准入、运行时、历史发布及真实 PostgreSQL 检查和独立评审。
 - [ ] **T1.3 — 完整 successor、真实源与 B2 物化。** 逐输入记录 source digest、精确 locator、旧／正式身份、preserve/transform/merge/exclude 处置及 predecessor lineage；结构项／歧义夹具显式排除，当前范围字段／身份未解决或存在不明遗漏时阻止发布，TD-124 不产生活动绑定／值。对齐全部 125 项输入：113 厂商＋4 个本轮 DTS/JSON＋8 个 TD-124 延期项；保留语义字段、来源以及各项目初始／推荐值。每个板级业务出现都对应受审真实声明，用实测身份解释历史悬空目标计数差异。证明 `buildCompleteSuccessor` 携带 ConfigurationSchema，退役 acme 主体／别名／定义的新选择入口，保留身份、历史发布及回执。取得受审 `csub_drv_sc8562` Driver placement 容量，缺容量时 B6 继续 fail-closed。项目归属缺失／歧义时阻止目标计划，沿用真实审阅／授权、初始化锁和单一 in-flight 约束，不用直接 SQL 或伪造批准初始化；执行前后捕获非参数身份／字段／关系／共享对象 checksum 的精确快照。经真实 publisher/installer 和初始化模块证明 Atlas/Aurora/Nebula **各 124、合计 372 的精确 Binding identity set**；验证确定性、顺序无关、无不明遗漏、完成重放无操作、普通启动／升级／发布不重置用户值，自定义项目／非参数数据保持完整。本地初始化不算目标执行。
@@ -81,6 +81,8 @@ T0.6 执行记录：分支 `codex/849-853-t06-alignment`，沿用同一隔离工
 | 最终证据 | 对账所有状态，实际完成后才归档计划 | T3.5 |
 
 ## 文档更新门禁
+
+T0.6 独立 R1 复核：`t06_status_audit` 评审 `30452f5a9` 相对 `aa258f289`，未发现业务／键盘／API／数据库／审计断言被误删；唯一 P2 是页面几何证据描述过宽，已在 `7903fee8a` 按建议收窄六处中英文描述，主智能体逐行核对关闭。代码／测试候选由 `2a4887178` 与后续两次描述修正组成。继承的 coverage 缺口、未实跑边界不变。本地完成不等于已合入 main；下一项需用户另行确认。
 
 T0.6 有界检查（2026-09-16）：覆盖／操作矩阵检查器的 `test:scripts` 为 35/35 通过；typecheck 与 build 通过（保留浏览器 externalization／chunk-size 警告）。Playwright `--list --reporter=list` 收集 13 个专项文件的 74 个用例，加 1 个 runtime-warmup（合计 75），没有执行用例。基线与候选对比确认这 13 个文件全部 acceptance／operation marker 未变，均声明文件级 1440x900 默认视口。操作矩阵检查通过；文档治理与 diff 检查通过，pgvector schema 子检查跳过。完整 `acceptance:coverage` 未通过：仅收集的报告含未执行用例，且未修改 main 与本候选的静态对比均存在相同两个孤立映射 ID（`PROJ-REVIEW-READINESS-001`、`PROJ-REVIEW-ROLES-001`）。不得删行或称为运行时覆盖通过；T3.2 须处理该继承缺口。本项未产生浏览器／API／数据库实跑、最终 Hosted 或目标证据。最终独立 R1 评审记录于 #853 完成回执。
 
