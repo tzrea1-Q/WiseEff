@@ -95,7 +95,7 @@ describe("knowledge entry editor reference picker", () => {
     // Existing references render as removable chips inside the picker.
     expect(within(picker).getByText("SC8562 GPIO interrupt · sc8562")).toBeInTheDocument();
 
-    await user.type(within(picker).getByRole("textbox", { name: "检索参数定义" }), "gpio");
+    await user.type(within(picker).getByRole("searchbox", { name: "检索参数定义" }), "gpio");
     await user.click(within(picker).getByRole("button", { name: /检索定义/ }));
     expect(searchParameterSpecs).toHaveBeenCalledWith("gpio");
 
@@ -122,7 +122,7 @@ describe("knowledge entry editor reference picker", () => {
     await user.click(screen.getByRole("button", { name: /新建条目/ }));
     const picker = await screen.findByTestId("knowledge-reference-picker");
     expect(within(picker).getByText("先创建草稿,再关联参数定义。")).toBeInTheDocument();
-    expect(within(picker).queryByRole("textbox", { name: "检索参数定义" })).not.toBeInTheDocument();
+    expect(within(picker).queryByRole("searchbox", { name: "检索参数定义" })).not.toBeInTheDocument();
   });
 
   it("hides the reference picker entirely without parameter:view (no search source)", async () => {
