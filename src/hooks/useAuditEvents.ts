@@ -4,6 +4,8 @@ import { mapApiAuditEventToView, mapMockAuditEventToView } from "@/domain/audit/
 import type { AuditEventView, ListAuditEventsParams } from "@/domain/audit/types";
 import { createAuditClient } from "@/infrastructure/http/auditClient";
 import type { AuditEvent, RiskLevel } from "@/domain/prototype/types";
+import { matchesProfile } from "@/lib/search";
+import { auditEventSearchProfile } from "@/lib/search/profiles";
 
 const EXPORT_MAX_ROWS = 2000;
 
@@ -60,10 +62,7 @@ function filterViews(events: AuditEventView[], query: AuditQueryState, mode: "ap
     if (mode === "api" || !normalizedSearch) {
       return true;
     }
-    const haystack = [event.action, event.actor, event.kind, event.app, event.targetId ?? "", event.traceId ?? ""]
-      .join(" ")
-      .toLowerCase();
-    return haystack.includes(normalizedSearch);
+    return matchesProfile(event, query.search, auditEventSearchProfile);
   });
 }
 

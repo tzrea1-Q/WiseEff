@@ -7,6 +7,7 @@ import type { AuditQueryState } from "@/hooks/useAuditEvents";
 import { useAuditEvents, useAuditTraceEvents } from "@/hooks/useAuditEvents";
 import type { AuditEvent } from "@/domain/prototype/types";
 import { cn } from "@/lib/utils";
+import { SearchField } from "@/components/common/SearchField";
 
 export type AuditWorkspaceProps = {
   mockEvents: AuditEvent[];
@@ -96,19 +97,18 @@ export function AuditWorkspace({
     <section className="audit-center-page" aria-label="组织审计中心">
       <div className="audit-workspace-toolbar">
         <div className="audit-workspace-filter-row">
-          <input
+          <SearchField
             className="audit-workspace-search"
-            type="search"
             placeholder="搜索操作、操作人或类型"
             value={localSearch}
-            onChange={(event) => setLocalSearch(event.target.value)}
+            onValueChange={setLocalSearch}
             onBlur={commitSearch}
             onKeyDown={(event) => {
               if (event.key === "Enter") {
                 commitSearch();
               }
             }}
-            aria-label="搜索审计记录"
+            ariaLabel="搜索审计记录"
           />
           <label className="audit-workspace-select-wrap">
             <span>模块</span>

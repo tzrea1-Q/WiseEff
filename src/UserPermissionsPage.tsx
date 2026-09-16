@@ -4,6 +4,9 @@ import { UserPlus } from "lucide-react";
 import { canPerform } from "@/app/permissions";
 import type { AppAction } from "@/application/state/appState";
 import { ConfirmDialog } from "@/components/common/ConfirmDialog";
+import { SearchField } from "@/components/common/SearchField";
+import { filterItems } from "@/lib/search";
+import { userAccountSearchProfile } from "@/lib/search/profiles";
 import { DataTable, type Column } from "@/components/admin";
 import { ModalDialog } from "@/components/common/ModalDialog";
 import { SectionError, SectionSkeleton } from "@/components/common/SectionState";
@@ -297,13 +300,10 @@ export function UserPermissionsPage({
   const approvalWorkflowEnabled = Boolean(userGovernanceActions?.listRegistrationRoleRequests);
   const pendingApprovalCount = registrationRoleRequests.length;
 
-  const normalizedQuery = query.trim().toLowerCase();
   const filteredUsers = useMemo(
-    () =>
-      state.users.filter((user) => {
-        const matchesQuery =
-          normalizedQuery.length === 0 ||
-          [user.name, user.email, user.username, user.title].some((value) => (value ?? "").toLowerCase().includes(normalizedQuery));
+    () => {
+      const searched = filterItems(state.users, query, userAccountSearchProfile);
+      return searched.filter((user) => {
         const normalizedRoleId = migrateLegacyRoleId(user.roleId);
         const matchesRole = roleFilter === "all" || normalizedRoleId === roleFilter;
         const matchesStatus =
@@ -313,9 +313,10 @@ export function UserPermissionsPage({
           return selectedValues.length === 0 || selectedValues.includes(userColumnFilterValue(user, key));
         });
 
-        return matchesQuery && matchesRole && matchesStatus && matchesColumnFilters;
-      }),
-    [columnFilters, normalizedQuery, roleFilter, state.users, statusFilter]
+        return matchesRole && matchesStatus && matchesColumnFilters;
+      });
+    },
+    [columnFilters, query, roleFilter, state.users, statusFilter]
   );
 
   function toggleColumnFilter(key: UserColumnFilterKey, value: string) {
@@ -796,7 +797,7 @@ export function UserPermissionsPage({
           <div className="user-permissions-filters" role="search" aria-label="用户筛选">
             <label className="user-permissions-filter-field user-permissions-filter-field--search">
               <span className="user-permissions-filter-label">搜索</span>
-              <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="搜索用户" />
+              <SearchField value={query} onValueChange={setQuery} placeholder="搜索用户" ariaLabel="搜索用户" />
             </label>
             <label className="user-permissions-filter-field">
               <span className="user-permissions-filter-label">角色</span>

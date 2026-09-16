@@ -1,4 +1,4 @@
-import { Eye, Pencil, RotateCcw, RotateCw, Search, Send } from "lucide-react";
+import { Eye, Pencil, RotateCcw, RotateCw, Send } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { canPerform } from "@/app/permissions";
 import { migrateLegacyRoleId } from "@/domain/users/types";
@@ -8,7 +8,10 @@ import { HorizontalDragScroll } from "@/components/HorizontalDragScroll";
 import { ColumnFilter } from "./components/ColumnFilter";
 import { ConfirmDialog } from "./components/common/ConfirmDialog";
 import { ModuleTreeSelect } from "./components/common/ModuleTreeSelect";
+import { SearchField } from "./components/common/SearchField";
 import { SectionError, SectionSkeleton } from "./components/common/SectionState";
+import { createSearchIndex } from "@/lib/search";
+import { debugParameterSearchProfile } from "@/lib/search/profiles";
 import { LocalDeviceBridgePanel } from "./components/LocalDeviceBridgePanel";
 import { NodeOperationHistoryPanel } from "./components/NodeOperationHistoryPanel";
 import { RollbackConfirmDialog } from "./components/RollbackConfirmDialog";
@@ -367,7 +370,6 @@ export function NodeDebuggingPage({
   const [moduleFilters, setModuleFilters] = useState<string[]>([]);
   const [selectedModuleNodeId, setSelectedModuleNodeId] = useState<string | null>(null);
   const selectAllRef = useRef<HTMLInputElement>(null);
-  const normalizedQuery = searchQuery.trim().toLowerCase();
 
   useEffect(() => {
     session.syncParameters(state.debugParameters);
@@ -430,16 +432,11 @@ export function NodeDebuggingPage({
     return filterDebugNodesByModuleTree(navigatedRows, moduleNodes, activeModuleFilters);
   }, [activeModuleFilters, moduleNodes, navigatedRows]);
   const visibleRows = useMemo(() => {
-    return moduleScopedRows.filter((row) => {
-      const matchesSearch =
-        !normalizedQuery ||
-        row.name.toLowerCase().includes(normalizedQuery) ||
-        row.key.toLowerCase().includes(normalizedQuery) ||
-        row.description.toLowerCase().includes(normalizedQuery);
-      const matchesStatus = statusFilters.length === 0 || statusFilters.includes(row.runtimeStatus);
-      return matchesSearch && matchesStatus;
-    });
-  }, [moduleScopedRows, normalizedQuery, statusFilters]);
+    const searched = createSearchIndex(moduleScopedRows, debugParameterSearchProfile).search(searchQuery);
+    return searched
+      .map((hit) => hit.item)
+      .filter((row) => statusFilters.length === 0 || statusFilters.includes(row.runtimeStatus));
+  }, [moduleScopedRows, searchQuery, statusFilters]);
 
   const statusOptions = useMemo(
     () => Array.from(new Set(rows.map((row) => row.runtimeStatus))).map((status) => ({ value: status, label: status })),
@@ -582,16 +579,12 @@ export function NodeDebuggingPage({
               <div className="node-debugging-module-results">
           <section className="parameters-table parameters-table--column-filters" aria-label="节点调试参数">
             <div className="parameters-table-toolbar">
-              <label className="parameters-table-search">
-                <Search size={16} aria-hidden="true" />
-                <input
-                  type="search"
-                  placeholder="按名称 / Key 搜索"
-                  aria-label="按名称 / Key 搜索"
-                  value={searchQuery}
-                  onChange={(event) => setSearchQuery(event.target.value)}
-                />
-              </label>
+              <SearchField
+                value={searchQuery}
+                onValueChange={setSearchQuery}
+                placeholder="搜索名称、Key、描述、模块或路径"
+                ariaLabel="搜索名称、Key、描述、模块或路径"
+              />
               <span className="parameters-table-count">显示 {visibleRows.length} / {navigatedRows.length} 个参数</span>
               <div className="node-debugging-mobile-filters">
                 {renderModuleFilter("模块筛选")}

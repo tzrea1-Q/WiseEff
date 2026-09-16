@@ -1493,7 +1493,7 @@ describe("/node-debugging", () => {
 
     await screen.findByText(mockStoryConnectedLabel);
 
-    expect(screen.getByRole("searchbox", { name: "按名称 / Key 搜索" })).toBeInTheDocument();
+    expect(screen.getByRole("searchbox", { name: "搜索名称、Key、描述、模块或路径" })).toBeInTheDocument();
     expect(document.querySelector(".parameters-table-filters")).not.toBeInTheDocument();
 
     expect(screen.queryByRole("button", { name: "筛选访问模式" })).not.toBeInTheDocument();
@@ -1978,7 +1978,7 @@ describe("/node-debugging", () => {
     renderNodeDebuggingPage({ state: userState });
     await screen.findByText("未连接 HDC 设备");
 
-    fireEvent.change(screen.getByLabelText("按名称 / Key 搜索"), { target: { value: "不存在的节点xyz" } });
+    fireEvent.change(screen.getByLabelText("搜索名称、Key、描述、模块或路径"), { target: { value: "不存在的节点xyz" } });
     expect(screen.getByText("没有符合筛选条件的节点")).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "清除筛选条件" }));

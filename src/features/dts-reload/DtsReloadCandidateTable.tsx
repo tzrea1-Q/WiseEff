@@ -1,4 +1,5 @@
-import { Pencil, Search } from "lucide-react";
+import { Pencil } from "lucide-react";
+import { SearchField } from "@/components/common/SearchField";
 
 import { DataTable, type Column } from "@/components/admin/DataTable";
 import { ColumnFilter } from "@/components/ColumnFilter";
@@ -139,16 +140,12 @@ export function DtsReloadCandidateTable({
         emptyState={loading ? <p className="text-sm text-muted-foreground">加载中…</p> : undefined}
         toolbar={
           <div className="parameters-table-toolbar dts-reload-candidates-toolbar">
-            <label className="parameters-table-search">
-              <Search size={16} aria-hidden="true" />
-              <input
-                type="search"
-                aria-label="按名称搜索参数"
-                value={nameQuery}
-                onChange={(event) => onNameQueryChange(event.target.value)}
-                placeholder="参数名"
-              />
-            </label>
+            <SearchField
+              value={nameQuery}
+              onValueChange={onNameQueryChange}
+              placeholder="搜索参数名、描述、模块或路径"
+              ariaLabel="按名称搜索参数"
+            />
             <span className="parameters-table-count">
               显示 {listedCount} / {totalCount} 项
             </span>

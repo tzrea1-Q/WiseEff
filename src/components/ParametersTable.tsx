@@ -1,10 +1,13 @@
-import { Eye, Pencil, Search } from "lucide-react";
+import { Eye, Pencil } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import type { ParameterRecord } from "@/domain/parameters/types";
 import type { TreeFilterNode } from "@/domain/tree-filter/treeFilter";
 import { getParameterValueSummary, shouldSummarizeComplexParameter } from "@/parameterValueKind";
 import { HorizontalDragScroll } from "@/components/HorizontalDragScroll";
+import { SearchField } from "@/components/common/SearchField";
+import { createSearchIndex, formatMatchHint } from "@/lib/search";
+import { parameterRecordSearchProfile } from "@/lib/search/profiles";
 import { ColumnFilter } from "./ColumnFilter";
 import { toggleFilterValue, uniqueFilterValues, type HeaderFilterState } from "./tableFilterUtils";
 
@@ -113,13 +116,7 @@ function getColumnFilterValue(row: ParameterRecord, key: SortKey) {
   return String(row[key]);
 }
 
-function matchesQuery(row: ParameterRecord, query: string) {
-  if (!query) {
-    return true;
-  }
 
-  return [row.name, row.description, row.module, formatParameterSource(row)].some((value) => value.toLowerCase().includes(query));
-}
 
 function getValueDiffMagnitude(row: ParameterRecord) {
   const current = Number.parseFloat(row.currentValue);
@@ -234,11 +231,24 @@ export function ParametersTable({
   const controlledSearch = searchQuery !== undefined;
   const [internalSearchQuery, setInternalSearchQuery] = useState("");
   const activeSearchQuery = controlledSearch ? searchQuery : internalSearchQuery;
-  const normalizedQuery = activeSearchQuery.trim().toLowerCase();
+  const searchIndex = useMemo(() => createSearchIndex(rows, parameterRecordSearchProfile), [rows]);
   const filteredRows = useMemo(
-    () => (controlledSearch ? rows : rows.filter((row) => matchesQuery(row, normalizedQuery))),
-    [controlledSearch, normalizedQuery, rows]
+    () => (controlledSearch ? rows : searchIndex.search(activeSearchQuery).map((hit) => hit.item)),
+    [activeSearchQuery, controlledSearch, rows, searchIndex]
   );
+  const matchHintById = useMemo(() => {
+    if (!activeSearchQuery.trim()) {
+      return new Map<string, string>();
+    }
+    const hints = new Map<string, string>();
+    for (const hit of searchIndex.search(activeSearchQuery)) {
+      const hint = formatMatchHint(hit.matchedFields, ["name", "description", "module"]);
+      if (hint) {
+        hints.set(hit.item.id, hint);
+      }
+    }
+    return hints;
+  }, [activeSearchQuery, searchIndex]);
   const columnFilteredRows = useMemo(
     () =>
       filteredRows.filter((row) =>
@@ -379,16 +389,12 @@ export function ParametersTable({
 
       {showToolbar ? (
         <div className="parameters-table-toolbar">
-          <label className="parameters-table-search">
-            <Search size={16} aria-hidden="true" />
-            <input
-              type="search"
-              placeholder="按名称 / 描述 / 模块搜索"
-              aria-label="按名称 / 描述 / 模块搜索"
-              value={activeSearchQuery}
-              onChange={(event) => handleSearchChange(event.target.value)}
-            />
-          </label>
+          <SearchField
+            value={activeSearchQuery}
+            onValueChange={handleSearchChange}
+            placeholder="搜索参数名、描述、模块或路径"
+            ariaLabel="搜索参数名、描述、模块或路径"
+          />
           {filters ? <div className="parameters-table-filters">{filters}</div> : null}
           <span className="parameters-table-count">显示 {visibleRows.length} / {rowCountTotal} 个参数</span>
         </div>
@@ -465,6 +471,7 @@ export function ParametersTable({
                 <td data-label="参数名称">
                   <strong>{row.name}</strong>
                   <small>{row.description}</small>
+                  {matchHintById.get(row.id) ? <small>{matchHintById.get(row.id)}</small> : null}
                   {isStashed ? <span className="stash-badge">已暂存</span> : null}
                 </td>
                 <td data-label="模块">

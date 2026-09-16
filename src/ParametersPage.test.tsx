@@ -928,7 +928,7 @@ describe("ParametersPage draft edge cases", () => {
     const searchTable = screen.getByRole("region", { name: "检索参数表" });
     const toolbar = searchTable.querySelector(".parameters-table-toolbar");
     expect(toolbar).not.toBeNull();
-    expect(within(toolbar as HTMLElement).getByRole("searchbox", { name: "按名称 / 描述 / 模块搜索" })).toBeInTheDocument();
+    expect(within(toolbar as HTMLElement).getByRole("searchbox", { name: "搜索参数名、描述、模块或路径" })).toBeInTheDocument();
     expect(within(toolbar as HTMLElement).getByRole("button", { name: /^模块/ })).toBeInTheDocument();
     expect(within(toolbar as HTMLElement).queryByRole("button", { name: /重要性/ })).not.toBeInTheDocument();
 

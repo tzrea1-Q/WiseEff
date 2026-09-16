@@ -6,6 +6,7 @@
 
 ## 使用方式
 
+- [统一 SearchField 与模糊搜索](exec-plans/active/2026-09-16-unified-fuzzy-search.md)：单一 SearchField 原语、仓库自研多字段模糊内核、明确的 Search Profile，并迁移全部搜索输入；不得替换服务端检索或原文查找引擎。
 - [本地 Device Bridge 多账号重新绑定](exec-plans/active/2026-09-16-bridge-multi-account-repair.md)：保持 `/device-bridges/mine` 的用户 + 组织隔离，用新配对码把同一台机器重新绑定到当前账号，重建 Bridge 0.1.1 制品，并停止把“本机属于其他账号”写成令牌过期。
 - [项目审核角色治理正式方案](exec-plans/active/2026-09-15-project-review-role-governance.md)：按项目配置审核角色、安全修改组织角色及完整参数审核流程；P1–P3 已完成，P4 验收与交付进行中。
 - [参数流程统一与种子数据对齐](exec-plans/active/2026-09-14-parameter-unification-and-seed-parity.md)：[规格 #849](https://github.com/tzrea1-Q/WiseEff/issues/849) 已发布并标记 `ready-for-agent`；D01–D10、S1／S2 已确认，并按 2026-09-15 修正缩小到 DTS／JSON。PU-00 至 PU-08 覆盖完整示例 DTS 基底、两格式完整流程／消费者、配置模型、113 个厂商输入与 4 项兼容种子，以及受控离线归档。YAML／TOML／ENV 项目源和 8 项兼容种子延期到 [TD-124](exec-plans/tech-debt-tracker.md)，厂商 YAML 定义元数据继续支持；实现尚未开始。

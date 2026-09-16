@@ -1,4 +1,5 @@
 import { ChevronDown, ChevronRight } from "lucide-react";
+import { SearchField } from "@/components/common/SearchField";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import {
@@ -401,24 +402,21 @@ export function TreeFilterOptions({
   return (
     <div className={`${classNamePrefix}-tree-options tree-filter-options`}>
       {searchable ? (
-        <label className={`${classNamePrefix}-tree-search tree-filter-search`}>
-          <span className="sr-only">{searchPlaceholder}</span>
-          <input
-            ref={searchInputRef}
-            type="search"
-            aria-label={searchPlaceholder}
-            value={query}
-            placeholder={searchPlaceholder}
-            onChange={(event) => setQuery(event.target.value)}
-            onKeyDown={(event) => {
-              if (event.key === "ArrowDown") {
-                event.preventDefault();
-                const firstId = visibleIds[0];
-                if (firstId) focusNode(firstId);
-              }
-            }}
-          />
-        </label>
+        <SearchField
+          ref={searchInputRef}
+          className={`${classNamePrefix}-tree-search tree-filter-search`}
+          value={query}
+          onValueChange={setQuery}
+          placeholder={searchPlaceholder}
+          ariaLabel={searchPlaceholder}
+          onKeyDown={(event) => {
+            if (event.key === "ArrowDown") {
+              event.preventDefault();
+              const firstId = visibleIds[0];
+              if (firstId) focusNode(firstId);
+            }
+          }}
+        />
       ) : null}
       <div
         className={`${classNamePrefix}-tree-list tree-filter-list`}

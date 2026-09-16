@@ -1,3 +1,5 @@
+import { matchesProfile } from "@/lib/search/filter";
+
 export type TreeFilterNode = {
   id: string;
   label: string;
@@ -105,12 +107,20 @@ export function filterTreeFilterTree(
   tree: readonly TreeFilterTreeNode[],
   query: string
 ): TreeFilterTreeNode[] {
-  const normalized = query.trim().toLocaleLowerCase();
-  if (!normalized) return tree.map((node) => ({ ...node, children: [...node.children] }));
+  if (!query.trim()) return tree.map((node) => ({ ...node, children: [...node.children] }));
 
   const visit = (node: TreeFilterTreeNode): TreeFilterTreeNode | null => {
     const children = node.children.map(visit).filter((item): item is TreeFilterTreeNode => item !== null);
-    const matches = `${node.label} ${treeFilterNodePath(node)}`.toLocaleLowerCase().includes(normalized);
+    const matches = matchesProfile(
+      node,
+      query,
+      {
+        fields: [
+          { name: "name", weight: 5, getValues: (item) => [item.label] },
+          { name: "path", weight: 2, getValues: (item) => [treeFilterNodePath(item)] }
+        ]
+      }
+    );
     return matches || children.length > 0 ? { ...node, children } : null;
   };
 

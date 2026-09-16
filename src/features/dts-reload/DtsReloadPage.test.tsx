@@ -974,6 +974,7 @@ describe("DtsReloadPage", () => {
             bindingId: "binding-2",
             propertyKey: "compatible",
             displayName: "Compatible",
+            description: "UART compatible string.",
             module: "uart",
             nodePath: "/amba/uart@2",
             baselineValue: '"sc8562"',

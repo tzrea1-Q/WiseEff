@@ -1,4 +1,4 @@
-import { Search } from "lucide-react";
+import { SearchField } from "@/components/common/SearchField";
 import { useState } from "react";
 import { DataTable, type DataTableSort } from "@/components/admin/DataTable";
 import { LibraryRiskFilter } from "@/components/admin/LibraryRiskFilter";
@@ -155,17 +155,13 @@ export function DebugParameterLibraryTable({
         }
         toolbar={
           <div className="parameters-table-toolbar">
-            <label className="parameters-table-search">
-              <Search size={16} aria-hidden="true" />
-              <input
-                aria-label="搜索可调参数"
-                type="search"
-                value={search.q}
-                onChange={(event) => onUpdateSearch({ q: event.target.value })}
-                placeholder="搜索参数、Key、模块或说明"
-                disabled={loading}
-              />
-            </label>
+            <SearchField
+              value={search.q}
+              onValueChange={(value) => onUpdateSearch({ q: value })}
+              placeholder="搜索参数、Key、模块或说明"
+              ariaLabel="搜索可调参数"
+              disabled={loading}
+            />
             <div className="parameters-table-filters param-admin-library-filters">
               <LibraryRiskFilter
                 value={search.risk}

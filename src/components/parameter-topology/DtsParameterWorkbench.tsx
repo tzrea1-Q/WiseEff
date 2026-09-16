@@ -2,9 +2,11 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } fro
 import {
   Download,
   Network,
-  Search,
   Boxes
 } from "lucide-react";
+import { SearchField } from "@/components/common/SearchField";
+import { filterItems } from "@/lib/search";
+import { dtsWorkbenchRowSearchProfile } from "@/lib/search/profiles";
 
 import { useHorizontalDragScroll } from "@/hooks/useHorizontalDragScroll";
 import { presentError } from "@/infrastructure/http/presentError";
@@ -313,13 +315,15 @@ export function DtsParameterWorkbench({
     if (moduleFocusLine !== null) return null;
     return "当前模块暂无源码行定位";
   }, [moduleFocusLine, resultsMode, subtreeBindingIds]);
-  const normalizedQuery = query.trim().toLocaleLowerCase();
   const scopedRows = useMemo(
-    () => currentRows.filter((row) => {
-      if (normalizedQuery && !row.searchText.includes(normalizedQuery)) return false;
-      return subtreeBindingIds === null || subtreeBindingIds.has(row.bindingId);
-    }),
-    [currentRows, normalizedQuery, subtreeBindingIds]
+    () => {
+      const searched =
+        resultsMode === "dtsSource"
+          ? currentRows
+          : filterItems(currentRows, query, dtsWorkbenchRowSearchProfile);
+      return searched.filter((row) => subtreeBindingIds === null || subtreeBindingIds.has(row.bindingId));
+    },
+    [currentRows, query, resultsMode, subtreeBindingIds]
   );
   const moduleFilterNodes = useMemo(
     () =>
@@ -593,16 +597,12 @@ export function DtsParameterWorkbench({
       {/* The shell TopBar owns the page title; the workbench starts at the toolbar. */}
       <div className="dts-parameter-workbench__toolbar">
         <label className="dts-parameter-workbench__search">
-          <span>
-            <Search size={14} strokeWidth={2} aria-hidden="true" />
-            {resultsMode === "dtsSource" ? "查找源码" : "搜索参数"}
-          </span>
-          <input
-            type="search"
-            aria-label={resultsMode === "dtsSource" ? "在 DTS 源码中查找" : "搜索 DTS 参数"}
+          <span>{resultsMode === "dtsSource" ? "查找源码" : "搜索参数"}</span>
+          <SearchField
             value={query}
+            onValueChange={setQuery}
+            ariaLabel={resultsMode === "dtsSource" ? "在 DTS 源码中查找" : "搜索 DTS 参数"}
             placeholder={resultsMode === "dtsSource" ? "在 DTS 文本中查找" : "参数名、模块、器件、路径或值"}
-            onChange={(event) => setQuery(event.target.value)}
             onKeyDown={(event) => {
               if (resultsMode === "dtsSource" && event.key === "Enter") {
                 event.preventDefault();

@@ -448,7 +448,7 @@
   padding: 0.45rem 0.65rem;
   border-bottom: 1px solid color-mix(in srgb, var(--border) 80%, transparent);
 }
-.configuration-workbench__search > input[type="search"] {
+.configuration-workbench__search > .search-field {
   width: 100%;
   min-width: 0;
 }

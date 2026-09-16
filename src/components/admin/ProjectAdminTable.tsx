@@ -1,6 +1,9 @@
-import { Pencil, Search, Trash2 } from "lucide-react";
+import { Pencil, Trash2 } from "lucide-react";
 import { useMemo } from "react";
 import { ColumnFilter } from "@/components/ColumnFilter";
+import { SearchField } from "@/components/common/SearchField";
+import { filterItems } from "@/lib/search";
+import { projectAdminSearchProfile } from "@/lib/search/profiles";
 import type { ParamAdminProjectsSearch } from "@/hooks/useParamAdminProjectsSearch";
 import type { ParameterAdminProjectRow } from "@/parameterAdminProjects";
 import { DataTable, type Column, type DataTableSort } from "./DataTable";
@@ -63,21 +66,14 @@ export function ProjectAdminTable({
   primaryActionLabel = "管理文件"
 }: ProjectAdminTableProps) {
   const selectedStatuses = search.statuses ?? [];
-  const query = search.q.trim().toLowerCase();
   const filteredRows = useMemo(
-    () =>
-      rows.filter((row) => {
-        const matchesQuery =
-          !query ||
-          row.name.toLowerCase().includes(query) ||
-          row.code.toLowerCase().includes(query) ||
-          row.id.toLowerCase().includes(query);
-        const matchesStatus = selectedStatuses.length === 0 || selectedStatuses.includes(row.status);
-        return matchesQuery && matchesStatus;
-      }),
-    [query, rows, selectedStatuses]
+    () => {
+      const searched = filterItems(rows, search.q, projectAdminSearchProfile);
+      return searched.filter((row) => selectedStatuses.length === 0 || selectedStatuses.includes(row.status));
+    },
+    [rows, search.q, selectedStatuses]
   );
-  const filtersActive = query.length > 0 || selectedStatuses.length > 0;
+  const filtersActive = search.q.trim().length > 0 || selectedStatuses.length > 0;
   const tableSort = tableSortFromSearch(search.sort);
   const statusValues = STATUS_FILTER_OPTIONS.map((option) => option.value);
   const statusLabelByValue = Object.fromEntries(
@@ -205,16 +201,12 @@ export function ProjectAdminTable({
         onRowClick={(row) => onManageFiles(row.id)}
         toolbar={
           <div className="parameters-table-toolbar">
-            <label className="parameters-table-search">
-              <Search size={16} aria-hidden="true" />
-              <input
-                aria-label="搜索项目"
-                type="search"
-                value={search.q}
-                placeholder="搜索项目名称、代号或 ID"
-                onChange={(event) => onUpdateSearch({ q: event.target.value })}
-              />
-            </label>
+            <SearchField
+              value={search.q}
+              onValueChange={(value) => onUpdateSearch({ q: value })}
+              placeholder="搜索项目名称、代号或 ID"
+              ariaLabel="搜索项目"
+            />
             <div className="parameters-table-filters param-admin-library-filters">
               {filtersActive ? (
                 <button

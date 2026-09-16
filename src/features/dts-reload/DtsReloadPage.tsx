@@ -38,6 +38,8 @@ import {
   buildReloadModuleTree,
   collectSubtreeBindingIds
 } from "@/application/parameters/buildReloadModuleTree";
+import { filterItems } from "@/lib/search";
+import { dtsReloadCandidateSearchProfile } from "@/lib/search/profiles";
 import { buildParameterModuleFilterNodes } from "@/application/parameters/buildModuleFilterNodes";
 import type { ParameterModuleRegistryRepository } from "@/application/ports/ParameterModuleRegistryRepository";
 import { resolveParameterModuleRegistryRepository } from "@/application/parameters/parameterModuleRegistryResolve";
@@ -278,13 +280,11 @@ export function DtsReloadPage({
   );
 
   const scopedCandidates = useMemo(() => {
-    const normalizedQuery = nameQuery.trim().toLocaleLowerCase();
-    return handoffFilteredCandidates.filter((candidate) => {
+    const scoped = handoffFilteredCandidates.filter((candidate) => {
       if (selectedModuleBindingIds && !selectedModuleBindingIds.has(candidate.bindingId)) return false;
-      if (!normalizedQuery) return true;
-      const haystack = [candidate.displayName, candidate.propertyKey].join(" ").toLocaleLowerCase();
-      return haystack.includes(normalizedQuery);
+      return true;
     });
+    return filterItems(scoped, nameQuery, dtsReloadCandidateSearchProfile);
   }, [handoffFilteredCandidates, nameQuery, selectedModuleBindingIds]);
 
   const moduleFilterNodes = useMemo(

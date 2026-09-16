@@ -7,6 +7,7 @@ import type { KnowledgeEntry, KnowledgeParameterReference, ParameterSpecReferenc
 import { parameterSpecReferenceLifecycleLabels } from "@/domain/knowledge/types";
 import { presentError } from "@/infrastructure/http/presentError";
 import { ModalDialog } from "@/components/common/ModalDialog";
+import { SearchField } from "@/components/common/SearchField";
 import { Button } from "@/components/ui/button";
 import { KnowledgeParameterReferenceChips, referenceDisplayName } from "./KnowledgeParameterReferenceChips";
 
@@ -261,12 +262,13 @@ export function KnowledgeEntryEditorDialog({
                       void runSpecSearch();
                     }}
                   >
-                    <input
-                      aria-label="检索参数定义"
+                    <SearchField
+                      className="knowledge-spec-search"
+                      ariaLabel="检索参数定义"
                       value={specQuery}
-                      onChange={(event) => setSpecQuery(event.target.value)}
+                      onValueChange={setSpecQuery}
                       placeholder="按属性键 / 模块检索参数定义"
-                      className="h-8 min-w-56 flex-1 rounded-md border border-border bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                      loading={specSearching}
                     />
                     <Button type="submit" variant="outline" size="sm" disabled={specSearching} aria-busy={specSearching || undefined}>
                       <Search data-icon="inline-start" />

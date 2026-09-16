@@ -8,6 +8,9 @@ import {
   type Column
 } from "@/components/admin";
 import { Button } from "@/components/ui/button";
+import { SearchField } from "@/components/common/SearchField";
+import { filterItems } from "@/lib/search";
+import { knowledgeTitleSearchProfile } from "@/lib/search/profiles";
 import { canPerform } from "@/app/permissions";
 import { cn } from "@/lib/utils";
 import { applyTableFilters, applyTimeWindow, deriveInsight, deriveMetrics } from "@/logAdminAnalytics";
@@ -391,9 +394,7 @@ function DomainKnowledgeLinksEditor({
   }, [domain.id, logActions, knowledgeRepository]);
 
   const staleLinks = links.filter((link) => link.entryStatus !== "published");
-  const filteredEntries = publishedEntries.filter((entry) =>
-    filter.trim() === "" ? true : entry.title.toLowerCase().includes(filter.trim().toLowerCase())
-  );
+  const filteredEntries = filterItems(publishedEntries, filter, knowledgeTitleSearchProfile);
 
   const toggleEntry = (entryId: string) => {
     setSaved(false);
@@ -462,12 +463,12 @@ function DomainKnowledgeLinksEditor({
 
           <label className="flex flex-col gap-1 text-xs text-muted-foreground" htmlFor={`domain-knowledge-filter-${domain.id}`}>
             按标题筛选已发布条目
-            <input
+            <SearchField
               id={`domain-knowledge-filter-${domain.id}`}
               value={filter}
-              onChange={(event) => setFilter(event.target.value)}
-              className="h-8 rounded-md border border-border bg-background px-2.5 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              onValueChange={setFilter}
               placeholder="例如：E_THERMAL_FOLDBACK"
+              ariaLabel="按标题筛选已发布条目"
             />
           </label>
 
@@ -1388,12 +1389,12 @@ export function LogAdminPage({ state, dispatch, onNavigate, search: _search, log
             pageSize={8}
             toolbar={
               <div className="flex flex-wrap items-center gap-2">
-                <input
-                  type="search"
+                <SearchField
                   value={tableQuery}
-                  onChange={(event) => setTableQuery(event.target.value)}
-                  placeholder="搜索 RPT- 或文件名"
-                  className="h-7 w-56 rounded-md border border-border bg-background px-2.5 text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  onValueChange={setTableQuery}
+                  placeholder="搜索报告号、文件名、来源或结论"
+                  ariaLabel="搜索日志分析记录"
+                  className="log-admin-search"
                 />
                 {hasActiveFilters ? (
                   <button

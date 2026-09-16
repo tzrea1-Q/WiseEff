@@ -1,5 +1,8 @@
 import { useMemo, useState } from "react";
 import type { DtsStructuralNode } from "@/application/ports/DtsStructuredRepository";
+import { SearchField } from "@/components/common/SearchField";
+import { filterHierarchicalList } from "@/lib/search";
+import { dtsNodePathSearchProfile } from "@/lib/search/profiles";
 
 export type DtsNodeTreeViewProps = {
   nodes: DtsStructuralNode[];
@@ -10,24 +13,20 @@ export type DtsNodeTreeViewProps = {
 export function DtsNodeTreeView({ nodes, selectedNodePath, onSelectNode }: DtsNodeTreeViewProps) {
   const [filter, setFilter] = useState("");
 
-  const filtered = useMemo(() => {
-    const needle = filter.trim().toLocaleLowerCase();
-    if (!needle) {
-      return nodes;
-    }
-    return nodes.filter((item) => item.nodePath.toLocaleLowerCase().includes(needle));
-  }, [filter, nodes]);
+  const filtered = useMemo(
+    () => filterHierarchicalList(nodes, filter, dtsNodePathSearchProfile, (item) => item.nodePath),
+    [filter, nodes]
+  );
 
   return (
     <section className="dts-node-tree-view" aria-label="DTS 节点树面板">
       <label className="dts-node-tree-view__filter">
         <span>筛选节点路径</span>
-        <input
-          type="search"
+        <SearchField
           value={filter}
-          onChange={(event) => setFilter(event.target.value)}
+          onValueChange={setFilter}
           placeholder="例如 chip@6E"
-          aria-label="筛选节点路径"
+          ariaLabel="筛选节点路径"
         />
       </label>
       <ul className="dts-node-tree-view__list" role="tree" aria-label="DTS 节点树">
