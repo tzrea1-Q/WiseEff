@@ -19,6 +19,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { ApiError } from "../../../shared/http/errors";
 import type { Database, Queryable } from "../../../shared/database/client";
 import type { AuthContext } from "../../auth/types";
+import { LEGACY_IDENTITY_SQL } from "../../parameter-kernel/legacyParameterIdentityNames";
 import { canEditParameters } from "../../parameter-kernel/policy";
 import type { ObjectStore } from "../../logs/objectStore";
 
@@ -56,7 +57,7 @@ type ArchiveRelation = {
  */
 export const ARCHIVED_PARAMETER_PLANE_RELATIONS: readonly ArchiveRelation[] = [
   { key: "parameter_drafts", from: "public.parameter_drafts", scope: { kind: "project", projectId: "" } },
-  { key: "legacy_parameter_values", from: "public.project_parameter_values", scope: { kind: "project", projectId: "" } },
+  { key: "legacy_parameter_values", from: `public.${LEGACY_IDENTITY_SQL.valuesTable}`, scope: { kind: "project", projectId: "" } },
   { key: "parameter_draft_identity_invalidations", from: "public.parameter_draft_identity_invalidations", scope: { kind: "project", projectId: "" }, orderBy: "draft_id" },
   { key: "parameter_history_entries", from: "public.parameter_history_entries", scope: { kind: "project", projectId: "" } },
   { key: "parameter_submission_rounds", from: "public.parameter_submission_rounds", scope: { kind: "project", projectId: "" } },
