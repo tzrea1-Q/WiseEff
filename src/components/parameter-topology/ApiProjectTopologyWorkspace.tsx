@@ -75,6 +75,7 @@ export type ApiProjectTopologyWorkspaceProps = {
   /** Server-side draft delete; tray removal must not leave the draft alive on the server. */
   deleteDraft?: (draftId: string) => Promise<void>;
   listWorkflowAssignees?: (projectId: string) => Promise<WorkflowAssigneeCandidates>;
+  canManageRoles?: boolean;
   submitBindingChanges?: (
     input: SubmitParameterChangesInput
   ) => Promise<void | { notification: string; alreadyNotified?: boolean }>;
@@ -303,6 +304,7 @@ export function ApiProjectTopologyWorkspace({
   listDrafts,
   deleteDraft,
   listWorkflowAssignees,
+  canManageRoles = false,
   submitBindingChanges,
   onNavigate = () => undefined
 }: ApiProjectTopologyWorkspaceProps) {
@@ -1133,6 +1135,7 @@ export function ApiProjectTopologyWorkspace({
       }
       onRemove={handleRemoveDraft}
       onSubmit={handleSubmitBindingChanges}
+      canManageRoles={canManageRoles}
       onNavigate={onNavigate}
     />
   ) : submitSuccessNotice ? (

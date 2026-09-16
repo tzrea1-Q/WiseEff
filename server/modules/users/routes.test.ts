@@ -98,7 +98,7 @@ describe("user governance routes", () => {
           username: "target.user",
           password: "WiseEff@2026",
           title: "Engineer",
-          roles: [{ projectId: "aurora", roleId: "hardware-user" }]
+          roles: [{ projectId: null, roleId: "hardware-user" }]
         })
       }
     );
@@ -108,6 +108,32 @@ describe("user governance routes", () => {
     expect(response.body.item.username).toBe("target.user");
     expect(calls.some((call) => call.text.includes("insert into user_password_credentials"))).toBe(true);
     expect(calls.some((call) => call.text.includes("insert into audit_events"))).toBe(true);
+  });
+
+  it("rejects project-scoped roles during user creation", async () => {
+    const { db } = makeDb();
+
+    const response = await requestJson(
+      createWiseEffServer({
+        db,
+        auth: { mode: "production", verifier: { verify: async () => adminAuth } }
+      }),
+      "/api/v1/users",
+      {
+        method: "POST",
+        headers: { Authorization: "Bearer admin" },
+        body: JSON.stringify({
+          name: "Target User",
+          username: "target.user",
+          password: "WiseEff@2026",
+          title: "Engineer",
+          roles: [{ projectId: "aurora", roleId: "hardware-user" }]
+        })
+      }
+    );
+
+    expect(response.status).toBe(400);
+    expect(response.body.error.code).toBe("VALIDATION_FAILED");
   });
 
   it("rejects legacy email-only user creation payloads", async () => {

@@ -65,6 +65,8 @@
 - `BRIDGE-TOOLS-001`：Bridge 已连接但 `tools.adb.available: false` 时，Step ③ 显示缺少 ADB 与 **安装调试工具** CTA（非「Bridge 未安装」）。覆盖：`src/NodeDebuggingPage.test.tsx`。
 - `PARAM-HOME-001`：`/parameter-home` 通过 `ParameterDashboardRepository` 加载 summary/hotspots API 数据，并支持页面内时间窗口与热榜维度切换（`e2e/acceptance/parameter-home.acceptance.spec.ts`）。
 - `PARAM-ADMIN-003`：Admin 项目清单在刷新、`popstate`、后退与前进后恢复 `q`/`status`/`sort`，支持分页、键盘进入行且行操作不冒泡；390px 为字段完整的卡片，768px 为 1080px 宽表格加 16px 常显横向滚动条，1440px 完整显示且页面不横向溢出。自动化见 `e2e/acceptance/parameter-admin-projects.acceptance.spec.ts`。
+- `PROJ-REVIEW-ROLES-001`：Admin 在 `/parameter-admin/projects/:projectId/review-roles` 配置项目审核工作流角色（`hardware-committer`、`software-committer`、`software-user`），支持深链访问、搜索与批量选择，并发冲突时原子回滚与提示（单元测试 `ProjectReviewRolesPanel.test.tsx`、服务端测试 `projectWorkflowRoles.integration.test.ts`；playwright-cli 截图见 `work/ui-checks/`）。
+- `PROJ-REVIEW-READINESS-001`：参数工作台检测三个角色池完备性；角色缺失时精准阻止提交并保留草稿，为 Admin 显示配置入口，非 Admin 提示联系管理员（单元测试 `DtsBindingDraftTray.test.tsx`、服务端测试 `serviceReviewWorkflow.integration.test.ts`）。
 - `PARAM-INIT-WIZARD-001`：创建者完成项目参数初始化（选源 + 勾选）并进入待审阅（单测 wizard/reducer；服务端 `initializationService`；playwright-cli 见 `work/ui-checks/param-init/`）。
 - `PARAM-INIT-EMPTY-001`：显式空库初始化可批准为 `initialized` 且零 binding（mock Port + 服务端单测）。
 - `PARAM-INIT-REVIEW-001`：Admin 批准初始化后解锁项目并按快照物化 binding（服务端物化/审计；App Port 接线；playwright-cli 审阅页见 `work/ui-checks/param-init/review-*`）。

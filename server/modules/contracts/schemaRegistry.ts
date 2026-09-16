@@ -191,6 +191,26 @@ export const schemaRegistry: Record<string, ContractSchemaRef> = {
     responseBody: "UserGovernanceResponse",
     additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse", "409": "ErrorResponse" }
   },
+  "users.replaceOrganizationRoles": {
+    summary: "Replace user organization roles with optimistic concurrency control",
+    tags: ["users"],
+    requestBody: "ReplaceUserOrganizationRolesRequest",
+    responseBody: "UserGovernanceResponse",
+    additionalResponses: { "400": "ErrorResponse", "403": "ErrorResponse", "404": "ErrorResponse", "409": "ErrorResponse" }
+  },
+  "users.getProjectWorkflowRoleBindings": {
+    summary: "Get project workflow role bindings and readiness",
+    tags: ["users"],
+    responseBody: "ProjectWorkflowRoleBindingsResponse",
+    additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse" }
+  },
+  "users.replaceProjectWorkflowRoleBindings": {
+    summary: "Replace project workflow role bindings with optimistic concurrency control",
+    tags: ["users"],
+    requestBody: "ReplaceProjectWorkflowRolesRequest",
+    responseBody: "UserGovernanceResponse",
+    additionalResponses: { "400": "ErrorResponse", "403": "ErrorResponse", "404": "ErrorResponse", "409": "ErrorResponse" }
+  },
   "users.resetPassword": {
     summary: "Reset a governed user's local password",
     tags: ["users"],

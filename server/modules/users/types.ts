@@ -35,6 +35,39 @@ export type ResetUserPasswordInput = {
   password: string;
 };
 
+export const projectWorkflowRoleIds = [
+  "hardware-committer",
+  "software-committer",
+  "software-user"
+] as const;
+
+export type ProjectWorkflowRoleId = (typeof projectWorkflowRoleIds)[number];
+
+export type UpdateProjectWorkflowRoleBindingsInput = {
+  roles: ProjectWorkflowRoleId[];
+  expectedRoles: ProjectWorkflowRoleId[];
+};
+
+export type UpdateOrganizationRolesInput = {
+  roles: BackendRoleId[];
+  expectedRoles: BackendRoleId[];
+};
+
+export type ProjectWorkflowRoleBindingItem = {
+  userId: string;
+  userName: string;
+  username: string | null;
+  isActive: boolean;
+  roles: ProjectWorkflowRoleId[];
+};
+
+export type ProjectWorkflowRoleBindingsDto = {
+  projectId: string;
+  ready: boolean;
+  missingRoles: ProjectWorkflowRoleId[];
+  bindings: ProjectWorkflowRoleBindingItem[];
+};
+
 export type ReplaceUserRolesInput = {
   roles: Array<{ projectId?: string | null; roleId: BackendRoleId }>;
 };

@@ -268,6 +268,7 @@ export function PageRouter({
           listConfigSets={listParameterConfigSets}
           effectiveProjectId={effectiveParametersProjectId}
           canEdit={canEditParameters}
+          canManageRoles={canPerform(currentRoleId, "admin.access") || sessionPermissions?.includes("users:manage")}
           initializationStatus={activeProjectInitializationStatus}
           topBarProjectId={TopBarProjectId ?? effectiveParametersProjectId}
           runtimeMode={runtimeMode}

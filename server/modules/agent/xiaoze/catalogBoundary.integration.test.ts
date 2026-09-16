@@ -179,8 +179,12 @@ describe("R2-AGT real authenticated Catalog execution", () => {
       [RESTRICTED, ORG]
     );
     await pool.query(
-      "insert into user_role_bindings (id, user_id, organization_id, project_id, role_id) values ('urb-r2-818-restricted', $1, $2, $3, 'hardware-user')",
+      "insert into user_role_bindings (id, user_id, organization_id, project_id, role_id) values ('urb-r2-818-restricted', $1, $2, $3, 'hardware-committer')",
       [RESTRICTED, ORG, PROJECT]
+    );
+    await pool.query(
+      "insert into user_role_bindings (id, user_id, organization_id, project_id, role_id) values ('urb-r2-818-restricted-org', $1, $2, null, 'guest')",
+      [RESTRICTED, ORG]
     );
     await pool.query(
       "insert into users (id, organization_id, name, title, is_active) values ($1, $2, 'R2 Other admin', 'Admin', true)",
@@ -795,8 +799,9 @@ describe("R2-AGT real authenticated Catalog execution", () => {
   it("R2-AGT-06: revoking the requester's role is enforced again on durable approval", async () => {
     const before = await businessState();
     const pending = await pendingBindingAction();
-    const revoke = await json("PUT", `/api/v1/users/${RESTRICTED}/roles`, {
-      roles: [{ projectId: PROJECT, roleId: "guest" }]
+    const revoke = await json("PUT", `/api/v1/projects/${PROJECT}/workflow-role-bindings/${RESTRICTED}`, {
+      roles: [],
+      expectedRoles: ["hardware-committer"]
     });
     expect(revoke.status, JSON.stringify(revoke.body)).toBe(200);
     try {
@@ -815,8 +820,9 @@ describe("R2-AGT real authenticated Catalog execution", () => {
       ).toEqual([]);
       expect(await businessState()).toEqual(before);
     } finally {
-      const restored = await json("PUT", `/api/v1/users/${RESTRICTED}/roles`, {
-        roles: [{ projectId: PROJECT, roleId: "hardware-user" }]
+      const restored = await json("PUT", `/api/v1/projects/${PROJECT}/workflow-role-bindings/${RESTRICTED}`, {
+        roles: ["hardware-committer"],
+        expectedRoles: []
       });
       expect(restored.status).toBe(200);
     }

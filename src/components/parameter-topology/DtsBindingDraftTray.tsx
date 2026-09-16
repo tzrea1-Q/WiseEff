@@ -29,6 +29,7 @@ export type DtsBindingDraftTrayProps = {
   candidates: WorkflowAssigneeCandidates | null;
   candidatesError?: string | null;
   externalBlocker?: string | null;
+  canManageRoles?: boolean;
   /** May reject (e.g. server-side draft delete failed); the tray shows the error inline. */
   onRemove: (draftId: string) => void | Promise<void>;
   onSubmit?: (
@@ -167,6 +168,12 @@ function toSubmitItem(draft: PendingTopologyDraft) {
   };
 }
 
+const ROLE_LABELS: Record<string, string> = {
+  "hardware-committer": "硬件 MDE",
+  "software-committer": "软件 MDE",
+  "software-user": "软件开发"
+};
+
 export function DtsBindingDraftTray({
   projectId,
   drafts,
@@ -174,6 +181,7 @@ export function DtsBindingDraftTray({
   candidates,
   candidatesError = null,
   externalBlocker = null,
+  canManageRoles = false,
   onRemove,
   onSubmit,
   onNavigate
@@ -259,7 +267,27 @@ export function DtsBindingDraftTray({
         ? "尚未勾选任何草稿；请先勾选要提交的草稿。"
         : "当前勾选的草稿不在本轮修改中，请重新选择后再提交。"
       : null;
-  const roleError = displayedCandidates && !(hardwareCommitterId && softwareCommitterId && softwareUserId)
+  const missingRoleNames = useMemo(() => {
+    if (!displayedCandidates) return null;
+    if (displayedCandidates.missingRoles && displayedCandidates.missingRoles.length > 0) {
+      return displayedCandidates.missingRoles.map((r) => ROLE_LABELS[r] ?? r).join("、");
+    }
+    const missing: string[] = [];
+    if (displayedCandidates.hardwareCommitters && displayedCandidates.hardwareCommitters.length === 0) {
+      missing.push(ROLE_LABELS["hardware-committer"]);
+    }
+    if (displayedCandidates.softwareCommitters && displayedCandidates.softwareCommitters.length === 0) {
+      missing.push(ROLE_LABELS["software-committer"]);
+    }
+    if (displayedCandidates.softwareUsers && displayedCandidates.softwareUsers.length === 0) {
+      missing.push(ROLE_LABELS["software-user"]);
+    }
+    return missing.length > 0 ? missing.join("、") : null;
+  }, [displayedCandidates]);
+
+  const roleError = missingRoleNames
+    ? `当前项目缺少以下审核角色：${missingRoleNames}，已阻止提交。`
+    : displayedCandidates && !(hardwareCommitterId && softwareCommitterId && softwareUserId)
     ? "项目缺少完整的硬件 MDE、软件 MDE 或软件开发候选人，已阻止提交。"
     : null;
   const submissionEntryError = onSubmit
@@ -398,7 +426,27 @@ export function DtsBindingDraftTray({
         </div>
       ) : null}
 
-      {blocker ? <p className="form-error" role="alert">{blocker}</p> : null}
+      {blocker ? (
+        <div role="alert">
+          <p className="form-error">{blocker}</p>
+          {blocker === roleError ? (
+            canManageRoles ? (
+              <button
+                type="button"
+                className="button subtle"
+                style={{ marginTop: "6px" }}
+                onClick={() => onNavigate(`/parameter-admin/projects/${encodeURIComponent(projectId)}/review-roles`)}
+              >
+                配置项目审核角色
+              </button>
+            ) : (
+              <p className="form-help" style={{ marginTop: "4px", fontSize: "13px" }}>
+                请联系管理员配置项目审核角色。
+              </p>
+            )
+          ) : null}
+        </div>
+      ) : null}
       {removeError ? <p className="form-error" role="alert">{removeError}</p> : null}
       {submitError ? <p className="form-error" role="alert">{submitError}</p> : null}
       {submitted ? <p role="status"><CircleCheck size={15} strokeWidth={2} aria-hidden="true" />已提交正式审核，后续阶段将在审核队列中按角色推进。</p> : null}

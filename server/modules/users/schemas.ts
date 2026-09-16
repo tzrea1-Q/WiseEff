@@ -39,6 +39,26 @@ export const resetUserPasswordBodySchema = z
   })
   .strict();
 
+export const projectWorkflowRoleIdSchema = z.enum([
+  "hardware-committer",
+  "software-committer",
+  "software-user"
+]);
+
+export const updateProjectWorkflowRolesBodySchema = z
+  .object({
+    roles: z.array(projectWorkflowRoleIdSchema),
+    expectedRoles: z.array(projectWorkflowRoleIdSchema)
+  })
+  .strict();
+
+export const updateOrganizationRolesBodySchema = z
+  .object({
+    roles: z.array(roleIdSchema),
+    expectedRoles: z.array(roleIdSchema)
+  })
+  .strict();
+
 export const replaceUserRolesBodySchema = z.object({
   roles: z.array(roleBindingSchema).min(1)
 });

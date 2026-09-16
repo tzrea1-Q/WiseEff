@@ -95,7 +95,7 @@ describe("user governance service", () => {
         username: "target.user",
         password: "WiseEff@2026",
         title: "Engineer",
-        roles: [{ projectId: "aurora", roleId: "hardware-user" }]
+        roles: [{ projectId: null, roleId: "hardware-user" }]
       },
       { requestId: "request-1" }
     );
@@ -128,7 +128,7 @@ describe("user governance service", () => {
         name: "Target User",
         username: "target.user",
         password: "WiseEff@2026",
-        roles: [{ projectId: "aurora", roleId: "hardware-user" }]
+        roles: [{ projectId: null, roleId: "hardware-user" }]
       },
       { requestId: "request-1" }
     );
@@ -261,7 +261,7 @@ describe("user governance service", () => {
     let userReadCount = 0;
     const { db, txCalls } = createDb(
       (text) => {
-        if (text.includes("for update")) return [{ id: "u-target" }];
+        if (text.includes("for update") || text.includes("for no key update")) return [{ id: "u-target" }];
         if (text.includes("from users")) {
           userReadCount += 1;
           return [
@@ -359,7 +359,7 @@ describe("user governance service", () => {
   it("prevents removing the active admin's last Admin capability", async () => {
     const { db } = createDb((text) => (text.includes("count") ? [{ count: "1" }] : [userRow({ id: "u-admin" })]));
 
-    await expect(replaceUserRoles(db, adminAuth, adminAuth.user.id, { roles: [{ projectId: "aurora", roleId: "software-user" }] })).rejects.toThrow(
+    await expect(replaceUserRoles(db, adminAuth, adminAuth.user.id, { roles: [{ projectId: null, roleId: "software-user" }] })).rejects.toThrow(
       "Active Admin cannot remove its last Admin capability."
     );
   });

@@ -32,12 +32,6 @@ export function canViewParameters(auth: AuthContext) {
 /** Roles whose binding to a project grants parameter editing there. */
 const projectEditRoles: BackendRoleId[] = ["hardware-user", "software-user", "hardware-committer", "software-committer"];
 
-/**
- * `parameter:edit` is a flat permission unioned across every role binding, so a
- * user bound to project A still carries it while acting on project B. When a
- * target project is known, additionally require an edit-capable role bound to
- * that project (admins remain global) so a write cannot cross project scope.
- */
 export function canEditParameters(auth: AuthContext, projectId?: string) {
   if (!isActive(auth) || !hasPermission(auth, "parameter:edit")) return false;
   if (projectId === undefined) return true;
@@ -57,10 +51,10 @@ export function canReviewParameterStage(auth: AuthContext, projectId: string, fr
   if (!isActive(auth)) return false;
   if (hasRole(auth, ["admin"])) return true;
   if (fromStatus === "submitted" || fromStatus === "hardware_review") {
-    return hasRole(auth, ["hardware-committer"], projectId);
+    return auth.roles.some((b) => b.projectId === projectId && b.roleId === "hardware-committer");
   }
   if (fromStatus === "software_review") {
-    return hasRole(auth, ["software-committer"], projectId);
+    return auth.roles.some((b) => b.projectId === projectId && b.roleId === "software-committer");
   }
   return false;
 }
@@ -68,12 +62,9 @@ export function canReviewParameterStage(auth: AuthContext, projectId: string, fr
 export function canMergeParameters(auth: AuthContext, projectId?: string) {
   if (!isActive(auth)) return false;
   if (hasRole(auth, ["admin"])) return true;
-  // The merge (softwareUser) slot accepts either role at assignment time
-  // (see assertWorkflowAssigneesEligible), so the merge gate must match or a
-  // software-committer assigned to merge can never advance the round.
   const mergeRoles: BackendRoleId[] = ["software-user", "software-committer"];
   if (!projectId) return hasRole(auth, mergeRoles);
-  return hasRole(auth, mergeRoles, projectId);
+  return auth.roles.some((b) => b.projectId === projectId && mergeRoles.includes(b.roleId));
 }
 
 export function canAdminParameters(auth: AuthContext) {

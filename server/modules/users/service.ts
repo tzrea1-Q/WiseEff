@@ -6,20 +6,26 @@ import { asAuditTx, writeAuditEventInTx, type AuditTx } from "../audit/auditedWr
 import type { AuditCorrelationContext } from "../audit/types";
 import type { AuthContext, BackendRoleId, RoleBinding } from "../auth/types";
 import {
+  checkProjectBelongsToOrg,
   countActiveAdmins,
   deleteUserById,
   decideRegistrationRoleRequest,
   getPendingRegistrationRoleRequestByIdForAdmin,
   getPendingRegistrationRoleRequestById,
   getOrganizationById,
+  getProjectWorkflowRoleBindings,
   getUserById,
+  getUserOrganizationRoles,
+  getUserProjectWorkflowRoles,
   findPasswordCredentialByUsername,
   listActiveAdminUserIds,
   listAllPendingRegistrationRoleRequests,
   insertUser,
   insertPasswordCredential,
   lockUserById,
+  updateOrganizationRoles,
   updatePasswordCredential,
+  updateProjectWorkflowRoles,
   listPendingRegistrationRoleRequests,
   listUsers,
   replaceRoleBindings,
@@ -31,8 +37,12 @@ import { notifyUserDeactivated, notifyUserRoleChanged } from "../notifications/p
 import { revokeLocalUserSessions } from "../auth/localAuth";
 import type {
   CreateUserInput,
+  ProjectWorkflowRoleBindingsDto,
+  ProjectWorkflowRoleId,
   ReplaceUserRolesInput,
   UpdateOrganizationInput,
+  UpdateOrganizationRolesInput,
+  UpdateProjectWorkflowRoleBindingsInput,
   ResetUserPasswordInput,
   UpdateUserActiveInput,
   UpdateUserProfileInput
@@ -55,6 +65,29 @@ function requireUserManager(auth: AuthContext) {
   if (!auth.user.isActive || !auth.permissions.includes("users:manage")) {
     throw new ApiError("FORBIDDEN", "User management permission is required.", { permission: "users:manage" });
   }
+}
+
+function requireOrgAdmin(auth: AuthContext) {
+  if (!auth.user.isActive) {
+    throw new ApiError("FORBIDDEN", "User is inactive.");
+  }
+  if (!auth.permissions.includes("users:manage")) {
+    throw new ApiError("FORBIDDEN", "User management permission is required.", { permission: "users:manage" });
+  }
+  const hasHomeAdmin = auth.roles.some(
+    (r) => r.projectId === null && (r.roleId === "admin" || r.roleId === "platform-admin")
+  );
+  if (!hasHomeAdmin) {
+    throw new ApiError("FORBIDDEN", "Organization administrator authority is required.");
+  }
+}
+
+function arraysEqual<T>(a: readonly T[], b: readonly T[]): boolean {
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) {
+    if (a[i] !== b[i]) return false;
+  }
+  return true;
 }
 
 function normalizeRoles(roles: ReplaceUserRolesInput["roles"]): RoleBinding[] {
@@ -260,6 +293,13 @@ export async function listGovernedUsers(db: Queryable, auth: AuthContext) {
 
 export async function createUser(db: Database, auth: AuthContext, input: CreateUserInput, context: AuditCorrelationContext = {}) {
   requireUserManager(auth);
+  if (input.roles.some((r) => r.projectId !== null && r.projectId !== undefined)) {
+    throw new ApiError(
+      "VALIDATION_FAILED",
+      "Account creation cannot include project-scoped role bindings. Assign project review roles from project management.",
+      { code: "project-roles-not-allowed" }
+    );
+  }
   const roles = normalizeRoles(input.roles);
   // A new user starts with no roles; block granting platform-admin unless the caller holds it,
   // matching replaceUserRoles so user creation cannot be a platform-admin escalation path.
@@ -289,7 +329,11 @@ export async function createUser(db: Database, auth: AuthContext, input: CreateU
       username,
       passwordHash: await hashPassword(input.password)
     });
-    await replaceRoleBindings(tx, { organizationId: auth.organization.id, userId: user.id, roles });
+    await updateOrganizationRoles(tx, {
+      organizationId: auth.organization.id,
+      userId: user.id,
+      roles: roles.map((r) => r.roleId)
+    });
     await auditUserMutation(asAuditTx(tx), auth, {
       kind: "user-create",
       action: "create",
@@ -460,6 +504,13 @@ export async function replaceUserRoles(
   context: AuditCorrelationContext = {}
 ) {
   requireUserManager(auth);
+  if (input.roles.some((r) => r.projectId !== null && r.projectId !== undefined)) {
+    throw new ApiError(
+      "VALIDATION_FAILED",
+      "Project-scoped role replacements via /api/v1/users/:userId/roles are deprecated and unsupported. Use /api/v1/projects/:projectId/workflow-role-bindings/:userId instead.",
+      { code: "project-roles-deprecated" }
+    );
+  }
   const roles = normalizeRoles(input.roles);
 
   return db.transaction(async (tx) => {
@@ -473,7 +524,12 @@ export async function replaceUserRoles(
       throw new ApiError("NOT_FOUND", "User was not found.", { userId });
     }
     assertPlatformAdminGrantAllowed(auth, user.roles, roles);
-    await replaceRoleBindings(tx, { organizationId: auth.organization.id, userId, roles });
+    const desiredOrgRoles = roles.map((r) => r.roleId);
+    await updateOrganizationRoles(tx, {
+      organizationId: auth.organization.id,
+      userId,
+      roles: desiredOrgRoles
+    });
     await auditUserMutation(asAuditTx(tx), auth, {
       kind: "user-role-replace",
       action: "replace-roles",
@@ -490,7 +546,8 @@ export async function replaceUserRoles(
       adminUserIds: adminUserIds.filter((id) => id !== userId)
     });
 
-    return { ...user, roles };
+    const updated = await getUserById(tx, { organizationId: auth.organization.id, userId });
+    return updated!;
   });
 }
 
@@ -523,10 +580,10 @@ export async function approveRegistrationRoleRequest(
       throw new ApiError("NOT_FOUND", "User was not found.", { userId: request.userId });
     }
 
-    await replaceRoleBindings(tx, {
+    await updateOrganizationRoles(tx, {
       organizationId: request.organizationId,
       userId: request.userId,
-      roles: [{ projectId: null, roleId: request.requestedRoleId }]
+      roles: [request.requestedRoleId]
     });
     const activated = await updateUserActive(tx, { organizationId: request.organizationId, userId: request.userId, isActive: true });
     if (!activated) {
@@ -604,5 +661,213 @@ export async function rejectRegistrationRoleRequest(
     }, context);
 
     return decided;
+  });
+}
+
+export async function getProjectRoleBindings(
+  db: Queryable,
+  auth: AuthContext,
+  projectId: string
+): Promise<ProjectWorkflowRoleBindingsDto> {
+  requireOrgAdmin(auth);
+  const belongs = await checkProjectBelongsToOrg(db, {
+    organizationId: auth.organization.id,
+    projectId
+  });
+  if (!belongs) {
+    throw new ApiError("NOT_FOUND", "Project was not found.", { projectId });
+  }
+
+  const bindings = await getProjectWorkflowRoleBindings(db, {
+    organizationId: auth.organization.id,
+    projectId
+  });
+
+  const activeBindings = bindings.filter((b) => b.isActive);
+  const hasHw = activeBindings.some((b) => b.roles.includes("hardware-committer"));
+  const hasSwC = activeBindings.some((b) => b.roles.includes("software-committer"));
+  const hasSwU = activeBindings.some((b) => b.roles.includes("software-user") || b.roles.includes("software-committer"));
+
+  const missingRoles: ProjectWorkflowRoleId[] = [];
+  if (!hasHw) missingRoles.push("hardware-committer");
+  if (!hasSwC) missingRoles.push("software-committer");
+  if (!hasSwU) missingRoles.push("software-user");
+
+  return {
+    projectId,
+    ready: missingRoles.length === 0,
+    missingRoles,
+    bindings
+  };
+}
+
+export async function replaceProjectWorkflowRoles(
+  db: Database,
+  auth: AuthContext,
+  projectId: string,
+  userId: string,
+  input: UpdateProjectWorkflowRoleBindingsInput,
+  context: AuditCorrelationContext = {}
+) {
+  requireOrgAdmin(auth);
+  const belongs = await checkProjectBelongsToOrg(db, {
+    organizationId: auth.organization.id,
+    projectId
+  });
+  if (!belongs) {
+    throw new ApiError("NOT_FOUND", "Project was not found.", { projectId });
+  }
+
+  return db.transaction(async (tx) => {
+    const lockedUserId = await lockUserById(tx, { organizationId: auth.organization.id, userId });
+    if (!lockedUserId) {
+      throw new ApiError("NOT_FOUND", "User was not found.", { userId });
+    }
+    const targetUser = await getUserById(tx, { organizationId: auth.organization.id, userId });
+    if (!targetUser) {
+      throw new ApiError("NOT_FOUND", "User was not found.", { userId });
+    }
+
+    const currentRoles = await getUserProjectWorkflowRoles(tx, {
+      organizationId: auth.organization.id,
+      projectId,
+      userId
+    });
+    const sortedCurrent = [...currentRoles].sort();
+    const sortedExpected = [...new Set(input.expectedRoles)].sort();
+    const sortedDesired = [...new Set(input.roles)].sort();
+
+    if (!targetUser.isActive) {
+      const hasNewGrants = sortedDesired.some((r) => !sortedCurrent.includes(r));
+      if (hasNewGrants) {
+        throw new ApiError("VALIDATION_FAILED", "Cannot assign new project roles to an inactive user.", {
+          code: "target-user-inactive",
+          userId
+        });
+      }
+    }
+
+    if (arraysEqual(sortedCurrent, sortedDesired)) {
+      return { projectId, userId, roles: sortedDesired };
+    }
+
+    if (!arraysEqual(sortedCurrent, sortedExpected)) {
+      throw new ApiError("CONFLICT", "Project workflow roles are stale.", {
+        code: "role-bindings-stale",
+        currentRoles: sortedCurrent,
+        expectedRoles: sortedExpected
+      });
+    }
+
+    await updateProjectWorkflowRoles(tx, {
+      organizationId: auth.organization.id,
+      projectId,
+      userId,
+      roles: sortedDesired
+    });
+
+    await writeAuditEventInTx(
+      asAuditTx(tx),
+      auth,
+      { requestId: context.requestId ?? randomUUID() },
+      {
+        app: "user-governance",
+        kind: "project-role-update",
+        action: "update-roles",
+        severity: "Medium",
+        projectId,
+        targetType: "project",
+        targetId: projectId,
+        metadata: {
+          userId,
+          targetUserName: targetUser.name,
+          previousRoles: sortedCurrent,
+          roles: sortedDesired
+        }
+      }
+    );
+
+    return { projectId, userId, roles: sortedDesired };
+  });
+}
+
+export async function replaceOrganizationRoles(
+  db: Database,
+  auth: AuthContext,
+  userId: string,
+  input: UpdateOrganizationRolesInput,
+  context: AuditCorrelationContext = {}
+) {
+  requireOrgAdmin(auth);
+
+  return db.transaction(async (tx) => {
+    const lockedUserId = await lockUserById(tx, { organizationId: auth.organization.id, userId });
+    if (!lockedUserId) {
+      throw new ApiError("NOT_FOUND", "User was not found.", { userId });
+    }
+    const targetUser = await getUserById(tx, { organizationId: auth.organization.id, userId });
+    if (!targetUser) {
+      throw new ApiError("NOT_FOUND", "User was not found.", { userId });
+    }
+
+    const sortedDesired = [...new Set(input.roles)].sort();
+    const sortedExpected = [...new Set(input.expectedRoles)].sort();
+
+    await assertNoSelfLockout(tx, auth, userId, {
+      roles: sortedDesired.map((roleId) => ({ projectId: null, roleId }))
+    });
+    assertPlatformAdminGrantAllowed(
+      auth,
+      targetUser.roles.filter((r) => r.projectId === null),
+      sortedDesired.map((roleId) => ({ projectId: null, roleId }))
+    );
+
+    const currentRoles = await getUserOrganizationRoles(tx, {
+      organizationId: auth.organization.id,
+      userId
+    });
+    const sortedCurrent = [...currentRoles].sort();
+
+    if (arraysEqual(sortedCurrent, sortedDesired)) {
+      return targetUser;
+    }
+
+    if (!arraysEqual(sortedCurrent, sortedExpected)) {
+      throw new ApiError("CONFLICT", "Organization roles are stale.", {
+        code: "role-bindings-stale",
+        currentRoles: sortedCurrent,
+        expectedRoles: sortedExpected
+      });
+    }
+
+    await updateOrganizationRoles(tx, {
+      organizationId: auth.organization.id,
+      userId,
+      roles: sortedDesired
+    });
+
+    await auditUserMutation(
+      asAuditTx(tx),
+      auth,
+      {
+        kind: "user-role-replace",
+        action: "replace-roles",
+        userId,
+        metadata: { previousRoles: sortedCurrent, roles: sortedDesired }
+      },
+      context
+    );
+
+    const adminUserIds = await listActiveAdminUserIds(tx, auth.organization.id);
+    await notifyUserRoleChanged(tx, {
+      organizationId: auth.organization.id,
+      userId,
+      actorName: auth.user.name,
+      roles: sortedDesired.map((r) => ({ projectId: null, roleId: r })),
+      adminUserIds: adminUserIds.filter((id) => id !== userId)
+    });
+
+    const updated = await getUserById(tx, { organizationId: auth.organization.id, userId });
+    return updated!;
   });
 }

@@ -112,6 +112,27 @@ export const routeManifest = [
     stability: "commercial-readiness"
   },
   {
+    id: "users.replaceOrganizationRoles",
+    method: "PUT",
+    path: "/api/v1/users/:userId/organization-roles",
+    module: "users",
+    stability: "commercial-readiness"
+  },
+  {
+    id: "users.getProjectWorkflowRoleBindings",
+    method: "GET",
+    path: "/api/v1/projects/:projectId/workflow-role-bindings",
+    module: "users",
+    stability: "commercial-readiness"
+  },
+  {
+    id: "users.replaceProjectWorkflowRoleBindings",
+    method: "PUT",
+    path: "/api/v1/projects/:projectId/workflow-role-bindings/:userId",
+    module: "users",
+    stability: "commercial-readiness"
+  },
+  {
     id: "users.resetPassword",
     method: "POST",
     path: "/api/v1/users/:userId/password",

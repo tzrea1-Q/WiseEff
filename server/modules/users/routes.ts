@@ -9,9 +9,12 @@ import {
   deactivateUser,
   deleteUser,
   getHomeOrganization,
+  getProjectRoleBindings,
   listGovernedUsers,
   listRegistrationRoleRequests,
   rejectRegistrationRoleRequest,
+  replaceOrganizationRoles,
+  replaceProjectWorkflowRoles,
   replaceUserRoles,
   resetUserPassword,
   updateHomeOrganization,
@@ -22,11 +25,22 @@ import {
   replaceUserRolesBodySchema,
   resetUserPasswordBodySchema,
   updateOrganizationBodySchema,
+  updateOrganizationRolesBodySchema,
+  updateProjectWorkflowRolesBodySchema,
   updateUserActiveBodySchema,
   updateUserBodySchema
 } from "./schemas";
 
 const userIdParamsSchema = z.object({
+  userId: z.string().min(1)
+});
+
+const projectIdParamsSchema = z.object({
+  projectId: z.string().min(1)
+});
+
+const projectUserParamsSchema = z.object({
+  projectId: z.string().min(1),
   userId: z.string().min(1)
 });
 
@@ -160,6 +174,37 @@ export function registerUserRoutes(
     const params = parseWithSchema(userIdParamsSchema, request.params);
     const body = parseWithSchema(replaceUserRolesBodySchema, request.body);
     const item = await replaceUserRoles(db, auth, params.userId, body, { requestId: request.requestId });
+
+    return { status: 200, body: { item } };
+  });
+
+  router.put("/api/v1/users/:userId/organization-roles", async (request) => {
+    const db = requireDb(options.db);
+    const auth = await options.getCurrentAuthContext(request);
+    const params = parseWithSchema(userIdParamsSchema, request.params);
+    const body = parseWithSchema(updateOrganizationRolesBodySchema, request.body);
+    const item = await replaceOrganizationRoles(db, auth, params.userId, body, { requestId: request.requestId });
+
+    return { status: 200, body: { item } };
+  });
+
+  router.get("/api/v1/projects/:projectId/workflow-role-bindings", async (request) => {
+    const db = requireDb(options.db);
+    const auth = await options.getCurrentAuthContext(request);
+    const params = parseWithSchema(projectIdParamsSchema, request.params);
+    const item = await getProjectRoleBindings(db, auth, params.projectId);
+
+    return { status: 200, body: item };
+  });
+
+  router.put("/api/v1/projects/:projectId/workflow-role-bindings/:userId", async (request) => {
+    const db = requireDb(options.db);
+    const auth = await options.getCurrentAuthContext(request);
+    const params = parseWithSchema(projectUserParamsSchema, request.params);
+    const body = parseWithSchema(updateProjectWorkflowRolesBodySchema, request.body);
+    const item = await replaceProjectWorkflowRoles(db, auth, params.projectId, params.userId, body, {
+      requestId: request.requestId
+    });
 
     return { status: 200, body: { item } };
   });

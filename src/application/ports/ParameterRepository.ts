@@ -113,6 +113,8 @@ export type WorkflowAssigneeCandidates = {
   hardwareCommitters: WorkflowAssigneeCandidate[];
   softwareCommitters: WorkflowAssigneeCandidate[];
   softwareUsers: WorkflowAssigneeCandidate[];
+  ready?: boolean;
+  missingRoles?: ("hardware-committer" | "software-committer" | "software-user")[];
 };
 
 export type ReviewParameterChangeInput = {
