@@ -17,7 +17,10 @@ import {
   signInCatalogActor,
   openCatalogAt
 } from "./helpers/catalogBrowser";
+import { createBearerTokenForUser } from "./helpers/bearerAuth";
 import {
+  CATALOG_ORG_B,
+  CATALOG_ORG_B_ADMIN,
   countProposals,
   countSubjectRegistrations,
   ensureCatalogAcceptanceFixture,
@@ -88,6 +91,9 @@ test.describe("canonical parameter catalog negative and responsive contract", ()
   }, testInfo) => {
     // @acceptance PCAT-UI-11
     // @operation PCAT-LEGACY-LINK-001
+    await page.route("**/api/v1/agent/xiaoze/suggest", (route) =>
+      route.fulfill({ status: 200, contentType: "application/json", body: '{"suggestions":[]}' })
+    );
     const mapped = await catalogJson(
       page.request,
       "GET",
@@ -117,7 +123,7 @@ test.describe("canonical parameter catalog negative and responsive contract", ()
       await signInCatalogActor(
         page,
         "org-admin",
-        `/parameters?parameter=${encodeURIComponent(fixture.legacy.gone)}`
+        `/parameters?project=${encodeURIComponent(fixture.archivedLinkProjectId)}&parameter=${encodeURIComponent(fixture.legacy.gone)}`
       );
       await dismissXiaozeHint(page);
       const archivedNotice = page.locator(".parameter-archived-link-banner");
@@ -133,6 +139,38 @@ test.describe("canonical parameter catalog negative and responsive contract", ()
       await archivedNotice.getByRole("button", { name: "知道了" }).click();
       await expect(archivedNotice).toHaveCount(0);
     }
+
+    const scopeHidden = await catalogJson(
+      page.request,
+      "GET",
+      `/api/v1/parameters/${fixture.legacy.gone}`,
+      { actor: "org-b-admin" }
+    );
+    expect(scopeHidden.status).toBe(404);
+    expect(JSON.stringify(scopeHidden.body)).not.toContain(fixture.legacy.goneEvidenceId);
+
+    const orgBAuthorization = createBearerTokenForUser(
+      CATALOG_ORG_B_ADMIN.userId,
+      CATALOG_ORG_B_ADMIN.email,
+      CATALOG_ORG_B_ADMIN.name,
+      CATALOG_ORG_B.id
+    );
+    expect(orgBAuthorization).not.toBeNull();
+    const scopeHiddenResponse = page.waitForResponse(
+      (response) =>
+        response.request().method() === "GET" &&
+        new URL(response.url()).pathname === `/api/v1/parameters/${fixture.legacy.gone}` &&
+        response.request().headers().authorization === orgBAuthorization
+    );
+    await signInCatalogActor(
+      page,
+      "org-b-admin",
+      `/parameters?project=${encodeURIComponent(fixture.archivedLinkOrgBProjectId)}&parameter=${encodeURIComponent(fixture.legacy.gone)}`
+    );
+    expect((await scopeHiddenResponse).status()).toBe(404);
+    await expect(page.locator(".parameter-archived-link-banner")).toHaveCount(0);
+    await expect(page.getByRole("dialog", { name: "修改草稿" })).toHaveCount(0);
+    await expect(page.getByText(fixture.legacy.goneEvidenceId)).toHaveCount(0);
 
     const conflict = await catalogJson(
       page.request,

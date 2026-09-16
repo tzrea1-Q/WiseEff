@@ -213,6 +213,27 @@ describe("parameter routes", () => {
     });
   });
 
+  it.each([
+    ["detail", "/api/v1/parameters/retired-other-org", 404],
+    ["history", "/api/v1/parameters/retired-other-org/history", 200]
+  ])("keeps another organization's retired parameter %s scope-hidden", async (_label, path, expectedStatus) => {
+    const db = makeDb();
+    vi.mocked(repository.getParameterById).mockResolvedValue(undefined);
+    vi.mocked(repository.listParameterHistory).mockResolvedValue([]);
+    vi.mocked(db.query).mockImplementation(async (_sql, values) => ({
+      rows: values?.length === 1 ? [{ id: "other-org-migration-evidence" }] : [],
+      rowCount: values?.length === 1 ? 1 : 0
+    }));
+
+    const response = await requestJson(makeServer({ db }), path);
+
+    expect(response.status).toBe(expectedStatus);
+    expect(db.query).toHaveBeenCalledWith(expect.stringContaining("organization_id = $2"), [
+      "retired-other-org",
+      "org-1"
+    ]);
+  });
+
   it("missing database returns INTERNAL_ERROR", async () => {
     const response = await requestJson<{ error: { code: string } }>(makeServer(), "/api/v1/projects");
 

@@ -128,7 +128,7 @@ function isExpectedApiFailure(issue: Extract<BrowserIssue, { type: "response" }>
     (rule) =>
       rule.status === issue.status &&
       rule.method.toUpperCase() === method &&
-      (rule.path === path || path.startsWith(rule.path.endsWith("/") ? rule.path : `${rule.path}/`) || path.startsWith(rule.path))
+      (rule.path === path || path.startsWith(rule.path.endsWith("/") ? rule.path : `${rule.path}/`))
   );
 }
 

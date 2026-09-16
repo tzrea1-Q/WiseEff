@@ -61,6 +61,23 @@ describe("browser acceptance diagnostics", () => {
     });
   });
 
+  it("does not let an expected path rule swallow a near-prefix typo", () => {
+    expect(
+      classifyBrowserIssue(
+        {
+          type: "response",
+          url: "http://127.0.0.1:8787/api/v1/parameters/spec-op08-gone-archived-typo",
+          method: "GET",
+          status: 410
+        },
+        [{ method: "GET", path: "/api/v1/parameters/spec-op08-gone-archived", status: 410 }]
+      )
+    ).toEqual({
+      action: "fail",
+      reason: "Unexpected API response 410 for /api/v1/parameters/spec-op08-gone-archived-typo"
+    });
+  });
+
   it("fails page errors and console errors", () => {
     expect(classifyBrowserIssue({ type: "pageerror", message: "TypeError: failed" }).action).toBe("fail");
     expect(classifyBrowserIssue({ type: "console", message: "Failed to load resource", level: "error" }).action).toBe(

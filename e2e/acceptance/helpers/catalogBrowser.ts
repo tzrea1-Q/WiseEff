@@ -30,6 +30,7 @@ export const CATALOG_EXPECTED_API_FAILURES: ExpectedApiFailure[] = [
   { method: "GET", path: "/api/v2/catalog/legacy-identifiers", status: 404 },
   { method: "GET", path: "/api/v2/catalog/legacy-identifiers", status: 410 },
   { method: "GET", path: "/api/v1/parameters/spec-op08-gone-archived", status: 410 },
+  { method: "GET", path: "/api/v1/parameters/spec-op08-gone-archived", status: 404 },
   { method: "GET", path: "/api/v2/catalog/legacy-identifiers", status: 409 },
   { method: "GET", path: "/api/v2/catalog/legacy-identifiers", status: 403 },
   { method: "POST", path: "/api/v2/organizations", status: 403 },

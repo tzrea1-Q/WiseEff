@@ -59,6 +59,8 @@ const CONFLICT_ORG_IDENTITY_ID = "lid-op08-conflict-org";
 const SCOPE_HIDDEN_IDENTITY_ID = "lid-op08-scope-hidden";
 const GONE_ARCHIVE_ID = "archive-op08-gone";
 const GONE_MIGRATION_EVIDENCE_ID = "migration-evidence-op08-gone";
+const ARCHIVED_LINK_PROJECT_ID = "project-op08-archived-link";
+const ARCHIVED_LINK_ORG_B_PROJECT_ID = "project-op08-archived-link-org-b";
 const SOURCE_CHECKSUM = "sha256:op08-catalog-legacy-source";
 const GRAPH_FINGERPRINT = "sha256:op08-catalog-legacy-graph";
 const X_ON_C_DOCUMENTATION = "Documented maximum accepted input current.";
@@ -76,6 +78,8 @@ export type CatalogAcceptanceFixture = {
   xDefinitionId: string;
   yDefinitionId: string;
   reviewSourceIdentity: string;
+  archivedLinkProjectId: string;
+  archivedLinkOrgBProjectId: string;
   legacy: {
     mapped: string;
     gone: string;
@@ -151,6 +155,8 @@ async function installCatalogAcceptanceFixture(): Promise<CatalogAcceptanceFixtu
     xDefinitionId: X_DEFINITION_ID,
     yDefinitionId: Y_DEFINITION_ID,
     reviewSourceIdentity: REVIEW_SOURCE_IDENTITY,
+    archivedLinkProjectId: ARCHIVED_LINK_PROJECT_ID,
+    archivedLinkOrgBProjectId: ARCHIVED_LINK_ORG_B_PROJECT_ID,
     legacy: {
       mapped: MAPPED_LEGACY_ID,
       gone: GONE_LEGACY_ID,
@@ -426,13 +432,15 @@ async function seedLegacyBookmarks(pool: pg.Pool, catalogReleaseId: string): Pro
     );
     await client.query(
       `insert into projects (id, organization_id, name, code, status)
-       values ('aurora', $1, 'Aurora acceptance project', 'AURORA-ACCEPTANCE', 'initialized')
+       values
+         ($1, $2, 'OP-08 archived-link project', 'OP08-ARCHIVED-LINK', 'initialized'),
+         ($3, $4, 'OP-08 archived-link project B', 'OP08-ARCHIVED-LINK-B', 'initialized')
        on conflict (id) do update set
          organization_id = excluded.organization_id,
          name = excluded.name,
          code = excluded.code,
          status = excluded.status`,
-      [ACCEPTANCE_ORGANIZATION.id]
+      [ARCHIVED_LINK_PROJECT_ID, ACCEPTANCE_ORGANIZATION.id, ARCHIVED_LINK_ORG_B_PROJECT_ID, CATALOG_ORG_B.id]
     );
     await client.query(
       `insert into legacy_parameter_migration_evidence (

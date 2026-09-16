@@ -1725,7 +1725,7 @@ export const acceptanceOperations: AcceptanceOperation[] = [
     area: "parameters",
     route: "/parameters?parameter=:legacyId + /api/v2/catalog/legacy-identifiers/:kind/:legacyId",
     roles: ["Authorized reader", "Scope-hidden caller"],
-    action: "Exercise exact mapped redirect, archived gone, ambiguous conflict, unknown not-found, and scope-hidden legacy bookmark outcomes; open the archived parameter bookmark at desktop, tablet, and mobile, verify the diagnostic/evidence notice never enters editing or submission, and dismiss it.",
+    action: "Exercise exact mapped redirect, archived gone, ambiguous conflict, unknown not-found, and scope-hidden legacy bookmark outcomes; open the archived parameter bookmark at desktop, tablet, and mobile, verify the owning organization sees the diagnostic/evidence notice without entering editing or submission, the other organization receives an indistinguishable 404, and dismiss the notice.",
     coverage: "automated",
     acceptanceIds: ["PCAT-UI-11"],
     specFiles: ["e2e/acceptance/parameter-catalog-negative.acceptance.spec.ts"],
