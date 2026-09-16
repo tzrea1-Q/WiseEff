@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import { feedbackStatuses, feedbackTypes } from "./types";
+import { feedbackResolutionCodes, feedbackStatuses, feedbackTypes } from "./types";
 
 const nonEmptyString = z.string().min(1);
 const base64String = nonEmptyString.refine(
@@ -96,4 +96,21 @@ export const submitProductFeedbackDraftBodySchema = z.object({
 export type CreateProductFeedbackDraftBody = z.infer<typeof createProductFeedbackDraftBodySchema>;
 export type PatchProductFeedbackDraftBody = z.infer<typeof patchProductFeedbackDraftBodySchema>;
 export type SubmitProductFeedbackDraftBody = z.infer<typeof submitProductFeedbackDraftBodySchema>;
+
+export const appendProductFeedbackProgressBodySchema = z
+  .object({
+    toStatus: z.enum(feedbackStatuses).optional(),
+    resolutionCode: z.enum(feedbackResolutionCodes).nullable().optional(),
+    publicMessage: z.string().max(2000).nullable().optional(),
+    internalMessage: z.string().max(2000).nullable().optional()
+  })
+  .refine(
+    (value) =>
+      value.toStatus !== undefined ||
+      Boolean(value.publicMessage?.trim()) ||
+      Boolean(value.internalMessage?.trim()),
+    { message: "At least one of toStatus, publicMessage, or internalMessage must be provided." }
+  );
+
+export type AppendProductFeedbackProgressBody = z.infer<typeof appendProductFeedbackProgressBodySchema>;
 

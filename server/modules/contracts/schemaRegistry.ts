@@ -1120,6 +1120,12 @@ export const schemaRegistry: Record<string, ContractSchemaRef> = {
     responseBody: "ProductFeedbackListResponse",
     additionalResponses: { "403": "ErrorResponse" }
   },
+  "productFeedback.stats": {
+    summary: "Get product feedback statistics",
+    tags: ["product-feedback"],
+    responseBody: "ProductFeedbackStatsResponse",
+    additionalResponses: { "403": "ErrorResponse" }
+  },
   "productFeedback.get": {
     summary: "Get product feedback",
     tags: ["product-feedback"],
@@ -1130,6 +1136,13 @@ export const schemaRegistry: Record<string, ContractSchemaRef> = {
     summary: "Update product feedback",
     tags: ["product-feedback"],
     requestBody: "PatchProductFeedbackRequest",
+    responseBody: "ProductFeedbackResponse",
+    additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse" }
+  },
+  "productFeedback.appendProgress": {
+    summary: "Append progress event to product feedback",
+    tags: ["product-feedback"],
+    requestBody: "AppendProductFeedbackProgressRequest",
     responseBody: "ProductFeedbackResponse",
     additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse" }
   },

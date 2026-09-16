@@ -1,4 +1,10 @@
-import type { ProductFeedback, ProductFeedbackStatus, ProductFeedbackType } from "@/domain/productFeedback/types";
+import type {
+  ProductFeedback,
+  ProductFeedbackResolutionCode,
+  ProductFeedbackStats,
+  ProductFeedbackStatus,
+  ProductFeedbackType
+} from "@/domain/productFeedback/types";
 
 export type ProductFeedbackSubmitInput = {
   pagePath: string;
@@ -32,6 +38,15 @@ export type ProductFeedbackDraftSubmitInput = {
   description?: string;
 };
 
+export type ProductFeedbackAppendProgressInput = {
+  toStatus?: ProductFeedbackStatus;
+  resolutionCode?: ProductFeedbackResolutionCode | null;
+  publicMessage?: string | null;
+  internalMessage?: string | null;
+};
+
+export type { ProductFeedbackStats };
+
 export type ProductFeedbackListQuery = {
   status?: ProductFeedbackStatus;
   feedbackType?: ProductFeedbackType;
@@ -47,6 +62,8 @@ export interface ProductFeedbackRepository {
   list(query?: ProductFeedbackListQuery): Promise<{ items: ProductFeedback[]; nextCursor?: string }>;
   get(id: string): Promise<ProductFeedback | null>;
   update(id: string, patch: { status?: ProductFeedbackStatus; adminNote?: string | null }): Promise<ProductFeedback>;
+  appendProgress?(id: string, input: ProductFeedbackAppendProgressInput): Promise<ProductFeedback>;
+  getStats?(): Promise<ProductFeedbackStats>;
   getAttachmentObjectUrl(feedbackId: string, attachmentId: string): Promise<string>;
 
   createDraft?(input?: ProductFeedbackDraftCreateInput): Promise<ProductFeedback>;

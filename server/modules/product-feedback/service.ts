@@ -11,17 +11,23 @@ import {
   deleteAttachmentsByIds,
   deleteDraft,
   getFeedbackById,
+  getFeedbackForUpdate,
+  getFeedbackStats,
   getMyFeedbackById,
   insertAttachments,
   insertDraftFeedback,
   insertFeedback,
+  insertProgressEvent,
   listFeedback,
   listMyFeedback,
+  type ProductFeedbackRow,
   submitDraft,
   updateDraftFeedback,
-  updateFeedback
+  updateFeedback,
+  updateFeedbackProgressStatus
 } from "./repository";
 import type {
+  AppendProductFeedbackProgressInput,
   CreateProductFeedbackDraftInput,
   ListMyFeedbackQuery,
   ListProductFeedbackQuery,
@@ -29,6 +35,9 @@ import type {
   ProductFeedbackAttachmentContentType,
   ProductFeedbackAttachmentInput,
   ProductFeedbackDto,
+  ProductFeedbackProgressEventKind,
+  ProductFeedbackResolutionCode,
+  ProductFeedbackStatsDto,
   ProductFeedbackStatus,
   ProductFeedbackType,
   ProductFeedbackUserDto,
@@ -579,5 +588,188 @@ export async function submitProductFeedbackDraft(
 
     return submitted;
   });
+}
+
+export function validateProgressTransition(
+  existing: ProductFeedbackRow,
+  input: AppendProductFeedbackProgressInput
+): {
+  nextStatus: ProductFeedbackStatus;
+  nextResolutionCode: ProductFeedbackResolutionCode | null;
+  kind: ProductFeedbackProgressEventKind;
+} {
+  const current = existing.status;
+  const nextStatus = input.toStatus ?? current;
+  const publicMessage = input.publicMessage?.trim() || null;
+  const internalMessage = input.internalMessage?.trim() || null;
+
+  if (nextStatus === current) {
+    if (current === "closed") {
+      throw new ApiError("VALIDATION_FAILED", "Closed product feedback cannot be updated without reopening.");
+    }
+    if (!publicMessage && !internalMessage) {
+      throw new ApiError("VALIDATION_FAILED", "At least one of publicMessage or internalMessage must be provided.");
+    }
+    const nextResolutionCode =
+      input.resolutionCode !== undefined ? input.resolutionCode : existing.resolution_code;
+    return {
+      nextStatus,
+      nextResolutionCode,
+      kind: "progress"
+    };
+  }
+
+  // Next status differs from current status
+  if (current === "open" && nextStatus === "in_progress") {
+    return {
+      nextStatus,
+      nextResolutionCode: null,
+      kind: "status_changed"
+    };
+  }
+
+  if (current === "open" && nextStatus === "closed") {
+    const resolutionCode = input.resolutionCode ?? existing.resolution_code;
+    if (!resolutionCode) {
+      throw new ApiError("VALIDATION_FAILED", "Resolution code is required when closing feedback.");
+    }
+    return {
+      nextStatus,
+      nextResolutionCode: resolutionCode,
+      kind: "status_changed"
+    };
+  }
+
+  if (current === "in_progress" && nextStatus === "resolved") {
+    const resolutionCode = input.resolutionCode ?? existing.resolution_code;
+    if (!resolutionCode) {
+      throw new ApiError("VALIDATION_FAILED", "Resolution code is required when resolving feedback.");
+    }
+    if (!publicMessage) {
+      throw new ApiError("VALIDATION_FAILED", "Public message is required when resolving feedback.");
+    }
+    return {
+      nextStatus,
+      nextResolutionCode: resolutionCode,
+      kind: "status_changed"
+    };
+  }
+
+  if (current === "in_progress" && nextStatus === "closed") {
+    const resolutionCode = input.resolutionCode ?? existing.resolution_code;
+    if (!resolutionCode) {
+      throw new ApiError("VALIDATION_FAILED", "Resolution code is required when closing feedback.");
+    }
+    return {
+      nextStatus,
+      nextResolutionCode: resolutionCode,
+      kind: "status_changed"
+    };
+  }
+
+  if (current === "resolved" && nextStatus === "closed") {
+    const resolutionCode = input.resolutionCode ?? existing.resolution_code;
+    return {
+      nextStatus,
+      nextResolutionCode: resolutionCode,
+      kind: "status_changed"
+    };
+  }
+
+  if (current === "resolved" && nextStatus === "in_progress") {
+    if (!publicMessage && !internalMessage) {
+      throw new ApiError("VALIDATION_FAILED", "An explanation is required when reopening feedback.");
+    }
+    return {
+      nextStatus,
+      nextResolutionCode: null,
+      kind: "reopened"
+    };
+  }
+
+  if (current === "closed" && nextStatus === "in_progress") {
+    if (!publicMessage && !internalMessage) {
+      throw new ApiError("VALIDATION_FAILED", "An explanation is required when reopening feedback.");
+    }
+    return {
+      nextStatus,
+      nextResolutionCode: null,
+      kind: "reopened"
+    };
+  }
+
+  throw new ApiError(
+    "VALIDATION_FAILED",
+    `Illegal product feedback status transition: ${current} -> ${nextStatus}.`,
+    { currentStatus: current, nextStatus }
+  );
+}
+
+export async function appendProductFeedbackProgress(
+  db: Database,
+  auth: AuthContext,
+  feedbackId: string,
+  input: AppendProductFeedbackProgressInput,
+  context: ProductFeedbackServiceContext = {}
+): Promise<ProductFeedbackAdminDto> {
+  requireProductFeedbackAdmin(auth);
+
+  return db.transaction(async (tx) => {
+    const existing = await getFeedbackForUpdate(tx, auth, feedbackId);
+    if (!existing || existing.submitted_at === null) {
+      throw productFeedbackNotFound(feedbackId);
+    }
+
+    const { nextStatus, nextResolutionCode, kind } = validateProgressTransition(existing, input);
+    const publicMessage = input.publicMessage?.trim() || null;
+    const internalMessage = input.internalMessage?.trim() || null;
+
+    if (nextStatus !== existing.status || nextResolutionCode !== existing.resolution_code) {
+      await updateFeedbackProgressStatus(tx, auth, feedbackId, nextStatus, nextResolutionCode);
+    }
+
+    await insertProgressEvent(tx, auth, {
+      id: randomUUID(),
+      feedbackId,
+      actorUserId: auth.user.id,
+      kind,
+      fromStatus: existing.status,
+      toStatus: nextStatus,
+      resolutionCode: nextResolutionCode,
+      publicMessage,
+      internalMessage
+    });
+
+    await writeAuditEventInTx(asAuditTx(tx), auth, { requestId: context.requestId ?? randomUUID() }, {
+      app: "product-feedback",
+      kind: "product-feedback-progress",
+      action: "update",
+      severity: "Medium",
+      projectId: null,
+      targetType: "product-feedback",
+      targetId: feedbackId,
+      metadata: {
+        previousStatus: existing.status,
+        nextStatus,
+        resolutionCode: nextResolutionCode,
+        hasPublicMessage: Boolean(publicMessage),
+        hasInternalMessage: Boolean(internalMessage)
+      }
+    });
+
+    const updated = await getFeedbackById(tx, auth, feedbackId);
+    if (!updated) {
+      throw productFeedbackNotFound(feedbackId);
+    }
+    return updated;
+  });
+}
+
+export async function getProductFeedbackStats(
+  db: Queryable,
+  auth: AuthContext
+): Promise<ProductFeedbackStatsDto> {
+  requireProductFeedbackAdmin(auth);
+  return getFeedbackStats(db, auth);
 }
 

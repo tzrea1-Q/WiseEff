@@ -1,7 +1,17 @@
-import { CheckCircle2, CircleX, ImageIcon, PlayCircle } from "lucide-react";
+import { CheckCircle2, CircleX, ImageIcon, PlayCircle, PlusCircle, RotateCcw } from "lucide-react";
 import { useEffect, useState } from "react";
-import type { ProductFeedback, ProductFeedbackStatus } from "@/domain/productFeedback/types";
-import { productFeedbackStatusLabels, productFeedbackTypeLabels } from "@/domain/productFeedback/types";
+import type { ProductFeedbackAppendProgressInput } from "@/application/ports/ProductFeedbackRepository";
+import type {
+  ProductFeedback,
+  ProductFeedbackResolutionCode,
+  ProductFeedbackStatus
+} from "@/domain/productFeedback/types";
+import {
+  productFeedbackResolutionCodes,
+  productFeedbackResolutionLabels,
+  productFeedbackStatusLabels,
+  productFeedbackTypeLabels
+} from "@/domain/productFeedback/types";
 import { presentError } from "@/infrastructure/http/presentError";
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/common/ConfirmDialog";
@@ -13,6 +23,7 @@ export type FeedbackAdminDrawerProps = {
   open: boolean;
   onClose: () => void;
   onUpdate: (id: string, patch: { status?: ProductFeedbackStatus; adminNote?: string | null }) => Promise<ProductFeedback>;
+  onAppendProgress?: (id: string, input: ProductFeedbackAppendProgressInput) => Promise<ProductFeedback>;
   getAttachmentObjectUrl: (feedbackId: string, attachmentId: string) => Promise<string>;
 };
 
@@ -42,6 +53,7 @@ export function FeedbackAdminDrawer({
   open,
   onClose,
   onUpdate,
+  onAppendProgress,
   getAttachmentObjectUrl
 }: FeedbackAdminDrawerProps) {
   const [adminNote, setAdminNote] = useState("");
@@ -50,6 +62,19 @@ export function FeedbackAdminDrawer({
   const [pending, setPending] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
   const [closeConfirmOpen, setCloseConfirmOpen] = useState(false);
+
+  // New progress workflow dialogs
+  const [resolveDialogOpen, setResolveDialogOpen] = useState(false);
+  const [resolutionCode, setResolutionCode] = useState<ProductFeedbackResolutionCode>("completed");
+  const [resolvePublicMessage, setResolvePublicMessage] = useState("");
+  const [resolveInternalMessage, setResolveInternalMessage] = useState("");
+
+  const [progressDialogOpen, setProgressDialogOpen] = useState(false);
+  const [progressPublicMessage, setProgressPublicMessage] = useState("");
+  const [progressInternalMessage, setProgressInternalMessage] = useState("");
+
+  const [reopenDialogOpen, setReopenDialogOpen] = useState(false);
+  const [reopenReason, setReopenReason] = useState("");
 
   useEffect(() => {
     setAdminNote(feedback?.adminNote ?? "");
@@ -60,6 +85,9 @@ export function FeedbackAdminDrawer({
   useEffect(() => {
     if (!open) {
       setExpandedPreview(null);
+      setResolveDialogOpen(false);
+      setProgressDialogOpen(false);
+      setReopenDialogOpen(false);
     }
   }, [open]);
 
@@ -129,6 +157,91 @@ export function FeedbackAdminDrawer({
     void handleStatusAction();
   };
 
+  const handleResolve = async () => {
+    if (!resolvePublicMessage.trim()) {
+      setErrorMessage("请填写对外公开说明。");
+      return;
+    }
+    setPending(true);
+    setErrorMessage("");
+    try {
+      if (onAppendProgress) {
+        await onAppendProgress(feedback.id, {
+          toStatus: "resolved",
+          resolutionCode,
+          publicMessage: resolvePublicMessage.trim(),
+          internalMessage: resolveInternalMessage.trim() || null
+        });
+      } else {
+        await onUpdate(feedback.id, {
+          status: "resolved",
+          adminNote: resolvePublicMessage.trim()
+        });
+      }
+      setResolveDialogOpen(false);
+    } catch (error) {
+      setErrorMessage(presentError(error, "标记解决失败，请稍后重试。"));
+    } finally {
+      setPending(false);
+    }
+  };
+
+  const handleAddProgress = async () => {
+    if (!progressPublicMessage.trim() && !progressInternalMessage.trim()) {
+      setErrorMessage("请至少填写公开进展或内部备注中的一项。");
+      return;
+    }
+    setPending(true);
+    setErrorMessage("");
+    try {
+      if (onAppendProgress) {
+        await onAppendProgress(feedback.id, {
+          publicMessage: progressPublicMessage.trim() || null,
+          internalMessage: progressInternalMessage.trim() || null
+        });
+      } else {
+        await onUpdate(feedback.id, {
+          adminNote: (progressInternalMessage.trim() || progressPublicMessage.trim()) ?? null
+        });
+      }
+      setProgressDialogOpen(false);
+      setProgressPublicMessage("");
+      setProgressInternalMessage("");
+    } catch (error) {
+      setErrorMessage(presentError(error, "添加进展失败，请稍后重试。"));
+    } finally {
+      setPending(false);
+    }
+  };
+
+  const handleReopen = async () => {
+    if (!reopenReason.trim()) {
+      setErrorMessage("请填写重新打开原因。");
+      return;
+    }
+    setPending(true);
+    setErrorMessage("");
+    try {
+      if (onAppendProgress) {
+        await onAppendProgress(feedback.id, {
+          toStatus: "in_progress",
+          publicMessage: reopenReason.trim()
+        });
+      } else {
+        await onUpdate(feedback.id, {
+          status: "in_progress",
+          adminNote: reopenReason.trim()
+        });
+      }
+      setReopenDialogOpen(false);
+      setReopenReason("");
+    } catch (error) {
+      setErrorMessage(presentError(error, "重新打开失败，请稍后重试。"));
+    } finally {
+      setPending(false);
+    }
+  };
+
   return (
     <>
       <Dialog
@@ -164,15 +277,71 @@ export function FeedbackAdminDrawer({
             <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-foreground">{feedback.description}</p>
           </section>
 
-          <section className="grid grid-cols-2 gap-3 rounded-lg bg-muted/40 p-3 text-xs">
+          <section className="grid grid-cols-2 gap-3 rounded-lg bg-muted/40 p-3 text-xs sm:grid-cols-3">
             <div>
               <span className="text-muted-foreground">页面路径</span>
               <p className="mt-1 font-mono text-foreground">{feedback.pagePath}</p>
             </div>
             <div>
+              <span className="text-muted-foreground">提交人</span>
+              <p className="mt-1 text-foreground">
+                {feedback.submitter
+                  ? feedback.submitter.username
+                    ? `${feedback.submitter.name} (@${feedback.submitter.username})`
+                    : feedback.submitter.name
+                  : feedback.submitterUserId === null
+                    ? "已注销用户"
+                    : feedback.submitterUserId ?? "内测用户"}
+              </p>
+            </div>
+            <div>
               <span className="text-muted-foreground">更新时间</span>
               <p className="mt-1 text-foreground">{formatDateTime(feedback.updatedAt)}</p>
             </div>
+          </section>
+
+          <section>
+            <h4 className="text-xs font-semibold uppercase text-muted-foreground">
+              处理进展记录{feedback.progressEvents ? `（${feedback.progressEvents.length}）` : ""}
+            </h4>
+            {!feedback.progressEvents || feedback.progressEvents.length === 0 ? (
+              <p className="mt-2 rounded-lg border border-dashed border-border p-3 text-xs text-muted-foreground">暂无进展记录。</p>
+            ) : (
+              <div className="mt-2 space-y-2 rounded-lg border border-border bg-muted/20 p-3">
+                {feedback.progressEvents.map((event) => (
+                  <div key={event.id} className="border-l-2 border-primary/40 pl-3 py-1 text-xs space-y-1">
+                    <div className="flex items-center justify-between text-muted-foreground">
+                      <span className="font-medium text-foreground">
+                        {event.kind === "submitted" && "用户提交反馈"}
+                        {event.kind === "status_changed" &&
+                          `状态变更：${event.fromStatus ? productFeedbackStatusLabels[event.fromStatus] : ""} → ${event.toStatus ? productFeedbackStatusLabels[event.toStatus] : ""}`}
+                        {event.kind === "reopened" && "重新打开反馈"}
+                        {event.kind === "progress" && "处理进展"}
+                        {event.kind === "legacy_note" && "处理备注"}
+                      </span>
+                      <span>{formatDateTime(event.createdAt)}</span>
+                    </div>
+                    {event.resolutionCode && (
+                      <p className="text-muted-foreground">
+                        解决结论：<span className="font-medium text-foreground">{productFeedbackResolutionLabels[event.resolutionCode]}</span>
+                      </p>
+                    )}
+                    {event.publicMessage && (
+                      <div className="rounded bg-background/80 p-2 text-foreground">
+                        <span className="text-[10px] font-semibold text-primary uppercase mr-1">公开进展:</span>
+                        {event.publicMessage}
+                      </div>
+                    )}
+                    {event.internalMessage && (
+                      <div className="rounded bg-amber-500/10 p-2 text-amber-950 dark:text-amber-200">
+                        <span className="text-[10px] font-semibold text-amber-600 uppercase mr-1">内部备注:</span>
+                        {event.internalMessage}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
           </section>
 
           <section>
@@ -222,14 +391,60 @@ export function FeedbackAdminDrawer({
           {errorMessage ? <p className="rounded-md bg-destructive/10 px-3 py-2 text-xs text-destructive">{errorMessage}</p> : null}
         </div>
 
-        {action && ActionIcon ? (
-          <div className="flex flex-wrap items-center gap-2 border-t border-border p-4">
+        <div className="flex flex-wrap items-center gap-2 border-t border-border p-4">
+          {action && ActionIcon ? (
             <Button size="sm" onClick={handlePrimaryAction} disabled={pending} aria-busy={pending || undefined}>
               <ActionIcon data-icon="inline-start" />
               {pending ? "处理中..." : action.label}
             </Button>
-          </div>
-        ) : null}
+          ) : null}
+
+          {feedback.status === "in_progress" && (
+            <>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => {
+                  setResolvePublicMessage("");
+                  setResolveInternalMessage("");
+                  setResolveDialogOpen(true);
+                }}
+                disabled={pending}
+              >
+                <CheckCircle2 data-icon="inline-start" />
+                标记解决
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => {
+                  setProgressPublicMessage("");
+                  setProgressInternalMessage("");
+                  setProgressDialogOpen(true);
+                }}
+                disabled={pending}
+              >
+                <PlusCircle data-icon="inline-start" />
+                添加进展
+              </Button>
+            </>
+          )}
+
+          {(feedback.status === "resolved" || feedback.status === "closed") && (
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => {
+                setReopenReason("");
+                setReopenDialogOpen(true);
+              }}
+              disabled={pending}
+            >
+              <RotateCcw data-icon="inline-start" />
+              重新打开
+            </Button>
+          )}
+        </div>
         </DialogContent>
       </Dialog>
 
@@ -283,6 +498,136 @@ export function FeedbackAdminDrawer({
               <p className="truncate text-center text-xs text-muted-foreground">{expandedPreview.fileName}</p>
             </div>
           ) : null}
+        </DialogContent>
+      </Dialog>
+
+      {/* Resolve Dialog */}
+      <Dialog open={resolveDialogOpen} onOpenChange={setResolveDialogOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogTitle>标记反馈为已解决</DialogTitle>
+          <DialogDescription>
+            解决反馈需要选择解决结论并填写对外公开说明，提交人可在我的反馈中查看处理结果。
+          </DialogDescription>
+          <div className="space-y-3 py-2 text-sm">
+            <div>
+              <label htmlFor="resolve-resolution-code" className="text-xs font-medium text-muted-foreground">解决结论 *</label>
+              <select
+                id="resolve-resolution-code"
+                value={resolutionCode}
+                onChange={(e) => setResolutionCode(e.target.value as ProductFeedbackResolutionCode)}
+                className="mt-1 h-8 w-full rounded-md border border-border bg-background px-2 text-xs"
+              >
+                {productFeedbackResolutionCodes.map((code) => (
+                  <option key={code} value={code}>
+                    {productFeedbackResolutionLabels[code]}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label htmlFor="resolve-public-msg" className="text-xs font-medium text-muted-foreground">对外公开说明 *</label>
+              <Textarea
+                id="resolve-public-msg"
+                value={resolvePublicMessage}
+                onChange={(e) => setResolvePublicMessage(e.target.value)}
+                placeholder="例如：已在 v2.5.1 版本修复此问题"
+                rows={3}
+                className="mt-1"
+              />
+            </div>
+            <div>
+              <label htmlFor="resolve-internal-msg" className="text-xs font-medium text-muted-foreground">内部处理备注（可选）</label>
+              <Textarea
+                id="resolve-internal-msg"
+                value={resolveInternalMessage}
+                onChange={(e) => setResolveInternalMessage(e.target.value)}
+                placeholder="仅管理员可见的内部排查或沟通记录..."
+                rows={2}
+                className="mt-1"
+              />
+            </div>
+          </div>
+          <div className="flex justify-end gap-2 pt-2">
+            <Button variant="outline" size="sm" onClick={() => setResolveDialogOpen(false)} disabled={pending}>
+              取消
+            </Button>
+            <Button size="sm" onClick={() => void handleResolve()} disabled={pending}>
+              {pending ? "提交中..." : "确认解决"}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Progress Dialog */}
+      <Dialog open={progressDialogOpen} onOpenChange={setProgressDialogOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogTitle>添加处理进展</DialogTitle>
+          <DialogDescription>
+            记录最新的排查或处理进展。公开进展对反馈提交人可见，内部备注仅管理员可见。
+          </DialogDescription>
+          <div className="space-y-3 py-2 text-sm">
+            <div>
+              <label htmlFor="progress-public-msg" className="text-xs font-medium text-muted-foreground">公开进展（提交人可见）</label>
+              <Textarea
+                id="progress-public-msg"
+                value={progressPublicMessage}
+                onChange={(e) => setProgressPublicMessage(e.target.value)}
+                placeholder="向用户同步的处理进展..."
+                rows={3}
+                className="mt-1"
+              />
+            </div>
+            <div>
+              <label htmlFor="progress-internal-msg" className="text-xs font-medium text-muted-foreground">内部备注（仅管理员可见）</label>
+              <Textarea
+                id="progress-internal-msg"
+                value={progressInternalMessage}
+                onChange={(e) => setProgressInternalMessage(e.target.value)}
+                placeholder="内部讨论、排查结论或责任人记录..."
+                rows={2}
+                className="mt-1"
+              />
+            </div>
+          </div>
+          <div className="flex justify-end gap-2 pt-2">
+            <Button variant="outline" size="sm" onClick={() => setProgressDialogOpen(false)} disabled={pending}>
+              取消
+            </Button>
+            <Button size="sm" onClick={() => void handleAddProgress()} disabled={pending}>
+              {pending ? "提交中..." : "添加记录"}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Reopen Dialog */}
+      <Dialog open={reopenDialogOpen} onOpenChange={setReopenDialogOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogTitle>重新打开反馈</DialogTitle>
+          <DialogDescription>
+            重新将反馈置为处理中状态。需填写说明，作为公开进展同步给提交人。
+          </DialogDescription>
+          <div className="space-y-3 py-2 text-sm">
+            <div>
+              <label htmlFor="reopen-reason" className="text-xs font-medium text-muted-foreground">重新打开原因 *</label>
+              <Textarea
+                id="reopen-reason"
+                value={reopenReason}
+                onChange={(e) => setReopenReason(e.target.value)}
+                placeholder="说明为何重新打开（例如：问题在特定机型仍复现）..."
+                rows={3}
+                className="mt-1"
+              />
+            </div>
+          </div>
+          <div className="flex justify-end gap-2 pt-2">
+            <Button variant="outline" size="sm" onClick={() => setReopenDialogOpen(false)} disabled={pending}>
+              取消
+            </Button>
+            <Button size="sm" onClick={() => void handleReopen()} disabled={pending}>
+              {pending ? "提交中..." : "确认重新打开"}
+            </Button>
+          </div>
         </DialogContent>
       </Dialog>
     </>

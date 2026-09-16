@@ -92,3 +92,11 @@ export const productFeedbackResolutionLabels: Record<ProductFeedbackResolutionCo
   invalid: "无效反馈",
   other: "其他"
 };
+
+export type ProductFeedbackStats = {
+  total: number;
+  open: number;
+  inProgress: number;
+  resolved: number;
+  closed: number;
+};

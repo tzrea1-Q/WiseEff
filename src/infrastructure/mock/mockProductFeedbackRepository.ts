@@ -1,5 +1,10 @@
 import type { ProductFeedbackListQuery, ProductFeedbackRepository } from "@/application/ports/ProductFeedbackRepository";
-import type { ProductFeedback, ProductFeedbackAttachment, ProductFeedbackStatus } from "@/domain/productFeedback/types";
+import type {
+  ProductFeedback,
+  ProductFeedbackAttachment,
+  ProductFeedbackProgressEventKind,
+  ProductFeedbackStatus
+} from "@/domain/productFeedback/types";
 import { mockApiError } from "./mockApiError";
 
 const MOCK_PRODUCT_FEEDBACK_NOW = "2026-07-08T00:00:00.000Z";
@@ -275,6 +280,109 @@ export function createMockProductFeedbackRepository(initialItems: ProductFeedbac
 
     async getMineAttachmentObjectUrl(feedbackId, attachmentId) {
       return this.getAttachmentObjectUrl(feedbackId, attachmentId);
+    },
+
+    async getStats() {
+      const submitted = items.filter((item) => item.submittedAt !== null && item.submittedAt !== undefined);
+      return {
+        total: submitted.length,
+        open: submitted.filter((item) => item.status === "open").length,
+        inProgress: submitted.filter((item) => item.status === "in_progress").length,
+        resolved: submitted.filter((item) => item.status === "resolved").length,
+        closed: submitted.filter((item) => item.status === "closed").length
+      };
+    },
+
+    async appendProgress(id, input) {
+      const existing = assertFeedbackExists(items.find((item) => item.id === id), id);
+      if (existing.submittedAt === null || existing.submittedAt === undefined) {
+        throw mockApiError("NOT_FOUND", "Product feedback was not found.", { feedbackId: id });
+      }
+
+      const current = existing.status;
+      const nextStatus = input.toStatus ?? current;
+      const publicMessage = input.publicMessage?.trim() || null;
+      const internalMessage = input.internalMessage?.trim() || null;
+
+      let kind: ProductFeedbackProgressEventKind = "progress";
+      let nextResolutionCode = existing.resolutionCode ?? null;
+
+      if (nextStatus === current) {
+        if (current === "closed") {
+          throw mockApiError("VALIDATION_FAILED", "Closed product feedback cannot be updated without reopening.");
+        }
+        if (!publicMessage && !internalMessage) {
+          throw mockApiError("VALIDATION_FAILED", "At least one of publicMessage or internalMessage must be provided.");
+        }
+        if (input.resolutionCode !== undefined) {
+          nextResolutionCode = input.resolutionCode;
+        }
+        kind = "progress";
+      } else {
+        if (current === "open" && nextStatus === "in_progress") {
+          kind = "status_changed";
+          nextResolutionCode = null;
+        } else if (current === "open" && nextStatus === "closed") {
+          const res = input.resolutionCode ?? existing.resolutionCode;
+          if (!res) {
+            throw mockApiError("VALIDATION_FAILED", "Resolution code is required when closing feedback.");
+          }
+          kind = "status_changed";
+          nextResolutionCode = res;
+        } else if (current === "in_progress" && nextStatus === "resolved") {
+          const res = input.resolutionCode ?? existing.resolutionCode;
+          if (!res) {
+            throw mockApiError("VALIDATION_FAILED", "Resolution code is required when resolving feedback.");
+          }
+          if (!publicMessage) {
+            throw mockApiError("VALIDATION_FAILED", "Public message is required when resolving feedback.");
+          }
+          kind = "status_changed";
+          nextResolutionCode = res;
+        } else if (current === "in_progress" && nextStatus === "closed") {
+          const res = input.resolutionCode ?? existing.resolutionCode;
+          if (!res) {
+            throw mockApiError("VALIDATION_FAILED", "Resolution code is required when closing feedback.");
+          }
+          kind = "status_changed";
+          nextResolutionCode = res;
+        } else if (current === "resolved" && nextStatus === "closed") {
+          kind = "status_changed";
+          nextResolutionCode = input.resolutionCode ?? existing.resolutionCode ?? null;
+        } else if ((current === "resolved" || current === "closed") && nextStatus === "in_progress") {
+          if (!publicMessage && !internalMessage) {
+            throw mockApiError("VALIDATION_FAILED", "An explanation is required when reopening feedback.");
+          }
+          kind = "reopened";
+          nextResolutionCode = null;
+        } else {
+          throw mockApiError("VALIDATION_FAILED", `Illegal product feedback status transition: ${current} -> ${nextStatus}.`);
+        }
+      }
+
+      const newEvent = {
+        id: `${id}-event-${(existing.progressEvents?.length ?? 0) + 1}`,
+        feedbackId: id,
+        kind,
+        fromStatus: current,
+        toStatus: nextStatus,
+        resolutionCode: nextResolutionCode,
+        publicMessage,
+        internalMessage,
+        createdAt: MOCK_PRODUCT_FEEDBACK_NOW
+      };
+
+      const updated: ProductFeedback = {
+        ...existing,
+        status: nextStatus,
+        resolutionCode: nextResolutionCode,
+        updatedAt: MOCK_PRODUCT_FEEDBACK_NOW,
+        progressEvents: [...(existing.progressEvents ?? []), newEvent],
+        latestPublicProgress: publicMessage ?? existing.latestPublicProgress ?? null
+      };
+
+      items = items.map((item) => (item.id === id ? updated : item));
+      return cloneFeedback(updated);
     }
   };
 }

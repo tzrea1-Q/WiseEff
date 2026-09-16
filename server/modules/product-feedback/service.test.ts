@@ -11,6 +11,7 @@ import {
 } from "../../testing/testDatabase";
 import { seedCoreGraph } from "../../testing/fixtures";
 import {
+  appendProductFeedbackProgress,
   createProductFeedback,
   createProductFeedbackDraft,
   deleteProductFeedbackDraft,
@@ -18,6 +19,7 @@ import {
   getMyProductFeedbackAttachmentContent,
   getProductFeedback,
   getProductFeedbackAttachmentContent,
+  getProductFeedbackStats,
   listMyProductFeedback,
   listProductFeedback,
   saveProductFeedbackDraft,
@@ -496,6 +498,146 @@ describe.skipIf(!databaseAvailable)("product feedback service", () => {
     await expect(getMyProductFeedback(db, auth(), draft2.id)).rejects.toMatchObject(
       new ApiError("NOT_FOUND", "Product feedback was not found.", { feedbackId: draft2.id })
     );
+  });
+
+  it("appendProductFeedbackProgress: full state machine lifecycle, internal message isolation, and audit", async () => {
+    const { objectStore } = makeObjectStore();
+    const submitted = await createProductFeedback(db, objectStore, auth(), createInput());
+    expect(submitted.status).toBe("open");
+
+    // open -> in_progress
+    const inProgress = await appendProductFeedbackProgress(db, adminAuth(), submitted.id, {
+      toStatus: "in_progress",
+      internalMessage: "Assigned to backend team"
+    });
+    expect(inProgress.status).toBe("in_progress");
+    // Events: [submitted, status_changed(open->in_progress)] — order by created_at,id
+    expect(inProgress.progressEvents).toHaveLength(2);
+    const evt1 = inProgress.progressEvents.find((e) => e.kind === "status_changed");
+    expect(evt1).toBeDefined();
+    expect(evt1?.fromStatus).toBe("open");
+    expect(evt1?.toStatus).toBe("in_progress");
+
+    // Internal message must NOT appear in user-visible DTO
+    const userView = await getMyProductFeedback(db, auth(), submitted.id);
+    const userEvent = userView.progressEvents[0];
+    expect("internalMessage" in userEvent).toBe(false);
+
+    // in_progress -> resolved requires resolutionCode and publicMessage
+    await expect(
+      appendProductFeedbackProgress(db, adminAuth(), submitted.id, { toStatus: "resolved" })
+    ).rejects.toMatchObject(new ApiError("VALIDATION_FAILED", "Resolution code is required when resolving feedback."));
+
+    await expect(
+      appendProductFeedbackProgress(db, adminAuth(), submitted.id, { toStatus: "resolved", resolutionCode: "completed" })
+    ).rejects.toMatchObject(new ApiError("VALIDATION_FAILED", "Public message is required when resolving feedback."));
+
+    // in_progress -> resolved with all required fields
+    const resolved = await appendProductFeedbackProgress(db, adminAuth(), submitted.id, {
+      toStatus: "resolved",
+      resolutionCode: "completed",
+      publicMessage: "Fixed in v2.5.1"
+    });
+    expect(resolved.status).toBe("resolved");
+    expect(resolved.resolutionCode).toBe("completed");
+    // Events: [submitted, open->in_progress, in_progress->resolved]
+    expect(resolved.progressEvents).toHaveLength(3);
+    // latestPublicProgress reflects the most recent public message across all events
+    expect(resolved.latestPublicProgress).toBeTruthy();
+
+    // resolved -> in_progress (reopen) requires explanation
+    await expect(
+      appendProductFeedbackProgress(db, adminAuth(), submitted.id, { toStatus: "in_progress" })
+    ).rejects.toMatchObject(new ApiError("VALIDATION_FAILED", "An explanation is required when reopening feedback."));
+
+    const reopened = await appendProductFeedbackProgress(db, adminAuth(), submitted.id, {
+      toStatus: "in_progress",
+      publicMessage: "User reports issue persists"
+    });
+    expect(reopened.status).toBe("in_progress");
+    // Check reopened event exists (order may vary within same ms)
+    expect(reopened.progressEvents.some((e) => e.kind === "reopened")).toBe(true);
+
+    // in_progress -> closed requires resolutionCode
+    await expect(
+      appendProductFeedbackProgress(db, adminAuth(), submitted.id, { toStatus: "closed" })
+    ).rejects.toMatchObject(new ApiError("VALIDATION_FAILED", "Resolution code is required when closing feedback."));
+
+    const closed = await appendProductFeedbackProgress(db, adminAuth(), submitted.id, {
+      toStatus: "closed",
+      resolutionCode: "duplicate",
+      internalMessage: "Dupe of #123"
+    });
+    expect(closed.status).toBe("closed");
+
+    // closed -> appending without reopening is rejected
+    await expect(
+      appendProductFeedbackProgress(db, adminAuth(), submitted.id, { internalMessage: "post-close note" })
+    ).rejects.toMatchObject(new ApiError("VALIDATION_FAILED", "Closed product feedback cannot be updated without reopening."));
+
+    // closed -> in_progress (reopen from closed)
+    const reopenedFromClosed = await appendProductFeedbackProgress(db, adminAuth(), submitted.id, {
+      toStatus: "in_progress",
+      publicMessage: "Reopened after further investigation"
+    });
+    expect(reopenedFromClosed.status).toBe("in_progress");
+    expect(reopenedFromClosed.progressEvents.some((e) => e.kind === "reopened")).toBe(true);
+
+    // Audit events recorded for all transitions
+    const events = await auditEvents();
+    const progressAudits = events.filter((e) => e.kind === "product-feedback-progress");
+    expect(progressAudits.length).toBeGreaterThanOrEqual(5);
+    const lastAudit = progressAudits.at(-1);
+    expect(lastAudit).toMatchObject({
+      kind: "product-feedback-progress",
+      action: "update",
+      target_type: "product-feedback",
+      target_id: submitted.id
+    });
+    // Audit metadata must not store full message text — only boolean flags
+    expect(lastAudit?.metadata).not.toHaveProperty("publicMessage");
+    expect(lastAudit?.metadata).toMatchObject({ hasPublicMessage: true });
+  });
+
+  it("appendProductFeedbackProgress: illegal transitions rejected", async () => {
+    const { objectStore } = makeObjectStore();
+    const submitted = await createProductFeedback(db, objectStore, auth(), createInput());
+
+    // open -> resolved is not a direct transition
+    await expect(
+      appendProductFeedbackProgress(db, adminAuth(), submitted.id, {
+        toStatus: "resolved",
+        resolutionCode: "completed",
+        publicMessage: "skip"
+      })
+    ).rejects.toMatchObject({ code: "VALIDATION_FAILED", message: expect.stringContaining("open -> resolved") });
+
+    // Non-admin cannot call appendProgress
+    await expect(
+      appendProductFeedbackProgress(db, auth(), submitted.id, { toStatus: "in_progress" })
+    ).rejects.toMatchObject({ code: "FORBIDDEN" });
+  });
+
+  it("getProductFeedbackStats: counts by status", async () => {
+    const { objectStore } = makeObjectStore();
+    const f1 = await createProductFeedback(db, objectStore, auth(), createInput());
+    const f2 = await createProductFeedback(db, objectStore, auth(), createInput());
+    await createProductFeedback(db, objectStore, auth(), createInput());
+
+    await appendProductFeedbackProgress(db, adminAuth(), f1.id, { toStatus: "in_progress" });
+    await appendProductFeedbackProgress(db, adminAuth(), f2.id, { toStatus: "in_progress" });
+    await appendProductFeedbackProgress(db, adminAuth(), f2.id, {
+      toStatus: "resolved",
+      resolutionCode: "completed",
+      publicMessage: "Done"
+    });
+
+    const stats = await getProductFeedbackStats(db, adminAuth());
+    expect(stats.total).toBe(3);
+    expect(stats.open).toBe(1);
+    expect(stats.inProgress).toBe(1);
+    expect(stats.resolved).toBe(1);
+    expect(stats.closed).toBe(0);
   });
 });
 

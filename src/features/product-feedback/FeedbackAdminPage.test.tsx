@@ -97,6 +97,36 @@ describe("FeedbackAdminPage", () => {
     expect(screen.queryByText("已注销用户")).not.toBeInTheDocument();
   });
 
+  it("displays submitter name and username when provenance is present", async () => {
+    await renderPage(
+      createRepository([
+        feedback({
+          submitter: { id: "user-1", name: "张三", username: "zhangsan" }
+        })
+      ])
+    );
+
+    expect(screen.getByText("张三 (@zhangsan)")).toBeInTheDocument();
+  });
+
+  it("loads and displays stats in the page insight bar", async () => {
+    await renderPage(
+      createRepository([feedback()], {
+        getStats: vi.fn().mockResolvedValue({
+          total: 10,
+          open: 2,
+          inProgress: 3,
+          resolved: 4,
+          closed: 1
+        })
+      })
+    );
+
+    expect(screen.getByText("待处理 2 条")).toBeInTheDocument();
+    expect(screen.getByText(/共 10 条反馈/)).toBeInTheDocument();
+    expect(screen.getByText(/处理中 3 · 已解决 4 · 已关闭 1/)).toBeInTheDocument();
+  });
+
   it("filters by status", async () => {
     await renderPage(
       createRepository([

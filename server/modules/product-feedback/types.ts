@@ -152,6 +152,21 @@ export type UpdateProductFeedbackPatch = {
   adminNote?: string | null;
 };
 
+export type ProductFeedbackStatsDto = {
+  total: number;
+  open: number;
+  inProgress: number;
+  resolved: number;
+  closed: number;
+};
+
+export type AppendProductFeedbackProgressInput = {
+  toStatus?: ProductFeedbackStatus;
+  resolutionCode?: ProductFeedbackResolutionCode | null;
+  publicMessage?: string | null;
+  internalMessage?: string | null;
+};
+
 export type ProductFeedbackAttachmentInput = {
   fileName: string;
   contentType: ProductFeedbackAttachmentContentType;

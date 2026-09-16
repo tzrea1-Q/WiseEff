@@ -713,8 +713,10 @@ export const routeManifest = [
     stability: "mvp"
   },
   { id: "productFeedback.list", method: "GET", path: "/api/v1/product-feedback", module: "product-feedback", stability: "mvp" },
+  { id: "productFeedback.stats", method: "GET", path: "/api/v1/product-feedback/stats", module: "product-feedback", stability: "mvp" },
   { id: "productFeedback.get", method: "GET", path: "/api/v1/product-feedback/:id", module: "product-feedback", stability: "mvp" },
   { id: "productFeedback.patch", method: "PATCH", path: "/api/v1/product-feedback/:id", module: "product-feedback", stability: "mvp" },
+  { id: "productFeedback.appendProgress", method: "POST", path: "/api/v1/product-feedback/:id/progress", module: "product-feedback", stability: "mvp" },
   { id: "knowledge.createEntry", method: "POST", path: "/api/v1/knowledge/entries", module: "knowledge", stability: "mvp" },
   { id: "knowledge.listEntries", method: "GET", path: "/api/v1/knowledge/entries", module: "knowledge", stability: "mvp" },
   {

@@ -4,6 +4,7 @@ import type {
   ProductFeedbackDraftSubmitInput,
   ProductFeedbackListQuery,
   ProductFeedbackRepository,
+  ProductFeedbackStats,
   ProductFeedbackSubmitInput
 } from "@/application/ports/ProductFeedbackRepository";
 import type {
@@ -240,6 +241,16 @@ export function createHttpProductFeedbackRepository(
     async update(id, patch) {
       const response = await apiClient.patch<ItemEnvelope<ProductFeedbackDto>>(routeFeedbackPath(id), patchBody(patch));
       return productFeedbackFromDto(response.item);
+    },
+    async appendProgress(id, input) {
+      const response = await apiClient.post<ItemEnvelope<ProductFeedbackDto>>(
+        `/api/v1/product-feedback/${encodeURIComponent(id)}/progress`,
+        input
+      );
+      return productFeedbackFromDto(response.item);
+    },
+    async getStats() {
+      return apiClient.get<ProductFeedbackStats>("/api/v1/product-feedback/stats");
     },
     async getAttachmentObjectUrl(feedbackId, attachmentId) {
       const response = await apiClient.raw(routeAttachmentContentPath(feedbackId, attachmentId), {

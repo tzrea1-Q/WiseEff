@@ -14,6 +14,7 @@ import type {
   ProductFeedbackProgressEventKind,
   ProductFeedbackProgressEventUserDto,
   ProductFeedbackResolutionCode,
+  ProductFeedbackStatsDto,
   ProductFeedbackStatus,
   ProductFeedbackType,
   ProductFeedbackUserDto,
@@ -21,7 +22,7 @@ import type {
   UpdateProductFeedbackPatch
 } from "./types";
 
-type ProductFeedbackRow = {
+export type ProductFeedbackRow = {
   id: string;
   organization_id: string;
   submitter_user_id: string | null;
@@ -896,6 +897,97 @@ export async function submitDraft(
   });
 
   return getMyFeedbackById(db, auth, draftId);
+}
+
+export async function getFeedbackForUpdate(
+  db: Queryable,
+  auth: AuthContext,
+  id: string
+): Promise<ProductFeedbackRow | null> {
+  const result = await db.query<ProductFeedbackRow>(
+    `
+    select
+      feedback.id,
+      feedback.organization_id,
+      feedback.submitter_user_id,
+      users.name as submitter_name,
+      upc.username as submitter_username,
+      feedback.page_path,
+      feedback.page_title,
+      feedback.feedback_type,
+      feedback.description,
+      feedback.status,
+      feedback.resolution_code,
+      feedback.admin_note,
+      feedback.submitted_at,
+      feedback.created_at,
+      feedback.updated_at
+    from product_feedback feedback
+    left join users on users.id = feedback.submitter_user_id
+    left join user_password_credentials upc on upc.user_id = feedback.submitter_user_id
+    where feedback.organization_id = $1
+      and feedback.id = $2
+      and feedback.submitted_at is not null
+    for update of feedback
+    `,
+    [auth.organization.id, id]
+  );
+  return result.rows[0] ?? null;
+}
+
+export async function updateFeedbackProgressStatus(
+  db: Queryable,
+  auth: AuthContext,
+  id: string,
+  status: ProductFeedbackStatus,
+  resolutionCode: ProductFeedbackResolutionCode | null
+): Promise<void> {
+  await db.query(
+    `
+    update product_feedback
+    set status = $1,
+        resolution_code = $2,
+        updated_at = now()
+    where organization_id = $3
+      and id = $4
+    `,
+    [status, resolutionCode, auth.organization.id, id]
+  );
+}
+
+export async function getFeedbackStats(
+  db: Queryable,
+  auth: AuthContext
+): Promise<ProductFeedbackStatsDto> {
+  const result = await db.query<{
+    total: string | number;
+    open: string | number;
+    in_progress: string | number;
+    resolved: string | number;
+    closed: string | number;
+  }>(
+    `
+    select
+      count(*)::integer as total,
+      count(*) filter (where status = 'open')::integer as open,
+      count(*) filter (where status = 'in_progress')::integer as in_progress,
+      count(*) filter (where status = 'resolved')::integer as resolved,
+      count(*) filter (where status = 'closed')::integer as closed
+    from product_feedback
+    where organization_id = $1
+      and submitted_at is not null
+    `,
+    [auth.organization.id]
+  );
+
+  const row = result.rows[0] ?? { total: 0, open: 0, in_progress: 0, resolved: 0, closed: 0 };
+  return {
+    total: Number(row.total),
+    open: Number(row.open),
+    inProgress: Number(row.in_progress),
+    resolved: Number(row.resolved),
+    closed: Number(row.closed)
+  };
 }
 
 

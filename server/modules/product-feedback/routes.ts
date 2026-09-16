@@ -6,6 +6,7 @@ import type { Database } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
 import type { RouteRequest, WiseEffRouter } from "../../shared/http/router";
 import {
+  appendProductFeedbackProgress,
   createProductFeedback,
   createProductFeedbackDraft,
   deleteProductFeedbackDraft,
@@ -13,6 +14,7 @@ import {
   getMyProductFeedbackAttachmentContent,
   getProductFeedback,
   getProductFeedbackAttachmentContent,
+  getProductFeedbackStats,
   listMyProductFeedback,
   listProductFeedback,
   saveProductFeedbackDraft,
@@ -20,6 +22,7 @@ import {
   updateProductFeedback
 } from "./service";
 import {
+  appendProductFeedbackProgressBodySchema,
   createProductFeedbackBodySchema,
   createProductFeedbackDraftBodySchema,
   listMyFeedbackQuerySchema,
@@ -219,6 +222,14 @@ export function registerProductFeedbackRoutes(
     return { status: 200, body: result };
   });
 
+  router.get("/api/v1/product-feedback/stats", async (request) => {
+    const db = requireDb(options.db);
+    const auth = await getAuth(options.getCurrentAuthContext, request);
+    const stats = await getProductFeedbackStats(db, auth);
+
+    return { status: 200, body: stats };
+  });
+
   router.get("/api/v1/product-feedback/:id", async (request) => {
     const db = requireDb(options.db);
     const auth = await getAuth(options.getCurrentAuthContext, request);
@@ -234,6 +245,16 @@ export function registerProductFeedbackRoutes(
     const params = parseWithSchema(paramsWithFeedbackIdSchema, request.params);
     const body = parseWithSchema(patchProductFeedbackBodySchema, request.body);
     const item = await updateProductFeedback(db, auth, params.id, body, { requestId: request.requestId });
+
+    return { status: 200, body: { item } };
+  });
+
+  router.post("/api/v1/product-feedback/:id/progress", async (request) => {
+    const db = requireDb(options.db);
+    const auth = await getAuth(options.getCurrentAuthContext, request);
+    const params = parseWithSchema(paramsWithFeedbackIdSchema, request.params);
+    const body = parseWithSchema(appendProductFeedbackProgressBodySchema, request.body ?? {});
+    const item = await appendProductFeedbackProgress(db, auth, params.id, body, { requestId: request.requestId });
 
     return { status: 200, body: { item } };
   });

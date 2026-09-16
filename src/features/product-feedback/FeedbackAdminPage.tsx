@@ -1,6 +1,10 @@
 import { RefreshCw } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
-import type { ProductFeedbackRepository } from "@/application/ports/ProductFeedbackRepository";
+import type {
+  ProductFeedbackAppendProgressInput,
+  ProductFeedbackRepository,
+  ProductFeedbackStats
+} from "@/application/ports/ProductFeedbackRepository";
 import type { ProductFeedback, ProductFeedbackStatus, ProductFeedbackType } from "@/domain/productFeedback/types";
 import {
   productFeedbackStatuses,
@@ -47,6 +51,12 @@ function snippet(value: string) {
 }
 
 function submitterLabel(feedback: ProductFeedback) {
+  if (feedback.submitter) {
+    if (feedback.submitter.id === null) return "已注销用户";
+    return feedback.submitter.username
+      ? `${feedback.submitter.name} (@${feedback.submitter.username})`
+      : feedback.submitter.name;
+  }
   if (feedback.submitterUserId === null) return "已注销用户";
   return feedback.submitterUserId ?? "内测用户";
 }
@@ -67,6 +77,7 @@ function includesQuery(feedback: ProductFeedback, query: string) {
 
 export function FeedbackAdminPage({ productFeedbackRepository }: FeedbackAdminPageProps) {
   const [rows, setRows] = useState<ProductFeedback[]>([]);
+  const [stats, setStats] = useState<ProductFeedbackStats | null>(null);
   const [statusFilter, setStatusFilter] = useState<ProductFeedbackStatus | "all">("all");
   const [typeFilter, setTypeFilter] = useState<ProductFeedbackType | "all">("all");
   const [query, setQuery] = useState("");
@@ -78,8 +89,14 @@ export function FeedbackAdminPage({ productFeedbackRepository }: FeedbackAdminPa
     setLoading(true);
     setErrorMessage("");
     try {
-      const result = await productFeedbackRepository.list();
+      const [result, statsResult] = await Promise.all([
+        productFeedbackRepository.list(),
+        productFeedbackRepository.getStats ? productFeedbackRepository.getStats().catch(() => null) : Promise.resolve(null)
+      ]);
       setRows(result.items);
+      if (statsResult) {
+        setStats(statsResult);
+      }
     } catch (error) {
       setErrorMessage(presentError(error, "反馈列表加载失败，请稍后重试。"));
     } finally {
@@ -101,7 +118,7 @@ export function FeedbackAdminPage({ productFeedbackRepository }: FeedbackAdminPa
       }),
     [query, rows, statusFilter, typeFilter]
   );
-  const openCount = useMemo(() => rows.filter((feedback) => feedback.status === "open").length, [rows]);
+  const openCount = stats ? stats.open : rows.filter((feedback) => feedback.status === "open").length;
   const selectedFeedback = selectedId ? rows.find((feedback) => feedback.id === selectedId) ?? null : null;
   const hasActiveFilters = statusFilter !== "all" || typeFilter !== "all" || query.trim() !== "";
 
@@ -173,12 +190,33 @@ export function FeedbackAdminPage({ productFeedbackRepository }: FeedbackAdminPa
     return updated;
   };
 
+  const appendFeedbackProgress = async (id: string, input: ProductFeedbackAppendProgressInput) => {
+    if (productFeedbackRepository.appendProgress) {
+      const updated = await productFeedbackRepository.appendProgress(id, input);
+      setRows((current) => current.map((item) => (item.id === id ? updated : item)));
+      if (productFeedbackRepository.getStats) {
+        void productFeedbackRepository.getStats().then((s) => setStats(s)).catch(() => {});
+      }
+      return updated;
+    }
+    const updated = await productFeedbackRepository.update(id, {
+      status: input.toStatus,
+      adminNote: input.internalMessage ?? input.publicMessage ?? null
+    });
+    setRows((current) => current.map((item) => (item.id === id ? updated : item)));
+    return updated;
+  };
+
   return (
     <div className="feedback-admin-page flex flex-col gap-5 p-6">
       <PageInsightBar
         variant={openCount > 0 ? "warn" : "info"}
         headline={`待处理 ${openCount} 条`}
-        description="集中查看内测问题反馈，按状态、类型和页面关键词推进分诊。"
+        description={
+          stats
+            ? `共 ${stats.total} 条反馈（处理中 ${stats.inProgress} · 已解决 ${stats.resolved} · 已关闭 ${stats.closed}）`
+            : "集中查看内测问题反馈，按状态、类型和页面关键词推进分诊。"
+        }
         actions={[
           {
             label: "只看待处理",
@@ -279,6 +317,7 @@ export function FeedbackAdminPage({ productFeedbackRepository }: FeedbackAdminPa
         open={Boolean(selectedFeedback)}
         onClose={() => setSelectedId(null)}
         onUpdate={updateFeedback}
+        onAppendProgress={appendFeedbackProgress}
         getAttachmentObjectUrl={productFeedbackRepository.getAttachmentObjectUrl}
       />
     </div>
