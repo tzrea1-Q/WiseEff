@@ -126,7 +126,7 @@ describe("acceptance operation matrix", () => {
     ]);
   });
 
-  it("registers fifteen automated canonical parameter catalog operations with exact spec owners", () => {
+  it("registers seventeen automated canonical parameter catalog operations with exact spec owners", () => {
     const expectedIds = [
       "PCAT-CATALOG-DISCOVER-001",
       "PCAT-CATALOG-DEEP-LINK-001",
@@ -142,12 +142,15 @@ describe("acceptance operation matrix", () => {
       "PCAT-AGENT-READONLY-001",
       "PCAT-ADAPTER-PARITY-001",
       "PCAT-RESPONSIVE-001",
-      "PCAT-GOVERNANCE-JOURNEY-001"
+      "PCAT-GOVERNANCE-JOURNEY-001",
+      "PCAT-DEFINITION-COLLECTION-001",
+      "PCAT-DEFINITION-LIFECYCLE-001"
     ];
     const operations = acceptanceOperations.filter((operation) => operation.id.startsWith("PCAT-"));
     const catalogSpec = "e2e/acceptance/parameter-catalog.acceptance.spec.ts";
     const governanceSpec = "e2e/acceptance/parameter-catalog-governance.acceptance.spec.ts";
     const negativeSpec = "e2e/acceptance/parameter-catalog-negative.acceptance.spec.ts";
+    const definitionsSpec = "e2e/acceptance/parameter-catalog-definitions.acceptance.spec.ts";
     const specFilesByIndex = [
       catalogSpec,
       catalogSpec,
@@ -163,7 +166,9 @@ describe("acceptance operation matrix", () => {
       negativeSpec,
       negativeSpec,
       catalogSpec,
-      governanceSpec
+      governanceSpec,
+      definitionsSpec,
+      definitionsSpec
     ];
 
     expect(operations.map((operation) => operation.id)).toEqual(expectedIds);

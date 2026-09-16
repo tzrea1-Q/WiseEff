@@ -149,13 +149,15 @@
 
 ## Canonical Parameter definitions operations（#668 / OP-08）
 
-本附录同步 `e2e/acceptance/operationMatrix.ts` 中已正式登记的 15 个 `coverage=automated` operation。每行都有完整 assertions，以及指向已存在 owner 文件的 `specFiles`。CatalogPage 已挂载；OP-08（#810）在本地 Catalog lane 上以可观察断言执行这些 ID。英文 companion 由 `npm run acceptance:operations` 生成。这是本地证据，不是 Hosted 或目标机证据。
+本附录同步 `e2e/acceptance/operationMatrix.ts` 中已正式登记的 17 个 `coverage=automated` operation。每行都有完整 assertions，以及指向已存在 owner 文件的 `specFiles`。CatalogPage 已挂载；OP-08（#810）在本地 Catalog lane 上以可观察断言执行这些 ID。英文 companion 由 `npm run acceptance:operations` 生成。这是本地证据，不是 Hosted 或目标机证据。
 
 | Operation ID | Priority | 状态 | Requirement | 路由/角色/交互 | 三视口 | 必需 API / DB / audit / screenshot 证据 | Spec |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | `PCAT-CATALOG-DISCOVER-001` | P0 | automated | PCAT-UI-01 | `/parameter-admin/specs`；全角色进入唯一目录 | 1440x900、768x1024、390x844 | catalog/list 200；current-release DB fingerprint；zero read mutation；entry/list screenshots | `e2e/acceptance/parameter-catalog.acceptance.spec.ts` |
 | `PCAT-CATALOG-DEEP-LINK-001` | P0 | automated | PCAT-UI-02 | User/Org Admin；reload/Back/Forward opaque selection | 三视口 | pinned API/cursor；selected-ID DB；无 audit；restored-selection screenshots | `e2e/acceptance/parameter-catalog.acceptance.spec.ts` |
 | `PCAT-DEFINITION-DETAIL-001` | P0 | automated | PCAT-UI-03 | User/Org Admin；选择 Subject/Definition/current+pinned revision | 三视口 | detail/revision API；owner/head DB；无 audit；pane/sheet screenshots | `e2e/acceptance/parameter-catalog.acceptance.spec.ts` |
+| `PCAT-DEFINITION-COLLECTION-001` | P0 | automated | PCAT-UI-16 | Org Admin；完整集合分页、模块子树过滤、清除过滤、按需打开历史 | 三视口 | release-bound list API；filtered count DB；无 read mutation audit；collection/history screenshots | `e2e/acceptance/parameter-catalog-definitions.acceptance.spec.ts` |
+| `PCAT-DEFINITION-LIFECYCLE-001` | P0 | automated | PCAT-UI-17 | Org Admin；仅显示 publication-authorized 弃用/恢复动作；统一编辑器要求变更 key、明确项目清单与原因后才可预演身份纠错 | 三视口 | publication-surface API；定义与迁移 fixture DB；无未授权 mutation audit；lifecycle/editor screenshots | `e2e/acceptance/parameter-catalog-definitions.acceptance.spec.ts` |
 | `PCAT-REVIEW-RESOLVE-001` | P0 | automated | PCAT-UI-04 | Org Admin；ETag/release/idempotency 下 resolve 四种 variant | 三视口 | atomic API；Resolution/Registration/Placement/Proposal DB；success/refusal audit；前/确认/后截图 | `e2e/acceptance/parameter-catalog-governance.acceptance.spec.ts` |
 | `PCAT-TIMELINE-001` | P1 | automated | PCAT-UI-05 | authorized reader；稳定分页 timeline | 三视口 | composite cursor API；pinned DB facts；无 read audit；timeline screenshots | `e2e/acceptance/parameter-catalog.acceptance.spec.ts` |
 | `PCAT-READY-ACTIONS-001` | P0 | automated | PCAT-UI-06 | 全角色；对比 ready affordance 与 server denial | 三视口 | role API；denied DB unchanged；refusal audit；role screenshots | `e2e/acceptance/parameter-catalog.acceptance.spec.ts` |
