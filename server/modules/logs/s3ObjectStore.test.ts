@@ -337,6 +337,28 @@ describe("createHttpObjectStorageTransport", () => {
     await expect(operation(transport)).rejects.toThrow("Object storage HTTP request failed with 403 Forbidden: denied");
   });
 
+  it("cancels an oversized non-2xx response body instead of buffering it for the error message", async () => {
+    const cancel = vi.fn();
+    const body = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(Buffer.alloc(40 * 1024, "a"));
+        controller.enqueue(Buffer.alloc(40 * 1024, "b"));
+      },
+      cancel
+    });
+    const transport = createHttpObjectStorageTransport({
+      endpoint: "https://storage.example.com",
+      accessKeyId: "key",
+      secretAccessKey: "secret",
+      fetchImpl: vi.fn(async () => new Response(body, { status: 403, statusText: "Forbidden" }))
+    });
+
+    await expect(
+      transport.get({ bucket: "wiseeff-pilot", key: "org-1/file.log" })
+    ).rejects.toThrow("Object storage HTTP request failed with 403 Forbidden");
+    expect(cancel).toHaveBeenCalledOnce();
+  });
+
   it("is used by default when no fake transport is provided", async () => {
     const fetchImpl = vi.fn(async (_input: string | URL | Request, init?: RequestInit) =>
       new Response(init?.method === "GET" ? "wiseeff-s3-health" : null, { status: 200 })

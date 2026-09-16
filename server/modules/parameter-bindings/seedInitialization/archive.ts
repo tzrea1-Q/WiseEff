@@ -27,6 +27,9 @@ export const ARCHIVE_ROW_CAP = 5_000;
 /** Keeps base64 + JSON assembly bounded well below the server process heap. */
 export const ARCHIVE_OBJECT_BYTES_CAP = 64 * 1024 * 1024;
 export const ARCHIVE_RELATION_BYTES_CAP = 64 * 1024 * 1024;
+/** Relation payload, duplicated object keys, base64 expansion, and fixed JSON metadata. */
+export const ARCHIVE_DOCUMENT_BYTES_CAP =
+  (2 * ARCHIVE_RELATION_BYTES_CAP) + (Math.ceil(ARCHIVE_OBJECT_BYTES_CAP / 3) * 4) + (1024 * 1024);
 
 type RelationScope =
   | { readonly kind: "project"; readonly projectId: string }
@@ -222,6 +225,13 @@ export async function captureProjectParameterPlane(
     });
   }
   const organizationId = auth.organization.id;
+  const readBounded = objectStore.getBounded?.bind(objectStore);
+  if (!readBounded) {
+    throw new ApiError("CONFLICT", "The object store does not support bounded archive reads.", {
+      projectId: input.projectId,
+      reason: "parameter-archive-bounded-read-unavailable"
+    });
+  }
   const counts: Record<string, number> = {};
   const relations: Record<string, readonly unknown[]> = {};
   let truncated = false;
@@ -309,13 +319,6 @@ export async function captureProjectParameterPlane(
   }
 
   const objects: Record<string, ArchivedPlaneObject> = {};
-  const readBounded = objectStore.getBounded?.bind(objectStore);
-  if (requiredObjects.size > 0 && !readBounded) {
-    throw new ApiError("CONFLICT", "The object store does not support bounded archive reads.", {
-      projectId: input.projectId,
-      reason: "parameter-source-bounded-read-unavailable"
-    });
-  }
   for (const [storageKey, expected] of requiredObjects) {
     let sourceBytes: Buffer;
     try {
@@ -352,6 +355,15 @@ export async function captureProjectParameterPlane(
     relations,
     objects
   };
+  const bytes = Buffer.from(`${JSON.stringify(document)}\n`, "utf8");
+  if (bytes.byteLength > ARCHIVE_DOCUMENT_BYTES_CAP) {
+    throw new ApiError("CONFLICT", "The parameter plane archive document exceeds its byte limit.", {
+      projectId: input.projectId,
+      documentBytes: bytes.byteLength,
+      maxBytes: ARCHIVE_DOCUMENT_BYTES_CAP,
+      reason: "parameter-plane-archive-document-too-large"
+    });
+  }
 
   const latest = await session.query<{
     id: string;
@@ -370,7 +382,7 @@ export async function captureProjectParameterPlane(
   const previous = latest.rows[0];
   if (previous) {
     try {
-      const previousBytes = await objectStore.get(previous.object_ref);
+      const previousBytes = await readBounded(previous.object_ref, ARCHIVE_DOCUMENT_BYTES_CAP);
       const parsed: unknown = JSON.parse(previousBytes.toString("utf8"));
       if (
         parsed !== null &&
@@ -398,29 +410,8 @@ export async function captureProjectParameterPlane(
     }
   }
 
-  const bytes = Buffer.from(`${JSON.stringify(document, null, 1)}\n`, "utf8");
   const contentDigest = sha256(bytes);
   const archiveDigest = archiveDigestOf({ scope: "legacy-parameter-plane", counts, contentDigest });
-
-  const existing = await session.query<{ id: string; object_ref: string }>(
-    `select id, object_ref
-       from project_parameter_plane_archives
-      where organization_id = $1 and project_id = $2 and scope = 'legacy-parameter-plane'
-        and archive_digest = $3
-      limit 1`,
-    [organizationId, input.projectId, archiveDigest]
-  );
-  if (existing.rows[0]) {
-    return {
-      archiveId: existing.rows[0].id,
-      archiveDigest,
-      contentDigest,
-      objectRef: existing.rows[0].object_ref,
-      counts,
-      truncated,
-      reused: true
-    };
-  }
 
   const stored = await objectStore.put({
     organizationId,
@@ -512,9 +503,17 @@ export async function assertProjectParameterPlaneArchived(
     );
   }
 
+  const readBounded = objectStore.getBounded?.bind(objectStore);
+  if (!readBounded) {
+    throw new ApiError(
+      "CONFLICT",
+      "The object store does not support bounded archive reads.",
+      { projectId: input.projectId, reason: "parameter-archive-bounded-read-unavailable" }
+    );
+  }
   let bytes: Buffer;
   try {
-    bytes = await objectStore.get(row.object_ref);
+    bytes = await readBounded(row.object_ref, ARCHIVE_DOCUMENT_BYTES_CAP);
   } catch {
     throw new ApiError(
       "CONFLICT",

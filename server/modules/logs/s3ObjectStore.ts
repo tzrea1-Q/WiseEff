@@ -90,7 +90,9 @@ async function assertOk(response: Response) {
     return;
   }
 
-  const body = await response.text().catch(() => "");
+  const body = await boundedResponseBytes(response, 64 * 1024)
+    .then((bytes) => bytes.toString("utf8"))
+    .catch(() => "");
   const detail = body.trim() ? `: ${body.trim()}` : "";
   throw new Error(`Object storage HTTP request failed with ${response.status} ${response.statusText}${detail}`);
 }
@@ -158,9 +160,7 @@ async function boundedResponseBytes(response: Response, maxBytes: number): Promi
     throw new Error(`Object exceeds bounded read limit of ${maxBytes} bytes.`);
   }
   if (!response.body) {
-    const bytes = Buffer.from(await response.arrayBuffer());
-    if (bytes.byteLength > maxBytes) throw new Error(`Object exceeds bounded read limit of ${maxBytes} bytes.`);
-    return bytes;
+    return Buffer.alloc(0);
   }
   const reader = response.body.getReader();
   const chunks: Buffer[] = [];

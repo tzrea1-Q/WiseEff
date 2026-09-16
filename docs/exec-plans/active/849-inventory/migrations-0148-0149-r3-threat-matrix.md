@@ -21,7 +21,7 @@ execution, recovery claims, or production readiness. Those remain #853 T2.3 and 
 2. A completed `(organization_id, seed_digest)` is terminal and replay is a no-op.
 3. At most one materialization of the fixed three-Project scope executes at a time per Organization, even for different seed digests.
 4. A rebuild starts only after the exact archive returned by its capture is complete, readable, and consistent with its ledger digests.
-5. Capture preserves every non-regenerable online row and every referenced source-version byte. Disposal is a separate destructive operation with separate approval.
+5. Capture preserves every declared per-Project row and every referenced source-version byte; directly dependent non-regenerable records stay online with an explicit disposition. Disposal is a separate destructive operation with separate approval.
 6. The archive ledger and run journal retain history when a Project, Organization, or initiating User changes.
 
 ## Threat matrix
@@ -33,12 +33,12 @@ execution, recovery claims, or production readiness. Those remain #853 T2.3 and 
 | R3-03 | Two processes with the same or different seed digests write the shared Atlas/Aurora/Nebula scope concurrently | Session-level PostgreSQL advisory lock covers the full operation for Organization + fixed target scope; every contender gets `CONFLICT` | Corrected; deterministic held-object-store concurrency cases |
 | R3-04 | A completed run is downgraded to `running` or `failed` through the journal seam | The upsert refuses updates when the stored state is `completed` | Corrected; `plan.test.ts` terminal-state case |
 | R3-05 | Wrong or missing project identity is guessed or created | Stable id, Organization and reviewed project code must all match; blocked plans create no project | Existing `plan.test.ts` evidence |
-| R3-06 | Capture silently omits a non-regenerable relation or another Project's child rows bleed in | Thirty-two relations cover the per-Project legacy and canonical plane; canonical values/history use the canonical Binding owner while legacy revisions use the legacy owner. The disposition inventory below classifies every table in the legacy/project-plane recon as captured, preserved/shared, regenerable, or already absent | Corrected; real non-zero graph and isolation evidence |
+| R3-06 | Capture silently omits a declared relation, loses a dependent record, or another Project's child rows bleed in | Thirty-two relations cover the captured per-Project legacy and canonical plane. The inventory also classifies every direct external FK, trigger and view dependency as preserved or regenerable; an exact PostgreSQL inventory test fails on schema drift | Corrected; real non-zero graph, preserved observation/match, dependency and isolation evidence |
 | R3-06a | Capture claims idempotency only because of timestamp or physical row order | Reuse ignores capture time and every relation is ordered by stable primary key, never `ctid`; ordinary calls reuse an unchanged logical plane | Corrected; production-shaped idempotency case |
 | R3-06b | Source metadata is archived but a file-version or unactivated candidate object's bytes are missing or changed | Archive v2 reads both object classes, verifies stored SHA-256 and size, and embeds the bytes; missing or mismatched objects fail closed | Corrected; byte-content assertions |
-| R3-06c | Relation rows or up to 5,000 source objects exhaust process memory while the archive JSON is assembled | Relation JSON size is preflighted inside the repeatable-read snapshot before rows are returned; unique source bytes are preflighted from metadata and then read through a 64 MiB-bounded local/S3 adapter. Either aggregate exceeding 64 MiB fails closed | Corrected; relation preflight plus adapter and aggregate-cap refusal cases |
+| R3-06c | Relation rows, source objects, archive documents, or S3 error bodies exhaust process memory | Relation JSON is preflighted before rows return; source bytes use a 64 MiB-bounded local/S3 adapter; archive reuse/guard reads use a derived 214+ MiB document cap; S3 error detail is capped at 64 KiB. Stores without bounded reads fail closed | Corrected; relation/source/document/adapter refusal cases |
 | R3-07 | Separate count and row reads observe a torn plane, or a bounded relation is treated as complete | Capture runs under one repeatable-read transaction; `truncated=true` blocks rebuild; the guard requires exact declared relation keys and row lengths equal to ledger counts | Corrected; forged torn-artifact refusal |
-| R3-08 | The captured object is removed/corrupted, or a newer valid archive masks that failure | Guard selects the exact capture ID + digest and verifies object SHA-256, archive digest, schema version, Organization, Project, truncation, relation counts and embedded file bytes | Corrected; tampered and exact-artifact cases |
+| R3-08 | The captured object is removed/corrupted/oversized, or a newer valid archive masks that failure | Reuse and guard use the document byte cap; guard selects the exact capture ID + digest and verifies object SHA-256, archive digest, schema version, Organization, Project, truncation, relation counts and embedded file bytes | Corrected; bounded, tampered and exact-artifact cases |
 | R3-09 | Capture is mistaken for disposal | Test proves source drafts remain after capture; schema intentionally has no disposal/deletion marker | Characterized; disposal remains #853 T2.3 |
 | R3-10 | Ledger ownership is erased by parent deletion | Organization/Project FKs use `ON DELETE RESTRICT`; initiating User uses nullable history via `ON DELETE SET NULL` | Real-PostgreSQL schema assertion + generated schema |
 | R3-11 | Journal loses run uniqueness | Primary key is `(organization_id, seed_digest)` and the status index is Organization-scoped | Real-PostgreSQL schema assertion + generated schema |
@@ -55,10 +55,13 @@ execution, recovery claims, or production readiness. Those remain #853 T2.3 and 
   the journal primary key, and the deliberate absence of `disposed_at`/`deleted_at`.
 - The same suite proves all thirty-two relation counts, stored rows, file-version and candidate bytes, child scoping,
   cross-Project isolation, unchanged source rows, aggregate-cap enforcement, idempotent reuse, missing/truncated/torn refusal,
-  exact-artifact selection, authorization, and object integrity.
+  exact-artifact selection, bounded document reads, authorization, object integrity, non-zero preserved observations/matches,
+  and the exact external FK/trigger/view closure.
 - `objectStore.test.ts` and `s3ObjectStore.test.ts` prove the local adapter rejects from file metadata before reading,
   the HTTP adapter cancels a stream as soon as it crosses the limit, and custom transports without a bounded-read
   primitive fail closed.
+- `parameter-catalog-migration/guards.integration.test.ts` (7 tests) supplies non-zero
+  `definition_replacement_projects` history and proves its Project/Organization Binding ownership cannot be forged.
 - `plan.test.ts` proves fixed target identity, no implicit project creation, retry blocker visibility,
   completed-run idempotency, and terminal-state immutability.
 - `materialize.test.ts` proves the three-project path, completed replay, fail-closed subject blockers, explicit
@@ -115,6 +118,14 @@ derived row; T3.3 must prove deterministic regeneration and foreign-key/locator 
 | `public.parameter_spec_review_tasks` | Preserved/shared | Organization specification workflow |
 | `public.parameter_policy_targets` | Preserved/shared | Organization policy control plane |
 | `public.parameter_reload_bindings` | Absent/dropped | Created by migration 0026 and removed by 0037; no current rows |
+| `public.dts_reload_runs` | Preserved/shared | Reload audit/evidence stays online; its config-revision FK is `SET NULL` |
+| `public.dts_reload_run_targets` | Preserved/shared | Reload evidence stays online; its legacy Binding FK is currently `CASCADE`, so T2.3 must rehome or archive it before Binding disposal |
+| `public.debugging_parameters` | Preserved/shared | Non-parameter debugging state; legacy Binding FK is `NO ACTION` |
+| `public.node_operations` | Preserved/shared | Device-operation history; legacy Binding FK is `NO ACTION` |
+| `public.legacy_parameter_migration_evidence` | Preserved/shared | Migration evidence; legacy Binding FK is `NO ACTION` |
+| `parameter_catalog.parameter_observations` | Preserved/shared | Immutable project observation evidence stays online |
+| `parameter_catalog.parameter_observation_matches` | Preserved/shared | Accepted match evidence stays online and `RESTRICT`s canonical Binding deletion |
+| `parameter_catalog.definition_replacement_projects` | Preserved/shared | Immutable replacement history stays online and `RESTRICT`s canonical Binding/Value deletion |
 | `public.parameter_identity_migration_runs` | Preserved/shared | Cross-Project migration control record |
 | `public.parameter_identity_migration_phases` | Preserved/shared | Child of a preserved migration run |
 | `public.parameter_identity_cutovers` | Preserved/shared | Cross-Project cutover control record |
@@ -127,10 +138,20 @@ derived row; T3.3 must prove deterministic regeneration and foreign-key/locator 
 | `public.dts_node_occurrences` | Regenerable | Derived by parsing captured source versions; T3.3 must prove locator mapping |
 | `public.dts_property_occurrences` | Regenerable | Derived by parsing captured source versions; T3.3 must remap captured decisions |
 | `public.dts_occurrence_effects` | Regenerable | Derived analysis output |
+| `public.dts_nodes` | Regenerable | Structural parse of a captured file version |
+| `public.dts_properties` | Regenerable | Child structural parse output |
+| `public.dts_phandle_refs` | Regenerable | Child reference-resolution output |
 | `public.dts_validation_runs` | Regenerable | Re-runnable validation output |
 | `public.dts_validation_diagnostics` | Regenerable | Child output of validation runs |
+| `parameter_catalog.current_project_parameter_bindings` | Regenerable view | Derived view over the captured canonical Binding table |
 
 `parameter_bindings` without the `project_` prefix does not exist and therefore has no disposition row.
+
+The PostgreSQL closure test freezes every external FK and its delete action, all non-internal triggers attached to
+the 32 captured relations, and every dependent view. The owner-known non-FK consumers remain enumerated in
+`cutover-consumers-recon.md`; their JSONB, Agent checkpoint/tool-argument, log recommendation, audit metadata and
+URL payloads are preserved as history and must gain archival resolution in T2.3 rather than being bulk rewritten.
+No deletion is authorized while that row-level T2.3 scan or the T3.3 restore mapping remains open.
 
 ## Review disposition
 

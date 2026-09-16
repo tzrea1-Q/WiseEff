@@ -20,7 +20,7 @@ T0.3 只覆盖捕获式归档和运行日志，不授权删除归档平面，也
 2. `(organization_id, seed_digest)` 一旦完成即为终态，重放只能是空操作。
 3. 每个组织同一时刻最多执行一个固定三项目范围的物化任务，即使 seed digest 不同也一样。
 4. 只有本次捕获返回的精确归档完整、可读取且与账本摘要一致时，重建才能开始。
-5. 捕获保留全部不可再生在线行，以及每个已引用源版本的实际字节；处置是需要另行批准的破坏性操作。
+5. 捕获保留全部已声明逐项目行和每个已引用源版本的实际字节；直接依赖的不可再生记录按明确处置继续在线保留。处置是需要另行批准的破坏性操作。
 6. 项目、组织或发起用户变化时，归档账本和运行日志仍保留历史。
 
 ## 威胁矩阵
@@ -32,12 +32,12 @@ T0.3 只覆盖捕获式归档和运行日志，不授权删除归档平面，也
 | R3-03 | 相同或不同 seed digest 的两个进程并发写共享的 Atlas／Aurora／Nebula 范围 | PostgreSQL session advisory lock 覆盖完整操作，键为组织 + 固定目标范围；所有竞争者都收到 `CONFLICT` | 已修正；确定性的同摘要／跨摘要并发用例 |
 | R3-04 | 已完成运行经日志入口降级为 `running` 或 `failed` | 已存状态为 `completed` 时 upsert 不再更新 | 已修正；`plan.test.ts` 终态用例 |
 | R3-05 | 猜测或创建错误／缺失的项目身份 | 稳定 id、组织和已评审项目 code 必须全部匹配；阻断计划不会创建项目 | 既有 `plan.test.ts` 证据 |
-| R3-06 | 漏捕获不可再生关系，或混入其他项目的子行 | 32 个关系覆盖逐项目 legacy 与 canonical 平面；canonical 值／历史经 canonical Binding 所有者取数，legacy 修订经 legacy 所有者取数。下方处置清单把 legacy／项目平面核对中的每张表归为捕获、保留／共享、可再生或已不存在 | 已修正；真实非零图闭包和隔离证据 |
+| R3-06 | 漏捕获已声明关系、丢失依赖记录，或混入其他项目的子行 | 32 个关系覆盖被捕获的逐项目 legacy 与 canonical 平面；处置清单还把每个直接外部 FK、trigger 和 view 依赖归为保留或可再生，精确 PostgreSQL 库存测试会在 schema 漂移时失败 | 已修正；真实非零图、保留 observation／match、依赖和隔离证据 |
 | R3-06a | 归档幂等只因时间戳或物理行顺序相同而成立 | 复用忽略捕获时间，所有关系都按稳定主键而非 `ctid` 排序；未变化的逻辑平面可由普通调用复用 | 已修正；生产形态幂等用例 |
 | R3-06b | 只归档源元数据，文件版本或未激活 candidate 的对象字节缺失／已变化 | 归档 v2 读取两类对象，校验所存 SHA-256 和大小并嵌入字节；缺失或不匹配时 fail closed | 已修正；字节内容断言 |
-| R3-06c | 关系行或最多 5,000 个源对象在组装 JSON 时耗尽进程内存 | 在 repeatable-read 快照内先计算关系 JSON 大小，再返回行；先按元数据预检唯一源字节，再经本地／S3 有界适配器读取。任一聚合超过 64 MiB 都 fail closed | 已修正；关系预检、适配器及聚合上限拒绝用例 |
+| R3-06c | 关系行、源对象、归档文档或 S3 错误体耗尽进程内存 | 返回行前预检关系 JSON；源字节经 64 MiB 有界本地／S3 适配器；复用／守卫按推导出的 214+ MiB 文档上限读取；S3 错误详情上限 64 KiB。无有界读取能力的 store 会 fail closed | 已修正；关系／源／文档／适配器拒绝用例 |
 | R3-07 | 分离的计数／行读取观察到撕裂平面，或把有界关系当作完整归档 | 捕获在一个 repeatable-read 事务内运行；`truncated=true` 阻止重建；守卫要求精确关系键集合和等于账本计数的行长度 | 已修正；伪造撕裂对象拒绝用例 |
-| R3-08 | 本次捕获对象被删除／损坏，却被一份更新且有效的归档掩盖 | 守卫按本次捕获的精确 ID + digest 取对象，并校验对象 SHA-256、归档摘要、schema 版本、组织、项目、截断、关系计数和内嵌文件字节 | 已修正；篡改与精确对象用例 |
+| R3-08 | 本次捕获对象被删除／损坏／替换为超大对象，却被一份更新且有效的归档掩盖 | 复用和守卫按文档字节上限读取；守卫按本次捕获的精确 ID + digest 取对象，并校验对象 SHA-256、归档摘要、schema 版本、组织、项目、截断、关系计数和内嵌文件字节 | 已修正；有界、篡改与精确对象用例 |
 | R3-09 | 把捕获误认为处置 | 测试证明捕获后源草稿仍存在；schema 刻意没有处置／删除标记 | 已定性；处置仍是 #853 T2.3 |
 | R3-10 | 父记录删除导致账本所有权丢失 | 组织／项目 FK 使用 `ON DELETE RESTRICT`；发起用户使用 `ON DELETE SET NULL` 的可空历史策略 | 真实 PostgreSQL schema 断言 + 生成 schema |
 | R3-11 | 运行日志失去唯一性 | 主键为 `(organization_id, seed_digest)`，状态索引按组织划分 | 真实 PostgreSQL schema 断言 + 生成 schema |
@@ -53,9 +53,12 @@ T0.3 只覆盖捕获式归档和运行日志，不授权删除归档平面，也
 - `archive.integration.test.ts` 在真实 PostgreSQL 上验证两个保留 FK、用户历史 FK、运行日志主键，
   以及刻意不存在 `disposed_at`／`deleted_at`。
 - 同一套件还证明 32 个关系的计数和内容、文件版本与 candidate 字节、子行作用域、跨项目隔离、
-  源数据未删除、聚合上限、幂等复用、缺失／截断／撕裂拒绝、精确对象选择、鉴权和对象完整性。
+  源数据未删除、聚合上限、幂等复用、缺失／截断／撕裂拒绝、精确对象选择、有界文档读取、鉴权、
+  对象完整性、非零保留 observation／match，以及精确的外部 FK／trigger／view 闭包。
 - `objectStore.test.ts` 与 `s3ObjectStore.test.ts` 证明本地适配器先按文件元数据拒绝而不读入文件、HTTP
   适配器在流越界时立即取消，以及没有有界读取原语的自定义 transport 会 fail closed。
+- `parameter-catalog-migration/guards.integration.test.ts`（7 项）提供非零
+  `definition_replacement_projects` 历史，并证明不能伪造其项目／组织 Binding 所有权。
 - `plan.test.ts` 证明固定目标身份、禁止隐式创建项目、重试 blocker 可见性、完成重放幂等和终态不可变。
 - `materialize.test.ts` 证明三项目路径、完成重放、subject blocker fail-closed、明确拒绝 JSON、组织绑定、
   先鉴权再写日志，以及并发单飞。
@@ -110,6 +113,14 @@ schema 中，因此没有在线行需要处置。
 | `public.parameter_spec_review_tasks` | 保留／共享 | 组织规格工作流 |
 | `public.parameter_policy_targets` | 保留／共享 | 组织策略控制面 |
 | `public.parameter_reload_bindings` | 已不存在／已删除 | 迁移 0026 创建、0037 删除；当前没有行 |
+| `public.dts_reload_runs` | 保留／共享 | reload 审计／证据继续在线；其 config-revision FK 为 `SET NULL` |
+| `public.dts_reload_run_targets` | 保留／共享 | reload 证据继续在线；其 legacy Binding FK 当前为 `CASCADE`，T2.3 必须先重挂或归档再处置 Binding |
+| `public.debugging_parameters` | 保留／共享 | 非参数调试状态；legacy Binding FK 为 `NO ACTION` |
+| `public.node_operations` | 保留／共享 | 设备操作历史；legacy Binding FK 为 `NO ACTION` |
+| `public.legacy_parameter_migration_evidence` | 保留／共享 | 迁移证据；legacy Binding FK 为 `NO ACTION` |
+| `parameter_catalog.parameter_observations` | 保留／共享 | 不可变项目 observation 证据继续在线 |
+| `parameter_catalog.parameter_observation_matches` | 保留／共享 | 已接受 match 证据继续在线，并以 `RESTRICT` 阻止删除 canonical Binding |
+| `parameter_catalog.definition_replacement_projects` | 保留／共享 | 不可变 replacement 历史继续在线，并以 `RESTRICT` 阻止删除 canonical Binding／Value |
 | `public.parameter_identity_migration_runs` | 保留／共享 | 跨项目迁移控制记录 |
 | `public.parameter_identity_migration_phases` | 保留／共享 | 已保留迁移运行的子记录 |
 | `public.parameter_identity_cutovers` | 保留／共享 | 跨项目 cutover 控制记录 |
@@ -122,10 +133,19 @@ schema 中，因此没有在线行需要处置。
 | `public.dts_node_occurrences` | 可再生 | 由已捕获源版本解析；T3.3 必须证明 locator 映射 |
 | `public.dts_property_occurrences` | 可再生 | 由已捕获源版本解析；T3.3 必须重映射已捕获决策 |
 | `public.dts_occurrence_effects` | 可再生 | 派生分析输出 |
+| `public.dts_nodes` | 可再生 | 已捕获文件版本的结构解析结果 |
+| `public.dts_properties` | 可再生 | 结构解析子输出 |
+| `public.dts_phandle_refs` | 可再生 | 引用解析子输出 |
 | `public.dts_validation_runs` | 可再生 | 可重新运行的校验输出 |
 | `public.dts_validation_diagnostics` | 可再生 | 校验运行的子输出 |
+| `parameter_catalog.current_project_parameter_bindings` | 可再生 view | 从已捕获 canonical Binding 表派生 |
 
 不存在不带 `project_` 前缀的 `parameter_bindings`，因此没有对应处置行。
+
+PostgreSQL 闭包测试冻结了全部外部 FK 及其 delete action、挂在 32 个捕获关系上的全部非内部 trigger，
+以及全部依赖 view。owner 已知的非 FK 消费者继续由 `cutover-consumers-recon.md` 枚举；其 JSONB、Agent
+checkpoint／tool argument、日志建议、审计元数据和 URL payload 作为历史保留，T2.3 必须增加归档解析，
+不得按同名新 id 批量替换。在逐行 T2.3 扫描或 T3.3 恢复映射仍开放时，不授权任何删除。
 
 ## 评审处置
 
