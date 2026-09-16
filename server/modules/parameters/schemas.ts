@@ -187,7 +187,7 @@ export const submitRoundBodySchema = z.object({
     )
     .min(1),
   reason: z.string().optional(),
-  assignees: workflowAssigneesSchema.optional()
+  assignees: workflowAssigneesSchema
 });
 
 export const reviewChangeBodySchema = z.object({

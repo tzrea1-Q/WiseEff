@@ -217,6 +217,7 @@ function RoleCapabilityTooltip({ roleId, position }: { roleId: PlatformRoleId; p
 export function UserPermissionsPage({
   state,
   dispatch,
+  onNavigate,
   search: _search,
   userGovernanceActions,
   userDirectoryStatus: userDirectoryStatusOverride,
@@ -556,11 +557,11 @@ export function UserPermissionsPage({
     },
     {
       key: "role",
-      header: "角色",
+      header: "组织角色",
       widthClass: "user-permissions-role-header",
       className: "user-permissions-role-cell",
       sortAccessor: (user) => roleLabelOf(user.roleId),
-      headerFilter: headerFilterConfig("role", "角色"),
+      headerFilter: headerFilterConfig("role", "组织角色"),
       render: (user) => {
         const isCurrentUser = user.id === state.currentUserId;
         const normalizedRoleId = migrateLegacyRoleId(user.roleId);
@@ -600,6 +601,47 @@ export function UserPermissionsPage({
             {activeRoleHint?.userId === user.id ? (
               <RoleCapabilityTooltip roleId={normalizedRoleId} position={activeRoleHint} />
             ) : null}
+          </div>
+        );
+      }
+    },
+    {
+      key: "projectRoles",
+      header: "项目职责",
+      render: (user) => {
+        const projectBindings = (user.roles ?? []).filter(
+          (r) => r.projectId !== null && !r.roleId.startsWith("catalog-capability-")
+        );
+        return (
+          <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", flexWrap: "wrap" }}>
+            {projectBindings.length > 0 ? (
+              projectBindings.map((b, idx) => (
+                <span
+                  key={`${b.projectId}-${b.roleId}-${idx}`}
+                  style={{
+                    fontSize: "0.75rem",
+                    padding: "0.125rem 0.375rem",
+                    borderRadius: "0.25rem",
+                    backgroundColor: "#eff6ff",
+                    color: "#1e40af",
+                    border: "1px solid #dbeafe"
+                  }}
+                >
+                  {b.projectId}: {roleLabelOf(b.roleId)}
+                </span>
+              ))
+            ) : (
+              <span style={{ color: "#94a3b8", fontSize: "0.8125rem" }}>—</span>
+            )}
+            <button
+              type="button"
+              className="button subtle"
+              onClick={() => onNavigate("/parameter-admin/projects")}
+              style={{ fontSize: "0.75rem", padding: "0.125rem 0.375rem" }}
+              title="前往项目管理配置审核角色"
+            >
+              配置
+            </button>
           </div>
         );
       }
@@ -880,11 +922,16 @@ export function UserPermissionsPage({
         description={
           pendingGovernance ? (
             pendingGovernance.kind === "role" ? (
-              <p>
-                将把 <strong>{pendingGovernance.user.name}</strong> 的角色从「
-                {roleLabelOf(migrateLegacyRoleId(pendingGovernance.user.roleId))}」调整为「
-                {roleLabelOf(pendingGovernance.nextRoleId)}」，新权限立即生效。
-              </p>
+              <div>
+                <p>
+                  将把 <strong>{pendingGovernance.user.name}</strong> 的组织角色从「
+                  {roleLabelOf(migrateLegacyRoleId(pendingGovernance.user.roleId))}」调整为「
+                  {roleLabelOf(pendingGovernance.nextRoleId)}」，新权限立即生效。
+                </p>
+                <p style={{ marginTop: "0.5rem", fontSize: "0.8125rem", color: "var(--color-text-secondary, #64748b)" }}>
+                  注意：本次修改仅更新组织级内置角色，该用户在各项目中的项目审核角色与职责绑定将完整保留。
+                </p>
+              </div>
             ) : pendingGovernance.kind === "delete" ? (
               <p>
                 将永久删除 <strong>{pendingGovernance.user.name}</strong>（

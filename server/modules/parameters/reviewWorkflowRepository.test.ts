@@ -180,7 +180,24 @@ describe.skipIf(!databaseAvailable)("review workflow repository", () => {
       softwareUsers: [
         { id: "u-software-committer", name: "Software Committer" },
         { id: "u-software-user", name: "Software Developer" }
-      ]
+      ],
+      ready: true,
+      missingRoles: []
+    });
+  });
+
+  it("deduplicates candidates and reports missing roles when roles are not fully assigned", async () => {
+    // Project with no role assignments
+    const emptyAssignees = await listEligibleWorkflowAssignees(db, {
+      organizationId: ORG,
+      projectId: "proj-unassigned"
+    });
+    expect(emptyAssignees).toEqual({
+      hardwareCommitters: [],
+      softwareCommitters: [],
+      softwareUsers: [],
+      ready: false,
+      missingRoles: ["hardware-committer", "software-committer", "software-user"]
     });
   });
 

@@ -426,16 +426,25 @@ export function createMockParameterRepository(runtime: MockRuntimeState): Parame
     async listWorkflowAssignees() {
       const users = readMockState(runtime).users.filter((user) => user.isActive);
       const candidate = (user: (typeof users)[number]) => ({ id: user.id, name: user.name });
+      const hardwareCommitters = users
+        .filter((user) => roleSupportsWorkflowSlot(user.roleId, "hardwareCommitter"))
+        .map(candidate);
+      const softwareCommitters = users
+        .filter((user) => roleSupportsWorkflowSlot(user.roleId, "softwareCommitter"))
+        .map(candidate);
+      const softwareUsers = users
+        .filter((user) => roleSupportsWorkflowSlot(user.roleId, "softwareUser"))
+        .map(candidate);
+      const missingRoles: ("hardware-committer" | "software-committer" | "software-user")[] = [];
+      if (hardwareCommitters.length === 0) missingRoles.push("hardware-committer");
+      if (softwareCommitters.length === 0) missingRoles.push("software-committer");
+      if (softwareUsers.length === 0) missingRoles.push("software-user");
       return {
-        hardwareCommitters: users
-          .filter((user) => roleSupportsWorkflowSlot(user.roleId, "hardwareCommitter"))
-          .map(candidate),
-        softwareCommitters: users
-          .filter((user) => roleSupportsWorkflowSlot(user.roleId, "softwareCommitter"))
-          .map(candidate),
-        softwareUsers: users
-          .filter((user) => roleSupportsWorkflowSlot(user.roleId, "softwareUser"))
-          .map(candidate),
+        hardwareCommitters,
+        softwareCommitters,
+        softwareUsers,
+        ready: missingRoles.length === 0,
+        missingRoles
       };
     },
     async getParameter(parameterId: string): Promise<ParameterRecord> {

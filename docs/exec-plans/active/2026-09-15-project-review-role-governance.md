@@ -2,7 +2,7 @@
 
 > Chinese: [Chinese](../../zh-CN/exec-plans/active/2026-09-15-project-review-role-governance.md)
 
-**Status:** Proposed; implementation has not started.  
+**Status:** In Progress (P1, P2, P3 completed; P4 browser acceptance and delivery underway).
 **Source baseline:** `main@3a49ba62685523742bac0d212ea2d652ce3f8e88`, verified on 2026-09-15.  
 **Goal:** An administrator can configure project review roles in the product; ordinary users can complete parameter submission, hardware review, software review and merge without terminal operations. Role edits must preserve unrelated grants and cannot expand authority beyond their scope.
 

@@ -12,6 +12,7 @@ import { DeleteProjectDialog } from "@/components/admin/DeleteProjectDialog";
 import { ProjectAdminFormDialog } from "@/components/admin/ProjectAdminFormDialog";
 import { ProjectAdminTable } from "@/components/admin/ProjectAdminTable";
 import { ProjectConfigurationWorkbench } from "@/components/project-configuration-workbench/ProjectConfigurationWorkbench";
+import { ProjectReviewRolesPanel } from "./ProjectReviewRolesPanel";
 import { migrateLegacyRoleId } from "@/domain/users/types";
 import type { WiseEffRuntimeMode } from "@/infrastructure/http/runtimeMode";
 import { createParameterAdminClient } from "@/infrastructure/http/parameterAdminClient";
@@ -40,15 +41,15 @@ export type { ParameterAdminNextProjectView } from "./projectOperationsCutover";
 
 export function parseParameterAdminNextProjectPath(pathname: string): {
   projectId: string | null;
-  view: ParameterAdminNextProjectView | "configuration" | null;
+  view: ParameterAdminNextProjectView | "configuration" | "review-roles" | null;
 } {
   const match = pathname.match(
-    /^\/parameter-admin\/projects\/([^/]+)(?:\/(files|config-sets|structure|conflicts|configuration))?\/?$/
+    /^\/parameter-admin\/projects\/([^/]+)(?:\/(files|config-sets|structure|conflicts|configuration|review-roles))?\/?$/
   );
   if (!match) {
     return { projectId: null, view: null };
   }
-  const view = (match[2] as ParameterAdminNextProjectView | "configuration" | undefined) ?? "files";
+  const view = (match[2] as ParameterAdminNextProjectView | "configuration" | "review-roles" | undefined) ?? "files";
   return { projectId: decodeURIComponent(match[1]!), view };
 }
 
@@ -266,8 +267,9 @@ export function ProjectsOperationsPanel({
   };
 
   const configurationOpen = Boolean(projectId && configurationRoute && !legacyView);
+  const reviewRolesOpen = Boolean(projectId && routeView === "review-roles");
   const projectsReady = !isApiMode || projectsLoaded;
-  const projectMissing = Boolean(projectId) && (configurationOpen || Boolean(legacyView)) && projectsReady && !selectedProject;
+  const projectMissing = Boolean(projectId) && (configurationOpen || Boolean(legacyView) || reviewRolesOpen) && projectsReady && !selectedProject;
 
   return (
     <section
@@ -305,7 +307,7 @@ export function ProjectsOperationsPanel({
         </section>
       ) : null}
 
-      {!projectMissing && !configurationOpen && !legacyView ? (
+      {!projectMissing && !configurationOpen && !legacyView && !reviewRolesOpen ? (
         <>
           {loading && isApiMode ? <p className="project-admin-loading">项目列表加载中…</p> : null}
           <ProjectAdminTable
@@ -321,12 +323,23 @@ export function ProjectsOperationsPanel({
               setDeleteError("");
               setDeleteTargetId(id);
             }}
+            onConfigureReviewRoles={(id) =>
+              onNavigate(`/parameter-admin/projects/${encodeURIComponent(id)}/review-roles`)
+            }
             onManageFiles={(id) =>
               onNavigate(`/parameter-admin/projects/${encodeURIComponent(id)}/configuration`)
             }
             primaryActionLabel="配置工作台"
           />
         </>
+      ) : null}
+
+      {reviewRolesOpen && !projectMissing && projectId ? (
+        <ProjectReviewRolesPanel
+          projectId={projectId}
+          onBack={() => onNavigate("/parameter-admin/projects")}
+          state={state}
+        />
       ) : null}
 
       {configurationOpen && !projectMissing && selectedProject && projectId ? (

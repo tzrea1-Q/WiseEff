@@ -25,55 +25,89 @@ function isActive(auth: AuthContext) {
   return auth.user.isActive;
 }
 
-export function canViewParameters(auth: AuthContext) {
-  return hasPermission(auth, "parameter:view");
+export function canViewParameters(auth: AuthContext, projectId?: string) {
+  if (!isActive(auth)) return false;
+  if (hasPermission(auth, "parameter:view") || isOrgAdmin(auth)) return true;
+  if (projectId !== undefined) {
+    return auth.roles.some(
+      (binding) =>
+        (binding.projectId === projectId || binding.projectId === null) &&
+        ["guest", "hardware-user", "software-user", "hardware-committer", "software-committer", "admin", "platform-admin"].includes(
+          binding.roleId
+        )
+    );
+  }
+  return false;
 }
 
 /** Roles whose binding to a project grants parameter editing there. */
 const projectEditRoles: BackendRoleId[] = ["hardware-user", "software-user", "hardware-committer", "software-committer"];
+const criticalEditRoles: BackendRoleId[] = ["hardware-committer", "software-committer"];
 
-/**
- * `parameter:edit` is a flat permission unioned across every role binding, so a
- * user bound to project A still carries it while acting on project B. When a
- * target project is known, additionally require an edit-capable role bound to
- * that project (admins remain global) so a write cannot cross project scope.
- */
+function isOrgAdmin(auth: AuthContext) {
+  return auth.roles.some((b) => b.projectId === null && (b.roleId === "admin" || b.roleId === "platform-admin"));
+}
+
 export function canEditParameters(auth: AuthContext, projectId?: string) {
-  if (!isActive(auth) || !hasPermission(auth, "parameter:edit")) return false;
-  if (projectId === undefined) return true;
-  if (hasRole(auth, ["admin", "platform-admin"])) return true;
-  return hasRole(auth, projectEditRoles, projectId);
+  if (!isActive(auth)) return false;
+  if (isOrgAdmin(auth)) return true;
+  if (projectId === undefined) {
+    return hasPermission(auth, "parameter:edit");
+  }
+  const hasOrgEdit = auth.roles.some(
+    (b) => b.projectId === null && projectEditRoles.includes(b.roleId)
+  );
+  if (hasOrgEdit) return true;
+  return auth.roles.some(
+    (b) => b.projectId === projectId && projectEditRoles.includes(b.roleId)
+  );
 }
 
-export function canEditCriticalParameters(auth: AuthContext) {
-  return isActive(auth) && hasPermission(auth, "parameter:edit-critical");
+export function canEditCriticalParameters(auth: AuthContext, projectId?: string) {
+  if (!isActive(auth)) return false;
+  if (hasPermission(auth, "parameter:edit-critical")) return true;
+  if (projectId !== undefined) {
+    return auth.roles.some(
+      (b) => b.projectId === projectId && criticalEditRoles.includes(b.roleId)
+    );
+  }
+  return false;
 }
 
-export function canReviewParameters(auth: AuthContext) {
-  return isActive(auth) && hasPermission(auth, "parameter:review");
+export function canReviewParameters(auth: AuthContext, projectId?: string) {
+  if (!isActive(auth)) return false;
+  if (isOrgAdmin(auth)) return true;
+  if (projectId === undefined) {
+    return hasPermission(auth, "parameter:review");
+  }
+  const hasOrgReview = auth.roles.some(
+    (b) => b.projectId === null && criticalEditRoles.includes(b.roleId)
+  );
+  if (hasOrgReview) return true;
+  return auth.roles.some(
+    (b) => b.projectId === projectId && criticalEditRoles.includes(b.roleId)
+  );
 }
 
 export function canReviewParameterStage(auth: AuthContext, projectId: string, fromStatus: ParameterChangeRequestStatus) {
   if (!isActive(auth)) return false;
-  if (hasRole(auth, ["admin"])) return true;
+  if (isOrgAdmin(auth)) return true;
   if (fromStatus === "submitted" || fromStatus === "hardware_review") {
-    return hasRole(auth, ["hardware-committer"], projectId);
+    return auth.roles.some((b) => b.projectId === projectId && b.roleId === "hardware-committer");
   }
   if (fromStatus === "software_review") {
-    return hasRole(auth, ["software-committer"], projectId);
+    return auth.roles.some((b) => b.projectId === projectId && b.roleId === "software-committer");
   }
   return false;
 }
 
 export function canMergeParameters(auth: AuthContext, projectId?: string) {
   if (!isActive(auth)) return false;
-  if (hasRole(auth, ["admin"])) return true;
-  // The merge (softwareUser) slot accepts either role at assignment time
-  // (see assertWorkflowAssigneesEligible), so the merge gate must match or a
-  // software-committer assigned to merge can never advance the round.
-  const mergeRoles: BackendRoleId[] = ["software-user", "software-committer"];
-  if (!projectId) return hasRole(auth, mergeRoles);
-  return hasRole(auth, mergeRoles, projectId);
+  if (isOrgAdmin(auth)) return true;
+  if (!projectId) return false;
+  return auth.roles.some(
+    (b) => b.projectId === projectId && (b.roleId === "software-user" || b.roleId === "software-committer")
+  );
 }
 
 export function canAdminParameters(auth: AuthContext) {

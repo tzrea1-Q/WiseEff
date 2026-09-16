@@ -307,12 +307,103 @@ describe("createUserGovernanceClient", () => {
 
     await client.listUsers();
 
-    // The default client must target the configured API base; derive the
-    // expectation from the same runtime config so VITE_WISEEFF_API_BASE_URL
-    // overrides (e.g. dead-port isolation) keep the assertion meaningful.
     expect(fetchMock).toHaveBeenCalledWith(`${resolveWiseEffApiBaseUrl()}/api/v1/users`, {
       headers: { Accept: "application/json", Authorization: "Bearer oidc-token" },
       method: "GET"
+    });
+  });
+
+  it("fetches and updates project workflow role bindings", async () => {
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockImplementationOnce(async () =>
+        new Response(
+          JSON.stringify({
+            projectId: "aurora",
+            ready: true,
+            missingRoles: [],
+            bindings: [
+              {
+                userId: "u-hw",
+                name: "HW MDE",
+                username: "hw.mde",
+                email: "hw@example.com",
+                title: "Engineer",
+                isActive: true,
+                roles: ["hardware-committer"]
+              }
+            ]
+          }),
+          { status: 200 }
+        )
+      )
+      .mockImplementationOnce(async () =>
+        new Response(
+          JSON.stringify({
+            item: {
+              projectId: "aurora",
+              userId: "u-hw",
+              roles: ["hardware-committer", "software-committer"]
+            }
+          }),
+          { status: 200 }
+        )
+      );
+
+    const client = createUserGovernanceClient(createApiClient({ baseUrl: "", fetchImpl: fetchMock }));
+
+    const bindings = await client.getProjectWorkflowRoleBindings("aurora");
+    expect(bindings.ready).toBe(true);
+    expect(bindings.bindings[0].roles).toEqual(["hardware-committer"]);
+    expect(fetchMock).toHaveBeenCalledWith("/api/v1/projects/aurora/workflow-role-bindings", {
+      headers: { Accept: "application/json" },
+      method: "GET"
+    });
+
+    const updated = await client.updateProjectWorkflowRoleBindings("aurora", "u-hw", {
+      roles: ["hardware-committer", "software-committer"],
+      expectedRoles: ["hardware-committer"]
+    });
+    expect(updated.item.roles).toEqual(["hardware-committer", "software-committer"]);
+    expect(fetchMock).toHaveBeenCalledWith("/api/v1/projects/aurora/workflow-role-bindings/u-hw", {
+      body: JSON.stringify({
+        roles: ["hardware-committer", "software-committer"],
+        expectedRoles: ["hardware-committer"]
+      }),
+      headers: { Accept: "application/json", "Content-Type": "application/json" },
+      method: "PUT"
+    });
+  });
+
+  it("updates organization roles with CAS expectedRoles contract", async () => {
+    const fetchMock = createFetchMock({
+      item: {
+        id: "u-1",
+        organizationId: "org-1",
+        name: "User 1",
+        title: "Engineer",
+        isActive: true,
+        createdAt: "2026-01-01T00:00:00Z",
+        roles: [{ projectId: null, roleId: "hardware-user" }]
+      }
+    });
+
+    const client = createUserGovernanceClient(createApiClient({ baseUrl: "", fetchImpl: fetchMock }));
+
+    const updated = await client.updateOrganizationRoles("u-1", {
+      roles: ["hardware-user"],
+      expectedRoles: ["guest"]
+    });
+
+    expect(updated.roleId).toBe("hardware-user");
+    expect(updated.roles).toEqual([{ projectId: null, roleId: "hardware-user" }]);
+    expect(fetchMock).toHaveBeenCalledWith("/api/v1/users/u-1/organization-roles", {
+      body: JSON.stringify({
+        roles: ["hardware-user"],
+        expectedRoles: ["guest"]
+      }),
+      headers: { Accept: "application/json", "Content-Type": "application/json" },
+      method: "PUT"
     });
   });
 });

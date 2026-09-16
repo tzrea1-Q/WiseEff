@@ -644,7 +644,7 @@ describe("UserPermissionsPage", () => {
     const roleCell = within(row).getByRole("combobox", { name: "调整 Liu Min 的角色" }).closest("td");
     const roleSelect = within(row).getByRole("combobox", { name: "调整 Liu Min 的角色" });
 
-    expect(screen.getByRole("columnheader", { name: "角色" })).toHaveClass("user-permissions-role-header");
+    expect(screen.getByRole("columnheader", { name: /组织角色/ })).toHaveClass("user-permissions-role-header");
     expect(roleCell).toHaveClass("user-permissions-role-cell");
     expect(roleSelect).toHaveClass("user-permissions-role-select");
   });
@@ -667,7 +667,7 @@ describe("UserPermissionsPage", () => {
     const checks: Array<[string, string, string]> = [
       ["用户", "筛选用户", "Xu Yun"],
       ["职务", "筛选职务", "Platform Owner"],
-      ["角色", "筛选角色", "管理员"],
+      ["组织角色", "筛选组织角色", "管理员"],
       ["状态", "筛选状态", "启用"],
       ["最近活跃", "筛选最近活跃", "刚刚"]
     ];
@@ -679,8 +679,8 @@ describe("UserPermissionsPage", () => {
       await userEvent.click(within(header).getByRole("button", { name: buttonName }));
     }
 
-    const roleHeader = within(table).getByRole("columnheader", { name: /角色/ });
-    await userEvent.click(within(roleHeader).getByRole("button", { name: "筛选角色" }));
+    const roleHeader = within(table).getByRole("columnheader", { name: /组织角色/ });
+    await userEvent.click(within(roleHeader).getByRole("button", { name: "筛选组织角色" }));
     await userEvent.click(within(roleHeader).getByRole("checkbox", { name: "管理员" }));
 
     expect(within(table).getByText("Xu Yun")).toBeInTheDocument();

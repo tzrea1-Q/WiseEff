@@ -682,4 +682,62 @@ describe("DtsBindingDraftTray", () => {
 
     expect(await screen.findByText("没有权限执行该操作。")).toBeInTheDocument();
   });
+
+  it("blocks submission and shows configure roles button for admins when review roles are missing", () => {
+    const onNavigate = vi.fn();
+    render(
+      <DtsBindingDraftTray
+        projectId="aurora"
+        drafts={[draft()]}
+        candidates={{
+          hardwareCommitters: [],
+          softwareCommitters: [{ id: "u-sw", name: "Software Reviewer" }],
+          softwareUsers: [],
+          ready: false,
+          missingRoles: ["hardware-committer", "software-user"]
+        }}
+        canManageRoles={true}
+        onRemove={vi.fn()}
+        onSubmit={vi.fn()}
+        onNavigate={onNavigate}
+      />
+    );
+
+    const alert = screen.getByRole("alert");
+    expect(alert).toHaveTextContent("当前项目缺少以下审核角色：硬件 MDE、软件开发，已阻止提交。");
+    const submitBtn = screen.getByRole("button", { name: /^提交审核/ });
+    expect(submitBtn).toBeDisabled();
+
+    const configBtn = screen.getByRole("button", { name: "配置项目审核角色" });
+    expect(configBtn).toBeVisible();
+    fireEvent.click(configBtn);
+    expect(onNavigate).toHaveBeenCalledWith("/parameter-admin/projects/aurora/review-roles");
+  });
+
+  it("blocks submission and shows contact admin note for non-admins when review roles are missing", () => {
+    render(
+      <DtsBindingDraftTray
+        projectId="aurora"
+        drafts={[draft()]}
+        candidates={{
+          hardwareCommitters: [{ id: "u-hw", name: "Hardware Reviewer" }],
+          softwareCommitters: [],
+          softwareUsers: [{ id: "u-user", name: "Software Merger" }],
+          ready: false,
+          missingRoles: ["software-committer"]
+        }}
+        canManageRoles={false}
+        onRemove={vi.fn()}
+        onSubmit={vi.fn()}
+        onNavigate={vi.fn()}
+      />
+    );
+
+    const alert = screen.getByRole("alert");
+    expect(alert).toHaveTextContent("当前项目缺少以下审核角色：软件 MDE，已阻止提交。");
+    expect(alert).toHaveTextContent("请联系管理员配置项目审核角色。");
+    expect(screen.queryByRole("button", { name: "配置项目审核角色" })).not.toBeInTheDocument();
+    const submitBtn = screen.getByRole("button", { name: /^提交审核/ });
+    expect(submitBtn).toBeDisabled();
+  });
 });

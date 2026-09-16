@@ -559,6 +559,8 @@ Migration `0092_dts_structural_spans.sql` 在 `dts_nodes` / `dts_properties` 上
 
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
+| `GET` | `/api/v1/projects/:projectId/workflow-role-bindings` | 列出项目的审核工作流角色绑定（`hardware-committer`、`software-committer`、`software-user`）、各池就绪状态与候选用户。仅 Admin（`users:manage`）。 |
+| `PUT` | `/api/v1/projects/:projectId/workflow-role-bindings/:userId` | 使用 CAS 并发控制更新单个用户的项目审核工作流角色。请求体：`{ roles: RoleId[], expectedRoles: RoleId[] }`。仅限定在目标项目内生效，不影响组织级角色。 |
 | `GET` | `/api/v1/projects/:projectId/config-sets` | 列出项目的配置集。 |
 | `GET` | `/api/v1/projects/:projectId/config-sets/:configSetId/files` | 读取项目范围内配置集成员、角色、格式、排序及当前 active version 身份。要求 `parameter:view`；配置集不属于项目/组织范围时返回 `404`。 |
 | `POST` | `/api/v1/projects/:projectId/config-sets` | 创建配置集。请求体：`{ name, description?, derivedFromId? }`。返回 `201 { item }`；同项目内 `name` 重复报 `409`。 |
@@ -670,7 +672,7 @@ Dashboard hotspot（`GET /api/v1/parameters/dashboard/hotspots`）对租户绑�
 
 **第五轮证据（分支 `fix/parameter-topology-round5-review-blockers`）：** base/candidate binding revision 不可变合入回写；缺 `objectStore`/项目/write lock/工具链时语义合并失败关闭；`parameter_identity_migration_phases` 不可变 phase 行与 `migration_run_id` 任务关联；租户作用域 resolve；手工规格 draft→`activate`→resolve；验收辅助 `acceptanceTaskLookup` / `semanticFixtureCleanup`（无 `items[0]` fallback）。
 
-`GET /api/v1/projects/:projectId/config-sets` 只读调用要求 `parameter:view`，供普通用户拓扑工作区加载；Config Set 修改、baseline、export 与 release 仍仅限 Admin。`GET /api/v1/projects/:projectId/parameter-workflow-assignees` 要求 `parameter:edit`，仅返回调用者组织、目标项目、active 且角色匹配的硬件提交人/软件提交人/软件用户；提交 API 会再次校验所选 ID。
+`GET /api/v1/projects/:projectId/config-sets` 只读调用要求 `parameter:view`，供普通用户拓扑工作区加载；Config Set 修改、baseline、export 与 release 仍仅限 Admin。`GET /api/v1/projects/:projectId/parameter-workflow-assignees` 要求 `parameter:edit`，返回 `{ item: { hardwareCommitters, softwareCommitters, softwareUsers, ready, missingRoles } }`，仅返回调用者组织、目标项目、active 且角色匹配的硬件提交人/软件提交人/软件用户；`ready` 在三个角色池均有候选人时为 true，缺少角色时为 false 并在 `missingRoles` 中列出具体缺失角色名；提交 API 会在事务内基于行锁再次校验所选 ID 与有效执行权限。
 
 `POST /api/v1/parameter-submission-rounds` 使用三种不可混合的 item。遗留扁平提交 `{ parameterId, targetValue, reason }` **仅可在语义 cutover 前使用**。Cutover 后 binding 提交为 `{ draftId, projectParameterBindingId, parameterSpecId, action, targetValue, reason }`（可选 `editSubjectKind: binding`）。节点启用提交为 `{ draftId, editSubjectKind: "node-enablement", logicalNodeId, action, targetValue, reason }`。binding item 不得再发送 `parameterId`；`action` 为 `set|delete`，`set` 要求非空 target，`delete` 要求 `targetValue: ""`。启用与 binding 草稿在共享同一工作 tip 时可同轮提交。服务端锁定用户所属 draft、candidate 与 evidence 行，复核组织/项目/Config Set、binding/spec/action/value/reason 和 write lock，然后原子推进 candidate `draft -> pending_approval`。迁移 `0063` 在返回的 submission item 和 change request 上持久化同一个 `candidateConfigRevisionId`，submit audit 同步记录。Merge 在 history/writeback 前再次锁定并验证 exact `pending_approval` candidate 及 set-value/delete-tombstone proof。身份缺失、状态/value/action proof 已变化，或历史 request 早于 `0063` 时返回 `409`，且不写成功 history/audit。跨项目或 draft 不存在返回 `404`；lock 过期返回 `409`。
 

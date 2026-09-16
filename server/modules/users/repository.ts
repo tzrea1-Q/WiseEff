@@ -4,6 +4,8 @@ import type { BackendRoleId, RoleBinding } from "../auth/types";
 import type {
   CreateUserInput,
   OrganizationDto,
+  ProjectWorkflowRoleBindingItem,
+  ProjectWorkflowRoleId,
   RegistrationRoleRequestDto,
   RegistrationRoleRequestStatus,
   UserGovernanceDto
@@ -456,4 +458,157 @@ export async function decideRegistrationRoleRequest(
   );
 
   return result.rows[0] ? registrationRoleRequestToDto(result.rows[0]) : null;
+}
+
+export async function checkProjectBelongsToOrg(
+  db: Queryable,
+  input: { organizationId: string; projectId: string }
+): Promise<boolean> {
+  const result = await db.query<{ id: string }>(
+    "select id from projects where organization_id = $1 and id = $2 limit 1",
+    [input.organizationId, input.projectId]
+  );
+  return result.rows.length > 0;
+}
+
+export async function getUserProjectWorkflowRoles(
+  db: Queryable,
+  input: { organizationId: string; projectId: string; userId: string }
+): Promise<ProjectWorkflowRoleId[]> {
+  const result = await db.query<{ role_id: ProjectWorkflowRoleId }>(
+    `
+    select distinct role_id
+    from user_role_bindings
+    where organization_id = $1
+      and project_id = $2
+      and user_id = $3
+      and role_id in ('hardware-committer', 'software-committer', 'software-user')
+    order by role_id asc
+    `,
+    [input.organizationId, input.projectId, input.userId]
+  );
+  return result.rows.map((row) => row.role_id);
+}
+
+export async function getProjectWorkflowRoleBindings(
+  db: Queryable,
+  input: { organizationId: string; projectId: string }
+): Promise<ProjectWorkflowRoleBindingItem[]> {
+  const result = await db.query<{
+    user_id: string;
+    user_name: string;
+    username: string | null;
+    is_active: boolean;
+    roles: ProjectWorkflowRoleId[];
+  }>(
+    `
+    select
+      users.id as user_id,
+      users.name as user_name,
+      user_password_credentials.username,
+      users.is_active,
+      coalesce(
+        (
+          select jsonb_agg(distinct urb2.role_id order by urb2.role_id)
+          from user_role_bindings urb2
+          where urb2.user_id = users.id
+            and urb2.organization_id = $1
+            and urb2.project_id = $2
+            and urb2.role_id in ('hardware-committer', 'software-committer', 'software-user')
+        ),
+        '[]'::jsonb
+      ) as roles
+    from users
+    join user_role_bindings on user_role_bindings.user_id = users.id
+    left join user_password_credentials on user_password_credentials.user_id = users.id
+    where users.organization_id = $1
+      and user_role_bindings.organization_id = $1
+      and user_role_bindings.project_id = $2
+      and user_role_bindings.role_id in ('hardware-committer', 'software-committer', 'software-user')
+    group by users.id, user_password_credentials.username
+    order by users.name asc, users.id asc
+    `,
+    [input.organizationId, input.projectId]
+  );
+
+  return result.rows.map((row) => ({
+    userId: row.user_id,
+    userName: row.user_name,
+    username: row.username,
+    isActive: row.is_active,
+    roles: Array.isArray(row.roles) ? row.roles : []
+  }));
+}
+
+export async function updateProjectWorkflowRoles(
+  db: Queryable,
+  input: { organizationId: string; projectId: string; userId: string; roles: ProjectWorkflowRoleId[] }
+): Promise<void> {
+  await db.query(
+    `
+    delete from user_role_bindings
+    where organization_id = $1
+      and project_id = $2
+      and user_id = $3
+      and role_id in ('hardware-committer', 'software-committer', 'software-user')
+    `,
+    [input.organizationId, input.projectId, input.userId]
+  );
+
+  const uniqueRoles = [...new Set(input.roles)].sort();
+  for (const roleId of uniqueRoles) {
+    await db.query(
+      `
+      insert into user_role_bindings (id, user_id, organization_id, project_id, role_id)
+      values ($1, $2, $3, $4, $5)
+      `,
+      [randomUUID(), input.userId, input.organizationId, input.projectId, roleId]
+    );
+  }
+}
+
+export async function getUserOrganizationRoles(
+  db: Queryable,
+  input: { organizationId: string; userId: string }
+): Promise<BackendRoleId[]> {
+  const result = await db.query<{ role_id: BackendRoleId }>(
+    `
+    select distinct role_id
+    from user_role_bindings
+    where organization_id = $1
+      and user_id = $2
+      and project_id is null
+      and role_id not like 'catalog-capability-%'
+    order by role_id asc
+    `,
+    [input.organizationId, input.userId]
+  );
+  return result.rows.map((row) => row.role_id);
+}
+
+export async function updateOrganizationRoles(
+  db: Queryable,
+  input: { organizationId: string; userId: string; roles: BackendRoleId[] }
+): Promise<void> {
+  await db.query(
+    `
+    delete from user_role_bindings
+    where organization_id = $1
+      and user_id = $2
+      and project_id is null
+      and role_id not like 'catalog-capability-%'
+    `,
+    [input.organizationId, input.userId]
+  );
+
+  const uniqueRoles = [...new Set(input.roles)].sort();
+  for (const roleId of uniqueRoles) {
+    await db.query(
+      `
+      insert into user_role_bindings (id, user_id, organization_id, project_id, role_id)
+      values ($1, $2, $3, $4, $5)
+      `,
+      [randomUUID(), input.userId, input.organizationId, null, roleId]
+    );
+  }
 }

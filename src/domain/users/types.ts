@@ -35,6 +35,11 @@ export type PlatformRole = {
   permissions: readonly PermissionKey[];
 };
 
+export type UserRoleBinding = {
+  projectId: string | null;
+  roleId: PlatformRoleId;
+};
+
 export type UserAccount = {
   id: string;
   name: string;
@@ -42,6 +47,7 @@ export type UserAccount = {
   username?: string;
   title: string;
   roleId: PlatformRoleId;
+  roles?: UserRoleBinding[];
   isActive: boolean;
   createdAt: string;
   lastActive: string;

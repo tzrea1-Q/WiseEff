@@ -76,6 +76,7 @@ type ParametersPageProps = {
   effectiveProjectId?: string;
   topBarProjectId?: string;
   canEdit?: boolean;
+  canManageRoles?: boolean;
   initializationStatus?: ProjectInitializationStatus;
   /** API mode mounts the topology workspace; mock keeps the flat table workflow. */
   runtimeMode?: WiseEffRuntimeMode;
@@ -92,9 +93,15 @@ export function ParametersPage({
   effectiveProjectId,
   topBarProjectId,
   canEdit = true,
+  canManageRoles,
   initializationStatus = "initialized",
   runtimeMode = "mock"
 }: ParametersPageProps) {
+  const effectiveCanManageRoles =
+    canManageRoles ??
+    (state.activeRoleId === "admin" ||
+      state.activeRoleId === "platform-admin" ||
+      state.users.find((u) => u.id === state.currentUserId)?.roleId === "admin");
   const initializationLocked = initializationStatus !== "initialized" && initializationStatus !== "maintenance";
   const effectiveCanEdit = canEdit && !initializationLocked;
   const isApiMode = runtimeMode === "api";
@@ -958,6 +965,7 @@ export function ParametersPage({
             listDrafts={listDrafts}
             deleteDraft={deleteDraft}
             listWorkflowAssignees={parameterActions?.listWorkflowAssignees}
+            canManageRoles={effectiveCanManageRoles}
             submitBindingChanges={parameterActions?.submitChanges}
             onNavigate={onNavigate}
           />

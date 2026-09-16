@@ -15,6 +15,7 @@
 
 - 先确认该文档属于哪个决策面：runbook。
 - 阅读英文版中的完整细节、表格和命令，再用本页确认中文语境下的执行边界。
+- 用户治理与角色变更通过 WiseEff 治理 API 进行，包括组织角色范围写入（`PUT /api/v1/users/:userId/organization-roles`）与项目审核工作流角色 CAS 写入（`PUT /api/v1/projects/:projectId/workflow-role-bindings/:userId`），两者在行锁保护下严格隔离互不影响。
 - 任何 target-environment readiness、pilot-ready、release-ready 结论都必须有真实目标环境证据，不能由本地 skip 代替。
 
 ## 同类中文文档

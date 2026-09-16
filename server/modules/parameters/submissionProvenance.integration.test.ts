@@ -27,6 +27,7 @@ const PLAIN = "ppv-provenance-plain";
 const ATOMIC = "ppv-provenance-atomic";
 const SYSTEM_PLAIN = "ppv-provenance-system-plain";
 const LEGACY_SOURCE = "ppv-provenance-legacy-source";
+const ASSIGNEES = { hardwareCommitterId: USER, softwareCommitterId: USER, softwareUserId: USER };
 const databaseAvailable = await isTestDatabaseAvailable();
 
 function auth(): AuthContext {
@@ -68,6 +69,13 @@ async function seed(db: Queryable) {
     `insert into projects (id, organization_id, name, code, status)
      values ($1, $2, 'Provenance Project', 'PROV', 'initialized')`,
     [PROJECT, ORG]
+  );
+  await db.query(
+    `insert into user_role_bindings (id, user_id, organization_id, project_id, role_id) values
+       (gen_random_uuid(), $1, $2, $3, 'hardware-committer'),
+       (gen_random_uuid(), $1, $2, $3, 'software-committer'),
+       (gen_random_uuid(), $1, $2, $3, 'software-user')`,
+    [USER, ORG, PROJECT]
   );
   await seedParameter(db, {
     id: CRITICAL,
@@ -243,7 +251,8 @@ describe.skipIf(!databaseAvailable)("parameter submission provenance (owned Post
             principal,
             {
               projectId: PROJECT,
-              items: [{ parameterId: CRITICAL, targetValue: "<8>", reason: "system deny" }]
+              items: [{ parameterId: CRITICAL, targetValue: "<8>", reason: "system deny" }],
+              assignees: ASSIGNEES
             },
             {
               invocation: systemInvocation,
@@ -281,7 +290,8 @@ describe.skipIf(!databaseAvailable)("parameter submission provenance (owned Post
           principal,
           {
             projectId: PROJECT,
-            items: [{ parameterId: SYSTEM_PLAIN, targetValue: "<10>", reason: "system non-sensitive allowed" }]
+            items: [{ parameterId: SYSTEM_PLAIN, targetValue: "<10>", reason: "system non-sensitive allowed" }],
+            assignees: ASSIGNEES
           },
           {
             invocation: systemInvocation,
@@ -324,7 +334,8 @@ describe.skipIf(!databaseAvailable)("parameter submission provenance (owned Post
           principal,
           {
             projectId: PROJECT,
-            items: [{ parameterId: CRITICAL, targetValue: "<5>", reason: "direct user allowed" }]
+            items: [{ parameterId: CRITICAL, targetValue: "<5>", reason: "direct user allowed" }],
+            assignees: ASSIGNEES
           },
           {
             invocation: createUserInvocation(principal),
@@ -373,7 +384,8 @@ describe.skipIf(!databaseAvailable)("parameter submission provenance (owned Post
               principal,
               {
                 projectId: PROJECT,
-                items: [{ parameterId: `missing-${randomUUID()}`, targetValue: "<4>", reason: "invalid context" }]
+                items: [{ parameterId: `missing-${randomUUID()}`, targetValue: "<4>", reason: "invalid context" }],
+                assignees: ASSIGNEES
               },
               context
             ])
@@ -393,7 +405,8 @@ describe.skipIf(!databaseAvailable)("parameter submission provenance (owned Post
             principal,
             {
               projectId: PROJECT,
-              items: [{ parameterId: `substitution-${randomUUID()}`, targetValue: "<3>", reason: "substitution" }]
+              items: [{ parameterId: `substitution-${randomUUID()}`, targetValue: "<3>", reason: "substitution" }],
+              assignees: ASSIGNEES
             },
             {
               invocation: createUserInvocation(otherPrincipal),
@@ -417,7 +430,8 @@ describe.skipIf(!databaseAvailable)("parameter submission provenance (owned Post
               principal,
               {
                 projectId: PROJECT,
-                items: [{ parameterId: ATOMIC, targetValue: "<2>", reason: "atomic rollback" }]
+                items: [{ parameterId: ATOMIC, targetValue: "<2>", reason: "atomic rollback" }],
+                assignees: ASSIGNEES
               },
               {
                 invocation: createUserInvocation(principal),

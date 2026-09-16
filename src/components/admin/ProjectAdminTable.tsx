@@ -13,6 +13,7 @@ type ProjectAdminTableProps = {
   onEditProject: (projectId: string) => void;
   onDeleteProject: (projectId: string) => void;
   onManageFiles: (projectId: string) => void;
+  onConfigureReviewRoles?: (projectId: string) => void;
   primaryActionLabel?: string;
 };
 
@@ -58,6 +59,7 @@ export function ProjectAdminTable({
   onEditProject,
   onDeleteProject,
   onManageFiles,
+  onConfigureReviewRoles,
   primaryActionLabel = "管理文件"
 }: ProjectAdminTableProps) {
   const selectedStatuses = search.statuses ?? [];
@@ -255,6 +257,17 @@ export function ProjectAdminTable({
             >
               {primaryActionLabel}
             </button>
+            {onConfigureReviewRoles ? (
+              <button
+                type="button"
+                className="button subtle project-admin-row-review-roles"
+                aria-label={`审核角色 ${row.name}`}
+                title={`审核角色 ${row.name}`}
+                onClick={() => onConfigureReviewRoles(row.id)}
+              >
+                审核角色
+              </button>
+            ) : null}
             <button
               type="button"
               className="icon-button project-admin-row-edit"

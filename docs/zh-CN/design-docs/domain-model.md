@@ -37,7 +37,7 @@
 | `User` | 用户账号，绑定身份源和唯一的 home organization |
 | `Role` | 平台角色；硬件/软件是 Role discipline，不是 Organization |
 | `Permission` | 细粒度动作权限 |
-| `UserRoleBinding` | 用户在 Organization 内的角色绑定；目录使用查询会消费明确项目 ID 或组织级授权，组织管理未提供项目成员管理产品 |
+| `UserRoleBinding` | 用户在 Organization 内的角色绑定（`project_id is null` 代表组织级角色，非空 `project_id` 代表项目审核工作流角色：`hardware-committer`、`software-committer`、`software-user`，仅在指定项目内授予参数编辑/审核权限，不扩散为全局权限）；目录使用查询会消费明确项目 ID 或组织级授权，组织管理未提供项目成员管理产品 |
 
 关键规则：
 
@@ -56,7 +56,7 @@
 组织级 `parameter_modules` 与调试域 `debug_node_modules` 为**独立树**；父级筛选默认包含子树。过渡期内仍保留扁平 `module` 文本列（TD-037 后续删除）。
 
 `ParameterModule` 行携带 `kind`（`business` | `driver-group` | `node-type` | `unclassified`）、`origin`（`curated` | `auto`）与可选稳定键 `source_key`（驱动组为 `compatible:{token}`，节点类型单元为 `nodetype:{name}`——非展示名）。驱动组与节点类型单元额外引用 `attribution_subject_id`（ADR-0013）：稳定编目身份是 `AttributionSubject`（`DriverRegistration` 带 `driverNature`/`instanceCardinality`/权威默认业务分类 `defaultBusinessCategoryModuleId`（D-AG-04 / TD-046），或 `NodeTypeDefinition`）；模块行只负责业务树中的放置与展示。**auto** 驱动组跟随注册默认业务分类，默认变更或显式回放时重挂；**curated** 放置冻结。关键词 `businessCategoryForNodePath` 仅作 seed/一次性 bootstrap。产品归属是**分类学**，不是拓扑副本：**业务分类 → {驱动组 | 节点类型单元} → 嵌套节点类型\***（总线/脚手架节点不进树）。绑定只挂在**驱动组**与**节点类型单元**上；器件实例身份在 binding 的 `logical_node_id`（ADR-0010）。**归属杠杆**（ADR-0010）：`compatible` 将器件型号解析到驱动组；`node-type` 将无 compatible 的配置节点解析到节点类型单元（匹配值为去掉单元地址后的裸节点名，经规范化）。优先级：compatible → node-type → 未分类根。管理员**纳入（adoption）**：对 `origin=auto` 的模块重命名或移动时提升为 `curated`。**`curated → auto` 不在领域范围内**：纳入是单向陈述事实（ADR-0004），反向改 origin 会让人工决策伪装成入库决策。注册表读取暴露 `effectiveImportance`，由最近业务祖先继承（驱动组与节点类型单元不单独存重要性）。归属树计数拆成**定义数**（`definitionCount`，子树互异规格）与**实测处数**（`parameterCount`，绑定）；定义库**引用数**（`referenceCount`）是同一绑定事实收窄到单定义，不是树上的第三列。
-| `ProjectMember` | 预留：项目成员和项目角色。组织管理不交付此项（ADR-0037） |
+| `ProjectMember` | 预留通用项目成员与项目可见性 ACL（TD-121）。项目审核工作流角色（`hardware-committer`、`software-committer`、`software-user`）已通过项目审核角色治理交付，由项目管理入口独立配置，不折入组织管理（ADR-0037） |
 | `ProjectInitializationDraft` | 项目参数初始化草稿 |
 | `ProjectInitializationReview` | 初始化审阅记录 |
 
