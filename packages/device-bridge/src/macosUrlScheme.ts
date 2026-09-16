@@ -2,6 +2,8 @@ import { existsSync } from "node:fs";
 import { access, chmod, mkdir, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 
+import { BRIDGE_CLIENT_VERSION } from "./version";
+
 export const LAUNCHER_APP_NAME = "WiseEffBridgeLauncher.app";
 export const LAUNCHER_BUNDLE_ID = "com.wiseeff.bridge.launcher";
 export const LAUNCHER_EXECUTABLE = "WiseEffBridge";
@@ -48,7 +50,7 @@ export function resolveLsRegisterPath(): string | null {
   return null;
 }
 
-export function buildLauncherInfoPlist(version = "0.1.0"): string {
+export function buildLauncherInfoPlist(version = BRIDGE_CLIENT_VERSION): string {
   return `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">

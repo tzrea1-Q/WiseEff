@@ -16,6 +16,18 @@ export type BridgePanelStatus =
 
 export type DebugConnectionProtocol = "adb" | "hdc";
 
+export type LocalBridgeBindingState =
+  | "unknown"
+  | "unpaired"
+  | "matched"
+  | "foreign_account"
+  | "token_invalid";
+
+export const FOREIGN_ACCOUNT_REBIND_HINT =
+  "当前本机 Bridge 已配对到其他账号。请点击「重新配对」，使用当前账号的新配对码完成本机绑定。";
+
+export const REBIND_IN_PROGRESS_HINT = "正在将本机 Bridge 重新绑定到当前账号，并等待新进程上线。";
+
 export function isLocalBridgeAuthFailure(health: LocalBridgeHealthState | null) {
   const error = health?.lastError ?? "";
   return /invalid or expired bridge token/i.test(error) || /missing bridge authorization/i.test(error);
@@ -41,6 +53,25 @@ export function isLocalBridgePairingStale(input: {
       registeredIds !== undefined &&
       !registeredIds.includes(localBridgeId)
   );
+}
+
+export function deriveLocalBridgeBindingState(input: {
+  health: LocalBridgeHealthState | null;
+  registeredBridgeIds?: string[];
+}): LocalBridgeBindingState {
+  if (!input.health?.paired) {
+    return input.health ? "unpaired" : "unknown";
+  }
+  if (isLocalBridgeAuthFailure(input.health) || isLocalBridgeTokenExpired(input.health)) {
+    return "token_invalid";
+  }
+  if (isLocalBridgePairingStale(input)) {
+    return "foreign_account";
+  }
+  if (input.health.bridgeId && input.registeredBridgeIds?.includes(input.health.bridgeId)) {
+    return "matched";
+  }
+  return input.registeredBridgeIds === undefined ? "unknown" : "unpaired";
 }
 
 export function countActiveBridgesForPlatform(
@@ -196,8 +227,9 @@ export function shouldClearStaleBridgeConnectError(input: {
   connectError: string;
   health: LocalBridgeHealthState | null;
   panelStatus: BridgePanelStatus;
+  listingFailed?: boolean;
 }): boolean {
-  if (!input.connectError) {
+  if (!input.connectError || input.listingFailed) {
     return false;
   }
   return isBridgeOnlinePanelStatus(input.panelStatus);
@@ -240,10 +272,18 @@ export function formatDetectFailureMessage(input: {
 export function bridgePanelStatusHint(
   status: BridgePanelStatus,
   protocol: DebugConnectionProtocol = "hdc",
-  options: { pairingStale?: boolean; authFailure?: boolean; healthReachability?: LocalBridgeReachability } = {}
+  options: {
+    pairingStale?: boolean;
+    authFailure?: boolean;
+    healthReachability?: LocalBridgeReachability;
+    connecting?: boolean;
+  } = {}
 ) {
+  if (options.connecting && (options.pairingStale || options.authFailure)) {
+    return REBIND_IN_PROGRESS_HINT;
+  }
   if (options.pairingStale && status === "not_paired") {
-    return "本地 Bridge 配对已失效，请点击连接本机并使用新的配对码重新配对。";
+    return FOREIGN_ACCOUNT_REBIND_HINT;
   }
   if (status === "not_paired" && options.authFailure) {
     return "本地 Bridge 令牌已失效或过期，请点击连接本机并使用新的配对码重新配对。";

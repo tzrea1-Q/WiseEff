@@ -16,7 +16,7 @@ npm run bridge:build
 npm run build:bridge-installers
 ```
 
-产物写入 `ops/self-hosted/bridge-artifacts/0.1.0/`，并在 `manifest.json` 中追加 `artifactKind: "installer"` 条目。
+产物写入 `ops/self-hosted/bridge-artifacts/<BRIDGE_CLIENT_VERSION>/`，并在 `manifest.json` 中追加 `artifactKind: "installer"` 条目。打包后的 CLI 报告的 `clientVersion` 必须与 `packages/device-bridge/src/version.ts` 一致。运行时源码变更后需重建制品，使 `npm run bridge:package:check` 保持通过。
 
 ## URL scheme
 

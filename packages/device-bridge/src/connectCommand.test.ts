@@ -2,6 +2,11 @@ import { describe, expect, it, vi } from "vitest";
 
 import type { BridgeConfig } from "./config";
 import { isBridgeTokenExpired, runConnectCommand } from "./connectCommand";
+import { writePairingError } from "./pairingErrorStore";
+
+vi.mock("./pairingErrorStore", () => ({
+  writePairingError: vi.fn(async () => undefined)
+}));
 
 const pairedConfig: BridgeConfig = {
   bridgeId: "bridge_123",
@@ -62,7 +67,24 @@ describe("connectCommand", () => {
     }), { server: config.serverUrl, webOrigin: config.webOrigin, code: "123456" });
     expect(result.exitCode).toBe(0);
     expect(config.bridgeId).toBe("bridge-replacement");
-    expect(ensureBridgeRunning).toHaveBeenCalledWith(expect.objectContaining({ forceRestart: true }));
+    expect(ensureBridgeRunning).toHaveBeenCalledWith(expect.objectContaining({
+      forceRestart: true,
+      expectedBridgeId: "bridge-replacement"
+    }));
+  });
+
+  it("writes a restart failure after pairing when the new process does not come online", async () => {
+    let config = { ...pairedConfig };
+    const result = await runConnectCommand(createConnectDeps({
+      loadConfig: async () => config,
+      saveConfig: async (next) => { config = next as typeof config; },
+      fetchImpl: vi.fn(async () => new Response(JSON.stringify({
+        bridgeId: "br-B", bridgeToken: "token-B", tokenExpiresAt: "2099-07-01T00:00:00Z"
+      }))),
+      ensureBridgeRunning: vi.fn(async () => ({ exitCode: 1 }))
+    }), { server: config.serverUrl, code: "123456" });
+    expect(result.exitCode).toBe(1);
+    expect(writePairingError).toHaveBeenCalledWith(expect.stringContaining("未能使用新凭据完成重启"));
   });
 
   it("persists webOrigin when pairing", async () => {

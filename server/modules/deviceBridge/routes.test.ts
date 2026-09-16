@@ -170,6 +170,25 @@ describe("device bridge routes", () => {
     });
   });
 
+  it("GET /api/v1/device-bridges/mine stays scoped to the authenticated user and organization", async () => {
+    const repo = {
+      listBridgesForUser: vi.fn().mockResolvedValue([bridgeRecord({ id: "br-B", userId: "user-2" })])
+    };
+    vi.mocked(repository.createDeviceBridgeRepository).mockReturnValue(repo as never);
+
+    const response = await requestJson<{ items: Array<{ id: string }> }>(
+      makeServer({ db: makeDb(), auth: makeAuth({ user: { ...makeAuth().user, id: "user-2" } }) }),
+      "/api/v1/device-bridges/mine"
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.body.items.map((item) => item.id)).toEqual(["br-B"]);
+    expect(repo.listBridgesForUser).toHaveBeenCalledWith({
+      userId: "user-2",
+      organizationId: "org-1"
+    });
+  });
+
   it("GET /api/v1/device-bridges/mine returns the authenticated user's bridges", async () => {
     const repo = {
       listBridgesForUser: vi.fn().mockResolvedValue([bridgeRecord()])
@@ -265,6 +284,39 @@ describe("device bridge routes", () => {
     );
 
     expect(response.status).toBe(404);
+  });
+
+  it("refuses to revoke or rename another user's bridge", async () => {
+    const repo = {
+      revokeBridge: vi.fn().mockResolvedValue(null),
+      updateBridgeMachineLabel: vi.fn().mockResolvedValue(null)
+    };
+    vi.mocked(repository.createDeviceBridgeRepository).mockReturnValue(repo as never);
+    const auth = makeAuth({ user: { ...makeAuth().user, id: "user-2" } });
+
+    const revoked = await requestJson(
+      makeServer({ db: makeDb(), auth }),
+      "/api/v1/device-bridges/br-A/revoke",
+      { method: "POST", body: JSON.stringify({}) }
+    );
+    const renamed = await requestJson(
+      makeServer({ db: makeDb(), auth }),
+      "/api/v1/device-bridges/br-A",
+      { method: "PATCH", body: JSON.stringify({ machineLabel: "stolen" }) }
+    );
+
+    expect(revoked.status).toBe(404);
+    expect(renamed.status).toBe(404);
+    expect(repo.revokeBridge).toHaveBeenCalledWith(expect.objectContaining({
+      bridgeId: "br-A",
+      userId: "user-2",
+      organizationId: "org-1"
+    }));
+    expect(repo.updateBridgeMachineLabel).toHaveBeenCalledWith(expect.objectContaining({
+      bridgeId: "br-A",
+      userId: "user-2",
+      organizationId: "org-1"
+    }));
   });
 
   it("POST /api/v1/device-bridges/:bridgeId/revoke returns 404 when the bridge is missing", async () => {

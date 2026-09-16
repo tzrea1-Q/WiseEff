@@ -114,6 +114,7 @@
     "preview": "vite preview --host 127.0.0.1",
     "bridge:test": "vitest run --config vitest.bridge.config.ts",
     "bridge:build": "tsx scripts/build-device-bridge.ts",
+    "bridge:package:check": "tsx scripts/check-bridge-package-consistency.ts",
     "build:bridge-installers": "tsx scripts/build-bridge-installers.ts",
     "bridge-tool-artifacts:prepare": "tsx scripts/prepare-bridge-tool-artifacts.ts",
     "bridge-tool-artifacts:hash": "tsx scripts/build-bridge-tool-artifacts.ts"

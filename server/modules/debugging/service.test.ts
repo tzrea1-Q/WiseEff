@@ -1035,6 +1035,26 @@ describe.skipIf(!databaseAvailable)("debugging service", () => {
       expect(stored.rows).toEqual([{ bridge_id: "br-1" }]);
     });
 
+    it("does not let another user detect through a foreign account's connected bridge", async () => {
+      await seedBridge({ id: "br-A", user_id: "user-1" });
+      const bridgeRpcClient = { call: vi.fn() };
+      const service = createDebuggingService({
+        db,
+        gateway: makeGateway({ detectTargets: vi.fn(async () => ({ ok: true, targets: [] })) }),
+        bridgeConnectionPool: { isConnected: vi.fn(() => true) },
+        bridgeRpcClient,
+        createAuditEvent: createAuditSpy().createAuditEvent
+      });
+
+      const targets = await service.detectTargets(makeAuth(["debugging:view", "debugging:read"], [{ roleId: "software-user" }], "user-2"), {
+        protocol: "hdc",
+        bridgeId: "br-A"
+      });
+
+      expect(bridgeRpcClient.call).not.toHaveBeenCalled();
+      expect(targets.filter((target) => target.bridgeId === "br-A")).toEqual([]);
+    });
+
     it("requires an explicit registry for non-default protocols", async () => {
       await seedDevice({ transport: "adb" });
       const service = createDebuggingService({
@@ -1109,6 +1129,15 @@ describe.skipIf(!databaseAvailable)("debugging service", () => {
       });
 
       expect(session).toMatchObject({ executionMode: "bridge", bridgeId: "br-1", bridgeMachineLabel: "Laptop" });
+
+      await expect(
+        service.createSession(makeAuth(["debugging:view", "debugging:read", "debugging:write"], [{ roleId: "software-user" }], "user-2"), {
+          deviceId: "bridge:br-1",
+          targetId,
+          bridgeId: "br-1",
+          protocol: "adb"
+        })
+      ).rejects.toMatchObject(new ApiError("NOT_FOUND", "Device bridge was not found.", { bridgeId: "br-1" }));
       const stored = await db.query<{ execution_mode: string; bridge_id: string | null; bridge_machine_label: string | null }>(
         `select execution_mode, bridge_id, bridge_machine_label from debugging_sessions where id = $1`,
         [session.id]

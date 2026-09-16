@@ -136,6 +136,7 @@ function parseLocalBridgeHealthBody(body: Record<string, unknown>): LocalBridgeH
     tokenExpiresAt: typeof body.tokenExpiresAt === "string" ? body.tokenExpiresAt : undefined,
     lastError: typeof body.lastError === "string" ? body.lastError : undefined,
     pairingError: typeof body.pairingError === "string" ? body.pairingError : undefined,
+    clientVersion: typeof body.clientVersion === "string" ? body.clientVersion : undefined,
     launcherPath: typeof body.launcherPath === "string" ? body.launcherPath : undefined,
     updatedAt: body.updatedAt,
     tools,

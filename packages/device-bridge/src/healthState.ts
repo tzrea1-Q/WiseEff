@@ -15,6 +15,7 @@ export type BridgeHealthState = {
   tokenExpiresAt?: string;
   lastError?: string;
   pairingError?: string;
+  clientVersion?: string;
   launcherPath?: string;
   updatedAt: string;
   tools?: ToolProbeResult;

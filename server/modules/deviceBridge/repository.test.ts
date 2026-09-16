@@ -17,7 +17,9 @@ import {
   createBridge,
   createBridgeToken,
   createPairingCode,
-  listBridgesForUser
+  listBridgesForUser,
+  revokeBridge,
+  updateBridgeMachineLabel
 } from "./repository";
 import { DEVICE_BRIDGE_CONNECT_SCOPE, DEVICE_BRIDGE_EXECUTE_SCOPE } from "./types";
 
@@ -152,5 +154,40 @@ describe.skipIf(!databaseAvailable)("device bridge repository", () => {
     const bridges = await listBridgesForUser(db, { userId: "u-1", organizationId: "org-1" });
 
     expect(bridges.map((bridge) => bridge.id)).toEqual(["br-live"]);
+  });
+
+  it("keeps list, revoke, and rename isolated to the owning user", async () => {
+    await createBridge(db, {
+      id: "br-A",
+      organizationId: "org-1",
+      userId: "u-1",
+      machineLabel: "WIN-PC",
+      platform: "windows",
+      arch: "amd64"
+    });
+
+    const listedForB = await listBridgesForUser(db, { userId: "u-2", organizationId: "org-1" });
+    expect(listedForB).toEqual([]);
+    await expect(
+      revokeBridge(db, {
+        bridgeId: "br-A",
+        userId: "u-2",
+        organizationId: "org-1",
+        revokedAt: new Date("2026-09-16T00:00:00.000Z")
+      })
+    ).resolves.toBeNull();
+    await expect(
+      updateBridgeMachineLabel(db, {
+        bridgeId: "br-A",
+        userId: "u-2",
+        organizationId: "org-1",
+        machineLabel: "stolen"
+      })
+    ).resolves.toBeNull();
+
+    const listedForA = await listBridgesForUser(db, { userId: "u-1", organizationId: "org-1" });
+    expect(listedForA.map((bridge) => bridge.id)).toEqual(["br-A"]);
+    expect(listedForA[0]?.machineLabel).toBe("WIN-PC");
+    expect(listedForA[0]?.revokedAt).toBeNull();
   });
 });

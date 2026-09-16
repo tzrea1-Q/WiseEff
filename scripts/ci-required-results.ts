@@ -16,7 +16,7 @@ export type NativeSummary = {
 export const shadowModuleIds = ["feedback-client", "feedback-domain", "feedback-server", "feedback-ui"] as const;
 export const l1Jobs = ["l1-static", "l1-frontend", "l1-scripts", "l1-server"] as const;
 export const l1CommandIds: Record<string, readonly string[]> = {
-  "l1-static": ["checkout", "node", "install", "eslint_cache", "metadata", "build", "ui", "lint", "catalog", "contract", "logs"],
+  "l1-static": ["checkout", "node", "install", "eslint_cache", "metadata", "build", "ui", "lint", "catalog", "contract", "bridge_package", "logs"],
   "l1-frontend": ["checkout", "node", "install", "frontend"],
   "l1-scripts": ["checkout", "node", "install", "toolchain", "advisory", "vector", "scripts", "bridge"],
   "l1-server": ["checkout", "node", "install", "toolchain", "vector", "docs", "server"],

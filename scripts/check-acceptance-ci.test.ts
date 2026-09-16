@@ -31,7 +31,7 @@ describe("equivalent fixed L1 scheduling", () => {
   it("maps every original L1 command and prerequisite to four jobs with stable strict aggregates", () => {
     expect(evaluateL1CiWorkflow(readFileSync(".github/workflows/ci.yml", "utf8"))).toEqual({ status: "passed", errors: [] });
   });
-  it.each(["build", "docs", "ui", "lint", "metadata", "catalog", "contract", "logs"])("rejects removal of the original %s command", (id) => {
+  it.each(["build", "docs", "ui", "lint", "metadata", "catalog", "contract", "bridge_package", "logs"])("rejects removal of the original %s command", (id) => {
     const workflow = YAML.parse(readFileSync(".github/workflows/ci.yml", "utf8"));
     const job = workflow.jobs[id === "docs" ? "l1-server" : "l1-static"];
     job.steps = job.steps.filter((step: { id: string }) => step.id !== id);

@@ -88,6 +88,7 @@ export function LocalDeviceBridgePanel({
   const [releasesLoading, setReleasesLoading] = useState(false);
   const installReleasesLoadedRef = useRef(false);
   const lastEmittedBridgeStateRef = useRef<LocalDeviceBridgePanelState | null>(null);
+  const bridgesRef = useRef<DeviceBridgeRecord[]>(bridgesOverride ?? []);
 
   const loadInstallReleases = useCallback(async () => {
     setReleasesLoading(true);
@@ -130,12 +131,7 @@ export function LocalDeviceBridgePanel({
       }
       try {
         const probe = probeHealth ?? (() => probeLocalBridgeHealthDetailed());
-        const [healthProbe, nextBridges] = await Promise.all([
-          probe(),
-          bridgesOverride !== undefined && bridgesOverride !== null
-            ? Promise.resolve(bridgesOverride)
-            : (listBridges ?? (() => listMyBridges()))()
-        ]);
+        const healthProbe = await probe();
         const nextHealth = healthProbe.health;
         setHealthReachability((current) =>
           current === healthProbe.reachability ? current : healthProbe.reachability
@@ -149,33 +145,52 @@ export function LocalDeviceBridgePanel({
             ? current
             : nextHealth
         );
-        setBridges((current) =>
-          current.length === nextBridges.length &&
-          current.every((bridge, index) => {
-            const next = nextBridges[index];
-            return (
-              next &&
-              bridge.id === next.id &&
-              bridge.machineLabel === next.machineLabel &&
-              bridge.lastSeenAt === next.lastSeenAt &&
-              bridge.revokedAt === next.revokedAt
-            );
-          })
-            ? current
-            : nextBridges
-        );
-        setRenameDraftById((current) => {
-          const nextDraft = Object.fromEntries(nextBridges.map((bridge) => [bridge.id, bridge.machineLabel]));
-          const currentKeys = Object.keys(current);
-          const nextKeys = Object.keys(nextDraft);
-          if (
-            currentKeys.length === nextKeys.length &&
-            nextKeys.every((key) => current[key] === nextDraft[key])
-          ) {
-            return current;
-          }
-          return nextDraft;
-        });
+
+        let nextBridges: DeviceBridgeRecord[];
+        let listingFailed = false;
+        let listingError: string | undefined;
+        try {
+          nextBridges =
+            bridgesOverride !== undefined && bridgesOverride !== null
+              ? bridgesOverride
+              : await (listBridges ?? (() => listMyBridges()))();
+        } catch (error) {
+          listingFailed = true;
+          listingError = formatDebuggingRuntimeError(error);
+          nextBridges = bridgesRef.current;
+          setPanelError(listingError);
+        }
+
+        if (!listingFailed) {
+          setBridges((current) =>
+            current.length === nextBridges.length &&
+            current.every((bridge, index) => {
+              const next = nextBridges[index];
+              return (
+                next &&
+                bridge.id === next.id &&
+                bridge.machineLabel === next.machineLabel &&
+                bridge.lastSeenAt === next.lastSeenAt &&
+                bridge.revokedAt === next.revokedAt
+              );
+            })
+              ? current
+              : nextBridges
+          );
+          setRenameDraftById((current) => {
+            const nextDraft = Object.fromEntries(nextBridges.map((bridge) => [bridge.id, bridge.machineLabel]));
+            const currentKeys = Object.keys(current);
+            const nextKeys = Object.keys(nextDraft);
+            if (
+              currentKeys.length === nextKeys.length &&
+              nextKeys.every((key) => current[key] === nextDraft[key])
+            ) {
+              return current;
+            }
+            return nextDraft;
+          });
+        }
+
         const hostTarget = detectBrowserBridgeTarget();
         const registeredBridgeCountForHost = countActiveBridgesForPlatform(nextBridges, hostTarget.platform);
         // Only fetch install releases once while waiting for Bridge — silent polls must not
@@ -188,16 +203,23 @@ export function LocalDeviceBridgePanel({
         ) {
           await loadInstallReleases();
         }
+        const registeredBridgeIds = nextBridges.filter((bridge) => !bridge.revokedAt).map((bridge) => bridge.id);
         return {
           nextHealth,
           nextBridges,
-          connected: Boolean(nextHealth?.connected && nextBridges.some(
-            (bridge) => !bridge.revokedAt && bridge.id === nextHealth.bridgeId
-          ))
+          health: nextHealth,
+          registeredBridgeIds,
+          listingFailed,
+          listingError,
+          connected: Boolean(
+            !listingFailed &&
+              nextHealth?.connected &&
+              nextBridges.some((bridge) => !bridge.revokedAt && bridge.id === nextHealth.bridgeId)
+          )
         };
       } catch (error) {
         setPanelError(formatDebuggingRuntimeError(error));
-        return { connected: false };
+        return { connected: false, listingFailed: true, listingError: formatDebuggingRuntimeError(error) };
       } finally {
         if (!options?.silent) {
           setChecking(false);
@@ -206,6 +228,10 @@ export function LocalDeviceBridgePanel({
     },
     [bridgesOverride, listBridges, loadInstallReleases, probeHealth]
   );
+
+  useEffect(() => {
+    bridgesRef.current = bridges;
+  }, [bridges]);
 
   useEffect(() => {
     if (bridgesOverride !== undefined && bridgesOverride !== null) {
@@ -367,7 +393,13 @@ export function LocalDeviceBridgePanel({
         onConnectError={setConnectError}
         onRefresh={async () => {
           const snapshot = await refreshBridgeState();
-          return { connected: snapshot.connected };
+          return {
+            connected: snapshot.connected,
+            health: snapshot.health,
+            registeredBridgeIds: snapshot.registeredBridgeIds,
+            listingFailed: snapshot.listingFailed,
+            listingError: snapshot.listingError
+          };
         }}
         onDetect={onDetect}
         releasesLoading={releasesLoading}

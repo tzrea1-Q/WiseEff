@@ -73,7 +73,13 @@ type LocalDeviceBridgeWizardProps = {
   detecting: boolean;
   connectError: string;
   onConnectError: (message: string) => void;
-  onRefresh: () => Promise<{ connected: boolean }>;
+  onRefresh: () => Promise<{
+    connected: boolean;
+    health?: LocalBridgeHealthState | null;
+    registeredBridgeIds?: string[];
+    listingFailed?: boolean;
+    listingError?: string;
+  }>;
   onDetect: () => void;
   releasesLoading?: boolean;
   onLoadInstallReleases?: () => Promise<void>;
@@ -264,10 +270,11 @@ export function LocalDeviceBridgeWizard({
       });
     }
 
+    const previousBridgeId = health?.bridgeId;
     setConnecting(true);
     onConnectError("");
     try {
-      await connectLocalBridge({
+      const connectResult = await connectLocalBridge({
         server: serverUrl,
         webOrigin,
         code: pairingCodeValue,
@@ -275,19 +282,22 @@ export function LocalDeviceBridgeWizard({
       });
       const nextHealth = await pollLocalBridgeHealth({
         timeoutMs: shouldLaunchScheme ? 45_000 : 30_000,
-        ...(pairingStale && health?.bridgeId ? { excludeBridgeId: health.bridgeId } : {})
+        ...(pairingStale && previousBridgeId ? { excludeBridgeId: previousBridgeId } : {})
       });
       const refreshSnapshot = await onRefresh();
-      const connected = refreshSnapshot.connected;
-      if (connected) {
+      if (refreshSnapshot.connected) {
         onConnectError("");
         onDetect();
       } else {
         onConnectError(
           describeBridgeConnectFailureMessage({
-            health: nextHealth,
-            pairingStale,
-            pairingAuthFailure
+            health: refreshSnapshot.health ?? nextHealth,
+            connectResult,
+            previousBridgeId,
+            registeredBridgeIds: refreshSnapshot.registeredBridgeIds,
+            listingFailed: refreshSnapshot.listingFailed,
+            listingError: refreshSnapshot.listingError,
+            reconnectAttempted: Boolean(pairingCodeValue)
           })
         );
       }
@@ -337,7 +347,8 @@ export function LocalDeviceBridgeWizard({
       : bridgePanelStatusHint(panelStatus, protocol, {
           pairingStale,
           authFailure: pairingAuthFailure,
-          healthReachability
+          healthReachability,
+          connecting
         });
   const hostInstaller =
     hostRelease?.artifactKind === "installer"

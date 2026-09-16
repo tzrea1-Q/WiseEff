@@ -231,6 +231,8 @@ mock mode 有意保留 12 个兼容参数，以保证组件测试与演示轻量
 
 主连接流程：点击 **连接本地设备** → 首次可选确认（`wiseeff.bridgeSchemeConfirm`）→ `launchBridgeConnect()` 打开 `wiseeff-bridge://connect?...` → `pollLocalBridgeHealth()` 最多 30 秒轮询 `http://127.0.0.1:18787/health` → `connected: true` 后自动 detect。工具函数在 `src/infrastructure/http/bridgeConnectLauncher.ts`。
 
+本机 Bridge 的 `bridgeId` 不在当前用户 `/device-bridges/mine` 中，表示**其他账号的本机绑定**，不是令牌过期。向导要求当前账号用新签发的配对码重新绑定，等待新的 `bridgeId`，刷新 `/mine`，再自动 detect。最终成败必须根据最新 health 和最新当前用户代理列表判定，不能沿用连接开始前的 stale 标记去显示“配对已失效”。
+
 Phase B（Step ③ 工具）：health 含 `tools.adb` / `tools.hdc`；所选协议工具缺失时显示 `tools_missing` 与 **安装调试工具**（`bridgeToolInstallLauncher.ts`，`wiseeff-bridge://install-tools`，120 秒轮询）。detect 报错若指向 adb/hdc 缺失，提示安装工具而非「Bridge 未安装」。
 
 `pair` / `start` / `connect` 命令行说明折叠在 **高级 · 命令行方式**；便携包下载在 **其他平台**。
