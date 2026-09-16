@@ -528,11 +528,11 @@ offline first, and nothing did that.
 
 | Element | Behaviour |
 | --- | --- |
-| Archived plane | 24 declared relations - legacy and canonical drafts/history/reviews, config sets/baselines/revisions, stable logical identities, bindings/revisions, source files/candidates/versions, and canonical values |
+| Archived plane | 32 declared per-Project relations - legacy and canonical drafts/history/reviews, config sets/baselines/revisions, stable logical identities, bindings/revisions, source files/candidates/versions, canonical values, and project-local governance records |
 | Child scoping | `parameter_review_decisions`, `parameter_submission_items`, `project_parameter_binding_revisions` and `project_parameter_file_versions` carry no `project_id`, so they are reached through their parent instead of being silently skipped |
-| Artifact | One v2 JSON document written to the object store, carrying provenance, `truncated`, stable-primary-key-ordered rows, and checksum-verified bytes for every referenced file version or unactivated candidate; aggregate source bytes are capped at 64 MiB |
+| Artifact | One v2 JSON document written to the object store, carrying provenance, `truncated`, stable-primary-key-ordered rows, and checksum-verified bytes for every referenced file version or unactivated candidate; relation JSON and aggregate source bytes each have a 64 MiB bound |
 | Idempotency | `archive_digest` covers the scope, the counts and the content digest, so re-capturing an unchanged plane reuses the object rather than writing a second one |
-| Bound | Each relation is read with a 5,000-row cap; exceeding it sets `truncated`, so a partial capture can never be mistaken for complete preservation |
+| Bound | Relation JSON size is preflighted before rows are returned; source objects use bounded local/S3 reads. Each relation also has a 5,000-row cap whose overflow sets `truncated`, so a partial capture cannot be mistaken for complete preservation |
 | Guard | `assertProjectParameterPlaneArchived` validates the exact archive ID/digest returned by capture and refuses missing, truncated, torn or byte-incomplete artifacts |
 | Ordering | `materializeSeedSources` archives each target and then requires the guard to pass, before it uploads a single seed source |
 
@@ -540,7 +540,7 @@ offline first, and nothing did that.
 ledger deliberately has no column that could imply disposal happened. Removing the archived plane needs its own
 reviewed decision, and the run report records it as remaining work rather than quietly implementing it.
 
-**Verification.** `archive.integration.test.ts` (10 tests, real PostgreSQL) asserts the 24-relation graph and
+**Verification.** `archive.integration.test.ts` (12 tests, real PostgreSQL) asserts the 32-relation graph and
 embedded version/candidate bytes, parent scoping and cross-Project isolation, idempotent reuse, missing or over-cap source-object refusal,
 and fail-closed handling for missing, truncated, torn, tampered or substituted archives, plus authorization and
 schema-retention constraints.
@@ -731,6 +731,7 @@ The plan status, ADR-0045 pair, TD-124 pair and this report pair are updated and
 implementation. The [retrospective threat matrix](849-inventory/migrations-0148-0149-r3-threat-matrix.md)
 records the boundary. The correction candidate binds the requested Organization to authentication, authorizes all
 targets before journaling or completed replay, serializes the fixed Organization scope across processes and seed
-digests, makes `completed` terminal, and verifies the exact v2 archived object and source bytes before rebuilding.
-Real-PostgreSQL evidence is now 7 plan, 10 archive and 7 materialization tests. Capture still does not mean disposal; target quiescence, recovery and any
+digests, makes `completed` terminal, and verifies the exact v2 archived object, 32 per-Project relations, source
+bytes, and separately bounded relation/object paths before rebuilding. Real-PostgreSQL evidence is now 7 plan,
+12 archive and 7 materialization tests. Capture still does not mean disposal; target quiescence, recovery and any
 deletion remain #853 T2.3/T3.3 obligations.

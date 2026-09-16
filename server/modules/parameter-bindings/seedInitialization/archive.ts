@@ -11,7 +11,7 @@
  * needs its own reviewed decision, and the ledger deliberately has no column that
  * could imply one happened.
  *
- * Bounded on purpose. Each relation is read with a row cap; hitting the cap sets
+ * Bounded on purpose. Each relation is read with a row cap; exceeding the cap sets
  * `truncated` so a partial capture can never be mistaken for a complete one.
  */
 import { createHash, randomUUID } from "node:crypto";
@@ -26,6 +26,7 @@ import type { ObjectStore } from "../../logs/objectStore";
 export const ARCHIVE_ROW_CAP = 5_000;
 /** Keeps base64 + JSON assembly bounded well below the server process heap. */
 export const ARCHIVE_OBJECT_BYTES_CAP = 64 * 1024 * 1024;
+export const ARCHIVE_RELATION_BYTES_CAP = 64 * 1024 * 1024;
 
 type RelationScope =
   | { readonly kind: "project"; readonly projectId: string }
@@ -43,6 +44,7 @@ type ArchiveRelation = {
   readonly key: string;
   readonly from: string;
   readonly scope: RelationScope;
+  readonly orderBy?: string;
 };
 
 /**
@@ -51,6 +53,8 @@ type ArchiveRelation = {
  */
 export const ARCHIVED_PARAMETER_PLANE_RELATIONS: readonly ArchiveRelation[] = [
   { key: "parameter_drafts", from: "public.parameter_drafts", scope: { kind: "project", projectId: "" } },
+  { key: "legacy_parameter_values", from: "public.project_parameter_values", scope: { kind: "project", projectId: "" } },
+  { key: "parameter_draft_identity_invalidations", from: "public.parameter_draft_identity_invalidations", scope: { kind: "project", projectId: "" }, orderBy: "draft_id" },
   { key: "parameter_history_entries", from: "public.parameter_history_entries", scope: { kind: "project", projectId: "" } },
   { key: "parameter_submission_rounds", from: "public.parameter_submission_rounds", scope: { kind: "project", projectId: "" } },
   { key: "parameter_change_requests", from: "public.parameter_change_requests", scope: { kind: "project", projectId: "" } },
@@ -59,6 +63,11 @@ export const ARCHIVED_PARAMETER_PLANE_RELATIONS: readonly ArchiveRelation[] = [
   { key: "project_parameter_file_candidates", from: "public.project_parameter_file_candidates", scope: { kind: "project", projectId: "" } },
   { key: "project_parameter_initialization_drafts", from: "public.project_parameter_initialization_drafts", scope: { kind: "project", projectId: "" } },
   { key: "project_parameter_initialization_reviews", from: "public.project_parameter_initialization_reviews", scope: { kind: "project", projectId: "" } },
+  { key: "parameter_import_batches", from: "public.parameter_import_batches", scope: { kind: "project", projectId: "" } },
+  { key: "parameter_file_sync_conflicts", from: "public.parameter_file_sync_conflicts", scope: { kind: "project", projectId: "" } },
+  { key: "identity_mapping_tasks", from: "public.identity_mapping_tasks", scope: { kind: "project", projectId: "" } },
+  { key: "parameter_spec_matcher_overrides", from: "public.parameter_spec_matcher_overrides", scope: { kind: "project", projectId: "" } },
+  { key: "dts_property_occurrence_spec_decisions", from: "public.dts_property_occurrence_spec_decisions", scope: { kind: "project", projectId: "" } },
   { key: "project_parameter_value_drafts", from: "public.project_parameter_value_drafts", scope: { kind: "project", projectId: "" } },
   { key: "project_parameter_value_change_requests", from: "public.project_parameter_value_change_requests", scope: { kind: "project", projectId: "" } },
   { key: "parameter_review_decisions", from: "public.parameter_review_decisions", scope: { kind: "request" } },
@@ -72,6 +81,11 @@ export const ARCHIVED_PARAMETER_PLANE_RELATIONS: readonly ArchiveRelation[] = [
   { key: "dts_config_revision_members", from: "public.dts_config_revision_members", scope: { kind: "configRevision" } },
   { key: "dts_logical_nodes", from: "public.dts_logical_nodes", scope: { kind: "project", projectId: "" } },
   { key: "dts_logical_node_revisions", from: "public.dts_logical_node_revisions", scope: { kind: "logicalNode" } },
+  {
+    key: "canonical_bindings",
+    from: "parameter_catalog.project_parameter_bindings",
+    scope: { kind: "project", projectId: "" }
+  },
   {
     key: "binding_history_events",
     from: "parameter_catalog.binding_history_events",
@@ -211,16 +225,29 @@ export async function captureProjectParameterPlane(
   const counts: Record<string, number> = {};
   const relations: Record<string, readonly unknown[]> = {};
   let truncated = false;
+  let aggregateRelationBytes = 0;
 
   for (const relation of ARCHIVED_PARAMETER_PLANE_RELATIONS) {
     const predicate = predicateFor(relation.scope);
-    const total = await session.query<{ n: string }>(
-      `select count(*)::text as n from ${relation.from} where ${predicate}`,
+    const total = await session.query<{ n: string; bytes: string }>(
+      `select count(*)::text as n,
+              coalesce(sum(octet_length(to_jsonb(archived_row)::text)), 0)::text as bytes
+         from ${relation.from} archived_row
+        where ${predicate}`,
       [organizationId, input.projectId]
     );
     const totalCount = Number(total.rows[0]?.n ?? 0);
+    aggregateRelationBytes += Number(total.rows[0]?.bytes ?? 0);
+    if (aggregateRelationBytes > ARCHIVE_RELATION_BYTES_CAP) {
+      throw new ApiError("CONFLICT", "The parameter relation archive exceeds its aggregate byte limit.", {
+        projectId: input.projectId,
+        aggregateRelationBytes,
+        maxBytes: ARCHIVE_RELATION_BYTES_CAP,
+        reason: "parameter-relation-archive-too-large"
+      });
+    }
     const rows = await session.query(
-      `select * from ${relation.from} where ${predicate} order by id limit $3`,
+      `select * from ${relation.from} where ${predicate} order by ${relation.orderBy ?? "id"} limit $3`,
       [organizationId, input.projectId, ARCHIVE_ROW_CAP]
     );
     counts[relation.key] = totalCount;
@@ -282,10 +309,17 @@ export async function captureProjectParameterPlane(
   }
 
   const objects: Record<string, ArchivedPlaneObject> = {};
+  const readBounded = objectStore.getBounded?.bind(objectStore);
+  if (requiredObjects.size > 0 && !readBounded) {
+    throw new ApiError("CONFLICT", "The object store does not support bounded archive reads.", {
+      projectId: input.projectId,
+      reason: "parameter-source-bounded-read-unavailable"
+    });
+  }
   for (const [storageKey, expected] of requiredObjects) {
     let sourceBytes: Buffer;
     try {
-      sourceBytes = await objectStore.get(storageKey);
+      sourceBytes = await readBounded!(storageKey, expected.sizeBytes);
     } catch {
       throw new ApiError("CONFLICT", "A parameter source object is unavailable for offline archive.", {
         projectId: input.projectId,

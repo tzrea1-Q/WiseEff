@@ -20,6 +20,7 @@ export type ObjectStoragePutInput = {
 export type ObjectStorageTransport = {
   put(input: ObjectStoragePutInput): Promise<void>;
   get(input: { bucket: string; key: string }): Promise<Buffer>;
+  getBounded?(input: { bucket: string; key: string; maxBytes: number }): Promise<Buffer>;
   head(input: { bucket: string; key?: string }): Promise<void | { ok: boolean; error?: string; metadata?: Record<string, string> }>;
   delete(input: { bucket: string; key: string }): Promise<void>;
 };
@@ -147,6 +148,40 @@ function signedHeaders(input: {
   return headers;
 }
 
+async function boundedResponseBytes(response: Response, maxBytes: number): Promise<Buffer> {
+  if (!Number.isSafeInteger(maxBytes) || maxBytes < 0) {
+    throw new Error("Bounded read limit must be a non-negative safe integer.");
+  }
+  const declared = Number(response.headers.get("content-length"));
+  if (Number.isFinite(declared) && declared > maxBytes) {
+    await response.body?.cancel();
+    throw new Error(`Object exceeds bounded read limit of ${maxBytes} bytes.`);
+  }
+  if (!response.body) {
+    const bytes = Buffer.from(await response.arrayBuffer());
+    if (bytes.byteLength > maxBytes) throw new Error(`Object exceeds bounded read limit of ${maxBytes} bytes.`);
+    return bytes;
+  }
+  const reader = response.body.getReader();
+  const chunks: Buffer[] = [];
+  let total = 0;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      total += value.byteLength;
+      if (total > maxBytes) {
+        await reader.cancel();
+        throw new Error(`Object exceeds bounded read limit of ${maxBytes} bytes.`);
+      }
+      chunks.push(Buffer.from(value));
+    }
+    return Buffer.concat(chunks, total);
+  } finally {
+    reader.releaseLock();
+  }
+}
+
 export function createHttpObjectStorageTransport(options: {
   endpoint: string;
   accessKeyId: string;
@@ -199,6 +234,23 @@ export function createHttpObjectStorageTransport(options: {
       });
       await assertOk(response);
       return Buffer.from(await response.arrayBuffer());
+    },
+
+    async getBounded(input) {
+      rejectUnsafeStorageKey(input.key);
+      const url = storageUrl(options.endpoint, input.bucket, input.key);
+      const response = await fetchImpl(url, {
+        method: "GET",
+        headers: signedHeaders({
+          method: "GET",
+          url,
+          accessKeyId: options.accessKeyId,
+          secretAccessKey: options.secretAccessKey,
+          region: options.region
+        })
+      });
+      await assertOk(response);
+      return boundedResponseBytes(response, input.maxBytes);
     },
 
     async put(input) {
@@ -292,6 +344,13 @@ export function createS3ObjectStore(options: S3ObjectStoreOptions): ObjectStore 
     async get(storageKey) {
       rejectUnsafeStorageKey(storageKey);
       return transport.get({ bucket: options.bucket, key: storageKey });
+    },
+    async getBounded(storageKey, maxBytes) {
+      rejectUnsafeStorageKey(storageKey);
+      if (!transport.getBounded) {
+        throw new Error("Object storage transport does not support bounded reads.");
+      }
+      return transport.getBounded({ bucket: options.bucket, key: storageKey, maxBytes });
     },
 
     async delete(storageKey) {

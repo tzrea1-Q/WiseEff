@@ -32,10 +32,10 @@ T0.3 只覆盖捕获式归档和运行日志，不授权删除归档平面，也
 | R3-03 | 相同或不同 seed digest 的两个进程并发写共享的 Atlas／Aurora／Nebula 范围 | PostgreSQL session advisory lock 覆盖完整操作，键为组织 + 固定目标范围；所有竞争者都收到 `CONFLICT` | 已修正；确定性的同摘要／跨摘要并发用例 |
 | R3-04 | 已完成运行经日志入口降级为 `running` 或 `failed` | 已存状态为 `completed` 时 upsert 不再更新 | 已修正；`plan.test.ts` 终态用例 |
 | R3-05 | 猜测或创建错误／缺失的项目身份 | 稳定 id、组织和已评审项目 code 必须全部匹配；阻断计划不会创建项目 | 既有 `plan.test.ts` 证据 |
-| R3-06 | 漏捕获不可再生关系，或混入其他项目的子行 | 24 个关系额外覆盖 canonical 待处理草稿、变更请求和绑定历史；canonical 值／历史经 canonical Binding 所有者取数，legacy 修订经 legacy 所有者取数 | 已修正；真实非零图闭包和隔离证据 |
+| R3-06 | 漏捕获不可再生关系，或混入其他项目的子行 | 32 个关系覆盖逐项目 legacy 与 canonical 平面；canonical 值／历史经 canonical Binding 所有者取数，legacy 修订经 legacy 所有者取数。下方处置清单把 legacy／项目平面核对中的每张表归为捕获、保留／共享、可再生或已不存在 | 已修正；真实非零图闭包和隔离证据 |
 | R3-06a | 归档幂等只因时间戳或物理行顺序相同而成立 | 复用忽略捕获时间，所有关系都按稳定主键而非 `ctid` 排序；未变化的逻辑平面可由普通调用复用 | 已修正；生产形态幂等用例 |
 | R3-06b | 只归档源元数据，文件版本或未激活 candidate 的对象字节缺失／已变化 | 归档 v2 读取两类对象，校验所存 SHA-256 和大小并嵌入字节；缺失或不匹配时 fail closed | 已修正；字节内容断言 |
-| R3-06c | 最多 5,000 个源对象在组装 JSON 时耗尽进程内存 | 唯一引用源字节设 64 MiB 聚合上限，并在读对象前依据元数据检查；超限捕获 fail closed | 已修正；聚合上限拒绝用例 |
+| R3-06c | 关系行或最多 5,000 个源对象在组装 JSON 时耗尽进程内存 | 在 repeatable-read 快照内先计算关系 JSON 大小，再返回行；先按元数据预检唯一源字节，再经本地／S3 有界适配器读取。任一聚合超过 64 MiB 都 fail closed | 已修正；关系预检、适配器及聚合上限拒绝用例 |
 | R3-07 | 分离的计数／行读取观察到撕裂平面，或把有界关系当作完整归档 | 捕获在一个 repeatable-read 事务内运行；`truncated=true` 阻止重建；守卫要求精确关系键集合和等于账本计数的行长度 | 已修正；伪造撕裂对象拒绝用例 |
 | R3-08 | 本次捕获对象被删除／损坏，却被一份更新且有效的归档掩盖 | 守卫按本次捕获的精确 ID + digest 取对象，并校验对象 SHA-256、归档摘要、schema 版本、组织、项目、截断、关系计数和内嵌文件字节 | 已修正；篡改与精确对象用例 |
 | R3-09 | 把捕获误认为处置 | 测试证明捕获后源草稿仍存在；schema 刻意没有处置／删除标记 | 已定性；处置仍是 #853 T2.3 |
@@ -52,11 +52,80 @@ T0.3 只覆盖捕获式归档和运行日志，不授权删除归档平面，也
   检查、索引、`RESTRICT` 所有权 FK 和可空用户历史策略。
 - `archive.integration.test.ts` 在真实 PostgreSQL 上验证两个保留 FK、用户历史 FK、运行日志主键，
   以及刻意不存在 `disposed_at`／`deleted_at`。
-- 同一套件还证明 24 个关系的计数和内容、文件版本与 candidate 字节、子行作用域、跨项目隔离、
+- 同一套件还证明 32 个关系的计数和内容、文件版本与 candidate 字节、子行作用域、跨项目隔离、
   源数据未删除、聚合上限、幂等复用、缺失／截断／撕裂拒绝、精确对象选择、鉴权和对象完整性。
+- `objectStore.test.ts` 与 `s3ObjectStore.test.ts` 证明本地适配器先按文件元数据拒绝而不读入文件、HTTP
+  适配器在流越界时立即取消，以及没有有界读取原语的自定义 transport 会 fail closed。
 - `plan.test.ts` 证明固定目标身份、禁止隐式创建项目、重试 blocker 可见性、完成重放幂等和终态不可变。
 - `materialize.test.ts` 证明三项目路径、完成重放、subject blocker fail-closed、明确拒绝 JSON、组织绑定、
   先鉴权再写日志，以及并发单飞。
+
+### 逐表处置清单
+
+该清单定义 T0.3 捕获边界，不授权删除。`已捕获`表示行及所引用源字节进入 archive v2；`保留／共享`
+表示 T2.3 必须继续在线保留，因为其所有者是组织／全局控制面而非单个项目；`可再生`表示捕获不保存派生行，
+T3.3 必须先证明确定性再生及外键／locator 映射，之后才可讨论处置；`已不存在／已删除`表示该表不在当前
+schema 中，因此没有在线行需要处置。
+
+| 表 | 处置 | 理由 |
+| --- | --- | --- |
+| `public.project_parameter_values` | 已捕获 | legacy 逐项目值 |
+| `public.parameter_drafts` | 已捕获 | legacy 逐项目待处理编辑 |
+| `public.parameter_draft_identity_invalidations` | 已捕获 | 项目范围身份失效状态 |
+| `public.parameter_history_entries` | 已捕获 | legacy 逐项目历史 |
+| `public.parameter_submission_rounds` | 已捕获 | 项目范围审核工作流 |
+| `public.parameter_submission_items` | 已捕获 | 已捕获 submission round 的子记录 |
+| `public.parameter_change_requests` | 已捕获 | 项目范围变更工作流 |
+| `public.parameter_review_decisions` | 已捕获 | 已捕获 change request 的子记录 |
+| `public.project_parameter_bindings` | 已捕获 | legacy 逐项目身份绑定 |
+| `public.project_parameter_binding_revisions` | 已捕获 | 已捕获绑定的子历史 |
+| `public.project_parameter_files` | 已捕获 | 逐项目源元数据 |
+| `public.project_parameter_file_candidates` | 已捕获 | 逐项目未激活源元数据与字节 |
+| `public.project_parameter_file_versions` | 已捕获 | 子源元数据与字节 |
+| `public.project_parameter_initialization_drafts` | 已捕获 | 逐项目初始化提案 |
+| `public.project_parameter_initialization_reviews` | 已捕获 | 逐项目初始化审核 |
+| `public.parameter_import_batches` | 已捕获 | 逐项目导入溯源 |
+| `public.parameter_file_sync_conflicts` | 已捕获 | 逐项目未解决同步状态 |
+| `public.identity_mapping_tasks` | 已捕获 | 逐项目未解决身份任务 |
+| `public.parameter_spec_matcher_overrides` | 已捕获 | 项目范围匹配覆盖 |
+| `public.dts_property_occurrence_spec_decisions` | 已捕获 | 不可再生的人工决策；恢复映射仍属 T3.3 |
+| `public.project_parameter_value_drafts` | 已捕获 | canonical 逐项目待处理编辑 |
+| `public.project_parameter_value_change_requests` | 已捕获 | canonical 逐项目变更工作流 |
+| `public.dts_config_set` | 已捕获 | 逐项目源结构 |
+| `public.dts_release_baseline` | 已捕获 | 已捕获配置集的子记录 |
+| `public.dts_release_baseline_members` | 已捕获 | 已捕获 baseline 的子记录 |
+| `public.dts_config_revisions` | 已捕获 | 逐项目源修订 |
+| `public.dts_config_revision_members` | 已捕获 | 已捕获修订的子记录 |
+| `public.dts_logical_nodes` | 已捕获 | 逐项目逻辑身份 |
+| `public.dts_logical_node_revisions` | 已捕获 | 已捕获逻辑节点的子历史 |
+| `parameter_catalog.project_parameter_bindings` | 已捕获 | canonical 逐项目身份绑定 |
+| `parameter_catalog.binding_history_events` | 已捕获 | canonical 绑定的子历史 |
+| `parameter_catalog.project_parameter_values` | 已捕获 | canonical 逐项目值 |
+| `public.parameter_specs` | 保留／共享 | 组织／全局目录控制面 |
+| `public.parameter_spec_versions` | 保留／共享 | 多项目共享的版本历史 |
+| `public.parameter_definitions` | 保留／共享 | 组织定义注册表 |
+| `public.parameter_modules` | 保留／共享 | 组织归属分类体系 |
+| `public.parameter_module_mappings` | 保留／共享 | 组织归属映射 |
+| `public.parameter_module_dismissed_compatibles` | 保留／共享 | 组织治理决策 |
+| `public.parameter_spec_review_tasks` | 保留／共享 | 组织规格工作流 |
+| `public.parameter_policy_targets` | 保留／共享 | 组织策略控制面 |
+| `public.parameter_reload_bindings` | 已不存在／已删除 | 迁移 0026 创建、0037 删除；当前没有行 |
+| `public.parameter_identity_migration_runs` | 保留／共享 | 跨项目迁移控制记录 |
+| `public.parameter_identity_migration_phases` | 保留／共享 | 已保留迁移运行的子记录 |
+| `public.parameter_identity_cutovers` | 保留／共享 | 跨项目 cutover 控制记录 |
+| `public.parameter_definition_reconciliation_runs` | 保留／共享 | 组织 reconciliation 控制记录 |
+| `public.parameter_definition_reconciliation_items` | 保留／共享 | 已保留 reconciliation 运行的子记录 |
+| `public.parameter_spec_version_cutover_runs` | 保留／共享 | 组织 cutover 控制记录 |
+| `public.parameter_spec_version_cutover_items` | 保留／共享 | 已保留 cutover 运行的子记录 |
+| `public.parameter_spec_property_key_cutover_runs` | 保留／共享 | 组织 cutover 控制记录 |
+| `public.parameter_spec_property_key_cutover_items` | 保留／共享 | 已保留 cutover 运行的子记录 |
+| `public.dts_node_occurrences` | 可再生 | 由已捕获源版本解析；T3.3 必须证明 locator 映射 |
+| `public.dts_property_occurrences` | 可再生 | 由已捕获源版本解析；T3.3 必须重映射已捕获决策 |
+| `public.dts_occurrence_effects` | 可再生 | 派生分析输出 |
+| `public.dts_validation_runs` | 可再生 | 可重新运行的校验输出 |
+| `public.dts_validation_diagnostics` | 可再生 | 校验运行的子输出 |
+
+不存在不带 `project_` 前缀的 `parameter_bindings`，因此没有对应处置行。
 
 ## 评审处置
 

@@ -7,11 +7,12 @@
  */
 import { createHash } from "node:crypto";
 import pg from "pg";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
 import {
   ARCHIVE_ROW_CAP,
   ARCHIVE_OBJECT_BYTES_CAP,
+  ARCHIVE_RELATION_BYTES_CAP,
   archiveDigestOf,
   assertProjectParameterPlaneArchived,
   captureProjectParameterPlane
@@ -26,6 +27,7 @@ import { createMemoryObjectStore, type MemoryObjectStore } from "../../../testin
 import {
   createPostgresDatabase,
   getRootPostgresPool,
+  type Queryable,
   type RootDatabase
 } from "../../../shared/database/client";
 
@@ -89,6 +91,40 @@ describe("legacy parameter plane archive", () => {
       [ORG, PROJECT, OTHER_PROJECT],
     );
     await pool.query(
+      `insert into public.parameter_definitions (
+         id, organization_id, name, description, explanation, config_format,
+         module, default_range, unit, risk
+       ) values (
+         'legacy_definition_archive', $1, 'Legacy limit', 'Legacy limit', 'Legacy limit',
+         'number', 'Archive', '0..2000', 'mA', 'Medium'
+       )`,
+      [ORG],
+    );
+    await pool.query(
+      `insert into public.project_parameter_values (
+         id, organization_id, project_id, parameter_definition_id, current_value, recommended_value
+       ) values (
+         'legacy_value_archive', $1, $2, 'legacy_definition_archive', '1000', '1100'
+       )`,
+      [ORG, PROJECT],
+    );
+    await pool.query(
+      `insert into public.parameter_draft_identity_invalidations (
+         draft_id, organization_id, project_id, user_id, invalidation_reason
+       ) values (
+         'pdraft_1', $1, $2, 'user-plane-archive', 'missing-candidate-config-revision'
+       )`,
+      [ORG, PROJECT],
+    );
+    await pool.query(
+      `insert into public.parameter_import_batches (
+         id, organization_id, project_id, created_by_user_id, source_name, status, summary, items
+       ) values (
+         'import_archive', $1, $2, 'user-plane-archive', 'legacy-import.json', 'completed', '{}', '[]'
+       )`,
+      [ORG, PROJECT],
+    );
+    await pool.query(
       `insert into public.project_parameter_files (id, organization_id, project_id, file_name, format)
        values ('pfile_1', $1, $2, 'charging-thermal.dts', 'dts'),
               ('pfile_other', $1, $3, 'other.dts', 'dts')`,
@@ -101,6 +137,16 @@ describe("legacy parameter plane archive", () => {
               ('pfv_2', 'pfile_1', 2, 'org/atlas/charging-thermal-v2.dts', $3, $4, 'upload'),
               ('pfv_other', 'pfile_other', 1, 'org/aurora/other.dts', 'ghi', 5, 'upload')`,
       [checksum(VERSION_ONE), VERSION_ONE.byteLength, checksum(VERSION_TWO), VERSION_TWO.byteLength],
+    );
+    await pool.query(
+      `insert into public.parameter_file_sync_conflicts (
+         id, organization_id, project_id, project_parameter_value_id, parameter_definition_id,
+         file_version_id, file_draft_id, ui_draft_id, file_value, ui_draft_value
+       ) values (
+         'sync_conflict_archive', $1, $2, 'legacy_value_archive', 'legacy_definition_archive',
+         'pfv_2', 'pdraft_1', 'pdraft_2', '1000', '1100'
+       )`,
+      [ORG, PROJECT],
     );
     await pool.query(
       `insert into public.dts_config_set (id, organization_id, project_id, name)
@@ -141,6 +187,47 @@ describe("legacy parameter plane archive", () => {
       `insert into public.dts_logical_node_revisions
          (id, logical_node_id, config_revision_id, node_locator, name)
        values ('logical_revision_1', 'logical_1', 'revision_1', '/soc/node', 'node')`,
+    );
+    await pool.query(
+      `insert into public.identity_mapping_tasks (
+         id, organization_id, project_id, config_revision_id, status, task_kind
+       ) values (
+         'identity_task_archive', $1, $2, 'revision_1', 'open', 'identity-ambiguity'
+       )`,
+      [ORG, PROJECT],
+    );
+    await pool.query(
+      `insert into public.parameter_spec_matcher_overrides (
+         id, organization_id, project_id, compatible_fingerprint, node_locator,
+         property_key, decision, reason, created_by_user_id
+       ) values (
+         'matcher_override_archive', $1, $2, 'sha256:compatible', '/soc/node',
+         'limit', 'dismissed', 'archive the manual decision', 'user-plane-archive'
+       )`,
+      [ORG, PROJECT],
+    );
+    await pool.query(
+      `insert into public.dts_node_occurrences (
+         id, config_revision_id, file_version_id, name, node_path,
+         start_offset, end_offset, start_line, start_column, end_line, end_column, raw_text
+       ) values (
+         'node_occurrence_archive', 'revision_1', 'pfv_2', 'node', '/soc/node',
+         0, 10, 1, 1, 1, 11, 'node { };'
+       );
+       insert into public.dts_property_occurrences (
+         id, config_revision_id, node_occurrence_id, file_version_id, property_name,
+         start_offset, end_offset, start_line, start_column, end_line, end_column, raw_text
+       ) values (
+         'property_occurrence_archive', 'revision_1', 'node_occurrence_archive', 'pfv_2', 'limit',
+         1, 9, 1, 2, 1, 10, 'limit = <1000>;'
+       );
+       insert into public.dts_property_occurrence_spec_decisions (
+         id, organization_id, project_id, config_revision_id, property_occurrence_id,
+         logical_node_id, property_key, decision
+       ) values (
+         'spec_decision_archive', 'org-plane-archive', 'atlas', 'revision_1',
+         'property_occurrence_archive', 'logical_1', 'limit', 'dismissed'
+       );`,
     );
     await pool.query(
       `insert into public.project_parameter_file_candidates (
@@ -268,6 +355,13 @@ describe("legacy parameter plane archive", () => {
     expect(archive.archiveDigest).toMatch(/^sha256:[0-9a-f]{64}$/);
     expect(archive.contentDigest).toMatch(/^sha256:[0-9a-f]{64}$/);
     expect(archive.counts.parameter_drafts).toBe(2);
+    expect(archive.counts.legacy_parameter_values).toBe(1);
+    expect(archive.counts.parameter_draft_identity_invalidations).toBe(1);
+    expect(archive.counts.parameter_import_batches).toBe(1);
+    expect(archive.counts.parameter_file_sync_conflicts).toBe(1);
+    expect(archive.counts.identity_mapping_tasks).toBe(1);
+    expect(archive.counts.parameter_spec_matcher_overrides).toBe(1);
+    expect(archive.counts.dts_property_occurrence_spec_decisions).toBe(1);
     expect(archive.counts.project_parameter_files).toBe(1);
     // File-scoped child rows are reached through their parent, not by project_id.
     expect(archive.counts.project_parameter_file_versions).toBe(2);
@@ -281,6 +375,7 @@ describe("legacy parameter plane archive", () => {
     expect(archive.counts.project_parameter_value_change_requests).toBe(1);
     expect(archive.counts.binding_history_events).toBe(1);
     expect(archive.counts.canonical_values).toBe(1);
+    expect(archive.counts.canonical_bindings).toBe(1);
 
     // The archived document is the offline artifact and must actually carry the rows.
     const stored = store.entries.get(archive.objectRef);
@@ -311,13 +406,14 @@ describe("legacy parameter plane archive", () => {
     expect(document.relations.project_parameter_value_drafts[0].id).toBe("value_draft_archive");
     expect(document.relations.project_parameter_value_change_requests[0].id).toBe("value_request_archive");
     expect(document.relations.binding_history_events[0].id).toBe("binding_history_archive");
+    expect(document.relations.canonical_bindings[0].id).toBe("binding_archive");
     // Nothing from the other project leaked into this project's archive.
     expect(JSON.stringify(document.relations)).not.toContain("pdraft_other");
     expect(JSON.stringify(document.relations)).not.toContain("pfile_other");
     expect(JSON.stringify(document.relations)).not.toContain("pfv_other");
 
     // Every declared relation is accounted for, even when it is empty.
-    expect(Object.keys(archive.counts).length).toBe(24);
+    expect(Object.keys(archive.counts).length).toBe(32);
     const retainedDrafts = await pool.query<{ count: string }>(
       `select count(*)::text as count from public.parameter_drafts
         where organization_id = $1 and project_id = $2`,
@@ -363,6 +459,41 @@ describe("legacy parameter plane archive", () => {
         [CANDIDATE_BYTES.byteLength],
       );
     }
+  }, 120_000);
+
+  it("refuses capture before loading relation rows when their declared JSON size exceeds the cap", async () => {
+    const session = {
+      query: vi.fn(async () => ({
+        rows: [{ n: "1", bytes: String(ARCHIVE_RELATION_BYTES_CAP + 1) }],
+        rowCount: 1
+      }))
+    } as unknown as Queryable;
+
+    await expect(
+      captureProjectParameterPlane(root, archiveStore(), editorAuth, { projectId: PROJECT }, session),
+    ).rejects.toMatchObject({
+      code: "CONFLICT",
+      details: {
+        maxBytes: ARCHIVE_RELATION_BYTES_CAP,
+        reason: "parameter-relation-archive-too-large",
+      },
+    });
+    expect(session.query).toHaveBeenCalledOnce();
+  });
+
+  it("uses bounded reads when an object is larger than its declared size", async () => {
+    const store = archiveStore();
+    store.entries.set(
+      "org/atlas/charging-candidate.dts",
+      Buffer.concat([CANDIDATE_BYTES, Buffer.from("oversized", "utf8")]),
+    );
+
+    await expect(
+      captureProjectParameterPlane(root, store, editorAuth, { projectId: PROJECT }),
+    ).rejects.toMatchObject({
+      code: "CONFLICT",
+      details: { reason: "parameter-source-object-unavailable" },
+    });
   }, 120_000);
 
   it("reuses an identical archive instead of writing a second object", async () => {

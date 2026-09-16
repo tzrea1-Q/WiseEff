@@ -34,6 +34,24 @@ describe("createLocalObjectStore", () => {
     });
   });
 
+  it("rejects a bounded read before reading an oversized local object", async () => {
+    await withTempStore(async (rootDir) => {
+      const store = createLocalObjectStore(rootDir);
+      const bytes = Buffer.from("bounded bytes", "utf8");
+      const stored = await store.put({
+        organizationId: "org-chargelab",
+        fileName: "bounded.log",
+        contentType: "text/plain",
+        bytes
+      });
+
+      await expect(store.getBounded!(stored.storageKey, bytes.byteLength)).resolves.toEqual(bytes);
+      await expect(store.getBounded!(stored.storageKey, bytes.byteLength - 1)).rejects.toThrow(
+        `Object exceeds bounded read limit of ${bytes.byteLength - 1} bytes.`
+      );
+    });
+  });
+
   it("deletes an object by storage key and is idempotent", async () => {
     await withTempStore(async (rootDir) => {
       const store = createLocalObjectStore(rootDir);

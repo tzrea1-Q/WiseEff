@@ -79,6 +79,26 @@ describe("createS3ObjectStore", () => {
     });
   });
 
+  it("delegates bounded reads to a transport that can enforce the limit", async () => {
+    const bytes = Buffer.from("bounded object", "utf8");
+    const transport = createTransport({
+      getBounded: vi.fn(async () => bytes)
+    });
+
+    await expect(createStore(transport).getBounded!("org-1/checksum-fault.log", bytes.byteLength)).resolves.toEqual(bytes);
+    expect(transport.getBounded).toHaveBeenCalledWith({
+      bucket: "wiseeff-pilot",
+      key: "org-1/checksum-fault.log",
+      maxBytes: bytes.byteLength
+    });
+  });
+
+  it("fails closed when a custom transport cannot enforce bounded reads", async () => {
+    await expect(createStore().getBounded!("org-1/checksum-fault.log", 10)).rejects.toThrow(
+      "Object storage transport does not support bounded reads."
+    );
+  });
+
   it("reports ready when the bucket head check succeeds", async () => {
     await expect(createStore().checkHealth()).resolves.toEqual({ ok: true, status: "ready" });
   });
@@ -268,6 +288,28 @@ describe("createHttpObjectStorageTransport", () => {
     expect(headers.authorization).toContain(
       "SignedHeaders=content-type;host;x-amz-content-sha256;x-amz-date;x-amz-meta-checksum-sha256;x-amz-meta-retention-class"
     );
+  });
+
+  it("cancels a streamed GET as soon as it exceeds the bounded-read limit", async () => {
+    const cancel = vi.fn();
+    const body = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(Buffer.from("four"));
+        controller.enqueue(Buffer.from("more"));
+      },
+      cancel
+    });
+    const transport = createHttpObjectStorageTransport({
+      endpoint: "https://storage.example.com",
+      accessKeyId: "key",
+      secretAccessKey: "secret",
+      fetchImpl: vi.fn(async () => new Response(body, { status: 200 }))
+    });
+
+    await expect(
+      transport.getBounded!({ bucket: "wiseeff-pilot", key: "org-1/file.log", maxBytes: 4 })
+    ).rejects.toThrow("Object exceeds bounded read limit of 4 bytes.");
+    expect(cancel).toHaveBeenCalledOnce();
   });
 
   it.each([
