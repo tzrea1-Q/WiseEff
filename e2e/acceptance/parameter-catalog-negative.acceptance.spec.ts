@@ -4,13 +4,16 @@ import { expect, test } from "playwright/test";
 import { installBrowserDiagnostics, useBrowserDiagnostics } from "./helpers/browserDiagnostics";
 import { collectProposalOperationTrace, startCatalogScenarioRuntime, verifyCommittedProposalResponseFailure, verifyRealProposalConflict } from "./helpers/catalogConcurrency";
 import {
+  assertNoPageOverflow,
   CATALOG_EXPECTED_API_FAILURES,
   CATALOG_PAGE_PATH,
+  CATALOG_VIEWPORTS,
   catalogJson,
   catalogPage,
   catalogScreenshot,
   catalogUiCopy,
   confirmGovernanceDialog,
+  dismissXiaozeHint,
   signInCatalogActor,
   openCatalogAt
 } from "./helpers/catalogBrowser";
@@ -108,6 +111,28 @@ test.describe("canonical parameter catalog negative and responsive contract", ()
     );
     expect(gone.status).toBe(410);
     expect(JSON.stringify(gone.body)).not.toMatch(/archive-op08-gone|candidate/i);
+
+    for (const viewport of CATALOG_VIEWPORTS) {
+      await page.setViewportSize({ width: viewport.width, height: viewport.height });
+      await signInCatalogActor(
+        page,
+        "org-admin",
+        `/parameters?parameter=${encodeURIComponent(fixture.legacy.gone)}`
+      );
+      await dismissXiaozeHint(page);
+      const archivedNotice = page.locator(".parameter-archived-link-banner");
+      await expect(archivedNotice).toBeVisible({ timeout: 30_000 });
+      await expect(archivedNotice).toContainText("该参数旧链接已归档");
+      await expect(archivedNotice).toContainText(fixture.legacy.gone);
+      await expect(archivedNotice).toContainText("legacy-parameter-id-retired");
+      await expect(archivedNotice).toContainText(fixture.legacy.goneEvidenceId);
+      await expect(archivedNotice).not.toContainText(/archive-op08-gone|candidate/i);
+      await expect(page.getByRole("dialog", { name: "修改草稿" })).toHaveCount(0);
+      await assertNoPageOverflow(page);
+      await catalogScreenshot(page, testInfo, `pcat-ui-11-archived-notice-${viewport.name}`);
+      await archivedNotice.getByRole("button", { name: "知道了" }).click();
+      await expect(archivedNotice).toHaveCount(0);
+    }
 
     const conflict = await catalogJson(
       page.request,

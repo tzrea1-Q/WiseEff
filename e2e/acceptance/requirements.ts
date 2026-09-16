@@ -807,7 +807,7 @@ export const acceptanceRequirements: AcceptanceRequirement[] = [
   {
     id: "PCAT-UI-11",
     workflow: "C",
-    title: "Legacy bookmarks and identifier resolution produce exact mapped, gone, conflict, unknown, and scope-hidden outcomes without Archive or candidate disclosure.",
+    title: "Legacy bookmarks and identifier resolution produce exact mapped, gone, conflict, unknown, and scope-hidden outcomes without Archive or candidate disclosure; an archived parameter bookmark renders a dismissible non-editable notice on /parameters at all three viewports.",
     required: true
   },
   {
