@@ -7,9 +7,9 @@ WiseEff changes should keep the product usable, testable, and auditable. Start w
 ## Start Here
 
 1. Read [AGENTS.md](AGENTS.md) for repository routing and agent rules.
-2. Read [docs/README.md](docs/README.md) for the knowledge-base map.
+2. Use [Development workflow](docs/agents/development-workflow.md) for ordinary delivery and [docs/README.md](docs/README.md) as an index, not a mandatory reading queue.
 3. Use [docs/developer/local-development.md](docs/developer/local-development.md) to prepare the local runtime.
-4. Use [docs/developer/verification-matrix.md](docs/developer/verification-matrix.md) to choose the right checks before finishing work.
+4. Use relevant rows of [docs/developer/verification-matrix.md](docs/developer/verification-matrix.md) to choose the right checks before finishing work.
 
 ## Local Setup
 
@@ -47,7 +47,7 @@ Fill `XIAOZE_LLM_API_BASE_URL`, `XIAOZE_LLM_MODEL`, and `XIAOZE_LLM_API_KEY` in 
 
 ## Plans And Docs
 
-Non-trivial work needs an active plan under `docs/exec-plans/active/`. Every active implementation plan except `development-roadmap.md` must include:
+Use an active plan under `docs/exec-plans/active/` for cross-session work, architecture changes, risky rollout, multi-team coordination, or an explicit task contract. Other bounded work may use a task/PR summary. Existing active plans retain their gates; every active implementation plan except `development-roadmap.md` must include:
 
 - `## Documentation Impact Matrix`
 - `## Documentation Update Gate`
@@ -58,17 +58,19 @@ Run:
 npm run docs:check
 ```
 
-before marking a plan complete.
+before marking a plan complete. Repository skills are optional task-specific aids, not an external-pack prerequisite. See [Skills and client configuration](docs/agents/skill-maintenance.md).
 
 ## Verification
 
 Use targeted tests while editing, then broaden according to risk:
 
 ```bash
-npm test
-npm run test:server
+npm test -- <affected-test-files>
+npm run test:server -- <affected-test-files>
 npm run build
 npm run docs:check
 ```
+
+WiseEff is PC-first: visible work defaults to the affected route/state at `1440x900`, not a three-device walkthrough. Add one compact desktop check for a concrete layout risk; tablet/mobile checks are opt-in. Follow the [UI quality checklist](docs/developer/ui-quality-checklist.md) for real-browser evidence and specialized acceptance boundaries.
 
 Use the phase gates in [docs/developer/verification-matrix.md](docs/developer/verification-matrix.md) for M1-M5 work. Documentation-only changes should still run `npm run docs:check` and `git diff --check`.

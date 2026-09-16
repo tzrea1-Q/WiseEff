@@ -1,4 +1,5 @@
 import { expect, test, type Page } from "playwright/test";
+import { qualityViewports } from "../../scripts/quality-viewport-profile";
 import {
   expectBoundedInteractiveControls,
   expectBoundedMainScroll,
@@ -10,11 +11,9 @@ import {
   settleQualityRoute
 } from "./helpers";
 
-const viewports = [
-  { name: "desktop", width: 1440, height: 900 },
-  { name: "tablet", width: 834, height: 1112 },
-  { name: "mobile", width: 390, height: 844 }
-] as const;
+// PC-first by default; compatibility sweeps require an explicit profile.
+const viewports = qualityViewports(process.env.WISEEFF_QUALITY_VIEWPORT_PROFILE);
+const dialogViewport = viewports.find((viewport) => viewport.name === "mobile") ?? viewports[0];
 
 type QualityRoute = {
   path: string;
@@ -118,8 +117,8 @@ test.describe("M5.11 responsive quality gate", () => {
     }
   }
 
-  test("mobile dialogs remain visible and contained", async ({ page }) => {
-    await page.setViewportSize({ width: 390, height: 844 });
+  test(`${dialogViewport.name} dialogs remain visible and contained`, async ({ page }) => {
+    await page.setViewportSize({ width: dialogViewport.width, height: dialogViewport.height });
     await page.goto("/logs");
     await expectUsablePage(page);
     await prepareInteractionSurface(page);
