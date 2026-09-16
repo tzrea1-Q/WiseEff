@@ -1,0 +1,36 @@
+name: Agent guidance checks
+
+on:
+  pull_request:
+    paths:
+      - '.agents/**'
+      - 'AGENTS.md'
+      - 'docs/zh-CN/root/AGENTS.md'
+      - 'CLAUDE.md'
+      - 'docs/agents/**'
+      - 'docs/developer/ui-quality-checklist.md'
+      - 'docs/zh-CN/agents/**'
+      - 'docs/zh-CN/developer/ui-quality-checklist.md'
+      - 'scripts/quality-viewport-profile*'
+      - 'e2e/quality/responsive.quality.spec.ts'
+      - '.github/workflows/agent-guidance.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: agent-guidance-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  profile-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+      - name: Check viewport policy without installing application dependencies
+        run: node --experimental-strip-types --test scripts/quality-viewport-profile.test.mjs

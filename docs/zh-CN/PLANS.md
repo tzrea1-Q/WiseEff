@@ -2,7 +2,11 @@
 
 > English: [English](../PLANS.md)
 
-这是核心入口文档，帮助开发者理解仓库地图、运行模式、治理规则和下一步阅读路径。
+跨会话、多团队、架构调整、高风险发布或明确契约要求的工作使用持久执行计划；其他有界任务可使用任务或 PR 摘要。文件数量本身不触发计划要求。既有活动计划继续保留原有门禁。
+
+普通开发遵循[开发工作流](agents/development-workflow.md)。[智能体交付执行协议](agents/agent-delivery-protocol.md)的状态机和预算仅适用于明确采用该协议的程序及既有封存项目；其开头的目标型交付描述不是全仓强制要求。普通安全、迁移工作仍需风险用例和独立评审，但不自动继承封存编排。
+
+WiseEff 主要用于 PC。[界面质量检查清单](developer/ui-quality-checklist.md)以受影响页面的桌面检查取代通用三视口强制走查；显式功能或发布验收另行保留。以下活动登记、冻结节点和历史证据不因此重写。
 
 ## 使用方式
 
@@ -128,14 +132,18 @@ numeric database ID 与 GraphQL node ID 使映射不依赖 Issue 标题展示。
 - `exec-plans/active/2026-08-28-node-write-observation-outcomes.md`：在服务、Bridge、API、mock 与 UI 中把普通节点写命令执行和写后观测拆开；保留快照/回滚，同时停止对新写入做基于相等性的 mismatch 判定。真实 HDC/ADB readiness 继续属于条件目标环境证据。
 - `exec-plans/active/2026-08-17-launch-actionable-tech-debt-closeout.md`：上线窗口可关闭、且不需要 HDC / 专家日志 / 目标环境的技术债收口。批次 1 已归档归属证据并把 `2026-08-01-attribution-deferred-implementation.md` 移到 `completed/`；批次 2 已关闭 TD-056（参数文件回滚 / 操作者显示名）；批次 3 已合入 `main`——TD-057 经 #513，TD-079 hierarchical-modules 经 #511，import-wizard 经 #512。批次 4 已于 2026-08-18 合入：工作台夹具 #516、语义 file-sync #519、dts-reload 交接/形态 #517、DTO 校验 #515、render harness #518、治理 ADR #520。**TD-079 已关闭**（`fix/td-079-flip-ci-acceptance`，共享 CI 验收为 post-cutover）。TD-082 已由 #507 合入 `main`。第二波 H–N（2026-08-18）：TD-013 经 #529 关闭，TD-066 经 #531 关闭；TD-075 / TD-097 仍为**部分**开放，TD-014 后续已在第四波经 #600 关闭。第一批确定性收口经 #575 / #576 / #577 关闭 TD-071 / TD-073 / TD-059，reload workflow sheet 不属于 TD-059；第二批经 #580 / #582 / #583 / #585 关闭 TD-109 / TD-018 / TD-077 / TD-114，TD-003/012 与 TD-075/076 仍 Open。第三批随后经 #588 / #589 / #591 / #592 关闭 TD-072 / TD-110 / TD-031，以及限定为 `/parameter-admin/projects` Admin list 的 TD-112。
 - **TD-068 交付图：** ADR-0038 与父规格 #609 已定义安全模型。#610 建立共享可信上下文、策略和审计 seam；#611–#615 依次重建 Xiaoze 持久溯源、迁移 DTS 重载、贯通参数提交/治理/回写溯源，并收紧 legacy actor label 与验收证据。上述迁移票据落地前，TD-068 继续 Open。相邻的 debugging device-write 审计缺陷仍由 TD-123 单列，避免本工作膨胀为平台级审计重构。
-- **分支与 PR：** 实现型子智能体只在从最新 `main` 切出的 Scratch feature branch 上开发、运行 focused tests 并 commit；Scratch 阶段不打开 PR。父智能体依据[智能体交付执行协议](agents/agent-delivery-protocol.md)汇总封印前审查、按确定的合并顺序刷新，只在候选达到 `INTEGRATION-READY` 后打开最终 PR，完成 Hosted、merge、attestation 与本地 `main` 同步。子智能体不得 push `main`、开/合 GitHub PR 或快进本地 `main`。
-- **Agent 技能：** 使用 Matt Pocock skills（如 `implement`、`tdd`、`to-spec`、`triage`）与 `docs/agents/*`；不要新建/更新 `docs/superpowers/**`，也不要指示调用 `superpowers:*`。进行中实现跟踪仍以 `docs/exec-plans/active/` 为准。
+- **分支与 PR：** 普通任务在适当功能分支完成定向验证，由获准的协调者建立一个可评审 PR，并在同一 PR 修复反馈；不默认关闭重开。实现子智能体不得修改 `main` 或开/合 PR。采用封存协议的既有程序保留 Scratch、`INTEGRATION-READY`、独立审查与精确证据门禁。只有另外获得合并授权且门禁通过后才可合入；不重置其他工作树。持久计划仍需 `## Git & PR Workflow`，记录分支、停止边界和必要证据。
+- **Agent 技能：** 按需使用描述匹配的 `.agents/skills/` 仓库技能。外部技能包是可选能力，缺失不阻塞普通开发；不重建已退役的 `docs/superpowers/**` 工作流。持久实现计划继续放在 `docs/exec-plans/active/`。
 - 任何 target-environment readiness、pilot-ready、release-ready 结论都必须有真实目标环境证据，不能由本地 skip 代替。
 
 ### 最近完成
 
 - `exec-plans/completed/2026-08-27-debug-node-cascade-delete-module-consistency.md`：已用带审计的事务清理取代调试节点历史保护，删除节点 operation、event、snapshot、binding 和节点本身；同时阻止仅按旧模块名称引用的模块被误判为空后删除或再次以筛选幽灵项出现。
 - `exec-plans/completed/2026-08-27-xiaoze-draggable-modeless-popup.md`：已完成桌面/平板小泽可拖动、可缩放非模态陪伴浮窗，包含浏览器本地布局持久化、键盘拖动/缩放/复位、跨路由连续性、业务 modal 层级、手机焦点陷阱全屏保留及本地 API-mode 验收/质量证据。
+
+## 文档与界面覆盖
+
+所有持久活动实施计划（`development-roadmap.md` 除外）继续包含文档影响矩阵和文档更新门，维护相应中英文页面，并在完成前运行 `npm run docs:check`。未写独立计划的有界界面交互变更，仍须在任务或 PR 摘要中记录受影响的验收需求、操作 ID、自动化覆盖和证据生成影响；缩短记录不等于取消行为覆盖。
 
 ## 同类中文文档
 

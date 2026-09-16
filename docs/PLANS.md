@@ -2,7 +2,11 @@
 
 > Chinese: [Chinese](zh-CN/PLANS.md)
 
-Execution plans are first-class repository artifacts. Use them for work that has more than a tiny local change or that affects product behavior, architecture, security, reliability, or multiple files.
+Use durable execution plans for cross-session work, architecture changes, risky rollout, multi-team coordination, or an explicit task contract. A bounded change may use a task/PR summary instead; file count alone does not require a plan. Existing active plans retain their documented gates.
+
+Ordinary development follows [Development workflow](agents/development-workflow.md). The [Agent Delivery Execution Protocol](agents/agent-delivery-protocol.md), including its state machine and budgets, applies only to programs that explicitly adopt it and existing accepted sealed programs; its introductory description is not a repository-wide mandate. Risk-sensitive tests and independent review still apply to ordinary security or migration work without requiring sealed-program orchestration.
+
+WiseEff is PC-first. The [UI quality checklist](developer/ui-quality-checklist.md) replaces the general mandatory three-viewport walkthrough with an affected desktop check. Explicit feature/release acceptance remains separate; historical results and frozen program records below are not rewritten.
 
 ## Locations
 
@@ -138,19 +142,20 @@ Completed historical plans are preserved under `exec-plans/completed/`. The boun
 - Move finished plans to `completed/` after implementation and verification.
 - If a plan leaves known follow-up work, add it to `tech-debt-tracker.md`.
 - Do not rely on chat history for durable execution details.
-- **Agent skills:** Use Matt Pocock skills (for example `implement`, `tdd`, `to-spec`, `triage`) together with `docs/agents/*`. Do not create or update `docs/superpowers/**` or instruct workers to call `superpowers:*` skills. In-progress implementation tracking stays in `docs/exec-plans/active/`.
+- **Agent skills:** Use matching repository-owned `.agents/skills/` capabilities when useful. External skill packs are optional; their absence does not block ordinary development. Do not recreate retired `docs/superpowers/**` workflows. Durable implementation plans stay in `docs/exec-plans/active/`.
 
 ## Git Branch & PR Workflow
 
-Every active implementation plan must name a **Scratch feature branch** checked out from the latest `main`, a stop boundary, and the evidence required before sealing. Scratch work has no open PR. The parent opens the final PR only after the candidate reaches `INTEGRATION-READY`. Multi-agent programs also record risk class, merge order, WIP/CI budgets, and any accepted run-profile override from the [Agent Delivery Execution Protocol](agents/agent-delivery-protocol.md). Future plans must include a `## Git & PR Workflow` section like `2026-06-25-wiseeff-device-bridge-phase-a-fixes.md`.
+Use a feature branch based on the current integration base, record the stop boundary and required evidence, and preserve unrelated worktrees. Ordinary tasks follow [Development workflow](agents/development-workflow.md): one coordinating agent can implement, review its diff, verify, and open an integration-ready PR when authorized. Findings are fixed on that PR; closing and reopening is not a default repair step.
 
 | Role | Allowed |
 | --- | --- |
-| **Implementation agent (subagent)** | `git fetch` / checkout a Scratch branch from `main`, implement, run focused tests, **commit on the feature branch** |
-| **Implementation agent (subagent)** | **Must not** push to `main`, open GitHub PRs, merge PRs, or fast-forward local `main` |
-| **Parent agent (architect / session owner)** | Consolidate pre-seal reviews, seal and refresh in deterministic merge order, **create the final GitHub PR**, inspect Hosted results, merge when approved, attest, then **`git pull origin main`** to sync local `main` |
+| Implementation subagent | Work on its assigned feature branch, implement, run focused tests, and commit; no main mutation, PR creation, or merging. |
+| Coordinating agent | Integrate and review changes, open the authorized PR, inspect CI, and merge only when separately authorized and all required gates pass. Synchronize only a designated clean main worktree when authorized. |
 
-Branch naming: `fix/<topic>`, `feat/<topic>`, or as specified in the plan. One plan → one branch unless the plan says otherwise.
+Programs already using seals, lineage, fingerprints, or a frozen launch graph retain the [Agent Delivery Execution Protocol](agents/agent-delivery-protocol.md), including their exact review and evidence requirements. They still use Scratch branches with no PR until `INTEGRATION-READY`; ordinary tasks do not inherit that state machine. General PC viewport defaults follow the UI checklist, not old generic walkthrough boilerplate.
+
+Durable implementation plans include `## Git & PR Workflow`, naming their branch, stop boundary, and required evidence. Branch names may use `fix/<topic>`, `feat/<topic>`, or `chore/<topic>`. Multiple branches are appropriate when the plan defines independently reviewable work.
 
 ## Documentation Governance Rule
 
@@ -178,3 +183,5 @@ After M5.4 lands, any implementation plan that changes user-facing interaction b
 The plan must name the affected `e2e/acceptance/` spec, acceptance requirement IDs from `docs/developer/browser-acceptance-coverage-map.md`, and operation IDs from `docs/developer/user-operation-coverage-matrix.md`. If no requirement ID or operation ID exists for the changed behavior, the plan must add one before implementation.
 
 The plan must either add/update automated coverage or record why existing browser acceptance automation already covers the change. For automated operation IDs, the plan must also preserve operation evidence generation through `npm run acceptance:browser` or `npm run acceptance:evidence`. A plan cannot be moved to `completed/` when UI-interaction behavior changed but requirement coverage, operation coverage, and operation evidence impact were not reviewed.
+
+Bounded UI-interaction changes without a separate plan record the same requirement, operation, automated-coverage, and evidence-impact review in the task/PR summary. A shorter working record does not waive behavior coverage.

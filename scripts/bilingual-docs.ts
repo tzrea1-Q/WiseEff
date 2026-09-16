@@ -94,5 +94,9 @@ export const developerFacingBilingualDocs: BilingualDocEntry[] = [
   { en: "docs/design-docs/parameter-catalog-verification-upgrade-retirement-gates.md", zh: "docs/zh-CN/design-docs/parameter-catalog-verification-upgrade-retirement-gates.md", tier: "architecture", status: "required" },
   { en: "docs/design-docs/catalog-authoring-and-publication-control-plane.md", zh: "docs/zh-CN/design-docs/catalog-authoring-and-publication-control-plane.md", tier: "architecture", status: "required" },
   { en: "docs/design-docs/debug-node-catalog-transfer.md", zh: "docs/zh-CN/design-docs/debug-node-catalog-transfer.md", tier: "architecture", status: "required" },
-  { en: "docs/exec-plans/active/2026-09-14-debug-node-catalog-transfer.md", zh: "docs/zh-CN/exec-plans/active/2026-09-14-debug-node-catalog-transfer.md", tier: "planning", status: "required" }
+  { en: "docs/exec-plans/active/2026-09-14-debug-node-catalog-transfer.md", zh: "docs/zh-CN/exec-plans/active/2026-09-14-debug-node-catalog-transfer.md", tier: "planning", status: "required" },
+  { en: "docs/agents/development-workflow.md", zh: "docs/zh-CN/agents/development-workflow.md", tier: "developer", status: "required" },
+  { en: "docs/agents/domain.md", zh: "docs/zh-CN/agents/domain.md", tier: "developer", status: "required" },
+  { en: "docs/agents/fleet-coordination.md", zh: "docs/zh-CN/agents/fleet-coordination.md", tier: "developer", status: "required" },
+  { en: "docs/agents/skill-maintenance.md", zh: "docs/zh-CN/agents/skill-maintenance.md", tier: "developer", status: "required" }
 ];
