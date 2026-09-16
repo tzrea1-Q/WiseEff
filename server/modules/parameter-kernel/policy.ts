@@ -33,12 +33,12 @@ export function canViewParameters(auth: AuthContext) {
 const projectEditRoles: BackendRoleId[] = ["hardware-user", "software-user", "hardware-committer", "software-committer"];
 
 export function canEditParameters(auth: AuthContext, projectId?: string) {
-  if (!isActive(auth)) return false;
+  if (!isActive(auth) || !hasPermission(auth, "parameter:edit")) return false;
   if (projectId !== undefined) {
     if (hasRole(auth, ["admin", "platform-admin"])) return true;
-    return hasRole(auth, projectEditRoles, projectId);
+    return auth.roles.some((b) => b.projectId === projectId && projectEditRoles.includes(b.roleId));
   }
-  return hasPermission(auth, "parameter:edit");
+  return true;
 }
 
 export function canEditCriticalParameters(auth: AuthContext) {

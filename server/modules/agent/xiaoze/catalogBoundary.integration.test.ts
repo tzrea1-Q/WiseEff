@@ -795,8 +795,9 @@ describe("R2-AGT real authenticated Catalog execution", () => {
   it("R2-AGT-06: revoking the requester's role is enforced again on durable approval", async () => {
     const before = await businessState();
     const pending = await pendingBindingAction();
-    const revoke = await json("PUT", `/api/v1/users/${RESTRICTED}/roles`, {
-      roles: [{ projectId: PROJECT, roleId: "guest" }]
+    const revoke = await json("PUT", `/api/v1/projects/${PROJECT}/workflow-role-bindings/${RESTRICTED}`, {
+      roles: [],
+      expectedRoles: ["hardware-user"]
     });
     expect(revoke.status, JSON.stringify(revoke.body)).toBe(200);
     try {
@@ -815,8 +816,9 @@ describe("R2-AGT real authenticated Catalog execution", () => {
       ).toEqual([]);
       expect(await businessState()).toEqual(before);
     } finally {
-      const restored = await json("PUT", `/api/v1/users/${RESTRICTED}/roles`, {
-        roles: [{ projectId: PROJECT, roleId: "hardware-user" }]
+      const restored = await json("PUT", `/api/v1/projects/${PROJECT}/workflow-role-bindings/${RESTRICTED}`, {
+        roles: ["hardware-user"],
+        expectedRoles: []
       });
       expect(restored.status).toBe(200);
     }
