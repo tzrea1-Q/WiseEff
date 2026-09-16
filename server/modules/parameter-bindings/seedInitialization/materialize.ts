@@ -19,7 +19,7 @@
  * The two JSON compatibility seeds therefore remain unmaterialized.
  */
 import { ApiError } from "../../../shared/http/errors";
-import { getRootPostgresPool, type Database } from "../../../shared/database/client";
+import { createDatabase, getRootPostgresPool, type Database } from "../../../shared/database/client";
 import type { AuthContext } from "../../auth/types";
 import type { ObjectStore } from "../../logs/objectStore";
 import { canEditParameters } from "../../parameter-kernel/policy";
@@ -46,6 +46,7 @@ import {
   assertSeedInitializationPlanApplicable,
   recordSeedInitializationRun,
   resolveSeedInitializationPlan,
+  SEED_INITIALIZATION_SCOPE,
   seedInitializationRunIsComplete,
   SeedInitializationBlockedError,
   type SeedInitializationSubjectBlock
@@ -106,8 +107,8 @@ export async function materializeSeedSources(
   }
   const lockClient = await pool.connect();
   let lockHeld = false;
+  const lockKey = `${input.organizationId}:${SEED_INITIALIZATION_SCOPE}`;
   try {
-    const lockKey = `${input.organizationId}:${input.seedDigest}`;
     const lock = await lockClient.query<{ acquired: boolean }>(
       "select pg_try_advisory_lock(hashtextextended($1, 0)) as acquired",
       [lockKey]
@@ -118,11 +119,18 @@ export async function materializeSeedSources(
         seedDigest: input.seedDigest
       });
     }
-    return await materializeSeedSourcesLocked(root, pool, objectStore, auth, input);
+    return await materializeSeedSourcesLocked(
+      root,
+      createDatabase(lockClient),
+      pool,
+      objectStore,
+      auth,
+      input,
+    );
   } finally {
     if (lockHeld) {
       await lockClient.query("select pg_advisory_unlock(hashtextextended($1, 0))", [
-        `${input.organizationId}:${input.seedDigest}`
+        lockKey
       ]);
     }
     lockClient.release();
@@ -131,20 +139,12 @@ export async function materializeSeedSources(
 
 async function materializeSeedSourcesLocked(
   root: Database,
+  archiveDatabase: Database,
   pool: NonNullable<ReturnType<typeof getRootPostgresPool>>,
   objectStore: ObjectStore,
   auth: AuthContext,
   input: SeedMaterializationInput,
 ): Promise<SeedMaterializationOutcome> {
-  if (
-    await seedInitializationRunIsComplete(root, {
-      organizationId: input.organizationId,
-      seedDigest: input.seedDigest
-    })
-  ) {
-    return { status: "already-complete", seedDigest: input.seedDigest, projects: [] };
-  }
-
   const plan = await resolveSeedInitializationPlan(root, {
     organizationId: input.organizationId,
     seedDigest: input.seedDigest
@@ -152,6 +152,14 @@ async function materializeSeedSourcesLocked(
   assertSeedInitializationPlanApplicable(plan);
   if (plan.targets.some((target) => !canEditParameters(auth, target.projectId))) {
     throw new ApiError("FORBIDDEN", "Parameter edit role is required to materialize seed sources.");
+  }
+  if (
+    await seedInitializationRunIsComplete(root, {
+      organizationId: input.organizationId,
+      seedDigest: input.seedDigest
+    })
+  ) {
+    return { status: "already-complete", seedDigest: input.seedDigest, projects: [] };
   }
 
   const plannedSources = plan.targets.map((target) => {
@@ -203,12 +211,14 @@ async function materializeSeedSourcesLocked(
     // Scope item 4: preserve the legacy parameter plane offline before the rebuild
     // touches it. Capture first, then require the guard to pass, so a truncated or
     // missing archive stops the rebuild instead of silently replacing data.
-    const archive = await captureProjectParameterPlane(root, objectStore, auth, {
+    const archive = await captureProjectParameterPlane(archiveDatabase, objectStore, auth, {
       projectId: target.projectId
     });
     await assertProjectParameterPlaneArchived(root, objectStore, {
       organizationId: input.organizationId,
-      projectId: target.projectId
+      projectId: target.projectId,
+      archiveId: archive.archiveId,
+      archiveDigest: archive.archiveDigest
     });
 
     const configSet = await ensureDefaultConfigSet(root, auth, target.projectId);

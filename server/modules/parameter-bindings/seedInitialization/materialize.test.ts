@@ -20,7 +20,7 @@ import { installPublishedRelease } from "../../catalog-kernel/install/installer"
 import { CatalogSubjectId } from "../../parameter-catalog-contract/index";
 import { executeRegistration } from "../../parameter-governance/registration/service";
 import { materializeSeedSources, type SeedProjectSources } from "./materialize";
-import { getSeedInitializationRun } from "./plan";
+import { getSeedInitializationRun, recordSeedInitializationRun } from "./plan";
 import {
   createEphemeralTestDatabase,
   isTestDatabaseAvailable,
@@ -133,6 +133,7 @@ describe("seed source materialization", () => {
   let database: EphemeralTestDatabase;
   let root: RootDatabase;
   let pool: pg.Pool;
+  const persistentObjectStore = createMemoryObjectStore();
 
   const adminAuth = makeTestAuthContext({
     userId: "user-seed-admin",
@@ -203,11 +204,25 @@ describe("seed source materialization", () => {
       })
     ).rejects.toMatchObject({ code: "FORBIDDEN" });
     await expect(getSeedInitializationRun(root, { organizationId: ORG, seedDigest })).resolves.toBeNull();
+
+    const completedDigest = "sha256:seed-materialize-viewer-completed";
+    await recordSeedInitializationRun(root, {
+      organizationId: ORG,
+      seedDigest: completedDigest,
+      status: "completed",
+      targetProjectIds: ["atlas", "aurora", "nebula"]
+    });
+    await expect(
+      materializeSeedSources(root, createMemoryObjectStore(), viewerAuth, {
+        organizationId: ORG,
+        seedDigest: completedDigest,
+        sources: sources()
+      })
+    ).rejects.toMatchObject({ code: "FORBIDDEN" });
   });
 
   it("materializes a real config set, file version and resolved config revision for every target", async () => {
-    const objectStore = createMemoryObjectStore();
-    const outcome = await materializeSeedSources(root, objectStore, adminAuth, {
+    const outcome = await materializeSeedSources(root, persistentObjectStore, adminAuth, {
       organizationId: ORG,
       seedDigest: DIGEST,
       sources: sources()
@@ -266,7 +281,7 @@ describe("seed source materialization", () => {
 
   it("rejects a concurrent materialization of the same seed digest", async () => {
     const seedDigest = "sha256:seed-materialize-concurrent";
-    const objectStore = createMemoryObjectStore();
+    const objectStore = persistentObjectStore;
     const put = objectStore.put.bind(objectStore);
     let releaseFirstPut!: () => void;
     let announceFirstPut!: () => void;
@@ -300,9 +315,17 @@ describe("seed source materialization", () => {
         sources: sources()
       })
     ).rejects.toThrow(/already in progress/);
+    await expect(
+      materializeSeedSources(root, createMemoryObjectStore(), adminAuth, {
+        organizationId: ORG,
+        seedDigest: `${seedDigest}-different`,
+        sources: sources()
+      })
+    ).rejects.toThrow(/already in progress/);
 
     releaseFirstPut();
     await expect(first).resolves.toMatchObject({ status: "completed", seedDigest });
+    objectStore.put = put;
   }, 120_000);
 
   it("preflights every target, journals every blocker, and performs no value sync when a later target is blocked", async () => {
@@ -360,7 +383,7 @@ describe("seed source materialization", () => {
     expect(occupied.ok, JSON.stringify(occupied)).toBe(true);
 
     await expect(
-      materializeSeedSources(root, createMemoryObjectStore(), adminAuth, {
+      materializeSeedSources(root, persistentObjectStore, adminAuth, {
         organizationId: ORG,
         seedDigest,
         sources: stagedSources()

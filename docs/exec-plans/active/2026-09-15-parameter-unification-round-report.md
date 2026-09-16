@@ -528,23 +528,22 @@ offline first, and nothing did that.
 
 | Element | Behaviour |
 | --- | --- |
-| Archived plane | 14 declared relations - drafts, history, submission rounds and items, change requests and their review decisions, bindings and their revisions, source files, candidates, file versions, initialization drafts and reviews, and the canonical values those bindings own |
+| Archived plane | 21 declared relations - drafts/history, submission workflows, config sets/baselines/revisions, stable logical identities, bindings/revisions, source files/candidates/versions, initialization review state, and canonical values |
 | Child scoping | `parameter_review_decisions`, `parameter_submission_items`, `project_parameter_binding_revisions` and `project_parameter_file_versions` carry no `project_id`, so they are reached through their parent instead of being silently skipped |
-| Artifact | One JSON document written to the object store, carrying provenance (schema version, organisation, project, capture time), `truncated`, the per-relation counts and the rows |
+| Artifact | One v2 JSON document written to the object store, carrying provenance, `truncated`, per-relation counts/rows, and checksum-verified bytes for every referenced file version |
 | Idempotency | `archive_digest` covers the scope, the counts and the content digest, so re-capturing an unchanged plane reuses the object rather than writing a second one |
 | Bound | Each relation is read with a 5,000-row cap; exceeding it sets `truncated`, so a partial capture can never be mistaken for complete preservation |
-| Guard | `assertProjectParameterPlaneArchived` refuses a rebuild when no archive exists or the latest one is truncated |
+| Guard | `assertProjectParameterPlaneArchived` validates the exact archive ID/digest returned by capture and refuses missing, truncated, torn or byte-incomplete artifacts |
 | Ordering | `materializeSeedSources` archives each target and then requires the guard to pass, before it uploads a single seed source |
 
 **Capture only, on purpose.** Nothing in this change deletes, truncates or rewrites the archived rows, and the
 ledger deliberately has no column that could imply disposal happened. Removing the archived plane needs its own
 reviewed decision, and the run report records it as remaining work rather than quietly implementing it.
 
-**Verification.** `archive.integration.test.ts` (4 tests, real PostgreSQL) asserts the per-relation counts for a
-seeded plane, that file-scoped child rows are captured through their parent while another project's rows are not
-captured at all, that every declared relation is accounted for even when empty, that an identical re-capture
-reuses the existing archive instead of inserting a second ledger row, that the guard refuses both a missing and a
-truncated archive, and that capture is refused for an actor without parameter edit on the project.
+**Verification.** `archive.integration.test.ts` (9 tests, real PostgreSQL) asserts the 21-relation graph and
+embedded source bytes, parent scoping and cross-Project isolation, idempotent reuse, missing source-object refusal,
+and fail-closed handling for missing, truncated, torn, tampered or substituted archives, plus authorization and
+schema-retention constraints.
 `materialize.test.ts` and both binding-materialization tests still pass with the archive step in place.
 
 ### 1.13l B5 closed: the tray reads and removes canonical drafts
@@ -731,7 +730,7 @@ The plan status, ADR-0045 pair, TD-124 pair and this report pair are updated and
 #853 T0.3 later audited the already-delivered migrations rather than pretending the review happened before
 implementation. The [retrospective threat matrix](849-inventory/migrations-0148-0149-r3-threat-matrix.md)
 records the boundary. The correction candidate binds the requested Organization to authentication, authorizes all
-targets before journaling, serializes the same Organization/digest across processes, makes `completed` terminal,
-and verifies the archived object against its ledger before rebuilding. Real-PostgreSQL evidence is now 7 plan,
-6 archive and 7 materialization tests. Capture still does not mean disposal; target quiescence, recovery and any
+targets before journaling or completed replay, serializes the fixed Organization scope across processes and seed
+digests, makes `completed` terminal, and verifies the exact v2 archived object and source bytes before rebuilding.
+Real-PostgreSQL evidence is now 7 plan, 9 archive and 7 materialization tests. Capture still does not mean disposal; target quiescence, recovery and any
 deletion remain #853 T2.3/T3.3 obligations.

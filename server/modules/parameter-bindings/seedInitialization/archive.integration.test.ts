@@ -5,11 +5,13 @@
  * so the assertions are about what was preserved, that re-capturing an unchanged plane
  * is idempotent, and that the rebuild guard refuses a missing or truncated archive.
  */
+import { createHash } from "node:crypto";
 import pg from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import {
   ARCHIVE_ROW_CAP,
+  archiveDigestOf,
   assertProjectParameterPlaneArchived,
   captureProjectParameterPlane
 } from "./archive";
@@ -19,7 +21,7 @@ import {
   type EphemeralTestDatabase
 } from "../../../testing/testDatabase";
 import { makeTestAuthContext } from "../../../testing/authContext";
-import { createMemoryObjectStore } from "../../../testing/objectStore";
+import { createMemoryObjectStore, type MemoryObjectStore } from "../../../testing/objectStore";
 import {
   createPostgresDatabase,
   getRootPostgresPool,
@@ -36,6 +38,16 @@ if (!databaseAvailable) {
 const ORG = "org-plane-archive";
 const PROJECT = "atlas";
 const OTHER_PROJECT = "aurora";
+const VERSION_ONE = Buffer.from("version one", "utf8");
+const VERSION_TWO = Buffer.from("version two!", "utf8");
+const checksum = (bytes: Buffer) => createHash("sha256").update(bytes).digest("hex");
+
+const archiveStore = (): MemoryObjectStore => {
+  const store = createMemoryObjectStore();
+  store.entries.set("org/atlas/charging-thermal-v1.dts", VERSION_ONE);
+  store.entries.set("org/atlas/charging-thermal-v2.dts", VERSION_TWO);
+  return store;
+};
 
 describe("legacy parameter plane archive", () => {
   let database: EphemeralTestDatabase;
@@ -82,9 +94,50 @@ describe("legacy parameter plane archive", () => {
     await pool.query(
       `insert into public.project_parameter_file_versions
          (id, file_id, version_number, storage_key, checksum, size_bytes, origin)
-       values ('pfv_1', 'pfile_1', 1, 'org/atlas/charging-thermal.dts', 'abc', 10, 'upload'),
-              ('pfv_2', 'pfile_1', 2, 'org/atlas/charging-thermal.dts', 'def', 12, 'upload'),
+       values ('pfv_1', 'pfile_1', 1, 'org/atlas/charging-thermal-v1.dts', $1, $2, 'upload'),
+              ('pfv_2', 'pfile_1', 2, 'org/atlas/charging-thermal-v2.dts', $3, $4, 'upload'),
               ('pfv_other', 'pfile_other', 1, 'org/aurora/other.dts', 'ghi', 5, 'upload')`,
+      [checksum(VERSION_ONE), VERSION_ONE.byteLength, checksum(VERSION_TWO), VERSION_TWO.byteLength],
+    );
+    await pool.query(
+      `insert into public.dts_config_set (id, organization_id, project_id, name)
+       values ('dcs_1', $1, $2, 'default')`,
+      [ORG, PROJECT],
+    );
+    await pool.query(
+      `update public.project_parameter_files set config_set_id = 'dcs_1' where id = 'pfile_1'`,
+    );
+    await pool.query(
+      `insert into public.dts_release_baseline
+         (id, organization_id, config_set_id, name, status)
+       values ('baseline_1', $1, 'dcs_1', 'release-1', 'released')`,
+      [ORG],
+    );
+    await pool.query(
+      `insert into public.dts_release_baseline_members
+         (id, baseline_id, file_id, file_version_id, version_number)
+       values ('baseline_member_1', 'baseline_1', 'pfile_1', 'pfv_2', 2)`,
+    );
+    await pool.query(
+      `insert into public.dts_config_revisions
+         (id, organization_id, project_id, config_set_id, revision_number, status)
+       values ('revision_1', $1, $2, 'dcs_1', 1, 'resolved')`,
+      [ORG, PROJECT],
+    );
+    await pool.query(
+      `insert into public.dts_config_revision_members
+         (id, config_revision_id, file_id, file_version_id, role, sort_order)
+       values ('revision_member_1', 'revision_1', 'pfile_1', 'pfv_2', 'base', 0)`,
+    );
+    await pool.query(
+      `insert into public.dts_logical_nodes (id, organization_id, project_id, config_set_id)
+       values ('logical_1', $1, $2, 'dcs_1')`,
+      [ORG, PROJECT],
+    );
+    await pool.query(
+      `insert into public.dts_logical_node_revisions
+         (id, logical_node_id, config_revision_id, node_locator, name)
+       values ('logical_revision_1', 'logical_1', 'revision_1', '/soc/node', 'node')`,
     );
   }, 120_000);
 
@@ -94,7 +147,7 @@ describe("legacy parameter plane archive", () => {
   });
 
   it("captures the project's plane with per-relation counts and no cross-project bleed", async () => {
-    const store = createMemoryObjectStore();
+    const store = archiveStore();
     const archive = await captureProjectParameterPlane(root, store, editorAuth, {
       projectId: PROJECT,
       capturedAt: "2026-09-15T00:00:00.000Z"
@@ -110,12 +163,16 @@ describe("legacy parameter plane archive", () => {
     expect(archive.counts.project_parameter_file_versions).toBe(2);
     // Relations with no rows for this project are still accounted for.
     expect(archive.counts.parameter_change_requests).toBe(0);
+    expect(archive.counts.dts_config_set).toBe(1);
+    expect(archive.counts.dts_release_baseline_members).toBe(1);
+    expect(archive.counts.dts_config_revision_members).toBe(1);
+    expect(archive.counts.dts_logical_node_revisions).toBe(1);
 
     // The archived document is the offline artifact and must actually carry the rows.
     const stored = store.entries.get(archive.objectRef);
     expect(stored).toBeDefined();
     const document = JSON.parse(stored!.toString("utf8"));
-    expect(document.schemaVersion).toBe("project-parameter-plane-archive/v1");
+    expect(document.schemaVersion).toBe("project-parameter-plane-archive/v2");
     expect(document.projectId).toBe(PROJECT);
     expect(document.capturedAt).toBe("2026-09-15T00:00:00.000Z");
     expect(document.relations.parameter_drafts.map((row: { id: string }) => row.id).sort()).toEqual([
@@ -127,13 +184,20 @@ describe("legacy parameter plane archive", () => {
         .map((row: { id: string }) => row.id)
         .sort(),
     ).toEqual(["pfv_1", "pfv_2"]);
+    expect(Buffer.from(document.objects["org/atlas/charging-thermal-v1.dts"].bytesBase64, "base64")).toEqual(
+      VERSION_ONE,
+    );
+    expect(document.objects["org/atlas/charging-thermal-v2.dts"]).toMatchObject({
+      checksumSha256: checksum(VERSION_TWO),
+      sizeBytes: VERSION_TWO.byteLength,
+    });
     // Nothing from the other project leaked into this project's archive.
     expect(JSON.stringify(document.relations)).not.toContain("pdraft_other");
     expect(JSON.stringify(document.relations)).not.toContain("pfile_other");
     expect(JSON.stringify(document.relations)).not.toContain("pfv_other");
 
     // Every declared relation is accounted for, even when it is empty.
-    expect(Object.keys(archive.counts).length).toBe(14);
+    expect(Object.keys(archive.counts).length).toBe(21);
     const retainedDrafts = await pool.query<{ count: string }>(
       `select count(*)::text as count from public.parameter_drafts
         where organization_id = $1 and project_id = $2`,
@@ -142,15 +206,30 @@ describe("legacy parameter plane archive", () => {
     expect(retainedDrafts.rows[0]?.count).toBe("2");
   }, 120_000);
 
-  it("reuses an identical archive instead of writing a second object", async () => {
-    const store = createMemoryObjectStore();
-    const first = await captureProjectParameterPlane(root, store, editorAuth, {
-      projectId: PROJECT,
-      capturedAt: "2026-09-15T00:00:00.000Z"
+  it("refuses capture when a referenced file-version object is missing", async () => {
+    const store = archiveStore();
+    store.entries.delete("org/atlas/charging-thermal-v2.dts");
+
+    await expect(
+      captureProjectParameterPlane(root, store, editorAuth, { projectId: PROJECT }),
+    ).rejects.toMatchObject({
+      code: "CONFLICT",
+      details: { reason: "parameter-file-version-object-unavailable" },
     });
+  }, 120_000);
+
+  it("reuses an identical archive instead of writing a second object", async () => {
+    const store = archiveStore();
+    const first = await captureProjectParameterPlane(root, store, editorAuth, {
+      projectId: PROJECT
+    });
+    const afterFirst = await pool.query<{ count: string }>(
+      `select count(*)::text as count from project_parameter_plane_archives
+        where organization_id = $1 and project_id = $2`,
+      [ORG, PROJECT],
+    );
     const second = await captureProjectParameterPlane(root, store, editorAuth, {
-      projectId: PROJECT,
-      capturedAt: "2026-09-15T00:00:00.000Z"
+      projectId: PROJECT
     });
     expect(second.archiveDigest).toBe(first.archiveDigest);
     expect(second.reused).toBe(true);
@@ -160,12 +239,17 @@ describe("legacy parameter plane archive", () => {
         where organization_id = $1 and project_id = $2`,
       [ORG, PROJECT],
     );
-    expect(Number(ledger.rows[0]?.count)).toBe(1);
+    expect(ledger.rows[0]?.count).toBe(afterFirst.rows[0]?.count);
   }, 120_000);
 
   it("refuses the rebuild guard when no archive exists or the archive is truncated", async () => {
     await expect(
-      assertProjectParameterPlaneArchived(pool, createMemoryObjectStore(), { organizationId: ORG, projectId: OTHER_PROJECT }),
+      assertProjectParameterPlaneArchived(pool, createMemoryObjectStore(), {
+        organizationId: ORG,
+        projectId: OTHER_PROJECT,
+        archiveId: "pppa_missing",
+        archiveDigest: `sha256:${"0".repeat(64)}`,
+      }),
     ).rejects.toThrow(/not been archived offline/);
 
     await pool.query(
@@ -175,7 +259,12 @@ describe("legacy parameter plane archive", () => {
       [ORG, OTHER_PROJECT, `sha256:${"a".repeat(64)}`, `sha256:${"b".repeat(64)}`],
     );
     await expect(
-      assertProjectParameterPlaneArchived(pool, createMemoryObjectStore(), { organizationId: ORG, projectId: OTHER_PROJECT }),
+      assertProjectParameterPlaneArchived(pool, createMemoryObjectStore(), {
+        organizationId: ORG,
+        projectId: OTHER_PROJECT,
+        archiveId: "pppa_truncated",
+        archiveDigest: `sha256:${"b".repeat(64)}`,
+      }),
     ).rejects.toThrow(/truncated/);
 
     // The cap is a real bound, not a claim.
@@ -183,7 +272,7 @@ describe("legacy parameter plane archive", () => {
   }, 120_000);
 
   it("refuses the rebuild guard when the archived object no longer matches its ledger digest", async () => {
-    const store = createMemoryObjectStore();
+    const store = archiveStore();
     const archive = await captureProjectParameterPlane(root, store, editorAuth, {
       projectId: PROJECT,
       capturedAt: "2026-09-15T00:00:01.000Z"
@@ -191,7 +280,74 @@ describe("legacy parameter plane archive", () => {
     store.entries.set(archive.objectRef, Buffer.from("null", "utf8"));
 
     await expect(
-      assertProjectParameterPlaneArchived(pool, store, { organizationId: ORG, projectId: PROJECT }),
+      assertProjectParameterPlaneArchived(pool, store, {
+        organizationId: ORG,
+        projectId: PROJECT,
+        archiveId: archive.archiveId,
+        archiveDigest: archive.archiveDigest,
+      }),
+    ).rejects.toThrow(/integrity check failed/);
+  }, 120_000);
+
+  it("validates the exact captured archive instead of substituting a newer valid one", async () => {
+    const store = archiveStore();
+    const captured = await captureProjectParameterPlane(root, store, editorAuth, {
+      projectId: PROJECT,
+      capturedAt: "2026-09-15T00:00:02.000Z",
+    });
+    await pool.query(
+      `insert into public.parameter_drafts (id, organization_id, project_id, target_value, reason)
+       values ('pdraft_later', $1, $2, '4000', 'forces a distinct later archive')`,
+      [ORG, PROJECT],
+    );
+    await captureProjectParameterPlane(root, store, editorAuth, {
+      projectId: PROJECT,
+      capturedAt: "2026-09-15T00:00:03.000Z",
+    });
+    await pool.query(`delete from public.parameter_drafts where id = 'pdraft_later'`);
+    store.entries.set(captured.objectRef, Buffer.from("{}", "utf8"));
+
+    await expect(
+      assertProjectParameterPlaneArchived(pool, store, {
+        organizationId: ORG,
+        projectId: PROJECT,
+        archiveId: captured.archiveId,
+        archiveDigest: captured.archiveDigest,
+      }),
+    ).rejects.toThrow(/integrity check failed/);
+  }, 120_000);
+
+  it("refuses a self-consistent artifact whose relation rows do not match its declared counts", async () => {
+    const store = archiveStore();
+    const captured = await captureProjectParameterPlane(root, store, editorAuth, {
+      projectId: PROJECT,
+      capturedAt: "2026-09-15T00:00:04.000Z",
+    });
+    const original = JSON.parse(store.entries.get(captured.objectRef)!.toString("utf8"));
+    original.relations.parameter_drafts = original.relations.parameter_drafts.slice(0, 1);
+    const bytes = Buffer.from(`${JSON.stringify(original, null, 1)}\n`, "utf8");
+    const contentDigest = `sha256:${checksum(bytes)}`;
+    const archiveDigest = archiveDigestOf({
+      scope: "legacy-parameter-plane",
+      counts: original.counts,
+      contentDigest,
+    });
+    const objectRef = "forged/torn-archive.json";
+    store.entries.set(objectRef, bytes);
+    await pool.query(
+      `insert into project_parameter_plane_archives
+         (id, organization_id, project_id, scope, object_ref, content_digest, archive_digest, counts, truncated, created_by)
+       values ('pppa_torn', $1, $2, 'legacy-parameter-plane', $3, $4, $5, $6::jsonb, false, 'user-plane-archive')`,
+      [ORG, PROJECT, objectRef, contentDigest, archiveDigest, JSON.stringify(original.counts)],
+    );
+
+    await expect(
+      assertProjectParameterPlaneArchived(pool, store, {
+        organizationId: ORG,
+        projectId: PROJECT,
+        archiveId: "pppa_torn",
+        archiveDigest,
+      }),
     ).rejects.toThrow(/integrity check failed/);
   }, 120_000);
 
