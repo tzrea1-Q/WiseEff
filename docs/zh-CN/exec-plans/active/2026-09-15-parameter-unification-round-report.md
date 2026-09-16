@@ -407,14 +407,16 @@ node-type 主体 5 条，且每条绑定都有当前值。其中驱动属性仍�
 
 **验证。** 物化测试不再硬编码属性数量，而是从受审清单推导期望——哪些输入存在、哪些形状可表达、多少驱动节点贡献
 `compatible` 行——再对整个源平面断言：**每项目 122 条已观测 occurrence effect**、清单中每个属性键都出现、node-type 行不带
-`compatible`、且所有定义都存在于已安装版本中。node-type 绑定物化测试保持不变并通过。
+`compatible`、且所有定义都存在于已安装版本中。成功路径夹具明确补入一个由运维人员整理的 driver module；种子本身不创建模块。
 
-**B6 变得更锐利、也更小。** 早前修订在问种子初始化能否注册主体。读契约即可回答：**可以**——
+**B6 已收口。** 早前修订在问种子初始化能否注册主体。读契约即可回答：**可以**——
 `validateRegistrationCommand` 对 `actorKind: "trusted-system"` 且 `placement.mode: "use-default"` 的
-`method: "automatic"` 予以预授权、给其 `origin: "auto"`，仅禁止自动恢复已退役注册。未决的是**模块**：注册仍需
-`destinationModuleId`，`node-type`／`driver-group` 模块必须携带 `attribution_subject_id`，而由于模块树是受策展、用户可见的
-结构，没有任何机制自动供给模块。因此未决问题是：种子初始化是否可以创建以种子主体命名的模块，还是必须解析到已策展的模块
-——更窄，且可回答。
+`method: "automatic"` 予以预授权、给其 `origin: "auto"`，仅禁止自动恢复已退役注册。ADR-0046 随后否决了自动创建模块。物化现在
+先暂存并预检全部目标；只要 `unregisteredSubjectIds` 非空，就会在任何 canonical 值同步前把运行记为 `failed`，按项目与主体写入
+`missing-placement-module` blocker，并抛出 `SeedInitializationBlockedError`。重试进入 `running` 时保留旧 blocker，只有成功完成才
+清空。把 blocker 放在最后一个目标的真实 PostgreSQL 用例证明：旧逐项目流程会先写入两条 binding，两阶段流程写入为零。未修改的
+真实切片会为 `csub_drv_sc8562` 记录每项目一个 blocker；补齐运维容量后的夹具可完成注册、binding 与 current value，但不是目标环境
+就绪证据，精确受审种子 oracle 仍未完成。
 
 ### 1.13j B5：草稿契约与托盘接缝已完成，但未发布未经验证的切换
 

@@ -7,9 +7,9 @@
  * could never bind no matter what the source declared. This proves the fallback now
  * resolves them from the observed node name - and only them.
  *
- * Registrations are inserted directly here as a fixture: how (or whether) seed
- * initialization should register subjects is recorded as B6 and is a separate
- * reviewed decision. This test isolates the resolution fix from that decision.
+ * The fixture supplies the one operator-curated driver module the reviewed source
+ * currently lacks. Seed initialization registers subjects but never invents that
+ * user-visible placement structure.
  */
 import { readFile } from "node:fs/promises";
 import path from "node:path";
@@ -134,6 +134,27 @@ describe("node-type subject resolution during seed materialization", () => {
     });
     expect(advanced.ok, JSON.stringify(advanced)).toBe(true);
 
+    await pool.query(
+      `insert into public.attribution_subjects (
+         id, organization_id, subject_kind, display_name, source_key
+       ) values ('asub-seed-nodetype-extra', $1, 'driver-registration',
+                 'Operator-curated seed capacity', 'compatible:operator,seed-capacity')`,
+      [ORG],
+    );
+    await pool.query(
+      `insert into public.driver_registrations (
+         attribution_subject_id, driver_nature, instance_cardinality
+       ) values ('asub-seed-nodetype-extra', 'physical-device', 'multiple')`,
+    );
+    await pool.query(
+      `insert into public.parameter_modules (
+         id, organization_id, name, path, depth, kind, origin, attribution_subject_id
+       ) values ('pmod-seed-nodetype-extra', $1, 'Operator-curated seed capacity',
+                 'pmod-seed-nodetype-extra', 1, 'driver-group', 'curated',
+                 'asub-seed-nodetype-extra')`,
+      [ORG],
+    );
+
   }, 180_000);
 
   afterAll(async () => {
@@ -141,11 +162,11 @@ describe("node-type subject resolution during seed materialization", () => {
     await database?.drop();
   });
 
-  it("binds node-type properties by node name and leaves the unregistered drivers alone", async () => {
+  it("binds node-type properties by node name after placement capacity is curated", async () => {
     // Node-type subjects have no driver selector, so the sync must resolve them from
     // the observed node name - and the seed now registers them itself through the
-    // automatic/trusted-system path, with the modules DTS ingest already provisions.
-    // No registration, placement or module fixture is created here.
+    // automatic/trusted-system path. The only extra module is operator-curated in
+    // the fixture above; the seed itself never creates placement structure.
     const outcome = await materializeSeedSources(root, createMemoryObjectStore(), adminAuth, {
       organizationId: ORG,
       seedDigest: DIGEST,

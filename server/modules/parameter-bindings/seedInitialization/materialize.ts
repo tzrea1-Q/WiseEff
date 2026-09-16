@@ -36,12 +36,18 @@ import {
   assertProjectParameterPlaneArchived,
   captureProjectParameterPlane
 } from "./archive";
-import { ensureSeedSubjectRegistrations, observedSubjectsWithDefinitions } from "./registration";
+import {
+  ensureSeedSubjectRegistrations,
+  observedSubjectsWithDefinitions,
+  type SeedRegistrationOutcome
+} from "./registration";
 import {
   assertSeedInitializationPlanApplicable,
   recordSeedInitializationRun,
   resolveSeedInitializationPlan,
-  seedInitializationRunIsComplete
+  seedInitializationRunIsComplete,
+  SeedInitializationBlockedError,
+  type SeedInitializationSubjectBlock
 } from "./plan";
 
 export type SeedSourceFile = {
@@ -106,16 +112,7 @@ export async function materializeSeedSources(
     throw new ApiError("INTERNAL_ERROR", "Seed materialization requires the root database.");
   }
 
-  await recordSeedInitializationRun(root, {
-    organizationId: input.organizationId,
-    seedDigest: input.seedDigest,
-    status: "running",
-    targetProjectIds: plan.targets.map((target) => target.projectId)
-  });
-
-  const projects: SeedMaterializedProject[] = [];
-
-  for (const target of plan.targets) {
+  const plannedSources = plan.targets.map((target) => {
     const projectSources = input.sources.find((entry) => entry.projectId === target.projectId);
     if (!projectSources) {
       throw new ApiError("VALIDATION_FAILED", "Seed sources are missing for a planned target.", {
@@ -136,6 +133,29 @@ export async function materializeSeedSources(
         );
       }
     }
+    return { target, projectSources };
+  });
+
+  await recordSeedInitializationRun(root, {
+    organizationId: input.organizationId,
+    seedDigest: input.seedDigest,
+    status: "running",
+    targetProjectIds: plan.targets.map((target) => target.projectId)
+  });
+
+  const snapshot = await loadPublishedCatalog(pool);
+  const staged: Array<{
+    target: (typeof plan.targets)[number];
+    configSet: Awaited<ReturnType<typeof ensureDefaultConfigSet>>;
+    revision: Awaited<ReturnType<typeof ingestConfigRevision>>;
+    fileIds: string[];
+    archive: Awaited<ReturnType<typeof captureProjectParameterPlane>>;
+    registrationOutcome: SeedRegistrationOutcome;
+  }> = [];
+
+  // Stage and preflight every target before any canonical value sync. A blocker in
+  // the last project must not leave earlier projects partially synchronized.
+  for (const { target, projectSources } of plannedSources) {
 
     // Scope item 4: preserve the legacy parameter plane offline before the rebuild
     // touches it. Capture first, then require the guard to pass, so a truncated or
@@ -197,7 +217,6 @@ export async function materializeSeedSources(
     // reviewed seed sources actually reference, using the automatic/trusted-system
     // path the governance contract pre-authorises, and report any subject with no
     // available module rather than dropping it quietly.
-    const snapshot = await loadPublishedCatalog(pool);
     const registrationOutcome = snapshot
       ? await ensureSeedSubjectRegistrations(root, auth, {
           organizationId: input.organizationId,
@@ -210,6 +229,32 @@ export async function materializeSeedSources(
           projectId: target.projectId
         })
       : { registered: [], unregistered: [], alreadyRegistered: [] };
+
+    staged.push({ target, configSet, revision, fileIds, archive, registrationOutcome });
+  }
+
+  const blocks: SeedInitializationSubjectBlock[] = staged.flatMap(({ target, registrationOutcome }) =>
+    registrationOutcome.unregistered.map((subjectId) => ({
+      projectId: target.projectId,
+      subjectId,
+      reason: "missing-placement-module" as const,
+      detail:
+        "Required Catalog subject has no free placement module of the correct kind; operator curation is required."
+    }))
+  );
+  if (blocks.length > 0) {
+    await recordSeedInitializationRun(root, {
+      organizationId: input.organizationId,
+      seedDigest: input.seedDigest,
+      status: "failed",
+      targetProjectIds: plan.targets.map((entry) => entry.projectId),
+      blocked: blocks
+    });
+    throw new SeedInitializationBlockedError(blocks);
+  }
+
+  const projects: SeedMaterializedProject[] = [];
+  for (const { target, configSet, revision, fileIds, archive, registrationOutcome } of staged) {
 
     // The binding unit of work opens a SAVEPOINT, so it needs an open transaction;
     // a bare client made every write fail with "SAVEPOINT can only be used in

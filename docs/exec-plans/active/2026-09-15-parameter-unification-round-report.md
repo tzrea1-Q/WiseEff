@@ -577,11 +577,12 @@ covered by the workspace's existing hydration test; the full frontend suite is *
 The live path is still unverified with real data, because canonical pending drafts cannot exist until canonical
 bindings do (B6) - so the tray has not been exercised against a real canonical draft, in a browser or otherwise.
 
-### 1.13m B6 mostly resolved: the seed registers its own subjects, and the bindings follow
+### 1.13m B6 resolved: registration is automatic and completion fails closed
 
 Two rounds ago I recorded B6 as "may seed initialization register subjects?" and last round narrowed it to "may it
-provision modules?". Both framings missed the answer: the registration path is pre-authorised and the modules are
-already provisioned by DTS ingest, so the chain now runs unattended.
+provision modules?". The registration path is pre-authorised, but the reviewed real slice proves that placement
+capacity is not automatically sufficient: `csub_drv_sc8562` is one free driver module short. ADR-0046 leaves that
+user-visible structure under operator control.
 
 `seedInitialization/registration.ts` resolves the subjects a materialized revision actually references - only those
 owning a published definition, so an unrelated `compatible` cannot drag one in - and registers each through the
@@ -590,20 +591,22 @@ with the seed digest, project and subject kind as proof). `materializeSeedSource
 value sync, and module resolution takes an existing module of the kind the placement guard requires that does not
 already host a placement, preferring curated over auto-provisioned.
 
-**What my earlier analysis got wrong.** I assumed seed initialization would have to create the modules. It does
-not, because DTS ingest provisions a module per logical node and those are exactly the modules the guard wants. The
-`nodeTypeSubjectBinding` test had been hand-building attribution subjects, modules, registrations and placements
-around that assumption; the whole fixture is deleted now and the test still passes.
+**What my earlier analysis got wrong.** DTS ingest provisions most of the modules, not necessarily all required
+placement capacity. The successful `nodeTypeSubjectBinding` fixture now supplies one explicitly operator-curated
+driver module; the seed itself creates none.
 
-**What remains, reported rather than silent.** A subject with no available module is neither registered nor bound,
-and the run reports it in `unregisteredSubjectIds` next to `registeredSubjectIds`. The only open question is whether
-seed initialization may provision a module for such a subject or must fail closed until an operator curates one.
-Nothing is unregistered in the example slice.
+**Follow-up (2026-09-16): fail-closed completion is implemented.** ADR-0046 rejected automatic module creation.
+Materialization now stages and preflights every target before any canonical value sync. When
+`unregisteredSubjectIds` is non-empty, it journals the run as `failed` with one `missing-placement-module` blocker
+per project and subject, then throws `SeedInitializationBlockedError`. `getSeedInitializationRun` returns those
+blockers; a retry preserves them while `running` and only successful completion clears them. The adversarial real-
+PostgreSQL case puts the blocker on the last target: the prior per-project flow wrote two bindings before failing,
+while the two-phase flow writes zero.
 
-**Measured effect.** The slice now materializes **33 canonical bindings per seed project**, each owning a current
-value, where it previously wrote zero. The two suites that pinned the old behaviour now assert the real one - a
-registration exists, bindings exist, every bound subject is registered, every binding owns a value - instead of
-keeping assertions that would have had to be weakened.
+**Observed boundary.** The unmodified real slice records three `csub_drv_sc8562` blockers, one per project, and zero
+bindings. With the missing capacity explicitly curated, the success fixture proves registrations, bindings and
+current values can complete. The exact reviewed seed oracle remains unfinished, so this local fixture is not a
+target-environment readiness claim.
 
 **One correction to the documentation itself.** While writing this up I found that the B6 entry had been
 accidentally deleted from the acceptance matrix a few rounds earlier, when a neighbouring block was rewritten; two

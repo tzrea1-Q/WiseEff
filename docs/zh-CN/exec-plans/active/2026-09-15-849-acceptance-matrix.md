@@ -10,10 +10,10 @@
 
 | # | 范围 | 状态 | 主要证据 | 缺口 |
 | --- | --- | --- | --- | --- |
-| 1 | 全部参数入口及直接相关跨模块引用统一新版 Catalog；清除旧库回退、混合读取与双写；打通导入、查看、草稿、提交、审批、生效、源文件写回、历史及导出 | **服务端新版路径已交付；前端草稿托盘读取仍为旧库回退（B5）** | `drafts.integration.test.ts`（11）、`catalogProjectValueRoutes.test.ts`（16）、`parameter-bindings` 74、`parameter-files` 316 | 跨模块消费者改接（Agent、日志、知识、调试、DTS 重载） |
+| 1 | 全部参数入口及直接相关跨模块引用统一新版 Catalog；清除旧库回退、混合读取与双写；打通导入、查看、草稿、提交、审批、生效、源文件写回、历史及导出 | **服务端新版路径已交付；前端草稿托盘已读取并删除 canonical pending draft（B5 代码已收口，真实数据路径仍待完整种子发布与物化）** | `drafts.integration.test.ts`（11）、`catalogProjectValueRoutes.test.ts`（16）、`parameter-bindings` 74、`parameter-files` 316 | 跨模块消费者改接（Agent、日志、知识、调试、DTS 重载） |
 | 2 | 仅 DTS／JSON；113 厂商输入与 4 项兼容种子的语义对齐、真实源文件、完整示例 DTS 基底；JSON 软件配置使用 ConfigurationSchema | **部分完成** | `src/config/seed-reconciliation/manifest.json`（125 项）、`src/config/seed-sources/**`（9 文件，含生成的 `vendor-drivers.dts` 基底：**全部 113 条**厂商输入（27 个驱动主体、12 个 node-type 主体），每条取值均取自受审厂商元数据自带的 DTS 语法 `exampleValue`；可用 `npm run vendor-source:generate` 重新生成，并由 `npm run vendor-source:check` 与 `generate-vendor-project-source.test.ts`（5 项）检测漂移）、`seedSources.fidelity.test.ts`（18）、`canonicalBindingMaterialization.integration.test.ts`、ConfigurationSchema Slice A–C 及 `configurationSchemaPublish.integration.test.ts`（2） | JSON 软件配置项目源（B1）；示例基底是演示源，不是经验证的真机固件 |
 | 3 | YAML／TOML／ENV 项目源及对应 8 项种子归入 TD-124；明确拒绝这些格式；厂商 YAML 目录元数据保留读取与发布 | **已交付** | `unsupportedFormat.test.ts`（19）、`importDtsParse.test.ts`（10）、前端 `unsupportedImportFormat.test.ts`（10）、中英 TD-124 行 | — |
-| 4 | 按种子重建：保留非参数数据；旧参数、草稿、历史及源文件离线归档；仅初始化 Atlas／Aurora／Nebula；旧链接归档提示；acme 退役但保留发布历史 | **部分交付** | **离线归档已交付（仅捕获）**：`0149_project_parameter_plane_archives.sql` 与 `seedInitialization/archive.ts` 把旧参数平面（14 条声明的关表，子行经父行到达）连同逐表计数与摘要捕获到对象存储；`materializeSeedSources` 在重建**之前**先归档每个项目，并由守卫拒绝缺失或被截断的归档。`archive.integration.test.ts`（4 项）覆盖计数、子作用域捕获、跨项目隔离、幂等复用与两种守卫拒绝。**处置（删除）刻意未实现**——账本中没有任何列可暗示删除发生过，移除已归档行需要另行评审决策。**归档旧链接提示已交付**（参数工作台横幅：参数 id、诊断与迁移证据，并带关闭控件；归档记录不提供草稿与提交入口）。**acme 退役已交付**：`completeSuccessor.test.ts` 新增 2 个测试（退役主体与别名连同 tombstone 携带；拒绝在退役主体下铸造）；`vendorSuccessor.integration.test.ts` 中的真实 PostgreSQL 生命周期断言；digest pin 在两个 `ops/self-hosted/upgrade.md` runbook 中移至 `sha256:5f0e7bcd…`，历史 R-F4 值保留并附前向说明。另有种子初始化目标计划、阻断守卫与运行日志：`seedInitialization/plan.test.ts`（6）；三项目 DTS 种子源物化：`seedInitialization/materialize.test.ts`（3）；归档诊断归一：`parameterClient.test.ts`（3） | JSON 种子物化（B1）、acme **定义**生命周期、离线归档、canonical 绑定／值物化（B2）、归档提示界面 |
+| 4 | 按种子重建：保留非参数数据；旧参数、草稿、历史及源文件离线归档；仅初始化 Atlas／Aurora／Nebula；旧链接归档提示；acme 退役但保留发布历史 | **部分交付** | **离线归档已交付（仅捕获）**：`0149_project_parameter_plane_archives.sql` 与 `seedInitialization/archive.ts` 把旧参数平面（14 条声明的关表，子行经父行到达）连同逐表计数与摘要捕获到对象存储；`materializeSeedSources` 在重建**之前**先归档每个项目，并由守卫拒绝缺失或被截断的归档。`archive.integration.test.ts`（4 项）覆盖计数、子作用域捕获、跨项目隔离、幂等复用与两种守卫拒绝。**处置（删除）刻意未实现**——账本中没有任何列可暗示删除发生过，移除已归档行需要另行评审决策。**归档旧链接提示已交付**（参数工作台横幅：参数 id、诊断与迁移证据，并带关闭控件；归档记录不提供草稿与提交入口）。**acme 退役已交付**：`completeSuccessor.test.ts` 新增 2 个测试（退役主体与别名连同 tombstone 携带；拒绝在退役主体下铸造）；`vendorSuccessor.integration.test.ts` 中的真实 PostgreSQL 生命周期断言；digest pin 在两个 `ops/self-hosted/upgrade.md` runbook 中移至 `sha256:5f0e7bcd…`，历史 R-F4 值保留并附前向说明。另有种子初始化目标计划、持久的主体 blocker 失败关闭守卫与运行日志：`seedInitialization/plan.test.ts`（7）；三项目 DTS 种子源物化：`seedInitialization/materialize.test.ts`（4）；归档诊断归一：`parameterClient.test.ts`（3） | JSON 种子物化（B1）、运维人员补齐 `csub_drv_sc8562` 缺少的 driver-module 容量、acme **定义**生命周期、归档平面处置（删除）、其余 canonical 绑定／值物化（B2）、归档提示界面 |
 | 5 | S1／S2 验收：真实鉴权、PostgreSQL、源存储、发布管理器、归档重建、中断续跑、整套恢复；前端三尺寸真实浏览器验证 | **部分完成** | 所有集成套件均用真实 PostgreSQL；导入向导与归档旧链接提示使用真实鉴权与真实浏览器，三尺寸 1440×900／768×1024／390×844（真实鉴权须以 `AUTH_MODE=production AUTH_PROVIDER=local` 启动 API） | S2 全部（归档重建、中断、续跑、整套恢复）；发布管理器仅由其自身套件覆盖；完整三尺寸操作矩阵 |
 
 ## 1a. 实现 PU-04 过程中发现的两个阻塞与一个契约发现
@@ -24,8 +24,8 @@
 
 **B1 — JSON 项目源无语义摄取路径。** `ingestConfigRevision` 是 DTS／配置版本解析器。新版值归属**有** JSON 值路径，但没有任何路径能把 JSON 项目源文件变成配置版本，因此 JSON 种子源无法物化。`materialize.ts` 以 `UNSUPPORTED_FORMAT` 明确拒绝（明细带 `deferredTo`），而不是上传无法解析的成员或从清单丢弃。**后果：两个 JSON 兼容种子仍未物化，构成 scope item 2 与测试决定 6 的缺口。** 关闭它并非局部修复：按实现决定 3，它需要 Binding 边界上的 ConfigurationSchema **源身份**扩展（区分 DTS 逻辑节点出现与软件配置实例，含配置集、实例、源文件版本与格式特定 locator）。**已决定（ADR-0046）：为该扩展排期，不重新协商 scope item 2。** 该决定引入统一的 `project_parameter_source_occurrences` 层，身份至少包含 organization + project + config-set + occurrence-kind + instance-id，并额外钉住不可变源文件身份与 JSON Pointer locator；Binding 唯一性收敛为 `(project_id, source_occurrence_id, definition_id)`；既有 DTS 绑定原地 backfill 且永不重新派生其 ID；file-version／config-revision 钉留在 ProjectValue 层，不进入 Binding 身份。因此两个 JSON 兼容种子仍在范围内，并将在该实现落地前保持未物化。
 
-**B2 —— 存在注册时 canonical 绑定／值物化现已可用；为此修复了两个缺陷。** 该管道已在真实 PostgreSQL 上端到端证明：
-`nodeTypeSubjectBinding.integration.test.ts` 安装真实发布谱系、注册两个 node-type 主体、物化真实 DTS 切片，并断言
+**B2 —— 存在注册与足够放置容量时，canonical 绑定／值物化可用；为此修复了两个缺陷。** 成功路径已在真实 PostgreSQL 上证明：
+`nodeTypeSubjectBinding.integration.test.ts` 安装真实发布谱系、明确补入受审切片所缺的一个运维整理 driver module、自动注册主体并物化真实 DTS 切片，并断言
 **30 条 canonical 绑定及其值**（每项目 10 条、每个 node-type 主体 5 条），且每条绑定都有值行。为此必须先修复两个缺陷，
 而在没有任何写入真正发生之前，两者都不可见：
 
@@ -34,7 +34,7 @@
 | 1 | `catalogProjectValueSync` 传入 `nodeTypeFallback: { kind: "absent" }`，因此 **113 条中的 33 条 node-type 厂商属性**无论源如何声明都永远无法解析 | 新增共享的 `resolveObservedSubject`：声明的 `compatible` 仍然优先，仅当源未声明时才使用 node-type 回退，名称取自观测到的节点 |
 | 2 | `materializeSeedSources` 以裸 client 调用同步，导致绑定工作单元的 `SAVEPOINT` 以 "SAVEPOINT can only be used in transaction blocks" 失败——每次写入注定失败 | 每项目的同步现在运行在 `root.transaction(...)` 内 |
 
-因此 B2 对示例切片已交付：注册不再是人工前置条件（B6），整个 113 条输入的切片现在都能绑定。未完成的是目标中其余部分：计划预期的计数（每项目 124 条）只是对未转换输入的假设，从未对完整种子实测过。
+因此 B2 仅在具备足够运维整理容量的夹具上得到证明。注册本身不再是人工前置条件（B6），但未修改的 113 条输入切片目前会因 `csub_drv_sc8562` 没有空闲 driver module 而失败关闭，写入 binding 为零。精确受审身份集合仍未完成；计划预期的每项目 124 条也从未对完整种子实测过。
 
 **C1 — acme 退役可避免伪合并，但会移动一个 pinned 摘要。** 退役契约要求被退役文档带 `tombstone.reason`、`tombstone.withdrawnByReleaseId` 等于后继发布 id、`tombstone.previousSelector` 与前驱一致；`tombstone.successorId` **可选**，因此可以在不声称 acme 演化为真实厂商同名主体的前提下退役它——而后者正是 Issue 禁止的。实施它会改变后继文档，从而改变签入的 `schemas/dts/catalog-release/vendor-catalog-1.yaml` 与 `VENDOR_SUCCESSOR_AGGREGATE_DIGEST` 常量，且必须保持前驱发布与其激活回执不变。
 
@@ -80,15 +80,15 @@
 
 **验证及其诚实的边界。** `canonicalDraftTraySource.test.ts` 证明两个方向都使用 canonical URL 且不产生任何 `/api/v1/parameter-drafts` 调用；适配器与托盘接缝另有 4 + 4 项测试；前端全量套件为绿（446 文件 / 3438 测试）。**未**验证的是带真实数据的在线路径：在 canonical 绑定存在之前（B6），数据库中不可能存在 canonical pending draft，因此托盘尚未在浏览器中对真实 canonical 草稿演练过。
 
-**B6 —— 大部分已解决：种子期自动注册已实现且可用。** 该条目早前的修订在问种子初始化能否注册主体；后来的修订收窄为模块供给，随后该条目在重写相邻区块时被误删。此处连同结论一并恢复，因为真正的结论是这两个问题都不是障碍。
+**B6 —— 已解决：种子期自动注册与失败关闭完成条件均已实现。** 该条目早前的修订在问种子初始化能否注册主体；后来的修订收窄为模块供给，随后该条目在重写相邻区块时被误删。此处连同结论一并恢复，因为真正的结论是这两个问题都不是障碍。
 
 **注册已实现。** `seedInitialization/registration.ts` 解析每个已物化版本实际引用的主体——仅限在已发布版本中拥有定义的主体，因此无关的 `compatible` 无法把主体拖进来——并经契约的预授权路径注册：`method: "automatic"`、`actorKind: "trusted-system"`、`placement: { mode: "use-default" }`，以种子摘要派生幂等键，并把种子摘要、项目与主体种类记为证明。`materializeSeedSources` 在 ingest 与值同步之间执行它。
 
-**模块本来就在。** DTS ingest 会为每个逻辑节点供给模块，而这些正是放置守卫所要求的 `node-type`／`driver-group` 模块，因此对源声明的主体无需种子期模块供给。`nodeTypeSubjectBinding.integration.test.ts` 此前必须手工构建 attribution subject、模块、注册与放置；该夹具现已全部删除，测试仍然通过。
+**模块容量仍由运维人员负责。** DTS ingest 会供给放置守卫所需的大多数 `node-type`／`driver-group` 模块，但真实受审切片仍缺少一个可供 `csub_drv_sc8562` 使用的空闲 driver module。种子不会擅自创建这类用户可见结构。`nodeTypeSubjectBinding.integration.test.ts` 明确加入一个由运维人员整理的模块来证明成功路径；未修改的真实切片夹具则证明该容量缺口确实存在。
 
-**真正剩余的很少，且会被报告、绝不被静默丢弃。** 没有可用模块的主体不会被注册、也不会被绑定，运行会在 `SeedMaterializedProject.unregisteredSubjectIds` 中与 `registeredSubjectIds` 一并报告它。**已决定（ADR-0046）：必须失败关闭。** 任一必需主体没有同类空闲放置模块时，种子初始化不得报告 `completed`；它记录主体级 blocker 并停止，由运维策展模块。`seed_initialization_runs.status` 已允许 `failed`，运行本就带 `blocked` 数组，因此无需迁移，只需主体级 blocker DTO 与修正后的完成条件。自动创建用户可见 `business` 模块被否决：那会把 trusted-system 权限从数据初始化扩大到信息架构变更，而 ConfigurationSchema 主体没有可据以决定 taxonomy 位置的源拓扑证据。示例切片中没有任何未注册主体。
+**失败关闭完成条件已实现。** 物化会先暂存并预检三个目标，只有全部可放置时才开始 canonical 值同步。没有可用模块的主体不会被绑定，也不会被静默丢弃。在任何值同步之前，`materializeSeedSources` 会把运行记录为 `failed`，为每个主体写入同时含 `projectId` 与 `subjectId` 的 `missing-placement-module` blocker，并抛出 `SeedInitializationBlockedError`，不再可能继续落成 `completed`。`getSeedInitializationRun` 会返回这些 blocker；重试进入 `running` 时保留旧 blocker，只有成功完成后才清空。本次没有新增 migration，也没有自动创建模块。`materialize.test.ts` 把 blocker 放在最后一个目标：旧流程会先写入前两个 binding，而两阶段流程写入为零。真实受审切片会记录三个 `csub_drv_sc8562` blocker（每项目一个）且不写入 binding。
 
-**实测效果。** 示例切片现在**每个种子项目物化 33 条 canonical 绑定**，每条都拥有当前值；此前写入为零。
+**边界。** B6 的失败语义已解决；真实种子要完成，仍需运维人员补齐缺失的 driver-module 容量，再以受审的精确 binding 集合收口。显式加入该容量的夹具证明注册、binding 与 current value 能完成，但它不是目标环境证据。
 
 **B4 — 两个 DTS 兼容种子无法按现状发布。** 其受审源声明 `charging_core` 节点，并携带 3×5 字符串矩阵与 3×4 cell 数组。两个彼此独立的阻塞：cell 数组是**嵌套数组**，定义能力白名单不接受（仅支持 `array<integer>`／`array<number>`／`array<string>`，因此需要能力版本变更，与早前的主体类型扩展同属 R3）。**更正：** 该条目还曾声称 `charging_core` 不是规范节点名。这是**错的**——`parseCanonicalNodeName` 的文法 `/^[A-Za-z][A-Za-z0-9,._+-]{0,30}$/` 明确允许 `_`，`charging_core`、`batt_l_v800`、`cccv_para0` 都解析合法，厂商后继本身也发布了 15 个带下划线的 node-type 名称。因此 B4 的命名那一半从不存在，无需人类命名决定，只剩嵌套数组这一个能力阻塞。
 
@@ -185,7 +185,7 @@ playwright-cli -s=wiseeff849 open http://127.0.0.1:5173/parameter-admin
 
 ### 4.3 后续步骤（按依赖顺序）
 
-1. **实现 B1 与 B6**（二者均已由 ADR-0046 决定）：为 ConfigurationSchema 源身份实现排期；并让种子初始化在缺少必需放置模块时以主体级 blocker 失败关闭。注册权限本身已由契约确定（`trusted-system` + `automatic` + `use-default`）。
+1. **实现 B1**（已由 ADR-0046 决定）：为 ConfigurationSchema 源身份实现排期。B6 失败关闭已完成；注册权限继续使用契约既定的 `trusted-system` + `automatic` + `use-default` 路径。
 2. **落地携带兼容种子的发布后继**，取决于 ADR-0046 的 `catalog-capability/v4` 与 `charging_core` 的受审 NodeType 主体发布。本步曾被 B3 阻塞，而 B3 已**完成**——acme 主体与别名已在厂商后继中退役，并在真实 PostgreSQL 上核验。后继构建器能正确携带已退役成员，因此后续任何退役都可依赖该行为；尚未验证的是让 `configuration-schema` 成员穿过 `buildCompleteSuccessor`。
 3. **新版绑定／值物化**：在后继发布后执行（B2）。退出证据：逐项目**精确** Binding 集合（各 124，合计 372）而非总数。
 4. **S2**：先落受审重建处置契约（R3，实施前需 Spec 评阅），再做 plan → apply → status/resume → verify，然后做中断与整套恢复演练。
