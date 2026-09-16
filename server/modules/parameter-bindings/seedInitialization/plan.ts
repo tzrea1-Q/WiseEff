@@ -24,6 +24,8 @@ export type SeedProjectBlockReason =
   | "identity-ambiguous"
   | "organization-mismatch";
 
+export type SeedSubjectBlockReason = "missing-placement-module";
+
 export type SeedProjectIdentity = {
   readonly id: string;
   readonly name: string;
@@ -40,11 +42,22 @@ export type SeedInitializationTarget = {
   readonly bindingCount: number;
 };
 
-export type SeedInitializationBlock = {
+export type SeedInitializationProjectBlock = {
   readonly projectId: string;
   readonly reason: SeedProjectBlockReason;
   readonly detail: string;
 };
+
+export type SeedInitializationSubjectBlock = {
+  readonly projectId: string;
+  readonly subjectId: string;
+  readonly reason: SeedSubjectBlockReason;
+  readonly detail: string;
+};
+
+export type SeedInitializationBlock =
+  | SeedInitializationProjectBlock
+  | SeedInitializationSubjectBlock;
 
 export type SeedInitializationPlan = {
   readonly organizationId: string;
@@ -60,7 +73,11 @@ export class SeedInitializationBlockedError extends Error {
   constructor(readonly blocks: readonly SeedInitializationBlock[]) {
     super(
       `Seed initialization target plan is blocked: ${blocks
-        .map((block) => `${block.projectId}(${block.reason})`)
+        .map((block) =>
+          "subjectId" in block
+            ? `${block.projectId}:${block.subjectId}(${block.reason})`
+            : `${block.projectId}(${block.reason})`
+        )
         .join(", ")}`,
     );
     this.name = "SeedInitializationBlockedError";
@@ -211,6 +228,7 @@ export type SeedInitializationRun = {
   readonly seedDigest: string;
   readonly status: SeedInitializationRunStatus;
   readonly targetProjectIds: readonly string[];
+  readonly blocked: readonly SeedInitializationBlock[];
 };
 
 /** Journal a plan or an outcome. The same digest is one run, never two. */
@@ -230,12 +248,16 @@ export async function recordSeedInitializationRun(
     insert into seed_initialization_runs (
       organization_id, seed_digest, status, scope, target_project_ids, blocked,
       started_by_user_id, completed_at
-    ) values ($1, $2, $3, $4, $5::jsonb, $6::jsonb, $7,
+    ) values ($1, $2, $3, $4, $5::jsonb, coalesce($6::jsonb, '[]'::jsonb), $7,
               case when $3 = 'completed' then now() else null end)
     on conflict (organization_id, seed_digest) do update
        set status = excluded.status,
            target_project_ids = excluded.target_project_ids,
-           blocked = excluded.blocked,
+           blocked = case
+             when excluded.status = 'completed' then '[]'::jsonb
+             when $6::jsonb is null then seed_initialization_runs.blocked
+             else excluded.blocked
+           end,
            completed_at = case when excluded.status = 'completed' then now() else null end,
            updated_at = now()
     `,
@@ -245,7 +267,7 @@ export async function recordSeedInitializationRun(
       input.status,
       SEED_INITIALIZATION_SCOPE,
       JSON.stringify([...input.targetProjectIds]),
-      JSON.stringify([...(input.blocked ?? [])]),
+      input.blocked ? JSON.stringify([...input.blocked]) : null,
       input.startedByUserId ?? null,
     ],
   );
@@ -260,9 +282,10 @@ export async function getSeedInitializationRun(
     seed_digest: string;
     status: SeedInitializationRunStatus;
     target_project_ids: unknown;
+    blocked: unknown;
   }>(
     `
-    select organization_id, seed_digest, status, target_project_ids
+    select organization_id, seed_digest, status, target_project_ids, blocked
       from seed_initialization_runs
      where organization_id = $1
        and seed_digest = $2
@@ -279,6 +302,7 @@ export async function getSeedInitializationRun(
     targetProjectIds: Array.isArray(row.target_project_ids)
       ? (row.target_project_ids as string[])
       : [],
+    blocked: Array.isArray(row.blocked) ? (row.blocked as SeedInitializationBlock[]) : [],
   };
 }
 

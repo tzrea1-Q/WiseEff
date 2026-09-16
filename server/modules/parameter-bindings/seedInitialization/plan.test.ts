@@ -199,4 +199,44 @@ describe("seed initialization target plan", () => {
       await seedInitializationRunIsComplete(root, { organizationId: ORG, seedDigest: "sha256:other" })
     ).toBe(false);
   });
+
+  it("keeps failed blockers visible while a retry is running and clears them only on completion", async () => {
+    await seed({});
+    const seedDigest = "sha256:seed-retry-blocker";
+    const blocked = [{
+      projectId: "atlas",
+      subjectId: "csub_acme_power",
+      reason: "missing-placement-module" as const,
+      detail: "Operator curation is required."
+    }];
+
+    await recordSeedInitializationRun(root, {
+      organizationId: ORG,
+      seedDigest,
+      status: "failed",
+      targetProjectIds: ["atlas", "aurora", "nebula"],
+      blocked
+    });
+    await recordSeedInitializationRun(root, {
+      organizationId: ORG,
+      seedDigest,
+      status: "running",
+      targetProjectIds: ["atlas", "aurora", "nebula"]
+    });
+    expect(await getSeedInitializationRun(root, { organizationId: ORG, seedDigest })).toMatchObject({
+      status: "running",
+      blocked
+    });
+
+    await recordSeedInitializationRun(root, {
+      organizationId: ORG,
+      seedDigest,
+      status: "completed",
+      targetProjectIds: ["atlas", "aurora", "nebula"]
+    });
+    expect(await getSeedInitializationRun(root, { organizationId: ORG, seedDigest })).toMatchObject({
+      status: "completed",
+      blocked: []
+    });
+  });
 });

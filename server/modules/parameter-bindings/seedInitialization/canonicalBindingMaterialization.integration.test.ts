@@ -1,20 +1,17 @@
 /**
- * Issue #849 B2: the canonical binding/value materialization pipeline, proven up
- * to its exact gate.
+ * Issue #849 B2/B6: the canonical source materialization pipeline and its
+ * fail-closed registration gate.
  *
  * This drives the real chain - a real published release lineage (`crel_acme_1` ->
  * `crel_vendor_catalog_1`, acme retired), the real demonstration DTS slice read
- * from disk, and the real seed materializer - and pins where it stops:
- * `catalogProjectValueSync` requires an **active organization-subject
- * registration** (`if (!registrationId) continue`) before it will stabilize a
- * binding, and seed initialization does not create one.
+ * from disk, and the real seed materializer. The reviewed slice currently lacks
+ * one free driver module for `csub_drv_sc8562`; B6 requires the whole run to stop
+ * before any canonical binding sync instead of completing partially.
  *
  * The observed-property assertions are the positive half: the source plane
  * (config set, resolved revision, per-property occurrence effects) is complete and
  * attributed to the vendor subjects, and the definitions the DTS names exist in
- * the installed release, so the gate really is registration. The registration
- * assertion is the causal half, written so that introducing seed-time registration
- * fails this test loudly instead of silently changing a count.
+ * the installed release, so the gate really is placement capacity.
  */
 import { readFileSync } from "node:fs";
 import { readFile } from "node:fs/promises";
@@ -47,6 +44,7 @@ import {
 import { createMemoryObjectStore } from "../../../testing/objectStore";
 import { firstReleaseBundle } from "../../../testing/parameterCatalog/cutoverPopulatedFixture";
 import { materializeSeedSources, type SeedProjectSources } from "./materialize";
+import { getSeedInitializationRun } from "./plan";
 
 const databaseAvailable = await isTestDatabaseAvailable();
 if (!databaseAvailable) {
@@ -223,22 +221,49 @@ describe("canonical binding materialization from a published release", () => {
     await database?.drop();
   });
 
-  it("completes the source plane from the real DTS slice and registers the subjects it references", async () => {
-    const outcome = await materializeSeedSources(root, createMemoryObjectStore(), adminAuth, {
-      organizationId: ORG,
-      seedDigest: DIGEST,
-      sources: await realSeedSources(),
+  it("stages the real DTS slice but writes no bindings when placement capacity is short", async () => {
+    await expect(
+      materializeSeedSources(root, createMemoryObjectStore(), adminAuth, {
+        organizationId: ORG,
+        seedDigest: DIGEST,
+        sources: await realSeedSources(),
+      }),
+    ).rejects.toMatchObject({
+      name: "SeedInitializationBlockedError",
+      blocks: expect.arrayContaining([
+        expect.objectContaining({
+          projectId: "atlas",
+          subjectId: "csub_drv_sc8562",
+          reason: "missing-placement-module",
+        }),
+        expect.objectContaining({
+          projectId: "aurora",
+          subjectId: "csub_drv_sc8562",
+          reason: "missing-placement-module",
+        }),
+        expect.objectContaining({
+          projectId: "nebula",
+          subjectId: "csub_drv_sc8562",
+          reason: "missing-placement-module",
+        }),
+      ]),
     });
 
-    expect(outcome.status).toBe("completed");
-    expect(outcome.projects.map((project) => project.projectId).sort()).toEqual([
+    const revisions = await pool.query<{ project_id: string; id: string }>(
+      `select distinct on (project_id) project_id, id
+         from dts_config_revisions
+        where organization_id = $1
+        order by project_id, revision_number desc`,
+      [ORG],
+    );
+    expect(revisions.rows.map((revision) => revision.project_id).sort()).toEqual([
       "atlas",
       "aurora",
       "nebula",
     ]);
 
-    for (const project of outcome.projects) {
-      expect(project.configRevisionId.length).toBeGreaterThan(0);
+    for (const revisionRow of revisions.rows) {
+      expect(revisionRow.id.length).toBeGreaterThan(0);
 
       const observed = await pool.query<{ property_name: string; compatible: string }>(
         `select oe.property_name, lnr.compatible
@@ -247,15 +272,15 @@ describe("canonical binding materialization from a published release", () => {
           where oe.config_revision_id = $1
             and oe.effect_kind in ('set','override')
           order by oe.property_name`,
-        [project.configRevisionId],
+        [revisionRow.id],
       );
       const expected = expectedSourcePlane();
-      expect(observed.rows.length, `${project.projectId} observed properties`).toBe(
+      expect(observed.rows.length, `${revisionRow.project_id} observed properties`).toBe(
         expected.observedPerProject,
       );
       const propertyNames = new Set(observed.rows.map((row) => row.property_name));
       for (const propertyKey of expected.propertyKeys) {
-        expect(propertyNames, `${project.projectId} ${propertyKey}`).toContain(propertyKey);
+        expect(propertyNames, `${revisionRow.project_id} ${propertyKey}`).toContain(propertyKey);
       }
       // Driver rows carry their compatible; node-type rows carry none by design.
       const nodeTypeRows = observed.rows.filter((row) => row.compatible === null);
@@ -267,7 +292,7 @@ describe("canonical binding materialization from a published release", () => {
 
       const revision = await pool.query<{ status: string }>(
         `select status from dts_config_revisions where id = $1`,
-        [project.configRevisionId],
+        [revisionRow.id],
       );
       expect(revision.rows.map((row) => row.status)).toEqual(["resolved"]);
     }
@@ -284,10 +309,8 @@ describe("canonical binding materialization from a published release", () => {
       expect(available, `definition ${propertyKey}`).toContain(propertyKey);
     }
 
-    // B6: the seed now registers the subjects its reviewed sources reference, using
-    // the automatic/trusted-system path the governance contract pre-authorises, and
-    // the modules it needs are the ones DTS ingest already provisions per logical
-    // node. Subjects it cannot place are reported rather than dropped.
+    // Registration proceeds during preflight, but one missing placement blocks the
+    // run before the second phase writes any canonical project value.
     const registrations = await pool.query<{ count: string }>(
       `select count(*)::text as count
          from parameter_catalog.organization_subject_registrations
@@ -296,29 +319,20 @@ describe("canonical binding materialization from a published release", () => {
     );
     expect(Number(registrations.rows[0]?.count)).toBeGreaterThan(0);
 
-    for (const project of outcome.projects) {
-      expect(
-        project.registeredSubjectIds.length + project.unregisteredSubjectIds.length,
-        `${project.projectId} accounted-for subjects`,
-      ).toBeGreaterThan(0);
-      expect(
-        project.canonicalBindingsWritten,
-        `${project.projectId} bindings`,
-      ).toBeGreaterThan(0);
-    }
-
-    // Every bound subject must be one the run reports as registered: a binding the
-    // run cannot account for would mean the sync bound something unreported.
-    const bound = await pool.query<{ count: string }>(
+    const bindings = await pool.query<{ count: string }>(
       `select count(*)::text as count
-         from parameter_catalog.project_parameter_bindings b
-        where not exists (
-          select 1 from parameter_catalog.organization_subject_registrations r
-           where r.organization_id = $1 and r.subject_id = b.subject_id and r.status = 'active'
-        )`,
+         from parameter_catalog.project_parameter_bindings
+        where organization_id = $1`,
       [ORG],
     );
-    expect(Number(bound.rows[0]?.count)).toBe(0);
+    expect(bindings.rows[0]?.count).toBe("0");
+
+    const run = await getSeedInitializationRun(root, {
+      organizationId: ORG,
+      seedDigest: DIGEST,
+    });
+    expect(run?.status).toBe("failed");
+    expect(run?.blocked).toHaveLength(3);
 
     const pointer = await pool.query<{ current_catalog_release_id: string }>(
       "select current_catalog_release_id from parameter_catalog.catalog_state",

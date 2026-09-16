@@ -270,7 +270,7 @@ type ObservedProperty = {
   fileName: string | null;
 };
 
-const parseCompatibles = (raw: string | null): string[] => {
+export const parseCompatibles = (raw: string | null): string[] => {
   if (!raw) return [];
   const quoted = [...raw.matchAll(/"([^"]+)"/g)].map((match) => match[1]!);
   if (quoted.length > 0) return quoted;

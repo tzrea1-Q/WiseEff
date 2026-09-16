@@ -5,6 +5,20 @@
 import pg from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
+import { compileCatalogRelease } from "../../catalog-kernel/compiler/index";
+import {
+  refreshAuthoritativeSource,
+  validCatalogReleaseBundle
+} from "../../catalog-kernel/compiler/__fixtures__/catalogReleaseBundle";
+import type {
+  CatalogReleaseBundle,
+  CatalogReleaseDefinitionDocument,
+  CatalogReleaseSubjectDocument
+} from "../../catalog-kernel/compiler/types";
+import { jsonCatalogReleaseSource } from "../../catalog-kernel/interface";
+import { installPublishedRelease } from "../../catalog-kernel/install/installer";
+import { CatalogSubjectId } from "../../parameter-catalog-contract/index";
+import { executeRegistration } from "../../parameter-governance/registration/service";
 import { materializeSeedSources, type SeedProjectSources } from "./materialize";
 import { getSeedInitializationRun } from "./plan";
 import {
@@ -43,6 +57,76 @@ const sources = (): SeedProjectSources[] => [
   { projectId: "atlas", files: [{ name: "charging-thermal.dts", format: "dts", content: dtsFor("atlas") }] },
   { projectId: "aurora", files: [{ name: "charging-thermal.dts", format: "dts", content: dtsFor("aurora") }] },
   { projectId: "nebula", files: [{ name: "charging-thermal.dts", format: "dts", content: dtsFor("nebula") }] }
+];
+
+const failClosedCatalogBundle = (): CatalogReleaseBundle => {
+  const base = validCatalogReleaseBundle();
+  const release = structuredClone(base.releases[0]!);
+  const subject = release.documents.find(
+    (document): document is CatalogReleaseSubjectDocument => document.kind === "subject"
+  );
+  const definition = release.documents.find(
+    (document): document is CatalogReleaseDefinitionDocument => document.kind === "definition"
+  );
+  if (!subject || !definition) throw new Error("catalog fixture is incomplete");
+
+  const earlierSubject: CatalogReleaseSubjectDocument = {
+    ...structuredClone(subject),
+    content: {
+      ...structuredClone(subject.content),
+      id: "csub_acme_charger",
+      canonicalKey: "driver:acme,charger",
+      selector: { ...structuredClone(subject.content.selector), value: "acme,charger" }
+    }
+  };
+  const earlierDefinition: CatalogReleaseDefinitionDocument = {
+    ...structuredClone(definition),
+    content: {
+      ...structuredClone(definition.content),
+      id: "pdef_acme_charger_current_limit",
+      subjectId: earlierSubject.content.id,
+      propertyKey: "current_limit",
+      revision: {
+        ...structuredClone(definition.content.revision),
+        id: "drev_acme_charger_current_limit_1",
+        matching: {
+          ...structuredClone(definition.content.revision.matching),
+          sourceProperty: "current_limit"
+        }
+      }
+    }
+  };
+  const occupyingSubject: CatalogReleaseSubjectDocument = {
+    ...structuredClone(subject),
+    content: {
+      ...structuredClone(subject.content),
+      id: "csub_acme_occupied",
+      canonicalKey: "driver:acme,occupied",
+      selector: { ...structuredClone(subject.content.selector), value: "acme,occupied" }
+    }
+  };
+  const target = {
+    ...release,
+    documents: [...release.documents, earlierSubject, earlierDefinition, occupyingSubject]
+  };
+  refreshAuthoritativeSource(target as never);
+  return {
+    schemaVersion: base.schemaVersion,
+    targetReleaseId: target.manifest.release.id,
+    releases: [target]
+  };
+};
+
+const stagedSources = (): SeedProjectSources[] => [
+  {
+    projectId: "aurora",
+    files: [{ name: "charging-thermal.dts", format: "dts", content: dtsFor("aurora").replace("acme,power", "acme,charger").replace("iin_max", "current_limit") }]
+  },
+  {
+    projectId: "nebula",
+    files: [{ name: "charging-thermal.dts", format: "dts", content: dtsFor("nebula").replace("acme,power", "acme,charger").replace("iin_max", "current_limit") }]
+  },
+  { projectId: "atlas", files: [{ name: "charging-thermal.dts", format: "dts", content: dtsFor("atlas") }] }
 ];
 
 describe("seed source materialization", () => {
@@ -145,6 +229,96 @@ describe("seed source materialization", () => {
       `select count(*)::text as count from project_parameter_file_versions`
     );
     expect(after.rows[0]!.count).toBe(before.rows[0]!.count);
+  }, 120_000);
+
+  it("preflights every target, journals every blocker, and performs no value sync when a later target is blocked", async () => {
+    const seedDigest = "sha256:seed-materialize-blocked";
+    const bundle = failClosedCatalogBundle();
+    const compiled = compileCatalogRelease(bundle);
+    expect(compiled.ok, JSON.stringify(compiled)).toBe(true);
+    if (!compiled.ok) throw new Error(compiled.error.kind);
+    const installed = await installPublishedRelease(pool, {
+      mode: "bootstrap",
+      source: jsonCatalogReleaseSource(bundle),
+      expectedTargetDigest: compiled.value.release.digest
+    });
+    expect(installed.ok, JSON.stringify(installed)).toBe(true);
+
+    await pool.query(
+      `insert into public.attribution_subjects (
+         id, organization_id, subject_kind, display_name, source_key
+       ) values
+         ('asub-seed-module-a', $1, 'driver-registration', 'Seed module A', 'compatible:seed,module-a'),
+         ('asub-seed-module-b', $1, 'driver-registration', 'Seed module B', 'compatible:seed,module-b')`,
+      [ORG]
+    );
+    await pool.query(
+      `insert into public.driver_registrations (
+         attribution_subject_id, driver_nature, instance_cardinality
+       ) values
+         ('asub-seed-module-a', 'physical-device', 'multiple'),
+         ('asub-seed-module-b', 'physical-device', 'multiple')`
+    );
+    await pool.query(
+      `insert into public.parameter_modules (
+         id, organization_id, name, path, depth, kind, origin, attribution_subject_id
+       ) values
+         ('pmod-seed-module-a', $1, 'Seed module A', 'pmod-seed-module-a', 1, 'driver-group', 'curated', 'asub-seed-module-a'),
+         ('pmod-seed-module-b', $1, 'Seed module B', 'pmod-seed-module-b', 1, 'driver-group', 'curated', 'asub-seed-module-b')`,
+      [ORG]
+    );
+    const occupied = await executeRegistration(pool, {
+      kind: "register",
+      organizationId: ORG,
+      subjectId: CatalogSubjectId("csub_acme_occupied"),
+      subjectKind: "driver",
+      expectedRelease: {
+        id: compiled.value.release.id,
+        digest: compiled.value.release.digest
+      },
+      placement: { mode: "use-default" },
+      destinationModuleId: "pmod-seed-module-a",
+      method: "explicit",
+      proof: { reason: "reserve one of two modules for the fail-closed fixture" },
+      idempotencyKey: "seed-materialize-blocked:occupy",
+      context: { actorKind: "org-admin", principalId: "user-seed-admin" }
+    });
+    expect(occupied.ok, JSON.stringify(occupied)).toBe(true);
+
+    await expect(
+      materializeSeedSources(root, createMemoryObjectStore(), adminAuth, {
+        organizationId: ORG,
+        seedDigest,
+        sources: stagedSources()
+      })
+    ).rejects.toMatchObject({
+      name: "SeedInitializationBlockedError",
+      blocks: [
+        {
+          projectId: "atlas",
+          subjectId: "csub_acme_power",
+          reason: "missing-placement-module"
+        }
+      ]
+    });
+
+    expect(await getSeedInitializationRun(root, { organizationId: ORG, seedDigest })).toMatchObject({
+      status: "failed",
+      blocked: [
+        {
+          projectId: "atlas",
+          subjectId: "csub_acme_power",
+          reason: "missing-placement-module"
+        }
+      ]
+    });
+    const bindings = await pool.query<{ count: string }>(
+      `select count(*)::text as count
+         from parameter_catalog.project_parameter_bindings
+        where organization_id = $1`,
+      [ORG]
+    );
+    expect(bindings.rows[0]!.count).toBe("0");
   }, 120_000);
 
   it("refuses a JSON seed source explicitly instead of uploading an unresolvable member", async () => {
