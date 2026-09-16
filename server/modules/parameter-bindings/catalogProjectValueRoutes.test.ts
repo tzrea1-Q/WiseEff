@@ -16,6 +16,7 @@ import * as auditedWrite from "../audit/auditedWrite";
 import * as dbClient from "../../shared/database/client";
 import * as sensitiveNode from "../parameter-kernel/sensitiveNode";
 import * as governanceAudit from "../parameter-topology/governanceAudit";
+import * as topologyService from "../parameter-topology/service";
 
 vi.mock("./catalogProjectValueSync", async (importOriginal) => {
   const actual = await importOriginal<typeof import("./catalogProjectValueSync")>();
@@ -41,6 +42,16 @@ vi.mock("../parameter-kernel/sensitiveNode", async (importOriginal) => {
   return {
     ...actual,
     assertTrustedSensitiveNodeWriteAllowed: vi.fn()
+  };
+});
+
+// TD-125: the current-binding read temporarily falls back to the legacy list when the
+// canonical Catalog is empty, so this route test has to stub that owner too.
+vi.mock("../parameter-topology/service", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../parameter-topology/service")>();
+  return {
+    ...actual,
+    listProjectBindings: vi.fn()
   };
 });
 
@@ -694,12 +705,14 @@ describe("canonical project binding reads", () => {
     vi.spyOn(dbClient, "getRootPostgresPool").mockReturnValue({ query: vi.fn() } as never);
   });
 
-  it("returns an honest empty list and never falls back to legacy bindings", async () => {
+  it("falls back to the legacy current view while the canonical plane is not yet written (TD-125)", async () => {
     const db = makeDb();
     vi.mocked(db.query).mockResolvedValue({
       rows: [{ id: "project-1", name: "Project One", code: "P1" }]
     } as never);
     vi.mocked(catalogSync.listCatalogBindingRowsForProject).mockResolvedValue([]);
+    const legacyItem = { id: "legacy-1", parameterSpecId: "pspec-legacy" };
+    vi.mocked(topologyService.listProjectBindings).mockResolvedValue({ items: [legacyItem] } as never);
 
     const response = await requestJson<{ items: unknown[] }>(
       makeServer({ db }),
@@ -707,9 +720,59 @@ describe("canonical project binding reads", () => {
     );
 
     expect(response.status).toBe(200);
-    // Canonical-only: an empty canonical Catalog yields an empty current view,
-    // never archived legacy rows presented as current data.
-    expect(response.body).toEqual({ items: [] });
+    // TD-125: until the canonical writer is wired into release and seed publication, an
+    // empty canonical Catalog must not answer with an empty workbench. Remove this
+    // expectation together with the fallback.
+    expect(response.body).toEqual({ items: [legacyItem] });
+  });
+
+  it("keeps canonical rows and appends only legacy rows whose definition is not canonical", async () => {
+    const db = makeDb();
+    vi.mocked(db.query).mockResolvedValue({
+      rows: [{ id: "project-1", name: "Project One", code: "P1" }]
+    } as never);
+    vi.mocked(catalogSync.listCatalogBindingRowsForProject).mockResolvedValue([
+      {
+        id: "canonical-1",
+        parameterSpecId: "pspec-canonical",
+        parameterSpecVersionId: "psver-canonical",
+        definitionId: "def-canonical",
+        effectiveRevisionId: "drev-canonical",
+        currentValueId: "pval-canonical",
+        projectId: "project-1",
+        propertyKey: "iin_max",
+        driverModule: null,
+        logicalNodeId: "node-canonical",
+        instanceName: null,
+        locator: "/soc/i2c@1",
+        typedValue: { kind: "strings", values: ["2000"] },
+        rawValue: "2000",
+        schemaState: "valid",
+        policyState: "pass",
+        moduleId: "mod-canonical",
+        displayName: "iin_max",
+        description: null,
+        documentation: null
+      }
+    ] as never);
+    const legacyOnly = { id: "legacy-only", parameterSpecId: "pspec-legacy" };
+    vi.mocked(topologyService.listProjectBindings).mockResolvedValue({
+      items: [
+        // Same binding id as the canonical row: never duplicated.
+        { id: "canonical-1", parameterSpecId: "pspec-other" },
+        // Legacy row whose parameterSpecId is the canonical definition: superseded.
+        { id: "legacy-same-definition", parameterSpecId: "def-canonical" },
+        legacyOnly
+      ]
+    } as never);
+
+    const response = await requestJson<{ items: Array<{ id: string }> }>(
+      makeServer({ db }),
+      "/api/v2/projects/project-1/parameter-bindings"
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.body.items.map((item) => item.id)).toEqual(["canonical-1", "legacy-only"]);
   });
 
   it("still hides an unknown or foreign project behind 404", async () => {
@@ -723,6 +786,7 @@ describe("canonical project binding reads", () => {
 
     expect(response.status).toBe(404);
     expect(catalogSync.listCatalogBindingRowsForProject).not.toHaveBeenCalled();
+    expect(topologyService.listProjectBindings).not.toHaveBeenCalled();
   });
 });
 
