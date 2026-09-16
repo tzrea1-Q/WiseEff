@@ -183,6 +183,10 @@ describe("R2-AGT real authenticated Catalog execution", () => {
       [RESTRICTED, ORG, PROJECT]
     );
     await pool.query(
+      "insert into user_role_bindings (id, user_id, organization_id, project_id, role_id) values ('urb-r2-818-restricted-org', $1, $2, null, 'guest')",
+      [RESTRICTED, ORG]
+    );
+    await pool.query(
       "insert into users (id, organization_id, name, title, is_active) values ($1, $2, 'R2 Other admin', 'Admin', true)",
       [ADMIN_B, ORG_B]
     );
