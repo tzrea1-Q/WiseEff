@@ -5,6 +5,20 @@ wiseeff_operation_lock_owner_file() {
   printf '%s.owner\n' "$1"
 }
 
+# Close one lock file descriptor without leaking a redirection into the caller.
+# A bare `exec N>&- 2>/dev/null` is a shell redirection, not a command, so it
+# permanently attaches the calling shell's stderr to /dev/null. That silently
+# hides every later diagnostic, including a failed target-controller handoff.
+# The redirection is scoped to the block, so stderr is restored before the
+# helper returns while fd N stays closed for the caller.
+wiseeff_operation_lock_close_fd() {
+  local fd="${1:-}"
+  case "$fd" in
+    ''|*[!0-9]*) return 0 ;;
+  esac
+  { eval "exec ${fd}>&-"; } 2>/dev/null || true
+}
+
 wiseeff_operation_lock_validate_paths() {
   local lock_root="$1"
   local lock_path="${lock_root}/.operation.lock"
@@ -98,19 +112,19 @@ wiseeff_operation_lock_acquire() {
     if ! flock -n 9; then
       printf '%s\n' "$message" >&2
       wiseeff_operation_lock_print_owner "$operation_lock_owner_path" >&2
-      exec 9>&- 2>/dev/null || true
+      wiseeff_operation_lock_close_fd 9
       return 75
     fi
     operation_lock_mode="flock"
     chmod 600 "$operation_lock_path" || {
       flock -u 9 2>/dev/null || true
-      exec 9>&- 2>/dev/null || true
+      wiseeff_operation_lock_close_fd 9
       operation_lock_mode=""
       return 10
     }
     wiseeff_operation_lock_write_owner "$operation_lock_owner_path" "$operation" || {
       flock -u 9 2>/dev/null || true
-      exec 9>&- 2>/dev/null || true
+      wiseeff_operation_lock_close_fd 9
       operation_lock_mode=""
       return 10
     }
@@ -156,7 +170,7 @@ wiseeff_operation_lock_release() {
 
   if [ "${operation_lock_mode:-}" = "flock" ]; then
     flock -u 9 2>/dev/null || true
-    exec 9>&- 2>/dev/null || true
+    wiseeff_operation_lock_close_fd 9
   elif [ "${operation_lock_mode:-}" = "mkdir" ] && [ -n "${operation_lock_dir:-}" ]; then
     rm -f "${operation_lock_dir}/pid" 2>/dev/null || true
     rmdir "$operation_lock_dir" 2>/dev/null || true
@@ -191,12 +205,12 @@ wiseeff_operation_lock_status() {
         printf 'stale_metadata=%s\n' "$owner_file"
       fi
       flock -u 8 2>/dev/null || true
-      exec 8>&- 2>/dev/null || true
+      wiseeff_operation_lock_close_fd 8
       return 0
     fi
     printf 'lock_state=held\n'
     wiseeff_operation_lock_print_owner "$owner_file"
-    exec 8>&- 2>/dev/null || true
+    wiseeff_operation_lock_close_fd 8
     return 75
   fi
 
@@ -256,16 +270,16 @@ wiseeff_operation_lock_clear_stale() {
     if ! flock -n 8; then
       printf 'Refusing to unlock a live WiseEff host operation.\n' >&2
       wiseeff_operation_lock_print_owner "$owner_file" >&2
-      exec 8>&- 2>/dev/null || true
+      wiseeff_operation_lock_close_fd 8
       return 75
     fi
     if ! rm -f "$owner_file"; then
       flock -u 8 2>/dev/null || true
-      exec 8>&- 2>/dev/null || true
+      wiseeff_operation_lock_close_fd 8
       return 10
     fi
     flock -u 8 2>/dev/null || true
-    exec 8>&- 2>/dev/null || true
+    wiseeff_operation_lock_close_fd 8
     printf 'WiseEff host lock is free; stale owner metadata was cleared.\n'
     return 0
   fi
