@@ -24,12 +24,15 @@ import type { ObjectStore } from "../../logs/objectStore";
 
 /** Rows read per relation. Exceeding it marks the archive truncated. */
 export const ARCHIVE_ROW_CAP = 5_000;
+/** Keeps base64 + JSON assembly bounded well below the server process heap. */
+export const ARCHIVE_OBJECT_BYTES_CAP = 64 * 1024 * 1024;
 
 type RelationScope =
   | { readonly kind: "project"; readonly projectId: string }
   | { readonly kind: "request" }
   | { readonly kind: "round" }
   | { readonly kind: "binding" }
+  | { readonly kind: "canonicalBinding" }
   | { readonly kind: "file" }
   | { readonly kind: "configSet" }
   | { readonly kind: "baseline" }
@@ -56,6 +59,8 @@ export const ARCHIVED_PARAMETER_PLANE_RELATIONS: readonly ArchiveRelation[] = [
   { key: "project_parameter_file_candidates", from: "public.project_parameter_file_candidates", scope: { kind: "project", projectId: "" } },
   { key: "project_parameter_initialization_drafts", from: "public.project_parameter_initialization_drafts", scope: { kind: "project", projectId: "" } },
   { key: "project_parameter_initialization_reviews", from: "public.project_parameter_initialization_reviews", scope: { kind: "project", projectId: "" } },
+  { key: "project_parameter_value_drafts", from: "public.project_parameter_value_drafts", scope: { kind: "project", projectId: "" } },
+  { key: "project_parameter_value_change_requests", from: "public.project_parameter_value_change_requests", scope: { kind: "project", projectId: "" } },
   { key: "parameter_review_decisions", from: "public.parameter_review_decisions", scope: { kind: "request" } },
   { key: "parameter_submission_items", from: "public.parameter_submission_items", scope: { kind: "round" } },
   { key: "project_parameter_binding_revisions", from: "public.project_parameter_binding_revisions", scope: { kind: "binding" } },
@@ -68,9 +73,14 @@ export const ARCHIVED_PARAMETER_PLANE_RELATIONS: readonly ArchiveRelation[] = [
   { key: "dts_logical_nodes", from: "public.dts_logical_nodes", scope: { kind: "project", projectId: "" } },
   { key: "dts_logical_node_revisions", from: "public.dts_logical_node_revisions", scope: { kind: "logicalNode" } },
   {
+    key: "binding_history_events",
+    from: "parameter_catalog.binding_history_events",
+    scope: { kind: "canonicalBinding" }
+  },
+  {
     key: "canonical_values",
     from: "parameter_catalog.project_parameter_values",
-    scope: { kind: "binding" }
+    scope: { kind: "canonicalBinding" }
   }
 ];
 
@@ -85,6 +95,10 @@ const SCOPE_SQL: Record<Exclude<RelationScope["kind"], "project">, string> = {
   )`,
   binding: `binding_id in (
     select id from public.project_parameter_bindings
+     where organization_id = $1 and project_id = $2
+  )`,
+  canonicalBinding: `binding_id in (
+    select id from parameter_catalog.project_parameter_bindings
      where organization_id = $1 and project_id = $2
   )`,
   file: `file_id in (
@@ -206,7 +220,7 @@ export async function captureProjectParameterPlane(
     );
     const totalCount = Number(total.rows[0]?.n ?? 0);
     const rows = await session.query(
-      `select * from ${relation.from} where ${predicate} order by ctid limit $3`,
+      `select * from ${relation.from} where ${predicate} order by id limit $3`,
       [organizationId, input.projectId, ARCHIVE_ROW_CAP]
     );
     counts[relation.key] = totalCount;
@@ -214,9 +228,15 @@ export async function captureProjectParameterPlane(
     if (totalCount > ARCHIVE_ROW_CAP) truncated = true;
   }
 
-  const objects: Record<string, ArchivedPlaneObject> = {};
-  const fileVersions = relations.project_parameter_file_versions ?? [];
-  for (const candidate of fileVersions) {
+  const objectReferences = [
+    ...(relations.project_parameter_file_versions ?? []),
+    ...(relations.project_parameter_file_candidates ?? []).filter(
+      (candidate) => (candidate as { storage_key?: unknown }).storage_key != null,
+    ),
+  ];
+  const requiredObjects = new Map<string, { checksumSha256: string; sizeBytes: number }>();
+  let aggregateObjectBytes = 0;
+  for (const candidate of objectReferences) {
     const row = candidate as { storage_key?: unknown; checksum?: unknown; size_bytes?: unknown };
     if (
       typeof row.storage_key !== "string" ||
@@ -228,39 +248,62 @@ export async function captureProjectParameterPlane(
         reason: "parameter-file-version-metadata-invalid"
       });
     }
-    let sourceBytes: Buffer;
-    try {
-      sourceBytes = await objectStore.get(row.storage_key);
-    } catch {
-      throw new ApiError("CONFLICT", "A parameter file version object is unavailable for offline archive.", {
+    const sizeBytes = Number(row.size_bytes);
+    if (!Number.isSafeInteger(sizeBytes) || sizeBytes < 0) {
+      throw new ApiError("CONFLICT", "A parameter source object has invalid size metadata.", {
         projectId: input.projectId,
         storageKey: row.storage_key,
-        reason: "parameter-file-version-object-unavailable"
+        reason: "parameter-source-object-size-invalid"
+      });
+    }
+    const existingObject = requiredObjects.get(row.storage_key);
+    if (
+      existingObject &&
+      (existingObject.checksumSha256 !== row.checksum || existingObject.sizeBytes !== sizeBytes)
+    ) {
+      throw new ApiError("CONFLICT", "A parameter source storage key has conflicting metadata.", {
+        projectId: input.projectId,
+        storageKey: row.storage_key,
+        reason: "parameter-source-object-metadata-conflict"
+      });
+    }
+    if (!existingObject) {
+      aggregateObjectBytes += sizeBytes;
+      if (aggregateObjectBytes > ARCHIVE_OBJECT_BYTES_CAP) {
+        throw new ApiError("CONFLICT", "The parameter source archive exceeds its aggregate byte limit.", {
+          projectId: input.projectId,
+          aggregateObjectBytes,
+          maxBytes: ARCHIVE_OBJECT_BYTES_CAP,
+          reason: "parameter-source-archive-too-large"
+        });
+      }
+      requiredObjects.set(row.storage_key, { checksumSha256: row.checksum, sizeBytes });
+    }
+  }
+
+  const objects: Record<string, ArchivedPlaneObject> = {};
+  for (const [storageKey, expected] of requiredObjects) {
+    let sourceBytes: Buffer;
+    try {
+      sourceBytes = await objectStore.get(storageKey);
+    } catch {
+      throw new ApiError("CONFLICT", "A parameter source object is unavailable for offline archive.", {
+        projectId: input.projectId,
+        storageKey,
+        reason: "parameter-source-object-unavailable"
       });
     }
     const checksumSha256 = createHash("sha256").update(sourceBytes).digest("hex");
-    const sizeBytes = Number(row.size_bytes);
-    if (checksumSha256 !== row.checksum || sourceBytes.byteLength !== sizeBytes) {
-      throw new ApiError("CONFLICT", "A parameter file version object failed its checksum or size check.", {
+    if (checksumSha256 !== expected.checksumSha256 || sourceBytes.byteLength !== expected.sizeBytes) {
+      throw new ApiError("CONFLICT", "A parameter source object failed its checksum or size check.", {
         projectId: input.projectId,
-        storageKey: row.storage_key,
-        reason: "parameter-file-version-object-integrity-failed"
+        storageKey,
+        reason: "parameter-source-object-integrity-failed"
       });
     }
-    const existingObject = objects[row.storage_key];
-    if (
-      existingObject &&
-      (existingObject.checksumSha256 !== checksumSha256 || existingObject.sizeBytes !== sizeBytes)
-    ) {
-      throw new ApiError("CONFLICT", "A parameter file version storage key has conflicting metadata.", {
-        projectId: input.projectId,
-        storageKey: row.storage_key,
-        reason: "parameter-file-version-object-metadata-conflict"
-      });
-    }
-    objects[row.storage_key] = {
+    objects[storageKey] = {
       checksumSha256,
-      sizeBytes,
+      sizeBytes: expected.sizeBytes,
       bytesBase64: sourceBytes.toString("base64")
     };
   }
@@ -478,13 +521,21 @@ export async function assertProjectParameterPlaneArchived(
   const fileVersionRows = Array.isArray(document?.relations?.project_parameter_file_versions)
     ? document.relations.project_parameter_file_versions
     : [];
-  const objectsMatch = fileVersionRows.every((candidate) => {
+  const candidateRows = Array.isArray(document?.relations?.project_parameter_file_candidates)
+    ? document.relations.project_parameter_file_candidates.filter(
+      (candidate) => (candidate as { storage_key?: unknown }).storage_key != null,
+    )
+    : [];
+  const objectReferenceRows = [...fileVersionRows, ...candidateRows];
+  const referencedStorageKeys = new Set<string>();
+  const objectsMatch = document?.objects !== null && typeof document?.objects === "object" && objectReferenceRows.every((candidate) => {
     const version = candidate as { storage_key?: unknown; checksum?: unknown; size_bytes?: unknown };
     if (
       typeof version.storage_key !== "string" ||
       typeof version.checksum !== "string" ||
       !["number", "string"].includes(typeof version.size_bytes)
     ) return false;
+    referencedStorageKeys.add(version.storage_key);
     const archivedObject = document?.objects?.[version.storage_key];
     if (!archivedObject) return false;
     const decoded = Buffer.from(archivedObject.bytesBase64, "base64");
@@ -494,7 +545,7 @@ export async function assertProjectParameterPlaneArchived(
       decoded.byteLength === archivedObject.sizeBytes &&
       createHash("sha256").update(decoded).digest("hex") === archivedObject.checksumSha256
     );
-  });
+  }) && Object.keys(document?.objects ?? {}).every((storageKey) => referencedStorageKeys.has(storageKey));
   if (
     sha256(bytes) !== row.content_digest ||
     expectedArchiveDigest !== row.archive_digest ||

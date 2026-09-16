@@ -33,9 +33,10 @@ execution, recovery claims, or production readiness. Those remain #853 T2.3 and 
 | R3-03 | Two processes with the same or different seed digests write the shared Atlas/Aurora/Nebula scope concurrently | Session-level PostgreSQL advisory lock covers the full operation for Organization + fixed target scope; every contender gets `CONFLICT` | Corrected; deterministic held-object-store concurrency cases |
 | R3-04 | A completed run is downgraded to `running` or `failed` through the journal seam | The upsert refuses updates when the stored state is `completed` | Corrected; `plan.test.ts` terminal-state case |
 | R3-05 | Wrong or missing project identity is guessed or created | Stable id, Organization and reviewed project code must all match; blocked plans create no project | Existing `plan.test.ts` evidence |
-| R3-06 | Capture silently omits a non-regenerable relation or another Project's child rows bleed in | Twenty-one relations cover drafts/history, config sets, baselines, config revisions, stable logical identity, bindings, files and canonical values; child rows are reached through Project-owned parents | Corrected; `archive.integration.test.ts` graph and isolation evidence |
-| R3-06a | Capture claims idempotency only because a test injects the same timestamp | Reuse compares the verified prior artifact's parameter-plane content while retaining its original capture time; ordinary calls with no injected time reuse an unchanged plane | Corrected; production-shaped idempotency case |
-| R3-06b | File-version metadata is archived but its object-store bytes are missing or changed | Archive v2 reads every referenced file-version object, verifies stored SHA-256 and size, and embeds the bytes; missing or mismatched objects fail closed | Corrected; byte-content assertions |
+| R3-06 | Capture silently omits a non-regenerable relation or another Project's child rows bleed in | Twenty-four relations additionally include canonical pending drafts, change requests and binding history; canonical values/history use the canonical Binding owner while legacy revisions use the legacy owner | Corrected; real non-zero graph and isolation evidence |
+| R3-06a | Capture claims idempotency only because of timestamp or physical row order | Reuse ignores capture time and every relation is ordered by stable primary key, never `ctid`; ordinary calls reuse an unchanged logical plane | Corrected; production-shaped idempotency case |
+| R3-06b | Source metadata is archived but a file-version or unactivated candidate object's bytes are missing or changed | Archive v2 reads both object classes, verifies stored SHA-256 and size, and embeds the bytes; missing or mismatched objects fail closed | Corrected; byte-content assertions |
+| R3-06c | Up to 5,000 source objects exhaust process memory while the archive JSON is assembled | Unique referenced source bytes have a 64 MiB aggregate cap checked from metadata before object reads; over-cap capture fails closed | Corrected; aggregate-cap refusal case |
 | R3-07 | Separate count and row reads observe a torn plane, or a bounded relation is treated as complete | Capture runs under one repeatable-read transaction; `truncated=true` blocks rebuild; the guard requires exact declared relation keys and row lengths equal to ledger counts | Corrected; forged torn-artifact refusal |
 | R3-08 | The captured object is removed/corrupted, or a newer valid archive masks that failure | Guard selects the exact capture ID + digest and verifies object SHA-256, archive digest, schema version, Organization, Project, truncation, relation counts and embedded file bytes | Corrected; tampered and exact-artifact cases |
 | R3-09 | Capture is mistaken for disposal | Test proves source drafts remain after capture; schema intentionally has no disposal/deletion marker | Characterized; disposal remains #853 T2.3 |
@@ -52,8 +53,8 @@ execution, recovery claims, or production readiness. Those remain #853 T2.3 and 
   their primary/unique keys, checks, indexes, `RESTRICT` ownership FKs, and nullable User-history policy.
 - `archive.integration.test.ts` runs on real PostgreSQL, verifies the two retention FKs, the User-history FK,
   the journal primary key, and the deliberate absence of `disposed_at`/`deleted_at`.
-- The same suite proves all twenty-one relation counts, stored rows, source-version bytes, child scoping,
-  cross-Project isolation, unchanged source rows, idempotent reuse, missing/truncated/torn refusal,
+- The same suite proves all twenty-four relation counts, stored rows, file-version and candidate bytes, child scoping,
+  cross-Project isolation, unchanged source rows, aggregate-cap enforcement, idempotent reuse, missing/truncated/torn refusal,
   exact-artifact selection, authorization, and object integrity.
 - `plan.test.ts` proves fixed target identity, no implicit project creation, retry blocker visibility,
   completed-run idempotency, and terminal-state immutability.

@@ -528,9 +528,9 @@ offline first, and nothing did that.
 
 | Element | Behaviour |
 | --- | --- |
-| Archived plane | 21 declared relations - drafts/history, submission workflows, config sets/baselines/revisions, stable logical identities, bindings/revisions, source files/candidates/versions, initialization review state, and canonical values |
+| Archived plane | 24 declared relations - legacy and canonical drafts/history/reviews, config sets/baselines/revisions, stable logical identities, bindings/revisions, source files/candidates/versions, and canonical values |
 | Child scoping | `parameter_review_decisions`, `parameter_submission_items`, `project_parameter_binding_revisions` and `project_parameter_file_versions` carry no `project_id`, so they are reached through their parent instead of being silently skipped |
-| Artifact | One v2 JSON document written to the object store, carrying provenance, `truncated`, per-relation counts/rows, and checksum-verified bytes for every referenced file version |
+| Artifact | One v2 JSON document written to the object store, carrying provenance, `truncated`, stable-primary-key-ordered rows, and checksum-verified bytes for every referenced file version or unactivated candidate; aggregate source bytes are capped at 64 MiB |
 | Idempotency | `archive_digest` covers the scope, the counts and the content digest, so re-capturing an unchanged plane reuses the object rather than writing a second one |
 | Bound | Each relation is read with a 5,000-row cap; exceeding it sets `truncated`, so a partial capture can never be mistaken for complete preservation |
 | Guard | `assertProjectParameterPlaneArchived` validates the exact archive ID/digest returned by capture and refuses missing, truncated, torn or byte-incomplete artifacts |
@@ -540,8 +540,8 @@ offline first, and nothing did that.
 ledger deliberately has no column that could imply disposal happened. Removing the archived plane needs its own
 reviewed decision, and the run report records it as remaining work rather than quietly implementing it.
 
-**Verification.** `archive.integration.test.ts` (9 tests, real PostgreSQL) asserts the 21-relation graph and
-embedded source bytes, parent scoping and cross-Project isolation, idempotent reuse, missing source-object refusal,
+**Verification.** `archive.integration.test.ts` (10 tests, real PostgreSQL) asserts the 24-relation graph and
+embedded version/candidate bytes, parent scoping and cross-Project isolation, idempotent reuse, missing or over-cap source-object refusal,
 and fail-closed handling for missing, truncated, torn, tampered or substituted archives, plus authorization and
 schema-retention constraints.
 `materialize.test.ts` and both binding-materialization tests still pass with the archive step in place.
@@ -732,5 +732,5 @@ implementation. The [retrospective threat matrix](849-inventory/migrations-0148-
 records the boundary. The correction candidate binds the requested Organization to authentication, authorizes all
 targets before journaling or completed replay, serializes the fixed Organization scope across processes and seed
 digests, makes `completed` terminal, and verifies the exact v2 archived object and source bytes before rebuilding.
-Real-PostgreSQL evidence is now 7 plan, 9 archive and 7 materialization tests. Capture still does not mean disposal; target quiescence, recovery and any
+Real-PostgreSQL evidence is now 7 plan, 10 archive and 7 materialization tests. Capture still does not mean disposal; target quiescence, recovery and any
 deletion remain #853 T2.3/T3.3 obligations.

@@ -11,6 +11,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import {
   ARCHIVE_ROW_CAP,
+  ARCHIVE_OBJECT_BYTES_CAP,
   archiveDigestOf,
   assertProjectParameterPlaneArchived,
   captureProjectParameterPlane
@@ -40,12 +41,14 @@ const PROJECT = "atlas";
 const OTHER_PROJECT = "aurora";
 const VERSION_ONE = Buffer.from("version one", "utf8");
 const VERSION_TWO = Buffer.from("version two!", "utf8");
+const CANDIDATE_BYTES = Buffer.from("candidate source", "utf8");
 const checksum = (bytes: Buffer) => createHash("sha256").update(bytes).digest("hex");
 
 const archiveStore = (): MemoryObjectStore => {
   const store = createMemoryObjectStore();
   store.entries.set("org/atlas/charging-thermal-v1.dts", VERSION_ONE);
   store.entries.set("org/atlas/charging-thermal-v2.dts", VERSION_TWO);
+  store.entries.set("org/atlas/charging-candidate.dts", CANDIDATE_BYTES);
   return store;
 };
 
@@ -139,6 +142,113 @@ describe("legacy parameter plane archive", () => {
          (id, logical_node_id, config_revision_id, node_locator, name)
        values ('logical_revision_1', 'logical_1', 'revision_1', '/soc/node', 'node')`,
     );
+    await pool.query(
+      `insert into public.project_parameter_file_candidates (
+         id, organization_id, project_id, file_id, file_name, format, status,
+         base_version_id, storage_key, checksum, size_bytes
+       ) values (
+         'candidate_1', $1, $2, 'pfile_1', 'charging-candidate.dts', 'dts', 'ready',
+         'pfv_2', 'org/atlas/charging-candidate.dts', $3, $4
+       )`,
+      [ORG, PROJECT, checksum(CANDIDATE_BYTES), CANDIDATE_BYTES.byteLength],
+    );
+    await pool.query(
+      `begin;
+       set constraints all deferred;
+       insert into public.attribution_subjects (
+         id, organization_id, subject_kind, display_name, origin, source_key
+       ) values ('asub_archive', 'org-plane-archive', 'driver-registration', 'Archive driver', 'curated', 'compatible:acme,archive');
+       insert into public.driver_registrations (
+         attribution_subject_id, driver_nature, instance_cardinality
+       ) values ('asub_archive', 'physical-device', 'multiple');
+       insert into public.parameter_modules (
+         id, organization_id, name, path, kind, origin, source_key, attribution_subject_id
+       ) values (
+         'pmod_archive', 'org-plane-archive', 'Archive driver', 'pmod_archive', 'driver-group', 'curated',
+         'compatible:acme,archive', 'asub_archive'
+       );
+       insert into parameter_catalog.catalog_releases (
+         id, release_sequence, release_version, release_digest, compiled_model_digest,
+         toolchain_digest, published_at
+       ) values (
+         'crel_archive', 9001, 'archive-test', 'sha256:archive-release',
+         'sha256:archive-compiled', 'sha256:archive-toolchain', '2026-09-15T00:00:00Z'
+       );
+       insert into parameter_catalog.catalog_subjects (
+         id, introduced_release_id, kind, canonical_key
+       ) values ('csub_archive', 'crel_archive', 'driver', 'acme,archive');
+       insert into parameter_catalog.catalog_drivers (subject_id, nature, cardinality)
+       values ('csub_archive', 'physical-device', 'multiple');
+       insert into parameter_catalog.catalog_release_subjects (
+         release_id, subject_id, lifecycle, selector_snapshot, selector_provenance
+       ) values (
+         'crel_archive', 'csub_archive', 'active',
+         '{"kind":"driver-compatible","value":"acme,archive"}', '{}'
+       );
+       insert into parameter_catalog.parameter_definitions (
+         id, introduced_release_id, subject_id, property_key, current_revision_id
+       ) values ('pdef_archive', 'crel_archive', 'csub_archive', 'limit', 'drev_archive');
+       insert into parameter_catalog.definition_revisions (
+         id, definition_id, revision_number, catalog_release_id, content_digest, content
+       ) values ('drev_archive', 'pdef_archive', 1, 'crel_archive', 'sha256:archive-definition', '{}');
+       insert into parameter_catalog.catalog_release_definition_heads (
+         release_id, definition_id, revision_id
+       ) values ('crel_archive', 'pdef_archive', 'drev_archive');
+       insert into parameter_catalog.catalog_materializations (
+         release_id, compiled_fingerprint, database_fingerprint, attempt_id, success_audit_ref
+       ) values (
+         'crel_archive', 'sha256:archive-compiled-fingerprint',
+         'sha256:archive-database-fingerprint', 'archive-attempt', 'archive-audit'
+       );
+       insert into parameter_catalog.organization_subject_registrations (
+         id, organization_id, subject_id, status, registration_method, proof, current_placement_id
+       ) values ('reg_archive', 'org-plane-archive', 'csub_archive', 'active', 'explicit', '{}', 'placement_archive');
+       insert into parameter_catalog.subject_placements (
+         id, registration_id, organization_id, module_id, origin
+       ) values ('placement_archive', 'reg_archive', 'org-plane-archive', 'pmod_archive', 'curated');
+       insert into parameter_catalog.project_parameter_bindings (
+         id, organization_id, catalog_release_id, project_id, logical_node_id,
+         registration_id, subject_id, definition_id, effective_revision_id, current_value_id
+       ) values (
+         'binding_archive', 'org-plane-archive', 'crel_archive', 'atlas', 'logical_archive', 'reg_archive',
+         'csub_archive', 'pdef_archive', 'drev_archive', 'pvalue_archive'
+       );
+       insert into parameter_catalog.project_parameter_values (
+         id, binding_id, definition_id, definition_revision_id, source_ref,
+         config_revision_id, value_digest, value_kind, value
+       ) values (
+         'pvalue_archive', 'binding_archive', 'pdef_archive', 'drev_archive',
+         'charging-thermal.dts:/soc/node:limit', 'revision_1', 'sha256:archive-value', 'number', '1000'
+       );
+       insert into public.project_parameter_value_drafts (
+         id, organization_id, project_id, binding_id, definition_id, definition_revision_id,
+         catalog_release_id, base_current_value_id, config_revision_id, source_ref,
+         action, target_value, reason, user_id
+       ) values (
+         'value_draft_archive', 'org-plane-archive', 'atlas', 'binding_archive', 'pdef_archive', 'drev_archive',
+         'crel_archive', 'pvalue_archive', 'revision_1', 'charging-thermal.dts:/soc/node:limit',
+         'set', '1100', 'archive the pending draft', 'user-plane-archive'
+       );
+       insert into public.project_parameter_value_change_requests (
+         id, organization_id, project_id, draft_id, binding_id, definition_id,
+         definition_revision_id, catalog_release_id, base_current_value_id,
+         config_revision_id, source_ref, action, target_value, reason, status, submitter_user_id
+       ) values (
+         'value_request_archive', 'org-plane-archive', 'atlas', 'value_draft_archive', 'binding_archive', 'pdef_archive',
+         'drev_archive', 'crel_archive', 'pvalue_archive', 'revision_1',
+         'charging-thermal.dts:/soc/node:limit', 'set', '1100', 'archive the review request',
+         'pending', 'user-plane-archive'
+       );
+       insert into parameter_catalog.binding_history_events (
+         id, binding_id, old_effective_revision_id, new_effective_revision_id,
+         old_current_value_id, new_current_value_id, reason, success_audit_ref, catalog_release_id
+       ) values (
+         'binding_history_archive', 'binding_archive', 'drev_archive', 'drev_archive',
+         null, 'pvalue_archive', 'archive the binding history', 'archive-history-audit', 'crel_archive'
+       );
+       set constraints all immediate;
+       commit;`,
+    );
   }, 120_000);
 
   afterAll(async () => {
@@ -167,6 +277,10 @@ describe("legacy parameter plane archive", () => {
     expect(archive.counts.dts_release_baseline_members).toBe(1);
     expect(archive.counts.dts_config_revision_members).toBe(1);
     expect(archive.counts.dts_logical_node_revisions).toBe(1);
+    expect(archive.counts.project_parameter_value_drafts).toBe(1);
+    expect(archive.counts.project_parameter_value_change_requests).toBe(1);
+    expect(archive.counts.binding_history_events).toBe(1);
+    expect(archive.counts.canonical_values).toBe(1);
 
     // The archived document is the offline artifact and must actually carry the rows.
     const stored = store.entries.get(archive.objectRef);
@@ -191,13 +305,19 @@ describe("legacy parameter plane archive", () => {
       checksumSha256: checksum(VERSION_TWO),
       sizeBytes: VERSION_TWO.byteLength,
     });
+    expect(Buffer.from(document.objects["org/atlas/charging-candidate.dts"].bytesBase64, "base64")).toEqual(
+      CANDIDATE_BYTES,
+    );
+    expect(document.relations.project_parameter_value_drafts[0].id).toBe("value_draft_archive");
+    expect(document.relations.project_parameter_value_change_requests[0].id).toBe("value_request_archive");
+    expect(document.relations.binding_history_events[0].id).toBe("binding_history_archive");
     // Nothing from the other project leaked into this project's archive.
     expect(JSON.stringify(document.relations)).not.toContain("pdraft_other");
     expect(JSON.stringify(document.relations)).not.toContain("pfile_other");
     expect(JSON.stringify(document.relations)).not.toContain("pfv_other");
 
     // Every declared relation is accounted for, even when it is empty.
-    expect(Object.keys(archive.counts).length).toBe(21);
+    expect(Object.keys(archive.counts).length).toBe(24);
     const retainedDrafts = await pool.query<{ count: string }>(
       `select count(*)::text as count from public.parameter_drafts
         where organization_id = $1 and project_id = $2`,
@@ -214,8 +334,35 @@ describe("legacy parameter plane archive", () => {
       captureProjectParameterPlane(root, store, editorAuth, { projectId: PROJECT }),
     ).rejects.toMatchObject({
       code: "CONFLICT",
-      details: { reason: "parameter-file-version-object-unavailable" },
+      details: { reason: "parameter-source-object-unavailable" },
     });
+  }, 120_000);
+
+  it("refuses capture before object reads when aggregate source bytes exceed the archive cap", async () => {
+    await pool.query(
+      `update public.project_parameter_file_candidates
+          set size_bytes = $1
+        where id = 'candidate_1'`,
+      [ARCHIVE_OBJECT_BYTES_CAP + 1],
+    );
+    try {
+      await expect(
+        captureProjectParameterPlane(root, archiveStore(), editorAuth, { projectId: PROJECT }),
+      ).rejects.toMatchObject({
+        code: "CONFLICT",
+        details: {
+          maxBytes: ARCHIVE_OBJECT_BYTES_CAP,
+          reason: "parameter-source-archive-too-large",
+        },
+      });
+    } finally {
+      await pool.query(
+        `update public.project_parameter_file_candidates
+            set size_bytes = $1
+          where id = 'candidate_1'`,
+        [CANDIDATE_BYTES.byteLength],
+      );
+    }
   }, 120_000);
 
   it("reuses an identical archive instead of writing a second object", async () => {
