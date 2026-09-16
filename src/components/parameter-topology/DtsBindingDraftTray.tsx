@@ -272,15 +272,18 @@ export function DtsBindingDraftTray({
     if (displayedCandidates.missingRoles && displayedCandidates.missingRoles.length > 0) {
       return displayedCandidates.missingRoles.map((r) => ROLE_LABELS[r] ?? r).join("、");
     }
-    if (displayedCandidates.ready === false) {
-      const missing: string[] = [];
-      if (!hardwareCommitterId) missing.push(ROLE_LABELS["hardware-committer"]);
-      if (!softwareCommitterId) missing.push(ROLE_LABELS["software-committer"]);
-      if (!softwareUserId) missing.push(ROLE_LABELS["software-user"]);
-      return missing.length > 0 ? missing.join("、") : null;
+    const missing: string[] = [];
+    if (displayedCandidates.hardwareCommitters && displayedCandidates.hardwareCommitters.length === 0) {
+      missing.push(ROLE_LABELS["hardware-committer"]);
     }
-    return null;
-  }, [displayedCandidates, hardwareCommitterId, softwareCommitterId, softwareUserId]);
+    if (displayedCandidates.softwareCommitters && displayedCandidates.softwareCommitters.length === 0) {
+      missing.push(ROLE_LABELS["software-committer"]);
+    }
+    if (displayedCandidates.softwareUsers && displayedCandidates.softwareUsers.length === 0) {
+      missing.push(ROLE_LABELS["software-user"]);
+    }
+    return missing.length > 0 ? missing.join("、") : null;
+  }, [displayedCandidates]);
 
   const roleError = missingRoleNames
     ? `当前项目缺少以下审核角色：${missingRoleNames}，已阻止提交。`

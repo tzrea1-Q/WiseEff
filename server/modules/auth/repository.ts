@@ -59,8 +59,6 @@ function authContextFromRows(rows: AuthRow[]) {
     .map((row) => ({ projectId: row.project_id, roleId: row.role_id }))
     .sort((left, right) => compareRoles(right.roleId, left.roleId));
 
-  const orgRoles = roles.filter((role) => role.projectId === null);
-
   return {
     user: {
       id: first.user_id,
@@ -77,7 +75,7 @@ function authContextFromRows(rows: AuthRow[]) {
     },
     roles,
     permissions: uniquePermissions([
-      ...permissionsForRoles(orgRoles.map((role) => role.roleId)),
+      ...permissionsForRoles(roles.map((role) => role.roleId)),
       ...catalogTestCapabilitiesForUser(first.user_id)
     ])
   };

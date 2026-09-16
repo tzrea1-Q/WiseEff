@@ -25,65 +25,33 @@ function isActive(auth: AuthContext) {
   return auth.user.isActive;
 }
 
-export function canViewParameters(auth: AuthContext, projectId?: string) {
-  if (!isActive(auth)) return false;
-  if (hasPermission(auth, "parameter:view") || isOrgAdmin(auth)) return true;
-  if (projectId !== undefined) {
-    return auth.roles.some(
-      (binding) =>
-        (binding.projectId === projectId || binding.projectId === null) &&
-        ["guest", "hardware-user", "software-user", "hardware-committer", "software-committer", "admin", "platform-admin"].includes(
-          binding.roleId
-        )
-    );
-  }
-  return false;
+export function canViewParameters(auth: AuthContext) {
+  return hasPermission(auth, "parameter:view");
 }
 
 /** Roles whose binding to a project grants parameter editing there. */
 const projectEditRoles: BackendRoleId[] = ["hardware-user", "software-user", "hardware-committer", "software-committer"];
-const criticalEditRoles: BackendRoleId[] = ["hardware-committer", "software-committer"];
-
-function isOrgAdmin(auth: AuthContext) {
-  return auth.roles.some((b) => b.projectId === null && (b.roleId === "admin" || b.roleId === "platform-admin"));
-}
 
 export function canEditParameters(auth: AuthContext, projectId?: string) {
   if (!isActive(auth)) return false;
-  if (isOrgAdmin(auth)) return true;
   if (projectId !== undefined) {
-    return auth.roles.some(
-      (b) => (b.projectId === projectId || b.projectId === null) && projectEditRoles.includes(b.roleId)
-    );
+    if (hasRole(auth, ["admin", "platform-admin"])) return true;
+    return hasRole(auth, projectEditRoles, projectId);
   }
   return hasPermission(auth, "parameter:edit");
 }
 
-export function canEditCriticalParameters(auth: AuthContext, projectId?: string) {
-  if (!isActive(auth)) return false;
-  if (isOrgAdmin(auth)) return true;
-  if (projectId !== undefined) {
-    return auth.roles.some(
-      (b) => (b.projectId === projectId || b.projectId === null) && criticalEditRoles.includes(b.roleId)
-    );
-  }
-  return hasPermission(auth, "parameter:edit-critical");
+export function canEditCriticalParameters(auth: AuthContext) {
+  return isActive(auth) && hasPermission(auth, "parameter:edit-critical");
 }
 
-export function canReviewParameters(auth: AuthContext, projectId?: string) {
-  if (!isActive(auth)) return false;
-  if (isOrgAdmin(auth)) return true;
-  if (projectId !== undefined) {
-    return auth.roles.some(
-      (b) => (b.projectId === projectId || b.projectId === null) && criticalEditRoles.includes(b.roleId)
-    );
-  }
-  return hasPermission(auth, "parameter:review");
+export function canReviewParameters(auth: AuthContext) {
+  return isActive(auth) && hasPermission(auth, "parameter:review");
 }
 
 export function canReviewParameterStage(auth: AuthContext, projectId: string, fromStatus: ParameterChangeRequestStatus) {
   if (!isActive(auth)) return false;
-  if (isOrgAdmin(auth)) return true;
+  if (hasRole(auth, ["admin"])) return true;
   if (fromStatus === "submitted" || fromStatus === "hardware_review") {
     return auth.roles.some((b) => b.projectId === projectId && b.roleId === "hardware-committer");
   }
@@ -95,11 +63,10 @@ export function canReviewParameterStage(auth: AuthContext, projectId: string, fr
 
 export function canMergeParameters(auth: AuthContext, projectId?: string) {
   if (!isActive(auth)) return false;
-  if (isOrgAdmin(auth)) return true;
-  if (!projectId) return false;
-  return auth.roles.some(
-    (b) => b.projectId === projectId && (b.roleId === "software-user" || b.roleId === "software-committer")
-  );
+  if (hasRole(auth, ["admin"])) return true;
+  const mergeRoles: BackendRoleId[] = ["software-user", "software-committer"];
+  if (!projectId) return hasRole(auth, mergeRoles);
+  return auth.roles.some((b) => b.projectId === projectId && mergeRoles.includes(b.roleId));
 }
 
 export function canAdminParameters(auth: AuthContext) {

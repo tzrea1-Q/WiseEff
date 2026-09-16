@@ -314,9 +314,9 @@ export async function resolveDtsNodeCompatible(
   return result.rows[0]?.compatible ?? null;
 }
 
-function hasRequiredCapability(auth: AuthContext, capability: BackendPermission, projectId?: string) {
+function hasRequiredCapability(auth: AuthContext, capability: BackendPermission) {
   if (capability === "parameter:edit-critical") {
-    return canEditCriticalParameters(auth, projectId);
+    return canEditCriticalParameters(auth);
   }
   return auth.user.isActive && auth.permissions.includes(capability);
 }
@@ -465,7 +465,7 @@ export async function assertTrustedSensitiveNodeWriteAllowed(
     });
   }
 
-  if (!hasRequiredCapability(auth, matched.requiredCapability, input.projectId)) {
+  if (!hasRequiredCapability(auth, matched.requiredCapability)) {
     throw new ApiError("FORBIDDEN", `Missing permission: ${matched.requiredCapability}.`, {
       riskTier: matched.riskTier,
       nodePath,
@@ -589,7 +589,7 @@ export async function assertSensitiveNodeWriteAllowed(
     );
   }
 
-  if (!hasRequiredCapability(auth, matched.requiredCapability, input.projectId)) {
+  if (!hasRequiredCapability(auth, matched.requiredCapability)) {
     throw new ApiError(
       "FORBIDDEN",
       `Missing permission: ${matched.requiredCapability}.`,
