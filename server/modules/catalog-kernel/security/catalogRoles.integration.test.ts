@@ -1059,16 +1059,22 @@ describe("canonical Catalog roles, grants, and guard reachability", () => {
     expect(auditMutate.code).toBe("42501");
   });
 
-  it("application, agent, and verifier logins are not members of Catalog writer roles", async () => {
-    const members = await client.query<{ member: string }>(`
-      select member.rolname as member
+  it("Catalog writer login memberships follow the documented inheritance boundary", async () => {
+    // Match runP01: documented NOINHERIT composition roots are valid; schema-owner
+    // membership or inherited writer membership is the privilege bypass.
+    const violations = await client.query<{ granted: string; member: string }>(`
+      select granted.rolname as granted, member.rolname as member
       from pg_catalog.pg_auth_members membership
       join pg_catalog.pg_roles granted on granted.oid = membership.roleid
       join pg_catalog.pg_roles member on member.oid = membership.member
       where granted.rolname = any($1::text[])
         and member.rolcanlogin
-    `, [[...CATALOG_ROLES]]);
-    expect(members.rows).toEqual([]);
+        and (
+          granted.rolname = $2
+          or member.rolinherit
+        )
+    `, [[...CATALOG_ROLES], CATALOG_MIGRATION_OWNER]);
+    expect(violations.rows).toEqual([]);
   });
 
   it("DEFINER owner extractor retains SELECT on public source tables after ownership transfer", async () => {
