@@ -10,9 +10,32 @@ Base: `origin/main` at `8f03cfa4302aebbe3bc3c37ef2197c082c2a3e2e` (fetched 2026-
 Plan: [2026-09-14-parameter-unification-and-seed-parity.md](2026-09-14-parameter-unification-and-seed-parity.md). Accepted decision: [ADR-0045](../../adr/0045-configuration-schema-subject-and-seed-rebuild.md).
 Status: **partial**. This report separates what is delivered and proven from what is not started, so a small happy path cannot be mistaken for Issue completion. The Issue remains OPEN.
 
+## 0. Current reconciliation — 2026-09-16 (T0.6)
+
+Current code baseline: `origin/main@4010a600fbc6108ce84860d053eb6d88d7d484cc`. #849 and #853 remain OPEN; #847 is CLOSED and its workspace is reused; #824 remains OPEN/Draft. The current execution order and confirmation boundaries are in the [closure todo list](2026-09-16-849-853-closure-todolist.md).
+
+| Area | Current state and evidence owner | Remaining todo |
+| --- | --- | --- |
+| Delivered lineage | #858 merged the partial implementation. T0.1–T0.5 subsequently merged through #869, #870, #872, #876 and #875; #873 repaired separate main-red checks. A merged slice is not complete Issue acceptance. | Retain regressions; do not redo delivered slices |
+| B1 / ConfigurationSchema | Subject-kind slices A–C and the publish integration test exist. Binding source occurrences and JSON semantic ingest/materialization are still missing; ADR-0046 decides them, rather than reopening the design. | T1.1 |
+| B4 | `charging_core` is a legal node name. The missing reviewed NodeType publication and recursive-array `catalog-capability/v4` remain implementation work; v3 is not v4. | T1.2 |
+| Sources / B2 | Three projects already have reviewed `power-config.json`, `charging-thermal.dts` and generated `vendor-drivers.dts`; manifest inventory is 125 inputs. This does not prove complete board-source identity, semantic conversion, successor membership, real toolchain validity or exact 124-per-project materialization. The historical 24-label claim conflicts with the later 29-label/37-reference measurement; reconcile exact occurrences, not counts alone. | T1.3, T2.4 |
+| B5 | `createCanonicalDraftTraySource`, `canonicalDraftsToTrayDrafts`, reason/updatedAt and canonical list/delete wiring are implemented. No invented parameterId is required. Full real-data review/export/reload browser evidence remains open. | T2.1 |
+| B6 | #869 implements automatic registration and all-target placement preflight: missing `csub_drv_sc8562` capacity fails closed, not completed. #872 strengthens auth, one-in-flight and archive validation. Operator-curated capacity and complete seed identity proof remain separate. | T1.3 |
+| Current reads / consumers | #867 restored the empty-canonical legacy read fallback in `catalogProjectValueRoutes.ts` under TD-125. Canonical drafts are implemented, but “all legacy fallback removed” is not current truth. The eleven consumer families and final canonical writer/cutover remain open. | T2.2 children, T1.4 |
+| Archive | `seedInitialization/archive.ts` captures the parameter plane and source bytes; #872 hardens the exact v2 artifact and closure checks. Capture is not online disposal. Reviewed deletion, shared-data preservation and concrete destructive authorization remain required. | T2.3a/b |
+| S2 | Existing CLI plan/execute/inspect/recover and historical P0–P10 PostgreSQL interruption/mapping rollback evidence exist (`liveRun: false`). They do not prove actual traffic/worker fencing, Docker PostgreSQL/object-store/Redis whole-state restoration, or target execution. P11–P16 remain unavailable. | T3.3a/b |
+| Browser / Hosted | #875 registers definition operations; #876 supplies archived-link acceptance. Browser and CI evidence belongs to those candidates. Final S1/S2, full local suites, one sealed integration candidate and target qualification remain open; no scope is made green by a historical pass or skip. | T3.1–T3.5 |
+
+Hosted receipt, checked 2026-09-16: [#858](https://github.com/tzrea1-Q/WiseEff/pull/858) did run CI (including failed backend/quality/merge-bar checks); “no PR / Hosted never run” is obsolete. [#876](https://github.com/tzrea1-Q/WiseEff/pull/876) has successful L1, quality, smoke and merge-bar checks, while local-non-HDC, target-synthetic and minimal-upgrade were SKIPPED. These facts do not qualify the later final candidate.
+
+Identifier refresh: current migration filenames are `0145_canonical_project_value_drafts.sql`, `0146_canonical_value_change_requests.sql`, `0147_configuration_schema_subject.sql`, `0148_seed_initialization_runs.sql`, `0149_project_parameter_plane_archives.sql`; `0150_product_feedback_v2.sql` is already allocated. ADR-0045/0046 and TD-124/125 already exist. Do not reuse these numbers or edit applied migrations; refetch and check allocation at implementation and integration time. ADR-0046's status paragraph about “#858 in flight / next unused number” belongs to its 2026-09-15 decision context, not current PR state or available allocation; the original decision text is retained.
+
+Sections 1 and 3 retain dated Scratch observations, intermediate attempts and counts; they are not rerun results on the current tree. Section 4's attempt history is superseded where noted below. Old tablet/mobile artifacts remain historical; prospective acceptance is **PC 1440x900 only**, with every non-viewport assertion retained. Current completion decisions use this section, the updated matrix and #853.
+
 ## 1. Delivered and verified
 
-### 1.1 Legacy coexistence removed; one canonical read/write owner
+### 1.1 Legacy coexistence removed; one canonical read/write owner (historical slice; read fallback later restored by TD-125)
 
 `server/modules/parameter-bindings/catalogProjectValueRoutes.ts` contained the four coexistence defects named in the Issue's problem statement. All four are removed:
 
@@ -50,7 +73,7 @@ Governance audit gained `value-drafted` / `value-draft-removed` actions.
 
 ### 1.5 Canonical submit → review → apply
 
-`server/modules/parameter-bindings/drafts/changeService.ts` + `changeRepository.ts` and the new `project_parameter_value_change_requests` owner (migration `0145`) add the reviewed apply unit that was missing:
+`server/modules/parameter-bindings/drafts/changeService.ts` + `changeRepository.ts` and the new `project_parameter_value_change_requests` owner (current migration `0146_canonical_value_change_requests.sql`; `0145` was its Scratch number) add the reviewed apply unit that was missing:
 
 | Step | Behaviour |
 | --- | --- |
@@ -618,22 +641,24 @@ every replacement, not only before.
 
 ### 1.14 The JSON and DTS compatibility seeds are not in the successor
 
+2026-09-16 correction: the naming claim below about `charging_core` was withdrawn (see §1.13g and ADR-0046). The remaining gaps are the reviewed NodeType publication and nested-array v4, not name grammar.
+
 Withdrawn: an earlier revision claimed the two JSON compatibility seeds entered the successor as a formal
 `configuration-schema` subject (`csub_wiseeff_power_config`). No such subject exists in the tree, and the
 successor carries **0** `configuration-schema` subjects. The JSON seeds have no semantic ingest path (B1), and
 the two DTS compatibility seeds cannot be published as-is (B4: a nested 3x4 cell array outside the capability
-allow-list, and a `charging_core` node name that the canonical grammar excludes). Both are carried in the
+allow-list, and the missing reviewed `charging_core` NodeType publication). Both are carried in the
 acceptance matrix.
 
-## 2. Per-item result against this round's stated scope
+## 2. Scope results (reconciled 2026-09-16)
 
-| # | Requested scope | Result | Evidence |
+| # | Scope | Current result | Remaining owner |
 | --- | --- | --- | --- |
-| 1 | All parameter entry points and direct cross-module references on the new Catalog; remove legacy fallback, mixed reads and dual writes; connect import, view, draft, submit, approve, apply, source writeback, history and export | **Delivered for the canonical path.** The four named coexistence defects are removed; view, draft, submit, review, apply, source writeback, canonical binding history and canonical export now run on the canonical owners. Cross-module consumer rewiring remains | §1.1, §1.5, §1.7, §1.9; remaining work in §4 |
-| 2 | DTS and JSON only; semantic alignment of the 113 vendor inputs and the four current compatibility seeds; real source files; complete example DTS baselines; JSON software configuration uses ConfigurationSchema | **Partial.** The 125-input inventory and the four real compatibility source files with exact locators are delivered and fidelity-tested. The 113 vendor inputs are reconciled but not semantically converted; the complete demo DTS baselines are not authored; the **acme retirement is delivered**, and ConfigurationSchema slices A-C (subject kind, storage closure, install/runtime/capability) are implemented — what is missing is the JSON source-identity ingest path (B1) | §1.3, §1.6 |
-| 3 | YAML/TOML/ENV project sources and their 8 seeds to TD-124; refuse these formats explicitly; keep vendor YAML Catalog metadata reading and publication | **Delivered** for the refusal and the TD-124 record; vendor YAML metadata import verified unchanged | §1.2, §1.4 |
-| 4 | Rebuild by seed: preserve non-parameter data; archive legacy parameter data, drafts, history and source files offline; initialize only Atlas/Aurora/Nebula; archived notice on old links; retire acme but keep release history | **Partial.** The acme retirement and the archived old-link notice are delivered (see 1.13 and 1.13a). No offline archive and no project initialization was executed. Reconnaissance (`cutover-consumers-recon.md`) confirms the reusable seams and what is genuinely missing | §4 |
-| 5 | S1/S2 acceptance: real auth, PostgreSQL, source store, publication manager, archive rebuild, interruption/resume, whole-state recovery; frontend real-browser verification at three sizes | **Partial.** Real PostgreSQL and real-browser verification were exercised for the delivered slice, and real authentication is now genuinely established (see 1.13a). S2 archive-rebuild, interruption/resume and whole-state recovery were **not** run. The three-viewport check covered the import wizard only, not the full operation matrix | §3 |
+| 1 | Unified workflows and consumers | Canonical draft/review/history/export slices and B5 wiring exist; TD-125 legacy read fallback remains and eleven consumer families are unfinished | T2.1, T2.2 children, T1.4 |
+| 2 | DTS/JSON and seed semantics | The 125-input inventory, four real compatibility sources and 113-input vendor demo source exist; subject slices A–C landed. B1/B4, complete successor, board semantic identities and exact materialization remain | T1.1–T1.3, T2.4 |
+| 3 | Deferred formats | YAML/TOML/ENV project sources are refused; eight TD-124 items stay deferred while vendor YAML Catalog metadata remains in scope | Retain regressions; do not close TD-124 |
+| 4 | Archive and rebuild | Capture, old-link notice, acme subject/alias retirement and B6 guards exist. Capture is not disposal; complete three-project initialization and acme definition lifecycle remain | T1.3, T2.3a/b |
+| 5 | S1/S2 and browser | Real local slices and historical CLI interruption/mapping recovery exist. Complete real S1, Docker multi-store restore, quiescence/target and final Hosted remain; prospective browser checks use one PC viewport | T3.1–T3.5 |
 
 ## 3. Verification evidence
 
@@ -678,15 +703,9 @@ Browser verification (real browser via `playwright-cli`, API-mode frontend on `1
 
 Nothing in this round is reported as delivered that is not listed in §1.
 
-**PU-01 attempt record (this round).** The R3 threat matrix was written first (`849-inventory/configurationschema-threat-matrix.md`, 16 rows). The extension was then implemented across the contract enums and the new `parseCanonicalConfigurationSchemaId` parser, the kernel compiler types/rules/validation, the runtime matcher (a third resolution step that never consumes the node-type fallback), the three-way JSON-Schema branch, the capability revision bump to `catalog-capability/v3` with v1/v2 still admitted, the pinned S0-ID serialization golden and its blob/length/SHA pins, append-only migration `0146`, and the DTO/API unions. Reaching a consistent state required deliberate updates to **five frozen security fingerprints** (the S2-SCH schema fingerprint, the ACL fingerprint, the frozen canonical relation count 44 → 45, the compiler contract golden, and the capability contract digest) plus role-manifest grants and ownership for the new table and predicate. Those gates exist precisely so a schema/ACL change cannot be absorbed silently, and updating them is not a mechanical act. Rather than leave those gates failing or write observed values into security pins without independent review, **the entire PU-01 change set was reverted**; the delivered artifact for this attempt is the threat matrix and the recorded file map. A dedicated round with a Spec reviewer should land it.
+**Early PU-01 attempt (historical; superseded by slices A–C in §1.8, not the current reverted state).** The R3 threat matrix was written first (`849-inventory/configurationschema-threat-matrix.md`, 16 rows). The extension was then implemented across the contract enums and the new `parseCanonicalConfigurationSchemaId` parser, the kernel compiler types/rules/validation, the runtime matcher (a third resolution step that never consumes the node-type fallback), the three-way JSON-Schema branch, the capability revision bump to `catalog-capability/v3` with v1/v2 still admitted, the pinned S0-ID serialization golden and its blob/length/SHA pins, append-only migration `0146`, and the DTO/API unions. Reaching a consistent state required deliberate updates to **five frozen security fingerprints** (the S2-SCH schema fingerprint, the ACL fingerprint, the frozen canonical relation count 44 → 45, the compiler contract golden, and the capability contract digest) plus role-manifest grants and ownership for the new table and predicate. Those gates exist precisely so a schema/ACL change cannot be absorbed silently, and updating them is not a mechanical act. Rather than leave those gates failing or write observed values into security pins without independent review, **the entire PU-01 change set was reverted**; the delivered artifact for this attempt is the threat matrix and the recorded file map. A dedicated round with a Spec reviewer should land it.
 
-**Not started (largest remaining risk):**
-
-1. **PU-01 ConfigurationSchema (Slice A landed; Slices B and C open — see §1.8).** Reconnaissance found the change surface is not local: a new migration must alter five closed CHECK constraints and six trigger functions in `0137`, the subject/selector enums and normalization, `schemas/dts/catalog-release/*` including a **byte-pinned serialization golden**, the compiler strict schema and its compiled-release golden, the installer, runtime matching and snapshot, the catalog cache and verification, the publication capability revision (with its admission list), the API DTOs and generated OpenAPI, the registration/placement guard, the release-verification count gates, the frontend presentation layer, and `catalogRoleManifest.ts`. This is an R3 change that needs a threat matrix before implementation; it was not attempted rather than half-applied.
-3. **Reviewed real source files** for `charge_voltage_limit_mv`, `battery_temp_target_c`, `dts_fast_charge_profile_matrix` and `battery_thermal_derate_curve`, and the complete self-consistent demo DTS baselines with the dangling overlay targets resolved. The manifest records the dispositions; the files do not exist yet.
-4. **Seed publication and three-project initialization.** The acme retirement is done, but no seed release carrying the seed definitions was published, so canonical binding/value materialization still writes zero bindings, and no project was initialized.
-5. **Archive-rebuild profile and S2.** No archive, no quiescence proof, no interrupted resume, no whole-state restore rehearsal. Reconnaissance confirmed the archive adapter, classifier, mapping lookup, checkpoints and the self-hosted controller are real and reusable, and that the genuine gaps are the reviewed rebuild-disposition contract, the missing operator surface for the four cutover operations, the local-filesystem-only archive destination, and the P11–P16 phases that remain declared unavailable.
-6. **Cross-domain consumer switch** (Agent, logs, knowledge, debugging, DTS reload) and the **full browser operation matrix**. The wizard check is not a substitute for the Issue's operation matrix.
+**Current open work (replacing the early “not started” list):** B1 source identity, B4 v4, complete publication successor and exact three-project seeds, real board toolchain, eleven consumer families/final fallback cutover, disposal and full S1/S2/final integration. Criteria and order live in the [closure list](2026-09-16-849-853-closure-todolist.md). Subject slices A–C, compatibility source files, B5 wiring, B6 registration guards, archive capture and the four CLI entries must no longer be described as absent; their remaining acceptance boundaries are in section 0.
 
 **Known gaps in what was delivered, stated plainly:**
 
@@ -697,7 +716,7 @@ Nothing in this round is reported as delivered that is not listed in §1.
 
 **Harness limitation found this round (not a product failure):** running the whole 129-file affected set with default file parallelism repeatedly produces transient failures with `database "wiseeff_test_*" does not exist`, `terminating connection due to administrator command` and `Connection terminated unexpectedly`. Each suite provisions and drops its own ephemeral database, and a drop force-terminates connections that sibling workers still hold. The same suites pass in isolation and in two consecutive full-directory runs, so the consolidated set is re-run serially for a trustworthy signal. This is an existing local test-harness characteristic, recorded here because it was mis-reported as an unexplained single flake in the previous round.
 
-**Failures:** none in the final state. No test, typecheck, build, contract, documentation, or boundary gate failed. Two intermediate failures were fixed and are not being reported as passing skips: the routes unit test initially asserted the old direct-save behaviour, and the seed-reconciliation test initially measured the wrong value count.
+**Historical failure accounting:** the early focused final run was green after intermediate fixes, but the later round-21 row above records 492 passed / 1 failed, and #858 Hosted also failed. #870 later repaired the role assertion. No historical aggregate becomes a current all-green result.
 
 **Reported, not fixed (out of this round's authority):**
 
@@ -708,7 +727,7 @@ Nothing in this round is reported as delivered that is not listed in §1.
 
 - **Local real PostgreSQL** (dedicated lane database): yes, for the draft owner, the route boundary, the format refusal and the seed manifest.
 - **Browser-real**: yes, for the import wizard at three viewports.
-- **Hosted/CI**: not run (no PR was opened).
+- **Hosted/CI**: historical PRs ran, including failures and skips; final candidate qualification remains open, as detailed in section 0.
 - **Target-host and hardware**: not run, not authorized.
 - No claim is made that the canonical workflow, the seeds, the archive rebuild or ConfigurationSchema are product-ready. The Issue stays OPEN and `ready-for-agent`.
 
@@ -718,7 +737,7 @@ Nothing in this round is reported as delivered that is not listed in §1.
 | --- | --- | --- |
 | Planning | Updated | `docs/exec-plans/active/2026-09-14-parameter-unification-and-seed-parity.md` status, this round report, `849-inventory/README.md`, bilingual TD-124 rows |
 | Architecture/domain | Updated | `docs/adr/0045-configuration-schema-subject-and-seed-rebuild.md` + Chinese companion, `docs/adr/README.md`, `CONTEXT.md`, `docs/design-docs/domain-model.md` + Chinese, API-transition and cutover-archive-rollback docs + Chinese, `docs/PLANS.md` + Chinese |
-| Product specs | Review — no change claimed | Schema subject kinds are not yet implemented, so product-spec text is unchanged this round |
+| Product specs | Review — no change claimed | Subject slices A–C are implemented; remaining B1/B4 work must update product truth with its implementation, so product-spec text is unchanged this round |
 | Quality/testing | Review | The affected suites and the boundary/contract/schema-doc gates were run; the Issue's full operation matrix is not yet covered |
 | Operations | Review — no change | No archive-rebuild operator change was made this round |
 | Security/governance | Review | New `UNSUPPORTED_FORMAT` error code; canonical draft writes still pass the trusted sensitive-node check and audited write |

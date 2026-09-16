@@ -23,6 +23,8 @@ import {
 } from "./helpers/semanticBindingFixture";
 import { cleanupSemanticAcceptanceArtifacts } from "./helpers/semanticFixtureCleanup";
 
+test.use({ viewport: { width: 1440, height: 900 } });
+
 useBrowserDiagnostics(test);
 
 const organizationId = "org-chargelab";

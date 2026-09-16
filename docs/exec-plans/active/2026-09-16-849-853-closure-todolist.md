@@ -2,7 +2,7 @@
 
 > Chinese: [Chinese](../../zh-CN/exec-plans/active/2026-09-16-849-853-closure-todolist.md)
 
-Status: active; preparation P0 is the first confirmation checkpoint. No implementation todo is newly completed by this document.
+Status: active; the user confirmed P0 and authorized T0.6 on 2026-09-16. T1.1 and later work remain unstarted in this execution sequence.
 Baseline: `origin/main@4010a600fbc6108ce84860d053eb6d88d7d484cc`, verified 2026-09-16.
 Contract: [#849](https://github.com/tzrea1-Q/WiseEff/issues/849). Authoritative execution status: [#853](https://github.com/tzrea1-Q/WiseEff/issues/853). This file is its detailed execution order and acceptance map; update both language versions with the Issue after each delivered todo.
 
@@ -70,6 +70,8 @@ P0 branch: `codex/849-853-closure-todolist`, isolated worktree `/Users/tzrea1/De
 
 ## Documentation Impact Matrix
 
+T0.6 execution record: branch `codex/849-853-t06-alignment`, same isolated worktree, freshly fetched main `4010a600f` plus the retained, unmerged P0 commit `aa258f289`. This is an explicit stack; do not drop the P0 documentation when preparing integration. Root `AGENTS.md` applies (no `AGENTS.override.md` or closer scoped guide in the edited directories); relevant workflow, verification and R1 protocol sections were read. The main agent reconciles the six active documents; `t06_pc_acceptance` and `t06_workbench_pc` own disjoint acceptance files/coverage metadata; `t06_status_audit` provides independent read-only review. All delegates use `gpt-5.6-luna` / `xhigh`. No application/schema/target changes or next-todo implementation are included.
+
 | Area | Action | Owner |
 | --- | --- | --- |
 | Planning | Add this bilingual list and index links; link existing plan/matrix/report to current ordering and PC amendment | P0 |
@@ -79,6 +81,8 @@ P0 branch: `codex/849-853-closure-todolist`, isolated worktree `/Users/tzrea1/De
 | Final evidence | Reconcile all checklist states and archive completed plans only after actual completion | T3.5 |
 
 ## Documentation Update Gate
+
+T0.6 bounded checks (2026-09-16): `test:scripts` for the coverage and operation-matrix checkers passed 35/35; typecheck and build passed (browser externalization/chunk-size warnings remain). Playwright `--list --reporter=list` collected 74 scoped tests in 13 specs, plus one runtime-warmup test (75 total), without executing them. A baseline-to-candidate check preserved every acceptance/operation marker in those 13 specs and confirmed file-local 1440x900 defaults. The operation matrix check passed; docs governance and diff checks passed, with the pgvector schema subcheck skipped. Full `acceptance:coverage` did not pass: a collection-only report contains unexecuted cases, and static comparison on both untouched main and this candidate finds the same two orphan map IDs (`PROJ-REVIEW-READINESS-001`, `PROJ-REVIEW-ROLES-001`). Do not erase their rows or relabel this as runtime coverage; T3.2 must reconcile that inherited gap. No browser/API/DB run, final Hosted or target proof was produced here. Independent final R1 review is recorded in the #853 completion receipt.
 
 Run `npm run docs:check` and `git diff --check` for P0 and T0.6; record schema-subcheck skips explicitly. Later todos retain relevant native tests/build/browser and independent-review gates. Final documentation is refreshed at T3.5. Completion/confirmation receipts are recorded in #853 with the corresponding commit/PR and artifact paths.
 

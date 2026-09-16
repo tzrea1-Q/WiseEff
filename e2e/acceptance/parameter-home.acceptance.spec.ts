@@ -6,6 +6,7 @@ import { recordOperationEvidence, summarizeApiResponse } from "./helpers/operati
 import { apiRoute, smokeHeaders } from "./helpers/runtime";
 
 useBrowserDiagnostics(test);
+test.use({ viewport: { width: 1440, height: 900 } });
 
 test.describe("parameter-home production dashboard", () => {
   test("loads summary and hotspots APIs and renders in-page dashboard controls", {
@@ -47,12 +48,7 @@ test.describe("parameter-home production dashboard", () => {
 
     await page.getByRole("radio", { name: "项目榜" }).first().click();
     await page.getByRole("button", { name: /展开热区 #1 / }).click();
-    await page.setViewportSize({ width: 390, height: 844 });
-    await expect
-      .poll(async () => page.locator(".sidebar").evaluate((sidebar) => sidebar.getBoundingClientRect().right))
-      .toBeLessThanOrEqual(0);
-
-    const mobileFabOverlapsLastHotspot = await page.evaluate(() => {
+    const fabOverlapsLastHotspot = await page.evaluate(() => {
       const fab = document.querySelector<HTMLElement>('button[aria-label="打开小泽"]');
       const hotspotRows = Array.from(
         document.querySelectorAll<HTMLElement>('[aria-label^="展开热区"], [aria-label^="收起热区"]')
@@ -72,7 +68,7 @@ test.describe("parameter-home production dashboard", () => {
       );
     });
 
-    expect(mobileFabOverlapsLastHotspot).toBe(false);
+    expect(fabOverlapsLastHotspot).toBe(false);
 
     await recordOperationEvidence({
       operationId: "PARAM-HOME-001",
@@ -93,7 +89,7 @@ test.describe("parameter-home production dashboard", () => {
         })
       ],
       notes:
-        "Dashboard summary/hotspots APIs returned data; /parameter-home rendered time-window and hotspot-dimension controls; the expanded mobile leaderboard remained unobstructed by the Xiaoze launcher."
+        "Dashboard summary/hotspots APIs returned data; /parameter-home rendered time-window and hotspot-dimension controls at PC 1440x900; the expanded leaderboard remained unobstructed by the Xiaoze launcher."
     });
   });
 });

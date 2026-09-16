@@ -188,7 +188,7 @@ export const acceptanceRequirements: AcceptanceRequirement[] = [
   {
     id: "PARAM-HOME-001",
     workflow: "B",
-    title: "Parameter home dashboard loads summary and hotspots from API data and supports in-page window and dimension controls.",
+    title: "At PC 1440x900, the parameter home dashboard loads summary and hotspots from API data, supports in-page window and hotspot-dimension controls, and keeps the retained Xiaoze FAB from overlapping dashboard content.",
     required: true
   },
   {
@@ -207,7 +207,7 @@ export const acceptanceRequirements: AcceptanceRequirement[] = [
     id: "PARAM-ADMIN-003",
     workflow: "C",
     title:
-      "Admin project list preserves q/status/sort through reload and browser history, supports pagination and keyboard-isolated row actions, and renders complete 390px cards, a 768px scroll table with a visible rail, and a non-overflowing 1440px table.",
+      "At PC 1440x900, the Admin project DataTable keeps URL q/status/sort state through reload, Back, Forward, and popstate; search/filter/sort, pagination, keyboard row entry, and isolated edit/delete actions remain usable with no table or page overflow.",
     required: false
   },
   {
@@ -243,25 +243,25 @@ export const acceptanceRequirements: AcceptanceRequirement[] = [
   {
     id: "PROJ-OPS-001",
     workflow: "C",
-    title: "Superseded by PROJ-CONFIG-CUTOVER-001: legacy project-operation deep links redirect to equivalent configuration-workbench contexts; unknown project ids show not-found.",
+    title: "Superseded by PROJ-CONFIG-CUTOVER-001: at PC 1440x900, legacy project-operation deep links redirect to equivalent configuration-workbench contexts; unknown project ids show not-found.",
     required: false
   },
   {
     id: "PROJ-OPS-002",
     workflow: "C",
-    title: "Superseded by PROJ-CONFIG-READ-001 / PROJ-CONFIG-CUTOVER-001: three-viewport configuration workbench layout without clipping or page-level horizontal overflow.",
+    title: "Superseded by PROJ-CONFIG-READ-001 / PROJ-CONFIG-CUTOVER-001: the PC 1440x900 configuration workbench layout has no clipping or page-level horizontal overflow.",
     required: false
   },
   {
     id: "PROJ-OPS-003",
     workflow: "C",
-    title: "Superseded by PROJ-CONFIG-BASELINE-001 / PROJ-CONFIG-OPS-001 / PROJ-CONFIG-CONFLICT-001: baseline, membership, and conflict confirmations in workbench source context.",
+    title: "Superseded by PROJ-CONFIG-BASELINE-001 / PROJ-CONFIG-OPS-001 / PROJ-CONFIG-CONFLICT-001: at PC 1440x900, baseline, membership, and conflict confirmations remain in workbench source context.",
     required: false
   },
   {
     id: "PROJ-CONFIG-READ-001",
     workflow: "C",
-    title: "The canonical project configuration route resolves Config-set context and reads active member DTS source in source-dominant and responsive layouts.",
+    title: "At PC 1440x900, the canonical project configuration route resolves Config-set context and reads active member DTS source in the source-dominant tree, inspector, and task-sheet layout.",
     required: false
   },
   {
@@ -322,13 +322,13 @@ export const acceptanceRequirements: AcceptanceRequirement[] = [
   {
     id: "PROJ-CONFIG-READINESS-001",
     workflow: "C",
-    title: "Server-owned release readiness for the selected Config set: command-bar summary, Issues task dock with ordered blockers/warnings and remediation locators, fail-closed baseline create/release when blocked/unavailable/stale or local session dirty, and no client-side reconstruction of release permission from unrelated counts.",
+    title: "At PC 1440x900, server-owned release readiness for the selected Config set provides the command-bar summary and Issues task dock with ordered blockers/warnings and remediation locators, fails closed for blocked/unavailable/stale or locally dirty sessions, and does not reconstruct release permission from unrelated client counts.",
     required: false
   },
   {
     id: "PROJ-CONFIG-BASELINE-001",
     workflow: "C",
-    title: "Release baseline create/compare/release/restore in source context: snapshot without mutating files, readiness-gated create/release, draft/released/historical identities, unified or side-by-side compare with Working position restore, warning acknowledgement, impact release with audit and drift refresh, restore preview and atomic apply leaving released tip unchanged.",
+    title: "At PC 1440x900, release baseline create/compare/release/restore remains in source context: snapshot without mutating files, readiness-gated create/release, draft/released/historical identities, unified or side-by-side compare with Working position restore, warning acknowledgement, impact release with audit and drift refresh, restore preview, and atomic apply leaving released tip unchanged.",
     required: false
   },
   {
@@ -341,7 +341,7 @@ export const acceptanceRequirements: AcceptanceRequirement[] = [
   {
     id: "PROJ-CONFIG-CUTOVER-001",
     workflow: "C",
-    title: "Legacy project-operation routes redirect to canonical configuration-workbench contexts with preserved focus; new links use only /configuration; three viewports prove integrated cutover.",
+    title: "At PC 1440x900, legacy project-operation routes redirect to canonical configuration-workbench contexts with preserved focus; new links use only /configuration; the integrated cutover retains capability.",
     required: false
   },
 
@@ -807,7 +807,7 @@ export const acceptanceRequirements: AcceptanceRequirement[] = [
   {
     id: "PCAT-UI-11",
     workflow: "C",
-    title: "Legacy bookmarks and identifier resolution produce exact mapped, gone, conflict, unknown, and scope-hidden outcomes without Archive or candidate disclosure; an archived parameter bookmark renders a dismissible non-editable notice for the owning organization on /parameters at all three viewports, while another organization receives an indistinguishable 404 without migration evidence.",
+    title: "Legacy bookmarks and identifier resolution produce exact mapped, gone, conflict, unknown, and scope-hidden outcomes without Archive or candidate disclosure; an archived parameter bookmark renders a dismissible non-editable notice for the owning organization on /parameters at PC 1440x900, while another organization receives an indistinguishable 404 without migration evidence.",
     required: true
   },
   {
@@ -825,7 +825,7 @@ export const acceptanceRequirements: AcceptanceRequirement[] = [
   {
     id: "PCAT-UI-14",
     workflow: "C",
-    title: "The complete single-page catalog experience has no overlap, clipping, hidden action, obstructed overlay, horizontal page overflow, or keyboard-focus failure at all three required viewports.",
+    title: "The complete single-page catalog experience has no overlap, clipping, hidden action, obstructed overlay, horizontal page overflow, or keyboard-focus failure at PC 1440x900.",
     required: true
   },
   {
@@ -837,7 +837,7 @@ export const acceptanceRequirements: AcceptanceRequirement[] = [
   {
     id: "PCAT-UI-16",
     workflow: "C",
-    title: "The restored definition workspace pages the complete collection with a truthful scoped count, 20/50/100 page sizes, a module-subtree filter that narrows the full result set, and on-demand history at all three viewports.",
+    title: "The restored definition workspace pages the complete collection with a truthful scoped count, 20/50/100 page sizes, a module-subtree filter that narrows the full result set, and on-demand history at PC 1440x900.",
     required: true
   },
   {
@@ -910,7 +910,7 @@ export const acceptanceRequirements: AcceptanceRequirement[] = [
     id: "PARAM-IDENTITY-MAP-ADMIN-001",
     workflow: "B",
     title:
-      "Admin resolves identity mapping tasks and safely corrects an applied choice through protected re-resolve with evidence and governance audit.",
+      "At PC 1440x900, Admin resolves identity mapping tasks and safely corrects an applied choice through protected re-resolve with evidence and governance audit.",
     required: true
   },
   {

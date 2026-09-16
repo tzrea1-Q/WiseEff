@@ -4,7 +4,7 @@
 
 2026-09-16 执行修订：[#849/#853 完整 todolist](2026-09-16-849-853-closure-todolist.md) 记录当前顺序及逐项用户确认规则。用户明确将本项目后续浏览器验收改为单 PC `1440x900`，替代下文旧三视口要求；其他操作与 S1/S2 门禁保留。历史视口结果仍是历史证据，旧轮次状态由 T0.6 对账。
 
-轮次记录。分支 `feat/849-parameter-unification`，工作树 `/Users/tzrea1/Develop/WiseEff-worktrees/issue-849-parameter-unification`，基线 `origin/main` `8f03cfa4302aebbe3bc3c37ef2197c082c2a3e2e`。状态：**部分完成**。此处不含任何完成主张；Issue 仍为 OPEN，未开 PR、未合并、未做目标重建或部署。
+当前对账：2026-09-16，`origin/main@4010a600f`，#849／#853 仍 OPEN。#858 及 T0.1–T0.5 已合入；[轮次报告第 0 节](2026-09-15-parameter-unification-round-report.md#0-当前状态对账--2026-09-16t06) 是当前事实表。下文旧测试计数绑定原 Scratch 候选（基线 `8f03cfa4…`），不代表本次重跑或最终候选合格。
 
 逐节细节见[轮次报告](2026-09-15-parameter-unification-round-report.md)。延迟的主体类型工作见 [ConfigurationSchema 改动面侦察](../../../exec-plans/active/849-inventory/configurationschema-extension-recon.md)与其[独立 Spec 评阅](../../../exec-plans/active/849-inventory/configurationschema-spec-review.md)。迁移 0148/0149 的 R3 证据见[回溯式威胁矩阵](849-inventory/migrations-0148-0149-r3-threat-matrix.md)；它不会把交付后的修正写成“实现前合规”，处置、静默和恢复仍是后继门禁。
 
@@ -12,11 +12,11 @@
 
 | # | 范围 | 状态 | 主要证据 | 缺口 |
 | --- | --- | --- | --- | --- |
-| 1 | 全部参数入口及直接相关跨模块引用统一新版 Catalog；清除旧库回退、混合读取与双写；打通导入、查看、草稿、提交、审批、生效、源文件写回、历史及导出 | **服务端新版路径已交付；前端草稿托盘已读取并删除 canonical pending draft（B5 代码已收口，真实数据路径仍待完整种子发布与物化）** | `drafts.integration.test.ts`（11）、`catalogProjectValueRoutes.test.ts`（16）、`parameter-bindings` 74、`parameter-files` 316 | 跨模块消费者改接（Agent、日志、知识、调试、DTS 重载） |
+| 1 | 全部参数入口及直接相关跨模块引用统一新版 Catalog；清除旧库回退、混合读取与双写；打通导入、查看、草稿、提交、审批、生效、源文件写回、历史及导出 | **服务端新版路径已交付；前端草稿托盘已读取并删除 canonical pending draft（B5 代码已收口，真实数据路径仍待完整种子发布与物化）** | `drafts.integration.test.ts`（11）、`catalogProjectValueRoutes.test.ts`（16）、`parameter-bindings` 74、`parameter-files` 316 | TD-125 旧读取回退仍存在；11 类消费者及最终切换待 T2.2／T1.4 |
 | 2 | 仅 DTS／JSON；113 厂商输入与 4 项兼容种子的语义对齐、真实源文件、完整示例 DTS 基底；JSON 软件配置使用 ConfigurationSchema | **部分完成** | `src/config/seed-reconciliation/manifest.json`（125 项）、`src/config/seed-sources/**`（9 文件，含生成的 `vendor-drivers.dts` 基底：**全部 113 条**厂商输入（27 个驱动主体、12 个 node-type 主体），每条取值均取自受审厂商元数据自带的 DTS 语法 `exampleValue`；可用 `npm run vendor-source:generate` 重新生成，并由 `npm run vendor-source:check` 与 `generate-vendor-project-source.test.ts`（5 项）检测漂移）、`seedSources.fidelity.test.ts`（18）、`canonicalBindingMaterialization.integration.test.ts`、ConfigurationSchema Slice A–C 及 `configurationSchemaPublish.integration.test.ts`（2） | JSON 软件配置项目源（B1）；示例基底是演示源，不是经验证的真机固件 |
 | 3 | YAML／TOML／ENV 项目源及对应 8 项种子归入 TD-124；明确拒绝这些格式；厂商 YAML 目录元数据保留读取与发布 | **已交付** | `unsupportedFormat.test.ts`（19）、`importDtsParse.test.ts`（10）、前端 `unsupportedImportFormat.test.ts`（10）、中英 TD-124 行 | — |
-| 4 | 按种子重建：保留非参数数据；旧参数、草稿、历史及源文件离线归档；仅初始化 Atlas／Aurora／Nebula；旧链接归档提示；acme 退役但保留发布历史 | **部分交付** | **离线归档已交付（仅捕获）**：`0149_project_parameter_plane_archives.sql` 与 `seedInitialization/archive.ts` 把 32 个逐项目关系以及每个已引用文件版本或 candidate 的实际字节写入 v2 归档，并保存逐关系计数与摘要。R3 矩阵对捕获、保留／共享、可再生、已不存在关系及直接外部 FK／trigger／view 闭包逐项归类。捕获使用一个 repeatable-read 快照、稳定主键顺序、关系／源字节各 64 MiB 上限，以及本地／S3 有界归档文档读取；重建守卫校验本次返回的精确归档 ID／digest、关系闭包和内嵌字节完整性。`archive.integration.test.ts`（14 项）覆盖非零图与保留 observation／match、依赖库存、子作用域、跨项目隔离、源行保留、超限拒绝、幂等复用、缺失／截断／撕裂／篡改／精确对象拒绝、鉴权和 schema 保留约束。迁移 0148 证据还证明已认证组织绑定、写日志及完成态重放前鉴权、不同 digest 也只能有一个固定范围执行中任务，以及 `completed` 终态不可变（`plan.test.ts` 7；`materialize.test.ts` 7）。**处置（删除）刻意未实现**——账本没有任何列暗示删除已经发生，移除归档行必须另行评审。**归档旧链接提示与 acme 退役仍已交付**并保留历史证据 | JSON 种子物化（B1）、补齐 `csub_drv_sc8562` 容量、acme **定义**生命周期、归档平面处置（删除）、目标静默／恢复、其余 canonical 绑定／值物化（B2）、归档提示界面 |
-| 5 | S1／S2 验收：真实鉴权、PostgreSQL、源存储、发布管理器、归档重建、中断续跑、整套恢复；前端三尺寸真实浏览器验证 | **部分完成** | 所有集成套件均用真实 PostgreSQL；导入向导与归档旧链接提示使用真实鉴权与真实浏览器，三尺寸 1440×900／768×1024／390×844（真实鉴权须以 `AUTH_MODE=production AUTH_PROVIDER=local` 启动 API） | S2 全部（归档重建、中断、续跑、整套恢复）；发布管理器仅由其自身套件覆盖；完整三尺寸操作矩阵 |
+| 4 | 按种子重建：保留非参数数据；旧参数、草稿、历史及源文件离线归档；仅初始化 Atlas／Aurora／Nebula；旧链接归档提示；acme 退役但保留发布历史 | **部分交付** | **离线归档已交付（仅捕获）**：`0149_project_parameter_plane_archives.sql` 与 `seedInitialization/archive.ts` 把 32 个逐项目关系以及每个已引用文件版本或 candidate 的实际字节写入 v2 归档，并保存逐关系计数与摘要。R3 矩阵对捕获、保留／共享、可再生、已不存在关系及直接外部 FK／trigger／view 闭包逐项归类。捕获使用一个 repeatable-read 快照、稳定主键顺序、关系／源字节各 64 MiB 上限，以及本地／S3 有界归档文档读取；重建守卫校验本次返回的精确归档 ID／digest、关系闭包和内嵌字节完整性。`archive.integration.test.ts`（14 项）覆盖非零图与保留 observation／match、依赖库存、子作用域、跨项目隔离、源行保留、超限拒绝、幂等复用、缺失／截断／撕裂／篡改／精确对象拒绝、鉴权和 schema 保留约束。迁移 0148 证据还证明已认证组织绑定、写日志及完成态重放前鉴权、不同 digest 也只能有一个固定范围执行中任务，以及 `completed` 终态不可变（`plan.test.ts` 7；`materialize.test.ts` 7）。**处置（删除）刻意未实现**——账本没有任何列暗示删除已经发生，移除归档行必须另行评审。**归档旧链接提示与 acme 退役仍已交付**并保留历史证据 | JSON 种子物化（B1）、补齐 `csub_drv_sc8562` 容量、acme **定义**生命周期、归档平面处置（删除）、目标静默／恢复、其余 canonical 绑定／值物化（B2）；归档提示已由 #876 补验收 |
+| 5 | S1／S2：真实鉴权、PostgreSQL、源存储、发布管理器、归档重建、中断续跑与整套恢复；PC 1440x900 浏览器验证 | **部分完成** | 历史 PostgreSQL／浏览器切片及 CLI P0–P10 中断／映射恢复证据存在；#875／#876 补操作登记与旧链接验收 | 完整 S1、Docker 多存储恢复与实际静默、目标执行、PC 全操作矩阵仍待 T3；历史 CLI 不是整套部署恢复 |
 
 ## 1a. 实现 PU-04 过程中发现的两个阻塞与一个契约发现
 
@@ -24,7 +24,7 @@
 
 **决策状态（2026-09-15）。** B1、B4、B6 不再是待决问题。[ADR-0046](../../../adr/0046-source-occurrence-identity-spans-dts-and-software-configuration.md) 记录了三者的决定，各条目下方给出结论；剩下的是实现，而不是决策。B3 已撤回，B5 在其 scope item 1 部分已关闭。
 
-**B1 — JSON 项目源无语义摄取路径。** `ingestConfigRevision` 是 DTS／配置版本解析器。新版值归属**有** JSON 值路径，但没有任何路径能把 JSON 项目源文件变成配置版本，因此 JSON 种子源无法物化。`materialize.ts` 以 `UNSUPPORTED_FORMAT` 明确拒绝（明细带 `deferredTo`），而不是上传无法解析的成员或从清单丢弃。**后果：两个 JSON 兼容种子仍未物化，构成 scope item 2 与测试决定 6 的缺口。** 关闭它并非局部修复：按实现决定 3，它需要 Binding 边界上的 ConfigurationSchema **源身份**扩展（区分 DTS 逻辑节点出现与软件配置实例，含配置集、实例、源文件版本与格式特定 locator）。**已决定（ADR-0046）：为该扩展排期，不重新协商 scope item 2。** 该决定引入统一的 `project_parameter_source_occurrences` 层，身份至少包含 organization + project + config-set + occurrence-kind + instance-id，并额外钉住不可变源文件身份与 JSON Pointer locator；Binding 唯一性收敛为 `(project_id, source_occurrence_id, definition_id)`；既有 DTS 绑定原地 backfill 且永不重新派生其 ID；file-version／config-revision 钉留在 ProjectValue 层，不进入 Binding 身份。因此两个 JSON 兼容种子仍在范围内，并将在该实现落地前保持未物化。
+**B1 — JSON 项目源无语义摄取路径。** `ingestConfigRevision` 是 DTS／配置版本解析器。新版值归属**有** JSON 值路径，但没有任何路径能把 JSON 项目源文件变成配置版本，因此 JSON 种子源无法物化。`materialize.ts` 以 `UNSUPPORTED_FORMAT` 明确拒绝（明细带 `deferredTo`），而不是上传无法解析的成员或从清单丢弃。**后果：两个 JSON 兼容种子仍未物化，构成 scope item 2 与测试决定 6 的缺口。** 关闭它并非局部修复：按实现决定 3，它需要 Binding 边界上的 ConfigurationSchema **源身份**扩展（区分 DTS 逻辑节点出现与软件配置实例，含配置集、实例、不可变源文件身份与格式特定 locator）。**已决定（ADR-0046）：为该扩展排期，不重新协商 scope item 2。** 该决定引入统一的 `project_parameter_source_occurrences` 层，身份至少包含 organization + project + config-set + occurrence-kind + instance-id，并额外钉住不可变源文件身份与 JSON Pointer locator；Binding 唯一性收敛为 `(project_id, source_occurrence_id, definition_id)`；既有 DTS 绑定原地 backfill 且永不重新派生其 ID；file-version／config-revision 钉留在 ProjectValue 层，不进入 Binding 身份。因此两个 JSON 兼容种子仍在范围内，并将在该实现落地前保持未物化。
 
 **B2 —— 存在注册与足够放置容量时，canonical 绑定／值物化可用；为此修复了两个缺陷。** 成功路径已在真实 PostgreSQL 上证明：
 `nodeTypeSubjectBinding.integration.test.ts` 安装真实发布谱系、明确补入受审切片所缺的一个运维整理 driver module、自动注册主体并物化真实 DTS 切片，并断言
@@ -108,10 +108,10 @@
 | 6 DTS／JSON 矩阵 | **部分完成** | 导入拒绝、候选／暂存拒绝、DTS 保字节写回、JSON 字面键、导出／再导入保真已覆盖；两种格式的完整导入→草稿→审阅→生效→再导入闭环未做 |
 | 7 工作流与并发矩阵 | **部分完成** | 草稿不动当前值；提交冻结 pin；审批只生效一次；重放幂等；过期 pin 被拒；自审与非审阅人审批被拒。独立鉴权会话、响应丢失对账、批次部分结果未做 |
 | 8 提交边界矩阵 | **部分完成** | 生效单元在同一事务内提交值、源、历史、流程状态与审计；对象准备失败与引用对象缺失未注入 |
-| 9 初始化与保留矩阵 | **部分完成** | 目标计划覆盖三个允许项目、自定义项目、缺失／歧义归属、阻断与重复运行幂等；物化、初始化锁与非参数保留快照未做 |
+| 9 初始化与保留矩阵 | **部分完成** | #869／#872 已证明放置失败关闭、组织鉴权、单执行中任务与完成态幂等；完整种子物化、初始化流程集成与非参数精确保留快照仍缺 |
 | 10 消费者与旧库矩阵 | **部分完成** | 归档诊断归一为一种结果，服务端 410／404 正确，且参数工作台现在会为归档旧链接**渲染**提示：`archivedLink.test.ts`（7）、`parameterRuntime.test.ts`（+2）、`parameterClient.test.ts`（+1）、`ParametersPage.test.tsx`（+6），并在真实浏览器、真实鉴权下完成三尺寸验证。其余消费者族仍未端到端盘点 |
 | 11 运维失败矩阵 | **未运行** | 目标／种子／发布／schema 漂移、备份失败、发布排他拒绝均未测试 |
-| 12 浏览器证据 | **部分完成** | 导入向导（三尺寸）以及归档旧链接提示的 1440x900／768x1024／390x844（`work/ui-checks/849/*-archived-notice.png`），后者在真实 API 与真实 bearer 鉴权下完成。草稿／审阅／导出的完整三尺寸操作矩阵仍未执行 |
+| 12 浏览器证据 | **部分完成** | 导入向导（三尺寸）以及归档旧链接提示的 1440x900／768x1024／390x844（`work/ui-checks/849/*-archived-notice.png`），后者在真实 API 与真实 bearer 鉴权下完成。草稿／审阅／导出的完整 PC 1440x900 操作矩阵仍未执行 |
 | 13 完成证据 | 已遵循 | 候选、摘要、环境、命令、通过／失败／跳过计数与产物记录在轮次报告中 |
 
 ## 3. 实际达到的证据层级
@@ -123,7 +123,7 @@
 | 真实本地 PostgreSQL | 是 | 上文引用的每个 `*.integration.test.ts`，使用专用 lane 库 |
 | 真实本地鉴权 | 是（本轮确认） | API 必须以 `AUTH_MODE=production AUTH_PROVIDER=local` 运行，并用 `npm run admin:bootstrap` 引导本地管理员。只有真实会话下 `GET /api/v1/me` 才返回 200，归档查询才返回 410。**更正：**此前的浏览器证据是在默认 `AUTH_MODE=development` 的服务端上采集的，该解析器完全忽略 `Authorization`，所有 API 调用均返回 401，因此那次会话并未证明任何鉴权 |
 | 真实浏览器 | 部分 | 导入向导与归档旧链接提示，各三尺寸。提示通过真实登录表单、来自 API 的真实 410 以及关闭控件完成验证 |
-| Hosted／CI | **否** | 未开 PR |
+| Hosted／CI | **历史切片已运行，最终候选未完成** | #858 曾失败；#876 的 L1／quality／smoke／merge-bar 成功，但 local-non-HDC／target-synthetic／minimal-upgrade 跳过。见报告第 0 节，不继承为最终验收 |
 | 目标主机／硬件／发布／生产 | **否** | 未获授权 |
 
 ## 4. 操作说明
@@ -131,7 +131,7 @@
 ### 4.1 本地复现验证
 
 ```bash
-cd /Users/tzrea1/Develop/WiseEff-worktrees/issue-849-parameter-unification
+# 在当前已记录候选的仓库根目录运行，不复用历史工作树
 npm run catalog:lane:env -- provision --issue 849
 export DATABASE_URL=postgres://wiseeff:wiseeff@127.0.0.1:55438/wiseeff_lane_849
 export TEST_DATABASE_URL="$DATABASE_URL"
@@ -165,36 +165,30 @@ npx vitest run --config vitest.server.config.ts \
 npm run build
 npm run docs:check
 npx tsx scripts/check-parameter-catalog-boundaries.ts \
-  --trusted-base-sha "$(git rev-parse 8f03cfa43)"
+  --trusted-base-sha "$(git rev-parse origin/main)"
 git diff --check
 ```
 
 已知环境特性，避免误读红灯：
 
 - `server/testing/testDatabase.ts` 会强制删除陈旧 worker 库。两个触碰数据库的进程同时运行时互删临时库，产生 `database "wiseeff_test_*" does not exist` 或 `Connection terminated unexpectedly`。请一次只跑一个触碰数据库的命令。
-- `catalogRoles.integration.test.ts > application, agent, and verifier logins are not members of Catalog writer roles` 在本环境下 pristine `origin/main` 上同样失败，属既有基线失败，不归因本分支。
+- 历史 `catalogRoles.integration.test.ts` 角色断言失败已由 #870 修复；不得作为当前 baseline-red 豁免。后续命令如失败须对当前候选重新归因。
 - `catalog-publication/jobs/manager.integration.test.ts` 有一个定时器竞态用例，重跑通过。
 
 ### 4.2 复现浏览器证据
 
 ```bash
-npx tsx server/index.ts            # API 监听 127.0.0.1:8787，已导出 lane 库
+AUTH_MODE=production AUTH_PROVIDER=local npx tsx server/index.ts # 已导出专用 lane 库
+npm run admin:bootstrap -- --username <user> --password <pass> --name "<Name>" --organization WiseEff
 npx vite --host 127.0.0.1 --port 5173 --strictPort   # 端口须在 5173-5199 以满足 CORS
 playwright-cli -s=wiseeff849 open http://127.0.0.1:5173/parameter-admin
 ```
 
-用针对 lane 库创建的本地账号登录，打开"批量参数导入"，粘贴或上传 `work/ui-checks/849/params.yaml`。向导必须在步骤 2 显示明确的不支持格式提示，而 `config.json` 不得显示。在 1440×900、768×1024、390×844 三尺寸抓取快照与截图，并检查 `console error`。
+用针对 lane 库创建的本地账号登录，打开"批量参数导入"，粘贴或上传 `work/ui-checks/849/params.yaml`。向导必须在步骤 2 显示明确的不支持格式提示，而 `config.json` 不得显示。仅在 PC 1440×900 抓取快照与截图，并检查 `console error`。
 
 ### 4.3 后续步骤（按依赖顺序）
 
-1. **实现 B1**（已由 ADR-0046 决定）：为 ConfigurationSchema 源身份实现排期。B6 失败关闭已完成；注册权限继续使用契约既定的 `trusted-system` + `automatic` + `use-default` 路径。
-2. **落地携带兼容种子的发布后继**，取决于 ADR-0046 的 `catalog-capability/v4` 与 `charging_core` 的受审 NodeType 主体发布。本步曾被 B3 阻塞，而 B3 已**完成**——acme 主体与别名已在厂商后继中退役，并在真实 PostgreSQL 上核验。后继构建器能正确携带已退役成员，因此后续任何退役都可依赖该行为；尚未验证的是让 `configuration-schema` 成员穿过 `buildCompleteSuccessor`。
-3. **新版绑定／值物化**：在后继发布后执行（B2）。退出证据：逐项目**精确** Binding 集合（各 124，合计 372）而非总数。
-4. **S2**：先落受审重建处置契约（R3，实施前需 Spec 评阅），再做 plan → apply → status/resume → verify，然后做中断与整套恢复演练。
-5. **B5 前端接线**：为 canonical pending-draft DTO 增补 `updatedAt` 与参数身份，加入 canonical→托盘适配器，把 `ApiProjectTopologyWorkspace` 从 `createHttpParameterRepository()` 上摘下，待 canonical 绑定存在（B2）后验证。
-6. **S2 剩余**：执行基于 Docker 的彩排产物路径（需要 compose `wiseeff-postgres-1` 与宿主机 `psql`）以及目标主机静默彩排。运维 plan／execute／inspect／recover 路径与整套恢复已完成。
-7. **PU-05 前端**：归档旧链接提示已完成；剩余草稿托盘、审阅与导出，随后对这些界面跑完整三尺寸操作矩阵。
-8. **PU-08**：把 S1／S2 证据绑定到同一个 sealed candidate 并跑 Hosted。
+以[完整闭环清单](2026-09-16-849-853-closure-todolist.md) 的 28 个确认节点为唯一执行顺序，不再维护冲突的第二套步骤。B5 接线与 B6 失败关闭已实现，不重做；T1.1／T1.2 补 B1／B4，随后种子／真实源与消费者，之后处置、完整 S1／S2、最终集成及关闭。每项完成后等用户确认，不能并行启动下一项。处置和目标执行仍须独立具体授权。
 
 ## 文档影响矩阵
 
@@ -202,11 +196,11 @@ playwright-cli -s=wiseeff849 open http://127.0.0.1:5173/parameter-admin
 | --- | --- | --- |
 | 计划 | 新增 | 本矩阵及英文对应件；轮次报告及英文对应件 |
 | 架构／领域 | 未变更 | ADR-0045 与设计文档在更早轮次落地，此处未改 |
-| 质量／测试 | 已更新 | 上文记录测试决定 1–13 的状态；未改动任何门禁定义 |
+| 质量／测试 | 已更新 | 对账测试决定 1–13；仅按用户修订将后续浏览器视口改为单 PC，其他门禁不变 |
 | 运维 | 已更新 | `ops/self-hosted/upgrade.md` 与 `upgrade.zh-CN.md`：因 advance 现已退役 acme，钉住的厂商后继 digest 移至 `sha256:5f0e7bcd…`，并在两份文档中记录运行时后果（`acme,power` 解析为 `retired`） |
 | 参考 | 已更新 | `docs/references/catalog-publication-baseline-verification.md` 及其中文对应保留历史 R-F4 digest，并新增带日期的前向说明，因此 `063b12c49` 的记录未被篡改 |
 | 生成产物 | 未变更 | 本文档不产出也不消费生成产物 |
 
 ## 文档更新门禁
 
-本矩阵及其中英对应件是本轮的文档交付物，仅记录状态，不改动任何代码、契约或门禁。`npm run docs:check` 与 `git diff --check` 通过。上文每条状态都由 §4.1 中的命令在本修订的代码树上运行得出；此处不主张目标执行、部署、Hosted CI 或 Issue 完成。
+T0.6 对账当前状态并同步专项单 PC 验收定义；历史结果不重标为本次测试。对维护文档执行 `npm run docs:check` 与 `git diff --check`，跳过项须明确记录；脚本验证见闭环清单回执。此处不主张产品、完整 S1／S2、最终 Hosted 或目标验收完成。

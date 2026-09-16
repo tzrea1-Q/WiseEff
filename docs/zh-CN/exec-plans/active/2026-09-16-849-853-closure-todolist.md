@@ -2,7 +2,7 @@
 
 > English: [English](../../../exec-plans/active/2026-09-16-849-853-closure-todolist.md)
 
-状态：执行中；准备项 P0 是第一个确认节点。本文件不把任何实施任务新增标记为完成。
+状态：执行中；用户于 2026-09-16 确认 P0 并授权 T0.6。本执行顺序中的 T1.1 及后续工作尚未开始。
 基线：2026-09-16 实时核验的 `origin/main@4010a600fbc6108ce84860d053eb6d88d7d484cc`。
 规格：[#849](https://github.com/tzrea1-Q/WiseEff/issues/849)。唯一执行状态：[#853](https://github.com/tzrea1-Q/WiseEff/issues/853)。本文件细化执行顺序和验收条件；每项交付后同步 Issue 及中英版本。
 
@@ -70,6 +70,8 @@ P0 分支：`codex/849-853-closure-todolist`，隔离工作树 `/Users/tzrea1/De
 
 ## 文档影响矩阵
 
+T0.6 执行记录：分支 `codex/849-853-t06-alignment`，沿用同一隔离工作树，基线为新拉取的 main `4010a600f` 加保留的、尚未合入的 P0 提交 `aa258f289`。这是显式堆叠，准备集成时不得丢掉 P0 文档。采用根 `AGENTS.md`（编辑目录中无 `AGENTS.override.md` 或更近的作用域指南），已读相关工作流、验证与 R1 协议章节。主智能体对账六份活动文档；`t06_pc_acceptance`、`t06_workbench_pc` 分别负责不重叠的验收文件／覆盖元数据；`t06_status_audit` 做独立只读评审。全部子智能体使用 `gpt-5.6-luna`／`xhigh`。不包含产品／schema／目标变更，也不实施下一项 todo。
+
 | 区域 | 动作 | 归属 |
 | --- | --- | --- |
 | 计划 | 新增中英清单与索引；旧 plan/matrix/report 链接新顺序和 PC 修订 | P0 |
@@ -79,6 +81,8 @@ P0 分支：`codex/849-853-closure-todolist`，隔离工作树 `/Users/tzrea1/De
 | 最终证据 | 对账所有状态，实际完成后才归档计划 | T3.5 |
 
 ## 文档更新门禁
+
+T0.6 有界检查（2026-09-16）：覆盖／操作矩阵检查器的 `test:scripts` 为 35/35 通过；typecheck 与 build 通过（保留浏览器 externalization／chunk-size 警告）。Playwright `--list --reporter=list` 收集 13 个专项文件的 74 个用例，加 1 个 runtime-warmup（合计 75），没有执行用例。基线与候选对比确认这 13 个文件全部 acceptance／operation marker 未变，均声明文件级 1440x900 默认视口。操作矩阵检查通过；文档治理与 diff 检查通过，pgvector schema 子检查跳过。完整 `acceptance:coverage` 未通过：仅收集的报告含未执行用例，且未修改 main 与本候选的静态对比均存在相同两个孤立映射 ID（`PROJ-REVIEW-READINESS-001`、`PROJ-REVIEW-ROLES-001`）。不得删行或称为运行时覆盖通过；T3.2 须处理该继承缺口。本项未产生浏览器／API／数据库实跑、最终 Hosted 或目标证据。最终独立 R1 评审记录于 #853 完成回执。
 
 P0、T0.6 执行 `npm run docs:check` 和 `git diff --check`，schema 子检查跳过须明确记录。后续任务保留适用的原生测试／构建／浏览器及独立评审门禁，T3.5 刷新最终文档。完成／确认回执记录在 #853，绑定对应 commit/PR 和产物路径。
 

@@ -26,6 +26,8 @@ import {
   type CatalogAcceptanceFixture
 } from "./helpers/catalogEvidence";
 
+test.use({ viewport: { width: 1440, height: 900 } });
+
 useBrowserDiagnostics(test, { expectedApiFailures: CATALOG_EXPECTED_API_FAILURES });
 
 let fixture: CatalogAcceptanceFixture;

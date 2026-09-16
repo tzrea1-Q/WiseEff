@@ -37,6 +37,7 @@ useBrowserDiagnostics(test, {
     { method: "POST", path: "/api/v2/projects/aurora/parameter-bindings", status: 409 }
   ]
 });
+test.use({ viewport: { width: 1440, height: 900 } });
 
 const organizationId = "org-chargelab";
 const projectId = "aurora";
@@ -2512,7 +2513,6 @@ test.describe("Parameter topology / schema browser acceptance", () => {
         )
         .toBe(rightCandidate.logicalNodeId);
 
-      await page.setViewportSize({ width: 390, height: 844 });
       await expect
         .poll(async () => {
           return resolvedTask.evaluate((item) => {
@@ -2532,7 +2532,6 @@ test.describe("Parameter topology / schema browser acceptance", () => {
             .map((control) => control.tagName.toLowerCase())
         );
       expect(overflowingControls).toEqual([]);
-      await page.setViewportSize({ width: 1440, height: 900 });
 
       const auditResponse = await request.get(apiRoute("/api/v1/audit-events?limit=50"), {
         headers: adminHeaders()
@@ -2586,7 +2585,7 @@ test.describe("Parameter topology / schema browser acceptance", () => {
           }
         ],
         notes:
-          "Admin resolved an open identity mapping task, then corrected the applied choice through protected re-resolve with candidate evidence and governance audit."
+          "At PC 1440x900, Admin resolved an open identity mapping task, then corrected the applied choice through protected re-resolve with candidate evidence and governance audit."
       });
     } finally {
       await cleanupSemanticAcceptanceArtifacts({

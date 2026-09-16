@@ -20,6 +20,8 @@ import {
   type RestoreDisposablePostCutoverRuntime,
 } from "./helpers/semanticBindingFixture";
 
+test.use({ viewport: { width: 1440, height: 900 } });
+
 useBrowserDiagnostics(test);
 
 const projectId = "aurora";

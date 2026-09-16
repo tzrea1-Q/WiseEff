@@ -7,7 +7,6 @@ import {
   assertNoPageOverflow,
   CATALOG_EXPECTED_API_FAILURES,
   CATALOG_PAGE_PATH,
-  CATALOG_VIEWPORTS,
   catalogJson,
   catalogPage,
   catalogScreenshot,
@@ -26,6 +25,8 @@ import {
   ensureCatalogAcceptanceFixture,
   type CatalogAcceptanceFixture
 } from "./helpers/catalogEvidence";
+
+test.use({ viewport: { width: 1440, height: 900 } });
 
 useBrowserDiagnostics(test, { expectedApiFailures: CATALOG_EXPECTED_API_FAILURES });
 
@@ -118,27 +119,25 @@ test.describe("canonical parameter catalog negative and responsive contract", ()
     expect(gone.status).toBe(410);
     expect(JSON.stringify(gone.body)).not.toMatch(/archive-op08-gone|candidate/i);
 
-    for (const viewport of CATALOG_VIEWPORTS) {
-      await page.setViewportSize({ width: viewport.width, height: viewport.height });
-      await signInCatalogActor(
-        page,
-        "org-admin",
-        `/parameters?project=${encodeURIComponent(fixture.archivedLinkProjectId)}&parameter=${encodeURIComponent(fixture.legacy.gone)}`
-      );
-      await dismissXiaozeHint(page);
-      const archivedNotice = page.locator(".parameter-archived-link-banner");
-      await expect(archivedNotice).toBeVisible({ timeout: 30_000 });
-      await expect(archivedNotice).toContainText("该参数旧链接已归档");
-      await expect(archivedNotice).toContainText(fixture.legacy.gone);
-      await expect(archivedNotice).toContainText("legacy-parameter-id-retired");
-      await expect(archivedNotice).toContainText(fixture.legacy.goneEvidenceId);
-      await expect(archivedNotice).not.toContainText(/archive-op08-gone|candidate/i);
-      await expect(page.getByRole("dialog", { name: "修改草稿" })).toHaveCount(0);
-      await assertNoPageOverflow(page);
-      await catalogScreenshot(page, testInfo, `pcat-ui-11-archived-notice-${viewport.name}`);
-      await archivedNotice.getByRole("button", { name: "知道了" }).click();
-      await expect(archivedNotice).toHaveCount(0);
-    }
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await signInCatalogActor(
+      page,
+      "org-admin",
+      `/parameters?project=${encodeURIComponent(fixture.archivedLinkProjectId)}&parameter=${encodeURIComponent(fixture.legacy.gone)}`
+    );
+    await dismissXiaozeHint(page);
+    const archivedNotice = page.locator(".parameter-archived-link-banner");
+    await expect(archivedNotice).toBeVisible({ timeout: 30_000 });
+    await expect(archivedNotice).toContainText("该参数旧链接已归档");
+    await expect(archivedNotice).toContainText(fixture.legacy.gone);
+    await expect(archivedNotice).toContainText("legacy-parameter-id-retired");
+    await expect(archivedNotice).toContainText(fixture.legacy.goneEvidenceId);
+    await expect(archivedNotice).not.toContainText(/archive-op08-gone|candidate/i);
+    await expect(page.getByRole("dialog", { name: "修改草稿" })).toHaveCount(0);
+    await assertNoPageOverflow(page);
+    await catalogScreenshot(page, testInfo, "pcat-ui-11-archived-notice-desktop");
+    await archivedNotice.getByRole("button", { name: "知道了" }).click();
+    await expect(archivedNotice).toHaveCount(0);
 
     const scopeHidden = await catalogJson(
       page.request,
@@ -320,16 +319,10 @@ test.describe("canonical parameter catalog negative and responsive contract", ()
   });
 });
 
-for (const viewport of [
-  { name: "desktop", width: 1440, height: 900 },
-  { name: "tablet", width: 768, height: 1024 },
-  { name: "mobile", width: 390, height: 844 },
-]) {
-  test.fixme(`real sessions reject stale Proposal ETag and require explicit reconfirmation after refresh (${viewport.name})`, async ({ page }, testInfo) => {
-    await page.setViewportSize(viewport);
-    await verifyRealProposalConflict(page, testInfo);
-  });
-}
+test.fixme("real sessions reject stale Proposal ETag and require explicit reconfirmation after refresh at PC 1440x900", async ({ page }, testInfo) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await verifyRealProposalConflict(page, testInfo);
+});
 
 test.fixme("replays the original committed Proposal after a verified response-phase failure", async ({ browser }, testInfo) => {
   const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });

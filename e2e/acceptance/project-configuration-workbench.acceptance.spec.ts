@@ -43,6 +43,7 @@ useBrowserDiagnostics(test, {
     { method: "GET", path: "/api/v1/projects/aurora/parameter-file-conflicts", status: 500 }
   ]
 });
+test.use({ viewport: { width: 1440, height: 900 } });
 
 const organizationId = "org-chargelab";
 const projectId = "aurora";
@@ -344,50 +345,17 @@ test.describe("project configuration workbench read-only browser acceptance", ()
       await page.getByRole("button", { name: "任务", exact: true }).click();
       await page.getByRole("button", { name: "检查器", exact: true }).click();
 
-      await page.setViewportSize({ width: 768, height: 1024 });
-      const tabletTreeToggle = page.getByRole("button", { name: "源结构", exact: true });
-      const tabletInspectorToggle = page.getByRole("button", { name: "检查器", exact: true });
-      const tabletTaskToggle = page.getByRole("button", { name: "任务", exact: true });
-      // Narrow viewports start with the tree sheet closed so source stays dominant.
-      await expect(tabletTreeToggle).toHaveAttribute("aria-expanded", "false");
-      await tabletTreeToggle.click();
-      await expect(tabletTreeToggle).toHaveAttribute("aria-expanded", "true");
-      await expect(page.getByRole("tree", { name: new RegExp(configSetName) })).toBeVisible();
-      await tabletTreeToggle.click();
-      await expect(tabletTreeToggle).toHaveAttribute("aria-expanded", "false");
-      await tabletInspectorToggle.click();
-      await expect(page.getByRole("complementary", { name: "配置检查器" })).toBeVisible();
-      await tabletTaskToggle.click();
-      await expect(page.getByRole("region", { name: "配置任务" })).toContainText(/没有本轮更改|任务证据|会话变更/);
-      const tabletOverflow = await page.evaluate(() => ({
-        scrollWidth: document.documentElement.scrollWidth,
-        clientWidth: document.documentElement.clientWidth
-      }));
-      expect(tabletOverflow.scrollWidth).toBeLessThanOrEqual(tabletOverflow.clientWidth);
-      await tabletTaskToggle.click();
-      await tabletInspectorToggle.click();
-
-      await page.setViewportSize({ width: 390, height: 844 });
-      await page.getByRole("button", { name: "源结构", exact: true }).click();
-      await expect(page.getByRole("tree", { name: new RegExp(configSetName) })).toBeVisible();
-      await page.getByRole("button", { name: "源结构", exact: true }).click();
-      await page.getByRole("button", { name: "检查器", exact: true }).click();
-      await expect(page.getByRole("complementary", { name: "配置检查器" })).toBeVisible();
-      const overflow = await page.evaluate(() => ({
-        scrollWidth: document.documentElement.scrollWidth,
-        clientWidth: document.documentElement.clientWidth
-      }));
-      expect(overflow.scrollWidth).toBeLessThanOrEqual(overflow.clientWidth);
-
       const evidencePath = await writeOperationJsonArtifact(testInfo, "project-configuration-workbench.json", {
         route: page.url(),
         configSetId,
         memberFileId: primaryBody.item.id,
         activeVersionId: primaryBody.version.id,
         ungroupedFileName: looseFileName,
-        viewports: ["1440x900", "768x1024", "390x844"],
-        overflow,
-        tabletOverflow
+        viewports: ["1440x900"],
+        overflow: {
+          scrollWidth: desktopShell.scrollWidth,
+          clientWidth: desktopShell.clientWidth
+        }
       });
       await recordOperationEvidence({
         operationId: "PROJ-CONFIG-READ-001",
@@ -406,7 +374,7 @@ test.describe("project configuration workbench read-only browser acceptance", ()
             responseSummary: `members=${membersBody.items.length}; activeVersion=${primaryBody.version.id}`
           })
         ],
-        notes: "Project-list entry opened the canonical route; API member identity and active source remained read-only while tree, inspector, task sheet, and mobile overflow were exercised."
+        notes: "Project-list entry opened the canonical route; API member identity and active source remained read-only while tree, inspector, and task sheet interactions were exercised at PC 1440x900."
       });
     } finally {
       await cleanupSemanticAcceptanceArtifacts({
@@ -1893,22 +1861,6 @@ test.describe("project configuration workbench read-only browser acceptance", ()
       }));
       expect(desktopOverflow.scrollWidth).toBeLessThanOrEqual(desktopOverflow.clientWidth);
 
-      await page.setViewportSize({ width: 768, height: 1024 });
-      await expect(page.getByRole("status", { name: "发布就绪" })).toBeVisible();
-      const tabletOverflow = await page.evaluate(() => ({
-        scrollWidth: document.documentElement.scrollWidth,
-        clientWidth: document.documentElement.clientWidth
-      }));
-      expect(tabletOverflow.scrollWidth).toBeLessThanOrEqual(tabletOverflow.clientWidth);
-
-      await page.setViewportSize({ width: 390, height: 844 });
-      await expect(page.getByRole("status", { name: "发布就绪" })).toBeVisible();
-      const mobileOverflow = await page.evaluate(() => ({
-        scrollWidth: document.documentElement.scrollWidth,
-        clientWidth: document.documentElement.clientWidth
-      }));
-      expect(mobileOverflow.scrollWidth).toBeLessThanOrEqual(mobileOverflow.clientWidth);
-
       const evidencePath = await writeOperationJsonArtifact(
         testInfo,
         "project-configuration-workbench-release-readiness.json",
@@ -1922,10 +1874,8 @@ test.describe("project configuration workbench read-only browser acceptance", ()
           deniedStatus: deniedReadiness.status(),
           staleCreateStatus: staleCreate.status(),
           staleCreateCode: staleBody.error?.details?.code ?? null,
-          viewports: ["1440x900", "768x1024", "390x844"],
-          desktopOverflow,
-          tabletOverflow,
-          mobileOverflow
+          viewports: ["1440x900"],
+          desktopOverflow
         }
       );
       await recordOperationEvidence({
@@ -2177,11 +2127,6 @@ test.describe("project configuration workbench read-only browser acceptance", ()
       await expect(page.getByRole("region", { name: "发布基线" })).toBeVisible({ timeout: 30_000 });
       await expect(page.getByLabel("基线历史")).toBeVisible();
 
-      await page.setViewportSize({ width: 768, height: 1024 });
-      await expect(page.getByRole("region", { name: "发布基线" })).toBeVisible();
-      await page.setViewportSize({ width: 390, height: 844 });
-      await expect(page.getByRole("region", { name: "发布基线" })).toBeVisible();
-
       const evidencePath = await writeOperationJsonArtifact(
         testInfo,
         "project-configuration-workbench-release-baselines.json",
@@ -2191,7 +2136,7 @@ test.describe("project configuration workbench read-only browser acceptance", ()
           draftBaselineId,
           releasedTipId: tipAfterRestore ?? tipBeforeRestore ?? null,
           releasedTipUnchanged: tipBeforeRestore ? tipAfterRestore === tipBeforeRestore : null,
-          viewports: ["1440x900", "768x1024", "390x844"]
+          viewports: ["1440x900"]
         }
       );
       await recordOperationEvidence({
@@ -2307,26 +2252,20 @@ test.describe("project configuration workbench read-only browser acceptance", ()
         await expect(page.getByRole("navigation", { name: "项目运营视图" })).toHaveCount(0);
       }
 
-      for (const viewport of [
-        { width: 1440, height: 900 },
-        { width: 768, height: 1024 },
-        { width: 390, height: 844 }
-      ]) {
-        await page.setViewportSize(viewport);
-        await page.goto(
-          `/parameter-admin/projects/${projectId}/configuration?configSet=${encodeURIComponent(configSetId)}&file=${encodeURIComponent(primaryBody.item.id)}`
-        );
-        await dismissXiaozeHint(page);
-        await expect(page.getByRole("region", { name: "项目配置工作台" })).toBeVisible({ timeout: 30_000 });
-        const overflow = await page.evaluate(() => {
-          const doc = document.documentElement;
-          return {
-            scrollWidth: doc.scrollWidth,
-            clientWidth: doc.clientWidth
-          };
-        });
-        expect(overflow.scrollWidth).toBeLessThanOrEqual(overflow.clientWidth + 1);
-      }
+      await page.setViewportSize({ width: 1440, height: 900 });
+      await page.goto(
+        `/parameter-admin/projects/${projectId}/configuration?configSet=${encodeURIComponent(configSetId)}&file=${encodeURIComponent(primaryBody.item.id)}`
+      );
+      await dismissXiaozeHint(page);
+      await expect(page.getByRole("region", { name: "项目配置工作台" })).toBeVisible({ timeout: 30_000 });
+      const desktopOverflow = await page.evaluate(() => {
+        const doc = document.documentElement;
+        return {
+          scrollWidth: doc.scrollWidth,
+          clientWidth: doc.clientWidth
+        };
+      });
+      expect(desktopOverflow.scrollWidth).toBeLessThanOrEqual(desktopOverflow.clientWidth + 1);
 
       const evidencePath = await writeOperationJsonArtifact(
         testInfo,
@@ -2334,7 +2273,8 @@ test.describe("project configuration workbench read-only browser acceptance", ()
         {
           route: page.url(),
           redirects: redirects.map((item) => item.from),
-          viewports: ["1440x900", "768x1024", "390x844"],
+          viewports: ["1440x900"],
+          desktopOverflow,
           configSetId,
           fileId: primaryBody.item.id
         }
@@ -2375,7 +2315,7 @@ test.describe("project configuration workbench read-only browser acceptance", ()
           api: cutoverApi,
           notes:
             operationId === "PROJ-CONFIG-CUTOVER-001"
-              ? "Legacy deep links redirected to workbench contexts; three viewports had no page-level overflow."
+              ? "Legacy deep links redirected to workbench contexts; PC 1440x900 had no page-level overflow."
               : `Superseded operation ${operationId} covered by PROJ-CONFIG-CUTOVER-001 cutover evidence.`
         });
       }
