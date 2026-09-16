@@ -207,7 +207,7 @@ export const acceptanceRequirements: AcceptanceRequirement[] = [
     id: "PARAM-ADMIN-003",
     workflow: "C",
     title:
-      "At PC 1440x900, the Admin project DataTable keeps URL q/status/sort state through reload, Back, Forward, and popstate; search/filter/sort, pagination, keyboard row entry, and isolated edit/delete actions remain usable with no table or page overflow.",
+      "At PC 1440x900, the Admin project DataTable keeps URL q/status/sort state through reload, Back, Forward, and popstate; search/filter/sort, pagination, keyboard row entry, and isolated edit/delete actions remain usable with no page overflow.",
     required: false
   },
   {

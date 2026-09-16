@@ -64,7 +64,7 @@
 - `BRIDGE-WIN-001`：`/node-debugging` 的 Windows 优先本地 Bridge 面板可覆盖缺失安装、未配对、未启动、在线无设备与在线目标状态，并展示同源 Windows 下载入口。
 - `BRIDGE-TOOLS-001`：Bridge 已连接但 `tools.adb.available: false` 时，Step ③ 显示缺少 ADB 与 **安装调试工具** CTA（非「Bridge 未安装」）。覆盖：`src/NodeDebuggingPage.test.tsx`。
 - `PARAM-HOME-001`：PC 1440×900 下，`/parameter-home` 通过 `ParameterDashboardRepository` 加载 summary/hotspots API 数据，支持页面内时间窗口与热榜维度切换，并保持现有 Xiaoze 悬浮球不遮挡 dashboard 内容（`e2e/acceptance/parameter-home.acceptance.spec.ts`）。
-- `PARAM-ADMIN-003`：PC 1440×900 下，Admin 项目 DataTable 在 URL 的 `q`/`status`/`sort` 经刷新、`popstate`、后退与前进后保持，支持搜索/筛选/排序、分页、键盘进入行及隔离的编辑/删除操作，表格与页面均不横向溢出。自动化见 `e2e/acceptance/parameter-admin-projects.acceptance.spec.ts`。
+- `PARAM-ADMIN-003`：PC 1440×900 下，Admin 项目 DataTable 在 URL 的 `q`/`status`/`sort` 经刷新、`popstate`、后退与前进后保持，支持搜索/筛选/排序、分页、键盘进入行及隔离的编辑/删除操作，页面不横向溢出。自动化见 `e2e/acceptance/parameter-admin-projects.acceptance.spec.ts`。
 - `PROJ-REVIEW-ROLES-001`：Admin 在 `/parameter-admin/projects/:projectId/review-roles` 配置项目审核工作流角色（`hardware-committer`、`software-committer`、`software-user`），支持深链访问、搜索与批量选择，并发冲突时原子回滚与提示（单元测试 `ProjectReviewRolesPanel.test.tsx`、服务端测试 `projectWorkflowRoles.integration.test.ts`；playwright-cli 截图见 `work/ui-checks/`）。
 - `PROJ-REVIEW-READINESS-001`：参数工作台检测三个角色池完备性；角色缺失时精准阻止提交并保留草稿，为 Admin 显示配置入口，非 Admin 提示联系管理员（单元测试 `DtsBindingDraftTray.test.tsx`、服务端测试 `serviceReviewWorkflow.integration.test.ts`）。
 - `PARAM-INIT-WIZARD-001`：创建者完成项目参数初始化（选源 + 勾选）并进入待审阅（单测 wizard/reducer；服务端 `initializationService`；playwright-cli 见 `work/ui-checks/param-init/`）。

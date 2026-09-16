@@ -437,7 +437,7 @@ export const acceptanceOperations: AcceptanceOperation[] = [
     route: "/parameter-admin/projects",
     roles: ["Admin"],
     action:
-      "At PC 1440x900, use the Admin project DataTable to preserve URL q/status/sort through reload, Back, Forward, and popstate; search, filter, sort, paginate, enter a row by keyboard, and use isolated edit/delete actions without table or page overflow.",
+      "At PC 1440x900, use the Admin project DataTable to preserve URL q/status/sort through reload, Back, Forward, and popstate; search, filter, sort, paginate, enter a row by keyboard, and use isolated edit/delete actions without page overflow.",
     coverage: "automated",
     acceptanceIds: ["PARAM-ADMIN-003"],
     specFiles: ["e2e/acceptance/parameter-admin-projects.acceptance.spec.ts"],
