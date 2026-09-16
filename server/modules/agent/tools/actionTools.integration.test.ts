@@ -64,7 +64,6 @@ const DRIVER_SCHEMA_VERSION_ROW_ID = "driver:platform/wiseeff,charging_core:v1";
 const DRIVER_SCHEMA_OVERLAY_ID = "dso-agent-wiseeff-charging-core";
 const CATEGORY_MODULE_ID = "pmod-agent-power";
 const DRIVER_GROUP_MODULE_ID = "pmod-agent-wiseeff-charging-core";
-const ASSIGNEES = { hardwareCommitterId: USER_ID, softwareCommitterId: USER_ID, softwareUserId: USER_ID };
 
 const databaseAvailable = await isTestDatabaseAvailable();
 
@@ -119,16 +118,6 @@ async function seedGraph(db: Database) {
      values ('cutover-agent-action', 'migration-agent-action')
      on conflict do nothing`
   );
-  await db.query(`delete from parameter_drafts where organization_id = $1`, [ORG_ID]);
-  await db.query(`delete from parameter_submission_rounds where organization_id = $1`, [ORG_ID]);
-  await db.query(`delete from parameter_change_requests where organization_id = $1`, [ORG_ID]);
-  await db.query(`delete from audit_events where organization_id = $1`, [ORG_ID]);
-  await db.query(
-    `delete from user_role_bindings
-     where organization_id = $1 and project_id = $2
-       and role_id in ('hardware-committer', 'software-committer', 'software-user')`,
-    [ORG_ID, PROJECT_ID]
-  );
   await db.query(
     `insert into organizations (id, name) values ($1, 'Agent Action Org')
      on conflict (id) do update set name = excluded.name`,
@@ -145,13 +134,6 @@ async function seedGraph(db: Database) {
      values ($1, $2, 'Agent Action', 'AGA', 'initialized')
      on conflict (id) do update set name = excluded.name`,
     [PROJECT_ID, ORG_ID]
-  );
-  await db.query(
-    `insert into user_role_bindings (id, user_id, organization_id, project_id, role_id) values
-       (gen_random_uuid(), $1, $2, $3, 'hardware-committer'),
-       (gen_random_uuid(), $1, $2, $3, 'software-committer'),
-       (gen_random_uuid(), $1, $2, $3, 'software-user')`,
-    [USER_ID, ORG_ID, PROJECT_ID]
   );
   await db.query(
     `insert into dts_config_set (id, organization_id, project_id, name, description)
@@ -815,7 +797,7 @@ describe.skipIf(!databaseAvailable)("action.submitParameterChange integration (T
             submitParameterChanges(
               tx,
               capableAuth,
-              { projectId: PROJECT_ID, items: [item], assignees: ASSIGNEES },
+              { projectId: PROJECT_ID, items: [item] },
               {
                 invocation: agentContext.invocation,
                 requestId: "req-central-agent",
@@ -835,7 +817,7 @@ describe.skipIf(!databaseAvailable)("action.submitParameterChange integration (T
             submitParameterChanges(
               tx,
               capableAuth,
-              { projectId: PROJECT_ID, items: [item], assignees: ASSIGNEES },
+              { projectId: PROJECT_ID, items: [item] },
               {
                 invocation: createSystemInvocation({ kind: "job", name: "central-compatible-test" }),
                 requestId: "req-central-system",
@@ -850,7 +832,7 @@ describe.skipIf(!databaseAvailable)("action.submitParameterChange integration (T
           submitParameterChanges(
             root,
             auth,
-            { projectId: PROJECT_ID, items: [item], assignees: ASSIGNEES },
+            { projectId: PROJECT_ID, items: [item] },
             {
               invocation: createUserInvocation(auth),
               requestId: "req-central-incapable-user",
@@ -863,7 +845,7 @@ describe.skipIf(!databaseAvailable)("action.submitParameterChange integration (T
         const submitted = await submitParameterChanges(
           root,
           capableAuth,
-          { projectId: PROJECT_ID, items: [item], assignees: ASSIGNEES },
+          { projectId: PROJECT_ID, items: [item] },
           {
             invocation: createUserInvocation(capableAuth),
             requestId: "req-central-capable-user",
@@ -1004,7 +986,7 @@ describe.skipIf(!databaseAvailable)("action.submitParameterChange integration (T
             submitParameterChanges(
               tx,
               capableAuth,
-              { projectId: PROJECT_ID, items: [item], assignees: ASSIGNEES },
+              { projectId: PROJECT_ID, items: [item] },
               { invocation: agentContext.invocation, requestId: "req-enablement-agent", refusalSink }
             )
           )
@@ -1020,7 +1002,7 @@ describe.skipIf(!databaseAvailable)("action.submitParameterChange integration (T
             submitParameterChanges(
               tx,
               capableAuth,
-              { projectId: PROJECT_ID, items: [item], assignees: ASSIGNEES },
+              { projectId: PROJECT_ID, items: [item] },
               {
                 invocation: createSystemInvocation({ kind: "job", name: "enablement-compatible-test" }),
                 requestId: "req-enablement-system",
@@ -1034,7 +1016,7 @@ describe.skipIf(!databaseAvailable)("action.submitParameterChange integration (T
         const submitted = await submitParameterChanges(
           root,
           capableAuth,
-          { projectId: PROJECT_ID, items: [item], assignees: ASSIGNEES },
+          { projectId: PROJECT_ID, items: [item] },
           {
             invocation: createUserInvocation(capableAuth),
             requestId: "req-enablement-user",

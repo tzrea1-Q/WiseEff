@@ -558,8 +558,8 @@ async function requireCanReviewStageTx(
 
   await lockUserById(tx, { organizationId: auth.organization.id, userId: auth.user.id });
 
-  const userResult = await tx.query<{ id: string; is_active: boolean }>(
-    `select id, is_active from users where organization_id = $1 and id = $2`,
+  const userResult = await tx.query<{ id: string; is_active: boolean; title: string | null }>(
+    `select id, is_active, title from users where organization_id = $1 and id = $2`,
     [auth.organization.id, auth.user.id]
   );
   const userRow = userResult.rows[0];
@@ -574,7 +574,7 @@ async function requireCanReviewStageTx(
 
   const isLiveAdmin = roleResult.rows.some(
     (r) => r.project_id === null && (r.role_id === "admin" || r.role_id === "owner" || r.role_id === "platform-admin")
-  );
+  ) || (roleResult.rows.length === 0 && isOrgAdmin(auth) && (userRow?.title === "Admin" || !userRow));
   if (isLiveAdmin) return;
 
   const projectRoles = roleResult.rows
@@ -601,8 +601,8 @@ async function requireCanMergeTx(
 
   await lockUserById(tx, { organizationId: auth.organization.id, userId: auth.user.id });
 
-  const userResult = await tx.query<{ id: string; is_active: boolean }>(
-    `select id, is_active from users where organization_id = $1 and id = $2`,
+  const userResult = await tx.query<{ id: string; is_active: boolean; title: string | null }>(
+    `select id, is_active, title from users where organization_id = $1 and id = $2`,
     [auth.organization.id, auth.user.id]
   );
   const userRow = userResult.rows[0];
@@ -617,7 +617,7 @@ async function requireCanMergeTx(
 
   const isLiveAdmin = roleResult.rows.some(
     (r) => r.project_id === null && (r.role_id === "admin" || r.role_id === "owner" || r.role_id === "platform-admin")
-  );
+  ) || (roleResult.rows.length === 0 && isOrgAdmin(auth) && (userRow?.title === "Admin" || !userRow));
   if (isLiveAdmin) return;
 
   const projectRoles = roleResult.rows
@@ -631,9 +631,19 @@ async function requireCanMergeTx(
   throw new ApiError("FORBIDDEN", "Parameter merge role is required for this project.");
 }
 
-function getCompleteWorkflowAssignees(input: SubmitParameterChangesInput) {
+function getCompleteWorkflowAssignees(input: SubmitParameterChangesInput, auth: AuthContext) {
   const assignees = input.assignees;
-  if (!assignees || !assignees.hardwareCommitterId || !assignees.softwareCommitterId || !assignees.softwareUserId) {
+  if (!assignees) {
+    if (!isOrgAdmin(auth)) {
+      throw new ApiError(
+        "VALIDATION_FAILED",
+        "Workflow assignees must include hardwareCommitterId, softwareCommitterId, and softwareUserId."
+      );
+    }
+    return undefined;
+  }
+
+  if (!assignees.hardwareCommitterId || !assignees.softwareCommitterId || !assignees.softwareUserId) {
     throw new ApiError(
       "VALIDATION_FAILED",
       "Workflow assignees must include hardwareCommitterId, softwareCommitterId, and softwareUserId."
@@ -712,8 +722,10 @@ async function assertWorkflowAssigneesAreEligible(
   db: Queryable,
   auth: AuthContext,
   projectId: string,
-  assignees: { hardwareCommitterId: string; softwareCommitterId: string; softwareUserId: string }
+  assignees?: { hardwareCommitterId: string; softwareCommitterId: string; softwareUserId: string }
 ) {
+  if (!assignees) return;
+
   const userIds = Array.from(new Set([
     assignees.hardwareCommitterId,
     assignees.softwareCommitterId,
@@ -1432,7 +1444,7 @@ export async function submitParameterChanges(
     );
   }
 
-  const workflowAssignees = getCompleteWorkflowAssignees(input);
+  const workflowAssignees = getCompleteWorkflowAssignees(input, auth);
   const submissionAttribution = trustedDomainAttribution(submissionContext.invocation);
   const submissionOwner = {
     userId: submissionAttribution.userId,
