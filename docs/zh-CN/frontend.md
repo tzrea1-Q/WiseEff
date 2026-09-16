@@ -233,7 +233,7 @@ mock mode 有意保留 12 个兼容参数，以保证组件测试与演示轻量
 
 本机 Bridge 的 `bridgeId` 不在当前用户 `/device-bridges/mine` 中，表示**其他账号的本机绑定**，不是令牌过期。向导要求当前账号用新签发的配对码重新绑定，等待新的 `bridgeId`，刷新 `/mine`，再自动 detect。最终成败必须根据最新 health 和最新当前用户代理列表判定，不能沿用连接开始前的 stale 标记去显示“配对已失效”。
 
-本机 Bridge 的 `clientVersion` 低于发布清单 `recommendedVersion`（或像 0.1.0 那样不报告版本）时，面板会常驻升级提示，并给出本机安装包下载。这不依赖重新配对失败文案。
+本机 Bridge 的 `clientVersion` 低于发布清单 `recommendedVersion`（或像 0.1.0 那样不报告版本）时，面板会常驻升级提示。提示会进入与首次安装相同的步骤（优先图形安装包，便携压缩包为备选），而不是直接下载 zip。若最新版本只有 zip，清单仍保留上一版图形安装包。安装完成后，步骤 1 提供主按钮「我已安装，去连接本机」。
 
 Phase B（Step ③ 工具）：health 含 `tools.adb` / `tools.hdc`；所选协议工具缺失时显示 `tools_missing` 与 **安装调试工具**（`bridgeToolInstallLauncher.ts`，`wiseeff-bridge://install-tools`，120 秒轮询）。detect 报错若指向 adb/hdc 缺失，提示安装工具而非「Bridge 未安装」。
 

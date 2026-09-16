@@ -477,9 +477,8 @@ export function DtsReloadPage({
       if (session.getSnapshot().targetRef.trim()) {
         session.setTargetRef("");
       }
-      setTargetDetectionError(
-        toUserErrorMessage(error, "设备检测失败，请稍后重试。")
-      );
+      const message = toUserErrorMessage(error, "设备检测失败，请稍后重试。");
+      setTargetDetectionError(message.startsWith(DEVICE_UNAVAILABLE_MESSAGE) ? "" : message);
     } finally {
       if (detectRequestSeqRef.current === requestSeq) {
         setDetectingTargets(false);
@@ -747,7 +746,7 @@ export function DtsReloadPage({
           onBridgeStateChange={handleBridgeStateChange}
         />
 
-        {targetDetectionError ? (
+        {targetDetectionError && !targetDetectionError.startsWith(DEVICE_UNAVAILABLE_MESSAGE) ? (
           <p role="alert" className="rounded-md border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-950">
             {targetDetectionError}
           </p>

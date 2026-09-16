@@ -173,6 +173,23 @@ export async function loadLatestBridgeReleaseManifest(artifactRoot: string): Pro
   }
 
   versionDirs.sort(compareSemver);
-  const latestVersion = versionDirs[versionDirs.length - 1];
-  return loadBridgeReleaseManifest(path.join(resolvedRoot, latestVersion, "manifest.json"));
+  const latestVersion = versionDirs[versionDirs.length - 1]!;
+  const latest = await loadBridgeReleaseManifest(path.join(resolvedRoot, latestVersion, "manifest.json"));
+  const byKey = new Map<string, BridgeReleaseItem>();
+  for (const dir of versionDirs) {
+    const manifest = await loadBridgeReleaseManifest(path.join(resolvedRoot, dir, "manifest.json"));
+    for (const item of manifest.items) {
+      const key = `${item.platform}:${item.arch}:${item.artifactKind ?? "portable"}`;
+      const existing = byKey.get(key);
+      if (!existing || compareSemver(existing.version, item.version) < 0) {
+        byKey.set(key, item);
+      }
+    }
+  }
+
+  return {
+    recommendedVersion: latest.recommendedVersion,
+    minCompatibleVersion: latest.minCompatibleVersion,
+    items: sortItemsWindowsFirst([...byKey.values()])
+  };
 }

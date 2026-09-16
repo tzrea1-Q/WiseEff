@@ -8375,6 +8375,12 @@ td small {
   white-space: normal;
 }
 
+.local-device-bridge-panel__head .local-device-bridge-panel__install-cta {
+  min-height: 36px;
+  padding-inline: var(--space-4);
+  font-weight: 700;
+}
+
 @media (max-width: 480px) {
   .local-device-bridge-panel__already-installed {
     align-items: stretch;

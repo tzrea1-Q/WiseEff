@@ -434,6 +434,17 @@ describe("DtsReloadPage", () => {
     expect(getRequiredRoleForPage("dts-reload")).toBe("hardware-committer");
   });
 
+  it("does not render device-unavailable copy as a detect banner", async () => {
+    const detectTargets = vi.fn().mockRejectedValue(new Error(DEVICE_UNAVAILABLE_MESSAGE));
+    renderPage(createRepository(), {
+      bridges: [{ id: "bridge-1", machineLabel: "Lab Mac", lastSeenAt: new Date().toISOString() }],
+      probeBridgeHealth: async () => ({ connected: true, bridgeId: "bridge-1" }),
+      detectTargets
+    });
+    await waitFor(() => expect(detectTargets).toHaveBeenCalled());
+    expect(screen.queryByText(DEVICE_UNAVAILABLE_MESSAGE)).not.toBeInTheDocument();
+  });
+
   it("does not render the device-unavailable API copy as a page-level danger banner", async () => {
     const listCandidates = vi.fn().mockRejectedValue(new Error(DEVICE_UNAVAILABLE_MESSAGE));
     renderPage(

@@ -122,14 +122,10 @@ function CopyableCommand({ command, label = "命令" }: { command: string; label
 function LocalBridgeUpgradeNotice({
   installedVersion,
   recommendedVersion,
-  downloadUrl,
-  downloadLabel,
   onOpenInstall
 }: {
   installedVersion: string | null;
   recommendedVersion: string;
-  downloadUrl?: string | null;
-  downloadLabel?: string;
   onOpenInstall?: () => void;
 }) {
   return (
@@ -138,20 +134,16 @@ function LocalBridgeUpgradeNotice({
         <strong>{BRIDGE_UPGRADE_NOTICE_TITLE}</strong>
         {" "}
         {describeLocalBridgeUpgradeMessage({ installedVersion, recommendedVersion })}
+        请使用与首次安装相同的图形安装包；便携压缩包仅作备选。
       </p>
-      <div className="local-device-bridge-panel__upgrade-actions">
-        {downloadUrl ? (
-          <a className="button local-device-bridge-panel__install-cta" href={downloadUrl}>
+      {onOpenInstall ? (
+        <div className="local-device-bridge-panel__upgrade-actions">
+          <button type="button" className="button local-device-bridge-panel__install-cta" onClick={onOpenInstall}>
             <Download size={14} aria-hidden="true" />
-            {downloadLabel ?? "下载最新安装包"}
-          </a>
-        ) : null}
-        {onOpenInstall ? (
-          <button type="button" className="button subtle" onClick={onOpenInstall}>
-            查看安装步骤
+            下载安装包
           </button>
-        ) : null}
-      </div>
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -369,19 +361,19 @@ export function LocalDeviceBridgeWizard({
   });
 
   const primaryLabel =
-    viewStep === 2
-      ? pairingStale || pairingAuthFailure || panelStatus === "not_paired"
-        ? "重新配对"
-        : panelStatus === "not_connected"
-          ? "重新连接"
-          : needsLocalBridgeLaunch(panelStatus)
-            ? "启动并连接本机"
-            : "连接本机"
-      : viewStep === 3
-        ? panelStatus === "tools_missing"
+    viewStep === 1
+      ? "我已安装，去连接本机"
+      : viewStep === 2
+        ? pairingStale || pairingAuthFailure || panelStatus === "not_paired"
+          ? "重新配对"
+          : panelStatus === "not_connected"
+            ? "重新连接"
+            : needsLocalBridgeLaunch(panelStatus)
+              ? "启动并连接本机"
+              : "连接本机"
+        : panelStatus === "tools_missing"
           ? "安装调试工具"
-          : "重新检测设备"
-        : "连接本地设备";
+          : "重新检测设备";
 
   const statusHint =
     viewStep === 1 && naturalStep > 1
@@ -401,7 +393,7 @@ export function LocalDeviceBridgeWizard({
     (item) => !hostInstaller || item.downloadUrl !== hostInstaller.downloadUrl
   );
   const otherPortables = portableReleases.filter((item) => !hostPortable || item.downloadUrl !== hostPortable.downloadUrl);
-  const showPrimaryAction = showSetupWizard ? viewStep === 2 || viewStep === 3 : true;
+  const showPrimaryAction = true;
   const hasReleaseCatalog = Boolean(hostRelease || installerAlternates.length > 0 || portableReleases.length > 0);
   const promptUpgrade = shouldPromptLocalBridgeUpgrade({
     health,
@@ -410,26 +402,16 @@ export function LocalDeviceBridgeWizard({
     hasReleaseCatalog
   });
   const installedClientVersion = resolveInstalledBridgeClientVersion({ health, bridges });
-  const upgradeDownloadUrl = hostInstaller
-    ? resolveDeviceBridgeDownloadUrl(hostInstaller.downloadUrl)
-    : hostPortable
-      ? resolveDeviceBridgeDownloadUrl(hostPortable.downloadUrl)
-      : null;
+  const openInstallStep = () => {
+    setShowUpgradeInstall(true);
+    setViewStep(1);
+  };
   const upgradeNotice =
     promptUpgrade && recommendedVersion ? (
       <LocalBridgeUpgradeNotice
         installedVersion={installedClientVersion}
         recommendedVersion={recommendedVersion}
-        downloadUrl={upgradeDownloadUrl}
-        downloadLabel={hostInstaller ? bridgeReleaseDownloadLabel(hostInstaller) : hostPortable ? bridgeReleaseDownloadLabel(hostPortable) : undefined}
-        onOpenInstall={
-          showSetupWizard && viewStep === 1
-            ? undefined
-            : () => {
-                setShowUpgradeInstall(true);
-                setViewStep(1);
-              }
-        }
+        onOpenInstall={showSetupWizard && viewStep === 1 ? undefined : openInstallStep}
       />
     ) : null;
 
@@ -522,10 +504,19 @@ export function LocalDeviceBridgeWizard({
         </div>
         {showPrimaryAction ? (
           <button
-            className="button subtle"
+            className={
+              viewStep === 3
+                ? "button subtle"
+                : "button local-device-bridge-panel__install-cta"
+            }
             type="button"
             disabled={checking || detecting || connecting || (viewStep === 2 && pairingCodeRequiredForConnect && pairingCodeLoading)}
             onClick={() => {
+              if (viewStep === 1) {
+                setAllowStep2WhileMissing(true);
+                setViewStep(2);
+                return;
+              }
               handleConnect();
             }}
           >
@@ -658,14 +649,14 @@ export function LocalDeviceBridgeWizard({
                 ) : null}
                 <button
                   type="button"
-                  className="button local-device-bridge-panel__already-installed-cta"
+                  className="button local-device-bridge-panel__install-cta local-device-bridge-panel__already-installed-cta"
                   onClick={() => {
                     setAllowStep2WhileMissing(true);
                     setViewStep(2);
                   }}
                 >
                   {panelStatus === "missing_bridge"
-                    ? "Bridge 已安装但未运行？点此自动启动并配对"
+                    ? "我已安装，去连接本机"
                     : "Bridge 未运行？点此自动启动并连接"}
                 </button>
               </p>

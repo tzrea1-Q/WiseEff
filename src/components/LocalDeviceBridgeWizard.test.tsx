@@ -133,7 +133,7 @@ describe("LocalDeviceBridgeWizard", () => {
       expect.stringContaining("/downloads/device-bridge/0.1.0/darwin/arm64/WiseEffBridge_0.1.0_darwin_arm64.pkg")
     );
 
-    expect(screen.getByRole("button", { name: /Bridge 已安装但未运行/ })).toBeInTheDocument();
+    expect(screen.getAllByRole("button", { name: "我已安装，去连接本机" }).length).toBeGreaterThan(0);
 
     fireEvent.click(screen.getByText("便携压缩包（zip / tar.gz）"));
     expect(screen.getByRole("link", { name: "下载 macOS Bridge（Apple Silicon）" })).toBeInTheDocument();
@@ -231,7 +231,7 @@ describe("LocalDeviceBridgeWizard", () => {
       />
     );
 
-    const entry = screen.getByRole("button", { name: /Bridge 已安装但未运行/ });
+    const entry = screen.getAllByRole("button", { name: "我已安装，去连接本机" })[0]!;
     fireEvent.click(entry);
 
     expect(screen.getByRole("button", { name: "启动并连接本机" })).toBeInTheDocument();
@@ -314,11 +314,13 @@ describe("LocalDeviceBridgeWizard", () => {
 
     expect(screen.getByText("请升级本机 Bridge")).toBeInTheDocument();
     expect(screen.getByText(/当前本机版本 0\.1\.0/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "下载安装包" }));
+    expect(screen.getByText("图形安装包（推荐）")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "安装 Bridge（macOS Apple Silicon）" })).toHaveAttribute(
       "href",
       expect.stringContaining("/downloads/device-bridge/0.1.1/")
     );
-    expect(screen.getByRole("button", { name: "查看安装步骤" })).toBeInTheDocument();
+    expect(screen.getByText("图形安装包（推荐）")).toBeInTheDocument();
   });
 
   it("lets users return to step 1 from later wizard steps", async () => {
