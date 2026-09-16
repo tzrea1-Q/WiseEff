@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
@@ -26,6 +26,33 @@ describe("bridge package consistency", () => {
     const first = await computeBridgeSourceFingerprint(process.cwd());
     const second = await computeBridgeSourceFingerprint(process.cwd());
     expect(first).toBe(second);
+  });
+
+  it("ignores generated installer staging and build output", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "bridge-fingerprint-"));
+    try {
+      await mkdir(path.join(root, "packages/device-bridge/src"), { recursive: true });
+      await mkdir(path.join(root, "ops/self-hosted/bridge-installer"), { recursive: true });
+      await mkdir(path.join(root, "scripts/lib"), { recursive: true });
+      await writeFile(path.join(root, "packages/device-bridge/src/version.ts"), "export const version = 'test';\n");
+      await writeFile(path.join(root, "ops/self-hosted/bridge-installer/launcher.sh"), "#!/bin/sh\n");
+      await writeFile(path.join(root, "scripts/build-device-bridge.ts"), "export {};\n");
+      await writeFile(path.join(root, "scripts/build-bridge-installers.ts"), "export {};\n");
+      await writeFile(path.join(root, "scripts/lib/bridgePackageConsistency.ts"), "export {};\n");
+      const sourceOnly = await computeBridgeSourceFingerprint(root);
+
+      await mkdir(path.join(root, "ops/self-hosted/bridge-installer/staging"), { recursive: true });
+      await mkdir(path.join(root, "ops/self-hosted/bridge-installer/macos/build/arm64"), { recursive: true });
+      await writeFile(path.join(root, "ops/self-hosted/bridge-installer/staging/cli.js"), "generated\n");
+      await writeFile(
+        path.join(root, "ops/self-hosted/bridge-installer/macos/build/arm64/Info.plist"),
+        "generated\n"
+      );
+
+      await expect(computeBridgeSourceFingerprint(root)).resolves.toBe(sourceOnly);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
   });
 
   it("fails closed when the versioned artifact directory is missing", async () => {

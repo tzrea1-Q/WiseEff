@@ -58,6 +58,12 @@ async function listFilesRecursive(target: string): Promise<string[]> {
 
 function isRuntimeSourceFile(filePath: string) {
   const relative = filePath.replaceAll("\\", "/");
+  if (
+    relative.includes("/ops/self-hosted/bridge-installer/staging/") ||
+    relative.includes("/ops/self-hosted/bridge-installer/macos/build/")
+  ) {
+    return false;
+  }
   if (relative.endsWith(".test.ts") || relative.endsWith(".md")) {
     return false;
   }
