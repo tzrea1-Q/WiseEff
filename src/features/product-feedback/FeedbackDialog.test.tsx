@@ -204,4 +204,126 @@ describe("FeedbackDialog", () => {
     );
     expect(onOpenChange).toHaveBeenCalledWith(false);
   });
+
+  it("switches to '我的反馈' tab, displays feedback list, and views progress timeline in detail", async () => {
+    const listMine = vi.fn().mockResolvedValue({
+      items: [
+        feedback({
+          id: "fb-submitted",
+          pageTitle: "日志分析",
+          pagePath: "/logs",
+          description: "日志加载很慢",
+          status: "in_progress",
+          submittedAt: "2026-07-08T08:00:00.000Z",
+          latestPublicProgress: "已排查到是解析线程瓶颈",
+          progressEvents: [
+            {
+              id: "evt-1",
+              feedbackId: "fb-submitted",
+              kind: "submitted",
+              createdAt: "2026-07-08T08:00:00.000Z"
+            },
+            {
+              id: "evt-2",
+              feedbackId: "fb-submitted",
+              kind: "progress",
+              publicMessage: "已排查到是解析线程瓶颈",
+              createdAt: "2026-07-08T08:30:00.000Z"
+            }
+          ]
+        })
+      ]
+    });
+
+    renderDialog(createFeedbackRepository({ listMine }));
+
+    const dialog = screen.getByRole("dialog", { name: "问题反馈" });
+    const mineTab = within(dialog).getByRole("tab", { name: /我的反馈/ });
+    fireEvent.click(mineTab);
+
+    expect(await within(dialog).findByText("日志分析")).toBeInTheDocument();
+    expect(within(dialog).getByText("日志加载很慢")).toBeInTheDocument();
+    expect(within(dialog).getByText("已排查到是解析线程瓶颈")).toBeInTheDocument();
+
+    // Click row to view detail
+    fireEvent.click(within(dialog).getByText("日志分析"));
+    expect(await within(dialog).findByText("处理进展时间轴")).toBeInTheDocument();
+    expect(within(dialog).getByText("已排查到是解析线程瓶颈")).toBeInTheDocument();
+
+    // Click back to list
+    fireEvent.click(within(dialog).getByRole("button", { name: /返回反馈列表/ }));
+    expect(await within(dialog).findByText("日志分析")).toBeInTheDocument();
+  });
+
+  it("saves a draft through '保存草稿' button", async () => {
+    const createDraft = vi.fn().mockResolvedValue(
+      feedback({
+        id: "draft-new",
+        submittedAt: null,
+        description: "草稿进行中"
+      })
+    );
+
+    renderDialog(createFeedbackRepository({ createDraft }));
+
+    const dialog = screen.getByRole("dialog", { name: "问题反馈" });
+    fireEvent.change(within(dialog).getByLabelText("问题描述"), {
+      target: { value: "草稿进行中" }
+    });
+
+    const saveDraftBtn = within(dialog).getByRole("button", { name: "保存草稿" });
+    expect(saveDraftBtn).toBeEnabled();
+    fireEvent.click(saveDraftBtn);
+
+    await waitFor(() =>
+      expect(createDraft).toHaveBeenCalledWith(
+        expect.objectContaining({
+          description: "草稿进行中",
+          pagePath: "/parameter-home",
+          pageTitle: "参数首页"
+        })
+      )
+    );
+
+    expect(await within(dialog).findByText("草稿已创建并保存。")).toBeInTheDocument();
+  });
+
+  it("loads a draft from '我的反馈' into the composer via '继续编辑'", async () => {
+    const listMine = vi.fn().mockResolvedValue({
+      items: [
+        feedback({
+          id: "draft-1",
+          pageTitle: "参数首页",
+          description: "先写了一半的草稿",
+          status: "open",
+          submittedAt: null
+        })
+      ]
+    });
+    const submitDraft = vi.fn().mockResolvedValue(feedback({ id: "draft-1", status: "open" }));
+
+    renderDialog(createFeedbackRepository({ listMine, submitDraft }));
+
+    const dialog = screen.getByRole("dialog", { name: "问题反馈" });
+    fireEvent.click(within(dialog).getByRole("tab", { name: /我的反馈/ }));
+
+    expect(await within(dialog).findByText("先写了一半的草稿")).toBeInTheDocument();
+    const editBtn = within(dialog).getByRole("button", { name: "继续编辑" });
+    fireEvent.click(editBtn);
+
+    // Composer tab should be active and have description loaded
+    expect(within(dialog).getByLabelText("问题描述")).toHaveValue("先写了一半的草稿");
+    expect(within(dialog).getByRole("tab", { name: /提交反馈 \(编辑草稿\)/ })).toBeInTheDocument();
+
+    // Now submit the draft
+    fireEvent.click(within(dialog).getByRole("button", { name: "提交反馈" }));
+    await waitFor(() =>
+      expect(submitDraft).toHaveBeenCalledWith(
+        "draft-1",
+        expect.objectContaining({
+          description: "先写了一半的草稿"
+        })
+      )
+    );
+  });
 });

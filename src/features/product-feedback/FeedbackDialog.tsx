@@ -1,8 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { ClipboardEvent as ReactClipboardEvent, ReactNode } from "react";
-import { CircleX, Trash2, Upload } from "lucide-react";
+import { CircleX, Save, Trash2, Upload } from "lucide-react";
 import type { ProductFeedbackRepository } from "@/application/ports/ProductFeedbackRepository";
-import type { ProductFeedbackType } from "@/domain/productFeedback/types";
+import type {
+  ProductFeedback,
+  ProductFeedbackAttachment,
+  ProductFeedbackType
+} from "@/domain/productFeedback/types";
 import { presentError } from "@/infrastructure/http/presentError";
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/common/ConfirmDialog";
@@ -17,6 +21,8 @@ import {
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import { cn } from "@/lib/utils";
+import { MyFeedbackView } from "./MyFeedbackView";
 
 const MAX_FEEDBACK_IMAGES = 5;
 
@@ -30,6 +36,7 @@ const feedbackTypeOptions: Array<{ value: FeedbackTypeLabel; label: FeedbackType
 ];
 
 const feedbackTypeByLabel = new Map(feedbackTypeOptions.map((option) => [option.value, option.apiValue]));
+const feedbackLabelByType = new Map(feedbackTypeOptions.map((option) => [option.apiValue, option.value]));
 
 type PastedFeedbackImage = {
   id: string;
@@ -56,24 +63,34 @@ export function FeedbackDialog({
   productFeedbackRepository: ProductFeedbackRepository;
   onOpenChange: (open: boolean) => void;
 }) {
+  const [activeTab, setActiveTab] = useState<"compose" | "mine">("compose");
+  const [myFeedbackCount, setMyFeedbackCount] = useState(0);
+
+  // Composer form state
+  const [activeDraftId, setActiveDraftId] = useState<string | null>(null);
+  const [draftSavedAt, setDraftSavedAt] = useState<string | null>(null);
   const [description, setDescription] = useState("");
   const [feedbackType, setFeedbackType] = useState<FeedbackTypeLabel>("体验问题");
   const [images, setImages] = useState<PastedFeedbackImage[]>([]);
+  const [existingAttachments, setExistingAttachments] = useState<ProductFeedbackAttachment[]>([]);
+  const [existingAttachmentUrls, setExistingAttachmentUrls] = useState<Record<string, string>>({});
   const [captureStatus, setCaptureStatus] = useState<"idle" | "ready" | "invalid" | "full">("idle");
-  const [submitStatus, setSubmitStatus] = useState<"idle" | "submitting">("idle");
+  const [submitStatus, setSubmitStatus] = useState<"idle" | "submitting" | "saving_draft">("idle");
   const [successMessage, setSuccessMessage] = useState("");
   const [errorMessage, setErrorMessage] = useState("");
   const [discardConfirmOpen, setDiscardConfirmOpen] = useState(false);
+
   const imageIdCounterRef = useRef(0);
   const imagesRef = useRef<PastedFeedbackImage[]>([]);
   const trimmedDescription = description.trim();
   const isSubmitting = submitStatus === "submitting";
-  const submitDisabled = !trimmedDescription || isSubmitting;
-  // Unsubmitted description or screenshots are user work; never drop them silently.
+  const isSavingDraft = submitStatus === "saving_draft";
+  const submitDisabled = !trimmedDescription || isSubmitting || isSavingDraft;
+  const totalImageCount = existingAttachments.length + images.length;
   const isDirty = Boolean(trimmedDescription) || images.length > 0;
 
   const requestClose = () => {
-    if (isSubmitting) {
+    if (isSubmitting || isSavingDraft) {
       return;
     }
     if (isDirty) {
@@ -85,11 +102,20 @@ export function FeedbackDialog({
 
   const confirmDiscard = () => {
     setDiscardConfirmOpen(false);
+    resetComposer();
+    onOpenChange(false);
+  };
+
+  const resetComposer = () => {
+    setActiveDraftId(null);
+    setDraftSavedAt(null);
     setDescription("");
+    setFeedbackType("体验问题");
+    setExistingAttachments([]);
+    setExistingAttachmentUrls({});
     clearImages();
     setSuccessMessage("");
     setErrorMessage("");
-    onOpenChange(false);
   };
 
   useEffect(() => {
@@ -107,8 +133,40 @@ export function FeedbackDialog({
       setSuccessMessage("");
       setErrorMessage("");
       setSubmitStatus("idle");
+      setActiveTab("compose");
     }
   }, [open]);
+
+  // Load object URLs for retained draft attachments
+  useEffect(() => {
+    if (existingAttachments.length === 0) {
+      setExistingAttachmentUrls({});
+      return;
+    }
+    const getUrl =
+      productFeedbackRepository.getMineAttachmentObjectUrl ??
+      productFeedbackRepository.getAttachmentObjectUrl;
+
+    let active = true;
+    Promise.all(
+      existingAttachments.map(async (att) => {
+        try {
+          const url = await getUrl(activeDraftId ?? "", att.id);
+          return [att.id, url] as const;
+        } catch {
+          return [att.id, ""] as const;
+        }
+      })
+    ).then((pairs) => {
+      if (active) {
+        setExistingAttachmentUrls(Object.fromEntries(pairs));
+      }
+    });
+
+    return () => {
+      active = false;
+    };
+  }, [existingAttachments, activeDraftId, productFeedbackRepository]);
 
   const imageCountAtLastSuccess = useMemo(() => {
     const match = successMessage.match(/附带 (\d+) 张/);
@@ -130,7 +188,7 @@ export function FeedbackDialog({
     event.preventDefault();
     clearTransientMessages();
     setImages((currentImages) => {
-      const availableSlots = MAX_FEEDBACK_IMAGES - currentImages.length;
+      const availableSlots = MAX_FEEDBACK_IMAGES - (existingAttachments.length + currentImages.length);
       if (availableSlots <= 0) {
         setCaptureStatus("full");
         return currentImages;
@@ -158,15 +216,77 @@ export function FeedbackDialog({
         URL.revokeObjectURL(removedImage.objectUrl);
       }
       const nextImages = currentImages.filter((image) => image.id !== imageId);
-      setCaptureStatus(nextImages.length === 0 ? "idle" : "ready");
+      setCaptureStatus(nextImages.length === 0 && existingAttachments.length === 0 ? "idle" : "ready");
       return nextImages;
     });
+  };
+
+  const removeExistingAttachment = (attachmentId: string) => {
+    clearTransientMessages();
+    setExistingAttachments((prev) => prev.filter((a) => a.id !== attachmentId));
   };
 
   const clearImages = () => {
     revokeImages(imagesRef.current);
     setImages([]);
     setCaptureStatus("idle");
+  };
+
+  const handleEditDraft = (draft: ProductFeedback) => {
+    setActiveDraftId(draft.id);
+    setDescription(draft.description || "");
+    setFeedbackType(
+      feedbackLabelByType.get(draft.feedbackType) ?? "体验问题"
+    );
+    setExistingAttachments(draft.attachments ?? []);
+    clearImages();
+    setDraftSavedAt(draft.updatedAt);
+    setActiveTab("compose");
+  };
+
+  const handleSaveDraft = async () => {
+    if (!productFeedbackRepository.saveDraft && !productFeedbackRepository.createDraft) {
+      return;
+    }
+    setSubmitStatus("saving_draft");
+    clearTransientMessages();
+
+    try {
+      const apiType = feedbackTypeByLabel.get(feedbackType) ?? "experience";
+      const newFiles = images.map((i) => i.file);
+
+      if (activeDraftId && productFeedbackRepository.saveDraft) {
+        const updated = await productFeedbackRepository.saveDraft(activeDraftId, {
+          pagePath,
+          pageTitle,
+          feedbackType: apiType,
+          description: trimmedDescription,
+          retainedAttachmentIds: existingAttachments.map((a) => a.id),
+          newFiles
+        });
+        setExistingAttachments(updated.attachments ?? []);
+        clearImages();
+        setDraftSavedAt(new Date().toISOString());
+        setSuccessMessage("草稿已保存。");
+      } else if (productFeedbackRepository.createDraft) {
+        const created = await productFeedbackRepository.createDraft({
+          pagePath,
+          pageTitle,
+          feedbackType: apiType,
+          description: trimmedDescription,
+          files: newFiles
+        });
+        setActiveDraftId(created.id);
+        setExistingAttachments(created.attachments ?? []);
+        clearImages();
+        setDraftSavedAt(new Date().toISOString());
+        setSuccessMessage("草稿已创建并保存。");
+      }
+    } catch (error) {
+      setErrorMessage(presentError(error, "保存草稿失败，请稍后重试。"));
+    } finally {
+      setSubmitStatus("idle");
+    }
   };
 
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
@@ -176,27 +296,56 @@ export function FeedbackDialog({
     }
 
     setSubmitStatus("submitting");
-    setErrorMessage("");
-    setSuccessMessage("");
+    clearTransientMessages();
     const files = images.map((image) => image.file);
+    const apiType = feedbackTypeByLabel.get(feedbackType) ?? "experience";
 
     try {
-      await productFeedbackRepository.submit({
-        pagePath,
-        pageTitle,
-        feedbackType: feedbackTypeByLabel.get(feedbackType) ?? "experience",
-        description: trimmedDescription,
-        files
-      });
-      setDescription("");
-      setSuccessMessage(files.length > 0 ? `反馈已记录，并附带 ${files.length} 张粘贴截图。` : "反馈已记录，内测团队会结合页面路径和问题类型跟进。");
-      clearImages();
+      if (activeDraftId && productFeedbackRepository.submitDraft) {
+        // If there were modifications to draft attachments before submit, save draft first
+        if (files.length > 0 || existingAttachments.length > 0) {
+          if (productFeedbackRepository.saveDraft) {
+            await productFeedbackRepository.saveDraft(activeDraftId, {
+              pagePath,
+              pageTitle,
+              feedbackType: apiType,
+              description: trimmedDescription,
+              retainedAttachmentIds: existingAttachments.map((a) => a.id),
+              newFiles: files
+            });
+          }
+        }
+        await productFeedbackRepository.submitDraft(activeDraftId, {
+          pagePath,
+          pageTitle,
+          feedbackType: apiType,
+          description: trimmedDescription
+        });
+      } else {
+        await productFeedbackRepository.submit({
+          pagePath,
+          pageTitle,
+          feedbackType: apiType,
+          description: trimmedDescription,
+          files
+        });
+      }
+      const totalSent = existingAttachments.length + files.length;
+      resetComposer();
+      setSuccessMessage(
+        totalSent > 0
+          ? `反馈已记录，并附带 ${totalSent} 张粘贴截图。`
+          : "反馈已记录，内测团队会结合页面路径和问题类型跟进。"
+      );
     } catch (error) {
       setErrorMessage(readableSubmitError(error));
     } finally {
       setSubmitStatus("idle");
     }
   };
+
+  const hasDraftSupport = Boolean(productFeedbackRepository.createDraft || productFeedbackRepository.saveDraft);
+  const hasMineSupport = Boolean(productFeedbackRepository.listMine);
 
   return (
     <Dialog
@@ -206,113 +355,230 @@ export function FeedbackDialog({
           onOpenChange(true);
           return;
         }
-        // Escape / backdrop close requests go through the dirty-state guard.
         requestClose();
       }}
     >
       <DialogContent className="feedback-dialog" showCloseButton={false}>
-        <form onSubmit={handleSubmit}>
-          <DialogHeader className="feedback-dialog-header">
-            <div>
-              <span className="eyebrow">内测反馈</span>
-              <DialogTitle>问题反馈</DialogTitle>
-              <DialogDescription>反馈会携带页面路径、类型、描述和可选截图，方便内测团队定位问题。</DialogDescription>
-            </div>
-            <button type="button" className="audit-dialog-close-icon" aria-label="关闭" onClick={requestClose}>
-              <CircleX size={22} strokeWidth={1.75} aria-hidden="true" />
-            </button>
-          </DialogHeader>
-          <div className="feedback-context">
-            <div>
-              <span>当前页面</span>
-              <strong>{pageTitle}</strong>
-            </div>
-            <code>{pagePath}</code>
+        <DialogHeader className="feedback-dialog-header">
+          <div>
+            <span className="eyebrow">内测反馈</span>
+            <DialogTitle>问题反馈</DialogTitle>
+            <DialogDescription>
+              {activeTab === "compose"
+                ? "反馈会携带页面路径、类型、描述和可选截图，方便内测团队定位问题。"
+                : "查看您提交的历史反馈记录、处理状态与最新处理进展。"}
+            </DialogDescription>
           </div>
-          <div className="feedback-layout">
-            <section className="feedback-section" aria-labelledby="feedback-info-title">
-              <div className="feedback-section-title">
-                <span id="feedback-info-title">问题信息</span>
-                <small>必填</small>
-              </div>
-              <Label htmlFor="feedback-type">反馈类型</Label>
-              <SelectControl
-                id="feedback-type"
-                ariaLabel="反馈类型"
-                value={feedbackType}
-                onValueChange={setFeedbackType}
-                options={feedbackTypeOptions.map(({ value, label }) => ({ value, label }))}
-              />
-              <Label htmlFor="feedback-description">问题描述</Label>
-              <Textarea
-                id="feedback-description"
-                value={description}
-                onChange={(event) => {
-                  clearTransientMessages();
-                  setDescription(event.target.value);
-                }}
-                rows={6}
-                placeholder="描述复现步骤、期望结果或你看到的异常现象"
-              />
-            </section>
-            <section
-              className="feedback-section feedback-capture-panel"
-              aria-labelledby="feedback-capture-title"
-              onPaste={handleScreenshotPaste}
-              tabIndex={0}
+          <button type="button" className="audit-dialog-close-icon" aria-label="关闭" onClick={requestClose}>
+            <CircleX size={22} strokeWidth={1.75} aria-hidden="true" />
+          </button>
+        </DialogHeader>
+
+        {hasMineSupport && (
+          <div className="flex border-b border-border px-6 pt-1 gap-4 text-xs">
+            <button
+              type="button"
+              role="tab"
+              aria-selected={activeTab === "compose"}
+              onClick={() => {
+                clearTransientMessages();
+                setActiveTab("compose");
+              }}
+              className={cn(
+                "pb-2 font-medium transition-colors border-b-2 -mb-px",
+                activeTab === "compose"
+                  ? "border-primary text-primary"
+                  : "border-transparent text-muted-foreground hover:text-foreground"
+              )}
             >
-              <div className="feedback-section-title">
-                <span id="feedback-capture-title">粘贴上传截图</span>
-                <small>可选</small>
+              提交反馈{activeDraftId ? " (编辑草稿)" : ""}
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={activeTab === "mine"}
+              onClick={() => {
+                clearTransientMessages();
+                setActiveTab("mine");
+              }}
+              className={cn(
+                "pb-2 font-medium transition-colors border-b-2 -mb-px",
+                activeTab === "mine"
+                  ? "border-primary text-primary"
+                  : "border-transparent text-muted-foreground hover:text-foreground"
+              )}
+            >
+              我的反馈{myFeedbackCount > 0 ? ` (${myFeedbackCount})` : ""}
+            </button>
+          </div>
+        )}
+
+        {activeTab === "mine" ? (
+          <MyFeedbackView
+            productFeedbackRepository={productFeedbackRepository}
+            onEditDraft={handleEditDraft}
+            onFeedbackCountChange={setMyFeedbackCount}
+          />
+        ) : (
+          <form onSubmit={handleSubmit}>
+            <div className="feedback-context">
+              <div>
+                <span>当前页面</span>
+                <strong>{pageTitle}</strong>
               </div>
-              <div className={images.length > 0 ? "feedback-screenshot-preview has-image" : "feedback-screenshot-preview"}>
-                {images.length > 0 ? (
-                  <div className="feedback-thumbnail-grid" aria-label="已粘贴截图">
-                    {images.map((image) => (
-                      <figure key={image.id} className="feedback-thumbnail">
-                        <img src={image.objectUrl} alt="问题反馈截图预览" />
-                        <figcaption>{image.file.name}</figcaption>
-                        <Button
-                          aria-label={`移除截图 ${image.file.name}`}
-                          className="feedback-remove-shot"
-                          type="button"
-                          variant="outline"
-                          onClick={() => removeScreenshot(image.id)}
-                        >
-                          <Trash2 size={16} />
-                          移除
-                        </Button>
-                      </figure>
-                    ))}
-                  </div>
-                ) : (
-                  <div>
-                    <Upload size={28} />
-                    <strong>粘贴截图</strong>
-                    <span>复制截图后点击此区域，按 Ctrl/⌘ + V 粘贴，支持 PNG、JPG、WebP。</span>
-                  </div>
+              <code>{pagePath}</code>
+              {draftSavedAt && (
+                <span className="ml-auto text-[11px] text-muted-foreground">
+                  草稿已保存
+                </span>
+              )}
+            </div>
+            <div className="feedback-layout">
+              <section className="feedback-section" aria-labelledby="feedback-info-title">
+                <div className="feedback-section-title">
+                  <span id="feedback-info-title">问题信息</span>
+                  <small>必填</small>
+                </div>
+                <Label htmlFor="feedback-type">反馈类型</Label>
+                <SelectControl
+                  id="feedback-type"
+                  ariaLabel="反馈类型"
+                  value={feedbackType}
+                  onValueChange={setFeedbackType}
+                  options={feedbackTypeOptions.map(({ value, label }) => ({ value, label }))}
+                />
+                <Label htmlFor="feedback-description">问题描述</Label>
+                <Textarea
+                  id="feedback-description"
+                  value={description}
+                  onChange={(event) => {
+                    clearTransientMessages();
+                    setDescription(event.target.value);
+                  }}
+                  rows={6}
+                  placeholder="描述复现步骤、期望结果或你看到的异常现象"
+                />
+              </section>
+              <section
+                className="feedback-section feedback-capture-panel"
+                aria-labelledby="feedback-capture-title"
+                onPaste={handleScreenshotPaste}
+                tabIndex={0}
+              >
+                <div className="feedback-section-title">
+                  <span id="feedback-capture-title">粘贴上传截图</span>
+                  <small>可选</small>
+                </div>
+                <div
+                  className={
+                    totalImageCount > 0
+                      ? "feedback-screenshot-preview has-image"
+                      : "feedback-screenshot-preview"
+                  }
+                >
+                  {totalImageCount > 0 ? (
+                    <div className="feedback-thumbnail-grid" aria-label="已粘贴截图">
+                      {existingAttachments.map((att) => {
+                        const url = existingAttachmentUrls[att.id];
+                        return (
+                          <figure key={att.id} className="feedback-thumbnail">
+                            {url ? (
+                              <img src={url} alt="草稿截图预览" />
+                            ) : (
+                              <div className="flex h-20 items-center justify-center bg-muted/40">
+                                <Upload size={20} className="text-muted-foreground" />
+                              </div>
+                            )}
+                            <figcaption>{att.fileName}</figcaption>
+                            <Button
+                              aria-label={`移除截图 ${att.fileName}`}
+                              className="feedback-remove-shot"
+                              type="button"
+                              variant="outline"
+                              onClick={() => removeExistingAttachment(att.id)}
+                            >
+                              <Trash2 size={16} />
+                              移除
+                            </Button>
+                          </figure>
+                        );
+                      })}
+                      {images.map((image) => (
+                        <figure key={image.id} className="feedback-thumbnail">
+                          <img src={image.objectUrl} alt="问题反馈截图预览" />
+                          <figcaption>{image.file.name}</figcaption>
+                          <Button
+                            aria-label={`移除截图 ${image.file.name}`}
+                            className="feedback-remove-shot"
+                            type="button"
+                            variant="outline"
+                            onClick={() => removeScreenshot(image.id)}
+                          >
+                            <Trash2 size={16} />
+                            移除
+                          </Button>
+                        </figure>
+                      ))}
+                    </div>
+                  ) : (
+                    <div>
+                      <Upload size={28} />
+                      <strong>粘贴截图</strong>
+                      <span>复制截图后点击此区域，按 Ctrl/⌘ + V 粘贴，支持 PNG、JPG、WebP。</span>
+                    </div>
+                  )}
+                </div>
+                {captureStatus === "ready" ? (
+                  <p className="feedback-capture-status success">截图已粘贴，可随反馈一起提交。</p>
+                ) : null}
+                {captureStatus === "invalid" ? (
+                  <p className="feedback-capture-status">请粘贴 PNG、JPG 或 WebP 格式截图。</p>
+                ) : null}
+                {captureStatus === "full" ? (
+                  <p className="feedback-capture-status">最多可附加 5 张截图，请先移除已有截图后再粘贴。</p>
+                ) : null}
+              </section>
+            </div>
+            {successMessage ? (
+              <div className="flex items-center justify-between feedback-success">
+                <p>
+                  {imageCountAtLastSuccess === 1
+                    ? "反馈已记录，并附带 1 张粘贴截图。"
+                    : successMessage}
+                </p>
+                {hasMineSupport && (
+                  <button
+                    type="button"
+                    className="ml-2 text-xs font-medium text-primary underline hover:opacity-80"
+                    onClick={() => setActiveTab("mine")}
+                  >
+                    查看我的反馈
+                  </button>
                 )}
               </div>
-              {captureStatus === "ready" ? <p className="feedback-capture-status success">截图已粘贴，可随反馈一起提交。</p> : null}
-              {captureStatus === "invalid" ? <p className="feedback-capture-status">请粘贴 PNG、JPG 或 WebP 格式截图。</p> : null}
-              {captureStatus === "full" ? <p className="feedback-capture-status">最多可附加 5 张截图，请先移除已有截图后再粘贴。</p> : null}
-            </section>
-          </div>
-          {successMessage ? (
-            <p className="feedback-success">
-              {imageCountAtLastSuccess === 1 ? "反馈已记录，并附带 1 张粘贴截图。" : successMessage}
-            </p>
-          ) : null}
-          {errorMessage ? <p className="feedback-error">{errorMessage}</p> : null}
-          <DialogFooter className="dialog-actions">
-            <Button type="button" variant="outline" onClick={requestClose}>
-              关闭
-            </Button>
-            <Button type="submit" disabled={submitDisabled}>
-              {isSubmitting ? "提交中..." : "提交反馈"}
-            </Button>
-          </DialogFooter>
-        </form>
+            ) : null}
+            {errorMessage ? <p className="feedback-error">{errorMessage}</p> : null}
+            <DialogFooter className="dialog-actions">
+              <Button type="button" variant="outline" onClick={requestClose}>
+                关闭
+              </Button>
+              {hasDraftSupport && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => void handleSaveDraft()}
+                  disabled={isSavingDraft || isSubmitting || (!trimmedDescription && totalImageCount === 0)}
+                >
+                  <Save size={14} className="mr-1" />
+                  {isSavingDraft ? "保存中..." : "保存草稿"}
+                </Button>
+              )}
+              <Button type="submit" disabled={submitDisabled}>
+                {isSubmitting ? "提交中..." : "提交反馈"}
+              </Button>
+            </DialogFooter>
+          </form>
+        )}
       </DialogContent>
       <ConfirmDialog
         open={discardConfirmOpen}
