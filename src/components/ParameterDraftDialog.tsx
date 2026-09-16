@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { ArrowRight, X } from "lucide-react";
 import { ModalDialog } from "@/components/common/ModalDialog";
 import { ParameterValueDiff } from "@/components/ParameterValueDiff";
@@ -23,10 +24,12 @@ export type ParameterDraftDialogProps = {
   drafts: ParameterDraftDialogItem[];
   focusedParameterId: string | null;
   canEdit: boolean;
+  savedParameterIds?: Set<string>;
   onClose: () => void;
   onClearAll: () => void;
   onRemoveItem: (parameterId: string) => void;
   onUpdateDraft: (parameter: ParameterRecord, patch: Partial<{ targetValue: string; reason: string }>) => void;
+  onSaveDraft?: (parameterId?: string) => void;
   onSubmit: () => void;
   onViewSubmissions: () => void;
 };
@@ -62,15 +65,19 @@ export function ParameterDraftDialog({
   drafts,
   focusedParameterId,
   canEdit,
+  savedParameterIds,
   onClose,
   onClearAll,
   onRemoveItem,
   onUpdateDraft,
+  onSaveDraft,
   onSubmit,
   onViewSubmissions
 }: ParameterDraftDialogProps) {
+  const [saveNotice, setSaveNotice] = useState<string | null>(null);
   const draftCount = drafts.length;
   const allDraftsAreSubmittable = drafts.length > 0 && drafts.every((item) => item.targetValue.trim() && item.reason.trim());
+  const hasSavableDrafts = drafts.length > 0 && drafts.some((item) => item.targetValue.trim().length > 0);
   const hasComplexDraft = drafts.some((item) =>
     shouldSummarizeComplexParameter(item.parameter, item.parameter.currentValue, item.targetValue)
   );
@@ -135,7 +142,16 @@ export function ParameterDraftDialog({
                         {item.parameter.module} · {riskLabels[item.parameter.risk]}
                       </small>
                     </div>
-                    <RiskBadge risk={item.parameter.risk} />
+                    <div className="draft-card-badges">
+                      {savedParameterIds ? (
+                        savedParameterIds.has(item.parameterId) ? (
+                          <span className="parameter-draft-status-badge parameter-draft-status-badge--saved">已保存</span>
+                        ) : (
+                          <span className="parameter-draft-status-badge parameter-draft-status-badge--unsaved">未保存</span>
+                        )
+                      ) : null}
+                      <RiskBadge risk={item.parameter.risk} />
+                    </div>
                   </div>
                   {isComplexCard ? (
                     <>
@@ -197,6 +213,7 @@ export function ParameterDraftDialog({
                         aria-invalid={warning ? true : undefined}
                         disabled={!canEdit}
                         onChange={(event) => {
+                          setSaveNotice(null);
                           onUpdateDraft(item.parameter, { targetValue: event.target.value });
                         }}
                       />
@@ -216,14 +233,30 @@ export function ParameterDraftDialog({
                     value={item.reason}
                     disabled={!canEdit}
                     onChange={(event) => {
+                      setSaveNotice(null);
                       onUpdateDraft(item.parameter, { reason: event.target.value });
                     }}
                     placeholder={`说明为什么要将 ${item.parameter.name} 改为 ${item.targetValue}`}
                     rows={3}
                   />
-                  <button className="button subtle" type="button" onClick={() => onRemoveItem(item.parameterId)}>
-                    移除本项
-                  </button>
+                  <div className="draft-card-actions">
+                    <button className="button subtle" type="button" onClick={() => onRemoveItem(item.parameterId)}>
+                      移除本项
+                    </button>
+                    {onSaveDraft ? (
+                      <button
+                        className="button subtle"
+                        type="button"
+                        disabled={!canEdit || !item.targetValue.trim()}
+                        onClick={() => {
+                          onSaveDraft(item.parameterId);
+                          setSaveNotice("草稿已保存");
+                        }}
+                      >
+                        保存草稿
+                      </button>
+                    ) : null}
+                  </div>
                 </article>
               );
             })}
@@ -235,10 +268,26 @@ export function ParameterDraftDialog({
             <button className="button subtle parameter-draft-dialog__submit-link" type="button" onClick={onViewSubmissions}>
               查看我的提交
             </button>
+            {saveNotice ? (
+              <span className="parameter-draft-save-notice" role="status">
+                {saveNotice}
+              </span>
+            ) : null}
           </span>
           <div className="parameter-detail-dialog__actions">
             <button className="button subtle" type="button" onClick={onClose}>
               关闭
+            </button>
+            <button
+              className="button secondary"
+              type="button"
+              disabled={!canEdit || !hasSavableDrafts}
+              onClick={() => {
+                onSaveDraft?.();
+                setSaveNotice("草稿已保存");
+              }}
+            >
+              保存
             </button>
             <button className="button primary" type="button" disabled={!canEdit || !allDraftsAreSubmittable} onClick={onSubmit}>
               提交参数
