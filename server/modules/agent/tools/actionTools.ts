@@ -16,7 +16,6 @@ import { getProjectParameterForUpdate } from "../../parameters/repository";
 import { resolveParameterIdentityMode } from "../../parameter-kernel/parameterIdentityMode";
 import { assertTrustedSensitiveNodeSubmissionAllowed } from "../../parameter-kernel/sensitiveNode";
 import { submitParameterChanges } from "../../parameters/service";
-import { listEligibleWorkflowAssignees } from "../../parameters/reviewWorkflowRepository";
 import {
   loadBindingContext,
   loadLogicalNodeSubmissionContext,
@@ -119,26 +118,12 @@ async function submitLegacyParameterChange(
     });
   }
 
-  const eligible = await listEligibleWorkflowAssignees(db, {
-    organizationId: context.auth.organization.id,
-    projectId: input.projectId
-  });
-  if (!eligible.ready) {
-    throw new ApiError("VALIDATION_FAILED", "Project review roles are not configured for this project.");
-  }
-  const assignees = {
-    hardwareCommitterId: eligible.hardwareCommitters[0].id,
-    softwareCommitterId: eligible.softwareCommitters[0].id,
-    softwareUserId: eligible.softwareUsers[0].id
-  };
-
   const submission = await submitParameterChanges(
     db,
     context.auth,
     {
       projectId: input.projectId,
-      items: [{ parameterId: input.parameterId, targetValue: input.targetValue, reason: input.reason }],
-      assignees
+      items: [{ parameterId: input.parameterId, targetValue: input.targetValue, reason: input.reason }]
     },
     { requestId: context.requestId, invocation, refusalSink }
   );
@@ -245,19 +230,6 @@ export function createActionTools(options: ToolOptions): AgentToolDefinition[] {
           );
         }
 
-        const eligible = await listEligibleWorkflowAssignees(db, {
-          organizationId: context.auth.organization.id,
-          projectId
-        });
-        if (!eligible.ready) {
-          throw new ApiError("VALIDATION_FAILED", "Project review roles are not configured for this project.");
-        }
-        const assignees = {
-          hardwareCommitterId: eligible.hardwareCommitters[0].id,
-          softwareCommitterId: eligible.softwareCommitters[0].id,
-          softwareUserId: eligible.softwareUsers[0].id
-        };
-
         const draft = await createBindingDraft(
           db,
           context.auth,
@@ -289,8 +261,7 @@ export function createActionTools(options: ToolOptions): AgentToolDefinition[] {
                   targetValue: draft.rawText,
                   reason
                 }
-              ],
-              assignees
+              ]
             },
             { requestId: context.requestId, invocation, refusalSink }
           );

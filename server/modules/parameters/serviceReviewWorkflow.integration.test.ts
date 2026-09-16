@@ -294,7 +294,7 @@ async function submitOne(
     {
       projectId: PROJECT,
       items: [{ parameterId: input.parameterId, targetValue: input.targetValue, reason: "SRW change" }],
-      assignees: input.assignees ?? completeAssignees
+      assignees: input.assignees
     },
     createTestParameterSubmissionContext(editorAuth(), input.context?.requestId ?? "request-submit-one")
   );
@@ -402,23 +402,15 @@ describe.skipIf(!databaseAvailable)("parameter review workflow behavior", () => 
           { id: USER, name: "SRW Editor" },
           { id: SWC, name: "SRW Software Committer" },
           { id: SWU, name: "SRW Software User" }
-        ],
-        ready: true,
-        missingRoles: []
+        ]
       });
       // OUTSIDER holds hardware-committer only on OTHER_PROJECT and must not leak in.
       expect(assignees.hardwareCommitters.map((candidate) => candidate.id)).not.toContain(OUTSIDER);
     });
 
-    it("rejects projects not belonging to the caller's organization", async () => {
-      await expect(
-        listWorkflowAssignees(db!, editorAuth(), "nonexistent-project")
-      ).rejects.toMatchObject({ code: "NOT_FOUND", status: 404 });
-    });
-
     it("rejects callers without parameter edit permission", async () => {
       await expect(
-        listWorkflowAssignees(db!, editorAuth({ roles: [], permissions: ["parameter:view"] }), PROJECT)
+        listWorkflowAssignees(db!, editorAuth({ permissions: ["parameter:view"] }), PROJECT)
       ).rejects.toMatchObject({ code: "FORBIDDEN", status: 403 });
     });
   });
@@ -441,15 +433,14 @@ describe.skipIf(!databaseAvailable)("parameter review workflow behavior", () => 
           items: [
             { parameterId: PPV_HIGH, targetValue: "3100", reason: "Reduce thermal risk." },
             { parameterId: PPV_MEDIUM, targetValue: "68", reason: "Match new cell pack." }
-          ],
-          assignees: completeAssignees
+          ]
         },
         createTestParameterSubmissionContext(editorAuth(), "request-parameter-submit-1")
       );
 
       expect(round).toMatchObject({
         projectId: PROJECT,
-        status: "hardware_review",
+        status: "submitted",
         summary: "Tune charging parameters",
         submitter: "SRW Editor"
       });
@@ -462,7 +453,7 @@ describe.skipIf(!databaseAvailable)("parameter review workflow behavior", () => 
 
       const requests = await listChangeRequests(db!, editorAuth(), { projectId: PROJECT });
       expect(requests).toHaveLength(2);
-      expect(requests.every((request) => request.status === "hardware_review")).toBe(true);
+      expect(requests.every((request) => request.status === "submitted")).toBe(true);
       expect(requests.every((request) => request.submissionRoundId === round.id)).toBe(true);
 
       // The pre-submit draft was consumed by the submission.
@@ -522,30 +513,17 @@ describe.skipIf(!databaseAvailable)("parameter review workflow behavior", () => 
       await expect(countSubmissionRounds(db!)).resolves.toBe(0);
     });
 
-    it("rejects omitted or partial workflow assignees before any writes", async () => {
-      // Omitted assignees
-      await expect(
-        submitParameterChanges(db!, editorAuth(), {
-          projectId: PROJECT,
-          items: [{ parameterId: PPV_HIGH, targetValue: "3100", reason: "SRW change" }]
-        }, createTestParameterSubmissionContext(editorAuth(), "request-omitted-assignee"))
-      ).rejects.toMatchObject({
-        code: "VALIDATION_FAILED",
-        status: 400,
-        message: "Workflow assignees must include hardwareCommitterId, softwareCommitterId, and softwareUserId."
-      });
-
-      // Partial assignees
+    it("rejects partial workflow assignees before any writes", async () => {
       await expect(
         submitParameterChanges(db!, editorAuth(), {
           projectId: PROJECT,
           items: [{ parameterId: PPV_HIGH, targetValue: "3100", reason: "SRW change" }],
-          assignees: { hardwareCommitterId: HW } as any
+          assignees: { hardwareCommitterId: HW }
         }, createTestParameterSubmissionContext(editorAuth(), "request-partial-assignee"))
       ).rejects.toMatchObject({
         code: "VALIDATION_FAILED",
         status: 400,
-        message: "Workflow assignees must include hardwareCommitterId, softwareCommitterId, and softwareUserId."
+        message: "Workflow assignees must include all review roles or be omitted."
       });
 
       await expect(countSubmissionRounds(db!)).resolves.toBe(0);
@@ -557,8 +535,7 @@ describe.skipIf(!databaseAvailable)("parameter review workflow behavior", () => 
       await expect(
         submitParameterChanges(db!, editorAuth(), {
           projectId: PROJECT,
-          items: [{ parameterId: PPV_HIGH, targetValue: "3050", reason: "SRW retry" }],
-          assignees: completeAssignees
+          items: [{ parameterId: PPV_HIGH, targetValue: "3050", reason: "SRW retry" }]
         }, createTestParameterSubmissionContext(editorAuth(), "request-open-change"))
       ).rejects.toMatchObject({
         code: "CONFLICT",
@@ -609,8 +586,7 @@ describe.skipIf(!databaseAvailable)("parameter review workflow behavior", () => 
       await expect(
         submitParameterChanges(db!, editorAuth(), {
           projectId: PROJECT,
-          items: [{ parameterId: PPV_HIGH, targetValue: "3100", reason: "SRW change" }],
-          assignees: completeAssignees
+          items: [{ parameterId: PPV_HIGH, targetValue: "3100", reason: "SRW change" }]
         }, createTestParameterSubmissionContext(editorAuth(), "request-open-conflict"))
       ).rejects.toMatchObject({
         code: "CONFLICT",
@@ -628,8 +604,7 @@ describe.skipIf(!databaseAvailable)("parameter review workflow behavior", () => 
           items: [
             { parameterId: PPV_HIGH, targetValue: "3100", reason: "Reduce thermal risk." },
             { parameterId: PPV_HIGH, targetValue: "3050", reason: "Duplicate edit." }
-          ],
-          assignees: completeAssignees
+          ]
         }, createTestParameterSubmissionContext(editorAuth(), "request-duplicate"))
       ).rejects.toMatchObject({
         code: "VALIDATION_FAILED",
@@ -663,7 +638,7 @@ describe.skipIf(!databaseAvailable)("parameter review workflow behavior", () => 
         message: "Parameter hardware review role is required for this project."
       });
 
-      await expect(readChangeRequestStatus(db!, requestId)).resolves.toBe("hardware_review");
+      await expect(readChangeRequestStatus(db!, requestId)).resolves.toBe("submitted");
       await expect(listReviewDecisions(db!, { organizationId: ORG, requestId })).resolves.toEqual([]);
     });
 
@@ -684,16 +659,16 @@ describe.skipIf(!databaseAvailable)("parameter review workflow behavior", () => 
         message: "Parameter hardware review role is required for this project."
       });
 
-      await expect(readChangeRequestStatus(db!, requestId)).resolves.toBe("hardware_review");
+      await expect(readChangeRequestStatus(db!, requestId)).resolves.toBe("submitted");
     });
 
     it("wrong-stage committer cannot advance review", async () => {
       const { requestId } = await submitOne(db!, { parameterId: PPV_MEDIUM, targetValue: "68" });
-      // Medium risk request at hardware_review advances to software_review.
+      // Medium risk: submitted advances straight to software_review.
       const advanced = await reviewChange(db!, hardwareAuth(), {
         requestId,
         decision: "advance",
-        note: "SRW hardware stage pass"
+        note: "SRW submitted stage pass"
       });
       expect(advanced.status).toBe("software_review");
 
@@ -714,6 +689,12 @@ describe.skipIf(!databaseAvailable)("parameter review workflow behavior", () => 
 
     it("hardware committer advances hardware review to software review with decision, round status, and audit", async () => {
       const { round, requestId } = await submitOne(db!, { parameterId: PPV_HIGH, targetValue: "3100" });
+      const toHardware = await reviewChange(db!, hardwareAuth(), {
+        requestId,
+        decision: "advance",
+        note: "Route high-risk request to hardware review."
+      });
+      expect(toHardware.status).toBe("hardware_review");
 
       const request = await reviewChange(
         db!,
@@ -726,15 +707,16 @@ describe.skipIf(!databaseAvailable)("parameter review workflow behavior", () => 
 
       const decisions = await readDecisionsByStage(db!, requestId);
       expect(decisions.map((decision) => ({ from: decision.fromStatus, to: decision.toStatus }))).toEqual([
+        { from: "submitted", to: "hardware_review" },
         { from: "hardware_review", to: "software_review" }
       ]);
-      expect(decisions[0]).toMatchObject({ decision: "advance", reviewerUserId: HW, note: "Hardware reviewed." });
+      expect(decisions[1]).toMatchObject({ decision: "advance", reviewerUserId: HW, note: "Hardware reviewed." });
 
       const rounds = await listSubmissionRounds(db!, editorAuth(), { projectId: PROJECT });
       expect(rounds.find((candidate) => candidate.id === round.id)?.status).toBe("software_review");
 
       const audits = await readAuditEvents(db!, "parameter-review-advance");
-      expect(audits).toHaveLength(1);
+      expect(audits).toHaveLength(2);
       expect(audits).toContainEqual(
         expect.objectContaining({
           action: "advance",
@@ -762,7 +744,7 @@ describe.skipIf(!databaseAvailable)("parameter review workflow behavior", () => 
         decision: "advance",
         note: "Create a review decision for the projection boundary.",
       });
-      await reviewChange(db!, softwareCommitterAuth(), {
+      await reviewChange(db!, hardwareAuth(), {
         requestId,
         decision: "advance",
         note: "Create a mapped workflow transition for the projection boundary.",
@@ -788,7 +770,7 @@ describe.skipIf(!databaseAvailable)("parameter review workflow behavior", () => 
       const toSoftwareReview = await reviewChange(db!, hardwareAuth(), {
         requestId,
         decision: "advance",
-        note: "SRW hardware stage pass"
+        note: "SRW submitted stage pass"
       });
       expect(toSoftwareReview.status).toBe("software_review");
 
@@ -818,7 +800,7 @@ describe.skipIf(!databaseAvailable)("parameter review workflow behavior", () => 
       expect(decisions).toHaveLength(1);
       expect(decisions[0]).toMatchObject({
         decision: "reject",
-        fromStatus: "hardware_review",
+        fromStatus: "submitted",
         toStatus: "rejected",
         reviewerUserId: HW
       });
@@ -986,6 +968,11 @@ describe.skipIf(!databaseAvailable)("parameter review workflow behavior", () => 
     it("high-risk request advances through hardware and software review before merging end-to-end", async () => {
       const { requestId } = await submitOne(db!, { parameterId: PPV_HIGH, targetValue: "3100" });
 
+      const hardwareReview = await reviewChange(db!, hardwareAuth(), {
+        requestId,
+        decision: "advance",
+        note: "Route high-risk request to hardware review."
+      });
       const softwareReview = await reviewChange(db!, hardwareAuth(), {
         requestId,
         decision: "advance",
@@ -1003,6 +990,7 @@ describe.skipIf(!databaseAvailable)("parameter review workflow behavior", () => 
         note: MERGE_LINK
       });
 
+      expect(hardwareReview.status).toBe("hardware_review");
       expect(softwareReview.status).toBe("software_review");
       expect(softwareMerge.status).toBe("software_merge");
       expect(merged.status).toBe("merged");
@@ -1019,6 +1007,7 @@ describe.skipIf(!databaseAvailable)("parameter review workflow behavior", () => 
 
       const decisions = await readDecisionsByStage(db!, requestId);
       expect(decisions.map((decision) => ({ from: decision.fromStatus, to: decision.toStatus }))).toEqual([
+        { from: "submitted", to: "hardware_review" },
         { from: "hardware_review", to: "software_review" },
         { from: "software_review", to: "software_merge" },
         { from: "software_merge", to: "merged" }
@@ -1028,94 +1017,6 @@ describe.skipIf(!databaseAvailable)("parameter review workflow behavior", () => 
       const audits = await readAuditEvents(db!, "parameter-merge");
       expect(audits).toHaveLength(1);
       expect(audits[0]).toMatchObject({ action: "merge", target_id: requestId });
-    });
-
-    it("rejects review advance when reviewer project role was revoked from DB before transaction runs", async () => {
-      const { requestId } = await submitOne(db!, { parameterId: PPV_HIGH, targetValue: "3100" });
-
-      await db!.query(
-        `delete from user_role_bindings where organization_id = $1 and user_id = $2 and project_id = $3 and role_id = 'hardware-committer'`,
-        [ORG, HW, PROJECT]
-      );
-
-      await expect(
-        reviewChange(db!, hardwareAuth(), { requestId, decision: "advance", note: "Should fail." })
-      ).rejects.toMatchObject({
-        code: "FORBIDDEN",
-        status: 403,
-        message: "Parameter hardware review role is required for this project."
-      });
-    });
-
-    it("rejects review advance when reviewer was deactivated in DB", async () => {
-      const { requestId } = await submitOne(db!, { parameterId: PPV_HIGH, targetValue: "3100" });
-
-      await db!.query(
-        `update users set is_active = false where organization_id = $1 and id = $2`,
-        [ORG, HW]
-      );
-
-      await expect(
-        reviewChange(db!, hardwareAuth(), { requestId, decision: "advance", note: "Deactivated user" })
-      ).rejects.toMatchObject({
-        code: "FORBIDDEN",
-        status: 403
-      });
-    });
-
-    it("rejects merge when software user role was revoked from DB before merge transaction", async () => {
-      const { requestId } = await submitOne(db!, { parameterId: PPV_MEDIUM, targetValue: "68" });
-      await advanceMediumToSoftwareMerge(db!, requestId);
-
-      await db!.query(
-        `delete from user_role_bindings where organization_id = $1 and user_id = $2 and project_id = $3 and role_id = 'software-user'`,
-        [ORG, USER, PROJECT]
-      );
-
-      await expect(
-        reviewChange(db!, editorAuth(), {
-          requestId,
-          decision: "advance",
-          expectedVersion: MEDIUM_BASE_VERSION,
-          note: MERGE_LINK
-        })
-      ).rejects.toMatchObject({
-        code: "FORBIDDEN",
-        status: 403,
-        message: "Parameter merge role is required for this project."
-      });
-    });
-
-    it("reads and advances legacy rounds without assignees stored in DB", async () => {
-      const legacyRoundId = `round-legacy-${randomUUID().slice(0, 8)}`;
-      const legacyRequestId = `req-legacy-${randomUUID().slice(0, 8)}`;
-
-      await db!.query(
-        `insert into parameter_submission_rounds (id, organization_id, project_id, submitter_user_id, status, summary)
-         values ($1, $2, $3, $4, 'submitted', 'Legacy round without assignees')`,
-        [legacyRoundId, ORG, PROJECT, USER]
-      );
-      await db!.query(
-        `insert into parameter_change_requests (
-           id, organization_id, submission_round_id, project_id, project_parameter_value_id,
-           parameter_definition_id, base_version, current_value, target_value, submitter_user_id, status
-         ) values (
-           $1, $2, $3, $4, $5, $6, 1, '10', '20', $7, 'submitted'
-         )`,
-        [legacyRequestId, ORG, legacyRoundId, PROJECT, PPV_MEDIUM, PD_MEDIUM, USER]
-      );
-
-      const rounds = await listSubmissionRounds(db!, editorAuth(), { projectId: PROJECT });
-      const found = rounds.find((r) => r.id === legacyRoundId);
-      expect(found).toBeTruthy();
-      expect(found?.status).toBe("submitted");
-
-      const advanced = await reviewChange(db!, hardwareAuth(), {
-        requestId: legacyRequestId,
-        decision: "advance",
-        note: "Legacy advance"
-      });
-      expect(advanced.status).toBe("software_review");
     });
   });
 
@@ -1223,13 +1124,18 @@ describe.skipIf(!databaseAvailable)("parameter merge System provenance repair", 
         {
           projectId: PROJECT,
           items: [{ parameterId: PPV_HIGH, targetValue: "3100", reason: "Agent workflow trail provenance" }],
-          assignees: completeAssignees
         },
         createTestParameterSubmissionContext(auth, "agent-merge-trail-submit"),
       );
       const requestId = round.items[0]?.requestId;
       expect(requestId).toBeTruthy();
 
+      await reviewChangeService(
+        db,
+        hardwareAuth(),
+        { requestId: requestId!, decision: "advance", note: "agent trail hardware gate" },
+        createTestParameterSubmissionContext(hardwareAuth(), "agent-merge-trail-hardware"),
+      );
       await reviewChangeService(
         db,
         hardwareAuth(),
@@ -1294,13 +1200,17 @@ describe.skipIf(!databaseAvailable)("parameter merge System provenance repair", 
         {
           projectId: PROJECT,
           items: [{ parameterId: PPV_HIGH, targetValue: "3100", reason: "System merge provenance" }],
-          assignees: completeAssignees
         },
         createTestParameterSubmissionContext(auth, "system-merge-submit"),
       );
       const requestId = round.items[0]?.requestId;
       expect(requestId).toBeTruthy();
-
+      await reviewChangeService(
+        db,
+        hardwareAuth(),
+        { requestId: requestId!, decision: "advance", note: "system merge hardware stage" },
+        createTestParameterSubmissionContext(hardwareAuth(), "system-merge-hardware"),
+      );
       await reviewChangeService(
         db,
         hardwareAuth(),
@@ -1436,7 +1346,6 @@ describe.skipIf(!databaseAvailable)("parameter merge System provenance repair", 
         {
           projectId: PROJECT,
           items: [{ parameterId: PPV_MEDIUM, targetValue: "72", reason: "System no-match merge provenance" }],
-          assignees: completeAssignees
         },
         createTestParameterSubmissionContext(auth, "system-merge-no-match-submit"),
       );

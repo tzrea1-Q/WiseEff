@@ -491,8 +491,16 @@ export function registerParameterRoutes(
     const auth = await options.getCurrentAuthContext(request);
     const params = parseWithSchema(paramsWithProjectIdSchema, request.params);
     const item = await listWorkflowAssignees(db, auth, params.projectId);
+    const ready =
+      item.hardwareCommitters.length > 0 &&
+      item.softwareCommitters.length > 0 &&
+      item.softwareUsers.length > 0;
+    const missingRoles: ("hardware-committer" | "software-committer" | "software-user")[] = [];
+    if (item.hardwareCommitters.length === 0) missingRoles.push("hardware-committer");
+    if (item.softwareCommitters.length === 0) missingRoles.push("software-committer");
+    if (item.softwareUsers.length === 0) missingRoles.push("software-user");
 
-    return { status: 200, body: { item } };
+    return { status: 200, body: { item: { ...item, ready, missingRoles } } };
   });
 
   router.get("/api/v1/parameter-submission-rounds", async (request) => {

@@ -99,7 +99,6 @@ import {
   type PersistedImportBatchItem
 } from "./importBatchRepository";
 import { getProjectById } from "../projects/repository";
-import { lockUserById } from "../users/repository";
 import {
   createChangeRequest,
   createEnablementChangeRequest,
@@ -546,108 +545,14 @@ function requireCanMerge(auth: AuthContext, projectId: string | undefined) {
   throw new ApiError("FORBIDDEN", "Parameter merge role is required for this project.");
 }
 
-async function requireCanReviewStageTx(
-  tx: Queryable,
-  auth: AuthContext,
-  projectId: string | undefined,
-  fromStatus: ParameterChangeRequestStatus
-) {
-  if (!projectId) {
-    throw new ApiError("FORBIDDEN", getReviewForbiddenMessage(fromStatus));
-  }
-
-  await lockUserById(tx, { organizationId: auth.organization.id, userId: auth.user.id });
-
-  const userResult = await tx.query<{ id: string; is_active: boolean; title: string | null }>(
-    `select id, is_active, title from users where organization_id = $1 and id = $2`,
-    [auth.organization.id, auth.user.id]
-  );
-  const userRow = userResult.rows[0];
-  if (userRow && !userRow.is_active) {
-    throw new ApiError("FORBIDDEN", getReviewForbiddenMessage(fromStatus));
-  }
-
-  const roleResult = await tx.query<{ role_id: string; project_id: string | null }>(
-    `select role_id, project_id from user_role_bindings where organization_id = $1 and user_id = $2`,
-    [auth.organization.id, auth.user.id]
-  );
-
-  const isLiveAdmin = roleResult.rows.some(
-    (r) => r.project_id === null && (r.role_id === "admin" || r.role_id === "owner" || r.role_id === "platform-admin")
-  ) || (roleResult.rows.length === 0 && isOrgAdmin(auth) && (userRow?.title === "Admin" || !userRow));
-  if (isLiveAdmin) return;
-
-  const projectRoles = roleResult.rows
-    .filter((r) => r.project_id === projectId)
-    .map((r) => r.role_id);
-
-  if (fromStatus === "submitted" || fromStatus === "hardware_review") {
-    if (projectRoles.includes("hardware-committer")) return;
-  } else if (fromStatus === "software_review") {
-    if (projectRoles.includes("software-committer")) return;
-  }
-
-  throw new ApiError("FORBIDDEN", getReviewForbiddenMessage(fromStatus));
-}
-
-async function requireCanMergeTx(
-  tx: Queryable,
-  auth: AuthContext,
-  projectId: string | undefined
-) {
-  if (!projectId) {
-    throw new ApiError("FORBIDDEN", "Parameter merge role is required for this project.");
-  }
-
-  await lockUserById(tx, { organizationId: auth.organization.id, userId: auth.user.id });
-
-  const userResult = await tx.query<{ id: string; is_active: boolean; title: string | null }>(
-    `select id, is_active, title from users where organization_id = $1 and id = $2`,
-    [auth.organization.id, auth.user.id]
-  );
-  const userRow = userResult.rows[0];
-  if (userRow && !userRow.is_active) {
-    throw new ApiError("FORBIDDEN", "Parameter merge role is required for this project.");
-  }
-
-  const roleResult = await tx.query<{ role_id: string; project_id: string | null }>(
-    `select role_id, project_id from user_role_bindings where organization_id = $1 and user_id = $2`,
-    [auth.organization.id, auth.user.id]
-  );
-
-  const isLiveAdmin = roleResult.rows.some(
-    (r) => r.project_id === null && (r.role_id === "admin" || r.role_id === "owner" || r.role_id === "platform-admin")
-  ) || (roleResult.rows.length === 0 && isOrgAdmin(auth) && (userRow?.title === "Admin" || !userRow));
-  if (isLiveAdmin) return;
-
-  const projectRoles = roleResult.rows
-    .filter((r) => r.project_id === projectId)
-    .map((r) => r.role_id);
-
-  if (projectRoles.includes("software-user") || projectRoles.includes("software-committer")) {
-    return;
-  }
-
-  throw new ApiError("FORBIDDEN", "Parameter merge role is required for this project.");
-}
-
-function getCompleteWorkflowAssignees(input: SubmitParameterChangesInput, auth: AuthContext) {
+function getCompleteWorkflowAssignees(input: SubmitParameterChangesInput) {
   const assignees = input.assignees;
   if (!assignees) {
-    if (!isOrgAdmin(auth)) {
-      throw new ApiError(
-        "VALIDATION_FAILED",
-        "Workflow assignees must include hardwareCommitterId, softwareCommitterId, and softwareUserId."
-      );
-    }
     return undefined;
   }
 
-  if (!assignees.hardwareCommitterId || !assignees.softwareCommitterId || !assignees.softwareUserId) {
-    throw new ApiError(
-      "VALIDATION_FAILED",
-      "Workflow assignees must include hardwareCommitterId, softwareCommitterId, and softwareUserId."
-    );
+  if (!assignees?.hardwareCommitterId || !assignees.softwareCommitterId || !assignees.softwareUserId) {
+    throw new ApiError("VALIDATION_FAILED", "Workflow assignees must include all review roles or be omitted.");
   }
 
   return {
@@ -722,19 +627,9 @@ async function assertWorkflowAssigneesAreEligible(
   db: Queryable,
   auth: AuthContext,
   projectId: string,
-  assignees?: { hardwareCommitterId: string; softwareCommitterId: string; softwareUserId: string }
+  assignees: SubmitParameterChangesInput["assignees"]
 ) {
   if (!assignees) return;
-
-  const userIds = Array.from(new Set([
-    assignees.hardwareCommitterId,
-    assignees.softwareCommitterId,
-    assignees.softwareUserId
-  ])).sort();
-
-  for (const uid of userIds) {
-    await lockUserById(db, { organizationId: auth.organization.id, userId: uid });
-  }
 
   const checks = [
     { userId: assignees.hardwareCommitterId, roleId: "hardware-committer" as const },
@@ -743,6 +638,7 @@ async function assertWorkflowAssigneesAreEligible(
   ];
 
   for (const check of checks) {
+    if (!check.userId) continue;
     const eligible = await hasEligibleWorkflowAssignee(db, {
       organizationId: auth.organization.id,
       projectId,
@@ -1407,14 +1303,7 @@ export async function deleteDraft(
 }
 
 export async function listWorkflowAssignees(db: Queryable, auth: AuthContext, projectId: string) {
-  const project = await getProjectById(db, {
-    organizationId: auth.organization.id,
-    projectId
-  });
-  if (!project) {
-    throw new ApiError("NOT_FOUND", "Project was not found for this organization.", { projectId });
-  }
-  requireCanEdit(auth, projectId);
+  requireCanEdit(auth);
   return listEligibleWorkflowAssignees(db, {
     organizationId: auth.organization.id,
     projectId,
@@ -1434,17 +1323,7 @@ export async function submitParameterChanges(
     throw new ApiError("VALIDATION_FAILED", "At least one parameter change is required.");
   }
   assertUniqueSubmissionParameters(input.items);
-
-  const useSemanticIdentity = parameterIdentityMode() === "semantic";
-  if (useSemanticIdentity && input.items.some((item) => !("draftId" in item))) {
-    throw new ApiError(
-      "CONFLICT",
-      "Legacy parameter submission is retired after semantic identity cutover; submit an exact binding draft.",
-      { projectId: input.projectId }
-    );
-  }
-
-  const workflowAssignees = getCompleteWorkflowAssignees(input, auth);
+  const workflowAssignees = getCompleteWorkflowAssignees(input);
   const submissionAttribution = trustedDomainAttribution(submissionContext.invocation);
   const submissionOwner = {
     userId: submissionAttribution.userId,
@@ -1455,6 +1334,15 @@ export async function submitParameterChanges(
 
   return db.transaction(async (tx) => {
     await assertProjectAllowsParameterSubmit(tx, auth.organization.id, input.projectId);
+
+    const useSemanticIdentity = parameterIdentityMode() === "semantic";
+    if (useSemanticIdentity && input.items.some((item) => !("draftId" in item))) {
+      throw new ApiError(
+        "CONFLICT",
+        "Legacy parameter submission is retired after semantic identity cutover; submit an exact binding draft.",
+        { projectId: input.projectId }
+      );
+    }
     const bindingEntries: Array<{
       item: SubmitParameterChangesInput["items"][number];
       parameter: Awaited<ReturnType<typeof loadParameterForSubmission>>;
@@ -2232,7 +2120,6 @@ export async function reviewChange(
 
     if (input.decision === "reject") {
       requireCanReviewStage(auth, request.projectId, fromStatus);
-      await requireCanReviewStageTx(tx, auth, request.projectId, fromStatus);
       const toStatus = "rejected";
       const updated = await updateChangeRequestStatus(tx, {
         organizationId: auth.organization.id,
@@ -2300,7 +2187,6 @@ export async function reviewChange(
     const toStatus = getNextParameterStatus(fromStatus, requestRisk);
     if (fromStatus !== "software_merge") {
       requireCanReviewStage(auth, request.projectId, fromStatus);
-      await requireCanReviewStageTx(tx, auth, request.projectId, fromStatus);
 
       if (toStatus === fromStatus) {
         throw new ApiError("CONFLICT", "Parameter change request cannot advance from its current status.", {
@@ -2375,7 +2261,6 @@ export async function reviewChange(
     }
 
     requireCanMerge(auth, request.projectId);
-    await requireCanMergeTx(tx, auth, request.projectId);
     const suppliedMergeContext =
       context.invocation && context.refusalSink && context.requestId !== undefined
         ? {

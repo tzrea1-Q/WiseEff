@@ -918,39 +918,18 @@ export async function listEligibleWorkflowAssignees(
     `,
     [input.organizationId, input.projectId],
   );
-
-  const hwMap = new Map<string, { id: string; name: string }>();
-  const swCMap = new Map<string, { id: string; name: string }>();
-  const swUMap = new Map<string, { id: string; name: string }>();
-
-  for (const row of result.rows) {
-    if (row.role_id === "hardware-committer") {
-      hwMap.set(row.id, { id: row.id, name: row.name });
-    }
-    if (row.role_id === "software-committer") {
-      swCMap.set(row.id, { id: row.id, name: row.name });
-      swUMap.set(row.id, { id: row.id, name: row.name });
-    }
-    if (row.role_id === "software-user") {
-      swUMap.set(row.id, { id: row.id, name: row.name });
-    }
-  }
-
-  const hardwareCommitters = Array.from(hwMap.values());
-  const softwareCommitters = Array.from(swCMap.values());
-  const softwareUsers = Array.from(swUMap.values());
-
-  const missingRoles: ("hardware-committer" | "software-committer" | "software-user")[] = [];
-  if (hardwareCommitters.length === 0) missingRoles.push("hardware-committer");
-  if (softwareCommitters.length === 0) missingRoles.push("software-committer");
-  if (softwareUsers.length === 0) missingRoles.push("software-user");
+  const candidate = (row: { id: string; name: string }) => ({ id: row.id, name: row.name });
 
   return {
-    hardwareCommitters,
-    softwareCommitters,
-    softwareUsers,
-    ready: missingRoles.length === 0,
-    missingRoles,
+    hardwareCommitters: result.rows
+      .filter((row) => row.role_id === "hardware-committer")
+      .map(candidate),
+    softwareCommitters: result.rows
+      .filter((row) => row.role_id === "software-committer")
+      .map(candidate),
+    softwareUsers: result.rows
+      .filter((row) => row.role_id === "software-user" || row.role_id === "software-committer")
+      .map(candidate),
   };
 }
 

@@ -49,38 +49,36 @@ function isOrgAdmin(auth: AuthContext) {
 }
 
 export function canEditParameters(auth: AuthContext, projectId?: string) {
-  if (!isActive(auth) || !hasPermission(auth, "parameter:edit")) return false;
+  if (!isActive(auth)) return false;
   if (isOrgAdmin(auth)) return true;
-  if (projectId === undefined) return true;
-  const hasOrgEdit = auth.roles.some(
-    (b) => b.projectId === null && projectEditRoles.includes(b.roleId)
-  );
-  if (hasOrgEdit) return true;
-  return auth.roles.some(
-    (b) => b.projectId === projectId && projectEditRoles.includes(b.roleId)
-  );
+  if (projectId !== undefined) {
+    return auth.roles.some(
+      (b) => (b.projectId === projectId || b.projectId === null) && projectEditRoles.includes(b.roleId)
+    );
+  }
+  return hasPermission(auth, "parameter:edit");
 }
 
 export function canEditCriticalParameters(auth: AuthContext, projectId?: string) {
-  if (!isActive(auth) || !hasPermission(auth, "parameter:edit-critical")) return false;
+  if (!isActive(auth)) return false;
   if (isOrgAdmin(auth)) return true;
-  if (projectId === undefined) return true;
-  return auth.roles.some(
-    (b) => (b.projectId === projectId || b.projectId === null) && criticalEditRoles.includes(b.roleId)
-  );
+  if (projectId !== undefined) {
+    return auth.roles.some(
+      (b) => (b.projectId === projectId || b.projectId === null) && criticalEditRoles.includes(b.roleId)
+    );
+  }
+  return hasPermission(auth, "parameter:edit-critical");
 }
 
 export function canReviewParameters(auth: AuthContext, projectId?: string) {
-  if (!isActive(auth) || !hasPermission(auth, "parameter:review")) return false;
+  if (!isActive(auth)) return false;
   if (isOrgAdmin(auth)) return true;
-  if (projectId === undefined) return true;
-  const hasOrgReview = auth.roles.some(
-    (b) => b.projectId === null && criticalEditRoles.includes(b.roleId)
-  );
-  if (hasOrgReview) return true;
-  return auth.roles.some(
-    (b) => b.projectId === projectId && criticalEditRoles.includes(b.roleId)
-  );
+  if (projectId !== undefined) {
+    return auth.roles.some(
+      (b) => (b.projectId === projectId || b.projectId === null) && criticalEditRoles.includes(b.roleId)
+    );
+  }
+  return hasPermission(auth, "parameter:review");
 }
 
 export function canReviewParameterStage(auth: AuthContext, projectId: string, fromStatus: ParameterChangeRequestStatus) {
