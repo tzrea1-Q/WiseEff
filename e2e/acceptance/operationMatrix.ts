@@ -1783,6 +1783,30 @@ export const acceptanceOperations: AcceptanceOperation[] = [
     assertions: ["ui", "api", "db", "audit", "screenshot"]
   },
   {
+    id: "PCAT-DEFINITION-COLLECTION-001",
+    priority: "P0",
+    area: "parameters",
+    route: "/parameter-admin/specs",
+    roles: ["Org Admin"],
+    action: "Page the complete definition collection, change page size, filter by module subtree, clear the filter, open history on demand, and verify the workspace at all three viewports.",
+    coverage: "automated",
+    acceptanceIds: ["PCAT-UI-16"],
+    specFiles: ["e2e/acceptance/parameter-catalog-definitions.acceptance.spec.ts"],
+    assertions: ["ui", "api", "db", "audit", "screenshot"]
+  },
+  {
+    id: "PCAT-DEFINITION-LIFECYCLE-001",
+    priority: "P0",
+    area: "parameters",
+    route: "/parameter-admin/specs",
+    roles: ["Org Admin"],
+    action: "Expose only the publication-authorized retire or restore action and one merged definition editor whose identity-correction preview requires a changed key, an explicit project manifest, and a reason.",
+    coverage: "automated",
+    acceptanceIds: ["PCAT-UI-17"],
+    specFiles: ["e2e/acceptance/parameter-catalog-definitions.acceptance.spec.ts"],
+    assertions: ["ui", "api", "db", "audit", "screenshot"]
+  },
+  {
     id: "PARAM-SPEC-GOVERN-001",
     priority: "P1",
     area: "parameters",
