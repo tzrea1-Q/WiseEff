@@ -1067,6 +1067,53 @@ export const schemaRegistry: Record<string, ContractSchemaRef> = {
     responseBody: "ProductFeedbackResponse",
     successStatus: 201
   },
+  "productFeedback.createDraft": {
+    summary: "Create product feedback draft",
+    tags: ["product-feedback"],
+    requestBody: "CreateProductFeedbackRequest",
+    responseBody: "ProductFeedbackResponse",
+    successStatus: 201,
+    additionalResponses: { "403": "ErrorResponse" }
+  },
+  "productFeedback.patchDraft": {
+    summary: "Update product feedback draft",
+    tags: ["product-feedback"],
+    requestBody: "PatchProductFeedbackRequest",
+    responseBody: "ProductFeedbackResponse",
+    additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse" }
+  },
+  "productFeedback.deleteDraft": {
+    summary: "Delete product feedback draft",
+    tags: ["product-feedback"],
+    responseBody: "DeleteResponse",
+    additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse" }
+  },
+  "productFeedback.submitDraft": {
+    summary: "Submit product feedback draft",
+    tags: ["product-feedback"],
+    requestBody: "CreateProductFeedbackRequest",
+    responseBody: "ProductFeedbackResponse",
+    additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse" }
+  },
+  "productFeedback.listMine": {
+    summary: "List current user product feedback and drafts",
+    tags: ["product-feedback"],
+    responseBody: "ProductFeedbackListResponse",
+    additionalResponses: { "403": "ErrorResponse" }
+  },
+  "productFeedback.getMine": {
+    summary: "Get current user product feedback or draft",
+    tags: ["product-feedback"],
+    responseBody: "ProductFeedbackResponse",
+    additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse" }
+  },
+  "productFeedback.mineAttachmentContent": {
+    summary: "Get current user product feedback attachment content",
+    tags: ["product-feedback"],
+    responseBody: "BinaryAttachment",
+    responseMedia: "binary",
+    additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse" }
+  },
   "productFeedback.list": {
     summary: "List product feedback",
     tags: ["product-feedback"],

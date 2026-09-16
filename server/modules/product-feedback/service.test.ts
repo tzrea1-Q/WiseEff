@@ -12,12 +12,16 @@ import {
 import { seedCoreGraph } from "../../testing/fixtures";
 import {
   createProductFeedback,
+  createProductFeedbackDraft,
+  deleteProductFeedbackDraft,
   getMyProductFeedback,
   getMyProductFeedbackAttachmentContent,
   getProductFeedback,
   getProductFeedbackAttachmentContent,
   listMyProductFeedback,
   listProductFeedback,
+  saveProductFeedbackDraft,
+  submitProductFeedbackDraft,
   updateProductFeedback
 } from "./service";
 
@@ -83,8 +87,9 @@ function makeObjectStore() {
     };
   });
   const get = vi.fn(async () => Buffer.from("stored-image"));
+  const deleteFn = vi.fn(async () => {});
 
-  return { objectStore: { put, get } as ObjectStore, get, put };
+  return { objectStore: { put, get, delete: deleteFn } as ObjectStore, get, put, deleteFn };
 }
 
 describe.skipIf(!databaseAvailable)("product feedback service", () => {
@@ -372,6 +377,124 @@ describe.skipIf(!databaseAvailable)("product feedback service", () => {
       getMyProductFeedbackAttachmentContent(db, objectStore, colleagueAuth, created.id, detail.attachments[0].id)
     ).rejects.toMatchObject(
       new ApiError("NOT_FOUND", "Product feedback was not found.", { feedbackId: created.id })
+    );
+  });
+
+  it("draft lifecycle: create, update with attachment delta, delete, and submit with audit", async () => {
+    const { objectStore, put, deleteFn } = makeObjectStore();
+
+    // 1. Create draft allows empty description and saves without audit events
+    const draft = await createProductFeedbackDraft(
+      db,
+      objectStore,
+      auth(),
+      {
+        pagePath: "/dashboard",
+        pageTitle: "Dashboard",
+        feedbackType: "experience",
+        description: "",
+        attachments: [attachmentInput("initial.png")]
+      }
+    );
+    expect(draft.id).toBeDefined();
+    expect(draft.submittedAt).toBeNull();
+    expect(draft.description).toBe("");
+    expect(draft.attachments).toHaveLength(1);
+    expect(put).toHaveBeenCalledTimes(1);
+
+    // No audit event emitted during draft creation
+    expect(await auditEvents()).toHaveLength(0);
+
+    // Admin cannot view or update draft
+    await expect(getProductFeedback(db, adminAuth(), draft.id)).rejects.toMatchObject(
+      new ApiError("NOT_FOUND", "Product feedback was not found.", { feedbackId: draft.id })
+    );
+    await expect(updateProductFeedback(db, adminAuth(), draft.id, { status: "in_progress" })).rejects.toMatchObject(
+      new ApiError("NOT_FOUND", "Product feedback was not found.", { feedbackId: draft.id })
+    );
+
+    // 2. Save draft: delta attachments (discard initial.png, add new-1.png and new-2.png)
+    const saved = await saveProductFeedbackDraft(
+      db,
+      objectStore,
+      auth(),
+      draft.id,
+      {
+        description: "Draft text in progress",
+        retainedAttachmentIds: [], // discard initial
+        newAttachments: [attachmentInput("new-1.png"), attachmentInput("new-2.png")]
+      }
+    );
+    expect(saved.description).toBe("Draft text in progress");
+    expect(saved.attachments).toHaveLength(2);
+    expect(deleteFn).toHaveBeenCalledTimes(1); // discarded initial.png cleaned up
+    expect(await auditEvents()).toHaveLength(0); // still no audit event
+
+    // 3. Draft submission requires non-empty description
+    await expect(
+      submitProductFeedbackDraft(db, auth(), draft.id, { description: "   " })
+    ).rejects.toMatchObject(
+      new ApiError("VALIDATION_FAILED", "Description is required to submit feedback.")
+    );
+
+    // 4. Formal submission succeeds, updates status to open, creates progress event, emits product-feedback-submit audit
+    const submitted = await submitProductFeedbackDraft(
+      db,
+      auth(),
+      draft.id,
+      { description: "Final clear description." }
+    );
+    expect(submitted.status).toBe("open");
+    expect(submitted.submittedAt).not.toBeNull();
+    expect(submitted.description).toBe("Final clear description.");
+    expect(submitted.progressEvents).toHaveLength(1);
+    expect(submitted.progressEvents[0].kind).toBe("submitted");
+
+    // Exactly one audit event emitted for submission
+    const events = await auditEvents();
+    expect(events).toHaveLength(1);
+    expect(events[0]).toMatchObject({
+      kind: "product-feedback-submit",
+      action: "create",
+      target_type: "product-feedback",
+      target_id: draft.id
+    });
+
+    // 5. Calling draft endpoints on already submitted feedback is rejected with 400 VALIDATION_FAILED
+    await expect(
+      saveProductFeedbackDraft(db, objectStore, auth(), draft.id, { description: "attempt to edit after submit" })
+    ).rejects.toMatchObject(
+      new ApiError("VALIDATION_FAILED", "Submitted feedback cannot be edited as draft.", { feedbackId: draft.id })
+    );
+
+    await expect(
+      deleteProductFeedbackDraft(db, objectStore, auth(), draft.id)
+    ).rejects.toMatchObject(
+      new ApiError("VALIDATION_FAILED", "Submitted feedback cannot be deleted as draft.", { feedbackId: draft.id })
+    );
+
+    await expect(
+      submitProductFeedbackDraft(db, auth(), draft.id)
+    ).rejects.toMatchObject(
+      new ApiError("VALIDATION_FAILED", "Product feedback has already been submitted.", { feedbackId: draft.id })
+    );
+
+    // 6. Delete an actual draft
+    const draft2 = await createProductFeedbackDraft(
+      db,
+      objectStore,
+      auth(),
+      { attachments: [attachmentInput("discard-me.png")] }
+    );
+    expect(draft2.id).toBeDefined();
+    deleteFn.mockClear();
+
+    const deleteResult = await deleteProductFeedbackDraft(db, objectStore, auth(), draft2.id);
+    expect(deleteResult).toEqual({ ok: true });
+    expect(deleteFn).toHaveBeenCalledTimes(1);
+
+    await expect(getMyProductFeedback(db, auth(), draft2.id)).rejects.toMatchObject(
+      new ApiError("NOT_FOUND", "Product feedback was not found.", { feedbackId: draft2.id })
     );
   });
 });

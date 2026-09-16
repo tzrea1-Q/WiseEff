@@ -15,12 +15,16 @@ import type { ProductFeedbackDto } from "./types";
 
 vi.mock("./service", () => ({
   createProductFeedback: vi.fn(),
+  createProductFeedbackDraft: vi.fn(),
+  deleteProductFeedbackDraft: vi.fn(),
   getMyProductFeedback: vi.fn(),
   getMyProductFeedbackAttachmentContent: vi.fn(),
   getProductFeedback: vi.fn(),
   getProductFeedbackAttachmentContent: vi.fn(),
   listMyProductFeedback: vi.fn(),
   listProductFeedback: vi.fn(),
+  saveProductFeedbackDraft: vi.fn(),
+  submitProductFeedbackDraft: vi.fn(),
   updateProductFeedback: vi.fn()
 }));
 
@@ -361,6 +365,98 @@ describe("product feedback routes", () => {
     expect(response.headers.get("content-type")).toBe("image/png");
     expect(response.bytes).toEqual(bytes);
     expect(service.getMyProductFeedbackAttachmentContent).toHaveBeenCalledWith(db, objectStore, makeAuth(), "my-fb-1", "att-1");
+  });
+
+  it("POST /api/v1/product-feedback/drafts creates draft and returns 201", async () => {
+    const db = makeDb();
+    const objectStore = makeObjectStore();
+    const draft = feedbackRecord({ id: "draft-1", submittedAt: null, description: "" });
+    vi.mocked(service.createProductFeedbackDraft).mockResolvedValue(draft as any);
+
+    const response = await requestJson<{ item: unknown }>(
+      makeServer({ db, objectStore }),
+      "/api/v1/product-feedback/drafts",
+      {
+        method: "POST",
+        body: JSON.stringify({ pagePath: "/home", pageTitle: "Home", feedbackType: "experience", description: "" })
+      }
+    );
+
+    expect(response.status).toBe(201);
+    expect(response.body.item).toMatchObject({ id: "draft-1" });
+    expect(service.createProductFeedbackDraft).toHaveBeenCalledWith(
+      db,
+      objectStore,
+      makeAuth(),
+      expect.objectContaining({ pagePath: "/home", description: "" })
+    );
+  });
+
+  it("PATCH /api/v1/product-feedback/drafts/:id updates draft and returns 200", async () => {
+    const db = makeDb();
+    const objectStore = makeObjectStore();
+    const updated = feedbackRecord({ id: "draft-1", submittedAt: null, description: "updated draft text" });
+    vi.mocked(service.saveProductFeedbackDraft).mockResolvedValue(updated as any);
+
+    const response = await requestJson<{ item: unknown }>(
+      makeServer({ db, objectStore }),
+      "/api/v1/product-feedback/drafts/draft-1",
+      {
+        method: "PATCH",
+        body: JSON.stringify({ description: "updated draft text" })
+      }
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.body.item).toMatchObject({ id: "draft-1", description: "updated draft text" });
+    expect(service.saveProductFeedbackDraft).toHaveBeenCalledWith(
+      db,
+      objectStore,
+      makeAuth(),
+      "draft-1",
+      expect.objectContaining({ description: "updated draft text" })
+    );
+  });
+
+  it("DELETE /api/v1/product-feedback/drafts/:id removes draft and returns 200", async () => {
+    const db = makeDb();
+    const objectStore = makeObjectStore();
+    vi.mocked(service.deleteProductFeedbackDraft).mockResolvedValue({ ok: true });
+
+    const response = await requestJson<{ ok: boolean }>(
+      makeServer({ db, objectStore }),
+      "/api/v1/product-feedback/drafts/draft-1",
+      { method: "DELETE" }
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.body.ok).toBe(true);
+    expect(service.deleteProductFeedbackDraft).toHaveBeenCalledWith(db, objectStore, makeAuth(), "draft-1");
+  });
+
+  it("POST /api/v1/product-feedback/drafts/:id/submit submits draft and returns 200", async () => {
+    const db = makeDb();
+    const submitted = feedbackRecord({ id: "draft-1", status: "open", description: "ready" });
+    vi.mocked(service.submitProductFeedbackDraft).mockResolvedValue(submitted as any);
+
+    const response = await requestJson<{ item: unknown }>(
+      makeServer({ db }),
+      "/api/v1/product-feedback/drafts/draft-1/submit",
+      {
+        method: "POST",
+        body: JSON.stringify({ description: "ready" })
+      }
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.body.item).toMatchObject({ id: "draft-1", status: "open" });
+    expect(service.submitProductFeedbackDraft).toHaveBeenCalledWith(
+      db,
+      makeAuth(),
+      "draft-1",
+      expect.objectContaining({ description: "ready" }),
+      expect.any(Object)
+    );
   });
 });
 

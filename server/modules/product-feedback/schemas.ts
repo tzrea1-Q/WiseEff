@@ -60,3 +60,40 @@ export type ListProductFeedbackQueryBody = z.infer<typeof listProductFeedbackQue
 export type ListMyFeedbackQueryBody = z.infer<typeof listMyFeedbackQuerySchema>;
 export type PatchProductFeedbackBody = z.infer<typeof patchProductFeedbackBodySchema>;
 
+export const createProductFeedbackDraftBodySchema = z.object({
+  pagePath: z.string().max(500).optional(),
+  pageTitle: z.string().max(200).optional(),
+  feedbackType: z.enum(feedbackTypes).optional(),
+  description: z.string().max(4000).optional(),
+  attachments: z.array(productFeedbackAttachmentBodySchema).max(5).optional()
+});
+
+export const patchProductFeedbackDraftBodySchema = z
+  .object({
+    pagePath: z.string().max(500).optional(),
+    pageTitle: z.string().max(200).optional(),
+    feedbackType: z.enum(feedbackTypes).optional(),
+    description: z.string().max(4000).optional(),
+    retainedAttachmentIds: z.array(z.string().uuid()).optional(),
+    newAttachments: z.array(productFeedbackAttachmentBodySchema).max(5).optional()
+  })
+  .refine(
+    (value) => {
+      const retainedCount = value.retainedAttachmentIds?.length ?? 0;
+      const newCount = value.newAttachments?.length ?? 0;
+      return retainedCount + newCount <= 5;
+    },
+    { message: "Total attachments cannot exceed 5." }
+  );
+
+export const submitProductFeedbackDraftBodySchema = z.object({
+  pagePath: z.string().max(500).optional(),
+  pageTitle: z.string().max(200).optional(),
+  feedbackType: z.enum(feedbackTypes).optional(),
+  description: z.string().max(4000).optional()
+});
+
+export type CreateProductFeedbackDraftBody = z.infer<typeof createProductFeedbackDraftBodySchema>;
+export type PatchProductFeedbackDraftBody = z.infer<typeof patchProductFeedbackDraftBodySchema>;
+export type SubmitProductFeedbackDraftBody = z.infer<typeof submitProductFeedbackDraftBodySchema>;
+

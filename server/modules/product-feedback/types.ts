@@ -152,3 +152,33 @@ export type UpdateProductFeedbackPatch = {
   adminNote?: string | null;
 };
 
+export type ProductFeedbackAttachmentInput = {
+  fileName: string;
+  contentType: ProductFeedbackAttachmentContentType;
+  contentBase64: string;
+};
+
+export type CreateProductFeedbackDraftInput = {
+  pagePath?: string;
+  pageTitle?: string;
+  feedbackType?: ProductFeedbackType;
+  description?: string;
+  attachments?: ProductFeedbackAttachmentInput[];
+};
+
+export type SaveProductFeedbackDraftInput = {
+  pagePath?: string;
+  pageTitle?: string;
+  feedbackType?: ProductFeedbackType;
+  description?: string;
+  retainedAttachmentIds?: string[];
+  newAttachments?: ProductFeedbackAttachmentInput[];
+};
+
+export type SubmitProductFeedbackDraftInput = {
+  pagePath?: string;
+  pageTitle?: string;
+  feedbackType?: ProductFeedbackType;
+  description?: string;
+};
+

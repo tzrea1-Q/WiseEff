@@ -21,7 +21,8 @@ export type FeedbackAdminPageProps = {
 const statusBadgeClasses: Record<ProductFeedbackStatus, string> = {
   open: "bg-amber-100 text-amber-950",
   in_progress: "bg-blue-100 text-blue-900",
-  closed: "bg-emerald-100 text-emerald-900"
+  resolved: "bg-emerald-100 text-emerald-900",
+  closed: "bg-stone-200 text-stone-800"
 };
 
 function StatusBadge({ status }: { status: ProductFeedbackStatus }) {

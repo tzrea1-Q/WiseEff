@@ -356,7 +356,7 @@ export async function insertFeedback(
     });
   }
 
-  const detail = await getFeedbackById(db, auth, input.id);
+  const detail = await getFeedbackById(db, auth, input.id, { includeDrafts: true });
   if (!detail) {
     throw new Error(`Failed to retrieve inserted product feedback: ${input.id}`);
   }
@@ -420,8 +420,10 @@ export async function insertAttachments(
 export async function getFeedbackById(
   db: Queryable,
   auth: AuthContext,
-  id: string
+  id: string,
+  options: { includeDrafts?: boolean } = {}
 ): Promise<ProductFeedbackAdminDto | null> {
+  const draftClause = options.includeDrafts ? "" : "and feedback.submitted_at is not null";
   const feedbackResult = await db.query<ProductFeedbackRow>(
     `
     select
@@ -445,6 +447,7 @@ export async function getFeedbackById(
     left join user_password_credentials upc on upc.user_id = feedback.submitter_user_id
     where feedback.organization_id = $1
       and feedback.id = $2
+      ${draftClause}
     limit 1
     `,
     [auth.organization.id, id]
@@ -691,4 +694,208 @@ export async function updateFeedback(
 
   return getFeedbackById(db, auth, id);
 }
+
+export type InsertDraftFeedbackInput = {
+  id: string;
+  pagePath?: string;
+  pageTitle?: string;
+  feedbackType?: ProductFeedbackType;
+  description?: string;
+};
+
+export async function insertDraftFeedback(
+  db: Queryable,
+  auth: AuthContext,
+  input: InsertDraftFeedbackInput
+): Promise<ProductFeedbackUserDto> {
+  await db.query(
+    `
+    insert into product_feedback (
+      id, organization_id, submitter_user_id, page_path, page_title, feedback_type, description, status, submitted_at
+    )
+    values ($1, $2, $3, $4, $5, $6, $7, 'open', null)
+    `,
+    [
+      input.id,
+      auth.organization.id,
+      auth.user.id,
+      input.pagePath ?? "/",
+      input.pageTitle ?? "",
+      input.feedbackType ?? "experience",
+      input.description ?? ""
+    ]
+  );
+
+  const detail = await getMyFeedbackById(db, auth, input.id);
+  if (!detail) {
+    throw new Error(`Failed to retrieve inserted draft: ${input.id}`);
+  }
+  return detail;
+}
+
+export type UpdateDraftFeedbackInput = {
+  pagePath?: string;
+  pageTitle?: string;
+  feedbackType?: ProductFeedbackType;
+  description?: string;
+};
+
+export async function updateDraftFeedback(
+  db: Queryable,
+  auth: AuthContext,
+  draftId: string,
+  input: UpdateDraftFeedbackInput
+): Promise<ProductFeedbackUserDto | null> {
+  const values: unknown[] = [auth.organization.id, auth.user.id, draftId];
+  const sets: string[] = ["updated_at = now()"];
+
+  if (input.pagePath !== undefined) {
+    values.push(input.pagePath);
+    sets.push(`page_path = $${values.length}`);
+  }
+  if (input.pageTitle !== undefined) {
+    values.push(input.pageTitle);
+    sets.push(`page_title = $${values.length}`);
+  }
+  if (input.feedbackType !== undefined) {
+    values.push(input.feedbackType);
+    sets.push(`feedback_type = $${values.length}`);
+  }
+  if (input.description !== undefined) {
+    values.push(input.description);
+    sets.push(`description = $${values.length}`);
+  }
+
+  const result = await db.query<ProductFeedbackRow>(
+    `
+    update product_feedback
+    set ${sets.join(", ")}
+    where organization_id = $1
+      and submitter_user_id = $2
+      and id = $3
+      and submitted_at is null
+    returning *
+    `,
+    values
+  );
+
+  if (!result.rows[0]) {
+    return null;
+  }
+
+  return getMyFeedbackById(db, auth, draftId);
+}
+
+export async function deleteAttachmentsByIds(
+  db: Queryable,
+  auth: AuthContext,
+  feedbackId: string,
+  attachmentIds: string[]
+): Promise<string[]> {
+  if (attachmentIds.length === 0) return [];
+
+  const result = await db.query<{ storage_key: string }>(
+    `
+    delete from product_feedback_attachments
+    where organization_id = $1
+      and feedback_id = $2
+      and id = any($3::uuid[])
+    returning storage_key
+    `,
+    [auth.organization.id, feedbackId, attachmentIds]
+  );
+
+  return result.rows.map((r) => r.storage_key);
+}
+
+export async function deleteDraft(
+  db: Queryable,
+  auth: AuthContext,
+  draftId: string
+): Promise<{ ok: boolean; storageKeys: string[] }> {
+  const attachments = await db.query<{ storage_key: string }>(
+    `
+    select storage_key
+    from product_feedback_attachments
+    where organization_id = $1
+      and feedback_id = $2
+    `,
+    [auth.organization.id, draftId]
+  );
+  const storageKeys = attachments.rows.map((r) => r.storage_key);
+
+  const result = await db.query<ProductFeedbackRow>(
+    `
+    delete from product_feedback
+    where organization_id = $1
+      and submitter_user_id = $2
+      and id = $3
+      and submitted_at is null
+    returning id
+    `,
+    [auth.organization.id, auth.user.id, draftId]
+  );
+
+  if (!result.rows[0]) {
+    return { ok: false, storageKeys: [] };
+  }
+
+  return { ok: true, storageKeys };
+}
+
+export async function submitDraft(
+  db: Queryable,
+  auth: AuthContext,
+  draftId: string,
+  finalUpdate?: UpdateDraftFeedbackInput
+): Promise<ProductFeedbackUserDto | null> {
+  const sets: string[] = ["submitted_at = now()", "status = 'open'", "updated_at = now()"];
+  const values: unknown[] = [auth.organization.id, auth.user.id, draftId];
+
+  if (finalUpdate?.pagePath !== undefined) {
+    values.push(finalUpdate.pagePath);
+    sets.push(`page_path = $${values.length}`);
+  }
+  if (finalUpdate?.pageTitle !== undefined) {
+    values.push(finalUpdate.pageTitle);
+    sets.push(`page_title = $${values.length}`);
+  }
+  if (finalUpdate?.feedbackType !== undefined) {
+    values.push(finalUpdate.feedbackType);
+    sets.push(`feedback_type = $${values.length}`);
+  }
+  if (finalUpdate?.description !== undefined) {
+    values.push(finalUpdate.description);
+    sets.push(`description = $${values.length}`);
+  }
+
+  const result = await db.query<ProductFeedbackRow>(
+    `
+    update product_feedback
+    set ${sets.join(", ")}
+    where organization_id = $1
+      and submitter_user_id = $2
+      and id = $3
+      and submitted_at is null
+    returning *
+    `,
+    values
+  );
+
+  if (!result.rows[0]) {
+    return null;
+  }
+
+  await insertProgressEvent(db, auth, {
+    id: crypto.randomUUID(),
+    feedbackId: draftId,
+    actorUserId: auth.user.id,
+    kind: "submitted",
+    toStatus: "open",
+    publicMessage: "反馈已提交"
+  });
+
+  return getMyFeedbackById(db, auth, draftId);
+}
+
 

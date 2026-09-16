@@ -178,4 +178,53 @@ describe("createHttpProductFeedbackRepository", () => {
 
     await expect(createRepository(fetchMock).list()).rejects.toBeInstanceOf(WiseEffApiError);
   });
+
+  it("handles draft lifecycle and user mine listing via HTTP client", async () => {
+    const draftDto: ProductFeedbackDto = {
+      ...baseFeedbackDto,
+      id: "draft-1",
+      submittedAt: null,
+      description: ""
+    };
+
+    // createDraft
+    const createDraftMock = createFetchMock({ item: draftDto }, 201);
+    const repo = createRepository(createDraftMock);
+    const draft = await repo.createDraft!({ pagePath: "/dash", description: "" });
+    expect(draft.id).toBe("draft-1");
+    expect(createDraftMock.mock.calls[0][0]).toBe("http://127.0.0.1:8787/api/v1/product-feedback/drafts");
+    expect(createDraftMock.mock.calls[0][1]?.method).toBe("POST");
+
+    // saveDraft
+    const savedDto: ProductFeedbackDto = { ...draftDto, description: "updated" };
+    const saveDraftMock = createFetchMock({ item: savedDto });
+    const repo2 = createRepository(saveDraftMock);
+    const saved = await repo2.saveDraft!("draft-1", { description: "updated" });
+    expect(saved.description).toBe("updated");
+    expect(saveDraftMock.mock.calls[0][0]).toBe("http://127.0.0.1:8787/api/v1/product-feedback/drafts/draft-1");
+    expect(saveDraftMock.mock.calls[0][1]?.method).toBe("PATCH");
+
+    // deleteDraft
+    const deleteDraftMock = createFetchMock({ ok: true });
+    const repo3 = createRepository(deleteDraftMock);
+    const delResult = await repo3.deleteDraft!("draft-1");
+    expect(delResult).toEqual({ ok: true });
+    expect(deleteDraftMock.mock.calls[0][0]).toBe("http://127.0.0.1:8787/api/v1/product-feedback/drafts/draft-1");
+    expect(deleteDraftMock.mock.calls[0][1]?.method).toBe("DELETE");
+
+    // submitDraft
+    const submittedDto: ProductFeedbackDto = { ...draftDto, status: "open", submittedAt: "2026-07-08T09:00:00.000Z", description: "ready" };
+    const submitDraftMock = createFetchMock({ item: submittedDto });
+    const repo4 = createRepository(submitDraftMock);
+    const submitted = await repo4.submitDraft!("draft-1", { description: "ready" });
+    expect(submitted.status).toBe("open");
+    expect(submitDraftMock.mock.calls[0][0]).toBe("http://127.0.0.1:8787/api/v1/product-feedback/drafts/draft-1/submit");
+
+    // listMine
+    const listMineMock = createFetchMock({ items: [draftDto, submittedDto] });
+    const repo5 = createRepository(listMineMock);
+    const mine = await repo5.listMine!();
+    expect(mine.items).toHaveLength(2);
+    expect(listMineMock.mock.calls[0][0]).toBe("http://127.0.0.1:8787/api/v1/product-feedback/mine");
+  });
 });

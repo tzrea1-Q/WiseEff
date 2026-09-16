@@ -699,6 +699,19 @@ export const routeManifest = [
   },
 
   { id: "productFeedback.create", method: "POST", path: "/api/v1/product-feedback", module: "product-feedback", stability: "mvp" },
+  { id: "productFeedback.createDraft", method: "POST", path: "/api/v1/product-feedback/drafts", module: "product-feedback", stability: "mvp" },
+  { id: "productFeedback.patchDraft", method: "PATCH", path: "/api/v1/product-feedback/drafts/:id", module: "product-feedback", stability: "mvp" },
+  { id: "productFeedback.deleteDraft", method: "DELETE", path: "/api/v1/product-feedback/drafts/:id", module: "product-feedback", stability: "mvp" },
+  { id: "productFeedback.submitDraft", method: "POST", path: "/api/v1/product-feedback/drafts/:id/submit", module: "product-feedback", stability: "mvp" },
+  { id: "productFeedback.listMine", method: "GET", path: "/api/v1/product-feedback/mine", module: "product-feedback", stability: "mvp" },
+  { id: "productFeedback.getMine", method: "GET", path: "/api/v1/product-feedback/mine/:id", module: "product-feedback", stability: "mvp" },
+  {
+    id: "productFeedback.mineAttachmentContent",
+    method: "GET",
+    path: "/api/v1/product-feedback/mine/:id/attachments/:attachmentId/content",
+    module: "product-feedback",
+    stability: "mvp"
+  },
   { id: "productFeedback.list", method: "GET", path: "/api/v1/product-feedback", module: "product-feedback", stability: "mvp" },
   { id: "productFeedback.get", method: "GET", path: "/api/v1/product-feedback/:id", module: "product-feedback", stability: "mvp" },
   { id: "productFeedback.patch", method: "PATCH", path: "/api/v1/product-feedback/:id", module: "product-feedback", stability: "mvp" },
