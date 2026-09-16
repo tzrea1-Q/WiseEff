@@ -12,9 +12,11 @@ import {
 } from "../shared/database/client";
 import { applyMigrations } from "../shared/database/migrations";
 import { resolveParameterIdentityMode } from "../modules/parameter-kernel/parameterIdentityMode";
+import { loadDotenvFiles } from "../config/loadDotenv";
 
 const projectRoot = path.dirname(path.dirname(path.dirname(fileURLToPath(import.meta.url))));
 const migrationsDir = path.join(projectRoot, "server", "migrations");
+loadDotenvFiles(projectRoot);
 
 /**
  * Serializes only the rare template-build moment. Individual suites no longer take a

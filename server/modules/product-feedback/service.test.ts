@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { AuthContext } from "../auth/types";
 import type { ObjectStore, StoredObject } from "../logs/objectStore";
 import { ApiError } from "../../shared/http/errors";
-import { makeTestAuthContext } from "../../testing/authContext";
+import { makeTestAuthContext, type TestAuthContextOverrides } from "../../testing/authContext";
 import {
   createInMemoryTestDatabase,
   isTestDatabaseAvailable,
@@ -12,8 +12,11 @@ import {
 import { seedCoreGraph } from "../../testing/fixtures";
 import {
   createProductFeedback,
+  getMyProductFeedback,
+  getMyProductFeedbackAttachmentContent,
   getProductFeedback,
   getProductFeedbackAttachmentContent,
+  listMyProductFeedback,
   listProductFeedback,
   updateProductFeedback
 } from "./service";
@@ -23,20 +26,23 @@ const databaseAvailable = await isTestDatabaseAvailable();
 // product_feedback ids are uuid columns; absent-row probes need well-formed uuid literals.
 const MISSING_FEEDBACK_ID = "00000000-0000-4000-8000-00000000f404";
 
-function auth(overrides: Partial<AuthContext> = {}): AuthContext {
-  return {
-    ...makeTestAuthContext({
-      userId: "user-1",
-      organizationId: "org-1",
-      name: "Riley Chen",
-      email: "riley@example.com",
-      title: "Software User",
-      organizationName: "ChargeLab",
-      roles: [{ projectId: "project-1", roleId: "software-user" }],
-      permissions: []
-    }),
+function auth(overrides: TestAuthContextOverrides & { user?: { isActive?: boolean; id?: string; name?: string; email?: string } } = {}): AuthContext {
+  const isActive = overrides.user?.isActive ?? overrides.isActive;
+  const userId = overrides.user?.id ?? overrides.userId ?? "user-1";
+  const name = overrides.user?.name ?? overrides.name ?? "Riley Chen";
+  const email = overrides.user?.email ?? overrides.email ?? "riley@example.com";
+  return makeTestAuthContext({
+    userId,
+    organizationId: "org-1",
+    name,
+    email,
+    title: "Software User",
+    organizationName: "ChargeLab",
+    roles: [{ projectId: "project-1", roleId: "software-user" }],
+    permissions: [],
+    isActive,
     ...overrides
-  };
+  });
 }
 
 function adminAuth(overrides: Partial<AuthContext> = {}): AuthContext {
@@ -317,4 +323,56 @@ describe.skipIf(!databaseAvailable)("product feedback service", () => {
     });
     expect(audit?.metadata).toMatchObject({ previousStatus: "in_progress", nextStatus: "closed" });
   });
+
+  it("listMyProductFeedback and getMyProductFeedback enforce user authentication and isolation", async () => {
+    const { objectStore } = makeObjectStore();
+    const created = await createProductFeedback(
+      db,
+      objectStore,
+      auth(),
+      createInput({
+        attachments: [attachmentInput("user-shot.png")]
+      })
+    );
+
+    // Active user can list and view their own feedback
+    const myList = await listMyProductFeedback(db, auth());
+    expect(myList.items).toHaveLength(1);
+    expect(myList.items[0].id).toBe(created.id);
+    expect((myList.items[0] as any).adminNote).toBeUndefined();
+
+    const detail = await getMyProductFeedback(db, auth(), created.id);
+    expect(detail.id).toBe(created.id);
+    expect(detail.attachments).toHaveLength(1);
+    expect((detail as any).adminNote).toBeUndefined();
+
+    // Attachment content works for owner
+    const attachmentContent = await getMyProductFeedbackAttachmentContent(
+      db,
+      objectStore,
+      auth(),
+      created.id,
+      detail.attachments[0].id
+    );
+    expect(attachmentContent.bytes.toString()).toBe("stored-image");
+
+    // Inactive user cannot access
+    const inactiveAuth = auth({ isActive: false });
+    await expect(listMyProductFeedback(db, inactiveAuth)).rejects.toMatchObject(
+      new ApiError("FORBIDDEN", "Forbidden.", { reason: "inactive" })
+    );
+
+    // Another user in the same org cannot access
+    const colleagueAuth = auth({ userId: "user-colleague", email: "colleague@example.com" });
+    await expect(getMyProductFeedback(db, colleagueAuth, created.id)).rejects.toMatchObject(
+      new ApiError("NOT_FOUND", "Product feedback was not found.", { feedbackId: created.id })
+    );
+
+    await expect(
+      getMyProductFeedbackAttachmentContent(db, objectStore, colleagueAuth, created.id, detail.attachments[0].id)
+    ).rejects.toMatchObject(
+      new ApiError("NOT_FOUND", "Product feedback was not found.", { feedbackId: created.id })
+    );
+  });
 });
+

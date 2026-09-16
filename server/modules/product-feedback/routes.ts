@@ -7,13 +7,17 @@ import { ApiError } from "../../shared/http/errors";
 import type { RouteRequest, WiseEffRouter } from "../../shared/http/router";
 import {
   createProductFeedback,
+  getMyProductFeedback,
+  getMyProductFeedbackAttachmentContent,
   getProductFeedback,
   getProductFeedbackAttachmentContent,
+  listMyProductFeedback,
   listProductFeedback,
   updateProductFeedback
 } from "./service";
 import {
   createProductFeedbackBodySchema,
+  listMyFeedbackQuerySchema,
   listProductFeedbackQuerySchema,
   patchProductFeedbackBodySchema
 } from "./schemas";
@@ -28,6 +32,11 @@ const paramsWithAttachmentIdSchema = paramsWithFeedbackIdSchema.extend({
 
 const cursorSchema = z.object({
   createdAt: z.string().datetime(),
+  id: z.string().min(1)
+});
+
+const myCursorSchema = z.object({
+  updatedAt: z.string().datetime(),
   id: z.string().min(1)
 });
 
@@ -76,6 +85,22 @@ function parseCursor(cursor: string | undefined) {
   }
 }
 
+function parseMyCursor(cursor: string | undefined) {
+  if (!cursor) {
+    return undefined;
+  }
+
+  try {
+    const payload = JSON.parse(Buffer.from(cursor, "base64url").toString("utf8")) as unknown;
+    return parseWithSchema(myCursorSchema, payload);
+  } catch (error) {
+    if (error instanceof ApiError) {
+      throw error;
+    }
+    throw new ApiError("VALIDATION_FAILED", "Invalid product feedback cursor.");
+  }
+}
+
 async function getAuth(getCurrentAuthContext: (request: RouteRequest) => Promise<AuthContext> | AuthContext, request: RouteRequest) {
   return getCurrentAuthContext(request);
 }
@@ -96,6 +121,42 @@ export function registerProductFeedbackRoutes(
     const item = await createProductFeedback(db, objectStore, auth, body, { requestId: request.requestId });
 
     return { status: 201, body: { item } };
+  });
+
+  router.get("/api/v1/product-feedback/mine", async (request) => {
+    const db = requireDb(options.db);
+    const auth = await getAuth(options.getCurrentAuthContext, request);
+    const query = parseWithSchema(listMyFeedbackQuerySchema, flattenQuery(request.query));
+    const result = await listMyProductFeedback(db, auth, {
+      ...query,
+      cursor: parseMyCursor(query.cursor)
+    });
+
+    return { status: 200, body: result };
+  });
+
+  router.get("/api/v1/product-feedback/mine/:id", async (request) => {
+    const db = requireDb(options.db);
+    const auth = await getAuth(options.getCurrentAuthContext, request);
+    const params = parseWithSchema(paramsWithFeedbackIdSchema, request.params);
+    const item = await getMyProductFeedback(db, auth, params.id);
+
+    return { status: 200, body: { item } };
+  });
+
+  router.get("/api/v1/product-feedback/mine/:id/attachments/:attachmentId/content", async (request) => {
+    const db = requireDb(options.db);
+    const objectStore = requireObjectStore(options.objectStore);
+    const auth = await getAuth(options.getCurrentAuthContext, request);
+    const params = parseWithSchema(paramsWithAttachmentIdSchema, request.params);
+    const result = await getMyProductFeedbackAttachmentContent(db, objectStore, auth, params.id, params.attachmentId);
+
+    return {
+      status: 200,
+      bytes: result.bytes,
+      contentType: result.attachment.contentType,
+      fileName: result.attachment.fileName
+    };
   });
 
   router.get("/api/v1/product-feedback", async (request) => {
@@ -144,3 +205,4 @@ export function registerProductFeedbackRoutes(
     };
   });
 }
+

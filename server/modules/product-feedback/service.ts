@@ -9,17 +9,22 @@ import { ApiError } from "../../shared/http/errors";
 import { requireProductFeedbackAdmin, requireProductFeedbackSubmit } from "./policy";
 import {
   getFeedbackById,
+  getMyFeedbackById,
   insertAttachments,
   insertFeedback,
   listFeedback,
+  listMyFeedback,
   updateFeedback
 } from "./repository";
 import type {
+  ListMyFeedbackQuery,
   ListProductFeedbackQuery,
+  ProductFeedbackAdminDto,
   ProductFeedbackAttachmentContentType,
   ProductFeedbackDto,
   ProductFeedbackStatus,
   ProductFeedbackType,
+  ProductFeedbackUserDto,
   UpdateProductFeedbackPatch
 } from "./types";
 
@@ -46,6 +51,7 @@ const SUPPORTED_CONTENT_TYPES = new Set<ProductFeedbackAttachmentContentType>(["
 const ALLOWED: Record<ProductFeedbackStatus, ProductFeedbackStatus[]> = {
   open: ["in_progress"],
   in_progress: ["closed"],
+  resolved: ["closed"],
   closed: []
 };
 
@@ -172,7 +178,7 @@ export async function createProductFeedback(
       feedbackType: input.feedbackType,
       description: input.description
     });
-    const attachments = await insertAttachments(
+    const insertedAttachments = await insertAttachments(
       tx,
       auth,
       feedback.id,
@@ -186,7 +192,7 @@ export async function createProductFeedback(
         sortOrder: index
       }))
     );
-    const item = { ...feedback, attachments };
+    const item = (await getFeedbackById(tx, auth, feedback.id)) ?? { ...feedback, attachments: insertedAttachments };
     await createProductFeedbackAudit(
       asAuditTx(tx),
       auth,
@@ -200,6 +206,44 @@ export async function createProductFeedback(
 
     return item;
   });
+}
+
+export async function listMyProductFeedback(
+  db: Queryable,
+  auth: AuthContext,
+  query: ListMyFeedbackQuery = {}
+) {
+  requireProductFeedbackSubmit(auth);
+  return listMyFeedback(db, auth, query);
+}
+
+export async function getMyProductFeedback(db: Queryable, auth: AuthContext, feedbackId: string) {
+  requireProductFeedbackSubmit(auth);
+  const feedback = await getMyFeedbackById(db, auth, feedbackId);
+  if (!feedback) {
+    throw productFeedbackNotFound(feedbackId);
+  }
+  return feedback;
+}
+
+export async function getMyProductFeedbackAttachmentContent(
+  db: Queryable,
+  objectStore: ObjectStore,
+  auth: AuthContext,
+  feedbackId: string,
+  attachmentId: string
+) {
+  requireProductFeedbackSubmit(auth);
+  const feedback = await getMyProductFeedback(db, auth, feedbackId);
+  const attachment = feedback.attachments.find((item) => item.id === attachmentId);
+  if (!attachment) {
+    throw productFeedbackNotFound(feedbackId);
+  }
+
+  return {
+    attachment,
+    bytes: await objectStore.get(attachment.storageKey)
+  };
 }
 
 export async function listProductFeedback(db: Queryable, auth: AuthContext, query: ListProductFeedbackQuery = {}) {
@@ -285,3 +329,4 @@ export async function getProductFeedbackAttachmentContent(
     bytes: await objectStore.get(attachment.storageKey)
   };
 }
+

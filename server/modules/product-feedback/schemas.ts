@@ -49,7 +49,14 @@ export const patchProductFeedbackBodySchema = z
     { message: "Expected status or adminNote." }
   );
 
+export const listMyFeedbackQuerySchema = z.object({
+  cursor: z.string().optional(),
+  limit: z.coerce.number().int().min(1).max(100).optional()
+});
+
 export type ProductFeedbackAttachmentBody = z.infer<typeof productFeedbackAttachmentBodySchema>;
 export type CreateProductFeedbackBody = z.infer<typeof createProductFeedbackBodySchema>;
 export type ListProductFeedbackQueryBody = z.infer<typeof listProductFeedbackQuerySchema>;
+export type ListMyFeedbackQueryBody = z.infer<typeof listMyFeedbackQuerySchema>;
 export type PatchProductFeedbackBody = z.infer<typeof patchProductFeedbackBodySchema>;
+

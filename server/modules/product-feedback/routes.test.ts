@@ -15,8 +15,11 @@ import type { ProductFeedbackDto } from "./types";
 
 vi.mock("./service", () => ({
   createProductFeedback: vi.fn(),
+  getMyProductFeedback: vi.fn(),
+  getMyProductFeedbackAttachmentContent: vi.fn(),
   getProductFeedback: vi.fn(),
   getProductFeedbackAttachmentContent: vi.fn(),
+  listMyProductFeedback: vi.fn(),
   listProductFeedback: vi.fn(),
   updateProductFeedback: vi.fn()
 }));
@@ -303,4 +306,61 @@ describe("product feedback routes", () => {
     expect(response.status).toBe(404);
     expect(response.body.error.code).toBe("NOT_FOUND");
   });
+
+  it("GET /api/v1/product-feedback/mine returns my feedbacks", async () => {
+    const db = makeDb();
+    const myItem = feedbackRecord({ id: "my-fb-1" });
+    vi.mocked(service.listMyProductFeedback).mockResolvedValue({ items: [myItem as any], nextCursor: null });
+
+    const response = await requestJson<{ items: unknown[]; nextCursor: unknown }>(
+      makeServer({ db }),
+      "/api/v1/product-feedback/mine"
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.body.items).toHaveLength(1);
+    expect(service.listMyProductFeedback).toHaveBeenCalledWith(db, makeAuth(), { cursor: undefined, limit: undefined });
+  });
+
+  it("GET /api/v1/product-feedback/mine/:id returns single feedback detail or 404", async () => {
+    const db = makeDb();
+    const myItem = feedbackRecord({ id: "my-fb-1" });
+    vi.mocked(service.getMyProductFeedback).mockResolvedValue(myItem as any);
+
+    const okResponse = await requestJson<{ item: unknown }>(
+      makeServer({ db }),
+      "/api/v1/product-feedback/mine/my-fb-1"
+    );
+    expect(okResponse.status).toBe(200);
+    expect(okResponse.body.item).toMatchObject({ id: "my-fb-1" });
+
+    vi.mocked(service.getMyProductFeedback).mockRejectedValue(
+      new ApiError("NOT_FOUND", "Product feedback was not found.", { feedbackId: "foreign-fb" })
+    );
+    const notFoundResponse = await requestJson<{ error: { code: string } }>(
+      makeServer({ db }),
+      "/api/v1/product-feedback/mine/foreign-fb"
+    );
+    expect(notFoundResponse.status).toBe(404);
+    expect(notFoundResponse.body.error.code).toBe("NOT_FOUND");
+  });
+
+  it("GET /api/v1/product-feedback/mine/:id/attachments/:attachmentId/content returns image bytes", async () => {
+    const db = makeDb();
+    const objectStore = makeObjectStore();
+    const attachment = attachmentRecord({ id: "att-1", contentType: "image/png" });
+    const bytes = Buffer.from("user-image-content");
+    vi.mocked(service.getMyProductFeedbackAttachmentContent).mockResolvedValue({ attachment, bytes });
+
+    const response = await requestBytes(
+      makeServer({ db, objectStore }),
+      "/api/v1/product-feedback/mine/my-fb-1/attachments/att-1/content"
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("content-type")).toBe("image/png");
+    expect(response.bytes).toEqual(bytes);
+    expect(service.getMyProductFeedbackAttachmentContent).toHaveBeenCalledWith(db, objectStore, makeAuth(), "my-fb-1", "att-1");
+  });
 });
+

@@ -7,7 +7,16 @@ import {
   type InMemoryTestDatabase
 } from "../../testing/testDatabase";
 import { seedCoreGraph } from "../../testing/fixtures";
-import { getFeedbackById, insertAttachments, insertFeedback, listFeedback, updateFeedback } from "./repository";
+import {
+  getFeedbackById,
+  getMyFeedbackById,
+  insertAttachments,
+  insertFeedback,
+  insertProgressEvent,
+  listFeedback,
+  listMyFeedback,
+  updateFeedback
+} from "./repository";
 
 const databaseAvailable = await isTestDatabaseAvailable();
 
@@ -342,4 +351,100 @@ describe.skipIf(!databaseAvailable)("product feedback repository", () => {
       adminNote: "Triaged by support."
     });
   });
+
+  it("resolves submitter identity with user name and username", async () => {
+    await db.query(
+      "insert into user_password_credentials (user_id, password_hash, username) values ($1, $2, $3)",
+      ["user-1", "hash", "riley_chen"]
+    );
+    await insertFeedback(db, auth(), feedbackInput(FEEDBACK_1));
+
+    const item = await getFeedbackById(db, auth(), FEEDBACK_1);
+    expect(item).not.toBeNull();
+    expect(item?.submitter).toEqual({
+      id: "user-1",
+      name: "Riley Chen",
+      username: "riley_chen"
+    });
+  });
+
+  it("handles deleted users by returning '已注销用户' fallback", async () => {
+    await insertFeedback(db, auth(), feedbackInput(FEEDBACK_1));
+    await db.query("update product_feedback set submitter_user_id = null where id = $1", [FEEDBACK_1]);
+
+    const item = await getFeedbackById(db, auth(), FEEDBACK_1);
+    expect(item?.submitter).toEqual({
+      id: null,
+      name: "已注销用户",
+      username: null
+    });
+  });
+
+  it("listFeedback excludes drafts (submitted_at IS NULL)", async () => {
+    await insertFeedback(db, auth(), feedbackInput(FEEDBACK_1));
+    await insertFeedback(db, auth(), { ...feedbackInput(FEEDBACK_2), submittedAt: null });
+
+    const result = await listFeedback(db, auth(), {});
+    expect(result.items.map((i) => i.id)).toContain(FEEDBACK_1);
+    expect(result.items.map((i) => i.id)).not.toContain(FEEDBACK_2);
+  });
+
+  it("listFeedback q search matches submitter name and username", async () => {
+    await db.query(
+      "insert into user_password_credentials (user_id, password_hash, username) values ($1, $2, $3)",
+      ["user-1", "hash", "riley_chen"]
+    );
+    await insertFeedback(db, auth(), feedbackInput(FEEDBACK_1));
+
+    const matchName = await listFeedback(db, auth(), { q: "Riley" });
+    expect(matchName.items.map((i) => i.id)).toContain(FEEDBACK_1);
+
+    const matchUsername = await listFeedback(db, auth(), { q: "riley_chen" });
+    expect(matchUsername.items.map((i) => i.id)).toContain(FEEDBACK_1);
+  });
+
+  it("listMyFeedback and getMyFeedbackById enforce owner and tenant isolation without leaking internal data", async () => {
+    await seedOtherOrg();
+    await insertFeedback(db, auth(), feedbackInput(FEEDBACK_1));
+    await insertFeedback(db, auth(), { ...feedbackInput(FEEDBACK_2), submittedAt: null });
+    await insertFeedback(db, otherOrgAuth(), feedbackInput(FEEDBACK_FOREIGN));
+
+    await insertProgressEvent(db, auth(), {
+      id: "00000000-0000-4000-8000-00000000e001",
+      feedbackId: FEEDBACK_1,
+      kind: "progress",
+      publicMessage: "Public update for user",
+      internalMessage: "TOP SECRET ADMIN ONLY NOTE"
+    });
+
+    // listMyFeedback returns both drafts and formal feedbacks for user-1
+    const myList = await listMyFeedback(db, auth());
+    expect(myList.items.map((i) => i.id)).toEqual(expect.arrayContaining([FEEDBACK_1, FEEDBACK_2]));
+    expect(myList.items.map((i) => i.id)).not.toContain(FEEDBACK_FOREIGN);
+
+    // getMyFeedbackById returns user-1 feedback
+    const myItem = await getMyFeedbackById(db, auth(), FEEDBACK_1);
+    expect(myItem).not.toBeNull();
+    expect(myItem?.id).toBe(FEEDBACK_1);
+    // Verified: progressEvents contains publicMessage but NOT internalMessage
+    const customEvent = myItem?.progressEvents.find((e) => e.kind === "progress");
+    expect(customEvent?.publicMessage).toBe("Public update for user");
+    expect((customEvent as any).internalMessage).toBeUndefined();
+    expect((myItem as any).adminNote).toBeUndefined();
+
+    // User-2 in other org cannot read FEEDBACK_1
+    const deniedOtherOrg = await getMyFeedbackById(db, otherOrgAuth(), FEEDBACK_1);
+    expect(deniedOtherOrg).toBeNull();
+
+    // Another user in same org cannot read FEEDBACK_1
+    const sameOrgOtherUser = makeTestAuthContext({
+      userId: "user-99",
+      organizationId: "org-1",
+      name: "Other Colleague",
+      email: "colleague@example.com"
+    });
+    const deniedSameOrg = await getMyFeedbackById(db, sameOrgOtherUser, FEEDBACK_1);
+    expect(deniedSameOrg).toBeNull();
+  });
 });
+
