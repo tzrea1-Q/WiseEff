@@ -213,4 +213,73 @@ describe("FeedbackAdminDrawer", () => {
     expect(within(drawer).getByRole("button", { name: "关闭" })).toBeInTheDocument();
     expect(within(drawer).getByText("已关闭的反馈仅可查看。")).toBeInTheDocument();
   });
+
+  it("renders submitter identity and progress events timeline", () => {
+    render(
+      <FeedbackAdminDrawer
+        feedback={feedback({
+          submitter: { id: "user-1", name: "李四", username: "lisi" },
+          progressEvents: [
+            {
+              id: "evt-1",
+              feedbackId: "feedback-1",
+              kind: "submitted",
+              createdAt: "2026-07-08T08:00:00.000Z"
+            },
+            {
+              id: "evt-2",
+              feedbackId: "feedback-1",
+              kind: "progress",
+              publicMessage: "已定位到具体日志格式解析问题",
+              internalMessage: "复现需设置 debug 级别",
+              createdAt: "2026-07-08T09:00:00.000Z"
+            }
+          ]
+        })}
+        open
+        onClose={vi.fn()}
+        onUpdate={vi.fn()}
+        getAttachmentObjectUrl={vi.fn()}
+      />
+    );
+
+    expect(screen.getByText("李四 (@lisi)")).toBeInTheDocument();
+    expect(screen.getByText("处理进展记录（2）")).toBeInTheDocument();
+    expect(screen.getByText("用户提交反馈")).toBeInTheDocument();
+    expect(screen.getByText("已定位到具体日志格式解析问题")).toBeInTheDocument();
+    expect(screen.getByText("复现需设置 debug 级别")).toBeInTheDocument();
+  });
+
+  it("resolves in-progress feedback through onAppendProgress", async () => {
+    const onAppendProgress = vi.fn().mockResolvedValue(feedback({ status: "resolved" }));
+
+    render(
+      <FeedbackAdminDrawer
+        feedback={feedback({ status: "in_progress" })}
+        open
+        onClose={vi.fn()}
+        onUpdate={vi.fn()}
+        onAppendProgress={onAppendProgress}
+        getAttachmentObjectUrl={vi.fn()}
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "标记解决" }));
+    const resolveDialog = screen.getByRole("dialog", { name: "标记反馈为已解决" });
+    expect(resolveDialog).toBeInTheDocument();
+
+    fireEvent.change(within(resolveDialog).getByLabelText("对外公开说明 *"), {
+      target: { value: "已在热修复补丁中解决" }
+    });
+    fireEvent.click(within(resolveDialog).getByRole("button", { name: "确认解决" }));
+
+    await waitFor(() =>
+      expect(onAppendProgress).toHaveBeenCalledWith("feedback-1", {
+        toStatus: "resolved",
+        resolutionCode: "completed",
+        publicMessage: "已在热修复补丁中解决",
+        internalMessage: null
+      })
+    );
+  });
 });

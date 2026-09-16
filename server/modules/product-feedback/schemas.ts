@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import { feedbackStatuses, feedbackTypes } from "./types";
+import { feedbackResolutionCodes, feedbackStatuses, feedbackTypes } from "./types";
 
 const nonEmptyString = z.string().min(1);
 const base64String = nonEmptyString.refine(
@@ -49,7 +49,68 @@ export const patchProductFeedbackBodySchema = z
     { message: "Expected status or adminNote." }
   );
 
+export const listMyFeedbackQuerySchema = z.object({
+  cursor: z.string().optional(),
+  limit: z.coerce.number().int().min(1).max(100).optional()
+});
+
 export type ProductFeedbackAttachmentBody = z.infer<typeof productFeedbackAttachmentBodySchema>;
 export type CreateProductFeedbackBody = z.infer<typeof createProductFeedbackBodySchema>;
 export type ListProductFeedbackQueryBody = z.infer<typeof listProductFeedbackQuerySchema>;
+export type ListMyFeedbackQueryBody = z.infer<typeof listMyFeedbackQuerySchema>;
 export type PatchProductFeedbackBody = z.infer<typeof patchProductFeedbackBodySchema>;
+
+export const createProductFeedbackDraftBodySchema = z.object({
+  pagePath: z.string().max(500).optional(),
+  pageTitle: z.string().max(200).optional(),
+  feedbackType: z.enum(feedbackTypes).optional(),
+  description: z.string().max(4000).optional(),
+  attachments: z.array(productFeedbackAttachmentBodySchema).max(5).optional()
+});
+
+export const patchProductFeedbackDraftBodySchema = z
+  .object({
+    pagePath: z.string().max(500).optional(),
+    pageTitle: z.string().max(200).optional(),
+    feedbackType: z.enum(feedbackTypes).optional(),
+    description: z.string().max(4000).optional(),
+    retainedAttachmentIds: z.array(z.string().uuid()).optional(),
+    newAttachments: z.array(productFeedbackAttachmentBodySchema).max(5).optional()
+  })
+  .refine(
+    (value) => {
+      const retainedCount = value.retainedAttachmentIds?.length ?? 0;
+      const newCount = value.newAttachments?.length ?? 0;
+      return retainedCount + newCount <= 5;
+    },
+    { message: "Total attachments cannot exceed 5." }
+  );
+
+export const submitProductFeedbackDraftBodySchema = z.object({
+  pagePath: z.string().max(500).optional(),
+  pageTitle: z.string().max(200).optional(),
+  feedbackType: z.enum(feedbackTypes).optional(),
+  description: z.string().max(4000).optional()
+});
+
+export type CreateProductFeedbackDraftBody = z.infer<typeof createProductFeedbackDraftBodySchema>;
+export type PatchProductFeedbackDraftBody = z.infer<typeof patchProductFeedbackDraftBodySchema>;
+export type SubmitProductFeedbackDraftBody = z.infer<typeof submitProductFeedbackDraftBodySchema>;
+
+export const appendProductFeedbackProgressBodySchema = z
+  .object({
+    toStatus: z.enum(feedbackStatuses).optional(),
+    resolutionCode: z.enum(feedbackResolutionCodes).nullable().optional(),
+    publicMessage: z.string().max(2000).nullable().optional(),
+    internalMessage: z.string().max(2000).nullable().optional()
+  })
+  .refine(
+    (value) =>
+      value.toStatus !== undefined ||
+      Boolean(value.publicMessage?.trim()) ||
+      Boolean(value.internalMessage?.trim()),
+    { message: "At least one of toStatus, publicMessage, or internalMessage must be provided." }
+  );
+
+export type AppendProductFeedbackProgressBody = z.infer<typeof appendProductFeedbackProgressBodySchema>;
+

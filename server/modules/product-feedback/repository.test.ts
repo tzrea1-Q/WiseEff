@@ -7,7 +7,21 @@ import {
   type InMemoryTestDatabase
 } from "../../testing/testDatabase";
 import { seedCoreGraph } from "../../testing/fixtures";
-import { getFeedbackById, insertAttachments, insertFeedback, listFeedback, updateFeedback } from "./repository";
+import {
+  deleteAttachmentsByIds,
+  deleteDraft,
+  getFeedbackById,
+  getMyFeedbackById,
+  insertAttachments,
+  insertDraftFeedback,
+  insertFeedback,
+  insertProgressEvent,
+  listFeedback,
+  listMyFeedback,
+  submitDraft,
+  updateDraftFeedback,
+  updateFeedback
+} from "./repository";
 
 const databaseAvailable = await isTestDatabaseAvailable();
 
@@ -342,4 +356,190 @@ describe.skipIf(!databaseAvailable)("product feedback repository", () => {
       adminNote: "Triaged by support."
     });
   });
+
+  it("resolves submitter identity with user name and username", async () => {
+    await db.query(
+      "insert into user_password_credentials (user_id, password_hash, username) values ($1, $2, $3)",
+      ["user-1", "hash", "riley_chen"]
+    );
+    await insertFeedback(db, auth(), feedbackInput(FEEDBACK_1));
+
+    const item = await getFeedbackById(db, auth(), FEEDBACK_1);
+    expect(item).not.toBeNull();
+    expect(item?.submitter).toEqual({
+      id: "user-1",
+      name: "Riley Chen",
+      username: "riley_chen"
+    });
+  });
+
+  it("handles deleted users by returning '已注销用户' fallback", async () => {
+    await insertFeedback(db, auth(), feedbackInput(FEEDBACK_1));
+    await db.query("update product_feedback set submitter_user_id = null where id = $1", [FEEDBACK_1]);
+
+    const item = await getFeedbackById(db, auth(), FEEDBACK_1);
+    expect(item?.submitter).toEqual({
+      id: null,
+      name: "已注销用户",
+      username: null
+    });
+  });
+
+  it("listFeedback excludes drafts (submitted_at IS NULL)", async () => {
+    await insertFeedback(db, auth(), feedbackInput(FEEDBACK_1));
+    await insertFeedback(db, auth(), { ...feedbackInput(FEEDBACK_2), submittedAt: null });
+
+    const result = await listFeedback(db, auth(), {});
+    expect(result.items.map((i) => i.id)).toContain(FEEDBACK_1);
+    expect(result.items.map((i) => i.id)).not.toContain(FEEDBACK_2);
+  });
+
+  it("listFeedback q search matches submitter name and username", async () => {
+    await db.query(
+      "insert into user_password_credentials (user_id, password_hash, username) values ($1, $2, $3)",
+      ["user-1", "hash", "riley_chen"]
+    );
+    await insertFeedback(db, auth(), feedbackInput(FEEDBACK_1));
+
+    const matchName = await listFeedback(db, auth(), { q: "Riley" });
+    expect(matchName.items.map((i) => i.id)).toContain(FEEDBACK_1);
+
+    const matchUsername = await listFeedback(db, auth(), { q: "riley_chen" });
+    expect(matchUsername.items.map((i) => i.id)).toContain(FEEDBACK_1);
+  });
+
+  it("listMyFeedback and getMyFeedbackById enforce owner and tenant isolation without leaking internal data", async () => {
+    await seedOtherOrg();
+    await insertFeedback(db, auth(), feedbackInput(FEEDBACK_1));
+    await insertFeedback(db, auth(), { ...feedbackInput(FEEDBACK_2), submittedAt: null });
+    await insertFeedback(db, otherOrgAuth(), feedbackInput(FEEDBACK_FOREIGN));
+
+    await insertProgressEvent(db, auth(), {
+      id: "00000000-0000-4000-8000-00000000e001",
+      feedbackId: FEEDBACK_1,
+      kind: "progress",
+      publicMessage: "Public update for user",
+      internalMessage: "TOP SECRET ADMIN ONLY NOTE"
+    });
+
+    // listMyFeedback returns both drafts and formal feedbacks for user-1
+    const myList = await listMyFeedback(db, auth());
+    expect(myList.items.map((i) => i.id)).toEqual(expect.arrayContaining([FEEDBACK_1, FEEDBACK_2]));
+    expect(myList.items.map((i) => i.id)).not.toContain(FEEDBACK_FOREIGN);
+
+    // getMyFeedbackById returns user-1 feedback
+    const myItem = await getMyFeedbackById(db, auth(), FEEDBACK_1);
+    expect(myItem).not.toBeNull();
+    expect(myItem?.id).toBe(FEEDBACK_1);
+    // Verified: progressEvents contains publicMessage but NOT internalMessage
+    const customEvent = myItem?.progressEvents.find((e) => e.kind === "progress");
+    expect(customEvent?.publicMessage).toBe("Public update for user");
+    expect((customEvent as any).internalMessage).toBeUndefined();
+    expect((myItem as any).adminNote).toBeUndefined();
+
+    // User-2 in other org cannot read FEEDBACK_1
+    const deniedOtherOrg = await getMyFeedbackById(db, otherOrgAuth(), FEEDBACK_1);
+    expect(deniedOtherOrg).toBeNull();
+
+    // Another user in same org cannot read FEEDBACK_1
+    const sameOrgOtherUser = makeTestAuthContext({
+      userId: "user-99",
+      organizationId: "org-1",
+      name: "Other Colleague",
+      email: "colleague@example.com"
+    });
+    const deniedSameOrg = await getMyFeedbackById(db, sameOrgOtherUser, FEEDBACK_1);
+    expect(deniedSameOrg).toBeNull();
+  });
+
+  it("draft lifecycle: insertDraftFeedback, updateDraftFeedback, deleteAttachments, deleteDraft, submitDraft", async () => {
+    const DRAFT_1 = "00000000-0000-4000-8000-00000000d001";
+    const ATTACH_D1 = "00000000-0000-4000-8000-00000000d0a1";
+    const ATTACH_D2 = "00000000-0000-4000-8000-00000000d0a2";
+
+    // 1. insertDraftFeedback allows empty description, submittedAt is null
+    const draft = await insertDraftFeedback(db, auth(), {
+      id: DRAFT_1,
+      pagePath: "/home",
+      pageTitle: "Home Page",
+      feedbackType: "experience",
+      description: ""
+    });
+    expect(draft.id).toBe(DRAFT_1);
+    expect(draft.submittedAt).toBeNull();
+    expect(draft.description).toBe("");
+
+    // Admin get and list NEVER show draft
+    const adminDetail = await getFeedbackById(db, auth(), DRAFT_1);
+    expect(adminDetail).toBeNull();
+    const adminList = await listFeedback(db, auth(), {});
+    expect(adminList.items.map((i) => i.id)).not.toContain(DRAFT_1);
+
+    // User can see draft in listMyFeedback and getMyFeedbackById
+    const myDraft = await getMyFeedbackById(db, auth(), DRAFT_1);
+    expect(myDraft).not.toBeNull();
+    expect(myDraft?.submittedAt).toBeNull();
+
+    // 2. Add attachments to draft
+    await insertAttachments(db, auth(), DRAFT_1, [
+      attachmentInput(ATTACH_D1, { fileName: "draft-img1.png", sortOrder: 0 }),
+      attachmentInput(ATTACH_D2, { fileName: "draft-img2.png", sortOrder: 1 })
+    ]);
+    const withAttachments = await getMyFeedbackById(db, auth(), DRAFT_1);
+    expect(withAttachments?.attachments).toHaveLength(2);
+
+    // 3. updateDraftFeedback updates fields
+    const updated = await updateDraftFeedback(db, auth(), DRAFT_1, {
+      description: "Working on draft description",
+      feedbackType: "data"
+    });
+    expect(updated?.description).toBe("Working on draft description");
+    expect(updated?.feedbackType).toBe("data");
+
+    // 4. deleteAttachmentsByIds removes specified attachment and returns storage key
+    const deletedKeys = await deleteAttachmentsByIds(db, auth(), DRAFT_1, [ATTACH_D1]);
+    expect(deletedKeys).toHaveLength(1);
+    const afterAttachmentDelete = await getMyFeedbackById(db, auth(), DRAFT_1);
+    expect(afterAttachmentDelete?.attachments).toHaveLength(1);
+    expect(afterAttachmentDelete?.attachments[0].id).toBe(ATTACH_D2);
+
+    // 5. submitDraft transitions draft to open, sets submittedAt, creates submitted progress event
+    const submitted = await submitDraft(db, auth(), DRAFT_1, {
+      description: "Final submitted feedback description"
+    });
+    expect(submitted).not.toBeNull();
+    expect(submitted?.submittedAt).not.toBeNull();
+    expect(submitted?.status).toBe("open");
+    expect(submitted?.description).toBe("Final submitted feedback description");
+    expect(submitted?.progressEvents).toHaveLength(1);
+    expect(submitted?.progressEvents[0].kind).toBe("submitted");
+
+    // Admin CAN now see the submitted feedback
+    const adminNow = await getFeedbackById(db, auth(), DRAFT_1);
+    expect(adminNow).not.toBeNull();
+    expect(adminNow?.id).toBe(DRAFT_1);
+
+    // Calling updateDraftFeedback or submitDraft again returns null because submitted_at is not null
+    const cannotUpdateSubmittedAsDraft = await updateDraftFeedback(db, auth(), DRAFT_1, { description: "hacked" });
+    expect(cannotUpdateSubmittedAsDraft).toBeNull();
+
+    const cannotSubmitAlreadySubmitted = await submitDraft(db, auth(), DRAFT_1, { description: "hacked" });
+    expect(cannotSubmitAlreadySubmitted).toBeNull();
+
+    const cannotDeleteSubmittedAsDraft = await deleteDraft(db, auth(), DRAFT_1);
+    expect(cannotDeleteSubmittedAsDraft.ok).toBe(false);
+
+    // 6. deleteDraft on an actual draft deletes it and returns storage keys
+    const DRAFT_TO_DELETE = "00000000-0000-4000-8000-00000000d002";
+    const ATTACH_DEL = "00000000-0000-4000-8000-00000000d0a3";
+    await insertDraftFeedback(db, auth(), { id: DRAFT_TO_DELETE, description: "To be discarded" });
+    await insertAttachments(db, auth(), DRAFT_TO_DELETE, [
+      attachmentInput(ATTACH_DEL, { fileName: "discard.png", sortOrder: 0 })
+    ]);
+    const delResult = await deleteDraft(db, auth(), DRAFT_TO_DELETE);
+    expect(delResult.ok).toBe(true);
+    expect(delResult.storageKeys).toHaveLength(1);
+    expect(await getMyFeedbackById(db, auth(), DRAFT_TO_DELETE)).toBeNull();
+  });
 });
+

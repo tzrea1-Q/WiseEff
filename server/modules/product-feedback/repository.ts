@@ -3,24 +3,39 @@ import type { Queryable } from "../../shared/database/client";
 import type {
   InsertProductFeedbackAttachmentInput,
   InsertProductFeedbackInput,
+  ListMyFeedbackQuery,
+  ListMyFeedbackResult,
   ListProductFeedbackQuery,
+  ListProductFeedbackResult,
+  ProductFeedbackAdminDto,
   ProductFeedbackAttachmentDto,
   ProductFeedbackDto,
+  ProductFeedbackProgressEventAdminDto,
+  ProductFeedbackProgressEventKind,
+  ProductFeedbackProgressEventUserDto,
+  ProductFeedbackResolutionCode,
+  ProductFeedbackStatsDto,
   ProductFeedbackStatus,
   ProductFeedbackType,
+  ProductFeedbackUserDto,
+  SubmitterIdentityDto,
   UpdateProductFeedbackPatch
 } from "./types";
 
-type ProductFeedbackRow = {
+export type ProductFeedbackRow = {
   id: string;
   organization_id: string;
   submitter_user_id: string | null;
+  submitter_name: string | null;
+  submitter_username: string | null;
   page_path: string;
   page_title: string;
   feedback_type: ProductFeedbackType;
   description: string;
   status: ProductFeedbackStatus;
+  resolution_code: ProductFeedbackResolutionCode | null;
   admin_note: string | null;
+  submitted_at: string | Date | null;
   created_at: string | Date;
   updated_at: string | Date;
 };
@@ -36,6 +51,33 @@ type ProductFeedbackAttachmentRow = {
   checksum: string;
   sort_order: number | string;
   created_at: string | Date;
+};
+
+type ProductFeedbackProgressEventRow = {
+  id: string;
+  organization_id: string;
+  feedback_id: string;
+  actor_user_id: string | null;
+  kind: ProductFeedbackProgressEventKind;
+  from_status: ProductFeedbackStatus | null;
+  to_status: ProductFeedbackStatus | null;
+  resolution_code: ProductFeedbackResolutionCode | null;
+  public_message: string | null;
+  internal_message: string | null;
+  created_at: string | Date;
+};
+
+export type InsertProductFeedbackProgressEventInput = {
+  id: string;
+  feedbackId: string;
+  actorUserId?: string | null;
+  kind: ProductFeedbackProgressEventKind;
+  fromStatus?: ProductFeedbackStatus | null;
+  toStatus?: ProductFeedbackStatus | null;
+  resolutionCode?: ProductFeedbackResolutionCode | null;
+  publicMessage?: string | null;
+  internalMessage?: string | null;
+  createdAt?: string;
 };
 
 function dateTimeToIso(value: string | Date) {
@@ -57,30 +99,107 @@ function toAttachmentDto(row: ProductFeedbackAttachmentRow): ProductFeedbackAtta
   };
 }
 
-function toFeedbackDto(row: ProductFeedbackRow, attachments: ProductFeedbackAttachmentDto[] = []): ProductFeedbackDto {
+function toSubmitterDto(row: ProductFeedbackRow): SubmitterIdentityDto {
+  if (!row.submitter_user_id || !row.submitter_name) {
+    return {
+      id: row.submitter_user_id ?? null,
+      name: "已注销用户",
+      username: null
+    };
+  }
+  return {
+    id: row.submitter_user_id,
+    name: row.submitter_name,
+    username: row.submitter_username ?? null
+  };
+}
+
+function toProgressEventUserDto(row: ProductFeedbackProgressEventRow): ProductFeedbackProgressEventUserDto {
+  return {
+    id: row.id,
+    feedbackId: row.feedback_id,
+    kind: row.kind,
+    fromStatus: row.from_status,
+    toStatus: row.to_status,
+    resolutionCode: row.resolution_code,
+    publicMessage: row.public_message,
+    createdAt: dateTimeToIso(row.created_at)
+  };
+}
+
+function toProgressEventAdminDto(row: ProductFeedbackProgressEventRow): ProductFeedbackProgressEventAdminDto {
+  return {
+    ...toProgressEventUserDto(row),
+    actorUserId: row.actor_user_id,
+    internalMessage: row.internal_message
+  };
+}
+
+function findLatestPublicProgress(events: Array<{ publicMessage: string | null }>): string | null {
+  for (let i = events.length - 1; i >= 0; i--) {
+    const msg = events[i].publicMessage?.trim();
+    if (msg) return msg;
+  }
+  return null;
+}
+
+function toFeedbackAdminDto(
+  row: ProductFeedbackRow,
+  attachments: ProductFeedbackAttachmentDto[] = [],
+  progressEvents: ProductFeedbackProgressEventAdminDto[] = []
+): ProductFeedbackAdminDto {
   return {
     id: row.id,
     organizationId: row.organization_id,
     submitterUserId: row.submitter_user_id,
+    submitter: toSubmitterDto(row),
     pagePath: row.page_path,
     pageTitle: row.page_title,
     feedbackType: row.feedback_type,
     description: row.description,
     status: row.status,
+    resolutionCode: row.resolution_code,
     adminNote: row.admin_note,
+    submittedAt: row.submitted_at ? dateTimeToIso(row.submitted_at) : null,
     createdAt: dateTimeToIso(row.created_at),
     updatedAt: dateTimeToIso(row.updated_at),
-    attachments
+    attachments,
+    progressEvents,
+    latestPublicProgress: findLatestPublicProgress(progressEvents)
+  };
+}
+
+function toFeedbackUserDto(
+  row: ProductFeedbackRow,
+  attachments: ProductFeedbackAttachmentDto[] = [],
+  progressEvents: ProductFeedbackProgressEventUserDto[] = []
+): ProductFeedbackUserDto {
+  return {
+    id: row.id,
+    organizationId: row.organization_id,
+    pagePath: row.page_path,
+    pageTitle: row.page_title,
+    feedbackType: row.feedback_type,
+    description: row.description,
+    status: row.status,
+    resolutionCode: row.resolution_code,
+    submittedAt: row.submitted_at ? dateTimeToIso(row.submitted_at) : null,
+    createdAt: dateTimeToIso(row.created_at),
+    updatedAt: dateTimeToIso(row.updated_at),
+    attachments,
+    progressEvents,
+    latestPublicProgress: findLatestPublicProgress(progressEvents)
   };
 }
 
 async function loadAttachmentsForFeedback(
   db: Queryable,
   auth: AuthContext,
-  items: ProductFeedbackDto[]
-): Promise<ProductFeedbackDto[]> {
-  if (items.length === 0) {
-    return items;
+  feedbackIds: string[]
+): Promise<Map<string, ProductFeedbackAttachmentDto[]>> {
+  const result = new Map<string, ProductFeedbackAttachmentDto[]>();
+  if (feedbackIds.length === 0) {
+    return result;
   }
 
   const attachmentResult = await db.query<ProductFeedbackAttachmentRow>(
@@ -91,20 +210,76 @@ async function loadAttachmentsForFeedback(
       and feedback_id = any($2::uuid[])
     order by feedback_id, sort_order asc, id asc
     `,
-    [auth.organization.id, items.map((item) => item.id)]
+    [auth.organization.id, feedbackIds]
   );
 
-  const attachmentsByFeedbackId = new Map<string, ProductFeedbackAttachmentDto[]>();
   for (const row of attachmentResult.rows) {
-    const bucket = attachmentsByFeedbackId.get(row.feedback_id) ?? [];
+    const bucket = result.get(row.feedback_id) ?? [];
     bucket.push(toAttachmentDto(row));
-    attachmentsByFeedbackId.set(row.feedback_id, bucket);
+    result.set(row.feedback_id, bucket);
   }
 
-  return items.map((item) => ({
-    ...item,
-    attachments: attachmentsByFeedbackId.get(item.id) ?? []
-  }));
+  return result;
+}
+
+async function loadAdminProgressEventsForFeedback(
+  db: Queryable,
+  auth: AuthContext,
+  feedbackIds: string[]
+): Promise<Map<string, ProductFeedbackProgressEventAdminDto[]>> {
+  const result = new Map<string, ProductFeedbackProgressEventAdminDto[]>();
+  if (feedbackIds.length === 0) {
+    return result;
+  }
+
+  const eventResult = await db.query<ProductFeedbackProgressEventRow>(
+    `
+    select *
+    from product_feedback_progress_events
+    where organization_id = $1
+      and feedback_id = any($2::uuid[])
+    order by feedback_id, created_at asc, id asc
+    `,
+    [auth.organization.id, feedbackIds]
+  );
+
+  for (const row of eventResult.rows) {
+    const bucket = result.get(row.feedback_id) ?? [];
+    bucket.push(toProgressEventAdminDto(row));
+    result.set(row.feedback_id, bucket);
+  }
+
+  return result;
+}
+
+async function loadUserProgressEventsForFeedback(
+  db: Queryable,
+  auth: AuthContext,
+  feedbackIds: string[]
+): Promise<Map<string, ProductFeedbackProgressEventUserDto[]>> {
+  const result = new Map<string, ProductFeedbackProgressEventUserDto[]>();
+  if (feedbackIds.length === 0) {
+    return result;
+  }
+
+  const eventResult = await db.query<ProductFeedbackProgressEventRow>(
+    `
+    select *
+    from product_feedback_progress_events
+    where organization_id = $1
+      and feedback_id = any($2::uuid[])
+    order by feedback_id, created_at asc, id asc
+    `,
+    [auth.organization.id, feedbackIds]
+  );
+
+  for (const row of eventResult.rows) {
+    const bucket = result.get(row.feedback_id) ?? [];
+    bucket.push(toProgressEventUserDto(row));
+    result.set(row.feedback_id, bucket);
+  }
+
+  return result;
 }
 
 function addCondition(parts: string[], values: unknown[], condition: (placeholder: string) => string, value: unknown) {
@@ -116,23 +291,77 @@ function hasPatchKey<Key extends keyof UpdateProductFeedbackPatch>(patch: Update
   return Object.prototype.hasOwnProperty.call(patch, key);
 }
 
+export async function insertProgressEvent(
+  db: Queryable,
+  auth: AuthContext,
+  input: InsertProductFeedbackProgressEventInput
+): Promise<ProductFeedbackProgressEventAdminDto> {
+  const values: unknown[] = [
+    input.id,
+    auth.organization.id,
+    input.feedbackId,
+    input.actorUserId ?? null,
+    input.kind,
+    input.fromStatus ?? null,
+    input.toStatus ?? null,
+    input.resolutionCode ?? null,
+    input.publicMessage ?? null,
+    input.internalMessage ?? null
+  ];
+
+  const dateClause = input.createdAt ? `, $11` : ", now()";
+  if (input.createdAt) {
+    values.push(input.createdAt);
+  }
+
+  const result = await db.query<ProductFeedbackProgressEventRow>(
+    `
+    insert into product_feedback_progress_events (
+      id, organization_id, feedback_id, actor_user_id, kind, from_status, to_status, resolution_code, public_message, internal_message, created_at
+    )
+    values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10${dateClause})
+    returning *
+    `,
+    values
+  );
+
+  return toProgressEventAdminDto(result.rows[0]);
+}
+
 export async function insertFeedback(
   db: Queryable,
   auth: AuthContext,
   input: InsertProductFeedbackInput
-): Promise<ProductFeedbackDto> {
+): Promise<ProductFeedbackAdminDto> {
+  const isDraft = input.submittedAt === null;
+
   const result = await db.query<ProductFeedbackRow>(
     `
     insert into product_feedback (
-      id, organization_id, submitter_user_id, page_path, page_title, feedback_type, description
+      id, organization_id, submitter_user_id, page_path, page_title, feedback_type, description, submitted_at
     )
-    values ($1, $2, $3, $4, $5, $6, $7)
+    values ($1, $2, $3, $4, $5, $6, $7, ${isDraft ? "null" : "now()"})
     returning *
     `,
     [input.id, auth.organization.id, auth.user.id, input.pagePath, input.pageTitle, input.feedbackType, input.description]
   );
 
-  return toFeedbackDto(result.rows[0]);
+  if (!isDraft) {
+    await insertProgressEvent(db, auth, {
+      id: crypto.randomUUID(),
+      feedbackId: input.id,
+      actorUserId: auth.user.id,
+      kind: "submitted",
+      toStatus: "open",
+      publicMessage: "反馈已提交"
+    });
+  }
+
+  const detail = await getFeedbackById(db, auth, input.id, { includeDrafts: true });
+  if (!detail) {
+    throw new Error(`Failed to retrieve inserted product feedback: ${input.id}`);
+  }
+  return detail;
 }
 
 export async function insertAttachments(
@@ -189,13 +418,37 @@ export async function insertAttachments(
   return result.rows.map(toAttachmentDto);
 }
 
-export async function getFeedbackById(db: Queryable, auth: AuthContext, id: string): Promise<ProductFeedbackDto | null> {
+export async function getFeedbackById(
+  db: Queryable,
+  auth: AuthContext,
+  id: string,
+  options: { includeDrafts?: boolean } = {}
+): Promise<ProductFeedbackAdminDto | null> {
+  const draftClause = options.includeDrafts ? "" : "and feedback.submitted_at is not null";
   const feedbackResult = await db.query<ProductFeedbackRow>(
     `
-    select *
-    from product_feedback
-    where organization_id = $1
-      and id = $2
+    select
+      feedback.id,
+      feedback.organization_id,
+      feedback.submitter_user_id,
+      users.name as submitter_name,
+      upc.username as submitter_username,
+      feedback.page_path,
+      feedback.page_title,
+      feedback.feedback_type,
+      feedback.description,
+      feedback.status,
+      feedback.resolution_code,
+      feedback.admin_note,
+      feedback.submitted_at,
+      feedback.created_at,
+      feedback.updated_at
+    from product_feedback feedback
+    left join users on users.id = feedback.submitter_user_id
+    left join user_password_credentials upc on upc.user_id = feedback.submitter_user_id
+    where feedback.organization_id = $1
+      and feedback.id = $2
+      ${draftClause}
     limit 1
     `,
     [auth.organization.id, id]
@@ -203,71 +456,138 @@ export async function getFeedbackById(db: Queryable, auth: AuthContext, id: stri
   const row = feedbackResult.rows[0];
   if (!row) return null;
 
-  const attachmentResult = await db.query<ProductFeedbackAttachmentRow>(
-    `
-    select *
-    from product_feedback_attachments
-    where organization_id = $1
-      and feedback_id = $2
-    order by sort_order asc, id asc
-    `,
-    [auth.organization.id, id]
-  );
+  const [attachmentsMap, eventsMap] = await Promise.all([
+    loadAttachmentsForFeedback(db, auth, [id]),
+    loadAdminProgressEventsForFeedback(db, auth, [id])
+  ]);
 
-  return toFeedbackDto(row, attachmentResult.rows.map(toAttachmentDto));
+  return toFeedbackAdminDto(row, attachmentsMap.get(id) ?? [], eventsMap.get(id) ?? []);
 }
 
-export async function listFeedback(db: Queryable, auth: AuthContext, query: ListProductFeedbackQuery) {
+export async function getMyFeedbackById(
+  db: Queryable,
+  auth: AuthContext,
+  id: string
+): Promise<ProductFeedbackUserDto | null> {
+  const feedbackResult = await db.query<ProductFeedbackRow>(
+    `
+    select
+      feedback.id,
+      feedback.organization_id,
+      feedback.submitter_user_id,
+      null as submitter_name,
+      null as submitter_username,
+      feedback.page_path,
+      feedback.page_title,
+      feedback.feedback_type,
+      feedback.description,
+      feedback.status,
+      feedback.resolution_code,
+      null as admin_note,
+      feedback.submitted_at,
+      feedback.created_at,
+      feedback.updated_at
+    from product_feedback feedback
+    where feedback.organization_id = $1
+      and feedback.submitter_user_id = $2
+      and feedback.id = $3
+    limit 1
+    `,
+    [auth.organization.id, auth.user.id, id]
+  );
+  const row = feedbackResult.rows[0];
+  if (!row) return null;
+
+  const [attachmentsMap, eventsMap] = await Promise.all([
+    loadAttachmentsForFeedback(db, auth, [id]),
+    loadUserProgressEventsForFeedback(db, auth, [id])
+  ]);
+
+  return toFeedbackUserDto(row, attachmentsMap.get(id) ?? [], eventsMap.get(id) ?? []);
+}
+
+export async function listFeedback(
+  db: Queryable,
+  auth: AuthContext,
+  query: ListProductFeedbackQuery
+): Promise<ListProductFeedbackResult> {
   const values: unknown[] = [auth.organization.id];
-  const where = ["organization_id = $1"];
+  const where = [
+    "feedback.organization_id = $1",
+    "feedback.submitted_at is not null"
+  ];
 
   if (query.status) {
-    addCondition(where, values, (placeholder) => `status = ${placeholder}`, query.status);
+    addCondition(where, values, (p) => `feedback.status = ${p}`, query.status);
   }
   if (query.feedbackType) {
-    addCondition(where, values, (placeholder) => `feedback_type = ${placeholder}`, query.feedbackType);
+    addCondition(where, values, (p) => `feedback.feedback_type = ${p}`, query.feedbackType);
   }
   const q = query.q?.trim();
   if (q) {
     addCondition(
       where,
       values,
-      (placeholder) => `(description ilike ${placeholder} or page_path ilike ${placeholder} or page_title ilike ${placeholder})`,
+      (p) =>
+        `(feedback.description ilike ${p} or feedback.page_path ilike ${p} or feedback.page_title ilike ${p} or users.name ilike ${p} or upc.username ilike ${p})`,
       `%${q}%`
     );
   }
   if (query.pagePath) {
-    addCondition(where, values, (placeholder) => `page_path like ${placeholder}`, `${query.pagePath}%`);
+    addCondition(where, values, (p) => `feedback.page_path like ${p}`, `${query.pagePath}%`);
   }
   if (query.createdFrom) {
-    addCondition(where, values, (placeholder) => `created_at >= ${placeholder}`, query.createdFrom);
+    addCondition(where, values, (p) => `feedback.created_at >= ${p}`, query.createdFrom);
   }
   if (query.createdTo) {
-    addCondition(where, values, (placeholder) => `created_at <= ${placeholder}`, query.createdTo);
+    addCondition(where, values, (p) => `feedback.created_at <= ${p}`, query.createdTo);
   }
   if (query.cursor) {
     values.push(query.cursor.createdAt, query.cursor.id);
-    where.push(`(created_at, id) < ($${values.length - 1}, $${values.length})`);
+    where.push(`(feedback.created_at, feedback.id) < ($${values.length - 1}, $${values.length})`);
   }
 
   const limit = query.limit ?? 50;
   values.push(limit + 1);
   const result = await db.query<ProductFeedbackRow>(
     `
-    select *
-    from product_feedback
+    select
+      feedback.id,
+      feedback.organization_id,
+      feedback.submitter_user_id,
+      users.name as submitter_name,
+      upc.username as submitter_username,
+      feedback.page_path,
+      feedback.page_title,
+      feedback.feedback_type,
+      feedback.description,
+      feedback.status,
+      feedback.resolution_code,
+      feedback.admin_note,
+      feedback.submitted_at,
+      feedback.created_at,
+      feedback.updated_at
+    from product_feedback feedback
+    left join users on users.id = feedback.submitter_user_id
+    left join user_password_credentials upc on upc.user_id = feedback.submitter_user_id
     where ${where.join("\n      and ")}
-    order by created_at desc, id desc
+    order by feedback.created_at desc, feedback.id desc
     limit $${values.length}
     `,
     values
   );
 
   const hasMore = result.rows.length > limit;
-  const items = await loadAttachmentsForFeedback(
-    db,
-    auth,
-    result.rows.slice(0, limit).map((row) => toFeedbackDto(row))
+  const slicedRows = result.rows.slice(0, limit);
+  const feedbackIds = slicedRows.map((row) => row.id);
+
+  const [attachmentsMap, eventsMap] = await Promise.all([
+    loadAttachmentsForFeedback(db, auth, feedbackIds),
+    loadAdminProgressEventsForFeedback(db, auth, feedbackIds)
+  ]);
+
+  const items = slicedRows.map((row) =>
+    toFeedbackAdminDto(row, attachmentsMap.get(row.id) ?? [], eventsMap.get(row.id) ?? [])
   );
   const last = items.at(-1);
   return {
@@ -276,12 +596,75 @@ export async function listFeedback(db: Queryable, auth: AuthContext, query: List
   };
 }
 
+export async function listMyFeedback(
+  db: Queryable,
+  auth: AuthContext,
+  query: ListMyFeedbackQuery = {}
+): Promise<ListMyFeedbackResult> {
+  const values: unknown[] = [auth.organization.id, auth.user.id];
+  const where = [
+    "feedback.organization_id = $1",
+    "feedback.submitter_user_id = $2"
+  ];
+
+  if (query.cursor) {
+    values.push(query.cursor.updatedAt, query.cursor.id);
+    where.push(`(feedback.updated_at, feedback.id) < ($${values.length - 1}, $${values.length})`);
+  }
+
+  const limit = query.limit ?? 50;
+  values.push(limit + 1);
+  const result = await db.query<ProductFeedbackRow>(
+    `
+    select
+      feedback.id,
+      feedback.organization_id,
+      feedback.submitter_user_id,
+      null as submitter_name,
+      null as submitter_username,
+      feedback.page_path,
+      feedback.page_title,
+      feedback.feedback_type,
+      feedback.description,
+      feedback.status,
+      feedback.resolution_code,
+      null as admin_note,
+      feedback.submitted_at,
+      feedback.created_at,
+      feedback.updated_at
+    from product_feedback feedback
+    where ${where.join("\n      and ")}
+    order by feedback.updated_at desc, feedback.id desc
+    limit $${values.length}
+    `,
+    values
+  );
+
+  const hasMore = result.rows.length > limit;
+  const slicedRows = result.rows.slice(0, limit);
+  const feedbackIds = slicedRows.map((row) => row.id);
+
+  const [attachmentsMap, eventsMap] = await Promise.all([
+    loadAttachmentsForFeedback(db, auth, feedbackIds),
+    loadUserProgressEventsForFeedback(db, auth, feedbackIds)
+  ]);
+
+  const items = slicedRows.map((row) =>
+    toFeedbackUserDto(row, attachmentsMap.get(row.id) ?? [], eventsMap.get(row.id) ?? [])
+  );
+  const last = items.at(-1);
+  return {
+    items,
+    nextCursor: hasMore && last ? { updatedAt: last.updatedAt, id: last.id } : null
+  };
+}
+
 export async function updateFeedback(
   db: Queryable,
   auth: AuthContext,
   id: string,
   patch: UpdateProductFeedbackPatch
-): Promise<ProductFeedbackDto | null> {
+): Promise<ProductFeedbackAdminDto | null> {
   const values: unknown[] = [auth.organization.id, id];
   const sets: string[] = [];
 
@@ -312,3 +695,299 @@ export async function updateFeedback(
 
   return getFeedbackById(db, auth, id);
 }
+
+export type InsertDraftFeedbackInput = {
+  id: string;
+  pagePath?: string;
+  pageTitle?: string;
+  feedbackType?: ProductFeedbackType;
+  description?: string;
+};
+
+export async function insertDraftFeedback(
+  db: Queryable,
+  auth: AuthContext,
+  input: InsertDraftFeedbackInput
+): Promise<ProductFeedbackUserDto> {
+  await db.query(
+    `
+    insert into product_feedback (
+      id, organization_id, submitter_user_id, page_path, page_title, feedback_type, description, status, submitted_at
+    )
+    values ($1, $2, $3, $4, $5, $6, $7, 'open', null)
+    `,
+    [
+      input.id,
+      auth.organization.id,
+      auth.user.id,
+      input.pagePath ?? "/",
+      input.pageTitle ?? "",
+      input.feedbackType ?? "experience",
+      input.description ?? ""
+    ]
+  );
+
+  const detail = await getMyFeedbackById(db, auth, input.id);
+  if (!detail) {
+    throw new Error(`Failed to retrieve inserted draft: ${input.id}`);
+  }
+  return detail;
+}
+
+export type UpdateDraftFeedbackInput = {
+  pagePath?: string;
+  pageTitle?: string;
+  feedbackType?: ProductFeedbackType;
+  description?: string;
+};
+
+export async function updateDraftFeedback(
+  db: Queryable,
+  auth: AuthContext,
+  draftId: string,
+  input: UpdateDraftFeedbackInput
+): Promise<ProductFeedbackUserDto | null> {
+  const values: unknown[] = [auth.organization.id, auth.user.id, draftId];
+  const sets: string[] = ["updated_at = now()"];
+
+  if (input.pagePath !== undefined) {
+    values.push(input.pagePath);
+    sets.push(`page_path = $${values.length}`);
+  }
+  if (input.pageTitle !== undefined) {
+    values.push(input.pageTitle);
+    sets.push(`page_title = $${values.length}`);
+  }
+  if (input.feedbackType !== undefined) {
+    values.push(input.feedbackType);
+    sets.push(`feedback_type = $${values.length}`);
+  }
+  if (input.description !== undefined) {
+    values.push(input.description);
+    sets.push(`description = $${values.length}`);
+  }
+
+  const result = await db.query<ProductFeedbackRow>(
+    `
+    update product_feedback
+    set ${sets.join(", ")}
+    where organization_id = $1
+      and submitter_user_id = $2
+      and id = $3
+      and submitted_at is null
+    returning *
+    `,
+    values
+  );
+
+  if (!result.rows[0]) {
+    return null;
+  }
+
+  return getMyFeedbackById(db, auth, draftId);
+}
+
+export async function deleteAttachmentsByIds(
+  db: Queryable,
+  auth: AuthContext,
+  feedbackId: string,
+  attachmentIds: string[]
+): Promise<string[]> {
+  if (attachmentIds.length === 0) return [];
+
+  const result = await db.query<{ storage_key: string }>(
+    `
+    delete from product_feedback_attachments
+    where organization_id = $1
+      and feedback_id = $2
+      and id = any($3::uuid[])
+    returning storage_key
+    `,
+    [auth.organization.id, feedbackId, attachmentIds]
+  );
+
+  return result.rows.map((r) => r.storage_key);
+}
+
+export async function deleteDraft(
+  db: Queryable,
+  auth: AuthContext,
+  draftId: string
+): Promise<{ ok: boolean; storageKeys: string[] }> {
+  const attachments = await db.query<{ storage_key: string }>(
+    `
+    select storage_key
+    from product_feedback_attachments
+    where organization_id = $1
+      and feedback_id = $2
+    `,
+    [auth.organization.id, draftId]
+  );
+  const storageKeys = attachments.rows.map((r) => r.storage_key);
+
+  const result = await db.query<ProductFeedbackRow>(
+    `
+    delete from product_feedback
+    where organization_id = $1
+      and submitter_user_id = $2
+      and id = $3
+      and submitted_at is null
+    returning id
+    `,
+    [auth.organization.id, auth.user.id, draftId]
+  );
+
+  if (!result.rows[0]) {
+    return { ok: false, storageKeys: [] };
+  }
+
+  return { ok: true, storageKeys };
+}
+
+export async function submitDraft(
+  db: Queryable,
+  auth: AuthContext,
+  draftId: string,
+  finalUpdate?: UpdateDraftFeedbackInput
+): Promise<ProductFeedbackUserDto | null> {
+  const sets: string[] = ["submitted_at = now()", "status = 'open'", "updated_at = now()"];
+  const values: unknown[] = [auth.organization.id, auth.user.id, draftId];
+
+  if (finalUpdate?.pagePath !== undefined) {
+    values.push(finalUpdate.pagePath);
+    sets.push(`page_path = $${values.length}`);
+  }
+  if (finalUpdate?.pageTitle !== undefined) {
+    values.push(finalUpdate.pageTitle);
+    sets.push(`page_title = $${values.length}`);
+  }
+  if (finalUpdate?.feedbackType !== undefined) {
+    values.push(finalUpdate.feedbackType);
+    sets.push(`feedback_type = $${values.length}`);
+  }
+  if (finalUpdate?.description !== undefined) {
+    values.push(finalUpdate.description);
+    sets.push(`description = $${values.length}`);
+  }
+
+  const result = await db.query<ProductFeedbackRow>(
+    `
+    update product_feedback
+    set ${sets.join(", ")}
+    where organization_id = $1
+      and submitter_user_id = $2
+      and id = $3
+      and submitted_at is null
+    returning *
+    `,
+    values
+  );
+
+  if (!result.rows[0]) {
+    return null;
+  }
+
+  await insertProgressEvent(db, auth, {
+    id: crypto.randomUUID(),
+    feedbackId: draftId,
+    actorUserId: auth.user.id,
+    kind: "submitted",
+    toStatus: "open",
+    publicMessage: "反馈已提交"
+  });
+
+  return getMyFeedbackById(db, auth, draftId);
+}
+
+export async function getFeedbackForUpdate(
+  db: Queryable,
+  auth: AuthContext,
+  id: string
+): Promise<ProductFeedbackRow | null> {
+  const result = await db.query<ProductFeedbackRow>(
+    `
+    select
+      feedback.id,
+      feedback.organization_id,
+      feedback.submitter_user_id,
+      users.name as submitter_name,
+      upc.username as submitter_username,
+      feedback.page_path,
+      feedback.page_title,
+      feedback.feedback_type,
+      feedback.description,
+      feedback.status,
+      feedback.resolution_code,
+      feedback.admin_note,
+      feedback.submitted_at,
+      feedback.created_at,
+      feedback.updated_at
+    from product_feedback feedback
+    left join users on users.id = feedback.submitter_user_id
+    left join user_password_credentials upc on upc.user_id = feedback.submitter_user_id
+    where feedback.organization_id = $1
+      and feedback.id = $2
+      and feedback.submitted_at is not null
+    for update of feedback
+    `,
+    [auth.organization.id, id]
+  );
+  return result.rows[0] ?? null;
+}
+
+export async function updateFeedbackProgressStatus(
+  db: Queryable,
+  auth: AuthContext,
+  id: string,
+  status: ProductFeedbackStatus,
+  resolutionCode: ProductFeedbackResolutionCode | null
+): Promise<void> {
+  await db.query(
+    `
+    update product_feedback
+    set status = $1,
+        resolution_code = $2,
+        updated_at = now()
+    where organization_id = $3
+      and id = $4
+    `,
+    [status, resolutionCode, auth.organization.id, id]
+  );
+}
+
+export async function getFeedbackStats(
+  db: Queryable,
+  auth: AuthContext
+): Promise<ProductFeedbackStatsDto> {
+  const result = await db.query<{
+    total: string | number;
+    open: string | number;
+    in_progress: string | number;
+    resolved: string | number;
+    closed: string | number;
+  }>(
+    `
+    select
+      count(*)::integer as total,
+      count(*) filter (where status = 'open')::integer as open,
+      count(*) filter (where status = 'in_progress')::integer as in_progress,
+      count(*) filter (where status = 'resolved')::integer as resolved,
+      count(*) filter (where status = 'closed')::integer as closed
+    from product_feedback
+    where organization_id = $1
+      and submitted_at is not null
+    `,
+    [auth.organization.id]
+  );
+
+  const row = result.rows[0] ?? { total: 0, open: 0, in_progress: 0, resolved: 0, closed: 0 };
+  return {
+    total: Number(row.total),
+    open: Number(row.open),
+    inProgress: Number(row.in_progress),
+    resolved: Number(row.resolved),
+    closed: Number(row.closed)
+  };
+}
+
+

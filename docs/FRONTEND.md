@@ -310,13 +310,17 @@ The M2 API smoke lives in `e2e/log-analysis.api.spec.ts` and requires `DATABASE_
 
 ## Product Feedback Repository
 
-`ProductFeedbackRepository` is the frontend port for Internal Beta product feedback. `FeedbackDialog` submits the current page path/title, feedback type, description, and selected image files through this port. Mock mode uses `src/infrastructure/mock/mockProductFeedbackRepository.ts`; API mode uses `src/infrastructure/http/productFeedbackClient.ts`.
+`ProductFeedbackRepository` is the frontend port for Internal Beta product feedback. `FeedbackDialog` provides a dual-tab experience: submitting/drafting feedback for the current page context and browsing "My Feedback" history (`/mine`) with public progress timelines. Mock mode uses `src/infrastructure/mock/mockProductFeedbackRepository.ts`; API mode uses `src/infrastructure/http/productFeedbackClient.ts`.
 
 `AppShell` owns the single `FeedbackDialog` instance. The sidebar and the page-ending `AppFooter` are triggers for that shared instance, so both preserve the current route context without duplicating dialog state. Normal authenticated pages render the semantic footer inside the main scroll container; the full-height project configuration workbench is excluded. The marketing homepage embeds the non-landmark footer variant inside its existing rich footer. Public owner, version, and optional contact metadata are resolved at build time by `src/config/appFooterConfig.ts`; contacts fail closed unless they use absolute `https:` or `mailto:` URLs.
 
-In API mode, submit maps to `POST /api/v1/product-feedback`, list/detail/update map to the Admin triage routes, and attachment previews use `GET /api/v1/product-feedback/:id/attachments/:attachmentId/content` to create object URLs. The HTTP client base64-encodes image files, mirrors the server attachment limits, and preserves API error envelopes through `WiseEffApiError`.
+In API mode:
+- Feedback submission and drafts map to `POST /api/v1/product-feedback`, `POST /drafts`, `PATCH /drafts/:id`, `DELETE /drafts/:id`, and `POST /drafts/:id/submit`. Drafts allow partial updates and incremental attachment replacement with ObjectStore orphan cleanup.
+- User history maps to `GET /api/v1/product-feedback/mine` and `GET /mine/:id` with public progress timelines (`FeedbackProgressTimeline`), strictly isolating admin internal notes and actor IDs from the user view.
+- Admin triage maps to `GET /api/v1/product-feedback`, `GET /:id`, `PATCH /:id`, `POST /:id/progress`, and `GET /stats`.
+- Attachment previews use `GET /api/v1/product-feedback/:id/attachments/:attachmentId/content` and `GET /mine/:id/attachments/:attachmentId/content` to create object URLs. The HTTP client base64-encodes image files, mirrors server attachment limits, and preserves API error envelopes through `WiseEffApiError`.
 
-`/feedback-admin` is a utility Admin page mounted from `src/features/product-feedback/FeedbackAdminPage.tsx`. It uses the same port to filter and search feedback, inspect details in `FeedbackAdminDrawer`, view attachments, write `adminNote`, and move status through `open -> in_progress -> closed`. The route is gated by the frontend Admin role for UX, while backend routes remain the security boundary.
+`/feedback-admin` is a utility Admin page mounted from `src/features/product-feedback/FeedbackAdminPage.tsx`. It uses the port to display live status statistics (`/stats`), filter and search feedback by page, description, or submitter (resolved as name and `@username`), inspect details and history timelines in `FeedbackAdminDrawer`, view attachments, and transition through the state machine: `open -> in_progress -> resolved -> closed` (with reopening and progress notes). The route is gated by the frontend Admin role for UX, while backend routes remain the security boundary.
 
 ## Knowledge Repository
 

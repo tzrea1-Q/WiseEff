@@ -1,12 +1,18 @@
 import type {
+  ProductFeedbackDraftCreateInput,
+  ProductFeedbackDraftPatchInput,
+  ProductFeedbackDraftSubmitInput,
   ProductFeedbackListQuery,
   ProductFeedbackRepository,
+  ProductFeedbackStats,
   ProductFeedbackSubmitInput
 } from "@/application/ports/ProductFeedbackRepository";
 import type {
   ProductFeedback,
   ProductFeedbackAttachment,
   ProductFeedbackAttachmentContentType,
+  ProductFeedbackProgressEvent,
+  ProductFeedbackResolutionCode,
   ProductFeedbackStatus,
   ProductFeedbackType
 } from "@/domain/productFeedback/types";
@@ -38,15 +44,20 @@ export type ProductFeedbackDto = {
   id: string;
   organizationId: string;
   submitterUserId: string | null;
+  submitter?: { id: string | null; name: string; username: string | null };
   pagePath: string;
   pageTitle: string;
   feedbackType: ProductFeedbackType;
   description: string;
   status: ProductFeedbackStatus;
+  resolutionCode?: ProductFeedbackResolutionCode | null;
   adminNote: string | null;
+  submittedAt?: string | null;
   createdAt: string;
   updatedAt: string;
   attachments: ProductFeedbackAttachmentDto[];
+  progressEvents?: ProductFeedbackProgressEvent[];
+  latestPublicProgress?: string | null;
 };
 
 type ProductFeedbackAttachmentBody = {
@@ -104,15 +115,20 @@ function productFeedbackFromDto(dto: ProductFeedbackDto): ProductFeedback {
   return {
     id: dto.id,
     submitterUserId: dto.submitterUserId,
+    submitter: dto.submitter,
     pagePath: dto.pagePath,
     pageTitle: dto.pageTitle,
     feedbackType: dto.feedbackType,
     description: dto.description,
     status: dto.status,
+    resolutionCode: dto.resolutionCode ?? null,
     adminNote: dto.adminNote,
+    submittedAt: dto.submittedAt ?? null,
     createdAt: dto.createdAt,
     updatedAt: dto.updatedAt,
-    attachments: dto.attachments.map(attachmentFromDto)
+    attachments: dto.attachments.map(attachmentFromDto),
+    progressEvents: dto.progressEvents,
+    latestPublicProgress: dto.latestPublicProgress ?? null
   };
 }
 
@@ -130,7 +146,7 @@ function normalizeAttachmentContentType(type: string): ProductFeedbackAttachment
   if (type === "image/jpg") {
     return "image/jpeg";
   }
-  if (type === "image/png" || type === "image/jpeg" || type === "image/webp") {
+  if (type === "image/jpeg" || type === "image/webp") {
     return type;
   }
   return "image/png";
@@ -150,6 +166,46 @@ function patchBody(patch: { status?: ProductFeedbackStatus; adminNote?: string |
   return {
     ...(patch.status !== undefined ? { status: patch.status } : {}),
     ...(patch.adminNote !== undefined ? { adminNote: patch.adminNote } : {})
+  };
+}
+
+function buildMinePath(query?: { cursor?: string; limit?: number }) {
+  const params = new URLSearchParams();
+  if (query?.cursor) params.set("cursor", query.cursor);
+  if (query?.limit) params.set("limit", String(query.limit));
+  return appendQuery("/api/v1/product-feedback/mine", params);
+}
+
+function routeMineFeedbackPath(feedbackId: string) {
+  return `/api/v1/product-feedback/mine/${encodeURIComponent(feedbackId)}`;
+}
+
+function routeMineAttachmentContentPath(feedbackId: string, attachmentId: string) {
+  return `${routeMineFeedbackPath(feedbackId)}/attachments/${encodeURIComponent(attachmentId)}/content`;
+}
+
+function routeDraftPath(draftId: string) {
+  return `/api/v1/product-feedback/drafts/${encodeURIComponent(draftId)}`;
+}
+
+async function draftCreateBody(input?: ProductFeedbackDraftCreateInput) {
+  return {
+    ...(input?.pagePath !== undefined ? { pagePath: input.pagePath } : {}),
+    ...(input?.pageTitle !== undefined ? { pageTitle: input.pageTitle } : {}),
+    ...(input?.feedbackType !== undefined ? { feedbackType: input.feedbackType } : {}),
+    ...(input?.description !== undefined ? { description: input.description } : {}),
+    ...(input?.files && input.files.length > 0 ? { attachments: await attachmentsBody(input.files) } : {})
+  };
+}
+
+async function draftPatchBody(input: ProductFeedbackDraftPatchInput) {
+  return {
+    ...(input.pagePath !== undefined ? { pagePath: input.pagePath } : {}),
+    ...(input.pageTitle !== undefined ? { pageTitle: input.pageTitle } : {}),
+    ...(input.feedbackType !== undefined ? { feedbackType: input.feedbackType } : {}),
+    ...(input.description !== undefined ? { description: input.description } : {}),
+    ...(input.retainedAttachmentIds !== undefined ? { retainedAttachmentIds: input.retainedAttachmentIds } : {}),
+    ...(input.newFiles && input.newFiles.length > 0 ? { newAttachments: await attachmentsBody(input.newFiles) } : {})
   };
 }
 
@@ -186,8 +242,67 @@ export function createHttpProductFeedbackRepository(
       const response = await apiClient.patch<ItemEnvelope<ProductFeedbackDto>>(routeFeedbackPath(id), patchBody(patch));
       return productFeedbackFromDto(response.item);
     },
+    async appendProgress(id, input) {
+      const response = await apiClient.post<ItemEnvelope<ProductFeedbackDto>>(
+        `/api/v1/product-feedback/${encodeURIComponent(id)}/progress`,
+        input
+      );
+      return productFeedbackFromDto(response.item);
+    },
+    async getStats() {
+      return apiClient.get<ProductFeedbackStats>("/api/v1/product-feedback/stats");
+    },
     async getAttachmentObjectUrl(feedbackId, attachmentId) {
       const response = await apiClient.raw(routeAttachmentContentPath(feedbackId, attachmentId), {
+        method: "GET",
+        headers: { Accept: "image/*" }
+      });
+      return URL.createObjectURL(await response.blob());
+    },
+    async createDraft(input) {
+      const response = await apiClient.post<ItemEnvelope<ProductFeedbackDto>>(
+        "/api/v1/product-feedback/drafts",
+        await draftCreateBody(input)
+      );
+      return productFeedbackFromDto(response.item);
+    },
+    async saveDraft(id, input) {
+      const response = await apiClient.patch<ItemEnvelope<ProductFeedbackDto>>(
+        routeDraftPath(id),
+        await draftPatchBody(input)
+      );
+      return productFeedbackFromDto(response.item);
+    },
+    async deleteDraft(id) {
+      return apiClient.delete<{ ok: boolean }>(routeDraftPath(id));
+    },
+    async submitDraft(id, input?: ProductFeedbackDraftSubmitInput) {
+      const response = await apiClient.post<ItemEnvelope<ProductFeedbackDto>>(
+        `${routeDraftPath(id)}/submit`,
+        input ?? {}
+      );
+      return productFeedbackFromDto(response.item);
+    },
+    async listMine(query) {
+      const response = await apiClient.get<ListEnvelope<ProductFeedbackDto>>(buildMinePath(query));
+      return {
+        items: response.items.map(productFeedbackFromDto),
+        ...(response.nextCursor ? { nextCursor: response.nextCursor } : {})
+      };
+    },
+    async getMine(id) {
+      try {
+        const response = await apiClient.get<ItemEnvelope<ProductFeedbackDto>>(routeMineFeedbackPath(id));
+        return productFeedbackFromDto(response.item);
+      } catch (error) {
+        if (error instanceof WiseEffApiError && error.code === "NOT_FOUND") {
+          return null;
+        }
+        throw error;
+      }
+    },
+    async getMineAttachmentObjectUrl(feedbackId, attachmentId) {
+      const response = await apiClient.raw(routeMineAttachmentContentPath(feedbackId, attachmentId), {
         method: "GET",
         headers: { Accept: "image/*" }
       });

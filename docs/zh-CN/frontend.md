@@ -198,12 +198,12 @@ mock mode 有意保留 12 个兼容参数，以保证组件测试与演示轻量
 - P3b 结果回调与按域模型覆盖：每个活跃域行提供「结果回调」编辑器（`DomainWebhookEditor`）——仅 https 的 URL、只写签名密钥（UI 只显示已配置状态与末四位；输入留空保持现有密钥）、启用开关、带审计的「发送测试投递」按钮，以及最近投递列表（按次一行：时间、结果/测试、第几次、已送达/重试中/投递失败、HTTP 码或错误）。保存走 `PUT /api/v1/log-domains/:domainId/webhook`；被 SSRF 拒绝的 URL 显示可读的内联错误。业务域表单新增「模型覆盖」字段（placeholder 留空使用全局模型），经域 PATCH 持久化（`modelOverride`；留空清回全局模型——端点/key/预算仍全局）；域列表新增「模型」「结果回调」状态列。与其余域治理一样仅 API mode 可用。
 
 产品反馈：
-
-- 应用壳层持有唯一的 `FeedbackDialog`；侧边栏和页面末尾的 `AppFooter` 都只触发这一实例，通过 `ProductFeedbackRepository.submit` 提交当前 `pagePath`、`pageTitle`、反馈类型、描述和图片文件。
+ 
+- 应用壳层持有唯一的 `FeedbackDialog`；侧边栏和页面末尾的 `AppFooter` 都只触发这一实例，提供双 Tab 体验（当前页面反馈提交/草稿箱，与「我的反馈」历史进度时间轴），通过 `ProductFeedbackRepository` 提交或暂存草稿。
 - 普通认证页面在主滚动容器内渲染语义化页脚；全高项目配置工作台不渲染。营销首页在原有丰富页脚内嵌非 landmark 变体，避免嵌套 footer。
 - `src/config/appFooterConfig.ts` 在构建时解析公开的版权所有者、版本和可选联系方式；联系方式不是绝对 `https:` 或 `mailto:` 时失败关闭并隐藏。
-- `/feedback-admin`：Admin-only 反馈处理页，通过同一 port 列表/搜索/筛选、查看详情与附件、填写 `adminNote`，并按 `open -> in_progress -> closed` 推进状态。
-- mock mode 使用 `src/infrastructure/mock/mockProductFeedbackRepository.ts`；API mode 使用 `src/infrastructure/http/productFeedbackClient.ts`，对接 `/api/v1/product-feedback` 及附件内容路由。
+- `/feedback-admin`：Admin-only 反馈处理页，展示 `/stats` 统计指标、支持按页面/描述/提交人（姓名与 `@username`）搜索，支持在 `FeedbackAdminDrawer` 中查看附件与时间轴，并按完整状态机 `open -> in_progress -> resolved -> closed`（支持重新打开与公开/内部进展备注）推进。
+- mock mode 使用 `src/infrastructure/mock/mockProductFeedbackRepository.ts`；API mode 使用 `src/infrastructure/http/productFeedbackClient.ts`，对接 `/api/v1/product-feedback`、草稿接口、`/mine` 用户端路由、`/progress` 进展接口及附件内容路由。
 
 知识库：
 
