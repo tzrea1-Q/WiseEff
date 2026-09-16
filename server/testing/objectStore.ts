@@ -34,6 +34,16 @@ export function createMemoryObjectStore(): MemoryObjectStore {
       }
       return Buffer.from(value);
     },
+    async getBounded(storageKey, maxBytes) {
+      const value = entries.get(storageKey);
+      if (!value) {
+        throw new Error(`Missing object for storage key: ${storageKey}`);
+      }
+      if (value.byteLength > maxBytes) {
+        throw new Error(`Object exceeds bounded read limit of ${maxBytes} bytes.`);
+      }
+      return Buffer.from(value);
+    },
     async delete(storageKey) {
       entries.delete(storageKey);
     }

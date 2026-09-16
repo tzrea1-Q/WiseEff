@@ -528,23 +528,23 @@ offline first, and nothing did that.
 
 | Element | Behaviour |
 | --- | --- |
-| Archived plane | 14 declared relations - drafts, history, submission rounds and items, change requests and their review decisions, bindings and their revisions, source files, candidates, file versions, initialization drafts and reviews, and the canonical values those bindings own |
+| Archived plane | 32 declared per-Project relations - legacy and canonical drafts/history/reviews, config sets/baselines/revisions, stable logical identities, bindings/revisions, source files/candidates/versions, canonical values, and project-local governance records |
 | Child scoping | `parameter_review_decisions`, `parameter_submission_items`, `project_parameter_binding_revisions` and `project_parameter_file_versions` carry no `project_id`, so they are reached through their parent instead of being silently skipped |
-| Artifact | One JSON document written to the object store, carrying provenance (schema version, organisation, project, capture time), `truncated`, the per-relation counts and the rows |
+| Artifact | One v2 JSON document written to the object store, carrying provenance, `truncated`, stable-primary-key-ordered rows, and checksum-verified bytes for every referenced file version or unactivated candidate; relation JSON and aggregate source bytes each have a 64 MiB bound |
 | Idempotency | `archive_digest` covers the scope, the counts and the content digest, so re-capturing an unchanged plane reuses the object rather than writing a second one |
-| Bound | Each relation is read with a 5,000-row cap; exceeding it sets `truncated`, so a partial capture can never be mistaken for complete preservation |
-| Guard | `assertProjectParameterPlaneArchived` refuses a rebuild when no archive exists or the latest one is truncated |
+| Bound | Relation JSON size is preflighted before rows are returned; source objects, archive reuse and the rebuild guard use bounded local/S3 reads; S3 error detail is bounded too. Each relation also has a 5,000-row cap whose overflow sets `truncated` |
+| Guard | `assertProjectParameterPlaneArchived` validates the exact archive ID/digest returned by capture and refuses missing, truncated, torn or byte-incomplete artifacts |
 | Ordering | `materializeSeedSources` archives each target and then requires the guard to pass, before it uploads a single seed source |
 
 **Capture only, on purpose.** Nothing in this change deletes, truncates or rewrites the archived rows, and the
 ledger deliberately has no column that could imply disposal happened. Removing the archived plane needs its own
 reviewed decision, and the run report records it as remaining work rather than quietly implementing it.
 
-**Verification.** `archive.integration.test.ts` (4 tests, real PostgreSQL) asserts the per-relation counts for a
-seeded plane, that file-scoped child rows are captured through their parent while another project's rows are not
-captured at all, that every declared relation is accounted for even when empty, that an identical re-capture
-reuses the existing archive instead of inserting a second ledger row, that the guard refuses both a missing and a
-truncated archive, and that capture is refused for an actor without parameter edit on the project.
+**Verification.** `archive.integration.test.ts` (14 tests, real PostgreSQL) asserts the 32-relation graph, exact
+external FK/trigger/view closure, non-zero preserved observations/matches, embedded version/candidate bytes,
+parent scoping and cross-Project isolation, idempotent reuse, missing or over-cap source/document refusal,
+and fail-closed handling for missing, truncated, torn, tampered or substituted archives, plus authorization and
+schema-retention constraints.
 `materialize.test.ts` and both binding-materialization tests still pass with the archive step in place.
 
 ### 1.13l B5 closed: the tray reads and removes canonical drafts
@@ -725,3 +725,14 @@ Nothing in this round is reported as delivered that is not listed in §1.
 ## Documentation Update Gate
 
 The plan status, ADR-0045 pair, TD-124 pair and this report pair are updated and pass `npm run docs:check` plus `git diff --check`. Generated artifacts are regenerated and current. Nothing in this round claims target execution, deployment, Hosted CI, or completion of the deferred packages.
+
+## 6. Later T0.3 addendum: retrospective R3 correction for migrations 0148/0149
+
+#853 T0.3 later audited the already-delivered migrations rather than pretending the review happened before
+implementation. The [retrospective threat matrix](849-inventory/migrations-0148-0149-r3-threat-matrix.md)
+records the boundary. The correction candidate binds the requested Organization to authentication, authorizes all
+targets before journaling or completed replay, serializes the fixed Organization scope across processes and seed
+digests, makes `completed` terminal, and verifies the exact v2 archived object, 32 per-Project relations, source
+bytes, and separately bounded relation/object paths before rebuilding. Real-PostgreSQL evidence is now 7 plan,
+14 archive and 7 materialization tests. Capture still does not mean disposal; target quiescence, recovery and any
+deletion remain #853 T2.3/T3.3 obligations.

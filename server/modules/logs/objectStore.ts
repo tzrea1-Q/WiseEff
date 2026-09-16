@@ -1,6 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import {
   mkdir as fsMkdir,
+  open as fsOpen,
   readFile as fsReadFile,
   rm as fsRm,
   writeFile as fsWriteFile
@@ -26,6 +27,8 @@ export type ObjectStoreHealth = {
 export interface ObjectStore {
   put(input: { organizationId: string; fileName: string; contentType: string; bytes: Buffer }): Promise<StoredObject>;
   get(storageKey: string): Promise<Buffer>;
+  /** Read at most maxBytes, rejecting before an oversized object is fully buffered. */
+  getBounded?(storageKey: string, maxBytes: number): Promise<Buffer>;
   /**
    * Physically remove an object for retention/cleanup. Optional so existing stores/mocks stay valid;
    * callers must treat it as best-effort and idempotent (deleting a missing key is a no-op).
@@ -149,6 +152,33 @@ export function createLocalObjectStore(rootDir: string, options: LocalObjectStor
     async get(storageKey) {
       const { objectPath } = resolveInsideRoot(rootDir, storageKey);
       return fsReadFile(objectPath);
+    },
+    async getBounded(storageKey, maxBytes) {
+      const { objectPath } = resolveInsideRoot(rootDir, storageKey);
+      if (!Number.isSafeInteger(maxBytes) || maxBytes < 0) {
+        throw new Error("Bounded read limit must be a non-negative safe integer.");
+      }
+      const handle = await fsOpen(objectPath, "r");
+      try {
+        const stats = await handle.stat();
+        if (stats.size > maxBytes) {
+          throw new Error(`Object exceeds bounded read limit of ${maxBytes} bytes.`);
+        }
+        const chunks: Buffer[] = [];
+        let total = 0;
+        while (true) {
+          const chunk = Buffer.allocUnsafe(Math.min(64 * 1024, maxBytes + 1 - total));
+          const { bytesRead } = await handle.read(chunk, 0, chunk.byteLength, null);
+          if (bytesRead === 0) return Buffer.concat(chunks, total);
+          total += bytesRead;
+          if (total > maxBytes) {
+            throw new Error(`Object exceeds bounded read limit of ${maxBytes} bytes.`);
+          }
+          chunks.push(chunk.subarray(0, bytesRead));
+        }
+      } finally {
+        await handle.close();
+      }
     },
 
     async delete(storageKey) {

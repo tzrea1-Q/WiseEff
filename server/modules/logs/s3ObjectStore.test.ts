@@ -79,6 +79,26 @@ describe("createS3ObjectStore", () => {
     });
   });
 
+  it("delegates bounded reads to a transport that can enforce the limit", async () => {
+    const bytes = Buffer.from("bounded object", "utf8");
+    const transport = createTransport({
+      getBounded: vi.fn(async () => bytes)
+    });
+
+    await expect(createStore(transport).getBounded!("org-1/checksum-fault.log", bytes.byteLength)).resolves.toEqual(bytes);
+    expect(transport.getBounded).toHaveBeenCalledWith({
+      bucket: "wiseeff-pilot",
+      key: "org-1/checksum-fault.log",
+      maxBytes: bytes.byteLength
+    });
+  });
+
+  it("fails closed when a custom transport cannot enforce bounded reads", async () => {
+    await expect(createStore().getBounded!("org-1/checksum-fault.log", 10)).rejects.toThrow(
+      "Object storage transport does not support bounded reads."
+    );
+  });
+
   it("reports ready when the bucket head check succeeds", async () => {
     await expect(createStore().checkHealth()).resolves.toEqual({ ok: true, status: "ready" });
   });
@@ -270,6 +290,28 @@ describe("createHttpObjectStorageTransport", () => {
     );
   });
 
+  it("cancels a streamed GET as soon as it exceeds the bounded-read limit", async () => {
+    const cancel = vi.fn();
+    const body = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(Buffer.from("four"));
+        controller.enqueue(Buffer.from("more"));
+      },
+      cancel
+    });
+    const transport = createHttpObjectStorageTransport({
+      endpoint: "https://storage.example.com",
+      accessKeyId: "key",
+      secretAccessKey: "secret",
+      fetchImpl: vi.fn(async () => new Response(body, { status: 200 }))
+    });
+
+    await expect(
+      transport.getBounded!({ bucket: "wiseeff-pilot", key: "org-1/file.log", maxBytes: 4 })
+    ).rejects.toThrow("Object exceeds bounded read limit of 4 bytes.");
+    expect(cancel).toHaveBeenCalledOnce();
+  });
+
   it.each([
     ["HEAD", async (transport: ObjectStorageTransport) => transport.head({ bucket: "wiseeff-pilot" })],
     ["GET", async (transport: ObjectStorageTransport) => transport.get({ bucket: "wiseeff-pilot", key: "org-1/file.log" })],
@@ -293,6 +335,28 @@ describe("createHttpObjectStorageTransport", () => {
     });
 
     await expect(operation(transport)).rejects.toThrow("Object storage HTTP request failed with 403 Forbidden: denied");
+  });
+
+  it("cancels an oversized non-2xx response body instead of buffering it for the error message", async () => {
+    const cancel = vi.fn();
+    const body = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(Buffer.alloc(40 * 1024, "a"));
+        controller.enqueue(Buffer.alloc(40 * 1024, "b"));
+      },
+      cancel
+    });
+    const transport = createHttpObjectStorageTransport({
+      endpoint: "https://storage.example.com",
+      accessKeyId: "key",
+      secretAccessKey: "secret",
+      fetchImpl: vi.fn(async () => new Response(body, { status: 403, statusText: "Forbidden" }))
+    });
+
+    await expect(
+      transport.get({ bucket: "wiseeff-pilot", key: "org-1/file.log" })
+    ).rejects.toThrow("Object storage HTTP request failed with 403 Forbidden");
+    expect(cancel).toHaveBeenCalledOnce();
   });
 
   it("is used by default when no fake transport is provided", async () => {

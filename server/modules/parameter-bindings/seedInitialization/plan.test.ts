@@ -195,6 +195,14 @@ describe("seed initialization target plan", () => {
     );
     expect(runs.rows[0]!.count).toBe("1");
 
+    await recordSeedInitializationRun(root, {
+      organizationId: ORG,
+      seedDigest: digest,
+      status: "running",
+      targetProjectIds: ["atlas", "aurora", "nebula"]
+    });
+    expect(await seedInitializationRunIsComplete(root, { organizationId: ORG, seedDigest: digest })).toBe(true);
+
     expect(
       await seedInitializationRunIsComplete(root, { organizationId: ORG, seedDigest: "sha256:other" })
     ).toBe(false);

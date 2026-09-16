@@ -1,9 +1,46 @@
+import { mkdtemp, rm } from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
 import { describe, expect, it } from "vitest";
 
 import { createTracingBoundary, type TraceExporter } from "./observability/tracing";
 import { createObjectStoreFromEnv } from "./objectStoreFactory";
 
 describe("createObjectStoreFromEnv", () => {
+  it("preserves bounded reads through the production tracing wrapper", async () => {
+    const rootDir = await mkdtemp(path.join(os.tmpdir(), "wiseeff-object-store-factory-"));
+    const spans: Parameters<TraceExporter>[0][] = [];
+    try {
+      const objectStore = createObjectStoreFromEnv(
+        {
+          OBJECT_STORE_MODE: "local",
+          OBJECT_STORE_ROOT: rootDir
+        },
+        {
+          tracing: createTracingBoundary({
+            enabled: true,
+            serviceName: "wiseeff-api",
+            exporter: (span) => {
+              spans.push(span);
+            }
+          })
+        }
+      );
+      const bytes = Buffer.from("bounded factory bytes", "utf8");
+      const stored = await objectStore.put({
+        organizationId: "org-factory",
+        fileName: "bounded.log",
+        contentType: "text/plain",
+        bytes
+      });
+
+      await expect(objectStore.getBounded!(stored.storageKey, bytes.byteLength)).resolves.toEqual(bytes);
+      expect(spans.map((span) => span.attributes.operation)).toEqual(["put", "getBounded"]);
+    } finally {
+      await rm(rootDir, { recursive: true, force: true });
+    }
+  });
+
   it("constructs an S3 object store with the HTTP transport helper", async () => {
     const requests: Array<{ input: string | URL | Request; init?: RequestInit }> = [];
     const objectStore = createObjectStoreFromEnv({

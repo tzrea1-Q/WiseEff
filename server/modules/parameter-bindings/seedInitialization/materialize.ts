@@ -19,9 +19,10 @@
  * The two JSON compatibility seeds therefore remain unmaterialized.
  */
 import { ApiError } from "../../../shared/http/errors";
-import { getRootPostgresPool, type Database } from "../../../shared/database/client";
+import { createDatabase, getRootPostgresPool, type Database } from "../../../shared/database/client";
 import type { AuthContext } from "../../auth/types";
 import type { ObjectStore } from "../../logs/objectStore";
+import { canEditParameters } from "../../parameter-kernel/policy";
 import { addConfigSetFile, ensureDefaultConfigSet, listConfigSetFiles } from "../../parameter-files/configSetService";
 import { uploadProjectParameterFile } from "../../parameter-files/service";
 import type { ConfigRevisionManifest } from "../../parameter-topology/types";
@@ -45,6 +46,7 @@ import {
   assertSeedInitializationPlanApplicable,
   recordSeedInitializationRun,
   resolveSeedInitializationPlan,
+  SEED_INITIALIZATION_SCOPE,
   seedInitializationRunIsComplete,
   SeedInitializationBlockedError,
   type SeedInitializationSubjectBlock
@@ -82,16 +84,75 @@ export type SeedMaterializationOutcome = {
   readonly projects: readonly SeedMaterializedProject[];
 };
 
+type SeedMaterializationInput = {
+  organizationId: string;
+  seedDigest: string;
+  sources: readonly SeedProjectSources[];
+};
+
 export async function materializeSeedSources(
   root: Database,
   objectStore: ObjectStore,
   auth: AuthContext,
-  input: {
-    organizationId: string;
-    seedDigest: string;
-    sources: readonly SeedProjectSources[];
-  },
+  input: SeedMaterializationInput,
 ): Promise<SeedMaterializationOutcome> {
+  if (input.organizationId !== auth.organization.id) {
+    throw new ApiError("FORBIDDEN", "Seed materialization cannot cross organizations.", {
+      reason: "organization-mismatch"
+    });
+  }
+  const pool = getRootPostgresPool(root);
+  if (!pool) {
+    throw new ApiError("INTERNAL_ERROR", "Seed materialization requires the root database.");
+  }
+  const lockClient = await pool.connect();
+  let lockHeld = false;
+  const lockKey = `${input.organizationId}:${SEED_INITIALIZATION_SCOPE}`;
+  try {
+    const lock = await lockClient.query<{ acquired: boolean }>(
+      "select pg_try_advisory_lock(hashtextextended($1, 0)) as acquired",
+      [lockKey]
+    );
+    lockHeld = lock.rows[0]?.acquired === true;
+    if (!lockHeld) {
+      throw new ApiError("CONFLICT", "Seed materialization for this digest is already in progress.", {
+        seedDigest: input.seedDigest
+      });
+    }
+    return await materializeSeedSourcesLocked(
+      root,
+      createDatabase(lockClient),
+      pool,
+      objectStore,
+      auth,
+      input,
+    );
+  } finally {
+    if (lockHeld) {
+      await lockClient.query("select pg_advisory_unlock(hashtextextended($1, 0))", [
+        lockKey
+      ]);
+    }
+    lockClient.release();
+  }
+}
+
+async function materializeSeedSourcesLocked(
+  root: Database,
+  archiveDatabase: Database,
+  pool: NonNullable<ReturnType<typeof getRootPostgresPool>>,
+  objectStore: ObjectStore,
+  auth: AuthContext,
+  input: SeedMaterializationInput,
+): Promise<SeedMaterializationOutcome> {
+  const plan = await resolveSeedInitializationPlan(root, {
+    organizationId: input.organizationId,
+    seedDigest: input.seedDigest
+  });
+  assertSeedInitializationPlanApplicable(plan);
+  if (plan.targets.some((target) => !canEditParameters(auth, target.projectId))) {
+    throw new ApiError("FORBIDDEN", "Parameter edit role is required to materialize seed sources.");
+  }
   if (
     await seedInitializationRunIsComplete(root, {
       organizationId: input.organizationId,
@@ -99,17 +160,6 @@ export async function materializeSeedSources(
     })
   ) {
     return { status: "already-complete", seedDigest: input.seedDigest, projects: [] };
-  }
-
-  const plan = await resolveSeedInitializationPlan(root, {
-    organizationId: input.organizationId,
-    seedDigest: input.seedDigest
-  });
-  assertSeedInitializationPlanApplicable(plan);
-
-  const pool = getRootPostgresPool(root);
-  if (!pool) {
-    throw new ApiError("INTERNAL_ERROR", "Seed materialization requires the root database.");
   }
 
   const plannedSources = plan.targets.map((target) => {
@@ -140,7 +190,8 @@ export async function materializeSeedSources(
     organizationId: input.organizationId,
     seedDigest: input.seedDigest,
     status: "running",
-    targetProjectIds: plan.targets.map((target) => target.projectId)
+    targetProjectIds: plan.targets.map((target) => target.projectId),
+    startedByUserId: auth.user.id
   });
 
   const snapshot = await loadPublishedCatalog(pool);
@@ -160,12 +211,14 @@ export async function materializeSeedSources(
     // Scope item 4: preserve the legacy parameter plane offline before the rebuild
     // touches it. Capture first, then require the guard to pass, so a truncated or
     // missing archive stops the rebuild instead of silently replacing data.
-    const archive = await captureProjectParameterPlane(root, objectStore, auth, {
+    const archive = await captureProjectParameterPlane(archiveDatabase, objectStore, auth, {
       projectId: target.projectId
     });
-    await assertProjectParameterPlaneArchived(root, {
+    await assertProjectParameterPlaneArchived(root, objectStore, {
       organizationId: input.organizationId,
-      projectId: target.projectId
+      projectId: target.projectId,
+      archiveId: archive.archiveId,
+      archiveDigest: archive.archiveDigest
     });
 
     const configSet = await ensureDefaultConfigSet(root, auth, target.projectId);

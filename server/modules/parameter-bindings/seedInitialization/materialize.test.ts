@@ -20,7 +20,7 @@ import { installPublishedRelease } from "../../catalog-kernel/install/installer"
 import { CatalogSubjectId } from "../../parameter-catalog-contract/index";
 import { executeRegistration } from "../../parameter-governance/registration/service";
 import { materializeSeedSources, type SeedProjectSources } from "./materialize";
-import { getSeedInitializationRun } from "./plan";
+import { getSeedInitializationRun, recordSeedInitializationRun } from "./plan";
 import {
   createEphemeralTestDatabase,
   isTestDatabaseAvailable,
@@ -133,6 +133,7 @@ describe("seed source materialization", () => {
   let database: EphemeralTestDatabase;
   let root: RootDatabase;
   let pool: pg.Pool;
+  const persistentObjectStore = createMemoryObjectStore();
 
   const adminAuth = makeTestAuthContext({
     userId: "user-seed-admin",
@@ -172,9 +173,56 @@ describe("seed source materialization", () => {
     await database?.drop();
   });
 
+  it("rejects an organization id outside the authenticated organization", async () => {
+    await expect(
+      materializeSeedSources(root, createMemoryObjectStore(), adminAuth, {
+        organizationId: "org-other",
+        seedDigest: "sha256:seed-materialize-foreign-org",
+        sources: sources()
+      })
+    ).rejects.toMatchObject({
+      code: "FORBIDDEN",
+      details: { reason: "organization-mismatch" }
+    });
+  });
+
+  it("does not journal a run for an actor without parameter edit access", async () => {
+    const seedDigest = "sha256:seed-materialize-viewer";
+    const viewerAuth = makeTestAuthContext({
+      userId: "user-seed-viewer",
+      organizationId: ORG,
+      name: "Seed viewer",
+      email: "seed-viewer@example.com",
+      permissions: ["parameter:view"]
+    });
+
+    await expect(
+      materializeSeedSources(root, createMemoryObjectStore(), viewerAuth, {
+        organizationId: ORG,
+        seedDigest,
+        sources: sources()
+      })
+    ).rejects.toMatchObject({ code: "FORBIDDEN" });
+    await expect(getSeedInitializationRun(root, { organizationId: ORG, seedDigest })).resolves.toBeNull();
+
+    const completedDigest = "sha256:seed-materialize-viewer-completed";
+    await recordSeedInitializationRun(root, {
+      organizationId: ORG,
+      seedDigest: completedDigest,
+      status: "completed",
+      targetProjectIds: ["atlas", "aurora", "nebula"]
+    });
+    await expect(
+      materializeSeedSources(root, createMemoryObjectStore(), viewerAuth, {
+        organizationId: ORG,
+        seedDigest: completedDigest,
+        sources: sources()
+      })
+    ).rejects.toMatchObject({ code: "FORBIDDEN" });
+  });
+
   it("materializes a real config set, file version and resolved config revision for every target", async () => {
-    const objectStore = createMemoryObjectStore();
-    const outcome = await materializeSeedSources(root, objectStore, adminAuth, {
+    const outcome = await materializeSeedSources(root, persistentObjectStore, adminAuth, {
       organizationId: ORG,
       seedDigest: DIGEST,
       sources: sources()
@@ -229,6 +277,55 @@ describe("seed source materialization", () => {
       `select count(*)::text as count from project_parameter_file_versions`
     );
     expect(after.rows[0]!.count).toBe(before.rows[0]!.count);
+  }, 120_000);
+
+  it("rejects a concurrent materialization of the same seed digest", async () => {
+    const seedDigest = "sha256:seed-materialize-concurrent";
+    const objectStore = persistentObjectStore;
+    const put = objectStore.put.bind(objectStore);
+    let releaseFirstPut!: () => void;
+    let announceFirstPut!: () => void;
+    const firstPutStarted = new Promise<void>((resolve) => {
+      announceFirstPut = resolve;
+    });
+    const firstPutReleased = new Promise<void>((resolve) => {
+      releaseFirstPut = resolve;
+    });
+    let held = false;
+    objectStore.put = async (input) => {
+      if (!held) {
+        held = true;
+        announceFirstPut();
+        await firstPutReleased;
+      }
+      return put(input);
+    };
+
+    const first = materializeSeedSources(root, objectStore, adminAuth, {
+      organizationId: ORG,
+      seedDigest,
+      sources: sources()
+    });
+    await firstPutStarted;
+
+    await expect(
+      materializeSeedSources(root, createMemoryObjectStore(), adminAuth, {
+        organizationId: ORG,
+        seedDigest,
+        sources: sources()
+      })
+    ).rejects.toThrow(/already in progress/);
+    await expect(
+      materializeSeedSources(root, createMemoryObjectStore(), adminAuth, {
+        organizationId: ORG,
+        seedDigest: `${seedDigest}-different`,
+        sources: sources()
+      })
+    ).rejects.toThrow(/already in progress/);
+
+    releaseFirstPut();
+    await expect(first).resolves.toMatchObject({ status: "completed", seedDigest });
+    objectStore.put = put;
   }, 120_000);
 
   it("preflights every target, journals every blocker, and performs no value sync when a later target is blocked", async () => {
@@ -286,7 +383,7 @@ describe("seed source materialization", () => {
     expect(occupied.ok, JSON.stringify(occupied)).toBe(true);
 
     await expect(
-      materializeSeedSources(root, createMemoryObjectStore(), adminAuth, {
+      materializeSeedSources(root, persistentObjectStore, adminAuth, {
         organizationId: ORG,
         seedDigest,
         sources: stagedSources()
