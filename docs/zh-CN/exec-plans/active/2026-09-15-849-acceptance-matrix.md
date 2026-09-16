@@ -2,6 +2,8 @@
 
 > English: [English](../../../exec-plans/active/2026-09-15-849-acceptance-matrix.md)
 
+2026-09-16 执行修订：[#849/#853 完整 todolist](2026-09-16-849-853-closure-todolist.md) 记录当前顺序及逐项用户确认规则。用户明确将本项目后续浏览器验收改为单 PC `1440x900`，替代下文旧三视口要求；其他操作与 S1/S2 门禁保留。历史视口结果仍是历史证据，旧轮次状态由 T0.6 对账。
+
 轮次记录。分支 `feat/849-parameter-unification`，工作树 `/Users/tzrea1/Develop/WiseEff-worktrees/issue-849-parameter-unification`，基线 `origin/main` `8f03cfa4302aebbe3bc3c37ef2197c082c2a3e2e`。状态：**部分完成**。此处不含任何完成主张；Issue 仍为 OPEN，未开 PR、未合并、未做目标重建或部署。
 
 逐节细节见[轮次报告](2026-09-15-parameter-unification-round-report.md)。延迟的主体类型工作见 [ConfigurationSchema 改动面侦察](../../../exec-plans/active/849-inventory/configurationschema-extension-recon.md)与其[独立 Spec 评阅](../../../exec-plans/active/849-inventory/configurationschema-spec-review.md)。迁移 0148/0149 的 R3 证据见[回溯式威胁矩阵](849-inventory/migrations-0148-0149-r3-threat-matrix.md)；它不会把交付后的修正写成“实现前合规”，处置、静默和恢复仍是后继门禁。

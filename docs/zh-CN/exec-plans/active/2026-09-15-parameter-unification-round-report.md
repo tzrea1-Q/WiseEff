@@ -2,6 +2,8 @@
 
 > English: [English](../../../exec-plans/active/2026-09-15-parameter-unification-round-report.md)
 
+2026-09-16 执行修订：[#849/#853 完整 todolist](2026-09-16-849-853-closure-todolist.md) 记录当前顺序及逐项用户确认规则。用户明确将本项目后续浏览器验收改为单 PC `1440x900`，替代下文旧三视口要求；其他操作与 S1/S2 门禁保留。历史视口结果仍是历史证据，旧轮次状态由 T0.6 对账。
+
 轮次：2026-09-15 Scratch 实现轮次。
 分支：`feat/849-parameter-unification`，工作树 `/Users/tzrea1/Develop/WiseEff-worktrees/issue-849-parameter-unification`。
 基线：`origin/main` 于 `8f03cfa4302aebbe3bc3c37ef2197c082c2a3e2e`（2026-09-15 拉取）。

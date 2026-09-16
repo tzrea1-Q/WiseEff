@@ -2,6 +2,8 @@
 
 > Chinese: [Chinese](zh-CN/PLANS.md)
 
+2026-09-16 execution amendment: the [complete #849/#853 todo list](exec-plans/active/2026-09-16-849-853-closure-todolist.md) records the current order and per-todo user confirmation. The user explicitly replaced this program's prospective three-viewport acceptance with one PC viewport, `1440x900`; all operation and S1/S2 gates remain. Historical viewport results remain historical evidence; T0.6 reconciles older status narratives.
+
 Use durable execution plans for cross-session work, architecture changes, risky rollout, multi-team coordination, or an explicit task contract. A bounded change may use a task/PR summary instead; file count alone does not require a plan. Existing active plans retain their documented gates.
 
 Ordinary development follows [Development workflow](agents/development-workflow.md). The [Agent Delivery Execution Protocol](agents/agent-delivery-protocol.md), including its state machine and budgets, applies only to programs that explicitly adopt it and existing accepted sealed programs; its introductory description is not a repository-wide mandate. Risk-sensitive tests and independent review still apply to ordinary security or migration work without requiring sealed-program orchestration.

@@ -2,6 +2,8 @@
 
 > Chinese: [Chinese](../../zh-CN/exec-plans/active/2026-09-15-parameter-unification-round-report.md)
 
+2026-09-16 execution amendment: the [complete #849/#853 todo list](2026-09-16-849-853-closure-todolist.md) records the current order and per-todo user confirmation. The user explicitly replaced this program's prospective three-viewport acceptance with one PC viewport, `1440x900`; all operation and S1/S2 gates remain. Historical viewport results remain historical evidence; T0.6 reconciles older status narratives.
+
 Round: 2026-09-15 Scratch implementation round.
 Branch: `feat/849-parameter-unification`, worktree `/Users/tzrea1/Develop/WiseEff-worktrees/issue-849-parameter-unification`.
 Base: `origin/main` at `8f03cfa4302aebbe3bc3c37ef2197c082c2a3e2e` (fetched 2026-09-15).

@@ -2,6 +2,8 @@
 
 > English: [English](../../../exec-plans/active/2026-09-14-parameter-unification-and-seed-parity.md)
 
+2026-09-16 执行修订：[#849/#853 完整 todolist](2026-09-16-849-853-closure-todolist.md) 记录当前顺序及逐项用户确认规则。用户明确将本项目后续浏览器验收改为单 PC `1440x900`，替代下文旧三视口要求；其他操作与 S1/S2 门禁保留。历史视口结果仍是历史证据，旧轮次状态由 T0.6 对账。
+
 状态：D01–D10 与 S1／S2 已确认；用户于 2026-09-15 将本轮格式范围缩小为 DTS／JSON。YAML／TOML／ENV 项目源支持及对应 8 项种子记为 TD-124。规格 #849 仍为 OPEN、`ready-for-agent`。
 
 实现状态（2026-09-15 Scratch 轮次，分支 `feat/849-parameter-unification`，基线 `8f03cfa4302aebbe3bc3c37ef2197c082c2a3e2e`）。已交付并有真实 PostgreSQL 与真实浏览器证据：`server/modules/parameter-bindings/catalogProjectValueRoutes.ts` 中四个具名共存缺陷已清除（旧库合并读取、空目录回退、直存“草稿”、整批旧 apply 回退）；新增新版待处理值草稿归属（`project_parameter_value_drafts`，迁移 `0144`），支持创建／列出／删除，并保证建草稿绝不改动当前值、其 tip 与生效源版本；项目源仍仅支持 DTS／JSON，YAML／TOML／ENV 现在于暂存／应用前以明确的 `UNSUPPORTED_FORMAT` 结果拒绝（厂商 YAML 目录元数据仍可导入）；并交付覆盖全部 125 项输入的确定性种子对账清单；4 项当前兼容种子现已具备受审的真实分项目源文件（`src/config/seed-sources/<project>/power-config.json` 与 `charging-thermal.dts`），精确 locator 已登记入清单，且这些 locator 的 DTS／JSON 写回保真度已获证明；同时交付新版提交 → 审阅 → 生效纵向链路（`project_parameter_value_change_requests`，迁移 `0145`）：提交冻结新版身份与基线 pin，审批重新解析 pin 并在同一事务内提交值、受保护源写回、ProjectValue 历史、流程状态与审计；驳回与撤回不写任何值，过期 pin 被拒绝，自审被禁止，已生效请求可幂等重放。新版绑定变更历史（`parameter_catalog.binding_history_events`）现有读取面（`GET /api/v2/projects/:projectId/parameter-bindings/:bindingId/change-history`），暴露精确的值与定义版本 pin、记录的理由与成功审计引用，且不返回已归档旧载荷。**本轮未交付：** PU-01 配置模型（ConfigurationSchema）Slice A 之后的部分（Slice A——契约类型、加固后的模型标识解析器、三分支发布 schema、编译器校验与重钉的 goldens——已落地并全绿；Slice B 与 Slice C，即存储收口与安装／运行时／准入，在独立 Spec 评阅 FAIL 结论下仍未开始。因此两个 JSON 种子仍缺正式受治主体，两个 DTS 种子仍缺受审正式主体）、覆盖全部 120 项板级出现的完整自洽示例 DTS 基底与悬空 overlay 对账、种子发布与三项目初始化、归档重建运行配置及其 S2 演练、其余跨域消费者切换，以及完整三尺寸操作矩阵。逐项结果、失败与风险见本轮报告。目标执行与部署仍未获授权。
