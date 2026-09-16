@@ -137,6 +137,8 @@ export function ParametersPage({
   const [archivedLinkNotice, setArchivedLinkNotice] = useState<ArchivedParameterLinkNotice | null>(null);
   const [comparisonTargetProjectId, setComparisonTargetProjectId] = useState("");
   const [drafts, setDrafts] = useState<Record<string, { targetValue: string; reason: string }>>({});
+  const [stagingDrafts, setStagingDrafts] = useState<Record<string, { targetValue: string; reason: string }>>({});
+  const savedParameterIds = useMemo(() => new Set(Object.keys(drafts)), [drafts]);
   const [submittingRound, setSubmittingRound] = useState(false);
   const [stashingRound, setStashingRound] = useState(false);
   const previousUserIdRef = useRef(state.currentUserId);
@@ -300,34 +302,32 @@ export function ParametersPage({
         .filter((item): item is ParameterDraftItem & { parameter: ParameterRecord } => Boolean(item)),
     [drafts, parameterById, selectedIds]
   );
-  const draftItems = useMemo(
-    () =>
-      Object.entries(drafts)
-        .map(([parameterId, draft]) => {
-          const parameter = parameterById.get(parameterId);
-          if (!parameter) {
-            return null;
-          }
-          return {
-            parameterId,
-            targetValue: draft.targetValue,
-            reason: draft.reason,
-            parameter
-          };
-        })
-        .filter((item): item is ParameterDraftItem & { parameter: ParameterRecord } => Boolean(item)),
-    [drafts, parameterById]
-  );
   const draftDialogItems = useMemo(() => {
+    const activeEntries = Object.entries(stagingDrafts);
+    const items = activeEntries
+      .map(([parameterId, draft]) => {
+        const parameter = parameterById.get(parameterId);
+        if (!parameter) {
+          return null;
+        }
+        return {
+          parameterId,
+          targetValue: draft.targetValue,
+          reason: draft.reason,
+          parameter
+        };
+      })
+      .filter((item): item is ParameterDraftItem & { parameter: ParameterRecord } => Boolean(item));
+
     if (!focusedId) {
-      return draftItems;
+      return items;
     }
-    const focusedDraft = draftItems.find((item) => item.parameterId === focusedId);
+    const focusedDraft = items.find((item) => item.parameterId === focusedId);
     if (!focusedDraft) {
-      return draftItems;
+      return items;
     }
-    return [focusedDraft, ...draftItems.filter((item) => item.parameterId !== focusedId)];
-  }, [draftItems, focusedId]);
+    return [focusedDraft, ...items.filter((item) => item.parameterId !== focusedId)];
+  }, [stagingDrafts, parameterById, focusedId]);
   const modifiedParameters = useMemo(
     () =>
       pendingSubmissionItems.map((item) => ({
@@ -374,15 +374,10 @@ export function ParametersPage({
     });
     return true;
   };
-  const validDraftItems = useMemo(
-    () => draftItems.filter((item) => item.targetValue.trim() && item.reason.trim()),
-    [draftItems]
-  );
   const allSelectedDraftsAreSubmittable =
     selectedIds.size > 0 &&
     pendingSubmissionItems.length === selectedIds.size &&
     validPendingSubmissionItems.length === pendingSubmissionItems.length;
-  const allDraftsAreSubmittable = draftItems.length > 0 && validDraftItems.length === draftItems.length;
 
   useEffect(() => {
     if (contextQuery.module) {
@@ -514,6 +509,15 @@ export function ParametersPage({
 
       return nextDrafts;
     });
+    setStagingDrafts((items) => {
+      const nextDrafts = { ...items };
+      nextDrafts[requestedParameter.id] = {
+        targetValue: nextDrafts[requestedParameter.id]?.targetValue ?? requestedParameter.recommendedValue,
+        reason: nextDrafts[requestedParameter.id]?.reason || `依据日志 ${originLog.fileName} 分析：${originLog.conclusion}`
+      };
+
+      return nextDrafts;
+    });
   }, [activeParameterById, effectiveCanEdit, contextQuery.logId, contextQuery.parameterId, projectParameters, resolvedProjectId, selected, state.logs]);
 
   useEffect(() => {
@@ -524,6 +528,7 @@ export function ParametersPage({
     previousUserIdRef.current = state.currentUserId;
     setSelectedIds(new Set());
     setDrafts({});
+    setStagingDrafts({});
     setSheetOpen(false);
     setConfirmOpen(false);
     setSubmittingRound(false);
@@ -536,6 +541,7 @@ export function ParametersPage({
     }
     setSelectedIds(new Set());
     setDrafts({});
+    setStagingDrafts({});
     setSheetOpen(false);
     setConfirmOpen(false);
   }, [effectiveCanEdit]);
@@ -586,15 +592,18 @@ export function ParametersPage({
     setDrafts((items) =>
       Object.fromEntries(Object.entries(items).filter(([parameterId]) => activeParameterIds.has(parameterId)))
     );
+    setStagingDrafts((items) =>
+      Object.fromEntries(Object.entries(items).filter(([parameterId]) => activeParameterIds.has(parameterId)))
+    );
     setViewingParameterId((id) => (id && !activeParameterIds.has(id) ? null : id));
     setViewingParameterDetail((parameter) => (parameter && !activeParameterIds.has(parameter.id) ? null : parameter));
   }, [activeParameterIds]);
 
   useEffect(() => {
-    if (selectedIds.size === 0 && !contextQuery.logId && Object.keys(drafts).length === 0) {
+    if (selectedIds.size === 0 && !contextQuery.logId && Object.keys(drafts).length === 0 && Object.keys(stagingDrafts).length === 0) {
       setSheetOpen(false);
     }
-  }, [contextQuery.logId, selectedIds.size, drafts]);
+  }, [contextQuery.logId, selectedIds.size, drafts, stagingDrafts]);
 
   const handleFocusRow = (id: string) => {
     const parameter = activeParameterById.get(id);
@@ -615,15 +624,14 @@ export function ParametersPage({
     }
     setSelectedId(parameter.id);
     setFocusedId(parameter.id);
-    setDrafts((items) => {
-      if (items[id] && !draftPatch) return items;
-      return {
-        ...items,
-        [id]: {
-          targetValue: draftPatch?.targetValue ?? items[id]?.targetValue ?? parameter.recommendedValue,
-          reason: draftPatch?.reason ?? items[id]?.reason ?? ""
-        }
+    setStagingDrafts((currentStaging) => {
+      const next = { ...drafts, ...currentStaging };
+      const existingDraft = drafts[id] ?? currentStaging[id];
+      next[id] = {
+        targetValue: draftPatch?.targetValue ?? existingDraft?.targetValue ?? parameter.recommendedValue,
+        reason: draftPatch?.reason ?? existingDraft?.reason ?? ""
       };
+      return next;
     });
     setSheetOpen(true);
   };
@@ -698,7 +706,7 @@ export function ParametersPage({
   };
 
   const updateDraft = (parameter: ParameterRecord, patch: Partial<{ targetValue: string; reason: string }>) => {
-    setDrafts((items) => ({
+    setStagingDrafts((items) => ({
       ...items,
       [parameter.id]: {
         targetValue: items[parameter.id]?.targetValue ?? parameter.recommendedValue,
@@ -708,11 +716,48 @@ export function ParametersPage({
     }));
   };
 
+  const saveDraft = (parameterId?: string) => {
+    if (!effectiveCanEdit) {
+      return;
+    }
+    if (parameterId) {
+      const draftToSave = stagingDrafts[parameterId];
+      if (draftToSave && draftToSave.targetValue.trim()) {
+        setDrafts((current) => ({
+          ...current,
+          [parameterId]: draftToSave
+        }));
+      }
+    } else {
+      const validStaged: Record<string, { targetValue: string; reason: string }> = {};
+      Object.entries(stagingDrafts).forEach(([id, draft]) => {
+        if (draft.targetValue.trim()) {
+          validStaged[id] = draft;
+        }
+      });
+      if (Object.keys(validStaged).length > 0) {
+        setDrafts((current) => ({
+          ...current,
+          ...validStaged
+        }));
+      }
+    }
+  };
+
+  const handleCloseDraftDialog = () => {
+    setSheetOpen(false);
+    setStagingDrafts({});
+  };
+
   const removeDraftItem = (parameterId: string) => {
     const nextSelectedIds = new Set(selectedIds);
     nextSelectedIds.delete(parameterId);
     setSelectedIds(nextSelectedIds);
     setDrafts((items) => {
+      const { [parameterId]: _removed, ...remainingItems } = items;
+      return remainingItems;
+    });
+    setStagingDrafts((items) => {
       const { [parameterId]: _removed, ...remainingItems } = items;
       if (Object.keys(remainingItems).length === 0) {
         setSheetOpen(false);
@@ -723,9 +768,10 @@ export function ParametersPage({
   };
 
   const clearAllDrafts = () => {
-    const parameterIds = Object.keys(drafts);
+    const parameterIds = Array.from(new Set([...Object.keys(drafts), ...Object.keys(stagingDrafts)]));
     setSelectedIds(new Set());
     setDrafts({});
+    setStagingDrafts({});
     setSheetOpen(false);
     void discardPersistedDrafts(parameterIds);
   };
@@ -777,11 +823,16 @@ export function ParametersPage({
     if (!effectiveCanEdit) {
       return;
     }
-    if (!allDraftsAreSubmittable) {
-      return;
-    }
-    setSelectedIds((ids) => new Set([...Array.from(ids), ...Object.keys(drafts)]));
+    const mergedDrafts = { ...drafts };
+    Object.entries(stagingDrafts).forEach(([id, draft]) => {
+      if (draft.targetValue.trim() && draft.reason.trim()) {
+        mergedDrafts[id] = draft;
+      }
+    });
+    setDrafts(mergedDrafts);
+    setSelectedIds((ids) => new Set([...Array.from(ids), ...Object.keys(mergedDrafts)]));
     setSheetOpen(false);
+    setStagingDrafts({});
   };
 
   const notifyActionFailure = (result: Awaited<ReturnType<ParameterPageActions["submitChanges"]>>) => {
@@ -1062,18 +1113,20 @@ export function ParametersPage({
             />
           </section>
         </div>
-          {effectiveCanEdit && draftItems.length > 0 && sheetOpen ? (
+          {effectiveCanEdit && draftDialogItems.length > 0 && sheetOpen ? (
           <ParameterDraftDialog
             open
             title="修改草稿"
-            description="点击编辑会加入草稿，提交参数后才会进入上方的本轮已修改参数表。"
+            description="保存草稿后才会加入本轮草稿，提交参数后才会进入上方的本轮已修改参数表。"
             drafts={draftDialogItems}
             focusedParameterId={focusedId}
             canEdit={effectiveCanEdit}
-            onClose={() => setSheetOpen(false)}
+            savedParameterIds={savedParameterIds}
+            onClose={handleCloseDraftDialog}
             onClearAll={clearAllDrafts}
             onRemoveItem={removeDraftItem}
             onUpdateDraft={updateDraft}
+            onSaveDraft={saveDraft}
             onSubmit={submitParameterToModifiedTable}
             onViewSubmissions={() => onNavigate("/parameter-submissions")}
           />
@@ -1103,7 +1156,7 @@ export function ParametersPage({
           }
           canEdit={effectiveCanEdit}
           disabledReason={draftActionDisabledReason}
-          alreadyInDraft={Boolean(drafts[viewingParameter.id])}
+          alreadyInDraft={Boolean(drafts[viewingParameter.id] || (sheetOpen && stagingDrafts[viewingParameter.id]))}
           onTargetProjectChange={setComparisonTargetProjectId}
           onAddToDraft={addViewingParameterToDraft}
           onClose={() => {

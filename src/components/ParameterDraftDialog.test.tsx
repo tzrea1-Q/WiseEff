@@ -185,4 +185,38 @@ describe("ParameterDraftDialog", () => {
 
     expect(screen.queryByRole("dialog", { name: "修改草稿" })).not.toBeInTheDocument();
   });
+
+  it("renders save button in footer and save draft button in card with saved/unsaved badges", () => {
+    const onSaveDraft = vi.fn();
+    renderDialog({
+      drafts: [draft],
+      savedParameterIds: new Set<string>(),
+      onSaveDraft
+    });
+
+    const dialog = screen.getByRole("dialog", { name: "修改草稿" });
+    expect(within(dialog).getByRole("button", { name: "保存" })).toBeInTheDocument();
+    expect(within(dialog).getByRole("button", { name: "保存草稿" })).toBeInTheDocument();
+    expect(within(dialog).getByText("未保存")).toBeInTheDocument();
+
+    fireEvent.click(within(dialog).getByRole("button", { name: "保存" }));
+    expect(onSaveDraft).toHaveBeenCalledTimes(1);
+    expect(within(dialog).getByText("草稿已保存")).toBeInTheDocument();
+
+    fireEvent.click(within(dialog).getByRole("button", { name: "保存草稿" }));
+    expect(onSaveDraft).toHaveBeenCalledWith(draft.parameterId);
+  });
+
+  it("displays saved badge when parameter id is in savedParameterIds", () => {
+    renderDialog({
+      drafts: [draft],
+      savedParameterIds: new Set([draft.parameterId]),
+      onSaveDraft: vi.fn()
+    });
+
+    const dialog = screen.getByRole("dialog", { name: "修改草稿" });
+    expect(within(dialog).getByText("已保存")).toBeInTheDocument();
+    expect(within(dialog).queryByText("未保存")).not.toBeInTheDocument();
+  });
 });
+

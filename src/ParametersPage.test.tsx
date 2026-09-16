@@ -1689,26 +1689,43 @@ describe("ParametersPage · 布局与 Sheet", () => {
     expect(within(sheet).getByText("本轮提交 1 项")).toBeInTheDocument();
   });
 
-  it("点击 Sheet 关闭按钮后 Sheet 消失，再次编辑可重新打开", () => {
+  it("未点击保存直接关闭草稿弹窗时，不保存该参数草稿，再次编辑其他参数仅展示新参数", () => {
     renderPage();
     fireEvent.click(screen.getByRole("button", { name: /编辑 fast_charge_current_limit_ma/ }));
     fireEvent.click(screen.getByRole("button", { name: "关闭草稿" }));
     expect(screen.queryByRole("dialog", { name: "修改草稿" })).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: /编辑 charge_voltage_limit_mv/ }));
     expect(screen.getByRole("dialog", { name: "修改草稿" })).toBeInTheDocument();
-    expect(screen.getByText("本轮提交 2 项")).toBeInTheDocument();
+    expect(screen.getByText("本轮提交 1 项")).toBeInTheDocument();
   });
 
-  it("再次编辑其他参数时将当前点击的参数置于草稿弹窗首位", () => {
-    const { container } = renderPage();
+  it("点击保存草稿后再关闭，再次编辑其他参数时会保留已保存项并将新参数置于首位", () => {
+    renderPage();
     fireEvent.click(screen.getByRole("button", { name: /编辑 fast_charge_current_limit_ma/ }));
+    fireEvent.click(screen.getByRole("button", { name: "保存" }));
+    expect(screen.getByText("草稿已保存")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "关闭草稿" }));
+    expect(screen.queryByRole("dialog", { name: "修改草稿" })).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: /编辑 charge_voltage_limit_mv/ }));
+    expect(screen.getByRole("dialog", { name: "修改草稿" })).toBeInTheDocument();
+    expect(screen.getByText("本轮提交 2 项")).toBeInTheDocument();
 
-    const firstDraftCard = document.body.querySelector<HTMLElement>(".parameter-draft-card");
-    expect(firstDraftCard).toHaveTextContent("charge_voltage_limit_mv");
-    expect(firstDraftCard).not.toHaveTextContent("fast_charge_current_limit_ma");
+    const draftCards = document.body.querySelectorAll<HTMLElement>(".parameter-draft-card");
+    expect(draftCards).toHaveLength(2);
+    expect(draftCards[0]).toHaveTextContent("charge_voltage_limit_mv");
+    expect(draftCards[1]).toHaveTextContent("fast_charge_current_limit_ma");
+  });
+
+  it("支持通过卡片上的保存草稿按钮单独保存，并正确展示已保存/未保存状态徽标", () => {
+    renderPage();
+    fireEvent.click(screen.getByRole("button", { name: /编辑 fast_charge_current_limit_ma/ }));
+    const dialog = screen.getByRole("dialog", { name: "修改草稿" });
+    expect(within(dialog).getByText("未保存")).toBeInTheDocument();
+
+    fireEvent.click(within(dialog).getByRole("button", { name: "保存草稿" }));
+    expect(within(dialog).getByText("已保存")).toBeInTheDocument();
+    expect(within(dialog).getByText("草稿已保存")).toBeInTheDocument();
   });
 
   it("removing the last draft item clears selection and closes the sheet", () => {
