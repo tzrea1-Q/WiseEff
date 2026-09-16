@@ -2977,25 +2977,84 @@ wiseeff_upgrade_wait_public_probe() {
   return 1
 }
 
+# Resolve the launcher captured at process start into a stable absolute path.
+# The handoff must not depend on the caller's working directory or on a
+# relative "$0" whose meaning can change while the target checkout is selected.
+wiseeff_upgrade_resolve_launcher_path() {
+  local candidate="${1:-}"
+  local directory base
+  [ -n "$candidate" ] || return 1
+  case "$candidate" in
+    */*) ;;
+    *)
+      # A bare name was found through PATH; keep that resolution explicit.
+      candidate="$(command -v "$candidate" 2>/dev/null || true)"
+      [ -n "$candidate" ] || return 1
+      ;;
+  esac
+  [ -f "$candidate" ] || return 1
+  directory="$(cd "$(dirname "$candidate")" 2>/dev/null && pwd)" || return 1
+  base="$(basename "$candidate")"
+  [ -n "$directory" ] || return 1
+  printf '%s/%s\n' "${directory%/}" "$base"
+}
+
 wiseeff_upgrade_exec_self() {
-  exec "$upgrade_launcher" "${upgrade_launcher_argv[@]}"
+  local launcher="${upgrade_launcher:-}"
+  local status=0
+  if [ -z "$launcher" ] || [ ! -f "$launcher" ] || [ ! -x "$launcher" ]; then
+    wiseeff_upgrade_die 10 "Failed to re-execute the target upgrade controller: ${launcher:-the launcher path is unresolved} is not an executable file. The old stack is still running; re-run apply."
+    return 10
+  fi
+  # exec never returns on success. A returned exec is a failed handoff, so it
+  # must fail closed and stay visible instead of looking like a quiet exit.
+  exec "$launcher" "${upgrade_launcher_argv[@]}" || status=$?
+  wiseeff_upgrade_die 10 "Failed to re-execute the target upgrade controller ${launcher} (status ${status}). No build, backup, migration, quiesce, or downtime started and the running services are untouched; re-run apply."
+  return 10
+}
+
+# The handoff marker alone is not proof of a successful handoff. Fail closed
+# unless the handed-off controller is on the commit the old controller resolved.
+wiseeff_upgrade_verify_reexec_handoff() {
+  local current="$1"
+  local expected="$2"
+  local handoff_target="${3:-}"
+  if [ -n "$handoff_target" ] && [ "$handoff_target" != "$expected" ]; then
+    wiseeff_upgrade_die 10 "Refusing to continue the handed-off apply: the previous controller handed off target ${handoff_target} but this controller resolved ${expected}. Re-run apply from a clean checkout."
+    return 10
+  fi
+  if [ "$current" != "$expected" ]; then
+    wiseeff_upgrade_die 10 "Refusing to continue the handed-off apply: expected the target checkout ${expected} but HEAD is ${current}. Re-run apply from a clean checkout."
+    return 10
+  fi
 }
 
 wiseeff_upgrade_reexec_if_needed() {
   local current
-  [ "${WISEEFF_UPGRADE_REEXEC:-}" = "1" ] && return 0
   [ -n "${upgrade_launcher:-}" ] || return 0
   [ -n "${upgrade_target_sha:-}" ] || return 0
-  current="$(wiseeff_upgrade_git rev-parse HEAD)" || return 1
+  current="$(wiseeff_upgrade_git rev-parse HEAD)" || {
+    wiseeff_upgrade_die 10 "Could not resolve the current checkout commit before re-executing the upgrade controller."
+    return 10
+  }
+  if [ "${WISEEFF_UPGRADE_REEXEC:-}" = "1" ]; then
+    wiseeff_upgrade_verify_reexec_handoff "$current" "$upgrade_target_sha" "${WISEEFF_UPGRADE_REEXEC_TARGET:-}" || return $?
+    printf 'Continuing apply on the target upgrade controller %s.\n' "$current" >&2
+    return 0
+  fi
   [ "$current" != "$upgrade_target_sha" ] || return 0
+  printf 'Switching upgrade controller to target checkout %s.\n' "$upgrade_target_sha" >&2
   if ! wiseeff_upgrade_git checkout --detach "$upgrade_target_sha"; then
     wiseeff_upgrade_die 10 "The target checkout could not be selected before re-executing the upgrade controller."
-    return $?
+    return 10
   fi
+  printf 'Re-executing the target upgrade controller.\n' >&2
   trap - EXIT
   wiseeff_upgrade_release_lock || true
   export WISEEFF_UPGRADE_REEXEC=1
+  export WISEEFF_UPGRADE_REEXEC_TARGET="$upgrade_target_sha"
   wiseeff_upgrade_exec_self
+  return $?
 }
 
 wiseeff_upgrade_run_apply() {

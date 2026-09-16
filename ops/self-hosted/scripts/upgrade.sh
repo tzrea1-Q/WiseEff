@@ -873,6 +873,18 @@ wiseeff_upgrade_main() {
     "$catalog_operator_ref"
 }
 
-upgrade_launcher="$0"
+# Capture a stable absolute launcher before the target controller is selected.
+# `$0` is often relative (for example ./scripts/upgrade.sh); resolving it now
+# keeps the re-exec independent of the caller's working directory and of any
+# checkout that replaces files while apply runs.
+upgrade_launcher=""
+if resolved_upgrade_launcher="$(wiseeff_upgrade_resolve_launcher_path "$0")"; then
+  upgrade_launcher="$resolved_upgrade_launcher"
+elif resolved_upgrade_launcher="$(wiseeff_upgrade_resolve_launcher_path "${BASH_SOURCE[0]}")"; then
+  upgrade_launcher="$resolved_upgrade_launcher"
+else
+  upgrade_launcher="$0"
+fi
+unset resolved_upgrade_launcher
 upgrade_launcher_argv=("$@")
 wiseeff_upgrade_main "$@"

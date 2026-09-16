@@ -46,6 +46,71 @@ function runLibrary(command: string, args: string[] = [], env: NodeJS.ProcessEnv
   });
 }
 
+// Minimal two-commit checkout whose controller uses the real handoff code, so
+// the target-controller re-exec crosses a real process exec boundary.
+function createReexecFixture() {
+  const root = mkdtempSync(join(tmpdir(), "wiseeff-upgrade-reexec-"));
+  const repo = join(root, "repo");
+  const scripts = join(repo, "ops", "self-hosted", "scripts");
+  const lockRoot = join(root, "lock");
+  const lib = join(process.cwd(), "ops", "self-hosted", "scripts", "upgrade-lib.sh");
+  mkdirSync(scripts, { recursive: true });
+  mkdirSync(lockRoot, { recursive: true });
+
+  const controller = join(scripts, "controller.sh");
+  writeFileSync(controller, `#!/usr/bin/env bash
+set -euo pipefail
+source "$WISEEFF_TEST_LIB"
+upgrade_repo_root="$WISEEFF_TEST_REPO"
+upgrade_action=apply
+upgrade_target_sha="$WISEEFF_TEST_TARGET"
+if [ -n "\${WISEEFF_TEST_LAUNCHER:-}" ]; then
+  upgrade_launcher="$WISEEFF_TEST_LAUNCHER"
+else
+  upgrade_launcher="$(wiseeff_upgrade_resolve_launcher_path "$0")"
+fi
+upgrade_launcher_argv=("$@")
+export WISEEFF_OPERATION_LOCK_DIR="$WISEEFF_TEST_LOCK_ROOT"
+wiseeff_upgrade_acquire_lock
+trap wiseeff_upgrade_release_lock EXIT
+if ! wiseeff_upgrade_reexec_if_needed; then exit 10; fi
+printf 'TARGET_CONTROLLER_STARTED %s\\n' "$(wiseeff_upgrade_git rev-parse HEAD)"
+printf 'ARGV %s\\n' "$*"
+`, { mode: 0o755 });
+
+  const runGit = (...args: string[]) => spawnSync("git", ["-C", repo, ...args], { encoding: "utf8" });
+  expect(runGit("init", "-q", "-b", "main").status).toBe(0);
+  runGit("config", "user.email", "reexec@test.invalid");
+  runGit("config", "user.name", "reexec-test");
+  writeFileSync(join(repo, "release.txt"), "A\n");
+  runGit("add", "-A");
+  runGit("commit", "-qm", "A");
+  const a = runGit("rev-parse", "HEAD").stdout.trim();
+  writeFileSync(join(repo, "release.txt"), "B\n");
+  runGit("add", "-A");
+  runGit("commit", "-qm", "B");
+  const b = runGit("rev-parse", "HEAD").stdout.trim();
+  runGit("checkout", "-q", "--detach", a);
+
+  const env: NodeJS.ProcessEnv = {
+    WISEEFF_TEST_LIB: lib,
+    WISEEFF_TEST_REPO: repo,
+    WISEEFF_TEST_TARGET: b,
+    WISEEFF_TEST_LOCK_ROOT: lockRoot,
+  };
+  return {
+    root,
+    repo,
+    controller,
+    lockRoot,
+    a,
+    b,
+    env,
+    runGit,
+    head: () => runGit("rev-parse", "HEAD").stdout.trim(),
+  };
+}
+
 function runDataPlaneLibrary(prefix: string, command: string, env: NodeJS.ProcessEnv = {}) {
   const runDir = mkdtempSync(join(tmpdir(), prefix));
   const result = runLibrary(command, [runDir], {
@@ -1013,24 +1078,32 @@ describe("upgrade.sh public interface", () => {
         esac
       }
       wiseeff_upgrade_release_lock() { printf 'unlocked\\n'; }
-      wiseeff_upgrade_exec_self() { printf 'reexec=%s\\n' "$WISEEFF_UPGRADE_REEXEC"; exit 73; }
+      wiseeff_upgrade_exec_self() { printf 'reexec=%s target=%s\\n' "$WISEEFF_UPGRADE_REEXEC" "$WISEEFF_UPGRADE_REEXEC_TARGET"; exit 73; }
       wiseeff_upgrade_reexec_if_needed
     `], { encoding: "utf8", env: { ...process.env } });
 
     expect(result.status).toBe(73);
     expect(result.stdout).toContain("checked-out");
     expect(result.stdout).toContain("unlocked");
-    expect(result.stdout).toContain("reexec=1");
+    expect(result.stdout).toContain(`reexec=1 target=${target}`);
+    expect(result.stderr).toContain(`Switching upgrade controller to target checkout ${target}.`);
+    expect(result.stderr).toContain("Re-executing the target upgrade controller.");
   });
 
-  it("does not re-exec when already on the target checkout", () => {
+  it("does not re-exec or re-checkout when already on the target checkout", () => {
     const target = "2d5a6f29f45bb75a2b3623e5b9a3022035223b5f";
     const result = spawnSync("bash", ["-c", `
       source ops/self-hosted/scripts/upgrade-lib.sh
       upgrade_launcher=/bin/true
       upgrade_launcher_argv=(apply)
       upgrade_target_sha=${target}
-      wiseeff_upgrade_git() { printf '%s\\n' "${target}"; }
+      wiseeff_upgrade_git() {
+        case "$*" in
+          "rev-parse HEAD") printf '%s\\n' "${target}" ;;
+          "checkout --detach ${target}") printf 'unexpected-checkout\\n'; return 0 ;;
+          *) printf '%s\\n' "${target}" ;;
+        esac
+      }
       wiseeff_upgrade_exec_self() { printf 'unexpected-reexec\\n'; exit 73; }
       wiseeff_upgrade_reexec_if_needed
       printf 'stayed\\n'
@@ -1039,6 +1112,234 @@ describe("upgrade.sh public interface", () => {
     expect(result.status).toBe(0);
     expect(result.stdout).toContain("stayed");
     expect(result.stdout).not.toContain("unexpected-reexec");
+    expect(result.stdout).not.toContain("unexpected-checkout");
+  });
+
+  it("releases the flock lock without permanently redirecting the caller's stderr", () => {
+    const lockRoot = mkdtempSync(join(tmpdir(), "wiseeff-upgrade-lock-fd-"));
+    const result = spawnSync("bash", ["-c", `
+      source ops/self-hosted/scripts/operation-lock.sh
+      lock_root="$1"
+      mkdir -p "$lock_root"
+      lock_path="$lock_root/.operation.lock"
+      : > "$lock_path"
+      # Exercise the flock branch without requiring util-linux flock to exist.
+      flock() { return 0; }
+      exec 9<>"$lock_path"
+      operation_lock_path="$lock_path"
+      operation_lock_owner_path="$lock_root/.operation.lock.owner"
+      printf 'pid=%s\\n' "$$" > "$operation_lock_owner_path"
+      operation_lock_mode=flock
+      wiseeff_operation_lock_release
+      printf 'stderr-marker\\n' >&2
+      if (printf '' >&9) 2>/dev/null; then printf 'fd9=open\\n'; else printf 'fd9=closed\\n'; fi
+      [ ! -e "$operation_lock_owner_path" ] && printf 'owner-cleared\\n'
+    `, "test", lockRoot], { encoding: "utf8", env: { ...process.env } });
+
+    expect(result.status).toBe(0);
+    expect(result.stderr).toContain("stderr-marker");
+    expect(result.stdout).toContain("fd9=closed");
+    expect(result.stdout).toContain("owner-cleared");
+  });
+
+  it("keeps stderr usable, frees the lock, and lets another process acquire it", () => {
+    const lockRoot = mkdtempSync(join(tmpdir(), "wiseeff-upgrade-lock-handback-"));
+    const result = spawnSync("bash", ["-c", `
+      source ops/self-hosted/scripts/operation-lock.sh
+      lock_root="$1"
+      wiseeff_operation_lock_acquire "$lock_root" held first-upgrade
+      mode="$operation_lock_mode"
+      if bash -c 'source ops/self-hosted/scripts/operation-lock.sh
+        wiseeff_operation_lock_acquire "$1" held second-upgrade 2>/dev/null || exit 75
+        wiseeff_operation_lock_release
+        printf "acquired\\n"' test "$lock_root" >/dev/null 2>&1; then
+        printf 'contention=missing\\n'
+      else
+        printf 'contention=refused\\n'
+      fi
+      wiseeff_operation_lock_release
+      printf 'mode=%s\\n' "$mode"
+      printf 'stderr-marker\\n' >&2
+      if bash -c 'source ops/self-hosted/scripts/operation-lock.sh
+        wiseeff_operation_lock_acquire "$1" held third-upgrade 2>/dev/null || exit 75
+        wiseeff_operation_lock_release
+        printf "acquired\\n"' test "$lock_root" >/dev/null 2>&1; then
+        printf 'reacquire=ok\\n'
+      else
+        printf 'reacquire=blocked\\n'
+      fi
+    `, "test", lockRoot], { encoding: "utf8", env: { ...process.env } });
+
+    expect(result.status).toBe(0);
+    expect(result.stdout).toContain("contention=refused");
+    expect(result.stdout).toContain("reacquire=ok");
+    expect(result.stderr).toContain("stderr-marker");
+  });
+
+  it("hands apply off to the target controller across a real exec boundary", () => {
+    const fixture = createReexecFixture();
+    const result = spawnSync("bash", [fixture.controller, "apply", "--allow-insecure-build"], {
+      cwd: fixture.repo,
+      encoding: "utf8",
+      env: { ...process.env, ...fixture.env },
+    });
+
+    const output = `${result.stdout}${result.stderr}`;
+    expect(result.status).toBe(0);
+    expect(output).toContain(`TARGET_CONTROLLER_STARTED ${fixture.b}`);
+    expect(result.stderr).toContain(`Continuing apply on the target upgrade controller ${fixture.b}.`);
+    expect(output.split("Re-executing the target upgrade controller.").length - 1).toBe(1);
+    expect(fixture.head()).toBe(fixture.b);
+  });
+
+  it("preserves the original apply arguments across the real handoff", () => {
+    const fixture = createReexecFixture();
+    const args = [
+      "apply",
+      "--ref", "origin/main",
+      "--allow-insecure-build",
+      "--build-network-file", "/tmp/wiseeff-build-network.env",
+      "--env-file", "/tmp/wiseeff-runtime.env",
+      "--state-dir", "/tmp/wiseeff-state",
+      "--backup-root", "/tmp/wiseeff-backups",
+      "--parameter-data-mode", "new-empty",
+      "--non-interactive",
+      "--yes",
+    ];
+    const result = spawnSync("bash", [fixture.controller, ...args], {
+      cwd: fixture.repo,
+      encoding: "utf8",
+      env: { ...process.env, ...fixture.env },
+    });
+
+    expect(result.status).toBe(0);
+    expect(result.stdout).toContain(`ARGV ${args.join(" ")}`);
+    expect(result.stdout).toContain("--allow-insecure-build");
+    expect(fixture.head()).toBe(fixture.b);
+  });
+
+  it("resolves the handoff launcher to an absolute path before any checkout", () => {
+    const directory = mkdtempSync(join(tmpdir(), "wiseeff-launcher-path-"));
+    const launcher = join(directory, "upgrade.sh");
+    writeFileSync(launcher, "#!/usr/bin/env bash\nexit 0\n", { mode: 0o755 });
+    const result = spawnSync("bash", ["-c", `
+      source ops/self-hosted/scripts/upgrade-lib.sh
+      set +e
+      relative="$(wiseeff_upgrade_resolve_launcher_path "$1")"; printf 'relative=%s status=%s\\n' "$relative" "$?"
+      bare="$(wiseeff_upgrade_resolve_launcher_path upgrade.sh)"; printf 'bare=%s status=%s\\n' "$bare" "$?"
+      missing="$(wiseeff_upgrade_resolve_launcher_path "$2/missing.sh")"; printf 'missing=%s status=%s\\n' "$missing" "$?"
+      directory="$(wiseeff_upgrade_resolve_launcher_path "$2")"; printf 'directory=%s status=%s\\n' "$directory" "$?"
+      empty="$(wiseeff_upgrade_resolve_launcher_path "")"; printf 'empty=%s status=%s\\n' "$empty" "$?"
+    `, "test", launcher, directory], {
+      encoding: "utf8",
+      env: { ...process.env, PATH: `${directory}:${process.env.PATH ?? ""}` },
+    });
+
+    const resolved = (line: string) => line.slice(line.indexOf("=") + 1, line.lastIndexOf(" status="));
+    const lines = Object.fromEntries(
+      result.stdout.trim().split("\n").map((line) => [line.slice(0, line.indexOf("=")), line]),
+    );
+    expect(result.status).toBe(0);
+    expect(lines.relative).toMatch(/ status=0$/);
+    expect(lines.bare).toMatch(/ status=0$/);
+    expect(resolved(lines.relative)).toMatch(/\/upgrade\.sh$/);
+    expect(resolved(lines.bare)).toBe(resolved(lines.relative));
+    expect(lines.missing).toBe("missing= status=1");
+    expect(lines.directory).toBe("directory= status=1");
+    expect(lines.empty).toBe("empty= status=1");
+  });
+
+  it("keeps the controller handoff before build, quiesce, backup, and migration", () => {
+    const implementation = readFileSync("ops/self-hosted/scripts/upgrade-lib.sh", "utf8");
+    const applyBody = implementation.split("wiseeff_upgrade_run_apply()")[1] ?? "";
+    const reexecIndex = applyBody.indexOf("wiseeff_upgrade_reexec_if_needed");
+    expect(reexecIndex).toBeGreaterThan(0);
+    for (const laterStep of [
+      "wiseeff_upgrade_init_run",
+      "wiseeff_upgrade_build_candidate",
+      "wiseeff_upgrade_stop_old_stack",
+      "wiseeff_upgrade_snapshot_all",
+      "wiseeff_upgrade_run_official_migrate",
+    ]) {
+      const laterIndex = applyBody.indexOf(laterStep);
+      expect(laterIndex).toBeGreaterThan(reexecIndex);
+    }
+  });
+
+  it("refuses a handed-off controller whose checkout is not the expected target", () => {
+    const fixture = createReexecFixture();
+    const result = spawnSync("bash", [fixture.controller, "apply"], {
+      cwd: fixture.repo,
+      encoding: "utf8",
+      env: {
+        ...process.env,
+        ...fixture.env,
+        WISEEFF_UPGRADE_REEXEC: "1",
+        WISEEFF_UPGRADE_REEXEC_TARGET: fixture.b,
+      },
+    });
+
+    expect(result.status).toBe(10);
+    expect(result.stderr).toContain("expected the target checkout");
+    expect(result.stderr).toContain(fixture.a);
+    expect(result.stdout).not.toContain("TARGET_CONTROLLER_STARTED");
+    expect(fixture.head()).toBe(fixture.a);
+  });
+
+  it("refuses a handoff whose carried target disagrees with the resolved target", () => {
+    const fixture = createReexecFixture();
+    const result = spawnSync("bash", [fixture.controller, "apply"], {
+      cwd: fixture.repo,
+      encoding: "utf8",
+      env: {
+        ...process.env,
+        ...fixture.env,
+        WISEEFF_UPGRADE_REEXEC: "1",
+        WISEEFF_UPGRADE_REEXEC_TARGET: fixture.a,
+      },
+    });
+
+    expect(result.status).toBe(10);
+    expect(result.stderr).toContain("handed off target");
+    expect(result.stdout).not.toContain("TARGET_CONTROLLER_STARTED");
+  });
+
+  it("treats a non-executable launcher as a fatal pre-downtime handoff failure", () => {
+    const fixture = createReexecFixture();
+    const result = spawnSync("bash", [fixture.controller, "apply"], {
+      cwd: fixture.repo,
+      encoding: "utf8",
+      env: {
+        ...process.env,
+        ...fixture.env,
+        WISEEFF_TEST_LAUNCHER: join(fixture.root, "missing-launcher.sh"),
+      },
+    });
+
+    expect(result.status).toBe(10);
+    expect(result.stderr).toContain("Failed to re-execute the target upgrade controller");
+    expect(result.stderr).toContain("old stack is still running");
+    expect(result.stdout).not.toContain("TARGET_CONTROLLER_STARTED");
+  });
+
+  it("reports a returned exec as a failed handoff instead of a quiet exit", () => {
+    const root = mkdtempSync(join(tmpdir(), "wiseeff-upgrade-returned-exec-"));
+    const brokenLauncher = join(root, "broken-launcher.sh");
+    writeFileSync(brokenLauncher, "#!/nonexistent/interpreter\n", { mode: 0o755 });
+    // A failed exec terminates a `set -e` shell before it can return, so this
+    // exercises the defensive branch that exists for shells where exec returns.
+    const result = spawnSync("bash", ["-c", `
+      source ops/self-hosted/scripts/upgrade-lib.sh
+      set +e
+      shopt -s execfail
+      upgrade_launcher="$1"
+      upgrade_launcher_argv=(apply)
+      wiseeff_upgrade_exec_self
+    `, "test", brokenLauncher], { encoding: "utf8", env: { ...process.env } });
+
+    expect(result.status).toBe(10);
+    expect(result.stderr).toContain(`Failed to re-execute the target upgrade controller ${brokenLauncher}`);
+    expect(result.stderr).toContain("downtime");
   });
 
   it("documents the small operator interface without touching the runtime", () => {
