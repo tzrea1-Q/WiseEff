@@ -926,6 +926,169 @@
         }
       }
     },
+    "/api/v1/users/{userId}/organization-roles": {
+      "put": {
+        "operationId": "users.replaceOrganizationRoles",
+        "summary": "Replace user organization roles with optimistic concurrency control",
+        "tags": [
+          "users"
+        ],
+        "parameters": [
+          {
+            "name": "userId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReplaceUserOrganizationRolesRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserGovernanceResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "404": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "409": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{projectId}/workflow-role-bindings": {
+      "get": {
+        "operationId": "users.getProjectWorkflowRoleBindings",
+        "summary": "Get project workflow role bindings and readiness",
+        "tags": [
+          "users"
+        ],
+        "parameters": [
+          {
+            "name": "projectId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectWorkflowRoleBindingsResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "404": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{projectId}/workflow-role-bindings/{userId}": {
+      "put": {
+        "operationId": "users.replaceProjectWorkflowRoleBindings",
+        "summary": "Replace project workflow role bindings with optimistic concurrency control",
+        "tags": [
+          "users"
+        ],
+        "parameters": [
+          {
+            "name": "projectId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "userId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReplaceProjectWorkflowRolesRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserGovernanceResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "404": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "409": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
     "/api/v1/users/{userId}/password": {
       "post": {
         "operationId": "users.resetPassword",
@@ -14964,6 +15127,18 @@
       "ReplaceUserRolesRequest": {
         "type": "object",
         "x-wiseeff-schema": "ReplaceUserRolesRequest"
+      },
+      "ReplaceUserOrganizationRolesRequest": {
+        "type": "object",
+        "x-wiseeff-schema": "ReplaceUserOrganizationRolesRequest"
+      },
+      "ProjectWorkflowRoleBindingsResponse": {
+        "type": "object",
+        "x-wiseeff-schema": "ProjectWorkflowRoleBindingsResponse"
+      },
+      "ReplaceProjectWorkflowRolesRequest": {
+        "type": "object",
+        "x-wiseeff-schema": "ReplaceProjectWorkflowRolesRequest"
       },
       "ResetUserPasswordRequest": {
         "type": "object",
