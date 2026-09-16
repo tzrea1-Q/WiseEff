@@ -19,7 +19,7 @@ import type { RouteRequest, WiseEffRouter } from "../../shared/http/router";
 import { uploadProjectParameterFile } from "../parameter-files/service";
 import { listConfigSets } from "../parameter-files/configSetService";
 import { getLatestConfigRevision } from "../parameter-topology/repository";
-import { createBindingDraft } from "../parameter-topology/service";
+import { createBindingDraft, listProjectBindings } from "../parameter-topology/service";
 import {
   createBindingDraftBodySchema,
   createBindingDraftParamsSchema,
@@ -164,9 +164,13 @@ export function registerCatalogProjectValueConsumerRoutes(
     }
     const params = parseWithSchema(projectBindingsParamsSchema, request.params);
     const query = parseWithSchema(projectBindingsQuerySchema, flattenQuery(request.query));
-    // Canonical-only current view (Issue #849 problem statement): archived legacy
-    // bindings are never merged into this list and an empty canonical Catalog never
-    // falls back to legacy rows. An honest empty list is the correct answer.
+    // Legacy fallback, temporarily restored (TD-125). The canonical-only switch from
+    // Issue #849 scope item 1 is only correct once the canonical plane is actually
+    // populated, and nothing wires seed initialization or `materializeSeedSources` into
+    // release or seed publication yet. A canonical-only reader therefore answers every
+    // legacy-seeded environment (including CI's quality runtime) with an empty DTS
+    // workbench. Canonical rows still win when they exist; the fallback only answers the
+    // empty case. Return to canonical-only in the change that lands the canonical writer.
     const project = await getProjectById(db, {
       organizationId: auth.organization.id,
       projectId: params.projectId
@@ -176,11 +180,15 @@ export function registerCatalogProjectValueConsumerRoutes(
         projectId: params.projectId
       });
     }
+    const original = await listProjectBindings(db, auth, {
+      projectId: params.projectId,
+      revisionId: query.revisionId
+    });
     const catalogRows = await listCatalogBindingRowsForProject(db, auth, {
       projectId: params.projectId,
       revisionId: query.revisionId
     });
-    const items = catalogRows.map((row) =>
+    const catalogItems = catalogRows.map((row) =>
       projectBindingDtoSchema.parse({
         id: row.id,
         parameterSpecId: row.parameterSpecId,
@@ -204,7 +212,20 @@ export function registerCatalogProjectValueConsumerRoutes(
         documentation: row.documentation
       })
     );
-    return { status: 200, body: { items } };
+    const seen = new Set(catalogItems.map((item) => item.id));
+    const catalogDefinitions = new Set(
+      catalogItems.map((item) => item.definitionId ?? item.parameterSpecId),
+    );
+    const extras = original.items.filter(
+      (item) =>
+        !seen.has(item.id) &&
+        !catalogDefinitions.has(item.parameterSpecId) &&
+        !(item.definitionId && catalogDefinitions.has(item.definitionId)),
+    );
+    return {
+      status: 200,
+      body: { items: catalogItems.length > 0 ? [...catalogItems, ...extras] : original.items }
+    };
   });
 
   /**
