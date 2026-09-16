@@ -587,16 +587,25 @@ describe.skipIf(!databaseAvailable)("product feedback service", () => {
     const events = await auditEvents();
     const progressAudits = events.filter((e) => e.kind === "product-feedback-progress");
     expect(progressAudits.length).toBeGreaterThanOrEqual(5);
-    const lastAudit = progressAudits.at(-1);
-    expect(lastAudit).toMatchObject({
-      kind: "product-feedback-progress",
-      action: "update",
-      target_type: "product-feedback",
-      target_id: submitted.id
+    for (const audit of progressAudits) {
+      expect(audit).toMatchObject({
+        kind: "product-feedback-progress",
+        action: "update",
+        target_type: "product-feedback",
+        target_id: submitted.id
+      });
+      // Audit metadata must not store full message text — only boolean flags
+      expect(audit.metadata).not.toHaveProperty("publicMessage");
+      expect(audit.metadata).not.toHaveProperty("internalMessage");
+    }
+    const reopenAudit = progressAudits.find(
+      (e) => (e.metadata as Record<string, unknown>).previousStatus === "closed"
+    );
+    expect(reopenAudit).toBeDefined();
+    expect(reopenAudit?.metadata).toMatchObject({
+      hasPublicMessage: true,
+      nextStatus: "in_progress"
     });
-    // Audit metadata must not store full message text — only boolean flags
-    expect(lastAudit?.metadata).not.toHaveProperty("publicMessage");
-    expect(lastAudit?.metadata).toMatchObject({ hasPublicMessage: true });
   });
 
   it("appendProductFeedbackProgress: illegal transitions rejected", async () => {

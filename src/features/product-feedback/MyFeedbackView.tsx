@@ -240,8 +240,16 @@ export function MyFeedbackView({
             return (
               <div
                 key={item.id}
-                className="group relative rounded-lg border border-border bg-card p-3 transition-colors hover:border-primary/50 cursor-pointer"
+                role="button"
+                tabIndex={0}
+                className="group relative rounded-lg border border-border bg-card p-3 transition-colors hover:border-primary/50 cursor-pointer text-left"
                 onClick={() => setSelectedFeedback(item)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    setSelectedFeedback(item);
+                  }
+                }}
               >
                 <div className="flex items-start justify-between gap-2">
                   <div className="flex items-center gap-2">
@@ -273,15 +281,15 @@ export function MyFeedbackView({
                 )}
 
                 {isDraft && (
-                  <div
-                    className="mt-2 flex items-center justify-end gap-2 border-t border-border/40 pt-2"
-                    onClick={(e) => e.stopPropagation()}
-                  >
+                  <div className="mt-2 flex items-center justify-end gap-2 border-t border-border/40 pt-2">
                     <Button
                       variant="outline"
                       size="sm"
                       className="h-6 px-2 text-[11px] gap-1"
-                      onClick={() => onEditDraft(item)}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onEditDraft(item);
+                      }}
                     >
                       <Edit3 size={12} />
                       继续编辑
@@ -290,7 +298,10 @@ export function MyFeedbackView({
                       variant="ghost"
                       size="sm"
                       className="h-6 px-2 text-[11px] text-destructive hover:bg-destructive/10 gap-1"
-                      onClick={() => setDeleteTarget(item)}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setDeleteTarget(item);
+                      }}
                     >
                       <Trash2 size={12} />
                       删除
