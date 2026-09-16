@@ -179,7 +179,7 @@ describe("R2-AGT real authenticated Catalog execution", () => {
       [RESTRICTED, ORG]
     );
     await pool.query(
-      "insert into user_role_bindings (id, user_id, organization_id, project_id, role_id) values ('urb-r2-818-restricted', $1, $2, $3, 'hardware-user')",
+      "insert into user_role_bindings (id, user_id, organization_id, project_id, role_id) values ('urb-r2-818-restricted', $1, $2, $3, 'hardware-committer')",
       [RESTRICTED, ORG, PROJECT]
     );
     await pool.query(
@@ -797,7 +797,7 @@ describe("R2-AGT real authenticated Catalog execution", () => {
     const pending = await pendingBindingAction();
     const revoke = await json("PUT", `/api/v1/projects/${PROJECT}/workflow-role-bindings/${RESTRICTED}`, {
       roles: [],
-      expectedRoles: ["hardware-user"]
+      expectedRoles: ["hardware-committer"]
     });
     expect(revoke.status, JSON.stringify(revoke.body)).toBe(200);
     try {
@@ -817,7 +817,7 @@ describe("R2-AGT real authenticated Catalog execution", () => {
       expect(await businessState()).toEqual(before);
     } finally {
       const restored = await json("PUT", `/api/v1/projects/${PROJECT}/workflow-role-bindings/${RESTRICTED}`, {
-        roles: ["hardware-user"],
+        roles: ["hardware-committer"],
         expectedRoles: []
       });
       expect(restored.status).toBe(200);

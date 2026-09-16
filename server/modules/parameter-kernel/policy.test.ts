@@ -61,11 +61,10 @@ describe("parameter policy", () => {
     ).toBe(true);
   });
 
-  it("allows project-scoped edit for user with project role even when global permissions are empty (R06)", () => {
-    const projectOnlyUser = auth({ roles: [{ projectId: "aurora", roleId: "hardware-user" }], permissions: [] });
-    expect(canEditParameters(projectOnlyUser, "aurora")).toBe(true);
-    expect(canEditParameters(projectOnlyUser, "zephyr")).toBe(false);
-    expect(canEditParameters(projectOnlyUser)).toBe(false);
+  it("denies project-scoped edit without the flat edit permission even with a role binding", () => {
+    expect(
+      canEditParameters(auth({ roles: [{ projectId: "aurora", roleId: "hardware-user" }], permissions: [] }), "aurora")
+    ).toBe(false);
   });
 
   it("requires active users and parameter:edit-critical for safety-critical writes", () => {
