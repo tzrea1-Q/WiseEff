@@ -135,4 +135,43 @@ describe("pairingService", () => {
     });
     expect(JSON.stringify(events[0])).not.toContain("wb_test_token");
   });
+
+  it("creates a new bridge for another user on the same machine instead of reusing the first user's bridge", async () => {
+    const repo = {
+      createPairingCode: vi.fn().mockResolvedValue(undefined),
+      consumePairingCode: vi.fn().mockResolvedValue({ userId: "u-2", organizationId: "org-1" }),
+      listActiveBridgesForMachine: vi.fn().mockResolvedValue([]),
+      createBridge: vi.fn().mockResolvedValue(undefined),
+      createBridgeToken: vi.fn().mockResolvedValue(undefined)
+    };
+    const service = createPairingService({
+      repo: repo as never,
+      now: () => new Date("2026-09-16T00:00:00.000Z"),
+      randomCode: () => "654321",
+      issueToken: () => "wb_user_b",
+      createBridgeId: () => "br-B"
+    });
+
+    const paired = await service.pairWithCode({
+      code: "654321",
+      machineLabel: "WIN-PC",
+      platform: "windows",
+      arch: "amd64",
+      clientVersion: "0.1.1"
+    });
+
+    expect(paired.bridgeId).toBe("br-B");
+    expect(repo.listActiveBridgesForMachine).toHaveBeenCalledWith({
+      userId: "u-2",
+      organizationId: "org-1",
+      machineLabel: "WIN-PC",
+      platform: "windows",
+      arch: "amd64"
+    });
+    expect(repo.createBridge).toHaveBeenCalledWith(expect.objectContaining({
+      id: "br-B",
+      userId: "u-2",
+      organizationId: "org-1"
+    }));
+  });
 });

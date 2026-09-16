@@ -4,14 +4,15 @@ import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import { execFile, spawnSync } from "node:child_process";
 
-const execFileAsync = promisify(execFile);
+import { computeBridgeSourceFingerprint, readBridgeClientVersion } from "./lib/bridgePackageConsistency";
 
-const VERSION = "0.1.0";
+const execFileAsync = promisify(execFile);
 const NODE_VERSION = "22.14.0";
 const BRIDGE_PACKAGE_JSON = `${JSON.stringify({ type: "module", private: true }, null, 2)}\n`;
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.resolve(scriptDir, "..");
+const VERSION = await readBridgeClientVersion(rootDir);
 const bundlePath = path.join(rootDir, "packages", "device-bridge", "dist", "cli.js");
 const stagingDir = path.join(rootDir, "ops", "self-hosted", "bridge-installer", "staging");
 const manifestPath = path.join(rootDir, "ops", "self-hosted", "bridge-artifacts", VERSION, "manifest.json");
@@ -39,6 +40,7 @@ async function exists(filePath: string) {
 }
 
 const BRIDGE_HTTP_CONNECT_ROUTE_MARKER = 'pathname === "/connect"';
+const BRIDGE_REBIND_RESTART_MARKER = "forceRestart: Boolean(input.code)";
 
 async function sha256File(filePath: string) {
   if (process.platform === "win32") {
@@ -76,6 +78,11 @@ async function assertBridgeHttpConnectRoute() {
   if (!source.includes(BRIDGE_HTTP_CONNECT_ROUTE_MARKER)) {
     throw new Error(
       `${bundlePath} is missing POST /connect. Check out latest main and rerun npm run build:bridge-installers.`
+    );
+  }
+  if (!source.includes(BRIDGE_REBIND_RESTART_MARKER)) {
+    throw new Error(
+      `${bundlePath} is missing pairing-code forceRestart. Rebuild from current device-bridge source before packaging installers.`
     );
   }
 }
@@ -148,8 +155,12 @@ async function mergeManifestInstallers(built: Array<{ target: InstallerTarget; p
   const manifest = JSON.parse(raw) as {
     recommendedVersion: string;
     minCompatibleVersion: string;
+    sourceFingerprint?: string;
     items: Array<Record<string, unknown>>;
   };
+  manifest.recommendedVersion = VERSION;
+  manifest.minCompatibleVersion = manifest.minCompatibleVersion || "0.1.0";
+  manifest.sourceFingerprint = await computeBridgeSourceFingerprint(rootDir);
 
   const portableItems = manifest.items.filter((item) => item.artifactKind !== "installer");
   const installerItems: ManifestInstallerItem[] = [];
@@ -165,18 +176,7 @@ async function mergeManifestInstallers(built: Array<{ target: InstallerTarget; p
     });
   }
 
-  const placeholders = INSTALLER_TARGETS.filter(
-    (target) => !installerItems.some((item) => item.platform === target.platform && item.arch === target.arch)
-  ).map((target) => ({
-    platform: target.platform,
-    arch: target.arch,
-    version: VERSION,
-    artifact: target.artifact,
-    artifactKind: "installer",
-    sha256: "0000000000000000000000000000000000000000000000000000000000000000"
-  }));
-
-  manifest.items = [...installerItems, ...placeholders, ...portableItems.map((item) => ({ ...item, artifactKind: item.artifactKind ?? "portable" }))];
+  manifest.items = [...installerItems, ...portableItems.map((item) => ({ ...item, artifactKind: item.artifactKind ?? "portable" }))];
   await writeFile(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`, "utf8");
   console.log(`Updated manifest with installer artifacts: ${manifestPath}`);
 }

@@ -3,10 +3,22 @@ import { describe, expect, it, vi } from "vitest";
 
 import { LocalDeviceBridgePanel } from "./LocalDeviceBridgePanel";
 import { listReleases } from "../infrastructure/http/deviceBridgeClient";
+import * as bridgeLauncher from "../infrastructure/http/bridgeConnectLauncher";
+import { FOREIGN_ACCOUNT_REBIND_HINT } from "./bridgePanelStatus";
 
 vi.mock("../infrastructure/http/deviceBridgeClient", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../infrastructure/http/deviceBridgeClient")>();
   return { ...actual, listReleases: vi.fn() };
+});
+
+vi.mock("../infrastructure/http/bridgeConnectLauncher", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../infrastructure/http/bridgeConnectLauncher")>();
+  return {
+    ...actual,
+    connectLocalBridge: vi.fn(async () => ({ reachable: true, ok: true, accepted: true })),
+    pollLocalBridgeHealth: vi.fn(async () => null),
+    launchBridgeSchemeForConnect: vi.fn()
+  };
 });
 
 function renderPanel() {
@@ -81,4 +93,106 @@ it("retains confirmed pairing when listing fails and allows retry", async () => 
   fireEvent.click(screen.getByRole("button", { name: "刷新代理状态" }));
   await waitFor(() => expect(listBridges).toHaveBeenCalledTimes(3));
   expect(screen.queryByText(/代理列表暂时不可用/)).not.toBeInTheDocument();
+});
+
+it("asks the current user to rebind a live local bridge owned by another account", async () => {
+  vi.mocked(listReleases).mockResolvedValue({ items: [] } as never);
+  const onDetect = vi.fn();
+  let bridges: Array<{
+    id: string;
+    machineLabel: string;
+    platform: "darwin";
+    arch: "arm64";
+    revokedAt: string | null;
+  }> = [];
+  let health = {
+    ok: true as const,
+    paired: true,
+    connected: true,
+    bridgeId: "br-A",
+    updatedAt: "2026-09-16T00:00:00.000Z"
+  };
+  vi.mocked(bridgeLauncher.connectLocalBridge).mockImplementation(async () => {
+    bridges = [{ id: "br-B", machineLabel: "本机", platform: "darwin", arch: "arm64", revokedAt: null }];
+    health = { ...health, bridgeId: "br-B", updatedAt: "2026-09-16T00:01:00.000Z" };
+    return { reachable: true, ok: true, accepted: true };
+  });
+  vi.mocked(bridgeLauncher.pollLocalBridgeHealth).mockImplementation(async (options) => {
+    expect(options?.excludeBridgeId).toBe("br-A");
+    return health;
+  });
+
+  render(
+    <LocalDeviceBridgePanel
+      detecting={false}
+      protocol="hdc"
+      onDetect={onDetect}
+      listBridges={async () => bridges}
+      probeHealth={async () => ({ health, reachability: "ok" })}
+      createPairingCode={async () => ({ code: "654321", expiresAt: "2099-01-01T00:00:00Z" })}
+    />
+  );
+
+  const rebindButton = await screen.findByRole("button", { name: "重新配对" });
+  expect(screen.getByText(FOREIGN_ACCOUNT_REBIND_HINT)).toBeInTheDocument();
+  expect(screen.queryByText(/配对已失效/)).not.toBeInTheDocument();
+  await waitFor(() => expect(rebindButton).toBeEnabled());
+
+  fireEvent.click(rebindButton);
+
+  await waitFor(() => expect(onDetect).toHaveBeenCalledTimes(1));
+  expect(await screen.findByText(/Bridge 在线/)).toBeInTheDocument();
+  expect(screen.queryByText(/配对已失效/)).not.toBeInTheDocument();
+});
+
+it("prompts to install the latest Bridge when local health is an older client", async () => {
+  vi.mocked(listReleases).mockResolvedValue({
+    recommendedVersion: "0.1.1",
+    minCompatibleVersion: "0.1.0",
+    items: [
+      {
+        platform: "darwin",
+        arch: "arm64",
+        artifactKind: "installer",
+        version: "0.1.1",
+        downloadUrl: "/downloads/device-bridge/0.1.1/darwin/arm64/WiseEffBridge_0.1.1_darwin_arm64.pkg"
+      }
+    ]
+  } as never);
+
+  render(
+    <LocalDeviceBridgePanel
+      detecting={false}
+      protocol="hdc"
+      onDetect={() => undefined}
+      listBridges={async () => [
+        {
+          id: "br-A",
+          machineLabel: "本机",
+          platform: "darwin",
+          arch: "arm64",
+          clientVersion: "0.1.0",
+          capabilities: {},
+          createdAt: "2026-09-16T00:00:00.000Z",
+          lastSeenAt: "2026-09-16T00:00:00.000Z",
+          revokedAt: null
+        }
+      ]}
+      probeHealth={async () => ({
+        health: {
+          ok: true,
+          paired: true,
+          connected: true,
+          bridgeId: "br-A",
+          updatedAt: "2026-09-16T00:00:00.000Z",
+          tools: { adb: { available: true }, hdc: { available: true } }
+        },
+        reachability: "ok"
+      })}
+    />
+  );
+
+  expect(await screen.findByText("请升级本机 Bridge")).toBeInTheDocument();
+  expect(screen.getByText(/推荐版本 0\.1\.1/)).toBeInTheDocument();
+  expect(screen.getByRole("link", { name: /安装 Bridge|下载最新安装包/ })).toBeInTheDocument();
 });

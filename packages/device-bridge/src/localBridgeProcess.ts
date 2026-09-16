@@ -51,16 +51,23 @@ export async function stopLocalBridgeHealthListener(platform: NodeJS.Platform, p
   }
 }
 
+export type LocalBridgeProcessHealth = {
+  connected: boolean;
+  paired?: boolean;
+  bridgeId?: string;
+};
+
 export async function waitForLocalBridgeConnection(
   fetchImpl: typeof fetch,
   timeoutMs = 10_000,
-  intervalMs = 500
-) {
+  intervalMs = 500,
+  options?: { expectedBridgeId?: string }
+): Promise<LocalBridgeProcessHealth | null> {
   const started = Date.now();
 
   while (Date.now() - started < timeoutMs) {
     const health = await probeLocalBridgeHealth(fetchImpl);
-    if (health?.connected) {
+    if (isExpectedConnectedHealth(health, options?.expectedBridgeId)) {
       return health;
     }
     await new Promise((resolve) => setTimeout(resolve, intervalMs));
@@ -69,16 +76,27 @@ export async function waitForLocalBridgeConnection(
   return probeLocalBridgeHealth(fetchImpl);
 }
 
-async function probeLocalBridgeHealth(fetchImpl: typeof fetch) {
+function isExpectedConnectedHealth(
+  health: LocalBridgeProcessHealth | null,
+  expectedBridgeId?: string
+): health is LocalBridgeProcessHealth {
+  if (!health?.connected) {
+    return false;
+  }
+  return !expectedBridgeId || health.bridgeId === expectedBridgeId;
+}
+
+async function probeLocalBridgeHealth(fetchImpl: typeof fetch): Promise<LocalBridgeProcessHealth | null> {
   try {
     const response = await fetchImpl("http://127.0.0.1:18787/health");
     if (!response.ok) {
       return null;
     }
-    const body = (await response.json()) as { connected?: boolean; paired?: boolean };
+    const body = (await response.json()) as { connected?: boolean; paired?: boolean; bridgeId?: unknown };
     return {
       connected: Boolean(body.connected),
-      paired: typeof body.paired === "boolean" ? body.paired : undefined
+      paired: typeof body.paired === "boolean" ? body.paired : undefined,
+      bridgeId: typeof body.bridgeId === "string" ? body.bridgeId : undefined
     };
   } catch {
     return null;

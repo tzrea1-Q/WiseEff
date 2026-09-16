@@ -273,6 +273,54 @@ describe("LocalDeviceBridgeWizard", () => {
     expect(screen.queryByText("HDC 工具")).not.toBeInTheDocument();
   });
 
+  it("shows an upgrade notice with a download action when the running Bridge is behind", () => {
+    render(
+      <LocalDeviceBridgeWizard
+        panelStatus="online_no_device"
+        protocol="hdc"
+        health={{
+          ok: true,
+          paired: true,
+          connected: true,
+          bridgeId: "br-A",
+          clientVersion: "0.1.0",
+          updatedAt: "2026-09-16T00:00:00.000Z",
+          tools: {
+            adb: { available: true, version: "adb", source: "system" },
+            hdc: { available: true, version: "hdc", source: "system" }
+          }
+        }}
+        bridges={[{ id: "br-A", machineLabel: "本机", platform: "darwin", arch: "arm64", clientVersion: "0.1.0", capabilities: {}, createdAt: "2026-09-16T00:00:00.000Z", lastSeenAt: null, revokedAt: null }]}
+        recommendedVersion="0.1.1"
+        hostRelease={{
+          platform: "darwin",
+          arch: "arm64",
+          version: "0.1.1",
+          downloadUrl: "/downloads/device-bridge/0.1.1/darwin/arm64/WiseEffBridge_0.1.1_darwin_arm64.pkg",
+          artifactKind: "installer"
+        }}
+        installerAlternates={[]}
+        portableReleases={[]}
+        pairingCode={null}
+        pairingCodeLoading={false}
+        checking={false}
+        detecting={false}
+        connectError=""
+        onConnectError={() => undefined}
+        onRefresh={async () => ({ connected: true })}
+        onDetect={() => undefined}
+      />
+    );
+
+    expect(screen.getByText("请升级本机 Bridge")).toBeInTheDocument();
+    expect(screen.getByText(/当前本机版本 0\.1\.0/)).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "安装 Bridge（macOS Apple Silicon）" })).toHaveAttribute(
+      "href",
+      expect.stringContaining("/downloads/device-bridge/0.1.1/")
+    );
+    expect(screen.getByRole("button", { name: "查看安装步骤" })).toBeInTheDocument();
+  });
+
   it("lets users return to step 1 from later wizard steps", async () => {
     const loadInstallReleases = vi.fn(async () => undefined);
 
@@ -389,5 +437,167 @@ describe("LocalDeviceBridgeWizard", () => {
       })
     );
     expect(pollLocalBridgeHealth).toHaveBeenCalledWith({ timeoutMs: 45_000 });
+  });
+
+  it("rebinding a foreign-account bridge waits for the replacement and auto-detects", async () => {
+    connectLocalBridge.mockResolvedValue({ reachable: true, ok: true, accepted: true });
+    pollLocalBridgeHealth.mockResolvedValue({
+      ok: true,
+      paired: true,
+      connected: true,
+      bridgeId: "br-B",
+      updatedAt: "2026-09-16T00:01:00.000Z"
+    });
+    const onDetect = vi.fn();
+    const onConnectError = vi.fn();
+
+    render(
+      <LocalDeviceBridgeWizard
+        panelStatus="not_paired"
+        pairingStale
+        protocol="hdc"
+        health={{
+          ok: true,
+          paired: true,
+          connected: true,
+          bridgeId: "br-A",
+          updatedAt: "2026-09-16T00:00:00.000Z"
+        }}
+        hostRelease={null}
+        installerAlternates={[]}
+        portableReleases={[]}
+        pairingCode={{ code: "654321", expiresAt: "2026-09-16T00:30:00.000Z" }}
+        pairingCodeLoading={false}
+        checking={false}
+        detecting={false}
+        connectError=""
+        onConnectError={onConnectError}
+        onRefresh={async () => ({
+          connected: true,
+          health: {
+            ok: true,
+            paired: true,
+            connected: true,
+            bridgeId: "br-B",
+            updatedAt: "2026-09-16T00:01:00.000Z"
+          },
+          registeredBridgeIds: ["br-B"]
+        })}
+        onDetect={onDetect}
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "重新配对" }));
+
+    await waitFor(() => expect(onDetect).toHaveBeenCalledTimes(1));
+    expect(connectLocalBridge).toHaveBeenCalledWith(expect.objectContaining({ code: "654321" }));
+    expect(pollLocalBridgeHealth).toHaveBeenCalledWith(expect.objectContaining({ excludeBridgeId: "br-A" }));
+    expect(onConnectError).toHaveBeenCalledWith("");
+    expect(onConnectError.mock.calls.flat().join("\n")).not.toContain("配对已失效");
+  });
+
+  it("reports restart failure instead of pairing expiry when health stays on the old bridge", async () => {
+    connectLocalBridge.mockResolvedValue({ reachable: true, ok: true, accepted: true });
+    pollLocalBridgeHealth.mockResolvedValue({
+      ok: true,
+      paired: true,
+      connected: true,
+      bridgeId: "br-A",
+      updatedAt: "2026-09-16T00:00:00.000Z"
+    });
+    const onConnectError = vi.fn();
+    const onDetect = vi.fn();
+
+    render(
+      <LocalDeviceBridgeWizard
+        panelStatus="not_paired"
+        pairingStale
+        protocol="hdc"
+        health={{
+          ok: true,
+          paired: true,
+          connected: true,
+          bridgeId: "br-A",
+          updatedAt: "2026-09-16T00:00:00.000Z"
+        }}
+        hostRelease={null}
+        installerAlternates={[]}
+        portableReleases={[]}
+        pairingCode={{ code: "654321", expiresAt: "2026-09-16T00:30:00.000Z" }}
+        pairingCodeLoading={false}
+        checking={false}
+        detecting={false}
+        connectError=""
+        onConnectError={onConnectError}
+        onRefresh={async () => ({
+          connected: false,
+          health: {
+            ok: true,
+            paired: true,
+            connected: true,
+            bridgeId: "br-A",
+            updatedAt: "2026-09-16T00:00:00.000Z"
+          },
+          registeredBridgeIds: ["br-B"]
+        })}
+        onDetect={onDetect}
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "重新配对" }));
+
+    await waitFor(() => expect(onConnectError).toHaveBeenCalled());
+    const messages = onConnectError.mock.calls.map((call) => String(call[0])).filter(Boolean);
+    expect(messages.some((message) => message.includes("旧账号") || message.includes("不支持安全重新绑定"))).toBe(true);
+    expect(messages.join("\n")).not.toContain("配对已失效");
+    expect(onDetect).not.toHaveBeenCalled();
+  });
+
+  it("reports listing refresh failure after a rebind attempt", async () => {
+    connectLocalBridge.mockResolvedValue({ reachable: true, ok: true, accepted: true });
+    pollLocalBridgeHealth.mockResolvedValue({
+      ok: true,
+      paired: true,
+      connected: true,
+      bridgeId: "br-B",
+      updatedAt: "2026-09-16T00:01:00.000Z"
+    });
+    const onConnectError = vi.fn();
+
+    render(
+      <LocalDeviceBridgeWizard
+        panelStatus="not_paired"
+        pairingStale
+        protocol="hdc"
+        health={{
+          ok: true,
+          paired: true,
+          connected: true,
+          bridgeId: "br-A",
+          updatedAt: "2026-09-16T00:00:00.000Z"
+        }}
+        hostRelease={null}
+        installerAlternates={[]}
+        portableReleases={[]}
+        pairingCode={{ code: "654321", expiresAt: "2026-09-16T00:30:00.000Z" }}
+        pairingCodeLoading={false}
+        checking={false}
+        detecting={false}
+        connectError=""
+        onConnectError={onConnectError}
+        onRefresh={async () => ({
+          connected: false,
+          listingFailed: true,
+          listingError: "代理列表暂时不可用"
+        })}
+        onDetect={() => undefined}
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "重新配对" }));
+
+    await waitFor(() => expect(onConnectError).toHaveBeenCalled());
+    expect(onConnectError.mock.calls.map((call) => String(call[0])).join("\n")).toContain("刷新当前账号的设备代理列表失败");
+    expect(onConnectError.mock.calls.map((call) => String(call[0])).join("\n")).not.toContain("配对已失效");
   });
 });

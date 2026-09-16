@@ -5,8 +5,7 @@ import { ensureBridgeRunning, type EnsureBridgeRunningDependencies } from "./ens
 import { normalizeCorsOrigin } from "./healthServer";
 import { stopLocalBridgeHealthListener } from "./localBridgeProcess";
 import { writePairingError } from "./pairingErrorStore";
-
-const BRIDGE_VERSION = "0.1.0";
+import { BRIDGE_CLIENT_VERSION } from "./version";
 
 export type CliDependencies = {
   fetchImpl: typeof fetch;
@@ -59,7 +58,7 @@ export async function runPairCommand(
     machineLabel: os.hostname(),
     platform: detectBridgePlatform(),
     arch: process.arch,
-    clientVersion: BRIDGE_VERSION
+    clientVersion: BRIDGE_CLIENT_VERSION
   };
 
   const response = await deps.fetchImpl(`${normalizedServerUrl}/api/v1/device-bridges/pair`, {
@@ -72,8 +71,11 @@ export async function runPairCommand(
   if (!response.ok) {
     const body = await response.text();
     deps.stdout.error(`Pair request failed (${response.status}): ${body}`);
+    const expired = /expired|consumed|invalid/i.test(body);
     await writePairingError(
-      `配对请求失败（HTTP ${response.status}）。若使用 Clash 等系统代理，请把 ${normalizedServerUrl} 加入直连规则，或设置 NO_PROXY 后重试。`
+      expired
+        ? "配对码无效、已过期或已被使用。请回到网页重新生成配对码后再试。"
+        : `配对请求失败（HTTP ${response.status}）。若使用 Clash 等系统代理，请把 ${normalizedServerUrl} 加入直连规则，或设置 NO_PROXY 后重试。`
     );
     return { exitCode: 1 };
   }
@@ -178,12 +180,19 @@ export async function runConnectCommand(
 
   const webOriginChanged = Boolean(explicitWebOrigin && existing?.webOrigin !== explicitWebOrigin);
 
-  return deps.ensureBridgeRunning({
+  const running = await deps.ensureBridgeRunning({
     fetchImpl: deps.fetchImpl,
     platform: deps.platform,
     execPath: deps.execPath,
     cliPath: deps.cliPath,
     stdout: deps.stdout,
-    forceRestart: Boolean(input.code) || webOriginChanged
+    forceRestart: Boolean(input.code) || webOriginChanged,
+    expectedBridgeId: input.code ? config.bridgeId : undefined
   });
+  if (running.exitCode !== 0 && input.code) {
+    await writePairingError(
+      "配对已成功，但本地 Bridge 未能使用新凭据完成重启。请安装最新 Bridge，或手动停止本机 18787 端口进程后重试。"
+    );
+  }
+  return running;
 }

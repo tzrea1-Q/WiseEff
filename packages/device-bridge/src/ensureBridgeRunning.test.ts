@@ -65,6 +65,33 @@ describe("probeLocalBridgeHealth", () => {
 });
 
 describe("ensureBridgeRunning", () => {
+  it("does not accept the previous bridge id while waiting for a rebind", async () => {
+    vi.mocked(waitForLocalBridgeConnection).mockResolvedValue({
+      connected: true,
+      paired: true,
+      bridgeId: "br-A"
+    });
+    const stdout = { log: vi.fn(), error: vi.fn() };
+    const result = await ensureBridgeRunning({
+      fetchImpl: vi.fn(async () => new Response(JSON.stringify({ connected: true, bridgeId: "br-A" }))),
+      platform: "darwin",
+      execPath: "/usr/bin/node",
+      cliPath: "/opt/cli.js",
+      stdout,
+      forceRestart: true,
+      expectedBridgeId: "br-B"
+    });
+    expect(result.exitCode).toBe(1);
+    expect(stopLocalBridgeHealthListener).toHaveBeenCalledWith("darwin");
+    expect(waitForLocalBridgeConnection).toHaveBeenCalledWith(
+      expect.anything(),
+      25_000,
+      500,
+      expect.objectContaining({ expectedBridgeId: "br-B" })
+    );
+    expect(stdout.error).toHaveBeenCalledWith("Bridge failed to come online as br-B within 25 seconds.");
+  });
+
   it("replaces the old Windows listener on forced re-pairing before accepting connected health", async () => {
     vi.mocked(runWindowsServiceCommand).mockResolvedValue(0);
     vi.mocked(waitForLocalBridgeConnection).mockResolvedValue({ connected: true, paired: true });

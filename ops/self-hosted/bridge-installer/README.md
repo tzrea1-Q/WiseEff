@@ -16,7 +16,7 @@ npm run bridge:build
 npm run build:bridge-installers
 ```
 
-Outputs land under `ops/self-hosted/bridge-artifacts/0.1.0/` and update `manifest.json` with `artifactKind: "installer"` entries.
+Outputs land under `ops/self-hosted/bridge-artifacts/<BRIDGE_CLIENT_VERSION>/` and update `manifest.json` with `artifactKind: "installer"` entries. The packaged CLI must report the same `clientVersion` as `packages/device-bridge/src/version.ts`. After runtime source changes, rebuild artifacts so `npm run bridge:package:check` stays green.
 
 ## URL scheme registration
 

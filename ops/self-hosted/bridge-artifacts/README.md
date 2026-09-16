@@ -15,7 +15,7 @@ bridge-artifacts/
     linux/amd64/wiseeff-bridge_<version>_linux_amd64.zip
 ```
 
-Each version directory must include `manifest.json`. The API reads that file through `DEVICE_BRIDGE_ARTIFACT_ROOT` and returns relative `downloadUrl` values such as `/downloads/device-bridge/0.1.0/windows/amd64/wiseeff-bridge_0.1.0_windows_amd64.zip`.
+Each version directory must include `manifest.json`. The API reads the latest version directory through `DEVICE_BRIDGE_ARTIFACT_ROOT` and returns relative `downloadUrl` values such as `/downloads/device-bridge/0.1.1/windows/amd64/wiseeff-bridge_0.1.1_windows_amd64.zip`. `manifest.json` also stores `sourceFingerprint`; `npm run bridge:package:check` fails when Bridge runtime source changed without rebuilding this directory.
 
 ## Build And Publish
 

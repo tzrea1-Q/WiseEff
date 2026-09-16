@@ -250,6 +250,10 @@ jobs:
         id: contract
         run: npm run contract:check
 
+      - name: Bridge package consistency
+        id: bridge_package
+        run: npm run bridge:package:check
+
       - name: Log analysis behavior eval
         id: logs
         run: npm run logs:eval
@@ -269,6 +273,7 @@ jobs:
             "lint":${{ toJSON(steps.lint) }},
             "catalog":${{ toJSON(steps.catalog) }},
             "contract":${{ toJSON(steps.contract) }},
+            "bridge_package":${{ toJSON(steps.bridge_package) }},
             "logs":${{ toJSON(steps.logs) }}}
         run: node --experimental-strip-types scripts/ci-required-results.ts receipt
 

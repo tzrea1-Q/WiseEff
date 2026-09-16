@@ -470,7 +470,8 @@ export function evaluateL1CiWorkflow(workflowText: string): { status: "passed" |
   for (const [key, expression] of Object.entries(identityEnvironment)) check(workflow?.env?.[key] === expression, `L1 identity field ${key} must come from workflow context.`);
   const commands: Record<string, string> = {
     install: "npm ci", metadata: "npm run acceptance:ci", build: "npm run build", docs: "npm run docs:check",
-    ui: "npm run ui:check", lint: "npm run lint", contract: "npm run contract:check", logs: "npm run logs:eval",
+    ui: "npm run ui:check", lint: "npm run lint", contract: "npm run contract:check",
+    bridge_package: "npm run bridge:package:check", logs: "npm run logs:eval",
     advisory: "npm run dtc:seed:compile", receipt: `${cli} receipt`,
     ...Object.fromEntries(["frontend", "scripts", "bridge", "server"].map((id) => [id, `${cli} test ${id}`])),
   };

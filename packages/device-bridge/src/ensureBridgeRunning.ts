@@ -33,6 +33,7 @@ export function buildDarwinLoginShellStartScript(command: string, args: string[]
 export type LocalBridgeHealthSnapshot = {
   connected: boolean;
   paired?: boolean;
+  bridgeId?: string;
 };
 
 export type EnsureBridgeRunningDependencies = {
@@ -42,6 +43,7 @@ export type EnsureBridgeRunningDependencies = {
   cliPath: string;
   stdout: Pick<Console, "log" | "error">;
   forceRestart?: boolean;
+  expectedBridgeId?: string;
 };
 
 export async function probeLocalBridgeHealth(fetchImpl: typeof fetch): Promise<LocalBridgeHealthSnapshot | null> {
@@ -53,7 +55,8 @@ export async function probeLocalBridgeHealth(fetchImpl: typeof fetch): Promise<L
     const body = (await response.json()) as Record<string, unknown>;
     return {
       connected: Boolean(body.connected),
-      paired: typeof body.paired === "boolean" ? body.paired : undefined
+      paired: typeof body.paired === "boolean" ? body.paired : undefined,
+      bridgeId: typeof body.bridgeId === "string" ? body.bridgeId : undefined
     };
   } catch {
     return null;
@@ -122,9 +125,16 @@ export function spawnDetachedConnect(
   spawnDetachedCommand(deps, command, args, "Started bridge connect in background");
 }
 
+function isExpectedConnectedHealth(health: LocalBridgeHealthSnapshot | null, expectedBridgeId?: string) {
+  if (!health?.connected) {
+    return false;
+  }
+  return !expectedBridgeId || health.bridgeId === expectedBridgeId;
+}
+
 export async function ensureBridgeRunning(deps: EnsureBridgeRunningDependencies): Promise<{ exitCode: number }> {
   const health = await probeLocalBridgeHealth(deps.fetchImpl);
-  if (health?.connected && !deps.forceRestart) {
+  if (isExpectedConnectedHealth(health, deps.expectedBridgeId) && !deps.forceRestart) {
     deps.stdout.log("Bridge already connected.");
     return { exitCode: 0 };
   }
@@ -140,8 +150,10 @@ export async function ensureBridgeRunning(deps: EnsureBridgeRunningDependencies)
       error: (message) => deps.stdout.error(message)
     });
     if (serviceExit === 0) {
-      const connected = await waitForLocalBridgeConnection(deps.fetchImpl, 25_000);
-      if (connected?.connected) {
+      const connected = await waitForLocalBridgeConnection(deps.fetchImpl, 25_000, 500, {
+        expectedBridgeId: deps.expectedBridgeId
+      });
+      if (isExpectedConnectedHealth(connected, deps.expectedBridgeId)) {
         deps.stdout.log("Bridge connected via Windows service.");
         return { exitCode: 0 };
       }
@@ -151,16 +163,22 @@ export async function ensureBridgeRunning(deps: EnsureBridgeRunningDependencies)
 
   if (health && !health.connected) {
     await stopLocalBridgeHealthListener(deps.platform);
-  } else if (deps.forceRestart) {
+  } else if (deps.forceRestart || (deps.expectedBridgeId && health?.bridgeId !== deps.expectedBridgeId)) {
     await stopLocalBridgeHealthListener(deps.platform);
   }
 
   spawnDetachedStart(deps);
-  const connected = await waitForLocalBridgeConnection(deps.fetchImpl, 25_000);
-  if (connected?.connected) {
+  const connected = await waitForLocalBridgeConnection(deps.fetchImpl, 25_000, 500, {
+    expectedBridgeId: deps.expectedBridgeId
+  });
+  if (isExpectedConnectedHealth(connected, deps.expectedBridgeId)) {
     deps.stdout.log("Bridge connected.");
     return { exitCode: 0 };
   }
-  deps.stdout.error("Bridge failed to come online within 25 seconds.");
+  deps.stdout.error(
+    deps.expectedBridgeId
+      ? `Bridge failed to come online as ${deps.expectedBridgeId} within 25 seconds.`
+      : "Bridge failed to come online within 25 seconds."
+  );
   return { exitCode: 1 };
 }

@@ -36,6 +36,7 @@ For EFF fixture work, use the original owned Gate0 runtime and native acceptance
 | `npm run test:server` | Backend/unit suite | Backend-affecting changes. |
 | `npm run test:scripts` | Ops/governance script suite (`scripts/**`, `ops/**`, Node) | Script or ops automation changes. |
 | `npm run bridge:test` | Device bridge workspace suite (`packages/**`, Node) | Device bridge or device-command-core changes. |
+| `npm run bridge:package:check` | Published Bridge artifacts, `clientVersion`, and `sourceFingerprint` match current `packages/device-bridge` runtime source; portable bundles still contain `/connect` and pairing-code `forceRestart` | After changing Bridge runtime source, installer templates, or `ops/self-hosted/bridge-artifacts`. CI L1 static fails if source moved without rebuilding artifacts. |
 | `npm run test:all` | Frontend, script, device-bridge, and backend unit suites | Shared contracts or broad behavior. |
 | `npm run typecheck` | TypeScript project references from `tsconfig.json` (`tsconfig.app.json` and `tsconfig.node.json`) with the same 4096 MiB heap as the build's first phase | Edit-only TypeScript feedback; run `npm run build` before handoff because this omits the Vite production build. |
 | `npm run build` | TypeScript and Vite production build | TypeScript, routing, shared type, or package changes. |

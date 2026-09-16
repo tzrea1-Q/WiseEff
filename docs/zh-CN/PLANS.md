@@ -6,6 +6,7 @@
 
 ## 使用方式
 
+- [本地 Device Bridge 多账号重新绑定](exec-plans/active/2026-09-16-bridge-multi-account-repair.md)：保持 `/device-bridges/mine` 的用户 + 组织隔离，用新配对码把同一台机器重新绑定到当前账号，重建 Bridge 0.1.1 制品，并停止把“本机属于其他账号”写成令牌过期。
 - [参数流程统一与种子数据对齐](exec-plans/active/2026-09-14-parameter-unification-and-seed-parity.md)：[规格 #849](https://github.com/tzrea1-Q/WiseEff/issues/849) 已发布并标记 `ready-for-agent`；D01–D10、S1／S2 已确认，并按 2026-09-15 修正缩小到 DTS／JSON。PU-00 至 PU-08 覆盖完整示例 DTS 基底、两格式完整流程／消费者、配置模型、113 个厂商输入与 4 项兼容种子，以及受控离线归档。YAML／TOML／ENV 项目源和 8 项兼容种子延期到 [TD-124](exec-plans/tech-debt-tracker.md)，厂商 YAML 定义元数据继续支持；实现尚未开始。
 - [智能体开发与验证效率优化](exec-plans/active/2026-09-13-agent-delivery-efficiency.md)：#828；先完成 EFF-00 基线与 W0 诊断，再交付等价 L1、影子工具和实测优化。模块启用在证据门槛满足前保持 `observation-pending`。
 - [Catalog 第二轮交付](exec-plans/active/2026-09-05-catalog-r2-delivery.md)：#814–#820 的 Policy、批量查询、Proposal、Agent 与浏览器证据修复；OP-09 不在本轮执行范围。

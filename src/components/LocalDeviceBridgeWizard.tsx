@@ -22,8 +22,8 @@ import {
   pickHostPortableRelease
 } from "../infrastructure/http/bridgeReleaseSelection";
 import { resolveDeviceBridgeDownloadUrl } from "../infrastructure/http/deviceBridgeDownloadUrl";
-import type { DeviceBridgePairingCode, DeviceBridgeReleaseItem, LocalBridgeHealthState } from "../infrastructure/http/deviceBridgeClient";
-import { bridgePanelStatusHint, canConnectBridgeWithoutPairingCode, isBridgeOnlinePanelStatus, needsLocalBridgeLaunch, needsPairingCodeForBridgeConnect, resolvePairingCodeForBridgeConnect, shouldClearStaleBridgeConnectError, type BridgePanelStatus, type DebugConnectionProtocol } from "./bridgePanelStatus";
+import type { DeviceBridgePairingCode, DeviceBridgeRecord, DeviceBridgeReleaseItem, LocalBridgeHealthState } from "../infrastructure/http/deviceBridgeClient";
+import { BRIDGE_UPGRADE_NOTICE_TITLE, bridgePanelStatusHint, canConnectBridgeWithoutPairingCode, describeLocalBridgeUpgradeMessage, isBridgeOnlinePanelStatus, needsLocalBridgeLaunch, needsPairingCodeForBridgeConnect, resolveInstalledBridgeClientVersion, resolvePairingCodeForBridgeConnect, shouldClearStaleBridgeConnectError, shouldPromptLocalBridgeUpgrade, type BridgePanelStatus, type DebugConnectionProtocol } from "./bridgePanelStatus";
 import type { LocalBridgeReachability } from "../infrastructure/http/bridgeConnectLauncher";
 import { LocalDeviceBridgeToolsPanel } from "./LocalDeviceBridgeToolsPanel";
 
@@ -64,6 +64,8 @@ type LocalDeviceBridgeWizardProps = {
   healthReachability?: LocalBridgeReachability;
   protocol: DebugConnectionProtocol;
   health: LocalBridgeHealthState | null;
+  bridges?: DeviceBridgeRecord[];
+  recommendedVersion?: string | null;
   hostRelease: DeviceBridgeReleaseItem | null;
   installerAlternates: DeviceBridgeReleaseItem[];
   portableReleases: DeviceBridgeReleaseItem[];
@@ -73,7 +75,13 @@ type LocalDeviceBridgeWizardProps = {
   detecting: boolean;
   connectError: string;
   onConnectError: (message: string) => void;
-  onRefresh: () => Promise<{ connected: boolean }>;
+  onRefresh: () => Promise<{
+    connected: boolean;
+    health?: LocalBridgeHealthState | null;
+    registeredBridgeIds?: string[];
+    listingFailed?: boolean;
+    listingError?: string;
+  }>;
   onDetect: () => void;
   releasesLoading?: boolean;
   onLoadInstallReleases?: () => Promise<void>;
@@ -107,6 +115,43 @@ function CopyableCommand({ command, label = "命令" }: { command: string; label
         {copied ? <Check size={14} aria-hidden="true" /> : <Copy size={14} aria-hidden="true" />}
         <span>{copied ? "已复制" : "复制"}</span>
       </button>
+    </div>
+  );
+}
+
+function LocalBridgeUpgradeNotice({
+  installedVersion,
+  recommendedVersion,
+  downloadUrl,
+  downloadLabel,
+  onOpenInstall
+}: {
+  installedVersion: string | null;
+  recommendedVersion: string;
+  downloadUrl?: string | null;
+  downloadLabel?: string;
+  onOpenInstall?: () => void;
+}) {
+  return (
+    <div className="local-device-bridge-panel__install-notice local-device-bridge-panel__upgrade-notice" role="status">
+      <p>
+        <strong>{BRIDGE_UPGRADE_NOTICE_TITLE}</strong>
+        {" "}
+        {describeLocalBridgeUpgradeMessage({ installedVersion, recommendedVersion })}
+      </p>
+      <div className="local-device-bridge-panel__upgrade-actions">
+        {downloadUrl ? (
+          <a className="button local-device-bridge-panel__install-cta" href={downloadUrl}>
+            <Download size={14} aria-hidden="true" />
+            {downloadLabel ?? "下载最新安装包"}
+          </a>
+        ) : null}
+        {onOpenInstall ? (
+          <button type="button" className="button subtle" onClick={onOpenInstall}>
+            查看安装步骤
+          </button>
+        ) : null}
+      </div>
     </div>
   );
 }
@@ -149,6 +194,8 @@ export function LocalDeviceBridgeWizard({
   healthReachability = "offline",
   protocol,
   health,
+  bridges = [],
+  recommendedVersion = null,
   hostRelease,
   installerAlternates,
   portableReleases,
@@ -165,6 +212,7 @@ export function LocalDeviceBridgeWizard({
 }: LocalDeviceBridgeWizardProps) {
   const [connecting, setConnecting] = useState(false);
   const [allowStep2WhileMissing, setAllowStep2WhileMissing] = useState(false);
+  const [showUpgradeInstall, setShowUpgradeInstall] = useState(false);
   const naturalStep = deriveNaturalWizardStep(panelStatus);
   const [viewStep, setViewStep] = useState<WizardViewStep>(naturalStep);
   const previousNaturalStep = useRef(naturalStep);
@@ -264,10 +312,11 @@ export function LocalDeviceBridgeWizard({
       });
     }
 
+    const previousBridgeId = health?.bridgeId;
     setConnecting(true);
     onConnectError("");
     try {
-      await connectLocalBridge({
+      const connectResult = await connectLocalBridge({
         server: serverUrl,
         webOrigin,
         code: pairingCodeValue,
@@ -275,19 +324,22 @@ export function LocalDeviceBridgeWizard({
       });
       const nextHealth = await pollLocalBridgeHealth({
         timeoutMs: shouldLaunchScheme ? 45_000 : 30_000,
-        ...(pairingStale && health?.bridgeId ? { excludeBridgeId: health.bridgeId } : {})
+        ...(pairingStale && previousBridgeId ? { excludeBridgeId: previousBridgeId } : {})
       });
       const refreshSnapshot = await onRefresh();
-      const connected = refreshSnapshot.connected;
-      if (connected) {
+      if (refreshSnapshot.connected) {
         onConnectError("");
         onDetect();
       } else {
         onConnectError(
           describeBridgeConnectFailureMessage({
-            health: nextHealth,
-            pairingStale,
-            pairingAuthFailure
+            health: refreshSnapshot.health ?? nextHealth,
+            connectResult,
+            previousBridgeId,
+            registeredBridgeIds: refreshSnapshot.registeredBridgeIds,
+            listingFailed: refreshSnapshot.listingFailed,
+            listingError: refreshSnapshot.listingError,
+            reconnectAttempted: Boolean(pairingCodeValue)
           })
         );
       }
@@ -337,7 +389,8 @@ export function LocalDeviceBridgeWizard({
       : bridgePanelStatusHint(panelStatus, protocol, {
           pairingStale,
           authFailure: pairingAuthFailure,
-          healthReachability
+          healthReachability,
+          connecting
         });
   const hostInstaller =
     hostRelease?.artifactKind === "installer"
@@ -349,8 +402,38 @@ export function LocalDeviceBridgeWizard({
   );
   const otherPortables = portableReleases.filter((item) => !hostPortable || item.downloadUrl !== hostPortable.downloadUrl);
   const showPrimaryAction = showSetupWizard ? viewStep === 2 || viewStep === 3 : true;
+  const hasReleaseCatalog = Boolean(hostRelease || installerAlternates.length > 0 || portableReleases.length > 0);
+  const promptUpgrade = shouldPromptLocalBridgeUpgrade({
+    health,
+    bridges,
+    recommendedVersion,
+    hasReleaseCatalog
+  });
+  const installedClientVersion = resolveInstalledBridgeClientVersion({ health, bridges });
+  const upgradeDownloadUrl = hostInstaller
+    ? resolveDeviceBridgeDownloadUrl(hostInstaller.downloadUrl)
+    : hostPortable
+      ? resolveDeviceBridgeDownloadUrl(hostPortable.downloadUrl)
+      : null;
+  const upgradeNotice =
+    promptUpgrade && recommendedVersion ? (
+      <LocalBridgeUpgradeNotice
+        installedVersion={installedClientVersion}
+        recommendedVersion={recommendedVersion}
+        downloadUrl={upgradeDownloadUrl}
+        downloadLabel={hostInstaller ? bridgeReleaseDownloadLabel(hostInstaller) : hostPortable ? bridgeReleaseDownloadLabel(hostPortable) : undefined}
+        onOpenInstall={
+          showSetupWizard && viewStep === 1
+            ? undefined
+            : () => {
+                setShowUpgradeInstall(true);
+                setViewStep(1);
+              }
+        }
+      />
+    ) : null;
 
-  if (panelStatus === "bridges_with_targets") {
+  if (panelStatus === "bridges_with_targets" && !showUpgradeInstall) {
     return (
       <div className="local-device-bridge-panel__ready">
         <div className="local-device-bridge-panel__head">
@@ -368,11 +451,12 @@ export function LocalDeviceBridgeWizard({
             {detecting ? "检测中..." : "重新检测设备"}
           </button>
         </div>
+        {upgradeNotice}
       </div>
     );
   }
 
-  if (panelStatus === "online_no_device") {
+  if (panelStatus === "online_no_device" && !showUpgradeInstall) {
     return (
       <div className="local-device-bridge-panel__ready">
         <div className="local-device-bridge-panel__head">
@@ -390,6 +474,7 @@ export function LocalDeviceBridgeWizard({
             {detecting ? "检测中..." : "重新检测设备"}
           </button>
         </div>
+        {upgradeNotice}
       </div>
     );
   }
@@ -404,6 +489,7 @@ export function LocalDeviceBridgeWizard({
           </div>
         </div>
         <div className="local-device-bridge-panel__body">
+          {upgradeNotice}
           {connectError ? <p className="local-device-bridge-panel__error">{connectError}</p> : null}
           {health?.tools ? (
             <LocalDeviceBridgeToolsPanel
@@ -450,6 +536,7 @@ export function LocalDeviceBridgeWizard({
       </div>
 
       <div className="local-device-bridge-panel__body">
+        {upgradeNotice}
         {viewStep === 1 ? (
           <>
             {releasesLoading ? (

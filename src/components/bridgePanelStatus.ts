@@ -16,6 +16,20 @@ export type BridgePanelStatus =
 
 export type DebugConnectionProtocol = "adb" | "hdc";
 
+export type LocalBridgeBindingState =
+  | "unknown"
+  | "unpaired"
+  | "matched"
+  | "foreign_account"
+  | "token_invalid";
+
+export const FOREIGN_ACCOUNT_REBIND_HINT =
+  "当前本机 Bridge 已配对到其他账号。请点击「重新配对」，使用当前账号的新配对码完成本机绑定。";
+
+export const REBIND_IN_PROGRESS_HINT = "正在将本机 Bridge 重新绑定到当前账号，并等待新进程上线。";
+
+export const BRIDGE_UPGRADE_NOTICE_TITLE = "请升级本机 Bridge";
+
 export function isLocalBridgeAuthFailure(health: LocalBridgeHealthState | null) {
   const error = health?.lastError ?? "";
   return /invalid or expired bridge token/i.test(error) || /missing bridge authorization/i.test(error);
@@ -41,6 +55,99 @@ export function isLocalBridgePairingStale(input: {
       registeredIds !== undefined &&
       !registeredIds.includes(localBridgeId)
   );
+}
+
+function parseBridgeSemver(version: string): [number, number, number] | null {
+  const match = version.trim().match(/^(\d+)(?:\.(\d+))?(?:\.(\d+))?/);
+  if (!match) {
+    return null;
+  }
+  return [Number(match[1]), Number(match[2] ?? 0), Number(match[3] ?? 0)];
+}
+
+export function isBridgeClientVersionBehind(
+  installed: string | null | undefined,
+  recommended: string | null | undefined
+) {
+  if (!recommended?.trim()) {
+    return false;
+  }
+  if (!installed?.trim()) {
+    return true;
+  }
+  const left = parseBridgeSemver(installed);
+  const right = parseBridgeSemver(recommended);
+  if (!left || !right) {
+    return false;
+  }
+  for (let index = 0; index < 3; index += 1) {
+    if (left[index]! < right[index]!) {
+      return true;
+    }
+    if (left[index]! > right[index]!) {
+      return false;
+    }
+  }
+  return false;
+}
+
+export function resolveInstalledBridgeClientVersion(input: {
+  health: LocalBridgeHealthState | null;
+  bridges?: Array<{ id: string; clientVersion: string | null; revokedAt: string | null }>;
+}) {
+  const reported = input.health?.clientVersion?.trim();
+  if (reported) {
+    return reported;
+  }
+  const localBridgeId = input.health?.bridgeId;
+  if (!localBridgeId) {
+    return null;
+  }
+  const match = input.bridges?.find((bridge) => !bridge.revokedAt && bridge.id === localBridgeId);
+  const recorded = match?.clientVersion?.trim();
+  return recorded || null;
+}
+
+export function shouldPromptLocalBridgeUpgrade(input: {
+  health: LocalBridgeHealthState | null;
+  bridges?: Array<{ id: string; clientVersion: string | null; revokedAt: string | null }>;
+  recommendedVersion?: string | null;
+  hasReleaseCatalog?: boolean;
+}) {
+  if (!input.hasReleaseCatalog || !input.recommendedVersion?.trim() || !input.health) {
+    return false;
+  }
+  const installed = resolveInstalledBridgeClientVersion(input);
+  return isBridgeClientVersionBehind(installed, input.recommendedVersion);
+}
+
+export function describeLocalBridgeUpgradeMessage(input: {
+  installedVersion: string | null;
+  recommendedVersion: string;
+}) {
+  const current = input.installedVersion
+    ? `当前本机版本 ${input.installedVersion}`
+    : "当前本机 Bridge 未报告版本，按旧安装包处理";
+  return `${current}，推荐版本 ${input.recommendedVersion}。请先下载并安装最新安装包，否则切换账号重新配对可能无法完成。`;
+}
+
+export function deriveLocalBridgeBindingState(input: {
+  health: LocalBridgeHealthState | null;
+  registeredBridgeIds?: string[];
+}): LocalBridgeBindingState {
+  if (!input.health?.paired) {
+    return input.health ? "unpaired" : "unknown";
+  }
+  if (isLocalBridgeAuthFailure(input.health) || isLocalBridgeTokenExpired(input.health)) {
+    return "token_invalid";
+  }
+  if (isLocalBridgePairingStale(input)) {
+    return "foreign_account";
+  }
+  if (input.health.bridgeId && input.registeredBridgeIds?.includes(input.health.bridgeId)) {
+    return "matched";
+  }
+  return input.registeredBridgeIds === undefined ? "unknown" : "unpaired";
 }
 
 export function countActiveBridgesForPlatform(
@@ -196,8 +303,9 @@ export function shouldClearStaleBridgeConnectError(input: {
   connectError: string;
   health: LocalBridgeHealthState | null;
   panelStatus: BridgePanelStatus;
+  listingFailed?: boolean;
 }): boolean {
-  if (!input.connectError) {
+  if (!input.connectError || input.listingFailed) {
     return false;
   }
   return isBridgeOnlinePanelStatus(input.panelStatus);
@@ -240,10 +348,18 @@ export function formatDetectFailureMessage(input: {
 export function bridgePanelStatusHint(
   status: BridgePanelStatus,
   protocol: DebugConnectionProtocol = "hdc",
-  options: { pairingStale?: boolean; authFailure?: boolean; healthReachability?: LocalBridgeReachability } = {}
+  options: {
+    pairingStale?: boolean;
+    authFailure?: boolean;
+    healthReachability?: LocalBridgeReachability;
+    connecting?: boolean;
+  } = {}
 ) {
+  if (options.connecting && (options.pairingStale || options.authFailure)) {
+    return REBIND_IN_PROGRESS_HINT;
+  }
   if (options.pairingStale && status === "not_paired") {
-    return "本地 Bridge 配对已失效，请点击连接本机并使用新的配对码重新配对。";
+    return FOREIGN_ACCOUNT_REBIND_HINT;
   }
   if (status === "not_paired" && options.authFailure) {
     return "本地 Bridge 令牌已失效或过期，请点击连接本机并使用新的配对码重新配对。";

@@ -381,6 +381,55 @@ describe("DtsReloadPage", () => {
     expect(screen.queryByText("本地 Device Bridge 未连接，请先连接本机后重新检测。")).not.toBeInTheDocument();
   });
 
+  it("rebinds a local bridge owned by another account without reporting pairing expiry", async () => {
+    const user = userEvent.setup();
+    let activeBridges: bridgeClient.DeviceBridgeRecord[] = [];
+    let health: bridgeClient.LocalBridgeHealthState = {
+      ok: true,
+      paired: true,
+      connected: true,
+      bridgeId: "br-A",
+      updatedAt: "2026-09-16T00:00:00Z",
+      tools: { adb: { available: true }, hdc: { available: true } }
+    };
+    vi.spyOn(bridgeClient, "listMyBridges").mockImplementation(async () => activeBridges);
+    vi.spyOn(bridgeLauncher, "probeLocalBridgeHealthDetailed").mockImplementation(async () => ({
+      health,
+      reachability: "ok"
+    }));
+    const connect = vi.spyOn(bridgeLauncher, "connectLocalBridge").mockImplementation(async () => {
+      activeBridges = [
+        {
+          id: "br-B",
+          machineLabel: "本机",
+          platform: "darwin",
+          arch: "arm64",
+          clientVersion: "0.1.1",
+          capabilities: {},
+          createdAt: "2026-09-16T00:01:00Z",
+          lastSeenAt: "2026-09-16T00:01:00Z",
+          revokedAt: null
+        }
+      ];
+      health = { ...health, bridgeId: "br-B", updatedAt: "2026-09-16T00:01:00Z" };
+      return { reachable: true, ok: true, accepted: true };
+    });
+    const poll = vi.spyOn(bridgeLauncher, "pollLocalBridgeHealth").mockImplementation(async () => health);
+    const detectTargets = vi.fn(async (_protocol: "hdc" | "adb", bridgeId?: string) => [
+      { targetRef: "HDC-LAB", label: "Lab device", bridgeId }
+    ]);
+    renderPageWithTopBar(createRepository(), { bridges: undefined, probeBridgeHealth: undefined, detectTargets });
+    const repairButton = await screen.findByRole("button", { name: "重新配对" });
+    expect(screen.getByText(/其他账号/)).toBeInTheDocument();
+    expect(screen.queryByText(/配对已失效/)).not.toBeInTheDocument();
+    await waitFor(() => expect(repairButton).toBeEnabled());
+    await user.click(repairButton);
+    expect(connect).toHaveBeenCalledWith(expect.objectContaining({ code: "123456" }));
+    expect(poll).toHaveBeenCalledWith(expect.objectContaining({ excludeBridgeId: "br-A" }));
+    await waitFor(() => expect(detectTargets).toHaveBeenCalledWith("hdc", "br-B"));
+    expect(screen.queryByText(/配对已失效/)).not.toBeInTheDocument();
+  });
+
   it("requires committer role for the page", () => {
     expect(getRequiredRoleForPage("dts-reload")).toBe("hardware-committer");
   });
@@ -1493,8 +1542,9 @@ describe("DtsReloadPage", () => {
       probeBridgeHealth: async () => ({ connected: true, bridgeId: "bridge-other" }),
       initialTargetRef: ""
     });
-    // Pairing is stale relative to registered bridges → treat as not paired / reconnect.
-    expect(await screen.findByText(/配对已失效|尚未配对|连接本机/)).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: "重新配对" })).toBeInTheDocument();
+    expect(screen.getByText(/其他账号/)).toBeInTheDocument();
+    expect(screen.queryByText(/配对已失效/)).not.toBeInTheDocument();
   });
 
   it("lists reachable targets from detectTargets for selection context", async () => {

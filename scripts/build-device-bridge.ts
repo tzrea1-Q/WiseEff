@@ -5,9 +5,9 @@ import { promisify } from "node:util";
 import { execFile } from "node:child_process";
 import { build } from "esbuild";
 
-const execFileAsync = promisify(execFile);
+import { computeBridgeSourceFingerprint, readBridgeClientVersion } from "./lib/bridgePackageConsistency";
 
-const VERSION = "0.1.0";
+const execFileAsync = promisify(execFile);
 
 type BridgeArtifactTarget = {
   platform: "windows" | "darwin" | "linux";
@@ -23,6 +23,7 @@ const ARTIFACT_TARGETS: BridgeArtifactTarget[] = [
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.resolve(scriptDir, "..");
+const VERSION = await readBridgeClientVersion(rootDir);
 const entryPoint = path.join(rootDir, "packages", "device-bridge", "src", "cli.ts");
 const bundleDir = path.join(rootDir, "packages", "device-bridge", "dist");
 const bundlePath = path.join(bundleDir, "cli.js");
@@ -152,7 +153,8 @@ for (const target of ARTIFACT_TARGETS) {
 
 const manifest = {
   recommendedVersion: VERSION,
-  minCompatibleVersion: VERSION,
+  minCompatibleVersion: "0.1.0",
+  sourceFingerprint: await computeBridgeSourceFingerprint(rootDir),
   items: [
     ...manifestItems,
     ...((await readExistingInstallerItems()) ?? [])
