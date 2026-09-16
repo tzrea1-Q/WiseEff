@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { loadBridgeReleaseManifest } from "./releaseManifest";
+import { loadBridgeReleaseManifest, loadLatestBridgeReleaseManifest } from "./releaseManifest";
 
 describe("bridge release manifest", () => {
   it("returns windows-first same-origin download urls for artifacts that exist on disk", async () => {
@@ -18,5 +18,20 @@ describe("bridge release manifest", () => {
     const manifest = await loadBridgeReleaseManifest("ops/self-hosted/bridge-artifacts/0.1.0/manifest.json");
     const portable = manifest.items.find((item) => item.downloadUrl.includes(".zip"));
     expect(portable?.artifactKind).toBe("portable");
+  });
+
+  it("keeps a previous Windows graphical installer when the latest catalog only has a portable zip", async () => {
+    const manifest = await loadLatestBridgeReleaseManifest("ops/self-hosted/bridge-artifacts");
+    expect(manifest.recommendedVersion).toBe("0.1.1");
+    expect(
+      manifest.items.find((item) => item.platform === "windows" && item.artifactKind === "installer")?.downloadUrl
+    ).toBe("/downloads/device-bridge/0.1.0/windows/amd64/WiseEffBridgeSetup_0.1.0.exe");
+    expect(
+      manifest.items.find((item) => item.platform === "windows" && item.artifactKind === "portable")?.downloadUrl
+    ).toBe("/downloads/device-bridge/0.1.1/windows/amd64/wiseeff-bridge_0.1.1_windows_amd64.zip");
+    expect(
+      manifest.items.find((item) => item.platform === "darwin" && item.arch === "arm64" && item.artifactKind === "installer")
+        ?.version
+    ).toBe("0.1.1");
   });
 });

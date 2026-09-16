@@ -194,5 +194,7 @@ it("prompts to install the latest Bridge when local health is an older client", 
 
   expect(await screen.findByText("请升级本机 Bridge")).toBeInTheDocument();
   expect(screen.getByText(/推荐版本 0\.1\.1/)).toBeInTheDocument();
-  expect(screen.getByRole("link", { name: /安装 Bridge|下载最新安装包/ })).toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "下载安装包" }));
+  expect(await screen.findByText("图形安装包（推荐）")).toBeInTheDocument();
+  expect(screen.getByRole("link", { name: "安装 Bridge（macOS Apple Silicon）" })).toBeInTheDocument();
 });
