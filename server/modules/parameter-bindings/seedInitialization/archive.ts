@@ -246,10 +246,18 @@ export async function captureProjectParameterPlane(
  */
 export async function assertProjectParameterPlaneArchived(
   db: Queryable,
+  objectStore: ObjectStore,
   input: { readonly organizationId: string; readonly projectId: string }
 ): Promise<{ readonly archiveId: string; readonly archiveDigest: string }> {
-  const result = await db.query<{ id: string; archive_digest: string; truncated: boolean }>(
-    `select id, archive_digest, truncated
+  const result = await db.query<{
+    id: string;
+    object_ref: string;
+    content_digest: string;
+    archive_digest: string;
+    counts: Record<string, number>;
+    truncated: boolean;
+  }>(
+    `select id, object_ref, content_digest, archive_digest, counts, truncated
        from project_parameter_plane_archives
       where organization_id = $1 and project_id = $2 and scope = 'legacy-parameter-plane'
       order by created_at desc, id
@@ -269,6 +277,50 @@ export async function assertProjectParameterPlaneArchived(
       "CONFLICT",
       "The project's parameter plane archive is truncated, so it is not complete preservation.",
       { projectId: input.projectId, reason: "parameter-plane-archive-truncated" }
+    );
+  }
+
+  let bytes: Buffer;
+  try {
+    bytes = await objectStore.get(row.object_ref);
+  } catch {
+    throw new ApiError(
+      "CONFLICT",
+      "The project's parameter plane archive integrity check failed.",
+      { projectId: input.projectId, reason: "parameter-plane-archive-object-unavailable" }
+    );
+  }
+  const expectedArchiveDigest = archiveDigestOf({
+    scope: "legacy-parameter-plane",
+    counts: row.counts,
+    contentDigest: row.content_digest
+  });
+  let document: ArchivedPlaneDocument | undefined;
+  try {
+    const parsed: unknown = JSON.parse(bytes.toString("utf8"));
+    document = parsed !== null && typeof parsed === "object"
+      ? parsed as ArchivedPlaneDocument
+      : undefined;
+  } catch {
+    document = undefined;
+  }
+  const countsMatch =
+    document !== undefined &&
+    Object.keys(document.counts ?? {}).length === Object.keys(row.counts).length &&
+    Object.entries(row.counts).every(([key, count]) => document?.counts?.[key] === count);
+  if (
+    sha256(bytes) !== row.content_digest ||
+    expectedArchiveDigest !== row.archive_digest ||
+    document?.schemaVersion !== "project-parameter-plane-archive/v1" ||
+    document.organizationId !== input.organizationId ||
+    document.projectId !== input.projectId ||
+    document.truncated ||
+    !countsMatch
+  ) {
+    throw new ApiError(
+      "CONFLICT",
+      "The project's parameter plane archive integrity check failed.",
+      { projectId: input.projectId, reason: "parameter-plane-archive-integrity-failed" }
     );
   }
   return { archiveId: row.id, archiveDigest: row.archive_digest };

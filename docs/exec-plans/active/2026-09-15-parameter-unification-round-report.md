@@ -725,3 +725,13 @@ Nothing in this round is reported as delivered that is not listed in §1.
 ## Documentation Update Gate
 
 The plan status, ADR-0045 pair, TD-124 pair and this report pair are updated and pass `npm run docs:check` plus `git diff --check`. Generated artifacts are regenerated and current. Nothing in this round claims target execution, deployment, Hosted CI, or completion of the deferred packages.
+
+## 6. Later T0.3 addendum: retrospective R3 correction for migrations 0148/0149
+
+#853 T0.3 later audited the already-delivered migrations rather than pretending the review happened before
+implementation. The [retrospective threat matrix](849-inventory/migrations-0148-0149-r3-threat-matrix.md)
+records the boundary. The correction candidate binds the requested Organization to authentication, authorizes all
+targets before journaling, serializes the same Organization/digest across processes, makes `completed` terminal,
+and verifies the archived object against its ledger before rebuilding. Real-PostgreSQL evidence is now 7 plan,
+6 archive and 7 materialization tests. Capture still does not mean disposal; target quiescence, recovery and any
+deletion remain #853 T2.3/T3.3 obligations.

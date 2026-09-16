@@ -260,6 +260,7 @@ export async function recordSeedInitializationRun(
            end,
            completed_at = case when excluded.status = 'completed' then now() else null end,
            updated_at = now()
+     where seed_initialization_runs.status <> 'completed'
     `,
     [
       input.organizationId,

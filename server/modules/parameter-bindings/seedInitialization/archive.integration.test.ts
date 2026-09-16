@@ -134,6 +134,12 @@ describe("legacy parameter plane archive", () => {
 
     // Every declared relation is accounted for, even when it is empty.
     expect(Object.keys(archive.counts).length).toBe(14);
+    const retainedDrafts = await pool.query<{ count: string }>(
+      `select count(*)::text as count from public.parameter_drafts
+        where organization_id = $1 and project_id = $2`,
+      [ORG, PROJECT],
+    );
+    expect(retainedDrafts.rows[0]?.count).toBe("2");
   }, 120_000);
 
   it("reuses an identical archive instead of writing a second object", async () => {
@@ -159,7 +165,7 @@ describe("legacy parameter plane archive", () => {
 
   it("refuses the rebuild guard when no archive exists or the archive is truncated", async () => {
     await expect(
-      assertProjectParameterPlaneArchived(pool, { organizationId: ORG, projectId: OTHER_PROJECT }),
+      assertProjectParameterPlaneArchived(pool, createMemoryObjectStore(), { organizationId: ORG, projectId: OTHER_PROJECT }),
     ).rejects.toThrow(/not been archived offline/);
 
     await pool.query(
@@ -169,11 +175,24 @@ describe("legacy parameter plane archive", () => {
       [ORG, OTHER_PROJECT, `sha256:${"a".repeat(64)}`, `sha256:${"b".repeat(64)}`],
     );
     await expect(
-      assertProjectParameterPlaneArchived(pool, { organizationId: ORG, projectId: OTHER_PROJECT }),
+      assertProjectParameterPlaneArchived(pool, createMemoryObjectStore(), { organizationId: ORG, projectId: OTHER_PROJECT }),
     ).rejects.toThrow(/truncated/);
 
     // The cap is a real bound, not a claim.
     expect(ARCHIVE_ROW_CAP).toBeGreaterThan(0);
+  }, 120_000);
+
+  it("refuses the rebuild guard when the archived object no longer matches its ledger digest", async () => {
+    const store = createMemoryObjectStore();
+    const archive = await captureProjectParameterPlane(root, store, editorAuth, {
+      projectId: PROJECT,
+      capturedAt: "2026-09-15T00:00:01.000Z"
+    });
+    store.entries.set(archive.objectRef, Buffer.from("null", "utf8"));
+
+    await expect(
+      assertProjectParameterPlaneArchived(pool, store, { organizationId: ORG, projectId: PROJECT }),
+    ).rejects.toThrow(/integrity check failed/);
   }, 120_000);
 
   it("refuses capture for an actor without parameter edit for the project", async () => {
@@ -189,5 +208,39 @@ describe("legacy parameter plane archive", () => {
         projectId: PROJECT
       }),
     ).rejects.toThrow(/edit role is required/);
+  }, 120_000);
+
+  it("installs retention-safe ledger and journal constraints", async () => {
+    const constraints = await pool.query<{ table_name: string; definition: string }>(
+      `select c.conrelid::regclass::text as table_name, pg_get_constraintdef(c.oid) as definition
+         from pg_constraint c
+        where c.conrelid in (
+          'public.project_parameter_plane_archives'::regclass,
+          'public.seed_initialization_runs'::regclass
+        )`,
+    );
+    const definitions = constraints.rows.map((row) => `${row.table_name}: ${row.definition}`);
+
+    expect(definitions).toContain(
+      "project_parameter_plane_archives: FOREIGN KEY (organization_id) REFERENCES organizations(id) ON DELETE RESTRICT",
+    );
+    expect(definitions).toContain(
+      "project_parameter_plane_archives: FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE RESTRICT",
+    );
+    expect(definitions).toContain(
+      "seed_initialization_runs: FOREIGN KEY (started_by_user_id) REFERENCES users(id) ON DELETE SET NULL",
+    );
+    expect(definitions).toContain(
+      "seed_initialization_runs: PRIMARY KEY (organization_id, seed_digest)",
+    );
+
+    const disposalColumns = await pool.query<{ column_name: string }>(
+      `select column_name
+         from information_schema.columns
+        where table_schema = 'public'
+          and table_name = 'project_parameter_plane_archives'
+          and column_name in ('disposed_at', 'deleted_at')`,
+    );
+    expect(disposalColumns.rows).toEqual([]);
   }, 120_000);
 });
