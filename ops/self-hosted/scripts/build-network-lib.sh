@@ -244,12 +244,20 @@ wiseeff_build_network_prepare() {
   esac
   WISEEFF_BUILD_TLS_POLICY="$tls_policy"
 
+  placeholder_ca="${compose_dir}/build-network/empty-ca.pem"
   ca_file="${WISEEFF_BUILD_CA_CERT_FILE:-}"
   if [ -n "$ca_file" ]; then
     case "$ca_file" in
       /*) ;;
       *) ca_file="$(cd "$(dirname "$config_file")" && pwd)/${ca_file}" ;;
     esac
+    ca_file="$(cd "$(dirname "$ca_file")" 2>/dev/null && pwd)/$(basename "$ca_file")"
+  fi
+  # The bundled placeholder is documented as intentionally empty, so pointing
+  # the knob at it means "no enterprise CA". Normalizing it keeps prepare
+  # idempotent: a re-exec'd target controller inherits the environment and must
+  # not mistake the placeholder for an operator-configured certificate.
+  if [ -n "$ca_file" ] && [ "$ca_file" != "$placeholder_ca" ]; then
     [ -f "$ca_file" ] && [ ! -L "$ca_file" ] && [ -r "$ca_file" ] || {
       wiseeff_build_network_error "WISEEFF_BUILD_CA_CERT_FILE must be a readable, regular, non-symlink PEM file."
       return $?
@@ -258,13 +266,17 @@ wiseeff_build_network_prepare() {
       wiseeff_build_network_error "WISEEFF_BUILD_CA_CERT_FILE does not contain a PEM certificate."
       return $?
     }
-    WISEEFF_BUILD_CA_CERT_FILE="$(cd "$(dirname "$ca_file")" && pwd)/$(basename "$ca_file")"
+    WISEEFF_BUILD_CA_CERT_FILE="$ca_file"
     WISEEFF_BUILD_NETWORK_CA_STATUS="configured"
   else
-    WISEEFF_BUILD_CA_CERT_FILE="${compose_dir}/build-network/empty-ca.pem"
+    # compose.yaml already defaults the BuildKit secret to the placeholder, so
+    # do not publish the synthesized path as an explicit configuration: an
+    # exported value would be re-read as "configured" by the next controller.
+    ca_file="$placeholder_ca"
+    unset WISEEFF_BUILD_CA_CERT_FILE
     WISEEFF_BUILD_NETWORK_CA_STATUS="not configured"
   fi
-  ca_fingerprint="$(wiseeff_build_network_file_fingerprint "$WISEEFF_BUILD_CA_CERT_FILE")" || return $?
+  ca_fingerprint="$(wiseeff_build_network_file_fingerprint "$ca_file")" || return $?
   WISEEFF_BUILD_TRANSPORT_FINGERPRINT="$({
     printf 'tls-policy=%s\n' "$WISEEFF_BUILD_TLS_POLICY"
     printf 'ca-sha256=%s\n' "$ca_fingerprint"
@@ -273,7 +285,10 @@ wiseeff_build_network_prepare() {
     printf 'git-source=git.kernel.org\n'
     printf 'pip-sources=pypi.org,files.pythonhosted.org\n'
   } | wiseeff_build_network_hash_stream)" || return $?
-  export WISEEFF_BUILD_CA_CERT_FILE WISEEFF_BUILD_NETWORK_CA_STATUS
+  export WISEEFF_BUILD_NETWORK_CA_STATUS
+  if [ -n "${WISEEFF_BUILD_CA_CERT_FILE:-}" ]; then
+    export WISEEFF_BUILD_CA_CERT_FILE
+  fi
   export WISEEFF_BUILD_TLS_POLICY WISEEFF_BUILD_TRANSPORT_FINGERPRINT
 
   runtime_proxy="${WISEEFF_RUNTIME_PROXY:-false}"

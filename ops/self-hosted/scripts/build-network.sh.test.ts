@@ -310,4 +310,68 @@ describe("build-network.sh public interface", () => {
     expect(result.status).toBe(0);
     expect(result.stdout).toBe("runtime_http=\n");
   });
+
+  it("keeps the empty CA placeholder unconfigured across a child process boundary", () => {
+    const directory = mkdtempSync(join(tmpdir(), "wiseeff-build-network-ca-reuse-"));
+    const config = join(directory, "build-network.env");
+    writeFileSync(config, "WISEEFF_BUILD_CA_CERT_FILE=\nWISEEFF_BUILD_TLS_POLICY=insecure\n", {
+      mode: 0o600
+    });
+    chmodSync(config, 0o600);
+
+    const result = spawnSync("bash", ["-c", `
+      source ops/self-hosted/scripts/build-network-lib.sh
+      wiseeff_build_network_prepare ops/self-hosted "$1" || exit 11
+      printf 'first=%s exported=[%s]\\n' "$WISEEFF_BUILD_NETWORK_CA_STATUS" "\${WISEEFF_BUILD_CA_CERT_FILE:-unset}"
+      # A re-exec'd target controller inherits the environment prepared here.
+      bash -c 'source ops/self-hosted/scripts/build-network-lib.sh
+        wiseeff_build_network_prepare ops/self-hosted "$1" || exit 12
+        printf "second=%s exported=[%s]\\n" "$WISEEFF_BUILD_NETWORK_CA_STATUS" "\${WISEEFF_BUILD_CA_CERT_FILE:-unset}"'
+    `, "test", config], { encoding: "utf8", env: cleanProxyEnv() });
+
+    expect(result.status).toBe(0);
+    expect(result.stdout).toContain("first=not configured exported=[unset]");
+    expect(result.stdout).toContain("second=not configured exported=[unset]");
+    expect(result.stderr).not.toContain("does not contain a PEM certificate");
+  });
+
+  it("treats an explicitly selected empty CA placeholder as unconfigured", () => {
+    const directory = mkdtempSync(join(tmpdir(), "wiseeff-build-network-ca-placeholder-"));
+    const config = join(directory, "build-network.env");
+    const placeholder = join(process.cwd(), "ops", "self-hosted", "build-network", "empty-ca.pem");
+    writeFileSync(
+      config,
+      [`WISEEFF_BUILD_CA_CERT_FILE=${placeholder}`, "WISEEFF_BUILD_TLS_POLICY=insecure", ""].join("\n"),
+      { mode: 0o600 }
+    );
+    chmodSync(config, 0o600);
+
+    const result = spawnSync("bash", [script, "status", "--config", config, "--json"], {
+      encoding: "utf8",
+      env: cleanProxyEnv()
+    });
+
+    expect(result.status).toBe(0);
+    expect(JSON.parse(result.stdout)).toMatchObject({ corporateCa: "not configured" });
+  });
+
+  it("still refuses a configured CA file that contains no certificate", () => {
+    const directory = mkdtempSync(join(tmpdir(), "wiseeff-build-network-ca-invalid-"));
+    const config = join(directory, "build-network.env");
+    writeFileSync(join(directory, "corporate-ca.pem"), "not a certificate\n", { mode: 0o600 });
+    writeFileSync(
+      config,
+      ["WISEEFF_BUILD_CA_CERT_FILE=corporate-ca.pem", "WISEEFF_BUILD_TLS_POLICY=verify", ""].join("\n"),
+      { mode: 0o600 }
+    );
+    chmodSync(config, 0o600);
+
+    const result = spawnSync("bash", [script, "status", "--config", config], {
+      encoding: "utf8",
+      env: cleanProxyEnv()
+    });
+
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toContain("WISEEFF_BUILD_CA_CERT_FILE does not contain a PEM certificate");
+  });
 });

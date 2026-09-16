@@ -91,7 +91,7 @@ cd /srv/wiseeff/ops/self-hosted
 
 该文件只接受文档列出的大小写代理变量、`WISEEFF_NPM_REGISTRY`、`WISEEFF_BUILD_CA_CERT_FILE`、`WISEEFF_BUILD_TLS_POLICY` 和 `WISEEFF_RUNTIME_PROXY`；脚本只按数据解析，绝不会 source。文件必须是非符号链接普通文件，且只能由 owner 读写（权限 `0600`）。不创建该文件时，现有 shell 代理环境仍然生效。同名非空 shell 值优先；大小写代理值冲突会在修改 Docker 或 Git 前直接拒绝。
 
-`WISEEFF_NPM_REGISTRY` 会在 `npm ci` 时替换已提交 lockfile 内的 registry host。当前入口只支持可通过已配置代理访问、且 URL 本身不含凭据的 registry；脚本会拒绝内嵌账号密码，暂不暴露 npm token 配置。`WISEEFF_BUILD_CA_CERT_FILE` 可用绝对路径或相对 `.build-network.env` 的路径，必须指向组织批准且可读的 PEM。BuildKit 以 secret mount 把 PEM 安装到每个构建 stage，不会把私有配置或代理凭据复制进镜像层。`WISEEFF_BUILD_TLS_POLICY=verify` 是默认且推荐的策略。
+`WISEEFF_NPM_REGISTRY` 会在 `npm ci` 时替换已提交 lockfile 内的 registry host。当前入口只支持可通过已配置代理访问、且 URL 本身不含凭据的 registry；脚本会拒绝内嵌账号密码，暂不暴露 npm token 配置。`WISEEFF_BUILD_CA_CERT_FILE` 可用绝对路径或相对 `.build-network.env` 的路径，必须指向组织批准且可读的 PEM；不含 `-----BEGIN CERTIFICATE-----` 的文件会被拒绝。未安装企业 CA 时请留空，或指向仓库内故意留空的 `build-network/empty-ca.pem`：两者都表示"未配置企业 CA"，且不会把该占位路径泄漏给 re-exec 后的升级 controller 环境。BuildKit 以 secret mount 把 PEM 安装到每个构建 stage，不会把私有配置或代理凭据复制进镜像层。`WISEEFF_BUILD_TLS_POLICY=verify` 是默认且推荐的策略。
 
 部署机确实无法取得企业 CA 时，可以启用仅限构建期的应急策略。在 `.build-network.env` 中设置：
 
