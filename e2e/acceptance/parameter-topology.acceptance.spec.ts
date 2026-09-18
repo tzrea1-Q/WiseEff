@@ -2674,6 +2674,7 @@ test.describe("Parameter topology / schema browser acceptance", () => {
         30_000,
         ["enableparent@a0", "enablechild@10", "enabledirect@20"]
       );
+      await resolveReviewsForCurrentRevision(request, enableRevision.id, projectId);
 
       const topologyApi = await request.get(
         apiRoute(
@@ -2799,6 +2800,7 @@ test.describe("Parameter topology / schema browser acceptance", () => {
         propertyKeys: [gateProp],
         nodeNeedles: [`egate_${runSuffix}@60`]
       });
+      await resolveReviewsForCurrentRevision(request, gateRevision.id, projectId);
 
       const reviewList = await request.get(
         apiRoute(
@@ -3312,6 +3314,7 @@ test.describe("Parameter topology / schema browser acceptance", () => {
         propertyKeys: [guardProp],
         nodeNeedles: [`eguard_${runSuffix}@50`]
       });
+      await resolveReviewsForCurrentRevision(request, guardRevision.id, projectId);
 
       const { nodes } = await listEffectiveTopologyNodes(
         request,

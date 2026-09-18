@@ -379,12 +379,14 @@ test.describe("canonical parameter catalog page", () => {
     await editor.getByRole("button", { name: /查看历史/ }).click();
     await expect(editor.getByText("目录发布").first()).toBeVisible();
     await assertNoPageOverflow(page);
+    await editor.getByRole("button", { name: /关闭|取消/ }).click();
     // The module navigator and the honest count own the restored PC rail.
     await expect(page.getByRole("navigation", { name: "参数定义模块树" })).toBeVisible();
     await expect(page.getByRole("status", { name: "结果计数" })).toBeVisible();
     await expect(page.getByRole("navigation", { name: "分页" })).toBeVisible();
-    await page.getByRole("searchbox", { name: "搜索参数定义" }).focus();
-    await expect(page.getByRole("searchbox", { name: "搜索参数定义" })).toBeFocused();
+    const catalogSearch = catalogPage(page).getByRole("searchbox", { name: "搜索参数定义" });
+    await catalogSearch.focus();
+    await expect(catalogSearch).toBeFocused();
     await catalogScreenshot(page, testInfo, "pcat-ui-14-desktop");
   });
 });

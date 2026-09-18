@@ -553,12 +553,6 @@ export async function seedIsolatedNumericCellPair(
        and cs.name = 'default'
       join dts_config_revisions cr
         on cr.config_set_id = cs.id
-       and cr.id = (
-         select id from dts_config_revisions
-         where config_set_id = cs.id
-         order by revision_number desc
-         limit 1
-       )
       join project_parameter_binding_revisions br
         on br.binding_id = b.id and br.config_revision_id = cr.id
       left join dts_property_specs dps on dps.parameter_spec_id = b.parameter_spec_id
@@ -570,7 +564,7 @@ export async function seedIsolatedNumericCellPair(
         and br.raw_value ~ '^<[0-9]+>$'
         and coalesce(lnr.node_locator, '') <> ''
         and coalesce(dps.property_key, split_part(ps.specification_key, '/', 2)) = any($3::text[])
-      order by b.id
+      order by cr.revision_number desc, b.id
       `,
       [organizationId, projectId, [options.kept.propertyKey, options.removable.propertyKey]]
     );
