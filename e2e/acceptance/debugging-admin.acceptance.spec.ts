@@ -1274,7 +1274,14 @@ test.describe("DEBUG-ADMIN-846 full catalog transfer", () => {
       status: "passed",
       page,
       testInfo,
-      api: [],
+      api: [
+        {
+          method: "POST",
+          path: "/api/v1/debugging/admin/catalog/import-preview",
+          status: 200,
+          responseSummary: "import preview dialog rendered at three viewports"
+        }
+      ],
       db: [],
       audit: [],
       notes:

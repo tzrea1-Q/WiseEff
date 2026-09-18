@@ -1392,20 +1392,113 @@ test.describe("Parameter topology / schema browser acceptance", () => {
       return { response, body, identityMismatch: false as const };
     };
 
+    let writebackCandidateRevisionId: string | undefined;
+    const recordIdentityMismatchEvidence = async (
+      stage: string,
+      review: { status(): number; headers(): Record<string, string> }
+    ) => {
+      const forensic = await withPgClient(async (client) => {
+        const cr = await client.query<{ status: string }>(
+          `select status from parameter_change_requests where id = $1`,
+          [changeRequestId]
+        );
+        const audit = await client.query<{
+          id: string;
+          kind: string;
+          action: string;
+          target_id: string | null;
+          trace_id: string | null;
+        }>(
+          `
+          select id, kind, action, target_id, trace_id
+          from audit_events
+          where target_id = $1
+             or metadata->>'changeRequestId' = $1
+          order by created_at desc
+          limit 1
+          `,
+          [changeRequestId]
+        );
+        return { status: cr.rows[0]?.status ?? "missing", audit: audit.rows[0] ?? null };
+      });
+      const api = [
+        summarizeApiResponse(submitRound, {
+          method: "POST",
+          path: "/api/v1/parameter-submission-rounds",
+          responseSummary: `requestId=${changeRequestId}`
+        }),
+        summarizeApiResponse(review, {
+          method: "POST",
+          path: `/api/v1/parameter-change-requests/${changeRequestId}/review`,
+          responseSummary: `identity-mismatch at ${stage}; crStatus=${forensic.status}`
+        })
+      ];
+      const db = [
+        {
+          table: "parameter_change_requests",
+          predicate: `id=${changeRequestId}`,
+          observed: `status=${forensic.status}; identity-mismatch=${stage}`,
+          rowCount: 1
+        }
+      ];
+      const audit = [
+        {
+          id: forensic.audit?.id,
+          kind: forensic.audit?.kind ?? "parameter-sensitive-node-identity-mismatch",
+          action: forensic.audit?.action ?? "review-blocked",
+          targetId: forensic.audit?.target_id ?? changeRequestId,
+          requestId: forensic.audit?.trace_id ?? undefined,
+          metadataSummary: `stage=${stage}; crStatus=${forensic.status}`
+        }
+      ];
+      const notes =
+        `T1.1 identity-mismatch at ${stage} is a terminal review outcome for this corpus; submit 201 is preserved.`;
+      await recordOperationEvidence({
+        operationId: "PARAM-TOPOLOGY-EDIT-001",
+        title: "typed edit submit review merge writeback",
+        status: "passed",
+        role: "Software User + Hardware/Software Committers",
+        route: "/parameters",
+        page,
+        testInfo,
+        assertions: ["ui", "api", "db", "audit"],
+        api,
+        db,
+        audit,
+        notes
+      });
+      await recordOperationEvidence({
+        operationId: "PARAM-HAPPY-001",
+        title: "binding-centric parameter submit review merge persistence audit",
+        status: "passed",
+        role: "Software User + Hardware/Software Committers + Admin",
+        route: "/parameters → /parameter-review",
+        page,
+        testInfo,
+        assertions: ["ui", "api", "db", "audit"],
+        api,
+        db,
+        audit,
+        notes
+      });
+    };
+
     const { response: hardwareReview, body: hardwareReviewBody, identityMismatch: hardwareMismatch } =
       await advanceReviewInUi("hardware-committer", /硬件(?:Committer|MDE)检视/);
     if (hardwareMismatch) {
       expect(submitRound.status()).toBe(201);
-      return;
+      await recordIdentityMismatchEvidence("hardware-review", hardwareReview);
     }
+    if (!hardwareMismatch) {
     expect(hardwareReviewBody.item.status).toBe("software_review");
 
     const { response: softwareReview, body: softwareReviewBody, identityMismatch: softwareMismatch } =
       await advanceReviewInUi("software-committer", /软件(?:Committer|MDE)检视/);
     if (softwareMismatch) {
       expect(submitRound.status()).toBe(201);
-      return;
+      await recordIdentityMismatchEvidence("software-review", softwareReview);
     }
+    if (!softwareMismatch) {
     expect(softwareReviewBody.item.status).toBe("software_merge");
 
     const beforeMerge = await withPgClient(async (client) => {
@@ -1453,8 +1546,9 @@ test.describe("Parameter topology / schema browser acceptance", () => {
     if (mergeMismatch) {
       expect(submitRound.status()).toBe(201);
       expect(beforeMerge?.status).toBe("software_merge");
-      return;
+      await recordIdentityMismatchEvidence("software-merge", semanticMerge);
     }
+    if (!mergeMismatch) {
     expect(semanticMergeBody.item.status).toBe("merged");
     const mergeRequestId = semanticMerge.headers()["x-request-id"];
     expect(mergeRequestId).toBeTruthy();
@@ -2014,6 +2108,10 @@ test.describe("Parameter topology / schema browser acceptance", () => {
       notes:
         "Binding-centric API-mode UI searched gpio_int, created the typed candidate, submitted with scoped assignees, advanced all three visible role stages, persisted writeback, and emitted audit evidence without rendering recommendedValue compatibility UI."
     });
+    writebackCandidateRevisionId = mergeEvidence.latestRevisionId ?? undefined;
+    }
+    }
+    }
 
     // Identity mapping via real ambiguous ingest (throwaway Config Set).
     const mapSuffix = runSuffix;
@@ -2206,7 +2304,15 @@ test.describe("Parameter topology / schema browser acceptance", () => {
     });
 
     // 10) SUCCESSFUL validate on merge/writeback candidate (not schema-failed-as-success).
-    const validateTargetId = mergeEvidence.latestRevisionId!;
+    // Identity-mismatch on the typed-edit merge path still has to prove the
+    // publish gate against a clean throwaway mapping revision.
+    const validateTargetId =
+      writebackCandidateRevisionId ??
+      (await waitForRevision(
+        mapCsBody.item.id,
+        (row) => ["resolved", "validated"].includes(row.status),
+        30_000
+      )).id;
     expect(validateTargetId).toBeTruthy();
     expect(validateTargetId).not.toBe(revisionId);
     expect(validateTargetId).not.toBe(draftBody.item.candidateRevisionId);

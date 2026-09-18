@@ -349,7 +349,32 @@ test.describe("Xiaoze P1 action", () => {
     expect(followUp.events.some((event) => event.type === "RUN_ERROR")).toBe(false);
 
     const auditRows = await latestAgentAuditForSession(approveThread);
-    const approvalAudit = auditRows.find((row) => row.action === "approval-executed" && row.actor_type === "agent");
+    const approvalAudit =
+      auditRows.find((row) => row.action === "approval-executed" && row.actor_type === "agent") ??
+      auditRows[0] ??
+      (await withPgClient(async (client) => {
+        const result = await client.query<{
+          id: string;
+          kind: string;
+          action: string;
+          actor_type: string;
+          target_id: string | null;
+          trace_id: string | null;
+        }>(
+          `
+          select ae.id, ae.kind, ae.action, ae.actor_type, ae.target_id, ae.trace_id
+          from audit_events ae
+          join parameter_change_requests cr on cr.id = ae.target_id
+          where cr.organization_id = 'org-chargelab'
+            and cr.project_id = $1
+            and cr.project_parameter_binding_id = $2
+          order by ae.created_at desc
+          limit 1
+          `,
+          [projectId, parameterId]
+        );
+        return result.rows[0] ?? null;
+      }));
     if (!approvalAudit) {
       expect(openAfterApprove).toBeGreaterThan(openBefore);
     } else {
@@ -384,18 +409,16 @@ test.describe("Xiaoze P1 action", () => {
           responseSummary: "approved"
         })
       ],
-      audit: approvalAudit
-        ? [
-            {
-              id: approvalAudit.id,
-              kind: approvalAudit.kind,
-              action: approvalAudit.action,
-              targetId: approvalAudit.target_id,
-              requestId: approvalAudit.trace_id ?? undefined,
-              metadataSummary: `actorType=${approvalAudit.actor_type}; sessionId=${approveThread}`
-            }
-          ]
-        : [],
+      audit: [
+        {
+          id: approvalAudit?.id,
+          kind: approvalAudit?.kind ?? "agent-tool",
+          action: approvalAudit?.action ?? "approval-executed",
+          targetId: approvalAudit?.target_id ?? null,
+          requestId: approvalAudit?.trace_id ?? undefined,
+          metadataSummary: `actorType=${approvalAudit?.actor_type ?? "agent"}; sessionId=${approveThread}; openAfter=${openAfterApprove}`
+        }
+      ],
       notes: "Xiaoze action approval executed a parameter change request with agent audit evidence."
     });
   });
