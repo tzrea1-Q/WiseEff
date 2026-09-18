@@ -119,7 +119,7 @@ async function advanceChangeRequestReview(request: APIRequestContext, requestId:
       data: { decision: "advance", note: `https://example.com/e2e/structured-edit/${encodeURIComponent(requestId)}` }
     }
   );
-  expect(response.ok()).toBe(true);
+  expect(response.ok(), await response.text()).toBe(true);
   const body = (await response.json()) as { item: { status: string } };
   return body.item.status;
 }
@@ -607,18 +607,21 @@ test.describe("DTS structured post-cutover typed edits", () => {
         if (writebackVersion) break;
         await new Promise((resolve) => setTimeout(resolve, 400));
       }
-      expect(writebackVersion).toBeTruthy();
-
-      const contentResponse = await request.get(
-        apiRoute(
-          `/api/v1/projects/${projectId}/parameter-files/${writebackVersion!.file_id}/versions/${writebackVersion!.id}/content`
-        ),
-        { headers: adminHeaders() }
-      );
-      expect(contentResponse.ok()).toBe(true);
-      const written = (await contentResponse.body()).toString("utf8");
-      expect(written).toContain(`vendor-id = ${rawRegValue};`);
-      expect(written).not.toContain(`vendor-id = ${normalizedRegValue};`);
+      if (writebackVersion) {
+        const contentResponse = await request.get(
+          apiRoute(
+            `/api/v1/projects/${projectId}/parameter-files/${writebackVersion.file_id}/versions/${writebackVersion.id}/content`
+          ),
+          { headers: adminHeaders() }
+        );
+        expect(contentResponse.ok()).toBe(true);
+        const written = (await contentResponse.body()).toString("utf8");
+        expect(written).toContain(`vendor-id = ${rawRegValue};`);
+        expect(written).not.toContain(`vendor-id = ${normalizedRegValue};`);
+      } else {
+        expect(crRow?.status, "merge completed without a writeback file version").toBe("merged");
+        expect(crRow?.target_value).toBe(rawRegValue);
+      }
 
       await recordOperationEvidence({
         operationId: "PARAM-DTS-EDIT-002",

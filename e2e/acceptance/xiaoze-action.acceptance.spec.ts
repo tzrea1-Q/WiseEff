@@ -301,9 +301,9 @@ test.describe("Xiaoze P1 action", () => {
     let interruptValue = readInterruptValue(started.events);
     if (!interruptValue?.approvalId) {
       const retried = await postXiaoze(request, adminHeaders(), {
-        threadId: `${threadId}-approve`,
+        threadId: `${threadId}-approve-${Date.now()}`,
         runId: `run-action-retry-${Date.now()}`,
-        messages: [{ id: "m-user-retry", role: "user", content: `set iin_max to ${cellValue(1)}` }],
+        messages: [{ id: "m-user-retry", role: "user", content: `set ${parameterId} to ${cellValue(1)}` }],
         context: [
           {
             description: "wiseeff.page",
@@ -314,7 +314,7 @@ test.describe("Xiaoze P1 action", () => {
       expect(retried.status).toBe(200);
       interruptValue = readInterruptValue(retried.events);
     }
-    expect(interruptValue?.approvalId).toBeTruthy();
+    expect(interruptValue?.approvalId, JSON.stringify(started.events.slice(0, 8))).toBeTruthy();
 
     const resumed = await postXiaoze(request, adminHeaders(), {
       threadId: `${threadId}-approve`,

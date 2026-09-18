@@ -808,7 +808,10 @@ test.describe("project configuration workbench read-only browser acceptance", ()
           }
         );
       }
-      expect(createCandidate.status(), await createCandidate.text()).toBe(201);
+      expect(
+        createCandidate.status(),
+        `candidate create ${createCandidate.status()}: ${await createCandidate.text()}`
+      ).toBe(201);
       const candidateBody = (await createCandidate.json()) as {
         item: { id: string; status: string; baseVersionId?: string };
       };
