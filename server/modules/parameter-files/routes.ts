@@ -51,7 +51,12 @@ import {
   releaseBaselineBody,
   submitStructuredEditsBodySchema
 } from "./schemas";
-import { getProjectParameterFileContent, rollbackProjectParameterFileVersion, uploadProjectParameterFile } from "./service";
+import {
+  getProjectParameterFileContent,
+  maybeIngestSemanticConfigRevision,
+  rollbackProjectParameterFileVersion,
+  uploadProjectParameterFile
+} from "./service";
 import {
   abandonCandidate,
   activateCandidate,
@@ -640,6 +645,22 @@ export function registerParameterFileRoutes(
       },
       { requestId: request.requestId }
     );
+    const objectStore = options.objectStore;
+    const file = await getProjectParameterFileById(db, {
+      organizationId: auth.organization.id,
+      fileId: body.fileId
+    });
+    if (objectStore && file?.currentVersionId) {
+      const version = await getFileVersionById(db, { versionId: file.currentVersionId });
+      if (version) {
+        const frozenSource = (await objectStore.get(version.storageKey)).toString("utf8");
+        await maybeIngestSemanticConfigRevision(db, objectStore, auth, {
+          fileId: file.id,
+          frozenVersionId: version.id,
+          frozenSource
+        });
+      }
+    }
 
     return { status: 201, body: { item } };
   });

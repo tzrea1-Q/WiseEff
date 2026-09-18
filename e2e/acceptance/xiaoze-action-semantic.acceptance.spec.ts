@@ -254,7 +254,7 @@ async function seedNumericCellBinding(request: APIRequestContext) {
     apiRoute(`/api/v1/projects/${projectId}/config-sets/${encodeURIComponent(configSetId)}/files`),
     {
       headers: adminHeaders(),
-      data: { fileId: uploaded.fileId, role: "base", sortOrder: 0 }
+      data: { fileId: uploaded.fileId, role: "overlay", sortOrder: 80 }
     }
   );
   expect([200, 201, 409]).toContain(addPrimary.status());

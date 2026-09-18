@@ -39,16 +39,28 @@ async function resolveSeededBinding() {
       `
       select b.id, latest.raw_value
       from project_parameter_bindings b
-      join lateral (
-        select r.raw_value
-        from project_parameter_binding_revisions r
-        where r.binding_id = b.id
-        order by r.created_at desc
-        limit 1
-      ) latest on true
+      join dts_config_set cs
+        on cs.organization_id = b.organization_id
+       and cs.project_id = b.project_id
+       and cs.name = 'default'
+      join dts_config_revisions cr
+        on cr.config_set_id = cs.id
+       and cr.id = (
+         select id from dts_config_revisions
+         where config_set_id = cs.id
+         order by revision_number desc
+         limit 1
+       )
+      join project_parameter_binding_revisions latest
+        on latest.binding_id = b.id
+       and latest.config_revision_id = cr.id
+      join dts_logical_node_revisions lnr
+        on lnr.logical_node_id = b.logical_node_id
+       and lnr.config_revision_id = cr.id
       where b.organization_id = 'org-chargelab'
         and b.project_id = $1
         and latest.raw_value ~ '^<[0-9]+>$'
+        and coalesce(lnr.node_locator, '') <> ''
       order by b.id
       limit 1
       `,

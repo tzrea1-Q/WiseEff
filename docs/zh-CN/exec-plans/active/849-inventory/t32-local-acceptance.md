@@ -2,9 +2,9 @@
 
 > English: [English](../../../exec-plans/active/849-inventory/t32-local-acceptance.md)
 
-状态：**本地候选，T3.2 整行尚未绿。** 缺失场景已实现。为让 Gate0 看到干净树，做了**仅本地** commit `8b517b9303ded564edd57c3ca31ede06b5c5cf51`。Gate0 已供给并跑完，**失败**（visual 7、browser 32、清单 39）。那 7 张 darwin 视觉基线已按审查后的 actual 更新。共享浏览器定位/FK/诊断修复在脏树中，**尚未再跑 Gate0**。未 SEALED。未 push。无 PR/Hosted/目标/Issue。封印点仍是 T3.4a。
+状态：**本地候选，T3.2 整行尚未绿。** 缺失场景已实现。仅本地 commit：`8b517b930`（Gate0 快照）与 `5975f0cce`（视觉基线 + 共享定位/FK 修复）。worktree 上对 `5975f0cce` 的 Gate0 **视觉通过**，**浏览器失败**，清单 **14**（从 39 降下来）。误在 detached accepted main `46b60686` 上启动的 Gate0 已杀掉，不作证据。未 SEALED。未 push。无 PR/Hosted/目标/Issue。封印点仍是 T3.4a。
 
-Gate0 供给时 HEAD：`8b517b9303ded564edd57c3ca31ede06b5c5cf51`（`codex/849-853-t11-source-identity`）。快照与用例修复再次把树弄脏。
+HEAD：`5975f0cceec417c0c388e8b4a7f0fb70f937b581`（`codex/849-853-t11-source-identity`）。目录只读身份/历史目前在脏树里，未进入该次 Gate0。
 
 ## 环境
 
@@ -41,7 +41,11 @@ Canonical 值草稿现在会加载审核角色候选人，角色池缺失时阻�
 | `LANG=C LC_ALL=C npm run acceptance:gate0`（`8b517b930` / PG **55438**） | **供给后失败。** 运行 `full-20260918t071307751z-8b517b9303de-7afcdd88`，库 `wiseeff_acceptance_full_20260918t07130775_8b517b93_7afcdd88`。Visual **7 失败 / 13 通过**。Browser **32 失败 / 33 跳过 / 141 通过**。清单 **39**。产物保留。不是把 skip 当通过。 |
 | 该次 Gate0 浏览器中的 T3.2 spec | HANDOFF、已验证 PROMOTE、LOCK、ROLES、READINESS **通过**。不可验证 PROMOTE **失败**（`reload-promote-node-drift`）。选择器后续要求非空 node locator（未再 commit）。 |
 | Gate0 视觉分诊 | **已审查。** 7 张 darwin 基线按该次 actual 更新：`/parameters`（省略「带到参数调试」+ SearchField 图标）、`/parameter-review`（canonical 审阅文案）、`/parameter-admin`（目录页 + inspect/adopt 横幅）、`/organization/members`（组织角色 / 项目职责 / 注销 / 用户名）、小泽弹层（背后同一工作台）、成员表行悬停与排序表头焦点。品红区域是 Playwright `mask`。Linux 基线**没有**从 darwin actual 拷贝。 |
-| 共享浏览器修复（脏树，未再跑 Gate0） | SearchField 清除 `aria-label` 为「清空输入」；目录清除文案为「清空筛选」；「搜索」定位使用 `exact: true`；知识检索用 `searchbox`；权限筛选用 `searchbox`；删除 `project_parameter_files` 前先删 candidate；隔离交付 M1 仅在设置 `WISEEFF_CATALOG_DELIVERY_EVIDENCE` 时运行；shell/debugging/import 期望 GET `parameter-review-items` 403/410；无 Admin 的目录用户看到「无权访问」；未接管的发布对话框断言 inspect/adopt 阻塞而不是主体选择器；debugging 非写入 API 用户为 `guest`；catalog rewrite 导入审计保留 `reviewMetadata`；隔离 binding seed 与小泽等待要求非空 node locator；`/parameter-admin` 拓扑 UI 断言目录而不是「参数定义库」。`SearchField.test.tsx` + `CatalogPage.test.tsx` **22 通过**。 |
+| 本地 commit `5975f0cce` | **已做。** darwin 视觉基线 + 共享定位/FK/诊断修复。未 push。 |
+| `LANG=C LC_ALL=C npm run acceptance:gate0`（`5975f0cce` / PG **55438**） | **供给后失败。** 运行 `full-20260918t083648303z-5975f0cceec4-679690ef`。Visual **通过**。Browser **14 条清单失败**。产物保留。不是把 skip 当通过。 |
+| 误打到 `/Users/tzrea1/Develop/WiseEff` `46b60686` 的 Gate0 | **已杀掉。** 不是 worktree 证据。WiseEff porcelain 仍为 0。 |
+| 目录只读后续（脏树） | `DefinitionEditorBody` 在无编写权限时仍展示主体/定义编号、说明、使用与「查看历史」。`DefinitionEditorBody.test.tsx` **4 通过**。 |
+| Overlay ingest 后续（脏树） | 加入 config-set 文件后立即做语义 ingest。小泽种子改为 overlay，并要求 default 上带 locator 的 binding。 |
 | 第一次 Gate0（会话 locale） | **供给前失败**：中文 `ps -o lstart=`。 |
 | 第二次 Gate0（LANG=C，脏树） | **源检查失败**：需要干净工作树。 |
 | target-synthetic-acceptance | **未跑**。本会话没有目标前端/API URL 或鉴权。 |
@@ -49,4 +53,4 @@ Canonical 值草稿现在会加载审核角色候选人，角色池缺失时阻�
 
 ## 程序边界
 
-T3.2 整行仍未完成。Gate0 已供给并执行；darwin 视觉基线已在本地更新，共享浏览器定位/FK/诊断修复尚未 commit。剩余 Gate0 浏览器簇仍包括：目录未接管 / 发布对话框缺 `catalog:author`、`/parameter-admin` 目录取代「参数定义库」、overlay ingest 超时（`enable_*`、小泽 `iin_max`）、`missing-logical-node-revision`、dts-structured writeback/RBAC、knowledge/catalog 90s 超时、PARAM-IMPORT `skippedRows`。不得把 141 个浏览器通过当成 Gate0 通过。下次重试 Gate0 需要在剩余修复后再做一次干净 commit。不 push、不开 PR。T3.3a Docker/S2、T3.3b 目标、T3.4a 封印、T3.4b PR/Hosted/merge、T3.5 Issue 关闭不变。
+T3.2 整行仍未完成。worktree Gate0（`5975f0cce`）视觉已过，浏览器失败从 39 降到 14。剩余：overlay ingest 超时（`enable_*`、小泽 `iin_max`）、`missing-logical-node-revision`、dts-structured writeback、拓扑 `data-project-id=nebula`、工作台 candidate POST 400、知识检索「关联」、以及目录详情/历史（只读身份/历史已实现但未进入该次 Gate0）。不得把视觉通过当成 Gate0 通过。不 push、不开 PR。T3.3a Docker/S2、T3.3b 目标、T3.4a 封印、T3.4b PR/Hosted/merge、T3.5 Issue 关闭不变。
