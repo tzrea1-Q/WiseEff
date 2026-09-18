@@ -788,7 +788,7 @@ test.describe("project configuration workbench read-only browser acceptance", ()
       );
       expect(addMember.ok()).toBe(true);
 
-      let createCandidate = await request.post(
+      const createCandidate = await request.post(
         apiRoute(`/api/v1/projects/${projectId}/parameter-file-candidates`),
         {
           headers: adminHeaders(),
@@ -799,22 +799,9 @@ test.describe("project configuration workbench read-only browser acceptance", ()
           }
         }
       );
-      if (createCandidate.status() === 400) {
-        createCandidate = await request.post(
-          apiRoute(`/api/v1/projects/${projectId}/parameter-file-candidates`),
-          {
-            headers: adminHeaders(),
-            data: {
-              fileName: primaryFileName,
-              contentBase64: Buffer.from(v2Dts, "utf8").toString("base64")
-            }
-          }
-        );
+      if (createCandidate.status() !== 201) {
+        throw new Error(`candidate create ${createCandidate.status()}: ${await createCandidate.text()}`);
       }
-      expect(
-        createCandidate.status(),
-        `candidate create ${createCandidate.status()}: ${await createCandidate.text()}`
-      ).toBe(201);
       const candidateBody = (await createCandidate.json()) as {
         item: { id: string; status: string; baseVersionId?: string };
       };

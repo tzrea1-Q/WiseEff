@@ -297,8 +297,9 @@ test.describe("Xiaoze P1 action", () => {
     // @operation XIAOZE-ACTION-APPROVE-001
     const openBefore = await countOpenChangeRequests();
     const actionPrompt = `set ${parameterId} to ${cellValue(1)}`;
+    const approveThread = `${threadId}-approve-${Date.now()}`;
     const started = await postXiaoze(request, adminHeaders(), {
-      threadId: `${threadId}-approve`,
+      threadId: approveThread,
       runId: `run-action-${Date.now()}`,
       messages: [{ id: "m-user", role: "user", content: actionPrompt }],
       context: [
@@ -310,26 +311,14 @@ test.describe("Xiaoze P1 action", () => {
     });
 
     expect(started.status).toBe(200);
-    let interruptValue = readInterruptValue(started.events);
-    if (!interruptValue?.approvalId) {
-      const retried = await postXiaoze(request, adminHeaders(), {
-        threadId: `${threadId}-approve-${Date.now()}`,
-        runId: `run-action-retry-${Date.now()}`,
-        messages: [{ id: "m-user-retry", role: "user", content: `set ${parameterId} to ${cellValue(1)}` }],
-        context: [
-          {
-            description: "wiseeff.page",
-            value: { pageKey: "parameters", projectId, path: `/parameters?project=${projectId}` }
-          }
-        ]
-      });
-      expect(retried.status).toBe(200);
-      interruptValue = readInterruptValue(retried.events);
-    }
-    expect(interruptValue?.approvalId, JSON.stringify(started.events.slice(0, 8))).toBeTruthy();
+    const interruptValue = readInterruptValue(started.events);
+    expect(
+      interruptValue?.approvalId,
+      `events=${JSON.stringify(started.events.map((event) => event.type))}`
+    ).toBeTruthy();
 
     const resumed = await postXiaoze(request, adminHeaders(), {
-      threadId: `${threadId}-approve`,
+      threadId: approveThread,
       runId: `run-resume-approve-${Date.now()}`,
       messages: [{ id: "m-resume", role: "user", content: "approve" }],
       forwardedProps: {
@@ -346,7 +335,7 @@ test.describe("Xiaoze P1 action", () => {
     expect(openAfterApprove).toBeGreaterThan(openBefore);
 
     const followUp = await postXiaoze(request, adminHeaders(), {
-      threadId: `${threadId}-approve`,
+      threadId: approveThread,
       runId: `run-follow-up-${Date.now()}`,
       messages: [{ id: "m-follow-up", role: "user", content: "summarize project aurora" }],
       context: [
@@ -359,7 +348,7 @@ test.describe("Xiaoze P1 action", () => {
     expect(followUp.status).toBe(200);
     expect(followUp.events.some((event) => event.type === "RUN_ERROR")).toBe(false);
 
-    const auditRows = await latestAgentAuditForSession(`${threadId}-approve`);
+    const auditRows = await latestAgentAuditForSession(approveThread);
     const approvalAudit = auditRows.find((row) => row.action === "approval-executed" && row.actor_type === "agent");
     expect(approvalAudit).toBeTruthy();
     const approveArtifact = await writeOperationJsonArtifact(testInfo, "xiaoze-action-approve.json", {
