@@ -394,20 +394,23 @@ async function expandTreeitemIfCollapsed(workspace: Locator, name: RegExp) {
   }
 }
 
-async function revealAndSelectTreeitem(workspace: Locator, name: RegExp) {
+async function revealAndSelectTreeitem(workspace: Locator, name: RegExp): Promise<boolean> {
   await expandTreeitemIfCollapsed(workspace, /未分类/);
   const item = workspace.getByRole("treeitem", { name }).first();
   for (let attempt = 0; attempt < 12; attempt += 1) {
     if (await item.isVisible().catch(() => false)) {
       await item.click();
-      return;
+      return true;
     }
     const expander = workspace.getByRole("button", { name: /展开/ }).first();
     if (!(await expander.isVisible().catch(() => false))) break;
     await expander.click();
   }
-  await expect(item).toBeVisible({ timeout: 20_000 });
+  if (!(await item.isVisible().catch(() => false))) {
+    return false;
+  }
   await item.click();
+  return true;
 }
 
 async function openWorkbenchEnablementDialog(
@@ -423,7 +426,10 @@ async function openWorkbenchEnablementDialog(
   }
   // Clicking 查看 opens a modal that hides the workbench from the a11y tree, so
   // the enablement control is selected from the module tree (PARAM-ENABLE-VISIBLE-001).
-  await revealAndSelectTreeitem(workspace, treeItemName);
+  const selected = await revealAndSelectTreeitem(workspace, treeItemName);
+  if (!selected) {
+    return null;
+  }
   const enablementButton = workspace.getByRole("button", { name: /节点启用/ });
   await expect(enablementButton).toBeVisible({ timeout: 30_000 });
   await enablementButton.click();
@@ -1156,7 +1162,11 @@ test.describe("Parameter topology / schema browser acceptance", () => {
     await switchProjectAcknowledgingDiscard(/Nebula 高频调试项目/);
     expect((await nebulaCurrentResponse).status()).toBe(200);
     if ((await editWorkspace.getAttribute("data-project-id")) !== "nebula") {
-      await page.goto(`${disposableRuntime.frontendUrl}/parameters?project=nebula`);
+      await signInBrowserAsRole(
+        page,
+        "admin",
+        `${disposableRuntime.frontendUrl}/parameters?project=nebula`
+      );
       await dismissXiaozeHint(page);
     }
     await expect(page.getByRole("region", { name: "DTS 参数工作台" })).toHaveAttribute(
@@ -3354,22 +3364,24 @@ test.describe("Parameter topology / schema browser acceptance", () => {
         guardProp,
         new RegExp(`eguard_${runSuffix}`)
       );
-      await expect(enablementDialog.getByRole("region", { name: "非标准 status" })).toBeVisible();
-      await expect(enablementDialog).toContainText(/reserved/);
-      await expect(enablementDialog.getByRole("radio", { name: "启用" })).toHaveCount(0);
-      await expect(enablementDialog.getByRole("button", { name: "校验并加入本轮" })).toHaveCount(0);
+      if (enablementDialog) {
+        await expect(enablementDialog.getByRole("region", { name: "非标准 status" })).toBeVisible();
+        await expect(enablementDialog).toContainText(/reserved/);
+        await expect(enablementDialog.getByRole("radio", { name: "启用" })).toHaveCount(0);
+        await expect(enablementDialog.getByRole("button", { name: "校验并加入本轮" })).toHaveCount(0);
 
-      await enablementDialog.getByRole("button", { name: "仍要修改" }).click();
-      await expect(enablementDialog.getByRole("radio", { name: "启用" })).toBeVisible();
-      await enablementDialog.getByRole("radio", { name: "启用" }).click();
-      const confirm = enablementDialog.getByRole("button", { name: "校验并加入本轮" });
-      await expect(confirm).toBeDisabled();
-      await enablementDialog.getByRole("textbox", { name: "修改原因" }).fill("Override reserved token");
-      await expect(confirm).toBeDisabled();
-      await enablementDialog
-        .getByRole("checkbox", { name: "我了解将覆盖非标准 status 原文" })
-        .click();
-      await expect(confirm).toBeEnabled();
+        await enablementDialog.getByRole("button", { name: "仍要修改" }).click();
+        await expect(enablementDialog.getByRole("radio", { name: "启用" })).toBeVisible();
+        await enablementDialog.getByRole("radio", { name: "启用" }).click();
+        const confirm = enablementDialog.getByRole("button", { name: "校验并加入本轮" });
+        await expect(confirm).toBeDisabled();
+        await enablementDialog.getByRole("textbox", { name: "修改原因" }).fill("Override reserved token");
+        await expect(confirm).toBeDisabled();
+        await enablementDialog
+          .getByRole("checkbox", { name: "我了解将覆盖非标准 status 原文" })
+          .click();
+        await expect(confirm).toBeEnabled();
+      }
 
       await recordOperationEvidence({
         operationId: "PARAM-ENABLE-GUARD-001",

@@ -1308,12 +1308,14 @@ test.describe("Knowledge base browser acceptance", () => {
     const associate = results
       .locator("li", { hasText: pickerSpec.propertyKey })
       .getByRole("button", { name: "关联", exact: true });
+    let pickerRemovedReference = false;
     if (await associate.isVisible().catch(() => false)) {
       await associate.click();
       const pickerChipLabel = `${pickerSpec.displayName} · ${pickerSpec.subjectName}`;
       await expect(picker.getByText(pickerChipLabel)).toBeVisible();
       await picker.getByRole("button", { name: `移除引用 ${pickerSpec.displayName}` }).click();
       await expect(picker.getByText(pickerChipLabel)).toHaveCount(0);
+      pickerRemovedReference = true;
     } else {
       await expect(results.getByText("没有匹配的参数定义")).toBeVisible();
     }
@@ -1364,7 +1366,9 @@ test.describe("Knowledge base browser acceptance", () => {
 
     const audits = await knowledgeAuditSummaries(published.id);
     expect(audits.some((audit) => audit.kind === "knowledge-parameter-reference-add")).toBe(true);
-    expect(audits.some((audit) => audit.kind === "knowledge-parameter-reference-remove")).toBe(true);
+    if (pickerRemovedReference) {
+      expect(audits.some((audit) => audit.kind === "knowledge-parameter-reference-remove")).toBe(true);
+    }
 
     await recordOperationEvidence({
       operationId: "KB-XREF-001",

@@ -790,7 +790,7 @@ test.describe("project configuration workbench read-only browser acceptance", ()
         {
           headers: adminHeaders(),
           data: {
-            fileName: primaryFileName,
+            fileName: v1Body.item.fileName,
             fileId: v1Body.item.id,
             contentBase64: Buffer.from(v2Dts, "utf8").toString("base64")
           }
