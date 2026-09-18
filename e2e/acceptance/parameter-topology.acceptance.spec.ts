@@ -2379,7 +2379,13 @@ test.describe("Parameter topology / schema browser acceptance", () => {
     }
 
     // 8) Reload bindingId/value/provenance from DB after UI reload.
-    await page.reload();
+    // Identity-mapping uses a throwaway config set; go back to the aurora
+    // workspace instead of reloading whatever page the mapping flow left.
+    await signInBrowserAsRole(
+      page,
+      "software-user",
+      `${disposableRuntime.frontendUrl}/parameters?project=${projectId}`
+    );
     await dismissXiaozeHint(page);
     const workspaceAfter = page.getByRole("region", { name: "DTS 参数工作台" });
     await expect(workspaceAfter).toBeVisible({ timeout: 30_000 });
