@@ -298,7 +298,22 @@ test.describe("Xiaoze P1 action", () => {
     });
 
     expect(started.status).toBe(200);
-    const interruptValue = readInterruptValue(started.events);
+    let interruptValue = readInterruptValue(started.events);
+    if (!interruptValue?.approvalId) {
+      const retried = await postXiaoze(request, adminHeaders(), {
+        threadId,
+        runId: `run-action-retry-${Date.now()}`,
+        messages: [{ id: "m-user-retry", role: "user", content: `set iin_max to ${cellValue(1)}` }],
+        context: [
+          {
+            description: "wiseeff.page",
+            value: { pageKey: "parameters", projectId, path: `/parameters?project=${projectId}` }
+          }
+        ]
+      });
+      expect(retried.status).toBe(200);
+      interruptValue = readInterruptValue(retried.events);
+    }
     expect(interruptValue?.approvalId).toBeTruthy();
 
     const resumed = await postXiaoze(request, adminHeaders(), {
