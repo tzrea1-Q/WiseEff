@@ -17,7 +17,9 @@ import { apiRoute, smokeHeaders } from "./helpers/runtime";
 useBrowserDiagnostics(test, {
   expectedApiFailures: [
     { method: "GET", path: "/api/v2/parameter-specs", status: 410 },
-    { method: "GET", path: "/api/v2/parameter-specs", status: 403 }
+    { method: "GET", path: "/api/v2/parameter-specs", status: 403 },
+    { method: "GET", path: "/api/v2/catalog/legacy-identifiers", status: 404 },
+    { method: "GET", path: "/api/v2/catalog/legacy-identifiers", status: 410 }
   ]
 });
 
