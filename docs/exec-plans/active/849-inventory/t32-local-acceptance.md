@@ -2,9 +2,9 @@
 
 > Chinese: [中文](../../../zh-CN/exec-plans/active/849-inventory/t32-local-acceptance.md)
 
-Status: **local candidate, not green for the full T3.2 row.** Best worktree Gate0 so far is `5975f0cce`: visual **passed**, browser **14** failures (down from 39). Follow-up `4ddac4c15` added catalog view-only history and ingest-on-add; Gate0 on that SHA visual **passed** but browser **41** failures because adding a config-set file returned 500. Ingest-on-add is reverted in `66cae3c0b`. Not SEALED. Not pushed. No PR/Hosted. T3.4a remains the seal point.
+Status: **local-non-HDC Gate0 is green on this worktree. T3.2 as a whole row is not complete.** Latest Gate0 `beab90bc9` / run `full-20260918t224937833z-beab90bc9cec-5f49a8e9` / helper PG **55438**: visual **passed**, browser **passed**, inventoried failures **0**, operation-evidence **passed** (`missingOperationIds: []`, `invalidEvidenceIds: []`). Exact runtime cleanup completed. Not SEALED. Not pushed. No PR/Hosted. T3.4a remains the seal point. target-synthetic-acceptance and minimal-upgrade are still not run. Do not start T3.3a from this receipt.
 
-HEAD: `66cae3c0b4921300039da8e98a4338099aa65e91` on `codex/849-853-t11-source-identity`. Follow-up (dirty): knowledge picker searches `view=governance`; enable waits can use topology node needles; numeric cell pairs prefer locator-bearing default bindings. Ingest-on-add stays reverted.
+HEAD: `beab90bc9cecd274c58ecd7d66b051026a955987` on `codex/849-853-t11-source-identity`. Ingest-on-add stays reverted.
 
 ## Environment
 
@@ -42,6 +42,7 @@ Canonical value drafts now load workflow-role candidates and block submit when p
 | T3.2 specs inside that Gate0 browser phase | HANDOFF, verified PROMOTE, LOCK, ROLES, READINESS **passed**. Unverifiable PROMOTE **failed** (`reload-promote-node-drift`, recorded `/td079_cell` vs current `null`). Picker now requires a non-empty node locator (uncommitted follow-up). |
 | Gate0 visual triage | **reviewed.** 7 darwin baselines updated from that run's actuals: `/parameters` (omitted 带到参数调试 + SearchField icon), `/parameter-review` (canonical review copy), `/parameter-admin` (catalog page + inspect/adopt banner), `/organization/members` (组织角色 / 项目职责 / 注销 / username), Xiaoze popup (same workbench behind it), members row hover and sort-header focus. Magenta regions are Playwright `mask`. Linux snapshots **not** copied from darwin actuals. |
 | Local commit `5975f0cce` | **done.** Visual darwin baselines + shared locator/FK/diagnostics repairs. Not pushed. |
+| `LANG=C LC_ALL=C npm run acceptance:gate0` on `beab90bc9` / PG **55438** | **passed.** Run `full-20260918t224937833z-beab90bc9cec-5f49a8e9`. Visual **passed**. Browser **passed**. Inventory **0**. Operation-evidence **passed**. Runtime cleanup completed. Not a skip-as-pass. |
 | `LANG=C LC_ALL=C npm run acceptance:gate0` on `5975f0cce` / PG **55438** | **failed after provision.** Run `full-20260918t083648303z-5975f0cceec4-679690ef`. Visual **passed**. Browser **14 inventoried failures**. Artifacts retained. Not a skip-as-pass. |
 | Mis-aimed Gate0 on `/Users/tzrea1/Develop/WiseEff` `46b60686` | **killed.** Not worktree evidence. WiseEff porcelain stayed 0. |
 | Catalog view-only follow-up (dirty) | `DefinitionEditorBody` now shows subject/definition ids, documentation, usage, and 查看历史 without authoring. `DefinitionEditorBody.test.tsx` **4 passed**. |
@@ -55,4 +56,4 @@ Canonical value drafts now load workflow-role candidates and block submit when p
 
 ## Remaining program boundary
 
-T3.2 is not a complete local-acceptance row. Worktree Gate0 on `5975f0cce` passed visual and cut browser failures 39 → 14. Remaining: overlay ingest timeouts (`enable_*`, Xiaoze `iin_max`), `missing-logical-node-revision`, dts-structured writeback, topology `data-project-id=nebula`, workbench candidate POST 400, knowledge picker 关联, and catalog detail/history (view-only identity/history is implemented but not in that Gate0). Do not treat a visual pass as a Gate0 pass. No push/PR/Hosted. T3.3a Docker/S2, T3.3b target, T3.4a seal, T3.4b PR/Hosted/merge, T3.5 Issue close are unchanged.
+T3.2 is not a complete local-acceptance row. Local-non-HDC Gate0 on `beab90bc9` is green (visual, browser, operation-evidence, cleanup). target-synthetic-acceptance and minimal-upgrade remain unavailable in this session. No push/PR/Hosted. T3.3a Docker/S2, T3.3b target, T3.4a seal, T3.4b PR/Hosted/merge, T3.5 Issue close are unchanged.

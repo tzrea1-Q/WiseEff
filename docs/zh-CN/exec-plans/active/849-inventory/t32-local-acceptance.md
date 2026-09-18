@@ -2,9 +2,9 @@
 
 > English: [English](../../../exec-plans/active/849-inventory/t32-local-acceptance.md)
 
-状态：**本地候选，T3.2 整行尚未绿。** 目前最好的 worktree Gate0 是 `5975f0cce`：视觉 **通过**，浏览器 **14** 条失败（从 39 降下来）。后续 `4ddac4c15` 加了目录只读历史和 ingest-on-add；该 SHA 的 Gate0 视觉 **通过**，浏览器 **41** 条失败，加入 config-set 文件返回 500。ingest-on-add 已在 `66cae3c0b` 撤回。未 SEALED。未 push。无 PR/Hosted。封印点仍是 T3.4a。
+状态：**本 worktree 的 local-non-HDC Gate0 已绿；T3.2 整行尚未完成。** 最近一次 Gate0：`beab90bc9` / run `full-20260918t224937833z-beab90bc9cec-5f49a8e9` / helper PG **55438**：视觉 **通过**，浏览器 **通过**，清单失败 **0**，operation-evidence **通过**（`missingOperationIds: []`，`invalidEvidenceIds: []`）。运行时清理已完成。未 SEALED。未 push。无 PR/Hosted。封印点仍是 T3.4a。target-synthetic-acceptance 与 minimal-upgrade 仍未跑。不要从本回执启动 T3.3a。
 
-HEAD：`66cae3c0b4921300039da8e98a4338099aa65e91`（`codex/849-853-t11-source-identity`）。后续（脏树）：知识检索用 `view=governance`；enable 等待可用拓扑节点；数值 cell 对优先选带 locator 的 default binding。ingest-on-add 保持撤回。
+HEAD：`beab90bc9cecd274c58ecd7d66b051026a955987`（`codex/849-853-t11-source-identity`）。ingest-on-add 保持撤回。
 
 ## 环境
 
@@ -42,6 +42,7 @@ Canonical 值草稿现在会加载审核角色候选人，角色池缺失时阻�
 | 该次 Gate0 浏览器中的 T3.2 spec | HANDOFF、已验证 PROMOTE、LOCK、ROLES、READINESS **通过**。不可验证 PROMOTE **失败**（`reload-promote-node-drift`）。选择器后续要求非空 node locator（未再 commit）。 |
 | Gate0 视觉分诊 | **已审查。** 7 张 darwin 基线按该次 actual 更新：`/parameters`（省略「带到参数调试」+ SearchField 图标）、`/parameter-review`（canonical 审阅文案）、`/parameter-admin`（目录页 + inspect/adopt 横幅）、`/organization/members`（组织角色 / 项目职责 / 注销 / 用户名）、小泽弹层（背后同一工作台）、成员表行悬停与排序表头焦点。品红区域是 Playwright `mask`。Linux 基线**没有**从 darwin actual 拷贝。 |
 | 本地 commit `5975f0cce` | **已做。** darwin 视觉基线 + 共享定位/FK/诊断修复。未 push。 |
+| `LANG=C LC_ALL=C npm run acceptance:gate0`（`beab90bc9` / PG **55438**） | **通过。** 运行 `full-20260918t224937833z-beab90bc9cec-5f49a8e9`。Visual **通过**。Browser **通过**。清单 **0**。operation-evidence **通过**。运行时清理完成。不是把 skip 当通过。 |
 | `LANG=C LC_ALL=C npm run acceptance:gate0`（`5975f0cce` / PG **55438**） | **供给后失败。** 运行 `full-20260918t083648303z-5975f0cceec4-679690ef`。Visual **通过**。Browser **14 条清单失败**。产物保留。不是把 skip 当通过。 |
 | 误打到 `/Users/tzrea1/Develop/WiseEff` `46b60686` 的 Gate0 | **已杀掉。** 不是 worktree 证据。WiseEff porcelain 仍为 0。 |
 | 目录只读后续（脏树） | `DefinitionEditorBody` 在无编写权限时仍展示主体/定义编号、说明、使用与「查看历史」。`DefinitionEditorBody.test.tsx` **4 通过**。 |
@@ -55,4 +56,4 @@ Canonical 值草稿现在会加载审核角色候选人，角色池缺失时阻�
 
 ## 程序边界
 
-T3.2 整行仍未完成。worktree Gate0（`5975f0cce`）视觉已过，浏览器失败从 39 降到 14。剩余：overlay ingest 超时（`enable_*`、小泽 `iin_max`）、`missing-logical-node-revision`、dts-structured writeback、拓扑 `data-project-id=nebula`、工作台 candidate POST 400、知识检索「关联」、以及目录详情/历史（只读身份/历史已实现但未进入该次 Gate0）。不得把视觉通过当成 Gate0 通过。不 push、不开 PR。T3.3a Docker/S2、T3.3b 目标、T3.4a 封印、T3.4b PR/Hosted/merge、T3.5 Issue 关闭不变。
+T3.2 整行仍未完成。`beab90bc9` 上的 local-non-HDC Gate0 已绿（视觉、浏览器、operation-evidence、清理）。target-synthetic-acceptance 与 minimal-upgrade 在本会话仍不可用。不 push、不开 PR。T3.3a Docker/S2、T3.3b 目标、T3.4a 封印、T3.4b PR/Hosted/merge、T3.5 Issue 关闭不变。
