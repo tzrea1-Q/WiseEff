@@ -284,10 +284,13 @@ async function seedNumericCellBinding(request: APIRequestContext) {
           on br.binding_id = b.id and br.config_revision_id = $1
         inner join parameter_specs ps on ps.id = b.parameter_spec_id
         left join dts_property_specs dps on dps.parameter_spec_id = ps.id
+        left join dts_logical_node_revisions lnr
+          on lnr.logical_node_id = b.logical_node_id and lnr.config_revision_id = $1
         where b.organization_id = $2
           and b.project_id = $3
           and coalesce(dps.property_key, split_part(ps.specification_key, '/', 2)) = $4
           and br.raw_value ~ '^<[0-9]+>$'
+          and coalesce(lnr.node_locator, '') <> ''
         order by b.id
         limit 1
         `,

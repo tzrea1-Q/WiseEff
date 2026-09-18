@@ -718,7 +718,16 @@ export function registerCatalogProjectValueConsumerRoutes(
           projectId: body.projectId,
           targetType: "parameter-import-batch",
           targetId: item.id,
-          metadata: { batchId: item.id, summary: { added, updated, skipped: 0 }, catalogRewrite: true }
+          metadata: {
+            batchId: item.id,
+            summary: {
+              added,
+              updated,
+              skipped: body.reviewMetadata?.skippedRows?.length ?? 0
+            },
+            catalogRewrite: true,
+            ...(body.reviewMetadata ? { reviewMetadata: body.reviewMetadata } : {})
+          }
         }
       };
     });

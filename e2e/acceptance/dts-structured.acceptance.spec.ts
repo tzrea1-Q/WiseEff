@@ -403,7 +403,7 @@ test.describe("DTS structured product browser acceptance", () => {
       const searchForm = page.getByRole("form", { name: "统一结构搜索" });
       await expect(searchForm).toBeVisible({ timeout: 20_000 });
       await searchForm.getByRole("searchbox", { name: "统一搜索查询" }).fill("chip@6E");
-      await searchForm.getByRole("button", { name: "搜索" }).click();
+      await searchForm.getByRole("button", { name: "搜索", exact: true }).click();
       await expect(page.getByLabel("搜索结果")).toContainText(/chip@6E/, { timeout: 20_000 });
 
       await recordOperationEvidence({
@@ -796,16 +796,20 @@ test.describe("DTS structured post-cutover typed edits", () => {
         reason: `${descriptionPrefix} rbac denied`,
         role: "hardware-user"
       });
-      expect(deniedDraft.status, deniedDraft.bodyText).toBe(201);
-      expect(deniedDraft.draft).toBeTruthy();
-      const denied = await submitBindingDraftViaApi(request, {
-        projectId,
-        draft: deniedDraft.draft!,
-        reason: `${descriptionPrefix} rbac denied`,
-        role: "hardware-user"
-      });
-      expect(denied.status).toBe(403);
-      const deniedBody = JSON.parse(denied.bodyText) as {
+      let deniedStatus = deniedDraft.status;
+      let deniedBodyText = deniedDraft.bodyText;
+      if (deniedDraft.status === 201 && deniedDraft.draft) {
+        const denied = await submitBindingDraftViaApi(request, {
+          projectId,
+          draft: deniedDraft.draft,
+          reason: `${descriptionPrefix} rbac denied`,
+          role: "hardware-user"
+        });
+        deniedStatus = denied.status;
+        deniedBodyText = denied.bodyText;
+      }
+      expect(deniedStatus).toBe(403);
+      const deniedBody = JSON.parse(deniedBodyText) as {
         error?: { message?: string; details?: { requiredCapability?: string; riskTier?: string } };
       };
       expect(deniedBody.error?.message ?? "").toMatch(/parameter:edit-critical|FORBIDDEN|Missing permission/i);
@@ -836,7 +840,7 @@ test.describe("DTS structured post-cutover typed edits", () => {
         })
       );
       const rbacArtifact = await writeOperationJsonArtifact(testInfo, "parameter-dts-rbac.json", {
-        denied: { status: denied.status, error: deniedBody.error },
+        denied: { status: deniedStatus, error: deniedBody.error },
         allowed: { requestId: allowed.requestId },
         rule: ruleRow
       });

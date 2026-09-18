@@ -321,7 +321,7 @@ test.describe("canonical parameter catalog page", () => {
     await expect(page.getByText(catalogUiCopy.emptyMessages["no-definitions"]).first()).toBeVisible();
 
     await page.getByRole("searchbox", { name: "搜索参数定义" }).fill("zzzz-no-such-definition");
-    await page.getByRole("button", { name: "搜索" }).click();
+    await page.getByRole("button", { name: "搜索", exact: true }).click();
     await expect(page.getByText(catalogUiCopy.emptyMessages["no-filter-match"]).first()).toBeVisible();
     await catalogScreenshot(page, testInfo, "pcat-ui-08-filter");
   });

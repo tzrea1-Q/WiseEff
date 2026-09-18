@@ -1294,7 +1294,7 @@ test.describe("Knowledge base browser acceptance", () => {
     const editor = page.getByRole("dialog", { name: "编辑知识条目" });
     const picker = editor.getByTestId("knowledge-reference-picker");
     await expect(picker).toBeVisible();
-    await picker.getByRole("textbox", { name: "检索参数定义" }).fill(pickerSpec.propertyKey);
+    await picker.getByRole("searchbox", { name: "检索参数定义" }).fill(pickerSpec.propertyKey);
     await picker.getByRole("button", { name: "检索定义" }).click();
     const results = picker.getByRole("list", { name: "参数定义检索结果" });
     await results

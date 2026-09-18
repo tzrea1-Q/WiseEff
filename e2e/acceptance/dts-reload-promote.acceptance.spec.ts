@@ -68,6 +68,7 @@ async function pickAuroraNumericBinding(offset = 0): Promise<IsolatedBinding> {
       where b.organization_id = $1
         and b.project_id = 'aurora'
         and br.raw_value ~ '^<[0-9]+>$'
+        and coalesce(lnr.node_locator, '') <> ''
         and br.parameter_spec_version_id is not null
         and not exists (
           select 1 from project_parameter_value_drafts d

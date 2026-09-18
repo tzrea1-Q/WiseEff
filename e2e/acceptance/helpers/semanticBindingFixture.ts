@@ -457,7 +457,8 @@ export async function seedIsolatedBindings(
             and b.project_id = $3
             and coalesce(dps.property_key, split_part(ps.specification_key, '/', 2)) = $4
             and coalesce(br.raw_value, '') ~ $5
-            and ($6::text is null or coalesce(lnr.node_locator, '') ~ $6)
+            and coalesce(lnr.node_locator, '') <> ''
+            and ($6::text is null or lnr.node_locator ~ $6)
           order by b.id
           limit 1
           `,

@@ -262,7 +262,11 @@ async function findBindingProperty(
   const body = (await response.json()) as {
     items: Array<{ id: string; propertyKey: string; locator: string | null }>;
   };
-  return body.items.find((row) => row.propertyKey === propertyKey) ?? null;
+  return (
+    body.items.find((row) => row.propertyKey === propertyKey && Boolean(row.locator?.trim())) ??
+    body.items.find((row) => row.propertyKey === propertyKey) ??
+    null
+  );
 }
 
 async function waitForRevisionWithProperties(
@@ -720,20 +724,10 @@ test.describe("Parameter topology / schema browser acceptance", () => {
 
     await signInBrowserAsRole(page, "admin", `${disposableRuntime.frontendUrl}/parameter-admin`);
     await dismissXiaozeHint(page);
-    const specLibrary = page.getByRole("region", { name: "参数定义库" });
-    await expect(specLibrary).toBeVisible({ timeout: 30_000 });
-    await page.getByRole("searchbox", { name: "搜索参数定义" }).fill("gpio_int");
-    await expect(specLibrary.getByRole("cell", { name: "gpio_int" }).first()).toBeVisible({
-      timeout: 20_000
-    });
-    const gpioRows = specLibrary.locator("tbody tr").filter({ hasText: "gpio_int" });
-    await expect(gpioRows.first()).toBeVisible({ timeout: 20_000 });
-    await expect
-      .poll(async () => gpioRows.count(), { timeout: 20_000 })
-      .toBeGreaterThanOrEqual(2);
-    await gpioRows.first().getByRole("button", { name: /编辑 gpio_int/ }).click();
-    // The spec editor ModalDialog is named by its <h2> primary label (the property key).
-    await expect(page.getByRole("dialog", { name: /^gpio_int$/ })).toBeVisible({ timeout: 15_000 });
+    const catalog = page.getByRole("region", { name: "参数定义目录" });
+    await expect(catalog).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByRole("searchbox", { name: "搜索参数定义" })).toBeVisible();
+    await expect(page.getByRole("region", { name: "参数定义库" })).toHaveCount(0);
 
     await recordOperationEvidence({
       operationId: "PARAM-SPEC-GOVERN-001",
@@ -762,7 +756,7 @@ test.describe("Parameter topology / schema browser acceptance", () => {
         })
       ],
       db: [provisionalDb],
-      notes: `${descriptionPrefix}: unmatched mystery property remains review evidence with no recognized binding; UI lists distinct effective gpio_int specs.`
+      notes: `${descriptionPrefix}: unmatched mystery property remains review evidence with no recognized binding; organization admin destination is Catalog; gpio_int overlay specs stay API-governed.`
     });
 
     // Browse real topology (API must be 200 — never [200,404]).

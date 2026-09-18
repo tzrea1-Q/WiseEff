@@ -344,6 +344,10 @@ export async function cleanupSemanticAcceptanceArtifacts(
 
     if (fileIds.length > 0) {
       await client.query(
+        `delete from project_parameter_file_candidates where file_id = any($1::text[])`,
+        [fileIds]
+      );
+      await client.query(
         `
         delete from dts_release_baseline_members
         where file_id = any($1::text[])

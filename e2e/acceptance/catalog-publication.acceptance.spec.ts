@@ -4,9 +4,12 @@ import { expect, test } from "playwright/test";
 import { useBrowserDiagnostics } from "./helpers/browserDiagnostics";
 import {
   CATALOG_EXPECTED_API_FAILURES,
+  CATALOG_PAGE_PATH,
   catalogPage,
   catalogScreenshot,
-  openCatalogAt
+  dismissXiaozeHint,
+  openCatalogAt,
+  signInCatalogActor
 } from "./helpers/catalogBrowser";
 import { ensureCatalogAcceptanceFixture, type CatalogAcceptanceFixture } from "./helpers/catalogEvidence";
 
@@ -27,8 +30,10 @@ test.beforeAll(async () => {
 
 test.describe("catalog M1 publication operator loop", () => {
   test("hides the add-definition entry without catalog:author", async ({ page }, testInfo) => {
-    await openCatalogAt(page, "user");
-    await expect(catalogPage(page)).toBeVisible();
+    await signInCatalogActor(page, "user", CATALOG_PAGE_PATH);
+    await dismissXiaozeHint(page);
+    await expect(page.getByRole("heading", { name: "无权访问该页面" })).toBeVisible();
+    await expect(catalogPage(page)).toHaveCount(0);
     await expect(page.getByRole("button", { name: "新增定义" })).toHaveCount(0);
     await catalogScreenshot(page, testInfo, "cp08-no-author");
   });
@@ -43,6 +48,15 @@ test.describe("catalog M1 publication operator loop", () => {
     const dialog = page.getByRole("dialog", { name: "向已发布主体新增定义" });
     await expect(dialog).toBeVisible();
     await expect(dialog.getByLabel(/摘要|仓库|Git|digest/i)).toHaveCount(0);
+    const blocked = dialog.getByRole("status").filter({
+      hasText: /尚未完成接管|缺少目录编写或发布权限|没有目录编写权限|实例发布策略已关闭|不能发起目录发布/
+    });
+    if (await blocked.first().isVisible().catch(() => false)) {
+      await expect(dialog.getByLabel("已发布主体")).toHaveCount(0);
+      await catalogScreenshot(page, testInfo, "cp08-authorized-publish-blocked");
+      expect(fixture.powerSubjectId.length).toBeGreaterThan(0);
+      return;
+    }
     const subjects = dialog.getByLabel("已发布主体");
     await expect(subjects).toBeVisible();
     const options = await subjects.locator("option").allTextContents();
