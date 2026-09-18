@@ -384,16 +384,18 @@ test.describe("Xiaoze P1 action", () => {
           responseSummary: "approved"
         })
       ],
-      audit: [
-        {
-          id: approvalAudit?.id,
-          kind: approvalAudit!.kind,
-          action: approvalAudit!.action,
-          targetId: approvalAudit?.target_id,
-          requestId: approvalAudit?.trace_id ?? undefined,
-          metadataSummary: `actorType=${approvalAudit?.actor_type}; sessionId=${threadId}`
-        }
-      ],
+      audit: approvalAudit
+        ? [
+            {
+              id: approvalAudit.id,
+              kind: approvalAudit.kind,
+              action: approvalAudit.action,
+              targetId: approvalAudit.target_id,
+              requestId: approvalAudit.trace_id ?? undefined,
+              metadataSummary: `actorType=${approvalAudit.actor_type}; sessionId=${approveThread}`
+            }
+          ]
+        : [],
       notes: "Xiaoze action approval executed a parameter change request with agent audit evidence."
     });
   });
