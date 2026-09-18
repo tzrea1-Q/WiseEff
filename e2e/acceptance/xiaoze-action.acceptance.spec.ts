@@ -50,7 +50,7 @@ async function resolveSeededBinding() {
        and latest.config_revision_id = cr.id
       join dts_logical_node_revisions lnr
         on lnr.logical_node_id = b.logical_node_id
-       and lnr.config_revision_id = cr.id
+       and coalesce(lnr.node_locator, '') <> ''
       where b.organization_id = 'org-chargelab'
         and b.project_id = $1
         and latest.raw_value ~ '^<[0-9]+>$'

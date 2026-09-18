@@ -132,8 +132,20 @@ export async function loadBindingContext(
           and cr.project_id = b.project_id
           and cs.organization_id = b.organization_id
           and cs.project_id = b.project_id
-          and ($4::text is null or lnr.config_revision_id = $4)
-        order by cr.revision_number desc, lnr.id desc
+          and (
+            $4::text is null
+            or lnr.config_revision_id = $4
+            or not exists (
+              select 1
+              from dts_logical_node_revisions exact_lnr
+              where exact_lnr.logical_node_id = b.logical_node_id
+                and exact_lnr.config_revision_id = $4
+            )
+          )
+        order by
+          case when $4::text is not null and lnr.config_revision_id = $4 then 0 else 1 end,
+          cr.revision_number desc,
+          lnr.id desc
         limit 1
       ) as node_locator,
       coalesce(dps.constraints, '{}'::jsonb) as constraints,

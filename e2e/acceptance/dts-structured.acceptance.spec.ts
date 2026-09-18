@@ -583,23 +583,29 @@ test.describe("DTS structured post-cutover typed edits", () => {
         status = await advanceChangeRequestReview(request, requestId);
       }
 
-      const writebackVersion = await withPgClient(async (client) => {
-        const result = await client.query<{ id: string; origin: string; version_number: number; file_id: string }>(
-          `
-          select v.id, v.origin, v.version_number, v.file_id
-          from project_parameter_file_versions v
-          join project_parameter_files f on f.id = v.file_id
-          where f.organization_id = $1
-            and f.project_id = $2
-            and f.file_name = $3
-            and (v.origin = 'writeback' or v.version_number > 1)
-          order by case when v.origin = 'writeback' then 0 else 1 end, v.version_number desc
-          limit 1
-          `,
-          [organizationId, projectId, fileName]
-        );
-        return result.rows[0];
-      });
+      const writebackDeadline = Date.now() + 15_000;
+      let writebackVersion: { id: string; origin: string; version_number: number; file_id: string } | undefined;
+      while (Date.now() < writebackDeadline) {
+        writebackVersion = await withPgClient(async (client) => {
+          const result = await client.query<{ id: string; origin: string; version_number: number; file_id: string }>(
+            `
+            select v.id, v.origin, v.version_number, v.file_id
+            from project_parameter_file_versions v
+            join project_parameter_files f on f.id = v.file_id
+            where f.organization_id = $1
+              and f.project_id = $2
+              and f.file_name = $3
+              and (v.origin = 'writeback' or v.version_number > 1)
+            order by case when v.origin = 'writeback' then 0 else 1 end, v.version_number desc
+            limit 1
+            `,
+            [organizationId, projectId, fileName]
+          );
+          return result.rows[0];
+        });
+        if (writebackVersion) break;
+        await new Promise((resolve) => setTimeout(resolve, 400));
+      }
       expect(writebackVersion).toBeTruthy();
 
       const contentResponse = await request.get(

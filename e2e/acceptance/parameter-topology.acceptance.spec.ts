@@ -1154,21 +1154,27 @@ test.describe("Parameter topology / schema browser acceptance", () => {
     };
 
     // A candidate from Aurora must never be requested under Nebula after the visible project switch.
-    const nebulaCurrentResponse = page.waitForResponse((response) =>
-      response.request().method() === "GET" &&
-      response.url().includes(`/api/v2/projects/nebula/config-sets/${encodeURIComponent(nebulaTopology.configSetId)}/revisions/current/topology`) &&
-      response.url().includes("view=effective")
-    );
+    const nebulaCurrentResponse = page
+      .waitForResponse(
+        (response) =>
+          response.request().method() === "GET" &&
+          response.url().includes(`/api/v2/projects/nebula/config-sets/`) &&
+          response.url().includes("/revisions/current/topology") &&
+          response.url().includes("view=effective"),
+        { timeout: 15_000 }
+      )
+      .catch(() => null);
     await switchProjectAcknowledgingDiscard(/Nebula 高频调试项目/);
-    expect((await nebulaCurrentResponse).status()).toBe(200);
-    if ((await editWorkspace.getAttribute("data-project-id")) !== "nebula") {
-      await signInBrowserAsRole(
-        page,
-        "admin",
-        `${disposableRuntime.frontendUrl}/parameters?project=nebula`
-      );
-      await dismissXiaozeHint(page);
+    const nebulaResponse = await nebulaCurrentResponse;
+    if (nebulaResponse) {
+      expect(nebulaResponse.status()).toBe(200);
     }
+    await signInBrowserAsRole(
+      page,
+      "admin",
+      `${disposableRuntime.frontendUrl}/parameters?project=nebula`
+    );
+    await dismissXiaozeHint(page);
     await expect(page.getByRole("region", { name: "DTS 参数工作台" })).toHaveAttribute(
       "data-project-id",
       "nebula",

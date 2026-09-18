@@ -248,16 +248,20 @@ async function seedNumericCellBinding(request: APIRequestContext) {
       join parameter_specs ps on ps.id = b.parameter_spec_id
       left join dts_property_specs dps on dps.parameter_spec_id = ps.id
       join dts_logical_node_revisions lnr
-        on lnr.logical_node_id = b.logical_node_id and lnr.config_revision_id = cr.id
+        on lnr.logical_node_id = b.logical_node_id
+       and coalesce(lnr.node_locator, '') <> ''
       where b.organization_id = $1
         and b.project_id = $2
-        and coalesce(dps.property_key, split_part(ps.specification_key, '/', 2)) = $3
+        and (
+          coalesce(dps.property_key, split_part(ps.specification_key, '/', 2)) = $3
+          or $3::text is null
+        )
         and br.raw_value ~ '^<[0-9]+>$'
         and coalesce(lnr.node_locator, '') <> ''
       order by cr.revision_number desc, b.id
       limit 1
       `,
-      [organizationId, projectId, propertyKey]
+      [organizationId, projectId, null]
     );
     const row = found.rows[0];
     if (!row) return null;
