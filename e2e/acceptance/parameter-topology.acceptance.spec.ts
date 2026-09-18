@@ -2340,6 +2340,18 @@ test.describe("Parameter topology / schema browser acceptance", () => {
       notes: `${descriptionPrefix}: successful validate on candidate revision; base revision binding unchanged; bindingId+provenance persist after reload. org=${organizationId} runId=${runSuffix}`
     });
     } finally {
+      await withPgClient(async (client) => {
+        await client.query(
+          `
+          update parameter_change_requests
+          set status = 'rejected', reject_reason = 'topology mega-test cleanup', updated_at = now()
+          where organization_id = $1
+            and project_id = $2
+            and status not in ('merged', 'rejected')
+          `,
+          [organizationId, projectId]
+        );
+      });
       await cleanupSemanticAcceptanceArtifacts({
         organizationId,
         projectId,
