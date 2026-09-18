@@ -775,7 +775,10 @@ test.describe("project configuration workbench read-only browser acceptance", ()
         headers: adminHeaders(),
         data: { name: configSetName, description: "Candidate upload acceptance" }
       });
-      expect(createConfigSet.status(), await createConfigSet.text()).toBe(201);
+      expect(
+        createConfigSet.status(),
+        `config-set create ${createConfigSet.status()}: ${await createConfigSet.text()}`
+      ).toBe(201);
       const configSetBody = (await createConfigSet.json()) as { item: { id: string; name: string } };
       const configSetId = configSetBody.item.id;
 

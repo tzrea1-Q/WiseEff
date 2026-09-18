@@ -149,7 +149,19 @@ function readInterruptValue(events: Array<Record<string, unknown>>) {
   }
   const finished = events.find((event) => event.type === "RUN_FINISHED");
   const outcome = finished?.outcome as { type?: string; interrupts?: Array<{ metadata?: Record<string, unknown> }> } | undefined;
-  return outcome?.interrupts?.[0]?.metadata;
+  if (outcome?.interrupts?.[0]?.metadata) {
+    return outcome.interrupts[0].metadata;
+  }
+  for (const event of events) {
+    const value = event.value as Record<string, unknown> | undefined;
+    if (value && typeof value.approvalId === "string") {
+      return value;
+    }
+    if (typeof event.approvalId === "string") {
+      return event;
+    }
+  }
+  return undefined;
 }
 
 async function postXiaoze(
