@@ -738,7 +738,7 @@ test.describe("project configuration workbench read-only browser acceptance", ()
     // @acceptance PROJ-CONFIG-CANDIDATE-001
     // @operation PROJ-CONFIG-CANDIDATE-001
     const suffix = randomUUID();
-    const configSetName = `candidate-upload-${suffix}`;
+    const configSetName = `cand${suffix.replace(/-/g, "").slice(0, 16)}`;
     const primaryFileName = `acceptance-candidate-${suffix}.dts`;
     const v1Dts = `/dts-v1/;
 / {
@@ -775,10 +775,9 @@ test.describe("project configuration workbench read-only browser acceptance", ()
         headers: adminHeaders(),
         data: { name: configSetName, description: "Candidate upload acceptance" }
       });
-      expect(
-        createConfigSet.status(),
-        `config-set create ${createConfigSet.status()}: ${await createConfigSet.text()}`
-      ).toBe(201);
+      if (createConfigSet.status() !== 201) {
+        throw new Error(`config-set create ${createConfigSet.status()}: ${await createConfigSet.text()}`);
+      }
       const configSetBody = (await createConfigSet.json()) as { item: { id: string; name: string } };
       const configSetId = configSetBody.item.id;
 
