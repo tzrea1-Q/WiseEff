@@ -45,15 +45,24 @@ test.describe("canonical parameter catalog negative and responsive contract", ()
   test.beforeAll(async () => {
     fixture = await ensureCatalogAcceptanceFixture();
   });
-  // eslint-disable-next-line playwright/no-skipped-test -- surface removed by product decision (#847)
-  test.fixme("preserves conflict input, refreshes evidence, and requires reconfirmation without partial writes", async ({
+  test("preserves conflict input, refreshes evidence, and requires reconfirmation without partial writes", async ({
     page
   }, testInfo) => {
     // @acceptance PCAT-UI-10
     // @operation PCAT-CONFLICT-RECONFIRM-001
     const before = await countProposals(fixture.pool);
     await openCatalogAt(page, "org-admin");
-    await page.route("**/api/v2/catalog/definition-proposals**", async (route) => {
+    await expect(catalogPage(page)).toHaveAttribute("data-writes-enabled", "true");
+    const edit = catalogPage(page).getByRole("table", { name: "参数定义列表" }).getByRole("button", { name: /^编辑 /u }).first();
+    await expect(edit).toBeVisible({ timeout: 15_000 });
+    await edit.click();
+    const dialog = page.getByRole("dialog");
+    await expect(dialog.locator(".definition-editor__form")).toBeVisible();
+    await dialog.getByLabel("属性键").fill(`pcat-ui-10-${Date.now()}`);
+    await dialog.getByLabel("受影响项目").fill("proj-a");
+    const reason = dialog.getByLabel("修改原因");
+    await reason.fill("op08 conflict keep this reason");
+    await page.route("**/api/v2/catalog/definition-replacements/preview**", async (route) => {
       if (route.request().method() !== "POST") {
         await route.continue();
         return;
@@ -70,20 +79,15 @@ test.describe("canonical parameter catalog negative and responsive contract", ()
         })
       });
     });
-    const panel = page.getByRole("region", { name: "定义修订" });
-    const reason = panel.getByRole("textbox", { name: "原因" });
-    await reason.fill("op08 conflict keep this reason");
-    await panel.getByRole("button", { name: "继续确认" }).click();
-    await confirmGovernanceDialog(page, "确认提出修订");
-    await expect(panel.getByRole("alert")).toBeVisible();
-    await expect(panel.locator("[data-preserve-input='true']")).toBeVisible();
-    await expect(panel.locator("[data-silent-retry='false']")).toBeVisible();
+    await dialog.getByRole("button", { name: "预演影响" }).click();
+    await expect(dialog.getByRole("alert")).toBeVisible();
+    await expect(dialog.locator("[data-preserve-input='true']")).toBeVisible();
     await expect(reason).toHaveValue("op08 conflict keep this reason");
+    await expect(dialog.getByText(/请刷新证据后重试/)).toBeVisible();
+    await expect(dialog.getByRole("button", { name: "预演影响" })).toBeEnabled();
     const after = await countProposals(fixture.pool);
     expect(after).toBe(before);
-    await panel.getByRole("button", { name: "刷新证据" }).click();
-    await expect(panel.getByRole("button", { name: "继续确认" })).toBeVisible();
-    await page.unroute("**/api/v2/catalog/definition-proposals**");
+    await page.unroute("**/api/v2/catalog/definition-replacements/preview**");
     await catalogScreenshot(page, testInfo, "pcat-ui-10-conflict");
   });
 

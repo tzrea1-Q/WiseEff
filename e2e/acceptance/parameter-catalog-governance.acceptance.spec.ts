@@ -16,13 +16,9 @@ import {
   waitForCatalogState
 } from "./helpers/catalogBrowser";
 import {
-  countProposals,
-  countPublicationIntents,
   countSubjectRegistrations,
-  definitionHeadRevision,
   ensureCatalogAcceptanceFixture,
   ingestOpenReview,
-  latestOrganizationProposal,
   type CatalogAcceptanceFixture
 } from "./helpers/catalogEvidence";
 
@@ -152,72 +148,38 @@ test.describe("canonical parameter catalog governance interactions", () => {
     await catalogScreenshot(page, testInfo, "pcat-ui-07-register");
   });
 
-  /**
-   * Retired in the issue #847 UI loop: the Proposal half of this journey drove the
-   * 定义修订 panel that product removed from /parameter-admin/specs (definition
-   * changes now publish from the definition editor dialog). The Registration,
-   * Placement and Review legs keep their own tests above; the governed proposal
-   * API remains covered by the server suites.
-   */
-  test.fixme("covers Registration, Placement, Review, and Proposal journeys with role boundaries", async ({
+  test("covers Registration, Placement, Review, and definition-editor journeys with role boundaries", async ({
     page
   }, testInfo) => {
     // @acceptance PCAT-UI-15
     // @operation PCAT-GOVERNANCE-JOURNEY-001
     await page.setViewportSize({ width: 1440, height: 900 });
+    await ingestOpenReview(fixture.pool, fixture.chain.pinF.id);
     await openCatalogViaNav(page, "org-admin");
     await waitForCatalogState(page, /ready|unregistered/);
-    const beforeProposals = await countProposals(fixture.pool);
-    const headBefore = await definitionHeadRevision(
-      fixture.pool,
-      fixture.chain.pinF.id,
-      fixture.xDefinitionId
-    );
-    const proposal = page.getByRole("region", { name: "定义修订" });
-    await expect(proposal).toBeVisible();
-    await proposal.getByRole("textbox", { name: "原因" }).fill("op08 documentation proposal");
-    await proposal.getByRole("button", { name: "继续确认" }).click();
-    await confirmGovernanceDialog(page, "确认提出修订");
-    // The lane is reused across runs, so an earlier Proposal can already be
-    // visible and satisfy a text-only wait. Poll the persisted count so this
-    // run's create is committed before it is read back.
-    await expect.poll(() => countProposals(fixture.pool)).toBe(beforeProposals + 1);
-    const created = await latestOrganizationProposal(fixture.pool, fixture.organizationId);
-    expect(created).not.toBeNull();
-    expect(created?.status).toBe("draft");
-    // The panel list is release/page scoped and can be mid-refresh here; the
-    // persisted status is the authoritative observation for this operation.
-    await expect
-      .poll(async () => {
-        const latest = await latestOrganizationProposal(fixture.pool, fixture.organizationId);
-        return latest?.id === created?.id ? latest.status : "";
-      })
-      .toBe("draft");
-    // The panel loads once per mount and reloads after its own writes, so a
-    // reused lane can need one explicit revisit before this run's draft is in
-    // the list. Reload once rather than waiting on a stale list.
-    const submitButton = proposal.getByRole("button", { name: "提交修订" }).first();
-    if (!(await submitButton.isVisible().catch(() => false))) {
+    await expect(page.getByLabel("目录发布")).toContainText(fixture.chain.pinF.id);
+    await expect(
+      page.getByRole("button", { name: catalogUiCopy.actionLabels["register-subject"], exact: true })
+    ).toBeVisible();
+    const reviewAction = page.getByRole("button", { name: /处理审核|待处理工作/ }).first();
+    if (!(await reviewAction.isVisible().catch(() => false))) {
+      await ingestOpenReview(fixture.pool, fixture.chain.pinF.id);
       await page.reload();
       await expect(catalogPage(page)).toBeVisible();
-      await expect(page.getByRole("region", { name: "定义修订" })).toBeVisible();
     }
-    // The list is newest-first and bounded, so this run's draft is the first
-    // actionable row. Submitting exactly one row keeps the operation scoped.
-    await page
-      .getByRole("region", { name: "定义修订" })
-      .getByRole("button", { name: "提交修订" })
-      .first()
-      .click();
-    await confirmGovernanceDialog(page, "确认提交");
-    await expect(proposal.getByText("已提交").first()).toBeVisible();
-    await expect
-      .poll(async () => (await latestOrganizationProposal(fixture.pool, fixture.organizationId))?.status)
-      .toBe("submitted");
-    const submitted = await latestOrganizationProposal(fixture.pool, fixture.organizationId);
-    expect(submitted?.id).toBe(created?.id);
-    expect(submitted?.status).toBe("submitted");
-    expect(await countPublicationIntents(fixture.pool, created!.id)).toBe(0);
+    await expect(page.getByRole("button", { name: /处理审核|待处理工作/ }).first()).toBeVisible();
+
+    const edit = catalogPage(page).getByRole("table", { name: "参数定义列表" }).getByRole("button", { name: /^编辑 /u }).first();
+    await expect(edit).toBeVisible({ timeout: 15_000 });
+    await edit.click();
+    const editor = page.getByRole("dialog");
+    await expect(editor.getByRole("region", { name: "定义详情" })).toBeVisible();
+    await expect(editor.locator(".definition-editor__form")).toBeVisible();
+    await editor.getByLabel("属性键").fill(`pcat-ui-15-${Date.now()}`);
+    await editor.getByLabel("受影响项目").fill("proj-a");
+    await editor.getByLabel("修改原因").fill("op08 merged editor journey");
+    await expect(editor.getByRole("button", { name: "预演影响" })).toBeEnabled();
+    await editor.getByRole("button", { name: /关闭/ }).click();
 
     await page.goto(
       catalogHref(fixture, {
@@ -230,25 +192,20 @@ test.describe("canonical parameter catalog governance interactions", () => {
     await page.getByRole("button", { name: /查看历史/ }).click();
     await expect(page.getByRole("list", { name: "定义时间线" })).toBeVisible();
 
-    await openCatalogAt(page, "platform-admin");
-    const platformProposal = page.getByRole("region", { name: "定义修订" });
-    await platformProposal.getByRole("textbox", { name: "仓库引用" }).fill("repo://wiseeff-catalog/op08.yaml");
-    await platformProposal.getByRole("button", { name: "接受修订" }).first().click();
-    await confirmGovernanceDialog(page, "确认接受");
-    await expect(platformProposal.getByText(/发布意图已记录|已接受/).first()).toBeVisible();
-    await expect
-      .poll(async () => {
-        const latest = await latestOrganizationProposal(fixture.pool, fixture.organizationId);
-        return latest?.id === created?.id ? latest.status : "";
-      })
-      .toBe("accepted");
-    const accepted = await latestOrganizationProposal(fixture.pool, fixture.organizationId);
-    expect(accepted?.id).toBe(created?.id);
-    expect(accepted?.status).toBe("accepted");
-    expect(await countPublicationIntents(fixture.pool, created!.id)).toBe(1);
-    expect(await definitionHeadRevision(fixture.pool, fixture.chain.pinF.id, fixture.xDefinitionId)).toBe(
-      headBefore
+    const userWrite = await catalogJson(
+      page.request,
+      "POST",
+      `/api/v2/organizations/${fixture.organizationId}/subject-registrations`,
+      {
+        actor: "user",
+        headers: {
+          "X-WiseEff-Catalog-Release": fixture.chain.pinF.id,
+          "Idempotency-Key": `pcat-ui-15-user:${Date.now()}`
+        },
+        data: { subjectId: fixture.sensorSubjectId, placement: { mode: "use-default" }, reason: "user must not register" }
+      }
     );
+    expect(userWrite.status).toBe(403);
     await catalogScreenshot(page, testInfo, "pcat-ui-15-journey");
   });
 });

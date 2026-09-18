@@ -2316,7 +2316,9 @@ test.describe("Parameter topology / schema browser acceptance", () => {
     expect(validateTargetId).toBeTruthy();
     expect(validateTargetId).not.toBe(revisionId);
     expect(validateTargetId).not.toBe(draftBody.item.candidateRevisionId);
-    await resolveReviewsForCurrentRevision(request, validateTargetId, projectId);
+    if (writebackCandidateRevisionId) {
+      await resolveReviewsForCurrentRevision(request, validateTargetId, projectId);
+    }
 
     const validateResponse = await request.post(
       apiRoute(

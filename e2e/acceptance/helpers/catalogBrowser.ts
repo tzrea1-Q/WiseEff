@@ -42,6 +42,7 @@ export const CATALOG_EXPECTED_API_FAILURES: ExpectedApiFailure[] = [
   { method: "POST", path: "/api/v2/catalog/definition-proposals", status: 403 },
   { method: "POST", path: "/api/v2/catalog/definition-proposals", status: 409 },
   { method: "POST", path: "/api/v2/catalog/definition-proposals", status: 404 },
+  { method: "POST", path: "/api/v2/catalog/definition-replacements/preview", status: 409 },
   // An actor without catalog publication capability is refused by the server.
   { method: "GET", path: "/api/v2/catalog/publications", status: 403 }
 ];
