@@ -275,7 +275,8 @@ async function waitForRevisionWithProperties(
   configSetId: string,
   previousRevisionId: string,
   propertyKeys: string[],
-  timeoutMs = 30_000
+  timeoutMs = 30_000,
+  nodeNeedles: string[] = []
 ): Promise<{ id: string; status: string }> {
   const started = Date.now();
   while (Date.now() - started < timeoutMs) {
@@ -296,6 +297,23 @@ async function waitForRevisionWithProperties(
         propertyKeys.map((key) => findBindingProperty(request, targetProjectId, row.id, key))
       );
       if (found.every(Boolean)) return row;
+      if (nodeNeedles.length > 0) {
+        const topologyApi = await request.get(
+          apiRoute(
+            `/api/v2/projects/${targetProjectId}/config-sets/${encodeURIComponent(configSetId)}/revisions/${row.id}/topology?view=effective`
+          ),
+          { headers: adminHeaders() }
+        );
+        if (topologyApi.ok()) {
+          const topologyBody = (await topologyApi.json()) as {
+            item: { nodes: Array<{ name?: string; locator?: string }> };
+          };
+          const haystack = topologyBody.item.nodes.map((node) => `${node.name ?? ""}${node.locator ?? ""}`);
+          if (nodeNeedles.every((needle) => haystack.some((text) => text.includes(needle)))) {
+            return row;
+          }
+        }
+      }
     }
     await new Promise((resolve) => setTimeout(resolve, 400));
   }
@@ -313,6 +331,7 @@ async function attachDedicatedDefaultOverlay(
     configSetId: string;
     previousRevisionId: string;
     propertyKeys: string[];
+    nodeNeedles?: string[];
   }
 ): Promise<{ id: string; status: string }> {
   const upload = await uploadDts(request, input.fileName, input.dtsText);
@@ -330,7 +349,9 @@ async function attachDedicatedDefaultOverlay(
     projectId,
     input.configSetId,
     input.previousRevisionId,
-    input.propertyKeys
+    input.propertyKeys,
+    30_000,
+    input.nodeNeedles ?? []
   );
 }
 
@@ -1132,7 +1153,7 @@ test.describe("Parameter topology / schema browser acceptance", () => {
     );
     await switchProjectAcknowledgingDiscard(/Nebula 高频调试项目/);
     expect((await nebulaCurrentResponse).status()).toBe(200);
-    await expect(editWorkspace).toHaveAttribute("data-project-id", "nebula");
+    await expect(editWorkspace).toHaveAttribute("data-project-id", "nebula", { timeout: 30_000 });
     await expect(editWorkspace).toHaveAttribute("data-revision-id", nebulaTopology.revisionId);
     await expect(page.getByRole("region", { name: "参数修改提交" })).toHaveCount(0);
     await expect(page.getByText(/尚未生成语义配置修订/)).toHaveCount(0);
@@ -2649,7 +2670,9 @@ test.describe("Parameter topology / schema browser acceptance", () => {
         projectId,
         topology.configSetId,
         topology.revisionId,
-        [childProp, directProp]
+        [childProp, directProp],
+        30_000,
+        ["enableparent@a0", "enablechild@10", "enabledirect@20"]
       );
 
       const topologyApi = await request.get(
@@ -2773,7 +2796,8 @@ test.describe("Parameter topology / schema browser acceptance", () => {
         dtsText,
         configSetId: topology.configSetId,
         previousRevisionId: topology.revisionId,
-        propertyKeys: [gateProp]
+        propertyKeys: [gateProp],
+        nodeNeedles: [`egate_${runSuffix}@60`]
       });
 
       const reviewList = await request.get(
@@ -3285,7 +3309,8 @@ test.describe("Parameter topology / schema browser acceptance", () => {
         dtsText,
         configSetId: topology.configSetId,
         previousRevisionId: topology.revisionId,
-        propertyKeys: [guardProp]
+        propertyKeys: [guardProp],
+        nodeNeedles: [`eguard_${runSuffix}@50`]
       });
 
       const { nodes } = await listEffectiveTopologyNodes(

@@ -526,8 +526,76 @@ export async function seedIsolatedNumericCellPair(
     reason?: string;
   }
 ): Promise<{ kept: IsolatedBinding; removable: IsolatedBinding }> {
+  const projectId = options.projectId ?? defaultProjectId;
+  const picked = await withPgClient(async (client) => {
+    const found = await client.query<{
+      id: string;
+      parameter_spec_id: string;
+      revision_id: string;
+      raw_value: string;
+      property_key: string;
+      node_locator: string;
+      config_set_id: string;
+    }>(
+      `
+      select
+        b.id,
+        b.parameter_spec_id,
+        cr.id as revision_id,
+        br.raw_value,
+        coalesce(dps.property_key, split_part(ps.specification_key, '/', 2)) as property_key,
+        lnr.node_locator,
+        cr.config_set_id
+      from project_parameter_bindings b
+      join dts_config_set cs
+        on cs.organization_id = b.organization_id
+       and cs.project_id = b.project_id
+       and cs.name = 'default'
+      join dts_config_revisions cr
+        on cr.config_set_id = cs.id
+       and cr.id = (
+         select id from dts_config_revisions
+         where config_set_id = cs.id
+         order by revision_number desc
+         limit 1
+       )
+      join project_parameter_binding_revisions br
+        on br.binding_id = b.id and br.config_revision_id = cr.id
+      left join dts_property_specs dps on dps.parameter_spec_id = b.parameter_spec_id
+      join parameter_specs ps on ps.id = b.parameter_spec_id
+      join dts_logical_node_revisions lnr
+        on lnr.logical_node_id = b.logical_node_id and lnr.config_revision_id = cr.id
+      where b.organization_id = $1
+        and b.project_id = $2
+        and br.raw_value ~ '^<[0-9]+>$'
+        and coalesce(lnr.node_locator, '') <> ''
+        and coalesce(dps.property_key, split_part(ps.specification_key, '/', 2)) = any($3::text[])
+      order by b.id
+      `,
+      [organizationId, projectId, [options.kept.propertyKey, options.removable.propertyKey]]
+    );
+    const keptRow = found.rows.find((row) => row.property_key === options.kept.propertyKey);
+    const removableRow = found.rows.find((row) => row.property_key === options.removable.propertyKey);
+    if (!keptRow || !removableRow || keptRow.id === removableRow.id) return null;
+    const toBinding = (row: (typeof found.rows)[number], fileName: string): IsolatedBinding => ({
+      projectId,
+      bindingId: row.id,
+      parameterSpecId: row.parameter_spec_id,
+      revisionId: row.revision_id,
+      rawValue: row.raw_value,
+      configSetId: row.config_set_id,
+      fileName,
+      propertyKey: row.property_key,
+      nodeLocator: row.node_locator
+    });
+    return {
+      kept: toBinding(keptRow, "aurora-default.dts"),
+      removable: toBinding(removableRow, "aurora-default.dts")
+    };
+  });
+  if (picked) return picked;
   const [kept, removable] = await seedIsolatedBindings(request, {
-    projectId: options.projectId,
+    projectId,
     dts: numericCellsDts([options.kept, options.removable]),
     properties: [
       { propertyKey: options.kept.propertyKey, rawValuePattern: "^<[0-9]+>$" },

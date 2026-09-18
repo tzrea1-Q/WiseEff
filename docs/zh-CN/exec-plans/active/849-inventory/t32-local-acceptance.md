@@ -4,7 +4,7 @@
 
 状态：**本地候选，T3.2 整行尚未绿。** 目前最好的 worktree Gate0 是 `5975f0cce`：视觉 **通过**，浏览器 **14** 条失败（从 39 降下来）。后续 `4ddac4c15` 加了目录只读历史和 ingest-on-add；该 SHA 的 Gate0 视觉 **通过**，浏览器 **41** 条失败，加入 config-set 文件返回 500。ingest-on-add 已在 `66cae3c0b` 撤回。未 SEALED。未 push。无 PR/Hosted。封印点仍是 T3.4a。
 
-HEAD：`66cae3c0b4921300039da8e98a4338099aa65e91`（`codex/849-853-t11-source-identity`）。目录只读身份/历史仍在 `4ddac4c15`；ingest-on-add 已不在。
+HEAD：`66cae3c0b4921300039da8e98a4338099aa65e91`（`codex/849-853-t11-source-identity`）。后续（脏树）：知识检索用 `view=governance`；enable 等待可用拓扑节点；数值 cell 对优先选带 locator 的 default binding。ingest-on-add 保持撤回。
 
 ## 环境
 

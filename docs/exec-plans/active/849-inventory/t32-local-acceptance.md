@@ -4,7 +4,7 @@
 
 Status: **local candidate, not green for the full T3.2 row.** Best worktree Gate0 so far is `5975f0cce`: visual **passed**, browser **14** failures (down from 39). Follow-up `4ddac4c15` added catalog view-only history and ingest-on-add; Gate0 on that SHA visual **passed** but browser **41** failures because adding a config-set file returned 500. Ingest-on-add is reverted in `66cae3c0b`. Not SEALED. Not pushed. No PR/Hosted. T3.4a remains the seal point.
 
-HEAD: `66cae3c0b4921300039da8e98a4338099aa65e91` on `codex/849-853-t11-source-identity`. Catalog view-only identity/history remains in history (`4ddac4c15`); ingest-on-add does not.
+HEAD: `66cae3c0b4921300039da8e98a4338099aa65e91` on `codex/849-853-t11-source-identity`. Follow-up (dirty): knowledge picker searches `view=governance`; enable waits can use topology node needles; numeric cell pairs prefer locator-bearing default bindings. Ingest-on-add stays reverted.
 
 ## Environment
 

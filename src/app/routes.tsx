@@ -201,7 +201,10 @@ export function PageRouter({
       return undefined;
     }
     return async (q: string) => {
-      const items = await parameterTopologyRepository.listSpecs(q.trim() ? { q: q.trim() } : {});
+      const trimmed = q.trim();
+      const items = await parameterTopologyRepository.listSpecs(
+        trimmed ? { q: trimmed, propertyKey: trimmed, view: "governance" } : { view: "governance" }
+      );
       return items.map((item) => ({
         specId: item.id,
         propertyKey: item.propertyKey ?? item.specificationKey,
