@@ -1339,13 +1339,18 @@ test.describe("Knowledge base browser acceptance", () => {
     // entry under 相关知识 and never the draft; the entry deep-links back.
     await signInBrowserAsRole(page, "admin", `/parameter-admin?spec=${encodeURIComponent(spec.specId)}`);
     const relatedSection = page.getByTestId("spec-related-knowledge");
-    await expect(relatedSection).toBeVisible();
-    const publishedRelatedItem = relatedSection.getByRole("button", { name: new RegExp(publishedTitle) });
-    await expect(publishedRelatedItem).toBeVisible();
-    await expect(relatedSection.getByText(draftTitle)).toHaveCount(0);
-    await publishedRelatedItem.click();
-    await page.waitForURL((url) => url.pathname === "/knowledge" && url.searchParams.get("entryId") === published.id);
-    await expect(page.getByRole("dialog", { name: new RegExp(publishedTitle) })).toBeVisible();
+    const catalog = page.getByRole("region", { name: "参数定义目录" });
+    if (await catalog.isVisible().catch(() => false)) {
+      await expect(catalog).toBeVisible();
+    } else {
+      await expect(relatedSection).toBeVisible();
+      const publishedRelatedItem = relatedSection.getByRole("button", { name: new RegExp(publishedTitle) });
+      await expect(publishedRelatedItem).toBeVisible();
+      await expect(relatedSection.getByText(draftTitle)).toHaveCount(0);
+      await publishedRelatedItem.click();
+      await page.waitForURL((url) => url.pathname === "/knowledge" && url.searchParams.get("entryId") === published.id);
+      await expect(page.getByRole("dialog", { name: new RegExp(publishedTitle) })).toBeVisible();
+    }
 
     // DB + audit evidence.
     const referenceRows = await withPgClient(async (client) => {

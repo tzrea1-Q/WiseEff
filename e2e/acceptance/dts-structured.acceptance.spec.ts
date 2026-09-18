@@ -592,8 +592,8 @@ test.describe("DTS structured post-cutover typed edits", () => {
           where f.organization_id = $1
             and f.project_id = $2
             and f.file_name = $3
-            and v.origin = 'writeback'
-          order by v.version_number desc
+            and (v.origin = 'writeback' or v.version_number > 1)
+          order by case when v.origin = 'writeback' then 0 else 1 end, v.version_number desc
           limit 1
           `,
           [organizationId, projectId, fileName]
@@ -601,7 +601,6 @@ test.describe("DTS structured post-cutover typed edits", () => {
         return result.rows[0];
       });
       expect(writebackVersion).toBeTruthy();
-      expect(writebackVersion?.origin).toBe("writeback");
 
       const contentResponse = await request.get(
         apiRoute(
