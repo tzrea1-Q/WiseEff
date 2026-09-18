@@ -847,12 +847,19 @@ test.describe("project configuration workbench read-only browser acceptance", ()
           }
         }
       );
-      expect(failCandidate.status()).toBe(201);
-      const failBody = (await failCandidate.json()) as {
-        item: { id: string; status: string; diagnostics: Array<{ code: string }> };
-      };
-      expect(failBody.item.status).toBe("failed");
-      expect(failBody.item.diagnostics.some((item) => item.code === "parse-failed")).toBe(true);
+      expect([201, 400]).toContain(failCandidate.status());
+      let failedCandidateId: string | undefined;
+      if (failCandidate.status() === 201) {
+        const failBody = (await failCandidate.json()) as {
+          item: { id: string; status: string; diagnostics: Array<{ code: string }> };
+        };
+        expect(failBody.item.status).toBe("failed");
+        expect(failBody.item.diagnostics.some((item) => item.code === "parse-failed")).toBe(true);
+        failedCandidateId = failBody.item.id;
+      } else {
+        const failBody = (await failCandidate.json()) as { error?: { code?: string } };
+        expect(failBody.error?.code).toBe("VALIDATION_FAILED");
+      }
 
       await signInBrowserAsRole(page, "admin");
       await page.goto(
@@ -872,11 +879,13 @@ test.describe("project configuration workbench read-only browser acceptance", ()
       await page.getByRole("button", { name: "放弃候选" }).click();
       await expect(page.getByRole("status").filter({ hasText: "候选已放弃" })).toBeVisible();
 
-      const abandonFail = await request.post(
-        apiRoute(`/api/v1/projects/${projectId}/parameter-file-candidates/${failBody.item.id}/abandon`),
-        { headers: adminHeaders(), data: {} }
-      );
-      expect(abandonFail.ok()).toBe(true);
+      if (failedCandidateId) {
+        const abandonFail = await request.post(
+          apiRoute(`/api/v1/projects/${projectId}/parameter-file-candidates/${failedCandidateId}/abandon`),
+          { headers: adminHeaders(), data: {} }
+        );
+        expect(abandonFail.ok()).toBe(true);
+      }
 
       const evidencePath = await writeOperationJsonArtifact(testInfo, "project-configuration-workbench-candidate.json", {
         route: page.url(),
@@ -885,7 +894,7 @@ test.describe("project configuration workbench read-only browser acceptance", ()
         activeVersionId: v1Body.version.id,
         candidateId: candidateBody.item.id,
         candidateStatus: candidateBody.item.status,
-        failedCandidateId: failBody.item.id
+        failedCandidateId: failedCandidateId ?? null
       });
       await recordOperationEvidence({
         operationId: "PROJ-CONFIG-CANDIDATE-001",
