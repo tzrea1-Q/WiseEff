@@ -2262,13 +2262,25 @@ test.describe("Parameter topology / schema browser acceptance", () => {
     });
 
     // 10) SUCCESSFUL validate on merge/writeback candidate (not schema-failed-as-success).
-    // Identity-mismatch has no writeback candidate; prove the toolchain gate
-    // against the already review-resolved aurora current revision.
-    const validateTargetId = writebackCandidateRevisionId ?? revisionId;
+    // Identity-mismatch has no writeback candidate. Aurora current fails
+    // toolchain with effective-driver-definition; use the throwaway mapping
+    // R1 revision instead, without touching spec-review tasks that this org
+    // cannot dismiss.
+    const validateTargetId =
+      writebackCandidateRevisionId ??
+      (["resolved", "validated"].includes(r1Revision.status)
+        ? r1Revision.id
+        : (
+            await waitForRevision(
+              mapCsBody.item.id,
+              (row) => ["resolved", "validated"].includes(row.status),
+              30_000
+            )
+          ).id);
     expect(validateTargetId).toBeTruthy();
+    expect(validateTargetId).not.toBe(revisionId);
+    expect(validateTargetId).not.toBe(draftBody.item.candidateRevisionId);
     if (writebackCandidateRevisionId) {
-      expect(validateTargetId).not.toBe(revisionId);
-      expect(validateTargetId).not.toBe(draftBody.item.candidateRevisionId);
       await resolveReviewsForCurrentRevision(request, validateTargetId, projectId);
     }
 
