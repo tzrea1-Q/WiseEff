@@ -12,7 +12,9 @@ import type { ObjectStore } from "../logs/objectStore";
 import { canAdminParameters, canEditParameters, canViewParameters } from "../parameter-kernel/policy";
 import { listOpenConflicts } from "../parameters/fileSyncConflictRepository";
 import { submitStructuredEdits } from "../parameters/service";
-import { isRootDatabase, type Database } from "../../shared/database/client";
+import { getRootPostgresPool, isRootDatabase, type Database } from "../../shared/database/client";
+import { registerCanonicalJsonSource } from "./canonicalJsonSource";
+import { loadPublishedCatalog } from "../parameter-bindings/catalogProjectValueSync";
 import { ApiError } from "../../shared/http/errors";
 import type { RouteRequest, WiseEffRouter } from "../../shared/http/router";
 import { resolveConflictsBulk, previewBulkConflictResolution, resolveParameterFileConflict } from "./conflictService";
@@ -258,6 +260,26 @@ export function registerParameterFileRoutes(
       validator: options.validator
     };
   }
+  router.post("/api/v2/projects/:projectId/parameter-files/:fileId/configuration-instances", async (request) => {
+    const db = requireDb(options.db);
+    const auth = await options.getCurrentAuthContext(request);
+    const params = parseWithSchema(paramsWithFileIdSchema,request.params);
+    const body = parseWithSchema(z.object({
+      configSetId: z.string().min(1),fileVersionId: z.string().min(1),configurationSchemaId: z.string().min(1),rootPointer: z.string(),
+      mappings: z.array(z.object({ definitionId: z.string().min(1),pointer: z.string() }).strict()).min(1)
+    }).strict(),request.body);
+    const pool = getRootPostgresPool(db);
+    if (!pool || !isRootDatabase(db)) throw new ApiError("INTERNAL_ERROR", "JSON registration requires the root database.");
+    const snapshot = await loadPublishedCatalog(pool);
+    if (!snapshot) throw new ApiError("CONFLICT", "The published catalog snapshot is unavailable.");
+    const refusalSink = createTrustedRefusalAuditSink(db);
+    const registered = await withAuditedWrite(db,auth,{ requestId: request.requestId },async (tx) => ({
+      result: await registerCanonicalJsonSource(tx,requireObjectStore(options.objectStore),auth,snapshot,{
+        ...params,...body,invocation: createUserInvocation(auth),requestId: request.requestId,refusalSink
+      }),audit: null
+    }));
+    return { status: 201,body: { items: registered.bindings } };
+  });
   router.get("/api/v1/projects/:projectId/parameter-files", async (request) => {
     const db = requireDb(options.db);
     const auth = await options.getCurrentAuthContext(request);

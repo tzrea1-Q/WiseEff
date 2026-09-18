@@ -205,36 +205,11 @@ describe.skipIf(!databaseAvailable)("parameter submission provenance (owned Post
             });
           })
         ).rejects.toMatchObject({
-          code: "FORBIDDEN",
-          status: 403,
-          details: { initiator: "agent", requireHuman: true }
+          code: "CONFLICT",
+          status: 409,
+          details: { reason: "legacy-identity-mode-retired-for-agent", projectId: PROJECT, parameterId: CRITICAL }
         });
         expect(await stateCounts(db)).toEqual(initial);
-
-        const agentRefusal = await db.query<{
-          actor_type: string;
-          actor_user_id: string | null;
-          trace_id: string;
-          metadata: Record<string, unknown>;
-        }>(
-          `select actor_type, actor_user_id, trace_id, metadata
-           from audit_events
-           where organization_id = $1 and kind = 'parameter-sensitive-node-denied'
-           order by created_at desc limit 1`,
-          [ORG]
-        );
-        expect(agentRefusal.rows[0]).toMatchObject({
-          actor_type: "agent",
-          actor_user_id: USER,
-          trace_id: "request-provenance-agent",
-          metadata: {
-            initiator: "agent",
-            sessionId: "session-provenance",
-            toolCallId: "tool-call-provenance",
-            approvalId: "approval-provenance",
-            requireHuman: true
-          }
-        });
 
         const systemInvocation = createSystemInvocation({ kind: "job", name: "parameter-provenance-test" });
         await expect(
@@ -304,20 +279,30 @@ describe.skipIf(!databaseAvailable)("parameter submission provenance (owned Post
           actor_user_id: null
         });
 
-        const highResult = await actionTool.run(agent, {
-          projectId: PROJECT,
-          parameterId: HIGH,
-          targetValue: "<7>",
-          reason: "high remains allowed"
+        await expect(
+          actionTool.run(agent, {
+            projectId: PROJECT,
+            parameterId: HIGH,
+            targetValue: "<7>",
+            reason: "high remains allowed"
+          })
+        ).rejects.toMatchObject({
+          code: "CONFLICT",
+          status: 409,
+          details: { reason: "legacy-identity-mode-retired-for-agent", projectId: PROJECT, parameterId: HIGH }
         });
-        expect(highResult.data).toMatchObject({ parameterId: HIGH, targetValue: "<7>" });
-        const plainResult = await actionTool.run(agent, {
-          projectId: PROJECT,
-          parameterId: PLAIN,
-          targetValue: "<6>",
-          reason: "non-sensitive remains allowed"
+        await expect(
+          actionTool.run(agent, {
+            projectId: PROJECT,
+            parameterId: PLAIN,
+            targetValue: "<6>",
+            reason: "non-sensitive remains allowed"
+          })
+        ).rejects.toMatchObject({
+          code: "CONFLICT",
+          status: 409,
+          details: { reason: "legacy-identity-mode-retired-for-agent", projectId: PROJECT, parameterId: PLAIN }
         });
-        expect(plainResult.data).toMatchObject({ parameterId: PLAIN, targetValue: "<6>" });
 
         const userRound = await submitParameterChanges(
           root,
@@ -346,21 +331,13 @@ describe.skipIf(!databaseAvailable)("parameter submission provenance (owned Post
         expect(successAudits.rows).toEqual(
           expect.arrayContaining([
             expect.objectContaining({
-              actor_type: "agent",
-              metadata: expect.objectContaining({
-                initiator: "agent",
-                sessionId: "session-provenance",
-                toolCallId: "tool-call-provenance",
-                approvalId: "approval-provenance"
-              })
-            }),
-            expect.objectContaining({
               actor_type: "user",
               trace_id: "request-provenance-user",
               metadata: expect.objectContaining({ initiator: "user" })
             })
           ])
         );
+        expect(successAudits.rows.some((row) => row.actor_type === "agent")).toBe(false);
 
         const beforeInvalid = await stateCounts(db);
         for (const context of [
@@ -457,14 +434,18 @@ describe.skipIf(!databaseAvailable)("parameter submission provenance (owned Post
           (tool) => tool.name === "action.submitParameterChange"
         )!;
 
-        const result = await actionTool.run(agent, {
-          projectId: PROJECT,
-          parameterId: LEGACY_SOURCE,
-          targetValue: "<7>",
-          reason: "legacy source version must be server-resolved"
+        await expect(
+          actionTool.run(agent, {
+            projectId: PROJECT,
+            parameterId: LEGACY_SOURCE,
+            targetValue: "<7>",
+            reason: "legacy source version must be server-resolved"
+          })
+        ).rejects.toMatchObject({
+          code: "CONFLICT",
+          status: 409,
+          details: { reason: "legacy-identity-mode-retired-for-agent", projectId: PROJECT, parameterId: LEGACY_SOURCE }
         });
-
-        expect(result.data).toMatchObject({ parameterId: LEGACY_SOURCE, targetValue: "<7>" });
       } finally {
         await root.close();
       }
@@ -502,9 +483,9 @@ describe.skipIf(!databaseAvailable)("parameter submission provenance (owned Post
               })
           )
         ).rejects.toMatchObject({
-          code: "FORBIDDEN",
-          status: 403,
-          details: { initiator: "agent", requireHuman: true }
+          code: "CONFLICT",
+          status: 409,
+          details: { reason: "legacy-identity-mode-retired-for-agent", projectId: PROJECT, parameterId: LEGACY_SOURCE }
         });
         expect(await stateCounts(db)).toEqual(before);
       } finally {

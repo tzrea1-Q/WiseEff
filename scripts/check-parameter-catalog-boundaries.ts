@@ -32,10 +32,11 @@ import { compareBoundaryInventory, formatBoundaryReport } from "./parameter-cata
 import { applyReviewedExactRelocation } from "./parameter-catalog-allowlist/exactRelocation";
 import {
   applyReviewedPostCutoverRelocation,
-  applyReviewedRuntimeTopologyRelocation,
 } from "./parameter-catalog-allowlist/runtimeTopologyRelocation";
 import { applyReviewedDebuggingTransferRelocation } from "./parameter-catalog-allowlist/debuggingTransferRelocation";
-import { applyReviewedEditServiceVersionIndexRelocation } from "./parameter-catalog-allowlist/editServiceVersionIndexRelocation";
+import { applyReviewedSourceWorkflowRelocation, applyReviewedSourceWorkflowConsumerRelocation } from "./parameter-catalog-allowlist/sourceWorkflowRelocation";
+import { applyReviewedT14FamilySuccessorRelocation } from "./parameter-catalog-allowlist/t14FamilySuccessorRelocation";
+import { applyReviewedT14RewrittenSliceSuccessorRelocation } from "./parameter-catalog-allowlist/t14RewrittenSliceSuccessorRelocation";
 import {
   allowlistShardSchema,
   boundaryViolationFixtureSchema,
@@ -354,47 +355,61 @@ export async function checkParameterCatalogBoundaries(
     }
   }
   const relocated = await applyReviewedExactRelocation(repoRoot, fixture, allowlist.entries, violations);
-  const runtimeTopologyRelocated = await applyReviewedRuntimeTopologyRelocation(
+  const postCutoverRelocated = await applyReviewedPostCutoverRelocation(
     repoRoot,
     fixture,
     allowlist.entries,
     relocated.violations,
     relocated.relocations,
   );
-  const postCutoverRelocated = await applyReviewedPostCutoverRelocation(
-    repoRoot,
-    fixture,
-    allowlist.entries,
-    runtimeTopologyRelocated.violations,
-    [...relocated.relocations, ...runtimeTopologyRelocated.relocations],
-  );
   const debuggingTransferRelocated = await applyReviewedDebuggingTransferRelocation(
     repoRoot,
     fixture,
     allowlist.entries,
     postCutoverRelocated.violations,
-    [...relocated.relocations, ...runtimeTopologyRelocated.relocations, ...postCutoverRelocated.relocations],
+    [...relocated.relocations, ...postCutoverRelocated.relocations],
   );
-  const editServiceVersionIndexRelocated = await applyReviewedEditServiceVersionIndexRelocation(
+  const sourceWorkflowRelocated = await applyReviewedSourceWorkflowRelocation(
     repoRoot,
     fixture,
     allowlist.entries,
     debuggingTransferRelocated.violations,
     [
       ...relocated.relocations,
-      ...runtimeTopologyRelocated.relocations,
       ...postCutoverRelocated.relocations,
       ...debuggingTransferRelocated.relocations,
     ],
   );
-  return {
-    ...compareBoundaryInventory(editServiceVersionIndexRelocated.violations, allowlist.entries, fixture.violations),
-    relocations: [
+  const priorRelocations = [
       ...relocated.relocations,
-      ...runtimeTopologyRelocated.relocations,
       ...postCutoverRelocated.relocations,
       ...debuggingTransferRelocated.relocations,
-      ...editServiceVersionIndexRelocated.relocations,
+      ...sourceWorkflowRelocated.relocations,
+  ];
+  const consumerRelocated = await applyReviewedSourceWorkflowConsumerRelocation(
+    repoRoot, fixture, allowlist.entries, sourceWorkflowRelocated.violations, priorRelocations,
+  );
+  const familyRelocated = await applyReviewedT14FamilySuccessorRelocation(
+    repoRoot,
+    fixture,
+    allowlist.entries,
+    consumerRelocated.violations,
+    [...priorRelocations, ...consumerRelocated.relocations],
+  );
+  const rewrittenRelocated = await applyReviewedT14RewrittenSliceSuccessorRelocation(
+    repoRoot,
+    fixture,
+    allowlist.entries,
+    familyRelocated.violations,
+    [...priorRelocations, ...consumerRelocated.relocations, ...familyRelocated.relocations],
+  );
+  return {
+    ...compareBoundaryInventory(rewrittenRelocated.violations, allowlist.entries, fixture.violations),
+    relocations: [
+      ...priorRelocations,
+      ...consumerRelocated.relocations,
+      ...familyRelocated.relocations,
+      ...rewrittenRelocated.relocations,
     ],
   };
 }

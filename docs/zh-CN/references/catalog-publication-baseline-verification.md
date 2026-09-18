@@ -52,9 +52,9 @@
 > （`withdrawnByReleaseId` = `crel_vendor_catalog_1`，不含 `successorId`），而
 > `crel_acme_1` 及其激活历史保持逐字节不变。上表 R-F4 记录的是 `063b12c49` 核验时的值；
 > 当前编译器 digest 为
-> `sha256:5f0e7bcd6c537f3a0574dc5541e1199f5537061bef4ad5551ec4f5e9565bec64`，
-> 线上运维 pin 见 `ops/self-hosted/upgrade.md`。计数不变（48 subjects、1 alias、
-> 114 definitions/revisions），因为被退役成员仍是被保留成员。
+> `sha256:3d5c70fb5e0aad4bb7c3c063ca3283a81fb39ec25c471669a0500dd410a48f97`，
+> 线上运维 pin 见 `ops/self-hosted/upgrade.md`。计数为 49 subjects、1 alias、
+> 116 definitions/revisions：被退役的 acme 成员仍被保留，T1.2 增加受审的 `charging_core` NodeType。
 
 ### 用户报告，**不是**主机核验
 

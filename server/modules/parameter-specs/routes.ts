@@ -9,13 +9,17 @@ import {
 } from "../audit/trustedRefusalSink";
 import type { ObjectStore } from "../logs/objectStore";
 import { canAdminParameters, canViewParameters } from "../parameter-kernel/policy";
+import {
+  catalogLegacyGoneResult,
+  LEGACY_GOVERNANCE_GONE_MESSAGE,
+  LEGACY_WRITE_GONE_MESSAGE,
+} from "../parameter-catalog-api/legacy/gone";
 import { isRootDatabase, type Database } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
 import type { RouteRequest, WiseEffRouter } from "../../shared/http/router";
 import {
   activateParameterSpecBodySchema,
   createOrganizationDriverSchemaBodySchema,
-  createParameterSpecBodySchema,
   deprecateOrganizationDriverSchemaBodySchema,
   deprecateParameterSpecBodySchema,
   finalizeParameterSpecCutoverBodySchema,
@@ -41,7 +45,6 @@ import {
 } from "./schemas";
 import {
   activateParameterSpec,
-  createParameterSpec,
   deprecateParameterSpec,
   finalizeParameterSpecVersionCutoverForSpec,
   getParameterSpec,
@@ -139,37 +142,22 @@ export function registerParameterSpecRoutes(
       ? createTrustedRefusalAuditSink(options.db)
       : undefined;
   router.get("/api/v2/parameter-specs", async (request) => {
-    const db = requireDb(options.db);
-    const auth = await options.getCurrentAuthContext(request);
-    requireCanView(auth);
     const query = parseWithSchema(
       listParameterSpecsQuerySchema,
       flattenQuery(request.query),
     );
+    if (query.view === "governance") {
+      return catalogLegacyGoneResult(request.requestId, LEGACY_GOVERNANCE_GONE_MESSAGE);
+    }
+    const db = requireDb(options.db);
+    const auth = await options.getCurrentAuthContext(request);
+    requireCanView(auth);
     const result = await listParameterSpecs(db, auth, query);
     return { status: 200, body: result };
   });
 
   router.post("/api/v2/parameter-specs", async (request) => {
-    const db = requireDb(options.db);
-    const auth = await options.getCurrentAuthContext(request);
-    requireCanAdmin(auth);
-    const body = parseWithSchema(
-      createParameterSpecBodySchema,
-      request.body ?? {},
-    );
-    const result = await createParameterSpec(
-      db,
-      auth,
-      {
-        ...body,
-        constraints: body.constraints ?? {},
-        valueShape: body.valueShape ?? { kind: "unknown" },
-        documentation: body.documentation ?? "",
-      },
-      { requestId: request.requestId },
-    );
-    return { status: 201, body: result };
+    return catalogLegacyGoneResult(request.requestId, LEGACY_WRITE_GONE_MESSAGE);
   });
 
   router.get("/api/v2/parameter-specs/:specId", async (request) => {

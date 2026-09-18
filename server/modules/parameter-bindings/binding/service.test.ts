@@ -42,7 +42,10 @@ const catalogStructuralTokens = [
 const allowedCatalogIdentifiers = new Set([
   "project_parameter_bindings",
   "project_parameter_values",
+  "project_parameter_source_occurrences",
+  "project_value_source_pins",
   "organization_subject_registrations",
+  "subject_placements",
   // #847 definition-replacement projection: current-only resolution seam.
   "resolve_current_binding",
 ]);
@@ -188,6 +191,7 @@ describe("S6-BND production Catalog isolation", () => {
       expect(source, file).not.toMatch(/pg_advisory_/);
       expect(source, file).not.toContain("assert_catalog_subject_active");
       expect(source, file).not.toContain("listDefinitionRevisions(");
+      expect(source, file).not.toMatch(/(?:insert\s+into|update|delete\s+from)\s+parameter_catalog\.subject_placements\b/i);
       for (const token of catalogStructuralTokens) {
         expect(source, `${file} must not mention ${token}`).not.toContain(token);
       }

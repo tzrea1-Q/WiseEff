@@ -27,6 +27,7 @@ import type { Queryable } from "../../../shared/database/client";
 import { PUBLICATION_GUARD_FUNCTION_IDENTITY } from "../../catalog-kernel/security/catalogRoleManifest";
 import { appendAuthorization, getCandidate, getPolicy } from "../persistence/store";
 import { isPublicationFrozen } from "../runtime/freeze";
+import { admitCatalogCapabilityRevision } from "../runtime/capabilities";
 import type {
   PublicationAuthorizationRecord,
   PublicationCandidateRecord,
@@ -53,6 +54,9 @@ const fail = (
   ok: false,
   error: detail ? { reason, detail } : { reason },
 });
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  value !== null && typeof value === "object" && !Array.isArray(value);
 
 const hasPermission = (
   actor: TrustedInvocationContext,
@@ -425,6 +429,15 @@ export async function verifyAuthorizationForActivation(
   const candidate = await getCandidate(db, input.candidateId);
   if (!candidate.ok) {
     return fail("candidate-stale", "candidate not found");
+  }
+
+  const capabilityRevision =
+    isRecord(candidate.value.capabilityContract) &&
+    typeof candidate.value.capabilityContract.revision === "string"
+      ? candidate.value.capabilityContract.revision
+      : "";
+  if (!admitCatalogCapabilityRevision(capabilityRevision, input.consumerRevisions)) {
+    return fail("unsupported-consumer-capability-revision", capabilityRevision);
   }
 
   const digest = await capabilityContractDigest(db, candidate.value.id);

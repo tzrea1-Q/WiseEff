@@ -60,6 +60,7 @@ export const catalogApiFailureReasons = [
   "candidate-tampered",
   "needs-rebase",
   "unsupported-catalog-capability",
+  "unsupported-consumer-capability-revision",
   "publication-authorization-revoked",
   "idempotency-key-conflict",
   "artifact-missing",
@@ -100,6 +101,7 @@ export const catalogFailureClientBehaviors = {
   "candidate-tampered": "rebuild-candidate",
   "needs-rebase": "rebase-candidate",
   "unsupported-catalog-capability": "remove-unsupported-change",
+  "unsupported-consumer-capability-revision": "remove-unsupported-change",
   "publication-authorization-revoked": "reauthorize-no-busy-retry",
   "idempotency-key-conflict": "new-idempotency-key",
   "artifact-missing": "restore-predecessor-artifact",
@@ -589,43 +591,65 @@ export const catalogPublicationRiskClasses = ["low", "high"] as const;
 
 export const catalogPublicationCurrentness = ["active", "active-superseded"] as const;
 
-export const catalogSupportedValueSchemaSchema = z.union([
-  catalogObject({
-    type: z.literal("integer"),
-    minimum: z.number().optional(),
-    maximum: z.number().optional()
-  }),
-  catalogObject({
-    type: z.literal("number"),
-    minimum: z.number().optional(),
-    maximum: z.number().optional()
-  }),
-  catalogObject({
-    type: z.literal("string")
-  }),
-  catalogObject({
-    type: z.literal("boolean")
-  }),
-  catalogObject({
-    type: z.literal("null")
-  }),
-  catalogObject({
-    type: z.literal("array"),
-    items: z
-      .union([
-        catalogObject({ type: z.literal("string") }),
-        catalogObject({
-          type: z.literal("integer"),
-          minimum: z.number().optional(),
-          maximum: z.number().optional()
-        })
-      ])
-      .optional()
-  }),
-  catalogObject({
-    description: z.string().min(1)
-  })
-]);
+const catalogJsonValueSchema: z.ZodType<unknown> = z.lazy(() =>
+  z.union([
+    z.string(),
+    z.number(),
+    z.boolean(),
+    z.null(),
+    z.array(catalogJsonValueSchema),
+    z.record(z.string(), catalogJsonValueSchema)
+  ])
+);
+
+type CatalogSupportedValueSchema =
+  | { readonly type: "integer"; readonly minimum?: number; readonly maximum?: number }
+  | { readonly type: "number"; readonly minimum?: number; readonly maximum?: number }
+  | { readonly type: "string" }
+  | { readonly type: "boolean" }
+  | { readonly type: "null" }
+  | {
+      readonly type: "array";
+      readonly description?: string;
+      readonly minItems?: number;
+      readonly maxItems?: number;
+      readonly items?: CatalogSupportedValueSchema;
+    }
+  | { readonly description: string };
+
+export const catalogSupportedValueSchemaSchema: z.ZodType<CatalogSupportedValueSchema> = z.lazy(() =>
+  z.union([
+    catalogObject({
+      type: z.literal("integer"),
+      minimum: z.number().optional(),
+      maximum: z.number().optional()
+    }),
+    catalogObject({
+      type: z.literal("number"),
+      minimum: z.number().optional(),
+      maximum: z.number().optional()
+    }),
+    catalogObject({
+      type: z.literal("string")
+    }),
+    catalogObject({
+      type: z.literal("boolean")
+    }),
+    catalogObject({
+      type: z.literal("null")
+    }),
+    catalogObject({
+      type: z.literal("array"),
+      description: z.string().optional(),
+      minItems: z.number().int().nonnegative().optional(),
+      maxItems: z.number().int().nonnegative().optional(),
+      items: catalogSupportedValueSchemaSchema.optional()
+    }),
+    catalogObject({
+      description: z.string().min(1)
+    })
+  ])
+);
 
 export const catalogSupportedDefinitionContentSchema = catalogObject({
   displayName: z.string(),
@@ -634,17 +658,7 @@ export const catalogSupportedDefinitionContentSchema = catalogObject({
   description: z.string().max(512).optional(),
   unit: z.string().min(1).max(32).optional(),
   valueSchema: catalogSupportedValueSchemaSchema,
-  examples: z
-    .array(
-      z.union([
-        z.number(),
-        z.string(),
-        z.boolean(),
-        z.null(),
-        z.array(z.union([z.number(), z.string(), z.boolean()]))
-      ])
-    )
-    .optional()
+  examples: z.array(catalogJsonValueSchema).optional()
 });
 
 export const catalogNestedDefinitionDraftSchema = catalogObject({
@@ -853,6 +867,9 @@ export const catalogBindingDraftDtoSchema = catalogObject({
   effectiveRevisionId: z.string(),
   currentValueId: z.string().nullable(),
   targetValue: z.string(),
+  sourceFormat: closedEnum(["dts", "json"]),
+  sourceTarget: catalogObject({ format: z.literal("json"),sourceText: z.string() }).optional(),
+  baseRevisionId: z.string(), sourcePinId: z.string().nullable(), candidateId: z.string().nullable(),
   // Issue #849: the pending-draft list feeds the workbench draft tray, which shows
   // the author's reason. Without it here the tray could only render an empty
   // reason after a reload, because the canonical owner never exposes it.
@@ -887,6 +904,26 @@ export const catalogBindingExportFileSchema = catalogObject({
   content: z.string()
 });
 
+export const canonicalSourceManifestSchema = catalogObject({
+  organizationId: z.string(), projectId: z.string(), bindingId: z.string(), definitionId: z.string(),
+  projectValueId: z.string(), sourcePinId: z.string(), sourceOccurrenceId: z.string(),
+  configSetId: z.string(), configRevisionId: z.string(), fileId: z.string(), fileVersionId: z.string(),
+  format: closedEnum(["dts", "json"]),
+  logicalNodeId: z.string().nullable(), configurationInstanceId: z.string().nullable(),
+  configurationSchemaSubjectId: z.string().nullable(), rootPointer: z.string().nullable(),
+  entryFile: z.string().nullable(), includeSearchPaths: z.array(z.string()), overlayOrder: z.array(z.string()),
+  locator: z.union([
+    catalogObject({ kind: z.literal("json-pointer"), pointer: z.string() }),
+    catalogObject({ kind: z.literal("dts-property"), propertyOccurrenceId: z.string(), nodeOccurrenceId: z.string(),
+      fileVersionId: z.string(), propertyName: z.string() })
+  ]),
+  members: z.array(catalogObject({
+    memberId: z.string(), fileId: z.string(), fileVersionId: z.string(), sourceName: z.string().min(1),
+    format: closedEnum(["dts", "json"]), role: z.string(), sortOrder: z.number().int(),
+    checksum: z.string(), sizeBytes: z.number().int().nonnegative()
+  }))
+});
+
 export const catalogBindingExportDtoSchema = catalogObject({
   bindingId: z.string(),
   projectId: z.string(),
@@ -897,7 +934,8 @@ export const catalogBindingExportDtoSchema = catalogObject({
   currentValueId: z.string(),
   configSetId: z.string(),
   sourceRef: z.string(),
-  files: z.array(catalogBindingExportFileSchema)
+  files: z.array(catalogBindingExportFileSchema),
+  manifest: canonicalSourceManifestSchema
 });
 
 export const catalogBindingExportResponseSchema = itemEnvelopeSchema(
@@ -917,6 +955,9 @@ export const catalogValueChangeRequestDtoSchema = catalogObject({
   effectiveRevisionId: z.string(),
   status: closedEnum(["pending", "approved", "rejected", "withdrawn"]),
   targetValue: z.string(),
+  sourceFormat: closedEnum(["dts", "json"]),
+  sourceTarget: catalogObject({ format: z.literal("json"),sourceText: z.string() }).optional(),
+  baseRevisionId: z.string(), baseCurrentValueId: z.string(),
   reason: z.string(),
   submitterUserId: z.string().nullable(),
   assignedToUserId: z.string().nullable(),
@@ -924,6 +965,8 @@ export const catalogValueChangeRequestDtoSchema = catalogObject({
   reviewerNote: z.string().nullable(),
   appliedValueId: z.string().nullable(),
   applyOutcome: closedEnum(["committed", "replayed"]).nullable(),
+  sourcePinId: z.string().nullable(), candidateId: z.string().nullable(),
+  appliedSourceResult: z.record(z.string(), z.unknown()).nullable(),
   createdAt: z.string(),
   updatedAt: z.string()
 });
@@ -933,6 +976,26 @@ export const catalogValueChangeRequestResponseSchema = itemEnvelopeSchema(
 ).superRefine(rejectLegacySpecKeys);
 export const catalogValueChangeRequestListResponseSchema = catalogObject({
   items: z.array(catalogValueChangeRequestDtoSchema)
+});
+export const catalogValueChangeSourceDiffResponseSchema = itemEnvelopeSchema(catalogObject({
+  requestId: z.string(),bindingId: z.string(),format: closedEnum(["dts", "json"]),sourceName: z.string(),
+  sourcePinId: z.string(),candidateId: z.string(),baseDigest: z.string(),proposedDigest: z.string(),diffDigest: z.string(),
+  before: z.string(),after: z.string(),
+  bindings: z.array(catalogObject({
+    bindingId: z.string(),oldValueId: z.string(),sourcePinId: z.string(),sourceOccurrenceId: z.string(),
+    definitionId: z.string(),effectiveRevisionId: z.string(),catalogReleaseId: z.string(),
+    locator: z.record(z.string(),z.unknown()),valueKind: z.string(),valueDigest: z.string(),configSetId: z.string()
+  }))
+}));
+export const catalogRegisterConfigurationInstancesRequestSchema = catalogObject({
+  configSetId: z.string().min(1),
+  fileVersionId: z.string().min(1),
+  configurationSchemaId: z.string().min(1),
+  rootPointer: z.string(),
+  mappings: z.array(catalogObject({
+    definitionId: z.string().min(1),
+    pointer: z.string()
+  })).min(1)
 });
 export const catalogSubmitValueChangeRequestSchema = catalogObject({
   assignedToUserId: z.string().nullable().optional()
@@ -1099,17 +1162,7 @@ export const catalogReplacementPreviewRequestSchema = catalogObject({
   description: z.string().max(512).optional(),
   unit: z.string().min(1).max(32).optional(),
   valueSchema: catalogSupportedValueSchemaSchema,
-  examples: z
-    .array(
-      z.union([
-        z.number(),
-        z.string(),
-        z.boolean(),
-        z.null(),
-        z.array(z.union([z.number(), z.string(), z.boolean()]))
-      ])
-    )
-    .optional(),
+  examples: z.array(catalogJsonValueSchema).optional(),
   projectIds: z.array(z.string()).min(1).max(200),
   reason: z.string().min(1).max(512)
 });
@@ -1231,6 +1284,9 @@ export const parameterCatalogDtoSchemaCatalog = {
   ProjectValueDraftListResponse: projectValueDraftListResponseSchema,
   BindingChangeHistoryListResponse: catalogBindingChangeHistoryListResponseSchema,
   BindingExportResponse: catalogBindingExportResponseSchema,
+  BindingExportRequest: catalogBindingExportDtoSchema,
+  ValueChangeSourceDiffResponse: catalogValueChangeSourceDiffResponseSchema,
+  RegisterConfigurationInstancesRequest: catalogRegisterConfigurationInstancesRequestSchema,
   ProjectValueDraftRemovedResponse: projectValueDraftRemovedResponseSchema,
   ProjectValueChangeRequestResponse: catalogValueChangeRequestResponseSchema,
   ProjectValueChangeRequestListResponse: catalogValueChangeRequestListResponseSchema,

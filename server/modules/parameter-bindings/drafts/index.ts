@@ -3,11 +3,13 @@ export {
   listCanonicalValueDraftsForUser,
   removeCanonicalValueDraft,
   type CanonicalValueDraftDto,
-  type CreateCanonicalValueDraftInput
+  type CreateCanonicalValueDraftInput,
+  type CanonicalValueDraftOptions
 } from "./service";
 export {
   deleteCanonicalValueDraft,
   getCanonicalValueDraft,
+  getCanonicalValueDraftForUpdate,
   listCanonicalValueDrafts,
   loadCanonicalBindingPins,
   upsertCanonicalValueDraft,
@@ -23,6 +25,7 @@ export {
   withdrawCanonicalValueChange,
   type CanonicalValueChangeRequestDto,
   type ReviewCanonicalValueChangeInput,
+  type ReviewCanonicalValueChangeOptions,
   type SubmitCanonicalValueChangeInput
 } from "./changeService";
 export {

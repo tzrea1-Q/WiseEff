@@ -34,6 +34,7 @@ import type { RouteRequest, WiseEffRouter } from "../../shared/http/router";
 import type { Database } from "../../shared/database/client";
 import { getRootPostgresPool } from "../../shared/database/client";
 import type { MappingQueryable } from "../catalog-cutover/mapping";
+import type { ObjectStore } from "../logs/objectStore";
 
 import { registerCatalogGovernanceRoutes, registerCatalogDefinitionReplacementRoutes } from "./governance/routes";
 import { createParameterCatalogMigrationService } from "../parameter-catalog-migration/service";
@@ -390,6 +391,7 @@ const createGovernancePorts = (
   pool: pg.Pool | undefined,
   resolveAuth: CatalogApiAuthResolver,
   db?: Database,
+  objectStore?: ObjectStore,
 ): CatalogGovernancePorts => {
   const commands = pool
     ? bindCatalogGovernanceCommands({
@@ -458,6 +460,7 @@ const createGovernancePorts = (
       ? {
           definitionMigration: createParameterCatalogMigrationService({
             db,
+            objectStore,
             publication: createReplacementPublicationPorts(db),
           }),
         }
@@ -634,6 +637,7 @@ export const registerParameterCatalogApi = (
   router: WiseEffRouter,
   options: {
     readonly db?: Database;
+    readonly objectStore?: ObjectStore;
     readonly resolveAuth: CatalogApiAuthResolver;
     readonly catalogPublication?: CatalogPublicationRuntimeOptions;
   },
@@ -643,10 +647,13 @@ export const registerParameterCatalogApi = (
     router,
     createReadPorts(pool, options.resolveAuth, options.db, options.catalogPublication ?? {}),
   );
-  registerCatalogGovernanceRoutes(router, createGovernancePorts(pool, options.resolveAuth, options.db));
+  registerCatalogGovernanceRoutes(
+    router,
+    createGovernancePorts(pool, options.resolveAuth, options.db, options.objectStore),
+  );
   registerCatalogDefinitionReplacementRoutes(
     router,
-    createGovernancePorts(pool, options.resolveAuth, options.db),
+    createGovernancePorts(pool, options.resolveAuth, options.db, options.objectStore),
   );
   registerCatalogPublicationRoutes(
     router,

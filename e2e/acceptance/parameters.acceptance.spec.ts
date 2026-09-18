@@ -2,6 +2,7 @@ import "./helpers/loadAcceptanceEnvironment";
 import { expect, test, type Page } from "playwright/test";
 
 import { authHeadersForRole, signInBrowserAsRole } from "./helpers/bearerAuth";
+import { CATALOG_EXPECTED_API_FAILURES } from "./helpers/catalogBrowser";
 import { useBrowserDiagnostics } from "./helpers/browserDiagnostics";
 import { withPgClient } from "./helpers/database";
 import {
@@ -22,7 +23,12 @@ import {
 
 test.use({ viewport: { width: 1440, height: 900 } });
 
-useBrowserDiagnostics(test);
+useBrowserDiagnostics(test, {
+  expectedApiFailures: [
+    ...CATALOG_EXPECTED_API_FAILURES,
+    { method: "GET", path: "/api/v2/catalog/subjects", status: 404 }
+  ]
+});
 
 const projectId = "aurora";
 const rejectTargetValue = "4333";
@@ -174,10 +180,9 @@ test.describe("M5.4 manual flow B/C - parameter management browser acceptance", 
     await expect(page).toHaveURL(/\/audit/);
     await expect(page.getByLabel("搜索审计记录")).toBeVisible();
     await page.goto(disposablePageUrl(disposableRuntime, "/parameter-admin"));
-    await expect(page.getByRole("region", { name: "参数定义库" })).toBeVisible({ timeout: 30_000 });
     await prepareInteractionSurface(page);
 
-    // Bulk import is a TopBar action when the shell TopBar is mounted.
+    // #847 replaced the spec-library region with CatalogPage; bulk import stays a TopBar action.
     const openImport = page.getByRole("button", { name: "打开批量参数导入" });
     await expect(openImport).toBeVisible({ timeout: 15_000 });
     await openImport.click();

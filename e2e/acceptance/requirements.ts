@@ -211,6 +211,20 @@ export const acceptanceRequirements: AcceptanceRequirement[] = [
     required: false
   },
   {
+    id: "PROJ-REVIEW-ROLES-001",
+    workflow: "C",
+    title:
+      "Admin configures project review roles (hardware-committer, software-committer, software-user) at /parameter-admin/projects/:projectId/review-roles, including deep-link entry, member search, and confirmed save.",
+    required: false
+  },
+  {
+    id: "PROJ-REVIEW-READINESS-001",
+    workflow: "B",
+    title:
+      "When project review roles are missing, the parameter workbench blocks draft submission, preserves staged drafts, and shows an Admin configuration link or a non-admin contact notice.",
+    required: true
+  },
+  {
     id: "PARAM-INIT-WIZARD-001",
     workflow: "C",
     title: "Creator completes project parameter initialization with sources and selection and reaches pending review.",

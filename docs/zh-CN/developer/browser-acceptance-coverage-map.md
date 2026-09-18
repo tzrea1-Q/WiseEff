@@ -59,19 +59,19 @@
 - `DTS-RELOAD-VERIFY-001`：触发成功后经 `debug.readNode` 核对绑定参数，升级为 verified/contradicted 或保持 unverifiable。验收 spec 仅断言无绑定路径（不调用 `debug.readNode`、保持 unverifiable）；升级判定由服务端测试断言。人工浏览器证据 `work/ui-checks/287-*`。
 - `DTS-RELOAD-RESIDUE-001`：设备写后终端记录残留。验收 spec 断言残留已记录且可读；补偿性恢复运行与"仅成功时清除"规则由服务端测试断言。人工浏览器证据 `work/ui-checks/288-*`。
 - `DTS-RELOAD-DEPLOY-HW-001`：真实 HDC 目标经已配对本地桥部署重载 overlay（条件覆盖，非阻塞）。
-- `DTS-RELOAD-HANDOFF-001`：参数工作台把已选 binding 集带到 `/dts-reload?project=&bindingIds=`，工程师不必重搜；重载页过滤候选且不自动填入本轮托盘（单元覆盖已有；浏览器自动化待补）。
-- `DTS-RELOAD-PROMOTE-001`：已验证或经确认的不可验证普通重载运行，把所选已存调试值写成 `parameter_drafts` 后停止；不创建变更请求（单元覆盖已有；浏览器自动化待补）。
+- `DTS-RELOAD-HANDOFF-001`：参数工作台把已选 binding 集带到 `/dts-reload?project=&bindingIds=`，工程师不必重搜；重载页过滤候选且不自动填入本轮托盘。自动化见 `e2e/acceptance/dts-reload-handoff.acceptance.spec.ts`。
+- `DTS-RELOAD-PROMOTE-001`：已验证或经确认的不可验证普通重载运行，把所选已存调试值写成 `parameter_drafts` 后停止；不创建变更请求。自动化见 `e2e/acceptance/dts-reload-promote.acceptance.spec.ts`。
 - `BRIDGE-WIN-001`：`/node-debugging` 的 Windows 优先本地 Bridge 面板可覆盖缺失安装、未配对、未启动、在线无设备与在线目标状态，并展示同源 Windows 下载入口。
 - `BRIDGE-TOOLS-001`：Bridge 已连接但 `tools.adb.available: false` 时，Step ③ 显示缺少 ADB 与 **安装调试工具** CTA（非「Bridge 未安装」）。覆盖：`src/NodeDebuggingPage.test.tsx`。
 - `PARAM-HOME-001`：PC 1440×900 下，`/parameter-home` 通过 `ParameterDashboardRepository` 加载 summary/hotspots API 数据，支持页面内时间窗口与热榜维度切换，并保持现有 Xiaoze 悬浮球不遮挡 dashboard 内容（`e2e/acceptance/parameter-home.acceptance.spec.ts`）。
 - `PARAM-ADMIN-003`：PC 1440×900 下，Admin 项目 DataTable 在 URL 的 `q`/`status`/`sort` 经刷新、`popstate`、后退与前进后保持，支持搜索/筛选/排序、分页、键盘进入行及隔离的编辑/删除操作，页面不横向溢出。自动化见 `e2e/acceptance/parameter-admin-projects.acceptance.spec.ts`。
-- `PROJ-REVIEW-ROLES-001`：Admin 在 `/parameter-admin/projects/:projectId/review-roles` 配置项目审核工作流角色（`hardware-committer`、`software-committer`、`software-user`），支持深链访问、搜索与批量选择，并发冲突时原子回滚与提示（单元测试 `ProjectReviewRolesPanel.test.tsx`、服务端测试 `projectWorkflowRoles.integration.test.ts`；playwright-cli 截图见 `work/ui-checks/`）。
-- `PROJ-REVIEW-READINESS-001`：参数工作台检测三个角色池完备性；角色缺失时精准阻止提交并保留草稿，为 Admin 显示配置入口，非 Admin 提示联系管理员（单元测试 `DtsBindingDraftTray.test.tsx`、服务端测试 `serviceReviewWorkflow.integration.test.ts`）。
+- `PROJ-REVIEW-ROLES-001`：Admin 在 `/parameter-admin/projects/:projectId/review-roles` 配置项目审核工作流角色（`hardware-committer`、`software-committer`、`software-user`），支持深链访问、搜索与确认保存。自动化见 `e2e/acceptance/project-review-roles.acceptance.spec.ts`。
+- `PROJ-REVIEW-READINESS-001`：参数工作台检测三个角色池完备性；角色缺失时精准阻止提交并保留草稿，为 Admin 显示配置入口，非 Admin 提示联系管理员。自动化见 `e2e/acceptance/project-review-roles.acceptance.spec.ts`。
 - `PARAM-INIT-WIZARD-001`：创建者完成项目参数初始化（选源 + 勾选）并进入待审阅（单测 wizard/reducer；服务端 `initializationService`；playwright-cli 见 `work/ui-checks/param-init/`）。
 - `PARAM-INIT-EMPTY-001`：显式空库初始化可批准为 `initialized` 且零 binding（mock Port + 服务端单测）。
 - `PARAM-INIT-REVIEW-001`：Admin 批准初始化后解锁项目并按快照物化 binding（服务端物化/审计；App Port 接线；playwright-cli 审阅页见 `work/ui-checks/param-init/review-*`）。
 - `PARAM-INIT-REJECT-001`：Admin 带原因驳回后创建者可修订再提交（reducer + 服务端）。
-- `PARAM-INIT-LOCK-001`：未 `initialized` 的项目不能提交常规 typed binding 变更轮次（`ParametersPage` 锁 + `assertProjectAllowsParameterSubmit`）。
+- `PARAM-INIT-LOCK-001`：未 `initialized` 的项目不能提交常规 typed binding 变更轮次。自动化见 `e2e/acceptance/parameter-initialization-lock.acceptance.spec.ts`（`ParametersPage` 锁 + `assertProjectAllowsParameterSubmit`）。
 - `PROJ-OPS-001`：已被 `PROJ-CONFIG-CUTOVER-001` 取代——PC 1440×900 下旧深链重定向到等价配置工作台上下文；未知项目 ID 仍显示 not-found（`e2e/acceptance/project-configuration-workbench.acceptance.spec.ts`；页面/cutover 单测）。
 - `PROJ-OPS-002`：已被 `PROJ-CONFIG-READ-001` / `PROJ-CONFIG-CUTOVER-001` 取代——PC 1440×900 工作台布局无截断、无页面级横向溢出。
 - `PROJ-OPS-003`：已被 `PROJ-CONFIG-BASELINE-001` / `PROJ-CONFIG-OPS-001` / `PROJ-CONFIG-CONFLICT-001` 取代——PC 1440×900 下基线、成员与冲突确认均在工作台源码上下文中完成。

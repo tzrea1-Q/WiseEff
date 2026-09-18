@@ -25,6 +25,7 @@ import type { DtsValue } from "../dts/types";
 import { renderDtsValue } from "../dts/valueAst";
 import { type DtsToolchainRunner } from "../parameter-files/dtsToolchain";
 import { ingestDtsFileVersion } from "../parameter-files/structuralIngest";
+import { isStructuralPropertyKey } from "./parameterSurface";
 import type { Database, Queryable } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
 import { canEditParameters } from "../parameter-kernel/policy";
@@ -409,6 +410,29 @@ export async function createBindingDraft(
   }
 
   const bindingHead = await loadBindingContext(db, auth, input.bindingId);
+  if (isStructuralPropertyKey(bindingHead.property_key)) {
+    if (bindingHead.property_key.trim().toLowerCase() === "status") {
+      throw new ApiError(
+        "CONFLICT",
+        "Node status is not a value draft. Use the node-enablement draft route.",
+        {
+          reason: "structural-status-use-node-enablement",
+          bindingId: input.bindingId,
+          propertyKey: bindingHead.property_key,
+          successor: `/api/v2/projects/${encodeURIComponent(bindingHead.project_id)}/node-enablement-drafts`,
+        },
+      );
+    }
+    throw new ApiError(
+      "CONFLICT",
+      "Structural DTS properties cannot be edited as parameter value drafts.",
+      {
+        reason: "structural-property-not-value-draft",
+        bindingId: input.bindingId,
+        propertyKey: bindingHead.property_key,
+      },
+    );
+  }
 
   const openDrafts = await listOpenBindingDraftsForUser(db, {
     organizationId: auth.organization.id,

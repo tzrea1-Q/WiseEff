@@ -21614,6 +21614,61 @@ body.xiaoze-popup-drag-active {
   background: color-mix(in srgb, var(--app-primary) 8%, var(--surface));
 }
 
+.canonical-project-value-review,
+.project-topology-workspace__json {
+  display: grid;
+  gap: var(--space-3);
+  min-width: 0;
+  font-size: var(--text-base);
+}
+
+.canonical-project-value-review {
+  grid-column: 1 / -1;
+  padding: var(--space-4);
+  border: 1px solid var(--outline);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+}
+
+.canonical-project-value-review :is(header, article, section),
+.project-topology-workspace__json .binding-detail-panel section {
+  display: grid;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.canonical-project-value-review [role="tablist"] {
+  display: flex;
+  gap: var(--space-2);
+}
+
+.canonical-project-value-review dl,
+.project-topology-workspace__json .binding-detail-panel__meta {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-2) var(--space-4);
+}
+
+.canonical-project-value-review dt,
+.project-topology-workspace__json dt {
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+}
+
+.canonical-project-value-review :is(code, pre, dd) {
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.canonical-project-value-review__diff-text {
+  max-height: 40vh;
+  overflow: auto;
+  padding: var(--space-3);
+  border: 1px solid var(--outline);
+  border-radius: var(--radius-sm);
+  background: var(--surface-raised);
+}
+
 .binding-detail-panel,
 .binding-detail-drawer {
   display: grid;

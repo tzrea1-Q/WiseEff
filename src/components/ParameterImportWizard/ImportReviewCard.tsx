@@ -1,12 +1,8 @@
-import { CircleX } from "lucide-react";
-import { useMemo, useState } from "react";
-import { ModalDialog } from "@/components/common/ModalDialog";
-import { ParameterDefinitionForm } from "@/components/ParameterDefinitionForm";
+import { useState } from "react";
 import { RiskPicker } from "@/components/RiskPicker";
 import type { ParsedImportRow, ReviewedImportRow } from "@/application/parameters/import/types";
 import type { Project } from "@/domain/prototype/types";
-import { buildParameterModuleTree } from "@/parameterAdminLibrary";
-import { createEmptyParameterModule, type PowerManagementParameterTemplate } from "@/powerManagementConfig";
+import type { PowerManagementParameterTemplate } from "@/powerManagementConfig";
 
 export type ImportReviewCardProps = {
   row: ReviewedImportRow;
@@ -52,7 +48,8 @@ const STATUS_LABEL: Record<ReviewedImportRow["status"], string> = {
   skipped: "已跳过",
   "needs-module": "待补全模块",
   conflict: "冲突",
-  "new-confirmed": "已创建"
+  "new-confirmed": "已创建",
+  unmatched: "未匹配"
 };
 
 function buildModuleOptions(modules: readonly string[], currentModule: string) {
@@ -108,48 +105,18 @@ function toEditableFields(row: ReviewedImportRow): EditableFields {
   };
 }
 
-function buildTemplateFromRow(row: ReviewedImportRow, projects: Project[]): PowerManagementParameterTemplate {
-  const values = projects.reduce<PowerManagementParameterTemplate["values"]>((acc, project) => {
-    acc[project.id] = {
-      currentValue: row.currentValue ?? "",
-      recommendedValue: row.recommendedValue ?? "",
-      updatedAt: ""
-    };
-    return acc;
-  }, {} as PowerManagementParameterTemplate["values"]);
-
-  return {
-    id: `import-row-draft-${row.rowId}`,
-    name: row.name,
-    module: row.module,
-    unit: row.unit ?? "",
-    risk: row.risk ?? "Medium",
-    description: row.description ?? "",
-    explanation: row.explanation ?? "",
-    configFormat: row.configFormat ?? "",
-    range: row.range ?? "",
-    valueKind: row.valueKind ?? "scalar",
-    values
-  };
-}
-
 export function ImportReviewCard({
   row,
-  projects,
   moduleNames,
-  libraryParameters,
   onApprove,
   onSkip,
-  onUpdate,
-  onConfirmNew
+  onUpdate
 }: ImportReviewCardProps) {
   const [mode, setMode] = useState<"view" | "editing" | "skipping">("view");
   const [draft, setDraft] = useState<EditableFields>(() => toEditableFields(row));
   const [skipReason, setSkipReason] = useState(row.skipReason ?? "");
   const [moduleInput, setModuleInput] = useState(row.module);
-  const [prefillOpen, setPrefillOpen] = useState(false);
-
-  const isNewCandidate = row.status === "pending" && !row.existingParameter;
+  const isUnmatched = row.status === "unmatched";
 
   const startEdit = () => {
     setDraft(toEditableFields(row));
@@ -298,22 +265,21 @@ export function ImportReviewCard({
         return <p className="import-review-status-summary">跳过原因：{row.skipReason || "（未填写原因）"}</p>;
       case "new-confirmed":
         return <p className="import-review-status-summary">已确认新增，将在应用阶段创建到参数库。</p>;
+      case "unmatched":
+        return (
+          <div className="import-review-unmatched">
+            <p className="import-review-message" role="status">
+              该行未匹配到当前 Catalog 绑定，导入不会创建定义或当前值。请在参数工作台对已有绑定做类型化编辑，或在定义工作区走受治理的登记／编写。
+            </p>
+            <div className="dialog-actions">
+              <button type="button" className="button subtle" onClick={startSkip}>
+                跳过
+              </button>
+            </div>
+          </div>
+        );
       case "pending":
       default:
-        if (isNewCandidate) {
-          return (
-            <div className="import-review-new-candidate">
-              <div className="dialog-actions">
-                <button type="button" className="button subtle" onClick={startSkip}>
-                  跳过
-                </button>
-                <button type="button" className="button primary" onClick={() => setPrefillOpen(true)}>
-                  预填并创建
-                </button>
-              </div>
-            </div>
-          );
-        }
         return (
           <div className="dialog-actions">
             <button type="button" className="button subtle" onClick={startSkip}>
@@ -339,7 +305,7 @@ export function ImportReviewCard({
         </div>
         <div className="import-review-card-badges">
           <span className="import-review-status-badge">{STATUS_LABEL[row.status]}</span>
-          {isNewCandidate ? <span className="import-review-badge-new">库中不存在</span> : null}
+          {isUnmatched ? <span className="import-review-badge-new">不会应用</span> : null}
         </div>
       </header>
 
@@ -370,122 +336,6 @@ export function ImportReviewCard({
       ) : null}
 
       {renderActions()}
-
-      {prefillOpen ? (
-        <NewParameterPrefillDialog
-          row={row}
-          projects={projects}
-          moduleNames={moduleNames}
-          libraryParameters={libraryParameters}
-          onCancel={() => setPrefillOpen(false)}
-          onConfirm={(patch) => {
-            onConfirmNew(row.rowId, patch);
-            setPrefillOpen(false);
-          }}
-        />
-      ) : null}
     </section>
-  );
-}
-
-function NewParameterPrefillDialog({
-  row,
-  projects,
-  moduleNames,
-  libraryParameters,
-  onCancel,
-  onConfirm
-}: {
-  row: ReviewedImportRow;
-  projects: Project[];
-  moduleNames: string[];
-  libraryParameters: PowerManagementParameterTemplate[];
-  onCancel: () => void;
-  onConfirm: (patch: Partial<ParsedImportRow>) => void;
-}) {
-  const [draftParameter, setDraftParameter] = useState<PowerManagementParameterTemplate>(() => buildTemplateFromRow(row, projects));
-  const moduleNodes = useMemo(
-    () =>
-      buildParameterModuleTree(
-        [],
-        buildModuleOptions(moduleNames, draftParameter.module).map((name) => createEmptyParameterModule(name))
-      ),
-    [draftParameter.module, moduleNames]
-  );
-
-  const firstProjectId = projects[0]?.id;
-  const recommendedValue = firstProjectId ? draftParameter.values[firstProjectId]?.recommendedValue ?? "" : "";
-  const canSubmit = Boolean(draftParameter.name.trim()) && Boolean(draftParameter.module.trim());
-
-  const handleMetadataChange = (patch: Partial<Omit<PowerManagementParameterTemplate, "id" | "values">>) => {
-    setDraftParameter((current) => ({ ...current, ...patch }));
-  };
-
-  const handleRecommendedValueChange = (value: string) => {
-    setDraftParameter((current) => ({
-      ...current,
-      values: projects.reduce<PowerManagementParameterTemplate["values"]>((acc, project) => {
-        const existing = current.values[project.id] ?? { currentValue: "", recommendedValue: "", updatedAt: "" };
-        acc[project.id] = { ...existing, recommendedValue: value };
-        return acc;
-      }, {} as PowerManagementParameterTemplate["values"])
-    }));
-  };
-
-  const handleSubmit = () => {
-    if (!canSubmit) {
-      return;
-    }
-    onConfirm({
-      name: draftParameter.name.trim(),
-      module: draftParameter.module.trim(),
-      unit: draftParameter.unit,
-      risk: draftParameter.risk,
-      description: draftParameter.description,
-      explanation: draftParameter.explanation,
-      configFormat: draftParameter.configFormat,
-      range: draftParameter.range,
-      recommendedValue,
-      valueKind: draftParameter.valueKind
-    });
-  };
-
-  return (
-    <ModalDialog open onDismiss={onCancel} className="submission-dialog param-admin-editor-dialog">
-      {({ titleId }) => (
-        <>
-          <div className="submission-dialog-head param-admin-editor-dialog-head">
-            <div className="param-admin-editor-dialog-head-text">
-              <span className="eyebrow">批量导入 · 新增参数</span>
-              <h2 id={titleId}>预填并创建</h2>
-              <p>基于导入行内容预填参数定义，确认后标记为已创建，将在应用阶段写入参数库。</p>
-            </div>
-            <button type="button" className="audit-dialog-close-icon" onClick={onCancel} aria-label="关闭">
-              <CircleX size={22} strokeWidth={1.75} aria-hidden="true" />
-            </button>
-          </div>
-
-          <div className="param-admin-editor-dialog-body">
-            <ParameterDefinitionForm
-              parameter={draftParameter}
-              projects={projects}
-              moduleNodes={moduleNodes}
-              allParameters={libraryParameters}
-              onMetadataChange={handleMetadataChange}
-              onRecommendedValueChange={handleRecommendedValueChange}
-            />
-          </div>
-
-          <div className="dialog-actions">
-            <button type="button" className="button subtle" onClick={onCancel}>
-              取消
-            </button>
-            <button type="button" className="button primary" disabled={!canSubmit} onClick={handleSubmit}>
-              确认创建
-            </button>
-          </div>
-        </>
-      )}
-    </ModalDialog>
   );
 }

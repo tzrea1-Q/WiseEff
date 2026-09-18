@@ -1,4 +1,5 @@
 import { z } from "zod";
+import type { ContractJsonValue } from "../parameter-catalog-contract";
 
 const nonEmptyString = z.string().min(1);
 
@@ -35,6 +36,20 @@ export const dtsValueSchema = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("mixed"), segments: z.array(dtsValueSegmentSchema) })
 ]);
 
+const contractJsonValueSchema: z.ZodType<ContractJsonValue> = z.lazy(() => z.union([
+  z.string(),
+  z.number().finite(),
+  z.boolean(),
+  z.null(),
+  z.array(contractJsonValueSchema),
+  z.record(z.string(), contractJsonValueSchema)
+]));
+
+export const projectBindingValueSchema = z.union([
+  dtsValueSchema,
+  z.object({ kind: z.literal("json"), value: contractJsonValueSchema })
+]);
+
 export const projectBindingDtoSchema = z.object({
   id: z.string(),
   parameterSpecId: z.string(),
@@ -48,7 +63,7 @@ export const projectBindingDtoSchema = z.object({
   logicalNodeId: z.string().nullable(),
   instanceName: z.string().nullable(),
   locator: z.string().nullable(),
-  effectiveValue: dtsValueSchema,
+  effectiveValue: projectBindingValueSchema,
   rawValue: z.string(),
   schemaState: z.enum(["valid", "invalid", "unreviewed"]),
   policyState: z.enum(["pass", "fail", "not_applicable"]),

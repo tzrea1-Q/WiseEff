@@ -22,7 +22,8 @@ describe("toSourceItems", () => {
       buildRow({ rowId: "r3", status: "pending" }),
       buildRow({ rowId: "r4", status: "skipped" }),
       buildRow({ rowId: "r5", status: "conflict" }),
-      buildRow({ rowId: "r6", status: "needs-module" })
+      buildRow({ rowId: "r6", status: "needs-module" }),
+      buildRow({ rowId: "r7", status: "unmatched", name: "ghost_param" })
     ];
 
     const items = toSourceItems(rows);

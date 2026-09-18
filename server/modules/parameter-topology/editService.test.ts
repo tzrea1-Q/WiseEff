@@ -1015,6 +1015,85 @@ describe.skipIf(!databaseAvailable)("createBindingDraft", () => {
     });
   });
 
+  it("refuses status value drafts and points at node-enablement", async () => {
+    const fixture = await seedConfigAndBinding(db!, auth);
+    await db!.query(
+      `delete from dts_property_specs where parameter_spec_id = (
+         select parameter_spec_id from project_parameter_bindings where id = $1
+       )`,
+      [fixture.binding.id],
+    );
+    await db!.query(
+      `update parameter_specs set specification_key = 'charging_core/status' where id = (
+         select parameter_spec_id from project_parameter_bindings where id = $1
+       )`,
+      [fixture.binding.id],
+    );
+
+    await expect(
+      createBindingDraft(
+        db!,
+        auth,
+        {
+          bindingId: fixture.binding.id,
+          baseRevisionId: fixture.revision.id,
+          targetValue: { kind: "string", value: "okay" },
+          reason: "must not be a value draft",
+        },
+        { toolchain: passToolchain },
+      ),
+    ).rejects.toMatchObject({
+      code: "CONFLICT",
+      details: expect.objectContaining({
+        reason: "structural-status-use-node-enablement",
+        successor: `/api/v2/projects/${PROJECT_ID}/node-enablement-drafts`,
+      }),
+    });
+    const drafts = await db!.query<{ n: string }>(
+      `select count(*)::text as n from parameter_drafts where project_parameter_binding_id = $1`,
+      [fixture.binding.id],
+    );
+    expect(drafts.rows[0]?.n).toBe("0");
+  });
+
+  it("refuses other structural keys as value drafts", async () => {
+    const fixture = await seedConfigAndBinding(db!, auth);
+    await db!.query(
+      `delete from dts_property_specs where parameter_spec_id = (
+         select parameter_spec_id from project_parameter_bindings where id = $1
+       )`,
+      [fixture.binding.id],
+    );
+    await db!.query(
+      `update parameter_specs set specification_key = 'charging_core/phandle' where id = (
+         select parameter_spec_id from project_parameter_bindings where id = $1
+       )`,
+      [fixture.binding.id],
+    );
+
+    await expect(
+      createBindingDraft(
+        db!,
+        auth,
+        {
+          bindingId: fixture.binding.id,
+          baseRevisionId: fixture.revision.id,
+          targetValue: { kind: "cells", bits: 32, groups: [[{ kind: "integer", raw: "1", value: "1" }]] },
+          reason: "must not be a value draft",
+        },
+        { toolchain: passToolchain },
+      ),
+    ).rejects.toMatchObject({
+      code: "CONFLICT",
+      details: expect.objectContaining({ reason: "structural-property-not-value-draft" }),
+    });
+    const drafts = await db!.query<{ n: string }>(
+      `select count(*)::text as n from parameter_drafts where project_parameter_binding_id = $1`,
+      [fixture.binding.id],
+    );
+    expect(drafts.rows[0]?.n).toBe("0");
+  });
+
   it("returns schema diagnostics without updating released binding revision", async () => {
     const fixture = await seedConfigAndBinding(db!, auth);
 

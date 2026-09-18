@@ -8,7 +8,7 @@ import { createMemoryObjectStore } from "../../testing/objectStore";
 import { seedCoreGraph } from "../../testing/fixtures";
 import type { AuthContext } from "../auth/types";
 import { createSystemInvocation, createUserInvocation } from "../auth/trustedInvocation";
-import { createCandidate, abandonCandidate, getCandidateImpact } from "./candidateService";
+import { createCandidate, abandonCandidate, getCandidateImpact, listCandidates } from "./candidateService";
 import { addConfigSetFile, createConfigSet } from "./configSetService";
 import { getFileConfigSetMembership } from "./configSetRepository";
 import { getProjectParameterFileById } from "./repository";
@@ -192,7 +192,7 @@ describe.skipIf(!databaseAvailable)("parameter file candidate non-activation inv
     expect(Number(versionCount.rows[0].count)).toBe(1);
   });
 
-  it("parse failure leaves active source untouched and exposes diagnostics", async () => {
+  it("refuses invalid JSON before staging a candidate and leaves the active source untouched", async () => {
     const auth = makeAuth();
     const objectStore = createMemoryObjectStore();
     const fileName = `cand-fail-${randomUUID()}.json`;
@@ -203,14 +203,15 @@ describe.skipIf(!databaseAvailable)("parameter file candidate non-activation inv
       bytes: Buffer.from('{"ok":true}', "utf8")
     });
 
-    const failed = await createCandidate(db!, objectStore, auth, {
-      projectId: "project-cand-int",
-      fileId: uploaded.file.id,
-      fileName,
-      bytes: Buffer.from("{not-json", "utf8")
-    });
-    expect(failed.status).toBe("failed");
-    expect(failed.diagnostics.some((item) => item.code === "parse-failed")).toBe(true);
+    for (const source of ["{not-json", '{"x":1,"x":2}', '{"x":9007199254740993}', '{"x":"\\u0000"}']) {
+      await expect(createCandidate(db!, objectStore, auth, {
+        projectId: "project-cand-int",
+        fileId: uploaded.file.id,
+        fileName,
+        bytes: Buffer.from(source, "utf8")
+      })).rejects.toMatchObject({ code: "VALIDATION_FAILED" });
+    }
+    expect(await listCandidates(db!, auth, { projectId: "project-cand-int", fileId: uploaded.file.id })).toEqual([]);
 
     const file = await getProjectParameterFileById(db!, {
       organizationId: auth.organization.id,
@@ -218,10 +219,6 @@ describe.skipIf(!databaseAvailable)("parameter file candidate non-activation inv
     });
     expect(file?.currentVersionId).toBe(uploaded.version.id);
 
-    const abandoned = await abandonCandidate(db!, auth, {
-      projectId: "project-cand-int",
-      candidateId: failed.id
-    });
-    expect(abandoned.status).toBe("abandoned");
+    expect((await objectStore.get(uploaded.version.storageKey)).toString("utf8")).toBe('{"ok":true}');
   });
 });

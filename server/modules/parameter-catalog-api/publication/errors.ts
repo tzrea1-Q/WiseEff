@@ -23,6 +23,7 @@ const REASON_HTTP_STATUS: Partial<Record<CatalogApiFailureReason, number>> = {
   "activation-receipt-mismatch": 409,
   "adoption-evidence-invalid": 409,
   "unsupported-catalog-capability": 422,
+  "unsupported-consumer-capability-revision": 422,
 };
 
 export function catalogPublicationError(input: {

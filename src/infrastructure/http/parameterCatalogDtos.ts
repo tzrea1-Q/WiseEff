@@ -2,11 +2,18 @@ import type { z } from "zod";
 
 import type {
   bindingDraftResponseSchema,
+  catalogBindingChangeHistoryListResponseSchema,
   bindingCompareListResponseSchema,
   bindingHistoryListResponseSchema,
   catalogAcceptProposalRequestSchema,
   catalogCreateProposalRequestSchema,
   catalogCreatePublicationCandidateRequestSchema,
+  catalogBindingExportResponseSchema,
+  catalogBindingDraftDtoSchema,
+  catalogValueChangeRequestDtoSchema,
+  catalogValueChangeRequestListResponseSchema,
+  catalogValueChangeRequestResponseSchema,
+  catalogValueChangeSourceDiffResponseSchema,
   catalogCreateReplacementRequestSchema,
   catalogContinueReplacementRequestSchema,
   catalogReplacementDtoSchema,
@@ -53,7 +60,9 @@ import type {
   catalogUpdatePlacementRequestSchema,
   catalogWithdrawProposalRequestSchema,
   nodeEnablementDraftResponseSchema,
-  projectParameterBindingListResponseSchema
+  projectParameterBindingListResponseSchema,
+  projectValueDraftListResponseSchema,
+  projectValueDraftRemovedResponseSchema
 } from "@wiseeff/dto-schemas";
 
 export type CatalogReplacement = z.infer<typeof catalogReplacementDtoSchema>;
@@ -116,9 +125,22 @@ export type CatalogLegacyGoneResponse = z.infer<typeof catalogLegacyGoneResponse
 export type CatalogProjectBindingDto = z.infer<typeof catalogProjectBindingDtoSchema>;
 export type CatalogProjectBindingListResponse = z.infer<typeof projectParameterBindingListResponseSchema>;
 export type CatalogBindingHistoryListResponse = z.infer<typeof bindingHistoryListResponseSchema>;
+export type CatalogBindingChangeHistoryListResponse = z.infer<
+  typeof catalogBindingChangeHistoryListResponseSchema
+>;
 export type CatalogBindingCompareListResponse = z.infer<typeof bindingCompareListResponseSchema>;
+export type CatalogBindingExportResponse = z.infer<typeof catalogBindingExportResponseSchema>;
 export type CatalogCreateBindingDraftRequest = z.infer<typeof catalogCreateBindingDraftRequestSchema>;
 export type CatalogBindingDraftResponse = z.infer<typeof bindingDraftResponseSchema>;
+export type CatalogBindingDraftDto = z.infer<typeof catalogBindingDraftDtoSchema>;
+export type CatalogProjectValueDraftListResponse = z.infer<typeof projectValueDraftListResponseSchema>;
+export type CatalogProjectValueDraftRemovedResponse = z.infer<typeof projectValueDraftRemovedResponseSchema>;
+export type CatalogValueChangeRequestDto = z.infer<typeof catalogValueChangeRequestDtoSchema>;
+export type CatalogValueChangeRequestListResponse = z.infer<typeof catalogValueChangeRequestListResponseSchema>;
+export type CatalogValueChangeRequestResponse = z.infer<typeof catalogValueChangeRequestResponseSchema>;
+export type CatalogValueChangeSourceDiffResponse = z.infer<
+  typeof catalogValueChangeSourceDiffResponseSchema
+>;
 export type CatalogCreateNodeEnablementDraftRequest = z.infer<
   typeof catalogCreateNodeEnablementDraftRequestSchema
 >;

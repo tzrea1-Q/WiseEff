@@ -4,6 +4,7 @@
  * fingerprints. Registers the Hosted page-loop paths first so they win.
  */
 import { z } from "zod";
+import { randomUUID } from "node:crypto";
 
 import { asAuditTx, withAuditedWrite } from "../audit/auditedWrite";
 import { createTrustedRefusalAuditSink } from "../audit/trustedRefusalSink";
@@ -17,12 +18,15 @@ import { ApiError } from "../../shared/http/errors";
 import type { ObjectStore } from "../logs/objectStore";
 import type { RouteRequest, WiseEffRouter } from "../../shared/http/router";
 import { uploadProjectParameterFile } from "../parameter-files/service";
+import { readCanonicalSourceDiff } from "../parameter-files/canonicalSourceDiff";
+import { loadPublishedCatalog } from "./catalogProjectValueSync";
 import { listConfigSets } from "../parameter-files/configSetService";
 import { getLatestConfigRevision } from "../parameter-topology/repository";
 import { createBindingDraft, listProjectBindings } from "../parameter-topology/service";
 import {
   createBindingDraftBodySchema,
   createBindingDraftParamsSchema,
+  dtsValueSchema,
   projectBindingDtoSchema,
   projectBindingsParamsSchema,
   projectBindingsQuerySchema
@@ -35,26 +39,30 @@ import {
   removeCanonicalValueDraft,
   reviewCanonicalValueChange,
   submitCanonicalValueChange,
-  withdrawCanonicalValueChange
+  withdrawCanonicalValueChange,
+  type CanonicalValueDraftDto
 } from "./drafts";
-import { createImportPreview } from "../parameters/service";
 import {
   applyImportBatchBodySchema,
   createImportBatchBodySchema
 } from "../parameters/schemas";
-import { markImportBatchApplied } from "../parameters/importBatchRepository";
+import { insertImportBatch } from "../parameters/importBatchRepository";
+import { deleteDraft as deleteTopologyDraft, listDrafts as listTopologyDrafts } from "../parameters/service";
+import type { ParameterDraftDto } from "../parameter-drafts/types";
+import { stageCanonicalImportBatch } from "./drafts/importService";
 import { parameterImportBatchDtoSchema } from "../contracts/dtoSchemas/parameters";
+import { catalogBindingExportDtoSchema } from "../contracts/dtoSchemas/parameterCatalog";
 import {
   asValueClient,
   findCatalogBindingRow,
-  importTextToDtsValue,
   listCatalogBindingRowsForProject,
   exportCanonicalBindingSource,
+  verifyCanonicalSourceReimport,
   listCatalogBindingsForImport,
   matchCatalogImportRow,
+  canonicalImportValueUnchanged,
   readCanonicalBindingChangeHistory,
-  saveCanonicalProjectValue,
-  syncPublishedCatalogProjectValues
+  syncPublishedCatalogProjectValuesInTransaction
 } from "./catalogProjectValueSync";
 
 function requireDb(db: Database | undefined) {
@@ -76,6 +84,33 @@ function flattenQuery(query: Record<string, string | string[]>) {
   return Object.fromEntries(Object.entries(query).map(([key, value]) => [key, Array.isArray(value) ? value[0] : value]));
 }
 
+function topologyDraftToValueDraftDto(draft: ParameterDraftDto): CanonicalValueDraftDto | null {
+  if (draft.editSubjectKind === "node-enablement") {
+    return null;
+  }
+  const bindingId = draft.bindingId ?? draft.projectParameterBindingId ?? "";
+  const definitionId = draft.parameterSpecId ?? "";
+  const baseRevisionId = draft.candidateConfigRevisionId ?? "";
+  const effectiveRevisionId = draft.effectiveRevisionId ?? baseRevisionId;
+  if (!bindingId || !definitionId || !baseRevisionId || !effectiveRevisionId) {
+    return null;
+  }
+  return {
+    id: draft.id,
+    bindingId,
+    definitionId,
+    effectiveRevisionId,
+    currentValueId: draft.currentValueId ?? null,
+    targetValue: draft.targetValue,
+    sourceFormat: "dts",
+    baseRevisionId,
+    sourcePinId: null,
+    candidateId: null,
+    reason: draft.reason,
+    updatedAt: draft.updatedAt
+  };
+}
+
 const uploadBodySchema = z.object({
   fileName: z.string().min(1),
   contentBase64: z.string().min(1)
@@ -83,6 +118,24 @@ const uploadBodySchema = z.object({
 
 const paramsWithProjectIdSchema = z.object({ projectId: z.string().min(1) });
 const paramsWithBatchIdSchema = z.object({ batchId: z.string().min(1) });
+
+const canonicalDraftBodySchema = z
+  .object({
+    baseRevisionId: z.string().min(1),
+    targetValue: dtsValueSchema.optional(),
+    sourceTarget: z.object({ format: z.literal("json"), sourceText: z.string().min(1) }).optional(),
+    action: z.enum(["set", "delete"]).optional(),
+    reason: z.string().min(1)
+  })
+  .superRefine((value, ctx) => {
+    const action = value.action ?? "set";
+    if (action === "set" && ((value.targetValue === undefined) === (value.sourceTarget === undefined))) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Exactly one typed target is required when action is set.", path: ["targetValue"] });
+    }
+    if (action === "delete") {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Canonical source drafts support set only.", path: ["action"] });
+    }
+  });
 
 function decodeContentBase64(contentBase64: string) {
   const trimmed = contentBase64.trim();
@@ -113,16 +166,17 @@ async function syncLatestPublishedValues(
     configSetId: configSet.id
   });
   if (!revision || revision.status !== "resolved") return;
+  const snapshot = await loadPublishedCatalog(pool);
+  if (!snapshot) return;
   await withAuditedWrite(db, auth, { requestId: context.requestId }, async (tx) => {
-    const written = await syncPublishedCatalogProjectValues(
-      pool,
+    const written = await syncPublishedCatalogProjectValuesInTransaction(
+      asValueClient(tx),snapshot,
       {
         organizationId: auth.organization.id,
         projectId,
         configSetId: configSet.id,
         configRevisionId: revision.id
-      },
-      asValueClient(tx)
+      }
     );
     if (written === 0) {
       return { result: 0, audit: null };
@@ -309,7 +363,8 @@ export function registerCatalogProjectValueConsumerRoutes(
       }
       const item = await exportCanonicalBindingSource(db, options.objectStore, auth, {
         projectId: params.projectId,
-        bindingId: params.bindingId
+        bindingId: params.bindingId,
+        ...parseWithSchema(z.object({ projectValueId: z.string().min(1).optional() }).strict(),flattenQuery(request.query))
       });
       if (!item) {
         throw new ApiError("NOT_FOUND", "Project parameter binding was not found for this project.", {
@@ -325,7 +380,7 @@ export function registerCatalogProjectValueConsumerRoutes(
     const db = requireDb(options.db);
     const auth = await options.getCurrentAuthContext(request);
     const params = parseWithSchema(createBindingDraftParamsSchema, request.params);
-    const body = parseWithSchema(createBindingDraftBodySchema, request.body ?? {});
+    const rawBody = request.body ?? {};
     if (!canEditParameters(auth)) {
       throw new ApiError("FORBIDDEN", "Parameter edit permission is required.");
     }
@@ -335,6 +390,7 @@ export function registerCatalogProjectValueConsumerRoutes(
       bindingId: params.bindingId
     });
     if (!catalogBinding) {
+      const body = parseWithSchema(createBindingDraftBodySchema, rawBody);
       const refusalAuditSink = isRootDatabase(db) ? createTrustedRefusalAuditSink(db) : undefined;
       if (!refusalAuditSink) {
         throw new ApiError("INTERNAL_ERROR", "Trusted refusal audit sink is required for typed binding drafts.");
@@ -342,7 +398,14 @@ export function registerCatalogProjectValueConsumerRoutes(
       const item = await createBindingDraft(
         db,
         auth,
-        { projectId: params.projectId, bindingId: params.bindingId, ...body },
+        {
+          projectId: params.projectId,
+          bindingId: params.bindingId,
+          baseRevisionId: body.baseRevisionId,
+          targetValue: body.targetValue,
+          action: body.action,
+          reason: body.reason
+        },
         { objectStore: options.objectStore },
         {
           invocation: createUserInvocation(auth),
@@ -352,6 +415,7 @@ export function registerCatalogProjectValueConsumerRoutes(
       );
       return { status: 201, body: { item } };
     }
+    const body = parseWithSchema(canonicalDraftBodySchema, rawBody);
     if (!canEditParameters(auth, params.projectId)) {
       throw new ApiError("FORBIDDEN", "Parameter edit role is required for this project.");
     }
@@ -360,47 +424,79 @@ export function registerCatalogProjectValueConsumerRoutes(
       throw new ApiError("INTERNAL_ERROR", "Canonical pending drafts require the root database.");
     }
     const targetValue = body.targetValue;
-    if ((body.action ?? "set") === "delete" || !targetValue) {
-      // The canonical value owner has no delete apply step yet. Refuse honestly
-      // instead of writing a value change the caller did not ask for.
-      throw new ApiError(
-        "VALIDATION_FAILED",
-        "Published definition drafts currently require a set action and target value.",
-        { bindingId: params.bindingId }
-      );
+    if (!options.objectStore) {
+      throw new ApiError("INTERNAL_ERROR", "Canonical source drafts require object storage.");
     }
-    const locator = await db.query<{ node_locator: string | null; compatible: string | null }>(
-      `
-      select node_locator, compatible
-        from dts_logical_node_revisions
-       where logical_node_id = $1
-       order by config_revision_id desc
-       limit 1
-      `,
-      [catalogBinding.logical_node_id]
+    const canonicalRefusalAuditSink = isRootDatabase(db) ? createTrustedRefusalAuditSink(db) : undefined;
+    if (!canonicalRefusalAuditSink) {
+      throw new ApiError("INTERNAL_ERROR", "Trusted refusal audit sink is required for canonical source drafts.");
+    }
+    const sourcePin = await db.query<{ format: "dts" | "json"; config_revision_id: string; property_occurrence_id: string | null; node_locator: string | null; compatible: string | null }>(
+      `select pin.format, pin.config_revision_id, pin.property_occurrence_id,
+              coalesce(nullif(node.ref_target,''), node.node_path) as node_locator, logical.compatible
+         from parameter_catalog.project_parameter_bindings binding
+         join parameter_catalog.project_parameter_values value on value.id = binding.current_value_id
+         join parameter_catalog.project_value_source_pins pin
+           on pin.project_value_id = value.id and pin.binding_id = binding.id
+         and pin.source_occurrence_id = binding.source_occurrence_id
+         left join parameter_catalog.project_parameter_source_occurrences occurrence
+           on occurrence.id=pin.source_occurrence_id and occurrence.organization_id=pin.organization_id
+          and occurrence.project_id=pin.project_id and occurrence.file_id=pin.file_id
+         left join dts_logical_node_revisions logical
+           on logical.logical_node_id=occurrence.logical_node_id and logical.config_revision_id=pin.config_revision_id
+         left join dts_property_occurrences property
+           on property.id = pin.property_occurrence_id
+          and property.config_revision_id = pin.config_revision_id
+          and property.file_version_id = pin.file_version_id
+         left join dts_node_occurrences node
+           on node.id = property.node_occurrence_id
+          and node.config_revision_id = property.config_revision_id
+          and node.file_version_id = property.file_version_id
+        where binding.organization_id = $1 and binding.project_id = $2 and binding.id = $3
+          and pin.config_revision_id = value.config_revision_id
+        limit 1`,
+      [auth.organization.id, params.projectId, params.bindingId]
     );
-    const nodeLocator = locator.rows[0]?.node_locator;
-    if (!nodeLocator) {
-      throw new ApiError(
-        "VALIDATION_FAILED",
-        "Published definition node could not be resolved for a sensitive-node check.",
-        { bindingId: params.bindingId, logicalNodeId: catalogBinding.logical_node_id }
-      );
+    if (sourcePin.rows.length !== 1) {
+      throw new ApiError("CONFLICT", "Canonical binding has no exact current source pin.", { bindingId: params.bindingId });
     }
-    const refusalAuditSink = isRootDatabase(db) ? createTrustedRefusalAuditSink(db) : undefined;
-    if (!refusalAuditSink) {
-      throw new ApiError("INTERNAL_ERROR", "Trusted refusal audit sink is required for typed binding drafts.");
+    if (sourcePin.rows[0]!.format === "dts") {
+      const nodeLocator = sourcePin.rows[0]!.node_locator;
+      if (!nodeLocator) {
+        throw new ApiError("VALIDATION_FAILED", "Pinned DTS node could not be resolved for a sensitive-node check.", {
+          bindingId: params.bindingId,
+          configRevisionId: sourcePin.rows[0]!.config_revision_id
+        });
+      }
+      try {
+        await assertTrustedSensitiveNodeWriteAllowed(db, auth, {
+          organizationId: auth.organization.id,
+          projectId: params.projectId,
+          nodePath: nodeLocator,
+          compatible: sourcePin.rows[0]?.compatible,
+          compatibleIsAuthoritative: true,
+          invocation: createUserInvocation(auth),
+          requestId: request.requestId,
+          refusalSink: canonicalRefusalAuditSink
+        });
+      } catch (error) {
+        if (error instanceof ApiError && error.code === "FORBIDDEN") {
+          await canonicalRefusalAuditSink.write({
+            invocation: createUserInvocation(auth),
+            projectId: params.projectId,
+            app: "parameter-management",
+            kind: "parameter-source-permission-denied",
+            action: "deny",
+            severity: "High",
+            targetType: "sensitive-node",
+            targetId: params.bindingId,
+            metadata: { code: "parameter-source-permission-denied", operation: "canonical source draft", ...error.details },
+            traceId: request.requestId
+          });
+        }
+        throw error;
+      }
     }
-    await assertTrustedSensitiveNodeWriteAllowed(db, auth, {
-      organizationId: auth.organization.id,
-      projectId: params.projectId,
-      nodePath: nodeLocator,
-      compatible: locator.rows[0]?.compatible,
-      compatibleIsAuthoritative: true,
-      invocation: createUserInvocation(auth),
-      requestId: request.requestId,
-      refusalSink: refusalAuditSink
-    });
     // A draft is pending work. It records the canonical binding/definition/revision
     // pins plus the exact base value/config-revision pins and leaves the current
     // ProjectValue, its history tip and the active source revision untouched.
@@ -410,8 +506,14 @@ export function registerCatalogProjectValueConsumerRoutes(
         bindingId: params.bindingId,
         action: "set",
         targetValue,
+        sourceTarget: body.sourceTarget,
         reason: body.reason,
         baseRevisionId: body.baseRevisionId
+      }, {
+        objectStore: options.objectStore,
+        invocation: createUserInvocation(auth),
+        requestId: request.requestId,
+        refusalSink: canonicalRefusalAuditSink
       });
       await writeTrustedGovernanceAudit(
         asAuditTx(tx),
@@ -460,14 +562,32 @@ export function registerCatalogProjectValueConsumerRoutes(
   });
 
   /**
-   * Canonical pending drafts for the calling user. The draft tray reads this so
-   * that pending work survives a reload instead of existing only in the browser.
+   * Pending drafts for the calling user. Catalog C4 rows are the preferred
+   * owner; post-cutover DTS typed edit still persists topology `parameter_drafts`
+   * when the binding is not a catalog row (TD-125). The tray hydrates this
+   * union so a reload does not drop in-progress work.
    */
   router.get("/api/v2/projects/:projectId/parameter-value-drafts", async (request) => {
     const db = requireDb(options.db);
     const auth = await options.getCurrentAuthContext(request);
     const params = parseWithSchema(projectBindingsParamsSchema, request.params);
-    const items = await listCanonicalValueDraftsForUser(db, auth, { projectId: params.projectId });
+    const catalogItems = await listCanonicalValueDraftsForUser(db, auth, { projectId: params.projectId });
+    const topologyDrafts = await listTopologyDrafts(
+      db,
+      auth,
+      { projectId: params.projectId },
+      { invocation: createUserInvocation(auth) }
+    );
+    const seen = new Set(catalogItems.map((item) => item.id));
+    const items = [
+      ...catalogItems,
+      ...topologyDrafts.flatMap((draft) => {
+        const mapped = topologyDraftToValueDraftDto(draft);
+        if (!mapped || seen.has(mapped.id)) return [];
+        seen.add(mapped.id);
+        return [mapped];
+      })
+    ];
     return { status: 200, body: { items } };
   });
 
@@ -480,11 +600,19 @@ export function registerCatalogProjectValueConsumerRoutes(
         z.object({ projectId: z.string().min(1), draftId: z.string().min(1) }),
         request.params
       );
-      const item = await removeCanonicalValueDraft(db, auth, {
-        projectId: params.projectId,
-        draftId: params.draftId
-      });
-      return { status: 200, body: { item } };
+      try {
+        const item = await removeCanonicalValueDraft(db, auth, {
+          projectId: params.projectId,
+          draftId: params.draftId
+        });
+        return { status: 200, body: { item } };
+      } catch (error) {
+        if (!(error instanceof ApiError) || error.code !== "NOT_FOUND") {
+          throw error;
+        }
+        await deleteTopologyDraft(db, auth, params.draftId, { invocation: createUserInvocation(auth) });
+        return { status: 200, body: { item: { id: params.draftId } } };
+      }
     }
   );
 
@@ -521,10 +649,22 @@ export function registerCatalogProjectValueConsumerRoutes(
     };
   });
 
+  router.post("/api/v2/projects/:projectId/parameter-bindings/:bindingId/reimport-preview", async (request) => {
+    const db = requireDb(options.db);
+    const auth = await options.getCurrentAuthContext(request);
+    const params = parseWithSchema(z.object({ projectId: z.string().min(1),bindingId: z.string().min(1) }),request.params);
+    const source = parseWithSchema(catalogBindingExportDtoSchema,request.body);
+    if (!options.objectStore) throw new ApiError("INTERNAL_ERROR", "Canonical reimport requires source storage.");
+    const item = await verifyCanonicalSourceReimport(db,options.objectStore,auth,{ ...params,source });
+    return { status: 200,body: { item } };
+  });
+
   router.post("/api/v1/parameter-import-batches", async (request) => {
     const db = requireDb(options.db);
     const auth = await options.getCurrentAuthContext(request);
     const body = parseWithSchema(createImportBatchBodySchema, request.body);
+    if (!canAdminParameters(auth)) throw new ApiError("FORBIDDEN", "Parameter import administration is required.");
+    if (!await getProjectById(db,{ organizationId: auth.organization.id,projectId: body.projectId })) throw new ApiError("NOT_FOUND", "Project was not found for this organization.");
     const catalog = await listCatalogBindingsForImport(db, {
       organizationId: auth.organization.id,
       projectId: body.projectId,
@@ -534,35 +674,40 @@ export function registerCatalogProjectValueConsumerRoutes(
     const catalogMatches = body.items.map((source) =>
       matchCatalogImportRow({ id: source.id, name: source.name }, catalog)
     );
-    // No empty-catalog fallback: an unbound property is never silently previewed
-    // through the legacy definition path (Issue #849 problem statement).
+    const topologyBindings = (await listProjectBindings(db, auth, { projectId: body.projectId })).items;
+    const topologyCandidates = topologyBindings.map((binding) => ({
+      id: binding.parameterSpecId,
+      name: binding.propertyKey,
+      description: binding.description ?? "",
+      explanation: "",
+      configFormat: "",
+      module: binding.driverModule ?? "",
+      range: "",
+      unit: "",
+      risk: "Low" as const,
+      projectParameterValueId: binding.id,
+      currentValue: binding.rawValue ?? ""
+    }));
+    // Unbound names stay conflict (never "added"/mint). A unique topology
+    // propertyKey match is an update of existing post-cutover work, not a
+    // legacy definition create (TD-125 / T21-12).
     const rewritten = await withAuditedWrite(db, auth, { requestId: request.requestId }, async (tx) => {
-      const item = await createImportPreview(tx, auth, body, { requestId: request.requestId });
-      if (item.items.length !== body.items.length) {
-        throw new ApiError("CONFLICT", "Import preview item count did not match the source rows.");
-      }
-      const items = item.items.map((row, index) => {
-        const match = catalogMatches[index];
-        if (!match) return row;
+      const items = body.items.map((row, index) => {
+        const match = catalogMatches[index] ?? matchCatalogImportRow({ name: row.name }, topologyCandidates);
         return {
           ...row,
-          classification: "updated" as const,
-          definitionId: match.id,
-          projectParameterValueId: match.projectParameterValueId
+          id: randomUUID(),riskFlag: row.risk === "High",
+          classification: match ? (canonicalImportValueUnchanged(match,row.currentValue ?? row.recommendedValue ?? "") ? "unchanged" as const : "updated" as const) : "conflict" as const,
+          ...(match ? { definitionId: match.id,projectParameterValueId: match.projectParameterValueId,
+            baseCurrentValueId: match.baseCurrentValueId,baseRevisionId: match.baseRevisionId,configFormat: row.configFormat ?? match.configFormat } : {})
         };
       });
-      const added = items.filter((row) => row.classification === "added").length;
+      const added = 0;
       const updated = items.filter((row) => row.classification === "updated").length;
-      const summary = { ...item.summary, added, updated };
-      await tx.query(
-        `
-        update parameter_import_batches
-           set items = $2::jsonb,
-               summary = $3::jsonb
-         where id = $1
-        `,
-        [item.id, JSON.stringify(items), JSON.stringify(summary)]
-      );
+      const unchanged = items.filter((row) => row.classification === "unchanged").length;
+      const summary = { added,updated,unchanged,conflict: items.length-updated-unchanged,highRisk: items.filter((row) => row.riskFlag).length };
+      const item = await insertImportBatch(tx,{ id: randomUUID(),organizationId: auth.organization.id,projectId: body.projectId,
+        createdByUserId: auth.user.id,sourceName: body.sourceName,summary,items });
       return {
         result: parameterImportBatchDtoSchema.parse({ ...item, items, summary }),
         audit: {
@@ -583,143 +728,16 @@ export function registerCatalogProjectValueConsumerRoutes(
   router.post("/api/v1/parameter-import-batches/:batchId/apply", async (request) => {
     const db = requireDb(options.db);
     const auth = await options.getCurrentAuthContext(request);
-    if (!canAdminParameters(auth)) {
-      throw new ApiError("FORBIDDEN", "Admin access is required for parameter import.");
-    }
     const params = parseWithSchema(paramsWithBatchIdSchema, request.params);
     const body = parseWithSchema(
       applyImportBatchBodySchema,
       { ...(request.body && typeof request.body === "object" ? request.body : {}), batchId: params.batchId }
     );
-    const loaded = await db.query<{ items: unknown; project_id: string }>(
-      `
-      select items, project_id
-        from parameter_import_batches
-       where organization_id = $1
-         and id = $2
-      `,
-      [auth.organization.id, params.batchId]
-    );
-    const batch = loaded.rows[0];
-    if (!batch) {
-      throw new ApiError("NOT_FOUND", "Parameter import batch was not found.", { batchId: params.batchId });
-    }
-    const items = Array.isArray(batch.items) ? batch.items as Array<{
-      id: string;
-      name: string;
-      classification: string;
-      projectParameterValueId?: string;
-      currentValue?: string;
-      recommendedValue?: string;
-    }> : [];
-    const selected = body.selectedItemIds
-      ? items.filter((item) => body.selectedItemIds?.includes(item.id))
-      : items.filter((item) => item.classification === "added" || item.classification === "updated");
-    const catalogItems: Array<{
-      item: (typeof selected)[number];
-      catalog: NonNullable<Awaited<ReturnType<typeof findCatalogBindingRow>>>;
-    }> = [];
-    const unbound: Array<{ id: string; name: string; reason: "no-binding" | "not-canonical" }> = [];
-    for (const item of selected) {
-      if (!item.projectParameterValueId) {
-        unbound.push({ id: item.id, name: item.name, reason: "no-binding" });
-        continue;
-      }
-      const catalog = await findCatalogBindingRow(db, {
-        organizationId: auth.organization.id,
-        projectId: batch.project_id,
-        bindingId: item.projectParameterValueId
-      });
-      if (catalog) catalogItems.push({ item, catalog });
-      else unbound.push({ id: item.id, name: item.name, reason: "not-canonical" });
-    }
-    // Canonical-only apply. There is no whole-batch fallback to the legacy apply
-    // service: an unmatched or unbound row can never create or overwrite a
-    // definition, and entering governed authoring is a separate workflow.
-    if (unbound.length > 0) {
-      throw new ApiError(
-        "CONFLICT",
-        "Import batch contains items without a canonical project binding.",
-        {
-          batchId: params.batchId,
-          reason: "unbound-canonical-binding",
-          unbound,
-          applied: 0
-        }
-      );
-    }
-    if (catalogItems.length === 0) {
-      const item = await markImportBatchApplied(db, {
-        organizationId: auth.organization.id,
-        batchId: params.batchId
-      });
-      if (!item) {
-        throw new ApiError("NOT_FOUND", "Parameter import batch was not found.", { batchId: params.batchId });
-      }
-      return {
-        status: 200,
-        body: {
-          item: parameterImportBatchDtoSchema.parse(item),
-          appliedCount: 0,
-          skippedUnbound: []
-        }
-      };
-    }
-    const pool = getRootPostgresPool(db);
-    if (!pool) {
-      throw new ApiError("INTERNAL_ERROR", "Canonical project value import requires the root database.");
-    }
-    const applied = await withAuditedWrite(db, auth, { requestId: request.requestId }, async (tx) => {
-      for (const { item, catalog } of catalogItems) {
-        const current = await tx.query<{ config_revision_id: string }>(
-          `
-          select config_revision_id
-            from parameter_catalog.project_parameter_values
-           where id = $1
-           limit 1
-          `,
-          [catalog.current_value_id]
-        );
-        const configRevisionId = current.rows[0]?.config_revision_id;
-        if (!configRevisionId || configRevisionId === "canonical-binding-identity") {
-          throw new ApiError("CONFLICT", "Imported project value is missing an actual config-set source.", {
-            bindingId: catalog.id
-          });
-        }
-        await saveCanonicalProjectValue(
-          pool,
-          {
-            organizationId: auth.organization.id,
-            projectId: batch.project_id,
-            bindingId: catalog.id,
-            configRevisionId,
-            targetValue: importTextToDtsValue(item.name, item.currentValue ?? item.recommendedValue ?? "")
-          },
-          asValueClient(tx)
-        );
-      }
-      const item = await markImportBatchApplied(tx, {
-        organizationId: auth.organization.id,
-        batchId: params.batchId
-      });
-      if (!item) {
-        throw new ApiError("NOT_FOUND", "Parameter import batch was not found.", { batchId: params.batchId });
-      }
-      return {
-        result: parameterImportBatchDtoSchema.parse(item),
-        audit: {
-          app: "parameter-management",
-          kind: "batch-import",
-          action: "apply",
-          severity: "High" as const,
-          projectId: batch.project_id,
-          targetType: "parameter-import-batch",
-          targetId: params.batchId,
-          metadata: { batchId: params.batchId, summary: { added: 0, updated: catalogItems.length, skipped: 0 } }
-        }
-      };
+    if (!isRootDatabase(db) || !options.objectStore) throw new ApiError("INTERNAL_ERROR", "Canonical import requires root database and source storage.");
+    const item = await stageCanonicalImportBatch(db,options.objectStore,auth,body,{
+      invocation: createUserInvocation(auth),requestId: request.requestId,refusalSink: createTrustedRefusalAuditSink(db)
     });
-    return { status: 200, body: { item: applied } };
+    return { status: 200,body: { item: parameterImportBatchDtoSchema.parse(item) } };
   });
 
   /**
@@ -739,11 +757,18 @@ export function registerCatalogProjectValueConsumerRoutes(
         z.object({ assignedToUserId: z.string().min(1).nullable().optional() }),
         request.body ?? {}
       );
+      const refusalAuditSink = isRootDatabase(db) ? createTrustedRefusalAuditSink(db) : undefined;
+      if (!refusalAuditSink) {
+        throw new ApiError("INTERNAL_ERROR", "Trusted refusal audit sink is required for canonical value submission.");
+      }
       const item = await withAuditedWrite(db, auth, { requestId: request.requestId }, async (tx) => {
         const submitted = await submitCanonicalValueChange(tx, auth, {
           projectId: params.projectId,
           draftId: params.draftId,
-          assignedToUserId: body.assignedToUserId ?? null
+          assignedToUserId: body.assignedToUserId ?? null,
+          invocation: createUserInvocation(auth),
+          requestId: request.requestId,
+          refusalSink: refusalAuditSink
         });
         await writeTrustedGovernanceAudit(
           asAuditTx(tx),
@@ -786,6 +811,15 @@ export function registerCatalogProjectValueConsumerRoutes(
     return { status: 200, body: { items } };
   });
 
+  router.get("/api/v2/projects/:projectId/parameter-value-change-requests/:requestId/source-diff", async (request) => {
+    const db = requireDb(options.db);
+    const auth = await options.getCurrentAuthContext(request);
+    const params = parseWithSchema(z.object({ projectId: z.string().min(1),requestId: z.string().min(1) }),request.params);
+    if (!options.objectStore) throw new ApiError("INTERNAL_ERROR", "Source object storage is required.");
+    const item = await readCanonicalSourceDiff(db,options.objectStore,auth,params);
+    return { status: 200,body: { item } };
+  });
+
   /**
    * Approve (apply) or reject one pending canonical change. Approval re-resolves the
    * frozen pins, rejects drift, writes the value and its source through the canonical
@@ -808,60 +842,102 @@ export function registerCatalogProjectValueConsumerRoutes(
         request.body ?? {}
       );
       const pool = getRootPostgresPool(db);
+      const refusalAuditSink = isRootDatabase(db) ? createTrustedRefusalAuditSink(db) : undefined;
+      if (!refusalAuditSink) {
+        throw new ApiError("INTERNAL_ERROR", "Trusted refusal audit sink is required for canonical value review.");
+      }
+      let snapshot: Awaited<ReturnType<typeof loadPublishedCatalog>> = null;
       if (body.decision === "approve") {
-        if (!canEditParameters(auth)) {
-          throw new ApiError("FORBIDDEN", "Parameter edit permission is required.");
-        }
         if (!pool) {
           throw new ApiError("INTERNAL_ERROR", "Canonical apply requires the root database.");
         }
-        const bindingId = await db.query<{ binding_id: string }>(
-          `
-          select binding_id
-            from project_parameter_value_change_requests
-           where organization_id = $1
-             and project_id = $2
-             and id = $3
-           limit 1
-          `,
+        if (!options.objectStore) {
+          throw new ApiError("INTERNAL_ERROR", "Canonical source approval requires object storage.");
+        }
+        snapshot = await loadPublishedCatalog(pool);
+        if (!snapshot) {
+          throw new ApiError("CONFLICT", "The published catalog snapshot is unavailable.");
+        }
+        const sourcePin = await db.query<{
+          format: "dts" | "json";
+          config_revision_id: string;
+          node_locator: string | null;
+          compatible: string | null;
+        }>(
+          `select pin.format, pin.config_revision_id,
+                  coalesce(nullif(node.ref_target,''), node.node_path) as node_locator, logical.compatible
+             from project_parameter_value_change_requests change_request
+             join parameter_catalog.project_value_source_pins pin
+               on pin.id = change_request.source_pin_id
+              and pin.organization_id = change_request.organization_id
+              and pin.project_id = change_request.project_id
+              and pin.binding_id = change_request.binding_id
+             left join parameter_catalog.project_parameter_source_occurrences occurrence
+               on occurrence.id=pin.source_occurrence_id and occurrence.organization_id=pin.organization_id
+              and occurrence.project_id=pin.project_id and occurrence.file_id=pin.file_id
+             left join dts_logical_node_revisions logical
+               on logical.logical_node_id=occurrence.logical_node_id and logical.config_revision_id=pin.config_revision_id
+             left join dts_property_occurrences property
+               on property.id = pin.property_occurrence_id
+              and property.config_revision_id = pin.config_revision_id
+              and property.file_version_id = pin.file_version_id
+             left join dts_node_occurrences node
+               on node.id = property.node_occurrence_id
+              and node.config_revision_id = property.config_revision_id
+              and node.file_version_id = property.file_version_id
+            where change_request.organization_id = $1
+              and change_request.project_id = $2
+              and change_request.id = $3
+              and pin.id = change_request.source_pin_id
+              and pin.project_value_id = change_request.base_current_value_id
+              and pin.config_revision_id = change_request.config_revision_id
+            limit 1`,
           [auth.organization.id, params.projectId, params.requestId]
         );
-        const catalogBindingId = bindingId.rows[0]?.binding_id;
-        const locator = catalogBindingId
-          ? await db.query<{ node_locator: string | null; compatible: string | null }>(
-              `
-              select lnr.node_locator, lnr.compatible
-                from parameter_catalog.project_parameter_bindings b
-                join dts_logical_node_revisions lnr on lnr.logical_node_id = b.logical_node_id
-               where b.id = $1
-               order by lnr.config_revision_id desc
-               limit 1
-              `,
-              [catalogBindingId]
-            )
-          : null;
-        const nodeLocator = locator?.rows[0]?.node_locator;
-        if (!nodeLocator) {
-          throw new ApiError(
-            "VALIDATION_FAILED",
-            "Canonical change target node could not be resolved for a sensitive-node check.",
-            { requestId: params.requestId, bindingId: catalogBindingId ?? null }
-          );
+        if (sourcePin.rows.length !== 1) {
+          throw new ApiError("CONFLICT", "Change request has no exact owned source pin.", { requestId: params.requestId });
         }
-        const refusalAuditSink = isRootDatabase(db) ? createTrustedRefusalAuditSink(db) : undefined;
-        if (!refusalAuditSink) {
-          throw new ApiError("INTERNAL_ERROR", "Trusted refusal audit sink is required for typed binding drafts.");
+        if (sourcePin.rows[0]!.format === "dts") {
+          const nodeLocator = sourcePin.rows[0]!.node_locator;
+          if (!nodeLocator) {
+            throw new ApiError("VALIDATION_FAILED", "Pinned DTS node could not be resolved for a sensitive-node check.", {
+              requestId: params.requestId,
+              configRevisionId: sourcePin.rows[0]!.config_revision_id
+            });
+          }
+          const refusalAuditSink = isRootDatabase(db) ? createTrustedRefusalAuditSink(db) : undefined;
+          if (!refusalAuditSink) {
+            throw new ApiError("INTERNAL_ERROR", "Trusted refusal audit sink is required for typed binding drafts.");
+          }
+          try {
+            await assertTrustedSensitiveNodeWriteAllowed(db, auth, {
+              organizationId: auth.organization.id,
+              projectId: params.projectId,
+              nodePath: nodeLocator,
+              compatible: sourcePin.rows[0]?.compatible ?? null,
+              compatibleIsAuthoritative: true,
+              invocation: createUserInvocation(auth),
+              requestId: request.requestId,
+              refusalSink: refusalAuditSink
+            });
+          } catch (error) {
+            if (error instanceof ApiError && error.code === "FORBIDDEN") {
+              await refusalAuditSink.write({
+                invocation: createUserInvocation(auth),
+                projectId: params.projectId,
+                app: "parameter-management",
+                kind: "parameter-source-permission-denied",
+                action: "deny",
+                severity: "High",
+                targetType: "sensitive-node",
+                targetId: params.requestId,
+                metadata: { code: "parameter-source-permission-denied", operation: "canonical source review", ...error.details },
+                traceId: request.requestId
+              });
+            }
+            throw error;
+          }
         }
-        await assertTrustedSensitiveNodeWriteAllowed(db, auth, {
-          organizationId: auth.organization.id,
-          projectId: params.projectId,
-          nodePath: nodeLocator,
-          compatible: locator?.rows[0]?.compatible ?? null,
-          compatibleIsAuthoritative: true,
-          invocation: createUserInvocation(auth),
-          requestId: request.requestId,
-          refusalSink: refusalAuditSink
-        });
       }
       const item = await withAuditedWrite(
         db,
@@ -873,27 +949,28 @@ export function registerCatalogProjectValueConsumerRoutes(
             requestId: params.requestId,
             decision: body.decision,
             note: body.note ?? null
+          }, {
+            objectStore: options.objectStore,
+            snapshot: snapshot ?? undefined,
+            invocation: createUserInvocation(auth),
+            traceId: request.requestId,
+            refusalSink: refusalAuditSink
           });
-          await writeTrustedGovernanceAudit(
-            asAuditTx(tx),
-            createUserInvocation(auth),
-            {
-              action: reviewed.status === "approved" ? "value-change-applied" : "value-change-reviewed",
-              organizationId: auth.organization.id,
-              projectId: params.projectId,
-              targetType: "project-parameter-value-change-request",
-              targetId: reviewed.id,
-              metadata: {
-                requestId: reviewed.id,
-                decision: body.decision,
-                status: reviewed.status,
-                appliedValueId: reviewed.appliedValueId,
-                applyOutcome: reviewed.applyOutcome,
-                writeTargetRole: "canonical-project-value"
-              }
-            },
-            request.requestId
-          );
+          if (body.decision === "reject") {
+            await writeTrustedGovernanceAudit(
+              asAuditTx(tx),
+              createUserInvocation(auth),
+              {
+                action: "value-change-reviewed",
+                organizationId: auth.organization.id,
+                projectId: params.projectId,
+                targetType: "project-parameter-value-change-request",
+                targetId: reviewed.id,
+                metadata: { requestId: reviewed.id, decision: body.decision, status: reviewed.status }
+              },
+              request.requestId
+            );
+          }
           return { result: reviewed, audit: null };
         }
       );
@@ -910,10 +987,17 @@ export function registerCatalogProjectValueConsumerRoutes(
         z.object({ projectId: z.string().min(1), requestId: z.string().min(1) }),
         request.params
       );
+      const refusalAuditSink = isRootDatabase(db) ? createTrustedRefusalAuditSink(db) : undefined;
+      if (!refusalAuditSink) {
+        throw new ApiError("INTERNAL_ERROR", "Trusted refusal audit sink is required for canonical value withdrawal.");
+      }
       const item = await withAuditedWrite(db, auth, { requestId: request.requestId }, async (tx) => {
         const withdrawn = await withdrawCanonicalValueChange(tx, auth, {
           projectId: params.projectId,
-          requestId: params.requestId
+          requestId: params.requestId,
+          invocation: createUserInvocation(auth),
+          refusalSink: refusalAuditSink,
+          traceId: request.requestId
         });
         await writeTrustedGovernanceAudit(
           asAuditTx(tx),

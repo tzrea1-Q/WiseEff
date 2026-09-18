@@ -12,6 +12,7 @@ import { presentError } from "@/infrastructure/http/presentError";
 import {
   isBindingDraft,
   isEnablementDraft,
+  type PendingBindingDraft,
   type PendingTopologyDraft
 } from "./draftTrayTypes";
 
@@ -34,6 +35,10 @@ export type DtsBindingDraftTrayProps = {
   onRemove: (draftId: string) => void | Promise<void>;
   onSubmit?: (
     input: SubmitParameterChangesInput
+  ) => Promise<void | { notification: string; alreadyNotified?: boolean }>;
+  /** Canonical v2 submit: draft IDs only, with software-review ownership. */
+  onSubmitCanonical?: (
+    input: { projectId: string; draftIds: string[] }
   ) => Promise<void | { notification: string; alreadyNotified?: boolean }>;
   onNavigate: (path: string) => void;
 };
@@ -146,6 +151,11 @@ function formatEnablementValue(raw: string | null): string {
   return formatDtsRawValueForUi(raw) || raw;
 }
 
+function formatBindingValue(draft: PendingBindingDraft, raw: string): string {
+  if (draft.sourceFormat === "json") return raw || "∅";
+  return formatDtsRawValueForUi(raw) || raw || "∅";
+}
+
 function toSubmitItem(draft: PendingTopologyDraft) {
   if (isEnablementDraft(draft)) {
     return {
@@ -184,6 +194,7 @@ export function DtsBindingDraftTray({
   canManageRoles = false,
   onRemove,
   onSubmit,
+  onSubmitCanonical,
   onNavigate
 }: DtsBindingDraftTrayProps) {
   const [candidateSnapshot, setCandidateSnapshot] = useState(() => ({
@@ -209,6 +220,13 @@ export function DtsBindingDraftTray({
     () => resolveSubmitDrafts(drafts, selectedBindingIds),
     [drafts, selectedBindingIds]
   );
+  const canonicalCount = submitDrafts.filter((draft) =>
+    isBindingDraft(draft) && draft.writeTarget.role.startsWith("canonical-project-value")
+  ).length;
+  const useCanonical = canonicalCount > 0 && canonicalCount === submitDrafts.length;
+  const mixedOwnerError = canonicalCount > 0 && canonicalCount < submitDrafts.length
+    ? "参数值与节点启用属于不同审核流程，请移出另一类草稿后分开提交。"
+    : null;
   const submitBatchSignature = useMemo(
     () => draftBatchSignature(projectId, submitDrafts),
     [projectId, submitDrafts]
@@ -287,13 +305,14 @@ export function DtsBindingDraftTray({
 
   const roleError = missingRoleNames
     ? `当前项目缺少以下审核角色：${missingRoleNames}，已阻止提交。`
-    : displayedCandidates && !(hardwareCommitterId && softwareCommitterId && softwareUserId)
+    : !useCanonical && displayedCandidates && !(hardwareCommitterId && softwareCommitterId && softwareUserId)
     ? "项目缺少完整的硬件 MDE、软件 MDE 或软件开发候选人，已阻止提交。"
     : null;
-  const submissionEntryError = onSubmit
+  const submissionEntryError = (useCanonical ? onSubmitCanonical : onSubmit)
     ? null
     : "正式 binding 提交入口未配置，已阻止提交。";
   const blocker = externalBlocker
+    ?? mixedOwnerError
     ?? displayedCandidatesError
     ?? selectionError
     ?? draftIdentityError
@@ -332,7 +351,9 @@ export function DtsBindingDraftTray({
         <div>
           <h3>本轮已修改</h3>
           <p>
-            {selectedBindingIds && hasBindingDrafts
+            {useCanonical
+              ? `将提交 ${submitDrafts.length} 项参数值草稿；节点启用使用独立审核流程。`
+              : selectedBindingIds && hasBindingDrafts
               ? `所见即所提：将提交勾选的 ${submitDrafts.length} / ${drafts.length} 项草稿；同一工作版本的节点启用草稿将随勾选项一并提交（已在条目上标注）。`
               : "本轮全部草稿将一并提交审核。"}
           </p>
@@ -352,11 +373,13 @@ export function DtsBindingDraftTray({
             ? `${draft.writeTarget.propertyKey} 值变更`
             : `${draft.nodeLabel} 节点启用变更`;
           const currentValue = isBindingDraft(draft)
-            ? formatDtsRawValueForUi(draft.currentRawValue) || "（属性不存在）"
+            ? formatBindingValue(draft, draft.currentRawValue) || "（属性不存在）"
             : formatEnablementValue(draft.currentRawValue);
           const targetValue = draft.action === "delete"
             ? (isBindingDraft(draft) ? "删除属性（tombstone）" : "未声明")
-            : formatEnablementValue(draft.rawText);
+            : isBindingDraft(draft)
+              ? formatBindingValue(draft, draft.rawText)
+              : formatEnablementValue(draft.rawText);
           const ridesAlong =
             Boolean(selectedBindingIds) &&
             hasBindingDrafts &&
@@ -399,8 +422,8 @@ export function DtsBindingDraftTray({
         })}
       </div>
 
-      {!displayedCandidates && !displayedCandidatesError ? <p role="status">正在加载项目角色候选人…</p> : null}
-      {displayedCandidates ? (
+      {!useCanonical && !displayedCandidates && !displayedCandidatesError ? <p role="status">正在加载项目角色候选人…</p> : null}
+      {!useCanonical && displayedCandidates ? (
         <div className="submission-assignee-grid" aria-label="后续流程处理人">
           <label>
             硬件 MDE
@@ -449,7 +472,7 @@ export function DtsBindingDraftTray({
       ) : null}
       {removeError ? <p className="form-error" role="alert">{removeError}</p> : null}
       {submitError ? <p className="form-error" role="alert">{submitError}</p> : null}
-      {submitted ? <p role="status"><CircleCheck size={15} strokeWidth={2} aria-hidden="true" />已提交正式审核，后续阶段将在审核队列中按角色推进。</p> : null}
+      {submitted ? <p role="status"><CircleCheck size={15} strokeWidth={2} aria-hidden="true" />{useCanonical ? "已提交软件审核，后续由软件审核员处理。" : "已提交正式审核，后续阶段将在审核队列中按角色推进。"}</p> : null}
 
       <div className="binding-draft-submission__actions">
         <button
@@ -457,7 +480,7 @@ export function DtsBindingDraftTray({
           className="button primary"
           disabled={!canSubmit}
           onClick={() => {
-            if (!onSubmit || !canSubmit) return;
+            if ((!onSubmit && !onSubmitCanonical) || !canSubmit) return;
             const submittedRequestSignature = requestSignature;
             const requestGeneration = requestGenerationRef.current + 1;
             requestGenerationRef.current = requestGeneration;
@@ -476,11 +499,16 @@ export function DtsBindingDraftTray({
               activeRequestRef.current.signature === submittedRequestSignature;
             setSubmitting(true);
             setSubmitError(null);
-            void onSubmit({
-              projectId,
-              items: submitDrafts.map((draft) => toSubmitItem(draft)),
-              assignees: { hardwareCommitterId, softwareCommitterId, softwareUserId }
-            })
+            const submitPromise = useCanonical && onSubmitCanonical
+              ? onSubmitCanonical({ projectId, draftIds: submitDrafts.map((draft) => draft.draftId) })
+              : onSubmit
+                ? onSubmit({
+                    projectId,
+                    items: submitDrafts.map((draft) => toSubmitItem(draft)),
+                    assignees: { hardwareCommitterId, softwareCommitterId, softwareUserId }
+                  })
+                : Promise.resolve(undefined);
+            void submitPromise
               .then((result) => {
                 if (!requestIsCurrent()) return;
                 if (result && "notification" in result) {

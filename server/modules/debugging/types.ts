@@ -110,6 +110,7 @@ export type DebugParameterRecord = {
   valueFormat: DebugValueFormat;
   normalizationMode: DebugNormalizationMode;
   maxValueBytes: number | null;
+  projectParameterBindingId: string | null;
 };
 
 export type DebugParameterNodeBindingRecord = {
@@ -220,6 +221,7 @@ export type NodeOperationRecord = {
   previousValueDigest: string | null;
   readbackValueDigest: string | null;
   valuePreview: string | null;
+  projectParameterBindingId: string | null;
   bindingId?: string | null;
   effectiveRevisionId?: string | null;
   currentValueId?: string | null;

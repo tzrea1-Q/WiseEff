@@ -94,6 +94,7 @@ type DebugParameterRow = {
   value_format?: DebugValueFormat;
   normalization_mode?: DebugNormalizationMode;
   max_value_bytes?: number | string | null;
+  project_parameter_binding_id?: string | null;
 };
 
 type DebugSessionRow = {
@@ -167,6 +168,8 @@ type NodeOperationRow = {
   previous_value_digest?: string | null;
   readback_value_digest?: string | null;
   value_preview?: string | null;
+  parameter_spec_id?: string | null;
+  project_parameter_binding_id?: string | null;
 };
 
 function dateTimeToIso(value: string | Date | null) {
@@ -245,7 +248,8 @@ function toDebugParameterRecord(row: DebugParameterRow): DebugParameterRecord {
     valueKind: row.value_kind ?? DEBUG_VALUE_KIND_SCALAR,
     valueFormat: row.value_format ?? DEBUG_VALUE_FORMAT_RAW,
     normalizationMode: row.normalization_mode ?? DEBUG_NORMALIZATION_MODE_TRIM,
-    maxValueBytes: toNumberOrNull(row.max_value_bytes ?? null)
+    maxValueBytes: toNumberOrNull(row.max_value_bytes ?? null),
+    projectParameterBindingId: row.project_parameter_binding_id ?? null
   };
 }
 
@@ -326,7 +330,8 @@ function toNodeOperationRecord(row: NodeOperationRow): NodeOperationRecord {
     requestedValueDigest: row.requested_value_digest ?? null,
     previousValueDigest: row.previous_value_digest ?? null,
     readbackValueDigest: row.readback_value_digest ?? null,
-    valuePreview: row.value_preview ?? null
+    valuePreview: row.value_preview ?? null,
+    projectParameterBindingId: row.project_parameter_binding_id ?? null
   };
 }
 
@@ -359,7 +364,8 @@ const debugParameterColumns = `
   value_kind,
   value_format,
   normalization_mode,
-  max_value_bytes
+  max_value_bytes,
+  project_parameter_binding_id
 `;
 
 const debugParameterNodeBindingColumns = `

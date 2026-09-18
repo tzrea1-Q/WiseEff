@@ -9,7 +9,8 @@
 import type { Queryable } from "../../shared/database/client";
 import type {
   ParameterImportBatchDto,
-  ParameterImportSummaryDto
+  ParameterImportSummaryDto,
+  ParameterImportStagedDraftDto
 } from "./types";
 import { type ParameterRiskLevel } from "./status";
 import { LEGACY_SQL } from "../parameter-topology/migration";
@@ -42,6 +43,9 @@ export type PersistedImportBatchItem = {
   classification: ImportPreviewClassification;
   definitionId?: string;
   projectParameterValueId?: string;
+  baseRevisionId?: string;
+  baseCurrentValueId?: string;
+  stagedDraft?: ParameterImportStagedDraftDto;
   riskFlag: boolean;
 };
 
@@ -69,7 +73,7 @@ type ImportBatchRow = {
   id: string;
   project_id: string;
   source_name: string;
-  status: "previewed" | "applied";
+  status: "previewed" | "staged" | "applied";
   summary: ParameterImportSummaryDto;
   items: PersistedImportBatchItem[];
   created_at: string | Date;

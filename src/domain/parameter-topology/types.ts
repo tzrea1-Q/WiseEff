@@ -27,6 +27,18 @@ export type DtsValue =
   | { kind: "bytes"; values: number[] }
   | { kind: "mixed"; segments: DtsValueSegment[] };
 
+export type ContractJsonValue =
+  | null
+  | boolean
+  | number
+  | string
+  | ContractJsonValue[]
+  | { [key: string]: ContractJsonValue };
+
+export type ParameterBindingValue =
+  | DtsValue
+  | { kind: "json"; value: ContractJsonValue };
+
 export type MappingDecision<T> =
   | { kind: "matched"; value: T; evidence: string[] }
   | { kind: "unmatched"; evidence: string[] }
@@ -210,7 +222,7 @@ export type ProjectParameterBinding = {
   logicalNodeId: string | null;
   instanceName: string | null;
   locator: string | null;
-  effectiveValue: DtsValue;
+  effectiveValue: ParameterBindingValue;
   rawValue: string;
   schemaState: BindingSchemaState;
   policyState: BindingPolicyState;

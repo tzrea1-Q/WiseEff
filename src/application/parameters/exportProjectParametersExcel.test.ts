@@ -60,6 +60,22 @@ describe("exportProjectParametersAsExcel", () => {
     expect(rows.map((row) => row[0])).toEqual(["属性键", "gpio_int"]);
   });
 
+  it("exports genuine JSON using the canonical server raw rendering", () => {
+    const rawValue = '{\n  "limit": 36.5\n}\n';
+    const rows = buildProjectParametersSheetRows([
+      sampleBinding({
+        propertyKey: "json_limit",
+        effectiveValue: { kind: "json", value: { limit: 36.5 } },
+        rawValue
+      })
+    ]);
+
+    expect(rows[1]?.[4]).toBe(rawValue);
+    expect(readWorkbookRows(serializeProjectParametersWorkbook([
+      sampleBinding({ effectiveValue: { kind: "json", value: ["ready", 2] }, rawValue: '[\n  "ready",\n  2\n]\n' })
+    ]))[1]?.[4]).toBe('[\n  "ready",\n  2\n]\n');
+  });
+
   it("returns a buffer when returnBuffer is set", () => {
     const buffer = exportProjectParametersAsExcel([sampleBinding()], "AUR", { returnBuffer: true });
     expect(buffer).toBeInstanceOf(Uint8Array);

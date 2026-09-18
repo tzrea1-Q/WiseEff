@@ -630,7 +630,7 @@ export const runV13 = async (query: GateQuery): Promise<GateResult> => {
     where table_schema = 'public'
       and table_name = any($1::text[])
       and privilege_type in ('INSERT', 'UPDATE', 'DELETE')
-      and grantee not in ('postgres', current_user)
+      and grantee not in ('postgres', 'catalog_migration_owner', current_user)
     order by grantee, table_name, privilege_type
     `,
     [publicLegacy],

@@ -102,6 +102,12 @@ lab:chip@6E {
     });
   });
 
+  it("accepts the optional include terminator without treating it as a property", () => {
+    const doc = parseDts('/include/ "pin.dtsi";\n/ { enabled; };');
+    expect(doc.directives[0]).toMatchObject({ name: "/include/",arg: "pin.dtsi",unsupported: true });
+    expect(doc.topLevel[0]?.children[0]).toMatchObject({ kind: "property",name: "enabled" });
+  });
+
   it("parses /dts-v1/ /plugin/ and marks /include/ unsupported without expanding", () => {
     const doc = parseDts(`/dts-v1/;
 /plugin/;

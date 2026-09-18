@@ -1,4 +1,5 @@
 import pg from "pg";
+import type { Queryable } from "../../../shared/database/client";
 
 import {
   CatalogSubjectId,
@@ -18,6 +19,7 @@ import {
   loadBindingByComposite,
   loadProjectOwner,
   loadRegistrationForAgreement,
+  loadSourceRegistrationAgreement,
   type BindingRow,
   type BindingWriterClient,
 } from "./repositories";
@@ -47,6 +49,12 @@ const fail = (error: BindingConflict): Result<never, BindingConflict> => ({
 const controlFree = (value: string): boolean =>
   value.length > 0 && value.trim() === value && !/[\u0000-\u001F\u007F-\u009F]/u.test(value);
 
+/** Source writers may admit only a fully scoped, active and currently placed subject. */
+export async function readSourceRegistrationAgreement(client: Queryable, input: { organizationId: string; subjectId: string }) {
+  if (!controlFree(input.organizationId) || !controlFree(input.subjectId)) return null;
+  return loadSourceRegistrationAgreement(client,input);
+}
+
 const validateBindingCommand = (
   command: StabilizeBindingCommand,
 ): Result<StabilizeBindingCommand, BindingConflict> => {
@@ -56,7 +64,7 @@ const validateBindingCommand = (
   if (!controlFree(command.projectId)) {
     return fail({ kind: "invalid-command", reason: "projectId" });
   }
-  if (!controlFree(command.logicalNodeId)) {
+  if (command.logicalNodeId === null ? !command.sourceOccurrenceId : !controlFree(command.logicalNodeId)) {
     return fail({ kind: "invalid-command", reason: "logicalNodeId" });
   }
   if (!controlFree(command.registrationId)) {
@@ -82,6 +90,7 @@ const toBinding = (row: BindingRow, command: StabilizeBindingCommand): Binding =
   organizationId: row.organization_id,
   projectId: row.project_id,
   logicalNodeId: row.logical_node_id,
+  sourceOccurrenceId: row.source_occurrence_id,
   registrationId: SubjectRegistrationId(row.registration_id),
   subjectId: CatalogSubjectId(row.subject_id),
   definitionId: ParameterDefinitionId(row.definition_id),
@@ -94,6 +103,7 @@ const ownerMatches = (row: BindingRow, command: StabilizeBindingCommand, subject
   row.organization_id === command.organizationId &&
   row.project_id === command.projectId &&
   row.logical_node_id === command.logicalNodeId &&
+  (command.sourceOccurrenceId === undefined || row.source_occurrence_id === command.sourceOccurrenceId) &&
   row.registration_id === command.registrationId &&
   row.subject_id === subjectId &&
   row.definition_id === command.definitionId;
@@ -148,7 +158,8 @@ const withBindingUnitOfWork = async <T>(
         await session.query("release savepoint wiseeff_canonical_binding");
         return result;
       }
-      await session.query("set constraints all immediate");
+      // The owning transaction must append the real value and its source pin
+      // before validating the transient identity placeholder at commit.
       await session.query("release savepoint wiseeff_canonical_binding");
       return result;
     } catch (error) {
@@ -281,6 +292,17 @@ export const writeCanonicalBinding = async (
       const agreed = agreeBindingIdentity(command, registration);
       if (!agreed.ok) return agreed;
 
+      if (command.sourceOccurrenceId) {
+        const source = await client.query(
+          `select id from parameter_catalog.project_parameter_source_occurrences
+           where id=$1 and organization_id=$2 and project_id=$3
+             and logical_node_id is not distinct from $4
+             and (occurrence_kind='dts' or configuration_schema_subject_id=$5)`,
+          [command.sourceOccurrenceId, command.organizationId, command.projectId, command.logicalNodeId, agreed.value.subjectId],
+        );
+        if (source.rows.length !== 1) return fail({ kind: "invalid-command", reason: "sourceOccurrenceId" });
+      }
+
       const existing = await loadBindingByComposite(client, command);
       if (existing) {
         return writeExisting(client, command, existing, agreed.value.subjectId);
@@ -290,12 +312,17 @@ export const writeCanonicalBinding = async (
         return fail({ kind: "invalid-command", reason: "binding-not-found" });
       }
 
+      if (!command.sourceOccurrenceId || !controlFree(command.sourceOccurrenceId)) {
+        return fail({ kind: "invalid-command", reason: "sourceOccurrenceId" });
+      }
+
       const bindingId =
         options.preservedBindingId ??
         deriveBindingId({
           organizationId: command.organizationId,
           projectId: command.projectId,
           logicalNodeId: command.logicalNodeId,
+          sourceOccurrenceId: command.sourceOccurrenceId,
           registrationId: command.registrationId,
           subjectId: agreed.value.subjectId,
           definitionId: command.definitionId,
@@ -308,6 +335,7 @@ export const writeCanonicalBinding = async (
         catalogReleaseId: command.snapshot.release.id,
         projectId: command.projectId,
         logicalNodeId: command.logicalNodeId,
+        sourceOccurrenceId: command.sourceOccurrenceId,
         registrationId: command.registrationId,
         subjectId: agreed.value.subjectId,
         definitionId: command.definitionId,

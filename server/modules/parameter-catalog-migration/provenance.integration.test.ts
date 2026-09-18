@@ -7,6 +7,10 @@
  * `dts_property_occurrences`, so append-only value rows never have to be
  * rewritten for the capability to see (and rewrite) a real source.
  */
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
+
 import { describe, expect, it } from "vitest";
 
 import {
@@ -17,9 +21,12 @@ import {
   createMigrationHarness,
   integerContent,
   migrationTrustedActor,
+  runQueuedPublicationJob,
   subjectChange,
   type MigrationHarness,
 } from "./testing/harness";
+import { createLocalObjectStore } from "../logs/objectStore";
+import { parseDts, offsetToLineColumn, type DtsNodeCst, type DtsPropertyCst } from "../dts";
 
 const ORG = "org-drepl-provenance";
 const MODULE = "pmod-drepl-provenance";
@@ -31,6 +38,39 @@ const FILE_VERSION_ID = "fileversion-provenance";
 const LOGICAL_NODE_ID = "ln-provenance";
 const NODE_LOCATOR = "/charger@0";
 const FILE_NAME = "charger-board.dts";
+const SOURCE_CONTENT = `/dts-v1/;
+/ {
+  charger@0 {
+    iin_max = <5>;
+  };
+  charger@0 {
+    iin_max = <5>;
+  };
+  charger@0 {
+    iin_provenance_max = <5>;
+  };
+  charger@0 {
+    iin_superseded_review_max = <5>;
+  };
+};
+`;
+
+type SourceOccurrence = { readonly node: DtsNodeCst; readonly property: DtsPropertyCst };
+const SOURCE_OCCURRENCES = (() => {
+  const root = parseDts(SOURCE_CONTENT).topLevel.find((node) => node.isOverlayRoot);
+  if (!root) throw new Error("provenance fixture root missing");
+  const byKey = new Map<string, SourceOccurrence[]>();
+  for (const child of root.children) {
+    if (child.kind !== "node") continue;
+    for (const property of child.children) {
+      if (property.kind !== "property") continue;
+      const entries = byKey.get(property.name) ?? [];
+      entries.push({ node: child, property });
+      byKey.set(property.name, entries);
+    }
+  }
+  return byKey;
+})();
 
 const context = () => ({
   actorKind: "org-admin" as const,
@@ -39,11 +79,14 @@ const context = () => ({
 });
 
 const withHarness = async (fn: (harness: MigrationHarness) => Promise<void>): Promise<void> => {
-  const harness = await createMigrationHarness();
+  const storageDirectory = await mkdtemp(path.join(tmpdir(), "wiseeff-drepl-provenance-"));
+  const objectStore = createLocalObjectStore(storageDirectory);
+  const harness = await createMigrationHarness({ objectStore });
   try {
     await fn(harness);
   } finally {
     await harness.close();
+    await rm(storageDirectory, { recursive: true, force: true });
   }
 };
 
@@ -59,15 +102,22 @@ const seed = async (harness: MigrationHarness) => {
 };
 
 const insertConfigSet = async (harness: MigrationHarness) => {
+  const stored = await harness.objectStore!.put({
+    organizationId: ORG,
+    fileName: FILE_NAME,
+    contentType: "text/plain",
+    bytes: Buffer.from(SOURCE_CONTENT, "utf8"),
+  });
   await harness.pool.query(
     `insert into dts_config_set (id, organization_id, project_id, name) values ($1, $2, $3, 'default')`,
     [CONFIG_SET_ID, ORG, P1],
   );
   await harness.pool.query(
     `insert into dts_config_revisions (
-       id, organization_id, project_id, config_set_id, revision_number, status
-     ) values ($1, $2, $3, $4, 1, 'resolved')`,
-    [CONFIG_REVISION_ID, ORG, P1, CONFIG_SET_ID],
+       id, organization_id, project_id, config_set_id, revision_number, status,
+       entry_file, include_search_paths, overlay_order, manifest_state
+     ) values ($1, $2, $3, $4, 1, 'resolved', $5, $6::jsonb, $7::jsonb, 'complete')`,
+    [CONFIG_REVISION_ID, ORG, P1, CONFIG_SET_ID, FILE_NAME, JSON.stringify(["."]), JSON.stringify([])],
   );
   await harness.pool.query(
     `insert into project_parameter_files (
@@ -78,12 +128,18 @@ const insertConfigSet = async (harness: MigrationHarness) => {
   await harness.pool.query(
     `insert into project_parameter_file_versions (
        id, file_id, version_number, storage_key, checksum, size_bytes, parsed_index, origin
-     ) values ($1, $2, 1, $3, $4, 128, '{}'::jsonb, 'upload')`,
-    [FILE_VERSION_ID, FILE_ID, `object/${FILE_ID}`, "checksum-provenance"],
+     ) values ($1, $2, 1, $3, $4, $5, '{}'::jsonb, 'upload')`,
+    [FILE_VERSION_ID, FILE_ID, stored.storageKey, stored.checksumSha256, stored.fileSizeBytes],
   );
   await harness.pool.query(
     `update project_parameter_files set current_version_id = $1 where id = $2`,
     [FILE_VERSION_ID, FILE_ID],
+  );
+  await harness.pool.query(
+    `insert into dts_config_revision_members (
+       id, config_revision_id, file_id, file_version_id, role, sort_order, source_name
+     ) values ('member-provenance', $1, $2, $3, 'base', 0, $4)`,
+    [CONFIG_REVISION_ID, FILE_ID, FILE_VERSION_ID, FILE_NAME],
   );
   await harness.pool.query(
     `insert into dts_logical_nodes (id, organization_id, project_id, config_set_id)
@@ -102,26 +158,59 @@ const insertOccurrence = async (
   harness: MigrationHarness,
   input: { id: string; propertyKey: string; propertyOccurrenceId: string; nodeOccurrenceId: string },
 ) => {
+  const candidates = SOURCE_OCCURRENCES.get(input.propertyKey) ?? [];
+  const occurrence = candidates[input.id.endsWith("-b") ? 1 : 0];
+  if (!occurrence) throw new Error(`source fixture property missing: ${input.propertyKey}`);
+  const nodeStart = occurrence.node.span.start;
+  const nodeEnd = occurrence.node.span.end;
+  const propertyStart = occurrence.property.span.start;
+  const propertyEnd = occurrence.property.span.end;
+  const nodeStartPosition = offsetToLineColumn(SOURCE_CONTENT, nodeStart);
+  const nodeEndPosition = offsetToLineColumn(SOURCE_CONTENT, nodeEnd);
+  const propertyStartPosition = offsetToLineColumn(SOURCE_CONTENT, propertyStart);
+  const propertyEndPosition = offsetToLineColumn(SOURCE_CONTENT, propertyEnd);
+  const nodeRawText = SOURCE_CONTENT.slice(nodeStart, nodeEnd);
   await harness.pool.query(
     `insert into dts_node_occurrences (
-       id, config_revision_id, file_version_id, name, labels, node_path,
+       id, config_revision_id, file_version_id, name, unit_address, labels, node_path,
        start_offset, end_offset, start_line, start_column, end_line, end_column,
        raw_text, ast_json, source_order
-     ) values ($1, $2, $3, 'charger', '[]'::jsonb, $4, 0, 90, 1, 1, 6, 2, 'node', '{}'::jsonb, 0)`,
-    [input.nodeOccurrenceId, CONFIG_REVISION_ID, FILE_VERSION_ID, NODE_LOCATOR],
+     ) values ($1, $2, $3, $4, $5, '[]'::jsonb, $6, $7, $8, $9, $10, $11, $12, $13, '{}'::jsonb, 0)`,
+    [
+      input.nodeOccurrenceId,
+      CONFIG_REVISION_ID,
+      FILE_VERSION_ID,
+      occurrence.node.name,
+      occurrence.node.unitAddress ?? null,
+      NODE_LOCATOR,
+      nodeStart,
+      nodeEnd,
+      nodeStartPosition.line,
+      nodeStartPosition.column,
+      nodeEndPosition.line,
+      nodeEndPosition.column,
+      nodeRawText,
+    ],
   );
   await harness.pool.query(
     `insert into dts_property_occurrences (
        id, config_revision_id, node_occurrence_id, file_version_id, property_name,
        start_offset, end_offset, start_line, start_column, end_line, end_column,
        raw_text, ast_json, source_order
-     ) values ($1, $2, $3, $4, $5, 12, 30, 2, 3, 2, 22, '<5>', '{}'::jsonb, 0)`,
+     ) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, '{}'::jsonb, 0)`,
     [
       input.propertyOccurrenceId,
       CONFIG_REVISION_ID,
       input.nodeOccurrenceId,
       FILE_VERSION_ID,
       input.propertyKey,
+      propertyStart,
+      propertyEnd,
+      propertyStartPosition.line,
+      propertyStartPosition.column,
+      propertyEndPosition.line,
+      propertyEndPosition.column,
+      occurrence.property.rawText,
     ],
   );
   await harness.pool.query(
@@ -151,6 +240,12 @@ describe("definition replacement source provenance", () => {
         propertyOccurrenceId: "po-provenance",
         nodeOccurrenceId: "no-provenance",
       });
+      await insertOccurrence(harness, {
+        id: "oe-provenance-target",
+        propertyKey: "iin_provenance_max",
+        propertyOccurrenceId: "po-provenance-target",
+        nodeOccurrenceId: "no-provenance-target",
+      });
       await harness.seedBindingValue({
         organizationId: ORG,
         projectId: P1,
@@ -177,6 +272,13 @@ describe("definition replacement source provenance", () => {
       expect(preview.value.impact.compatibleProjectCount).toBe(1);
       expect(preview.value.impact.sourceFormatSupported).toBe(true);
 
+      // The mutable display name is not historical provenance.  A rename after
+      // preview must not change the frozen member alias used for the rewrite.
+      await harness.pool.query(
+        `update project_parameter_files set file_name = 'renamed-display-only.dts' where id = $1`,
+        [FILE_ID],
+      );
+
       const created = await harness.migration.createDefinitionReplacement({
         organizationId: ORG,
         previewId: preview.value.previewId,
@@ -195,9 +297,27 @@ describe("definition replacement source provenance", () => {
         `select source_ref, value from parameter_catalog.project_parameter_values where binding_id = $1`,
         [created.value.projects[0]!.newBindingId!],
       );
-      // The corrected value carries the real `.dts` location, not the opaque ref.
+      // The corrected value carries the immutable member alias, not the renamed
+      // display filename and not the opaque ref.
       expect(carried.rows[0]?.source_ref).toBe(`${FILE_NAME}!${NODE_LOCATOR}`);
       expect(carried.rows[0]?.value).toBe(5);
+      const pin = await harness.pool.query<{
+        source_occurrence_id: string;
+        file_id: string;
+        file_version_id: string;
+        property_occurrence_id: string;
+      }>(
+        `select source_occurrence_id, file_id, file_version_id, property_occurrence_id
+           from parameter_catalog.project_value_source_pins
+          where project_value_id = (select id from parameter_catalog.project_parameter_values where binding_id = $1)`,
+        [created.value.projects[0]!.newBindingId!],
+      );
+      expect(pin.rows).toHaveLength(1);
+      expect(pin.rows[0]).toMatchObject({
+        file_id: FILE_ID,
+        file_version_id: FILE_VERSION_ID,
+        property_occurrence_id: "po-provenance-target",
+      });
     });
   }, 240_000);
 
@@ -267,19 +387,146 @@ describe("definition replacement source provenance", () => {
     });
   }, 240_000);
 
+  it("returns a retryable conflict for one of two concurrent replacement continues", async () => {
+    await withHarness(async (harness) => {
+      const registrationId = await seed(harness);
+      await insertConfigSet(harness);
+      await insertOccurrence(harness, {
+        id: "oe-provenance-concurrent",
+        propertyKey: PREDECESSOR_PROPERTY_KEY,
+        propertyOccurrenceId: "po-provenance-concurrent",
+        nodeOccurrenceId: "no-provenance-concurrent",
+      });
+      await insertOccurrence(harness, {
+        id: "oe-provenance-concurrent-target",
+        propertyKey: "iin_provenance_max",
+        propertyOccurrenceId: "po-provenance-concurrent-target",
+        nodeOccurrenceId: "no-provenance-concurrent-target",
+      });
+      await harness.seedBindingValue({
+        organizationId: ORG,
+        projectId: P1,
+        logicalNodeId: LOGICAL_NODE_ID,
+        registrationId,
+        sources: [{ sourceRef: `config-set:${CONFIG_SET_ID}`, configRevisionId: CONFIG_REVISION_ID }],
+        values: [5],
+      });
+
+      const preview = await harness.migration.previewDefinitionReplacement({
+        organizationId: ORG,
+        oldDefinitionId: PREDECESSOR_DEFINITION_ID,
+        newSubjectId: PREDECESSOR_SUBJECT_ID,
+        newPropertyKey: "iin_provenance_max",
+        proposedContent: integerContent("Concurrent provenance max", 0),
+        projectIds: [P1],
+        reason: "concurrent-lock-order",
+        expectedRelease: harness.pin(),
+        context: context(),
+      });
+      expect(preview.ok).toBe(true);
+      if (!preview.ok) return;
+      await harness.pool.query(
+        `insert into parameter_catalog.parameter_review_items (
+           id, organization_id, evidence_fingerprint, matcher_revision, catalog_release_id,
+           reason, status, etag_version
+         ) values ($1,$2,'fp-provenance-concurrent','catalog-matcher/v1',$3,'unknown','open',1)`,
+        ["prit-provenance-concurrent", ORG, harness.pin().id],
+      );
+      const created = await harness.migration.createDefinitionReplacement({
+        organizationId: ORG,
+        previewId: preview.value.previewId,
+        previewFingerprint: preview.value.previewFingerprint,
+        idempotencyKey: "concurrent-create",
+        expectedRelease: harness.pin(),
+        context: context(),
+        trustedActor: migrationTrustedActor(),
+      });
+      expect(created.ok).toBe(true);
+      if (!created.ok) return;
+      expect(created.value.projects[0]?.status).toBe("blocked");
+      await harness.pool.query(
+        `insert into parameter_catalog.parameter_review_resolutions (
+           id, review_item_id, resolution_type, before_etag_version, after_etag_version,
+           accountable_principal_id, initiator_type, captured_catalog_release_id,
+           request_fingerprint, out_of_scope_reason, success_audit_ref
+         ) values ($1,$2,'mark-out-of-scope',1,2,$3,'user',$4,'fp-provenance-concurrent','test cleanup','test:concurrent')`,
+        ["prr-provenance-concurrent", "prit-provenance-concurrent", MIGRATION_PRINCIPAL, harness.pin().id],
+      );
+      await harness.pool.query(
+        `update parameter_catalog.parameter_review_items
+            set status = 'resolved', current_resolution_id = $2, etag_version = 2
+          where id = $1`,
+        ["prit-provenance-concurrent", "prr-provenance-concurrent"],
+      );
+      const activated = await runQueuedPublicationJob(
+        harness.db,
+        harness.pool,
+        created.value.publicationJobId,
+      );
+      expect(activated.kind).toBe("active");
+
+      const results = await Promise.all([
+        harness.migration.continueDefinitionReplacement({
+          organizationId: ORG,
+          replacementId: created.value.id,
+          idempotencyKey: "concurrent-continue-a",
+          projectIds: null,
+          expectedRelease: harness.pin(),
+          context: context(),
+        }),
+        harness.migration.continueDefinitionReplacement({
+          organizationId: ORG,
+          replacementId: created.value.id,
+          idempotencyKey: "concurrent-continue-b",
+          projectIds: null,
+          expectedRelease: harness.pin(),
+          context: context(),
+        }),
+      ]);
+      const successful = results.filter((result) => result.ok);
+      const busy = results.filter(
+        (result) => !result.ok && result.error.kind === "synchronization-busy",
+      );
+      expect(successful.length + busy.length).toBe(2);
+      expect(successful).toHaveLength(1);
+      expect(busy).toHaveLength(1);
+      if (successful.length !== 1) return;
+      expect(successful[0]!.value.projects[0]?.status).toBe("completed");
+      const successorBindings = await harness.pool.query<{ n: string }>(
+        `select count(*)::text as n
+           from parameter_catalog.project_parameter_bindings
+          where project_id = $1 and definition_id = $2`,
+        [P1, successful[0]!.value.newIdentity.definitionId],
+      );
+      expect(successorBindings.rows[0]?.n).toBe("1");
+      const successorValues = await harness.pool.query<{ n: string }>(
+        `select count(*)::text as n
+           from parameter_catalog.project_parameter_values
+          where binding_id in (
+            select id from parameter_catalog.project_parameter_bindings
+             where project_id = $1 and definition_id = $2
+          )`,
+        [P1, successful[0]!.value.newIdentity.definitionId],
+      );
+      expect(successorValues.rows[0]?.n).toBe("1");
+    });
+  }, 240_000);
+
   it("SR-02 blocks a project whose resolved source file is not .dts", async () => {
     await withHarness(async (harness) => {
       const registrationId = await seed(harness);
       await insertConfigSet(harness);
-      await harness.pool.query(`update project_parameter_files set file_name = 'charger-board.yaml' where id = $1`, [
-        FILE_ID,
-      ]);
       await insertOccurrence(harness, {
         id: "oe-provenance-format",
         propertyKey: PREDECESSOR_PROPERTY_KEY,
         propertyOccurrenceId: "po-provenance-format",
         nodeOccurrenceId: "no-provenance-format",
       });
+      await harness.pool.query(
+        `update dts_config_revision_members set source_name = 'charger-board.yaml'
+          where config_revision_id = $1 and file_id = $2`,
+        [CONFIG_REVISION_ID, FILE_ID],
+      );
       await harness.seedBindingValue({
         organizationId: ORG,
         projectId: P1,
@@ -339,6 +586,12 @@ describe("definition replacement source provenance", () => {
         propertyKey: PREDECESSOR_PROPERTY_KEY,
         propertyOccurrenceId: "po-provenance-review",
         nodeOccurrenceId: "no-provenance-review",
+      });
+      await insertOccurrence(harness, {
+        id: "oe-provenance-review-target",
+        propertyKey: "iin_superseded_review_max",
+        propertyOccurrenceId: "po-provenance-review-target",
+        nodeOccurrenceId: "no-provenance-review-target",
       });
       await harness.seedBindingValue({
         organizationId: ORG,

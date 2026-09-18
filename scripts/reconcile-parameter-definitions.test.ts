@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
 import { catalogLegacyGoneResult, LEGACY_WRITE_GONE_MESSAGE } from "../server/modules/parameter-catalog-api/legacy";
@@ -7,6 +9,16 @@ import {
 } from "./reconcile-parameter-definitions";
 
 describe("reconcile-parameter-definitions CLI", () => {
+  it("does not import parameter-specs reconcile or verify", () => {
+    const source = readFileSync(
+      fileURLToPath(new URL("./reconcile-parameter-definitions.ts", import.meta.url)),
+      "utf8",
+    );
+    expect(source).not.toContain("parameter-specs");
+    expect(source).not.toContain("reconcileDriverParameterDefinitions");
+    expect(source).not.toContain("verifyEffectiveDriverParameterDefinitions");
+  });
+
   it("maps --apply to a typed S8-LEG structural-write 410", async () => {
     expect(parseReconcileCliCommand(["--apply"])).toEqual({ kind: "apply-gone" });
     const result = await runReconcileParameterDefinitions(["--apply"], {});

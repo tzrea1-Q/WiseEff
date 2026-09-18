@@ -340,8 +340,9 @@ type RecomputeBindingDbRow = {
 /**
  * Load bindings (optionally scoped to one project) with the driver/compatible/instance
  * context needed to re-resolve their business module (phase 2, §5.2 remap recompute).
- * Driver derives from the spec key like the browse read path; compatible/instance come
- * from the binding's most recent logical-node revision snapshot.
+ * Driver scaffolding uses attribution subject `source_key`; remap identity is the
+ * subject id. Compatible/instance come from the logical-node revision pinned to the
+ * binding's own current revision tip.
  */
 export async function listBindingsForModuleRecompute(
   db: Queryable,
@@ -356,14 +357,7 @@ export async function listBindingsForModuleRecompute(
       b.parameter_spec_id,
       ps.attribution_subject_id,
       b.module_id,
-      nullif(
-        case
-          when cardinality(string_to_array(ps.specification_key, '/')) >= 3
-            then (string_to_array(ps.specification_key, '/'))[cardinality(string_to_array(ps.specification_key, '/')) - 1]
-          else split_part(ps.specification_key, '/', 1)
-        end,
-        ''
-      ) as driver_module,
+      asub.source_key as driver_module,
       lnr.compatible,
       case
         when lnr.unit_address is not null then lnr.name || '@' || lnr.unit_address
@@ -372,11 +366,22 @@ export async function listBindingsForModuleRecompute(
       lnr.node_locator
     from project_parameter_bindings b
     join parameter_specs ps on ps.id = b.parameter_spec_id
+    left join attribution_subjects asub
+      on asub.id = ps.attribution_subject_id
+     and (asub.organization_id is null or asub.organization_id = b.organization_id)
+    left join lateral (
+      select id, config_revision_id
+      from project_parameter_binding_revisions
+      where binding_id = b.id
+      order by created_at desc
+      limit 1
+    ) br on true
     left join lateral (
       select compatible, name, unit_address, node_locator
       from dts_logical_node_revisions
       where logical_node_id = b.logical_node_id
-      order by config_revision_id desc
+        and config_revision_id = br.config_revision_id
+      order by id desc
       limit 1
     ) lnr on true
     where b.organization_id = $1
@@ -416,10 +421,18 @@ export async function listObservedCompatiblesForDiscovery(
       count(distinct b.project_id)::text as project_count
     from project_parameter_bindings b
     left join lateral (
+      select id, config_revision_id
+      from project_parameter_binding_revisions
+      where binding_id = b.id
+      order by created_at desc
+      limit 1
+    ) br on true
+    left join lateral (
       select compatible
       from dts_logical_node_revisions
       where logical_node_id = b.logical_node_id
-      order by config_revision_id desc
+        and config_revision_id = br.config_revision_id
+      order by id desc
       limit 1
     ) lnr on true
     where b.organization_id = $1
@@ -494,10 +507,18 @@ export async function listDismissedCompatiblesForDiscovery(
         count(distinct b.project_id)::integer as project_count
       from project_parameter_bindings b
       left join lateral (
+        select id, config_revision_id
+        from project_parameter_binding_revisions
+        where binding_id = b.id
+        order by created_at desc
+        limit 1
+      ) br on true
+      left join lateral (
         select compatible
         from dts_logical_node_revisions
         where logical_node_id = b.logical_node_id
-        order by config_revision_id desc
+          and config_revision_id = br.config_revision_id
+        order by id desc
         limit 1
       ) lnr on true
       where b.organization_id = dc.organization_id

@@ -69,7 +69,7 @@ export type ParameterPageActions = {
   reviewChange(input: ReviewParameterChangeInput, options?: ParameterRuntimeRefreshOptions): Promise<ParameterRuntimeVoidResult>;
   listWorkflowAssignees?: ParameterRuntimeActions["listWorkflowAssignees"];
   createImportPreview(input: ParameterImportPreviewInput): Promise<ParameterImportBatchDto | ParameterRuntimeActionFailure>;
-  applyImportBatch(input: ApplyParameterImportBatchInput): Promise<ParameterRuntimeVoidResult>;
+  applyImportBatch(input: ApplyParameterImportBatchInput): Promise<ParameterImportBatchDto | ParameterRuntimeVoidResult>;
   parseDtsImport(input: ParseDtsImportInput): Promise<DtsImportParseResult>;
   refresh(options?: ParameterRuntimeRefreshOptions): Promise<ParameterRuntimeRefreshResult>;
 };
@@ -265,6 +265,7 @@ export function PageRouter({
           search={search}
           parameterActions={parameterActions}
           topologyRepository={parameterTopologyRepository}
+          canonicalRepository={runtime?.parameterCatalogRepository}
           listConfigSets={listParameterConfigSets}
           effectiveProjectId={effectiveParametersProjectId}
           canEdit={canEditParameters}

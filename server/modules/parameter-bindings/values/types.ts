@@ -1,5 +1,6 @@
 import type { CatalogSnapshot } from "../../catalog-kernel/interface";
 import type {
+  ContractJsonValue,
   DefinitionRevisionId,
   ParameterBindingId,
   ParameterDefinitionId,
@@ -7,6 +8,22 @@ import type {
   Result as ContractResult,
 } from "../../parameter-catalog-contract/index";
 import type { Binding } from "../binding";
+
+export type CanonicalValueSourcePin = {
+  organizationId: string; projectId: string; bindingId: string; definitionId: string;
+  projectValueId: string; sourcePinId: string; sourceOccurrenceId: string;
+  configSetId: string; configRevisionId: string; fileId: string; fileVersionId: string;
+  format: "dts" | "json"; logicalNodeId: string | null; configurationInstanceId: string | null;
+  configurationSchemaSubjectId: string | null; rootPointer: string | null;
+  entryFile: string | null; includeSearchPaths: string[]; overlayOrder: string[];
+  locator: Record<string, ContractJsonValue>;
+};
+
+export type CanonicalSourceBindingPin = {
+  bindingId: string; oldValueId: string; sourcePinId: string; sourceOccurrenceId: string;
+  definitionId: string; effectiveRevisionId: string; catalogReleaseId: string;
+  locator: Record<string, ContractJsonValue>; valueKind: string; valueDigest: string; configSetId: string;
+};
 
 export type Result<T, E> = ContractResult<T, E>;
 
@@ -49,6 +66,8 @@ export type AppendProjectValueCommand = {
   readonly source: ProjectValueSource;
   readonly payload: ProjectValuePayload;
   readonly expectedTip: ProjectValueId;
+  /** Internal approved source batch; the request freezes this Binding/base tip. */
+  readonly sourceCommit?: { readonly requestId: string; readonly auditRef: string; readonly derived: boolean };
 };
 
 export type ProjectValueHistoryQuery = {

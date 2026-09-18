@@ -12,8 +12,12 @@
  * and appends the ProjectValue history. This module does not duplicate it.
  */
 import { ApiError } from "../../../shared/http/errors";
-import { getRootPostgresPool, type Database } from "../../../shared/database/client";
+import type { Database } from "../../../shared/database/client";
 import type { AuthContext } from "../../auth/types";
+import type { TrustedInvocationContext } from "../../auth/trustedInvocation";
+import type { TrustedRefusalAuditSink } from "../../audit/trustedRefusalSink";
+import type { ObjectStore } from "../../logs/objectStore";
+import type { CatalogSnapshot } from "../../catalog-kernel/interface";
 import {
   canEditParameters,
   canReviewParameters,
@@ -23,14 +27,13 @@ import {
 import { getProjectById } from "../../projects/repository";
 import { renderDtsValue } from "../../dts/valueAst";
 import type { DtsValue } from "../../dts/types";
-import {
-  asValueClient,
-  saveCanonicalProjectValue
-} from "../catalogProjectValueSync";
+import { serializeContract, type ContractJsonValue } from "../../parameter-catalog-contract";
+import { commitCanonicalSourceRevision } from "../../parameter-files/canonicalSourceCommit";
+import { loadCanonicalSourceCohort, recordCanonicalPermissionRefusal, requireCanonicalUserInvocation, type CanonicalSourceSecurityContext } from "../../parameter-files/canonicalSource";
+import { hasEligibleWorkflowAssignee } from "../../parameters/reviewWorkflowRepository";
 import {
   deleteCanonicalValueDraft,
-  getCanonicalValueDraft,
-  loadCanonicalBindingPins
+  getCanonicalValueDraftForUpdate,
 } from "./repository";
 import {
   getCanonicalValueChangeRequest,
@@ -38,7 +41,6 @@ import {
   getOpenCanonicalValueChangeRequestForDraft,
   insertCanonicalValueChangeRequest,
   listCanonicalValueChangeRequests,
-  markCanonicalValueChangeRequestApplied,
   markCanonicalValueChangeRequestReviewed,
   type CanonicalChangeApplyOutcome,
   type CanonicalChangeRequestStatus,
@@ -57,6 +59,10 @@ export type CanonicalValueChangeRequestDto = {
   effectiveRevisionId: string;
   status: CanonicalChangeRequestStatus;
   targetValue: string;
+  sourceFormat: "dts" | "json";
+  sourceTarget?: { format: "json"; sourceText: string };
+  baseRevisionId: string;
+  baseCurrentValueId: string;
   reason: string;
   submitterUserId: string | null;
   assignedToUserId: string | null;
@@ -64,6 +70,9 @@ export type CanonicalValueChangeRequestDto = {
   reviewerNote: string | null;
   appliedValueId: string | null;
   applyOutcome: CanonicalChangeApplyOutcome | null;
+  sourcePinId?: string | null;
+  candidateId?: string | null;
+  appliedSourceResult?: Record<string, unknown> | null;
   createdAt: string;
   updatedAt: string;
 };
@@ -72,6 +81,9 @@ export type SubmitCanonicalValueChangeInput = {
   projectId: string;
   draftId: string;
   assignedToUserId?: string | null;
+  invocation: TrustedInvocationContext;
+  requestId: string;
+  refusalSink: TrustedRefusalAuditSink;
 };
 
 export type ReviewCanonicalValueChangeInput = {
@@ -81,7 +93,19 @@ export type ReviewCanonicalValueChangeInput = {
   note?: string | null;
 };
 
+export type ReviewCanonicalValueChangeOptions = {
+  objectStore?: ObjectStore;
+  snapshot?: CatalogSnapshot;
+  invocation?: TrustedInvocationContext;
+  traceId?: string;
+  refusalSink?: TrustedRefusalAuditSink;
+};
+
 function renderTarget(row: CanonicalValueChangeRequestRow): string {
+  if (row.target_value && typeof row.target_value === "object"
+    && (row.target_value as { kind?: unknown }).kind === "json-source") {
+    return JSON.stringify((row.target_value as { value: unknown }).value);
+  }
   try {
     return renderDtsValue(row.target_value as DtsValue);
   } catch {
@@ -92,6 +116,8 @@ function renderTarget(row: CanonicalValueChangeRequestRow): string {
 export function toCanonicalValueChangeRequestDto(
   row: CanonicalValueChangeRequestRow
 ): CanonicalValueChangeRequestDto {
+  const jsonTarget = row.target_value && typeof row.target_value === "object" && (row.target_value as { kind?: unknown }).kind === "json-source"
+    ? row.target_value as { value: ContractJsonValue } : null;
   return {
     id: row.id,
     projectId: row.project_id,
@@ -101,6 +127,10 @@ export function toCanonicalValueChangeRequestDto(
     effectiveRevisionId: row.definition_revision_id,
     status: row.status,
     targetValue: renderTarget(row),
+    sourceFormat: jsonTarget ? "json" : "dts",
+    ...(jsonTarget ? { sourceTarget: { format: "json" as const,sourceText: serializeContract(jsonTarget.value) } } : {}),
+    baseRevisionId: row.config_revision_id,
+    baseCurrentValueId: row.base_current_value_id,
     reason: row.reason,
     submitterUserId: row.submitter_user_id,
     assignedToUserId: row.assigned_to_user_id,
@@ -108,6 +138,9 @@ export function toCanonicalValueChangeRequestDto(
     reviewerNote: row.reviewer_note,
     appliedValueId: row.applied_value_id,
     applyOutcome: row.apply_outcome,
+    sourcePinId: row.source_pin_id,
+    candidateId: row.candidate_id,
+    appliedSourceResult: row.applied_source_result,
     createdAt: row.created_at,
     updatedAt: row.updated_at
   };
@@ -135,40 +168,86 @@ export async function submitCanonicalValueChange(
   auth: AuthContext,
   input: SubmitCanonicalValueChangeInput
 ): Promise<CanonicalValueChangeRequestDto> {
-  await requireOwnedProject(db, auth, input.projectId);
-  requireProjectEditor(auth, input.projectId);
-
-  const draft = await getCanonicalValueDraft(db, {
-    organizationId: auth.organization.id,
-    projectId: input.projectId,
-    userId: auth.user.id,
-    draftId: input.draftId
+  const security: CanonicalSourceSecurityContext = {
+    invocation: input.invocation,
+    requestId: input.requestId,
+    refusalSink: input.refusalSink
+  };
+  await requireCanonicalUserInvocation(auth, security, {
+    projectId: input.projectId, operation: "canonical value submit", targetType: "project-parameter-value-draft", targetId: input.draftId
   });
-  if (!draft) {
-    throw new ApiError("NOT_FOUND", "Pending value draft was not found.", {
+  await requireOwnedProject(db, auth, input.projectId);
+  try {
+    requireProjectEditor(auth, input.projectId);
+  } catch (error) {
+    await recordCanonicalPermissionRefusal(security, {
+      projectId: input.projectId, operation: "canonical value submit", targetType: "project-parameter-value-draft", targetId: input.draftId,
+      details: { permission: "parameter:edit" }
+    });
+    throw error;
+  }
+
+  const row = await db.transaction(async (tx) => {
+    const source = await tx.query<{ config_set_id: string }>(`select occurrence.config_set_id
+      from project_parameter_value_drafts draft
+      join parameter_catalog.project_value_source_pins pin on pin.id=draft.source_pin_id
+        and pin.organization_id=draft.organization_id and pin.project_id=draft.project_id and pin.binding_id=draft.binding_id
+      join parameter_catalog.project_parameter_source_occurrences occurrence on occurrence.id=pin.source_occurrence_id
+      where draft.organization_id=$1 and draft.project_id=$2 and draft.user_id=$3 and draft.id=$4`,
+    [auth.organization.id,input.projectId,auth.user.id,input.draftId]);
+    if (source.rows.length !== 1) throw new ApiError("NOT_FOUND", "Prepared source draft was not found.");
+    const configSetId = source.rows[0]!.config_set_id;
+    if (input.assignedToUserId !== undefined && input.assignedToUserId !== null) {
+      const eligible = await hasEligibleWorkflowAssignee(tx, {
+        organizationId: auth.organization.id,
+        projectId: input.projectId,
+        userId: input.assignedToUserId,
+        roleId: "software-committer"
+      });
+      if (!eligible) {
+        throw new ApiError("VALIDATION_FAILED", "The assigned reviewer is not an active project software committer.", {
+          assignedToUserId: input.assignedToUserId,
+          projectId: input.projectId
+        });
+      }
+    }
+    // Match prepare/apply ordering before locking the draft. Otherwise a
+    // request FK can wait for the editor's Binding while holding its draft.
+    await tx.query(`select id from dts_config_set where id=$1 and organization_id=$2 and project_id=$3 for update`,
+      [configSetId,auth.organization.id,input.projectId]);
+    await tx.query(`select id from project_parameter_files where config_set_id=$1 order by id for update`, [configSetId]);
+    await loadCanonicalSourceCohort(tx,{ organizationId: auth.organization.id,projectId: input.projectId,configSetId });
+    const draft = await getCanonicalValueDraftForUpdate(tx, {
+      organizationId: auth.organization.id,
+      projectId: input.projectId,
+      userId: auth.user.id,
+      draftId: input.draftId
+    });
+    if (!draft) {
+      throw new ApiError("NOT_FOUND", "Pending value draft was not found.", {
+        projectId: input.projectId,
+        draftId: input.draftId
+      });
+    }
+    if (draft.action !== "set" || !draft.source_pin_id || !draft.candidate_id
+      || !draft.candidate_base_digest || !draft.candidate_proposed_digest || !draft.candidate_diff_digest
+      || !draft.candidate_member_manifest || !draft.candidate_binding_manifest) {
+      throw new ApiError("VALIDATION_FAILED", "Only a prepared source draft can be submitted for review.", {
+        draftId: input.draftId
+      });
+    }
+    const open = await getOpenCanonicalValueChangeRequestForDraft(tx, {
+      organizationId: auth.organization.id,
       projectId: input.projectId,
       draftId: input.draftId
     });
-  }
-  if (draft.action !== "set") {
-    throw new ApiError("VALIDATION_FAILED", "Only a set draft can be submitted for review.", {
-      draftId: input.draftId,
-      action: draft.action
-    });
-  }
-  const open = await getOpenCanonicalValueChangeRequestForDraft(db, {
-    organizationId: auth.organization.id,
-    projectId: input.projectId,
-    draftId: input.draftId
-  });
-  if (open) {
-    throw new ApiError("CONFLICT", "Draft already has an open change request.", {
-      draftId: input.draftId,
-      requestId: open.id
-    });
-  }
-
-  const row = await insertCanonicalValueChangeRequest(db, {
+    if (open) {
+      throw new ApiError("CONFLICT", "Draft already has an open change request.", {
+        draftId: input.draftId,
+        requestId: open.id
+      });
+    }
+    return insertCanonicalValueChangeRequest(tx, {
     organizationId: auth.organization.id,
     projectId: input.projectId,
     draftId: draft.id,
@@ -183,7 +262,15 @@ export async function submitCanonicalValueChange(
     targetValue: draft.target_value,
     reason: draft.reason,
     submitterUserId: auth.user.id,
-    assignedToUserId: input.assignedToUserId ?? null
+    assignedToUserId: input.assignedToUserId ?? null,
+    sourcePinId: draft.source_pin_id,
+    candidateId: draft.candidate_id,
+    candidateBaseDigest: draft.candidate_base_digest,
+    candidateProposedDigest: draft.candidate_proposed_digest,
+    candidateDiffDigest: draft.candidate_diff_digest,
+    candidateMemberManifest: draft.candidate_member_manifest,
+    candidateBindingManifest: draft.candidate_binding_manifest
+    });
   });
   return toCanonicalValueChangeRequestDto(row);
 }
@@ -215,11 +302,82 @@ export async function listCanonicalValueChangesForAuth(
 export async function reviewCanonicalValueChange(
   db: Database,
   auth: AuthContext,
-  input: ReviewCanonicalValueChangeInput
+  input: ReviewCanonicalValueChangeInput,
+  options: ReviewCanonicalValueChangeOptions = {}
 ): Promise<CanonicalValueChangeRequestDto> {
+  if (!options.invocation || !options.refusalSink || !options.traceId?.trim()) {
+    throw new ApiError("INTERNAL_ERROR", "Canonical value review requires trusted invocation and refusal evidence.");
+  }
+  const security: CanonicalSourceSecurityContext = {
+    invocation: options.invocation,
+    requestId: options.traceId.trim(),
+    refusalSink: options.refusalSink
+  };
+  await requireCanonicalUserInvocation(auth, security, {
+    projectId: input.projectId, operation: `canonical value ${input.decision}`, targetType: "project-parameter-value-change-request", targetId: input.requestId
+  });
   await requireOwnedProject(db, auth, input.projectId);
 
-  const pool = getRootPostgresPool(db);
+  const visibleRequest = await getCanonicalValueChangeRequest(db, {
+    organizationId: auth.organization.id,
+    projectId: input.projectId,
+    requestId: input.requestId
+  });
+  if (!visibleRequest) {
+    throw new ApiError("NOT_FOUND", "Parameter change request was not found.", {
+      requestId: input.requestId
+    });
+  }
+  if (!canReviewParameters(auth) || !canReviewParameterStage(auth, input.projectId, CANONICAL_VALUE_REVIEW_STAGE)) {
+    await recordCanonicalPermissionRefusal(security, {
+      projectId: input.projectId, operation: `canonical value ${input.decision}`, targetType: "project-parameter-value-change-request", targetId: input.requestId,
+      details: { permission: "parameter:review" }
+    });
+    throw new ApiError(
+      "FORBIDDEN",
+      "The software review role is required to review this parameter change."
+    );
+  }
+  if ((input.decision === "approve" || input.decision === "reject") && visibleRequest.submitter_user_id === auth.user.id) {
+    await recordCanonicalPermissionRefusal(security, {
+      projectId: input.projectId,
+      operation: `canonical value ${input.decision}`,
+      targetType: "project-parameter-value-change-request",
+      targetId: input.requestId,
+      details: { reason: "submitter-self-review", decision: input.decision }
+    });
+    throw new ApiError("FORBIDDEN", "The submitter cannot review their own parameter change.", {
+      requestId: input.requestId
+    });
+  }
+
+  if (input.decision === "approve") {
+    if (!options.objectStore || !options.snapshot || !options.invocation || !options.traceId?.trim()) {
+      throw new ApiError("INTERNAL_ERROR", "Canonical source approval requires storage, snapshot and trusted invocation context.");
+    }
+    return db.transaction(async (tx) => {
+      const applied = await commitCanonicalSourceRevision(tx, options.objectStore!, auth, options.snapshot!, {
+        projectId: input.projectId,
+        requestId: input.requestId,
+        invocation: options.invocation!,
+        traceId: options.traceId!.trim(),
+        refusalSink: options.refusalSink!,
+        note: input.note ?? null
+      });
+      if (applied.draft_id && visibleRequest.submitter_user_id) {
+        const deleted = await deleteCanonicalValueDraft(tx, {
+          organizationId: auth.organization.id,
+          projectId: input.projectId,
+          userId: visibleRequest.submitter_user_id,
+          draftId: applied.draft_id,
+          candidateId: applied.candidate_id ?? undefined
+        });
+        // Reflect the FK's SET NULL so the first response equals an exact replay.
+        if (deleted) applied.draft_id = null;
+      }
+      return toCanonicalValueChangeRequestDto(applied);
+    });
+  }
 
   return db.transaction(async (tx) => {
     const request = await getCanonicalValueChangeRequestForUpdate(tx, {
@@ -233,8 +391,7 @@ export async function reviewCanonicalValueChange(
       });
     }
 
-    // Idempotent replay: an already-applied request returns its recorded outcome
-    // and never appends a second value.
+    // Idempotent replay: an already-applied request returns its recorded outcome.
     if (request.status === "approved") {
       return toCanonicalValueChangeRequestDto(request);
     }
@@ -272,103 +429,10 @@ export async function reviewCanonicalValueChange(
       return toCanonicalValueChangeRequestDto(rejected);
     }
 
-    if (!canReviewParameters(auth) || !canReviewParameterStage(auth, input.projectId, CANONICAL_VALUE_REVIEW_STAGE)) {
-      throw new ApiError(
-        "FORBIDDEN",
-        "The software review role is required to approve this parameter change."
-      );
-    }
-    // Actor separation: the submitter cannot approve their own change.
-    if (request.submitter_user_id === auth.user.id) {
-      throw new ApiError("FORBIDDEN", "The submitter cannot approve their own parameter change.", {
-        requestId: input.requestId
-      });
-    }
-    if (!pool) {
-      throw new ApiError("INTERNAL_ERROR", "Canonical apply requires the root database.");
-    }
-
-    // Re-resolve the protected references and reject drift. A changed value,
-    // definition or source pin must be resubmitted, never force-overwritten.
-    const pins = await loadCanonicalBindingPins(tx, {
-      organizationId: auth.organization.id,
-      projectId: input.projectId,
-      bindingId: request.binding_id
-    });
-    if (!pins) {
-      throw new ApiError("CONFLICT", "Canonical binding is no longer available.", {
-        requestId: input.requestId,
-        bindingId: request.binding_id
-      });
-    }
-    if (pins.currentValueId !== request.base_current_value_id) {
-      throw new ApiError("CONFLICT", "Change request base value is stale.", {
-        requestId: input.requestId,
-        reason: "stale-base-value",
-        expected: request.base_current_value_id,
-        actual: pins.currentValueId
-      });
-    }
-    if (pins.configRevisionId !== request.config_revision_id) {
-      throw new ApiError("CONFLICT", "Change request base source revision is stale.", {
-        requestId: input.requestId,
-        reason: "stale-base-revision",
-        expected: request.config_revision_id,
-        actual: pins.configRevisionId
-      });
-    }
-    if (pins.definitionRevisionId !== request.definition_revision_id) {
-      throw new ApiError("CONFLICT", "Change request definition revision is stale.", {
-        requestId: input.requestId,
-        reason: "stale-definition-revision",
-        expected: request.definition_revision_id,
-        actual: pins.definitionRevisionId
-      });
-    }
-
-    const written = await saveCanonicalProjectValue(
-      pool,
-      {
-        organizationId: auth.organization.id,
-        projectId: input.projectId,
-        bindingId: request.binding_id,
-        configRevisionId: request.config_revision_id,
-        targetValue: request.target_value as DtsValue
-      },
-      asValueClient(tx)
-    );
-
-    const outcome: CanonicalChangeApplyOutcome =
-      written.currentValueId === request.base_current_value_id ? "replayed" : "committed";
-
-    const applied = await markCanonicalValueChangeRequestApplied(tx, {
-      organizationId: auth.organization.id,
-      projectId: input.projectId,
+    throw new ApiError("CONFLICT", "Parameter change request is already closed.", {
       requestId: input.requestId,
-      reviewerUserId: auth.user.id,
-      reviewerNote: input.note ?? null,
-      appliedValueId: written.currentValueId,
-      applyOutcome: outcome
+      status: request.status
     });
-    if (!applied) {
-      throw new ApiError("CONFLICT", "Parameter change request is no longer pending.", {
-        requestId: input.requestId
-      });
-    }
-
-    // The applied pending work leaves the draft tray in the same transaction.
-    // A deleted submitter clears the attribution (and takes unsubmitted drafts with
-    // it), so the consumed draft can only be removed while attribution still exists.
-    if (request.draft_id && request.submitter_user_id) {
-      await deleteCanonicalValueDraft(tx, {
-        organizationId: auth.organization.id,
-        projectId: input.projectId,
-        userId: request.submitter_user_id,
-        draftId: request.draft_id
-      });
-    }
-
-    return toCanonicalValueChangeRequestDto(applied);
   });
 }
 
@@ -376,8 +440,12 @@ export async function reviewCanonicalValueChange(
 export async function withdrawCanonicalValueChange(
   db: Database,
   auth: AuthContext,
-  input: { projectId: string; requestId: string; note?: string | null }
+  input: { projectId: string; requestId: string; note?: string | null; invocation: TrustedInvocationContext; refusalSink: TrustedRefusalAuditSink; traceId: string }
 ): Promise<CanonicalValueChangeRequestDto> {
+  const security: CanonicalSourceSecurityContext = { invocation: input.invocation, requestId: input.traceId, refusalSink: input.refusalSink };
+  await requireCanonicalUserInvocation(auth, security, {
+    projectId: input.projectId, operation: "canonical value withdraw", targetType: "project-parameter-value-change-request", targetId: input.requestId
+  });
   await requireOwnedProject(db, auth, input.projectId);
 
   const request = await getCanonicalValueChangeRequest(db, {
@@ -391,6 +459,13 @@ export async function withdrawCanonicalValueChange(
     });
   }
   if (request.submitter_user_id !== auth.user.id) {
+    await recordCanonicalPermissionRefusal(security, {
+      projectId: input.projectId,
+      operation: "canonical value withdraw",
+      targetType: "project-parameter-value-change-request",
+      targetId: input.requestId,
+      details: { reason: "withdraw-not-submitter" }
+    });
     throw new ApiError("FORBIDDEN", "Only the submitter can withdraw this parameter change.", {
       requestId: input.requestId
     });

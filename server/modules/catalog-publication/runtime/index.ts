@@ -1,5 +1,8 @@
 export {
+  CATALOG_CAPABILITY_V3_CONSUMER_REVISIONS,
   SUPPORTED_CATALOG_CONSUMER_CAPABILITIES,
+  SUPPORTED_CATALOG_CONSUMER_REVISIONS,
+  admitCatalogCapabilityRevision,
   catalogConsumerSupportsRevision,
 } from "./capabilities";
 export { adoptPreexistingCatalog, checkAdoptPreexistingCatalog } from "./adoption";

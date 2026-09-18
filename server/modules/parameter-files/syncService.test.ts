@@ -255,7 +255,9 @@ describe("syncFileVersion", () => {
       parameterDefinitionId: "spec-1",
       fileVersionId: "version-1",
       fileDraftId: "ppv-1-user-1-file-sync",
-      fileValue: "85"
+      fileValue: "85",
+      projectParameterBindingId: "binding-1",
+      parameterSpecId: "spec-1"
     });
   });
 

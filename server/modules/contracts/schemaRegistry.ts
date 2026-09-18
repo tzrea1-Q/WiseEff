@@ -971,6 +971,41 @@ export const schemaRegistry: Record<string, ContractSchemaRef> = {
       "409": "ErrorResponse"
     }
   },
+  "parameterTopology.getProjectValueChangeRequestSourceDiff": {
+    summary: "Read the exact canonical source diff for one pending value change request",
+    tags: ["parameters"],
+    responseBody: "ValueChangeSourceDiffResponse",
+    additionalResponses: {
+      "403": "ErrorResponse",
+      "404": "ErrorResponse",
+      "409": "ErrorResponse"
+    }
+  },
+  "parameterTopology.reimportPreviewProjectBinding": {
+    summary: "Verify that exported canonical source bytes still match the pinned binding",
+    tags: ["parameters"],
+    requestBody: "BindingExportRequest",
+    responseBody: "BindingExportResponse",
+    additionalResponses: {
+      "400": "ErrorResponse",
+      "403": "ErrorResponse",
+      "404": "ErrorResponse",
+      "409": "ErrorResponse"
+    }
+  },
+  "parameterTopology.registerConfigurationInstances": {
+    summary: "Register JSON configuration-instance mappings as canonical bindings",
+    tags: ["parameters"],
+    requestBody: "RegisterConfigurationInstancesRequest",
+    responseBody: "ProjectParameterBindingListResponse",
+    successStatus: 201,
+    additionalResponses: {
+      "400": "ErrorResponse",
+      "403": "ErrorResponse",
+      "404": "ErrorResponse",
+      "409": "ErrorResponse"
+    }
+  },
 
   "logs.uploadFile": {
     summary: "Upload log file",

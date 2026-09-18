@@ -220,6 +220,29 @@ const mappingTasks: IdentityMappingTask[] = [
 ];
 
 describe("buildDtsWorkbenchRows", () => {
+  it("excludes genuine JSON bindings from the DTS-only workbench", () => {
+    const rows = buildDtsWorkbenchRows({
+      projectId: "project-aurora",
+      configRevisionId: "revision-1",
+      view: "effective",
+      bindings: [
+        binding,
+        {
+          ...binding,
+          id: "binding-json",
+          propertyKey: "json_limit",
+          effectiveValue: { kind: "json", value: { limit: 36.5 } },
+          rawValue: '{\n  "limit": 36.5\n}\n'
+        }
+      ],
+      sourceNodes,
+      effectiveNodes,
+      mappingTasks: []
+    });
+
+    expect(rows.map((row) => row.bindingId)).toEqual([binding.id]);
+  });
+
   it("maps gpio_int into a semantic row using topology parent links and the latest source effect", () => {
     const [row] = buildDtsWorkbenchRows({
       projectId: "project-aurora",

@@ -96,31 +96,23 @@ describe("ImportReviewCard", () => {
     expect(onSkip).toHaveBeenCalledWith("import-row-1", "本次不导入该项");
   });
 
-  it("shows the not-in-library badge and prefill action for new candidates", () => {
-    renderCard({ row: buildRow({ name: "brand_new_param", existingParameter: undefined }) });
+  it("shows unmatched rows as visible and ineligible instead of create-new", () => {
+    renderCard({ row: buildRow({ name: "brand_new_param", status: "unmatched", existingParameter: undefined }) });
 
-    expect(screen.getByText("库中不存在")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "预填并创建" })).toBeInTheDocument();
+    expect(screen.getByText("不会应用")).toBeInTheDocument();
+    expect(screen.getByText(/未匹配到当前 Catalog 绑定/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "跳过" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "预填并创建" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "通过" })).not.toBeInTheDocument();
   });
 
-  it("opens a prefilled ParameterDefinitionForm and confirms new-parameter creation", () => {
+  it("does not confirm new-parameter creation from an unmatched row", () => {
     const { onConfirmNew } = renderCard({
-      row: buildRow({ name: "brand_new_param", recommendedValue: "42", existingParameter: undefined })
+      row: buildRow({ name: "brand_new_param", status: "unmatched", recommendedValue: "42", existingParameter: undefined })
     });
 
-    fireEvent.click(screen.getByRole("button", { name: "预填并创建" }));
-
-    const dialog = screen.getByRole("dialog", { name: "预填并创建" });
-    expect(within(dialog).getByLabelText("参数名")).toHaveValue("brand_new_param");
-    expect(within(dialog).getByLabelText(/推荐值/)).toHaveValue("42");
-
-    fireEvent.click(within(dialog).getByRole("button", { name: "确认创建" }));
-
-    expect(onConfirmNew).toHaveBeenCalledWith(
-      "import-row-1",
-      expect.objectContaining({ name: "brand_new_param", module: "Charging Policy", recommendedValue: "42" })
-    );
+    expect(screen.queryByRole("dialog", { name: "预填并创建" })).not.toBeInTheDocument();
+    expect(onConfirmNew).not.toHaveBeenCalled();
   });
 
   it("requires a module before it can be confirmed for needs-module rows", () => {

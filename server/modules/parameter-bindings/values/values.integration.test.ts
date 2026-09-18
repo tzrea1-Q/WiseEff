@@ -25,7 +25,11 @@ import {
   isTestDatabaseAvailable,
   type EphemeralTestDatabase,
 } from "../../../testing/testDatabase";
-import { stabilizeCanonicalBinding, type Binding } from "../binding";
+import { type Binding } from "../binding";
+import {
+  appendSourceCommittedValue,
+  createSourceBackedBindingService,
+} from "../binding/__fixtures__/sourceBackedBinding";
 
 import { createProjectValueService } from "./index";
 
@@ -95,6 +99,7 @@ describe("immutable ProjectValue history", () => {
   let snapshot: CatalogSnapshot;
   let registrationId: Binding["registrationId"];
   let service: ReturnType<typeof createProjectValueService>;
+  let sourceBindingService: ReturnType<typeof createSourceBackedBindingService>;
 
   const registerCommand = (expectedRelease: CatalogReleasePin): RegisterSubjectCommand => ({
     kind: "register",
@@ -132,7 +137,7 @@ describe("immutable ProjectValue history", () => {
   };
 
   const stabilizeNode = async (logicalNodeId: string): Promise<Binding> => {
-    const result = await stabilizeCanonicalBinding(pool, {
+    const result = await sourceBindingService.stabilize({
       snapshot,
       organizationId: ORG,
       projectId: PROJECT,
@@ -147,6 +152,10 @@ describe("immutable ProjectValue history", () => {
       throw new Error("S6-BND stabilizeCanonicalBinding failed to seed a Binding");
     }
     return result.value.binding;
+  };
+
+  const appendValue = async (command: Parameters<typeof service.append>[0]) => {
+    return appendSourceCommittedValue(pool, command);
   };
 
   const valueRows = async (bindingId: string) => {
@@ -252,6 +261,10 @@ describe("immutable ProjectValue history", () => {
     if (!loaded.ok) throw new Error("failed to load frozen snapshot");
     snapshot = loaded.value;
     service = createProjectValueService(pool);
+    sourceBindingService = createSourceBackedBindingService(pool, {
+      sourceRef: SOURCE_A,
+      initialPayload: { kind: "json", value: {} },
+    });
   }, 60_000);
 
   afterAll(async () => {
@@ -261,7 +274,7 @@ describe("immutable ProjectValue history", () => {
 
   it("appends one immutable ProjectValue, CASes the current tip, and writes audit", async () => {
     const binding = await stabilizeNode("logical-node-success");
-    const result = await service.append({
+    const result = await appendValue({
       snapshot,
       binding,
       definitionRevisionId: REVISION_1,
@@ -281,16 +294,16 @@ describe("immutable ProjectValue history", () => {
     expect(await currentTip(binding.id)).toBe(result.value.value.id);
 
     const events = await historyEvents(binding.id);
-    expect(events).toHaveLength(1);
-    expect(events[0]?.old_current_value_id).toBe(binding.currentValueId);
-    expect(events[0]?.new_current_value_id).toBe(result.value.value.id);
+    expect(events).toHaveLength(2);
+    expect(events[1]?.old_current_value_id).toBe(binding.currentValueId);
+    expect(events[1]?.new_current_value_id).toBe(result.value.value.id);
     const audits = await successAudits(events.map((event) => event.success_audit_ref));
-    expect(audits).toHaveLength(1);
+    expect(audits).toHaveLength(2);
   });
 
   it("lets a later wall-clock write with a stale expected tip lose", async () => {
     const binding = await stabilizeNode("logical-node-stale");
-    const first = await service.append({
+    const first = await appendValue({
       snapshot,
       binding,
       definitionRevisionId: REVISION_1,
@@ -304,7 +317,7 @@ describe("immutable ProjectValue history", () => {
     expect(first.ok).toBe(true);
     if (!first.ok) return;
 
-    const second = await service.append({
+    const second = await appendValue({
       snapshot,
       binding,
       definitionRevisionId: REVISION_1,
@@ -320,7 +333,7 @@ describe("immutable ProjectValue history", () => {
 
     const valuesBefore = await valueRows(binding.id);
     const eventsBefore = await historyEvents(binding.id);
-    const stale = await service.append({
+    const stale = await appendValue({
       snapshot,
       binding,
       definitionRevisionId: REVISION_1,
@@ -351,7 +364,7 @@ describe("immutable ProjectValue history", () => {
         where id = $1`,
       [binding.currentValueId],
     );
-    const appended = await service.append({
+    const appended = await appendValue({
       snapshot,
       binding,
       definitionRevisionId: REVISION_1,
@@ -450,12 +463,12 @@ describe("immutable ProjectValue history", () => {
     );
     expect(after.rows).toEqual(before.rows);
     expect(placeholderAfter.rows).toEqual(placeholderBefore.rows);
-    expect(placeholderAfter.rows[0]?.source_ref).toBe(PLACEHOLDER_SOURCE);
+    expect(placeholderAfter.rows[0]?.source_ref).toBe(SOURCE_A);
   });
 
   it("returns complete ordered history for the Binding and exact DefinitionRevision", async () => {
     const binding = await stabilizeNode("logical-node-history");
-    const first = await service.append({
+    const first = await appendValue({
       snapshot,
       binding,
       definitionRevisionId: REVISION_1,
@@ -465,7 +478,7 @@ describe("immutable ProjectValue history", () => {
     });
     expect(first.ok).toBe(true);
     if (!first.ok) return;
-    const second = await service.append({
+    const second = await appendValue({
       snapshot,
       binding,
       definitionRevisionId: REVISION_1,
@@ -475,7 +488,7 @@ describe("immutable ProjectValue history", () => {
     });
     expect(second.ok).toBe(true);
     if (!second.ok) return;
-    const third = await service.append({
+    const third = await appendValue({
       snapshot,
       binding,
       definitionRevisionId: REVISION_1,
@@ -492,13 +505,14 @@ describe("immutable ProjectValue history", () => {
     });
     expect(history.ok).toBe(true);
     if (!history.ok) return;
-    expect(history.value.map((value) => value.id)).toEqual([
-      binding.currentValueId,
+    expect(history.value).toHaveLength(5);
+    expect(history.value.map((value) => value.id).slice(-3)).toEqual([
       first.value.value.id,
       second.value.value.id,
       third.value.value.id,
     ]);
     expect(history.value.map((value) => value.payload)).toEqual([
+      { kind: "json", value: {} },
       { kind: "json", value: {} },
       { kind: "number", value: 1 },
       { kind: "number", value: 2 },
@@ -509,7 +523,7 @@ describe("immutable ProjectValue history", () => {
   it("refuses source identity disagreement and cross-binding writes", async () => {
     const owned = await stabilizeNode("logical-node-source");
     const other = await stabilizeNode("logical-node-cross");
-    const first = await service.append({
+    const first = await appendValue({
       snapshot,
       binding: owned,
       definitionRevisionId: REVISION_1,
@@ -520,7 +534,7 @@ describe("immutable ProjectValue history", () => {
     expect(first.ok).toBe(true);
     if (!first.ok) return;
 
-    const mixedSource = await service.append({
+    const mixedSource = await appendValue({
       snapshot,
       binding: owned,
       definitionRevisionId: REVISION_1,
@@ -537,7 +551,7 @@ describe("immutable ProjectValue history", () => {
       expect(mixedSource.error.attemptedSourceRef).toBe(SOURCE_B);
     }
 
-    const cross = await service.append({
+    const cross = await appendValue({
       snapshot,
       binding: other,
       definitionRevisionId: REVISION_1,
@@ -554,17 +568,20 @@ describe("immutable ProjectValue history", () => {
 
     expect(await currentTip(owned.id)).toBe(first.value.currentTip);
     expect(await currentTip(other.id)).toBe(other.currentValueId);
-    expect((await valueRows(owned.id)).map((row) => row.source_ref)).toEqual([
-      PLACEHOLDER_SOURCE,
-      SOURCE_A,
-    ]);
-    expect((await valueRows(other.id)).map((row) => row.source_ref)).toEqual([PLACEHOLDER_SOURCE]);
-    expect(await historyEvents(other.id)).toEqual([]);
+    const ownedSources = (await valueRows(owned.id)).map((row) => row.source_ref);
+    expect(ownedSources).toHaveLength(3);
+    expect(ownedSources.filter((sourceRef) => sourceRef === SOURCE_A)).toHaveLength(2);
+    expect(ownedSources).toContain(PLACEHOLDER_SOURCE);
+    const otherSources = (await valueRows(other.id)).map((row) => row.source_ref);
+    expect(otherSources).toHaveLength(2);
+    expect(otherSources).toContain(PLACEHOLDER_SOURCE);
+    expect(otherSources).toContain(SOURCE_A);
+    expect(await historyEvents(other.id)).toHaveLength(1);
   });
 
   it("writes success audit only for committed tip changes", async () => {
     const binding = await stabilizeNode("logical-node-audit");
-    const committed = await service.append({
+    const committed = await appendValue({
       snapshot,
       binding,
       definitionRevisionId: REVISION_1,
@@ -575,15 +592,15 @@ describe("immutable ProjectValue history", () => {
     expect(committed.ok).toBe(true);
     if (!committed.ok) return;
     const events = await historyEvents(binding.id);
-    expect(events).toHaveLength(1);
-    expect(events[0]?.old_current_value_id).toBe(binding.currentValueId);
-    expect(events[0]?.new_current_value_id).toBe(committed.value.currentTip);
-    expect(await successAudits([events[0]!.success_audit_ref])).toEqual([
-      { id: events[0]!.success_audit_ref, action: "project-value-appended" },
+    expect(events).toHaveLength(2);
+    expect(events[1]?.old_current_value_id).toBe(binding.currentValueId);
+    expect(events[1]?.new_current_value_id).toBe(committed.value.currentTip);
+    expect(await successAudits([events[1]!.success_audit_ref])).toEqual([
+      { id: events[1]!.success_audit_ref, action: "project-value-appended" },
     ]);
 
     const valuesBefore = await valueRows(binding.id);
-    const failed = await service.append({
+    const failed = await appendValue({
       snapshot,
       binding,
       definitionRevisionId: REVISION_1,
@@ -593,7 +610,7 @@ describe("immutable ProjectValue history", () => {
     });
     expect(failed.ok).toBe(false);
     expect(await valueRows(binding.id)).toEqual(valuesBefore);
-    expect(await historyEvents(binding.id)).toHaveLength(1);
+    expect(await historyEvents(binding.id)).toHaveLength(2);
     expect(await currentTip(binding.id)).toBe(committed.value.currentTip);
   });
 
@@ -607,16 +624,16 @@ describe("immutable ProjectValue history", () => {
       payload: { kind: "number" as const, value: 21 },
       expectedTip: binding.currentValueId,
     };
-    const first = await service.append(command);
+    const first = await appendValue(command);
     expect(first.ok).toBe(true);
     if (!first.ok) return;
-    const replay = await service.append(command);
+    const replay = await appendValue(command);
     expect(replay.ok).toBe(true);
     if (!replay.ok) return;
     expect(replay.value.outcome).toBe("replayed");
     expect(replay.value.value.id).toBe(first.value.value.id);
     expect(replay.value.currentTip).toBe(first.value.currentTip);
-    expect(await valueRows(binding.id)).toHaveLength(2);
-    expect(await historyEvents(binding.id)).toHaveLength(1);
+    expect(await valueRows(binding.id)).toHaveLength(3);
+    expect(await historyEvents(binding.id)).toHaveLength(2);
   });
 });

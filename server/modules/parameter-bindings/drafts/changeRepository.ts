@@ -36,6 +36,17 @@ export type CanonicalValueChangeRequestRow = {
   applied_at: string | null;
   created_at: string;
   updated_at: string;
+  source_pin_id: string | null;
+  candidate_id: string | null;
+  candidate_base_digest: string | null;
+  candidate_proposed_digest: string | null;
+  candidate_diff_digest: string | null;
+  candidate_member_manifest: unknown[] | null;
+  candidate_binding_manifest: unknown[] | null;
+  applied_history_event_id: string | null;
+  applied_audit_ref: string | null;
+  applied_file_version_ids: unknown[] | null;
+  applied_source_result: Record<string, unknown> | null;
 };
 
 export async function insertCanonicalValueChangeRequest(
@@ -56,6 +67,13 @@ export async function insertCanonicalValueChangeRequest(
     reason: string;
     submitterUserId: string;
     assignedToUserId: string | null;
+    sourcePinId: string;
+    candidateId: string;
+    candidateBaseDigest: string;
+    candidateProposedDigest: string;
+    candidateDiffDigest: string;
+    candidateMemberManifest: unknown[];
+    candidateBindingManifest: unknown[];
   }
 ): Promise<CanonicalValueChangeRequestRow> {
   const result = await db.query<CanonicalValueChangeRequestRow>(
@@ -64,8 +82,11 @@ export async function insertCanonicalValueChangeRequest(
       id, organization_id, project_id, draft_id, binding_id, definition_id,
       definition_revision_id, catalog_release_id, base_current_value_id,
       config_revision_id, source_ref, action, target_value, reason, status,
-      submitter_user_id, assigned_to_user_id
-    ) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13::jsonb, $14, 'pending', $15, $16)
+      submitter_user_id, assigned_to_user_id, source_pin_id, candidate_id,
+      candidate_base_digest, candidate_proposed_digest, candidate_diff_digest,
+      candidate_member_manifest, candidate_binding_manifest
+    ) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13::jsonb, $14,
+      'pending', $15, $16, $17, $18, $19, $20, $21, $22::jsonb, $23::jsonb)
     returning *
     `,
     [
@@ -84,7 +105,14 @@ export async function insertCanonicalValueChangeRequest(
       JSON.stringify(input.targetValue),
       input.reason,
       input.submitterUserId,
-      input.assignedToUserId
+      input.assignedToUserId,
+      input.sourcePinId,
+      input.candidateId,
+      input.candidateBaseDigest,
+      input.candidateProposedDigest,
+      input.candidateDiffDigest,
+      JSON.stringify(input.candidateMemberManifest),
+      JSON.stringify(input.candidateBindingManifest)
     ]
   );
   return result.rows[0]!;
@@ -207,6 +235,10 @@ export async function markCanonicalValueChangeRequestApplied(
     reviewerNote: string | null;
     appliedValueId: string;
     applyOutcome: CanonicalChangeApplyOutcome;
+    appliedHistoryEventId?: string;
+    appliedAuditRef?: string;
+    appliedFileVersionIds?: unknown[];
+    appliedSourceResult?: Record<string, unknown>;
   }
 ): Promise<CanonicalValueChangeRequestRow | null> {
   const result = await db.query<CanonicalValueChangeRequestRow>(
@@ -218,6 +250,10 @@ export async function markCanonicalValueChangeRequestApplied(
            applied_value_id = $6,
            apply_outcome = $7,
            applied_at = now(),
+           applied_history_event_id = $8,
+           applied_audit_ref = $9,
+           applied_file_version_ids = $10::jsonb,
+           applied_source_result = $11::jsonb,
            updated_at = now()
      where organization_id = $1
        and project_id = $2
@@ -232,7 +268,11 @@ export async function markCanonicalValueChangeRequestApplied(
       input.reviewerUserId,
       input.reviewerNote,
       input.appliedValueId,
-      input.applyOutcome
+      input.applyOutcome,
+      input.appliedHistoryEventId ?? null,
+      input.appliedAuditRef ?? null,
+      input.appliedFileVersionIds ? JSON.stringify(input.appliedFileVersionIds) : null,
+      input.appliedSourceResult ? JSON.stringify(input.appliedSourceResult) : null
     ]
   );
   return result.rows[0] ?? null;

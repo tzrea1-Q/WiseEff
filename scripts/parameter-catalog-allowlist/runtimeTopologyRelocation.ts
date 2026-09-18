@@ -24,6 +24,7 @@ const relocationPairSchema = z.object({
   old: boundaryViolationSchema,
   new: boundaryViolationSchema,
   sliceSha256: z.string().regex(/^[a-f0-9]{64}$/u),
+  sourceSliceSha256: z.string().regex(/^[a-f0-9]{64}$/u).optional(),
 }).strict();
 const relocationFileSchema = z.object({
   file: z.string(),
@@ -66,6 +67,12 @@ export type RelocationConfig = {
    * occurrence, so the historical records that recorded such changes leave it unset.
    */
   requireStableStructuralAnchor?: boolean;
+  /** Fixed successor decisions may additionally preserve ordinal within an anchor. */
+  requireStableByteOrder?: boolean;
+  /** Default true. B2 rewritten-slice records set false; historical records must leave unset. */
+  requireIdenticalSlice?: boolean;
+  /** Default true. B2 sets false so evidence/column may change; must not coarsen B1. */
+  requireUnchangedEvidence?: boolean;
 };
 
 const runtimeTopologyConfig: RelocationConfig = {
@@ -84,6 +91,21 @@ const postCutoverConfig: RelocationConfig = {
   files: [{ file: "server/modules/parameter-topology/postCutoverWorkflow.integration.test.ts", pairs: 29 }],
   totalPairs: 29,
   rejectAllowanceGrowth: true,
+};
+
+export const editServiceVersionIndexRelocationRecordPath =
+  "scripts/fixtures/parameter-catalog-allowlist/edit-service-version-index-relocation.json";
+const editServiceVersionIndexConfig: RelocationConfig = {
+  recordPath: editServiceVersionIndexRelocationRecordPath,
+  recordSha256: "3820ca839394df51fa317198f67ac7f9c4f1cead3c5d378119b51334f6271a65",
+  files: [
+    { file: "server/modules/parameter-topology/editService.ts", pairs: 26 },
+    { file: "server/modules/parameter-topology/editService.test.ts", pairs: 28 },
+    { file: "server/modules/parameter-topology/overlayWriteback.ts", pairs: 5 },
+  ],
+  totalPairs: 59,
+  rejectAllowanceGrowth: true,
+  requireStableStructuralAnchor: true,
 };
 
 /** Validate the independently reviewed 16-pair identity map before granting any alias. */
@@ -171,7 +193,10 @@ function validateRelocationRecord(value: unknown, input: RelocationInput, config
         file: old.file,
         reason: old.reason,
       }), "existing allowance");
-      for (const key of ["file", "family", "rule", "reason", "token", "evidence", "column", "trustedBaseSha"] as const) {
+      const unchangedKeys = config.requireUnchangedEvidence === false
+        ? (["file", "family", "rule", "reason", "token", "trustedBaseSha"] as const)
+        : (["file", "family", "rule", "reason", "token", "evidence", "column", "trustedBaseSha"] as const);
+      for (const key of unchangedKeys) {
         requireMatch(old[key] === next[key], `unchanged ${key}`);
       }
       // The scanner's stable structural anchor (family, rule, base-id) identifies the
@@ -192,8 +217,36 @@ function validateRelocationRecord(value: unknown, input: RelocationInput, config
       requireMatch(old.byteEnd <= source.length && next.byteEnd <= destination.length, "slice bounds");
       const oldBytes = source.subarray(old.byteStart, old.byteEnd);
       const nextBytes = destination.subarray(next.byteStart, next.byteEnd);
-      requireMatch(oldBytes.equals(nextBytes) && sha256(oldBytes) === pair.sliceSha256, "identical raw slice");
+      if (config.requireIdenticalSlice === false) {
+        requireMatch(
+          pair.sourceSliceSha256 === sha256(oldBytes) && pair.sliceSha256 === sha256(nextBytes),
+          "rewritten slice digests",
+        );
+      } else {
+        requireMatch(oldBytes.equals(nextBytes) && sha256(oldBytes) === pair.sliceSha256, "identical raw slice");
+      }
       pairs.push(pair);
+    }
+    if (config.requireStableByteOrder) {
+      const previousDest = new Map<string, number>();
+      const previousOld = new Map<string, number>();
+      for (const pair of [...section.pairs].sort((a, b) => a.old.byteStart - b.old.byteStart)) {
+        const anchor = config.requireUnchangedEvidence === false
+          ? JSON.stringify([pair.old.id.split(":").slice(0, 3).join(":"), pair.old.token])
+          : JSON.stringify([pair.old.id.split(":").slice(0, 3).join(":"),
+            pair.old.token, pair.old.evidence, pair.old.column]);
+        const lastDest = previousDest.get(anchor) ?? -1;
+        const lastOld = previousOld.get(anchor) ?? -1;
+        const destOk = pair.new.byteStart > lastDest
+          || (
+            config.requireUnchangedEvidence === false
+            && pair.new.byteStart === lastDest
+            && pair.old.byteStart === lastOld
+          );
+        requireMatch(destOk, "unchanged stable anchor byte order");
+        previousDest.set(anchor, pair.new.byteStart);
+        previousOld.set(anchor, pair.old.byteStart);
+      }
     }
   }
   requireMatch(oldIds.size === config.totalPairs && newIds.size === config.totalPairs, "complete reviewed mapping");
@@ -210,6 +263,61 @@ export async function applyReviewedRuntimeTopologyRelocation(
   existingRelocations: readonly RuntimeTopologyRelocation[] = [],
 ) {
   return runReviewedRelocationRecord(repoRoot, fixture, allowances, discovered, existingRelocations, runtimeTopologyConfig);
+}
+
+/** Historical authenticated observations, never current scanner evidence or active aliases. */
+export type HistoricalRelocationProof = {
+  pairs: RuntimeTopologyRelocationRecord["files"][number]["pairs"];
+};
+
+export function verifyHistoricalRuntimeTopologyRelocation(
+  repoRoot: string, fixture: BoundaryViolationFixture, allowances: readonly AllowlistEntry[],
+) {
+  return verifyHistoricalRelocationRecord(repoRoot, fixture, allowances, runtimeTopologyConfig, {
+    commit: "e31226b6cc06c2278230b810bb1becd8dbc1f32a",
+    tree: "d55df1260ea99a60fa38a3101a5e9f5af7c29fc8",
+  });
+}
+
+/** Called only with a private fixed reviewed configuration and Git provenance. */
+async function verifyHistoricalRelocationRecord(
+  repoRoot: string, fixture: BoundaryViolationFixture, allowances: readonly AllowlistEntry[],
+  config: RelocationConfig, provenance: { commit: string; tree: string },
+): Promise<HistoricalRelocationProof> {
+  const bytes = await readFile(resolve(repoRoot, config.recordPath));
+  requireMatch(sha256(bytes) === config.recordSha256, "reviewed record integrity");
+  const value: unknown = JSON.parse(bytes.toString("utf8"));
+  const record = relocationSchema.parse(value);
+  const git = (...args: string[]) => execFileSync("git", args, { cwd: repoRoot });
+  requireMatch(git("rev-parse", `${provenance.commit}^{tree}`).toString("utf8").trim() === provenance.tree, "historical tree identity");
+  const sourceByFile = new Map<string, Buffer>();
+  const destinationByFile = new Map<string, Buffer>();
+  for (const section of record.files) {
+    sourceByFile.set(section.file, git("show", `${record.trustedBaseSha}:${section.file}`));
+    destinationByFile.set(section.file, git("show", `${provenance.commit}:${section.file}`));
+  }
+  // These observations were authenticated by the unchanged historical record digest.
+  // Only the successor runner may validate fresh discoveries and return active aliases.
+  return { pairs: validateRelocationRecord(value, {
+    fixture, allowances, sourceByFile, destinationByFile,
+    discovered: record.files.flatMap((section) => section.pairs.map((pair) => pair.new)),
+  }, config) };
+}
+
+export function verifyHistoricalEditServiceVersionIndexRelocation(
+  repoRoot: string, fixture: BoundaryViolationFixture, allowances: readonly AllowlistEntry[],
+) {
+  return verifyHistoricalRelocationRecord(repoRoot, fixture, allowances, editServiceVersionIndexConfig, {
+    commit: "8ef8f25179c4be1f4f64d1cb3dfed953dbd1759f",
+    tree: "38f9040e456dcf87d575b6672161fba004bf8b69",
+  });
+}
+
+export function applyReviewedEditServiceVersionIndexRelocation(
+  repoRoot: string, fixture: BoundaryViolationFixture, allowances: readonly AllowlistEntry[],
+  discovered: readonly BoundaryViolation[], existingRelocations: readonly RuntimeTopologyRelocation[] = [],
+) {
+  return runReviewedRelocationRecord(repoRoot, fixture, allowances, discovered, existingRelocations, editServiceVersionIndexConfig);
 }
 
 export async function applyReviewedPostCutoverRelocation(

@@ -7,11 +7,7 @@ import {
   loadParameterCatalogFixture,
   type ParameterCatalogDatabase,
 } from "../../testing/parameterCatalog";
-import {
-  interceptExactReloadPinSql,
-  listReloadCandidateRows,
-  pinDtsReloadQueryable,
-} from "./repository";
+import { listReloadCandidateRows } from "./repository";
 import {
   DTS_COMPARISON_CONTRACT_VERSION,
   DTS_COMPARISON_FAMILY,
@@ -60,21 +56,8 @@ function assertCanonicalChecksum(contribution: DtsComparisonContribution) {
   expect(contribution.checksum).toBe(checksumDtsComparisonBytes(bytes));
 }
 
-describe("interceptExactReloadPinSql", () => {
-  it("replaces latest-revision locator fallback with an exact config-revision pin", () => {
-    const sql = [
-      "where logical_node_id = b.logical_node_id",
-      "      order by",
-      "        case when config_revision_id = br.config_revision_id then 0 else 1 end,",
-      "        config_revision_id desc",
-      "      limit 1",
-    ].join("\n");
-    const exact = interceptExactReloadPinSql(sql);
-    expect(exact).not.toContain("config_revision_id desc");
-    expect(exact).toContain("and config_revision_id = br.config_revision_id");
-  });
-
-  it("listReloadCandidateRows executes the exact config-revision pin rather than latest fallback", async () => {
+describe("listReloadCandidateRows exact pins", () => {
+  it("executes source SQL with exact property_key, config revision, and no specification_key fallback", async () => {
     const statements: string[] = [];
     const wrapped = {
       query: async (sql: string, _values?: unknown[]) => {
@@ -82,7 +65,6 @@ describe("interceptExactReloadPinSql", () => {
         return { rows: [], rowCount: 0 };
       },
     };
-    pinDtsReloadQueryable(wrapped);
     const rows = await listReloadCandidateRows(wrapped, {
       organizationId: "org-dts",
       projectId: "project-dts",
@@ -90,9 +72,10 @@ describe("interceptExactReloadPinSql", () => {
     expect(rows).toEqual([]);
     expect(statements.length).toBeGreaterThan(0);
     const haystack = statements.join("\n");
-    expect(haystack).not.toContain("config_revision_id desc");
+    expect(haystack).toContain("dps.property_key as property_key");
     expect(haystack).toContain("and config_revision_id = br.config_revision_id");
-    expect(haystack).toContain("dps.property_key");
+    expect(haystack).not.toContain("ps.specification_key");
+    expect(haystack).not.toContain("string_to_array");
   });
 });
 

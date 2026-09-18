@@ -2,17 +2,21 @@
 
 > English: [English](../../../exec-plans/active/2026-09-16-849-853-closure-todolist.md)
 
-状态：T0.6 本地交付完成，等待用户确认；未开 PR／合并。T1.1 及后续工作尚未开始。
-基线：2026-09-16 实时核验的 `origin/main@4010a600fbc6108ce84860d053eb6d88d7d484cc`。
+状态：**T2.2-OPS 本地候选完成。** T1.1 仍是未提交脏候选。T1.2–T2.2-OPS 仍是同一 Scratch 树上的额外脏工作。T2.2-OPS：[回执](849-inventory/t22-ops-operations-consumers-acceptance.md)。无 commit、正式 SEALED、PR、合并或 Issue 关闭。用户已解除剩余项之间的逐项「确认」；commit／PR／目标机／破坏性删除／Issue 仍需单独授权。
+基线：T1.1 重新拉取的 `origin/main@46b6068693942b95f7cba28ee5de6748a97170fa`；P0/T0.6 改动完整保留于新 Scratch 分支。
 规格：[#849](https://github.com/tzrea1-Q/WiseEff/issues/849)。唯一执行状态：[#853](https://github.com/tzrea1-Q/WiseEff/issues/853)。本文件细化执行顺序和验收条件；每项交付后同步 Issue 及中英版本。
 
+用户在明确本任务测试库范围后，已明确接受[四项修复契约](849-inventory/source-occurrence-review-repair-design.md)，包括修订未发布 Scratch 0151。现有任务 lane／receipt 和原冻结证据继续保留；不授权外部部署、重写已应用 checksum、PR／合并或开始下一 todo。
+
 ## 执行约定
+
+T1.1 记录：[来源身份威胁矩阵及已确认决策](849-inventory/source-occurrence-threat-matrix.md)。用户接受实例生命周期、未解回填整体中止策略，并授权 R1–R4、R5／R6 修复。本地解析、迁移、有界初始化、真实鉴权 DTS／JSON 来源流程、独立评审及 PC 观察完成此本地 todo。未执行正式 exact-SHA 封板或交付，不等同所有 todo、S1／S2 或目标验收。Issue 同步留待另获授权的交付动作，本地停止不发布 GitHub 变更。
 
 用户于 2026-09-16 明确修订本项目：浏览器验收统一为 **单 PC 1440x900**。它替代 #849/#853 及关联计划中所有面向后续工作的三视口要求，包含专项浏览器矩阵。既有平板／手机结果保留为历史证据。全部路由、角色、操作、键盘／焦点、截图／snapshot、console/network 和 S1/S2 要求继续有效。T0.6 同步本项目专属自动化视口用例和覆盖描述；其他项目的测试不在本次调整范围。
 
 主智能体负责集成，一次推进一个 todo。完成后报告实际候选／提交／PR 状态、验证、产物和剩余限制，**等待用户确认后再开始下一项**。用户确认、实现完成和合并完成分别记录。等待确认时，不让后台子智能体提前实施下一项。
 
-所有子智能体，包括独立评审者，均使用 **`gpt-5.6-luna`、`reasoning_effort=xhigh`**，即该模型当前支持的最高档。检查派发结果；模型不可用时如实报告，不静默替换。任务包写清结果、路径归属、契约和停止边界；仅主智能体在用户授权内发布／合并。必需的 Spec／Standards 评审保持与实现者独立。
+所有子智能体，包括独立评审者，均使用 **`gpt-5.6-luna`、当前支持的最高推理档**（本运行时为 `max`，历史记录使用 `xhigh`）。检查派发结果；模型不可用时如实报告，不静默替换。任务包写清结果、路径归属、契约和停止边界；仅主智能体在用户授权内发布／合并。必需的 Spec／Standards 评审保持与实现者独立。
 
 T0.1–T0.5 已分别通过 #869、#870、#872、#876、#875 交付，另有 main-red 修复 #873；证据仍绑定原候选，后续保留回归覆盖，不重新开发。#847 已关闭，复用已有工作区；#824 仍为 partial Draft，不计作已具备交付证据。TD-124 的八项 YAML/TOML/ENV 支持继续延期，明确格式拒绝与厂商 YAML 元数据支持仍在本轮范围内。
 
@@ -22,25 +26,25 @@ T0.1–T0.5 已分别通过 #869、#870、#872、#876、#875 交付，另有 mai
 
 - [x] **P0 — 创建完整清单并记录单 PC 修订。** 建立中英清单，将用户修订同步到 #849/#853，并链接已有计划；执行文档和 diff 检查，提交本准备项供用户确认。不据此关闭 T0.6。
 - [x] **T0.6 — 当前文档与验收定义对账。** 按最新 main 和合并 PR 核对三份 active 文档，解决 B1/B4/B5、源文件、归档、S2、Hosted 的矛盾叙述，保留带日期的历史证据。把本项目的视口循环、需求／操作 ID 和中英覆盖地图同步为单 PC；执行受影响检查、`docs:check`、`git diff --check`。后续 schema 工作前重新核对 migration/ADR/TD 编号（0150 已存在）。后续 todo 继续遵守文档同步门禁。
-- [ ] **T1.1 — B1 来源身份与 DTS/JSON 完整流程。** schema 实施前完成威胁矩阵与独立 Spec 评审。按已决方案增加 source-occurrence identity，DTS 原位回填且不改变既有 Binding ID，覆盖 observations/matches、`resolve_current_binding()`、`protect_binding_identity()`，证明过渡读取等值后切换。版本 pin 保持属于 ProjectValue；校准 SQL/ACL 与触发器顺序，在完整矩阵通过前保留 `logical_node_id`；JSON ingest 归属 `parameter-files`，DTS ingest 归属 `parameter-topology`。验证 instance/config-set/file 隔离及精确 JSON Pointer/DTS locator，通过真实鉴权、专用 PostgreSQL 和源存储走完 import preview → candidate → 真实草稿 → 提交／审批／生效 → 源重解析 → 导出／重导入。重复／歧义键、不支持语法、缺失／过期定位、危险写回均被拒绝；保留标量、精度、数组／cells、字面点号／斜线键、重复节点及无关源内容。序列化变化可审阅，延期格式继续明确拒绝。
-- [ ] **T1.2 — B4 capability v4 与 charging_core 主体。** 能力实施前完成 R3 威胁矩阵与独立 Spec 评审。 支持递归／嵌套数组、mixed item schema、数组 description 和元数据声明的 min/max 基数，限定深度／容器容量并对未知关键词 fail-closed；发布受审 NodeType 主体。v1/v2/v3 历史含义不变，v3 consumer 在写入前拒绝 v4。不从示例／观测行数推导约束，不扁平化 cell matrix。通过编译器、准入、运行时、历史发布及真实 PostgreSQL 检查和独立评审。
-- [ ] **T1.3 — 完整 successor、真实源与 B2 物化。** 逐输入记录 source digest、精确 locator、旧／正式身份、preserve/transform/merge/exclude 处置及 predecessor lineage；结构项／歧义夹具显式排除，当前范围字段／身份未解决或存在不明遗漏时阻止发布，TD-124 不产生活动绑定／值。对齐全部 125 项输入：113 厂商＋4 个本轮 DTS/JSON＋8 个 TD-124 延期项；保留语义字段、来源以及各项目初始／推荐值。每个板级业务出现都对应受审真实声明，用实测身份解释历史悬空目标计数差异。证明 `buildCompleteSuccessor` 携带 ConfigurationSchema，退役 acme 主体／别名／定义的新选择入口，保留身份、历史发布及回执。取得受审 `csub_drv_sc8562` Driver placement 容量，缺容量时 B6 继续 fail-closed。项目归属缺失／歧义时阻止目标计划，沿用真实审阅／授权、初始化锁和单一 in-flight 约束，不用直接 SQL 或伪造批准初始化；执行前后捕获非参数身份／字段／关系／共享对象 checksum 的精确快照。经真实 publisher/installer 和初始化模块证明 Atlas/Aurora/Nebula **各 124、合计 372 的精确 Binding identity set**；验证确定性、顺序无关、无不明遗漏、完成重放无操作、普通启动／升级／发布不重置用户值，自定义项目／非参数数据保持完整。本地初始化不算目标执行。
-- [ ] **T2.4 — 真实 DTS 工具链。** T1.3 后，以真实 `dtc`、`fdtoverlay` 验证所有最终 demo 基底；消除持久 dangling-anchor stub，证明源／主体归属。保留演示标识及工具／产物证据，在 UI／目标验收前修复实际源缺陷。
-- [ ] **T2.1 — canonical 真数据完整参数 UI。** T1.3 后，集成 #847 和 canonical pending-draft adapter；验证创建／编辑／删除／重载、理由／合格角色选择、驳回／撤回／重提、角色分离、审批／生效、源 diff、历史／比较／基线／导出／重导入。覆盖定义／模块导航、搜索／过滤／分页／计数、注册、初始化、诚实空态／错误态。在真实服务、单 PC 1440x900 下覆盖全部所需角色和 DTS/JSON 操作，留存截图／snapshot、键盘／焦点与 console/network 证据。保留归档提示关闭／不可编辑、授权 gone 与跨组织隐藏 404，禁止归档信息泄漏；通过既有 observation/authoring 流程修复未知导入行的误导预览。
+- [x] **T1.1 — B1 来源身份与 DTS/JSON 完整流程。** schema 实施前完成威胁矩阵与独立 Spec 评审。按已决方案增加 source-occurrence identity，DTS 原位回填且不改变既有 Binding ID，覆盖 observations/matches、`resolve_current_binding()`、`protect_binding_identity()`，证明过渡读取等值后切换。版本 pin 保持属于 ProjectValue；校准 SQL/ACL 与触发器顺序，在完整矩阵通过前保留 `logical_node_id`；JSON ingest 归属 `parameter-files`，DTS ingest 归属 `parameter-topology`。验证 instance/config-set/file 隔离及精确 JSON Pointer/DTS locator，通过真实鉴权、专用 PostgreSQL 和源存储走完 import preview → candidate → 真实草稿 → 提交／审批／生效 → 源重解析 → 导出／重导入。重复／歧义键、不支持语法、缺失／过期定位、危险写回均被拒绝；保留标量、精度、数组／cells、字面点号／斜线键、重复节点及无关源内容。序列化变化可审阅，延期格式继续明确拒绝。
+- [x] **T1.2 — B4 capability v4 与 charging_core 主体。** 能力实施前完成 R3 威胁矩阵与独立 Spec 评审。 支持递归／嵌套数组、mixed item schema、数组 description 和元数据声明的 min/max 基数，限定深度／容器容量并对未知关键词 fail-closed；发布受审 NodeType 主体。v1/v2/v3 历史含义不变，v3 consumer 在写入前拒绝 v4。不从示例／观测行数推导约束，不扁平化 cell matrix。通过编译器、准入、运行时、历史发布及真实 PostgreSQL 检查和独立评审。仅本地候选；见 [capability-v4-acceptance.md](849-inventory/capability-v4-acceptance.md)。
+- [x] **T1.3 — 完整 successor、真实源与 B2 物化。** 逐输入记录 source digest、精确 locator、旧／正式身份、preserve/transform/merge/exclude 处置及 predecessor lineage；结构项／歧义夹具显式排除，当前范围字段／身份未解决或存在不明遗漏时阻止发布，TD-124 不产生活动绑定／值。对齐全部 125 项输入：113 厂商＋4 个本轮 DTS/JSON＋8 个 TD-124 延期项；保留语义字段、来源以及各项目初始／推荐值。每个板级业务出现都对应受审真实声明，用实测身份解释历史悬空目标计数差异。证明 `buildCompleteSuccessor` 携带 ConfigurationSchema，退役 acme 主体／别名／定义的新选择入口，保留身份、历史发布及回执。取得受审 `csub_drv_sc8562` Driver placement 容量，缺容量时 B6 继续 fail-closed。项目归属缺失／歧义时阻止目标计划，沿用真实审阅／授权、初始化锁和单一 in-flight 约束，不用直接 SQL 或伪造批准初始化；执行前后捕获非参数身份／字段／关系／共享对象 checksum 的精确快照。经真实 publisher/installer 和初始化模块证明 Atlas/Aurora/Nebula **各 124、合计 372 的精确 Binding identity set**；验证确定性、顺序无关、无不明遗漏、完成重放无操作、普通启动／升级／发布不重置用户值，自定义项目／非参数数据保持完整。本地初始化不算目标执行。仅本地候选；剩余 P2 见 [t13-complete-successor-acceptance.md](849-inventory/t13-complete-successor-acceptance.md)。
+- [x] **T2.4 — 真实 DTS 工具链。** T1.3 后，以真实 `dtc`、`fdtoverlay` 验证所有最终 demo 基底；消除持久 dangling-anchor stub，证明源／主体归属。保留演示标识及工具／产物证据，在 UI／目标验收前修复实际源缺陷。仅本地候选；剩余 P2 见 [t24-real-dts-toolchain-acceptance.md](849-inventory/t24-real-dts-toolchain-acceptance.md)。
+- [x] **T2.1 — canonical 真数据完整参数 UI。** T1.3 后，集成 #847 和 canonical pending-draft adapter；验证创建／编辑／删除／重载、理由／合格角色选择、驳回／撤回／重提、角色分离、审批／生效、源 diff、历史／比较／基线／导出／重导入。覆盖定义／模块导航、搜索／过滤／分页／计数、注册、初始化、诚实空态／错误态。在真实服务、单 PC 1440x900 下覆盖全部所需角色和 DTS/JSON 操作，留存截图／snapshot、键盘／焦点与 console/network 证据。保留归档提示关闭／不可编辑、授权 gone 与跨组织隐藏 404，禁止归档信息泄漏；通过既有 observation/authoring 流程修复未知导入行的误导预览。仅本地候选；剩余 P2 见 [t21-parameter-ui-acceptance.md](849-inventory/t21-parameter-ui-acceptance.md)。
 
 T1.3 后串行完成下列十一项 T2.2 子任务。每项包含该族 runtime route、client、job/script 和 mock port；逐条归类为 canonical current、精确 canonical history 或 archived notice。复用共享 ratchet，先修行为再移除 allowance，执行相关测试及可见变更的 PC 验收并记录实测减少量。历史 3513 是需要复测的 allowance 基线，不代表每项都是生产调用。
 
-- [ ] **T2.2-CGH — 目录／治理消费者：** 注册、生命周期、定义身份、搜索／详情／计数及发布引用。
-- [ ] **T2.2-TOP — 拓扑消费者：** 精确 binding/source occurrence 归属，结构／节点启用意图与值草稿分离。
-- [ ] **T2.2-PRJ — 项目消费者：** 已初始化／未初始化／自定义项目状态、配置实例和 canonical 值。
-- [ ] **T2.2-FIL — 文件消费者：** candidate/source/version/config-set 成员关系、canonical 历史、比较、基线、导出。
-- [ ] **T2.2-AGT — Agent 消费者：** canonical 读取与受治草稿，可信调用／来源、组织／项目鉴权和人类批准；旧 checkpoint/tool 参数不能复活 legacy 写入。
-- [ ] **T2.2-LOG — 日志消费者：** 推荐使用 canonical current 引用，保留历史分析记录与归档引用展示。
-- [ ] **T2.2-DBG — 调试消费者：** 观测与项目配置值分离，身份精确绑定，批准后的 promotion 创建 canonical 草稿。
-- [ ] **T2.2-DTS — 重载消费者：** 真实绑定的 handoff、selection、verify、promotion、residue 替代 skipped placeholder，保留 binding/source pin，软件文件不进入设备 overlay 路径。
-- [ ] **T2.2-KNW — 知识消费者：** canonical 当前引用、原始历史记录、授权旧链接仅提示归档、跨组织不泄漏。
-- [ ] **T2.2-MOD — 模块消费者：** 显式 placement/subject kind、注册／容量行为、canonical 模块搜索／计数。
-- [ ] **T2.2-OPS — 运维消费者：** 调度／后台／脚本和重启路径使用 canonical 模块，不重装种子或复活归档当前状态。
+- [x] **T2.2-CGH — 目录／治理消费者：** 注册、生命周期、定义身份、搜索／详情／计数及发布引用。仅本地候选；剩余 P2 见 [t22-cgh-catalog-governance-acceptance.md](849-inventory/t22-cgh-catalog-governance-acceptance.md)。
+- [x] **T2.2-TOP — 拓扑消费者：** 精确 binding/source occurrence 归属，结构／节点启用意图与值草稿分离。仅本地候选；剩余 P2 见 [t22-top-topology-consumers-acceptance.md](849-inventory/t22-top-topology-consumers-acceptance.md)。
+- [x] **T2.2-PRJ — 项目消费者：** 已初始化／未初始化／自定义项目状态、配置实例和 canonical 值。仅本地候选；剩余 P2 见 [t22-prj-project-consumers-acceptance.md](849-inventory/t22-prj-project-consumers-acceptance.md)。
+- [x] **T2.2-FIL — 文件消费者：** candidate/source/version/config-set 成员关系、canonical 历史、比较、基线、导出。仅本地候选；剩余 P2 见 [t22-fil-file-consumers-acceptance.md](849-inventory/t22-fil-file-consumers-acceptance.md)。
+- [x] **T2.2-AGT — Agent 消费者：** canonical 读取与受治草稿，可信调用／来源、组织／项目鉴权和人类批准；旧 checkpoint/tool 参数不能复活 legacy 写入。仅本地候选；剩余 P2 见 [t22-agt-agent-consumers-acceptance.md](849-inventory/t22-agt-agent-consumers-acceptance.md)。
+- [x] **T2.2-LOG — 日志消费者：** 推荐使用 canonical current 引用，保留历史分析记录与归档引用展示。仅本地候选；剩余 P2 见 [t22-log-log-consumers-acceptance.md](849-inventory/t22-log-log-consumers-acceptance.md)。
+- [x] **T2.2-DBG — 调试消费者：** 观测与项目配置值分离，身份精确绑定，批准后的 promotion 创建 canonical 草稿。仅本地候选；剩余 P2 见 [t22-dbg-debug-consumers-acceptance.md](849-inventory/t22-dbg-debug-consumers-acceptance.md)。
+- [x] **T2.2-DTS — 重载消费者：** 真实绑定的 handoff、selection、verify、promotion、residue 替代 skipped placeholder，保留 binding/source pin，软件文件不进入设备 overlay 路径。仅本地候选；剩余 P2 见 [t22-dts-reload-consumers-acceptance.md](849-inventory/t22-dts-reload-consumers-acceptance.md)。
+- [x] **T2.2-KNW — 知识消费者：** canonical 当前引用、原始历史记录、授权旧链接仅提示归档、跨组织不泄漏。仅本地候选；剩余 P2 见 [t22-knw-knowledge-consumers-acceptance.md](849-inventory/t22-knw-knowledge-consumers-acceptance.md)。
+- [x] **T2.2-MOD — 模块消费者：** 显式 placement/subject kind、注册／容量行为、canonical 模块搜索／计数。仅本地候选；剩余 P2 见 [t22-mod-module-consumers-acceptance.md](849-inventory/t22-mod-module-consumers-acceptance.md)。
+- [x] **T2.2-OPS — 运维消费者：** 调度／后台／脚本和重启路径使用 canonical 模块，不重装种子或复活归档当前状态。仅本地候选；剩余 P2 见 [t22-ops-operations-consumers-acceptance.md](849-inventory/t22-ops-operations-consumers-acceptance.md)。
 - [ ] **T1.4 — 最终退出 legacy，并验收 T2.2 总体结果。** 十一族完成后证明 legacy allowance 为零，不弱化 checker 或隐藏引用；继任契约满足后清除 fallback/mixed read/dual-write 并关闭 TD-125。证明生产角色、HTTP、worker 均拒绝旧当前数据读写；按重建 epoch 屏蔽受影响的旧草稿、批准、成员关系、队列、cache/checkpoint，保留无关作业／历史，重启后仍拒绝旧重放。
 - [ ] **T2.3a — 归档处置／恢复决策与独立评审。** 枚举参数专属关系、FK/trigger/view 闭包、源字节、嵌入历史引用、最小 stub 与共享保留例外。对账归档图／计数／字节／digest，定义在线残留检查、离线保管／保留期／授权取阅及包含切换后写入处理的整套恢复。独立评审精确删除范围和恢复证据；执行前向用户提交具体破坏性操作，取得单独批准。
 - [ ] **T2.3b — 实现并验证获批处置。** 按 T2.3a 处置表接通先验证归档再删除及可重放／续跑阶段记录；证明归档损坏／缺失和源／对象失败时拒绝推进，无悬空引用、非参数级联删除或未授权在线旧正文。破坏性执行需上述批准；保留历史／共享例外并保留离线归档。

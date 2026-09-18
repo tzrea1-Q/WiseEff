@@ -24,8 +24,12 @@ import type {
   ReleaseArtifactRecord,
 } from "../persistence/types";
 
-export const CATALOG_CAPABILITY_CONTRACT_REVISION = "catalog-capability/v3" as const;
+export const CATALOG_CAPABILITY_CONTRACT_REVISION = "catalog-capability/v4" as const;
+export const CATALOG_CAPABILITY_V3_REVISION = "catalog-capability/v3" as const;
 export const CATALOG_CAPABILITY_ALLOW_LIST_ID = "page-historical-definition-content" as const;
+export type CatalogCapabilityAllowListRevision =
+  | typeof CATALOG_CAPABILITY_V3_REVISION
+  | typeof CATALOG_CAPABILITY_CONTRACT_REVISION;
 
 export const M1_VALUE_SCHEMA_TYPES = [
   "integer",
@@ -67,9 +71,10 @@ export type SupportedNullSchema = {
 
 export type SupportedArraySchema = {
   readonly type: "array";
-  readonly items?:
-    | { readonly type: "string" }
-    | { readonly type: "integer"; readonly minimum?: number; readonly maximum?: number };
+  readonly description?: string;
+  readonly minItems?: number;
+  readonly maxItems?: number;
+  readonly items?: SupportedValueSchema;
 };
 
 export type SupportedMixedSchema = {
@@ -92,7 +97,7 @@ export type SupportedDefinitionContent = {
   readonly description?: string;
   readonly unit?: M1AllowedUnit;
   readonly valueSchema: SupportedValueSchema;
-  readonly examples?: readonly (number | string | boolean | null)[];
+  readonly examples?: readonly ContractJsonValue[];
   /**
    * Lifecycle the revision is minted with. Absent means `active` for a new
    * definition; the reversible lifecycle operations set it explicitly.
@@ -264,17 +269,17 @@ export type BuildCompleteSuccessorInput = {
 };
 
 export type CapabilityAllowListIdentity = {
-  readonly revision: typeof CATALOG_CAPABILITY_CONTRACT_REVISION;
+  readonly revision: CatalogCapabilityAllowListRevision;
   readonly id: typeof CATALOG_CAPABILITY_ALLOW_LIST_ID;
   readonly valueTypes: readonly M1ValueSchemaType[];
   readonly units: readonly (typeof M1_ALLOWED_UNITS)[number][];
   readonly jsonSchemaKeywords: {
-    readonly integer: readonly ["type", "minimum", "maximum"];
-    readonly number: readonly ["type", "minimum", "maximum"];
-    readonly string: readonly ["type"];
-    readonly boolean: readonly ["type"];
-    readonly null: readonly ["type"];
-    readonly array: readonly ["type", "items"];
+    readonly integer: readonly string[];
+    readonly number: readonly string[];
+    readonly string: readonly string[];
+    readonly boolean: readonly string[];
+    readonly null: readonly string[];
+    readonly array: readonly string[];
   };
   readonly budgets: {
     readonly maxDisplayNameChars: number;
@@ -282,6 +287,9 @@ export type CapabilityAllowListIdentity = {
     readonly maxDescriptionChars: number;
     readonly maxExamples: number;
     readonly maxChangeSetOps: number;
+    readonly maxArraySchemaDepth?: number;
+    readonly maxSchemaContainerNodes?: number;
+    readonly maxItemsBound?: number;
   };
 };
 

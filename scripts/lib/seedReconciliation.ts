@@ -60,7 +60,7 @@ export type SourceRecord = {
 };
 
 export type FormalSubject = {
-  readonly kind: "driver" | "nodename" | "compatibility-item";
+  readonly kind: "driver" | "nodename" | "compatibility-item" | "configuration-schema";
   readonly value: string;
 };
 
@@ -223,16 +223,34 @@ const vendorSubject = (
   throw new Error("vendor document declares neither compatible nor nodename");
 };
 
+const ARRAY_OR_MIXED_SHAPES = new Set([
+  "array",
+  "mixed",
+  "unknown",
+  "u32-array",
+  "string-list",
+  "phandle-list",
+  "nested-string-array",
+  "nested-u32-array",
+]);
+
 /**
- * Mirrors the production `foldConstraints` (`vendorAdapter.ts`) blocker rule. The allowed-key set is
- * the only importer rule duplicated here; it is recorded as the exact required transformation rather
- * than being repaired in the source or the importer.
+ * Mirrors production `foldConstraints`: minimum/maximum on scalars; cells/description
+ * on array or mixed shapes. Remaining extra keys stay blockers.
  */
-const unhandledVendorConstraints = (constraints: unknown): readonly string[] => {
+const unhandledVendorConstraints = (
+  constraints: unknown,
+  valueShape: unknown,
+): readonly string[] => {
   if (constraints === null || typeof constraints !== "object" || Array.isArray(constraints)) return [];
   const keys = Object.keys(constraints);
   if (keys.length === 0) return [];
   const allowed = new Set(["minimum", "maximum"]);
+  const shape = typeof valueShape === "string" ? valueShape : undefined;
+  if (shape !== undefined && ARRAY_OR_MIXED_SHAPES.has(shape)) {
+    allowed.add("cells");
+    allowed.add("description");
+  }
   return keys.filter((key) => !allowed.has(key)).sort();
 };
 
@@ -293,7 +311,7 @@ const buildVendorInputs = (
         continue;
       }
 
-      const extras = unhandledVendorConstraints(property.constraints);
+      const extras = unhandledVendorConstraints(property.constraints, property.valueShape);
       const blocked = extras.length > 0;
       const constraints = property.constraints as Readonly<Record<string, unknown>> | undefined;
       const content: Record<string, unknown> = {
@@ -412,6 +430,12 @@ type PowerManagementItem = {
 const COMPATIBILITY_SOURCE_ROOT = "src/config/seed-sources";
 const COMPATIBILITY_SOURCE_PROJECTS = ["atlas", "aurora", "nebula"] as const;
 
+const POWER_CONFIG_SUBJECT: FormalSubject = {
+  kind: "configuration-schema",
+  value: "wiseeff.power-config",
+};
+const CHARGING_CORE_SUBJECT: FormalSubject = { kind: "nodename", value: "charging_core" };
+
 const COMPATIBILITY_REAL_SOURCE: Record<
   string,
   {
@@ -419,31 +443,74 @@ const COMPATIBILITY_REAL_SOURCE: Record<
     readonly format: "json" | "dts";
     readonly locator: string;
     readonly subjectSelection: string;
+    readonly formalSubject: FormalSubject;
+    readonly selector: string;
+    readonly propertyKey: string;
+    readonly disposition: SeedDisposition;
+    readonly transformationKind: string;
+    readonly transformationDetail: string;
+    readonly reason: string;
   }
 > = {
   charge_voltage_limit_mv: {
     fileName: "power-config.json",
     format: "json",
-    locator: "charger.cv.limitMv",
-    subjectSelection: "requires-configuration-schema-subject",
+    locator: "/charger.cv.limitMv",
+    subjectSelection: "configuration-schema:wiseeff.power-config",
+    formalSubject: POWER_CONFIG_SUBJECT,
+    selector: "configuration-schema-id=wiseeff.power-config",
+    propertyKey: "charger.cv.limitMv",
+    disposition: "preserve",
+    transformationKind: "identity-allocated-onto-configuration-schema",
+    transformationDetail:
+      "JSON compatibility content and project values are preserved; formal identity is the reviewed ConfigurationSchema wiseeff.power-config with literal dotted property keys.",
+    reason:
+      "JSON compatibility item is in the current round; content is preserved and identity is allocated on configuration-schema:wiseeff.power-config.",
   },
   battery_temp_target_c: {
     fileName: "power-config.json",
     format: "json",
-    locator: "battery.thermal.targetTempC",
-    subjectSelection: "requires-configuration-schema-subject",
+    locator: "/battery.thermal.targetTempC",
+    subjectSelection: "configuration-schema:wiseeff.power-config",
+    formalSubject: POWER_CONFIG_SUBJECT,
+    selector: "configuration-schema-id=wiseeff.power-config",
+    propertyKey: "battery.thermal.targetTempC",
+    disposition: "preserve",
+    transformationKind: "identity-allocated-onto-configuration-schema",
+    transformationDetail:
+      "JSON compatibility content and project values are preserved; formal identity is the reviewed ConfigurationSchema wiseeff.power-config with literal dotted property keys.",
+    reason:
+      "JSON compatibility item is in the current round; content is preserved and identity is allocated on configuration-schema:wiseeff.power-config.",
   },
   dts_fast_charge_profile_matrix: {
     fileName: "charging-thermal.dts",
     format: "dts",
-    locator: "charging_core/fast-charge-profile-matrix",
-    subjectSelection: "pending-reviewed-subject-selection",
+    locator: "wiseeff_node_type_demo/charging_core/fast-charge-profile-matrix",
+    subjectSelection: "node-type:charging_core",
+    formalSubject: CHARGING_CORE_SUBJECT,
+    selector: "nodename=charging_core",
+    propertyKey: "fast-charge-profile-matrix",
+    disposition: "merge",
+    transformationKind: "merge-compatibility-locator-into-vendor-definition",
+    transformationDetail:
+      "DTS compatibility locator merges onto vendor NodeType charging_core property fast-charge-profile-matrix; the old power-management slug stays oldIdentity and no extra binding is created.",
+    reason:
+      "DTS compatibility locator wiseeff_node_type_demo/charging_core/fast-charge-profile-matrix merges onto vendor node-type:charging_core; not an extra definition or binding.",
   },
   battery_thermal_derate_curve: {
     fileName: "charging-thermal.dts",
     format: "dts",
-    locator: "charging_core/battery-thermal-derate-curve",
-    subjectSelection: "pending-reviewed-subject-selection",
+    locator: "wiseeff_node_type_demo/charging_core/battery-thermal-derate-curve",
+    subjectSelection: "node-type:charging_core",
+    formalSubject: CHARGING_CORE_SUBJECT,
+    selector: "nodename=charging_core",
+    propertyKey: "battery-thermal-derate-curve",
+    disposition: "merge",
+    transformationKind: "merge-compatibility-locator-into-vendor-definition",
+    transformationDetail:
+      "DTS compatibility locator merges onto vendor NodeType charging_core property battery-thermal-derate-curve; the old power-management slug stays oldIdentity and no extra binding is created.",
+    reason:
+      "DTS compatibility locator wiseeff_node_type_demo/charging_core/battery-thermal-derate-curve merges onto vendor node-type:charging_core; not an extra definition or binding.",
   },
 };
 
@@ -483,7 +550,10 @@ const buildCompatibilityInputs = (
     const sourceLocator = `/parameterLibrary/${index}`;
     const formatFamily = formatFamilyOf(item.configFormat);
     const scope = CURRENT_COMPATIBILITY_FORMATS.includes(formatFamily) ? "current" : "deferred";
-    const subject: FormalSubject = { kind: "compatibility-item", value: item.id };
+    const spec = COMPATIBILITY_REAL_SOURCE[item.name];
+    const subject: FormalSubject = spec?.formalSubject ?? { kind: "compatibility-item", value: item.id };
+    const propertyKey = spec?.propertyKey ?? item.name;
+    const selector = spec?.selector ?? `power-management:${item.id}`;
     const projectValues = Object.fromEntries(
       Object.keys(item.values)
         .sort(compareStrings)
@@ -518,10 +588,10 @@ const buildCompatibilityInputs = (
       sourceKind: "power-management-parameter-library-item" as const,
       oldIdentity: { kind: "power-management-id", value: item.id },
       formalSubject: subject,
-      selector: `power-management:${item.id}`,
-      propertyKey: item.name,
+      selector,
+      propertyKey,
       formatFamily,
-      definitionId: stableDefinitionId(subject, item.name),
+      definitionId: stableDefinitionId(subject, propertyKey),
       content: {
         configFormat: item.configFormat,
         description: item.description,
@@ -535,7 +605,6 @@ const buildCompatibilityInputs = (
       projectValues,
     };
     if (scope === "current") {
-      const spec = COMPATIBILITY_REAL_SOURCE[item.name];
       const realSource = spec
         ? {
             kind: "reviewed-project-source",
@@ -561,12 +630,15 @@ const buildCompatibilityInputs = (
         ...(realSource ? { realSource } : {}),
         scope: "current",
         transformation: {
-          kind: "identity-allocated-content-preserved",
+          kind: spec?.transformationKind ?? "identity-allocated-content-preserved",
           detail:
+            spec?.transformationDetail ??
             "Compatibility item content and project values are carried over unchanged; the old slug id is retained as oldIdentity and a stable definition identity is allocated from the property key.",
         },
-        disposition: "preserve",
-        reason: `${formatFamily} compatibility item is in the current round; identity and content are carried over unchanged.`,
+        disposition: spec?.disposition ?? "preserve",
+        reason:
+          spec?.reason ??
+          `${formatFamily} compatibility item is in the current round; identity and content are carried over unchanged.`,
       });
     } else {
       inputs.push({
@@ -792,7 +864,7 @@ export const buildSeedReconciliation = (rootDir: string = process.cwd()): SeedRe
       dispositionVocabulary: ["preserve", "transform", "merge", "exclude"],
       deferredDisposition: "defer",
       currentRoundRule:
-        "All 113 canonical vendor definitions plus the 4 power-management.json items whose configFormat family is JSON or DTS are the current round; the 8 YAML/TOML/ENV compatibility items are deferred to TD-124 and create no seeded binding or value this round.",
+        "All 115 canonical vendor definitions (113 prior plus charging_core NodeType fast-charge-profile-matrix and battery-thermal-derate-curve) plus the 4 power-management.json items whose configFormat family is JSON or DTS are the current round; the 8 YAML/TOML/ENV compatibility items are deferred to TD-124 and create no seeded binding or value this round. T1.3 still plans 124 bindings per project: the two new vendor properties are the formal subject for the two DTS compatibility locators, not extra bindings.",
       countsArePlanned:
         "The binding counts under plannedInventory are PLANNED counts derived from this manifest. They are not achieved runtime facts and are not asserted as such.",
     },
@@ -888,13 +960,13 @@ export const buildSeedReconciliation = (rootDir: string = process.cwd()): SeedRe
     },
     conservation: {
       inputsRecorded: inputs.length,
-      inputsExpected: 125,
+      inputsExpected: 127,
       vendorInputsRecorded: vendor.inputs.length,
-      vendorInputsExpected: 113,
+      vendorInputsExpected: 115,
       compatibilityInputsRecorded: compatibility.inputs.length,
       compatibilityInputsExpected: 12,
       currentInputsRecorded: currentInputs.length,
-      currentInputsExpected: 117,
+      currentInputsExpected: 119,
       deferredInputsRecorded: deferredInputs.length,
       deferredInputsExpected: 8,
       vendorRawPropertyEntriesRecorded: vendor.rawPropertyEntries,
@@ -981,12 +1053,12 @@ export const renderSeedReconciliationReport = (manifest: SeedReconciliationManif
     table(
       ["Measure", "Planned", "Measured"],
       [
-        ["Total inputs", 125, num("totalInputs")],
-        ["Vendor inputs", 113, num("vendorInputs")],
+        ["Total inputs", 127, num("totalInputs")],
+        ["Vendor inputs", 115, num("vendorInputs")],
         ["Compatibility inputs", 12, num("compatibilityInputs")],
-        ["Current round", 117, num("currentInputs")],
+        ["Current round", 119, num("currentInputs")],
         ["Deferred to TD-124", 8, num("deferredInputs")],
-        ["Vendor raw property entries", 135, num("vendorRawPropertyEntries")],
+        ["Vendor raw property entries", 137, num("vendorRawPropertyEntries")],
         ["Vendor structural entries excluded", 22, num("vendorStructuralExcluded")],
       ],
     ),
@@ -1164,14 +1236,14 @@ export const checkSeedReconciliation = (options: {
     return typeof value === "number" ? value : fallback;
   };
   const expectedCounts: readonly (readonly [string, number, number])[] = [
-    ["totalInputs", conservationNumber("inputsExpected", 125), manifest.summary.totalInputs as number],
-    ["vendorInputs", conservationNumber("vendorInputsExpected", 113), manifest.summary.vendorInputs as number],
+    ["totalInputs", conservationNumber("inputsExpected", 127), manifest.summary.totalInputs as number],
+    ["vendorInputs", conservationNumber("vendorInputsExpected", 115), manifest.summary.vendorInputs as number],
     [
       "compatibilityInputs",
       conservationNumber("compatibilityInputsExpected", 12),
       manifest.summary.compatibilityInputs as number,
     ],
-    ["currentInputs", conservationNumber("currentInputsExpected", 117), manifest.summary.currentInputs as number],
+    ["currentInputs", conservationNumber("currentInputsExpected", 119), manifest.summary.currentInputs as number],
     ["deferredInputs", conservationNumber("deferredInputsExpected", 8), manifest.summary.deferredInputs as number],
   ];
   for (const [label, expected, actual] of expectedCounts) {
@@ -1189,7 +1261,7 @@ export const renderSanitizedSummary = (manifest: SeedReconciliationManifest): st
     `  scope: current=${summary.currentInputs} deferred=${summary.deferredInputs} (${DEFERRED_TRACKER_ID})`,
     `  vendor: files=${manifest.vendorSelection.inputFiles} raw=${summary.vendorRawPropertyEntries} canonical=${summary.vendorInputs} structural-excluded=${summary.vendorStructuralExcluded} hash-pinned=${manifest.vendorSelection.hashPinned}`,
     `  boards: files=${summary.boardFiles} nodes/project=${summary.boardNodesPerProject} business/project=${summary.boardBusinessOccurrencesPerProject} structural/project=${summary.boardStructuralOccurrencesPerProject} phandle/project=${summary.boardPhandleRefsPerProject}`,
-    `  blockers: ${summary.knownBlockers} (gpio_int constraints recorded as required transform)`,
+    `  blockers: ${summary.knownBlockers} (gpio_int cells/description now fold into nested v4 schemas)`,
     `  planned bindings: ${(manifest.plannedInventory.threeProjects as Record<string, number>).bindings} across three projects (PLANNED, not runtime)`,
     `  disposition counts: ${JSON.stringify(manifest.dispositionCounts)}`,
   ].join("\n");

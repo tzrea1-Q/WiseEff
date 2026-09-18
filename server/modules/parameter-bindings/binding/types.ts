@@ -16,7 +16,8 @@ export type Binding = {
   readonly id: ParameterBindingId;
   readonly organizationId: string;
   readonly projectId: string;
-  readonly logicalNodeId: string;
+  readonly logicalNodeId: string | null;
+  readonly sourceOccurrenceId?: string;
   readonly registrationId: SubjectRegistrationId;
   readonly subjectId: CatalogSubjectId;
   readonly definitionId: ParameterDefinitionId;
@@ -29,7 +30,8 @@ export type StabilizeBindingCommand = {
   readonly snapshot: CatalogSnapshot;
   readonly organizationId: string;
   readonly projectId: string;
-  readonly logicalNodeId: string;
+  readonly logicalNodeId: string | null;
+  readonly sourceOccurrenceId?: string;
   readonly registrationId: SubjectRegistrationId;
   readonly definitionId: ParameterDefinitionId;
   readonly effectiveRevisionId: DefinitionRevisionId;

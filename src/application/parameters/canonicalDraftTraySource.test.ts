@@ -20,6 +20,7 @@ describe("canonical draft tray source", () => {
             bindingId: "pbind_01K",
             definitionId: "pdef_01K",
             effectiveRevisionId: "drev_01K",
+            baseRevisionId: "config-revision-01K",
             currentValueId: "pval_01K",
             targetValue: "2000",
             reason: "raise published input current",
@@ -50,7 +51,8 @@ describe("canonical draft tray source", () => {
         updatedAt: "2026-09-15T00:00:00.000Z",
         action: "set",
         projectParameterBindingId: "pbind_01K",
-        candidateConfigRevisionId: "drev_01K"
+        candidateConfigRevisionId: "config-revision-01K",
+        baseRevisionId: "config-revision-01K"
       }
     ]);
     expect(drafts[0]).not.toHaveProperty("parameterId");
@@ -62,5 +64,37 @@ describe("canonical draft tray source", () => {
     ]);
     // No legacy draft endpoint is touched in either direction.
     expect(calls.some((call) => call.url.includes("/api/v1/parameter-drafts"))).toBe(false);
+  });
+
+  it("preserves the canonical JSON source target for tray reload", async () => {
+    const source = createCanonicalDraftTraySource({
+      listProjectValueDrafts: async () => ({
+        items: [{
+          id: "pvd-json-01K",
+          bindingId: "pbind-json-01K",
+          definitionId: "pdef-json-01K",
+          effectiveRevisionId: "drev-json-01K",
+          currentValueId: null,
+          targetValue: "legacy projection must not win",
+          sourceFormat: "json",
+          sourceTarget: { format: "json", sourceText: '{"enabled":true}\n' },
+          sourcePinId: "spin-json-01K",
+          candidateId: "cand-json-01K",
+          baseRevisionId: "base-json-01K",
+          reason: "preserve JSON source",
+          updatedAt: "2026-09-15T00:00:00.000Z"
+        }]
+      }),
+      deleteProjectValueDraft: async () => ({ item: { id: "pvd-json-01K" } })
+    } as never);
+
+    await expect(source.listDrafts("atlas")).resolves.toEqual([
+      expect.objectContaining({
+        id: "pvd-json-01K",
+        sourceFormat: "json",
+        sourceTarget: { format: "json", sourceText: '{"enabled":true}\n' },
+        targetValue: "legacy projection must not win"
+      })
+    ]);
   });
 });

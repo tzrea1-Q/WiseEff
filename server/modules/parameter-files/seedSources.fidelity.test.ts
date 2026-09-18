@@ -37,7 +37,7 @@ const DTS_CURVE = library[10]!;
 
 const JSON_LOCATOR_CV = "charger.cv.limitMv";
 const JSON_LOCATOR_TEMP = "battery.thermal.targetTempC";
-const DTS_NODE = "charging_core";
+const DTS_NODE = "wiseeff_node_type_demo/charging_core";
 const DTS_PROPERTY_MATRIX = "fast-charge-profile-matrix";
 const DTS_PROPERTY_CURVE = "battery-thermal-derate-curve";
 

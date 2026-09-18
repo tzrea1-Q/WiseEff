@@ -44,10 +44,12 @@ import {
   activateOnlinePublication,
   adoptPreexistingCurrent,
   publicationRegimeActive,
+  refuseUnsupportedConsumerCapability,
   setSynchronizerRole,
   type PublicationActivationOptions,
   type PublicationActivationTestOptions,
 } from "./publicationActivation";
+import { CATALOG_CAPABILITY_ALLOW_LIST } from "../../catalog-publication/builder/capabilities";
 import {
   CatalogInstallFailure,
   PublicationActivationFailure,
@@ -710,6 +712,10 @@ const installPublishedReleaseInternal = async (
   }
   try {
     assertExpectedDigest(command, compiled.value);
+    refuseUnsupportedConsumerCapability(
+      compiled.value,
+      options?.consumerCapability?.allowList ?? CATALOG_CAPABILITY_ALLOW_LIST,
+    );
   } catch (error) {
     return fail(mapWriteError(error, "installPublishedRelease"));
   }

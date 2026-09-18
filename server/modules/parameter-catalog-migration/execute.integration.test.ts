@@ -6,6 +6,7 @@
  * IV-01, IV-06, RC-01.
  */
 import { describe, expect, it } from "vitest";
+import { createHash } from "node:crypto";
 
 import {
   MIGRATION_PRINCIPAL,
@@ -64,7 +65,76 @@ const countRows = async (
   return Number(result.rows[0]?.n ?? 0);
 };
 
-const previewFor = (
+const appendValidCurrentValue = async (
+  harness: MigrationHarness,
+  input: { readonly bindingId: string; readonly valueId: string; readonly nextValueId: string; readonly nextValue: number },
+): Promise<void> => {
+  const pin = await harness.pool.query<{
+    binding_id: string;
+    definition_id: string;
+    organization_id: string;
+    project_id: string;
+    source_occurrence_id: string;
+    config_revision_id: string;
+    file_id: string;
+    file_version_id: string;
+    property_occurrence_id: string | null;
+    locator: unknown;
+  }>(
+    `select binding_id, definition_id, organization_id, project_id,
+            source_occurrence_id, config_revision_id, file_id, file_version_id,
+            property_occurrence_id, locator
+       from parameter_catalog.project_value_source_pins
+      where project_value_id = $1 and binding_id = $2`,
+    [input.valueId, input.bindingId],
+  );
+  const existingPin = pin.rows[0];
+  if (!existingPin) throw new Error("source-backed fixture pin missing");
+  await harness.db.transaction(async (tx) => {
+    await tx.query("set constraints all deferred");
+    await tx.query(
+      `insert into parameter_catalog.project_parameter_values (
+         id, binding_id, definition_id, definition_revision_id, source_ref,
+         config_revision_id, value_digest, value_kind, value
+       ) select $1, value.binding_id, value.definition_id, value.definition_revision_id,
+                value.source_ref, value.config_revision_id, $3, value.value_kind, $4::jsonb
+           from parameter_catalog.project_parameter_values value
+          where value.id = $2`,
+      [input.nextValueId, input.valueId, `sha256:${createHash("sha256").update(String(input.nextValue)).digest("hex")}`, JSON.stringify(input.nextValue)],
+    );
+    await tx.query(
+      `insert into parameter_catalog.project_value_source_pins (
+         id, project_value_id, binding_id, definition_id, organization_id, project_id,
+         source_occurrence_id, config_revision_id, file_id, file_version_id, format,
+         property_occurrence_id, locator, locator_digest
+       ) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'dts',$11,$12::jsonb,$13)`,
+      [
+        `src-pin-exec-${input.nextValueId}`,
+        input.nextValueId,
+        existingPin.binding_id,
+        existingPin.definition_id,
+        existingPin.organization_id,
+        existingPin.project_id,
+        existingPin.source_occurrence_id,
+        existingPin.config_revision_id,
+        existingPin.file_id,
+        existingPin.file_version_id,
+        existingPin.property_occurrence_id,
+        JSON.stringify(existingPin.locator),
+        `sha256:${createHash("sha256").update(JSON.stringify(existingPin.locator)).digest("hex")}`,
+      ],
+    );
+    await tx.query(
+      `update parameter_catalog.project_parameter_bindings
+          set current_value_id = $2
+        where id = $1`,
+      [input.bindingId, input.nextValueId],
+    );
+    await tx.query("set constraints all immediate");
+  });
+};
+
+const previewFor = async (
   harness: MigrationHarness,
   input: {
     readonly newPropertyKey: string;
@@ -74,8 +144,8 @@ const previewFor = (
     readonly newSubjectId?: string;
     readonly oldDefinitionId?: string;
   },
-) =>
-  harness.migration.previewDefinitionReplacement({
+) => {
+  return harness.migration.previewDefinitionReplacement({
     organizationId: ORG,
     oldDefinitionId: input.oldDefinitionId ?? PREDECESSOR_DEFINITION_ID,
     newSubjectId: input.newSubjectId ?? PREDECESSOR_SUBJECT_ID,
@@ -86,6 +156,7 @@ const previewFor = (
     expectedRelease: harness.pin(),
     context: context(),
   });
+};
 
 describe("definition replacement execute", () => {
   it("RT-02 migrates exactly one project and leaves the old binding, value and definition unmodified", async () => {
@@ -97,6 +168,7 @@ describe("definition replacement execute", () => {
         logicalNodeId: "ln-1",
         registrationId,
         sources: [{ sourceRef: "config/project.dts", configRevisionId: "crev-1" }],
+        propertyKeys: ["iin_exec_max"],
         values: [5],
       });
       const beforeValue = await harness.pool.query<{
@@ -212,6 +284,7 @@ describe("definition replacement execute", () => {
           logicalNodeId: `ln-${index}`,
           registrationId,
           sources: [{ sourceRef: `config/p${index}.dts`, configRevisionId: `crev-${index}` }],
+          propertyKeys: ["iin_three_max"],
           values: [10 + index],
         });
       }
@@ -253,6 +326,7 @@ describe("definition replacement execute", () => {
         logicalNodeId: "ln-compatible",
         registrationId,
         sources: [{ sourceRef: "config/a.dts", configRevisionId: "crev-a" }],
+        propertyKeys: ["iin_mixed_max"],
         values: [5],
       });
       await harness.seedBindingValue({
@@ -261,6 +335,7 @@ describe("definition replacement execute", () => {
         logicalNodeId: "ln-incompatible",
         registrationId,
         sources: [{ sourceRef: "config/b.dts", configRevisionId: "crev-b" }],
+        propertyKeys: ["iin_mixed_max"],
         values: [5000],
       });
       await harness.seedBindingValue({
@@ -269,6 +344,7 @@ describe("definition replacement execute", () => {
         logicalNodeId: "ln-unsupported",
         registrationId,
         sources: [{ sourceRef: "config/c.yaml", configRevisionId: "crev-c" }],
+        propertyKeys: ["iin_mixed_max"],
         values: [7],
       });
       const preview = await previewFor(harness, {
@@ -327,6 +403,7 @@ describe("definition replacement execute", () => {
         logicalNodeId: "ln-pending",
         registrationId,
         sources: [{ sourceRef: "config/pending.dts", configRevisionId: "crev-pending" }],
+        propertyKeys: ["iin_pending_max"],
         values: [5],
       });
       await harness.db.transaction(async (tx) => {
@@ -419,43 +496,25 @@ describe("definition replacement execute", () => {
     });
   }, 180_000);
 
-  it("SR-01 blocks a project whose value has no real source provenance", async () => {
+  it("SR-01 refuses to commit a placeholder-only current tip", async () => {
     await withHarness(async (harness) => {
       const registrationId = await seedProjects(harness, [P1]);
-      await harness.seedBindingValue({
-        organizationId: ORG,
-        projectId: P1,
-        logicalNodeId: "ln-placeholder",
-        registrationId,
-        // No real append: the tip stays the canonical binding-identity placeholder.
-        sources: [{ sourceRef: "config/placeholder.dts", configRevisionId: "crev-ph" }],
-        values: [],
-      });
-      const preview = await previewFor(harness, {
-        newPropertyKey: "iin_prov_max",
-        content: integerContent("Prov max", 0),
-        projectIds: [P1],
-        reason: "SR-01",
-      });
-      expect(preview.ok).toBe(true);
-      if (!preview.ok) return;
-      const created = await harness.migration.createDefinitionReplacement({
-        organizationId: ORG,
-        previewId: preview.value.previewId,
-        previewFingerprint: preview.value.previewFingerprint,
-        idempotencyKey: "sr-01",
-        expectedRelease: harness.pin(),
-        context: context(),
-        trustedActor: migrationTrustedActor(),
-      });
-      expect(created.ok).toBe(true);
-      if (!created.ok) return;
-      expect(created.value.projects[0]?.blockerReason).toBe("missing-source-provenance");
+      await expect(
+        harness.seedBindingValue({
+          organizationId: ORG,
+          projectId: P1,
+          logicalNodeId: "ln-placeholder",
+          registrationId,
+          // A placeholder may exist only inside the atomic initialization transaction.
+          sources: [{ sourceRef: "config/placeholder.dts", configRevisionId: "crev-ph" }],
+          values: [],
+        }),
+      ).rejects.toThrow("A current canonical Binding value requires an exact source pin");
       expect(
         await countRows(
           harness,
           `select count(*)::text as n from parameter_catalog.project_parameter_bindings where definition_id = $1`,
-          [created.value.newIdentity.definitionId],
+          [PREDECESSOR_DEFINITION_ID],
         ),
       ).toBe(0);
     });
@@ -470,6 +529,7 @@ describe("definition replacement execute", () => {
         logicalNodeId: "ln-yaml",
         registrationId,
         sources: [{ sourceRef: "config/project.yaml", configRevisionId: "crev-yaml" }],
+        propertyKeys: ["iin_yaml_max"],
         values: [5],
       });
       const preview = await previewFor(harness, {
@@ -526,6 +586,7 @@ describe("definition replacement execute", () => {
         logicalNodeId: "ln-coupled",
         registrationId,
         sources: [{ sourceRef: "config/shared.dts", configRevisionId: "crev-shared" }],
+        propertyKeys: ["iin_coupled_max", "iin_coupled_sibling"],
         values: [5],
       });
       await harness.seedBindingValue({
@@ -565,7 +626,7 @@ describe("definition replacement execute", () => {
     });
   }, 240_000);
 
-  it("ST-02 blocks a project whose value tip and source changed after the preview was frozen", async () => {
+  it("ST-02 blocks a project whose value tip changed after the preview was frozen", async () => {
     await withHarness(async (harness) => {
       const registrationId = await seedProjects(harness, [P1]);
       const seeded = await harness.seedBindingValue({
@@ -574,6 +635,7 @@ describe("definition replacement execute", () => {
         logicalNodeId: "ln-stale",
         registrationId,
         sources: [{ sourceRef: "config/stale.dts", configRevisionId: "crev-1" }],
+        propertyKeys: ["iin_stale_max"],
         values: [5],
       });
       const preview = await previewFor(harness, {
@@ -584,20 +646,13 @@ describe("definition replacement execute", () => {
       });
       expect(preview.ok).toBe(true);
       if (!preview.ok) return;
-      const newValueId = "pval-drepl-stale-2";
-      await harness.pool.query(
-        `insert into parameter_catalog.project_parameter_values (
-           id, binding_id, definition_id, definition_revision_id, source_ref,
-           config_revision_id, value_digest, value_kind, value
-         ) select $1, value.binding_id, value.definition_id, value.definition_revision_id,
-                  value.source_ref, 'crev-2', value.value_digest, value.value_kind, value.value
-             from parameter_catalog.project_parameter_values value where value.id = $2`,
-        [newValueId, seeded.valueId],
-      );
-      await harness.pool.query(
-        `update parameter_catalog.project_parameter_bindings set current_value_id = $2 where id = $1`,
-        [seeded.bindingId, newValueId],
-      );
+      const advancedValueId = "pval-drepl-stale-2";
+      await appendValidCurrentValue(harness, {
+        bindingId: seeded.bindingId,
+        valueId: seeded.valueId,
+        nextValueId: advancedValueId,
+        nextValue: 6,
+      });
       const created = await harness.migration.createDefinitionReplacement({
         organizationId: ORG,
         previewId: preview.value.previewId,
@@ -614,7 +669,7 @@ describe("definition replacement execute", () => {
         `select current_value_id from parameter_catalog.project_parameter_bindings where id = $1`,
         [seeded.bindingId],
       );
-      expect(after.rows[0]?.current_value_id).toBe(newValueId);
+      expect(after.rows[0]?.current_value_id).toBe(advancedValueId);
     });
   }, 180_000);
 
@@ -627,6 +682,7 @@ describe("definition replacement execute", () => {
         logicalNodeId: "ln-selected",
         registrationId,
         sources: [{ sourceRef: "config/sel.dts", configRevisionId: "crev-sel" }],
+        propertyKeys: ["iin_scope_max"],
         values: [5],
       });
       const untouched = await harness.seedBindingValue({
@@ -697,6 +753,7 @@ describe("definition replacement execute", () => {
           logicalNodeId: `ln-c${index}`,
           registrationId,
           sources: [{ sourceRef: `config/c${index}.dts`, configRevisionId: `crev-c${index}` }],
+          propertyKeys: ["iin_recovery_max"],
           values: [5 + index],
         });
       }

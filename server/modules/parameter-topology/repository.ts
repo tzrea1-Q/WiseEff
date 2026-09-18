@@ -9,6 +9,7 @@ import {
   withEffectiveEnablement,
   withSourceEnablement,
 } from "../../../src/domain/parameter-topology/nodeEnablement";
+import { normalizeManifestLogicalPath } from "./configRevisionManifest";
 import type {
   ConfigRevisionManifestMember,
   ConfigRevisionManifestState,
@@ -183,17 +184,22 @@ export async function insertConfigRevisionMembers(
   members: ConfigRevisionManifestMember[],
 ): Promise<void> {
   for (const member of members) {
+    const sourceName = normalizeManifestLogicalPath(member.sourceName ?? member.fileName);
+    if (!sourceName) {
+      throw new Error(`Invalid config revision member source name: ${member.sourceName ?? member.fileName}`);
+    }
     await db.query(
       `
       insert into dts_config_revision_members (
-        id, config_revision_id, file_id, file_version_id, role, sort_order
-      ) values ($1, $2, $3, $4, $5, $6)
+        id, config_revision_id, file_id, file_version_id, source_name, role, sort_order
+      ) values ($1, $2, $3, $4, $5, $6, $7)
       `,
       [
         cryptoRandomId(),
         configRevisionId,
         member.fileId,
         member.fileVersionId,
+        sourceName,
         member.role,
         member.sortOrder,
       ],
@@ -863,7 +869,7 @@ export type PreviousLogicalNodeRow = {
  */
 export async function listPreviousLogicalNodeSnapshots(
   db: Queryable,
-  input: { configSetId: string; beforeRevisionNumber: number },
+  input: { configSetId: string; beforeRevisionNumber: number; baseConfigRevisionId?: string },
 ): Promise<PreviousLogicalNodeRow[]> {
   const revisionResult = await db.query<{ id: string }>(
     `
@@ -872,10 +878,11 @@ export async function listPreviousLogicalNodeSnapshots(
     where config_set_id = $1
       and revision_number < $2
       and status = any($3::text[])
+      and ($4::text is null or id = $4)
     order by revision_number desc
     limit 1
     `,
-    [input.configSetId, input.beforeRevisionNumber, [...CONTINUITY_BASELINE_STATUSES]],
+    [input.configSetId, input.beforeRevisionNumber, [...CONTINUITY_BASELINE_STATUSES], input.baseConfigRevisionId ?? null],
   );
   const previousRevisionId = revisionResult.rows[0]?.id;
   if (!previousRevisionId) return [];
@@ -900,12 +907,12 @@ export async function listPreviousLogicalNodeSnapshots(
       lnr.driver_schema_version_id,
       lnr.parent_logical_node_id,
       (
-        select po.raw_text
+        select case when oe.effect_kind = 'delete' then null else po.raw_text end
         from dts_occurrence_effects oe
-        inner join dts_property_occurrences po on po.id = oe.property_occurrence_id
+        left join dts_property_occurrences po on po.id = oe.property_occurrence_id
         where oe.logical_node_revision_id = lnr.id
           and oe.property_name = 'reg'
-          and oe.effect_kind in ('set', 'override')
+          and oe.effect_kind in ('set', 'override', 'delete')
         order by oe.source_order desc
         limit 1
       ) as reg_raw

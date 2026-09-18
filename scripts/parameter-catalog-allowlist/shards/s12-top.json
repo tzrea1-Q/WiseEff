@@ -1253,12 +1253,6 @@
       "reason": "Legacy structural Catalog or governance route remains pending retirement or exact adaptation."
     },
     {
-      "id": "S12-TOP:legacy-catalog-route:73976487d00d8db6:4c21f3a93ba1fad8",
-      "rule": "legacy-catalog-route",
-      "file": "src/infrastructure/http/parameterTopologyClient.ts",
-      "reason": "Legacy structural Catalog or governance route remains pending retirement or exact adaptation."
-    },
-    {
       "id": "S12-TOP:legacy-catalog-route:75ff5ba284965071:8ba229caca30e817",
       "rule": "legacy-catalog-route",
       "file": "e2e/acceptance/parameter-topology.acceptance.spec.ts",

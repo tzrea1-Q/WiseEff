@@ -25,6 +25,7 @@ import {
   type EphemeralTestDatabase
 } from "../../../testing/testDatabase";
 import { makeTestAuthContext } from "../../../testing/authContext";
+import { serializeContract } from "../../parameter-catalog-contract";
 import { createMemoryObjectStore, type MemoryObjectStore } from "../../../testing/objectStore";
 import {
   createPostgresDatabase,
@@ -47,6 +48,8 @@ const VERSION_ONE = Buffer.from("version one", "utf8");
 const VERSION_TWO = Buffer.from("version two!", "utf8");
 const CANDIDATE_BYTES = Buffer.from("candidate source", "utf8");
 const checksum = (bytes: Buffer) => createHash("sha256").update(bytes).digest("hex");
+const SOURCE_LOCATOR = { kind: "dts-property",propertyOccurrenceId: "property_occurrence_archive",nodeOccurrenceId: "node_occurrence_archive",fileVersionId: "pfv_2",propertyName: "limit" };
+const LOCATOR_DIGEST = `sha256:${createHash("sha256").update(serializeContract(SOURCE_LOCATOR)).digest("hex")}`;
 
 const archiveStore = (): MemoryObjectStore => {
   const store = createMemoryObjectStore();
@@ -177,8 +180,8 @@ describe("legacy parameter plane archive", () => {
     );
     await pool.query(
       `insert into public.dts_config_revision_members
-         (id, config_revision_id, file_id, file_version_id, role, sort_order)
-       values ('revision_member_1', 'revision_1', 'pfile_1', 'pfv_2', 'base', 0)`,
+         (id, config_revision_id, file_id, file_version_id, role, sort_order, source_name)
+       values ('revision_member_1', 'revision_1', 'pfile_1', 'pfv_2', 'base', 0, 'charging-thermal.dts')`,
     );
     await pool.query(
       `insert into public.dts_logical_nodes (id, organization_id, project_id, config_set_id)
@@ -229,7 +232,10 @@ describe("legacy parameter plane archive", () => {
        ) values (
          'spec_decision_archive', 'org-plane-archive', 'atlas', 'revision_1',
          'property_occurrence_archive', 'logical_1', 'limit', 'dismissed'
-       );`,
+       );
+       insert into public.dts_occurrence_effects (
+         id,config_revision_id,logical_node_revision_id,property_occurrence_id,node_occurrence_id,property_name,effect_kind,source_order
+       ) values ('effect_archive','revision_1','logical_revision_1','property_occurrence_archive','node_occurrence_archive','limit','set',0);`,
     );
     await pool.query(
       `insert into public.project_parameter_file_candidates (
@@ -295,11 +301,14 @@ describe("legacy parameter plane archive", () => {
        insert into parameter_catalog.subject_placements (
          id, registration_id, organization_id, module_id, origin
        ) values ('placement_archive', 'reg_archive', 'org-plane-archive', 'pmod_archive', 'curated');
+       insert into parameter_catalog.project_parameter_source_occurrences
+         (id,organization_id,project_id,config_set_id,file_id,occurrence_kind,logical_node_id)
+       values ('occurrence_archive','org-plane-archive','atlas','dcs_1','pfile_1','dts','logical_1');
        insert into parameter_catalog.project_parameter_bindings (
-         id, organization_id, catalog_release_id, project_id, logical_node_id,
+         id, organization_id, catalog_release_id, project_id, logical_node_id,source_occurrence_id,
          registration_id, subject_id, definition_id, effective_revision_id, current_value_id
        ) values (
-         'binding_archive', 'org-plane-archive', 'crel_archive', 'atlas', 'logical_archive', 'reg_archive',
+         'binding_archive', 'org-plane-archive', 'crel_archive', 'atlas', 'logical_1','occurrence_archive', 'reg_archive',
          'csub_archive', 'pdef_archive', 'drev_archive', 'pvalue_archive'
        );
        insert into parameter_catalog.project_parameter_values (
@@ -309,22 +318,28 @@ describe("legacy parameter plane archive", () => {
          'pvalue_archive', 'binding_archive', 'pdef_archive', 'drev_archive',
          'charging-thermal.dts:/soc/node:limit', 'revision_1', 'sha256:archive-value', 'number', '1000'
        );
+       insert into parameter_catalog.project_value_source_pins (
+         id,project_value_id,binding_id,definition_id,organization_id,project_id,source_occurrence_id,
+         config_revision_id,file_id,file_version_id,format,property_occurrence_id,locator,locator_digest
+       ) values ('pin_archive','pvalue_archive','binding_archive','pdef_archive','org-plane-archive','atlas','occurrence_archive',
+         'revision_1','pfile_1','pfv_2','dts','property_occurrence_archive',
+         '${JSON.stringify(SOURCE_LOCATOR)}','${LOCATOR_DIGEST}');
        insert into parameter_catalog.parameter_observations (
          id, organization_id, project_id, logical_node_id, config_revision_id,
-         source_identity, source_locator, catalog_release_id, matcher_revision, evidence_fingerprint
+         source_identity, source_locator, catalog_release_id, matcher_revision, evidence_fingerprint,source_occurrence_id,parameter_locator_digest
        ) values (
-         'observation_archive', 'org-plane-archive', 'atlas', 'logical_archive', 'revision_1',
-         'archive-source', '{"kind":"dts","locator":"/soc/node:limit"}',
-         'crel_archive', 'matcher-archive', 'sha256:archive-observation'
+         'observation_archive', 'org-plane-archive', 'atlas', 'logical_1', 'revision_1',
+         'archive-source', '${JSON.stringify(SOURCE_LOCATOR)}',
+         'crel_archive', 'matcher-archive', 'sha256:archive-observation','occurrence_archive','${LOCATOR_DIGEST}'
        );
        insert into parameter_catalog.parameter_observation_matches (
          id, observation_id, organization_id, project_id, logical_node_id,
          registration_id, subject_id, definition_id, definition_revision_id,
-         binding_id, catalog_release_id, matcher_revision
+         binding_id, catalog_release_id, matcher_revision,source_occurrence_id,parameter_locator_digest
        ) values (
-         'observation_match_archive', 'observation_archive', 'org-plane-archive', 'atlas', 'logical_archive',
+         'observation_match_archive', 'observation_archive', 'org-plane-archive', 'atlas', 'logical_1',
          'reg_archive', 'csub_archive', 'pdef_archive', 'drev_archive',
-         'binding_archive', 'crel_archive', 'matcher-archive'
+         'binding_archive', 'crel_archive', 'matcher-archive','occurrence_archive','${LOCATOR_DIGEST}'
        );
        insert into public.project_parameter_value_drafts (
          id, organization_id, project_id, binding_id, definition_id, definition_revision_id,
@@ -395,6 +410,8 @@ describe("legacy parameter plane archive", () => {
     expect(archive.counts.binding_history_events).toBe(1);
     expect(archive.counts.canonical_values).toBe(1);
     expect(archive.counts.canonical_bindings).toBe(1);
+    expect(archive.counts.canonical_source_occurrences).toBe(1);
+    expect(archive.counts.canonical_source_pins).toBe(1);
 
     // The archived document is the offline artifact and must actually carry the rows.
     const stored = store.entries.get(archive.objectRef);
@@ -432,7 +449,7 @@ describe("legacy parameter plane archive", () => {
     expect(JSON.stringify(document.relations)).not.toContain("pfv_other");
 
     // Every declared relation is accounted for, even when it is empty.
-    expect(Object.keys(archive.counts).length).toBe(32);
+    expect(Object.keys(archive.counts).length).toBe(34);
     const retainedDrafts = await pool.query<{ count: string }>(
       `select count(*)::text as count from public.parameter_drafts
         where organization_id = $1 and project_id = $2`,
@@ -768,7 +785,8 @@ describe("legacy parameter plane archive", () => {
     expect(references.rows).toEqual([
       { child: "parameter_catalog.definition_replacement_projects", parent: "parameter_catalog.project_parameter_bindings", delete_action: "RESTRICT", constraint_count: "3" },
       { child: "parameter_catalog.definition_replacement_projects", parent: "parameter_catalog.project_parameter_values", delete_action: "RESTRICT", constraint_count: "2" },
-      { child: "parameter_catalog.parameter_observation_matches", parent: "parameter_catalog.project_parameter_bindings", delete_action: "RESTRICT", constraint_count: "1" },
+      { child: "parameter_catalog.parameter_observation_matches", parent: "parameter_catalog.project_parameter_bindings", delete_action: "RESTRICT", constraint_count: "2" },
+      { child: "parameter_catalog.parameter_observations", parent: "parameter_catalog.project_parameter_source_occurrences", delete_action: "RESTRICT", constraint_count: "1" },
       { child: "public.debugging_parameters", parent: "public.project_parameter_bindings", delete_action: "NO ACTION", constraint_count: "1" },
       { child: "public.dts_node_occurrences", parent: "public.dts_config_revisions", delete_action: "CASCADE", constraint_count: "1" },
       { child: "public.dts_node_occurrences", parent: "public.project_parameter_file_versions", delete_action: "NO ACTION", constraint_count: "1" },
@@ -803,19 +821,36 @@ describe("legacy parameter plane archive", () => {
     expect(triggers.rows).toEqual([
       { relation: "parameter_catalog.binding_history_events", trigger_name: "binding_history_event_owner_fk", function_name: "parameter_catalog.assert_binding_history_event_owners" },
       { relation: "parameter_catalog.binding_history_events", trigger_name: "binding_history_events_immutable", function_name: "parameter_catalog.reject_immutable_catalog_change" },
+      { relation: "parameter_catalog.project_parameter_bindings", trigger_name: "project_parameter_binding_current_source_pin_ck", function_name: "parameter_catalog.assert_binding_current_source_pin" },
       { relation: "parameter_catalog.project_parameter_bindings", trigger_name: "project_parameter_binding_effective_revision_head_fk", function_name: "parameter_catalog.assert_binding_effective_revision_is_verified_head" },
       { relation: "parameter_catalog.project_parameter_bindings", trigger_name: "project_parameter_binding_identity_immutable", function_name: "parameter_catalog.protect_binding_identity" },
+      { relation: "parameter_catalog.project_parameter_bindings", trigger_name: "project_parameter_binding_source_identity_immutable", function_name: "parameter_catalog.protect_project_parameter_binding_source_identity" },
+      { relation: "parameter_catalog.project_parameter_source_occurrences", trigger_name: "project_parameter_source_occurrences_immutable", function_name: "parameter_catalog.protect_source_occurrence_identity" },
       { relation: "parameter_catalog.project_parameter_values", trigger_name: "project_parameter_values_immutable", function_name: "parameter_catalog.reject_immutable_catalog_change" },
       { relation: "parameter_catalog.project_parameter_values", trigger_name: "project_value_current_binding_ck", function_name: "parameter_catalog.assert_value_target_binding_is_current" },
+      { relation: "parameter_catalog.project_value_source_pins", trigger_name: "project_value_source_pin_first_pin_fence", function_name: "parameter_catalog.fence_first_source_pin" },
+      { relation: "parameter_catalog.project_value_source_pins", trigger_name: "project_value_source_pin_owner_fk", function_name: "parameter_catalog.assert_project_value_source_pin_owner" },
+      { relation: "parameter_catalog.project_value_source_pins", trigger_name: "project_value_source_pins_immutable", function_name: "parameter_catalog.reject_immutable_project_value_source_pin" },
+      { relation: "public.dts_config_revision_members", trigger_name: "dts_config_revision_member_source_name_normalized", function_name: "parameter_catalog.normalize_dts_revision_member_source_name" },
+      { relation: "public.dts_config_revision_members", trigger_name: "dts_config_revision_members_pinned_provenance_immutable", function_name: "parameter_catalog.protect_pinned_source_provenance" },
       { relation: "public.dts_config_revisions", trigger_name: "dts_config_revisions_execution_identity_default_user", function_name: "public.parameter_execution_identity_default_user" },
+      { relation: "public.dts_config_revisions", trigger_name: "dts_config_revisions_pinned_provenance_immutable", function_name: "parameter_catalog.protect_pinned_source_provenance" },
+      { relation: "public.dts_logical_node_revisions", trigger_name: "dts_logical_node_revisions_pinned_provenance_immutable", function_name: "parameter_catalog.protect_pinned_source_provenance" },
       { relation: "public.parameter_change_requests", trigger_name: "parameter_change_requests_execution_identity_default_user", function_name: "public.parameter_execution_identity_default_user" },
       { relation: "public.parameter_drafts", trigger_name: "parameter_drafts_execution_identity_default_user", function_name: "public.parameter_execution_identity_default_user" },
       { relation: "public.parameter_history_entries", trigger_name: "parameter_history_entries_execution_identity_default_user", function_name: "public.parameter_execution_identity_default_user" },
       { relation: "public.parameter_review_decisions", trigger_name: "parameter_review_decisions_execution_identity_default_user", function_name: "public.parameter_execution_identity_default_user" },
       { relation: "public.parameter_submission_rounds", trigger_name: "parameter_submission_rounds_execution_identity_default_user", function_name: "public.parameter_execution_identity_default_user" },
       { relation: "public.project_parameter_binding_revisions", trigger_name: "project_parameter_binding_revision_owner_guard", function_name: "public.wiseeff_assert_binding_spec_version_owner" },
+      { relation: "public.project_parameter_file_candidates", trigger_name: "project_parameter_file_candidate_submitted_payload_immutable", function_name: "parameter_catalog.protect_submitted_candidate_payload" },
       { relation: "public.project_parameter_file_candidates", trigger_name: "project_parameter_file_candidates_execution_identity_default_us", function_name: "public.parameter_execution_identity_default_user" },
       { relation: "public.project_parameter_file_versions", trigger_name: "project_parameter_file_versions_execution_identity_default_user", function_name: "public.parameter_execution_identity_default_user" },
+      { relation: "public.project_parameter_file_versions", trigger_name: "project_parameter_file_versions_pinned_source_immutable", function_name: "parameter_catalog.protect_pinned_source_file" },
+      { relation: "public.project_parameter_files", trigger_name: "project_parameter_files_pinned_source_immutable", function_name: "parameter_catalog.protect_pinned_source_file" },
+      { relation: "public.project_parameter_value_change_requests", trigger_name: "project_parameter_value_change_request_applied_source_result_ow", function_name: "parameter_catalog.assert_source_apply_result" },
+      { relation: "public.project_parameter_value_change_requests", trigger_name: "project_parameter_value_change_request_candidate_snapshot_ck", function_name: "parameter_catalog.assert_source_candidate_snapshot" },
+      { relation: "public.project_parameter_value_change_requests", trigger_name: "project_parameter_value_change_request_source_immutable", function_name: "parameter_catalog.protect_submitted_source_request" },
+      { relation: "public.project_parameter_value_drafts", trigger_name: "project_parameter_value_draft_candidate_snapshot_ck", function_name: "parameter_catalog.assert_source_candidate_snapshot" },
       { relation: "public.project_parameter_values", trigger_name: "project_parameter_values_execution_identity_default_user", function_name: "public.parameter_execution_identity_default_user" },
     ]);
 

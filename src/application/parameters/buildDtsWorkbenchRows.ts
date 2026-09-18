@@ -91,6 +91,11 @@ function summarizeDtsValue(value: DtsValue): string {
   }
 }
 
+const isDtsBinding = (
+  binding: ProjectParameterBinding
+): binding is ProjectParameterBinding & { effectiveValue: DtsValue } =>
+  binding.effectiveValue.kind !== "json";
+
 /**
  * User-facing governance badge for the parameter workbench.
  *
@@ -218,7 +223,7 @@ export function buildDtsWorkbenchRows({
   const propertyEffectsByLogicalId = indexPropertyEffects(effectiveNodes);
   const openMappingLogicalIds = indexOpenMappingLogicalIds(projectId, configRevisionId, mappingTasks);
 
-  const rows = bindings.map((binding) => {
+  const rows = bindings.filter(isDtsBinding).map((binding) => {
     const effectiveNode = binding.logicalNodeId
       ? effectiveByLogicalId.get(binding.logicalNodeId)
       : undefined;

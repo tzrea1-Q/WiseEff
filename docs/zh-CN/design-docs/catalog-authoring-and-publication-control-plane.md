@@ -148,6 +148,7 @@ M1 只允许当前运行时已经解释的类型与约束。精确白名单由 C
 | `candidate-tampered` | 409 | Artifact/digest/授权元组不匹配 |
 | `needs-rebase` | 409 | 前驱不再是 current |
 | `unsupported-catalog-capability` | 422 | 内容超出白名单，或运行中镜像无法解释 |
+| `unsupported-consumer-capability-revision` | 422 | 消费者不承认该 capability 修订；安装前拒绝，不写入 Catalog |
 | `publication-authorization-revoked` | 409 | 入队后撤销；尚未线性化进激活 |
 | `idempotency-key-conflict` | 409 | 同键不同请求 digest |
 | `artifact-missing` | 409 | 前驱 Artifact 字节不可用；不得从 DB 重建 |

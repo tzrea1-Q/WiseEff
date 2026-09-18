@@ -75,11 +75,13 @@
 };
 
 &hisi_vbat_drop_protect {
+	compatible = "hisilicon,hisi_vbat_drop_protect";
 	vbat_drop_vol_mv = <2517>;
 	status = "disabled";
 };
 
 &hisi_vbat_drop_protect_v2 {
+	compatible = "hisilicon,hisi_vbat_drop_protect_v2";
 	vbat_drop_vol_mv = <2600>;
 	status = "ok";
 
@@ -96,6 +98,7 @@
 };
 
 &hisi_bci_battery {
+	compatible = "hisilicon,hisi_bci_battery";
 	battery_design_fcc = <5350>;
 	battery_board_type = <19>;
 	vth_correct_para = <18 2800>;
@@ -104,6 +107,7 @@
 };
 
 &battery_ocv {
+	compatible = "huawei,battery_ocv";
 	ocv_table =
 		"16", "3100",
 		"0", "3200",
@@ -116,6 +120,7 @@
 };
 
 &huawei_charger {
+	compatible = "huawei,charger";
 	/* Boolean properties — presence means enabled */
 	weak_source_sleep_enabled;
 	charge_done_sleep_enabled;
@@ -125,6 +130,7 @@
 };
 
 &charging_core {
+	compatible = "huawei,charging_core";
 	iin_max = <1800>;
 	ichg_max = <2100>;
 	iterm_table =
@@ -139,6 +145,7 @@
 };
 
 &charge_mode_test {
+	compatible = "huawei,charge_mode_test";
 	test_para =
 		"scp", "lvc", "2017", "105", "0", "2",
 		"scp", "sc4", "3000", "105", "0", "0";
@@ -146,6 +153,7 @@
 };
 
 &wireless_charger {
+	compatible = "huawei,wireless_charger";
 	pmax = <15>;
 	trx_plim =
 		"5017", "5500", "1200", "-1", "2", "-1", "-1", "-1",
@@ -160,6 +168,7 @@
 };
 
 &wireless_sc {
+	compatible = "huawei,wireless_sc";
 	init_para_col = <31>;
 	init_para =
 		"0x13", "SC_2", "0", "1", "3300", "4500", "9000", "450", "300", "100", "300", "10000", "9000", "2",
@@ -176,6 +185,7 @@
 };
 
 &direct_charge_ic {
+	compatible = "huawei,direct_charge_ic";
 	ic_para1 =
 		"1", "0", "5000", "0", "0",
 		"1", "1", "5000", "1", "1";
@@ -187,6 +197,7 @@
 };
 
 &direct_charge_comp {
+	compatible = "huawei,direct_charge_comp";
 	/* Direct-charge compensation table — float values as strings */
 	vbat_comp_ic_para =
 		"schargerV800", "30", "7", "3",
@@ -195,6 +206,7 @@
 };
 
 &direct_charge_turbo {
+	compatible = "huawei,direct_charge_turbo";
 	status = "disabled";
 	time_para01 =
 		"560", "6800", "0", "10500";
@@ -204,6 +216,7 @@
 };
 
 &direct_charger {
+	compatible = "huawei,direct_charger";
 	use_5A = <0>;
 	volt_para =
 		"4097", "5000", "3777",
@@ -224,6 +237,7 @@
 };
 
 &huawei_batt_info {
+	compatible = "huawei,batt_info";
 	status = "ok";
 	sn-check-type = <19>;
 	battery_checker@0 {
@@ -239,6 +253,7 @@
 };
 
 &fm1230 {
+	compatible = "huawei,fm1230";
 	onewire-gpio = <&gpio2 14 0>;
 	battct_id_gpio-supply = <&huawei_batt_identify>;
 	ow_reset_start_delay = <317>;
@@ -247,6 +262,7 @@
 };
 
 &fm1230_1 {
+	compatible = "huawei,fm1230";
 	onewire-gpio = <&gpio2 15 0>;
 	battct_id_gpio-supply = <&huawei_batt_identify>;
 	ic_index = <0>;
@@ -258,18 +274,21 @@
 };
 
 &t91407 {
+	compatible = "huawei,t91407";
 	onewire-gpio = <&gpio2 14 0>;
 	battct_id_gpio-supply = <&huawei_batt_identify>;
 	status = "ok";
 };
 
 &huawei_batt_identify {
+	compatible = "huawei,batt_identify";
 	gpios = <&gpio10 16 0>;
 	id_voltage_gpiov = <17 1>;
 	status = "ok";
 };
 
 &battery_temp_fitting {
+	compatible = "huawei,battery_temp_fitting";
 	status = "ok";
 	btf_temp_lth = "-33";
 	fitting_mode = <19>;
@@ -280,6 +299,7 @@
 };
 
 &multi_btb_temp {
+	compatible = "huawei,multi_btb_temp";
 	status = "ok";
 	sensor-names =
 		"bat0_raw_temp", "comp_para", "0",
@@ -287,6 +307,7 @@
 };
 
 &battery_charge_balance {
+	compatible = "huawei,battery_charge_balance";
 	status = "ok";
 	unbalance_th = <80 9000>;
 
@@ -311,6 +332,7 @@
 };
 
 &battery_cccv {
+	compatible = "huawei,battery_cccv";
 	status = "ok";
 	battery_tbl =
 		"default", "cccv_para0";
@@ -327,11 +349,13 @@
 };
 
 &btb_check {
+	compatible = "huawei,btb_check";
 	vol_check_para = "0", "1", "2500", "4700", "120", "3", "0";
 	status = "disabled";
 };
 
 &boost_5v {
+	compatible = "huawei,boost_5v";
 	status = "ok";
 	gpio_5v_boost = <&gpio7 27 0>;
 };

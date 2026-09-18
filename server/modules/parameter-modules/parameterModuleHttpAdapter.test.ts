@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 
-import { catalogLegacyGoneResponseSchema } from "../contracts/dtoSchemas/parameterCatalog";
 import { routeManifest } from "../contracts/routeManifest";
 import { createHttpServer } from "../../shared/http/server";
 import { createRouter } from "../../shared/http/router";
@@ -16,7 +15,7 @@ function fillRoutePath(path: string): string {
 }
 
 describe("parameter module HTTP adapter", () => {
-  it("returns 410 for retired module identity and overlay writes", async () => {
+  it("does not 410 live module mapping or driver-registry writes", async () => {
     const router = createRouter();
     registerParameterModuleRoutes(router, {
       getCurrentAuthContext: () =>
@@ -25,16 +24,17 @@ describe("parameter module HTTP adapter", () => {
         }),
     });
     const server = createHttpServer(router);
-    const write = routeManifest.find((route) => route.id === "parameterModules.registerDriver");
-    expect(write).toBeDefined();
-    const response = await requestJson(server, fillRoutePath(write!.path), {
-      method: write!.method,
-      body: JSON.stringify({}),
-    });
-    expect(response.status).toBe(410);
-    const body = catalogLegacyGoneResponseSchema.parse(response.body);
-    expect(body.error.details.reason).toBe("legacy-surface-retired");
-    expect(body.error.details.retryable).toBe(false);
+    const writes = ["parameterModules.registerDriver", "parameterModules.createMapping"]
+      .map((id) => routeManifest.find((route) => route.id === id))
+      .filter((route): route is (typeof routeManifest)[number] => Boolean(route));
+    expect(writes).toHaveLength(2);
+    for (const route of writes) {
+      const response = await requestJson(server, fillRoutePath(route.path), {
+        method: route.method,
+        body: JSON.stringify({}),
+      });
+      expect(response.status, route.id).not.toBe(410);
+    }
   });
 
   it("does not intercept GET registry, discovery hints, or driver-registry navigation", async () => {

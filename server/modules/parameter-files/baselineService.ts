@@ -20,7 +20,7 @@ import {
   updateBaselineStatus
 } from "./baselineRepository";
 import { getConfigSetById } from "./configSetRepository";
-import { getFileVersionById, getProjectParameterFileById, insertFileVersion, setCurrentVersion } from "./repository";
+import { assertLegacySourceMutationAllowed, getFileVersionById, getProjectParameterFileById, insertFileVersion, setCurrentVersion } from "./repository";
 import { isDtsStructuralIngestEnabled } from "./structuralFlag";
 import { ingestDtsFileVersion } from "./structuralIngest";
 import type { ReleaseBaselineDto, ReleaseBaselineMemberDto } from "./types";
@@ -525,6 +525,8 @@ export async function rollbackToBaseline(
     });
 
     const members = await listReleaseBaselineMembers(tx, { baselineId });
+
+    await assertLegacySourceMutationAllowed(tx,members.map((member) => member.fileId),baseline.configSetId);
 
     let restored = 0;
     for (const member of members) {

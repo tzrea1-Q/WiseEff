@@ -171,6 +171,7 @@ export const apiFailureReasons = freezeRegistry([
   "candidate-tampered",
   "needs-rebase",
   "unsupported-catalog-capability",
+  "unsupported-consumer-capability-revision",
   "publication-authorization-revoked",
   "idempotency-key-conflict",
   "artifact-missing",

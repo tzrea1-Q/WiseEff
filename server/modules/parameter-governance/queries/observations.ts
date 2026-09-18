@@ -50,6 +50,7 @@ const propertyKeyFromLocator = (locator: unknown, fallback: string): string => {
   if (locator !== null && typeof locator === "object" && !Array.isArray(locator)) {
     const record = locator as Record<string, unknown>;
     if (isUsableToken(record.propertyKey)) return record.propertyKey;
+    if (isUsableToken(record.propertyName)) return record.propertyName;
     if (isUsableToken(record.property)) return record.property;
   }
   return fallback;

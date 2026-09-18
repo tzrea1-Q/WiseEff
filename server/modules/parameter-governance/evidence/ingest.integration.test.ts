@@ -1,8 +1,8 @@
 import { randomUUID } from "node:crypto";
 import pg from "pg";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
-import { CatalogReleaseId } from "../../parameter-catalog-contract/index";
+import { CatalogReleaseId, type ContractJsonValue } from "../../parameter-catalog-contract/index";
 import { seedCompiledCatalogProjection } from "../../catalog-kernel/runtime/currentSnapshot";
 import {
   createEphemeralTestDatabase,
@@ -11,7 +11,7 @@ import {
   type EphemeralTestDatabase,
 } from "../../../testing/testDatabase";
 
-import { createEvidenceIngest } from "./index";
+import { createEvidenceIngest, fingerprintCanonical } from "./index";
 import type { IngestEvidenceCommand, SourceProvenance } from "./types";
 
 const databaseAvailable = await isTestDatabaseAvailable();
@@ -48,21 +48,34 @@ const ORG_ID = "org-s4-evd";
 const PROJECT_ID = "project-s4-evd";
 const LOGICAL_NODE_ID = "logical-s4-evd";
 const CONFIG_REVISION_ID = "config-s4-evd-1";
+const CONFIG_SET_ID = "config-set-s4-evd";
+const FILE_ID = "file-s4-evd";
+const FILE_VERSION_ID = "version-s4-evd";
+const NODE_OCCURRENCE_ID = "node-occurrence-s4-evd";
+const PROPERTY_OCCURRENCE_ID = "property-occurrence-s4-evd";
+const SOURCE_OCCURRENCE_ID = "src-occ-s4-evd";
 const MATCHER_REVISION = "matcher-s4-evd-1";
+let testPropertyOccurrenceId = PROPERTY_OCCURRENCE_ID;
+let testPropertyName = "iin_max";
 
 const provenance = (): SourceProvenance => ({
   projectId: PROJECT_ID,
   logicalNodeId: LOGICAL_NODE_ID,
   configRevisionId: CONFIG_REVISION_ID,
+  sourceOccurrenceId: SOURCE_OCCURRENCE_ID,
   sourceLocator: {
-    path: "/soc/charger",
-    property: "iin_max",
+    kind: "dts-property",
+    propertyOccurrenceId: testPropertyOccurrenceId,
+    nodeOccurrenceId: NODE_OCCURRENCE_ID,
+    fileVersionId: FILE_VERSION_ID,
+    propertyName: testPropertyName,
   },
 });
 
 describe("immutable observation and review-evidence ingest", () => {
   let database: EphemeralTestDatabase;
   let pool: pg.Pool;
+  let writerPool: pg.Pool;
   let catalogReleaseId: CatalogReleaseId;
   let ingest: ReturnType<typeof createEvidenceIngest>;
 
@@ -97,12 +110,250 @@ describe("immutable observation and review-evidence ingest", () => {
        values ($1, $2, 'S4 EVD', 'S4EVD')`,
       [PROJECT_ID, ORG_ID],
     );
-    ingest = createEvidenceIngest(pool);
+    await pool.query(
+      `insert into public.dts_config_set (id, organization_id, project_id, name)
+       values ($1, $2, $3, 'source')`,
+      [CONFIG_SET_ID, ORG_ID, PROJECT_ID],
+    );
+    await pool.query(
+      `insert into public.project_parameter_files (
+         id, organization_id, project_id, file_name, format, config_set_id, config_set_role
+       ) values ($1, $2, $3, 'source.dts', 'dts', $4, 'base')`,
+      [FILE_ID, ORG_ID, PROJECT_ID, CONFIG_SET_ID],
+    );
+    await pool.query(
+      `insert into public.project_parameter_file_versions (
+         id, file_id, version_number, storage_key, checksum, size_bytes, origin
+       ) values ($1, $2, 1, 's4-evd-source', 'checksum-s4-evd', 1, 'upload')`,
+      [FILE_VERSION_ID, FILE_ID],
+    );
+    await pool.query(
+      `update public.project_parameter_files
+          set current_version_id = $1
+        where id = $2`,
+      [FILE_VERSION_ID, FILE_ID],
+    );
+    await pool.query(
+      `insert into public.dts_config_revisions (
+         id, organization_id, project_id, config_set_id, revision_number, status
+       ) values ($1, $2, $3, $4, 1, 'resolved')`,
+      [CONFIG_REVISION_ID, ORG_ID, PROJECT_ID, CONFIG_SET_ID],
+    );
+    await pool.query(
+      `insert into public.dts_config_revision_members (
+         id, config_revision_id, file_id, file_version_id, role, sort_order
+       ) values ('member-s4-evd', $1, $2, $3, 'base', 0)`,
+      [CONFIG_REVISION_ID, FILE_ID, FILE_VERSION_ID],
+    );
+    await pool.query(
+      `insert into public.dts_logical_nodes (id, organization_id, project_id, config_set_id)
+       values ($1, $2, $3, $4)`,
+      [LOGICAL_NODE_ID, ORG_ID, PROJECT_ID, CONFIG_SET_ID],
+    );
+    await pool.query(
+      `insert into public.dts_logical_node_revisions (
+         id, logical_node_id, config_revision_id, node_locator, name
+       ) values ('logical-revision-s4-evd', $1, $2, '/soc/charger', 'charger')`,
+      [LOGICAL_NODE_ID, CONFIG_REVISION_ID],
+    );
+    await pool.query(
+      `insert into public.dts_node_occurrences (
+         id, config_revision_id, file_version_id, name, node_path,
+         start_offset, end_offset, start_line, start_column, end_line, end_column, raw_text
+       ) values ($1, $2, $3, 'charger', '/soc/charger', 0, 10, 1, 1, 1, 11, 'charger {}')`,
+      [NODE_OCCURRENCE_ID, CONFIG_REVISION_ID, FILE_VERSION_ID],
+    );
+    await pool.query(
+      `insert into public.dts_property_occurrences (
+         id, config_revision_id, node_occurrence_id, file_version_id, property_name,
+         start_offset, end_offset, start_line, start_column, end_line, end_column, raw_text
+       ) values ($1, $2, $3, $4, 'iin_max', 1, 8, 1, 2, 1, 9, 'iin_max = 1')`,
+      [PROPERTY_OCCURRENCE_ID, CONFIG_REVISION_ID, NODE_OCCURRENCE_ID, FILE_VERSION_ID],
+    );
+    await pool.query(
+      `insert into public.dts_occurrence_effects (
+         id, config_revision_id, logical_node_revision_id, property_name, effect_kind,
+         node_occurrence_id, property_occurrence_id, source_order
+       ) values ('effect-s4-evd', $1, 'logical-revision-s4-evd', 'iin_max', 'set', $2, $3, 0)`,
+      [CONFIG_REVISION_ID, NODE_OCCURRENCE_ID, PROPERTY_OCCURRENCE_ID],
+    );
+    await pool.query(
+      `insert into parameter_catalog.project_parameter_source_occurrences (
+         id, organization_id, project_id, config_set_id, file_id, occurrence_kind, logical_node_id
+       ) values ($1, $2, $3, $4, $5, 'dts', $6)`,
+      [SOURCE_OCCURRENCE_ID, ORG_ID, PROJECT_ID, CONFIG_SET_ID, FILE_ID, LOGICAL_NODE_ID],
+    );
+    writerPool = new pg.Pool({
+      connectionString: database.url,
+      max: 1,
+      options: "-c role=parameter_governance_writer_role",
+    });
+    ingest = createEvidenceIngest(writerPool);
   }, 60_000);
 
+  beforeEach(async () => {
+    const serial = await count(
+      `select count(*)::text as count
+         from public.dts_property_occurrences
+        where config_revision_id = $1`,
+      [CONFIG_REVISION_ID],
+    );
+    testPropertyOccurrenceId = `property-occurrence-s4-evd-${serial + 1}`;
+    testPropertyName = `iin_max_${serial + 1}`;
+    await pool.query(
+      `insert into public.dts_property_occurrences (
+         id, config_revision_id, node_occurrence_id, file_version_id, property_name,
+         start_offset, end_offset, start_line, start_column, end_line, end_column, raw_text
+       ) values ($1, $2, $3, $4, $5, 1, 8, 1, 2, 1, 9, $5)`,
+      [
+        testPropertyOccurrenceId,
+        CONFIG_REVISION_ID,
+        NODE_OCCURRENCE_ID,
+        FILE_VERSION_ID,
+        testPropertyName,
+      ],
+    );
+    await pool.query(
+      `insert into public.dts_occurrence_effects (
+         id, config_revision_id, logical_node_revision_id, property_name, effect_kind,
+         node_occurrence_id, property_occurrence_id, source_order
+       ) values ($1, $2, 'logical-revision-s4-evd', $3, 'set', $4, $5, 0)`,
+      [
+        `effect-s4-evd-${serial + 1}`,
+        CONFIG_REVISION_ID,
+        testPropertyName,
+        NODE_OCCURRENCE_ID,
+        testPropertyOccurrenceId,
+      ],
+    );
+  });
+
   afterAll(async () => {
+    await writerPool?.end();
     await pool?.end();
     await database?.drop();
+  });
+
+  it("lets the governance writer append through the owner trigger without source reads", async () => {
+    const who = await writerPool.query<{ current_user: string }>(
+      "select current_user",
+    );
+    expect(who.rows[0]?.current_user).toBe("parameter_governance_writer_role");
+    const writerPrivileges = await writerPool.query<{ can_read: boolean }>(
+      "select has_table_privilege(current_user, 'parameter_catalog.parameter_observations', 'select') as can_read",
+    );
+    expect(writerPrivileges.rows[0]?.can_read).toBe(true);
+    await expect(
+      writerPool.query(
+        `select id
+           from parameter_catalog.project_parameter_source_occurrences
+          where id = $1`,
+        [SOURCE_OCCURRENCE_ID],
+      ),
+    ).rejects.toMatchObject({ code: "42501" });
+
+    const result = await ingest.ingest(
+      command({ sourceIdentity: `acl-positive:${randomUUID()}` }),
+    );
+    expect(result.ok).toBe(true);
+  });
+
+  it("rejects a mismatched locator at the deferred owner trigger", async () => {
+    const result = await ingest.ingest(
+      command({
+        sourceIdentity: `acl-mismatch:${randomUUID()}`,
+        provenance: {
+          ...provenance(),
+          sourceLocator: {
+            ...provenance().sourceLocator,
+            propertyName: "property-not-in-the-captured-revision",
+          },
+        },
+      }),
+    );
+    expect(result).toEqual({
+      ok: false,
+      error: {
+        kind: "source-provenance-mismatch",
+        sourceOccurrenceId: SOURCE_OCCURRENCE_ID,
+        reason: "occurrence, revision member, or exact parameter locator is not owned by the project",
+      },
+    });
+  });
+
+  it("does not coerce numeric locator values to strings for the governance writer", async () => {
+    await pool.query("update dts_property_occurrences set property_name='123' where id=$1",[testPropertyOccurrenceId]);
+    await pool.query("update dts_occurrence_effects set property_name='123' where property_occurrence_id=$1",[testPropertyOccurrenceId]);
+    const locator = { ...provenance().sourceLocator,propertyName: 123 };
+    const client = await writerPool.connect();
+    try {
+      await client.query("begin");
+      await client.query(`insert into parameter_catalog.parameter_observations
+        (id,organization_id,project_id,logical_node_id,config_revision_id,source_identity,source_locator,
+          catalog_release_id,matcher_revision,evidence_fingerprint,source_occurrence_id,parameter_locator_digest)
+        values ($1,$2,$3,$4,$5,$6,$7::jsonb,$8,$9,$10,$11,$12)`,
+      [`pobs-numeric-${randomUUID()}`,ORG_ID,PROJECT_ID,LOGICAL_NODE_ID,CONFIG_REVISION_ID,
+        `numeric:${randomUUID()}`,JSON.stringify(locator),catalogReleaseId,MATCHER_REVISION,
+        "numeric-probe",SOURCE_OCCURRENCE_ID,fingerprintCanonical(locator as ContractJsonValue)]);
+      await expect(client.query("set constraints all immediate")).rejects.toMatchObject({ code: "23503" });
+    } finally { await client.query("rollback"); client.release(); }
+  });
+
+  it("keeps separator-containing exact replay tuples distinct", async () => {
+    const successor = CatalogReleaseId(`${catalogReleaseId}|tuple`);
+    await pool.query(`insert into parameter_catalog.catalog_releases
+      (id,release_sequence,release_version,release_digest,compiled_model_digest,toolchain_digest,published_at)
+      select $1,(select max(release_sequence)+1 from parameter_catalog.catalog_releases),$1,
+        $2,compiled_model_digest,toolchain_digest,published_at
+      from parameter_catalog.catalog_releases where id=$3`,
+    [successor,`sha256:${"a".repeat(64)}`,catalogReleaseId]);
+    const first = command({ matcherRevision: "tuple|matcher" });
+    const second = command({ catalogReleaseId: successor,matcherRevision: "matcher" });
+    expect([first.catalogReleaseId,first.matcherRevision].join("|"))
+      .toBe([second.catalogReleaseId,second.matcherRevision].join("|"));
+    const a = await ingest.ingest(first);
+    const b = await ingest.ingest(second);
+    expect(a.ok).toBe(true);
+    expect(b.ok).toBe(true);
+    if (!a.ok || !b.ok) return;
+    expect(a.value.id).not.toBe(b.value.id);
+    expect(await ingest.ingest(first)).toMatchObject({ ok: true,value: { id: a.value.id,status: "replayed" } });
+    expect(await ingest.ingest(second)).toMatchObject({ ok: true,value: { id: b.value.id,status: "replayed" } });
+  });
+
+  it("rejects a writer-supplied digest that is not canonical for the owned locator", async () => {
+    const sourceIdentity = `pseudo-digest:${randomUUID()}`;
+    const locator = provenance().sourceLocator;
+    await writerPool.query("begin");
+    try {
+      await writerPool.query(
+        `insert into parameter_catalog.parameter_observations (
+           id, organization_id, project_id, logical_node_id, config_revision_id,
+           source_identity, source_locator, catalog_release_id, matcher_revision,
+           evidence_fingerprint, source_occurrence_id, parameter_locator_digest
+         ) values ($1,$2,$3,$4,$5,$6,$7::jsonb,$8,$9,$10,$11,$12)`,
+        [
+          `pseudo-digest-observation-${randomUUID()}`,
+          ORG_ID,
+          PROJECT_ID,
+          LOGICAL_NODE_ID,
+          CONFIG_REVISION_ID,
+          sourceIdentity,
+          JSON.stringify(locator),
+          catalogReleaseId,
+          MATCHER_REVISION,
+          `sha256:${"0".repeat(64)}`,
+          SOURCE_OCCURRENCE_ID,
+          `sha256:${"f".repeat(64)}`,
+        ],
+      );
+      await expect(writerPool.query("commit")).rejects.toMatchObject({
+        code: "23503",
+        constraint: "parameter_observation_source_owner_fk",
+      });
+    } finally {
+      await writerPool.query("rollback").catch(() => undefined);
+    }
   });
 
   it("ingests a unique matched observation without creating a Registration or match", async () => {
@@ -147,30 +398,56 @@ describe("immutable observation and review-evidence ingest", () => {
   it("replays the exact fingerprint to the same observation id without a second row", async () => {
     const input = command({ sourceIdentity: `replay:${randomUUID()}` });
     const first = await ingest.ingest(input);
-    const second = await ingest.ingest(input);
-    expect(first.ok && second.ok).toBe(true);
-    if (!first.ok || !second.ok) return;
-    expect(second.value).toEqual({
-      ...first.value,
-      status: "replayed",
+    expect(first.ok).toBe(true);
+    if (!first.ok) return;
+
+    const reconnectPool = new pg.Pool({
+      connectionString: database.url,
+      max: 1,
+      options: "-c role=parameter_governance_writer_role",
     });
-    expect(
-      await count(
-        `select count(*)::text as count
-         from parameter_catalog.parameter_observations
-         where organization_id = $1 and source_identity = $2`,
-        [ORG_ID, input.sourceIdentity],
-      ),
-    ).toBe(1);
+    try {
+      const reconnectIngest = createEvidenceIngest(reconnectPool);
+      const second = await reconnectIngest.ingest(input);
+      expect(second.ok).toBe(true);
+      if (!second.ok) return;
+      expect(second.value).toEqual({
+        ...first.value,
+        status: "replayed",
+      });
+      expect(
+        await count(
+          `select count(*)::text as count
+           from parameter_catalog.parameter_observations
+           where organization_id = $1 and source_identity = $2`,
+          [ORG_ID, input.sourceIdentity],
+        ),
+      ).toBe(1);
+      expect(
+        await count(
+          `select count(*)::text as count
+           from parameter_catalog.parameter_observation_matches
+           where observation_id = $1`,
+          [first.value.id],
+        ),
+      ).toBe(0);
+      expect(
+        await count(
+          `select count(*)::text as count
+           from parameter_catalog.parameter_review_evidence
+           where organization_id = $1
+             and evidence->>'sourceIdentity' = $2`,
+          [ORG_ID, input.sourceIdentity],
+        ),
+      ).toBe(0);
+    } finally {
+      await reconnectPool.end();
+    }
   });
 
-  it("conflicts when the same source_identity arrives with a different fingerprint and leaves original bytes", async () => {
+  it("conflicts when the same exact source locator arrives with a different identity digest", async () => {
     const sourceIdentity = `conflict:${randomUUID()}`;
-    const originalLocator = {
-      path: "/soc/charger",
-      property: "iin_max",
-      note: "original",
-    };
+    const originalLocator = provenance().sourceLocator;
     const first = await ingest.ingest(
       command({
         sourceIdentity,
@@ -182,15 +459,8 @@ describe("immutable observation and review-evidence ingest", () => {
 
     const second = await ingest.ingest(
       command({
-        sourceIdentity,
-        provenance: {
-          ...provenance(),
-          sourceLocator: {
-            path: "/soc/charger",
-            property: "iin_max",
-            note: "tampered",
-          },
-        },
+        sourceIdentity: `${sourceIdentity}:tampered`,
+        provenance: { ...provenance(), sourceLocator: originalLocator },
       }),
     );
     expect(second.ok).toBe(false);
@@ -457,7 +727,7 @@ describe("immutable observation and review-evidence ingest", () => {
     ).toBe(0);
   });
 
-  it("conflicts when a matched observation is followed by a weak ingest for the same source_identity", async () => {
+  it("keeps a weak review record separate from a matched observation even when source_identity repeats", async () => {
     const sourceIdentity = `matched-then-weak:${randomUUID()}`;
     const first = await ingest.ingest(command({ sourceIdentity }));
     expect(first.ok).toBe(true);
@@ -470,12 +740,9 @@ describe("immutable observation and review-evidence ingest", () => {
         matcherOutput: { status: "unknown" },
       }),
     );
-    expect(second.ok).toBe(false);
-    if (second.ok) return;
-    expect(second.error.kind).toBe("fingerprint-conflict");
-    if (second.error.kind === "fingerprint-conflict") {
-      expect(second.error.storedId).toBe(first.value.id);
-    }
+    expect(second.ok).toBe(true);
+    if (!second.ok) return;
+    expect(second.value.kind).toBe("review-evidence");
     expect(
       await count(
         `select count(*)::text as count
@@ -491,7 +758,7 @@ describe("immutable observation and review-evidence ingest", () => {
          where organization_id = $1 and evidence->>'sourceIdentity' = $2`,
         [ORG_ID, sourceIdentity],
       ),
-    ).toBe(0);
+    ).toBe(1);
   });
 
   it("conflicts when review evidence is followed by a matched ingest for the same source_identity", async () => {

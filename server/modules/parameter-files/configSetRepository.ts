@@ -1,4 +1,5 @@
 import type { Queryable } from "../../shared/database/client";
+import { assertLegacySourceMutationAllowed } from "./repository";
 import type {
   ConfigSetDto,
   ConfigSetRole,
@@ -156,6 +157,7 @@ export async function setFileConfigSetMembership(
   db: Queryable,
   input: SetFileConfigSetMembershipInput
 ): Promise<void> {
+  await assertLegacySourceMutationAllowed(db,input.fileId,input.configSetId);
   await db.query(
     `
     update project_parameter_files
@@ -170,6 +172,7 @@ export async function setFileConfigSetMembership(
 }
 
 export async function clearFileConfigSetMembership(db: Queryable, input: { fileId: string }): Promise<void> {
+  await assertLegacySourceMutationAllowed(db,input.fileId);
   await db.query(
     `
     update project_parameter_files

@@ -44,7 +44,7 @@ const fail = (error: RegistrationFailure): Result<never, RegistrationFailure> =>
 });
 
 const expectedModuleKind = (subjectKind: RegisterSubjectCommand["subjectKind"]): string =>
-  subjectKind === "driver" ? "driver-group" : "node-type";
+  subjectKind === "driver" ? "driver-group" : subjectKind === "configuration-schema" ? "business" : "node-type";
 
 const toResult = (
   registration: RegistrationRow,

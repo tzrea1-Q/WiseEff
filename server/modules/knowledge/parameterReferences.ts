@@ -18,7 +18,7 @@ type ReferenceRow = {
   property_key: string | null;
   display_name: string | null;
   driver_module: string | null;
-  lifecycle: "draft" | "active" | "deprecated";
+  lifecycle: "draft" | "active" | "deprecated" | null;
 };
 
 function dateTimeToIso(value: string | Date) {
@@ -27,20 +27,13 @@ function dateTimeToIso(value: string | Date) {
 
 /**
  * Shared projection of the definition columns a reference chip needs.
- * Mirrors the spec read API: property key falls back through
- * `dts_property_specs` and the trailing `specification_key` segment, the
- * module label is the attribution subject's display name (ADR-0013), and the
- * display name comes from the preferred (active first) version row.
+ * Mirrors the spec read API: property key is `parameter_specs.property_key`
+ * then `dts_property_specs.property_key` (no specification_key tail).
+ * The module label is the attribution subject's display name (ADR-0013), and
+ * the display name comes from the preferred (active first) version row.
  */
 const REFERENCE_SPEC_PROJECTION = `
-  coalesce(
-    ps.property_key,
-    dps.property_key,
-    nullif(
-      (string_to_array(ps.specification_key, '/'))[cardinality(string_to_array(ps.specification_key, '/'))],
-      ''
-    )
-  ) as property_key,
+  coalesce(ps.property_key, dps.property_key) as property_key,
   psv.display_name,
   asub.display_name as driver_module,
   ps.definition_lifecycle as lifecycle
@@ -70,7 +63,7 @@ function toReferenceDto(row: ReferenceRow): KnowledgeParameterReferenceDto {
     propertyKey: row.property_key ?? row.parameter_spec_id,
     displayName: row.display_name,
     driverModule: row.driver_module,
-    lifecycle: row.lifecycle,
+    lifecycle: row.lifecycle ?? "deprecated",
     createdByUserId: row.created_by_user_id,
     createdAt: dateTimeToIso(row.created_at)
   };
@@ -81,7 +74,7 @@ export async function loadParameterReferencesByEntryIds(
   auth: AuthContext,
   entryIds: readonly string[]
 ): Promise<Map<string, KnowledgeParameterReferenceDto[]>> {
-  if (!pinK(db, auth, entryIds)) return new Map();//////
+  if (entryIds.length === 0) return new Map();
   const result = await db.query<ReferenceRow>(
     `
     select
@@ -91,7 +84,7 @@ export async function loadParameterReferencesByEntryIds(
       r.created_at,
       ${REFERENCE_SPEC_PROJECTION}
     from knowledge_parameter_references r
-    join parameter_specs ps on ps.id = r.parameter_spec_id
+    left join parameter_specs ps on ps.id = r.parameter_spec_id
     ${REFERENCE_SPEC_JOINS}
     where r.organization_id = $1
       and r.entry_id = any($2::uuid[])
@@ -100,11 +93,12 @@ export async function loadParameterReferencesByEntryIds(
     [auth.organization.id, entryIds]
   );
 
+  const mappedRows = await mapLoadedReferenceRows(db, auth, result.rows);
   const map = new Map<string, KnowledgeParameterReferenceDto[]>();
-  for (const row of result.rows) {
-    const references = map.get(row.entry_id) ?? [];
-    references.push(pinR(db, auth, row));
-    map.set(row.entry_id, references);
+  for (const dto of mappedRows) {
+    const references = map.get(dto.entryId) ?? [];
+    references.push(dto.reference);
+    map.set(dto.entryId, references);
   }
   return map;
 }
@@ -126,7 +120,7 @@ export async function resolveReferenceableSpec(
   db: Queryable,
   organizationId: string,
   specId: string
-): Promise<ReferenceableSpec | null> {pinK(db)
+): Promise<ReferenceableSpec | null> {
   const result = await db.query<Omit<ReferenceRow, "entry_id" | "created_by_user_id" | "created_at"> & { id: string }>(
     `
     select
@@ -147,7 +141,7 @@ export async function resolveReferenceableSpec(
     propertyKey: row.property_key ?? row.id,
     displayName: row.display_name,
     driverModule: row.driver_module,
-    lifecycle: row.lifecycle
+    lifecycle: row.lifecycle ?? "deprecated"
   };
 }
 
@@ -255,196 +249,50 @@ export async function listPublishedEntriesReferencingSpec(
   }));
 }
 
-type KnwMappingStatus = "current" | "historical" | "orphaned" | "archived" | "unmapped";
-
-type KnwOverlay = {
-  historicalOnly: boolean;
-  mappingStatus: KnwMappingStatus;
-  canonicalTargetKind: string | null;
-  canonicalTargetId: string | null;
-  propertyKey?: string;
-  displayName?: string | null;
-  driverModule?: string | null;
-  lifecycle?: "draft" | "active" | "deprecated";
-};
-
-type OverlayRow = ReferenceRow & { id?: string; __knw?: KnwOverlay };
-
-const SOURCE_COL = ["parameter", "spec", "id"].join("_");
-const INNER_SPEC_JOIN = ["join parameter", "specs ps on ps.id = r.parameter", "spec", "id"].join("_");
-const LEFT_SPEC_JOIN = ["left join parameter", "specs ps on ps.id = r.parameter", "spec", "id"].join("_");
-const RESOLVE_FROM_SPECS = ["from parameter", "specs ps"].join("_");
-
-function sourceIdOf(row: OverlayRow): string {
-  const value = (row as Record<string, unknown>)[SOURCE_COL];
-  return typeof value === "string" && value.length > 0 ? value : String(row.id ?? "");
-}
-
-/** Runtime intercept: keep scanned SQL spans, execute LEFT JOIN so orphans stay visible. */
-export function interceptKnowledgeReferenceSql(sql: string): string {
-  if (sql.includes(LEFT_SPEC_JOIN) || !sql.includes(INNER_SPEC_JOIN)) {
-    return sql;
-  }
-  return sql.split(INNER_SPEC_JOIN).join(LEFT_SPEC_JOIN);
-}
-
-function isKnowledgeCatalogSql(sql: string): boolean {
-  return sql.includes(INNER_SPEC_JOIN) || sql.includes(LEFT_SPEC_JOIN) || sql.includes(RESOLVE_FROM_SPECS);
-}
-
-function knwOverlayFrom(row: OverlayRow): KnwOverlay {
-  if (row.__knw) {
-    return row.__knw;
-  }
-  if (!row.lifecycle && !row.property_key) {
-    return {
-      historicalOnly: false,
-      mappingStatus: "orphaned",
-      canonicalTargetKind: null,
-      canonicalTargetId: null,
-      lifecycle: "deprecated",
-      propertyKey: sourceIdOf(row),
-    };
-  }
-  return {
-    historicalOnly: false,
-    mappingStatus: "unmapped",
-    canonicalTargetKind: null,
-    canonicalTargetId: null,
-  };
-}
-
-function pinR(db: Queryable, auth: AuthContext, row: OverlayRow): KnowledgeParameterReferenceDto {
-  void db;
-  void auth;
-  const overlay = knwOverlayFrom(row);
-  const base = toReferenceDto({
-    ...row,
-    property_key: overlay.propertyKey ?? row.property_key ?? sourceIdOf(row),
-    display_name: overlay.displayName !== undefined ? overlay.displayName : row.display_name,
-    driver_module: overlay.driverModule !== undefined ? overlay.driverModule : row.driver_module,
-    lifecycle: overlay.lifecycle ?? row.lifecycle ?? "deprecated",
-  });
-  return {
-    ...base,
-    historicalOnly: overlay.historicalOnly,
-    mappingStatus: overlay.mappingStatus,
-    canonicalTargetKind: overlay.canonicalTargetKind,
-    canonicalTargetId: overlay.canonicalTargetId,
-  };
-}
-
-function pinK(db: Queryable, auth?: AuthContext, entryIds?: readonly string[]): boolean {
-  const marked = db as Queryable & { __knwPin?: boolean };
-  if (!marked.__knwPin) {
-    const original = db.query.bind(db);
-    db.query = ((sql: string, values?: unknown[]) =>
-      original(interceptKnowledgeReferenceSql(sql), values).then(async (result) => {
-        if (isKnowledgeCatalogSql(sql) && Array.isArray(result.rows)) {
-          await overlayKnowledgeReferenceRows(db, result.rows as OverlayRow[], values, auth);
-        }
-        return result;
-      })) as Queryable["query"];
-    marked.__knwPin = true;
-  }
-  return !(entryIds && entryIds.length === 0);
-}
-
-function applyLookupOutcome(
-  row: OverlayRow,
-  outcome: {
-    kind: string;
-    item?: {
-      historicalOnly?: boolean;
-      target?: { kind: string; id: string };
-    };
-  },
-): void {
-  if (outcome.kind === "archived") {
-    row.__knw = {
-      historicalOnly: true,
-      mappingStatus: "archived",
-      canonicalTargetKind: "Archive",
-      canonicalTargetId: null,
-      lifecycle: row.lifecycle ?? "deprecated",
-    };
-    return;
-  }
-  if (outcome.kind !== "mapped" || !outcome.item?.target) {
-    if (!row.lifecycle && !row.property_key) {
-      row.__knw = {
-        historicalOnly: false,
-        mappingStatus: "orphaned",
-        canonicalTargetKind: null,
-        canonicalTargetId: null,
-        lifecycle: "deprecated",
-        propertyKey: sourceIdOf(row),
-      };
-    }
-    return;
-  }
-  const historicalOnly = Boolean(outcome.item.historicalOnly);
-  row.__knw = {
-    historicalOnly,
-    mappingStatus: historicalOnly ? "historical" : "current",
-    canonicalTargetKind: outcome.item.target.kind,
-    canonicalTargetId: outcome.item.target.id,
-    lifecycle: row.lifecycle ?? "active",
-  };
-}
-
-async function overlayKnowledgeReferenceRows(
+async function mapLoadedReferenceRows(
   db: Queryable,
-  rows: OverlayRow[],
-  values?: unknown[],
-  auth?: AuthContext,
-): Promise<void> {
-  const organizationId =
-    auth?.organization.id ?? (typeof values?.[0] === "string" ? values[0] : null);
+  auth: AuthContext,
+  rows: ReferenceRow[]
+): Promise<Array<{ entryId: string; reference: KnowledgeParameterReferenceDto }>> {
   const { lookupLegacyIdentifier } = await import("../parameter-catalog-api/legacy");
-  if (rows.length === 0 && typeof values?.[1] === "string") {
+  const mapped: Array<{ entryId: string; reference: KnowledgeParameterReferenceDto }> = [];
+  for (const row of rows) {
+    const reference = toReferenceDto(row);
+    const orphan = !row.lifecycle && !row.property_key;
+    let historicalOnly = false;
+    let mappingStatus: KnowledgeParameterReferenceDto["mappingStatus"] = orphan ? "orphaned" : "unmapped";
+    let canonicalTargetKind: string | null = null;
+    let canonicalTargetId: string | null = null;
     try {
       const outcome = await lookupLegacyIdentifier({
         client: db as never,
         legacyType: "parameter-spec",
-        legacyId: values[1],
-        organizationId,
+        legacyId: row.parameter_spec_id,
+        organizationId: auth.organization.id
       });
-      if (outcome.kind === "mapped" || outcome.kind === "archived") {
-        const synthetic = {
-          entry_id: "",
-          created_by_user_id: null,
-          created_at: new Date(0).toISOString(),
-          property_key: values[1],
-          display_name: null,
-          driver_module: null,
-          lifecycle: "active" as const,
-          id: values[1],
-          [SOURCE_COL]: values[1],
-        } as unknown as OverlayRow;
-        applyLookupOutcome(synthetic, outcome);
-        rows.push(synthetic);
+      if (outcome.kind === "archived") {
+        historicalOnly = true;
+        mappingStatus = "archived";
+        canonicalTargetKind = "Archive";
+      } else if (outcome.kind === "mapped" && outcome.item?.target) {
+        historicalOnly = Boolean(outcome.item.historicalOnly);
+        mappingStatus = historicalOnly ? "historical" : "current";
+        canonicalTargetKind = outcome.item.target.kind;
+        canonicalTargetId = outcome.item.target.id;
       }
     } catch {
-      return;
+      // Keep chip fields when mapping is unqueryable.
     }
-    return;
+    mapped.push({
+      entryId: row.entry_id,
+      reference: {
+        ...reference,
+        historicalOnly,
+        mappingStatus,
+        canonicalTargetKind,
+        canonicalTargetId
+      }
+    });
   }
-  for (const row of rows) {
-    const sourceId = sourceIdOf(row);
-    if (!sourceId) {
-      continue;
-    }
-    try {
-      const outcome = await lookupLegacyIdentifier({
-        client: db as never,
-        legacyType: "parameter-spec",
-        legacyId: sourceId,
-        organizationId,
-      });
-      applyLookupOutcome(row, outcome);
-    } catch {
-      // Keep the legacy chip fields when mapping is unqueryable.
-    }
-  }
+  return mapped;
 }

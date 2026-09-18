@@ -134,7 +134,7 @@ export type ParameterRuntimeActions = {
   reviewChange(input: ReviewParameterChangeInput, options?: ParameterRuntimeRefreshOptions): Promise<ParameterRuntimeVoidResult>;
   listWorkflowAssignees(projectId: string): ReturnType<ParameterRepository["listWorkflowAssignees"]>;
   createImportPreview(input: ParameterImportPreviewInput): Promise<ParameterImportBatchDto | ParameterRuntimeActionFailure>;
-  applyImportBatch(input: ApplyParameterImportBatchInput): Promise<ParameterRuntimeVoidResult>;
+  applyImportBatch(input: ApplyParameterImportBatchInput): Promise<ParameterImportBatchDto | ParameterRuntimeVoidResult>;
   parseDtsImport(input: ParseDtsImportInput): Promise<DtsImportParseResult>;
   refresh(options?: ParameterRuntimeRefreshOptions): Promise<ParameterRuntimeRefreshResult>;
 };
@@ -181,14 +181,14 @@ export function createParameterRuntimeActions({
       const projectsPromise = api.listProjects();
       const changeRequestsPromise = api.listChangeRequests();
       const submissionRoundsPromise = api.listSubmissionRounds();
-      const draftsPromise = api.listDrafts();
       const projects = await projectsPromise;
-      const [parameterGroups, changeRequests, parameterSubmissionRounds, parameterDrafts] = await Promise.all([
+      const [parameterGroups, changeRequests, parameterSubmissionRounds, draftGroups] = await Promise.all([
         Promise.all(projects.map((project) => api.listParameters({ projectId: project.id, limit: 500 }))),
         changeRequestsPromise,
         submissionRoundsPromise,
-        draftsPromise
+        Promise.all(projects.map((project) => api.listDrafts(project.id)))
       ]);
+      const parameterDrafts = draftGroups.flat();
       const parameters = parameterGroups.flat();
       const snapshot = { projects, parameters, changeRequests, parameterSubmissionRounds, parameterDrafts };
 
@@ -292,7 +292,7 @@ export function createParameterRuntimeActions({
         const drafts = await api.listDrafts(input.projectId);
         const parameterIds = new Set(input.parameterIds);
         const draftsToDelete = drafts.filter((draft) => parameterIds.has(draft.parameterId));
-        await Promise.all(draftsToDelete.map((draft) => api.deleteDraft(draft.id)));
+        await Promise.all(draftsToDelete.map((draft) => api.deleteDraft(draft.id, input.projectId)));
       });
     },
     async withdrawSubmissionRound(roundId) {
@@ -386,7 +386,13 @@ export function createParameterRuntimeActions({
         }
       }
 
-      return runApiMutation((api) => api.applyImportBatch(input));
+      try {
+        const staged = await requireRepository(repository).applyImportBatch(input);
+        const result = await refresh();
+        return result && "notification" in result ? result : staged;
+      } catch (error) {
+        return notifyFailure(dispatch, {}, formatParameterRuntimeError(error));
+      }
     },
     async parseDtsImport(input) {
       if (runtimeMode !== "api") {

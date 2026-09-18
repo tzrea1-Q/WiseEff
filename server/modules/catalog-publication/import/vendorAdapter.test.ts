@@ -497,33 +497,39 @@ properties:
     expect(second.value.impactFacts.changesUnitOrSemantic).toBe(true);
   });
 
-  it("accounts every listed source property of the repository catalog and refuses unsupported shapes", async () => {
+  it("imports the full repository catalog once the v4 change-set budget admits it", async () => {
     const predecessor = firstAcmePredecessor();
     const result = await importVendorCatalog({
       predecessorArtifact: { digest: predecessor.digest, bytes: predecessor.bytes },
       schemasRoot: path.join(process.cwd(), "schemas/dts"),
       ...importOpts("repo"),
     });
-    expect(result.ok).toBe(false);
-    if (result.ok) return;
-    expect(result.error.kind).toBe("import-blocked");
-    if (result.error.kind !== "import-blocked") return;
-    const propertyRows = result.error.report.dispositions.filter((row) => {
-      const fragment = row.path.split("#")[1];
-      return fragment !== undefined && !fragment.includes(".");
-    });
-    const catalog = JSON.parse(
-      readFileSync(path.join(process.cwd(), "schemas/dts/catalog.json"), "utf8"),
-    ) as { schemaPaths: string[] };
-    const inputFiles = catalog.schemaPaths.filter(
-      (relativePath) => !EXCLUDED_SCHEMA_BASENAMES.includes(path.basename(relativePath) as (typeof EXCLUDED_SCHEMA_BASENAMES)[number]),
+    expect(result.ok, JSON.stringify(result)).toBe(true);
+    if (!result.ok) return;
+    expect(result.value.kind).toBe("successor");
+    expect(result.value.changeSet.length).toBeGreaterThan(32);
+    expect(result.value.changeSet.length).toBeLessThanOrEqual(128);
+    expect(
+      result.value.changeSet.some(
+        (change) =>
+          change.op === "create-subject-with-definitions" &&
+          change.kind === "node-type" &&
+          change.canonicalKey === "node-type:charging_core",
+      ),
+    ).toBe(true);
+    const propertyKeys = result.value.changeSet.flatMap((change) =>
+      change.op === "create-subject-with-definitions" || change.op === "create-definition"
+        ? change.definitions.map((definition) => definition.propertyKey)
+        : change.op === "revise-definition"
+          ? [change.propertyKey]
+          : [],
     );
-    expect(propertyRows.length).toBeGreaterThan(0);
-    for (const relativePath of inputFiles) {
-      expect(result.error.report.dispositions.some((row) => row.path.startsWith(relativePath))).toBe(true);
-    }
-    expect(result.error.report.blocking.some((row) => row.kind === "unsupported")).toBe(true);
-    expect(result.error.report.dispositions.some((row) => row.path.includes("childNodes"))).toBe(true);
+    expect(propertyKeys).toEqual(expect.arrayContaining([
+      "fast-charge-profile-matrix",
+      "battery-thermal-derate-curve",
+      "gpio_int",
+    ]));
+    expect(propertyKeys).toHaveLength(115);
   });
 
   it("refuses unhandled constraints and does not repair input from the predecessor", async () => {
@@ -542,7 +548,100 @@ properties:
     if (result.ok) return;
     expect(result.error.kind).toBe("import-blocked");
     if (result.error.kind !== "import-blocked") return;
-    expect(result.error.report.blocking.some((row) => row.detail.startsWith("unhandled-constraint"))).toBe(true);
+    expect(result.error.report.blocking.some((row) => row.detail === "cells-require-array-or-mixed")).toBe(true);
+  });
+
+  it("folds gpio_int cells into a nested array and does not flatten", async () => {
+    const predecessor = firstAcmePredecessor();
+    const gpio = `$id: wiseeff/test-gpio.yaml
+title: mt,test-gpio
+source: vendor
+lifecycle: active
+version: 1
+schemaNamespace: vendor/mt,test-gpio
+compatible:
+  - mt,test-gpio
+properties:
+  gpio_int:
+    valueShape: mixed
+    constraints:
+      cells: 3
+      description: phandle pin flags
+    documentation: Interrupt GPIO phandle-array.
+`;
+    const schemasRoot = writeTree({ "gpio.yaml": gpio }, ["vendor/wiseeff/gpio.yaml"]);
+    const result = await importVendorCatalog({
+      predecessorArtifact: { digest: predecessor.digest, bytes: predecessor.bytes },
+      schemasRoot,
+      ...importOpts("gpio"),
+    });
+    expect(result.ok).toBe(true);
+    if (!result.ok || result.value.kind !== "successor") return;
+    const change = result.value.changeSet.find(
+      (entry) => entry.op === "create-subject-with-definitions" && entry.kind === "driver",
+    );
+    expect(change && "definitions" in change ? change.definitions[0]?.content.valueSchema : undefined).toEqual({
+      type: "array",
+      description: "phandle pin flags",
+      items: {
+        type: "array",
+        minItems: 3,
+        maxItems: 3,
+        items: { description: "mixed" },
+      },
+    });
+  });
+
+  it("publishes charging_core as a NodeType, not a Huawei driver merge", async () => {
+    const predecessor = firstAcmePredecessor();
+    const node = `$id: wiseeff/nodename-charging-core.yaml
+title: charging_core
+source: vendor
+lifecycle: active
+version: 1
+schemaNamespace: vendor/nodename/charging_core
+nodename:
+  - charging_core
+properties:
+  fast-charge-profile-matrix:
+    valueShape: nested-string-array
+    constraints: {}
+    documentation: Nested string matrix.
+  battery-thermal-derate-curve:
+    valueShape: nested-u32-array
+    constraints: {}
+    documentation: Nested integer matrix.
+`;
+    const schemasRoot = writeTree({ "nodename-charging-core.yaml": node }, [
+      "vendor/wiseeff/nodename-charging-core.yaml",
+    ]);
+    const result = await importVendorCatalog({
+      predecessorArtifact: { digest: predecessor.digest, bytes: predecessor.bytes },
+      schemasRoot,
+      ...importOpts("ccore"),
+    });
+    expect(result.ok).toBe(true);
+    if (!result.ok || result.value.kind !== "successor") return;
+    const change = result.value.changeSet.find(
+      (entry) => entry.op === "create-subject-with-definitions",
+    );
+    expect(change).toMatchObject({
+      op: "create-subject-with-definitions",
+      kind: "node-type",
+      canonicalKey: "node-type:charging_core",
+      selector: { kind: "node-type-name", value: "charging_core" },
+    });
+    expect(result.value.changeSet.some((entry) => "kind" in entry && entry.kind === "driver")).toBe(
+      false,
+    );
+    expect(change && "definitions" in change ? change.definitions.map((row) => row.propertyKey).sort() : []).toEqual(
+      ["battery-thermal-derate-curve", "fast-charge-profile-matrix"],
+    );
+    expect(
+      change && "definitions" in change
+        ? change.definitions.find((row) => row.propertyKey === "fast-charge-profile-matrix")?.content.valueSchema
+        : undefined,
+    ).toEqual({ type: "array", items: { type: "array", items: { type: "string" } } });
   });
 
   it("reconciles each supported source property to a named successor definition", async () => {

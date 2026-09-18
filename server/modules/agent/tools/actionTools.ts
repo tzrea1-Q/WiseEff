@@ -12,7 +12,6 @@ import type { ObjectStore } from "../../logs/objectStore";
 import type { DtsToolchainRunner } from "../../parameter-files/dtsToolchain";
 import { parseDtsValue } from "../../dts/valueAst";
 import { deleteDraft } from "../../parameter-drafts/repository";
-import { getProjectParameterForUpdate } from "../../parameters/repository";
 import { resolveParameterIdentityMode } from "../../parameter-kernel/parameterIdentityMode";
 import { assertTrustedSensitiveNodeSubmissionAllowed } from "../../parameter-kernel/sensitiveNode";
 import { submitParameterChanges } from "../../parameters/service";
@@ -87,59 +86,6 @@ function readDraftTags(payload: Record<string, unknown>): string[] {
     .slice(0, MAX_DRAFT_TAGS);
 }
 
-/**
- * Legacy-identity databases only (kept alive by CI for the identity-migration
- * suites, TD-079): the flat submission shape is still the accepted contract
- * there, and `parameterId` addresses the legacy flat parameter row.
- */
-async function submitLegacyParameterChange(
-  db: Database,
-  context: AgentToolExecutionContext,
-  invocation: AgentInvocationContext,
-  refusalSink: TrustedRefusalAuditSink,
-  input: { projectId: string; parameterId: string; targetValue: string; reason: string }
-) {
-  const parameter = await getProjectParameterForUpdate(db, {
-    organizationId: context.auth.organization.id,
-    projectId: input.projectId,
-    parameterId: input.parameterId
-  });
-  if (parameter?.sourceNodePath) {
-    await assertTrustedSensitiveNodeSubmissionAllowed(db, context.auth, {
-      organizationId: context.auth.organization.id,
-      projectId: input.projectId,
-      nodePath: parameter.sourceNodePath,
-      sourceFileName: parameter.sourceFileName,
-      sourceFileVersionId: parameter.sourceFileVersionId,
-      sourcePath: { kind: "property-path", value: parameter.sourceNodePath },
-      invocation,
-      requestId: context.requestId,
-      refusalSink
-    });
-  }
-
-  const submission = await submitParameterChanges(
-    db,
-    context.auth,
-    {
-      projectId: input.projectId,
-      items: [{ parameterId: input.parameterId, targetValue: input.targetValue, reason: input.reason }]
-    },
-    { requestId: context.requestId, invocation, refusalSink }
-  );
-  const changeRequestId = submission.items[0]?.requestId ?? submission.id;
-  return {
-    summary: `Submitted parameter change request ${changeRequestId} for review.`,
-    data: {
-      changeRequestId,
-      projectId: input.projectId,
-      parameterId: input.parameterId,
-      targetValue: input.targetValue
-    },
-    citations: submissionCitation(changeRequestId, input.projectId, input.targetValue)
-  };
-}
-
 export function createActionTools(options: ToolOptions): AgentToolDefinition[] {
   return [
     {
@@ -161,13 +107,12 @@ export function createActionTools(options: ToolOptions): AgentToolDefinition[] {
         }
         const db = options.db;
 
-        if ((await resolveParameterIdentityMode(db)) === "legacy") {
-          return submitLegacyParameterChange(db, context, invocation, refusalSink, {
-            projectId,
-            parameterId,
-            targetValue,
-            reason
-          });
+        if ((await resolveParameterIdentityMode(db)) !== "semantic") {
+          throw new ApiError(
+            "CONFLICT",
+            "Agent parameter submission requires post-cutover binding identity.",
+            { reason: "legacy-identity-mode-retired-for-agent", projectId, parameterId }
+          );
         }
 
         // Post-cutover: semantic identity is the only accepted submission

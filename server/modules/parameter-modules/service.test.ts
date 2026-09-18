@@ -62,6 +62,40 @@ function makeReadableDb(): Database {
 }
 
 describe("parameter module registry service", () => {
+  it("pins discovery locators to the binding-tip config revision", async () => {
+    const query = vi.fn(async (text: string) => {
+      if (text.includes("from parameter_module_dismissed_compatibles")) {
+        return { rows: [], rowCount: 0 };
+      }
+      if (text.includes("from project_parameter_bindings")) {
+        return { rows: [], rowCount: 0 };
+      }
+      return { rows: [], rowCount: 0 };
+    });
+    const db = {
+      query,
+      transaction: vi.fn(async (fn) => fn({ query } as never))
+    } as unknown as Database;
+    await getModuleDiscoveryHints(db, makeAuth());
+    const observedSql = query.mock.calls
+      .map((call) => String(call[0]))
+      .find(
+        (text) =>
+          text.includes("from project_parameter_bindings") &&
+          text.includes("parameter_module_mappings")
+      );
+    const dismissedSql = query.mock.calls
+      .map((call) => String(call[0]))
+      .find((text) => text.includes("from parameter_module_dismissed_compatibles"));
+    expect(observedSql).toBeDefined();
+    expect(dismissedSql).toBeDefined();
+    for (const sql of [observedSql, dismissedSql]) {
+      expect(sql).toContain("config_revision_id = br.config_revision_id");
+      expect(sql).toContain("from project_parameter_binding_revisions");
+      expect(sql).not.toContain("order by config_revision_id desc");
+    }
+  });
+
   it("returns the registry for viewers", async () => {
     const db = makeReadableDb();
     const result = await getParameterModuleRegistry(db, makeAuth());
@@ -373,6 +407,27 @@ describe("recomputeBindingModules", () => {
     await expect(
       recomputeBindingModules(db, makeAuth({ permissions: ["parameter:view"] }), {})
     ).rejects.toBeInstanceOf(ApiError);
+  });
+
+  it("pins recompute SQL to attribution subject source_key and the binding-tip locator", async () => {
+    const { db } = makeRecomputeDb({ bindings: [] });
+    await recomputeBindingModules(db, makeAuth(), {});
+    const recomputeSql = vi.mocked(db.query).mock.calls
+      .map((call) => String(call[0]))
+      .find(
+        (text) =>
+          text.includes("from project_parameter_bindings") &&
+          text.includes("driver_module")
+      );
+    expect(recomputeSql).toBeDefined();
+    expect(recomputeSql).toContain("asub.source_key as driver_module");
+    expect(recomputeSql).toContain("left join attribution_subjects asub");
+    expect(recomputeSql).toContain("asub.id = ps.attribution_subject_id");
+    expect(recomputeSql).toContain("config_revision_id = br.config_revision_id");
+    expect(recomputeSql).not.toMatch(/string_to_array\s*\(\s*ps\.specification_key/);
+    expect(recomputeSql).not.toMatch(/split_part\s*\(\s*ps\.specification_key/);
+    expect(recomputeSql).not.toContain("order by config_revision_id desc");
+    expect(recomputeSql).not.toContain("asub.display_name");
   });
 });
 

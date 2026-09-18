@@ -17,6 +17,8 @@ import type {
   ContractJsonValue,
 } from "../parameter-catalog-contract/index";
 import type { SupportedDefinitionContent } from "../catalog-publication/builder/types";
+import type { ObjectStore } from "../logs/objectStore";
+import type { ProjectValuePayload } from "../parameter-bindings/values/types";
 
 export type DefinitionReplacementId = string;
 export type DefinitionReplacementPreviewId = string;
@@ -98,6 +100,23 @@ export type FrozenProjectTip = {
   readonly valueDigest: string;
   readonly sourceFormat: "dts" | "unsupported";
   readonly coupledBindingIds: readonly string[];
+  readonly exactSourceProof: FrozenSourceProof | null;
+};
+
+export type FrozenSourceProof = {
+  readonly sourceOccurrenceId: string;
+  readonly configRevisionId: string;
+  readonly propertyOccurrenceId: string;
+  readonly nodeOccurrenceId: string;
+  readonly fileId: string;
+  readonly fileVersionId: string;
+  readonly sourceRef: string;
+  readonly locator: Record<string, unknown>;
+  readonly locatorDigest: string;
+  readonly sourceDigest: string;
+  readonly revisionDigest: string;
+  readonly sourceSpan: { readonly start: number; readonly end: number };
+  readonly payload: ProjectValuePayload;
 };
 
 export type ReplacementPreviewImpact = {
@@ -253,6 +272,8 @@ export type ReplacementPublicationPorts = {
 
 export type DefinitionReplacementServiceInput = {
   readonly db: import("../../shared/database/client").Database;
+  /** Server-owned bytes are required for exact source proof; never accept a caller-supplied store. */
+  readonly objectStore?: ObjectStore;
   readonly publication?: ReplacementPublicationPorts;
   readonly now?: () => Date;
 };

@@ -18,7 +18,7 @@ export const parameterSubmissionRoundStatusSchema = z.enum([
   "withdrawn",
   "stashed"
 ]);
-export const parameterImportBatchStatusSchema = z.enum(["previewed", "applied"]);
+export const parameterImportBatchStatusSchema = z.enum(["previewed", "staged", "applied"]);
 export const parameterImportClassificationSchema = z.enum(["added", "updated", "unchanged", "conflict"]);
 
 export const projectDtoSchema = z.object({
@@ -181,7 +181,9 @@ export const parameterImportSummaryDtoSchema = z.object({
   updated: z.number(),
   unchanged: z.number(),
   conflict: z.number(),
-  highRisk: z.number()
+  highRisk: z.number(),
+  staged: z.number().int().nonnegative().optional(),
+  stagedByUserId: z.string().optional(),stagedItemIds: z.array(z.string()).optional()
 });
 
 export const parameterImportBatchItemDtoSchema = z.object({
@@ -197,7 +199,13 @@ export const parameterImportBatchItemDtoSchema = z.object({
   explanation: z.string().optional(),
   configFormat: z.string().optional(),
   classification: parameterImportClassificationSchema,
-  riskFlag: z.boolean().optional()
+  riskFlag: z.boolean().optional(),
+  definitionId: z.string().optional(),projectParameterValueId: z.string().optional(),
+  baseRevisionId: z.string().optional(),baseCurrentValueId: z.string().optional(),
+  stagedDraft: z.object({
+    draftId: z.string(),candidateId: z.string(),sourcePinId: z.string(),bindingId: z.string(),
+    baseRevisionId: z.string(),baseCurrentValueId: z.string(),baseDigest: z.string(),proposedDigest: z.string(),diffDigest: z.string()
+  }).optional()
 });
 
 export const parameterImportBatchDtoSchema = z.object({

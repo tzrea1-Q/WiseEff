@@ -27,7 +27,16 @@ export const evidenceIngestContract = deepFreeze({
   digestAlgorithm: "sha256",
   canonicalSerialization: "parameter-catalog-contract-serialize",
   commandFamily: "evidence-ingest",
-  replayKey: ["organization_id", "source_identity"],
+  replayKey: [
+    "organization_id",
+    "project_id",
+    "source_occurrence_id",
+    "config_revision_id",
+    "parameter_locator_digest",
+    "catalog_release_id",
+    "matcher_revision",
+  ],
+  reviewReplayKey: ["organization_id", "source_identity"],
   r6AndR8SamePropertyKeyRemainDistinct: true,
   weakMatchCreatesReviewEvidence: true,
 } as const);
@@ -47,7 +56,7 @@ export type ObservationFingerprintModel = {
   readonly matcherRevision: string;
   readonly matcherOutput: MatcherOutput;
   readonly projectId: string;
-  readonly logicalNodeId: string;
+  readonly logicalNodeId: string | null;
   readonly configRevisionId: string;
   readonly sourceLocator: SourceLocator;
 };

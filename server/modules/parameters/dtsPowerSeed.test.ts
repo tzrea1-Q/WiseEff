@@ -35,7 +35,7 @@ describe("DTS power seed catalog", () => {
     const resolved = resolveDts(baseSource);
     const resolvedPropertyCount = resolved.nodes.reduce((count, node) => count + node.properties.length, 0);
 
-    expect(resolvedPropertyCount).toBe(176);
+    expect(resolvedPropertyCount).toBe(200);
     expect(seed.parameterLibrary).toHaveLength(resolvedPropertyCount);
     expect(new Set(seed.parameterLibrary.map((parameter) => parameter.id)).size).toBe(resolvedPropertyCount);
     expect(new Set(seed.parameterLibrary.map((parameter) => parameter.sourceNodePath)).size).toBe(
@@ -179,7 +179,7 @@ describe("DTS power seed catalog", () => {
     expect(names.has("hl7603@75")).toBe(false);
     expect(names.has("hl7603@77")).toBe(false);
     expect(parentOf("fm1230")).toBe("Battery Authentication");
-    expect(parentOf("fm1230_1")).toBe("Battery Authentication");
+    expect(names.has("fm1230_1")).toBe(false);
     expect(parentOf("battery0")).toBe("battery_charge_balance");
     expect(parentOf("scharger_v800")).toBe("Charger IC");
     expect(parentOf("scharger_v800_coul")).toBe("scharger_v800");
@@ -192,8 +192,8 @@ describe("DTS power seed catalog", () => {
     expect(moduleOf("hl7603")?.origin).toBe("auto");
     expect(moduleOf("hl7603")?.sourceKey).toMatch(/^compatible:/);
     expect(moduleOf("battery0")?.kind).toBe("node-type");
-    expect(moduleOf("fm1230")?.kind).toBe("node-type");
-    expect(moduleOf("btb_check")?.kind).toBe("node-type");
+    expect(moduleOf("fm1230")?.kind).toBe("driver-group");
+    expect(moduleOf("btb_check")?.kind).toBe("driver-group");
     expect(moduleOf("board")?.kind).toBe("node-type");
     expect(moduleOf("board")?.sourceKey).toBe("nodetype:board");
 

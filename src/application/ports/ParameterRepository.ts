@@ -141,6 +141,14 @@ export type ParameterImportBatchItem = ParameterImportSourceItem & {
   id: string;
   classification: "added" | "updated" | "unchanged" | "conflict";
   riskFlag?: boolean;
+  definitionId?: string;
+  projectParameterValueId?: string;
+  baseRevisionId?: string;
+  baseCurrentValueId?: string;
+  stagedDraft?: {
+    draftId: string; candidateId: string; sourcePinId: string; bindingId: string;
+    baseRevisionId: string; baseCurrentValueId: string; baseDigest: string; proposedDigest: string; diffDigest: string;
+  };
 };
 
 export type ParameterImportPreviewInput = {
@@ -159,7 +167,7 @@ export type ParameterImportBatchDto = {
   id: string;
   projectId: string;
   sourceName: string;
-  status: "previewed" | "applied";
+  status: "previewed" | "staged" | "applied";
   createdAt: string;
   appliedAt?: string;
   summary: {
@@ -168,6 +176,9 @@ export type ParameterImportBatchDto = {
     unchanged: number;
     conflict: number;
     highRisk: number;
+    staged?: number;
+    stagedByUserId?: string;
+    stagedItemIds?: string[];
   };
   items: ParameterImportBatchItem[];
 };
@@ -232,7 +243,7 @@ export interface ParameterRepository {
   listParameterHistory(parameterId: string): Promise<Array<ParameterHistoryEntry & CanonicalParameterPin>>;
   listDrafts(projectId?: string): Promise<Array<ParameterDraftDto & CanonicalParameterPin>>;
   saveDraft(input: SaveParameterDraftInput): Promise<ParameterDraftDto & CanonicalParameterPin>;
-  deleteDraft(draftId: string): Promise<void>;
+  deleteDraft(draftId: string, projectId?: string): Promise<void>;
   listChangeRequests(query?: ChangeRequestListQuery): Promise<ChangeRequest[]>;
   listSubmissionRounds(query?: SubmissionRoundListQuery): Promise<ParameterSubmissionRound[]>;
   listWorkflowAssignees(projectId: string): Promise<WorkflowAssigneeCandidates>;

@@ -227,29 +227,26 @@ describe("action.submitParameterChange", () => {
     expect(mockedCreateDraft).not.toHaveBeenCalled();
   });
 
-  it("submits the legacy flat shape on legacy-identity databases (TD-079)", async () => {
+  it("refuses legacy-identity mode instead of submitting a flat parameter write", async () => {
     mockedIdentityMode.mockResolvedValue("legacy");
-    mockedGetLegacyParameter.mockResolvedValue({ name: "iin_max", sourceNodePath: undefined } as never);
 
-    const result = await tool().run(adminContext, {
-      projectId: "p1",
-      parameterId: "legacy-param-1",
-      targetValue: "18A",
-      reason: "tune"
+    await expect(
+      tool().run(adminContext, {
+        projectId: "p1",
+        parameterId: "legacy-param-1",
+        targetValue: "18A",
+        reason: "tune"
+      })
+    ).rejects.toMatchObject({
+      code: "CONFLICT",
+      status: 409,
+      details: { reason: "legacy-identity-mode-retired-for-agent" }
     });
 
-    expect(mockedSubmit).toHaveBeenCalledWith(
-      db,
-      (adminContext as { auth: unknown }).auth,
-      expect.objectContaining({
-        projectId: "p1",
-        items: [{ parameterId: "legacy-param-1", targetValue: "18A", reason: "tune" }]
-      }),
-      expect.objectContaining({ requestId: "r1", invocation: durableAgentInvocation })
-    );
+    expect(mockedGetLegacyParameter).not.toHaveBeenCalled();
     expect(mockedLoadBinding).not.toHaveBeenCalled();
     expect(mockedCreateDraft).not.toHaveBeenCalled();
-    expect(result.data).toMatchObject({ changeRequestId: "cr-9", targetValue: "18A" });
+    expect(mockedSubmit).not.toHaveBeenCalled();
   });
 
   it("cleans up the created draft when submission fails", async () => {

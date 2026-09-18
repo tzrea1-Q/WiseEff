@@ -1,4 +1,5 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { ApiError } from "../../shared/http/errors";
 
 import { makeTestAuthContext } from "../../testing/authContext";
 import type { AuthContext } from "../auth/types";
@@ -17,12 +18,19 @@ import * as dbClient from "../../shared/database/client";
 import * as sensitiveNode from "../parameter-kernel/sensitiveNode";
 import * as governanceAudit from "../parameter-topology/governanceAudit";
 import * as topologyService from "../parameter-topology/service";
+import * as configSetService from "../parameter-files/configSetService";
+import * as projects from "../projects/repository";
+import * as importStaging from "./drafts/importService";
+
+vi.mock("./drafts/importService", () => ({ stageCanonicalImportBatch: vi.fn() }));
+afterEach(() => vi.restoreAllMocks());
 
 vi.mock("./catalogProjectValueSync", async (importOriginal) => {
   const actual = await importOriginal<typeof import("./catalogProjectValueSync")>();
   return {
     ...actual,
     findCatalogBindingRow: vi.fn(),
+    loadPublishedCatalog: vi.fn(),
     saveCanonicalProjectValue: vi.fn(),
     listCatalogBindingsForImport: vi.fn(),
     listCatalogBindingRowsForProject: vi.fn()
@@ -33,6 +41,7 @@ vi.mock("../parameters/importBatchRepository", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../parameters/importBatchRepository")>();
   return {
     ...actual,
+    insertImportBatch: vi.fn(),
     markImportBatchApplied: vi.fn()
   };
 });
@@ -55,12 +64,22 @@ vi.mock("../parameter-topology/service", async (importOriginal) => {
   };
 });
 
+vi.mock("../parameter-files/configSetService", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../parameter-files/configSetService")>();
+  return {
+    ...actual,
+    listConfigSets: vi.fn()
+  };
+});
+
 vi.mock("../parameters/service", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../parameters/service")>();
   return {
     ...actual,
     applyImportBatch: vi.fn(),
-    createImportPreview: vi.fn()
+    createImportPreview: vi.fn(),
+    listDrafts: vi.fn(),
+    deleteDraft: vi.fn()
   };
 });
 
@@ -105,6 +124,10 @@ function makeServer(options: { db?: Database; auth?: AuthContext } = {}) {
   const router = createRouter();
   registerCatalogProjectValueConsumerRoutes(router, {
     db: options.db,
+    objectStore: {
+      put: async () => { throw new Error("Unexpected object write in route-only test"); },
+      get: async () => { throw new Error("Unexpected object read in route-only test"); },
+    },
     getCurrentAuthContext: () => options.auth ?? makeAuth()
   });
   return createHttpServer(router);
@@ -164,59 +187,25 @@ const appliedBatch = {
 describe("catalog published-value import apply route", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.spyOn(dbClient, "isRootDatabase").mockReturnValue(true);
+    vi.spyOn(projects, "getProjectById").mockResolvedValue({ id: "project-1" } as never);
+    vi.mocked(importBatchRepository.insertImportBatch).mockImplementation(async (_db, input) => ({
+      ...input, status: "previewed", createdAt: "2026-09-10T00:00:00.000Z"
+    }));
     vi.spyOn(dbClient, "getRootPostgresPool").mockReturnValue({ query: vi.fn() } as never);
     vi.spyOn(auditedWrite, "withAuditedWrite").mockImplementation(async (db, _auth, _ctx, fn) => {
       const outcome = await fn(db as never);
       return outcome.result;
     });
+    vi.mocked(topologyService.listProjectBindings).mockResolvedValue({ items: [] });
+    vi.mocked(configSetService.listConfigSets).mockResolvedValue([]);
   });
 
-  it("returns the contract import-batch DTO after a catalog-owned apply", async () => {
+  it("returns staged source drafts without invoking the direct-value import owner", async () => {
     const db = makeDb();
-    vi.mocked(db.query).mockImplementation(async (sql: string) => {
-      if (sql.includes("from parameter_import_batches")) {
-        return {
-          rows: [
-            {
-              items: [
-                {
-                  id: "item-1",
-                  name: "iin_max",
-                  classification: "updated",
-                  projectParameterValueId: "pbind-1",
-                  currentValue: "3000"
-                }
-              ],
-              project_id: "project-1"
-            }
-          ]
-        };
-      }
-      if (sql.includes("config_revision_id")) {
-        return { rows: [{ config_revision_id: "rev-1" }] };
-      }
-      return { rows: [] };
-    });
-    vi.mocked(catalogSync.findCatalogBindingRow).mockResolvedValue({
-      id: "pbind-1",
-      organization_id: "org-1",
-      catalog_release_id: "crel_acme_1",
-      project_id: "project-1",
-      logical_node_id: "node-1",
-      registration_id: "reg-1",
-      subject_id: "csub_acme_power",
-      definition_id: "pdef_acme_power_iin_max",
-      effective_revision_id: "rev-def-1",
-      current_value_id: "val-1"
-    });
-    vi.mocked(catalogSync.saveCanonicalProjectValue).mockResolvedValue({
-      bindingId: "pbind-1",
-      currentValueId: "val-2",
-      definitionId: "pdef_acme_power_iin_max",
-      propertyKey: "iin_max",
-      rawText: "<3000>"
-    } as never);
-    vi.mocked(importBatchRepository.markImportBatchApplied).mockResolvedValue(appliedBatch);
+    const staged = { ...appliedBatch, status: "staged" as const, appliedAt: undefined,
+      summary: { ...appliedBatch.summary, staged: 1 }, items: appliedBatch.items.map((item) => ({ ...item, riskFlag: false })) };
+    vi.mocked(importStaging.stageCanonicalImportBatch).mockResolvedValue(staged);
 
     const response = await requestJson(
       makeServer({ db }),
@@ -228,12 +217,13 @@ describe("catalog published-value import apply route", () => {
     );
 
     expect(response.status).toBe(200);
-    expect(parameterImportBatchResponseSchema.parse(response.body)).toEqual({ item: appliedBatch });
+    expect(parameterImportBatchResponseSchema.parse(response.body).item).toMatchObject({ status: "staged", summary: { staged: 1 } });
     expect(parameterService.applyImportBatch).not.toHaveBeenCalled();
-    expect(importBatchRepository.markImportBatchApplied).toHaveBeenCalledWith(db, {
-      organizationId: "org-1",
-      batchId: "batch-1"
-    });
+    expect(importBatchRepository.markImportBatchApplied).not.toHaveBeenCalled();
+    expect(catalogSync.saveCanonicalProjectValue).not.toHaveBeenCalled();
+    expect(importStaging.stageCanonicalImportBatch).toHaveBeenCalledWith(db, expect.anything(), expect.anything(),
+      expect.objectContaining({ batchId: "batch-1", selectedItemIds: ["item-1"] }),
+      expect.objectContaining({ requestId: "test-request", invocation: expect.anything(), refusalSink: expect.anything() }));
   });
 
   it("rewrites a catalog import preview inside the audited write", async () => {
@@ -299,16 +289,11 @@ describe("catalog published-value import apply route", () => {
     expect(body.item.summary).toEqual({ added: 0, updated: 1, unchanged: 0, conflict: 0, highRisk: 0 });
     expect(body.item.items[0]?.classification).toBe("updated");
     expect(auditedWrite.withAuditedWrite).toHaveBeenCalled();
-    expect(parameterService.createImportPreview).toHaveBeenCalledWith(
-      db,
-      expect.anything(),
-      expect.objectContaining({ projectId: "project-1" }),
-      { requestId: "test-request" }
-    );
-    expect(db.query).toHaveBeenCalledWith(
-      expect.stringContaining("update parameter_import_batches"),
-      expect.arrayContaining(["batch-preview-1"])
-    );
+    expect(parameterService.createImportPreview).not.toHaveBeenCalled();
+    expect(importBatchRepository.insertImportBatch).toHaveBeenCalledWith(db,
+      expect.objectContaining({ projectId: "project-1", items: expect.arrayContaining([
+        expect.objectContaining({ definitionId: "pdef_acme_power_iin_max", projectParameterValueId: "pbind-1" })
+      ]) }));
   });
 
   it("keeps a precise catalog import identity when another same-name binding is listed first", async () => {
@@ -386,9 +371,7 @@ describe("catalog published-value import apply route", () => {
     expect(response.status).toBe(201);
     const body = parameterImportBatchResponseSchema.parse(response.body);
     expect(body.item.items[0]?.classification).toBe("updated");
-    const persisted = JSON.parse(vi.mocked(db.query).mock.calls[0]?.[1]?.[1] as string) as Array<{
-      projectParameterValueId?: string;
-    }>;
+    const persisted = vi.mocked(importBatchRepository.insertImportBatch).mock.calls[0]![1].items;
     expect(persisted[0]?.projectParameterValueId).toBe("pbind-a");
   });
 
@@ -596,8 +579,54 @@ describe("catalog published-value import apply route", () => {
     );
 
     expect(response.status).toBe(201);
-    expect(parameterService.createImportPreview).toHaveBeenCalled();
-    expect(parameterImportBatchResponseSchema.parse(response.body).item.summary.added).toBe(1);
+    expect(parameterService.createImportPreview).not.toHaveBeenCalled();
+    expect(parameterImportBatchResponseSchema.parse(response.body).item.summary).toMatchObject({ added: 0, conflict: 1 });
+  });
+
+  it("classifies a unique topology property as updated when catalog candidates are empty", async () => {
+    const db = makeDb();
+    vi.mocked(catalogSync.listCatalogBindingsForImport).mockResolvedValue([]);
+    vi.mocked(topologyService.listProjectBindings).mockResolvedValue({
+      items: [
+        {
+          id: "pbind-isolated",
+          propertyKey: "charge_voltage_limit_mv",
+          driverModule: "sc8562",
+          rawValue: "<2300>",
+          description: ""
+        } as never
+      ]
+    });
+
+    const response = await requestJson(
+      makeServer({ db }),
+      "/api/v1/parameter-import-batches",
+      {
+        method: "POST",
+        body: JSON.stringify({
+          projectId: "project-a",
+          sourceName: "pasted-import.txt",
+          items: [
+            {
+              name: "charge_voltage_limit_mv",
+              module: "sc8562",
+              risk: "High",
+              unit: "mA",
+              range: "4200 - 4500",
+              currentValue: "<4350>",
+              recommendedValue: "<4310>"
+            }
+          ]
+        })
+      }
+    );
+
+    expect(response.status).toBe(201);
+    expect(parameterImportBatchResponseSchema.parse(response.body).item.summary).toMatchObject({
+      added: 0,
+      updated: 1,
+      conflict: 0
+    });
   });
 });
 
@@ -639,7 +668,7 @@ describe("catalog published-value save authorization", () => {
   it("creates a pending draft and never writes the canonical current value", async () => {
     const db = makeDb();
     vi.mocked(db.query).mockResolvedValue({
-      rows: [{ node_locator: "/charger", compatible: "acme,power" }]
+      rows: [{ format: "dts", config_revision_id: "rev-1", property_occurrence_id: "property-1", node_locator: "/charger", compatible: "acme,power" }]
     });
     vi.mocked(catalogSync.findCatalogBindingRow).mockResolvedValue({
       ...catalogBinding,
@@ -674,7 +703,7 @@ describe("catalog published-value save authorization", () => {
   it("allows an admin to create a pending draft on any project", async () => {
     const db = makeDb();
     vi.mocked(db.query).mockResolvedValue({
-      rows: [{ node_locator: "/charger", compatible: "acme,power" }]
+      rows: [{ format: "dts", config_revision_id: "rev-1", property_occurrence_id: "property-1", node_locator: "/charger", compatible: "acme,power" }]
     });
     vi.mocked(catalogSync.findCatalogBindingRow).mockResolvedValue(catalogBinding);
     vi.mocked(drafts.createCanonicalValueDraft).mockResolvedValue({
@@ -793,6 +822,7 @@ describe("canonical project binding reads", () => {
 describe("canonical import apply boundary", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.spyOn(dbClient, "isRootDatabase").mockReturnValue(true);
     vi.spyOn(dbClient, "getRootPostgresPool").mockReturnValue({ query: vi.fn() } as never);
     vi.spyOn(auditedWrite, "withAuditedWrite").mockImplementation(async (db, _auth, _ctx, fn) => {
       const outcome = await fn(db as never);
@@ -802,6 +832,7 @@ describe("canonical import apply boundary", () => {
 
   it("refuses rows with no canonical binding instead of a legacy apply fallback", async () => {
     const db = makeDb();
+    vi.mocked(importStaging.stageCanonicalImportBatch).mockRejectedValue(new ApiError("CONFLICT", "Import rows require distinct exact canonical source mappings."));
     vi.mocked(db.query).mockImplementation(async (sql: unknown) => {
       if (typeof sql === "string" && sql.includes("from parameter_import_batches")) {
         return {
@@ -832,7 +863,7 @@ describe("canonical import apply boundary", () => {
 
     expect(response.status).toBe(409);
     expect(response.body).toMatchObject({
-      error: { code: "CONFLICT", details: { reason: "unbound-canonical-binding", applied: 0 } }
+      error: { code: "CONFLICT" }
     });
     // The legacy whole-batch apply service is never used as a fallback.
     expect(parameterService.applyImportBatch).not.toHaveBeenCalled();
@@ -886,9 +917,12 @@ describe("canonical value change request routes", () => {
     expect(drafts.submitCanonicalValueChange).toHaveBeenCalled();
   });
 
-  it("rejects an approve without parameter edit permission", async () => {
+  it("routes approval authorization to the shared audited owner", async () => {
     const db = makeDb();
+    vi.mocked(catalogSync.loadPublishedCatalog).mockResolvedValue({} as never);
+    vi.mocked(db.query).mockResolvedValue({ rows: [{ format: "json", config_revision_id: "revision-1" }] });
     const viewer = makeAuth({ permissions: ["parameter:view", "parameter:review"] });
+    vi.mocked(drafts.reviewCanonicalValueChange).mockRejectedValueOnce(new ApiError("FORBIDDEN", "Parameter edit permission is required."));
 
     const response = await requestJson(
       makeServer({ db, auth: viewer }),
@@ -897,7 +931,7 @@ describe("canonical value change request routes", () => {
     );
 
     expect(response.status).toBe(403);
-    expect(drafts.reviewCanonicalValueChange).not.toHaveBeenCalled();
+    expect(drafts.reviewCanonicalValueChange).toHaveBeenCalled();
   });
 
   it("lets an editor reject a pending request without a sensitive-node check", async () => {
@@ -918,5 +952,79 @@ describe("canonical value change request routes", () => {
     expect(response.status).toBe(200);
     expect(drafts.reviewCanonicalValueChange).toHaveBeenCalled();
     expect(sensitiveNode.assertTrustedSensitiveNodeWriteAllowed).not.toHaveBeenCalled();
+  });
+});
+
+describe("catalog pending-draft tray routes", () => {
+  const topologyDraft = {
+    id: "topo-draft-1",
+    projectId: "project-1",
+    parameterId: "pbind-1",
+    targetValue: "<&gpio13 31 0>",
+    action: "set" as const,
+    reason: "PARAM-DRAFT-REMOVE acceptance draft",
+    updatedAt: "2026-09-17T09:16:04.447Z",
+    projectParameterBindingId: "pbind-1",
+    candidateConfigRevisionId: "rev-candidate-1",
+    parameterSpecId: "pspec:vendor/sc8562:gpio_int",
+    bindingId: "pbind-1",
+    effectiveRevisionId: "rev-binding-1"
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(drafts.listCanonicalValueDraftsForUser).mockResolvedValue([]);
+    vi.mocked(parameterService.listDrafts).mockResolvedValue([]);
+    vi.mocked(parameterService.deleteDraft).mockResolvedValue(undefined as never);
+  });
+
+  it("lists topology binding drafts on the canonical tray route when catalog C4 is empty", async () => {
+    vi.mocked(parameterService.listDrafts).mockResolvedValue([topologyDraft]);
+
+    const response = await requestJson(
+      makeServer({ db: makeDb() }),
+      "/api/v2/projects/project-1/parameter-value-drafts"
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual({
+      items: [
+        {
+          id: "topo-draft-1",
+          bindingId: "pbind-1",
+          definitionId: "pspec:vendor/sc8562:gpio_int",
+          effectiveRevisionId: "rev-binding-1",
+          currentValueId: null,
+          targetValue: "<&gpio13 31 0>",
+          sourceFormat: "dts",
+          baseRevisionId: "rev-candidate-1",
+          sourcePinId: null,
+          candidateId: null,
+          reason: "PARAM-DRAFT-REMOVE acceptance draft",
+          updatedAt: "2026-09-17T09:16:04.447Z"
+        }
+      ]
+    });
+  });
+
+  it("deletes a topology draft through the canonical tray route when C4 has no row", async () => {
+    vi.mocked(drafts.removeCanonicalValueDraft).mockRejectedValue(
+      new ApiError("NOT_FOUND", "Pending value draft was not found.")
+    );
+
+    const response = await requestJson(
+      makeServer({ db: makeDb() }),
+      "/api/v2/projects/project-1/parameter-value-drafts/topo-draft-1",
+      { method: "DELETE" }
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual({ item: { id: "topo-draft-1" } });
+    expect(parameterService.deleteDraft).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.anything(),
+      "topo-draft-1",
+      expect.objectContaining({ invocation: expect.anything() })
+    );
   });
 });

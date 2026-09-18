@@ -125,6 +125,321 @@ async function seedLegacyMappingRoots(client: pg.Client): Promise<void> {
   `);
 }
 
+function sqlQuote(value: string): string {
+  return `'${value.replaceAll("'", "''")}'`;
+}
+
+function dtsLocatorExpr(input: {
+  propertyOccurrenceId: string;
+  nodeOccurrenceId: string;
+  fileVersionId: string;
+  propertyName: string;
+}): string {
+  return `jsonb_build_object(
+    'kind', 'dts-property',
+    'propertyOccurrenceId', ${sqlQuote(input.propertyOccurrenceId)},
+    'nodeOccurrenceId', ${sqlQuote(input.nodeOccurrenceId)},
+    'fileVersionId', ${sqlQuote(input.fileVersionId)},
+    'propertyName', ${sqlQuote(input.propertyName)}
+  )`;
+}
+
+type DtsSourceGraph = {
+  orgId: string;
+  projectId: string;
+  configSetId: string;
+  fileId: string;
+  fileVersionId: string;
+  configRevisionId: string;
+  memberId: string;
+  logicalNodeId: string;
+  logicalNodeRevisionId: string;
+  nodeOccurrenceId: string;
+  sourceOccurrenceId: string;
+  fileName?: string;
+  properties: readonly { id: string; name: string; effectId: string }[];
+};
+
+function seedDtsSourceGraphSql(graph: DtsSourceGraph): string {
+  const fileName = graph.fileName ?? `${graph.fileId}.dts`;
+  const propertyRows = graph.properties
+    .map(
+      (property, index) => `(
+      ${sqlQuote(property.id)}, ${sqlQuote(graph.configRevisionId)}, ${sqlQuote(graph.nodeOccurrenceId)},
+      ${sqlQuote(graph.fileVersionId)}, ${sqlQuote(property.name)},
+      ${index * 2 + 1}, ${index * 2 + 2}, 1, ${index * 2 + 2}, 1, ${index * 2 + 3}, ${sqlQuote(String(index + 1))}
+    )`,
+    )
+    .join(",\n      ");
+  const effectRows = graph.properties
+    .map(
+      (property, index) => `(
+      ${sqlQuote(property.effectId)}, ${sqlQuote(graph.configRevisionId)}, ${sqlQuote(graph.logicalNodeRevisionId)},
+      ${sqlQuote(property.id)}, ${sqlQuote(graph.nodeOccurrenceId)}, ${sqlQuote(property.name)}, 'set', ${index}
+    )`,
+    )
+    .join(",\n      ");
+  return `
+    insert into public.dts_config_set (id, organization_id, project_id, name)
+    values (${sqlQuote(graph.configSetId)}, ${sqlQuote(graph.orgId)}, ${sqlQuote(graph.projectId)}, ${sqlQuote(graph.configSetId)});
+    insert into public.project_parameter_files (
+      id, organization_id, project_id, file_name, format, config_set_id, config_set_role
+    ) values (
+      ${sqlQuote(graph.fileId)}, ${sqlQuote(graph.orgId)}, ${sqlQuote(graph.projectId)},
+      ${sqlQuote(fileName)}, 'dts', ${sqlQuote(graph.configSetId)}, 'base'
+    );
+    insert into public.project_parameter_file_versions (
+      id, file_id, version_number, storage_key, checksum, size_bytes, origin
+    ) values (
+      ${sqlQuote(graph.fileVersionId)}, ${sqlQuote(graph.fileId)}, 1,
+      ${sqlQuote(`${graph.fileId}/v1`)}, ${sqlQuote(`sha256:${graph.fileVersionId}`)}, 1, 'upload'
+    );
+    update public.project_parameter_files
+       set current_version_id = ${sqlQuote(graph.fileVersionId)}
+     where id = ${sqlQuote(graph.fileId)};
+    insert into public.dts_config_revisions (
+      id, organization_id, project_id, config_set_id, revision_number, status
+    ) values (
+      ${sqlQuote(graph.configRevisionId)}, ${sqlQuote(graph.orgId)}, ${sqlQuote(graph.projectId)},
+      ${sqlQuote(graph.configSetId)}, 1, 'resolved'
+    );
+    insert into public.dts_config_revision_members (
+      id, config_revision_id, file_id, file_version_id, role, sort_order, source_name
+    ) values (
+      ${sqlQuote(graph.memberId)}, ${sqlQuote(graph.configRevisionId)}, ${sqlQuote(graph.fileId)},
+      ${sqlQuote(graph.fileVersionId)}, 'base', 0, ${sqlQuote(fileName)}
+    );
+    insert into public.dts_logical_nodes (
+      id, organization_id, project_id, config_set_id
+    ) values (
+      ${sqlQuote(graph.logicalNodeId)}, ${sqlQuote(graph.orgId)}, ${sqlQuote(graph.projectId)},
+      ${sqlQuote(graph.configSetId)}
+    );
+    insert into public.dts_logical_node_revisions (
+      id, logical_node_id, config_revision_id, node_locator, name, compatible
+    ) values (
+      ${sqlQuote(graph.logicalNodeRevisionId)}, ${sqlQuote(graph.logicalNodeId)},
+      ${sqlQuote(graph.configRevisionId)}, '/fixture', 'fixture', 'fixture'
+    );
+    insert into public.dts_node_occurrences (
+      id, config_revision_id, file_version_id, name, node_path,
+      start_offset, end_offset, start_line, start_column, end_line, end_column, raw_text
+    ) values (
+      ${sqlQuote(graph.nodeOccurrenceId)}, ${sqlQuote(graph.configRevisionId)},
+      ${sqlQuote(graph.fileVersionId)}, 'fixture', '/fixture', 0, 10, 1, 1, 1, 10, 'fixture'
+    );
+    insert into public.dts_property_occurrences (
+      id, config_revision_id, node_occurrence_id, file_version_id, property_name,
+      start_offset, end_offset, start_line, start_column, end_line, end_column, raw_text
+    ) values
+      ${propertyRows};
+    insert into public.dts_occurrence_effects (
+      id, config_revision_id, logical_node_revision_id, property_occurrence_id,
+      node_occurrence_id, property_name, effect_kind, source_order
+    ) values
+      ${effectRows};
+    insert into parameter_catalog.project_parameter_source_occurrences (
+      id, organization_id, project_id, config_set_id, file_id, occurrence_kind, logical_node_id
+    ) values (
+      ${sqlQuote(graph.sourceOccurrenceId)}, ${sqlQuote(graph.orgId)}, ${sqlQuote(graph.projectId)},
+      ${sqlQuote(graph.configSetId)}, ${sqlQuote(graph.fileId)}, 'dts', ${sqlQuote(graph.logicalNodeId)}
+    );
+  `;
+}
+
+function sourcePinSql(input: {
+  pinId: string;
+  valueId: string;
+  bindingId: string;
+  definitionId: string;
+  orgId: string;
+  projectId: string;
+  sourceOccurrenceId: string;
+  configRevisionId: string;
+  fileId: string;
+  fileVersionId: string;
+  propertyOccurrenceId: string;
+  nodeOccurrenceId: string;
+  propertyName: string;
+}): string {
+  const locator = dtsLocatorExpr(input);
+  return `
+    insert into parameter_catalog.project_value_source_pins (
+      id, project_value_id, binding_id, definition_id, organization_id, project_id,
+      source_occurrence_id, config_revision_id, file_id, file_version_id, format,
+      property_occurrence_id, locator, locator_digest
+    ) values (
+      ${sqlQuote(input.pinId)}, ${sqlQuote(input.valueId)}, ${sqlQuote(input.bindingId)},
+      ${sqlQuote(input.definitionId)}, ${sqlQuote(input.orgId)}, ${sqlQuote(input.projectId)},
+      ${sqlQuote(input.sourceOccurrenceId)}, ${sqlQuote(input.configRevisionId)},
+      ${sqlQuote(input.fileId)}, ${sqlQuote(input.fileVersionId)}, 'dts',
+      ${sqlQuote(input.propertyOccurrenceId)}, ${locator},
+      parameter_catalog.canonical_dts_parameter_locator_digest(${locator})
+    )`;
+}
+
+function observationMatchSql(input: {
+  id: string;
+  observationId: string;
+  orgId?: string;
+  projectId: string;
+  logicalNodeId: string;
+  registrationId: string;
+  subjectId: string;
+  definitionId: string;
+  definitionRevisionId: string;
+  bindingId: string;
+  catalogReleaseId: string;
+  matcherRevision: string;
+  sourceOccurrenceId: string;
+  propertyOccurrenceId: string;
+  nodeOccurrenceId: string;
+  fileVersionId: string;
+  propertyName: string;
+}): string {
+  const locator = dtsLocatorExpr(input);
+  const orgId = input.orgId ?? "org-pcat";
+  return `
+    insert into parameter_catalog.parameter_observation_matches (
+      id, observation_id, organization_id, project_id, logical_node_id,
+      registration_id, subject_id, definition_id, definition_revision_id,
+      binding_id, catalog_release_id, matcher_revision,
+      source_occurrence_id, parameter_locator_digest
+    ) values (
+      ${sqlQuote(input.id)}, ${sqlQuote(input.observationId)}, ${sqlQuote(orgId)},
+      ${sqlQuote(input.projectId)}, ${sqlQuote(input.logicalNodeId)},
+      ${sqlQuote(input.registrationId)}, ${sqlQuote(input.subjectId)},
+      ${sqlQuote(input.definitionId)}, ${sqlQuote(input.definitionRevisionId)},
+      ${sqlQuote(input.bindingId)}, ${sqlQuote(input.catalogReleaseId)},
+      ${sqlQuote(input.matcherRevision)}, ${sqlQuote(input.sourceOccurrenceId)},
+      parameter_catalog.canonical_dts_parameter_locator_digest(${locator})
+    )`;
+}
+
+function observationSql(input: {
+  id: string;
+  orgId?: string;
+  projectId: string;
+  logicalNodeId: string;
+  configRevisionId: string;
+  sourceIdentity: string;
+  catalogReleaseId: string;
+  matcherRevision: string;
+  evidenceFingerprint: string;
+  sourceOccurrenceId: string;
+  propertyOccurrenceId: string;
+  nodeOccurrenceId: string;
+  fileVersionId: string;
+  propertyName: string;
+}): string {
+  const locator = dtsLocatorExpr(input);
+  const orgId = input.orgId ?? "org-pcat";
+  return `
+    insert into parameter_catalog.parameter_observations (
+      id, organization_id, project_id, logical_node_id, config_revision_id,
+      source_identity, source_locator, catalog_release_id, matcher_revision, evidence_fingerprint,
+      source_occurrence_id, parameter_locator_digest
+    ) values (
+      ${sqlQuote(input.id)}, ${sqlQuote(orgId)}, ${sqlQuote(input.projectId)}, ${sqlQuote(input.logicalNodeId)},
+      ${sqlQuote(input.configRevisionId)}, ${sqlQuote(input.sourceIdentity)}, ${locator},
+      ${sqlQuote(input.catalogReleaseId)}, ${sqlQuote(input.matcherRevision)}, ${sqlQuote(input.evidenceFingerprint)},
+      ${sqlQuote(input.sourceOccurrenceId)},
+      parameter_catalog.canonical_dts_parameter_locator_digest(${locator})
+    )`;
+}
+
+const OWNERS_GRAPH: DtsSourceGraph = {
+  orgId: "org-pcat",
+  projectId: "project-pcat",
+  configSetId: "dcs-binding-owners",
+  fileId: "pfile-binding-owners",
+  fileVersionId: "pfv-binding-owners",
+  configRevisionId: "crev-binding-owners",
+  memberId: "member-binding-owners",
+  logicalNodeId: "logical-owner",
+  logicalNodeRevisionId: "lnrev-binding-owners",
+  nodeOccurrenceId: "node-occ-binding-owners",
+  sourceOccurrenceId: "occ-binding-owners",
+  properties: [
+    { id: "prop-occ-owner-a", name: "owner-a", effectId: "effect-owner-a" },
+    { id: "prop-occ-owner-b", name: "owner-b", effectId: "effect-owner-b" },
+  ],
+};
+
+const OWNERS_PROPERTY_A = OWNERS_GRAPH.properties[0]!;
+
+const OWNERS_OBS = {
+  logicalNodeId: OWNERS_GRAPH.logicalNodeId,
+  configRevisionId: OWNERS_GRAPH.configRevisionId,
+  sourceOccurrenceId: OWNERS_GRAPH.sourceOccurrenceId,
+  propertyOccurrenceId: OWNERS_PROPERTY_A.id,
+  nodeOccurrenceId: OWNERS_GRAPH.nodeOccurrenceId,
+  fileVersionId: OWNERS_GRAPH.fileVersionId,
+  propertyName: OWNERS_PROPERTY_A.name,
+} as const;
+
+const EVIDENCE_GRAPH: DtsSourceGraph = {
+  orgId: "org-pcat",
+  projectId: "project-pcat",
+  configSetId: "dcs-evidence",
+  fileId: "pfile-evidence",
+  fileVersionId: "pfv-evidence",
+  configRevisionId: "config-evidence",
+  memberId: "member-evidence",
+  logicalNodeId: "logical-node-evidence",
+  logicalNodeRevisionId: "lnrev-evidence",
+  nodeOccurrenceId: "node-occ-evidence",
+  sourceOccurrenceId: "occ-evidence",
+  properties: [{ id: "prop-occ-evidence", name: "owner-a", effectId: "effect-evidence" }],
+};
+
+const BINDING_ONE_GRAPH: DtsSourceGraph = {
+  orgId: "org-pcat",
+  projectId: "project-pcat",
+  configSetId: "dcs-binding-one",
+  fileId: "pfile-binding-one",
+  fileVersionId: "pfv-binding-one",
+  configRevisionId: "crev-binding-one",
+  memberId: "member-binding-one",
+  logicalNodeId: "logical-node-one",
+  logicalNodeRevisionId: "lnrev-binding-one",
+  nodeOccurrenceId: "node-occ-binding-one",
+  sourceOccurrenceId: "occ-binding-one",
+  properties: [
+    { id: "prop-occ-binding-one", name: "clock-frequency", effectId: "effect-binding-one" },
+  ],
+};
+
+const OTHER_PROJECT_GRAPH: DtsSourceGraph = {
+  orgId: "org-pcat",
+  projectId: "project-pcat-other",
+  configSetId: "dcs-binding-other",
+  fileId: "pfile-binding-other",
+  fileVersionId: "pfv-binding-other",
+  configRevisionId: "crev-binding-other",
+  memberId: "member-binding-other",
+  logicalNodeId: "logical-owner-other",
+  logicalNodeRevisionId: "lnrev-binding-other",
+  nodeOccurrenceId: "node-occ-binding-other",
+  sourceOccurrenceId: "occ-binding-other",
+  properties: [{ id: "prop-occ-binding-other", name: "owner-a", effectId: "effect-binding-other" }],
+};
+
+const OTHER_NODE_GRAPH: DtsSourceGraph = {
+  orgId: "org-pcat",
+  projectId: "project-pcat",
+  configSetId: "dcs-logical-other",
+  fileId: "pfile-logical-other",
+  fileVersionId: "pfv-logical-other",
+  configRevisionId: "crev-logical-other",
+  memberId: "member-logical-other",
+  logicalNodeId: "logical-other",
+  logicalNodeRevisionId: "lnrev-logical-other",
+  nodeOccurrenceId: "node-occ-logical-other",
+  sourceOccurrenceId: "occ-logical-other",
+  properties: [{ id: "prop-occ-logical-other", name: "owner-a", effectId: "effect-logical-other" }],
+};
+
 async function seedTwoCanonicalBindings(client: pg.Client): Promise<void> {
   await client.query(`
     begin;
@@ -172,17 +487,18 @@ async function seedTwoCanonicalBindings(client: pg.Client): Promise<void> {
     ) values (
       'placement-binding-owners', 'reg-binding-owners', 'org-pcat', 'pmod-driver', 'curated'
     );
+    ${seedDtsSourceGraphSql(OWNERS_GRAPH)}
     insert into parameter_catalog.project_parameter_bindings (
       id, organization_id, catalog_release_id, project_id, logical_node_id, registration_id, subject_id,
-      definition_id, effective_revision_id, current_value_id
+      definition_id, effective_revision_id, current_value_id, source_occurrence_id
     ) values
       (
         'binding-owner-a', 'org-pcat', 'crel-binding-owners', 'project-pcat', 'logical-owner', 'reg-binding-owners',
-        'csub-driver', 'pdef-owner-a', 'drev-owner-a', 'pvalue-owner-a'
+        'csub-driver', 'pdef-owner-a', 'drev-owner-a', 'pvalue-owner-a', 'occ-binding-owners'
       ),
       (
         'binding-owner-b', 'org-pcat', 'crel-binding-owners', 'project-pcat', 'logical-owner', 'reg-binding-owners',
-        'csub-driver', 'pdef-owner-b', 'drev-owner-b', 'pvalue-owner-b'
+        'csub-driver', 'pdef-owner-b', 'drev-owner-b', 'pvalue-owner-b', 'occ-binding-owners'
       );
     insert into parameter_catalog.project_parameter_values (
       id, binding_id, definition_id, definition_revision_id,
@@ -190,12 +506,44 @@ async function seedTwoCanonicalBindings(client: pg.Client): Promise<void> {
     ) values
       (
         'pvalue-owner-a', 'binding-owner-a', 'pdef-owner-a', 'drev-owner-a',
-        'source-owner-a', 'config-owner-a', 'sha256:value-owner-a', 'number', '1'
+        'source-owner-a', 'crev-binding-owners', 'sha256:value-owner-a', 'number', '1'
       ),
       (
         'pvalue-owner-b', 'binding-owner-b', 'pdef-owner-b', 'drev-owner-b',
-        'source-owner-b', 'config-owner-b', 'sha256:value-owner-b', 'number', '2'
+        'source-owner-b', 'crev-binding-owners', 'sha256:value-owner-b', 'number', '2'
       );
+    ${sourcePinSql({
+      pinId: "pin-owner-a",
+      valueId: "pvalue-owner-a",
+      bindingId: "binding-owner-a",
+      definitionId: "pdef-owner-a",
+      orgId: "org-pcat",
+      projectId: "project-pcat",
+      sourceOccurrenceId: "occ-binding-owners",
+      configRevisionId: "crev-binding-owners",
+      fileId: "pfile-binding-owners",
+      fileVersionId: "pfv-binding-owners",
+      propertyOccurrenceId: "prop-occ-owner-a",
+      nodeOccurrenceId: "node-occ-binding-owners",
+      propertyName: "owner-a",
+    })}
+    ;
+    ${sourcePinSql({
+      pinId: "pin-owner-b",
+      valueId: "pvalue-owner-b",
+      bindingId: "binding-owner-b",
+      definitionId: "pdef-owner-b",
+      orgId: "org-pcat",
+      projectId: "project-pcat",
+      sourceOccurrenceId: "occ-binding-owners",
+      configRevisionId: "crev-binding-owners",
+      fileId: "pfile-binding-owners",
+      fileVersionId: "pfv-binding-owners",
+      propertyOccurrenceId: "prop-occ-owner-b",
+      nodeOccurrenceId: "node-occ-binding-owners",
+      propertyName: "owner-b",
+    })}
+    ;
     set constraints all immediate;
     commit;
   `);
@@ -1220,13 +1568,22 @@ describe("canonical Catalog deferred constraints and rollback", () => {
       insert into parameter_catalog.catalog_releases (
         id, release_sequence, release_version, release_digest, compiled_model_digest, toolchain_digest, published_at
       ) values ('crel-evidence', 10160, 'evidence', 'sha256:evidence', 'sha256:evidence-compiled', 'sha256:evidence-toolchain', '2026-09-01T00:00:00.000Z');
-      insert into parameter_catalog.parameter_observations (
-        id, organization_id, project_id, logical_node_id, config_revision_id,
-        source_identity, source_locator, catalog_release_id, matcher_revision, evidence_fingerprint
-      ) values (
-        'pobs-one', 'org-pcat', 'project-pcat', 'logical-node-evidence', 'config-evidence',
-        'source-evidence', '{}', 'crel-evidence', 'matcher-evidence', 'sha256:evidence-fingerprint'
-      );
+      ${seedDtsSourceGraphSql(EVIDENCE_GRAPH)}
+      ${observationSql({
+        id: "pobs-one",
+        projectId: "project-pcat",
+        logicalNodeId: EVIDENCE_GRAPH.logicalNodeId,
+        configRevisionId: EVIDENCE_GRAPH.configRevisionId,
+        sourceIdentity: "source-evidence",
+        catalogReleaseId: "crel-evidence",
+        matcherRevision: "matcher-evidence",
+        evidenceFingerprint: "sha256:evidence-fingerprint",
+        sourceOccurrenceId: EVIDENCE_GRAPH.sourceOccurrenceId,
+        propertyOccurrenceId: EVIDENCE_GRAPH.properties[0]!.id,
+        nodeOccurrenceId: EVIDENCE_GRAPH.nodeOccurrenceId,
+        fileVersionId: EVIDENCE_GRAPH.fileVersionId,
+        propertyName: EVIDENCE_GRAPH.properties[0]!.name,
+      })}
     `);
 
     const error = await captureDatabaseError(
@@ -1268,35 +1625,44 @@ describe("canonical Catalog deferred constraints and rollback", () => {
         'crel-observation-b', 10250, 'observation-b', 'sha256:observation-b',
         'sha256:observation-b-compiled', 'sha256:observation-b-toolchain', '2026-09-01T00:00:00.000Z'
       );
-      insert into parameter_catalog.parameter_observations (
-        id, organization_id, project_id, logical_node_id, config_revision_id,
-        source_identity, source_locator, catalog_release_id, matcher_revision, evidence_fingerprint
-      ) values
-        (
-          'pobs-a', 'org-pcat', 'project-pcat', 'logical-owner', 'config-observation-a',
-          'source-observation-a', '{}', 'crel-binding-owners', 'matcher-a', 'sha256:observation-a'
-        ),
-        (
-          'pobs-b', 'org-pcat', 'project-pcat', 'logical-owner', 'config-observation-b',
-          'source-observation-b', '{}', 'crel-observation-b', 'matcher-b', 'sha256:observation-b'
-        )
+      ${observationSql({
+        id: "pobs-a",
+        projectId: "project-pcat",
+        sourceIdentity: "source-observation-a",
+        catalogReleaseId: "crel-binding-owners",
+        matcherRevision: "matcher-a",
+        evidenceFingerprint: "sha256:observation-a",
+        ...OWNERS_OBS,
+      })}
+      ;
+      ${observationSql({
+        id: "pobs-b",
+        projectId: "project-pcat",
+        sourceIdentity: "source-observation-b",
+        catalogReleaseId: "crel-observation-b",
+        matcherRevision: "matcher-b",
+        evidenceFingerprint: "sha256:observation-b",
+        ...OWNERS_OBS,
+      })}
     `);
 
       const error = await captureDatabaseError(
         client.query(
           `
-          insert into parameter_catalog.parameter_observation_matches (
-            id, observation_id, organization_id, project_id, logical_node_id,
-            registration_id, subject_id,
-            definition_id, definition_revision_id, binding_id,
-            catalog_release_id, matcher_revision
-          ) values (
-            'pmatch-cross-observation', 'pobs-a', 'org-pcat', 'project-pcat', 'logical-owner',
-            'reg-binding-owners', 'csub-driver', 'pdef-owner-a', 'drev-owner-a',
-            'binding-owner-a', $1, $2
-          )
+          ${observationMatchSql({
+            id: "pmatch-cross-observation",
+            observationId: "pobs-a",
+            projectId: "project-pcat",
+            registrationId: "reg-binding-owners",
+            subjectId: "csub-driver",
+            definitionId: "pdef-owner-a",
+            definitionRevisionId: "drev-owner-a",
+            bindingId: "binding-owner-a",
+            catalogReleaseId: catalogReleaseId,
+            matcherRevision: matcherRevision,
+            ...OWNERS_OBS,
+          })}
         `,
-          [catalogReleaseId, matcherRevision],
         ),
       );
       expect(error.code).toBe("23503");
@@ -1330,35 +1696,62 @@ describe("canonical Catalog deferred constraints and rollback", () => {
       insert into public.projects (id, organization_id, name, code)
       values ('project-pcat-other', 'org-pcat', 'Catalog project other', 'PCATO')
     `);
-      await client.query(
-        `
-      insert into parameter_catalog.parameter_observations (
-        id, organization_id, project_id, logical_node_id, config_revision_id,
-        source_identity, source_locator, catalog_release_id, matcher_revision, evidence_fingerprint
-      ) values (
-        'pobs-binding-owner', 'org-pcat', $1, $2, 'config-binding-owner',
-        'source-binding-owner', '{}', 'crel-binding-owners', 'matcher-binding-owner',
-        'sha256:binding-owner-observation'
-      )
-    `,
-        [projectId, logicalNodeId],
-      );
+      const foreign =
+        projectId === "project-pcat-other"
+          ? {
+              graphSql: seedDtsSourceGraphSql(OTHER_PROJECT_GRAPH),
+              obs: {
+                logicalNodeId: OTHER_PROJECT_GRAPH.logicalNodeId,
+                configRevisionId: OTHER_PROJECT_GRAPH.configRevisionId,
+                sourceOccurrenceId: OTHER_PROJECT_GRAPH.sourceOccurrenceId,
+                propertyOccurrenceId: OTHER_PROJECT_GRAPH.properties[0]!.id,
+                nodeOccurrenceId: OTHER_PROJECT_GRAPH.nodeOccurrenceId,
+                fileVersionId: OTHER_PROJECT_GRAPH.fileVersionId,
+                propertyName: OTHER_PROJECT_GRAPH.properties[0]!.name,
+              },
+            }
+          : {
+              graphSql: seedDtsSourceGraphSql(OTHER_NODE_GRAPH),
+              obs: {
+                logicalNodeId: OTHER_NODE_GRAPH.logicalNodeId,
+                configRevisionId: OTHER_NODE_GRAPH.configRevisionId,
+                sourceOccurrenceId: OTHER_NODE_GRAPH.sourceOccurrenceId,
+                propertyOccurrenceId: OTHER_NODE_GRAPH.properties[0]!.id,
+                nodeOccurrenceId: OTHER_NODE_GRAPH.nodeOccurrenceId,
+                fileVersionId: OTHER_NODE_GRAPH.fileVersionId,
+                propertyName: OTHER_NODE_GRAPH.properties[0]!.name,
+              },
+            };
+      await client.query(`
+      ${foreign.graphSql}
+      ${observationSql({
+        id: "pobs-binding-owner",
+        projectId,
+        sourceIdentity: "source-binding-owner",
+        catalogReleaseId: "crel-binding-owners",
+        matcherRevision: "matcher-binding-owner",
+        evidenceFingerprint: "sha256:binding-owner-observation",
+        ...foreign.obs,
+      })}
+    `);
 
       const error = await captureDatabaseError(
         client.query(
           `
-        insert into parameter_catalog.parameter_observation_matches (
-          id, observation_id, organization_id, project_id, logical_node_id,
-          registration_id, subject_id,
-          definition_id, definition_revision_id, binding_id,
-          catalog_release_id, matcher_revision
-        ) values (
-          'pmatch-binding-owner', 'pobs-binding-owner', 'org-pcat', $1, $2,
-          'reg-binding-owners', 'csub-driver', 'pdef-owner-a', 'drev-owner-a',
-          'binding-owner-a', 'crel-binding-owners', 'matcher-binding-owner'
-        )
+        ${observationMatchSql({
+          id: "pmatch-binding-owner",
+          observationId: "pobs-binding-owner",
+          projectId,
+          registrationId: "reg-binding-owners",
+          subjectId: "csub-driver",
+          definitionId: "pdef-owner-a",
+          definitionRevisionId: "drev-owner-a",
+          bindingId: "binding-owner-a",
+          catalogReleaseId: "crel-binding-owners",
+          matcherRevision: "matcher-binding-owner",
+          ...foreign.obs,
+        })}
       `,
-          [projectId, logicalNodeId],
         ),
       );
       expect(error.code).toBe("23503");
@@ -3647,21 +4040,37 @@ describe("canonical Catalog deferred constraints and rollback", () => {
       insert into parameter_catalog.subject_placements (
         id, registration_id, organization_id, module_id, origin
       ) values ('placement-binding', 'reg-binding', 'org-pcat', 'pmod-driver', 'curated');
-
+      ${seedDtsSourceGraphSql(BINDING_ONE_GRAPH)}
     insert into parameter_catalog.project_parameter_bindings (
       id, organization_id, catalog_release_id, project_id, logical_node_id, registration_id, subject_id,
-      definition_id, effective_revision_id, current_value_id
+      definition_id, effective_revision_id, current_value_id, source_occurrence_id
     ) values (
       'binding-one', 'org-pcat', 'crel-binding', 'project-pcat', 'logical-node-one', 'reg-binding', 'csub-driver',
-      'pdef-binding', 'drev-binding', 'pvalue-one'
+      'pdef-binding', 'drev-binding', 'pvalue-one', 'occ-binding-one'
     );
       insert into parameter_catalog.project_parameter_values (
         id, binding_id, definition_id, definition_revision_id,
         source_ref, config_revision_id, value_digest, value_kind, value
       ) values (
         'pvalue-one', 'binding-one', 'pdef-binding', 'drev-binding',
-        'source-one', 'config-one', 'sha256:value-one', 'number', '1000000'::jsonb
+        'source-one', 'crev-binding-one', 'sha256:value-one', 'number', '1000000'::jsonb
       );
+      ${sourcePinSql({
+        pinId: "pin-binding-one",
+        valueId: "pvalue-one",
+        bindingId: "binding-one",
+        definitionId: "pdef-binding",
+        orgId: "org-pcat",
+        projectId: "project-pcat",
+        sourceOccurrenceId: "occ-binding-one",
+        configRevisionId: "crev-binding-one",
+        fileId: "pfile-binding-one",
+        fileVersionId: "pfv-binding-one",
+        propertyOccurrenceId: "prop-occ-binding-one",
+        nodeOccurrenceId: "node-occ-binding-one",
+        propertyName: "clock-frequency",
+      })}
+      ;
       set constraints all immediate;
       commit;
     `);
@@ -3751,26 +4160,29 @@ describe("canonical Catalog deferred constraints and rollback", () => {
   it("cuts a Binding over by release-and-revision CAS and preserves historical ObservationMatch", async () => {
     await seedTwoCanonicalBindings(client);
     await client.query(`
-      insert into parameter_catalog.parameter_observations (
-        id, organization_id, project_id, logical_node_id, config_revision_id,
-        source_identity, source_locator, catalog_release_id, matcher_revision,
-        evidence_fingerprint
-      ) values (
-        'pobs-before-cutover', 'org-pcat', 'project-pcat', 'logical-owner',
-        'config-before-cutover', 'source-before-cutover', '{}',
-        'crel-binding-owners', 'matcher-before-cutover',
-        'sha256:before-cutover-observation'
-      );
-      insert into parameter_catalog.parameter_observation_matches (
-        id, observation_id, organization_id, project_id, logical_node_id,
-        registration_id, subject_id, definition_id, definition_revision_id,
-        binding_id, catalog_release_id, matcher_revision
-      ) values (
-        'pmatch-before-cutover', 'pobs-before-cutover', 'org-pcat',
-        'project-pcat', 'logical-owner', 'reg-binding-owners', 'csub-driver',
-        'pdef-owner-a', 'drev-owner-a', 'binding-owner-a',
-        'crel-binding-owners', 'matcher-before-cutover'
-      )
+      ${observationSql({
+        id: "pobs-before-cutover",
+        projectId: "project-pcat",
+        sourceIdentity: "source-before-cutover",
+        catalogReleaseId: "crel-binding-owners",
+        matcherRevision: "matcher-before-cutover",
+        evidenceFingerprint: "sha256:before-cutover-observation",
+        ...OWNERS_OBS,
+      })}
+      ;
+      ${observationMatchSql({
+        id: "pmatch-before-cutover",
+        observationId: "pobs-before-cutover",
+        projectId: "project-pcat",
+        registrationId: "reg-binding-owners",
+        subjectId: "csub-driver",
+        definitionId: "pdef-owner-a",
+        definitionRevisionId: "drev-owner-a",
+        bindingId: "binding-owner-a",
+        catalogReleaseId: "crel-binding-owners",
+        matcherRevision: "matcher-before-cutover",
+        ...OWNERS_OBS,
+      })}
     `);
     await client.query(`
       begin;
@@ -3874,29 +4286,31 @@ describe("canonical Catalog deferred constraints and rollback", () => {
     expect(stale.rowCount).toBe(0);
 
     await client.query(`
-      insert into parameter_catalog.parameter_observations (
-        id, organization_id, project_id, logical_node_id, config_revision_id,
-        source_identity, source_locator, catalog_release_id, matcher_revision,
-        evidence_fingerprint
-      ) values (
-        'pobs-cross-release', 'org-pcat', 'project-pcat', 'logical-owner',
-        'config-cross-release', 'source-cross-release', '{}',
-        'crel-binding-owners', 'matcher-cross-release',
-        'sha256:cross-release-observation'
-      )
+      ${observationSql({
+        id: "pobs-cross-release",
+        projectId: "project-pcat",
+        sourceIdentity: "source-cross-release",
+        catalogReleaseId: "crel-binding-owners",
+        matcherRevision: "matcher-cross-release",
+        evidenceFingerprint: "sha256:cross-release-observation",
+        ...OWNERS_OBS,
+      })}
     `);
     const mismatch = await captureDatabaseError(
       client.query(`
-        insert into parameter_catalog.parameter_observation_matches (
-          id, observation_id, organization_id, project_id, logical_node_id,
-          registration_id, subject_id, definition_id, definition_revision_id,
-          binding_id, catalog_release_id, matcher_revision
-        ) values (
-          'pmatch-cross-release', 'pobs-cross-release', 'org-pcat',
-          'project-pcat', 'logical-owner', 'reg-binding-owners', 'csub-driver',
-          'pdef-owner-a', 'drev-owner-a', 'binding-owner-a',
-          'crel-binding-owners', 'matcher-cross-release'
-        )
+        ${observationMatchSql({
+          id: "pmatch-cross-release",
+          observationId: "pobs-cross-release",
+          projectId: "project-pcat",
+          registrationId: "reg-binding-owners",
+          subjectId: "csub-driver",
+          definitionId: "pdef-owner-a",
+          definitionRevisionId: "drev-owner-a",
+          bindingId: "binding-owner-a",
+          catalogReleaseId: "crel-binding-owners",
+          matcherRevision: "matcher-cross-release",
+          ...OWNERS_OBS,
+        })}
       `),
     );
     expect(mismatch.code).toBe("23503");
@@ -3905,26 +4319,29 @@ describe("canonical Catalog deferred constraints and rollback", () => {
     );
 
     await client.query(`
-      insert into parameter_catalog.parameter_observations (
-        id, organization_id, project_id, logical_node_id, config_revision_id,
-        source_identity, source_locator, catalog_release_id, matcher_revision,
-        evidence_fingerprint
-      ) values (
-        'pobs-successor', 'org-pcat', 'project-pcat', 'logical-owner',
-        'config-successor', 'source-successor', '{}',
-        'crel-binding-successor', 'matcher-successor',
-        'sha256:successor-observation'
-      );
-      insert into parameter_catalog.parameter_observation_matches (
-        id, observation_id, organization_id, project_id, logical_node_id,
-        registration_id, subject_id, definition_id, definition_revision_id,
-        binding_id, catalog_release_id, matcher_revision
-      ) values (
-        'pmatch-successor', 'pobs-successor', 'org-pcat',
-        'project-pcat', 'logical-owner', 'reg-binding-owners', 'csub-driver',
-        'pdef-owner-a', 'drev-owner-a-successor', 'binding-owner-a',
-        'crel-binding-successor', 'matcher-successor'
-      )
+      ${observationSql({
+        id: "pobs-successor",
+        projectId: "project-pcat",
+        sourceIdentity: "source-successor",
+        catalogReleaseId: "crel-binding-successor",
+        matcherRevision: "matcher-successor",
+        evidenceFingerprint: "sha256:successor-observation",
+        ...OWNERS_OBS,
+      })}
+      ;
+      ${observationMatchSql({
+        id: "pmatch-successor",
+        observationId: "pobs-successor",
+        projectId: "project-pcat",
+        registrationId: "reg-binding-owners",
+        subjectId: "csub-driver",
+        definitionId: "pdef-owner-a",
+        definitionRevisionId: "drev-owner-a-successor",
+        bindingId: "binding-owner-a",
+        catalogReleaseId: "crel-binding-successor",
+        matcherRevision: "matcher-successor",
+        ...OWNERS_OBS,
+      })}
     `);
 
     await client.query(`

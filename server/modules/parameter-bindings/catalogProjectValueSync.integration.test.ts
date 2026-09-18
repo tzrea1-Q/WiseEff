@@ -1,4 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 import pg from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -11,7 +14,7 @@ import { installPublishedRelease } from "../catalog-kernel/install/installer";
 import { CatalogSubjectId } from "../parameter-catalog-contract/index";
 import type { RegisterSubjectCommand } from "../parameter-governance/registration/command";
 import { writeGuardedRegistration } from "../parameter-governance/registration/internalGuardedRegistrationWriter";
-import { createUserInvocation } from "../auth/trustedInvocation";
+import { createAgentInvocation, createUserInvocation } from "../auth/trustedInvocation";
 import {
   createEphemeralTestDatabase,
   createInMemoryTestDatabase,
@@ -19,6 +22,7 @@ import {
   type EphemeralTestDatabase,
 } from "../../testing/testDatabase";
 import { makeTestAuthContext } from "../../testing/authContext";
+import { withTempDatabase } from "../../testing/tempDatabase";
 import { createHttpServer } from "../../shared/http/server";
 import { createRouter } from "../../shared/http/router";
 import { requestJson } from "../../test/testClient";
@@ -29,18 +33,27 @@ import {
   type RootDatabase,
 } from "../../shared/database/client";
 import { asAuditTx, withAuditedWrite } from "../audit/auditedWrite";
+import { createTrustedRefusalAuditSink } from "../audit/trustedRefusalSink";
 import { writeTrustedGovernanceAudit } from "../parameter-topology/governanceAudit";
 import { ingestConfigRevision } from "../parameter-topology/ingestService";
 import { createImportPreview } from "../parameters/service";
 import {
   asValueClient,
+  loadPublishedCatalog,
   importTextToDtsValue,
   listCatalogBindingRowsForProject,
   listCatalogBindingsForImport,
   saveCanonicalProjectValue,
   syncPublishedCatalogProjectValues,
+  syncPublishedCatalogProjectValuesInTransaction,
 } from "./catalogProjectValueSync";
 import type { ConfigRevisionManifest } from "../parameter-topology/types";
+import { createLocalObjectStore } from "../logs/objectStore";
+import { exportCanonicalBindingSource } from "./catalogProjectValueSync";
+import { uploadProjectParameterFile } from "../parameter-files/service";
+import { preparePinnedSourceChange } from "../parameter-files/canonicalSource";
+import { commitCanonicalSourceRevision } from "../parameter-files/canonicalSourceCommit";
+import { catalogBindingExportDtoSchema } from "../contracts/dtoSchemas/parameterCatalog";
 
 const databaseAvailable = await isTestDatabaseAvailable();
 if (!databaseAvailable) {
@@ -78,6 +91,11 @@ const CONFIG_SET = "dcs-min-upg-val";
 const SUBJECT_ID = CatalogSubjectId("csub_acme_power");
 const DTS = `/dts-v1/;
 / {
+\tcharger {
+\t\tiin_max = <999>;
+\t};
+};
+/ {
 	charger {
 		compatible = "acme,power";
 		iin_max = <1000>;
@@ -110,6 +128,9 @@ describe("published catalog project values", () => {
   let root: RootDatabase;
   let pool: pg.Pool;
   let registrationId: string;
+  let storageDirectory: string;
+  let objectStore: ReturnType<typeof createLocalObjectStore>;
+  let refusalSink: ReturnType<typeof createTrustedRefusalAuditSink>;
 
   const auth = makeTestAuthContext({
     userId: USER,
@@ -138,8 +159,12 @@ describe("published catalog project values", () => {
   });
 
   beforeAll(async () => {
+    storageDirectory = await mkdtemp(join(tmpdir(), "wiseeff-t11-source-"));
+    objectStore = createLocalObjectStore(storageDirectory);
+    await objectStore.put({ organizationId: ORG, fileName: "charger.dts", contentType: "text/plain", bytes: Buffer.from(DTS) });
     database = await createEphemeralTestDatabase("upgval");
     root = createPostgresDatabase(database.url);
+    refusalSink = createTrustedRefusalAuditSink(root);
     pool = getRootPostgresPool(root)!;
     const first = compileOrThrow(firstReleaseBundle());
     const installed = await installPublishedRelease(pool, {
@@ -209,9 +234,25 @@ describe("published catalog project values", () => {
   afterAll(async () => {
     await root?.close();
     await database?.drop();
+    if (storageDirectory) await rm(storageDirectory, { recursive: true, force: true });
   });
 
-  it("creates, reads, and saves a ProjectValue from a published definition without a new spec", async () => {
+  it("returns zero for an empty Catalog without starving a single-connection pool", async () => {
+    await withTempDatabase({ prefix: "sync_one_connection" },async ({ connectionString }) => {
+      const single = new pg.Pool({ connectionString,max: 1,connectionTimeoutMillis: 2_000 });
+      try {
+        expect(await loadPublishedCatalog(single)).toBeNull();
+        expect(await syncPublishedCatalogProjectValues(single,{
+          organizationId: ORG,projectId: PROJECT,configSetId: CONFIG_SET,configRevisionId: "empty-catalog",
+        })).toBe(0);
+        expect(single.waitingCount).toBe(0);
+        expect(single.idleCount).toBe(single.totalCount);
+        expect((await single.query("select 1 as healthy")).rows).toEqual([{ healthy: 1 }]);
+      } finally { await single.end(); }
+    });
+  });
+
+  it("materializes an exactly pinned published value and refuses value-only saves", async () => {
     const fileId = randomUUID();
     const versionId = randomUUID();
     const checksum = createHash("sha256").update(DTS, "utf8").digest("hex");
@@ -254,16 +295,17 @@ describe("published catalog project values", () => {
 
     const revision = await ingestConfigRevision(root, manifest, auth);
     expect(revision.status).toBe("resolved");
+    const syncSnapshot = await loadPublishedCatalog(pool);
+    if (!syncSnapshot) throw new Error("Published fixture is unavailable");
     const written = await withAuditedWrite(root, auth, { requestId: "req-min-upg-sync" }, async (tx) => {
-      const count = await syncPublishedCatalogProjectValues(
-        pool,
+      const count = await syncPublishedCatalogProjectValuesInTransaction(
+        asValueClient(tx),syncSnapshot,
         {
           organizationId: ORG,
           projectId: PROJECT,
           configSetId: CONFIG_SET,
           configRevisionId: revision.id,
         },
-        asValueClient(tx),
       );
       return {
         result: count,
@@ -303,6 +345,17 @@ describe("published catalog project values", () => {
     expect(values.rows[0]?.source_ref).toBe("charger.dts!/charger");
     expect(values.rows[0]?.config_revision_id).toBe(revision.id);
     expect(values.rows[0]?.value).toEqual(1000);
+    const pins = await pool.query(
+      `select pin.file_id, pin.file_version_id, pin.config_revision_id, pin.locator,
+              occurrence.logical_node_id
+       from parameter_catalog.project_value_source_pins pin
+       join parameter_catalog.project_parameter_source_occurrences occurrence on occurrence.id=pin.source_occurrence_id
+       where pin.organization_id=$1 and pin.project_id=$2`, [ORG, PROJECT],
+    );
+    expect(pins.rows).toEqual([expect.objectContaining({
+      file_id: fileId, file_version_id: versionId, config_revision_id: revision.id,
+      locator: expect.objectContaining({ kind: "dts-property", propertyName: "iin_max", fileVersionId: versionId }),
+    })]);
 
     const syncAudits = await pool.query<{ action: string; target_id: string }>(
       `select action, target_id from audit_events where trace_id = $1`,
@@ -318,6 +371,32 @@ describe("published catalog project values", () => {
     expect(listed[0]?.propertyKey).toBe("iin_max");
     expect(listed[0]?.rawValue).toBe("<1000>");
     expect(listed[0]?.parameterSpecId).toBe("pdef_acme_power_iin_max");
+    const replayCounts = async () => (await pool.query(`select
+      (select count(*) from parameter_catalog.project_parameter_values) as values,
+      (select count(*) from parameter_catalog.binding_history_events) as histories,
+      (select count(*) from parameter_catalog.project_value_source_pins) as pins`)).rows[0];
+    const once = await replayCounts();
+    expect(await syncPublishedCatalogProjectValues(pool, {
+      organizationId: ORG,projectId: PROJECT,configSetId: CONFIG_SET,configRevisionId: revision.id,
+    })).toBe(1);
+    expect(await replayCounts()).toEqual(once);
+    expect((await listCatalogBindingRowsForProject(root,auth,{ projectId: PROJECT }))[0]?.currentValueId).toBe(listed[0]?.currentValueId);
+    const single = new pg.Pool({ connectionString: database.url,max: 1,connectionTimeoutMillis: 2_000 });
+    try {
+      const input = { organizationId: ORG,projectId: PROJECT,configSetId: CONFIG_SET,configRevisionId: revision.id };
+      expect(await Promise.all(Array.from({ length: 4 },() => syncPublishedCatalogProjectValues(single,input)))).toEqual([1,1,1,1]);
+      const pinned = await loadPublishedCatalog(single);
+      if (!pinned) throw new Error("Published fixture is unavailable");
+      const tx = await single.connect();
+      try {
+        await tx.query("begin");
+        expect(await syncPublishedCatalogProjectValuesInTransaction(asValueClient(tx),pinned,input)).toBe(1);
+        await tx.query("rollback");
+      } finally { tx.release(); }
+      expect(single.waitingCount).toBe(0);
+      expect(single.idleCount).toBe(1);
+      expect(await replayCounts()).toEqual(once);
+    } finally { await single.end(); }
 
     // The page reads this route with an org-wide business role after topology
     // loads. Exercise the real route and persisted binding, not a mocked list.
@@ -333,7 +412,7 @@ describe("published catalog project values", () => {
       expect.objectContaining({ id: listed[0]!.id, propertyKey: "iin_max" }),
     ]));
 
-    const saved = await withAuditedWrite(root, auth, { requestId: "req-min-upg-val" }, async (tx) => {
+    await expect(withAuditedWrite(root, auth, { requestId: "req-min-upg-val" }, async (tx) => {
       const result = await saveCanonicalProjectValue(
         pool,
         {
@@ -363,8 +442,7 @@ describe("published catalog project values", () => {
         "req-min-upg-val",
       );
       return { result, audit: null };
-    });
-    expect(saved.rawText).toBe("<2000>");
+    })).rejects.toMatchObject({ code: "CONFLICT", details: { reason: "invalid-command" } });
 
     const audits = await pool.query<{ kind: string; action: string; target_id: string }>(
       `select kind, action, target_id
@@ -373,16 +451,10 @@ describe("published catalog project values", () => {
           and action = 'binding-edited'`,
       [listed[0]!.id],
     );
-    expect(audits.rows).toEqual([
-      {
-        kind: "parameter-topology-governance",
-        action: "binding-edited",
-        target_id: listed[0]!.id,
-      },
-    ]);
+    expect(audits.rows).toEqual([]);
 
     const after = await listCatalogBindingRowsForProject(root, auth, { projectId: PROJECT });
-    expect(after[0]?.rawValue).toBe("<2000>");
+    expect(after[0]?.rawValue).toBe("<1000>");
 
     const imported = await listCatalogBindingsForImport(root, {
       organizationId: ORG,
@@ -391,19 +463,132 @@ describe("published catalog project values", () => {
       definitionIds: [],
     });
     expect(imported).toHaveLength(1);
-    expect(imported[0]?.currentValue).toBe("2000");
-    await saveCanonicalProjectValue(pool, {
+    expect(imported[0]?.currentValue).toBe("1000");
+    await expect(saveCanonicalProjectValue(pool, {
       organizationId: ORG,
       projectId: PROJECT,
       bindingId: imported[0]!.projectParameterValueId,
       configRevisionId: revision.id,
       targetValue: importTextToDtsValue("iin_max", "3000"),
-    });
+    })).rejects.toMatchObject({ code: "CONFLICT", details: { reason: "invalid-command" } });
     const afterImport = await listCatalogBindingRowsForProject(root, auth, { projectId: PROJECT });
-    expect(afterImport[0]?.rawValue).toBe("<3000>");
+    expect(afterImport[0]?.rawValue).toBe("<1000>");
   }, 60_000);
 
+  it("prepares a server-owned exact DTS candidate without advancing source or value tips", async () => {
+    const binding = (await listCatalogBindingRowsForProject(root, auth, { projectId: PROJECT }))[0]!;
+    const before = (await pool.query(`select current_version_id from project_parameter_files where project_id=$1 and file_name='charger.dts'`, [PROJECT])).rows[0]!;
+    const prepared = await root.transaction((tx) => preparePinnedSourceChange(tx, objectStore, auth, {
+      projectId: PROJECT, bindingId: binding.id, expectedValueId: binding.currentValueId,
+      target: { format: "dts", sourceText: "<2000>" },
+      invocation: createUserInvocation(auth), requestId: "t11-prepare-dts", refusalSink,
+    }));
+    const candidate = (await pool.query(`select storage_key,base_digest,proposed_digest,frozen_member_manifest from project_parameter_file_candidates where id=$1`, [prepared.candidateId])).rows[0]!;
+    expect((await objectStore.get(candidate.storage_key)).toString()).toBe(DTS.replace("<1000>", "<2000>"));
+    expect(candidate.base_digest).toBe(createHash("sha256").update(DTS).digest("hex"));
+    expect(candidate.proposed_digest).toBe(prepared.proposedDigest);
+    expect(candidate.frozen_member_manifest).toHaveLength(1);
+    expect((await pool.query(`select current_version_id from project_parameter_files where project_id=$1 and file_name='charger.dts'`, [PROJECT])).rows[0]?.current_version_id).toBe(before.current_version_id);
+    expect((await listCatalogBindingRowsForProject(root, auth, { projectId: PROJECT }))[0]?.currentValueId).toBe(binding.currentValueId);
+  });
+
+  it("refuses injected DTS, stale bases and unapproved Agent preparation without staging candidates", async () => {
+    const binding = (await listCatalogBindingRowsForProject(root, auth, { projectId: PROJECT }))[0]!;
+    const before = (await pool.query(`select count(*)::int as count from project_parameter_file_candidates where project_id=$1`, [PROJECT])).rows[0]!.count;
+    const input = {
+      projectId: PROJECT, bindingId: binding.id, expectedValueId: binding.currentValueId,
+      target: { format: "dts" as const, sourceText: "<2000>" }, invocation: createUserInvocation(auth), requestId: "t11-prepare-negative", refusalSink,
+    };
+    const refusalBefore = (await pool.query<{ count: string }>(`select count(*)::text as count from audit_events where kind='parameter-source-user-required' and trace_id='t11-prepare-agent'`)).rows[0]!.count;
+    for (const attempted of [
+      { ...input, target: { format: "dts" as const, sourceText: '<2000>; injected = <3>' } },
+      { ...input, expectedValueId: "nonexistent-value" },
+      { ...input, requestId: "t11-prepare-agent", invocation: createAgentInvocation(auth, { sessionId: "session-t11", toolCallId: "tool-t11", approval: { required: true, approvalId: "approval-t11" } }) },
+    ]) {
+      await expect(root.transaction((tx) => preparePinnedSourceChange(tx, objectStore, auth, attempted))).rejects.toThrow();
+    }
+    expect((await pool.query<{ count: string }>(`select count(*)::text as count from audit_events where kind='parameter-source-user-required' and trace_id='t11-prepare-agent'`)).rows[0]!.count).toBe(String(Number(refusalBefore) + 1));
+    expect((await pool.query(`select count(*)::int as count from project_parameter_file_candidates where project_id=$1`, [PROJECT])).rows[0]!.count).toBe(before);
+  });
+
+  it("refuses legacy upload activation on a canonical-backed source", async () => {
+    const before = (await pool.query(`select id,current_version_id from project_parameter_files where project_id=$1 and file_name='charger.dts'`, [PROJECT])).rows[0]!;
+    await expect(uploadProjectParameterFile(root, objectStore, auth, {
+      projectId: PROJECT, fileName: "charger.dts", bytes: Buffer.from(DTS.replace("<1000>", "<7000>")),
+    })).rejects.toMatchObject({ code: "CONFLICT" });
+    expect((await pool.query(`select current_version_id from project_parameter_files where id=$1`, [before.id])).rows[0]?.current_version_id).toBe(before.current_version_id);
+    expect((await pool.query(`select count(*)::int as count from project_parameter_file_versions where file_id=$1`, [before.id])).rows[0]?.count).toBe(1);
+  });
+
+  it("applies only the winning repeated DTS occurrence and resolves a fresh property pin for the same source identity", async () => {
+    const binding = (await listCatalogBindingRowsForProject(root,auth,{ projectId: PROJECT }))[0]!;
+    const prepared = await root.transaction((tx) => preparePinnedSourceChange(tx,objectStore,auth, {
+      projectId: PROJECT,bindingId: binding.id,expectedValueId: binding.currentValueId,target: { format: "dts",sourceText: "<2000>" },
+      invocation: createUserInvocation(auth),requestId: "t11-dts-apply-prepare",refusalSink,
+    }));
+    const requestId = randomUUID();
+    await pool.query(`insert into project_parameter_value_change_requests
+      (id,organization_id,project_id,binding_id,definition_id,definition_revision_id,catalog_release_id,
+       base_current_value_id,config_revision_id,source_ref,action,target_value,reason,status,submitter_user_id,
+       source_pin_id,candidate_id,candidate_base_digest,candidate_proposed_digest,candidate_diff_digest,candidate_member_manifest,candidate_binding_manifest)
+      select $1,binding.organization_id,binding.project_id,binding.id,binding.definition_id,binding.effective_revision_id,binding.catalog_release_id,
+       value.id,value.config_revision_id,value.source_ref,'set',$2::jsonb,'raise DTS limit','pending',$3,
+       $4,$5,$6,$7,$8,$9::jsonb,$10::jsonb
+      from parameter_catalog.project_parameter_bindings binding join parameter_catalog.project_parameter_values value on value.id=binding.current_value_id
+      where binding.id=$11`, [requestId,JSON.stringify(importTextToDtsValue("iin_max","2000")),USER,prepared.sourcePinId,prepared.candidateId,prepared.baseDigest,
+      prepared.proposedDigest,prepared.diffDigest,JSON.stringify(prepared.members),JSON.stringify(prepared.bindings),binding.id]);
+    const reviewer = makeTestAuthContext({ userId: "reviewer-t11-dts",organizationId: ORG,permissions: ["parameter:view","parameter:edit","parameter:review"] });
+    await pool.query(`insert into users(id,organization_id,name,title,is_active) values ($1,$2,'Reviewer','Admin',true)`, [reviewer.user.id,ORG]);
+    const snapshot = await loadPublishedCatalog(pool);
+    if (!snapshot) throw new Error("Published fixture is unavailable");
+    // A newer external parse is not the approved request's continuity baseline.
+    // It cannot materialize over already pinned current values without review.
+    const baseRevisionId = (await pool.query(`select config_revision_id from parameter_catalog.project_value_source_pins where id=$1`, [prepared.sourcePinId])).rows[0]!.config_revision_id;
+    const baseNodes = (await pool.query(`select logical_node_id from dts_logical_node_revisions where config_revision_id=$1 order by logical_node_id`, [baseRevisionId])).rows;
+    const newer = await ingestConfigRevision(root, {
+      organizationId: ORG,projectId: PROJECT,configSetId: CONFIG_SET,entryFile: "charger.dts",includeSearchPaths: ["."],overlayOrder: [],
+      members: prepared.members.map((member) => ({ ...member,fileName: "charger.dts",role: "base" as const,content: DTS })),
+    },auth);
+    await expect(syncPublishedCatalogProjectValues(pool, { organizationId: ORG,projectId: PROJECT,configSetId: CONFIG_SET,configRevisionId: newer.id }))
+      .rejects.toThrow("reviewed source change");
+    const applied = await root.transaction((tx) => commitCanonicalSourceRevision(tx,objectStore,reviewer,snapshot, {
+      projectId: PROJECT,requestId,invocation: createUserInvocation(reviewer),traceId: "t11-dts-apply",refusalSink,
+    }));
+    expect(applied.status).toBe("approved");
+    const exported = await exportCanonicalBindingSource(root,objectStore,auth,{ projectId: PROJECT,bindingId: binding.id });
+    expect(exported?.files[0]?.content).toBe(DTS.replace("<1000>","<2000>"));
+    expect(exported?.manifest.locator.propertyOccurrenceId).not.toBe(prepared.bindings[0]?.locator.propertyOccurrenceId);
+    expect(exported?.manifest.sourceOccurrenceId).toBe(prepared.bindings[0]?.sourceOccurrenceId);
+    expect((await pool.query(`select logical_node_id from dts_logical_node_revisions where config_revision_id=$1 order by logical_node_id`, [exported!.configRevisionId])).rows).toEqual(baseNodes);
+    expect((await listCatalogBindingRowsForProject(root,auth,{ projectId: PROJECT }))[0]?.rawValue).toBe("<2000>");
+  });
+
+  it("exports the pinned historical bytes after the file tip advances and refuses damaged storage", async () => {
+    const binding = (await listCatalogBindingRowsForProject(root, auth, { projectId: PROJECT }))[0]!;
+    const file = (await pool.query(`select id, current_version_id from project_parameter_files where project_id=$1 and file_name='charger.dts'`, [PROJECT])).rows[0]!;
+    const changed = DTS.replace("<1000>", "<5000>");
+    const stored = await objectStore.put({ organizationId: ORG, fileName: "charger.dts", contentType: "text/plain", bytes: Buffer.from(changed) });
+    const versionId = randomUUID();
+    await pool.query(`insert into project_parameter_file_versions
+      (id,file_id,version_number,storage_key,checksum,size_bytes,parsed_index,origin,created_by_user_id)
+      values ($1,$2,3,$3,$4,$5,'{}'::jsonb,'upload',$6)`,
+    [versionId,file.id,stored.storageKey,stored.checksumSha256,stored.fileSizeBytes,USER]);
+    await pool.query(`update project_parameter_files set current_version_id=$2 where id=$1`, [file.id, versionId]);
+    await pool.query(`update project_parameter_files set file_name='renamed-display.dts' where id=$1`, [file.id]);
+    const exported = await exportCanonicalBindingSource(root, objectStore, auth, { projectId: PROJECT, bindingId: binding.id });
+    await pool.query(`update project_parameter_files set file_name='charger.dts' where id=$1`, [file.id]);
+    expect(exported?.files).toEqual([expect.objectContaining({ name: "charger.dts", content: DTS.replace("<1000>","<2000>"), versionNumber: 2 })]);
+    expect(exported?.manifest.members).toEqual([expect.objectContaining({ fileId: file.id, fileVersionId: file.current_version_id, sourceName: "charger.dts" })]);
+    expect(exported?.manifest).toMatchObject({ entryFile: "charger.dts", includeSearchPaths: ["."], overlayOrder: [] });
+    expect(catalogBindingExportDtoSchema.parse(exported)).toHaveProperty("manifest", exported?.manifest);
+
+    const damagedStore = { ...objectStore, getBounded: async () => Buffer.from(changed) };
+    await expect(exportCanonicalBindingSource(root, damagedStore, auth, { projectId: PROJECT, bindingId: binding.id })).rejects.toMatchObject({ code: "CONFLICT" });
+  });
+
   it("rolls published-value sync back with the outer transaction", async () => {
+    const rollbackSetId = randomUUID();
+    await pool.query(`insert into dts_config_set(id,organization_id,project_id,name) values ($1,$2,$3,'Rollback initialization')`, [rollbackSetId,ORG,PROJECT]);
     const fileId = randomUUID();
     const versionId = randomUUID();
     const checksum = createHash("sha256").update(DTS, "utf8").digest("hex");
@@ -412,7 +597,7 @@ describe("published catalog project values", () => {
          id, organization_id, project_id, file_name, format, enabled,
          config_set_id, config_set_role, config_set_sort_order
        ) values ($1, $2, $3, 'charger-rollback.dts', 'dts', true, $4, 'base', 1)`,
-      [fileId, ORG, PROJECT, CONFIG_SET],
+      [fileId, ORG, PROJECT, rollbackSetId],
     );
     await pool.query(
       `insert into project_parameter_file_versions (
@@ -429,7 +614,7 @@ describe("published catalog project values", () => {
       {
         organizationId: ORG,
         projectId: PROJECT,
-        configSetId: CONFIG_SET,
+        configSetId: rollbackSetId,
         entryFile: "charger-rollback.dts",
         includeSearchPaths: ["."],
         overlayOrder: [],
@@ -453,17 +638,18 @@ describe("published catalog project values", () => {
         where config_revision_id = $1`,
       [revision.id],
     );
+    const syncSnapshot = await loadPublishedCatalog(pool);
+    if (!syncSnapshot) throw new Error("Published fixture is unavailable");
     await expect(
       withAuditedWrite(root, auth, { requestId: "req-min-upg-sync-rollback" }, async (tx) => {
-        const count = await syncPublishedCatalogProjectValues(
-          pool,
+        const count = await syncPublishedCatalogProjectValuesInTransaction(
+          asValueClient(tx),syncSnapshot,
           {
             organizationId: ORG,
             projectId: PROJECT,
-            configSetId: CONFIG_SET,
+            configSetId: rollbackSetId,
             configRevisionId: revision.id,
           },
-          asValueClient(tx),
         );
         expect(count).toBeGreaterThan(0);
         throw new Error("force-sync-rollback");

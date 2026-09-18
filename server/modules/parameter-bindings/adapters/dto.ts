@@ -23,7 +23,7 @@ export type ProtectedReferenceDto = {
   readonly bindingId: ParameterBindingId;
   readonly organizationId: string;
   readonly projectId: string;
-  readonly logicalNodeId: string;
+  readonly logicalNodeId: string | null;
   readonly registrationId: SubjectRegistrationId;
   readonly subjectId: CatalogSubjectId;
   readonly definitionId: ParameterDefinitionId;

@@ -529,6 +529,41 @@ export function withEphemeralEntryCompileStub(configSet: DtsToolchainConfigSet):
 }
 
 /**
+ * T2.4 compile companion: dtc 1.8.1 emits no overlay fragments from
+ * `/plugin/; / { … }`, so fdtoverlay is a no-op. Wrap that body as
+ * fragment@0 / target-path="/" / __overlay__ in the isolated compile tree only.
+ * Never persist. Never run missingReferencedLabels on overlay members.
+ */
+export function wrapPluginRootOverlayForFdtoverlay(source: string): string {
+  if (!/^\s*\/plugin\/\s*;/m.test(source)) return source;
+  if (/\b__overlay__\b/.test(source) || /fragment@\d+/.test(source)) return source;
+  const pluginMatch = source.match(/\/plugin\/\s*;/);
+  if (!pluginMatch || pluginMatch.index === undefined) return source;
+  const header = source.slice(0, pluginMatch.index);
+  const afterPlugin = source.slice(pluginMatch.index + pluginMatch[0].length);
+  const rootMatch = afterPlugin.match(/\/\s*\{([\s\S]*)\}\s*;?\s*$/);
+  if (!rootMatch) return source;
+  const inner = rootMatch[1].trimEnd();
+  return `${header}/plugin/;\n\n/ {\n\tfragment@0 {\n\t\ttarget-path = "/";\n\t\t__overlay__ {${inner}\n\t\t};\n\t};\n};\n`;
+}
+
+/** Apply wrapPluginRootOverlayForFdtoverlay to overlayOrder members only, never the entry. */
+export function withEphemeralOverlayFragmentWrap(configSet: DtsToolchainConfigSet): DtsToolchainConfigSet {
+  const files = new Map(configSet.files);
+  let changed = false;
+  for (const overlayName of configSet.overlayOrder) {
+    if (overlayName === configSet.entryFile) continue;
+    const file = files.get(overlayName);
+    if (!file) continue;
+    const wrapped = wrapPluginRootOverlayForFdtoverlay(file.content);
+    if (wrapped === file.content) continue;
+    files.set(overlayName, { ...file, content: wrapped });
+    changed = true;
+  }
+  return changed ? { ...configSet, files } : configSet;
+}
+
+/**
  * Complete DTS config-set toolchain runner:
  * base `dtc -@` → overlay DTBO → `fdtoverlay` in manifest order → `dt-validate`.
  * Restricted subprocess: isolated tmpdir, minimal env, hard timeout, no network assumptions.
@@ -676,7 +711,9 @@ export function createDtsToolchainRunner(deps: CreateDtsToolchainRunnerDeps = {}
 
       const tmpDir = tmpDirFactory();
       const diagnostics: DtsToolchainDiagnostic[] = [];
-      const compileConfigSet = withEphemeralEntryCompileStub(configSet);
+      const compileConfigSet = withEphemeralOverlayFragmentWrap(
+        withEphemeralEntryCompileStub(configSet)
+      );
 
       try {
         const pathDiagnostics = writeLogicalTree(tmpDir, compileConfigSet);

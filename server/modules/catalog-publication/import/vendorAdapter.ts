@@ -390,6 +390,12 @@ const mapProductionValueSchema = (
   }
 };
 
+const isMixedSchema = (schema: Record<string, ContractJsonValue>): boolean =>
+  schema.type === undefined && typeof schema.description === "string";
+
+const canFoldCells = (schema: Record<string, ContractJsonValue>): boolean =>
+  schema.type === "array" || isMixedSchema(schema);
+
 const foldConstraints = (
   schema: Record<string, ContractJsonValue>,
   constraints: unknown,
@@ -407,34 +413,91 @@ const foldConstraints = (
   if (keys.length === 0) {
     return { ok: true, value: schema };
   }
-  const allowed = new Set(["minimum", "maximum"]);
-  const extras = keys.filter((key) => !allowed.has(key));
+  const allowed = new Set(["minimum", "maximum", "cells", "description"]);
+  const extras = keys.filter((key) => !allowed.has(key)).sort();
   if (extras.length > 0) {
     return {
       ok: false,
-      detail: `unhandled-constraint:${extras.sort().join(",")}`,
-      path: `${propertyPath}.constraints.${extras.sort()[0]}`,
+      detail: `unhandled-constraint:${extras.join(",")}`,
+      path: `${propertyPath}.constraints.${extras[0]}`,
     };
   }
-  if (schema.type !== "integer" && schema.type !== "number") {
-    return {
-      ok: false,
-      detail: "numeric-constraints-require-integer-or-number",
-      path: `${propertyPath}.constraints`,
+
+  let next: Record<string, ContractJsonValue> = { ...schema };
+  if (constraints.cells !== undefined) {
+    if (!canFoldCells(schema)) {
+      return {
+        ok: false,
+        detail: "cells-require-array-or-mixed",
+        path: `${propertyPath}.constraints.cells`,
+      };
+    }
+    const cells = constraints.cells;
+    if (typeof cells !== "number" || !Number.isInteger(cells) || cells < 1) {
+      return {
+        ok: false,
+        detail: "invalid-cells-cardinality",
+        path: `${propertyPath}.constraints.cells`,
+      };
+    }
+    const innerItems =
+      schema.type === "array"
+        ? schema.items
+        : { description: typeof schema.description === "string" ? schema.description : "mixed" };
+    const arrayDescription =
+      typeof constraints.description === "string"
+        ? constraints.description
+        : typeof schema.description === "string" && schema.type === "array"
+          ? schema.description
+          : undefined;
+    next = {
+      type: "array",
+      ...(arrayDescription !== undefined ? { description: arrayDescription } : {}),
+      items: {
+        type: "array",
+        minItems: cells,
+        maxItems: cells,
+        ...(innerItems !== undefined ? { items: innerItems } : {}),
+      },
     };
-  }
-  const next = { ...schema };
-  if (constraints.minimum !== undefined) {
-    if (typeof constraints.minimum !== "number") {
-      return { ok: false, detail: "invalid-numeric-bound", path: `${propertyPath}.constraints.minimum` };
+  } else if (constraints.description !== undefined) {
+    if (typeof constraints.description !== "string" || constraints.description.trim().length === 0) {
+      return {
+        ok: false,
+        detail: "invalid-documentation",
+        path: `${propertyPath}.constraints.description`,
+      };
     }
-    next.minimum = constraints.minimum;
-  }
-  if (constraints.maximum !== undefined) {
-    if (typeof constraints.maximum !== "number") {
-      return { ok: false, detail: "invalid-numeric-bound", path: `${propertyPath}.constraints.maximum` };
+    if (!canFoldCells(next)) {
+      return {
+        ok: false,
+        detail: "description-requires-array-or-mixed",
+        path: `${propertyPath}.constraints.description`,
+      };
     }
-    next.maximum = constraints.maximum;
+    next = { ...next, description: constraints.description };
+  }
+
+  if (constraints.minimum !== undefined || constraints.maximum !== undefined) {
+    if (next.type !== "integer" && next.type !== "number") {
+      return {
+        ok: false,
+        detail: "numeric-constraints-require-integer-or-number",
+        path: `${propertyPath}.constraints`,
+      };
+    }
+    if (constraints.minimum !== undefined) {
+      if (typeof constraints.minimum !== "number") {
+        return { ok: false, detail: "invalid-numeric-bound", path: `${propertyPath}.constraints.minimum` };
+      }
+      next.minimum = constraints.minimum;
+    }
+    if (constraints.maximum !== undefined) {
+      if (typeof constraints.maximum !== "number") {
+        return { ok: false, detail: "invalid-numeric-bound", path: `${propertyPath}.constraints.maximum` };
+      }
+      next.maximum = constraints.maximum;
+    }
   }
   return { ok: true, value: next };
 };

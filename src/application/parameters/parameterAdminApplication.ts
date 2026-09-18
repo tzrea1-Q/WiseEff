@@ -55,7 +55,7 @@ export type ParameterAdminImportActions = {
   ): Promise<ParameterImportBatchDto | ParameterRuntimeActionFailure>;
   applyImportBatch(
     input: ApplyParameterImportBatchInput,
-  ): Promise<ParameterRuntimeVoidResult>;
+  ): Promise<ParameterImportBatchDto | ParameterRuntimeVoidResult>;
   parseDtsImport(input: ParseDtsImportInput): Promise<DtsImportParseResult>;
   refresh?(): Promise<unknown>;
 };
@@ -157,7 +157,7 @@ export type ParameterAdminApplication = {
   ): Promise<ParameterImportBatchDto | ParameterRuntimeActionFailure>;
   applyImportBatch(
     input: ApplyParameterImportBatchInput,
-  ): Promise<ParameterRuntimeVoidResult>;
+  ): Promise<ParameterImportBatchDto | ParameterRuntimeVoidResult>;
   parseDtsImport(input: ParseDtsImportInput): Promise<DtsImportParseResult>;
 
   listMappingTasks(projectId?: string): Promise<IdentityMappingTask[]>;

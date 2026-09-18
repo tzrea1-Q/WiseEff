@@ -149,6 +149,7 @@ export type CurrentTipRow = {
   definition_id: string;
   effective_revision_id: string;
   current_value_id: string;
+  source_occurrence_id: string;
   value_kind: string | null;
   value_digest: string | null;
   source_ref: string | null;
@@ -156,6 +157,10 @@ export type CurrentTipRow = {
   source_occurrence_count: string | number;
   source_file_name: string | null;
   source_node_locator: string | null;
+  source_property_occurrence_id: string | null;
+  source_node_occurrence_id: string | null;
+  source_file_id: string | null;
+  source_file_version_id: string | null;
   value: unknown;
 };
 
@@ -169,21 +174,63 @@ export type CurrentTipRow = {
  */
 const SOURCE_PROVENANCE_LATERAL = `
   left join lateral (
-    select file.file_name as source_file_name,
+    select member.source_name as source_file_name,
            lnr.node_locator as source_node_locator,
-           row_number() over (order by occurrence.id) as occurrence_rank,
+           property.id as source_property_occurrence_id,
+           property.node_occurrence_id as source_node_occurrence_id,
+           file.id as source_file_id,
+           property.file_version_id as source_file_version_id,
+           row_number() over (order by effect.source_order desc, effect.id) as occurrence_rank,
            count(*) over () as occurrence_count
-      from public.dts_occurrence_effects effect
+      from (
+        select effect.*,
+               max(effect.source_order) over (
+                 partition by effect.config_revision_id,
+                              effect.logical_node_revision_id,
+                              effect.property_name
+               ) as final_source_order,
+               count(*) over (
+                 partition by effect.config_revision_id,
+                              effect.logical_node_revision_id,
+                              effect.property_name,
+                              effect.source_order
+               ) as final_source_count
+          from public.dts_occurrence_effects effect
+      ) effect
+      join parameter_catalog.project_parameter_source_occurrences binding_source
+        on binding_source.id = binding.source_occurrence_id
+       and binding_source.organization_id = binding.organization_id
+       and binding_source.project_id = binding.project_id
+       and binding_source.occurrence_kind = 'dts'
       join public.dts_logical_node_revisions lnr
         on lnr.id = effect.logical_node_revision_id
+       and lnr.logical_node_id = binding_source.logical_node_id
+       and lnr.config_revision_id = value.config_revision_id
       join public.dts_property_occurrences occurrence
         on occurrence.id = effect.property_occurrence_id
-      left join public.project_parameter_files file
-        on file.current_version_id = occurrence.file_version_id
+       and occurrence.config_revision_id = value.config_revision_id
+      join public.dts_property_occurrences property
+        on property.id = effect.property_occurrence_id
+       and property.config_revision_id = value.config_revision_id
+       and property.file_version_id = occurrence.file_version_id
+      join public.project_parameter_file_versions file_version
+        on file_version.id = property.file_version_id
+       and file_version.file_id = binding_source.file_id
+      join public.project_parameter_files file
+        on file.id = file_version.file_id
+       and file.organization_id = binding.organization_id
+       and file.project_id = binding.project_id
+       and file.config_set_id = binding_source.config_set_id
+      join public.dts_config_revision_members member
+        on member.config_revision_id = value.config_revision_id
+       and member.file_id = file_version.file_id
+       and member.file_version_id = property.file_version_id
+       and member.source_name is not null
      where effect.config_revision_id = value.config_revision_id
-       and lnr.logical_node_id = binding.logical_node_id
        and effect.property_name = definition.property_key
        and effect.effect_kind in ('set', 'override')
+       and effect.source_order = effect.final_source_order
+       and effect.node_occurrence_id = property.node_occurrence_id
   ) provenance on provenance.occurrence_rank = 1`;
 
 export const loadCurrentBindingTips = async (
@@ -207,9 +254,14 @@ export const loadCurrentBindingTips = async (
             value.value_digest,
             value.source_ref,
             value.config_revision_id,
+            binding.source_occurrence_id,
             coalesce(provenance.occurrence_count, 0) as source_occurrence_count,
             provenance.source_file_name,
             provenance.source_node_locator,
+            provenance.source_property_occurrence_id,
+            provenance.source_node_occurrence_id,
+            provenance.source_file_id,
+            provenance.source_file_version_id,
             value.value
        from parameter_catalog.current_project_parameter_bindings binding
        left join parameter_catalog.project_parameter_values value
@@ -264,9 +316,14 @@ export type SiblingSourceRow = {
   property_key: string;
   source_ref: string;
   config_revision_id: string;
+  source_occurrence_id: string;
   source_occurrence_count: string | number;
   source_file_name: string | null;
   source_node_locator: string | null;
+  source_property_occurrence_id: string | null;
+  source_node_occurrence_id: string | null;
+  source_file_id: string | null;
+  source_file_version_id: string | null;
 };
 
 export const loadSiblingSourceFacts = async (
@@ -282,9 +339,14 @@ export const loadSiblingSourceFacts = async (
             definition.property_key,
             value.source_ref,
             value.config_revision_id,
+            binding.source_occurrence_id,
             coalesce(provenance.occurrence_count, 0) as source_occurrence_count,
             provenance.source_file_name,
-            provenance.source_node_locator
+            provenance.source_node_locator,
+            provenance.source_property_occurrence_id,
+            provenance.source_node_occurrence_id,
+            provenance.source_file_id,
+            provenance.source_file_version_id
        from parameter_catalog.current_project_parameter_bindings binding
        join parameter_catalog.parameter_definitions definition
          on definition.id = binding.definition_id
@@ -297,6 +359,105 @@ export const loadSiblingSourceFacts = async (
     [organizationId, [...projectIds]],
   );
   return result.rows;
+};
+
+export type SourcePropertyProvenanceRow = {
+  source_occurrence_id: string;
+  config_set_id: string;
+  logical_node_id: string;
+  config_revision_id: string;
+  property_occurrence_id: string | null;
+  node_occurrence_id: string | null;
+  file_id: string | null;
+  file_version_id: string | null;
+  file_name: string | null;
+  source_name: string | null;
+  node_locator: string | null;
+  occurrence_count: string | number;
+};
+
+/**
+ * Resolve the exact final property effect for a requested key under an
+ * immutable Binding root.  This is deliberately separate from
+ * `source_ref`: a recorded ref may name the old key, but only this graph can
+ * prove that the source-first cutover has actually produced the new key.
+ */
+export const loadSourcePropertyProvenance = async (
+  client: MigrationClient,
+  input: {
+    readonly bindingId: string;
+    readonly propertyKey: string;
+  },
+): Promise<SourcePropertyProvenanceRow | null> => {
+  const result = await client.query<SourcePropertyProvenanceRow>(
+    `select binding.source_occurrence_id,
+            source_occurrence.config_set_id,
+            source_occurrence.logical_node_id,
+            value.config_revision_id,
+            property.id as property_occurrence_id,
+            property.node_occurrence_id,
+            file.id as file_id,
+            property.file_version_id,
+            member.source_name,
+            file.file_name,
+            logical_revision.node_locator,
+            count(*) over () as occurrence_count
+       from parameter_catalog.current_project_parameter_bindings binding
+       join parameter_catalog.project_parameter_values value
+         on value.id = binding.current_value_id
+        and value.binding_id = binding.id
+       join parameter_catalog.project_parameter_source_occurrences source_occurrence
+         on source_occurrence.id = binding.source_occurrence_id
+        and source_occurrence.organization_id = binding.organization_id
+        and source_occurrence.project_id = binding.project_id
+        and source_occurrence.occurrence_kind = 'dts'
+       join (
+         select effect.*,
+                max(effect.source_order) over (
+                  partition by effect.config_revision_id,
+                               effect.logical_node_revision_id,
+                               effect.property_name
+                ) as final_source_order,
+                count(*) over (
+                  partition by effect.config_revision_id,
+                               effect.logical_node_revision_id,
+                               effect.property_name,
+                               effect.source_order
+                ) as final_source_count
+           from public.dts_occurrence_effects effect
+       ) effect
+         on effect.config_revision_id = value.config_revision_id
+        and effect.property_name = $2
+        and effect.final_source_count = 1
+        and effect.effect_kind in ('set', 'override')
+        and effect.source_order = effect.final_source_order
+       join public.dts_logical_node_revisions logical_revision
+         on logical_revision.id = effect.logical_node_revision_id
+        and logical_revision.logical_node_id = source_occurrence.logical_node_id
+        and logical_revision.config_revision_id = value.config_revision_id
+       join public.dts_property_occurrences property
+         on property.id = effect.property_occurrence_id
+        and property.config_revision_id = value.config_revision_id
+        and property.property_name = $2
+        and property.file_version_id is not null
+        and property.node_occurrence_id = effect.node_occurrence_id
+       join public.project_parameter_file_versions file_version
+         on file_version.id = property.file_version_id
+        and file_version.file_id = source_occurrence.file_id
+       join public.project_parameter_files file
+         on file.id = file_version.file_id
+        and file.organization_id = binding.organization_id
+       and file.project_id = binding.project_id
+       and file.config_set_id = source_occurrence.config_set_id
+      join public.dts_config_revision_members member
+        on member.config_revision_id = value.config_revision_id
+       and member.file_id = file_version.file_id
+       and member.file_version_id = property.file_version_id
+       and member.source_name is not null
+       where binding.id = $1`,
+    [input.bindingId, input.propertyKey],
+  );
+  return result.rows[0] ?? null;
 };
 
 export type RegistrationRow = {
@@ -621,7 +782,9 @@ export const loadReplacement = async (
   client: MigrationClient,
   organizationId: string,
   replacementId: string,
+  options: { readonly lock?: "update" | "none" | "update-nowait" } = {},
 ): Promise<ReplacementRow | null> => {
+  const lock = options.lock ?? "update";
   const result = await client.query<ReplacementRow>(
     `select id, organization_id, status, replacement_version::text as replacement_version,
             old_definition_id, old_subject_id, old_property_key, old_revision_id,
@@ -632,11 +795,83 @@ export const loadReplacement = async (
             approval_principal_id, approver_principal_id, reason, success_audit_ref,
             superseded_at, created_at
        from parameter_catalog.definition_replacements
-      where id = $1 and organization_id = $2
-      for update`,
+       where id = $1 and organization_id = $2
+      ${lock === "none" ? "" : lock === "update-nowait" ? "for update nowait" : "for update"}`,
     [replacementId, organizationId],
   );
   return result.rows[0] ?? null;
+};
+
+/**
+ * Lock the discovered canonical Binding/value/pin rows in rank order. Discovery
+ * remains unlocked; callers must re-read the exact graph after this fence.
+ */
+export const lockReplacementSourceRows = async (
+  client: MigrationClient,
+  input: { readonly bindingIds: readonly string[]; readonly valueIds: readonly string[] },
+): Promise<void> => {
+  const bindingIds = [...new Set(input.bindingIds)].sort();
+  const valueIds = [...new Set(input.valueIds)].sort();
+  if (bindingIds.length > 0) {
+    await client.query(
+      `select id from parameter_catalog.project_parameter_bindings
+        where id = any($1::text[])
+        order by id
+        for update nowait`,
+      [bindingIds],
+    );
+  }
+  if (valueIds.length > 0) {
+    await client.query(
+      `select id from parameter_catalog.project_parameter_values
+        where id = any($1::text[])
+        order by id
+        for update nowait`,
+      [valueIds],
+    );
+    await client.query(
+      `select id from parameter_catalog.project_value_source_pins
+        where project_value_id = any($1::text[])
+        order by id
+        for update nowait`,
+      [valueIds],
+    );
+  }
+};
+
+/** Lock replacement workflow rows only after source and canonical value ranks. */
+export const lockReplacementWorkflowRows = async (
+  client: MigrationClient,
+  input: {
+    readonly previewId: string | null;
+    readonly replacementId: string;
+    readonly projectRowIds: readonly string[];
+  },
+): Promise<void> => {
+  if (input.previewId) {
+    await client.query(
+      `select id from parameter_catalog.definition_replacement_previews
+        where id = $1
+        for update nowait`,
+      [input.previewId],
+    );
+  }
+  await client.query(
+    `select id from parameter_catalog.definition_replacements
+      where id = $1
+      for update nowait`,
+    [input.replacementId],
+  );
+  const ids = [...new Set(input.projectRowIds)].sort();
+  if (ids.length > 0) {
+    await client.query(
+      `select id from parameter_catalog.definition_replacement_projects
+        where id = any($1::text[])
+        order by id
+        for update nowait`,
+      [ids],
+    );
+  }
 };
 
 export const listReplacements = async (
@@ -848,6 +1083,7 @@ export const insertReplacementBinding = async (
     readonly catalogReleaseId: string;
     readonly projectId: string;
     readonly logicalNodeId: string;
+    readonly sourceOccurrenceId: string;
     readonly registrationId: string;
     readonly subjectId: string;
     readonly definitionId: string;
@@ -858,8 +1094,9 @@ export const insertReplacementBinding = async (
   await client.query(
     `insert into parameter_catalog.project_parameter_bindings (
        id, organization_id, catalog_release_id, project_id, logical_node_id,
-       registration_id, subject_id, definition_id, effective_revision_id, current_value_id
-     ) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
+       registration_id, subject_id, definition_id, effective_revision_id, current_value_id,
+       source_occurrence_id
+     ) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
     [
       input.id,
       input.organizationId,
@@ -871,6 +1108,7 @@ export const insertReplacementBinding = async (
       input.definitionId,
       input.effectiveRevisionId,
       input.currentValueId,
+      input.sourceOccurrenceId,
     ],
   );
 };
@@ -909,6 +1147,48 @@ export const insertReplacementValue = async (
       JSON.stringify(input.value),
       input.replacedFromValueId,
       input.replacedFromDefinitionId,
+    ],
+  );
+};
+
+export const insertReplacementSourcePin = async (
+  client: MigrationClient,
+  input: {
+    readonly id: string;
+    readonly projectValueId: string;
+    readonly bindingId: string;
+    readonly definitionId: string;
+    readonly organizationId: string;
+    readonly projectId: string;
+    readonly sourceOccurrenceId: string;
+    readonly configRevisionId: string;
+    readonly fileId: string;
+    readonly fileVersionId: string;
+    readonly propertyOccurrenceId: string;
+    readonly locator: Record<string, unknown>;
+    readonly locatorDigest: string;
+  },
+): Promise<void> => {
+  await client.query(
+    `insert into parameter_catalog.project_value_source_pins (
+       id, project_value_id, binding_id, definition_id, organization_id, project_id,
+       source_occurrence_id, config_revision_id, file_id, file_version_id, format,
+       property_occurrence_id, locator, locator_digest
+     ) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'dts',$11,$12::jsonb,$13)`,
+    [
+      input.id,
+      input.projectValueId,
+      input.bindingId,
+      input.definitionId,
+      input.organizationId,
+      input.projectId,
+      input.sourceOccurrenceId,
+      input.configRevisionId,
+      input.fileId,
+      input.fileVersionId,
+      input.propertyOccurrenceId,
+      JSON.stringify(input.locator),
+      input.locatorDigest,
     ],
   );
 };

@@ -152,8 +152,24 @@ describe.skipIf(!databaseAvailable)("findBindingBySource", () => {
     });
 
     expect(statements.length).toBeGreaterThan(0);
-    const haystack = statements.join("\n").toLowerCase();
-    expect(haystack).not.toMatch(/project_parameter_values/);
-    expect(haystack).not.toMatch(/parameter_definitions/);
+    const haystack = statements.join("\n");
+    expect(haystack.toLowerCase()).not.toMatch(/project_parameter_values/);
+    expect(haystack.toLowerCase()).not.toMatch(/parameter_definitions/);
+    expect(haystack).not.toContain("split_part(ps.specification_key");
+    expect(haystack).toContain("oe.property_name = dps.property_key");
+  });
+
+  it("does not match when dts_property_specs.property_key is absent", async () => {
+    await db.query(`delete from dts_property_specs where id = 'dps-1'`);
+
+    const matched = await findBindingBySource(db, {
+      organizationId: "org-1",
+      projectId: "project-1",
+      sourceFileName: "board.dts",
+      sourceNodePath: "/battery/temp_max",
+      fileVersionId: "version-1"
+    });
+
+    expect(matched).toBeNull();
   });
 });

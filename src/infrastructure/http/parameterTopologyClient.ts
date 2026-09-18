@@ -14,6 +14,7 @@ import type {
   PropertyKeyCutoverPreview,
   PropertyKeyCutoverRun,
   ParameterSpecSummary,
+  ParameterBindingValue,
   ProjectParameterBinding,
   ResolveSpecReviewInput,
   SpecQuery,
@@ -43,7 +44,7 @@ export type ProjectBindingDto = {
   logicalNodeId: string | null;
   instanceName: string | null;
   locator: string | null;
-  effectiveValue: ProjectParameterBinding["effectiveValue"];
+  effectiveValue: ParameterBindingValue;
   rawValue: string;
   schemaState: ProjectParameterBinding["schemaState"];
   policyState: ProjectParameterBinding["policyState"];
@@ -295,6 +296,11 @@ function bindingDraftFromDto(dto: BindingDraftResult): BindingDraftResult {
     rebasedDraftIds: dto.rebasedDraftIds,
     rawText: dto.rawText,
     action: dto.action,
+    sourceFormat: dto.sourceFormat,
+    sourceTarget: dto.sourceTarget,
+    baseRevisionId: dto.baseRevisionId,
+    sourcePinId: dto.sourcePinId,
+    candidateId: dto.candidateId,
     parameterSpecId: dto.parameterSpecId,
     projectParameterBindingId: dto.projectParameterBindingId,
     writeTarget: dto.writeTarget,
@@ -465,11 +471,17 @@ export function createHttpParameterTopologyRepository(
       >(`/api/v2/parameter-specs/${encodeURIComponent(specId)}${query}`);
       return specDetailFromDto(response.item);
     },
-    async createParameterSpec(input) {
-      const response = await apiClient.post<
-        ItemEnvelope<ParameterSpecDetailDto>
-      >("/api/v2/parameter-specs", input);
-      return specDetailFromDto(response.item);
+    async createParameterSpec(_input) {
+      throw new WiseEffApiError(
+        "GONE",
+        "Legacy structural writes are retired.",
+        {
+          reason: "legacy-surface-retired",
+          successor: "/api/v2/catalog",
+          retryable: false,
+        },
+        "",
+      );
     },
     async listSpecReviewTasks(query = {}) {
       const response = await apiClient.get<{

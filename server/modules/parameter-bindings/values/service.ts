@@ -1,4 +1,6 @@
 import pg from "pg";
+import type { Queryable } from "../../../shared/database/client";
+import { ApiError } from "../../../shared/http/errors";
 
 import {
   DefinitionRevisionId,
@@ -23,6 +25,12 @@ import {
   loadHistoryByRevision,
   loadOwnedSourceRefs,
   loadProjectValueById,
+  requiresCanonicalSourceImport as queryCanonicalSourceImport,
+  discoverCurrentSourceRevisionPins as queryCurrentSourceRevisionPins,
+  loadSourceBindingCohort as querySourceBindingCohort,
+  loadOwnedProjectValueSourcePin as queryOwnedProjectValueSourcePin,
+  isCurrentGovernedSourceValue as queryCurrentGovernedSourceValue,
+  loadSourceValueReplay as querySourceValueReplay,
   type BindingTipRow,
   type ProjectValueRow,
   type ValueClient,
@@ -58,6 +66,48 @@ const fail = (error: ProjectValueConflict): Result<never, ProjectValueConflict> 
 
 const controlFree = (value: string): boolean =>
   value.length > 0 && value.trim() === value && !/[\u0000-\u001F\u007F-\u009F]/u.test(value);
+
+function assertSourceReadScope(input: { organizationId: string; projectId: string }) {
+  if (!controlFree(input.organizationId) || !controlFree(input.projectId)) {
+    throw new ApiError("CONFLICT", "Source reads require exact organization and project identities.");
+  }
+}
+
+export async function requiresCanonicalSourceImport(tx: Queryable, input: { organizationId: string; projectId: string; bindingIds: string[] }) {
+  assertSourceReadScope(input);
+  if (!input.bindingIds.every(controlFree)) throw new ApiError("CONFLICT", "Import Binding identities are invalid.");
+  return queryCanonicalSourceImport(tx,input);
+}
+
+export async function discoverCurrentSourceRevisionPins(tx: Queryable, input: { organizationId: string; projectId: string; configSetId: string }) {
+  assertSourceReadScope(input);
+  if (!controlFree(input.configSetId)) throw new ApiError("CONFLICT", "Source configuration identity is invalid.");
+  return queryCurrentSourceRevisionPins(tx,input);
+}
+
+export async function loadSourceBindingCohort(tx: Queryable, input: { organizationId: string; projectId: string; configSetId: string }) {
+  assertSourceReadScope(input);
+  if (!controlFree(input.configSetId)) throw new ApiError("CONFLICT", "Source configuration identity is invalid.");
+  return querySourceBindingCohort(tx,input);
+}
+
+export async function loadOwnedProjectValueSourcePin(tx: Queryable, input: { organizationId: string; projectId: string; bindingId: string; projectValueId: string }) {
+  assertSourceReadScope(input);
+  if (!controlFree(input.bindingId) || !controlFree(input.projectValueId)) return null;
+  return queryOwnedProjectValueSourcePin(tx,input);
+}
+
+export async function isCurrentGovernedSourceValue(tx: Queryable, input: { organizationId: string; projectId: string; bindingId: string; projectValueId: string }) {
+  assertSourceReadScope(input);
+  if (!controlFree(input.bindingId) || !controlFree(input.projectValueId)) return false;
+  return queryCurrentGovernedSourceValue(tx,input);
+}
+
+export async function loadSourceValueReplay(tx: Queryable, input: { organizationId: string; projectId: string; bindingId: string; projectValueId: string; sourceOccurrenceId: string }) {
+  assertSourceReadScope(input);
+  if (!controlFree(input.bindingId) || !controlFree(input.projectValueId) || !controlFree(input.sourceOccurrenceId)) return null;
+  return querySourceValueReplay(tx,input);
+}
 
 const VALUE_KINDS = new Set<ProjectValueKind>([
   "string",
@@ -153,6 +203,7 @@ const identityMatches = (row: BindingTipRow, binding: Binding): boolean =>
   row.organization_id === binding.organizationId &&
   row.project_id === binding.projectId &&
   row.logical_node_id === binding.logicalNodeId &&
+  (!binding.sourceOccurrenceId || row.source_occurrence_id === binding.sourceOccurrenceId) &&
   row.registration_id === binding.registrationId &&
   row.subject_id === binding.subjectId &&
   row.definition_id === binding.definitionId;
@@ -213,7 +264,8 @@ const withValueUnitOfWork = async <T>(
         await session.query("release savepoint wiseeff_project_value");
         return result;
       }
-      await session.query("set constraints all immediate");
+      // Source-pin insertion is part of the caller's owned transaction. The
+      // outer commit validates the deferred current-value/source constraint.
       await session.query("release savepoint wiseeff_project_value");
       return result;
     } catch (error) {
@@ -269,6 +321,14 @@ const writeAppend = async (
   if (!agreed.ok) return agreed;
   const revision = agreeRevision(command, stored);
   if (!revision.ok) return revision;
+  if (command.sourceCommit) {
+    const request = await client.query(`select id from public.project_parameter_value_change_requests
+      where id=$1 and organization_id=$2 and project_id=$3 and status='pending'
+        and candidate_binding_manifest @> $4::jsonb`,
+    [command.sourceCommit.requestId,stored.organization_id,stored.project_id,
+      JSON.stringify([{ bindingId: stored.id,oldValueId: command.expectedTip }])]);
+    if (request.rows.length !== 1) return fail({ kind: "invalid-command", reason: "source-commit-cohort" });
+  }
 
   const expected = await loadProjectValueById(client, command.expectedTip);
   if (expected && expected.binding_id !== stored.id) {
@@ -299,6 +359,20 @@ const writeAppend = async (
     valueJson = JSON.stringify(command.payload.value);
   } catch {
     return fail({ kind: "invalid-command", reason: "payload" });
+  }
+
+  if (stored.source_occurrence_id && !command.sourceCommit && expected?.source_ref !== IDENTITY_PLACEHOLDER_SOURCE) {
+    // Initialization may replace its transient placeholder. Established source
+    // values can only be read back here; changing them belongs to source commit.
+    if (expected?.id === stored.current_value_id && expected.config_revision_id === command.source.configRevisionId
+      && expected.definition_revision_id === command.definitionRevisionId
+      && expected.value_kind === command.payload.kind && expected.value_digest === valueDigest) {
+      const pin = await client.query(`select id from parameter_catalog.project_value_source_pins
+        where project_value_id=$1 and binding_id=$2 and source_occurrence_id=$3`,
+      [expected.id,stored.id,stored.source_occurrence_id]);
+      if (pin.rows.length === 1) return replayed(expected,stored.current_value_id);
+    }
+    return fail({ kind: "invalid-command", reason: "owned-source-commit-required" });
   }
 
   const valueId = deriveProjectValueId({
@@ -348,6 +422,7 @@ const writeAppend = async (
     bindingId: stored.id,
     expectedTip: command.expectedTip,
     nextTip: valueId,
+    sourceCommitRequestId: command.sourceCommit?.requestId,
   });
   if (!swapped) {
     const raced = await loadBindingById(client, stored.id, "none");
@@ -359,11 +434,11 @@ const writeAppend = async (
     });
   }
 
-  const successAuditRef = deriveSuccessAuditId({
+  const successAuditRef = command.sourceCommit?.auditRef ?? deriveSuccessAuditId({
     bindingId: stored.id,
     newCurrentValueId: valueId,
   });
-  await insertSuccessAudit(client, {
+  if (!command.sourceCommit) await insertSuccessAudit(client, {
     id: successAuditRef,
     organizationId: stored.organization_id,
     projectId: stored.project_id,
@@ -382,6 +457,8 @@ const writeAppend = async (
     newCurrentValueId: valueId,
     successAuditRef,
     catalogReleaseId: stored.catalog_release_id,
+    reason: command.sourceCommit?.derived ? "source-revision-propagation" : undefined,
+    appliedRequestId: command.sourceCommit && !command.sourceCommit.derived ? command.sourceCommit.requestId : undefined,
   });
 
   return {

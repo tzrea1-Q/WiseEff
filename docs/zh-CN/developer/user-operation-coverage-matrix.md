@@ -23,8 +23,8 @@
 - `DEBUG-ADMIN-001`：调试管理后台验收覆盖复杂值类型与格式元数据的创建和编辑。
 - `DTS-RELOAD-DEPLOY-001` / `KERNEL-001` / `VERIFY-001` / `RESIDUE-001`：假桥自动化验收（见英文操作矩阵）；浏览器证据 `work/ui-checks/285-*`–`288-*`。
 - `DTS-RELOAD-DEPLOY-HW-001`：真实 HDC 条件覆盖（非阻塞）。
-- `DTS-RELOAD-HANDOFF-001`：工作台 → `/dts-reload` 深链交接（planned；`required: false`）。
-- `DTS-RELOAD-PROMOTE-001`：成功普通运行晋升为参数草稿（planned；`required: false`；不建 CR）。
+- `DTS-RELOAD-HANDOFF-001`：工作台 → `/dts-reload` 深链交接（automated；`required: false`）。
+- `DTS-RELOAD-PROMOTE-001`：成功普通运行晋升为参数草稿（automated；`required: false`；不建 CR）。
 
 ## 当前操作重点
 
@@ -39,14 +39,14 @@
 - `DTS-RELOAD-VERIFY-001`：经 `debug.readNode` 行为核对；`coverage: automated`。验收 spec 只覆盖无绑定路径，升级判定由 `server/modules/dts-reload/deploy.test.ts` 断言。
 - `DTS-RELOAD-RESIDUE-001`：残留记账与恢复基线；`coverage: automated`。验收 spec 只覆盖残留已记录可读，补偿运行与清除规则由 `residue.test.ts` / `restoreBaseline.test.ts` 断言。
 - `DTS-RELOAD-DEPLOY-HW-001`：真实 HDC 目标条件部署；`coverage: conditional`。
-- `DTS-RELOAD-HANDOFF-001`：从 `/parameters` 工作台「带到参数调试」携带 `?project=` 与 `?bindingIds=`；`coverage: future`。
-- `DTS-RELOAD-PROMOTE-001`：从成功普通重载运行把已存调试值写成参数草稿后停止（不建 CR、不自动提交）；`coverage: future`。
+- `DTS-RELOAD-HANDOFF-001`：深链 `/dts-reload?project=` 与 `?bindingIds=` 过滤候选且不填入本轮托盘；`coverage: automated`。
+- `DTS-RELOAD-PROMOTE-001`：从成功普通重载运行把已存调试值写成参数草稿后停止（不建 CR、不自动提交）；`coverage: automated`。
 - `PARAM-ADMIN-003`：PC 1440×900 下，Admin 在 `/parameter-admin/projects` 的 DataTable 经 URL `q`/`status`/`sort` 搜索、筛选、排序与分页；刷新、`popstate`、后退与前进都恢复状态；键盘进入行且编辑/删除隔离不冒泡，页面不横向溢出。`coverage: automated`，见 `e2e/acceptance/parameter-admin-projects.acceptance.spec.ts`。
 - `PARAM-INIT-WIZARD-001`：创建者完成项目参数初始化（选源 + 勾选）并进入待审阅；单测/服务端已覆盖；playwright-cli 证据见 `work/ui-checks/param-init/`；完整浏览器 e2e 待语义 binding 选择器落地后补。
 - `PARAM-INIT-EMPTY-001`：显式空库初始化可批准为 `initialized` 且零 binding（mock Port + 服务端）；专用 e2e 待补。
 - `PARAM-INIT-REVIEW-001`：Admin 在 `/parameter-review` 批准初始化后解锁并物化 binding；服务端 + App Port；playwright-cli 审阅页证据见 `work/ui-checks/param-init/review-*`。
 - `PARAM-INIT-REJECT-001`：Admin 带原因驳回后创建者可修订再提交（reducer + 服务端）；专用浏览器 e2e 待补。
-- `PARAM-INIT-LOCK-001`：未 `initialized` 项目不能提交常规 typed binding 变更轮次（`ParametersPage` 锁 + `assertProjectAllowsParameterSubmit`）。
+- `PARAM-INIT-LOCK-001`：未 `initialized` 项目不能提交常规 typed binding 变更轮次；`coverage: automated`，见 `e2e/acceptance/parameter-initialization-lock.acceptance.spec.ts`。
 - `PROJ-OPS-001`：已被 `PROJ-CONFIG-CUTOVER-001` 取代：PC 1440×900 下旧深链重定向到配置工作台等价上下文；未知项目 ID 仍显示 not-found；自动化归属 `e2e/acceptance/project-configuration-workbench.acceptance.spec.ts`。
 - `PROJ-OPS-002`：已被 `PROJ-CONFIG-READ-001` / `PROJ-CONFIG-CUTOVER-001` 取代：PC 1440×900 工作台布局证据，无截断或页面级横向溢出。
 - `PROJ-OPS-003`：已被 `PROJ-CONFIG-BASELINE-001` / `PROJ-CONFIG-OPS-001` / `PROJ-CONFIG-CONFLICT-001` 取代：PC 1440×900 下基线/成员/冲突确认在工作台源码上下文。
@@ -66,8 +66,8 @@
 - `PROJ-CONFIG-CUTOVER-001`：PC 1440×900 下旧 `/files` `/config-sets` `/structure` `/conflicts` 深链重定向到等价工作台上下文并保留焦点；新链接只使用 `/configuration`；集成切换证明能力不丢失；自动化归属 `e2e/acceptance/project-configuration-workbench.acceptance.spec.ts`；证据见 `work/ui-checks/project-configuration-workbench-cutover/`。
 - `PARAM-ADMIN-DIALOG-001`：Admin 打开项目编辑、项目删除与治理确认框，检查焦点进入、Tab 受限、叠层 Escape、焦点归还与按下在内松开在外；共享弹窗原语的单元测试加 playwright-cli 证据先行。
 - `PARAM-ASSIGNEE-001/002`：Software User 在 `/parameters` 的 binding-centric 提交面板中看到三类项目作用域候选人；默认值非空，候选集合精确排除 inactive、guest、仅 Admin 与角色不匹配用户。自动化归属 `e2e/acceptance/parameter-topology.acceptance.spec.ts`。
-- `PROJ-REVIEW-ROLES-001`：Admin 在 `/parameter-admin/projects/:projectId/review-roles` 为项目配置、新增、移除审核角色（`hardware-committer`、`software-committer`、`software-user`），采用 CAS 并发控制与原子持久化，保留组织角色不变，断言覆盖 UI、API、DB 和 audit（`src/components/parameter-admin-next/ProjectReviewRolesPanel.test.tsx`、`server/modules/users/projectWorkflowRoles.integration.test.ts`；`coverage: automated`）。
-- `PROJ-REVIEW-READINESS-001`：Software User 或 Admin 在 `/parameters` 工作台检测项目审核角色完备性，缺少角色时精准阻止提交并保留暂存草稿，为 Admin 显示配置入口，断言覆盖 UI 和 API（`src/components/parameter-topology/DtsBindingDraftTray.test.tsx`、`server/modules/parameters/serviceReviewWorkflow.integration.test.ts`；`coverage: automated`）。
+- `PROJ-REVIEW-ROLES-001`：Admin 在 `/parameter-admin/projects/:projectId/review-roles` 为项目配置、新增、移除审核角色。自动化归属 `e2e/acceptance/project-review-roles.acceptance.spec.ts`。
+- `PROJ-REVIEW-READINESS-001`：Software User 或 Admin 在 `/parameters` 工作台检测项目审核角色完备性，缺少角色时阻止提交。自动化归属 `e2e/acceptance/project-review-roles.acceptance.spec.ts`。
 - `PFB-SUBMIT-001`：Admin 在 `/parameters` 通过侧边栏提交产品反馈，断言覆盖 UI、API、DB、audit 和截图证据（`e2e/acceptance/product-feedback.acceptance.spec.ts`）。
 - `PFB-ADMIN-001`：Admin 在 `/feedback-admin` 查看反馈列表与详情，推进状态并保存备注，断言覆盖 UI、API、DB、audit 和截图证据。
 - `PFB-AUTHZ-001`：Hardware User 访问产品反馈管理 API 和 `/feedback-admin` 时被拒绝，断言覆盖 UI、API、DB 和截图证据。

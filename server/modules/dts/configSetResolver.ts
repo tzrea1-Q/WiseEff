@@ -23,6 +23,8 @@ export type DtsConfigSetInput = {
   includeSearchPaths: string[];
   overlayOrder: string[];
   files: ReadonlyMap<string, DtsConfigSetFile>;
+  /** Strict, bounded provenance entry used for canonical source proofs. */
+  requireExactOrigins?: boolean;
 };
 
 export type DtsResolutionDiagnosticCode =
@@ -31,7 +33,10 @@ export type DtsResolutionDiagnosticCode =
   | "path-escape"
   | "target-unresolved"
   | "dangling-reference"
-  | "label-duplicate";
+  | "label-duplicate"
+  | "source-proof-limit";
+
+class SourceProofLimit extends Error {}
 
 export type DtsResolutionDiagnostic = {
   code: DtsResolutionDiagnosticCode;
@@ -48,6 +53,8 @@ export interface DtsSourceChainEntry {
   propertyName: string;
   effect: DtsSourceEffect;
   rawText: string;
+  /** Original UTF-16 property span; null when expansion crosses source segments. */
+  origin: { fileVersionId: string; start: number; end: number } | null;
 }
 
 export type DtsNodeEffect = "create" | "delete";
@@ -114,15 +121,20 @@ interface Segment {
   fileName: string;
   start: number;
   end: number;
+  sourceStart: number;
 }
 
 interface Builder {
   text: string;
   segments: Segment[];
+  proofBudget?: { expandedBytes: number; entries: number; metadataBytes: number };
 }
 
 interface WalkContext {
   fileForOffset: (offset: number) => string;
+  originForSpan: (span: { start: number; end: number }) => DtsSourceChainEntry["origin"];
+  visitEntry: () => void;
+  retainMetadata: (...fields: string[]) => void;
   diagnostics: DtsResolutionDiagnostic[];
   byLocator: Map<string, MutableNode>;
   byLabel: Map<string, MutableNode>;
@@ -175,16 +187,20 @@ function resolveIncludeTarget(
   return { ok: false, code: sawEscape ? "path-escape" : "include-missing" };
 }
 
-function appendText(builder: Builder, text: string, fileName: string): void {
+function appendText(builder: Builder, text: string, fileName: string, sourceStart: number): void {
   if (text.length === 0) return;
+  if (builder.proofBudget) {
+    builder.proofBudget.expandedBytes += Buffer.byteLength(text);
+    if (builder.proofBudget.expandedBytes > 32 * 1024 * 1024) throw new SourceProofLimit();
+  }
   const start = builder.text.length;
   builder.text += text;
   const end = builder.text.length;
   const last = builder.segments[builder.segments.length - 1];
-  if (last && last.fileName === fileName && last.end === start) {
+  if (last && last.fileName === fileName && last.end === start && last.sourceStart + last.end - last.start === sourceStart) {
     last.end = end;
   } else {
-    builder.segments.push({ fileName, start, end });
+    builder.segments.push({ fileName, start, end, sourceStart });
   }
 }
 
@@ -203,7 +219,9 @@ function expandFile(
   includeSearchPaths: readonly string[],
   diagnostics: DtsResolutionDiagnostic[],
   builder: Builder,
+  requireExactOrigins = false,
 ): void {
+  if (requireExactOrigins && stack.length >= 64) throw new SourceProofLimit();
   if (stack.includes(fileName)) {
     diagnostics.push({
       code: "include-cycle",
@@ -233,11 +251,11 @@ function expandFile(
   let cursor = 0;
   for (const match of cleaned.matchAll(includeRe)) {
     const matchIndex = match.index ?? 0;
-    appendText(builder, cleaned.slice(cursor, matchIndex), fileName);
+    appendText(builder, cleaned.slice(cursor, matchIndex), fileName, cursor);
     const requestedPath = match[1];
     const resolution = resolveIncludeTarget(fileName, requestedPath, includeSearchPaths, files);
     if (resolution.ok) {
-      expandFile(resolution.fileName, nextStack, files, includeSearchPaths, diagnostics, builder);
+      expandFile(resolution.fileName, nextStack, files, includeSearchPaths, diagnostics, builder, requireExactOrigins);
     } else {
       diagnostics.push({
         code: resolution.code,
@@ -251,7 +269,7 @@ function expandFile(
     }
     cursor = matchIndex + match[0].length;
   }
-  appendText(builder, cleaned.slice(cursor), fileName);
+  appendText(builder, cleaned.slice(cursor), fileName, cursor);
 }
 
 function resolveSegment(segments: readonly Segment[], offset: number): string {
@@ -264,6 +282,7 @@ function resolveSegment(segments: readonly Segment[], offset: number): string {
 function ensureNode(ctx: WalkContext, locator: string, name: string, unitAddress: string | undefined, fileName: string): MutableNode {
   const existing = ctx.byLocator.get(locator);
   if (existing) return existing;
+  ctx.retainMetadata(locator, name, fileName);
   const node: MutableNode = {
     locator,
     name,
@@ -293,6 +312,7 @@ function registerLabel(ctx: WalkContext, label: string, node: MutableNode, fileN
 }
 
 function walkProperty(ctx: WalkContext, node: MutableNode, cst: DtsPropertyCst, fileName: string): void {
+  ctx.visitEntry();
   const existing = node.properties.get(cst.name);
   const effect: DtsSourceEffect = existing && !existing.deleted ? "override" : "set";
   const entry: DtsSourceChainEntry = {
@@ -301,7 +321,9 @@ function walkProperty(ctx: WalkContext, node: MutableNode, cst: DtsPropertyCst, 
     propertyName: cst.name,
     effect,
     rawText: cst.rawText,
+    origin: ctx.originForSpan(cst.span),
   };
+  ctx.retainMetadata(entry.fileName, entry.nodeLocator, entry.propertyName, entry.origin?.fileVersionId ?? "");
   if (existing) {
     existing.valueType = cst.valueType;
     existing.value = cst.value;
@@ -322,14 +344,17 @@ function walkProperty(ctx: WalkContext, node: MutableNode, cst: DtsPropertyCst, 
   });
 }
 
-function walkDeleteProperty(node: MutableNode, cst: DtsDeletePropertyCst, fileName: string): void {
+function walkDeleteProperty(ctx: WalkContext, node: MutableNode, cst: DtsDeletePropertyCst, fileName: string): void {
+  ctx.visitEntry();
   const entry: DtsSourceChainEntry = {
     fileName,
     nodeLocator: displayLocator(node.locator),
     propertyName: cst.name,
     effect: "delete",
     rawText: "",
+    origin: ctx.originForSpan(cst.span),
   };
+  ctx.retainMetadata(entry.fileName, entry.nodeLocator, entry.propertyName, entry.origin?.fileVersionId ?? "");
   const existing = node.properties.get(cst.name);
   if (existing) {
     existing.deleted = true;
@@ -364,6 +389,7 @@ function walkDeleteNode(ctx: WalkContext, parent: MutableNode, cst: DtsDeleteNod
 }
 
 function walkNode(ctx: WalkContext, cst: DtsNodeCst, parentLocator: string): void {
+  ctx.visitEntry();
   const fileName = ctx.fileForOffset(cst.span.start);
   let node: MutableNode;
 
@@ -403,8 +429,9 @@ function walkNode(ctx: WalkContext, cst: DtsNodeCst, parentLocator: string): voi
     } else if (child.kind === "node") {
       walkNode(ctx, child, node.locator);
     } else if (child.kind === "delete-property") {
-      walkDeleteProperty(node, child, childFileName);
+      walkDeleteProperty(ctx, node, child, childFileName);
     } else if (child.kind === "delete-node") {
+      ctx.visitEntry();
       walkDeleteNode(ctx, node, child, childFileName);
     }
   }
@@ -416,9 +443,10 @@ function ingestDocument(
   diagnostics: DtsResolutionDiagnostic[],
   byLocator: Map<string, MutableNode>,
   byLabel: Map<string, MutableNode>,
+  proofBudget?: Builder["proofBudget"],
 ): void {
-  const builder: Builder = { text: "", segments: [] };
-  expandFile(fileName, [], input.files, input.includeSearchPaths, diagnostics, builder);
+  const builder: Builder = { text: "", segments: [], proofBudget };
+  expandFile(fileName, [], input.files, input.includeSearchPaths, diagnostics, builder, input.requireExactOrigins);
 
   let topLevel: DtsNodeCst[];
   try {
@@ -431,6 +459,21 @@ function ingestDocument(
 
   const ctx: WalkContext = {
     fileForOffset: (offset) => resolveSegment(builder.segments, offset),
+    visitEntry: () => { if (proofBudget && ++proofBudget.entries > 100_000) throw new SourceProofLimit(); },
+    retainMetadata: (...fields) => {
+      if (!proofBudget) return;
+      proofBudget.metadataBytes += fields.reduce((size, field) => size + Buffer.byteLength(field), 24);
+      if (proofBudget.metadataBytes > 8 * 1024 * 1024) throw new SourceProofLimit();
+    },
+    originForSpan: (span) => {
+      const segment = builder.segments.find((entry) => span.start >= entry.start && span.end <= entry.end);
+      const file = segment && input.files.get(segment.fileName);
+      return segment && file ? {
+        fileVersionId: file.fileVersionId,
+        start: segment.sourceStart + span.start - segment.start,
+        end: segment.sourceStart + span.end - segment.start,
+      } : null;
+    },
     diagnostics,
     byLocator,
     byLabel,
@@ -470,6 +513,7 @@ export function resolveDtsConfigSet(input: DtsConfigSetInput): DtsConfigSetResul
   const diagnostics: DtsResolutionDiagnostic[] = [];
   const byLocator = new Map<string, MutableNode>();
   const byLabel = new Map<string, MutableNode>();
+  const proofBudget = input.requireExactOrigins ? { expandedBytes: 0, entries: 0, metadataBytes: 0 } : undefined;
 
   if (!input.files.has(input.entryFile)) {
     diagnostics.push({
@@ -481,20 +525,27 @@ export function resolveDtsConfigSet(input: DtsConfigSetInput): DtsConfigSetResul
     return { effective: { nodesByLocator: finalize(byLocator) }, diagnostics };
   }
 
-  ingestDocument(input.entryFile, input, diagnostics, byLocator, byLabel);
+  try {
+    ingestDocument(input.entryFile, input, diagnostics, byLocator, byLabel, proofBudget);
 
-  for (const overlayFile of input.overlayOrder) {
-    if (!input.files.has(overlayFile)) {
-      diagnostics.push({
-        code: "include-missing",
-        severity: "error",
-        fileName: overlayFile,
-        message: `Overlay file "${overlayFile}" was not found in the config set manifest`,
-      });
-      continue;
+    for (const overlayFile of input.overlayOrder) {
+      if (!input.files.has(overlayFile)) {
+        diagnostics.push({
+          code: "include-missing",
+          severity: "error",
+          fileName: overlayFile,
+          message: `Overlay file "${overlayFile}" was not found in the config set manifest`,
+        });
+        continue;
+      }
+      ingestDocument(overlayFile, input, diagnostics, byLocator, byLabel, proofBudget);
     }
-    ingestDocument(overlayFile, input, diagnostics, byLocator, byLabel);
-  }
 
-  return { effective: { nodesByLocator: finalize(byLocator) }, diagnostics };
+    return { effective: { nodesByLocator: finalize(byLocator) }, diagnostics };
+  } catch (error) {
+    if (!(error instanceof SourceProofLimit)) throw error;
+    return { effective: { nodesByLocator: new Map() }, diagnostics: [{
+      code: "source-proof-limit",severity: "error",fileName: input.entryFile,message: "Exact source proof exceeds its bounded capacity.",
+    }] };
+  }
 }

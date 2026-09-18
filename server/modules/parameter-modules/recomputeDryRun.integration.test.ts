@@ -109,6 +109,12 @@ async function seedUnattributedBinding(db: Database) {
      values ($1, $2, 'dts', 'sc8562/gpio_int')`,
     [SPEC, ORG]
   );
+  await db.query(
+    `insert into parameter_spec_versions (
+       id, parameter_spec_id, version, display_name, description, value_shape, lifecycle, version_status
+     ) values ($1, $2, 1, 'gpio_int', 'gpio_int', '{}', 'draft', 'draft')`,
+    ["psv-recompute-dryrun", SPEC]
+  );
   const configRevisionId = "rev-recompute-dryrun";
   await db.query(
     `insert into dts_config_revisions (
@@ -136,6 +142,12 @@ async function seedUnattributedBinding(db: Database) {
     `insert into project_parameter_bindings (id, organization_id, project_id, parameter_spec_id, module_id, logical_node_id)
      values ($1, $2, $3, $4, $5, $6)`,
     [BINDING, ORG, PROJECT, SPEC, UNCLASSIFIED, NODE]
+  );
+  await db.query(
+    `insert into project_parameter_binding_revisions (
+       id, binding_id, config_revision_id, parameter_spec_version_id, raw_value, typed_value
+     ) values ($1, $2, $3, $4, $5, $6::jsonb)`,
+    ["br-recompute-dryrun", BINDING, configRevisionId, "psv-recompute-dryrun", "1", "1"]
   );
 }
 

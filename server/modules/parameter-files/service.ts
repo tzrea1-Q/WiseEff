@@ -23,8 +23,10 @@ import {
   getFileConfigSetMembership,
 } from "./configSetRepository";
 import { buildDtsParsedIndex, buildJsonParsedIndex } from "./parseIndex";
+import { MAX_PARAMETER_SOURCE_BYTES } from "./jsonSource";
 import { syncFileVersion } from "./syncService";
 import {
+  assertLegacySourceMutationAllowed,
   getFileVersionById,
   getProjectParameterFileById,
   getProjectParameterFileByName,
@@ -52,7 +54,7 @@ import {
   type IngestDriverSummary,
 } from "../parameter-modules/ingestDriverSummary";
 
-export const MAX_FILE_BYTES = 2 * 1024 * 1024;
+export const MAX_FILE_BYTES = MAX_PARAMETER_SOURCE_BYTES;
 
 export type ParameterFileServiceContext = AuditCorrelationContext;
 
@@ -172,7 +174,7 @@ function buildParsedIndex(format: ParameterFileFormat, bytes: Buffer) {
   const source = bytes.toString("utf8");
   try {
     return format === "json"
-      ? buildJsonParsedIndex(source)
+      ? buildJsonParsedIndex(bytes)
       : buildDtsParsedIndex(source);
   } catch {
     throw new ApiError(
@@ -266,7 +268,7 @@ export async function maybeIngestSemanticConfigRevision(
       organizationId: auth.organization.id,
       fileId: member.fileId,
     });
-    if (!file || file.format !== "dts") {
+    if (!file || (file.format !== "dts" && file.format !== "json")) {
       continue;
     }
 
@@ -290,6 +292,7 @@ export async function maybeIngestSemanticConfigRevision(
       fileId: member.fileId,
       fileVersionId: versionId,
       fileName: member.fileName,
+      format: file.format,
       role,
       sortOrder: fileMembership?.configSetSortOrder ?? 0,
       content,
@@ -297,7 +300,7 @@ export async function maybeIngestSemanticConfigRevision(
   }
 
   const baseMembers = members
-    .filter((member) => member.role === "base")
+    .filter((member) => member.format === "dts" && member.role === "base")
     .sort(
       (a, b) =>
         a.sortOrder - b.sortOrder || a.fileName.localeCompare(b.fileName),
@@ -308,7 +311,7 @@ export async function maybeIngestSemanticConfigRevision(
   }
 
   const overlayOrder = members
-    .filter((member) => OVERLAY_ROLES.has(member.role as ConfigSetRole))
+    .filter((member) => member.format === "dts" && OVERLAY_ROLES.has(member.role as ConfigSetRole))
     .sort(
       (a, b) =>
         a.sortOrder - b.sortOrder || a.fileName.localeCompare(b.fileName),
@@ -363,6 +366,7 @@ export async function uploadProjectParameterFile(
       projectId: normalized.projectId,
       fileName: normalized.fileName,
     });
+    if (existing) await assertLegacySourceMutationAllowed(tx,existing.id);
     const stored = await objectStore.put({
       organizationId: auth.organization.id,
       fileName: normalized.fileName,
@@ -549,6 +553,7 @@ export async function rollbackProjectParameterFileVersion(
       });
     }
 
+    await assertLegacySourceMutationAllowed(tx,file.id);
     const rollbackVersion = await insertFileVersion(tx, {
       id: randomUUID(),
       fileId: file.id,

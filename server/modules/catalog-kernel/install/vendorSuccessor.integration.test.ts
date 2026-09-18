@@ -140,9 +140,11 @@ describe("vendor catalog successor advance", () => {
     const propertyKeys = keys.rows.map((row) => row.property_key);
     expect(propertyKeys).toContain("iin_max");
     expect(propertyKeys).toContain("board_id");
+    expect(propertyKeys).toContain("fast-charge-profile-matrix");
+    expect(propertyKeys).toContain("battery-thermal-derate-curve");
     expect(propertyKeys).not.toContain("shared_prop");
     expect(propertyKeys).not.toContain("fast_charge_current_limit_ma");
-    expect(propertyKeys).toHaveLength(114);
+    expect(propertyKeys).toHaveLength(116);
 
     // Issue #849 scope item 4: the advance retires the acme sample without
     // rewriting crel_acme_1, and without claiming it evolved into a real vendor

@@ -29,6 +29,13 @@ export type CanonicalValueDraftRow = {
   user_id: string | null;
   created_at: string;
   updated_at: string;
+  source_pin_id: string | null;
+  candidate_id: string | null;
+  candidate_base_digest: string | null;
+  candidate_proposed_digest: string | null;
+  candidate_diff_digest: string | null;
+  candidate_member_manifest: unknown[] | null;
+  candidate_binding_manifest: unknown[] | null;
 };
 
 /** The exact canonical pins a draft must be created against. */
@@ -105,6 +112,13 @@ export async function upsertCanonicalValueDraft(
     reason: string;
     userId: string;
     draftId?: string;
+    sourcePinId: string;
+    candidateId: string;
+    candidateBaseDigest: string;
+    candidateProposedDigest: string;
+    candidateDiffDigest: string;
+    candidateMemberManifest: unknown[];
+    candidateBindingManifest: unknown[];
   }
 ): Promise<CanonicalValueDraftRow> {
   const result = await db.query<CanonicalValueDraftRow>(
@@ -112,8 +126,11 @@ export async function upsertCanonicalValueDraft(
     insert into project_parameter_value_drafts (
       id, organization_id, project_id, binding_id, definition_id,
       definition_revision_id, catalog_release_id, base_current_value_id,
-      config_revision_id, source_ref, action, target_value, reason, user_id
-    ) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12::jsonb, $13, $14)
+      config_revision_id, source_ref, action, target_value, reason, user_id,
+      source_pin_id, candidate_id, candidate_base_digest, candidate_proposed_digest,
+      candidate_diff_digest, candidate_member_manifest, candidate_binding_manifest
+    ) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12::jsonb, $13, $14,
+      $15, $16, $17, $18, $19, $20::jsonb, $21::jsonb)
     on conflict (project_id, binding_id, user_id) do update
        set definition_id = excluded.definition_id,
            definition_revision_id = excluded.definition_revision_id,
@@ -124,6 +141,13 @@ export async function upsertCanonicalValueDraft(
            action = excluded.action,
            target_value = excluded.target_value,
            reason = excluded.reason,
+           source_pin_id = excluded.source_pin_id,
+           candidate_id = excluded.candidate_id,
+           candidate_base_digest = excluded.candidate_base_digest,
+           candidate_proposed_digest = excluded.candidate_proposed_digest,
+           candidate_diff_digest = excluded.candidate_diff_digest,
+           candidate_member_manifest = excluded.candidate_member_manifest,
+           candidate_binding_manifest = excluded.candidate_binding_manifest,
            updated_at = now()
      where project_parameter_value_drafts.organization_id = excluded.organization_id
     returning *
@@ -142,7 +166,14 @@ export async function upsertCanonicalValueDraft(
       input.action,
       JSON.stringify(input.targetValue),
       input.reason,
-      input.userId
+      input.userId,
+      input.sourcePinId,
+      input.candidateId,
+      input.candidateBaseDigest,
+      input.candidateProposedDigest,
+      input.candidateDiffDigest,
+      JSON.stringify(input.candidateMemberManifest),
+      JSON.stringify(input.candidateBindingManifest)
     ]
   );
   const row = result.rows[0];
@@ -190,9 +221,28 @@ export async function getCanonicalValueDraft(
   return result.rows[0] ?? null;
 }
 
-export async function deleteCanonicalValueDraft(
+export async function getCanonicalValueDraftForUpdate(
   db: Queryable,
   input: { organizationId: string; projectId: string; userId: string; draftId: string }
+): Promise<CanonicalValueDraftRow | null> {
+  const result = await db.query<CanonicalValueDraftRow>(
+    `
+    select *
+      from project_parameter_value_drafts
+     where organization_id = $1
+       and project_id = $2
+       and user_id = $3
+       and id = $4
+     for update
+    `,
+    [input.organizationId, input.projectId, input.userId, input.draftId]
+  );
+  return result.rows[0] ?? null;
+}
+
+export async function deleteCanonicalValueDraft(
+  db: Queryable,
+  input: { organizationId: string; projectId: string; userId: string; draftId: string; candidateId?: string }
 ): Promise<boolean> {
   const result = await db.query(
     `
@@ -201,8 +251,9 @@ export async function deleteCanonicalValueDraft(
        and project_id = $2
        and user_id = $3
        and id = $4
+       and ($5::text is null or candidate_id = $5)
     `,
-    [input.organizationId, input.projectId, input.userId, input.draftId]
+    [input.organizationId, input.projectId, input.userId, input.draftId, input.candidateId ?? null]
   );
   return (result.rowCount ?? 0) > 0;
 }

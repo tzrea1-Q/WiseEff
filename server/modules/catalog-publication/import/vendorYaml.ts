@@ -158,6 +158,13 @@ export const vendorValueSchemaFor = (
       return { type: "array", items: { type: "integer", minimum: 0 } };
     case "phandle-list":
       return { type: "array" };
+    case "nested-string-array":
+      return { type: "array", items: { type: "array", items: { type: "string" } } };
+    case "nested-u32-array":
+      return {
+        type: "array",
+        items: { type: "array", items: { type: "integer", minimum: 0 } },
+      };
     case "bytes":
       return { type: "string" };
     case "mixed":

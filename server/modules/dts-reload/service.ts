@@ -59,7 +59,6 @@ import {
   listReloadCandidateRows,
   listReloadRunRows,
   listReloadRunTargets,
-  pinDtsReloadQueryable,
   readLibraryFingerprint,
   claimReloadRunForDeploy,
   reclaimStaleDeployingReloadRunRows,
@@ -440,7 +439,6 @@ async function assertDeploySensitiveReloadAllowed(
   context: DtsReloadServiceContext
 ): Promise<void> {
   const sensitiveTargets = [];
-  pinDtsReloadQueryable(db);
   for (const target of run.targets) {
     const candidate = await getReloadCandidateRow(db, {
       organizationId: auth.organization.id,
@@ -692,7 +690,6 @@ async function resolveStartTargets(
   auth: AuthContext,
   input: StartReloadRunInput
 ): Promise<ResolvedReloadTarget[]> {
-  pinDtsReloadQueryable(db);
   await touchDtsCanonicalSeams(db, auth.organization.id);
   if (input.targets.length === 0) {
     throw new ApiError("VALIDATION_FAILED", "At least one reload target is required.");

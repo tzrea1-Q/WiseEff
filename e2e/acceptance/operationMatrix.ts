@@ -444,6 +444,32 @@ export const acceptanceOperations: AcceptanceOperation[] = [
     assertions: ["ui", "api", "screenshot"]
   },
   {
+    id: "PROJ-REVIEW-ROLES-001",
+    priority: "P0",
+    area: "parameters",
+    route: "/parameter-admin/projects/:projectId/review-roles",
+    roles: ["Admin"],
+    action:
+      "Configure, add, and confirm project review roles (hardware-committer, software-committer, software-user) from the review-roles page, including deep-link entry and member search.",
+    coverage: "automated",
+    acceptanceIds: ["PROJ-REVIEW-ROLES-001"],
+    specFiles: ["e2e/acceptance/project-review-roles.acceptance.spec.ts"],
+    assertions: ["ui", "api", "screenshot"]
+  },
+  {
+    id: "PROJ-REVIEW-READINESS-001",
+    priority: "P0",
+    area: "parameters",
+    route: "/parameters",
+    roles: ["Software User", "Admin"],
+    action:
+      "Detect missing project review roles on the parameter workbench, block draft submission with actionable badges, retain staged drafts, and expose the review-roles configuration link to Admins or a contact notice to non-admins.",
+    coverage: "automated",
+    acceptanceIds: ["PROJ-REVIEW-READINESS-001"],
+    specFiles: ["e2e/acceptance/project-review-roles.acceptance.spec.ts"],
+    assertions: ["ui", "api"]
+  },
+  {
     id: "PARAM-INIT-WIZARD-001",
     priority: "P1",
     area: "parameters",
@@ -513,12 +539,14 @@ export const acceptanceOperations: AcceptanceOperation[] = [
     route: "/parameters",
     roles: ["Software User", "Admin"],
     action: "Confirm non-initialized projects cannot submit normal typed binding change rounds.",
-    coverage: "future",
+    coverage: "automated",
     acceptanceIds: ["PARAM-INIT-LOCK-001"],
-    specFiles: ["src/ParametersPage.test.tsx", "server/modules/parameters/service.test.ts"],
-    assertions: ["ui", "api"],
-    deferralReason:
-      "UI lock + submitParameterChanges assertProjectAllowsParameterSubmit covered by unit tests; browser lock evidence follows."
+    specFiles: [
+      "e2e/acceptance/parameter-initialization-lock.acceptance.spec.ts",
+      "src/ParametersPage.test.tsx",
+      "server/modules/parameters/service.test.ts"
+    ],
+    assertions: ["ui", "api"]
   },
   {
     id: "PROJ-OPS-001",
@@ -1131,11 +1159,10 @@ export const acceptanceOperations: AcceptanceOperation[] = [
     route: "/dts-reload",
     roles: ["Hardware Committer", "Admin"],
     action: "Carry a selected binding set from the parameter workbench into /dts-reload via ?project=&bindingIds= without dumping the full table into the reload batch.",
-    coverage: "future",
+    coverage: "automated",
     acceptanceIds: ["DTS-RELOAD-HANDOFF-001"],
     specFiles: ["e2e/acceptance/dts-reload-handoff.acceptance.spec.ts"],
-    assertions: ["ui"],
-    deferralReason: "Browser Playwright automation is pending; unit coverage and playwright-cli evidence land with TD-064."
+    assertions: ["ui"]
   },
   {
     id: "DTS-RELOAD-PROMOTE-001",
@@ -1144,11 +1171,14 @@ export const acceptanceOperations: AcceptanceOperation[] = [
     route: "/dts-reload",
     roles: ["Hardware Committer", "Admin"],
     action: "Promote selected stored debug values from a successful ordinary reload run into parameter drafts, then stop (no change request, no auto-submit).",
-    coverage: "future",
+    coverage: "automated",
     acceptanceIds: ["DTS-RELOAD-PROMOTE-001"],
-    specFiles: ["e2e/acceptance/dts-reload-promote.acceptance.spec.ts"],
-    assertions: ["ui", "api"],
-    deferralReason: "Browser Playwright automation is pending; API and page unit coverage land with TD-063."
+    specFiles: [
+      "e2e/acceptance/dts-reload-promote.acceptance.spec.ts",
+      "server/modules/dts-reload/promote.test.ts",
+      "src/features/dts-reload/DtsReloadPage.test.tsx"
+    ],
+    assertions: ["ui", "api"]
   },
   {
     id: "HDC-LAB-001",

@@ -40,6 +40,7 @@ import {
 import { createMemoryObjectStore } from "../../../testing/objectStore";
 import { firstReleaseBundle } from "../../../testing/parameterCatalog/cutoverPopulatedFixture";
 import { materializeSeedSources, type SeedProjectSources } from "./materialize";
+import { curateReviewedSeedPlacementCapacity } from "./placementCapacity";
 
 const databaseAvailable = await isTestDatabaseAvailable();
 if (!databaseAvailable) {
@@ -134,26 +135,7 @@ describe("node-type subject resolution during seed materialization", () => {
     });
     expect(advanced.ok, JSON.stringify(advanced)).toBe(true);
 
-    await pool.query(
-      `insert into public.attribution_subjects (
-         id, organization_id, subject_kind, display_name, source_key
-       ) values ('asub-seed-nodetype-extra', $1, 'driver-registration',
-                 'Operator-curated seed capacity', 'compatible:operator,seed-capacity')`,
-      [ORG],
-    );
-    await pool.query(
-      `insert into public.driver_registrations (
-         attribution_subject_id, driver_nature, instance_cardinality
-       ) values ('asub-seed-nodetype-extra', 'physical-device', 'multiple')`,
-    );
-    await pool.query(
-      `insert into public.parameter_modules (
-         id, organization_id, name, path, depth, kind, origin, attribution_subject_id
-       ) values ('pmod-seed-nodetype-extra', $1, 'Operator-curated seed capacity',
-                 'pmod-seed-nodetype-extra', 1, 'driver-group', 'curated',
-                 'asub-seed-nodetype-extra')`,
-      [ORG],
-    );
+    await curateReviewedSeedPlacementCapacity(root, { organizationId: ORG });
 
   }, 180_000);
 

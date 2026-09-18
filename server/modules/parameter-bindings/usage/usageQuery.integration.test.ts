@@ -26,9 +26,8 @@ import {
   isTestDatabaseAvailable,
   type EphemeralTestDatabase,
 } from "../../../testing/testDatabase";
-import { stabilizeCanonicalBinding } from "../binding/index";
-import { createProjectValueService } from "../values/index";
 import { IDENTITY_PLACEHOLDER_SOURCE } from "../values/repositories";
+import { appendSourceCommittedValue, createSourceBackedBindingService } from "../binding/__fixtures__/sourceBackedBinding";
 
 import { createUsageQueries } from "./index";
 
@@ -177,9 +176,10 @@ describe("CATFIX-QUERY usage summaries", () => {
   });
 
   it("CATFIX-QUERY-05 counts two projects and current values without historical inflation", async () => {
-    const values = createProjectValueService(pool);
     const seed = async (logicalNodeId: string, projectId: string) => {
-      const binding = await stabilizeCanonicalBinding(pool, {
+      const binding = await createSourceBackedBindingService(pool, {
+        sourceRef: `config-set:${logicalNodeId}`,
+      }).stabilize({
         snapshot,
         organizationId: ORG,
         projectId,
@@ -193,7 +193,7 @@ describe("CATFIX-QUERY usage summaries", () => {
       if (!binding.ok) throw new Error("binding failed");
       let expectedTip = binding.value.binding.currentValueId;
       for (const magnitude of [1, 2]) {
-        const appended = await values.append({
+        const appended = await appendSourceCommittedValue(pool, {
           snapshot,
           binding: binding.value.binding,
           definitionRevisionId: REVISION_1,

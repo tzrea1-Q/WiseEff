@@ -60,10 +60,9 @@ function asValueShape(value: unknown): CandidateValueShape {
 /**
  * Resolve a readable debug-node binding for a project parameter binding + protocol.
  *
- * Association: `debugging_parameters.project_parameter_binding_id` (preferred) or
- * `debugging_parameters.parameter_spec_id` matching the binding's spec — the topology
- * migration backfill path. Runtime path then follows `/node-debugging`:
- * `debug_nodes` + enabled `debug_node_bindings` for the deploy protocol.
+ * Association is exact: `debugging_parameters.project_parameter_binding_id = binding.id`.
+ * Runtime path then follows `/node-debugging`: `debug_nodes` + enabled
+ * `debug_node_bindings` for the deploy protocol.
  */
 export async function resolveDebugNodeBindingForReloadTarget(
   db: Queryable,
@@ -76,7 +75,7 @@ export async function resolveDebugNodeBindingForReloadTarget(
   const result = await db.query<DebugNodeBindingRow>(
     `
     with binding as (
-      select id, parameter_spec_id, organization_id
+      select id, organization_id
       from project_parameter_bindings
       where organization_id = $1
         and id = $2
@@ -94,13 +93,7 @@ export async function resolveDebugNodeBindingForReloadTarget(
     from binding b
     join debugging_parameters dp
       on dp.organization_id = b.organization_id
-     and (
-       dp.project_parameter_binding_id = b.id
-       or (
-         dp.parameter_spec_id is not null
-         and dp.parameter_spec_id = b.parameter_spec_id
-       )
-     )
+     and dp.project_parameter_binding_id = b.id
     join debug_nodes dn
       on dn.id = dp.id
      and dn.organization_id = dp.organization_id
@@ -120,9 +113,7 @@ export async function resolveDebugNodeBindingForReloadTarget(
       and dn.enabled = true
       and dn.archived_at is null
       and dnb.access_mode in ('RO', 'RW')
-    order by
-      case when dp.project_parameter_binding_id = b.id then 0 else 1 end,
-      dn.name asc
+    order by dn.name asc
     limit 1
     `,
     [input.organizationId, input.bindingId, input.protocol]

@@ -25,8 +25,10 @@ export type SourceLocator = {
 
 export type SourceProvenance = {
   readonly projectId: string;
-  readonly logicalNodeId: string;
+  readonly logicalNodeId: string | null;
   readonly configRevisionId: string;
+  /** Required for matched observations after the source-occurrence cutover. */
+  readonly sourceOccurrenceId?: string;
   readonly sourceLocator: SourceLocator;
 };
 
@@ -83,6 +85,11 @@ export type IngestEvidenceFailure =
   | {
       readonly kind: "catalog-release-not-found";
       readonly catalogReleaseId: string;
+    }
+  | {
+      readonly kind: "source-provenance-mismatch";
+      readonly sourceOccurrenceId: string;
+      readonly reason: string;
     };
 
 export type EvidenceIngest = {

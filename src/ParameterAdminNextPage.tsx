@@ -254,6 +254,7 @@ export function ParameterAdminNextPage({
                 pathname={pathname}
                 search={search}
                 onNavigate={onNavigate}
+                catalog={runtime?.parameterCatalogRepository}
               />
             ) : null}
           </>

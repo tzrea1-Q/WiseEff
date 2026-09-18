@@ -20,9 +20,13 @@ export type ConfigRevisionManifestMember = {
   fileId: string;
   fileVersionId: string;
   fileName: string;
+  /** Frozen parser/export alias; a new ingest may establish it from its supplied fileName. */
+  sourceName?: string;
   role: ConfigRevisionMemberRole;
   sortOrder: number;
   content: string;
+  /** Explicit source kind for mixed canonical revisions; old DTS callers default to DTS. */
+  format?: "dts" | "json";
 };
 
 /**

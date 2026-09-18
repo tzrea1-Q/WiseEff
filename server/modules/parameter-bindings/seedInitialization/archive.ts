@@ -91,6 +91,16 @@ export const ARCHIVED_PARAMETER_PLANE_RELATIONS: readonly ArchiveRelation[] = [
     scope: { kind: "project", projectId: "" }
   },
   {
+    key: "canonical_source_occurrences",
+    from: "parameter_catalog.project_parameter_source_occurrences",
+    scope: { kind: "project", projectId: "" }
+  },
+  {
+    key: "canonical_source_pins",
+    from: "parameter_catalog.project_value_source_pins",
+    scope: { kind: "project", projectId: "" }
+  },
+  {
     key: "binding_history_events",
     from: "parameter_catalog.binding_history_events",
     scope: { kind: "canonicalBinding" }

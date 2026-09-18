@@ -8,7 +8,7 @@ Date: 2026-09-15
 
 Accepted as the source-identity contract for the parameter entry-point unification of [#849](https://github.com/tzrea1-Q/WiseEff/issues/849) — scope item 2, Implementation Decisions 3, 6, 7, 10 and 13, Testing Decision 6, and user stories 10, 11 and 21.
 
-This record freezes the semantic contract that implementation must satisfy. It does **not** certify that any migration, relation, route, UI surface or threat-matrix row is complete or verified; certification comes from the executable matrix and its gates. The implementation is in flight on `feat/849-parameter-unification` (PR #858), which also claims ADR-0045; the next unused number on `main` is therefore 0046. Re-check that number immediately before merge, per [Fleet Coordination](../agents/fleet-coordination.md).
+This record freezes the semantic contract that implementation must satisfy. It does **not** certify that any migration, relation, route, UI surface or threat-matrix row is complete or verified; certification comes from the executable matrix and its gates. At decision time, implementation was in flight on `feat/849-parameter-unification` (PR #858), which claimed ADR-0045; that historical numbering context is not current delivery status. Current T1.1 status is recorded in the [source-occurrence matrix](../exec-plans/active/849-inventory/source-occurrence-threat-matrix.md). Re-check ADR numbering immediately before merge, per [Fleet Coordination](../agents/fleet-coordination.md).
 
 ## Context
 
@@ -41,6 +41,15 @@ Meanwhile JSON software configuration is already partially representable and exp
 8. **Completion is the full matrix.** B1 closes only against import preview → candidate/draft → review → apply → source reparse → export → reimport, for both DTS and JSON. "Preview + apply" is an internal milestone, not acceptance.
 
 The seed equality oracle is unchanged by this decision: the reviewed fixture stays at exactly 124 bindings per project (120 board + 2 DTS compatibility + 2 JSON compatibility) and 372 across three projects. Real deployments with several config-sets and instances may legitimately exceed 124; 124 is the fixture's exact set, not a schema bound, and acceptance is equality rather than a lower bound.
+
+## Accepted clarification — 2026-09-16
+
+The user explicitly confirmed the following T1.1 decisions after independent design review:
+
+- A JSON configuration instance receives a server-owned opaque identity at explicit import/registration, scoped to Organization, Project, config-set, immutable file ID, governed ConfigurationSchema and root/subtree JSON Pointer. Updates and reimport of the same proven instance preserve its identity; renaming the same file ID does too. Replacing the file ID, changing the config-set/model, or relocating the instance root creates a new instance with explicit mapping, never an automatic history/value transfer. Array indices alone cannot prove continuity after reordering. The unified source-occurrence relation owns the instance identity; parameter locators and revision pins remain distinct from its root locator.
+- Unprovable historical Binding, observation or match provenance blocks the **whole identity migration**. Resolve historical file versions through their immutable file ID rather than the current-version pointer; missing, contradictory or ambiguous evidence yields a report and transactional abort. Do not fabricate provenance, delete or silently quarantine rows to continue. Old DTS schema/data remain usable. Quarantine-and-continue is not authorized.
+
+These clarify identity lifetime and upgrade availability, not completed implementation, migration acceptance, or target/deletion authorization.
 
 ## Consequences
 

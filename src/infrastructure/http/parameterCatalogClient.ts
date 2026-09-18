@@ -4,6 +4,7 @@ import {
   bindingDraftResponseSchema,
   bindingCompareListResponseSchema,
   bindingHistoryListResponseSchema,
+  catalogBindingExportResponseSchema,
   catalogAcceptProposalRequestSchema,
   catalogCreateBindingDraftRequestSchema,
   catalogCreateNodeEnablementDraftRequestSchema,
@@ -66,6 +67,7 @@ import {
   catalogReviewValueChangeRequestSchema,
   catalogValueChangeRequestListResponseSchema,
   catalogValueChangeRequestResponseSchema,
+  catalogValueChangeSourceDiffResponseSchema,
   catalogBindingChangeHistoryListResponseSchema,
   type CatalogApiFailureReason,
   type CatalogFailureClientBehavior,
@@ -586,6 +588,13 @@ export function createParameterCatalogClient(options: CatalogClientOptions = {})
         projectParameterBindingListResponseSchema,
         "ProjectParameterBindingListResponse"
       ),
+    getCanonicalBindingExport: (projectId: string, bindingId: string, projectValueId?: string) =>
+      request(
+        "GET",
+        `/api/v2/projects/${encodeURIComponent(projectId)}/parameter-bindings/${encodeURIComponent(bindingId)}/export${projectValueId === undefined ? "" : `?${new URLSearchParams({ projectValueId })}`}`,
+        catalogBindingExportResponseSchema,
+        "CatalogBindingExportResponse"
+      ),
     listProjectValueDrafts: (projectId: string) =>
       request(
         "GET",
@@ -631,10 +640,7 @@ export function createParameterCatalogClient(options: CatalogClientOptions = {})
     listProjectValueChangeRequests: (projectId: string, query?: { status?: string }) =>
       request(
         "GET",
-        appendQuery(
-          `/api/v2/projects/${encodeURIComponent(projectId)}/parameter-value-change-requests`,
-          query as CatalogListQuery | undefined
-        ),
+        `/api/v2/projects/${encodeURIComponent(projectId)}/parameter-value-change-requests${query?.status ? `?${new URLSearchParams({ status: query.status })}` : ""}`,
         catalogValueChangeRequestListResponseSchema,
         "ProjectValueChangeRequestListResponse"
       ),
@@ -650,6 +656,13 @@ export function createParameterCatalogClient(options: CatalogClientOptions = {})
         catalogValueChangeRequestResponseSchema,
         "ProjectValueChangeRequestResponse",
         { body: catalogReviewValueChangeRequestSchema.parse(body), context }
+      ),
+    getProjectValueChangeSourceDiff: (projectId: string, requestId: string) =>
+      request(
+        "GET",
+        `/api/v2/projects/${encodeURIComponent(projectId)}/parameter-value-change-requests/${encodeURIComponent(requestId)}/source-diff`,
+        catalogValueChangeSourceDiffResponseSchema,
+        "CatalogValueChangeSourceDiffResponse"
       ),
     withdrawProjectValueChangeRequest: (
       projectId: string,

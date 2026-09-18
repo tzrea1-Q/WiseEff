@@ -1,5 +1,6 @@
 import { parseDts, resolveDts, type ResolvedDts } from "../dts";
 import type { ParsedIndex } from "./types";
+import { parseJsonSource } from "./jsonSource";
 
 function stringifyLeaf(value: unknown): string {
   if (typeof value === "string") {
@@ -11,7 +12,7 @@ function stringifyLeaf(value: unknown): string {
 function walkJson(value: unknown, path: string[], index: ParsedIndex): void {
   if (value !== null && typeof value === "object" && !Array.isArray(value)) {
     for (const [key, child] of Object.entries(value)) {
-      walkJson(child, [...path, key], index);
+      walkJson(child, [...path, key.replace(/~/g, "~0").replace(/\//g, "~1")], index);
     }
     return;
   }
@@ -21,9 +22,9 @@ function walkJson(value: unknown, path: string[], index: ParsedIndex): void {
   index[path.join("/")] = { value: stringifyLeaf(value) };
 }
 
-export function buildJsonParsedIndex(source: string): ParsedIndex {
-  const root = JSON.parse(source) as unknown;
-  const index: ParsedIndex = {};
+export function buildJsonParsedIndex(source: string | Buffer): ParsedIndex {
+  const root = parseJsonSource(source);
+  const index: ParsedIndex = Object.create(null) as ParsedIndex;
   walkJson(root, [], index);
   return index;
 }

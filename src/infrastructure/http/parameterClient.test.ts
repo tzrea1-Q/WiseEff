@@ -55,6 +55,21 @@ const draftDto: ParameterDraftDto = {
   updatedAt: "2026-05-25T00:00:00.000Z"
 };
 
+const catalogDraftDto = {
+  id: "draft-1",
+  bindingId: "binding-1",
+  definitionId: "def-1",
+  effectiveRevisionId: "bpr-1",
+  currentValueId: "pval-1",
+  targetValue: "3200",
+  sourceFormat: "dts" as const,
+  baseRevisionId: "rev-1",
+  sourcePinId: null,
+  candidateId: null,
+  reason: "Reduce thermal risk.",
+  updatedAt: "2026-05-25T00:00:00.000Z"
+};
+
 const changeRequestDto: ChangeRequestDto = {
   id: "request-1",
   submissionRoundId: "round-1",
@@ -187,7 +202,7 @@ describe("createHttpParameterRepository", () => {
       effectiveRevisionId: "bpr-1",
       currentValueId: "pval-1"
     };
-    const fetchMock = fetchQueue({ items: [pinned] }, { items: [pinned.history[0]] }, { items: [pinnedDraft] });
+    const fetchMock = fetchQueue({ items: [pinned] }, { items: [pinned.history[0]] }, { items: [catalogDraftDto] });
     const repository = createHttpParameterRepository(createApiClient({ baseUrl: "", fetchImpl: fetchMock }));
 
     await expect(repository.listParameters({ projectId: "aurora" })).resolves.toMatchObject([
@@ -222,7 +237,7 @@ describe("createHttpParameterRepository", () => {
       { item: parameterDto },
       { items: [historyDto] },
       { item: draftDto },
-      { items: [draftDto] },
+      { items: [catalogDraftDto] },
       { items: [changeRequestDto] },
       { items: [submissionRoundDto] }
     );
@@ -232,13 +247,23 @@ describe("createHttpParameterRepository", () => {
     await expect(repository.getParameter("parameter with spaces")).resolves.toMatchObject({ id: parameterDto.id });
     await expect(repository.listParameterHistory("parameter with spaces")).resolves.toEqual([historyDto]);
     await expect(repository.saveDraft(draftDto)).resolves.toEqual(draftDto);
-    await expect(repository.listDrafts("aurora")).resolves.toEqual([draftDto]);
+    await expect(repository.listDrafts("aurora")).resolves.toMatchObject([
+      {
+        id: "draft-1",
+        projectId: "aurora",
+        parameterId: "binding-1",
+        projectParameterBindingId: "binding-1",
+        bindingId: "binding-1",
+        effectiveRevisionId: "bpr-1",
+        currentValueId: "pval-1"
+      }
+    ]);
     await expect(repository.listChangeRequests({ projectId: "aurora" })).resolves.toHaveLength(1);
     await expect(repository.listSubmissionRounds({ projectId: "aurora" })).resolves.toHaveLength(1);
 
     expect(fetchMock).toHaveBeenNthCalledWith(2, "/api/v1/parameters/parameter%20with%20spaces", expect.objectContaining({ method: "GET" }));
     expect(fetchMock).toHaveBeenNthCalledWith(3, "/api/v1/parameters/parameter%20with%20spaces/history", expect.objectContaining({ method: "GET" }));
-    expect(fetchMock).toHaveBeenNthCalledWith(5, "/api/v1/parameter-drafts/mine?projectId=aurora", expect.objectContaining({ method: "GET" }));
+    expect(fetchMock).toHaveBeenNthCalledWith(5, "/api/v2/projects/aurora/parameter-value-drafts", expect.objectContaining({ method: "GET" }));
     expect(fetchMock).toHaveBeenNthCalledWith(6, "/api/v1/parameter-change-requests?projectId=aurora", expect.objectContaining({ method: "GET" }));
     expect(fetchMock).toHaveBeenNthCalledWith(7, "/api/v1/parameter-submission-rounds?projectId=aurora", expect.objectContaining({ method: "GET" }));
   });
@@ -370,6 +395,18 @@ describe("createHttpParameterRepository", () => {
     await expect(repository.deleteDraft("draft/with spaces")).resolves.toBeUndefined();
 
     expect(fetchMock).toHaveBeenCalledWith("/api/v1/parameter-drafts/draft%2Fwith%20spaces", expect.objectContaining({ method: "DELETE" }));
+  });
+
+  it("deletes project-scoped drafts on the canonical v2 route", async () => {
+    const fetchMock = fetchQueue({ ok: true });
+    const repository = createHttpParameterRepository(createApiClient({ baseUrl: "", fetchImpl: fetchMock }));
+
+    await expect(repository.deleteDraft("draft/with spaces", "aurora")).resolves.toBeUndefined();
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/v2/projects/aurora/parameter-value-drafts/draft%2Fwith%20spaces",
+      expect.objectContaining({ method: "DELETE" })
+    );
   });
 
   it("preserves WiseEffApiError failures from the API client", async () => {

@@ -156,6 +156,7 @@ describe("parameter catalog stable failures", () => {
       "candidate-tampered",
       "needs-rebase",
       "unsupported-catalog-capability",
+      "unsupported-consumer-capability-revision",
       "publication-authorization-revoked",
       "idempotency-key-conflict",
       "artifact-missing",
