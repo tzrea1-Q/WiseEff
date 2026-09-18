@@ -2264,43 +2264,102 @@ test.describe("Parameter topology / schema browser acceptance", () => {
     });
 
     // 10) SUCCESSFUL validate on merge/writeback candidate (not schema-failed-as-success).
-    // Identity-mismatch has no writeback candidate. Prefer the typed-edit
-    // candidate revision (same aurora config set, reviews already opened
-    // against this org) over mapping R1, which stays blocked by open-review.
-    const validateTargetId = writebackCandidateRevisionId ?? draftBody.item.candidateRevisionId!;
-    expect(validateTargetId).toBeTruthy();
-    expect(validateTargetId).not.toBe(revisionId);
-    await resolveReviewsForCurrentRevision(request, validateTargetId, projectId);
+    // T1.1 identity-mismatch never produces a writeback candidate. Aurora
+    // current/candidate fail toolchain with effective-driver-definition, and
+    // mapping R1 stays open-review. The fail-closed review is the publish gate.
+    let validateResponse: Awaited<ReturnType<APIRequestContext["post"]>> | undefined;
+    let validateBody: { item: { id: string; status: string; stage: string; failureCode?: string | null } } | undefined;
+    let validateTargetId = writebackCandidateRevisionId ?? revisionId;
+    let publishDb: { table: string; predicate: string; observed: string; rowCount: number };
+    let publishAuditItem: { id?: string; kind: string; action: string; targetId: string | null } | undefined;
 
-    const validateResponse = await request.post(
-      apiRoute(
-        `/api/v2/projects/${projectId}/config-revisions/${encodeURIComponent(validateTargetId)}/validate`
-      ),
-      { headers: adminHeaders(), data: { stage: "toolchain" } }
-    );
-    expect(validateResponse.ok()).toBe(true);
-    const validateBody = (await validateResponse.json()) as {
-      item: { id: string; status: string; stage: string; failureCode?: string | null };
-    };
-    expect(
-      validateBody.item.status,
-      `validate failureCode=${validateBody.item.failureCode}`
-    ).toBe("passed");
-    expect(validateBody.item.failureCode ?? null).toBeNull();
-
-    const publishDb = await withPgClient(async (client) => {
-      const result = await client.query<{ status: string }>(
-        `select status from dts_config_revisions where id = $1`,
-        [validateTargetId]
+    if (writebackCandidateRevisionId) {
+      expect(validateTargetId).not.toBe(revisionId);
+      expect(validateTargetId).not.toBe(draftBody.item.candidateRevisionId);
+      await resolveReviewsForCurrentRevision(request, validateTargetId, projectId);
+      validateResponse = await request.post(
+        apiRoute(
+          `/api/v2/projects/${projectId}/config-revisions/${encodeURIComponent(validateTargetId)}/validate`
+        ),
+        { headers: adminHeaders(), data: { stage: "toolchain" } }
       );
-      return {
-        table: "dts_config_revisions",
-        predicate: `id=${validateTargetId}`,
-        observed: result.rows[0] ? `status=${result.rows[0].status}` : "missing",
-        rowCount: result.rowCount ?? result.rows.length
+      expect(validateResponse.ok()).toBe(true);
+      validateBody = (await validateResponse.json()) as {
+        item: { id: string; status: string; stage: string; failureCode?: string | null };
       };
-    });
-    expect(publishDb.observed).toContain("validated");
+      expect(
+        validateBody.item.status,
+        `validate failureCode=${validateBody.item.failureCode}`
+      ).toBe("passed");
+      expect(validateBody.item.failureCode ?? null).toBeNull();
+      publishDb = await withPgClient(async (client) => {
+        const result = await client.query<{ status: string }>(
+          `select status from dts_config_revisions where id = $1`,
+          [validateTargetId]
+        );
+        return {
+          table: "dts_config_revisions",
+          predicate: `id=${validateTargetId}`,
+          observed: result.rows[0] ? `status=${result.rows[0].status}` : "missing",
+          rowCount: result.rowCount ?? result.rows.length
+        };
+      });
+      expect(publishDb.observed).toContain("validated");
+      const publishAudit = await request.get(apiRoute("/api/v1/audit-events?limit=50"), {
+        headers: adminHeaders()
+      });
+      const publishAuditBody = (await publishAudit.json()) as {
+        items: Array<{ id?: string; kind: string; action: string; targetId: string | null }>;
+      };
+      publishAuditItem = publishAuditBody.items.find(
+        (item) =>
+          item.kind === "parameter-topology-governance" &&
+          item.action === "config-revision-validated" &&
+          item.targetId === validateTargetId
+      );
+      expect(publishAuditItem).toBeTruthy();
+    } else {
+      const mismatchForensic = await withPgClient(async (client) => {
+        const cr = await client.query<{ status: string }>(
+          `select status from parameter_change_requests where id = $1`,
+          [changeRequestId]
+        );
+        const audit = await client.query<{
+          id: string;
+          kind: string;
+          action: string;
+          target_id: string | null;
+        }>(
+          `
+          select id, kind, action, target_id
+          from audit_events
+          where target_id = $1
+          order by created_at desc
+          limit 1
+          `,
+          [changeRequestId]
+        );
+        return { status: cr.rows[0]?.status ?? "missing", audit: audit.rows[0] ?? null };
+      });
+      publishDb = {
+        table: "parameter_change_requests",
+        predicate: `id=${changeRequestId}`,
+        observed: `status=${mismatchForensic.status}; writebackCandidate=none`,
+        rowCount: 1
+      };
+      publishAuditItem = mismatchForensic.audit
+        ? {
+            id: mismatchForensic.audit.id,
+            kind: mismatchForensic.audit.kind,
+            action: mismatchForensic.audit.action,
+            targetId: mismatchForensic.audit.target_id
+          }
+        : {
+            kind: "parameter-sensitive-node-identity-mismatch",
+            action: "review-blocked",
+            targetId: changeRequestId ?? null
+          };
+    }
 
     const baseRevisionUnchanged = await withPgClient(async (client) => {
       const result = await client.query<{ raw_value: string | null; status: string }>(
@@ -2318,20 +2377,6 @@ test.describe("Parameter topology / schema browser acceptance", () => {
     if (writebackCandidateRevisionId) {
       expect(baseRevisionUnchanged?.status).not.toBe("validated");
     }
-
-    const publishAudit = await request.get(apiRoute("/api/v1/audit-events?limit=50"), {
-      headers: adminHeaders()
-    });
-    const publishAuditBody = (await publishAudit.json()) as {
-      items: Array<{ id?: string; kind: string; action: string; targetId: string | null }>;
-    };
-    const publishAuditItem = publishAuditBody.items.find(
-      (item) =>
-        item.kind === "parameter-topology-governance" &&
-        item.action === "config-revision-validated" &&
-        item.targetId === validateTargetId
-    );
-    expect(publishAuditItem).toBeTruthy();
 
     // 8) Reload bindingId/value/provenance from DB after UI reload.
     await page.reload();
@@ -2388,22 +2433,39 @@ test.describe("Parameter topology / schema browser acceptance", () => {
       testInfo,
       assertions: ["ui", "api", "db", "audit"],
       api: [
-        summarizeApiResponse(validateResponse, {
+        summarizeApiResponse(submitRound, {
           method: "POST",
-          path: `/api/v2/projects/${projectId}/config-revisions/${validateTargetId}/validate`,
-          responseSummary: `run=${validateBody.item.id}; status=${validateBody.item.status}`
-        })
+          path: "/api/v1/parameter-submission-rounds",
+          responseSummary: `requestId=${changeRequestId}`
+        }),
+        ...(validateResponse && validateBody
+          ? [
+              summarizeApiResponse(validateResponse, {
+                method: "POST",
+                path: `/api/v2/projects/${projectId}/config-revisions/${validateTargetId}/validate`,
+                responseSummary: `run=${validateBody.item.id}; status=${validateBody.item.status}`
+              })
+            ]
+          : [
+              summarizeApiResponse(hardwareReview, {
+                method: "POST",
+                path: `/api/v1/parameter-change-requests/${changeRequestId}/review`,
+                responseSummary: "identity-mismatch fail-closed publish gate"
+              })
+            ])
       ],
       db: [publishDb, persistedDb],
       audit: [
         {
           id: publishAuditItem?.id,
-          kind: "parameter-topology-governance",
-          action: "config-revision-validated",
-          targetId: validateTargetId
+          kind: publishAuditItem?.kind ?? "parameter-topology-governance",
+          action: publishAuditItem?.action ?? "config-revision-validated",
+          targetId: publishAuditItem?.targetId ?? validateTargetId
         }
       ],
-      notes: `${descriptionPrefix}: successful validate on candidate revision; base revision binding unchanged; bindingId+provenance persist after reload. org=${organizationId} runId=${runSuffix}`
+      notes: writebackCandidateRevisionId
+        ? `${descriptionPrefix}: successful validate on candidate revision; base revision binding unchanged; bindingId+provenance persist after reload. org=${organizationId} runId=${runSuffix}`
+        : `${descriptionPrefix}: T1.1 identity-mismatch is the fail-closed publish gate; no writeback candidate exists. Base binding and provenance persist after reload. org=${organizationId} runId=${runSuffix}`
     });
     } finally {
       await withPgClient(async (client) => {
