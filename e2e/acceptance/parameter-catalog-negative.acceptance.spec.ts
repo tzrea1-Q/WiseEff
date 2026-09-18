@@ -94,7 +94,7 @@ test.describe("canonical parameter catalog negative and responsive contract", ()
     await confirmGovernanceDialog(page, "确认处理");
     await expect(page.locator("[data-preserve-input='true']")).toBeVisible();
     await expect(reason).toHaveValue("op08 conflict keep this reason");
-    await expect(page.getByText(/目录发布已变化|刷新证据/)).toBeVisible();
+    await expect(page.getByRole("alert")).toContainText("目录发布已变化");
     const refresh = page.getByRole("button", { name: "刷新证据" });
     if (await refresh.isVisible().catch(() => false)) {
       await refresh.click();
