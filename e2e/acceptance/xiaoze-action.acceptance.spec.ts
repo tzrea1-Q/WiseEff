@@ -286,7 +286,7 @@ test.describe("Xiaoze P1 action", () => {
     const openBefore = await countOpenChangeRequests();
     const actionPrompt = `set ${parameterId} to ${cellValue(1)}`;
     const started = await postXiaoze(request, adminHeaders(), {
-      threadId,
+      threadId: `${threadId}-approve`,
       runId: `run-action-${Date.now()}`,
       messages: [{ id: "m-user", role: "user", content: actionPrompt }],
       context: [
@@ -301,7 +301,7 @@ test.describe("Xiaoze P1 action", () => {
     let interruptValue = readInterruptValue(started.events);
     if (!interruptValue?.approvalId) {
       const retried = await postXiaoze(request, adminHeaders(), {
-        threadId,
+        threadId: `${threadId}-approve`,
         runId: `run-action-retry-${Date.now()}`,
         messages: [{ id: "m-user-retry", role: "user", content: `set iin_max to ${cellValue(1)}` }],
         context: [
@@ -317,7 +317,7 @@ test.describe("Xiaoze P1 action", () => {
     expect(interruptValue?.approvalId).toBeTruthy();
 
     const resumed = await postXiaoze(request, adminHeaders(), {
-      threadId,
+      threadId: `${threadId}-approve`,
       runId: `run-resume-approve-${Date.now()}`,
       messages: [{ id: "m-resume", role: "user", content: "approve" }],
       forwardedProps: {
@@ -334,7 +334,7 @@ test.describe("Xiaoze P1 action", () => {
     expect(openAfterApprove).toBeGreaterThan(openBefore);
 
     const followUp = await postXiaoze(request, adminHeaders(), {
-      threadId,
+      threadId: `${threadId}-approve`,
       runId: `run-follow-up-${Date.now()}`,
       messages: [{ id: "m-follow-up", role: "user", content: "summarize project aurora" }],
       context: [
@@ -347,7 +347,7 @@ test.describe("Xiaoze P1 action", () => {
     expect(followUp.status).toBe(200);
     expect(followUp.events.some((event) => event.type === "RUN_ERROR")).toBe(false);
 
-    const auditRows = await latestAgentAuditForSession(threadId);
+    const auditRows = await latestAgentAuditForSession(`${threadId}-approve`);
     const approvalAudit = auditRows.find((row) => row.action === "approval-executed" && row.actor_type === "agent");
     expect(approvalAudit).toBeTruthy();
     const approveArtifact = await writeOperationJsonArtifact(testInfo, "xiaoze-action-approve.json", {

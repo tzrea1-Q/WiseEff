@@ -550,7 +550,8 @@ test.describe("DTS structured post-cutover typed edits", () => {
 
     try {
       const chip = await seedIsolatedHexChipBindings(request, {
-        reason: `${descriptionPrefix} hex fidelity binding`
+        reason: `${descriptionPrefix} hex fidelity binding`,
+        unitAddress: "51"
       });
       fileName = chip.reg.fileName;
       bindingIds = [chip.reg.bindingId];

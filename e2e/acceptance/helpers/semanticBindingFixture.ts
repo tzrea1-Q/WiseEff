@@ -193,14 +193,14 @@ export function numericCellDts(propertyKey: string, cellValue: number): string {
   return numericCellsDts([{ propertyKey, cellValue }]);
 }
 
-export function hexRegDts(rawHex: string): string {
+export function hexRegDts(rawHex: string, unitAddress = "6E"): string {
   return `/dts-v1/;
 / {
 	amba {
 		i2c@1 {
 			#address-cells = <1>;
 			#size-cells = <0>;
-			chip@6E {
+			chip@${unitAddress} {
 				compatible = "vendor,chip123";
 				vendor-id = <${rawHex}>;
 				status = "okay";
@@ -605,17 +605,18 @@ export async function seedIsolatedNumericCellPair(
 
 export async function seedIsolatedHexChipBindings(
   request: APIRequestContext,
-  options: { projectId?: string; rawHex?: string; reason?: string } = {}
+  options: { projectId?: string; rawHex?: string; unitAddress?: string; reason?: string } = {}
 ): Promise<{ reg: IsolatedBinding }> {
   const rawHex = options.rawHex ?? "0x6e";
+  const unitAddress = options.unitAddress ?? "6E";
   const [reg] = await seedIsolatedBindings(request, {
     projectId: options.projectId,
-    dts: hexRegDts(rawHex),
+    dts: hexRegDts(rawHex, unitAddress),
     properties: [
       {
         propertyKey: "vendor-id",
         rawValuePattern: ".",
-        nodeLocatorPattern: "chip@6E"
+        nodeLocatorPattern: `chip@${unitAddress}`
       }
     ],
     timeoutMs: 60_000,
