@@ -536,6 +536,20 @@ async function resolveReviewsForCurrentRevision(
         apiRoute(`/api/v2/parameter-specs/${encodeURIComponent(parameterSpecId)}`),
         { headers: adminHeaders() }
       );
+      if (!detailResponse.ok()) {
+        const dismiss = await request.post(
+          apiRoute(`/api/v2/parameter-spec-review-tasks/${encodeURIComponent(task.id)}/resolve`),
+          {
+            headers: adminHeaders(),
+            data: {
+              decision: "dismissed",
+              reason: `${descriptionPrefix} dismiss occurrence-derived draft that the parameter-specs route no longer serves`
+            }
+          }
+        );
+        expect(dismiss.ok(), `dismiss review ${task.id}: ${await dismiss.text()}`).toBe(true);
+        continue;
+      }
       if (detailResponse.ok()) {
         const detailBody = (await detailResponse.json()) as {
           item: { lifecycle?: string; valueShape?: Record<string, unknown> | null };

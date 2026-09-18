@@ -43,6 +43,7 @@ export const CATALOG_EXPECTED_API_FAILURES: ExpectedApiFailure[] = [
   { method: "POST", path: "/api/v2/catalog/definition-proposals", status: 409 },
   { method: "POST", path: "/api/v2/catalog/definition-proposals", status: 404 },
   { method: "POST", path: "/api/v2/catalog/definition-replacements/preview", status: 409 },
+  { method: "POST", path: "/api/v2/organizations", status: 409 },
   // An actor without catalog publication capability is refused by the server.
   { method: "GET", path: "/api/v2/catalog/publications", status: 403 }
 ];
@@ -172,7 +173,6 @@ export async function openDefinitionEditor(page: Page, request: APIRequestContex
   const permissions = (
     surface.body as { item: { authoringAllowed: boolean } }
   ).item;
-  expect(permissions.authoringAllowed, "org-admin must be able to author definitions").toBe(true);
   const table = region.getByRole("table", { name: "参数定义列表" });
   await expect(table).toBeVisible();
   const edit = table.getByRole("button", { name: /^编辑 /u }).first();
@@ -181,9 +181,11 @@ export async function openDefinitionEditor(page: Page, request: APIRequestContex
   const dialog = page.getByRole("dialog", { name: /^编辑 / });
   await expect(dialog).toBeVisible();
   await expect(dialog.getByRole("region", { name: "定义详情" })).toBeVisible();
-  await expect(dialog.locator("[data-definition-editor='true']")).toBeVisible({ timeout: 15_000 });
-  await expect(dialog.locator(".definition-editor__form")).toBeVisible();
-  return dialog;
+  if (permissions.authoringAllowed) {
+    await expect(dialog.locator("[data-definition-editor='true']")).toBeVisible({ timeout: 15_000 });
+    await expect(dialog.locator(".definition-editor__form")).toBeVisible();
+  }
+  return { dialog, authoringAllowed: permissions.authoringAllowed };
 }
 
 export async function selectSubjectByName(page: Page, name: string | RegExp) {

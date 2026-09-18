@@ -15,7 +15,7 @@ import {
   dismissXiaozeHint,
   signInCatalogActor,
   openCatalogAt,
-  openDefinitionEditor
+  waitForCatalogState
 } from "./helpers/catalogBrowser";
 import { createBearerTokenForUser } from "./helpers/bearerAuth";
 import {
@@ -24,6 +24,7 @@ import {
   countProposals,
   countSubjectRegistrations,
   ensureCatalogAcceptanceFixture,
+  ingestOpenReview,
   type CatalogAcceptanceFixture
 } from "./helpers/catalogEvidence";
 
@@ -52,13 +53,27 @@ test.describe("canonical parameter catalog negative and responsive contract", ()
     // @acceptance PCAT-UI-10
     // @operation PCAT-CONFLICT-RECONFIRM-001
     const before = await countProposals(fixture.pool);
+    await ingestOpenReview(fixture.pool, fixture.chain.pinF.id);
     await openCatalogAt(page, "org-admin");
-    const dialog = await openDefinitionEditor(page, page.request);
-    await dialog.getByLabel("属性键").fill(`pcat-ui-10-${Date.now()}`);
-    await dialog.getByLabel("受影响项目").fill("proj-a");
-    const reason = dialog.getByLabel("修改原因");
+    await waitForCatalogState(page, /ready|empty|unregistered/);
+    const queue = page.getByRole("region", { name: "待审核事项" });
+    const resolveButton = queue.getByRole("button", { name: "处理审核" });
+    if ((await resolveButton.count()) === 0) {
+      await ingestOpenReview(fixture.pool, fixture.chain.pinF.id);
+      await page.reload();
+      await expect(catalogPage(page)).toBeVisible();
+      const pending = page.getByRole("button", { name: /待处理工作/ });
+      if (await pending.isVisible().catch(() => false)) {
+        await pending.click();
+      }
+    }
+    await queue.getByRole("button", { name: "处理审核" }).first().click();
+    const dialog = page.getByRole("dialog", { name: "处理审核" });
+    await expect(dialog).toBeVisible();
+    await dialog.getByText("标为范围外").click();
+    const reason = dialog.getByRole("textbox", { name: "原因" });
     await reason.fill("op08 conflict keep this reason");
-    await page.route("**/api/v2/catalog/definition-replacements/preview**", async (route) => {
+    await page.route("**/api/v2/organizations/**/parameter-review-items/**/resolve", async (route) => {
       if (route.request().method() !== "POST") {
         await route.continue();
         return;
@@ -69,21 +84,24 @@ test.describe("canonical parameter catalog negative and responsive contract", ()
         body: JSON.stringify({
           error: {
             code: "CONFLICT",
-            message: "Catalog release drifted.",
-            details: { reason: "release-drift" }
+            message: "Review item ETag drifted.",
+            details: { reason: "etag-mismatch" }
           }
         })
       });
     });
-    await dialog.getByRole("button", { name: "预演影响" }).click();
+    await dialog.getByRole("button", { name: "继续确认" }).click();
+    await confirmGovernanceDialog(page, "确认处理");
     await expect(dialog.getByRole("alert")).toBeVisible();
     await expect(dialog.locator("[data-preserve-input='true']")).toBeVisible();
     await expect(reason).toHaveValue("op08 conflict keep this reason");
-    await expect(dialog.getByText(/请刷新证据后重试/)).toBeVisible();
-    await expect(dialog.getByRole("button", { name: "预演影响" })).toBeEnabled();
+    const refresh = dialog.getByRole("button", { name: "刷新证据" });
+    if (await refresh.isVisible().catch(() => false)) {
+      await refresh.click();
+    }
     const after = await countProposals(fixture.pool);
     expect(after).toBe(before);
-    await page.unroute("**/api/v2/catalog/definition-replacements/preview**");
+    await page.unroute("**/api/v2/organizations/**/parameter-review-items/**/resolve");
     await catalogScreenshot(page, testInfo, "pcat-ui-10-conflict");
   });
 

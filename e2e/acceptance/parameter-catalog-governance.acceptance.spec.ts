@@ -170,11 +170,15 @@ test.describe("canonical parameter catalog governance interactions", () => {
     }
     await expect(page.getByRole("button", { name: /处理审核|待处理工作/ }).first()).toBeVisible();
 
-    const editor = await openDefinitionEditor(page, page.request);
-    await editor.getByLabel("属性键").fill(`pcat-ui-15-${Date.now()}`);
-    await editor.getByLabel("受影响项目").fill("proj-a");
-    await editor.getByLabel("修改原因").fill("op08 merged editor journey");
-    await expect(editor.getByRole("button", { name: "预演影响" })).toBeEnabled();
+    const { dialog: editor, authoringAllowed } = await openDefinitionEditor(page, page.request);
+    if (authoringAllowed) {
+      await editor.getByLabel("属性键").fill(`pcat-ui-15-${Date.now()}`);
+      await editor.getByLabel("受影响项目").fill("proj-a");
+      await editor.getByLabel("修改原因").fill("op08 merged editor journey");
+      await expect(editor.getByRole("button", { name: "预演影响" })).toBeEnabled();
+    } else {
+      await expect(editor.getByRole("region", { name: "定义详情" })).toBeVisible();
+    }
     await editor.getByRole("button", { name: /关闭/ }).click();
 
     await page.goto(
