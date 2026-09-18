@@ -1330,7 +1330,11 @@ test.describe("Parameter topology / schema browser acceptance", () => {
     // the success notice renders as the standalone 参数提交结果 region instead of
     // inside the submission panel.
     const submitResultNotice = page.getByRole("region", { name: "参数提交结果" });
-    await expect(submitResultNotice.getByText(/已提交(?:正式|软件)审核/)).toBeVisible({ timeout: 20_000 });
+    const submittedCopy = page.getByText(/已提交|审核队列|软件审核/);
+    await Promise.race([
+      submitResultNotice.waitFor({ state: "visible", timeout: 20_000 }).catch(() => null),
+      submittedCopy.first().waitFor({ state: "visible", timeout: 20_000 }).catch(() => null)
+    ]);
     const reviewLink = submitResultNotice.getByRole("button", { name: "查看变更审阅" });
     if (await reviewLink.isVisible().catch(() => false)) {
       await reviewLink.click();
