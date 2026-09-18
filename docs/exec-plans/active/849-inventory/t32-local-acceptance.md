@@ -2,9 +2,9 @@
 
 > Chinese: [中文](../../../zh-CN/exec-plans/active/849-inventory/t32-local-acceptance.md)
 
-Status: **local candidate, not green for the full T3.2 row.** Missing required Playwright scenarios are implemented. Local-only commits: `8b517b930` (Gate0 snapshot) and `5975f0cce` (visual baselines + shared locator/FK repairs). Worktree Gate0 on `5975f0cce` **visual passed**, **browser failed** with **14** inventoried failures (down from 39). A mistaken Gate0 started on detached accepted main `46b60686` was killed; that run is not evidence. Not SEALED. Not pushed. No PR/Hosted/target/Issue update. T3.4a remains the seal point.
+Status: **local candidate, not green for the full T3.2 row.** Best worktree Gate0 so far is `5975f0cce`: visual **passed**, browser **14** failures (down from 39). Follow-up `4ddac4c15` added catalog view-only history and ingest-on-add; Gate0 on that SHA visual **passed** but browser **41** failures because adding a config-set file returned 500. Ingest-on-add is reverted in `66cae3c0b`. Not SEALED. Not pushed. No PR/Hosted. T3.4a remains the seal point.
 
-HEAD: `5975f0cceec417c0c388e8b4a7f0fb70f937b581` on `codex/849-853-t11-source-identity`. Catalog view-only identity/history is currently dirty and not in that Gate0.
+HEAD: `66cae3c0b4921300039da8e98a4338099aa65e91` on `codex/849-853-t11-source-identity`. Catalog view-only identity/history remains in history (`4ddac4c15`); ingest-on-add does not.
 
 ## Environment
 
@@ -45,7 +45,9 @@ Canonical value drafts now load workflow-role candidates and block submit when p
 | `LANG=C LC_ALL=C npm run acceptance:gate0` on `5975f0cce` / PG **55438** | **failed after provision.** Run `full-20260918t083648303z-5975f0cceec4-679690ef`. Visual **passed**. Browser **14 inventoried failures**. Artifacts retained. Not a skip-as-pass. |
 | Mis-aimed Gate0 on `/Users/tzrea1/Develop/WiseEff` `46b60686` | **killed.** Not worktree evidence. WiseEff porcelain stayed 0. |
 | Catalog view-only follow-up (dirty) | `DefinitionEditorBody` now shows subject/definition ids, documentation, usage, and 查看历史 without authoring. `DefinitionEditorBody.test.tsx` **4 passed**. |
-| Overlay ingest follow-up (dirty) | POST config-set file membership now runs semantic ingest. Xiaoze seed uses overlay + locator-bearing default bindings. |
+| Local commit `4ddac4c15` | Catalog view-only history + ingest-on-add + Xiaoze locator. |
+| `LANG=C` Gate0 on `4ddac4c15` / PG **55438** | **failed.** Run `full-20260918t091649761z-4ddac4c158b4-2d0378a7`. Visual **passed**. Browser **41** failures. Config-set file add returned INTERNAL_ERROR 500. |
+| Local commit `66cae3c0b` | **Reverted ingest-on-add.** Membership POST is membership-only again. |
 | First Gate0 attempt (session locale) | **failed before provision**: Chinese `ps -o lstart=` (`五  9月/18 …`) vs `process-start-identity.ts`. |
 | Second Gate0 attempt (LANG=C, dirty tree) | **failed at source inspection**: `Owned runtime requires a clean source worktree`. |
 | target-synthetic-acceptance | **not run**. No target frontend/API URLs or auth secrets in this session. |

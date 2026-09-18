@@ -2,9 +2,9 @@
 
 > English: [English](../../../exec-plans/active/849-inventory/t32-local-acceptance.md)
 
-状态：**本地候选，T3.2 整行尚未绿。** 缺失场景已实现。仅本地 commit：`8b517b930`（Gate0 快照）与 `5975f0cce`（视觉基线 + 共享定位/FK 修复）。worktree 上对 `5975f0cce` 的 Gate0 **视觉通过**，**浏览器失败**，清单 **14**（从 39 降下来）。误在 detached accepted main `46b60686` 上启动的 Gate0 已杀掉，不作证据。未 SEALED。未 push。无 PR/Hosted/目标/Issue。封印点仍是 T3.4a。
+状态：**本地候选，T3.2 整行尚未绿。** 目前最好的 worktree Gate0 是 `5975f0cce`：视觉 **通过**，浏览器 **14** 条失败（从 39 降下来）。后续 `4ddac4c15` 加了目录只读历史和 ingest-on-add；该 SHA 的 Gate0 视觉 **通过**，浏览器 **41** 条失败，加入 config-set 文件返回 500。ingest-on-add 已在 `66cae3c0b` 撤回。未 SEALED。未 push。无 PR/Hosted。封印点仍是 T3.4a。
 
-HEAD：`5975f0cceec417c0c388e8b4a7f0fb70f937b581`（`codex/849-853-t11-source-identity`）。目录只读身份/历史目前在脏树里，未进入该次 Gate0。
+HEAD：`66cae3c0b4921300039da8e98a4338099aa65e91`（`codex/849-853-t11-source-identity`）。目录只读身份/历史仍在 `4ddac4c15`；ingest-on-add 已不在。
 
 ## 环境
 
@@ -45,7 +45,9 @@ Canonical 值草稿现在会加载审核角色候选人，角色池缺失时阻�
 | `LANG=C LC_ALL=C npm run acceptance:gate0`（`5975f0cce` / PG **55438**） | **供给后失败。** 运行 `full-20260918t083648303z-5975f0cceec4-679690ef`。Visual **通过**。Browser **14 条清单失败**。产物保留。不是把 skip 当通过。 |
 | 误打到 `/Users/tzrea1/Develop/WiseEff` `46b60686` 的 Gate0 | **已杀掉。** 不是 worktree 证据。WiseEff porcelain 仍为 0。 |
 | 目录只读后续（脏树） | `DefinitionEditorBody` 在无编写权限时仍展示主体/定义编号、说明、使用与「查看历史」。`DefinitionEditorBody.test.tsx` **4 通过**。 |
-| Overlay ingest 后续（脏树） | 加入 config-set 文件后立即做语义 ingest。小泽种子改为 overlay，并要求 default 上带 locator 的 binding。 |
+| 本地 commit `4ddac4c15` | 目录只读历史 + ingest-on-add + 小泽 locator。 |
+| `LANG=C` Gate0（`4ddac4c15` / PG **55438**） | **失败。** 运行 `full-20260918t091649761z-4ddac4c158b4-2d0378a7`。Visual **通过**。Browser **41** 条失败。加入 config-set 文件返回 INTERNAL_ERROR 500。 |
+| 本地 commit `66cae3c0b` | **已撤回 ingest-on-add。** 成员 POST 再次只做成员关系。 |
 | 第一次 Gate0（会话 locale） | **供给前失败**：中文 `ps -o lstart=`。 |
 | 第二次 Gate0（LANG=C，脏树） | **源检查失败**：需要干净工作树。 |
 | target-synthetic-acceptance | **未跑**。本会话没有目标前端/API URL 或鉴权。 |
