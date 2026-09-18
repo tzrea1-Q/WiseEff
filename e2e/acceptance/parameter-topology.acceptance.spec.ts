@@ -1159,7 +1159,11 @@ test.describe("Parameter topology / schema browser acceptance", () => {
       await page.goto(`${disposableRuntime.frontendUrl}/parameters?project=nebula`);
       await dismissXiaozeHint(page);
     }
-    await expect(editWorkspace).toHaveAttribute("data-project-id", "nebula", { timeout: 30_000 });
+    await expect(page.getByRole("region", { name: "DTS 参数工作台" })).toHaveAttribute(
+      "data-project-id",
+      "nebula",
+      { timeout: 30_000 }
+    );
     await expect(editWorkspace).toHaveAttribute("data-revision-id", nebulaTopology.revisionId);
     await expect(page.getByRole("region", { name: "参数修改提交" })).toHaveCount(0);
     await expect(page.getByText(/尚未生成语义配置修订/)).toHaveCount(0);

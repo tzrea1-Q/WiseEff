@@ -87,15 +87,12 @@ test.describe("restored definition workspace and governed authoring", () => {
     // @operation PCAT-DEFINITION-COLLECTION-001
     await openCatalogAt(page, "org-admin", definitionPath());
     await expect(catalogPage(page)).toBeVisible();
-    const editor = page.getByRole("dialog");
-    if (!(await editor.isVisible().catch(() => false))) {
-      await selectDefinitionByKey(page, "iin_max");
-    }
-    await expect(editor.getByRole("region", { name: "定义详情" })).toContainText("iin_max");
+    const detail = page.getByRole("region", { name: "定义详情" });
+    await expect(detail).toContainText("iin_max");
     // No permanent timeline peer: history is disclosed from the detail body.
-    await expect(editor.getByRole("region", { name: "定义时间线" })).toHaveCount(0);
-    await editor.getByRole("button", { name: /查看历史/ }).click();
-    await expect(editor.getByRole("list", { name: "定义时间线" })).toBeVisible();
+    await expect(page.getByRole("region", { name: "定义时间线" })).toHaveCount(0);
+    await page.getByRole("button", { name: /查看历史/ }).click();
+    await expect(page.getByRole("list", { name: "定义时间线" })).toBeVisible();
     await catalogScreenshot(page, testInfo, "pcat-ui-16-history");
   });
 
