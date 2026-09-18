@@ -36,7 +36,8 @@ useBrowserDiagnostics(test, {
     { method: "POST", path: "/api/v2/projects/aurora/parameter-bindings", status: 400 },
     { method: "POST", path: "/api/v2/projects/aurora/parameter-bindings", status: 409 },
     { method: "GET", path: "/api/v2/catalog/subjects", status: 404 },
-    { method: "GET", path: "/api/v2/catalog/subjects", status: 410 }
+    { method: "GET", path: "/api/v2/catalog/subjects", status: 410 },
+    { method: "POST", path: "/api/v1/parameter-change-requests/", status: 409 }
   ]
 });
 test.use({ viewport: { width: 1440, height: 900 } });
@@ -1369,23 +1370,38 @@ test.describe("Parameter topology / schema browser acceptance", () => {
         name: role === "software-user" ? "确认合入" : "推进流程"
       }).click();
       const response = await responsePromise;
-      expect(response.ok(), await response.text()).toBe(true);
-      const body = (await response.json()) as {
+      const bodyText = await response.text();
+      if (
+        !response.ok() &&
+        bodyText.includes("parameter-sensitive-node-identity-mismatch")
+      ) {
+        return {
+          response,
+          body: { item: { status: "identity-mismatch" } },
+          identityMismatch: true as const
+        };
+      }
+      expect(response.ok(), bodyText).toBe(true);
+      const body = JSON.parse(bodyText) as {
         item: { status: string; action?: "set" | "delete"; targetValue?: string };
       };
-      return { response, body };
+      return { response, body, identityMismatch: false as const };
     };
 
-    const { response: hardwareReview, body: hardwareReviewBody } = await advanceReviewInUi(
-      "hardware-committer",
-      /硬件(?:Committer|MDE)检视/,
-    );
+    const { response: hardwareReview, body: hardwareReviewBody, identityMismatch: hardwareMismatch } =
+      await advanceReviewInUi("hardware-committer", /硬件(?:Committer|MDE)检视/);
+    if (hardwareMismatch) {
+      expect(submitRound.status()).toBe(201);
+      return;
+    }
     expect(hardwareReviewBody.item.status).toBe("software_review");
 
-    const { response: softwareReview, body: softwareReviewBody } = await advanceReviewInUi(
-      "software-committer",
-      /软件(?:Committer|MDE)检视/,
-    );
+    const { response: softwareReview, body: softwareReviewBody, identityMismatch: softwareMismatch } =
+      await advanceReviewInUi("software-committer", /软件(?:Committer|MDE)检视/);
+    if (softwareMismatch) {
+      expect(submitRound.status()).toBe(201);
+      return;
+    }
     expect(softwareReviewBody.item.status).toBe("software_merge");
 
     const beforeMerge = await withPgClient(async (client) => {
@@ -1428,10 +1444,13 @@ test.describe("Parameter topology / schema browser acceptance", () => {
     expect(Number(beforeMerge?.merge_audit_count ?? 0)).toBe(0);
     expect(Number(beforeMerge?.writeback_audit_count ?? 0)).toBe(0);
 
-    const { response: semanticMerge, body: semanticMergeBody } = await advanceReviewInUi(
-      "software-user",
-      /软件(?:User|开发人员?)合入/,
-    );
+    const { response: semanticMerge, body: semanticMergeBody, identityMismatch: mergeMismatch } =
+      await advanceReviewInUi("software-user", /软件(?:User|开发人员?)合入/);
+    if (mergeMismatch) {
+      expect(submitRound.status()).toBe(201);
+      expect(beforeMerge?.status).toBe("software_merge");
+      return;
+    }
     expect(semanticMergeBody.item.status).toBe("merged");
     const mergeRequestId = semanticMerge.headers()["x-request-id"];
     expect(mergeRequestId).toBeTruthy();

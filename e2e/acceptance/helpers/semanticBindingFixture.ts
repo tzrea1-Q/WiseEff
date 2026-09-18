@@ -35,6 +35,7 @@ export type IsolatedBinding = {
   rawValue: string;
   configSetId: string;
   fileName: string;
+  fileId?: string;
   propertyKey: string;
   nodeLocator: string;
 };
@@ -481,6 +482,7 @@ export async function seedIsolatedBindings(
           rawValue: row.raw_value ?? "",
           configSetId,
           fileName,
+          fileId: uploaded.fileId,
           propertyKey: property.propertyKey,
           nodeLocator: row.node_locator ?? ""
         });
