@@ -13,6 +13,7 @@ import {
   confirmGovernanceDialog,
   openCatalogAt,
   openCatalogViaNav,
+  openDefinitionEditor,
   waitForCatalogState
 } from "./helpers/catalogBrowser";
 import {
@@ -169,12 +170,7 @@ test.describe("canonical parameter catalog governance interactions", () => {
     }
     await expect(page.getByRole("button", { name: /处理审核|待处理工作/ }).first()).toBeVisible();
 
-    const edit = catalogPage(page).getByRole("table", { name: "参数定义列表" }).getByRole("button", { name: /^编辑 /u }).first();
-    await expect(edit).toBeVisible({ timeout: 15_000 });
-    await edit.click();
-    const editor = page.getByRole("dialog");
-    await expect(editor.getByRole("region", { name: "定义详情" })).toBeVisible();
-    await expect(editor.locator(".definition-editor__form")).toBeVisible();
+    const editor = await openDefinitionEditor(page, page.request);
     await editor.getByLabel("属性键").fill(`pcat-ui-15-${Date.now()}`);
     await editor.getByLabel("受影响项目").fill("proj-a");
     await editor.getByLabel("修改原因").fill("op08 merged editor journey");

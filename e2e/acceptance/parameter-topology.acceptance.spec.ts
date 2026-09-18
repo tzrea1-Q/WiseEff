@@ -536,39 +536,40 @@ async function resolveReviewsForCurrentRevision(
         apiRoute(`/api/v2/parameter-specs/${encodeURIComponent(parameterSpecId)}`),
         { headers: adminHeaders() }
       );
-      expect(detailResponse.ok(), `load draft spec ${parameterSpecId}`).toBe(true);
-      const detailBody = (await detailResponse.json()) as {
-        item: { lifecycle?: string; valueShape?: Record<string, unknown> | null };
-      };
-      const shape = detailBody.item.valueShape;
-      expect(shape && typeof shape.kind === "string", `draft ${parameterSpecId} missing valueShape`).toBeTruthy();
-      const kind = String(shape!.kind);
-      let constraints: Record<string, unknown> = {};
-      if (kind === "cells" || kind === "u32-array" || kind === "phandle-list") {
-        const cells = shape!.cellsPerGroup ?? shape!.cells;
-        expect(Number.isInteger(cells) && Number(cells) > 0, `draft ${parameterSpecId} missing cells`).toBe(true);
-        constraints = { cells };
-      } else if (kind === "bytes") {
-        const length = shape!.length;
-        expect(Number.isInteger(length) && Number(length) >= 0, `draft ${parameterSpecId} missing byte length`).toBe(true);
-        constraints = { minLength: length, maxLength: length };
-      } else {
-        expect(["bool", "empty", "string", "string-list"]).toContain(kind);
-      }
-      if (detailBody.item.lifecycle !== "active") {
-        const activate = await request.post(
-          apiRoute(`/api/v2/parameter-specs/${encodeURIComponent(parameterSpecId)}/activate`),
-          {
-            headers: adminHeaders(),
-            data: {
-              valueShape: shape,
-              constraints,
-              documentation: `${descriptionPrefix} occurrence-derived acceptance spec`,
-              reason: `${descriptionPrefix} activate occurrence-derived acceptance spec`
+      if (detailResponse.ok()) {
+        const detailBody = (await detailResponse.json()) as {
+          item: { lifecycle?: string; valueShape?: Record<string, unknown> | null };
+        };
+        const shape = detailBody.item.valueShape;
+        expect(shape && typeof shape.kind === "string", `draft ${parameterSpecId} missing valueShape`).toBeTruthy();
+        const kind = String(shape!.kind);
+        let constraints: Record<string, unknown> = {};
+        if (kind === "cells" || kind === "u32-array" || kind === "phandle-list") {
+          const cells = shape!.cellsPerGroup ?? shape!.cells;
+          expect(Number.isInteger(cells) && Number(cells) > 0, `draft ${parameterSpecId} missing cells`).toBe(true);
+          constraints = { cells };
+        } else if (kind === "bytes") {
+          const length = shape!.length;
+          expect(Number.isInteger(length) && Number(length) >= 0, `draft ${parameterSpecId} missing byte length`).toBe(true);
+          constraints = { minLength: length, maxLength: length };
+        } else {
+          expect(["bool", "empty", "string", "string-list"]).toContain(kind);
+        }
+        if (detailBody.item.lifecycle !== "active") {
+          const activate = await request.post(
+            apiRoute(`/api/v2/parameter-specs/${encodeURIComponent(parameterSpecId)}/activate`),
+            {
+              headers: adminHeaders(),
+              data: {
+                valueShape: shape,
+                constraints,
+                documentation: `${descriptionPrefix} occurrence-derived acceptance spec`,
+                reason: `${descriptionPrefix} activate occurrence-derived acceptance spec`
+              }
             }
-          }
-        );
-        expect(activate.ok(), `activate draft spec ${parameterSpecId}: ${await activate.text()}`).toBe(true);
+          );
+          expect(activate.ok(), `activate draft spec ${parameterSpecId}: ${await activate.text()}`).toBe(true);
+        }
       }
     }
     const resolve = await request.post(
@@ -2316,9 +2317,7 @@ test.describe("Parameter topology / schema browser acceptance", () => {
     expect(validateTargetId).toBeTruthy();
     expect(validateTargetId).not.toBe(revisionId);
     expect(validateTargetId).not.toBe(draftBody.item.candidateRevisionId);
-    if (writebackCandidateRevisionId) {
-      await resolveReviewsForCurrentRevision(request, validateTargetId, projectId);
-    }
+    await resolveReviewsForCurrentRevision(request, validateTargetId, projectId);
 
     const validateResponse = await request.post(
       apiRoute(

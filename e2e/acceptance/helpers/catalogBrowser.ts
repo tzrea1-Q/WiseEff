@@ -163,6 +163,29 @@ export async function waitForCatalogState(page: Page, state: string | RegExp) {
   await expect(catalogPage(page)).toHaveAttribute("data-catalog-state", state, { timeout: 30_000 });
 }
 
+export async function openDefinitionEditor(page: Page, request: APIRequestContext) {
+  await waitForCatalogState(page, /ready|empty|unregistered/);
+  const region = catalogPage(page);
+  await expect(region).toHaveAttribute("data-writes-enabled", "true");
+  const surface = await catalogJson(request, "GET", "/api/v2/catalog/publication-surface");
+  expect(surface.status).toBe(200);
+  const permissions = (
+    surface.body as { item: { authoringAllowed: boolean } }
+  ).item;
+  expect(permissions.authoringAllowed, "org-admin must be able to author definitions").toBe(true);
+  const table = region.getByRole("table", { name: "参数定义列表" });
+  await expect(table).toBeVisible();
+  const edit = table.getByRole("button", { name: /^编辑 /u }).first();
+  await expect(edit).toBeVisible({ timeout: 15_000 });
+  await edit.click();
+  const dialog = page.getByRole("dialog", { name: /^编辑 / });
+  await expect(dialog).toBeVisible();
+  await expect(dialog.getByRole("region", { name: "定义详情" })).toBeVisible();
+  await expect(dialog.locator("[data-definition-editor='true']")).toBeVisible({ timeout: 15_000 });
+  await expect(dialog.locator(".definition-editor__form")).toBeVisible();
+  return dialog;
+}
+
 export async function selectSubjectByName(page: Page, name: string | RegExp) {
   // Subjects are leaves of the single module navigator tree; wait for the
   // collection to settle before falling back to a page-level match.

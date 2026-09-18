@@ -14,7 +14,8 @@ import {
   confirmGovernanceDialog,
   dismissXiaozeHint,
   signInCatalogActor,
-  openCatalogAt
+  openCatalogAt,
+  openDefinitionEditor
 } from "./helpers/catalogBrowser";
 import { createBearerTokenForUser } from "./helpers/bearerAuth";
 import {
@@ -52,12 +53,7 @@ test.describe("canonical parameter catalog negative and responsive contract", ()
     // @operation PCAT-CONFLICT-RECONFIRM-001
     const before = await countProposals(fixture.pool);
     await openCatalogAt(page, "org-admin");
-    await expect(catalogPage(page)).toHaveAttribute("data-writes-enabled", "true");
-    const edit = catalogPage(page).getByRole("table", { name: "参数定义列表" }).getByRole("button", { name: /^编辑 /u }).first();
-    await expect(edit).toBeVisible({ timeout: 15_000 });
-    await edit.click();
-    const dialog = page.getByRole("dialog");
-    await expect(dialog.locator(".definition-editor__form")).toBeVisible();
+    const dialog = await openDefinitionEditor(page, page.request);
     await dialog.getByLabel("属性键").fill(`pcat-ui-10-${Date.now()}`);
     await dialog.getByLabel("受影响项目").fill("proj-a");
     const reason = dialog.getByLabel("修改原因");
