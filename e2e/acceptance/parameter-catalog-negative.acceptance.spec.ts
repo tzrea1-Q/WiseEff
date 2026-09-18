@@ -73,7 +73,7 @@ test.describe("canonical parameter catalog negative and responsive contract", ()
     await dialog.getByText("标为范围外").click();
     const reason = dialog.getByRole("textbox", { name: "原因" });
     await reason.fill("op08 conflict keep this reason");
-    await page.route("**/api/v2/organizations/**/parameter-review-items/**/resolve", async (route) => {
+    await page.route("**/parameter-review-items/**/resolve", async (route) => {
       if (route.request().method() !== "POST") {
         await route.continue();
         return;
@@ -84,24 +84,24 @@ test.describe("canonical parameter catalog negative and responsive contract", ()
         body: JSON.stringify({
           error: {
             code: "CONFLICT",
-            message: "Review item ETag drifted.",
-            details: { reason: "etag-mismatch" }
+            message: "Catalog release drifted.",
+            details: { reason: "release-drift" }
           }
         })
       });
     });
     await dialog.getByRole("button", { name: "继续确认" }).click();
     await confirmGovernanceDialog(page, "确认处理");
-    await expect(dialog.getByRole("alert")).toBeVisible();
-    await expect(dialog.locator("[data-preserve-input='true']")).toBeVisible();
+    await expect(page.locator("[data-preserve-input='true']")).toBeVisible();
     await expect(reason).toHaveValue("op08 conflict keep this reason");
-    const refresh = dialog.getByRole("button", { name: "刷新证据" });
+    await expect(page.getByText(/目录发布已变化|刷新证据/)).toBeVisible();
+    const refresh = page.getByRole("button", { name: "刷新证据" });
     if (await refresh.isVisible().catch(() => false)) {
       await refresh.click();
     }
     const after = await countProposals(fixture.pool);
     expect(after).toBe(before);
-    await page.unroute("**/api/v2/organizations/**/parameter-review-items/**/resolve");
+    await page.unroute("**/parameter-review-items/**/resolve");
     await catalogScreenshot(page, testInfo, "pcat-ui-10-conflict");
   });
 

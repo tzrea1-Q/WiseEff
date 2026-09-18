@@ -516,75 +516,18 @@ async function resolveReviewsForCurrentRevision(
         nodeLocator: task.sourceEvidence?.nodeLocator
       }).id;
     } else {
-      const createDraft = await request.post(
+      const dismiss = await request.post(
         apiRoute(`/api/v2/parameter-spec-review-tasks/${encodeURIComponent(task.id)}/resolve`),
         {
           headers: adminHeaders(),
           data: {
-            decision: "resolved",
-            createSpec: true,
-            reason: `${descriptionPrefix} create occurrence-derived draft for ${task.id}`
+            decision: "dismissed",
+            reason: `${descriptionPrefix} dismiss unmatched occurrence without a candidate spec`
           }
         }
       );
-      expect(createDraft.ok(), `create draft spec for review ${task.id}`).toBe(true);
-      const created = (await createDraft.json()) as { item: { parameterSpecId?: string | null } };
-      parameterSpecId = created.item.parameterSpecId ?? "";
-      expect(parameterSpecId, `review ${task.id} did not return a draft spec id`).toBeTruthy();
-
-      const detailResponse = await request.get(
-        apiRoute(`/api/v2/parameter-specs/${encodeURIComponent(parameterSpecId)}`),
-        { headers: adminHeaders() }
-      );
-      if (!detailResponse.ok()) {
-        const dismiss = await request.post(
-          apiRoute(`/api/v2/parameter-spec-review-tasks/${encodeURIComponent(task.id)}/resolve`),
-          {
-            headers: adminHeaders(),
-            data: {
-              decision: "dismissed",
-              reason: `${descriptionPrefix} dismiss occurrence-derived draft that the parameter-specs route no longer serves`
-            }
-          }
-        );
-        expect(dismiss.ok(), `dismiss review ${task.id}: ${await dismiss.text()}`).toBe(true);
-        continue;
-      }
-      if (detailResponse.ok()) {
-        const detailBody = (await detailResponse.json()) as {
-          item: { lifecycle?: string; valueShape?: Record<string, unknown> | null };
-        };
-        const shape = detailBody.item.valueShape;
-        expect(shape && typeof shape.kind === "string", `draft ${parameterSpecId} missing valueShape`).toBeTruthy();
-        const kind = String(shape!.kind);
-        let constraints: Record<string, unknown> = {};
-        if (kind === "cells" || kind === "u32-array" || kind === "phandle-list") {
-          const cells = shape!.cellsPerGroup ?? shape!.cells;
-          expect(Number.isInteger(cells) && Number(cells) > 0, `draft ${parameterSpecId} missing cells`).toBe(true);
-          constraints = { cells };
-        } else if (kind === "bytes") {
-          const length = shape!.length;
-          expect(Number.isInteger(length) && Number(length) >= 0, `draft ${parameterSpecId} missing byte length`).toBe(true);
-          constraints = { minLength: length, maxLength: length };
-        } else {
-          expect(["bool", "empty", "string", "string-list"]).toContain(kind);
-        }
-        if (detailBody.item.lifecycle !== "active") {
-          const activate = await request.post(
-            apiRoute(`/api/v2/parameter-specs/${encodeURIComponent(parameterSpecId)}/activate`),
-            {
-              headers: adminHeaders(),
-              data: {
-                valueShape: shape,
-                constraints,
-                documentation: `${descriptionPrefix} occurrence-derived acceptance spec`,
-                reason: `${descriptionPrefix} activate occurrence-derived acceptance spec`
-              }
-            }
-          );
-          expect(activate.ok(), `activate draft spec ${parameterSpecId}: ${await activate.text()}`).toBe(true);
-        }
-      }
+      expect(dismiss.ok(), `dismiss review ${task.id}: ${await dismiss.text()}`).toBe(true);
+      continue;
     }
     const resolve = await request.post(
       apiRoute(`/api/v2/parameter-spec-review-tasks/${encodeURIComponent(task.id)}/resolve`),
