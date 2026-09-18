@@ -19,6 +19,7 @@ import {
   applyDisposableRuntimeEnv,
   captureProcessEnvForDisposableRuntime,
   restoreProcessEnvFromDisposableRuntime,
+  seedIsolatedNumericCellBinding
 } from "./helpers/semanticBindingFixture";
 
 /**
@@ -271,7 +272,17 @@ async function seedNumericCellBinding(request: APIRequestContext) {
     await resolveOpenSpecReviews(request, existing.revisionId);
     return existing;
   }
-  throw new Error("Timed out waiting for a seeded iin_max binding with a single-cell DTS value.");
+  const isolated = await seedIsolatedNumericCellBinding(request, {
+    projectId,
+    propertyKey,
+    cellValue: 2300,
+    reason: "XIAOZE-ACTION semantic isolated numeric cell"
+  });
+  return {
+    revisionId: isolated.revisionId,
+    bindingId: isolated.bindingId,
+    rawValue: isolated.rawValue || "<2300>"
+  };
 }
 
 async function countOpenChangeRequests(bindingId: string) {

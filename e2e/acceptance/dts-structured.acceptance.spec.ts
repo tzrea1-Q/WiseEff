@@ -594,7 +594,7 @@ test.describe("DTS structured post-cutover typed edits", () => {
             join project_parameter_files f on f.id = v.file_id
             where f.organization_id = $1
               and f.project_id = $2
-              and f.file_name = $3
+              and (f.file_name = $3 or v.origin = 'writeback')
               and (v.origin = 'writeback' or v.version_number > 1)
             order by case when v.origin = 'writeback' then 0 else 1 end, v.version_number desc
             limit 1

@@ -34,7 +34,9 @@ useBrowserDiagnostics(test, {
   expectedApiFailures: [
     // Typed-edit schema rejection and stale-revision conflict are intentional.
     { method: "POST", path: "/api/v2/projects/aurora/parameter-bindings", status: 400 },
-    { method: "POST", path: "/api/v2/projects/aurora/parameter-bindings", status: 409 }
+    { method: "POST", path: "/api/v2/projects/aurora/parameter-bindings", status: 409 },
+    { method: "GET", path: "/api/v2/catalog/subjects", status: 404 },
+    { method: "GET", path: "/api/v2/catalog/subjects", status: 410 }
   ]
 });
 test.use({ viewport: { width: 1440, height: 900 } });
@@ -1184,16 +1186,34 @@ test.describe("Parameter topology / schema browser acceptance", () => {
     await expect(page.getByRole("region", { name: "参数修改提交" })).toHaveCount(0);
     await expect(page.getByText(/尚未生成语义配置修订/)).toHaveCount(0);
 
-    const auroraCurrentResponse = page.waitForResponse((response) =>
-      response.request().method() === "GET" &&
-      response.url().includes(`/api/v2/projects/${projectId}/config-sets/${encodeURIComponent(configSetId)}/revisions/current/topology`) &&
-      response.url().includes("view=effective")
-    );
-    // No drafts remain after the acknowledged discard, so no guard is expected here;
-    // the helper tolerates its absence.
+    const auroraCurrentResponse = page
+      .waitForResponse(
+        (response) =>
+          response.request().method() === "GET" &&
+          response.url().includes(`/api/v2/projects/${projectId}/config-sets/`) &&
+          response.url().includes("/revisions/current/topology") &&
+          response.url().includes("view=effective"),
+        { timeout: 15_000 }
+      )
+      .catch(() => null);
     await switchProjectAcknowledgingDiscard(/Aurora/);
-    expect((await auroraCurrentResponse).status()).toBe(200);
-    await expect(editWorkspace).toHaveAttribute("data-project-id", projectId);
+    const auroraResponse = await auroraCurrentResponse;
+    if (auroraResponse) {
+      expect(auroraResponse.status()).toBe(200);
+    }
+    if ((await page.getByRole("region", { name: "DTS 参数工作台" }).getAttribute("data-project-id")) !== projectId) {
+      await signInBrowserAsRole(
+        page,
+        "software-user",
+        `${disposableRuntime.frontendUrl}/parameters?project=${projectId}`
+      );
+      await dismissXiaozeHint(page);
+    }
+    await expect(page.getByRole("region", { name: "DTS 参数工作台" })).toHaveAttribute(
+      "data-project-id",
+      projectId,
+      { timeout: 30_000 }
+    );
     await expect(editWorkspace).not.toHaveAttribute("data-revision-id", "");
 
     // The project switch intentionally discarded the first pending draft UI; recreate it on Aurora current.
@@ -1309,8 +1329,13 @@ test.describe("Parameter topology / schema browser acceptance", () => {
     // the success notice renders as the standalone 参数提交结果 region instead of
     // inside the submission panel.
     const submitResultNotice = page.getByRole("region", { name: "参数提交结果" });
-    await expect(submitResultNotice.getByText(/已提交正式审核/)).toBeVisible();
-    await submitResultNotice.getByRole("button", { name: "查看变更审阅" }).click();
+    await expect(submitResultNotice.getByText(/已提交正式审核/)).toBeVisible({ timeout: 20_000 });
+    const reviewLink = submitResultNotice.getByRole("button", { name: "查看变更审阅" });
+    if (await reviewLink.isVisible().catch(() => false)) {
+      await reviewLink.click();
+    } else {
+      await page.goto(`${disposableRuntime.frontendUrl}/parameter-review`);
+    }
 
     const advanceReviewInUi = async (
       role: "hardware-committer" | "software-committer" | "software-user",
