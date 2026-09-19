@@ -19,9 +19,9 @@
 
 ## 独立评审（grok-4.6）
 
-第 1 轮（`3dc5c9411` / 文档 `2d3895e66`）：Standards FAIL P1；Spec FAIL P0+P1。第 2 轮 Standards（`beeea0bf0` 活捕获）仍 FAIL P1：object-store/redis 仍是 `createMemoryStorePort`，不得把 `threeStoreRecoveryPoint` 写成 true。回执保持 `false`，`notCapturedStores: ["redis"]`。
+第 1–2 轮 Standards FAIL P1（操作员 JSON / 内存 stub）。第 3 轮 Standards（`f2c7ef968`，grok-4.6）：**PASS**。隔离 Docker postgres/redis/MinIO；仅在设置 `WISEEFF_REDIS_URL` 与 `OBJECT_STORAGE_*` 时 `threeStoreRecoveryPoint: true`。
 
-处置：**不封印。** T3.2/T3.3b 剩余会使后续封印最多是有条件。
+Spec 仍 **FAIL**（T3.2 leftover、T3.3b 无目标、T3.1 未在此 SHA 重跑 `test:server`）。处置：**未 SEALED**。后续封印最多是有条件。
 
 本机隔离 Docker 三存储（不是 5432/`wiseeff`，不是 `wiseeff_lane_849`）：
 
