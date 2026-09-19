@@ -8,7 +8,7 @@ import {
 export const t14RewrittenSliceSuccessorRelocationRecordPath =
   "scripts/fixtures/parameter-catalog-allowlist/t14-rewritten-slice-successor-relocation.json";
 
-const recordSha256 = "9b31f536cdda8ecc9dd4ec0050f6d7344667123e2e2888000546c9635049da4e";
+const recordSha256 = "56216b0d2463f74a764159e86caf5fa3ab50d3f0e957b66362a840d2294b86a7";
 
 export async function applyReviewedT14RewrittenSliceSuccessorRelocation(
   repoRoot: string,
@@ -21,6 +21,7 @@ export async function applyReviewedT14RewrittenSliceSuccessorRelocation(
     recordPath: t14RewrittenSliceSuccessorRelocationRecordPath,
     recordSha256,
     files: [
+      { file: "e2e/acceptance/xiaoze-action.acceptance.spec.ts", pairs: 2 },
       { file: "server/modules/debugging/repository.ts", pairs: 1 },
       { file: "server/modules/dts-reload/behaviouralVerify.ts", pairs: 3 },
       { file: "server/modules/dts-reload/repository.ts", pairs: 14 },
@@ -30,8 +31,9 @@ export async function applyReviewedT14RewrittenSliceSuccessorRelocation(
       { file: "server/modules/parameter-files/writebackService.ts", pairs: 3 },
       { file: "server/modules/parameter-modules/repository.ts", pairs: 7 },
       { file: "server/modules/parameter-modules/service.test.ts", pairs: 5 },
+      { file: "server/modules/parameter-topology/writeLock.ts", pairs: 4 },
     ],
-    totalPairs: 51,
+    totalPairs: 57,
     rejectAllowanceGrowth: true,
     requireStableStructuralAnchor: true,
     requireStableByteOrder: true,

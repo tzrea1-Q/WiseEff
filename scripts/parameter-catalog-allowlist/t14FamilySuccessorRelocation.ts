@@ -8,7 +8,7 @@ import {
 export const t14FamilySuccessorRelocationRecordPath =
   "scripts/fixtures/parameter-catalog-allowlist/t14-t22-family-successor-relocation.json";
 
-const recordSha256 = "65962a482340be326380ce243de836d1ab8973bc33a1fdbbff398796b0f788c2";
+const recordSha256 = "caab30775516a556dc0c64292d801b02cf07fec1f9b0ec29cd8d319575218497";
 
 export async function applyReviewedT14FamilySuccessorRelocation(
   repoRoot: string,
@@ -21,6 +21,7 @@ export async function applyReviewedT14FamilySuccessorRelocation(
     recordPath: t14FamilySuccessorRelocationRecordPath,
     recordSha256,
     files: [
+      { file: "e2e/acceptance/knowledge.acceptance.spec.ts", pairs: 13 },
       { file: "server/modules/agent/tools/actionTools.ts", pairs: 2 },
       { file: "server/modules/debugging/repository.ts", pairs: 9 },
       { file: "server/modules/dts-reload/repository.ts", pairs: 4 },
@@ -30,12 +31,13 @@ export async function applyReviewedT14FamilySuccessorRelocation(
       { file: "server/modules/parameter-files/conflictService.test.ts", pairs: 3 },
       { file: "server/modules/parameter-files/syncIdentity.ts", pairs: 2 },
       { file: "server/modules/parameter-files/syncService.test.ts", pairs: 1 },
-      { file: "server/modules/parameter-modules/recomputeDryRun.integration.test.ts", pairs: 1 },
+      { file: "server/modules/parameter-modules/recomputeDryRun.integration.test.ts", pairs: 3 },
       { file: "server/modules/parameter-modules/repository.ts", pairs: 13 },
       { file: "server/modules/parameter-modules/service.test.ts", pairs: 24 },
       { file: "server/modules/parameter-specs/routes.ts", pairs: 63 },
+      { file: "server/modules/parameter-topology/writeLock.ts", pairs: 4 },
     ],
-    totalPairs: 136,
+    totalPairs: 155,
     rejectAllowanceGrowth: true,
     requireStableStructuralAnchor: true,
     requireStableByteOrder: true,

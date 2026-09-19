@@ -17,6 +17,9 @@ import {
   populatedCutoverGraph,
   seedPopulatedCutover,
 } from "../../server/testing/parameterCatalog/cutoverPopulatedFixture";
+import { fixtureCutoverIdentities } from "../../server/modules/catalog-cutover/identities";
+import { fixtureObservedQuiescence } from "../../server/modules/catalog-cutover/quiescence";
+import { fixtureObservedRecoveryPoint } from "../../server/modules/catalog-cutover/recoveryPointObservation";
 import { runExecuteCutoverCli } from "./execute-parameter-catalog-cutover";
 import { runInspectCutoverCli } from "./inspect-parameter-catalog-cutover";
 import { runPlanCutoverCli } from "./plan-parameter-catalog-cutover";
@@ -43,6 +46,9 @@ describe("S7-ORC operator CLI path", { timeout: CATALOG_TEST_TIMEOUT_MS }, () =>
   let workspace: string;
   let graphPath: string;
   let releaseJsonPath: string;
+  let identityJsonPath: string;
+  let quiescenceJsonPath: string;
+  let recoveryJsonPath: string;
   let archiveRoot: string;
   let targetCatalogReleaseDigest: string;
 
@@ -71,8 +77,14 @@ describe("S7-ORC operator CLI path", { timeout: CATALOG_TEST_TIMEOUT_MS }, () =>
 
     graphPath = path.join(workspace, "p0-graph.json");
     releaseJsonPath = path.join(workspace, "release.json");
+    identityJsonPath = path.join(workspace, "identities.json");
+    quiescenceJsonPath = path.join(workspace, "quiescence.json");
+    recoveryJsonPath = path.join(workspace, "recovery.json");
     await writeFile(graphPath, JSON.stringify(graph), "utf8");
     await writeFile(releaseJsonPath, JSON.stringify(bundle), "utf8");
+    await writeFile(identityJsonPath, `${JSON.stringify(fixtureCutoverIdentities())}\n`, "utf8");
+    await writeFile(quiescenceJsonPath, `${JSON.stringify(fixtureObservedQuiescence())}\n`, "utf8");
+    await writeFile(recoveryJsonPath, `${JSON.stringify(fixtureObservedRecoveryPoint())}\n`, "utf8");
   }, CATALOG_HOOK_TIMEOUT_MS);
 
   afterAll(async () => {
@@ -93,6 +105,12 @@ describe("S7-ORC operator CLI path", { timeout: CATALOG_TEST_TIMEOUT_MS }, () =>
     "d".repeat(40),
     "--target-catalog-release-digest",
     targetCatalogReleaseDigest,
+    "--identity-json",
+    identityJsonPath,
+    "--quiescence-json",
+    quiescenceJsonPath,
+    "--recovery-json",
+    recoveryJsonPath,
   ];
 
   it("plans, survives an interrupted execute, resumes, and refuses an ad-hoc recovery action", async () => {

@@ -871,8 +871,8 @@ describe("parameter catalog boundary checker", () => {
         rewrittenSliceRelocationRecord.files.flatMap((file) => file.pairs.map((pair) => pair.old.id)),
       );
       expect(report.relocations.filter((entry) => consumerIds.has(entry.id))).toHaveLength(202);
-      expect(report.relocations.filter((entry) => familyIds.has(entry.id))).toHaveLength(136);
-      expect(report.relocations.filter((entry) => rewrittenIds.has(entry.id))).toHaveLength(51);
+      expect(report.relocations.filter((entry) => familyIds.has(entry.id))).toHaveLength(155);
+      expect(report.relocations.filter((entry) => rewrittenIds.has(entry.id))).toHaveLength(57);
       expect(
         report.relocations.filter(
           (entry) =>
@@ -882,14 +882,16 @@ describe("parameter catalog boundary checker", () => {
             && !rewrittenIds.has(entry.id),
         ),
       ).toHaveLength(7);
-      expect(report.relocations).toHaveLength(527);
-      expect(new Set(report.relocations.map((entry) => entry.id)).size).toBe(527);
-      expect(new Set(report.relocations.map((entry) => entry.observed.id)).size).toBe(527);
-      expect(new Set(report.relocations.flatMap((entry) => [entry.id, entry.observed.id])).size).toBe(1_054);
+      // Family 155 + rewritten 57 dest-rebind the current successor map. Unallowlisted
+      // leftover grew 49 → 55 with this branch's dest-file edits; T1.4 stays unchecked.
+      expect(report.relocations).toHaveLength(552);
+      expect(new Set(report.relocations.map((entry) => entry.id)).size).toBe(552);
+      expect(new Set(report.relocations.map((entry) => entry.observed.id)).size).toBe(552);
+      expect(new Set(report.relocations.flatMap((entry) => [entry.id, entry.observed.id])).size).toBe(1_104);
       expect(report.summary).toEqual({
-        violations: 3_552,
+        violations: 3_558,
         allowlisted: 3_503,
-        unallowlisted: 49,
+        unallowlisted: 55,
         staleAllowances: 0,
         metadataMismatches: 0,
         allowlistGrowth: 0,

@@ -4,6 +4,442 @@
   "fixtureSha256": "fe3cd2abe9181517332612938f00082db864d66f6f9b284d5f43b3051b5fe951",
   "files": [
     {
+      "file": "e2e/acceptance/knowledge.acceptance.spec.ts",
+      "sourceBlobOid": "d3b3e6dbf433ae308c4dcd22056cab94cb6e7023",
+      "destinationBlobOid": "856f66a49bdd393748576dc17258dcf0f9f9fb12",
+      "pairs": [
+        {
+          "old": {
+            "id": "S12-KNW:legacy-catalog-sql-write:20d1eec815f930ce:af5d40fd951767e8",
+            "rule": "legacy-catalog-sql-write",
+            "file": "e2e/acceptance/knowledge.acceptance.spec.ts",
+            "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration.",
+            "family": "S12-KNW",
+            "line": 131,
+            "column": 24,
+            "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
+            "trustedBlobOid": "d3b3e6dbf433ae308c4dcd22056cab94cb6e7023",
+            "byteStart": 5239,
+            "byteEnd": 5323,
+            "token": "write:parameter_spec_versions",
+            "evidence": "write parameter_spec_versions: delete from parameter_spec_versions where parameter_spec_id like 'pspec:kb-xref-%'"
+          },
+          "new": {
+            "id": "S12-KNW:legacy-catalog-sql-write:20d1eec815f930ce:029906ee31220442",
+            "family": "S12-KNW",
+            "rule": "legacy-catalog-sql-write",
+            "file": "e2e/acceptance/knowledge.acceptance.spec.ts",
+            "line": 138,
+            "column": 24,
+            "byteStart": 5570,
+            "byteEnd": 5654,
+            "token": "write:parameter_spec_versions",
+            "evidence": "write parameter_spec_versions: delete from parameter_spec_versions where parameter_spec_id like 'pspec:kb-xref-%'",
+            "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration.",
+            "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
+            "trustedBlobOid": "856f66a49bdd393748576dc17258dcf0f9f9fb12"
+          },
+          "sliceSha256": "f7596f10f5d4d1cd0d0f566035f83e7b737d15670b67998c8c4a853340833388"
+        },
+        {
+          "old": {
+            "id": "S12-KNW:legacy-catalog-sql-write:6888a35a65f25321:f1f10e14d382ba64",
+            "rule": "legacy-catalog-sql-write",
+            "file": "e2e/acceptance/knowledge.acceptance.spec.ts",
+            "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration.",
+            "family": "S12-KNW",
+            "line": 132,
+            "column": 24,
+            "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
+            "trustedBlobOid": "d3b3e6dbf433ae308c4dcd22056cab94cb6e7023",
+            "byteStart": 5349,
+            "byteEnd": 5410,
+            "token": "write:parameter_specs",
+            "evidence": "write parameter_specs: delete from parameter_specs where id like 'pspec:kb-xref-%'"
+          },
+          "new": {
+            "id": "S12-KNW:legacy-catalog-sql-write:6888a35a65f25321:0a65575e44d7dbaa",
+            "family": "S12-KNW",
+            "rule": "legacy-catalog-sql-write",
+            "file": "e2e/acceptance/knowledge.acceptance.spec.ts",
+            "line": 139,
+            "column": 24,
+            "byteStart": 5680,
+            "byteEnd": 5741,
+            "token": "write:parameter_specs",
+            "evidence": "write parameter_specs: delete from parameter_specs where id like 'pspec:kb-xref-%'",
+            "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration.",
+            "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
+            "trustedBlobOid": "856f66a49bdd393748576dc17258dcf0f9f9fb12"
+          },
+          "sliceSha256": "a7ca4c812052e4b6228c53302ee5f9c0536ef44e0ff4814b71065de6ae5f6f47"
+        },
+        {
+          "old": {
+            "id": "S12-KNW:legacy-catalog-sql-write:0afd9599848ac79a:be5b0f518b81640b",
+            "rule": "legacy-catalog-sql-write",
+            "file": "e2e/acceptance/knowledge.acceptance.spec.ts",
+            "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration.",
+            "family": "S12-KNW",
+            "line": 133,
+            "column": 24,
+            "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
+            "trustedBlobOid": "d3b3e6dbf433ae308c4dcd22056cab94cb6e7023",
+            "byteStart": 5436,
+            "byteEnd": 5501,
+            "token": "write:attribution_subjects",
+            "evidence": "write attribution_subjects: delete from attribution_subjects where id like 'asub:kb-xref-%'"
+          },
+          "new": {
+            "id": "S12-KNW:legacy-catalog-sql-write:0afd9599848ac79a:3719c3fb4b2bbb5c",
+            "family": "S12-KNW",
+            "rule": "legacy-catalog-sql-write",
+            "file": "e2e/acceptance/knowledge.acceptance.spec.ts",
+            "line": 140,
+            "column": 24,
+            "byteStart": 5767,
+            "byteEnd": 5832,
+            "token": "write:attribution_subjects",
+            "evidence": "write attribution_subjects: delete from attribution_subjects where id like 'asub:kb-xref-%'",
+            "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration.",
+            "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
+            "trustedBlobOid": "856f66a49bdd393748576dc17258dcf0f9f9fb12"
+          },
+          "sliceSha256": "01b25273081280fd0c4d7fa2c92e46e1be76634f403366025410088d3becaac3"
+        },
+        {
+          "old": {
+            "id": "S12-KNW:legacy-catalog-sql-write:0afd9599848ac79a:14b9c359da79bf49",
+            "rule": "legacy-catalog-sql-write",
+            "file": "e2e/acceptance/knowledge.acceptance.spec.ts",
+            "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration.",
+            "family": "S12-KNW",
+            "line": 182,
+            "column": 7,
+            "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
+            "trustedBlobOid": "d3b3e6dbf433ae308c4dcd22056cab94cb6e7023",
+            "byteStart": 8095,
+            "byteEnd": 8292,
+            "token": "write:attribution_subjects",
+            "evidence": "write attribution_subjects: insert into attribution_subjects (id, organization_id, subject_kind, display_name, source_key) values ($1, $2, 'driver-registration', $3, $1) on conflict (id) do nothing"
+          },
+          "new": {
+            "id": "S12-KNW:legacy-catalog-sql-write:0afd9599848ac79a:b68d1504e32f2d37",
+            "family": "S12-KNW",
+            "rule": "legacy-catalog-sql-write",
+            "file": "e2e/acceptance/knowledge.acceptance.spec.ts",
+            "line": 189,
+            "column": 7,
+            "byteStart": 8426,
+            "byteEnd": 8623,
+            "token": "write:attribution_subjects",
+            "evidence": "write attribution_subjects: insert into attribution_subjects (id, organization_id, subject_kind, display_name, source_key) values ($1, $2, 'driver-registration', $3, $1) on conflict (id) do nothing",
+            "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration.",
+            "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
+            "trustedBlobOid": "856f66a49bdd393748576dc17258dcf0f9f9fb12"
+          },
+          "sliceSha256": "121fbc2bb3d5a3e7e0e6aef8d57751f5e149b8ad37b269ee22c98f3457cbebc9"
+        },
+        {
+          "old": {
+            "id": "S12-KNW:legacy-catalog-sql-write:6888a35a65f25321:56f4e44a4b957789",
+            "rule": "legacy-catalog-sql-write",
+            "file": "e2e/acceptance/knowledge.acceptance.spec.ts",
+            "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration.",
+            "family": "S12-KNW",
+            "line": 190,
+            "column": 7,
+            "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
+            "trustedBlobOid": "d3b3e6dbf433ae308c4dcd22056cab94cb6e7023",
+            "byteStart": 8384,
+            "byteEnd": 8629,
+            "token": "write:parameter_specs",
+            "evidence": "write parameter_specs: insert into parameter_specs (id, organization_id, source_kind, specification_key, property_key, attribution_subject_id, definition_lifecycle) values ($1, $2, 'manual', $3, $4, $5, 'active') on conflict (id) do nothing"
+          },
+          "new": {
+            "id": "S12-KNW:legacy-catalog-sql-write:6888a35a65f25321:96be2e1be049b058",
+            "family": "S12-KNW",
+            "rule": "legacy-catalog-sql-write",
+            "file": "e2e/acceptance/knowledge.acceptance.spec.ts",
+            "line": 197,
+            "column": 7,
+            "byteStart": 8715,
+            "byteEnd": 8960,
+            "token": "write:parameter_specs",
+            "evidence": "write parameter_specs: insert into parameter_specs (id, organization_id, source_kind, specification_key, property_key, attribution_subject_id, definition_lifecycle) values ($1, $2, 'manual', $3, $4, $5, 'active') on conflict (id) do nothing",
+            "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration.",
+            "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
+            "trustedBlobOid": "856f66a49bdd393748576dc17258dcf0f9f9fb12"
+          },
+          "sliceSha256": "b7e4508a4e5fc145dcf0b9bfca924070942e3505c9102cbc26b286dc39fb2e5b"
+        },
+        {
+          "old": {
+            "id": "S12-KNW:legacy-catalog-sql-write:20d1eec815f930ce:f878cd04bcb7b555",
+            "rule": "legacy-catalog-sql-write",
+            "file": "e2e/acceptance/knowledge.acceptance.spec.ts",
+            "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration.",
+            "family": "S12-KNW",
+            "line": 198,
+            "column": 7,
+            "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
+            "trustedBlobOid": "d3b3e6dbf433ae308c4dcd22056cab94cb6e7023",
+            "byteStart": 8770,
+            "byteEnd": 9035,
+            "token": "write:parameter_spec_versions",
+            "evidence": "write parameter_spec_versions: insert into parameter_spec_versions (id, parameter_spec_id, version, display_name, description, value_shape, lifecycle, version_status) values ($1, $2, 1, $3, '', '{\"kind\":\"int32\"}'::jsonb, 'active', 'active'…"
+          },
+          "new": {
+            "id": "S12-KNW:legacy-catalog-sql-write:20d1eec815f930ce:4bf02c8f08c2f9ab",
+            "family": "S12-KNW",
+            "rule": "legacy-catalog-sql-write",
+            "file": "e2e/acceptance/knowledge.acceptance.spec.ts",
+            "line": 205,
+            "column": 7,
+            "byteStart": 9101,
+            "byteEnd": 9366,
+            "token": "write:parameter_spec_versions",
+            "evidence": "write parameter_spec_versions: insert into parameter_spec_versions (id, parameter_spec_id, version, display_name, description, value_shape, lifecycle, version_status) values ($1, $2, 1, $3, '', '{\"kind\":\"int32\"}'::jsonb, 'active', 'active'…",
+            "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration.",
+            "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
+            "trustedBlobOid": "856f66a49bdd393748576dc17258dcf0f9f9fb12"
+          },
+          "sliceSha256": "d46ee597696cf7b9d0be3fbfcd727eb973d36083fdea28d647e600f1e8ecbc10"
+        },
+        {
+          "old": {
+            "id": "S12-KNW:legacy-catalog-raw-read:7748775cfec17c95:3ae0389c299ebea4",
+            "rule": "legacy-catalog-raw-read",
+            "file": "e2e/acceptance/knowledge.acceptance.spec.ts",
+            "reason": "Direct legacy Catalog table read remains pending the owning consumer migration.",
+            "family": "S12-KNW",
+            "line": 288,
+            "column": 7,
+            "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
+            "trustedBlobOid": "d3b3e6dbf433ae308c4dcd22056cab94cb6e7023",
+            "byteStart": 12841,
+            "byteEnd": 12943,
+            "token": "read:project_parameter_bindings",
+            "evidence": "read project_parameter_bindings: select id, project_id from project_parameter_bindings where organization_id = $1 order by id limit 1"
+          },
+          "new": {
+            "id": "S12-KNW:legacy-catalog-raw-read:7748775cfec17c95:0730706d8181e7b4",
+            "family": "S12-KNW",
+            "rule": "legacy-catalog-raw-read",
+            "file": "e2e/acceptance/knowledge.acceptance.spec.ts",
+            "line": 295,
+            "column": 7,
+            "byteStart": 13172,
+            "byteEnd": 13274,
+            "token": "read:project_parameter_bindings",
+            "evidence": "read project_parameter_bindings: select id, project_id from project_parameter_bindings where organization_id = $1 order by id limit 1",
+            "reason": "Direct legacy Catalog table read remains pending the owning consumer migration.",
+            "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
+            "trustedBlobOid": "856f66a49bdd393748576dc17258dcf0f9f9fb12"
+          },
+          "sliceSha256": "2e18bce24812645ddc9dacbfd16ac26d0b2505b977c76156bb65866bd69d1dba"
+        },
+        {
+          "old": {
+            "id": "S12-KNW:legacy-catalog-route:73b8e21aeb15c390:64e4403cc986a29d",
+            "rule": "legacy-catalog-route",
+            "file": "e2e/acceptance/knowledge.acceptance.spec.ts",
+            "reason": "Legacy structural Catalog or governance route remains pending retirement or exact adaptation.",
+            "family": "S12-KNW",
+            "line": 1275,
+            "column": 16,
+            "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
+            "trustedBlobOid": "d3b3e6dbf433ae308c4dcd22056cab94cb6e7023",
+            "byteStart": 55822,
+            "byteEnd": 55899,
+            "token": "route:/api/v1/knowledge/related-to-spec",
+            "evidence": "/api/v1/knowledge/related-to-spec?specId=${…}"
+          },
+          "new": {
+            "id": "S12-KNW:legacy-catalog-route:73b8e21aeb15c390:33769fba8fac00af",
+            "family": "S12-KNW",
+            "rule": "legacy-catalog-route",
+            "file": "e2e/acceptance/knowledge.acceptance.spec.ts",
+            "line": 1282,
+            "column": 16,
+            "byteStart": 56153,
+            "byteEnd": 56230,
+            "token": "route:/api/v1/knowledge/related-to-spec",
+            "evidence": "/api/v1/knowledge/related-to-spec?specId=${…}",
+            "reason": "Legacy structural Catalog or governance route remains pending retirement or exact adaptation.",
+            "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
+            "trustedBlobOid": "856f66a49bdd393748576dc17258dcf0f9f9fb12"
+          },
+          "sliceSha256": "4f8c0abcca48ee0b4cbcc7e563d3871b523e8566e7caeda03ab822b60066b559"
+        },
+        {
+          "old": {
+            "id": "S12-KNW:legacy-catalog-sql-write:6888a35a65f25321:412caee1fc6e1bee",
+            "rule": "legacy-catalog-sql-write",
+            "file": "e2e/acceptance/knowledge.acceptance.spec.ts",
+            "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration.",
+            "family": "S12-KNW",
+            "line": 1316,
+            "column": 26,
+            "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
+            "trustedBlobOid": "d3b3e6dbf433ae308c4dcd22056cab94cb6e7023",
+            "byteStart": 58238,
+            "byteEnd": 58316,
+            "token": "write:parameter_specs",
+            "evidence": "write parameter_specs: update parameter_specs set definition_lifecycle = 'deprecated' where id = $1"
+          },
+          "new": {
+            "id": "S12-KNW:legacy-catalog-sql-write:6888a35a65f25321:5f465111aafabbe5",
+            "family": "S12-KNW",
+            "rule": "legacy-catalog-sql-write",
+            "file": "e2e/acceptance/knowledge.acceptance.spec.ts",
+            "line": 1327,
+            "column": 26,
+            "byteStart": 58733,
+            "byteEnd": 58811,
+            "token": "write:parameter_specs",
+            "evidence": "write parameter_specs: update parameter_specs set definition_lifecycle = 'deprecated' where id = $1",
+            "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration.",
+            "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
+            "trustedBlobOid": "856f66a49bdd393748576dc17258dcf0f9f9fb12"
+          },
+          "sliceSha256": "6c168a590f96d6f2381a79f7fcc2ac3d0832c4387297f8606bd939b1111477f6"
+        },
+        {
+          "old": {
+            "id": "S12-KNW:legacy-catalog-sql-write:20d1eec815f930ce:aa6da5fae90fd3bb",
+            "rule": "legacy-catalog-sql-write",
+            "file": "e2e/acceptance/knowledge.acceptance.spec.ts",
+            "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration.",
+            "family": "S12-KNW",
+            "line": 1317,
+            "column": 26,
+            "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
+            "trustedBlobOid": "d3b3e6dbf433ae308c4dcd22056cab94cb6e7023",
+            "byteStart": 58359,
+            "byteEnd": 58449,
+            "token": "write:parameter_spec_versions",
+            "evidence": "write parameter_spec_versions: update parameter_spec_versions set lifecycle = 'deprecated' where parameter_spec_id = $1"
+          },
+          "new": {
+            "id": "S12-KNW:legacy-catalog-sql-write:20d1eec815f930ce:2aab66b610814850",
+            "family": "S12-KNW",
+            "rule": "legacy-catalog-sql-write",
+            "file": "e2e/acceptance/knowledge.acceptance.spec.ts",
+            "line": 1328,
+            "column": 26,
+            "byteStart": 58854,
+            "byteEnd": 58944,
+            "token": "write:parameter_spec_versions",
+            "evidence": "write parameter_spec_versions: update parameter_spec_versions set lifecycle = 'deprecated' where parameter_spec_id = $1",
+            "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration.",
+            "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
+            "trustedBlobOid": "856f66a49bdd393748576dc17258dcf0f9f9fb12"
+          },
+          "sliceSha256": "be149134697586c5bd95ba517aaa75fe7243a2818499aa028f7f881c8c9982b3"
+        },
+        {
+          "old": {
+            "id": "S12-KNW:legacy-parameter-spec-identifier:5549f9b17852f0d2:e7852fd5e6a5057c",
+            "rule": "legacy-parameter-spec-identifier",
+            "file": "e2e/acceptance/knowledge.acceptance.spec.ts",
+            "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation.",
+            "family": "S12-KNW",
+            "line": 1343,
+            "column": 61,
+            "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
+            "trustedBlobOid": "d3b3e6dbf433ae308c4dcd22056cab94cb6e7023",
+            "byteStart": 60011,
+            "byteEnd": 60028,
+            "token": "parameter_spec_id",
+            "evidence": "parameter_spec_id"
+          },
+          "new": {
+            "id": "S12-KNW:legacy-parameter-spec-identifier:5549f9b17852f0d2:7bdfd833366cdf3d",
+            "family": "S12-KNW",
+            "rule": "legacy-parameter-spec-identifier",
+            "file": "e2e/acceptance/knowledge.acceptance.spec.ts",
+            "line": 1359,
+            "column": 61,
+            "byteStart": 60716,
+            "byteEnd": 60733,
+            "token": "parameter_spec_id",
+            "evidence": "parameter_spec_id",
+            "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation.",
+            "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
+            "trustedBlobOid": "856f66a49bdd393748576dc17258dcf0f9f9fb12"
+          },
+          "sliceSha256": "df6b89ff29e3cbbc79a4ba1aef578c839b38a4eee6c307243a6986667a6aa9ed"
+        },
+        {
+          "old": {
+            "id": "S12-KNW:legacy-catalog-route:a7f441e08b311507:a577dfb88d8b2711",
+            "rule": "legacy-catalog-route",
+            "file": "e2e/acceptance/knowledge.acceptance.spec.ts",
+            "reason": "Legacy structural Catalog or governance route remains pending retirement or exact adaptation.",
+            "family": "S12-KNW",
+            "line": 1366,
+            "column": 17,
+            "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
+            "trustedBlobOid": "d3b3e6dbf433ae308c4dcd22056cab94cb6e7023",
+            "byteStart": 60995,
+            "byteEnd": 61060,
+            "token": "route:/parameter-references/:specId",
+            "evidence": "/api/v1/knowledge/entries/:entryId/parameter-references/:specId"
+          },
+          "new": {
+            "id": "S12-KNW:legacy-catalog-route:a7f441e08b311507:988ed67fe2035c79",
+            "family": "S12-KNW",
+            "rule": "legacy-catalog-route",
+            "file": "e2e/acceptance/knowledge.acceptance.spec.ts",
+            "line": 1384,
+            "column": 17,
+            "byteStart": 61742,
+            "byteEnd": 61807,
+            "token": "route:/parameter-references/:specId",
+            "evidence": "/api/v1/knowledge/entries/:entryId/parameter-references/:specId",
+            "reason": "Legacy structural Catalog or governance route remains pending retirement or exact adaptation.",
+            "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
+            "trustedBlobOid": "856f66a49bdd393748576dc17258dcf0f9f9fb12"
+          },
+          "sliceSha256": "7fe2211cb0c4c512912d93d50c5c0796b86b31d768d007eae1ea7db5bab68fd1"
+        },
+        {
+          "old": {
+            "id": "S12-KNW:legacy-catalog-route:46d85ac4f809fa9b:59646b60568ef06f",
+            "rule": "legacy-catalog-route",
+            "file": "e2e/acceptance/knowledge.acceptance.spec.ts",
+            "reason": "Legacy structural Catalog or governance route remains pending retirement or exact adaptation.",
+            "family": "S12-KNW",
+            "line": 1371,
+            "column": 17,
+            "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
+            "trustedBlobOid": "d3b3e6dbf433ae308c4dcd22056cab94cb6e7023",
+            "byteStart": 61253,
+            "byteEnd": 61288,
+            "token": "route:/api/v1/knowledge/related-to-spec",
+            "evidence": "/api/v1/knowledge/related-to-spec"
+          },
+          "new": {
+            "id": "S12-KNW:legacy-catalog-route:46d85ac4f809fa9b:93a3072253a82d27",
+            "family": "S12-KNW",
+            "rule": "legacy-catalog-route",
+            "file": "e2e/acceptance/knowledge.acceptance.spec.ts",
+            "line": 1389,
+            "column": 17,
+            "byteStart": 62000,
+            "byteEnd": 62035,
+            "token": "route:/api/v1/knowledge/related-to-spec",
+            "evidence": "/api/v1/knowledge/related-to-spec",
+            "reason": "Legacy structural Catalog or governance route remains pending retirement or exact adaptation.",
+            "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
+            "trustedBlobOid": "856f66a49bdd393748576dc17258dcf0f9f9fb12"
+          },
+          "sliceSha256": "41193d06c0a9f3322fe2619cbf8f1fa5d3a553d00d6836374b53ce3dfe14b716"
+        }
+      ]
+    },
+    {
       "file": "server/modules/agent/tools/actionTools.ts",
       "sourceBlobOid": "19a9834d5a730f8645a51ad77ce5cdd309a310ce",
       "destinationBlobOid": "9d7458eb4eedd99553df5b8b19c5284f53dce543",
@@ -1224,8 +1660,74 @@
     {
       "file": "server/modules/parameter-modules/recomputeDryRun.integration.test.ts",
       "sourceBlobOid": "a6a5ae74fc45da81e30f190b3b6752b3ca0c48d1",
-      "destinationBlobOid": "002f7e4c911dae0611a6f71c9923e4a0f892c1ba",
+      "destinationBlobOid": "4c784ba836ce42b12c39a375c17bab8c6e7baff9",
       "pairs": [
+        {
+          "old": {
+            "id": "S12-MOD:legacy-catalog-sql-write:7ff45bbeb3e83a09:1ca37f63a111ec2f",
+            "rule": "legacy-catalog-sql-write",
+            "file": "server/modules/parameter-modules/recomputeDryRun.integration.test.ts",
+            "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration.",
+            "family": "S12-MOD",
+            "line": 131,
+            "column": 5,
+            "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
+            "trustedBlobOid": "a6a5ae74fc45da81e30f190b3b6752b3ca0c48d1",
+            "byteStart": 5244,
+            "byteEnd": 5442,
+            "token": "write:parameter_modules",
+            "evidence": "write parameter_modules: insert into parameter_modules (id, organization_id, name, path, depth, kind, origin, parent_id, sort_order) values ($1, $2, 'Unclassified', 'Unclassified', 0, 'unclassified', 'auto', null, 0)"
+          },
+          "new": {
+            "id": "S12-MOD:legacy-catalog-sql-write:7ff45bbeb3e83a09:422461bffb7109fb",
+            "family": "S12-MOD",
+            "rule": "legacy-catalog-sql-write",
+            "file": "server/modules/parameter-modules/recomputeDryRun.integration.test.ts",
+            "line": 137,
+            "column": 5,
+            "byteStart": 5526,
+            "byteEnd": 5724,
+            "token": "write:parameter_modules",
+            "evidence": "write parameter_modules: insert into parameter_modules (id, organization_id, name, path, depth, kind, origin, parent_id, sort_order) values ($1, $2, 'Unclassified', 'Unclassified', 0, 'unclassified', 'auto', null, 0)",
+            "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration.",
+            "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
+            "trustedBlobOid": "4c784ba836ce42b12c39a375c17bab8c6e7baff9"
+          },
+          "sliceSha256": "fdf68f29b4ef3e9f503507bfbec6c810bd8661d089b1895112d3a3159ca14de4"
+        },
+        {
+          "old": {
+            "id": "S12-MOD:legacy-catalog-sql-write:fc98c5832bb09ac1:de929f380c271555",
+            "rule": "legacy-catalog-sql-write",
+            "file": "server/modules/parameter-modules/recomputeDryRun.integration.test.ts",
+            "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration.",
+            "family": "S12-MOD",
+            "line": 136,
+            "column": 5,
+            "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
+            "trustedBlobOid": "a6a5ae74fc45da81e30f190b3b6752b3ca0c48d1",
+            "byteStart": 5495,
+            "byteEnd": 5653,
+            "token": "write:project_parameter_bindings",
+            "evidence": "write project_parameter_bindings: insert into project_parameter_bindings (id, organization_id, project_id, parameter_spec_id, module_id, logical_node_id) values ($1, $2, $3, $4, $5, $6)"
+          },
+          "new": {
+            "id": "S12-MOD:legacy-catalog-sql-write:fc98c5832bb09ac1:da7b29fb52ad6182",
+            "family": "S12-MOD",
+            "rule": "legacy-catalog-sql-write",
+            "file": "server/modules/parameter-modules/recomputeDryRun.integration.test.ts",
+            "line": 142,
+            "column": 5,
+            "byteStart": 5777,
+            "byteEnd": 5935,
+            "token": "write:project_parameter_bindings",
+            "evidence": "write project_parameter_bindings: insert into project_parameter_bindings (id, organization_id, project_id, parameter_spec_id, module_id, logical_node_id) values ($1, $2, $3, $4, $5, $6)",
+            "reason": "Legacy Catalog SQL writer remains pending the owning consumer migration.",
+            "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
+            "trustedBlobOid": "4c784ba836ce42b12c39a375c17bab8c6e7baff9"
+          },
+          "sliceSha256": "f21eea9ef690c6a4bba492342c3ca3a4e765dc3db00af504d0ff393cc7e1954d"
+        },
         {
           "old": {
             "id": "S12-MOD:legacy-catalog-raw-read:1a8b5daa94937964:b868445dcb790564",
@@ -1243,19 +1745,19 @@
             "evidence": "read parameter_modules: select count(*)::text as c from parameter_modules where organization_id = $1"
           },
           "new": {
-            "id": "S12-MOD:legacy-catalog-raw-read:1a8b5daa94937964:d9ee6a696bb0836f",
+            "id": "S12-MOD:legacy-catalog-raw-read:1a8b5daa94937964:e42aa62c1fc28d2d",
             "family": "S12-MOD",
             "rule": "legacy-catalog-raw-read",
             "file": "server/modules/parameter-modules/recomputeDryRun.integration.test.ts",
-            "line": 149,
+            "line": 156,
             "column": 5,
-            "byteStart": 6027,
-            "byteEnd": 6105,
+            "byteStart": 6402,
+            "byteEnd": 6480,
             "token": "read:parameter_modules",
             "evidence": "read parameter_modules: select count(*)::text as c from parameter_modules where organization_id = $1",
             "reason": "Direct legacy Catalog table read remains pending the owning consumer migration.",
             "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
-            "trustedBlobOid": "002f7e4c911dae0611a6f71c9923e4a0f892c1ba"
+            "trustedBlobOid": "4c784ba836ce42b12c39a375c17bab8c6e7baff9"
           },
           "sliceSha256": "eee01ee48bf546b99adc398f369cf1c9b8102a6201efd717597d063b2e66e8d5"
         }
@@ -2499,7 +3001,7 @@
     {
       "file": "server/modules/parameter-specs/routes.ts",
       "sourceBlobOid": "7ab9e36a74133bb663aeedc23d8c8b70f51738ab",
-      "destinationBlobOid": "cd2acb55b87b670ead005f11b229a6ff383294d3",
+      "destinationBlobOid": "f04eafe2e34b64363c6aa3797ba782b54d7a6685",
       "pairs": [
         {
           "old": {
@@ -2518,19 +3020,19 @@
             "evidence": "createOrganizationDriverSchemaBodySchema"
           },
           "new": {
-            "id": "S12-CGH:legacy-overlay-catalog-contract:a5d5f7fa1d32614d:7d9fac66c19973b7",
+            "id": "S12-CGH:legacy-overlay-catalog-contract:a5d5f7fa1d32614d:f391acba8e2bedd9",
             "family": "S12-CGH",
             "rule": "legacy-overlay-catalog-contract",
             "file": "server/modules/parameter-specs/routes.ts",
-            "line": 21,
+            "line": 22,
             "column": 3,
-            "byteStart": 792,
-            "byteEnd": 832,
+            "byteStart": 826,
+            "byteEnd": 866,
             "token": "createOrganizationDriverSchemaBodySchema",
             "evidence": "createOrganizationDriverSchemaBodySchema",
             "reason": "Legacy driver-schema overlay authoring contract remains reachable.",
             "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
-            "trustedBlobOid": "cd2acb55b87b670ead005f11b229a6ff383294d3"
+            "trustedBlobOid": "f04eafe2e34b64363c6aa3797ba782b54d7a6685"
           },
           "sliceSha256": "29b22d45a791418df856580527eb32d5b1e79f3cce0f4bfce676461d2dc42486"
         },
@@ -2551,19 +3053,19 @@
             "evidence": "deprecateOrganizationDriverSchemaBodySchema"
           },
           "new": {
-            "id": "S12-CGH:legacy-overlay-catalog-contract:38992a1a67a37b48:dd93e440d30f6f6a",
+            "id": "S12-CGH:legacy-overlay-catalog-contract:38992a1a67a37b48:04627164bbb019da",
             "family": "S12-CGH",
             "rule": "legacy-overlay-catalog-contract",
             "file": "server/modules/parameter-specs/routes.ts",
-            "line": 22,
+            "line": 23,
             "column": 3,
-            "byteStart": 836,
-            "byteEnd": 879,
+            "byteStart": 870,
+            "byteEnd": 913,
             "token": "deprecateOrganizationDriverSchemaBodySchema",
             "evidence": "deprecateOrganizationDriverSchemaBodySchema",
             "reason": "Legacy driver-schema overlay authoring contract remains reachable.",
             "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
-            "trustedBlobOid": "cd2acb55b87b670ead005f11b229a6ff383294d3"
+            "trustedBlobOid": "f04eafe2e34b64363c6aa3797ba782b54d7a6685"
           },
           "sliceSha256": "7b71b52d7f3e99acd9ba3a8577de6def155ac79297ec6c13350624b184e081a2"
         },
@@ -2584,19 +3086,19 @@
             "evidence": "promoteDriverSchemaOverlayBodySchema"
           },
           "new": {
-            "id": "S12-CGH:legacy-overlay-catalog-contract:33799ab41c31caac:967ba79655767990",
+            "id": "S12-CGH:legacy-overlay-catalog-contract:33799ab41c31caac:4f7b80f9a5b7c722",
             "family": "S12-CGH",
             "rule": "legacy-overlay-catalog-contract",
             "file": "server/modules/parameter-specs/routes.ts",
-            "line": 30,
+            "line": 31,
             "column": 3,
-            "byteStart": 1139,
-            "byteEnd": 1175,
+            "byteStart": 1173,
+            "byteEnd": 1209,
             "token": "promoteDriverSchemaOverlayBodySchema",
             "evidence": "promoteDriverSchemaOverlayBodySchema",
             "reason": "Legacy driver-schema overlay authoring contract remains reachable.",
             "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
-            "trustedBlobOid": "cd2acb55b87b670ead005f11b229a6ff383294d3"
+            "trustedBlobOid": "f04eafe2e34b64363c6aa3797ba782b54d7a6685"
           },
           "sliceSha256": "3e4f3bef6cad31934c868d32f15e6432b8b43d3c6458f0228a9d49d4092a417c"
         },
@@ -2617,19 +3119,19 @@
             "evidence": "updateOrganizationDriverSchemaBodySchema"
           },
           "new": {
-            "id": "S12-CGH:legacy-overlay-catalog-contract:93dca0cf3ad514ad:1cb6339c4e70c229",
+            "id": "S12-CGH:legacy-overlay-catalog-contract:93dca0cf3ad514ad:6c52a18073fa1a1d",
             "family": "S12-CGH",
             "rule": "legacy-overlay-catalog-contract",
             "file": "server/modules/parameter-specs/routes.ts",
-            "line": 42,
+            "line": 43,
             "column": 3,
-            "byteStart": 1594,
-            "byteEnd": 1634,
+            "byteStart": 1628,
+            "byteEnd": 1668,
             "token": "updateOrganizationDriverSchemaBodySchema",
             "evidence": "updateOrganizationDriverSchemaBodySchema",
             "reason": "Legacy driver-schema overlay authoring contract remains reachable.",
             "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
-            "trustedBlobOid": "cd2acb55b87b670ead005f11b229a6ff383294d3"
+            "trustedBlobOid": "f04eafe2e34b64363c6aa3797ba782b54d7a6685"
           },
           "sliceSha256": "bf541eb392f3cccd292be6807323b802297f3c9687343af8faf467bc418c51a5"
         },
@@ -2650,19 +3152,19 @@
             "evidence": "activateOrganizationDriverSchemaForAuth"
           },
           "new": {
-            "id": "S12-CGH:legacy-overlay-catalog-contract:b937336fc90d6fcc:3ae613c7a1b218cf",
+            "id": "S12-CGH:legacy-overlay-catalog-contract:b937336fc90d6fcc:72194f6b6fca1e19",
             "family": "S12-CGH",
             "rule": "legacy-overlay-catalog-contract",
             "file": "server/modules/parameter-specs/routes.ts",
-            "line": 68,
+            "line": 69,
             "column": 3,
-            "byteStart": 2317,
-            "byteEnd": 2356,
+            "byteStart": 2351,
+            "byteEnd": 2390,
             "token": "activateOrganizationDriverSchemaForAuth",
             "evidence": "activateOrganizationDriverSchemaForAuth",
             "reason": "Legacy driver-schema overlay authoring contract remains reachable.",
             "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
-            "trustedBlobOid": "cd2acb55b87b670ead005f11b229a6ff383294d3"
+            "trustedBlobOid": "f04eafe2e34b64363c6aa3797ba782b54d7a6685"
           },
           "sliceSha256": "592b480239b6dde121afe131936836b2bfb474ed680f51cc1cb3a44c12967832"
         },
@@ -2683,19 +3185,19 @@
             "evidence": "createOrganizationDriverSchemaForAuth"
           },
           "new": {
-            "id": "S12-CGH:legacy-overlay-catalog-contract:125089f203605422:96724b33d49afca0",
+            "id": "S12-CGH:legacy-overlay-catalog-contract:125089f203605422:81eb255d0c637d0a",
             "family": "S12-CGH",
             "rule": "legacy-overlay-catalog-contract",
             "file": "server/modules/parameter-specs/routes.ts",
-            "line": 69,
+            "line": 70,
             "column": 3,
-            "byteStart": 2360,
-            "byteEnd": 2397,
+            "byteStart": 2394,
+            "byteEnd": 2431,
             "token": "createOrganizationDriverSchemaForAuth",
             "evidence": "createOrganizationDriverSchemaForAuth",
             "reason": "Legacy driver-schema overlay authoring contract remains reachable.",
             "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
-            "trustedBlobOid": "cd2acb55b87b670ead005f11b229a6ff383294d3"
+            "trustedBlobOid": "f04eafe2e34b64363c6aa3797ba782b54d7a6685"
           },
           "sliceSha256": "00fb32390a409af7e2b2a0af7f904ff4edf3348bfed800a610f59b96883258bc"
         },
@@ -2716,19 +3218,19 @@
             "evidence": "deprecateOrganizationDriverSchemaForAuth"
           },
           "new": {
-            "id": "S12-CGH:legacy-overlay-catalog-contract:9f3b14275823711f:7e1487ae4afb85a8",
+            "id": "S12-CGH:legacy-overlay-catalog-contract:9f3b14275823711f:eb88442f4f59c982",
             "family": "S12-CGH",
             "rule": "legacy-overlay-catalog-contract",
             "file": "server/modules/parameter-specs/routes.ts",
-            "line": 70,
+            "line": 71,
             "column": 3,
-            "byteStart": 2401,
-            "byteEnd": 2441,
+            "byteStart": 2435,
+            "byteEnd": 2475,
             "token": "deprecateOrganizationDriverSchemaForAuth",
             "evidence": "deprecateOrganizationDriverSchemaForAuth",
             "reason": "Legacy driver-schema overlay authoring contract remains reachable.",
             "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
-            "trustedBlobOid": "cd2acb55b87b670ead005f11b229a6ff383294d3"
+            "trustedBlobOid": "f04eafe2e34b64363c6aa3797ba782b54d7a6685"
           },
           "sliceSha256": "0b09853e25e3dc2b9badc0cdda8dade3ae6cb5776f151deab843768cc2358c69"
         },
@@ -2749,19 +3251,19 @@
             "evidence": "getOrganizationDriverSchemaForAuth"
           },
           "new": {
-            "id": "S12-CGH:legacy-overlay-catalog-contract:dc9beb83f0ff1976:dbf96565df0ce2fc",
+            "id": "S12-CGH:legacy-overlay-catalog-contract:dc9beb83f0ff1976:233e50f34d86f064",
             "family": "S12-CGH",
             "rule": "legacy-overlay-catalog-contract",
             "file": "server/modules/parameter-specs/routes.ts",
-            "line": 71,
+            "line": 72,
             "column": 3,
-            "byteStart": 2445,
-            "byteEnd": 2479,
+            "byteStart": 2479,
+            "byteEnd": 2513,
             "token": "getOrganizationDriverSchemaForAuth",
             "evidence": "getOrganizationDriverSchemaForAuth",
             "reason": "Legacy driver-schema overlay authoring contract remains reachable.",
             "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
-            "trustedBlobOid": "cd2acb55b87b670ead005f11b229a6ff383294d3"
+            "trustedBlobOid": "f04eafe2e34b64363c6aa3797ba782b54d7a6685"
           },
           "sliceSha256": "a830994ce9c651f621f6376c293654c2033271813ee60ba87e38d13f663c9df8"
         },
@@ -2782,19 +3284,19 @@
             "evidence": "listOrganizationDriverSchemasForAuth"
           },
           "new": {
-            "id": "S12-CGH:legacy-overlay-catalog-contract:d6764c9d85da594f:844b1cde3fccf42e",
+            "id": "S12-CGH:legacy-overlay-catalog-contract:d6764c9d85da594f:11f60bda7a5dd164",
             "family": "S12-CGH",
             "rule": "legacy-overlay-catalog-contract",
             "file": "server/modules/parameter-specs/routes.ts",
-            "line": 72,
+            "line": 73,
             "column": 3,
-            "byteStart": 2483,
-            "byteEnd": 2519,
+            "byteStart": 2517,
+            "byteEnd": 2553,
             "token": "listOrganizationDriverSchemasForAuth",
             "evidence": "listOrganizationDriverSchemasForAuth",
             "reason": "Legacy driver-schema overlay authoring contract remains reachable.",
             "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
-            "trustedBlobOid": "cd2acb55b87b670ead005f11b229a6ff383294d3"
+            "trustedBlobOid": "f04eafe2e34b64363c6aa3797ba782b54d7a6685"
           },
           "sliceSha256": "56859c38d1793d5e2fcb11792d8f4ce6a0fb44ecfe462c3cfa5deb25b88046d4"
         },
@@ -2815,19 +3317,19 @@
             "evidence": "previewOrganizationDriverSchemaDeprecationForAuth"
           },
           "new": {
-            "id": "S12-CGH:legacy-overlay-catalog-contract:6215b018edf11763:352ca6b3fd87937b",
+            "id": "S12-CGH:legacy-overlay-catalog-contract:6215b018edf11763:5902ea5e602547c8",
             "family": "S12-CGH",
             "rule": "legacy-overlay-catalog-contract",
             "file": "server/modules/parameter-specs/routes.ts",
-            "line": 73,
+            "line": 74,
             "column": 3,
-            "byteStart": 2523,
-            "byteEnd": 2572,
+            "byteStart": 2557,
+            "byteEnd": 2606,
             "token": "previewOrganizationDriverSchemaDeprecationForAuth",
             "evidence": "previewOrganizationDriverSchemaDeprecationForAuth",
             "reason": "Legacy driver-schema overlay authoring contract remains reachable.",
             "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
-            "trustedBlobOid": "cd2acb55b87b670ead005f11b229a6ff383294d3"
+            "trustedBlobOid": "f04eafe2e34b64363c6aa3797ba782b54d7a6685"
           },
           "sliceSha256": "477ee42f5100938b8433b517036efe617b22e8255b5e68a441f16e633ab33ce2"
         },
@@ -2848,19 +3350,19 @@
             "evidence": "updateOrganizationDriverSchemaForAuth"
           },
           "new": {
-            "id": "S12-CGH:legacy-overlay-catalog-contract:c05119f88460a807:644d31bac88b733a",
+            "id": "S12-CGH:legacy-overlay-catalog-contract:c05119f88460a807:7e0f5490af7841c5",
             "family": "S12-CGH",
             "rule": "legacy-overlay-catalog-contract",
             "file": "server/modules/parameter-specs/routes.ts",
-            "line": 74,
+            "line": 75,
             "column": 3,
-            "byteStart": 2576,
-            "byteEnd": 2613,
+            "byteStart": 2610,
+            "byteEnd": 2647,
             "token": "updateOrganizationDriverSchemaForAuth",
             "evidence": "updateOrganizationDriverSchemaForAuth",
             "reason": "Legacy driver-schema overlay authoring contract remains reachable.",
             "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
-            "trustedBlobOid": "cd2acb55b87b670ead005f11b229a6ff383294d3"
+            "trustedBlobOid": "f04eafe2e34b64363c6aa3797ba782b54d7a6685"
           },
           "sliceSha256": "7eb216ddee33f5de9520de84c946bec29030b5a34e8b89495b123d2c1a1bfe4e"
         },
@@ -2881,19 +3383,19 @@
             "evidence": "promoteDriverSchemaOverlayForAuth"
           },
           "new": {
-            "id": "S12-CGH:legacy-overlay-catalog-contract:5a540956913e595d:35e5e4a60f0faf7d",
+            "id": "S12-CGH:legacy-overlay-catalog-contract:5a540956913e595d:f8c815d39cef3859",
             "family": "S12-CGH",
             "rule": "legacy-overlay-catalog-contract",
             "file": "server/modules/parameter-specs/routes.ts",
-            "line": 78,
+            "line": 79,
             "column": 3,
-            "byteStart": 2699,
-            "byteEnd": 2732,
+            "byteStart": 2733,
+            "byteEnd": 2766,
             "token": "promoteDriverSchemaOverlayForAuth",
             "evidence": "promoteDriverSchemaOverlayForAuth",
             "reason": "Legacy driver-schema overlay authoring contract remains reachable.",
             "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
-            "trustedBlobOid": "cd2acb55b87b670ead005f11b229a6ff383294d3"
+            "trustedBlobOid": "f04eafe2e34b64363c6aa3797ba782b54d7a6685"
           },
           "sliceSha256": "51d4a5b33e8c801aa5f8ada32bc2d51589b0d8fdfac998118fbe98c58f1db7fa"
         },
@@ -2914,19 +3416,19 @@
             "evidence": "revertDriverSchemaOverlayPromotionForAuth"
           },
           "new": {
-            "id": "S12-CGH:legacy-overlay-catalog-contract:c18408f8a2f0d034:74f34da9c41107c2",
+            "id": "S12-CGH:legacy-overlay-catalog-contract:c18408f8a2f0d034:28a41f86bd029c7a",
             "family": "S12-CGH",
             "rule": "legacy-overlay-catalog-contract",
             "file": "server/modules/parameter-specs/routes.ts",
-            "line": 79,
+            "line": 80,
             "column": 3,
-            "byteStart": 2736,
-            "byteEnd": 2777,
+            "byteStart": 2770,
+            "byteEnd": 2811,
             "token": "revertDriverSchemaOverlayPromotionForAuth",
             "evidence": "revertDriverSchemaOverlayPromotionForAuth",
             "reason": "Legacy driver-schema overlay authoring contract remains reachable.",
             "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
-            "trustedBlobOid": "cd2acb55b87b670ead005f11b229a6ff383294d3"
+            "trustedBlobOid": "f04eafe2e34b64363c6aa3797ba782b54d7a6685"
           },
           "sliceSha256": "562ae84031744e4a8fda8ab2f9006704fd2cf8648c8ab77d51488ea38df7474c"
         },
@@ -2947,19 +3449,19 @@
             "evidence": "/api/v2/parameter-specs"
           },
           "new": {
-            "id": "S12-CGH:legacy-catalog-route:52b29832d1119da4:f8efcd6f8ee76dd2",
+            "id": "S12-CGH:legacy-catalog-route:52b29832d1119da4:6167c82d36258f28",
             "family": "S12-CGH",
             "rule": "legacy-catalog-route",
             "file": "server/modules/parameter-specs/routes.ts",
-            "line": 143,
+            "line": 144,
             "column": 14,
-            "byteStart": 4450,
-            "byteEnd": 4475,
+            "byteStart": 4484,
+            "byteEnd": 4509,
             "token": "route:/api/v2/parameter-specs",
             "evidence": "/api/v2/parameter-specs",
             "reason": "Legacy structural Catalog or governance route remains pending retirement or exact adaptation.",
             "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
-            "trustedBlobOid": "cd2acb55b87b670ead005f11b229a6ff383294d3"
+            "trustedBlobOid": "f04eafe2e34b64363c6aa3797ba782b54d7a6685"
           },
           "sliceSha256": "eff25e6ae3230b2f4e71695dd6593933fcbf2f98f1d8c9c1264acce25d507b19"
         },
@@ -2980,19 +3482,19 @@
             "evidence": "/api/v2/parameter-specs"
           },
           "new": {
-            "id": "S12-CGH:legacy-catalog-route:3f535afb72cdb2da:4e790ff6044f1c56",
+            "id": "S12-CGH:legacy-catalog-route:3f535afb72cdb2da:babbd87e7a353bf9",
             "family": "S12-CGH",
             "rule": "legacy-catalog-route",
             "file": "server/modules/parameter-specs/routes.ts",
-            "line": 155,
+            "line": 159,
             "column": 15,
-            "byteStart": 4864,
-            "byteEnd": 4889,
+            "byteStart": 5032,
+            "byteEnd": 5057,
             "token": "route:/api/v2/parameter-specs",
             "evidence": "/api/v2/parameter-specs",
             "reason": "Legacy structural Catalog or governance route remains pending retirement or exact adaptation.",
             "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
-            "trustedBlobOid": "cd2acb55b87b670ead005f11b229a6ff383294d3"
+            "trustedBlobOid": "f04eafe2e34b64363c6aa3797ba782b54d7a6685"
           },
           "sliceSha256": "eff25e6ae3230b2f4e71695dd6593933fcbf2f98f1d8c9c1264acce25d507b19"
         },
@@ -3013,19 +3515,19 @@
             "evidence": "/api/v2/parameter-specs/:specId"
           },
           "new": {
-            "id": "S12-CGH:legacy-catalog-route:52b29832d1119da4:cad89cf875e1fafc",
+            "id": "S12-CGH:legacy-catalog-route:52b29832d1119da4:eb8cbc8229b380bd",
             "family": "S12-CGH",
             "rule": "legacy-catalog-route",
             "file": "server/modules/parameter-specs/routes.ts",
-            "line": 159,
+            "line": 163,
             "column": 14,
-            "byteStart": 5014,
-            "byteEnd": 5047,
+            "byteStart": 5182,
+            "byteEnd": 5215,
             "token": "route:/api/v2/parameter-specs",
             "evidence": "/api/v2/parameter-specs/:specId",
             "reason": "Legacy structural Catalog or governance route remains pending retirement or exact adaptation.",
             "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
-            "trustedBlobOid": "cd2acb55b87b670ead005f11b229a6ff383294d3"
+            "trustedBlobOid": "f04eafe2e34b64363c6aa3797ba782b54d7a6685"
           },
           "sliceSha256": "ea05e13397b3e3512d678a2ed4e0ca2f1d68f175a6677bd5cc56957f5a91276b"
         },
@@ -3046,19 +3548,19 @@
             "evidence": "effective"
           },
           "new": {
-            "id": "S12-CGH:legacy-effective-governance-contract:e81b0eb825d1cc13:db7a74329ecada75",
+            "id": "S12-CGH:legacy-effective-governance-contract:e81b0eb825d1cc13:4fb4c289440d4396",
             "family": "S12-CGH",
             "rule": "legacy-effective-governance-contract",
             "file": "server/modules/parameter-specs/routes.ts",
-            "line": 169,
+            "line": 173,
             "column": 27,
-            "byteStart": 5486,
-            "byteEnd": 5497,
+            "byteStart": 5654,
+            "byteEnd": 5665,
             "token": "view:effective",
             "evidence": "effective",
             "reason": "Legacy Effective or Governance catalog projection remains in a consumer contract.",
             "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
-            "trustedBlobOid": "cd2acb55b87b670ead005f11b229a6ff383294d3"
+            "trustedBlobOid": "f04eafe2e34b64363c6aa3797ba782b54d7a6685"
           },
           "sliceSha256": "392a9d004c9ff7439866fccc4c754ffdfd1a33ff69a4fc2f511df8bcdec3d15f"
         },
@@ -3079,19 +3581,19 @@
             "evidence": "/api/v2/parameter-spec-review-tasks"
           },
           "new": {
-            "id": "S12-CGH:legacy-catalog-route:bd9a4e7e0b43eccd:16c6c7c8f7d89cd4",
+            "id": "S12-CGH:legacy-catalog-route:bd9a4e7e0b43eccd:c5eff8d6b66e63ae",
             "family": "S12-CGH",
             "rule": "legacy-catalog-route",
             "file": "server/modules/parameter-specs/routes.ts",
-            "line": 174,
+            "line": 178,
             "column": 14,
-            "byteStart": 5569,
-            "byteEnd": 5606,
+            "byteStart": 5737,
+            "byteEnd": 5774,
             "token": "route:/api/v2/parameter-spec-review-tasks",
             "evidence": "/api/v2/parameter-spec-review-tasks",
             "reason": "Legacy structural Catalog or governance route remains pending retirement or exact adaptation.",
             "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
-            "trustedBlobOid": "cd2acb55b87b670ead005f11b229a6ff383294d3"
+            "trustedBlobOid": "f04eafe2e34b64363c6aa3797ba782b54d7a6685"
           },
           "sliceSha256": "20b961376bdf1c2348fc6903425dc075c0f0d77032cd195dc2ae37ffde6f5471"
         },
@@ -3112,19 +3614,19 @@
             "evidence": "/api/v2/parameter-spec-review-tasks/:taskId/resolve"
           },
           "new": {
-            "id": "S12-CGH:legacy-catalog-route:c4e18d1fec6d97c7:a7a275eb6f7c94a0",
+            "id": "S12-CGH:legacy-catalog-route:c4e18d1fec6d97c7:65290e931f5f5594",
             "family": "S12-CGH",
             "rule": "legacy-catalog-route",
             "file": "server/modules/parameter-specs/routes.ts",
-            "line": 187,
+            "line": 191,
             "column": 5,
-            "byteStart": 6003,
-            "byteEnd": 6056,
+            "byteStart": 6171,
+            "byteEnd": 6224,
             "token": "route:/api/v2/parameter-spec-review-tasks",
             "evidence": "/api/v2/parameter-spec-review-tasks/:taskId/resolve",
             "reason": "Legacy structural Catalog or governance route remains pending retirement or exact adaptation.",
             "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
-            "trustedBlobOid": "cd2acb55b87b670ead005f11b229a6ff383294d3"
+            "trustedBlobOid": "f04eafe2e34b64363c6aa3797ba782b54d7a6685"
           },
           "sliceSha256": "54d175467b5065175e64ec2adf0930a138c282e2fd1216a2e4465e77b4bc764b"
         },
@@ -3145,19 +3647,19 @@
             "evidence": "/api/v2/parameter-specs/:specId/activate"
           },
           "new": {
-            "id": "S12-CGH:legacy-catalog-route:3f535afb72cdb2da:0171183929ccf256",
+            "id": "S12-CGH:legacy-catalog-route:3f535afb72cdb2da:720b70907cebe6c2",
             "family": "S12-CGH",
             "rule": "legacy-catalog-route",
             "file": "server/modules/parameter-specs/routes.ts",
-            "line": 210,
+            "line": 214,
             "column": 15,
-            "byteStart": 6683,
-            "byteEnd": 6725,
+            "byteStart": 6851,
+            "byteEnd": 6893,
             "token": "route:/api/v2/parameter-specs",
             "evidence": "/api/v2/parameter-specs/:specId/activate",
             "reason": "Legacy structural Catalog or governance route remains pending retirement or exact adaptation.",
             "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
-            "trustedBlobOid": "cd2acb55b87b670ead005f11b229a6ff383294d3"
+            "trustedBlobOid": "f04eafe2e34b64363c6aa3797ba782b54d7a6685"
           },
           "sliceSha256": "5f83ca4f89d632474dddc6bbe51319a34822cdc719108a06d55d528d2c2684ce"
         },
@@ -3178,19 +3680,19 @@
             "evidence": "/api/v2/parameter-specs/:specId/cutover"
           },
           "new": {
-            "id": "S12-CGH:legacy-catalog-route:52b29832d1119da4:8c0dfe765b5cc4b7",
+            "id": "S12-CGH:legacy-catalog-route:52b29832d1119da4:2575e0625f01c275",
             "family": "S12-CGH",
             "rule": "legacy-catalog-route",
             "file": "server/modules/parameter-specs/routes.ts",
-            "line": 232,
+            "line": 236,
             "column": 14,
-            "byteStart": 7350,
-            "byteEnd": 7391,
+            "byteStart": 7518,
+            "byteEnd": 7559,
             "token": "route:/api/v2/parameter-specs",
             "evidence": "/api/v2/parameter-specs/:specId/cutover",
             "reason": "Legacy structural Catalog or governance route remains pending retirement or exact adaptation.",
             "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
-            "trustedBlobOid": "cd2acb55b87b670ead005f11b229a6ff383294d3"
+            "trustedBlobOid": "f04eafe2e34b64363c6aa3797ba782b54d7a6685"
           },
           "sliceSha256": "866db86104713b7c78733daccf197df52b72459d9bf3a9464cb8ea21b0274a5f"
         },
@@ -3211,19 +3713,19 @@
             "evidence": "/api/v2/parameter-specs/:specId/cutover/prepare"
           },
           "new": {
-            "id": "S12-CGH:legacy-catalog-route:3f535afb72cdb2da:d0d93a189259dfaf",
+            "id": "S12-CGH:legacy-catalog-route:3f535afb72cdb2da:6568058465e16513",
             "family": "S12-CGH",
             "rule": "legacy-catalog-route",
             "file": "server/modules/parameter-specs/routes.ts",
-            "line": 246,
+            "line": 250,
             "column": 5,
-            "byteStart": 7801,
-            "byteEnd": 7850,
+            "byteStart": 7969,
+            "byteEnd": 8018,
             "token": "route:/api/v2/parameter-specs",
             "evidence": "/api/v2/parameter-specs/:specId/cutover/prepare",
             "reason": "Legacy structural Catalog or governance route remains pending retirement or exact adaptation.",
             "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
-            "trustedBlobOid": "cd2acb55b87b670ead005f11b229a6ff383294d3"
+            "trustedBlobOid": "f04eafe2e34b64363c6aa3797ba782b54d7a6685"
           },
           "sliceSha256": "7cf86d8d141067ae4809beb0f30a4b5a088974005ebe5736925540df71e86a71"
         },
@@ -3244,19 +3746,19 @@
             "evidence": "/api/v2/parameter-specs/:specId/cutover/finalize"
           },
           "new": {
-            "id": "S12-CGH:legacy-catalog-route:3f535afb72cdb2da:a4185c0e0ddbcc70",
+            "id": "S12-CGH:legacy-catalog-route:3f535afb72cdb2da:ad03772057eed937",
             "family": "S12-CGH",
             "rule": "legacy-catalog-route",
             "file": "server/modules/parameter-specs/routes.ts",
-            "line": 267,
+            "line": 271,
             "column": 5,
-            "byteStart": 8472,
-            "byteEnd": 8522,
+            "byteStart": 8640,
+            "byteEnd": 8690,
             "token": "route:/api/v2/parameter-specs",
             "evidence": "/api/v2/parameter-specs/:specId/cutover/finalize",
             "reason": "Legacy structural Catalog or governance route remains pending retirement or exact adaptation.",
             "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
-            "trustedBlobOid": "cd2acb55b87b670ead005f11b229a6ff383294d3"
+            "trustedBlobOid": "f04eafe2e34b64363c6aa3797ba782b54d7a6685"
           },
           "sliceSha256": "a2851a80e89917671f6040726862bcc66a48767a12857bcf2b4876b5970820f3"
         },
@@ -3277,19 +3779,19 @@
             "evidence": "/api/v2/parameter-specs/:specId/deprecate"
           },
           "new": {
-            "id": "S12-CGH:legacy-catalog-route:3f535afb72cdb2da:aec7fb3cd7fd5b81",
+            "id": "S12-CGH:legacy-catalog-route:3f535afb72cdb2da:952201819092612c",
             "family": "S12-CGH",
             "rule": "legacy-catalog-route",
             "file": "server/modules/parameter-specs/routes.ts",
-            "line": 287,
+            "line": 291,
             "column": 15,
-            "byteStart": 9148,
-            "byteEnd": 9191,
+            "byteStart": 9316,
+            "byteEnd": 9359,
             "token": "route:/api/v2/parameter-specs",
             "evidence": "/api/v2/parameter-specs/:specId/deprecate",
             "reason": "Legacy structural Catalog or governance route remains pending retirement or exact adaptation.",
             "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
-            "trustedBlobOid": "cd2acb55b87b670ead005f11b229a6ff383294d3"
+            "trustedBlobOid": "f04eafe2e34b64363c6aa3797ba782b54d7a6685"
           },
           "sliceSha256": "f2816408764b8b9294e8f806292a9557c45ac611b05326535dfa87e8c54b016b"
         },
@@ -3310,19 +3812,19 @@
             "evidence": "/api/v2/parameter-specs/:specId/restore"
           },
           "new": {
-            "id": "S12-CGH:legacy-catalog-route:3f535afb72cdb2da:433112b9f47ded67",
+            "id": "S12-CGH:legacy-catalog-route:3f535afb72cdb2da:9d5107ec069825e7",
             "family": "S12-CGH",
             "rule": "legacy-catalog-route",
             "file": "server/modules/parameter-specs/routes.ts",
-            "line": 305,
+            "line": 309,
             "column": 15,
-            "byteStart": 9751,
-            "byteEnd": 9792,
+            "byteStart": 9919,
+            "byteEnd": 9960,
             "token": "route:/api/v2/parameter-specs",
             "evidence": "/api/v2/parameter-specs/:specId/restore",
             "reason": "Legacy structural Catalog or governance route remains pending retirement or exact adaptation.",
             "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
-            "trustedBlobOid": "cd2acb55b87b670ead005f11b229a6ff383294d3"
+            "trustedBlobOid": "f04eafe2e34b64363c6aa3797ba782b54d7a6685"
           },
           "sliceSha256": "8218176ed8f9fb5b3ff6fb84cd0c75d3f819441a3d2a4f0683d7e61d5abd1161"
         },
@@ -3343,19 +3845,19 @@
             "evidence": "/api/v2/parameter-specs/:specId/reattribute"
           },
           "new": {
-            "id": "S12-CGH:legacy-catalog-route:3f535afb72cdb2da:f7eddfb498f39e8c",
+            "id": "S12-CGH:legacy-catalog-route:3f535afb72cdb2da:60061bfbad324781",
             "family": "S12-CGH",
             "rule": "legacy-catalog-route",
             "file": "server/modules/parameter-specs/routes.ts",
-            "line": 324,
+            "line": 328,
             "column": 5,
-            "byteStart": 10353,
-            "byteEnd": 10398,
+            "byteStart": 10521,
+            "byteEnd": 10566,
             "token": "route:/api/v2/parameter-specs",
             "evidence": "/api/v2/parameter-specs/:specId/reattribute",
             "reason": "Legacy structural Catalog or governance route remains pending retirement or exact adaptation.",
             "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
-            "trustedBlobOid": "cd2acb55b87b670ead005f11b229a6ff383294d3"
+            "trustedBlobOid": "f04eafe2e34b64363c6aa3797ba782b54d7a6685"
           },
           "sliceSha256": "417be697430e42a1c71f1df736f801ffabcc896a4017dd750fd81965a1a8232e"
         },
@@ -3376,19 +3878,19 @@
             "evidence": "/api/v2/parameter-specs/:specId/rename-property-key"
           },
           "new": {
-            "id": "S12-CGH:legacy-catalog-route:3f535afb72cdb2da:2f9dc3ca9b2dba51",
+            "id": "S12-CGH:legacy-catalog-route:3f535afb72cdb2da:c1c24aa613d91e31",
             "family": "S12-CGH",
             "rule": "legacy-catalog-route",
             "file": "server/modules/parameter-specs/routes.ts",
-            "line": 345,
+            "line": 349,
             "column": 5,
-            "byteStart": 11007,
-            "byteEnd": 11060,
+            "byteStart": 11175,
+            "byteEnd": 11228,
             "token": "route:/api/v2/parameter-specs",
             "evidence": "/api/v2/parameter-specs/:specId/rename-property-key",
             "reason": "Legacy structural Catalog or governance route remains pending retirement or exact adaptation.",
             "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
-            "trustedBlobOid": "cd2acb55b87b670ead005f11b229a6ff383294d3"
+            "trustedBlobOid": "f04eafe2e34b64363c6aa3797ba782b54d7a6685"
           },
           "sliceSha256": "b8df24a6e825a4f5138dc795ace94d03b07ef56b2f6ff003b963510615c6ef5b"
         },
@@ -3409,19 +3911,19 @@
             "evidence": "/api/v2/parameter-specs/:specId/property-key-cutover"
           },
           "new": {
-            "id": "S12-CGH:legacy-catalog-route:52b29832d1119da4:fd82103eda4524bd",
+            "id": "S12-CGH:legacy-catalog-route:52b29832d1119da4:c340523ab359f934",
             "family": "S12-CGH",
             "rule": "legacy-catalog-route",
             "file": "server/modules/parameter-specs/routes.ts",
-            "line": 366,
+            "line": 370,
             "column": 5,
-            "byteStart": 11680,
-            "byteEnd": 11734,
+            "byteStart": 11848,
+            "byteEnd": 11902,
             "token": "route:/api/v2/parameter-specs",
             "evidence": "/api/v2/parameter-specs/:specId/property-key-cutover",
             "reason": "Legacy structural Catalog or governance route remains pending retirement or exact adaptation.",
             "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
-            "trustedBlobOid": "cd2acb55b87b670ead005f11b229a6ff383294d3"
+            "trustedBlobOid": "f04eafe2e34b64363c6aa3797ba782b54d7a6685"
           },
           "sliceSha256": "6721b0a57fdc0e51adc756548590615d827e8434043cf03954ea093cc3537da2"
         },
@@ -3442,19 +3944,19 @@
             "evidence": "/api/v2/parameter-specs/:specId/property-key-cutover/preview"
           },
           "new": {
-            "id": "S12-CGH:legacy-catalog-route:3f535afb72cdb2da:93ae44f2dd8eb07c",
+            "id": "S12-CGH:legacy-catalog-route:3f535afb72cdb2da:6233e669c9f28de1",
             "family": "S12-CGH",
             "rule": "legacy-catalog-route",
             "file": "server/modules/parameter-specs/routes.ts",
-            "line": 382,
+            "line": 386,
             "column": 5,
-            "byteStart": 12170,
-            "byteEnd": 12232,
+            "byteStart": 12338,
+            "byteEnd": 12400,
             "token": "route:/api/v2/parameter-specs",
             "evidence": "/api/v2/parameter-specs/:specId/property-key-cutover/preview",
             "reason": "Legacy structural Catalog or governance route remains pending retirement or exact adaptation.",
             "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
-            "trustedBlobOid": "cd2acb55b87b670ead005f11b229a6ff383294d3"
+            "trustedBlobOid": "f04eafe2e34b64363c6aa3797ba782b54d7a6685"
           },
           "sliceSha256": "7d195260e38f2a4444411a9f794108c43b7d1eac2f118c6b14c238122b394faf"
         },
@@ -3475,19 +3977,19 @@
             "evidence": "/api/v2/parameter-specs/:specId/property-key-cutover/start"
           },
           "new": {
-            "id": "S12-CGH:legacy-catalog-route:3f535afb72cdb2da:6ff17387e81d2ff2",
+            "id": "S12-CGH:legacy-catalog-route:3f535afb72cdb2da:8a6476f6785ebc86",
             "family": "S12-CGH",
             "rule": "legacy-catalog-route",
             "file": "server/modules/parameter-specs/routes.ts",
-            "line": 401,
+            "line": 405,
             "column": 5,
-            "byteStart": 12819,
-            "byteEnd": 12879,
+            "byteStart": 12987,
+            "byteEnd": 13047,
             "token": "route:/api/v2/parameter-specs",
             "evidence": "/api/v2/parameter-specs/:specId/property-key-cutover/start",
             "reason": "Legacy structural Catalog or governance route remains pending retirement or exact adaptation.",
             "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
-            "trustedBlobOid": "cd2acb55b87b670ead005f11b229a6ff383294d3"
+            "trustedBlobOid": "f04eafe2e34b64363c6aa3797ba782b54d7a6685"
           },
           "sliceSha256": "c7354db3a6ac6dbc21ef84f5171527cbb54cfc5d894f5450d3ad6836f89bb8ec"
         },
@@ -3508,19 +4010,19 @@
             "evidence": "/api/v2/parameter-specs/:specId/property-key-cutover/prepare"
           },
           "new": {
-            "id": "S12-CGH:legacy-catalog-route:3f535afb72cdb2da:9d8352ef04d22318",
+            "id": "S12-CGH:legacy-catalog-route:3f535afb72cdb2da:dc06be51b1044c80",
             "family": "S12-CGH",
             "rule": "legacy-catalog-route",
             "file": "server/modules/parameter-specs/routes.ts",
-            "line": 426,
+            "line": 430,
             "column": 5,
-            "byteStart": 13574,
-            "byteEnd": 13636,
+            "byteStart": 13742,
+            "byteEnd": 13804,
             "token": "route:/api/v2/parameter-specs",
             "evidence": "/api/v2/parameter-specs/:specId/property-key-cutover/prepare",
             "reason": "Legacy structural Catalog or governance route remains pending retirement or exact adaptation.",
             "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
-            "trustedBlobOid": "cd2acb55b87b670ead005f11b229a6ff383294d3"
+            "trustedBlobOid": "f04eafe2e34b64363c6aa3797ba782b54d7a6685"
           },
           "sliceSha256": "28fc2b3335a29c37c943be4f744042713d6125e1990b1f6121d93d75ec27a38b"
         },
@@ -3541,19 +4043,19 @@
             "evidence": "/api/v2/parameter-specs/:specId/property-key-cutover/finalize"
           },
           "new": {
-            "id": "S12-CGH:legacy-catalog-route:3f535afb72cdb2da:224348c0e5c856a0",
+            "id": "S12-CGH:legacy-catalog-route:3f535afb72cdb2da:21a964f649a18860",
             "family": "S12-CGH",
             "rule": "legacy-catalog-route",
             "file": "server/modules/parameter-specs/routes.ts",
-            "line": 458,
+            "line": 462,
             "column": 5,
-            "byteStart": 14647,
-            "byteEnd": 14710,
+            "byteStart": 14815,
+            "byteEnd": 14878,
             "token": "route:/api/v2/parameter-specs",
             "evidence": "/api/v2/parameter-specs/:specId/property-key-cutover/finalize",
             "reason": "Legacy structural Catalog or governance route remains pending retirement or exact adaptation.",
             "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
-            "trustedBlobOid": "cd2acb55b87b670ead005f11b229a6ff383294d3"
+            "trustedBlobOid": "f04eafe2e34b64363c6aa3797ba782b54d7a6685"
           },
           "sliceSha256": "8991e3b0d6e96adc808e1e975200835ef49ead723bf1b6b5930624e69335d0a8"
         },
@@ -3574,19 +4076,19 @@
             "evidence": "/api/v2/parameter-specs/:specId"
           },
           "new": {
-            "id": "S12-CGH:legacy-catalog-route:0ceaed2e4f910932:0f20a4f901b8b851",
+            "id": "S12-CGH:legacy-catalog-route:0ceaed2e4f910932:0a48981760df3905",
             "family": "S12-CGH",
             "rule": "legacy-catalog-route",
             "file": "server/modules/parameter-specs/routes.ts",
-            "line": 478,
+            "line": 482,
             "column": 16,
-            "byteStart": 15337,
-            "byteEnd": 15370,
+            "byteStart": 15505,
+            "byteEnd": 15538,
             "token": "route:/api/v2/parameter-specs",
             "evidence": "/api/v2/parameter-specs/:specId",
             "reason": "Legacy structural Catalog or governance route remains pending retirement or exact adaptation.",
             "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
-            "trustedBlobOid": "cd2acb55b87b670ead005f11b229a6ff383294d3"
+            "trustedBlobOid": "f04eafe2e34b64363c6aa3797ba782b54d7a6685"
           },
           "sliceSha256": "ea05e13397b3e3512d678a2ed4e0ca2f1d68f175a6677bd5cc56957f5a91276b"
         },
@@ -3607,19 +4109,19 @@
             "evidence": "/api/v2/organization-driver-schemas"
           },
           "new": {
-            "id": "S12-CGH:legacy-catalog-route:18cf37dad8f5f4e8:2151e9552a840f81",
+            "id": "S12-CGH:legacy-catalog-route:18cf37dad8f5f4e8:860efb4140f99638",
             "family": "S12-CGH",
             "rule": "legacy-catalog-route",
             "file": "server/modules/parameter-specs/routes.ts",
-            "line": 499,
+            "line": 503,
             "column": 14,
-            "byteStart": 15946,
-            "byteEnd": 15983,
+            "byteStart": 16114,
+            "byteEnd": 16151,
             "token": "route:/api/v2/organization-driver-schemas",
             "evidence": "/api/v2/organization-driver-schemas",
             "reason": "Legacy structural Catalog or governance route remains pending retirement or exact adaptation.",
             "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
-            "trustedBlobOid": "cd2acb55b87b670ead005f11b229a6ff383294d3"
+            "trustedBlobOid": "f04eafe2e34b64363c6aa3797ba782b54d7a6685"
           },
           "sliceSha256": "467e2e9838d5b5b905fd6c4528ab050728d0023b879859e2b25c06040c311386"
         },
@@ -3640,19 +4142,19 @@
             "evidence": "/api/v2/organization-driver-schemas"
           },
           "new": {
-            "id": "S12-CGH:legacy-overlay-catalog-contract:0f39ef0e1aa73f09:0170d9dff324ff33",
+            "id": "S12-CGH:legacy-overlay-catalog-contract:0f39ef0e1aa73f09:40a042b2c5678464",
             "family": "S12-CGH",
             "rule": "legacy-overlay-catalog-contract",
             "file": "server/modules/parameter-specs/routes.ts",
-            "line": 499,
+            "line": 503,
             "column": 14,
-            "byteStart": 15946,
-            "byteEnd": 15983,
+            "byteStart": 16114,
+            "byteEnd": 16151,
             "token": "overlay:organization-driver-schemas",
             "evidence": "/api/v2/organization-driver-schemas",
             "reason": "Legacy driver-schema overlay authoring contract remains reachable.",
             "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
-            "trustedBlobOid": "cd2acb55b87b670ead005f11b229a6ff383294d3"
+            "trustedBlobOid": "f04eafe2e34b64363c6aa3797ba782b54d7a6685"
           },
           "sliceSha256": "467e2e9838d5b5b905fd6c4528ab050728d0023b879859e2b25c06040c311386"
         },
@@ -3673,19 +4175,19 @@
             "evidence": "listOrganizationDriverSchemasForAuth"
           },
           "new": {
-            "id": "S12-CGH:legacy-overlay-catalog-contract:29b969275625b83f:be9d02bd064c8c6f",
+            "id": "S12-CGH:legacy-overlay-catalog-contract:29b969275625b83f:99268befdcf2609a",
             "family": "S12-CGH",
             "rule": "legacy-overlay-catalog-contract",
             "file": "server/modules/parameter-specs/routes.ts",
-            "line": 502,
+            "line": 506,
             "column": 26,
-            "byteStart": 16132,
-            "byteEnd": 16168,
+            "byteStart": 16300,
+            "byteEnd": 16336,
             "token": "listOrganizationDriverSchemasForAuth",
             "evidence": "listOrganizationDriverSchemasForAuth",
             "reason": "Legacy driver-schema overlay authoring contract remains reachable.",
             "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
-            "trustedBlobOid": "cd2acb55b87b670ead005f11b229a6ff383294d3"
+            "trustedBlobOid": "f04eafe2e34b64363c6aa3797ba782b54d7a6685"
           },
           "sliceSha256": "56859c38d1793d5e2fcb11792d8f4ce6a0fb44ecfe462c3cfa5deb25b88046d4"
         },
@@ -3706,19 +4208,19 @@
             "evidence": "/api/v2/organization-driver-schemas/:schemaId"
           },
           "new": {
-            "id": "S12-CGH:legacy-catalog-route:18cf37dad8f5f4e8:7b4401d6e9f50ee2",
+            "id": "S12-CGH:legacy-catalog-route:18cf37dad8f5f4e8:29549b48ba7b2fbe",
             "family": "S12-CGH",
             "rule": "legacy-catalog-route",
             "file": "server/modules/parameter-specs/routes.ts",
-            "line": 507,
+            "line": 511,
             "column": 5,
-            "byteStart": 16247,
-            "byteEnd": 16294,
+            "byteStart": 16415,
+            "byteEnd": 16462,
             "token": "route:/api/v2/organization-driver-schemas",
             "evidence": "/api/v2/organization-driver-schemas/:schemaId",
             "reason": "Legacy structural Catalog or governance route remains pending retirement or exact adaptation.",
             "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
-            "trustedBlobOid": "cd2acb55b87b670ead005f11b229a6ff383294d3"
+            "trustedBlobOid": "f04eafe2e34b64363c6aa3797ba782b54d7a6685"
           },
           "sliceSha256": "af5de445322d2c136c0679efa4f5e1da4c13bc3ab9f4a5d44c3ecdf3faf16095"
         },
@@ -3739,19 +4241,19 @@
             "evidence": "/api/v2/organization-driver-schemas/:schemaId"
           },
           "new": {
-            "id": "S12-CGH:legacy-overlay-catalog-contract:0f39ef0e1aa73f09:6c383613703a4f88",
+            "id": "S12-CGH:legacy-overlay-catalog-contract:0f39ef0e1aa73f09:17cd72dce845c792",
             "family": "S12-CGH",
             "rule": "legacy-overlay-catalog-contract",
             "file": "server/modules/parameter-specs/routes.ts",
-            "line": 507,
+            "line": 511,
             "column": 5,
-            "byteStart": 16247,
-            "byteEnd": 16294,
+            "byteStart": 16415,
+            "byteEnd": 16462,
             "token": "overlay:organization-driver-schemas",
             "evidence": "/api/v2/organization-driver-schemas/:schemaId",
             "reason": "Legacy driver-schema overlay authoring contract remains reachable.",
             "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
-            "trustedBlobOid": "cd2acb55b87b670ead005f11b229a6ff383294d3"
+            "trustedBlobOid": "f04eafe2e34b64363c6aa3797ba782b54d7a6685"
           },
           "sliceSha256": "af5de445322d2c136c0679efa4f5e1da4c13bc3ab9f4a5d44c3ecdf3faf16095"
         },
@@ -3772,19 +4274,19 @@
             "evidence": "getOrganizationDriverSchemaForAuth"
           },
           "new": {
-            "id": "S12-CGH:legacy-overlay-catalog-contract:7f8a0105451ce000:06898d15fbc45e69",
+            "id": "S12-CGH:legacy-overlay-catalog-contract:7f8a0105451ce000:8342ced72e27fcbe",
             "family": "S12-CGH",
             "rule": "legacy-overlay-catalog-contract",
             "file": "server/modules/parameter-specs/routes.ts",
-            "line": 515,
+            "line": 519,
             "column": 26,
-            "byteStart": 16568,
-            "byteEnd": 16602,
+            "byteStart": 16736,
+            "byteEnd": 16770,
             "token": "getOrganizationDriverSchemaForAuth",
             "evidence": "getOrganizationDriverSchemaForAuth",
             "reason": "Legacy driver-schema overlay authoring contract remains reachable.",
             "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
-            "trustedBlobOid": "cd2acb55b87b670ead005f11b229a6ff383294d3"
+            "trustedBlobOid": "f04eafe2e34b64363c6aa3797ba782b54d7a6685"
           },
           "sliceSha256": "a830994ce9c651f621f6376c293654c2033271813ee60ba87e38d13f663c9df8"
         },
@@ -3805,19 +4307,19 @@
             "evidence": "/api/v2/organization-driver-schemas"
           },
           "new": {
-            "id": "S12-CGH:legacy-catalog-route:de5dda7dd652d5dd:db8a52c854d881ad",
+            "id": "S12-CGH:legacy-catalog-route:de5dda7dd652d5dd:fd2b7fb63b2f1d9a",
             "family": "S12-CGH",
             "rule": "legacy-catalog-route",
             "file": "server/modules/parameter-specs/routes.ts",
-            "line": 524,
+            "line": 528,
             "column": 15,
-            "byteStart": 16737,
-            "byteEnd": 16774,
+            "byteStart": 16905,
+            "byteEnd": 16942,
             "token": "route:/api/v2/organization-driver-schemas",
             "evidence": "/api/v2/organization-driver-schemas",
             "reason": "Legacy structural Catalog or governance route remains pending retirement or exact adaptation.",
             "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
-            "trustedBlobOid": "cd2acb55b87b670ead005f11b229a6ff383294d3"
+            "trustedBlobOid": "f04eafe2e34b64363c6aa3797ba782b54d7a6685"
           },
           "sliceSha256": "467e2e9838d5b5b905fd6c4528ab050728d0023b879859e2b25c06040c311386"
         },
@@ -3838,19 +4340,19 @@
             "evidence": "/api/v2/organization-driver-schemas"
           },
           "new": {
-            "id": "S12-CGH:legacy-overlay-catalog-contract:0922005808b1783e:5d01aac624a8d0c3",
+            "id": "S12-CGH:legacy-overlay-catalog-contract:0922005808b1783e:cb8861c7a0a37a61",
             "family": "S12-CGH",
             "rule": "legacy-overlay-catalog-contract",
             "file": "server/modules/parameter-specs/routes.ts",
-            "line": 524,
+            "line": 528,
             "column": 15,
-            "byteStart": 16737,
-            "byteEnd": 16774,
+            "byteStart": 16905,
+            "byteEnd": 16942,
             "token": "overlay:organization-driver-schemas",
             "evidence": "/api/v2/organization-driver-schemas",
             "reason": "Legacy driver-schema overlay authoring contract remains reachable.",
             "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
-            "trustedBlobOid": "cd2acb55b87b670ead005f11b229a6ff383294d3"
+            "trustedBlobOid": "f04eafe2e34b64363c6aa3797ba782b54d7a6685"
           },
           "sliceSha256": "467e2e9838d5b5b905fd6c4528ab050728d0023b879859e2b25c06040c311386"
         },
@@ -3871,19 +4373,19 @@
             "evidence": "createOrganizationDriverSchemaBodySchema"
           },
           "new": {
-            "id": "S12-CGH:legacy-overlay-catalog-contract:3076e3613f4945ef:36e58da4f5b4457a",
+            "id": "S12-CGH:legacy-overlay-catalog-contract:3076e3613f4945ef:f02eaa6e2e3277ea",
             "family": "S12-CGH",
             "rule": "legacy-overlay-catalog-contract",
             "file": "server/modules/parameter-specs/routes.ts",
-            "line": 528,
+            "line": 532,
             "column": 7,
-            "byteStart": 16938,
-            "byteEnd": 16978,
+            "byteStart": 17106,
+            "byteEnd": 17146,
             "token": "createOrganizationDriverSchemaBodySchema",
             "evidence": "createOrganizationDriverSchemaBodySchema",
             "reason": "Legacy driver-schema overlay authoring contract remains reachable.",
             "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
-            "trustedBlobOid": "cd2acb55b87b670ead005f11b229a6ff383294d3"
+            "trustedBlobOid": "f04eafe2e34b64363c6aa3797ba782b54d7a6685"
           },
           "sliceSha256": "29b22d45a791418df856580527eb32d5b1e79f3cce0f4bfce676461d2dc42486"
         },
@@ -3904,19 +4406,19 @@
             "evidence": "createOrganizationDriverSchemaForAuth"
           },
           "new": {
-            "id": "S12-CGH:legacy-overlay-catalog-contract:bdc4d9fca645bfcc:f74d727792a8e396",
+            "id": "S12-CGH:legacy-overlay-catalog-contract:bdc4d9fca645bfcc:d84ad83a58e3931a",
             "family": "S12-CGH",
             "rule": "legacy-overlay-catalog-contract",
             "file": "server/modules/parameter-specs/routes.ts",
-            "line": 531,
+            "line": 535,
             "column": 24,
-            "byteStart": 17036,
-            "byteEnd": 17073,
+            "byteStart": 17204,
+            "byteEnd": 17241,
             "token": "createOrganizationDriverSchemaForAuth",
             "evidence": "createOrganizationDriverSchemaForAuth",
             "reason": "Legacy driver-schema overlay authoring contract remains reachable.",
             "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
-            "trustedBlobOid": "cd2acb55b87b670ead005f11b229a6ff383294d3"
+            "trustedBlobOid": "f04eafe2e34b64363c6aa3797ba782b54d7a6685"
           },
           "sliceSha256": "00fb32390a409af7e2b2a0af7f904ff4edf3348bfed800a610f59b96883258bc"
         },
@@ -3937,19 +4439,19 @@
             "evidence": "/api/v2/organization-driver-schemas/:schemaId"
           },
           "new": {
-            "id": "S12-CGH:legacy-catalog-route:6cfc4a907f0064d3:ddb3e505c2891b13",
+            "id": "S12-CGH:legacy-catalog-route:6cfc4a907f0064d3:6f11beb22c96953a",
             "family": "S12-CGH",
             "rule": "legacy-catalog-route",
             "file": "server/modules/parameter-specs/routes.ts",
-            "line": 538,
+            "line": 542,
             "column": 5,
-            "byteStart": 17207,
-            "byteEnd": 17254,
+            "byteStart": 17375,
+            "byteEnd": 17422,
             "token": "route:/api/v2/organization-driver-schemas",
             "evidence": "/api/v2/organization-driver-schemas/:schemaId",
             "reason": "Legacy structural Catalog or governance route remains pending retirement or exact adaptation.",
             "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
-            "trustedBlobOid": "cd2acb55b87b670ead005f11b229a6ff383294d3"
+            "trustedBlobOid": "f04eafe2e34b64363c6aa3797ba782b54d7a6685"
           },
           "sliceSha256": "af5de445322d2c136c0679efa4f5e1da4c13bc3ab9f4a5d44c3ecdf3faf16095"
         },
@@ -3970,19 +4472,19 @@
             "evidence": "/api/v2/organization-driver-schemas/:schemaId"
           },
           "new": {
-            "id": "S12-CGH:legacy-overlay-catalog-contract:2030e9ea3a4fec93:497c98aaa247b720",
+            "id": "S12-CGH:legacy-overlay-catalog-contract:2030e9ea3a4fec93:5f87e6e26c24357d",
             "family": "S12-CGH",
             "rule": "legacy-overlay-catalog-contract",
             "file": "server/modules/parameter-specs/routes.ts",
-            "line": 538,
+            "line": 542,
             "column": 5,
-            "byteStart": 17207,
-            "byteEnd": 17254,
+            "byteStart": 17375,
+            "byteEnd": 17422,
             "token": "overlay:organization-driver-schemas",
             "evidence": "/api/v2/organization-driver-schemas/:schemaId",
             "reason": "Legacy driver-schema overlay authoring contract remains reachable.",
             "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
-            "trustedBlobOid": "cd2acb55b87b670ead005f11b229a6ff383294d3"
+            "trustedBlobOid": "f04eafe2e34b64363c6aa3797ba782b54d7a6685"
           },
           "sliceSha256": "af5de445322d2c136c0679efa4f5e1da4c13bc3ab9f4a5d44c3ecdf3faf16095"
         },
@@ -4003,19 +4505,19 @@
             "evidence": "updateOrganizationDriverSchemaBodySchema"
           },
           "new": {
-            "id": "S12-CGH:legacy-overlay-catalog-contract:459b7e723a6183f4:bc7fcc3b5e754e3a",
+            "id": "S12-CGH:legacy-overlay-catalog-contract:459b7e723a6183f4:9291e6a79bcbdacc",
             "family": "S12-CGH",
             "rule": "legacy-overlay-catalog-contract",
             "file": "server/modules/parameter-specs/routes.ts",
-            "line": 547,
+            "line": 551,
             "column": 9,
-            "byteStart": 17547,
-            "byteEnd": 17587,
+            "byteStart": 17715,
+            "byteEnd": 17755,
             "token": "updateOrganizationDriverSchemaBodySchema",
             "evidence": "updateOrganizationDriverSchemaBodySchema",
             "reason": "Legacy driver-schema overlay authoring contract remains reachable.",
             "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
-            "trustedBlobOid": "cd2acb55b87b670ead005f11b229a6ff383294d3"
+            "trustedBlobOid": "f04eafe2e34b64363c6aa3797ba782b54d7a6685"
           },
           "sliceSha256": "bf541eb392f3cccd292be6807323b802297f3c9687343af8faf467bc418c51a5"
         },
@@ -4036,19 +4538,19 @@
             "evidence": "updateOrganizationDriverSchemaForAuth"
           },
           "new": {
-            "id": "S12-CGH:legacy-overlay-catalog-contract:fa05a0fb85205330:ffb7425c2890d4ea",
+            "id": "S12-CGH:legacy-overlay-catalog-contract:fa05a0fb85205330:59bfa63ffb3c8da4",
             "family": "S12-CGH",
             "rule": "legacy-overlay-catalog-contract",
             "file": "server/modules/parameter-specs/routes.ts",
-            "line": 550,
+            "line": 554,
             "column": 26,
-            "byteStart": 17651,
-            "byteEnd": 17688,
+            "byteStart": 17819,
+            "byteEnd": 17856,
             "token": "updateOrganizationDriverSchemaForAuth",
             "evidence": "updateOrganizationDriverSchemaForAuth",
             "reason": "Legacy driver-schema overlay authoring contract remains reachable.",
             "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
-            "trustedBlobOid": "cd2acb55b87b670ead005f11b229a6ff383294d3"
+            "trustedBlobOid": "f04eafe2e34b64363c6aa3797ba782b54d7a6685"
           },
           "sliceSha256": "7eb216ddee33f5de9520de84c946bec29030b5a34e8b89495b123d2c1a1bfe4e"
         },
@@ -4069,19 +4571,19 @@
             "evidence": "/api/v2/organization-driver-schemas/:schemaId/activate"
           },
           "new": {
-            "id": "S12-CGH:legacy-catalog-route:de5dda7dd652d5dd:fe52803d9df344f6",
+            "id": "S12-CGH:legacy-catalog-route:de5dda7dd652d5dd:351496fe16b6ef1d",
             "family": "S12-CGH",
             "rule": "legacy-catalog-route",
             "file": "server/modules/parameter-specs/routes.ts",
-            "line": 562,
+            "line": 566,
             "column": 5,
-            "byteStart": 17884,
-            "byteEnd": 17940,
+            "byteStart": 18052,
+            "byteEnd": 18108,
             "token": "route:/api/v2/organization-driver-schemas",
             "evidence": "/api/v2/organization-driver-schemas/:schemaId/activate",
             "reason": "Legacy structural Catalog or governance route remains pending retirement or exact adaptation.",
             "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
-            "trustedBlobOid": "cd2acb55b87b670ead005f11b229a6ff383294d3"
+            "trustedBlobOid": "f04eafe2e34b64363c6aa3797ba782b54d7a6685"
           },
           "sliceSha256": "a36927aca52ef319a1366180194c57a8ab16ef0a4322404b79480aa0e2e7f53b"
         },
@@ -4102,19 +4604,19 @@
             "evidence": "/api/v2/organization-driver-schemas/:schemaId/activate"
           },
           "new": {
-            "id": "S12-CGH:legacy-overlay-catalog-contract:0922005808b1783e:97c788dffd6d9ecc",
+            "id": "S12-CGH:legacy-overlay-catalog-contract:0922005808b1783e:e98b9739afd85a2a",
             "family": "S12-CGH",
             "rule": "legacy-overlay-catalog-contract",
             "file": "server/modules/parameter-specs/routes.ts",
-            "line": 562,
+            "line": 566,
             "column": 5,
-            "byteStart": 17884,
-            "byteEnd": 17940,
+            "byteStart": 18052,
+            "byteEnd": 18108,
             "token": "overlay:organization-driver-schemas",
             "evidence": "/api/v2/organization-driver-schemas/:schemaId/activate",
             "reason": "Legacy driver-schema overlay authoring contract remains reachable.",
             "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
-            "trustedBlobOid": "cd2acb55b87b670ead005f11b229a6ff383294d3"
+            "trustedBlobOid": "f04eafe2e34b64363c6aa3797ba782b54d7a6685"
           },
           "sliceSha256": "a36927aca52ef319a1366180194c57a8ab16ef0a4322404b79480aa0e2e7f53b"
         },
@@ -4135,19 +4637,19 @@
             "evidence": "activateOrganizationDriverSchemaForAuth"
           },
           "new": {
-            "id": "S12-CGH:legacy-overlay-catalog-contract:dff770d853e1561c:6bbcb16abe14716b",
+            "id": "S12-CGH:legacy-overlay-catalog-contract:dff770d853e1561c:e18dcb235462cc94",
             "family": "S12-CGH",
             "rule": "legacy-overlay-catalog-contract",
             "file": "server/modules/parameter-specs/routes.ts",
-            "line": 570,
+            "line": 574,
             "column": 28,
-            "byteStart": 18216,
-            "byteEnd": 18255,
+            "byteStart": 18384,
+            "byteEnd": 18423,
             "token": "activateOrganizationDriverSchemaForAuth",
             "evidence": "activateOrganizationDriverSchemaForAuth",
             "reason": "Legacy driver-schema overlay authoring contract remains reachable.",
             "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
-            "trustedBlobOid": "cd2acb55b87b670ead005f11b229a6ff383294d3"
+            "trustedBlobOid": "f04eafe2e34b64363c6aa3797ba782b54d7a6685"
           },
           "sliceSha256": "592b480239b6dde121afe131936836b2bfb474ed680f51cc1cb3a44c12967832"
         },
@@ -4168,19 +4670,19 @@
             "evidence": "/api/v2/organization-driver-schemas/:schemaId/deprecate"
           },
           "new": {
-            "id": "S12-CGH:legacy-catalog-route:de5dda7dd652d5dd:3cd75ed499d6f311",
+            "id": "S12-CGH:legacy-catalog-route:de5dda7dd652d5dd:9c174775e0dac700",
             "family": "S12-CGH",
             "rule": "legacy-catalog-route",
             "file": "server/modules/parameter-specs/routes.ts",
-            "line": 580,
+            "line": 584,
             "column": 5,
-            "byteStart": 18393,
-            "byteEnd": 18450,
+            "byteStart": 18561,
+            "byteEnd": 18618,
             "token": "route:/api/v2/organization-driver-schemas",
             "evidence": "/api/v2/organization-driver-schemas/:schemaId/deprecate",
             "reason": "Legacy structural Catalog or governance route remains pending retirement or exact adaptation.",
             "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
-            "trustedBlobOid": "cd2acb55b87b670ead005f11b229a6ff383294d3"
+            "trustedBlobOid": "f04eafe2e34b64363c6aa3797ba782b54d7a6685"
           },
           "sliceSha256": "2a82a046227ad662bac0e37cc3085aff93af481c58f62fe496a55c58b50f75bf"
         },
@@ -4201,19 +4703,19 @@
             "evidence": "/api/v2/organization-driver-schemas/:schemaId/deprecate"
           },
           "new": {
-            "id": "S12-CGH:legacy-overlay-catalog-contract:0922005808b1783e:e155012ba05d8520",
+            "id": "S12-CGH:legacy-overlay-catalog-contract:0922005808b1783e:792556adbdd6977b",
             "family": "S12-CGH",
             "rule": "legacy-overlay-catalog-contract",
             "file": "server/modules/parameter-specs/routes.ts",
-            "line": 580,
+            "line": 584,
             "column": 5,
-            "byteStart": 18393,
-            "byteEnd": 18450,
+            "byteStart": 18561,
+            "byteEnd": 18618,
             "token": "overlay:organization-driver-schemas",
             "evidence": "/api/v2/organization-driver-schemas/:schemaId/deprecate",
             "reason": "Legacy driver-schema overlay authoring contract remains reachable.",
             "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
-            "trustedBlobOid": "cd2acb55b87b670ead005f11b229a6ff383294d3"
+            "trustedBlobOid": "f04eafe2e34b64363c6aa3797ba782b54d7a6685"
           },
           "sliceSha256": "2a82a046227ad662bac0e37cc3085aff93af481c58f62fe496a55c58b50f75bf"
         },
@@ -4234,19 +4736,19 @@
             "evidence": "deprecateOrganizationDriverSchemaBodySchema"
           },
           "new": {
-            "id": "S12-CGH:legacy-overlay-catalog-contract:dd52bfa3cc8de91b:6180644d97f8f291",
+            "id": "S12-CGH:legacy-overlay-catalog-contract:dd52bfa3cc8de91b:a42e0925c1f0fdbc",
             "family": "S12-CGH",
             "rule": "legacy-overlay-catalog-contract",
             "file": "server/modules/parameter-specs/routes.ts",
-            "line": 589,
+            "line": 593,
             "column": 9,
-            "byteStart": 18743,
-            "byteEnd": 18786,
+            "byteStart": 18911,
+            "byteEnd": 18954,
             "token": "deprecateOrganizationDriverSchemaBodySchema",
             "evidence": "deprecateOrganizationDriverSchemaBodySchema",
             "reason": "Legacy driver-schema overlay authoring contract remains reachable.",
             "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
-            "trustedBlobOid": "cd2acb55b87b670ead005f11b229a6ff383294d3"
+            "trustedBlobOid": "f04eafe2e34b64363c6aa3797ba782b54d7a6685"
           },
           "sliceSha256": "7b71b52d7f3e99acd9ba3a8577de6def155ac79297ec6c13350624b184e081a2"
         },
@@ -4267,19 +4769,19 @@
             "evidence": "deprecateOrganizationDriverSchemaForAuth"
           },
           "new": {
-            "id": "S12-CGH:legacy-overlay-catalog-contract:383f0ffd4588fb04:680b55b58d4be0bd",
+            "id": "S12-CGH:legacy-overlay-catalog-contract:383f0ffd4588fb04:86a11c286680e8d1",
             "family": "S12-CGH",
             "rule": "legacy-overlay-catalog-contract",
             "file": "server/modules/parameter-specs/routes.ts",
-            "line": 592,
+            "line": 596,
             "column": 26,
-            "byteStart": 18850,
-            "byteEnd": 18890,
+            "byteStart": 19018,
+            "byteEnd": 19058,
             "token": "deprecateOrganizationDriverSchemaForAuth",
             "evidence": "deprecateOrganizationDriverSchemaForAuth",
             "reason": "Legacy driver-schema overlay authoring contract remains reachable.",
             "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
-            "trustedBlobOid": "cd2acb55b87b670ead005f11b229a6ff383294d3"
+            "trustedBlobOid": "f04eafe2e34b64363c6aa3797ba782b54d7a6685"
           },
           "sliceSha256": "0b09853e25e3dc2b9badc0cdda8dade3ae6cb5776f151deab843768cc2358c69"
         },
@@ -4300,19 +4802,19 @@
             "evidence": "/api/v2/organization-driver-schemas/:schemaId/deprecation-impact"
           },
           "new": {
-            "id": "S12-CGH:legacy-catalog-route:18cf37dad8f5f4e8:3ab7510bafbb2728",
+            "id": "S12-CGH:legacy-catalog-route:18cf37dad8f5f4e8:7d476e691dca689d",
             "family": "S12-CGH",
             "rule": "legacy-catalog-route",
             "file": "server/modules/parameter-specs/routes.ts",
-            "line": 604,
+            "line": 608,
             "column": 5,
-            "byteStart": 19085,
-            "byteEnd": 19151,
+            "byteStart": 19253,
+            "byteEnd": 19319,
             "token": "route:/api/v2/organization-driver-schemas",
             "evidence": "/api/v2/organization-driver-schemas/:schemaId/deprecation-impact",
             "reason": "Legacy structural Catalog or governance route remains pending retirement or exact adaptation.",
             "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
-            "trustedBlobOid": "cd2acb55b87b670ead005f11b229a6ff383294d3"
+            "trustedBlobOid": "f04eafe2e34b64363c6aa3797ba782b54d7a6685"
           },
           "sliceSha256": "d620a65b769f5c0787b5bc7d081a83dd1816ba156a806558555df13eeb40f9a2"
         },
@@ -4333,19 +4835,19 @@
             "evidence": "/api/v2/organization-driver-schemas/:schemaId/deprecation-impact"
           },
           "new": {
-            "id": "S12-CGH:legacy-overlay-catalog-contract:0f39ef0e1aa73f09:94cc1df508601489",
+            "id": "S12-CGH:legacy-overlay-catalog-contract:0f39ef0e1aa73f09:bd13f33c117d3640",
             "family": "S12-CGH",
             "rule": "legacy-overlay-catalog-contract",
             "file": "server/modules/parameter-specs/routes.ts",
-            "line": 604,
+            "line": 608,
             "column": 5,
-            "byteStart": 19085,
-            "byteEnd": 19151,
+            "byteStart": 19253,
+            "byteEnd": 19319,
             "token": "overlay:organization-driver-schemas",
             "evidence": "/api/v2/organization-driver-schemas/:schemaId/deprecation-impact",
             "reason": "Legacy driver-schema overlay authoring contract remains reachable.",
             "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
-            "trustedBlobOid": "cd2acb55b87b670ead005f11b229a6ff383294d3"
+            "trustedBlobOid": "f04eafe2e34b64363c6aa3797ba782b54d7a6685"
           },
           "sliceSha256": "d620a65b769f5c0787b5bc7d081a83dd1816ba156a806558555df13eeb40f9a2"
         },
@@ -4366,19 +4868,19 @@
             "evidence": "previewOrganizationDriverSchemaDeprecationForAuth"
           },
           "new": {
-            "id": "S12-CGH:legacy-overlay-catalog-contract:88539b48d1af6b06:fb79a24553f15441",
+            "id": "S12-CGH:legacy-overlay-catalog-contract:88539b48d1af6b06:b7c05059d87733ac",
             "family": "S12-CGH",
             "rule": "legacy-overlay-catalog-contract",
             "file": "server/modules/parameter-specs/routes.ts",
-            "line": 612,
+            "line": 616,
             "column": 26,
-            "byteStart": 19425,
-            "byteEnd": 19474,
+            "byteStart": 19593,
+            "byteEnd": 19642,
             "token": "previewOrganizationDriverSchemaDeprecationForAuth",
             "evidence": "previewOrganizationDriverSchemaDeprecationForAuth",
             "reason": "Legacy driver-schema overlay authoring contract remains reachable.",
             "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
-            "trustedBlobOid": "cd2acb55b87b670ead005f11b229a6ff383294d3"
+            "trustedBlobOid": "f04eafe2e34b64363c6aa3797ba782b54d7a6685"
           },
           "sliceSha256": "477ee42f5100938b8433b517036efe617b22e8255b5e68a441f16e633ab33ce2"
         },
@@ -4399,19 +4901,19 @@
             "evidence": "/api/v2/platform/driver-schemas/promotion-candidates"
           },
           "new": {
-            "id": "S12-CGH:legacy-catalog-route:0826cb9b9cad5ea2:22b5b77837d97d7e",
+            "id": "S12-CGH:legacy-catalog-route:0826cb9b9cad5ea2:9e89697fd36e7663",
             "family": "S12-CGH",
             "rule": "legacy-catalog-route",
             "file": "server/modules/parameter-specs/routes.ts",
-            "line": 622,
+            "line": 626,
             "column": 5,
-            "byteStart": 19613,
-            "byteEnd": 19667,
+            "byteStart": 19781,
+            "byteEnd": 19835,
             "token": "route:/api/v2/platform/driver-schemas",
             "evidence": "/api/v2/platform/driver-schemas/promotion-candidates",
             "reason": "Legacy structural Catalog or governance route remains pending retirement or exact adaptation.",
             "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
-            "trustedBlobOid": "cd2acb55b87b670ead005f11b229a6ff383294d3"
+            "trustedBlobOid": "f04eafe2e34b64363c6aa3797ba782b54d7a6685"
           },
           "sliceSha256": "3845f6d959cae0addc26e0ef09b9b0103f92dd4d8a613e8399327367fe06dba0"
         },
@@ -4432,19 +4934,19 @@
             "evidence": "/api/v2/platform/driver-schemas/promotions"
           },
           "new": {
-            "id": "S12-CGH:legacy-catalog-route:177252593fc812d5:55ce0705b7e25bd5",
+            "id": "S12-CGH:legacy-catalog-route:177252593fc812d5:651d41d4d1439236",
             "family": "S12-CGH",
             "rule": "legacy-catalog-route",
             "file": "server/modules/parameter-specs/routes.ts",
-            "line": 631,
+            "line": 635,
             "column": 15,
-            "byteStart": 19939,
-            "byteEnd": 19983,
+            "byteStart": 20107,
+            "byteEnd": 20151,
             "token": "route:/api/v2/platform/driver-schemas",
             "evidence": "/api/v2/platform/driver-schemas/promotions",
             "reason": "Legacy structural Catalog or governance route remains pending retirement or exact adaptation.",
             "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
-            "trustedBlobOid": "cd2acb55b87b670ead005f11b229a6ff383294d3"
+            "trustedBlobOid": "f04eafe2e34b64363c6aa3797ba782b54d7a6685"
           },
           "sliceSha256": "692e030e16a83e9ceb2237bbd7ba57b01dec6e1ce06f0259b1e80e334b9bc2b8"
         },
@@ -4465,19 +4967,19 @@
             "evidence": "promoteDriverSchemaOverlayBodySchema"
           },
           "new": {
-            "id": "S12-CGH:legacy-overlay-catalog-contract:59197a4944b492dd:7a744a323f129c68",
+            "id": "S12-CGH:legacy-overlay-catalog-contract:59197a4944b492dd:5cd61aa842cec908",
             "family": "S12-CGH",
             "rule": "legacy-overlay-catalog-contract",
             "file": "server/modules/parameter-specs/routes.ts",
-            "line": 635,
+            "line": 639,
             "column": 7,
-            "byteStart": 20147,
-            "byteEnd": 20183,
+            "byteStart": 20315,
+            "byteEnd": 20351,
             "token": "promoteDriverSchemaOverlayBodySchema",
             "evidence": "promoteDriverSchemaOverlayBodySchema",
             "reason": "Legacy driver-schema overlay authoring contract remains reachable.",
             "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
-            "trustedBlobOid": "cd2acb55b87b670ead005f11b229a6ff383294d3"
+            "trustedBlobOid": "f04eafe2e34b64363c6aa3797ba782b54d7a6685"
           },
           "sliceSha256": "3e4f3bef6cad31934c868d32f15e6432b8b43d3c6458f0228a9d49d4092a417c"
         },
@@ -4498,19 +5000,19 @@
             "evidence": "promoteDriverSchemaOverlayForAuth"
           },
           "new": {
-            "id": "S12-CGH:legacy-overlay-catalog-contract:b2e31c02a19a283c:3afc0b27dbbebc20",
+            "id": "S12-CGH:legacy-overlay-catalog-contract:b2e31c02a19a283c:9d5f318501b00599",
             "family": "S12-CGH",
             "rule": "legacy-overlay-catalog-contract",
             "file": "server/modules/parameter-specs/routes.ts",
-            "line": 638,
+            "line": 642,
             "column": 26,
-            "byteStart": 20243,
-            "byteEnd": 20276,
+            "byteStart": 20411,
+            "byteEnd": 20444,
             "token": "promoteDriverSchemaOverlayForAuth",
             "evidence": "promoteDriverSchemaOverlayForAuth",
             "reason": "Legacy driver-schema overlay authoring contract remains reachable.",
             "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
-            "trustedBlobOid": "cd2acb55b87b670ead005f11b229a6ff383294d3"
+            "trustedBlobOid": "f04eafe2e34b64363c6aa3797ba782b54d7a6685"
           },
           "sliceSha256": "51d4a5b33e8c801aa5f8ada32bc2d51589b0d8fdfac998118fbe98c58f1db7fa"
         },
@@ -4531,19 +5033,19 @@
             "evidence": "/api/v2/platform/driver-schemas/promotions/:promotionId/revert"
           },
           "new": {
-            "id": "S12-CGH:legacy-catalog-route:177252593fc812d5:c4fed0ad0165bf87",
+            "id": "S12-CGH:legacy-catalog-route:177252593fc812d5:7956f943e7ef3be1",
             "family": "S12-CGH",
             "rule": "legacy-catalog-route",
             "file": "server/modules/parameter-specs/routes.ts",
-            "line": 643,
+            "line": 647,
             "column": 5,
-            "byteStart": 20362,
-            "byteEnd": 20426,
+            "byteStart": 20530,
+            "byteEnd": 20594,
             "token": "route:/api/v2/platform/driver-schemas",
             "evidence": "/api/v2/platform/driver-schemas/promotions/:promotionId/revert",
             "reason": "Legacy structural Catalog or governance route remains pending retirement or exact adaptation.",
             "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
-            "trustedBlobOid": "cd2acb55b87b670ead005f11b229a6ff383294d3"
+            "trustedBlobOid": "f04eafe2e34b64363c6aa3797ba782b54d7a6685"
           },
           "sliceSha256": "cc40799965fd49935da5a135f3e52c1118ce5e5aad6496f6cdd5ce220483bd91"
         },
@@ -4564,21 +5066,160 @@
             "evidence": "revertDriverSchemaOverlayPromotionForAuth"
           },
           "new": {
-            "id": "S12-CGH:legacy-overlay-catalog-contract:0b8d35321fd290cc:69b2cf497e80b0ae",
+            "id": "S12-CGH:legacy-overlay-catalog-contract:0b8d35321fd290cc:968eaa051048234f",
             "family": "S12-CGH",
             "rule": "legacy-overlay-catalog-contract",
             "file": "server/modules/parameter-specs/routes.ts",
-            "line": 650,
+            "line": 654,
             "column": 28,
-            "byteStart": 20718,
-            "byteEnd": 20759,
+            "byteStart": 20886,
+            "byteEnd": 20927,
             "token": "revertDriverSchemaOverlayPromotionForAuth",
             "evidence": "revertDriverSchemaOverlayPromotionForAuth",
             "reason": "Legacy driver-schema overlay authoring contract remains reachable.",
             "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
-            "trustedBlobOid": "cd2acb55b87b670ead005f11b229a6ff383294d3"
+            "trustedBlobOid": "f04eafe2e34b64363c6aa3797ba782b54d7a6685"
           },
           "sliceSha256": "562ae84031744e4a8fda8ab2f9006704fd2cf8648c8ab77d51488ea38df7474c"
+        }
+      ]
+    },
+    {
+      "file": "server/modules/parameter-topology/writeLock.ts",
+      "sourceBlobOid": "6365aa3cb0ad3fb5ad63e857c41891b1154b3ec1",
+      "destinationBlobOid": "5342e086668d91bd97b0984084fb10a8c6a2e5fe",
+      "pairs": [
+        {
+          "old": {
+            "id": "S12-TOP:legacy-catalog-raw-read:386b0c746fb2f844:327377adff8a38f5",
+            "rule": "legacy-catalog-raw-read",
+            "file": "server/modules/parameter-topology/writeLock.ts",
+            "reason": "Direct legacy Catalog table read remains pending the owning consumer migration.",
+            "family": "S12-TOP",
+            "line": 539,
+            "column": 5,
+            "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
+            "trustedBlobOid": "6365aa3cb0ad3fb5ad63e857c41891b1154b3ec1",
+            "byteStart": 18351,
+            "byteEnd": 18912,
+            "token": "read:project_parameter_binding_revisions",
+            "evidence": "read project_parameter_binding_revisions: select bpr.config_revision_id from project_parameter_binding_revisions bpr inner join project_parameter_bindings b on b.id = bpr.binding_id inner join dts_config_revisions cr on cr.id = bpr.config_…"
+          },
+          "new": {
+            "id": "S12-TOP:legacy-catalog-raw-read:386b0c746fb2f844:7feabef1039c8914",
+            "family": "S12-TOP",
+            "rule": "legacy-catalog-raw-read",
+            "file": "server/modules/parameter-topology/writeLock.ts",
+            "line": 551,
+            "column": 5,
+            "byteStart": 18740,
+            "byteEnd": 19301,
+            "token": "read:project_parameter_binding_revisions",
+            "evidence": "read project_parameter_binding_revisions: select bpr.config_revision_id from project_parameter_binding_revisions bpr inner join project_parameter_bindings b on b.id = bpr.binding_id inner join dts_config_revisions cr on cr.id = bpr.config_…",
+            "reason": "Direct legacy Catalog table read remains pending the owning consumer migration.",
+            "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
+            "trustedBlobOid": "5342e086668d91bd97b0984084fb10a8c6a2e5fe"
+          },
+          "sliceSha256": "b4c24659fd40324f44c386be97704b790cf457b241912d2d9cef8c90572ca0c3"
+        },
+        {
+          "old": {
+            "id": "S12-TOP:legacy-catalog-raw-read:eb9281d968864fc0:2bb88b44ef348214",
+            "rule": "legacy-catalog-raw-read",
+            "file": "server/modules/parameter-topology/writeLock.ts",
+            "reason": "Direct legacy Catalog table read remains pending the owning consumer migration.",
+            "family": "S12-TOP",
+            "line": 539,
+            "column": 5,
+            "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
+            "trustedBlobOid": "6365aa3cb0ad3fb5ad63e857c41891b1154b3ec1",
+            "byteStart": 18351,
+            "byteEnd": 18912,
+            "token": "read:project_parameter_bindings",
+            "evidence": "read project_parameter_bindings: select bpr.config_revision_id from project_parameter_binding_revisions bpr inner join project_parameter_bindings b on b.id = bpr.binding_id inner join dts_config_revisions cr on cr.id = bpr.config_revision_…"
+          },
+          "new": {
+            "id": "S12-TOP:legacy-catalog-raw-read:eb9281d968864fc0:6c75e50617238d74",
+            "family": "S12-TOP",
+            "rule": "legacy-catalog-raw-read",
+            "file": "server/modules/parameter-topology/writeLock.ts",
+            "line": 551,
+            "column": 5,
+            "byteStart": 18740,
+            "byteEnd": 19301,
+            "token": "read:project_parameter_bindings",
+            "evidence": "read project_parameter_bindings: select bpr.config_revision_id from project_parameter_binding_revisions bpr inner join project_parameter_bindings b on b.id = bpr.binding_id inner join dts_config_revisions cr on cr.id = bpr.config_revision_…",
+            "reason": "Direct legacy Catalog table read remains pending the owning consumer migration.",
+            "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
+            "trustedBlobOid": "5342e086668d91bd97b0984084fb10a8c6a2e5fe"
+          },
+          "sliceSha256": "b4c24659fd40324f44c386be97704b790cf457b241912d2d9cef8c90572ca0c3"
+        },
+        {
+          "old": {
+            "id": "S12-TOP:legacy-catalog-raw-read:386b0c746fb2f844:7b7c078bc49bec0e",
+            "rule": "legacy-catalog-raw-read",
+            "file": "server/modules/parameter-topology/writeLock.ts",
+            "reason": "Direct legacy Catalog table read remains pending the owning consumer migration.",
+            "family": "S12-TOP",
+            "line": 628,
+            "column": 5,
+            "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
+            "trustedBlobOid": "6365aa3cb0ad3fb5ad63e857c41891b1154b3ec1",
+            "byteStart": 21421,
+            "byteEnd": 21549,
+            "token": "read:project_parameter_binding_revisions",
+            "evidence": "read project_parameter_binding_revisions: select id from project_parameter_binding_revisions where binding_id = $1 and config_revision_id = $2 limit 1"
+          },
+          "new": {
+            "id": "S12-TOP:legacy-catalog-raw-read:386b0c746fb2f844:b9b87617ad4f09a4",
+            "family": "S12-TOP",
+            "rule": "legacy-catalog-raw-read",
+            "file": "server/modules/parameter-topology/writeLock.ts",
+            "line": 640,
+            "column": 5,
+            "byteStart": 21810,
+            "byteEnd": 21938,
+            "token": "read:project_parameter_binding_revisions",
+            "evidence": "read project_parameter_binding_revisions: select id from project_parameter_binding_revisions where binding_id = $1 and config_revision_id = $2 limit 1",
+            "reason": "Direct legacy Catalog table read remains pending the owning consumer migration.",
+            "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
+            "trustedBlobOid": "5342e086668d91bd97b0984084fb10a8c6a2e5fe"
+          },
+          "sliceSha256": "89b7ef4817bd5c487cf928ebca679a25cb1a8bf151e701745ac9d0f52d06bd64"
+        },
+        {
+          "old": {
+            "id": "S12-TOP:legacy-catalog-raw-read:386b0c746fb2f844:97c2ab59413b9bf5",
+            "rule": "legacy-catalog-raw-read",
+            "file": "server/modules/parameter-topology/writeLock.ts",
+            "reason": "Direct legacy Catalog table read remains pending the owning consumer migration.",
+            "family": "S12-TOP",
+            "line": 689,
+            "column": 5,
+            "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
+            "trustedBlobOid": "6365aa3cb0ad3fb5ad63e857c41891b1154b3ec1",
+            "byteStart": 23330,
+            "byteEnd": 23446,
+            "token": "read:project_parameter_binding_revisions",
+            "evidence": "read project_parameter_binding_revisions: select id, config_revision_id from project_parameter_binding_revisions where id = $1 limit 1"
+          },
+          "new": {
+            "id": "S12-TOP:legacy-catalog-raw-read:386b0c746fb2f844:2714cc0bdc50fcb6",
+            "family": "S12-TOP",
+            "rule": "legacy-catalog-raw-read",
+            "file": "server/modules/parameter-topology/writeLock.ts",
+            "line": 701,
+            "column": 5,
+            "byteStart": 23719,
+            "byteEnd": 23835,
+            "token": "read:project_parameter_binding_revisions",
+            "evidence": "read project_parameter_binding_revisions: select id, config_revision_id from project_parameter_binding_revisions where id = $1 limit 1",
+            "reason": "Direct legacy Catalog table read remains pending the owning consumer migration.",
+            "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
+            "trustedBlobOid": "5342e086668d91bd97b0984084fb10a8c6a2e5fe"
+          },
+          "sliceSha256": "bfc4d0c8315eb8233381d4511a422a0ea1d6176012a455a52752d0837bf22bd7"
         }
       ]
     }

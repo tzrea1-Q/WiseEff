@@ -58,7 +58,7 @@ function rewrittenSliceConfig(path: string, sha256: string): RelocationConfig {
     recordPath: path,
     recordSha256: sha256,
     files: record.files.map((section) => ({ file: section.file, pairs: section.pairs.length })),
-    totalPairs: 51,
+    totalPairs: 57,
     rejectAllowanceGrowth: true,
     requireStableStructuralAnchor: true,
     requireStableByteOrder: true,
@@ -68,16 +68,16 @@ function rewrittenSliceConfig(path: string, sha256: string): RelocationConfig {
 }
 
 describe("T1.4 rewritten-slice current successor", () => {
-  it("binds 51 destinations whose evidence or raw slice may change", async () => {
+  it("binds 57 destinations whose evidence or raw slice may change", async () => {
     const result = await applyReviewedT14RewrittenSliceSuccessorRelocation(
       repoRoot,
       fixture,
       allowances,
       discovered,
     );
-    expect(result.relocations).toHaveLength(51);
-    expect(new Set(result.relocations.map((entry) => entry.id)).size).toBe(51);
-    expect(new Set(result.relocations.map((entry) => entry.observed.id)).size).toBe(51);
+    expect(result.relocations).toHaveLength(57);
+    expect(new Set(result.relocations.map((entry) => entry.id)).size).toBe(57);
+    expect(new Set(result.relocations.map((entry) => entry.observed.id)).size).toBe(57);
     const pairs = record.files.flatMap((section) => section.pairs);
     expect(pairs.every((pair) => pair.sourceSliceSha256 && pair.sliceSha256)).toBe(true);
     expect(
@@ -85,7 +85,7 @@ describe("T1.4 rewritten-slice current successor", () => {
         (pair) => pair.old.evidence !== pair.new.evidence || pair.sourceSliceSha256 !== pair.sliceSha256,
       ),
     ).toBe(true);
-    expect(record.files.map((section) => section.pairs.length)).toEqual([1, 3, 14, 9, 5, 4, 3, 7, 5]);
+    expect(record.files.map((section) => section.pairs.length)).toEqual([2, 1, 3, 14, 9, 5, 4, 3, 7, 5, 4]);
   });
 
   it("rejects a different-position dest swap under the B2 key even with a re-signed record", async () => {
@@ -169,7 +169,7 @@ describe("T1.4 rewritten-slice current successor", () => {
       recordPath: t14RewrittenSliceSuccessorRelocationRecordPath,
       recordSha256: createHash("sha256").update(bytes).digest("hex"),
       files: record.files.map((section) => ({ file: section.file, pairs: section.pairs.length })),
-      totalPairs: 51,
+      totalPairs: 57,
       rejectAllowanceGrowth: true,
       requireStableStructuralAnchor: true,
       requireStableByteOrder: true,
