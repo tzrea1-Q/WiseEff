@@ -269,25 +269,16 @@ test.describe("PARAM-ADMIN-002 parameter import wizard browser acceptance", () =
           rowCount: applied.rawValue ? 1 : 0
         }
       ],
-      audit: applied.audit?.kind
-        ? [
-            {
-              id: applied.audit.id,
-              kind: applied.audit.kind,
-              action: applied.audit.action,
-              targetId: applied.audit.target_id,
-              requestId: applied.audit.trace_id ?? undefined,
-              metadataSummary: `batchId=${applied.batch?.id}; status=${applied.batch?.status}; bindingId=${binding.bindingId}`
-            }
-          ]
-        : [
-            {
-              kind: "batch-import",
-              action: applied.batch?.status ?? "stage",
-              targetId: applied.batch?.id ?? null,
-              metadataSummary: `batchId=${applied.batch?.id}; status=${applied.batch?.status}; bindingId=${binding.bindingId}; auditRow=absent`
-            }
-          ],
+      audit: [
+        {
+          id: applied.audit?.id,
+          kind: applied.audit!.kind,
+          action: applied.audit!.action,
+          targetId: applied.audit?.target_id,
+          requestId: applied.audit?.trace_id ?? undefined,
+          metadataSummary: `batchId=${applied.batch?.id}; status=${applied.batch?.status}; bindingId=${binding.bindingId}`
+        }
+      ],
       notes: `Wizard applied an update for ${seeded!.name} onto disposable post-cutover binding ${binding.bindingId}; shared CI pre-cutover PPV fixtures are not used here.`
     });
   });
@@ -373,31 +364,7 @@ test.describe("PARAM-ADMIN-002 parameter import wizard browser acceptance", () =
         `,
         [organizationId, projectId]
       );
-      const audit = await client.query<{
-        id: string;
-        kind: string;
-        action: string;
-        target_id: string | null;
-        trace_id: string | null;
-      }>(
-        `
-        select id, kind, action, target_id, trace_id
-        from audit_events
-        where organization_id = $1
-          and (
-            kind = 'batch-import'
-            or action in ('preview', 'stage', 'skip', 'apply')
-          )
-        order by created_at desc
-        limit 1
-        `,
-        [organizationId]
-      );
-      return {
-        specCount: Number(specs.rows[0]?.count ?? 0),
-        appliedCount: Number(batches.rows[0]?.count ?? 0),
-        audit: audit.rows[0] ?? null
-      };
+      return { specCount: Number(specs.rows[0]?.count ?? 0), appliedCount: Number(batches.rows[0]?.count ?? 0) };
     });
     expect(leftover.specCount, "unmatched import must not mint a Definition").toBe(0);
     expect(leftover.appliedCount, "unmatched-only import must not apply a batch").toBe(0);
@@ -408,7 +375,7 @@ test.describe("PARAM-ADMIN-002 parameter import wizard browser acceptance", () =
       status: "passed",
       page,
       testInfo,
-      assertions: ["ui", "audit"],
+      assertions: ["ui", "db"],
       db: [
         {
           table: "parameter_specs",
@@ -417,25 +384,6 @@ test.describe("PARAM-ADMIN-002 parameter import wizard browser acceptance", () =
           rowCount: leftover.specCount
         }
       ],
-      audit: leftover.audit
-        ? [
-            {
-              id: leftover.audit.id,
-              kind: leftover.audit.kind,
-              action: leftover.audit.action,
-              targetId: leftover.audit.target_id,
-              requestId: leftover.audit.trace_id ?? undefined,
-              metadataSummary: `unmatchedName=${unmatchedName}; specCount=${leftover.specCount}; appliedCount=${leftover.appliedCount}`
-            }
-          ]
-        : [
-            {
-              kind: "batch-import",
-              action: "skip",
-              targetId: null,
-              metadataSummary: `unmatchedName=${unmatchedName}; specCount=0; appliedCount=0; no batch-import audit row`
-            }
-          ],
       notes: "T21-12: unmatched preview is ineligible (不会应用); skip is the only action; empty preview stages zero drafts."
     });
   });

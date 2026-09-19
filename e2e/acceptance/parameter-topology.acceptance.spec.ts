@@ -34,10 +34,7 @@ useBrowserDiagnostics(test, {
   expectedApiFailures: [
     // Typed-edit schema rejection and stale-revision conflict are intentional.
     { method: "POST", path: "/api/v2/projects/aurora/parameter-bindings", status: 400 },
-    { method: "POST", path: "/api/v2/projects/aurora/parameter-bindings", status: 409 },
-    { method: "GET", path: "/api/v2/catalog/subjects", status: 404 },
-    { method: "GET", path: "/api/v2/catalog/subjects", status: 410 },
-    { method: "POST", path: "/api/v1/parameter-change-requests/", status: 409 }
+    { method: "POST", path: "/api/v2/projects/aurora/parameter-bindings", status: 409 }
   ]
 });
 test.use({ viewport: { width: 1440, height: 900 } });
@@ -265,11 +262,7 @@ async function findBindingProperty(
   const body = (await response.json()) as {
     items: Array<{ id: string; propertyKey: string; locator: string | null }>;
   };
-  return (
-    body.items.find((row) => row.propertyKey === propertyKey && Boolean(row.locator?.trim())) ??
-    body.items.find((row) => row.propertyKey === propertyKey) ??
-    null
-  );
+  return body.items.find((row) => row.propertyKey === propertyKey) ?? null;
 }
 
 async function waitForRevisionWithProperties(
@@ -278,8 +271,7 @@ async function waitForRevisionWithProperties(
   configSetId: string,
   previousRevisionId: string,
   propertyKeys: string[],
-  timeoutMs = 30_000,
-  nodeNeedles: string[] = []
+  timeoutMs = 30_000
 ): Promise<{ id: string; status: string }> {
   const started = Date.now();
   while (Date.now() - started < timeoutMs) {
@@ -300,23 +292,6 @@ async function waitForRevisionWithProperties(
         propertyKeys.map((key) => findBindingProperty(request, targetProjectId, row.id, key))
       );
       if (found.every(Boolean)) return row;
-      if (nodeNeedles.length > 0) {
-        const topologyApi = await request.get(
-          apiRoute(
-            `/api/v2/projects/${targetProjectId}/config-sets/${encodeURIComponent(configSetId)}/revisions/${row.id}/topology?view=effective`
-          ),
-          { headers: adminHeaders() }
-        );
-        if (topologyApi.ok()) {
-          const topologyBody = (await topologyApi.json()) as {
-            item: { nodes: Array<{ name?: string; locator?: string }> };
-          };
-          const haystack = topologyBody.item.nodes.map((node) => `${node.name ?? ""}${node.locator ?? ""}`);
-          if (nodeNeedles.every((needle) => haystack.some((text) => text.includes(needle)))) {
-            return row;
-          }
-        }
-      }
     }
     await new Promise((resolve) => setTimeout(resolve, 400));
   }
@@ -334,7 +309,6 @@ async function attachDedicatedDefaultOverlay(
     configSetId: string;
     previousRevisionId: string;
     propertyKeys: string[];
-    nodeNeedles?: string[];
   }
 ): Promise<{ id: string; status: string }> {
   const upload = await uploadDts(request, input.fileName, input.dtsText);
@@ -352,9 +326,7 @@ async function attachDedicatedDefaultOverlay(
     projectId,
     input.configSetId,
     input.previousRevisionId,
-    input.propertyKeys,
-    30_000,
-    input.nodeNeedles ?? []
+    input.propertyKeys
   );
 }
 
@@ -397,23 +369,20 @@ async function expandTreeitemIfCollapsed(workspace: Locator, name: RegExp) {
   }
 }
 
-async function revealAndSelectTreeitem(workspace: Locator, name: RegExp): Promise<boolean> {
+async function revealAndSelectTreeitem(workspace: Locator, name: RegExp) {
   await expandTreeitemIfCollapsed(workspace, /未分类/);
   const item = workspace.getByRole("treeitem", { name }).first();
   for (let attempt = 0; attempt < 12; attempt += 1) {
     if (await item.isVisible().catch(() => false)) {
       await item.click();
-      return true;
+      return;
     }
     const expander = workspace.getByRole("button", { name: /展开/ }).first();
     if (!(await expander.isVisible().catch(() => false))) break;
     await expander.click();
   }
-  if (!(await item.isVisible().catch(() => false))) {
-    return false;
-  }
+  await expect(item).toBeVisible({ timeout: 20_000 });
   await item.click();
-  return true;
 }
 
 async function openWorkbenchEnablementDialog(
@@ -424,15 +393,10 @@ async function openWorkbenchEnablementDialog(
 ) {
   await workspace.getByRole("searchbox", { name: "搜索 DTS 参数" }).fill(propertyKey);
   const row = workspace.getByRole("row").filter({ hasText: propertyKey }).first();
-  if (await row.isVisible().catch(() => false)) {
-    await expect(row).toBeVisible();
-  }
+  await expect(row).toBeVisible({ timeout: 20_000 });
   // Clicking 查看 opens a modal that hides the workbench from the a11y tree, so
   // the enablement control is selected from the module tree (PARAM-ENABLE-VISIBLE-001).
-  const selected = await revealAndSelectTreeitem(workspace, treeItemName);
-  if (!selected) {
-    return null;
-  }
+  await revealAndSelectTreeitem(workspace, treeItemName);
   const enablementButton = workspace.getByRole("button", { name: /节点启用/ });
   await expect(enablementButton).toBeVisible({ timeout: 30_000 });
   await enablementButton.click();
@@ -516,20 +480,60 @@ async function resolveReviewsForCurrentRevision(
         nodeLocator: task.sourceEvidence?.nodeLocator
       }).id;
     } else {
-      const dismiss = await request.post(
+      const createDraft = await request.post(
         apiRoute(`/api/v2/parameter-spec-review-tasks/${encodeURIComponent(task.id)}/resolve`),
         {
           headers: adminHeaders(),
           data: {
-            decision: "dismissed",
-            reason: `${descriptionPrefix} dismiss unmatched occurrence without a candidate spec`
+            decision: "resolved",
+            createSpec: true,
+            reason: `${descriptionPrefix} create occurrence-derived draft for ${task.id}`
           }
         }
       );
-      if (!dismiss.ok()) {
-        continue;
+      expect(createDraft.ok(), `create draft spec for review ${task.id}`).toBe(true);
+      const created = (await createDraft.json()) as { item: { parameterSpecId?: string | null } };
+      parameterSpecId = created.item.parameterSpecId ?? "";
+      expect(parameterSpecId, `review ${task.id} did not return a draft spec id`).toBeTruthy();
+
+      const detailResponse = await request.get(
+        apiRoute(`/api/v2/parameter-specs/${encodeURIComponent(parameterSpecId)}`),
+        { headers: adminHeaders() }
+      );
+      expect(detailResponse.ok(), `load draft spec ${parameterSpecId}`).toBe(true);
+      const detailBody = (await detailResponse.json()) as {
+        item: { lifecycle?: string; valueShape?: Record<string, unknown> | null };
+      };
+      const shape = detailBody.item.valueShape;
+      expect(shape && typeof shape.kind === "string", `draft ${parameterSpecId} missing valueShape`).toBeTruthy();
+      const kind = String(shape!.kind);
+      let constraints: Record<string, unknown> = {};
+      if (kind === "cells" || kind === "u32-array" || kind === "phandle-list") {
+        const cells = shape!.cellsPerGroup ?? shape!.cells;
+        expect(Number.isInteger(cells) && Number(cells) > 0, `draft ${parameterSpecId} missing cells`).toBe(true);
+        constraints = { cells };
+      } else if (kind === "bytes") {
+        const length = shape!.length;
+        expect(Number.isInteger(length) && Number(length) >= 0, `draft ${parameterSpecId} missing byte length`).toBe(true);
+        constraints = { minLength: length, maxLength: length };
+      } else {
+        expect(["bool", "empty", "string", "string-list"]).toContain(kind);
       }
-      continue;
+      if (detailBody.item.lifecycle !== "active") {
+        const activate = await request.post(
+          apiRoute(`/api/v2/parameter-specs/${encodeURIComponent(parameterSpecId)}/activate`),
+          {
+            headers: adminHeaders(),
+            data: {
+              valueShape: shape,
+              constraints,
+              documentation: `${descriptionPrefix} occurrence-derived acceptance spec`,
+              reason: `${descriptionPrefix} activate occurrence-derived acceptance spec`
+            }
+          }
+        );
+        expect(activate.ok(), `activate draft spec ${parameterSpecId}: ${await activate.text()}`).toBe(true);
+      }
     }
     const resolve = await request.post(
       apiRoute(`/api/v2/parameter-spec-review-tasks/${encodeURIComponent(task.id)}/resolve`),
@@ -716,10 +720,20 @@ test.describe("Parameter topology / schema browser acceptance", () => {
 
     await signInBrowserAsRole(page, "admin", `${disposableRuntime.frontendUrl}/parameter-admin`);
     await dismissXiaozeHint(page);
-    const catalog = page.getByRole("region", { name: "参数定义目录" });
-    await expect(catalog).toBeVisible({ timeout: 30_000 });
-    await expect(page.getByRole("searchbox", { name: "搜索参数定义" })).toBeVisible();
-    await expect(page.getByRole("region", { name: "参数定义库" })).toHaveCount(0);
+    const specLibrary = page.getByRole("region", { name: "参数定义库" });
+    await expect(specLibrary).toBeVisible({ timeout: 30_000 });
+    await page.getByRole("searchbox", { name: "搜索参数定义" }).fill("gpio_int");
+    await expect(specLibrary.getByRole("cell", { name: "gpio_int" }).first()).toBeVisible({
+      timeout: 20_000
+    });
+    const gpioRows = specLibrary.locator("tbody tr").filter({ hasText: "gpio_int" });
+    await expect(gpioRows.first()).toBeVisible({ timeout: 20_000 });
+    await expect
+      .poll(async () => gpioRows.count(), { timeout: 20_000 })
+      .toBeGreaterThanOrEqual(2);
+    await gpioRows.first().getByRole("button", { name: /编辑 gpio_int/ }).click();
+    // The spec editor ModalDialog is named by its <h2> primary label (the property key).
+    await expect(page.getByRole("dialog", { name: /^gpio_int$/ })).toBeVisible({ timeout: 15_000 });
 
     await recordOperationEvidence({
       operationId: "PARAM-SPEC-GOVERN-001",
@@ -748,7 +762,7 @@ test.describe("Parameter topology / schema browser acceptance", () => {
         })
       ],
       db: [provisionalDb],
-      notes: `${descriptionPrefix}: unmatched mystery property remains review evidence with no recognized binding; organization admin destination is Catalog; gpio_int overlay specs stay API-governed.`
+      notes: `${descriptionPrefix}: unmatched mystery property remains review evidence with no recognized binding; UI lists distinct effective gpio_int specs.`
     });
 
     // Browse real topology (API must be 200 — never [200,404]).
@@ -1117,64 +1131,28 @@ test.describe("Parameter topology / schema browser acceptance", () => {
     };
 
     // A candidate from Aurora must never be requested under Nebula after the visible project switch.
-    const nebulaCurrentResponse = page
-      .waitForResponse(
-        (response) =>
-          response.request().method() === "GET" &&
-          response.url().includes(`/api/v2/projects/nebula/config-sets/`) &&
-          response.url().includes("/revisions/current/topology") &&
-          response.url().includes("view=effective"),
-        { timeout: 15_000 }
-      )
-      .catch(() => null);
+    const nebulaCurrentResponse = page.waitForResponse((response) =>
+      response.request().method() === "GET" &&
+      response.url().includes(`/api/v2/projects/nebula/config-sets/${encodeURIComponent(nebulaTopology.configSetId)}/revisions/current/topology`) &&
+      response.url().includes("view=effective")
+    );
     await switchProjectAcknowledgingDiscard(/Nebula 高频调试项目/);
-    const nebulaResponse = await nebulaCurrentResponse;
-    if (nebulaResponse) {
-      expect(nebulaResponse.status()).toBe(200);
-    }
-    await signInBrowserAsRole(
-      page,
-      "admin",
-      `${disposableRuntime.frontendUrl}/parameters?project=nebula`
-    );
-    await dismissXiaozeHint(page);
-    await expect(page.getByRole("region", { name: "DTS 参数工作台" })).toHaveAttribute(
-      "data-project-id",
-      "nebula",
-      { timeout: 30_000 }
-    );
+    expect((await nebulaCurrentResponse).status()).toBe(200);
+    await expect(editWorkspace).toHaveAttribute("data-project-id", "nebula");
     await expect(editWorkspace).toHaveAttribute("data-revision-id", nebulaTopology.revisionId);
     await expect(page.getByRole("region", { name: "参数修改提交" })).toHaveCount(0);
     await expect(page.getByText(/尚未生成语义配置修订/)).toHaveCount(0);
 
-    const auroraCurrentResponse = page
-      .waitForResponse(
-        (response) =>
-          response.request().method() === "GET" &&
-          response.url().includes(`/api/v2/projects/${projectId}/config-sets/`) &&
-          response.url().includes("/revisions/current/topology") &&
-          response.url().includes("view=effective"),
-        { timeout: 15_000 }
-      )
-      .catch(() => null);
-    await switchProjectAcknowledgingDiscard(/Aurora/);
-    const auroraResponse = await auroraCurrentResponse;
-    if (auroraResponse) {
-      expect(auroraResponse.status()).toBe(200);
-    }
-    if ((await page.getByRole("region", { name: "DTS 参数工作台" }).getAttribute("data-project-id")) !== projectId) {
-      await signInBrowserAsRole(
-        page,
-        "software-user",
-        `${disposableRuntime.frontendUrl}/parameters?project=${projectId}`
-      );
-      await dismissXiaozeHint(page);
-    }
-    await expect(page.getByRole("region", { name: "DTS 参数工作台" })).toHaveAttribute(
-      "data-project-id",
-      projectId,
-      { timeout: 30_000 }
+    const auroraCurrentResponse = page.waitForResponse((response) =>
+      response.request().method() === "GET" &&
+      response.url().includes(`/api/v2/projects/${projectId}/config-sets/${encodeURIComponent(configSetId)}/revisions/current/topology`) &&
+      response.url().includes("view=effective")
     );
+    // No drafts remain after the acknowledged discard, so no guard is expected here;
+    // the helper tolerates its absence.
+    await switchProjectAcknowledgingDiscard(/Aurora/);
+    expect((await auroraCurrentResponse).status()).toBe(200);
+    await expect(editWorkspace).toHaveAttribute("data-project-id", projectId);
     await expect(editWorkspace).not.toHaveAttribute("data-revision-id", "");
 
     // The project switch intentionally discarded the first pending draft UI; recreate it on Aurora current.
@@ -1290,17 +1268,8 @@ test.describe("Parameter topology / schema browser acceptance", () => {
     // the success notice renders as the standalone 参数提交结果 region instead of
     // inside the submission panel.
     const submitResultNotice = page.getByRole("region", { name: "参数提交结果" });
-    const submittedCopy = page.getByText(/已提交|审核队列|软件审核/);
-    await Promise.race([
-      submitResultNotice.waitFor({ state: "visible", timeout: 20_000 }).catch(() => null),
-      submittedCopy.first().waitFor({ state: "visible", timeout: 20_000 }).catch(() => null)
-    ]);
-    const reviewLink = submitResultNotice.getByRole("button", { name: "查看变更审阅" });
-    if (await reviewLink.isVisible().catch(() => false)) {
-      await reviewLink.click();
-    } else {
-      await page.goto(`${disposableRuntime.frontendUrl}/parameter-review`);
-    }
+    await expect(submitResultNotice.getByText(/已提交正式审核/)).toBeVisible();
+    await submitResultNotice.getByRole("button", { name: "查看变更审阅" }).click();
 
     const advanceReviewInUi = async (
       role: "hardware-committer" | "software-committer" | "software-user",
@@ -1334,131 +1303,23 @@ test.describe("Parameter topology / schema browser acceptance", () => {
         name: role === "software-user" ? "确认合入" : "推进流程"
       }).click();
       const response = await responsePromise;
-      const bodyText = await response.text();
-      if (
-        !response.ok() &&
-        bodyText.includes("parameter-sensitive-node-identity-mismatch")
-      ) {
-        return {
-          response,
-          body: { item: { status: "identity-mismatch" } },
-          identityMismatch: true as const
-        };
-      }
-      expect(response.ok(), bodyText).toBe(true);
-      const body = JSON.parse(bodyText) as {
+      expect(response.ok(), await response.text()).toBe(true);
+      const body = (await response.json()) as {
         item: { status: string; action?: "set" | "delete"; targetValue?: string };
       };
-      return { response, body, identityMismatch: false as const };
+      return { response, body };
     };
 
-    let writebackCandidateRevisionId: string | undefined;
-    const recordIdentityMismatchEvidence = async (
-      stage: string,
-      review: { status(): number; headers(): Record<string, string> }
-    ) => {
-      const forensic = await withPgClient(async (client) => {
-        const cr = await client.query<{ status: string }>(
-          `select status from parameter_change_requests where id = $1`,
-          [changeRequestId]
-        );
-        const audit = await client.query<{
-          id: string;
-          kind: string;
-          action: string;
-          target_id: string | null;
-          trace_id: string | null;
-        }>(
-          `
-          select id, kind, action, target_id, trace_id
-          from audit_events
-          where target_id = $1
-             or metadata->>'changeRequestId' = $1
-          order by created_at desc
-          limit 1
-          `,
-          [changeRequestId]
-        );
-        return { status: cr.rows[0]?.status ?? "missing", audit: audit.rows[0] ?? null };
-      });
-      const api = [
-        summarizeApiResponse(submitRound, {
-          method: "POST",
-          path: "/api/v1/parameter-submission-rounds",
-          responseSummary: `requestId=${changeRequestId}`
-        }),
-        summarizeApiResponse(review, {
-          method: "POST",
-          path: `/api/v1/parameter-change-requests/${changeRequestId}/review`,
-          responseSummary: `identity-mismatch at ${stage}; crStatus=${forensic.status}`
-        })
-      ];
-      const db = [
-        {
-          table: "parameter_change_requests",
-          predicate: `id=${changeRequestId}`,
-          observed: `status=${forensic.status}; identity-mismatch=${stage}`,
-          rowCount: 1
-        }
-      ];
-      const audit = [
-        {
-          id: forensic.audit?.id,
-          kind: forensic.audit?.kind ?? "parameter-sensitive-node-identity-mismatch",
-          action: forensic.audit?.action ?? "review-blocked",
-          targetId: forensic.audit?.target_id ?? changeRequestId,
-          requestId: forensic.audit?.trace_id ?? undefined,
-          metadataSummary: `stage=${stage}; crStatus=${forensic.status}`
-        }
-      ];
-      const notes =
-        `T1.1 identity-mismatch at ${stage} is a terminal review outcome for this corpus; submit 201 is preserved.`;
-      await recordOperationEvidence({
-        operationId: "PARAM-TOPOLOGY-EDIT-001",
-        title: "typed edit submit review merge writeback",
-        status: "passed",
-        role: "Software User + Hardware/Software Committers",
-        route: "/parameters",
-        page,
-        testInfo,
-        assertions: ["ui", "api", "db", "audit"],
-        api,
-        db,
-        audit,
-        notes
-      });
-      await recordOperationEvidence({
-        operationId: "PARAM-HAPPY-001",
-        title: "binding-centric parameter submit review merge persistence audit",
-        status: "passed",
-        role: "Software User + Hardware/Software Committers + Admin",
-        route: "/parameters → /parameter-review",
-        page,
-        testInfo,
-        assertions: ["ui", "api", "db", "audit"],
-        api,
-        db,
-        audit,
-        notes
-      });
-    };
-
-    const { response: hardwareReview, body: hardwareReviewBody, identityMismatch: hardwareMismatch } =
-      await advanceReviewInUi("hardware-committer", /硬件(?:Committer|MDE)检视/);
-    if (hardwareMismatch) {
-      expect(submitRound.status()).toBe(201);
-      await recordIdentityMismatchEvidence("hardware-review", hardwareReview);
-    }
-    if (!hardwareMismatch) {
+    const { response: hardwareReview, body: hardwareReviewBody } = await advanceReviewInUi(
+      "hardware-committer",
+      /硬件(?:Committer|MDE)检视/,
+    );
     expect(hardwareReviewBody.item.status).toBe("software_review");
 
-    const { response: softwareReview, body: softwareReviewBody, identityMismatch: softwareMismatch } =
-      await advanceReviewInUi("software-committer", /软件(?:Committer|MDE)检视/);
-    if (softwareMismatch) {
-      expect(submitRound.status()).toBe(201);
-      await recordIdentityMismatchEvidence("software-review", softwareReview);
-    }
-    if (!softwareMismatch) {
+    const { response: softwareReview, body: softwareReviewBody } = await advanceReviewInUi(
+      "software-committer",
+      /软件(?:Committer|MDE)检视/,
+    );
     expect(softwareReviewBody.item.status).toBe("software_merge");
 
     const beforeMerge = await withPgClient(async (client) => {
@@ -1501,14 +1362,10 @@ test.describe("Parameter topology / schema browser acceptance", () => {
     expect(Number(beforeMerge?.merge_audit_count ?? 0)).toBe(0);
     expect(Number(beforeMerge?.writeback_audit_count ?? 0)).toBe(0);
 
-    const { response: semanticMerge, body: semanticMergeBody, identityMismatch: mergeMismatch } =
-      await advanceReviewInUi("software-user", /软件(?:User|开发人员?)合入/);
-    if (mergeMismatch) {
-      expect(submitRound.status()).toBe(201);
-      expect(beforeMerge?.status).toBe("software_merge");
-      await recordIdentityMismatchEvidence("software-merge", semanticMerge);
-    }
-    if (!mergeMismatch) {
+    const { response: semanticMerge, body: semanticMergeBody } = await advanceReviewInUi(
+      "software-user",
+      /软件(?:User|开发人员?)合入/,
+    );
     expect(semanticMergeBody.item.status).toBe("merged");
     const mergeRequestId = semanticMerge.headers()["x-request-id"];
     expect(mergeRequestId).toBeTruthy();
@@ -2068,10 +1925,6 @@ test.describe("Parameter topology / schema browser acceptance", () => {
       notes:
         "Binding-centric API-mode UI searched gpio_int, created the typed candidate, submitted with scoped assignees, advanced all three visible role stages, persisted writeback, and emitted audit evidence without rendering recommendedValue compatibility UI."
     });
-    writebackCandidateRevisionId = mergeEvidence.latestRevisionId ?? undefined;
-    }
-    }
-    }
 
     // Identity mapping via real ambiguous ingest (throwaway Config Set).
     const mapSuffix = runSuffix;
@@ -2264,102 +2117,41 @@ test.describe("Parameter topology / schema browser acceptance", () => {
     });
 
     // 10) SUCCESSFUL validate on merge/writeback candidate (not schema-failed-as-success).
-    // T1.1 identity-mismatch never produces a writeback candidate. Aurora
-    // current/candidate fail toolchain with effective-driver-definition, and
-    // mapping R1 stays open-review. The fail-closed review is the publish gate.
-    let validateResponse: Awaited<ReturnType<APIRequestContext["post"]>> | undefined;
-    let validateBody: { item: { id: string; status: string; stage: string; failureCode?: string | null } } | undefined;
-    let validateTargetId = writebackCandidateRevisionId ?? revisionId;
-    let publishDb: { table: string; predicate: string; observed: string; rowCount: number };
-    let publishAuditItem: { id?: string; kind: string; action: string; targetId: string | null } | undefined;
+    const validateTargetId = mergeEvidence.latestRevisionId!;
+    expect(validateTargetId).toBeTruthy();
+    expect(validateTargetId).not.toBe(revisionId);
+    expect(validateTargetId).not.toBe(draftBody.item.candidateRevisionId);
+    await resolveReviewsForCurrentRevision(request, validateTargetId, projectId);
 
-    if (writebackCandidateRevisionId) {
-      expect(validateTargetId).not.toBe(revisionId);
-      expect(validateTargetId).not.toBe(draftBody.item.candidateRevisionId);
-      await resolveReviewsForCurrentRevision(request, validateTargetId, projectId);
-      validateResponse = await request.post(
-        apiRoute(
-          `/api/v2/projects/${projectId}/config-revisions/${encodeURIComponent(validateTargetId)}/validate`
-        ),
-        { headers: adminHeaders(), data: { stage: "toolchain" } }
+    const validateResponse = await request.post(
+      apiRoute(
+        `/api/v2/projects/${projectId}/config-revisions/${encodeURIComponent(validateTargetId)}/validate`
+      ),
+      { headers: adminHeaders(), data: { stage: "toolchain" } }
+    );
+    expect(validateResponse.ok()).toBe(true);
+    const validateBody = (await validateResponse.json()) as {
+      item: { id: string; status: string; stage: string; failureCode?: string | null };
+    };
+    expect(
+      validateBody.item.status,
+      `validate failureCode=${validateBody.item.failureCode}`
+    ).toBe("passed");
+    expect(validateBody.item.failureCode ?? null).toBeNull();
+
+    const publishDb = await withPgClient(async (client) => {
+      const result = await client.query<{ status: string }>(
+        `select status from dts_config_revisions where id = $1`,
+        [validateTargetId]
       );
-      expect(validateResponse.ok()).toBe(true);
-      validateBody = (await validateResponse.json()) as {
-        item: { id: string; status: string; stage: string; failureCode?: string | null };
+      return {
+        table: "dts_config_revisions",
+        predicate: `id=${validateTargetId}`,
+        observed: result.rows[0] ? `status=${result.rows[0].status}` : "missing",
+        rowCount: result.rowCount ?? result.rows.length
       };
-      expect(
-        validateBody.item.status,
-        `validate failureCode=${validateBody.item.failureCode}`
-      ).toBe("passed");
-      expect(validateBody.item.failureCode ?? null).toBeNull();
-      publishDb = await withPgClient(async (client) => {
-        const result = await client.query<{ status: string }>(
-          `select status from dts_config_revisions where id = $1`,
-          [validateTargetId]
-        );
-        return {
-          table: "dts_config_revisions",
-          predicate: `id=${validateTargetId}`,
-          observed: result.rows[0] ? `status=${result.rows[0].status}` : "missing",
-          rowCount: result.rowCount ?? result.rows.length
-        };
-      });
-      expect(publishDb.observed).toContain("validated");
-      const publishAudit = await request.get(apiRoute("/api/v1/audit-events?limit=50"), {
-        headers: adminHeaders()
-      });
-      const publishAuditBody = (await publishAudit.json()) as {
-        items: Array<{ id?: string; kind: string; action: string; targetId: string | null }>;
-      };
-      publishAuditItem = publishAuditBody.items.find(
-        (item) =>
-          item.kind === "parameter-topology-governance" &&
-          item.action === "config-revision-validated" &&
-          item.targetId === validateTargetId
-      );
-      expect(publishAuditItem).toBeTruthy();
-    } else {
-      const mismatchForensic = await withPgClient(async (client) => {
-        const cr = await client.query<{ status: string }>(
-          `select status from parameter_change_requests where id = $1`,
-          [changeRequestId]
-        );
-        const audit = await client.query<{
-          id: string;
-          kind: string;
-          action: string;
-          target_id: string | null;
-        }>(
-          `
-          select id, kind, action, target_id
-          from audit_events
-          where target_id = $1
-          order by created_at desc
-          limit 1
-          `,
-          [changeRequestId]
-        );
-        return { status: cr.rows[0]?.status ?? "missing", audit: audit.rows[0] ?? null };
-      });
-      publishDb = {
-        table: "parameter_change_requests",
-        predicate: `id=${changeRequestId}`,
-        observed: `status=${mismatchForensic.status}; writebackCandidate=none`,
-        rowCount: 1
-      };
-      publishAuditItem = mismatchForensic.audit
-        ? {
-            id: mismatchForensic.audit.id,
-            kind: mismatchForensic.audit.kind,
-            action: mismatchForensic.audit.action,
-            targetId: mismatchForensic.audit.target_id
-          }
-        : {
-            kind: "parameter-sensitive-node-identity-mismatch",
-            action: "review-blocked",
-            targetId: changeRequestId ?? null
-          };
-    }
+    });
+    expect(publishDb.observed).toContain("validated");
 
     const baseRevisionUnchanged = await withPgClient(async (client) => {
       const result = await client.query<{ raw_value: string | null; status: string }>(
@@ -2374,18 +2166,24 @@ test.describe("Parameter topology / schema browser acceptance", () => {
       return result.rows[0];
     });
     expect(baseRevisionUnchanged?.raw_value).toBe(baseBindingSnapshot);
-    if (writebackCandidateRevisionId) {
-      expect(baseRevisionUnchanged?.status).not.toBe("validated");
-    }
+    expect(baseRevisionUnchanged?.status).not.toBe("validated");
+
+    const publishAudit = await request.get(apiRoute("/api/v1/audit-events?limit=50"), {
+      headers: adminHeaders()
+    });
+    const publishAuditBody = (await publishAudit.json()) as {
+      items: Array<{ id?: string; kind: string; action: string; targetId: string | null }>;
+    };
+    const publishAuditItem = publishAuditBody.items.find(
+      (item) =>
+        item.kind === "parameter-topology-governance" &&
+        item.action === "config-revision-validated" &&
+        item.targetId === validateTargetId
+    );
+    expect(publishAuditItem).toBeTruthy();
 
     // 8) Reload bindingId/value/provenance from DB after UI reload.
-    // Identity-mapping uses a throwaway config set; go back to the aurora
-    // workspace instead of reloading whatever page the mapping flow left.
-    await signInBrowserAsRole(
-      page,
-      "software-user",
-      `${disposableRuntime.frontendUrl}/parameters?project=${projectId}`
-    );
+    await page.reload();
     await dismissXiaozeHint(page);
     const workspaceAfter = page.getByRole("region", { name: "DTS 参数工作台" });
     await expect(workspaceAfter).toBeVisible({ timeout: 30_000 });
@@ -2439,53 +2237,24 @@ test.describe("Parameter topology / schema browser acceptance", () => {
       testInfo,
       assertions: ["ui", "api", "db", "audit"],
       api: [
-        summarizeApiResponse(submitRound, {
+        summarizeApiResponse(validateResponse, {
           method: "POST",
-          path: "/api/v1/parameter-submission-rounds",
-          responseSummary: `requestId=${changeRequestId}`
-        }),
-        ...(validateResponse && validateBody
-          ? [
-              summarizeApiResponse(validateResponse, {
-                method: "POST",
-                path: `/api/v2/projects/${projectId}/config-revisions/${validateTargetId}/validate`,
-                responseSummary: `run=${validateBody.item.id}; status=${validateBody.item.status}`
-              })
-            ]
-          : [
-              summarizeApiResponse(hardwareReview, {
-                method: "POST",
-                path: `/api/v1/parameter-change-requests/${changeRequestId}/review`,
-                responseSummary: "identity-mismatch fail-closed publish gate"
-              })
-            ])
+          path: `/api/v2/projects/${projectId}/config-revisions/${validateTargetId}/validate`,
+          responseSummary: `run=${validateBody.item.id}; status=${validateBody.item.status}`
+        })
       ],
       db: [publishDb, persistedDb],
       audit: [
         {
           id: publishAuditItem?.id,
-          kind: publishAuditItem?.kind ?? "parameter-topology-governance",
-          action: publishAuditItem?.action ?? "config-revision-validated",
-          targetId: publishAuditItem?.targetId ?? validateTargetId
+          kind: "parameter-topology-governance",
+          action: "config-revision-validated",
+          targetId: validateTargetId
         }
       ],
-      notes: writebackCandidateRevisionId
-        ? `${descriptionPrefix}: successful validate on candidate revision; base revision binding unchanged; bindingId+provenance persist after reload. org=${organizationId} runId=${runSuffix}`
-        : `${descriptionPrefix}: T1.1 identity-mismatch is the fail-closed publish gate; no writeback candidate exists. Base binding and provenance persist after reload. org=${organizationId} runId=${runSuffix}`
+      notes: `${descriptionPrefix}: successful validate on candidate revision; base revision binding unchanged; bindingId+provenance persist after reload. org=${organizationId} runId=${runSuffix}`
     });
     } finally {
-      await withPgClient(async (client) => {
-        await client.query(
-          `
-          update parameter_change_requests
-          set status = 'rejected', reject_reason = 'topology mega-test cleanup', updated_at = now()
-          where organization_id = $1
-            and project_id = $2
-            and status not in ('merged', 'rejected')
-          `,
-          [organizationId, projectId]
-        );
-      });
       await cleanupSemanticAcceptanceArtifacts({
         organizationId,
         projectId,
@@ -2886,9 +2655,7 @@ test.describe("Parameter topology / schema browser acceptance", () => {
         projectId,
         topology.configSetId,
         topology.revisionId,
-        [childProp, directProp],
-        30_000,
-        ["enableparent@a0", "enablechild@10", "enabledirect@20"]
+        [childProp, directProp]
       );
 
       const topologyApi = await request.get(
@@ -2934,15 +2701,16 @@ test.describe("Parameter topology / schema browser acceptance", () => {
 
       await workspace.getByRole("searchbox", { name: "搜索 DTS 参数" }).fill(childProp);
       const childRow = workspace.getByRole("row").filter({ hasText: childProp }).first();
-      if (await childRow.isVisible().catch(() => false)) {
-        await expect(childRow).toContainText(/所属节点已禁用|所属节点不可达/);
-        await workspace.getByRole("searchbox", { name: "搜索 DTS 参数" }).fill(directProp);
-        const directRow = workspace.getByRole("row").filter({ hasText: directProp }).first();
-        await expect(directRow).toBeVisible({ timeout: 20_000 });
-        await expect(directRow).toContainText("所属节点已禁用");
-        await workspace.getByRole("searchbox", { name: "搜索 DTS 参数" }).fill(childProp);
-        await expect(childRow).toBeVisible({ timeout: 20_000 });
-      }
+      await expect(childRow).toBeVisible({ timeout: 20_000 });
+      await expect(childRow).toContainText(/所属节点已禁用|所属节点不可达/);
+
+      await workspace.getByRole("searchbox", { name: "搜索 DTS 参数" }).fill(directProp);
+      const directRow = workspace.getByRole("row").filter({ hasText: directProp }).first();
+      await expect(directRow).toBeVisible({ timeout: 20_000 });
+      await expect(directRow).toContainText("所属节点已禁用");
+
+      await workspace.getByRole("searchbox", { name: "搜索 DTS 参数" }).fill(childProp);
+      await expect(childRow).toBeVisible({ timeout: 20_000 });
 
       const expandTreeitemIfCollapsed = async (name: RegExp) => {
         const item = workspace.getByRole("treeitem", { name }).first();
@@ -3011,8 +2779,7 @@ test.describe("Parameter topology / schema browser acceptance", () => {
         dtsText,
         configSetId: topology.configSetId,
         previousRevisionId: topology.revisionId,
-        propertyKeys: [gateProp],
-        nodeNeedles: [`egate_${runSuffix}@60`]
+        propertyKeys: [gateProp]
       });
 
       const reviewList = await request.get(
@@ -3050,6 +2817,7 @@ test.describe("Parameter topology / schema browser acceptance", () => {
         (item) => item.propertyKey === "status" && (item.locator ?? "").includes(locatorNeedle)
       );
       expect(statusBindings, "status must not become a parameter binding").toHaveLength(0);
+      expect(bindingsBody.items.some((item) => item.propertyKey === gateProp)).toBe(true);
 
       const { topologyApi, nodes } = await listEffectiveTopologyNodes(
         request,
@@ -3523,8 +3291,7 @@ test.describe("Parameter topology / schema browser acceptance", () => {
         dtsText,
         configSetId: topology.configSetId,
         previousRevisionId: topology.revisionId,
-        propertyKeys: [guardProp],
-        nodeNeedles: [`eguard_${runSuffix}@50`]
+        propertyKeys: [guardProp]
       });
 
       const { nodes } = await listEffectiveTopologyNodes(
@@ -3560,24 +3327,22 @@ test.describe("Parameter topology / schema browser acceptance", () => {
         guardProp,
         new RegExp(`eguard_${runSuffix}`)
       );
-      if (enablementDialog) {
-        await expect(enablementDialog.getByRole("region", { name: "非标准 status" })).toBeVisible();
-        await expect(enablementDialog).toContainText(/reserved/);
-        await expect(enablementDialog.getByRole("radio", { name: "启用" })).toHaveCount(0);
-        await expect(enablementDialog.getByRole("button", { name: "校验并加入本轮" })).toHaveCount(0);
+      await expect(enablementDialog.getByRole("region", { name: "非标准 status" })).toBeVisible();
+      await expect(enablementDialog).toContainText(/reserved/);
+      await expect(enablementDialog.getByRole("radio", { name: "启用" })).toHaveCount(0);
+      await expect(enablementDialog.getByRole("button", { name: "校验并加入本轮" })).toHaveCount(0);
 
-        await enablementDialog.getByRole("button", { name: "仍要修改" }).click();
-        await expect(enablementDialog.getByRole("radio", { name: "启用" })).toBeVisible();
-        await enablementDialog.getByRole("radio", { name: "启用" }).click();
-        const confirm = enablementDialog.getByRole("button", { name: "校验并加入本轮" });
-        await expect(confirm).toBeDisabled();
-        await enablementDialog.getByRole("textbox", { name: "修改原因" }).fill("Override reserved token");
-        await expect(confirm).toBeDisabled();
-        await enablementDialog
-          .getByRole("checkbox", { name: "我了解将覆盖非标准 status 原文" })
-          .click();
-        await expect(confirm).toBeEnabled();
-      }
+      await enablementDialog.getByRole("button", { name: "仍要修改" }).click();
+      await expect(enablementDialog.getByRole("radio", { name: "启用" })).toBeVisible();
+      await enablementDialog.getByRole("radio", { name: "启用" }).click();
+      const confirm = enablementDialog.getByRole("button", { name: "校验并加入本轮" });
+      await expect(confirm).toBeDisabled();
+      await enablementDialog.getByRole("textbox", { name: "修改原因" }).fill("Override reserved token");
+      await expect(confirm).toBeDisabled();
+      await enablementDialog
+        .getByRole("checkbox", { name: "我了解将覆盖非标准 status 原文" })
+        .click();
+      await expect(confirm).toBeEnabled();
 
       await recordOperationEvidence({
         operationId: "PARAM-ENABLE-GUARD-001",

@@ -3,7 +3,7 @@
  * from the reviewed seed reconciliation manifest.
  *
  * The manifest is the reviewed semantic-alignment artifact (the reconciliation of
- * the 113 vendor inputs), so deriving the property list from it is not circular:
+ * the 115 vendor inputs), so deriving the property list from it is not circular:
  * the generated file is an independent source that is then resolved *against* the
  * published Catalog release by the integration tests. Deriving the source from the
  * release instead would make every catalog/vendor mismatch invisible, which is why

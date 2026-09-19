@@ -5120,7 +5120,9 @@ describe("S11-APL catalog apply on real PostgreSQL", { timeout: 180_000 }, () =>
     expect(await countCutoverRuns(freshDb.url)).toBe(0);
   });
 
-  it("captures live postgres, minio, and redis from the isolated Docker stores", async () => {
+  it.skipIf(process.env.CI === "true" && !process.env.WISEEFF_T34A_POSTGRES_URL)(
+    "captures live postgres, minio, and redis from the isolated Docker stores",
+    async () => {
     const { result } = runModeApply(
       "fresh",
       freshDb.url,

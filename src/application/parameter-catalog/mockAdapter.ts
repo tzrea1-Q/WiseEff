@@ -554,6 +554,38 @@ export function createMockCatalogPorts(options: CatalogMockOptions = {}): {
       assertReadyForRead(store);
       throw catalogApiFailure("unsupported-catalog-capability");
     },
+    async listProjectValueDrafts() {
+      assertReadyForRead(store);
+      return emptyCatalogCollection();
+    },
+    async deleteProjectValueDraft() {
+      assertReadyForRead(store);
+      throw catalogApiFailure("unsupported-catalog-capability");
+    },
+    async submitProjectValueDraft() {
+      assertReadyForRead(store);
+      throw catalogApiFailure("unsupported-catalog-capability");
+    },
+    async listProjectValueChangeRequests() {
+      assertReadyForRead(store);
+      return emptyCatalogCollection();
+    },
+    async reviewProjectValueChangeRequest() {
+      assertReadyForRead(store);
+      throw catalogApiFailure("unsupported-catalog-capability");
+    },
+    async getProjectValueChangeSourceDiff() {
+      assertReadyForRead(store);
+      throw catalogApiFailure("unsupported-catalog-capability");
+    },
+    async getCanonicalBindingChangeHistory() {
+      assertReadyForRead(store);
+      return emptyCatalogCollection();
+    },
+    async getCanonicalBindingExport() {
+      assertReadyForRead(store);
+      throw catalogApiFailure("unsupported-catalog-capability");
+    },
     async getPublication(jobId) {
       assertReadyForRead(store);
       const job = store.jobs.get(jobId);

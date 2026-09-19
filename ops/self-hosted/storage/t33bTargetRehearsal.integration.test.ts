@@ -15,7 +15,9 @@ const input = {
   publicUrl: process.env.WISEEFF_T33B_PUBLIC_URL ?? "http://127.0.0.1:18080",
 };
 
-describe("T3.3b local self-hosted target rehearsal", () => {
+const isolatedTarget = process.env.CI !== "true" || Boolean(process.env.WISEEFF_T33B_PUBLIC_URL);
+
+describe.skipIf(!isolatedTarget)("T3.3b local self-hosted target rehearsal", () => {
   it("fences live services, exclusive-unfreezes, restores, and preserves non-parameter data", { timeout: 180_000 }, async () => {
     const result = await runT33bTargetRehearsal(input);
     expect(result.quiescence.writersFenced).toBe(true);

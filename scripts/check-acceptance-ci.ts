@@ -333,7 +333,7 @@ export function findAcceptanceEnvironmentHelperLoads(
 }
 
 /** Every acceptance spec must load the shared acceptance environment helper. */
-const ACCEPTANCE_ENVIRONMENT_HELPER_COUNT = 35;
+const ACCEPTANCE_ENVIRONMENT_HELPER_COUNT = 37;
 
 export function evaluateAcceptanceCiConfiguration(
   input: AcceptanceCiConfigurationInput

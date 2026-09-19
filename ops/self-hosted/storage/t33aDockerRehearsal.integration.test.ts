@@ -27,7 +27,9 @@ const input = {
   exclusiveToken: process.env.WISEEFF_T33A_UNFREEZE_TOKEN ?? "exclusive-t33a-token",
 };
 
-describe("T3.3a Docker S2 rehearsal", () => {
+const isolatedStores = process.env.CI !== "true" || Boolean(process.env.WISEEFF_T34A_POSTGRES_URL);
+
+describe.skipIf(!isolatedStores)("T3.3a Docker S2 rehearsal", () => {
   it("observes live quiescence, exclusive-unfreezes with receipt, refreezes, and restores", async () => {
     const result = await runT33aDockerRehearsal(input);
     expect(result.quiescence.writersFenced).toBe(true);

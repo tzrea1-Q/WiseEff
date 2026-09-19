@@ -10,7 +10,9 @@ const s3Bucket = process.env.WISEEFF_T34A_S3_BUCKET ?? "wiseeff-t34a";
 const s3Access = process.env.WISEEFF_T34A_S3_ACCESS_KEY ?? "t34a-minio";
 const s3Secret = process.env.WISEEFF_T34A_S3_SECRET_KEY ?? "t34a-minio-secret-32chars";
 
-describe("T3.4a live Docker three-store capture", () => {
+const isolatedStores = process.env.CI !== "true" || Boolean(process.env.WISEEFF_T34A_POSTGRES_URL);
+
+describe.skipIf(!isolatedStores)("T3.4a live Docker three-store capture", () => {
   it("captures postgres, minio, and redis from the isolated compose stack", async () => {
     const postgres = createPostgresStorePort(postgresUrl, { allowComposeApp: false });
     const redis = createRedisStorePort(redisUrl);
