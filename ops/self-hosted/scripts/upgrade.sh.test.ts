@@ -4923,6 +4923,7 @@ describe("S11-APL catalog apply on real PostgreSQL", { timeout: 180_000 }, () =>
     graph: FrozenP0Graph,
     runId: string,
     root = mkdtempSync(join(tmpdir(), `wiseeff-s11-apl-${mode}-`)),
+    extraEnv: NodeJS.ProcessEnv = {},
   ) => {
     const paths = writeInputs(root, graph);
     const result = runUpgrade(
@@ -4950,7 +4951,7 @@ describe("S11-APL catalog apply on real PostgreSQL", { timeout: 180_000 }, () =>
         "audit-s11-apl",
         "--json",
       ],
-      catalogApplyEnv(dbUrl),
+      catalogApplyEnv(dbUrl, extraEnv),
     );
     return { result, ...paths, root };
   };
@@ -5117,6 +5118,31 @@ describe("S11-APL catalog apply on real PostgreSQL", { timeout: 180_000 }, () =>
       "runVerification",
     ]);
     expect(await countCutoverRuns(freshDb.url)).toBe(0);
+  });
+
+  it("captures live postgres, minio, and redis from the isolated Docker stores", async () => {
+    const { result } = runModeApply(
+      "fresh",
+      freshDb.url,
+      EMPTY_P0_GRAPH,
+      "s11apl-live-stores",
+      undefined,
+      {
+        WISEEFF_REDIS_URL: "redis://127.0.0.1:56379",
+        OBJECT_STORAGE_ENDPOINT: "http://127.0.0.1:59000",
+        OBJECT_STORAGE_BUCKET: "wiseeff-t34a",
+        OBJECT_STORAGE_ACCESS_KEY_ID: "t34a-minio",
+        OBJECT_STORAGE_SECRET_ACCESS_KEY: "t34a-minio-secret-32chars",
+        OBJECT_STORAGE_REGION: "us-east-1",
+      },
+    );
+    expect(result.status, result.stderr).toBe(0);
+    const payload = parseApplyJson(result.stdout);
+    expect(payload.ok).toBe(true);
+    const recovery = payload.recoveryPoint as Record<string, unknown>;
+    expect(recovery.threeStoreRecoveryPoint).toBe(true);
+    expect(recovery.capturedStores).toEqual(["postgres", "object-store", "redis"]);
+    expect(recovery.notCapturedStores).toEqual([]);
   });
 
   it("T2 duplicate fresh apply is a journal replay without a second live mutation", async () => {
