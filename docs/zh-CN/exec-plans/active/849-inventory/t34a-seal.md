@@ -2,7 +2,9 @@
 
 > English: [English](../../../exec-plans/active/849-inventory/t34a-seal.md)
 
-状态：**PRESEAL-REVIEW FAIL。未 SEALED。** 独立评审模型定为 **grok-4.6**。T3.4a 保持未勾。无 PR/push/Hosted。本记录不授权 T3.4b。
+状态：**PRESEAL-REVIEW FAIL。未 SEALED。** 独立评审模型定为 **grok-4.6**。T3.4a 保持未勾。无 PR/push/Hosted。未启动 T3.4b。
+
+第 4 轮候选 HEAD `d12bc808c9de2903b143ebfada4ccd9ec67eec23`：`tsc -b` **通过**，`npm run build` **通过**，T3.3a+T3.3b+liveStorePorts **5 通过**。grok-4.6 Standards **PASS**（P0=0 P1=0 P2=1）。Spec **FAIL**（T3.1/T3.2 仍开；Gate0/`test:server` 不在此 SHA；target-synthetic/minimal-upgrade 不是通过）。T3.3b 是已授权本机自托管目标，不能单独封印 T3.4a。
 
 ## 候选身份
 
@@ -21,7 +23,7 @@
 
 第 1–2 轮 Standards FAIL P1（操作员 JSON / 内存 stub）。第 3 轮 Standards（`f2c7ef968`，grok-4.6）：**PASS**。隔离 Docker postgres/redis/MinIO；仅在设置 `WISEEFF_REDIS_URL` 与 `OBJECT_STORAGE_*` 时 `threeStoreRecoveryPoint: true`。
 
-Spec 仍 **FAIL**（T3.2 leftover、T3.3b 无目标、T3.1 未在此 SHA 重跑 `test:server`）。处置：**未 SEALED**。后续封印最多是有条件。
+第 4 轮 Spec（`d12bc808c`，grok-4.6）：**FAIL**。T3.3b「无目标」已由本机自托管实例关闭，仍不能单 SHA 封印。处置：**未 SEALED**。
 
 本机隔离 Docker 三存储（不是 5432/`wiseeff`，不是 `wiseeff_lane_849`）：
 
@@ -37,6 +39,6 @@ Gate0 **通过**（`full-20260919t063253898z-3dc5c94119c1-ddcd3c3d`）：visual/
 
 ## 目标 / 恢复计划
 
-此处不可执行。续跑见 [t33b-remaining-verification.md](t33b-remaining-verification.md)。
+已授权本机目标：[t33b-target-plan.md](t33b-target-plan.md) / [t33b-remaining-verification.md](t33b-remaining-verification.md)。整套恢复（应用 + PostgreSQL + 对象存储 + Redis）。不是生产，也不是 T3.4a 封印后的远端主机。
 
-T3.4a 保持开放。未启动 T3.4b。
+T3.4a 保持开放，**未 SEALED**。未启动 T3.4b。
