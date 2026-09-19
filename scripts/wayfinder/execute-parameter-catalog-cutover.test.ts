@@ -13,9 +13,12 @@ describe("execute-parameter-catalog-cutover CLI", () => {
       "release.json",
       "--fail-before-phase",
       "P7",
+      "--quiescence-json",
+      "quiescence.json",
     ]);
     expect(args.databaseUrl).toContain("wiseeff_lane_705");
     expect(args.failBeforePhase).toBe("P7");
+    expect(args.quiescenceJsonPath).toBe("quiescence.json");
   });
 
   it("refuses activation P12-P15 on execute", async () => {

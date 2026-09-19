@@ -69,6 +69,7 @@ const archiveRoot = process.env.WISEEFF_CATALOG_ARCHIVE_ROOT ?? "";
 const archiveKeyHex = process.env.WISEEFF_CATALOG_ARCHIVE_KEY_HEX ?? "11".repeat(32);
 const operatorAuditRef = process.env.WISEEFF_CATALOG_OPERATOR_AUDIT_REF ?? "audit-s11-apl-operator";
 const quiescedAttestation = process.env.WISEEFF_CATALOG_QUIESCED === "true";
+const quiescenceJsonPath = process.env.WISEEFF_CATALOG_QUIESCENCE_JSON ?? "";
 const deploymentId = process.env.WISEEFF_CATALOG_DEPLOYMENT_ID ?? "s11-apl";
 const hostFingerprint = process.env.WISEEFF_CATALOG_HOST_FINGERPRINT ?? "sha256:s11-apl-host";
 
@@ -100,6 +101,18 @@ const main = async () => {
       "PCAT-UPG-ILLEGAL-ACTION",
       "catalog apply requires operator attestation WISEEFF_CATALOG_QUIESCED=true; this is not P2 quiesce proof",
     );
+  }
+  if (!quiescenceJsonPath) {
+    fail(
+      "PCAT-UPG-ILLEGAL-ACTION",
+      "catalog apply requires WISEEFF_CATALOG_QUIESCENCE_JSON observed P2 proof; WISEEFF_CATALOG_QUIESCED is not P2 proof",
+    );
+  }
+  let quiescence: unknown;
+  try {
+    quiescence = JSON.parse(readFileSync(quiescenceJsonPath, "utf8")) as unknown;
+  } catch {
+    fail("PCAT-UPG-ILLEGAL-ACTION", "WISEEFF_CATALOG_QUIESCENCE_JSON could not be read as JSON");
   }
   if (!journalPath || !runId) {
     fail("PCAT-UPG-ILLEGAL-ACTION", "catalog apply requires --catalog-journal and --catalog-run-id");
@@ -359,6 +372,7 @@ const main = async () => {
           archiveObjectStore,
           archiveEncryptionKey,
           operatorAuditRef,
+          quiescence,
         });
         if (parsedMode === "populated") {
           if (executed.ok) lastExecute = executed.value as Record<string, unknown>;

@@ -50,6 +50,7 @@ import {
   type RecoverCutoverInput,
 } from "./interface";
 import { appendMappingVersion } from "./mapping";
+import { assertObservedQuiescence } from "./quiescence";
 import {
   assertRecordedAction,
   captureInventoryDump,
@@ -202,12 +203,18 @@ const runPhase = async (
         counts: compiled.value.counts,
       });
     }
-    case "P2":
+    case "P2": {
+      const observed = assertObservedQuiescence(input.quiescence);
+      if (!observed.ok) return observed;
       return ok({
-        writersFenced: true,
-        queuesDrained: true,
-        publicProxyStopped: true,
+        writersFenced: observed.value.writersFenced,
+        queuesDrained: observed.value.queuesDrained,
+        publicProxyStopped: observed.value.publicProxyStopped,
+        publicationFrozen: observed.value.publicationFrozen,
+        evidenceDigest: observed.value.evidenceDigest,
+        observedAt: observed.value.observedAt,
       });
+    }
     case "P3": {
       const dump = await captureInventoryDump(client);
       const runBoundToken = mintRunBoundToken();

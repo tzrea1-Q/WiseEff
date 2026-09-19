@@ -56,4 +56,4 @@ Canonical value drafts now load workflow-role candidates and block submit when p
 
 ## Remaining program boundary
 
-T3.2 is not a complete local-acceptance row. Local-non-HDC Gate0 on `beab90bc9` is green; smoke/quality/coverage/operations on later HEAD `58dab25a4` are green. target-synthetic-acceptance and minimal-upgrade remain unavailable and are not treated as pass. No push/PR/Hosted. T3.3a Docker/S2, T3.3b target, T3.4a seal, T3.4b PR/Hosted/merge, T3.5 Issue close are unchanged.
+T3.2 is not a complete local-acceptance row. Local-non-HDC Gate0 on `beab90bc9` is green; smoke/quality/coverage/operations on later HEAD `58dab25a4` are green. Pickup list for later environments: [t32-remaining-verification.md](t32-remaining-verification.md) (target-synthetic-acceptance and minimal-upgrade). Those rows are not pass. T3.3a Docker/S2 started separately; T3.3b target, T3.4a seal, T3.4b PR/Hosted/merge, T3.5 Issue close are unchanged.

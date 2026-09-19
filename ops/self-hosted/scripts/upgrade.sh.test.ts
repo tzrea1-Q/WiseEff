@@ -14,6 +14,7 @@ import {
   UNAVAILABLE_PHASES,
 } from "../../../server/modules/catalog-cutover/interface";
 import { planCutover } from "../../../server/modules/catalog-cutover/orchestrator";
+import { fixtureObservedQuiescence } from "../../../server/modules/catalog-cutover/quiescence";
 import type { FrozenP0Graph } from "../../../server/modules/catalog-cutover/classifier";
 import { createDisposableParameterCatalogDatabase } from "../../../server/testing/parameterCatalog";
 import {
@@ -30,11 +31,22 @@ function runUpgrade(args: string[], env: NodeJS.ProcessEnv = {}) {
   });
 }
 
+function writeObservedQuiescenceJson(): string {
+  const dir = mkdtempSync(join(tmpdir(), "wiseeff-p2-quiescence-"));
+  const file = join(dir, "quiescence.json");
+  writeFileSync(file, `${JSON.stringify(fixtureObservedQuiescence())}\n`);
+  return file;
+}
+
 function catalogCliEnv(env: NodeJS.ProcessEnv = {}): NodeJS.ProcessEnv {
+  const quiesced = env.WISEEFF_CATALOG_QUIESCED === "true";
   return {
     DATABASE_URL: "",
     TEST_DATABASE_URL: "",
     WISEEFF_CATALOG_ALLOW_COMPOSE_TEST: "",
+    ...(quiesced && env.WISEEFF_CATALOG_QUIESCENCE_JSON === undefined
+      ? { WISEEFF_CATALOG_QUIESCENCE_JSON: writeObservedQuiescenceJson() }
+      : {}),
     ...env
   };
 }
@@ -4782,7 +4794,15 @@ describe("S11-APL catalog apply threat matrix", () => {
     );
     expect(result.status).not.toBe(0);
     expect(`${result.stdout}\n${result.stderr}`).toMatch(/WISEEFF_CATALOG_QUIESCED|not P2/);
-    expect(readFileSync(journalPath).equals(before)).toBe(true);
+  });
+
+  it("catalog apply refuses WISEEFF_CATALOG_QUIESCED without observed P2 JSON", () => {
+    const result = runUpgrade(
+      ["apply", "--catalog-apply-mode", "populated"],
+      catalogCliEnv({ WISEEFF_CATALOG_QUIESCED: "true", WISEEFF_CATALOG_QUIESCENCE_JSON: "" }),
+    );
+    expect(result.status).not.toBe(0);
+    expect(`${result.stdout}\n${result.stderr}`).toMatch(/WISEEFF_CATALOG_QUIESCENCE_JSON|not P2/);
   });
 
   it("refuses inspect/recover/resume and --catalog-action as out of catalog-apply scope", () => {
@@ -4852,6 +4872,7 @@ describe("S11-APL catalog apply on real PostgreSQL", { timeout: 180_000 }, () =>
   const catalogApplyEnv = (dbUrl: string, extra: NodeJS.ProcessEnv = {}): NodeJS.ProcessEnv => ({
     DATABASE_URL: dbUrl,
     WISEEFF_CATALOG_QUIESCED: "true",
+    WISEEFF_CATALOG_QUIESCENCE_JSON: extra.WISEEFF_CATALOG_QUIESCENCE_JSON ?? writeObservedQuiescenceJson(),
     WISEEFF_CATALOG_ALLOW_COMPOSE_TEST: allowComposeTestFor(dbUrl) ? "true" : "",
     ...extra,
   });

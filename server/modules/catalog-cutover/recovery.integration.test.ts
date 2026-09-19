@@ -22,6 +22,7 @@ import {
 import { createLocalArchiveObjectStore } from "./archive";
 import type { FrozenP0Graph } from "./classifier";
 import { executeCutover, inspectCutover, planCutover, recoverCutover } from "./orchestrator";
+import { fixtureObservedQuiescence } from "./quiescence";
 import { assertRecordedAction, captureInventoryDump, dumpsEqual } from "./recovery";
 
 const CATALOG_TEST_TIMEOUT_MS = 60_000;
@@ -90,6 +91,7 @@ describe("S7-ORC recovery containment", { timeout: CATALOG_TEST_TIMEOUT_MS }, ()
       archiveObjectStore: createLocalArchiveObjectStore(objectRoot),
       archiveEncryptionKey: encryptionKey,
       operatorAuditRef: "audit-s7orc-recover",
+      quiescence: fixtureObservedQuiescence(),
     });
     expect(executed.ok).toBe(true);
     if (!executed.ok) return;
@@ -140,6 +142,7 @@ describe("S7-ORC recovery containment", { timeout: CATALOG_TEST_TIMEOUT_MS }, ()
       archiveObjectStore: createLocalArchiveObjectStore(objectRoot),
       archiveEncryptionKey: encryptionKey,
       operatorAuditRef: "audit-s7orc-recover",
+      quiescence: fixtureObservedQuiescence(),
     });
     expect(resume.ok).toBe(false);
     if (resume.ok) return;

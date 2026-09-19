@@ -56,4 +56,4 @@ Canonical 值草稿现在会加载审核角色候选人，角色池缺失时阻�
 
 ## 程序边界
 
-T3.2 整行仍未完成。`beab90bc9` 上的 local-non-HDC Gate0 已绿；后续 HEAD `58dab25a4` 上的 smoke/quality/coverage/operations 已绿。target-synthetic-acceptance 与 minimal-upgrade 仍不可用，不当作通过。不 push、不开 PR。T3.3a Docker/S2、T3.3b 目标、T3.4a 封印、T3.4b PR/Hosted/merge、T3.5 Issue 关闭不变。
+T3.2 整行仍未完成。`beab90bc9` 上的 local-non-HDC Gate0 已绿；后续 HEAD `58dab25a4` 上的 smoke/quality/coverage/operations 已绿。后续环境续跑清单：[t32-remaining-verification.md](t32-remaining-verification.md)（target-synthetic-acceptance 与 minimal-upgrade）。这两行不是通过。T3.3a Docker/S2 另行启动；T3.3b 目标、T3.4a 封印、T3.4b PR/Hosted/merge、T3.5 Issue 关闭不变。

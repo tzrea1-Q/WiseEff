@@ -32,6 +32,7 @@ import {
   inspectCutover,
   planCutover,
 } from "./orchestrator";
+import { fixtureObservedQuiescence } from "./quiescence";
 
 const CATALOG_TEST_TIMEOUT_MS = 60_000;
 const CATALOG_HOOK_TIMEOUT_MS = 120_000;
@@ -128,6 +129,7 @@ describe("S7-ORC restartable pre-activation cutover", { timeout: CATALOG_TEST_TI
     archiveEncryptionKey: encryptionKey,
     operatorAuditRef: "audit-s7orc-operator",
     failBeforePhase,
+    quiescence: fixtureObservedQuiescence(),
   });
 
   it("freezes the seven R3 threat-matrix rows", () => {
@@ -210,6 +212,26 @@ describe("S7-ORC restartable pre-activation cutover", { timeout: CATALOG_TEST_TI
       [plan.planDigest],
     );
     expect(runs.rows[0]?.n).toBe("1");
+  });
+
+  it("P2 refuses execute without observed quiescence", async () => {
+    const planned = await planCutover({
+      graph,
+      targetArtifactSha: "d".repeat(40),
+      targetCatalogReleaseDigest: plan.targetCatalogReleaseDigest,
+      catalogReleaseSource: jsonCatalogReleaseSource(bundle),
+    });
+    expect(planned.ok).toBe(true);
+    if (!planned.ok) return;
+    const { quiescence: _ignored, ...withoutQuiescence } = executeInput();
+    const refused = await executeCutover({
+      ...withoutQuiescence,
+      plan: planned.value,
+    });
+    expect(refused.ok).toBe(false);
+    if (refused.ok) return;
+    expect(refused.error.code).toBe("PCAT-ORC-PHASE-FAILED");
+    expect(refused.error.detail).toMatch(/attestation is not proof/);
   });
 
   it("T3 unknown and activation phases are typed refusals", async () => {

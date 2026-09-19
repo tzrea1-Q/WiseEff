@@ -21,6 +21,7 @@ export type ExecuteCliArgs = {
   readonly operatorAuditRef: string;
   readonly phase: string | null;
   readonly failBeforePhase: string | null;
+  readonly quiescenceJsonPath: string | null;
 };
 
 const readOption = (args: readonly string[], name: string): string | undefined => {
@@ -40,6 +41,7 @@ export const parseExecuteCliArgs = (argv: readonly string[]): ExecuteCliArgs => 
   operatorAuditRef: readOption(argv, "--operator-audit-ref") ?? "audit-s7orc-operator",
   phase: readOption(argv, "--phase") ?? null,
   failBeforePhase: readOption(argv, "--fail-before-phase") ?? null,
+  quiescenceJsonPath: readOption(argv, "--quiescence-json") ?? process.env.WISEEFF_CATALOG_QUIESCENCE_JSON ?? null,
 });
 
 export const runExecuteCutoverCli = async (argv: readonly string[]) => {
@@ -72,6 +74,10 @@ export const runExecuteCutoverCli = async (argv: readonly string[]) => {
   });
   if (!planned.ok) return planned;
   const plan: CutoverPlan = planned.value;
+  let quiescence: unknown;
+  if (args.quiescenceJsonPath) {
+    quiescence = JSON.parse(await readFile(args.quiescenceJsonPath, "utf8")) as unknown;
+  }
   const pool = new pg.Pool({ connectionString: args.databaseUrl, max: 4 });
   try {
     return await executeCutover({
@@ -86,6 +92,7 @@ export const runExecuteCutoverCli = async (argv: readonly string[]) => {
       ),
       operatorAuditRef: args.operatorAuditRef,
       failBeforePhase: (args.failBeforePhase as PreActivationPhase | null) ?? undefined,
+      quiescence,
     });
   } finally {
     await pool.end().catch(() => undefined);

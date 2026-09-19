@@ -111,6 +111,7 @@ export type ExecuteCutoverInput = {
   readonly archiveEncryptionKey: Buffer;
   readonly operatorAuditRef: string;
   readonly failBeforePhase?: PreActivationPhase;
+  readonly quiescence?: unknown;
 };
 
 export type InspectCutoverInput = {
