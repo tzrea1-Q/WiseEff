@@ -2,7 +2,7 @@
 
 > English: [English](../../../../exec-plans/active/849-inventory/t22-mod-module-consumers-threat-matrix.md)
 
-契约：#849/#853 T2.2-MOD、[API 过渡](../../../design-docs/parameter-catalog-api-transition.md) Module/driver registry 行、[清单](../../../references/parameter-catalog-contract-inventory.md) Module registry 行、T2.2-CGH [设计](t22-cgh-catalog-governance-design.md) 对 governance 列表的冻结、T2.2-KNW [回执](t22-knw-knowledge-consumers-acceptance.md)。产品方向已定。本矩阵冻结 MOD 实施边界。
+契约：#849/#853 T2.2-MOD、[API 过渡](../../../design-docs/parameter-catalog-api-transition.md) Module/driver registry 行、[清单](../../../../references/parameter-catalog-contract-inventory.md) Module registry 行、T2.2-CGH [设计](t22-cgh-catalog-governance-design.md) 对 governance 列表的冻结、T2.2-KNW [回执](t22-knw-knowledge-consumers-acceptance.md)。产品方向已定。本矩阵冻结 MOD 实施边界。
 
 状态：**Spec PASS with P2 已收口。** 配套：[可实现设计](t22-mod-module-consumers-design.md)。独立评审 `01a0b05c-8e4a-7c21-9f3d-2a1b6e90c4d7`。
 

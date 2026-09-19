@@ -2,7 +2,7 @@
 
 > English: [English](../../../../exec-plans/active/849-inventory/t22-ops-operations-consumers-threat-matrix.md)
 
-契约：#849/#853 T2.2-OPS、[API 过渡](../../../design-docs/parameter-catalog-api-transition.md) Operations 行、[清单](../../../references/parameter-catalog-contract-inventory.md) Release/operations 行、T2.2-MOD [回执](t22-mod-module-consumers-acceptance.md)。产品方向已定。本矩阵冻结 OPS 实施边界。
+契约：#849/#853 T2.2-OPS、[API 过渡](../../../design-docs/parameter-catalog-api-transition.md) Operations 行、[清单](../../../../references/parameter-catalog-contract-inventory.md) Release/operations 行、T2.2-MOD [回执](t22-mod-module-consumers-acceptance.md)。产品方向已定。本矩阵冻结 OPS 实施边界。
 
 状态：**Spec PASS with P2 已收口。** 配套：[可实现设计](t22-ops-operations-consumers-design.md)。独立评审 `01a0b06f-3a18-7c44-9e2d-8f1b47c0a5e6`。
 

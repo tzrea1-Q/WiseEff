@@ -2,7 +2,7 @@
 
 > Chinese: [Chinese](../../zh-CN/exec-plans/active/2026-09-16-849-853-closure-todolist.md)
 
-Status: **T2.2-OPS local candidate complete.** T1.1 remains an uncommitted dirty candidate. T1.2–T2.2-OPS remain additional dirty work on the same Scratch tree. T2.2-OPS: [acceptance](849-inventory/t22-ops-operations-consumers-acceptance.md). No commit, formal SEALED state, PR, merge or issue closure. User waived per-todo 确认 for remaining serial items; commit/PR/target/destructive/Issue still require separate authorization.
+Status: **T2.2-OPS local candidate complete.** T1.1 remains an uncommitted dirty candidate. T1.2–T2.2-OPS remain additional dirty work on the same Scratch tree. T2.2-OPS: [acceptance](849-inventory/t22-ops-operations-consumers-acceptance.md). No commit, formal SEALED state, PR, merge or issue closure. User waived per-todo confirmation for remaining serial items; commit/PR/target/destructive/Issue still require separate authorization.
 Baseline: `origin/main@46b6068693942b95f7cba28ee5de6748a97170fa`, freshly fetched for T1.1; P0/T0.6 work preserved on the new Scratch branch.
 Contract: [#849](https://github.com/tzrea1-Q/WiseEff/issues/849). Authoritative execution status: [#853](https://github.com/tzrea1-Q/WiseEff/issues/853). This file is its detailed execution order and acceptance map; update both language versions with the Issue after each delivered todo.
 

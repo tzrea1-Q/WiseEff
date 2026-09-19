@@ -2,7 +2,7 @@
 
 > English: [English](../../../../exec-plans/active/849-inventory/t22-top-topology-consumers-threat-matrix.md)
 
-契约：#849/#853 T2.2-TOP、已关闭 [#847](https://github.com/tzrea1-Q/WiseEff/issues/847)、[API 过渡](../../../design-docs/parameter-catalog-api-transition.md) 拓扑行、[ADR-0003](../../../adr/0003-node-enablement-is-not-a-parameter.md) 结构键与参数表面、T1.1 source-occurrence、T2.1 [回执](t21-parameter-ui-acceptance.md)、T2.2-CGH [回执](t22-cgh-catalog-governance-acceptance.md)。产品方向（十一族、每条引用归类、先修再收 ratchet、相对 3513 复测）已经决定。本矩阵冻结 TOP 实施边界。
+契约：#849/#853 T2.2-TOP、已关闭 [#847](https://github.com/tzrea1-Q/WiseEff/issues/847)、[API 过渡](../../../design-docs/parameter-catalog-api-transition.md) 拓扑行、[ADR-0003](../../../../adr/0003-node-enablement-is-not-a-parameter.md) 结构键与参数表面、T1.1 source-occurrence、T2.1 [回执](t21-parameter-ui-acceptance.md)、T2.2-CGH [回执](t22-cgh-catalog-governance-acceptance.md)。产品方向（十一族、每条引用归类、先修再收 ratchet、相对 3513 复测）已经决定。本矩阵冻结 TOP 实施边界。
 
 状态：**独立 Spec 评审 PASS with P2。** P2 已收口。配套：[可实现设计](t22-top-topology-consumers-design.md)。
 
