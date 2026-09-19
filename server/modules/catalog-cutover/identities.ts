@@ -43,7 +43,7 @@ export const assertCutoverIdentities = (value: unknown): CutoverResult<CutoverId
     );
   }
   const record = value as Record<string, unknown>;
-  const pin: Partial<CutoverIdentityPin> = {};
+  const collected: Record<string, string> = {};
   const missing: string[] = [];
   for (const key of CUTOVER_IDENTITY_KEYS) {
     const item = record[key];
@@ -51,7 +51,7 @@ export const assertCutoverIdentities = (value: unknown): CutoverResult<CutoverId
       missing.push(key);
       continue;
     }
-    pin[key] = item;
+    collected[key] = item;
   }
   if (missing.length > 0) {
     return fail(
@@ -59,7 +59,14 @@ export const assertCutoverIdentities = (value: unknown): CutoverResult<CutoverId
       `Incomplete cutover identity inventory: ${missing.join(",")}`,
     );
   }
-  return ok(pin as CutoverIdentityPin);
+  return ok({
+    databaseIdentity: collected.databaseIdentity,
+    imageDigest: collected.imageDigest,
+    schemaFingerprint: collected.schemaFingerprint,
+    seedDigest: collected.seedDigest,
+    scopeDigest: collected.scopeDigest,
+    archiveDigest: collected.archiveDigest,
+  });
 };
 
 export const assertIdentitiesMatch = (
