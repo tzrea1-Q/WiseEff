@@ -70,6 +70,8 @@ const archiveKeyHex = process.env.WISEEFF_CATALOG_ARCHIVE_KEY_HEX ?? "11".repeat
 const operatorAuditRef = process.env.WISEEFF_CATALOG_OPERATOR_AUDIT_REF ?? "audit-s11-apl-operator";
 const quiescedAttestation = process.env.WISEEFF_CATALOG_QUIESCED === "true";
 const quiescenceJsonPath = process.env.WISEEFF_CATALOG_QUIESCENCE_JSON ?? "";
+const identityJsonPath = process.env.WISEEFF_CATALOG_IDENTITY_JSON ?? "";
+const recoveryJsonPath = process.env.WISEEFF_CATALOG_RECOVERY_JSON ?? "";
 const deploymentId = process.env.WISEEFF_CATALOG_DEPLOYMENT_ID ?? "s11-apl";
 const hostFingerprint = process.env.WISEEFF_CATALOG_HOST_FINGERPRINT ?? "sha256:s11-apl-host";
 
@@ -113,6 +115,24 @@ const main = async () => {
     quiescence = JSON.parse(readFileSync(quiescenceJsonPath, "utf8")) as unknown;
   } catch {
     fail("PCAT-UPG-ILLEGAL-ACTION", "WISEEFF_CATALOG_QUIESCENCE_JSON could not be read as JSON");
+  }
+  if (!identityJsonPath) {
+    fail("PCAT-UPG-ILLEGAL-ACTION", "catalog apply requires WISEEFF_CATALOG_IDENTITY_JSON");
+  }
+  let identities: unknown;
+  try {
+    identities = JSON.parse(readFileSync(identityJsonPath, "utf8")) as unknown;
+  } catch {
+    fail("PCAT-UPG-ILLEGAL-ACTION", "WISEEFF_CATALOG_IDENTITY_JSON could not be read as JSON");
+  }
+  if (!recoveryJsonPath) {
+    fail("PCAT-UPG-ILLEGAL-ACTION", "catalog apply requires WISEEFF_CATALOG_RECOVERY_JSON");
+  }
+  let recoveryPoint: unknown;
+  try {
+    recoveryPoint = JSON.parse(readFileSync(recoveryJsonPath, "utf8")) as unknown;
+  } catch {
+    fail("PCAT-UPG-ILLEGAL-ACTION", "WISEEFF_CATALOG_RECOVERY_JSON could not be read as JSON");
   }
   if (!journalPath || !runId) {
     fail("PCAT-UPG-ILLEGAL-ACTION", "catalog apply requires --catalog-journal and --catalog-run-id");
@@ -212,6 +232,7 @@ const main = async () => {
     targetCatalogReleaseDigest: string;
     migrationContractVersion: string;
     phases: readonly string[];
+    identities: unknown;
   };
   let lastPlan: CutoverPlanLike | null = null;
   let lastExecute: Record<string, unknown> | null = null;
@@ -236,6 +257,7 @@ const main = async () => {
       targetCatalogReleaseDigest,
       migrationContractVersion: MIGRATION_CONTRACT_VERSION,
       phases: PRE_ACTIVATION_PHASES,
+      identities,
     };
   };
 
@@ -373,6 +395,8 @@ const main = async () => {
           archiveEncryptionKey,
           operatorAuditRef,
           quiescence,
+          recoveryPoint,
+          observedIdentities: identities,
         });
         if (parsedMode === "populated") {
           if (executed.ok) lastExecute = executed.value as Record<string, unknown>;
@@ -424,7 +448,7 @@ const main = async () => {
     const controller = opened.value;
     const planned = await controller.dispatch({
       action: "plan",
-      input: { graph, targetArtifactSha, targetCatalogReleaseDigest },
+      input: { graph, targetArtifactSha, targetCatalogReleaseDigest, identities },
     });
     if (!planned.ok) {
       fail(planned.error.code, planned.error.detail);
@@ -437,6 +461,7 @@ const main = async () => {
       targetCatalogReleaseDigest,
       migrationContractVersion: MIGRATION_CONTRACT_VERSION,
       phases: PRE_ACTIVATION_PHASES,
+      identities,
     };
 
     const executed = await controller.dispatch({

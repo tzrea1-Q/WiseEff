@@ -2,7 +2,7 @@
 
 > English: [English](../../../exec-plans/active/849-inventory/t33a-s2-rehearsal.md)
 
-状态：**已启动，尚未绿。** T3.2 剩余的 target-synthetic 与 minimal-upgrade 已记入后续合适环境；T3.2 保持未勾。本 todo 只拥有本地 S2/Docker 彩排。未 SEALED。未 push。T3.3b 仍是目标。封印点仍是 T3.4a。
+状态：**T3.3a 本地候选已绿。** T3.3b 不是通过（见 [t33b-remaining-verification.md](t33b-remaining-verification.md)）。T3.2 剩余 target-synthetic/minimal-upgrade 仍延期。未 SEALED。未 push。封印点仍是 T3.4a。
 
 ## 必须补齐的缺口
 
@@ -31,7 +31,16 @@
 | `upgrade.sh.test.ts` `-t "quiesce\|QUIESCENCE\|P2"` | **4 通过**，243 跳过 |
 | `upgrade.sh.test.ts` `-t "S11-APL catalog apply"` | **15 通过**，232 跳过 |
 
-T3.3a 剩余：三存储恢复点、artifact/release 之外的身份钉死、逐阶段中断、两个工作目录、helper PG 上的 export/import rehearsal、独占解冻/激活回执。
+本轮（T3.3a 收口）：
+
+- Plan 钉死 database/image/schema/seed/scope/archive；库存不全或观察漂移失败即关闭。
+- P3 要求 digest 绑定的 postgres/对象存储/Redis 恢复点观察；库存 dump 只用于回滚相等，不当备份。
+- 在隔离库上对每个 P0–P10 注入崩溃再续跑到完成。
+- 独占解冻要求已冻结 + 匹配 token，总是重新冻结，并要求激活回执。编排器上 P11–P16 仍不可用。
+- inspect/plan/execute/recover JSON 脱敏；`ops/self-hosted/scripts/parameter-catalog-cutover.sh` 是第二个工作目录入口。
+- export/import rehearsal 对着 helper 容器 `wiseeff-g668-pg` 跑过（不是 compose `5432/wiseeff`）。
+
+静默与恢复点 JSON 仍是操作员提交的证明，不是从 compose 队列/代理自动采集。缺证明失败即关闭。
 
 ## 环境
 

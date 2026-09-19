@@ -22,7 +22,9 @@ import {
 import { createLocalArchiveObjectStore } from "./archive";
 import type { FrozenP0Graph } from "./classifier";
 import { executeCutover, inspectCutover, planCutover, recoverCutover } from "./orchestrator";
+import { fixtureCutoverIdentities } from "./identities";
 import { fixtureObservedQuiescence } from "./quiescence";
+import { fixtureObservedRecoveryPoint } from "./recoveryPointObservation";
 import { assertRecordedAction, captureInventoryDump, dumpsEqual } from "./recovery";
 
 const CATALOG_TEST_TIMEOUT_MS = 60_000;
@@ -78,6 +80,7 @@ describe("S7-ORC recovery containment", { timeout: CATALOG_TEST_TIMEOUT_MS }, ()
       graph,
       targetArtifactSha: "c".repeat(40),
       targetCatalogReleaseDigest: compiled.value.release.digest,
+      identities: fixtureCutoverIdentities(),
       catalogReleaseSource: jsonCatalogReleaseSource(bundle),
     });
     expect(planned.ok).toBe(true);
@@ -92,6 +95,7 @@ describe("S7-ORC recovery containment", { timeout: CATALOG_TEST_TIMEOUT_MS }, ()
       archiveEncryptionKey: encryptionKey,
       operatorAuditRef: "audit-s7orc-recover",
       quiescence: fixtureObservedQuiescence(),
+      recoveryPoint: fixtureObservedRecoveryPoint(),
     });
     expect(executed.ok).toBe(true);
     if (!executed.ok) return;
@@ -143,6 +147,7 @@ describe("S7-ORC recovery containment", { timeout: CATALOG_TEST_TIMEOUT_MS }, ()
       archiveEncryptionKey: encryptionKey,
       operatorAuditRef: "audit-s7orc-recover",
       quiescence: fixtureObservedQuiescence(),
+      recoveryPoint: fixtureObservedRecoveryPoint(),
     });
     expect(resume.ok).toBe(false);
     if (resume.ok) return;

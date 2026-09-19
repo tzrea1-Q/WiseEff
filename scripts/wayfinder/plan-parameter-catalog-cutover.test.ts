@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import { compileCatalogRelease } from "../../server/modules/catalog-kernel/compiler/index";
 import { validCatalogReleaseBundle } from "../../server/modules/catalog-kernel/compiler/__fixtures__/catalogReleaseBundle";
+import { fixtureCutoverIdentities } from "../../server/modules/catalog-cutover/identities";
 import { parsePlanCliArgs, runPlanCutoverCli } from "./plan-parameter-catalog-cutover";
 
 const graph = {
@@ -82,6 +83,8 @@ describe("plan-parameter-catalog-cutover CLI", () => {
     if (!compiled.ok) return;
     await writeFile(graphPath, JSON.stringify(graph));
     await writeFile(releasePath, JSON.stringify(bundle));
+    const identityPath = path.join(tempDir, "identity.json");
+    await writeFile(identityPath, JSON.stringify(fixtureCutoverIdentities()));
     const args = parsePlanCliArgs([
       "--graph",
       graphPath,
@@ -102,6 +105,8 @@ describe("plan-parameter-catalog-cutover CLI", () => {
       "d".repeat(40),
       "--target-catalog-release-digest",
       compiled.value.release.digest,
+      "--identity-json",
+      identityPath,
     ]);
     expect(planned.ok).toBe(true);
     if (!planned.ok) return;

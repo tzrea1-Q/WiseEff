@@ -10,6 +10,7 @@ import {
 } from "../../server/modules/catalog-cutover/interface";
 import { planCutover } from "../../server/modules/catalog-cutover/orchestrator";
 import { assertAllowedPhase } from "../../server/modules/catalog-cutover/checkpoints";
+import { writeSanitizedCutoverOutput } from "./cutoverDiagnostic";
 
 export type PlanCliArgs = {
   readonly databaseUrl: string | null;
@@ -18,6 +19,7 @@ export type PlanCliArgs = {
   readonly targetArtifactSha: string;
   readonly targetCatalogReleaseDigest: string | null;
   readonly phase: string | null;
+  readonly identityJsonPath: string | null;
 };
 
 const readOption = (args: readonly string[], name: string): string | undefined => {
@@ -33,6 +35,7 @@ export const parsePlanCliArgs = (argv: readonly string[]): PlanCliArgs => ({
   targetArtifactSha: readOption(argv, "--target-artifact-sha") ?? "",
   targetCatalogReleaseDigest: readOption(argv, "--target-catalog-release-digest") ?? null,
   phase: readOption(argv, "--phase") ?? null,
+  identityJsonPath: readOption(argv, "--identity-json") ?? process.env.WISEEFF_CATALOG_IDENTITY_JSON ?? null,
 });
 
 export const runPlanCutoverCli = async (argv: readonly string[]) => {
@@ -63,10 +66,14 @@ export const runPlanCutoverCli = async (argv: readonly string[]) => {
   const bundle = args.releaseJsonPath
     ? JSON.parse(await readFile(args.releaseJsonPath, "utf8"))
     : null;
+  const identities = args.identityJsonPath
+    ? (JSON.parse(await readFile(args.identityJsonPath, "utf8")) as PlanCutoverInput["identities"])
+    : (undefined as unknown as PlanCutoverInput["identities"]);
   const input: PlanCutoverInput = {
     graph,
     targetArtifactSha: args.targetArtifactSha,
     targetCatalogReleaseDigest: args.targetCatalogReleaseDigest ?? "",
+    identities,
     catalogReleaseSource: bundle ? jsonCatalogReleaseSource(bundle) : undefined,
   };
   return planCutover(input);
@@ -78,7 +85,7 @@ const invokedDirectly =
 if (invokedDirectly) {
   runPlanCutoverCli(process.argv.slice(2))
     .then((result) => {
-      process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
+      process.stdout.write(writeSanitizedCutoverOutput(result));
       if (!result.ok) process.exitCode = 1;
     })
     .catch((error: unknown) => {

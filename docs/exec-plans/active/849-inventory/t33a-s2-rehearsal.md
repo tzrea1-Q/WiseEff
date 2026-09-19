@@ -2,7 +2,7 @@
 
 > Chinese: [中文](../../../zh-CN/exec-plans/active/849-inventory/t33a-s2-rehearsal.md)
 
-Status: **started, not green.** T3.2 remaining target-synthetic and minimal-upgrade are recorded for a later environment; T3.2 stays unchecked. This todo owns local S2/Docker rehearsal only. Not SEALED. Not pushed. T3.3b remains target. T3.4a remains the seal point.
+Status: **local candidate green for T3.3a.** T3.3b is not pass (see [t33b-remaining-verification.md](t33b-remaining-verification.md)). T3.2 remaining target-synthetic/minimal-upgrade stay deferred. Not SEALED. Not pushed. T3.4a remains the seal point.
 
 ## Known gaps this todo must close
 
@@ -31,7 +31,23 @@ Verification (helper PG **55438** / `wiseeff_t23b`):
 | `upgrade.sh.test.ts` `-t "quiesce\|QUIESCENCE\|P2"` | **4 passed**, 243 skipped |
 | `upgrade.sh.test.ts` `-t "S11-APL catalog apply"` | **15 passed**, 232 skipped |
 
-Remaining T3.3a: three-store recovery points, identity pin beyond artifact/release, interrupt-every-phase, both working directories, export/import rehearsal on helper PG, exclusive unfreeze/activation receipt.
+This turn (T3.3a close-out):
+
+- Plan pins database/image/schema/seed/scope/archive identities; incomplete inventory and drifted observations fail closed.
+- P3 requires digest-bound postgres/object-store/redis recovery-point observation; inventory dump stays for rollback equality and is not treated as a backup.
+- Execute injects a crash before every P0–P10 phase on an isolated DB, then resumes to completion.
+- Exclusive unfreeze requires freeze + matching token, always refreezes, and demands an activation receipt. P11–P16 stay unavailable on the cutover orchestrator.
+- Inspect/plan/execute/recover JSON is sanitized; `ops/self-hosted/scripts/parameter-catalog-cutover.sh` is the second working-directory entry.
+- Export/import rehearsal ran against helper container `wiseeff-g668-pg` (not compose `5432/wiseeff`).
+
+Observed quiescence and recovery-point JSON are still operator-supplied proofs, not auto-scraped compose queue/proxy samples. Missing proof fails closed.
+
+| Command | Result |
+| --- | --- |
+| catalog-cutover identities/recoveryPoint/exclusiveUnfreeze/quiescence/orchestrator/recovery.integration | **14 passed** |
+| S11-APL catalog apply (`upgrade.sh.test.ts`) | **15 passed** (232 skipped in file) |
+| `parameter-catalog-rehearsal.integration.test.ts` `WAYFINDER_POSTGRES_CONTAINER=wiseeff-g668-pg` | **81 passed** |
+| cutoverDiagnostic + cutoverWorkingDirectory | **2 passed** |
 
 ## Environment
 

@@ -9,6 +9,7 @@ import type { FrozenP0Graph } from "../../server/modules/catalog-cutover/classif
 import { assertAllowedPhase } from "../../server/modules/catalog-cutover/checkpoints";
 import type { CutoverPlan, PreActivationPhase } from "../../server/modules/catalog-cutover/interface";
 import { executeCutover, planCutover } from "../../server/modules/catalog-cutover/orchestrator";
+import { writeSanitizedCutoverOutput } from "./cutoverDiagnostic";
 
 export type ExecuteCliArgs = {
   readonly databaseUrl: string | null;
@@ -22,6 +23,8 @@ export type ExecuteCliArgs = {
   readonly phase: string | null;
   readonly failBeforePhase: string | null;
   readonly quiescenceJsonPath: string | null;
+  readonly recoveryJsonPath: string | null;
+  readonly identityJsonPath: string | null;
 };
 
 const readOption = (args: readonly string[], name: string): string | undefined => {
@@ -42,6 +45,8 @@ export const parseExecuteCliArgs = (argv: readonly string[]): ExecuteCliArgs => 
   phase: readOption(argv, "--phase") ?? null,
   failBeforePhase: readOption(argv, "--fail-before-phase") ?? null,
   quiescenceJsonPath: readOption(argv, "--quiescence-json") ?? process.env.WISEEFF_CATALOG_QUIESCENCE_JSON ?? null,
+  recoveryJsonPath: readOption(argv, "--recovery-json") ?? process.env.WISEEFF_CATALOG_RECOVERY_JSON ?? null,
+  identityJsonPath: readOption(argv, "--identity-json") ?? process.env.WISEEFF_CATALOG_IDENTITY_JSON ?? null,
 });
 
 export const runExecuteCutoverCli = async (argv: readonly string[]) => {
@@ -66,10 +71,14 @@ export const runExecuteCutoverCli = async (argv: readonly string[]) => {
   const graph = JSON.parse(await readFile(args.graphPath, "utf8")) as FrozenP0Graph;
   const bundle = JSON.parse(await readFile(args.releaseJsonPath, "utf8"));
   const source = jsonCatalogReleaseSource(bundle);
+  const identities = args.identityJsonPath
+    ? JSON.parse(await readFile(args.identityJsonPath, "utf8"))
+    : undefined;
   const planned = await planCutover({
     graph,
     targetArtifactSha: args.targetArtifactSha,
     targetCatalogReleaseDigest: args.targetCatalogReleaseDigest,
+    identities: identities as never,
     catalogReleaseSource: source,
   });
   if (!planned.ok) return planned;
@@ -77,6 +86,10 @@ export const runExecuteCutoverCli = async (argv: readonly string[]) => {
   let quiescence: unknown;
   if (args.quiescenceJsonPath) {
     quiescence = JSON.parse(await readFile(args.quiescenceJsonPath, "utf8")) as unknown;
+  }
+  let recoveryPoint: unknown;
+  if (args.recoveryJsonPath) {
+    recoveryPoint = JSON.parse(await readFile(args.recoveryJsonPath, "utf8")) as unknown;
   }
   const pool = new pg.Pool({ connectionString: args.databaseUrl, max: 4 });
   try {
@@ -93,6 +106,8 @@ export const runExecuteCutoverCli = async (argv: readonly string[]) => {
       operatorAuditRef: args.operatorAuditRef,
       failBeforePhase: (args.failBeforePhase as PreActivationPhase | null) ?? undefined,
       quiescence,
+      recoveryPoint,
+      observedIdentities: identities,
     });
   } finally {
     await pool.end().catch(() => undefined);
@@ -105,7 +120,7 @@ const invokedDirectly =
 if (invokedDirectly) {
   runExecuteCutoverCli(process.argv.slice(2))
     .then((result) => {
-      process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
+      process.stdout.write(writeSanitizedCutoverOutput(result));
       if (!result.ok) process.exitCode = 1;
     })
     .catch((error: unknown) => {

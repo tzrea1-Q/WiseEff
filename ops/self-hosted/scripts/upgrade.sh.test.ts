@@ -14,7 +14,9 @@ import {
   UNAVAILABLE_PHASES,
 } from "../../../server/modules/catalog-cutover/interface";
 import { planCutover } from "../../../server/modules/catalog-cutover/orchestrator";
+import { fixtureCutoverIdentities } from "../../../server/modules/catalog-cutover/identities";
 import { fixtureObservedQuiescence } from "../../../server/modules/catalog-cutover/quiescence";
+import { fixtureObservedRecoveryPoint } from "../../../server/modules/catalog-cutover/recoveryPointObservation";
 import type { FrozenP0Graph } from "../../../server/modules/catalog-cutover/classifier";
 import { createDisposableParameterCatalogDatabase } from "../../../server/testing/parameterCatalog";
 import {
@@ -38,6 +40,20 @@ function writeObservedQuiescenceJson(): string {
   return file;
 }
 
+function writeObservedIdentityJson(): string {
+  const dir = mkdtempSync(join(tmpdir(), "wiseeff-s2-identity-"));
+  const file = join(dir, "identity.json");
+  writeFileSync(file, `${JSON.stringify(fixtureCutoverIdentities())}\n`);
+  return file;
+}
+
+function writeObservedRecoveryJson(): string {
+  const dir = mkdtempSync(join(tmpdir(), "wiseeff-s2-recovery-"));
+  const file = join(dir, "recovery.json");
+  writeFileSync(file, `${JSON.stringify(fixtureObservedRecoveryPoint())}\n`);
+  return file;
+}
+
 function catalogCliEnv(env: NodeJS.ProcessEnv = {}): NodeJS.ProcessEnv {
   const quiesced = env.WISEEFF_CATALOG_QUIESCED === "true";
   return {
@@ -46,6 +62,12 @@ function catalogCliEnv(env: NodeJS.ProcessEnv = {}): NodeJS.ProcessEnv {
     WISEEFF_CATALOG_ALLOW_COMPOSE_TEST: "",
     ...(quiesced && env.WISEEFF_CATALOG_QUIESCENCE_JSON === undefined
       ? { WISEEFF_CATALOG_QUIESCENCE_JSON: writeObservedQuiescenceJson() }
+      : {}),
+    ...(quiesced && env.WISEEFF_CATALOG_IDENTITY_JSON === undefined
+      ? { WISEEFF_CATALOG_IDENTITY_JSON: writeObservedIdentityJson() }
+      : {}),
+    ...(quiesced && env.WISEEFF_CATALOG_RECOVERY_JSON === undefined
+      ? { WISEEFF_CATALOG_RECOVERY_JSON: writeObservedRecoveryJson() }
       : {}),
     ...env
   };
@@ -4832,6 +4854,7 @@ describe("S11-APL catalog apply threat matrix", () => {
       graph: EMPTY_P0_GRAPH,
       targetArtifactSha: ARTIFACT_SHA,
       targetCatalogReleaseDigest: "sha256:release-empty",
+      identities: fixtureCutoverIdentities(),
     });
     expect(empty.ok).toBe(false);
     if (empty.ok) return;
@@ -4873,6 +4896,8 @@ describe("S11-APL catalog apply on real PostgreSQL", { timeout: 180_000 }, () =>
     DATABASE_URL: dbUrl,
     WISEEFF_CATALOG_QUIESCED: "true",
     WISEEFF_CATALOG_QUIESCENCE_JSON: extra.WISEEFF_CATALOG_QUIESCENCE_JSON ?? writeObservedQuiescenceJson(),
+    WISEEFF_CATALOG_IDENTITY_JSON: extra.WISEEFF_CATALOG_IDENTITY_JSON ?? writeObservedIdentityJson(),
+    WISEEFF_CATALOG_RECOVERY_JSON: extra.WISEEFF_CATALOG_RECOVERY_JSON ?? writeObservedRecoveryJson(),
     WISEEFF_CATALOG_ALLOW_COMPOSE_TEST: allowComposeTestFor(dbUrl) ? "true" : "",
     ...extra,
   });
@@ -5036,6 +5061,7 @@ describe("S11-APL catalog apply on real PostgreSQL", { timeout: 180_000 }, () =>
       graph: EMPTY_P0_GRAPH,
       targetArtifactSha: ARTIFACT_SHA,
       targetCatalogReleaseDigest: releaseDigest,
+      identities: fixtureCutoverIdentities(),
     });
     expect(emptyPlan.ok).toBe(false);
     if (!emptyPlan.ok) {

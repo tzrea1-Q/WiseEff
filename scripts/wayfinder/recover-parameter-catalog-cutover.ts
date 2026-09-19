@@ -5,6 +5,7 @@ import pg from "pg";
 import { assertAllowedPhase } from "../../server/modules/catalog-cutover/checkpoints";
 import { recoverCutover } from "../../server/modules/catalog-cutover/orchestrator";
 import { assertRecordedAction } from "../../server/modules/catalog-cutover/recovery";
+import { writeSanitizedCutoverOutput } from "./cutoverDiagnostic";
 
 export type RecoverCliArgs = {
   readonly databaseUrl: string | null;
@@ -64,7 +65,7 @@ const invokedDirectly =
 if (invokedDirectly) {
   runRecoverCutoverCli(process.argv.slice(2))
     .then((result) => {
-      process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
+      process.stdout.write(writeSanitizedCutoverOutput(result));
       if (!result.ok) process.exitCode = 1;
     })
     .catch((error: unknown) => {

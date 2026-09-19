@@ -4,6 +4,7 @@ import pg from "pg";
 
 import { assertAllowedPhase } from "../../server/modules/catalog-cutover/checkpoints";
 import { inspectCutover } from "../../server/modules/catalog-cutover/orchestrator";
+import { writeSanitizedCutoverOutput } from "./cutoverDiagnostic";
 
 export type InspectCliArgs = {
   readonly databaseUrl: string | null;
@@ -58,11 +59,13 @@ const invokedDirectly =
 if (invokedDirectly) {
   runInspectCutoverCli(process.argv.slice(2))
     .then((result) => {
-      process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
+      process.stdout.write(writeSanitizedCutoverOutput(result));
       if (!result.ok) process.exitCode = 1;
     })
     .catch((error: unknown) => {
-      process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`);
+      process.stderr.write(
+        writeSanitizedCutoverOutput(error instanceof Error ? error.message : String(error)),
+      );
       process.exitCode = 1;
     });
 }
