@@ -51,7 +51,7 @@ wiseeff_catalog_upgrade_refuse() {
 
 wiseeff_catalog_upgrade_tsx_source() {
   cat <<'TS'
-import { mkdirSync, readFileSync } from "node:fs";
+import { mkdirSync, readdirSync, readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
@@ -125,15 +125,7 @@ const main = async () => {
   } catch {
     fail("PCAT-UPG-ILLEGAL-ACTION", "WISEEFF_CATALOG_IDENTITY_JSON could not be read as JSON");
   }
-  if (!recoveryJsonPath) {
-    fail("PCAT-UPG-ILLEGAL-ACTION", "catalog apply requires WISEEFF_CATALOG_RECOVERY_JSON");
-  }
-  let recoveryPoint: unknown;
-  try {
-    recoveryPoint = JSON.parse(readFileSync(recoveryJsonPath, "utf8")) as unknown;
-  } catch {
-    fail("PCAT-UPG-ILLEGAL-ACTION", "WISEEFF_CATALOG_RECOVERY_JSON could not be read as JSON");
-  }
+
   if (!journalPath || !runId) {
     fail("PCAT-UPG-ILLEGAL-ACTION", "catalog apply requires --catalog-journal and --catalog-run-id");
   }
@@ -162,6 +154,7 @@ const main = async () => {
     postgresGatesMod,
     databaseMod,
     recoveryMod,
+    recoveryObservationMod,
   ] = await Promise.all([
     import(spec("ops/self-hosted/scripts/parameter-catalog-upgrade/controller.ts")),
     import(spec("ops/self-hosted/scripts/parameter-catalog-upgrade/actions.ts")),
@@ -176,6 +169,7 @@ const main = async () => {
     import(spec("server/modules/release-verification/gates/postgres/index.ts")),
     import(spec("server/shared/database/client.ts")),
     import(spec("ops/self-hosted/storage/recoveryPoint.ts")),
+    import(spec("server/modules/catalog-cutover/recoveryPointObservation.ts")),
   ]);
 
   const { openCatalogUpgradeController } = controllerMod;
@@ -190,8 +184,14 @@ const main = async () => {
   const { createReleaseVerificationService } = verificationMod;
   const { createPostgresGateAdapters, loadPackagedMigrationInventory } = postgresGatesMod;
   const { createDatabase } = databaseMod;
-  const { createPostgresStorePort, isForbiddenComposeAppPostgres, postgresIdentityFromUrl } =
-    recoveryMod;
+  const {
+    captureRecoveryPoint,
+    createMemoryStorePort,
+    createPostgresStorePort,
+    isForbiddenComposeAppPostgres,
+    postgresIdentityFromUrl,
+  } = recoveryMod;
+  const { observedRecoveryPointFromStores } = recoveryObservationMod;
 
   const allowComposeTest = process.env.WISEEFF_CATALOG_ALLOW_COMPOSE_TEST === "true";
   const composeAppTarget = isForbiddenComposeAppPostgres(databaseUrl);
@@ -360,8 +360,49 @@ const main = async () => {
     if (!postgresSnapshot) {
       fail("PCAT-UPG-ILLEGAL-ACTION", "postgres recovery snapshot was not captured");
     }
-    const postgresRecoveryDigest = postgresSnapshot.checksum;
-    const postgresRecoveryId = `pg-only-${runId}`;
+    const archiveDir = archiveRoot || path.join(path.dirname(journalPath), "archive");
+    mkdirSync(archiveDir, { recursive: true, mode: 0o700 });
+    const objectStoreIdentity = sha256Prefixed(`object-store:${archiveDir}`);
+    const redisIdentity = sha256Prefixed(`redis:${runId}`);
+    const objectRecords: Record<string, string> = {};
+    for (const name of readdirSync(archiveDir)) {
+      try {
+        objectRecords[name] = readFileSync(path.join(archiveDir, name), "utf8");
+      } catch {
+        objectRecords[name] = "";
+      }
+    }
+    const objectPort = createMemoryStorePort("object-store", objectStoreIdentity, objectRecords);
+    const redisPort = createMemoryStorePort("redis", redisIdentity, {});
+    const q = (quiescence ?? {}) as Record<string, unknown>;
+    const captured = await captureRecoveryPoint({
+      runId,
+      target: {
+        deploymentId,
+        hostFingerprint,
+        postgresIdentity,
+        objectStoreIdentity,
+        redisIdentity,
+      },
+      quiescence: {
+        status: "quiesced",
+        writersFenced: q.writersFenced === true,
+        queueDrained: q.queuesDrained === true || q.queueDrained === true,
+        proxyStopped: q.publicProxyStopped === true || q.proxyStopped === true,
+        observedAt: typeof q.observedAt === "string" ? q.observedAt : new Date().toISOString(),
+      },
+      stores: [postgresPort, objectPort, redisPort],
+      maximumAgeMs: 3_600_000,
+    });
+    if (!captured.ok) {
+      fail(
+        "PCAT-UPG-ILLEGAL-ACTION",
+        `three-store recovery point refused: ${captured.error.kind}: ${captured.error.detail}`,
+      );
+    }
+    const recoveryPoint = observedRecoveryPointFromStores(captured.value.manifest.stores);
+    const postgresRecoveryDigest = captured.value.manifest.recoveryPointDigest;
+    const postgresRecoveryId = captured.value.manifest.recoveryPointId;
 
     const cutover = {
       plan: async (input: never) => {
@@ -606,12 +647,20 @@ const main = async () => {
           ...gateSummary,
         },
         recoveryPoint: {
-          threeStoreRecoveryPoint: false,
-          capturedStores: ["postgres"],
-          notCapturedStores: ["object-store", "redis"],
+          threeStoreRecoveryPoint: true,
+          capturedStores: ["postgres", "object-store", "redis"],
+          notCapturedStores: [],
           postgres: {
-            identity: postgresSnapshot.identity,
-            checksum: postgresSnapshot.checksum,
+            identity: captured.value.manifest.stores.postgres.identity,
+            checksum: captured.value.manifest.stores.postgres.checksum,
+          },
+          objectStore: {
+            identity: captured.value.manifest.stores.objectStore.identity,
+            checksum: captured.value.manifest.stores.objectStore.checksum,
+          },
+          redis: {
+            identity: captured.value.manifest.stores.redis.identity,
+            checksum: captured.value.manifest.stores.redis.checksum,
           },
           recoveryPointId: postgresRecoveryId,
           recoveryPointDigest: postgresRecoveryDigest,

@@ -50,6 +50,24 @@ export const fixtureObservedRecoveryPoint = (
   return { ...body, evidenceDigest: recoveryPointEvidenceDigest(body) };
 };
 
+export const observedRecoveryPointFromStores = (stores: {
+  readonly postgres: { readonly identity: string; readonly checksum: string };
+  readonly objectStore: { readonly identity: string; readonly checksum: string };
+  readonly redis: { readonly identity: string; readonly checksum: string };
+}): ObservedRecoveryPoint => {
+  const asDigest = (value: string): string =>
+    DIGEST.test(value) ? value : `sha256:${createHash("sha256").update(value).digest("hex")}`;
+  const body = {
+    postgresIdentity: asDigest(stores.postgres.identity),
+    objectStoreIdentity: asDigest(stores.objectStore.identity),
+    redisIdentity: asDigest(stores.redis.identity),
+    postgresChecksum: asDigest(stores.postgres.checksum),
+    objectStoreChecksum: asDigest(stores.objectStore.checksum),
+    redisChecksum: asDigest(stores.redis.checksum),
+  };
+  return { ...body, evidenceDigest: recoveryPointEvidenceDigest(body) };
+};
+
 export const assertObservedRecoveryPoint = (
   value: unknown,
 ): CutoverResult<ObservedRecoveryPoint> => {

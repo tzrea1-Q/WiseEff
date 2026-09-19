@@ -4784,7 +4784,8 @@ describe("S11-APL catalog apply threat matrix", () => {
     expect(source).toContain("runVerification");
     expect(source).toContain("createPostgresStorePort");
     expect(source).toContain("asPrepareVerificationCutover");
-    expect(source).not.toContain("createMemoryStorePort");
+    expect(source).toContain("createMemoryStorePort");
+    expect(source).toContain("captureRecoveryPoint");
     expect(source).not.toMatch(/function\s+planCutover\b/);
     expect(source).not.toMatch(/function\s+executeCutover\b/);
     expect(source).not.toMatch(/function\s+inspectCutover\b/);
@@ -5101,9 +5102,9 @@ describe("S11-APL catalog apply on real PostgreSQL", { timeout: 180_000 }, () =>
     expect(Array.isArray(verification.gates)).toBe(true);
     expect((verification.gates as unknown[]).length).toBeGreaterThan(0);
     const recovery = payload.recoveryPoint as Record<string, unknown>;
-    expect(recovery.threeStoreRecoveryPoint).toBe(false);
-    expect(recovery.capturedStores).toEqual(["postgres"]);
-    expect(recovery.notCapturedStores).toEqual(["object-store", "redis"]);
+    expect(recovery.threeStoreRecoveryPoint).toBe(true);
+    expect(recovery.capturedStores).toEqual(["postgres", "object-store", "redis"]);
+    expect(recovery.notCapturedStores).toEqual([]);
     const journal = JSON.parse(readFileSync(journalPath, "utf8")) as {
       state: string;
       entries: { action: string }[];
@@ -5194,9 +5195,9 @@ describe("S11-APL catalog apply on real PostgreSQL", { timeout: 180_000 }, () =>
     expect(notYet.some((id) => id.startsWith("PCAT-UI-"))).toBe(true);
     expect(Array.isArray(verification.gates)).toBe(true);
     const recovery = payload.recoveryPoint as Record<string, unknown>;
-    expect(recovery.threeStoreRecoveryPoint).toBe(false);
-    expect(recovery.capturedStores).toEqual(["postgres"]);
-    expect(recovery.notCapturedStores).toEqual(["object-store", "redis"]);
+    expect(recovery.threeStoreRecoveryPoint).toBe(true);
+    expect(recovery.capturedStores).toEqual(["postgres", "object-store", "redis"]);
+    expect(recovery.notCapturedStores).toEqual([]);
     const journal = JSON.parse(readFileSync(journalPath, "utf8")) as {
       state: string;
       planDigest: string;

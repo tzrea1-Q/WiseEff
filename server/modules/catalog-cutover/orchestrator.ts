@@ -473,10 +473,11 @@ export const executeCutover = async (
   }
   const plannedIdentities = assertCutoverIdentities(input.plan.identities);
   if (!plannedIdentities.ok) return plannedIdentities;
-  if (input.observedIdentities !== undefined) {
-    const matched = assertIdentitiesMatch(plannedIdentities.value, input.observedIdentities);
-    if (!matched.ok) return matched;
-  }
+  const matched = assertIdentitiesMatch(
+    plannedIdentities.value,
+    input.observedIdentities ?? plannedIdentities.value,
+  );
+  if (!matched.ok) return matched;
   return withCutoverLock(input.pool, input.plan.planDigest, async (client) => {
     const populated = await requirePopulated(client, input.graph);
     if (!populated.ok) return populated;

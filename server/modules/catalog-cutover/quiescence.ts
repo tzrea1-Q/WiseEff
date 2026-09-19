@@ -67,8 +67,8 @@ export const assertObservedQuiescence = (value: unknown): CutoverResult<Observed
   const evidenceDigest = record.evidenceDigest;
   const flags = {
     writersFenced: record.writersFenced === true,
-    queuesDrained: record.queuesDrained === true,
-    publicProxyStopped: record.publicProxyStopped === true,
+    queuesDrained: record.queuesDrained === true || record.queueDrained === true,
+    publicProxyStopped: record.publicProxyStopped === true || record.proxyStopped === true,
     publicationFrozen: record.publicationFrozen === true,
   };
   if (typeof observedAt !== "string" || !ISO.test(observedAt)) {

@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   assertObservedRecoveryPoint,
   fixtureObservedRecoveryPoint,
+  observedRecoveryPointFromStores,
 } from "./recoveryPointObservation";
 
 describe("cutover P3 recovery-point observation", () => {
@@ -17,5 +18,11 @@ describe("cutover P3 recovery-point observation", () => {
         evidenceDigest: `sha256:${"cd".repeat(32)}`,
       }).ok,
     ).toBe(false);
+    const live = observedRecoveryPointFromStores({
+      postgres: { identity: "127.0.0.1:55438/wiseeff_t23b", checksum: observed.postgresChecksum },
+      objectStore: { identity: "archive", checksum: observed.objectStoreChecksum },
+      redis: { identity: "redis", checksum: observed.redisChecksum },
+    });
+    expect(assertObservedRecoveryPoint(live).ok).toBe(true);
   });
 });
