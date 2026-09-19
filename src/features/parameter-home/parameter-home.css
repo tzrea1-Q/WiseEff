@@ -133,6 +133,11 @@
   gap: var(--ph-section-gap);
 }
 
+.parameter-home__page--hotspots {
+  /* Keep the last hotspot row above the fixed Xiaoze launcher. */
+  padding-bottom: calc(3.5rem + 1.5rem + var(--space-4));
+}
+
 .parameter-home__insight--page {
   margin-top: 0;
 }
