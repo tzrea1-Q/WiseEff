@@ -9,7 +9,51 @@ const sha256Prefixed = (value: string): string =>
 
 const canonicalJson = (value: unknown): string => JSON.stringify(value);
 
-const redisCommand = async (host: string, port: number, args: readonly string[]): Promise<string> =>
+type RedisValue = string | number | null | readonly RedisValue[];
+
+const parseRedisReply = (raw: string, offset = 0): { value: RedisValue; next: number } => {
+  const kind = raw[offset];
+  if (kind === "+" || kind === "-" || kind === ":") {
+    const end = raw.indexOf("\r\n", offset);
+    const payload = raw.slice(offset + 1, end);
+    if (kind === "-") {
+      throw new Error(payload);
+    }
+    if (kind === ":") {
+      return { value: Number(payload), next: end + 2 };
+    }
+    return { value: payload, next: end + 2 };
+  }
+  if (kind === "$") {
+    const headerEnd = raw.indexOf("\r\n", offset);
+    const length = Number(raw.slice(offset + 1, headerEnd));
+    if (length < 0) {
+      return { value: null, next: headerEnd + 2 };
+    }
+    const start = headerEnd + 2;
+    return { value: raw.slice(start, start + length), next: start + length + 2 };
+  }
+  if (kind === "*") {
+    const headerEnd = raw.indexOf("\r\n", offset);
+    const count = Number(raw.slice(offset + 1, headerEnd));
+    if (count < 0) {
+      return { value: null, next: headerEnd + 2 };
+    }
+    let next = headerEnd + 2;
+    const items: RedisValue[] = [];
+    for (let index = 0; index < count; index += 1) {
+      const parsed = parseRedisReply(raw, next);
+      items.push(parsed.value);
+      next = parsed.next;
+    }
+    return { value: items, next };
+  }
+  throw new Error(`unsupported redis reply: ${raw.slice(offset, offset + 24)}`);
+};
+
+export const decodeRedisReply = (raw: string): RedisValue => parseRedisReply(raw).value;
+
+export const redisCommand = async (host: string, port: number, args: readonly string[]): Promise<string> =>
   new Promise((resolve, reject) => {
     const socket = net.connect({ host, port });
     const chunks: Buffer[] = [];
@@ -32,6 +76,30 @@ const parseRedisUrl = (url: string): { host: string; port: number } => {
   return { host: parsed.hostname, port: parsed.port ? Number(parsed.port) : 6379 };
 };
 
+export const redisExecUrl = async (redisUrl: string, args: readonly string[]): Promise<string> => {
+  const { host, port } = parseRedisUrl(redisUrl);
+  return redisCommand(host, port, args);
+};
+
+const redisStringKeys = async (
+  host: string,
+  port: number,
+): Promise<readonly { readonly key: string; readonly value: string }[]> => {
+  const keysReply = decodeRedisReply(await redisCommand(host, port, ["KEYS", "*"]));
+  const keys = Array.isArray(keysReply) ? keysReply.map(String).sort() : [];
+  const entries: { key: string; value: string }[] = [];
+  for (const key of keys) {
+    try {
+      const got = decodeRedisReply(await redisCommand(host, port, ["GET", key]));
+      entries.push({ key, value: got === null ? "" : String(got) });
+    } catch {
+      const llen = decodeRedisReply(await redisCommand(host, port, ["LLEN", key]));
+      entries.push({ key, value: `llen:${String(llen)}` });
+    }
+  }
+  return entries;
+};
+
 export function createRedisStorePort(redisUrl: string): StoreSnapshotPort {
   const { host, port } = parseRedisUrl(redisUrl);
   const identity = `${host}:${port}`;
@@ -39,16 +107,16 @@ export function createRedisStorePort(redisUrl: string): StoreSnapshotPort {
     kind: "redis",
     declaredIdentity: identity,
     async snapshot(now: Date): Promise<StoreSnapshot | null> {
-      const ping = await redisCommand(host, port, ["PING"]);
-      const dbsize = await redisCommand(host, port, ["DBSIZE"]);
-      const info = await redisCommand(host, port, ["INFO", "persistence"]);
-      if (!ping.includes("PONG")) {
+      const ping = decodeRedisReply(await redisCommand(host, port, ["PING"]));
+      const dbsize = decodeRedisReply(await redisCommand(host, port, ["DBSIZE"]));
+      if (ping !== "PONG") {
         return null;
       }
+      const entries = await redisStringKeys(host, port);
       return {
         kind: "redis",
         identity,
-        checksum: sha256Prefixed(canonicalJson({ identity, ping: ping.trim(), dbsize: dbsize.trim(), info: info.trim() })),
+        checksum: sha256Prefixed(canonicalJson({ identity, ping, dbsize, entries })),
         capturedAt: now.toISOString(),
       };
     },

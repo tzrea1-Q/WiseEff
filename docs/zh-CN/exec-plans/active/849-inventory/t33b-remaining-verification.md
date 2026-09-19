@@ -8,6 +8,8 @@ T3.3a 本地 S2/Docker 彩排是 **本地候选**。T3.3b **不是通过**。本
 
 本会话没有目标前端/API URL、没有目标 `DATABASE_URL`、也没有单独的目标/破坏性授权。T3.3b 需要封印候选加上具体目标计划。
 
+T3.3a 现场 Docker 彩排之后再次核对：`WISEEFF_TARGET*`、`TARGET_FRONTEND*`、`TARGET_API*`、`WISEEFF_ACCEPTANCE_FRONTEND*`、`WISEEFF_ACCEPTANCE_API*` 仍未设置。隔离的 `compose.t34a-stores.yaml` 栈只是本地 T3.3a 证据。
+
 ## 后续需要
 
 | 项 | 环境 | 何谓通过 |

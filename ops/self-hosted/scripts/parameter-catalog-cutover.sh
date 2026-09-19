@@ -19,8 +19,11 @@ case "${command}" in
   recover)
     exec npx --prefix "${repo_root}" tsx "${repo_root}/scripts/wayfinder/recover-parameter-catalog-cutover.ts" "$@"
     ;;
+  rehearse-s2-docker)
+    exec npx --prefix "${repo_root}" tsx "${repo_root}/scripts/wayfinder/rehearse-s2-docker.ts" "$@"
+    ;;
   *)
-    printf 'Usage: parameter-catalog-cutover.sh plan|execute|inspect|recover [...args]\n' >&2
+    printf 'Usage: parameter-catalog-cutover.sh plan|execute|inspect|recover|rehearse-s2-docker [...args]\n' >&2
     exit 2
     ;;
 esac

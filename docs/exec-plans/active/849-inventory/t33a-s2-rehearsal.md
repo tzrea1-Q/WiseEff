@@ -10,12 +10,12 @@ From [round report S2](../2026-09-15-parameter-unification-round-report.md) and 
 
 | Gap | Current | T3.3a obligation |
 | --- | --- | --- |
-| P2 quiescence | `orchestrator.ts` returns hardcoded `writersFenced/queuesDrained/publicProxyStopped: true` | Observed writer/queue/proxy/publication fencing; attestation `WISEEFF_CATALOG_QUIESCED` is not P2 proof |
-| Recovery point | `captureInventoryDump` is relation counts, not PG/object-store/Redis | Verified three-store recovery points (`ops/self-hosted/storage/recoveryPoint.ts`) bound to the run |
+| P2 quiescence | Live Docker observes writer/proxy ports closed, Redis queue `LLEN=0`, and freeze key `1`; execute still refuses a P2 checkpoint without digest-bound `ObservedQuiescence`. Attestation `WISEEFF_CATALOG_QUIESCED` is not P2 proof | Observed writer/queue/proxy/publication fencing; attestation `WISEEFF_CATALOG_QUIESCED` is not P2 proof |
+| Recovery point | Isolated three-store capture/verify/`restoreCheck` on Postgres **55441** / MinIO **59000** / Redis **56379**; prior restore refuses after Redis mutation | Verified three-store recovery points (`ops/self-hosted/storage/recoveryPoint.ts`) bound to the run |
 | Identities | Plan pins artifact SHA + release digest | Also pin database/image/schema/seed/scope/archive; reject drift or incomplete inventory |
-| Publish | P11–P16 unavailable | Exclusive authorized temporary unfreeze, activation receipt, refreeze on success/failure — without making P11–P16 a silent default |
+| Publish | Live Redis exclusive unfreeze with receipt + refreeze on success and failure. P11–P16 stay unavailable on the orchestrator | Exclusive authorized temporary unfreeze, activation receipt, refreeze on success/failure — without making P11–P16 a silent default |
 | Interrupt | P0–P10 crash/resume exists (`liveRun: false`) | Interrupt every durable phase; continuation or recovery-required; full restore; non-parameter preservation |
-| Working directories | CLI lives under `scripts/wayfinder` | Sanitized diagnostics from repository root **and** `ops/self-hosted` |
+| Working directories | `rehearse-s2-docker` plus plan/execute/inspect/recover from repository root **and** `ops/self-hosted`; secrets redacted | Sanitized diagnostics from repository root **and** `ops/self-hosted` |
 | Export/import rehearsal | `export/import-parameter-catalog-rehearsal.sh` + `rehearse-parameter-catalog-replacement.sh` | Close remaining identity/drift/container gaps on owned helper PG, not compose `5432/wiseeff` |
 
 ## This turn
@@ -49,6 +49,20 @@ Observed quiescence and recovery-point JSON are still operator-supplied proofs, 
 | `parameter-catalog-rehearsal.integration.test.ts` `WAYFINDER_POSTGRES_CONTAINER=wiseeff-g668-pg` | **81 passed** |
 | cutoverDiagnostic + cutoverWorkingDirectory | **2 passed** |
 
+This turn (live Docker S2 rehearsal on `ops/self-hosted/compose.t34a-stores.yaml`):
+
+- P2 is observed, not hardcoded: writer port **19991** and proxy port **19992** must be closed, Redis `LLEN wiseeff:t33a:jobs` must be `0`, and `GET wiseeff:t33a:publication-freeze` must be `1`. An open writer port fails closed.
+- Exclusive unfreeze talks to that Redis freeze key. Activation rejection refreezes; success writes `wiseeff:t33a:activation-receipt` and refreezes. P11–P16 stay unavailable on the cutover orchestrator.
+- Three-store capture/verify/`restoreCheck` run against isolated Postgres **55441** / Redis **56379** / MinIO **59000**. Redis checksum is identity + PING + DBSIZE + sorted key dump, not `INFO persistence`. After the receipt mutation, the prior recovery point refuses restore.
+- `rehearse-s2-docker` is a second working-directory entry beside plan/execute/inspect/recover. Repository root and `ops/self-hosted` both print sanitized diagnostics (MinIO secret not present).
+
+| Command | Result |
+| --- | --- |
+| `npm run test:scripts --` `t33aDockerRehearsal.integration.test.ts` `liveStorePorts.integration.test.ts` `cutoverWorkingDirectory.test.ts` | **5 passed** |
+| `npx vitest run --config vitest.server.config.ts` `catalog-cutover/exclusiveUnfreeze.test.ts` `catalog-cutover/quiescence.test.ts` | **2 passed** |
+
+Local Docker rehearsal is not T3.3b, Hosted, target, or production evidence.
+
 ## Environment
 
-Helper PG **55438**. Not `wiseeff_lane_849`. Not compose `5432/wiseeff`. Docker on this host is `linux/aarch64`; T3.3a local rehearsal may use helper PG containers, but is not linux/x86_64 Hosted/minimal-upgrade evidence.
+Helper PG **55438**. Isolated T3.3a/T3.4a stores: Postgres `127.0.0.1:55441/wiseeff_t34a`, Redis `127.0.0.1:56379`, MinIO `127.0.0.1:59000`. Not `wiseeff_lane_849`. Not compose `5432/wiseeff`. Docker on this host is `linux/aarch64`; T3.3a local rehearsal may use helper PG and this isolated store stack, but is not linux/x86_64 Hosted/minimal-upgrade evidence.

@@ -8,6 +8,8 @@ T3.3a local S2/Docker rehearsal is a **local candidate**. T3.3b is **not pass**.
 
 This session has no target frontend/API URLs, no target `DATABASE_URL`, and no separate target/destructive authorization. T3.3b requires the sealed candidate plus a concrete target plan.
 
+Rechecked after the T3.3a live Docker rehearsal: `WISEEFF_TARGET*`, `TARGET_FRONTEND*`, `TARGET_API*`, `WISEEFF_ACCEPTANCE_FRONTEND*`, and `WISEEFF_ACCEPTANCE_API*` remain unset. The isolated `compose.t34a-stores.yaml` stack is local T3.3a evidence only.
+
 ## Required later
 
 | Item | Environment | Pass means |
