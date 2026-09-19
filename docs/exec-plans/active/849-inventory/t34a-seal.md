@@ -2,9 +2,7 @@
 
 > Chinese: [中文](../../../zh-CN/exec-plans/active/849-inventory/t34a-seal.md)
 
-State: **PRESEAL-REVIEW FAIL. Not SEALED.** Independent Standards and Spec reviews both failed. T3.4a stays unchecked. No PR/push/Hosted. T3.4b is not authorized by this record.
-
-Requested reviewer model was gpt-5.6-luna/max; this runtime is **grok-4.6 only**.
+State: **PRESEAL-REVIEW FAIL. Not SEALED.** Independent Standards and Spec reviews are **grok-4.6** (the designated model for this Scratch). T3.4a stays unchecked. No PR/push/Hosted. T3.4b is not authorized by this record.
 
 ## Candidate identities
 
@@ -23,14 +21,18 @@ Requested reviewer model was gpt-5.6-luna/max; this runtime is **grok-4.6 only**
 
 `3dc5c9411` is `dc660481f` plus a typecheck-only identity-pin construction fix (`tsc -b` failed assigning readonly `CutoverIdentityPin` keys).
 
-## Independent reviews (parallel, grok-4.6)
+## Independent reviews (grok-4.6)
+
+Round 1 (SHA `3dc5c9411` / docs `2d3895e66`):
 
 | Axis | Verdict | Notes |
 | --- | --- | --- |
-| Standards | **FAIL** 0 P0 / 1 P1 | P3 operator JSON is a self-hash, not `ops/self-hosted/storage/recoveryPoint.ts` / live object-store+redis capture. `upgrade.sh` already snapshots postgres and still reports `threeStoreRecoveryPoint: false`. |
-| Spec | **FAIL** 1 P0 / 3 P1 | Cannot bind S1/S2/browser/recovery to one SHA while T3.1/T3.2 rows stay open, T3.2 leftover suites are not pass, T3.3b has no target, exclusive unfreeze is unit-only, P2/P3 proofs are operator JSON not live fencing. |
+| Standards | **FAIL** 0 P0 / 1 P1 | P3 operator JSON beside postgres-only receipt. |
+| Spec | **FAIL** 1 P0 / 3 P1 | Evidence not one SHA; T3.2 leftovers not pass; T3.3b no target; exclusive unfreeze unit-only; P2/P3 not live fencing. |
 
-Disposition: do **not** seal. Repair returns to Scratch for P1 recovery-point binding if T3.4a is retried. T3.2/T3.3b leftovers keep any later seal **conditional**.
+Round 2 Standards re-review of `beeea0bf0` (live `captureRecoveryPoint`): still **FAIL** 0 P0 / 1 P1. Apply now calls `captureRecoveryPoint`, but object-store/redis use `createMemoryStorePort` (archive UTF-8 / empty redis). Receipt must not claim `threeStoreRecoveryPoint: true`. Follow-up keeps `threeStoreRecoveryPoint: false` and `notCapturedStores: ["redis"]`.
+
+Disposition: do **not** seal. T3.2/T3.3b leftovers keep any later seal **conditional**. Redis/object-store must be real configured stores before Standards P1 can PASS.
 
 ## Evidence bound to `3dc5c9411`
 

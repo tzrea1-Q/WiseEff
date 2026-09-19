@@ -647,9 +647,9 @@ const main = async () => {
           ...gateSummary,
         },
         recoveryPoint: {
-          threeStoreRecoveryPoint: true,
-          capturedStores: ["postgres", "object-store", "redis"],
-          notCapturedStores: [],
+          threeStoreRecoveryPoint: false,
+          capturedStores: ["postgres", "object-store"],
+          notCapturedStores: ["redis"],
           postgres: {
             identity: captured.value.manifest.stores.postgres.identity,
             checksum: captured.value.manifest.stores.postgres.checksum,

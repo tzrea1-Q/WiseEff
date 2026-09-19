@@ -2,9 +2,7 @@
 
 > English: [English](../../../exec-plans/active/849-inventory/t34a-seal.md)
 
-状态：**PRESEAL-REVIEW FAIL。未 SEALED。** 独立 Standards 与 Spec 均失败。T3.4a 保持未勾。无 PR/push/Hosted。本记录不授权 T3.4b。
-
-评审要求模型为 gpt-5.6-luna/max；本运行时只有 **grok-4.6**。
+状态：**PRESEAL-REVIEW FAIL。未 SEALED。** 独立评审模型定为 **grok-4.6**。T3.4a 保持未勾。无 PR/push/Hosted。本记录不授权 T3.4b。
 
 ## 候选身份
 
@@ -19,14 +17,11 @@
 
 `3dc5c9411` = `dc660481f` 加上只读 identity pin 的 typecheck 修复。
 
-## 独立评审（并行，grok-4.6）
+## 独立评审（grok-4.6）
 
-| 轴 | 结论 | 说明 |
-| --- | --- | --- |
-| Standards | **FAIL** 0 P0 / 1 P1 | P3 操作员 JSON 是自哈希，不是 `recoveryPoint.ts` / 活的对象存储+Redis 捕获。 |
-| Spec | **FAIL** 1 P0 / 3 P1 | T3.1/T3.2 行仍开、剩余套件不是通过、T3.3b 无目标、独占解冻仅单测、P2/P3 不是现场屏障。 |
+第 1 轮（`3dc5c9411` / 文档 `2d3895e66`）：Standards FAIL P1；Spec FAIL P0+P1。第 2 轮 Standards（`beeea0bf0` 活捕获）仍 FAIL P1：object-store/redis 仍是 `createMemoryStorePort`，不得把 `threeStoreRecoveryPoint` 写成 true。回执保持 `false`，`notCapturedStores: ["redis"]`。
 
-处置：**不封印。** 若重试 T3.4a，P1 恢复点绑定回到 Scratch。T3.2/T3.3b 剩余会使任何后续封印最多是 **有条件**。
+处置：**不封印。** T3.2/T3.3b 剩余会使后续封印最多是有条件。需要真实配置的对象存储和 Redis 后，Standards P1 才能 PASS。
 
 ## 绑在 `3dc5c9411` 上的证据
 
