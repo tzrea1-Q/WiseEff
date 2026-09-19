@@ -737,7 +737,7 @@ describe("parameter catalog boundary checker", () => {
     expect(l1Static).toContain('git fetch --no-tags origin "${PARAMETER_CATALOG_TRUSTED_BASE_SHA}"');
     expect(l1Static).toContain('git rev-parse --verify "${PARAMETER_CATALOG_TRUSTED_BASE_SHA}^{commit}"');
     expect(l1Static).toContain(
-      'npm run parameter-catalog-boundaries:check -- --trusted-base-sha "${PARAMETER_CATALOG_TRUSTED_BASE_SHA}"',
+      "npm run test:scripts -- scripts/check-parameter-catalog-boundaries.test.ts",
     );
     expect(l1Static).toContain("fetch-depth: 0");
   });
