@@ -30,9 +30,11 @@ Round 1 (SHA `3dc5c9411` / docs `2d3895e66`):
 | Standards | **FAIL** 0 P0 / 1 P1 | P3 operator JSON beside postgres-only receipt. |
 | Spec | **FAIL** 1 P0 / 3 P1 | Evidence not one SHA; T3.2 leftovers not pass; T3.3b no target; exclusive unfreeze unit-only; P2/P3 not live fencing. |
 
-Round 2 Standards re-review of `beeea0bf0` (live `captureRecoveryPoint`): still **FAIL** 0 P0 / 1 P1. Apply now calls `captureRecoveryPoint`, but object-store/redis use `createMemoryStorePort` (archive UTF-8 / empty redis). Receipt must not claim `threeStoreRecoveryPoint: true`. Follow-up keeps `threeStoreRecoveryPoint: false` and `notCapturedStores: ["redis"]`.
+Round 2 Standards (`beeea0bf0` memory stubs): still **FAIL** P1.
 
-Disposition: do **not** seal. T3.2/T3.3b leftovers keep any later seal **conditional**.
+Round 3 Standards (`f2c7ef968`, grok-4.6): **PASS** (P0=0 P1=0). Isolated Docker postgres/redis/MinIO; live RESP and S3 health probe; apply reports `threeStoreRecoveryPoint: true` only with `WISEEFF_REDIS_URL` + `OBJECT_STORAGE_*`.
+
+Spec remains **FAIL** (P0 leftovers: T3.2 target-synthetic/minimal-upgrade, T3.3b no target, T3.1 `test:server` not re-run on this SHA). Disposition: **not SEALED**. A later seal can only be **conditional** until those leftovers have current pass evidence.
 
 Live Docker three-store rehearsal (not 5432/`wiseeff`, not `wiseeff_lane_849`):
 
