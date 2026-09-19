@@ -59,7 +59,7 @@ Ports: postgres `127.0.0.1:55441/wiseeff_t34a`, redis `127.0.0.1:56379`, MinIO `
 | T3.3a cutover/S11-APL/rehearsal | recorded on `dc660481f` | local PG/Docker |
 | target-synthetic | **not pass** — [t32-remaining-verification.md](t32-remaining-verification.md) | skipped / unavailable |
 | minimal-upgrade | **not pass** — same file | skipped / unavailable |
-| T3.3b target | **not pass** — [t33b-remaining-verification.md](t33b-remaining-verification.md) | no target authority |
+| T3.3b target | Later authorized local-target pass on `19b987e5ab5aeb0f51ad5f86a8a9c3d310ea2c5f` — [t33b-remaining-verification.md](t33b-remaining-verification.md). This does **not** reseal T3.4a. | local self-hosted target |
 
 ## Seed / release fixture
 

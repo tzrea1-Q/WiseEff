@@ -33,7 +33,7 @@ docker compose -p wiseeff-t34a-stores -f ops/self-hosted/compose.t34a-stores.yam
 
 ## 绑在 `3dc5c9411` 上的证据
 
-Gate0 **通过**（`full-20260919t063253898z-3dc5c94119c1-ddcd3c3d`）：visual/browser/operation-evidence/清理。quality/coverage/operations/`tsc -b`/`build` 通过。target-synthetic、minimal-upgrade、T3.3b **不是通过**。T3.1 全量 `test:server` 未在此 SHA 重跑。
+Gate0 **通过**（`full-20260919t063253898z-3dc5c94119c1-ddcd3c3d`）：visual/browser/operation-evidence/清理。quality/coverage/operations/`tsc -b`/`build` 通过。target-synthetic、minimal-upgrade **不是通过**。随后在 `19b987e5ab5aeb0f51ad5f86a8a9c3d310ea2c5f` 上完成本机自托管 T3.3b（见 [t33b-remaining-verification.md](t33b-remaining-verification.md)），**不**因此重新 SEAL。T3.1 全量 `test:server` 未在封印 SHA 上重跑。
 
 ## 目标 / 恢复计划
 

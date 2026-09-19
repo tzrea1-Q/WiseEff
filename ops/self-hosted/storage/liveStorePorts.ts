@@ -81,6 +81,34 @@ export const redisExecUrl = async (redisUrl: string, args: readonly string[]): P
   return redisCommand(host, port, args);
 };
 
+const redisKeyFingerprint = async (
+  host: string,
+  port: number,
+  key: string,
+): Promise<{ readonly key: string; readonly value: string }> => {
+  const kind = String(decodeRedisReply(await redisCommand(host, port, ["TYPE", key])));
+  if (kind === "string") {
+    const got = decodeRedisReply(await redisCommand(host, port, ["GET", key]));
+    return { key, value: got === null ? "" : String(got) };
+  }
+  if (kind === "list") {
+    return { key, value: `llen:${String(decodeRedisReply(await redisCommand(host, port, ["LLEN", key])))}` };
+  }
+  if (kind === "hash") {
+    return { key, value: `hlen:${String(decodeRedisReply(await redisCommand(host, port, ["HLEN", key])))}` };
+  }
+  if (kind === "set") {
+    return { key, value: `scard:${String(decodeRedisReply(await redisCommand(host, port, ["SCARD", key])))}` };
+  }
+  if (kind === "zset") {
+    return { key, value: `zcard:${String(decodeRedisReply(await redisCommand(host, port, ["ZCARD", key])))}` };
+  }
+  if (kind === "stream") {
+    return { key, value: `xlen:${String(decodeRedisReply(await redisCommand(host, port, ["XLEN", key])))}` };
+  }
+  return { key, value: `type:${kind}` };
+};
+
 const redisStringKeys = async (
   host: string,
   port: number,
@@ -89,13 +117,7 @@ const redisStringKeys = async (
   const keys = Array.isArray(keysReply) ? keysReply.map(String).sort() : [];
   const entries: { key: string; value: string }[] = [];
   for (const key of keys) {
-    try {
-      const got = decodeRedisReply(await redisCommand(host, port, ["GET", key]));
-      entries.push({ key, value: got === null ? "" : String(got) });
-    } catch {
-      const llen = decodeRedisReply(await redisCommand(host, port, ["LLEN", key]));
-      entries.push({ key, value: `llen:${String(llen)}` });
-    }
+    entries.push(await redisKeyFingerprint(host, port, key));
   }
   return entries;
 };

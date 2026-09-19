@@ -2,7 +2,7 @@
 
 > English: [English](../../../exec-plans/active/849-inventory/t33a-s2-rehearsal.md)
 
-状态：**T3.3a 本地候选已绿。** T3.3b 不是通过（见 [t33b-remaining-verification.md](t33b-remaining-verification.md)）。T3.2 剩余 target-synthetic/minimal-upgrade 仍延期。未 SEALED。未 push。封印点仍是 T3.4a。
+状态：**T3.3a 本地候选已绿。** 随后 T3.3b 作为已授权本机自托管目标跑过（见 [t33b-remaining-verification.md](t33b-remaining-verification.md)）。T3.2 剩余 target-synthetic/minimal-upgrade 仍延期。未 SEALED。未 push。封印点仍是 T3.4a。
 
 ## 必须补齐的缺口
 

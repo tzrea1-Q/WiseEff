@@ -1,20 +1,39 @@
-# T3.3b remaining verification — later authorized target
+# T3.3b remaining verification — authorized local self-hosted target
 
 > Chinese: [中文](../../../zh-CN/exec-plans/active/849-inventory/t33b-remaining-verification.md)
 
-T3.3a local S2/Docker rehearsal is a **local candidate**. T3.3b is **not pass**. A local Docker or synthetic pass does not complete T3.3b.
+Status: **authorized local-target pass on HEAD `19b987e5ab5aeb0f51ad5f86a8a9c3d310ea2c5f`.** Not production. Not Hosted. T3.4a is still **not SEALED**. Destructive T2.3 DROP was not in the plan. Plan: [t33b-target-plan.md](t33b-target-plan.md).
 
-## Blocker
+The operator designated a local self-hosted instance as the T3.3b target (not the T3.3a t34a-stores rehearsal stack, not compose `5432/wiseeff`).
 
-This session has no target frontend/API URLs, no target `DATABASE_URL`, and no separate target/destructive authorization. T3.3b requires the sealed candidate plus a concrete target plan.
+## Instance
 
-Rechecked after the T3.3a live Docker rehearsal: `WISEEFF_TARGET*`, `TARGET_FRONTEND*`, `TARGET_API*`, `WISEEFF_ACCEPTANCE_FRONTEND*`, and `WISEEFF_ACCEPTANCE_API*` remain unset. The isolated `compose.t34a-stores.yaml` stack is local T3.3a evidence only.
+| Pin | Value |
+| --- | --- |
+| Public URL | `http://127.0.0.1:18080` |
+| Postgres | `127.0.0.1:55442/wiseeff` |
+| Redis | `127.0.0.1:56380` |
+| MinIO | `127.0.0.1:59010` / bucket `wiseeff` |
+| Image | `wiseeff-app:t33b-19b987e5a` |
+| Compose project | `wiseeff-t33b-target` |
+| Migrations | **157 applied** through `0159_plane_disposal_definer_select.sql` inside the API container |
 
-## Required later
+## This turn
 
-| Item | Environment | Pass means |
-| --- | --- | --- |
-| Target quiescence, archive/rebuild, preservation, post-restart probes | Authorized target host; sealed SHA from T3.4a | Documented target-specific results and recovery boundaries bound to that SHA |
-| Destructive archive/rebuild if in the target plan | Separate human authorization | Executed only after that approval; local rehearsal is not a substitute |
+- Real fencing: stopped `proxy`, `api`, `worker`, `publication-manager`; observed writer containers down, port 18080 closed, Redis queue drained, freeze key `1`.
+- Exclusive unfreeze wrote an activation receipt and refroze on success and failure. P11–P16 stay unavailable.
+- Three-store capture/verify/`restoreCheck`; prior recovery point refused after Redis receipt mutation.
+- Non-parameter sentinel `t33b_preservation.sentinel` survived restart.
+- `/health/live` and `/health/ready` both **200** after restore (`postRestart.ready: true`). `dtsToolchain` and `catalogPublication` remain `missing` on first-intro (no dedicated manager LOGIN; image dtc probe still reports missing). Not production publication.
+- Destructive archive/rebuild: **not in plan**.
 
-Do not start T3.4a seal claiming T3.3b complete. Pickup after target authority exists.
+| Command | Result |
+| --- | --- |
+| `npm run test:scripts -- ops/self-hosted/storage/t33bTargetRehearsal.integration.test.ts` | **1 passed** |
+| `npx tsx scripts/wayfinder/rehearse-s2-target.ts` (repo root) | **ok**, restore-authorized, sentinel preserved, postRestart live+ready |
+| `parameter-catalog-cutover.sh rehearse-s2-target` (`ops/self-hosted`) | **ok**, secrets not printed |
+| T3.3a `t33aDockerRehearsal` + `liveStorePorts` after Redis TYPE dump fix | **4 passed** |
+
+## Still not this item
+
+Remote/pre-production host with a T3.4a-sealed SHA, Hosted, merge, production publication, T2.3 destructive DROP.

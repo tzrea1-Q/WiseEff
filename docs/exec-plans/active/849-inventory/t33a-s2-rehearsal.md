@@ -2,7 +2,7 @@
 
 > Chinese: [中文](../../../zh-CN/exec-plans/active/849-inventory/t33a-s2-rehearsal.md)
 
-Status: **local candidate green for T3.3a.** T3.3b is not pass (see [t33b-remaining-verification.md](t33b-remaining-verification.md)). T3.2 remaining target-synthetic/minimal-upgrade stay deferred. Not SEALED. Not pushed. T3.4a remains the seal point.
+Status: **local candidate green for T3.3a.** T3.3b later ran as an authorized local self-hosted target (see [t33b-remaining-verification.md](t33b-remaining-verification.md)). T3.2 remaining target-synthetic/minimal-upgrade stay deferred. Not SEALED. Not pushed. T3.4a remains the seal point.
 
 ## Known gaps this todo must close
 

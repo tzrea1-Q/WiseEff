@@ -1,20 +1,39 @@
-# T3.3b 剩余验证 — 留待已授权目标
+# T3.3b 剩余验证 — 已授权的本机自托管目标
 
 > English: [English](../../../exec-plans/active/849-inventory/t33b-remaining-verification.md)
 
-T3.3a 本地 S2/Docker 彩排是 **本地候选**。T3.3b **不是通过**。本地 Docker 或合成通过不能完成 T3.3b。
+状态：**已授权本机目标在 HEAD `19b987e5ab5aeb0f51ad5f86a8a9c3d310ea2c5f` 上通过。** 不是生产。不是 Hosted。T3.4a 仍 **未 SEALED**。破坏性 T2.3 DROP 不在计划内。计划：[t33b-target-plan.md](t33b-target-plan.md)。
 
-## 阻断
+操作员指定一套本机自托管实例作为 T3.3b 目标（不是 T3.3a 的 t34a-stores 彩排栈，也不是 compose `5432/wiseeff`）。
 
-本会话没有目标前端/API URL、没有目标 `DATABASE_URL`、也没有单独的目标/破坏性授权。T3.3b 需要封印候选加上具体目标计划。
+## 实例
 
-T3.3a 现场 Docker 彩排之后再次核对：`WISEEFF_TARGET*`、`TARGET_FRONTEND*`、`TARGET_API*`、`WISEEFF_ACCEPTANCE_FRONTEND*`、`WISEEFF_ACCEPTANCE_API*` 仍未设置。隔离的 `compose.t34a-stores.yaml` 栈只是本地 T3.3a 证据。
+| 钉 | 值 |
+| --- | --- |
+| 公共 URL | `http://127.0.0.1:18080` |
+| Postgres | `127.0.0.1:55442/wiseeff` |
+| Redis | `127.0.0.1:56380` |
+| MinIO | `127.0.0.1:59010` / bucket `wiseeff` |
+| 镜像 | `wiseeff-app:t33b-19b987e5a` |
+| Compose 项目 | `wiseeff-t33b-target` |
+| 迁移 | API 容器内 **157 条**，到 `0159_plane_disposal_definer_select.sql` |
 
-## 后续需要
+## 本轮
 
-| 项 | 环境 | 何谓通过 |
-| --- | --- | --- |
-| 目标静默、归档/重建、保留、重启后探针 | 已授权目标主机；T3.4a 封印 SHA | 绑定该 SHA 的目标结果与恢复边界 |
-| 目标计划中的破坏性归档/重建 | 单独的人类授权 | 仅在该批准之后执行；本地彩排不能替代 |
+- 真实围栏：停止 `proxy`、`api`、`worker`、`publication-manager`；写容器已停、18080 关闭、Redis 队列排空、冻结键为 `1`。
+- 独占解冻写入激活回执，成功/失败都重新冻结。P11–P16 仍不可用。
+- 三存储 capture/verify/`restoreCheck`；Redis 回执变更后先前恢复点拒绝 restore。
+- 非参数哨兵 `t33b_preservation.sentinel` 重启后仍在。
+- 恢复后 `/health/live` 与 `/health/ready` 均为 **200**（`postRestart.ready: true`）。首次引入下 `dtsToolchain` 与 `catalogPublication` 仍为 `missing`（无专用 manager LOGIN；镜像 dtc 探针仍报 missing）。不是生产发布。
+- 破坏性归档/重建：**不在计划内**。
 
-不得在宣称 T3.3b 已完成的情况下启动 T3.4a 封印。有目标授权后再续跑。
+| 命令 | 结果 |
+| --- | --- |
+| `npm run test:scripts -- ops/self-hosted/storage/t33bTargetRehearsal.integration.test.ts` | **1 通过** |
+| `npx tsx scripts/wayfinder/rehearse-s2-target.ts`（仓库根） | **ok**，restore-authorized，哨兵保留，postRestart live+ready |
+| `parameter-catalog-cutover.sh rehearse-s2-target`（`ops/self-hosted`） | **ok**，未打印密钥 |
+| T3.3a `t33aDockerRehearsal` + `liveStorePorts`（Redis TYPE dump 修复后） | **4 通过** |
+
+## 仍不是本项
+
+带 T3.4a 封印 SHA 的远端/预发主机、Hosted、merge、生产发布、T2.3 破坏性 DROP。

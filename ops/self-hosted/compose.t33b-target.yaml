@@ -1,0 +1,40 @@
+# Isolated local self-hosted TARGET for T3.3b. Not compose 5432/wiseeff.
+# Not wiseeff_lane_849. Not the T3.3a t34a-stores rehearsal stack.
+#   docker compose -p wiseeff-t33b-target --env-file .env.t33b-target \
+#     -f compose.yaml -f compose.t33b-target.yaml up -d --build
+name: wiseeff-t33b-target
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: wiseeff-t33b-pg
+    ports: !override
+      - "127.0.0.1:55442:5432"
+
+  redis:
+    container_name: wiseeff-t33b-redis
+    ports: !override
+      - "127.0.0.1:56380:6379"
+
+  minio:
+    container_name: wiseeff-t33b-minio
+    ports: !override
+      - "127.0.0.1:59010:9000"
+      - "127.0.0.1:59011:9001"
+
+  api:
+    container_name: wiseeff-t33b-api
+
+  worker:
+    container_name: wiseeff-t33b-worker
+
+  publication-manager:
+    container_name: wiseeff-t33b-publication-manager
+
+  web:
+    container_name: wiseeff-t33b-web
+
+  proxy:
+    container_name: wiseeff-t33b-proxy
+    ports: !override
+      - "127.0.0.1:18080:80"

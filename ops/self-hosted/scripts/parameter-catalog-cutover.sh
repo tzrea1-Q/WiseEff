@@ -22,8 +22,11 @@ case "${command}" in
   rehearse-s2-docker)
     exec npx --prefix "${repo_root}" tsx "${repo_root}/scripts/wayfinder/rehearse-s2-docker.ts" "$@"
     ;;
+  rehearse-s2-target)
+    exec npx --prefix "${repo_root}" tsx "${repo_root}/scripts/wayfinder/rehearse-s2-target.ts" "$@"
+    ;;
   *)
-    printf 'Usage: parameter-catalog-cutover.sh plan|execute|inspect|recover|rehearse-s2-docker [...args]\n' >&2
+    printf 'Usage: parameter-catalog-cutover.sh plan|execute|inspect|recover|rehearse-s2-docker|rehearse-s2-target [...args]\n' >&2
     exit 2
     ;;
 esac
