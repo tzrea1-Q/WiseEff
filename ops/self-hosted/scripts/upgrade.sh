@@ -155,6 +155,7 @@ const main = async () => {
     databaseMod,
     recoveryMod,
     recoveryObservationMod,
+    liveStoreMod,
   ] = await Promise.all([
     import(spec("ops/self-hosted/scripts/parameter-catalog-upgrade/controller.ts")),
     import(spec("ops/self-hosted/scripts/parameter-catalog-upgrade/actions.ts")),
@@ -170,6 +171,7 @@ const main = async () => {
     import(spec("server/shared/database/client.ts")),
     import(spec("ops/self-hosted/storage/recoveryPoint.ts")),
     import(spec("server/modules/catalog-cutover/recoveryPointObservation.ts")),
+    import(spec("ops/self-hosted/storage/liveStorePorts.ts")),
   ]);
 
   const { openCatalogUpgradeController } = controllerMod;
@@ -192,6 +194,7 @@ const main = async () => {
     postgresIdentityFromUrl,
   } = recoveryMod;
   const { observedRecoveryPointFromStores } = recoveryObservationMod;
+  const { createRedisStorePort, createS3StorePort } = liveStoreMod;
 
   const allowComposeTest = process.env.WISEEFF_CATALOG_ALLOW_COMPOSE_TEST === "true";
   const composeAppTarget = isForbiddenComposeAppPostgres(databaseUrl);
@@ -362,18 +365,36 @@ const main = async () => {
     }
     const archiveDir = archiveRoot || path.join(path.dirname(journalPath), "archive");
     mkdirSync(archiveDir, { recursive: true, mode: 0o700 });
-    const objectStoreIdentity = sha256Prefixed(`object-store:${archiveDir}`);
-    const redisIdentity = sha256Prefixed(`redis:${runId}`);
+    const redisUrl = process.env.WISEEFF_REDIS_URL ?? "";
+    const s3Endpoint = process.env.OBJECT_STORAGE_ENDPOINT ?? "";
+    const s3Bucket = process.env.OBJECT_STORAGE_BUCKET ?? "";
+    const s3Access = process.env.OBJECT_STORAGE_ACCESS_KEY_ID ?? "";
+    const s3Secret = process.env.OBJECT_STORAGE_SECRET_ACCESS_KEY ?? "";
+    const liveObjectRedis = Boolean(redisUrl && s3Endpoint && s3Bucket && s3Access && s3Secret);
     const objectRecords: Record<string, string> = {};
-    for (const name of readdirSync(archiveDir)) {
-      try {
-        objectRecords[name] = readFileSync(path.join(archiveDir, name), "utf8");
-      } catch {
-        objectRecords[name] = "";
+    if (!liveObjectRedis) {
+      for (const name of readdirSync(archiveDir)) {
+        try {
+          objectRecords[name] = readFileSync(path.join(archiveDir, name), "utf8");
+        } catch {
+          objectRecords[name] = "";
+        }
       }
     }
-    const objectPort = createMemoryStorePort("object-store", objectStoreIdentity, objectRecords);
-    const redisPort = createMemoryStorePort("redis", redisIdentity, {});
+    const objectPort = liveObjectRedis
+      ? createS3StorePort({
+          endpoint: s3Endpoint,
+          bucket: s3Bucket,
+          accessKeyId: s3Access,
+          secretAccessKey: s3Secret,
+          region: process.env.OBJECT_STORAGE_REGION || "us-east-1",
+        })
+      : createMemoryStorePort("object-store", sha256Prefixed(`object-store:${archiveDir}`), objectRecords);
+    const redisPort = liveObjectRedis
+      ? createRedisStorePort(redisUrl)
+      : createMemoryStorePort("redis", sha256Prefixed(`redis:${runId}`), {});
+    const objectStoreIdentity = objectPort.declaredIdentity;
+    const redisIdentity = redisPort.declaredIdentity;
     const q = (quiescence ?? {}) as Record<string, unknown>;
     const captured = await captureRecoveryPoint({
       runId,
@@ -647,9 +668,11 @@ const main = async () => {
           ...gateSummary,
         },
         recoveryPoint: {
-          threeStoreRecoveryPoint: false,
-          capturedStores: ["postgres", "object-store"],
-          notCapturedStores: ["redis"],
+          threeStoreRecoveryPoint: liveObjectRedis,
+          capturedStores: liveObjectRedis
+            ? ["postgres", "object-store", "redis"]
+            : ["postgres", "object-store"],
+          notCapturedStores: liveObjectRedis ? [] : ["redis"],
           postgres: {
             identity: captured.value.manifest.stores.postgres.identity,
             checksum: captured.value.manifest.stores.postgres.checksum,

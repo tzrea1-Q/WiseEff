@@ -32,7 +32,15 @@ Round 1 (SHA `3dc5c9411` / docs `2d3895e66`):
 
 Round 2 Standards re-review of `beeea0bf0` (live `captureRecoveryPoint`): still **FAIL** 0 P0 / 1 P1. Apply now calls `captureRecoveryPoint`, but object-store/redis use `createMemoryStorePort` (archive UTF-8 / empty redis). Receipt must not claim `threeStoreRecoveryPoint: true`. Follow-up keeps `threeStoreRecoveryPoint: false` and `notCapturedStores: ["redis"]`.
 
-Disposition: do **not** seal. T3.2/T3.3b leftovers keep any later seal **conditional**. Redis/object-store must be real configured stores before Standards P1 can PASS.
+Disposition: do **not** seal. T3.2/T3.3b leftovers keep any later seal **conditional**.
+
+Live Docker three-store rehearsal (not 5432/`wiseeff`, not `wiseeff_lane_849`):
+
+```bash
+docker compose -p wiseeff-t34a-stores -f ops/self-hosted/compose.t34a-stores.yaml up -d
+```
+
+Ports: postgres `127.0.0.1:55441/wiseeff_t34a`, redis `127.0.0.1:56379`, MinIO `127.0.0.1:59000`. `ops/self-hosted/storage/liveStorePorts.integration.test.ts` captured postgres+MinIO+Redis through `captureRecoveryPoint` (**1 passed**). `upgrade.sh` uses those live ports when `WISEEFF_REDIS_URL` and `OBJECT_STORAGE_*` are set; otherwise it still reports `threeStoreRecoveryPoint: false` and `notCapturedStores: ["redis"]`.
 
 ## Evidence bound to `3dc5c9411`
 

@@ -21,7 +21,15 @@
 
 第 1 轮（`3dc5c9411` / 文档 `2d3895e66`）：Standards FAIL P1；Spec FAIL P0+P1。第 2 轮 Standards（`beeea0bf0` 活捕获）仍 FAIL P1：object-store/redis 仍是 `createMemoryStorePort`，不得把 `threeStoreRecoveryPoint` 写成 true。回执保持 `false`，`notCapturedStores: ["redis"]`。
 
-处置：**不封印。** T3.2/T3.3b 剩余会使后续封印最多是有条件。需要真实配置的对象存储和 Redis 后，Standards P1 才能 PASS。
+处置：**不封印。** T3.2/T3.3b 剩余会使后续封印最多是有条件。
+
+本机隔离 Docker 三存储（不是 5432/`wiseeff`，不是 `wiseeff_lane_849`）：
+
+```bash
+docker compose -p wiseeff-t34a-stores -f ops/self-hosted/compose.t34a-stores.yaml up -d
+```
+
+端口：postgres `127.0.0.1:55441/wiseeff_t34a`，redis `127.0.0.1:56379`，MinIO `127.0.0.1:59000`。`liveStorePorts.integration.test.ts` 已对三存储做 `captureRecoveryPoint`（**1 通过**）。`upgrade.sh` 在设置 `WISEEFF_REDIS_URL` 与 `OBJECT_STORAGE_*` 时走这套活端口；否则仍报告 `threeStoreRecoveryPoint: false`。
 
 ## 绑在 `3dc5c9411` 上的证据
 
