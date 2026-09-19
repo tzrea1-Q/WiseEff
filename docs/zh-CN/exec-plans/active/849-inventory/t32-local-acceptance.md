@@ -2,7 +2,7 @@
 
 > English: [English](../../../exec-plans/active/849-inventory/t32-local-acceptance.md)
 
-状态：**local-non-HDC Gate0 与 smoke 已绿；T3.2 整行尚未完成。** Gate0 `beab90bc9` / run `full-20260918t224937833z-beab90bc9cec-5f49a8e9` / helper PG **55438**：视觉 **通过**，浏览器 **通过**，清单失败 **0**，operation-evidence **通过**。Smoke 在 `58dab25a4` / :5174/:18787 / `wiseeff_t32`：**4 通过**。`acceptance:quality`、`acceptance:coverage`、`acceptance:operations` **通过**。target-synthetic-acceptance 与 minimal-upgrade 仍不可用（见下表）。未 SEALED。未 push。无 PR/Hosted。封印点仍是 T3.4a。不要从本回执启动 T3.3a。
+状态：**local-non-HDC Gate0、smoke 与 target-non-hdc 已绿；T3.2 整行尚未完成。** Gate0 `beab90bc9` / run `full-20260918t224937833z-beab90bc9cec-5f49a8e9` / helper PG **55438**：视觉 **通过**，浏览器 **通过**，清单失败 **0**，operation-evidence **通过**。Smoke 在 `58dab25a4` / :5174/:18787 / `wiseeff_t32`：**4 通过**。`acceptance:quality`、`acceptance:coverage`、`acceptance:operations` **通过**。target-synthetic-acceptance 在 `d520964e4` **通过**。minimal-upgrade 仍不是通过。未 SEALED。未 push。无 PR/Hosted。
 
 HEAD：`58dab25a4`（`codex/849-853-t11-source-identity`）。ingest-on-add 保持撤回。热榜页已从固定小泽按钮处内缩，避免 PARAM-HOME-001 压在 FAB 下。
 
@@ -51,9 +51,9 @@ Canonical 值草稿现在会加载审核角色候选人，角色池缺失时阻�
 | 本地 commit `66cae3c0b` | **已撤回 ingest-on-add。** 成员 POST 再次只做成员关系。 |
 | 第一次 Gate0（会话 locale） | **供给前失败**：中文 `ps -o lstart=`。 |
 | 第二次 Gate0（LANG=C，脏树） | **源检查失败**：需要干净工作树。 |
-| target-synthetic-acceptance | **不可用，不是把 skip 当通过。** 本会话没有目标前端/API URL 或鉴权。CI `target-synthetic-acceptance` 是对实目标的 workflow_dispatch，且 `--no-start-runtime`。 |
-| minimal-upgrade | **不可用，不是把 skip 当通过。** `scripts/run-minimal-upgrade-acceptance.ts` 要求已封印 HEAD、本机 Docker `linux/x86_64` 和 daemon id。本机是 `linux/aarch64` / arm64；T3.4a 尚未封印；也未授权 `workflow_dispatch` `acceptance_mode=minimal-upgrade`。 |
+| target-synthetic-acceptance | **通过**（`d520964e4`）。Owned HMAC 运行时 `full-20260919t103129605z-d520964e4687-0393859b`，helper PG **55438**，前端 `http://127.0.0.1:5180`，API `http://127.0.0.1:18800`。命令：`npm run acceptance:browser -- --mode target-non-hdc --no-start-runtime --runtime-descriptor <abs runtime.json> --frontend-url http://127.0.0.1:5180`。预检 **通过**（`non_hdc_local`）。Playwright **174 通过 / 32 跳过 / 0 失败**。operation-evidence **通过**（192 条，`invalid: none`）。Status **passed**。产物在 `test-results/t32-target-synthetic-runtime/full-20260919t103129605z-d520964e4687-0393859b/`。不是 Hosted，不是生产。 |
+| minimal-upgrade | **不是通过。** 已跑 `npx tsx scripts/run-minimal-upgrade-acceptance.ts $(git rev-parse HEAD) "$(docker info --format '{{.ID}}')"`。Docker `linux/aarch64`，要求 `linux/x86_64`。断言：`the existing self-hosted base-image contract requires native amd64`。T3.4a 未 SEALED。 |
 
 ## 程序边界
 
-T3.2 整行仍未完成。`beab90bc9` 上的 local-non-HDC Gate0 已绿；后续 HEAD `58dab25a4` 上的 smoke/quality/coverage/operations 已绿。后续环境续跑清单：[t32-remaining-verification.md](t32-remaining-verification.md)（target-synthetic-acceptance 与 minimal-upgrade）。这两行不是通过。T3.3a Docker/S2 另行启动；T3.3b 目标、T3.4a 封印、T3.4b PR/Hosted/merge、T3.5 Issue 关闭不变。
+T3.2 整行仍未完成。`beab90bc9` 上的 local-non-HDC Gate0 已绿；后续 HEAD `58dab25a4` 上的 smoke/quality/coverage/operations 已绿；`d520964e4` 上的 target-non-hdc 已绿。续跑：[t32-remaining-verification.md](t32-remaining-verification.md)（只剩 minimal-upgrade）。该行不是通过。T3.4a 仍未 SEALED。
