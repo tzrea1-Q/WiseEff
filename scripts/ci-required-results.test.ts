@@ -352,7 +352,7 @@ describe("L1 invocation receipts", () => {
 
 describe("native test report completeness", () => {
   // Shape observed from Vitest 4.1.5: nested describe counts as suites, not files.
-  const options = { command: "frontend", root: "/repo", startedAt: 100, finishedAt: 400, platform: "linux", missingPathDts: false, missingRehearsalContainer: false };
+  const options = { command: "frontend", root: "/repo", startedAt: 100, finishedAt: 400, platform: "linux", missingPathDts: false, missingRehearsalContainer: false, missingIsolatedDockerStores: false, missingIsolatedTarget: false };
   const passed = { ancestorTitles: ["outer", "inner"], title: "passes", status: "passed", failureMessages: [] };
   const native = () => ({ numTotalTestSuites: 3, numPassedTestSuites: 3, numFailedTestSuites: 0, numPendingTestSuites: 0,
     numTotalTests: 1, numPassedTests: 1, numFailedTests: 0, numPendingTests: 0, numTodoTests: 0, startTime: 200, success: true,

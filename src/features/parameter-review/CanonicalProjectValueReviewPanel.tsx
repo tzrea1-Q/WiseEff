@@ -110,6 +110,9 @@ export function CanonicalProjectValueReviewPanel({
   if (!repository?.listProjectValueChangeRequests || !repository.reviewProjectValueChangeRequest) {
     return null;
   }
+  if (requests.length === 0 && !error) {
+    return null;
+  }
 
   const reviewProjectValueChangeRequest = repository.reviewProjectValueChangeRequest;
   const reviewSelected = async (decision: "approve" | "reject") => {

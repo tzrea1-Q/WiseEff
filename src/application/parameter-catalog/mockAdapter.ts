@@ -556,7 +556,7 @@ export function createMockCatalogPorts(options: CatalogMockOptions = {}): {
     },
     async listProjectValueDrafts() {
       assertReadyForRead(store);
-      return emptyCatalogCollection();
+      return emptyCatalogCollection("no-review-work");
     },
     async deleteProjectValueDraft() {
       assertReadyForRead(store);
@@ -568,7 +568,7 @@ export function createMockCatalogPorts(options: CatalogMockOptions = {}): {
     },
     async listProjectValueChangeRequests() {
       assertReadyForRead(store);
-      return emptyCatalogCollection();
+      return emptyCatalogCollection("no-review-work");
     },
     async reviewProjectValueChangeRequest() {
       assertReadyForRead(store);
@@ -580,7 +580,7 @@ export function createMockCatalogPorts(options: CatalogMockOptions = {}): {
     },
     async getCanonicalBindingChangeHistory() {
       assertReadyForRead(store);
-      return emptyCatalogCollection();
+      return emptyCatalogCollection("no-review-work");
     },
     async getCanonicalBindingExport() {
       assertReadyForRead(store);

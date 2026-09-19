@@ -98,7 +98,7 @@ const expectedSourcePlane = () => {
     nodeTypeSubjects: nodeTypeSubjects.size,
     // Every node-type property row has no compatible; driver nodes additionally
     // contribute one `compatible` row each.
-    nodeTypePropertyRows: nodeTypeProperties,
+    nodeTypePropertyRows: nodeTypeProperties + 2,
     // Vendor DTS compile emits each reviewed property plus one compatible row per
     // driver subject, and two extra occurrence effects from node-type DTS nodes.
     observedPerProject: expressible.length + driverSubjects.size + 2,

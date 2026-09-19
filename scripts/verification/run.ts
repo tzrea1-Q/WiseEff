@@ -1023,6 +1023,8 @@ export async function runFreshTask(options: { base: string; task: TaskId; force?
       platform: process.platform,
       missingPathDts: false,
       missingRehearsalContainer: false,
+      missingIsolatedDockerStores: false,
+      missingIsolatedTarget: false,
     });
     record.native.files = native.files;
     record.native.passed = native.passed;
