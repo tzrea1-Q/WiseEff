@@ -110,7 +110,7 @@ export function CanonicalProjectValueReviewPanel({
   if (!repository?.listProjectValueChangeRequests || !repository.reviewProjectValueChangeRequest) {
     return null;
   }
-  if (requests.length === 0 && !error) {
+  if (requests.length === 0) {
     return null;
   }
 
