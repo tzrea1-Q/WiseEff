@@ -2,7 +2,7 @@
 
 > English: [English](../../../exec-plans/active/849-inventory/t34a-seal.md)
 
-状态：**PRESEAL-REVIEW FAIL。未 SEALED。** 独立评审模型定为 **grok-4.6**。T3.4a 保持未勾。无 PR/push/Hosted。未启动 T3.4b。
+状态：**有条件 — 不是完整 SEALED。** 操作员接受 A+C：本机继续推进；**minimal-upgrade** 记为环境例外（`linux/aarch64` vs `linux/x86_64`）。独立评审仍为 **grok-4.6**。T3.4a 作为完整封印 **仍未勾**。T2.3b DROP 仍未授权。
 
 第 4 轮候选 HEAD `d12bc808c9de2903b143ebfada4ccd9ec67eec23`：`tsc -b` **通过**，`npm run build` **通过**，T3.3a+T3.3b+liveStorePorts **5 通过**。grok-4.6 Standards **PASS**（P0=0 P1=0 P2=1）。Spec **FAIL**（T3.1/T3.2 仍开；Gate0/`test:server` 不在此 SHA；target-synthetic/minimal-upgrade 不是通过）。T3.3b 是已授权本机自托管目标，不能单独封印 T3.4a。
 

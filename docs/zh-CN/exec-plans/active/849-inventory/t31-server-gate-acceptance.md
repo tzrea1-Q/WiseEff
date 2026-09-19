@@ -2,9 +2,9 @@
 
 > English: [English](../../../../exec-plans/active/849-inventory/t31-server-gate-acceptance.md)
 
-状态：**本地候选已绿。** 本 Scratch 上完整 `test:server` 已绿。未 SEALED。无 commit、PR、Hosted、目标机、Issue。浏览器归 T3.2。Docker／S2 归 T3.3a。封印点仍是 T3.4a。
+状态：**TD-125 移除后当前 SHA 上本地候选已绿。** 未 SEALED。
 
-HEAD `f9c710f6a90d67462965a06abd47e33aa200e75e` 加上未提交 Scratch（T2.3b + T3.1 跟进：0158/0159、seed/ACL/路由/V13）。
+重跑：`DATABASE_URL=postgres://wiseeff:wiseeff@127.0.0.1:55438/wiseeff_t23b npm run test:server` → **577 文件 / 4634 通过 / 0 失败**。不是 `wiseeff_lane_849`。不是 5432/`wiseeff`。
 
 Helper PG **55438** / `wiseeff_t23b`。`S2_SCH_CONTRACT_FINGERPRINT` = `7bc94491…`（到 0158；0159 只授 SELECT）。
 

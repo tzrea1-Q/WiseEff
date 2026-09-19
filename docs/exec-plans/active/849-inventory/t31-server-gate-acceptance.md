@@ -2,9 +2,9 @@
 
 > Chinese: [中文](../../../zh-CN/exec-plans/active/849-inventory/t31-server-gate-acceptance.md)
 
-Status: **local candidate green.** Full `test:server` on this Scratch is green. Not SEALED. No commit, PR, Hosted, target, or Issue update. Browser stays T3.2. Docker/S2 stays T3.3a. T3.4a remains the seal point.
+Status: **local candidate green on current SHA after TD-125 removal.** Not SEALED. Browser/target leftovers stay T3.2/T3.4a.
 
-HEAD `f9c710f6a90d67462965a06abd47e33aa200e75e` plus uncommitted Scratch through T2.3b + T3.1 follow-up (0158/0159, seed/ACL/route/V13).
+Re-run HEAD after canonical-only binding reads: `DATABASE_URL=postgres://wiseeff:wiseeff@127.0.0.1:55438/wiseeff_t23b npm run test:server` → **577 files / 4634 passed / 0 failed**. Exit 0. Not `wiseeff_lane_849`. Not 5432/`wiseeff`.
 
 ## Environment
 

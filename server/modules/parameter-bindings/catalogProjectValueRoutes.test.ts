@@ -54,8 +54,6 @@ vi.mock("../parameter-kernel/sensitiveNode", async (importOriginal) => {
   };
 });
 
-// TD-125: the current-binding read temporarily falls back to the legacy list when the
-// canonical Catalog is empty, so this route test has to stub that owner too.
 vi.mock("../parameter-topology/service", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../parameter-topology/service")>();
   return {
@@ -734,14 +732,15 @@ describe("canonical project binding reads", () => {
     vi.spyOn(dbClient, "getRootPostgresPool").mockReturnValue({ query: vi.fn() } as never);
   });
 
-  it("falls back to the legacy current view while the canonical plane is not yet written (TD-125)", async () => {
+  it("returns an empty list when the canonical plane has no rows", async () => {
     const db = makeDb();
     vi.mocked(db.query).mockResolvedValue({
       rows: [{ id: "project-1", name: "Project One", code: "P1" }]
     } as never);
     vi.mocked(catalogSync.listCatalogBindingRowsForProject).mockResolvedValue([]);
-    const legacyItem = { id: "legacy-1", parameterSpecId: "pspec-legacy" };
-    vi.mocked(topologyService.listProjectBindings).mockResolvedValue({ items: [legacyItem] } as never);
+    vi.mocked(topologyService.listProjectBindings).mockResolvedValue({
+      items: [{ id: "legacy-1", parameterSpecId: "pspec-legacy" }]
+    } as never);
 
     const response = await requestJson<{ items: unknown[] }>(
       makeServer({ db }),
@@ -749,13 +748,11 @@ describe("canonical project binding reads", () => {
     );
 
     expect(response.status).toBe(200);
-    // TD-125: until the canonical writer is wired into release and seed publication, an
-    // empty canonical Catalog must not answer with an empty workbench. Remove this
-    // expectation together with the fallback.
-    expect(response.body).toEqual({ items: [legacyItem] });
+    expect(response.body).toEqual({ items: [] });
+    expect(topologyService.listProjectBindings).not.toHaveBeenCalled();
   });
 
-  it("keeps canonical rows and appends only legacy rows whose definition is not canonical", async () => {
+  it("returns only canonical rows and ignores leftover topology bindings", async () => {
     const db = makeDb();
     vi.mocked(db.query).mockResolvedValue({
       rows: [{ id: "project-1", name: "Project One", code: "P1" }]
@@ -784,14 +781,11 @@ describe("canonical project binding reads", () => {
         documentation: null
       }
     ] as never);
-    const legacyOnly = { id: "legacy-only", parameterSpecId: "pspec-legacy" };
     vi.mocked(topologyService.listProjectBindings).mockResolvedValue({
       items: [
-        // Same binding id as the canonical row: never duplicated.
         { id: "canonical-1", parameterSpecId: "pspec-other" },
-        // Legacy row whose parameterSpecId is the canonical definition: superseded.
         { id: "legacy-same-definition", parameterSpecId: "def-canonical" },
-        legacyOnly
+        { id: "legacy-only", parameterSpecId: "pspec-legacy" }
       ]
     } as never);
 
@@ -801,7 +795,8 @@ describe("canonical project binding reads", () => {
     );
 
     expect(response.status).toBe(200);
-    expect(response.body.items.map((item) => item.id)).toEqual(["canonical-1", "legacy-only"]);
+    expect(response.body.items.map((item) => item.id)).toEqual(["canonical-1"]);
+    expect(topologyService.listProjectBindings).not.toHaveBeenCalled();
   });
 
   it("still hides an unknown or foreign project behind 404", async () => {

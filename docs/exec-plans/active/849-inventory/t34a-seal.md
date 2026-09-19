@@ -2,7 +2,7 @@
 
 > Chinese: [中文](../../../zh-CN/exec-plans/active/849-inventory/t34a-seal.md)
 
-State: **PRESEAL-REVIEW FAIL. Not SEALED.** Independent Standards and Spec reviews are **grok-4.6**. T3.4a stays unchecked. No PR/push/Hosted. T3.4b is not started.
+State: **CONDITIONAL — not a full SEAL.** Operator accepted path A+C: keep shipping on this host; treat **minimal-upgrade** as an environment exception (`linux/aarch64` vs required `linux/x86_64`). Independent reviews remain **grok-4.6**. T3.4a stays **unchecked** as a full seal. T2.3b DROP is still not authorized.
 
 Round 4 candidate (this turn):
 
