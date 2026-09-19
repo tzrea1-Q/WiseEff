@@ -2,9 +2,9 @@
 
 > Chinese: [中文](../../../zh-CN/exec-plans/active/849-inventory/t32-local-acceptance.md)
 
-Status: **local-non-HDC Gate0 is green on this worktree. T3.2 as a whole row is not complete.** Latest Gate0 `beab90bc9` / run `full-20260918t224937833z-beab90bc9cec-5f49a8e9` / helper PG **55438**: visual **passed**, browser **passed**, inventoried failures **0**, operation-evidence **passed** (`missingOperationIds: []`, `invalidEvidenceIds: []`). Exact runtime cleanup completed. Not SEALED. Not pushed. No PR/Hosted. T3.4a remains the seal point. target-synthetic-acceptance and minimal-upgrade are still not run. Do not start T3.3a from this receipt.
+Status: **local-non-HDC Gate0 and smoke are green. T3.2 as a whole row is not complete.** Gate0 `beab90bc9` / run `full-20260918t224937833z-beab90bc9cec-5f49a8e9` / helper PG **55438**: visual **passed**, browser **passed**, inventoried failures **0**, operation-evidence **passed**. Smoke on `58dab25a4` / :5174/:18787 / `wiseeff_t32`: **4 passed**. `acceptance:quality`, `acceptance:coverage`, and `acceptance:operations` **passed** (`missingRequiredIds: []`, `coverageMapOrphanIds: []`, `missingAutomatedOperationIds: []`). target-synthetic-acceptance and minimal-upgrade remain unavailable (recorded below). Not SEALED. Not pushed. No PR/Hosted. T3.4a remains the seal point. Do not start T3.3a from this receipt.
 
-HEAD: `beab90bc9cecd274c58ecd7d66b051026a955987` on `codex/849-853-t11-source-identity`. Ingest-on-add stays reverted.
+HEAD: `58dab25a4` on `codex/849-853-t11-source-identity`. Ingest-on-add stays reverted. Hotspots page is inset from the Xiaoze launcher so PARAM-HOME-001 does not sit under the FAB.
 
 ## Environment
 
@@ -31,10 +31,10 @@ Canonical value drafts now load workflow-role candidates and block submit when p
 | `npm test -- DtsBindingDraftTray.test.tsx ApiProjectTopologyWorkspace.test.tsx` | **53 passed** |
 | `npm test -- src/App.test.tsx` | **143 passed** |
 | `npm run ui:check` | **passed** |
-| `npm run acceptance:quality` | **passed** (metadata only: scripts + spec files present) |
+| `npm run acceptance:quality` | **passed** on current HEAD (metadata: scripts + spec files present) |
 | `npm run acceptance:coverage` | **passed**; `missingRequiredIds: []`; `coverageMapOrphanIds: []`; `skippedRequiredIds: []` |
 | `npm run acceptance:operations` | **passed**; `missingAutomatedOperationIds: []` |
-| `acceptance:smoke` on :5174/:18787 / `wiseeff_t32` | **4 passed** (warmup + auth + parameter-home + shell) |
+| `acceptance:smoke` on :5174/:18787 / `wiseeff_t32` / `58dab25a4` | **4 passed** (warmup + auth + parameter-home + shell). Owned ports, HMAC from committed `.env.example`, not host 5173/8787. First smoke failed because the last hotspot row sat under the Xiaoze launcher; hotspots page inset in `f96d85af4`/`58dab25a4`. |
 | focused Playwright (handoff, roles, readiness, lock, promote) | **all passed** on the same owned runtime after the lock/promote fixes |
 | `npm run dts:toolchain:check -- --required` | **passed** (dtc 1.8.1, fdtoverlay 1.8.1, dtschema 2026.6) |
 | Local commit `8b517b930` | **done.** 523 files. Message: `feat(parameters): snapshot 849/853 Scratch for local Gate0`. Not pushed. |
@@ -51,9 +51,9 @@ Canonical value drafts now load workflow-role candidates and block submit when p
 | Local commit `66cae3c0b` | **Reverted ingest-on-add.** Membership POST is membership-only again. |
 | First Gate0 attempt (session locale) | **failed before provision**: Chinese `ps -o lstart=` (`五  9月/18 …`) vs `process-start-identity.ts`. |
 | Second Gate0 attempt (LANG=C, dirty tree) | **failed at source inspection**: `Owned runtime requires a clean source worktree`. |
-| target-synthetic-acceptance | **not run**. No target frontend/API URLs or auth secrets in this session. |
-| minimal-upgrade | **not run**. Driver needs a sealed candidate SHA and Docker daemon id; T3.4a has not sealed this Scratch. |
+| target-synthetic-acceptance | **unavailable, not skipped-as-pass.** No target frontend/API URLs or auth secrets in this session (`WISEEFF_ACCEPTANCE_FRONTEND_URL` and target URL env names unset). CI `target-synthetic-acceptance` is workflow_dispatch against a live target with `--no-start-runtime`. |
+| minimal-upgrade | **unavailable, not skipped-as-pass.** `scripts/run-minimal-upgrade-acceptance.ts` requires a sealed HEAD, native Docker `linux/x86_64`, and the daemon id. This host is `linux/aarch64` / arm64; T3.4a has not sealed this Scratch; no `workflow_dispatch` `acceptance_mode=minimal-upgrade` was authorized. |
 
 ## Remaining program boundary
 
-T3.2 is not a complete local-acceptance row. Local-non-HDC Gate0 on `beab90bc9` is green (visual, browser, operation-evidence, cleanup). target-synthetic-acceptance and minimal-upgrade remain unavailable in this session. No push/PR/Hosted. T3.3a Docker/S2, T3.3b target, T3.4a seal, T3.4b PR/Hosted/merge, T3.5 Issue close are unchanged.
+T3.2 is not a complete local-acceptance row. Local-non-HDC Gate0 on `beab90bc9` is green; smoke/quality/coverage/operations on later HEAD `58dab25a4` are green. target-synthetic-acceptance and minimal-upgrade remain unavailable and are not treated as pass. No push/PR/Hosted. T3.3a Docker/S2, T3.3b target, T3.4a seal, T3.4b PR/Hosted/merge, T3.5 Issue close are unchanged.

@@ -2,9 +2,9 @@
 
 > English: [English](../../../exec-plans/active/849-inventory/t32-local-acceptance.md)
 
-状态：**本 worktree 的 local-non-HDC Gate0 已绿；T3.2 整行尚未完成。** 最近一次 Gate0：`beab90bc9` / run `full-20260918t224937833z-beab90bc9cec-5f49a8e9` / helper PG **55438**：视觉 **通过**，浏览器 **通过**，清单失败 **0**，operation-evidence **通过**（`missingOperationIds: []`，`invalidEvidenceIds: []`）。运行时清理已完成。未 SEALED。未 push。无 PR/Hosted。封印点仍是 T3.4a。target-synthetic-acceptance 与 minimal-upgrade 仍未跑。不要从本回执启动 T3.3a。
+状态：**local-non-HDC Gate0 与 smoke 已绿；T3.2 整行尚未完成。** Gate0 `beab90bc9` / run `full-20260918t224937833z-beab90bc9cec-5f49a8e9` / helper PG **55438**：视觉 **通过**，浏览器 **通过**，清单失败 **0**，operation-evidence **通过**。Smoke 在 `58dab25a4` / :5174/:18787 / `wiseeff_t32`：**4 通过**。`acceptance:quality`、`acceptance:coverage`、`acceptance:operations` **通过**。target-synthetic-acceptance 与 minimal-upgrade 仍不可用（见下表）。未 SEALED。未 push。无 PR/Hosted。封印点仍是 T3.4a。不要从本回执启动 T3.3a。
 
-HEAD：`beab90bc9cecd274c58ecd7d66b051026a955987`（`codex/849-853-t11-source-identity`）。ingest-on-add 保持撤回。
+HEAD：`58dab25a4`（`codex/849-853-t11-source-identity`）。ingest-on-add 保持撤回。热榜页已从固定小泽按钮处内缩，避免 PARAM-HOME-001 压在 FAB 下。
 
 ## 环境
 
@@ -31,10 +31,10 @@ Canonical 值草稿现在会加载审核角色候选人，角色池缺失时阻�
 | `npm test -- DtsBindingDraftTray.test.tsx ApiProjectTopologyWorkspace.test.tsx` | **53 通过** |
 | `npm test -- src/App.test.tsx` | **143 通过** |
 | `npm run ui:check` | **通过** |
-| `npm run acceptance:quality` | **通过**（仅元数据：脚本与 spec 文件存在） |
+| `npm run acceptance:quality` | **通过**（当前 HEAD；仅元数据：脚本与 spec 文件存在） |
 | `npm run acceptance:coverage` | **通过**；`missingRequiredIds: []`；`coverageMapOrphanIds: []`；`skippedRequiredIds: []` |
 | `npm run acceptance:operations` | **通过**；`missingAutomatedOperationIds: []` |
-| `:5174/:18787` / `wiseeff_t32` 上的 `acceptance:smoke` | **4 通过** |
+| `:5174/:18787` / `wiseeff_t32` / `58dab25a4` 上的 `acceptance:smoke` | **4 通过**（warmup + auth + parameter-home + shell）。独占端口，HMAC 来自仓库 `.env.example`，未占用宿主 5173/8787。首次 smoke 因最后一行热区压在小泽按钮下失败；`f96d85af4`/`58dab25a4` 已把热榜页内缩。 |
 | 专注 Playwright（handoff / roles / readiness / lock / promote） | 同一自有运行时上 **全部通过** |
 | `npm run dts:toolchain:check -- --required` | **通过** |
 | 本地 commit `8b517b930` | **已做。** 523 文件。说明：`feat(parameters): snapshot 849/853 Scratch for local Gate0`。未 push。 |
@@ -51,9 +51,9 @@ Canonical 值草稿现在会加载审核角色候选人，角色池缺失时阻�
 | 本地 commit `66cae3c0b` | **已撤回 ingest-on-add。** 成员 POST 再次只做成员关系。 |
 | 第一次 Gate0（会话 locale） | **供给前失败**：中文 `ps -o lstart=`。 |
 | 第二次 Gate0（LANG=C，脏树） | **源检查失败**：需要干净工作树。 |
-| target-synthetic-acceptance | **未跑**。本会话没有目标前端/API URL 或鉴权。 |
-| minimal-upgrade | **未跑**。驱动需要已封印候选 SHA 与 Docker daemon id；T3.4a 尚未封印此 Scratch。 |
+| target-synthetic-acceptance | **不可用，不是把 skip 当通过。** 本会话没有目标前端/API URL 或鉴权。CI `target-synthetic-acceptance` 是对实目标的 workflow_dispatch，且 `--no-start-runtime`。 |
+| minimal-upgrade | **不可用，不是把 skip 当通过。** `scripts/run-minimal-upgrade-acceptance.ts` 要求已封印 HEAD、本机 Docker `linux/x86_64` 和 daemon id。本机是 `linux/aarch64` / arm64；T3.4a 尚未封印；也未授权 `workflow_dispatch` `acceptance_mode=minimal-upgrade`。 |
 
 ## 程序边界
 
-T3.2 整行仍未完成。`beab90bc9` 上的 local-non-HDC Gate0 已绿（视觉、浏览器、operation-evidence、清理）。target-synthetic-acceptance 与 minimal-upgrade 在本会话仍不可用。不 push、不开 PR。T3.3a Docker/S2、T3.3b 目标、T3.4a 封印、T3.4b PR/Hosted/merge、T3.5 Issue 关闭不变。
+T3.2 整行仍未完成。`beab90bc9` 上的 local-non-HDC Gate0 已绿；后续 HEAD `58dab25a4` 上的 smoke/quality/coverage/operations 已绿。target-synthetic-acceptance 与 minimal-upgrade 仍不可用，不当作通过。不 push、不开 PR。T3.3a Docker/S2、T3.3b 目标、T3.4a 封印、T3.4b PR/Hosted/merge、T3.5 Issue 关闭不变。
