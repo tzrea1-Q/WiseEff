@@ -20,7 +20,7 @@ Base: `origin/main` **`3d5e3b1348a02973545be353d83fc3fdb390d8d2`**. Branch: `cod
 | ID | Status |
 | --- | --- |
 | C1 | **Not zeroed.** Last complete leftover count was **55** / stale **0**. Current tree cannot re-run the CLI to zero: relocation dest-blob reject on `e2e/acceptance/parameter-topology.acceptance.spec.ts` (Gate0-required Catalog 404 allowlist). Dest-rebind is not authorized. T1.4 stays unchecked. Checker not weakened. |
-| C2 | **Passed** on `bc16fc633` / helper PG **55438** / run `full-20260920t095422270z-bc16fc6334ff-65e3c7fe`. Visual **20 passed**. Playwright **174 passed / 32 skipped**. Coverage **passed**. Operation-evidence **passed**. Inventoried **0**. Runtime cleanup **completed**. Not a skip-as-pass. |
+| C2 | **Passed** on `3b516ee1e` / helper PG **55438** / run `full-20260920t111458015z-3b516ee1e79e-23180b78` (repeat of `bc16fc633` after dest-blob restore). Visual **passed**. Playwright **passed**. Coverage **passed**. Operation-evidence **passed**. Inventoried **0**. Runtime cleanup **completed**. Not a skip-as-pass. |
 | C3 | **Not current-SHA evidence.** Local T3.3b `:18080` is up (`HTTP 200`) but image `wiseeff-app:t33b-19b987e5a`, not this closeout HEAD. Prior target-synthetic pass remains `d520964e4`. Did not run 174 tests against a mismatched target. |
 | C4 | Disposer **executed** on helper PG via `dispose.integration.test.ts` **6 passed** (`wiseeff_ut_routes`). CLI against `wiseeff_dispose_c4` (TEMPLATE `wiseeff_quality_snap`) refused at capture: M1 seed has no `public.project_parameter_values`. No DROP. |
 | C5 | **Not SEALED.** C1 leftover 55, C3 not current, minimal-upgrade still amd64-only. |
