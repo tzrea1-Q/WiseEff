@@ -738,6 +738,7 @@ describe("canonical project binding reads", () => {
       rows: [{ id: "project-1", name: "Project One", code: "P1" }]
     } as never);
     vi.mocked(catalogSync.listCatalogBindingRowsForProject).mockResolvedValue([]);
+    vi.mocked(catalogSync.loadPublishedCatalog).mockResolvedValue(null as never);
     vi.mocked(topologyService.listProjectBindings).mockResolvedValue({
       items: [{ id: "legacy-1", parameterSpecId: "pspec-legacy" }]
     } as never);
@@ -752,7 +753,7 @@ describe("canonical project binding reads", () => {
     expect(topologyService.listProjectBindings).toHaveBeenCalled();
   });
 
-  it("falls back to topology bindings when the catalog plane forbids the actor", async () => {
+  it("falls back to topology bindings when unpublished catalog forbids the actor", async () => {
     const db = makeDb();
     vi.mocked(db.query).mockResolvedValue({
       rows: [{ id: "project-1", name: "Project One", code: "P1" }]
@@ -760,6 +761,7 @@ describe("canonical project binding reads", () => {
     vi.mocked(catalogSync.listCatalogBindingRowsForProject).mockRejectedValue(
       new ApiError("FORBIDDEN", "Project parameter scope is required.")
     );
+    vi.mocked(catalogSync.loadPublishedCatalog).mockResolvedValue(null as never);
     vi.mocked(topologyService.listProjectBindings).mockResolvedValue({
       items: [{ id: "legacy-1", parameterSpecId: "pspec-legacy" }]
     } as never);
@@ -773,7 +775,26 @@ describe("canonical project binding reads", () => {
     expect(response.body.items.map((item) => item.id)).toEqual(["legacy-1"]);
   });
 
-  it("keeps canonical rows and only mixes in leftover topology bindings", async () => {
+  it("keeps catalog FORBIDDEN when a Catalog is published", async () => {
+    const db = makeDb();
+    vi.mocked(db.query).mockResolvedValue({
+      rows: [{ id: "project-1", name: "Project One", code: "P1" }]
+    } as never);
+    vi.mocked(catalogSync.listCatalogBindingRowsForProject).mockRejectedValue(
+      new ApiError("FORBIDDEN", "Project parameter scope is required.")
+    );
+    vi.mocked(catalogSync.loadPublishedCatalog).mockResolvedValue({ id: "crel-1" } as never);
+
+    const response = await requestJson(
+      makeServer({ db }),
+      "/api/v2/projects/project-1/parameter-bindings"
+    );
+
+    expect(response.status).toBe(403);
+    expect(topologyService.listProjectBindings).not.toHaveBeenCalled();
+  });
+
+  it("returns canonical rows only once a Catalog has bindings", async () => {
     const db = makeDb();
     vi.mocked(db.query).mockResolvedValue({
       rows: [{ id: "project-1", name: "Project One", code: "P1" }]
@@ -816,8 +837,29 @@ describe("canonical project binding reads", () => {
     );
 
     expect(response.status).toBe(200);
-    expect(response.body.items.map((item) => item.id)).toEqual(["canonical-1", "legacy-only"]);
-    expect(topologyService.listProjectBindings).toHaveBeenCalled();
+    expect(response.body.items.map((item) => item.id)).toEqual(["canonical-1"]);
+    expect(topologyService.listProjectBindings).not.toHaveBeenCalled();
+  });
+
+  it("returns an empty catalog list when the published Catalog has no project rows", async () => {
+    const db = makeDb();
+    vi.mocked(db.query).mockResolvedValue({
+      rows: [{ id: "project-1", name: "Project One", code: "P1" }]
+    } as never);
+    vi.mocked(catalogSync.listCatalogBindingRowsForProject).mockResolvedValue([]);
+    vi.mocked(catalogSync.loadPublishedCatalog).mockResolvedValue({ id: "crel-1" } as never);
+    vi.mocked(topologyService.listProjectBindings).mockResolvedValue({
+      items: [{ id: "legacy-1", parameterSpecId: "pspec-legacy" }]
+    } as never);
+
+    const response = await requestJson<{ items: Array<{ id: string }> }>(
+      makeServer({ db }),
+      "/api/v2/projects/project-1/parameter-bindings"
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.body.items).toEqual([]);
+    expect(topologyService.listProjectBindings).not.toHaveBeenCalled();
   });
 
   it("still hides an unknown or foreign project behind 404", async () => {

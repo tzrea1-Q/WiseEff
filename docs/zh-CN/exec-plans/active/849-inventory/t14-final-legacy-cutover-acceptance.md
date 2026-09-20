@@ -2,7 +2,7 @@
 
 > English: [English](../../../../exec-plans/active/849-inventory/t14-final-legacy-cutover-acceptance.md)
 
-状态：**种子 writer 后 GET 已恢复 canonical-only（每个演示项目 120 条 catalog 行）。scanner leftover 55，T1.4 不勾。** overlay 与 governance **详情**仍 2xx。未 SEALED。
+状态：**已发布 Catalog 的 GET 只出 canonical，不再混 leftover。未发布指针仍回落 topology。scanner leftover 55，T1.4 不勾。** overlay 与 governance **详情**仍 2xx。未 SEALED。
 
 设计 Spec 再评审 `01a0b0a8-0492-434d-6fbb-ac1520d36674` PASS with P2。B2 Spec 再评审 `9e09e874-cae5-4e98-af76-c5f6cd638731` PASS with P2（已折入）。
 
@@ -60,4 +60,4 @@ relocation 不能映射不同前三段 id。禁止涨 allowlist。这些是 succ
 
 ## 剩余
 
-T1.4 清零仍被 leftover 挡住。Repair C 已落地。**GET 已恢复 canonical-only**；种子 writer 为每个演示项目写 120 条 catalog 绑定。`catalogProjectValueRoutes.test.ts` **20 通过**。清单 T1.4 **仍未勾**。
+T1.4 清零仍被 leftover 挡住。Repair C 已落地。**已发布 Catalog 的 GET 只出 canonical**；未发布指针仍回落 topology。清单 T1.4 **仍未勾**。
