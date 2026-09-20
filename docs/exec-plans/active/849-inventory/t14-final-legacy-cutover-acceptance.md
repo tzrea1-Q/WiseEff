@@ -2,7 +2,7 @@
 
 > Chinese: [中文](../../../zh-CN/exec-plans/active/849-inventory/t14-final-legacy-cutover-acceptance.md)
 
-Status: **Published Catalog GET is canonical-only (no leftover extras). Unpublished pointer still topology-falls-back. Scanner leftover 55 remains; T1.4 stays unchecked.** Overlay and governance **detail** stay 2xx. No SEALED.
+Status: **GET is canonical-only when the project has Catalog binding rows (no leftover extras). Zero catalog rows (unpublished or published-empty project) still topology-falls-back. Scanner leftover 55 remains; T1.4 stays unchecked.** Overlay and governance **detail** stay 2xx. No SEALED.
 
 Design Spec re-review `01a0b0a8-0492-434d-6fbb-ac1520d36674` PASS with P2. B2 Spec re-review `9e09e874-cae5-4e98-af76-c5f6cd638731` PASS with P2 (folded).
 
