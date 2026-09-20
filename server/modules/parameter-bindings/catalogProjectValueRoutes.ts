@@ -227,22 +227,18 @@ export function registerCatalogProjectValueConsumerRoutes(
         projectId: params.projectId
       });
     }
-    const original = await listProjectBindings(db, auth, {
-      projectId: params.projectId,
-      revisionId: query.revisionId
-    });
     let catalogRows: Awaited<ReturnType<typeof listCatalogBindingRowsForProject>> = [];
+    let catalogError: ApiError | null = null;
     try {
       catalogRows = await listCatalogBindingRowsForProject(db, auth, {
         projectId: params.projectId,
         revisionId: query.revisionId
       });
     } catch (error) {
-      // Catalog plane is project-scoped; a viewer who can list topology bindings
-      // must still get those rows when they cannot pin this project's catalog.
       if (!(error instanceof ApiError) || (error.code !== "FORBIDDEN" && error.code !== "NOT_FOUND")) {
         throw error;
       }
+      catalogError = error;
     }
     const catalogItems = catalogRows.map((row) =>
       projectBindingDtoSchema.parse({
@@ -268,20 +264,19 @@ export function registerCatalogProjectValueConsumerRoutes(
         documentation: row.documentation
       })
     );
-    const seen = new Set(catalogItems.map((item) => item.id));
-    const catalogDefinitions = new Set(
-      catalogItems.map((item) => item.definitionId ?? item.parameterSpecId),
-    );
-    const extras = original.items.filter(
-      (item) =>
-        !seen.has(item.id) &&
-        !catalogDefinitions.has(item.parameterSpecId) &&
-        !(item.definitionId && catalogDefinitions.has(item.definitionId)),
-    );
-    return {
-      status: 200,
-      body: { items: catalogItems.length > 0 ? [...catalogItems, ...extras] : original.items }
-    };
+    if (catalogItems.length > 0) {
+      return { status: 200, body: { items: catalogItems } };
+    }
+    const pool = getRootPostgresPool(db);
+    const snapshot = pool ? await loadPublishedCatalog(pool) : null;
+    if (snapshot && catalogError?.code === "FORBIDDEN") {
+      throw catalogError;
+    }
+    const original = await listProjectBindings(db, auth, {
+      projectId: params.projectId,
+      revisionId: query.revisionId
+    });
+    return { status: 200, body: { items: original.items } };
   });
 
   /**
