@@ -48,7 +48,7 @@
 
 ## 近期关闭项
 
-- **TD-125（参数 / canonical 读取路径）：** **在 seed/release 真正物化 canonical 之前，空 Catalog 再次回退 topology 绑定。** canonical 行存在时仍优先。`catalogProjectValueRoutes.test.ts` **20 通过**。overlay／governance **详情**仍 2xx。T1.4 leftover 仍不勾。Hosted Merge bar 变绿前不是 Hosted／生产证据。
+- **TD-125（参数 / canonical 读取路径）：** **种子 writer 落地后 GET 恢复 canonical-only。** helper PG 上每个演示项目 120 条 catalog 绑定。空 Catalog 为 `{ items: [] }`。overlay／governance **详情**仍 2xx。T1.4 leftover 仍不勾。
 
 - **TD-122（验收基线完整性）：** **2026-08-24 经 #603–#607 关闭；最终 merged-main 证明提交为 `493a257a1f3507f883715c5b5235af7a233914c7`。** 权威 owned `acceptance:gate0` 运行 `full-20260823t165107589z-493a257a1f35-046f55ca` 从 clean `main` 启动，固定工具链为 dtc/fdtoverlay 1.8.1、dtschema 2026.6；visual 20/20，browser 为 127 expected / 29 planned skipped / 0 unexpected / 0 flaky。operation evidence 共 125 条记录，覆盖 108 个 required ID，missing/invalid/validation error 均为 0。11 个 nested runtime 全部 `cleaned`；nested/root API 与 frontend 均 stopped，所有 nested/root 数据库与对象根均 removed，18800/5180 空闲，独立数据库查询的精确同名计数为 0。artifact safety 为 0 violation，事后再扫 672 个文件仍为 0。`latest-full.json` 绑定精确 run 与 source commit。#606/#607 仅在仓库负责人明确批准月度 CI 额度例外后，依据完整本地 scripts/type/build/docs/acceptance-CI/lint/diff 绿灯与双轴 0 finding 合入。失败运行继续保留作取证；不声称 target/HDC/provider ready。
 - **TD-105（投递记录保留）：** **2026-08-22 经 #599（`62a100e3b0e42817d7006a62b89aeb012af2c9ba`）关闭。** webhook delivery 按组织/域保留最近配置数量，以 `created_at DESC, id DESC` 稳定排序；每轮只选一次，最多执行十批、每批 1000 行。polling/durable 各拥有一个立即首轮加 60 秒循环；失败脱敏并在下轮重试，不阻断投递，shutdown 等待 quiescence。operator 可停用未来 prune，已删行只能由备份恢复。真实 PostgreSQL retention/lifecycle 覆盖 64/64，review 后核心 18/18；server 全量 2730 tests（8 个既有 skip），type/build/docs/diff 与双轴复审均通过。

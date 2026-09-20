@@ -2,7 +2,7 @@
 
 > English: [English](../../../exec-plans/active/2026-09-16-849-853-closure-todolist.md)
 
-状态：**T2.2-OPS 本地候选完成。** T1.1 仍是未提交脏候选。T1.2–T2.2-OPS 仍是同一 Scratch 树上的额外脏工作。T2.2-OPS：[回执](849-inventory/t22-ops-operations-consumers-acceptance.md)。无 commit、正式 SEALED、PR、合并或 Issue 关闭。用户已解除剩余项之间的逐项「确认」；commit／PR／目标机／破坏性删除／Issue 仍需单独授权。
+状态：**#884 已合入 `main` 为 `fbb17717a`（T3.4b）。T3.4a 仍非 full SEAL。T1.4 leftover 55。不要关 #849/#853。** 本机 Docker 后续：[local-docker-round.md](849-inventory/local-docker-round.md)。
 基线：T1.1 重新拉取的 `origin/main@46b6068693942b95f7cba28ee5de6748a97170fa`；P0/T0.6 改动完整保留于新 Scratch 分支。
 规格：[#849](https://github.com/tzrea1-Q/WiseEff/issues/849)。唯一执行状态：[#853](https://github.com/tzrea1-Q/WiseEff/issues/853)。本文件细化执行顺序和验收条件；每项交付后同步 Issue 及中英版本。
 
@@ -53,7 +53,7 @@ T1.3 后串行完成下列十一项 T2.2 子任务。每项包含该族 runtime 
 - [x] **T3.3a — 完整 S2 控制器与 Docker 彩排。** 补齐现有 plan/execute/inspect/recover 及 export/import rehearsal 入口。固定 target/database/image/schema/release/seed/scope/archive 身份，拒绝漂移或不完整库存。证明真实流量／写屏障、worker/queue 排空、publication freeze，以及 PostgreSQL／对象存储／Redis 恢复点。仅在独占授权下临时解冻发布，验证激活回执，成功／失败均重新冻结。逐持久阶段注入中断，证明续跑或隔离的 recovery-required、整套恢复、非参数保留、安全恢复服务，以及两个工作目录均输出脱敏诊断。本地候选：[t33a-s2-rehearsal.md](849-inventory/t33a-s2-rehearsal.md)。未 SEALED。
 - [ ] **T3.4a — 固定单一候选与独立评审。** T3.1/T3.2/T3.3a 后，将 S1/S2、schema、seed、release、browser、consumer、恢复证据绑定到一个精确候选和真实环境；完成独立 Standards／Spec 评审、最终 seed/release fixture 评审及 seal 检查，准备可审核的目标计划和恢复证据。后续变化使相关证据失效，须重新 seal。
 - [x] **T3.3b — 获授权的目标彩排／执行证据。** 操作员指定本机自托管实例为目标（`http://127.0.0.1:18080`，compose `wiseeff-t33b-target`，SHA `19b987e5ab5aeb0f51ad5f86a8a9c3d310ea2c5f`）。静默、独占解冻、三存储恢复、非参数保留与重启后探针已通过。破坏性 T2.3 DROP 不在计划内。不是生产。不是 Hosted。T3.4a 仍未 SEALED。回执：[t33b-remaining-verification.md](849-inventory/t33b-remaining-verification.md)。
-- [ ] **T3.4b — 集成 PR、Hosted、合并。** 按最新 main 校准精确候选，重新检查共享编号，变基后重跑相关门禁。完成 PR/Hosted/merge，将证据绑定实际集成候选；若集成改变运行时或迁移语义，重新做相关目标验收。保留必需独立评审并记录所有 skipped 条件。
+- [x] **T3.4b — 集成 PR、Hosted、合并。** PR #884 squash 进 `main` 为 `fbb17717ad05f521da8651ed6dcf1ba08e502819`（2026-09-20T02:15:43Z）。Hosted run `35481683792` Merge bar 绿。Skipped：local-non-HDC、target-synthetic、minimal-upgrade。回执：[t34b-integration.md](849-inventory/t34b-integration.md)。T3.4a 仍未 full SEAL。不关 Issue。
 - [ ] **T3.5 — 最终文档、交付回执与 Issue 关闭。** 同步中英计划／矩阵／报告、覆盖地图和 runbook，执行最终 docs/diff 门禁。核对 PR、merge SHA、分支清理、最新 main、指定工作树洁净度。把 #849 所有用户故事／实现决策／测试决策与本清单及证据逐项对账，包含部分完成／跳过／目标边界。全部满足后先关 #853，再关 #849，汇报后等待最终确认。
 
 ## 契约覆盖与依赖
