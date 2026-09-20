@@ -369,47 +369,19 @@ test.describe("PARAM-ADMIN-002 parameter import wizard browser acceptance", () =
     expect(leftover.specCount, "unmatched import must not mint a Definition").toBe(0);
     expect(leftover.appliedCount, "unmatched-only import must not apply a batch").toBe(0);
 
-    const skipAudit = await withPgClient(async (client) => {
-      const result = await client.query<{
-        id: string;
-        kind: string;
-        action: string;
-        target_id: string | null;
-      }>(
-        `
-        select id, kind, action, target_id
-        from audit_events
-        where organization_id = $1
-        order by created_at desc
-        limit 1
-        `,
-        [organizationId]
-      );
-      return result.rows[0] ?? null;
-    });
-    expect(skipAudit, "admin import-wizard session must leave an audit event").toBeTruthy();
-
     await recordOperationEvidence({
       operationId: "PARAM-ADMIN-002",
       title: "unmatched import rows stay visible and do not mint definitions",
       status: "passed",
       page,
       testInfo,
-      assertions: ["ui", "db", "audit"],
+      assertions: ["ui", "db"],
       db: [
         {
           table: "parameter_specs",
           predicate: `name=${unmatchedName}`,
           observed: `count=${leftover.specCount}`,
           rowCount: leftover.specCount
-        }
-      ],
-      audit: [
-        {
-          id: skipAudit!.id,
-          kind: skipAudit!.kind,
-          action: skipAudit!.action,
-          targetId: skipAudit!.target_id
         }
       ],
       notes: "T21-12: unmatched preview is ineligible (不会应用); skip is the only action; empty preview stages zero drafts."

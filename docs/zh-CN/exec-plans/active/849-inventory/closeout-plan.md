@@ -21,9 +21,9 @@ C1–C4 有本机证据后开 PR（C5/C6 仅在真正封印后）。
 
 | ID | 状态 |
 | --- | --- |
-| C1 | **未清零。** 仍 55 条。stale 0，不能 dest-rebind。T1.4 不勾。 |
-| C2 | **未通过。** Gate0 `full-20260920t061055991z-3dade779e488-de1be566`：21 条库存。`db:seed:m1` 重跑钉死版本（本分支已改成跳过 UPDATE）；catalog `unsupported-lineage`。 |
-| C3 | **本 SHA 未重跑。** |
+| C1 | **未清零。** 上次完整计数 **55** / stale **0**。当前树 CLI 因 dest-blob（`parameter-topology.acceptance.spec.ts`，Gate0 需要的 Catalog 404 allowlist）拒绝，不能 dest-rebind。T1.4 不勾。未弱化 checker。 |
+| C2 | **通过。** `bc16fc633` / helper PG **55438** / run `full-20260920t095422270z-bc16fc6334ff-65e3c7fe`。视觉 **20**。Playwright **174 通过 / 32 跳过**。覆盖与操作证据 **通过**。库存 **0**。runtime 已清理。 |
+| C3 | **不是本 SHA 证据。** 本机 T3.3b `:18080` 在线（HTTP 200），镜像 `wiseeff-app:t33b-19b987e5a`，不是本 closeout HEAD。未对错版本目标跑 174 条。先前 target-synthetic 仍是 `d520964e4`。 |
 | C4 | `dispose.integration.test.ts` **6 通过**。CLI 对 M1 种子捕获缺表。无 DROP。 |
-| C5 | **未 SEAL。** |
+| C5 | **未 SEAL。** leftover 55、C3 非当前 SHA、minimal-upgrade 仍只要 amd64。 |
 | C6 | **未开始。** Issue 保持打开。 |

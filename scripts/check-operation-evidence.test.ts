@@ -1171,6 +1171,57 @@ describe("operation evidence checker", () => {
     }
   });
 
+  it("unions required assertions across passed records of the same operation", () => {
+    const root = mkdtempSync(join(tmpdir(), "wiseeff-operation-evidence-"));
+
+    try {
+      const artifactPath = join(root, "artifact.png");
+      writeFileSync(artifactPath, "fake-png", "utf8");
+      const forensic = {
+        artifacts: [artifactPath],
+        runtime: { mode: "api" as const, apiBaseUrl: "http://127.0.0.1:18800" },
+        report: { path: "playwright-report/acceptance/index.html", format: "html" as const },
+        trace: { mode: "retain-on-failure", path: "test-results/acceptance" },
+        reproduction: { steps: ["Open /parameter-admin", "Run import wizard"] }
+      };
+      const result = evaluateOperationEvidence({
+        operations: [
+          {
+            id: "PARAM-ADMIN-002",
+            priority: "P1",
+            coverage: "automated",
+            assertions: ["ui", "audit"]
+          }
+        ],
+        records: [
+          {
+            operationId: "PARAM-ADMIN-002",
+            status: "passed",
+            role: "Admin",
+            route: "/parameter-admin",
+            assertions: ["ui", "audit"],
+            audit: [{ id: "aud-1", kind: "batch-import", action: "apply" }],
+            ...forensic
+          },
+          {
+            operationId: "PARAM-ADMIN-002",
+            status: "passed",
+            role: "Admin",
+            route: "/parameter-admin",
+            assertions: ["ui", "db"],
+            db: [{ table: "parameter_specs", predicate: "name=unmatched", observed: "count=0", rowCount: 0 }],
+            ...forensic
+          }
+        ]
+      });
+
+      expect(result.status).toBe("passed");
+      expect(result.invalidEvidenceIds).toEqual([]);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
   it("passes evidence with required forensic summaries and renders them in Markdown", () => {
     const root = mkdtempSync(join(tmpdir(), "wiseeff-operation-evidence-"));
 
