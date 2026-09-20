@@ -81,4 +81,4 @@ Do not invent a dest span for writeback dest 26362. Do not grow shards.
 - 49 un-only current scanner hits named above. T1.4 zero is blocked until a later scanner / un-only Spec. Repair source of successor SQL is not this cutover.
 - Repair C landed: governance **list** 410; overlay keep; governance **detail** keep; module writes keep (wrap removed). Spec re-review `01a0b261-c4e8-4b19-9d7a-2f6e8a15c093` PASS with P2.
 - Independent B2 implementation Spec `a4c91e2b-7f06-4d38-9b5a-0e18c3d6f247` PASS with P2; Standards `e8b2c41a-7d5f-4a93-b6c0-1f9e4d82a570` PASS with P2. Shared P2 (historical identical-slice regression) folded.
-- **TD-125:** published Catalog GET returns catalog rows only (no leftover extras). Unpublished/empty pointer still falls back to topology. Overlay/governance **detail** stay 2xx. T1.4 leftover stays unchecked.
+- **TD-125:** GET returns catalog rows only when the project has Catalog bindings (no leftover extras). Empty catalog rows still fall back to topology. Overlay/governance **detail** stay 2xx. T1.4 leftover stays unchecked.

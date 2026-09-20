@@ -269,11 +269,8 @@ export function registerCatalogProjectValueConsumerRoutes(
     }
     const pool = getRootPostgresPool(db);
     const snapshot = pool ? await loadPublishedCatalog(pool) : null;
-    if (snapshot) {
-      if (catalogError?.code === "FORBIDDEN") {
-        throw catalogError;
-      }
-      return { status: 200, body: { items: [] } };
+    if (snapshot && catalogError?.code === "FORBIDDEN") {
+      throw catalogError;
     }
     const original = await listProjectBindings(db, auth, {
       projectId: params.projectId,

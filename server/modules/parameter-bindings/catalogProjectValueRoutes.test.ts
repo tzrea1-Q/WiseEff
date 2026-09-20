@@ -841,7 +841,7 @@ describe("canonical project binding reads", () => {
     expect(topologyService.listProjectBindings).not.toHaveBeenCalled();
   });
 
-  it("returns an empty catalog list when the published Catalog has no project rows", async () => {
+  it("falls back to topology when a published Catalog has no project rows", async () => {
     const db = makeDb();
     vi.mocked(db.query).mockResolvedValue({
       rows: [{ id: "project-1", name: "Project One", code: "P1" }]
@@ -858,8 +858,7 @@ describe("canonical project binding reads", () => {
     );
 
     expect(response.status).toBe(200);
-    expect(response.body.items).toEqual([]);
-    expect(topologyService.listProjectBindings).not.toHaveBeenCalled();
+    expect(response.body.items.map((item) => item.id)).toEqual(["legacy-1"]);
   });
 
   it("still hides an unknown or foreign project behind 404", async () => {
