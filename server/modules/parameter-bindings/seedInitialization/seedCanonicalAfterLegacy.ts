@@ -98,15 +98,18 @@ export async function ensureCanonicalCatalogAfterLegacySeed(
   const written: Record<string, number> = {};
   const skipped: string[] = [];
   const blocks: Array<{ projectId: string; subjectId: string; reason: "missing-placement-module"; detail: string }> = [];
+  const staged: Array<{ projectId: string; configSetId: string; revisionId: string }> = [];
 
   for (const projectId of TARGET_PROJECTS) {
     const revision = await db.query<{ id: string; config_set_id: string }>(
       `select id, config_set_id
          from dts_config_revisions
-        where project_id = $1
-        order by created_at desc
+        where organization_id = $1
+          and project_id = $2
+          and status <> 'resolving'
+        order by revision_number desc
         limit 1`,
-      [projectId],
+      [input.organizationId, projectId],
     );
     const row = revision.rows[0];
     if (!row) {
@@ -132,26 +135,20 @@ export async function ensureCanonicalCatalogAfterLegacySeed(
         detail: "Required Catalog subject has no free placement module of the correct kind; operator curation is required.",
       });
     }
-    if (registration.unregistered.length > 0) continue;
-    try {
-      written[projectId] = await syncPublishedCatalogProjectValues(pool, {
-        organizationId: input.organizationId,
-        projectId,
-        configSetId: row.config_set_id,
-        configRevisionId: row.id,
-      });
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      if (message.includes("reviewed source change")) {
-        skipped.push(projectId);
-        continue;
-      }
-      throw error;
-    }
+    staged.push({ projectId, configSetId: row.config_set_id, revisionId: row.id });
   }
 
   if (blocks.length > 0) {
     throw new SeedInitializationBlockedError(blocks);
+  }
+
+  for (const entry of staged) {
+    written[entry.projectId] = await syncPublishedCatalogProjectValues(pool, {
+      organizationId: input.organizationId,
+      projectId: entry.projectId,
+      configSetId: entry.configSetId,
+      configRevisionId: entry.revisionId,
+    });
   }
 
   return {

@@ -14,7 +14,7 @@ Base: `origin/main` **`fbb17717ad05f521da8651ed6dcf1ba08e502819`** (#884 squash)
 | L3 | Empty-catalog GET | **kept fallback.** Catalog now has 360 rows, but linux visual baseline is the topology module tree (legacy 436). Canonical-only GET would change `/parameters` chrome; Hosted linux re-record is out of this round. |
 | L4 | T1.4 leftover | **measured on this SHA:** `check-parameter-catalog-boundaries.test.ts` **24 passed**. Summary still `violations 3558 / allowlisted 3503 / unallowlisted 55 / stale 0`. T1.4 stays unchecked. |
 | L5 | T3.2 local Docker | T3.3b target still up: `http://127.0.0.1:18080` → **200**, `/api/v1/health` `ok`. Helper PG 55438 up. Smoke on owned ports still pending in this turn if time. |
-| L6 | Independent review | grok-4.6 Standards + Spec on this round's product diff |
+| L6 | Independent review | grok-4.6 Standards **FAIL** (no tests on new writer; fixed). Spec **FAIL** (sync-before-preflight; fixed). Re-run not done in this commit. |
 
 ## Out of this round
 

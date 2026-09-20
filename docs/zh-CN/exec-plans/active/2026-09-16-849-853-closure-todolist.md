@@ -2,7 +2,7 @@
 
 > English: [English](../../../exec-plans/active/2026-09-16-849-853-closure-todolist.md)
 
-状态：**T2.2-OPS 本地候选完成。** T1.1 仍是未提交脏候选。T1.2–T2.2-OPS 仍是同一 Scratch 树上的额外脏工作。T2.2-OPS：[回执](849-inventory/t22-ops-operations-consumers-acceptance.md)。无 commit、正式 SEALED、PR、合并或 Issue 关闭。用户已解除剩余项之间的逐项「确认」；commit／PR／目标机／破坏性删除／Issue 仍需单独授权。
+状态：**#884 已合入 `main` 为 `fbb17717a`（T3.4b）。T3.4a 仍非 full SEAL。T1.4 leftover 55。不要关 #849/#853。** 本机 Docker 后续：[local-docker-round.md](849-inventory/local-docker-round.md)。
 基线：T1.1 重新拉取的 `origin/main@46b6068693942b95f7cba28ee5de6748a97170fa`；P0/T0.6 改动完整保留于新 Scratch 分支。
 规格：[#849](https://github.com/tzrea1-Q/WiseEff/issues/849)。唯一执行状态：[#853](https://github.com/tzrea1-Q/WiseEff/issues/853)。本文件细化执行顺序和验收条件；每项交付后同步 Issue 及中英版本。
 

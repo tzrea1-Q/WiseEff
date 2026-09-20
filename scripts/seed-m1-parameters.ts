@@ -173,7 +173,7 @@ function seedAuthContext(): AuthContext {
     },
     organization: { id: organizationId, name: "ChargeLab" },
     roles: [{ projectId: null, roleId: "admin" }],
-    permissions: ["parameter:view", "parameter:edit", "parameter:review", "admin:access", "parameter:file-admin"]
+    permissions: ["parameter:view", "parameter:edit", "parameter:review", "admin:access"]
   };
 }
 
@@ -1089,7 +1089,11 @@ async function main() {
   }
 
   const cutover = await ensureLocalPostCutoverIdentity(db);
-  const canonical = await ensureCanonicalCatalogAfterLegacySeed(db, seedAuthContext(), {
+  const seedAuth = seedAuthContext();
+  const canonical = await ensureCanonicalCatalogAfterLegacySeed(db, {
+    ...seedAuth,
+    permissions: [...seedAuth.permissions, "parameter:file-admin"],
+  }, {
     organizationId,
     seedDigest: "seed-m1-legacy-canonical",
   });

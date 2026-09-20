@@ -43,6 +43,8 @@ import {
 import { createMemoryObjectStore } from "../../../testing/objectStore";
 import { firstReleaseBundle } from "../../../testing/parameterCatalog/cutoverPopulatedFixture";
 import { materializeSeedSources, type SeedProjectSources } from "./materialize";
+import { curateReviewedSeedPlacementCapacity } from "./placementCapacity";
+import { ensureCanonicalCatalogAfterLegacySeed } from "./seedCanonicalAfterLegacy";
 import { getSeedInitializationRun } from "./plan";
 import { reviewedSeedProjectSources } from "./seedSources";
 
@@ -327,5 +329,15 @@ describe("canonical binding materialization from a published release", () => {
       "select current_catalog_release_id from parameter_catalog.catalog_state",
     );
     expect(pointer.rows[0]?.current_catalog_release_id).toBe(VENDOR_SUCCESSOR_RELEASE_ID);
+
+    await curateReviewedSeedPlacementCapacity(root, { organizationId: ORG });
+    const synced = await ensureCanonicalCatalogAfterLegacySeed(root, adminAuth, {
+      organizationId: ORG,
+      seedDigest: DIGEST,
+    });
+    expect(synced.catalogReleaseId).toBe(VENDOR_SUCCESSOR_RELEASE_ID);
+    expect(synced.written.atlas).toBeGreaterThan(0);
+    expect(synced.written.aurora).toBeGreaterThan(0);
+    expect(synced.written.nebula).toBeGreaterThan(0);
   }, 180_000);
 });
