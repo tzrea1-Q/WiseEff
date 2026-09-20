@@ -16,3 +16,14 @@
 `minimal-upgrade` 不在本计划（要 linux/x86_64）。若它是 T3.2 唯一缺口，C5/C6 保持打开，PR 里写明。
 
 C1–C4 有本机证据后开 PR（C5/C6 仅在真正封印后）。
+
+## 进展
+
+| ID | 状态 |
+| --- | --- |
+| C1 | **未清零。** 仍 55 条。stale 0，不能 dest-rebind。T1.4 不勾。 |
+| C2 | **未通过。** Gate0 `full-20260920t061055991z-3dade779e488-de1be566`：21 条库存。`db:seed:m1` 重跑钉死版本（本分支已改成跳过 UPDATE）；catalog `unsupported-lineage`。 |
+| C3 | **本 SHA 未重跑。** |
+| C4 | `dispose.integration.test.ts` **6 通过**。CLI 对 M1 种子捕获缺表。无 DROP。 |
+| C5 | **未 SEAL。** |
+| C6 | **未开始。** Issue 保持打开。 |
