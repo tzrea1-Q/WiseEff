@@ -34,7 +34,9 @@ useBrowserDiagnostics(test, {
   expectedApiFailures: [
     // Typed-edit schema rejection and stale-revision conflict are intentional.
     { method: "POST", path: "/api/v2/projects/aurora/parameter-bindings", status: 400 },
-    { method: "POST", path: "/api/v2/projects/aurora/parameter-bindings", status: 409 }
+    { method: "POST", path: "/api/v2/projects/aurora/parameter-bindings", status: 409 },
+    // CatalogPage on /parameter-admin reads subjects; M1 seed leaves Catalog unpublished.
+    { method: "GET", path: "/api/v2/catalog/subjects", status: 404 }
   ]
 });
 test.use({ viewport: { width: 1440, height: 900 } });
@@ -115,26 +117,19 @@ const mappingR2 = `/dts-v1/;
 `;
 
 /** Dedicated enablement fixture. Do not reuse `mappingR1` — sibling identity-mapping tests own that text. */
-function enablementVisibleDts(modelSuffix: string, childProp: string, directProp: string) {
+function enablementVisibleDts(modelSuffix: string) {
   return `/dts-v1/;
-/ {
-	compatible = "wiseeff,board";
-	model = "Enablement Visible ${modelSuffix}";
-	enableparent@a0 {
-		compatible = "wiseeff,enable-visible";
+/plugin/;
+
+/* Enablement Visible ${modelSuffix}: disable sc8562 parent bus and mt5788 itself. */
+&amba {
+	i2c@FDF5E000 {
 		status = "disabled";
-		enablechild@10 {
-			compatible = "wiseeff,enable-visible";
-			reg = <0x10>;
-			${childProp} = <1>;
-			status = "okay";
-		};
 	};
-	enabledirect@20 {
-		compatible = "wiseeff,enable-visible";
-		reg = <0x20>;
-		${directProp} = <2>;
-		status = "disabled";
+	i2c@FF24E000 {
+		mt5788@2B {
+			status = "disabled";
+		};
 	};
 };
 `;
@@ -156,17 +151,16 @@ function enablementGateDts(modelSuffix: string, prop: string) {
 `;
 }
 
-/** Unique overlay for PARAM-ENABLE-GUARD-001. Non-standard `reserved` stays read-only. */
-function enablementGuardDts(modelSuffix: string, prop: string) {
+/** Overlay reserved status onto the seeded sc8562 node (recognized gpio_int binding). */
+function enablementGuardDts() {
   return `/dts-v1/;
-/ {
-	compatible = "wiseeff,board";
-	model = "Enablement Guard ${modelSuffix}";
-	eguard_${modelSuffix}@50 {
-		compatible = "wiseeff,enable-guard";
-		reg = <0x50>;
-		${prop} = <1>;
-		status = "reserved";
+/plugin/;
+
+&amba {
+	i2c@FDF5E000 {
+		sc8562@6E {
+			status = "reserved";
+		};
 	};
 };
 `;
@@ -246,32 +240,11 @@ async function waitForRevision(
   throw new Error(`Timed out waiting for revision on config set ${configSetId}`);
 }
 
-async function findBindingProperty(
-  request: APIRequestContext,
-  targetProjectId: string,
-  revisionId: string,
-  propertyKey: string
-): Promise<{ id: string; propertyKey: string; locator: string | null } | null> {
-  const response = await request.get(
-    apiRoute(
-      `/api/v2/projects/${targetProjectId}/parameter-bindings?revisionId=${encodeURIComponent(revisionId)}`
-    ),
-    { headers: adminHeaders() }
-  );
-  if (!response.ok()) return null;
-  const body = (await response.json()) as {
-    items: Array<{ id: string; propertyKey: string; locator: string | null }>;
-  };
-  return body.items.find((row) => row.propertyKey === propertyKey) ?? null;
-}
-
-async function waitForRevisionWithProperties(
-  request: APIRequestContext,
-  targetProjectId: string,
+async function waitForRevisionWhere(
   configSetId: string,
   previousRevisionId: string,
-  propertyKeys: string[],
-  timeoutMs = 30_000
+  predicate: (row: { id: string; status: string }) => Promise<boolean>,
+  timeoutMs = 60_000
 ): Promise<{ id: string; status: string }> {
   const started = Date.now();
   while (Date.now() - started < timeoutMs) {
@@ -287,17 +260,12 @@ async function waitForRevisionWithProperties(
       );
       return result.rows[0] ?? null;
     });
-    if (row && row.id !== previousRevisionId) {
-      const found = await Promise.all(
-        propertyKeys.map((key) => findBindingProperty(request, targetProjectId, row.id, key))
-      );
-      if (found.every(Boolean)) return row;
+    if (row && row.id !== previousRevisionId && (await predicate(row))) {
+      return row;
     }
     await new Promise((resolve) => setTimeout(resolve, 400));
   }
-  throw new Error(
-    `Timed out waiting for revision on config set ${configSetId} with properties ${propertyKeys.join(", ")}`
-  );
+  throw new Error(`Timed out waiting for revision on config set ${configSetId}`);
 }
 
 /** Overlay on aurora `default` Config Set. Do not reuse `mappingR1`. */
@@ -308,7 +276,7 @@ async function attachDedicatedDefaultOverlay(
     dtsText: string;
     configSetId: string;
     previousRevisionId: string;
-    propertyKeys: string[];
+    revisionReady: (row: { id: string; status: string }) => Promise<boolean>;
   }
 ): Promise<{ id: string; status: string }> {
   const upload = await uploadDts(request, input.fileName, input.dtsText);
@@ -316,17 +284,19 @@ async function attachDedicatedDefaultOverlay(
     apiRoute(`/api/v1/projects/${projectId}/config-sets/${input.configSetId}/files`),
     {
       headers: adminHeaders(),
-      data: { fileId: upload.fileId, role: "overlay", sortOrder: 80 }
+      data: {
+        fileId: upload.fileId,
+        role: "overlay",
+        sortOrder: 80 + Number.parseInt(randomUUID().slice(0, 4), 16) % 200
+      }
     }
   );
   expect([201, 409]).toContain(addFile.status());
   await uploadDts(request, input.fileName, input.dtsText);
-  return waitForRevisionWithProperties(
-    request,
-    projectId,
+  return waitForRevisionWhere(
     input.configSetId,
     input.previousRevisionId,
-    input.propertyKeys
+    input.revisionReady
   );
 }
 
@@ -720,20 +690,16 @@ test.describe("Parameter topology / schema browser acceptance", () => {
 
     await signInBrowserAsRole(page, "admin", `${disposableRuntime.frontendUrl}/parameter-admin`);
     await dismissXiaozeHint(page);
-    const specLibrary = page.getByRole("region", { name: "参数定义库" });
-    await expect(specLibrary).toBeVisible({ timeout: 30_000 });
+    // #847 replaced the spec-library region with CatalogPage. M1 seed leaves
+    // Catalog unpublished (lineage A is owned by catalog acceptance), so gpio_int
+    // rows live on GET /parameter-specs rather than the unpublished directory.
+    const catalog = page.getByRole("region", { name: "参数定义目录" });
+    await expect(catalog).toBeVisible({ timeout: 30_000 });
+    await expect(catalog).toHaveAttribute("data-catalog-page", "true");
+    await expect(page.getByRole("searchbox", { name: "搜索参数定义" })).toBeVisible();
     await page.getByRole("searchbox", { name: "搜索参数定义" }).fill("gpio_int");
-    await expect(specLibrary.getByRole("cell", { name: "gpio_int" }).first()).toBeVisible({
-      timeout: 20_000
-    });
-    const gpioRows = specLibrary.locator("tbody tr").filter({ hasText: "gpio_int" });
-    await expect(gpioRows.first()).toBeVisible({ timeout: 20_000 });
-    await expect
-      .poll(async () => gpioRows.count(), { timeout: 20_000 })
-      .toBeGreaterThanOrEqual(2);
-    await gpioRows.first().getByRole("button", { name: /编辑 gpio_int/ }).click();
-    // The spec editor ModalDialog is named by its <h2> primary label (the property key).
-    await expect(page.getByRole("dialog", { name: /^gpio_int$/ })).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByRole("button", { name: "待处理工作" })).toBeVisible();
+    await expect(page.getByRole("region", { name: "参数定义库" })).toHaveCount(0);
 
     await recordOperationEvidence({
       operationId: "PARAM-SPEC-GOVERN-001",
@@ -762,7 +728,7 @@ test.describe("Parameter topology / schema browser acceptance", () => {
         })
       ],
       db: [provisionalDb],
-      notes: `${descriptionPrefix}: unmatched mystery property remains review evidence with no recognized binding; UI lists distinct effective gpio_int specs.`
+      notes: `${descriptionPrefix}: unmatched mystery property remains review evidence with no recognized binding; CatalogPage is the /parameter-admin surface; gpio_int spec distinctness is GET /parameter-specs.`
     });
 
     // Browse real topology (API must be 200 — never [200,404]).
@@ -2628,59 +2594,41 @@ test.describe("Parameter topology / schema browser acceptance", () => {
     // @operation PARAM-ENABLE-VISIBLE-001
     test.setTimeout(180_000);
     const runSuffix = randomUUID().slice(0, 8);
-    const childProp = `enable_child_${runSuffix}`;
-    const directProp = `enable_direct_${runSuffix}`;
     const fileName = `acceptance-enable-visible-${runSuffix}.dts`;
     const createdFileNames = [fileName];
-    const dtsText = enablementVisibleDts(runSuffix, childProp, directProp);
+    const dtsText = enablementVisibleDts(runSuffix);
 
     try {
       const topology = await ensureAuroraSemanticTopology(request);
 
       // `/parameters` always loads the project's `default` Config Set (`pickConfigSet`).
-      // Attach a dedicated DTS overlay there so the live workbench can search unique
-      // keys without rewriting `mappingR1` or the identity-mapping fixtures.
-      const upload = await uploadDts(request, fileName, dtsText);
-      const addFile = await request.post(
-        apiRoute(`/api/v1/projects/${projectId}/config-sets/${topology.configSetId}/files`),
-        {
-          headers: adminHeaders(),
-          data: { fileId: upload.fileId, role: "overlay", sortOrder: 80 }
+      // Overlay status onto seeded sc8562/mt5788 so workbench rows stay recognized
+      // gpio_int bindings. Unique unmatched keys never become bindings.
+      const enableRevision = await attachDedicatedDefaultOverlay(request, {
+        fileName,
+        dtsText,
+        configSetId: topology.configSetId,
+        previousRevisionId: topology.revisionId,
+        revisionReady: async (row) => {
+          const { nodes } = await listEffectiveTopologyNodes(
+            request,
+            topology.configSetId,
+            row.id
+          );
+          const child = nodes.find((node) => (node.locator ?? "") === SC8562_LOCATOR);
+          const direct = nodes.find((node) => (node.locator ?? "") === MT5788_LOCATOR);
+          return child?.enablement?.reachable === false && direct?.enablement?.selfEnabled === false;
         }
-      );
-      expect([201, 409]).toContain(addFile.status());
-      await uploadDts(request, fileName, dtsText);
-      const enableRevision = await waitForRevisionWithProperties(
-        request,
-        projectId,
-        topology.configSetId,
-        topology.revisionId,
-        [childProp, directProp]
-      );
+      });
 
-      const topologyApi = await request.get(
-        apiRoute(
-          `/api/v2/projects/${projectId}/config-sets/${encodeURIComponent(topology.configSetId)}/revisions/${enableRevision.id}/topology?view=effective`
-        ),
-        { headers: adminHeaders() }
+      const { topologyApi, nodes } = await listEffectiveTopologyNodes(
+        request,
+        topology.configSetId,
+        enableRevision.id
       );
-      expect(topologyApi.status()).toBe(200);
-      const topologyBody = (await topologyApi.json()) as {
-        item: {
-          nodes: Array<{
-            name?: string;
-            locator?: string;
-            enablement?: { selfEnabled: boolean; reachable: boolean; blockingAncestorLabel: string | null };
-          }>;
-        };
-      };
-      const parentNode = topologyBody.item.nodes.find(
-        (node) => node.name === "enableparent" || (node.locator ?? "").includes("enableparent@a0")
-      );
-      const childNode = topologyBody.item.nodes.find((node) => (node.locator ?? "").includes("enablechild@10"));
-      const directNode = topologyBody.item.nodes.find(
-        (node) => node.name === "enabledirect" || (node.locator ?? "").includes("enabledirect@20")
-      );
+      const parentNode = nodes.find((node) => (node.locator ?? "").endsWith("/i2c@FDF5E000"));
+      const childNode = nodes.find((node) => (node.locator ?? "") === SC8562_LOCATOR);
+      const directNode = nodes.find((node) => (node.locator ?? "") === MT5788_LOCATOR);
       expect(parentNode?.enablement?.selfEnabled, "disabled parent must report selfEnabled false").toBe(false);
       expect(childNode?.enablement?.reachable, "child under disabled parent must be unreachable").toBe(false);
       expect(directNode?.enablement?.selfEnabled, "directly disabled node must report selfEnabled false").toBe(
@@ -2699,31 +2647,14 @@ test.describe("Parameter topology / schema browser acceptance", () => {
       await expect(workspace).toHaveAttribute("data-config-set-id", topology.configSetId, { timeout: 30_000 });
       await expect(page.getByRole("tree", { name: "生效拓扑树" })).toHaveCount(0);
 
-      await workspace.getByRole("searchbox", { name: "搜索 DTS 参数" }).fill(childProp);
-      const childRow = workspace.getByRole("row").filter({ hasText: childProp }).first();
+      await workspace.getByRole("searchbox", { name: "搜索 DTS 参数" }).fill("gpio_int");
+      const childRow = semanticBindingRow(workspace, "sc8562@6E");
       await expect(childRow).toBeVisible({ timeout: 20_000 });
       await expect(childRow).toContainText(/所属节点已禁用|所属节点不可达/);
 
-      await workspace.getByRole("searchbox", { name: "搜索 DTS 参数" }).fill(directProp);
-      const directRow = workspace.getByRole("row").filter({ hasText: directProp }).first();
+      const directRow = semanticBindingRow(workspace, "mt5788@2B");
       await expect(directRow).toBeVisible({ timeout: 20_000 });
       await expect(directRow).toContainText("所属节点已禁用");
-
-      await workspace.getByRole("searchbox", { name: "搜索 DTS 参数" }).fill(childProp);
-      await expect(childRow).toBeVisible({ timeout: 20_000 });
-
-      const expandTreeitemIfCollapsed = async (name: RegExp) => {
-        const item = workspace.getByRole("treeitem", { name }).first();
-        if (!(await item.isVisible().catch(() => false))) return;
-        if ((await item.getAttribute("aria-expanded")) === "false") {
-          await item.getByRole("button", { name: /展开/ }).click({ timeout: 10_000 });
-        }
-      };
-      await expandTreeitemIfCollapsed(/未分类/);
-      const childTreeItem = workspace.getByRole("treeitem", { name: /enablechild@10/ }).first();
-      if (await childTreeItem.isVisible().catch(() => false)) {
-        await childTreeItem.click({ timeout: 10_000 });
-      }
 
       const enablementButton = workspace.getByRole("button", { name: /节点启用/ });
       if (await enablementButton.isVisible().catch(() => false)) {
@@ -2774,12 +2705,20 @@ test.describe("Parameter topology / schema browser acceptance", () => {
 
     try {
       const topology = await ensureAuroraSemanticTopology(request);
+      const locatorNeedle = `egate_${runSuffix}@60`;
       const gateRevision = await attachDedicatedDefaultOverlay(request, {
         fileName,
         dtsText,
         configSetId: topology.configSetId,
         previousRevisionId: topology.revisionId,
-        propertyKeys: [gateProp]
+        revisionReady: async (row) => {
+          const { nodes } = await listEffectiveTopologyNodes(
+            request,
+            topology.configSetId,
+            row.id
+          );
+          return nodes.some((node) => (node.locator ?? "").includes(locatorNeedle));
+        }
       });
 
       const reviewList = await request.get(
@@ -2812,12 +2751,14 @@ test.describe("Parameter topology / schema browser acceptance", () => {
       const bindingsBody = (await bindingsApi.json()) as {
         items: Array<{ propertyKey: string; locator: string | null }>;
       };
-      const locatorNeedle = `egate_${runSuffix}@60`;
       const statusBindings = bindingsBody.items.filter(
         (item) => item.propertyKey === "status" && (item.locator ?? "").includes(locatorNeedle)
       );
       expect(statusBindings, "status must not become a parameter binding").toHaveLength(0);
-      expect(bindingsBody.items.some((item) => item.propertyKey === gateProp)).toBe(true);
+      expect(
+        bindingsBody.items.some((item) => item.propertyKey === gateProp),
+        "unmatched overlay keys stay review evidence, not recognized bindings"
+      ).toBe(false);
 
       const { topologyApi, nodes } = await listEffectiveTopologyNodes(
         request,
@@ -3279,10 +3220,9 @@ test.describe("Parameter topology / schema browser acceptance", () => {
     // @operation PARAM-ENABLE-GUARD-001
     test.setTimeout(180_000);
     const runSuffix = randomUUID().slice(0, 8);
-    const guardProp = `enable_guard_${runSuffix}`;
     const fileName = `acceptance-enable-guard-${runSuffix}.dts`;
     const createdFileNames = [fileName];
-    const dtsText = enablementGuardDts(runSuffix, guardProp);
+    const dtsText = enablementGuardDts();
 
     try {
       const topology = await ensureAuroraSemanticTopology(request);
@@ -3291,7 +3231,18 @@ test.describe("Parameter topology / schema browser acceptance", () => {
         dtsText,
         configSetId: topology.configSetId,
         previousRevisionId: topology.revisionId,
-        propertyKeys: [guardProp]
+        revisionReady: async (row) => {
+          const { nodes } = await listEffectiveTopologyNodes(
+            request,
+            topology.configSetId,
+            row.id
+          );
+          const guardNode = nodes.find((node) => (node.locator ?? "") === SC8562_LOCATOR);
+          return (
+            guardNode?.enablement?.rawToken === "reserved" ||
+            (guardNode?.enablement?.rawStatus ?? "").includes("reserved")
+          );
+        }
       });
 
       const { nodes } = await listEffectiveTopologyNodes(
@@ -3299,8 +3250,7 @@ test.describe("Parameter topology / schema browser acceptance", () => {
         topology.configSetId,
         guardRevision.id
       );
-      const locatorNeedle = `eguard_${runSuffix}@50`;
-      const guardNode = nodes.find((node) => (node.locator ?? "").includes(locatorNeedle));
+      const guardNode = nodes.find((node) => (node.locator ?? "") === SC8562_LOCATOR);
       expect(guardNode?.enablement?.override ?? guardNode?.enablement?.rawToken).toBeTruthy();
       expect(
         guardNode?.enablement?.rawToken === "reserved" ||
@@ -3324,8 +3274,8 @@ test.describe("Parameter topology / schema browser acceptance", () => {
       const enablementDialog = await openWorkbenchEnablementDialog(
         page,
         workspace,
-        guardProp,
-        new RegExp(`eguard_${runSuffix}`)
+        "gpio_int",
+        /sc8562@6E/
       );
       await expect(enablementDialog.getByRole("region", { name: "非标准 status" })).toBeVisible();
       await expect(enablementDialog).toContainText(/reserved/);

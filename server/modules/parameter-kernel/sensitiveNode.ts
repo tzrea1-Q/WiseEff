@@ -242,12 +242,12 @@ export async function resolveDtsNodeCompatible(
     if (scoped.format !== "dts") return null;
     // The semantic resolver displays absolute locators (/soc/power), while
     // structural ingest stores the same complete path without its root slash.
-    // Accept either persisted spelling of that complete path in the locked
-    // DTS scope. Two matching rows are ambiguous and must fail closed.
+    // Property-path inputs name the owning node after stripping the property
+    // segment; that owning node is the same complete locator. Accept either
+    // persisted spelling. Two matching rows are ambiguous and must fail closed.
     // Never normalize segments or inherit a parent when the identity is absent.
-    let structuralNodePath = nodePath;
+    const structuralNodePath = nodePath.startsWith("/") ? nodePath.slice(1) : nodePath;
     if (input.sourcePath.kind === "node-locator") {
-      structuralNodePath = nodePath.startsWith("/") ? nodePath.slice(1) : nodePath;
       if (
         nodePath !== "/" &&
         structuralNodePath.split("/").some((segment) => !segment || segment === "." || segment === "..")
@@ -262,9 +262,7 @@ export async function resolveDtsNodeCompatible(
         });
       }
     }
-    const exactPaths = input.sourcePath.kind === "node-locator"
-      ? [structuralNodePath, `/${structuralNodePath}`]
-      : [structuralNodePath];
+    const exactPaths = [structuralNodePath, `/${structuralNodePath}`];
     const exact = await db.query<{ node_id: string; compatible: string | null }>(
       `
       select n.id as node_id, n.compatible

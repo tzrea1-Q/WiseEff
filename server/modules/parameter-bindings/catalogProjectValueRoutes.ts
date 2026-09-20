@@ -227,10 +227,23 @@ export function registerCatalogProjectValueConsumerRoutes(
         projectId: params.projectId
       });
     }
-    const catalogRows = await listCatalogBindingRowsForProject(db, auth, {
+    const original = await listProjectBindings(db, auth, {
       projectId: params.projectId,
       revisionId: query.revisionId
     });
+    let catalogRows: Awaited<ReturnType<typeof listCatalogBindingRowsForProject>> = [];
+    try {
+      catalogRows = await listCatalogBindingRowsForProject(db, auth, {
+        projectId: params.projectId,
+        revisionId: query.revisionId
+      });
+    } catch (error) {
+      // Catalog plane is project-scoped; a viewer who can list topology bindings
+      // must still get those rows when they cannot pin this project's catalog.
+      if (!(error instanceof ApiError) || (error.code !== "FORBIDDEN" && error.code !== "NOT_FOUND")) {
+        throw error;
+      }
+    }
     const catalogItems = catalogRows.map((row) =>
       projectBindingDtoSchema.parse({
         id: row.id,
@@ -255,9 +268,19 @@ export function registerCatalogProjectValueConsumerRoutes(
         documentation: row.documentation
       })
     );
+    const seen = new Set(catalogItems.map((item) => item.id));
+    const catalogDefinitions = new Set(
+      catalogItems.map((item) => item.definitionId ?? item.parameterSpecId),
+    );
+    const extras = original.items.filter(
+      (item) =>
+        !seen.has(item.id) &&
+        !catalogDefinitions.has(item.parameterSpecId) &&
+        !(item.definitionId && catalogDefinitions.has(item.definitionId)),
+    );
     return {
       status: 200,
-      body: { items: catalogItems }
+      body: { items: catalogItems.length > 0 ? [...catalogItems, ...extras] : original.items }
     };
   });
 

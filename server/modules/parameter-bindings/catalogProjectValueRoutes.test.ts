@@ -732,7 +732,7 @@ describe("canonical project binding reads", () => {
     vi.spyOn(dbClient, "getRootPostgresPool").mockReturnValue({ query: vi.fn() } as never);
   });
 
-  it("returns an empty list when the canonical plane has no rows", async () => {
+  it("falls back to topology bindings when the canonical plane has no rows", async () => {
     const db = makeDb();
     vi.mocked(db.query).mockResolvedValue({
       rows: [{ id: "project-1", name: "Project One", code: "P1" }]
@@ -742,17 +742,38 @@ describe("canonical project binding reads", () => {
       items: [{ id: "legacy-1", parameterSpecId: "pspec-legacy" }]
     } as never);
 
-    const response = await requestJson<{ items: unknown[] }>(
+    const response = await requestJson<{ items: Array<{ id: string }> }>(
       makeServer({ db }),
       "/api/v2/projects/project-1/parameter-bindings"
     );
 
     expect(response.status).toBe(200);
-    expect(response.body).toEqual({ items: [] });
-    expect(topologyService.listProjectBindings).not.toHaveBeenCalled();
+    expect(response.body.items.map((item) => item.id)).toEqual(["legacy-1"]);
+    expect(topologyService.listProjectBindings).toHaveBeenCalled();
   });
 
-  it("returns only canonical rows and ignores leftover topology bindings", async () => {
+  it("falls back to topology bindings when the catalog plane forbids the actor", async () => {
+    const db = makeDb();
+    vi.mocked(db.query).mockResolvedValue({
+      rows: [{ id: "project-1", name: "Project One", code: "P1" }]
+    } as never);
+    vi.mocked(catalogSync.listCatalogBindingRowsForProject).mockRejectedValue(
+      new ApiError("FORBIDDEN", "Project parameter scope is required.")
+    );
+    vi.mocked(topologyService.listProjectBindings).mockResolvedValue({
+      items: [{ id: "legacy-1", parameterSpecId: "pspec-legacy" }]
+    } as never);
+
+    const response = await requestJson<{ items: Array<{ id: string }> }>(
+      makeServer({ db }),
+      "/api/v2/projects/project-1/parameter-bindings"
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.body.items.map((item) => item.id)).toEqual(["legacy-1"]);
+  });
+
+  it("keeps canonical rows and only mixes in leftover topology bindings", async () => {
     const db = makeDb();
     vi.mocked(db.query).mockResolvedValue({
       rows: [{ id: "project-1", name: "Project One", code: "P1" }]
@@ -795,8 +816,8 @@ describe("canonical project binding reads", () => {
     );
 
     expect(response.status).toBe(200);
-    expect(response.body.items.map((item) => item.id)).toEqual(["canonical-1"]);
-    expect(topologyService.listProjectBindings).not.toHaveBeenCalled();
+    expect(response.body.items.map((item) => item.id)).toEqual(["canonical-1", "legacy-only"]);
+    expect(topologyService.listProjectBindings).toHaveBeenCalled();
   });
 
   it("still hides an unknown or foreign project behind 404", async () => {

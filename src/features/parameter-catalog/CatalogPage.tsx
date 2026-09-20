@@ -795,7 +795,12 @@ export function CatalogPage({
         <SectionSkeleton label={catalogLoadingLabel} />
       ) : domainState.kind === "error" && !snapshot ? (
         <SectionError message={statusMessage ?? "目录加载失败，请稍后重试。"} onRetry={() => void load()} />
-      ) : unpublished ? null : (
+      ) : unpublished ? (
+        <div
+          className="parameter-catalog__workspace"
+          data-catalog-unpublished-workspace="true"
+        />
+      ) : (
         <div className="parameter-catalog__workspace">
           <section className="parameter-catalog__navigator" aria-label={catalogNavigatorLabel}>
             <div className="parameter-catalog__navigator-head">

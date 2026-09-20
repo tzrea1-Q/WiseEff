@@ -150,6 +150,15 @@ export function evaluateOperationEvidence(input: EvaluateOperationEvidenceInput)
     .map((operation) => operation.id)
     .sort();
   const operationById = new Map(input.operations.map((operation) => [operation.id, operation]));
+  const unionAssertionsByOperation = new Map<string, Set<string>>();
+  for (const record of input.records.filter((record) => record.status === "passed")) {
+    const operationId = parentOperationId(record.operationId);
+    const union = unionAssertionsByOperation.get(operationId) ?? new Set<string>();
+    for (const assertion of record.assertions ?? []) {
+      union.add(assertion);
+    }
+    unionAssertionsByOperation.set(operationId, union);
+  }
   const runValidationErrors = input.expectedRun
     ? input.records.flatMap((record) => [
         ...validateRunIdentity(record, input.expectedRun!),
@@ -164,6 +173,7 @@ export function evaluateOperationEvidence(input: EvaluateOperationEvidenceInput)
       record,
       operationById.get(parentOperationId(record.operationId)),
       input.expectedRun,
+      unionAssertionsByOperation.get(parentOperationId(record.operationId)),
     ))
   ];
   const invalidEvidenceIds = Array.from(new Set(validationErrors.map((error) => error.operationId))).sort();
@@ -292,10 +302,12 @@ function validateReviewMetadata(
   record: OperationEvidenceRecord,
   operation?: OperationEvidenceOperation,
   expectedRun?: { runId: string; sourceCommit: string },
+  unionAssertions?: Set<string>,
 ): OperationEvidenceValidationError[] {
   const errors: OperationEvidenceValidationError[] = [];
   const recordAssertions = record.assertions ?? [];
   const requiredAssertions = operation?.assertions ?? [];
+  const coveredAssertions = unionAssertions ?? new Set(recordAssertions);
   const assertions = Array.from(new Set([...recordAssertions, ...requiredAssertions]));
 
   if (!record.role?.trim()) {
@@ -307,7 +319,7 @@ function validateReviewMetadata(
   if (recordAssertions.length === 0) {
     errors.push({ operationId: record.operationId, field: "assertions", message: "Evidence requires assertion metadata." });
   }
-  const missingAssertions = requiredAssertions.filter((assertion) => !recordAssertions.includes(assertion));
+  const missingAssertions = requiredAssertions.filter((assertion) => !coveredAssertions.has(assertion));
   if (missingAssertions.length > 0) {
     errors.push({
       operationId: record.operationId,
@@ -327,21 +339,21 @@ function validateReviewMetadata(
       });
     }
   }
-  if (assertions.includes("api") && !record.api?.length) {
+  if (recordAssertions.includes("api") && !record.api?.length) {
     errors.push({
       operationId: record.operationId,
       field: "api",
       message: "API assertions require at least one API request/response summary."
     });
   }
-  if (assertions.includes("db") && !record.db?.length) {
+  if (recordAssertions.includes("db") && !record.db?.length) {
     errors.push({
       operationId: record.operationId,
       field: "db",
       message: "DB assertions require at least one database assertion summary."
     });
   }
-  if (assertions.includes("audit") && !record.audit?.length) {
+  if (recordAssertions.includes("audit") && !record.audit?.length) {
     errors.push({
       operationId: record.operationId,
       field: "audit",

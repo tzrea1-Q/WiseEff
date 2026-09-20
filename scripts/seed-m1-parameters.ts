@@ -696,17 +696,6 @@ export async function seedM1DtsFiles(
       if (existingVersion) {
         versionId = existingVersion.id;
         versionNumber = Number(existingVersion.version_number);
-        await tx.query(
-          `
-          update project_parameter_file_versions
-          set storage_key = $2,
-            size_bytes = $3,
-            parsed_index = $4::jsonb,
-            created_by_user_id = $5
-          where id = $1
-          `,
-          [versionId, stored.storageKey, stored.fileSizeBytes, JSON.stringify(parsedIndex), seedUserId]
-        );
       } else {
         const nextVersionResult = await tx.query<{ next_version_number: number | string }>(
           `

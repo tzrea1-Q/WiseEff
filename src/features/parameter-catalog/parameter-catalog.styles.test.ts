@@ -21,6 +21,7 @@ describe("parameter catalog layout contract", () => {
     expect(page["min-width"]).toBe("0");
     expect(page["max-width"]).toBe("100%");
     expect(workspace["grid-template-columns"]).toBe("minmax(0, 1fr)");
+    expect(workspace["min-height"]).toBe("min(70vh, 36rem)");
     // The table keeps all remaining width; detail is not a permanent peer track.
     expect(desktop["grid-template-columns"]).toBe("minmax(15rem, 20rem) minmax(0, 1fr)");
     expect(desktop["grid-template-columns"]).not.toContain("1.05fr");

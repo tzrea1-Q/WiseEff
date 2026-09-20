@@ -51,7 +51,7 @@ Canonical 值草稿现在会加载审核角色候选人，角色池缺失时阻�
 | 本地 commit `66cae3c0b` | **已撤回 ingest-on-add。** 成员 POST 再次只做成员关系。 |
 | 第一次 Gate0（会话 locale） | **供给前失败**：中文 `ps -o lstart=`。 |
 | 第二次 Gate0（LANG=C，脏树） | **源检查失败**：需要干净工作树。 |
-| target-synthetic-acceptance | **通过**（`d520964e4`）。Owned HMAC 运行时 `full-20260919t103129605z-d520964e4687-0393859b`，helper PG **55438**，前端 `http://127.0.0.1:5180`，API `http://127.0.0.1:18800`。命令：`npm run acceptance:browser -- --mode target-non-hdc --no-start-runtime --runtime-descriptor <abs runtime.json> --frontend-url http://127.0.0.1:5180`。预检 **通过**（`non_hdc_local`）。Playwright **174 通过 / 32 跳过 / 0 失败**。operation-evidence **通过**（192 条，`invalid: none`）。Status **passed**。产物在 `test-results/t32-target-synthetic-runtime/full-20260919t103129605z-d520964e4687-0393859b/`。不是 Hosted，不是生产。 |
+| target-synthetic-acceptance | **通过**（历史 `d520964e4`；closeout `6f8cbd236` 再跑）。当前 owned HMAC 运行时 `full-20260920t120007490z-6f8cbd2361f8-391f8bd8`，helper PG **55438**，前端 `:5180`，API `:18800`。`target-non-hdc --no-start-runtime`。预检 `non_hdc_local`。Playwright **174 通过 / 32 跳过**。覆盖与操作证据通过（192 条）。产物在 `test-results/t32-target-synthetic-runtime/full-20260920t120007490z-6f8cbd2361f8-391f8bd8/`。 |
 | minimal-upgrade | **不是通过。** 已跑 `npx tsx scripts/run-minimal-upgrade-acceptance.ts $(git rev-parse HEAD) "$(docker info --format '{{.ID}}')"`。Docker `linux/aarch64`，要求 `linux/x86_64`。断言：`the existing self-hosted base-image contract requires native amd64`。T3.4a 未 SEALED。 |
 
 ## 程序边界

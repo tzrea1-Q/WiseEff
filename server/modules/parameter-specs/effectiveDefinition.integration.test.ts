@@ -240,6 +240,22 @@ describe.skipIf(!databaseAvailable)(
       ).toMatchObject({ defaultBusinessCategoryModuleId: null });
     });
 
+    it("does not treat node-type subject root rows as placement or completeness blockers", async () => {
+      await db!.query(`delete from dts_property_specs where parameter_spec_id = $1`, [NODE_SPEC]);
+      await db!.query(`delete from parameter_spec_versions where parameter_spec_id = $1`, [NODE_SPEC]);
+      await db!.query(`delete from parameter_specs where id = $1`, [NODE_SPEC]);
+
+      const full = await verifyEffectiveDriverParameterDefinitions(db!, {
+        organizationId: ORG_ID,
+      });
+      expect(
+        full.checks.find((check) => check.code === "active-node-type-placement-missing")?.count,
+      ).toBe(0);
+      expect(
+        full.checks.find((check) => check.code === "active-node-type-definition-incomplete")?.count,
+      ).toBe(0);
+    });
+
     it("separates driver catalog readiness from node-type governance blockers", async () => {
       await db!.query(`delete from parameter_modules where id = $1`, [
         NODE_MODULE,
