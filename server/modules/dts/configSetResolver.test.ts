@@ -30,6 +30,64 @@ function loadFixtureDir(name: string): Map<string, DtsConfigSetFile> {
 }
 
 describe("resolveDtsConfigSet", () => {
+  it("bounds repeated locator metadata even when source bytes are small", () => {
+    const properties = Array.from({ length: 1000 }, (_, index) => `p${index};`).join(" ");
+    const result = resolveDtsConfigSet({ entryFile: "board.dts", includeSearchPaths: [], overlayOrder: [], requireExactOrigins: true,
+      files: new Map([["board.dts", { fileVersionId: "v-board", content: `/ { ${"x".repeat(9000)} { ${properties} }; };` }]]),
+    });
+    expect(result.diagnostics).toEqual([expect.objectContaining({ code: "source-proof-limit" })]);
+    expect(result.effective.nodesByLocator.size).toBe(0);
+  });
+
+  it("refuses a source proof with too many visited syntax entries", () => {
+    const result = resolveDtsConfigSet({ entryFile: "board.dts", includeSearchPaths: [], overlayOrder: [], requireExactOrigins: true,
+      files: new Map([["board.dts", { fileVersionId: "v-board", content: `/ { ${"present;".repeat(100_000)} };` }]]),
+    });
+    expect(result.diagnostics).toEqual([expect.objectContaining({ code: "source-proof-limit" })]);
+    expect(result.effective.nodesByLocator.size).toBe(0);
+  });
+
+  it("counts repeated include expansion against the complete proof byte budget", () => {
+    const result = resolveDtsConfigSet({
+      entryFile: "board.dts", includeSearchPaths: [], overlayOrder: [], requireExactOrigins: true,
+      files: new Map([
+        ["board.dts", { fileVersionId: "v-board", content: '/include/ "large.dtsi";\n'.repeat(17) + "/ {};" }],
+        ["large.dtsi", { fileVersionId: "v-large", content: `/*${"x".repeat(2 * 1024 * 1024 - 16)}*/\n` }],
+      ]),
+    });
+    expect(result.diagnostics).toEqual([expect.objectContaining({ code: "source-proof-limit" })]);
+    expect(result.effective.nodesByLocator.size).toBe(0);
+  });
+
+  it("refuses excessive include depth before resolving an exact source proof", () => {
+    const files = new Map<string, DtsConfigSetFile>();
+    for (let index = 0; index < 65; index += 1) {
+      files.set(`${index}.dts`, { fileVersionId: `v-${index}`, content: index === 64 ? "/ {};" : `/include/ "${index + 1}.dts";` });
+    }
+    const result = resolveDtsConfigSet({ entryFile: "0.dts", includeSearchPaths: [], overlayOrder: [], files, requireExactOrigins: true });
+    expect(result.diagnostics).toEqual([expect.objectContaining({ code: "source-proof-limit", severity: "error" })]);
+    expect(result.effective.nodesByLocator.size).toBe(0);
+  });
+
+  it("preserves exact original property origins across includes and label overlays", () => {
+    const result = resolveDtsConfigSet({
+      entryFile: "board.dts", includeSearchPaths: [], overlayOrder: ["change.dtso"],
+      files: new Map([
+        ["board.dts", { fileVersionId: "v-board", content: '/dts-v1/;\n/include/ "base.dtsi";\n' }],
+        ["base.dtsi", { fileVersionId: "v-base", content: "/ { charger: device@0 { limit = <5>; }; other { limit = <5>; }; };\n" }],
+        ["change.dtso", { fileVersionId: "v-overlay", content: "/* 🧪 */\n&charger { limit = <7>; };\n" }],
+      ]),
+    });
+    expect(result.diagnostics).toEqual([]);
+    expect(result.effective.nodesByLocator.get("/device@0")?.properties.get("limit")?.sourceChain).toEqual([
+      expect.objectContaining({ fileName: "base.dtsi", origin: { fileVersionId: "v-base", start: 32, end: 35 } }),
+      expect.objectContaining({ fileName: "change.dtso", nodeLocator: "/device@0", origin: { fileVersionId: "v-overlay", start: 28, end: 31 } }),
+    ]);
+    expect(result.effective.nodesByLocator.get("/other")?.properties.get("limit")?.sourceChain).toEqual([
+      expect.objectContaining({ fileName: "base.dtsi", origin: { fileVersionId: "v-base", start: 56, end: 59 } }),
+    ]);
+  });
+
   it("resolves include + base + overlay with provenance sourceChain", () => {
     const fixtureFiles = loadFixtureDir("happy");
     const result = resolveDtsConfigSet({

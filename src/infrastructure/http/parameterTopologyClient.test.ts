@@ -82,6 +82,16 @@ describe("parameterTopologyClient DTO mapping", () => {
     expect(bindingFromDto(bindingDto).effectiveValue).toEqual(bindingDto.effectiveValue);
   });
 
+  it("preserves a genuine JSON binding value across the HTTP DTO boundary", () => {
+    const jsonDto: ProjectBindingDto = {
+      ...bindingDto,
+      effectiveValue: { kind: "json", value: { kind: "cells", bits: 64 } },
+      rawValue: '{\n  "bits": 64,\n  "kind": "cells"\n}\n'
+    };
+
+    expect(bindingFromDto(jsonDto).effectiveValue).toEqual(jsonDto.effectiveValue);
+  });
+
   it("keeps exampleValue, schemaDefault, and policyTarget separate on specs", () => {
     const mapped = specDetailFromDto(specDetailDto);
     expect(mapped).toMatchObject({
@@ -99,6 +109,28 @@ describe("parameterTopologyClient DTO mapping", () => {
 });
 
 describe("createHttpParameterTopologyRepository", () => {
+  it("does not parse a spec body for retired createParameterSpec mint", async () => {
+    const fetchMock = fetchQueue({ item: specDetailDto });
+    const repository = createHttpParameterTopologyRepository(
+      createApiClient({ baseUrl: "http://api.test", fetchImpl: fetchMock })
+    );
+    await expect(
+      repository.createParameterSpec({
+        attributionSubjectId: "asub:driver:sc8562",
+        propertyKey: "gpio_int",
+        reason: "must not mint"
+      })
+    ).rejects.toMatchObject({
+      code: "GONE",
+      details: {
+        reason: "legacy-surface-retired",
+        successor: "/api/v2/catalog",
+        retryable: false
+      }
+    });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
   it("deprecates and restores specs through lifecycle endpoints", async () => {
     const fetchMock = fetchQueue(
       { item: { ...specDetailDto, lifecycle: "deprecated" } },
@@ -482,6 +514,46 @@ describe("createHttpParameterTopologyRepository", () => {
       action: "set",
       projectParameterBindingId: "binding-1"
     });
+  });
+
+  it("posts JSON sourceTarget as raw source text without coercing it to DtsValue", async () => {
+    // This is a request-serialization test; unrelated legacy response fields
+    // remain covered by the typed DTS response test above.
+    const fetchMock = fetchQueue({
+      item: {
+        draftId: "draft-json-1",
+        parameterId: "binding-json-1",
+        candidateRevisionId: "rev-2",
+        rawText: '{"kind":"cells","values":[1,2]}\n',
+        action: "set",
+        projectParameterBindingId: "binding-json-1",
+        writeTarget: { role: "overlay", propertyKey: "charging-policy", targetRef: "charger0" },
+        overlayFileId: "file-json-1",
+        overlayFileName: "config.json",
+        sourceFormat: "json",
+        sourceTarget: { format: "json", sourceText: '{"kind":"cells","values":[1,2]}\n' },
+        baseRevisionId: "rev-1",
+        sourcePinId: "source-pin-1",
+        candidateId: "candidate-1"
+      }
+    });
+    const repository = createHttpParameterTopologyRepository(
+      createApiClient({ baseUrl: "http://api.test", fetchImpl: fetchMock })
+    );
+
+    await repository.createBindingDraft("project-1", "binding-json-1", {
+      baseRevisionId: "rev-1",
+      sourceTarget: { format: "json", sourceText: '{"kind":"cells","values":[1,2]}\n' },
+      reason: "Preserve JSON source"
+    });
+
+    const body = JSON.parse(String((fetchMock.mock.calls[0]?.[1] as RequestInit).body));
+    expect(body).toEqual({
+      baseRevisionId: "rev-1",
+      sourceTarget: { format: "json", sourceText: '{"kind":"cells","values":[1,2]}\n' },
+      reason: "Preserve JSON source"
+    });
+    expect(body).not.toHaveProperty("targetValue");
   });
 
   it("lists and gets parameter specs without path identity or recommendedValue", async () => {

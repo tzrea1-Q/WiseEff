@@ -36,7 +36,7 @@ async function loadRelatedParameter(
   const { rows } = await db.query<ParameterContextRow>(
     `
 select b.id,
-       coalesce(psv.display_name, dps.property_key, ps.specification_key) as name,
+       coalesce(psv.display_name, dps.property_key) as name,
        psv.description,
        dps.units as unit,
        b.project_id,
@@ -94,7 +94,7 @@ limit 5
 
   return {
     parameterId: row.id,
-    name: row.name,
+    name: row.name ?? "",
     description: row.description ?? undefined,
     unit: row.unit ?? undefined,
     projectId: row.project_id,
@@ -121,7 +121,7 @@ export function createDbLogAnalysisToolBackends(input: {
   relatedParameterId?: string;
   embeddingClient?: KnowledgeEmbeddingClient;
 }): Pick<LogAnalysisToolContext, "searchDomainKnowledge" | "loadRelatedParameterContext"> {
-  const db = pinLogRelatedParameterQuery(input.db);
+  const db = input.db;
   return {
     searchDomainKnowledge: async (query: string) => {
       const linkedEntryIds = input.logDomainId
@@ -147,18 +147,4 @@ export function createDbLogAnalysisToolBackends(input: {
         }
       : {})
   };
-}
-
-function pinLogRelatedParameterQuery(db: Queryable): Queryable {
-  const query = db.query.bind(db);
-  return {
-    query: (sql, values) => query(interceptExactRelatedParameterSql(sql), values),
-  };
-}
-
-/** Runtime intercept: keep scanned SQL spans, execute exact name/property pins. */
-export function interceptExactRelatedParameterSql(sql: string): string {
-  return sql
-    .split("coalesce(psv.display_name, dps.property_key, ps.specification_key)")
-    .join("coalesce(psv.display_name, dps.property_key)");
 }

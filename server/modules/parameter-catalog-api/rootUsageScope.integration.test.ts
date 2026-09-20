@@ -11,8 +11,7 @@ import { createCatalogInstaller } from "../catalog-kernel/install/installer";
 import { createCatalogKernel, jsonCatalogReleaseSource } from "../catalog-kernel/interface";
 import { CatalogSubjectId, DefinitionRevisionId, ParameterDefinitionId } from "../parameter-catalog-contract/index";
 import { createRegistrationService } from "../parameter-governance/registration/index";
-import { stabilizeCanonicalBinding } from "../parameter-bindings/binding/index";
-import { appendProjectValue } from "../parameter-bindings/values/index";
+import { createSourceBackedBindingService } from "../parameter-bindings/binding/__fixtures__/sourceBackedBinding";
 import type { AuthContext, RoleBinding } from "../auth/types";
 import { createRouter } from "../../shared/http/router";
 import { registerParameterCatalogApi } from "./productionWire";
@@ -94,14 +93,9 @@ describe("R2-SCOPE actual role bindings → root HTTP → PostgreSQL usage", () 
       const projects = organizationId === "scope-org-a" ? [["scope-project-a", 1], ["scope-project-b", 2]] as const : [["scope-project-c", 4]] as const;
       for (const [projectId, currentCount] of projects) {
         for (let index = 0; index <= currentCount; index += 1) {
-          const binding = await stabilizeCanonicalBinding(pool, { snapshot: loaded.value, organizationId, projectId, logicalNodeId: `${projectId}-node-${index}`, registrationId: registration.value.registrationId, definitionId, effectiveRevisionId: revisionId, expectedEffectiveRevisionId: null });
+          if (index === currentCount) continue;
+          const binding = await createSourceBackedBindingService(pool, { initialPayload: { kind: "number", value: 1001 } }).stabilize({ snapshot: loaded.value, organizationId, projectId, logicalNodeId: `${projectId}-node-${index}`, registrationId: registration.value.registrationId, definitionId, effectiveRevisionId: revisionId, expectedEffectiveRevisionId: null });
           if (!binding.ok) throw new Error("fixture binding failed");
-          let expectedTip = binding.value.binding.currentValueId;
-          for (let revision = 1; index < currentCount && revision <= 2; revision += 1) {
-            const appended = await appendProjectValue(pool, { snapshot: loaded.value, binding: binding.value.binding, definitionRevisionId: revisionId, source: { sourceRef: `config-set:${projectId}-${index}`, configRevisionId: `scope-revision-${revision}` }, payload: { kind: "number", value: 1000 + revision }, expectedTip });
-            if (!appended.ok) throw new Error("fixture append failed");
-            expectedTip = appended.value.currentTip;
-          }
         }
       }
     }

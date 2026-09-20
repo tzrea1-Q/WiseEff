@@ -9,7 +9,7 @@ export type StepParseReportProps = {
 };
 
 function countByStatus(rows: ReviewedImportRow[]) {
-  let newCandidateCount = 0;
+  let unmatchedCount = 0;
   let existingCount = 0;
   let conflictCount = 0;
   let needsModuleCount = 0;
@@ -19,19 +19,19 @@ function countByStatus(rows: ReviewedImportRow[]) {
       conflictCount += 1;
     } else if (row.status === "needs-module") {
       needsModuleCount += 1;
+    } else if (row.status === "unmatched") {
+      unmatchedCount += 1;
     } else if (row.existingParameter) {
       existingCount += 1;
-    } else {
-      newCandidateCount += 1;
     }
   }
 
-  return { newCandidateCount, existingCount, conflictCount, needsModuleCount };
+  return { unmatchedCount, existingCount, conflictCount, needsModuleCount };
 }
 
 export function StepParseReport({ parsedRows, reviewedRows, parseErrors, onBack, onNext }: StepParseReportProps) {
   const totalRows = parsedRows.length;
-  const { newCandidateCount, existingCount, conflictCount, needsModuleCount } = countByStatus(reviewedRows);
+  const { unmatchedCount, existingCount, conflictCount, needsModuleCount } = countByStatus(reviewedRows);
   const canProceed = totalRows > 0;
 
   return (
@@ -42,8 +42,8 @@ export function StepParseReport({ parsedRows, reviewedRows, parseErrors, onBack,
           <dd>{totalRows}</dd>
         </div>
         <div className="parameter-import-wizard-summary-item">
-          <dt>新增候选</dt>
-          <dd>{newCandidateCount}</dd>
+          <dt>未匹配（不会应用）</dt>
+          <dd>{unmatchedCount}</dd>
         </div>
         <div className="parameter-import-wizard-summary-item">
           <dt>已有</dt>

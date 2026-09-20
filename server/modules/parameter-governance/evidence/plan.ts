@@ -27,11 +27,43 @@ const tokenFields = [
   "matcherRevision",
 ] as const;
 
-const provenanceFields = [
-  "projectId",
-  "logicalNodeId",
-  "configRevisionId",
-] as const;
+const provenanceFields = ["projectId", "configRevisionId"] as const;
+
+const exactLocatorKeys = (
+  value: SourceLocator,
+  expected: readonly string[],
+): boolean => {
+  const keys = Object.keys(value).sort();
+  return keys.length === expected.length && keys.every((key, index) => key === expected.slice().sort()[index]);
+};
+
+const isExactParameterLocator = (value: SourceLocator): boolean => {
+  const kind = value.kind;
+  if (kind === "dts-property") {
+    return (
+      exactLocatorKeys(value, [
+        "kind",
+        "propertyOccurrenceId",
+        "nodeOccurrenceId",
+        "fileVersionId",
+        "propertyName",
+      ]) &&
+      isUsableToken(value.propertyOccurrenceId) &&
+      isUsableToken(value.nodeOccurrenceId) &&
+      isUsableToken(value.fileVersionId) &&
+      isUsableToken(value.propertyName)
+    );
+  }
+  if (kind === "json-pointer") {
+    return (
+      exactLocatorKeys(value, ["kind", "fileVersionId", "pointer"]) &&
+      isUsableToken(value.fileVersionId) &&
+      typeof value.pointer === "string" &&
+      /^(?:\/(?:[^~/]|~0|~1)*)*$/.test(value.pointer)
+    );
+  }
+  return false;
+};
 
 const isUsableToken = (value: unknown): value is string =>
   typeof value === "string" &&
@@ -70,6 +102,7 @@ const reviewReasonFor = (command: IngestEvidenceCommand): ReviewReason => {
 export type PlannedObservation = {
   readonly kind: "observation";
   readonly fingerprint: string;
+  readonly parameterLocatorDigest: string;
   readonly model: ObservationFingerprintModel;
   readonly provenance: SourceProvenance;
 };
@@ -118,8 +151,17 @@ export const planEvidenceIngest = (
       for (const field of provenanceFields) {
         if (!isUsableToken(provenance[field])) missing.push(`provenance.${field}`);
       }
-      if (!isPlainObject(provenance.sourceLocator)) {
+      if (!isUsableToken(provenance.sourceOccurrenceId)) {
+        missing.push("provenance.sourceOccurrenceId");
+      }
+      if (!isPlainObject(provenance.sourceLocator) || !isExactParameterLocator(provenance.sourceLocator)) {
         missing.push("provenance.sourceLocator");
+      }
+      if (provenance.sourceLocator?.kind === "dts-property" && !isUsableToken(provenance.logicalNodeId)) {
+        missing.push("provenance.logicalNodeId");
+      }
+      if (provenance.sourceLocator?.kind === "json-pointer" && provenance.logicalNodeId !== null) {
+        missing.push("provenance.logicalNodeId");
       }
     }
   } else if (command.evidence != null && !isPlainObject(command.evidence)) {
@@ -163,10 +205,11 @@ export const planEvidenceIngest = (
   return {
     ok: true,
     value: {
-      kind: "observation",
-      fingerprint: fingerprintCanonical(model as unknown as ContractJsonValue),
-      model,
-      provenance,
-    },
+        kind: "observation",
+        fingerprint: fingerprintCanonical(model as unknown as ContractJsonValue),
+        model,
+        provenance,
+        parameterLocatorDigest: fingerprintCanonical(provenance.sourceLocator),
+      },
   };
 };

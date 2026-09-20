@@ -1,0 +1,25 @@
+$id: wiseeff/nodename-charging-core.yaml
+title: charging_core
+source: vendor
+lifecycle: active
+version: 1
+schemaNamespace: vendor/nodename/charging_core
+nodename:
+  - charging_core
+documentation: >-
+  Reviewed demo NodeType for the charging_core node. This is not the
+  huawei,charging_core Driver and does not invent a compatible from the node
+  name. Nested array cardinality is not taken from example rows.
+properties:
+  fast-charge-profile-matrix:
+    valueShape: nested-string-array
+    constraints: {}
+    documentation: >-
+      Demo nested string matrix for the DTS compatibility seed. Row and column
+      counts are observations, not schema bounds.
+  battery-thermal-derate-curve:
+    valueShape: nested-u32-array
+    constraints: {}
+    documentation: >-
+      Demo nested integer cell matrix for the DTS compatibility seed. Row and
+      column counts are observations, not schema bounds.

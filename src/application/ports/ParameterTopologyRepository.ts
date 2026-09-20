@@ -44,6 +44,7 @@ export type {
 export type CreateBindingDraftInput = {
   baseRevisionId: string;
   targetValue?: DtsValue;
+  sourceTarget?: { format: "json"; sourceText: string };
   action?: "set" | "delete";
   reason: string;
 };
@@ -56,6 +57,11 @@ export type BindingDraftResult = {
   rebasedDraftIds?: string[];
   rawText: string;
   action: "set" | "delete";
+  sourceFormat?: "dts" | "json";
+  sourceTarget?: { format: "json"; sourceText: string };
+  baseRevisionId?: string;
+  sourcePinId?: string | null;
+  candidateId?: string | null;
   parameterSpecId: string;
   projectParameterBindingId: string;
   writeTarget: {

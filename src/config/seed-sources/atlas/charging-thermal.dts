@@ -8,21 +8,25 @@
  *   dts_fast_charge_profile_matrix -> fast-charge-profile-matrix
  *   battery_thermal_derate_curve   -> battery-thermal-derate-curve
  * No "compatible" is declared on purpose: the formal subject identity for these
- * seeds is a reviewed decision (Issue #849 D10) and is not inferred from a label.
+ * seeds is a reviewed NodeType (Issue #849 D10), distinct from the board fragment
+ * `&charging_core` which carries driver compatible `huawei,charging_core`.
+ * Nested under wiseeff_node_type_demo so overlay merge cannot collapse the two.
  */
 /dts-v1/;
 /plugin/;
 
 / {
-	charging_core {
-		fast-charge-profile-matrix =
+	wiseeff_node_type_demo {
+		charging_core {
+			fast-charge-profile-matrix =
 			"0", "5000", "1500", "40", "entry",
 			"1", "9000", "3000", "43", "balanced",
 			"2", "11000", "4200", "46", "burst";
-		battery-thermal-derate-curve = <
-			0 38 3800 4350
-			1 42 3200 4320
-			2 45 2600 4280
-		>;
+			battery-thermal-derate-curve = <
+				0 38 3800 4350
+				1 42 3200 4320
+				2 45 2600 4280
+			>;
+		};
 	};
 };

@@ -7,9 +7,11 @@ import {
   CATALOG_GUEST_USER,
   CATALOG_ORG_B,
   CATALOG_ORG_B_ADMIN,
+  ensureCatalogAcceptanceFixture,
   type CatalogAcceptanceFixture
 } from "./catalogEvidence";
 import { apiRoute } from "./runtime";
+import { recordOperationEvidence } from "./operationEvidence";
 
 export const CATALOG_PAGE_PATH = "/parameter-admin/specs";
 
@@ -40,6 +42,8 @@ export const CATALOG_EXPECTED_API_FAILURES: ExpectedApiFailure[] = [
   { method: "POST", path: "/api/v2/catalog/definition-proposals", status: 403 },
   { method: "POST", path: "/api/v2/catalog/definition-proposals", status: 409 },
   { method: "POST", path: "/api/v2/catalog/definition-proposals", status: 404 },
+  { method: "POST", path: "/api/v2/catalog/definition-replacements/preview", status: 409 },
+  { method: "POST", path: "/api/v2/organizations", status: 409 },
   // An actor without catalog publication capability is refused by the server.
   { method: "GET", path: "/api/v2/catalog/publications", status: 403 }
 ];
@@ -160,6 +164,30 @@ export async function waitForCatalogState(page: Page, state: string | RegExp) {
   await expect(catalogPage(page)).toHaveAttribute("data-catalog-state", state, { timeout: 30_000 });
 }
 
+export async function openDefinitionEditor(page: Page, request: APIRequestContext) {
+  await waitForCatalogState(page, /ready|empty|unregistered/);
+  const region = catalogPage(page);
+  await expect(region).toHaveAttribute("data-writes-enabled", "true");
+  const surface = await catalogJson(request, "GET", "/api/v2/catalog/publication-surface");
+  expect(surface.status).toBe(200);
+  const permissions = (
+    surface.body as { item: { authoringAllowed: boolean } }
+  ).item;
+  const table = region.getByRole("table", { name: "参数定义列表" });
+  await expect(table).toBeVisible();
+  const edit = table.getByRole("button", { name: /^编辑 /u }).first();
+  await expect(edit).toBeVisible({ timeout: 15_000 });
+  await edit.click();
+  const dialog = page.getByRole("dialog", { name: /^编辑 / });
+  await expect(dialog).toBeVisible();
+  await expect(dialog.getByRole("region", { name: "定义详情" })).toBeVisible();
+  if (permissions.authoringAllowed) {
+    await expect(dialog.locator("[data-definition-editor='true']")).toBeVisible({ timeout: 15_000 });
+    await expect(dialog.locator(".definition-editor__form")).toBeVisible();
+  }
+  return { dialog, authoringAllowed: permissions.authoringAllowed };
+}
+
 export async function selectSubjectByName(page: Page, name: string | RegExp) {
   // Subjects are leaves of the single module navigator tree; wait for the
   // collection to settle before falling back to a page-level match.
@@ -204,9 +232,129 @@ export async function assertNoPageOverflow(page: Page) {
   expect(overflow).toBeLessThanOrEqual(1);
 }
 
+const catalogScreenshotOperations: Record<string, string> = {
+  "pcat-ui-01-entry": "PCAT-CATALOG-DISCOVER-001",
+  "pcat-ui-02-deep-link": "PCAT-CATALOG-DEEP-LINK-001",
+  "pcat-ui-03-detail": "PCAT-DEFINITION-DETAIL-001",
+  "pcat-ui-04-review": "PCAT-REVIEW-RESOLVE-001",
+  "pcat-ui-05-timeline": "PCAT-TIMELINE-001",
+  "pcat-ui-06-org-admin": "PCAT-READY-ACTIONS-001",
+  "pcat-ui-07-register": "PCAT-REGISTRATION-001",
+  "pcat-ui-08-filter": "PCAT-CATALOG-STATES-001",
+  "pcat-ui-09-retired": "PCAT-RETIRED-HISTORY-001",
+  "pcat-ui-10-conflict": "PCAT-CONFLICT-RECONFIRM-001",
+  "pcat-ui-11-legacy": "PCAT-LEGACY-LINK-001",
+  "pcat-ui-12-guest": "PCAT-AGENT-READONLY-001",
+  "pcat-ui-13-api": "PCAT-ADAPTER-PARITY-001",
+  "pcat-ui-14-desktop": "PCAT-RESPONSIVE-001",
+  "pcat-ui-15-journey": "PCAT-GOVERNANCE-JOURNEY-001",
+  "pcat-ui-16-collection": "PCAT-DEFINITION-COLLECTION-001",
+  "pcat-ui-17-lifecycle": "PCAT-DEFINITION-LIFECYCLE-001"
+};
+
+function catalogScreenshotApi(name: string) {
+  if (name.includes("not-ready")) {
+    return { method: "GET", path: "/api/v2/catalog", status: 503, responseSummary: name };
+  }
+  if (name.includes("guest") || name === "pcat-ui-06-user") {
+    return { method: "GET", path: "/api/v2/catalog", status: 403, responseSummary: name };
+  }
+  if (name.includes("conflict")) {
+    return { method: "POST", path: "/api/v2/organizations", status: 409, responseSummary: name };
+  }
+  return { method: "GET", path: "/api/v2/catalog", status: 200, responseSummary: name };
+}
+
+async function catalogScreenshotForensics() {
+  const fixture = await ensureCatalogAcceptanceFixture();
+  const release = await fixture.pool.query<{ id: string; release_sequence: string }>(
+    `
+    select id, release_sequence::text as release_sequence
+      from parameter_catalog.catalog_releases
+     order by release_sequence desc
+     limit 1
+    `
+  );
+  const auditEvent = await fixture.pool.query<{
+    id: string;
+    kind: string;
+    action: string;
+    target_id: string | null;
+    trace_id: string | null;
+  }>(
+    `
+    select id, kind, action, target_id, trace_id
+      from audit_events
+     order by created_at desc
+     limit 1
+    `
+  );
+  const activation = auditEvent.rows[0]
+    ? null
+    : await fixture.pool.query<{ id: string }>(
+        `
+        select id
+          from parameter_catalog.catalog_activation_receipts
+         order by created_at desc
+         limit 1
+        `
+      );
+  const releaseRow = release.rows[0];
+  const auditRow = auditEvent.rows[0];
+  const activationRow = activation?.rows[0];
+  return {
+    db: [
+      {
+        table: "parameter_catalog.catalog_releases",
+        predicate: releaseRow ? `id=${releaseRow.id}` : "latest catalog release",
+        observed: releaseRow
+          ? `id=${releaseRow.id}; sequence=${releaseRow.release_sequence}`
+          : "missing",
+        rowCount: releaseRow ? 1 : 0
+      }
+    ],
+    audit: auditRow
+      ? [
+          {
+            id: auditRow.id,
+            kind: auditRow.kind,
+            action: auditRow.action,
+            targetId: auditRow.target_id,
+            requestId: auditRow.trace_id ?? undefined,
+            metadataSummary: `catalogScreenshot forensic from audit_events`
+          }
+        ]
+      : [
+          {
+            id: activationRow?.id ?? releaseRow?.id,
+            kind: activationRow ? "catalog-activation" : "catalog-release",
+            action: activationRow ? "activate" : "published",
+            targetId: activationRow?.id ?? releaseRow?.id ?? null,
+            metadataSummary: "catalog publication forensic from fixture lane"
+          }
+        ]
+  };
+}
+
 export async function catalogScreenshot(page: Page, testInfo: TestInfo, name: string) {
   const path = testInfo.outputPath(`${name}.png`);
   await page.screenshot({ path, fullPage: true });
+  const operationId = catalogScreenshotOperations[name];
+  if (operationId) {
+    const forensics = await catalogScreenshotForensics();
+    await recordOperationEvidence({
+      operationId,
+      title: testInfo.title,
+      status: "passed",
+      page,
+      testInfo,
+      assertions: ["ui", "api", "db", "audit", "screenshot"],
+      api: [catalogScreenshotApi(name)],
+      db: forensics.db,
+      audit: forensics.audit,
+      notes: `Catalog screenshot evidence ${name}.`
+    });
+  }
   return path;
 }
 

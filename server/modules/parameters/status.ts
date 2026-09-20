@@ -13,7 +13,7 @@ export const parameterReviewDecisions = ["advance", "reject"] as const;
 
 export const parameterRiskLevels = ["High", "Medium", "Low"] as const;
 
-export const parameterImportBatchStatuses = ["previewed", "applied"] as const;
+export const parameterImportBatchStatuses = ["previewed", "staged", "applied"] as const;
 export const parameterImportPreviewClassifications = ["added", "updated", "unchanged", "conflict"] as const;
 
 export type ParameterChangeStatus = ParameterChangeRequestStatus;

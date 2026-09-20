@@ -607,10 +607,10 @@ describe("ApiProjectTopologyWorkspace", () => {
     });
   });
 
-  it("saves a published definition value without adding a review draft", async () => {
+  it("shows a newly created canonical pending draft immediately without a page reload", async () => {
     const { fireEvent } = await import("@testing-library/react");
     const createBindingDraft = vi.fn().mockResolvedValue({
-      draftId: "pval_saved",
+      draftId: "canonical-pending-draft",
       parameterId: "binding-sc8562-gpio-int",
       candidateRevisionId: "rev-real-1",
       workingCandidateRevisionId: "rev-real-1",
@@ -618,7 +618,7 @@ describe("ApiProjectTopologyWorkspace", () => {
       action: "set",
       parameterSpecId: "pdef_acme_power_iin_max",
       projectParameterBindingId: "binding-sc8562-gpio-int",
-      writeTarget: { role: "canonical-project-value", propertyKey: "iin_max" },
+      writeTarget: { role: "canonical-project-value-draft", propertyKey: "iin_max" },
       overlayFileId: "",
       overlayFileName: ""
     });
@@ -641,7 +641,8 @@ describe("ApiProjectTopologyWorkspace", () => {
     await createGpioDraftFromWorkbench(workspace, fireEvent, { reason: "Save published value" });
 
     await waitFor(() => expect(createBindingDraft).toHaveBeenCalledTimes(1));
-    expect(screen.queryByText(/^本轮 1 项$/)).not.toBeInTheDocument();
+    expect(await screen.findByText(/^本轮 1 项$/)).toBeVisible();
+    expect(within(screen.getByRole("region", { name: "参数修改提交" })).getByText("Save published value")).toBeVisible();
   });
 
   it("drops the previous project's candidate revision and draft before loading the next project", async () => {

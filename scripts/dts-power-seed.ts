@@ -572,7 +572,8 @@ function buildDiversifiedOverrides(
         property.valueType,
         property.name,
         projectId,
-        delta
+        delta,
+        bitsCellMask(property.rawText)
       );
       if (diversified !== property.rawText) {
         auto[sourceNodePath] = diversified;
@@ -612,12 +613,21 @@ function isDiversifiableSeedProperty(propertyName: string, valueType: DtsValueTy
   return true;
 }
 
+function bitsCellMask(rawText: string): number | undefined {
+  const match = rawText.match(/\/bits\/\s+(\d+)/);
+  if (!match) return undefined;
+  const bits = Number(match[1]);
+  if (!Number.isInteger(bits) || bits < 1 || bits > 32) return undefined;
+  return bits === 32 ? 0xffffffff : (1 << bits) - 1;
+}
+
 function diversifyPropertyRawText(
   rawText: string,
   valueType: DtsValueType,
   propertyName: string,
   projectId: Exclude<DtsPowerSeedProjectId, "aurora">,
-  delta: number
+  delta: number,
+  cellMask?: number
 ): string {
   if (valueType === "u32-array" || valueType === "bytes" || valueType === "mixed") {
     let changed = false;
@@ -633,7 +643,7 @@ function diversifyPropertyRawText(
         if (index > 0) {
           return formatDtsCellToken(token);
         }
-        const bumped = bumpNumericToken(token, delta);
+        const bumped = bumpNumericToken(token, delta, cellMask);
         if (bumped !== unwrapDtsCellToken(token)) {
           changed = true;
         }
@@ -704,11 +714,12 @@ function formatDtsCellToken(token: string): string {
   return /^-\d+$/.test(bare) ? `(${bare})` : bare;
 }
 
-function bumpNumericToken(token: string, delta: number): string {
+function bumpNumericToken(token: string, delta: number, cellMask?: number): string {
   const bare = unwrapDtsCellToken(token);
   if (/^0x[0-9a-fA-F]+$/.test(bare)) {
     const width = bare.length - 2;
-    const next = (parseInt(bare, 16) + delta) >>> 0;
+    const summed = parseInt(bare, 16) + delta;
+    const next = cellMask === undefined ? summed >>> 0 : summed & cellMask;
     return `0x${next.toString(16).padStart(width, "0")}`;
   }
   if (/^-?\d+$/.test(bare)) {

@@ -10,7 +10,9 @@ import { seedAcceptanceRoleMatrix } from "./helpers/roleFixtures";
 // @operation SHELL-FOOTER-001
 useBrowserDiagnostics(test, {
   expectedApiFailures: [
-    { method: "POST", path: "/api/v1/debugging/targets/detect", status: 409 }
+    { method: "POST", path: "/api/v1/debugging/targets/detect", status: 409 },
+    { method: "GET", path: "/api/v2/organizations/org-chargelab/parameter-review-items", status: 403 },
+    { method: "GET", path: "/api/v2/organizations/org-chargelab/parameter-review-items", status: 410 }
   ]
 });
 

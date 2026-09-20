@@ -57,6 +57,8 @@ export const CATALOG_RELATIONS = [
   "definition_replacement_projects",
   "definition_replacements",
   "definition_revisions",
+  "project_parameter_source_occurrences",
+  "project_value_source_pins",
   parameterDefinitionsRel,
 ] as const;
 
@@ -95,6 +97,8 @@ export const BINDING_CUTOVER_RELATIONS = [
   "parameter_catalog_cutover_checkpoints",
   "parameter_catalog_cutover_events",
   "parameter_catalog_cutover_runs",
+  "plane_disposal_allowlist",
+  "plane_disposal_runs",
   "project_parameter_bindings",
   projectParameterValuesRel,
 ] as const;
@@ -129,6 +133,22 @@ export const DEFINITION_REPLACEMENT_MIGRATION =
   "0144_definition_replacement.sql";
 export const CONFIGURATION_SCHEMA_MIGRATION =
   "0147_configuration_schema_subject.sql";
+export const SOURCE_OCCURRENCE_MIGRATION =
+  "0151_source_occurrence_identity.sql";
+export const PINNED_SOURCE_GRAPH_MIGRATION =
+  "0152_pinned_source_graph_immutability.sql";
+export const SOURCE_OCCURRENCE_INTEGRITY_MIGRATION =
+  "0153_source_occurrence_integrity.sql";
+export const PLANE_DISPOSAL_RESIDUE_MIGRATION = "0154_plane_disposal_residue.sql";
+export const PLANE_DISPOSAL_GRANTS_MIGRATION = "0155_plane_disposal_grants.sql";
+export const PLANE_DISPOSAL_DISPOSER_ACL_MIGRATION =
+  "0156_plane_disposal_disposer_acl.sql";
+export const PLANE_DISPOSAL_REGENERABLE_GRANTS_MIGRATION =
+  "0157_plane_disposal_regenerable_grants.sql";
+export const PLANE_DISPOSAL_ALLOWS_DELETE_ACL_MIGRATION =
+  "0158_plane_disposal_allows_delete_acl.sql";
+export const PLANE_DISPOSAL_DEFINER_SELECT_MIGRATION =
+  "0159_plane_disposal_definer_select.sql";
 export const SCHEMA_MIGRATION = "0137_canonical_parameter_catalog_schema.sql";
 export const FLOOR_MIGRATION = "0136_parameter_execution_principal_deleted_marker.sql";
 

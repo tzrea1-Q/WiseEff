@@ -148,6 +148,7 @@ Existing reasons in `parameter-catalog-api-transition.md` stay. Add:
 | `candidate-tampered` | 409 | Artifact/digest/authorization tuple mismatch |
 | `needs-rebase` | 409 | Predecessor no longer current |
 | `unsupported-catalog-capability` | 422 | Content outside whitelist or running images cannot interpret it |
+| `unsupported-consumer-capability-revision` | 422 | Consumer does not admit this capability revision; refuse before Catalog writes |
 | `publication-authorization-revoked` | 409 | Revoked after enqueue; not linearized into activation |
 | `idempotency-key-conflict` | 409 | Same key, different request digest |
 | `artifact-missing` | 409 | Predecessor Artifact bytes unavailable; do not reconstruct from DB |

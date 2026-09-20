@@ -376,4 +376,33 @@ describe("DefinitionEditorBody", () => {
       { timeout: 20_000 }
     );
   }, 30_000);
+
+  it("keeps identity facts and on-demand history readable without authoring", async () => {
+    const user = userEvent.setup();
+    const onRequestHistory = vi.fn();
+    render(
+      <DefinitionEditorBody
+        authoringAllowed={false}
+        history={<ol aria-label="定义时间线"><li>目录发布</li></ol>}
+        onRequestHistory={onRequestHistory}
+        actor="org-admin"
+        sessionPermissions={[]}
+        domainState={ready}
+        catalog={createMockCatalogPorts({ scenario: "ready" }).catalog}
+        catalogReleaseId={CATALOG_RELEASE_ID}
+        definition={activeDefinition}
+        subjects={[registeredSubject]}
+      />
+    );
+
+    const detail = screen.getByRole("region", { name: "定义详情" });
+    expect(detail).toHaveTextContent(activeDefinition.subject.id);
+    expect(detail).toHaveTextContent(activeDefinition.id);
+    expect(detail).toHaveTextContent(`修订 #${activeDefinition.currentRevision.revisionNumber}`);
+    expect(screen.queryByRole("button", { name: "保存内容修订" })).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: /查看历史/ }));
+    expect(onRequestHistory).toHaveBeenCalledOnce();
+    expect(screen.getByRole("region", { name: "定义时间线" })).toHaveTextContent("目录发布");
+  });
 });

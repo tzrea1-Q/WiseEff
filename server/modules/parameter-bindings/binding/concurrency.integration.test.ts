@@ -1,5 +1,8 @@
 import { Buffer } from "node:buffer";
 import { createHash, randomUUID } from "node:crypto";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 import pg from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -31,6 +34,7 @@ import {
 } from "../../parameter-catalog-contract/index";
 import type { RegisterSubjectCommand } from "../../parameter-governance/registration/command";
 import { writeGuardedRegistration } from "../../parameter-governance/registration/internalGuardedRegistrationWriter";
+import { createLocalObjectStore } from "../../logs/objectStore";
 import { openIndependentCatalogSessions } from "../../../testing/parameterCatalog/sessions";
 import {
   createEphemeralTestDatabase,
@@ -39,7 +43,7 @@ import {
   type EphemeralTestDatabase,
 } from "../../../testing/testDatabase";
 
-import { createBindingService } from "./index";
+import { createSourceBackedBindingService, ensureSourceBackedBindingFixture } from "./__fixtures__/sourceBackedBinding";
 
 const databaseAvailable = await isTestDatabaseAvailable();
 if (!databaseAvailable) {
@@ -184,7 +188,9 @@ describe("canonical Binding independent-session races", () => {
   let snapshot2: CatalogSnapshot;
   let registrationA: string;
   let registrationB: string;
-  let service: ReturnType<typeof createBindingService>;
+  let service: ReturnType<typeof createSourceBackedBindingService>;
+  let storageDirectory: string;
+  let objectStore: ReturnType<typeof createLocalObjectStore>;
 
   const registerCommand = (
     organizationId: string,
@@ -228,6 +234,8 @@ describe("canonical Binding independent-session races", () => {
   beforeAll(async () => {
     database = await createEphemeralTestDatabase("s6bndcx");
     pool = new pg.Pool({ connectionString: database.url, max: 4 });
+    storageDirectory = await mkdtemp(join(tmpdir(), "wiseeff-s6-bnd-cx-"));
+    objectStore = createLocalObjectStore(storageDirectory);
     const first = compileOrThrow(firstReleaseBundle());
     const installed = await installPublishedRelease(pool, {
       mode: "bootstrap",
@@ -298,12 +306,13 @@ describe("canonical Binding independent-session races", () => {
     if (!loaded2.ok) throw new Error("failed to load current snapshot");
     snapshot2 = loaded2.value;
 
-    service = createBindingService(pool);
+    service = createSourceBackedBindingService(pool, { objectStore });
   }, 60_000);
 
   afterAll(async () => {
     await pool?.end();
     await database?.drop();
+    if (storageDirectory) await rm(storageDirectory, { recursive: true, force: true });
   });
 
   it("lets one composite winner replay and never mixes owners across independent sessions", async () => {
@@ -323,6 +332,8 @@ describe("canonical Binding independent-session races", () => {
       expectedEffectiveRevisionId: null,
     } as const;
 
+    // Race Binding creation, not fixture graph insertion after the winner pins it.
+    await ensureSourceBackedBindingFixture(pool,command,objectStore);
     const [first, second] = await Promise.all([
       service.stabilize(command),
       service.stabilize(command),

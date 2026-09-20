@@ -477,7 +477,7 @@ export function createMockParameterRepository(runtime: MockRuntimeState): Parame
       ]);
       return cloneDraft(draft);
     },
-    async deleteDraft(draftId: string): Promise<void> {
+    async deleteDraft(draftId: string, _projectId?: string): Promise<void> {
       writeDrafts(
         repositoryRuntime,
         readDrafts(repositoryRuntime).filter((draft) => draft.id !== draftId)

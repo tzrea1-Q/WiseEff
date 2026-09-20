@@ -742,9 +742,61 @@ export function DefinitionEditorBody({
             ) : null}
           </div>
         ) : (
-          <p className="parameter-catalog__muted">
-            当前会话缺少目录编写能力，只能查看该定义。
-          </p>
+          <div className="definition-editor__readonly">
+            <p className="parameter-catalog__muted">
+              当前会话缺少目录编写能力，只能查看该定义。
+            </p>
+            <dl className="parameter-catalog__dl definition-editor__dl">
+              <dt>主体编号</dt>
+              <dd>
+                <code>{definition.subject.id}</code>
+              </dd>
+              <dt>定义编号</dt>
+              <dd>
+                <code>{definition.id}</code>
+              </dd>
+              <dt>当前修订</dt>
+              <dd>{`修订 #${definition.currentRevision.revisionNumber}`}</dd>
+              <dt>纳入发布</dt>
+              <dd>
+                <code>{definition.currentRevision.publishedInCatalogReleaseId}</code>
+              </dd>
+              <dt>说明</dt>
+              <dd>{definition.currentRevision.documentation ?? "无"}</dd>
+              <dt>使用</dt>
+              <dd>
+                策略 {definition.usageSummary.policyCount} · 项目 {definition.usageSummary.projectCount} · 当前值{" "}
+                {definition.usageSummary.currentValueCount}
+              </dd>
+            </dl>
+            <div className="definition-editor__history">
+              <div className="definition-editor__history-header">
+                <span className="definition-editor__history-title">定义时间线与变更历史</span>
+                <button
+                  type="button"
+                  className="button subtle sm"
+                  data-catalog-history-toggle="true"
+                  aria-expanded={historyOpen}
+                  onClick={() => {
+                    const next = !historyOpen;
+                    setHistoryOpen(next);
+                    if (next) onRequestHistory?.();
+                  }}
+                >
+                  {historyOpen ? catalogHistoryCloseLabel : catalogHistoryOpenLabel}
+                </button>
+              </div>
+              {historyOpen ? (
+                <section
+                  aria-label="定义时间线"
+                  data-catalog-history-region="true"
+                  className="definition-editor__history-body"
+                >
+                  {history}
+                </section>
+              ) : null}
+            </div>
+          </div>
         )}
 
         {phase === "preview" && preview ? (

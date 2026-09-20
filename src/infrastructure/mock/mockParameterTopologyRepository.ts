@@ -763,37 +763,12 @@ export function createMockParameterTopologyRepository(
       return cloneDetail(detail);
     },
 
-    async createParameterSpec(input) {
-      const id = `pspec:mock:${input.attributionSubjectId}:${input.propertyKey}`;
-      if (store.specs.has(id)) {
-        throw mockApiError("CONFLICT", `ParameterSpec already exists: ${id}`, { id });
-      }
-      const created: SpecFixture = {
-        id,
-        organizationId: "org-mock",
-        sourceKind: "manual",
-        specificationKey: `manual/${input.propertyKey}`,
-        propertyKey: input.propertyKey,
-        driverModule: null,
-        lifecycle: "draft",
-        currentVersionId: `${id}:v1`,
-        currentVersion: 1,
-        valueShape: input.valueShape ?? { kind: "unknown" },
-        compatiblePatterns: null,
-        attributionModules: [],
-        attributionSubjectId: input.attributionSubjectId,
-        displayName: input.displayName ?? input.propertyKey,
-        description: input.description ?? input.propertyKey,
-        schemaDefault: null,
-        exampleValue: input.exampleValue ?? null,
-        schemaNamespace: "manual",
-        units: input.units ?? null,
-        constraints: input.constraints ?? {},
-        documentation: input.documentation ?? "",
-        policyTarget: null,
-      };
-      store.specs.set(id, created);
-      return cloneDetail(created);
+    async createParameterSpec(_input) {
+      throw mockApiError("GONE", "Legacy structural writes are retired.", {
+        reason: "legacy-surface-retired",
+        successor: "/api/v2/catalog",
+        retryable: false,
+      });
     },
 
     async activateParameterSpec(specId, input: ActivateParameterSpecInput) {

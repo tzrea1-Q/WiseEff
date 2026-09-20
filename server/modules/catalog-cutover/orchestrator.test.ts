@@ -32,6 +32,9 @@ import {
   inspectCutover,
   planCutover,
 } from "./orchestrator";
+import { fixtureCutoverIdentities } from "./identities";
+import { fixtureObservedQuiescence } from "./quiescence";
+import { fixtureObservedRecoveryPoint } from "./recoveryPointObservation";
 
 const CATALOG_TEST_TIMEOUT_MS = 60_000;
 const CATALOG_HOOK_TIMEOUT_MS = 120_000;
@@ -105,6 +108,7 @@ describe("S7-ORC restartable pre-activation cutover", { timeout: CATALOG_TEST_TI
       graph,
       targetArtifactSha: "b".repeat(40),
       targetCatalogReleaseDigest: compiled.value.release.digest,
+      identities: fixtureCutoverIdentities(),
       catalogReleaseSource: jsonCatalogReleaseSource(bundle),
     });
     expect(planned.ok).toBe(true);
@@ -128,6 +132,8 @@ describe("S7-ORC restartable pre-activation cutover", { timeout: CATALOG_TEST_TI
     archiveEncryptionKey: encryptionKey,
     operatorAuditRef: "audit-s7orc-operator",
     failBeforePhase,
+    quiescence: fixtureObservedQuiescence(),
+    recoveryPoint: fixtureObservedRecoveryPoint(),
   });
 
   it("freezes the seven R3 threat-matrix rows", () => {
@@ -188,6 +194,7 @@ describe("S7-ORC restartable pre-activation cutover", { timeout: CATALOG_TEST_TI
       graph,
       targetArtifactSha: plan.targetArtifactSha,
       targetCatalogReleaseDigest: plan.targetCatalogReleaseDigest,
+      identities: fixtureCutoverIdentities(),
       catalogReleaseSource: jsonCatalogReleaseSource(bundle),
     });
     expect(again.ok).toBe(true);
@@ -212,6 +219,27 @@ describe("S7-ORC restartable pre-activation cutover", { timeout: CATALOG_TEST_TI
     expect(runs.rows[0]?.n).toBe("1");
   });
 
+  it("P2 refuses execute without observed quiescence", async () => {
+    const planned = await planCutover({
+      graph,
+      targetArtifactSha: "d".repeat(40),
+      targetCatalogReleaseDigest: plan.targetCatalogReleaseDigest,
+      identities: fixtureCutoverIdentities(),
+      catalogReleaseSource: jsonCatalogReleaseSource(bundle),
+    });
+    expect(planned.ok).toBe(true);
+    if (!planned.ok) return;
+    const { quiescence: _ignored, ...withoutQuiescence } = executeInput();
+    const refused = await executeCutover({
+      ...withoutQuiescence,
+      plan: planned.value,
+    });
+    expect(refused.ok).toBe(false);
+    if (refused.ok) return;
+    expect(refused.error.code).toBe("PCAT-ORC-PHASE-FAILED");
+    expect(refused.error.detail).toMatch(/attestation is not proof/);
+  });
+
   it("T3 unknown and activation phases are typed refusals", async () => {
     const unknown = await executeCutover({
       ...executeInput(),
@@ -227,10 +255,62 @@ describe("S7-ORC restartable pre-activation cutover", { timeout: CATALOG_TEST_TI
       graph: { ...graph, identities: [] },
       targetArtifactSha: plan.targetArtifactSha,
       targetCatalogReleaseDigest: plan.targetCatalogReleaseDigest,
+      identities: fixtureCutoverIdentities(),
     });
     expect(empty.ok).toBe(false);
     if (empty.ok) return;
     expect(empty.error.code).toBe("PCAT-ORC-NOT-POPULATED");
+  });
+
+  it("interrupts every durable pre-activation phase then resumes to completion", async () => {
+    const isolated = await createDisposableParameterCatalogDatabase("s7orc-int");
+    const isolatedPool = new pg.Pool({ connectionString: isolated.url, max: 4 });
+    const isolatedClient = new pg.Client({ connectionString: isolated.url });
+    const isolatedRoot = await mkdtemp(path.join(os.tmpdir(), "s7orc-int-"));
+    try {
+      await isolatedClient.connect();
+      await seedPopulatedCutover(isolatedClient, graph);
+      const compiled = compileCatalogRelease(bundle);
+      expect(compiled.ok).toBe(true);
+      if (!compiled.ok) return;
+      const installed = await installPublishedRelease(isolatedPool, {
+        mode: "bootstrap",
+        source: jsonCatalogReleaseSource(bundle),
+        expectedTargetDigest: compiled.value.release.digest,
+      });
+      expect(installed.ok).toBe(true);
+      const planned = await planCutover({
+        graph,
+        targetArtifactSha: "e".repeat(40),
+        targetCatalogReleaseDigest: plan.targetCatalogReleaseDigest,
+        identities: fixtureCutoverIdentities("interrupt"),
+        catalogReleaseSource: jsonCatalogReleaseSource(bundle),
+      });
+      expect(planned.ok).toBe(true);
+      if (!planned.ok) return;
+      const isolatedExecute = (failBeforePhase?: CutoverPlan["phases"][number]) => ({
+        ...executeInput(failBeforePhase),
+        pool: isolatedPool,
+        plan: planned.value,
+        archiveObjectStore: createLocalArchiveObjectStore(isolatedRoot),
+      });
+      for (const phase of PRE_ACTIVATION_PHASES) {
+        const interrupted = await executeCutover(isolatedExecute(phase));
+        expect(interrupted.ok, phase).toBe(false);
+        if (interrupted.ok) return;
+        expect(interrupted.error.code, `${phase}: ${interrupted.error.detail}`).toBe("PCAT-ORC-CRASH");
+      }
+      const resumed = await executeCutover(isolatedExecute());
+      expect(resumed.ok).toBe(true);
+      if (!resumed.ok) return;
+      expect(resumed.value.state).toBe("completed");
+      expect(resumed.value.checkpoints.map((row) => row.phase)).toEqual([...PRE_ACTIVATION_PHASES]);
+    } finally {
+      await isolatedClient.end().catch(() => undefined);
+      await isolatedPool.end().catch(() => undefined);
+      await isolated.close().catch(() => undefined);
+      await rm(isolatedRoot, { recursive: true, force: true });
+    }
   });
 
   it("T7 consumes frozen producer types and has no catalog_releases writer DML or banned literals", async () => {

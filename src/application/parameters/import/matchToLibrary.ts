@@ -57,13 +57,21 @@ export function matchToLibrary(
     }
 
     const existingParameter = findExistingParameter(row.name, row.module, parameters, projectId);
+    if (!existingParameter) {
+      return {
+        ...row,
+        rowId: `import-row-${index + 1}`,
+        matchKey,
+        status: "unmatched" as const
+      };
+    }
 
     return {
       ...row,
       rowId: `import-row-${index + 1}`,
       matchKey,
       status: "pending" as const,
-      ...(existingParameter ? { existingParameter } : {})
+      existingParameter
     };
   });
 }

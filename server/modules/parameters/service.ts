@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { requiresCanonicalSourceImport } from "../parameter-bindings/values";
 
 import {
   asAuditTx,
@@ -1107,6 +1108,11 @@ export async function applyImportBatch(db: Database, auth: AuthContext, input: A
 
     if (!batch) {
       throw new ApiError("NOT_FOUND", "Parameter import batch was not found.", { batchId: parsed.batchId });
+    }
+    const canonical = await requiresCanonicalSourceImport(tx,{ organizationId: auth.organization.id,projectId: batch.projectId,
+      bindingIds: batch.items.flatMap((item) => item.projectParameterValueId ? [item.projectParameterValueId] : []) });
+    if (canonical || batch.items.some((item) => item.baseRevisionId || item.stagedDraft)) {
+      throw new ApiError("CONFLICT", "Canonical imports must stage pending source drafts through the canonical import owner.");
     }
     if (batch.status !== "previewed") {
       throw new ApiError("CONFLICT", "Parameter import batch has already been applied.", { batchId: parsed.batchId });

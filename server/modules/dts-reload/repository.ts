@@ -260,15 +260,8 @@ export async function listReloadCandidateRows(
     select
       b.id as binding_id,
       b.project_id as project_id,
-      coalesce(
-        dps.property_key,
-        nullif(
-          (string_to_array(ps.specification_key, '/'))[cardinality(string_to_array(ps.specification_key, '/'))],
-          ''
-        ),
-        ''
-      ) as property_key,
-      coalesce(psv.display_name, dps.property_key, ps.specification_key) as display_name,
+      dps.property_key as property_key,
+      coalesce(psv.display_name, dps.property_key) as display_name,
       b.module_id as module_id,
       coalesce(asub.display_name, pm.name, '') as module_name,
       lnr.node_locator as node_path,
@@ -293,7 +286,7 @@ export async function listReloadCandidateRows(
     join parameter_specs ps on ps.id = b.parameter_spec_id
     left join attribution_subjects asub on asub.id = ps.attribution_subject_id
     left join parameter_modules pm on pm.id = b.module_id
-    left join dts_property_specs dps on dps.parameter_spec_id = b.parameter_spec_id
+    inner join dts_property_specs dps on dps.parameter_spec_id = b.parameter_spec_id
     left join lateral (
       select *
       from project_parameter_binding_revisions
@@ -306,15 +299,14 @@ export async function listReloadCandidateRows(
       select node_locator, compatible
       from dts_logical_node_revisions
       where logical_node_id = b.logical_node_id
-      order by
-        case when config_revision_id = br.config_revision_id then 0 else 1 end,
-        config_revision_id desc
+        and config_revision_id = br.config_revision_id
+      order by id desc
       limit 1
     ) lnr on true
     where b.organization_id = $1
       and b.project_id = $2
       and br.parameter_spec_version_id is not null
-    order by coalesce(lnr.node_locator, ''), coalesce(dps.property_key, ps.specification_key)
+    order by coalesce(lnr.node_locator, ''), dps.property_key
     `,
     [input.organizationId, input.projectId]
   );
@@ -331,15 +323,8 @@ export async function getReloadCandidateRow(
     select
       b.id as binding_id,
       b.project_id as project_id,
-      coalesce(
-        dps.property_key,
-        nullif(
-          (string_to_array(ps.specification_key, '/'))[cardinality(string_to_array(ps.specification_key, '/'))],
-          ''
-        ),
-        ''
-      ) as property_key,
-      coalesce(psv.display_name, dps.property_key, ps.specification_key) as display_name,
+      dps.property_key as property_key,
+      coalesce(psv.display_name, dps.property_key) as display_name,
       b.module_id as module_id,
       coalesce(asub.display_name, pm.name, '') as module_name,
       lnr.node_locator as node_path,
@@ -364,7 +349,7 @@ export async function getReloadCandidateRow(
     join parameter_specs ps on ps.id = b.parameter_spec_id
     left join attribution_subjects asub on asub.id = ps.attribution_subject_id
     left join parameter_modules pm on pm.id = b.module_id
-    left join dts_property_specs dps on dps.parameter_spec_id = b.parameter_spec_id
+    inner join dts_property_specs dps on dps.parameter_spec_id = b.parameter_spec_id
     left join lateral (
       select *
       from project_parameter_binding_revisions
@@ -377,9 +362,8 @@ export async function getReloadCandidateRow(
       select node_locator, compatible
       from dts_logical_node_revisions
       where logical_node_id = b.logical_node_id
-      order by
-        case when config_revision_id = br.config_revision_id then 0 else 1 end,
-        config_revision_id desc
+        and config_revision_id = br.config_revision_id
+      order by id desc
       limit 1
     ) lnr on true
     where b.organization_id = $1
@@ -952,54 +936,3 @@ export async function listProjectDtsMemberSources(
 
 /** Re-export for service consumers that map rows → DTOs. */
 export type { ReloadCandidateDto };
-
-type PinMarkedQueryable = Queryable & { __dtsExactPin?: boolean };
-
-/**
- * Runtime intercept: keep scanned SQL spans, execute exact Binding / config-revision
- * pins instead of latest-revision or specification_key fallback.
- */
-export function interceptExactReloadPinSql(sql: string): string {
-  const specId = ["parameter", "spec", "id"].join("_");
-  const specFallback = [
-    "or (",
-    `         dp.${specId} is not null`,
-    `         and dp.${specId} = b.${specId}`,
-    "       )",
-  ].join("\n");
-  const propertyKeyFallback = [
-    "coalesce(",
-    "        dps.property_key,",
-    "        nullif(",
-    "          (string_to_array(ps.specification_key, '/'))[cardinality(string_to_array(ps.specification_key, '/'))],",
-    "          ''",
-    "        ),",
-    "        ''",
-    "      )",
-  ].join("\n");
-
-  return sql
-    .split(propertyKeyFallback)
-    .join("dps.property_key")
-    .split("coalesce(dps.property_key, ps.specification_key)")
-    .join("dps.property_key")
-    .split(
-      "order by\n        case when config_revision_id = br.config_revision_id then 0 else 1 end,\n        config_revision_id desc",
-    )
-    .join(
-      "and config_revision_id = br.config_revision_id\n      order by\n        case when config_revision_id = br.config_revision_id then 0 else 1 end",
-    )
-    .split(specFallback)
-    .join("");
-}
-
-export function pinDtsReloadQueryable<T extends Queryable>(db: T): T {
-  const marked = db as T & PinMarkedQueryable;
-  if (!marked.__dtsExactPin) {
-    const original = db.query.bind(db);
-    db.query = ((sql: string, values?: unknown[]) =>
-      original(interceptExactReloadPinSql(sql), values)) as Queryable["query"];
-    marked.__dtsExactPin = true;
-  }
-  return db;
-}

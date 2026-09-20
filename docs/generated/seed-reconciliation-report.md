@@ -12,12 +12,12 @@ the human-readable projection. Both are checked in and verified by `npm run seed
 
 | Measure | Planned | Measured |
 | --- | --- | --- |
-| Total inputs | 125 | 125 |
-| Vendor inputs | 113 | 113 |
+| Total inputs | 127 | 127 |
+| Vendor inputs | 115 | 115 |
 | Compatibility inputs | 12 | 12 |
-| Current round | 117 | 117 |
+| Current round | 119 | 119 |
 | Deferred to TD-124 | 8 | 8 |
-| Vendor raw property entries | 135 | 135 |
+| Vendor raw property entries | 137 | 137 |
 | Vendor structural entries excluded | 22 | 22 |
 
 Binding counts are PLANNED counts derived from the manifest, not achieved runtime facts.
@@ -32,22 +32,22 @@ Binding counts are PLANNED counts derived from the manifest, not achieved runtim
 
 | Family | Disposition | Count |
 | --- | --- | --- |
-| vendor | preserve | 111 |
-| vendor | transform | 2 |
-| compatibilityCurrent | preserve | 4 |
+| vendor | preserve | 115 |
+| compatibilityCurrent | merge | 2 |
+| compatibilityCurrent | preserve | 2 |
 | compatibilityDeferred | defer | 8 |
-| boardOccurrences | exclude | 168 |
-| boardOccurrences | merge | 15 |
-| boardOccurrences | preserve | 345 |
+| boardOccurrences | exclude | 240 |
+| boardOccurrences | merge | 21 |
+| boardOccurrences | preserve | 339 |
 
 ## Current-round compatibility items (JSON / DTS)
 
 | Index | Old id | Property key | Format | Disposition | Definition identity |
 | --- | --- | --- | --- | --- | --- |
-| 1 | charge-voltage-limit | charge_voltage_limit_mv | JSON | preserve | seeddef_c27a25101965b172 |
-| 2 | battery-temp-target | battery_temp_target_c | JSON | preserve | seeddef_4e5d906cb65f4f28 |
-| 9 | dts-fast-charge-profile-matrix | dts_fast_charge_profile_matrix | DTS | preserve | seeddef_4cabf68a9016c6ed |
-| 10 | dts-battery-thermal-derate-curve | battery_thermal_derate_curve | DTS | preserve | seeddef_082ec28ef12c27a0 |
+| 1 | charge-voltage-limit | charger.cv.limitMv | JSON | preserve | seeddef_2d06b10e643baaa7 |
+| 2 | battery-temp-target | battery.thermal.targetTempC | JSON | preserve | seeddef_69a5a0af199b7380 |
+| 9 | dts-fast-charge-profile-matrix | fast-charge-profile-matrix | DTS | merge | seeddef_01eb50b2c85379bf |
+| 10 | dts-battery-thermal-derate-curve | battery-thermal-derate-curve | DTS | merge | seeddef_56af578de5ffa261 |
 
 ## Deferred compatibility items (TD-124)
 
@@ -69,9 +69,9 @@ create no seeded binding or value this round.
 
 | Board | Nodes | Raw property occurrences | Business | Structural | Merge occurrences |
 | --- | --- | --- | --- | --- | --- |
-| aurora | 50 | 176 | 120 | 56 | 5 |
-| nebula | 50 | 176 | 120 | 56 | 5 |
-| atlas | 50 | 176 | 120 | 56 | 5 |
+| aurora | 50 | 200 | 120 | 80 | 7 |
+| nebula | 50 | 200 | 120 | 80 | 7 |
+| atlas | 50 | 200 | 120 | 80 | 7 |
 
 Business vs structural is decided by `isStructuralPropertyKey` (src/domain/parameter-topology/parameterSurface.ts).
 Each board records 18 phandle references.
@@ -80,8 +80,6 @@ Each board records 18 phandle references.
 
 | Source locator | Blocker path | Detail | Disposition |
 | --- | --- | --- | --- |
-| vendor/wiseeff/mt-mt5788.yaml#gpio_int | vendor/wiseeff/mt-mt5788.yaml#gpio_int.constraints.cells | unhandled-constraint:cells,description | transform |
-| vendor/wiseeff/sc8562.yaml#gpio_int | vendor/wiseeff/sc8562.yaml#gpio_int.constraints.cells | unhandled-constraint:cells,description | transform |
 
 The two `gpio_int` entries declare `constraints: { cells, description }`. The production importer
 (`foldConstraints` in server/modules/catalog-publication/import/vendorAdapter.ts) allows only
@@ -111,24 +109,24 @@ npx vitest run --config vitest.scripts.config.ts scripts/seed-reconciliation-man
 
 | Check | Value |
 | --- | --- |
-| inputsRecorded | 125 |
-| inputsExpected | 125 |
-| vendorInputsRecorded | 113 |
-| vendorInputsExpected | 113 |
+| inputsRecorded | 127 |
+| inputsExpected | 127 |
+| vendorInputsRecorded | 115 |
+| vendorInputsExpected | 115 |
 | compatibilityInputsRecorded | 12 |
 | compatibilityInputsExpected | 12 |
-| currentInputsRecorded | 117 |
-| currentInputsExpected | 117 |
+| currentInputsRecorded | 119 |
+| currentInputsExpected | 119 |
 | deferredInputsRecorded | 8 |
 | deferredInputsExpected | 8 |
-| vendorRawPropertyEntriesRecorded | 135 |
+| vendorRawPropertyEntriesRecorded | 137 |
 | vendorRawEqualsCanonicalPlusStructural | true |
-| vendorInventoryItemsRecorded | 135 |
+| vendorInventoryItemsRecorded | 137 |
 | compatibilityItemsRecorded | 12 |
-| boardOccurrencesRecorded | 528 |
+| boardOccurrencesRecorded | 600 |
 | boardBusinessOccurrencesRecorded | 360 |
-| boardStructuralOccurrencesRecorded | 168 |
-| boardOccurrencesPerProject | 176 |
+| boardStructuralOccurrencesRecorded | 240 |
+| boardOccurrencesPerProject | 200 |
 | everyInputRecordedExactlyOnce | true |
 | everyBoardOccurrenceRecordedExactlyOnce | true |
 | everyBoardBusinessOccurrenceRecordedExactlyOnce | true |

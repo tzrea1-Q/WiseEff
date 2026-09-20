@@ -34,6 +34,7 @@ export function StepConfirmApply({
 }: StepConfirmApplyProps) {
   const [pending, setPending] = useState(false);
   const [error, setError] = useState("");
+  const stagesDrafts = previewBatch?.items.some((item) => item.baseRevisionId !== undefined) ?? false;
 
   const updatePending = (next: boolean) => {
     setPending(next);
@@ -60,7 +61,9 @@ export function StepConfirmApply({
         setError(result.notification);
         return;
       }
-      dispatch({ type: "ADD_NOTIFICATION", message: "批量导入已应用。" });
+      dispatch({ type: "ADD_NOTIFICATION", message: result?.status === "staged"
+        ? `已暂存 ${result.summary.staged ?? 0} 条待提交草稿；当前值和源文件未改变，请提交审核后生效。`
+        : "批量导入已应用。" });
       onApplied();
     } catch (caughtError) {
       setError(caughtError instanceof Error ? caughtError.message : "应用导入批次失败。");
@@ -70,7 +73,7 @@ export function StepConfirmApply({
   };
 
   return (
-    <section className="parameter-import-wizard-step" aria-label="确认应用">
+    <section className="parameter-import-wizard-step" aria-label={stagesDrafts ? "确认暂存待提交" : "确认应用"}>
       <dl className="parameter-import-wizard-summary">
         <div className="parameter-import-wizard-summary-item">
           <dt>目标项目</dt>
@@ -106,6 +109,7 @@ export function StepConfirmApply({
         </div>
       </dl>
 
+      {stagesDrafts ? <p>本次仅暂存待提交草稿，不改变当前值或源文件。提交并通过审核后才会生效。</p> : null}
       {error ? (
         <p className="parameter-import-wizard-errors" role="alert">
           {error}
@@ -117,7 +121,7 @@ export function StepConfirmApply({
           上一步
         </button>
         <button type="button" className="button primary" disabled={pending || !previewBatch} onClick={handleApply}>
-          确认应用
+          {stagesDrafts ? "暂存待提交" : "确认应用"}
         </button>
       </div>
     </section>

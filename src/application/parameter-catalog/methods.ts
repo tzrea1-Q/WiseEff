@@ -19,7 +19,15 @@ export const PARAMETER_CATALOG_REPOSITORY_METHODS = [
   "listDefinitionReplacements",
   "createDefinitionReplacement",
   "getDefinitionReplacement",
-  "continueDefinitionReplacement"
+  "continueDefinitionReplacement",
+  "listProjectValueDrafts",
+  "deleteProjectValueDraft",
+  "submitProjectValueDraft",
+  "listProjectValueChangeRequests",
+  "reviewProjectValueChangeRequest",
+  "getCanonicalBindingChangeHistory",
+  "getCanonicalBindingExport",
+  "getProjectValueChangeSourceDiff"
 ] as const;
 
 export const PARAMETER_CATALOG_GOVERNANCE_REPOSITORY_METHODS = [

@@ -58,7 +58,7 @@ EFF 夹具工作复用原有自有 Gate0 runtime 与原生验收配置，保持�
 | `npm run parameter-definitions:check -- --catalog-only` | 自托管候选就绪使用的规范驱动身份/版本/schema/属性/放置子门禁 | `upgrade.sh` 内自动运行；诊断存量升级时可手工运行。不能替代配置发布完整门禁。 |
 | `npm run test:server -- server/modules/parameter-specs/populatedUpgrade.integration.test.ts --run` | 真实 PostgreSQL pre-`0127` 存量升级至 `0128`，覆盖规范放置、同 key 自动主体切换、未决证据保留、binding 迁移与 curated 失败关闭 | 修改生效驱动迁移、验证或放置修复后。 |
 | `npm run test:server -- server/modules/parameter-topology/legacyDependencyGuard.test.ts --run` | Vitest **源码扫描**（非运行时中间件），禁止在 migrations/cutovers/adapters/scripts/tests 之外出现已退役扁平身份/shadow token | 修改 cutover 后工作流、可能重新引入遗留 SQL 或 shadow PPV helper 后。 |
-| `npm run test:server -- server/modules/dts/goldenPowerFixture.test.ts server/modules/parameters/seedM1DtsFiles.test.ts server/modules/parameter-specs/matcher.test.ts --run` | 锁定黄金拓扑计数：**176** 属性 occurrence、**528** 行 `dts_properties` seed | 修改 DTS seed fixture、ingest 或 matcher 覆盖后。 |
+| `npm run test:server -- server/modules/dts/goldenPowerFixture.test.ts server/modules/parameters/seedM1DtsFiles.test.ts server/modules/parameter-specs/matcher.test.ts --run` | 锁定黄金拓扑计数：**200** 属性 occurrence、**600** 行 `dts_properties` seed | 修改 DTS seed fixture、ingest 或 matcher 覆盖后。 |
 | `npm run test:scripts -- scripts/vendorDtSchemaGenerator.test.ts --run` | 黄金 DTB 真实 `dt-validate`；负例 DTB 按预期失败 | 修改厂商 dt-schema 生成或 linux-binding schema 后。（`test:server` 不包含 `scripts/**`，直接传该路径会静默零执行。） |
 | `npm run test:scripts` | ops/治理脚本套件（`scripts/**`、`ops/**`，Node 环境） | 修改脚本或 ops 自动化后。 |
 | `npm run typecheck` | 使用与 `npm run build` 第一阶段相同的 4096 MiB 堆空间，检查 `tsconfig.json` 引用的 TypeScript 项目（`tsconfig.app.json` 和 `tsconfig.node.json`） | 仅用于编辑反馈；交付前仍须运行 `npm run build`，因为此命令不包含 Vite 生产构建。 |

@@ -43,7 +43,22 @@ export function createApiParameterCatalogRepository(
     getDefinitionReplacement: (replacementId) =>
       client.getDefinitionReplacement(replacementId),
     continueDefinitionReplacement: (replacementId, body, context) =>
-      client.continueDefinitionReplacement(replacementId, body, context)
+      client.continueDefinitionReplacement(replacementId, body, context),
+    listProjectValueDrafts: (projectId) => client.listProjectValueDrafts(projectId),
+    deleteProjectValueDraft: (projectId, draftId, context) =>
+      client.deleteProjectValueDraft(projectId, draftId, context),
+    submitProjectValueDraft: (projectId, draftId, body, context) =>
+      client.submitProjectValueDraft(projectId, draftId, body, context),
+    listProjectValueChangeRequests: (projectId, query) =>
+      client.listProjectValueChangeRequests(projectId, query),
+    reviewProjectValueChangeRequest: (projectId, requestId, body, context) =>
+      client.reviewProjectValueChangeRequest(projectId, requestId, body, context),
+    getProjectValueChangeSourceDiff: (projectId, requestId) =>
+      client.getProjectValueChangeSourceDiff(projectId, requestId),
+    getCanonicalBindingChangeHistory: (projectId, bindingId, limit) =>
+      client.getCanonicalBindingChangeHistory(projectId, bindingId, limit),
+    getCanonicalBindingExport: (projectId, bindingId, projectValueId) =>
+      client.getCanonicalBindingExport(projectId, bindingId, projectValueId)
   };
 }
 

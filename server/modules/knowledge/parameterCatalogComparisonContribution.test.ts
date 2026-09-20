@@ -19,7 +19,7 @@ import {
   type KnwComparisonPhase,
   type KnwInventoryMode,
 } from "./parameterCatalogComparisonContribution";
-import { interceptKnowledgeReferenceSql } from "./parameterReferences";
+import { loadParameterReferencesByEntryIds } from "./parameterReferences";
 
 const FRESH_PRE_SHA = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
 const FRESH_POST_SHA = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
@@ -116,14 +116,28 @@ async function seedKnwProtectedReferences(
   return Number(counted.rows[0]?.n ?? 0);
 }
 
-describe("interceptKnowledgeReferenceSql", () => {
-  it("keeps scanned inner-join spans and executes a left join so orphans stay visible", () => {
-    const innerJoin = ["join parameter", "specs ps on ps.id = r.parameter", "spec", "id"].join("_");
-    const leftJoin = ["left join parameter", "specs ps on ps.id = r.parameter", "spec", "id"].join("_");
-    const sql = ["from knowledge_parameter_references r", innerJoin].join("\n");
-    const exact = interceptKnowledgeReferenceSql(sql);
-    expect(exact).toBe(["from knowledge_parameter_references r", leftJoin].join("\n"));
-    expect(interceptKnowledgeReferenceSql(exact)).toBe(exact);
+describe("loadParameterReferencesByEntryIds exact pins", () => {
+  it("executes source SQL with a left join and no specification_key property fallback", async () => {
+    const statements: string[] = [];
+    const wrapped = {
+      query: async (sql: string, _values?: unknown[]) => {
+        statements.push(sql);
+        return { rows: [], rowCount: 0 };
+      }
+    };
+    const auth = {
+      organization: { id: "org-knw" },
+      user: { id: "user-knw" }
+    } as never;
+    const result = await loadParameterReferencesByEntryIds(wrapped, auth, [
+      "00000000-0000-0000-0000-000000000001"
+    ]);
+    expect(result.size).toBe(0);
+    expect(statements.length).toBeGreaterThan(0);
+    const haystack = statements.join("\n");
+    expect(haystack).toContain("left join parameter_specs ps on ps.id = r.parameter_spec_id");
+    expect(haystack).not.toContain("string_to_array(ps.specification_key");
+    expect(haystack).toContain("coalesce(ps.property_key, dps.property_key)");
   });
 });
 

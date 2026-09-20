@@ -7,6 +7,7 @@
 
 import { createHash, randomUUID } from "node:crypto";
 import { ingestDtsFileVersion } from "../parameter-files/structuralIngest";
+import { assertLegacySourceMutationAllowed, setCurrentVersion } from "../parameter-files/repository";
 
 import {
   parseDts,
@@ -332,7 +333,7 @@ export function ensureOverlayProperty(
   },
 ): string {
   const { propertyKey, rawText, action, targetRef } = input;
-  if (!targetRef.trim()) {
+  if (!input.occurrenceSpan && !targetRef.trim()) {
     throw new ApiError(
       "CONFLICT",
       "Overlay write requires an explicit target ref.",
@@ -606,6 +607,7 @@ export async function applyLockedOverlayWriteback(
   input: ApplyLockedOverlayWritebackInput,
   deps: CreateBindingDraftDeps = {},
 ): Promise<ApplyLockedOverlayWritebackResult> {
+  await assertLegacySourceMutationAllowed(db,input.lock.overlayFileId);
   await verifyBindingWriteLock(db, input.lock);
 
   const revision = await getConfigRevisionById(db, {
@@ -731,14 +733,7 @@ export async function applyLockedOverlayWriteback(
     ],
   );
 
-  await db.query(
-    `
-    update project_parameter_files
-    set current_version_id = $2, updated_at = now()
-    where id = $1
-    `,
-    [overlayMember.file_id, candidateOverlayVersionId],
-  );
+  await setCurrentVersion(db, { fileId: overlayMember.file_id, versionId: candidateOverlayVersionId });
 
   await ingestDtsFileVersion(db, candidateOverlayVersionId, candidateOverlayContent);
 
@@ -911,6 +906,7 @@ export async function applyLockedEnablementWriteback(
   input: ApplyLockedEnablementWritebackInput,
   deps: CreateBindingDraftDeps = {},
 ): Promise<ApplyLockedEnablementWritebackResult> {
+  await assertLegacySourceMutationAllowed(db,input.lock.overlayFileId);
   await verifyEnablementWriteLock(db, input.lock);
 
   const revision = await getConfigRevisionById(db, {
@@ -1036,14 +1032,7 @@ export async function applyLockedEnablementWriteback(
     ],
   );
 
-  await db.query(
-    `
-    update project_parameter_files
-    set current_version_id = $2, updated_at = now()
-    where id = $1
-    `,
-    [overlayMember.file_id, candidateOverlayVersionId],
-  );
+  await setCurrentVersion(db, { fileId: overlayMember.file_id, versionId: candidateOverlayVersionId });
 
   await ingestDtsFileVersion(db, candidateOverlayVersionId, candidateOverlayContent);
 

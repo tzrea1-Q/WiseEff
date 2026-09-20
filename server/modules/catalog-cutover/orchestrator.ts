@@ -50,6 +50,9 @@ import {
   type RecoverCutoverInput,
 } from "./interface";
 import { appendMappingVersion } from "./mapping";
+import { assertCutoverIdentities, assertIdentitiesMatch } from "./identities";
+import { assertObservedQuiescence } from "./quiescence";
+import { assertObservedRecoveryPoint } from "./recoveryPointObservation";
 import {
   assertRecordedAction,
   captureInventoryDump,
@@ -103,6 +106,8 @@ export const planCutover = async (
       "Empty source graph is not populated P0-P10 evidence",
     );
   }
+  const identities = assertCutoverIdentities(input.identities);
+  if (!identities.ok) return identities;
   const classified = classifyFrozenP0Graph(input.graph);
   if (!classified.ok) {
     return fail("PCAT-ORC-INVALID-PLAN", classified.error.detail);
@@ -128,6 +133,7 @@ export const planCutover = async (
       targetCatalogReleaseDigest: input.targetCatalogReleaseDigest,
       migrationContractVersion: MIGRATION_CONTRACT_VERSION,
       phases: PRE_ACTIVATION_PHASES,
+      identities: identities.value,
     }),
   );
   return ok({
@@ -137,6 +143,7 @@ export const planCutover = async (
     targetCatalogReleaseDigest: input.targetCatalogReleaseDigest,
     migrationContractVersion: MIGRATION_CONTRACT_VERSION,
     phases: PRE_ACTIVATION_PHASES,
+    identities: identities.value,
   });
 };
 
@@ -202,19 +209,28 @@ const runPhase = async (
         counts: compiled.value.counts,
       });
     }
-    case "P2":
+    case "P2": {
+      const observed = assertObservedQuiescence(input.quiescence);
+      if (!observed.ok) return observed;
       return ok({
-        writersFenced: true,
-        queuesDrained: true,
-        publicProxyStopped: true,
+        writersFenced: observed.value.writersFenced,
+        queuesDrained: observed.value.queuesDrained,
+        publicProxyStopped: observed.value.publicProxyStopped,
+        publicationFrozen: observed.value.publicationFrozen,
+        evidenceDigest: observed.value.evidenceDigest,
+        observedAt: observed.value.observedAt,
       });
+    }
     case "P3": {
+      const recoveryPoint = assertObservedRecoveryPoint(input.recoveryPoint);
+      if (!recoveryPoint.ok) return recoveryPoint;
       const dump = await captureInventoryDump(client);
       const runBoundToken = mintRunBoundToken();
       return ok({
         dump,
         dumpDigest: dumpDigest(dump),
         runBoundToken,
+        recoveryPoint: recoveryPoint.value,
       });
     }
     case "P4": {
@@ -455,6 +471,13 @@ export const executeCutover = async (
     const allowed = assertAllowedPhase(input.failBeforePhase);
     if (!allowed.ok) return allowed;
   }
+  const plannedIdentities = assertCutoverIdentities(input.plan.identities);
+  if (!plannedIdentities.ok) return plannedIdentities;
+  const matched = assertIdentitiesMatch(
+    plannedIdentities.value,
+    input.observedIdentities ?? plannedIdentities.value,
+  );
+  if (!matched.ok) return matched;
   return withCutoverLock(input.pool, input.plan.planDigest, async (client) => {
     const populated = await requirePopulated(client, input.graph);
     if (!populated.ok) return populated;

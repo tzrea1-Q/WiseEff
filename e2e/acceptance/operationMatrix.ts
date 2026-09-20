@@ -400,7 +400,7 @@ export const acceptanceOperations: AcceptanceOperation[] = [
     area: "parameters",
     route: "/parameter-home",
     roles: ["Admin"],
-    action: "Load parameter-home dashboard summary and hotspots APIs, render insight sections, and switch time window and hotspot dimension in-page.",
+    action: "At PC 1440x900, load parameter-home dashboard summary and hotspots APIs, render insight sections, switch time window and hotspot dimension in-page, and keep the retained Xiaoze FAB from overlapping dashboard content.",
     coverage: "automated",
     acceptanceIds: ["PARAM-HOME-001"],
     specFiles: ["e2e/acceptance/parameter-home.acceptance.spec.ts"],
@@ -437,11 +437,37 @@ export const acceptanceOperations: AcceptanceOperation[] = [
     route: "/parameter-admin/projects",
     roles: ["Admin"],
     action:
-      "Search, filter, sort, paginate, restore q/status/sort through reload and browser history, enter a row by keyboard without action bubbling, and verify the 390px card, 768px visible-rail table, and 1440px no-page-overflow layouts.",
+      "At PC 1440x900, use the Admin project DataTable to preserve URL q/status/sort through reload, Back, Forward, and popstate; search, filter, sort, paginate, enter a row by keyboard, and use isolated edit/delete actions without page overflow.",
     coverage: "automated",
     acceptanceIds: ["PARAM-ADMIN-003"],
     specFiles: ["e2e/acceptance/parameter-admin-projects.acceptance.spec.ts"],
     assertions: ["ui", "api", "screenshot"]
+  },
+  {
+    id: "PROJ-REVIEW-ROLES-001",
+    priority: "P0",
+    area: "parameters",
+    route: "/parameter-admin/projects/:projectId/review-roles",
+    roles: ["Admin"],
+    action:
+      "Configure, add, and confirm project review roles (hardware-committer, software-committer, software-user) from the review-roles page, including deep-link entry and member search.",
+    coverage: "automated",
+    acceptanceIds: ["PROJ-REVIEW-ROLES-001"],
+    specFiles: ["e2e/acceptance/project-review-roles.acceptance.spec.ts"],
+    assertions: ["ui", "api", "screenshot"]
+  },
+  {
+    id: "PROJ-REVIEW-READINESS-001",
+    priority: "P0",
+    area: "parameters",
+    route: "/parameters",
+    roles: ["Software User", "Admin"],
+    action:
+      "Detect missing project review roles on the parameter workbench, block draft submission with actionable badges, retain staged drafts, and expose the review-roles configuration link to Admins or a contact notice to non-admins.",
+    coverage: "automated",
+    acceptanceIds: ["PROJ-REVIEW-READINESS-001"],
+    specFiles: ["e2e/acceptance/project-review-roles.acceptance.spec.ts"],
+    assertions: ["ui", "api"]
   },
   {
     id: "PARAM-INIT-WIZARD-001",
@@ -513,12 +539,14 @@ export const acceptanceOperations: AcceptanceOperation[] = [
     route: "/parameters",
     roles: ["Software User", "Admin"],
     action: "Confirm non-initialized projects cannot submit normal typed binding change rounds.",
-    coverage: "future",
+    coverage: "automated",
     acceptanceIds: ["PARAM-INIT-LOCK-001"],
-    specFiles: ["src/ParametersPage.test.tsx", "server/modules/parameters/service.test.ts"],
-    assertions: ["ui", "api"],
-    deferralReason:
-      "UI lock + submitParameterChanges assertProjectAllowsParameterSubmit covered by unit tests; browser lock evidence follows."
+    specFiles: [
+      "e2e/acceptance/parameter-initialization-lock.acceptance.spec.ts",
+      "src/ParametersPage.test.tsx",
+      "server/modules/parameters/service.test.ts"
+    ],
+    assertions: ["ui", "api"]
   },
   {
     id: "PROJ-OPS-001",
@@ -527,7 +555,7 @@ export const acceptanceOperations: AcceptanceOperation[] = [
     route: "/parameter-admin/projects/:projectId/configuration",
     roles: ["Admin"],
     action:
-      "Superseded by PROJ-CONFIG-CUTOVER-001: legacy deep links redirect to equivalent workbench contexts; unknown project ids still show not-found.",
+      "Superseded by PROJ-CONFIG-CUTOVER-001: at PC 1440x900, legacy deep links redirect to equivalent workbench contexts; unknown project ids still show not-found.",
     coverage: "automated",
     acceptanceIds: ["PROJ-OPS-001", "PROJ-CONFIG-CUTOVER-001"],
     specFiles: [
@@ -544,7 +572,7 @@ export const acceptanceOperations: AcceptanceOperation[] = [
     route: "/parameter-admin/projects/:projectId/configuration",
     roles: ["Admin"],
     action:
-      "Superseded by PROJ-CONFIG-READ-001 / PROJ-CONFIG-CUTOVER-001: three-viewport workbench layout without clipping or page-level horizontal overflow.",
+      "Superseded by PROJ-CONFIG-READ-001 / PROJ-CONFIG-CUTOVER-001: the PC 1440x900 workbench layout has no clipping or page-level horizontal overflow.",
     coverage: "automated",
     acceptanceIds: ["PROJ-OPS-002", "PROJ-CONFIG-READ-001", "PROJ-CONFIG-CUTOVER-001"],
     specFiles: ["e2e/acceptance/project-configuration-workbench.acceptance.spec.ts"],
@@ -557,7 +585,7 @@ export const acceptanceOperations: AcceptanceOperation[] = [
     route: "/parameter-admin/projects/:projectId/configuration",
     roles: ["Admin"],
     action:
-      "Superseded by PROJ-CONFIG-BASELINE-001 / PROJ-CONFIG-OPS-001 / PROJ-CONFIG-CONFLICT-001: baseline, membership, and conflict confirmations in workbench source context.",
+      "Superseded by PROJ-CONFIG-BASELINE-001 / PROJ-CONFIG-OPS-001 / PROJ-CONFIG-CONFLICT-001: at PC 1440x900, baseline, membership, and conflict confirmations remain in workbench source context.",
     coverage: "automated",
     acceptanceIds: [
       "PROJ-OPS-003",
@@ -575,7 +603,7 @@ export const acceptanceOperations: AcceptanceOperation[] = [
     route: "/parameter-admin/projects/:projectId/configuration",
     roles: ["Admin"],
     action:
-      "Enter from the project list, resolve URL/default Config-set context, distinguish member and ungrouped files, select an active DTS source, and exercise responsive tree/inspector/task sheets.",
+      "At PC 1440x900, enter from the project list, resolve URL/default Config-set context, distinguish member and ungrouped files, select an active DTS source, and exercise tree/inspector/task sheets.",
     coverage: "automated",
     acceptanceIds: ["PROJ-CONFIG-READ-001"],
     specFiles: ["e2e/acceptance/project-configuration-workbench.acceptance.spec.ts"],
@@ -706,7 +734,7 @@ export const acceptanceOperations: AcceptanceOperation[] = [
     route: "/parameter-admin/projects/:projectId/configuration",
     roles: ["Admin"],
     action:
-      "Inspect the server-owned release readiness summary in the command bar; open Issues dock remediations; prove create/release stay fail-closed when blocked, unavailable, stale, or local session dirty; confirm the UI does not invent permission from client counts.",
+      "At PC 1440x900, inspect the server-owned release readiness summary in the command bar; open Issues dock remediations; prove create/release stay fail-closed when blocked, unavailable, stale, or local session dirty; confirm the UI does not invent permission from client counts.",
     coverage: "automated",
     acceptanceIds: ["PROJ-CONFIG-READINESS-001"],
     specFiles: ["e2e/acceptance/project-configuration-workbench.acceptance.spec.ts"],
@@ -719,7 +747,7 @@ export const acceptanceOperations: AcceptanceOperation[] = [
     route: "/parameter-admin/projects/:projectId/configuration",
     roles: ["Admin"],
     action:
-      "Create, compare, acknowledge warnings, release, and restore baselines in the configuration workbench source context; preview restore blast radius; prove atomic restore leaves the released tip unchanged and refreshes readiness.",
+      "At PC 1440x900, create, compare, acknowledge warnings, release, and restore baselines in the configuration workbench source context; preview restore blast radius; prove atomic restore leaves the released tip unchanged and refreshes readiness.",
     coverage: "automated",
     acceptanceIds: ["PROJ-CONFIG-BASELINE-001"],
     specFiles: ["e2e/acceptance/project-configuration-workbench.acceptance.spec.ts"],
@@ -755,7 +783,7 @@ export const acceptanceOperations: AcceptanceOperation[] = [
     route: "/parameter-admin/projects/:projectId/configuration",
     roles: ["Admin"],
     action:
-      "Legacy /files|/config-sets|/structure|/conflicts deep links redirect to equivalent workbench contexts preserving focus query params; new links use only /configuration; three viewports prove no lost capability.",
+      "At PC 1440x900, legacy /files|/config-sets|/structure|/conflicts deep links redirect to equivalent workbench contexts preserving focus query params; new links use only /configuration; the integrated cutover retains capability.",
     coverage: "automated",
     acceptanceIds: ["PROJ-CONFIG-CUTOVER-001"],
     specFiles: [
@@ -1131,11 +1159,10 @@ export const acceptanceOperations: AcceptanceOperation[] = [
     route: "/dts-reload",
     roles: ["Hardware Committer", "Admin"],
     action: "Carry a selected binding set from the parameter workbench into /dts-reload via ?project=&bindingIds= without dumping the full table into the reload batch.",
-    coverage: "future",
+    coverage: "automated",
     acceptanceIds: ["DTS-RELOAD-HANDOFF-001"],
     specFiles: ["e2e/acceptance/dts-reload-handoff.acceptance.spec.ts"],
-    assertions: ["ui"],
-    deferralReason: "Browser Playwright automation is pending; unit coverage and playwright-cli evidence land with TD-064."
+    assertions: ["ui"]
   },
   {
     id: "DTS-RELOAD-PROMOTE-001",
@@ -1144,11 +1171,14 @@ export const acceptanceOperations: AcceptanceOperation[] = [
     route: "/dts-reload",
     roles: ["Hardware Committer", "Admin"],
     action: "Promote selected stored debug values from a successful ordinary reload run into parameter drafts, then stop (no change request, no auto-submit).",
-    coverage: "future",
+    coverage: "automated",
     acceptanceIds: ["DTS-RELOAD-PROMOTE-001"],
-    specFiles: ["e2e/acceptance/dts-reload-promote.acceptance.spec.ts"],
-    assertions: ["ui", "api"],
-    deferralReason: "Browser Playwright automation is pending; API and page unit coverage land with TD-063."
+    specFiles: [
+      "e2e/acceptance/dts-reload-promote.acceptance.spec.ts",
+      "server/modules/dts-reload/promote.test.ts",
+      "src/features/dts-reload/DtsReloadPage.test.tsx"
+    ],
+    assertions: ["ui", "api"]
   },
   {
     id: "HDC-LAB-001",
@@ -1725,7 +1755,7 @@ export const acceptanceOperations: AcceptanceOperation[] = [
     area: "parameters",
     route: "/parameters?parameter=:legacyId + /api/v2/catalog/legacy-identifiers/:kind/:legacyId",
     roles: ["Authorized reader", "Scope-hidden caller"],
-    action: "Exercise exact mapped redirect, archived gone, ambiguous conflict, unknown not-found, and scope-hidden legacy bookmark outcomes; open the archived parameter bookmark at desktop, tablet, and mobile, verify the owning organization sees the diagnostic/evidence notice without entering editing or submission, the other organization receives an indistinguishable 404, and dismiss the notice.",
+    action: "Exercise exact mapped redirect, archived gone, ambiguous conflict, unknown not-found, and scope-hidden legacy bookmark outcomes; open the archived parameter bookmark at PC 1440x900, verify the owning organization sees the diagnostic/evidence notice without entering editing or submission, the other organization receives an indistinguishable 404, and dismiss the notice.",
     coverage: "automated",
     acceptanceIds: ["PCAT-UI-11"],
     specFiles: ["e2e/acceptance/parameter-catalog-negative.acceptance.spec.ts"],
@@ -1788,7 +1818,7 @@ export const acceptanceOperations: AcceptanceOperation[] = [
     area: "parameters",
     route: "/parameter-admin/specs",
     roles: ["Org Admin"],
-    action: "Page the complete definition collection, change page size, filter by module subtree, clear the filter, open history on demand, and verify the workspace at all three viewports.",
+    action: "Page the complete definition collection, change page size, filter by module subtree, clear the filter, open history on demand, and verify the workspace at PC 1440x900.",
     coverage: "automated",
     acceptanceIds: ["PCAT-UI-16"],
     specFiles: ["e2e/acceptance/parameter-catalog-definitions.acceptance.spec.ts"],
@@ -1971,7 +2001,7 @@ export const acceptanceOperations: AcceptanceOperation[] = [
     route: "/parameter-admin",
     roles: ["Admin"],
     action:
-      "Resolve identity mapping tasks and correct an applied choice through protected re-resolve with evidence and governance audit.",
+      "At PC 1440x900, resolve identity mapping tasks and correct an applied choice through protected re-resolve with evidence and governance audit.",
     coverage: "automated",
     acceptanceIds: ["PARAM-IDENTITY-MAP-ADMIN-001"],
     specFiles: ["e2e/acceptance/parameter-topology.acceptance.spec.ts"],

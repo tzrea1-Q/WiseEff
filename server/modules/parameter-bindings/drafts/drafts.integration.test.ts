@@ -7,6 +7,10 @@
  * Before this change the draft route wrote the canonical current value directly.
  */
 import { createHash, randomUUID } from "node:crypto";
+import { setTimeout as delay } from "node:timers/promises";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 import pg from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -32,6 +36,7 @@ import {
   type RootDatabase
 } from "../../../shared/database/client";
 import { asAuditTx, withAuditedWrite } from "../../audit/auditedWrite";
+import { createTrustedRefusalAuditSink } from "../../audit/trustedRefusalSink";
 import { createUserInvocation } from "../../auth/trustedInvocation";
 import { writeTrustedGovernanceAudit } from "../../parameter-topology/governanceAudit";
 import { ingestConfigRevision } from "../../parameter-topology/ingestService";
@@ -41,10 +46,12 @@ import type { ConfigRevisionManifest } from "../../parameter-topology/types";
 import {
   asValueClient,
   exportCanonicalBindingSource,
+  verifyCanonicalSourceReimport,
+  loadPublishedCatalog,
   readCanonicalBindingChangeHistory,
-  syncPublishedCatalogProjectValues
+  syncPublishedCatalogProjectValuesInTransaction
 } from "../catalogProjectValueSync";
-import { createMemoryObjectStore } from "../../../testing/objectStore";
+import { createLocalObjectStore, type ObjectStore } from "../../logs/objectStore";
 import {
   createCanonicalValueDraft,
   listCanonicalValueDraftsForUser,
@@ -127,15 +134,64 @@ const targetValue = (raw: string) => ({
   groups: [[{ kind: "integer" as const, raw, value: raw }]]
 });
 
+const createPreparedDraft = (
+  db: Parameters<typeof createCanonicalValueDraft>[0],
+  auth: Parameters<typeof createCanonicalValueDraft>[1],
+  input: Parameters<typeof createCanonicalValueDraft>[2],
+  objectStore: ObjectStore,
+  rootDb: RootDatabase = db as RootDatabase,
+): ReturnType<typeof createCanonicalValueDraft> => createCanonicalValueDraft(db, auth, input, {
+  objectStore,
+  invocation: createUserInvocation(auth),
+  requestId: `draft:${randomUUID()}`,
+  refusalSink: createTrustedRefusalAuditSink(rootDb)
+});
+
+const reviewOptions = async (db: RootDatabase, objectStore: ObjectStore, auth: Parameters<typeof reviewCanonicalValueChange>[1], traceId: string) => {
+  const snapshot = await loadPublishedCatalog(getRootPostgresPool(db)!);
+  if (!snapshot) throw new Error("Published fixture is unavailable");
+  return { objectStore, snapshot, invocation: createUserInvocation(auth), traceId, refusalSink: createTrustedRefusalAuditSink(db) };
+};
+
 describe("canonical pending value drafts", () => {
   let database: EphemeralTestDatabase;
   let root: RootDatabase;
   let pool: pg.Pool;
   let bindingId: string;
   let configRevisionId: string;
-  let objectStore: ReturnType<typeof createMemoryObjectStore>;
+  let storageDirectory: string;
+  let objectStore: ReturnType<typeof createLocalObjectStore>;
   let changeRequestId: string;
   let submittedDraftId: string;
+
+  const submitChange = (auth: Parameters<typeof submitCanonicalValueChange>[1], input: Omit<Parameters<typeof submitCanonicalValueChange>[2], "invocation" | "requestId" | "refusalSink">) =>
+    submitCanonicalValueChange(root, auth, {
+      ...input,
+      invocation: createUserInvocation(auth),
+      requestId: `submit:${randomUUID()}`,
+      refusalSink: createTrustedRefusalAuditSink(root)
+    });
+
+  const reviewChange = (
+    auth: Parameters<typeof reviewCanonicalValueChange>[1],
+    input: Parameters<typeof reviewCanonicalValueChange>[2],
+    options?: Parameters<typeof reviewCanonicalValueChange>[3]
+  ) => reviewCanonicalValueChange(root, auth, input, {
+    invocation: createUserInvocation(auth),
+    traceId: `review:${randomUUID()}`,
+    refusalSink: createTrustedRefusalAuditSink(root),
+    ...options
+  });
+
+  const withdrawChange = (
+    auth: Parameters<typeof withdrawCanonicalValueChange>[1],
+    input: Omit<Parameters<typeof withdrawCanonicalValueChange>[2], "invocation" | "refusalSink" | "traceId">
+  ) => withdrawCanonicalValueChange(root, auth, {
+    ...input,
+    invocation: createUserInvocation(auth),
+    refusalSink: createTrustedRefusalAuditSink(root),
+    traceId: `withdraw:${randomUUID()}`
+  });
 
   const adminAuth = makeTestAuthContext({
     userId: USER,
@@ -201,6 +257,8 @@ describe("canonical pending value drafts", () => {
     database = await createEphemeralTestDatabase("d849dr");
     root = createPostgresDatabase(database.url);
     pool = getRootPostgresPool(root)!;
+    storageDirectory = await mkdtemp(join(tmpdir(), "wiseeff-849-drafts-"));
+    objectStore = createLocalObjectStore(storageDirectory);
     const first = compileOrThrow(firstReleaseBundle());
     const installed = await installPublishedRelease(pool, {
       mode: "bootstrap",
@@ -272,7 +330,6 @@ describe("canonical pending value drafts", () => {
     const versionId = randomUUID();
     // The version row references an object-store key; put the exact bytes so the
     // canonical export can read them back.
-    objectStore = createMemoryObjectStore();
     await objectStore.put({
       organizationId: ORG,
       fileName: "charger.dts",
@@ -320,17 +377,21 @@ describe("canonical pending value drafts", () => {
     const revision = await ingestConfigRevision(root, manifest, adminAuth);
     expect(revision.status).toBe("resolved");
     configRevisionId = revision.id;
+    // Historical empty search paths are effectively ["."], but their raw
+    // historical manifest identity must survive pinning and export.
+    await root.query("update dts_config_revisions set include_search_paths='[]' where id=$1",[revision.id]);
 
+    const syncSnapshot = await loadPublishedCatalog(pool);
+    if (!syncSnapshot) throw new Error("Published fixture is unavailable");
     const written = await withAuditedWrite(root, adminAuth, { requestId: "req-849-drafts-sync" }, async (tx) => {
-      const count = await syncPublishedCatalogProjectValues(
-        pool,
+      const count = await syncPublishedCatalogProjectValuesInTransaction(
+        asValueClient(tx),syncSnapshot,
         {
           organizationId: ORG,
           projectId: PROJECT,
           configSetId: CONFIG_SET,
           configRevisionId: revision.id
-        },
-        asValueClient(tx)
+        }
       );
       return {
         result: count,
@@ -359,6 +420,15 @@ describe("canonical pending value drafts", () => {
   afterAll(async () => {
     await root?.close();
     await database?.drop();
+    if (storageDirectory) await rm(storageDirectory, { recursive: true, force: true });
+  });
+
+  it("exports and reimports a historical empty include-path manifest without normalizing its identity", async () => {
+    const exported = await exportCanonicalBindingSource(root,objectStore,editorAuth,{ projectId: PROJECT,bindingId });
+    expect(exported!.manifest.includeSearchPaths).toEqual([]);
+    expect(await verifyCanonicalSourceReimport(root,objectStore,editorAuth,{ projectId: PROJECT,bindingId,source: exported! })).toEqual(exported);
+    expect((await root.query("select include_search_paths from dts_config_revisions where id=$1",[configRevisionId])).rows)
+      .toEqual([{ include_search_paths: [] }]);
   });
 
   it("creates a pending draft without changing the canonical current value", async () => {
@@ -371,14 +441,14 @@ describe("canonical pending value drafts", () => {
     const valueCountBefore = Number(valuesBefore.rows[0]!.c);
 
     const draft = await withAuditedWrite(root, editorAuth, { requestId: "req-849-draft-create" }, async (tx) => {
-      const created = await createCanonicalValueDraft(tx, editorAuth, {
+      const created = await createPreparedDraft(tx, editorAuth, {
         projectId: PROJECT,
         bindingId,
         action: "set",
         targetValue: targetValue("2000"),
         reason: "raise published input current",
         baseRevisionId: configRevisionId
-      });
+      }, objectStore, root);
       await writeTrustedGovernanceAudit(
         asAuditTx(tx),
         createUserInvocation(editorAuth),
@@ -434,25 +504,25 @@ describe("canonical pending value drafts", () => {
 
   it("rejects a stale base revision, an unknown binding and a cross-project actor", async () => {
     await expect(
-      createCanonicalValueDraft(root, editorAuth, {
+      createPreparedDraft(root, editorAuth, {
         projectId: PROJECT,
         bindingId,
         action: "set",
         targetValue: targetValue("3000"),
         reason: "stale base",
         baseRevisionId: "crev-does-not-exist"
-      })
+      }, objectStore)
     ).rejects.toMatchObject({ code: "CONFLICT", details: { reason: "stale-base-revision" } });
 
     await expect(
-      createCanonicalValueDraft(root, editorAuth, {
+      createPreparedDraft(root, editorAuth, {
         projectId: PROJECT,
         bindingId: "pbind-does-not-exist",
         action: "set",
         targetValue: targetValue("3000"),
         reason: "unknown binding",
         baseRevisionId: configRevisionId
-      })
+      }, objectStore)
     ).rejects.toMatchObject({ code: "NOT_FOUND" });
 
     const otherProjectEditor = makeTestAuthContext({
@@ -461,14 +531,14 @@ describe("canonical pending value drafts", () => {
       roles: [{ projectId: "project-other", roleId: "software-user" }]
     });
     await expect(
-      createCanonicalValueDraft(root, otherProjectEditor, {
+      createPreparedDraft(root, otherProjectEditor, {
         projectId: PROJECT,
         bindingId,
         action: "set",
         targetValue: targetValue("3000"),
         reason: "cross project",
         baseRevisionId: configRevisionId
-      })
+      }, objectStore)
     ).rejects.toMatchObject({ code: "FORBIDDEN" });
 
     expect((await readCurrentValue()).value).toEqual(1000);
@@ -476,16 +546,16 @@ describe("canonical pending value drafts", () => {
 
   it("submits a pending draft into a change request without changing the current value", async () => {
     const before = await readCurrentValue();
-    const draft = await createCanonicalValueDraft(root, editorAuth, {
+    const draft = await createPreparedDraft(root, editorAuth, {
       projectId: PROJECT,
       bindingId,
       action: "set",
       targetValue: targetValue("2500"),
       reason: "submitted pending change",
       baseRevisionId: configRevisionId
-    });
+    }, objectStore);
 
-    const submitted = await submitCanonicalValueChange(root, editorAuth, {
+    const submitted = await submitChange(editorAuth, {
       projectId: PROJECT,
       draftId: draft.id
     });
@@ -502,7 +572,7 @@ describe("canonical pending value drafts", () => {
 
     // A second submission of the same draft is refused while one is open.
     await expect(
-      submitCanonicalValueChange(root, editorAuth, { projectId: PROJECT, draftId: draft.id })
+      submitChange(editorAuth, { projectId: PROJECT, draftId: draft.id })
     ).rejects.toMatchObject({ code: "CONFLICT" });
 
     changeRequestId = submitted.id;
@@ -511,10 +581,17 @@ describe("canonical pending value drafts", () => {
 
   it("refuses self-approval and a non-reviewer approval", async () => {
     await expect(
-      reviewCanonicalValueChange(root, editorAuth, {
+      reviewChange(editorAuth, {
         projectId: PROJECT,
         requestId: changeRequestId,
         decision: "approve"
+      })
+    ).rejects.toMatchObject({ code: "FORBIDDEN" });
+    await expect(
+      reviewChange(editorAuth, {
+        projectId: PROJECT,
+        requestId: changeRequestId,
+        decision: "reject"
       })
     ).rejects.toMatchObject({ code: "FORBIDDEN" });
 
@@ -523,8 +600,9 @@ describe("canonical pending value drafts", () => {
       organizationId: ORG,
       roles: [{ projectId: PROJECT, roleId: "software-user" }]
     });
+    await pool.query(`insert into users(id,organization_id,name,title,is_active) values ($1,$2,'Plain editor','Engineer',true)`, [plainEditor.user.id,ORG]);
     await expect(
-      reviewCanonicalValueChange(root, plainEditor, {
+      reviewChange(plainEditor, {
         projectId: PROJECT,
         requestId: changeRequestId,
         decision: "approve"
@@ -534,6 +612,15 @@ describe("canonical pending value drafts", () => {
     expect((await readCurrentValue()).value).toEqual(1000);
   });
 
+  it("requires an assigned reviewer to be an active project software committer", async () => {
+    const draft = (await listCanonicalValueDraftsForUser(root,editorAuth,{ projectId: PROJECT }))[0]!;
+    await expect(submitChange(editorAuth, {
+      projectId: PROJECT,
+      draftId: draft.id,
+      assignedToUserId: "missing-or-ineligible-reviewer"
+    })).rejects.toMatchObject({ code: "VALIDATION_FAILED" });
+  });
+
   it("approves and applies through the canonical owner in one transaction", async () => {
     const before = await readCurrentValue();
     const historyBefore = await pool.query<{ c: string }>(
@@ -541,12 +628,12 @@ describe("canonical pending value drafts", () => {
       [bindingId]
     );
 
-    const applied = await reviewCanonicalValueChange(root, reviewerAuth, {
+    const applied = await reviewChange(reviewerAuth, {
       projectId: PROJECT,
       requestId: changeRequestId,
       decision: "approve",
       note: "reviewed and applied"
-    });
+    }, await reviewOptions(root, objectStore, reviewerAuth, "req-849-approve"));
 
     expect(applied.status).toBe("approved");
     expect(applied.applyOutcome).toBe("committed");
@@ -578,7 +665,8 @@ describe("canonical pending value drafts", () => {
     expect(exported).not.toBeNull();
     expect(exported!.bindingId).toBe(bindingId);
     expect(exported!.currentValueId).toBe(current.current_value_id);
-    expect(exported!.configRevisionId).toBe(configRevisionId);
+    expect(exported!.configRevisionId).toBe(current.config_revision_id);
+    expect(exported!.configRevisionId).not.toBe(configRevisionId);
     const bindingRow = await pool.query<{ effective_revision_id: string }>(
       `select effective_revision_id from parameter_catalog.project_parameter_bindings where id = $1`,
       [bindingId]
@@ -590,18 +678,21 @@ describe("canonical pending value drafts", () => {
     expect(exported!.sourceRef).toBe("charger.dts!/charger");
     expect(exported!.configSetId).toBe(CONFIG_SET);
     expect(exported!.files).toHaveLength(1);
+    expect(exported!.manifest.includeSearchPaths).toEqual(["."]);
 
     const file = exported!.files[0]!;
     expect(file.name).toBe("charger.dts");
     expect(file.format).toBe("dts");
     // The exported bytes are the stored source, not a re-render of the value.
-    expect(file.content).toBe(DTS);
+    expect(file.content).toBe(DTS.replace("<1000>", "<2500>"));
 
     // Reimport fidelity: the exported bytes parse back to the same declared value.
     const reimported = resolveDts(parseDts(file.content));
     const node = reimported.nodes.find((entry) => entry.nodePath === "charger");
     expect(node, file.content).toBeDefined();
     expect((node?.properties ?? []).map((property) => property.name)).toContain("iin_max");
+    expect(node?.properties.find((property) => property.name === "iin_max")?.rawText).toBe("<2500>");
+    expect(await verifyCanonicalSourceReimport(root,objectStore,editorAuth,{ projectId: PROJECT,bindingId,source: exported! })).toEqual(exported);
 
     // An unknown or foreign binding is reported as absent, never as an empty export.
     expect(
@@ -664,11 +755,11 @@ describe("canonical pending value drafts", () => {
       [bindingId]
     );
 
-    const replay = await reviewCanonicalValueChange(root, reviewerAuth, {
+    const replay = await reviewChange(reviewerAuth, {
       projectId: PROJECT,
       requestId: changeRequestId,
       decision: "approve"
-    });
+    }, await reviewOptions(root, objectStore, reviewerAuth, "req-849-replay"));
     expect(replay.status).toBe("approved");
     expect(replay.appliedValueId).toBe(before.current_value_id);
 
@@ -681,52 +772,42 @@ describe("canonical pending value drafts", () => {
   });
 
   it("rejects a stale base value at approve and leaves the value unchanged", async () => {
-    const staleDraft = await createCanonicalValueDraft(root, editorAuth, {
+    const staleDraft = await createPreparedDraft(root, editorAuth, {
       projectId: PROJECT,
       bindingId,
       action: "set",
       targetValue: targetValue("2600"),
       reason: "will go stale",
-      baseRevisionId: configRevisionId
-    });
-    const staleRequest = await submitCanonicalValueChange(root, editorAuth, {
+      baseRevisionId: (await readCurrentValue()).config_revision_id
+    }, objectStore);
+    const staleRequest = await submitChange(editorAuth, {
       projectId: PROJECT,
       draftId: staleDraft.id
     });
 
-    // A concurrent legitimate write advances the canonical tip behind the request.
-    // Copy the binding's own current tip (never an arbitrary value row) so the
-    // probe carries a concrete config-set source and revision.
-    await pool.query(
-      `
-      insert into parameter_catalog.project_parameter_values (
-        id, binding_id, definition_id, definition_revision_id, source_ref,
-        config_revision_id, value_digest, value_kind, value
-      )
-      select 'pv-concurrent-849', value.binding_id, value.definition_id,
-             value.definition_revision_id, value.source_ref,
-             value.config_revision_id, 'digest-concurrent-849', value.value_kind, value.value
-        from parameter_catalog.project_parameter_bindings binding
-        join parameter_catalog.project_parameter_values value
-          on value.id = binding.current_value_id
-       where binding.id = $1
-      `,
-      [bindingId]
-    );
-    await pool.query(
-      `update parameter_catalog.project_parameter_bindings
-          set current_value_id = 'pv-concurrent-849'
-        where id = $1`,
-      [bindingId]
-    );
+    // Another editor's fully reviewed source change wins; no unpinned SQL value
+    // insertion can stand in for a legitimate concurrent source commit.
+    const otherEditor = makeTestAuthContext({ userId: "user-849-other-editor", organizationId: ORG,
+      roles: [{ projectId: PROJECT, roleId: "software-user" }] });
+    await pool.query(`insert into users(id,organization_id,name,title,is_active) values ($1,$2,'Other editor','Engineer',true)`, [otherEditor.user.id,ORG]);
+    const otherDraft = await createPreparedDraft(root, otherEditor, {
+      projectId: PROJECT, bindingId, action: "set", targetValue: targetValue("2550"),
+      reason: "concurrent approved source change", baseRevisionId: (await readCurrentValue()).config_revision_id,
+    }, objectStore);
+    const otherRequest = await submitChange(otherEditor, { projectId: PROJECT, draftId: otherDraft.id });
+    await reviewChange(reviewerAuth, { projectId: PROJECT, requestId: otherRequest.id, decision: "approve" },
+      await reviewOptions(root, objectStore, reviewerAuth, "req-849-concurrent"));
+    const concurrentValue = await readCurrentValue();
+    expect(concurrentValue.value).toBe(2550);
 
     await expect(
-      reviewCanonicalValueChange(root, reviewerAuth, {
+      reviewChange(reviewerAuth, {
         projectId: PROJECT,
         requestId: staleRequest.id,
         decision: "approve"
-      })
+      }, await reviewOptions(root, objectStore, reviewerAuth, "req-849-stale"))
     ).rejects.toMatchObject({ code: "CONFLICT", details: { reason: "stale-base-value" } });
+    expect(await readCurrentValue()).toEqual(concurrentValue);
 
     const stillPending = await listCanonicalValueChangesForAuth(root, editorAuth, {
       projectId: PROJECT,
@@ -736,27 +817,61 @@ describe("canonical pending value drafts", () => {
 
     // A stale request must be resubmitted, not force-overwritten; close it so the
     // next scenario starts from a clean open-request state.
-    const cleaned = await withdrawCanonicalValueChange(root, editorAuth, {
+    const cleaned = await withdrawChange(editorAuth, {
       projectId: PROJECT,
       requestId: staleRequest.id
     });
     expect(cleaned.status).toBe("withdrawn");
   });
 
+  it("submission waits for source locks before locking the draft, avoiding an editor-submit deadlock", async () => {
+    const draft = await createPreparedDraft(root, editorAuth, {
+      projectId: PROJECT,bindingId,action: "set",targetValue: targetValue("2650"),reason: "lock order",
+      baseRevisionId: (await readCurrentValue()).config_revision_id,
+    },objectStore);
+    const editor = await pool.connect();
+    let submitted: ReturnType<typeof submitCanonicalValueChange> | undefined;
+    try {
+      await editor.query("begin");
+      const pid = (await editor.query(`select pg_backend_pid() as pid`)).rows[0]!.pid;
+      await editor.query(`select id from dts_config_set where id=$1 for update`, [CONFIG_SET]);
+      await editor.query(`select id from parameter_catalog.project_parameter_bindings where id=$1 for update`, [bindingId]);
+      submitted = submitChange(editorAuth,{ projectId: PROJECT,draftId: draft.id });
+      void submitted.catch(() => undefined);
+      let waiting = false;
+      for (let attempt = 0; attempt < 100 && !waiting; attempt++) {
+        waiting = (await pool.query(`select exists(select 1 from pg_stat_activity
+          where datname=current_database() and $1=any(pg_blocking_pids(pid))) as waiting`, [pid])).rows[0]!.waiting;
+        if (!waiting) await delay(10);
+      }
+      expect(waiting).toBe(true);
+      // The source editor must still be able to lock its draft while submit is
+      // waiting. Inverted draft-first locking fails NOWAIT with 55P03.
+      await editor.query(`select id from project_parameter_value_drafts where id=$1 for update nowait`, [draft.id]);
+    } finally {
+      await editor.query("rollback");
+      editor.release();
+      if (submitted) {
+        const request = await submitted;
+        await withdrawChange(editorAuth,{ projectId: PROJECT,requestId: request.id });
+      }
+    }
+  });
+
   it("rejects and withdraws without writing a value", async () => {
-    const rejectedDraft = await createCanonicalValueDraft(root, editorAuth, {
+    const rejectedDraft = await createPreparedDraft(root, editorAuth, {
       projectId: PROJECT,
       bindingId,
       action: "set",
       targetValue: targetValue("2700"),
       reason: "to be rejected",
-      baseRevisionId: configRevisionId
-    });
-    const rejectedRequest = await submitCanonicalValueChange(root, editorAuth, {
+      baseRevisionId: (await readCurrentValue()).config_revision_id
+    }, objectStore);
+    const rejectedRequest = await submitChange(editorAuth, {
       projectId: PROJECT,
       draftId: rejectedDraft.id
     });
-    const rejected = await reviewCanonicalValueChange(root, reviewerAuth, {
+    const rejected = await reviewChange(reviewerAuth, {
       projectId: PROJECT,
       requestId: rejectedRequest.id,
       decision: "reject",
@@ -771,25 +886,25 @@ describe("canonical pending value drafts", () => {
       )
     ).toBe(true);
 
-    const withdrawnDraft = await createCanonicalValueDraft(root, editorAuth, {
+    const withdrawnDraft = await createPreparedDraft(root, editorAuth, {
       projectId: PROJECT,
       bindingId,
       action: "set",
       targetValue: targetValue("2800"),
       reason: "to be withdrawn",
-      baseRevisionId: configRevisionId
-    });
-    const withdrawnRequest = await submitCanonicalValueChange(root, editorAuth, {
+      baseRevisionId: (await readCurrentValue()).config_revision_id
+    }, objectStore);
+    const withdrawnRequest = await submitChange(editorAuth, {
       projectId: PROJECT,
       draftId: withdrawnDraft.id
     });
     await expect(
-      withdrawCanonicalValueChange(root, reviewerAuth, {
+      withdrawChange(reviewerAuth, {
         projectId: PROJECT,
         requestId: withdrawnRequest.id
       })
     ).rejects.toMatchObject({ code: "FORBIDDEN" });
-    const withdrawn = await withdrawCanonicalValueChange(root, editorAuth, {
+    const withdrawn = await withdrawChange(editorAuth, {
       projectId: PROJECT,
       requestId: withdrawnRequest.id
     });

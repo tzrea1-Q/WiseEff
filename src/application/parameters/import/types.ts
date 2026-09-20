@@ -10,7 +10,8 @@ export type ImportReviewStatus =
   | "skipped"
   | "needs-module"
   | "conflict"
-  | "new-confirmed";
+  | "new-confirmed"
+  | "unmatched";
 
 export type ParsedImportRow = {
   name: string;

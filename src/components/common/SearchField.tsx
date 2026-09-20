@@ -105,7 +105,7 @@ export const SearchField = forwardRef<HTMLInputElement, SearchFieldProps>(functi
       />
       {loading ? <LoaderCircle className="search-field__spinner" size={14} aria-hidden="true" /> : null}
       {showClear ? (
-        <button type="button" className="search-field__clear" aria-label="清除搜索" onClick={clear}>
+        <button type="button" className="search-field__clear" aria-label="清空输入" onClick={clear}>
           <X size={14} aria-hidden="true" />
         </button>
       ) : null}

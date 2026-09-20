@@ -1,4 +1,5 @@
 import type { Queryable } from "../../shared/database/client";
+import { ApiError } from "../../shared/http/errors";
 import type {
   InsertFileVersionInput,
   InsertProjectParameterFileInput,
@@ -236,10 +237,26 @@ export async function insertFileVersion(
   return toVersionDto(result.rows[0]);
 }
 
+/** Fence legacy source or membership changes against canonical initialization/apply. */
+export async function assertLegacySourceMutationAllowed(db: Queryable, fileId: string | string[], destinationConfigSetId?: string): Promise<void> {
+  const fileIds = [...new Set(typeof fileId === "string" ? [fileId] : fileId)].sort();
+  const before = await db.query<{ id: string; config_set_id: string | null }>(`select id,config_set_id from project_parameter_files where id=any($1::text[]) order by id`, [fileIds]);
+  const setIds = [...new Set([...before.rows.map((row) => row.config_set_id),destinationConfigSetId].filter((id): id is string => Boolean(id)))].sort();
+  await db.query(`select id from dts_config_set where id=any($1::text[]) order by id for update`, [setIds]);
+  const locked = await db.query<{ id: string; config_set_id: string | null }>(`select id,config_set_id from project_parameter_files where id=any($1::text[]) order by id for update`, [fileIds]);
+  if (JSON.stringify(before.rows) !== JSON.stringify(locked.rows)) throw new ApiError("CONFLICT", "Source membership changed during mutation.");
+  const canonical = await db.query(
+    `select 1 from parameter_catalog.project_parameter_source_occurrences where file_id=any($1::text[]) or config_set_id=any($2::text[]) limit 1`,
+    [fileIds,setIds],
+  );
+  if (canonical.rows.length) throw new ApiError("CONFLICT", "Canonical source changes require a prepared and approved source transaction.");
+}
+
 export async function setCurrentVersion(
   db: Queryable,
   input: { fileId: string; versionId: string }
 ): Promise<void> {
+  await assertLegacySourceMutationAllowed(db,input.fileId);
   await db.query(
     `
     update project_parameter_files

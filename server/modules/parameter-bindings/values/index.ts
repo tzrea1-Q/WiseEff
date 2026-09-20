@@ -4,6 +4,12 @@ export {
   isReplacedCurrentBinding,
   mutateExistingProjectValue,
   readProjectValueHistory,
+  requiresCanonicalSourceImport,
+  discoverCurrentSourceRevisionPins,
+  loadSourceBindingCohort,
+  loadOwnedProjectValueSourcePin,
+  isCurrentGovernedSourceValue,
+  loadSourceValueReplay,
 } from "./service";
 export type { ProjectValueService } from "./service";
 export type {
@@ -20,3 +26,4 @@ export type {
 } from "./types";
 export { THREAT_MATRIX } from "./threatMatrix";
 export type { ThreatMatrixRow } from "./threatMatrix";
+export type { CanonicalValueSourcePin, CanonicalSourceBindingPin } from "./types";

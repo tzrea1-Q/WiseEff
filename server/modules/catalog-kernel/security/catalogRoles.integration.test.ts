@@ -6,6 +6,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
   privilegeVerificationFailureCodes,
   privilegeVerificationGateIds,
+  serializeContract,
 } from "../../parameter-catalog-contract";
 import { applyMigrations } from "../../../shared/database/migrations";
 import {
@@ -40,6 +41,15 @@ import {
   PUBLICATION_MIGRATION,
   ROLES_MIGRATION,
   SCHEMA_MIGRATION,
+  SOURCE_OCCURRENCE_MIGRATION,
+  PINNED_SOURCE_GRAPH_MIGRATION,
+  SOURCE_OCCURRENCE_INTEGRITY_MIGRATION,
+  PLANE_DISPOSAL_RESIDUE_MIGRATION,
+  PLANE_DISPOSAL_GRANTS_MIGRATION,
+  PLANE_DISPOSAL_DISPOSER_ACL_MIGRATION,
+  PLANE_DISPOSAL_REGENERABLE_GRANTS_MIGRATION,
+  PLANE_DISPOSAL_ALLOWS_DELETE_ACL_MIGRATION,
+  PLANE_DISPOSAL_DEFINER_SELECT_MIGRATION,
   VERIFICATION_MIGRATION,
   VERIFICATION_RELATIONS,
   SYNCHRONIZER_EXECUTE_FUNCTION_NAMES,
@@ -187,6 +197,16 @@ type CanonicalDriverFixture = {
   canonicalKey: string;
   registrationId: string;
   placementId: string;
+  configSetId: string;
+  fileId: string;
+  fileVersionId: string;
+  configRevisionId: string;
+  logicalNodeId: string;
+  logicalNodeRevisionId: string;
+  nodeOccurrenceId: string;
+  propertyOccurrenceId: string;
+  sourceOccurrenceId: string;
+  sourcePinId: string;
   definitionId: string;
   revisionId: string;
   bindingId: string;
@@ -218,6 +238,16 @@ function canonicalDriverFixture(suffix: string, releaseSequence: number): Canoni
     canonicalKey: `s2r${suffix},driver`,
     registrationId: `reg-s2r-${suffix}`,
     placementId: `place-s2r-${suffix}`,
+    configSetId: `dcs-s2r-${suffix}`,
+    fileId: `file-s2r-${suffix}`,
+    fileVersionId: `fver-s2r-${suffix}`,
+    configRevisionId: `crev-s2r-${suffix}`,
+    logicalNodeId: `logical-s2r`,
+    logicalNodeRevisionId: `lnrev-s2r-${suffix}`,
+    nodeOccurrenceId: `node-occ-s2r-${suffix}`,
+    propertyOccurrenceId: `prop-occ-s2r-${suffix}`,
+    sourceOccurrenceId: `src-occ-s2r-${suffix}`,
+    sourcePinId: `spin-s2r-${suffix}`,
     definitionId: `pdef-s2r-${suffix}`,
     revisionId: `drev-s2r-${suffix}`,
     bindingId: `bind-s2r-${suffix}`,
@@ -298,6 +328,83 @@ async function commitCanonicalDriverCatalog(
 
   if (options.includeBinding) {
     statements.push(
+      `insert into public.dts_config_set (
+         id, organization_id, project_id, name
+       ) values (
+         ${sqlText(fixture.configSetId)}, ${sqlText(fixture.orgId)},
+         ${sqlText(fixture.projectId)}, 's2r-source'
+       )`,
+      `insert into public.project_parameter_files (
+         id, organization_id, project_id, file_name, format, config_set_id, config_set_role
+       ) values (
+         ${sqlText(fixture.fileId)}, ${sqlText(fixture.orgId)}, ${sqlText(fixture.projectId)},
+         'source-s2r.dts', 'dts', ${sqlText(fixture.configSetId)}, 'base'
+       )`,
+      `insert into public.project_parameter_file_versions (
+         id, file_id, version_number, storage_key, checksum, size_bytes, origin
+       ) values (
+         ${sqlText(fixture.fileVersionId)}, ${sqlText(fixture.fileId)}, 1,
+         ${sqlText(`source-s2r/${fixture.releaseVersion}`)},
+         ${sqlText(`sha256:${fixture.releaseVersion}-file`)}, 1, 'upload'
+       )`,
+      `update public.project_parameter_files
+          set current_version_id = ${sqlText(fixture.fileVersionId)}
+        where id = ${sqlText(fixture.fileId)}`,
+      `insert into public.dts_config_revisions (
+         id, organization_id, project_id, config_set_id, revision_number, status
+       ) values (
+         ${sqlText(fixture.configRevisionId)}, ${sqlText(fixture.orgId)},
+         ${sqlText(fixture.projectId)}, ${sqlText(fixture.configSetId)}, 1, 'resolved'
+       )`,
+      `insert into public.dts_config_revision_members (
+         id, config_revision_id, file_id, file_version_id, role, sort_order, source_name
+       ) values (
+         ${sqlText(`member-s2r-${fixture.releaseVersion}`)},
+         ${sqlText(fixture.configRevisionId)}, ${sqlText(fixture.fileId)},
+         ${sqlText(fixture.fileVersionId)}, 'base', 0, 'source-s2r.dts'
+       )`,
+      `insert into public.dts_logical_nodes (
+         id, organization_id, project_id, config_set_id
+       ) values (
+         ${sqlText(fixture.logicalNodeId)}, ${sqlText(fixture.orgId)},
+         ${sqlText(fixture.projectId)}, ${sqlText(fixture.configSetId)}
+       )`,
+      `insert into public.dts_logical_node_revisions (
+         id, logical_node_id, config_revision_id, node_locator, name, compatible
+       ) values (
+         ${sqlText(fixture.logicalNodeRevisionId)}, ${sqlText(fixture.logicalNodeId)},
+         ${sqlText(fixture.configRevisionId)}, '/s2r', 's2r', 's2r,fixture'
+       )`,
+      `insert into public.dts_node_occurrences (
+         id, config_revision_id, file_version_id, name, node_path,
+         start_offset, end_offset, start_line, start_column, end_line, end_column, raw_text
+       ) values (
+         ${sqlText(fixture.nodeOccurrenceId)}, ${sqlText(fixture.configRevisionId)},
+         ${sqlText(fixture.fileVersionId)}, 's2r', '/s2r', 0, 10, 1, 1, 1, 10, 's2r'
+       )`,
+      `insert into public.dts_property_occurrences (
+         id, config_revision_id, node_occurrence_id, file_version_id, property_name,
+         start_offset, end_offset, start_line, start_column, end_line, end_column, raw_text
+       ) values (
+         ${sqlText(fixture.propertyOccurrenceId)}, ${sqlText(fixture.configRevisionId)},
+         ${sqlText(fixture.nodeOccurrenceId)}, ${sqlText(fixture.fileVersionId)},
+         'iin_max', 1, 2, 1, 2, 1, 3, '1'
+       )`,
+      `insert into public.dts_occurrence_effects (
+         id, config_revision_id, logical_node_revision_id, property_occurrence_id,
+         node_occurrence_id, property_name, effect_kind, source_order
+       ) values (
+         ${sqlText(`effect-s2r-${fixture.releaseVersion}`)}, ${sqlText(fixture.configRevisionId)},
+         ${sqlText(fixture.logicalNodeRevisionId)}, ${sqlText(fixture.propertyOccurrenceId)},
+         ${sqlText(fixture.nodeOccurrenceId)}, 'iin_max', 'set', 0
+       )`,
+      `insert into parameter_catalog.project_parameter_source_occurrences (
+         id, organization_id, project_id, config_set_id, file_id, occurrence_kind, logical_node_id
+       ) values (
+         ${sqlText(fixture.sourceOccurrenceId)}, ${sqlText(fixture.orgId)},
+         ${sqlText(fixture.projectId)}, ${sqlText(fixture.configSetId)},
+         ${sqlText(fixture.fileId)}, 'dts', ${sqlText(fixture.logicalNodeId)}
+       )`,
       `insert into parameter_catalog.parameter_definitions (
          id, introduced_release_id, subject_id, property_key, current_revision_id
        ) values (
@@ -326,19 +433,38 @@ async function commitCanonicalDriverCatalog(
        )`,
       `insert into parameter_catalog.project_parameter_bindings (
          id, organization_id, catalog_release_id, project_id, logical_node_id, registration_id,
-         subject_id, definition_id, effective_revision_id, current_value_id
+         subject_id, definition_id, effective_revision_id, current_value_id, source_occurrence_id
        ) values (
          ${sqlText(fixture.bindingId)}, ${sqlText(fixture.orgId)}, ${sqlText(fixture.releaseId)},
-         ${sqlText(fixture.projectId)}, 'logical-s2r', ${sqlText(fixture.registrationId)},
+         ${sqlText(fixture.projectId)}, ${sqlText(fixture.logicalNodeId)}, ${sqlText(fixture.registrationId)},
          ${sqlText(fixture.subjectId)}, ${sqlText(fixture.definitionId)},
-         ${sqlText(fixture.revisionId)}, ${sqlText(fixture.valueId)}
+         ${sqlText(fixture.revisionId)}, ${sqlText(fixture.valueId)}, ${sqlText(fixture.sourceOccurrenceId)}
        )`,
       `insert into parameter_catalog.project_parameter_values (
          id, binding_id, definition_id, definition_revision_id,
          source_ref, config_revision_id, value_digest, value_kind, value
        ) values (
          ${sqlText(fixture.valueId)}, ${sqlText(fixture.bindingId)}, ${sqlText(fixture.definitionId)},
-         ${sqlText(fixture.revisionId)}, 'source-s2r', 'config-s2r', 'sha256:s2r-value', 'number', '1'
+         ${sqlText(fixture.revisionId)}, 'source-s2r', ${sqlText(fixture.configRevisionId)},
+         'sha256:s2r-value', 'number', '1'
+       )`,
+      `insert into parameter_catalog.project_value_source_pins (
+         id, project_value_id, binding_id, definition_id, organization_id, project_id,
+         source_occurrence_id, config_revision_id, file_id, file_version_id, format,
+         property_occurrence_id, locator, locator_digest
+       ) values (
+         ${sqlText(fixture.sourcePinId)}, ${sqlText(fixture.valueId)}, ${sqlText(fixture.bindingId)},
+         ${sqlText(fixture.definitionId)}, ${sqlText(fixture.orgId)}, ${sqlText(fixture.projectId)},
+         ${sqlText(fixture.sourceOccurrenceId)}, ${sqlText(fixture.configRevisionId)},
+         ${sqlText(fixture.fileId)}, ${sqlText(fixture.fileVersionId)}, 'dts',
+         ${sqlText(fixture.propertyOccurrenceId)},
+         ${sqlText(JSON.stringify({
+           kind: "dts-property",
+           propertyOccurrenceId: fixture.propertyOccurrenceId,
+           nodeOccurrenceId: fixture.nodeOccurrenceId,
+           fileVersionId: fixture.fileVersionId,
+           propertyName: "iin_max",
+         }))}::jsonb, 'sha256:s2r-source-pin'
        )`,
     );
   }
@@ -886,17 +1012,37 @@ describe("canonical Catalog roles, grants, and guard reachability", () => {
     });
 
     await withLocalRole(client, PARAMETER_GOVERNANCE_WRITER_ROLE, async () => {
+      const sourceLocator = JSON.stringify({
+        kind: "dts-property",
+        propertyOccurrenceId: fixture.propertyOccurrenceId,
+        nodeOccurrenceId: fixture.nodeOccurrenceId,
+        fileVersionId: fixture.fileVersionId,
+        propertyName: "iin_max",
+      });
+      const locatorDigest = `sha256:${createHash("sha256").update(serializeContract(JSON.parse(sourceLocator))).digest("hex")}`;
       const observation = await client.query(
         `
         insert into parameter_catalog.parameter_observations (
           id, organization_id, project_id, logical_node_id, config_revision_id,
-          source_identity, source_locator, catalog_release_id, matcher_revision, evidence_fingerprint
+          source_identity, source_locator, catalog_release_id, matcher_revision, evidence_fingerprint,
+          source_occurrence_id, parameter_locator_digest
         ) values (
-          $1, $2, $3, 'logical-s2r', 'config-s2r-match',
-          'source-s2r-match', '{}', $4, 'matcher-s2r', 'sha256:s2r-match-obs'
+          $1, $2, $3, $4, $5,
+          'source-s2r-match', $6::jsonb, $7, 'matcher-s2r', 'sha256:s2r-match-obs',
+          $8, $9
         )
         `,
-        ["pobs-s2r-match", fixture.orgId, fixture.projectId, fixture.releaseId],
+        [
+          "pobs-s2r-match",
+          fixture.orgId,
+          fixture.projectId,
+          fixture.logicalNodeId,
+          fixture.configRevisionId,
+          sourceLocator,
+          fixture.releaseId,
+          fixture.sourceOccurrenceId,
+          locatorDigest,
+        ],
       );
       expect(observation.rowCount).toBe(1);
 
@@ -905,22 +1051,25 @@ describe("canonical Catalog roles, grants, and guard reachability", () => {
         insert into parameter_catalog.parameter_observation_matches (
           id, observation_id, organization_id, project_id, logical_node_id,
           registration_id, subject_id, definition_id, definition_revision_id, binding_id,
-          catalog_release_id, matcher_revision
+          catalog_release_id, matcher_revision, source_occurrence_id, parameter_locator_digest
         ) values (
-          'pmatch-s2r-match', 'pobs-s2r-match', $1, $2, 'logical-s2r',
-          $3, $4, $5, $6, $7,
-          $8, 'matcher-s2r'
+          'pmatch-s2r-match', 'pobs-s2r-match', $1, $2, $3,
+          $4, $5, $6, $7, $8,
+          $9, 'matcher-s2r', $10, $11
         )
         `,
         [
           fixture.orgId,
           fixture.projectId,
+          fixture.logicalNodeId,
           fixture.registrationId,
           fixture.subjectId,
           fixture.definitionId,
           fixture.revisionId,
           fixture.bindingId,
           fixture.releaseId,
+          fixture.sourceOccurrenceId,
+          locatorDigest,
         ],
       );
       expect(match.rowCount).toBe(1);
@@ -1201,7 +1350,7 @@ describe("0138 Catalog role migration paths", () => {
     );
   }, 120_000);
 
-  it("T13: fresh current schema and the stepwise 0137-to-0144 upgrade produce the same ACL fingerprint", async () => {
+  it("T13: fresh current schema and the stepwise 0137-to-0159 upgrade produce the same ACL fingerprint", async () => {
     let fresh = "";
     let upgrade = "";
 
@@ -1231,6 +1380,33 @@ describe("0138 Catalog role migration paths", () => {
         });
         await applyMigrations(db, migrationsDir, {
           through: CONFIGURATION_SCHEMA_MIGRATION,
+        });
+        await applyMigrations(db, migrationsDir, {
+          through: SOURCE_OCCURRENCE_MIGRATION,
+        });
+        await applyMigrations(db, migrationsDir, {
+          through: PINNED_SOURCE_GRAPH_MIGRATION,
+        });
+        await applyMigrations(db, migrationsDir, {
+          through: SOURCE_OCCURRENCE_INTEGRITY_MIGRATION,
+        });
+        await applyMigrations(db, migrationsDir, {
+          through: PLANE_DISPOSAL_RESIDUE_MIGRATION,
+        });
+        await applyMigrations(db, migrationsDir, {
+          through: PLANE_DISPOSAL_GRANTS_MIGRATION,
+        });
+        await applyMigrations(db, migrationsDir, {
+          through: PLANE_DISPOSAL_DISPOSER_ACL_MIGRATION,
+        });
+        await applyMigrations(db, migrationsDir, {
+          through: PLANE_DISPOSAL_REGENERABLE_GRANTS_MIGRATION,
+        });
+        await applyMigrations(db, migrationsDir, {
+          through: PLANE_DISPOSAL_ALLOWS_DELETE_ACL_MIGRATION,
+        });
+        await applyMigrations(db, migrationsDir, {
+          through: PLANE_DISPOSAL_DEFINER_SELECT_MIGRATION,
         });
         upgrade = await aclFingerprint(db);
       },

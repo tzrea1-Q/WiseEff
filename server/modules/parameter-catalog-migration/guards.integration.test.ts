@@ -37,7 +37,11 @@ const withHarness = async (fn: (harness: MigrationHarness) => Promise<void>): Pr
   }
 };
 
-const seed = async (harness: MigrationHarness, projectIds: readonly string[]) => {
+const seed = async (
+  harness: MigrationHarness,
+  projectIds: readonly string[],
+  propertyKey?: string,
+) => {
   await harness.seedOrganization(ORG);
   for (const projectId of projectIds) {
     await harness.seedProject(ORG, projectId, projectId);
@@ -55,6 +59,7 @@ const seed = async (harness: MigrationHarness, projectIds: readonly string[]) =>
       logicalNodeId: `ln-${index}`,
       registrationId,
       sources: [{ sourceRef: `config/g${index}.dts`, configRevisionId: `crev-${index}` }],
+      propertyKeys: propertyKey ? [propertyKey] : undefined,
       values: [5 + index],
     });
   }
@@ -97,7 +102,7 @@ const runReplacement = async (
 describe("definition replacement guards", () => {
   it("RC-02 and RC-03 replay the same key and reject the same key with a different body", async () => {
     await withHarness(async (harness) => {
-      await seed(harness, [P1]);
+      await seed(harness, [P1], "iin_replay");
       const first = await runReplacement(harness, {
         propertyKey: "iin_replay",
         projectIds: [P1],
@@ -164,7 +169,7 @@ describe("definition replacement guards", () => {
 
   it("RC-04, RC-05 and RC-06 replay continue, stay idempotent when nothing is blocked and refuse a project outside the manifest", async () => {
     await withHarness(async (harness) => {
-      await seed(harness, [P1, P2]);
+      await seed(harness, [P1, P2], "iin_continue");
       const created = await runReplacement(harness, {
         propertyKey: "iin_continue",
         projectIds: [P1, P2],
@@ -233,7 +238,7 @@ describe("definition replacement guards", () => {
 
   it("IV-03 admits exactly one non-failed successor per old definition", async () => {
     await withHarness(async (harness) => {
-      await seed(harness, [P1]);
+      await seed(harness, [P1], "iin_successor_slot");
       const created = await runReplacement(harness, {
         propertyKey: "iin_successor_slot",
         projectIds: [P1],
@@ -275,7 +280,7 @@ describe("definition replacement guards", () => {
 
   it("IV-05 rejects a value naming a replaced current binding at the database layer", async () => {
     await withHarness(async (harness) => {
-      await seed(harness, [P1]);
+      await seed(harness, [P1], "iin_old_write");
       const created = await runReplacement(harness, {
         propertyKey: "iin_old_write",
         projectIds: [P1],
@@ -312,7 +317,7 @@ describe("definition replacement guards", () => {
 
   it("TN-04 rejects a manifest row whose binding belongs to another project or organization", async () => {
     await withHarness(async (harness) => {
-      await seed(harness, [P1, P2]);
+      await seed(harness, [P1, P2], "iin_tenant");
       const created = await runReplacement(harness, {
         propertyKey: "iin_tenant",
         projectIds: [P1],
@@ -352,7 +357,7 @@ describe("definition replacement guards", () => {
 
   it("IV-09 and IV-10 expose an organization-wide retirement evidence count and never prove completion from a scoped manifest", async () => {
     await withHarness(async (harness) => {
-      await seed(harness, [P1, P2]);
+      await seed(harness, [P1, P2], "iin_retire");
       const created = await runReplacement(harness, {
         propertyKey: "iin_retire",
         projectIds: [P1],
@@ -395,7 +400,7 @@ describe("definition replacement guards", () => {
 
   it("TN-03, AU-03 and ST-04 refuse the write for a non-organization-admin or changed trusted context", async () => {
     await withHarness(async (harness) => {
-      await seed(harness, [P1]);
+      await seed(harness, [P1], "iin_authz");
       const base = {
         organizationId: ORG,
         oldDefinitionId: PREDECESSOR_DEFINITION_ID,

@@ -137,7 +137,13 @@ export async function syncFileVersion(
       parameterDefinitionId: resolved.definitionOrSpecId,
       fileVersionId: version.id,
       fileDraftId: fileDraft.id,
-      fileValue: targetValue
+      fileValue: targetValue,
+      ...(semantic
+        ? {
+            projectParameterBindingId: resolved.id,
+            parameterSpecId: resolved.definitionOrSpecId
+          }
+        : {})
     });
     openedConflicts.push(...opened);
   }

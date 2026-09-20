@@ -114,12 +114,13 @@ class Parser {
     if (tok.value === "/include/") {
       const argTok = this.expect("string", "/include/ requires a string argument");
       const arg = argTok.value.slice(1, -1);
+      const end = this.check("semi") ? this.advance().span.end : argTok.span.end;
       return {
         kind: "directive",
         name: tok.value,
         arg,
         unsupported: true,
-        span: { start: tok.span.start, end: argTok.span.end },
+        span: { start: tok.span.start, end },
       };
     }
     // /dts-v1/; /plugin/; trailing semi is typical

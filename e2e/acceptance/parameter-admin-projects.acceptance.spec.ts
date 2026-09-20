@@ -13,6 +13,7 @@ import { seedAcceptanceRoleMatrix } from "./helpers/roleFixtures";
 import { apiRoute } from "./helpers/runtime";
 
 useBrowserDiagnostics(test);
+test.use({ viewport: { width: 1440, height: 900 } });
 
 const adminHeaders = () => authHeadersForRole("admin");
 
@@ -28,7 +29,7 @@ test.describe("parameter-admin project list", () => {
     await seedAcceptanceRoleMatrix();
   });
 
-  test("preserves DataTable behavior, URL history, and responsive contracts", async ({ page, request }, testInfo) => {
+  test("preserves DataTable behavior and URL history at PC 1440x900", async ({ page, request }, testInfo) => {
     // @acceptance PARAM-ADMIN-003
     // @operation PARAM-ADMIN-003
     const suffix = randomUUID().slice(0, 8);
@@ -109,56 +110,8 @@ test.describe("parameter-admin project list", () => {
       await page.screenshot({ path: desktopScreenshot, fullPage: true });
       screenshotPaths.push(desktopScreenshot);
 
-      await page.setViewportSize({ width: 768, height: 1024 });
-      await expect(page.locator(".project-admin-library-table .horizontal-drag-scroll-rail")).toBeVisible();
-      const tabletLayout = await page.evaluate(() => {
-        const scrollport = document.querySelector<HTMLElement>(".project-admin-library-table .data-table-scroll");
-        const table = scrollport?.querySelector("table");
-        const rail = document.querySelector<HTMLElement>(".project-admin-library-table .horizontal-drag-scroll-rail");
-        return {
-          tableWidth: table?.getBoundingClientRect().width ?? 0,
-          railHeight: rail?.getBoundingClientRect().height ?? 0,
-          railVisible: rail ? !rail.hidden && getComputedStyle(rail).display !== "none" : false,
-          scrollable: scrollport ? scrollport.scrollWidth > scrollport.clientWidth : false,
-          pageOverflow: document.documentElement.scrollWidth - document.documentElement.clientWidth
-        };
-      });
-      expect(tabletLayout.tableWidth).toBeGreaterThanOrEqual(1080);
-      expect(tabletLayout.railHeight).toBe(16);
-      expect(tabletLayout.railVisible).toBe(true);
-      expect(tabletLayout.scrollable).toBe(true);
-      expect(tabletLayout.pageOverflow).toBeLessThanOrEqual(1);
-      const tabletScreenshot = testInfo.outputPath("parameter-admin-projects-768.png");
-      await page.screenshot({ path: tabletScreenshot, fullPage: true });
-      screenshotPaths.push(tabletScreenshot);
-
-      await page.setViewportSize({ width: 390, height: 844 });
-      const firstRow = page.locator(".project-admin-library-grid tbody tr").first();
+      const firstRow = page.getByRole("row").filter({ hasText: queryLabel }).first();
       await expect(firstRow).toBeVisible();
-      const mobileLayout = await firstRow.evaluate((row) => {
-        const cells = Array.from(row.querySelectorAll<HTMLElement>("td"));
-        const rail = document.querySelector<HTMLElement>(".project-admin-library-table .horizontal-drag-scroll-rail");
-        return {
-          labels: cells.map((cell) => cell.dataset.label),
-          visibleCells: cells.filter((cell) => getComputedStyle(cell).display !== "none").length,
-          railDisplay: rail ? getComputedStyle(rail).display : null,
-          pageOverflow: document.documentElement.scrollWidth - document.documentElement.clientWidth
-        };
-      });
-      expect(mobileLayout.labels).toEqual([
-        "项目名称",
-        "项目代号",
-        "状态",
-        "冲突",
-        "基线",
-        "模块",
-        "参数",
-        "最近更新",
-        "操作"
-      ]);
-      expect(mobileLayout.visibleCells).toBe(9);
-      expect(mobileLayout.railDisplay).toBe("none");
-      expect(mobileLayout.pageOverflow).toBeLessThanOrEqual(1);
       await expect(firstRow.getByRole("button", { name: /配置工作台/ })).toBeVisible();
 
       await firstRow.getByRole("button", { name: /编辑/ }).click();
@@ -179,9 +132,6 @@ test.describe("parameter-admin project list", () => {
       await page.getByRole("button", { name: "下一页" }).click();
       await expect(page.getByText("第 2 / 2 页 · 共 12 条")).toBeVisible();
 
-      const mobileScreenshot = testInfo.outputPath("parameter-admin-projects-390.png");
-      await page.screenshot({ path: mobileScreenshot, fullPage: true });
-      screenshotPaths.push(mobileScreenshot);
       for (const screenshotPath of screenshotPaths) {
         await testInfo.attach(screenshotPath.split("/").at(-1) ?? "responsive-screenshot", {
           path: screenshotPath,
@@ -191,8 +141,6 @@ test.describe("parameter-admin project list", () => {
 
       const layoutArtifact = await writeOperationJsonArtifact(testInfo, "parameter-admin-projects-layout.json", {
         desktop: desktopLayout,
-        tablet: tabletLayout,
-        mobile: mobileLayout,
         history: { reload: true, popstate: true, back: true, forward: true }
       });
       const listResponse = await request.get(apiRoute("/api/v1/parameters/admin/projects"), {
@@ -202,7 +150,7 @@ test.describe("parameter-admin project list", () => {
 
       await recordOperationEvidence({
         operationId: "PARAM-ADMIN-003",
-        title: "project Admin DataTable URL history and responsive behavior",
+        title: "project Admin DataTable URL history and PC layout",
         status: "passed",
         role: "Admin",
         route: "/parameter-admin/projects",
@@ -217,7 +165,7 @@ test.describe("parameter-admin project list", () => {
           })
         ],
         notes:
-          "Verified search/status/sort URL writes; reload, popstate, Back, and Forward restoration; >10 pagination; keyboard row entry; isolated edit/delete actions; and 390/768/1440 layout contracts."
+          "Verified search/status/sort URL writes; reload, popstate, Back, and Forward restoration; >10 pagination; keyboard row entry; isolated edit/delete actions; and the PC 1440x900 no-page-overflow layout contract."
       });
     } finally {
       for (const projectId of projectIds.reverse()) {

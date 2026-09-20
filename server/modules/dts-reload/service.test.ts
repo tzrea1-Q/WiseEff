@@ -103,8 +103,9 @@ const BASE_DTS = `/dts-v1/;
 };
 `;
 
-// dts_property_specs refuses structural keys ("status", "reg", …); those candidates derive
-// their property key from the parameter_specs specification_key tail instead.
+// dts_property_specs refuses structural keys ("status", "reg", …). Reload
+// candidates fail closed without a dts_property_specs.property_key — they
+// must not fall back to the specification_key tail.
 const STRUCTURAL_PROPERTY_KEYS = new Set([
   "compatible",
   "device_type",
@@ -317,7 +318,7 @@ describe.skipIf(!databaseAvailable)("dts-reload service", () => {
       });
 
       const result = await listReloadCandidates(db, auth(), "project-1");
-      expect(result.items).toHaveLength(2);
+      expect(result.items).toHaveLength(1);
       expect(result.items.find((item) => item.bindingId === "binding-1")).toMatchObject({
         bindingId: "binding-1",
         baselineValue: "<6000>",
@@ -328,12 +329,7 @@ describe.skipIf(!databaseAvailable)("dts-reload service", () => {
         // Resolved shape is exposed so clients validate against the reload vocabulary.
         resolvedValueShape: { kind: "cells", bits: 32, cellsPerGroup: 1, groups: 1 }
       });
-      expect(result.items.find((item) => item.bindingId === "binding-2")).toMatchObject({
-        bindingId: "binding-2",
-        debuggable: true,
-        nodePath: "/amba",
-        sensitiveMatch: null
-      });
+      expect(result.items.find((item) => item.bindingId === "binding-2")).toBeUndefined();
     });
 
     it("collapses duplicate overlay identities and prefers the debuggable row", async () => {

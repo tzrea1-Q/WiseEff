@@ -97,6 +97,9 @@ function reconcileReviewedRows(rows: ReviewedImportRow[], parameters: ParameterR
     }
 
     const existingParameter = findExistingParameter(row.name, row.module, parameters, targetProjectId);
+    if (!existingParameter) {
+      return { ...row, matchKey, status: "unmatched" as const, existingParameter: undefined };
+    }
     return {
       ...row,
       matchKey,

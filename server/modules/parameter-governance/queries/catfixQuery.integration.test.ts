@@ -33,8 +33,10 @@ import { createEvidenceIngest } from "../evidence/index";
 import { createProposalService } from "../proposals/index";
 import { createRegistrationService } from "../registration/index";
 import { createReviewQueueReader } from "../review/index";
-import { stabilizeCanonicalBinding } from "../../parameter-bindings/binding/index";
-import { createProjectValueService } from "../../parameter-bindings/values/index";
+import {
+  createSourceBackedBindingService,
+  ensureSourceBackedBindingFixture,
+} from "../../parameter-bindings/binding/__fixtures__/sourceBackedBinding";
 import { IDENTITY_PLACEHOLDER_SOURCE } from "../../parameter-bindings/values/repositories";
 import { createUsageQueries } from "../../parameter-bindings/usage/index";
 
@@ -353,6 +355,23 @@ describe("CATFIX-QUERY real governance and usage projections", () => {
 
   it("CATFIX-QUERY-04 lists and loads Observation and Proposal after real writes", async () => {
     const ingest = createEvidenceIngest(pool);
+    const fixture = await ensureSourceBackedBindingFixture(pool, {
+      snapshot,
+      organizationId: ORG_A,
+      projectId: PROJECT_A,
+      logicalNodeId: "logical-catfix-q",
+      registrationId: registrationId as never,
+      definitionId: DEFINITION_ID,
+      effectiveRevisionId: REVISION_1,
+      expectedEffectiveRevisionId: null,
+    });
+    const sourceLocator = {
+      kind: "dts-property",
+      propertyOccurrenceId: fixture.propertyOccurrenceId,
+      nodeOccurrenceId: fixture.nodeOccurrenceId,
+      fileVersionId: fixture.fileVersionId,
+      propertyName: "iin_max",
+    };
     const observation = await ingest.ingest({
       organizationId: ORG_A,
       sourceIdentity: `obs:${randomUUID()}`,
@@ -362,8 +381,9 @@ describe("CATFIX-QUERY real governance and usage projections", () => {
       provenance: {
         projectId: PROJECT_A,
         logicalNodeId: "logical-catfix-q",
-        configRevisionId: "config-catfix-q-1",
-        sourceLocator: { path: "/soc/charger", property: "iin_max" },
+        configRevisionId: fixture.configRevisionId,
+        sourceOccurrenceId: fixture.sourceOccurrenceId,
+        sourceLocator,
       },
     });
     expect(observation.ok).toBe(true);
@@ -453,9 +473,8 @@ describe("CATFIX-QUERY real governance and usage projections", () => {
   });
 
   it("CATFIX-QUERY-05 counts distinct projects and current pointers, not historical values", async () => {
-    const values = createProjectValueService(pool);
     const seedBinding = async (logicalNodeId: string, projectId: string) => {
-      const binding = await stabilizeCanonicalBinding(pool, {
+      const binding = await createSourceBackedBindingService(pool).stabilize({
         snapshot,
         organizationId: ORG_A,
         projectId,
@@ -467,20 +486,6 @@ describe("CATFIX-QUERY real governance and usage projections", () => {
       });
       expect(binding.ok).toBe(true);
       if (!binding.ok) throw new Error("stabilizeCanonicalBinding failed");
-      let expectedTip = binding.value.binding.currentValueId;
-      for (const magnitude of [1, 2]) {
-        const appended = await values.append({
-          snapshot,
-          binding: binding.value.binding,
-          definitionRevisionId: REVISION_1,
-          source: { sourceRef: `config-set:${logicalNodeId}`, configRevisionId: `crev-${magnitude}` },
-          payload: { kind: "number", value: 1000 + magnitude },
-          expectedTip,
-        });
-        expect(appended.ok).toBe(true);
-        if (!appended.ok) throw new Error("append failed");
-        expectedTip = appended.value.currentTip;
-      }
       return binding.value.binding.id;
     };
     await seedBinding("logical-catfix-q-p1", PROJECT_A);

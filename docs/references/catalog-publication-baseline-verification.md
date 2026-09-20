@@ -52,9 +52,10 @@ No ADR or design-doc change landed in #826. That gap is why CP-00 exists.
 > tombstones (`withdrawnByReleaseId` = `crel_vendor_catalog_1`, no `successorId`), while
 > `crel_acme_1` and its activation history stay byte-identical. The R-F4 row above records
 > the value that was verified at `063b12c49`; the current compiler digest is
-> `sha256:5f0e7bcd6c537f3a0574dc5541e1199f5537061bef4ad5551ec4f5e9565bec64`, and the live
-> operator pin is `ops/self-hosted/upgrade.md`. Counts are unchanged (48 subjects, 1 alias,
-> 114 definitions/revisions) because a retired member is still a retained member.
+> `sha256:3d5c70fb5e0aad4bb7c3c063ca3283a81fb39ec25c471669a0500dd410a48f97`, and the live
+> operator pin is `ops/self-hosted/upgrade.md`. Counts are 49 subjects, 1 alias,
+> 116 definitions/revisions: the retired acme member is still retained, and T1.2 adds the
+> reviewed `charging_core` NodeType.
 
 ### User-reported, **not** host-verified
 

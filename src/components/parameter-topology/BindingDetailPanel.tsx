@@ -1,4 +1,6 @@
-import { useEffect, useState } from "react";
+import { useEffect, useId, useState } from "react";
+import { Textarea } from "@/components/ui/textarea";
+import { presentError } from "@/infrastructure/http/presentError";
 import type {
   EffectiveTopologyEffect,
   IdentityMappingTask,
@@ -45,6 +47,7 @@ export function BindingDetailPanel({
   const [draftReason, setDraftReason] = useState("");
   const [diagnostics, setDiagnostics] = useState<TopologyDiagnostic[]>([]);
   const [validating, setValidating] = useState(false);
+  const diagnosticId = useId();
 
   useEffect(() => {
     setDraftRaw(binding.rawValue);
@@ -126,10 +129,13 @@ export function BindingDetailPanel({
 
       <section aria-label="类型化编辑">
         <h4>类型化编辑</h4>
-        <label>
+        <label htmlFor={`${diagnosticId}-value`}>
           目标值
-          <textarea
+          <Textarea
+            id={`${diagnosticId}-value`}
             aria-label="目标值"
+            aria-invalid={diagnostics.length > 0}
+            aria-describedby={diagnostics.length > 0 ? diagnosticId : undefined}
             value={draftRaw}
             disabled={!canEdit || validating}
             onChange={(event) => {
@@ -138,9 +144,10 @@ export function BindingDetailPanel({
             }}
           />
         </label>
-        <label>
+        <label htmlFor={`${diagnosticId}-reason`}>
           修改原因
-          <textarea
+          <Textarea
+            id={`${diagnosticId}-reason`}
             aria-label="修改原因"
             value={draftReason}
             disabled={!canEdit || validating}
@@ -170,9 +177,9 @@ export function BindingDetailPanel({
           {validating ? "创建中…" : "校验并创建草稿"}
         </button>
         {diagnostics.length > 0 ? (
-          <ul aria-label="编辑诊断">
+          <ul id={diagnosticId} aria-label="编辑诊断" role="alert">
             {diagnostics.map((item) => (
-              <li key={`${item.code ?? ""}:${item.message}`}>{item.message}</li>
+              <li key={`${item.code ?? ""}:${item.message}`}>{presentError(new Error(item.message), "目标值未通过校验，请检查格式、范围及来源版本后重试。")}</li>
             ))}
           </ul>
         ) : null}

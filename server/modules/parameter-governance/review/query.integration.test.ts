@@ -329,6 +329,43 @@ describe("authorized grouped Review Queue reads", () => {
     });
     expect(before.ok).toBe(true);
     if (!before.ok) return;
+    await pool.query(`
+      insert into public.dts_config_set (id, organization_id, project_id, name)
+      values ('dcs-s4-rev', '${ORG_A}', '${PROJECT_ID}', 'dcs-s4-rev');
+      insert into public.project_parameter_files (
+        id, organization_id, project_id, file_name, format, config_set_id, config_set_role
+      ) values ('pfile-s4-rev', '${ORG_A}', '${PROJECT_ID}', 's4-rev.dts', 'dts', 'dcs-s4-rev', 'base');
+      insert into public.project_parameter_file_versions (
+        id, file_id, version_number, storage_key, checksum, size_bytes, origin
+      ) values ('pfv-s4-rev', 'pfile-s4-rev', 1, 'pfile-s4-rev/v1', 'sha256:pfv-s4-rev', 1, 'upload');
+      update public.project_parameter_files set current_version_id = 'pfv-s4-rev' where id = 'pfile-s4-rev';
+      insert into public.dts_config_revisions (
+        id, organization_id, project_id, config_set_id, revision_number, status
+      ) values ('config-s4-rev-1', '${ORG_A}', '${PROJECT_ID}', 'dcs-s4-rev', 1, 'resolved');
+      insert into public.dts_config_revision_members (
+        id, config_revision_id, file_id, file_version_id, role, sort_order, source_name
+      ) values ('member-s4-rev', 'config-s4-rev-1', 'pfile-s4-rev', 'pfv-s4-rev', 'base', 0, 's4-rev.dts');
+      insert into public.dts_logical_nodes (id, organization_id, project_id, config_set_id)
+      values ('logical-s4-rev', '${ORG_A}', '${PROJECT_ID}', 'dcs-s4-rev');
+      insert into public.dts_logical_node_revisions (
+        id, logical_node_id, config_revision_id, node_locator, name, compatible
+      ) values ('lnrev-s4-rev', 'logical-s4-rev', 'config-s4-rev-1', '/s4', 's4', 's4');
+      insert into public.dts_node_occurrences (
+        id, config_revision_id, file_version_id, name, node_path,
+        start_offset, end_offset, start_line, start_column, end_line, end_column, raw_text
+      ) values ('node-occ-s4-rev', 'config-s4-rev-1', 'pfv-s4-rev', 's4', '/s4', 0, 10, 1, 1, 1, 10, 's4');
+      insert into public.dts_property_occurrences (
+        id, config_revision_id, node_occurrence_id, file_version_id, property_name,
+        start_offset, end_offset, start_line, start_column, end_line, end_column, raw_text
+      ) values ('prop-occ-s4-rev', 'config-s4-rev-1', 'node-occ-s4-rev', 'pfv-s4-rev', 'iin_max', 1, 2, 1, 2, 1, 3, '1');
+      insert into public.dts_occurrence_effects (
+        id, config_revision_id, logical_node_revision_id, property_occurrence_id,
+        node_occurrence_id, property_name, effect_kind, source_order
+      ) values ('effect-s4-rev', 'config-s4-rev-1', 'lnrev-s4-rev', 'prop-occ-s4-rev', 'node-occ-s4-rev', 'iin_max', 'set', 0);
+      insert into parameter_catalog.project_parameter_source_occurrences (
+        id, organization_id, project_id, config_set_id, file_id, occurrence_kind, logical_node_id
+      ) values ('occ-s4-rev', '${ORG_A}', '${PROJECT_ID}', 'dcs-s4-rev', 'pfile-s4-rev', 'dts', 'logical-s4-rev');
+    `);
     const matched = await ingest.ingest({
       organizationId: ORG_A,
       sourceIdentity: `matched:${randomUUID()}`,
@@ -339,7 +376,14 @@ describe("authorized grouped Review Queue reads", () => {
         projectId: PROJECT_ID,
         logicalNodeId: "logical-s4-rev",
         configRevisionId: "config-s4-rev-1",
-        sourceLocator: { path: "/soc/charger", property: "iin_max" },
+        sourceOccurrenceId: "occ-s4-rev",
+        sourceLocator: {
+          kind: "dts-property",
+          propertyOccurrenceId: "prop-occ-s4-rev",
+          nodeOccurrenceId: "node-occ-s4-rev",
+          fileVersionId: "pfv-s4-rev",
+          propertyName: "iin_max",
+        },
       },
     });
     expect(matched.ok).toBe(true);

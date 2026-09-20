@@ -277,13 +277,71 @@ async function seedTrafficObservation(
     insert into public.projects (id, organization_id, name, code)
     values ('project-s3ins', 'org-s3ins-traffic', 'S3INS', 'S3INS')
   `);
+  await client.query(`
+    insert into public.dts_config_set (id, organization_id, project_id, name)
+    values ('dcs-s3ins', 'org-s3ins-traffic', 'project-s3ins', 'default');
+    insert into public.project_parameter_files (
+      id, organization_id, project_id, file_name, format, config_set_id, config_set_role
+    ) values (
+      'pfile-s3ins', 'org-s3ins-traffic', 'project-s3ins', 'traffic.dts', 'dts', 'dcs-s3ins', 'base'
+    );
+    insert into public.project_parameter_file_versions (
+      id, file_id, version_number, storage_key, checksum, size_bytes, origin
+    ) values (
+      'pfv-s3ins', 'pfile-s3ins', 1, 'pfile-s3ins/v1', 'sha256:pfv-s3ins', 1, 'upload'
+    );
+    update public.project_parameter_files set current_version_id = 'pfv-s3ins' where id = 'pfile-s3ins';
+    insert into public.dts_config_revisions (
+      id, organization_id, project_id, config_set_id, revision_number, status
+    ) values ('cfg-1', 'org-s3ins-traffic', 'project-s3ins', 'dcs-s3ins', 1, 'resolved');
+    insert into public.dts_config_revision_members (
+      id, config_revision_id, file_id, file_version_id, role, sort_order, source_name
+    ) values ('member-s3ins', 'cfg-1', 'pfile-s3ins', 'pfv-s3ins', 'base', 0, 'traffic.dts');
+    insert into public.dts_logical_nodes (id, organization_id, project_id, config_set_id)
+    values ('node-1', 'org-s3ins-traffic', 'project-s3ins', 'dcs-s3ins');
+    insert into public.dts_logical_node_revisions (
+      id, logical_node_id, config_revision_id, node_locator, name, compatible
+    ) values ('lnrev-s3ins', 'node-1', 'cfg-1', '/traffic', 'traffic', 'traffic');
+    insert into public.dts_node_occurrences (
+      id, config_revision_id, file_version_id, name, node_path,
+      start_offset, end_offset, start_line, start_column, end_line, end_column, raw_text
+    ) values ('node-occ-s3ins', 'cfg-1', 'pfv-s3ins', 'traffic', '/traffic', 0, 10, 1, 1, 1, 10, 'traffic');
+    insert into public.dts_property_occurrences (
+      id, config_revision_id, node_occurrence_id, file_version_id, property_name,
+      start_offset, end_offset, start_line, start_column, end_line, end_column, raw_text
+    ) values ('prop-occ-s3ins', 'cfg-1', 'node-occ-s3ins', 'pfv-s3ins', 'limit', 1, 2, 1, 2, 1, 3, '1');
+    insert into public.dts_occurrence_effects (
+      id, config_revision_id, logical_node_revision_id, property_occurrence_id,
+      node_occurrence_id, property_name, effect_kind, source_order
+    ) values ('effect-s3ins', 'cfg-1', 'lnrev-s3ins', 'prop-occ-s3ins', 'node-occ-s3ins', 'limit', 'set', 0);
+    insert into parameter_catalog.project_parameter_source_occurrences (
+      id, organization_id, project_id, config_set_id, file_id, occurrence_kind, logical_node_id
+    ) values ('occ-s3ins', 'org-s3ins-traffic', 'project-s3ins', 'dcs-s3ins', 'pfile-s3ins', 'dts', 'node-1');
+  `);
   await client.query(
     `insert into parameter_catalog.parameter_observations (
        id, organization_id, project_id, logical_node_id, config_revision_id,
-       source_identity, source_locator, catalog_release_id, matcher_revision, evidence_fingerprint
+       source_identity, source_locator, catalog_release_id, matcher_revision, evidence_fingerprint,
+       source_occurrence_id, parameter_locator_digest
      ) values (
        'obs-s3ins', 'org-s3ins-traffic', 'project-s3ins', 'node-1', 'cfg-1',
-       'src-1', '{}', $1, 'matcher-1', 'sha256:evidence'
+       'src-1', jsonb_build_object(
+         'kind', 'dts-property',
+         'propertyOccurrenceId', 'prop-occ-s3ins',
+         'nodeOccurrenceId', 'node-occ-s3ins',
+         'fileVersionId', 'pfv-s3ins',
+         'propertyName', 'limit'
+       ), $1, 'matcher-1', 'sha256:evidence',
+       'occ-s3ins',
+       parameter_catalog.canonical_dts_parameter_locator_digest(
+         jsonb_build_object(
+           'kind', 'dts-property',
+           'propertyOccurrenceId', 'prop-occ-s3ins',
+           'nodeOccurrenceId', 'node-occ-s3ins',
+           'fileVersionId', 'pfv-s3ins',
+           'propertyName', 'limit'
+         )
+       )
      )`,
     [releaseId],
   );

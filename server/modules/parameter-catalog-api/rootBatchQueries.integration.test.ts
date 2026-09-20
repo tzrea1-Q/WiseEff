@@ -13,8 +13,7 @@ import { createCatalogKernel, jsonCatalogReleaseSource } from "../catalog-kernel
 import { CatalogSubjectId, DefinitionRevisionId, ParameterDefinitionId } from "../parameter-catalog-contract/index";
 import { createRegistrationService } from "../parameter-governance/registration/index";
 import { createEvidenceIngest } from "../parameter-governance/evidence/index";
-import { stabilizeCanonicalBinding } from "../parameter-bindings/binding/index";
-import { appendProjectValue } from "../parameter-bindings/values/index";
+import { createSourceBackedBindingService } from "../parameter-bindings/binding/__fixtures__/sourceBackedBinding";
 import type { AuthContext } from "../auth/types";
 
 type Mutable<T> = T extends readonly (infer V)[] ? Mutable<V>[] : T extends object ? { -readonly [K in keyof T]: Mutable<T[K]> } : T;
@@ -130,14 +129,9 @@ describe("R2-BATCH root HTTP SQL budget", () => {
     const loaded = await createCatalogKernel(pool).loadCurrentCatalog(pin);
     if (!loaded.ok) throw new Error("fixture snapshot unavailable");
     for (const [logicalNodeId, projectId, writes] of [["batch-node-a", "batch-project-a", 2], ["batch-node-b", "batch-project-b", 2], ["batch-placeholder", "batch-project-a", 0]] as const) {
-      const bound = await stabilizeCanonicalBinding(pool, { snapshot: loaded.value, organizationId: "batch-org", projectId, logicalNodeId, registrationId: registered.value.registrationId, definitionId: ParameterDefinitionId("pdef_batch_0_0"), effectiveRevisionId: DefinitionRevisionId("drev_batch_0_0_1"), expectedEffectiveRevisionId: null });
+      if (writes === 0) continue;
+      const bound = await createSourceBackedBindingService(pool, { initialPayload: { kind: "number", value: 1001 } }).stabilize({ snapshot: loaded.value, organizationId: "batch-org", projectId, logicalNodeId, registrationId: registered.value.registrationId, definitionId: ParameterDefinitionId("pdef_batch_0_0"), effectiveRevisionId: DefinitionRevisionId("drev_batch_0_0_1"), expectedEffectiveRevisionId: null });
       if (!bound.ok) throw new Error(`binding fixture failed: ${JSON.stringify(bound.error)}`);
-      let expectedTip = bound.value.binding.currentValueId;
-      for (let revision = 1; revision <= writes; revision += 1) {
-        const appended = await appendProjectValue(pool, { snapshot: loaded.value, binding: bound.value.binding, definitionRevisionId: DefinitionRevisionId("drev_batch_0_0_1"), source: { sourceRef: `config-set:${logicalNodeId}`, configRevisionId: `batch-revision-${revision}` }, payload: { kind: "number", value: 1000 + revision }, expectedTip });
-        if (!appended.ok) throw new Error(`value fixture failed: ${JSON.stringify(appended.error)}`);
-        expectedTip = appended.value.currentTip;
-      }
     }
     const reviewInput = { organizationId: "batch-org", sourceIdentity: "batch-review-source", catalogReleaseId: pin.id,
       matcherRevision: "batch-matcher", matcherOutput: { status: "unknown" as const },

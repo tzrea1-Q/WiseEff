@@ -1,7 +1,7 @@
 {
   "linuxDtSchemaRevision": "v6.12-pinned-stub",
   "dtschemaVersion": "2026.6",
-  "vendorContentHash": "fd4051a43b5d62f050eabd3a57c26e583498c5dda95f1a9c3c701670399042f0",
+  "vendorContentHash": "6d9dcfc73e178e2d186db149e1bbfc782e8626303862811ebb14dbb9d26188e0",
   "importedAt": "2026-07-16T00:00:00.000Z",
   "schemaPaths": [
     "vendor/wiseeff/arm-amba-bus.yaml",
@@ -41,6 +41,7 @@
     "vendor/wiseeff/nodename-battery0.yaml",
     "vendor/wiseeff/nodename-battery1.yaml",
     "vendor/wiseeff/nodename-cccv-para0.yaml",
+    "vendor/wiseeff/nodename-charging-core.yaml",
     "vendor/wiseeff/nodename-hi6xxx-coul.yaml",
     "vendor/wiseeff/nodename-i2c.yaml",
     "vendor/wiseeff/nodename-middle-cpu.yaml",

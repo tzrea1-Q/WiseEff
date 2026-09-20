@@ -3,8 +3,11 @@ import { describe, expect, it } from "vitest";
 import {
   CATALOG_CAPABILITY_ALLOW_LIST,
   CATALOG_CAPABILITY_CONTRACT_REVISION,
+  CATALOG_CAPABILITY_V3_ALLOW_LIST,
+  CATALOG_CAPABILITY_V3_REVISION,
   capabilityAllowListIdentity,
   validateSupportedDefinitionContent,
+  validateSupportedDefinitionContentAt,
 } from "./capabilities";
 
 describe("catalog publication capability allow-list", () => {
@@ -223,6 +226,10 @@ describe("catalog publication capability allow-list", () => {
       CATALOG_CAPABILITY_CONTRACT_REVISION,
     );
     expect(capabilityAllowListIdentity()).toEqual(CATALOG_CAPABILITY_ALLOW_LIST);
+    expect(CATALOG_CAPABILITY_CONTRACT_REVISION).toBe("catalog-capability/v4");
+    expect(CATALOG_CAPABILITY_V3_ALLOW_LIST.revision).toBe(CATALOG_CAPABILITY_V3_REVISION);
+    expect(CATALOG_CAPABILITY_V3_ALLOW_LIST.budgets.maxChangeSetOps).toBe(32);
+    expect(CATALOG_CAPABILITY_ALLOW_LIST.budgets.maxChangeSetOps).toBe(128);
     expect(CATALOG_CAPABILITY_ALLOW_LIST.units).toEqual(["non-empty-short-string"]);
     expect(CATALOG_CAPABILITY_ALLOW_LIST.valueTypes).toEqual([
       "integer",
@@ -232,5 +239,152 @@ describe("catalog publication capability allow-list", () => {
       "null",
       "array",
     ]);
+    expect(CATALOG_CAPABILITY_ALLOW_LIST.jsonSchemaKeywords.array).toEqual([
+      "type",
+      "items",
+      "description",
+      "minItems",
+      "maxItems",
+    ]);
+  });
+
+  const nestedMatrix = {
+    displayName: "Profile matrix",
+    documentation: "Nested string rows.",
+    valueSchema: {
+      type: "array",
+      description: "unbounded rows",
+      items: { type: "array", items: { type: "string" } },
+    },
+    examples: [
+      [
+        ["0", "5000"],
+        ["1", "9000"],
+      ],
+    ],
+  };
+
+  it("accepts nested arrays, mixed items, array description, and metadata cardinality", () => {
+    expect(validateSupportedDefinitionContent(nestedMatrix, "content")).toMatchObject({
+      ok: true,
+      value: {
+        valueSchema: {
+          type: "array",
+          description: "unbounded rows",
+          items: { type: "array", items: { type: "string" } },
+        },
+      },
+    });
+    expect(
+      validateSupportedDefinitionContent(
+        {
+          displayName: "GPIO specifier",
+          documentation: "x",
+          valueSchema: {
+            type: "array",
+            description: "phandle pin flags",
+            items: {
+              type: "array",
+              minItems: 3,
+              maxItems: 3,
+              items: { description: "mixed" },
+            },
+          },
+        },
+        "content",
+      ).ok,
+    ).toBe(true);
+  });
+
+  it("keeps v3 meaning: frozen v3 allow-list rejects nested arrays and array cardinality", () => {
+    const nested = validateSupportedDefinitionContentAt(
+      {
+        displayName: "Profile matrix",
+        documentation: "Nested string rows.",
+        valueSchema: {
+          type: "array",
+          items: { type: "array", items: { type: "string" } },
+        },
+      },
+      "content",
+      CATALOG_CAPABILITY_V3_ALLOW_LIST,
+    );
+    expect(nested.ok).toBe(false);
+    if (!nested.ok) {
+      expect(["unsupported-value-schema-type", "unknown-json-schema-keyword"]).toContain(
+        nested.error.detail,
+      );
+    }
+    const withMinItems = validateSupportedDefinitionContentAt(
+      {
+        displayName: "Cells",
+        documentation: "x",
+        valueSchema: { type: "array", minItems: 3, items: { type: "integer" } },
+      },
+      "content",
+      CATALOG_CAPABILITY_V3_ALLOW_LIST,
+    );
+    expect(withMinItems.ok).toBe(false);
+    if (!withMinItems.ok) {
+      expect(withMinItems.error).toMatchObject({
+        detail: "unknown-json-schema-keyword",
+        path: "content.valueSchema.minItems",
+      });
+    }
+  });
+
+  it("does not infer cardinality from example row counts", () => {
+    const result = validateSupportedDefinitionContent(
+      {
+        displayName: "Observed matrix",
+        documentation: "x",
+        valueSchema: { type: "array", items: { type: "array", items: { type: "string" } } },
+        examples: [
+          [
+            ["a", "b", "c", "d", "e"],
+            ["f", "g", "h", "i", "j"],
+            ["k", "l", "m", "n", "o"],
+          ],
+        ],
+      },
+      "content",
+    );
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value.valueSchema).toEqual({
+      type: "array",
+      items: { type: "array", items: { type: "string" } },
+    });
+  });
+
+  it("fail-closes unknown array keywords and over-budget nesting", () => {
+    const prefixItems = validateSupportedDefinitionContent(
+      {
+        displayName: "Bad",
+        documentation: "x",
+        valueSchema: { type: "array", prefixItems: [{ type: "string" }] },
+      },
+      "content",
+    );
+    expect(prefixItems.ok).toBe(false);
+    if (!prefixItems.ok) {
+      expect(prefixItems.error).toMatchObject({
+        detail: "unknown-json-schema-keyword",
+        path: "content.valueSchema.prefixItems",
+      });
+    }
+
+    let schema: Record<string, unknown> = { type: "string" };
+    for (let depth = 0; depth < 5; depth += 1) {
+      schema = { type: "array", items: schema };
+    }
+    const deep = validateSupportedDefinitionContent(
+      { displayName: "Deep", documentation: "x", valueSchema: schema },
+      "content",
+    );
+    expect(deep.ok).toBe(false);
+    if (!deep.ok) {
+      expect(deep.error.detail).toBe("resource-budget-exceeded");
+    }
   });
 });

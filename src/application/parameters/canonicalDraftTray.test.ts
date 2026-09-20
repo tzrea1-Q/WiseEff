@@ -7,6 +7,7 @@ const draft = (overrides: Partial<CanonicalPendingDraft> = {}): CanonicalPending
   bindingId: "pbind_01K",
   definitionId: "pdef_01K",
   effectiveRevisionId: "drev_01K",
+  baseRevisionId: "config-revision-01K",
   targetValue: "2000",
   reason: "raise published input current",
   updatedAt: "2026-09-15T00:00:00.000Z",
@@ -24,7 +25,8 @@ describe("canonicalDraftsToTrayDrafts", () => {
         updatedAt: "2026-09-15T00:00:00.000Z",
         action: "set",
         projectParameterBindingId: "pbind_01K",
-        candidateConfigRevisionId: "drev_01K"
+        candidateConfigRevisionId: "config-revision-01K",
+        baseRevisionId: "config-revision-01K"
       }
     ]);
   });

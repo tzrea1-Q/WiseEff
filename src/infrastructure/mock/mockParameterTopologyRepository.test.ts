@@ -300,17 +300,32 @@ describe("createMockParameterTopologyRepository (ParameterTopologyRepository con
     expect(tip?.parameterSpecVersionId).toBe("specver-sc8562-gpio-int-3");
   });
 
+  it("createParameterSpec is retired and does not mint a mock spec", async () => {
+    const repo = createRepo();
+    const error = await repo
+      .createParameterSpec({
+        attributionSubjectId: "asub:driver:sc8562",
+        propertyKey: "successor_prop",
+        reason: "must not mint"
+      })
+      .catch((caught: unknown) => caught);
+    expect(error).toBeInstanceOf(WiseEffApiError);
+    expect(error).toMatchObject({
+      code: "GONE",
+      details: {
+        reason: "legacy-surface-retired",
+        successor: "/api/v2/catalog",
+        retryable: false
+      }
+    });
+    await expect(repo.getSpec("pspec:mock:asub:driver:sc8562:successor_prop")).rejects.toMatchObject({
+      code: "NOT_FOUND"
+    });
+  });
+
   it("activateParameterSpec on an unbound active spec auto-finalizes the successor (ADR-0032)", async () => {
     const repo = createRepo();
-    const created = await repo.createParameterSpec({
-      attributionSubjectId: "asub:driver:sc8562",
-      propertyKey: "successor_prop",
-      reason: "create draft for successor path",
-      valueShape: { kind: "string" },
-      constraints: {},
-      documentation: "draft docs"
-    });
-    const first = await repo.activateParameterSpec(created.id, {
+    const first = await repo.activateParameterSpec("spec-draft-mystery", {
       valueShape: { kind: "string" },
       constraints: {},
       documentation: "draft docs",
@@ -319,7 +334,7 @@ describe("createMockParameterTopologyRepository (ParameterTopologyRepository con
     expect(first.lifecycle).toBe("active");
     expect(first.currentVersion).toBe(1);
 
-    const successor = await repo.activateParameterSpec(created.id, {
+    const successor = await repo.activateParameterSpec("spec-draft-mystery", {
       valueShape: { kind: "string" },
       constraints: {},
       documentation: "successor docs",

@@ -1,8 +1,9 @@
 import { createHash } from "node:crypto";
 import { EventEmitter } from "node:events";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import type { ChildProcess, spawn as nodeSpawn } from "node:child_process";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -13,9 +14,13 @@ import {
   loadPinnedToolchainVersions,
   probeDtsToolchain,
   resolveDtsToolchainCommands,
+  withEphemeralEntryCompileStub,
+  withEphemeralOverlayFragmentWrap,
+  wrapPluginRootOverlayForFdtoverlay,
   type DtsToolchainConfigSet,
   type DtsToolchainProbe
 } from "./dtsToolchain";
+import { missingReferencedLabels } from "../dts/danglingAnchorStub";
 
 type FakeChild = ChildProcess & {
   stdoutEmitter: EventEmitter;
@@ -493,6 +498,55 @@ describe("createDtsToolchainRunner", () => {
 
     const release = await runner.validate(happyConfigSet(), { mode: "release" });
     expect(release.ok).toBe(false);
+  });
+});
+
+const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
+
+describe("ephemeral overlay fragment wrap", () => {
+  const chargingThermal = readFileSync(
+    join(repoRoot, "src/config/seed-sources/atlas/charging-thermal.dts"),
+    "utf8"
+  );
+
+  it("wraps /plugin/; / { } into tmp fragment@0 without persisting &{/}", () => {
+    expect(chargingThermal).toContain("/plugin/;");
+    expect(chargingThermal).toContain("wiseeff_node_type_demo");
+    expect(chargingThermal).not.toContain("fragment@0");
+    expect(chargingThermal).not.toContain("&{/}");
+    expect(chargingThermal).not.toContain("EPHEMERAL toolchain stub");
+
+    const wrapped = wrapPluginRootOverlayForFdtoverlay(chargingThermal);
+    expect(wrapped).toContain("fragment@0");
+    expect(wrapped).toContain('target-path = "/"');
+    expect(wrapped).toContain("__overlay__");
+    expect(wrapped).toContain("fast-charge-profile-matrix");
+    expect(wrapped).not.toContain("&{/}");
+  });
+
+  it("does not stub overlay members even when comments mention &charging_core", () => {
+    expect(missingReferencedLabels(chargingThermal)).toContain("charging_core");
+    const configSet: DtsToolchainConfigSet = {
+      entryFile: "atlas-board.dts",
+      includeSearchPaths: [],
+      overlayOrder: ["charging-thermal.dts"],
+      files: new Map([
+        ["atlas-board.dts", { content: "/dts-v1/;\n/ { board_id = <1>; };\n" }],
+        ["charging-thermal.dts", { content: chargingThermal }]
+      ])
+    };
+    const stubbed = withEphemeralEntryCompileStub(configSet);
+    expect(stubbed.files.get("charging-thermal.dts")?.content).toBe(chargingThermal);
+    const wrapped = withEphemeralOverlayFragmentWrap(stubbed);
+    expect(wrapped.files.get("charging-thermal.dts")?.content).toContain("fragment@0");
+    expect(wrapped.files.get("charging-thermal.dts")?.content).not.toContain("EPHEMERAL toolchain stub");
+    expect(wrapped.entryFile).toBe("atlas-board.dts");
+  });
+
+  it("leaves label overlays and already-fragmented plugins unchanged", () => {
+    expect(wrapPluginRootOverlayForFdtoverlay(OVERLAY_DTS)).toBe(OVERLAY_DTS);
+    const fragmented = `/dts-v1/;\n/plugin/;\n\n/ {\n\tfragment@0 {\n\t\ttarget-path = "/";\n\t\t__overlay__ {\n\t\t\tfoo { status = "okay"; };\n\t\t};\n\t};\n};\n`;
+    expect(wrapPluginRootOverlayForFdtoverlay(fragmented)).toBe(fragmented);
   });
 });
 

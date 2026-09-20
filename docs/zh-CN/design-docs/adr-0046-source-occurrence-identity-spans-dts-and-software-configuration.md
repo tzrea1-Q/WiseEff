@@ -8,7 +8,7 @@
 
 作为 [#849](https://github.com/tzrea1-Q/WiseEff/issues/849) 参数录入点统一的源身份契约被接受——范围第 2 项，实现决策 3、6、7、10、13，测试决策 6，以及用户故事 10、11、21。
 
-本记录冻结实现必须满足的语义契约，**不**自行证明任何迁移、关系、路由、UI 界面或威胁矩阵行已经完成或已验证；那由可执行矩阵及其门禁给出。实现在 `feat/849-parameter-unification`（PR #858）进行中，该分支同时占用 ADR-0045，因此 `main` 上下一个未使用编号是 0046。合入前须按 [Fleet Coordination](../../agents/fleet-coordination.md) 再次复核编号。
+本记录冻结实现必须满足的语义契约，**不**自行证明任何迁移、关系、路由、UI 界面或威胁矩阵行已经完成或已验证；那由可执行矩阵及其门禁给出。决策时实现在 `feat/849-parameter-unification`（PR #858）进行中，该分支占用 ADR-0045；这是历史编号背景，不代表当前交付状态。当前 T1.1 状态见[来源 occurrence 矩阵](../exec-plans/active/849-inventory/source-occurrence-threat-matrix.md)。合入前须按 [Fleet Coordination](../../agents/fleet-coordination.md) 再次复核 ADR 编号。
 
 ## 背景
 
@@ -41,6 +41,15 @@
 8. **完成即完整矩阵。** B1 只有在面对 DTS 与 JSON 两者都跑通 import preview → candidate/draft → review → apply → source reparse → export → reimport 后才算关闭。"preview + apply" 是内部里程碑，不是验收。
 
 本决策不改变种子相等性 oracle：受审 fixture 仍为每项目恰好 124 个 Binding（120 board + 2 DTS 兼容 + 2 JSON 兼容），三项目 372。现实中存在多个 config-set 与实例的项目当然可以超过 124；124 是该 fixture 的精确集合，不是 schema 上限，验收要求相等而非下界。
+
+## 已接受的补充决策 — 2026-09-16
+
+独立设计评审后，用户明确确认 T1.1 的以下决策：
+
+- JSON 配置实例在显式导入／注册时由服务端分配 opaque ID，绑定组织、项目、配置集、不可变文件 ID、正式 ConfigurationSchema 和根／子树 JSON Pointer。同一已证明实例的版本更新／重导入，以及同一文件 ID 的改名保持身份；换文件 ID、配置集、模型或移动实例根则新建实例并显式映射，不自动转移历史／当前值。数组重排后不能仅凭索引推断连续性。统一 source-occurrence 关系拥有实例身份，参数 locator 和版本 pin 与实例根定位分开。
+- 任一历史 Binding、observation 或 match 来源无法证明时，阻止**整个身份迁移**。沿历史版本的不可变文件 ID 追溯，不依赖当前版本指针；来源缺失、矛盾或歧义时报告并回滚事务。不伪造来源、不删除、不静默隔离后继续。旧 DTS schema／数据保持可用；未授权隔离后继续策略。
+
+这只确定身份生命周期和升级可用性，不代表实现完成、迁移验收通过或目标／删除授权。
 
 ## 影响
 

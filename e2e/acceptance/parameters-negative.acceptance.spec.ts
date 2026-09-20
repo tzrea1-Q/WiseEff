@@ -2,6 +2,7 @@ import "./helpers/loadAcceptanceEnvironment";
 import { expect, test, type Page } from "playwright/test";
 
 import { authHeadersForRole, signInBrowserAsRole } from "./helpers/bearerAuth";
+import { CATALOG_EXPECTED_API_FAILURES } from "./helpers/catalogBrowser";
 import { useBrowserDiagnostics } from "./helpers/browserDiagnostics";
 import { withPgClient } from "./helpers/database";
 import {
@@ -23,7 +24,14 @@ import {
   type IsolatedBinding
 } from "./helpers/semanticBindingFixture";
 
-useBrowserDiagnostics(test);
+test.use({ viewport: { width: 1440, height: 900 } });
+
+useBrowserDiagnostics(test, {
+  expectedApiFailures: [
+    ...CATALOG_EXPECTED_API_FAILURES,
+    { method: "GET", path: "/api/v2/catalog/subjects", status: 404 }
+  ]
+});
 
 const projectId = "aurora";
 const reasonPrefix = "M5.5 browser acceptance";
@@ -125,8 +133,8 @@ test.describe("M5.5 parameter negative-path browser acceptance", () => {
     // @acceptance PARAM-REASON-001
     // @operation PARAM-REASON-001
     await signInBrowserAsRole(page, "admin", disposablePageUrl(disposableRuntime, "/parameter-admin"));
-    const library = page.getByRole("region", { name: "参数定义库" });
-    await expect(library).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByRole("button", { name: "打开批量参数导入" })).toBeVisible({ timeout: 30_000 });
+    const library = page.getByRole("region", { name: /参数定义库|参数定义目录/ });
 
     const draftFilter = library.getByRole("button", { name: /draft/i }).first();
     if (await draftFilter.isVisible().catch(() => false)) {

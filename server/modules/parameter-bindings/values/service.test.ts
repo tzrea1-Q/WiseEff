@@ -47,6 +47,9 @@ const catalogStructuralTokens = [
 const allowedCatalogIdentifiers = new Set([
   "project_parameter_bindings",
   "binding_history_events",
+  "project_value_source_pins",
+  "project_parameter_source_occurrences",
+  "organization_subject_registrations",
   // #847 definition-replacement projection: current-only reads and the
   // replaced-binding guard.
   "current_project_parameter_bindings",
@@ -197,6 +200,7 @@ describe("S6-VAL production Catalog isolation", () => {
       expect(source, file).not.toContain("listDefinitionRevisions(");
       expect(source, file).not.toContain("stabilizeCanonicalBinding");
       expect(source, file).not.toContain("writeGuardedRegistration");
+      expect(source, file).not.toMatch(/(?:insert\s+into|update|delete\s+from)\s+parameter_catalog\.(?:project_parameter_source_occurrences|organization_subject_registrations)\b/i);
       for (const token of catalogStructuralTokens) {
         expect(source, `${file} must not mention ${token}`).not.toContain(token);
       }

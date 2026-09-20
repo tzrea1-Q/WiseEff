@@ -106,14 +106,14 @@ describe("matchToLibrary", () => {
     expect(reviewed[0].status).toBe("pending");
   });
 
-  it("marks unmatched rows as pending new candidates", () => {
+  it("marks unmatched rows as ineligible instead of pending new candidates", () => {
     const reviewed = matchToLibrary(
       [baseRow({ name: "brand_new_param", module: "New Module" })],
       parameters,
       projectId
     );
     expect(reviewed[0]).toMatchObject({
-      status: "pending",
+      status: "unmatched",
       matchKey: "brand_new_param::New Module"
     });
     expect(reviewed[0].existingParameter).toBeUndefined();

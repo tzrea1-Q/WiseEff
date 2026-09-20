@@ -2,15 +2,40 @@
 
 > English: [English](../../../exec-plans/active/2026-09-15-parameter-unification-round-report.md)
 
+2026-09-16 执行修订：[#849/#853 完整 todolist](2026-09-16-849-853-closure-todolist.md) 记录当前顺序及逐项用户确认规则。用户明确将本项目后续浏览器验收改为单 PC `1440x900`，替代下文旧三视口要求；其他操作与 S1/S2 门禁保留。历史视口结果仍是历史证据，旧轮次状态由 T0.6 对账。
+
 轮次：2026-09-15 Scratch 实现轮次。
 分支：`feat/849-parameter-unification`，工作树 `/Users/tzrea1/Develop/WiseEff-worktrees/issue-849-parameter-unification`。
 基线：`origin/main` 于 `8f03cfa4302aebbe3bc3c37ef2197c082c2a3e2e`（2026-09-15 拉取）。
 计划：[2026-09-14-parameter-unification-and-seed-parity.md](2026-09-14-parameter-unification-and-seed-parity.md)。已确认决策：[ADR-0045](../../design-docs/adr-0045-configuration-schema-subject-and-seed-rebuild.md)。
 状态：**部分完成**。本报告把已交付并验证的内容与未开始的内容分开陈述，避免用一条顺利路径冒充 Issue 完成。Issue 仍为 OPEN。
 
+## 0. 当前状态对账 — 2026-09-16（T0.6）
+
+当前代码基线：`origin/main@4010a600fbc6108ce84860d053eb6d88d7d484cc`。#849、#853 保持 OPEN；#847 已 CLOSED，复用其工作区；#824 仍为 OPEN／Draft。当前执行顺序与逐项确认边界见[闭环清单](2026-09-16-849-853-closure-todolist.md)。
+
+| 范围 | 当前状态与证据归属 | 剩余 todo |
+| --- | --- | --- |
+| 已交付谱系 | #858 合入部分实现。T0.1–T0.5 后续通过 #869、#870、#872、#876、#875 合入；#873 修复独立 main-red 检查。切片合入不等于 Issue 整体验收。 | 保留回归，不重复开发已交付切片 |
+| B1／ConfigurationSchema | 主体类型 Slice A–C 与发布集成测试已存在；Binding 源出现身份及 JSON 语义摄取／物化仍缺失。按 ADR-0046 实施，不重开设计决策。 | T1.1 |
+| B4 | `charging_core` 是合法节点名。受审 NodeType 发布与递归数组 `catalog-capability/v4` 仍待实施；v3 不等于 v4。 | T1.2 |
+| 源文件／B2 | 三项目已有受审 `power-config.json`、`charging-thermal.dts` 与生成的 `vendor-drivers.dts`；清单库存为 125 项。这不证明完整板级来源身份、语义转换、后继成员、真实工具链有效性或每项目精确 124 条物化。历史 24 标签说法与后续 29 标签／37 引用实测不一致；须核对精确出现，不能只看计数。 | T1.3、T2.4 |
+| B5 | `createCanonicalDraftTraySource`、`canonicalDraftsToTrayDrafts`、reason／updatedAt 及新版 list／delete 接线均已实现，不需要捏造 parameterId。完整真实数据审阅／导出／重载浏览器证据仍缺。 | T2.1 |
+| B6 | #869 实现自动注册与全部目标放置预检：缺少 `csub_drv_sc8562` 容量时失败关闭，不进入完成态。#872 加固鉴权、单执行中任务与归档验证。运维整理容量及完整种子身份证明仍是独立工作。 | T1.3 |
+| 当前读取／消费者 | #867 以 TD-125 在 `catalogProjectValueRoutes.ts` 恢复了空新版目录时的旧读取回退。新版草稿已实现，但“全部旧回退已清除”不是当前事实。11 类消费者与最终新版写入／切换仍未闭环。 | T2.2 子项、T1.4 |
+| 归档 | `seedInitialization/archive.ts` 已捕获参数平面与源字节；#872 加固精确 v2 对象及闭包检查。捕获不等于线上处置（删除）；受审删除、共享数据保留与具体破坏性授权仍为前置条件。 | T2.3a/b |
+| S2 | 已有 CLI plan／execute／inspect／recover，以及历史 P0–P10 PostgreSQL 中断／映射回滚证据（`liveRun: false`）。这不证明真实流量／worker 静默、Docker PostgreSQL／对象存储／Redis 整套恢复或目标执行。P11–P16 仍不可用。 | T3.3a/b |
+| 浏览器／Hosted | #875 登记定义操作；#876 补归档旧链接验收。浏览器与 CI 证据仅属于各自候选。最终 S1／S2、完整本地套件、同一 sealed 集成候选及目标验收仍未完成，历史通过或跳过不能使其变绿。 | T3.1–T3.5 |
+
+Hosted 回执（2026-09-16 核对）：[#858](https://github.com/tzrea1-Q/WiseEff/pull/858) 实际运行过 CI（含 backend／quality／merge-bar 失败），“未开 PR／从未运行 Hosted”已过时。[#876](https://github.com/tzrea1-Q/WiseEff/pull/876) 的 L1、quality、smoke 与 merge-bar 成功，但 local-non-HDC、target-synthetic、minimal-upgrade 为 SKIPPED。这些事实不证明后续最终候选合格。
+
+编号刷新：当前迁移文件为 `0145_canonical_project_value_drafts.sql`、`0146_canonical_value_change_requests.sql`、`0147_configuration_schema_subject.sql`、`0148_seed_initialization_runs.sql`、`0149_project_parameter_plane_archives.sql`；`0150_product_feedback_v2.sql` 已占用。ADR-0045／0046、TD-124／125 均已存在。不得复用编号或改写已应用迁移；实施及集成前重新拉取核对分配。 ADR-0046 状态段中的“#858 实施中／下一个未使用编号”属于其 2026-09-15 决策时点，不是当前 PR 状态或可用编号；本次保留原决策文本。
+
+第 1、3 节保留带日期的 Scratch 观察、中间尝试与计数，不是当前代码树的重跑结果；第 4 节尝试历史按下文标注由后续交付替代。旧平板／手机产物仍是历史证据；后续验收仅用 **PC 1440x900**，全部非视口断言保留。当前完成判断以本节、更新后的矩阵与 #853 为准。
+
 ## 1. 已交付并验证
 
-### 1.1 清除旧库共存，读／写归属统一
+### 1.1 清除旧库共存，读／写归属统一（历史切片；读取回退后由 TD-125 恢复）
 
 `server/modules/parameter-bindings/catalogProjectValueRoutes.ts` 中 Issue 问题陈述点名的四个共存缺陷已全部清除：
 
@@ -48,7 +73,7 @@
 
 ### 1.5 新版提交 → 审阅 → 生效
 
-`server/modules/parameter-bindings/drafts/changeService.ts` 与 `changeRepository.ts`，加上新的 `project_parameter_value_change_requests` 归属（迁移 `0145`），补齐了缺失的受审生效单元：
+`server/modules/parameter-bindings/drafts/changeService.ts` 与 `changeRepository.ts`，加上新的 `project_parameter_value_change_requests` 归属（当前迁移 `0146_canonical_value_change_requests.sql`；`0145` 是 Scratch 编号），补齐了缺失的受审生效单元：
 
 | 步骤 | 行为 |
 | --- | --- |
@@ -464,20 +489,22 @@ pending draft——因此托盘尚未对真实 canonical 草稿演练过，无�
 
 ### 1.14 两个 JSON 与 DTS 兼容种子仍未进入后继
 
+2026-09-16 更正：下文关于 `charging_core` 不合法的命名结论已撤回（见 §1.13g 与 ADR-0046）。当前缺口为受审 NodeType 发布与嵌套数组 v4，不是命名语法。
+
 撤回：早前修订声称两个 JSON 兼容种子以正式 `configuration-schema` 主体
 （`csub_wiseeff_power_config`）进入后继。树中不存在该主体，后继中 `configuration-schema` 主体数为 **0**。
 JSON 种子没有语义摄入通道（B1），两个 DTS 兼容种子无法按现状发布（B4：3×4 cell 嵌套数组超出能力白名单，
-且 `charging_core` 节点名被规范语法排除）。两者均记录在验收矩阵中。
+且缺少受审 `charging_core` NodeType 发布）。两者均记录在验收矩阵中。
 
-## 2. 本轮范围的逐项结果
+## 2. 范围结果（2026-09-16 对账）
 
-| # | 要求范围 | 结果 | 证据 |
+| # | 范围 | 当前结果 | 后续归属 |
 | --- | --- | --- | --- |
-| 1 | 全部参数入口及直接跨模块引用统一新版 Catalog；清除旧库回退、混合读取与双写；打通导入、查看、草稿、提交、审批、生效、源文件写回、历史及导出 | **新版路径已交付。** 四个具名共存缺陷已清除；查看、草稿、提交、审阅、生效、源文件写回、新版绑定历史与新版导出均已跑在新版归属上。跨模块消费者改接仍未做 | §1.1、§1.5、§1.7、§1.9；剩余工作见 §4 |
-| 2 | 仅 DTS／JSON；113 厂商输入与 4 项兼容种子的语义对齐、真实源文件、完整示例 DTS 基底；JSON 软件配置使用 ConfigurationSchema | **部分完成。** 125 项输入清单与 4 项兼容种子的真实源文件（含精确 locator）已交付并通过保真度测试。113 厂商输入已对账但未做语义转换；完整示例 DTS 基底未编写；**acme 退役已交付**，ConfigurationSchema Slice A–C（主体种类、存储闭环、安装／运行时／能力）已实现——缺失的是 JSON 源身份摄入通道（B1） | §1.3、§1.6 |
-| 3 | YAML／TOML／ENV 项目源及对应 8 项种子归入 TD-124；明确拒绝这些格式；厂商 YAML 目录元数据保留读取与发布 | 拒绝行为与 TD-124 记录**已交付**；厂商 YAML 元数据导入经验证未变 | §1.2、§1.4 |
-| 4 | 按种子重建：保留非参数数据；旧参数、草稿、历史及源文件离线归档；仅初始化 Atlas／Aurora／Nebula；旧链接归档提示；acme 退役但保留发布历史 | **部分交付。** acme 退役与归档旧链接提示均已交付（见 1.13、1.13a）。未执行离线归档与项目初始化。侦察（`cutover-consumers-recon.md`）确认了可复用 seam 与真正缺失项 | §4 |
-| 5 | S1／S2 验收：真实鉴权、PostgreSQL、源存储、发布管理器、归档重建、中断续跑、整套恢复；前端三尺寸真实浏览器验证 | **部分完成。** 已交付切片使用了真实 PostgreSQL、真实鉴权与真实浏览器。S2 归档重建、中断续跑与整套恢复**未**执行；三尺寸检查只覆盖导入向导，未覆盖完整操作矩阵 | §3 |
+| 1 | 统一流程与消费者 | 新版草稿／审批／历史／导出切片及 B5 接线已交付；TD-125 旧读取回退仍存在，11 类消费者未闭环 | T2.1、T2.2 子项、T1.4 |
+| 2 | DTS／JSON 与种子语义对齐 | 125 项库存、4 项兼容真实源及 113 厂商输入示例源已存在；主体 Slice A–C 已落地；B1／B4、完整后继、板级语义身份与精确物化仍缺 | T1.1–T1.3、T2.4 |
+| 3 | 延期格式 | 拒绝 YAML／TOML／ENV 项目源；8 项 TD-124 保持延期，厂商 YAML 目录元数据仍在范围内 | 保留回归；不据此关闭 TD-124 |
+| 4 | 归档与重建 | 归档捕获、旧链接提示、acme 主体／别名退役、B6 守卫已交付；捕获不是处置，完整三项目初始化及 acme 定义生命周期仍待完成 | T1.3、T2.3a/b |
+| 5 | S1／S2 与浏览器 | 已有真实本地切片和历史 CLI 中断／映射恢复证据；完整真实 S1、Docker 多存储恢复、静默与目标、最终 Hosted 未完成；后续浏览器单 PC | T3.1–T3.5 |
 
 ## 3. 验证证据
 
@@ -522,15 +549,9 @@ JSON 种子没有语义摄入通道（B1），两个 DTS 兼容种子无法按�
 
 本轮未把任何未列入 §1 的内容报告为已交付。
 
-**PU-01 尝试记录（本轮）。** 先写了 R3 威胁矩阵（`849-inventory/configurationschema-threat-matrix.md`，16 行）。随后实施了扩展：契约枚举与新的 `parseCanonicalConfigurationSchemaId` 解析器、内核编译器类型／规则／校验、运行时匹配器（第三个解析步骤，绝不消耗 NodeType 后备）、JSON Schema 三分支、能力版本升到 `catalog-capability/v3` 且仍准入 v1/v2、按字节锁定的 S0-ID 序列化 golden 及其 blob／长度／SHA pin、追加式迁移 `0146`，以及 DTO／API 联合类型。要达到一致状态，必须刻意更新**五个冻结的安全指纹**（S2-SCH schema 指纹、ACL 指纹、冻结的规范关系数 44 → 45、编译器契约 golden、能力契约摘要），并为新表与新谓词补角色清单授权与属主。这些门禁存在的意义正是防止 schema/ACL 变更被静默吸收，更新它们不是机械动作。与其让这些门禁保持失败、或在无独立评审的情况下把观测值写进安全 pin，**整套 PU-01 改动已被回退**；本次尝试交付的产物是威胁矩阵与已记录的改动面地图。应由带 Spec 评阅人的专门轮次落地。
+**PU-01 早期尝试记录（历史，已被 §1.8 的 Slice A–C 交付替代；不代表当前回退状态）。** 先写了 R3 威胁矩阵（`849-inventory/configurationschema-threat-matrix.md`，16 行）。随后实施了扩展：契约枚举与新的 `parseCanonicalConfigurationSchemaId` 解析器、内核编译器类型／规则／校验、运行时匹配器（第三个解析步骤，绝不消耗 NodeType 后备）、JSON Schema 三分支、能力版本升到 `catalog-capability/v3` 且仍准入 v1/v2、按字节锁定的 S0-ID 序列化 golden 及其 blob／长度／SHA pin、追加式迁移 `0146`，以及 DTO／API 联合类型。要达到一致状态，必须刻意更新**五个冻结的安全指纹**（S2-SCH schema 指纹、ACL 指纹、冻结的规范关系数 44 → 45、编译器契约 golden、能力契约摘要），并为新表与新谓词补角色清单授权与属主。这些门禁存在的意义正是防止 schema/ACL 变更被静默吸收，更新它们不是机械动作。与其让这些门禁保持失败、或在无独立评审的情况下把观测值写进安全 pin，**整套 PU-01 改动已被回退**；本次尝试交付的产物是威胁矩阵与已记录的改动面地图。应由带 Spec 评阅人的专门轮次落地。
 
-**未开始（最大剩余风险）：**
-
-1. **PU-01 ConfigurationSchema。** 侦察显示改动面并非局部：新迁移须修改 `0137` 中 5 处闭集 CHECK 约束与 6 个触发器函数、主体／选择器枚举与规范化、`schemas/dts/catalog-release/*`（含**按字节锁定的序列化 golden**）、编译器严格 schema 及其编译产物 golden、安装器、运行时匹配与快照、目录缓存与校验、发布能力版本（及准入清单）、API DTO 与生成的 OpenAPI、注册／位置守卫、发布校验计数门，以及前端呈现层与 `catalogRoleManifest.ts`。这是 R3 变更，实施前需要威胁矩阵；因此选择不尝试，而不是半途应用。
-3. **受审真实源文件**：`charge_voltage_limit_mv`、`battery_temp_target_c`、`dts_fast_charge_profile_matrix`、`battery_thermal_derate_curve`，以及解析悬空 overlay 目标的完整自洽示例 DTS 基底。清单已记录去向，文件尚不存在。
-4. **种子发布与三项目初始化。** acme 退役已完成，但仍未发布携带种子定义的发布，因此 canonical 绑定／值物化仍写入 0 条绑定，且未初始化任何项目。
-5. **归档重建运行配置与 S2。** 未归档、未证明静默、未做中断续跑、未做整套恢复演练。侦察确认归档适配器、分类器、映射查询、检查点与自托管控制器真实可用，真正缺口是受审重建处置契约、四个切换操作缺少操作面、归档目标仅支持本地文件系统，以及 P11–P16 阶段仍声明不可用。
-6. **跨域消费者切换**（Agent、日志、知识、调试、DTS 重载）与**完整浏览器操作矩阵**。向导检查不能替代 Issue 的操作矩阵。
+**当前未完成项（替代早期“未开始”清单）：** B1 来源身份、B4 v4、完整发布后继和精确三项目种子、板级真实工具链、11 类消费者／最终旧回退切换、归档处置与完整 S1／S2／最终集成。逐项标准与顺序见[闭环清单](2026-09-16-849-853-closure-todolist.md)。不能再将主体 Slice A–C、兼容源文件、B5 接线、B6 注册守卫、归档捕获或 CLI 四入口写成不存在；它们的剩余验收边界见第 0 节。
 
 **已交付内容中的缺口，如实列出：**
 
@@ -544,7 +565,7 @@ JSON 种子没有语义摄入通道（B1），两个 DTS 兼容种子无法按�
 1. `rejects and withdraws without writing a value` 约每三次运行失败一次，报 `Binding has no concrete config-set source to draft against`。前一个测试中的"过期 pin"探针用无序 `limit 1` 复制了**任意**一条 `project_parameter_values` 行，而不是绑定自身的当前 tip，因此有时带上占位源 `canonical-binding-identity`。已改为 join `binding.current_value_id`；修复后连续四次运行全绿。
 2. 整个 129 文件集合还会出现 `database "wiseeff_test_*" does not exist`、`terminating connection due to administrator command`、`Connection terminated unexpectedly`。`server/testing/testDatabase.ts` 会强制删除陈旧 worker 数据库（`drop database ... with (force)`，第 124／133／245 行），因此在两个触碰数据库的进程同时运行时，它们会互删对方的临时数据库。这是测试框架特性、由重叠运行触发，不是产品失败。在没有重叠进程时，合并集完全通过。
 
-**失败：** 最终状态下无。合并受影响集通过 **130 文件 / 933 测试**。中间出现过两次失败并已修复，不作为通过的跳过项上报：路由单测最初断言了旧的直存行为；种子对账测试最初测量了错误的值计数。
+**历史失败口径：** 早期窄范围最终运行在中间问题修复后通过，但后续 round-21 记录为 492 通过／1 失败，#858 Hosted 也曾失败。#870 后续修复了角色断言。任何历史汇总都不能重标为当前全绿。
 
 **已上报但未修复（超出本轮授权）：**
 
@@ -555,7 +576,7 @@ JSON 种子没有语义摄入通道（B1），两个 DTS 兼容种子无法按�
 
 - **本地真实 PostgreSQL**（专用 lane 数据库）：是，覆盖草稿归属、路由边界、格式拒绝与种子清单。
 - **真实浏览器**：是，覆盖三尺寸导入向导。
-- **Hosted／CI**：未运行（未开 PR）。
+- **Hosted／CI**：历史 PR 已运行（含失败与跳过）；当前最终候选未完成，详见第 0 节。
 - **目标主机与硬件**：未运行，未获授权。
 - 不主张新版工作流、种子、归档重建或 ConfigurationSchema 已达产品就绪。Issue 保持 OPEN 与 `ready-for-agent`。
 
@@ -565,7 +586,7 @@ JSON 种子没有语义摄入通道（B1），两个 DTS 兼容种子无法按�
 | --- | --- | --- |
 | 计划 | 已更新 | `docs/zh-CN/exec-plans/active/2026-09-14-parameter-unification-and-seed-parity.md` 状态、本报告、`849-inventory/README.md`、中英 TD-124 行 |
 | 架构／领域 | 已更新 | `docs/zh-CN/design-docs/adr-0045-configuration-schema-subject-and-seed-rebuild.md` 与英文对应件、`docs/adr/README.md`、`CONTEXT.md`、中英领域模型、中英 API 过渡与切换归档文档、中英 `docs/PLANS.md` |
-| 产品规格 | 复核，未主张变更 | 主体类型尚未实现，本轮不改产品规格文本 |
+| 产品规格 | 复核，未主张变更 | 主体 Slice A–C 已实现；后续 B1／B4 实施时同步产品事实 |
 | 质量／测试 | 复核 | 已运行受影响套件与边界／契约／schema 文档门禁；Issue 的完整操作矩阵尚未覆盖 |
 | 运维 | 复核，未变更 | 本轮未做归档重建操作面改动 |
 | 安全／治理 | 复核 | 新增 `UNSUPPORTED_FORMAT` 错误码；新版草稿写入仍经可信敏感节点校验与审计写入 |

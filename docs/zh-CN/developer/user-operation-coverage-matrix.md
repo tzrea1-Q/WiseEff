@@ -23,8 +23,8 @@
 - `DEBUG-ADMIN-001`：调试管理后台验收覆盖复杂值类型与格式元数据的创建和编辑。
 - `DTS-RELOAD-DEPLOY-001` / `KERNEL-001` / `VERIFY-001` / `RESIDUE-001`：假桥自动化验收（见英文操作矩阵）；浏览器证据 `work/ui-checks/285-*`–`288-*`。
 - `DTS-RELOAD-DEPLOY-HW-001`：真实 HDC 条件覆盖（非阻塞）。
-- `DTS-RELOAD-HANDOFF-001`：工作台 → `/dts-reload` 深链交接（planned；`required: false`）。
-- `DTS-RELOAD-PROMOTE-001`：成功普通运行晋升为参数草稿（planned；`required: false`；不建 CR）。
+- `DTS-RELOAD-HANDOFF-001`：工作台 → `/dts-reload` 深链交接（automated；`required: false`）。
+- `DTS-RELOAD-PROMOTE-001`：成功普通运行晋升为参数草稿（automated；`required: false`；不建 CR）。
 
 ## 当前操作重点
 
@@ -39,18 +39,18 @@
 - `DTS-RELOAD-VERIFY-001`：经 `debug.readNode` 行为核对；`coverage: automated`。验收 spec 只覆盖无绑定路径，升级判定由 `server/modules/dts-reload/deploy.test.ts` 断言。
 - `DTS-RELOAD-RESIDUE-001`：残留记账与恢复基线；`coverage: automated`。验收 spec 只覆盖残留已记录可读，补偿运行与清除规则由 `residue.test.ts` / `restoreBaseline.test.ts` 断言。
 - `DTS-RELOAD-DEPLOY-HW-001`：真实 HDC 目标条件部署；`coverage: conditional`。
-- `DTS-RELOAD-HANDOFF-001`：从 `/parameters` 工作台「带到参数调试」携带 `?project=` 与 `?bindingIds=`；`coverage: future`。
-- `DTS-RELOAD-PROMOTE-001`：从成功普通重载运行把已存调试值写成参数草稿后停止（不建 CR、不自动提交）；`coverage: future`。
-- `PARAM-ADMIN-003`：Admin 在 `/parameter-admin/projects` 搜索、状态筛选、排序与分页；刷新、`popstate`、后退与前进都恢复 `q`/`status`/`sort`；键盘进入行且编辑/删除不冒泡，并自动断言 390/768/1440 三档布局。`coverage: automated`，见 `e2e/acceptance/parameter-admin-projects.acceptance.spec.ts`。
+- `DTS-RELOAD-HANDOFF-001`：深链 `/dts-reload?project=` 与 `?bindingIds=` 过滤候选且不填入本轮托盘；`coverage: automated`。
+- `DTS-RELOAD-PROMOTE-001`：从成功普通重载运行把已存调试值写成参数草稿后停止（不建 CR、不自动提交）；`coverage: automated`。
+- `PARAM-ADMIN-003`：PC 1440×900 下，Admin 在 `/parameter-admin/projects` 的 DataTable 经 URL `q`/`status`/`sort` 搜索、筛选、排序与分页；刷新、`popstate`、后退与前进都恢复状态；键盘进入行且编辑/删除隔离不冒泡，页面不横向溢出。`coverage: automated`，见 `e2e/acceptance/parameter-admin-projects.acceptance.spec.ts`。
 - `PARAM-INIT-WIZARD-001`：创建者完成项目参数初始化（选源 + 勾选）并进入待审阅；单测/服务端已覆盖；playwright-cli 证据见 `work/ui-checks/param-init/`；完整浏览器 e2e 待语义 binding 选择器落地后补。
 - `PARAM-INIT-EMPTY-001`：显式空库初始化可批准为 `initialized` 且零 binding（mock Port + 服务端）；专用 e2e 待补。
 - `PARAM-INIT-REVIEW-001`：Admin 在 `/parameter-review` 批准初始化后解锁并物化 binding；服务端 + App Port；playwright-cli 审阅页证据见 `work/ui-checks/param-init/review-*`。
 - `PARAM-INIT-REJECT-001`：Admin 带原因驳回后创建者可修订再提交（reducer + 服务端）；专用浏览器 e2e 待补。
-- `PARAM-INIT-LOCK-001`：未 `initialized` 项目不能提交常规 typed binding 变更轮次（`ParametersPage` 锁 + `assertProjectAllowsParameterSubmit`）。
-- `PROJ-OPS-001`：已被 `PROJ-CONFIG-CUTOVER-001` 取代：旧深链重定向到配置工作台等价上下文；未知项目 ID 仍显示 not-found；自动化归属 `e2e/acceptance/project-configuration-workbench.acceptance.spec.ts`。
-- `PROJ-OPS-002`：已被 `PROJ-CONFIG-READ-001` / `PROJ-CONFIG-CUTOVER-001` 取代：三视口工作台布局证据。
-- `PROJ-OPS-003`：已被 `PROJ-CONFIG-BASELINE-001` / `PROJ-CONFIG-OPS-001` / `PROJ-CONFIG-CONFLICT-001` 取代：基线/成员/冲突确认在工作台源码上下文。
-- `PROJ-CONFIG-READ-001`：Admin 在 API mode 从项目清单进入 `/parameter-admin/projects/:projectId/configuration`，验证配置集解析、成员/未编组树、活跃 DTS 源码、发布身份、恢复状态和三视口布局；自动化归属 `e2e/acceptance/project-configuration-workbench.acceptance.spec.ts`。
+- `PARAM-INIT-LOCK-001`：未 `initialized` 项目不能提交常规 typed binding 变更轮次；`coverage: automated`，见 `e2e/acceptance/parameter-initialization-lock.acceptance.spec.ts`。
+- `PROJ-OPS-001`：已被 `PROJ-CONFIG-CUTOVER-001` 取代：PC 1440×900 下旧深链重定向到配置工作台等价上下文；未知项目 ID 仍显示 not-found；自动化归属 `e2e/acceptance/project-configuration-workbench.acceptance.spec.ts`。
+- `PROJ-OPS-002`：已被 `PROJ-CONFIG-READ-001` / `PROJ-CONFIG-CUTOVER-001` 取代：PC 1440×900 工作台布局证据，无截断或页面级横向溢出。
+- `PROJ-OPS-003`：已被 `PROJ-CONFIG-BASELINE-001` / `PROJ-CONFIG-OPS-001` / `PROJ-CONFIG-CONFLICT-001` 取代：PC 1440×900 下基线/成员/冲突确认在工作台源码上下文。
+- `PROJ-CONFIG-READ-001`：PC 1440×900 下，Admin 在 API mode 从项目清单进入 `/parameter-admin/projects/:projectId/configuration`，验证配置集解析、成员/未编组树、活跃 DTS 源码、发布身份、恢复状态和树/检查器/任务 sheet 布局；自动化归属 `e2e/acceptance/project-configuration-workbench.acceptance.spec.ts`。
 - `PROJ-CONFIG-SOURCE-001`：Admin 在同一规范路由验证结构 span 聚焦、按文件分组统一搜索、跨文件跳转保留配置集、`node`/`property`/`sourceMode` 深链恢复、树/源码独立重试与键盘导航；自动化归属 `e2e/acceptance/project-configuration-workbench.acceptance.spec.ts`。
 - `PROJ-CONFIG-INSPECT-001`：Admin 在同一规范路由验证检查器层级与回退、不可变版本历史与下载、历史/对比源码模式恢复、身份标注与源码 ≥640px 常驻规则；自动化归属 `e2e/acceptance/project-configuration-workbench.acceptance.spec.ts`。
 - `PROJ-CONFIG-CANDIDATE-001`：Admin 在同一规范路由验证候选上传、影响审查、解析失败诊断与放弃，且不改变活跃版本与配置集成员；自动化归属 `e2e/acceptance/project-configuration-workbench.acceptance.spec.ts`。
@@ -60,14 +60,14 @@
 - `PROJ-CONFIG-ACTIVATE-001`：Admin 在同一规范路由验证既有/新文件候选激活、影响确认、过期基 CAS 与不可激活状态；自动化归属 `e2e/acceptance/project-configuration-workbench.acceptance.spec.ts`。
 - `PROJ-CONFIG-OPS-001`：Admin 在同一规范路由验证配置集创建/配置、成员增删（角色/顺序/确认框）、未编组可见性与编入、手动同步任务证据、命令栏导出、空集上传/编入路径（不自动激活）以及非管理员只读保留；自动化归属 `e2e/acceptance/project-configuration-workbench.acceptance.spec.ts`。
 - `PROJ-CONFIG-CONFLICT-001`：Admin 在同一规范路由验证源码定位三方冲突裁决（两侧等权、确认+可选审计原因、队列前进）、合格批量预览/裁决、开放冲突阻断候选激活，以及空队列时冲突坞保持折叠；自动化归属 `e2e/acceptance/project-configuration-workbench.acceptance.spec.ts`。
-- `PROJ-CONFIG-READINESS-001`：Admin 在同一规范路由验证服务端发布就绪摘要、Issues 坞 remediation、阻断/不可用/过期或本机会话脏时创建/发布失败关闭，以及前端不用客户端计数发明权限；自动化归属 `e2e/acceptance/project-configuration-workbench.acceptance.spec.ts`。
-- `PROJ-CONFIG-BASELINE-001`：Admin 在同一规范路由验证基线创建/对比/警告确认/发布/恢复预览与原子恢复、已发布 tip 不变与就绪刷新；自动化归属 `e2e/acceptance/project-configuration-workbench.acceptance.spec.ts`。
+- `PROJ-CONFIG-READINESS-001`：PC 1440×900 下，Admin 在同一规范路由验证服务端发布就绪摘要、Issues 坞 remediation、阻断/不可用/过期或本机会话脏时创建/发布失败关闭，以及前端不用客户端计数发明权限；自动化归属 `e2e/acceptance/project-configuration-workbench.acceptance.spec.ts`。
+- `PROJ-CONFIG-BASELINE-001`：PC 1440×900 下，Admin 在同一规范路由验证基线创建/对比/警告确认/发布/恢复预览与原子恢复、已发布 tip 不变与就绪刷新；自动化归属 `e2e/acceptance/project-configuration-workbench.acceptance.spec.ts`。
 - `PROJ-CONFIG-REVISION-GATE-001`：Admin 在配置工作台经拓扑接缝列出/选择真实配置修订并运行校验；`requiresConfirmation` 时发布确认框须勾选风险确认（单元/服务端 + playwright-cli `work/ui-checks/td-057-config-set-revision-gate/`；阻断 Playwright 等 TD-079）。
-- `PROJ-CONFIG-CUTOVER-001`：旧 `/files` `/config-sets` `/structure` `/conflicts` 深链重定向到等价工作台上下文并保留焦点；新链接只使用 `/configuration`；三视口证明能力不丢失；自动化归属 `e2e/acceptance/project-configuration-workbench.acceptance.spec.ts`；证据见 `work/ui-checks/project-configuration-workbench-cutover/`。
+- `PROJ-CONFIG-CUTOVER-001`：PC 1440×900 下旧 `/files` `/config-sets` `/structure` `/conflicts` 深链重定向到等价工作台上下文并保留焦点；新链接只使用 `/configuration`；集成切换证明能力不丢失；自动化归属 `e2e/acceptance/project-configuration-workbench.acceptance.spec.ts`；证据见 `work/ui-checks/project-configuration-workbench-cutover/`。
 - `PARAM-ADMIN-DIALOG-001`：Admin 打开项目编辑、项目删除与治理确认框，检查焦点进入、Tab 受限、叠层 Escape、焦点归还与按下在内松开在外；共享弹窗原语的单元测试加 playwright-cli 证据先行。
 - `PARAM-ASSIGNEE-001/002`：Software User 在 `/parameters` 的 binding-centric 提交面板中看到三类项目作用域候选人；默认值非空，候选集合精确排除 inactive、guest、仅 Admin 与角色不匹配用户。自动化归属 `e2e/acceptance/parameter-topology.acceptance.spec.ts`。
-- `PROJ-REVIEW-ROLES-001`：Admin 在 `/parameter-admin/projects/:projectId/review-roles` 为项目配置、新增、移除审核角色（`hardware-committer`、`software-committer`、`software-user`），采用 CAS 并发控制与原子持久化，保留组织角色不变，断言覆盖 UI、API、DB 和 audit（`src/components/parameter-admin-next/ProjectReviewRolesPanel.test.tsx`、`server/modules/users/projectWorkflowRoles.integration.test.ts`；`coverage: automated`）。
-- `PROJ-REVIEW-READINESS-001`：Software User 或 Admin 在 `/parameters` 工作台检测项目审核角色完备性，缺少角色时精准阻止提交并保留暂存草稿，为 Admin 显示配置入口，断言覆盖 UI 和 API（`src/components/parameter-topology/DtsBindingDraftTray.test.tsx`、`server/modules/parameters/serviceReviewWorkflow.integration.test.ts`；`coverage: automated`）。
+- `PROJ-REVIEW-ROLES-001`：Admin 在 `/parameter-admin/projects/:projectId/review-roles` 为项目配置、新增、移除审核角色。自动化归属 `e2e/acceptance/project-review-roles.acceptance.spec.ts`。
+- `PROJ-REVIEW-READINESS-001`：Software User 或 Admin 在 `/parameters` 工作台检测项目审核角色完备性，缺少角色时阻止提交。自动化归属 `e2e/acceptance/project-review-roles.acceptance.spec.ts`。
 - `PFB-SUBMIT-001`：Admin 在 `/parameters` 通过侧边栏提交产品反馈，断言覆盖 UI、API、DB、audit 和截图证据（`e2e/acceptance/product-feedback.acceptance.spec.ts`）。
 - `PFB-ADMIN-001`：Admin 在 `/feedback-admin` 查看反馈列表与详情，推进状态并保存备注，断言覆盖 UI、API、DB、audit 和截图证据。
 - `PFB-AUTHZ-001`：Hardware User 访问产品反馈管理 API 和 `/feedback-admin` 时被拒绝，断言覆盖 UI、API、DB 和截图证据。
@@ -89,7 +89,7 @@
 - `KB-ADMIN-001`：Admin 经确定性小泽审批流创建 Agent 知识草稿后，在 `/knowledge-admin` 的 Agent 草稿发布队列审阅（创建人、会话来源、来源分析链接）、发布其一并归档拒绝其一，断言覆盖 UI、API、DB、审计（`e2e/acceptance/knowledge.acceptance.spec.ts`）。
 - `KB-REC-001`：Hardware User 在 `/logs` 查看已完成分析的「相关知识」区块（仅已发布条目、引用深链进入 `/knowledge`、草稿与归档永不出现），断言覆盖 UI、API、DB（`e2e/acceptance/knowledge.acceptance.spec.ts`）。
 - `KB-XREF-001`：Hardware User 在 `/knowledge` 管理条目的参数定义引用并在定义详情看到已发布的引用条目（草稿永不出现；废弃后 chip 存续带「已废弃」徽章），断言覆盖 UI、API、DB、审计（`e2e/acceptance/knowledge.acceptance.spec.ts`）。
-- `PARAM-HOME-001`：Admin 在 `/parameter-home` 加载 dashboard summary/hotspots API，并切换页面内时间窗口与热榜维度（`e2e/acceptance/parameter-home.acceptance.spec.ts`）。
+- `PARAM-HOME-001`：PC 1440×900 下，Admin 在 `/parameter-home` 加载 dashboard summary/hotspots API，并切换页面内时间窗口与热榜维度，同时保持现有 Xiaoze 悬浮球不遮挡 dashboard 内容（`e2e/acceptance/parameter-home.acceptance.spec.ts`）。
 - `DEBUG-ADMIN-001`：Admin 在 `/debugging-admin/nodes` 通过 API mode 完成调试节点新增、编辑、禁用/恢复、HDC/ADB binding 维护，以及节点、binding、operation 历史的级联永久删除，并下载完整节点目录文件、上传该文件预览并确认合并、重新读取与重新导出，断言覆盖 UI、API、DB 和 audit。
 - `DEBUG-ADMIN-846-CAPACITY`：Admin 导出全量节点目录，预览 2,001 节点 / 501 模块的文件，在一次事务内导入并在重新读取与再导出后核对语义一致，断言覆盖 API、DB 与 audit。
 - `DEBUG-ADMIN-846-VIEWPORTS`：Admin 在三档视口下打开导入预览弹窗，核对布局、确认可达性与差异渲染，断言覆盖 UI 与 API。
@@ -139,7 +139,7 @@
 - `PARAM-TOPOLOGY-BROWSE-001`：融合工作台中的真实源/生效嵌套树、语义行、详情 shape/provenance 与 topology API 200（`e2e/acceptance/parameter-topology.acceptance.spec.ts`）。
 - `PARAM-TOPOLOGY-EDIT-001`：drafts Schema 诊断、409 与编译失败关闭（`e2e/acceptance/parameter-topology.acceptance.spec.ts`）。
 - `PARAM-IDENTITY-MAP-001`：`open-mapping` 阻断 validate 与决议审计（`e2e/acceptance/parameter-topology.acceptance.spec.ts`）。
-- `PARAM-IDENTITY-MAP-ADMIN-001`：Admin 在 `/parameter-admin` 决议身份映射任务，并通过受保护 re-resolve 更正已应用的选择，覆盖 UI、API、DB 与治理审计（`e2e/acceptance/parameter-topology.acceptance.spec.ts`）。
+- `PARAM-IDENTITY-MAP-ADMIN-001`：PC 1440×900 下，Admin 在 `/parameter-admin` 决议身份映射任务，并通过受保护 re-resolve 更正已应用的选择，覆盖 UI、API、DB 与治理审计（`e2e/acceptance/parameter-topology.acceptance.spec.ts`）。
 - `PARAM-CONFIG-PUBLISH-GATE-001`：真实工具链 validate 与 DB reload 持久化（`e2e/acceptance/parameter-topology.acceptance.spec.ts`）。
 - `PARAM-ENABLE-GATE-001`：已自动化。结构属性闸门与迁移 finalize 驳回（`e2e/acceptance/parameter-topology.acceptance.spec.ts`）。
 - `PARAM-ENABLE-VISIBLE-001`：已自动化。工作台不生效提示 + 拓扑 API enablement；`TopologyTree` 不在 `/parameters` 默认面上（`e2e/acceptance/parameter-topology.acceptance.spec.ts`）。
@@ -153,25 +153,25 @@
 
 本附录同步 `e2e/acceptance/operationMatrix.ts` 中已正式登记的 17 个 `coverage=automated` operation。每行都有完整 assertions，以及指向已存在 owner 文件的 `specFiles`。CatalogPage 已挂载；OP-08（#810）在本地 Catalog lane 上以可观察断言执行这些 ID。英文 companion 由 `npm run acceptance:operations` 生成。这是本地证据，不是 Hosted 或目标机证据。
 
-| Operation ID | Priority | 状态 | Requirement | 路由/角色/交互 | 三视口 | 必需 API / DB / audit / screenshot 证据 | Spec |
+| Operation ID | Priority | 状态 | Requirement | 路由/角色/交互 | 视口 | 必需 API / DB / audit / screenshot 证据 | Spec |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| `PCAT-CATALOG-DISCOVER-001` | P0 | automated | PCAT-UI-01 | `/parameter-admin/specs`；全角色进入唯一目录 | 1440x900、768x1024、390x844 | catalog/list 200；current-release DB fingerprint；zero read mutation；entry/list screenshots | `e2e/acceptance/parameter-catalog.acceptance.spec.ts` |
-| `PCAT-CATALOG-DEEP-LINK-001` | P0 | automated | PCAT-UI-02 | User/Org Admin；reload/Back/Forward opaque selection | 三视口 | pinned API/cursor；selected-ID DB；无 audit；restored-selection screenshots | `e2e/acceptance/parameter-catalog.acceptance.spec.ts` |
-| `PCAT-DEFINITION-DETAIL-001` | P0 | automated | PCAT-UI-03 | User/Org Admin；选择 Subject/Definition/current+pinned revision | 三视口 | detail/revision API；owner/head DB；无 audit；pane/sheet screenshots | `e2e/acceptance/parameter-catalog.acceptance.spec.ts` |
-| `PCAT-DEFINITION-COLLECTION-001` | P0 | automated | PCAT-UI-16 | Org Admin；完整集合分页、模块子树过滤、清除过滤、按需打开历史 | 三视口 | release-bound list API；filtered count DB；无 read mutation audit；collection/history screenshots | `e2e/acceptance/parameter-catalog-definitions.acceptance.spec.ts` |
-| `PCAT-DEFINITION-LIFECYCLE-001` | P0 | automated | PCAT-UI-17 | Org Admin；仅显示 publication-authorized 弃用/恢复动作；统一编辑器要求变更 key、明确项目清单与原因后才可预演身份纠错 | 三视口 | publication-surface API；定义与迁移 fixture DB；无未授权 mutation audit；lifecycle/editor screenshots | `e2e/acceptance/parameter-catalog-definitions.acceptance.spec.ts` |
-| `PCAT-REVIEW-RESOLVE-001` | P0 | automated | PCAT-UI-04 | Org Admin；ETag/release/idempotency 下 resolve 四种 variant | 三视口 | atomic API；Resolution/Registration/Placement/Proposal DB；success/refusal audit；前/确认/后截图 | `e2e/acceptance/parameter-catalog-governance.acceptance.spec.ts` |
-| `PCAT-TIMELINE-001` | P1 | automated | PCAT-UI-05 | authorized reader；稳定分页 timeline | 三视口 | composite cursor API；pinned DB facts；无 read audit；timeline screenshots | `e2e/acceptance/parameter-catalog.acceptance.spec.ts` |
-| `PCAT-READY-ACTIONS-001` | P0 | automated | PCAT-UI-06 | 全角色；对比 ready affordance 与 server denial | 三视口 | role API；denied DB unchanged；refusal audit；role screenshots | `e2e/acceptance/parameter-catalog.acceptance.spec.ts` |
-| `PCAT-REGISTRATION-001` | P0 | automated | PCAT-UI-07 | Org Admin + negative roles；显式 default/parent 注册并 reload | 三视口 | release/idempotency API；one Registration/Placement DB；success/denial audit；choice/result screenshots | `e2e/acceptance/parameter-catalog-governance.acceptance.spec.ts` |
-| `PCAT-CATALOG-STATES-001` | P0 | automated | PCAT-UI-08 | authorized reader；loading/error/四种 emptyReason | 三视口 | state APIs；fixture DB；零 mutation/audit；全部状态截图 | `e2e/acceptance/parameter-catalog.acceptance.spec.ts` |
-| `PCAT-RETIRED-HISTORY-001` | P1 | automated | PCAT-UI-09 | reader/Admin negative；读 retired/deprecated 并尝试禁止 mutation | 三视口 | lifecycle API+409；retained DB；refusal audit；badge/disabled screenshots | `e2e/acceptance/parameter-catalog.acceptance.spec.ts` |
-| `PCAT-CONFLICT-RECONFIRM-001` | P0 | automated | PCAT-UI-10 | Org/Platform Admin；触发四类 conflict 并保留输入重确认 | 三视口 | exact 409；no-partial DB；refusal/no-success audit；conflict screenshots | `e2e/acceptance/parameter-catalog-negative.acceptance.spec.ts` |
-| `PCAT-LEGACY-LINK-001` | P0 | automated | PCAT-UI-11 | authorized/scope-hidden；mapped/410/409/404；`/parameters?parameter=:legacyId` 已归档提示 | 三视口 | status+headers；mapping-head/Archive/legacy migration evidence DB；所属组织可见提示且不进入编辑/提交，其他组织得到不可区分的 404；提示可关闭；三视口 screenshots | `e2e/acceptance/parameter-catalog-negative.acceptance.spec.ts` |
-| `PCAT-AGENT-READONLY-001` | P0 | automated | PCAT-UI-12 | Agent；scoped read + 所有治理 mutation/spoof probe | 三视口 | guest 浏览器拒绝与真实认证 Agent→dispatcher→PG 分层记录；确定性 provider 不代表 live-model 质量；拒绝核对业务与审计 | `e2e/acceptance/parameter-catalog-negative.acceptance.spec.ts`；`server/modules/agent/xiaoze/catalogBoundary.integration.test.ts` |
-| `PCAT-ADAPTER-PARITY-001` | P1 | automated | PCAT-UI-13 | 全角色；API/mock 重放相同 state/authority | 三视口 | real API digest；API-half DB/audit；mock no-extra-authority；paired screenshots | `e2e/acceptance/parameter-catalog-negative.acceptance.spec.ts` |
-| `PCAT-RESPONSIVE-001` | P0 | automated | PCAT-UI-14 | reader/Admin；全 page/dialog/drawer layout+focus | 三视口 | critical API；DB/audit N/A；snapshot+screenshot；console/page/request failure=0 | `e2e/acceptance/parameter-catalog.acceptance.spec.ts` |
-| `PCAT-GOVERNANCE-JOURNEY-001` | P0 | automated | PCAT-UI-15 | Org/Platform Admin + negative roles；完整 navigation/register/review/proposal/conflict/deep-link journey | 三视口 | request ledger；final DB；每个 mutation/refusal audit；checkpoint screenshots/trace/report/runtime pins | `e2e/acceptance/parameter-catalog-governance.acceptance.spec.ts` |
+| `PCAT-CATALOG-DISCOVER-001` | P0 | automated | PCAT-UI-01 | `/parameter-admin/specs`；全角色进入唯一目录 | 单 PC 1440×900 | catalog/list 200；current-release DB fingerprint；zero read mutation；PC entry/list screenshots | `e2e/acceptance/parameter-catalog.acceptance.spec.ts` |
+| `PCAT-CATALOG-DEEP-LINK-001` | P0 | automated | PCAT-UI-02 | User/Org Admin；reload/Back/Forward opaque selection | 单 PC 1440×900 | pinned API/cursor；selected-ID DB；无 audit；restored-selection screenshots | `e2e/acceptance/parameter-catalog.acceptance.spec.ts` |
+| `PCAT-DEFINITION-DETAIL-001` | P0 | automated | PCAT-UI-03 | User/Org Admin；选择 Subject/Definition/current+pinned revision | 单 PC 1440×900 | detail/revision API；owner/head DB；无 audit；PC pane/sheet screenshots | `e2e/acceptance/parameter-catalog.acceptance.spec.ts` |
+| `PCAT-DEFINITION-COLLECTION-001` | P0 | automated | PCAT-UI-16 | Org Admin；完整集合分页、模块子树过滤、清除过滤、按需打开历史 | 单 PC 1440×900 | release-bound list API；filtered count DB；无 read mutation audit；collection/history screenshots | `e2e/acceptance/parameter-catalog-definitions.acceptance.spec.ts` |
+| `PCAT-DEFINITION-LIFECYCLE-001` | P0 | automated | PCAT-UI-17 | Org Admin；仅显示 publication-authorized 弃用/恢复动作；统一编辑器要求变更 key、明确项目清单与原因后才可预演身份纠错 | 单 PC 1440×900 | publication-surface API；定义与迁移 fixture DB；无未授权 mutation audit；lifecycle/editor screenshots | `e2e/acceptance/parameter-catalog-definitions.acceptance.spec.ts` |
+| `PCAT-REVIEW-RESOLVE-001` | P0 | automated | PCAT-UI-04 | Org Admin；ETag/release/idempotency 下 resolve 四种 variant | 单 PC 1440×900 | atomic API；Resolution/Registration/Placement/Proposal DB；success/refusal audit；前/确认/后截图 | `e2e/acceptance/parameter-catalog-governance.acceptance.spec.ts` |
+| `PCAT-TIMELINE-001` | P1 | automated | PCAT-UI-05 | authorized reader；稳定分页 timeline | 单 PC 1440×900 | composite cursor API；pinned DB facts；无 read audit；timeline screenshots | `e2e/acceptance/parameter-catalog.acceptance.spec.ts` |
+| `PCAT-READY-ACTIONS-001` | P0 | automated | PCAT-UI-06 | 全角色；对比 ready affordance 与 server denial | 单 PC 1440×900 | role API；denied DB unchanged；refusal audit；role screenshots | `e2e/acceptance/parameter-catalog.acceptance.spec.ts` |
+| `PCAT-REGISTRATION-001` | P0 | automated | PCAT-UI-07 | Org Admin + negative roles；显式 default/parent 注册并 reload | 单 PC 1440×900 | release/idempotency API；one Registration/Placement DB；success/denial audit；choice/result screenshots | `e2e/acceptance/parameter-catalog-governance.acceptance.spec.ts` |
+| `PCAT-CATALOG-STATES-001` | P0 | automated | PCAT-UI-08 | authorized reader；loading/error/四种 emptyReason | 单 PC 1440×900 | state APIs；fixture DB；零 mutation/audit；PC 各状态截图 | `e2e/acceptance/parameter-catalog.acceptance.spec.ts` |
+| `PCAT-RETIRED-HISTORY-001` | P1 | automated | PCAT-UI-09 | reader/Admin negative；读 retired/deprecated 并尝试禁止 mutation | 单 PC 1440×900 | lifecycle API+409；retained DB；refusal audit；badge/disabled screenshots | `e2e/acceptance/parameter-catalog.acceptance.spec.ts` |
+| `PCAT-CONFLICT-RECONFIRM-001` | P0 | automated | PCAT-UI-10 | Org/Platform Admin；触发四类 conflict 并保留输入重确认 | 单 PC 1440×900 | exact 409；no-partial DB；refusal/no-success audit；conflict screenshots | `e2e/acceptance/parameter-catalog-negative.acceptance.spec.ts` |
+| `PCAT-LEGACY-LINK-001` | P0 | automated | PCAT-UI-11 | authorized/scope-hidden；mapped/410/409/404；`/parameters?parameter=:legacyId` 已归档提示 | 单 PC 1440×900 | status+headers；mapping-head/Archive/legacy migration evidence DB；所属组织可见提示且不进入编辑/提交，其他组织得到不可区分的 404；提示可关闭；PC screenshot | `e2e/acceptance/parameter-catalog-negative.acceptance.spec.ts` |
+| `PCAT-AGENT-READONLY-001` | P0 | automated | PCAT-UI-12 | Agent；scoped read + 所有治理 mutation/spoof probe | 单 PC 1440×900 | guest 浏览器拒绝与真实认证 Agent→dispatcher→PG 分层记录；确定性 provider 不代表 live-model 质量；拒绝核对业务与审计 | `e2e/acceptance/parameter-catalog-negative.acceptance.spec.ts`；`server/modules/agent/xiaoze/catalogBoundary.integration.test.ts` |
+| `PCAT-ADAPTER-PARITY-001` | P1 | automated | PCAT-UI-13 | 全角色；API/mock 重放相同 state/authority | 单 PC 1440×900 | real API digest；API-half DB/audit；mock no-extra-authority；paired screenshots | `e2e/acceptance/parameter-catalog-negative.acceptance.spec.ts` |
+| `PCAT-RESPONSIVE-001` | P0 | automated | PCAT-UI-14 | reader/Admin；全 page/dialog/drawer layout+focus | 单 PC 1440×900 | critical API；DB/audit N/A；snapshot+screenshot；console/page/request failure=0 | `e2e/acceptance/parameter-catalog.acceptance.spec.ts` |
+| `PCAT-GOVERNANCE-JOURNEY-001` | P0 | automated | PCAT-UI-15 | Org/Platform Admin + negative roles；完整 navigation/register/review/proposal/conflict/deep-link journey | 单 PC 1440×900 | request ledger；final DB；每个 mutation/refusal audit；checkpoint screenshots/trace/report/runtime pins | `e2e/acceptance/parameter-catalog-governance.acceptance.spec.ts` |
 
 这些行现在是 registry 中的 automated 覆盖，并已在本地 Catalog lane 上以真实断言执行。planned/skip 不再满足这些 ID。`npm run acceptance:evidence` 要求每个 automated P0/P1 都有同一 full run/source/runtime 的 role、route、assertions、API、DB、audit、screenshots/artifacts、trace/report 和 reproduction steps。本地 OP-08 运行不是 Hosted 或目标机证据。
 
@@ -180,7 +180,7 @@
 
 ## #847 新增操作（identity correction 成功路径）
 
-`PCAT-DEFINITION-COLLECTION-001`、`PCAT-DEFINITION-LIFECYCLE-001`、`PCAT-IDENTITY-CORRECTION-001` 已在英文页登记。其中 `PCAT-IDENTITY-CORRECTION-001` 现在要求：在明确选择的授权项目清单与原因之外，还要在真实 API + 真实发布管理器上完整完成纠错（预览 → 执行 → 逐项目结果），并保证迁移后的取值保留 `.dts` 源位置、旧绑定/旧取值/旧定义不变。自动化证据：`e2e/acceptance/parameter-catalog-definitions.acceptance.spec.ts`、`src/features/parameter-catalog-governance/DefinitionCorrectionDialog.test.tsx`、`server/modules/parameter-catalog-migration/provenance.integration.test.ts`；记录式真实浏览器证据：`work/ui-checks/847/correction-{form,preview,result}-{desktop,tablet,mobile}.png`。
+`PCAT-DEFINITION-COLLECTION-001`、`PCAT-DEFINITION-LIFECYCLE-001`、`PCAT-IDENTITY-CORRECTION-001` 已在英文页登记。其中 `PCAT-IDENTITY-CORRECTION-001` 现在要求：在明确选择的授权项目清单与原因之外，还要在真实 API + 真实发布管理器上完整完成纠错（预览 → 执行 → 逐项目结果），并保证迁移后的取值保留 `.dts` 源位置、旧绑定/旧取值/旧定义不变。当前 #849/#853 验收只要求单一 PC 1440×900；以下 desktop/tablet/mobile 文件名是历史记录式证据，不再构成当前视口要求。自动化证据：`e2e/acceptance/parameter-catalog-definitions.acceptance.spec.ts`、`src/features/parameter-catalog-governance/DefinitionCorrectionDialog.test.tsx`、`server/modules/parameter-catalog-migration/provenance.integration.test.ts`；记录式真实浏览器证据：`work/ui-checks/847/correction-{form,preview,result}-{desktop,tablet,mobile}.png`。
 
 - [docs/zh-CN/developer/README.md](README.md)
 - [docs/zh-CN/developer/local-development.md](local-development.md)

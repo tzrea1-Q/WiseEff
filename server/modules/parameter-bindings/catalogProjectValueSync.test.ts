@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { ApiError } from "../../shared/http/errors";
+import { serializeContract, type ContractJsonValue } from "../parameter-catalog-contract";
 
 import {
   dtsValueToPayload,
@@ -51,6 +52,48 @@ describe("catalog project value payload mapping", () => {
       kind: "cells",
       bits: 32,
       groups: [[{ kind: "integer", raw: "3000", value: "3000" }]],
+    });
+  });
+
+  it("preserves wide cells and multi-group cell matrices without numeric flattening", () => {
+    for (const [raw, rendered] of [
+      ["/bits/ 64 <9007199254740993>", "/bits/ 64 <9007199254740993>"],
+      ["<1 2>, <3 4>", "<1 2>,<3 4>"],
+      ["/bits/ 16 <1 2>", "/bits/ 16 <1 2>"]
+    ]) {
+      const payload = rawTextToPayload("matrix", raw);
+      expect(payload.kind, raw).toBe("json");
+      expect(payloadToBindingView(payload, "dts").rawValue, raw).toBe(rendered);
+    }
+  });
+
+  it("preserves JSON source scalars, objects, and arrays as genuine JSON values", () => {
+    const values: ContractJsonValue[] = [
+      null,
+      { kind: "cells", bits: 64, groups: [[{ kind: "integer", raw: "9007199254740993", value: "9007199254740993" }]] },
+      ["ready", 2, false]
+    ];
+
+    for (const value of values) {
+      const view = payloadToBindingView({ kind: "json", value }, "json");
+      expect(view.typedValue).toEqual({ kind: "json", value });
+      expect(view.rawValue).toBe(serializeContract(value));
+    }
+  });
+
+  it("refuses to infer a JSON payload's semantic kind without its source pin format", () => {
+    expect(() => payloadToBindingView({ kind: "json", value: null })).toThrow(ApiError);
+  });
+
+  it("refuses a non-JSON payload under a JSON source pin", () => {
+    expect(() => payloadToBindingView({ kind: "number", value: 36 }, "json")).toThrow(ApiError);
+  });
+
+  it("does not round imported bare numbers or invent fractional DTS cells", () => {
+    expect(() => importTextToDtsValue("limit", "9007199254740993")).toThrow();
+    expect(() => importTextToDtsValue("limit", "36.5")).toThrow();
+    expect(importTextToDtsValue("limit", "/bits/ 64 <9007199254740993>")).toEqual({
+      kind: "cells", bits: 64, groups: [[{ kind: "integer", raw: "9007199254740993", value: "9007199254740993" }]],
     });
   });
 });

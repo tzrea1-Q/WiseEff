@@ -418,23 +418,23 @@ describe("seed source materialization", () => {
     expect(bindings.rows[0]!.count).toBe("0");
   }, 120_000);
 
-  it("refuses a JSON seed source explicitly instead of uploading an unresolvable member", async () => {
+  it("refuses a YAML seed source as TD-124 instead of converting it", async () => {
     const objectStore = createMemoryObjectStore();
     await expect(
       materializeSeedSources(root, objectStore, adminAuth, {
         organizationId: ORG,
-        seedDigest: "sha256:seed-materialize-json",
+        seedDigest: "sha256:seed-materialize-yaml",
         sources: [
           {
             projectId: "atlas",
-            files: [{ name: "power-config.json", format: "json", content: "{}" }]
+            files: [{ name: "power-config.yaml", format: "json", content: "limit: 1" }]
           },
           ...sources().slice(1)
         ]
       })
     ).rejects.toMatchObject({
       code: "UNSUPPORTED_FORMAT",
-      details: { format: "json" }
+      details: { format: "yaml", deferredTo: "TD-124" }
     });
   }, 120_000);
 });

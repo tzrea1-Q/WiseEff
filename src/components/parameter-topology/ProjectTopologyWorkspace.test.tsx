@@ -168,7 +168,7 @@ describe("ProjectTopologyWorkspace", () => {
     fireEvent.change(within(detail).getByLabelText("修改原因"), { target: { value: "Invalid cell count probe" } });
     fireEvent.click(within(detail).getByRole("button", { name: /创建草稿/i }));
 
-    expect(await within(detail).findByText(/cell count must be 3/)).toBeVisible();
+    expect(await within(detail).findByText(/目标值未通过校验/)).toBeVisible();
     expect(within(workspace).getByRole("button", { name: "校验" })).toBeDisabled();
     expect(onPublish).not.toHaveBeenCalled();
   });

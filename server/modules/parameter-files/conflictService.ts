@@ -66,9 +66,7 @@ export async function detectFileUiDraftConflict(
       projectParameterBindingId:
         input.projectParameterBindingId ??
         (parameterIdentityMode() === "semantic" ? input.projectParameterValueId : undefined),
-      parameterSpecId:
-        input.parameterSpecId ??
-        (parameterIdentityMode() === "semantic" ? input.parameterDefinitionId : undefined)
+      parameterSpecId: input.parameterSpecId
     });
     existingPairs.add(pair);
     createdConflicts.push(conflict);

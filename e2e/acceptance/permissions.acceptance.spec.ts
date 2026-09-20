@@ -68,7 +68,7 @@ async function setPrototypeRole(page: Page, roleName: string) {
  * user's row may sit on a later page. Narrow with the page's search filter first.
  */
 async function filterUsersTo(page: Page, query: string) {
-  await page.getByRole("search", { name: "用户筛选" }).getByLabel("搜索").fill(query);
+  await page.getByRole("search", { name: "用户筛选" }).getByRole("searchbox").fill(query);
 }
 
 async function apiExposesPermissionAudit(page: Page, userName: string, roleId: string) {

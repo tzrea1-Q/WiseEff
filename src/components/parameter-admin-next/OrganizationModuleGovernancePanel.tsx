@@ -6,10 +6,54 @@ import type {
   ParameterModuleRegistryRepository,
   UpdateParameterModuleInput
 } from "@/application/ports/ParameterModuleRegistryRepository";
-import { mapParameterSpecToLibraryRow } from "@/components/parameter-topology/ParameterSpecLibrary";
+import type { ParameterCatalogRepository } from "@/application/ports/ParameterCatalogRepository";
+import type { ParameterAdminApplication } from "@/application/parameters/parameterAdminApplication";
+import {
+  mapParameterSpecToLibraryRow,
+  type ParameterSpecLibraryRow
+} from "@/components/parameter-topology/ParameterSpecLibrary";
 import { ParameterModuleMappingPanel } from "@/components/parameter-topology/ParameterModuleMappingPanel";
 import { useParameterAdmin } from "./ParameterAdminProvider";
 import { useRefreshParameterAdminRecentAudits } from "./useRefreshParameterAdminRecentAudits";
+
+/**
+ * Overlay spec library for linking DTS coverage properties.
+ * Catalog `listDefinitions` is canonical current. Default/effective `listSpecs`
+ * is mock/no-catalog only. Never `view=governance`.
+ */
+export async function listModuleOverlayLibrarySpecs(input: {
+  catalog?: Pick<ParameterCatalogRepository, "listDefinitions"> | null;
+  listSpecs: ParameterAdminApplication["listSpecs"];
+}): Promise<ParameterSpecLibraryRow[]> {
+  if (input.catalog) {
+    const result = await input.catalog.listDefinitions();
+    return result.items.map((definition) =>
+      mapParameterSpecToLibraryRow({
+        id: definition.id,
+        propertyKey: definition.propertyKey,
+        lifecycle: definition.lifecycle,
+        currentVersion: definition.currentRevision.revisionNumber,
+        valueShape: definition.currentRevision.valueShape
+      })
+    );
+  }
+  const specs = await input.listSpecs();
+  return specs.map((spec) =>
+    mapParameterSpecToLibraryRow({
+      id: spec.id,
+      organizationId: spec.organizationId ?? null,
+      propertyKey: spec.propertyKey,
+      specificationKey: spec.specificationKey,
+      driverModule: spec.driverModule,
+      lifecycle: spec.lifecycle,
+      currentVersion: spec.currentVersion,
+      compatiblePatterns: spec.compatiblePatterns,
+      valueShape: spec.valueShape,
+      attributionModules: spec.attributionModules,
+      declaredPlacement: spec.declaredPlacement ?? null
+    })
+  );
+}
 
 /**
  * Organization-scoped module tree + driver mapping, composed over the admin facade.
@@ -17,11 +61,13 @@ import { useRefreshParameterAdminRecentAudits } from "./useRefreshParameterAdmin
 export function OrganizationModuleGovernancePanel({
   pathname = "/parameter-admin/modules",
   search = "",
-  onNavigate
+  onNavigate,
+  catalog
 }: {
   pathname?: string;
   search?: string;
   onNavigate?: (path: string) => void;
+  catalog?: Pick<ParameterCatalogRepository, "listDefinitions"> | null;
 }) {
   const { application } = useParameterAdmin();
   const refreshRecentAudits = useRefreshParameterAdminRecentAudits();
@@ -129,24 +175,12 @@ export function OrganizationModuleGovernancePanel({
     <ParameterModuleMappingPanel
       canAdmin
       repository={repository}
-      listLibrarySpecs={async () => {
-        const specs = await application.listSpecs({ view: "governance" });
-        return specs.map((spec) =>
-          mapParameterSpecToLibraryRow({
-            id: spec.id,
-            organizationId: spec.organizationId ?? null,
-            propertyKey: spec.propertyKey,
-            specificationKey: spec.specificationKey,
-            driverModule: spec.driverModule,
-            lifecycle: spec.lifecycle,
-            currentVersion: spec.currentVersion,
-            compatiblePatterns: spec.compatiblePatterns,
-            valueShape: spec.valueShape,
-            attributionModules: spec.attributionModules,
-            declaredPlacement: spec.declaredPlacement ?? null,
-          })
-        );
-      }}
+      listLibrarySpecs={() =>
+        listModuleOverlayLibrarySpecs({
+          catalog,
+          listSpecs: application.listSpecs
+        })
+      }
       pathname={pathname}
       search={search}
       onNavigate={onNavigate}

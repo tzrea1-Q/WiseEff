@@ -21,6 +21,11 @@ export type CanonicalPendingDraft = {
   readonly definitionId: string;
   readonly effectiveRevisionId: string;
   readonly targetValue: string;
+  readonly sourceFormat?: "dts" | "json";
+  readonly sourceTarget?: { format: "json"; sourceText: string };
+  readonly baseRevisionId: string;
+  readonly sourcePinId?: string | null;
+  readonly candidateId?: string | null;
   readonly reason: string;
   readonly updatedAt: string;
 };
@@ -32,6 +37,11 @@ export type CanonicalPendingDraft = {
  */
 export type TrayHydrationDraft = Omit<ParameterDraftDto, "parameterId"> & {
   readonly parameterId?: string;
+  readonly sourceFormat?: "dts" | "json";
+  readonly sourceTarget?: { format: "json"; sourceText: string };
+  readonly baseRevisionId?: string;
+  readonly sourcePinId?: string | null;
+  readonly candidateId?: string | null;
 };
 
 export function canonicalDraftsToTrayDrafts(
@@ -46,6 +56,11 @@ export function canonicalDraftsToTrayDrafts(
     updatedAt: draft.updatedAt,
     action: "set",
     projectParameterBindingId: draft.bindingId,
-    candidateConfigRevisionId: draft.effectiveRevisionId,
+    candidateConfigRevisionId: draft.baseRevisionId,
+    ...(draft.sourceFormat ? { sourceFormat: draft.sourceFormat } : {}),
+    ...(draft.sourceTarget ? { sourceTarget: draft.sourceTarget } : {}),
+    ...(draft.baseRevisionId ? { baseRevisionId: draft.baseRevisionId } : {}),
+    ...(draft.sourcePinId !== undefined ? { sourcePinId: draft.sourcePinId } : {}),
+    ...(draft.candidateId !== undefined ? { candidateId: draft.candidateId } : {})
   }));
 }

@@ -651,6 +651,27 @@ export const routeManifest = [
     module: "parameters",
     stability: "mvp"
   },
+  {
+    id: "parameterTopology.getProjectValueChangeRequestSourceDiff",
+    method: "GET",
+    path: "/api/v2/projects/:projectId/parameter-value-change-requests/:requestId/source-diff",
+    module: "parameters",
+    stability: "mvp"
+  },
+  {
+    id: "parameterTopology.reimportPreviewProjectBinding",
+    method: "POST",
+    path: "/api/v2/projects/:projectId/parameter-bindings/:bindingId/reimport-preview",
+    module: "parameters",
+    stability: "mvp"
+  },
+  {
+    id: "parameterTopology.registerConfigurationInstances",
+    method: "POST",
+    path: "/api/v2/projects/:projectId/parameter-files/:fileId/configuration-instances",
+    module: "parameters",
+    stability: "mvp"
+  },
 
   ...parameterCatalogCanonicalRoutes,
 

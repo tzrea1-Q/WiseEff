@@ -1,5 +1,8 @@
 import { Buffer } from "node:buffer";
 import { createHash, randomUUID } from "node:crypto";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 import pg from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -40,8 +43,14 @@ import {
   type EphemeralTestDatabase,
 } from "../../../testing/testDatabase";
 
-import { createBindingService, stabilizeCanonicalBinding } from "./index";
+import { stabilizeCanonicalBinding } from "./index";
+import {
+  createSourceBackedBindingService,
+  ensureSourceBackedBindingFixture,
+  sourceBackedCommand,
+} from "./__fixtures__/sourceBackedBinding";
 import { mapLegacyBinding, loadLegacyBindingIdentity } from "./migrationAdapter";
+import { createLocalObjectStore } from "../../logs/objectStore";
 
 const databaseAvailable = await isTestDatabaseAvailable();
 if (!databaseAvailable) {
@@ -85,6 +94,7 @@ const REVISION_2 = DefinitionRevisionId("drev_acme_power_iin_max_2");
 const NODE_SUCCESS = "logical-node-s6-bnd";
 const NODE_LATEST = "logical-node-latest";
 const NODE_MAP = "logical-node-map";
+const NODE_LOCK = "logical-node-lock";
 
 const sha256 = (bytes: string | Uint8Array): string =>
   `sha256:${createHash("sha256").update(bytes).digest("hex")}`;
@@ -189,7 +199,25 @@ describe("canonical Binding identity", () => {
   let snapshot2: CatalogSnapshot;
   let registrationA: SubjectRegistrationId;
   let registrationB: SubjectRegistrationId;
-  let service: ReturnType<typeof createBindingService>;
+  let service: ReturnType<typeof createSourceBackedBindingService>;
+  let storageDirectory: string;
+  let objectStore: ReturnType<typeof createLocalObjectStore>;
+
+  const mapLegacy = async (command: Parameters<typeof mapLegacyBinding>[2]) => {
+    const client = await pool.connect();
+    try {
+      await client.query("begin");
+      await client.query("set constraints all deferred");
+      const result = await mapLegacyBinding(client, objectStore, command);
+      await client.query(result.ok ? "commit" : "rollback");
+      return result;
+    } catch (error) {
+      await client.query("rollback").catch(() => undefined);
+      throw error;
+    } finally {
+      client.release();
+    }
+  };
 
   const registerCommand = (
     organizationId: string,
@@ -262,6 +290,8 @@ describe("canonical Binding identity", () => {
   beforeAll(async () => {
     database = await createEphemeralTestDatabase("s6bnd");
     pool = new pg.Pool({ connectionString: database.url, max: 4 });
+    storageDirectory = await mkdtemp(join(tmpdir(), "wiseeff-s6-bnd-"));
+    objectStore = createLocalObjectStore(storageDirectory);
     const first = compileOrThrow(firstReleaseBundle());
     const installed = await installPublishedRelease(pool, {
       mode: "bootstrap",
@@ -334,12 +364,13 @@ describe("canonical Binding identity", () => {
     if (!loaded2.ok) throw new Error("failed to load current snapshot");
     snapshot2 = loaded2.value;
 
-    service = createBindingService(pool);
+    service = createSourceBackedBindingService(pool, { objectStore });
   }, 60_000);
 
   afterAll(async () => {
     await pool?.end();
     await database?.drop();
+    if (storageDirectory) await rm(storageDirectory, { recursive: true, force: true });
   });
 
   it("stabilizes one Binding from snapshot+registration+revision+owner+project+node", async () => {
@@ -373,7 +404,7 @@ describe("canonical Binding identity", () => {
     const client = await pool.connect();
     try {
       await client.query("begin");
-      const result = await stabilizeCanonicalBinding(client, {
+      const result = await stabilizeCanonicalBinding(client, await sourceBackedCommand(client, {
         snapshot: snapshot1,
         organizationId: ORG_A,
         projectId: PROJECT_A,
@@ -382,7 +413,7 @@ describe("canonical Binding identity", () => {
         definitionId: DEFINITION_ID,
         effectiveRevisionId: REVISION_1,
         expectedEffectiveRevisionId: null,
-      });
+      }));
       expect(result.ok).toBe(true);
       const inside = await client.query<{ c: string }>(
         `select count(*)::text as c from parameter_catalog.project_parameter_bindings where logical_node_id = $1`,
@@ -413,7 +444,7 @@ describe("canonical Binding identity", () => {
     expect(latest.error).toEqual({ kind: "agreement-conflict", reason: "latest-head" });
     expect(await bindingResidue(NODE_LATEST)).toEqual({ count: "0", owners: "" });
 
-    const moduleMap = await mapLegacyBinding(pool, {
+    const moduleMap = await mapLegacy({
       snapshot: snapshot1,
       legacy: {
         id: "legacy-module-only",
@@ -552,7 +583,7 @@ describe("canonical Binding identity", () => {
     const loaded = await loadLegacyBindingIdentity(pool, "legacy-unproven-s6");
     expect(loaded?.logicalNodeId).toBeNull();
     const before = await catalogCounts();
-    const refused = await mapLegacyBinding(pool, {
+    const refused = await mapLegacy({
       snapshot: snapshot1,
       legacy: loaded!,
       registrationId: registrationA,
@@ -564,7 +595,79 @@ describe("canonical Binding identity", () => {
     expect(refused.error).toEqual({ kind: "agreement-conflict", reason: "module-identity" });
     expect(await catalogCounts()).toEqual(before);
 
-    const mapped = await mapLegacyBinding(pool, {
+    const source = await (async () => {
+      const fixture = await ensureSourceBackedBindingFixture(pool, {
+        snapshot: snapshot1,
+        organizationId: ORG_A,
+        projectId: PROJECT_A,
+        logicalNodeId: NODE_MAP,
+        registrationId: registrationA,
+        definitionId: DEFINITION_ID,
+        effectiveRevisionId: REVISION_1,
+        expectedEffectiveRevisionId: null,
+      }, objectStore);
+      const member = await pool.query<{ source_name: string; node_locator: string }>(
+        `select member.source_name, revision.node_locator
+           from public.dts_config_revision_members member
+           join public.dts_logical_node_revisions revision
+             on revision.config_revision_id = member.config_revision_id
+          where member.config_revision_id = $1
+            and member.file_id = $2
+            and member.file_version_id = $3`,
+        [fixture.configRevisionId, fixture.fileId, fixture.fileVersionId],
+      );
+      const exactMember = member.rows[0];
+      if (!exactMember) throw new Error("source fixture member missing");
+      const locator = {
+        kind: "dts-property",
+        propertyOccurrenceId: fixture.propertyOccurrenceId,
+        nodeOccurrenceId: fixture.nodeOccurrenceId,
+        fileVersionId: fixture.fileVersionId,
+        propertyName: "iin_max",
+      };
+      return {
+        sourceOccurrenceId: fixture.sourceOccurrenceId,
+        sourceRef: `${exactMember.source_name}!${exactMember.node_locator}`,
+        configRevisionId: fixture.configRevisionId,
+        payload: { kind: "number" as const, value: 0 },
+        pin: {
+          id: "legacy-source-pin-s6",
+          fileId: fixture.fileId,
+          fileVersionId: fixture.fileVersionId,
+          format: "dts" as const,
+          propertyOccurrenceId: fixture.propertyOccurrenceId,
+          locator,
+          // Independent canonical byte oracle: fixed key order/spacing/LF, not the production serializer.
+          locatorDigest: `sha256:${createHash("sha256").update(`{\n  "fileVersionId": ${JSON.stringify(locator.fileVersionId)},\n  "kind": "dts-property",\n  "nodeOccurrenceId": ${JSON.stringify(locator.nodeOccurrenceId)},\n  "propertyName": "iin_max",\n  "propertyOccurrenceId": ${JSON.stringify(locator.propertyOccurrenceId)}\n}\n`).digest("hex")}`,
+        },
+      };
+    })();
+    const missingLegacy = await mapLegacy({
+      snapshot: snapshot1,
+      legacy: {
+        id: "legacy-missing-s6",
+        organizationId: ORG_A,
+        projectId: PROJECT_A,
+        logicalNodeId: NODE_MAP,
+        moduleId: MODULE_A,
+        parameterSpecId: "pspec-s6-bnd",
+      },
+      registrationId: registrationA,
+      definitionId: DEFINITION_ID,
+      effectiveRevisionId: REVISION_1,
+      source,
+    });
+    expect(missingLegacy).toEqual({
+      ok: false,
+      error: { kind: "agreement-conflict", reason: "legacy-unproven" },
+    });
+    await pool.query(
+      `insert into public.project_parameter_bindings (
+         id, organization_id, project_id, parameter_spec_id, module_id, logical_node_id
+       ) values ($1, $2, $3, $4, $5, $6)`,
+      ["legacy-stable-s6", ORG_A, PROJECT_A, "pspec-s6-bnd", MODULE_A, NODE_MAP],
+    );
+    const forgedSource = await mapLegacy({
       snapshot: snapshot1,
       legacy: {
         id: "legacy-stable-s6",
@@ -577,16 +680,166 @@ describe("canonical Binding identity", () => {
       registrationId: registrationA,
       definitionId: DEFINITION_ID,
       effectiveRevisionId: REVISION_1,
+      source: {
+        ...source,
+        pin: {
+          ...source.pin,
+          propertyOccurrenceId: "forged-property-occurrence",
+        },
+      },
     });
-    expect(mapped.ok).toBe(true);
-    if (!mapped.ok) return;
-    expect(mapped.value.binding.id).toBe(ParameterBindingId("legacy-stable-s6"));
-    expect(mapped.value.binding.logicalNodeId).toBe(NODE_MAP);
-    expect("moduleId" in mapped.value.binding).toBe(false);
+    expect(forgedSource).toEqual({
+      ok: false,
+      error: { kind: "agreement-conflict", reason: "legacy-unproven" },
+    });
+    const mapped = await mapLegacy({
+      snapshot: snapshot1,
+      legacy: {
+        id: "legacy-stable-s6",
+        organizationId: ORG_A,
+        projectId: PROJECT_A,
+        logicalNodeId: NODE_MAP,
+        moduleId: MODULE_A,
+        parameterSpecId: "pspec-s6-bnd",
+      },
+      registrationId: registrationA,
+      definitionId: DEFINITION_ID,
+      effectiveRevisionId: REVISION_1,
+      source,
+    });
+    // Red tracer: the persisted source says `<5>`, while the caller claims `0`.
+    // A caller payload is not authoritative source proof and must not create a
+    // canonical Binding/value/pin/history row.
+    expect(mapped).toEqual({
+      ok: false,
+      error: { kind: "agreement-conflict", reason: "legacy-unproven" },
+    });
     const after = await catalogCounts();
     expect(after.releases).toBe(before.releases);
     expect(after.subjects).toBe(before.subjects);
-    expect(Number(after.bindings)).toBe(Number(before.bindings) + 1);
+    expect(after.bindings).toBe(before.bindings);
+    const validCommand = {
+      snapshot: snapshot1,
+      legacy: (await loadLegacyBindingIdentity(pool,"legacy-stable-s6"))!,
+      registrationId: registrationA,definitionId: DEFINITION_ID,effectiveRevisionId: REVISION_1,
+      source: { ...source,payload: { kind: "number" as const,value: 5 } },
+    };
+    expect(await mapLegacy(validCommand)).toMatchObject({ ok: true,value: { binding: { id: "legacy-stable-s6" } } });
+    const persistedState = async () => (await pool.query(`select
+      (select count(*) from parameter_catalog.project_parameter_bindings) as bindings,
+      (select count(*) from parameter_catalog.project_parameter_values) as values,
+      (select count(*) from parameter_catalog.project_value_source_pins) as pins,
+      (select count(*) from parameter_catalog.binding_history_events) as histories`)).rows;
+    const accepted = await persistedState();
+    expect(await mapLegacy({ ...validCommand,source: { ...validCommand.source,pin: { ...source.pin,
+      locatorDigest: `sha256:${createHash("sha256").update(JSON.stringify(source.pin.locator)).digest("hex")}`,
+    } } })).toEqual({ ok: false,error: { kind: "agreement-conflict",reason: "legacy-unproven" } });
+    expect(await persistedState()).toEqual(accepted);
+    expect(await mapLegacy(validCommand)).toMatchObject({ ok: true });
+    expect(await persistedState()).toEqual(accepted);
+  });
+
+  it("refuses a legacy mapping immediately when another transaction holds the legacy row", async () => {
+    const fixture = await ensureSourceBackedBindingFixture(pool, {
+      snapshot: snapshot1,
+      organizationId: ORG_A,
+      projectId: PROJECT_A,
+      logicalNodeId: NODE_LOCK,
+      registrationId: registrationA,
+      definitionId: DEFINITION_ID,
+      effectiveRevisionId: REVISION_1,
+      expectedEffectiveRevisionId: null,
+    }, objectStore);
+    await pool.query(
+      `insert into public.parameter_specs (
+         id, organization_id, source_kind, specification_key, definition_lifecycle
+       ) values ($1, $2, 'manual', $3, 'draft') on conflict (id) do nothing`,
+      ["pspec-s6-bnd-lock", ORG_A, "s6-bnd-lock"],
+    );
+    const legacyId = "legacy-lock-s6";
+    await pool.query(
+      `insert into public.project_parameter_bindings (
+         id, organization_id, project_id, parameter_spec_id, module_id, logical_node_id
+       ) values ($1, $2, $3, $4, $5, $6) on conflict (id) do nothing`,
+      [legacyId, ORG_A, PROJECT_A, "pspec-s6-bnd-lock", MODULE_A, NODE_LOCK],
+    );
+    const member = await pool.query<{ source_name: string; node_locator: string }>(
+      `select member.source_name, revision.node_locator
+         from public.dts_config_revision_members member
+         join public.dts_logical_node_revisions revision
+           on revision.config_revision_id = member.config_revision_id
+        where member.config_revision_id = $1
+          and member.file_id = $2
+          and member.file_version_id = $3`,
+      [fixture.configRevisionId, fixture.fileId, fixture.fileVersionId],
+    );
+    const exactMember = member.rows[0];
+    if (!exactMember) throw new Error("source fixture member missing");
+    const locator = {
+      kind: "dts-property",
+      propertyOccurrenceId: fixture.propertyOccurrenceId,
+      nodeOccurrenceId: fixture.nodeOccurrenceId,
+      fileVersionId: fixture.fileVersionId,
+      propertyName: "iin_max",
+    };
+    const command = {
+      snapshot: snapshot1,
+      legacy: {
+        id: legacyId,
+        organizationId: ORG_A,
+        projectId: PROJECT_A,
+        logicalNodeId: NODE_LOCK,
+        moduleId: MODULE_A,
+        parameterSpecId: "pspec-s6-bnd-lock",
+      },
+      registrationId: registrationA,
+      definitionId: DEFINITION_ID,
+      effectiveRevisionId: REVISION_1,
+      source: {
+        sourceOccurrenceId: fixture.sourceOccurrenceId,
+        sourceRef: `${exactMember.source_name}!${exactMember.node_locator}`,
+        configRevisionId: fixture.configRevisionId,
+        payload: { kind: "number" as const, value: 5 },
+        pin: {
+          id: "legacy-source-pin-s6-lock",
+          fileId: fixture.fileId,
+          fileVersionId: fixture.fileVersionId,
+          format: "dts" as const,
+          propertyOccurrenceId: fixture.propertyOccurrenceId,
+          locator,
+          locatorDigest: `sha256:${createHash("sha256").update(serializeContract(locator)).digest("hex")}`,
+        },
+      },
+    } satisfies Parameters<typeof mapLegacyBinding>[2];
+    const holder = await pool.connect();
+    const contender = await pool.connect();
+    try {
+      await holder.query("begin");
+      await holder.query(
+        `select id from public.project_parameter_bindings where id = $1 for update`,
+        [legacyId],
+      );
+      await contender.query("begin");
+      await contender.query("set constraints all deferred");
+      const before = await catalogCounts();
+      const started = Date.now();
+      const refused = await mapLegacyBinding(contender, objectStore, command);
+      const elapsed = Date.now() - started;
+      expect(refused).toEqual({
+        ok: false,
+        error: { kind: "agreement-conflict", reason: "legacy-unproven" },
+      });
+      expect(elapsed).toBeLessThan(2_000);
+      await contender.query("rollback");
+      await holder.query("rollback");
+      expect(await catalogCounts()).toEqual(before);
+      expect(await bindingResidue(NODE_LOCK)).toEqual({ count: "0", owners: "" });
+    } finally {
+      await contender.query("rollback").catch(() => undefined);
+      await holder.query("rollback").catch(() => undefined);
+      contender.release();
+      holder.release();
+    }
   });
 
   it("refuses a cross-owner claim on another organization's project", async () => {

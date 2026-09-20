@@ -8,7 +8,7 @@ import {
   isTestDatabaseAvailable,
   type InMemoryTestDatabase
 } from "../../testing/testDatabase";
-import { seedCoreGraph } from "../../testing/fixtures";
+import { seedCoreGraph, seedSpecBindingGraph } from "../../testing/fixtures";
 import { setParameterIdentityMode } from "../parameter-kernel/parameterIdentityMode";
 import { resolveConflict } from "../parameters/fileSyncConflictRepository";
 import { insertFileVersion, insertProjectParameterFile } from "./repository";
@@ -225,6 +225,50 @@ describe.skipIf(!databaseAvailable)("parameter file conflict service", () => {
       parameter_spec_id: null,
       project_parameter_binding_id: null
     });
+  });
+
+  it("semantic insert does not coerce parameterDefinitionId into parameterSpecId", async () => {
+    setParameterIdentityMode("semantic");
+    await seedSpecBindingGraph(db, {
+      organizationId: "org-1",
+      specs: [{ id: "spec-1", specificationKey: "battery/temp_max" }],
+      modules: [{ id: "pm-battery", name: "battery" }],
+      bindings: [
+        {
+          id: "ppv-1",
+          projectId: "project-1",
+          parameterSpecId: "spec-1",
+          moduleId: "pm-battery"
+        }
+      ]
+    });
+    const { fileDraftId } = await seedDraftPair({
+      ppvId: "ppv-1",
+      fileValue: "85",
+      uiValue: "82",
+      suffix: "semantic-no-coerce"
+    });
+    await db.query(
+      `update parameter_drafts
+       set project_parameter_binding_id = 'ppv-1'
+       where project_parameter_value_id = 'ppv-1'`
+    );
+
+    const created = await detectFileUiDraftConflict(db, {
+      organizationId: "org-1",
+      projectId: "project-1",
+      projectParameterValueId: "ppv-1",
+      parameterDefinitionId: "pd-1",
+      fileVersionId: "version-1",
+      fileDraftId,
+      fileValue: "85"
+    });
+
+    expect(created).toHaveLength(1);
+    const stored = await conflictRows("ppv-1");
+    expect(stored).toHaveLength(1);
+    expect(stored[0]?.parameter_spec_id).toBeNull();
+    expect(stored[0]?.project_parameter_binding_id).toBe("ppv-1");
   });
 
   it("resolve file keeps file draft and deletes ui draft", async () => {

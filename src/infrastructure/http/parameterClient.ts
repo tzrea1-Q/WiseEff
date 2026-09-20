@@ -22,7 +22,8 @@ import {
   parameterRecordDtoSchema,
   parameterSubmissionRoundListResponseSchema,
   parameterSubmissionRoundResponseSchema,
-  projectListResponseSchema
+  projectListResponseSchema,
+  projectValueDraftListResponseSchema
 } from "@wiseeff/dto-schemas";
 import {
   changeRequestFromDto,
@@ -40,6 +41,7 @@ import {
   type ParameterSubmissionRoundDto,
   type ProjectDto
 } from "./parameterDtos";
+import type { CatalogBindingDraftDto } from "./parameterCatalogDtos";
 import type { ParameterModuleNode } from "@/application/ports/ParameterRepository";
 import { createDefaultApiClient } from "./defaultApiClient";
 
@@ -101,6 +103,30 @@ function buildDraftsPath(projectId?: string) {
   const params = new URLSearchParams();
   if (projectId) params.set("projectId", projectId);
   return appendQuery("/api/v1/parameter-drafts/mine", params);
+}
+
+function buildProjectValueDraftsPath(projectId: string) {
+  return `/api/v2/projects/${encodeURIComponent(projectId)}/parameter-value-drafts`;
+}
+
+function canonicalDraftToWorkbenchDraft(
+  projectId: string,
+  draft: CatalogBindingDraftDto
+): ParameterDraftDto {
+  return {
+    id: draft.id,
+    projectId,
+    parameterId: draft.bindingId,
+    targetValue: draft.targetValue,
+    reason: draft.reason,
+    updatedAt: draft.updatedAt,
+    action: "set",
+    projectParameterBindingId: draft.bindingId,
+    bindingId: draft.bindingId,
+    effectiveRevisionId: draft.effectiveRevisionId,
+    currentValueId: draft.currentValueId ?? undefined,
+    candidateConfigRevisionId: draft.baseRevisionId
+  };
 }
 
 function buildChangeRequestsPath(query?: ChangeRequestListQuery) {
@@ -212,9 +238,17 @@ export function createHttpParameterRepository(apiClient: ApiClient = createDefau
       return response.items.map(parameterHistoryEntryFromDto);
     },
     async listDrafts(projectId?: string) {
+      if (projectId && projectId.trim() !== "") {
+        const response = parseContractDto(
+          projectValueDraftListResponseSchema,
+          await apiClient.get<unknown>(buildProjectValueDraftsPath(projectId)),
+          "ProjectValueDraftListResponse"
+        );
+        return response.items.map((item) => canonicalDraftToWorkbenchDraft(projectId, item));
+      }
       const response = parseContractDto(
         workbenchDraftListSchema,
-        await apiClient.get<ItemsEnvelope<ParameterDraftDto>>(buildDraftsPath(projectId)),
+        await apiClient.get<ItemsEnvelope<ParameterDraftDto>>(buildDraftsPath()),
         "ParameterDraftListResponse"
       );
       return response.items.map(parameterDraftFromDto);
@@ -227,7 +261,13 @@ export function createHttpParameterRepository(apiClient: ApiClient = createDefau
       );
       return parameterDraftFromDto(response.item);
     },
-    async deleteDraft(draftId: string) {
+    async deleteDraft(draftId: string, projectId?: string) {
+      if (projectId && projectId.trim() !== "") {
+        await apiClient.delete<OkEnvelope>(
+          `${buildProjectValueDraftsPath(projectId)}/${encodeURIComponent(draftId)}`
+        );
+        return;
+      }
       await apiClient.delete<OkEnvelope>(`/api/v1/parameter-drafts/${encodeURIComponent(draftId)}`);
     },
     async listChangeRequests(query?: ChangeRequestListQuery) {

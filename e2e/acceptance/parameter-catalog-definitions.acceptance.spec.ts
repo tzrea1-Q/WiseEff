@@ -5,7 +5,6 @@ import { useBrowserDiagnostics } from "./helpers/browserDiagnostics";
 import {
   CATALOG_EXPECTED_API_FAILURES,
   CATALOG_PAGE_PATH,
-  CATALOG_VIEWPORTS,
   assertNoPageOverflow,
   catalogHref,
   catalogJson,
@@ -19,6 +18,8 @@ import {
   ensureCatalogAcceptanceFixture,
   type CatalogAcceptanceFixture
 } from "./helpers/catalogEvidence";
+
+test.use({ viewport: { width: 1440, height: 900 } });
 
 useBrowserDiagnostics(test, { expectedApiFailures: CATALOG_EXPECTED_API_FAILURES });
 
@@ -86,14 +87,12 @@ test.describe("restored definition workspace and governed authoring", () => {
     // @operation PCAT-DEFINITION-COLLECTION-001
     await openCatalogAt(page, "org-admin", definitionPath());
     await expect(catalogPage(page)).toBeVisible();
-    await selectDefinitionByKey(page, "iin_max");
-
-    const region = catalogPage(page);
-    await expect(region.getByRole("region", { name: "定义详情" })).toContainText("iin_max");
+    const detail = page.getByRole("region", { name: "定义详情" });
+    await expect(detail).toContainText("iin_max");
     // No permanent timeline peer: history is disclosed from the detail body.
-    await expect(region.getByRole("region", { name: "定义时间线" })).toHaveCount(0);
-    await region.getByRole("button", { name: /查看历史/ }).first().click();
-    await expect(region.getByRole("list", { name: "定义时间线" })).toBeVisible();
+    await expect(page.getByRole("region", { name: "定义时间线" })).toHaveCount(0);
+    await page.getByRole("button", { name: /查看历史/ }).click();
+    await expect(page.getByRole("list", { name: "定义时间线" })).toBeVisible();
     await catalogScreenshot(page, testInfo, "pcat-ui-16-history");
   });
 
@@ -148,21 +147,19 @@ test.describe("restored definition workspace and governed authoring", () => {
     await catalogScreenshot(page, testInfo, "pcat-ui-17-lifecycle");
   });
 
-  test("keeps the restored workspace usable at 1440x900, 768x1024 and 390x844", async ({ page }, testInfo) => {
+  test("keeps the restored workspace usable at PC 1440x900", async ({ page }, testInfo) => {
     // @acceptance PCAT-UI-16
     // @operation PCAT-DEFINITION-COLLECTION-001
-    for (const viewport of CATALOG_VIEWPORTS) {
-      await page.setViewportSize({ width: viewport.width, height: viewport.height });
-      await openCatalogAt(page, "org-admin");
-      await waitForCatalogState(page, /ready|empty|unregistered/);
-      const region = catalogPage(page);
-      await expect(region).toBeVisible();
-      await assertNoPageOverflow(page);
-      // The module navigator and the definition collection are both reachable at
-      // every viewport, and narrow screens keep the primary action usable.
-      await expect(region.getByRole("navigation", { name: "参数定义模块树" })).toBeVisible();
-      await expect(region.getByRole("status", { name: "结果计数" })).toBeVisible();
-      await catalogScreenshot(page, testInfo, `pcat-ui-16-responsive-${viewport.name}`);
-    }
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await openCatalogAt(page, "org-admin");
+    await waitForCatalogState(page, /ready|empty|unregistered/);
+    const region = catalogPage(page);
+    await expect(region).toBeVisible();
+    await assertNoPageOverflow(page);
+    // The module navigator and the definition collection remain reachable at
+    // the required PC viewport.
+    await expect(region.getByRole("navigation", { name: "参数定义模块树" })).toBeVisible();
+    await expect(region.getByRole("status", { name: "结果计数" })).toBeVisible();
+    await catalogScreenshot(page, testInfo, "pcat-ui-16-responsive-desktop");
   });
 });

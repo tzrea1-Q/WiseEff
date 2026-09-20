@@ -19,7 +19,7 @@ describe("SearchField", () => {
     const onClear = vi.fn();
     render(<SearchField value="gpio" onValueChange={onValueChange} ariaLabel="搜索参数" onClear={onClear} />);
 
-    fireEvent.click(screen.getByRole("button", { name: "清除搜索" }));
+    fireEvent.click(screen.getByRole("button", { name: "清空输入" }));
     expect(onValueChange).toHaveBeenCalledWith("");
     expect(onClear).toHaveBeenCalledOnce();
     expect(screen.getByRole("searchbox", { name: "搜索参数" })).toHaveFocus();
@@ -38,7 +38,7 @@ describe("SearchField", () => {
     const input = screen.getByRole("searchbox", { name: "搜索" });
     expect(input).toBeDisabled();
     expect(input.parentElement).toHaveAttribute("aria-busy", "true");
-    expect(screen.queryByRole("button", { name: "清除搜索" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "清空输入" })).not.toBeInTheDocument();
   });
 
   it("uses a safe default accessible name", () => {

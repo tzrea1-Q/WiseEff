@@ -31,6 +31,7 @@ const FAILURE_CODE: Record<CatalogApiFailureReason, string> = {
   "candidate-tampered": "CONFLICT",
   "needs-rebase": "CONFLICT",
   "unsupported-catalog-capability": "VALIDATION_FAILED",
+  "unsupported-consumer-capability-revision": "VALIDATION_FAILED",
   "publication-authorization-revoked": "CONFLICT",
   "idempotency-key-conflict": "CONFLICT",
   "artifact-missing": "CONFLICT",

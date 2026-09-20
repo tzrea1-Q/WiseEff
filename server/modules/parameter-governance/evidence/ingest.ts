@@ -11,7 +11,7 @@ import {
   type ReviewReason,
 } from "../../parameter-catalog-contract/index";
 
-import { planEvidenceIngest, type PlannedIngest } from "./plan";
+import { planEvidenceIngest, type PlannedIngest, type PlannedObservation } from "./plan";
 import {
   evidenceIngestCommandFamily,
   type EvidenceIngest,
@@ -32,6 +32,8 @@ type ObservationRow = {
   id: string;
   evidence_fingerprint: string;
   catalog_release_id: string;
+  source_occurrence_id: string;
+  parameter_locator_digest: string;
   source_locator: unknown;
 };
 
@@ -59,6 +61,25 @@ const isForeignKeyViolation = (error: unknown): error is pg.DatabaseError =>
 const catalogReleaseFk = new Set([
   "parameter_observations_catalog_release_id_fkey",
 ]);
+
+const sourceProvenanceFk = new Set([
+  "parameter_observation_source_occurrence_fk",
+  "parameter_observation_source_owner_fk",
+]);
+
+const mapSourceProvenanceFailure = (
+  error: unknown,
+  command: IngestEvidenceCommand,
+): IngestEvidenceFailure | null => {
+  if (!isForeignKeyViolation(error) || !sourceProvenanceFk.has(error.constraint ?? "")) {
+    return null;
+  }
+  return {
+    kind: "source-provenance-mismatch",
+    sourceOccurrenceId: command.provenance?.sourceOccurrenceId ?? "",
+    reason: "occurrence, revision member, or exact parameter locator is not owned by the project",
+  };
+};
 
 const mapInsertFailure = (
   error: unknown,
@@ -119,18 +140,47 @@ const sameCanonicalJson = (left: unknown, right: unknown): boolean =>
 
 const loadObservation = async (
   client: pg.PoolClient,
-  organizationId: string,
-  sourceIdentity: string,
+  command: IngestEvidenceCommand,
+  planned: PlannedObservation,
 ): Promise<ObservationRow | null> => {
   const result = await client.query<ObservationRow>(
-    `select id, evidence_fingerprint, catalog_release_id, source_locator
+    `select id, evidence_fingerprint, catalog_release_id,
+            source_occurrence_id, parameter_locator_digest, source_locator
      from parameter_catalog.parameter_observations
-     where organization_id = $1 and source_identity = $2
-     for update`,
-    [organizationId, sourceIdentity],
+     where organization_id = $1
+       and project_id = $2
+       and source_occurrence_id = $3
+       and config_revision_id = $4
+       and parameter_locator_digest = $5
+       and catalog_release_id = $6
+       and matcher_revision = $7
+`,
+    [
+      command.organizationId,
+      planned.provenance.projectId,
+      planned.provenance.sourceOccurrenceId,
+      planned.provenance.configRevisionId,
+      planned.parameterLocatorDigest,
+      command.catalogReleaseId,
+      command.matcherRevision,
+    ],
   );
   return result.rows[0] ?? null;
 };
+
+const observationReplayKey = (
+  command: IngestEvidenceCommand,
+  planned: PlannedObservation,
+): string =>
+  JSON.stringify([
+    command.organizationId,
+    planned.provenance.projectId,
+    planned.provenance.sourceOccurrenceId,
+    planned.provenance.configRevisionId,
+    planned.parameterLocatorDigest,
+    command.catalogReleaseId,
+    command.matcherRevision,
+  ]);
 
 const loadReviewEvidence = async (
   client: pg.PoolClient,
@@ -140,7 +190,7 @@ const loadReviewEvidence = async (
     `select id, candidate_safe_digest, reason, r_class, evidence
      from parameter_catalog.parameter_review_evidence
      where id = $1
-     for update`,
+`,
     [id],
   );
   return result.rows[0] ?? null;
@@ -156,7 +206,7 @@ const loadReviewEvidenceByIdentity = async (
      from parameter_catalog.parameter_review_evidence
      where organization_id = $1
        and evidence->>'sourceIdentity' = $2
-     for update`,
+`,
     [organizationId, sourceIdentity],
   );
   if (result.rows.length === 0) return { status: "absent" };
@@ -199,7 +249,9 @@ const replayOrConflictObservation = (
 ): Result<IngestEvidenceResult, IngestEvidenceFailure> => {
   if (
     planned.kind === "observation" &&
-    stored.evidence_fingerprint === planned.fingerprint
+    stored.evidence_fingerprint === planned.fingerprint &&
+    stored.source_occurrence_id === planned.provenance.sourceOccurrenceId &&
+    sameCanonicalJson(stored.source_locator, planned.provenance.sourceLocator)
   ) {
     return {
       ok: true,
@@ -242,9 +294,10 @@ const insertObservation = async (
     `insert into parameter_catalog.parameter_observations (
        id, organization_id, project_id, logical_node_id, config_revision_id,
        source_identity, source_locator, catalog_release_id, matcher_revision,
-       evidence_fingerprint
-     ) values ($1,$2,$3,$4,$5,$6,$7::jsonb,$8,$9,$10)
-     returning id, evidence_fingerprint, catalog_release_id, source_locator`,
+       evidence_fingerprint, source_occurrence_id, parameter_locator_digest
+     ) values ($1,$2,$3,$4,$5,$6,$7::jsonb,$8,$9,$10,$11,$12)
+     returning id, evidence_fingerprint, catalog_release_id,
+               source_occurrence_id, parameter_locator_digest, source_locator`,
     [
       id,
       command.organizationId,
@@ -256,6 +309,8 @@ const insertObservation = async (
       command.catalogReleaseId,
       command.matcherRevision,
       planned.fingerprint,
+      planned.provenance.sourceOccurrenceId,
+      planned.parameterLocatorDigest,
     ],
   );
   return inserted.rows[0]!;
@@ -311,6 +366,10 @@ const reserveIdempotency = async (
   command: IngestEvidenceCommand,
   planned: PlannedIngest,
 ): Promise<IdempotencyRow> => {
+  const idempotencyKey =
+    planned.kind === "observation"
+      ? observationReplayKey(command, planned)
+      : command.sourceIdentity;
   await client.query(
     `insert into parameter_catalog.governance_command_idempotency (
        organization_id, command_family, idempotency_key, request_fingerprint, state
@@ -319,14 +378,14 @@ const reserveIdempotency = async (
     [
       command.organizationId,
       evidenceIngestCommandFamily,
-      command.sourceIdentity,
+      idempotencyKey,
       planned.fingerprint,
     ],
   );
   const row = await loadIdempotency(
     client,
     command.organizationId,
-    command.sourceIdentity,
+    idempotencyKey,
   );
   if (row) return row;
   throw new Error("governance idempotency row missing after reserve");
@@ -338,6 +397,10 @@ const commitIdempotency = async (
   planned: PlannedIngest,
   resultRef: string,
 ): Promise<void> => {
+  const idempotencyKey =
+    planned.kind === "observation"
+      ? observationReplayKey(command, planned)
+      : command.sourceIdentity;
   await client.query(
     `update parameter_catalog.governance_command_idempotency
      set state = 'committed',
@@ -351,7 +414,7 @@ const commitIdempotency = async (
     [
       command.organizationId,
       evidenceIngestCommandFamily,
-      command.sourceIdentity,
+      idempotencyKey,
       resultKindFor(planned),
       resultRef,
     ],
@@ -403,11 +466,10 @@ const executePlannedIngest = async (
   planned: PlannedIngest,
 ): Promise<Result<IngestEvidenceResult, IngestEvidenceFailure>> => {
   const reserved = await reserveIdempotency(client, command, planned);
-  const observation = await loadObservation(
-    client,
-    command.organizationId,
-    command.sourceIdentity,
-  );
+  const observation =
+    planned.kind === "observation"
+      ? await loadObservation(client, command, planned)
+      : null;
   const review = await loadReviewEvidenceByIdentity(
     client,
     command.organizationId,
@@ -472,12 +534,10 @@ const executePlannedIngest = async (
     try {
       stored = await insertObservation(client, command, planned);
     } catch (error) {
+      const provenanceFailure = mapSourceProvenanceFailure(error, command);
+      if (provenanceFailure) return { ok: false, error: provenanceFailure };
       if (isUniqueViolation(error)) {
-        const existing = await loadObservation(
-          client,
-          command.organizationId,
-          command.sourceIdentity,
-        );
+        const existing = await loadObservation(client, command, planned);
         if (!existing) throw error;
         return finishReplay(
           client,
@@ -545,6 +605,8 @@ export const ingestEvidence = async (
     return result;
   } catch (error) {
     await client.query("rollback").catch(() => undefined);
+    const provenanceFailure = mapSourceProvenanceFailure(error, command);
+    if (provenanceFailure) return { ok: false, error: provenanceFailure };
     const mapped = mapInsertFailure(error, command);
     if (mapped) return { ok: false, error: mapped };
     throw error;

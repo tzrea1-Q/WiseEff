@@ -19,11 +19,7 @@ import {
   readNodeViaBridge,
   writeNodeViaBridge
 } from "./bridgeExecution";
-import {
-  attachDebugPin,
-  attachDebugPins,
-  resolveDebugProtectedReference
-} from "./canonicalProtectedReference";
+import { attachDebugPin, attachDebugPins, pinFromStoredBinding } from "./canonicalProtectedReference";
 import { assertDeviceRollbackAuthorization, assertDeviceWriteAuthorization } from "./deviceWriteApproval";
 import {
   requireDebugAdmin,
@@ -402,7 +398,8 @@ function runtimeNodeAsParameter(source: RuntimeNodeSource): DebugParameterRecord
     valueKind: node.valueKind,
     valueFormat: node.valueFormat,
     normalizationMode: node.normalizationMode,
-    maxValueBytes: node.maxValueBytes
+    maxValueBytes: node.maxValueBytes,
+    projectParameterBindingId: null
   };
 }
 
@@ -859,12 +856,11 @@ export function createDebuggingService(options: ServiceOptions) {
   }
 
   async function insertPinnedNodeOperation(tx: Queryable, input: Parameters<typeof insertNodeOperation>[1]) {
-    const pin = await resolveDebugProtectedReference(db);
-    const operation = await insertNodeOperation(tx, {
-      ...input,
-      projectParameterBindingId: pin.bindingId ?? input.projectParameterBindingId ?? null
-    });
-    return attachDebugPin(operation, pin);
+    const operation = await insertNodeOperation(tx, input);
+    return attachDebugPin(
+      operation,
+      pinFromStoredBinding(input.projectParameterBindingId ?? operation.projectParameterBindingId)
+    );
   }
 
   return {
@@ -989,7 +985,7 @@ export function createDebuggingService(options: ServiceOptions) {
       const organizationId = organizationIdFor(auth);
       const parameters = await listDebugParameters(db, { organizationId, ...query });
       if (!query.protocol || parameters.length === 0) {
-        return attachDebugPins(db, parameters);
+        return attachDebugPins(parameters);
       }
 
       const bindings = await listDebugParameterNodeBindings(db, {
@@ -998,7 +994,6 @@ export function createDebuggingService(options: ServiceOptions) {
         protocol: query.protocol
       });
       return attachDebugPins(
-        db,
         attachParameterBindings(parameters, bindings, query.protocol).filter((parameter) => parameter.selectedBinding?.enabled === true)
       );
     },
@@ -1010,7 +1005,6 @@ export function createDebuggingService(options: ServiceOptions) {
       requireDebugView(auth);
       const organizationId = organizationIdFor(auth);
       return attachDebugPins(
-        db,
         await listRuntimeDebugNodes(db, {
           organizationId,
           protocol: query.protocol,
@@ -1983,7 +1977,7 @@ export function createDebuggingService(options: ServiceOptions) {
       if (!session) {
         throw new ApiError("NOT_FOUND", "Debug session was not found.");
       }
-      return attachDebugPins(db, await listDebugSessionEvents(db, { organizationId, sessionId: input.sessionId }));
+      return attachDebugPins(await listDebugSessionEvents(db, { organizationId, sessionId: input.sessionId }));
     },
 
     async readNode(auth: AuthContext, input: ReadNodeInput, context: ServiceContext = {}) {
@@ -2088,6 +2082,7 @@ export function createDebuggingService(options: ServiceOptions) {
           sessionId: session.id,
           parameterId: input.parameterId ?? null,
           nodeId: catalogNodeId,
+          projectParameterBindingId: catalogParameter?.projectParameterBindingId ?? null,
           protocol,
           nodePath,
           operationType: "read",
@@ -2233,6 +2228,7 @@ export function createDebuggingService(options: ServiceOptions) {
             parameterId,
             nodeId: catalogNodeId,
             parameterDefinitionId,
+            projectParameterBindingId: parameter.projectParameterBindingId,
             protocol,
             nodePath,
             operationType,
@@ -2335,6 +2331,7 @@ export function createDebuggingService(options: ServiceOptions) {
           parameterId,
           nodeId: catalogNodeId,
           parameterDefinitionId,
+          projectParameterBindingId: parameter.projectParameterBindingId,
           protocol,
           nodePath,
           operationType,

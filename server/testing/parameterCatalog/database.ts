@@ -8,11 +8,11 @@ export const S2_SCH_0137_FINGERPRINT =
   "f2ad57b2af5c6e0d50841284bacf5aff927dd1dbf09039099144e20216c82453";
 
 /**
- * Live catalog schema fingerprint through 0144 definition replacement. 0137-only
- * freeze is S2_SCH_0137_FINGERPRINT.
+ * Live catalog schema fingerprint through 0158 plane-disposal allow-delete ACL.
+ * 0137-only freeze is S2_SCH_0137_FINGERPRINT.
  */
 export const S2_SCH_CONTRACT_FINGERPRINT =
-  "a3014558167dd261b91699ad15f12497c248dbd5a512a662072731b0a9ee4b61";
+  "7bc944915eabc1689a9976332864bae3bc602fd9c407e91ed826340dbe0f69e1";
 
 const CATALOG_DATABASE_PREFIX = "wiseeff_pcat_";
 const FAKE_ENGINE_PATTERN = /pglite|postgres-js|pg-mem|sqlite|:memory:|memory:\/\//i;

@@ -844,6 +844,139 @@ describe("buildCompleteSuccessor", () => {
     ]);
   });
 
+  it("carries a configuration-schema subject and two integer definitions through m2-core", async () => {
+    const predecessor = firstAcmePredecessor();
+    const result = await buildCompleteSuccessor({
+      predecessorArtifact: { digest: predecessor.digest, bytes: predecessor.bytes },
+      productPath: "m2-core",
+      changeSet: [
+        {
+          op: "create-subject-with-definitions",
+          kind: "configuration-schema",
+          canonicalKey: "wiseeff.power-config",
+          selector: { kind: "configuration-schema-id", value: "wiseeff.power-config" },
+          definitions: [
+            {
+              propertyKey: "charger.cv.limitMv",
+              content: {
+                displayName: "Charge voltage limit",
+                documentation:
+                  "恒压阶段的充电电压上限。用于控制电池进入恒压补电时的目标电压，决定补电效率与热负荷上限。",
+                unit: "mV",
+                valueSchema: { type: "integer", minimum: 4200, maximum: 4500 },
+                examples: [4300],
+              },
+            },
+            {
+              propertyKey: "battery.thermal.targetTempC",
+              content: {
+                displayName: "Battery thermal target",
+                documentation:
+                  "电池热管理目标温度。用于充电与放电过程中的热约束，避免过热降额过晚。",
+                unit: "°C",
+                valueSchema: { type: "integer", minimum: 30, maximum: 42 },
+                examples: [36],
+              },
+            },
+          ],
+        },
+      ],
+      frozenIdentity: {
+        ...frozenPageIdentity(
+          [
+            {
+              subjectId: "csub_wiseeff_power_config",
+              propertyKey: "charger.cv.limitMv",
+              definitionId: "pdef_power_config_cv_limit",
+              revisionId: "drev_power_config_cv_limit_1",
+            },
+            {
+              subjectId: "csub_wiseeff_power_config",
+              propertyKey: "battery.thermal.targetTempC",
+              definitionId: "pdef_power_config_thermal_target",
+              revisionId: "drev_power_config_thermal_target_1",
+            },
+          ],
+          "cfg-schema",
+        ),
+        subjects: [
+          { canonicalKey: "wiseeff.power-config", subjectId: "csub_wiseeff_power_config" },
+        ],
+      },
+    });
+    expect(result.ok, JSON.stringify(result)).toBe(true);
+    if (!result.ok || result.value.kind !== "successor") return;
+    const target = result.value.artifact.bundle.releases.find(
+      (release) => release.manifest.release.id === result.value.artifact.targetReleaseId,
+    );
+    expect(target).toBeDefined();
+    if (!target) return;
+    const subject = target.documents.find(
+      (document) => document.kind === "subject" && document.content.id === "csub_wiseeff_power_config",
+    );
+    expect(subject).toMatchObject({
+      kind: "subject",
+      content: {
+        id: "csub_wiseeff_power_config",
+        kind: "configuration-schema",
+        canonicalKey: "wiseeff.power-config",
+        selector: { kind: "configuration-schema-id", value: "wiseeff.power-config" },
+      },
+    });
+    const keys = target.documents
+      .filter(
+        (document) =>
+          document.kind === "definition" && document.content.subjectId === "csub_wiseeff_power_config",
+      )
+      .map((document) => document.kind === "definition" && document.content.propertyKey);
+    expect(keys.sort()).toEqual(["battery.thermal.targetTempC", "charger.cv.limitMv"]);
+    const predecessorSubjects = predecessor.first.documents.filter(
+      (document) => document.kind === "subject",
+    );
+    for (const previous of predecessorSubjects) {
+      const current = target.documents.find(
+        (document) => document.kind === "subject" && document.content.id === previous.content.id,
+      );
+      expect(current?.content).toEqual(previous.content);
+    }
+  });
+
+  it("admits 33 change-set ops on v4 and refuses 129", async () => {
+    const predecessor = firstAcmePredecessor();
+    const thirtyThree = Array.from({ length: 33 }, (_, index) =>
+      pageIntegerChange(`page_${index}`, `Page ${index}`),
+    );
+    const admitted = await buildCompleteSuccessor({
+      predecessorArtifact: { digest: predecessor.digest, bytes: predecessor.bytes },
+      changeSet: thirtyThree,
+      frozenIdentity: frozenPageIdentity(
+        thirtyThree.map((change) => allocationFor(change.propertyKey)),
+        "budget-33",
+      ),
+    });
+    expect(admitted.ok, JSON.stringify(admitted)).toBe(true);
+
+    const oneTwentyNine = Array.from({ length: 129 }, (_, index) =>
+      pageIntegerChange(`over_${index}`, `Over ${index}`),
+    );
+    const refused = await buildCompleteSuccessor({
+      predecessorArtifact: { digest: predecessor.digest, bytes: predecessor.bytes },
+      changeSet: oneTwentyNine,
+      frozenIdentity: frozenPageIdentity(
+        oneTwentyNine.map((change) => allocationFor(change.propertyKey)),
+        "budget-129",
+      ),
+    });
+    expect(refused.ok).toBe(false);
+    if (!refused.ok) {
+      expect(refused.error).toMatchObject({
+        kind: "unsupported-catalog-capability",
+        detail: "resource-budget-exceeded",
+        path: "changeSet",
+      });
+    }
+  });
+
   it("rejects an incomplete predecessor membership as predecessor-incomplete, not retirement", async () => {
     const bundle = omittedPredecessorAliasBundle();
     const bytes = new TextEncoder().encode(

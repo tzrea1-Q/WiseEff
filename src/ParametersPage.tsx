@@ -38,6 +38,7 @@ import {
 import type { WiseEffRuntimeMode } from "@/infrastructure/http/runtimeMode";
 import { ApiProjectTopologyWorkspace } from "@/components/parameter-topology/ApiProjectTopologyWorkspace";
 import type { ParameterTopologyRepository } from "@/application/ports/ParameterTopologyRepository";
+import type { ParameterCatalogRepository } from "@/application/ports/ParameterCatalogRepository";
 import { useTopologyLayoutMode } from "@/components/parameter-topology/useTopologyLayoutMode";
 import { createHttpParameterRepository } from "@/infrastructure/http/parameterClient";
 import { buildParameterModuleFilterNodes } from "@/application/parameters/buildModuleFilterNodes";
@@ -74,6 +75,7 @@ type ParametersPageProps = {
   search: string;
   parameterActions?: ParameterPageActions;
   topologyRepository?: ParameterTopologyRepository;
+  canonicalRepository?: ParameterCatalogRepository;
   listConfigSets?: (projectId: string) => Promise<Array<{ id: string; name: string }>>;
   effectiveProjectId?: string;
   topBarProjectId?: string;
@@ -91,6 +93,7 @@ export function ParametersPage({
   search,
   parameterActions,
   topologyRepository,
+  canonicalRepository,
   listConfigSets,
   effectiveProjectId,
   topBarProjectId,
@@ -116,8 +119,8 @@ export function ParametersPage({
   // `parameter-drafts` surface is never written in semantic identity mode, so reading
   // it meant a persisted canonical draft disappeared from the tray on reload.
   const canonicalDraftTray = useMemo(
-    () => (isApiMode ? createCanonicalDraftTraySource() : null),
-    [isApiMode]
+    () => (isApiMode ? createCanonicalDraftTraySource(canonicalRepository) : null),
+    [canonicalRepository, isApiMode]
   );
   const listDrafts = useMemo(
     () =>
@@ -1012,6 +1015,7 @@ export function ParametersPage({
             layoutMode={topologyLayoutMode}
             runtimeMode="api"
             topologyRepository={topologyRepository}
+            canonicalRepository={canonicalRepository}
             listConfigSets={listConfigSets}
             listDrafts={listDrafts}
             deleteDraft={deleteDraft}

@@ -22,8 +22,7 @@ import {
   X_DEFINITION_ID,
   X_REVISION_1
 } from "../../catalog-kernel/runtime/catalogChain.fixture";
-import { stabilizeCanonicalBinding } from "../../parameter-bindings/binding";
-import { appendProjectValue } from "../../parameter-bindings/values";
+import { createSourceBackedBindingService } from "../../parameter-bindings/binding/__fixtures__/sourceBackedBinding";
 import { ensureLocalPostCutoverIdentity } from "../../parameter-topology/localPostCutover";
 import { DefinitionRevisionId, ParameterDefinitionId, SubjectRegistrationId } from "../../parameter-catalog-contract";
 
@@ -302,7 +301,9 @@ describe("R2-AGT real authenticated Catalog execution", () => {
     expect(registration.status, JSON.stringify(registration.body)).toBe(201);
     const loaded = await createCatalogKernel(pool).loadPinnedCatalog(chain.pinA);
     if (!loaded.ok) throw new Error(`Pinned fixture unavailable: ${loaded.error.kind}`);
-    const stabilized = await stabilizeCanonicalBinding(pool, {
+    const stabilized = await createSourceBackedBindingService(pool, {
+      initialPayload: { kind: "number", value: 1842 }
+    }).stabilize({
       snapshot: loaded.value,
       organizationId: ORG,
       projectId: PROJECT,
@@ -314,16 +315,7 @@ describe("R2-AGT real authenticated Catalog execution", () => {
     });
     if (!stabilized.ok) throw new Error(`Binding fixture failed: ${JSON.stringify(stabilized.error)}`);
     bindingId = stabilized.value.binding.id;
-    const value = await appendProjectValue(pool, {
-      snapshot: loaded.value,
-      binding: stabilized.value.binding,
-      definitionRevisionId: DefinitionRevisionId(X_REVISION_1),
-      source: { sourceRef: "config-set:r2-818", configRevisionId: "config-r2-818-1" },
-      payload: { kind: "number", value: 1842 },
-      expectedTip: stabilized.value.binding.currentValueId
-    });
-    if (!value.ok) throw new Error(`Value fixture failed: ${JSON.stringify(value.error)}`);
-    currentValueId = value.value.currentTip;
+    currentValueId = stabilized.value.binding.currentValueId;
   }, 60_000);
 
   afterAll(async () => {

@@ -133,6 +133,12 @@
   gap: var(--ph-section-gap);
 }
 
+.parameter-home__page--hotspots {
+  /* Inset the leaderboard from the fixed Xiaoze launcher corner. */
+  padding-right: calc(var(--space-12) + var(--space-2) + var(--space-6) + var(--space-4));
+  padding-bottom: calc(var(--space-12) + var(--space-2) + var(--space-6) + var(--space-4));
+}
+
 .parameter-home__insight--page {
   margin-top: 0;
 }

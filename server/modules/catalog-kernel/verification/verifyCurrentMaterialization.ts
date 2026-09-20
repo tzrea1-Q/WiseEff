@@ -230,16 +230,24 @@ const canonicalSubjectKey = (subject: CatalogReleaseSubjectDocument): string =>
 
 const expectedSelectorSnapshot = (
   subject: CatalogReleaseSubjectDocument,
-): unknown =>
-  subject.content.selector.kind === "driver-compatible"
-    ? {
-        kind: "driver-compatible",
-        values: [subject.content.selector.value],
-      }
-    : {
-        kind: "node-type-name",
-        value: subject.content.selector.value,
-      };
+): unknown => {
+  if (subject.content.selector.kind === "driver-compatible") {
+    return {
+      kind: "driver-compatible",
+      values: [subject.content.selector.value],
+    };
+  }
+  if (subject.content.selector.kind === "configuration-schema-id") {
+    return {
+      kind: "configuration-schema-id",
+      value: subject.content.selector.value,
+    };
+  }
+  return {
+    kind: "node-type-name",
+    value: subject.content.selector.value,
+  };
+};
 
 const jsonEqual = (left: unknown, right: unknown): boolean =>
   JSON.stringify(left) === JSON.stringify(right);

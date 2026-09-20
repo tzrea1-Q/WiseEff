@@ -733,10 +733,23 @@ function AppShell({
   }, [state]);
 
   useEffect(() => {
-    if (!apiRuntimeSynced || apiRuntimeFailures.has("parameters") || page.key === "home" ||
-      !state.configDraft.projects.some((project) => project.id === state.activeProjectId)) return;
-    void hydrateActiveProjectInitialization(state.activeProjectId);
-  }, [apiRuntimeSynced, apiRuntimeFailures, hydrateActiveProjectInitialization, page.key, state.activeProjectId, state.configDraft.projects]);
+    if (!apiRuntimeSynced || apiRuntimeFailures.has("parameters") || page.key === "home") {
+      return;
+    }
+    const urlProjectId = page.key === "parameters" ? new URLSearchParams(search).get("project") : null;
+    const projectId = urlProjectId || state.activeProjectId;
+    if (!projectId) {
+      return;
+    }
+    void hydrateActiveProjectInitialization(projectId);
+  }, [
+    apiRuntimeSynced,
+    apiRuntimeFailures,
+    hydrateActiveProjectInitialization,
+    page.key,
+    search,
+    state.activeProjectId
+  ]);
 
   useEffect(() => {
     if (runtimeMode !== "api" || apiAuthStatus !== "authenticated" || page.key === "home") {

@@ -19,7 +19,7 @@ import {
   type FilComparisonPhase,
   type FilInventoryMode,
 } from "./parameterCatalogComparisonContribution";
-import { findBindingBySource, interceptExactPropertyPinSql } from "./syncIdentity";
+import { findBindingBySource } from "./syncIdentity";
 
 const FRESH_PRE_SHA = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
 const FRESH_POST_SHA = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
@@ -56,20 +56,8 @@ function assertCanonicalChecksum(contribution: FilComparisonContribution) {
   expect(contribution.checksum).toBe(checksumFilComparisonBytes(bytes));
 }
 
-describe("interceptExactPropertyPinSql", () => {
-  it("replaces property-key fallback with an exact property pin", () => {
-    const sql = [
-      "and oe.property_name = coalesce(dps.property_key, split_part(ps.specification_key, '/', 2))",
-      "and trim(both '/' from coalesce(dps.property_key, split_part(ps.specification_key, '/', 2), '')) = $4",
-    ].join("\n");
-    const exact = interceptExactPropertyPinSql(sql);
-    expect(exact).not.toContain("split_part");
-    expect(exact).not.toContain("coalesce(dps.property_key");
-    expect(exact).toContain("oe.property_name = dps.property_key");
-    expect(exact).toContain("trim(both '/' from dps.property_key) = $4");
-  });
-
-  it("findBindingBySource executes the exact property pin rather than specification_key fallback", async () => {
+describe("findBindingBySource exact property pin", () => {
+  it("executes source SQL with dps.property_key and no specification_key fallback", async () => {
     const statements: string[] = [];
     const wrapped = {
       query: async (sql: string, values?: unknown[]) => {
@@ -87,7 +75,8 @@ describe("interceptExactPropertyPinSql", () => {
     expect(matched).toBeNull();
     expect(statements.length).toBeGreaterThan(0);
     const haystack = statements.join("\n");
-    expect(haystack).not.toContain("split_part");
+    expect(haystack).not.toContain("split_part(ps.specification_key");
+    expect(haystack).not.toContain("coalesce(dps.property_key");
     expect(haystack).toContain("oe.property_name = dps.property_key");
   });
 });

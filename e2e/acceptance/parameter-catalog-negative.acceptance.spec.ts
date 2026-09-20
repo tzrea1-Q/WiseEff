@@ -7,7 +7,6 @@ import {
   assertNoPageOverflow,
   CATALOG_EXPECTED_API_FAILURES,
   CATALOG_PAGE_PATH,
-  CATALOG_VIEWPORTS,
   catalogJson,
   catalogPage,
   catalogScreenshot,
@@ -15,7 +14,8 @@ import {
   confirmGovernanceDialog,
   dismissXiaozeHint,
   signInCatalogActor,
-  openCatalogAt
+  openCatalogAt,
+  waitForCatalogState
 } from "./helpers/catalogBrowser";
 import { createBearerTokenForUser } from "./helpers/bearerAuth";
 import {
@@ -24,8 +24,11 @@ import {
   countProposals,
   countSubjectRegistrations,
   ensureCatalogAcceptanceFixture,
+  ingestOpenReview,
   type CatalogAcceptanceFixture
 } from "./helpers/catalogEvidence";
+
+test.use({ viewport: { width: 1440, height: 900 } });
 
 useBrowserDiagnostics(test, { expectedApiFailures: CATALOG_EXPECTED_API_FAILURES });
 
@@ -44,15 +47,33 @@ test.describe("canonical parameter catalog negative and responsive contract", ()
   test.beforeAll(async () => {
     fixture = await ensureCatalogAcceptanceFixture();
   });
-  // eslint-disable-next-line playwright/no-skipped-test -- surface removed by product decision (#847)
-  test.fixme("preserves conflict input, refreshes evidence, and requires reconfirmation without partial writes", async ({
+  test("preserves conflict input, refreshes evidence, and requires reconfirmation without partial writes", async ({
     page
   }, testInfo) => {
     // @acceptance PCAT-UI-10
     // @operation PCAT-CONFLICT-RECONFIRM-001
     const before = await countProposals(fixture.pool);
+    await ingestOpenReview(fixture.pool, fixture.chain.pinF.id);
     await openCatalogAt(page, "org-admin");
-    await page.route("**/api/v2/catalog/definition-proposals**", async (route) => {
+    await waitForCatalogState(page, /ready|empty|unregistered/);
+    const queue = page.getByRole("region", { name: "待审核事项" });
+    const resolveButton = queue.getByRole("button", { name: "处理审核" });
+    if ((await resolveButton.count()) === 0) {
+      await ingestOpenReview(fixture.pool, fixture.chain.pinF.id);
+      await page.reload();
+      await expect(catalogPage(page)).toBeVisible();
+      const pending = page.getByRole("button", { name: /待处理工作/ });
+      if (await pending.isVisible().catch(() => false)) {
+        await pending.click();
+      }
+    }
+    await queue.getByRole("button", { name: "处理审核" }).first().click();
+    const dialog = page.getByRole("dialog", { name: "处理审核" });
+    await expect(dialog).toBeVisible();
+    await dialog.getByText("标为范围外").click();
+    const reason = dialog.getByRole("textbox", { name: "原因" });
+    await reason.fill("op08 conflict keep this reason");
+    await page.route("**/parameter-review-items/**/resolve", async (route) => {
       if (route.request().method() !== "POST") {
         await route.continue();
         return;
@@ -69,20 +90,18 @@ test.describe("canonical parameter catalog negative and responsive contract", ()
         })
       });
     });
-    const panel = page.getByRole("region", { name: "定义修订" });
-    const reason = panel.getByRole("textbox", { name: "原因" });
-    await reason.fill("op08 conflict keep this reason");
-    await panel.getByRole("button", { name: "继续确认" }).click();
-    await confirmGovernanceDialog(page, "确认提出修订");
-    await expect(panel.getByRole("alert")).toBeVisible();
-    await expect(panel.locator("[data-preserve-input='true']")).toBeVisible();
-    await expect(panel.locator("[data-silent-retry='false']")).toBeVisible();
+    await dialog.getByRole("button", { name: "继续确认" }).click();
+    await confirmGovernanceDialog(page, "确认处理");
+    await expect(page.locator("[data-preserve-input='true']")).toBeVisible();
     await expect(reason).toHaveValue("op08 conflict keep this reason");
+    await expect(page.getByRole("alert")).toContainText("目录发布已变化");
+    const refresh = page.getByRole("button", { name: "刷新证据" });
+    if (await refresh.isVisible().catch(() => false)) {
+      await refresh.click();
+    }
     const after = await countProposals(fixture.pool);
     expect(after).toBe(before);
-    await panel.getByRole("button", { name: "刷新证据" }).click();
-    await expect(panel.getByRole("button", { name: "继续确认" })).toBeVisible();
-    await page.unroute("**/api/v2/catalog/definition-proposals**");
+    await page.unroute("**/parameter-review-items/**/resolve");
     await catalogScreenshot(page, testInfo, "pcat-ui-10-conflict");
   });
 
@@ -118,27 +137,25 @@ test.describe("canonical parameter catalog negative and responsive contract", ()
     expect(gone.status).toBe(410);
     expect(JSON.stringify(gone.body)).not.toMatch(/archive-op08-gone|candidate/i);
 
-    for (const viewport of CATALOG_VIEWPORTS) {
-      await page.setViewportSize({ width: viewport.width, height: viewport.height });
-      await signInCatalogActor(
-        page,
-        "org-admin",
-        `/parameters?project=${encodeURIComponent(fixture.archivedLinkProjectId)}&parameter=${encodeURIComponent(fixture.legacy.gone)}`
-      );
-      await dismissXiaozeHint(page);
-      const archivedNotice = page.locator(".parameter-archived-link-banner");
-      await expect(archivedNotice).toBeVisible({ timeout: 30_000 });
-      await expect(archivedNotice).toContainText("该参数旧链接已归档");
-      await expect(archivedNotice).toContainText(fixture.legacy.gone);
-      await expect(archivedNotice).toContainText("legacy-parameter-id-retired");
-      await expect(archivedNotice).toContainText(fixture.legacy.goneEvidenceId);
-      await expect(archivedNotice).not.toContainText(/archive-op08-gone|candidate/i);
-      await expect(page.getByRole("dialog", { name: "修改草稿" })).toHaveCount(0);
-      await assertNoPageOverflow(page);
-      await catalogScreenshot(page, testInfo, `pcat-ui-11-archived-notice-${viewport.name}`);
-      await archivedNotice.getByRole("button", { name: "知道了" }).click();
-      await expect(archivedNotice).toHaveCount(0);
-    }
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await signInCatalogActor(
+      page,
+      "org-admin",
+      `/parameters?project=${encodeURIComponent(fixture.archivedLinkProjectId)}&parameter=${encodeURIComponent(fixture.legacy.gone)}`
+    );
+    await dismissXiaozeHint(page);
+    const archivedNotice = page.locator(".parameter-archived-link-banner");
+    await expect(archivedNotice).toBeVisible({ timeout: 30_000 });
+    await expect(archivedNotice).toContainText("该参数旧链接已归档");
+    await expect(archivedNotice).toContainText(fixture.legacy.gone);
+    await expect(archivedNotice).toContainText("legacy-parameter-id-retired");
+    await expect(archivedNotice).toContainText(fixture.legacy.goneEvidenceId);
+    await expect(archivedNotice).not.toContainText(/archive-op08-gone|candidate/i);
+    await expect(page.getByRole("dialog", { name: "修改草稿" })).toHaveCount(0);
+    await assertNoPageOverflow(page);
+    await catalogScreenshot(page, testInfo, "pcat-ui-11-archived-notice-desktop");
+    await archivedNotice.getByRole("button", { name: "知道了" }).click();
+    await expect(archivedNotice).toHaveCount(0);
 
     const scopeHidden = await catalogJson(
       page.request,
@@ -320,16 +337,10 @@ test.describe("canonical parameter catalog negative and responsive contract", ()
   });
 });
 
-for (const viewport of [
-  { name: "desktop", width: 1440, height: 900 },
-  { name: "tablet", width: 768, height: 1024 },
-  { name: "mobile", width: 390, height: 844 },
-]) {
-  test.fixme(`real sessions reject stale Proposal ETag and require explicit reconfirmation after refresh (${viewport.name})`, async ({ page }, testInfo) => {
-    await page.setViewportSize(viewport);
-    await verifyRealProposalConflict(page, testInfo);
-  });
-}
+test.fixme("real sessions reject stale Proposal ETag and require explicit reconfirmation after refresh at PC 1440x900", async ({ page }, testInfo) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await verifyRealProposalConflict(page, testInfo);
+});
 
 test.fixme("replays the original committed Proposal after a verified response-phase failure", async ({ browser }, testInfo) => {
   const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });

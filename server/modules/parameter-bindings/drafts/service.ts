@@ -5,16 +5,22 @@
  * leave the canonical current value, its history tip and the active config
  * revision untouched — that is the invariant this module exists to protect.
  *
- * Submission, approval and apply of these drafts are separate, not-yet-delivered
- * work; this module deliberately exposes no apply entry point.
+ * Submission and approval are separate workflow steps; approval is owned by the
+ * source-commit service and this module only prepares the immutable draft.
  */
 import { ApiError } from "../../../shared/http/errors";
 import type { Database, Queryable } from "../../../shared/database/client";
 import type { AuthContext } from "../../auth/types";
+import type { TrustedInvocationContext } from "../../auth/trustedInvocation";
+import type { TrustedRefusalAuditSink } from "../../audit/trustedRefusalSink";
+import type { ObjectStore } from "../../logs/objectStore";
 import { canEditParameters, canViewParameters } from "../../parameter-kernel/policy";
 import { getProjectById } from "../../projects/repository";
 import { renderDtsValue } from "../../dts/valueAst";
 import type { DtsValue } from "../../dts/types";
+import { parseJsonSource } from "../../parameter-files/jsonSource";
+import { preparePinnedSourceChange } from "../../parameter-files/canonicalSource";
+import { serializeContract, type ContractJsonValue } from "../../parameter-catalog-contract";
 import {
   deleteCanonicalValueDraft,
   listCanonicalValueDrafts,
@@ -31,6 +37,11 @@ export type CanonicalValueDraftDto = {
   effectiveRevisionId: string;
   currentValueId: string | null;
   targetValue: string;
+  sourceFormat: "dts" | "json";
+  sourceTarget?: { format: "json"; sourceText: string };
+  baseRevisionId: string;
+  sourcePinId: string | null;
+  candidateId: string | null;
   reason: string;
   updatedAt: string;
 };
@@ -40,11 +51,19 @@ export type CreateCanonicalValueDraftInput = {
   bindingId: string;
   action?: CanonicalValueDraftAction;
   targetValue?: DtsValue;
+  sourceTarget?: { format: "json"; sourceText: string };
   reason: string;
   /** Exact config-revision pin the caller edited against. */
   baseRevisionId: string;
   /** Exact canonical current-value pin the caller edited against. */
   baseCurrentValueId?: string;
+};
+
+export type CanonicalValueDraftOptions = {
+  objectStore?: ObjectStore;
+  invocation?: TrustedInvocationContext;
+  requestId?: string;
+  refusalSink?: TrustedRefusalAuditSink;
 };
 
 /**
@@ -70,12 +89,19 @@ async function requireOwnedProject(db: Queryable, auth: AuthContext, projectId: 
 }
 
 function toDto(row: CanonicalValueDraftRow): CanonicalValueDraftDto {
+  const jsonTarget = row.target_value && typeof row.target_value === "object" && (row.target_value as { kind?: unknown }).kind === "json-source"
+    ? row.target_value as { value: ContractJsonValue } : null;
   let rendered: string;
-  try {
-    rendered = renderDtsValue(row.target_value as DtsValue);
-  } catch {
-    rendered = JSON.stringify(row.target_value);
-  }
+  rendered = typeof row.target_value === "object" && row.target_value !== null
+    && (row.target_value as { kind?: unknown }).kind === "json-source"
+    ? JSON.stringify((row.target_value as { value: unknown }).value)
+    : (() => {
+        try {
+          return renderDtsValue(row.target_value as DtsValue);
+        } catch {
+          return JSON.stringify(row.target_value);
+        }
+      })();
   return {
     id: row.id,
     bindingId: row.binding_id,
@@ -83,6 +109,11 @@ function toDto(row: CanonicalValueDraftRow): CanonicalValueDraftDto {
     effectiveRevisionId: row.definition_revision_id,
     currentValueId: row.base_current_value_id ?? null,
     targetValue: rendered,
+    sourceFormat: jsonTarget ? "json" : "dts",
+    ...(jsonTarget ? { sourceTarget: { format: "json" as const,sourceText: serializeContract(jsonTarget.value) } } : {}),
+    baseRevisionId: row.config_revision_id,
+    sourcePinId: row.source_pin_id,
+    candidateId: row.candidate_id,
     reason: row.reason,
     updatedAt: row.updated_at
   };
@@ -91,14 +122,18 @@ function toDto(row: CanonicalValueDraftRow): CanonicalValueDraftDto {
 export async function createCanonicalValueDraft(
   db: Database,
   auth: AuthContext,
-  input: CreateCanonicalValueDraftInput
+  input: CreateCanonicalValueDraftInput,
+  options: CanonicalValueDraftOptions = {}
 ): Promise<CanonicalValueDraftDto> {
   await requireOwnedProject(db, auth, input.projectId);
   requireEditPermission(auth, input.projectId);
 
   const action: CanonicalValueDraftAction = input.action ?? "set";
-  if (action === "set" && !input.targetValue) {
-    throw new ApiError("VALIDATION_FAILED", "A pending value change requires a target value.");
+  if (action !== "set") {
+    throw new ApiError("VALIDATION_FAILED", "Canonical source drafts support set only.");
+  }
+  if (action === "set" && ((!input.targetValue && !input.sourceTarget) || (input.targetValue && input.sourceTarget))) {
+    throw new ApiError("VALIDATION_FAILED", "A pending value change requires exactly one typed target value.");
   }
   const reason = input.reason.trim();
   if (!reason) {
@@ -139,16 +174,47 @@ export async function createCanonicalValueDraft(
     });
   }
 
-  const row = await upsertCanonicalValueDraft(db, {
-    organizationId: auth.organization.id,
-    pins,
-    action,
-    // The pending target is stored as the typed DtsValue AST so the exact value
-    // the editor proposed survives a reload and can be converted to the canonical
-    // ProjectValue payload by the (separate) apply step.
-    targetValue: action === "delete" ? { kind: "empty" } : input.targetValue!,
-    reason,
-    userId: auth.user.id
+  if (!options.objectStore || !options.invocation || !options.requestId?.trim() || !options.refusalSink) {
+    throw new ApiError("INTERNAL_ERROR", "Canonical source drafts require object storage and trusted invocation context.");
+  }
+  const sourceTarget = input.sourceTarget ?? {
+    format: "dts" as const,
+    sourceText: renderDtsValue(input.targetValue!)
+  };
+  let targetValue: DtsValue | { kind: "json-source"; value: ContractJsonValue } = input.targetValue!;
+  if (input.sourceTarget) {
+    try {
+      targetValue = { kind: "json-source",value: parseJsonSource(input.sourceTarget.sourceText) as ContractJsonValue };
+    } catch (error) {
+      if (!(error instanceof SyntaxError)) throw error;
+      throw new ApiError("VALIDATION_FAILED", "JSON draft target is invalid or unsupported.");
+    }
+  }
+  const row = await db.transaction(async (tx) => {
+    const prepared = await preparePinnedSourceChange(tx, options.objectStore!, auth, {
+      projectId: input.projectId,
+      bindingId: input.bindingId,
+      expectedValueId: pins.currentValueId,
+      target: sourceTarget,
+      invocation: options.invocation!,
+      requestId: options.requestId!.trim(),
+      refusalSink: options.refusalSink!
+    });
+    return upsertCanonicalValueDraft(tx, {
+      organizationId: auth.organization.id,
+      pins,
+      action,
+      targetValue,
+      reason,
+      userId: auth.user.id,
+      sourcePinId: prepared.sourcePinId,
+      candidateId: prepared.candidateId,
+      candidateBaseDigest: prepared.baseDigest,
+      candidateProposedDigest: prepared.proposedDigest,
+      candidateDiffDigest: prepared.diffDigest,
+      candidateMemberManifest: prepared.members,
+      candidateBindingManifest: prepared.bindings
+    });
   });
   return toDto(row);
 }

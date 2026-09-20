@@ -29,6 +29,7 @@ import {
 } from "./candidateRepository";
 import { buildDtsParsedIndex, buildJsonParsedIndex } from "./parseIndex";
 import {
+  assertLegacySourceMutationAllowed,
   getFileVersionById,
   getProjectParameterFileById,
   getProjectParameterFileByName,
@@ -113,7 +114,7 @@ function contentTypeForFormat(format: ParameterFileFormat) {
 }
 
 function buildParsedIndex(format: ParameterFileFormat, bytes: Buffer) {
-  return format === "json" ? buildJsonParsedIndex(bytes.toString("utf8")) : buildDtsParsedIndex(bytes.toString("utf8"));
+  return format === "json" ? buildJsonParsedIndex(bytes) : buildDtsParsedIndex(bytes.toString("utf8"));
 }
 
 export function buildUnifiedTextDiff(before: string, after: string, beforeLabel: string, afterLabel: string): string {
@@ -335,6 +336,18 @@ export async function createCandidate(
     });
   }
 
+  // Strict JSON must be valid before any object or candidate is persisted.
+  let validatedJsonIndex: ReturnType<typeof buildJsonParsedIndex> | undefined;
+  if (format === "json") {
+    try {
+      validatedJsonIndex = buildJsonParsedIndex(input.bytes);
+    } catch (error) {
+      throw new ApiError("VALIDATION_FAILED", "Invalid strict JSON source.", {
+        reason: error instanceof Error ? error.message : "JSON parsing failed."
+      });
+    }
+  }
+
   let fileId = input.fileId;
   let baseVersionId: string | undefined;
   let baseStorageKey: string | undefined;
@@ -415,7 +428,7 @@ export async function createCandidate(
 
     let parsedIndex = {};
     try {
-      parsedIndex = buildParsedIndex(format, input.bytes);
+      parsedIndex = validatedJsonIndex ?? buildParsedIndex(format, input.bytes);
     } catch (error) {
       const parseDiagnostics: CandidateDiagnostic[] = [
         {
@@ -874,6 +887,8 @@ export async function activateCandidate(
       }
     }
 
+    await assertLegacySourceMutationAllowed(tx,file ? [file.id] : [],isNewFile ? input.configSetId : undefined);
+    if (file) file = await getProjectParameterFileById(tx,{ organizationId: auth.organization.id,fileId: file.id });
     const actualCurrentVersionId = file?.currentVersionId ?? null;
     const casMatches =
       (actualCurrentVersionId ?? null) === (expectedCurrentVersionId ?? null) &&

@@ -46,12 +46,12 @@ describe("compileVendorCatalogSuccessor", () => {
     expect(result.compiled.aggregateDigest).toBe(VENDOR_SUCCESSOR_AGGREGATE_DIGEST);
     expect(result.excluded).toEqual([...EXCLUDED_SCHEMA_BASENAMES]);
     expect(result.compiled.counts).toEqual({
-      subjects: 48,
-      subjectMemberships: 48,
+      subjects: 49,
+      subjectMemberships: 49,
       aliases: 1,
       aliasMemberships: 1,
-      definitions: 114,
-      definitionRevisions: 114,
+      definitions: 116,
+      definitionRevisions: 116,
     });
 
     const target = result.bundle.releases.find(
@@ -64,6 +64,11 @@ describe("compileVendorCatalogSuccessor", () => {
     expect(ids.has("cali_acme_power_v1")).toBe(true);
     expect(ids.has("csub_nt_root")).toBe(true);
     expect(ids.has("pdef_nt_root_board_id")).toBe(true);
+    const canonicalKeys = target!.documents
+      .filter((document) => document.kind === "subject")
+      .map((document) => document.content.canonicalKey);
+    expect(canonicalKeys).toContain("driver:huawei,charging_core");
+    expect(canonicalKeys).toContain("node-type:charging_core");
     expect([...ids].some((id) => id.includes("ambiguous"))).toBe(false);
 
     const keys = target!.documents

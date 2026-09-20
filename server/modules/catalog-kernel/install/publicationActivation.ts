@@ -3,6 +3,11 @@ import pg from "pg";
 
 import { verifyAuthorizationForActivation } from "../../catalog-publication/authorization/authorize";
 import {
+  admitCompiledReleaseSchemas,
+  CATALOG_CAPABILITY_ALLOW_LIST,
+} from "../../catalog-publication/builder/capabilities";
+import type { CapabilityAllowListIdentity } from "../../catalog-publication/builder/types";
+import {
   getArtifactByDigest,
   getCandidate,
   getJob,
@@ -56,9 +61,28 @@ export type PublicationActivationTestHooks = {
 };
 
 export type PublicationActivationTestOptions = PublicationActivationOptions &
-  PublicationActivationTestHooks;
+  PublicationActivationTestHooks & {
+    readonly consumerCapability?: {
+      readonly revisions: ReadonlySet<string>;
+      readonly allowList: CapabilityAllowListIdentity;
+    };
+  };
 
 const SHA256_DIGEST = /^sha256:[0-9a-f]{64}$/;
+
+export const refuseUnsupportedConsumerCapability = (
+  compiled: CompiledCatalogRelease,
+  allowList: CapabilityAllowListIdentity = CATALOG_CAPABILITY_ALLOW_LIST,
+): void => {
+  const admitted = admitCompiledReleaseSchemas(compiled, allowList);
+  if (!admitted.ok) {
+    throw new PublicationActivationFailure({
+      kind: "publication-not-authorized",
+      reason: "unsupported-consumer-capability-revision",
+      detail: admitted.error.detail,
+    });
+  }
+};
 
 export const asQueryable = (client: Pick<pg.Client, "query">): Queryable => ({
   query: async (text, values = []) => {
@@ -441,6 +465,7 @@ export const activateOnlinePublication = async (
     trustedActor: command.trustedActor,
     impactFacts: command.impactFacts,
     lockMode: "publication-guard",
+    consumerRevisions: options?.consumerCapability?.revisions,
   });
   if (!authorized.ok) {
     throw new PublicationActivationFailure({
@@ -487,6 +512,10 @@ export const activateOnlinePublication = async (
   if (!compiled.ok) {
     throw new CatalogInstallFailure(compiled.error);
   }
+  refuseUnsupportedConsumerCapability(
+    compiled.value,
+    options?.consumerCapability?.allowList ?? CATALOG_CAPABILITY_ALLOW_LIST,
+  );
   if (compiled.value.aggregateDigest !== candidate.value.artifactDigest) {
     throw new PublicationActivationFailure({
       kind: "publication-not-authorized",
@@ -680,6 +709,10 @@ export const adoptPreexistingCurrent = async (
   if (!compiled.ok) {
     throw new CatalogInstallFailure(compiled.error);
   }
+  refuseUnsupportedConsumerCapability(
+    compiled.value,
+    options?.consumerCapability?.allowList ?? CATALOG_CAPABILITY_ALLOW_LIST,
+  );
   if (
     compiled.value.release.id !== pointer.current.id ||
     compiled.value.release.digest !== pointer.current.digest ||

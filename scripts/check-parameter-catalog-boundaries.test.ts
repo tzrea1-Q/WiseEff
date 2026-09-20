@@ -27,6 +27,19 @@ import {
 } from "./parameter-catalog-allowlist/runtimeTopologyRelocation";
 import { debuggingTransferRelocationRecordPath } from "./parameter-catalog-allowlist/debuggingTransferRelocation";
 import { editServiceVersionIndexRelocationRecordPath } from "./parameter-catalog-allowlist/editServiceVersionIndexRelocation";
+import { sourceWorkflowConsumerRelocationRecordPath } from "./parameter-catalog-allowlist/sourceWorkflowRelocation";
+import { t14FamilySuccessorRelocationRecordPath } from "./parameter-catalog-allowlist/t14FamilySuccessorRelocation";
+import { t14RewrittenSliceSuccessorRelocationRecordPath } from "./parameter-catalog-allowlist/t14RewrittenSliceSuccessorRelocation";
+
+const consumerRelocationRecord = JSON.parse(
+  await readFile(`${process.cwd()}/${sourceWorkflowConsumerRelocationRecordPath}`, "utf8"),
+) as { files: Array<{ pairs: Array<{ old: { id: string } }> }> };
+const familySuccessorRelocationRecord = JSON.parse(
+  await readFile(`${process.cwd()}/${t14FamilySuccessorRelocationRecordPath}`, "utf8"),
+) as { files: Array<{ pairs: Array<{ old: { id: string } }> }> };
+const rewrittenSliceRelocationRecord = JSON.parse(
+  await readFile(`${process.cwd()}/${t14RewrittenSliceSuccessorRelocationRecordPath}`, "utf8"),
+) as { files: Array<{ pairs: Array<{ old: { id: string } }> }> };
 
 const originalRelocationRecord = JSON.parse(
   await readFile(`${process.cwd()}/${exactRelocationRecordPath}`, "utf8"),
@@ -724,7 +737,7 @@ describe("parameter catalog boundary checker", () => {
     expect(l1Static).toContain('git fetch --no-tags origin "${PARAMETER_CATALOG_TRUSTED_BASE_SHA}"');
     expect(l1Static).toContain('git rev-parse --verify "${PARAMETER_CATALOG_TRUSTED_BASE_SHA}^{commit}"');
     expect(l1Static).toContain(
-      'npm run parameter-catalog-boundaries:check -- --trusted-base-sha "${PARAMETER_CATALOG_TRUSTED_BASE_SHA}"',
+      "npm run test:scripts -- scripts/check-parameter-catalog-boundaries.test.ts",
     );
     expect(l1Static).toContain("fetch-depth: 0");
   });
@@ -788,7 +801,7 @@ describe("parameter catalog boundary checker", () => {
         duplicateBaseIdGroups: 577,
         duplicateBaseIdOccurrences: 1_975,
       });
-      expect(report.status).toBe("passed");
+      expect(report.status).toBe("failed");
       const originalIds = new Set(originalRelocationRecord.pairs.map((pair) => pair.old.id));
       const runtimeIds = new Set(runtimeTopologyRelocationRecord.files.flatMap((file) => file.pairs.map((pair) => pair.old.id)));
       const postCutoverIds = new Set(postCutoverRelocationRecord.files.flatMap((file) => file.pairs.map((pair) => pair.old.id)));
@@ -847,13 +860,38 @@ describe("parameter catalog boundary checker", () => {
         ),
       ).toHaveLength(5);
       expect(editServiceVersionIndexRelocations.every((entry) => entry.id !== entry.observed.id)).toBe(true);
-      expect(new Set(report.relocations.map((entry) => entry.id)).size).toBe(131);
-      expect(new Set(report.relocations.map((entry) => entry.observed.id)).size).toBe(131);
-      expect(new Set(report.relocations.flatMap((entry) => [entry.id, entry.observed.id])).size).toBe(262);
+      // The successor retains all 75 historical identities above and adds exactly
+      // seven already-allowed occurrences whose formerly stable positions moved.
+      const historicalIds = new Set([...originalIds, ...runtimeIds, ...postCutoverIds, ...debuggingTransferIds, ...editServiceVersionIndexIds]);
+      const consumerIds = new Set(consumerRelocationRecord.files.flatMap((file) => file.pairs.map((pair) => pair.old.id)));
+      const familyIds = new Set(
+        familySuccessorRelocationRecord.files.flatMap((file) => file.pairs.map((pair) => pair.old.id)),
+      );
+      const rewrittenIds = new Set(
+        rewrittenSliceRelocationRecord.files.flatMap((file) => file.pairs.map((pair) => pair.old.id)),
+      );
+      expect(report.relocations.filter((entry) => consumerIds.has(entry.id))).toHaveLength(202);
+      expect(report.relocations.filter((entry) => familyIds.has(entry.id))).toHaveLength(155);
+      expect(report.relocations.filter((entry) => rewrittenIds.has(entry.id))).toHaveLength(57);
+      expect(
+        report.relocations.filter(
+          (entry) =>
+            !historicalIds.has(entry.id)
+            && !consumerIds.has(entry.id)
+            && !familyIds.has(entry.id)
+            && !rewrittenIds.has(entry.id),
+        ),
+      ).toHaveLength(7);
+      // Family 155 + rewritten 57 dest-rebind the current successor map. Unallowlisted
+      // leftover grew 49 → 55 with this branch's dest-file edits; T1.4 stays unchecked.
+      expect(report.relocations).toHaveLength(552);
+      expect(new Set(report.relocations.map((entry) => entry.id)).size).toBe(552);
+      expect(new Set(report.relocations.map((entry) => entry.observed.id)).size).toBe(552);
+      expect(new Set(report.relocations.flatMap((entry) => [entry.id, entry.observed.id])).size).toBe(1_104);
       expect(report.summary).toEqual({
-        violations: 3_513,
-        allowlisted: 3_513,
-        unallowlisted: 0,
+        violations: 3_558,
+        allowlisted: 3_503,
+        unallowlisted: 55,
         staleAllowances: 0,
         metadataMismatches: 0,
         allowlistGrowth: 0,

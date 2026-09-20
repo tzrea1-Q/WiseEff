@@ -17,9 +17,15 @@ export type ParameterExportRow = Pick<
   "propertyKey" | "driverModule" | "instanceName" | "locator" | "effectiveValue"
 > & {
   schemaVersion?: string | number | null;
+  /** Canonical server rendering; present for JSON values so export preserves its exact text. */
+  rawValue?: string | null;
 };
 
-function formatEffectiveValue(value: ProjectParameterBinding["effectiveValue"]): string {
+function formatEffectiveValue(
+  value: ProjectParameterBinding["effectiveValue"],
+  rawValue?: string | null
+): string {
+  if (value.kind === "json") return rawValue ?? JSON.stringify(value.value);
   if (value.kind === "boolean") return "true";
   if (value.kind === "empty") return "";
   if (value.kind === "strings") return value.values.join(", ");
@@ -51,7 +57,7 @@ export function buildProjectParametersSheetRows(rows: ParameterExportRow[]) {
       parameter.driverModule ?? "",
       parameter.instanceName ?? "",
       parameter.locator ?? "",
-      formatEffectiveValue(parameter.effectiveValue),
+      formatEffectiveValue(parameter.effectiveValue, parameter.rawValue),
       parameter.schemaVersion == null ? "" : String(parameter.schemaVersion)
     ])
   ];

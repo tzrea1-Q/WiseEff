@@ -37,6 +37,7 @@ useBrowserDiagnostics(test, {
     { method: "POST", path: "/api/v2/projects/aurora/parameter-bindings", status: 409 }
   ]
 });
+test.use({ viewport: { width: 1440, height: 900 } });
 
 const organizationId = "org-chargelab";
 const projectId = "aurora";
@@ -2318,15 +2319,37 @@ test.describe("Parameter topology / schema browser acceptance", () => {
 
     const tray = page.getByRole("heading", { name: "本轮已修改" });
     await expect(tray).toBeVisible();
+    await expect(page.getByText("PARAM-DRAFT-REMOVE acceptance draft")).toBeVisible();
 
-    // Tray removal must delete the server draft, not just filter local state.
+    await page.reload({ waitUntil: "domcontentloaded" });
+    await expect(page.getByRole("region", { name: "DTS 参数工作台" })).toBeVisible({ timeout: 30_000 });
+    let listedDraft: { id?: string; reason?: string; updatedAt?: string } | undefined;
+    await expect.poll(async () => {
+      const response = await page.request.get(
+        apiRoute(`/api/v2/projects/${projectId}/parameter-value-drafts`),
+        { headers: authHeadersForRole("software-user") }
+      );
+      expect(response.ok()).toBe(true);
+      const listedBody = (await response.json()) as {
+        items: Array<{ id?: string; reason?: string; updatedAt?: string }>
+      };
+      listedDraft = listedBody.items.find((item) => item.id === draftId);
+      return listedDraft?.reason ?? null;
+    }).toBe("PARAM-DRAFT-REMOVE acceptance draft");
+    expect(listedDraft?.updatedAt).toBeTruthy();
+    await expect(page.getByRole("heading", { name: "本轮已修改" })).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByText("PARAM-DRAFT-REMOVE acceptance draft")).toBeVisible();
+
+    // Tray removal must delete the canonical server draft, not just filter local state.
     const deleted = page.waitForResponse(
-      (response) => response.request().method() === "DELETE" && response.url().includes("/api/v1/parameter-drafts/")
+      (response) =>
+        response.request().method() === "DELETE" &&
+        response.url().includes(`/api/v2/projects/${projectId}/parameter-value-drafts/`)
     );
     await page.getByRole("button", { name: "移出本轮修改" }).first().click();
     const deleteResponse = await deleted;
     expect(deleteResponse.ok(), await deleteResponse.text()).toBe(true);
-    await expect(tray).toHaveCount(0);
+    await expect(page.getByRole("heading", { name: "本轮已修改" })).toHaveCount(0);
 
     // The draft must stay gone across a full reload (the historical bug: the
     // server copy resurrected into the tray and the next submit).
@@ -2334,13 +2357,14 @@ test.describe("Parameter topology / schema browser acceptance", () => {
     await expect(page.getByRole("region", { name: "DTS 参数工作台" })).toBeVisible({ timeout: 30_000 });
     await expect(page.getByRole("heading", { name: "本轮已修改" })).toHaveCount(0);
 
-    const mine = await page.request.get(apiRoute(`/api/v1/parameter-drafts/mine?projectId=${projectId}`), {
-      headers: authHeadersForRole("software-user")
-    });
-    expect(mine.ok()).toBe(true);
-    const mineBody = (await mine.json()) as { items: Array<{ id?: string; draftId?: string }> };
+    const remaining = await page.request.get(
+      apiRoute(`/api/v2/projects/${projectId}/parameter-value-drafts`),
+      { headers: authHeadersForRole("software-user") }
+    );
+    expect(remaining.ok()).toBe(true);
+    const remainingBody = (await remaining.json()) as { items: Array<{ id?: string; draftId?: string }> };
     expect(
-      mineBody.items.some((item) => item.id === draftId || item.draftId === draftId),
+      remainingBody.items.some((item) => item.id === draftId || item.draftId === draftId),
       `draft ${draftId} should be deleted server-side`
     ).toBe(false);
 
@@ -2512,7 +2536,6 @@ test.describe("Parameter topology / schema browser acceptance", () => {
         )
         .toBe(rightCandidate.logicalNodeId);
 
-      await page.setViewportSize({ width: 390, height: 844 });
       await expect
         .poll(async () => {
           return resolvedTask.evaluate((item) => {
@@ -2532,7 +2555,6 @@ test.describe("Parameter topology / schema browser acceptance", () => {
             .map((control) => control.tagName.toLowerCase())
         );
       expect(overflowingControls).toEqual([]);
-      await page.setViewportSize({ width: 1440, height: 900 });
 
       const auditResponse = await request.get(apiRoute("/api/v1/audit-events?limit=50"), {
         headers: adminHeaders()
@@ -2586,7 +2608,7 @@ test.describe("Parameter topology / schema browser acceptance", () => {
           }
         ],
         notes:
-          "Admin resolved an open identity mapping task, then corrected the applied choice through protected re-resolve with candidate evidence and governance audit."
+          "At PC 1440x900, Admin resolved an open identity mapping task, then corrected the applied choice through protected re-resolve with candidate evidence and governance audit."
       });
     } finally {
       await cleanupSemanticAcceptanceArtifacts({

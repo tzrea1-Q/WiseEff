@@ -27,7 +27,8 @@ import {
   isTestDatabaseAvailable,
   type EphemeralTestDatabase,
 } from "../../../testing/testDatabase";
-import { stabilizeCanonicalBinding, type Binding } from "../binding";
+import { type Binding } from "../binding";
+import { createSourceBackedBindingService } from "../binding/__fixtures__/sourceBackedBinding";
 
 import { writebackProtectedReference } from "./index";
 
@@ -179,7 +180,7 @@ describe("protected writeback independent-session races", () => {
     if (!loaded.ok) throw new Error("failed to load frozen snapshot");
     snapshot = loaded.value;
 
-    const stabilized = await stabilizeCanonicalBinding(pool, {
+    const stabilized = await createSourceBackedBindingService(pool, { sourceRef: "config-set:main" }).stabilize({
       snapshot,
       organizationId: ORG,
       projectId: PROJECT,
@@ -201,7 +202,22 @@ describe("protected writeback independent-session races", () => {
     await database?.drop();
   });
 
-  it("lets one writeback pin win and the other typed-block without mixing tips", async () => {
+  it("refuses concurrent value-only writebacks without mixing tips", async () => {
+    const tipBefore = binding.currentValueId;
+    const valuesBefore = await pool.query<{ n: string }>(
+      `select count(*)::text as n from parameter_catalog.${VALUES_RELATION} where binding_id = $1`,
+      [binding.id],
+    );
+    const nonPlaceholderBefore = await pool.query<{ n: string }>(
+      `select count(*)::text as n
+         from parameter_catalog.${VALUES_RELATION}
+        where binding_id = $1 and source_ref <> 'canonical-binding-identity'`,
+      [binding.id],
+    );
+    const historyBefore = await pool.query<{ n: string }>(
+      `select count(*)::text as n from parameter_catalog.binding_history_events where binding_id = $1`,
+      [binding.id],
+    );
     const [leftSession, rightSession] = await openIndependentCatalogSessions(database.url);
     expect(leftSession.backendPid).not.toBe(rightSession.backendPid);
     await leftSession.close();
@@ -230,16 +246,26 @@ describe("protected writeback independent-session races", () => {
       ]);
 
       const outcomes = [left, right];
-      const wins = outcomes.filter((result) => result.ok);
       const losses = outcomes.filter((result) => !result.ok);
-      expect(wins).toHaveLength(1);
-      expect(losses).toHaveLength(1);
-      if (!wins[0] || !wins[0].ok || !losses[0] || losses[0].ok) return;
-      expect(losses[0].error.reason).toBe("cas-conflict");
-      expect(wins[0].value.outcome).toBe("committed");
-      expect(wins[0].value.pin.kind).toBe("canonical-pin");
-      expect(wins[0].value.pin.currentValueId).toBe(wins[0].value.currentTip);
-      expect(losses[0]).not.toHaveProperty("value");
+      expect(losses).toHaveLength(2);
+      expect(outcomes).toEqual([
+        {
+          ok: false,
+          error: {
+            kind: "typed-block",
+            reason: "invalid-command",
+            field: "owned-source-commit-required",
+          },
+        },
+        {
+          ok: false,
+          error: {
+            kind: "typed-block",
+            reason: "invalid-command",
+            field: "owned-source-commit-required",
+          },
+        },
+      ]);
 
       const stored = await pool.query<{ current_value_id: string }>(
         `select current_value_id
@@ -247,7 +273,7 @@ describe("protected writeback independent-session races", () => {
           where id = $1`,
         [binding.id],
       );
-      expect(stored.rows).toEqual([{ current_value_id: wins[0].value.currentTip }]);
+      expect(stored.rows).toEqual([{ current_value_id: tipBefore }]);
 
       const values = await pool.query<{ id: string }>(
         `select id from parameter_catalog.${VALUES_RELATION}
@@ -255,7 +281,17 @@ describe("protected writeback independent-session races", () => {
             and source_ref <> 'canonical-binding-identity'`,
         [binding.id],
       );
-      expect(values.rows).toEqual([{ id: wins[0].value.value.id }]);
+      expect(values.rows).toHaveLength(Number(nonPlaceholderBefore.rows[0]?.n ?? "0"));
+      const valuesAfter = await pool.query<{ n: string }>(
+        `select count(*)::text as n from parameter_catalog.${VALUES_RELATION} where binding_id = $1`,
+        [binding.id],
+      );
+      const historyAfter = await pool.query<{ n: string }>(
+        `select count(*)::text as n from parameter_catalog.binding_history_events where binding_id = $1`,
+        [binding.id],
+      );
+      expect(valuesAfter.rows[0]?.n).toBe(valuesBefore.rows[0]?.n);
+      expect(historyAfter.rows[0]?.n).toBe(historyBefore.rows[0]?.n);
     } finally {
       await poolA.end();
       await poolB.end();

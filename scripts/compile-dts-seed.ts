@@ -51,6 +51,8 @@ export async function loadCommittedDtsSeedFiles(rootDir: string): Promise<DtsPow
   );
 }
 
+const CHARGING_THERMAL_OVERLAY = "charging-thermal.dts";
+
 export async function compileDtsSeedEffectiveTrees(
   rootDir: string,
   runner: DtsToolchainRunner = createDtsToolchainRunner()
@@ -59,13 +61,21 @@ export async function compileDtsSeedEffectiveTrees(
   const results: Array<{ projectId: DtsPowerSeedProjectId; result: DtsToolchainResult }> = [];
 
   for (const primary of primaries) {
+    const overlaySource = await readFile(
+      path.join(rootDir, "src", "config", "seed-sources", primary.projectId, CHARGING_THERMAL_OVERLAY),
+      "utf8"
+    );
     const result = await runner.validate(
       {
         entryFile: primary.artifactFileName,
         includeSearchPaths: [],
-        overlayOrder: [],
-        // Runner applies the ephemeral dangling-anchor stub for overlay-only boards.
-        files: new Map([[primary.artifactFileName, { content: primary.source }]])
+        overlayOrder: [CHARGING_THERMAL_OVERLAY],
+        // Runner stubs the overlay-only board entry only. Overlay members are
+        // never the stubbed entry (comment `&charging_core` must not mint a stub).
+        files: new Map([
+          [primary.artifactFileName, { content: primary.source }],
+          [CHARGING_THERMAL_OVERLAY, { content: overlaySource }]
+        ])
       },
       {
         // Seed boards may be overlay-only (dangling `&label`); L2 advisory uses an

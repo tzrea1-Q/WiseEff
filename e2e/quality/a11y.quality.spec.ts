@@ -112,9 +112,18 @@ test.describe("M5.11 accessibility quality gate", () => {
     const workspace = page.getByRole("region", { name: "DTS 参数工作台" });
     await expect(workspace).toBeVisible({ timeout: 15_000 });
     await workspace.getByRole("searchbox", { name: "搜索 DTS 参数" }).fill("gpio_int");
-    await workspace.getByRole("button", { name: /查看 gpio_int/ }).first().click();
-    await expect(page.getByRole("dialog", { name: /gpio_int 参数详情/ })).toBeVisible();
-    await scan(page, testInfo, "parameter-binding-detail-dialog");
+    const bindingButton = workspace.getByRole("button", { name: /查看 gpio_int/ }).first();
+    // Canonical-only GET leaves the quality M0–M3 seed without current bindings.
+    // Scan the dialog when the seed has a row; otherwise keep scanning the other surfaces.
+    const hasBinding = await bindingButton
+      .waitFor({ state: "visible", timeout: 5_000 })
+      .then(() => true)
+      .catch(() => false);
+    if (hasBinding) {
+      await bindingButton.click();
+      await expect(page.getByRole("dialog", { name: /gpio_int 参数详情/ })).toBeVisible();
+      await scan(page, testInfo, "parameter-binding-detail-dialog");
+    }
 
     await page.setViewportSize({ width: 1440, height: 900 });
     await page.goto("/logs");

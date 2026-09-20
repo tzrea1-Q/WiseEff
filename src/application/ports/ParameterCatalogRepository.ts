@@ -1,5 +1,12 @@
 import type {
   CatalogContinueReplacementRequest,
+  CatalogBindingExportResponse,
+  CatalogBindingChangeHistoryListResponse,
+  CatalogProjectValueDraftListResponse,
+  CatalogProjectValueDraftRemovedResponse,
+  CatalogValueChangeRequestListResponse,
+  CatalogValueChangeRequestResponse,
+  CatalogValueChangeSourceDiffResponse,
   CatalogCreateReplacementRequest,
   CatalogCreatePublicationCandidateRequest,
   CatalogDefinitionListResponse,
@@ -116,4 +123,42 @@ export interface ParameterCatalogRepository {
     body: CatalogContinueReplacementRequest,
     context: CatalogReplacementWriteContext
   ): Promise<CatalogReplacementResponse>;
+
+  /** Canonical project-value workflow. Optional for the governance-only mock adapter. */
+  listProjectValueDrafts?(projectId: string): Promise<CatalogProjectValueDraftListResponse>;
+  deleteProjectValueDraft?(
+    projectId: string,
+    draftId: string,
+    context?: Partial<CatalogReplacementWriteContext>
+  ): Promise<CatalogProjectValueDraftRemovedResponse>;
+  submitProjectValueDraft?(
+    projectId: string,
+    draftId: string,
+    body: { assignedToUserId?: string | null },
+    context: CatalogPublicationWriteContext & { idempotencyKey: string }
+  ): Promise<CatalogValueChangeRequestResponse>;
+  listProjectValueChangeRequests?(
+    projectId: string,
+    query?: { status?: string }
+  ): Promise<CatalogValueChangeRequestListResponse>;
+  reviewProjectValueChangeRequest?(
+    projectId: string,
+    requestId: string,
+    body: { decision: "approve" | "reject"; note?: string | null },
+    context: CatalogPublicationWriteContext & { idempotencyKey: string }
+  ): Promise<CatalogValueChangeRequestResponse>;
+  getProjectValueChangeSourceDiff?(
+    projectId: string,
+    requestId: string
+  ): Promise<CatalogValueChangeSourceDiffResponse>;
+  getCanonicalBindingChangeHistory?(
+    projectId: string,
+    bindingId: string,
+    limit?: number
+  ): Promise<CatalogBindingChangeHistoryListResponse>;
+  getCanonicalBindingExport?(
+    projectId: string,
+    bindingId: string,
+    projectValueId?: string
+  ): Promise<CatalogBindingExportResponse>;
 }

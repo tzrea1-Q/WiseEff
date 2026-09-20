@@ -34,7 +34,8 @@ const sourceByFile = new Map(
   ]),
 );
 const destinationByFile = new Map(
-  await Promise.all(record.files.map(async (section) => [section.file, await readFile(`${repoRoot}/${section.file}`)] as const)),
+  record.files.map((section) => [section.file,
+    execFileSync("git", ["show", `e31226b6cc06c2278230b810bb1becd8dbc1f32a:${section.file}`], { cwd: repoRoot })] as const),
 );
 const postCutoverSourceByFile = new Map(
   postCutoverRecord.files.map((section) => [
@@ -55,7 +56,9 @@ function input() {
   return {
     fixture: structuredClone(fixture),
     allowances: structuredClone(allowlist.entries),
-    discovered: structuredClone(discovered),
+    // The old decision remains tested against its authenticated historical bytes.
+    // sourceWorkflowRelocation tests separately enforce the actual current scan.
+    discovered: structuredClone(record.files.flatMap((section) => section.pairs.map((pair) => pair.new))),
     sourceByFile: new Map([...sourceByFile].map(([file, bytes]) => [file, Buffer.from(bytes)])),
     destinationByFile: new Map([...destinationByFile].map(([file, bytes]) => [file, Buffer.from(bytes)])),
   };
@@ -72,7 +75,7 @@ function postCutoverInput() {
   };
 }
 
-describe("exact reviewed runtime topology occurrence relocation", () => {
+describe("historical exact reviewed runtime topology occurrence relocation", () => {
   it("binds the reviewed 15+1 destinations and preserves the full inventory", () => {
     const result = validateRuntimeTopologyRelocation(record, input());
 
@@ -82,7 +85,7 @@ describe("exact reviewed runtime topology occurrence relocation", () => {
     expect(new Set(result.map((pair) => pair.old.id)).size).toBe(16);
     expect(new Set(result.map((pair) => pair.new.id)).size).toBe(16);
     expect(fixture.violations).toHaveLength(3519);
-    expect(allowlist.entries).toHaveLength(3513);
+    expect(allowlist.entries).toHaveLength(3503);
   });
 
   it.each([
@@ -146,7 +149,7 @@ describe("exact reviewed runtime topology occurrence relocation", () => {
     const unrelated = { ...record.files[0].pairs[0].new, id: `${record.files[0].pairs[0].new.id.slice(0, -16)}${"f".repeat(16)}` };
     const removed = fixture.violations.filter((entry) => !allowlist.entries.some((allowance) => allowance.id === entry.id));
 
-    expect(removed).toHaveLength(6);
+    expect(removed).toHaveLength(16);
     expect(compareBoundaryInventory([...result.map((pair) => pair.old), unrelated], allowlist.entries, fixture.violations).unallowlisted).toContainEqual(unrelated);
     for (const entry of removed) {
       expect(compareBoundaryInventory([entry], allowlist.entries, fixture.violations).unallowlisted).toContainEqual(entry);

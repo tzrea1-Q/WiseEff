@@ -168,7 +168,7 @@ describe("ParameterImportWizard", () => {
 
     const summary = await within(dialog).findByRole("region", { name: "解析与校验" });
     expect(within(summary).getByText("总行数").nextElementSibling).toHaveTextContent("1");
-    expect(within(summary).getByText("新增候选").nextElementSibling).toHaveTextContent("1");
+    expect(within(summary).getByText("未匹配（不会应用）").nextElementSibling).toHaveTextContent("1");
     expect(within(summary).getByText("已有").nextElementSibling).toHaveTextContent("0");
     expect(within(summary).getByText("冲突").nextElementSibling).toHaveTextContent("0");
     expect(within(summary).getByText("待补全模块").nextElementSibling).toHaveTextContent("0");

@@ -20,7 +20,7 @@ import {
   type DbgComparisonPhase,
   type DbgInventoryMode,
 } from "./parameterCatalogComparisonContribution";
-import { exactDebugOperationValues } from "./canonicalProtectedReference";
+import { attachDebugPins, pinFromStoredBinding } from "./canonicalProtectedReference";
 
 const FRESH_PRE_SHA = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
 const FRESH_POST_SHA = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
@@ -57,13 +57,31 @@ function assertCanonicalChecksum(contribution: DbgComparisonContribution) {
   expect(contribution.checksum).toBe(checksumDbgComparisonBytes(bytes));
 }
 
-describe("exactDebugOperationValues", () => {
-  it("keeps scanned identity placeholders but persists a null spec slot", () => {
-    const values = ["id", "org", "guessed-spec", "binding"];
-    const exact = exactDebugOperationValues(values);
-    expect(values[2]).toBe("guessed-spec");
-    expect(exact[2]).toBeNull();
-    expect(exact[3]).toBe("binding");
+describe("debug pins from stored binding", () => {
+  it("pins a stored binding id and typed-blocks missing links without a values intercept", () => {
+    expect(pinFromStoredBinding("binding-1")).toEqual({
+      protectedReferenceKind: "canonical-pin",
+      bindingId: "binding-1"
+    });
+    expect(pinFromStoredBinding(null)).toEqual({
+      protectedReferenceKind: "typed-block",
+      protectedReferenceReason: "missing-binding"
+    });
+    const pinned = attachDebugPins([
+      { id: "p-bound", projectParameterBindingId: "binding-1" },
+      { id: "p-unbound" }
+    ]);
+    expect(pinned[0]).toMatchObject({
+      id: "p-bound",
+      protectedReferenceKind: "canonical-pin",
+      bindingId: "binding-1"
+    });
+    expect(pinned[1]).toMatchObject({
+      id: "p-unbound",
+      protectedReferenceKind: "typed-block",
+      protectedReferenceReason: "missing-binding"
+    });
+    expect(pinned[1].bindingId).toBeUndefined();
   });
 });
 

@@ -9,7 +9,8 @@ import { ApiError } from "../../shared/http/errors";
 import { parseDts, resolveDts, serializeDts, classifyDtsValue } from "../dts";
 import { indentDtsRawValueForWriteback } from "../dts/rawValueWriteback";
 import { buildDtsParsedIndex, buildJsonParsedIndex } from "./parseIndex";
-import { getFileVersionById, getProjectParameterFileByName, insertFileVersion, setCurrentVersion } from "./repository";
+import { patchJsonSource } from "./jsonSource";
+import { assertLegacySourceMutationAllowed, getFileVersionById, getProjectParameterFileByName, insertFileVersion, setCurrentVersion } from "./repository";
 import { isDtsStructuralIngestEnabled } from "./structuralFlag";
 import { ingestDtsFileVersion } from "./structuralIngest";
 import {
@@ -151,46 +152,12 @@ function splitNodePath(nodePath: string) {
   return nodePath.split("/").map((segment) => segment.trim()).filter(Boolean);
 }
 
-function parseMergedValue(newValue: string): unknown {
-  const trimmed = newValue.trim();
-  if (!trimmed) {
-    return "";
-  }
-
-  try {
-    return JSON.parse(trimmed) as unknown;
-  } catch {
-    return newValue;
-  }
-}
-
-function setNestedJsonLeaf(target: Record<string, unknown>, pathSegments: string[], value: unknown) {
-  if (pathSegments.length === 0) {
-    throw new ApiError("VALIDATION_FAILED", "Parameter source node path is empty.");
-  }
-
-  let cursor: Record<string, unknown> = target;
-  for (let index = 0; index < pathSegments.length - 1; index += 1) {
-    const segment = pathSegments[index];
-    const next = cursor[segment];
-    if (next === null || typeof next !== "object" || Array.isArray(next)) {
-      throw new ApiError("CONFLICT", "Cannot write back to non-object JSON path segment.", {
-        segment,
-        nodePath: pathSegments.join("/")
-      });
-    }
-    cursor = next as Record<string, unknown>;
-  }
-
-  cursor[pathSegments[pathSegments.length - 1]] = value;
-}
-
-function patchByFormat(content: string, format: ParameterFileFormat, nodePath: string, newValue: string): Buffer {
+function patchByFormat(content: Buffer, format: ParameterFileFormat, nodePath: string, newValue: string): Buffer {
   if (format === "json") {
     return patchJsonValue(content, nodePath, newValue);
   }
   if (format === "dts") {
-    return patchDtsProperty(content, nodePath, newValue);
+    return patchDtsProperty(content.toString("utf8"), nodePath, newValue);
   }
   throw new ApiError("VALIDATION_FAILED", "Unsupported parameter file format for writeback.", { format });
 }
@@ -204,7 +171,7 @@ async function loadSemanticWritebackSource(
   auth: AuthContext,
   input: Pick<WritebackMergedParameterValueInput, "projectId" | "projectParameterBindingId">
 ): Promise<WritebackSource | null> {
-  if (!pinW(db, input.projectParameterBindingId)) return null;
+  if (!input.projectParameterBindingId) return null;
 
   const result = await db.query<{
     source_file_name: string | null;
@@ -220,7 +187,7 @@ async function loadSemanticWritebackSource(
       end as source_node_path
     from project_parameter_bindings b
     inner join parameter_specs ps on ps.id = b.parameter_spec_id
-    left join dts_property_specs dps on dps.parameter_spec_id = ps.id
+    inner join dts_property_specs dps on dps.parameter_spec_id = ps.id
     left join dts_logical_nodes ln on ln.id = b.logical_node_id
     left join lateral (
       select lnr.node_locator, lnr.config_revision_id
@@ -441,15 +408,15 @@ async function createWritebackAudit(
   });
 }
 
-export function patchJsonValue(content: string, nodePath: string, newValue: string): Buffer {
-  const parsed = JSON.parse(content) as unknown;
-  if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) {
-    throw new ApiError("VALIDATION_FAILED", "JSON parameter file root must be an object.");
+export function patchJsonValue(content: string | Buffer, nodePath: string, newValue: string): Buffer {
+  // Legacy index locators omit the leading slash. Canonical callers use patchJsonSource directly.
+  let replacement = newValue.trim() || '""';
+  try {
+    JSON.parse(replacement);
+  } catch {
+    replacement = JSON.stringify(newValue);
   }
-
-  const pathSegments = splitNodePath(nodePath);
-  setNestedJsonLeaf(parsed as Record<string, unknown>, pathSegments, parseMergedValue(newValue));
-  return Buffer.from(JSON.stringify(parsed, null, 2), "utf8");
+  return patchJsonSource(content, `/${nodePath}`, replacement);
 }
 
 /** Patch a DTS property via CST locate → replace rawText → lossless serialize. */
@@ -627,13 +594,19 @@ export async function writebackMergedParameterValue(
       refusalSink: trustedContext.refusalSink,
     });
 
+    const parameterSpecId = await loadLockedBindingParameterSpecId(db, {
+      organizationId: auth.organization.id,
+      projectId: input.projectId,
+      bindingId: input.projectParameterBindingId,
+    });
+
     const applied = await applyLockedOverlayWriteback(
       db,
       auth,
       {
         lock,
         bindingId: input.projectParameterBindingId,
-        parameterSpecId: input.parameterSpecId ?? input.parameterDefinitionId,
+        parameterSpecId,
         parameterSpecVersionId,
         mergedValue: input.mergedValue,
         action: input.action ?? "set",
@@ -658,7 +631,7 @@ export async function writebackMergedParameterValue(
         fileName: lock.overlayFileName,
         versionNumber: applied.versionNumber,
         projectParameterBindingId: input.projectParameterBindingId,
-        parameterSpecId: input.parameterSpecId,
+        parameterSpecId,
         candidateRevisionId: applied.candidateRevisionId,
         action: input.action ?? "set",
       },
@@ -702,6 +675,7 @@ export async function writebackMergedParameterValue(
     });
   }
 
+  await assertLegacySourceMutationAllowed(db,file.id);
   const currentVersion = await getFileVersionById(db, { versionId: file.currentVersionId });
   if (!currentVersion || currentVersion.fileId !== file.id) {
     throw new ApiError("NOT_FOUND", "Current project parameter file version was not found for writeback.", {
@@ -722,10 +696,10 @@ export async function writebackMergedParameterValue(
   });
 
   const currentBytes = await objectStore.get(currentVersion.storageKey);
-  const patchedBytes = patchByFormat(currentBytes.toString("utf8"), file.format, source.sourceNodePath, input.mergedValue);
+  const patchedBytes = patchByFormat(currentBytes, file.format, source.sourceNodePath, input.mergedValue);
   const parsedIndex =
     file.format === "json"
-      ? buildJsonParsedIndex(patchedBytes.toString("utf8"))
+      ? buildJsonParsedIndex(patchedBytes)
       : buildDtsParsedIndex(patchedBytes.toString("utf8"));
   const stored = await objectStore.put({
     organizationId: auth.organization.id,
@@ -776,22 +750,27 @@ export async function writebackMergedParameterValue(
   };
 }
 
-function pinW(db: Queryable, bindingId: string | undefined): boolean {
-  const marked = db as Queryable & { __filExactPin?: boolean };
-  if (!marked.__filExactPin) {
-    const original = db.query.bind(db);
-    db.query = ((sql: string, values?: unknown[]) =>
-      original(interceptExactWritebackSourceSql(sql), values)) as Queryable["query"];
-    marked.__filExactPin = true;
+async function loadLockedBindingParameterSpecId(
+  db: Queryable,
+  input: { organizationId: string; projectId: string; bindingId: string }
+): Promise<string> {
+  const result = await db.query<{ parameter_spec_id: string }>(
+    `
+    select parameter_spec_id
+    from project_parameter_bindings
+    where organization_id = $1
+      and project_id = $2
+      and id = $3
+    limit 1
+    `,
+    [input.organizationId, input.projectId, input.bindingId]
+  );
+  const parameterSpecId = result.rows[0]?.parameter_spec_id;
+  if (!parameterSpecId) {
+    throw new ApiError("CONFLICT", "Semantic writeback requires parameter spec on the locked binding.", {
+      reason: "missing-parameter-spec",
+      projectParameterBindingId: input.bindingId,
+    });
   }
-  return Boolean(bindingId);
-}
-
-function interceptExactWritebackSourceSql(sql: string): string {
-  const legacyJoin = ["left join dts", "property", "specs dps on dps.parameter", "spec", "id = ps.id"].join("_");
-  if (!sql.includes(legacyJoin)) {
-    return sql;
-  }
-  const exactJoin = ["inner join dts", "property", "specs dps on dps.parameter", "spec", "id = ps.id"].join("_");
-  return sql.replace(legacyJoin, exactJoin);
+  return parameterSpecId;
 }

@@ -1,38 +1,39 @@
 /**
- * Issue #849 PU-04: materialize the reviewed seed sources into the three target
- * projects' source plane, through the existing config-set / file / ingest owners.
+ * Issue #849 T1.3: materialize reviewed DTS and JSON seed sources into the three
+ * target projects through the existing config-set / ingest / JSON-source owners.
  *
- * Scope of this step, stated exactly:
- *   * ensures each target project's default config set,
- *   * uploads each reviewed DTS seed source as a real file version with its bytes
- *     in the object store,
- *   * makes it a config-set member and ingests a real config revision,
- *   * then asks the canonical project-value owner to sync bindings and values.
- *
- * It never creates a project, never invents an approval, and is a no-op when the
- * same seed digest already completed.
- *
- * BLOCKER RECORDED, NOT SILENTLY SKIPPED: a JSON project source cannot enter this
- * path. `ingestConfigRevision` is a DTS/config-revision resolver and there is no
- * JSON semantic path, so a JSON seed source is refused with an explicit error
- * rather than uploaded as a non-resolving member or dropped from the manifest.
- * The two JSON compatibility seeds therefore remain unmaterialized.
+ * JSON is a config-set member with role `misc` (never overlay) so mixed membership
+ * is complete for `registerCanonicalJsonSource`. JSON bindings are written only
+ * after the all-project placement barrier. YAML/TOML/ENV stay TD-124.
  */
 import { ApiError } from "../../../shared/http/errors";
-import { createDatabase, getRootPostgresPool, type Database } from "../../../shared/database/client";
+import {
+  createDatabase,
+  getRootPostgresPool,
+  isRootDatabase,
+  type Database,
+  type RootDatabase,
+} from "../../../shared/database/client";
 import type { AuthContext } from "../../auth/types";
+import { createUserInvocation } from "../../auth/trustedInvocation";
+import { createTrustedRefusalAuditSink } from "../../audit/trustedRefusalSink";
 import type { ObjectStore } from "../../logs/objectStore";
 import { canEditParameters } from "../../parameter-kernel/policy";
 import { addConfigSetFile, ensureDefaultConfigSet, listConfigSetFiles } from "../../parameter-files/configSetService";
-import { uploadProjectParameterFile } from "../../parameter-files/service";
+import { refuseDeferredProjectSourceFormat, uploadProjectParameterFile } from "../../parameter-files/service";
+import { parseJsonSource, readJsonSourceValue } from "../../parameter-files/jsonSource";
+import { registerCanonicalJsonSource } from "../../parameter-files/canonicalJsonSource";
+import type { ConfigSetRole } from "../../parameter-files/types";
 import type { ConfigRevisionManifest } from "../../parameter-topology/types";
 import { ingestConfigRevision } from "../../parameter-topology/ingestService";
+import { NormalizedConfigurationSchemaId, type CatalogSnapshot } from "../../catalog-kernel/interface";
 import {
   asValueClient,
   listObservedProperties,
   loadPublishedCatalog,
-  syncPublishedCatalogProjectValues
+  syncPublishedCatalogProjectValuesInTransaction
 } from "../catalogProjectValueSync";
+import { SEED_JSON_POINTERS, SEED_POWER_CONFIG_SCHEMA_ID } from "./powerConfig";
 import {
   assertProjectParameterPlaneArchived,
   captureProjectParameterPlane
@@ -90,6 +91,31 @@ type SeedMaterializationInput = {
   sources: readonly SeedProjectSources[];
 };
 
+const publishedConfigurationSchemaSubject = (
+  snapshot: CatalogSnapshot | null,
+): { readonly subjectId: string; readonly subjectKind: "configuration-schema" } | null => {
+  if (!snapshot) return null;
+  const matched = snapshot.resolveSubject({
+    driverCompatibles: [],
+    nodeTypeFallback: { kind: "absent" },
+    configurationSchemaIds: [NormalizedConfigurationSchemaId(SEED_POWER_CONFIG_SCHEMA_ID)],
+  });
+  if (matched.status !== "matched" || matched.subject.kind !== "configuration-schema") return null;
+  return { subjectId: matched.subject.id, subjectKind: "configuration-schema" };
+};
+
+const seedMemberRole = (
+  file: SeedSourceFile,
+  dtsSeen: { count: number },
+): { role: ConfigSetRole; sortOrder: number } => {
+  if (file.format === "json") {
+    return { role: "misc", sortOrder: 100 + dtsSeen.count };
+  }
+  const sortOrder = dtsSeen.count;
+  dtsSeen.count += 1;
+  return { role: sortOrder === 0 ? "base" : "overlay", sortOrder };
+};
+
 export async function materializeSeedSources(
   root: Database,
   objectStore: ObjectStore,
@@ -100,6 +126,9 @@ export async function materializeSeedSources(
     throw new ApiError("FORBIDDEN", "Seed materialization cannot cross organizations.", {
       reason: "organization-mismatch"
     });
+  }
+  if (!isRootDatabase(root)) {
+    throw new ApiError("INTERNAL_ERROR", "Seed materialization requires the root database.");
   }
   const pool = getRootPostgresPool(root);
   if (!pool) {
@@ -138,7 +167,7 @@ export async function materializeSeedSources(
 }
 
 async function materializeSeedSourcesLocked(
-  root: Database,
+  root: RootDatabase,
   archiveDatabase: Database,
   pool: NonNullable<ReturnType<typeof getRootPostgresPool>>,
   objectStore: ObjectStore,
@@ -170,17 +199,13 @@ async function materializeSeedSourcesLocked(
       });
     }
     for (const file of projectSources.files) {
-      if (file.format !== "dts") {
-        throw new ApiError(
-          "UNSUPPORTED_FORMAT",
-          "Only DTS seed sources can be materialized into a config revision; JSON has no semantic ingest path yet.",
-          {
-            projectId: target.projectId,
-            fileName: file.name,
-            format: file.format,
-            deferredTo: "TD-124-json-project-source-semantics"
-          }
-        );
+      refuseDeferredProjectSourceFormat(file.name);
+      if (file.format !== "dts" && file.format !== "json") {
+        throw new ApiError("VALIDATION_FAILED", "Seed sources must be DTS or JSON.", {
+          projectId: target.projectId,
+          fileName: file.name,
+          format: file.format,
+        });
       }
     }
     return { target, projectSources };
@@ -198,8 +223,9 @@ async function materializeSeedSourcesLocked(
   const staged: Array<{
     target: (typeof plan.targets)[number];
     configSet: Awaited<ReturnType<typeof ensureDefaultConfigSet>>;
-    revision: Awaited<ReturnType<typeof ingestConfigRevision>>;
+    revision: Awaited<ReturnType<typeof ingestConfigRevision>> | null;
     fileIds: string[];
+    jsonFiles: Array<{ file: SeedSourceFile; fileId: string; fileVersionId: string }>;
     archive: Awaited<ReturnType<typeof captureProjectParameterPlane>>;
     registrationOutcome: SeedRegistrationOutcome;
   }> = [];
@@ -229,61 +255,76 @@ async function materializeSeedSourcesLocked(
     const memberNames = new Set(existing.map((member) => member.fileName));
     const fileIds: string[] = [];
     const members: ConfigRevisionManifest["members"][number][] = [];
+    const dtsSeen = { count: 0 };
+    const jsonFiles: Array<{ file: SeedSourceFile; fileId: string; fileVersionId: string }> = [];
 
-    for (const [index, file] of projectSources.files.entries()) {
+    for (const file of projectSources.files) {
       const uploaded = await uploadProjectParameterFile(root, objectStore, auth, {
         projectId: target.projectId,
         fileName: file.name,
         bytes: Buffer.from(file.content, "utf8")
       });
       fileIds.push(uploaded.file.id);
+      const { role, sortOrder } = seedMemberRole(file, dtsSeen);
       if (!memberNames.has(file.name)) {
         await addConfigSetFile(root, auth, {
           configSetId: configSet.id,
           fileId: uploaded.file.id,
-          role: index === 0 ? "base" : "overlay",
-          sortOrder: index
+          role,
+          sortOrder
         });
       }
       members.push({
         fileId: uploaded.file.id,
         fileVersionId: uploaded.version.id,
         fileName: file.name,
-        role: index === 0 ? "base" : "overlay",
-        sortOrder: index,
-        content: file.content
+        role,
+        sortOrder,
+        content: file.content,
+        format: file.format,
       });
+      if (file.format === "json") {
+        jsonFiles.push({ file, fileId: uploaded.file.id, fileVersionId: uploaded.version.id });
+      }
     }
 
-    const manifest: ConfigRevisionManifest = {
-      organizationId: input.organizationId,
-      projectId: target.projectId,
-      configSetId: configSet.id,
-      entryFile: projectSources.files[0]!.name,
-      includeSearchPaths: ["."],
-      overlayOrder: projectSources.files.slice(1).map((file) => file.name),
-      members
-    };
-    const revision = await ingestConfigRevision(root, manifest, auth);
+    const dtsMembers = members.filter((member) => member.format !== "json");
+    const entryFile = dtsMembers[0]?.fileName;
+    const overlayOrder = dtsMembers.slice(1).map((member) => member.fileName);
+    const revision = entryFile
+      ? await ingestConfigRevision(root, {
+          organizationId: input.organizationId,
+          projectId: target.projectId,
+          configSetId: configSet.id,
+          entryFile,
+          includeSearchPaths: ["."],
+          overlayOrder,
+          members
+        }, auth)
+      : null;
 
-    // B6: the sync will not bind an unregistered subject. Register the subjects the
-    // reviewed seed sources actually reference, using the automatic/trusted-system
-    // path the governance contract pre-authorises, and report any subject with no
-    // available module rather than dropping it quietly.
+    const observed = snapshot && revision
+      ? observedSubjectsWithDefinitions(
+          snapshot,
+          await listObservedProperties(asValueClient(pool), revision.id)
+        )
+      : [];
+    const configurationSchema = publishedConfigurationSchemaSubject(snapshot);
+    const subjects = configurationSchema
+      ? [...observed, configurationSchema].sort((left, right) => left.subjectId.localeCompare(right.subjectId))
+      : observed;
+
     const registrationOutcome = snapshot
       ? await ensureSeedSubjectRegistrations(root, auth, {
           organizationId: input.organizationId,
           currentRelease: { id: snapshot.release.id, digest: snapshot.release.digest },
-          subjects: observedSubjectsWithDefinitions(
-            snapshot,
-            await listObservedProperties(asValueClient(pool), revision.id)
-          ),
+          subjects,
           seedDigest: input.seedDigest,
           projectId: target.projectId
         })
       : { registered: [], unregistered: [], alreadyRegistered: [] };
 
-    staged.push({ target, configSet, revision, fileIds, archive, registrationOutcome });
+    staged.push({ target, configSet, revision, fileIds, jsonFiles, archive, registrationOutcome });
   }
 
   const blocks: SeedInitializationSubjectBlock[] = staged.flatMap(({ target, registrationOutcome }) =>
@@ -306,32 +347,99 @@ async function materializeSeedSourcesLocked(
     throw new SeedInitializationBlockedError(blocks);
   }
 
+  const jsonProjects = staged.filter((entry) => entry.jsonFiles.length > 0);
+  if (jsonProjects.length > 0) {
+    const configurationSchema = snapshot ? publishedConfigurationSchemaSubject(snapshot) : null;
+    if (!snapshot || !configurationSchema) {
+      throw new ApiError(
+        "CONFLICT",
+        "JSON seed materialization requires a published ConfigurationSchema wiseeff.power-config.",
+      );
+    }
+    for (const mapping of SEED_JSON_POINTERS) {
+      const definition = snapshot.getDefinition({
+        subjectId: configurationSchema.subjectId as never,
+        propertyKey: mapping.propertyKey as never,
+      });
+      if (definition.status !== "found") {
+        throw new ApiError("CONFLICT", "JSON seed mapping is missing a published definition.", {
+          propertyKey: mapping.propertyKey,
+        });
+      }
+    }
+    for (const entry of jsonProjects) {
+      for (const jsonFile of entry.jsonFiles) {
+        parseJsonSource(jsonFile.file.content);
+        for (const mapping of SEED_JSON_POINTERS) {
+          readJsonSourceValue(jsonFile.file.content, mapping.pointer);
+        }
+      }
+    }
+  }
+
   const projects: SeedMaterializedProject[] = [];
-  for (const { target, configSet, revision, fileIds, archive, registrationOutcome } of staged) {
+  for (const { target, configSet, revision, fileIds, jsonFiles, archive, registrationOutcome } of staged) {
 
     // The binding unit of work opens a SAVEPOINT, so it needs an open transaction;
     // a bare client made every write fail with "SAVEPOINT can only be used in
     // transaction blocks". One transaction per project keeps a partially
     // materialized project from being recorded as complete.
-    const canonicalBindingsWritten = await root.transaction((tx) =>
-      syncPublishedCatalogProjectValues(
-        pool,
+    const dtsBindingsWritten = snapshot && revision ? await root.transaction((tx) =>
+      syncPublishedCatalogProjectValuesInTransaction(
+        asValueClient(tx),snapshot,
         {
           organizationId: input.organizationId,
           projectId: target.projectId,
           configSetId: configSet.id,
           configRevisionId: revision.id
-        },
-        asValueClient(tx)
+        }
       )
-    );
+    ) : 0;
+
+    let jsonBindingsWritten = 0;
+    const configurationSchema = publishedConfigurationSchemaSubject(snapshot);
+    if (snapshot && configurationSchema && jsonFiles.length > 0) {
+      const refusalSink = createTrustedRefusalAuditSink(root);
+      const invocation = createUserInvocation(auth);
+      jsonBindingsWritten = await root.transaction(async (tx) => {
+        let written = 0;
+        for (const jsonFile of jsonFiles) {
+          const mappings = SEED_JSON_POINTERS.map((pointer) => {
+            const definition = snapshot.getDefinition({
+              subjectId: configurationSchema.subjectId as never,
+              propertyKey: pointer.propertyKey as never,
+            });
+            if (definition.status !== "found") {
+              throw new ApiError("CONFLICT", "JSON seed mapping is missing a published definition.", {
+                propertyKey: pointer.propertyKey,
+              });
+            }
+            return { definitionId: String(definition.definition.id), pointer: pointer.pointer };
+          });
+          const registered = await registerCanonicalJsonSource(tx, objectStore, auth, snapshot, {
+            projectId: target.projectId,
+            configSetId: configSet.id,
+            fileId: jsonFile.fileId,
+            fileVersionId: jsonFile.fileVersionId,
+            configurationSchemaId: SEED_POWER_CONFIG_SCHEMA_ID,
+            rootPointer: "",
+            mappings,
+            invocation,
+            requestId: `seed-json:${input.seedDigest}:${target.projectId}:${jsonFile.file.name}`,
+            refusalSink,
+          });
+          written += registered.bindings.length;
+        }
+        return written;
+      });
+    }
 
     projects.push({
       projectId: target.projectId,
       configSetId: configSet.id,
-      configRevisionId: revision.id,
+      configRevisionId: revision?.id ?? "",
       fileIds,
-      canonicalBindingsWritten,
+      canonicalBindingsWritten: dtsBindingsWritten + jsonBindingsWritten,
       archiveId: archive.archiveId,
       archiveDigest: archive.archiveDigest,
       registeredSubjectIds: [...registrationOutcome.registered, ...registrationOutcome.alreadyRegistered],

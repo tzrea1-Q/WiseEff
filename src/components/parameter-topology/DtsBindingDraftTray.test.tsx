@@ -58,6 +58,81 @@ function enablementDraft(
 }
 
 describe("DtsBindingDraftTray", () => {
+  it("submits canonical binding drafts by draft id without rendering assignee dropdowns", async () => {
+    const onSubmitCanonical = vi.fn().mockResolvedValue(undefined);
+    render(
+      <DtsBindingDraftTray
+        projectId="aurora"
+        drafts={[draft({ writeTarget: { role: "canonical-project-value-draft", propertyKey: "enabled" },sourceFormat: "json", sourceTarget: { format: "json", sourceText: '{"enabled":true}' } })]}
+        candidates={candidates}
+        onRemove={vi.fn()}
+        onSubmitCanonical={onSubmitCanonical}
+        onNavigate={vi.fn()}
+      />
+    );
+
+    const tray = screen.getByRole("region", { name: "参数修改提交" });
+    expect(within(tray).queryByLabelText("后续流程处理人")).not.toBeInTheDocument();
+    const submit = within(tray).getByRole("button", { name: /^提交审核/ });
+    expect(submit).toBeEnabled();
+    fireEvent.click(submit);
+    await waitFor(() => expect(onSubmitCanonical).toHaveBeenCalledWith({ projectId: "aurora", draftIds: ["draft-typed-1"] }));
+  });
+
+  it("blocks canonical submission and shows the review-role configuration path when pools are missing", () => {
+    const onNavigate = vi.fn();
+    const onSubmitCanonical = vi.fn();
+    render(
+      <DtsBindingDraftTray
+        projectId="aurora"
+        drafts={[draft({ writeTarget: { role: "canonical-project-value-draft", propertyKey: "enabled" } })]}
+        candidates={{
+          hardwareCommitters: [],
+          softwareCommitters: [],
+          softwareUsers: [],
+          ready: false,
+          missingRoles: ["hardware-committer", "software-committer", "software-user"]
+        }}
+        canManageRoles={true}
+        onRemove={vi.fn()}
+        onSubmitCanonical={onSubmitCanonical}
+        onNavigate={onNavigate}
+      />
+    );
+
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "当前项目缺少以下审核角色：硬件 MDE、软件 MDE、软件开发，已阻止提交。"
+    );
+    expect(screen.getByRole("button", { name: /^提交审核/ })).toBeDisabled();
+    fireEvent.click(screen.getByRole("button", { name: "配置项目审核角色" }));
+    expect(onNavigate).toHaveBeenCalledWith("/parameter-admin/projects/aurora/review-roles");
+    expect(onSubmitCanonical).not.toHaveBeenCalled();
+  });
+
+  it("routes node-enablement drafts to their existing workflow even when canonical submission is available", async () => {
+    const onSubmit = vi.fn().mockResolvedValue(undefined);
+    const onSubmitCanonical = vi.fn().mockResolvedValue(undefined);
+    render(<DtsBindingDraftTray projectId="aurora" drafts={[enablementDraft()]} candidates={candidates}
+      onRemove={vi.fn()} onSubmit={onSubmit} onSubmitCanonical={onSubmitCanonical} onNavigate={vi.fn()} />);
+    fireEvent.click(screen.getByRole("button", { name: /^提交审核/ }));
+    await waitFor(() => expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({
+      items: [expect.objectContaining({ editSubjectKind: "node-enablement",draftId: "draft-enable-1" })]
+    })));
+    expect(onSubmitCanonical).not.toHaveBeenCalled();
+  });
+
+  it("never sends a mixed canonical and node-enablement batch to either owner", () => {
+    const onSubmit = vi.fn();
+    const onSubmitCanonical = vi.fn();
+    render(<DtsBindingDraftTray projectId="aurora" drafts={[
+      draft({ writeTarget: { role: "canonical-project-value-draft",propertyKey: "limit" } }),enablementDraft()
+    ]} candidates={candidates} onRemove={vi.fn()} onSubmit={onSubmit} onSubmitCanonical={onSubmitCanonical} onNavigate={vi.fn()} />);
+    expect(screen.getByRole("button", { name: /^提交审核/ })).toBeDisabled();
+    expect(screen.getByRole("alert")).toHaveTextContent("分开提交");
+    expect(onSubmit).not.toHaveBeenCalled();
+    expect(onSubmitCanonical).not.toHaveBeenCalled();
+  });
+
   it("shows semantic identities and submits the exact typed binding payload", async () => {
     const onSubmit = vi.fn().mockResolvedValue(undefined);
     render(

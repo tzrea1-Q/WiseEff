@@ -253,6 +253,7 @@ export function buildWiseEffRouter(options: WiseEffServerOptions = {}) {
   });
   registerParameterCatalogApi(router, {
     db: options.db,
+    objectStore: options.objectStore,
     resolveAuth: authResolver,
     catalogPublication: {
       env: process.env,

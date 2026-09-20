@@ -112,7 +112,7 @@ describe("parameter catalog client contract", () => {
             addedSubjectCount: 0
           },
           capabilityContract: {
-            revision: "catalog-capability/v3",
+            revision: "catalog-capability/v4",
             allowListId: "page-historical-definition-content"
           }
         }
@@ -200,6 +200,10 @@ describe("parameter catalog client contract", () => {
       effectiveRevisionId: "drev_01K",
       currentValueId: "pval_01K",
       targetValue: "2000",
+      sourceFormat: "dts",
+      sourcePinId: null,
+      candidateId: null,
+      baseRevisionId: "base-revision-01K",
       reason: "raise published input current",
       updatedAt: "2026-09-15T00:00:00.000Z"
     };
@@ -226,6 +230,115 @@ describe("parameter catalog client contract", () => {
       "GET /api/v2/projects/project_1/parameter-value-drafts",
       `DELETE /api/v2/projects/project_1/parameter-value-drafts/${draft.id}`
     ]);
+  });
+
+  it("reads exact pinned-source export without falling back to current files", async () => {
+    const exportResponse = {
+      item: {
+        bindingId: "pbind_01K",
+        projectId: "project_1",
+        definitionId: "pdef_01K",
+        definitionRevisionId: "drev_01K",
+        catalogReleaseId: "crel_01K42",
+        configRevisionId: "crev_01K",
+        currentValueId: "pval_01K",
+        configSetId: "cset_01K",
+        sourceRef: "source-pin-01K",
+        files: [{ name: "config.json", format: "json", versionNumber: 3, content: '{"enabled":true}\n' }],
+        manifest: {
+          organizationId: "org_01K",
+          projectId: "project_1",
+          bindingId: "pbind_01K",
+          definitionId: "pdef_01K",
+          projectValueId: "pval_01K",
+          sourcePinId: "spin_01K",
+          sourceOccurrenceId: "occ_01K",
+          configSetId: "cset_01K",
+          configRevisionId: "crev_01K",
+          fileId: "file_01K",
+          fileVersionId: "fver_01K",
+          format: "json",
+          logicalNodeId: null,
+          configurationInstanceId: null,
+          configurationSchemaSubjectId: null,
+          rootPointer: "/",
+          entryFile: "config.json",
+          includeSearchPaths: [],
+          overlayOrder: [],
+          locator: { kind: "json-pointer", pointer: "/charging-policy" },
+          members: [{
+            memberId: "member_01K",
+            fileId: "file_01K",
+            fileVersionId: "fver_01K",
+            sourceName: "config.json",
+            format: "json",
+            role: "root",
+            sortOrder: 0,
+            checksum: "sha256:source",
+            sizeBytes: 16
+          }]
+        }
+      }
+    };
+    const fetchMock = vi.fn<typeof fetch>(async () => jsonResponse(exportResponse));
+    const client = createParameterCatalogClient({ baseUrl: "", fetchImpl: fetchMock });
+
+    await expect(client.getCanonicalBindingExport("project_1", "pbind_01K")).resolves.toEqual(exportResponse);
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/v2/projects/project_1/parameter-bindings/pbind_01K/export",
+      expect.objectContaining({ method: "GET" })
+    );
+    await expect(client.getCanonicalBindingExport("project_1", "pbind_01K", "value/history")).resolves.toEqual(exportResponse);
+    expect(fetchMock).toHaveBeenLastCalledWith(
+      "/api/v2/projects/project_1/parameter-bindings/pbind_01K/export?projectValueId=value%2Fhistory",
+      expect.objectContaining({ method: "GET" })
+    );
+  });
+
+  it("loads the frozen source diff through the request-scoped route", async () => {
+    const sourceDiff = {
+      item: {
+        requestId: "request-01K",
+        bindingId: "pbind_01K",
+        format: "json",
+        sourceName: "config.json",
+        sourcePinId: "spin_01K",
+        candidateId: "cand_01K",
+        baseDigest: "sha256:before",
+        proposedDigest: "sha256:after",
+        diffDigest: "sha256:diff",
+        before: '{"enabled":false}\n',
+        after: '{"enabled":true}\n',
+        bindings: [{
+          bindingId: "pbind_01K",
+          oldValueId: "pval_old",
+          sourcePinId: "spin_01K",
+          sourceOccurrenceId: "occ_01K",
+          definitionId: "pdef_01K",
+          effectiveRevisionId: "drev_01K",
+          catalogReleaseId: "crel_01K42",
+          locator: { kind: "json-pointer", pointer: "/enabled" },
+          valueKind: "json",
+          valueDigest: "sha256:after",
+          configSetId: "cset_01K"
+        }]
+      }
+    };
+    const fetchMock = vi.fn<typeof fetch>(async () => jsonResponse(sourceDiff));
+    const client = createParameterCatalogClient({ baseUrl: "", fetchImpl: fetchMock });
+
+    await expect(client.getProjectValueChangeSourceDiff("project_1", "request-01K")).resolves.toEqual(sourceDiff);
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/v2/projects/project_1/parameter-value-change-requests/request-01K/source-diff",
+      expect.objectContaining({ method: "GET" })
+    );
+  });
+
+  it("sends the pending-review filter without the Catalog list whitelist dropping it", async () => {
+    const fetchMock = vi.fn<typeof fetch>(async () => jsonResponse({ items: [] }));
+    const client = createParameterCatalogClient({ baseUrl: "",fetchImpl: fetchMock });
+    await client.listProjectValueChangeRequests("project_1",{ status: "pending" });
+    expect(fetchMock).toHaveBeenCalledWith("/api/v2/projects/project_1/parameter-value-change-requests?status=pending",expect.objectContaining({ method: "GET" }));
   });
 
   it("rejects binding drafts that still carry a legacy spec identity", async () => {

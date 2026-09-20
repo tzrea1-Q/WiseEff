@@ -21,10 +21,10 @@ describe("vendor project source generation", () => {
   it("expresses every reviewed vendor input and skips none", () => {
     const generated = generateVendorProjectSource(manifest, root);
     expect(generated.emitted).toBe(vendorInputs.length);
-    expect(generated.emitted).toBe(113);
+    expect(generated.emitted).toBe(115);
     expect(generated.skipped).toEqual([]);
-    // 27 driver subjects + 12 node-type subjects, one DTS node each.
-    expect(generated.driverSubjects + generated.nodeTypeSubjects).toBe(39);
+    // 27 driver subjects + 13 node-type subjects, one DTS node each.
+    expect(generated.driverSubjects + generated.nodeTypeSubjects).toBe(40);
   });
 
   it("is deterministic for the same reviewed input", () => {

@@ -50,9 +50,9 @@ export function isManifestPathEscape(normalized: string): boolean {
 
 export function normalizeManifestLogicalPath(raw: string): string | null {
   const trimmed = raw.trim();
-  if (!trimmed) return null;
+  if (!trimmed || /[\u0000-\u001f\u007f]/.test(raw)) return null;
   const normalized = posixPath.normalize(trimmed);
-  if (isManifestPathEscape(normalized)) return null;
+  if (normalized === "." || normalized.endsWith("/") || isManifestPathEscape(normalized)) return null;
   return normalized;
 }
 
@@ -107,7 +107,7 @@ export function assertManifestEntryAndBase(
     };
   }
 
-  const entryMember = manifest.members.find((member) => member.fileName === entryFile);
+  const entryMember = manifest.members.find((member) => normalizeManifestLogicalPath(member.sourceName ?? member.fileName) === entryFile);
   if (!entryMember) {
     return {
       code: "missing-entry-file",

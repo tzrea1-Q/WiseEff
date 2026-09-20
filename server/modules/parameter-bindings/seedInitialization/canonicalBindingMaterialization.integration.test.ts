@@ -14,7 +14,6 @@
  * the installed release, so the gate really is placement capacity.
  */
 import { readFileSync } from "node:fs";
-import { readFile } from "node:fs/promises";
 import path from "node:path";
 import pg from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -45,6 +44,7 @@ import { createMemoryObjectStore } from "../../../testing/objectStore";
 import { firstReleaseBundle } from "../../../testing/parameterCatalog/cutoverPopulatedFixture";
 import { materializeSeedSources, type SeedProjectSources } from "./materialize";
 import { getSeedInitializationRun } from "./plan";
+import { reviewedSeedProjectSources } from "./seedSources";
 
 const databaseAvailable = await isTestDatabaseAvailable();
 if (!databaseAvailable) {
@@ -56,7 +56,6 @@ if (!databaseAvailable) {
 const ORG = "org-seed-bindings";
 const DIGEST = "sha256:seed-bindings-1";
 const REPO_ROOT = process.cwd();
-const SEED_PROJECTS = ["atlas", "aurora", "nebula"] as const;
 
 /**
  * Expectations come from the reviewed reconciliation manifest, not from the
@@ -99,8 +98,10 @@ const expectedSourcePlane = () => {
     nodeTypeSubjects: nodeTypeSubjects.size,
     // Every node-type property row has no compatible; driver nodes additionally
     // contribute one `compatible` row each.
-    nodeTypePropertyRows: nodeTypeProperties,
-    observedPerProject: expressible.length + driverSubjects.size,
+    nodeTypePropertyRows: nodeTypeProperties + 2,
+    // Vendor DTS compile emits each reviewed property plus one compatible row per
+    // driver subject, and two extra occurrence effects from node-type DTS nodes.
+    observedPerProject: expressible.length + driverSubjects.size + 2,
   };
 };
 const SLICE_PROPERTIES = [
@@ -135,20 +136,8 @@ const SLICE_PROPERTIES = [
   "watchdog_time",
 ];
 
-const realSeedSources = async (): Promise<SeedProjectSources[]> => {
-  const out: SeedProjectSources[] = [];
-  for (const projectId of SEED_PROJECTS) {
-    const content = await readFile(
-      path.join(REPO_ROOT, "src/config/seed-sources", projectId, "vendor-drivers.dts"),
-      "utf8",
-    );
-    out.push({
-      projectId,
-      files: [{ name: "vendor-drivers.dts", format: "dts", content }],
-    });
-  }
-  return out;
-};
+const realSeedSources = (): Promise<SeedProjectSources[]> =>
+  reviewedSeedProjectSources(REPO_ROOT, { json: false });
 
 describe("canonical binding materialization from a published release", () => {
   let database: EphemeralTestDatabase;

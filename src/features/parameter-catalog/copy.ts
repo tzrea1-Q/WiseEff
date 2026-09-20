@@ -27,7 +27,7 @@ export const catalogTimelineLabel = "定义时间线";
 export const catalogReleaseLabel = "目录发布";
 export const catalogSearchLabel = "搜索参数定义";
 export const catalogSearchSubmitLabel = "搜索";
-export const catalogSearchClearLabel = "清除搜索";
+export const catalogSearchClearLabel = "清空筛选";
 export const catalogDefinitionsLabel = "参数定义列表";
 export const catalogReviewWorkLabel = "待审核事项";
 export const catalogSelectDefinitionHint = "选择一项参数定义以查看身份、修订与时间线。";
@@ -141,6 +141,8 @@ export function catalogErrorCopy(reason: CatalogApiFailureReason | "unknown"): s
       return "基线已变化，请重新预览并确认新的候选，不能悄悄刷新后再次发布。输入已保留。";
     case "unsupported-catalog-capability":
       return "本次变更包含当前不支持的能力，请调整后重新预览。输入已保留。";
+    case "unsupported-consumer-capability-revision":
+      return "当前运行时不支持该目录能力修订，安装已拒绝，请升级消费者或调整发布内容。输入已保留。";
     case "publication-authorization-revoked":
       return "发布授权已撤销，请重新预览并确认。输入已保留。";
     case "candidate-stale":

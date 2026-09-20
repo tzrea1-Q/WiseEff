@@ -255,6 +255,17 @@ describe("vendor import coexistence", () => {
     const placementId = `place_${token}`;
     const bindingId = `bind_${token}`;
     const valueId = `pval_${token}`;
+    const configSetId = `dcs_${token}`;
+    const fileId = `file_${token}`;
+    const fileVersionId = `fver_${token}`;
+    const configRevisionId = `crev_${token}`;
+    const memberId = `member_${token}`;
+    const logicalNodeId = `logical_${token}`;
+    const logicalNodeRevisionId = `lnrev_${token}`;
+    const nodeOccurrenceId = `node_${token}`;
+    const propertyOccurrenceId = `prop_${token}`;
+    const sourceOccurrenceId = `occ_${token}`;
+    const sourcePinId = `pin_${token}`;
     const valueDigest = sha256Digest(`t19-value-${token}`);
     await client.query("begin");
     try {
@@ -297,20 +308,119 @@ describe("vendor import coexistence", () => {
         [placementId, registrationId, orgId, moduleId],
       );
       await client.query(
+        `insert into public.dts_config_set (id, organization_id, project_id, name)
+         values ($1, $2, $3, 'default')`,
+        [configSetId, orgId, projectId],
+      );
+      await client.query(
+        `insert into public.project_parameter_files (
+           id, organization_id, project_id, file_name, format, config_set_id, config_set_role
+         ) values ($1, $2, $3, 'acme-t19.dts', 'dts', $4, 'base')`,
+        [fileId, orgId, projectId, configSetId],
+      );
+      await client.query(
+        `insert into public.project_parameter_file_versions (
+           id, file_id, version_number, storage_key, checksum, size_bytes, origin
+         ) values ($1, $2, 1, $3, $4, 1, 'upload')`,
+        [fileVersionId, fileId, `${fileId}/v1`, `sha256:${fileVersionId}`],
+      );
+      await client.query(
+        `update public.project_parameter_files set current_version_id = $1 where id = $2`,
+        [fileVersionId, fileId],
+      );
+      await client.query(
+        `insert into public.dts_config_revisions (
+           id, organization_id, project_id, config_set_id, revision_number, status
+         ) values ($1, $2, $3, $4, 1, 'resolved')`,
+        [configRevisionId, orgId, projectId, configSetId],
+      );
+      await client.query(
+        `insert into public.dts_config_revision_members (
+           id, config_revision_id, file_id, file_version_id, role, sort_order, source_name
+         ) values ($1, $2, $3, $4, 'base', 0, 'acme-t19.dts')`,
+        [memberId, configRevisionId, fileId, fileVersionId],
+      );
+      await client.query(
+        `insert into public.dts_logical_nodes (id, organization_id, project_id, config_set_id)
+         values ($1, $2, $3, $4)`,
+        [logicalNodeId, orgId, projectId, configSetId],
+      );
+      await client.query(
+        `insert into public.dts_logical_node_revisions (
+           id, logical_node_id, config_revision_id, node_locator, name, compatible
+         ) values ($1, $2, $3, '/acme', 'acme', 'acme,power')`,
+        [logicalNodeRevisionId, logicalNodeId, configRevisionId],
+      );
+      await client.query(
+        `insert into public.dts_node_occurrences (
+           id, config_revision_id, file_version_id, name, node_path,
+           start_offset, end_offset, start_line, start_column, end_line, end_column, raw_text
+         ) values ($1, $2, $3, 'acme', '/acme', 0, 10, 1, 1, 1, 10, 'acme')`,
+        [nodeOccurrenceId, configRevisionId, fileVersionId],
+      );
+      await client.query(
+        `insert into public.dts_property_occurrences (
+           id, config_revision_id, node_occurrence_id, file_version_id, property_name,
+           start_offset, end_offset, start_line, start_column, end_line, end_column, raw_text
+         ) values ($1, $2, $3, $4, 'iin_max', 1, 2, 1, 2, 1, 3, '7')`,
+        [propertyOccurrenceId, configRevisionId, nodeOccurrenceId, fileVersionId],
+      );
+      await client.query(
+        `insert into public.dts_occurrence_effects (
+           id, config_revision_id, logical_node_revision_id, property_occurrence_id,
+           node_occurrence_id, property_name, effect_kind, source_order
+         ) values ($1, $2, $3, $4, $5, 'iin_max', 'set', 0)`,
+        [`effect_${token}`, configRevisionId, logicalNodeRevisionId, propertyOccurrenceId, nodeOccurrenceId],
+      );
+      await client.query(
+        `insert into parameter_catalog.project_parameter_source_occurrences (
+           id, organization_id, project_id, config_set_id, file_id, occurrence_kind, logical_node_id
+         ) values ($1, $2, $3, $4, $5, 'dts', $6)`,
+        [sourceOccurrenceId, orgId, projectId, configSetId, fileId, logicalNodeId],
+      );
+      await client.query(
         `insert into parameter_catalog.project_parameter_bindings (
            id, organization_id, catalog_release_id, project_id, logical_node_id, registration_id,
-           subject_id, definition_id, effective_revision_id, current_value_id
-         ) values ($1, $2, $3, $4, 'logical-cp09-t19', $5, 'csub_acme_power', 'pdef_acme_power_iin_max',
-                   'drev_acme_power_iin_max_1', $6)`,
-        [bindingId, orgId, FIRST_ACME_RELEASE_ID, projectId, registrationId, valueId],
+           subject_id, definition_id, effective_revision_id, current_value_id, source_occurrence_id
+         ) values ($1, $2, $3, $4, $5, $6, 'csub_acme_power', 'pdef_acme_power_iin_max',
+                   'drev_acme_power_iin_max_1', $7, $8)`,
+        [bindingId, orgId, FIRST_ACME_RELEASE_ID, projectId, logicalNodeId, registrationId, valueId, sourceOccurrenceId],
       );
       await client.query(
         `insert into parameter_catalog.project_parameter_values (
            id, binding_id, definition_id, definition_revision_id,
            source_ref, config_revision_id, value_digest, value_kind, value
          ) values ($1, $2, 'pdef_acme_power_iin_max', 'drev_acme_power_iin_max_1',
-                   'source-cp09-t19', 'config-cp09-t19', $3, 'number', '7')`,
-        [valueId, bindingId, valueDigest],
+                   'source-cp09-t19', $3, $4, 'number', '7')`,
+        [valueId, bindingId, configRevisionId, valueDigest],
+      );
+      const locator = {
+        kind: "dts-property",
+        propertyOccurrenceId,
+        nodeOccurrenceId,
+        fileVersionId,
+        propertyName: "iin_max",
+      };
+      await client.query(
+        `insert into parameter_catalog.project_value_source_pins (
+           id, project_value_id, binding_id, definition_id, organization_id, project_id,
+           source_occurrence_id, config_revision_id, file_id, file_version_id, format,
+           property_occurrence_id, locator, locator_digest
+         ) values ($1, $2, $3, 'pdef_acme_power_iin_max', $4, $5, $6, $7, $8, $9, 'dts', $10, $11::jsonb,
+                   parameter_catalog.canonical_dts_parameter_locator_digest($11::jsonb))`,
+        [
+          sourcePinId,
+          valueId,
+          bindingId,
+          orgId,
+          projectId,
+          sourceOccurrenceId,
+          configRevisionId,
+          fileId,
+          fileVersionId,
+          propertyOccurrenceId,
+          JSON.stringify(locator),
+        ],
       );
       await client.query("set constraints all immediate");
       await client.query("commit");

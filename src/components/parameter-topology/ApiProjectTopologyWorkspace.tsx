@@ -9,6 +9,7 @@ import { resolveParameterFileRepository } from "@/application/parameters/paramet
 import { selectPrimaryProjectDtsFile } from "@/application/parameters/selectPrimaryProjectDtsFile";
 import type { ParameterFileRepository } from "@/application/ports/ParameterFileRepository";
 import type { ParameterTopologyRepository } from "@/application/ports/ParameterTopologyRepository";
+import type { ParameterCatalogRepository } from "@/application/ports/ParameterCatalogRepository";
 import type { ParameterModuleRegistryRepository } from "@/application/ports/ParameterModuleRegistryRepository";
 import { nodeTypeKeyForNode } from "@/domain/parameter-topology/modulePlacement";
 import {
@@ -58,6 +59,7 @@ import {
   partitionDanglingReferenceDiagnostics
 } from "@/domain/parameter-topology/toolchainDiagnostics";
 import { WorkbenchDiagnosticsSection } from "./WorkbenchDiagnosticsSection";
+import { JsonBindingPanel, type JsonBindingHistoryEntry } from "./JsonBindingPanel";
 
 export type ApiProjectTopologyWorkspaceProps = {
   projectId: string;
@@ -70,6 +72,7 @@ export type ApiProjectTopologyWorkspaceProps = {
   moduleRegistryRepository?: ParameterModuleRegistryRepository;
   /** Test seam — inject parameter file repository instead of resolving from runtime mode. */
   parameterFileRepository?: ParameterFileRepository;
+  canonicalRepository?: ParameterCatalogRepository;
   listConfigSets?: (projectId: string) => Promise<Array<{ id: string; name: string }>>;
   listDrafts?: (projectId: string) => Promise<readonly TrayHydrationDraft[]>;
   /** Server-side draft delete; tray removal must not leave the draft alive on the server. */
@@ -144,7 +147,10 @@ function mapServerDraftsToPending(
           kind: "enablement",
           draftId: draft.id,
           candidateRevisionId,
-          rawText: draft.targetValue,
+          rawText:
+            draft.sourceFormat === "json" && draft.sourceTarget
+              ? draft.sourceTarget.sourceText
+              : draft.targetValue,
           action: draft.action ?? "set",
           logicalNodeId,
           target:
@@ -184,23 +190,31 @@ function mapServerDraftsToPending(
       moduleRegistry
     );
     return [
-      {
-        kind: "binding",
-        draftId: draft.id,
+        {
+          kind: "binding",
+          draftId: draft.id,
         parameterId: draft.parameterId,
         candidateRevisionId,
-        rawText: draft.targetValue,
+        rawText:
+          draft.sourceFormat === "json" && draft.sourceTarget
+            ? draft.sourceTarget.sourceText
+            : draft.targetValue,
         action: draft.action ?? "set",
         parameterSpecId,
         projectParameterBindingId: bindingId,
-        writeTarget: {
-          role: "overlay",
+          writeTarget: {
+          role: draft.sourcePinId ? "canonical-project-value-draft" : "overlay",
           propertyKey: binding.propertyKey,
           targetRef: binding.instanceName ?? binding.driverModule ?? undefined
         },
-        overlayFileId: "",
-        overlayFileName: "",
-        projectId,
+          overlayFileId: "",
+          overlayFileName: "",
+          sourceFormat: draft.sourceFormat,
+          sourceTarget: draft.sourceTarget,
+          baseRevisionId: draft.baseRevisionId,
+          sourcePinId: draft.sourcePinId,
+          candidateId: draft.candidateId,
+          projectId,
         currentRawValue: draft.currentValue ?? binding.rawValue,
         reason: draft.reason,
         moduleName: moduleAssignment.moduleName
@@ -300,6 +314,7 @@ export function ApiProjectTopologyWorkspace({
   topologyRepository,
   moduleRegistryRepository,
   parameterFileRepository,
+  canonicalRepository,
   listConfigSets,
   listDrafts,
   deleteDraft,
@@ -331,6 +346,8 @@ export function ApiProjectTopologyWorkspace({
   listDraftsRef.current = listDrafts;
   const deleteDraftRef = useRef(deleteDraft);
   deleteDraftRef.current = deleteDraft;
+  const canonicalRepositoryRef = useRef(canonicalRepository);
+  canonicalRepositoryRef.current = canonicalRepository;
   const activeProjectIdRef = useRef(projectId);
   const projectGenerationRef = useRef(0);
   const lastProjectIdRef = useRef(projectId);
@@ -598,18 +615,23 @@ export function ApiProjectTopologyWorkspace({
     }
 
     let targetValue;
-    try {
-      targetValue = parseDtsValue(binding.propertyKey, input.rawValue).value;
-    } catch (error) {
-      return {
-        valid: false,
-        diagnostics: [
-          {
-            message: error instanceof Error ? error.message : "无法解析 DTS 值。",
-            code: "DTS_VALUE_PARSE"
-          }
-        ]
-      };
+    let sourceTarget: { format: "json"; sourceText: string } | undefined;
+    if (binding.effectiveValue.kind === "json") {
+      sourceTarget = { format: "json", sourceText: input.rawValue };
+    } else {
+      try {
+        targetValue = parseDtsValue(binding.propertyKey, input.rawValue).value;
+      } catch (error) {
+        return {
+          valid: false,
+          diagnostics: [
+            {
+              message: error instanceof Error ? error.message : "无法解析 DTS 值。",
+              code: "DTS_VALUE_PARSE"
+            }
+          ]
+        };
+      }
     }
 
     const requestProjectId = projectId;
@@ -636,7 +658,7 @@ export function ApiProjectTopologyWorkspace({
     try {
       const draft = await repository.createBindingDraft(requestProjectId, input.bindingId, {
         baseRevisionId: loadState.revisionId,
-        targetValue,
+        ...(sourceTarget ? { sourceTarget } : { targetValue }),
         reason: input.reason
       });
       if (!isCurrentProjectRequest(requestProjectId, requestGeneration)) {
@@ -645,14 +667,7 @@ export function ApiProjectTopologyWorkspace({
           diagnostics: [{ message: "项目已切换，已忽略上一项目的草稿响应。", code: "PROJECT_CHANGED" }]
         };
       }
-      if (draft.writeTarget.role === "canonical-project-value") {
-        setPreferredRevision({
-          projectId: requestProjectId,
-          revisionId: draft.workingCandidateRevisionId ?? draft.candidateRevisionId
-        });
-        setReloadToken((token) => token + 1);
-        return { valid: true, diagnostics: [] };
-      }
+      const canonicalDraft = draft.writeTarget.role.startsWith("canonical-project-value");
       setPendingDrafts((current) => {
         if (!isCurrentProjectRequest(requestProjectId, requestGeneration)) return current;
         const tip = draft.workingCandidateRevisionId ?? draft.candidateRevisionId;
@@ -674,6 +689,8 @@ export function ApiProjectTopologyWorkspace({
         const nextDraft: PendingTopologyDraft = {
           kind: "binding",
           ...draft,
+          ...(sourceTarget ? { sourceFormat: "json" as const,sourceTarget,rawText: sourceTarget.sourceText } : {}),
+          ...(canonicalDraft ? { writeTarget: { ...draft.writeTarget,propertyKey: binding.propertyKey } } : {}),
           candidateRevisionId: tip,
           projectId: requestProjectId,
           currentRawValue: previousDraft?.kind === "binding"
@@ -693,7 +710,7 @@ export function ApiProjectTopologyWorkspace({
             )
         );
         const aligned = withoutBinding.map((item) =>
-          item.projectId === requestProjectId ? { ...item, candidateRevisionId: tip } : item
+          !canonicalDraft && item.projectId === requestProjectId ? { ...item, candidateRevisionId: tip } : item
         );
         return [...aligned, nextDraft];
       });
@@ -983,6 +1000,44 @@ export function ApiProjectTopologyWorkspace({
       }
     : undefined;
 
+  const submitProjectValueDraft = canonicalRepository?.submitProjectValueDraft;
+  const handleSubmitCanonicalDrafts = submitProjectValueDraft
+    ? async (input: { projectId: string; draftIds: string[] }) => {
+        try {
+          const submittedDrafts = pendingDraftsRef.current.filter((draft) =>
+            input.draftIds.includes(draft.draftId)
+          );
+          if (submittedDrafts.some((draft) => draft.kind !== "binding")) {
+            return {
+              notification: "节点启用草稿仍属于旧流程；请单独使用旧流程提交，已阻止混合提交。"
+            };
+          }
+          const catalog = await canonicalRepository.getCatalog();
+          const catalogReleaseId = catalog.item?.catalogReleaseId;
+          if (!catalogReleaseId) {
+            return { notification: "当前 catalog release 不可用，已阻止提交软件审核。" };
+          }
+          for (const draftId of input.draftIds) {
+            await submitProjectValueDraft(
+              input.projectId,
+              draftId,
+              {},
+              {
+                catalogReleaseId,
+                idempotencyKey:
+                  typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
+                    ? crypto.randomUUID()
+                    : `draft-${Date.now()}-${draftId}`
+              }
+            );
+          }
+        } catch (error) {
+          return { notification: presentError(error, "提交软件审核失败，请稍后重试。") };
+        }
+        return undefined;
+      }
+    : undefined;
+
   const sourceRows = useMemo(() => {
     if (loadState.kind !== "ready") return [];
     return buildDtsWorkbenchRows({
@@ -1061,6 +1116,41 @@ export function ApiProjectTopologyWorkspace({
     };
   }, [parameterFileRepo, projectId]);
 
+  const exportCanonicalBinding = useCallback(
+    async (bindingId: string) => {
+      if (!canonicalRepository?.getCanonicalBindingExport) {
+        throw new Error("当前未配置固定源导出能力");
+      }
+      const response = await canonicalRepository.getCanonicalBindingExport(projectId, bindingId);
+      const payload = `${JSON.stringify(response.item, null, 2)}\n`;
+      const fileName = `${projectId}-${bindingId}-${response.item.currentValueId}-source-export.json`;
+      const url = URL.createObjectURL(new Blob([payload], { type: "application/octet-stream" }));
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = fileName;
+      anchor.click();
+      URL.revokeObjectURL(url);
+    },
+    [canonicalRepository, projectId]
+  );
+
+  const loadCanonicalBindingHistory = useCallback(
+    async (bindingId: string): Promise<readonly JsonBindingHistoryEntry[]> => {
+      if (!canonicalRepository?.getCanonicalBindingChangeHistory) {
+        throw new Error("当前未配置固定值历史能力");
+      }
+      const response = await canonicalRepository.getCanonicalBindingChangeHistory(projectId, bindingId);
+      return response.items.map((entry) => ({
+        id: entry.id,
+        reason: entry.reason,
+        createdAt: entry.createdAt,
+        oldCurrentValueId: entry.oldCurrentValueId,
+        newCurrentValueId: entry.newCurrentValueId
+      }));
+    },
+    [canonicalRepository, projectId]
+  );
+
   if (loadState.kind === "loading") {
     return (
       <section className="dts-parameter-workbench dts-parameter-workbench--status" aria-label="DTS 参数工作台" aria-busy="true">
@@ -1135,6 +1225,7 @@ export function ApiProjectTopologyWorkspace({
       }
       onRemove={handleRemoveDraft}
       onSubmit={handleSubmitBindingChanges}
+      onSubmitCanonical={handleSubmitCanonicalDrafts}
       canManageRoles={canManageRoles}
       onNavigate={onNavigate}
     />
@@ -1159,6 +1250,13 @@ export function ApiProjectTopologyWorkspace({
 
   return (
     <>
+      <JsonBindingPanel
+        bindings={loadState.bindings}
+        canEdit={canEditSemantic}
+        onValidateEdit={handleValidateEdit}
+        onExportBinding={canonicalRepository?.getCanonicalBindingExport ? exportCanonicalBinding : undefined}
+        onLoadHistory={canonicalRepository?.getCanonicalBindingChangeHistory ? loadCanonicalBindingHistory : undefined}
+      />
       <DtsParameterWorkbench
         projectId={projectId}
         configSetId={loadState.configSetId}

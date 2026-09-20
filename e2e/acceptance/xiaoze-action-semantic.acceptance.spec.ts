@@ -19,6 +19,7 @@ import {
   applyDisposableRuntimeEnv,
   captureProcessEnvForDisposableRuntime,
   restoreProcessEnvFromDisposableRuntime,
+  seedIsolatedNumericCellBinding
 } from "./helpers/semanticBindingFixture";
 
 /**
@@ -233,77 +234,55 @@ async function resolveOpenSpecReviews(request: APIRequestContext, revisionId: st
 }
 
 async function seedNumericCellBinding(request: APIRequestContext) {
-  const setsResponse = await request.get(apiRoute(`/api/v1/projects/${projectId}/config-sets`), {
-    headers: adminHeaders()
+  const existing = await withPgClient(async (client) => {
+    const found = await client.query<{ id: string; raw_value: string | null; revision_id: string }>(
+      `
+      select b.id, br.raw_value, cr.id as revision_id
+      from project_parameter_bindings b
+      join dts_config_set cs
+        on cs.organization_id = b.organization_id
+       and cs.project_id = b.project_id
+       and cs.name = 'default'
+      join dts_config_revisions cr on cr.config_set_id = cs.id
+      join project_parameter_binding_revisions br
+        on br.binding_id = b.id and br.config_revision_id = cr.id
+      join parameter_specs ps on ps.id = b.parameter_spec_id
+      left join dts_property_specs dps on dps.parameter_spec_id = ps.id
+      join dts_logical_node_revisions lnr
+        on lnr.logical_node_id = b.logical_node_id
+       and coalesce(lnr.node_locator, '') <> ''
+      where b.organization_id = $1
+        and b.project_id = $2
+        and (
+          coalesce(dps.property_key, split_part(ps.specification_key, '/', 2)) = $3
+          or $3::text is null
+        )
+        and br.raw_value ~ '^<[0-9]+>$'
+        and coalesce(lnr.node_locator, '') <> ''
+      order by cr.revision_number desc, b.id
+      limit 1
+      `,
+      [organizationId, projectId, null]
+    );
+    const row = found.rows[0];
+    if (!row) return null;
+    return { revisionId: row.revision_id, bindingId: row.id, rawValue: row.raw_value ?? "<2300>" };
   });
-  expect(setsResponse.ok()).toBe(true);
-  const setsBody = (await setsResponse.json()) as { items: Array<{ id: string; name: string }> };
-  let configSetId = setsBody.items.find((item) => item.name === "default")?.id;
-  if (!configSetId) {
-    const createSet = await request.post(apiRoute(`/api/v1/projects/${projectId}/config-sets`), {
-      headers: adminHeaders(),
-      data: { name: "default", description: "Disposable Xiaoze semantic acceptance" }
-    });
-    expect(createSet.ok(), await createSet.text()).toBe(true);
-    configSetId = ((await createSet.json()) as { item: { id: string } }).item.id;
+  if (existing) {
+    await resolveOpenSpecReviews(request, existing.revisionId);
+    return existing;
   }
-
-  const fileName = "xiaoze-action-semantic.dts";
-  const uploaded = await uploadDts(request, fileName, numericCellDts);
-  const addPrimary = await request.post(
-    apiRoute(`/api/v1/projects/${projectId}/config-sets/${encodeURIComponent(configSetId)}/files`),
-    {
-      headers: adminHeaders(),
-      data: { fileId: uploaded.fileId, role: "base", sortOrder: 0 }
-    }
-  );
-  expect([200, 201, 409]).toContain(addPrimary.status());
-  await uploadDts(request, fileName, numericCellDts);
-
-  const started = Date.now();
-  while (Date.now() - started < 20_000) {
-    const ready = await withPgClient(async (client) => {
-      const revision = await client.query<{ id: string }>(
-        `
-        select id
-        from dts_config_revisions
-        where organization_id = $1
-          and project_id = $2
-          and config_set_id = $3
-        order by revision_number desc
-        limit 1
-        `,
-        [organizationId, projectId, configSetId]
-      );
-      if (!revision.rows[0]) return null;
-      const binding = await client.query<{ id: string; raw_value: string | null }>(
-        `
-        select b.id, br.raw_value
-        from project_parameter_bindings b
-        inner join project_parameter_binding_revisions br
-          on br.binding_id = b.id and br.config_revision_id = $1
-        inner join parameter_specs ps on ps.id = b.parameter_spec_id
-        left join dts_property_specs dps on dps.parameter_spec_id = ps.id
-        where b.organization_id = $2
-          and b.project_id = $3
-          and coalesce(dps.property_key, split_part(ps.specification_key, '/', 2)) = $4
-          and br.raw_value ~ '^<[0-9]+>$'
-        order by b.id
-        limit 1
-        `,
-        [revision.rows[0].id, organizationId, projectId, propertyKey]
-      );
-      const row = binding.rows[0];
-      if (!row) return null;
-      return { revisionId: revision.rows[0].id, bindingId: row.id, rawValue: row.raw_value ?? "<2300>" };
-    });
-    if (ready) {
-      await resolveOpenSpecReviews(request, ready.revisionId);
-      return ready;
-    }
-    await new Promise((resolve) => setTimeout(resolve, 400));
-  }
-  throw new Error("Timed out waiting for a seeded iin_max binding with a single-cell DTS value.");
+  const isolated = await seedIsolatedNumericCellBinding(request, {
+    projectId,
+    propertyKey,
+    cellValue: 2300,
+    reason: "XIAOZE-ACTION semantic isolated numeric cell"
+  });
+  return {
+    revisionId: isolated.revisionId,
+    bindingId: isolated.bindingId,
+    rawValue: isolated.rawValue || "<2300>"
+  };
 }
 
 async function countOpenChangeRequests(bindingId: string) {

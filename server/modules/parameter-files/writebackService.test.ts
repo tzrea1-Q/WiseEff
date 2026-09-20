@@ -7,13 +7,14 @@ import type { AuthContext } from "../auth/types";
 import type { ObjectStore } from "../logs/objectStore";
 import { createTestParameterSubmissionContext } from "../parameters/testSubmissionContext";
 import { createAuditEvent } from "../audit/repository";
-import { getFileVersionById, getProjectParameterFileByName, insertFileVersion, setCurrentVersion } from "./repository";
+import { assertLegacySourceMutationAllowed, getFileVersionById, getProjectParameterFileByName, insertFileVersion, setCurrentVersion } from "./repository";
 import { patchDtsProperty, patchJsonValue, writebackMergedParameterValue } from "./writebackService";
 
 const fixturePath = join(dirname(fileURLToPath(import.meta.url)), "__fixtures__", "dts-teaching-sample.dts");
 const teachingSample = readFileSync(fixturePath, "utf8");
 
 vi.mock("./repository", () => ({
+  assertLegacySourceMutationAllowed: vi.fn().mockResolvedValue(undefined),
   getProjectParameterFileByName: vi.fn(),
   getFileVersionById: vi.fn(),
   insertFileVersion: vi.fn(),
@@ -199,6 +200,8 @@ describe("writebackMergedParameterValue", () => {
       versionNumber: 2
     });
     expect(objectStore.put).toHaveBeenCalled();
+    expect(assertLegacySourceMutationAllowed).toHaveBeenCalledWith(db,"file-1");
+    expect(vi.mocked(assertLegacySourceMutationAllowed).mock.invocationCallOrder[0]).toBeLessThan(mockedGetFileVersionById.mock.invocationCallOrder[0]!);
     const putPayload = vi.mocked(objectStore.put).mock.calls[0][0];
     expect(JSON.parse(putPayload.bytes.toString("utf8"))).toEqual({
       battery: { temp: { max: 85 } }

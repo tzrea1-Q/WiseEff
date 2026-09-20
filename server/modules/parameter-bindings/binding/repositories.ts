@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 
 import type pg from "pg";
+import type { Queryable } from "../../../shared/database/client";
 
 import {
   serializeContract,
@@ -22,7 +23,8 @@ export type BindingRow = {
   organization_id: string;
   catalog_release_id: string;
   project_id: string;
-  logical_node_id: string;
+  logical_node_id: string | null;
+  source_occurrence_id: string;
   registration_id: string;
   subject_id: string;
   definition_id: string;
@@ -42,7 +44,8 @@ export const IDENTITY_PLACEHOLDER_SOURCE = "canonical-binding-identity";
 export const deriveBindingId = (input: {
   readonly organizationId: string;
   readonly projectId: string;
-  readonly logicalNodeId: string;
+  readonly logicalNodeId: string | null;
+  readonly sourceOccurrenceId?: string;
   readonly registrationId: string;
   readonly subjectId: string;
   readonly definitionId: string;
@@ -52,7 +55,9 @@ export const deriveBindingId = (input: {
       .update(
         serializeContract({
           definitionId: input.definitionId,
-          logicalNodeId: input.logicalNodeId,
+          ...(input.sourceOccurrenceId
+            ? { sourceOccurrenceId: input.sourceOccurrenceId }
+            : { logicalNodeId: input.logicalNodeId }),
           organizationId: input.organizationId,
           projectId: input.projectId,
           registrationId: input.registrationId,
@@ -102,11 +107,38 @@ export const loadRegistrationForAgreement = async (
   return result.rows[0] ?? null;
 };
 
+/**
+ * Binding-owned admission read for source-backed writes.  Governance owns the
+ * registration lifecycle; callers receive only the one active, placed ID.
+ */
+export const loadSourceRegistrationAgreement = async (
+  client: Queryable | BindingWriterClient,
+  input: { readonly organizationId: string; readonly subjectId: string },
+): Promise<{ readonly id: string } | null> => {
+  // Both the catalog Database handle and the value/binding writer wrapper own
+  // this read.  Their otherwise-equivalent generic QueryResult types come from
+  // different database layers, so keep the seam structural at the boundary.
+  const result = await (client as Queryable).query<{ id: string }>(
+    `select registration.id
+       from parameter_catalog.organization_subject_registrations registration
+       join parameter_catalog.subject_placements placement
+         on placement.registration_id = registration.id
+        and placement.organization_id = registration.organization_id
+        and placement.id = registration.current_placement_id
+      where registration.organization_id = $1
+        and registration.subject_id = $2
+        and registration.status = 'active'`,
+    [input.organizationId, input.subjectId],
+  );
+  return result.rows.length === 1 ? result.rows[0]! : null;
+};
+
 export const loadBindingByComposite = async (
   client: BindingWriterClient,
   input: {
     readonly projectId: string;
-    readonly logicalNodeId: string;
+    readonly logicalNodeId: string | null;
+    readonly sourceOccurrenceId?: string;
     readonly definitionId: string;
   },
 ): Promise<BindingRow | null> => {
@@ -115,12 +147,12 @@ export const loadBindingByComposite = async (
   // a stale caller never locks or reuses the superseded row.  The insert below
   // stays an INSERT because Binding identity is immutable.
   const result = await client.query<BindingRow>(
-    `select id, organization_id, catalog_release_id, project_id, logical_node_id,
+    `select id, organization_id, catalog_release_id, project_id, logical_node_id, source_occurrence_id,
             registration_id, subject_id, definition_id, effective_revision_id, current_value_id
        from parameter_catalog.project_parameter_bindings
-      where id = parameter_catalog.resolve_current_binding($1, $2, $3)
+      where id = parameter_catalog.${input.sourceOccurrenceId ? "resolve_current_binding_by_source_occurrence" : "resolve_current_binding"}($1, $2, $3)
       for update`,
-    [input.projectId, input.logicalNodeId, input.definitionId],
+    [input.projectId, input.sourceOccurrenceId ?? input.logicalNodeId, input.definitionId],
   );
   return result.rows[0] ?? null;
 };
@@ -132,7 +164,8 @@ export const insertBinding = async (
     readonly organizationId: string;
     readonly catalogReleaseId: string;
     readonly projectId: string;
-    readonly logicalNodeId: string;
+    readonly logicalNodeId: string | null;
+    readonly sourceOccurrenceId?: string;
     readonly registrationId: string;
     readonly subjectId: string;
     readonly definitionId: string;
@@ -143,10 +176,10 @@ export const insertBinding = async (
   const result = await client.query<BindingRow>(
     `insert into parameter_catalog.project_parameter_bindings (
        id, organization_id, catalog_release_id, project_id, logical_node_id,
-       registration_id, subject_id, definition_id, effective_revision_id, current_value_id
-     ) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
-     on conflict (project_id, logical_node_id, definition_id) do nothing
-     returning id, organization_id, catalog_release_id, project_id, logical_node_id,
+       registration_id, subject_id, definition_id, effective_revision_id, current_value_id, source_occurrence_id
+     ) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+     on conflict do nothing
+     returning id, organization_id, catalog_release_id, project_id, logical_node_id, source_occurrence_id,
                registration_id, subject_id, definition_id, effective_revision_id, current_value_id`,
     [
       input.id,
@@ -159,6 +192,7 @@ export const insertBinding = async (
       input.definitionId,
       input.effectiveRevisionId,
       input.currentValueId,
+      input.sourceOccurrenceId,
     ],
   );
   return result.rows[0] ?? null;

@@ -5,7 +5,6 @@ import { useBrowserDiagnostics } from "./helpers/browserDiagnostics";
 import {
   CATALOG_EXPECTED_API_FAILURES,
   CATALOG_PAGE_PATH,
-  CATALOG_VIEWPORTS,
   assertNoPageOverflow,
   catalogHref,
   catalogJson,
@@ -24,6 +23,8 @@ import {
   ensureCatalogAcceptanceFixture,
   type CatalogAcceptanceFixture
 } from "./helpers/catalogEvidence";
+
+test.use({ viewport: { width: 1440, height: 900 } });
 
 useBrowserDiagnostics(test, { expectedApiFailures: CATALOG_EXPECTED_API_FAILURES });
 
@@ -320,7 +321,7 @@ test.describe("canonical parameter catalog page", () => {
     await expect(page.getByText(catalogUiCopy.emptyMessages["no-definitions"]).first()).toBeVisible();
 
     await page.getByRole("searchbox", { name: "搜索参数定义" }).fill("zzzz-no-such-definition");
-    await page.getByRole("button", { name: "搜索" }).click();
+    await page.getByRole("button", { name: "搜索", exact: true }).click();
     await expect(page.getByText(catalogUiCopy.emptyMessages["no-filter-match"]).first()).toBeVisible();
     await catalogScreenshot(page, testInfo, "pcat-ui-08-filter");
   });
@@ -355,40 +356,37 @@ test.describe("canonical parameter catalog page", () => {
     await catalogScreenshot(page, testInfo, "pcat-ui-09-retired");
   });
 
-  test("keeps list, detail, and timeline usable at 1440x900, 768x1024, and 390x844 without overflow", async ({
+  test("keeps list, detail, and timeline usable at PC 1440x900 without overflow", async ({
     page
   }, testInfo) => {
     // @acceptance PCAT-UI-14
     // @operation PCAT-RESPONSIVE-001
-    for (const viewport of CATALOG_VIEWPORTS) {
-      await page.setViewportSize({ width: viewport.width, height: viewport.height });
-      await openCatalogAt(
-        page,
-        "org-admin",
-        catalogHref(fixture, {
-          subjectId: fixture.powerSubjectId,
-          definitionId: fixture.xDefinitionId,
-          catalogReleaseId: fixture.chain.pinC.id
-        }).slice(CATALOG_PAGE_PATH.length)
-      );
-      await expect(catalogPage(page)).toBeVisible();
-      await assertNoPageOverflow(page);
-      // One editor dialog carries the definition and its history at every viewport.
-      const editor = page.getByRole("dialog");
-      await expect(editor).toBeVisible();
-      await expect(editor.getByRole("region", { name: "定义详情" })).toBeVisible();
-      await editor.getByRole("button", { name: /查看历史/ }).click();
-      await expect(editor.getByText("目录发布").first()).toBeVisible();
-      await assertNoPageOverflow(page);
-      if (viewport.name === "desktop") {
-        // The module navigator and the honest count own the restored rail.
-        await expect(page.getByRole("navigation", { name: "参数定义模块树" })).toBeVisible();
-        await expect(page.getByRole("status", { name: "结果计数" })).toBeVisible();
-        await expect(page.getByRole("navigation", { name: "分页" })).toBeVisible();
-        await page.getByRole("searchbox", { name: "搜索参数定义" }).focus();
-        await expect(page.getByRole("searchbox", { name: "搜索参数定义" })).toBeFocused();
-      }
-      await catalogScreenshot(page, testInfo, `pcat-ui-14-${viewport.name}`);
-    }
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await openCatalogAt(
+      page,
+      "org-admin",
+      catalogHref(fixture, {
+        subjectId: fixture.powerSubjectId,
+        definitionId: fixture.xDefinitionId,
+        catalogReleaseId: fixture.chain.pinC.id
+      }).slice(CATALOG_PAGE_PATH.length)
+    );
+    await expect(catalogPage(page)).toBeVisible();
+    await assertNoPageOverflow(page);
+    const editor = page.getByRole("dialog");
+    await expect(editor).toBeVisible();
+    await expect(editor.getByRole("region", { name: "定义详情" })).toBeVisible();
+    await editor.getByRole("button", { name: /查看历史/ }).click();
+    await expect(editor.getByText("目录发布").first()).toBeVisible();
+    await assertNoPageOverflow(page);
+    await editor.getByRole("button", { name: /关闭|取消/ }).click();
+    // The module navigator and the honest count own the restored PC rail.
+    await expect(page.getByRole("navigation", { name: "参数定义模块树" })).toBeVisible();
+    await expect(page.getByRole("status", { name: "结果计数" })).toBeVisible();
+    await expect(page.getByRole("navigation", { name: "分页" })).toBeVisible();
+    const catalogSearch = catalogPage(page).getByRole("searchbox", { name: "搜索参数定义" });
+    await catalogSearch.focus();
+    await expect(catalogSearch).toBeFocused();
+    await catalogScreenshot(page, testInfo, "pcat-ui-14-desktop");
   });
 });

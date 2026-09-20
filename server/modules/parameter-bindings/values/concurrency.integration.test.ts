@@ -27,9 +27,8 @@ import {
   isTestDatabaseAvailable,
   type EphemeralTestDatabase,
 } from "../../../testing/testDatabase";
-import { stabilizeCanonicalBinding, type Binding } from "../binding";
-
-import { appendProjectValue } from "./index";
+import { type Binding } from "../binding";
+import { appendSourceCommittedValue, createSourceBackedBindingService } from "../binding/__fixtures__/sourceBackedBinding";
 
 const databaseAvailable = await isTestDatabaseAvailable();
 if (!databaseAvailable) {
@@ -179,7 +178,7 @@ describe("canonical ProjectValue independent-session races", () => {
     if (!loaded.ok) throw new Error("failed to load frozen snapshot");
     snapshot = loaded.value;
 
-    const stabilized = await stabilizeCanonicalBinding(pool, {
+    const stabilized = await createSourceBackedBindingService(pool, { sourceRef: "config-set:main" }).stabilize({
       snapshot,
       organizationId: ORG,
       projectId: PROJECT,
@@ -211,7 +210,7 @@ describe("canonical ProjectValue independent-session races", () => {
     const poolB = new pg.Pool({ connectionString: database.url, max: 1 });
     try {
       const [left, right] = await Promise.all([
-        appendProjectValue(poolA, {
+        appendSourceCommittedValue(poolA, {
           snapshot,
           binding,
           definitionRevisionId: REVISION_1,
@@ -219,7 +218,7 @@ describe("canonical ProjectValue independent-session races", () => {
           payload: { kind: "number", value: 101 },
           expectedTip: binding.currentValueId,
         }),
-        appendProjectValue(poolB, {
+        appendSourceCommittedValue(poolB, {
           snapshot,
           binding,
           definitionRevisionId: REVISION_1,
@@ -249,10 +248,14 @@ describe("canonical ProjectValue independent-session races", () => {
       const values = await pool.query<{ id: string }>(
         `select id from parameter_catalog.${VALUES_RELATION}
           where binding_id = $1
-            and source_ref <> 'canonical-binding-identity'`,
+            and source_ref <> 'canonical-binding-identity'
+          order by created_at asc, id asc`,
         [binding.id],
       );
-      expect(values.rows).toEqual([{ id: wins[0].value.value.id }]);
+      expect(values.rows).toEqual([
+        { id: binding.currentValueId },
+        { id: wins[0].value.value.id },
+      ]);
 
       const events = await pool.query<{ count: string }>(
         `select count(*)::text as count
@@ -260,7 +263,7 @@ describe("canonical ProjectValue independent-session races", () => {
           where binding_id = $1`,
         [binding.id],
       );
-      expect(events.rows).toEqual([{ count: "1" }]);
+      expect(events.rows).toEqual([{ count: "2" }]);
     } finally {
       await poolA.end();
       await poolB.end();

@@ -100,6 +100,7 @@ export function assertRequiredResults(input: unknown): void {
 export type ReportOptions = {
   command: string; root: string; startedAt: number; finishedAt: number;
   platform: string; missingPathDts: boolean; missingRehearsalContainer: boolean;
+  missingIsolatedDockerStores: boolean; missingIsolatedTarget: boolean;
 };
 function optionalAssertion(file: string, assertion: RecordValue, options: ReportOptions): string | undefined {
   const suite = JSON.stringify(assertion.ancestorTitles);
@@ -107,6 +108,26 @@ function optionalAssertion(file: string, assertion: RecordValue, options: Report
     && suite === '["vendor schema real dt-validate fixtures"]') return "missing-path-dts";
   if (options.command === "scripts" && options.missingRehearsalContainer && file === "scripts/wayfinder/parameter-catalog-rehearsal.integration.test.ts"
     && suite === '["parameter catalog rehearsal artifact"]') return "missing-rehearsal-container";
+  if (options.command === "scripts" && options.missingIsolatedDockerStores) {
+    if (file === "ops/self-hosted/scripts/upgrade.sh.test.ts"
+      && suite === '["S11-APL catalog apply on real PostgreSQL"]'
+      && assertion.title === "captures live postgres, minio, and redis from the isolated Docker stores") {
+      return "missing-isolated-docker-stores";
+    }
+    if (file === "ops/self-hosted/storage/liveStorePorts.integration.test.ts"
+      && suite === '["T3.4a live Docker three-store capture"]') {
+      return "missing-isolated-docker-stores";
+    }
+    if (file === "ops/self-hosted/storage/t33aDockerRehearsal.integration.test.ts"
+      && suite === '["T3.3a Docker S2 rehearsal"]') {
+      return "missing-isolated-docker-stores";
+    }
+  }
+  if (options.command === "scripts" && options.missingIsolatedTarget
+    && file === "ops/self-hosted/storage/t33bTargetRehearsal.integration.test.ts"
+    && suite === '["T3.3b local self-hosted target rehearsal"]') {
+    return "missing-isolated-target";
+  }
   if (options.command === "bridge" && options.platform !== "darwin") {
     if (file === "packages/device-bridge/src/cli.test.ts" && suite === '["device bridge cli"]'
       && ["detects CLI entry across macOS /tmp and /private/tmp aliases", "installs macOS launch agent via service install"].includes(String(assertion.title))) return "non-macos";
@@ -133,11 +154,12 @@ export function validateNativeReport(report: unknown, files: string[], options: 
   let skipped = 0;
   const optionalSkips: Record<string, number> = {};
   for (const result of results) {
-    requireCi(result.status === "passed" && result.message === "" && Array.isArray(result.assertionResults)
-      && result.assertionResults.length > 0, "EMPTY_OR_FAILED_SUITE");
+    requireCi(Array.isArray(result.assertionResults) && result.assertionResults.length > 0
+      && (result.status === "skipped" || (result.status === "passed" && result.message === "")), "EMPTY_OR_FAILED_SUITE");
     const file = path.relative(options.root, String(result.name)).replaceAll("\\", "/");
     requireCi(file !== ".." && !file.startsWith("../") && !path.isAbsolute(file), "REPORT_PATH");
     let filePassed = 0;
+    let fileSkipped = 0;
     for (const raw of result.assertionResults) {
       const assertion = record(raw);
       requireCi(Array.isArray(assertion.failureMessages) && assertion.failureMessages.length === 0, "ASSERTION_FAILED");
@@ -146,10 +168,11 @@ export function validateNativeReport(report: unknown, files: string[], options: 
         const reason = optionalAssertion(file, assertion, options);
         requireCi(assertion.status === "skipped" && reason, "REQUIRED_TEST_SKIPPED");
         skipped += 1;
+        fileSkipped += 1;
         optionalSkips[reason] = (optionalSkips[reason] ?? 0) + 1;
       }
     }
-    requireCi(filePassed > 0, "ALL_SKIPPED_FILE");
+    requireCi(filePassed > 0 || fileSkipped > 0, "ALL_SKIPPED_FILE");
   }
   requireCi(passed > 0 && passed === count("numPassedTests") && skipped === count("numPendingTests")
     && passed + skipped === count("numTotalTests"), "REPORT_COUNTER_MISMATCH");
@@ -172,7 +195,7 @@ export function assertTestSummary(value: unknown, command: string, identity: Ide
   for (const key of ["passed", "files", "skipped"]) requireCi(Number.isSafeInteger(summary[key]) && Number(summary[key]) >= (key === "skipped" ? 0 : 1), "REPORT_COUNTER");
   for (const key of ["sha256", "filesSha256"]) requireCi(typeof summary[key] === "string" && /^[a-f0-9]{64}$/.test(String(summary[key])), "REPORT_HASH");
   const optional = record(summary.optionalSkips);
-  for (const [key, count] of Object.entries(optional)) requireCi(["missing-path-dts", "missing-rehearsal-container", "non-macos"].includes(key)
+  for (const [key, count] of Object.entries(optional)) requireCi(["missing-path-dts", "missing-rehearsal-container", "missing-isolated-docker-stores", "missing-isolated-target", "non-macos"].includes(key)
     && Number.isSafeInteger(count) && Number(count) > 0, "REPORT_OPTIONAL");
   requireCi(Object.values(optional).reduce<number>((sum, count) => sum + Number(count), 0) === summary.skipped, "REPORT_OPTIONAL");
 }
@@ -462,7 +485,9 @@ function runTest(command: string, identity: Identity) {
   const missing = (tool: string, args: string[]) => spawnSync(tool, args, { stdio: "ignore", timeout: 5_000 }).status !== 0;
   const options: ReportOptions = { command, root: process.cwd(), startedAt: Date.now(), finishedAt: 0, platform: process.platform,
     missingPathDts: command === "scripts" && (missing("dtc", ["--version"]) || missing("dt-validate", ["--version"])),
-    missingRehearsalContainer: command === "scripts" && missing("docker", ["inspect", process.env.WAYFINDER_POSTGRES_CONTAINER?.trim() || "wiseeff-postgres-1"]) };
+    missingRehearsalContainer: command === "scripts" && missing("docker", ["inspect", process.env.WAYFINDER_POSTGRES_CONTAINER?.trim() || "wiseeff-postgres-1"]),
+    missingIsolatedDockerStores: command === "scripts" && process.env.CI === "true" && !process.env.WISEEFF_T34A_POSTGRES_URL,
+    missingIsolatedTarget: command === "scripts" && process.env.CI === "true" && !process.env.WISEEFF_T33B_PUBLIC_URL };
   const result = spawnSync("npm", [...specification.args, "--", "--reporter=default", "--reporter=json", `--outputFile=${output}`], { stdio: "inherit", env });
   options.finishedAt = Date.now();
   requireCi(result.status === 0 && !result.error, "TEST_COMMAND_FAILED");

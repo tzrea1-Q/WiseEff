@@ -11,7 +11,6 @@ import {
   type DtsEffectiveNode,
   type DtsNodeCst,
   type DtsPropertyCst,
-  type DtsSourceChainEntry,
 } from "../dts";
 import { offsetToLineColumn } from "../dts/offsetToLineColumn";
 import type {
@@ -59,7 +58,7 @@ import {
   type ContinuityAmbiguous,
 } from "./bindingService";
 import { createRecognizedBinding } from "../parameter-specs/effectiveDefinitionService";
-import { normalizePersistedManifest } from "./configRevisionManifest";
+import { normalizeManifestLogicalPath, normalizePersistedManifest } from "./configRevisionManifest";
 import {
   insertConfigRevision,
   insertConfigRevisionMembers,
@@ -228,36 +227,24 @@ function toPreviousSnapshot(row: {
   };
 }
 
-type PropertyMatchKey = string;
-
-function propertyMatchKey(
-  fileName: string,
-  nodeLocator: string,
-  propertyName: string,
-  rawText: string,
-): PropertyMatchKey {
-  return `${fileName}\0${nodeLocator}\0${propertyName}\0${rawText}`;
-}
+type SourceOccurrence = { nodeOccurrenceId: string; propertyOccurrenceId: string | null };
+const originKey = (fileVersionId: string, span: { start: number; end: number }, name: string) =>
+  JSON.stringify([fileVersionId, span.start, span.end, name]);
 
 type CollectedOccurrences = {
   nodes: PersistedNodeOccurrence[];
   properties: PersistedPropertyOccurrence[];
-  propertyQueues: Map<PropertyMatchKey, string[]>;
-  nodeByPathAndFile: Map<string, string>;
-  nodeIdByPropertyId: Map<string, string>;
+  byOrigin: Map<string, SourceOccurrence>;
 };
 
 function collectFileOccurrences(
-  fileName: string,
   fileVersionId: string,
   content: string,
 ): CollectedOccurrences {
   const doc = parseDts(content);
   const nodes: PersistedNodeOccurrence[] = [];
   const properties: PersistedPropertyOccurrence[] = [];
-  const propertyQueues = new Map<PropertyMatchKey, string[]>();
-  const nodeByPathAndFile = new Map<string, string>();
-  const nodeIdByPropertyId = new Map<string, string>();
+  const byOrigin = new Map<string, SourceOccurrence>();
   let nodeOrder = 0;
   let propertyOrder = 0;
 
@@ -302,11 +289,12 @@ function collectFileOccurrences(
       contentHash: contentHash(rawText),
     });
     nodeOrder += 1;
-    nodeByPathAndFile.set(`${fileName}\0${nodePath}`, id);
 
     for (const child of cst.children) {
       if (child.kind === "property") {
-        collectProperty(child, id, nodePath);
+        collectProperty(child, id);
+      } else if (child.kind === "delete-property") {
+        byOrigin.set(originKey(fileVersionId, child.span, child.name), { nodeOccurrenceId: id, propertyOccurrenceId: null });
       } else if (child.kind === "node") {
         walk(child, locatorNoSlash, id);
       }
@@ -316,7 +304,6 @@ function collectFileOccurrences(
   function collectProperty(
     prop: DtsPropertyCst,
     nodeOccurrenceId: string,
-    ownerPath: string,
   ) {
     const propStart = offsetToLineColumn(content, prop.span.start);
     const propEnd = offsetToLineColumn(content, prop.span.end);
@@ -338,11 +325,7 @@ function collectFileOccurrences(
       contentHash: contentHash(prop.rawText),
     });
     propertyOrder += 1;
-    nodeIdByPropertyId.set(propId, nodeOccurrenceId);
-    const key = propertyMatchKey(fileName, ownerPath, prop.name, prop.rawText);
-    const queue = propertyQueues.get(key) ?? [];
-    queue.push(propId);
-    propertyQueues.set(key, queue);
+    byOrigin.set(originKey(fileVersionId, prop.span, prop.name), { nodeOccurrenceId, propertyOccurrenceId: propId });
   }
 
   for (const top of doc.topLevel) {
@@ -352,46 +335,8 @@ function collectFileOccurrences(
   return {
     nodes,
     properties,
-    propertyQueues,
-    nodeByPathAndFile,
-    nodeIdByPropertyId,
+    byOrigin,
   };
-}
-
-function takePropertyOccurrenceId(
-  queues: Map<PropertyMatchKey, string[]>,
-  entry: DtsSourceChainEntry,
-): string | null {
-  const key = propertyMatchKey(
-    entry.fileName,
-    entry.nodeLocator,
-    entry.propertyName,
-    entry.rawText,
-  );
-  const queue = queues.get(key);
-  if (queue && queue.length > 0) {
-    return queue.shift() ?? null;
-  }
-  const loosePrefix = `${entry.fileName}\0${entry.nodeLocator}\0${entry.propertyName}\0`;
-  for (const [candidateKey, candidateQueue] of queues) {
-    if (candidateKey.startsWith(loosePrefix) && candidateQueue.length > 0) {
-      return candidateQueue.shift() ?? null;
-    }
-  }
-  // Overlay `&label` fragments are collected under the ref path (e.g. `/same_label`) while
-  // effective sourceChain entries use the resolved target locator (e.g. `/charging_core`).
-  const filePrefix = `${entry.fileName}\0`;
-  const nameAndRawSuffix = `\0${entry.propertyName}\0${entry.rawText}`;
-  for (const [candidateKey, candidateQueue] of queues) {
-    if (
-      candidateKey.startsWith(filePrefix) &&
-      candidateKey.endsWith(nameAndRawSuffix) &&
-      candidateQueue.length > 0
-    ) {
-      return candidateQueue.shift() ?? null;
-    }
-  }
-  return null;
 }
 
 type ContinuityBuildResult = {
@@ -419,11 +364,13 @@ async function buildLogicalRevisionsWithContinuity(
     configSetId: string;
     revisionNumber: number;
     registry: SchemaRegistry;
+    sourceCommit?: { baseConfigRevisionId: string };
   },
 ): Promise<ContinuityBuildResult> {
   const previousRows = await listPreviousLogicalNodeSnapshots(tx, {
     configSetId: input.configSetId,
     beforeRevisionNumber: input.revisionNumber,
+    baseConfigRevisionId: input.sourceCommit?.baseConfigRevisionId,
   });
   const previousSnapshotsBase = previousRows.map(toPreviousSnapshot);
 
@@ -434,6 +381,37 @@ async function buildLogicalRevisionsWithContinuity(
         locatorDepth(a.nodeLocator) - locatorDepth(b.nodeLocator) ||
         a.nodeLocator.localeCompare(b.nodeLocator),
     );
+
+  if (input.sourceCommit) {
+    // Only the source owner uses this branch, after revalidating the exact
+    // immutable members and single-property CST patch. External import retains
+    // the generic continuity matcher below; a locator alone never proves identity.
+    const previousByLocator = new Map(previousRows.map((row) => [row.nodeLocator, row]));
+    if (!previousRows.length || previousRows.length !== sorted.length || previousByLocator.size !== sorted.length
+      || new Set(previousRows.map((row) => row.logicalNodeId)).size !== sorted.length) {
+      throw new ApiError("CONFLICT", "Prepared source change has a different or unproven DTS node cohort.");
+    }
+    const revisions: PersistedLogicalNodeRevision[] = [];
+    for (const node of sorted) {
+      const previous = previousByLocator.get(node.nodeLocator);
+      const parent = parentLocator(node.nodeLocator);
+      const parentId = parent ? previousByLocator.get(parent)?.logicalNodeId : null;
+      const compatibleProperty = node.properties.get("compatible");
+      const compatible = compatibleProperty && !compatibleProperty.deleted
+        ? compatibleProperty.normalizedValue || compatibleProperty.rawText : undefined;
+      if (!previous || (parent && !parentId) || previous.name !== node.name
+        || previous.unitAddress !== node.unitAddress || previous.compatible !== compatible
+        || previous.reg !== extractReg(node) || previous.parentLogicalNodeId !== parentId) {
+        throw new ApiError("CONFLICT", "Prepared source change cannot alter DTS node identity metadata.");
+      }
+      revisions.push({ id: randomUUID(), logicalNodeId: previous.logicalNodeId, nodeLocator: node.nodeLocator,
+        name: node.name, unitAddress: node.unitAddress, compatible,
+        driverSchemaVersionId: previous.driverSchemaVersionId ?? null, parentLogicalNodeId: previous.parentLogicalNodeId });
+    }
+    return { logicalNodesToInsert: [], revisions,
+      revisionByLocator: new Map(revisions.map((row) => [row.nodeLocator, row])),
+      stableLogicalIdByLocator: new Map(revisions.map((row) => [row.nodeLocator, row.logicalNodeId])), ambiguous: [] };
+  }
 
   const provisionalByLocator = new Map<string, LogicalNodeCandidate>();
   const driverVersionByLocator = new Map<string, string | null>();
@@ -857,8 +835,9 @@ export async function ingestConfigRevisionInTransaction(
   manifest: ConfigRevisionManifest,
   auth: AuthContext,
   attribution?: { createdByUserId: string | null | undefined; domain?: TrustedInvocationDomainAttribution },
+  options?: { sourceCommit: { baseConfigRevisionId: string } },
 ): Promise<DtsConfigRevisionDto> {
-  return ingestConfigRevisionTx(tx, manifest, auth, attribution);
+  return ingestConfigRevisionTx(tx, manifest, auth, attribution, options);
 }
 
 async function ingestConfigRevisionTx(
@@ -866,12 +845,16 @@ async function ingestConfigRevisionTx(
   manifest: ConfigRevisionManifest,
   auth: AuthContext,
   attribution?: { createdByUserId: string | null | undefined; domain?: TrustedInvocationDomainAttribution },
+  options?: { sourceCommit: { baseConfigRevisionId: string } },
 ): Promise<DtsConfigRevisionDto> {
+  const dtsMembers = manifest.members.filter((member) => member.format !== "json").map((member) => ({
+    ...member, fileName: normalizeManifestLogicalPath(member.sourceName ?? member.fileName) ?? "",
+  }));
   const normalized = normalizePersistedManifest({
     entryFile: manifest.entryFile,
     includeSearchPaths: manifest.includeSearchPaths,
     overlayOrder: manifest.overlayOrder,
-    members: manifest.members,
+    members: dtsMembers,
   });
   if (!normalized.ok) {
     throw new ApiError("VALIDATION_FAILED", normalized.failure.message, {
@@ -900,7 +883,7 @@ async function ingestConfigRevisionTx(
   await insertConfigRevisionMembers(tx, revision.id, manifest.members);
 
   const files = new Map<string, DtsConfigSetFile>();
-  for (const member of manifest.members) {
+  for (const member of dtsMembers) {
     files.set(member.fileName, {
       fileVersionId: member.fileVersionId,
       content: member.content,
@@ -974,13 +957,10 @@ async function ingestConfigRevisionTx(
     return revision;
   }
 
-  const mergedQueues = new Map<PropertyMatchKey, string[]>();
-  const nodeByPathAndFile = new Map<string, string>();
-  const nodeIdByPropertyId = new Map<string, string>();
+  const occurrencesByOrigin = new Map<string, SourceOccurrence | null>();
 
-  for (const member of manifest.members) {
+  for (const member of dtsMembers) {
     const collected = collectFileOccurrences(
-      member.fileName,
       member.fileVersionId,
       member.content,
     );
@@ -990,16 +970,8 @@ async function ingestConfigRevisionTx(
     for (const property of collected.properties) {
       await insertPropertyOccurrence(tx, revision.id, property);
     }
-    for (const [key, queue] of collected.propertyQueues) {
-      const existing = mergedQueues.get(key) ?? [];
-      existing.push(...queue);
-      mergedQueues.set(key, existing);
-    }
-    for (const [key, id] of collected.nodeByPathAndFile) {
-      nodeByPathAndFile.set(key, id);
-    }
-    for (const [propId, nodeId] of collected.nodeIdByPropertyId) {
-      nodeIdByPropertyId.set(propId, nodeId);
+    for (const [key, occurrence] of collected.byOrigin) {
+      occurrencesByOrigin.set(key, occurrencesByOrigin.has(key) ? null : occurrence);
     }
   }
 
@@ -1015,9 +987,11 @@ async function ingestConfigRevisionTx(
     configSetId: manifest.configSetId,
     revisionNumber,
     registry,
+    sourceCommit: options?.sourceCommit,
   });
 
   for (const logical of continuity.logicalNodesToInsert) {
+    if (options?.sourceCommit) throw new ApiError("CONFLICT", "Prepared source change cannot allocate a new DTS logical identity.");
     await insertLogicalNode(tx, logical);
   }
   for (const logicalRevision of continuity.revisions) {
@@ -1032,16 +1006,12 @@ async function ingestConfigRevisionTx(
 
     for (const property of node.properties.values()) {
       for (const entry of property.sourceChain) {
-        const propertyOccurrenceId = takePropertyOccurrenceId(
-          mergedQueues,
-          entry,
-        );
-        const nodeOccurrenceId =
-          (propertyOccurrenceId
-            ? nodeIdByPropertyId.get(propertyOccurrenceId)
-            : undefined) ??
-          nodeByPathAndFile.get(`${entry.fileName}\0${entry.nodeLocator}`) ??
-          null;
+        // Repeated includes reuse the same original occurrence; resolved alias paths
+        // must never be guessed from a property name or value in another node.
+        const occurrence = entry.origin
+          ? occurrencesByOrigin.get(originKey(entry.origin.fileVersionId, entry.origin, entry.propertyName)) : null;
+        const propertyOccurrenceId = occurrence?.propertyOccurrenceId ?? null;
+        const nodeOccurrenceId = occurrence?.nodeOccurrenceId ?? null;
 
         if (
           propertyOccurrenceId &&
@@ -1068,7 +1038,7 @@ async function ingestConfigRevisionTx(
     }
   }
 
-  const reviewDrafts = await matchBindAndQueueReviews(tx, {
+  const reviewDrafts = options?.sourceCommit ? [] : await matchBindAndQueueReviews(tx, {
     organizationId: manifest.organizationId,
     projectId: manifest.projectId,
     configRevisionId: revision.id,

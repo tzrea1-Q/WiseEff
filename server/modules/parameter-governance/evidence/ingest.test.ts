@@ -15,9 +15,13 @@ const provenance = {
   projectId: "project-s4-evd",
   logicalNodeId: "logical-s4-evd",
   configRevisionId: "config-s4-evd-1",
+  sourceOccurrenceId: "src-occ-s4-evd",
   sourceLocator: {
-    path: "/soc/charger",
-    property: "iin_max",
+    kind: "dts-property",
+    propertyOccurrenceId: "property-s4-evd",
+    nodeOccurrenceId: "node-s4-evd",
+    fileVersionId: "version-s4-evd",
+    propertyName: "iin_max",
   },
 };
 
@@ -39,7 +43,12 @@ describe("evidence ingest contract", () => {
     expect(evidenceIngestContract.commandFamily).toBe("evidence-ingest");
     expect(evidenceIngestContract.replayKey).toEqual([
       "organization_id",
-      "source_identity",
+      "project_id",
+      "source_occurrence_id",
+      "config_revision_id",
+      "parameter_locator_digest",
+      "catalog_release_id",
+      "matcher_revision",
     ]);
     expect(evidenceIngestContractFingerprint).toMatch(/^sha256:[0-9a-f]{64}$/);
   });
@@ -52,6 +61,20 @@ describe("evidence ingest contract", () => {
     expect(planned.value.fingerprint).toMatch(/^sha256:[0-9a-f]{64}$/);
   });
 
+  it.each(["", "/", "/a~1b/~0/", "/温度/值", "/~01"])("accepts the exact JSON Pointer %j", (pointer) => {
+    expect(planEvidenceIngest(matchedCommand({ provenance: {
+      ...provenance, logicalNodeId: null,
+      sourceLocator: { kind: "json-pointer", fileVersionId: "json-version", pointer },
+    } })).ok).toBe(true);
+  });
+
+  it.each(["a/b", "/a/~", "/a/~2", "/a~x/b"])("rejects the invalid JSON Pointer %j", (pointer) => {
+    expect(planEvidenceIngest(matchedCommand({ provenance: {
+      ...provenance, logicalNodeId: null,
+      sourceLocator: { kind: "json-pointer", fileVersionId: "json-version", pointer },
+    } }))).toEqual({ ok: false, error: { kind: "missing-source-provenance", missing: ["provenance.sourceLocator"] } });
+  });
+
   it("replays the same observation fingerprint for canonical key order", () => {
     const first = planEvidenceIngest(matchedCommand());
     const reordered = planEvidenceIngest(
@@ -60,9 +83,13 @@ describe("evidence ingest contract", () => {
           configRevisionId: provenance.configRevisionId,
           logicalNodeId: provenance.logicalNodeId,
           projectId: provenance.projectId,
+          sourceOccurrenceId: provenance.sourceOccurrenceId,
           sourceLocator: {
-            property: "iin_max",
-            path: "/soc/charger",
+            propertyName: "iin_max",
+            fileVersionId: "version-s4-evd",
+            nodeOccurrenceId: "node-s4-evd",
+            propertyOccurrenceId: "property-s4-evd",
+            kind: "dts-property",
           },
         },
       }),
@@ -70,6 +97,51 @@ describe("evidence ingest contract", () => {
     expect(first.ok && reordered.ok).toBe(true);
     if (!first.ok || !reordered.ok) return;
     expect(reordered.value.fingerprint).toBe(first.value.fingerprint);
+  });
+
+  it("keeps two exact parameter locators under one occurrence distinct", () => {
+    const first = planEvidenceIngest(matchedCommand());
+    const second = planEvidenceIngest(
+      matchedCommand({
+        provenance: {
+          ...provenance,
+          sourceLocator: {
+            kind: "dts-property",
+            propertyOccurrenceId: "property-s4-evd-2",
+            nodeOccurrenceId: "node-s4-evd",
+            fileVersionId: "version-s4-evd",
+            propertyName: "iin_max_2",
+          },
+        },
+      }),
+    );
+    expect(first.ok && second.ok).toBe(true);
+    if (!first.ok || !second.ok) return;
+    expect(first.value.kind).toBe("observation");
+    expect(second.value.kind).toBe("observation");
+    if (first.value.kind === "observation" && second.value.kind === "observation") {
+      expect(second.value.parameterLocatorDigest).not.toBe(first.value.parameterLocatorDigest);
+      expect(second.value.fingerprint).not.toBe(first.value.fingerprint);
+    }
+  });
+
+  it("requires an owned occurrence and a typed exact locator for matched observations", () => {
+    const planned = planEvidenceIngest(
+      matchedCommand({
+        provenance: {
+          ...provenance,
+          sourceOccurrenceId: undefined,
+          sourceLocator: { path: "/soc/charger", property: "iin_max" },
+        },
+      }),
+    );
+    expect(planned).toEqual({
+      ok: false,
+      error: {
+        kind: "missing-source-provenance",
+        missing: ["provenance.sourceOccurrenceId", "provenance.sourceLocator"],
+      },
+    });
   });
 
   it("fails closed when source provenance is missing", () => {

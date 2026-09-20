@@ -69,7 +69,7 @@ export type ParameterPageActions = {
   reviewChange(input: ReviewParameterChangeInput, options?: ParameterRuntimeRefreshOptions): Promise<ParameterRuntimeVoidResult>;
   listWorkflowAssignees?: ParameterRuntimeActions["listWorkflowAssignees"];
   createImportPreview(input: ParameterImportPreviewInput): Promise<ParameterImportBatchDto | ParameterRuntimeActionFailure>;
-  applyImportBatch(input: ApplyParameterImportBatchInput): Promise<ParameterRuntimeVoidResult>;
+  applyImportBatch(input: ApplyParameterImportBatchInput): Promise<ParameterImportBatchDto | ParameterRuntimeVoidResult>;
   parseDtsImport(input: ParseDtsImportInput): Promise<DtsImportParseResult>;
   refresh(options?: ParameterRuntimeRefreshOptions): Promise<ParameterRuntimeRefreshResult>;
 };
@@ -201,7 +201,8 @@ export function PageRouter({
       return undefined;
     }
     return async (q: string) => {
-      const items = await parameterTopologyRepository.listSpecs(q.trim() ? { q: q.trim() } : {});
+      const trimmed = q.trim();
+      const items = await parameterTopologyRepository.listSpecs(trimmed ? { q: trimmed, propertyKey: trimmed } : {});
       return items.map((item) => ({
         specId: item.id,
         propertyKey: item.propertyKey ?? item.specificationKey,
@@ -265,6 +266,7 @@ export function PageRouter({
           search={search}
           parameterActions={parameterActions}
           topologyRepository={parameterTopologyRepository}
+          canonicalRepository={runtime?.parameterCatalogRepository}
           listConfigSets={listParameterConfigSets}
           effectiveProjectId={effectiveParametersProjectId}
           canEdit={canEditParameters}

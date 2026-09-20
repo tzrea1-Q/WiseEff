@@ -11,7 +11,12 @@ import {
 import { apiRoute } from "./helpers/runtime";
 import { withPgClient } from "./helpers/database";
 
-useBrowserDiagnostics(test);
+useBrowserDiagnostics(test, {
+  expectedApiFailures: [
+    { method: "GET", path: "/api/v2/organizations/org-chargelab/parameter-review-items", status: 403 },
+    { method: "GET", path: "/api/v2/organizations/org-chargelab/parameter-review-items", status: 410 }
+  ]
+});
 
 async function dismissXiaozeHint(page: Page) {
   const dismiss = page.getByRole("button", { name: "不再提示" });

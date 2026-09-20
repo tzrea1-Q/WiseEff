@@ -7,7 +7,7 @@ import {
   loadParameterCatalogFixture,
   type ParameterCatalogDatabase,
 } from "../../testing/parameterCatalog";
-import { createDbLogAnalysisToolBackends, interceptExactRelatedParameterSql } from "./analyzer/tools/dbToolBackends";
+import { createDbLogAnalysisToolBackends } from "./analyzer/tools/dbToolBackends";
 import {
   LOG_COMPARISON_CONTRACT_VERSION,
   LOG_COMPARISON_FAMILY,
@@ -88,15 +88,8 @@ async function seedLogProtectedReferences(url: string): Promise<number> {
   }
 }
 
-describe("interceptExactRelatedParameterSql", () => {
-  it("replaces specification_key fallback with an exact name pin", () => {
-    const sql = "select coalesce(psv.display_name, dps.property_key, ps.specification_key) as name";
-    const exact = interceptExactRelatedParameterSql(sql);
-    expect(exact).not.toContain("ps.specification_key");
-    expect(exact).toContain("coalesce(psv.display_name, dps.property_key)");
-  });
-
-  it("loadRelatedParameter executes the exact name pin rather than specification_key fallback", async () => {
+describe("loadRelatedParameter exact name pin", () => {
+  it("executes source SQL with display_name/property_key and no specification_key name fallback", async () => {
     const statements: string[] = [];
     const wrapped = {
       query: async (sql: string) => {

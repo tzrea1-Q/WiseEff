@@ -293,6 +293,43 @@ describe("OP-06 production Catalog composition", () => {
     const pool = getRootPostgresPool(root);
     if (!pool) throw new Error("missing pool");
     const ingest = createEvidenceIngest(pool);
+    await pool.query(`
+      insert into public.dts_config_set (id, organization_id, project_id, name)
+      values ('dcs-op06', '${ORG_A}', 'project-op06', 'dcs-op06');
+      insert into public.project_parameter_files (
+        id, organization_id, project_id, file_name, format, config_set_id, config_set_role
+      ) values ('pfile-op06', '${ORG_A}', 'project-op06', 'op06.dts', 'dts', 'dcs-op06', 'base');
+      insert into public.project_parameter_file_versions (
+        id, file_id, version_number, storage_key, checksum, size_bytes, origin
+      ) values ('pfv-op06', 'pfile-op06', 1, 'pfile-op06/v1', 'sha256:pfv-op06', 1, 'upload');
+      update public.project_parameter_files set current_version_id = 'pfv-op06' where id = 'pfile-op06';
+      insert into public.dts_config_revisions (
+        id, organization_id, project_id, config_set_id, revision_number, status
+      ) values ('config-op06-1', '${ORG_A}', 'project-op06', 'dcs-op06', 1, 'resolved');
+      insert into public.dts_config_revision_members (
+        id, config_revision_id, file_id, file_version_id, role, sort_order, source_name
+      ) values ('member-op06', 'config-op06-1', 'pfile-op06', 'pfv-op06', 'base', 0, 'op06.dts');
+      insert into public.dts_logical_nodes (id, organization_id, project_id, config_set_id)
+      values ('logical-op06', '${ORG_A}', 'project-op06', 'dcs-op06');
+      insert into public.dts_logical_node_revisions (
+        id, logical_node_id, config_revision_id, node_locator, name, compatible
+      ) values ('lnrev-op06', 'logical-op06', 'config-op06-1', '/op06', 'op06', 'op06');
+      insert into public.dts_node_occurrences (
+        id, config_revision_id, file_version_id, name, node_path,
+        start_offset, end_offset, start_line, start_column, end_line, end_column, raw_text
+      ) values ('node-occ-op06', 'config-op06-1', 'pfv-op06', 'op06', '/op06', 0, 10, 1, 1, 1, 10, 'op06');
+      insert into public.dts_property_occurrences (
+        id, config_revision_id, node_occurrence_id, file_version_id, property_name,
+        start_offset, end_offset, start_line, start_column, end_line, end_column, raw_text
+      ) values ('prop-occ-op06', 'config-op06-1', 'node-occ-op06', 'pfv-op06', 'iin_max', 1, 2, 1, 2, 1, 3, '1');
+      insert into public.dts_occurrence_effects (
+        id, config_revision_id, logical_node_revision_id, property_occurrence_id,
+        node_occurrence_id, property_name, effect_kind, source_order
+      ) values ('effect-op06', 'config-op06-1', 'lnrev-op06', 'prop-occ-op06', 'node-occ-op06', 'iin_max', 'set', 0);
+      insert into parameter_catalog.project_parameter_source_occurrences (
+        id, organization_id, project_id, config_set_id, file_id, occurrence_kind, logical_node_id
+      ) values ('occ-op06', '${ORG_A}', 'project-op06', 'dcs-op06', 'pfile-op06', 'dts', 'logical-op06');
+    `);
     const observation = await ingest.ingest({
       organizationId: ORG_A,
       sourceIdentity: `obs:${randomUUID()}`,
@@ -303,7 +340,14 @@ describe("OP-06 production Catalog composition", () => {
         projectId: "project-op06",
         logicalNodeId: "logical-op06",
         configRevisionId: "config-op06-1",
-        sourceLocator: { path: "/soc/charger", property: "iin_max" },
+        sourceOccurrenceId: "occ-op06",
+        sourceLocator: {
+          kind: "dts-property",
+          propertyOccurrenceId: "prop-occ-op06",
+          nodeOccurrenceId: "node-occ-op06",
+          fileVersionId: "pfv-op06",
+          propertyName: "iin_max",
+        },
       },
     });
     expect(observation.ok).toBe(true);

@@ -28,8 +28,8 @@ import {
   isTestDatabaseAvailable,
   type EphemeralTestDatabase,
 } from "../../../testing/testDatabase";
-import { stabilizeCanonicalBinding, type Binding } from "../binding";
-import { appendProjectValue } from "../values";
+import { type Binding } from "../binding";
+import { createSourceBackedBindingService, appendSourceCommittedValue } from "../binding/__fixtures__/sourceBackedBinding";
 
 import {
   createProtectedWorkflowAdapters,
@@ -138,7 +138,7 @@ describe("protected-reference adapters", () => {
   };
 
   const stabilizeNode = async (logicalNodeId: string): Promise<Binding> => {
-    const result = await stabilizeCanonicalBinding(pool, {
+    const result = await createSourceBackedBindingService(pool, { sourceRef: SOURCE_A }).stabilize({
       snapshot,
       organizationId: ORG,
       projectId: PROJECT,
@@ -244,7 +244,7 @@ describe("protected-reference adapters", () => {
 
   it("pins an exact canonical read from Binding, current ProjectValue, and DefinitionRevision", async () => {
     const binding = await stabilizeNode("logical-node-read");
-    const appended = await appendProjectValue(pool, {
+    const appended = await appendSourceCommittedValue(pool, {
       snapshot,
       binding,
       definitionRevisionId: REVISION_1,
@@ -281,8 +281,11 @@ describe("protected-reference adapters", () => {
     expect(await valueCount(binding.id)).toBe(valuesBefore);
   });
 
-  it("writeback uses S6-VAL append/CAS and returns a typed pin of the new tip", async () => {
+  it("refuses a value-only writeback on an established source-backed Binding", async () => {
     const binding = await stabilizeNode("logical-node-write");
+    const tipBefore = await currentTip(binding.id);
+    const valuesBefore = await valueCount(binding.id);
+    const historyBefore = await historyEvents(binding.id);
     const written = await writebackProtectedReference(pool, {
       snapshot,
       binding,
@@ -291,32 +294,24 @@ describe("protected-reference adapters", () => {
       payload: { kind: "number", value: 42 },
       expectedTip: binding.currentValueId,
     });
-    expect(written.ok).toBe(true);
-    if (!written.ok) return;
-    expect(written.value.outcome).toBe("committed");
-    expect(written.value.pin.kind).toBe("canonical-pin");
-    expect(written.value.pin.currentValueId).toBe(written.value.currentTip);
-    expect(written.value.pin.definitionRevisionId).toBe(REVISION_1);
-    expect(written.value.pin.source.sourceRef).toBe(SOURCE_A);
-    expect(written.value.pin).not.toHaveProperty("parameterSpecId");
-    expect(await currentTip(binding.id)).toBe(written.value.currentTip);
-    expect(await historyEvents(binding.id)).toHaveLength(1);
-
-    const refreshed: Binding = { ...binding, currentValueId: written.value.currentTip };
-    const read = await readProtectedReference(pool, {
-      snapshot,
-      binding: refreshed,
-      definitionRevisionId: REVISION_1,
+    expect(written).toEqual({
+      ok: false,
+      error: {
+        kind: "typed-block",
+        reason: "invalid-command",
+        field: "owned-source-commit-required",
+      },
     });
-    expect(read.ok).toBe(true);
-    if (!read.ok) return;
-    expect(read.value).toEqual(written.value.pin);
+    expect(await currentTip(binding.id)).toBe(tipBefore);
+    expect(await valueCount(binding.id)).toBe(valuesBefore);
+    expect(await historyEvents(binding.id)).toEqual(historyBefore);
   });
 
   it("refuses parameterSpecId on a seeded Binding and leaves the tip unchanged", async () => {
     const binding = await stabilizeNode("logical-node-legacy");
     const tipBefore = await currentTip(binding.id);
     const valuesBefore = await valueCount(binding.id);
+    const historyBefore = await historyEvents(binding.id);
     const refused = await writebackProtectedReference(pool, {
       snapshot,
       binding,
@@ -332,7 +327,7 @@ describe("protected-reference adapters", () => {
     });
     expect(await currentTip(binding.id)).toBe(tipBefore);
     expect(await valueCount(binding.id)).toBe(valuesBefore);
-    expect(await historyEvents(binding.id)).toEqual([]);
+    expect(await historyEvents(binding.id)).toEqual(historyBefore);
   });
 
   it("blocks a missing Binding or missing current value without a pin", async () => {
@@ -369,6 +364,7 @@ describe("protected-reference adapters", () => {
   it("blocks revision disagreement with Binding.effectiveRevisionId", async () => {
     const binding = await stabilizeNode("logical-node-revision");
     const tipBefore = await currentTip(binding.id);
+    const historyBefore = await historyEvents(binding.id);
     const other = DefinitionRevisionId("drev_not_the_effective_head");
     const read = await readProtectedReference(pool, {
       snapshot,
@@ -392,11 +388,14 @@ describe("protected-reference adapters", () => {
       error: { kind: "typed-block", reason: "revision-disagreement" },
     });
     expect(await currentTip(binding.id)).toBe(tipBefore);
-    expect(await historyEvents(binding.id)).toEqual([]);
+    expect(await historyEvents(binding.id)).toEqual(historyBefore);
   });
 
-  it("maps S6-VAL CAS and source conflicts to typed blocks with no mixed pin", async () => {
+  it("refuses value-only CAS and preserves source-conflict blocking", async () => {
     const binding = await stabilizeNode("logical-node-conflict");
+    const tipBefore = await currentTip(binding.id);
+    const valuesBefore = await valueCount(binding.id);
+    const historyBefore = await historyEvents(binding.id);
     const first = await writebackProtectedReference(pool, {
       snapshot,
       binding,
@@ -405,8 +404,14 @@ describe("protected-reference adapters", () => {
       payload: { kind: "number", value: 10 },
       expectedTip: binding.currentValueId,
     });
-    expect(first.ok).toBe(true);
-    if (!first.ok) return;
+    expect(first).toEqual({
+      ok: false,
+      error: {
+        kind: "typed-block",
+        reason: "invalid-command",
+        field: "owned-source-commit-required",
+      },
+    });
 
     const stale = await writebackProtectedReference(pool, {
       snapshot,
@@ -416,34 +421,36 @@ describe("protected-reference adapters", () => {
       payload: { kind: "number", value: 11 },
       expectedTip: binding.currentValueId,
     });
-    expect(stale.ok).toBe(false);
-    if (stale.ok) return;
-    expect(stale.error.kind).toBe("typed-block");
-    expect(stale.error.reason).toBe("cas-conflict");
-    if (stale.error.reason === "cas-conflict") {
-      expect(stale.error.expectedTip).toBe(binding.currentValueId);
-      expect(stale.error.actualTip).toBe(first.value.currentTip);
-    }
-    expect(stale).not.toHaveProperty("value");
-    expect(await currentTip(binding.id)).toBe(first.value.currentTip);
+    expect(stale).toEqual({
+      ok: false,
+      error: {
+        kind: "typed-block",
+        reason: "invalid-command",
+        field: "owned-source-commit-required",
+      },
+    });
 
     const mixedSource = await writebackProtectedReference(pool, {
       snapshot,
-      binding: { ...binding, currentValueId: first.value.currentTip },
+      binding,
       definitionRevisionId: REVISION_1,
       source: { sourceRef: SOURCE_B, configRevisionId: "crev-2" },
       payload: { kind: "number", value: 12 },
-      expectedTip: first.value.currentTip,
+      expectedTip: binding.currentValueId,
     });
-    expect(mixedSource.ok).toBe(false);
-    if (mixedSource.ok) return;
-    expect(mixedSource.error.reason).toBe("source-conflict");
-    if (mixedSource.error.reason === "source-conflict") {
-      expect(mixedSource.error.sourceReason).toBe("source-mismatch");
-      expect(mixedSource.error.existingSourceRef).toBe(SOURCE_A);
-      expect(mixedSource.error.attemptedSourceRef).toBe(SOURCE_B);
-    }
-    expect(await currentTip(binding.id)).toBe(first.value.currentTip);
-    expect(await historyEvents(binding.id)).toHaveLength(1);
+    expect(mixedSource).toEqual({
+      ok: false,
+      error: {
+        kind: "typed-block",
+        reason: "source-conflict",
+        bindingId: binding.id,
+        sourceReason: "source-mismatch",
+        existingSourceRef: SOURCE_A,
+        attemptedSourceRef: SOURCE_B,
+      },
+    });
+    expect(await currentTip(binding.id)).toBe(tipBefore);
+    expect(await valueCount(binding.id)).toBe(valuesBefore);
+    expect(await historyEvents(binding.id)).toEqual(historyBefore);
   });
 });

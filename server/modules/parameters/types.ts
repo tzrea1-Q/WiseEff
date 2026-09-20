@@ -190,6 +190,14 @@ export type ParameterImportSummaryDto = {
   unchanged: number;
   conflict: number;
   highRisk: number;
+  staged?: number;
+  stagedByUserId?: string;
+  stagedItemIds?: string[];
+};
+
+export type ParameterImportStagedDraftDto = {
+  draftId: string; candidateId: string; sourcePinId: string; bindingId: string;
+  baseRevisionId: string; baseCurrentValueId: string; baseDigest: string; proposedDigest: string; diffDigest: string;
 };
 
 export type ParameterImportSourceItemDto = {
@@ -209,6 +217,11 @@ export type ParameterImportBatchItemDto = ParameterImportSourceItemDto & {
   id: string;
   classification: ImportPreviewClassification;
   riskFlag?: boolean;
+  definitionId?: string;
+  projectParameterValueId?: string;
+  baseRevisionId?: string;
+  baseCurrentValueId?: string;
+  stagedDraft?: ParameterImportStagedDraftDto;
 };
 
 export type ParameterImportBatchDto = {

@@ -258,6 +258,11 @@ const pollBinding = async (page: Page, definitionId: string, propertyKey: string
 };
 
 test.describe("isolated formal-image catalog delivery M1", () => {
+  test.skip(
+    !process.env.WISEEFF_CATALOG_DELIVERY_EVIDENCE?.trim(),
+    "isolated delivery M1 is run by catalog:publication:delivery-accept, not Gate0"
+  );
+
   test.beforeAll(() => {
     evidence = loadEvidence();
     login = loadLogin();

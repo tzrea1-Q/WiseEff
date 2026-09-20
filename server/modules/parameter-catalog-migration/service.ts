@@ -22,9 +22,18 @@ import type { AuthContext } from "../auth/types";
 import { classifyImpact } from "../catalog-publication/authorization/classify";
 import { previewPublicationCandidate } from "../catalog-publication/preview";
 import type { SupportedDefinitionContent } from "../catalog-publication/builder/types";
-import type { Database } from "../../shared/database/client";
+import type { Database, Queryable } from "../../shared/database/client";
+import { ApiError } from "../../shared/http/errors";
 import { withAuditedWrite, type AuditSpec } from "../audit/auditedWrite";
 import { getAuthContext } from "../auth/repository";
+import { deriveDtsSourceRef } from "../dts/sourceRef";
+import { dtsValueToPayload } from "../parameter-bindings/catalogProjectValueSync";
+import { digestProjectValuePayload } from "../parameter-bindings/values/repositories";
+import {
+  proveExactDtsProperty,
+  type ExactDtsSourceIdentity,
+} from "../parameter-topology/sourcePropertyProof";
+import { lockExactSourceRevisionsForProof } from "../parameter-files/sourceVersion";
 
 import {
   evaluateValueCompatibility,
@@ -43,6 +52,7 @@ import {
   insertReplacement,
   insertReplacementBinding,
   insertReplacementHistoryEvent,
+  insertReplacementSourcePin,
   insertReplacementPreview,
   insertReplacementProjects,
   insertReplacementValue,
@@ -57,8 +67,11 @@ import {
   loadReplacement,
   loadReplacementPreview,
   loadReplacementProjects,
+  lockReplacementSourceRows,
+  lockReplacementWorkflowRows,
   loadRegistration,
   loadSiblingSourceFacts,
+  loadSourcePropertyProvenance,
   loadSubjectById,
   loadSubjectInRelease,
   markReplacementProjectBlocked,
@@ -67,8 +80,10 @@ import {
   updateReplacementStatus,
   consumeReplacementPreview,
   type MigrationClient,
+  type CurrentTipRow,
   type ReplacementProjectRow,
   type ReplacementRow,
+  type SourcePropertyProvenanceRow,
 } from "./repositories";
 import {
   DEFINITION_REPLACEMENT_CONTINUE_FAMILY,
@@ -87,6 +102,7 @@ import {
   type DefinitionReplacementServiceInput,
   type DefinitionReplacementView,
   type FrozenProjectTip,
+  type FrozenSourceProof,
   type GetDefinitionReplacementQuery,
   type ListDefinitionReplacementsQuery,
   type PreviewDefinitionReplacementCommand,
@@ -219,18 +235,79 @@ type TipEvaluation = {
   readonly compatible: boolean;
 };
 
-/**
- * The corrected value keeps the same source location; only a key-bearing
- * recorded ref can name the old property key, so only that form is rewritten.
- */
-const rewriteSourceRef = (input: {
-  readonly sourceRef: string;
-  readonly oldPropertyKey: string;
-  readonly newPropertyKey: string;
-}): string =>
-  input.oldPropertyKey === input.newPropertyKey
-    ? input.sourceRef
-    : input.sourceRef.replace(input.oldPropertyKey, input.newPropertyKey);
+const exactSourceIdentityOf = (
+  row: SourcePropertyProvenanceRow | null,
+  organizationId: string,
+  projectId: string,
+  propertyKey: string,
+): ExactDtsSourceIdentity | null => {
+  if (
+    !row ||
+    Number(row.occurrence_count) !== 1 ||
+    !row.property_occurrence_id ||
+    !row.node_occurrence_id ||
+    !row.file_id ||
+    !row.file_version_id ||
+    !row.source_name ||
+    !row.node_locator
+  ) {
+    return null;
+  }
+  return {
+    organizationId,
+    projectId,
+    configSetId: row.config_set_id,
+    configRevisionId: row.config_revision_id,
+    logicalNodeId: row.logical_node_id,
+    fileId: row.file_id,
+    fileVersionId: row.file_version_id,
+    propertyOccurrenceId: row.property_occurrence_id,
+    nodeOccurrenceId: row.node_occurrence_id,
+    propertyName: propertyKey,
+  };
+};
+
+const exactSourceProofOf = async (
+  client: MigrationClient,
+  objectStore: DefinitionReplacementServiceInput["objectStore"],
+  row: SourcePropertyProvenanceRow | null,
+  organizationId: string,
+  projectId: string,
+  propertyKey: string,
+): Promise<FrozenSourceProof | null> => {
+  if (!objectStore) {
+    return null;
+  }
+  const identity = exactSourceIdentityOf(row, organizationId, projectId, propertyKey);
+  if (!identity) return null;
+  try {
+    const proof = await proveExactDtsProperty(client as unknown as Queryable, objectStore, identity);
+    const locator = {
+      kind: "dts-property",
+      propertyOccurrenceId: proof.propertyOccurrenceId,
+      nodeOccurrenceId: proof.nodeOccurrenceId,
+      fileVersionId: proof.fileVersionId,
+      propertyName: proof.propertyName,
+    };
+    return {
+      sourceOccurrenceId: row!.source_occurrence_id,
+      configRevisionId: proof.configRevisionId,
+      propertyOccurrenceId: proof.propertyOccurrenceId,
+      nodeOccurrenceId: proof.nodeOccurrenceId,
+      fileId: proof.fileId,
+      fileVersionId: proof.fileVersionId,
+      sourceRef: deriveDtsSourceRef({ fileName: proof.sourceName, nodeLocator: proof.nodeLocator }),
+      locator,
+      locatorDigest: sha256(locator),
+      sourceDigest: proof.sourceDigest,
+      revisionDigest: proof.revisionDigest,
+      sourceSpan: proof.sourceSpan,
+      payload: dtsValueToPayload(proof.value),
+    };
+  } catch {
+    return null;
+  }
+};
 
 const sourceFactsOf = (row: {
   readonly source_ref: string | null;
@@ -509,9 +586,67 @@ export function createParameterCatalogMigrationService(
         }
       }
 
+      // Gather every target source tuple before any proof read.  The helper is
+      // intentionally lock-free: one deterministic lock set protects the
+      // whole replacement cohort, so a multi-project preview cannot acquire
+      // source locks in a different order on the next row.
+      const targetProofsByBinding = await db.transaction(async (tx) => {
+        const targetRowsByBinding = new Map<string, SourcePropertyProvenanceRow | null>();
+        const sourceIdentities = new Map<string, ExactDtsSourceIdentity>();
+        for (const tip of tips) {
+          const targetRow = await loadSourcePropertyProvenance(tx, {
+            bindingId: tip.binding_id,
+            propertyKey: command.newPropertyKey,
+          });
+          targetRowsByBinding.set(tip.binding_id, targetRow);
+          const identity = exactSourceIdentityOf(
+            targetRow,
+            command.organizationId,
+            tip.project_id,
+            command.newPropertyKey,
+          );
+          if (identity) {
+            sourceIdentities.set(
+              [identity.organizationId, identity.projectId, identity.configSetId,
+                identity.configRevisionId, identity.fileId, identity.fileVersionId].join("\0"),
+              identity,
+            );
+          }
+        }
+        await lockExactSourceRevisionsForProof(tx, [...sourceIdentities.values()]);
+        const proofs = new Map<string, FrozenSourceProof | null>();
+        for (const tip of tips) {
+          proofs.set(
+            tip.binding_id,
+            await exactSourceProofOf(
+              tx,
+              input.objectStore,
+              targetRowsByBinding.get(tip.binding_id) ?? null,
+              command.organizationId,
+              tip.project_id,
+              command.newPropertyKey,
+            ),
+          );
+        }
+        return proofs;
+      });
+
       for (const tip of tips) {
         const siblings = siblingFacts.filter((sibling) => sibling.project_id === tip.project_id);
-        const source = resolveSourceLocation(sourceFactsOf(tip));
+        const recordedSource = resolveSourceLocation(sourceFactsOf(tip));
+        const targetProof = targetProofsByBinding.get(tip.binding_id) ?? null;
+        const source =
+          targetProof &&
+          (recordedSource.status !== "blocked" ||
+            recordedSource.reason !== "unsupported-source-format")
+            ? ({ status: "resolved", sourceRef: targetProof.sourceRef, format: "dts" } as const)
+            : recordedSource;
+        const sourceCutoverReason =
+          oldDefinition.property_key !== command.newPropertyKey &&
+          recordedSource.status === "resolved" &&
+          !targetProof
+            ? "source-key-cutover-required"
+            : null;
         const resolvedRef = source.status === "resolved" ? source.sourceRef : (tip.source_ref ?? "");
         const coupled = siblings.filter(
           (sibling) =>
@@ -521,34 +656,32 @@ export function createParameterCatalogMigrationService(
             (siblingSourceRefs.get(sibling.binding_id) === resolvedRef ||
               sibling.source_ref === (tip.source_ref ?? "")),
         );
-        const frozen: FrozenProjectTip = {
+        const frozen = {
           projectId: tip.project_id,
           bindingId: tip.binding_id,
           logicalNodeId: tip.logical_node_id,
           currentValueId: tip.current_value_id,
           configRevisionId: tip.config_revision_id ?? "",
           sourceRef: resolvedRef,
-          rewrittenSourceRef:
-            source.status === "resolved"
-              ? rewriteSourceRef({
-                  sourceRef: source.sourceRef,
-                  oldPropertyKey: oldDefinition.property_key,
-                  newPropertyKey: command.newPropertyKey,
-                })
-              : resolvedRef,
-          valueKind: tip.value_kind ?? "string",
-          valueDigest: tip.value_digest ?? "",
-          sourceFormat: source.status === "resolved" ? "dts" : "unsupported",
+          // This is the actual source location observed under the requested
+          // key.  Never derive it by replacing text in source_ref.
+          rewrittenSourceRef: resolvedRef,
+          valueKind: targetProof?.payload.kind ?? tip.value_kind ?? "string",
+          valueDigest: targetProof ? digestProjectValuePayload(targetProof.payload) : (tip.value_digest ?? ""),
+          sourceFormat: source.status === "resolved" && !sourceCutoverReason ? "dts" : "unsupported",
           coupledBindingIds: coupled.map((sibling) => sibling.binding_id),
-        };
+          exactSourceProof: targetProof,
+        } satisfies FrozenProjectTip;
         manifest.push(frozen);
         coupledDefinitionCount += frozen.coupledBindingIds.length;
-        const evaluation = evaluateTip({
-          tip: frozen,
-          source,
-          value: tip.value,
-          schema: command.proposedContent.valueSchema,
-        });
+        const evaluation = sourceCutoverReason
+          ? { status: "blocked" as const, reason: sourceCutoverReason, compatible: false }
+          : evaluateTip({
+              tip: frozen,
+              source,
+              value: targetProof?.payload.value ?? tip.value,
+              schema: command.proposedContent.valueSchema,
+            });
         if (evaluation.status === "blocked") {
           blockedByProject.set(tip.project_id, evaluation.reason ?? "blocked");
           blockers.push(`${evaluation.reason}:${tip.project_id}`);
@@ -765,33 +898,125 @@ export function createParameterCatalogMigrationService(
       return ok(await replacementView(db, (await loadReplacement(db, organizationId, replacementId))!));
     }
 
-    const audited = await auditedTransaction(principalId, auditRequestId, async (tx) => {
-      const replacement = await loadReplacement(tx, organizationId, replacementId);
-      if (!replacement) {
-        throw new Error("definition-replacement-vanished");
-      }
-      const newRevision = await tx.query<{ content: unknown }>(
-        `select content from parameter_catalog.definition_revisions
-          where definition_id = $1 and id = $2`,
-        [replacement.new_definition_id, replacement.new_revision_id],
-      );
-      const schema = valueSchemaOf(newRevision.rows[0]?.content);
-      const rows = await loadReplacementProjects(tx, replacement.id);
-      const approved = approvedProjectIds === null ? null : new Set(approvedProjectIds);
-      const frozenById = new Map(replacement.frozen_manifest.map((tip) => [tip.projectId, tip]));
-      const openDrafts = await countOpenDrafts(
-        tx,
-        organizationId,
-        replacement.old_revision_id,
-        replacement.preview_catalog_release_id,
-      );
-      const openReviews = await countOpenReviewItems(
-        tx,
-        organizationId,
-        replacement.preview_catalog_release_id,
-      );
-      const registration = await loadRegistration(tx, organizationId, replacement.new_subject_id);
-      const touched: string[] = [];
+    let audited: DefinitionReplacementView;
+    try {
+      audited = await auditedTransaction(principalId, auditRequestId, async (tx) => {
+        const discoveredReplacement = await loadReplacement(tx, organizationId, replacementId, { lock: "none" });
+        if (!discoveredReplacement) {
+          throw new Error("definition-replacement-vanished");
+        }
+        const discoveredRows = await loadReplacementProjects(tx, discoveredReplacement.id);
+        const approved = approvedProjectIds === null ? null : new Set(approvedProjectIds);
+        const collectSourceFacts = async (
+          candidateRows: readonly ReplacementProjectRow[],
+          candidateReplacement: ReplacementRow,
+        ) => {
+          const liveTipByProject = new Map<string, CurrentTipRow | null>();
+          const liveTargetRowByProject = new Map<string, SourcePropertyProvenanceRow | null>();
+          const sourceIdentityByProject = new Map<string, ExactDtsSourceIdentity | null>();
+          const sourceIdentities = new Map<string, ExactDtsSourceIdentity>();
+          for (const row of candidateRows) {
+            if (row.status === "completed" || (approved && !approved.has(row.project_id))) continue;
+            const live = await loadCurrentBindingTips(
+              tx,
+              organizationId,
+              [row.project_id],
+              candidateReplacement.old_definition_id,
+            );
+            const liveTip = live.find((tip) => tip.binding_id === row.old_binding_id) ?? live[0] ?? null;
+            liveTipByProject.set(row.project_id, liveTip);
+            const targetRow = liveTip
+              ? await loadSourcePropertyProvenance(tx, {
+                  bindingId: liveTip.binding_id,
+                  propertyKey: candidateReplacement.new_property_key,
+                })
+              : null;
+            liveTargetRowByProject.set(row.project_id, targetRow);
+            const identity = exactSourceIdentityOf(
+              targetRow,
+              organizationId,
+              row.project_id,
+              candidateReplacement.new_property_key,
+            );
+            sourceIdentityByProject.set(row.project_id, identity);
+            if (identity) {
+              sourceIdentities.set(
+                [identity.organizationId, identity.projectId, identity.configSetId,
+                  identity.configRevisionId, identity.fileId, identity.fileVersionId].join("\0"),
+                identity,
+              );
+            }
+          }
+          return { liveTipByProject, liveTargetRowByProject, sourceIdentityByProject, sourceIdentities };
+        };
+
+        // Discovery is deliberately unlocked.  Acquire the source prefix once,
+        // then canonical/value/pin and workflow rows in the accepted order.
+        const discoveredSources = await collectSourceFacts(discoveredRows, discoveredReplacement);
+        await lockExactSourceRevisionsForProof(
+          tx as unknown as Queryable,
+          [...discoveredSources.sourceIdentities.values()],
+        );
+        await lockReplacementSourceRows(tx, {
+          bindingIds: discoveredRows
+            .filter((row) => row.status !== "completed" && (!approved || approved.has(row.project_id)))
+            .map((row) => row.old_binding_id),
+          valueIds: discoveredRows
+            .filter((row) => row.status !== "completed" && (!approved || approved.has(row.project_id)))
+            .map((row) => row.old_value_id),
+        });
+        await lockReplacementWorkflowRows(tx, {
+          previewId: discoveredReplacement.source_preview_id,
+          replacementId,
+          projectRowIds: discoveredRows
+            .filter((row) => row.status !== "completed" && (!approved || approved.has(row.project_id)))
+            .map((row) => row.id),
+        });
+
+        // The complete discovered graph is stable only after the fence.  Re-read
+        // it before proof or writes; a changed identity is a retryable conflict.
+        const replacement = await loadReplacement(tx, organizationId, replacementId, { lock: "none" });
+        if (!replacement) throw new Error("definition-replacement-vanished");
+        const rows = await loadReplacementProjects(tx, replacement.id);
+        const lockedSources = await collectSourceFacts(rows, replacement);
+        for (const [projectId, discoveredIdentity] of discoveredSources.sourceIdentityByProject) {
+          const lockedIdentity = lockedSources.sourceIdentityByProject.get(projectId) ?? null;
+          const key = (identity: ExactDtsSourceIdentity | null): string =>
+            identity
+              ? [identity.organizationId, identity.projectId, identity.configSetId,
+                  identity.configRevisionId, identity.fileId, identity.fileVersionId,
+                  identity.propertyOccurrenceId, identity.nodeOccurrenceId, identity.propertyName].join("\0")
+              : "";
+          if (key(discoveredIdentity) !== key(lockedIdentity)) {
+            throw new ApiError("CONFLICT", "The source cohort changed while replacement locks were acquired.", {
+              reason: "source-proof-busy",
+              projectId,
+            });
+          }
+        }
+
+        const newRevision = await tx.query<{ content: unknown }>(
+          `select content from parameter_catalog.definition_revisions
+            where definition_id = $1 and id = $2`,
+          [replacement.new_definition_id, replacement.new_revision_id],
+        );
+        const schema = valueSchemaOf(newRevision.rows[0]?.content);
+        const frozenById = new Map(replacement.frozen_manifest.map((tip) => [tip.projectId, tip]));
+        const openDrafts = await countOpenDrafts(
+          tx,
+          organizationId,
+          replacement.old_revision_id,
+          replacement.preview_catalog_release_id,
+        );
+        const openReviews = await countOpenReviewItems(
+          tx,
+          organizationId,
+          replacement.preview_catalog_release_id,
+        );
+        const registration = await loadRegistration(tx, organizationId, replacement.new_subject_id);
+        const touched: string[] = [];
+        const liveTipByProject = lockedSources.liveTipByProject;
+        const liveTargetRowByProject = lockedSources.liveTargetRowByProject;
 
       for (const row of rows) {
         if (row.status === "completed") continue;
@@ -799,13 +1024,7 @@ export function createParameterCatalogMigrationService(
         touched.push(row.project_id);
 
         const frozen = frozenById.get(row.project_id);
-        const live = await loadCurrentBindingTips(
-          tx,
-          organizationId,
-          [row.project_id],
-          replacement.old_definition_id,
-        );
-        const liveTip = live.find((tip) => tip.binding_id === row.old_binding_id) ?? live[0];
+        const liveTip = liveTipByProject.get(row.project_id) ?? null;
 
         const block = async (reason: string, evidence: Record<string, unknown>) => {
           await markReplacementProjectBlocked(tx, row.id, { reason, evidence });
@@ -816,12 +1035,24 @@ export function createParameterCatalogMigrationService(
           continue;
         }
         const liveSource = liveTip ? resolveSourceLocation(sourceFactsOf(liveTip)) : null;
+        const liveTargetProof = liveTip
+          ? await exactSourceProofOf(
+              tx,
+              input.objectStore,
+              liveTargetRowByProject.get(row.project_id) ?? null,
+              organizationId,
+              row.project_id,
+              replacement.new_property_key,
+            )
+          : null;
         const staleEvidence = {
           frozenCurrentValueId: frozen?.currentValueId ?? null,
           liveCurrentValueId: liveTip?.current_value_id ?? null,
           frozenSourceRef: frozen?.sourceRef ?? null,
           liveSourceRef: liveSource?.status === "resolved" ? liveSource.sourceRef : null,
           liveSourceStatus: liveSource?.status ?? null,
+          liveTargetSourceRef: liveTargetProof?.sourceRef ?? null,
+          liveTargetOccurrenceId: liveTargetProof?.propertyOccurrenceId ?? null,
         };
         if (
           !frozen ||
@@ -832,19 +1063,43 @@ export function createParameterCatalogMigrationService(
           await block("stale-preview", staleEvidence);
           continue;
         }
+        if (liveSource?.status === "blocked" && liveSource.reason === "unsupported-source-format") {
+          await block("unsupported-source-format", staleEvidence);
+          continue;
+        }
+        if (!liveTargetProof) {
+          const preservedSourceBlocker =
+            liveSource?.status === "blocked" && liveSource.reason !== "missing-source-provenance"
+              ? liveSource.reason
+              : null;
+          await block(
+            preservedSourceBlocker ??
+              (replacement.old_property_key === replacement.new_property_key
+                ? "missing-source-provenance"
+                : "source-key-cutover-required"),
+            staleEvidence,
+          );
+          continue;
+        }
         // A project the preview blocked on its source keeps that reason while the
         // source is still what it was.  A blocked-to-resolved (or
         // resolved-to-blocked) flip is source drift, so the frozen preview no
         // longer holds and the project is stale.
-        if (liveSource === null || liveSource.status === "blocked") {
-          if (frozen.sourceFormat === "dts" || liveSource === null) {
-            await block("stale-preview", staleEvidence);
-            continue;
-          }
-          await block(liveSource.reason, { sourceRef: frozen.sourceRef });
+        if (
+          liveSource?.status === "blocked" &&
+          liveSource.reason !== "missing-source-provenance"
+        ) {
+          await block("stale-preview", staleEvidence);
           continue;
         }
-        if (frozen.sourceFormat !== "dts" || liveSource.sourceRef !== frozen.sourceRef) {
+        if (
+          frozen.sourceFormat !== "dts" ||
+          liveTargetProof.sourceRef !== frozen.sourceRef ||
+          !frozen.exactSourceProof ||
+          liveTargetProof.sourceDigest !== frozen.exactSourceProof.sourceDigest ||
+          liveTargetProof.revisionDigest !== frozen.exactSourceProof.revisionDigest ||
+          liveTargetProof.locatorDigest !== frozen.exactSourceProof.locatorDigest
+        ) {
           await block("stale-preview", staleEvidence);
           continue;
         }
@@ -880,7 +1135,7 @@ export function createParameterCatalogMigrationService(
 
         const newValueId = mintReplacementValueId();
         const newBindingId = `pbind_${newValueId.slice("pval_".length)}`;
-        const rewrittenSourceRef = frozen.rewrittenSourceRef ?? frozen.sourceRef;
+        const rewrittenSourceRef = liveTargetProof.sourceRef;
         const successAuditRef = `definition-replacement:${replacement.id}:${row.project_id}`;
 
         await insertReplacementBinding(tx, {
@@ -889,6 +1144,7 @@ export function createParameterCatalogMigrationService(
           catalogReleaseId: successor.releaseId!,
           projectId: row.project_id,
           logicalNodeId: liveTip.logical_node_id,
+          sourceOccurrenceId: liveTargetProof.sourceOccurrenceId,
           registrationId: registration.registration_id,
           subjectId: replacement.new_subject_id,
           definitionId: replacement.new_definition_id,
@@ -902,11 +1158,26 @@ export function createParameterCatalogMigrationService(
           definitionRevisionId: replacement.new_revision_id,
           sourceRef: rewrittenSourceRef,
           configRevisionId: frozen.configRevisionId,
-          valueDigest: frozen.valueDigest,
-          valueKind: frozen.valueKind,
-          value: liveTip.value,
+          valueDigest: digestProjectValuePayload(liveTargetProof.payload),
+          valueKind: liveTargetProof.payload.kind,
+          value: liveTargetProof.payload.value,
           replacedFromValueId: row.old_value_id,
           replacedFromDefinitionId: replacement.old_definition_id,
+        });
+        await insertReplacementSourcePin(tx, {
+          id: `src_pin_${newValueId.slice("pval_".length)}`,
+          projectValueId: newValueId,
+          bindingId: newBindingId,
+          definitionId: replacement.new_definition_id,
+          organizationId,
+          projectId: row.project_id,
+          sourceOccurrenceId: liveTargetProof.sourceOccurrenceId,
+          configRevisionId: liveTargetProof.configRevisionId,
+          fileId: liveTargetProof.fileId,
+          fileVersionId: liveTargetProof.fileVersionId,
+          propertyOccurrenceId: liveTargetProof.propertyOccurrenceId,
+          locator: liveTargetProof.locator,
+          locatorDigest: sha256(liveTargetProof.locator),
         });
         await insertReplacementHistoryEvent(tx, {
           id: `bhist_${newValueId.slice("pval_".length)}`,
@@ -933,7 +1204,7 @@ export function createParameterCatalogMigrationService(
         approverPrincipalId: principalId,
         successAuditRef: `definition-replacement:${replacementId}`,
       });
-      const refreshed = await loadReplacement(tx, organizationId, replacementId);
+      const refreshed = await loadReplacement(tx, organizationId, replacementId, { lock: "none" });
       const view = await replacementView(tx, refreshed!);
       return {
         result: view,
@@ -948,7 +1219,18 @@ export function createParameterCatalogMigrationService(
           metadata: { status, touchedProjects: touched },
         },
       };
-    });
+      });
+    } catch (error) {
+      if (
+        (error as { readonly code?: string }).code === "55P03" ||
+        (error instanceof ApiError &&
+          error.code === "CONFLICT" &&
+          error.details.reason === "source-proof-busy")
+      ) {
+        return fail({ kind: "synchronization-busy" });
+      }
+      throw error;
+    }
     return ok(audited);
   };
 

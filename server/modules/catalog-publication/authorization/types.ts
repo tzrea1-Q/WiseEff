@@ -50,6 +50,7 @@ export type PublicationAuthorizationReason =
   | "candidate-tampered"
   | "publication-authorization-revoked"
   | "unsupported-catalog-capability"
+  | "unsupported-consumer-capability-revision"
   | "artifact-missing"
   | "adoption-evidence-invalid"
   | "publication-instance-stale";
@@ -134,6 +135,7 @@ export type VerifyAuthorizationForActivationInput = {
   readonly trustedActor: TrustedInvocationContext;
   readonly impactFacts?: ImpactFacts;
   readonly lockMode?: "none" | "publication-guard";
+  readonly consumerRevisions?: ReadonlySet<string>;
 };
 
 export type AuthorizedPublication = {

@@ -58,6 +58,17 @@ function createRepository(overrides: Partial<ParameterRepository> = {}): Paramet
 }
 
 describe("createParameterRuntimeActions", () => {
+  it("returns the staged API batch after refreshing without claiming values were applied", async () => {
+    const dispatch = vi.fn();
+    const staged = { ...apiPreviewBatch, status: "staged" as const, summary: { ...apiPreviewBatch.summary, staged: 1 } };
+    const repository = createRepository({ applyImportBatch: vi.fn().mockResolvedValue(staged) });
+    const actions = createParameterRuntimeActions({ runtimeMode: "api", repository, dispatch });
+
+    expect(await actions.applyImportBatch({ batchId: staged.id })).toEqual(staged);
+    expect(repository.listParameters).toHaveBeenCalled();
+    expect(dispatch.mock.calls.some(([action]) => action.type === "ADD_NOTIFICATION")).toBe(false);
+  });
+
   it("dispatches existing reducer actions in mock mode", async () => {
     const dispatch = vi.fn();
     const actions = createParameterRuntimeActions({ runtimeMode: "mock", dispatch });
@@ -232,7 +243,7 @@ describe("createParameterRuntimeActions", () => {
     await actions.discardDrafts({ projectId: "api-project", parameterIds: [apiParameter.id] });
 
     expect(repository.listDrafts).toHaveBeenCalledWith("api-project");
-    expect(repository.deleteDraft).toHaveBeenCalledWith("draft-to-delete");
+    expect(repository.deleteDraft).toHaveBeenCalledWith("draft-to-delete", "api-project");
     expect(dispatch).toHaveBeenCalledWith(expect.objectContaining({ type: "HYDRATE_PARAMETER_RUNTIME" }));
   });
 
@@ -275,6 +286,7 @@ describe("createParameterRuntimeActions", () => {
     expect(repository.listChangeRequests).toHaveBeenCalledTimes(1);
     expect(repository.listSubmissionRounds).toHaveBeenCalledTimes(1);
     expect(repository.listDrafts).toHaveBeenCalledTimes(1);
+    expect(repository.listDrafts).toHaveBeenCalledWith("api-project");
     expect(dispatch).toHaveBeenCalledWith({
       type: "HYDRATE_PARAMETER_RUNTIME",
       projects: apiProjects,
@@ -394,6 +406,7 @@ describe("createParameterRuntimeActions", () => {
     expect(repository.listChangeRequests).toHaveBeenCalledTimes(1);
     expect(repository.listSubmissionRounds).toHaveBeenCalledTimes(1);
     expect(repository.listDrafts).toHaveBeenCalledTimes(1);
+    expect(repository.listDrafts).toHaveBeenCalledWith("api-project");
     expect(dispatch).toHaveBeenCalledWith({
       type: "HYDRATE_PARAMETER_RUNTIME",
       projects: apiProjects,

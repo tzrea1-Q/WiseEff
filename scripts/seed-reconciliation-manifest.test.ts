@@ -71,7 +71,7 @@ const EXPECTED_COMPATIBILITY: readonly ExpectedCompatItem[] = [
   {
     index: 1,
     id: "charge-voltage-limit",
-    propertyKey: "charge_voltage_limit_mv",
+    propertyKey: "charger.cv.limitMv",
     formatFamily: "JSON",
     configFormat: JSON_CV_LIMIT,
     scope: "current",
@@ -84,7 +84,7 @@ const EXPECTED_COMPATIBILITY: readonly ExpectedCompatItem[] = [
   {
     index: 2,
     id: "battery-temp-target",
-    propertyKey: "battery_temp_target_c",
+    propertyKey: "battery.thermal.targetTempC",
     formatFamily: "JSON",
     configFormat: JSON_TEMP_TARGET,
     scope: "current",
@@ -175,7 +175,7 @@ const EXPECTED_COMPATIBILITY: readonly ExpectedCompatItem[] = [
   {
     index: 9,
     id: "dts-fast-charge-profile-matrix",
-    propertyKey: "dts_fast_charge_profile_matrix",
+    propertyKey: "fast-charge-profile-matrix",
     formatFamily: "DTS",
     configFormat: FAST_CHARGE_PROFILE_MATRIX_FORMAT,
     scope: "current",
@@ -188,7 +188,7 @@ const EXPECTED_COMPATIBILITY: readonly ExpectedCompatItem[] = [
   {
     index: 10,
     id: "dts-battery-thermal-derate-curve",
-    propertyKey: "battery_thermal_derate_curve",
+    propertyKey: "battery-thermal-derate-curve",
     formatFamily: "DTS",
     configFormat: `DTS: ${DERATE_CURVE_VALUE}`,
     scope: "current",
@@ -216,24 +216,24 @@ const EXPECTED_COMPATIBILITY: readonly ExpectedCompatItem[] = [
 const uuid = () => Math.random().toString(36).slice(2);
 
 describe("seed reconciliation manifest", () => {
-  it("records exactly 125 inputs: 113 vendor + 12 compatibility, 117 current + 8 deferred", () => {
-    expect(manifest.inputs).toHaveLength(125);
-    expect(manifest.inputs.filter((entry) => entry.family === "vendor")).toHaveLength(113);
+  it("records exactly 127 inputs: 115 vendor + 12 compatibility, 119 current + 8 deferred", () => {
+    expect(manifest.inputs).toHaveLength(127);
+    expect(manifest.inputs.filter((entry) => entry.family === "vendor")).toHaveLength(115);
     expect(manifest.inputs.filter((entry) => entry.family === "compatibility")).toHaveLength(12);
-    expect(manifest.inputs.filter((entry) => entry.scope === "current")).toHaveLength(117);
+    expect(manifest.inputs.filter((entry) => entry.scope === "current")).toHaveLength(119);
     expect(manifest.inputs.filter((entry) => entry.scope === "deferred")).toHaveLength(8);
 
     expect(manifest.summary).toMatchObject({
-      totalInputs: 125,
-      vendorInputs: 113,
+      totalInputs: 127,
+      vendorInputs: 115,
       compatibilityInputs: 12,
-      currentInputs: 117,
+      currentInputs: 119,
       deferredInputs: 8,
     });
-    // 113 vendor + 4 current compatibility = 117 current.
+    // 115 vendor + 4 current compatibility = 119 current.
     expect(
       manifest.inputs.filter((entry) => entry.family === "vendor" && entry.scope === "current"),
-    ).toHaveLength(113);
+    ).toHaveLength(115);
     expect(
       manifest.inputs.filter((entry) => entry.family === "compatibility" && entry.scope === "current"),
     ).toHaveLength(4);
@@ -268,7 +268,7 @@ describe("seed reconciliation manifest", () => {
   it("gives every current-scope item a disposition and reason", () => {
     const vocabulary = new Set(["preserve", "transform", "merge", "exclude"]);
     const current = manifest.inputs.filter((entry) => entry.scope === "current");
-    expect(current).toHaveLength(117);
+    expect(current).toHaveLength(119);
     for (const entry of current) {
       expect(vocabulary.has(entry.disposition), `${entry.inputId} disposition=${entry.disposition}`).toBe(true);
       expect(entry.reason.trim().length, `${entry.inputId} reason`).toBeGreaterThan(0);
@@ -319,7 +319,7 @@ describe("seed reconciliation manifest", () => {
         rawLocators.add(`${file.relativePath}#${propertyKey}`);
       }
     }
-    expect(rawLocators.size).toBe(135);
+    expect(rawLocators.size).toBe(137);
 
     const recordedLocators = new Set<string>();
     for (const entry of manifest.inputs.filter((candidate) => candidate.family === "vendor")) {
@@ -328,7 +328,7 @@ describe("seed reconciliation manifest", () => {
     for (const entry of manifest.excludedStructuralInputs) {
       recordedLocators.add(String(entry.sourceLocator));
     }
-    expect(recordedLocators.size).toBe(135);
+    expect(recordedLocators.size).toBe(137);
     expect([...rawLocators].every((locator) => recordedLocators.has(locator))).toBe(true);
     expect([...recordedLocators].every((locator) => rawLocators.has(locator))).toBe(true);
 
@@ -354,23 +354,23 @@ describe("seed reconciliation manifest", () => {
       const recorded = manifest.boardOccurrences.filter((entry) => entry.board === board);
       const recordedBusiness = recorded.filter((entry) => entry.scope === "current");
       expect(recordedBusiness).toHaveLength(120);
-      expect(recorded).toHaveLength(176);
+      expect(recorded).toHaveLength(200);
       expect(new Set(recordedBusiness.map((entry) => entry.sourceLocator)).size).toBe(120);
       expect(recordedBusiness.map((entry) => entry.sourceLocator).sort()).toEqual([...businessLocators].sort());
       expect(new Set(recorded.map((entry) => entry.sourceLocator))).toEqual(allResolvedLocators);
     }
 
     expect(manifest.conservation).toMatchObject({
-      inputsRecorded: 125,
-      vendorInputsRecorded: 113,
+      inputsRecorded: 127,
+      vendorInputsRecorded: 115,
       compatibilityInputsRecorded: 12,
-      currentInputsRecorded: 117,
+      currentInputsRecorded: 119,
       deferredInputsRecorded: 8,
-      vendorRawPropertyEntriesRecorded: 135,
+      vendorRawPropertyEntriesRecorded: 137,
       vendorRawEqualsCanonicalPlusStructural: true,
-      boardOccurrencesRecorded: 528,
+      boardOccurrencesRecorded: 600,
       boardBusinessOccurrencesRecorded: 360,
-      boardStructuralOccurrencesRecorded: 168,
+      boardStructuralOccurrencesRecorded: 240,
       everyInputRecordedExactlyOnce: true,
       everyBoardBusinessOccurrenceRecordedExactlyOnce: true,
     });
@@ -378,11 +378,27 @@ describe("seed reconciliation manifest", () => {
 
 
   it("gives every current-scope compatibility item a reviewed real source with exact locators and digests", () => {
-    const expected: Record<string, { format: string; locator: string }> = {
-      charge_voltage_limit_mv: { format: "json", locator: "charger.cv.limitMv" },
-      battery_temp_target_c: { format: "json", locator: "battery.thermal.targetTempC" },
-      dts_fast_charge_profile_matrix: { format: "dts", locator: "charging_core/fast-charge-profile-matrix" },
-      battery_thermal_derate_curve: { format: "dts", locator: "charging_core/battery-thermal-derate-curve" },
+    const expected: Record<string, { format: string; locator: string; subjectSelection: string }> = {
+      "charger.cv.limitMv": {
+        format: "json",
+        locator: "/charger.cv.limitMv",
+        subjectSelection: "configuration-schema:wiseeff.power-config",
+      },
+      "battery.thermal.targetTempC": {
+        format: "json",
+        locator: "/battery.thermal.targetTempC",
+        subjectSelection: "configuration-schema:wiseeff.power-config",
+      },
+      "fast-charge-profile-matrix": {
+        format: "dts",
+        locator: "wiseeff_node_type_demo/charging_core/fast-charge-profile-matrix",
+        subjectSelection: "node-type:charging_core",
+      },
+      "battery-thermal-derate-curve": {
+        format: "dts",
+        locator: "wiseeff_node_type_demo/charging_core/battery-thermal-derate-curve",
+        subjectSelection: "node-type:charging_core",
+      },
     };
     const current = manifest.inputs.filter(
       (entry) => entry.family === "compatibility" && entry.scope === "current",
@@ -410,12 +426,13 @@ describe("seed reconciliation manifest", () => {
         expect(typeof file.recommendedValue).toBe("string");
       }
 
-      // DTS sources must not claim an invented device identity; JSON software
-      // configuration waits for the ConfigurationSchema subject.
+      expect(realSource!.subjectSelection).toBe(spec!.subjectSelection);
       if (spec!.format === "dts") {
-        expect(realSource!.subjectSelection).toBe("pending-reviewed-subject-selection");
+        expect(entry.disposition).toBe("merge");
+        expect(entry.formalSubject).toEqual({ kind: "nodename", value: "charging_core" });
       } else {
-        expect(realSource!.subjectSelection).toBe("requires-configuration-schema-subject");
+        expect(entry.disposition).toBe("preserve");
+        expect(entry.formalSubject).toEqual({ kind: "configuration-schema", value: "wiseeff.power-config" });
       }
     }
 
@@ -428,24 +445,18 @@ describe("seed reconciliation manifest", () => {
     }
   });
 
-  it("records the two gpio_int constraint blockers as a required transform without dropping data", () => {
-    expect(manifest.knownBlockers).toHaveLength(2);
-    const locators = manifest.knownBlockers.map((blocker) => String(blocker.sourceLocator)).sort();
-    expect(locators).toEqual(["vendor/wiseeff/mt-mt5788.yaml#gpio_int", "vendor/wiseeff/sc8562.yaml#gpio_int"]);
-
-    for (const blocker of manifest.knownBlockers) {
-      expect(blocker.detail).toBe("unhandled-constraint:cells,description");
-      expect(String(blocker.blockerPath)).toMatch(/\.constraints\.cells$/u);
-      expect(blocker.disposition).toBe("transform");
-
-      const entry = manifest.inputs.find((candidate) => candidate.sourceLocator === blocker.sourceLocator);
-      expect(entry?.disposition).toBe("transform");
-      expect(entry?.blocked).toBe(true);
+  it("maps gpio_int cells/description instead of leaving them as import blockers", () => {
+    const locators = ["vendor/wiseeff/mt-mt5788.yaml#gpio_int", "vendor/wiseeff/sc8562.yaml#gpio_int"];
+    expect(
+      manifest.knownBlockers.filter((blocker) => locators.includes(String(blocker.sourceLocator))),
+    ).toEqual([]);
+    for (const locator of locators) {
+      const entry = manifest.inputs.find((candidate) => candidate.sourceLocator === locator);
+      expect(entry?.blocked).toBeFalsy();
+      expect(entry?.disposition).not.toBe("transform");
       const constraints = entry?.content.constraints as Record<string, unknown> | undefined;
       expect(constraints?.cells).toBe(3);
       expect(constraints?.description).toBe("phandle pin flags");
-      expect(entry?.transformation.kind).toBe("vendor-constraint-fold");
-      expect(JSON.stringify(entry?.transformation)).toContain("cells");
     }
   });
 

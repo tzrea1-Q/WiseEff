@@ -67,6 +67,15 @@ export type CutoverResult<T> =
   | { readonly ok: true; readonly value: T }
   | { readonly ok: false; readonly error: CutoverFailure };
 
+export type CutoverIdentityPin = {
+  readonly databaseIdentity: string;
+  readonly imageDigest: string;
+  readonly schemaFingerprint: string;
+  readonly seedDigest: string;
+  readonly scopeDigest: string;
+  readonly archiveDigest: string;
+};
+
 export type CutoverPlan = {
   readonly planDigest: string;
   readonly sourceSnapshotFingerprint: string;
@@ -74,6 +83,7 @@ export type CutoverPlan = {
   readonly targetCatalogReleaseDigest: string;
   readonly migrationContractVersion: string;
   readonly phases: readonly PreActivationPhase[];
+  readonly identities: CutoverIdentityPin;
 };
 
 export type CutoverCheckpoint = {
@@ -99,6 +109,7 @@ export type PlanCutoverInput = {
   readonly graph: FrozenP0Graph;
   readonly targetArtifactSha: string;
   readonly targetCatalogReleaseDigest: string;
+  readonly identities: CutoverIdentityPin;
   readonly catalogReleaseSource?: CatalogReleaseSource;
 };
 
@@ -111,6 +122,9 @@ export type ExecuteCutoverInput = {
   readonly archiveEncryptionKey: Buffer;
   readonly operatorAuditRef: string;
   readonly failBeforePhase?: PreActivationPhase;
+  readonly quiescence?: unknown;
+  readonly recoveryPoint?: unknown;
+  readonly observedIdentities?: unknown;
 };
 
 export type InspectCutoverInput = {

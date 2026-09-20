@@ -78,9 +78,9 @@ describe("definition replacement preview", () => {
         logicalNodeId: "ln-1",
         registrationId,
         sources: [{ sourceRef: "config/subject.dts", configRevisionId: "crev-1" }],
+        propertyKeys: ["iin_subject_moved"],
         values: [5],
       });
-
       const preview = await harness.migration.previewDefinitionReplacement({
         organizationId: ORG,
         oldDefinitionId: PREDECESSOR_DEFINITION_ID,
@@ -125,7 +125,7 @@ describe("definition replacement preview", () => {
     });
   }, 240_000);
 
-  it("ID-02 rewrites the .dts source location to the new key and creates no alias for the old key", async () => {
+  it("ID-02 retains the exact .dts source location while changing the definition key", async () => {
     await withHarness(async (harness) => {
       const registrationId = await seed(harness);
       await harness.seedBindingValue({
@@ -134,6 +134,7 @@ describe("definition replacement preview", () => {
         logicalNodeId: "ln-1",
         registrationId,
         sources: [{ sourceRef: `${PREDECESSOR_PROPERTY_KEY}.dts`, configRevisionId: "crev-1" }],
+        propertyKeys: ["iin_key_only"],
         values: [5],
       });
       const aliasesBefore = await harness.pool.query<{ n: string }>(
@@ -170,7 +171,7 @@ describe("definition replacement preview", () => {
         `select source_ref, config_revision_id from parameter_catalog.project_parameter_values where binding_id = $1`,
         [created.value.projects[0]!.newBindingId!],
       );
-      expect(carried.rows[0]?.source_ref).toBe("iin_key_only.dts");
+      expect(carried.rows[0]?.source_ref).toBe(`${PREDECESSOR_PROPERTY_KEY}.dts!/ln-1`);
       expect(carried.rows[0]?.config_revision_id).toBe("crev-1");
       const aliasesAfter = await harness.pool.query<{ n: string }>(
         `select count(*)::text as n from parameter_catalog.catalog_subject_aliases`,
