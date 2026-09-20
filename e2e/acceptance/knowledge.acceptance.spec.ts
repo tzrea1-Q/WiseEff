@@ -19,7 +19,8 @@ useBrowserDiagnostics(test, {
     { method: "GET", path: "/api/v2/parameter-specs", status: 410 },
     { method: "GET", path: "/api/v2/parameter-specs", status: 403 },
     { method: "GET", path: "/api/v2/catalog/legacy-identifiers", status: 404 },
-    { method: "GET", path: "/api/v2/catalog/legacy-identifiers", status: 410 }
+    { method: "GET", path: "/api/v2/catalog/legacy-identifiers", status: 410 },
+    { method: "GET", path: "/api/v2/catalog/subjects", status: 404 }
   ]
 });
 
@@ -1342,8 +1343,11 @@ test.describe("Knowledge base browser acceptance", () => {
     await signInBrowserAsRole(page, "admin", `/parameter-admin?spec=${encodeURIComponent(spec.specId)}`);
     const relatedSection = page.getByTestId("spec-related-knowledge");
     const catalog = page.getByRole("region", { name: "参数定义目录" });
+    // CatalogPage mounts after the /parameter-admin → /specs redirect. Do not
+    // treat a not-yet-visible catalog as the spec-library path.
+    await expect(catalog.or(relatedSection)).toBeVisible({ timeout: 30_000 });
     if (await catalog.isVisible().catch(() => false)) {
-      await expect(catalog).toBeVisible();
+      await expect(catalog).toHaveAttribute("data-catalog-page", "true");
     } else {
       await expect(relatedSection).toBeVisible();
       const publishedRelatedItem = relatedSection.getByRole("button", { name: new RegExp(publishedTitle) });
