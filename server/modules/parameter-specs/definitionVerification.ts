@@ -447,6 +447,8 @@ export async function verifyEffectiveDriverParameterDefinitions(
     ),
   });
 
+  // Node-type subject roots (property_key null) are not parameter definitions.
+  // Placement and completeness apply to node-type properties only.
   checks.push({
     code: "active-node-type-placement-missing",
     count: await count(
@@ -463,6 +465,7 @@ export async function verifyEffectiveDriverParameterDefinitions(
         where ps.organization_id is not null
           and asub.subject_kind = 'node-type-definition'
           and ps.definition_lifecycle = 'active'
+          and ps.property_key is not null
           ${input.organizationId ? "and ps.organization_id = $1" : ""}
         union all
         select org.id,
@@ -475,6 +478,7 @@ export async function verifyEffectiveDriverParameterDefinitions(
         where ps.organization_id is null
           and asub.subject_kind = 'node-type-definition'
           and ps.definition_lifecycle = 'active'
+          and ps.property_key is not null
           ${input.organizationId ? "and org.id = $1" : ""}
       ) target
       where not exists (
@@ -580,6 +584,7 @@ export async function verifyEffectiveDriverParameterDefinitions(
         where ps.organization_id is not null
           and asub.subject_kind = 'node-type-definition'
           and ps.definition_lifecycle = 'active'
+          and ps.property_key is not null
           ${input.organizationId ? "and ps.organization_id = $1" : ""}
         union all
         select org.id,
@@ -597,6 +602,7 @@ export async function verifyEffectiveDriverParameterDefinitions(
         where ps.organization_id is null
           and asub.subject_kind = 'node-type-definition'
           and ps.definition_lifecycle = 'active'
+          and ps.property_key is not null
           ${input.organizationId ? "and org.id = $1" : ""}
       ) target
       where not exists (
