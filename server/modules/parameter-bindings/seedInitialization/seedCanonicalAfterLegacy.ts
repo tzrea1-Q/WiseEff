@@ -1,28 +1,10 @@
 /**
- * After M1 topology seed, publish the vendor Catalog (if empty) and sync
- * canonical current bindings onto existing config revisions.
- *
- * Does not archive the topology plane. Placement shortage still fail-closes.
+ * After M1 topology seed, sync canonical current bindings when a Catalog is
+ * already published. Does not bootstrap Acme/vendor (catalog acceptance owns
+ * lineage A). Does not archive the topology plane.
  */
-import path from "node:path";
-import { fileURLToPath } from "node:url";
-
-import { compileCatalogRelease } from "../../catalog-kernel/compiler/index";
-import { jsonCatalogReleaseSource } from "../../catalog-kernel/interface";
-import { installPublishedRelease } from "../../catalog-kernel/install/installer";
 import { readCurrentCatalogPointer } from "../../catalog-kernel/install/currentPointer";
-import {
-  CatalogReleaseDigest,
-  CatalogReleaseId,
-} from "../../parameter-catalog-contract/index";
 import type { AuthContext } from "../../auth/types";
-import {
-  FIRST_ACME_RELEASE_DIGEST,
-  FIRST_ACME_RELEASE_ID,
-  VENDOR_SUCCESSOR_AGGREGATE_DIGEST,
-  compileVendorCatalogSuccessor,
-} from "../../../../scripts/compile-vendor-catalog-release";
-import { firstReleaseBundle } from "../../../testing/parameterCatalog/cutoverPopulatedFixture";
 import {
   getRootPostgresPool,
   type Database,
@@ -48,9 +30,6 @@ export type CanonicalAfterLegacyResult = {
   readonly skipped: readonly string[];
 };
 
-const repoRootFromHere = (): string =>
-  path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../../..");
-
 export async function ensureCanonicalCatalogAfterLegacySeed(
   db: Database,
   auth: AuthContext,
@@ -63,36 +42,10 @@ export async function ensureCanonicalCatalogAfterLegacySeed(
 
   await curateReviewedSeedPlacementCapacity(db, { organizationId: input.organizationId });
 
-  let pointer = await readCurrentCatalogPointer(pool);
-  if (pointer.kind === "empty") {
-    const acmeBundle = firstReleaseBundle();
-    const acmeCompiled = compileCatalogRelease(acmeBundle);
-    if (!acmeCompiled.ok) {
-      throw new Error(`Acme catalog compile failed: ${acmeCompiled.error.kind}`);
-    }
-    const bootstrapped = await installPublishedRelease(pool, {
-      mode: "bootstrap",
-      source: jsonCatalogReleaseSource(acmeBundle),
-      expectedTargetDigest: acmeCompiled.value.release.digest,
-    });
-    if (!bootstrapped.ok) {
-      throw new Error(`Acme catalog bootstrap failed: ${JSON.stringify(bootstrapped)}`);
-    }
-    const vendor = compileVendorCatalogSuccessor(repoRootFromHere());
-    const advanced = await installPublishedRelease(pool, {
-      mode: "advance",
-      source: jsonCatalogReleaseSource(vendor.bundle),
-      expectedTargetDigest: CatalogReleaseDigest(VENDOR_SUCCESSOR_AGGREGATE_DIGEST),
-      expectedCurrent: {
-        id: CatalogReleaseId(FIRST_ACME_RELEASE_ID),
-        digest: CatalogReleaseDigest(FIRST_ACME_RELEASE_DIGEST),
-      },
-    });
-    if (!advanced.ok) {
-      throw new Error(`Vendor catalog advance failed: ${JSON.stringify(advanced)}`);
-    }
-    pointer = await readCurrentCatalogPointer(pool);
-  }
+  const pointer = await readCurrentCatalogPointer(pool);
+  // Do not bootstrap Acme/vendor here. Catalog acceptance installs lineage A
+  // on an empty pointer; a seeded vendor current makes that install
+  // unsupported-lineage. Sync only when a Catalog is already published.
 
   const snapshot = await loadPublishedCatalog(pool);
   if (!snapshot || pointer.kind !== "installed") {

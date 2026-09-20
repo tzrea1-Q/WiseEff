@@ -55,7 +55,15 @@ async function main(): Promise<void> {
   const approvalRef = arg("--approval-ref");
   const organizationId = process.env.WISEEFF_ORGANIZATION_ID?.trim() || "org-chargelab";
   const db = createPostgresDatabase(url);
-  const store = createObjectStoreFromEnv(process.env);
+  const store = createObjectStoreFromEnv({
+    OBJECT_STORE_MODE: process.env.OBJECT_STORE_MODE === "s3" ? "s3" : "local",
+    OBJECT_STORE_ROOT: process.env.OBJECT_STORE_ROOT ?? ".wiseeff-object-store",
+    OBJECT_STORAGE_ENDPOINT: process.env.OBJECT_STORAGE_ENDPOINT,
+    OBJECT_STORAGE_BUCKET: process.env.OBJECT_STORAGE_BUCKET,
+    OBJECT_STORAGE_ACCESS_KEY_ID: process.env.OBJECT_STORAGE_ACCESS_KEY_ID,
+    OBJECT_STORAGE_SECRET_ACCESS_KEY: process.env.OBJECT_STORAGE_SECRET_ACCESS_KEY,
+    OBJECT_STORAGE_REGION: process.env.OBJECT_STORAGE_REGION,
+  });
   const auth = operatorAuth(organizationId);
   const operator = { role: "cutover-operator" as const, approvalRef };
   const archive = await captureProjectParameterPlane(db, store, auth, { projectId });
