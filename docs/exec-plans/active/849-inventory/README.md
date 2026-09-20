@@ -97,6 +97,8 @@ Read-only reconnaissance produced on the 2026-09-15 Scratch round (branch `feat/
 | `t14-final-legacy-cutover-design.md` | T1.4 implementable design after Spec re-review PASS with P2 | T1.4 |
 | `t14-final-legacy-cutover-spec-review.md` | T1.4 independent design Spec review | T1.4 |
 | `t14-final-legacy-cutover-acceptance.md` | T1.4 progress receipt (not complete) | T1.4 |
+| `t34b-integration.md` | T3.4b Hosted + merge receipt for #884 | T3.4b |
+| `local-docker-round.md` | Post-#884 local Docker round checklist | this round |
 
 ## Corrections to earlier planning text
 
