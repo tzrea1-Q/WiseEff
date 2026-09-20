@@ -415,6 +415,28 @@ describe("assertTrustedSensitiveNodeWriteAllowed", () => {
     expect(query).toHaveBeenCalledTimes(2);
   });
 
+  it("resolves a property-path owning node with either persisted locator spelling", async () => {
+    let call = 0;
+    const query = vi.fn(async (text: string, values?: readonly unknown[]) => {
+      call += 1;
+      if (call === 1) {
+        return { rows: [{ file_id: "file-1", file_version_id: "version-locked", format: "dts" }], rowCount: 1 };
+      }
+      expect(text).toContain("n.node_path = any($5::text[])");
+      expect(values).toEqual(["org-1", "project-1", "board.dts", "version-locked", ["amba/wdt@0", "/amba/wdt@0"]]);
+      return { rows: [{ node_id: "node-1", compatible: "vendor,locked-critical" }], rowCount: 1 };
+    });
+
+    await expect(resolveDtsNodeCompatible({ query }, {
+      organizationId: "org-1",
+      projectId: "project-1",
+      sourceFileName: "board.dts",
+      sourceFileVersionId: "version-locked",
+      sourcePath: { kind: "property-path", value: "/amba/wdt@0/status" }
+    })).resolves.toBe("vendor,locked-critical");
+    expect(query).toHaveBeenCalledTimes(2);
+  });
+
   it("fails closed when the exact file version has no matching file and node identity", async () => {
     const db: Queryable = {
       query: vi.fn(async () => ({ rows: [], rowCount: 0 }))
