@@ -11,9 +11,9 @@ Base: `origin/main` **`fbb17717ad05f521da8651ed6dcf1ba08e502819`** (#884 squash)
 | L0 | Branch from merged main | this file on `codex/849-853-local-docker-round` |
 | L1 | T3.4b receipt for #884 | [t34b-integration.md](t34b-integration.md) records merge SHA, Hosted, skipped jobs |
 | L2 | TD-125 seed writer | **done on helper `wiseeff_quality_snap`:** `ensureCanonicalCatalogAfterLegacySeed` wrote atlas/aurora/nebula **120** catalog bindings each (360 total); catalog `crel_vendor_catalog_1`. Topology plane kept (436 legacy rows). `materializeSeedSources` still fail-closes without placement capacity. |
-| L3 | Empty-catalog GET | **kept fallback.** Catalog now has 360 rows, but linux visual baseline is the topology module tree (legacy 436). Canonical-only GET would change `/parameters` chrome; Hosted linux re-record is out of this round. |
+| L3 | Empty-catalog GET | **canonical-only restored.** `catalogProjectValueRoutes.test.ts` **20 passed** on helper PG. Empty Catalog is `{ items: [] }`. Seed writer supplies 120 catalog rows per demo project so quality/CI are not empty. Hosted linux `/parameters` chrome may drift (driver-group tree vs topology snapshot). |
 | L4 | T1.4 leftover | **measured on this SHA:** `check-parameter-catalog-boundaries.test.ts` **24 passed**. Summary still `violations 3558 / allowlisted 3503 / unallowlisted 55 / stale 0`. T1.4 stays unchecked. |
-| L5 | T3.2 local Docker | T3.3b target still up: `http://127.0.0.1:18080` → **200**, `/api/v1/health` `ok`. Helper PG 55438 up. Smoke on owned ports still pending in this turn if time. |
+| L5 | T3.2 local Docker | T3.3b `:18080` **200**. Smoke on owned `:5174`/`:18787` + helper `wiseeff_quality_snap` **4 passed** (warmup, auth, parameter-home, shell). |
 | L6 | Independent review | grok-4.6 Standards **FAIL** (no tests on new writer; fixed). Spec **FAIL** (sync-before-preflight; fixed). Re-run not done in this commit. |
 
 ## Out of this round
