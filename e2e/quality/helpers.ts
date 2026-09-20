@@ -243,6 +243,15 @@ export function stableMasks(page: Page, routePath = ""): Locator[] {
     masks.push(page.locator(".dts-parameter-workbench-table, .dts-workbench-list"));
   }
 
+  if (routePath === "/parameter-admin") {
+    // Published vendor catalog fills the navigator/list; the linux baseline
+    // was captured against an unpublished Catalog. Mask the data-dependent
+    // body so chrome (tabs, search) stays the gate.
+    masks.push(page.locator(".parameter-catalog__anchor"));
+    masks.push(page.locator(".parameter-catalog__banner"));
+    masks.push(page.locator(".parameter-catalog__workspace"));
+  }
+
   if (routePath === "/parameter-home") {
     // Governance trend chart: the x-axis date labels (and the fallback table
     // inside the same <figure>) are bucketed from "today", so they shift with

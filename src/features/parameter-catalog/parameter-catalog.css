@@ -154,7 +154,7 @@
   gap: var(--space-2);
   min-width: 0;
   min-height: 0;
-  max-height: 100%;
+  max-height: min(70vh, 36rem);
   padding: var(--space-4);
   overflow: auto;
   background: var(--pcat-surface);
