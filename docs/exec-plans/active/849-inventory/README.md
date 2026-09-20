@@ -99,6 +99,7 @@ Read-only reconnaissance produced on the 2026-09-15 Scratch round (branch `feat/
 | `t14-final-legacy-cutover-acceptance.md` | T1.4 progress receipt (not complete) | T1.4 |
 | `t34b-integration.md` | T3.4b Hosted + merge receipt for #884 | T3.4b |
 | `local-docker-round.md` | Post-#884 local Docker round checklist | this round |
+| `closeout-plan.md` | T1.4 leftover / T3.2 / T2.3b / T3.4a–T3.5 closeout | closeout |
 
 ## Corrections to earlier planning text
 
