@@ -14,7 +14,7 @@ Base: `origin/main` **`fbb17717ad05f521da8651ed6dcf1ba08e502819`** (#884 squash)
 | L3 | Empty-catalog GET | **canonical-only restored.** `catalogProjectValueRoutes.test.ts` **20 passed** on helper PG. Empty Catalog is `{ items: [] }`. Seed writer supplies 120 catalog rows per demo project so quality/CI are not empty. Hosted linux `/parameters` chrome may drift (driver-group tree vs topology snapshot). |
 | L4 | T1.4 leftover | **measured on this SHA:** `check-parameter-catalog-boundaries.test.ts` **24 passed**. Summary still `violations 3558 / allowlisted 3503 / unallowlisted 55 / stale 0`. T1.4 stays unchecked. |
 | L5 | T3.2 local Docker | T3.3b `:18080` **200**. Smoke on owned `:5174`/`:18787` + helper `wiseeff_quality_snap` **4 passed** (warmup, auth, parameter-home, shell). |
-| L6 | Independent review | grok-4.6 Standards **FAIL** (no tests on new writer; fixed). Spec **FAIL** (sync-before-preflight; fixed). Re-run not done in this commit. |
+| L6 | Independent review | Re-run grok-4.6: Standards **PASS with P2** (testing fixture import). Spec **PASS with notes** (re-seed CONFLICT skip restored; leftover 55 stays). |
 
 ## Out of this round
 

@@ -143,12 +143,21 @@ export async function ensureCanonicalCatalogAfterLegacySeed(
   }
 
   for (const entry of staged) {
-    written[entry.projectId] = await syncPublishedCatalogProjectValues(pool, {
-      organizationId: input.organizationId,
-      projectId: entry.projectId,
-      configSetId: entry.configSetId,
-      configRevisionId: entry.revisionId,
-    });
+    try {
+      written[entry.projectId] = await syncPublishedCatalogProjectValues(pool, {
+        organizationId: input.organizationId,
+        projectId: entry.projectId,
+        configSetId: entry.configSetId,
+        configRevisionId: entry.revisionId,
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      if (message.includes("reviewed source change")) {
+        skipped.push(entry.projectId);
+        continue;
+      }
+      throw error;
+    }
   }
 
   return {

@@ -14,7 +14,7 @@
 | L3 | 空 Catalog GET | **已恢复 canonical-only。** 路由测试 **20 通过**。空 Catalog 为 `{ items: [] }`。种子 writer 每个演示项目 120 条 catalog 行。Hosted linux `/parameters` 外观可能漂（驱动组树 vs 拓扑快照）。 |
 | L4 | T1.4 leftover | **本 SHA 实测：** `check-parameter-catalog-boundaries.test.ts` **24 通过**。库存仍是 `3558 / 3503 / 55 / 0`。T1.4 不勾。 |
 | L5 | T3.2 本机 Docker | T3.3b `:18080` **200**。独占 `:5174`/`:18787` + helper `wiseeff_quality_snap` smoke **4 通过**（warmup、auth、parameter-home、shell）。 |
-| L6 | 独立评审 | grok-4.6 Standards **FAIL**（新 writer 无测试，已补）。Spec **FAIL**（先 sync 再预检，已改全项目预检）。本 commit 未复评。 |
+| L6 | 独立评审 | 复评 grok-4.6：Standards **PASS with P2**。Spec **PASS with notes**（重跑 seed 的 CONFLICT skip 已恢复；leftover 55 仍在）。 |
 
 ## 本轮不做
 
