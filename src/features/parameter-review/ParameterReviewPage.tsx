@@ -51,7 +51,6 @@ import { useReviewQueueKeyboard } from "@/features/parameter-review/useReviewQue
 import { ArrowRight, CheckCircle2, CircleOff, FileText, History, Link2, Sparkles } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import "./parameter-review.css";
-import { CanonicalProjectValueReviewPanel } from "./CanonicalProjectValueReviewPanel";
 
 type ParameterReviewMode = "pending" | "history";
 type ParameterInitializationReviewRow = {
@@ -650,11 +649,6 @@ export function ParameterReviewPage({
 
   return (
     <WorkbenchLayout title={reviewPageTitle}>
-      <CanonicalProjectValueReviewPanel
-        projectId={new URLSearchParams(search).get("project") ?? state.activeProjectId}
-        repository={runtime?.parameterCatalogRepository}
-        canReview={reviewerRoleId === "software-committer" || reviewerRoleId === "admin"}
-      />
       <section className="review-queue" ref={queueRef} tabIndex={-1} aria-labelledby="review-queue-heading">
         <div className="review-queue-header">
           <h2 id="review-queue-heading" className="sr-only">

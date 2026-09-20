@@ -279,6 +279,18 @@ export async function seedQualityVisualReview(db: Database) {
       );
     }
 
+    // Pin the review-detail module intro to the linux visual baseline. Current
+    // seed classifies battery_charge_balance as a driver-group; the Hosted
+    // snapshot still expects the node-type sentence.
+    await tx.query(
+      `
+      update parameter_modules
+      set description = 'battery_charge_balance DTS 节点类型模块。'
+      where organization_id = 'org-chargelab'
+        and name = 'battery_charge_balance'
+      `,
+    );
+
     await tx.query(
       `
       insert into parameter_submission_rounds (
