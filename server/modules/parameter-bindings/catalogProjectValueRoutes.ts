@@ -231,10 +231,19 @@ export function registerCatalogProjectValueConsumerRoutes(
       projectId: params.projectId,
       revisionId: query.revisionId
     });
-    const catalogRows = await listCatalogBindingRowsForProject(db, auth, {
-      projectId: params.projectId,
-      revisionId: query.revisionId
-    });
+    let catalogRows: Awaited<ReturnType<typeof listCatalogBindingRowsForProject>> = [];
+    try {
+      catalogRows = await listCatalogBindingRowsForProject(db, auth, {
+        projectId: params.projectId,
+        revisionId: query.revisionId
+      });
+    } catch (error) {
+      // Catalog plane is project-scoped; a viewer who can list topology bindings
+      // must still get those rows when they cannot pin this project's catalog.
+      if (!(error instanceof ApiError) || (error.code !== "FORBIDDEN" && error.code !== "NOT_FOUND")) {
+        throw error;
+      }
+    }
     const catalogItems = catalogRows.map((row) =>
       projectBindingDtoSchema.parse({
         id: row.id,

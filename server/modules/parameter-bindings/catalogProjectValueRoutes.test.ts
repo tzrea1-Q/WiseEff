@@ -752,6 +752,27 @@ describe("canonical project binding reads", () => {
     expect(topologyService.listProjectBindings).toHaveBeenCalled();
   });
 
+  it("falls back to topology bindings when the catalog plane forbids the actor", async () => {
+    const db = makeDb();
+    vi.mocked(db.query).mockResolvedValue({
+      rows: [{ id: "project-1", name: "Project One", code: "P1" }]
+    } as never);
+    vi.mocked(catalogSync.listCatalogBindingRowsForProject).mockRejectedValue(
+      new ApiError("FORBIDDEN", "Project parameter scope is required.")
+    );
+    vi.mocked(topologyService.listProjectBindings).mockResolvedValue({
+      items: [{ id: "legacy-1", parameterSpecId: "pspec-legacy" }]
+    } as never);
+
+    const response = await requestJson<{ items: Array<{ id: string }> }>(
+      makeServer({ db }),
+      "/api/v2/projects/project-1/parameter-bindings"
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.body.items.map((item) => item.id)).toEqual(["legacy-1"]);
+  });
+
   it("keeps canonical rows and only mixes in leftover topology bindings", async () => {
     const db = makeDb();
     vi.mocked(db.query).mockResolvedValue({
