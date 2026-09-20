@@ -1089,11 +1089,7 @@ async function main() {
   }
 
   const cutover = await ensureLocalPostCutoverIdentity(db);
-  const seedAuth = seedAuthContext();
-  const canonical = await ensureCanonicalCatalogAfterLegacySeed(db, {
-    ...seedAuth,
-    permissions: [...seedAuth.permissions, "parameter:file-admin"],
-  }, {
+  const canonical = await ensureCanonicalCatalogAfterLegacySeed(db, seedAuthContext(), {
     organizationId,
     seedDigest: "seed-m1-legacy-canonical",
   });

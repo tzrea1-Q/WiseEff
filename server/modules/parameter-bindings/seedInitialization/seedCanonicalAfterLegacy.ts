@@ -11,6 +11,10 @@ import { compileCatalogRelease } from "../../catalog-kernel/compiler/index";
 import { jsonCatalogReleaseSource } from "../../catalog-kernel/interface";
 import { installPublishedRelease } from "../../catalog-kernel/install/installer";
 import { readCurrentCatalogPointer } from "../../catalog-kernel/install/currentPointer";
+import {
+  CatalogReleaseDigest,
+  CatalogReleaseId,
+} from "../../parameter-catalog-contract/index";
 import type { AuthContext } from "../../auth/types";
 import {
   FIRST_ACME_RELEASE_DIGEST,
@@ -78,11 +82,11 @@ export async function ensureCanonicalCatalogAfterLegacySeed(
     const advanced = await installPublishedRelease(pool, {
       mode: "advance",
       source: jsonCatalogReleaseSource(vendor.bundle),
-      expectedTargetDigest: VENDOR_SUCCESSOR_AGGREGATE_DIGEST,
+      expectedTargetDigest: CatalogReleaseDigest(VENDOR_SUCCESSOR_AGGREGATE_DIGEST),
       expectedCurrent: {
-        id: FIRST_ACME_RELEASE_ID,
-        digest: FIRST_ACME_RELEASE_DIGEST,
-      } as never,
+        id: CatalogReleaseId(FIRST_ACME_RELEASE_ID),
+        digest: CatalogReleaseDigest(FIRST_ACME_RELEASE_DIGEST),
+      },
     });
     if (!advanced.ok) {
       throw new Error(`Vendor catalog advance failed: ${JSON.stringify(advanced)}`);
