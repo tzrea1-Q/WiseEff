@@ -19,6 +19,7 @@ import { createPostgresDatabase, type Database } from "../server/shared/database
 import { buildDtsPowerSeed, type DtsPowerSeedParameter, type DtsPowerSeedProjectFile, buildSeedModuleMappings } from "./dts-power-seed";
 import { loadCommittedDtsSeedFiles } from "./compile-dts-seed";
 import { ensureLocalPostCutoverIdentity } from "../server/modules/parameter-topology/localPostCutover";
+import { ensureCanonicalCatalogAfterLegacySeed } from "../server/modules/parameter-bindings/seedInitialization/seedCanonicalAfterLegacy";
 import { LEGACY_SQL } from "../server/modules/parameter-topology/migration";
 import { syncVendorPropertyDocs } from "./sync-vendor-property-docs";
 import { insertAttributionSubjectForNewModule } from "../server/modules/parameter-modules/attributionSubjectRepository";
@@ -172,7 +173,7 @@ function seedAuthContext(): AuthContext {
     },
     organization: { id: organizationId, name: "ChargeLab" },
     roles: [{ projectId: null, roleId: "admin" }],
-    permissions: ["parameter:view", "parameter:edit", "parameter:review", "admin:access"]
+    permissions: ["parameter:view", "parameter:edit", "parameter:review", "admin:access", "parameter:file-admin"]
   };
 }
 
@@ -1088,11 +1089,16 @@ async function main() {
   }
 
   const cutover = await ensureLocalPostCutoverIdentity(db);
+  const canonical = await ensureCanonicalCatalogAfterLegacySeed(db, seedAuthContext(), {
+    organizationId,
+    seedDigest: "seed-m1-legacy-canonical",
+  });
   console.log(
     "Seeded M1 semantic parameter data, full project DTS baselines, module-aware topology bindings, vendor property docs, and a demo binding-revision history.",
     cutover.status === "already-complete"
       ? "Local post-cutover already complete."
-      : `Local post-cutover applied (run ${cutover.migrationRunId}).`
+      : `Local post-cutover applied (run ${cutover.migrationRunId}).`,
+    `Canonical catalog ${canonical.catalogReleaseId ?? "unpublished"}; written=${JSON.stringify(canonical.written)}; skipped=${canonical.skipped.join(",") || "none"}.`
   );
 }
 
