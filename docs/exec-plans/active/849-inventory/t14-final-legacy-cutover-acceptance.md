@@ -2,7 +2,7 @@
 
 > Chinese: [中文](../../../zh-CN/exec-plans/active/849-inventory/t14-final-legacy-cutover-acceptance.md)
 
-Status: **TD-125 mixed current-read removed. Scanner leftover 49 remains; T1.4 zero-allowance is not met.** Overlay and governance **detail** stay 2xx. No SEALED. Not Hosted.
+Status: **Empty-catalog GET again falls back to topology bindings until seed/release materializes canonical rows. Scanner leftover remains; T1.4 stays unchecked.** Overlay and governance **detail** stay 2xx. No SEALED.
 
 Design Spec re-review `01a0b0a8-0492-434d-6fbb-ac1520d36674` PASS with P2. B2 Spec re-review `9e09e874-cae5-4e98-af76-c5f6cd638731` PASS with P2 (folded).
 
@@ -81,4 +81,4 @@ Do not invent a dest span for writeback dest 26362. Do not grow shards.
 - 49 un-only current scanner hits named above. T1.4 zero is blocked until a later scanner / un-only Spec. Repair source of successor SQL is not this cutover.
 - Repair C landed: governance **list** 410; overlay keep; governance **detail** keep; module writes keep (wrap removed). Spec re-review `01a0b261-c4e8-4b19-9d7a-2f6e8a15c093` PASS with P2.
 - Independent B2 implementation Spec `a4c91e2b-7f06-4d38-9b5a-0e18c3d6f247` PASS with P2; Standards `e8b2c41a-7d5f-4a93-b6c0-1f9e4d82a570` PASS with P2. Shared P2 (historical identical-slice regression) folded.
-- **TD-125 closed this turn:** `GET /api/v2/projects/:projectId/parameter-bindings` is canonical-only. Empty Catalog → `{ items: [] }`. `catalogProjectValueRoutes.test.ts` **20 passed**. Overlay/governance **detail** still 2xx. Checker still **49 unallowlisted**. T1.4 checklist stays **unchecked**.
+- **TD-125 empty-catalog fallback restored:** quality/CI seeds still have topology bindings and no canonical rows (`aurora` 204 bindings / 2 `gpio_int` on helper `wiseeff_quality_snap`). Canonical-only GET emptied the DTS workbench and failed Hosted visual. Fallback answers the empty canonical plane only; canonical rows still win. `catalogProjectValueRoutes.test.ts` **20 passed**. Overlay/governance **detail** stay 2xx. T1.4 leftover stays unchecked.

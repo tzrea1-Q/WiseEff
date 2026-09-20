@@ -2,7 +2,7 @@
 
 > English: [English](../../../../exec-plans/active/849-inventory/t14-final-legacy-cutover-acceptance.md)
 
-状态：**已移除 TD-125 混合当前读取。scanner 剩余 49 条，T1.4 清零未满足。** overlay 与 governance **详情**仍 2xx。未 SEALED。不是 Hosted。
+状态：**空 Catalog 再次回退 topology 绑定（质量种子尚未物化 canonical）。scanner leftover 仍未清零，T1.4 不勾。** overlay 与 governance **详情**仍 2xx。未 SEALED。
 
 设计 Spec 再评审 `01a0b0a8-0492-434d-6fbb-ac1520d36674` PASS with P2。B2 Spec 再评审 `9e09e874-cae5-4e98-af76-c5f6cd638731` PASS with P2（已折入）。
 
@@ -60,4 +60,4 @@ relocation 不能映射不同前三段 id。禁止涨 allowlist。这些是 succ
 
 ## 剩余
 
-T1.4 清零被这 49 条挡住，需后续扫描器／仅-un Spec。Repair C 已落地（governance **list** 410；overlay／detail／module 写入 keep）。**本轮关闭 TD-125：** GET parameter-bindings 只返回 canonical；空 Catalog → `{ items: [] }`。`catalogProjectValueRoutes.test.ts` **20 通过**。清单 T1.4 **仍未勾**。
+T1.4 清零仍被 leftover 挡住。Repair C 已落地（governance **list** 410；overlay／detail／module 写入 keep）。**空 Catalog 再次回退 topology 绑定**，避免质量工作台被读空；canonical 行存在时仍优先。`catalogProjectValueRoutes.test.ts` **20 通过**。清单 T1.4 **仍未勾**。
