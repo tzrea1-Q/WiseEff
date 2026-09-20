@@ -34,7 +34,9 @@ useBrowserDiagnostics(test, {
   expectedApiFailures: [
     // Typed-edit schema rejection and stale-revision conflict are intentional.
     { method: "POST", path: "/api/v2/projects/aurora/parameter-bindings", status: 400 },
-    { method: "POST", path: "/api/v2/projects/aurora/parameter-bindings", status: 409 }
+    { method: "POST", path: "/api/v2/projects/aurora/parameter-bindings", status: 409 },
+    // CatalogPage on /parameter-admin reads subjects; M1 seed leaves Catalog unpublished.
+    { method: "GET", path: "/api/v2/catalog/subjects", status: 404 }
   ]
 });
 test.use({ viewport: { width: 1440, height: 900 } });
