@@ -8,6 +8,8 @@ Use the same reviewed application revision for the checkout and running images. 
 
 ## Before maintenance
 
+The one-shot container runs with the operator's host UID/GID so private run files remain operator-owned. The application image makes `/app` readable and directories traversable even when the checkout was created with a restrictive umask. If an older image reports `EACCES` on `/app/package.json` during `plan`, upgrade to the corrected image and plan with a new run ID; do not switch the operator to root or loosen private state-directory permissions.
+
 Run commands from the server's `ops/self-hosted` directory. The operator needs Python 3, the existing private `.env` and one-shot management DSN already used for upgrades. It supports the Compose-owned `wiseeff` PostgreSQL database, local MinIO endpoint `http://minio:9000`, and local Redis service; an external database or store is outside this recovery boundary. Do not copy credentials into diagnostics. By default, fresh backups are stored under `/var/backups/wiseeff/upgrades/seed-rebuild`, inside the directory prepared by the normal upgrade setup.
 
 Choose an active persisted user in the target organization with parameter-file administration (`admin:access`), parameter editing permission on all three projects, and `catalog:author`. Publication must be reviewed by an authorized user distinct from the candidate author when the native high-risk policy requires it; the existing organization-admin exception remains unchanged. Keep `lowRiskSingleActorPublish=false`. Missing permissions or policy incompatibility are blockers to resolve explicitly through the existing [publication operations](catalog-publication.md), never automatic grants by this operator.

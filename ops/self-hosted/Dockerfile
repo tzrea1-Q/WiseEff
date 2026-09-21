@@ -97,8 +97,10 @@ RUN if [ "${WISEEFF_BUILD_TLS_POLICY}" = "insecure" ]; then \
   && rm -rf /tmp/dtc-wheels
 RUN dtc --version && env -i PATH="$PATH" fdtoverlay --version && dt-validate --version \
   && echo "Pinned toolchain:" && cat /etc/wiseeff-dts-toolchain-versions.json
-COPY --from=deps /app/node_modules ./node_modules
 COPY . .
+# COPY preserves restrictive checkout modes; maintenance runs as the host UID.
+RUN chmod -R a+rX /app
+COPY --from=deps /app/node_modules ./node_modules
 RUN NODE_OPTIONS='--max-old-space-size=2048' npx tsc -b && NODE_OPTIONS='--max-old-space-size=2048' npx vite build
 
 CMD ["npx", "tsx", "server/index.ts"]
