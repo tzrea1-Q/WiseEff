@@ -310,7 +310,9 @@ describe("M5.12 acceptance CI configuration", () => {
     const sources = readAcceptanceEnvironmentSources();
 
     expect(findForbiddenAcceptanceDotenvImports(sources)).toEqual([]);
-    expect(findAcceptanceEnvironmentHelperLoads(sources)).toHaveLength(37);
+    const helperLoads = findAcceptanceEnvironmentHelperLoads(sources);
+    expect(helperLoads).toHaveLength(38);
+    expect(helperLoads).toContain("e2e/acceptance/canonical-value-workflow.acceptance.spec.ts");
   });
 
   it("routes both Playwright acceptance configs through the same owned-runtime-aware helper", () => {
