@@ -866,6 +866,7 @@ export const catalogBindingDraftDtoSchema = catalogObject({
   definitionId: z.string(),
   effectiveRevisionId: z.string(),
   currentValueId: z.string().nullable(),
+  action: closedEnum(["set", "delete"]),
   targetValue: z.string(),
   sourceFormat: closedEnum(["dts", "json"]),
   sourceTarget: catalogObject({ format: z.literal("json"),sourceText: z.string() }).optional(),
@@ -877,6 +878,10 @@ export const catalogBindingDraftDtoSchema = catalogObject({
   // The tray orders and labels drafts by recency, so the timestamp has to be part
   // of the list contract rather than inferred from request order.
   updatedAt: z.string()
+}).superRefine((draft, context) => {
+  if (draft.action === "delete" && (draft.targetValue !== "" || draft.sourceTarget !== undefined)) {
+    context.addIssue({ code: z.ZodIssueCode.custom, message: "A property deletion has no replacement target." });
+  }
 });
 
 export const catalogBindingChangeHistoryEntryDtoSchema = catalogObject({
@@ -887,6 +892,7 @@ export const catalogBindingChangeHistoryEntryDtoSchema = catalogObject({
   newDefinitionRevisionId: z.string().nullable(),
   oldCurrentValueId: z.string().nullable(),
   newCurrentValueId: z.string().nullable(),
+  valueState: closedEnum(["present", "deleted"]).nullable(),
   reason: z.string(),
   successAuditRef: z.string(),
   catalogReleaseId: z.string(),
@@ -904,24 +910,67 @@ export const catalogBindingExportFileSchema = catalogObject({
   content: z.string()
 });
 
+const sourceProofDigestSchema = z.string().regex(/^sha256:[a-f0-9]{64}$/);
+const sourceDeleteProofSchema = z.union([
+  catalogObject({
+    kind: z.literal("dts-delete-v1"), scannerVersion: z.literal("dts-cst-v1"),
+    nodeOccurrenceId: z.string().min(1), propertyName: z.string().min(1),
+    beforeValueDigest: sourceProofDigestSchema, beforeSourceDigest: sourceProofDigestSchema,
+    afterSourceDigest: sourceProofDigestSchema,
+  }),
+  catalogObject({
+    kind: z.literal("json-delete-v1"), scannerVersion: z.literal("json-span-v1"),
+    rootPointer: z.string(), pointer: z.string(), parentPointer: z.string(), memberKey: z.string(),
+    beforeValueDigest: sourceProofDigestSchema, beforeSourceDigest: sourceProofDigestSchema,
+    afterSourceDigest: sourceProofDigestSchema,
+  }),
+]);
+
 export const canonicalSourceManifestSchema = catalogObject({
   organizationId: z.string(), projectId: z.string(), bindingId: z.string(), definitionId: z.string(),
   projectValueId: z.string(), sourcePinId: z.string(), sourceOccurrenceId: z.string(),
   configSetId: z.string(), configRevisionId: z.string(), fileId: z.string(), fileVersionId: z.string(),
   format: closedEnum(["dts", "json"]),
+  valueState: closedEnum(["present", "deleted"]),
+  baseSourcePinId: z.string().min(1).nullable(), deleteRequestId: z.string().min(1).nullable(),
+  deleteProof: sourceDeleteProofSchema.nullable(),
   logicalNodeId: z.string().nullable(), configurationInstanceId: z.string().nullable(),
   configurationSchemaSubjectId: z.string().nullable(), rootPointer: z.string().nullable(),
   entryFile: z.string().nullable(), includeSearchPaths: z.array(z.string()), overlayOrder: z.array(z.string()),
   locator: z.union([
     catalogObject({ kind: z.literal("json-pointer"), pointer: z.string() }),
     catalogObject({ kind: z.literal("dts-property"), propertyOccurrenceId: z.string(), nodeOccurrenceId: z.string(),
-      fileVersionId: z.string(), propertyName: z.string() })
+      fileVersionId: z.string(), propertyName: z.string() }),
+    catalogObject({ kind: z.literal("dts-delete"), nodeOccurrenceId: z.string(), fileVersionId: z.string(), propertyName: z.string() }),
+    catalogObject({ kind: z.literal("json-delete"), rootPointer: z.string(), pointer: z.string(),
+      parentPointer: z.string(), memberKey: z.string(), fileVersionId: z.string() }),
   ]),
   members: z.array(catalogObject({
     memberId: z.string(), fileId: z.string(), fileVersionId: z.string(), sourceName: z.string().min(1),
     format: closedEnum(["dts", "json"]), role: z.string(), sortOrder: z.number().int(),
     checksum: z.string(), sizeBytes: z.number().int().nonnegative()
   }))
+}).superRefine((manifest, context) => {
+  const deleted = manifest.valueState === "deleted";
+  const expectedKind = deleted ? `${manifest.format}-delete` : manifest.format === "dts" ? "dts-property" : "json-pointer";
+  if (manifest.locator.kind !== expectedKind || (deleted
+    ? !manifest.baseSourcePinId || !manifest.deleteRequestId || manifest.deleteProof?.kind !== `${manifest.format}-delete-v1`
+    : manifest.baseSourcePinId !== null || manifest.deleteRequestId !== null || manifest.deleteProof !== null)) {
+    context.addIssue({ code: z.ZodIssueCode.custom, message: "Source value state must match its exact pin and deletion proof." });
+  }
+  const locator = manifest.locator;
+  const proof = manifest.deleteProof;
+  if (locator.kind === "dts-delete" && proof?.kind === "dts-delete-v1"
+    && (locator.fileVersionId !== manifest.fileVersionId || locator.nodeOccurrenceId !== proof.nodeOccurrenceId
+      || locator.propertyName !== proof.propertyName)) {
+    context.addIssue({ code: z.ZodIssueCode.custom, message: "DTS deletion proof must match its source locator." });
+  }
+  if (locator.kind === "json-delete" && proof?.kind === "json-delete-v1"
+    && (locator.fileVersionId !== manifest.fileVersionId || locator.rootPointer !== manifest.rootPointer
+      || locator.rootPointer !== proof.rootPointer || locator.pointer !== proof.pointer
+      || locator.parentPointer !== proof.parentPointer || locator.memberKey !== proof.memberKey)) {
+    context.addIssue({ code: z.ZodIssueCode.custom, message: "JSON deletion proof must match its source locator." });
+  }
 });
 
 export const catalogBindingExportDtoSchema = catalogObject({
@@ -932,10 +981,15 @@ export const catalogBindingExportDtoSchema = catalogObject({
   catalogReleaseId: z.string(),
   configRevisionId: z.string(),
   currentValueId: z.string(),
+  valueState: closedEnum(["present", "deleted"]),
   configSetId: z.string(),
   sourceRef: z.string(),
   files: z.array(catalogBindingExportFileSchema),
   manifest: canonicalSourceManifestSchema
+}).superRefine((item, context) => {
+  if (item.valueState !== item.manifest.valueState) {
+    context.addIssue({ code: z.ZodIssueCode.custom, message: "Export state must match its source manifest." });
+  }
 });
 
 export const catalogBindingExportResponseSchema = itemEnvelopeSchema(
@@ -954,6 +1008,7 @@ export const catalogValueChangeRequestDtoSchema = catalogObject({
   definitionId: z.string(),
   effectiveRevisionId: z.string(),
   status: closedEnum(["pending", "approved", "rejected", "withdrawn"]),
+  action: closedEnum(["set", "delete"]),
   targetValue: z.string(),
   sourceFormat: closedEnum(["dts", "json"]),
   sourceTarget: catalogObject({ format: z.literal("json"),sourceText: z.string() }).optional(),
@@ -969,6 +1024,10 @@ export const catalogValueChangeRequestDtoSchema = catalogObject({
   appliedSourceResult: z.record(z.string(), z.unknown()).nullable(),
   createdAt: z.string(),
   updatedAt: z.string()
+}).superRefine((request, context) => {
+  if (request.action === "delete" && (request.targetValue !== "" || request.sourceTarget !== undefined)) {
+    context.addIssue({ code: z.ZodIssueCode.custom, message: "A property deletion has no replacement target." });
+  }
 });
 
 export const catalogValueChangeRequestResponseSchema = itemEnvelopeSchema(

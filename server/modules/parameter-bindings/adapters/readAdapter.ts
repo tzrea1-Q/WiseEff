@@ -63,6 +63,9 @@ export const readProtectedReference = async (
   if (current.definitionRevisionId !== binding.value.effectiveRevisionId) {
     return blocked({ kind: "typed-block", reason: "revision-disagreement" });
   }
+  if (current.valueState === "deleted") {
+    return blocked({ kind: "typed-block", reason: "missing-current-value" });
+  }
 
   return { ok: true, value: toProtectedReferenceDto(binding.value, current) };
 };

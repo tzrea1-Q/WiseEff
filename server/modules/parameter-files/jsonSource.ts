@@ -3,6 +3,27 @@ import { ApiError } from "../../shared/http/errors";
 
 export const MAX_PARAMETER_SOURCE_BYTES = 2 * 1024 * 1024;
 
+export type JsonSourceDeleteProof = {
+  kind: "json-delete-v1";
+  rootPointer: string;
+  pointer: string;
+  parentPointer: string;
+  memberKey: string;
+  scannerVersion: "json-span-v1";
+};
+
+export type JsonSourceDeletion = {
+  bytes: Buffer;
+  proof: JsonSourceDeleteProof;
+};
+
+type JsonObjectMemberSpan = {
+  start: number;
+  end: number;
+  parentPointer: string;
+  previousCommaStart: number | null;
+};
+
 function pointerToken(key: string): string {
   return key.replace(/~/g, "~0").replace(/\//g, "~1");
 }
@@ -37,6 +58,8 @@ function readJsonSource(input: string | Buffer) {
   let entries = 0;
   let locatorBytes = 0;
   const spans = new Map<string, { start: number; end: number }>();
+  const objectMembers = new Map<string, JsonObjectMemberSpan>();
+  const objectPointers = new Set<string>();
   const countEntry = () => {
     if (++entries > 100_000) throw new SyntaxError("JSON source exceeds the entry budget.");
   };
@@ -73,11 +96,14 @@ function readJsonSource(input: string | Buffer) {
       if (depth >= 64) throw new SyntaxError("JSON source exceeds the nesting limit.");
       offset += 1;
       const end = char === "{" ? "}" : "]";
+      if (char === "{") objectPointers.add(pointer);
       const keys = new Set<string>();
       whitespace();
       if (source[offset] !== end) {
         let index = 0;
+        let previousCommaStart: number | null = null;
         for (;;) {
+          const memberStart = offset;
           let key = String(index++);
           if (char === "{") {
             countEntry();
@@ -88,9 +114,19 @@ function readJsonSource(input: string | Buffer) {
             whitespace();
             if (source[offset++] !== ":") throw new SyntaxError("Expected JSON colon.");
           }
-          value(depth + 1, `${pointer}/${pointerToken(key)}`);
+          const memberPointer = `${pointer}/${pointerToken(key)}`;
+          value(depth + 1, memberPointer);
+          if (char === "{") {
+            objectMembers.set(memberPointer, {
+              start: memberStart,
+              end: offset,
+              parentPointer: pointer,
+              previousCommaStart
+            });
+          }
           whitespace();
           if (source[offset] !== ",") break;
+          previousCommaStart = offset;
           offset += 1;
           whitespace();
         }
@@ -112,7 +148,7 @@ function readJsonSource(input: string | Buffer) {
   };
   value();
   // Native parsing owns final grammar validation, including whitespace and trailing input.
-  return { value: JSON.parse(source) as unknown, source, spans };
+  return { value: JSON.parse(source) as unknown, source, spans, objectMembers, objectPointers };
 }
 
 export function parseJsonSource(input: string | Buffer): unknown {
@@ -131,6 +167,79 @@ function locateJsonSourceValue(input: string | Buffer, pointer: string, rootPoin
     throw new ApiError("CONFLICT", "JSON source pointer does not exist.");
   }
   return { base, span };
+}
+
+function canonicalPointer(tokens: readonly string[]): string {
+  return tokens.length === 0 ? "" : `/${tokens.map(pointerToken).join("/")}`;
+}
+
+/** Reprove a retained deleted anchor from exact bytes; null is still present. */
+export function proveJsonSourceMemberAbsent(
+  input: string | Buffer,
+  pointer: string,
+  rootPointer = "",
+): JsonSourceDeleteProof {
+  const tokens = pointerTokens(pointer);
+  const rootTokens = pointerTokens(rootPointer);
+  if (tokens.length <= rootTokens.length || rootTokens.some((token, index) => token !== tokens[index])) {
+    throw new ApiError("CONFLICT", "JSON deletion requires an object member below its configuration root.");
+  }
+  const source = readJsonSource(input);
+  const normalizedPointer = canonicalPointer(tokens);
+  const normalizedRoot = canonicalPointer(rootTokens);
+  const parentPointer = canonicalPointer(tokens.slice(0, -1));
+  if (!source.spans.has(normalizedRoot) || !source.objectPointers.has(parentPointer)
+    || source.spans.has(normalizedPointer)) {
+    throw new ApiError("CONFLICT", "JSON source does not prove the deleted member absent within its original parent.");
+  }
+  return {
+    kind: "json-delete-v1", rootPointer: normalizedRoot, pointer: normalizedPointer,
+    parentPointer, memberKey: tokens[tokens.length - 1]!, scannerVersion: "json-span-v1",
+  };
+}
+
+/**
+ * Remove exactly one object member while preserving every byte outside that
+ * member and its required comma. The returned proof is scanner-owned: the
+ * source is reparsed and the target is required to be absent before return.
+ */
+export function deleteJsonSourceMember(
+  input: string | Buffer,
+  pointer: string,
+  rootPointer = "",
+): JsonSourceDeletion {
+  const pointerParts = pointerTokens(pointer);
+  const rootParts = pointerTokens(rootPointer);
+  if (pointerParts.length <= rootParts.length || rootParts.some((token, index) => token !== pointerParts[index])) {
+    throw new ApiError("CONFLICT", "JSON deletion requires an object member below its configuration root.");
+  }
+
+  const base = readJsonSource(input);
+  const normalizedPointer = canonicalPointer(pointerParts);
+  const normalizedRootPointer = canonicalPointer(rootParts);
+  const member = base.objectMembers.get(normalizedPointer);
+  if (!member) {
+    throw new ApiError("CONFLICT", "JSON deletion requires an existing object member.");
+  }
+  if (!base.objectPointers.has(member.parentPointer) || !base.spans.has(normalizedRootPointer)) {
+    throw new ApiError("CONFLICT", "JSON deletion requires an object member within its configuration instance.");
+  }
+
+  let nextComma = member.end;
+  while (/\s/u.test(base.source[nextComma] ?? "") && nextComma < base.source.length) nextComma += 1;
+  let start = member.start;
+  let end = member.end;
+  if (base.source[nextComma] === ",") {
+    end = nextComma + 1;
+  } else if (member.previousCommaStart !== null) {
+    start = member.previousCommaStart;
+  }
+
+  const source = base.source.slice(0, start) + base.source.slice(end);
+  return {
+    bytes: Buffer.from(source, "utf8"),
+    proof: proveJsonSourceMemberAbsent(source, normalizedPointer, normalizedRootPointer),
+  };
 }
 
 export function readJsonSourceValue(input: string | Buffer, pointer: string, rootPointer = ""): unknown {

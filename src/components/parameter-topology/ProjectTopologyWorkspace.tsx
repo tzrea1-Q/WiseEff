@@ -12,6 +12,7 @@ import { ModalDialog } from "@/components/common/ModalDialog";
 import { SearchField } from "@/components/common/SearchField";
 import {
   BindingDetailPanel,
+  type BindingEditInput,
   type BindingEditValidation
 } from "./BindingDetailPanel";
 import { BindingPropertyTable } from "./BindingPropertyTable";
@@ -39,9 +40,7 @@ export type ProjectTopologyWorkspaceProps = {
    */
   publishActionLabel?: "校验" | "发布";
   layoutMode?: TopologyLayoutMode;
-  onValidateEdit?: (
-    input: { bindingId: string; rawValue: string; reason: string }
-  ) => BindingEditValidation | Promise<BindingEditValidation>;
+  onValidateEdit?: (input: BindingEditInput) => BindingEditValidation | Promise<BindingEditValidation>;
   onPublish?: () => void;
 };
 
@@ -189,11 +188,7 @@ export function ProjectTopologyWorkspace({
     }
   };
 
-  const handleValidateEdit = async (input: {
-    bindingId: string;
-    rawValue: string;
-    reason: string;
-  }): Promise<BindingEditValidation> => {
+  const handleValidateEdit = async (input: BindingEditInput): Promise<BindingEditValidation> => {
     const result = (await onValidateEdit?.(input)) ?? { valid: true, diagnostics: [] };
     setEditBlocked(!result.valid);
     return result;

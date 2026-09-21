@@ -2,6 +2,8 @@
 
 > English: [English](../../../../exec-plans/active/849-inventory/t14-final-legacy-cutover-acceptance.md)
 
+**2026-09-21 本地候选更新：**[本地闭环回执](local-closure-20260921.md)记录了移除空 Catalog GET 回退及聚焦真实 PG／API／浏览器证据。候选尚未合入；topology Gate0 兼容和边界 checker 闭环仍未完成。下列状态和数量属于此前已合入回执，不代表当前候选验收。
+
 状态：**项目已有 Catalog 绑定行时 GET 只出 canonical，不再混 leftover。无 Catalog 行（未发布或已发布但该项目 0 行）仍回落 topology。scanner leftover 55，T1.4 不勾。** overlay 与 governance **详情**仍 2xx。未 SEALED。
 
 设计 Spec 再评审 `01a0b0a8-0492-434d-6fbb-ac1520d36674` PASS with P2。B2 Spec 再评审 `9e09e874-cae5-4e98-af76-c5f6cd638731` PASS with P2（已折入）。

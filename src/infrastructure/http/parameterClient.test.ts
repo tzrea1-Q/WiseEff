@@ -62,6 +62,7 @@ const catalogDraftDto = {
   effectiveRevisionId: "bpr-1",
   currentValueId: "pval-1",
   targetValue: "3200",
+  action: "set" as const,
   sourceFormat: "dts" as const,
   baseRevisionId: "rev-1",
   sourcePinId: null,
@@ -228,6 +229,20 @@ describe("createHttpParameterRepository", () => {
         currentValueId: "pval-1"
       }
     ]);
+  });
+
+  it("preserves a canonical delete action when hydrating the workbench draft", async () => {
+    const fetchMock = fetchQueue({ items: [{
+      ...catalogDraftDto,
+      action: "delete" as const,
+      targetValue: ""
+    }] });
+    const repository = createHttpParameterRepository(createApiClient({ baseUrl: "", fetchImpl: fetchMock }));
+
+    await expect(repository.listDrafts("aurora")).resolves.toMatchObject([{
+      action: "delete",
+      targetValue: ""
+    }]);
   });
 
   it("unwraps list and single item response envelopes", async () => {

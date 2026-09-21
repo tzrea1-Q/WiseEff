@@ -36,6 +36,7 @@ export type CanonicalValueDraftRow = {
   candidate_diff_digest: string | null;
   candidate_member_manifest: unknown[] | null;
   candidate_binding_manifest: unknown[] | null;
+  source_format: "dts" | "json";
 };
 
 /** The exact canonical pins a draft must be created against. */
@@ -49,6 +50,7 @@ export type CanonicalBindingPins = {
   currentValueId: string;
   configRevisionId: string;
   sourceRef: string;
+  sourceFormat: "dts" | "json";
 };
 
 export async function loadCanonicalBindingPins(
@@ -65,6 +67,7 @@ export async function loadCanonicalBindingPins(
     current_value_id: string;
     config_revision_id: string | null;
     source_ref: string | null;
+    source_format: "dts" | "json" | null;
   }>(
     `
     select b.id as binding_id,
@@ -75,11 +78,15 @@ export async function loadCanonicalBindingPins(
            b.catalog_release_id,
            b.current_value_id,
            value.config_revision_id,
-           value.source_ref
+           value.source_ref,
+           pin.format as source_format
       from parameter_catalog.project_parameter_bindings b
       left join parameter_catalog.project_parameter_values value
         on value.binding_id = b.id
        and value.id = b.current_value_id
+      left join parameter_catalog.project_value_source_pins pin
+        on pin.project_value_id = value.id
+       and pin.binding_id = b.id
      where b.organization_id = $1
        and b.project_id = $2
        and b.id = $3
@@ -88,7 +95,7 @@ export async function loadCanonicalBindingPins(
     [input.organizationId, input.projectId, input.bindingId]
   );
   const row = result.rows[0];
-  if (!row || !row.config_revision_id || !row.source_ref) return null;
+  if (!row || !row.config_revision_id || !row.source_ref || !row.source_format) return null;
   return {
     bindingId: row.binding_id,
     projectId: row.project_id,
@@ -98,7 +105,8 @@ export async function loadCanonicalBindingPins(
     catalogReleaseId: row.catalog_release_id,
     currentValueId: row.current_value_id,
     configRevisionId: row.config_revision_id,
-    sourceRef: row.source_ref
+    sourceRef: row.source_ref,
+    sourceFormat: row.source_format
   };
 }
 
@@ -121,7 +129,7 @@ export async function upsertCanonicalValueDraft(
     candidateBindingManifest: unknown[];
   }
 ): Promise<CanonicalValueDraftRow> {
-  const result = await db.query<CanonicalValueDraftRow>(
+  const result = await db.query<{ id: string }>(
     `
     insert into project_parameter_value_drafts (
       id, organization_id, project_id, binding_id, definition_id,
@@ -181,7 +189,13 @@ export async function upsertCanonicalValueDraft(
     // `where` on the conflict update rejected a foreign-organization row.
     throw new Error("Canonical value draft upsert matched a row outside the organization.");
   }
-  return row;
+  const hydrated = await db.query<CanonicalValueDraftRow>(
+    `select draft.*, pin.format as source_format
+       from project_parameter_value_drafts draft
+       join parameter_catalog.project_value_source_pins pin on pin.id=draft.source_pin_id
+        and pin.organization_id=draft.organization_id and pin.project_id=draft.project_id and pin.binding_id=draft.binding_id
+      where draft.id=$1`, [row.id]);
+  return hydrated.rows[0]!;
 }
 
 export async function listCanonicalValueDrafts(
@@ -190,12 +204,21 @@ export async function listCanonicalValueDrafts(
 ): Promise<CanonicalValueDraftRow[]> {
   const result = await db.query<CanonicalValueDraftRow>(
     `
-    select *
-      from project_parameter_value_drafts
-     where organization_id = $1
-       and project_id = $2
-       and user_id = $3
-     order by updated_at desc, id
+    select draft.*, pin.format as source_format
+      from project_parameter_value_drafts draft
+      join parameter_catalog.project_value_source_pins pin on pin.id=draft.source_pin_id
+       and pin.organization_id=draft.organization_id and pin.project_id=draft.project_id and pin.binding_id=draft.binding_id
+     where draft.organization_id = $1
+       and draft.project_id = $2
+       and draft.user_id = $3
+       and not exists (
+         select 1 from project_parameter_value_change_requests request
+          where request.organization_id = draft.organization_id
+            and request.project_id = draft.project_id
+            and request.draft_id = draft.id
+            and request.status = 'pending'
+       )
+     order by draft.updated_at desc, draft.id
     `,
     [input.organizationId, input.projectId, input.userId]
   );
@@ -208,12 +231,14 @@ export async function getCanonicalValueDraft(
 ): Promise<CanonicalValueDraftRow | null> {
   const result = await db.query<CanonicalValueDraftRow>(
     `
-    select *
-      from project_parameter_value_drafts
-     where organization_id = $1
-       and project_id = $2
-       and user_id = $3
-       and id = $4
+    select draft.*, pin.format as source_format
+      from project_parameter_value_drafts draft
+      join parameter_catalog.project_value_source_pins pin on pin.id=draft.source_pin_id
+       and pin.organization_id=draft.organization_id and pin.project_id=draft.project_id and pin.binding_id=draft.binding_id
+     where draft.organization_id = $1
+       and draft.project_id = $2
+       and draft.user_id = $3
+       and draft.id = $4
      limit 1
     `,
     [input.organizationId, input.projectId, input.userId, input.draftId]
@@ -227,12 +252,14 @@ export async function getCanonicalValueDraftForUpdate(
 ): Promise<CanonicalValueDraftRow | null> {
   const result = await db.query<CanonicalValueDraftRow>(
     `
-    select *
-      from project_parameter_value_drafts
-     where organization_id = $1
-       and project_id = $2
-       and user_id = $3
-       and id = $4
+    select draft.*, pin.format as source_format
+      from project_parameter_value_drafts draft
+      join parameter_catalog.project_value_source_pins pin on pin.id=draft.source_pin_id
+       and pin.organization_id=draft.organization_id and pin.project_id=draft.project_id and pin.binding_id=draft.binding_id
+     where draft.organization_id = $1
+       and draft.project_id = $2
+       and draft.user_id = $3
+       and draft.id = $4
      for update
     `,
     [input.organizationId, input.projectId, input.userId, input.draftId]

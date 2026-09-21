@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { patchJsonSource, readJsonSourceValue } from "./jsonSource";
+import { deleteJsonSourceMember, patchJsonSource, proveJsonSourceMemberAbsent, readJsonSourceValue } from "./jsonSource";
 import { patchJsonValue } from "./writebackService";
 
 describe("exact JSON source writeback", () => {
@@ -54,5 +54,74 @@ describe("exact JSON source writeback", () => {
   it("bounds the total locator inventory for large repeated prefixes", () => {
     const source = `{"${"x".repeat(250_000)}":[${Array(50).fill("1").join(",")}]}`;
     expect(() => patchJsonSource(source, "", "{}" )).toThrow(/locator.*budget/i);
+  });
+
+  it("deletes first, middle, last, and only object members while preserving other bytes", () => {
+    const source = '{"first":1,  "middle":null, "last":{"keep":true}}\n';
+    expect(deleteJsonSourceMember(source, "/first").bytes.toString()).toBe(
+      '{  "middle":null, "last":{"keep":true}}\n'
+    );
+    expect(deleteJsonSourceMember(source, "/middle").bytes.toString()).toBe(
+      '{"first":1,   "last":{"keep":true}}\n'
+    );
+    expect(deleteJsonSourceMember(source, "/last").bytes.toString()).toBe(
+      '{"first":1,  "middle":null}\n'
+    );
+    expect(deleteJsonSourceMember('{"only":1}', "/only").bytes.toString()).toBe("{}");
+  });
+
+  it("returns an explicit absence proof for escaped, empty, prototype-like, and array-object members", () => {
+    const source = '{"a/b":{"": [{"x~y":null,"__proto__":1,"keep":2}]}}';
+    const result = deleteJsonSourceMember(source, "/a~1b//0/x~0y", "/a~1b");
+    expect(result.bytes.toString()).toBe('{"a/b":{"": [{"__proto__":1,"keep":2}]}}');
+    expect(result.proof).toEqual({
+      kind: "json-delete-v1",
+      rootPointer: "/a~1b",
+      pointer: "/a~1b//0/x~0y",
+      parentPointer: "/a~1b//0",
+      memberKey: "x~y",
+      scannerVersion: "json-span-v1"
+    });
+    expect(() => readJsonSourceValue(result.bytes, result.proof.pointer, result.proof.rootPointer)).toThrow();
+
+    const prototype = deleteJsonSourceMember('{"__proto__":{"safe":false},"keep":true}', "/__proto__/safe");
+    expect(prototype.bytes.toString()).toBe('{"__proto__":{},"keep":true}');
+
+    const arrayRoot = deleteJsonSourceMember('[{"remove":null,"keep":true}]', "/0/remove", "");
+    expect(arrayRoot.bytes.toString()).toBe('[{"keep":true}]');
+  });
+
+  it("refuses roots, array elements, missing members, and targets outside the registered root", () => {
+    const source = '{"root":{"items":[{"value":1}],"keep":2},"other":3}';
+    for (const pointer of ["", "/root", "/root/items/0", "/root/missing", "/root/items/1/value"]) {
+      expect(() => deleteJsonSourceMember(source, pointer, "/root"), pointer).toThrow();
+    }
+    expect(() => deleteJsonSourceMember(source, "/other", "/root"))
+      .toThrowError(expect.objectContaining({ code: "CONFLICT" }) as unknown as Error);
+  });
+
+  it("retains bounded parser refusal for invalid UTF-8 and locator budgets", () => {
+    expect(() => deleteJsonSourceMember(Buffer.from([0x7b, 0xff, 0x7d]), "/x"))
+      .toThrow();
+    const source = `{"${"x".repeat(250_000)}":[${Array(50).fill("1").join(",")}]}`;
+    expect(() => deleteJsonSourceMember(source, "/missing"))
+      .toThrow(/locator.*budget/i);
+  });
+
+  it("reproves a deleted member without treating null or a missing parent as absence", () => {
+    expect(proveJsonSourceMemberAbsent('{"a/b":{"keep":true}}', "/a~1b/", "/a~1b"))
+      .toMatchObject({ kind: "json-delete-v1", parentPointer: "/a~1b", memberKey: "" });
+    expect(proveJsonSourceMemberAbsent('[{"keep":true}]', "/0/removed", "/0"))
+      .toMatchObject({ parentPointer: "/0", memberKey: "removed" });
+    for (const [source, pointer, root] of [
+      ['{"root":{"removed":null}}', "/root/removed", "/root"],
+      ['{"root":{}}', "/root", "/root"],
+      ['{"root":{}}', "/root/parent/removed", "/root"],
+      ['{"root":[]}', "/root/0", "/root"],
+      ['{"root":{}}', "/other", "/root"],
+      ['{"root":{}}', "/root/~wrong", "/root"],
+    ]) {
+      expect(() => proveJsonSourceMemberAbsent(source!, pointer!, root!), pointer).toThrow();
+    }
   });
 });

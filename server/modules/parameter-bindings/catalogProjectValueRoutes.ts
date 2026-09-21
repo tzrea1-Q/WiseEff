@@ -107,7 +107,8 @@ function topologyDraftToValueDraftDto(draft: ParameterDraftDto): CanonicalValueD
     sourcePinId: null,
     candidateId: null,
     reason: draft.reason,
-    updatedAt: draft.updatedAt
+    updatedAt: draft.updatedAt,
+    action: "set"
   };
 }
 
@@ -132,8 +133,8 @@ const canonicalDraftBodySchema = z
     if (action === "set" && ((value.targetValue === undefined) === (value.sourceTarget === undefined))) {
       ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Exactly one typed target is required when action is set.", path: ["targetValue"] });
     }
-    if (action === "delete") {
-      ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Canonical source drafts support set only.", path: ["action"] });
+    if (action === "delete" && (value.targetValue !== undefined || value.sourceTarget !== undefined)) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: "A property deletion does not accept a replacement target.", path: ["action"] });
     }
   });
 
@@ -227,19 +228,10 @@ export function registerCatalogProjectValueConsumerRoutes(
         projectId: params.projectId
       });
     }
-    let catalogRows: Awaited<ReturnType<typeof listCatalogBindingRowsForProject>> = [];
-    let catalogError: ApiError | null = null;
-    try {
-      catalogRows = await listCatalogBindingRowsForProject(db, auth, {
-        projectId: params.projectId,
-        revisionId: query.revisionId
-      });
-    } catch (error) {
-      if (!(error instanceof ApiError) || (error.code !== "FORBIDDEN" && error.code !== "NOT_FOUND")) {
-        throw error;
-      }
-      catalogError = error;
-    }
+    const catalogRows = await listCatalogBindingRowsForProject(db, auth, {
+      projectId: params.projectId,
+      revisionId: query.revisionId
+    });
     const catalogItems = catalogRows.map((row) =>
       projectBindingDtoSchema.parse({
         id: row.id,
@@ -264,19 +256,7 @@ export function registerCatalogProjectValueConsumerRoutes(
         documentation: row.documentation
       })
     );
-    if (catalogItems.length > 0) {
-      return { status: 200, body: { items: catalogItems } };
-    }
-    const pool = getRootPostgresPool(db);
-    const snapshot = pool ? await loadPublishedCatalog(pool) : null;
-    if (snapshot && catalogError?.code === "FORBIDDEN") {
-      throw catalogError;
-    }
-    const original = await listProjectBindings(db, auth, {
-      projectId: params.projectId,
-      revisionId: query.revisionId
-    });
-    return { status: 200, body: { items: original.items } };
+    return { status: 200, body: { items: catalogItems } };
   });
 
   /**
@@ -501,7 +481,7 @@ export function registerCatalogProjectValueConsumerRoutes(
       const draft = await createCanonicalValueDraft(tx, auth, {
         projectId: params.projectId,
         bindingId: params.bindingId,
-        action: "set",
+        action: body.action ?? "set",
         targetValue,
         sourceTarget: body.sourceTarget,
         reason: body.reason,
@@ -541,7 +521,7 @@ export function registerCatalogProjectValueConsumerRoutes(
           workingCandidateRevisionId: body.baseRevisionId,
           rebasedDraftIds: [] as string[],
           rawText: draft.targetValue,
-          action: "set" as const,
+          action: (body.action ?? "set") as "set" | "delete",
           parameterSpecId: draft.definitionId,
           projectParameterBindingId: draft.bindingId,
           writeTarget: { role: "canonical-project-value-draft", propertyKey: catalogBinding.definition_id },
@@ -601,13 +581,20 @@ export function registerCatalogProjectValueConsumerRoutes(
         const item = await removeCanonicalValueDraft(db, auth, {
           projectId: params.projectId,
           draftId: params.draftId
+        }, {
+          invocation: createUserInvocation(auth),
+          requestId: request.requestId
         });
         return { status: 200, body: { item } };
       } catch (error) {
         if (!(error instanceof ApiError) || error.code !== "NOT_FOUND") {
           throw error;
         }
-        await deleteTopologyDraft(db, auth, params.draftId, { invocation: createUserInvocation(auth) });
+        await deleteTopologyDraft(db, auth, params.draftId, {
+          invocation: createUserInvocation(auth),
+          projectId: params.projectId,
+          requestId: request.requestId
+        });
         return { status: 200, body: { item: { id: params.draftId } } };
       }
     }

@@ -2,7 +2,7 @@ import { createHash, randomUUID } from "node:crypto";
 import type { Queryable } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
 import type { ObjectStore } from "../logs/objectStore";
-import { MAX_PARAMETER_SOURCE_BYTES, parseJsonSource, patchJsonSource } from "./jsonSource";
+import { MAX_PARAMETER_SOURCE_BYTES, deleteJsonSourceMember, parseJsonSource, patchJsonSource, proveJsonSourceMemberAbsent } from "./jsonSource";
 import type { AuthContext } from "../auth/types";
 import { assertTrustedInvocationMatchesAuth, assertTrustedMutationInvocation, TrustedInvocationContextError, trustedDomainAttribution, type TrustedInvocationContext } from "../auth/trustedInvocation";
 import { canEditParameters } from "../parameter-kernel/policy";
@@ -10,12 +10,13 @@ import { asAuditTx, writeTrustedAuditEventInTx } from "../audit/auditedWrite";
 import { assertTrustedRefusalAuditSink, type TrustedRefusalAuditSink } from "../audit/trustedRefusalSink";
 import { assertTrustedSensitiveNodeWriteAllowed } from "../parameter-kernel/sensitiveNode";
 import { parseDts, parseDtsValue, renderDtsValue, type DtsDocument, type DtsPropertyCst } from "../dts";
+import { resolveDtsConfigSet } from "../dts/configSetResolver";
 import { ensureOverlayProperty } from "../parameter-topology/overlayWriteback";
 import { insertParameterFileCandidate } from "./candidateRepository";
 import { buildDtsParsedIndex, buildJsonParsedIndex } from "./parseIndex";
 import { serializeContract, type ContractJsonValue } from "../parameter-catalog-contract/index";
 import { loadExactSourceRevisionForProof, lockExactSourceRevisionsForProof, rethrowSourceTransactionError } from "./sourceVersion";
-import { discoverCurrentSourceRevisionPins, loadSourceBindingCohort, loadOwnedProjectValueSourcePin, isCurrentGovernedSourceValue,
+import { discoverCurrentSourceRevisionPins, discoverDeletedSourceRevisionPins, loadDeletedSourceAnchors, loadSourceBindingCohort, loadOwnedProjectValueSourcePin, isCurrentGovernedSourceValue,
   type CanonicalValueSourcePin, type CanonicalSourceBindingPin } from "../parameter-bindings/values";
 export type { CanonicalSourceBindingPin } from "../parameter-bindings/values";
 
@@ -30,14 +31,16 @@ export type CanonicalSourceManifest = CanonicalValueSourcePin & {
 export async function lockCanonicalSourceCohort(db: Queryable, source: CanonicalValueSourcePin) {
   const scope = { organizationId: source.organizationId,projectId: source.projectId,configSetId: source.configSetId };
   const before = await discoverCurrentSourceRevisionPins(db,scope);
+  const deleted = await discoverDeletedSourceRevisionPins(db,scope);
   if (new Set(before.map((pin) => pin.configRevisionId)).size > 1) {
     throw new ApiError("CONFLICT", "Source cohort spans different historical revisions.", { reason: "mixed-source-revisions" });
   }
   if (before.some((pin) => pin.configRevisionId !== source.configRevisionId)) {
     throw new ApiError("CONFLICT", "Source request base value is stale.", { reason: "stale-base-value" });
   }
-  await lockExactSourceRevisionsForProof(db,[source,...before]);
-  if (JSON.stringify(await discoverCurrentSourceRevisionPins(db,scope)) !== JSON.stringify(before)) {
+  await lockExactSourceRevisionsForProof(db,[source,...before,...deleted]);
+  if (JSON.stringify(await discoverCurrentSourceRevisionPins(db,scope)) !== JSON.stringify(before)
+    || JSON.stringify(await discoverDeletedSourceRevisionPins(db,scope)) !== JSON.stringify(deleted)) {
     throw new ApiError("CONFLICT", "Source cohort changed during lock acquisition.", { reason: "source-proof-busy" });
   }
 }
@@ -162,6 +165,48 @@ function dtsNonTargetShape(document: DtsDocument, targetIndex: number): string {
   });
 }
 
+/** Prepare-time proof for terminal deleted anchors; ingest repeats the exact effect check. */
+async function assertPreparedDeletedAnchorsRemainAbsent(
+  db: Queryable,
+  input: { manifest: CanonicalSourceManifest; files: Array<{ content: string }>; candidateFileId: string; candidateAfter: string },
+) {
+  const deleted = await loadDeletedSourceAnchors(db,input.manifest);
+  const members = input.manifest.members;
+  const resolved = deleted.some((anchor) => anchor.format === "dts") ? resolveDtsConfigSet({
+    entryFile: input.manifest.entryFile!, includeSearchPaths: input.manifest.includeSearchPaths,
+    overlayOrder: input.manifest.overlayOrder, requireExactOrigins: true,
+    files: new Map(members.flatMap((member, index) => member.format === "dts" ? [[member.sourceName, {
+      fileVersionId: member.fileVersionId,
+      content: member.fileId === input.candidateFileId ? input.candidateAfter : input.files[index]!.content,
+    }] as const] : [])),
+  }) : null;
+  if (resolved?.diagnostics.some((diagnostic) => diagnostic.severity === "error")) {
+    throw new ApiError("CONFLICT", "Deleted DTS anchors require an exactly resolved source manifest.");
+  }
+  for (const anchor of deleted) {
+    const member = members.find((entry) => entry.fileId === anchor.fileId);
+    if (!member) throw new ApiError("CONFLICT", "Deleted source anchor is outside the prepared member set.");
+    const index = members.indexOf(member);
+    const content = anchor.fileId === input.candidateFileId ? input.candidateAfter : input.files[index]!.content;
+    if (anchor.format === "json") {
+      if (anchor.locator.kind !== "json-delete" || typeof anchor.locator.pointer !== "string" || typeof anchor.locator.rootPointer !== "string") {
+        throw new ApiError("CONFLICT", "Deleted JSON anchor has no exact absence proof.");
+      }
+      proveJsonSourceMemberAbsent(content,anchor.locator.pointer,anchor.locator.rootPointer);
+      continue;
+    }
+    if (anchor.locator.kind !== "dts-delete" || typeof anchor.locator.propertyName !== "string" || !anchor.nodeLocator) {
+      throw new ApiError("CONFLICT", "Deleted DTS anchor has no exact absence proof.");
+    }
+    const node = resolved?.effective.nodesByLocator.get(anchor.nodeLocator);
+    const property = node?.properties.get(anchor.locator.propertyName);
+    const last = property?.sourceChain.at(-1);
+    if (!node || node.deleted || !property?.deleted || last?.effect !== "delete" || last.fileName !== member.sourceName) {
+      throw new ApiError("CONFLICT", "Deleted DTS anchor is not retained at its exact node and source file.");
+    }
+  }
+}
+
 export async function loadPinnedDtsProperty(db: Queryable, manifest: CanonicalSourceManifest) {
   const property = await db.query<{ start_offset: number; end_offset: number; raw_text: string; property_name: string; node_locator: string; compatible: string | null }>(
     `select property.start_offset,property.end_offset,property.raw_text,property.property_name,coalesce(nullif(node.ref_target,''),node.node_path) as node_locator,logical.compatible
@@ -232,6 +277,22 @@ export async function validatePinnedDtsSourceChange(db: Queryable, manifest: Can
   return parseDtsValue(target.name, target.rawText).value;
 }
 
+/** Reproduce the exact pinned-span removal, preserving all non-target bytes. */
+export async function validatePinnedDtsSourceDeletion(db: Queryable, manifest: CanonicalSourceManifest, beforeText: string, afterText: string) {
+  const row = await loadPinnedDtsProperty(db, manifest);
+  const before = parseDts(beforeText);
+  const properties = dtsProperties(before);
+  const targetIndex = properties.findIndex((entry) => entry.name === row.property_name && entry.span.start === row.start_offset && entry.span.end === row.end_offset);
+  if (targetIndex < 0 || properties[targetIndex]!.rawText !== row.raw_text) throw new ApiError("CONFLICT", "DTS property span is stale.");
+  const expected = ensureOverlayProperty(beforeText, {
+    propertyKey: row.property_name, rawText: "", action: "delete", targetRef: row.node_locator,
+    expectedChecksum: createHash("sha256").update(beforeText).digest("hex"),
+    occurrenceSpan: { start: row.start_offset, end: row.end_offset },
+  });
+  if (afterText !== expected) throw new ApiError("CONFLICT", "DTS deletion changed bytes outside its exact pinned property.");
+  parseDts(afterText);
+}
+
 /** Prepare only. The caller owns the audited transaction; no current pointer moves. */
 export async function preparePinnedSourceChange(
   db: Queryable,
@@ -240,6 +301,7 @@ export async function preparePinnedSourceChange(
   input: {
     projectId: string; bindingId: string; expectedValueId: string;
     target: { format: "dts" | "json"; sourceText: string };
+    action?: "set" | "delete";
     invocation: TrustedInvocationContext; requestId: string; refusalSink: TrustedRefusalAuditSink;
   },
 ) {
@@ -255,6 +317,7 @@ export async function preparePinnedSourceChange(
     });
     throw new ApiError("FORBIDDEN", "Project parameter editor authorization is required.");
   }
+  const action = input.action ?? "set";
   if (!input.requestId.trim() || Buffer.byteLength(input.target.sourceText) > MAX_PARAMETER_SOURCE_BYTES) {
     throw new ApiError("VALIDATION_FAILED", "A bounded source target and request identity are required.");
   }
@@ -289,20 +352,29 @@ export async function preparePinnedSourceChange(
     if (manifest.locator.kind !== "json-pointer" || typeof manifest.locator.pointer !== "string" || manifest.rootPointer === null) {
       throw new ApiError("CONFLICT", "JSON source locator is invalid.");
     }
-    patched = patchJsonSource(base, manifest.locator.pointer, input.target.sourceText, manifest.rootPointer);
+    patched = action === "delete"
+      ? deleteJsonSourceMember(base, manifest.locator.pointer, manifest.rootPointer).bytes
+      : patchJsonSource(base, manifest.locator.pointer, input.target.sourceText, manifest.rootPointer);
   } else {
     const row = await loadPinnedDtsProperty(db, manifest);
-    const targetValue = parseDtsValue(row.property_name, input.target.sourceText).value;
+    const targetValue = action === "set" ? parseDtsValue(row.property_name, input.target.sourceText).value : null;
     const content = ensureOverlayProperty(source.content, {
-      propertyKey: row.property_name, rawText: input.target.sourceText, action: "set", targetRef: row.node_locator,
+      propertyKey: row.property_name, rawText: input.target.sourceText, action, targetRef: row.node_locator,
       expectedChecksum: manifest.members[sourceIndex]!.checksum.replace(/^sha256:/, ""),
       occurrenceSpan: { start: row.start_offset, end: row.end_offset },
     });
-    if (renderDtsValue(await validatePinnedDtsSourceChange(db, manifest, source.content, content)) !== renderDtsValue(targetValue)) {
+    if (action === "set" && renderDtsValue(await validatePinnedDtsSourceChange(db, manifest, source.content, content)) !== renderDtsValue(targetValue!)) {
       throw new ApiError("CONFLICT", "DTS patch changed non-target semantics or failed target readback.");
     }
+    if (action === "delete") await validatePinnedDtsSourceDeletion(db, manifest, source.content, content);
     patched = Buffer.from(content);
   }
+  await assertPreparedDeletedAnchorsRemainAbsent(db, {
+    manifest,
+    files,
+    candidateFileId: manifest.fileId,
+    candidateAfter: patched.toString(),
+  });
   if (patched.length > MAX_PARAMETER_SOURCE_BYTES) throw new ApiError("VALIDATION_FAILED", "Patched source exceeds the size limit.");
   const parsedIndex = manifest.format === "json" ? buildJsonParsedIndex(patched) : buildDtsParsedIndex(patched.toString());
   const baseDigest = createHash("sha256").update(base).digest("hex");

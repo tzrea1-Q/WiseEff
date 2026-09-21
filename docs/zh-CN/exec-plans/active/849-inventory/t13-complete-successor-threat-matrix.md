@@ -52,7 +52,7 @@ todolist 仍写「125 个输入：113 厂商 + 4 个当前 DTS/JSON + 8 个 TD-1
 | B2-12 | 放置容量 | 为 `csub_drv_sc8562` 准备的受审空闲 `driver-group` 经 `createParameterModule`（`kind: "driver-group"`，`origin: "curated"`，**无** compatible 映射）应用，不用 `registerOrClaimDriver`，不在 `materializeSeedSources` 内部，不臆造 SQL。ConfigurationSchema 需要空闲 `business` 模块；测到短缺时同样处理。暂存注册输入是 DTS 观测主体**并上**已发布的 `wiseeff.power-config` 主体。策展者在已完成重放时幂等 | 放置策展 + B6 测试 |
 | B2-13 | B6 失败关闭 | 没有额外 driver-group（以及若需要时没有空闲 business 模块），或注册列表漏掉 ConfigurationSchema，物化记 `failed`，为每个项目／主体记 `missing-placement-module`，抛 `SeedInitializationBlockedError`，写入**零**绑定（无 DTS 同步、无 JSON 注册）。不能落到 `completed` | `canonicalBindingMaterialization` + `materialize.test.ts` |
 | B2-14 | 授权与锁 | 种子初始化要求每个目标都有 parameter-edit，使用 0148 one-in-flight 咨询锁，重建前归档，拒绝缺失／歧义／组织不匹配的项目身份。不臆造审批。已完成的 `(organization_id, seed_digest)` 重放返回 `already-complete` 且无写入 | plan + materialize 测试 |
-| B2-15 | 确定性／顺序 | 相同输入、不同文件或变更集顺序，产生相同后继摘要、相同绑定 ID、相同预言集。`buildCompleteSuccessor` 已排序变更集；种子文件顺序不得铸造身份 | 构建器确定性 + 预言 |
+| B2-15 | 确定性／顺序 | 相同输入、不同变更集顺序产生相同后继摘要。依设计 §8 的 2026-09-21 owner 澄清，同一已完成实例交换项目／文件顺序重放后，绑定 ID 及预言集不变；不要求独立新数据库随机分配相同 ID。`buildCompleteSuccessor` 已排序变更集；完成重放不得铸造身份 | 构建器确定性 + 同实例完成重放预言 |
 | B2-16 | 重放与普通启动 | 已完成运行是空操作，包括策展、摄入、JSON 注册和绑定写入。`seed_digest` 覆盖每项目全部三个文件。普通进程启动、升级 helper 或发布无关 release 不会重置或重新物化 Atlas／Aurora／Nebula。三个目标之外的自定义项目不被触碰 | plan 测试 6 + 保全捕获 |
 | B2-17 | 非参数保全 | 物化前后非参数身份、字段、关系和共享对象校验和精确一致。归档 v2 守卫仍拒绝截断／篡改对象。处置不在范围 | 归档集成 + 新的前后探测 |
 | B2-18 | 跨租户／角色 | 外组织或没有 `parameter:edit`／`parameter:file-admin` 的审阅者不能物化、注册 JSON 或策展放置。Catalog 安装仍要求原批准人 | 既有授权测试扩展 |

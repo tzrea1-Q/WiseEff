@@ -21,6 +21,7 @@ import type { BindingEditValidation } from "./BindingDetailPanel";
 export type LocalBindingDraft = {
   rawValue: string;
   reason: string;
+  action?: "set" | "delete";
 };
 
 export type LocalBindingDraftBag = Record<string, LocalBindingDraft>;
@@ -38,6 +39,7 @@ export type DtsBindingDraftDialogProps = {
     bindingId: string;
     rawValue: string;
     reason: string;
+    action?: "set" | "delete";
   }) => Promise<BindingEditValidation>;
 };
 
@@ -47,7 +49,7 @@ type CardDiagnostics = {
   message: string;
   diagnostics: BindingEditValidation["diagnostics"];
   /** Snapshot of the values that produced a successful server draft (API-mode feedback). */
-  committed?: { rawValue: string; reason: string };
+  committed?: { rawValue: string; reason: string; action?: "set" | "delete" };
 };
 
 function importanceLabel(importance: DtsParameterWorkbenchRow["importance"]): string {
@@ -76,12 +78,13 @@ function displayRaw(value: string) {
 
 function matchesCommitted(
   draft: LocalBindingDraft,
-  committed: { rawValue: string; reason: string } | undefined
+  committed: { rawValue: string; reason: string; action?: "set" | "delete" } | undefined
 ): boolean {
   return Boolean(
     committed &&
     committed.rawValue === draft.rawValue &&
-    committed.reason === draft.reason.trim()
+    committed.reason === draft.reason.trim() &&
+    (committed.action ?? "set") === (draft.action ?? "set")
   );
 }
 
@@ -121,7 +124,7 @@ export function DtsBindingDraftDialog({
 
   const submittableBindingIds = bindingIds.filter((bindingId) => {
     const draft = draftBag[bindingId];
-    if (!draft?.rawValue.trim() || !draft.reason.trim()) return false;
+    if (!draft || (draft.action !== "delete" && !draft.rawValue.trim()) || !draft.reason.trim()) return false;
     const diagnostics = cardDiagnostics[bindingId];
     if (diagnostics?.state === "success" && matchesCommitted(draft, diagnostics.committed)) {
       return false;
@@ -137,7 +140,8 @@ export function DtsBindingDraftDialog({
   const reconcileCardInput = (
     bindingId: string,
     nextRawValue: string,
-    nextReason: string
+    nextReason: string,
+    nextAction?: "set" | "delete"
   ) => {
     setCardDiagnostics((current) => {
       const existing = current[bindingId];
@@ -150,7 +154,7 @@ export function DtsBindingDraftDialog({
         delete next[bindingId];
         return next;
       }
-      if (matchesCommitted({ rawValue: nextRawValue, reason: nextReason }, existing.committed)) {
+      if (matchesCommitted({ rawValue: nextRawValue, reason: nextReason, action: nextAction }, existing.committed)) {
         return {
           ...current,
           [bindingId]: {
@@ -182,7 +186,7 @@ export function DtsBindingDraftDialog({
     for (const bindingId of submittableBindingIds) {
       if (!mountedRef.current || requestGenerationRef.current !== requestGeneration) break;
       const draft = draftBag[bindingId];
-      if (!draft?.rawValue.trim() || !draft.reason.trim()) continue;
+      if (!draft || (draft.action !== "delete" && !draft.rawValue.trim()) || !draft.reason.trim()) continue;
 
       setCardDiagnostics((current) => ({
         ...current,
@@ -193,7 +197,8 @@ export function DtsBindingDraftDialog({
         const result = await onCreateDraft({
           bindingId,
           rawValue: draft.rawValue,
-          reason: draft.reason.trim()
+          reason: draft.reason.trim(),
+          ...(draft.action === "delete" ? { action: "delete" as const } : {})
         });
         if (!mountedRef.current || requestGenerationRef.current !== requestGeneration) break;
 
@@ -208,7 +213,8 @@ export function DtsBindingDraftDialog({
               diagnostics: result.diagnostics,
               committed: {
                 rawValue: draft.rawValue,
-                reason: draft.reason.trim()
+                reason: draft.reason.trim(),
+                action: draft.action
               }
             }
           }));
@@ -286,6 +292,7 @@ export function DtsBindingDraftDialog({
               const isFocused = bindingId === focusedBindingId;
               const diagnostics = cardDiagnostics[bindingId];
               const isPending = diagnostics?.state === "pending";
+              const isDelete = draft.action === "delete";
               const isCommitted = diagnostics?.state === "success"
                 && matchesCommitted(draft, diagnostics.committed);
               const targetInputId = `dts-draft-raw-${bindingId}`;
@@ -329,7 +336,14 @@ export function DtsBindingDraftDialog({
                     <p>{row.documentation?.trim() || "暂无参数说明"}</p>
                   </div>
 
-                  {isComplexCard ? (
+                  {isDelete ? (
+                    <div className="dts-binding-draft-card__preview" aria-label={`${row.propertyKey} 当前到目标预览`}>
+                      <code>{currentDisplay}</code>
+                      <ArrowRight size={15} aria-hidden="true" />
+                      <strong>删除属性</strong>
+                      <small>批准后生效</small>
+                    </div>
+                  ) : isComplexCard ? (
                     <>
                       <div className="parameter-draft-meta-row" aria-label={`${row.propertyKey} 草稿摘要`}>
                         <span className="parameter-draft-meta-pill">复杂配置</span>
@@ -353,33 +367,39 @@ export function DtsBindingDraftDialog({
                     </div>
                   )}
 
-                  <Label htmlFor={targetInputId}>目标值</Label>
-                  <Textarea
-                    id={targetInputId}
-                    ref={isFocused ? focusTargetRef : undefined}
-                    value={draft.rawValue}
-                    rows={editorRows}
-                    wrap={isComplexCard ? "off" : undefined}
-                    className={isComplexCard ? "dts-binding-draft-card__code-editor" : undefined}
-                    disabled={!canEdit || batchPending || isPending}
-                    aria-label={isFocused ? "目标值" : `目标值 ${row.propertyKey}`}
-                    onChange={(event) => {
-                      const nextRawValue = event.target.value;
-                      onUpdateDraft(bindingId, { rawValue: nextRawValue });
-                      reconcileCardInput(bindingId, nextRawValue, draft.reason);
-                    }}
-                  />
+                  {!isDelete ? (
+                    <>
+                      <Label htmlFor={targetInputId}>目标值</Label>
+                      <Textarea
+                        id={targetInputId}
+                        ref={isFocused ? focusTargetRef : undefined}
+                        value={draft.rawValue}
+                        rows={editorRows}
+                        wrap={isComplexCard ? "off" : undefined}
+                        className={isComplexCard ? "dts-binding-draft-card__code-editor" : undefined}
+                        disabled={!canEdit || batchPending || isPending}
+                        aria-label={isFocused ? "目标值" : `目标值 ${row.propertyKey}`}
+                        onChange={(event) => {
+                          const nextRawValue = event.target.value;
+                          onUpdateDraft(bindingId, { rawValue: nextRawValue });
+                          reconcileCardInput(bindingId, nextRawValue, draft.reason, draft.action);
+                        }}
+                      />
+                    </>
+                  ) : null}
                   <Label htmlFor={reasonInputId}>修改原因</Label>
                   <Textarea
                     id={reasonInputId}
                     value={draft.reason}
                     disabled={!canEdit || batchPending || isPending}
                     aria-label={isFocused ? "修改原因" : `修改原因 ${row.propertyKey}`}
-                    placeholder={`说明为什么要将 ${row.propertyKey} 改为\n${draft.rawValue || "新值"}`}
+                    placeholder={isDelete
+                      ? `说明为什么要删除 ${row.propertyKey}`
+                      : `说明为什么要将 ${row.propertyKey} 改为\n${draft.rawValue || "新值"}`}
                     onChange={(event) => {
                       const nextReason = event.target.value;
                       onUpdateDraft(bindingId, { reason: nextReason });
-                      reconcileCardInput(bindingId, draft.rawValue, nextReason);
+                      reconcileCardInput(bindingId, draft.rawValue, nextReason, draft.action);
                     }}
                   />
                   {diagnostics?.state === "success" && isCommitted ? (
@@ -397,6 +417,26 @@ export function DtsBindingDraftDialog({
                       ))}
                     </ul>
                   ) : null}
+                  <Button
+                    type="button"
+                    variant="outline"
+                    disabled={!canEdit || batchPending || isPending}
+                    onClick={() => {
+                      const nextAction = isDelete ? "set" : "delete";
+                      onUpdateDraft(bindingId, {
+                        action: nextAction,
+                        rawValue: nextAction === "delete" ? "" : row.rawValue
+                      });
+                      reconcileCardInput(
+                        bindingId,
+                        nextAction === "delete" ? "" : row.rawValue,
+                        draft.reason,
+                        nextAction
+                      );
+                    }}
+                  >
+                    {isDelete ? "恢复设置草稿" : "删除属性"}
+                  </Button>
                   <Button
                     type="button"
                     variant="outline"

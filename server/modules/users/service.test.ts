@@ -1,5 +1,7 @@
-import { describe, expect, it } from "vitest";
-import type { Database, QueryResult, Queryable } from "../../shared/database/client";
+import pg from "pg";
+import { afterEach, describe, expect, it } from "vitest";
+import { createDatabase, type Database, type QueryResult, type Queryable } from "../../shared/database/client";
+import { createEphemeralTestDatabase, isTestDatabaseAvailable } from "../../testing/testDatabase";
 import type { AuthContext } from "../auth/types";
 import {
   listGovernedUsers,
@@ -702,5 +704,146 @@ describe("user governance service", () => {
       "User management permission is required."
     );
     expect(txCalls).toHaveLength(0);
+  });
+});
+
+const explicitTestDatabaseUrl = process.env.TEST_DATABASE_URL?.trim() ?? "";
+const postgresAvailable = Boolean(explicitTestDatabaseUrl) && (await isTestDatabaseAvailable());
+
+describe.skipIf(!postgresAvailable)("user governance registration concurrency", () => {
+  let database: Awaited<ReturnType<typeof createEphemeralTestDatabase>> | undefined;
+
+  afterEach(async () => {
+    await database?.drop();
+    database = undefined;
+  });
+
+  it("locks the target user before registration approval changes roles or activation", async () => {
+    database = await createEphemeralTestDatabase("usrlock");
+    const organizationId = "org-registration-lock";
+    const adminId = "u-registration-lock-admin";
+    const targetId = "u-registration-lock-target";
+    const requestId = "registration-lock-request";
+    const roleClient = new pg.Client({ connectionString: database.url });
+    const approvalClient = new pg.Client({ connectionString: database.url });
+    await roleClient.connect();
+    await approvalClient.connect();
+
+    let initialRequestReadResolve!: () => void;
+    let releaseInitialRequestRead!: () => void;
+    const initialRequestRead = new Promise<void>((resolve) => {
+      initialRequestReadResolve = resolve;
+    });
+    const initialRequestReadGate = new Promise<void>((resolve) => {
+      releaseInitialRequestRead = resolve;
+    });
+    let pausedInitialRequestRead = false;
+    const approvalDb = createDatabase({
+      query: async (text, values = []) => {
+        const result = await approvalClient.query(text, values);
+        if (!pausedInitialRequestRead && text.includes("from local_registration_role_requests")) {
+          pausedInitialRequestRead = true;
+          initialRequestReadResolve();
+          await initialRequestReadGate;
+        }
+        return { rows: result.rows, rowCount: result.rowCount };
+      }
+    });
+    const approvalAuth: AuthContext = {
+      user: {
+        id: adminId,
+        organizationId,
+        name: "Registration Admin",
+        email: "registration-lock-admin@example.com",
+        title: "Admin",
+        isActive: true
+      },
+      organization: { id: organizationId, name: "Registration Lock Org" },
+      roles: [{ projectId: null, roleId: "admin" }],
+      permissions: ["users:manage", "admin:access"]
+    };
+
+    let approval: Promise<unknown> | undefined;
+    try {
+      await roleClient.query("insert into organizations (id, name) values ($1, $2)", [organizationId, "Registration Lock Org"]);
+      await roleClient.query(
+        `insert into users (id, organization_id, name, email, title, is_active)
+         values ($1, $2, $3, $4, $5, $6), ($7, $2, $8, $9, $10, $11)`,
+        [
+          adminId,
+          organizationId,
+          "Registration Admin",
+          "registration-lock-admin@example.com",
+          "Admin",
+          true,
+          targetId,
+          "Registration Target",
+          "registration-lock-target@example.com",
+          "Engineer",
+          false
+        ]
+      );
+      await roleClient.query(
+        `insert into user_role_bindings (id, user_id, organization_id, project_id, role_id)
+         values ($1, $2, $3, null, 'admin'), ($4, $5, $3, null, 'hardware-user')`,
+        [`urb-${adminId}`, adminId, organizationId, `urb-${targetId}`, targetId]
+      );
+      await roleClient.query(
+        `insert into local_registration_role_requests
+         (id, organization_id, user_id, current_role_id, requested_role_id, status)
+         values ($1, $2, $3, 'hardware-user', 'hardware-committer', 'pending')`,
+        [requestId, organizationId, targetId]
+      );
+
+      approval = approveRegistrationRoleRequest(approvalDb, approvalAuth, requestId, { requestId: "approval-lock-test" });
+      await initialRequestRead;
+      await roleClient.query("begin");
+      await roleClient.query(
+        `select id from users where organization_id = $1 and id = $2 for no key update`,
+        [organizationId, targetId]
+      );
+
+      releaseInitialRequestRead();
+      const deadline = Date.now() + 5_000;
+      let sawApprovalWaitingForUser = false;
+      while (Date.now() < deadline) {
+        const active = await roleClient.query<{ query: string }>(
+          `select query
+             from pg_stat_activity
+            where datname = current_database()
+              and pid <> pg_backend_pid()
+              and state = 'active'`
+        );
+        if (active.rows.some((row) => row.query.includes("for no key update") && row.query.includes("from users"))) {
+          sawApprovalWaitingForUser = true;
+          break;
+        }
+        await new Promise((resolve) => setTimeout(resolve, 20));
+      }
+      expect(sawApprovalWaitingForUser).toBe(true);
+
+      await roleClient.query(
+        `update user_role_bindings
+            set role_id = 'software-user'
+          where organization_id = $1 and user_id = $2 and project_id is null`,
+        [organizationId, targetId]
+      );
+      await roleClient.query("commit");
+
+      await expect(approval).resolves.toMatchObject({ status: "approved" });
+      const final = await roleClient.query<{ is_active: boolean; role_id: string }>(
+        `select users.is_active, user_role_bindings.role_id
+           from users
+           join user_role_bindings on user_role_bindings.user_id = users.id
+          where users.id = $1 and user_role_bindings.project_id is null`,
+        [targetId]
+      );
+      expect(final.rows).toEqual([{ is_active: true, role_id: "hardware-committer" }]);
+    } finally {
+      await roleClient.query("rollback").catch(() => undefined);
+      if (approval) await approval.catch(() => undefined);
+      await approvalClient.end().catch(() => undefined);
+      await roleClient.end().catch(() => undefined);
+    }
   });
 });

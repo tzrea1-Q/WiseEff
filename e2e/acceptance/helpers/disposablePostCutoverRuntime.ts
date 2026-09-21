@@ -26,12 +26,14 @@ import { ACCEPTANCE_ORGANIZATION, acceptanceCast, chargeLabCast } from "./cast";
 import {
   OWNED_ACCEPTANCE_NESTED_RUNTIME_MANIFEST_ENV,
   OWNED_ACCEPTANCE_NESTED_RUNTIME_ID_ENV,
+  recordNestedRuntimeApiRestart,
   recordNestedRuntimeFinish,
   recordNestedRuntimeProcessLaunching,
   recordNestedRuntimeProgress,
   recordNestedRuntimeProvisioning,
   readNestedRuntimeManifest,
   type NestedRuntimeCleanup,
+  type NestedRuntimeProcessIdentity,
 } from "./nestedRuntimeManifest";
 import { OWNED_ACCEPTANCE_DESCRIPTOR_ENV } from "./ownedRuntimeDescriptor";
 import {
@@ -83,6 +85,10 @@ export type DisposablePostCutoverRuntime = {
   authIssuer: string;
   authSecret: string;
   nestedRuntimeId?: string;
+  restartApi(): Promise<{
+    previousProcessIdentity: NestedRuntimeProcessIdentity;
+    replacementProcessIdentity: NestedRuntimeProcessIdentity;
+  }>;
   dispose(outcome?: DisposableRuntimeOutcome): Promise<void>;
 };
 
@@ -103,6 +109,11 @@ class TrackedNestedProcessHandshakeError extends AggregateError {
     super(errors, message);
   }
 }
+
+type PendingApiRestartFailure = {
+  error: Error;
+  durableIdentityPublished: boolean;
+};
 
 export type FinalizeDisposableRuntimeResourcesInput = {
   outcome: DisposableRuntimeOutcome;
@@ -666,12 +677,78 @@ export async function startTrackedNestedRuntimeProcess(input: {
   return child;
 }
 
+export async function startTrackedNestedApiRestartProcess(input: {
+  manifestPath: string;
+  childId: string;
+  previous: NestedRuntimeProcessIdentity;
+  port: number;
+  spawn(): ChildProcess;
+  track(child: ChildProcess): void;
+  readProcessIdentity?: typeof readProcessStartIdentity;
+  recordRestart?: typeof recordNestedRuntimeApiRestart;
+  rollbackStopOptions?: StopOwnedProcessGroupOptions;
+}) {
+  const child = input.spawn();
+  // The replacement is locally tracked before identity capture or manifest
+  // publication, matching the startup handshake's ownership ordering.
+  input.track(child);
+  const pid = requireRuntimePid(child, "API");
+  const processIdentity = input.readProcessIdentity
+    ? input.readProcessIdentity(pid)
+    : readGate0SupervisedProcessIdentity(child) ?? readProcessStartIdentity(pid);
+  if (!processIdentity) {
+    throw new TrackedNestedProcessHandshakeError(
+      [new Error("Disposable API replacement process start identity could not be verified.")],
+      "api",
+      false,
+      "Disposable API replacement identity capture failed; cleanup remains unresolved.",
+    );
+  }
+  const replacement = { pid, port: input.port, ...processIdentity };
+  const recordRestart = input.recordRestart ?? recordNestedRuntimeApiRestart;
+  try {
+    recordRestart(input.manifestPath, input.childId, {
+      previous: input.previous,
+      replacement,
+    });
+  } catch (error) {
+    try {
+      await stopOwnedProcessGroup(pid, {
+        ...input.rollbackStopOptions,
+        terminateGraceMs: input.rollbackStopOptions?.terminateGraceMs ?? 3_000,
+        expectedProcessIdentity: processIdentity,
+      });
+    } catch (cleanupError) {
+      const errors = [asNestedError(error), asNestedError(cleanupError)];
+      let durableIdentityPublished = false;
+      try {
+        recordRestart(input.manifestPath, input.childId, {
+          previous: input.previous,
+          replacement,
+        });
+        durableIdentityPublished = true;
+      } catch (republishError) {
+        errors.push(asNestedError(republishError));
+      }
+      throw new TrackedNestedProcessHandshakeError(
+        errors,
+        "api",
+        durableIdentityPublished,
+        "Disposable API replacement manifest publish and exact-identity rollback both failed.",
+      );
+    }
+    throw error;
+  }
+  return { child, replacement };
+}
+
 export async function stopManifestTrackedNestedProcesses(input: {
   manifestPath: string;
   childId: string;
   stopOptions?: StopOwnedProcessGroupOptions;
   pidExists?: (pid: number) => boolean;
   portIsUnused?: (port: number) => Promise<boolean>;
+  skipApiProcess?: string;
 }): Promise<DisposableProcessCleanupResult> {
   const record = readNestedRuntimeManifest(input.manifestPath).children.find((child) => child.id === input.childId);
   if (!record) throw new Error(`Nested runtime ${input.childId} is not registered.`);
@@ -683,6 +760,11 @@ export async function stopManifestTrackedNestedProcesses(input: {
   ] as const) {
     if (pid === undefined) {
       cleanup[label] = { status: "not-started" };
+      continue;
+    }
+    if (label === "apiProcess" && input.skipApiProcess) {
+      cleanup.apiProcess = { status: "failed", reason: input.skipApiProcess };
+      errors.push(new Error(input.skipApiProcess));
       continue;
     }
     try {
@@ -719,6 +801,41 @@ export async function stopManifestTrackedNestedProcesses(input: {
   };
 }
 
+export async function stopManifestTrackedNestedApiProcess(input: {
+  manifestPath: string;
+  childId: string;
+  stopOptions?: StopOwnedProcessGroupOptions;
+  pidExists?: (pid: number) => boolean;
+  portIsUnused?: (port: number) => Promise<boolean>;
+}): Promise<{ status: "not-started" | "stopped" | "failed"; reason?: string; errors: Error[] }> {
+  const record = readNestedRuntimeManifest(input.manifestPath).children.find((child) => child.id === input.childId);
+  if (!record) throw new Error(`Nested runtime ${input.childId} is not registered.`);
+  if (record.apiPid === undefined) return { status: "not-started", errors: [] };
+  try {
+    if (!record.apiProcessIdentity) {
+      throw new Error(`Nested API process identity is missing or does not match PID ${record.apiPid}; refusing signal.`);
+    }
+    const classification = await classifyOwnedProcessForCleanup({
+      label: "Nested API process",
+      pid: record.apiPid,
+      expectedIdentity: record.apiProcessIdentity,
+      readProcessIdentity: input.stopOptions?.readProcessIdentity,
+      pidExists: input.pidExists,
+      portIsUnused: input.portIsUnused,
+    });
+    if (classification === "absent") return { status: "stopped", errors: [] };
+    await stopOwnedProcessGroup(record.apiPid, {
+      ...input.stopOptions,
+      terminateGraceMs: input.stopOptions?.terminateGraceMs ?? 3_000,
+      expectedProcessIdentity: record.apiProcessIdentity,
+    });
+    return { status: "stopped", errors: [] };
+  } catch (error) {
+    const normalized = asNestedError(error);
+    return { status: "failed", reason: safeNestedCleanupReason(normalized), errors: [normalized] };
+  }
+}
+
 export async function startDisposablePostCutoverRuntime(
   baseDatabaseUrl: string,
   options: StartDisposablePostCutoverRuntimeOptions = {},
@@ -742,8 +859,10 @@ export async function startDisposablePostCutoverRuntime(
   const nestedManifestPath = process.env[OWNED_ACCEPTANCE_NESTED_RUNTIME_MANIFEST_ENV]?.trim();
   let objectStore: NestedObjectStoreOwnership | undefined;
   const children: ChildProcess[] = [];
+  let apiProcess: ChildProcess | undefined;
   let nestedRegistered = false;
   let verifiedMigrationRunId: string | undefined;
+  let pendingApiRestartFailure: PendingApiRestartFailure | undefined;
 
   try {
     if (nestedManifestPath) {
@@ -798,6 +917,7 @@ export async function startDisposablePostCutoverRuntime(
           track: (child) => { children.push(child); },
         })
       : spawnApi();
+    apiProcess = api;
     if (!nestedManifestPath) children.push(api);
     await waitForHttp(`${apiUrl}/health/live`, api);
 
@@ -852,12 +972,87 @@ export async function startDisposablePostCutoverRuntime(
       authIssuer,
       authSecret,
       nestedRuntimeId: nestedRegistered ? databaseName : undefined,
+      async restartApi() {
+        if (pendingApiRestartFailure) {
+          throw new Error("Disposable API restart is blocked by an unresolved previous restart failure.");
+        }
+        if (!apiProcess) throw new Error("Disposable API process is not running.");
+        const previousProcessIdentity: NestedRuntimeProcessIdentity = nestedManifestPath
+          ? (() => {
+              const record = readNestedRuntimeManifest(nestedManifestPath).children.find((child) => child.id === databaseName);
+              if (!record?.apiProcessIdentity) throw new Error("Nested API process identity is unavailable for restart.");
+              return record.apiProcessIdentity;
+            })()
+          : readRequiredProcessIdentity(apiProcess, apiPort, "API");
+
+        if (nestedManifestPath && nestedRegistered) {
+          const stopped = await stopManifestTrackedNestedApiProcess({
+            manifestPath: nestedManifestPath,
+            childId: databaseName,
+          });
+          if (stopped.errors.length > 0) {
+            throw new AggregateError(stopped.errors, "Disposable API process restart could not stop the owned predecessor.");
+          }
+        } else {
+          await stopOwnedProcessGroup(apiProcess, {
+            terminateGraceMs: 3_000,
+            expectedProcessIdentity: previousProcessIdentity,
+          });
+        }
+        let replacement: ChildProcess;
+        let replacementProcessIdentity: NestedRuntimeProcessIdentity | undefined;
+        try {
+          if (nestedManifestPath && nestedRegistered) {
+            const started = await startTrackedNestedApiRestartProcess({
+              manifestPath: nestedManifestPath,
+              childId: databaseName,
+              previous: previousProcessIdentity,
+              port: apiPort,
+              spawn: spawnApi,
+              track(child) {
+                apiProcess = child;
+                children[0] = child;
+              },
+            });
+            replacement = started.child;
+            replacementProcessIdentity = started.replacement;
+          } else {
+            replacement = spawnApi();
+            apiProcess = replacement;
+            children[0] = replacement;
+            replacementProcessIdentity = readRequiredProcessIdentity(replacement, apiPort, "API");
+          }
+          if (!replacementProcessIdentity) {
+            throw new Error("Disposable API replacement identity was not captured.");
+          }
+          await waitForHttp(`${apiUrl}/health/live`, replacement);
+          await waitForHttp(`${apiUrl}/health/ready`, replacement);
+          return { previousProcessIdentity, replacementProcessIdentity };
+        } catch (error) {
+          if (nestedManifestPath && nestedRegistered) {
+            pendingApiRestartFailure = {
+              error: asNestedError(error),
+              durableIdentityPublished: error instanceof TrackedNestedProcessHandshakeError
+                ? error.durableIdentityPublished
+                : replacementProcessIdentity !== undefined,
+            };
+          }
+          throw error;
+        }
+      },
       async dispose(outcome = "success") {
+        const restartFailure = pendingApiRestartFailure;
         const result = await finalizeDisposableRuntimeResources({
-          outcome,
+          outcome: restartFailure ? "failure" : outcome,
           retainFailureResources: nestedRegistered,
           stopProcesses: () => nestedManifestPath && nestedRegistered
-            ? stopManifestTrackedNestedProcesses({ manifestPath: nestedManifestPath, childId: databaseName })
+            ? stopManifestTrackedNestedProcesses({
+                manifestPath: nestedManifestPath,
+                childId: databaseName,
+                skipApiProcess: restartFailure && !restartFailure.durableIdentityPublished
+                  ? `Disposable API restart handshake failed before a durable replacement identity was published: ${safeNestedCleanupReason(restartFailure.error)}`
+                  : undefined,
+              })
             : stopAndReportNestedProcesses(children),
           async removeDatabase() {
             await verifyPostCutoverDatabase(databaseUrl, migrationRunId, purpose);

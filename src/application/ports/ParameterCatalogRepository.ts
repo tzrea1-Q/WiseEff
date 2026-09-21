@@ -147,6 +147,11 @@ export interface ParameterCatalogRepository {
     body: { decision: "approve" | "reject"; note?: string | null },
     context: CatalogPublicationWriteContext & { idempotencyKey: string }
   ): Promise<CatalogValueChangeRequestResponse>;
+  withdrawProjectValueChangeRequest?(
+    projectId: string,
+    requestId: string,
+    context: CatalogPublicationWriteContext & { idempotencyKey: string }
+  ): Promise<CatalogValueChangeRequestResponse>;
   getProjectValueChangeSourceDiff?(
     projectId: string,
     requestId: string

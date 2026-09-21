@@ -256,6 +256,8 @@ No direct SQL for bindings, occurrences, subjects, releases, or values in the pr
 
 ## 8. Identity oracle and preservation
 
+**Owner clarification, 2026-09-21:** input-order identity acceptance means replaying the same completed instance with permuted project/file inputs preserves all already allocated binding IDs and the oracle set. Successor digest determinism still applies to reordered change sets. Independently initialized databases are not required to allocate equal random source or binding IDs; the existing allocator and binding key remain unchanged. This is the owner's accepted local-closure boundary, not a new cross-database identity guarantee.
+
 Before materialize, capture:
 
 - Non-parameter relation counts and shared-object checksums (reuse archive v2 inventory where it already lists them)

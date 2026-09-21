@@ -36,10 +36,10 @@ import {
   readProjectProtectedParameters,
   writebackProtectedReference,
 } from "../parameter-bindings/adapters";
-import type { ProjectValuePayload } from "../parameter-bindings/values";
+import { hasDeletedCurrentValue, type ProjectValuePayload } from "../parameter-bindings/values";
 import type { ValueClient } from "../parameter-bindings/values/repositories";
 import { parseDtsValue, renderDtsValue } from "../dts/valueAst";
-import { parseJsonSource, readJsonSourceValue } from "../parameter-files/jsonSource";
+import { parseJsonSource, proveJsonSourceMemberAbsent, readJsonSourceValue } from "../parameter-files/jsonSource";
 import { deriveDtsSourceRef, isDtsSourceRef, sourcePathOf } from "../dts/sourceRef";
 import type { DtsValue } from "../dts/types";
 import { isStructuralPropertyKey } from "../parameter-topology/parameterSurface";
@@ -576,6 +576,9 @@ export async function findCatalogBindingRow(
     `,
     [input.organizationId, input.projectId, input.bindingId],
   );
+  if (!result.rows[0] && await hasDeletedCurrentValue(db, input)) {
+    throw new ApiError("CONFLICT", "Deleted values cannot be edited or re-imported.", { reason: "deleted-value-is-terminal" });
+  }
   return result.rows[0] ?? null;
 }
 
@@ -1007,6 +1010,7 @@ export type CanonicalBindingChangeHistoryEntry = {
   successAuditRef: string;
   catalogReleaseId: string;
   createdAt: string;
+  valueState: "present" | "deleted" | null;
 };
 
 /**
@@ -1051,6 +1055,7 @@ export async function readCanonicalBindingChangeHistory(
     new_effective_revision_id: string | null;
     old_current_value_id: string | null;
     new_current_value_id: string | null;
+    value_state: "present" | "deleted" | null;
     reason: string;
     success_audit_ref: string;
     catalog_release_id: string;
@@ -1064,12 +1069,14 @@ export async function readCanonicalBindingChangeHistory(
            event.new_effective_revision_id,
            event.old_current_value_id,
            event.new_current_value_id,
+           new_value.value_state,
            event.reason,
            event.success_audit_ref,
            event.catalog_release_id,
            event.created_at
       from parameter_catalog.binding_history_events event
       join parameter_catalog.project_parameter_bindings b on b.id = event.binding_id
+      left join parameter_catalog.project_parameter_values new_value on new_value.id = event.new_current_value_id
      where event.binding_id = $1
      order by event.created_at desc, event.id desc
      limit $2
@@ -1088,6 +1095,7 @@ export async function readCanonicalBindingChangeHistory(
     successAuditRef: event.success_audit_ref,
     catalogReleaseId: event.catalog_release_id,
     createdAt: event.created_at,
+    valueState: event.value_state,
   }));
 }
 
@@ -1108,6 +1116,7 @@ export type CanonicalBindingExport = {
   currentValueId: string;
   configSetId: string;
   sourceRef: string;
+  valueState: "present" | "deleted";
   files: CanonicalBindingExportFile[];
   manifest: CanonicalSourceManifest;
 };
@@ -1128,17 +1137,23 @@ export async function exportCanonicalBindingSource(
   input: { projectId: string; bindingId: string; projectValueId?: string },
 ): Promise<CanonicalBindingExport | null> {
   if (!auth.user.isActive || !canViewParameters(auth)) throw new ApiError("FORBIDDEN", "Parameter view permission is required.");
-  const binding = await findCatalogBindingRow(db, {
+  let binding = input.projectValueId ? null : await findCatalogBindingRow(db, {
     organizationId: auth.organization.id,
     projectId: input.projectId,
     bindingId: input.bindingId,
   });
+  if (!binding && input.projectValueId) {
+    const historical = await db.query<CatalogBindingRow>(`select id,organization_id,catalog_release_id,project_id,logical_node_id,registration_id,subject_id,definition_id,effective_revision_id,current_value_id
+      from parameter_catalog.project_parameter_bindings where organization_id=$1 and project_id=$2 and id=$3`,
+      [auth.organization.id,input.projectId,input.bindingId]);
+    binding = historical.rows[0] ?? null;
+  }
   if (!binding) return null;
 
   const valueId = input.projectValueId ?? binding.current_value_id;
-  const current = await db.query<{ source_ref: string; config_revision_id: string; definition_id: string; definition_revision_id: string; release_ids: string[] }>(
+  const current = await db.query<{ source_ref: string; config_revision_id: string; definition_id: string; definition_revision_id: string; value_state: "present" | "deleted"; release_ids: string[] }>(
     `
-    select value.source_ref,value.config_revision_id,value.definition_id,value.definition_revision_id,
+    select value.source_ref,value.config_revision_id,value.definition_id,value.definition_revision_id,value.value_state,
       array(select distinct history.catalog_release_id from parameter_catalog.binding_history_events history
         where history.binding_id=value.binding_id and history.new_current_value_id=value.id) as release_ids
       from parameter_catalog.project_parameter_values value
@@ -1166,6 +1181,7 @@ export async function exportCanonicalBindingSource(
     currentValueId: valueId,
     configSetId: snapshot.manifest.configSetId,
     sourceRef: value.source_ref,
+    valueState: value.value_state,
     files: snapshot.files,
     manifest: snapshot.manifest,
   };
@@ -1183,6 +1199,13 @@ export async function verifyCanonicalSourceReimport(
   }
   const manifest = source.manifest;
   const file = source.files[manifest.members.findIndex((member) => member.fileId === manifest.fileId)]!;
+  if (source.manifest.locator.kind === "dts-delete") return source;
+  if (source.manifest.locator.kind === "json-delete") {
+    if (typeof source.manifest.locator.pointer !== "string" || typeof source.manifest.locator.rootPointer !== "string") throw new ApiError("CONFLICT", "Deleted JSON source has no exact absence proof.");
+    const file = source.files[source.manifest.members.findIndex((member) => member.fileId === source.manifest.fileId)]!;
+    proveJsonSourceMemberAbsent(file.content, source.manifest.locator.pointer, source.manifest.locator.rootPointer);
+    return source;
+  }
   let payload: ProjectValuePayload;
   if (manifest.format === "json") {
     if (typeof manifest.locator.pointer !== "string" || manifest.rootPointer === null) throw new ApiError("CONFLICT", "JSON source has no exact locator.");

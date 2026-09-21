@@ -8,13 +8,20 @@
  * Submission and approval are separate workflow steps; approval is owned by the
  * source-commit service and this module only prepares the immutable draft.
  */
+import { randomUUID } from "node:crypto";
 import { ApiError } from "../../../shared/http/errors";
 import type { Database, Queryable } from "../../../shared/database/client";
 import type { AuthContext } from "../../auth/types";
-import type { TrustedInvocationContext } from "../../auth/trustedInvocation";
+import {
+  assertTrustedInvocationMatchesAuth,
+  createUserInvocation,
+  type TrustedInvocationContext
+} from "../../auth/trustedInvocation";
+import { asAuditTx } from "../../audit/auditedWrite";
 import type { TrustedRefusalAuditSink } from "../../audit/trustedRefusalSink";
 import type { ObjectStore } from "../../logs/objectStore";
 import { canEditParameters, canViewParameters } from "../../parameter-kernel/policy";
+import { writeTrustedGovernanceAudit } from "../../parameter-topology/governanceAudit";
 import { getProjectById } from "../../projects/repository";
 import { renderDtsValue } from "../../dts/valueAst";
 import type { DtsValue } from "../../dts/types";
@@ -44,6 +51,7 @@ export type CanonicalValueDraftDto = {
   candidateId: string | null;
   reason: string;
   updatedAt: string;
+  action: CanonicalValueDraftAction;
 };
 
 export type CreateCanonicalValueDraftInput = {
@@ -92,7 +100,7 @@ function toDto(row: CanonicalValueDraftRow): CanonicalValueDraftDto {
   const jsonTarget = row.target_value && typeof row.target_value === "object" && (row.target_value as { kind?: unknown }).kind === "json-source"
     ? row.target_value as { value: ContractJsonValue } : null;
   let rendered: string;
-  rendered = typeof row.target_value === "object" && row.target_value !== null
+  rendered = row.action === "delete" ? "" : typeof row.target_value === "object" && row.target_value !== null
     && (row.target_value as { kind?: unknown }).kind === "json-source"
     ? JSON.stringify((row.target_value as { value: unknown }).value)
     : (() => {
@@ -109,13 +117,14 @@ function toDto(row: CanonicalValueDraftRow): CanonicalValueDraftDto {
     effectiveRevisionId: row.definition_revision_id,
     currentValueId: row.base_current_value_id ?? null,
     targetValue: rendered,
-    sourceFormat: jsonTarget ? "json" : "dts",
-    ...(jsonTarget ? { sourceTarget: { format: "json" as const,sourceText: serializeContract(jsonTarget.value) } } : {}),
+    sourceFormat: row.source_format,
+    ...(row.action === "set" && jsonTarget ? { sourceTarget: { format: "json" as const,sourceText: serializeContract(jsonTarget.value) } } : {}),
     baseRevisionId: row.config_revision_id,
     sourcePinId: row.source_pin_id,
     candidateId: row.candidate_id,
     reason: row.reason,
-    updatedAt: row.updated_at
+    updatedAt: row.updated_at,
+    action: row.action
   };
 }
 
@@ -129,11 +138,11 @@ export async function createCanonicalValueDraft(
   requireEditPermission(auth, input.projectId);
 
   const action: CanonicalValueDraftAction = input.action ?? "set";
-  if (action !== "set") {
-    throw new ApiError("VALIDATION_FAILED", "Canonical source drafts support set only.");
-  }
   if (action === "set" && ((!input.targetValue && !input.sourceTarget) || (input.targetValue && input.sourceTarget))) {
     throw new ApiError("VALIDATION_FAILED", "A pending value change requires exactly one typed target value.");
+  }
+  if (action === "delete" && (input.targetValue !== undefined || input.sourceTarget !== undefined)) {
+    throw new ApiError("VALIDATION_FAILED", "A property deletion does not accept a replacement target.");
   }
   const reason = input.reason.trim();
   if (!reason) {
@@ -178,10 +187,10 @@ export async function createCanonicalValueDraft(
     throw new ApiError("INTERNAL_ERROR", "Canonical source drafts require object storage and trusted invocation context.");
   }
   const sourceTarget = input.sourceTarget ?? {
-    format: "dts" as const,
-    sourceText: renderDtsValue(input.targetValue!)
+    format: pins.sourceFormat,
+    sourceText: action === "delete" ? "" : renderDtsValue(input.targetValue!)
   };
-  let targetValue: DtsValue | { kind: "json-source"; value: ContractJsonValue } = input.targetValue!;
+  let targetValue: DtsValue | { kind: "json-source"; value: ContractJsonValue } | "" = action === "delete" ? "" : input.targetValue!;
   if (input.sourceTarget) {
     try {
       targetValue = { kind: "json-source",value: parseJsonSource(input.sourceTarget.sourceText) as ContractJsonValue };
@@ -196,6 +205,7 @@ export async function createCanonicalValueDraft(
       bindingId: input.bindingId,
       expectedValueId: pins.currentValueId,
       target: sourceTarget,
+      action,
       invocation: options.invocation!,
       requestId: options.requestId!.trim(),
       refusalSink: options.refusalSink!
@@ -239,21 +249,45 @@ export async function listCanonicalValueDraftsForUser(
 export async function removeCanonicalValueDraft(
   db: Database,
   auth: AuthContext,
-  input: { projectId: string; draftId: string }
+  input: { projectId: string; draftId: string },
+  options: { invocation?: TrustedInvocationContext; requestId?: string } = {}
 ): Promise<{ id: string }> {
   await requireOwnedProject(db, auth, input.projectId);
   requireEditPermission(auth, input.projectId);
-  const removed = await deleteCanonicalValueDraft(db, {
-    organizationId: auth.organization.id,
-    projectId: input.projectId,
-    userId: auth.user.id,
-    draftId: input.draftId
-  });
-  if (!removed) {
-    throw new ApiError("NOT_FOUND", "Pending value draft was not found.", {
+
+  const invocation = options.invocation
+    ? assertTrustedInvocationMatchesAuth(auth, options.invocation, "canonical parameter draft delete")
+    : createUserInvocation(auth);
+  return db.transaction(async (tx) => {
+    const removed = await deleteCanonicalValueDraft(tx, {
+      organizationId: auth.organization.id,
       projectId: input.projectId,
+      userId: auth.user.id,
       draftId: input.draftId
     });
-  }
-  return { id: input.draftId };
+    if (!removed) {
+      throw new ApiError("NOT_FOUND", "Pending value draft was not found.", {
+        projectId: input.projectId,
+        draftId: input.draftId
+      });
+    }
+
+    await writeTrustedGovernanceAudit(
+      asAuditTx(tx),
+      invocation,
+      {
+        action: "value-draft-removed",
+        organizationId: auth.organization.id,
+        projectId: input.projectId,
+        targetType: "project-parameter-value-draft",
+        targetId: input.draftId,
+        metadata: {
+          draftId: input.draftId,
+          writeTargetRole: "canonical-project-value-draft"
+        }
+      },
+      options.requestId ?? randomUUID()
+    );
+    return { id: input.draftId };
+  });
 }

@@ -2492,12 +2492,6 @@
       "reason": "A database, route, or module-loader boundary expression cannot be resolved statically."
     },
     {
-      "id": "S12-PRJ:unresolved-boundary-expression:cc362bf31617ab18:e6547c8da21e8b6b",
-      "rule": "unresolved-boundary-expression",
-      "file": "server/modules/parameter-drafts/repository.ts",
-      "reason": "A database, route, or module-loader boundary expression cannot be resolved statically."
-    },
-    {
       "id": "S12-PRJ:unresolved-boundary-expression:cf45d0c4c788978c:e9b7df91be5aac82",
       "rule": "unresolved-boundary-expression",
       "file": "server/modules/parameters/service.ts",

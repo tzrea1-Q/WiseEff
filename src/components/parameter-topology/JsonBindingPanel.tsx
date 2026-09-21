@@ -1,13 +1,13 @@
 import { useMemo, useState } from "react";
 import type { ProjectParameterBinding } from "@/domain/parameter-topology/types";
-import type { BindingEditValidation } from "./BindingDetailPanel";
+import type { BindingEditInput, BindingEditValidation } from "./BindingDetailPanel";
 import { BindingDetailPanel } from "./BindingDetailPanel";
 import { formatRelativeOrAbsolute } from "@/domain/format/formatDateTime";
 
 export type JsonBindingPanelProps = {
   bindings: readonly ProjectParameterBinding[];
   canEdit?: boolean;
-  onValidateEdit?: (input: { bindingId: string; rawValue: string; reason: string }) =>
+  onValidateEdit?: (input: BindingEditInput) =>
     | BindingEditValidation
     | Promise<BindingEditValidation>;
   onExportBinding?: (bindingId: string) => Promise<void>;
@@ -20,6 +20,7 @@ export type JsonBindingHistoryEntry = {
   createdAt: string;
   oldCurrentValueId: string | null;
   newCurrentValueId: string | null;
+  valueState?: "present" | "deleted" | null;
 };
 
 /** JSON bindings stay outside the DTS workbench; their source text is never parsed as a DtsValue. */
@@ -121,7 +122,8 @@ export function JsonBindingPanel({
                 <ol>
                   {history.map((entry) => (
                     <li key={entry.id}>
-                      <time dateTime={entry.createdAt}>{formatRelativeOrAbsolute(entry.createdAt)}</time> · {entry.reason}
+                      <time dateTime={entry.createdAt}>{formatRelativeOrAbsolute(entry.createdAt)}</time> · {entry.valueState === "deleted"
+                        ? "删除属性 · " : entry.valueState === "present" ? "更新属性 · " : ""}{entry.reason}
                     </li>
                   ))}
                 </ol>

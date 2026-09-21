@@ -80,7 +80,8 @@ function StatefulDraftHarness({
           ...current,
           [bindingId]: {
             rawValue: patch.rawValue ?? current[bindingId]?.rawValue ?? "",
-            reason: patch.reason ?? current[bindingId]?.reason ?? ""
+            reason: patch.reason ?? current[bindingId]?.reason ?? "",
+            action: patch.action ?? current[bindingId]?.action
           }
         }));
       }}
@@ -132,7 +133,8 @@ function PendingCloseHarness({
               ...current,
               [bindingId]: {
                 rawValue: patch.rawValue ?? current[bindingId]?.rawValue ?? "",
-                reason: patch.reason ?? current[bindingId]?.reason ?? ""
+                reason: patch.reason ?? current[bindingId]?.reason ?? "",
+                action: patch.action ?? current[bindingId]?.action
               }
             }));
           }}
@@ -183,6 +185,29 @@ describe("DtsBindingDraftDialog", () => {
     expect(screen.getByRole("button", { name: "校验并加入本轮" })).toBeDisabled();
     expect(screen.getByLabelText("gpio_int 当前到目标预览")).toBeInTheDocument();
     expect(screen.queryByLabelText("gpio_int 变更 diff")).not.toBeInTheDocument();
+  });
+
+  it("creates a delete draft without sending a target value", async () => {
+    const onCreateDraft = vi.fn().mockResolvedValue({ valid: true, diagnostics: [] });
+    renderDraftDialog({ onCreateDraft });
+
+    fireEvent.click(screen.getByRole("button", { name: "删除属性" }));
+    expect(screen.getByText("删除属性")).toBeVisible();
+    expect(screen.getByText("批准后生效")).toBeVisible();
+    expect(screen.queryByRole("textbox", { name: "目标值" })).not.toBeInTheDocument();
+
+    fireEvent.change(screen.getByRole("textbox", { name: "修改原因" }), {
+      target: { value: "移除过时属性" }
+    });
+    fireEvent.click(screen.getByRole("button", { name: "校验并加入本轮" }));
+
+    await waitFor(() => expect(onCreateDraft).toHaveBeenCalledWith({
+      bindingId: "binding-gpio-int",
+      rawValue: "",
+      action: "delete",
+      reason: "移除过时属性"
+    }));
+    expect(await screen.findByRole("status")).toHaveTextContent("服务端校验通过，草稿已创建");
   });
 
   it("renders line-level diff and a code editor for complex multi-line values", () => {

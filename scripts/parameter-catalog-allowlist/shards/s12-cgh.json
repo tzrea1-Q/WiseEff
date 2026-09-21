@@ -147,12 +147,6 @@
       "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
     },
     {
-      "id": "S12-CGH:legacy-catalog-raw-read:10573cc33cfa7a59:ecde0b88b0c1ff7f",
-      "rule": "legacy-catalog-raw-read",
-      "file": "server/modules/parameter-specs/definitionVerification.ts",
-      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
-    },
-    {
       "id": "S12-CGH:legacy-catalog-raw-read:108a81a0721accad:f6ee0039052c0b45",
       "rule": "legacy-catalog-raw-read",
       "file": "server/modules/parameter-specs/service.ts",
@@ -264,12 +258,6 @@
       "id": "S12-CGH:legacy-catalog-raw-read:1da2ec4e9044f9f2:c3edc31e798d0c4b",
       "rule": "legacy-catalog-raw-read",
       "file": "server/modules/parameter-specs/specReviewApply.integration.test.ts",
-      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
-    },
-    {
-      "id": "S12-CGH:legacy-catalog-raw-read:1ecb6a19a8008bf3:00837e997d4ebf04",
-      "rule": "legacy-catalog-raw-read",
-      "file": "server/modules/parameter-specs/definitionVerification.ts",
       "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
     },
     {
@@ -393,12 +381,6 @@
       "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
     },
     {
-      "id": "S12-CGH:legacy-catalog-raw-read:20d92886e18a86a3:54c0178542c4bf9b",
-      "rule": "legacy-catalog-raw-read",
-      "file": "server/modules/parameter-specs/definitionVerification.ts",
-      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
-    },
-    {
       "id": "S12-CGH:legacy-catalog-raw-read:20d92886e18a86a3:60823edb98308a9d",
       "rule": "legacy-catalog-raw-read",
       "file": "server/modules/parameter-specs/definitionVerification.ts",
@@ -406,12 +388,6 @@
     },
     {
       "id": "S12-CGH:legacy-catalog-raw-read:20d92886e18a86a3:941ae494344d964f",
-      "rule": "legacy-catalog-raw-read",
-      "file": "server/modules/parameter-specs/definitionVerification.ts",
-      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
-    },
-    {
-      "id": "S12-CGH:legacy-catalog-raw-read:20d92886e18a86a3:b31292a51ecbd11f",
       "rule": "legacy-catalog-raw-read",
       "file": "server/modules/parameter-specs/definitionVerification.ts",
       "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
@@ -598,12 +574,6 @@
     },
     {
       "id": "S12-CGH:legacy-catalog-raw-read:32c7c282fc86d595:82d0ec386496fe2c",
-      "rule": "legacy-catalog-raw-read",
-      "file": "server/modules/parameter-specs/definitionVerification.ts",
-      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
-    },
-    {
-      "id": "S12-CGH:legacy-catalog-raw-read:32c7c282fc86d595:a9020488f6a3f702",
       "rule": "legacy-catalog-raw-read",
       "file": "server/modules/parameter-specs/definitionVerification.ts",
       "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
@@ -2049,12 +2019,6 @@
       "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
     },
     {
-      "id": "S12-CGH:legacy-catalog-raw-read:e8460da769e6f7bc:295a9b23da0d2686",
-      "rule": "legacy-catalog-raw-read",
-      "file": "server/modules/parameter-specs/definitionVerification.ts",
-      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
-    },
-    {
       "id": "S12-CGH:legacy-catalog-raw-read:e8460da769e6f7bc:2dad8a7554758917",
       "rule": "legacy-catalog-raw-read",
       "file": "server/modules/parameter-specs/definitionVerification.ts",
@@ -2259,12 +2223,6 @@
       "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
     },
     {
-      "id": "S12-CGH:legacy-catalog-raw-read:f89031bd1c4f16f1:75286f5fbe8f462c",
-      "rule": "legacy-catalog-raw-read",
-      "file": "server/modules/parameter-specs/definitionVerification.ts",
-      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
-    },
-    {
       "id": "S12-CGH:legacy-catalog-raw-read:f89031bd1c4f16f1:81df4a0ac72ea7b7",
       "rule": "legacy-catalog-raw-read",
       "file": "server/modules/parameter-specs/definitionVerification.ts",
@@ -2277,19 +2235,7 @@
       "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
     },
     {
-      "id": "S12-CGH:legacy-catalog-raw-read:f89031bd1c4f16f1:f24a24eed95bd88b",
-      "rule": "legacy-catalog-raw-read",
-      "file": "server/modules/parameter-specs/definitionVerification.ts",
-      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
-    },
-    {
       "id": "S12-CGH:legacy-catalog-raw-read:f896e7f3eb92d74a:03ad7e91e6f67b8d",
-      "rule": "legacy-catalog-raw-read",
-      "file": "server/modules/parameter-specs/definitionVerification.ts",
-      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
-    },
-    {
-      "id": "S12-CGH:legacy-catalog-raw-read:f896e7f3eb92d74a:1c2152d581a399d4",
       "rule": "legacy-catalog-raw-read",
       "file": "server/modules/parameter-specs/definitionVerification.ts",
       "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
@@ -2332,12 +2278,6 @@
     },
     {
       "id": "S12-CGH:legacy-catalog-raw-read:f896e7f3eb92d74a:ab9cc6599a5371b1",
-      "rule": "legacy-catalog-raw-read",
-      "file": "server/modules/parameter-specs/definitionVerification.ts",
-      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
-    },
-    {
-      "id": "S12-CGH:legacy-catalog-raw-read:f896e7f3eb92d74a:bc98c8531e5a7912",
       "rule": "legacy-catalog-raw-read",
       "file": "server/modules/parameter-specs/definitionVerification.ts",
       "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."

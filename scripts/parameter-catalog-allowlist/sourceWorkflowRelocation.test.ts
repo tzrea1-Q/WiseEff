@@ -45,13 +45,59 @@ async function copyProofFixture(withHistory = true) {
 }
 
 describe("source workflow exact identity successor", () => {
-  it("binds 202 current consumer observations without conflating shared-range evidence", async () => {
+  it.each([
+    ["s12-cgh.json", [
+      "S12-CGH:legacy-catalog-raw-read:f896e7f3eb92d74a:1c2152d581a399d4",
+      "S12-CGH:legacy-catalog-raw-read:f896e7f3eb92d74a:bc98c8531e5a7912",
+      "S12-CGH:legacy-catalog-raw-read:32c7c282fc86d595:a9020488f6a3f702",
+      "S12-CGH:legacy-catalog-raw-read:e8460da769e6f7bc:295a9b23da0d2686",
+      "S12-CGH:legacy-catalog-raw-read:1ecb6a19a8008bf3:00837e997d4ebf04",
+      "S12-CGH:legacy-catalog-raw-read:10573cc33cfa7a59:ecde0b88b0c1ff7f",
+      "S12-CGH:legacy-catalog-raw-read:f89031bd1c4f16f1:f24a24eed95bd88b",
+      "S12-CGH:legacy-catalog-raw-read:f89031bd1c4f16f1:75286f5fbe8f462c",
+      "S12-CGH:legacy-catalog-raw-read:20d92886e18a86a3:54c0178542c4bf9b",
+      "S12-CGH:legacy-catalog-raw-read:20d92886e18a86a3:b31292a51ecbd11f",
+    ]],
+    ["s12-prj.json", ["S12-PRJ:unresolved-boundary-expression:cc362bf31617ab18:e6547c8da21e8b6b"]],
+  ] as const)("retires exactly the reviewed vanished slices in %s", async (name, retiredIds) => {
+    const shardPath = `scripts/parameter-catalog-allowlist/shards/${name}`;
+    const previous = JSON.parse(execFileSync("git", [
+      "show", `5355f973bfb42dbc4bf47bfac25d56204bf550a9:${shardPath}`,
+    ], { cwd: repoRoot, encoding: "utf8" })) as { entries: typeof allowances };
+    const retired = new Set<string>(retiredIds);
+    expect(previous.entries.filter((entry) => retired.has(entry.id))).toHaveLength(retired.size);
+    expect(JSON.parse(await readFile(join(repoRoot, shardPath), "utf8"))).toEqual({
+      ...previous, entries: previous.entries.filter((entry) => !retired.has(entry.id)),
+    });
+  });
+
+  it("retires only the vanished topology allowance and retains both same-anchor successors", async () => {
+    const shardPath = "scripts/parameter-catalog-allowlist/shards/s12-top.json";
+    const previous = JSON.parse(execFileSync("git", [
+      "show", `5355f973bfb42dbc4bf47bfac25d56204bf550a9:${shardPath}`,
+    ], { cwd: repoRoot, encoding: "utf8" })) as { entries: typeof allowances };
+    const current = JSON.parse(await readFile(join(repoRoot, shardPath), "utf8"));
+    const retiredId = "S12-TOP:legacy-effective-governance-contract:76423aea8d138544:77688cbfd1ad3992";
+    expect(previous.entries.filter((entry) => entry.id === retiredId)).toHaveLength(1);
+    expect(current).toEqual({ ...previous, entries: previous.entries.filter((entry) => entry.id !== retiredId) });
+    const anchor = retiredId.split(":").slice(0, 3).join(":");
+    const survivors = consumerRecord.files.flatMap((section) => section.pairs)
+      .filter((pair) => pair.old.id.split(":").slice(0, 3).join(":") === anchor);
+    expect(survivors).toHaveLength(2);
+    expect(new Set(survivors.flatMap((pair) => [pair.old.id, pair.new.id])).size).toBe(4);
+    expect(survivors.some((pair) => pair.old.id === retiredId)).toBe(false);
+    for (const pair of survivors) {
+      expect(discovered.find((entry) => entry.id === pair.new.id)).toEqual(pair.new);
+    }
+  });
+
+  it("binds 237 current consumer observations without conflating shared-range evidence", async () => {
     const first = await applyReviewedSourceWorkflowRelocation(repoRoot, fixture, allowances, discovered);
     const result = await applyReviewedSourceWorkflowConsumerRelocation(repoRoot, fixture, allowances, first.violations, first.relocations);
-    expect(result.relocations).toHaveLength(202);
-    expect(consumerRecord.files.map((section) => section.pairs.length)).toEqual([2, 2, 83, 14, 1, 16, 29, 1, 22, 32]);
+    expect(result.relocations).toHaveLength(237);
+    expect(consumerRecord.files.map((section) => section.pairs.length)).toEqual([2, 2, 82, 14, 1, 16, 29, 1, 22, 32, 2, 2, 30, 2]);
     const ends = [...first.relocations, ...result.relocations].flatMap((entry) => [entry.id, entry.observed.id]);
-    expect(new Set(ends).size).toBe(568);
+    expect(new Set(ends).size).toBe(638);
     const pairs = consumerRecord.files.find((section) => section.file.endsWith("importBatchRepository.ts"))!.pairs;
     const shared = pairs.filter((pair) => pairs.some((other) => other.old.byteStart === pair.old.byteStart
       && other.old.byteEnd === pair.old.byteEnd && other.old.evidence !== pair.old.evidence
@@ -90,7 +136,7 @@ describe("source workflow exact identity successor", () => {
     const extra = { id: pair.new.id, file: pair.new.file, rule: pair.new.rule, reason: pair.new.reason };
     await expect(applyReviewedSourceWorkflowConsumerRelocation(repoRoot, fixture, [...allowances, extra], discovered)).rejects.toThrow("allowance growth");
     const removed = fixture.violations.filter((entry) => !allowances.some((allowance) => allowance.id === entry.id));
-    expect(removed).toHaveLength(16);
+    expect(removed).toHaveLength(28);
     const unrelated = { ...pair.new, id: pair.new.id.slice(0, -16) + "e".repeat(16) };
     const result = await applyReviewedSourceWorkflowConsumerRelocation(repoRoot, fixture, allowances, [...discovered, unrelated, ...removed]);
     expect(compareBoundaryInventory(result.violations, allowances, fixture.violations).unallowlisted).toEqual(expect.arrayContaining([unrelated, ...removed]));
@@ -162,7 +208,7 @@ describe("source workflow exact identity successor", () => {
     const extra = { id: pair.new.id, file: pair.new.file, rule: pair.new.rule, reason: pair.new.reason };
     await expect(applyReviewedSourceWorkflowRelocation(repoRoot, fixture, [...allowances, extra], discovered)).rejects.toThrow("allowance growth");
     const removed = fixture.violations.filter((entry) => !allowances.some((allowance) => allowance.id === entry.id));
-    expect(removed).toHaveLength(16);
+    expect(removed).toHaveLength(28);
     const unrelated = { ...pair.new, id: pair.new.id.slice(0, -16) + "f".repeat(16) };
     const result = await applyReviewedSourceWorkflowRelocation(repoRoot, fixture, allowances, [...discovered, unrelated, ...removed]);
     expect(compareBoundaryInventory(result.violations, allowances, fixture.violations).unallowlisted).toEqual(expect.arrayContaining([unrelated, ...removed]));

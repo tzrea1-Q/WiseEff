@@ -51,6 +51,7 @@ import { useReviewQueueKeyboard } from "@/features/parameter-review/useReviewQue
 import { ArrowRight, CheckCircle2, CircleOff, FileText, History, Link2, Sparkles } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import "./parameter-review.css";
+import { CanonicalProjectValueReviewPanel } from "./CanonicalProjectValueReviewPanel";
 
 type ParameterReviewMode = "pending" | "history";
 type ParameterInitializationReviewRow = {
@@ -100,6 +101,12 @@ export function ParameterReviewPage({
   const [filterStatuses, setFilterStatuses] = useState<string[]>([]);
   const contextQuery = useMemo(() => getContextQuery(search), [search]);
   const reviewerRoleId = migrateLegacyRoleId(state.activeRoleId);
+  const canonicalProjectId = contextQuery.projectId || state.activeProjectId;
+  const currentUser = state.users.find((user) => user.id === state.currentUserId);
+  const canReviewCanonical = Boolean(currentUser?.isActive && currentUser.roles?.some((role) =>
+    (role.roleId === "software-committer" && role.projectId === canonicalProjectId)
+      || (role.roleId === "admin" && role.projectId === null)
+  ));
   const canReviewInitialization = canPerform(reviewerRoleId, "parameter.review");
   const { pending: pendingRequests, history: historyRequests } = useMemo(
     () => splitChangeRequestsForReviewQueue(reviewerRoleId, state.changeRequests),
@@ -649,6 +656,15 @@ export function ParameterReviewPage({
 
   return (
     <WorkbenchLayout title={reviewPageTitle}>
+      {runtimeMode === "api" && canonicalProjectId ? (
+        <CanonicalProjectValueReviewPanel
+          key={canonicalProjectId}
+          projectId={canonicalProjectId}
+          repository={runtime?.parameterCatalogRepository}
+          currentUserId={state.currentUserId}
+          canReview={canReviewCanonical}
+        />
+      ) : null}
       <section className="review-queue" ref={queueRef} tabIndex={-1} aria-labelledby="review-queue-heading">
         <div className="review-queue-header">
           <h2 id="review-queue-heading" className="sr-only">

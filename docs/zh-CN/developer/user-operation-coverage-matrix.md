@@ -138,6 +138,7 @@
 - `PARAM-ADMIN-IA-001`：组织子导航两入口、定义管理内嵌审核、节点对应嵌套与旧路由重定向（单测覆盖；Playwright 标记暂缓）。
 - `PARAM-TOPOLOGY-BROWSE-001`：融合工作台中的真实源/生效嵌套树、语义行、详情 shape/provenance 与 topology API 200（`e2e/acceptance/parameter-topology.acceptance.spec.ts`）。
 - `PARAM-TOPOLOGY-EDIT-001`：drafts Schema 诊断、409 与编译失败关闭（`e2e/acceptance/parameter-topology.acceptance.spec.ts`）。
+- `PARAM-CANONICAL-VALUE-WORKFLOW-001`：软件用户创建编辑／删除草稿、选择合格软件审核员，撤回／驳回／重提后由软件审核员单阶段批准；API、数据库和审计证明源文件原子生效，刷新及重启后绑定与历史保持一致（`e2e/acceptance/canonical-value-workflow.acceptance.spec.ts`）。旧 topology 操作 ID 及其断言保持独立。
 - `PARAM-IDENTITY-MAP-001`：`open-mapping` 阻断 validate 与决议审计（`e2e/acceptance/parameter-topology.acceptance.spec.ts`）。
 - `PARAM-IDENTITY-MAP-ADMIN-001`：PC 1440×900 下，Admin 在 `/parameter-admin` 决议身份映射任务，并通过受保护 re-resolve 更正已应用的选择，覆盖 UI、API、DB 与治理审计（`e2e/acceptance/parameter-topology.acceptance.spec.ts`）。
 - `PARAM-CONFIG-PUBLISH-GATE-001`：真实工具链 validate 与 DB reload 持久化（`e2e/acceptance/parameter-topology.acceptance.spec.ts`）。

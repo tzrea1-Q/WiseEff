@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 
 import type pg from "pg";
 import type { Queryable } from "../../../shared/database/client";
+import { ApiError } from "../../../shared/http/errors";
 
 import {
   serializeContract,
@@ -43,8 +44,52 @@ export type ProjectValueRow = {
   value_digest: string;
   value_kind: string;
   value: unknown;
+  value_state: "present" | "deleted";
   created_at: Date | string;
 };
+
+export type DeletedSourceAnchorRow = {
+  format: "dts" | "json";
+  locator: Record<string, unknown>;
+  fileId: string;
+  logicalNodeId: string | null;
+  nodeLocator: string | null;
+};
+
+export async function discoverDeletedSourceRevisionPins(
+  tx: Queryable,
+  input: { organizationId: string; projectId: string; configSetId: string },
+) {
+  return (await tx.query<{ organizationId: string; projectId: string; configSetId: string; configRevisionId: string; fileId: string; fileVersionId: string }>(
+    `select distinct pin.organization_id as "organizationId",pin.project_id as "projectId",occurrence.config_set_id as "configSetId",
+      pin.config_revision_id as "configRevisionId",pin.file_id as "fileId",pin.file_version_id as "fileVersionId"
+       from parameter_catalog.project_value_source_pins pin
+       join parameter_catalog.${projectParameterValues} value on value.id=pin.project_value_id and value.value_state='deleted'
+       join parameter_catalog.project_parameter_bindings binding on binding.id=pin.binding_id and binding.current_value_id=value.id
+       join parameter_catalog.project_parameter_source_occurrences occurrence on occurrence.id=pin.source_occurrence_id
+      where pin.organization_id=$1 and pin.project_id=$2 and occurrence.config_set_id=$3 and pin.value_state='deleted'
+      order by pin.config_revision_id,pin.file_id,pin.file_version_id`,
+    [input.organizationId, input.projectId, input.configSetId],
+  )).rows;
+}
+
+/** Exact terminal delete anchors retained outside the current active cohort. */
+export async function loadDeletedSourceAnchors(
+  tx: Queryable,
+  input: { organizationId: string; projectId: string; configSetId: string },
+): Promise<DeletedSourceAnchorRow[]> {
+  return (await tx.query<DeletedSourceAnchorRow>(
+    `select pin.format,pin.locator,pin.file_id as "fileId",occurrence.logical_node_id as "logicalNodeId",logical.node_locator as "nodeLocator"
+       from parameter_catalog.project_value_source_pins pin
+       join parameter_catalog.${projectParameterValues} value on value.id=pin.project_value_id and value.value_state='deleted'
+       join parameter_catalog.project_parameter_bindings binding on binding.id=pin.binding_id and binding.current_value_id=value.id
+       join parameter_catalog.project_parameter_source_occurrences occurrence on occurrence.id=pin.source_occurrence_id
+       left join public.dts_logical_node_revisions logical on logical.logical_node_id=occurrence.logical_node_id
+         and logical.config_revision_id=pin.config_revision_id
+      where pin.organization_id=$1 and pin.project_id=$2 and occurrence.config_set_id=$3 and pin.value_state='deleted'`,
+    [input.organizationId, input.projectId, input.configSetId],
+  )).rows;
+}
 
 /** Discovery only; source owners fence these identities before reading bytes or locking Bindings. */
 export async function discoverCurrentSourceRevisionPins(tx: Queryable, input: { organizationId: string; projectId: string; configSetId: string }) {
@@ -77,10 +122,23 @@ export async function requiresCanonicalSourceImport(tx: Queryable, input: { orga
 
 /** Caller holds the source-prefix locks; this operation locks and reads its complete value cohort. */
 export async function loadSourceBindingCohort(tx: Queryable, input: { organizationId: string; projectId: string; configSetId: string }) {
-  await tx.query(`select binding.id from parameter_catalog.project_parameter_bindings binding
+  const scope = [input.organizationId,input.projectId,input.configSetId];
+  const occurrencesSql = `select id from parameter_catalog.project_parameter_source_occurrences
+    where organization_id=$1 and project_id=$2 and config_set_id=$3 order by id`;
+  const occurrences = await tx.query(occurrencesSql,scope);
+  await tx.query(`${occurrencesSql} for update nowait`,scope);
+  if (JSON.stringify(occurrences.rows) !== JSON.stringify((await tx.query(occurrencesSql,scope)).rows)) {
+    throw new ApiError("CONFLICT", "Source occurrences changed during lock acquisition.", { reason: "source-proof-busy" });
+  }
+  const bindingsSql = `select binding.id from parameter_catalog.project_parameter_bindings binding
     join parameter_catalog.project_parameter_source_occurrences occurrence on occurrence.id=binding.source_occurrence_id
     where binding.organization_id=$1 and binding.project_id=$2 and occurrence.config_set_id=$3
-    order by binding.id for update of binding nowait`, [input.organizationId,input.projectId,input.configSetId]);
+    order by binding.id`;
+  const bindings = await tx.query(bindingsSql,scope);
+  await tx.query(`${bindingsSql} for update of binding nowait`,scope);
+  if (JSON.stringify(bindings.rows) !== JSON.stringify((await tx.query(bindingsSql,scope)).rows)) {
+    throw new ApiError("CONFLICT", "Source Bindings changed during lock acquisition.", { reason: "source-proof-busy" });
+  }
   return (await tx.query<CanonicalSourceBindingPin>(`select binding.id as "bindingId",binding.current_value_id as "oldValueId",
     pin.id as "sourcePinId",binding.source_occurrence_id as "sourceOccurrenceId",binding.definition_id as "definitionId",
     binding.effective_revision_id as "effectiveRevisionId",binding.catalog_release_id as "catalogReleaseId",
@@ -104,7 +162,8 @@ export async function loadOwnedProjectValueSourcePin(tx: Queryable, input: { org
        pin.file_id as "fileId", pin.file_version_id as "fileVersionId", pin.format, pin.locator,
        occurrence.config_set_id as "configSetId", occurrence.logical_node_id as "logicalNodeId",
        occurrence.configuration_instance_id as "configurationInstanceId",
-       occurrence.configuration_schema_subject_id as "configurationSchemaSubjectId", occurrence.root_pointer as "rootPointer",
+       occurrence.configuration_schema_subject_id as "configurationSchemaSubjectId", occurrence.root_pointer as "rootPointer", value.value_state as "valueState",
+       pin.base_source_pin_id as "baseSourcePinId", pin.delete_request_id as "deleteRequestId", pin.delete_proof as "deleteProof",
        revision.entry_file as "entryFile",revision.include_search_paths as "includeSearchPaths",revision.overlay_order as "overlayOrder"
      from parameter_catalog.project_value_source_pins pin
      join parameter_catalog.project_parameter_bindings binding
@@ -137,8 +196,8 @@ export async function isCurrentGovernedSourceValue(tx: Queryable, input: { organ
 
 /** Exact replay projection; a caller cannot substitute another tenant's pin or value. */
 export async function loadSourceValueReplay(tx: Queryable, input: { organizationId: string; projectId: string; bindingId: string; projectValueId: string; sourceOccurrenceId: string }) {
-  const result = await tx.query<{ fileVersionId: string; locator: Record<string, ContractJsonValue>; value: ContractJsonValue }>(
-    `select pin.file_version_id as "fileVersionId",pin.locator,value.value
+  const result = await tx.query<{ fileVersionId: string; locator: Record<string, ContractJsonValue>; value: ContractJsonValue; valueState: "present" | "deleted" }>(
+    `select pin.file_version_id as "fileVersionId",pin.locator,value.value,value.value_state as "valueState"
      from parameter_catalog.project_value_source_pins pin
      join parameter_catalog.${projectParameterValues} value on value.id=pin.project_value_id and value.binding_id=pin.binding_id
      where pin.project_value_id=$1 and pin.binding_id=$2 and pin.source_occurrence_id=$3
@@ -263,7 +322,7 @@ export const loadProjectValueById = async (
 ): Promise<ProjectValueRow | null> => {
   const result = await client.query<ProjectValueRow>(
     `select id, binding_id, definition_id, definition_revision_id,
-            source_ref, config_revision_id, value_digest, value_kind, value, created_at
+            source_ref, config_revision_id, value_digest, value_kind, value, value_state, created_at
        from parameter_catalog.${projectParameterValues}
       where id = $1`,
     [valueId],
@@ -293,7 +352,7 @@ export const loadHistoryByRevision = async (
 ): Promise<readonly ProjectValueRow[]> => {
   const result = await client.query<ProjectValueRow>(
     `select id, binding_id, definition_id, definition_revision_id,
-            source_ref, config_revision_id, value_digest, value_kind, value, created_at
+            source_ref, config_revision_id, value_digest, value_kind, value, value_state, created_at
        from parameter_catalog.${projectParameterValues}
       where binding_id = $1
         and definition_revision_id = $2
@@ -315,16 +374,17 @@ export const insertProjectValue = async (
     readonly valueDigest: string;
     readonly valueKind: ProjectValueKind;
     readonly valueJson: string;
+    readonly valueState?: "present" | "deleted";
   },
 ): Promise<ProjectValueRow | null> => {
   const result = await client.query<ProjectValueRow>(
     `insert into parameter_catalog.${projectParameterValues} (
        id, binding_id, definition_id, definition_revision_id,
-       source_ref, config_revision_id, value_digest, value_kind, value
-     ) values ($1,$2,$3,$4,$5,$6,$7,$8,$9::jsonb)
+       source_ref, config_revision_id, value_digest, value_kind, value, value_state
+     ) values ($1,$2,$3,$4,$5,$6,$7,$8,$9::jsonb,$10)
      on conflict (id) do nothing
      returning id, binding_id, definition_id, definition_revision_id,
-               source_ref, config_revision_id, value_digest, value_kind, value, created_at`,
+               source_ref, config_revision_id, value_digest, value_kind, value, value_state, created_at`,
     [
       input.id,
       input.bindingId,
@@ -335,6 +395,7 @@ export const insertProjectValue = async (
       input.valueDigest,
       input.valueKind,
       input.valueJson,
+      input.valueState ?? "present",
     ],
   );
   return result.rows[0] ?? null;
@@ -361,8 +422,15 @@ export const casCurrentTip = async (
             where initial.id=binding.current_value_id and initial.binding_id=binding.id
               and initial.source_ref='canonical-binding-identity')
           or exists (select 1 from public.project_parameter_value_change_requests request
+            join parameter_catalog.project_value_source_pins base_pin on base_pin.id=request.source_pin_id
+              and base_pin.binding_id=request.binding_id and base_pin.project_value_id=request.base_current_value_id
+              and base_pin.organization_id=request.organization_id and base_pin.project_id=request.project_id
+              and base_pin.config_revision_id=request.config_revision_id and base_pin.value_state='present'
+            join parameter_catalog.${projectParameterValues} next_value on next_value.id=$3 and next_value.binding_id=binding.id
             where request.id=$4 and request.organization_id=binding.organization_id
               and request.project_id=binding.project_id and request.status='pending'
+              and (request.binding_id<>binding.id or request.base_current_value_id=$2)
+              and next_value.value_state=case when request.binding_id=binding.id and request.action='delete' then 'deleted' else 'present' end
               and request.candidate_binding_manifest @> jsonb_build_array(jsonb_build_object('bindingId',binding.id,'oldValueId',$2::text)))
         )`,
     [input.bindingId, input.expectedTip, input.nextTip, input.sourceCommitRequestId ?? null],

@@ -2,6 +2,7 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-li
 import { useState, type ComponentProps } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ParameterTopologyRepository } from "@/application/ports/ParameterTopologyRepository";
+import type { ParameterCatalogRepository } from "@/application/ports/ParameterCatalogRepository";
 import {
   TOPOLOGY_TEACHING_BINDINGS,
   TOPOLOGY_TEACHING_EFFECTIVE_NODES,
@@ -202,7 +203,7 @@ function createDeferred<T>() {
 async function createGpioDraftFromWorkbench(
   workspace: HTMLElement,
   fireEvent: typeof import("@testing-library/react").fireEvent,
-  input: { reason: string; rawValue?: string; editButtonName?: RegExp }
+  input: { reason: string; rawValue?: string; action?: "delete"; editButtonName?: RegExp }
 ) {
   const editName = input.editButtonName ?? /编辑 gpio_int（未分类 · sc8562/;
   // Tree selection updates the workbench list asynchronously; wait for the
@@ -210,7 +211,9 @@ async function createGpioDraftFromWorkbench(
   const editButton = await within(workspace).findByRole("button", { name: editName });
   fireEvent.click(editButton);
   const draftDialog = await screen.findByRole("dialog", { name: "修改草稿" });
-  if (input.rawValue !== undefined) {
+  if (input.action === "delete") {
+    fireEvent.click(within(draftDialog).getByRole("button", { name: "删除属性" }));
+  } else if (input.rawValue !== undefined) {
     fireEvent.change(within(draftDialog).getByRole("textbox", { name: "目标值" }), {
       target: { value: input.rawValue }
     });
@@ -607,6 +610,54 @@ describe("ApiProjectTopologyWorkspace", () => {
     });
   });
 
+  it("creates a canonical delete draft without a target value", async () => {
+    const createBindingDraft = vi.fn().mockResolvedValue({
+      draftId: "canonical-delete-draft",
+      parameterId: "binding-sc8562-gpio-int",
+      candidateRevisionId: "rev-candidate-2",
+      rawText: "",
+      action: "delete",
+      parameterSpecId: "spec-sc8562-gpio-int",
+      projectParameterBindingId: "binding-sc8562-gpio-int",
+      writeTarget: { role: "canonical-project-value-draft", propertyKey: "gpio_int" },
+      overlayFileId: "",
+      overlayFileName: ""
+    });
+    const repository = createRepository({ createBindingDraft });
+
+    render(
+      <ApiProjectTopologyWorkspace
+        projectId="aurora"
+        canEdit
+        topologyRepository={repository}
+        listConfigSets={async () => [{ id: "dcs-default-aurora", name: "default" }]}
+      />
+    );
+
+    await waitFor(() => {
+      expect(within(screen.getByRole("region", { name: "DTS 参数工作台" })).getByRole("treeitem", { name: /未分类 · sc8562/ })).toBeVisible();
+    });
+    const workspace = screen.getByRole("region", { name: "DTS 参数工作台" });
+    fireEvent.click(within(workspace).getByRole("treeitem", { name: /未分类 · sc8562/ }));
+    await createGpioDraftFromWorkbench(workspace, fireEvent, {
+      action: "delete",
+      reason: "移除过时属性"
+    });
+
+    await waitFor(() => expect(createBindingDraft).toHaveBeenCalledWith(
+      "aurora",
+      "binding-sc8562-gpio-int",
+      expect.objectContaining({
+        baseRevisionId: "rev-real-1",
+        action: "delete",
+        reason: "移除过时属性"
+      })
+    ));
+    const [, , body] = createBindingDraft.mock.calls[0];
+    expect(body).not.toHaveProperty("targetValue");
+    expect(body).not.toHaveProperty("sourceTarget");
+  });
+
   it("shows a newly created canonical pending draft immediately without a page reload", async () => {
     const { fireEvent } = await import("@testing-library/react");
     const createBindingDraft = vi.fn().mockResolvedValue({
@@ -643,6 +694,66 @@ describe("ApiProjectTopologyWorkspace", () => {
     await waitFor(() => expect(createBindingDraft).toHaveBeenCalledTimes(1));
     expect(await screen.findByText(/^本轮 1 项$/)).toBeVisible();
     expect(within(screen.getByRole("region", { name: "参数修改提交" })).getByText("Save published value")).toBeVisible();
+  });
+
+  it("forwards the selected canonical software reviewer to the catalog submitter", async () => {
+    const listDrafts = vi.fn().mockResolvedValue([
+      {
+        id: "canonical-forwarded-draft",
+        projectId: "aurora",
+        projectParameterBindingId: "binding-sc8562-gpio-int",
+        candidateConfigRevisionId: "rev-real-1",
+        targetValue: "<2000>",
+        action: "set" as const,
+        reason: "Forward reviewer selection",
+        updatedAt: "2026-07-23T02:00:00.000Z",
+        baseRevisionId: "rev-real-1",
+        sourcePinId: "source-pin-849",
+        candidateId: "candidate-849"
+      }
+    ]);
+    const submitProjectValueDraft = vi.fn().mockResolvedValue({});
+    const canonicalRepository = {
+      getCatalog: vi.fn().mockResolvedValue({ item: { catalogReleaseId: "release-849" } }),
+      submitProjectValueDraft
+    } as unknown as ParameterCatalogRepository;
+    const repository = createRepository();
+
+    render(
+      <ApiProjectTopologyWorkspace
+        projectId="aurora"
+        canEdit
+        topologyRepository={repository}
+        canonicalRepository={canonicalRepository}
+        listConfigSets={async () => [{ id: "dcs-default-aurora", name: "default" }]}
+        listDrafts={listDrafts}
+        listWorkflowAssignees={vi.fn().mockResolvedValue({
+          hardwareCommitters: [],
+          softwareCommitters: [{ id: "u-sw", name: "Software Reviewer" }],
+          softwareUsers: []
+        })}
+      />
+    );
+
+    const tray = await screen.findByRole("region", { name: "参数修改提交" });
+    const softwareReviewer = await within(tray).findByRole("combobox", { name: "软件 MDE" });
+    fireEvent.change(softwareReviewer, {
+      target: { value: "u-sw" }
+    });
+    fireEvent.click(within(tray).getByRole("button", { name: /提交审核（1 项）/ }));
+
+    await waitFor(() => {
+      expect(submitProjectValueDraft).toHaveBeenCalledWith(
+        "aurora",
+        "canonical-forwarded-draft",
+        { assignedToUserId: "u-sw" },
+        {
+          catalogReleaseId: "release-849",
+          idempotencyKey: expect.any(String)
+        }
+      );
+    });
+    await waitFor(() => expect(screen.queryByRole("region", { name: "参数修改提交" })).not.toBeInTheDocument());
   });
 
   it("drops the previous project's candidate revision and draft before loading the next project", async () => {

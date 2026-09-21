@@ -10,6 +10,7 @@ type CanonicalProjectValueReviewPanelProps = {
   projectId: string;
   repository?: ParameterCatalogRepository;
   canReview?: boolean;
+  currentUserId?: string;
 };
 
 type ReviewView = "pending" | "history";
@@ -22,6 +23,10 @@ function requestSourceText(request: CatalogValueChangeRequestDto): string {
     : request.targetValue;
 }
 
+function requestActionLabel(request: CatalogValueChangeRequestDto): string {
+  return request.action === "delete" ? "删除属性" : "设置属性";
+}
+
 function idempotencyKey(): string {
   return typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
     ? crypto.randomUUID()
@@ -32,7 +37,8 @@ function idempotencyKey(): string {
 export function CanonicalProjectValueReviewPanel({
   projectId,
   repository,
-  canReview = true
+  canReview = true,
+  currentUserId
 }: CanonicalProjectValueReviewPanelProps) {
   const [view, setView] = useState<ReviewView>("pending");
   const [requests, setRequests] = useState<readonly CatalogValueChangeRequestDto[]>([]);
@@ -45,6 +51,7 @@ export function CanonicalProjectValueReviewPanel({
   const [sourceDiffError, setSourceDiffError] = useState<string | null>(null);
   const selected = requests.find((request) => request.id === selectedId) ?? requests[0] ?? null;
   const effectiveSelectedId = selected?.id ?? null;
+  const canReviewSelected = Boolean(canReview && currentUserId && selected?.submitterUserId !== currentUserId);
 
   useEffect(() => {
     if (!repository?.listProjectValueChangeRequests) return;
@@ -110,13 +117,29 @@ export function CanonicalProjectValueReviewPanel({
   if (!repository?.listProjectValueChangeRequests || !repository.reviewProjectValueChangeRequest) {
     return null;
   }
-  if (requests.length === 0) {
-    return null;
-  }
-
   const reviewProjectValueChangeRequest = repository.reviewProjectValueChangeRequest;
+  const withdrawSelected = async () => {
+    if (!selected || busy || selected.status !== "pending" || selected.submitterUserId !== currentUserId
+      || !repository.withdrawProjectValueChangeRequest) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const catalog = await repository.getCatalog();
+      const catalogReleaseId = catalog.item?.catalogReleaseId;
+      if (!catalogReleaseId) throw new Error("当前 catalog release 不可用，已阻止撤回。");
+      await repository.withdrawProjectValueChangeRequest(projectId, selected.id, {
+        catalogReleaseId, idempotencyKey: idempotencyKey()
+      });
+      setRequests((current) => current.filter((request) => request.id !== selected.id));
+      setSelectedId(null);
+    } catch (withdrawError) {
+      setError(presentError(withdrawError, "撤回失败，请稍后重试。"));
+    } finally {
+      setBusy(false);
+    }
+  };
   const reviewSelected = async (decision: "approve" | "reject") => {
-    if (!selected || busy || view !== "pending") return;
+    if (!selected || busy || view !== "pending" || !canReviewSelected) return;
     if (decision === "approve" && (sourceDiffState !== "ready" || sourceDiff?.requestId !== selected.id)) return;
     setBusy(true);
     setError(null);
@@ -164,7 +187,7 @@ export function CanonicalProjectValueReviewPanel({
           <div className="table-wrap">
             <table aria-label="软件配置审核请求">
               <thead>
-                <tr><th>绑定</th><th>格式</th><th>状态</th><th>原因</th></tr>
+                <tr><th>绑定</th><th>格式</th><th>动作</th><th>状态</th><th>原因</th></tr>
               </thead>
               <tbody>
                 {requests.map((request) => (
@@ -175,6 +198,7 @@ export function CanonicalProjectValueReviewPanel({
                       </button>
                     </td>
                     <td>{request.sourceFormat.toUpperCase()}</td>
+                    <td>{requestActionLabel(request)}</td>
                     <td>{{ pending: "待审核",approved: "已批准",rejected: "已驳回",withdrawn: "已撤回" }[request.status]}</td>
                     <td>{request.reason}</td>
                   </tr>
@@ -190,6 +214,8 @@ export function CanonicalProjectValueReviewPanel({
                 <div><dt>请求 ID</dt><dd><code>{selected.id}</code></dd></div>
                 <div><dt>来源快照</dt><dd><code>{selected.sourcePinId ?? "—"}</code></dd></div>
                 <div><dt>候选文件</dt><dd><code>{selected.candidateId ?? "—"}</code></dd></div>
+                <div><dt>变更动作</dt><dd>{selected.action === "delete" && selected.status === "pending"
+                  ? "删除属性（批准后生效）" : requestActionLabel(selected)}</dd></div>
                 <div><dt>修改原因</dt><dd>{selected.reason}</dd></div>
               </dl>
               <pre aria-label="固定源目标内容">{requestSourceText(selected)}</pre>
@@ -224,7 +250,7 @@ export function CanonicalProjectValueReviewPanel({
                   </div>
                 </section>
               ) : null}
-              {view === "pending" && selected.status === "pending" && canReview ? (
+              {view === "pending" && selected.status === "pending" && canReviewSelected ? (
                 <div>
                   <button
                     type="button"
@@ -239,8 +265,16 @@ export function CanonicalProjectValueReviewPanel({
                   </button>
                 </div>
               ) : view === "pending" && selected.status === "pending" ? (
-                <p role="note">当前账号不是该项目的软件审核员；审核操作由服务端拒绝。</p>
+                <p role="note">{selected.submitterUserId === currentUserId
+                  ? "不能审核自己的提交；请由其他合格审核员处理。"
+                  : "当前账号不是该项目的软件审核员；审核操作由服务端拒绝。"}</p>
               ) : null}
+              {view === "pending" && selected.status === "pending" && selected.submitterUserId === currentUserId
+                && repository.withdrawProjectValueChangeRequest ? (
+                  <button type="button" className="button subtle" disabled={busy} onClick={() => void withdrawSelected()}>
+                    撤回我的提交
+                  </button>
+                ) : null}
             </article>
           ) : null}
         </div>

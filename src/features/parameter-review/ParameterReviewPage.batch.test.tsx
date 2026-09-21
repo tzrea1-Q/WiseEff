@@ -5,6 +5,7 @@ import { TopBarActionsContext } from "@/components/layout";
 import { initialState } from "@/mockData";
 import type { PrototypeState } from "@/mockData";
 import type { ParameterPageActions } from "@/app/routes";
+import type { AppRuntime } from "@/app/appRuntime";
 
 afterEach(() => {
   cleanup();
@@ -38,6 +39,45 @@ function pendingHardwareReviewIds(state: PrototypeState) {
 }
 
 describe("ParameterReviewPage deep link", () => {
+  it.each([
+    { roleProject: "nebula", roleId: "software-committer" as const, allowed: false },
+    { roleProject: "aurora", roleId: "software-committer" as const, allowed: true },
+    { roleProject: null, roleId: "admin" as const, allowed: true },
+    { roleProject: "aurora", roleId: "admin" as const, allowed: false }
+  ])("scopes canonical review actions to $roleId in $roleProject", async ({ roleProject, roleId, allowed }) => {
+    const runtime = { parameterCatalogRepository: {
+      listProjectValueChangeRequests: vi.fn().mockResolvedValue({ items: [{
+        id: "canonical-request", sourceFormat: "dts", status: "pending", targetValue: "<1000>",
+        reason: "Scoped review", bindingId: "canonical-binding", submitterUserId: "another-user"
+      }] }),
+      reviewProjectValueChangeRequest: vi.fn()
+    } } as unknown as AppRuntime;
+    const user = { ...initialState.users[0], id: "reviewer", isActive: true,
+      roles: [{ projectId: roleProject, roleId }] };
+    render(<TopBarActionsContext.Provider value={{ setActions: () => {} }}>
+      <ParameterReviewPage state={{ ...initialState, currentUserId: user.id, users: [user], activeRoleId: "software-committer" }}
+        dispatch={vi.fn()} onNavigate={() => {}} search="?project=aurora" runtime={runtime} runtimeMode="api" />
+    </TopBarActionsContext.Provider>);
+    const panel = await screen.findByRole("region", { name: "软件配置审核" });
+    await within(panel).findByText("Scoped review", { selector: "td" });
+    expect(within(panel).queryByRole("button", { name: "批准软件配置" }) !== null).toBe(allowed);
+  });
+
+  it("mounts the canonical queue for the requested project even when ordinary requests are empty", async () => {
+    const listProjectValueChangeRequests = vi.fn().mockResolvedValue({ items: [] });
+    const runtime = { parameterCatalogRepository: {
+      listProjectValueChangeRequests,
+      reviewProjectValueChangeRequest: vi.fn()
+    } } as unknown as AppRuntime;
+    render(<TopBarActionsContext.Provider value={{ setActions: () => {} }}>
+      <ParameterReviewPage state={{ ...initialState, changeRequests: [] }} dispatch={vi.fn()}
+        onNavigate={() => {}} search="?project=aurora" runtime={runtime} runtimeMode="api" />
+    </TopBarActionsContext.Provider>);
+    await waitFor(() => expect(listProjectValueChangeRequests).toHaveBeenCalledWith("aurora", { status: "pending" }));
+    expect(screen.getByRole("region", { name: "软件配置审核" })).toBeVisible();
+    expect(screen.getByRole("tab", { name: "历史" })).toBeEnabled();
+  });
+
   it("restores the selected request from ?request= and keeps the URL shareable", async () => {
     const state = hardwareCommitterState();
     const target = state.changeRequests.find((request) => request.status === "硬件Committer检视");

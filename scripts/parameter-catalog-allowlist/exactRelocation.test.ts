@@ -40,7 +40,7 @@ describe("exact reviewed Catalog occurrence relocation", () => {
     expect(result).toHaveLength(23);
     expect(result[0]).toEqual(record.pairs[0]);
     expect(fixture.violations).toHaveLength(3519);
-    expect(allowlist.entries).toHaveLength(3503);
+    expect(allowlist.entries).toHaveLength(3491);
   });
 
   it.each([
@@ -101,7 +101,7 @@ describe("exact reviewed Catalog occurrence relocation", () => {
   it("does not absorb unmapped new debt or restore any of the six removed allowances", () => {
     const ids = new Set(allowlist.entries.map((entry) => entry.id));
     const removed = fixture.violations.filter((entry) => !ids.has(entry.id));
-    expect(removed).toHaveLength(16);
+    expect(removed).toHaveLength(28);
     const unrelated = { ...record.pairs[0].new, id: `${record.pairs[0].new.id.slice(0, -16)}${"f".repeat(16)}` };
     const pairs = validateExactRelocation(record, { ...input(), discovered: [...discovered, unrelated] });
     const mapped = pairs.map((pair) => pair.old);

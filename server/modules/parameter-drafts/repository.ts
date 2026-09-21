@@ -1363,21 +1363,31 @@ export async function upsertFileSyncDraft(
 
 export async function deleteDraft(
   db: Queryable,
-  input: { organizationId: string; draftId: string } & DraftOwnerInput
+  input: { organizationId: string; projectId?: string; draftId: string } & DraftOwnerInput
 ) {
   const owner = normalizeDraftOwner(input);
   const legacyUserOwner = !("owner" in input);
-  await db.query(
+  const projectClause = input.projectId === undefined ? "" : "and project_id = $6";
+  const draftIdPlaceholder = input.projectId === undefined ? 6 : 7;
+  const result = await db.query<{ project_id: string }>(
     `
     delete from parameter_drafts
     where organization_id = $1
       and ${draftOwnerWhere("parameter_drafts", 2, {
         allowAgentLegacyUserOwner: legacyUserOwner,
       }).join("\n      and ")}
-      and id = $6
+      ${projectClause}
+      and id = $${draftIdPlaceholder}
+      returning project_id
     `,
-    [input.organizationId, ...draftOwnerValues(owner), input.draftId]
+    [
+      input.organizationId,
+      ...draftOwnerValues(owner),
+      ...(input.projectId === undefined ? [] : [input.projectId]),
+      input.draftId
+    ]
   );
+  return result.rows[0]?.project_id ?? null;
 }
 
 export async function deleteDraftForParameter(

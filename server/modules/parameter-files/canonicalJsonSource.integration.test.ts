@@ -19,7 +19,7 @@ import { loadOwnedProjectValueSourcePin } from "../parameter-bindings/values";
 import { loadCanonicalSourceSnapshot, preparePinnedSourceChange } from "./canonicalSource";
 import { registerCanonicalJsonSource } from "./canonicalJsonSource";
 import { uploadProjectParameterFile } from "./service";
-import { getProjectParameterFileById } from "./repository";
+import { getProjectParameterFileById, insertFileVersion } from "./repository";
 import { applyImportBatch as applyLegacyImportBatch } from "../parameters/service";
 import { commitCanonicalSourceRevision } from "./canonicalSourceCommit";
 import { addConfigSetFile, createConfigSet } from "./configSetService";
@@ -146,7 +146,18 @@ describe("canonical JSON configuration source", () => {
     storage = createLocalObjectStore(storageDirectory);
     await db.query(`insert into organizations(id,name) values ($1,'JSON source')`, [ORG]);
     await db.query(`insert into users(id,organization_id,name,title,is_active) values ($1,$2,'JSON editor','Admin',true)`, [USER, ORG]);
+    await db.query(`insert into users(id,organization_id,name,title,is_active) values ('reviewer-t11-json',$1,'JSON reviewer','Admin',true)`, [ORG]);
     await db.query(`insert into projects(id,organization_id,name,code,status) values ($1,$2,'JSON source','T11J','initialized')`, [PROJECT, ORG]);
+    await db.query(
+      `insert into user_role_bindings(id,user_id,organization_id,project_id,role_id)
+       values ('t11-json-admin-role',$1,$2,null,'admin')`,
+      [USER, ORG]
+    );
+    await db.query(
+      `insert into user_role_bindings(id,user_id,organization_id,project_id,role_id)
+       values ('t11-json-reviewer-role','reviewer-t11-json',$1,$2,'software-committer')`,
+      [ORG, PROJECT]
+    );
     await installConfigurationSourceFixture(db,auth,{ subjectId: SUBJECT,schemaId: MODEL });
     SET = (await createConfigSet(db,auth,{ projectId: PROJECT,name: "JSON configuration" })).id;
     const uploaded = await uploadProjectParameterFile(db,storage,auth,{ projectId: PROJECT,fileName: "settings.json",bytes: Buffer.from(SOURCE) });
@@ -255,7 +266,6 @@ describe("canonical JSON configuration source", () => {
     });
     const requestId = submitted.id;
     const reviewer = makeTestAuthContext({ userId: "reviewer-t11-json",organizationId: ORG,permissions: ["parameter:view","parameter:edit","parameter:review"] });
-    await db.query(`insert into users(id,organization_id,name,title,is_active) values ($1,$2,'Reviewer','Admin',true)`, [reviewer.user.id,ORG]);
     const apply = () => db.transaction((tx) => commitCanonicalSourceRevision(tx,storage,reviewer,snapshot, {
       projectId: PROJECT,requestId,invocation: createUserInvocation(reviewer),traceId: "t11-json-apply",refusalSink,
     }));
@@ -520,12 +530,17 @@ describe("canonical JSON configuration source", () => {
     await db.query(`update parameter_import_batches set items='[]'::jsonb where id=$1`, [brokenPreview.body.item.id]);
     await expect(applyLegacyImportBatch(db,auth,{ batchId: brokenPreview.body.item.id })).rejects.toMatchObject({ code: "CONFLICT" });
     expect(await counts()).toEqual(beforeFailure);
-    await db.query(`update user_role_bindings set role_id='software-user',project_id=$1 where id='t11-json-admin'`, [PROJECT]);
+    await db.query(
+      `update user_role_bindings set role_id='software-user',project_id=$1 where id in ('t11-json-admin','t11-json-admin-role')`,
+      [PROJECT]
+    );
     try {
       expect((await api(stagePath,selection)).status).toBe(403);
       expect((await db.query(`select count(*)::int as count from audit_events where target_id=$1 and action='deny'`, [preview.body.item.id])).rows[0]?.count).toBe(1);
     } finally {
-      await db.query(`update user_role_bindings set role_id='admin',project_id=null where id='t11-json-admin'`);
+      await db.query(
+        `update user_role_bindings set role_id='admin',project_id=null where id in ('t11-json-admin','t11-json-admin-role')`
+      );
     }
   });
 
@@ -733,6 +748,11 @@ describe("canonical JSON configuration source", () => {
     const request = await submitCanonicalValueChange(db,auth,{ projectId: PROJECT,draftId: draft.id,invocation: createUserInvocation(auth),requestId: "t11-json-isolation-submit",refusalSink });
     const reviewer = makeTestAuthContext({ userId: "reviewer-t11-json-isolation",organizationId: ORG,permissions: ["parameter:view","parameter:edit","parameter:review"] });
     await db.query(`insert into users(id,organization_id,name,title,is_active) values ($1,$2,'Isolation reviewer','Admin',true)`,[reviewer.user.id,ORG]);
+    await db.query(
+      `insert into user_role_bindings(id,user_id,organization_id,project_id,role_id)
+       values ('t11-json-isolation-reviewer-role',$1,$2,$3,'software-committer')`,
+      [reviewer.user.id, ORG, PROJECT]
+    );
     const applied = await reviewCanonicalValueChange(db,reviewer,{ projectId: PROJECT,requestId: request.id,decision: "approve" },{
       objectStore: storage,snapshot,invocation: createUserInvocation(reviewer),traceId: "t11-json-isolation-apply",refusalSink,
     });
@@ -754,5 +774,232 @@ describe("canonical JSON configuration source", () => {
     expect(otherAfter).toEqual(otherBefore);
     expect(await getProjectParameterFileById(db,{ organizationId: ORG,fileId: otherBefore.fileId })).toEqual(otherFileBefore);
     expect(await loadCanonicalSourceSnapshot(db,storage,{ organizationId: ORG,projectId: PROJECT,bindingId: otherAfter.bindingId,projectValueId: otherAfter.currentValueId })).toEqual(otherSourceBefore);
+  });
+
+  it("deletes an escaped empty JSON member, preserves null semantics, and keeps the tombstone terminal", async () => {
+    const snapshot = await loadPublishedCatalog(getRootPostgresPool(db)!);
+    if (!snapshot) throw new Error("Published fixture is unavailable");
+    const deleteSet = (await createConfigSet(db,auth,{ projectId: PROJECT,name: "JSON deletion" })).id;
+    const deleteSource = '{ "a/b": { "": null, "keep": true }, "untouched": [1,2] }\n';
+    const expectedAfterDelete = '{ "a/b": {  "keep": true }, "untouched": [1,2] }\n';
+    const uploaded = await uploadProjectParameterFile(db,storage,auth,{ projectId: PROJECT,fileName: "delete.json",bytes: Buffer.from(deleteSource) });
+    await addConfigSetFile(db,auth,{ configSetId: deleteSet,fileId: uploaded.file.id,role: "base",sortOrder: 0 });
+    const registered = await db.transaction((tx) => registerCanonicalJsonSource(tx,storage,auth,snapshot,{
+      projectId: PROJECT,configSetId: deleteSet,fileId: uploaded.file.id,fileVersionId: uploaded.version.id,
+      configurationSchemaId: MODEL,rootPointer: "/a~1b",mappings: [{ definitionId: DEFINITION,pointer: "/a~1b/" }],
+      invocation: createUserInvocation(auth),requestId: "t11-json-delete-register",refusalSink,
+    }));
+    const target = registered.bindings[0]!;
+    const targetBefore = await loadCanonicalSourceSnapshot(db,storage,{ organizationId: ORG,projectId: PROJECT,bindingId: target.id,projectValueId: target.currentValueId });
+    expect(targetBefore.files[0]?.content).toBe(deleteSource);
+    expect(targetBefore.manifest.locator).toEqual({ kind: "json-pointer",pointer: "/a~1b/" });
+    expect((await loadProjectValueById(asValueClient(db),target.currentValueId))?.value).toBeNull();
+    const historyBeforeDelete = await readCanonicalBindingChangeHistory(getRootPostgresPool(db)!,{ organizationId: ORG,projectId: PROJECT,bindingId: target.id });
+
+    const siblingRegistered = await db.transaction((tx) => registerCanonicalJsonSource(tx,storage,auth,snapshot,{
+      projectId: PROJECT,configSetId: deleteSet,fileId: uploaded.file.id,fileVersionId: uploaded.version.id,
+      configurationSchemaId: MODEL,rootPointer: "",mappings: [{ definitionId: DEFINITION,pointer: "/untouched/0" }],
+      invocation: createUserInvocation(auth),requestId: "t11-json-delete-sibling-register",refusalSink,
+    }));
+    const sibling = siblingRegistered.bindings[0]!;
+    const reviewer = makeTestAuthContext({ userId: "reviewer-t11-json-delete",organizationId: ORG,permissions: ["parameter:view","parameter:edit","parameter:review"] });
+    await db.query(`insert into users(id,organization_id,name,title,is_active) values ($1,$2,'JSON delete reviewer','Admin',true)`, [reviewer.user.id,ORG]);
+    await db.query(`insert into user_role_bindings(id,user_id,organization_id,project_id,role_id) values ($1,$2,$3,$4,'software-committer')`,
+      ["t11-json-delete-reviewer-role",reviewer.user.id,ORG,PROJECT]);
+
+    const draft = await createCanonicalValueDraft(db,auth,{
+      projectId: PROJECT,bindingId: target.id,baseRevisionId: targetBefore.manifest.configRevisionId,
+      action: "delete",reason: "Remove obsolete empty JSON member",
+    },{ objectStore: storage,invocation: createUserInvocation(auth),requestId: "t11-json-delete-draft",refusalSink });
+    expect(draft).toMatchObject({ action: "delete",sourceFormat: "json",targetValue: "",currentValueId: target.currentValueId });
+    const submitted = await submitCanonicalValueChange(db,auth,{ projectId: PROJECT,draftId: draft.id,assignedToUserId: reviewer.user.id,
+      invocation: createUserInvocation(auth),requestId: "t11-json-delete-submit",refusalSink });
+    expect(submitted).toMatchObject({ action: "delete",sourceFormat: "json",status: "pending",targetValue: "" });
+    const candidateKey = (await db.query<{ storage_key: string }>(`select storage_key from project_parameter_file_candidates where id=$1`, [draft.candidateId])).rows[0]!.storage_key;
+    const beforeTamperedApply = await captureConfigurationSourceState(db,{ organizationId: ORG,projectId: PROJECT });
+    const tamperedStorage = { ...storage,getBounded: async (key: string,limit: number) => key === candidateKey
+      ? Buffer.from('{"a/b":{"keep":false},"untouched":[1,2]}\n')
+      : storage.getBounded!(key,limit) };
+    await expect(reviewCanonicalValueChange(db,reviewer,{ projectId: PROJECT,requestId: submitted.id,decision: "approve" },{
+      objectStore: tamperedStorage,snapshot,invocation: createUserInvocation(reviewer),traceId: "t11-json-delete-tampered",refusalSink,
+    })).rejects.toMatchObject({ code: "CONFLICT" });
+    expect(await captureConfigurationSourceState(db,{ organizationId: ORG,projectId: PROJECT })).toEqual(beforeTamperedApply);
+
+    const beforeAuditFailure = await captureConfigurationSourceState(db,{ organizationId: ORG,projectId: PROJECT });
+    await db.query(`create function public.t11_fail_json_delete_audit() returns trigger language plpgsql as $$ begin
+      if new.trace_id='t11-json-delete-audit-failure' and new.action='value-change-applied' then raise exception 't11-injected-json-delete-audit-failure'; end if;
+      return new; end $$`);
+    await db.query(`create trigger t11_fail_json_delete_audit before insert on audit_events for each row execute function public.t11_fail_json_delete_audit()`);
+    try {
+      await expect(reviewCanonicalValueChange(db,reviewer,{ projectId: PROJECT,requestId: submitted.id,decision: "approve" },{
+        objectStore: storage,snapshot,invocation: createUserInvocation(reviewer),traceId: "t11-json-delete-audit-failure",refusalSink,
+      })).rejects.toThrow("t11-injected-json-delete-audit-failure");
+      expect(await captureConfigurationSourceState(db,{ organizationId: ORG,projectId: PROJECT })).toEqual(beforeAuditFailure);
+    } finally {
+      await db.query(`drop trigger t11_fail_json_delete_audit on audit_events`);
+      await db.query(`drop function public.t11_fail_json_delete_audit()`);
+    }
+
+    const beforeLocatorDigestFailure = await captureConfigurationSourceState(db,{ organizationId: ORG,projectId: PROJECT });
+    await db.query(`create function public.t11_corrupt_json_delete_locator_digest() returns trigger language plpgsql as $$ begin
+      if new.format='json' and new.value_state='deleted' then
+        new.locator_digest='sha256:0000000000000000000000000000000000000000000000000000000000000000';
+      end if;
+      return new; end $$`);
+    await db.query(`create trigger t11_corrupt_json_delete_locator_digest before insert on parameter_catalog.project_value_source_pins
+      for each row execute function public.t11_corrupt_json_delete_locator_digest()`);
+    try {
+      await expect(reviewCanonicalValueChange(db,reviewer,{ projectId: PROJECT,requestId: submitted.id,decision: "approve" },{
+        objectStore: storage,snapshot,invocation: createUserInvocation(reviewer),traceId: "t11-json-delete-locator-digest",refusalSink,
+      })).rejects.toMatchObject({ code: "23503" });
+      expect(await captureConfigurationSourceState(db,{ organizationId: ORG,projectId: PROJECT })).toEqual(beforeLocatorDigestFailure);
+    } finally {
+      await db.query(`drop trigger t11_corrupt_json_delete_locator_digest on parameter_catalog.project_value_source_pins`);
+      await db.query(`drop function public.t11_corrupt_json_delete_locator_digest()`);
+    }
+
+    const applied = await reviewCanonicalValueChange(db,reviewer,{ projectId: PROJECT,requestId: submitted.id,decision: "approve" },{
+      objectStore: storage,snapshot,invocation: createUserInvocation(reviewer),traceId: "t11-json-delete-approve",refusalSink,
+    });
+    expect(applied).toMatchObject({ action: "delete",sourceFormat: "json",status: "approved",appliedValueId: expect.any(String) });
+    const deletedValueId = applied.appliedValueId!;
+    const deletedState = (await db.query<{
+      current_value_id: string; value_state: string; value: unknown; value_digest: string; source_pin_id: string;
+      base_source_pin_id: string; delete_request_id: string; locator: Record<string, unknown>; delete_proof: Record<string, unknown>;
+    }>(`select binding.current_value_id,value.value_state,value.value,value.value_digest,pin.id as source_pin_id,
+        pin.base_source_pin_id,pin.delete_request_id,pin.locator,pin.delete_proof
+      from parameter_catalog.project_parameter_bindings binding
+      join parameter_catalog.project_parameter_values value on value.id=binding.current_value_id
+      join parameter_catalog.project_value_source_pins pin on pin.project_value_id=value.id and pin.binding_id=binding.id
+      where binding.organization_id=$1 and binding.project_id=$2 and binding.id=$3`, [ORG,PROJECT,target.id])).rows[0]!;
+    expect(deletedState).toMatchObject({ current_value_id: deletedValueId,value_state: "deleted",value: null,base_source_pin_id: targetBefore.manifest.sourcePinId,delete_request_id: submitted.id });
+    expect(deletedState.locator).toEqual({ kind: "json-delete",rootPointer: "/a~1b",pointer: "/a~1b/",parentPointer: "/a~1b",memberKey: "",fileVersionId: expect.any(String) });
+    expect(deletedState.delete_proof).toMatchObject({ kind: "json-delete-v1",scannerVersion: "json-span-v1",rootPointer: "/a~1b",pointer: "/a~1b/",parentPointer: "/a~1b",memberKey: "",beforeValueDigest: expect.stringMatching(/^sha256:[0-9a-f]{64}$/),beforeSourceDigest: expect.stringMatching(/^sha256:[0-9a-f]{64}$/),afterSourceDigest: expect.stringMatching(/^sha256:[0-9a-f]{64}$/) });
+
+    const deletedSnapshot = await loadCanonicalSourceSnapshot(db,storage,{ organizationId: ORG,projectId: PROJECT,bindingId: target.id,projectValueId: deletedValueId });
+    expect(deletedSnapshot.manifest.valueState).toBe("deleted");
+    expect(deletedSnapshot.manifest.baseSourcePinId).toBe(targetBefore.manifest.sourcePinId);
+    expect(deletedSnapshot.manifest.deleteRequestId).toBe(submitted.id);
+    expect(deletedSnapshot.files[0]?.content).toBe(expectedAfterDelete);
+    let reintroducedError: unknown;
+    let reintroducedResult: unknown;
+    const reintroducedRollback = new Error("rollback deleted JSON re-registration probe");
+    await expect(db.transaction(async (tx) => {
+      const reintroducedBytes = Buffer.from(deleteSource);
+      const reintroducedObject = await storage.put({
+        organizationId: ORG,
+        fileName: "delete.json",
+        contentType: "application/json",
+        bytes: reintroducedBytes,
+      });
+      const reintroducedVersion = await insertFileVersion(tx, {
+        id: randomUUID(),
+        fileId: deletedSnapshot.manifest.fileId,
+        versionNumber: 0,
+        storageKey: reintroducedObject.storageKey,
+        checksum: reintroducedObject.checksumSha256,
+        sizeBytes: reintroducedObject.fileSizeBytes,
+        parsedIndex: {},
+        origin: "upload",
+        createdByUserId: USER,
+      });
+      await tx.query("update project_parameter_files set current_version_id=$2 where id=$1", [deletedSnapshot.manifest.fileId, reintroducedVersion.id]);
+      try {
+        reintroducedResult = await registerCanonicalJsonSource(tx,storage,auth,snapshot,{
+          projectId: PROJECT,configSetId: deletedSnapshot.manifest.configSetId,fileId: deletedSnapshot.manifest.fileId,fileVersionId: reintroducedVersion.id,
+          configurationSchemaId: MODEL,rootPointer: "/a~1b",mappings: [{ definitionId: DEFINITION,pointer: "/a~1b/" }],
+          invocation: createUserInvocation(auth),requestId: "t11-json-delete-reintroduced",refusalSink,
+        });
+      } catch (error) {
+        reintroducedError = error;
+      }
+      throw reintroducedRollback;
+    })).rejects.toBe(reintroducedRollback);
+    expect(reintroducedResult).toBeUndefined();
+    expect(reintroducedError).toMatchObject({ code: "CONFLICT" });
+
+    const beforeForgedPin = await captureConfigurationSourceState(db,{ organizationId: ORG,projectId: PROJECT });
+    await expect(db.transaction(async (tx) => {
+      await tx.query("set local role catalog_migration_owner");
+      const forgedValueId = randomUUID();
+      await tx.query(`insert into parameter_catalog.project_parameter_values
+        (id,binding_id,definition_id,definition_revision_id,source_ref,config_revision_id,value_digest,value_kind,value,value_state)
+        select $1,binding_id,definition_id,definition_revision_id,source_ref,config_revision_id,value_digest,value_kind,value,value_state
+        from parameter_catalog.project_parameter_values where id=$2`, [forgedValueId,deletedValueId]);
+      await tx.query(`insert into parameter_catalog.project_value_source_pins
+        (id,project_value_id,binding_id,definition_id,organization_id,project_id,source_occurrence_id,config_revision_id,file_id,file_version_id,
+          format,locator,locator_digest,property_occurrence_id,value_state,base_source_pin_id,delete_request_id,delete_proof)
+        select $1,$2,binding_id,definition_id,organization_id,project_id,source_occurrence_id,config_revision_id,file_id,file_version_id,
+          format,locator,locator_digest,property_occurrence_id,value_state,base_source_pin_id,delete_request_id,delete_proof
+        from parameter_catalog.project_value_source_pins where id=$3`, [randomUUID(),forgedValueId,deletedState.source_pin_id]);
+      await tx.query("set constraints parameter_catalog.project_value_source_pin_owner_fk immediate");
+      throw new Error("A delete request's proof was accepted for a different applied value");
+    })).rejects.toMatchObject({ code: "23503" });
+    expect(await captureConfigurationSourceState(db,{ organizationId: ORG,projectId: PROJECT })).toEqual(beforeForgedPin);
+    const router = createRouter();
+    registerCatalogProjectValueConsumerRoutes(router,{ db,objectStore: storage,getCurrentAuthContext: () => auth });
+    const exported = catalogBindingExportResponseSchema.parse((await requestJson(createHttpServer(router),
+      `/api/v2/projects/${PROJECT}/parameter-bindings/${target.id}/export?projectValueId=${deletedValueId}`)).body).item;
+    expect(exported.valueState).toBe("deleted");
+    expect(exported.currentValueId).toBe(deletedValueId);
+    expect(exported.manifest).toMatchObject({ valueState: "deleted",baseSourcePinId: targetBefore.manifest.sourcePinId,deleteRequestId: submitted.id,locator: deletedState.locator,deleteProof: deletedState.delete_proof });
+    expect(exported.files[0]?.content).toBe(expectedAfterDelete);
+    expect((await readSourceBindings()).filter((row) => row.id === target.id)).toEqual([]);
+    expect((await readSourceBindings()).find((row) => row.id === sibling.id)?.value).toBe(1);
+    const historyAfterDelete = await readCanonicalBindingChangeHistory(getRootPostgresPool(db)!,{ organizationId: ORG,projectId: PROJECT,bindingId: target.id });
+    expect(historyAfterDelete).toHaveLength((historyBeforeDelete?.length ?? 0) + 1);
+    expect(historyAfterDelete?.[0]).toEqual(expect.objectContaining({ oldCurrentValueId: target.currentValueId,newCurrentValueId: deletedValueId,valueState: "deleted" }));
+
+    const deletedMutationState = await captureConfigurationSourceState(db,{ organizationId: ORG,projectId: PROJECT });
+    await expect(createCanonicalValueDraft(db,auth,{ projectId: PROJECT,bindingId: target.id,baseRevisionId: deletedSnapshot.manifest.configRevisionId,
+      sourceTarget: { format: "json",sourceText: "3" },reason: "Attempt to edit deleted JSON binding" },
+      { objectStore: storage,invocation: createUserInvocation(auth),requestId: "t11-json-delete-after-set",refusalSink })).rejects.toMatchObject({ code: "CONFLICT" });
+    expect(await captureConfigurationSourceState(db,{ organizationId: ORG,projectId: PROJECT })).toEqual(deletedMutationState);
+    await expect(createCanonicalValueDraft(db,auth,{ projectId: PROJECT,bindingId: target.id,baseRevisionId: deletedSnapshot.manifest.configRevisionId,
+      action: "delete",reason: "Attempt to delete deleted JSON binding again" },
+      { objectStore: storage,invocation: createUserInvocation(auth),requestId: "t11-json-delete-after-delete",refusalSink })).rejects.toMatchObject({ code: "CONFLICT" });
+    expect(await captureConfigurationSourceState(db,{ organizationId: ORG,projectId: PROJECT })).toEqual(deletedMutationState);
+
+    const replayBefore = await captureConfigurationSourceState(db,{ organizationId: ORG,projectId: PROJECT });
+    const deletedMember = deletedSnapshot.manifest.members.find((member) => member.fileId === deletedSnapshot.manifest.fileId);
+    expect(deletedMember).toBeDefined();
+    const appliedStorageKey = (await db.query<{ storage_key: string }>(`select storage_key from project_parameter_file_versions where id=$1`, [deletedMember!.fileVersionId])).rows[0]?.storage_key;
+    expect(appliedStorageKey).toBeTruthy();
+    const tamperedAppliedStorage = { ...storage,getBounded: async (key: string,limit: number) => key === appliedStorageKey
+      ? Buffer.from(expectedAfterDelete.replace('"keep": true','"keep": false'))
+      : storage.getBounded!(key,limit) };
+    await expect(reviewCanonicalValueChange(db,reviewer,{ projectId: PROJECT,requestId: submitted.id,decision: "approve" },{
+      objectStore: tamperedAppliedStorage,snapshot,invocation: createUserInvocation(reviewer),traceId: "t11-json-delete-replay-tampered",refusalSink,
+    })).rejects.toMatchObject({ code: "CONFLICT" });
+    expect(await captureConfigurationSourceState(db,{ organizationId: ORG,projectId: PROJECT })).toEqual(replayBefore);
+    expect(await reviewCanonicalValueChange(db,reviewer,{ projectId: PROJECT,requestId: submitted.id,decision: "approve" },{
+      objectStore: storage,snapshot,invocation: createUserInvocation(reviewer),traceId: "t11-json-delete-replay",refusalSink,
+    })).toMatchObject({ status: "approved",appliedValueId: deletedValueId });
+    expect(await captureConfigurationSourceState(db,{ organizationId: ORG,projectId: PROJECT })).toEqual(replayBefore);
+
+    const siblingCurrent = (await readSourceBindings()).find((row) => row.id === sibling.id);
+    expect(siblingCurrent).toBeDefined();
+    const siblingBefore = await loadCanonicalSourceSnapshot(db,storage,{ organizationId: ORG,projectId: PROJECT,bindingId: sibling.id,projectValueId: siblingCurrent!.current_value_id });
+    const siblingDraft = await createCanonicalValueDraft(db,auth,{ projectId: PROJECT,bindingId: sibling.id,baseRevisionId: siblingBefore.manifest.configRevisionId,
+      sourceTarget: { format: "json",sourceText: "2" },reason: "Advance present sibling after deletion" },
+      { objectStore: storage,invocation: createUserInvocation(auth),requestId: "t11-json-delete-sibling-draft",refusalSink });
+    const siblingRequest = await submitCanonicalValueChange(db,auth,{ projectId: PROJECT,draftId: siblingDraft.id,assignedToUserId: reviewer.user.id,
+      invocation: createUserInvocation(auth),requestId: "t11-json-delete-sibling-submit",refusalSink });
+    await expect(reviewCanonicalValueChange(db,reviewer,{ projectId: PROJECT,requestId: siblingRequest.id,decision: "approve" },{
+      objectStore: storage,snapshot,invocation: createUserInvocation(reviewer),traceId: "t11-json-delete-sibling-approve",refusalSink,
+    })).resolves.toMatchObject({ status: "approved" });
+    const targetAfterSibling = (await db.query<{ current_value_id: string; deleted_pins: string; deleted_history: string }>(`select binding.current_value_id,
+        (select count(*)::text from parameter_catalog.project_value_source_pins where binding_id=binding.id and value_state='deleted') as deleted_pins,
+        (select count(*)::text from parameter_catalog.binding_history_events where binding_id=binding.id and new_current_value_id=$4) as deleted_history
+      from parameter_catalog.project_parameter_bindings binding where binding.organization_id=$1 and binding.project_id=$2 and binding.id=$3`,
+      [ORG,PROJECT,target.id,deletedValueId])).rows[0]!;
+    expect(targetAfterSibling).toEqual({ current_value_id: deletedValueId,deleted_pins: "1",deleted_history: "1" });
+    expect((await readSourceBindings()).find((row) => row.id === sibling.id)?.value).toBe(2);
+    expect((await readSourceBindings()).find((row) => row.id === target.id)).toBeUndefined();
+    const terminalHistory = await readCanonicalBindingChangeHistory(getRootPostgresPool(db)!,{ organizationId: ORG,projectId: PROJECT,bindingId: target.id });
+    expect(terminalHistory).toEqual(historyAfterDelete);
+    const terminalExport = catalogBindingExportResponseSchema.parse((await requestJson(createHttpServer(router),
+      `/api/v2/projects/${PROJECT}/parameter-bindings/${target.id}/export?projectValueId=${deletedValueId}`)).body).item;
+    expect(terminalExport.files[0]?.content).toBe(expectedAfterDelete);
   });
 });

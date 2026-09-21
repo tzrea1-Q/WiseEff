@@ -14,11 +14,11 @@ export const sourceWorkflowConsumerRelocationRecordPath =
 // Separate exact data approved by both design reviewers; no historical aliases.
 const consumerConfig: RelocationConfig = {
   recordPath: sourceWorkflowConsumerRelocationRecordPath,
-  recordSha256: "62d7d7333ecdaaeca9a30866ffceb9d6163e6d41a09528a753e33323fac90809",
+  recordSha256: "97f3190a80d0800fac88b6d3d5b60897ed24312ef056bdc59e2099dfa6e712a9",
   files: [
     { file: "e2e/acceptance/parameter-files.acceptance.spec.ts", pairs: 2 },
     { file: "e2e/acceptance/parameter-import-wizard.acceptance.spec.ts", pairs: 2 },
-    { file: "e2e/acceptance/parameter-topology.acceptance.spec.ts", pairs: 83 },
+    { file: "e2e/acceptance/parameter-topology.acceptance.spec.ts", pairs: 82 },
     { file: "server/modules/parameter-files/writebackService.ts", pairs: 14 },
     { file: "server/modules/parameter-topology/repository.ts", pairs: 1 },
     { file: "server/modules/parameters/importBatchRepository.ts", pairs: 16 },
@@ -26,8 +26,12 @@ const consumerConfig: RelocationConfig = {
     { file: "src/application/ports/ParameterTopologyRepository.ts", pairs: 1 },
     { file: "src/infrastructure/http/parameterTopologyClient.test.ts", pairs: 22 },
     { file: "src/infrastructure/http/parameterTopologyClient.ts", pairs: 32 },
+    { file: "server/modules/parameter-drafts/repository.test.ts", pairs: 2 },
+    { file: "server/modules/parameter-drafts/repository.ts", pairs: 2 },
+    { file: "server/modules/parameters/reviewWorkflowRepository.ts", pairs: 30 },
+    { file: "src/application/ports/ParameterRepository.ts", pairs: 2 },
   ],
-  totalPairs: 202,
+  totalPairs: 237,
   rejectAllowanceGrowth: true,
   requireStableStructuralAnchor: true,
   requireStableByteOrder: true,

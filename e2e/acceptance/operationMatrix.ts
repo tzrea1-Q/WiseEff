@@ -1971,6 +1971,18 @@ export const acceptanceOperations: AcceptanceOperation[] = [
     assertions: ["ui", "api", "db", "audit"]
   },
   {
+    id: "PARAM-CANONICAL-VALUE-WORKFLOW-001",
+    priority: "P0",
+    area: "parameters",
+    route: "/parameters",
+    roles: ["Software User", "Software Committer"],
+    action: "Create canonical edit/delete drafts, select an eligible software reviewer, withdraw/reject/resubmit, approve source changes atomically, and verify persistence/history across reload and API restart.",
+    coverage: "automated",
+    acceptanceIds: ["PARAM-CANONICAL-VALUE-WORKFLOW-001"],
+    specFiles: ["e2e/acceptance/canonical-value-workflow.acceptance.spec.ts"],
+    assertions: ["ui", "api", "db", "audit"]
+  },
+  {
     id: "PARAM-DRAFT-REMOVE-001",
     priority: "P0",
     area: "parameters",

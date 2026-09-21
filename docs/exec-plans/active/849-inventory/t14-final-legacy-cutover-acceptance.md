@@ -2,6 +2,8 @@
 
 > Chinese: [中文](../../../zh-CN/exec-plans/active/849-inventory/t14-final-legacy-cutover-acceptance.md)
 
+**2026-09-21 local candidate update:** the [local closure receipt](local-closure-20260921.md) records the removal of the empty-Catalog GET fallback and focused real-PG/API/browser evidence. The candidate is not yet merged; topology Gate0 compatibility and boundary-checker closure remain open. The status and counts below describe the earlier merged receipt, not current candidate acceptance.
+
 Status: **GET is canonical-only when the project has Catalog binding rows (no leftover extras). Zero catalog rows (unpublished or published-empty project) still topology-falls-back. Scanner leftover 55 remains; T1.4 stays unchecked.** Overlay and governance **detail** stay 2xx. No SEALED.
 
 Design Spec re-review `01a0b0a8-0492-434d-6fbb-ac1520d36674` PASS with P2. B2 Spec re-review `9e09e874-cae5-4e98-af76-c5f6cd638731` PASS with P2 (folded).

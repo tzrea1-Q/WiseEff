@@ -50,6 +50,14 @@ describe("canonicalDraftsToTrayDrafts", () => {
     ]);
   });
 
+  it("preserves a canonical delete action for the review tray", () => {
+    const [mapped] = canonicalDraftsToTrayDrafts("atlas", [draft({
+      action: "delete",
+      targetValue: ""
+    })]);
+    expect(mapped).toMatchObject({ action: "delete", targetValue: "" });
+  });
+
   it("returns an empty tray for an empty canonical list", () => {
     expect(canonicalDraftsToTrayDrafts("nebula", [])).toEqual([]);
   });

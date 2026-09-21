@@ -576,7 +576,17 @@ export async function approveRegistrationRoleRequest(
       throw new ApiError("NOT_FOUND", "Pending registration role request was not found.", { requestId });
     }
 
-    if (!(await getUserById(tx, { organizationId: request.organizationId, userId: request.userId }))) {
+    // User-role and review authorization serialize on the target users row. Lock it
+    // before touching role bindings or activation, then re-read the target under
+    // that lock so a concurrent deactivation/role replacement cannot be bypassed.
+    const lockedUserId = await lockUserById(tx, {
+      organizationId: request.organizationId,
+      userId: request.userId
+    });
+    if (!lockedUserId || !(await getUserById(tx, {
+      organizationId: request.organizationId,
+      userId: request.userId
+    }))) {
       throw new ApiError("NOT_FOUND", "User was not found.", { userId: request.userId });
     }
 

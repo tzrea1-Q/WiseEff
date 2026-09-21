@@ -174,6 +174,52 @@ describe("S6-WFA public command contract", () => {
 });
 
 describe("S6-WFA typed blocks before any store write", () => {
+  it("refuses a deleted current value instead of exposing its retained payload", async () => {
+    const deletedReadPool = {
+      query: async (sql: string) =>
+        sql.includes("from parameter_catalog.project_parameter_bindings")
+          ? {
+              rows: [
+                {
+                  id: binding.id,
+                  organization_id: binding.organizationId,
+                  catalog_release_id: binding.catalogRelease.id,
+                  project_id: binding.projectId,
+                  logical_node_id: binding.logicalNodeId,
+                  source_occurrence_id: "source-occurrence",
+                  registration_id: binding.registrationId,
+                  subject_id: binding.subjectId,
+                  definition_id: binding.definitionId,
+                  effective_revision_id: binding.effectiveRevisionId,
+                  current_value_id: binding.currentValueId,
+                },
+              ],
+            }
+          : {
+              rows: [
+                {
+                  id: binding.currentValueId,
+                  binding_id: binding.id,
+                  definition_id: binding.definitionId,
+                  definition_revision_id: binding.effectiveRevisionId,
+                  source_ref: "config-set:main",
+                  config_revision_id: "crev-1",
+                  value_digest: "sha256:" + "d".repeat(64),
+                  value_kind: "number",
+                  value: 1500,
+                  value_state: "deleted",
+                  created_at: new Date(),
+                },
+              ],
+            },
+    } as never;
+
+    await expect(readProtectedReference(deletedReadPool, readCommand())).resolves.toEqual({
+      ok: false,
+      error: { kind: "typed-block", reason: "missing-current-value" },
+    });
+  });
+
   it("refuses a parameterSpecId fallback on read and writeback", async () => {
     const legacyRead = {
       ...readCommand(),

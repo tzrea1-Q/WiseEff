@@ -28,10 +28,11 @@ import {
 import { type Binding } from "../binding";
 import {
   appendSourceCommittedValue,
+  createPendingSourceCommit,
   createSourceBackedBindingService,
 } from "../binding/__fixtures__/sourceBackedBinding";
 
-import { createProjectValueService } from "./index";
+import { appendProjectValue, createProjectValueService, loadSourceBindingCohort } from "./service";
 
 const databaseAvailable = await isTestDatabaseAvailable();
 if (!databaseAvailable) {
@@ -635,5 +636,118 @@ describe("immutable ProjectValue history", () => {
     expect(replay.value.currentTip).toBe(first.value.currentTip);
     expect(await valueRows(binding.id)).toHaveLength(3);
     expect(await historyEvents(binding.id)).toHaveLength(2);
+  });
+
+  it("rejects a deleted target append under a pending set source commit", async () => {
+    const binding = await stabilizeNode("logical-node-source-commit-delete-target");
+    const beforeRows = await valueRows(binding.id);
+    const commit = await createPendingSourceCommit(pool, {
+      bindingId: binding.id,
+      oldValueId: binding.currentValueId,
+      targetValue: { kind: "number", value: 99 },
+    });
+    const client = await pool.connect();
+    try {
+      await client.query("begin");
+      const result = await appendProjectValue(
+        { query: client.query.bind(client) },
+        {
+          snapshot,
+          binding,
+          definitionRevisionId: REVISION_1,
+          source: { sourceRef: SOURCE_A, configRevisionId: "crev-source-commit-delete-target" },
+          payload: { kind: "number", value: 99 },
+          valueState: "deleted",
+          expectedTip: binding.currentValueId,
+          sourceCommit: { requestId: commit.requestId, auditRef: commit.auditRef, derived: false },
+        },
+      );
+      expect(result).toMatchObject({ ok: false, error: { kind: "invalid-command" } });
+      await client.query("rollback");
+    } finally {
+      await client.query("rollback").catch(() => undefined);
+      client.release();
+    }
+    expect(await valueRows(binding.id)).toEqual(beforeRows);
+    expect(await currentTip(binding.id)).toBe(binding.currentValueId);
+  });
+
+  it("rejects derived source propagation when it names the reviewed target Binding", async () => {
+    const binding = await stabilizeNode("logical-node-source-commit-derived-target");
+    const beforeRows = await valueRows(binding.id);
+    const commit = await createPendingSourceCommit(pool, {
+      bindingId: binding.id,
+      oldValueId: binding.currentValueId,
+      targetValue: { kind: "number", value: 101 },
+    });
+    const client = await pool.connect();
+    try {
+      await client.query("begin");
+      const result = await appendProjectValue(
+        { query: client.query.bind(client) },
+        {
+          snapshot,
+          binding,
+          definitionRevisionId: REVISION_1,
+          source: { sourceRef: SOURCE_A, configRevisionId: "crev-source-commit-derived-target" },
+          payload: { kind: "number", value: 101 },
+          expectedTip: binding.currentValueId,
+          sourceCommit: { requestId: commit.requestId, auditRef: commit.auditRef, derived: true },
+        },
+      );
+      expect(result).toMatchObject({ ok: false, error: { kind: "invalid-command" } });
+      await client.query("rollback");
+    } finally {
+      await client.query("rollback").catch(() => undefined);
+      client.release();
+    }
+    expect(await valueRows(binding.id)).toEqual(beforeRows);
+    expect(await currentTip(binding.id)).toBe(binding.currentValueId);
+  });
+
+  it("locks the source occurrence before exposing the source cohort", async () => {
+    const binding = await stabilizeNode("logical-node-source-occurrence-lock");
+    const owner = await pool.query<{ config_set_id: string }>(
+      `select config_set_id
+         from parameter_catalog.project_parameter_source_occurrences
+        where id = $1`,
+      [binding.sourceOccurrenceId],
+    );
+    const configSetId = owner.rows[0]?.config_set_id;
+    expect(configSetId).toBeDefined();
+    const ownerClient = await pool.connect();
+    try {
+      await ownerClient.query("begin");
+      await loadSourceBindingCohort(ownerClient, { organizationId: ORG, projectId: PROJECT, configSetId: configSetId! });
+
+      const probe = async (sql: string, id: string) => {
+        const client = await pool.connect();
+        try {
+          await client.query("begin");
+          await client.query("set local lock_timeout = '100ms'");
+          await client.query(sql, [id]);
+          return null;
+        } catch (error) {
+          return error;
+        } finally {
+          await client.query("rollback").catch(() => undefined);
+          client.release();
+        }
+      };
+
+      const occurrenceProbe = await probe(
+        `select id from parameter_catalog.project_parameter_source_occurrences where id = $1 for key share nowait`,
+        binding.sourceOccurrenceId,
+      );
+      expect(occurrenceProbe).toMatchObject({ code: "55P03" });
+      const bindingProbe = await probe(
+        `select id from parameter_catalog.project_parameter_bindings where id = $1 for key share nowait`,
+        binding.id,
+      );
+      expect(bindingProbe).toMatchObject({ code: "55P03" });
+    } finally {
+      await ownerClient.query("rollback").catch(() => undefined);
+      ownerClient.release();
+    }
   });
 });
