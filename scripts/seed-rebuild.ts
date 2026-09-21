@@ -6,7 +6,9 @@ import { createHash } from "node:crypto";
 import { createPostgresDatabase } from "../server/shared/database/client";
 import { createObjectStoreFromEnv } from "../server/objectStoreFactory";
 import { collectPublicationPolicyInstanceSnapshot } from "../server/modules/catalog-publication/authorization/instanceSnapshot";
-import { planSeedRebuild, checkSeedRebuildState, rebuildSeedProjects, verifySeedRebuild, assertSeedPublicationIdle, type SeedRebuildState } from "./lib/seedRebuild";
+import { planSeedRebuild, checkSeedRebuildState, rebuildSeedProjects, verifySeedRebuild, assertSeedPublicationIdle,
+  captureSeedMaintenanceBaseline, verifySeedMaintenanceBaseline, assertSeedMaintenanceBaselineBinding,
+  type SeedRebuildState } from "./lib/seedRebuild";
 import { openSeedRebuildJournal, assertSeedMaintenance, seedRebuildRunId, parseSeedRebuildPreparation } from "./lib/seedRebuildJournal";
 import { seedRebuildDigest } from "./lib/seedRebuildPlan";
 import { prepareSeedCatalog, publishSeedCatalog, getSeedCatalogPublicationStatus,
@@ -15,6 +17,7 @@ import { prepareSeedCatalog, publishSeedCatalog, getSeedCatalogPublicationStatus
 const usage = `Reviewed example parameter rebuild. Run through ops/self-hosted/scripts/seed-rebuild.sh.
   plan --run-dir DIR --run-id ID --actor USER --organization-id ORG --candidate-sha SHA
   status --run-dir DIR
+  maintenance-baseline --run-dir DIR --confirm-plan DIGEST --candidate-sha SHA
   catalog-prepare --run-dir DIR --stage vendor|configuration-schema --confirm-plan DIGEST --candidate-sha SHA
   catalog-publish --run-dir DIR --stage STAGE --actor REVIEWER --confirm-artifact DIGEST --confirm-plan DIGEST --candidate-sha SHA
   catalog-status --run-dir DIR --stage STAGE --confirm-plan DIGEST --candidate-sha SHA
@@ -32,7 +35,7 @@ export async function runSeedRebuildCli(argv: string[]) {
       .map((key) => [key, { type: "string" as const }])) });
   const command = positionals[0];
   if (command === "help" || !command) return { help: usage };
-  if (positionals.length !== 1 || !["plan", "status", "catalog-prepare", "catalog-publish", "catalog-status", "rebuild", "verify"].includes(command)) {
+  if (positionals.length !== 1 || !["plan", "status", "maintenance-baseline", "catalog-prepare", "catalog-publish", "catalog-status", "rebuild", "verify"].includes(command)) {
     throw new Error("seed-rebuild-command-invalid");
   }
   const required = (key: string) => {
@@ -80,6 +83,18 @@ export async function runSeedRebuildCli(argv: string[]) {
       throw new Error("seed-rebuild-recovery-required");
     }
     const snapshot = await collectPublicationPolicyInstanceSnapshot(db);
+    if (command === "maintenance-baseline") {
+      const proof = await assertSeedMaintenance(runDir, state);
+      if (!snapshot.frozen) throw new Error("seed-rebuild-publication-freeze-required");
+      const checkpoint = await captureSeedMaintenanceBaseline(ctx, state, proof.recoveryPoint.manifestDigest);
+      if (!state.maintenanceBaseline) {
+        state.maintenanceBaseline = checkpoint;
+        await journal.save(state);
+      }
+      return { ok: true, status: "maintenance-baseline-recorded", digest: checkpoint.digest,
+        runId: checkpoint.runId, planDigest: checkpoint.planDigest, manifestDigest: checkpoint.manifestDigest };
+    }
+    if (command !== "catalog-status") await verifySeedMaintenanceBaseline(ctx, state);
     if (command === "verify" || command === "rebuild") {
       await assertSeedMaintenance(runDir, state);
       if (!snapshot.frozen) throw new Error("seed-rebuild-publication-freeze-required");
@@ -158,6 +173,7 @@ export async function runSeedRebuildCli(argv: string[]) {
 
 export async function frozenPreparation(db: ReturnType<typeof createPostgresDatabase>, state: SeedRebuildState,
   stage: SeedCatalogStage, pin: { id: string; digest: string }, artifactDigest: string) {
+  assertSeedMaintenanceBaselineBinding(state);
   const stored = state.preparedInputs?.[stage];
   // The publication helper supplies the reviewed owner's frozen allocation; no parallel builder here.
   const { freezeSeedCatalogIdentity } = await import("./lib/seedCatalogPublication");

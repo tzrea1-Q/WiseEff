@@ -1,4 +1,4 @@
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import pg from "pg";
@@ -11,7 +11,9 @@ import { bootstrapFirstAcme } from "../../catalog-kernel/install/publicationTest
 import { adoptPreexistingCatalog } from "../../catalog-publication/runtime/adoption";
 import { enablePublicationPolicy } from "../../catalog-publication/authorization/testHarness";
 import { createLocalObjectStore } from "../../logs/objectStore";
-import { planSeedRebuild, checkSeedRebuildState, rebuildSeedProjects, verifySeedRebuild, assertSeedPublicationIdle, type SeedRebuildState } from "../../../../scripts/lib/seedRebuild";
+import { planSeedRebuild, checkSeedRebuildState, rebuildSeedProjects, verifySeedRebuild, assertSeedPublicationIdle,
+  captureSeedMaintenanceBaseline, verifySeedMaintenanceBaseline, type SeedRebuildState } from "../../../../scripts/lib/seedRebuild";
+import { verifySeedPreservation } from "../../../../scripts/lib/seedRebuildPreservation";
 import { prepareSeedCatalog, publishSeedCatalog, getSeedCatalogPublicationStatus } from "../../../../scripts/lib/seedCatalogPublication";
 import { collectPublicationPolicyInstanceSnapshot } from "../../catalog-publication/authorization/instanceSnapshot";
 import { runPublicationManagerOnce } from "../../catalog-publication/jobs/manager";
@@ -116,6 +118,16 @@ describe("reviewed example rebuild preflight on an adopted populated instance", 
     expect(plan.baseline.tables.find((row) => row.relation === "public.projects")?.count).toBe(4);
     expect((await db.query("select count(*)::int as n from project_parameter_plane_archives")).rows).toEqual(before.rows);
     await expect(checkSeedRebuildState(ctx(), plan, plan.plan.digest, input.candidateSha)).resolves.toBeDefined();
+    await db.query(`insert into auth_sessions (id,user_id,organization_id,token_hash,expires_at,last_used_at)
+      values ('seed-baseline-session','rebuild-author',$1,'seed-baseline-token','2030-01-01T00:00:00Z','2026-09-21T01:00:00Z')`, [org]);
+    await db.query(`insert into device_bridges
+      (id,organization_id,user_id,machine_label,platform,arch,client_version,last_seen_at)
+      values ('seed-baseline-bridge',$1,'rebuild-author','fixture','linux','x86_64','1.0','2026-09-21T01:00:00Z')`, [org]);
+    await expect(verifySeedPreservation(db, store, org, plan.baseline)).rejects.toThrow(/auth_sessions|device_bridges/);
+    await db.query("select catalog_publication.set_publication_freeze(true, 'seed-baseline-test')");
+    plan.maintenanceBaseline = await captureSeedMaintenanceBaseline(ctx(), plan, `sha256:${"b".repeat(64)}`);
+    expect(plan.maintenanceBaseline.manifestDigest).toBe(`sha256:${"b".repeat(64)}`);
+    await db.query("select catalog_publication.set_publication_freeze(false, 'seed-baseline-test')");
     const snapshot = await collectPublicationPolicyInstanceSnapshot(db);
     const pin = plan.plan.catalog;
     const preparation = await frozenPreparation(db, plan, "vendor", pin, snapshot.artifactDigest!);
@@ -124,6 +136,30 @@ describe("reviewed example rebuild preflight on an adopted populated instance", 
     await expect(frozenPreparation(db, retry, "vendor", pin, snapshot.artifactDigest!)).resolves.toEqual(preparation);
     retry.preparedInputs.vendor = { ...preparation, actorUserId: "rebuild-reviewer" };
     await expect(frozenPreparation(db, retry, "vendor", pin, snapshot.artifactDigest!)).rejects.toThrow("preparation-drift");
+  });
+
+  it("accepts post-plan session and Bridge activity, then rejects preservation drift after the checkpoint", async () => {
+    const baseline = plan.maintenanceBaseline;
+    expect(baseline).toBeDefined();
+    await db.query("update auth_sessions set last_used_at='2026-09-21T02:00:00Z' where id='seed-baseline-session'");
+    await expect(verifySeedMaintenanceBaseline(ctx(), plan)).rejects.toThrow("auth_sessions");
+    await db.query("update auth_sessions set last_used_at='2026-09-21T01:00:00Z' where id='seed-baseline-session'");
+    await db.query("update device_bridges set last_seen_at='2026-09-21T02:00:00Z' where id='seed-baseline-bridge'");
+    await expect(verifySeedMaintenanceBaseline(ctx(), plan)).rejects.toThrow("device_bridges");
+    await db.query("update device_bridges set last_seen_at='2026-09-21T01:00:00Z' where id='seed-baseline-bridge'");
+    await expect(verifySeedMaintenanceBaseline(ctx(), plan)).resolves.toEqual(baseline);
+    await expect(captureSeedMaintenanceBaseline(ctx(), plan, `sha256:${"c".repeat(64)}`))
+      .rejects.toThrow("maintenance-manifest-drift");
+    const missing = structuredClone(plan);
+    delete missing.maintenanceBaseline;
+    await expect(frozenPreparation(db, missing, "vendor", plan.plan.catalog, `sha256:${"d".repeat(64)}`))
+      .rejects.toThrow("maintenance-baseline-required");
+    const started = structuredClone(plan);
+    started.phase = "catalog";
+    started.publications.vendor = { candidateId: "candidate", artifactDigest: `sha256:${"d".repeat(64)}`,
+      releaseId: "release", releaseDigest: "" };
+    await expect(captureSeedMaintenanceBaseline(ctx(), started, baseline!.manifestDigest))
+      .rejects.toThrow("maintenance-baseline-too-late");
   });
 
   it("refuses missing permission, wrong organization, changed project code and changed old data", async () => {
@@ -150,9 +186,51 @@ describe("reviewed example rebuild preflight on an adopted populated instance", 
       expect(await runSeedRebuildCli(["status", "--run-dir", runDir])).toMatchObject({ phase: "planned" });
       const cliPlan = result as { plan: { digest: string } };
       await expect(runSeedRebuildCli(["rebuild", "--run-dir", runDir, "--confirm-plan", cliPlan.plan.digest,
-        "--candidate-sha", input.candidateSha])).rejects.toMatchObject({ code: "ENOENT" });
+        "--candidate-sha", input.candidateSha])).rejects.toThrow("maintenance-baseline-required");
       expect((await db.query("select count(*)::int as n from parameter_catalog.project_parameter_bindings")).rows[0]).toEqual({ n: 0 });
     } finally {
+      for (const [key, value] of Object.entries(original)) {
+        if (value === undefined) delete process.env[key]; else process.env[key] = value;
+      }
+    }
+  });
+
+  it("binds the CLI checkpoint to the live wrapper manifest and rejects journal tampering", async () => {
+    const settings = { WISEEFF_CATALOG_BOOTSTRAP_DATABASE_URL: database.url, WISEEFF_API_PROCESS: "0",
+      OBJECT_STORE_MODE: "local", OBJECT_STORE_ROOT: directory };
+    const original = Object.fromEntries(Object.keys(settings).map((key) => [key, process.env[key]]));
+    const runDir = path.join(directory, "cli-maintenance-baseline");
+    const manifestDigest = `sha256:${"e".repeat(64)}`;
+    const otherManifestDigest = `sha256:${"f".repeat(64)}`;
+    Object.assign(process.env, settings);
+    try {
+      const result = await runSeedRebuildCli(["plan", "--run-dir", runDir, "--run-id", "cli-baseline",
+        "--actor", input.actorUserId, "--organization-id", org, "--candidate-sha", input.candidateSha]);
+      const cliPlan = result as { plan: { digest: string; candidateSha: string; organizationId: string } };
+      const proof = { schemaVersion: 1, runId: "cli-baseline", planDigest: cliPlan.plan.digest,
+        confirmedPlanDigest: cliPlan.plan.digest, candidateSha: cliPlan.plan.candidateSha, organizationId: cliPlan.plan.organizationId,
+        phase: "maintenance-begun", recoveryPoint: { verified: true, manifestDigest },
+        isolation: { proxyStopped: true, queuePaused: true, writersStopped: true, managerStopped: true },
+        publication: { frozen: true }, queue: { drained: true } };
+      await writeFile(path.join(runDir, "wrapper-state.json"), JSON.stringify(proof));
+      await db.query("select catalog_publication.set_publication_freeze(true, 'seed-cli-baseline-test')");
+      const captured = await runSeedRebuildCli(["maintenance-baseline", "--run-dir", runDir,
+        "--confirm-plan", cliPlan.plan.digest, "--candidate-sha", cliPlan.plan.candidateSha]);
+      expect(captured).toMatchObject({ ok: true, status: "maintenance-baseline-recorded", manifestDigest });
+      await writeFile(path.join(runDir, "wrapper-state.json"), JSON.stringify({ ...proof,
+        recoveryPoint: { verified: true, manifestDigest: otherManifestDigest } }));
+      await expect(runSeedRebuildCli(["maintenance-baseline", "--run-dir", runDir,
+        "--confirm-plan", cliPlan.plan.digest, "--candidate-sha", cliPlan.plan.candidateSha]))
+        .rejects.toThrow("maintenance-manifest-drift");
+      const corePath = path.join(runDir, "core-state.json");
+      const core = JSON.parse(await readFile(corePath, "utf8")) as { maintenanceBaseline: { digest: string } };
+      core.maintenanceBaseline.digest = cliPlan.plan.digest;
+      await writeFile(corePath, JSON.stringify(core));
+      await expect(runSeedRebuildCli(["catalog-prepare", "--run-dir", runDir, "--stage", "vendor",
+        "--confirm-plan", cliPlan.plan.digest, "--candidate-sha", cliPlan.plan.candidateSha]))
+        .rejects.toThrow("maintenance-baseline-drift");
+    } finally {
+      await db.query("select catalog_publication.set_publication_freeze(false, 'seed-cli-baseline-test')");
       for (const [key, value] of Object.entries(original)) {
         if (value === undefined) delete process.env[key]; else process.env[key] = value;
       }

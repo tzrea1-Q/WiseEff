@@ -3,7 +3,7 @@ import path from "node:path";
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import type { SeedRebuildState } from "./seedRebuild";
-import { seedRebuildPlanSchema, confirmSeedRebuildPlan } from "./seedRebuildPlan";
+import { seedRebuildDigest, seedRebuildPlanSchema, confirmSeedRebuildPlan } from "./seedRebuildPlan";
 
 const safeId = z.string().regex(/^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$/);
 export const seedRebuildRunId = (value: unknown) => safeId.parse(value);
@@ -25,31 +25,44 @@ const preparationSchema = z.object({
 }).strict();
 export type SeedRebuildPreparation = z.infer<typeof preparationSchema>;
 export const parseSeedRebuildPreparation = (value: unknown) => preparationSchema.parse(value);
+const preservationSchema = z.object({
+  schema: z.object({ digest, relations: z.array(z.object({ relation: text, relkind: text,
+    columns: z.array(text), primaryKeyColumns: z.array(text) }).strict()) }).strict(),
+  tables: z.array(z.object({ relation: text, mode: z.enum(["exact", "parameter-plane", "target-scoped",
+    "append-only", "publication-append", "publication-window"]), keyColumns: z.array(text),
+    ids: z.array(text).nullable(), count: z.number().int().nonnegative(), digest }).strict()),
+  objects: z.array(z.object({ key: text, size: z.number().int().nonnegative(), digest }).strict()),
+}).strict();
+const maintenanceBaselineSchema = z.object({
+  runId: safeId, planDigest: digest, manifestDigest: digest, baseline: preservationSchema, digest,
+}).strict();
 const stateSchema = z.object({
   version: z.literal(1), runId: safeId, plan: seedRebuildPlanSchema.extend({ digest }),
   phase: z.enum(["planned", "catalog", "archiving", "materializing", "disposing", "verified", "recovery-required"]),
   originalParameterDigest: digest, expectedIdentities: z.array(text),
   policy: z.object({ revision: z.number().int().nonnegative(), capabilityContractRevision: text.nullable(),
     lowRiskSingleActorPublish: z.boolean() }).strict(),
-  baseline: z.object({
-    schema: z.object({ digest, relations: z.array(z.object({ relation: text, relkind: text,
-      columns: z.array(text), primaryKeyColumns: z.array(text) }).strict()) }).strict(),
-    tables: z.array(z.object({ relation: text, mode: z.enum(["exact", "parameter-plane", "target-scoped",
-      "append-only", "publication-append", "publication-window"]), keyColumns: z.array(text),
-      ids: z.array(text).nullable(), count: z.number().int().nonnegative(), digest }).strict()),
-    objects: z.array(z.object({ key: text, size: z.number().int().nonnegative(), digest }).strict()),
-  }).strict(),
+  baseline: preservationSchema,
   archives: z.array(z.object({ projectId: z.enum(["atlas", "aurora", "nebula"]), archiveId: text, archiveDigest: digest }).strict()).max(3),
   publications: z.object(Object.fromEntries(["vendor", "configuration-schema"].map((stage) => [stage,
     z.object({ candidateId: text, artifactDigest: digest, releaseId: text,
       releaseDigest: z.union([digest, z.literal("")]), receiptId: text.optional() }).strict().optional()]))).strict(),
   preparedInputs: z.object({ vendor: preparationSchema.optional(), "configuration-schema": preparationSchema.optional() }).strict().optional(),
+  maintenanceBaseline: maintenanceBaselineSchema.optional(),
 }).strict();
 
 export function parseSeedRebuildState(value: unknown): SeedRebuildState {
   const state = stateSchema.parse(value) as SeedRebuildState;
   const { digest: _digest, ...payload } = state.plan;
   confirmSeedRebuildPlan(state.plan, state.plan.digest, payload);
+  if (state.maintenanceBaseline) {
+    const checkpoint = state.maintenanceBaseline;
+    const { digest: checkpointDigest, ...checkpointPayload } = checkpoint;
+    if (checkpoint.runId !== state.runId || checkpoint.planDigest !== state.plan.digest
+      || seedRebuildDigest(checkpointPayload) !== checkpointDigest) {
+      throw new Error("seed-rebuild-maintenance-baseline-drift");
+    }
+  }
   if (new Set(state.archives.map((item) => item.projectId)).size !== state.archives.length) {
     throw new Error("seed-rebuild-duplicate-archive-project");
   }
@@ -94,13 +107,17 @@ export async function openSeedRebuildJournal(runDir: string) {
 export async function assertSeedMaintenance(runDir: string, state: SeedRebuildState, publishing = false) {
   const proof = JSON.parse(await readFile(path.join(runDir, "wrapper-state.json"), "utf8"));
   if (proof.schemaVersion !== 1 || proof.runId !== state.runId || proof.planDigest !== state.plan.digest
-    || proof.candidateSha !== state.plan.candidateSha || proof.organizationId !== state.plan.organizationId
+    || proof.confirmedPlanDigest !== state.plan.digest || proof.candidateSha !== state.plan.candidateSha
+    || proof.organizationId !== state.plan.organizationId
     || proof.phase !== "maintenance-begun" || proof.recoveryPoint?.verified !== true
     || !/^sha256:[a-f0-9]{64}$/.test(proof.recoveryPoint?.manifestDigest ?? "")
     || proof.isolation?.proxyStopped !== true || proof.isolation?.queuePaused !== true
     || proof.isolation?.writersStopped !== true || proof.queue?.drained !== true
     || proof.publication?.frozen !== !publishing || (!publishing && proof.isolation?.managerStopped !== true)) {
     throw new Error("seed-rebuild-verified-maintenance-required");
+  }
+  if (state.maintenanceBaseline && proof.recoveryPoint.manifestDigest !== state.maintenanceBaseline.manifestDigest) {
+    throw new Error("seed-rebuild-maintenance-manifest-drift");
   }
   return proof;
 }
