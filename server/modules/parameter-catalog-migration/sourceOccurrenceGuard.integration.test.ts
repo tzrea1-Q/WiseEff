@@ -4,6 +4,15 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createMigrationHarness, integerContent, MIGRATION_PRINCIPAL, migrationTrustedActor,
   PREDECESSOR_DEFINITION_ID, PREDECESSOR_SUBJECT_ID, type MigrationHarness } from "./testing/harness";
 import { createSourceBackedBindingService } from "../parameter-bindings/binding/__fixtures__/sourceBackedBinding";
+import { stabilizeCanonicalBinding } from "../parameter-bindings/binding/service";
+import {
+  deriveHistoryEventId,
+  deriveProjectValueId,
+  deriveSuccessAuditId,
+  digestProjectValuePayload,
+  insertBindingHistoryEvent,
+  insertSuccessAudit,
+} from "../parameter-bindings/values/repositories";
 import { loadPublishedCatalog } from "../parameter-bindings/catalogProjectValueSync";
 import { SubjectRegistrationId, ParameterDefinitionId, DefinitionRevisionId } from "../parameter-catalog-contract";
 
@@ -59,6 +68,177 @@ async function seedReplacement(harness: MigrationHarness) {
     }
 
   return { replacementId,oldBindingId,newBindingId,newValueId,otherBindingId,otherValueId,foreignTargets };
+}
+
+/**
+ * Build the smallest valid pre-0153 graph.  The historical upgrade test must
+ * not call the current value service: it selects value_state, which is added
+ * by 0161 and is intentionally absent at the 0152 boundary.
+ */
+async function seedHistoricalBinding(input: {
+  readonly harness: MigrationHarness;
+  readonly snapshot: Awaited<ReturnType<MigrationHarness["snapshot"]>>;
+  readonly organizationId: string;
+  readonly projectId: string;
+  readonly logicalNodeId: string;
+  readonly registrationId: string;
+  readonly definitionId: string;
+  readonly revisionId: string;
+  readonly value: number;
+}) {
+  const { harness, snapshot } = input;
+  const definition = snapshot.getDefinitionById(input.definitionId);
+  if (definition.status !== "found") throw new Error("Historical definition missing");
+  const client = await harness.pool.connect();
+  try {
+    await client.query("begin");
+    await client.query("set constraints all deferred");
+    const sourceRef = `config/${input.logicalNodeId}.dts`;
+    const source = await harness.seedSourceFacts({
+      organizationId: input.organizationId,
+      projectId: input.projectId,
+      logicalNodeId: input.logicalNodeId,
+      definitionId: input.definitionId,
+      propertyKey: definition.definition.propertyKey,
+      propertyKeys: ["iin_guard_max"],
+      sourceRef,
+      configRevisionId: `revision-${input.logicalNodeId}`,
+    });
+    const stabilized = await stabilizeCanonicalBinding(client, {
+      snapshot,
+      organizationId: input.organizationId,
+      projectId: input.projectId,
+      logicalNodeId: input.logicalNodeId,
+      sourceOccurrenceId: source.sourceOccurrenceId,
+      registrationId: SubjectRegistrationId(input.registrationId),
+      definitionId: ParameterDefinitionId(input.definitionId),
+      effectiveRevisionId: DefinitionRevisionId(input.revisionId),
+      expectedEffectiveRevisionId: null,
+    });
+    if (!stabilized.ok) throw new Error(JSON.stringify(stabilized.error));
+    const binding = stabilized.value.binding;
+    const payload = { kind: "number" as const, value: input.value };
+    const valueDigest = digestProjectValuePayload(payload);
+    const valueId = deriveProjectValueId({
+      bindingId: binding.id,
+      definitionRevisionId: input.revisionId,
+      sourceRef,
+      configRevisionId: source.configRevisionId,
+      valueKind: payload.kind,
+      valueDigest,
+      expectedTip: binding.currentValueId,
+    });
+    await client.query(
+      `insert into parameter_catalog.project_parameter_values (
+         id, binding_id, definition_id, definition_revision_id,
+         source_ref, config_revision_id, value_digest, value_kind, value
+       ) values ($1,$2,$3,$4,$5,$6,$7,$8,$9::jsonb)`,
+      [valueId, binding.id, input.definitionId, input.revisionId, sourceRef,
+        source.configRevisionId, valueDigest, payload.kind, JSON.stringify(payload.value)],
+    );
+    const updated = await client.query(
+      `update parameter_catalog.project_parameter_bindings
+          set current_value_id = $2, updated_at = now()
+        where id = $1 and current_value_id = $3
+          and not parameter_catalog.is_replaced_current_binding(id)
+          and exists (
+            select 1 from parameter_catalog.project_parameter_values initial
+             where initial.id = $3 and initial.binding_id = $1
+               and initial.source_ref = 'canonical-binding-identity'
+          )`,
+      [binding.id, valueId, binding.currentValueId],
+    );
+    if (updated.rowCount !== 1) throw new Error("historical value tip update failed");
+    const auditRef = deriveSuccessAuditId({ bindingId: binding.id, newCurrentValueId: valueId });
+    await insertSuccessAudit(client, {
+      id: auditRef,
+      organizationId: input.organizationId,
+      projectId: input.projectId,
+      valueId,
+      bindingId: binding.id,
+    });
+    await insertBindingHistoryEvent(client, {
+      id: deriveHistoryEventId({
+        bindingId: binding.id,
+        oldCurrentValueId: binding.currentValueId,
+        newCurrentValueId: valueId,
+      }),
+      bindingId: binding.id,
+      effectiveRevisionId: input.revisionId,
+      oldCurrentValueId: binding.currentValueId,
+      newCurrentValueId: valueId,
+      successAuditRef: auditRef,
+      catalogReleaseId: binding.catalogRelease.id,
+    });
+    const locator = {
+      kind: "dts-property",
+      propertyOccurrenceId: source.propertyOccurrenceId,
+      nodeOccurrenceId: source.nodeOccurrenceId,
+      fileVersionId: source.fileVersionId,
+      propertyName: definition.definition.propertyKey,
+    };
+    await client.query(
+      `insert into parameter_catalog.project_value_source_pins (
+         id, project_value_id, binding_id, definition_id, organization_id, project_id,
+         source_occurrence_id, config_revision_id, file_id, file_version_id, format,
+         property_occurrence_id, locator, locator_digest
+       ) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'dts',$11,$12::jsonb,
+         parameter_catalog.canonical_dts_parameter_locator_digest($12::jsonb))`,
+      [`src_pin_historical_${valueId.slice("pval_".length)}`, valueId, binding.id,
+        input.definitionId, input.organizationId, input.projectId, source.sourceOccurrenceId,
+        source.configRevisionId, source.fileId, source.fileVersionId, source.propertyOccurrenceId,
+        JSON.stringify(locator)],
+    );
+    await client.query("set constraints all immediate");
+    await client.query("commit");
+    return { bindingId: binding.id, valueId };
+  } catch (error) {
+    await client.query("rollback").catch(() => undefined);
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+async function seedHistoricalReplacement(harness: MigrationHarness) {
+  await harness.seedOrganization(organizationId);
+  await harness.seedProject(organizationId, projectId, "Replacement root");
+  const registrationId = await harness.registerSubject({ organizationId, subjectId: PREDECESSOR_SUBJECT_ID,
+    subjectKind: "driver", moduleId: "module-replacement-root" });
+  const snapshot = harness.snapshot();
+  const old = await seedHistoricalBinding({ harness, snapshot, organizationId, projectId,
+    logicalNodeId: "root-original", registrationId, definitionId: PREDECESSOR_DEFINITION_ID,
+    revisionId: "drev_acme_power_iin_max_1", value: 5 });
+  const context = { actorKind: "org-admin" as const, principalId: MIGRATION_PRINCIPAL, organizationId };
+  const preview = await harness.migration.previewDefinitionReplacement({ organizationId,
+    oldDefinitionId: PREDECESSOR_DEFINITION_ID, newSubjectId: PREDECESSOR_SUBJECT_ID,
+    newPropertyKey: "iin_guard_max", proposedContent: integerContent("Guard max", 0),
+    projectIds: [projectId], reason: "Source occurrence guard", expectedRelease: harness.pin(), context });
+  if (!preview.ok) throw new Error(JSON.stringify(preview.error));
+  if (preview.value.projects[0]?.status !== "pending") throw new Error(JSON.stringify(preview.value));
+  const created = await harness.migration.createDefinitionReplacement({ organizationId,
+    previewId: preview.value.previewId, previewFingerprint: preview.value.previewFingerprint,
+    idempotencyKey: "replacement-root", expectedRelease: harness.pin(), context,
+    trustedActor: migrationTrustedActor() });
+  if (!created.ok) throw new Error(JSON.stringify(created.error));
+  if (created.value.status !== "completed") throw new Error(JSON.stringify(created.value));
+  const replacementId = created.value.id;
+  const newDefinitionId = created.value.newIdentity.definitionId;
+  const newRevisionId = created.value.newIdentity.revisionId;
+  const published = await loadPublishedCatalog(harness.pool);
+  if (!published) throw new Error("Current Catalog missing");
+  const other = await seedHistoricalBinding({ harness, snapshot: published, organizationId, projectId,
+    logicalNodeId: "root-other", registrationId, definitionId: newDefinitionId,
+    revisionId: newRevisionId, value: 5 });
+  const completed = created.value.projects[0]!;
+  return {
+    replacementId,
+    oldBindingId: old.bindingId,
+    newBindingId: completed.newBindingId!,
+    newValueId: completed.newValueId!,
+    otherBindingId: other.bindingId,
+    otherValueId: other.valueId,
+  };
 }
 
 describe("completed replacement source occurrence guard", () => {
@@ -146,10 +326,13 @@ describe("0153 populated upgrade", () => {
   it.each(["valid","cross-root"])("preserves or atomically refuses the %s historical projection", async (kind) => {
     await withTempDatabase({ prefix: "srcintegrityupgrade",migrate: false },async ({ db,connectionString }) => {
       await applyMigrations(db,migrationsDir,{ through: "0152_pinned_source_graph_immutability.sql" });
+      expect((await db.query(`select column_name from information_schema.columns
+        where table_schema = 'parameter_catalog'
+          and table_name = 'project_parameter_values' and column_name = 'value_state'`)).rows).toEqual([]);
       // The outer helper owns this database; the harness owns only its connections/storage.
       const harness = await createMigrationHarness({ database: { url: connectionString,drop: async () => {} } });
       try {
-        const fixture = await seedReplacement(harness);
+        const fixture = await seedHistoricalReplacement(harness);
         if (kind === "cross-root") {
           await db.query(`update parameter_catalog.definition_replacement_projects
             set new_binding_id=$2,new_value_id=$3 where replacement_id=$1`,
@@ -163,6 +346,7 @@ describe("0153 populated upgrade", () => {
         } else {
           await applyMigrations(db,migrationsDir);
           expect((await db.query("select name from schema_migrations where name like '0153%'")).rows).toHaveLength(1);
+          expect((await db.query("select name from schema_migrations where name like '0161%'")).rows).toHaveLength(1);
         }
         expect((await db.query("select * from parameter_catalog.definition_replacement_projects order by id")).rows).toEqual(before);
       } finally { await harness.close(); }

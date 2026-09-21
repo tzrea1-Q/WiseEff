@@ -135,9 +135,17 @@ export type MigrationHarness = {
     readonly logicalNodeId: string;
     readonly definitionId?: string;
     readonly propertyKey?: string;
+    readonly propertyKeys?: readonly string[];
     readonly sourceRef: string;
     readonly configRevisionId: string;
-  }) => Promise<void>;
+  }) => Promise<{
+    sourceOccurrenceId: string;
+    configRevisionId: string;
+    fileId: string;
+    fileVersionId: string;
+    propertyOccurrenceId: string;
+    nodeOccurrenceId: string;
+  }>;
   readonly publishChange: (
     changeSet: readonly CatalogChange[],
     label: string,
@@ -844,7 +852,7 @@ export async function createMigrationHarness(options: { readonly objectStore?: O
   };
 
   const seedSourceFacts: MigrationHarness["seedSourceFacts"] = async (input) => {
-    await ensureSourceFacts(input);
+    return ensureSourceFacts(input);
   };
 
   const publishChange: MigrationHarness["publishChange"] = async (changeSet, label) => {
