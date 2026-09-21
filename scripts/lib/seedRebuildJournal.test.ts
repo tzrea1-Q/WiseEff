@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { assertSeedMaintenance, openSeedRebuildJournal, parseSeedRebuildState } from "./seedRebuildJournal";
-import { rebuildSeedProjects, type SeedRebuildState } from "./seedRebuild";
+import { rebuildSeedProjects, seedMaintenanceBaselineDigest, type SeedRebuildState } from "./seedRebuild";
 import { sealSeedRebuildPlan } from "./seedRebuildPlan";
 
 const validState = (): SeedRebuildState => {
@@ -53,10 +53,22 @@ describe("seed rebuild interruption boundary", () => {
     expect(() => parseSeedRebuildState({ ...state, preparedInputs: { arbitrary: {} } })).toThrow();
   });
 
+  it("accepts a bound maintenance checkpoint and rejects tampering or a foreign run", () => {
+    const state = validState();
+    const checkpoint = { runId: state.runId, planDigest: state.plan.digest,
+      manifestDigest: `sha256:${"b".repeat(64)}`, baseline: state.baseline };
+    const withCheckpoint = { ...state, maintenanceBaseline: { ...checkpoint, digest: seedMaintenanceBaselineDigest(checkpoint) } };
+    expect(parseSeedRebuildState(withCheckpoint)).toEqual(withCheckpoint);
+    expect(() => parseSeedRebuildState({ ...withCheckpoint,
+      maintenanceBaseline: { ...withCheckpoint.maintenanceBaseline, digest: state.plan.digest } })).toThrow("maintenance-baseline-drift");
+    expect(() => parseSeedRebuildState({ ...withCheckpoint,
+      maintenanceBaseline: { ...withCheckpoint.maintenanceBaseline, runId: "other" } })).toThrow("maintenance-baseline-drift");
+  });
+
   it("requires the exact run, recovery point and observed isolation before mutation", async () => {
     const dir = await mkdtemp(path.join(tmpdir(), "seed-maintenance-"));
     const state = { runId: "run", plan: { digest: "plan", candidateSha: "sha", organizationId: "org" } } as SeedRebuildState;
-    const proof = { schemaVersion: 1, runId: "run", planDigest: "plan", candidateSha: "sha", organizationId: "org",
+    const proof = { schemaVersion: 1, runId: "run", planDigest: "plan", confirmedPlanDigest: "plan", candidateSha: "sha", organizationId: "org",
       phase: "maintenance-begun", recoveryPoint: { verified: true, manifestDigest: `sha256:${"a".repeat(64)}` },
       isolation: { proxyStopped: true, queuePaused: true, writersStopped: true, managerStopped: true },
       publication: { frozen: true }, queue: { drained: true } };
@@ -73,6 +85,23 @@ describe("seed rebuild interruption boundary", () => {
         await save(changed);
         await expect(assertSeedMaintenance(dir, state)).rejects.toThrow("verified-maintenance");
       }
+    } finally { await rm(dir, { recursive: true, force: true }); }
+  });
+
+  it("binds an existing checkpoint to the live recovery manifest", async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), "seed-maintenance-manifest-"));
+    const state = validState();
+    const manifestDigest = `sha256:${"a".repeat(64)}`;
+    const checkpoint = { runId: state.runId, planDigest: state.plan.digest, manifestDigest, baseline: state.baseline };
+    const checkpointed = { ...state, maintenanceBaseline: { ...checkpoint, digest: seedMaintenanceBaselineDigest(checkpoint) } };
+    const proof = { schemaVersion: 1, runId: state.runId, planDigest: state.plan.digest,
+      confirmedPlanDigest: state.plan.digest, candidateSha: state.plan.candidateSha, organizationId: state.plan.organizationId,
+      phase: "maintenance-begun", recoveryPoint: { verified: true, manifestDigest: `sha256:${"b".repeat(64)}` },
+      isolation: { proxyStopped: true, queuePaused: true, writersStopped: true, managerStopped: true },
+      publication: { frozen: true }, queue: { drained: true } };
+    try {
+      await writeFile(path.join(dir, "wrapper-state.json"), JSON.stringify(proof));
+      await expect(assertSeedMaintenance(dir, checkpointed)).rejects.toThrow("maintenance-manifest-drift");
     } finally { await rm(dir, { recursive: true, force: true }); }
   });
 });

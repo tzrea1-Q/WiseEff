@@ -227,7 +227,7 @@ seed_core_command() {
   local bootstrap code
   local -a core_args
   case "$command" in
-    plan|status|catalog-prepare|catalog-publish|catalog-status|rebuild|verify) ;;
+    plan|status|maintenance-baseline|catalog-prepare|catalog-publish|catalog-status|rebuild|verify) ;;
     *) seed_die "Unsupported core command: ${command}"; return 2 ;;
   esac
   bootstrap="$(wiseeff_upgrade_env_value WISEEFF_CATALOG_BOOTSTRAP_DATABASE_URL)"
@@ -820,6 +820,29 @@ with os.fdopen(os.open(sys.argv[1], os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
 PYMARKERWRITE
 }
 
+seed_capture_maintenance_baseline() {
+  seed_state_write phase maintenance-begun
+  seed_state_write outcome running
+  seed_candidate_sha="$(seed_state_read candidate_sha)"
+  seed_plan_digest="$(seed_state_read plan_digest)"
+  if ! seed_bind_confirmed_plan || [ "$seed_confirm_plan" != "$seed_plan_digest" ]; then
+    seed_fail_closed
+    return 70
+  fi
+  if ! seed_verify_maintenance; then
+    seed_fail_closed
+    return 70
+  fi
+  seed_write_json
+  if ! seed_core_command maintenance-baseline \
+    || ! grep -Eq '"ok"[[:space:]]*:[[:space:]]*true' "$(seed_state_read core_last_output)" \
+    || ! grep -Eq '"status"[[:space:]]*:[[:space:]]*"maintenance-baseline-recorded"' "$(seed_state_read core_last_output)" \
+    || ! grep -Eq '"digest"[[:space:]]*:[[:space:]]*"sha256:[a-f0-9]{64}"' "$(seed_state_read core_last_output)"; then
+    seed_fail_closed
+    return 70
+  fi
+}
+
 seed_begin() {
   seed_setup_paths
   seed_prepare_run
@@ -905,12 +928,10 @@ seed_begin() {
   seed_state_write seed_backup_verified true
   seed_state_write recovery_manifest_digest "sha256:$(wiseeff_upgrade_fingerprint "${seed_backup_dir}/manifest.sha256")"
   seed_phase starting-data
-  wiseeff_upgrade_compose up -d --no-build postgres redis minio minio-init || { seed_phase recovery-required failed; return 70; }
-  wiseeff_upgrade_wait_data_plane_ready || { seed_phase recovery-required failed; return 70; }
-  seed_verify_identity || return $?
-  seed_state_write phase maintenance-begun
-  seed_state_write outcome running
-  seed_verify_maintenance || return $?
+  wiseeff_upgrade_compose up -d --no-build postgres redis minio minio-init || { seed_fail_closed; return 70; }
+  wiseeff_upgrade_wait_data_plane_ready || { seed_fail_closed; return 70; }
+  seed_verify_identity || { seed_fail_closed; return 70; }
+  seed_capture_maintenance_baseline || return $?
   seed_write_json
   printf 'Seed rebuild maintenance begun. run_id=%s plan=%s backup=%s\n' "$seed_run_id" "$(seed_state_read plan_digest)" "$seed_backup_dir"
 }
@@ -1405,12 +1426,10 @@ seed_resume_maintenance() {
   fi
   seed_state_write seed_backup_verified true
   seed_state_write recovery_manifest_digest "sha256:$(wiseeff_upgrade_fingerprint "${seed_backup_dir}/manifest.sha256")"
-  wiseeff_upgrade_compose up -d --no-build postgres redis minio minio-init || { seed_phase recovery-required failed; return 70; }
-  wiseeff_upgrade_wait_data_plane_ready || { seed_phase recovery-required failed; return 70; }
-  seed_verify_identity || return $?
-  seed_state_write phase maintenance-begun
-  seed_state_write outcome running
-  seed_verify_maintenance || return $?
+  wiseeff_upgrade_compose up -d --no-build postgres redis minio minio-init || { seed_fail_closed; return 70; }
+  wiseeff_upgrade_wait_data_plane_ready || { seed_fail_closed; return 70; }
+  seed_verify_identity || { seed_fail_closed; return 70; }
+  seed_capture_maintenance_baseline || return $?
   printf 'Seed rebuild maintenance begun after backup retry. run_id=%s backup=%s
 ' "$seed_run_id" "$seed_backup_dir"
 }

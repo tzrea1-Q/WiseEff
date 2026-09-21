@@ -20,6 +20,13 @@ import { getSeedCatalogPublicationStatus } from "./seedCatalogPublication";
 import type { SeedRebuildPreparation } from "./seedRebuildJournal";
 
 export type SeedArchive = { projectId: string; archiveId: string; archiveDigest: string };
+export type SeedMaintenanceBaseline = {
+  runId: string;
+  planDigest: string;
+  manifestDigest: string;
+  baseline: SeedPreservation;
+  digest: string;
+};
 export type SeedRebuildState = {
   version: 1; runId: string; plan: SealedSeedRebuildPlan;
   baseline: SeedPreservation; expectedIdentities: string[];
@@ -29,6 +36,7 @@ export type SeedRebuildState = {
   archives: SeedArchive[];
   preparedInputs?: Partial<Record<"vendor" | "configuration-schema", SeedRebuildPreparation>>;
   publications: Record<string, { candidateId: string; artifactDigest: string; releaseId: string; releaseDigest: string; receiptId?: string }>;
+  maintenanceBaseline?: SeedMaintenanceBaseline;
 };
 export type SeedRebuildContext = { db: RootDatabase; store: ObjectStore; repoRoot: string };
 
@@ -84,6 +92,89 @@ async function parameterInventoryDigest(db: Queryable, store: ObjectStore, organ
 function inventoryOf(state: Pick<SeedRebuildState, "baseline" | "expectedIdentities" | "originalParameterDigest" | "policy">) {
   return { baseline: state.baseline, expectedIdentities: state.expectedIdentities,
     originalParameterDigest: state.originalParameterDigest, policy: state.policy };
+}
+
+function maintenanceBaselinePayload(baseline: Omit<SeedMaintenanceBaseline, "digest">) {
+  return { runId: baseline.runId, planDigest: baseline.planDigest,
+    manifestDigest: baseline.manifestDigest, baseline: baseline.baseline };
+}
+
+export function seedMaintenanceBaselineDigest(baseline: Omit<SeedMaintenanceBaseline, "digest">): string {
+  return seedRebuildDigest(maintenanceBaselinePayload(baseline));
+}
+
+export function assertSeedMaintenanceBaselineBinding(state: SeedRebuildState): SeedMaintenanceBaseline {
+  const checkpoint = state.maintenanceBaseline;
+  if (!checkpoint) throw new Error("seed-rebuild-maintenance-baseline-required");
+  if (checkpoint.runId !== state.runId || checkpoint.planDigest !== state.plan.digest
+    || !/^sha256:[a-f0-9]{64}$/.test(checkpoint.manifestDigest)
+    || seedMaintenanceBaselineDigest(checkpoint) !== checkpoint.digest) {
+    throw new Error("seed-rebuild-maintenance-baseline-drift");
+  }
+  return checkpoint;
+}
+
+function assertMaintenanceSchemaMatches(state: SeedRebuildState, baseline: SeedPreservation) {
+  if (state.baseline.schema.digest !== baseline.schema.digest
+    || seedRebuildDigest(state.baseline.schema.relations) !== seedRebuildDigest(baseline.schema.relations)) {
+    throw new Error("seed-rebuild-preservation-schema-drift");
+  }
+}
+
+/** Capture the complete post-quiescence preservation point exactly once. */
+export async function captureSeedMaintenanceBaseline(
+  ctx: SeedRebuildContext,
+  state: SeedRebuildState,
+  manifestDigest: string,
+): Promise<SeedMaintenanceBaseline> {
+  if (!/^sha256:[a-f0-9]{64}$/.test(manifestDigest)) throw new Error("seed-rebuild-maintenance-manifest-required");
+  if (state.phase !== "planned" || Object.keys(state.publications).length > 0 || state.archives.length > 0
+    || state.preparedInputs && Object.keys(state.preparedInputs).length > 0) {
+    throw new Error("seed-rebuild-maintenance-baseline-too-late");
+  }
+  if (seedRebuildDigest(inventoryOf(state)) !== state.plan.inventoryDigest) {
+    throw new Error("seed-rebuild-inventory-tampered");
+  }
+  const facts = await sourceFacts(ctx.repoRoot, state.plan.organizationId);
+  if (facts.seedDigest !== state.plan.seedDigest || facts.sourceDigest !== state.plan.sourceDigest) {
+    throw new Error("seed-rebuild-source-pin-drift");
+  }
+  if (state.maintenanceBaseline) {
+    const checkpoint = assertSeedMaintenanceBaselineBinding(state);
+    if (checkpoint.manifestDigest !== manifestDigest) throw new Error("seed-rebuild-maintenance-manifest-drift");
+    const policy = await collectPublicationPolicyInstanceSnapshot(ctx.db);
+    if (!policy.frozen) throw new Error("seed-rebuild-publication-freeze-required");
+    await assertSeedPublicationIdle(ctx.db);
+    await verifySeedPreservation(ctx.db, ctx.store, state.plan.organizationId, checkpoint.baseline);
+    return checkpoint;
+  }
+  const baseline = await ctx.db.transaction(async (db) => {
+    await db.query("set transaction isolation level repeatable read, read only");
+    await assertSeedPublicationIdle(db);
+    const policy = await collectPublicationPolicyInstanceSnapshot(db);
+    if (!policy.adopted || policy.artifactSourceKind !== "adopted-preexisting" || !policy.publicationEnabled
+      || !policy.frozen || policy.currentReleaseId !== state.plan.catalog.id
+      || policy.currentReleaseDigest !== state.plan.catalog.digest
+      || policy.policyRevision !== state.policy.revision
+      || policy.capabilityContractRevision !== state.policy.capabilityContractRevision
+      || policy.lowRiskSingleActorPublish !== state.policy.lowRiskSingleActorPublish) {
+      throw new Error(policy.frozen ? "seed-rebuild-maintenance-pin-drift" : "seed-rebuild-publication-freeze-required");
+    }
+    if (await parameterInventoryDigest(db, ctx.store, state.plan.organizationId) !== state.originalParameterDigest) {
+      throw new Error("seed-rebuild-parameter-inventory-drift");
+    }
+    const captured = await captureSeedPreservation(db, ctx.store, state.plan.organizationId);
+    assertMaintenanceSchemaMatches(state, captured);
+    return captured;
+  });
+  const checkpoint = { runId: state.runId, planDigest: state.plan.digest, manifestDigest, baseline };
+  return { ...checkpoint, digest: seedMaintenanceBaselineDigest(checkpoint) };
+}
+
+export async function verifySeedMaintenanceBaseline(ctx: SeedRebuildContext, state: SeedRebuildState) {
+  const checkpoint = assertSeedMaintenanceBaselineBinding(state);
+  await verifySeedPreservation(ctx.db, ctx.store, state.plan.organizationId, checkpoint.baseline);
+  return checkpoint;
 }
 
 export async function assertSeedPublicationIdle(db: Queryable, allowedCandidate: string | null = null) {
@@ -152,10 +243,12 @@ export async function checkSeedRebuildState(ctx: SeedRebuildContext, state: Seed
     && await parameterInventoryDigest(ctx.db, ctx.store, state.plan.organizationId) !== state.originalParameterDigest) {
     throw new Error("seed-rebuild-parameter-inventory-drift");
   }
+  if (state.maintenanceBaseline) await verifySeedMaintenanceBaseline(ctx, state);
   return facts;
 }
 
 export async function verifySeedRebuild(ctx: SeedRebuildContext, state: SeedRebuildState) {
+  const maintenance = assertSeedMaintenanceBaselineBinding(state);
   await assertFinalPublication(ctx.db, state);
   if (state.archives.map((item) => item.projectId).sort().join(",") !== state.plan.targets.slice().sort().join(",")
     || state.archives.length !== 3 || state.archives.some((item) => !item.archiveId || !/^sha256:[a-f0-9]{64}$/.test(item.archiveDigest))) {
@@ -184,7 +277,7 @@ export async function verifySeedRebuild(ctx: SeedRebuildContext, state: SeedRebu
     }
     expectedFiles.delete(key);
   }
-  await verifySeedPreservation(ctx.db, ctx.store, state.plan.organizationId, state.baseline);
+  await verifySeedPreservation(ctx.db, ctx.store, state.plan.organizationId, maintenance.baseline);
   return identities;
 }
 
@@ -214,9 +307,10 @@ export async function rebuildSeedProjects(ctx: SeedRebuildContext, state: SeedRe
   if (state.phase === "verified") return verifySeedRebuild(ctx, state);
   if (state.phase !== "catalog" || !state.publications["configuration-schema"]?.receiptId
     || !state.publications.vendor?.receiptId) throw new Error("seed-rebuild-publication-or-recovery-required");
+  const maintenance = assertSeedMaintenanceBaselineBinding(state);
   await assertFinalPublication(ctx.db, state);
   const auth = await seedRebuildActor(ctx.db, state.plan.actorUserId, state.plan.organizationId);
-  await verifySeedPreservation(ctx.db, ctx.store, state.plan.organizationId, state.baseline);
+  await verifySeedPreservation(ctx.db, ctx.store, state.plan.organizationId, maintenance.baseline);
   const facts = await sourceFacts(ctx.repoRoot, state.plan.organizationId);
   const transition = async (phase: SeedRebuildState["phase"]) => { state.phase = phase; await save(state); };
   try {
@@ -237,7 +331,7 @@ export async function rebuildSeedProjects(ctx: SeedRebuildContext, state: SeedRe
     await verifySeedRebuild(ctx, state);
     await transition("disposing");
     // Old parameter objects can be shared with preserved nonparameter records. Retain those bytes.
-    const protectedKeys = new Set(state.baseline.objects.map((item) => item.key));
+    const protectedKeys = new Set(maintenance.baseline.objects.map((item) => item.key));
     const store: ObjectStore = { ...ctx.store, delete: async (key) => {
       if (!protectedKeys.has(key)) await ctx.store.delete?.(key);
     } };

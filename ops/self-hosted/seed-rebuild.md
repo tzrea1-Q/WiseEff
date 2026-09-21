@@ -28,6 +28,10 @@ Review the exact database identity, organization, three project IDs, source/code
 
 ## Maintenance, publication and rebuild
 
+The plan records the live inventory for review; it is not the preservation baseline for the stopped system. After isolating writers and verifying the fresh backup, `begin` captures a separate complete preservation baseline bound to the run, unchanged confirmed plan and recovery manifest. Normal session/Bridge activity between plan and maintenance is retained in this baseline. Subsequent changes still fail verification, including session timestamps and Bridge heartbeats. A successful `resume-maintenance` backup retry captures the same evidence before allowing publication. No manual baseline refresh is supported.
+
+Runs created by an older operator without this maintenance baseline cannot proceed to publication or rebuild. Recover any unfinished run with its original version first, then upgrade and start a new run ID. Do not edit the plan or journal to carry an old run forward.
+
 Copy the plan digest into `wiseeff_seed_plan`. Beginning maintenance stops traffic and writers, pauses/drains queues, freezes publication, and creates a **fresh, verified PostgreSQL/object/Redis recovery point**. Rebuilding cannot proceed unless these checks pass.
 
 ```bash

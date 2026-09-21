@@ -73,6 +73,59 @@ function fixture() {
 }
 
 describe("self-hosted seed rebuild boundary", () => {
+  it("captures preservation only after verified isolation and backup, including backup retry", () => {
+    for (const action of ["seed_begin", "seed_resume_maintenance"]) {
+      for (const capture of ["recorded", "failed", "empty", "data-failed", "identity-failed"]) {
+        const captures = capture === "recorded";
+        const planDigest = `sha256:${"b".repeat(64)}`;
+        const directory = mkdtempSync(join(tmpdir(), "wiseeff-seed-baseline-"));
+        const state = join(directory, "state");
+        const events = join(directory, "events");
+        mkdirSync(state);
+        const output = join(directory, "output");
+        writeFileSync(output, captures ? JSON.stringify({ ok: true, status: "maintenance-baseline-recorded",
+          digest: `sha256:${"a".repeat(64)}` }) : "");
+        const result = spawnSync("bash", ["-c", [
+          `source '${process.cwd()}/${script}'`, `seed_run_dir='${state}'`,
+          `seed_backup_root='${directory}/backups'`, `seed_backup_dir='${directory}/backups/run1'`,
+          `lock_root='${directory}/lock'`, "seed_run_id=run1", "seed_actor=actor", "seed_org=org",
+          `seed_plan_digest=${planDigest}`, `seed_confirm_plan=${planDigest}`, "seed_digest=seed",
+          "seed_state_write phase recovery-required", `seed_state_write plan_digest ${planDigest}`,
+          `seed_state_write confirmed_plan_digest ${planDigest}`,
+          `seed_state_write core_last_output '${output}'`,
+          "seed_state_write candidate_sha sha", "seed_state_write seed_backup_verified false",
+          "seed_state_write queue_paused_verified true", "seed_state_write queue_drained true",
+          "seed_state_write service_publication-manager_present true", "seed_state_write writers_stopped true",
+          ...["seed_setup_paths", "seed_prepare_run", "seed_load_run", "seed_validate_runtime",
+            "seed_require_clean_checkout", "wiseeff_operation_lock_acquire", "wiseeff_operation_lock_release",
+            "seed_require_core_plan", "seed_capture_runtime", "seed_require_initial_running",
+            "seed_require_pinned_images", "seed_require_backup_database", "wiseeff_upgrade_probe_api",
+            "seed_capture_publication", "seed_queue_capture_initial", "wiseeff_upgrade_publication_freeze",
+            "wiseeff_upgrade_compose", "seed_queue_drain", "seed_verify_service_stopped",
+            "seed_verify_backup_path", "seed_write_backup_marker", "wiseeff_upgrade_wait_data_plane_ready",
+            "seed_verify_identity", "seed_core_is_unmutated_plan", "seed_queue_verify_paused",
+            "wiseeff_upgrade_state_write", "seed_write_json"].map(name => `${name}() { :; }`),
+          "seed_current_sha() { printf sha; }", "seed_current_env_fingerprint() { printf fingerprint; }",
+          "seed_publication_status() { printf true; }", "wiseeff_upgrade_fingerprint() { printf fingerprint; }",
+          `wiseeff_upgrade_snapshot_all() { printf 'backup\\n' >> '${events}'; }`,
+          `wiseeff_upgrade_verify_backup_manifest() { printf 'backup-verified\\n' >> '${events}'; }`,
+          `wiseeff_upgrade_wait_data_plane_ready() { [ "$(seed_state_read seed_backup_verified)" != true ] || [ '${capture}' != data-failed ]; }`,
+          `seed_verify_identity() { [ "$(seed_state_read seed_backup_verified)" != true ] || [ '${capture}' != identity-failed ]; }`,
+          `seed_verify_maintenance() { [ "$(seed_state_read seed_backup_verified)" = true ] && [ "$(seed_state_read writers_stopped)" = true ] && printf 'isolated\\n' >> '${events}'; }`,
+          `seed_core_command() { [ "$1" = maintenance-baseline ] && [ "$seed_candidate_sha" = sha ] && [ "$seed_plan_digest" = ${planDigest} ] || return 80; printf 'baseline\\n' >> '${events}'; return ${capture === "failed" ? 1 : 0}; }`,
+          `${action} || exit $?`,
+        ].join("\n")], { encoding: "utf8" });
+        expect(result.status, result.stderr).toBe(captures ? 0 : 70);
+        expect(readFileSync(events, "utf8").trim().split("\n"))
+          .toEqual(["backup", "backup-verified", ...(["data-failed", "identity-failed"].includes(capture) ? [] : ["isolated", "baseline"])]);
+        expect(readFileSync(join(state, "phase"), "utf8").trim())
+          .toBe(captures ? "maintenance-begun" : "recovery-required");
+        if (!captures) expect(readFileSync(join(state, "next_action"), "utf8"))
+          .toContain("recover --run-id run1 --confirm restore-run1");
+      }
+    }
+  });
+
   it("finishes only after verified core output and re-isolates a failed restoration", () => {
     for (const [verified, restored] of [[true, true], [false, true], [true, false]]) {
       const directory = mkdtempSync(join(tmpdir(), "wiseeff-seed-finish-"));
