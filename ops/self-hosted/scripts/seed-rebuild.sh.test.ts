@@ -73,6 +73,38 @@ function fixture() {
 }
 
 describe("self-hosted seed rebuild boundary", () => {
+  it("refuses missing or replaced recovery evidence before allowing maintenance operations", () => {
+    for (const change of ["none", "missing-manifest", "changed-manifest", "missing-marker", "changed-marker"]) {
+      const directory = mkdtempSync(join(tmpdir(), "wiseeff-seed-manifest-"));
+      const state = join(directory, "state");
+      const backup = join(directory, "backups", "run1");
+      mkdirSync(state); mkdirSync(backup, { recursive: true });
+      writeFileSync(join(state, "core-state.json"), JSON.stringify({ plan: { digest: "plan", candidateSha: "sha" } }));
+      writeFileSync(join(backup, "rebuild-run.json"), JSON.stringify({ runId: "run1", planDigest: "plan", candidateSha: "sha" }));
+      writeFileSync(join(backup, "manifest.sha256"), "verified snapshot\n");
+      const mutations: Record<string, string> = {
+        none: ":",
+        "missing-manifest": `rm '${backup}/manifest.sha256'`,
+        "changed-manifest": `printf replaced > '${backup}/manifest.sha256'`,
+        "missing-marker": `rm '${backup}/rebuild-run.json'`,
+        "changed-marker": `printf '{}' > '${backup}/rebuild-run.json'`,
+      };
+      const result = spawnSync("bash", ["-c", [
+        `source '${process.cwd()}/${script}'`, "seed_run_id=run1", `seed_run_dir='${state}'`,
+        `seed_backup_root='${directory}/backups'`, `seed_backup_dir='${backup}'`,
+        "seed_state_write checkout_sha sha", "seed_state_write env_fingerprint env",
+        "seed_state_write phase maintenance-begun", "seed_state_write seed_backup_verified true",
+        "seed_state_write queue_paused_verified true",
+        `seed_state_write recovery_manifest_digest "sha256:$(wiseeff_upgrade_fingerprint '${backup}/manifest.sha256')"`,
+        "seed_current_sha() { printf sha; }", "seed_current_env_fingerprint() { printf env; }",
+        "seed_verify_service_stopped() { :; }", "seed_publication_status() { printf true; }",
+        "seed_write_json() { :; }", mutations[change], "seed_verify_maintenance || exit $?",
+      ].join("\n")], { encoding: "utf8" });
+      if (change === "none") expect(result.status, result.stderr).toBe(0);
+      else expect(result.status, change).not.toBe(0);
+    }
+  });
+
   it("captures preservation only after verified isolation and backup, including backup retry", () => {
     for (const action of ["seed_begin", "seed_resume_maintenance"]) {
       for (const capture of ["recorded", "failed", "empty", "data-failed", "identity-failed"]) {

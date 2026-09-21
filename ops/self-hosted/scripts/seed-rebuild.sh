@@ -726,6 +726,7 @@ seed_verify_maintenance() {
   [ "$current_env" = "$(seed_state_read env_fingerprint)" ] || { seed_die "Runtime env identity changed after plan"; return 10; }
   [ "$(seed_state_read phase)" = maintenance-begun ] || { seed_die "Run is not at maintenance-begun"; return 70; }
   [ "$(seed_state_read seed_backup_verified)" = true ] || { seed_die "Verified recovery point is missing"; return 70; }
+  seed_verify_manifest_identity || { seed_die "Recovery-point evidence no longer matches this run"; return 70; }
   seed_verify_service_stopped || { seed_die "Writers or proxy are not isolated"; return 70; }
   [ "$(seed_state_read queue_paused_verified)" = true ] || { seed_die "Queue pause proof is missing"; return 70; }
   [ "$(seed_publication_status)" = true ] || { seed_die "Catalog publication is not frozen or status is unavailable"; return 70; }
