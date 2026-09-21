@@ -20,6 +20,40 @@ Use `./scripts/compose` rather than raw `docker compose`. Configuration sources:
 
 Setup and upgrade write `.env.publication-manager` as an **unconfigured stub** when the private file is missing. They never copy `DATABASE_URL`. The stub is written before any Compose parse so a first-intro target that adds `publication-manager` can still `stop proxy`. Missing `WISEEFF_PUBLICATION_MANAGER_DATABASE_URL` keeps the manager health endpoint at `503 { configured: false }`. On a stack that already ran `publication-manager`, upgrade freeze fail-closes without a dedicated LOGIN. On first intro (no previous manager container and no manager DSN) apply skips freeze, does not start `publication-manager`, and does not require `configured: true`; provision LOGINs after the migrations that create `catalog_publication`. Provision dedicated LOGINs with `npx tsx scripts/catalog-publication-ops.ts provision-logins --credential-dir <0700-dir>`. Stdout is roles and file paths only; DSNs are written as `0600` files (`api.dsn`, `worker.dsn`, `manager.dsn`). Copy the manager DSN into `.env.publication-manager`. Put the API DSN in public `.env` `DATABASE_URL` and the worker DSN in `WISEEFF_WORKER_DATABASE_URL`. Do not treat “replace the account before production” as delivery. Default re-runs verify owned LOGINs and do not rotate passwords; pass `--rotate-passwords` for an auditable rotation.
 
+## Refresh existing LOGIN privileges after schema upgrades
+
+An existing runtime LOGIN can predate a new application table. Migrations create
+the table but do not replay the LOGIN provisioner's grants on public tables. For
+example, missing SELECT on `public.project_parameter_value_drafts` or
+`public.project_parameter_value_change_requests` makes the project draft endpoint
+return 500, including for an empty project. General API readiness does not exercise
+that endpoint.
+
+After confirming the missing privilege using the API LOGIN, use the existing
+provisioner to converge the established runtime grants. First verify that all
+three official LOGINs already exist and belong to this deployment. Run from
+`ops/self-hosted`; the bootstrap DSN stays in the container environment:
+
+```bash
+./scripts/compose --env-file .env run --rm --no-deps \
+  -e WISEEFF_API_PROCESS=0 api \
+  npx tsx scripts/catalog-publication-ops.ts provision-logins \
+  --mode official --credential-dir /tmp/wiseeff-runtime-login-refresh
+```
+
+Do not add `--rotate-passwords`. For existing owned LOGINs, expect
+`passwordsDelivered: false` and `reused` containing `wiseeff_api`, `wiseeff_worker`,
+and `wiseeff_publication_manager`. The provisioner reuses the existing privilege
+contract, including Catalog-core write denials; it does not publish, adopt, seed,
+or grant product capabilities. Unexpected ownership or LOGIN attributes are
+refused. The command can also create missing LOGINs, so verifying all three
+existing LOGINs is an operator precondition, not an enforced refresh-only mode.
+If they have not been verified, stop and inspect first.
+
+Then repeat the API LOGIN privilege check and reload the project parameter page.
+All project `parameter-value-drafts` requests must succeed. No service restart is
+needed for these grants; Catalog content and project initialization are separate.
+
 ## 1. Deploy the manager
 
 Same application image as api/worker/web. Command inside the image: `npm run publication:manager`.

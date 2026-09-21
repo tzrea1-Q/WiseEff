@@ -1,4 +1,7 @@
 import { describe, expect, it } from "vitest";
+import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { evaluateSelfHostedConfig } from "./check-self-hosted-config";
 
 const validPackageJson = {
@@ -70,14 +73,14 @@ services:
       WISEEFF_API_PROCESS: "1"
     healthcheck:
       test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:8787/health/live"]
-    command: ["sh", "-lc", "npx tsx server/index.ts"]
+    command: ["npx", "tsx", "server/index.ts"]
   worker:
     image: *wiseeff-image
     build: *wiseeff-build
     env_file: \${WISEEFF_ENV_FILE:-.env}
     environment:
       <<: *wiseeff-runtime-proxy
-    command: ["sh", "-lc", "npm run worker:logs"]
+    command: ["npm", "run", "worker:logs"]
     environment:
       DATABASE_URL: \${WISEEFF_WORKER_DATABASE_URL:?set WISEEFF_WORKER_DATABASE_URL in ops/self-hosted/.env}
     depends_on:
@@ -93,14 +96,14 @@ services:
       WISEEFF_API_PROCESS: "0"
     healthcheck:
       test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:8791/health/live"]
-    command: ["sh", "-lc", "npm run publication:manager"]
+    command: ["npm", "run", "publication:manager"]
   web:
     image: *wiseeff-image
     build: *wiseeff-build
     env_file: \${WISEEFF_ENV_FILE:-.env}
     healthcheck:
       test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:5173/"]
-    command: ["sh", "-lc", "npm run preview -- --host 0.0.0.0 --port 5173 --strictPort"]
+    command: ["npm", "run", "preview", "--", "--host", "0.0.0.0", "--port", "5173", "--strictPort"]
   proxy:
     image: caddy:2-alpine
     ports:
@@ -315,6 +318,18 @@ const validCaddyfile = `
 `;
 
 describe("self-hosted config metadata", () => {
+  it("starts application services without a login shell that rewrites image PATH", () => {
+    const compose = readFileSync(join(dirname(fileURLToPath(import.meta.url)), "..", "compose.yaml"), "utf8");
+
+    expect(compose).toContain('command: ["npx", "tsx", "server/index.ts"]');
+    expect(compose).toContain('command: ["npm", "run", "worker:logs"]');
+    expect(compose).toContain('command: ["npm", "run", "publication:manager"]');
+    expect(compose).toContain(
+      'command: ["npm", "run", "preview", "--", "--host", "0.0.0.0", "--port", "5173", "--strictPort"]'
+    );
+    expect(compose).not.toContain('command: ["sh", "-lc",');
+  });
+
   it("passes when compose, env, proxy, and package scripts describe a self-hosted runtime", () => {
     const result = evaluateSelfHostedConfig({
       packageJson: validPackageJson,
@@ -396,7 +411,7 @@ describe("self-hosted config metadata", () => {
         "wiseeff-redis-data:/data",
         "env_file: ${WISEEFF_ENV_FILE:-.env}",
         "redis-server",
-        "npm run worker:logs",
+        'command: ["npm", "run", "worker:logs"]',
         "VITE_WISEEFF_API_BASE_URL: ${VITE_WISEEFF_API_BASE_URL:?set VITE_WISEEFF_API_BASE_URL in ops/self-hosted/.env}"
       ])
     );

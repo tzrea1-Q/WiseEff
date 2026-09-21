@@ -130,7 +130,7 @@ services:
       interval: 10s
       timeout: 5s
       retries: 12
-    command: ["sh", "-lc", "npx tsx server/index.ts"]
+    command: ["npx", "tsx", "server/index.ts"]
 
   worker:
     image: *wiseeff-image
@@ -162,7 +162,7 @@ services:
       interval: 10s
       timeout: 5s
       retries: 12
-    command: ["sh", "-lc", "npm run worker:logs"]
+    command: ["npm", "run", "worker:logs"]
 
   publication-manager:
     image: *wiseeff-image
@@ -194,7 +194,7 @@ services:
       interval: 10s
       timeout: 5s
       retries: 12
-    command: ["sh", "-lc", "npm run publication:manager"]
+    command: ["npm", "run", "publication:manager"]
 
   web:
     image: *wiseeff-image
@@ -213,7 +213,7 @@ services:
       interval: 10s
       timeout: 5s
       retries: 12
-    command: ["sh", "-lc", "npm run preview -- --host 0.0.0.0 --port 5173 --strictPort"]
+    command: ["npm", "run", "preview", "--", "--host", "0.0.0.0", "--port", "5173", "--strictPort"]
 
   proxy:
     image: caddy:2-alpine
