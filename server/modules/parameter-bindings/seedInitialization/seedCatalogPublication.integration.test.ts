@@ -7,38 +7,41 @@ import {
   createPostgresDatabase,
   getRootPostgresPool,
   type RootDatabase,
-} from "../../server/shared/database/client";
+} from "../../../shared/database/client";
 import {
   adoptPreexistingCatalog,
-} from "../../server/modules/catalog-publication/runtime/adoption";
+} from "../../catalog-publication/runtime/adoption";
 import {
   bootstrapFirstAcme,
-} from "../../server/modules/catalog-kernel/install/publicationTestHarness";
-import { firstAcmePredecessor } from "../../server/modules/catalog-publication/builder/predecessorHarness";
+} from "../../catalog-kernel/install/publicationTestHarness";
+import { firstAcmePredecessor } from "../../catalog-publication/builder/predecessorHarness";
 import {
   collectPublicationPolicyInstanceSnapshot,
-} from "../../server/modules/catalog-publication/authorization/instanceSnapshot";
+} from "../../catalog-publication/authorization/instanceSnapshot";
 import {
   asQueryable,
   withCommittedRole,
-} from "../../server/modules/catalog-publication/persistence/integrationHarness";
+  requirePgvectorTestDatabase,
+} from "../../catalog-publication/persistence/integrationHarness";
 import {
   PUBLISHER,
   publisherPermissions,
   userActor,
-} from "../../server/modules/catalog-publication/authorization/testHarness";
-import { revisePublicationPolicy } from "../../server/modules/catalog-publication/authorization/policy";
-import { MANAGED_INSTANCE_POLICY_CONFIRMATION } from "../../server/modules/catalog-publication/authorization/types";
-import { CATALOG_MIGRATION_OWNER } from "../../server/modules/catalog-kernel/security/catalogRoleManifest";
+} from "../../catalog-publication/authorization/testHarness";
+import { revisePublicationPolicy } from "../../catalog-publication/authorization/policy";
+import { MANAGED_INSTANCE_POLICY_CONFIRMATION } from "../../catalog-publication/authorization/types";
+import { CATALOG_MIGRATION_OWNER } from "../../catalog-kernel/security/catalogRoleManifest";
+import { createEphemeralTestDatabase, type EphemeralTestDatabase } from "../../../testing/testDatabase";
 import {
   freezeSeedCatalogIdentity,
   prepareSeedCatalog,
   publishSeedCatalog,
-} from "./seedCatalogPublication";
+} from "../../../../scripts/lib/seedCatalogPublication";
 
-const databaseUrl = process.env.SEED_PUBLICATION_DATABASE_URL?.trim();
+await requirePgvectorTestDatabase();
 
-describe.skipIf(!databaseUrl)("reviewed seed publication against assigned PostgreSQL", () => {
+describe("reviewed seed publication against isolated PostgreSQL", () => {
+  let database: EphemeralTestDatabase;
   let db: RootDatabase;
   let client: pg.Client;
   let organizationId: string;
@@ -46,8 +49,9 @@ describe.skipIf(!databaseUrl)("reviewed seed publication against assigned Postgr
   let reviewerUserId: string;
 
   beforeAll(async () => {
-    db = createPostgresDatabase(databaseUrl!);
-    client = new pg.Client({ connectionString: databaseUrl });
+    database = await createEphemeralTestDatabase("seedpublication");
+    db = createPostgresDatabase(database.url);
+    client = new pg.Client({ connectionString: database.url });
     await client.connect();
 
     const token = randomBytes(6).toString("hex");
@@ -138,6 +142,7 @@ describe.skipIf(!databaseUrl)("reviewed seed publication against assigned Postgr
   afterAll(async () => {
     await client?.end().catch(() => undefined);
     await db?.close().catch(() => undefined);
+    await database?.drop();
   });
 
   it("uses native auth, stale pins, and idempotent enqueue on a real candidate", async () => {

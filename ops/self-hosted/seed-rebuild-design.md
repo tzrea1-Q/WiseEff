@@ -2,7 +2,7 @@
 
 > Chinese: [Chinese](seed-rebuild-design.zh-CN.md)
 
-Status: implementation in progress, not target acceptance. Scope is the user-authorized archive and reviewed DTS/JSON rebuild of Atlas, Aurora and Nebula. Preserve other projects, users, roles, device nodes and non-parameter objects. No new schema, policy bypass, legacy installer fallback or activation of the unavailable P11–P16 program phases.
+Status: implemented for local review; target execution and browser acceptance remain outstanding. Scope is the user-authorized archive and reviewed DTS/JSON rebuild of Atlas, Aurora and Nebula. Preserve other projects, users, roles, device nodes and non-parameter objects. No new schema, policy bypass, legacy installer fallback or activation of the unavailable P11–P16 program phases.
 
 The deployed instance has an adopted `crel_acme_1` Catalog, populated old semantic bindings, and zero canonical bindings. Application upgrades deliberately do not seed. The operator composes existing publication, archive, source/materialization and disposal owners; it does not write Catalog heads or bindings directly.
 
@@ -33,3 +33,11 @@ The deployed instance has an adopted `crel_acme_1` Catalog, populated old semant
 | Target execution | Human-operated native amd64 server only after reviewed local candidate; copyable commands and result checks. No local test substitutes for target evidence. |
 
 Independent implementation/spec review is required before final delivery. Existing sealed-program readiness remains separate; this seam does not mark #853 or S1/S2 complete.
+
+## Evidence boundary
+
+The focused PostgreSQL tests use an ephemeral database under a dedicated local test database. They exercise an adopted populated baseline, the actual non-superuser publication-manager LOGIN, native author/reviewer checks and activation receipts, all 372 reviewed identities, current source bytes, old-plane archive/disposal, preserved node records and shared objects, and refusal of interrupted or altered journals. The pure script and mocked wrapper checks are separate evidence.
+
+Owned local Compose run `seed-final-v5-20260921` passed plan, maintenance with a fresh verified backup, both native manager publications, exact 372-binding rebuild, repeated verification and whole-state recovery. Recovery returned to `crel_acme_1`, zero canonical bindings and zero new seed/archive records, with the original healthy services, resumed queue and unfrozen publication. A separate store-owner rehearsal restored changed PostgreSQL, MinIO-volume and Redis-AOF sentinel values. The final reporting-only queue-state correction is covered by a focused wrapper test; the native run used the preceding controller revision.
+
+The rehearsal image overlays the reviewed runtime source on a pre-existing local image and uses synthetic provider configuration: it is not a fresh native release-image build, live LLM test or deployment-server proof. The rehearsal chose recovery instead of `finish`; normal completion remains covered by the focused wrapper checks and shares the verified service-restoration function. The human-run [operations guide](seed-rebuild.md) retains the actual server/browser acceptance steps.

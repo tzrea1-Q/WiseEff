@@ -812,7 +812,7 @@ const vendorImportErrorMessage = (error: VendorImportError): string => {
   if (error.kind === "artifact-missing" || error.kind === "artifact-digest-mismatch") return "predecessor artifact is stale";
   if (error.kind === "import-blocked") return "vendor source is blocked by the reviewed import contract";
   if (error.kind === "invalid-input") return "vendor source input is invalid";
-  return "vendor source could not produce the reviewed successor";
+  return `vendor source could not produce the reviewed successor: ${error.kind}`;
 };
 
 /**

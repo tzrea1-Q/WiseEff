@@ -11,14 +11,16 @@ import { bootstrapFirstAcme } from "../../catalog-kernel/install/publicationTest
 import { adoptPreexistingCatalog } from "../../catalog-publication/runtime/adoption";
 import { enablePublicationPolicy } from "../../catalog-publication/authorization/testHarness";
 import { createLocalObjectStore } from "../../logs/objectStore";
-import { planSeedRebuild, checkSeedRebuildState, rebuildSeedProjects, verifySeedRebuild, type SeedRebuildState } from "../../../../scripts/lib/seedRebuild";
-import { freezeSeedCatalogIdentity, prepareSeedCatalog, publishSeedCatalog, getSeedCatalogPublicationStatus } from "../../../../scripts/lib/seedCatalogPublication";
+import { planSeedRebuild, checkSeedRebuildState, rebuildSeedProjects, verifySeedRebuild, assertSeedPublicationIdle, type SeedRebuildState } from "../../../../scripts/lib/seedRebuild";
+import { prepareSeedCatalog, publishSeedCatalog, getSeedCatalogPublicationStatus } from "../../../../scripts/lib/seedCatalogPublication";
 import { collectPublicationPolicyInstanceSnapshot } from "../../catalog-publication/authorization/instanceSnapshot";
 import { runPublicationManagerOnce } from "../../catalog-publication/jobs/manager";
 import { createCatalogInstaller } from "../../catalog-kernel/install/installer";
 import { getAuthContext } from "../../auth/repository";
 import { createUserInvocation } from "../../auth/trustedInvocation";
 import { provisionPublicationRuntimeLogins, dropLabRuntimeLogins } from "../../catalog-publication/runtime/provisionRuntimeLogins";
+import { parseSeedRebuildState } from "../../../../scripts/lib/seedRebuildJournal";
+import { runSeedRebuildCli, frozenPreparation } from "../../../../scripts/seed-rebuild";
 
 await requirePgvectorTestDatabase();
 
@@ -108,11 +110,20 @@ describe("reviewed example rebuild preflight on an adopted populated instance", 
   it("plans without writing and binds the real persisted actor and all reviewed identities", async () => {
     const before = await db.query("select count(*)::int as n from project_parameter_plane_archives");
     plan = await planSeedRebuild(ctx(), input);
+    expect(parseSeedRebuildState(plan)).toEqual(plan);
     expect(plan.expectedIdentities).toHaveLength(372);
     expect(plan.plan.targets).toEqual(["atlas", "aurora", "nebula"]);
     expect(plan.baseline.tables.find((row) => row.relation === "public.projects")?.count).toBe(4);
     expect((await db.query("select count(*)::int as n from project_parameter_plane_archives")).rows).toEqual(before.rows);
     await expect(checkSeedRebuildState(ctx(), plan, plan.plan.digest, input.candidateSha)).resolves.toBeDefined();
+    const snapshot = await collectPublicationPolicyInstanceSnapshot(db);
+    const pin = plan.plan.catalog;
+    const preparation = await frozenPreparation(db, plan, "vendor", pin, snapshot.artifactDigest!);
+    const retry = { ...plan, preparedInputs: { vendor: preparation } };
+    expect(parseSeedRebuildState(retry)).toEqual(retry);
+    await expect(frozenPreparation(db, retry, "vendor", pin, snapshot.artifactDigest!)).resolves.toEqual(preparation);
+    retry.preparedInputs.vendor = { ...preparation, actorUserId: "rebuild-reviewer" };
+    await expect(frozenPreparation(db, retry, "vendor", pin, snapshot.artifactDigest!)).rejects.toThrow("preparation-drift");
   });
 
   it("refuses missing permission, wrong organization, changed project code and changed old data", async () => {
@@ -126,17 +137,36 @@ describe("reviewed example rebuild preflight on an adopted populated instance", 
     await db.query("update dts_config_set set name='Previous parameters' where id='old-atlas-config'");
   });
 
+  it("runs the real CLI plan and private journal without granting a maintenance proof", async () => {
+    const settings = { WISEEFF_CATALOG_BOOTSTRAP_DATABASE_URL: database.url, WISEEFF_API_PROCESS: "0",
+      OBJECT_STORE_MODE: "local", OBJECT_STORE_ROOT: directory };
+    const original = Object.fromEntries(Object.keys(settings).map((key) => [key, process.env[key]]));
+    Object.assign(process.env, settings);
+    try {
+      const runDir = path.join(directory, "cli-journal");
+      const result = await runSeedRebuildCli(["plan", "--run-dir", runDir, "--run-id", "cli-plan",
+        "--actor", input.actorUserId, "--organization-id", org, "--candidate-sha", input.candidateSha]);
+      expect(result).toMatchObject({ ok: true, writes: false, expectedBindings: 372 });
+      expect(await runSeedRebuildCli(["status", "--run-dir", runDir])).toMatchObject({ phase: "planned" });
+      const cliPlan = result as { plan: { digest: string } };
+      await expect(runSeedRebuildCli(["rebuild", "--run-dir", runDir, "--confirm-plan", cliPlan.plan.digest,
+        "--candidate-sha", input.candidateSha])).rejects.toMatchObject({ code: "ENOENT" });
+      expect((await db.query("select count(*)::int as n from parameter_catalog.project_parameter_bindings")).rows[0]).toEqual({ n: 0 });
+    } finally {
+      for (const [key, value] of Object.entries(original)) {
+        if (value === undefined) delete process.env[key]; else process.env[key] = value;
+      }
+    }
+  });
+
   it("publishes through a real manager LOGIN, archives populated residue and verifies every successor before deletion", async () => {
     for (const stage of ["vendor", "configuration-schema"] as const) {
       const current = await collectPublicationPolicyInstanceSnapshot(db);
       const pin = { id: current.currentReleaseId!, digest: current.currentReleaseDigest! };
-      const frozen = await freezeSeedCatalogIdentity({ db, ...input, stage, expectedCurrent: pin,
-        predecessorArtifactDigest: current.artifactDigest!, schemasRoot: path.join(process.cwd(), "schemas/dts"),
-        candidateId: `ccand_rebuild_${stage}`, artifactId: `cart_rebuild_${stage}`, releaseId: `crel_rebuild_${stage}`,
-        releaseVersion: stage === "vendor" ? "2.0.0" : "2.1.0", publishedAt: "2026-09-21T00:00:00Z" });
-      expect(frozen.ok, JSON.stringify(frozen)).toBe(true);
-      if (!frozen.ok) throw new Error("freeze failed");
-      const prepared = await prepareSeedCatalog({ ...frozen.value, db });
+      const frozen = await frozenPreparation(db, plan, stage, pin, current.artifactDigest!);
+      plan.preparedInputs ??= {};
+      plan.preparedInputs[stage] = frozen;
+      const prepared = await prepareSeedCatalog({ ...frozen, db });
       expect(prepared.ok, JSON.stringify(prepared)).toBe(true);
       if (!prepared.ok) throw new Error("prepare failed");
       const publish = { db, organizationId: org, runId: input.runId, stage, candidateId: prepared.value.candidateId,
@@ -145,6 +175,8 @@ describe("reviewed example rebuild preflight on an adopted populated instance", 
       expect(unauthorized.ok).toBe(false);
       const queued = await publishSeedCatalog({ ...publish, actorUserId: "rebuild-reviewer" });
       expect(queued.ok, JSON.stringify(queued)).toBe(true);
+      await expect(assertSeedPublicationIdle(db)).rejects.toThrow("unrelated-publication-pending");
+      await expect(assertSeedPublicationIdle(db, prepared.value.candidateId)).resolves.toBeUndefined();
       const managerPool = getRootPostgresPool(manager)!;
       expect(await runPublicationManagerOnce({ db: manager, pool: managerPool, installer: createCatalogInstaller(managerPool),
         resolvePublisherActor: async (id) => createUserInvocation(await getAuthContext(manager, id)) })).toBe("claimed");
@@ -156,6 +188,9 @@ describe("reviewed example rebuild preflight on an adopted populated instance", 
         releaseId: receipt.value.releaseId, releaseDigest: receipt.value.receiptReleaseDigest!, receiptId: receipt.value.receiptId };
     }
     plan.phase = "catalog";
+    const wrongReceipt = structuredClone(plan);
+    wrongReceipt.publications.vendor!.receiptId = "not-the-observed-receipt";
+    await expect(rebuildSeedProjects(ctx(), wrongReceipt, async () => {})).rejects.toThrow("publication-receipt-drift");
     const failedAttempt = structuredClone(plan);
     await expect(rebuildSeedProjects({ ...ctx(), store: { ...store,
       put: async () => { throw new Error("injected archive store outage"); } } }, failedAttempt, async () => {}))
@@ -170,11 +205,15 @@ describe("reviewed example rebuild preflight on an adopted populated instance", 
     expect(transitions).toContain("archiving");
     expect(transitions.indexOf("materializing")).toBeLessThan(transitions.indexOf("disposing"));
     expect(plan.phase).toBe("verified");
+    expect(parseSeedRebuildState(plan)).toEqual(plan);
     expect((await db.query("select id from parameter_drafts order by id")).rows).toEqual([{ id: "custom-draft" }]);
     expect((await db.query("select id from project_parameter_file_versions where id='old-atlas-version'")).rows).toEqual([]);
     expect((await store.get(sharedObjectKey)).toString()).toContain('old-property');
     expect(await verifySeedRebuild(ctx(), plan)).toEqual(rebuilt);
     expect(await rebuildSeedProjects(ctx(), plan, async () => { throw new Error("no replay writes"); })).toEqual(rebuilt);
+    const wrongArchives = structuredClone(plan);
+    wrongArchives.archives[0]!.projectId = "custom-preserved";
+    await expect(verifySeedRebuild(ctx(), wrongArchives)).rejects.toThrow("all-archives-required");
   }, 120_000);
 
   it("rejects changed existing backend rows even when their tables allow new seed rows", async () => {

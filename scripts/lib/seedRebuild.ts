@@ -16,6 +16,8 @@ import { buildSeedReconciliation } from "./seedReconciliation";
 import { seedRebuildDigest, sealSeedRebuildPlan, confirmSeedRebuildPlan, type SealedSeedRebuildPlan } from "./seedRebuildPlan";
 import { captureSeedPreservation, verifySeedPreservation, type SeedPreservation } from "./seedRebuildPreservation";
 import { reviewedSeedIdentities, verifySeedIdentities } from "./seedRebuildVerification";
+import { getSeedCatalogPublicationStatus } from "./seedCatalogPublication";
+import type { SeedRebuildPreparation } from "./seedRebuildJournal";
 
 export type SeedArchive = { projectId: string; archiveId: string; archiveDigest: string };
 export type SeedRebuildState = {
@@ -25,7 +27,7 @@ export type SeedRebuildState = {
   policy: { revision: number; capabilityContractRevision: string | null; lowRiskSingleActorPublish: boolean };
   phase: "planned" | "catalog" | "archiving" | "materializing" | "disposing" | "verified" | "recovery-required";
   archives: SeedArchive[];
-  preparedInputs?: Record<string, unknown>;
+  preparedInputs?: Partial<Record<"vendor" | "configuration-schema", SeedRebuildPreparation>>;
   publications: Record<string, { candidateId: string; artifactDigest: string; releaseId: string; releaseDigest: string; receiptId?: string }>;
 };
 export type SeedRebuildContext = { db: RootDatabase; store: ObjectStore; repoRoot: string };
@@ -84,6 +86,13 @@ function inventoryOf(state: Pick<SeedRebuildState, "baseline" | "expectedIdentit
     originalParameterDigest: state.originalParameterDigest, policy: state.policy };
 }
 
+export async function assertSeedPublicationIdle(db: Queryable, allowedCandidate: string | null = null) {
+  const pending = await db.query(`select 1 from catalog_publication.publication_jobs
+    where status not in ('active','cancelled','failed-terminal')
+      and ($1::text is null or candidate_id <> $1) limit 1`, [allowedCandidate]);
+  if (pending.rows.length) throw new Error("seed-rebuild-unrelated-publication-pending");
+}
+
 export async function planSeedRebuild(ctx: SeedRebuildContext, input: {
   runId: string; organizationId: string; actorUserId: string; candidateSha: string;
 }): Promise<SeedRebuildState> {
@@ -92,6 +101,7 @@ export async function planSeedRebuild(ctx: SeedRebuildContext, input: {
     await db.query("set transaction isolation level repeatable read, read only");
     const actor = await seedRebuildActor(db, input.actorUserId, input.organizationId);
     if (!actor.permissions.includes("catalog:author")) throw new Error("seed-rebuild-catalog-author-required");
+    await assertSeedPublicationIdle(db);
     const projects = await resolveSeedInitializationPlan(db, { organizationId: input.organizationId, seedDigest: sources.seedDigest });
     assertSeedInitializationPlanApplicable(projects);
     // This operator repairs the observed old-only deployment. Never retire an existing canonical project silently.
@@ -146,7 +156,9 @@ export async function checkSeedRebuildState(ctx: SeedRebuildContext, state: Seed
 }
 
 export async function verifySeedRebuild(ctx: SeedRebuildContext, state: SeedRebuildState) {
-  if (state.archives.length !== 3 || new Set(state.archives.map((item) => item.projectId)).size !== 3) {
+  await assertFinalPublication(ctx.db, state);
+  if (state.archives.map((item) => item.projectId).sort().join(",") !== state.plan.targets.slice().sort().join(",")
+    || state.archives.length !== 3 || state.archives.some((item) => !item.archiveId || !/^sha256:[a-f0-9]{64}$/.test(item.archiveDigest))) {
     throw new Error("seed-rebuild-all-archives-required");
   }
   for (const archive of state.archives) await assertProjectParameterPlaneArchived(ctx.db, ctx.store,
@@ -176,12 +188,33 @@ export async function verifySeedRebuild(ctx: SeedRebuildContext, state: SeedRebu
   return identities;
 }
 
+async function assertFinalPublication(db: RootDatabase, state: SeedRebuildState) {
+  for (const stage of ["vendor", "configuration-schema"] as const) {
+    const saved = state.publications[stage];
+    if (!saved?.receiptId) throw new Error("seed-rebuild-publication-receipts-required");
+    const result = await getSeedCatalogPublicationStatus({ db, candidateId: saved.candidateId,
+      expectedRunId: state.runId, expectedStage: stage });
+    if (!result.ok) throw new Error("seed-rebuild-publication-receipt-unavailable");
+    const live = result.value;
+    if (live.receiptId !== saved.receiptId || live.artifactDigest !== saved.artifactDigest
+      || live.receiptReleaseDigest !== saved.releaseDigest || live.receiptReleaseId !== saved.releaseId) {
+      throw new Error("seed-rebuild-publication-receipt-drift");
+    }
+  }
+  const current = await collectPublicationPolicyInstanceSnapshot(db);
+  const final = state.publications["configuration-schema"]!;
+  if (current.currentReleaseId !== final.releaseId || current.currentReleaseDigest !== final.releaseDigest) {
+    throw new Error("seed-rebuild-final-catalog-drift");
+  }
+}
+
 /** Call only behind the host lock and verified maintenance/recovery gate. Never replay ambiguous stages. */
 export async function rebuildSeedProjects(ctx: SeedRebuildContext, state: SeedRebuildState,
   save: (state: SeedRebuildState) => Promise<void>) {
   if (state.phase === "verified") return verifySeedRebuild(ctx, state);
   if (state.phase !== "catalog" || !state.publications["configuration-schema"]?.receiptId
     || !state.publications.vendor?.receiptId) throw new Error("seed-rebuild-publication-or-recovery-required");
+  await assertFinalPublication(ctx.db, state);
   const auth = await seedRebuildActor(ctx.db, state.plan.actorUserId, state.plan.organizationId);
   await verifySeedPreservation(ctx.db, ctx.store, state.plan.organizationId, state.baseline);
   const facts = await sourceFacts(ctx.repoRoot, state.plan.organizationId);

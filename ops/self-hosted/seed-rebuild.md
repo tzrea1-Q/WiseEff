@@ -8,7 +8,7 @@ Use the same reviewed application revision for the checkout and running images. 
 
 ## Before maintenance
 
-Run commands from the server's `ops/self-hosted` directory. The operator needs the existing private `.env` and one-shot management DSN already used for upgrades. Do not copy these values into diagnostics.
+Run commands from the server's `ops/self-hosted` directory. The operator needs Python 3, the existing private `.env` and one-shot management DSN already used for upgrades. It supports the Compose-owned `wiseeff` PostgreSQL database, local MinIO endpoint `http://minio:9000`, and local Redis service; an external database or store is outside this recovery boundary. Do not copy credentials into diagnostics. By default, fresh backups are stored under `/var/backups/wiseeff/upgrades/seed-rebuild`, inside the directory prepared by the normal upgrade setup.
 
 Choose an active persisted user in the target organization with parameter-file administration (`admin:access`), parameter editing permission on all three projects, and `catalog:author`. Publication must be reviewed by an authorized user distinct from the candidate author when the native high-risk policy requires it; the existing organization-admin exception remains unchanged. Keep `lowRiskSingleActorPublish=false`. Missing permissions or policy incompatibility are blockers to resolve explicitly through the existing [publication operations](catalog-publication.md), never automatic grants by this operator.
 

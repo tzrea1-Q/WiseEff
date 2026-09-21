@@ -6,10 +6,11 @@ import { createHash } from "node:crypto";
 import { createPostgresDatabase } from "../server/shared/database/client";
 import { createObjectStoreFromEnv } from "../server/objectStoreFactory";
 import { collectPublicationPolicyInstanceSnapshot } from "../server/modules/catalog-publication/authorization/instanceSnapshot";
-import { planSeedRebuild, checkSeedRebuildState, rebuildSeedProjects, verifySeedRebuild, type SeedRebuildState } from "./lib/seedRebuild";
-import { openSeedRebuildJournal, assertSeedMaintenance, seedRebuildRunId } from "./lib/seedRebuildJournal";
+import { planSeedRebuild, checkSeedRebuildState, rebuildSeedProjects, verifySeedRebuild, assertSeedPublicationIdle, type SeedRebuildState } from "./lib/seedRebuild";
+import { openSeedRebuildJournal, assertSeedMaintenance, seedRebuildRunId, parseSeedRebuildPreparation } from "./lib/seedRebuildJournal";
+import { seedRebuildDigest } from "./lib/seedRebuildPlan";
 import { prepareSeedCatalog, publishSeedCatalog, getSeedCatalogPublicationStatus,
-  type SeedCatalogStage, type SeedCatalogPrepareInput, type SeedCatalogPublicationResult } from "./lib/seedCatalogPublication";
+  type SeedCatalogStage, type SeedCatalogPublicationResult } from "./lib/seedCatalogPublication";
 
 const usage = `Reviewed example parameter rebuild. Run through ops/self-hosted/scripts/seed-rebuild.sh.
   plan --run-dir DIR --run-id ID --actor USER --organization-id ORG --candidate-sha SHA
@@ -82,7 +83,6 @@ export async function runSeedRebuildCli(argv: string[]) {
     if (command === "verify" || command === "rebuild") {
       await assertSeedMaintenance(runDir, state);
       if (!snapshot.frozen) throw new Error("seed-rebuild-publication-freeze-required");
-      await assertFinalPublication(db, state);
       const result = command === "verify" ? await verifySeedRebuild(ctx, state)
         : await rebuildSeedProjects(ctx, state, journal.save);
       if (state.phase !== "verified") throw new Error("seed-rebuild-completion-not-recorded");
@@ -118,6 +118,7 @@ export async function runSeedRebuildCli(argv: string[]) {
       : { id: state.publications.vendor!.releaseId, digest: state.publications.vendor!.releaseDigest };
     if (publishing) {
       if (!existing || required("confirm-artifact") !== existing.artifactDigest) throw new Error("seed-rebuild-artifact-confirmation-required");
+      await assertSeedPublicationIdle(db, existing.candidateId);
       const observed = unwrap(await getSeedCatalogPublicationStatus({ db, candidateId: existing.candidateId,
         expectedRunId: state.runId, expectedStage: stage }));
       if (observed.receiptId) {
@@ -155,36 +156,25 @@ export async function runSeedRebuildCli(argv: string[]) {
   }
 }
 
-async function assertFinalPublication(db: ReturnType<typeof createPostgresDatabase>, state: SeedRebuildState) {
-  for (const stage of ["vendor", "configuration-schema"] as const) {
-    const saved = state.publications[stage];
-    if (!saved?.receiptId) throw new Error("seed-rebuild-publication-receipts-required");
-    const live = unwrap(await getSeedCatalogPublicationStatus({ db, candidateId: saved.candidateId,
-      expectedRunId: state.runId, expectedStage: stage }));
-    if (live.receiptId !== saved.receiptId || live.artifactDigest !== saved.artifactDigest
-      || live.receiptReleaseDigest !== saved.releaseDigest || live.receiptReleaseId !== saved.releaseId) {
-      throw new Error("seed-rebuild-publication-receipt-drift");
-    }
-  }
-  const current = await collectPublicationPolicyInstanceSnapshot(db);
-  const final = state.publications["configuration-schema"]!;
-  if (current.currentReleaseId !== final.releaseId || current.currentReleaseDigest !== final.releaseDigest) {
-    throw new Error("seed-rebuild-final-catalog-drift");
-  }
-}
-
-async function frozenPreparation(db: ReturnType<typeof createPostgresDatabase>, state: SeedRebuildState,
-  stage: SeedCatalogStage, pin: { id: string; digest: string }, artifactDigest: string): Promise<Omit<SeedCatalogPrepareInput, "db">> {
+export async function frozenPreparation(db: ReturnType<typeof createPostgresDatabase>, state: SeedRebuildState,
+  stage: SeedCatalogStage, pin: { id: string; digest: string }, artifactDigest: string) {
   const stored = state.preparedInputs?.[stage];
-  if (stored) return stored as Omit<SeedCatalogPrepareInput, "db">;
   // The publication helper supplies the reviewed owner's frozen allocation; no parallel builder here.
   const { freezeSeedCatalogIdentity } = await import("./lib/seedCatalogPublication");
   const token = createHash("sha256").update(`${state.runId}:${state.plan.digest}:${stage}`).digest("hex").slice(0, 24);
-  return unwrap(await freezeSeedCatalogIdentity({ db, organizationId: state.plan.organizationId,
+  const rebuilt = unwrap(await freezeSeedCatalogIdentity({ db, organizationId: state.plan.organizationId,
     actorUserId: state.plan.actorUserId, runId: state.runId, stage, expectedCurrent: pin,
     predecessorArtifactDigest: artifactDigest, schemasRoot: path.join(process.cwd(), "schemas/dts"),
     candidateId: `ccand_seed_${token}`, artifactId: `cart_seed_${token}`, releaseId: `crel_seed_${token}`,
-    releaseVersion: `${stage === "vendor" ? "2.0.0" : "2.1.0"}-seed.${token}`, publishedAt: new Date().toISOString() }));
+    releaseVersion: `${stage === "vendor" ? "2.0.0" : "2.1.0"}-seed.${token}`,
+    publishedAt: stored?.identity.publishedAt ?? new Date().toISOString().replace(/\.\d{3}Z$/, "Z") }));
+  // Rebuild every frozen field from the sealed run, live predecessor and reviewed
+  // sources. The journal supplies only the original timestamp for exact retry.
+  const persisted = parseSeedRebuildPreparation(JSON.parse(JSON.stringify(rebuilt)));
+  if (stored && seedRebuildDigest(stored) !== seedRebuildDigest(persisted)) {
+    throw new Error("seed-rebuild-preparation-drift");
+  }
+  return persisted;
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
