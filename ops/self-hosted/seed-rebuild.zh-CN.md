@@ -8,6 +8,8 @@
 
 ## 维护前
 
+一次性容器以操作员的宿主机 UID/GID 运行，使私有运行文件保持归操作员所有。应用镜像会保证 `/app` 可读、目录可进入，即使 checkout 是在严格 umask 下创建的。若旧镜像在 `plan` 阶段对 `/app/package.json` 报 `EACCES`，升级到修正后的镜像，再使用新的 run ID 规划；不要改成 root 运行或放宽私有状态目录权限。
+
 以下命令均在服务器的 `ops/self-hosted` 目录执行。入口需要 Python 3，使用既有私有 `.env` 及升级时使用的一次性管理连接配置。恢复范围限于 Compose 管理的 `wiseeff` PostgreSQL 数据库、本地 MinIO 端点 `http://minio:9000` 和本地 Redis 服务；不支持外部数据库或存储。不要把凭据复制到诊断输出。新备份默认放在常规升级已准备好的目录下：`/var/backups/wiseeff/upgrades/seed-rebuild`。
 
 选择目标组织内真实、启用中的用户作为作者。作者必须拥有参数文件管理权限（`admin:access`）、三个项目的参数编辑权限及 `catalog:author`。原生高风险发布策略要求独立审核时，发布者必须是作者之外的授权用户；既有组织管理员例外保持不变。保持 `lowRiskSingleActorPublish=false`。权限缺失、策略不兼容时，依据[发布操作手册](catalog-publication.zh-CN.md)明确处理，本工具不会自动授权。
