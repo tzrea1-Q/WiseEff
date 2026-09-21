@@ -140,6 +140,7 @@
 - `PARAM-SPEC-IDENTITY-002`：零引用定义上提供改属性键，有引用时带明确原因拒绝；与既有定义（含废弃）冲突时展示阻挡方（`ParameterSpecDetailDialog.test.tsx`、`presentError.test.ts`、`mockParameterTopologyRepository.test.ts`；playwright-cli 证据 `work/ui-checks/param-spec-identity/`）。
 - `PARAM-TOPOLOGY-BROWSE-001`：在融合 DTS 工作台中切换真实源树/生效树，选择嵌套上下文（`amba` → `i2c@FDF5E000` → `sc8562@6E`），搜索两个 `gpio_int` 语义行，并在成熟详情弹窗查看完整路径、raw 值、shape 和 provenance；topology API 必须 200 且含预期节点（`e2e/acceptance/parameter-topology.acceptance.spec.ts`）。
 - `PARAM-TOPOLOGY-EDIT-001`：类型化 drafts 返回 Schema cell-count 诊断、过期 revision 返回 409，并对临时 Config Set 走 fail-closed 编译/工具链校验（`e2e/acceptance/parameter-topology.acceptance.spec.ts`）。
+- `PARAM-CANONICAL-VALUE-WORKFLOW-001`：canonical 属性编辑／删除草稿经独立软件审核单阶段批准后生效，覆盖撤回／驳回／重提、源与历史持久化及 API 重启身份稳定（`e2e/acceptance/canonical-value-workflow.acceptance.spec.ts`）。这是 2026-09-21 owner 接受的 canonical 工作流回归，不替代旧 topology、编译、身份映射和发布门禁。
 - `PARAM-IDENTITY-MAP-001`：未解决身份映射阻断 validate（`open-mapping`）；决议后清除阻断并写治理审计（`e2e/acceptance/parameter-topology.acceptance.spec.ts`）。
 - `PARAM-IDENTITY-MAP-ADMIN-001`：PC 1440×900 下，Admin 在 `/parameter-admin` 决议身份映射任务，并通过受保护 re-resolve 安全更正已应用的选择（含候选证据与治理审计）（`e2e/acceptance/parameter-topology.acceptance.spec.ts`）。
 - `PARAM-CONFIG-PUBLISH-GATE-001`：真实工具链 validate 在黄金/候选 Config Set 上成功（status=okay + vendor linux-bindings；不以 schema-failed 冒充成功）；刷新后 bindingId 与 provenance 从 DB 持久（`e2e/acceptance/parameter-topology.acceptance.spec.ts`）。

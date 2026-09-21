@@ -29,7 +29,16 @@ describe("JsonBindingPanel", () => {
         reason: "校准充电策略",
         createdAt: "2026-09-17T01:02:03.000Z",
         oldCurrentValueId: "value-old",
-        newCurrentValueId: "value-new"
+        newCurrentValueId: "value-new",
+        valueState: "present"
+      },
+      {
+        id: "history-delete-1",
+        reason: "移除过时属性",
+        createdAt: "2026-09-18T01:02:03.000Z",
+        oldCurrentValueId: "value-new",
+        newCurrentValueId: null,
+        valueState: "deleted"
       }
     ]);
 
@@ -65,12 +74,37 @@ describe("JsonBindingPanel", () => {
     fireEvent.click(within(panel).getByRole("button", { name: "查看固定值历史" }));
     await waitFor(() => expect(onLoadHistory).toHaveBeenCalledWith("binding-json-1"));
     expect(await within(panel).findByText("校准充电策略")).toBeVisible();
+    expect(await within(panel).findByText("删除属性", { exact: false })).toBeVisible();
   });
 
   it("does not render DTS bindings in the JSON surface", () => {
     const dtsBinding = { ...jsonBinding, id: "binding-dts", effectiveValue: { kind: "empty", present: true } as const };
     const { container } = render(<JsonBindingPanel bindings={[dtsBinding]} />);
     expect(container).toBeEmptyDOMElement();
+  });
+
+  it("creates a delete draft with a reason and no target value", async () => {
+    const onValidateEdit = vi.fn().mockResolvedValue({ valid: true, diagnostics: [] });
+    render(
+      <JsonBindingPanel
+        bindings={[jsonBinding]}
+        canEdit
+        onValidateEdit={onValidateEdit}
+      />
+    );
+
+    const panel = screen.getByRole("region", { name: "JSON 参数" });
+    fireEvent.change(within(panel).getByLabelText("修改原因"), {
+      target: { value: "移除过时属性" }
+    });
+    fireEvent.click(within(panel).getByRole("button", { name: "创建删除草稿" }));
+
+    await waitFor(() => expect(onValidateEdit).toHaveBeenCalledWith({
+      bindingId: "binding-json-1",
+      rawValue: "",
+      action: "delete",
+      reason: "移除过时属性"
+    }));
   });
 
   it("shows localized source errors linked to the JSON value input", async () => {

@@ -39,7 +39,7 @@ import type { WiseEffRuntimeMode } from "@/infrastructure/http/runtimeMode";
 import {
   type TopologyLayoutMode
 } from "./ProjectTopologyWorkspace";
-import type { BindingEditValidation } from "./BindingDetailPanel";
+import type { BindingEditInput, BindingEditValidation } from "./BindingDetailPanel";
 import {
   DtsBindingDraftTray,
   type PendingTopologyDraft
@@ -581,11 +581,7 @@ export function ApiProjectTopologyWorkspace({
     };
   }, [moduleRegistryRepo, reloadToken]);
 
-  const handleValidateEdit = async (input: {
-    bindingId: string;
-    rawValue: string;
-    reason: string;
-  }): Promise<BindingEditValidation> => {
+  const handleValidateEdit = async (input: BindingEditInput): Promise<BindingEditValidation> => {
     const activeMutationLock = projectMutationsRef.current.get(projectId);
     const activeMutation = activeMutationLock?.kind ?? null;
     if (activeMutation) {
@@ -616,7 +612,10 @@ export function ApiProjectTopologyWorkspace({
 
     let targetValue;
     let sourceTarget: { format: "json"; sourceText: string } | undefined;
-    if (binding.effectiveValue.kind === "json") {
+    if (input.action === "delete") {
+      // A tombstone has no target value. The server owns deletion semantics;
+      // this request only creates the reviewable draft.
+    } else if (binding.effectiveValue.kind === "json") {
       sourceTarget = { format: "json", sourceText: input.rawValue };
     } else {
       try {
@@ -658,7 +657,11 @@ export function ApiProjectTopologyWorkspace({
     try {
       const draft = await repository.createBindingDraft(requestProjectId, input.bindingId, {
         baseRevisionId: loadState.revisionId,
-        ...(sourceTarget ? { sourceTarget } : { targetValue }),
+        ...(input.action === "delete"
+          ? { action: "delete" as const }
+          : sourceTarget
+            ? { sourceTarget }
+            : { targetValue }),
         reason: input.reason
       });
       if (!isCurrentProjectRequest(requestProjectId, requestGeneration)) {
@@ -1002,7 +1005,7 @@ export function ApiProjectTopologyWorkspace({
 
   const submitProjectValueDraft = canonicalRepository?.submitProjectValueDraft;
   const handleSubmitCanonicalDrafts = submitProjectValueDraft
-    ? async (input: { projectId: string; draftIds: string[] }) => {
+    ? async (input: { projectId: string; draftIds: string[]; assignedToUserId?: string | null }) => {
         try {
           const submittedDrafts = pendingDraftsRef.current.filter((draft) =>
             input.draftIds.includes(draft.draftId)
@@ -1021,7 +1024,7 @@ export function ApiProjectTopologyWorkspace({
             await submitProjectValueDraft(
               input.projectId,
               draftId,
-              {},
+              { assignedToUserId: input.assignedToUserId ?? null },
               {
                 catalogReleaseId,
                 idempotencyKey:
@@ -1030,6 +1033,22 @@ export function ApiProjectTopologyWorkspace({
                     : `draft-${Date.now()}-${draftId}`
               }
             );
+            // Preserve the server draft for rejection/withdrawal, but remove
+            // each successful submission from the editable tray, even if a
+            // later submission in this batch fails.
+            setPendingDrafts((current) => current.filter((draft) =>
+              draft.projectId !== input.projectId || draft.draftId !== draftId
+            ));
+            setServerDrafts((current) => current?.filter((draft) => draft.id !== draftId) ?? null);
+            const submittedDraft = submittedDrafts.find((draft) => draft.draftId === draftId);
+            if (submittedDraft?.kind === "binding") {
+              setSelectedDraftBindingIds((current) => new Set(
+                [...current].filter((id) => id !== submittedDraft.projectParameterBindingId)
+              ));
+            }
+          }
+          if (input.projectId === activeProjectIdRef.current) {
+            setSubmitSuccessNotice(`已提交软件审核（${input.draftIds.length} 项），可在审核队列查看进度。`);
           }
         } catch (error) {
           return { notification: presentError(error, "提交软件审核失败，请稍后重试。") };
@@ -1145,7 +1164,8 @@ export function ApiProjectTopologyWorkspace({
         reason: entry.reason,
         createdAt: entry.createdAt,
         oldCurrentValueId: entry.oldCurrentValueId,
-        newCurrentValueId: entry.newCurrentValueId
+        newCurrentValueId: entry.newCurrentValueId,
+        valueState: entry.valueState
       }));
     },
     [canonicalRepository, projectId]

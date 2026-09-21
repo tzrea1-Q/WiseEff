@@ -36,9 +36,9 @@ export type DtsBindingDraftTrayProps = {
   onSubmit?: (
     input: SubmitParameterChangesInput
   ) => Promise<void | { notification: string; alreadyNotified?: boolean }>;
-  /** Canonical v2 submit: draft IDs only, with software-review ownership. */
+  /** Canonical v2 submit: draft IDs plus optional software-review ownership. */
   onSubmitCanonical?: (
-    input: { projectId: string; draftIds: string[] }
+    input: { projectId: string; draftIds: string[]; assignedToUserId?: string | null }
   ) => Promise<void | { notification: string; alreadyNotified?: boolean }>;
   onNavigate: (path: string) => void;
 };
@@ -82,7 +82,7 @@ function actionValueBlocker(drafts: PendingTopologyDraft[]): string | null {
   }
   const valuedDelete = drafts.some((draft) => draft.action === "delete" && draft.rawText !== "");
   return valuedDelete
-    ? "delete action 必须携带精确空 tombstone rawText，已阻止提交。"
+    ? "delete action 必须携带空目标值，已阻止提交。"
     : null;
 }
 
@@ -287,21 +287,25 @@ export function DtsBindingDraftTray({
       : null;
   const missingRoleNames = useMemo(() => {
     if (!displayedCandidates) return null;
+    const requiredRoles = useCanonical
+      ? ["software-committer"]
+      : ["hardware-committer", "software-committer", "software-user"];
     if (displayedCandidates.missingRoles && displayedCandidates.missingRoles.length > 0) {
-      return displayedCandidates.missingRoles.map((r) => ROLE_LABELS[r] ?? r).join("、");
+      const missing = displayedCandidates.missingRoles.filter((role) => requiredRoles.includes(role));
+      if (missing.length > 0) return missing.map((r) => ROLE_LABELS[r] ?? r).join("、");
     }
     const missing: string[] = [];
-    if (displayedCandidates.hardwareCommitters && displayedCandidates.hardwareCommitters.length === 0) {
+    if (!useCanonical && displayedCandidates.hardwareCommitters && displayedCandidates.hardwareCommitters.length === 0) {
       missing.push(ROLE_LABELS["hardware-committer"]);
     }
     if (displayedCandidates.softwareCommitters && displayedCandidates.softwareCommitters.length === 0) {
       missing.push(ROLE_LABELS["software-committer"]);
     }
-    if (displayedCandidates.softwareUsers && displayedCandidates.softwareUsers.length === 0) {
+    if (!useCanonical && displayedCandidates.softwareUsers && displayedCandidates.softwareUsers.length === 0) {
       missing.push(ROLE_LABELS["software-user"]);
     }
     return missing.length > 0 ? missing.join("、") : null;
-  }, [displayedCandidates]);
+  }, [displayedCandidates, useCanonical]);
 
   const roleError = missingRoleNames
     ? `当前项目缺少以下审核角色：${missingRoleNames}，已阻止提交。`
@@ -376,7 +380,7 @@ export function DtsBindingDraftTray({
             ? formatBindingValue(draft, draft.currentRawValue) || "（属性不存在）"
             : formatEnablementValue(draft.currentRawValue);
           const targetValue = draft.action === "delete"
-            ? (isBindingDraft(draft) ? "删除属性（tombstone）" : "未声明")
+            ? (isBindingDraft(draft) ? "删除属性" : "未声明")
             : isBindingDraft(draft)
               ? formatBindingValue(draft, draft.rawText)
               : formatEnablementValue(draft.rawText);
@@ -422,7 +426,18 @@ export function DtsBindingDraftTray({
         })}
       </div>
 
-      {!useCanonical && !displayedCandidates && !displayedCandidatesError ? <p role="status">正在加载项目角色候选人…</p> : null}
+      {!displayedCandidates && !displayedCandidatesError ? <p role="status">正在加载项目角色候选人…</p> : null}
+      {useCanonical && displayedCandidates ? (
+        <div className="submission-assignee-grid" aria-label="软件审核处理人">
+          <label>
+            软件 MDE
+            <select aria-label="软件 MDE" value={softwareCommitterId} disabled={submitting || submitted} onChange={(event) => setSoftwareCommitterId(event.target.value)}>
+              <option value="">软件审核池（未指定）</option>
+              {displayedCandidates.softwareCommitters.map((candidate) => <option key={candidate.id} value={candidate.id}>{candidate.name}</option>)}
+            </select>
+          </label>
+        </div>
+      ) : null}
       {!useCanonical && displayedCandidates ? (
         <div className="submission-assignee-grid" aria-label="后续流程处理人">
           <label>
@@ -500,7 +515,11 @@ export function DtsBindingDraftTray({
             setSubmitting(true);
             setSubmitError(null);
             const submitPromise = useCanonical && onSubmitCanonical
-              ? onSubmitCanonical({ projectId, draftIds: submitDrafts.map((draft) => draft.draftId) })
+              ? onSubmitCanonical({
+                  projectId,
+                  draftIds: submitDrafts.map((draft) => draft.draftId),
+                  assignedToUserId: softwareCommitterId || null
+                })
               : onSubmit
                 ? onSubmit({
                     projectId,

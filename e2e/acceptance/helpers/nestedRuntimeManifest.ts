@@ -45,6 +45,12 @@ export type NestedRuntimeProcessIdentity = ProcessStartIdentity & {
   port: number;
 };
 
+export type NestedRuntimeProcessReplacement = {
+  previous: NestedRuntimeProcessIdentity;
+  replacement: NestedRuntimeProcessIdentity;
+  replacedAt: string;
+};
+
 export type NestedRuntimeRecord = {
   id: string;
   state: NestedRuntimeState;
@@ -60,6 +66,8 @@ export type NestedRuntimeRecord = {
   frontendPid?: number;
   apiProcessIdentity?: NestedRuntimeProcessIdentity;
   frontendProcessIdentity?: NestedRuntimeProcessIdentity;
+  /** Gate0-owned API incarnation changes; the current identity remains authoritative for cleanup. */
+  apiProcessReplacements?: NestedRuntimeProcessReplacement[];
   startedAt: string;
   completedAt?: string;
   cleanup?: NestedRuntimeCleanup;
@@ -147,6 +155,7 @@ export function recordNestedRuntimeProvisioning(
       state: "provisioning",
       apiProcessState: "not-started",
       frontendProcessState: "not-started",
+      apiProcessReplacements: [],
       startedAt: new Date().toISOString(),
     });
   });
@@ -252,6 +261,52 @@ export function recordNestedRuntimeProgress(
   });
 }
 
+/**
+ * Records one exact, owned API incarnation replacement after the old process
+ * group has been stopped and the new supervised child has been spawned.
+ * Ordinary progress remains immutable; only this narrow restart seam may
+ * change the persisted API identity.
+ */
+export function recordNestedRuntimeApiRestart(
+  manifestPath: string,
+  childId: string,
+  input: {
+    previous: NestedRuntimeProcessIdentity;
+    replacement: NestedRuntimeProcessIdentity;
+  },
+) {
+  updateManifest(manifestPath, (manifest) => {
+    const child = manifest.children.find((entry) => entry.id === childId);
+    if (!child) throw new Error(`Nested runtime ${childId} is not registered.`);
+    if (child.state !== "running" || child.apiProcessState !== "running" || !child.apiProcessIdentity) {
+      throw new Error(`Nested runtime ${childId} API restart requires a running API process.`);
+    }
+    if (!sameProcessStartIdentity(child.apiProcessIdentity, input.previous) ||
+        child.apiProcessIdentity.pid !== input.previous.pid ||
+        child.apiProcessIdentity.port !== input.previous.port) {
+      throw new Error(`Nested runtime ${childId} API restart predecessor identity changed.`);
+    }
+    if (
+      !Number.isSafeInteger(input.replacement.pid) || input.replacement.pid <= 0 ||
+      !Number.isSafeInteger(input.replacement.port) || input.replacement.port <= 0 ||
+      !input.replacement.startToken || !/^[a-f0-9]{64}$/u.test(input.replacement.commandSha256) ||
+      input.replacement.port !== input.previous.port ||
+      sameNestedProcessIdentity(input.previous, input.replacement)
+    ) {
+      throw new Error(`Nested runtime ${childId} API replacement identity is invalid.`);
+    }
+    child.apiPid = input.replacement.pid;
+    child.apiProcessIdentity = input.replacement;
+    child.apiProcessState = "running";
+    child.apiProcessReplacements ??= [];
+    child.apiProcessReplacements.push({
+      previous: input.previous,
+      replacement: input.replacement,
+      replacedAt: new Date().toISOString(),
+    });
+  });
+}
+
 export function recordNestedRuntimeFinish(
   manifestPath: string,
   childId: string,
@@ -347,6 +402,22 @@ function assertNestedRuntimeRecord(
   assertNestedProcessRecord(child.frontendProcessState!, child.frontendPid, child.frontendProcessIdentity);
   assertRuntimeUrlMatchesIdentity(child.apiUrl!, child.apiProcessIdentity);
   assertRuntimeUrlMatchesIdentity(child.frontendUrl!, child.frontendProcessIdentity);
+  if (child.apiProcessReplacements !== undefined) {
+    if (!Array.isArray(child.apiProcessReplacements)) {
+      throw new Error("Nested runtime manifest identity is invalid.");
+    }
+    for (const [index, replacement] of child.apiProcessReplacements.entries()) {
+      assertNestedProcessReplacement(replacement, child.apiUrl!);
+      const prior = child.apiProcessReplacements[index - 1];
+      if (prior && !sameNestedProcessIdentity(prior.replacement, replacement.previous)) {
+        throw new Error("Nested runtime manifest identity is invalid.");
+      }
+    }
+    const last = child.apiProcessReplacements.at(-1);
+    if (last && !sameNestedProcessIdentity(last.replacement, child.apiProcessIdentity)) {
+      throw new Error("Nested runtime manifest identity is invalid.");
+    }
+  }
   if (child.state === "running" && (
     !child.migrationRunId || child.apiProcessState !== "running" || child.frontendProcessState !== "running"
   )) {
@@ -365,6 +436,44 @@ function assertNestedRuntimeRecord(
     assertNestedCleanup(child.cleanup);
     assertNestedCleanupSemantics(child as NestedRuntimeRecord);
   }
+}
+
+function assertNestedProcessReplacement(
+  value: unknown,
+  apiUrl: string,
+): asserts value is NestedRuntimeProcessReplacement {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new Error("Nested runtime manifest identity is invalid.");
+  }
+  const replacement = value as Partial<NestedRuntimeProcessReplacement>;
+  if (
+    !isNestedProcessIdentity(replacement.previous) ||
+    !isNestedProcessIdentity(replacement.replacement) ||
+    replacement.previous.port !== replacement.replacement.port ||
+    replacement.replacement.port !== Number(new URL(apiUrl).port) ||
+    sameNestedProcessIdentity(replacement.previous, replacement.replacement) ||
+    !isTimestamp(replacement.replacedAt)
+  ) {
+    throw new Error("Nested runtime manifest identity is invalid.");
+  }
+}
+
+function isNestedProcessIdentity(value: unknown): value is NestedRuntimeProcessIdentity {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const identity = value as Partial<NestedRuntimeProcessIdentity>;
+  return Number.isSafeInteger(identity.pid) && Number(identity.pid) > 0 &&
+    Number.isSafeInteger(identity.port) && Number(identity.port) > 0 &&
+    typeof identity.startToken === "string" && identity.startToken.length > 0 &&
+    typeof identity.commandSha256 === "string" && /^[a-f0-9]{64}$/u.test(identity.commandSha256);
+}
+
+function sameNestedProcessIdentity(
+  left: NestedRuntimeProcessIdentity | undefined,
+  right: NestedRuntimeProcessIdentity | undefined,
+) {
+  return left !== undefined && right !== undefined &&
+    left.pid === right.pid && left.port === right.port &&
+    sameProcessStartIdentity(left, right);
 }
 
 function assertNestedProcessRecord(

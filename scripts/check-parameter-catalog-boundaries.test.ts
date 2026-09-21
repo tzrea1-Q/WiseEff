@@ -802,6 +802,18 @@ describe("parameter catalog boundary checker", () => {
         duplicateBaseIdOccurrences: 1_975,
       });
       expect(report.status).toBe("failed");
+      // The new node-type-root test repeats an existing call. Its first position
+      // must not take the historical identity from the older test below it.
+      expect(report.relocations.find((entry) => entry.id ===
+        "S12-CGH:legacy-effective-governance-contract:48cedd95a59c21c6:e7c8785127abf5d9")?.observed).toMatchObject({
+        id: "S12-CGH:legacy-effective-governance-contract:48cedd95a59c21c6:274893b18e873a7e",
+        file: "server/modules/parameter-specs/effectiveDefinition.integration.test.ts",
+        line: 264,
+      });
+      expect(report.unallowlisted).toEqual(expect.arrayContaining([expect.objectContaining({
+        id: "S12-CGH:legacy-effective-governance-contract:48cedd95a59c21c6:192979529c607eba",
+        line: 248,
+      })]));
       const originalIds = new Set(originalRelocationRecord.pairs.map((pair) => pair.old.id));
       const runtimeIds = new Set(runtimeTopologyRelocationRecord.files.flatMap((file) => file.pairs.map((pair) => pair.old.id)));
       const postCutoverIds = new Set(postCutoverRelocationRecord.files.flatMap((file) => file.pairs.map((pair) => pair.old.id)));
@@ -870,8 +882,8 @@ describe("parameter catalog boundary checker", () => {
       const rewrittenIds = new Set(
         rewrittenSliceRelocationRecord.files.flatMap((file) => file.pairs.map((pair) => pair.old.id)),
       );
-      expect(report.relocations.filter((entry) => consumerIds.has(entry.id))).toHaveLength(202);
-      expect(report.relocations.filter((entry) => familyIds.has(entry.id))).toHaveLength(155);
+      expect(report.relocations.filter((entry) => consumerIds.has(entry.id))).toHaveLength(237);
+      expect(report.relocations.filter((entry) => familyIds.has(entry.id))).toHaveLength(265);
       expect(report.relocations.filter((entry) => rewrittenIds.has(entry.id))).toHaveLength(57);
       expect(
         report.relocations.filter(
@@ -882,16 +894,17 @@ describe("parameter catalog boundary checker", () => {
             && !rewrittenIds.has(entry.id),
         ),
       ).toHaveLength(7);
-      // Family 155 + rewritten 57 dest-rebind the current successor map. Unallowlisted
-      // leftover grew 49 → 55 with this branch's dest-file edits; T1.4 stays unchecked.
-      expect(report.relocations).toHaveLength(552);
-      expect(new Set(report.relocations.map((entry) => entry.id)).size).toBe(552);
-      expect(new Set(report.relocations.map((entry) => entry.observed.id)).size).toBe(552);
-      expect(new Set(report.relocations.flatMap((entry) => [entry.id, entry.observed.id])).size).toBe(1_104);
+      // This is the exact diagnostic inventory, not a passing debt baseline:
+      // status remains failed; the seven new JSON DB-owner test observations
+      // remain unallowlisted alongside the prior 70, without granting allowances.
+      expect(report.relocations).toHaveLength(697);
+      expect(new Set(report.relocations.map((entry) => entry.id)).size).toBe(697);
+      expect(new Set(report.relocations.map((entry) => entry.observed.id)).size).toBe(697);
+      expect(new Set(report.relocations.flatMap((entry) => [entry.id, entry.observed.id])).size).toBe(1_394);
       expect(report.summary).toEqual({
-        violations: 3_558,
-        allowlisted: 3_503,
-        unallowlisted: 55,
+        violations: 3_568,
+        allowlisted: 3_491,
+        unallowlisted: 77,
         staleAllowances: 0,
         metadataMismatches: 0,
         allowlistGrowth: 0,

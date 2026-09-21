@@ -21,6 +21,7 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import {
   initializeNestedRuntimeManifest,
+  recordNestedRuntimeApiRestart,
   recordNestedRuntimeProcessLaunching,
   recordNestedRuntimeProgress,
   recordNestedRuntimeProvisioning,
@@ -356,6 +357,121 @@ describe("Gate0 immutable upload finalization", () => {
       }
     }
   }, 15_000);
+
+  it("takes over only the current API launch after validating every retired incarnation exited", async () => {
+    const fixture = createNestedFixture("restart_history_current");
+    const previous = {
+      pid: fixture.apiPid,
+      port: 18_701,
+      startToken: "api-start",
+      commandSha256: "a".repeat(64),
+    };
+    const replacement = {
+      pid: 41_003,
+      port: 18_701,
+      startToken: "api-replacement",
+      commandSha256: "c".repeat(64),
+    };
+    recordNestedRuntimeApiRestart(
+      path.join(fixture.runRoot, "nested-runtime-manifest.json"),
+      `wiseeff_acceptance_disposable_restart_history_current`,
+      { previous, replacement },
+    );
+    writeNestedApiLaunchLedger(fixture, [previous, replacement]);
+    const alive = new Set([replacement.pid]);
+    const signals: Array<[number, NodeJS.Signals]> = [];
+
+    await finalizeGate0UploadSnapshot({
+      runsRoot: fixture.runsRoot,
+      uploadRoot: fixture.uploadRoot,
+      stopOptions: {
+        processGroupExists: (pid) => alive.has(pid),
+        readProcessIdentity: (pid) => pid === replacement.pid ? replacement : undefined,
+        signalProcessGroup(pid, signal) {
+          signals.push([pid, signal]);
+          alive.delete(pid);
+        },
+        wait: async () => undefined,
+        terminateGraceMs: 0,
+        verifyGraceMs: 0,
+      },
+    });
+
+    expect(signals).toEqual([[replacement.pid, "SIGTERM"]]);
+    expect(existsSync(fixture.uploadRoot)).toBe(true);
+  });
+
+  it.each([
+    ["missing launch ledger", (_fixture: ReturnType<typeof createNestedFixture>, _previous: ProcessStartIdentity & { pid: number; port: number }, _replacement: ProcessStartIdentity & { pid: number; port: number }) => []],
+    ["missing retired launch", (fixture: ReturnType<typeof createNestedFixture>, previous: ProcessStartIdentity & { pid: number; port: number }, replacement: ProcessStartIdentity & { pid: number; port: number }) => [replacement]],
+    ["extra unregistered launch", (fixture: ReturnType<typeof createNestedFixture>, previous: ProcessStartIdentity & { pid: number; port: number }, replacement: ProcessStartIdentity & { pid: number; port: number }) => [previous, replacement, { ...replacement, pid: 41_004, startToken: "api-extra", commandSha256: "d".repeat(64) }]],
+    ["unknown duplicate launch", (fixture: ReturnType<typeof createNestedFixture>, previous: ProcessStartIdentity & { pid: number; port: number }, replacement: ProcessStartIdentity & { pid: number; port: number }) => [previous, { ...replacement, pid: 41_004, startToken: "api-unknown", commandSha256: "d".repeat(64) }]],
+  ] as const)("rejects an incomplete or unregistered API replacement history (%s) before signaling", async (_label, entries) => {
+    const fixture = createNestedFixture(`restart_history_${String(_label).replace(/\s+/gu, "_")}`);
+    const previous = {
+      pid: fixture.apiPid,
+      port: 18_701,
+      startToken: "api-start",
+      commandSha256: "a".repeat(64),
+    };
+    const replacement = {
+      pid: 41_003,
+      port: 18_701,
+      startToken: "api-replacement",
+      commandSha256: "c".repeat(64),
+    };
+    recordNestedRuntimeApiRestart(
+      path.join(fixture.runRoot, "nested-runtime-manifest.json"),
+      fixture.runId.replace(/^full-/, "wiseeff_acceptance_disposable_"),
+      { previous, replacement },
+    );
+    writeNestedApiLaunchLedger(fixture, entries(fixture, previous, replacement));
+    const signals: number[] = [];
+
+    await expect(finalizeGate0UploadSnapshot({
+      runsRoot: fixture.runsRoot,
+      uploadRoot: fixture.uploadRoot,
+      stopOptions: {
+        processGroupExists: () => false,
+        signalProcessGroup(pid) { signals.push(pid); },
+      },
+    })).rejects.toThrow(/missing from the launch ledger|incomplete|ambiguous|not registered/i);
+    expect(signals).toEqual([]);
+  });
+
+  it("rejects a live retired API launch before signaling any writer", async () => {
+    const fixture = createNestedFixture("restart_history_alive");
+    const previous = {
+      pid: fixture.apiPid,
+      port: 18_701,
+      startToken: "api-start",
+      commandSha256: "a".repeat(64),
+    };
+    const replacement = {
+      pid: 41_003,
+      port: 18_701,
+      startToken: "api-replacement",
+      commandSha256: "c".repeat(64),
+    };
+    recordNestedRuntimeApiRestart(
+      path.join(fixture.runRoot, "nested-runtime-manifest.json"),
+      "wiseeff_acceptance_disposable_restart_history_alive",
+      { previous, replacement },
+    );
+    writeNestedApiLaunchLedger(fixture, [previous, replacement]);
+    const signals: number[] = [];
+
+    await expect(finalizeGate0UploadSnapshot({
+      runsRoot: fixture.runsRoot,
+      uploadRoot: fixture.uploadRoot,
+      stopOptions: {
+        processGroupExists: (pid) => pid === previous.pid,
+        readProcessIdentity: (pid) => pid === previous.pid ? previous : undefined,
+        signalProcessGroup(pid) { signals.push(pid); },
+      },
+    })).rejects.toThrow(/historical process incarnation is still alive/i);
+    expect(signals).toEqual([]);
+  });
 
   it("kills a launcher that misses the identity-publication deadline before it can claim late", async () => {
     const fixture = createNestedFixture("delayed_launch_timeout");
@@ -1024,6 +1140,35 @@ function createNestedFixture(suffix: string) {
   };
   writeRootDescriptorFixture(fixture, { phaseRunning: false });
   return fixture;
+}
+
+function writeNestedApiLaunchLedger(
+  fixture: ReturnType<typeof createNestedFixture>,
+  identities: ReadonlyArray<ProcessStartIdentity & { pid: number; port: number }>,
+) {
+  const launchRoot = path.join(fixture.runRoot, ".gate0-owned-process-launches");
+  mkdirSync(launchRoot, { recursive: true });
+  const childId = fixture.runId.replace(/^full-/, "wiseeff_acceptance_disposable_");
+  identities.forEach((identity, index) => {
+    const launchId = `00000000-0000-4000-8000-${String(index + 1).padStart(12, "0")}`;
+    writeFileSync(path.join(launchRoot, `${launchId}.json`), `${JSON.stringify({
+      version: 1,
+      kind: "wiseeff-gate0-owned-process-launch",
+      launchId,
+      runId: fixture.runId,
+      sourceCommit: "1".repeat(40),
+      label: `nested:${childId}:api`,
+      ownerPid: 42_000,
+      ownerProcessIdentity: { startToken: `owner-${index}`, commandSha256: "e".repeat(64) },
+      state: "claimed",
+      launcherPid: identity.pid,
+      launcherProcessIdentity: {
+        startToken: identity.startToken,
+        commandSha256: identity.commandSha256,
+      },
+      createdAt: `2026-08-23T00:0${index}:00.000Z`,
+    }, null, 2)}\n`, { encoding: "utf8", mode: 0o600 });
+  });
 }
 
 function writeRootDescriptorFixture(

@@ -47,7 +47,21 @@ export type CanonicalValueChangeRequestRow = {
   applied_audit_ref: string | null;
   applied_file_version_ids: unknown[] | null;
   applied_source_result: Record<string, unknown> | null;
+  source_format: "dts" | "json" | null;
+  applied_value_state: "present" | "deleted" | null;
 };
+
+async function hydrateRequest(db: Queryable, row: CanonicalValueChangeRequestRow): Promise<CanonicalValueChangeRequestRow> {
+  if (row.source_format) return row;
+  const result = await db.query<CanonicalValueChangeRequestRow>(
+    `select request.*, pin.format as source_format, applied.value_state as applied_value_state
+       from project_parameter_value_change_requests request
+       left join parameter_catalog.project_value_source_pins pin on pin.id=request.source_pin_id
+       left join parameter_catalog.project_parameter_values applied on applied.id=request.applied_value_id
+      where request.organization_id=$1 and request.project_id=$2 and request.id=$3`,
+    [row.organization_id, row.project_id, row.id]);
+  return result.rows[0] ?? row;
+}
 
 export async function insertCanonicalValueChangeRequest(
   db: Queryable,
@@ -115,7 +129,7 @@ export async function insertCanonicalValueChangeRequest(
       JSON.stringify(input.candidateBindingManifest)
     ]
   );
-  return result.rows[0]!;
+  return hydrateRequest(db, result.rows[0]!);
 }
 
 export async function getCanonicalValueChangeRequest(
@@ -124,16 +138,18 @@ export async function getCanonicalValueChangeRequest(
 ): Promise<CanonicalValueChangeRequestRow | null> {
   const result = await db.query<CanonicalValueChangeRequestRow>(
     `
-    select *
-      from project_parameter_value_change_requests
-     where organization_id = $1
-       and project_id = $2
-       and id = $3
+    select request.*, pin.format as source_format, applied.value_state as applied_value_state
+      from project_parameter_value_change_requests request
+      left join parameter_catalog.project_value_source_pins pin on pin.id=request.source_pin_id
+      left join parameter_catalog.project_parameter_values applied on applied.id=request.applied_value_id
+     where request.organization_id = $1
+       and request.project_id = $2
+       and request.id = $3
      limit 1
     `,
     [input.organizationId, input.projectId, input.requestId]
   );
-  return result.rows[0] ?? null;
+  return result.rows[0] ? hydrateRequest(db, result.rows[0]) : null;
 }
 
 /** Serializes concurrent reviews of the same request. */
@@ -143,16 +159,18 @@ export async function getCanonicalValueChangeRequestForUpdate(
 ): Promise<CanonicalValueChangeRequestRow | null> {
   const result = await db.query<CanonicalValueChangeRequestRow>(
     `
-    select *
-      from project_parameter_value_change_requests
-     where organization_id = $1
-       and project_id = $2
-       and id = $3
-     for update
+    select request.*, pin.format as source_format, applied.value_state as applied_value_state
+      from project_parameter_value_change_requests request
+      left join parameter_catalog.project_value_source_pins pin on pin.id=request.source_pin_id
+      left join parameter_catalog.project_parameter_values applied on applied.id=request.applied_value_id
+     where request.organization_id = $1
+       and request.project_id = $2
+       and request.id = $3
+     for update of request
     `,
     [input.organizationId, input.projectId, input.requestId]
   );
-  return result.rows[0] ?? null;
+  return result.rows[0] ? hydrateRequest(db, result.rows[0]) : null;
 }
 
 export async function getOpenCanonicalValueChangeRequestForDraft(
@@ -161,17 +179,19 @@ export async function getOpenCanonicalValueChangeRequestForDraft(
 ): Promise<CanonicalValueChangeRequestRow | null> {
   const result = await db.query<CanonicalValueChangeRequestRow>(
     `
-    select *
-      from project_parameter_value_change_requests
-     where organization_id = $1
-       and project_id = $2
-       and draft_id = $3
-       and status = 'pending'
+    select request.*, pin.format as source_format, applied.value_state as applied_value_state
+      from project_parameter_value_change_requests request
+      left join parameter_catalog.project_value_source_pins pin on pin.id=request.source_pin_id
+      left join parameter_catalog.project_parameter_values applied on applied.id=request.applied_value_id
+     where request.organization_id = $1
+       and request.project_id = $2
+       and request.draft_id = $3
+       and request.status = 'pending'
      limit 1
     `,
     [input.organizationId, input.projectId, input.draftId]
   );
-  return result.rows[0] ?? null;
+  return result.rows[0] ? hydrateRequest(db, result.rows[0]) : null;
 }
 
 export async function listCanonicalValueChangeRequests(
@@ -184,16 +204,18 @@ export async function listCanonicalValueChangeRequests(
 ): Promise<CanonicalValueChangeRequestRow[]> {
   const result = await db.query<CanonicalValueChangeRequestRow>(
     `
-    select *
-      from project_parameter_value_change_requests
-     where organization_id = $1
-       and project_id = $2
-       and ($3::text is null or status = $3)
+    select request.*, pin.format as source_format, applied.value_state as applied_value_state
+      from project_parameter_value_change_requests request
+      left join parameter_catalog.project_value_source_pins pin on pin.id=request.source_pin_id
+      left join parameter_catalog.project_parameter_values applied on applied.id=request.applied_value_id
+     where request.organization_id = $1
+       and request.project_id = $2
+       and ($3::text is null or request.status = $3)
      order by updated_at desc, id
     `,
     [input.organizationId, input.projectId, input.status ?? null]
   );
-  return result.rows;
+  return Promise.all(result.rows.map((row) => hydrateRequest(db, row)));
 }
 
 export async function markCanonicalValueChangeRequestReviewed(
@@ -222,7 +244,7 @@ export async function markCanonicalValueChangeRequestReviewed(
     `,
     [input.organizationId, input.projectId, input.requestId, input.status, input.actorUserId, input.note]
   );
-  return result.rows[0] ?? null;
+  return result.rows[0] ? hydrateRequest(db, result.rows[0]) : null;
 }
 
 export async function markCanonicalValueChangeRequestApplied(
@@ -275,5 +297,5 @@ export async function markCanonicalValueChangeRequestApplied(
       input.appliedSourceResult ? JSON.stringify(input.appliedSourceResult) : null
     ]
   );
-  return result.rows[0] ?? null;
+  return result.rows[0] ? hydrateRequest(db, result.rows[0]) : null;
 }

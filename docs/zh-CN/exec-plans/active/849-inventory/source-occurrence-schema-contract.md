@@ -96,6 +96,20 @@ DTS pin 持久化键精确为 `kind, propertyOccurrenceId, nodeOccurrenceId, fil
 
 source pin 对 ProjectValue 与 Binding 使用租户完整复合 FK，并以延迟 ownership 检查证明 pin 的 `(binding_id, project_id, organization_id)` 与 `source_occurrence_id` 和 ProjectValue 的 Binding/occurrence 完全一致。历史 pin 不必等于 current tip；延迟 current-tip guard 只约束 Binding 当前的 non-placeholder tip。此类 tip 必须恰有一个匹配 pin，且 pin 必须匹配同一 Binding、occurrence、不可变 file/version 与 revision member。placeholder current tip 没有 pin，会阻止 upgrade/workflow 启用；只有在同一个原子 append transaction 立即安装已证明的 source-backed replacement 时，才允许 runtime transient placeholder。
 
+#### Canonical 删除扩展（2026-09-21）
+
+[工作流删除修订](source-occurrence-workflow-contract.md#canonical-属性删除修订2026-09-21) 新增不可变 `project_parameter_values.value_state text not null default 'present'`，只允许 `present|deleted`。既有值均保持 present。只有已批准 canonical source-delete 事务的目标可以追加 deleted 值。保留的 payload／digest 必须等于固定的 present base value，只是历史上下文，不是活动值；现有值不可变保护同样覆盖新列。
+
+在同一 source-pin 关系中增加可空的 `base_source_pin_id text`、`delete_request_id text`、`delete_proof jsonb`。Present pin 三列均为空，deleted pin 三列均非空。Deferred 复合 FK 通过完整 owner 唯一键，将 base pin 和删除请求绑定到 `(organization_id, project_id, binding_id)`。全部 pin 列保持不可变。Deleted ProjectValue 必须有且只有一个匹配的 delete pin；普通 present 值不能使用它，deleted 值也不能使用普通 pin 或没有 pin。
+
+DTS delete locator 精确包含字符串字段 `kind='dts-delete', nodeOccurrenceId, fileVersionId, propertyName`。这是普通 DTS 必须有 `property_occurrence_id` 的明确例外：最终 delete effect 证明属性缺失，因此该列为空。仍必须证明准确 revision／member／node 图及唯一最大顺序 delete effect。JSON delete locator 精确包含字符串字段 `kind='json-delete', rootPointer, pointer, parentPointer, memberKey, fileVersionId`；其 root、解码后的 pointer token 和文件版本必须与自有 base pin／occurrence 一致。普通 pin 的 shape 和 digest preimage 不变。
+
+`delete_proof` 是无额外键的严格对象。共同字符串字段为 `kind, beforeValueDigest, beforeSourceDigest, afterSourceDigest, scannerVersion`；摘要均为规范 `sha256:` 加 64 位小写十六进制。JSON 使用 `kind='json-delete-v1'`、`scannerVersion='json-span-v1'`，另含且仅含 `rootPointer, pointer, parentPointer, memberKey`。DTS 使用 `kind='dts-delete-v1'`、`scannerVersion='dts-cst-v1'`，另含且仅含 `nodeOccurrenceId, propertyName`。由图选出唯一最终 DTS effect，不以提供的 effect ID 决胜。
+
+Deferred owner 检查将 base pin 的 present value 绑定到请求的 `base_current_value_id` 和 `source_pin_id`；组织、项目、Binding、Definition、source occurrence 必须一致。要求 `action=delete`、approved 状态、准确 `applied_value_id`、applied source result、history 和 audit 关联。Proof 摘要须与旧值及新旧不可变文件校验和一致；candidate ID、base／proposed／diff 摘要和 frozen manifest 须与不可变 candidate／request 一致。新 pin 的 revision／member／file version 须与 applied source result 一致。复用现有 owner 检查及 0152 的 graph／first-pin fence，不弱化普通 pin 检查，不重写既有迁移。
+
+Current view 和 resolver 排除 deleted tip；准确 ID reader 明确返回状态。后续 sibling 修改保留原删除 pin，作为终态历史来源证明；只推进 present value，并证明所有保留 deleted anchor 仍缺失。不新增 deletion-proof 表、Binding rekey、重新添加流程或 deleted-tip 传播。
+
 ### 2.4 Draft、candidate 与 change-request pin
 
 Revision member alias 修正：在既有 `dts_config_revision_members` 增加 nullable `source_name`，不新增关系。它是稳定解析／导出 alias，不是文件身份或当前展示名。非空 alias 遵守相对逻辑路径规则，同 revision 跨格式唯一。canonical source pin 所引用 revision 的全部成员必须有已证明 alias；既有 pinned-member 不可变 guard 也覆盖此列。历史回填只使用唯一历史 manifest，或与历史 file／version／member 归属交叉证明的不可变命名证据。证据缺失／冲突整次升级中止，当前 `file_name` 和 storage key 不构成证据；未引用旧成员可为空。运行时 `sourceName` 与展示 `fileName` 分开；canonical load／prepare／commit／export 拒绝空 alias，后续 canonical revision 沿用 pinned alias。完整证明边界见 workflow 的精确导出小节。

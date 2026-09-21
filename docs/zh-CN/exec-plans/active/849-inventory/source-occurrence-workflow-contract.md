@@ -43,6 +43,24 @@ writer 清单还包含值侧：`parameter-bindings/values/service.ts` append、`
 - 既有 import-batch apply 改为准备 canonical 草稿／评审工作并返回真实 staged 数，不直接追加当前值或调用 legacy writer。整批校验后单事务暂存；歧义或 candidate 失败不能留下部分草稿／请求或 applied 批次状态，孤立 pending 对象只算诊断。先解出精确 Binding/Definition。Staged 不等于源已生效；只有通过共享 writer 的审批才能推进源，驳回／撤回行不计入 applied。
 - 外部重导入时，数值索引实例根不能证明数组重排后的连续性。包围数组结构／顺序变化须显式新实例映射，不能默默复用索引身份；已批准的精确 pin 标量修改本身不移动实例。
 
+## Canonical 属性删除修订（2026-09-21）
+
+owner 已接受通过现有单阶段软件审核补齐 canonical 属性编辑／删除。本修订只治理 canonical 源路径；旧 0059–0063 topology 契约仍不为已删除属性创建替代 `parameter_binding_revisions` 行。两条路径均不创建替代 Binding 或 DefinitionRevision。设计审查与实施证据分别记录于[本地闭环记录](local-closure-20260921.md)。
+
+Canonical delete 没有目标值。请求包含 `action: delete`、原因及既有 base revision；服务端从准确的自有 base pin 获取 DTS／JSON 格式。草稿和请求 DTO 在刷新后仍保留 action 及 pin 来源格式，包括没有目标值可供推断的 JSON delete。Prepare 与 apply 均读取有界、校验和验证通过的不可变 ObjectStore 字节，并重复删除证明。Candidate、base／proposed／diff 摘要、完整 member manifest、独立审核员授权及 current-tip CAS 保留既有 owner。
+
+DTS 复用现有 CST writer 写出 `/delete-property/`。证明旧属性 span／raw value 和所属节点与 base pin 一致、非目标源码语义未变，以及准确的新 revision／member／node／effect 图。目标 logical node／property 的最终 effect 必须是唯一最大 `source_order` 且为 delete；最大序号并列即拒绝，不以 effect ID 决胜。复用迁移 0152 的完整固定图不可变性及 first-pin fence。
+
+JSON 扩展现有有界 span scanner，仅移除一个对象成员及必要逗号，再重新解析。证明旧成员／值、root 和 parent 连续性、目标确实缺失，且非目标字节／值不变。正确解码转义及空 pointer token。拒绝删除实例根、数组元素、缺失成员，或其他 current Binding 的祖先／后代。JSON `null` 是现存值：显式 delete 可以移除该对象成员，但 `null` 本身绝不表示缺失。
+
+批准成功后追加一个 `value_state=deleted` 的不可变 ProjectValue，以及一个关联原 present pin 和已批准删除请求的准确 `dts-delete`／`json-delete` source pin。保留的旧 payload 只作历史上下文。Source revision、current tip、pin、请求结果、history 和 applied audit 原子提交；任一失败均回滚数据库状态转换。已批准请求的准确重放先重新授权并复核已存来源结果，再返回原结果，不再次追加值／history／applied audit。
+
+Current 投影和 resolver 排除 deleted tip。准确 ID／history／export 响应明确返回 `deleted`，不得把保留 payload 呈现为活动值；删除前的 present value 和原源码导出仍可读取。普通编辑、导入及重放捷径均不得复活 deleted Binding。本轮不引入重新添加／恢复操作。
+
+**对上文 sibling propagation 规则的澄清：**“全部既有 source-backed sibling”指 present 活动集合。Deleted Binding 保留终态历史 tip、原删除 revision、pin 和 history；后续 sibling commit 不再为其追加 deleted value／pin／history。在相同有序来源锁下枚举受影响 config set 中所有保留的 deleted anchor，证明它们在新准确源码字节中仍缺失。重新出现、歧义或删除来源证明失效均拒绝整个 sibling commit；present 集合照常推进，deleted 身份保持终态。
+
+PostgreSQL 强制 value-state／pin-kind 一致及 tenant-complete base-pin／request／value／revision 归属。数据库不能读取 ObjectStore 字节：来源事务负责解析、缺失及非目标证明，deferred 数据库检查将证明绑定到准确不可变文件校验和、candidate／request 摘要和 applied result。既有迁移、来源身份、授权及审计约束保持不变。
+
 ## 已批准 DTS 修改的连续性
 
 已批准 DTS 修改的 logical continuity 只使用提交时锁定的基础 revision，不选择最新解析 revision，也不伪造 reviewed mapping。准备和生效时均证明旧 pin 指向唯一最终生效的属性 effect，非目标 CST 语义及非目标成员字节摘要不变，目标成员修改前／后的字节分别匹配冻结的基础／提议摘要。DTS owner 核对完整节点集合的 locator、name、unit address、compatible、reg 与父身份；任何节点新增、删除或元数据变化均拒绝。只有通过此证明才能保留既有 logical ID。新 revision 使用新 property/node occurrence ID 和重新解析的来源 pin；“同一 locator”指语义目标不变，不代表复用旧 occurrence ID 或偏移。通用外部导入身份匹配规则保持不变。

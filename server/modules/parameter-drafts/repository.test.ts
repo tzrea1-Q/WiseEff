@@ -201,7 +201,21 @@ describe.skipIf(!databaseAvailable)("draft repository", () => {
     // Deleting under the wrong user leaves the row alone; the owner delete removes it.
     await deleteDraft(db, { organizationId: "org-1", userId: "user-1", draftId: "draft-other-user" });
     expect(await draftRows(`id = 'draft-other-user'`)).toHaveLength(1);
-    await deleteDraft(db, { organizationId: "org-1", userId: "user-1", draftId: "draft-mine" });
+    await expect(
+      deleteDraft(db, {
+        organizationId: "org-1",
+        userId: "user-1",
+        projectId: "project-1",
+        draftId: "draft-other-project"
+      })
+    ).resolves.toBeNull();
+    expect(await draftRows(`id = 'draft-other-project'`)).toHaveLength(1);
+    await expect(
+      deleteDraft(db, { organizationId: "org-1", userId: "user-1", projectId: "project-2", draftId: "draft-other-project" })
+    ).resolves.toBe("project-2");
+    await expect(
+      deleteDraft(db, { organizationId: "org-1", userId: "user-1", projectId: "project-1", draftId: "draft-mine" })
+    ).resolves.toBe("project-1");
     expect(await draftRows(`id = 'draft-mine'`)).toHaveLength(0);
     await expect(
       listDraftsForUser(db, { organizationId: "org-1", userId: "user-1", projectId: "project-1" })

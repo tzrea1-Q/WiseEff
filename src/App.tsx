@@ -656,6 +656,7 @@ function AppShell({
         ...(context.user.username ? { username: context.user.username } : {}),
         title: context.user.title,
         roleId: primaryRole,
+        roles: context.roles.map((role) => ({ projectId: role.projectId, roleId: migrateLegacyRoleId(role.roleId) })),
         isActive: context.user.isActive,
         createdAt: new Date().toISOString(),
         lastActive: "just now"
@@ -736,7 +737,8 @@ function AppShell({
     if (!apiRuntimeSynced || apiRuntimeFailures.has("parameters") || page.key === "home") {
       return;
     }
-    const urlProjectId = page.key === "parameters" ? new URLSearchParams(search).get("project") : null;
+    const urlProjectId = page.key === "parameters" || page.key === "parameter-review"
+      ? new URLSearchParams(search).get("project") : null;
     const projectId = urlProjectId || state.activeProjectId;
     if (!projectId) {
       return;
@@ -1426,12 +1428,13 @@ function TopBar({
   const currentUser = state.users.find((user) => user.id === state.currentUserId);
   const projectOptions = state.configDraft.projects.map((project) => ({ value: project.id, label: project.name }));
   const selectedProjectId =
-    page.key === "parameters" ? new URLSearchParams(search).get("project") || state.activeProjectId : state.activeProjectId;
+    page.key === "parameters" || page.key === "parameter-review"
+      ? new URLSearchParams(search).get("project") || state.activeProjectId : state.activeProjectId;
   const commitProjectChange = (projectId: string) => {
     dispatch({ type: "SET_PROJECT", projectId });
 
-    if (page.key === "parameters") {
-      onNavigate(`/parameters?project=${encodeURIComponent(projectId)}`);
+    if (page.key === "parameters" || page.key === "parameter-review") {
+      onNavigate(`/${page.key}?project=${encodeURIComponent(projectId)}`);
     }
   };
 

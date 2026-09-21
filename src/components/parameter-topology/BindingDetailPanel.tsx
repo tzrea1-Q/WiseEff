@@ -15,6 +15,13 @@ export type BindingEditValidation = {
   diagnostics: TopologyDiagnostic[];
 };
 
+export type BindingEditInput = {
+  bindingId: string;
+  rawValue: string;
+  reason: string;
+  action?: "set" | "delete";
+};
+
 export type BindingDetailPanelProps = {
   binding: ProjectParameterBinding;
   view: TopologyView;
@@ -23,9 +30,7 @@ export type BindingDetailPanelProps = {
   provenanceLabels?: string[];
   mappingTasks?: IdentityMappingTask[];
   canEdit?: boolean;
-  onValidateEdit?: (
-    input: { bindingId: string; rawValue: string; reason: string }
-  ) => BindingEditValidation | Promise<BindingEditValidation>;
+  onValidateEdit?: (input: BindingEditInput) => BindingEditValidation | Promise<BindingEditValidation>;
   asDialog?: boolean;
   /** Names the hosting ModalDialog via its heading when rendered as a dialog. */
   titleId?: string;
@@ -56,6 +61,23 @@ export function BindingDetailPanel({
   }, [binding.id, binding.rawValue]);
 
   const openMappings = mappingTasks.filter((task) => task.status === "open");
+  const submitDraft = (action: "set" | "delete") => {
+    setValidating(true);
+    void Promise.resolve(
+      onValidateEdit?.({
+        bindingId: binding.id,
+        rawValue: action === "delete" ? "" : draftRaw,
+        reason: draftReason.trim(),
+        ...(action === "delete" ? { action } : {})
+      })
+    )
+      .then((result) => {
+        setDiagnostics(result?.diagnostics ?? []);
+      })
+      .finally(() => {
+        setValidating(false);
+      });
+  };
   const Wrapper: "section" | "div" = asDialog ? "div" : "section";
   const wrapperProps = asDialog
     ? {}
@@ -161,20 +183,17 @@ export function BindingDetailPanel({
           type="button"
           className="button subtle"
           disabled={!canEdit || validating || !draftReason.trim()}
-          onClick={() => {
-            setValidating(true);
-            void Promise.resolve(
-              onValidateEdit?.({ bindingId: binding.id, rawValue: draftRaw, reason: draftReason.trim() })
-            )
-              .then((result) => {
-                setDiagnostics(result?.diagnostics ?? []);
-              })
-              .finally(() => {
-                setValidating(false);
-              });
-          }}
+          onClick={() => submitDraft("set")}
         >
           {validating ? "创建中…" : "校验并创建草稿"}
+        </button>
+        <button
+          type="button"
+          className="button subtle"
+          disabled={!canEdit || validating || !draftReason.trim()}
+          onClick={() => submitDraft("delete")}
+        >
+          创建删除草稿
         </button>
         {diagnostics.length > 0 ? (
           <ul id={diagnosticId} aria-label="编辑诊断" role="alert">

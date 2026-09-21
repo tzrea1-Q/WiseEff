@@ -317,6 +317,7 @@ npm run test:server -- server/modules/parameter-topology/postCutoverWorkflow.int
 | Evidence 运行隔离 | `check-operation-evidence.test.ts`、`run-browser-acceptance.test.ts` | 完整 record/artifact 共享 run+commit 目录；focused 保留 `latest-full`；混合运行 fail-closed。 |
 | Binding 提交身份 | `routes.test.ts`、`postCutoverWorkflow.integration.test.ts`、迁移 `0059`–`0063` | HTTP 保留 draft/binding/spec/action 并返回 exact candidate ID。两个真实 PG 连接证明 submission 持有 draft+candidate 锁时，candidate 状态修改必须等待；提交执行 `draft -> pending_approval` 并把 ID 持久化到 item/request。Merge 拒绝 candidate 缺失、状态/value/delete proof 变化。升级测试覆盖 0061 全 origin 失效与 0063 事务回滚/幂等。 |
 | Typed delete 生命周期 | `schemas.test.ts`、`postCutoverWorkflow.integration.test.ts`、`parameter-topology.acceptance.spec.ts` | `delete` 要求空 target，贯穿 draft/submission/CR/audit，证明 candidate binding 缺失及匹配 occurrence effect，写出 `/delete-property/`，re-ingest/validate 后不产生替代 binding revision，并在真实角色审核/合入/reload 后保持缺失。 |
+| Canonical 来源编辑／删除 | Canonical 来源 PostgreSQL 套件、`canonical-value-workflow.acceptance.spec.ts` | 单阶段软件批准、真实 DTS／JSON 写回、显式 deleted ProjectValue 状态、终态历史 pin、非目标值不变、后续 sibling 编辑不复活、准确历史导出及 API 进程重启。使用独立 operation ID，不替代旧 topology／compiler／identity／publish 门禁。 |
 | test:all 稳定性 | App API runtime 隔离、dashboard fixture 唯一命名空间、每个事务 PG client 的 FIFO 查询 | 默认 `npm run test:all` 无需临时 worker 覆盖或全局提高 timeout |
 
 不得为了让拓扑验收变绿而对共享开发/验收库就地 cutover。拓扑 spec 自主管理 `wiseeff_acceptance_disposable_*` 数据库，并在破坏性清理前校验 test marker。独立的干净快照演练完成前，TD-042 仍保持开放。

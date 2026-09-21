@@ -732,7 +732,7 @@ describe("canonical project binding reads", () => {
     vi.spyOn(dbClient, "getRootPostgresPool").mockReturnValue({ query: vi.fn() } as never);
   });
 
-  it("falls back to topology bindings when the canonical plane has no rows", async () => {
+  it("returns an honest empty collection when the Catalog is unpublished", async () => {
     const db = makeDb();
     vi.mocked(db.query).mockResolvedValue({
       rows: [{ id: "project-1", name: "Project One", code: "P1" }]
@@ -749,11 +749,11 @@ describe("canonical project binding reads", () => {
     );
 
     expect(response.status).toBe(200);
-    expect(response.body.items.map((item) => item.id)).toEqual(["legacy-1"]);
-    expect(topologyService.listProjectBindings).toHaveBeenCalled();
+    expect(response.body.items).toEqual([]);
+    expect(topologyService.listProjectBindings).not.toHaveBeenCalled();
   });
 
-  it("falls back to topology bindings when unpublished catalog forbids the actor", async () => {
+  it("preserves project scope refusal even when the Catalog is unpublished", async () => {
     const db = makeDb();
     vi.mocked(db.query).mockResolvedValue({
       rows: [{ id: "project-1", name: "Project One", code: "P1" }]
@@ -771,8 +771,8 @@ describe("canonical project binding reads", () => {
       "/api/v2/projects/project-1/parameter-bindings"
     );
 
-    expect(response.status).toBe(200);
-    expect(response.body.items.map((item) => item.id)).toEqual(["legacy-1"]);
+    expect(response.status).toBe(403);
+    expect(topologyService.listProjectBindings).not.toHaveBeenCalled();
   });
 
   it("keeps catalog FORBIDDEN when a Catalog is published", async () => {
@@ -841,7 +841,7 @@ describe("canonical project binding reads", () => {
     expect(topologyService.listProjectBindings).not.toHaveBeenCalled();
   });
 
-  it("falls back to topology when a published Catalog has no project rows", async () => {
+  it("returns an honest empty collection when a published Catalog has no project rows", async () => {
     const db = makeDb();
     vi.mocked(db.query).mockResolvedValue({
       rows: [{ id: "project-1", name: "Project One", code: "P1" }]
@@ -858,7 +858,8 @@ describe("canonical project binding reads", () => {
     );
 
     expect(response.status).toBe(200);
-    expect(response.body.items.map((item) => item.id)).toEqual(["legacy-1"]);
+    expect(response.body.items).toEqual([]);
+    expect(topologyService.listProjectBindings).not.toHaveBeenCalled();
   });
 
   it("still hides an unknown or foreign project behind 404", async () => {
@@ -1052,6 +1053,7 @@ describe("catalog pending-draft tray routes", () => {
           definitionId: "pspec:vendor/sc8562:gpio_int",
           effectiveRevisionId: "rev-binding-1",
           currentValueId: null,
+          action: "set",
           targetValue: "<&gpio13 31 0>",
           sourceFormat: "dts",
           baseRevisionId: "rev-candidate-1",
@@ -1081,7 +1083,11 @@ describe("catalog pending-draft tray routes", () => {
       expect.anything(),
       expect.anything(),
       "topo-draft-1",
-      expect.objectContaining({ invocation: expect.anything() })
+      expect.objectContaining({
+        invocation: expect.anything(),
+        projectId: "project-1",
+        requestId: expect.any(String)
+      })
     );
   });
 });

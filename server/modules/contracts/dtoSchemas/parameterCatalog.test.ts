@@ -7,6 +7,10 @@ import { routeManifest } from "../routeManifest";
 import { schemaRegistry } from "../schemaRegistry";
 import {
   catalogAcceptProposalRequestSchema,
+  catalogBindingDraftDtoSchema,
+  catalogBindingExportDtoSchema,
+  catalogBindingChangeHistoryEntryDtoSchema,
+  canonicalSourceManifestSchema,
   catalogApiFailureReasons,
   catalogCreateBindingDraftRequestSchema,
   catalogCreatePublicationCandidateRequestSchema,
@@ -35,6 +39,68 @@ import {
 } from "./parameterCatalog";
 
 const openApi = buildOpenApiDocument();
+
+describe("canonical deletion wire contract", () => {
+  it("preserves a JSON delete action without deriving it from an empty target", () => {
+    const draft = {
+      id: "draft", bindingId: "binding", definitionId: "definition", effectiveRevisionId: "definition-revision",
+      currentValueId: "base-value", action: "delete", targetValue: "", sourceFormat: "json",
+      baseRevisionId: "revision", sourcePinId: "base-pin", candidateId: "candidate",
+      reason: "Remove obsolete property", updatedAt: "2026-09-21T00:00:00Z",
+    };
+    expect(catalogBindingDraftDtoSchema.parse(draft)).toMatchObject({ action: "delete", sourceFormat: "json", targetValue: "" });
+    expect(catalogBindingDraftDtoSchema.safeParse({ ...draft, action: undefined }).success).toBe(false);
+    expect(catalogBindingDraftDtoSchema.safeParse({ ...draft, targetValue: "null" }).success).toBe(false);
+    expect(catalogBindingDraftDtoSchema.safeParse({ ...draft, sourceTarget: { format: "json", sourceText: "" } }).success).toBe(false);
+  });
+
+  it.each(["dts", "json"] as const)("requires an explicit %s deleted manifest and its exact proof", (format) => {
+    const digest = `sha256:${"a".repeat(64)}`;
+    const anchor = format === "json"
+      ? { rootPointer: "/a~1b", pointer: "/a~1b/", parentPointer: "/a~1b", memberKey: "" }
+      : { nodeOccurrenceId: "node-occurrence", propertyName: "iin_max" };
+    const manifest = {
+      organizationId: "org", projectId: "project", bindingId: "binding", definitionId: "definition",
+      projectValueId: "deleted-value", sourcePinId: "delete-pin", sourceOccurrenceId: "occurrence",
+      configSetId: "set", configRevisionId: "revision", fileId: "file", fileVersionId: "version", format,
+      logicalNodeId: format === "dts" ? "node" : null,
+      configurationInstanceId: format === "json" ? "instance" : null,
+      configurationSchemaSubjectId: format === "json" ? "subject" : null,
+      rootPointer: format === "json" ? "/a~1b" : null,
+      entryFile: null, includeSearchPaths: [], overlayOrder: [], members: [],
+      valueState: "deleted", baseSourcePinId: "base-pin", deleteRequestId: "request",
+      locator: { kind: `${format}-delete`, fileVersionId: "version", ...anchor },
+      deleteProof: { kind: `${format}-delete-v1`, beforeValueDigest: digest, beforeSourceDigest: digest,
+        afterSourceDigest: digest, scannerVersion: format === "json" ? "json-span-v1" : "dts-cst-v1", ...anchor },
+    };
+    expect(canonicalSourceManifestSchema.parse(manifest)).toMatchObject({ valueState: "deleted", deleteRequestId: "request" });
+    expect(canonicalSourceManifestSchema.safeParse({ ...manifest, valueState: "present" }).success).toBe(false);
+    expect(canonicalSourceManifestSchema.safeParse({ ...manifest, baseSourcePinId: null }).success).toBe(false);
+    expect(canonicalSourceManifestSchema.safeParse({ ...manifest, locator: { ...manifest.locator, extra: true } }).success).toBe(false);
+    expect(canonicalSourceManifestSchema.safeParse({ ...manifest, deleteProof: { ...manifest.deleteProof, extra: true } }).success).toBe(false);
+    expect(canonicalSourceManifestSchema.safeParse({ ...manifest, deleteProof: { ...manifest.deleteProof, afterSourceDigest: "unverified" } }).success).toBe(false);
+    expect(canonicalSourceManifestSchema.safeParse({ ...manifest, deleteProof: {
+      ...manifest.deleteProof, ...(format === "json" ? { memberKey: "wrong" } : { propertyName: "wrong" }),
+    } }).success).toBe(false);
+    const exported = {
+      bindingId: "binding", projectId: "project", definitionId: "definition", definitionRevisionId: "definition-revision",
+      catalogReleaseId: "release", configRevisionId: "revision", currentValueId: "deleted-value", configSetId: "set",
+      sourceRef: "source", files: [], valueState: "deleted", manifest,
+    };
+    expect(catalogBindingExportDtoSchema.safeParse(exported).success).toBe(true);
+    expect(catalogBindingExportDtoSchema.safeParse({ ...exported, valueState: "present" }).success).toBe(false);
+  });
+
+  it("does not strip deletion state from value history", () => {
+    const history = {
+      id: "history", bindingId: "binding", definitionId: "definition", oldDefinitionRevisionId: null,
+      newDefinitionRevisionId: null, oldCurrentValueId: "base", newCurrentValueId: "deleted",
+      valueState: "deleted", reason: "Remove obsolete property", successAuditRef: "audit", catalogReleaseId: "release",
+      createdAt: "2026-09-21T00:00:00Z",
+    };
+    expect(catalogBindingChangeHistoryEntryDtoSchema.parse(history)).toMatchObject({ valueState: "deleted" });
+  });
+});
 
 function openApiPath(path: string) {
   return path.replace(/:([^/]+)/g, "{$1}");

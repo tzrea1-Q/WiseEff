@@ -32,6 +32,7 @@ import {
   afterNestedProcessesStop,
   assertDisposableDatabaseIdentity,
   buildDisposableDatabaseName,
+  finalizeDisposableRuntimeResources,
   planNestedObjectStoreRoot,
   recordNestedObjectStoreProvisioningIntent,
   startDisposablePostCutoverRuntime,
@@ -136,6 +137,30 @@ describe("disposable post-cutover acceptance database safety", () => {
     )).rejects.toThrow(/retained for parent takeover/i);
 
     expect(resourceCleanupCalls).toBe(0);
+  });
+
+  it("retains resources when an unresolved restart handshake reaches dispose as success", async () => {
+    const removed: string[] = [];
+    const result = await finalizeDisposableRuntimeResources({
+      outcome: "success",
+      retainFailureResources: true,
+      stopProcesses: async () => ({
+        apiProcess: { status: "failed", reason: "replacement identity was not durably published" },
+        frontendProcess: { status: "stopped" },
+        errors: [new Error("replacement identity was not durably published")],
+      }),
+      removeDatabase: async () => { removed.push("database"); },
+      removeObjectStore: async () => { removed.push("object-store"); },
+    });
+
+    expect(result.state).toBe("cleanup-failed");
+    expect(result.cleanup).toMatchObject({
+      apiProcess: { status: "failed" },
+      frontendProcess: { status: "stopped" },
+      database: { status: "retained" },
+      objectStore: { status: "retained" },
+    });
+    expect(removed).toEqual([]);
   });
 
   it("never drops a foreign same-name database when CREATE reports that it already exists", async () => {

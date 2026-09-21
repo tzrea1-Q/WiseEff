@@ -14,6 +14,7 @@ import {
   readNestedRuntimeManifest,
   recoverNestedRuntimeManifestPublication,
   recordNestedRuntimeFinish,
+  recordNestedRuntimeApiRestart,
   recordNestedRuntimeProcessLaunching,
   recordNestedRuntimeProgress,
   recordNestedRuntimeProvisioning,
@@ -31,6 +32,7 @@ import {
   stopManifestTrackedNestedProcesses,
   prepareNestedObjectStoreRoot,
   removeNestedObjectStoreRoot,
+  startTrackedNestedApiRestartProcess,
   startTrackedNestedRuntimeProcess,
 } from "../e2e/acceptance/helpers/disposablePostCutoverRuntime";
 import {
@@ -621,6 +623,80 @@ describe("Gate0 nested disposable runtime contract", () => {
       apiProcessIdentity: original,
       frontendProcessIdentity: frontendOriginal,
     });
+  });
+
+  it("records an exact API incarnation replacement without weakening ordinary identity immutability", () => {
+    const runRoot = mkdtempSync(path.join(tmpdir(), "wiseeff-nested-api-restart-"));
+    const manifestPath = path.join(runRoot, "nested-runtime-manifest.json");
+    const databaseName = "wiseeff_acceptance_disposable_api_restart";
+    initializeNestedRuntimeManifest(manifestPath, {
+      parentRunId: "full-api-restart",
+      sourceCommit: "0123456789012345678901234567890123456789",
+    });
+    recordNestedRuntimeProvisioning(manifestPath, {
+      id: databaseName,
+      databaseName,
+      markerPurpose: "parameter-topology",
+      objectStoreRoot: nestedObjectRoot(runRoot, databaseName),
+      apiUrl: "http://127.0.0.1:19100",
+      frontendUrl: "http://127.0.0.1:5190",
+    });
+    const previous = fakeProcessIdentity(111, 19_100);
+    const frontend = fakeProcessIdentity(222, 5_190);
+    recordNestedRuntimeProgress(manifestPath, databaseName, {
+      migrationRunId: "migration-api-restart",
+      apiPid: previous.pid,
+      apiProcessIdentity: previous,
+      frontendPid: frontend.pid,
+      frontendProcessIdentity: frontend,
+      ready: true,
+    });
+    const replacement = fakeProcessIdentity(333, 19_100);
+
+    recordNestedRuntimeApiRestart(manifestPath, databaseName, { previous, replacement });
+
+    expect(readNestedRuntimeManifest(manifestPath).children[0]).toMatchObject({
+      state: "running",
+      apiPid: replacement.pid,
+      apiProcessIdentity: replacement,
+      apiProcessReplacements: [{ previous, replacement }],
+    });
+    expect(() => recordNestedRuntimeApiRestart(manifestPath, databaseName, {
+      previous,
+      replacement: fakeProcessIdentity(444, 19_100),
+    })).toThrow(/predecessor identity changed/i);
+  });
+
+  it("accepts different PIDs that share a coarse start token and command digest", () => {
+    const runRoot = mkdtempSync(path.join(tmpdir(), "wiseeff-nested-api-restart-coarse-start-"));
+    const manifestPath = path.join(runRoot, "nested-runtime-manifest.json");
+    const databaseName = "wiseeff_acceptance_disposable_api_restart_coarse_start";
+    initializeNestedRuntimeManifest(manifestPath, {
+      parentRunId: "full-api-restart-coarse-start",
+      sourceCommit: "0123456789012345678901234567890123456789",
+    });
+    recordNestedRuntimeProvisioning(manifestPath, {
+      id: databaseName,
+      databaseName,
+      markerPurpose: "parameter-topology",
+      objectStoreRoot: nestedObjectRoot(runRoot, databaseName),
+      apiUrl: "http://127.0.0.1:19100",
+      frontendUrl: "http://127.0.0.1:5190",
+    });
+    const previous = fakeProcessIdentity(111, 19_100);
+    const frontend = fakeProcessIdentity(222, 5_190);
+    recordNestedRuntimeProgress(manifestPath, databaseName, {
+      migrationRunId: "migration-api-restart-coarse-start",
+      apiPid: previous.pid,
+      apiProcessIdentity: previous,
+      frontendPid: frontend.pid,
+      frontendProcessIdentity: frontend,
+      ready: true,
+    });
+    const replacement = { ...previous, pid: 333 };
+
+    expect(() => recordNestedRuntimeApiRestart(manifestPath, databaseName, { previous, replacement })).not.toThrow();
+    expect(readNestedRuntimeManifest(manifestPath).children[0]?.apiProcessIdentity).toEqual(replacement);
   });
 
   it("never signals a reused nested PID and uses the identity persisted in the manifest", async () => {
@@ -1257,6 +1333,153 @@ describe("Gate0 nested disposable runtime contract", () => {
     expect(tracked).toEqual([child.pid]);
     expect(readNestedRuntimeManifest(manifestPath).children[0]?.apiPid).toBe(child.pid);
     child.kill("SIGTERM");
+  });
+
+  it("tracks an API replacement before identity capture can fail", async () => {
+    const runRoot = mkdtempSync(path.join(tmpdir(), "wiseeff-nested-api-restart-identity-failure-"));
+    const manifestPath = path.join(runRoot, "nested-runtime-manifest.json");
+    const childId = "wiseeff_acceptance_disposable_api_restart_identity_failure";
+    initializeNestedRuntimeManifest(manifestPath, {
+      parentRunId: "full-api-restart-identity-failure",
+      sourceCommit: "0123456789012345678901234567890123456789",
+    });
+    recordNestedRuntimeProvisioning(manifestPath, {
+      id: childId,
+      databaseName: childId,
+      markerPurpose: "parameter-topology",
+      objectStoreRoot: nestedObjectRoot(runRoot, childId),
+      apiUrl: "http://127.0.0.1:19100",
+      frontendUrl: "http://127.0.0.1:5190",
+    });
+    const previous = fakeProcessIdentity(111, 19_100);
+    recordNestedRuntimeProgress(manifestPath, childId, {
+      migrationRunId: "migration-api-restart",
+      apiPid: previous.pid,
+      apiProcessIdentity: previous,
+      frontendPid: 222,
+      frontendProcessIdentity: fakeProcessIdentity(222, 5_190),
+      ready: true,
+    });
+    const tracked: number[] = [];
+
+    await expect(startTrackedNestedApiRestartProcess({
+      manifestPath,
+      childId,
+      previous,
+      port: 19_100,
+      spawn: () => ({ pid: 333 } as never),
+      track: (child) => { tracked.push(child.pid!); },
+      readProcessIdentity: () => undefined,
+    })).rejects.toThrow(/identity capture failed/i);
+
+    expect(tracked).toEqual([333]);
+    expect(readNestedRuntimeManifest(manifestPath).children[0]?.apiProcessIdentity).toEqual(previous);
+  });
+
+  it("stops a captured API replacement when manifest publication fails", async () => {
+    const runRoot = mkdtempSync(path.join(tmpdir(), "wiseeff-nested-api-restart-publish-failure-"));
+    const manifestPath = path.join(runRoot, "nested-runtime-manifest.json");
+    const childId = "wiseeff_acceptance_disposable_api_restart_publish_failure";
+    initializeNestedRuntimeManifest(manifestPath, {
+      parentRunId: "full-api-restart-publish-failure",
+      sourceCommit: "0123456789012345678901234567890123456789",
+    });
+    recordNestedRuntimeProvisioning(manifestPath, {
+      id: childId,
+      databaseName: childId,
+      markerPurpose: "parameter-topology",
+      objectStoreRoot: nestedObjectRoot(runRoot, childId),
+      apiUrl: "http://127.0.0.1:19100",
+      frontendUrl: "http://127.0.0.1:5190",
+    });
+    const previous = fakeProcessIdentity(111, 19_100);
+    recordNestedRuntimeProgress(manifestPath, childId, {
+      migrationRunId: "migration-api-restart",
+      apiPid: previous.pid,
+      apiProcessIdentity: previous,
+      frontendPid: 222,
+      frontendProcessIdentity: fakeProcessIdentity(222, 5_190),
+      ready: true,
+    });
+    const replacement = fakeProcessIdentity(333, 19_100);
+    const signals: NodeJS.Signals[] = [];
+    let probes = 0;
+
+    await expect(startTrackedNestedApiRestartProcess({
+      manifestPath,
+      childId,
+      previous,
+      port: 19_100,
+      spawn: () => ({ pid: replacement.pid } as never),
+      track: () => undefined,
+      readProcessIdentity: () => replacement,
+      recordRestart: () => { throw new Error("synthetic restart manifest publish failure"); },
+      rollbackStopOptions: {
+        processGroupExists: async () => probes++ === 0,
+        readProcessIdentity: () => replacement,
+        signalProcessGroup: async (_pid, signal) => { signals.push(signal); },
+        terminateGraceMs: 0,
+        wait: async () => undefined,
+      },
+    })).rejects.toThrow(/synthetic restart manifest publish failure/i);
+
+    expect(signals).toEqual(["SIGTERM"]);
+    expect(readNestedRuntimeManifest(manifestPath).children[0]?.apiProcessIdentity).toEqual(previous);
+  });
+
+  it("republishes an API replacement identity when publication and local rollback both fail", async () => {
+    const runRoot = mkdtempSync(path.join(tmpdir(), "wiseeff-nested-api-restart-double-failure-"));
+    const manifestPath = path.join(runRoot, "nested-runtime-manifest.json");
+    const childId = "wiseeff_acceptance_disposable_api_restart_double_failure";
+    initializeNestedRuntimeManifest(manifestPath, {
+      parentRunId: "full-api-restart-double-failure",
+      sourceCommit: "0123456789012345678901234567890123456789",
+    });
+    recordNestedRuntimeProvisioning(manifestPath, {
+      id: childId,
+      databaseName: childId,
+      markerPurpose: "parameter-topology",
+      objectStoreRoot: nestedObjectRoot(runRoot, childId),
+      apiUrl: "http://127.0.0.1:19100",
+      frontendUrl: "http://127.0.0.1:5190",
+    });
+    const previous = fakeProcessIdentity(111, 19_100);
+    recordNestedRuntimeProgress(manifestPath, childId, {
+      migrationRunId: "migration-api-restart",
+      apiPid: previous.pid,
+      apiProcessIdentity: previous,
+      frontendPid: 222,
+      frontendProcessIdentity: fakeProcessIdentity(222, 5_190),
+      ready: true,
+    });
+    const replacement = fakeProcessIdentity(333, 19_100);
+    let publishAttempts = 0;
+
+    await expect(startTrackedNestedApiRestartProcess({
+      manifestPath,
+      childId,
+      previous,
+      port: 19_100,
+      spawn: () => ({ pid: replacement.pid } as never),
+      track: () => undefined,
+      readProcessIdentity: () => replacement,
+      recordRestart: (...args) => {
+        if (publishAttempts++ === 0) throw new Error("synthetic first restart manifest publish failure");
+        return recordNestedRuntimeApiRestart(...args);
+      },
+      rollbackStopOptions: {
+        processGroupExists: async () => true,
+        readProcessIdentity: () => replacement,
+        signalProcessGroup: async () => { throw new Error("synthetic restart rollback failure"); },
+      },
+    })).rejects.toThrow(/publish and exact-identity rollback both failed/i);
+
+    expect(publishAttempts).toBe(2);
+    expect(readNestedRuntimeManifest(manifestPath).children[0]).toMatchObject({
+      apiPid: replacement.pid,
+      apiProcessIdentity: replacement,
+      apiProcessReplacements: [{ previous, replacement }],
+    });
   });
 
   it("rolls back a tracked child with its captured identity when manifest PID publication fails", async () => {

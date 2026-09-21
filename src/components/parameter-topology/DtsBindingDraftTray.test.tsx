@@ -58,7 +58,7 @@ function enablementDraft(
 }
 
 describe("DtsBindingDraftTray", () => {
-  it("submits canonical binding drafts by draft id without rendering assignee dropdowns", async () => {
+  it("submits canonical binding drafts with an optional software reviewer", async () => {
     const onSubmitCanonical = vi.fn().mockResolvedValue(undefined);
     render(
       <DtsBindingDraftTray
@@ -72,11 +72,45 @@ describe("DtsBindingDraftTray", () => {
     );
 
     const tray = screen.getByRole("region", { name: "参数修改提交" });
-    expect(within(tray).queryByLabelText("后续流程处理人")).not.toBeInTheDocument();
+    expect(within(tray).getByLabelText("软件 MDE")).toBeInTheDocument();
+    fireEvent.change(within(tray).getByLabelText("软件 MDE"), { target: { value: "u-sw" } });
     const submit = within(tray).getByRole("button", { name: /^提交审核/ });
     expect(submit).toBeEnabled();
     fireEvent.click(submit);
-    await waitFor(() => expect(onSubmitCanonical).toHaveBeenCalledWith({ projectId: "aurora", draftIds: ["draft-typed-1"] }));
+    await waitFor(() => expect(onSubmitCanonical).toHaveBeenCalledWith({
+      projectId: "aurora",
+      draftIds: ["draft-typed-1"],
+      assignedToUserId: "u-sw"
+    }));
+  });
+
+  it("allows canonical submission with only the software reviewer pool", async () => {
+    const onSubmitCanonical = vi.fn().mockResolvedValue(undefined);
+    render(
+      <DtsBindingDraftTray
+        projectId="aurora"
+        drafts={[draft({ writeTarget: { role: "canonical-project-value-draft", propertyKey: "enabled" } })]}
+        candidates={{
+          hardwareCommitters: [],
+          softwareCommitters: [{ id: "u-sw", name: "Software Reviewer" }],
+          softwareUsers: [],
+          ready: false,
+          missingRoles: ["hardware-committer", "software-user"]
+        }}
+        onRemove={vi.fn()}
+        onSubmitCanonical={onSubmitCanonical}
+        onNavigate={vi.fn()}
+      />
+    );
+
+    const submit = screen.getByRole("button", { name: /^提交审核/ });
+    expect(submit).toBeEnabled();
+    fireEvent.click(submit);
+    await waitFor(() => expect(onSubmitCanonical).toHaveBeenCalledWith({
+      projectId: "aurora",
+      draftIds: ["draft-typed-1"],
+      assignedToUserId: "u-sw"
+    }));
   });
 
   it("blocks canonical submission and shows the review-role configuration path when pools are missing", () => {
@@ -101,7 +135,7 @@ describe("DtsBindingDraftTray", () => {
     );
 
     expect(screen.getByRole("alert")).toHaveTextContent(
-      "当前项目缺少以下审核角色：硬件 MDE、软件 MDE、软件开发，已阻止提交。"
+      "当前项目缺少以下审核角色：软件 MDE，已阻止提交。"
     );
     expect(screen.getByRole("button", { name: /^提交审核/ })).toBeDisabled();
     fireEvent.click(screen.getByRole("button", { name: "配置项目审核角色" }));
@@ -214,7 +248,7 @@ describe("DtsBindingDraftTray", () => {
       />
     );
 
-    expect(screen.getAllByText("删除属性（tombstone）").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText("删除属性").length).toBeGreaterThanOrEqual(1);
     expect(screen.getByLabelText("gpio_int 值变更").querySelector(".submission-preview-diff--scalar")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "移出本轮修改" }));
     expect(onRemove).toHaveBeenCalledWith("draft-delete");
@@ -360,7 +394,7 @@ describe("DtsBindingDraftTray", () => {
     {
       name: "delete with a non-empty raw value",
       invalidDraft: draft({ action: "delete", rawText: "<&gpio13 30 0>" }),
-      message: /delete.*空 tombstone/
+      message: /delete.*空目标值/
     }
   ])("blocks an action/value mismatch: $name", ({ invalidDraft, message }) => {
     const onSubmit = vi.fn();

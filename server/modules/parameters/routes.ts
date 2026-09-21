@@ -472,7 +472,10 @@ export function registerParameterRoutes(
     const auth = await options.getCurrentAuthContext(request);
     const params = parseWithSchema(paramsWithDraftIdSchema, request.params);
 
-    await deleteDraft(db, auth, params.draftId, { invocation: createUserInvocation(auth) });
+    await deleteDraft(db, auth, params.draftId, {
+      invocation: createUserInvocation(auth),
+      requestId: request.requestId
+    });
 
     return { status: 200, body: { ok: true } };
   });

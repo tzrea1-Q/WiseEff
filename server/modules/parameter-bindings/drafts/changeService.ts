@@ -25,12 +25,17 @@ import {
   canViewParameters
 } from "../../parameter-kernel/policy";
 import { getProjectById } from "../../projects/repository";
+import { lockUserById } from "../../users/repository";
 import { renderDtsValue } from "../../dts/valueAst";
 import type { DtsValue } from "../../dts/types";
 import { serializeContract, type ContractJsonValue } from "../../parameter-catalog-contract";
 import { commitCanonicalSourceRevision } from "../../parameter-files/canonicalSourceCommit";
 import { loadCanonicalSourceCohort, recordCanonicalPermissionRefusal, requireCanonicalUserInvocation, type CanonicalSourceSecurityContext } from "../../parameter-files/canonicalSource";
-import { hasEligibleWorkflowAssignee } from "../../parameters/reviewWorkflowRepository";
+import {
+  hasCurrentCanonicalReviewRole,
+  hasEligibleWorkflowAssignee,
+  listEligibleWorkflowAssignees
+} from "../../parameters/reviewWorkflowRepository";
 import {
   deleteCanonicalValueDraft,
   getCanonicalValueDraftForUpdate,
@@ -75,6 +80,7 @@ export type CanonicalValueChangeRequestDto = {
   appliedSourceResult?: Record<string, unknown> | null;
   createdAt: string;
   updatedAt: string;
+  action: "set" | "delete";
 };
 
 export type SubmitCanonicalValueChangeInput = {
@@ -126,9 +132,9 @@ export function toCanonicalValueChangeRequestDto(
     definitionId: row.definition_id,
     effectiveRevisionId: row.definition_revision_id,
     status: row.status,
-    targetValue: renderTarget(row),
-    sourceFormat: jsonTarget ? "json" : "dts",
-    ...(jsonTarget ? { sourceTarget: { format: "json" as const,sourceText: serializeContract(jsonTarget.value) } } : {}),
+    targetValue: row.action === "delete" ? "" : renderTarget(row),
+    sourceFormat: row.source_format ?? (jsonTarget ? "json" : "dts"),
+    ...(row.action === "set" && jsonTarget ? { sourceTarget: { format: "json" as const,sourceText: serializeContract(jsonTarget.value) } } : {}),
     baseRevisionId: row.config_revision_id,
     baseCurrentValueId: row.base_current_value_id,
     reason: row.reason,
@@ -142,7 +148,8 @@ export function toCanonicalValueChangeRequestDto(
     candidateId: row.candidate_id,
     appliedSourceResult: row.applied_source_result,
     createdAt: row.created_at,
-    updatedAt: row.updated_at
+    updatedAt: row.updated_at,
+    action: row.action
   };
 }
 
@@ -198,6 +205,18 @@ export async function submitCanonicalValueChange(
     if (source.rows.length !== 1) throw new ApiError("NOT_FOUND", "Prepared source draft was not found.");
     const configSetId = source.rows[0]!.config_set_id;
     if (input.assignedToUserId !== undefined && input.assignedToUserId !== null) {
+      // Lock the selected reviewer before checking eligibility so a concurrent
+      // role revoke cannot commit between the check and request insertion.
+      const lockedUserId = await lockUserById(tx, {
+        organizationId: auth.organization.id,
+        userId: input.assignedToUserId
+      });
+      if (!lockedUserId) {
+        throw new ApiError("VALIDATION_FAILED", "The assigned reviewer is not an active project software committer.", {
+          assignedToUserId: input.assignedToUserId,
+          projectId: input.projectId
+        });
+      }
       const eligible = await hasEligibleWorkflowAssignee(tx, {
         organizationId: auth.organization.id,
         projectId: input.projectId,
@@ -208,6 +227,17 @@ export async function submitCanonicalValueChange(
         throw new ApiError("VALIDATION_FAILED", "The assigned reviewer is not an active project software committer.", {
           assignedToUserId: input.assignedToUserId,
           projectId: input.projectId
+        });
+      }
+    } else {
+      const eligible = await listEligibleWorkflowAssignees(tx, {
+        organizationId: auth.organization.id,
+        projectId: input.projectId
+      });
+      if (eligible.softwareCommitters.length === 0) {
+        throw new ApiError("VALIDATION_FAILED", "An active project software committer is required when no reviewer is selected.", {
+          projectId: input.projectId,
+          roleId: "software-committer"
         });
       }
     }
@@ -229,7 +259,7 @@ export async function submitCanonicalValueChange(
         draftId: input.draftId
       });
     }
-    if (draft.action !== "set" || !draft.source_pin_id || !draft.candidate_id
+    if (!draft.source_pin_id || !draft.candidate_id
       || !draft.candidate_base_digest || !draft.candidate_proposed_digest || !draft.candidate_diff_digest
       || !draft.candidate_member_manifest || !draft.candidate_binding_manifest) {
       throw new ApiError("VALIDATION_FAILED", "Only a prepared source draft can be submitted for review.", {
@@ -318,44 +348,65 @@ export async function reviewCanonicalValueChange(
   });
   await requireOwnedProject(db, auth, input.projectId);
 
-  const visibleRequest = await getCanonicalValueChangeRequest(db, {
-    organizationId: auth.organization.id,
-    projectId: input.projectId,
-    requestId: input.requestId
-  });
-  if (!visibleRequest) {
-    throw new ApiError("NOT_FOUND", "Parameter change request was not found.", {
-      requestId: input.requestId
-    });
-  }
-  if (!canReviewParameters(auth) || !canReviewParameterStage(auth, input.projectId, CANONICAL_VALUE_REVIEW_STAGE)) {
-    await recordCanonicalPermissionRefusal(security, {
-      projectId: input.projectId, operation: `canonical value ${input.decision}`, targetType: "project-parameter-value-change-request", targetId: input.requestId,
-      details: { permission: "parameter:review" }
-    });
-    throw new ApiError(
-      "FORBIDDEN",
-      "The software review role is required to review this parameter change."
-    );
-  }
-  if ((input.decision === "approve" || input.decision === "reject") && visibleRequest.submitter_user_id === auth.user.id) {
-    await recordCanonicalPermissionRefusal(security, {
+  const requireCurrentReviewRole = async (tx: Database) => {
+    if (!canReviewParameters(auth) || !canReviewParameterStage(auth, input.projectId, CANONICAL_VALUE_REVIEW_STAGE)) {
+      await recordCanonicalPermissionRefusal(security, {
+        projectId: input.projectId, operation: `canonical value ${input.decision}`, targetType: "project-parameter-value-change-request", targetId: input.requestId,
+        details: { permission: "parameter:review" }
+      });
+      throw new ApiError(
+        "FORBIDDEN",
+        "The software review role is required to review this parameter change."
+      );
+    }
+    if (!await hasCurrentCanonicalReviewRole(tx, {
+      organizationId: auth.organization.id,
       projectId: input.projectId,
-      operation: `canonical value ${input.decision}`,
-      targetType: "project-parameter-value-change-request",
-      targetId: input.requestId,
-      details: { reason: "submitter-self-review", decision: input.decision }
-    });
-    throw new ApiError("FORBIDDEN", "The submitter cannot review their own parameter change.", {
-      requestId: input.requestId
-    });
-  }
+      userId: auth.user.id
+    })) {
+      await recordCanonicalPermissionRefusal(security, {
+        projectId: input.projectId,
+        operation: `canonical value ${input.decision}`,
+        targetType: "project-parameter-value-change-request",
+        targetId: input.requestId,
+        details: { reason: "current-review-role-required", decision: input.decision }
+      });
+      throw new ApiError("FORBIDDEN", "The software review role is required to review this parameter change.", {
+        requestId: input.requestId
+      });
+    }
+  };
 
   if (input.decision === "approve") {
-    if (!options.objectStore || !options.snapshot || !options.invocation || !options.traceId?.trim()) {
-      throw new ApiError("INTERNAL_ERROR", "Canonical source approval requires storage, snapshot and trusted invocation context.");
-    }
     return db.transaction(async (tx) => {
+      await requireCurrentReviewRole(tx);
+      // Keep the source-commit lock order: source cohort/files are locked before
+      // the request row. The owner rechecks the request under its request lock.
+      const visibleRequest = await getCanonicalValueChangeRequest(tx, {
+        organizationId: auth.organization.id,
+        projectId: input.projectId,
+        requestId: input.requestId
+      });
+      if (!visibleRequest) {
+        throw new ApiError("NOT_FOUND", "Parameter change request was not found.", {
+          requestId: input.requestId
+        });
+      }
+      if (visibleRequest.submitter_user_id === auth.user.id) {
+        await recordCanonicalPermissionRefusal(security, {
+          projectId: input.projectId,
+          operation: `canonical value ${input.decision}`,
+          targetType: "project-parameter-value-change-request",
+          targetId: input.requestId,
+          details: { reason: "submitter-self-review", decision: input.decision }
+        });
+        throw new ApiError("FORBIDDEN", "The submitter cannot review their own parameter change.", {
+          requestId: input.requestId
+        });
+      }
+      if (!options.objectStore || !options.snapshot || !options.invocation || !options.traceId?.trim()) {
+        throw new ApiError("INTERNAL_ERROR", "Canonical source approval requires storage, snapshot and trusted invocation context.");
+      }
       const applied = await commitCanonicalSourceRevision(tx, options.objectStore!, auth, options.snapshot!, {
         projectId: input.projectId,
         requestId: input.requestId,
@@ -364,11 +415,11 @@ export async function reviewCanonicalValueChange(
         refusalSink: options.refusalSink!,
         note: input.note ?? null
       });
-      if (applied.draft_id && visibleRequest.submitter_user_id) {
+      if (applied.draft_id && applied.submitter_user_id) {
         const deleted = await deleteCanonicalValueDraft(tx, {
           organizationId: auth.organization.id,
           projectId: input.projectId,
-          userId: visibleRequest.submitter_user_id,
+          userId: applied.submitter_user_id,
           draftId: applied.draft_id,
           candidateId: applied.candidate_id ?? undefined
         });
@@ -380,6 +431,7 @@ export async function reviewCanonicalValueChange(
   }
 
   return db.transaction(async (tx) => {
+    await requireCurrentReviewRole(tx);
     const request = await getCanonicalValueChangeRequestForUpdate(tx, {
       organizationId: auth.organization.id,
       projectId: input.projectId,
@@ -387,6 +439,19 @@ export async function reviewCanonicalValueChange(
     });
     if (!request) {
       throw new ApiError("NOT_FOUND", "Parameter change request was not found.", {
+        requestId: input.requestId
+      });
+    }
+
+    if (request.submitter_user_id === auth.user.id) {
+      await recordCanonicalPermissionRefusal(security, {
+        projectId: input.projectId,
+        operation: `canonical value ${input.decision}`,
+        targetType: "project-parameter-value-change-request",
+        targetId: input.requestId,
+        details: { reason: "submitter-self-review", decision: input.decision }
+      });
+      throw new ApiError("FORBIDDEN", "The submitter cannot review their own parameter change.", {
         requestId: input.requestId
       });
     }
@@ -401,17 +466,7 @@ export async function reviewCanonicalValueChange(
         status: request.status
       });
     }
-    if (request.action !== "set") {
-      throw new ApiError("VALIDATION_FAILED", "Only a set change can be applied.", {
-        requestId: input.requestId,
-        action: request.action
-      });
-    }
-
     if (input.decision === "reject") {
-      if (!canReviewParameters(auth)) {
-        throw new ApiError("FORBIDDEN", "Parameter review permission is required.");
-      }
       const rejected = await markCanonicalValueChangeRequestReviewed(tx, {
         organizationId: auth.organization.id,
         projectId: input.projectId,

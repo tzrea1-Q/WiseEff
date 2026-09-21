@@ -27,6 +27,8 @@ import {
   loadProjectValueById,
   requiresCanonicalSourceImport as queryCanonicalSourceImport,
   discoverCurrentSourceRevisionPins as queryCurrentSourceRevisionPins,
+  discoverDeletedSourceRevisionPins as queryDeletedSourceRevisionPins,
+  loadDeletedSourceAnchors as queryDeletedSourceAnchors,
   loadSourceBindingCohort as querySourceBindingCohort,
   loadOwnedProjectValueSourcePin as queryOwnedProjectValueSourcePin,
   isCurrentGovernedSourceValue as queryCurrentGovernedSourceValue,
@@ -85,10 +87,29 @@ export async function discoverCurrentSourceRevisionPins(tx: Queryable, input: { 
   return queryCurrentSourceRevisionPins(tx,input);
 }
 
+export async function discoverDeletedSourceRevisionPins(tx: Queryable, input: { organizationId: string; projectId: string; configSetId: string }) {
+  assertSourceReadScope(input);
+  if (!controlFree(input.configSetId)) throw new ApiError("CONFLICT", "Source configuration identity is invalid.");
+  return queryDeletedSourceRevisionPins(tx,input);
+}
+
+export async function loadDeletedSourceAnchors(tx: Queryable, input: { organizationId: string; projectId: string; configSetId: string }) {
+  assertSourceReadScope(input);
+  if (!controlFree(input.configSetId)) throw new ApiError("CONFLICT", "Source configuration identity is invalid.");
+  return queryDeletedSourceAnchors(tx,input);
+}
+
 export async function loadSourceBindingCohort(tx: Queryable, input: { organizationId: string; projectId: string; configSetId: string }) {
   assertSourceReadScope(input);
   if (!controlFree(input.configSetId)) throw new ApiError("CONFLICT", "Source configuration identity is invalid.");
   return querySourceBindingCohort(tx,input);
+}
+
+export async function hasDeletedCurrentValue(tx: Queryable, input: { organizationId: string; projectId: string; bindingId: string }) {
+  assertSourceReadScope(input);
+  const binding = await loadBindingById(tx as ValueClient, input.bindingId, "none");
+  if (!binding || binding.organization_id !== input.organizationId || binding.project_id !== input.projectId) return false;
+  return (await loadProjectValueById(tx as ValueClient, binding.current_value_id))?.value_state === "deleted";
 }
 
 export async function loadOwnedProjectValueSourcePin(tx: Queryable, input: { organizationId: string; projectId: string; bindingId: string; projectValueId: string }) {
@@ -162,6 +183,12 @@ const validateAppendCommand = (
   if (!controlFree(command.expectedTip)) {
     return fail({ kind: "invalid-command", reason: "expectedTip" });
   }
+  if (command.valueState === "deleted" && !command.sourceCommit) {
+    return fail({ kind: "invalid-command", reason: "deleted-source-commit-required" });
+  }
+  if (command.valueState !== undefined && command.valueState !== "present" && command.valueState !== "deleted") {
+    return fail({ kind: "invalid-command", reason: "valueState" });
+  }
   if (
     command.source.sourceRef === IDENTITY_PLACEHOLDER_SOURCE ||
     command.source.configRevisionId === IDENTITY_PLACEHOLDER_SOURCE
@@ -196,6 +223,7 @@ const toProjectValue = (row: ProjectValueRow): ProjectValue => ({
   },
   valueDigest: row.value_digest,
   payload: decodePayload(row.value_kind, row.value),
+  valueState: row.value_state,
   createdAt: createdAtIso(row.created_at),
 });
 
@@ -321,24 +349,37 @@ const writeAppend = async (
   if (!agreed.ok) return agreed;
   const revision = agreeRevision(command, stored);
   if (!revision.ok) return revision;
-  if (command.sourceCommit) {
-    const request = await client.query(`select id from public.project_parameter_value_change_requests
-      where id=$1 and organization_id=$2 and project_id=$3 and status='pending'
-        and candidate_binding_manifest @> $4::jsonb`,
-    [command.sourceCommit.requestId,stored.organization_id,stored.project_id,
-      JSON.stringify([{ bindingId: stored.id,oldValueId: command.expectedTip }])]);
-    if (request.rows.length !== 1) return fail({ kind: "invalid-command", reason: "source-commit-cohort" });
-  }
-
   const expected = await loadProjectValueById(client, command.expectedTip);
+  if (expected?.value_state === "deleted") {
+    return fail({ kind: "invalid-command", reason: "deleted-value-is-terminal" });
+  }
   if (expected && expected.binding_id !== stored.id) {
     return fail({
-      kind: "source-conflict",
-      reason: "cross-binding",
-      bindingId: ParameterBindingId(stored.id),
-      existingSourceRef: expected.source_ref,
-      attemptedSourceRef: command.source.sourceRef,
+      kind: "source-conflict", reason: "cross-binding", bindingId: ParameterBindingId(stored.id),
+      existingSourceRef: expected.source_ref, attemptedSourceRef: command.source.sourceRef,
     });
+  }
+  if (command.sourceCommit) {
+    const request = await client.query(`select request.id from public.project_parameter_value_change_requests request
+      join parameter_catalog.project_value_source_pins base_pin on base_pin.id=request.source_pin_id
+        and base_pin.binding_id=request.binding_id and base_pin.project_value_id=request.base_current_value_id
+        and base_pin.organization_id=request.organization_id and base_pin.project_id=request.project_id
+        and base_pin.config_revision_id=request.config_revision_id and base_pin.value_state='present'
+      where request.id=$1 and request.organization_id=$2 and request.project_id=$3 and request.status='pending'
+        and request.candidate_binding_manifest @> $4::jsonb
+        and $5::boolean = (request.binding_id <> $6)
+        and ($5 or request.base_current_value_id=$7)
+        and $8 = case when request.binding_id=$6 and request.action='delete' then 'deleted' else 'present' end`,
+    [command.sourceCommit.requestId,stored.organization_id,stored.project_id,
+      JSON.stringify([{ bindingId: stored.id,oldValueId: command.expectedTip }]),
+      command.sourceCommit.derived,stored.id,command.expectedTip,command.valueState ?? "present"]);
+    if (request.rows.length !== 1) {
+      if (stored.current_value_id !== command.expectedTip) return fail({
+        kind: "cas-mismatch", bindingId: ParameterBindingId(stored.id),
+        expectedTip: command.expectedTip, actualTip: ProjectValueId(stored.current_value_id),
+      });
+      return fail({ kind: "invalid-command", reason: "source-commit-cohort" });
+    }
   }
 
   const ownedSources = await loadOwnedSourceRefs(client, stored.id);
@@ -359,6 +400,10 @@ const writeAppend = async (
     valueJson = JSON.stringify(command.payload.value);
   } catch {
     return fail({ kind: "invalid-command", reason: "payload" });
+  }
+
+  if (command.sourceCommit?.derived && (expected?.value_kind !== command.payload.kind || expected.value_digest !== valueDigest)) {
+    return fail({ kind: "invalid-command", reason: "source-propagation-value-changed" });
   }
 
   if (stored.source_occurrence_id && !command.sourceCommit && expected?.source_ref !== IDENTITY_PLACEHOLDER_SOURCE) {
@@ -409,6 +454,7 @@ const writeAppend = async (
     valueDigest,
     valueKind: command.payload.kind,
     valueJson,
+    valueState: command.valueState ?? "present",
   });
   const storedValue = inserted ?? (await loadProjectValueById(client, valueId));
   if (!storedValue) {

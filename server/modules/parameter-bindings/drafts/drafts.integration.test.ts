@@ -46,6 +46,7 @@ import type { ConfigRevisionManifest } from "../../parameter-topology/types";
 import {
   asValueClient,
   exportCanonicalBindingSource,
+  findCatalogBindingRow,
   verifyCanonicalSourceReimport,
   loadPublishedCatalog,
   readCanonicalBindingChangeHistory,
@@ -284,6 +285,14 @@ describe("canonical pending value drafts", () => {
       [PROJECT, ORG]
     );
     await pool.query(
+      `insert into user_role_bindings (id, user_id, organization_id, project_id, role_id)
+       values
+         ('urb-849-admin', $1, $2, null, 'admin'),
+         ('urb-849-editor', $3, $2, $4, 'software-user'),
+         ('urb-849-reviewer', $5, $2, $4, 'software-committer')`,
+      [USER, ORG, USER, PROJECT, REVIEWER]
+    );
+    await pool.query(
       `insert into public.attribution_subjects (
          id, organization_id, subject_kind, display_name, source_key
        ) values ($1, $2, 'driver-registration', 'Acme power', 'compatible:acme,power')`,
@@ -494,9 +503,28 @@ describe("canonical pending value drafts", () => {
     expect(listed[0]!.reason).toBe("raise published input current");
     expect(listed[0]!.targetValue).toContain("2000");
 
-    const removed = await removeCanonicalValueDraft(root, editorAuth, { projectId: PROJECT, draftId });
+    const removed = await removeCanonicalValueDraft(
+      root,
+      editorAuth,
+      { projectId: PROJECT, draftId },
+      { requestId: "req-849-draft-remove" }
+    );
     expect(removed.id).toBe(draftId);
     expect(await listCanonicalValueDraftsForUser(root, editorAuth, { projectId: PROJECT })).toHaveLength(0);
+    expect(
+      (await root.query(
+        `select action, project_id, target_type, target_id, trace_id
+           from audit_events
+          where action = 'value-draft-removed' and target_id = $1`,
+        [draftId]
+      )).rows
+    ).toEqual([{
+      action: "value-draft-removed",
+      project_id: PROJECT,
+      target_type: "project-parameter-value-draft",
+      target_id: draftId,
+      trace_id: "req-849-draft-remove"
+    }]);
 
     const after = await readCurrentValue();
     expect(after.value).toEqual(1000);
@@ -557,13 +585,15 @@ describe("canonical pending value drafts", () => {
 
     const submitted = await submitChange(editorAuth, {
       projectId: PROJECT,
-      draftId: draft.id
+      draftId: draft.id,
+      assignedToUserId: REVIEWER
     });
     expect(submitted.status).toBe("pending");
     expect(submitted.draftId).toBe(draft.id);
     expect(submitted.bindingId).toBe(bindingId);
     expect(submitted.effectiveRevisionId).toBe(draft.effectiveRevisionId);
     expect(submitted.appliedValueId).toBeNull();
+    expect(submitted.assignedToUserId).toBe(REVIEWER);
 
     // Submission freezes pending work; it never writes a value.
     const after = await readCurrentValue();
@@ -577,6 +607,7 @@ describe("canonical pending value drafts", () => {
 
     changeRequestId = submitted.id;
     submittedDraftId = draft.id;
+    expect(await listCanonicalValueDraftsForUser(root, editorAuth, { projectId: PROJECT })).toEqual([]);
   });
 
   it("refuses self-approval and a non-reviewer approval", async () => {
@@ -613,12 +644,127 @@ describe("canonical pending value drafts", () => {
   });
 
   it("requires an assigned reviewer to be an active project software committer", async () => {
-    const draft = (await listCanonicalValueDraftsForUser(root,editorAuth,{ projectId: PROJECT }))[0]!;
     await expect(submitChange(editorAuth, {
       projectId: PROJECT,
-      draftId: draft.id,
+      draftId: submittedDraftId,
       assignedToUserId: "missing-or-ineligible-reviewer"
     })).rejects.toMatchObject({ code: "VALIDATION_FAILED" });
+
+    await pool.query(
+      `delete from user_role_bindings
+        where organization_id = $1 and project_id = $2 and user_id = $3 and role_id = 'software-committer'`,
+      [ORG, PROJECT, REVIEWER]
+    );
+    await expect(submitChange(editorAuth, {
+      projectId: PROJECT,
+      draftId: submittedDraftId
+    })).rejects.toMatchObject({ code: "VALIDATION_FAILED", details: { roleId: "software-committer" } });
+    await pool.query(
+      `insert into user_role_bindings (id, user_id, organization_id, project_id, role_id)
+       values ('urb-849-reviewer', $1, $2, $3, 'software-committer')`,
+      [REVIEWER, ORG, PROJECT]
+    );
+  });
+
+  it("serializes selected reviewer revocation before creating a change request", async () => {
+    const raceEditorId = "user-849-race-editor";
+    const raceEditorAuth = makeTestAuthContext({
+      userId: raceEditorId,
+      organizationId: ORG,
+      name: "Race editor",
+      email: "race-editor-849@example.com",
+      organizationName: "Draft org",
+      roles: [{ projectId: PROJECT, roleId: "software-user" }]
+    });
+    await pool.query(
+      `insert into users(id, organization_id, name, email, title, is_active)
+       values ($1, $2, 'Race editor', 'race-editor-849@example.com', 'Engineer', true)
+       on conflict (id) do nothing`,
+      [raceEditorId, ORG]
+    );
+    await pool.query(
+      `insert into user_role_bindings (id, user_id, organization_id, project_id, role_id)
+       values ('urb-849-race-editor', $1, $2, $3, 'software-user')
+       on conflict (id) do nothing`,
+      [raceEditorId, ORG, PROJECT]
+    );
+    const draft = await createPreparedDraft(root, raceEditorAuth, {
+      projectId: PROJECT,
+      bindingId,
+      action: "set",
+      targetValue: targetValue("2510"),
+      reason: "selected reviewer revocation race",
+      baseRevisionId: (await readCurrentValue()).config_revision_id
+    }, objectStore);
+    const revocation = await pool.connect();
+    let submitted: ReturnType<typeof submitChange> | undefined;
+    let revocationCommitted = false;
+    try {
+      await revocation.query("begin");
+      const pid = Number((await revocation.query<{ pid: number }>("select pg_backend_pid() as pid")).rows[0]!.pid);
+      await revocation.query(
+        `select id from users where organization_id = $1 and id = $2 for no key update`,
+        [ORG, REVIEWER]
+      );
+      await revocation.query(
+        `delete from user_role_bindings
+          where organization_id = $1 and project_id = $2 and user_id = $3 and role_id = 'software-committer'`,
+        [ORG, PROJECT, REVIEWER]
+      );
+      // The pre-fix implementation read eligibility and then waited here,
+      // leaving a window to insert the revoked reviewer after commit.
+      await revocation.query(
+        `select id from dts_config_set where organization_id = $1 and project_id = $2 for update`,
+        [ORG, PROJECT]
+      );
+
+      submitted = submitChange(raceEditorAuth, {
+        projectId: PROJECT,
+        draftId: draft.id,
+        assignedToUserId: REVIEWER
+      });
+
+      let waiting = false;
+      for (let attempt = 0; attempt < 100 && !waiting; attempt += 1) {
+        waiting = (await pool.query<{ waiting: boolean }>(
+          `select exists (
+             select 1
+               from pg_stat_activity
+              where datname = current_database()
+                and wait_event_type = 'Lock'
+                and pid <> $1
+                and $1 = any(pg_blocking_pids(pid))
+           ) as waiting`,
+          [pid]
+        )).rows[0]!.waiting;
+        if (!waiting) await delay(10);
+      }
+      expect(waiting).toBe(true);
+      await revocation.query("commit");
+      revocationCommitted = true;
+
+      await expect(submitted).rejects.toMatchObject({
+        code: "VALIDATION_FAILED",
+        details: { assignedToUserId: REVIEWER, projectId: PROJECT }
+      });
+    } finally {
+      // Release the blocker before awaiting a possibly still-blocked submit.
+      if (!revocationCommitted) await revocation.query("rollback").catch(() => undefined);
+      revocation.release();
+      if (submitted) await submitted.catch(() => undefined);
+      await pool.query(
+        `insert into user_role_bindings (id, user_id, organization_id, project_id, role_id)
+         values ('urb-849-reviewer', $1, $2, $3, 'software-committer')
+         on conflict (id) do nothing`,
+        [REVIEWER, ORG, PROJECT]
+      );
+    }
+
+    const request = await pool.query<{ count: string }>(
+      `select count(*)::text as count from project_parameter_value_change_requests where draft_id = $1`,
+      [draft.id]
+    );
+    expect(request.rows[0]!.count).toBe("0");
   });
 
   it("approves and applies through the canonical owner in one transaction", async () => {
@@ -654,6 +800,155 @@ describe("canonical pending value drafts", () => {
 
     // The applied pending work left the draft tray in the same transaction.
     expect(await listCanonicalValueDraftsForUser(root, editorAuth, { projectId: PROJECT })).toHaveLength(0);
+  });
+
+  it("checks the current database role and active state before replaying an approved request", async () => {
+    await pool.query(
+      `delete from user_role_bindings
+        where organization_id = $1 and project_id = $2 and user_id = $3 and role_id = 'software-committer'`,
+      [ORG, PROJECT, REVIEWER]
+    );
+    await expect(
+      reviewChange(reviewerAuth, {
+        projectId: PROJECT,
+        requestId: changeRequestId,
+        decision: "approve"
+      }, await reviewOptions(root, objectStore, reviewerAuth, "req-849-revoked-replay"))
+    ).rejects.toMatchObject({ code: "FORBIDDEN" });
+
+    await pool.query(
+      `insert into user_role_bindings (id, user_id, organization_id, project_id, role_id)
+       values ('urb-849-reviewer', $1, $2, $3, 'software-committer')`,
+      [REVIEWER, ORG, PROJECT]
+    );
+    await pool.query(`update users set is_active = false where organization_id = $1 and id = $2`, [ORG, REVIEWER]);
+    await expect(
+      reviewChange(reviewerAuth, {
+        projectId: PROJECT,
+        requestId: changeRequestId,
+        decision: "approve"
+      }, await reviewOptions(root, objectStore, reviewerAuth, "req-849-inactive-replay"))
+    ).rejects.toMatchObject({ code: "FORBIDDEN" });
+    await pool.query(`update users set is_active = true where organization_id = $1 and id = $2`, [ORG, REVIEWER]);
+  });
+
+  it("refuses pending approve and reject after a reviewer role is revoked from the database", async () => {
+    const draft = await createPreparedDraft(root, editorAuth, {
+      projectId: PROJECT,
+      bindingId,
+      action: "set",
+      targetValue: targetValue("2525"),
+      reason: "live role revocation",
+      baseRevisionId: (await readCurrentValue()).config_revision_id
+    }, objectStore);
+    const request = await submitChange(editorAuth, { projectId: PROJECT, draftId: draft.id });
+    const beforeValue = await readCurrentValue();
+
+    await pool.query(
+      `delete from user_role_bindings
+        where organization_id = $1 and project_id = $2 and user_id = $3 and role_id = 'software-committer'`,
+      [ORG, PROJECT, REVIEWER]
+    );
+    try {
+      await expect(
+        reviewChange(reviewerAuth, {
+          projectId: PROJECT,
+          requestId: request.id,
+          decision: "approve"
+        }, await reviewOptions(root, objectStore, reviewerAuth, "req-849-pending-revoked-approve"))
+      ).rejects.toMatchObject({ code: "FORBIDDEN" });
+      await expect(
+        reviewChange(reviewerAuth, {
+          projectId: PROJECT,
+          requestId: request.id,
+          decision: "reject"
+        }, await reviewOptions(root, objectStore, reviewerAuth, "req-849-pending-revoked-reject"))
+      ).rejects.toMatchObject({ code: "FORBIDDEN" });
+    } finally {
+      await pool.query(
+        `insert into user_role_bindings (id, user_id, organization_id, project_id, role_id)
+         values ('urb-849-reviewer', $1, $2, $3, 'software-committer')`,
+        [REVIEWER, ORG, PROJECT]
+      );
+    }
+
+    const afterValue = await readCurrentValue();
+    const afterRequest = await pool.query<{ status: string; applied_value_id: string | null }>(
+      `select status, applied_value_id
+         from project_parameter_value_change_requests
+        where id = $1`,
+      [request.id]
+    );
+    expect(afterValue).toEqual(beforeValue);
+    expect(afterRequest.rows[0]).toEqual({ status: "pending", applied_value_id: null });
+    await expect(withdrawChange(editorAuth, {
+      projectId: PROJECT,
+      requestId: request.id
+    })).resolves.toMatchObject({ status: "withdrawn" });
+  });
+
+  it("waits for a committed user deactivation before refusing a pending review", async () => {
+    const draft = await createPreparedDraft(root, editorAuth, {
+      projectId: PROJECT,
+      bindingId,
+      action: "set",
+      targetValue: targetValue("2535"),
+      reason: "serialize live role revocation",
+      baseRevisionId: (await readCurrentValue()).config_revision_id
+    }, objectStore);
+    const request = await submitChange(editorAuth, { projectId: PROJECT, draftId: draft.id });
+    const beforeValue = await readCurrentValue();
+    const options = await reviewOptions(root, objectStore, reviewerAuth, "req-849-serialized-revocation");
+    const revocation = await pool.connect();
+    let reviewPromise: ReturnType<typeof reviewChange> | undefined;
+    try {
+      await revocation.query("begin");
+      await revocation.query(
+        `update users set is_active = false where organization_id = $1 and id = $2`,
+        [ORG, REVIEWER]
+      );
+      reviewPromise = reviewChange(reviewerAuth, {
+        projectId: PROJECT,
+        requestId: request.id,
+        decision: "approve"
+      }, options);
+
+      let waiting = false;
+      for (let attempt = 0; attempt < 100 && !waiting; attempt += 1) {
+        waiting = (await pool.query(`select exists (
+          select 1
+            from pg_stat_activity
+           where datname = current_database()
+             and wait_event_type = 'Lock'
+             and query ilike '%for no key update%'
+        ) as waiting`)).rows[0]!.waiting;
+        if (!waiting) await delay(10);
+      }
+      expect(waiting).toBe(true);
+      await revocation.query("commit");
+      await expect(reviewPromise).rejects.toMatchObject({ code: "FORBIDDEN" });
+    } finally {
+      await revocation.query("rollback").catch(() => undefined);
+      revocation.release();
+      await pool.query(
+        `update users set is_active = true where organization_id = $1 and id = $2`,
+        [ORG, REVIEWER]
+      );
+    }
+
+    const afterValue = await readCurrentValue();
+    const afterRequest = await pool.query<{ status: string; applied_value_id: string | null }>(
+      `select status, applied_value_id
+         from project_parameter_value_change_requests
+        where id = $1`,
+      [request.id]
+    );
+    expect(afterValue).toEqual(beforeValue);
+    expect(afterRequest.rows[0]).toEqual({ status: "pending", applied_value_id: null });
+    await expect(withdrawChange(editorAuth, {
+      projectId: PROJECT,
+      requestId: request.id
+    })).resolves.toMatchObject({ status: "withdrawn" });
   });
 
   it("exports the exact canonical source bytes with pins, and they reimport identically", async () => {
@@ -923,5 +1218,167 @@ describe("canonical pending value drafts", () => {
       expect(row.rows[0]?.status).not.toBe("approved");
     }
     expect(submittedDraftId.length).toBeGreaterThan(0);
+  });
+
+  it("deletes a pinned DTS property through review, preserves its historical export, and fails closed on replay tampering", async () => {
+    const before = await readCurrentValue();
+    const beforeFile = (await pool.query<{ current_version_id: string }>(
+      `select current_version_id from project_parameter_files where id = (select file_id from parameter_catalog.project_parameter_source_occurrences where id = (select source_occurrence_id from parameter_catalog.project_parameter_bindings where id = $1))`,
+      [bindingId]
+    )).rows[0]!;
+    const draft = await createPreparedDraft(root, editorAuth, {
+      projectId: PROJECT,
+      bindingId,
+      action: "delete",
+      reason: "remove obsolete DTS property",
+      baseRevisionId: before.config_revision_id
+    }, objectStore);
+
+    expect((await readCurrentValue()).current_value_id).toBe(before.current_value_id);
+    const submitted = await submitChange(editorAuth, { projectId: PROJECT, draftId: draft.id });
+    expect(submitted).toMatchObject({ action: "delete", status: "pending", targetValue: "", sourceFormat: "dts" });
+    expect(await readCurrentValue()).toEqual(before);
+
+    await pool.query(`create function public.t11_fail_dts_delete_audit() returns trigger language plpgsql as $$
+      begin
+        if new.trace_id = 't11-dts-delete-audit-failure' and new.action = 'value-change-applied' then
+          raise exception 't11-injected-dts-delete-audit-failure';
+        end if;
+        return new;
+      end $$`);
+    await pool.query(`create trigger t11_fail_dts_delete_audit before insert on audit_events for each row execute function public.t11_fail_dts_delete_audit()`);
+    try {
+      await expect(reviewChange(reviewerAuth, {
+        projectId: PROJECT,
+        requestId: submitted.id,
+        decision: "approve"
+      }, { ...(await reviewOptions(root, objectStore, reviewerAuth, "t11-dts-delete-audit-failure")), traceId: "t11-dts-delete-audit-failure" })).rejects.toThrow("t11-injected-dts-delete-audit-failure");
+      expect(await readCurrentValue()).toEqual(before);
+      const rolledBack = await pool.query<{ status: string; applied_value_id: string | null }>(
+        `select status, applied_value_id from project_parameter_value_change_requests where id = $1`, [submitted.id]
+      );
+      expect(rolledBack.rows[0]).toEqual({ status: "pending", applied_value_id: null });
+      expect((await pool.query<{ current_version_id: string }>(
+        `select current_version_id from project_parameter_files where id = (select file_id from parameter_catalog.project_parameter_source_occurrences where id = (select source_occurrence_id from parameter_catalog.project_parameter_bindings where id = $1))`,
+        [bindingId]
+      )).rows[0]!.current_version_id).toBe(beforeFile.current_version_id);
+    } finally {
+      await pool.query(`drop trigger t11_fail_dts_delete_audit on audit_events`);
+      await pool.query(`drop function public.t11_fail_dts_delete_audit()`);
+    }
+
+    // A second effect at the same maximum order is ambiguous, even if both
+    // effects delete the same property. Inject it before the first source pin.
+    await pool.query(`create function public.t11_duplicate_delete_effect() returns trigger language plpgsql as $$
+      begin
+        if new.effect_kind='delete' and new.property_name='iin_max' and pg_trigger_depth()=1 then
+          insert into dts_occurrence_effects
+            (id,config_revision_id,logical_node_revision_id,property_name,effect_kind,node_occurrence_id,property_occurrence_id,source_order)
+          values (new.id || '-tied',new.config_revision_id,new.logical_node_revision_id,new.property_name,new.effect_kind,
+            new.node_occurrence_id,new.property_occurrence_id,new.source_order);
+        end if;
+        return new;
+      end $$`);
+    await pool.query(`create trigger t11_duplicate_delete_effect after insert on dts_occurrence_effects
+      for each row execute function public.t11_duplicate_delete_effect()`);
+    try {
+      await expect(reviewChange(reviewerAuth, { projectId: PROJECT, requestId: submitted.id, decision: "approve" },
+        await reviewOptions(root, objectStore, reviewerAuth, "t11-dts-delete-tied-order")))
+        .rejects.toMatchObject({ code: "CONFLICT" });
+      expect(await readCurrentValue()).toEqual(before);
+      expect((await pool.query(`select status,applied_value_id from project_parameter_value_change_requests where id=$1`, [submitted.id])).rows)
+        .toEqual([{ status: "pending", applied_value_id: null }]);
+    } finally {
+      await pool.query(`drop trigger t11_duplicate_delete_effect on dts_occurrence_effects`);
+      await pool.query(`drop function public.t11_duplicate_delete_effect()`);
+    }
+
+    const applied = await reviewChange(reviewerAuth, {
+      projectId: PROJECT,
+      requestId: submitted.id,
+      decision: "approve"
+    }, await reviewOptions(root, objectStore, reviewerAuth, "t11-dts-delete-approve"));
+    expect(applied).toMatchObject({ status: "approved", applyOutcome: "committed", action: "delete", appliedValueId: expect.any(String) });
+    const deletedValueId = applied.appliedValueId!;
+    const deleted = await pool.query<{
+      current_value_id: string; value_state: string; pin_state: string; base_source_pin_id: string;
+      delete_request_id: string; locator: Record<string, unknown>; delete_proof: Record<string, unknown>;
+    }>(`select b.current_value_id, value.value_state, pin.value_state as pin_state,
+          pin.base_source_pin_id, pin.delete_request_id, pin.locator, pin.delete_proof
+       from parameter_catalog.project_parameter_bindings b
+       join parameter_catalog.project_parameter_values value on value.id = b.current_value_id
+       join parameter_catalog.project_value_source_pins pin on pin.project_value_id = value.id and pin.binding_id = b.id
+      where b.organization_id = $1 and b.project_id = $2 and b.id = $3`, [ORG, PROJECT, bindingId]);
+    expect(deleted.rows[0]).toMatchObject({
+      current_value_id: deletedValueId,
+      value_state: "deleted",
+      pin_state: "deleted",
+      base_source_pin_id: expect.any(String),
+      delete_request_id: submitted.id,
+      locator: { kind: "dts-delete", propertyName: "iin_max", fileVersionId: expect.any(String), nodeOccurrenceId: expect.any(String) },
+      delete_proof: {
+        kind: "dts-delete-v1",
+        scannerVersion: "dts-cst-v1",
+        propertyName: "iin_max",
+        nodeOccurrenceId: expect.any(String),
+        beforeValueDigest: expect.stringMatching(/^sha256:[0-9a-f]{64}$/),
+        beforeSourceDigest: expect.stringMatching(/^sha256:[0-9a-f]{64}$/),
+        afterSourceDigest: expect.stringMatching(/^sha256:[0-9a-f]{64}$/)
+      }
+    });
+
+    const currentExport = await exportCanonicalBindingSource(root, objectStore, editorAuth, { projectId: PROJECT, bindingId, projectValueId: deletedValueId });
+    expect(currentExport).toMatchObject({ valueState: "deleted", currentValueId: deletedValueId });
+    await expect(findCatalogBindingRow(root, { organizationId: ORG, projectId: PROJECT, bindingId }))
+      .rejects.toMatchObject({ code: "CONFLICT", details: { reason: "deleted-value-is-terminal" } });
+    expect(currentExport!.files[0]!.content).toContain("/delete-property/ iin_max;");
+    expect(currentExport!.files[0]!.content).not.toContain("iin_max =");
+    const historicalExport = await exportCanonicalBindingSource(root, objectStore, editorAuth, { projectId: PROJECT, bindingId, projectValueId: before.current_value_id });
+    expect(historicalExport).toMatchObject({ valueState: "present", currentValueId: before.current_value_id });
+    expect(historicalExport!.files[0]!.content).toBe(DTS.replace("<1000>", "<2550>"));
+    expect(historicalExport!.manifest.locator).toMatchObject({ kind: "dts-property", propertyName: "iin_max" });
+
+    const currentSource = currentExport!.files[currentExport!.manifest.members.findIndex((member) => member.fileId === currentExport!.manifest.fileId)]!;
+    const storageKey = (await pool.query<{ storage_key: string }>(
+      `select storage_key from project_parameter_file_versions where id = $1`, [currentExport!.manifest.fileVersionId]
+    )).rows[0]!.storage_key;
+    const tamperedStorage = {
+      ...objectStore,
+      getBounded: async (key: string, limit: number) => key === storageKey
+        ? Buffer.from(currentSource.content.replace("/delete-property/ iin_max;", "/delete-property/ other_property;"), "utf8")
+        : objectStore.getBounded!(key, limit)
+    };
+    const replayBefore = await readCurrentValue();
+    await expect(reviewChange(reviewerAuth, {
+      projectId: PROJECT,
+      requestId: submitted.id,
+      decision: "approve"
+    }, { ...(await reviewOptions(root, objectStore, reviewerAuth, "t11-dts-delete-replay-tampered")), objectStore: tamperedStorage, traceId: "t11-dts-delete-replay-tampered" })).rejects.toMatchObject({ code: "CONFLICT" });
+    expect(await readCurrentValue()).toEqual(replayBefore);
+
+    await expect(createPreparedDraft(root, editorAuth, {
+      projectId: PROJECT,
+      bindingId,
+      action: "set",
+      targetValue: targetValue("3000"),
+      reason: "cannot revive deleted property",
+      baseRevisionId: replayBefore.config_revision_id
+    }, objectStore)).rejects.toMatchObject({ code: "CONFLICT" });
+
+    const deletedPinId = (await pool.query<{ id: string }>(
+      `select pin.id from parameter_catalog.project_value_source_pins pin where pin.project_value_id = $1 and pin.binding_id = $2`, [deletedValueId, bindingId]
+    )).rows[0]!.id;
+    const tamper = await pool.connect();
+    try {
+      await tamper.query("begin");
+      await expect(tamper.query(
+        `update parameter_catalog.project_value_source_pins
+            set delete_proof = jsonb_set(delete_proof, '{afterSourceDigest}', '"sha256:0000000000000000000000000000000000000000000000000000000000000000"'::jsonb)
+          where id = $1`, [deletedPinId]
+      )).rejects.toThrow();
+    } finally {
+      await tamper.query("rollback").catch(() => undefined);
+      tamper.release();
+    }
   });
 });

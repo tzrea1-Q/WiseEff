@@ -9,6 +9,7 @@ import {
   type AuditTx,
   type AuditedWriteContext
 } from "../audit/auditedWrite";
+import { writeTrustedGovernanceAudit } from "../parameter-topology/governanceAudit";
 import {
   notifyParameterImportCompleted,
   notifyParameterMergeCompleted,
@@ -1289,22 +1290,52 @@ export async function saveDraft(db: Queryable, auth: AuthContext, input: SaveDra
 }
 
 export async function deleteDraft(
-  db: Queryable,
+  db: Database,
   auth: AuthContext,
   draftId: string,
-  context?: { invocation: TrustedInvocationContext }
+  context?: { invocation: TrustedInvocationContext; projectId?: string; requestId?: string }
 ) {
-  requireCanEdit(auth);
+  requireCanEdit(auth, context?.projectId);
 
   const invocation = context
     ? assertTrustedInvocationMatchesAuth(auth, context.invocation, "parameter draft delete")
     : createUserInvocation(auth);
   const attribution = trustedDomainAttribution(invocation);
 
-  await deleteDraftRow(db, {
-    organizationId: auth.organization.id,
-    owner: attribution,
-    draftId
+  await db.transaction(async (tx) => {
+    const removedProjectId = await deleteDraftRow(tx, {
+      organizationId: auth.organization.id,
+      ...(context?.projectId === undefined ? {} : { projectId: context.projectId }),
+      owner: attribution,
+      draftId
+    });
+    if (!removedProjectId) {
+      if (context?.projectId !== undefined) {
+        throw new ApiError("NOT_FOUND", "Parameter draft was not found for this project.", {
+          projectId: context.projectId,
+          draftId
+        });
+      }
+      return;
+    }
+    requireCanEdit(auth, removedProjectId);
+
+    await writeTrustedGovernanceAudit(
+      asAuditTx(tx),
+      invocation,
+      {
+        action: "value-draft-removed",
+        organizationId: auth.organization.id,
+        projectId: removedProjectId,
+        targetType: "project-parameter-value-draft",
+        targetId: draftId,
+        metadata: {
+          draftId,
+          writeTargetRole: "legacy-parameter-value-draft"
+        }
+      },
+      context?.requestId ?? randomUUID()
+    );
   });
 }
 

@@ -104,6 +104,26 @@ const publishedConfigurationSchemaSubject = (
   return { subjectId: matched.subject.id, subjectKind: "configuration-schema" };
 };
 
+/**
+ * Keep the reviewed mixed source manifest stable when callers enumerate files
+ * in a different order. Unknown DTS files retain their input order so partial
+ * fixtures remain valid; the reviewed charging overlay and JSON member keep
+ * their semantic positions.
+ */
+export const orderSeedSourceFiles = <T extends SeedSourceFile>(
+  files: readonly T[],
+): T[] => files
+  .map((file, index) => ({ file, index }))
+  .sort((left, right) => {
+    const rank = (file: SeedSourceFile): number => {
+      if (file.format === "json") return 2;
+      if (file.name === "charging-thermal.dts") return 1;
+      return 0;
+    };
+    return rank(left.file) - rank(right.file) || left.index - right.index;
+  })
+  .map(({ file }) => file);
+
 const seedMemberRole = (
   file: SeedSourceFile,
   dtsSeen: { count: number },
@@ -258,7 +278,7 @@ async function materializeSeedSourcesLocked(
     const dtsSeen = { count: 0 };
     const jsonFiles: Array<{ file: SeedSourceFile; fileId: string; fileVersionId: string }> = [];
 
-    for (const file of projectSources.files) {
+    for (const file of orderSeedSourceFiles(projectSources.files)) {
       const uploaded = await uploadProjectParameterFile(root, objectStore, auth, {
         projectId: target.projectId,
         fileName: file.name,

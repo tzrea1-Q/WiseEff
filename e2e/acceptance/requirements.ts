@@ -909,6 +909,12 @@ export const acceptanceRequirements: AcceptanceRequirement[] = [
     required: true
   },
   {
+    id: "PARAM-CANONICAL-VALUE-WORKFLOW-001",
+    workflow: "B",
+    title: "Canonical property edits and deletions stay pending until independent single-stage software approval; withdrawal, rejection, source/history persistence and restart preserve exact identities.",
+    required: true
+  },
+  {
     id: "PARAM-DRAFT-REMOVE-001",
     workflow: "B",
     title: "Removing a draft from the tray deletes it on the server: it stays gone after a page reload.",

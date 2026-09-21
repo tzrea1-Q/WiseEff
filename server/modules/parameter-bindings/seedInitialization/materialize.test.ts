@@ -19,7 +19,7 @@ import { jsonCatalogReleaseSource } from "../../catalog-kernel/interface";
 import { installPublishedRelease } from "../../catalog-kernel/install/installer";
 import { CatalogSubjectId } from "../../parameter-catalog-contract/index";
 import { executeRegistration } from "../../parameter-governance/registration/service";
-import { materializeSeedSources, type SeedProjectSources } from "./materialize";
+import { materializeSeedSources, orderSeedSourceFiles, type SeedProjectSources } from "./materialize";
 import { getSeedInitializationRun, recordSeedInitializationRun } from "./plan";
 import {
   createEphemeralTestDatabase,
@@ -147,6 +147,32 @@ describe("seed source materialization", () => {
       "admin:access",
       "parameter:file-admin"
     ]
+  });
+
+  it("keeps canonical roles and entry order stable when seed files arrive permuted", () => {
+    const files = [
+      { name: "power-config.json", format: "json" as const, content: "{}" },
+      { name: "charging-thermal.dts", format: "dts" as const, content: "/dts-v1/;" },
+      { name: "board.dts", format: "dts" as const, content: "/dts-v1/;" },
+    ];
+
+    expect(orderSeedSourceFiles(files).map((file) => file.name)).toEqual([
+      "board.dts",
+      "charging-thermal.dts",
+      "power-config.json",
+    ]);
+    expect(orderSeedSourceFiles(files.slice().reverse()).map((file) => file.name)).toEqual([
+      "board.dts",
+      "charging-thermal.dts",
+      "power-config.json",
+    ]);
+    expect(orderSeedSourceFiles([
+      files[0]!,
+      files[1]!,
+    ]).map((file) => file.name)).toEqual([
+      "charging-thermal.dts",
+      "power-config.json",
+    ]);
   });
 
   beforeAll(async () => {

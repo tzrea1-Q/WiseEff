@@ -46,6 +46,7 @@ export const createCanonicalDraftTraySource = (
       projectId,
       (listed.items ?? []).map((draft) => ({
         ...draft,
+        action: draft.action as "set" | "delete",
         sourceFormat: draft.sourceFormat === "json" || draft.sourceFormat === "dts" ? draft.sourceFormat : undefined
       }))
     );

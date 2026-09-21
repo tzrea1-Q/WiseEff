@@ -23,6 +23,7 @@ export type CanonicalPendingDraft = {
   readonly targetValue: string;
   readonly sourceFormat?: "dts" | "json";
   readonly sourceTarget?: { format: "json"; sourceText: string };
+  readonly action?: "set" | "delete";
   readonly baseRevisionId: string;
   readonly sourcePinId?: string | null;
   readonly candidateId?: string | null;
@@ -54,7 +55,7 @@ export function canonicalDraftsToTrayDrafts(
     targetValue: draft.targetValue,
     reason: draft.reason,
     updatedAt: draft.updatedAt,
-    action: "set",
+    action: draft.action ?? "set",
     projectParameterBindingId: draft.bindingId,
     candidateConfigRevisionId: draft.baseRevisionId,
     ...(draft.sourceFormat ? { sourceFormat: draft.sourceFormat } : {}),

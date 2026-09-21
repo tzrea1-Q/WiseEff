@@ -60,6 +60,11 @@ type OwnedWriter = {
   phase?: boolean;
 };
 
+type DiscoveredOwnedWriters = {
+  current: OwnedWriter[];
+  retired: OwnedWriter[];
+};
+
 type RootTakeoverRecord = {
   runRoot: string;
   runId: string;
@@ -106,14 +111,18 @@ export async function finalizeGate0UploadSnapshot(
   let records = loadRootTakeoverRecords(runsRoot, { allowUnpublishedNestedManifest: true });
   const descriptors = records.flatMap((record) => record.descriptor ? [record.descriptor] : []);
   await assertOwnersExited(records, options.stopOptions);
+  const initialDiscovery = discoverOwnedWriters(records);
+  await assertRetiredWritersExited(initialDiscovery.retired, options.stopOptions);
   const initialWriters = uniqueOwnedWriters([
     ...phaseWriters(descriptors),
-    ...discoverOwnedWriters(records),
+    ...initialDiscovery.current,
   ]);
   await preflightWriterIdentities(initialWriters, options.stopOptions);
   await stopPhaseWriters(initialWriters.filter((writer) => writer.phase), options);
   const refreshedRecords = loadRootTakeoverRecords(runsRoot, { allowUnpublishedNestedManifest: true });
-  const writers = discoverOwnedWriters(refreshedRecords);
+  const refreshedDiscovery = discoverOwnedWriters(refreshedRecords);
+  await assertRetiredWritersExited(refreshedDiscovery.retired, options.stopOptions);
+  const writers = refreshedDiscovery.current;
   await preflightWriterIdentities(writers, options.stopOptions);
   for (const writer of writers) {
     throwIfAborted(options.signal);
@@ -360,13 +369,12 @@ async function preflightWriterIdentities(
 }
 
 function discoverOwnedWriters(records: readonly RootTakeoverRecord[]) {
-  const writers: OwnedWriter[] = [];
+  const currentWriters: OwnedWriter[] = [];
+  const retiredWriters: OwnedWriter[] = [];
   for (const record of records) {
     const launches = settledProcessLaunches(record);
     const launchLabels = new Set(launches.map((launch) => launch.label));
-    if (launchLabels.size !== launches.length) {
-      throw new Error("Gate0 process launch ledger contains a duplicate declared label.");
-    }
+    const launchGroups = launchGroupsByLabel(launches);
     for (const launch of launches) {
       if (launch.state === "rejected") {
         throw new Error(`Gate0 process launch ${launch.launchId} was rejected during owner rollback; refusing upload.`);
@@ -378,14 +386,44 @@ function discoverOwnedWriters(records: readonly RootTakeoverRecord[]) {
       if (launch.state !== "claimed" || !launch.launcherPid || !launch.launcherProcessIdentity) {
         throw new Error(`Gate0 process launch ${launch.launchId} did not publish a safe launcher identity.`);
       }
-      assertLaunchMatchesDeclaredWriter(record, launch);
-      writers.push({
+    }
+    const retiredLaunchIds = new Set<string>();
+    if (existsSync(record.nestedRuntimeManifest)) {
+      const manifest = readNestedRuntimeManifest(record.nestedRuntimeManifest);
+      for (const child of manifest.children) {
+        if (!child.apiProcessReplacements?.length) continue;
+        const label = `nested:${child.id}:api`;
+        const group = launchGroups.find((candidate) => candidate[0]?.label === label);
+        if (!group) {
+          throw new Error(`Gate0 nested API launch history for ${child.id} is missing from the launch ledger.`);
+        }
+      }
+    }
+    for (const group of launchGroups) {
+      if (group.length === 1 && !hasNestedApiReplacementChain(record, group[0]?.label)) continue;
+      const classified = classifyNestedApiReplacementLaunches(record, group);
+      for (const launch of classified.retired) retiredLaunchIds.add(launch.launchId);
+    }
+    for (const launch of launches) {
+      if (launch.state === "aborted") {
+        continue;
+      }
+      if (!launch.launcherPid || !launch.launcherProcessIdentity) {
+        throw new Error(`Gate0 process launch ${launch.launchId} did not publish a safe launcher identity.`);
+      }
+      const writer = {
         label: `supervised ${launch.label}`,
         pid: launch.launcherPid,
         processIdentity: launch.launcherProcessIdentity,
         phase: launch.label === `root:${record.runId}:visual` ||
           launch.label === `root:${record.runId}:browser`,
-      });
+      } satisfies OwnedWriter;
+      if (retiredLaunchIds.has(launch.launchId)) {
+        retiredWriters.push(writer);
+        continue;
+      }
+      assertLaunchMatchesDeclaredWriter(record, launch);
+      currentWriters.push(writer);
     }
     if (record.descriptor) {
       for (const phaseName of ["visual", "browser"] as const) {
@@ -396,7 +434,7 @@ function discoverOwnedWriters(records: readonly RootTakeoverRecord[]) {
           throw new Error(`Gate0 ${phaseName} phase launch lacks a supervised process-start identity; refusing upload.`);
         }
       }
-      writers.push(
+      currentWriters.push(
         writerFromRootDescriptor(record.descriptor, "api"),
         writerFromRootDescriptor(record.descriptor, "frontend"),
       );
@@ -411,7 +449,7 @@ function discoverOwnedWriters(records: readonly RootTakeoverRecord[]) {
         if (!processRecord.pid) {
           throw new Error(`Root provisioning ${record.runId} ${label} writer PID is missing.`);
         }
-        writers.push({
+        currentWriters.push({
           label: `root provisioning ${record.runId} ${label}`,
           pid: processRecord.pid,
           processIdentity: processRecord.processIdentity,
@@ -436,8 +474,8 @@ function discoverOwnedWriters(records: readonly RootTakeoverRecord[]) {
             throw new Error(`Nested runtime ${child.id} ${label} has unresolved writer identity because its process state and identity are inconsistent; refusing upload.`);
           }
         }
-        writers.push(...writerFromNestedProcess(child.id, "api", child.apiPid, child.apiProcessIdentity));
-        writers.push(...writerFromNestedProcess(
+        currentWriters.push(...writerFromNestedProcess(child.id, "api", child.apiPid, child.apiProcessIdentity));
+        currentWriters.push(...writerFromNestedProcess(
           child.id,
           "frontend",
           child.frontendPid,
@@ -446,9 +484,94 @@ function discoverOwnedWriters(records: readonly RootTakeoverRecord[]) {
       }
     }
     const failurePath = path.join(record.runRoot, "provision-failure.json");
-    if (existsSync(failurePath)) writers.push(...writersFromProvisionFailure(failurePath, record));
+    if (existsSync(failurePath)) currentWriters.push(...writersFromProvisionFailure(failurePath, record));
   }
-  return uniqueOwnedWriters(writers);
+  return { current: currentWriters, retired: retiredWriters } satisfies DiscoveredOwnedWriters;
+}
+
+function hasNestedApiReplacementChain(record: RootTakeoverRecord, label: string | undefined) {
+  if (!label?.startsWith("nested:") || !label.endsWith(":api") || !existsSync(record.nestedRuntimeManifest)) return false;
+  const manifest = readNestedRuntimeManifest(record.nestedRuntimeManifest);
+  return manifest.children.some((child) => `nested:${child.id}:api` === label && (child.apiProcessReplacements?.length ?? 0) > 0);
+}
+
+function launchGroupsByLabel(
+  launches: readonly ReturnType<typeof settledProcessLaunches>[number][],
+) {
+  const groups = new Map<string, ReturnType<typeof settledProcessLaunches>>();
+  for (const launch of launches) groups.set(launch.label, [...(groups.get(launch.label) ?? []), launch]);
+  return [...groups.values()];
+}
+
+function classifyNestedApiReplacementLaunches(
+  record: RootTakeoverRecord,
+  launches: readonly ReturnType<typeof settledProcessLaunches>[number][],
+) {
+  const manifest = existsSync(record.nestedRuntimeManifest)
+    ? readNestedRuntimeManifest(record.nestedRuntimeManifest)
+    : undefined;
+  const child = manifest?.children.find((entry) => `nested:${entry.id}:api` === launches[0]?.label);
+  const replacements = child?.apiProcessReplacements ?? [];
+  if (!child || replacements.length === 0) {
+    throw new Error(`Gate0 process launch ledger contains an unregistered duplicate label ${launches[0]?.label ?? "unknown"}.`);
+  }
+  if (!child.apiProcessIdentity) {
+    throw new Error(`Gate0 nested API launch history for ${child.id} lacks its current process identity.`);
+  }
+  const expected = [replacements[0]!.previous, ...replacements.map((entry) => entry.replacement)];
+  const expectedKeys = expected.map(nestedProcessIdentityKey);
+  if (new Set(expectedKeys).size !== expectedKeys.length || launches.length !== expected.length) {
+    throw new Error(`Gate0 nested API launch history for ${child.id} is incomplete or ambiguous.`);
+  }
+  const seen = new Set<string>();
+  const retired: Array<{ launchId: string; writer: OwnedWriter }> = [];
+  let current: OwnedWriter | undefined;
+  for (const launch of launches) {
+    if (!launch.launcherPid || !launch.launcherProcessIdentity) {
+      throw new Error(`Gate0 process launch ${launch.launchId} did not publish a safe launcher identity.`);
+    }
+    const expectedIdentity = expected.find((identity) =>
+      identity.pid === launch.launcherPid && sameProcessStartIdentity(identity, launch.launcherProcessIdentity));
+    if (!expectedIdentity) {
+      throw new Error(`Gate0 nested API launch ${launch.launchId} is not registered in its replacement chain.`);
+    }
+    const key = nestedProcessIdentityKey(expectedIdentity);
+    if (seen.has(key)) {
+      throw new Error(`Gate0 nested API launch history for ${child.id} repeats a process identity.`);
+    }
+    seen.add(key);
+    const writer = {
+      label: `supervised ${launch.label}`,
+      pid: launch.launcherPid,
+      processIdentity: launch.launcherProcessIdentity,
+    } satisfies OwnedWriter;
+    if (key === nestedProcessIdentityKey(child.apiProcessIdentity)) current = writer;
+    else retired.push({ launchId: launch.launchId, writer });
+  }
+  if (seen.size !== expected.length || !current) {
+    throw new Error(`Gate0 nested API launch history for ${child.id} lacks its current process identity.`);
+  }
+  return { current, retired };
+}
+
+function nestedProcessIdentityKey(identity: NestedRuntimeProcessIdentity) {
+  return `${identity.pid}:${identity.port}:${identity.startToken}:${identity.commandSha256}`;
+}
+
+async function assertRetiredWritersExited(
+  writers: readonly OwnedWriter[],
+  stopOptions: StopOwnedProcessGroupOptions = {},
+) {
+  const processGroupExists = stopOptions.processGroupExists ?? defaultProcessGroupExists;
+  const readIdentity = stopOptions.readProcessIdentity ?? readProcessStartIdentity;
+  for (const writer of writers) {
+    if (!(await processGroupExists(writer.pid))) continue;
+    const current = readIdentity(writer.pid);
+    if (!current || !sameProcessStartIdentity(writer.processIdentity, current)) {
+      throw new Error(`${writer.label} historical process-start identity is unknown or changed; refusing upload.`);
+    }
+    throw new Error(`${writer.label} historical process incarnation is still alive; refusing upload.`);
+  }
 }
 
 function assertLaunchMatchesDeclaredWriter(

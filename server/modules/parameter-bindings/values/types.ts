@@ -17,6 +17,10 @@ export type CanonicalValueSourcePin = {
   configurationSchemaSubjectId: string | null; rootPointer: string | null;
   entryFile: string | null; includeSearchPaths: string[]; overlayOrder: string[];
   locator: Record<string, ContractJsonValue>;
+  valueState: "present" | "deleted";
+  baseSourcePinId: string | null;
+  deleteRequestId: string | null;
+  deleteProof: Record<string, ContractJsonValue> | null;
 };
 
 export type CanonicalSourceBindingPin = {
@@ -56,6 +60,7 @@ export type ProjectValue = {
   readonly source: ProjectValueSource;
   readonly valueDigest: string;
   readonly payload: ProjectValuePayload;
+  readonly valueState: "present" | "deleted";
   readonly createdAt: string;
 };
 
@@ -65,6 +70,7 @@ export type AppendProjectValueCommand = {
   readonly definitionRevisionId: DefinitionRevisionId;
   readonly source: ProjectValueSource;
   readonly payload: ProjectValuePayload;
+  readonly valueState?: "present" | "deleted";
   readonly expectedTip: ProjectValueId;
   /** Internal approved source batch; the request freezes this Binding/base tip. */
   readonly sourceCommit?: { readonly requestId: string; readonly auditRef: string; readonly derived: boolean };

@@ -76,6 +76,7 @@ export type DtsParameterWorkbenchProps = {
     bindingId: string;
     rawValue: string;
     reason: string;
+    action?: "set" | "delete";
   }) => Promise<BindingEditValidation>;
   /** Opens node enablement edit for the given logical node id. */
   onEditNodeEnablement?: (logicalNodeId: string) => void;
@@ -810,7 +811,8 @@ export function DtsParameterWorkbench({
               ...current,
               [bindingId]: {
                 rawValue: patch.rawValue ?? current[bindingId]?.rawValue ?? "",
-                reason: patch.reason ?? current[bindingId]?.reason ?? ""
+                reason: patch.reason ?? current[bindingId]?.reason ?? "",
+                action: patch.action ?? current[bindingId]?.action
               }
             }));
           }}

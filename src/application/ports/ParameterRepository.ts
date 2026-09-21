@@ -42,6 +42,11 @@ export type ParameterDraftDto = {
   parameterId: string;
   targetValue: string;
   action?: "set" | "delete";
+  sourceFormat?: "dts" | "json";
+  sourceTarget?: { format: "json"; sourceText: string };
+  baseRevisionId?: string;
+  sourcePinId?: string | null;
+  candidateId?: string | null;
   reason: string;
   updatedAt: string;
   /** Semantic binding identity for topology-aware drafts. */

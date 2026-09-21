@@ -900,6 +900,45 @@ export async function hasEligibleWorkflowAssignee(
   return result.rows.length > 0;
 }
 
+/**
+ * Resolve canonical software-review authority from current database state.
+ * Locking the user row first matches the users role/activation mutation seam:
+ * a revocation committed first is observed here, while an already-authorized
+ * review may finish before the revocation transaction obtains that lock.
+ */
+export async function hasCurrentCanonicalReviewRole(
+  db: Queryable,
+  input: { organizationId: string; projectId: string; userId: string }
+) {
+  const user = await db.query<{ id: string; is_active: boolean }>(
+    `
+    select id, is_active
+      from users
+     where organization_id = $1 and id = $2
+     for no key update
+    `,
+    [input.organizationId, input.userId]
+  );
+  if (user.rows.length !== 1 || !user.rows[0]!.is_active) return false;
+
+  const roles = await db.query<{ project_id: string | null; role_id: BackendRoleId }>(
+    `
+    select project_id, role_id
+      from user_role_bindings
+     where organization_id = $1
+       and user_id = $2
+       and role_id in ('admin', 'software-committer')
+       and (project_id = $3 or (role_id = 'admin' and project_id is null))
+    `,
+    [input.organizationId, input.userId, input.projectId]
+  );
+  return roles.rows.some(
+    (row) =>
+      (row.role_id === "admin" && row.project_id === null) ||
+      (row.role_id === "software-committer" && row.project_id === input.projectId)
+  );
+}
+
 export async function listEligibleWorkflowAssignees(
   db: Queryable,
   input: { organizationId: string; projectId: string },

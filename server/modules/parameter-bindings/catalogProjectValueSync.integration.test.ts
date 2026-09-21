@@ -181,6 +181,11 @@ describe("published catalog project values", () => {
       [USER, ORG],
     );
     await pool.query(
+      `insert into user_role_bindings(id,user_id,organization_id,project_id,role_id)
+       values ('t11-sync-admin-role',$1,$2,null,'admin')`,
+      [USER, ORG],
+    );
+    await pool.query(
       `insert into public.projects (id, organization_id, name, code, status)
        values ($1, $2, 'Minimal upgrade', 'MINV', 'initialized')`,
       [PROJECT, ORG],
@@ -539,6 +544,11 @@ describe("published catalog project values", () => {
       prepared.proposedDigest,prepared.diffDigest,JSON.stringify(prepared.members),JSON.stringify(prepared.bindings),binding.id]);
     const reviewer = makeTestAuthContext({ userId: "reviewer-t11-dts",organizationId: ORG,permissions: ["parameter:view","parameter:edit","parameter:review"] });
     await pool.query(`insert into users(id,organization_id,name,title,is_active) values ($1,$2,'Reviewer','Admin',true)`, [reviewer.user.id,ORG]);
+    await pool.query(
+      `insert into user_role_bindings(id,user_id,organization_id,project_id,role_id)
+       values ('t11-sync-reviewer-role',$1,$2,$3,'software-committer')`,
+      [reviewer.user.id, ORG, PROJECT],
+    );
     const snapshot = await loadPublishedCatalog(pool);
     if (!snapshot) throw new Error("Published fixture is unavailable");
     // A newer external parse is not the approved request's continuity baseline.
