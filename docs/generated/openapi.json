@@ -18282,6 +18282,13 @@
                   "null"
                 ]
               },
+              "action": {
+                "type": "string",
+                "enum": [
+                  "set",
+                  "delete"
+                ]
+              },
               "targetValue": {
                 "type": "string"
               },
@@ -18339,6 +18346,7 @@
               "definitionId",
               "effectiveRevisionId",
               "currentValueId",
+              "action",
               "targetValue",
               "sourceFormat",
               "baseRevisionId",
@@ -18449,6 +18457,13 @@
                     "null"
                   ]
                 },
+                "action": {
+                  "type": "string",
+                  "enum": [
+                    "set",
+                    "delete"
+                  ]
+                },
                 "targetValue": {
                   "type": "string"
                 },
@@ -18506,6 +18521,7 @@
                 "definitionId",
                 "effectiveRevisionId",
                 "currentValueId",
+                "action",
                 "targetValue",
                 "sourceFormat",
                 "baseRevisionId",
@@ -18587,6 +18603,16 @@
                     "null"
                   ]
                 },
+                "valueState": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "enum": [
+                    "present",
+                    "deleted"
+                  ]
+                },
                 "reason": {
                   "type": "string"
                 },
@@ -18608,6 +18634,7 @@
                 "newDefinitionRevisionId",
                 "oldCurrentValueId",
                 "newCurrentValueId",
+                "valueState",
                 "reason",
                 "successAuditRef",
                 "catalogReleaseId",
@@ -18649,6 +18676,13 @@
               },
               "currentValueId": {
                 "type": "string"
+              },
+              "valueState": {
+                "type": "string",
+                "enum": [
+                  "present",
+                  "deleted"
+                ]
               },
               "configSetId": {
                 "type": "string"
@@ -18728,6 +18762,128 @@
                     "enum": [
                       "dts",
                       "json"
+                    ]
+                  },
+                  "valueState": {
+                    "type": "string",
+                    "enum": [
+                      "present",
+                      "deleted"
+                    ]
+                  },
+                  "baseSourcePinId": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "deleteRequestId": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "deleteProof": {
+                    "anyOf": [
+                      {
+                        "anyOf": [
+                          {
+                            "type": "object",
+                            "properties": {
+                              "kind": {
+                                "type": "string",
+                                "enum": [
+                                  "dts-delete-v1"
+                                ]
+                              },
+                              "scannerVersion": {
+                                "type": "string",
+                                "enum": [
+                                  "dts-cst-v1"
+                                ]
+                              },
+                              "nodeOccurrenceId": {
+                                "type": "string"
+                              },
+                              "propertyName": {
+                                "type": "string"
+                              },
+                              "beforeValueDigest": {
+                                "type": "string"
+                              },
+                              "beforeSourceDigest": {
+                                "type": "string"
+                              },
+                              "afterSourceDigest": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "kind",
+                              "scannerVersion",
+                              "nodeOccurrenceId",
+                              "propertyName",
+                              "beforeValueDigest",
+                              "beforeSourceDigest",
+                              "afterSourceDigest"
+                            ],
+                            "additionalProperties": false
+                          },
+                          {
+                            "type": "object",
+                            "properties": {
+                              "kind": {
+                                "type": "string",
+                                "enum": [
+                                  "json-delete-v1"
+                                ]
+                              },
+                              "scannerVersion": {
+                                "type": "string",
+                                "enum": [
+                                  "json-span-v1"
+                                ]
+                              },
+                              "rootPointer": {
+                                "type": "string"
+                              },
+                              "pointer": {
+                                "type": "string"
+                              },
+                              "parentPointer": {
+                                "type": "string"
+                              },
+                              "memberKey": {
+                                "type": "string"
+                              },
+                              "beforeValueDigest": {
+                                "type": "string"
+                              },
+                              "beforeSourceDigest": {
+                                "type": "string"
+                              },
+                              "afterSourceDigest": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "kind",
+                              "scannerVersion",
+                              "rootPointer",
+                              "pointer",
+                              "parentPointer",
+                              "memberKey",
+                              "beforeValueDigest",
+                              "beforeSourceDigest",
+                              "afterSourceDigest"
+                            ],
+                            "additionalProperties": false
+                          }
+                        ]
+                      },
+                      {
+                        "type": "null"
+                      }
                     ]
                   },
                   "logicalNodeId": {
@@ -18823,6 +18979,68 @@
                           "propertyName"
                         ],
                         "additionalProperties": false
+                      },
+                      {
+                        "type": "object",
+                        "properties": {
+                          "kind": {
+                            "type": "string",
+                            "enum": [
+                              "dts-delete"
+                            ]
+                          },
+                          "nodeOccurrenceId": {
+                            "type": "string"
+                          },
+                          "fileVersionId": {
+                            "type": "string"
+                          },
+                          "propertyName": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "kind",
+                          "nodeOccurrenceId",
+                          "fileVersionId",
+                          "propertyName"
+                        ],
+                        "additionalProperties": false
+                      },
+                      {
+                        "type": "object",
+                        "properties": {
+                          "kind": {
+                            "type": "string",
+                            "enum": [
+                              "json-delete"
+                            ]
+                          },
+                          "rootPointer": {
+                            "type": "string"
+                          },
+                          "pointer": {
+                            "type": "string"
+                          },
+                          "parentPointer": {
+                            "type": "string"
+                          },
+                          "memberKey": {
+                            "type": "string"
+                          },
+                          "fileVersionId": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "kind",
+                          "rootPointer",
+                          "pointer",
+                          "parentPointer",
+                          "memberKey",
+                          "fileVersionId"
+                        ],
+                        "additionalProperties": false
                       }
                     ]
                   },
@@ -18891,6 +19109,10 @@
                   "fileId",
                   "fileVersionId",
                   "format",
+                  "valueState",
+                  "baseSourcePinId",
+                  "deleteRequestId",
+                  "deleteProof",
                   "logicalNodeId",
                   "configurationInstanceId",
                   "configurationSchemaSubjectId",
@@ -18912,6 +19134,7 @@
               "catalogReleaseId",
               "configRevisionId",
               "currentValueId",
+              "valueState",
               "configSetId",
               "sourceRef",
               "files",
@@ -18973,6 +19196,13 @@
                   "approved",
                   "rejected",
                   "withdrawn"
+                ]
+              },
+              "action": {
+                "type": "string",
+                "enum": [
+                  "set",
+                  "delete"
                 ]
               },
               "targetValue": {
@@ -19087,6 +19317,7 @@
               "definitionId",
               "effectiveRevisionId",
               "status",
+              "action",
               "targetValue",
               "sourceFormat",
               "baseRevisionId",
@@ -19149,6 +19380,13 @@
                     "approved",
                     "rejected",
                     "withdrawn"
+                  ]
+                },
+                "action": {
+                  "type": "string",
+                  "enum": [
+                    "set",
+                    "delete"
                   ]
                 },
                 "targetValue": {
@@ -19263,6 +19501,7 @@
                 "definitionId",
                 "effectiveRevisionId",
                 "status",
+                "action",
                 "targetValue",
                 "sourceFormat",
                 "baseRevisionId",
@@ -19460,6 +19699,13 @@
           "currentValueId": {
             "type": "string"
           },
+          "valueState": {
+            "type": "string",
+            "enum": [
+              "present",
+              "deleted"
+            ]
+          },
           "configSetId": {
             "type": "string"
           },
@@ -19538,6 +19784,128 @@
                 "enum": [
                   "dts",
                   "json"
+                ]
+              },
+              "valueState": {
+                "type": "string",
+                "enum": [
+                  "present",
+                  "deleted"
+                ]
+              },
+              "baseSourcePinId": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "deleteRequestId": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "deleteProof": {
+                "anyOf": [
+                  {
+                    "anyOf": [
+                      {
+                        "type": "object",
+                        "properties": {
+                          "kind": {
+                            "type": "string",
+                            "enum": [
+                              "dts-delete-v1"
+                            ]
+                          },
+                          "scannerVersion": {
+                            "type": "string",
+                            "enum": [
+                              "dts-cst-v1"
+                            ]
+                          },
+                          "nodeOccurrenceId": {
+                            "type": "string"
+                          },
+                          "propertyName": {
+                            "type": "string"
+                          },
+                          "beforeValueDigest": {
+                            "type": "string"
+                          },
+                          "beforeSourceDigest": {
+                            "type": "string"
+                          },
+                          "afterSourceDigest": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "kind",
+                          "scannerVersion",
+                          "nodeOccurrenceId",
+                          "propertyName",
+                          "beforeValueDigest",
+                          "beforeSourceDigest",
+                          "afterSourceDigest"
+                        ],
+                        "additionalProperties": false
+                      },
+                      {
+                        "type": "object",
+                        "properties": {
+                          "kind": {
+                            "type": "string",
+                            "enum": [
+                              "json-delete-v1"
+                            ]
+                          },
+                          "scannerVersion": {
+                            "type": "string",
+                            "enum": [
+                              "json-span-v1"
+                            ]
+                          },
+                          "rootPointer": {
+                            "type": "string"
+                          },
+                          "pointer": {
+                            "type": "string"
+                          },
+                          "parentPointer": {
+                            "type": "string"
+                          },
+                          "memberKey": {
+                            "type": "string"
+                          },
+                          "beforeValueDigest": {
+                            "type": "string"
+                          },
+                          "beforeSourceDigest": {
+                            "type": "string"
+                          },
+                          "afterSourceDigest": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "kind",
+                          "scannerVersion",
+                          "rootPointer",
+                          "pointer",
+                          "parentPointer",
+                          "memberKey",
+                          "beforeValueDigest",
+                          "beforeSourceDigest",
+                          "afterSourceDigest"
+                        ],
+                        "additionalProperties": false
+                      }
+                    ]
+                  },
+                  {
+                    "type": "null"
+                  }
                 ]
               },
               "logicalNodeId": {
@@ -19633,6 +20001,68 @@
                       "propertyName"
                     ],
                     "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "kind": {
+                        "type": "string",
+                        "enum": [
+                          "dts-delete"
+                        ]
+                      },
+                      "nodeOccurrenceId": {
+                        "type": "string"
+                      },
+                      "fileVersionId": {
+                        "type": "string"
+                      },
+                      "propertyName": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "nodeOccurrenceId",
+                      "fileVersionId",
+                      "propertyName"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "kind": {
+                        "type": "string",
+                        "enum": [
+                          "json-delete"
+                        ]
+                      },
+                      "rootPointer": {
+                        "type": "string"
+                      },
+                      "pointer": {
+                        "type": "string"
+                      },
+                      "parentPointer": {
+                        "type": "string"
+                      },
+                      "memberKey": {
+                        "type": "string"
+                      },
+                      "fileVersionId": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "rootPointer",
+                      "pointer",
+                      "parentPointer",
+                      "memberKey",
+                      "fileVersionId"
+                    ],
+                    "additionalProperties": false
                   }
                 ]
               },
@@ -19701,6 +20131,10 @@
               "fileId",
               "fileVersionId",
               "format",
+              "valueState",
+              "baseSourcePinId",
+              "deleteRequestId",
+              "deleteProof",
               "logicalNodeId",
               "configurationInstanceId",
               "configurationSchemaSubjectId",
@@ -19722,6 +20156,7 @@
           "catalogReleaseId",
           "configRevisionId",
           "currentValueId",
+          "valueState",
           "configSetId",
           "sourceRef",
           "files",

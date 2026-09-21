@@ -5,6 +5,7 @@ import pg from "pg";
 import {
   S2_SCH_0137_FINGERPRINT,
   S2_SCH_CONTRACT_FINGERPRINT,
+  S2_SCH_LIVE_FINGERPRINT,
   assertCheckedEmptyCatalog,
   assertCheckedEmptyDatabase,
   assertRealPostgresUrl,
@@ -78,14 +79,15 @@ describe("disposable real-pgvector parameter catalog database", {
     await cleanupLeftoverParameterCatalogDatabases();
   }, CATALOG_HOOK_TIMEOUT_MS);
 
-  it("creates a checked-empty frozen-schema database on a real pgvector server", async () => {
+  it("creates a checked-empty current-schema database on a real pgvector server", async () => {
     database = await createDisposableParameterCatalogDatabase("schema");
     expect(S2_SCH_CONTRACT_FINGERPRINT).not.toBe(S2_SCH_0137_FINGERPRINT);
-    expect(database.schemaFingerprint).toBe(S2_SCH_CONTRACT_FINGERPRINT);
+    expect(S2_SCH_LIVE_FINGERPRINT).not.toBe(S2_SCH_CONTRACT_FINGERPRINT);
+    expect(database.schemaFingerprint).toBe(S2_SCH_LIVE_FINGERPRINT);
     expect(database.serverVersion.length).toBeGreaterThan(0);
     expect(database.pgvectorVersion).toMatch(/^\d+\.\d+/);
     expect(await readCanonicalSchemaFingerprint(database.url)).toBe(
-      S2_SCH_CONTRACT_FINGERPRINT,
+      S2_SCH_LIVE_FINGERPRINT,
     );
     await assertCheckedEmptyCatalog(database.url);
 

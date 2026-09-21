@@ -20,6 +20,23 @@ cd /srv/wiseeff/ops/self-hosted
 
 setup/upgrade 在缺少私有文件时写入**未配置 stub**，绝不复制 `DATABASE_URL`。stub 在任何 Compose 解析之前写入，这样首次引入 `publication-manager` 时仍能 `stop proxy`。缺少 `WISEEFF_PUBLICATION_MANAGER_DATABASE_URL` 时 manager 健康检查为 `503 { configured: false }`。若旧栈已经跑过 `publication-manager`，升级 freeze 在缺少专用 LOGIN 时失败闭合。首次引入（旧栈没有 manager 容器且没有 manager DSN）会跳过 freeze，不启动 `publication-manager`，也不要求 `configured: true`；在创建 `catalog_publication` 的迁移之后再 provision LOGIN。用 `npx tsx scripts/catalog-publication-ops.ts provision-logins --credential-dir <0700 目录>` 创建专用 LOGIN。stdout 只有角色和路径，DSN 写入 `0600` 文件。把 manager DSN 写入 `.env.publication-manager`，把 API DSN 写入公共 `.env` 的 `DATABASE_URL`，把 worker DSN 写入 `WISEEFF_WORKER_DATABASE_URL`。不要把“上线前再换账号”当成已交付。默认重复运行只核验已拥有的 LOGIN，不改密码；轮换凭据必须显式 `--rotate-passwords`。
 
+## schema 升级后刷新既有 LOGIN 权限
+
+运行时 LOGIN 可能早于新应用表创建。迁移会创建表，但不会重新执行 LOGIN 配置入口对 public 表的授权。例如，API LOGIN 缺少 `public.project_parameter_value_drafts` 或 `public.project_parameter_value_change_requests` 的 SELECT 时，项目草稿接口会返回 500，即使项目没有草稿。通用 API readiness 不会执行这个接口。
+
+用 API LOGIN 确认缺少权限后，复用现有配置入口恢复既定运行时权限。先确认三个正式 LOGIN 均已存在且属于本部署，再在 `ops/self-hosted` 执行；bootstrap DSN 只从容器环境读取：
+
+```bash
+./scripts/compose --env-file .env run --rm --no-deps \
+  -e WISEEFF_API_PROCESS=0 api \
+  npx tsx scripts/catalog-publication-ops.ts provision-logins \
+  --mode official --credential-dir /tmp/wiseeff-runtime-login-refresh
+```
+
+不要添加 `--rotate-passwords`。既有受管 LOGIN 应返回 `passwordsDelivered: false`，且 `reused` 包含 `wiseeff_api`、`wiseeff_worker`、`wiseeff_publication_manager`。入口复用既定权限契约，包括 Catalog 核心表写入拒绝；不执行发布、接管、种子初始化或产品能力授予。所有权或 LOGIN 属性不符时拒绝。此命令也能创建缺失的 LOGIN，因此确认三个账号已存在是操作员必须检查的前提，并非命令强制的“仅刷新”模式；尚未确认时，先检查再执行。
+
+随后复查 API LOGIN 权限并刷新项目参数页，所有项目的 `parameter-value-drafts` 请求均应成功。数据库授权不需要重启服务；目录内容和项目初始化仍单独处理。
+
 ## 1. 部署管理进程
 
 与 api/worker/web 使用同一应用镜像。容器内命令：`npm run publication:manager`。

@@ -91,6 +91,13 @@ test.describe("M5.11 visual quality gate", () => {
         await dismissCopilotDevOverlays(page);
       }
       await settleAppToasts(page);
+      if (route.path === "/parameters") {
+        const moduleTree = page.getByRole("tree", { name: "业务模块树" });
+        await expect(moduleTree.getByRole("treeitem").first()).toBeVisible();
+        await expect(
+          page.locator('.dts-parameter-workbench-table__body [role="row"]').first()
+        ).toBeVisible();
+      }
       if (route.path === "/parameter-review") {
         await expectLocalizedVisualReviewFixture(page);
       }

@@ -153,7 +153,7 @@ const SCOPE_SQL: Record<Exclude<RelationScope["kind"], "project">, string> = {
   )`
 };
 
-const predicateFor = (scope: RelationScope): string =>
+export const parameterPlaneScopePredicate = (scope: RelationScope): string =>
   scope.kind === "project"
     ? "organization_id = $1 and project_id = $2"
     : SCOPE_SQL[scope.kind];
@@ -249,7 +249,7 @@ export async function captureProjectParameterPlane(
   let aggregateRelationBytes = 0;
 
   for (const relation of ARCHIVED_PARAMETER_PLANE_RELATIONS) {
-    const predicate = predicateFor(relation.scope);
+    const predicate = parameterPlaneScopePredicate(relation.scope);
     const total = await session.query<{ n: string; bytes: string }>(
       `select count(*)::text as n,
               coalesce(sum(octet_length(to_jsonb(archived_row)::text)), 0)::text as bytes

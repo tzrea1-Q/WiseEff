@@ -8,11 +8,23 @@ export const S2_SCH_0137_FINGERPRINT =
   "f2ad57b2af5c6e0d50841284bacf5aff927dd1dbf09039099144e20216c82453";
 
 /**
- * Live catalog schema fingerprint through 0158 plane-disposal allow-delete ACL.
+ * Historical catalog schema fingerprint through 0158 plane-disposal allow-delete ACL.
+ * 0159 only grants the disposer SECURITY DEFINER SELECT reachability and does
+ * not change this schema fingerprint. The current live fixture has a separate
+ * pin below because 0160/0161 add the property-delete contract.
  * 0137-only freeze is S2_SCH_0137_FINGERPRINT.
  */
 export const S2_SCH_CONTRACT_FINGERPRINT =
   "7bc944915eabc1689a9976332864bae3bc602fd9c407e91ed826340dbe0f69e1";
+
+/**
+ * Current schema through 0161: DTS/JSON delete locator digest functions, revised
+ * source-pin ownership/locator checks, and value-state/delete-proof columns,
+ * checks and owner-scoped foreign keys. Existing trigger definitions are unchanged.
+ * The historical S2-SCH pin above is unchanged.
+ */
+export const S2_SCH_LIVE_FINGERPRINT =
+  "908f678605a35f9ed2aa36451a8c621c05a5ba2018cefe08f62f93721d982537";
 
 const CATALOG_DATABASE_PREFIX = "wiseeff_pcat_";
 const FAKE_ENGINE_PATTERN = /pglite|postgres-js|pg-mem|sqlite|:memory:|memory:\/\//i;
@@ -594,7 +606,7 @@ export async function createCheckedEmptyDatabase(
 
 /**
  * Clone the migrations-fingerprinted template via the shared test helper so
- * this harness consumes the frozen S2-SCH schema without owning migrations.
+ * this harness consumes the current Catalog schema without owning migrations.
  */
 export async function createDisposableParameterCatalogDatabase(
   label: string,
@@ -608,9 +620,9 @@ export async function createDisposableParameterCatalogDatabase(
       requireInstalledVector: true,
     });
     const schemaFingerprint = await readCanonicalSchemaFingerprint(ephemeral.url);
-    if (schemaFingerprint !== S2_SCH_CONTRACT_FINGERPRINT) {
+    if (schemaFingerprint !== S2_SCH_LIVE_FINGERPRINT) {
       throw new Error(
-        `Frozen S2-SCH schema fingerprint mismatch: expected ${S2_SCH_CONTRACT_FINGERPRINT}, got ${schemaFingerprint}`,
+        `Live Catalog schema fingerprint mismatch: expected ${S2_SCH_LIVE_FINGERPRINT}, got ${schemaFingerprint}`,
       );
     }
     await assertCheckedEmptyCatalog(ephemeral.url);

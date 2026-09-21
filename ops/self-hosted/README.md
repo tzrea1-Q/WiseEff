@@ -84,7 +84,9 @@ After the stack is up with `AUTH_PROVIDER=local`, bootstrap the first admin once
   --password 'ReplaceWithAStrongPassword'
 ```
 
-For internal demo/staging hosts, import bundled seed data with:
+For an adopted instance with old example parameters and zero canonical bindings, use the reviewed [example-parameter rebuild](seed-rebuild.md). It creates a fresh recovery point and archives Atlas/Aurora/Nebula before rebuilding; do not run the legacy M1 seed on that instance.
+
+For legacy internal demo/staging bootstrap, import bundled seed data with:
 
 ```bash
 ./scripts/seed-demo-data.sh

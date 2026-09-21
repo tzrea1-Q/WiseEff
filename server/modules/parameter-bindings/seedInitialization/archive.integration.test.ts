@@ -873,6 +873,15 @@ describe("legacy parameter plane archive", () => {
         view_name: "parameter_catalog.current_project_parameter_bindings",
         parent: "parameter_catalog.project_parameter_bindings",
       },
+      // 0160/0161 hide deleted current values through their retained tombstone pins.
+      {
+        view_name: "parameter_catalog.current_project_parameter_bindings",
+        parent: "parameter_catalog.project_parameter_values",
+      },
+      {
+        view_name: "parameter_catalog.current_project_parameter_bindings",
+        parent: "parameter_catalog.project_value_source_pins",
+      },
     ]);
   }, 120_000);
 });

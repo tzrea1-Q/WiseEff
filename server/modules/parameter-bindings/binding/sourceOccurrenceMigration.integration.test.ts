@@ -489,6 +489,8 @@ describe.skipIf(!databaseAvailable)("0151 source occurrence identity migration",
           "0157_plane_disposal_regenerable_grants.sql",
           "0158_plane_disposal_allows_delete_acl.sql",
           "0159_plane_disposal_definer_select.sql",
+          "0160_canonical_dts_delete_source_pin.sql",
+          "0161_canonical_property_delete_tombstone.sql",
         ]);
         expect(await applyMigrations(resumedDb, migrationsDir)).toEqual([]);
         const receipt = (await resumedDb.query("select * from schema_migrations order by name")).rows;
@@ -567,6 +569,8 @@ describe.skipIf(!databaseAvailable)("0151 source occurrence identity migration",
         "0157_plane_disposal_regenerable_grants.sql",
         "0158_plane_disposal_allows_delete_acl.sql",
         "0159_plane_disposal_definer_select.sql",
+        "0160_canonical_dts_delete_source_pin.sql",
+        "0161_canonical_property_delete_tombstone.sql",
       ]);
 
       const rows = await db.query<{

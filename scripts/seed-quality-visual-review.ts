@@ -1,12 +1,137 @@
 import "dotenv/config";
-import { pathToFileURL } from "node:url";
+import path from "node:path";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 import { loadServerEnv } from "../server/config/env";
-import { createPostgresDatabase, type Database, type Queryable } from "../server/shared/database/client";
+import { compileCatalogRelease } from "../server/modules/catalog-kernel/compiler/index";
+import { jsonCatalogReleaseSource } from "../server/modules/catalog-kernel/interface";
+import { installPublishedRelease } from "../server/modules/catalog-kernel/install/installer";
+import { readCurrentCatalogPointer } from "../server/modules/catalog-kernel/install/currentPointer";
+import {
+  CatalogReleaseDigest,
+  CatalogReleaseId
+} from "../server/modules/parameter-catalog-contract/index";
+import {
+  FIRST_ACME_RELEASE_DIGEST,
+  FIRST_ACME_RELEASE_ID,
+  VENDOR_SUCCESSOR_AGGREGATE_DIGEST,
+  VENDOR_SUCCESSOR_RELEASE_ID,
+  compileVendorCatalogSuccessor
+} from "./compile-vendor-catalog-release";
+import { firstReleaseBundle } from "../server/testing/parameterCatalog/cutoverPopulatedFixture";
+import { ensureCanonicalCatalogAfterLegacySeed } from "../server/modules/parameter-bindings/seedInitialization/seedCanonicalAfterLegacy";
+import { getRootPostgresPool, createPostgresDatabase, type Database, type Queryable } from "../server/shared/database/client";
+import type { AuthContext } from "../server/modules/auth/types";
 import {
   assertVisualReviewFixtureConfigured,
   assertVisualReviewFixtureDatabase
 } from "./quality-visual-review-authorization";
+
+const qualityFixtureRepoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+
+const qualityFixtureAuth: AuthContext = {
+  user: {
+    id: "u-xu-yun",
+    organizationId: "org-chargelab",
+    name: "Xu Yun",
+    email: "xu@chargelab.cn",
+    title: "Platform Owner",
+    isActive: true
+  },
+  organization: { id: "org-chargelab", name: "ChargeLab" },
+  roles: [{ projectId: null, roleId: "admin" }],
+  permissions: ["parameter:view", "parameter:edit", "parameter:review", "admin:access"]
+};
+
+/**
+ * The quality job owns an isolated database, but the normal M1 seed must not
+ * publish Catalog lineage A. Install the reviewed vendor fixture here, then
+ * reuse the production canonical sync so the visual route exercises the same
+ * v2 read plane as the application.
+ */
+async function seedQualityCanonicalBindings(db: Database) {
+  await assertVisualReviewFixtureDatabase(db);
+  const pool = getRootPostgresPool(db);
+  if (!pool) throw new Error("Quality canonical fixture requires the root database.");
+
+  let pointer = await readCurrentCatalogPointer(pool);
+  if (pointer.kind === "empty") {
+    const acmeBundle = firstReleaseBundle();
+    const acmeCompiled = compileCatalogRelease(acmeBundle);
+    if (!acmeCompiled.ok) {
+      throw new Error(`Quality Acme Catalog fixture failed: ${acmeCompiled.error.kind}`);
+    }
+    const bootstrapped = await installPublishedRelease(pool, {
+      mode: "bootstrap",
+      source: jsonCatalogReleaseSource(acmeBundle),
+      expectedTargetDigest: acmeCompiled.value.release.digest
+    });
+    if (!bootstrapped.ok) {
+      throw new Error(`Quality Acme Catalog fixture failed: ${JSON.stringify(bootstrapped)}`);
+    }
+    pointer = await readCurrentCatalogPointer(pool);
+  }
+
+  const isAcme = pointer.kind === "installed"
+    && pointer.current.id === CatalogReleaseId(FIRST_ACME_RELEASE_ID)
+    && pointer.current.digest === CatalogReleaseDigest(FIRST_ACME_RELEASE_DIGEST);
+  if (isAcme) {
+    const vendor = compileVendorCatalogSuccessor(qualityFixtureRepoRoot);
+    const advanced = await installPublishedRelease(pool, {
+      mode: "advance",
+      source: jsonCatalogReleaseSource(vendor.bundle),
+      expectedTargetDigest: CatalogReleaseDigest(VENDOR_SUCCESSOR_AGGREGATE_DIGEST),
+      expectedCurrent: {
+        id: CatalogReleaseId(FIRST_ACME_RELEASE_ID),
+        digest: CatalogReleaseDigest(FIRST_ACME_RELEASE_DIGEST)
+      }
+    });
+    if (!advanced.ok) {
+      throw new Error(`Quality vendor Catalog fixture failed: ${JSON.stringify(advanced)}`);
+    }
+    pointer = await readCurrentCatalogPointer(pool);
+  }
+
+  if (!(pointer.kind === "installed"
+    && pointer.current.id === CatalogReleaseId(VENDOR_SUCCESSOR_RELEASE_ID)
+    && pointer.current.digest === CatalogReleaseDigest(VENDOR_SUCCESSOR_AGGREGATE_DIGEST))) {
+    const current = pointer.kind === "installed"
+      ? `${pointer.current.id}/${pointer.current.digest}`
+      : pointer.kind;
+    throw new Error(`Quality canonical fixture requires the exact vendor Catalog pointer; found ${current}.`);
+  }
+
+  const existingProjects = await db.query<{ project_id: string; count: string; unpinned: string }>(
+    `select binding.project_id, count(*)::text as count,
+            count(*) filter (where pin.id is null or file.current_version_id is distinct from pin.file_version_id)::text as unpinned
+       from parameter_catalog.current_project_parameter_bindings binding
+       left join parameter_catalog.project_value_source_pins pin
+         on pin.project_value_id = binding.current_value_id and pin.binding_id = binding.id
+       left join public.project_parameter_files file on file.id = pin.file_id
+      where binding.organization_id = $1
+        and binding.project_id = any($2::text[])
+      group by binding.project_id`,
+    ["org-chargelab", ["atlas", "aurora", "nebula"]],
+  );
+  if (existingProjects.rows.some((row) => Number(row.unpinned) > 0)) {
+    throw new Error("Quality canonical fixture has bindings without current source-file pins.");
+  }
+  const existingCounts = Object.fromEntries(
+    existingProjects.rows.map((row) => [row.project_id, Number(row.count)]),
+  );
+  if (["atlas", "aurora", "nebula"].every((projectId) => (existingCounts[projectId] ?? 0) > 0)) {
+    return { catalogReleaseId: VENDOR_SUCCESSOR_RELEASE_ID, written: existingCounts, skipped: [] };
+  }
+
+  const result = await ensureCanonicalCatalogAfterLegacySeed(db, qualityFixtureAuth, {
+    organizationId: "org-chargelab",
+    seedDigest: "quality-visual-canonical-20260921"
+  });
+  if ((result.written.aurora ?? 0) === 0) {
+    throw new Error("Quality canonical fixture did not materialize Aurora bindings.");
+  }
+  return result;
+}
 
 const FIXTURE_REQUEST_ID = "PRQ-8910";
 const FIXTURE_ROUND_ID = "PSR-2026-08-22-001";
@@ -376,6 +501,8 @@ async function main() {
     console.log(`Removed deterministic quality review fixture ${FIXTURE_REQUEST_ID}.`);
     return;
   }
+  const canonical = await seedQualityCanonicalBindings(db);
+  console.log(`Seeded quality canonical bindings: ${JSON.stringify(canonical.written)}.`);
   const seeded = await seedQualityVisualReview(db);
   console.log(`Seeded deterministic quality review fixture ${seeded.requestId} on ${seeded.bindingId}.`);
 }

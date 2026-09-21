@@ -707,8 +707,7 @@ describe("user governance service", () => {
   });
 });
 
-const explicitTestDatabaseUrl = process.env.TEST_DATABASE_URL?.trim() ?? "";
-const postgresAvailable = Boolean(explicitTestDatabaseUrl) && (await isTestDatabaseAvailable());
+const postgresAvailable = await isTestDatabaseAvailable();
 
 describe.skipIf(!postgresAvailable)("user governance registration concurrency", () => {
   let database: Awaited<ReturnType<typeof createEphemeralTestDatabase>> | undefined;
