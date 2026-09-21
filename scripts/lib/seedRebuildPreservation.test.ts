@@ -109,6 +109,17 @@ const store: ObjectStore = {
 };
 
 describe("seed rebuild preservation", () => {
+  it("rejects a changed maintenance schema before reading preservation rows", async () => {
+    const baseline = await captureSeedPreservation(new FakeDb(inventory()), store, "org-acme");
+    const changed = inventory();
+    changed[0]!.columns.push("unexpected_column");
+    const db = new FakeDb(changed);
+    await expect(captureSeedPreservation(db, store, "org-acme", baseline.schema))
+      .rejects.toThrow("preservation-schema-drift");
+    expect(db.calls).toHaveLength(1);
+    expect(db.calls[0]!.sql).toContain("from pg_class relation");
+  });
+
   it("regenerates safe scopes, allows only explicit append/publication windows, and records no predicates", async () => {
     const db = new FakeDb(inventory());
     const baseline = await captureSeedPreservation(db, store, "org-acme");

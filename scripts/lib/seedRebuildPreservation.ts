@@ -376,9 +376,11 @@ export async function captureSeedPreservation(
   db: Queryable,
   store: ObjectStore,
   organizationId: string,
+  expectedSchema?: SeedPreservation["schema"],
 ): Promise<SeedPreservation> {
   const inventory = await loadInventory(db);
   const schema = schemaSnapshot(inventory);
+  if (expectedSchema) assertSchemaMatches(expectedSchema, schema);
   const tables: SeedPreservation["tables"] = [];
   const protectedKeys = new Set<string>();
 

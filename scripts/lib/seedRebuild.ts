@@ -114,13 +114,6 @@ export function assertSeedMaintenanceBaselineBinding(state: SeedRebuildState): S
   return checkpoint;
 }
 
-function assertMaintenanceSchemaMatches(state: SeedRebuildState, baseline: SeedPreservation) {
-  if (state.baseline.schema.digest !== baseline.schema.digest
-    || seedRebuildDigest(state.baseline.schema.relations) !== seedRebuildDigest(baseline.schema.relations)) {
-    throw new Error("seed-rebuild-preservation-schema-drift");
-  }
-}
-
 /** Capture the complete post-quiescence preservation point exactly once. */
 export async function captureSeedMaintenanceBaseline(
   ctx: SeedRebuildContext,
@@ -163,9 +156,7 @@ export async function captureSeedMaintenanceBaseline(
     if (await parameterInventoryDigest(db, ctx.store, state.plan.organizationId) !== state.originalParameterDigest) {
       throw new Error("seed-rebuild-parameter-inventory-drift");
     }
-    const captured = await captureSeedPreservation(db, ctx.store, state.plan.organizationId);
-    assertMaintenanceSchemaMatches(state, captured);
-    return captured;
+    return captureSeedPreservation(db, ctx.store, state.plan.organizationId, state.baseline.schema);
   });
   const checkpoint = { runId: state.runId, planDigest: state.plan.digest, manifestDigest, baseline };
   return { ...checkpoint, digest: seedMaintenanceBaselineDigest(checkpoint) };
