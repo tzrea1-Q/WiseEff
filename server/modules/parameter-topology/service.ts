@@ -16,18 +16,18 @@ import {
 import { verifyEffectiveDriverParameterDefinitions } from "../parameter-specs/definitionVerification";
 import { canAdminParameters, canEditParameters, canViewParameters } from "../parameter-kernel/policy";
 import type { TrustedSensitiveNodeWriteContext } from "../parameter-kernel/sensitiveNode";
-import type { Database, Queryable } from "../../shared/database/client";
+import { getRootPostgresPool, type Database, type Queryable } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
+import { readCanonicalBindingChangeHistory } from "../parameter-bindings/catalogProjectValueSync";
 import {
   applyReviewedIdentityMapping,
   continuityReuseFromTaskEvidence,
   countBlockingIdentityMappingTasksForRevision,
   countIdentityMappingDownstreamUsage,
   countOpenIdentityMappingTasksForRevision,
-  getBindingForProject,
   getIdentityMappingTaskById,
-  listBindingCompareRows,
-  listBindingRevisionRows,
+  listCanonicalBindingCompareRows,
+  listCanonicalBindingHistoryValueRows,
   listIdentityMappingTaskRows,
   listProjectBindingRows,
   lockOpenIdentityMappingTask,
@@ -88,6 +88,27 @@ function requireCanView(auth: AuthContext) {
   }
 }
 
+function requireCanViewProject(auth: AuthContext, projectId: string) {
+  requireCanView(auth);
+  if (!auth.roles.some((role) =>
+    role.roleId === "admin" ||
+    role.roleId === "platform-admin" ||
+    role.projectId === null ||
+    role.projectId === projectId
+  )) {
+    throw new ApiError("FORBIDDEN", "Project parameter scope is required.");
+  }
+}
+
+function visibleProjectIds(auth: AuthContext): readonly string[] | null {
+  if (auth.roles.some((role) =>
+    role.roleId === "admin" ||
+    role.roleId === "platform-admin" ||
+    role.projectId === null
+  )) return null;
+  return [...new Set(auth.roles.map((role) => role.projectId).filter((id): id is string => Boolean(id)))];
+}
+
 function requireCanEdit(auth: AuthContext) {
   if (!canEditParameters(auth)) {
     throw new ApiError("FORBIDDEN", "Parameter edit permission is required.");
@@ -98,6 +119,21 @@ function requireCanAdmin(auth: AuthContext) {
   if (!canAdminParameters(auth)) {
     throw new ApiError("FORBIDDEN", "Parameter admin permission is required.");
   }
+}
+
+type CanonicalHistoryReader = Parameters<typeof readCanonicalBindingChangeHistory>[0];
+
+function canonicalHistoryReader(db: Database): CanonicalHistoryReader {
+  return getRootPostgresPool(db) ?? (db as unknown as CanonicalHistoryReader);
+}
+
+async function rejectLegacyTopologyBinding(
+  _db: Database,
+  input: { bindingId: string },
+): Promise<never> {
+  throw new ApiError("NOT_FOUND", "Project parameter binding was not found for this project.", {
+    bindingId: input.bindingId,
+  });
 }
 
 function evidenceHash(value: unknown): string {
@@ -315,13 +351,34 @@ export type BindingHistoryItem = {
   changedAt: string;
   fromRawValue?: string | null;
   toRawValue?: string | null;
+  bindingId?: string;
+  definitionId?: string;
+  definitionRevisionId?: string;
+  effectiveRevisionId?: string;
+  currentValueId?: string;
+  sourceOccurrenceId?: string | null;
+  sourceIdentity?: string | null;
+  sourceRef?: string | null;
+  configSetId?: string | null;
+  fileId?: string | null;
+  fileVersionId?: string | null;
+  fileName?: string | null;
+  sourceLocator?: Record<string, unknown> | null;
+  sourceAvailable?: boolean;
+  valueState?: "present" | "deleted" | null;
+  oldDefinitionRevisionId?: string | null;
+  newDefinitionRevisionId?: string | null;
+  oldCurrentValueId?: string | null;
+  newCurrentValueId?: string | null;
+  reason?: string;
+  successAuditRef?: string;
+  catalogReleaseId?: string;
+  recordedAt?: string;
 };
 
 /**
- * Per-binding change history sourced from `project_parameter_binding_revisions` only.
- * Config-revision tip rows remain in storage; this read path collapses adjacent
- * snapshots whose raw value did not change so callers see value changes only.
- * Results are newest-first; the initial tip is kept with `fromRawValue: null`.
+ * Per-binding change history sourced from the canonical Binding/value event
+ * owner. Legacy topology revisions are archived and never used as a fallback.
  */
 export async function getBindingHistory(
   db: Database,
@@ -338,47 +395,74 @@ export async function getBindingHistory(
       projectId: input.projectId
     });
   }
+  requireCanViewProject(auth, input.projectId);
 
-  const binding = await getBindingForProject(db, {
+  const events = await readCanonicalBindingChangeHistory(canonicalHistoryReader(db), {
     organizationId: auth.organization.id,
     projectId: input.projectId,
-    bindingId: input.bindingId
+    bindingId: input.bindingId,
   });
-  if (!binding) {
-    throw new ApiError("NOT_FOUND", "Project parameter binding was not found for this project.", {
-      bindingId: input.bindingId
-    });
+  if (events === null) {
+    return rejectLegacyTopologyBinding(db, { bindingId: input.bindingId });
   }
 
-  const rows = await listBindingRevisionRows(db, {
+  const valueIds = events.flatMap((event) => [event.oldCurrentValueId, event.newCurrentValueId])
+    .filter((id): id is string => Boolean(id));
+  const values = await listCanonicalBindingHistoryValueRows(db, {
     organizationId: auth.organization.id,
     projectId: input.projectId,
-    bindingId: input.bindingId
+    bindingId: input.bindingId,
+    valueIds,
   });
-
-  const ordered = [...rows].sort((a, b) => {
-    if (a.revisionNumber !== b.revisionNumber) return a.revisionNumber - b.revisionNumber;
-    return a.createdAt.localeCompare(b.createdAt);
-  });
-
-  const items: BindingHistoryItem[] = [];
-  let lastEmittedRaw: string | null | undefined;
-  for (const row of ordered) {
-    const toRawValue = row.rawValue ?? null;
-    if (lastEmittedRaw !== undefined && lastEmittedRaw === toRawValue) {
-      continue;
+  const valuesById = new Map(values.map((value) => [value.id, value]));
+  for (const valueId of valueIds) {
+    if (!valuesById.has(valueId)) {
+      throw new ApiError("CONFLICT", "Canonical history value is unavailable for this binding.", {
+        bindingId: input.bindingId,
+        valueId,
+      });
     }
-    items.push({
-      id: row.id,
-      changedAt: row.createdAt,
-      fromRawValue: lastEmittedRaw === undefined ? null : lastEmittedRaw,
-      toRawValue
-    });
-    lastEmittedRaw = toRawValue;
   }
 
-  items.reverse();
-  return { items };
+  return {
+    items: events.map((event): BindingHistoryItem => {
+      const oldValue = event.oldCurrentValueId ? valuesById.get(event.oldCurrentValueId) : undefined;
+      const newValue = event.newCurrentValueId ? valuesById.get(event.newCurrentValueId) : undefined;
+      const source = newValue ?? oldValue;
+      const effectiveRevisionId = event.newDefinitionRevisionId ?? event.oldDefinitionRevisionId ?? undefined;
+      const definitionRevisionId = source?.definitionRevisionId ?? effectiveRevisionId;
+      const currentValueId = event.newCurrentValueId ?? event.oldCurrentValueId ?? undefined;
+      return {
+        id: event.id,
+        changedAt: event.createdAt,
+        recordedAt: event.createdAt,
+        fromRawValue: oldValue?.rawValue ?? null,
+        toRawValue: newValue?.rawValue ?? null,
+        bindingId: event.bindingId,
+        definitionId: event.definitionId,
+        definitionRevisionId,
+        effectiveRevisionId,
+        currentValueId,
+        sourceOccurrenceId: source?.sourceOccurrenceId ?? null,
+        sourceIdentity: source?.sourceIdentity ?? null,
+        sourceRef: source?.sourceRef ?? null,
+        configSetId: source?.configSetId ?? null,
+        fileId: source?.fileId ?? null,
+        fileVersionId: source?.fileVersionId ?? null,
+        fileName: source?.fileName ?? null,
+        sourceLocator: source?.sourceLocator ?? null,
+        sourceAvailable: source?.sourceAvailable ?? false,
+        valueState: event.valueState,
+        oldDefinitionRevisionId: event.oldDefinitionRevisionId,
+        newDefinitionRevisionId: event.newDefinitionRevisionId,
+        oldCurrentValueId: event.oldCurrentValueId,
+        newCurrentValueId: event.newCurrentValueId,
+        reason: event.reason,
+        successAuditRef: event.successAuditRef,
+        catalogReleaseId: event.catalogReleaseId,
+      };
+    }),
+  };
 }
 
 export type BindingCompareItem = {
@@ -387,12 +471,27 @@ export type BindingCompareItem = {
   rawValue: string;
   moduleName?: string | null;
   driverModule?: string | null;
+  bindingId?: string;
+  definitionId?: string;
+  definitionRevisionId?: string;
+  effectiveRevisionId?: string;
+  currentValueId?: string;
+  sourceOccurrenceId?: string;
+  sourceIdentity?: string;
+  sourceRef?: string;
+  configSetId?: string | null;
+  fileId?: string | null;
+  fileVersionId?: string | null;
+  fileName?: string | null;
+  sourceLocator?: Record<string, unknown> | null;
+  sourceAvailable?: boolean;
+  valueState?: "present" | "deleted";
 };
 
 /**
- * Cross-project compare for one binding, scoped to the caller's organization.
- * Peers are other projects whose binding shares the same `parameter_spec_id` and
- * `module_id` (design lock); the source project is excluded.
+ * Compare current canonical bindings by exact Definition and effective
+ * DefinitionRevision identity. Same-project sibling source instances remain
+ * visible; only the requested Binding is excluded.
  */
 export async function getBindingCompare(
   db: Database,
@@ -409,33 +508,42 @@ export async function getBindingCompare(
       projectId: input.projectId
     });
   }
+  requireCanViewProject(auth, input.projectId);
 
-  const binding = await getBindingForProject(db, {
+  const rows = await listCanonicalBindingCompareRows(db, {
     organizationId: auth.organization.id,
     projectId: input.projectId,
-    bindingId: input.bindingId
+    bindingId: input.bindingId,
+    visibleProjectIds: visibleProjectIds(auth),
   });
-  if (!binding) {
-    throw new ApiError("NOT_FOUND", "Project parameter binding was not found for this project.", {
-      bindingId: input.bindingId
-    });
+  if (rows === null) {
+    return rejectLegacyTopologyBinding(db, { bindingId: input.bindingId });
   }
 
-  const rows = await listBindingCompareRows(db, {
-    organizationId: auth.organization.id,
-    projectId: input.projectId,
-    bindingId: input.bindingId
-  });
-
-  const items: BindingCompareItem[] = rows.map((row) => ({
-    projectId: row.projectId,
-    projectName: row.projectName,
-    rawValue: row.rawValue,
-    moduleName: row.moduleName,
-    driverModule: row.driverModule
-  }));
-
-  return { items };
+  return {
+    items: rows.map((row): BindingCompareItem => ({
+      projectId: row.projectId,
+      projectName: row.projectName,
+      rawValue: row.rawValue,
+      moduleName: row.moduleName,
+      driverModule: row.driverModule,
+      bindingId: row.bindingId,
+      definitionId: row.definitionId,
+      definitionRevisionId: row.definitionRevisionId,
+      effectiveRevisionId: row.effectiveRevisionId,
+      currentValueId: row.currentValueId,
+      sourceOccurrenceId: row.sourceOccurrenceId,
+      sourceIdentity: row.sourceIdentity,
+      sourceRef: row.sourceRef,
+      configSetId: row.configSetId,
+      fileId: row.fileId,
+      fileVersionId: row.fileVersionId,
+      fileName: row.fileName,
+      sourceLocator: row.sourceLocator,
+      sourceAvailable: row.sourceAvailable,
+      valueState: row.valueState,
+    })),
+  };
 }
 
 export async function resolveIdentityMappingTask(

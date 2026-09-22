@@ -12,6 +12,10 @@ export type BindingHistoryDiffEntry = {
   actor?: string | null;
   fromRawValue?: string | null;
   toRawValue?: string | null;
+  definitionRevisionId?: string;
+  currentValueId?: string | null;
+  valueState?: "present" | "deleted";
+  eventType?: string;
 };
 
 export type DtsBindingHistoryDiffDialogProps = {
@@ -20,7 +24,8 @@ export type DtsBindingHistoryDiffDialogProps = {
   onClose: () => void;
 };
 
-function displayRaw(value: string | null | undefined) {
+function displayRaw(value: string | null | undefined, valueState?: BindingHistoryDiffEntry["valueState"]) {
+  if (valueState === "deleted" && (value == null || value.trim() === "")) return "已删除";
   if (value == null || value.trim() === "") return "∅";
   return formatDtsRawValueForUi(value) || "∅";
 }
@@ -54,28 +59,35 @@ export function DtsBindingHistoryDiffDialog({
 
         <div className="parameter-history-diff-list">
           {historyEntries.map((entry, index) => {
-            const versionLabel = `R${historyEntries.length - index}`;
+            const eventLabel = entry.definitionRevisionId
+              ? `修订 ${entry.definitionRevisionId}`
+              : entry.currentValueId
+                ? `值 ${entry.currentValueId}`
+                : `历史事件 ${index + 1}`;
             return (
               <article
                 className="parameter-history-diff-card"
                 key={entry.id}
-                aria-label={`${versionLabel} 历史差异`}
+                aria-label={`${eventLabel} 历史差异`}
               >
                 <div className="parameter-history-diff-card__head">
                   <div>
                     <strong>
-                      {displayRaw(entry.fromRawValue)} → {displayRaw(entry.toRawValue)}
+                      {displayRaw(entry.fromRawValue)} → {displayRaw(entry.toRawValue, entry.valueState)}
                     </strong>
                     <span>
                       <time dateTime={entry.changedAt}>{formatAuditAbsoluteTime(entry.changedAt)}</time>
+                      {entry.eventType ? ` / ${entry.eventType}` : ""}
+                      {entry.definitionRevisionId ? ` / 修订 ${entry.definitionRevisionId}` : ""}
+                      {entry.currentValueId ? ` / 值 ${entry.currentValueId}` : ""}
                       {entry.actor ? ` / ${entry.actor}` : ""}
                     </span>
                   </div>
-                  <em>{versionLabel}</em>
+                  <em>{eventLabel}</em>
                 </div>
                 <DiffCodeBlock
                   baseValue={displayRaw(entry.fromRawValue)}
-                  targetValue={displayRaw(entry.toRawValue)}
+                  targetValue={displayRaw(entry.toRawValue, entry.valueState)}
                 />
               </article>
             );

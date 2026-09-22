@@ -649,7 +649,118 @@ describe("DtsParameterWorkbench", () => {
     const dialog = screen.getByRole("dialog", { name: "gpio_int 参数详情" });
     const entry = within(dialog).getByRole("heading", { name: "跨项目对比" }).closest("section") as HTMLElement;
     expect(within(entry).getByRole("button", { name: "打开跨项目对比" })).toBeInTheDocument();
-    expect(within(entry).getByText(/个项目已配置/)).toBeInTheDocument();
+    expect(within(entry).getByText(/个配置实例已配置/)).toBeInTheDocument();
+  });
+
+  it("requests the selected canonical definition revision with both identities", async () => {
+    const loadParameterSpec = vi.fn().mockResolvedValue({
+      id: "spec-binding-gpio-int",
+      organizationId: null,
+      sourceKind: "dts",
+      specificationKey: "gpio_int",
+      propertyKey: "gpio_int",
+      driverModule: "sc8562",
+      lifecycle: "active",
+      currentVersionId: "spec-version-binding-gpio-int",
+      currentVersion: 1,
+      valueShape: null,
+      compatiblePatterns: null,
+      attributionModules: [],
+      displayName: "GPIO 中断",
+      description: null,
+      schemaDefault: null,
+      exampleValue: null,
+      schemaNamespace: null,
+      units: null,
+      constraints: null,
+      documentation: "canonical",
+      policyTarget: null
+    });
+    renderWorkbench({ canEdit: false, loadParameterSpec });
+
+    fireEvent.click(screen.getByRole("button", {
+      name: "查看 gpio_int（未分类 · sc8562 · sc8562@6E · sc8562）"
+    }));
+
+    await waitFor(() => expect(loadParameterSpec).toHaveBeenCalledWith(
+      "spec-binding-gpio-int",
+      "spec-version-binding-gpio-int",
+      "gpio_int"
+    ));
+  });
+
+  it("surfaces canonical detail failures and retries the exact revision request", async () => {
+    const loadParameterSpec = vi.fn()
+      .mockRejectedValueOnce(new Error("definition revision unavailable"))
+      .mockResolvedValueOnce({
+        definitionId: "definition-gpio-int",
+        revisionId: "revision-3",
+        revisionNumber: 3,
+        propertyKey: "gpio_int",
+        contentDigest: "sha256:revision-3",
+        displayName: "GPIO 中断（修订 3）",
+        valueShape: { kind: "json-schema", schema: { type: "string" } },
+        constraints: { kind: "none" },
+        documentation: "精确修订 3 的说明。",
+        unit: "mA",
+        catalogReleaseId: "release-3"
+      });
+    const user = userEvent.setup();
+    renderWorkbench({ canEdit: false, loadParameterSpec });
+
+    await user.click(screen.getByRole("button", {
+      name: "查看 gpio_int（未分类 · sc8562 · sc8562@6E · sc8562）"
+    }));
+
+    const detail = await screen.findByRole("dialog", { name: "gpio_int 参数详情" });
+    await waitFor(() => expect(within(detail).getByRole("alert", { name: "规格详情加载失败" })).toBeInTheDocument());
+    await user.click(within(detail).getByRole("button", { name: "重试规格详情" }));
+
+    await waitFor(() => {
+      expect(loadParameterSpec).toHaveBeenCalledTimes(2);
+      expect(within(detail).getByText("精确修订 3 的说明。")).toBeInTheDocument();
+    });
+  });
+
+  it("shows history and compare failures with independent retry actions", async () => {
+    const loadBindingHistory = vi.fn()
+      .mockRejectedValueOnce(new Error("history failed"))
+      .mockResolvedValueOnce([{
+        id: "history-1",
+        changedAt: "2026-09-23T01:00:00.000Z",
+        fromRawValue: "<0>",
+        toRawValue: "<1>"
+      }]);
+    const loadBindingCompare = vi.fn()
+      .mockRejectedValueOnce(new Error("compare failed"))
+      .mockResolvedValueOnce([{
+        bindingId: "binding-nebula-gpio-int",
+        projectId: "project-nebula",
+        projectName: "Nebula",
+        rawValue: "<2>"
+      }]);
+    const user = userEvent.setup();
+    renderWorkbench({ canEdit: false, loadBindingHistory, loadBindingCompare });
+
+    await user.click(screen.getByRole("button", {
+      name: "查看 gpio_int（未分类 · sc8562 · sc8562@6E · sc8562）"
+    }));
+
+    const detail = await screen.findByRole("dialog", { name: "gpio_int 参数详情" });
+    await waitFor(() => {
+      expect(within(detail).getByRole("alert", { name: "历史加载失败" })).toBeInTheDocument();
+      expect(within(detail).getByRole("alert", { name: "对比加载失败" })).toBeInTheDocument();
+    });
+
+    await user.click(within(detail).getByRole("button", { name: "重试历史" }));
+    await user.click(within(detail).getByRole("button", { name: "重试对比" }));
+
+    await waitFor(() => {
+      expect(loadBindingHistory).toHaveBeenCalledTimes(2);
+      expect(loadBindingCompare).toHaveBeenCalledTimes(2);
+      expect(within(detail).getByText("<1>")).toBeInTheDocument();
+      expect(within(detail).getByRole("button", { name: "打开跨项目对比" })).toBeInTheDocument();
+    });
   });
 
   it("seeds the local draft bag from a compare peer target value", async () => {

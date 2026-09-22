@@ -6,32 +6,29 @@ import { formatAuditAbsoluteTime } from "@/domain/audit/formatAuditTime";
 import { formatModulePathLabel } from "@/domain/modules/moduleTree";
 import {
   buildBindingProjectComparison,
-  dedupeBindingComparePeers
+  dedupeBindingComparePeers,
+  type BindingComparePeer
 } from "@/domain/parameter-topology/bindingProjectComparison";
 import { formatDtsRawValueForUi } from "@/domain/parameter-topology/formatDtsRawValueForUi";
-import type { ParameterSpecDetail } from "@/domain/parameter-topology/types";
+import type {
+  BindingCompareEntry as DomainBindingCompareEntry,
+  BindingHistoryEntry as DomainBindingHistoryEntry,
+  CanonicalDtsDefinitionDetail,
+  ParameterSpecDetail
+} from "@/domain/parameter-topology/types";
 import type { DtsParameterWorkbenchRow } from "@/domain/parameter-topology/workbenchTypes";
 import { Button } from "@/components/ui/button";
 
 import { DtsBindingCompareDialog } from "./DtsBindingCompareDialog";
 import { DtsBindingHistoryDiffDialog } from "./DtsBindingHistoryDiffDialog";
 
-export type BindingHistoryEntry = {
-  id: string;
-  changedAt: string;
+export type BindingHistoryEntry = DomainBindingHistoryEntry & {
   actor?: string | null;
-  fromRawValue?: string | null;
-  toRawValue?: string | null;
   reason?: string | null;
 };
 
-export type BindingCompareEntry = {
-  projectId: string;
-  projectName: string;
-  rawValue: string;
-  moduleName?: string | null;
-  driverModule?: string | null;
-};
+export type BindingCompareEntry = DomainBindingCompareEntry;
+export type BindingComparePeerEntry = BindingComparePeer;
 
 export type DtsBindingDetailDialogProps = {
   row: DtsParameterWorkbenchRow;
@@ -45,9 +42,17 @@ export type DtsBindingDetailDialogProps = {
   /** Current project identity for the compare base row. */
   baseProjectId?: string;
   baseProjectName?: string;
-  /** Loaded on open from GET /api/v2/parameter-specs/:id; null while loading or unavailable. */
-  specDetail?: ParameterSpecDetail | null;
+  /** Loaded on open from the exact canonical Definition revision. */
+  specDetail?: ParameterSpecDetail | CanonicalDtsDefinitionDetail | null;
   specDetailStatus?: "idle" | "loading" | "ready" | "error";
+  specDetailErrorMessage?: string | null;
+  historyStatus?: "idle" | "loading" | "ready" | "error";
+  historyErrorMessage?: string | null;
+  compareStatus?: "idle" | "loading" | "ready" | "error";
+  compareErrorMessage?: string | null;
+  onRetrySpecDetail?: () => void;
+  onRetryHistory?: () => void;
+  onRetryCompare?: () => void;
 };
 
 const RECENT_HISTORY_LIMIT = 3;
@@ -111,17 +116,18 @@ function importanceLabel(importance: DtsParameterWorkbenchRow["importance"]): st
   return "中";
 }
 
-function displayHistoryRaw(value: string | null | undefined) {
+function displayHistoryRaw(value: string | null | undefined, valueState?: BindingHistoryEntry["valueState"]) {
+  if (valueState === "deleted" && (value == null || value.trim() === "")) return "已删除";
   if (value == null || value.trim() === "") return "∅";
   return formatDtsRawValueForUi(value) || "∅";
 }
 
 function BindingHistoryEntryItem({
   entry,
-  versionLabel
+  eventLabel
 }: {
   entry: BindingHistoryEntry;
-  versionLabel: string;
+  eventLabel: string;
 }) {
   const metaParts = [
     formatAuditAbsoluteTime(entry.changedAt),
@@ -130,11 +136,15 @@ function BindingHistoryEntryItem({
 
   return (
     <li className="parameter-detail-history__item" data-complex="true">
-      <span className="parameter-detail-history__version">{versionLabel}</span>
+      <span className="parameter-detail-history__version">{eventLabel}</span>
       <span className="parameter-detail-history__value">
-        <code tabIndex={0}>{displayHistoryRaw(entry.toRawValue)}</code>
+        <code tabIndex={0}>{displayHistoryRaw(entry.toRawValue, entry.valueState)}</code>
       </span>
-      <small className="parameter-detail-history__meta">{metaParts.join(" / ")}</small>
+      <small className="parameter-detail-history__meta">
+        {[entry.eventType, entry.definitionRevisionId ? `修订 ${entry.definitionRevisionId}` : null, ...metaParts]
+          .filter(Boolean)
+          .join(" / ")}
+      </small>
     </li>
   );
 }
@@ -150,7 +160,15 @@ export function DtsBindingDetailDialog({
   baseProjectId = "current",
   baseProjectName = "当前项目",
   specDetail = null,
-  specDetailStatus = "idle"
+  specDetailStatus = "idle",
+  specDetailErrorMessage = null,
+  historyStatus = "idle",
+  historyErrorMessage = null,
+  compareStatus = "idle",
+  compareErrorMessage = null,
+  onRetrySpecDetail,
+  onRetryHistory,
+  onRetryCompare
 }: DtsBindingDetailDialogProps) {
   const [compareOpen, setCompareOpen] = useState(false);
   const [historyDiffOpen, setHistoryDiffOpen] = useState(false);
@@ -161,33 +179,51 @@ export function DtsBindingDetailDialog({
     [compareEntries]
   );
   const coverage = useMemo(
-    () =>
-      buildBindingProjectComparison({
-        baseProjectId,
-        baseProjectName,
-        baseRawValue: row.rawValue,
-        peers: compareEntries,
-        targetProjectId: null
-      }).coverage,
+    () => {
+      try {
+        return buildBindingProjectComparison({
+          baseProjectId,
+          baseProjectName,
+          baseRawValue: row.rawValue,
+          peers: compareEntries,
+          targetBindingId: null
+        }).coverage;
+      } catch {
+        return null;
+      }
+    },
     [baseProjectId, baseProjectName, row.rawValue, compareEntries]
   );
 
-  const pinnedDisplayName = row.displayName === undefined ? specDetail?.displayName : row.displayName;
+  const canonicalSpec: CanonicalDtsDefinitionDetail | null =
+    specDetail && "revisionId" in specDetail ? specDetail : null;
+  const legacySpec: ParameterSpecDetail | null =
+    specDetail && !("revisionId" in specDetail) ? specDetail : null;
+  const pinnedDisplayName = row.displayName === undefined
+    ? specDetail?.displayName
+    : row.displayName;
   const displayName = pinnedDisplayName?.trim() && pinnedDisplayName !== row.propertyKey
     ? pinnedDisplayName
     : null;
   const displayDescription = (
-    row.description === undefined ? specDetail?.description : row.description
+    row.description === undefined ? legacySpec?.description : row.description
   )?.trim() || "暂无展示描述";
   const documentation = (
     row.documentation === undefined ? specDetail?.documentation : row.documentation
   )?.trim() || "暂无参数说明";
-  const exampleValue = formatUnknownValue(specDetail?.exampleValue ?? null);
-  const units = specDetail?.units?.trim() || null;
-  const constraintsSummary = formatConstraints(specDetail?.constraints);
-  const schemaDefault = formatUnknownValue(specDetail?.schemaDefault ?? null);
-  const policyTarget = formatUnknownValue(specDetail?.policyTarget ?? null);
-  const hasPeers = peerCount > 0;
+  const exampleValue = formatUnknownValue(legacySpec?.exampleValue ?? null);
+  const units = canonicalSpec?.unit?.trim() || legacySpec?.units?.trim() || null;
+  const canonicalConstraints = canonicalSpec?.constraints;
+  const constraintsSummary = canonicalSpec
+    ? canonicalConstraints &&
+      typeof canonicalConstraints === "object" &&
+      "kind" in canonicalConstraints && canonicalConstraints.kind === "none"
+      ? null
+      : formatUnknownValue(canonicalConstraints)
+    : formatConstraints(legacySpec?.constraints);
+  const schemaDefault = formatUnknownValue(legacySpec?.schemaDefault ?? null);
+  const policyTarget = formatUnknownValue(legacySpec?.policyTarget ?? null);
+  const hasPeers = peerCount > 0 && coverage !== null;
   const recentHistory = historyEntries.slice(0, RECENT_HISTORY_LIMIT);
   // The stacked child owns focus and dismissal while it is open. Suspending the
   // outer surface avoids a double backdrop without changing the detail state.
@@ -241,7 +277,14 @@ export function DtsBindingDetailDialog({
                 <p role="status">正在加载规格详情…</p>
               ) : null}
               {specDetailStatus === "error" ? (
-                <p role="status">规格详情暂时无法加载，以下仅展示绑定当前值。</p>
+                <div role="alert" aria-label="规格详情加载失败">
+                  <span>{specDetailErrorMessage ?? "规格详情暂时无法加载，以下仅展示绑定当前值。"}</span>
+                  {onRetrySpecDetail ? (
+                    <Button type="button" variant="outline" size="sm" onClick={onRetrySpecDetail}>
+                      重试规格详情
+                    </Button>
+                  ) : null}
+                </div>
               ) : null}
               {displayName ? <TextField label="显示名" value={displayName} /> : null}
               <TextField label="展示描述" value={displayDescription} />
@@ -266,7 +309,7 @@ export function DtsBindingDetailDialog({
             <section className="parameter-detail-history dts-binding-detail-history" aria-labelledby="dts-binding-history-title">
               <div className="parameter-detail-history__head">
                 <h3 id="dts-binding-history-title">近期历史</h3>
-                {historyEntries.length > 0 ? (
+                {historyStatus !== "loading" && historyStatus !== "error" && historyEntries.length > 0 ? (
                   <Button
                     type="button"
                     variant="outline"
@@ -281,13 +324,28 @@ export function DtsBindingDetailDialog({
                   </Button>
                 ) : null}
               </div>
-              {recentHistory.length > 0 ? (
+              {historyStatus === "loading" ? (
+                <p role="status">正在加载历史…</p>
+              ) : historyStatus === "error" ? (
+                <div role="alert" aria-label="历史加载失败">
+                  <span>{historyErrorMessage ?? "历史加载失败，未将失败显示为空记录。"}</span>
+                  {onRetryHistory ? (
+                    <Button type="button" variant="outline" size="sm" onClick={onRetryHistory}>
+                      重试历史
+                    </Button>
+                  ) : null}
+                </div>
+              ) : recentHistory.length > 0 ? (
                 <ul aria-label="参数历史">
                   {recentHistory.map((entry, index) => (
                     <BindingHistoryEntryItem
                       key={entry.id}
                       entry={entry}
-                      versionLabel={`R${historyEntries.length - index}`}
+                      eventLabel={entry.definitionRevisionId
+                        ? `修订 ${entry.definitionRevisionId}`
+                        : entry.currentValueId
+                          ? `值 ${entry.currentValueId}`
+                          : `历史事件 ${index + 1}`}
                     />
                   ))}
                 </ul>
@@ -300,15 +358,35 @@ export function DtsBindingDetailDialog({
               <div className="dts-binding-compare-entry__row">
                 <div>
                   <h3 id="dts-binding-compare-title">跨项目对比</h3>
-                  {hasPeers ? (
+                  {compareStatus === "loading" ? (
+                    <p role="status">正在加载对比…</p>
+                  ) : compareStatus === "error" ? (
+                    <div role="alert" aria-label="对比加载失败">
+                      <span>{compareErrorMessage ?? "对比加载失败，未将失败显示为空对端。"}</span>
+                      {onRetryCompare ? (
+                        <Button type="button" variant="outline" size="sm" onClick={onRetryCompare}>
+                          重试对比
+                        </Button>
+                      ) : null}
+                    </div>
+                  ) : coverage === null ? (
+                    <div role="alert" aria-label="对比数据身份冲突">
+                      <span>对比数据缺少唯一配置实例身份，无法安全选择目标。</span>
+                      {onRetryCompare ? (
+                        <Button type="button" variant="outline" size="sm" onClick={onRetryCompare}>
+                          重试对比
+                        </Button>
+                      ) : null}
+                    </div>
+                  ) : hasPeers ? (
                     <p>
-                      {coverage.configured}/{coverage.total} 个项目已配置 · 另有 {peerCount} 个对端可对比
+                      {coverage.configured}/{coverage.total} 个配置实例已配置 · 另有 {peerCount} 个对端可对比
                     </p>
                   ) : (
                     <p>暂无其他项目的对比数据。</p>
                   )}
                 </div>
-                {hasPeers ? (
+                {compareStatus !== "loading" && compareStatus !== "error" && hasPeers ? (
                   <Button
                     type="button"
                     variant="outline"
@@ -340,6 +418,7 @@ export function DtsBindingDetailDialog({
       {compareOpen && hasPeers ? (
         <DtsBindingCompareDialog
           propertyKey={row.propertyKey}
+          baseBindingId={row.bindingId}
           baseProjectId={baseProjectId}
           baseProjectName={baseProjectName}
           baseRawValue={row.rawValue}
