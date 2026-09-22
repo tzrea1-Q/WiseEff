@@ -4,6 +4,10 @@
 
 ## 当前 #815 范围 — 2026-09-23
 
+本地验证已在 `7dfc86bfd360fac62dd10cabace1db992b36dae9` 完成（生产修复为 `86d53f5a7fae88c8bc2c44d2bf434de1403356dd`）。生命周期组件 7/7、既有 builder/preview 测试 9/9 通过；build、contract、UI、双语文档/schema 检查通过，lint 为 0 errors / 333 warnings。独立 Standards 与 Spec 无实现发现。真实 API/PostgreSQL 的 owned 浏览器运行 `full-20260922t170402326z-7dfc86bfd360-6a1f08f3` 通过 1 项业务用例及 1 项 warmup：预演 HTTP 201、提交与持久化候选完整保留 schema 和内容、编辑器及最终确认显示暂不可用，并成功取消。1440×900 截图在有限动画完成后已目视检查；诊断通过，明确允许原有 legacy projects GET 404。本地 U07 阻塞解除，不代表实际发布、Hosted、生产或父级计划验收。本轮进程已停止、专属数据库/object store 已删除。私有本地日志、截图和报告索引为 ignored `work/issue-815/local-verification.md`。未 push、提 PR、合并、部署或关闭 Issue。
+
+### 已批准契约与较早的本地检查点
+
 用户随后已同意在本项内修复原有生命周期预演阻塞。弃用/恢复请求须保留当前修订的完整 schema、显示名、说明和单位，替换强制构造的 mixed schema，两种操作共用修复。保留原授权、原因、显式确认和失败处理；禁止放宽解析器或丢失 schema 的降级。组件测试核对两种操作的提交内容及 schema 约束；真实 API/PostgreSQL 浏览器验证请求内容、预演成功和最终确认/取消。以本地 `60b632e665d992a0ca5ec473b3cd4e876cec4b64` 为修复起点；下方早于本次批准的结果保持为历史记录。仍不包含 PR、合并或部署。
 
 用户已批准 [#815](https://github.com/tzrea1-Q/WiseEff/issues/815) 的阶段性暂不可用契约，并从 `360bbc428f5eb4d279b1ba1e130e687ef8ea78c6` 开始本地实现。下方带日期的旧检查点保留为历史记录，其中“该范围尚未获批”的描述不再代表 #815 当前状态。这不代表 PR、合并、关闭、部署或父级计划验收。
