@@ -1512,6 +1512,7 @@ export async function loadAttributionModulesBySpecIds(
 }
 
 type SpecDetailRow = SpecListRow & {
+  driver_schema_version_id: string | null;
   display_name: string | null;
   description: string | null;
   value_shape: unknown;
@@ -1577,10 +1578,18 @@ export async function findParameterSpecByIdentity(
   };
 }
 
-export async function getParameterSpecRow(
+export function getParameterSpecRow(
+  db: Queryable,
+  input: { organizationId: string; specId: string; driverSchemaVersionId: string },
+): Promise<{ driverSchemaVersionId: string | null } | null>;
+export function getParameterSpecRow(
   db: Queryable,
   input: { organizationId: string; specId: string },
-): Promise<ParameterSpecDetailRow | null> {
+): Promise<ParameterSpecDetailRow | null>;
+export async function getParameterSpecRow(
+  db: Queryable,
+  input: { organizationId: string; specId: string; driverSchemaVersionId?: string },
+): Promise<ParameterSpecDetailRow | { driverSchemaVersionId: string | null } | null> {
   const result = await db.query<SpecDetailRow>(
     `
     select
@@ -1613,6 +1622,7 @@ export async function getParameterSpecRow(
       coalesce(nullif(psv.constraints, '{}'::jsonb), dps.constraints) as constraints,
       coalesce(psv.documentation, dps.documentation) as documentation,
       dsv.compatible_patterns,
+      dsv.id as driver_schema_version_id,
       ppt.target_value as policy_target,
       case
         when ps.definition_lifecycle = 'active'
@@ -1754,6 +1764,8 @@ export async function getParameterSpecRow(
       select *
       from driver_schema_versions
       where driver_schema_id = ds.id
+        and ($3::text is null or id = $3)
+        and ($3::text is null or ds.organization_id is not distinct from ps.organization_id)
       order by version desc
       limit 1
     ) dsv on true
@@ -1784,10 +1796,16 @@ export async function getParameterSpecRow(
       and (ps.organization_id = $1 or ps.organization_id is null)
     limit 1
     `,
-    [input.organizationId, input.specId],
+    [input.organizationId, input.specId, input.driverSchemaVersionId ?? null],
   );
   const row = result.rows[0];
   if (!row) return null;
+
+  // Source-only ingestion needs the persisted version, not a registry upsert.
+  // Keep this exact-version read on the existing tenant-scoped definition query.
+  if (input.driverSchemaVersionId !== undefined) {
+    return { driverSchemaVersionId: row.driver_schema_version_id };
+  }
 
   const attributionBySpec = await loadAttributionModulesBySpecIds(db, {
     organizationId: input.organizationId,

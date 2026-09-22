@@ -10,7 +10,7 @@ import type { AuditCorrelationContext } from "../audit/types";
 import type { AuthContext } from "../auth/types";
 import type { ObjectStore } from "../logs/objectStore";
 import { canAdminParameters } from "../parameter-kernel/policy";
-import { ingestConfigRevisionInTransaction } from "../parameter-topology/ingestService";
+import { ingestConfigRevisionInTransaction, type ConfigRevisionIngestOptions } from "../parameter-topology/ingestService";
 import type {
   ConfigRevisionManifest,
   ConfigRevisionManifestMember,
@@ -234,6 +234,7 @@ export async function maybeIngestSemanticConfigRevision(
     frozenVersionId: string;
     frozenSource: string;
   },
+  options?: Pick<ConfigRevisionIngestOptions, "legacyProjection">,
 ): Promise<void> {
   const membership = await getFileConfigSetMembership(db, {
     organizationId: auth.organization.id,
@@ -328,7 +329,7 @@ export async function maybeIngestSemanticConfigRevision(
     members,
   };
 
-  await ingestConfigRevisionInTransaction(db, manifest, auth);
+  await ingestConfigRevisionInTransaction(db, manifest, auth, undefined, options);
 }
 
 export async function uploadProjectParameterFile(
@@ -337,6 +338,7 @@ export async function uploadProjectParameterFile(
   auth: AuthContext,
   input: UploadProjectParameterFileInput,
   context: ParameterFileServiceContext = {},
+  ingestOptions?: Pick<ConfigRevisionIngestOptions, "legacyProjection">,
 ): Promise<{
   file: ProjectParameterFileDto;
   version: ProjectParameterFileVersionDto;
@@ -405,7 +407,7 @@ export async function uploadProjectParameterFile(
         fileId: file.id,
         frozenVersionId: version.id,
         frozenSource: source,
-      });
+      }, ingestOptions);
     }
     if (version.origin === "upload") {
       await syncFileVersion(asAuditTx(tx), auth, {

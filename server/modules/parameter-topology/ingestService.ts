@@ -84,6 +84,12 @@ import type {
 
 export { offsetToLineColumn };
 
+export type ConfigRevisionIngestOptions = {
+  sourceCommit?: { baseConfigRevisionId: string };
+  /** Seed rebuild owns canonical publication; retain module discovery without legacy spec/binding writes. */
+  legacyProjection?: "skip";
+};
+
 const schemasRoot = join(
   dirname(fileURLToPath(import.meta.url)),
   "../../../schemas/dts",
@@ -365,6 +371,7 @@ async function buildLogicalRevisionsWithContinuity(
     revisionNumber: number;
     registry: SchemaRegistry;
     sourceCommit?: { baseConfigRevisionId: string };
+    legacyProjection?: "skip";
   },
 ): Promise<ContinuityBuildResult> {
   const previousRows = await listPreviousLogicalNodeSnapshots(tx, {
@@ -420,7 +427,16 @@ async function buildLogicalRevisionsWithContinuity(
     const matchable = toMatchableNode(node);
     const driverDecision = matchDriver(matchable, input.registry);
     let driverSchemaVersionId: string | null = null;
-    if (driverDecision.kind === "matched") {
+    if (driverDecision.kind === "matched" && input.legacyProjection === "skip") {
+      // Existing versions remain continuity evidence; importing a source must not
+      // rewrite the legacy definitions protected by the maintenance baseline.
+      const existing = await getParameterSpecRow(tx, {
+        organizationId: input.organizationId,
+        specId: `pspec:driver:${driverDecision.value.schemaNamespace}`,
+        driverSchemaVersionId: driverDecision.value.id,
+      });
+      driverSchemaVersionId = existing?.driverSchemaVersionId ?? null;
+    } else if (driverDecision.kind === "matched") {
       await tx.query("savepoint skip_legacy_driver_spec");
       try {
         const upserted = await upsertMatchedDriverSchema(
@@ -601,9 +617,10 @@ async function matchBindAndQueueReviews(
     propertyOccurrenceByKey: Map<string, string>;
     registry: SchemaRegistry;
     attribution?: TrustedInvocationDomainAttribution;
+    legacyProjection?: "skip";
   },
 ): Promise<SpecReviewTaskDraft[]> {
-  const overrides = await listMatcherOverridesForProject(tx, {
+  const overrides = input.legacyProjection === "skip" ? [] : await listMatcherOverridesForProject(tx, {
     organizationId: input.organizationId,
     projectId: input.projectId,
   });
@@ -733,23 +750,20 @@ async function matchBindAndQueueReviews(
         ) {
           continue;
         }
-        let matchedSpec: Awaited<ReturnType<typeof upsertMatchedPropertySpec>>;
-        await tx.query("savepoint skip_legacy_property_spec");
-        try {
-          matchedSpec = await upsertMatchedPropertySpec(tx, decision.value);
-          await tx.query("release savepoint skip_legacy_property_spec");
-        } catch (error) {
-          await tx.query("rollback to savepoint skip_legacy_property_spec").catch(() => undefined);
-          if (!isPrivilegeDenied(error)) {
-            throw error;
+        let matchedSpec: Awaited<ReturnType<typeof upsertMatchedPropertySpec>> | undefined;
+        if (input.legacyProjection !== "skip") {
+          await tx.query("savepoint skip_legacy_property_spec");
+          try {
+            matchedSpec = await upsertMatchedPropertySpec(tx, decision.value);
+            await tx.query("release savepoint skip_legacy_property_spec");
+          } catch (error) {
+            await tx.query("rollback to savepoint skip_legacy_property_spec").catch(() => undefined);
+            if (!isPrivilegeDenied(error)) {
+              throw error;
+            }
+            continue;
           }
-          continue;
         }
-        const {
-          parameterSpecId,
-          parameterSpecVersionId,
-          attributionSubjectId,
-        } = matchedSpec;
         const matchedModuleId = await resolveAttributionModuleForBinding(tx, {
           organizationId: input.organizationId,
           driverModule: driverModuleFromSchemaNamespace(
@@ -758,8 +772,13 @@ async function matchBindAndQueueReviews(
           compatible: matchable.compatible[0] ?? null,
           instanceName: instanceNameFor(matchable),
           nodeLocator: matchable.nodeLocator,
-          attributionSubjectId,
+          attributionSubjectId: matchedSpec?.attributionSubjectId,
         });
+        if (!matchedSpec) continue;
+        const {
+          parameterSpecId,
+          parameterSpecVersionId,
+        } = matchedSpec;
         const { binding } = await createRecognizedBinding(tx, {
           organizationId: input.organizationId,
           projectId: input.projectId,
@@ -805,9 +824,11 @@ async function matchBindAndQueueReviews(
       // current canonical subject, unique active version, or authoritative
       // placement. Keep this occurrence as review evidence until the current
       // registry resolves it through the matched path above.
-      reviewDrafts.push(
-        ...reviewTasksForDecision(decision, matchable, propertyKey, locate),
-      );
+      if (input.legacyProjection !== "skip") {
+        reviewDrafts.push(
+          ...reviewTasksForDecision(decision, matchable, propertyKey, locate),
+        );
+      }
     }
   }
 
@@ -823,9 +844,10 @@ export async function ingestConfigRevision(
   db: Database,
   manifest: ConfigRevisionManifest,
   auth: AuthContext,
+  options?: ConfigRevisionIngestOptions,
 ): Promise<DtsConfigRevisionDto> {
   return db.transaction(async (tx) =>
-    ingestConfigRevisionInTransaction(tx, manifest, auth),
+    ingestConfigRevisionInTransaction(tx, manifest, auth, undefined, options),
   );
 }
 
@@ -835,7 +857,7 @@ export async function ingestConfigRevisionInTransaction(
   manifest: ConfigRevisionManifest,
   auth: AuthContext,
   attribution?: { createdByUserId: string | null | undefined; domain?: TrustedInvocationDomainAttribution },
-  options?: { sourceCommit: { baseConfigRevisionId: string } },
+  options?: ConfigRevisionIngestOptions,
 ): Promise<DtsConfigRevisionDto> {
   return ingestConfigRevisionTx(tx, manifest, auth, attribution, options);
 }
@@ -845,7 +867,7 @@ async function ingestConfigRevisionTx(
   manifest: ConfigRevisionManifest,
   auth: AuthContext,
   attribution?: { createdByUserId: string | null | undefined; domain?: TrustedInvocationDomainAttribution },
-  options?: { sourceCommit: { baseConfigRevisionId: string } },
+  options?: ConfigRevisionIngestOptions,
 ): Promise<DtsConfigRevisionDto> {
   const dtsMembers = manifest.members.filter((member) => member.format !== "json").map((member) => ({
     ...member, fileName: normalizeManifestLogicalPath(member.sourceName ?? member.fileName) ?? "",
@@ -988,6 +1010,7 @@ async function ingestConfigRevisionTx(
     revisionNumber,
     registry,
     sourceCommit: options?.sourceCommit,
+    legacyProjection: options?.legacyProjection,
   });
 
   for (const logical of continuity.logicalNodesToInsert) {
@@ -1047,6 +1070,7 @@ async function ingestConfigRevisionTx(
     propertyOccurrenceByKey,
     registry,
     attribution: attribution?.domain,
+    legacyProjection: options?.legacyProjection,
   });
   await persistOpenReviewTaskDrafts(tx, manifest.organizationId, reviewDrafts);
 

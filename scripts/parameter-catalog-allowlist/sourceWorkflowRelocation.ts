@@ -47,7 +47,7 @@ export async function applyReviewedSourceWorkflowConsumerRelocation(
 // Exact 82-pair data independently approved by Spec and Standards for #849/#853.
 const config: RelocationConfig = {
   recordPath: sourceWorkflowRelocationRecordPath,
-  recordSha256: "5ae513f2b082999a77ce32c4971a46d6ee0145c6b9ae2ad14a3492aa7254e747",
+  recordSha256: "b998321716d00d58ea83b03cd283a52bafb40ac40437549ee453e7153c83742c",
   files: [
     { file: "server/modules/parameter-topology/ingestService.ts", pairs: 20 },
     { file: "server/modules/parameter-topology/schemas.ts", pairs: 3 },
