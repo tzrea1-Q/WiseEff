@@ -60,7 +60,9 @@ wiseeff_seed_artifact='sha256:<reviewed-configuration-artifact-digest>'
 ./scripts/seed-rebuild.sh finish --run-id "$wiseeff_seed_run"
 ```
 
-The core archives and verifies all three old planes before materializing. It compares the complete reviewed identity set and source pins, verifies preserved data, and only then removes captured old residue. A total of 372 bindings is expected today, but count alone cannot pass verification. Successful repeat verification performs no rebuild writes.
+The core archives and verifies all three old planes before materializing. For each rebuilt default config set, it detaches archived members absent from the reviewed sources and reapplies the reviewed roles and order to retained members. Detaching membership does not delete files, versions or source bytes; their cleanup remains behind successor verification. This keeps current membership identical to the new DTS/JSON revision, including on deployments with an old `aurora-board.dts` member. It compares the complete reviewed identity set and source pins, verifies preserved data, and only then removes captured old residue. A total of 372 bindings is expected today, but count alone cannot pass verification. Successful repeat verification performs no rebuild writes.
+
+The existing revision-retention policy is unchanged. Files referenced by retained revision members remain available with their versions and bytes even when detached from the active config set; unreferenced archived residue is still disposed after verification.
 
 ## Failure and manual acceptance
 
