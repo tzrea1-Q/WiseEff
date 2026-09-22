@@ -82,7 +82,7 @@ test("shows unavailable Policy usage through real API details and lifecycle conf
   for (const definition of definitions) expect(definition.usageSummary.policyCount).toBeNull();
 
   const table = region.getByRole("table", { name: "参数定义列表" });
-  const row = table.getByRole("row").filter({ has: table.getByRole("button", { name: /^弃用 /u }) }).first();
+  const row = table.getByRole("row").filter({ has: page.getByRole("button", { name: /^弃用 /u }) }).first();
   await row.getByRole("button", { name: /^编辑 /u }).click();
   const editor = page.getByRole("dialog");
   await editor.getByText("更多信息", { exact: true }).click();
