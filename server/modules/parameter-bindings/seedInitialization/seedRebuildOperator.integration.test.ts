@@ -15,7 +15,7 @@ import { addConfigSetFile, ensureDefaultConfigSet } from "../../parameter-files/
 import { uploadProjectParameterFile } from "../../parameter-files/service";
 import { insertConfigRevision, insertConfigRevisionMembers } from "../../parameter-topology/repository";
 import { createParameterModule } from "../../parameters/parameterModuleRepository";
-import { upsertMatchedDriverSchema, upsertMatchedPropertySpec } from "../../parameter-specs/repository";
+import { getParameterSpecRow, upsertMatchedDriverSchema, upsertMatchedPropertySpec } from "../../parameter-specs/repository";
 import { getCachedSchemaRegistry } from "../../parameter-specs/schemaRegistryCache";
 import { planSeedRebuild, checkSeedRebuildState, rebuildSeedProjects, verifySeedRebuild, assertSeedPublicationIdle,
   captureSeedMaintenanceBaseline, verifySeedMaintenanceBaseline, type SeedRebuildState } from "../../../../scripts/lib/seedRebuild";
@@ -295,6 +295,46 @@ describe("reviewed example rebuild preflight on an adopted populated instance", 
     if (database) expect((await dropLabRuntimeLogins(database.url, loginToken)).failed).toEqual([]);
     await database?.drop();
     if (directory) await rm(directory, { recursive: true, force: true });
+  });
+
+  it("reads existing driver continuity without writes and rejects missing or foreign versions", async () => {
+    const registry = getCachedSchemaRegistry(path.join(process.cwd(), "schemas/dts"));
+    const driver = registry.drivers.find((row) => row.id === legacyOverlapSnapshot.driverSchemaVersion.id)!;
+    expect(driver).toBeDefined();
+    const lookup = (candidate: typeof driver, organizationId = org) => getParameterSpecRow(client, {
+      organizationId, specId: `pspec:driver:${candidate.schemaNamespace}`, driverSchemaVersionId: candidate.id,
+    });
+    await client.query("begin read only");
+    try {
+      expect(await lookup(driver)).toEqual({ driverSchemaVersionId: driver.id });
+      expect(await lookup({ ...driver, id: "missing-driver-version" })).toEqual({ driverSchemaVersionId: null });
+    } finally {
+      await client.query("rollback");
+    }
+    await client.query("begin");
+    try {
+      const ownedDriver = { ...driver, id: "owned-continuity:v1", source: "manual" as const,
+        schemaNamespace: `org/${org}/wiseeff,owned-continuity`, compatible: "wiseeff,owned-continuity",
+        compatiblePatterns: ["wiseeff,owned-continuity"] };
+      await upsertMatchedDriverSchema(client, ownedDriver);
+      await upsertMatchedDriverSchema(client, { ...ownedDriver, id: "owned-continuity:v2", version: 2 });
+      expect(await lookup(ownedDriver)).toEqual({ driverSchemaVersionId: ownedDriver.id });
+      expect(await lookup(ownedDriver, "foreign-org")).toBeNull();
+      expect(await lookup({ ...driver, id: ownedDriver.id })).toEqual({ driverSchemaVersionId: null });
+      // Migration 0125 preserves historical dirty owners. Construct that state
+      // only in this rollback fixture, then restore guards before the read.
+      await client.query("insert into organizations (id,name) values ('foreign-org','Foreign fixture')");
+      await client.query("set local session_replication_role = 'replica'");
+      try {
+        await client.query(`update driver_schemas set organization_id='foreign-org'
+          where parameter_spec_id=$1`, [`pspec:driver:${ownedDriver.schemaNamespace}`]);
+      } finally {
+        await client.query("set local session_replication_role = 'origin'");
+      }
+      expect(await lookup(ownedDriver)).toEqual({ driverSchemaVersionId: null });
+    } finally {
+      await client.query("rollback");
+    }
   });
 
   it("plans without writing and binds the real persisted actor and all reviewed identities", async () => {

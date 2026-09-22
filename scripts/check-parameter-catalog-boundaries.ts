@@ -37,6 +37,7 @@ import { applyReviewedDebuggingTransferRelocation } from "./parameter-catalog-al
 import { applyReviewedSourceWorkflowRelocation, applyReviewedSourceWorkflowConsumerRelocation } from "./parameter-catalog-allowlist/sourceWorkflowRelocation";
 import { applyReviewedT14FamilySuccessorRelocation } from "./parameter-catalog-allowlist/t14FamilySuccessorRelocation";
 import { applyReviewedT14RewrittenSliceSuccessorRelocation } from "./parameter-catalog-allowlist/t14RewrittenSliceSuccessorRelocation";
+import { applyReviewedSeedDriverLookupRelocation } from "./parameter-catalog-allowlist/seedDriverLookupRelocation";
 import {
   allowlistShardSchema,
   boundaryViolationFixtureSchema,
@@ -403,13 +404,18 @@ export async function checkParameterCatalogBoundaries(
     familyRelocated.violations,
     [...priorRelocations, ...consumerRelocated.relocations, ...familyRelocated.relocations],
   );
+  const seedDriverRelocated = await applyReviewedSeedDriverLookupRelocation(
+    repoRoot, fixture, allowlist.entries, rewrittenRelocated.violations,
+    [...priorRelocations, ...consumerRelocated.relocations, ...familyRelocated.relocations, ...rewrittenRelocated.relocations],
+  );
   return {
-    ...compareBoundaryInventory(rewrittenRelocated.violations, allowlist.entries, fixture.violations),
+    ...compareBoundaryInventory(seedDriverRelocated.violations, allowlist.entries, fixture.violations),
     relocations: [
       ...priorRelocations,
       ...consumerRelocated.relocations,
       ...familyRelocated.relocations,
       ...rewrittenRelocated.relocations,
+      ...seedDriverRelocated.relocations,
     ],
   };
 }

@@ -430,13 +430,12 @@ async function buildLogicalRevisionsWithContinuity(
     if (driverDecision.kind === "matched" && input.legacyProjection === "skip") {
       // Existing versions remain continuity evidence; importing a source must not
       // rewrite the legacy definitions protected by the maintenance baseline.
-      const existing = await tx.query<{ id: string }>(
-        `select v.id from driver_schema_versions v
-         join driver_schemas s on s.id = v.driver_schema_id
-         where v.id = $1 and (s.organization_id is null or s.organization_id = $2)`,
-        [driverDecision.value.id, input.organizationId],
-      );
-      driverSchemaVersionId = existing.rows[0]?.id ?? null;
+      const existing = await getParameterSpecRow(tx, {
+        organizationId: input.organizationId,
+        specId: `pspec:driver:${driverDecision.value.schemaNamespace}`,
+        driverSchemaVersionId: driverDecision.value.id,
+      });
+      driverSchemaVersionId = existing?.driverSchemaVersionId ?? null;
     } else if (driverDecision.kind === "matched") {
       await tx.query("savepoint skip_legacy_driver_spec");
       try {
@@ -776,7 +775,10 @@ async function matchBindAndQueueReviews(
           attributionSubjectId: matchedSpec?.attributionSubjectId,
         });
         if (!matchedSpec) continue;
-        const { parameterSpecId, parameterSpecVersionId } = matchedSpec;
+        const {
+          parameterSpecId,
+          parameterSpecVersionId,
+        } = matchedSpec;
         const { binding } = await createRecognizedBinding(tx, {
           organizationId: input.organizationId,
           projectId: input.projectId,
