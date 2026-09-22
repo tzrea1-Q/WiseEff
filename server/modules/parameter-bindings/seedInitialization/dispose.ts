@@ -247,14 +247,22 @@ async function loadSuccessorPks(
   );
   successor.set("dts_config_set", currentConfigSets);
   const configList = [...currentConfigSets];
+  // Revisions below remain retained; their members and versions still need
+  // parent files even after those files leave the active config set.
   successor.set(
     "project_parameter_files",
     asSet(
       await idsFrom(
         db,
-        `select id from public.project_parameter_files
-          where organization_id = $1 and project_id = $2
-            and config_set_id = any($3::text[])`,
+        `select file.id from public.project_parameter_files file
+          where file.organization_id = $1 and file.project_id = $2
+            and (file.config_set_id = any($3::text[]) or exists (
+              select 1 from public.dts_config_revision_members member
+              join public.dts_config_revisions revision on revision.id = member.config_revision_id
+              where member.file_id = file.id
+                and revision.organization_id = $1 and revision.project_id = $2
+                and revision.config_set_id = any($3::text[])
+            ))`,
         [organizationId, projectId, configList],
       ),
     ),
@@ -665,6 +673,13 @@ export async function disposeProjectParameterPlaneResidue(
         await callDisposer(tx, input.archiveId, child.from, "id", ids);
       }
     }
+    // Versions are disposed before their files. Break only the current-version
+    // links whose two endpoints are both archived residue in this transaction.
+    await tx.query(`update public.project_parameter_files
+      set current_version_id = null
+      where organization_id = $1 and project_id = $2
+        and id = any($3::text[]) and current_version_id = any($4::text[])`,
+    [organizationId, input.projectId, plan.residue.project_parameter_files ?? [], fileVersionResidue]);
     for (const key of DELETE_ORDER) {
       const relation = relationByKey.get(key);
       if (!relation) continue;

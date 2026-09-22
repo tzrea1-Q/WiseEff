@@ -209,12 +209,14 @@ describe("project parameter plane residue disposal", () => {
     ).toHaveLength(1);
   });
 
-  it("deletes still-online captured files that are not current config-set members", async () => {
+  it("deletes unreferenced old files but preserves parents of retained historical revisions", async () => {
     const store = createMemoryObjectStore();
     const currentBytes = Buffer.from("current source", "utf8");
     const residueBytes = Buffer.from("residue source", "utf8");
+    const historyBytes = Buffer.from("retained historical source", "utf8");
     store.entries.set("org/atlas/current.dts", currentBytes);
     store.entries.set("org/atlas/residue.dts", residueBytes);
+    store.entries.set("org/atlas/history.dts", historyBytes);
     const checksum = (bytes: Buffer) => createHash("sha256").update(bytes).digest("hex");
     await pool.query(
       `insert into public.dts_config_set (id, organization_id, project_id, name)
@@ -224,26 +226,35 @@ describe("project parameter plane residue disposal", () => {
     await pool.query(
       `insert into public.project_parameter_files (id, organization_id, project_id, file_name, format, config_set_id)
        values ('pfile_current', $1, $2, 'current.dts', 'dts', 'dcs_dispose'),
-              ('pfile_residue', $1, $2, 'residue.dts', 'dts', null)`,
+              ('pfile_residue', $1, $2, 'residue.dts', 'dts', null),
+              ('pfile_history', $1, $2, 'history.dts', 'dts', null)`,
       [ORG, PROJECT],
     );
     await pool.query(
       `insert into public.project_parameter_file_versions
          (id, file_id, version_number, storage_key, checksum, size_bytes, origin)
        values ('pfv_current', 'pfile_current', 1, 'org/atlas/current.dts', $1, $2, 'upload'),
-              ('pfv_residue', 'pfile_residue', 1, 'org/atlas/residue.dts', $3, $4, 'upload')`,
-      [checksum(currentBytes), currentBytes.byteLength, checksum(residueBytes), residueBytes.byteLength],
+              ('pfv_residue', 'pfile_residue', 1, 'org/atlas/residue.dts', $3, $4, 'upload'),
+              ('pfv_history', 'pfile_history', 1, 'org/atlas/history.dts', $5, $6, 'upload')`,
+      [checksum(currentBytes), currentBytes.byteLength, checksum(residueBytes), residueBytes.byteLength,
+        checksum(historyBytes), historyBytes.byteLength],
     );
+    await pool.query(`update public.project_parameter_files file
+      set current_version_id = version.id
+      from public.project_parameter_file_versions version
+      where version.file_id = file.id and file.id in ('pfile_current', 'pfile_residue', 'pfile_history')`);
     await pool.query(
       `insert into public.dts_config_revisions
          (id, organization_id, project_id, config_set_id, revision_number, status)
-       values ('revision_dispose', $1, $2, 'dcs_dispose', 1, 'resolved')`,
+       values ('revision_dispose', $1, $2, 'dcs_dispose', 1, 'resolved'),
+              ('revision_history', $1, $2, 'dcs_dispose', 2, 'resolved')`,
       [ORG, PROJECT],
     );
     await pool.query(
       `insert into public.dts_config_revision_members
          (id, config_revision_id, file_id, file_version_id, role, sort_order, source_name)
-       values ('rev_member_dispose', 'revision_dispose', 'pfile_current', 'pfv_current', 'base', 0, 'current.dts')`,
+       values ('rev_member_dispose', 'revision_dispose', 'pfile_current', 'pfv_current', 'base', 0, 'current.dts'),
+              ('rev_member_history', 'revision_history', 'pfile_history', 'pfv_history', 'base', 0, 'history.dts')`,
     );
     await pool.query(
       `insert into public.dts_nodes (id, file_version_id, name, node_path, sort_order)
@@ -257,8 +268,10 @@ describe("project parameter plane residue disposal", () => {
     });
     expect(plan.residue.project_parameter_files).toEqual(expect.arrayContaining(["pfile_residue"]));
     expect(plan.residue.project_parameter_files).not.toContain("pfile_current");
+    expect(plan.residue.project_parameter_files).not.toContain("pfile_history");
     expect(plan.residue.project_parameter_file_versions).toEqual(expect.arrayContaining(["pfv_residue"]));
     expect(plan.residue.project_parameter_file_versions).not.toContain("pfv_current");
+    expect(plan.residue.project_parameter_file_versions).not.toContain("pfv_history");
     expect(plan.residue.dts_config_set).not.toContain("dcs_dispose");
     await disposeProjectParameterPlaneResidue(root, store, editorAuth, operator, {
       projectId: PROJECT,
@@ -271,6 +284,11 @@ describe("project parameter plane residue disposal", () => {
     ).toEqual(["pfile_current"]);
     expect((await pool.query(`select id from public.dts_nodes where id = 'node_residue'`)).rows).toHaveLength(0);
     expect((await pool.query(`select id from public.dts_config_set where id = 'dcs_dispose'`)).rows).toHaveLength(1);
+    expect((await pool.query(`select config_set_id, current_version_id from public.project_parameter_files where id = 'pfile_history'`)).rows)
+      .toEqual([{ config_set_id: null, current_version_id: "pfv_history" }]);
+    expect((await pool.query(`select id from public.dts_config_revision_members where id = 'rev_member_history'`)).rows)
+      .toHaveLength(1);
+    expect(await store.get("org/atlas/history.dts")).toEqual(historyBytes);
   });
 
   it("rejects relations outside the closed disposer list", async () => {

@@ -11,6 +11,9 @@ import { bootstrapFirstAcme } from "../../catalog-kernel/install/publicationTest
 import { adoptPreexistingCatalog } from "../../catalog-publication/runtime/adoption";
 import { enablePublicationPolicy } from "../../catalog-publication/authorization/testHarness";
 import { createLocalObjectStore } from "../../logs/objectStore";
+import { addConfigSetFile, ensureDefaultConfigSet } from "../../parameter-files/configSetService";
+import { uploadProjectParameterFile } from "../../parameter-files/service";
+import { insertConfigRevision, insertConfigRevisionMembers } from "../../parameter-topology/repository";
 import { planSeedRebuild, checkSeedRebuildState, rebuildSeedProjects, verifySeedRebuild, assertSeedPublicationIdle,
   captureSeedMaintenanceBaseline, verifySeedMaintenanceBaseline, type SeedRebuildState } from "../../../../scripts/lib/seedRebuild";
 import { verifySeedPreservation } from "../../../../scripts/lib/seedRebuildPreservation";
@@ -35,9 +38,15 @@ describe("reviewed example rebuild preflight on an adopted populated instance", 
   let plan: SeedRebuildState;
   let manager: RootDatabase;
   let sharedObjectKey: string;
+  let oldAuroraFileId: string;
+  let oldAuroraFileVersionId: string;
+  let oldAuroraConfigSetId: string;
+  let oldAuroraRevisionMemberId: string;
   const loginToken = `seed${randomBytes(6).toString("hex")}`;
   const org = "org-rebuild";
   const input = { runId: "rebuild-test", organizationId: org, actorUserId: "rebuild-author", candidateSha: "a".repeat(40) };
+  const oldAuroraSource = "/dts-v1/; / { old-aurora-property = <41>; };";
+  const oldAtlasBoardSource = "/dts-v1/; / { old-atlas-property = <42>; };";
   const ctx = () => ({ db, store, repoRoot: process.cwd() });
 
   beforeAll(async () => {
@@ -62,6 +71,84 @@ describe("reviewed example rebuild preflight on an adopted populated instance", 
     await db.query(`insert into projects (id,organization_id,name,code,status) values
       ('atlas',$1,'Atlas','ATL-Intl','initialized'),('aurora',$1,'Aurora','AUR-Prod','initialized'),
       ('nebula',$1,'Nebula','NEB-RD','initialized'),('custom-preserved',$1,'Custom','CUSTOM','initialized')`, [org]);
+
+    const author = await getAuthContext(db, input.actorUserId);
+    const atlasDefault = await ensureDefaultConfigSet(db, author, "atlas");
+    const oldAtlasBoard = await uploadProjectParameterFile(db, store, author, {
+      projectId: "atlas",
+      fileName: "board.dts",
+      bytes: Buffer.from(oldAtlasBoardSource, "utf8"),
+    });
+    await addConfigSetFile(db, author, {
+      configSetId: atlasDefault.id,
+      fileId: oldAtlasBoard.file.id,
+      role: "overlay",
+      sortOrder: 7,
+    });
+    await insertConfigRevision(db, {
+      id: "atlas-existing-revision",
+      organizationId: org,
+      projectId: "atlas",
+      configSetId: atlasDefault.id,
+      revisionNumber: 1,
+      status: "resolved",
+      createdByUserId: input.actorUserId,
+      entryFile: "board.dts",
+      includeSearchPaths: ["."],
+      overlayOrder: [],
+    });
+    await insertConfigRevisionMembers(db, "atlas-existing-revision", [{
+      fileId: oldAtlasBoard.file.id,
+      fileVersionId: oldAtlasBoard.version.id,
+      fileName: "board.dts",
+      sourceName: "board.dts",
+      role: "overlay",
+      sortOrder: 7,
+      content: oldAtlasBoardSource,
+      format: "dts",
+    }]);
+
+    const auroraDefault = await ensureDefaultConfigSet(db, author, "aurora");
+    oldAuroraConfigSetId = auroraDefault.id;
+    const oldAurora = await uploadProjectParameterFile(db, store, author, {
+      projectId: "aurora",
+      fileName: "aurora-board.dts",
+      bytes: Buffer.from(oldAuroraSource, "utf8"),
+    });
+    oldAuroraFileId = oldAurora.file.id;
+    oldAuroraFileVersionId = oldAurora.version.id;
+    await addConfigSetFile(db, author, {
+      configSetId: auroraDefault.id,
+      fileId: oldAurora.file.id,
+      role: "base",
+      sortOrder: 0,
+    });
+    await insertConfigRevision(db, {
+      id: "aurora-existing-revision",
+      organizationId: org,
+      projectId: "aurora",
+      configSetId: auroraDefault.id,
+      revisionNumber: 1,
+      status: "resolved",
+      createdByUserId: input.actorUserId,
+      entryFile: "aurora-board.dts",
+      includeSearchPaths: ["."],
+      overlayOrder: [],
+    });
+    await insertConfigRevisionMembers(db, "aurora-existing-revision", [{
+      fileId: oldAurora.file.id,
+      fileVersionId: oldAurora.version.id,
+      fileName: "aurora-board.dts",
+      sourceName: "aurora-board.dts",
+      role: "base",
+      sortOrder: 0,
+      content: oldAuroraSource,
+      format: "dts",
+    }]);
+    oldAuroraRevisionMemberId = (await db.query<{ id: string }>(
+      "select id from dts_config_revision_members where config_revision_id='aurora-existing-revision'",
+    )).rows[0]!.id;
+
     await db.query(`insert into dts_config_set (id,organization_id,project_id,name)
       values ('old-atlas-config',$1,'atlas','Previous parameters'),('custom-config',$1,'custom-preserved','Keep')`, [org]);
     await db.query(`insert into parameter_drafts (id,organization_id,project_id,target_value,reason)
@@ -76,7 +163,7 @@ describe("reviewed example rebuild preflight on an adopted populated instance", 
       bytes: Buffer.from('/dts-v1/; / { old-property = <42>; };') });
     sharedObjectKey = object.storageKey;
     await db.query(`insert into project_parameter_files (id,organization_id,project_id,file_name,format)
-      values ('old-atlas-file',$1,'atlas','board.dts','dts')`, [org]);
+      values ('old-atlas-file',$1,'atlas','legacy-board.dts','dts')`, [org]);
     await db.query(`insert into project_parameter_file_versions
       (id,file_id,version_number,storage_key,checksum,size_bytes,origin)
       values ('old-atlas-version','old-atlas-file',1,$1,$2,$3,'upload')`,
@@ -286,6 +373,59 @@ describe("reviewed example rebuild preflight on an adopted populated instance", 
     expect(parseSeedRebuildState(plan)).toEqual(plan);
     expect((await db.query("select id from parameter_drafts order by id")).rows).toEqual([{ id: "custom-draft" }]);
     expect((await db.query("select id from project_parameter_file_versions where id='old-atlas-version'")).rows).toEqual([]);
+    expect((await db.query("select id from project_parameter_file_versions where id=$1", [oldAuroraFileVersionId])).rows)
+      .toEqual([{ id: oldAuroraFileVersionId }]);
+    expect((await db.query<{ file_name: string; config_set_id: string | null }>(
+      "select file_name,config_set_id from project_parameter_files where id=$1", [oldAuroraFileId],
+    )).rows).toEqual([{ file_name: "aurora-board.dts", config_set_id: null }]);
+    expect((await db.query("select id from dts_config_revision_members where id=$1", [oldAuroraRevisionMemberId])).rows)
+      .toEqual([{ id: oldAuroraRevisionMemberId }]);
+    const currentMembers = await db.query<{
+      project_id: string;
+      file_name: string;
+      role: string;
+      sort_order: number;
+    }>(`select file.project_id,file.file_name,file.config_set_role as role,file.config_set_sort_order as sort_order
+          from project_parameter_files file
+          join dts_config_set config_set on config_set.id=file.config_set_id
+         where file.organization_id=$1 and config_set.name='default'
+           and file.project_id=any($2::text[])
+         order by file.project_id,file.config_set_sort_order,file.file_name`, [org, ["atlas", "aurora", "nebula"]]);
+    expect(currentMembers.rows).toEqual([
+      { project_id: "atlas", file_name: "board.dts", role: "base", sort_order: 0 },
+      { project_id: "atlas", file_name: "charging-thermal.dts", role: "overlay", sort_order: 1 },
+      { project_id: "atlas", file_name: "power-config.json", role: "misc", sort_order: 102 },
+      { project_id: "aurora", file_name: "board.dts", role: "base", sort_order: 0 },
+      { project_id: "aurora", file_name: "charging-thermal.dts", role: "overlay", sort_order: 1 },
+      { project_id: "aurora", file_name: "power-config.json", role: "misc", sort_order: 102 },
+      { project_id: "nebula", file_name: "board.dts", role: "base", sort_order: 0 },
+      { project_id: "nebula", file_name: "charging-thermal.dts", role: "overlay", sort_order: 1 },
+      { project_id: "nebula", file_name: "power-config.json", role: "misc", sort_order: 102 },
+    ]);
+    const auroraArchive = plan.archives.find((archive) => archive.projectId === "aurora");
+    expect(auroraArchive).toBeDefined();
+    const archiveObject = await db.query<{ object_ref: string }>(
+      "select object_ref from project_parameter_plane_archives where id=$1", [auroraArchive!.archiveId],
+    );
+    const archivedAurora = JSON.parse((await store.get(archiveObject.rows[0]!.object_ref)).toString("utf8")) as {
+      relations: Record<string, Array<Record<string, unknown>>>;
+      objects: Record<string, { bytesBase64: string }>;
+    };
+    expect(archivedAurora.relations.project_parameter_files)
+      .toEqual(expect.arrayContaining([expect.objectContaining({
+        id: oldAuroraFileId,
+        file_name: "aurora-board.dts",
+        config_set_id: oldAuroraConfigSetId,
+        config_set_role: "base",
+        config_set_sort_order: 0,
+      })]));
+    expect(archivedAurora.relations.project_parameter_file_versions)
+      .toEqual(expect.arrayContaining([expect.objectContaining({ id: oldAuroraFileVersionId })]));
+    expect(archivedAurora.relations.dts_config_revision_members)
+      .toEqual(expect.arrayContaining([expect.objectContaining({ id: oldAuroraRevisionMemberId })]));
+    expect(Object.values(archivedAurora.objects)).toEqual(expect.arrayContaining([
+      expect.objectContaining({ bytesBase64: Buffer.from(oldAuroraSource, "utf8").toString("base64") }),
+    ]));
     expect((await store.get(sharedObjectKey)).toString()).toContain('old-property');
     expect(await verifySeedRebuild(ctx(), plan)).toEqual(rebuilt);
     expect(await rebuildSeedProjects(ctx(), plan, async () => { throw new Error("no replay writes"); })).toEqual(rebuilt);

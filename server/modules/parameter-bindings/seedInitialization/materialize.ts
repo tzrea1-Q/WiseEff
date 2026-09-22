@@ -19,7 +19,7 @@ import { createUserInvocation } from "../../auth/trustedInvocation";
 import { createTrustedRefusalAuditSink } from "../../audit/trustedRefusalSink";
 import type { ObjectStore } from "../../logs/objectStore";
 import { canEditParameters } from "../../parameter-kernel/policy";
-import { addConfigSetFile, ensureDefaultConfigSet, listConfigSetFiles } from "../../parameter-files/configSetService";
+import { addConfigSetFile, ensureDefaultConfigSet, listConfigSetFiles, removeConfigSetFile } from "../../parameter-files/configSetService";
 import { refuseDeferredProjectSourceFormat, uploadProjectParameterFile } from "../../parameter-files/service";
 import { parseJsonSource, readJsonSourceValue } from "../../parameter-files/jsonSource";
 import { registerCanonicalJsonSource } from "../../parameter-files/canonicalJsonSource";
@@ -272,7 +272,14 @@ async function materializeSeedSourcesLocked(
       projectId: target.projectId,
       configSetId: configSet.id
     });
-    const memberNames = new Set(existing.map((member) => member.fileName));
+    // The verified archive retains old membership; the new revision must contain
+    // exactly the reviewed sources, including when a legacy base has another name.
+    const sourceNames = new Set(projectSources.files.map((file) => file.name));
+    for (const member of existing) {
+      if (!sourceNames.has(member.fileName)) {
+        await removeConfigSetFile(root, auth, { configSetId: configSet.id, fileId: member.fileId });
+      }
+    }
     const fileIds: string[] = [];
     const members: ConfigRevisionManifest["members"][number][] = [];
     const dtsSeen = { count: 0 };
@@ -286,14 +293,12 @@ async function materializeSeedSourcesLocked(
       });
       fileIds.push(uploaded.file.id);
       const { role, sortOrder } = seedMemberRole(file, dtsSeen);
-      if (!memberNames.has(file.name)) {
-        await addConfigSetFile(root, auth, {
-          configSetId: configSet.id,
-          fileId: uploaded.file.id,
-          role,
-          sortOrder
-        });
-      }
+      await addConfigSetFile(root, auth, {
+        configSetId: configSet.id,
+        fileId: uploaded.file.id,
+        role,
+        sortOrder
+      });
       members.push({
         fileId: uploaded.file.id,
         fileVersionId: uploaded.version.id,
