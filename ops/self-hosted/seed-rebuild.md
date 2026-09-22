@@ -64,6 +64,8 @@ The core archives and verifies all three old planes before materializing. For ea
 
 Seed DTS imports retain module discovery, source occurrences, continuity and validation, but do not materialize legacy definitions, bindings or review tasks. This applies both to automatic ingestion during file upload and to the final mixed-source revision. Formal definitions come from the two published Catalog stages; existing legacy specification rows remain protected by the maintenance baseline. Ordinary uploads keep their existing behavior.
 
+Before materialization, the operator ensures one dedicated extra driver-group slot identified by `seed-placement-capacity:driver-group`. Free native driver modules do not replace this reserve: source registration still needs them. Repeated curation reuses the dedicated slot, including the earlier unkeyed `Seed placement capacity` module; conflicting kind/origin/source identity is refused without modifying the row. The ConfigurationSchema continues to use an available business slot. The materializer itself never provisions this structure and still blocks before value synchronization when placement capacity is insufficient.
+
 The existing revision-retention policy is unchanged. Files referenced by retained revision members remain available with their versions and bytes even when detached from the active config set; unreferenced archived residue is still disposed after verification.
 
 ## Failure and manual acceptance

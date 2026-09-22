@@ -1,5 +1,8 @@
 import type { Database } from "../../../shared/database/client";
-import { createParameterModule } from "../../parameters/parameterModuleRepository";
+import { createParameterModule, getParameterModuleByName, getParameterModuleBySourceKey } from "../../parameters/parameterModuleRepository";
+
+const DRIVER_CAPACITY_KEY = "seed-placement-capacity:driver-group";
+const DRIVER_CAPACITY_NAME = "Seed placement capacity";
 
 const freeModuleId = async (
   db: Database,
@@ -29,21 +32,35 @@ export type SeedPlacementCapacity = {
 };
 
 /**
- * Operator-curated extra free modules for seed registration. Not called from
- * materializeSeedSources. Creates nothing when a free module of the kind already exists.
+ * Operator-curated capacity for the reviewed seed. Not called from
+ * materializeSeedSources. The driver slot is additional to source-discovered
+ * modules: those may be free before ingest but are already needed by the seed.
+ * This is one fixed reserve, not a new free slot on each call; reuse it after
+ * registration too. The materializer still checks capacity for every subject.
  */
 export async function curateReviewedSeedPlacementCapacity(
   db: Database,
   input: { readonly organizationId: string },
 ): Promise<SeedPlacementCapacity> {
   const created: string[] = [];
-  let driverGroupModuleId = await freeModuleId(db, input.organizationId, "driver-group");
+  const reserved = await getParameterModuleBySourceKey(db, {
+    organizationId: input.organizationId, sourceKey: DRIVER_CAPACITY_KEY,
+  }) ?? await getParameterModuleByName(db, {
+    // Earlier operators created this reviewed slot without a source key.
+    organizationId: input.organizationId, name: DRIVER_CAPACITY_NAME,
+  });
+  if (reserved && (reserved.kind !== "driver-group" || reserved.origin !== "curated"
+    || (reserved.sourceKey !== null && reserved.sourceKey !== DRIVER_CAPACITY_KEY))) {
+    throw new Error("seed-rebuild-placement-capacity-conflict");
+  }
+  let driverGroupModuleId = reserved?.id ?? null;
   if (!driverGroupModuleId) {
     const module = await createParameterModule(db, {
       organizationId: input.organizationId,
-      name: "Seed placement capacity",
+      name: DRIVER_CAPACITY_NAME,
       kind: "driver-group",
       origin: "curated",
+      sourceKey: DRIVER_CAPACITY_KEY,
       description: "Reviewed extra driver-group slot for seed subject registration.",
     });
     driverGroupModuleId = module.id;

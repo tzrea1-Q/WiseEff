@@ -14,7 +14,6 @@ import { createLocalObjectStore } from "../../logs/objectStore";
 import { addConfigSetFile, ensureDefaultConfigSet } from "../../parameter-files/configSetService";
 import { uploadProjectParameterFile } from "../../parameter-files/service";
 import { insertConfigRevision, insertConfigRevisionMembers } from "../../parameter-topology/repository";
-import { createParameterModule } from "../../parameters/parameterModuleRepository";
 import { getParameterSpecRow, upsertMatchedDriverSchema, upsertMatchedPropertySpec } from "../../parameter-specs/repository";
 import { getCachedSchemaRegistry } from "../../parameter-specs/schemaRegistryCache";
 import { planSeedRebuild, checkSeedRebuildState, rebuildSeedProjects, verifySeedRebuild, assertSeedPublicationIdle,
@@ -29,6 +28,7 @@ import { createUserInvocation } from "../../auth/trustedInvocation";
 import { provisionPublicationRuntimeLogins, dropLabRuntimeLogins } from "../../catalog-publication/runtime/provisionRuntimeLogins";
 import { parseSeedRebuildState } from "../../../../scripts/lib/seedRebuildJournal";
 import { runSeedRebuildCli, frozenPreparation } from "../../../../scripts/seed-rebuild";
+import { curateReviewedSeedPlacementCapacity } from "./placementCapacity";
 
 await requirePgvectorTestDatabase();
 
@@ -280,12 +280,6 @@ describe("reviewed example rebuild preflight on an adopted populated instance", 
         driverSchemaVersion: driverSchemaVersion.rows[0],
       };
     });
-    await createParameterModule(db, {
-      organizationId: org,
-      name: "Existing charging driver group",
-      kind: "driver-group",
-      origin: "curated",
-    });
     const logins = await provisionPublicationRuntimeLogins(database.url, { mode: "lab", runToken: loginToken });
     manager = createPostgresDatabase(logins.managerUrl);
   }, 60_000);
@@ -508,6 +502,13 @@ describe("reviewed example rebuild preflight on an adopted populated instance", 
     const transitions: string[] = [];
     const rebuilt = await rebuildSeedProjects(ctx(), plan, async (state) => { transitions.push(state.phase); });
     expect(rebuilt.bindings).toBe(372);
+    const modules = await db.query("select * from parameter_modules where organization_id=$1 order by id", [org]);
+    const capacity = await curateReviewedSeedPlacementCapacity(db, { organizationId: org });
+    expect(capacity.created).toEqual([]);
+    expect((await db.query(`select module_id from parameter_catalog.subject_placements
+      where organization_id=$1 and module_id=$2`, [org, capacity.driverGroupModuleId])).rows).toHaveLength(1);
+    expect((await db.query("select * from parameter_modules where organization_id=$1 order by id", [org])).rows)
+      .toEqual(modules.rows);
     expect(transitions).toContain("archiving");
     expect(transitions.indexOf("materializing")).toBeLessThan(transitions.indexOf("disposing"));
     expect(plan.phase).toBe("verified");
