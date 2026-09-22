@@ -151,6 +151,12 @@ test("shows unavailable Policy usage through real API details and lifecycle conf
   await expect(confirmation).toContainText("策略使用量暂不可用");
   await expect(confirmation).not.toContainText(/策略 (?:0|null)/u);
   await expect(confirmation.getByRole("button", { name: "确认弃用" })).toBeEnabled();
+  await page.waitForFunction(() =>
+    document.getAnimations().every((animation) => {
+      const iterations = animation.effect?.getComputedTiming().iterations;
+      return iterations === Infinity || animation.playState === "finished" || animation.playState === "idle";
+    })
+  );
   await assertNoPageOverflow(page);
   await catalogScreenshot(page, testInfo, "policy-usage-confirmation");
   await testInfo.attach("policy-usage-accessibility", { body: await confirmation.ariaSnapshot(), contentType: "text/plain" });
