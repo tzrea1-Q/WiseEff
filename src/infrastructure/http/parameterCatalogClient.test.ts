@@ -345,6 +345,8 @@ describe("parameter catalog client contract", () => {
     const client = createParameterCatalogClient({ baseUrl: "",fetchImpl: fetchMock });
     await client.listProjectValueChangeRequests("project_1",{ status: "pending" });
     expect(fetchMock).toHaveBeenCalledWith("/api/v2/projects/project_1/parameter-value-change-requests?status=pending",expect.objectContaining({ method: "GET" }));
+    await client.listProjectValueChangeRequests("project_1", { status: "rejected", mine: true });
+    expect(fetchMock).toHaveBeenCalledWith("/api/v2/projects/project_1/parameter-value-change-requests?status=rejected&mine=true", expect.objectContaining({ method: "GET" }));
   });
 
   it("rejects binding drafts that still carry a legacy spec identity", async () => {

@@ -21,6 +21,7 @@ import * as topologyService from "../parameter-topology/service";
 import * as configSetService from "../parameter-files/configSetService";
 import * as projects from "../projects/repository";
 import * as importStaging from "./drafts/importService";
+import * as reviewWorkflow from "../parameters/reviewWorkflowRepository";
 
 vi.mock("./drafts/importService", () => ({ stageCanonicalImportBatch: vi.fn() }));
 afterEach(() => vi.restoreAllMocks());
@@ -112,10 +113,11 @@ function makeAuth(overrides: Partial<AuthContext> = {}): AuthContext {
 }
 
 function makeDb(): Database {
-  return {
+  const db: Database = {
     query: vi.fn(),
-    transaction: vi.fn()
+    transaction: vi.fn(async (fn) => fn(db))
   };
+  return db;
 }
 
 function makeServer(options: { db?: Database; auth?: AuthContext } = {}) {
@@ -1089,5 +1091,46 @@ describe("catalog pending-draft tray routes", () => {
         requestId: expect.any(String)
       })
     );
+  });
+});
+
+describe("canonical request tracking access", () => {
+  const own = { id: "own-request", submitterUserId: "user-1" };
+  const other = { id: "other-request", submitterUserId: "user-2" };
+  beforeEach(() => {
+    vi.mocked(drafts.listCanonicalValueChangesForAuth).mockResolvedValue(
+      [own, other] as Awaited<ReturnType<typeof drafts.listCanonicalValueChangesForAuth>>
+    );
+  });
+
+  it("returns only the authenticated submitter and denies another person's source diff", async () => {
+    const server = makeServer({ db: makeDb() });
+    const response = await requestJson(server, "/api/v2/projects/project-1/parameter-value-change-requests?mine=true");
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual({ items: [own] });
+    const diff = await requestJson(server, "/api/v2/projects/project-1/parameter-value-change-requests/other-request/source-diff");
+    expect(diff.status).toBe(404);
+  });
+
+  it("allows an existing current software reviewer to see the queue but keeps mine private", async () => {
+    vi.spyOn(reviewWorkflow, "hasCurrentCanonicalReviewRole").mockResolvedValue(true);
+    const auth = makeAuth({ roles: [{ projectId: "project-1", roleId: "software-committer" }], permissions: ["parameter:view", "parameter:review"] });
+    const server = makeServer({ db: makeDb(), auth });
+    expect((await requestJson(server, "/api/v2/projects/project-1/parameter-value-change-requests")).body).toEqual({ items: [own, other] });
+    expect((await requestJson(server, "/api/v2/projects/project-1/parameter-value-change-requests?mine=true")).body).toEqual({ items: [own] });
+    vi.mocked(reviewWorkflow.hasCurrentCanonicalReviewRole).mockResolvedValue(false);
+    expect((await requestJson(server, "/api/v2/projects/project-1/parameter-value-change-requests")).body).toEqual({ items: [own] });
+  });
+
+  it("rejects an unrelated project role, inactive account, and malformed mine filter", async () => {
+    const auth = makeAuth({ roles: [{ projectId: "another-project", roleId: "software-user" }] });
+    const unauthorized = await requestJson(makeServer({ db: makeDb(), auth }), "/api/v2/projects/project-1/parameter-value-change-requests");
+    expect(unauthorized.status).toBe(403);
+    const hidden = await requestJson(makeServer({ db: makeDb(), auth }), "/api/v2/projects/project-1/parameter-value-change-requests/own-request/source-diff");
+    expect(hidden.status).toBe(404);
+    const inactive = makeAuth();
+    inactive.user = { ...inactive.user, isActive: false };
+    expect((await requestJson(makeServer({ db: makeDb(), auth: inactive }), "/api/v2/projects/project-1/parameter-value-change-requests")).status).toBe(403);
+    expect((await requestJson(makeServer({ db: makeDb() }), "/api/v2/projects/project-1/parameter-value-change-requests?mine=user-2")).status).toBe(400);
   });
 });

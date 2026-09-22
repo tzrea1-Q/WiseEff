@@ -139,7 +139,7 @@ export interface ParameterCatalogRepository {
   ): Promise<CatalogValueChangeRequestResponse>;
   listProjectValueChangeRequests?(
     projectId: string,
-    query?: { status?: string }
+    query?: { status?: string; mine?: boolean }
   ): Promise<CatalogValueChangeRequestListResponse>;
   reviewProjectValueChangeRequest?(
     projectId: string,

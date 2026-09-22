@@ -10,6 +10,7 @@ import { buildSubmissionWorkflowTrail } from "@/domain/parameters/submissionWork
 import { type User } from "@/domain/prototype/types";
 import { MetricCard, StatusBadge, formatWorkflowDisplayText, getUserName } from "@/features/parameter-review/reviewUi";
 import { SubmissionHistoryDiffCard } from "@/features/parameter-review/submissionHistoryDiff";
+import { CanonicalProjectValueReviewPanel } from "./CanonicalProjectValueReviewPanel";
 import { EmptyState, PanelHeader } from "@/workbenchUi";
 import { ArrowRight, RotateCcw } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
@@ -28,12 +29,29 @@ function getUserDisplayAliases(user: User | undefined) {
   return aliases;
 }
 
-export function ParameterSubmissionsPage({ state, dispatch, onNavigate, parameterActions }: PageProps) {
+export function ParameterSubmissionsPage({
+  state,
+  dispatch,
+  onNavigate,
+  parameterActions,
+  search,
+  runtime,
+  runtimeMode
+}: PageProps) {
+  const canonicalRepository = runtime?.parameterCatalogRepository;
+  const contextProjectId = new URLSearchParams(search).get("project") ?? "";
+  const canonicalProjectId = contextProjectId || state.activeProjectId;
+  const canonicalRequestId = new URLSearchParams(search).get("request") ?? undefined;
+  const canonicalProject = state.configDraft.projects.find((project) => project.id === canonicalProjectId);
   const currentUser = state.users.find((user) => user.id === state.currentUserId);
   const submitterAliases = new Set(
     currentUser ? getUserDisplayAliases(currentUser) : [activeRoleLabel(state.activeRoleId), "平台用户"]
   );
-  const myRounds = state.parameterSubmissionRounds.filter((round) => submitterAliases.has(round.submitter));
+  // The legacy API projection has no stable submitter user id. It remains an
+  // archive signal, but never becomes personal history through display-name matching.
+  const myRounds = runtimeMode === "api"
+    ? []
+    : state.parameterSubmissionRounds.filter((round) => submitterAliases.has(round.submitter));
   const [selectedRoundId, setSelectedRoundId] = useState(myRounds[0]?.id ?? "");
   const [withdrawingRound, setWithdrawingRound] = useState(false);
   const [withdrawConfirmOpen, setWithdrawConfirmOpen] = useState(false);
@@ -82,6 +100,16 @@ export function ParameterSubmissionsPage({ state, dispatch, onNavigate, paramete
     [onNavigate]
   );
 
+  const isApiMode = runtimeMode === "api";
+  const selectCanonicalRequest = (requestId: string) => {
+    const params = new URLSearchParams(search);
+    if (canonicalProjectId) {
+      params.set("project", canonicalProjectId);
+    }
+    params.set("request", requestId);
+    onNavigate(`/parameter-submissions?${params.toString()}`);
+  };
+
   const withdrawSelectedRound = async () => {
     if (!selectedRound || !canWithdrawSubmissionRound(selectedRound.status) || withdrawingRound) {
       return;
@@ -106,11 +134,36 @@ export function ParameterSubmissionsPage({ state, dispatch, onNavigate, paramete
 
   return (
     <div className="submission-history-page">
-      <section className="comparison-summary submission-history-summary">
-        <MetricCard title="我的提交轮次" value={`${myRounds.length}`} trend="按轮次归档" tone="blue" />
-        <MetricCard title="进行中轮次" value={`${activeRoundCount}`} trend="可撤回或等待审阅" tone="teal" />
-        <MetricCard title="参数项总数" value={`${myRounds.reduce((total, round) => total + round.items.length, 0)}`} trend="包含单参数和多参数提交" tone="purple" />
-      </section>
+      {isApiMode ? (
+        <>
+          {canonicalRepository ? (
+            <div className="canonical-submission-tracking">
+              {canonicalProject ? (
+                <CanonicalProjectValueReviewPanel
+                  projectId={canonicalProject.id}
+                  repository={canonicalRepository}
+                  currentUserId={state.currentUserId}
+                  canReview={false}
+                  initialRequestId={canonicalRequestId}
+                  onSelectRequest={selectCanonicalRequest}
+                  mineOnly
+                />
+              ) : (
+                <p role="alert">项目链接无效，未加载其他项目的提交。</p>
+              )}
+            </div>
+          ) : (
+            <p role="alert">新版参数提交暂不可用，请稍后重试。</p>
+          )}
+          <p role="note">旧版提交记录仅作为只读归档；旧版记录没有稳定的提交人 ID，不用于判断当前账号归属。当前账号请使用上方新版参数请求。</p>
+        </>
+      ) : (
+        <>
+        <section className="comparison-summary submission-history-summary">
+          <MetricCard title="我的提交轮次" value={`${myRounds.length}`} trend="按轮次归档" tone="blue" />
+          <MetricCard title="进行中轮次" value={`${activeRoundCount}`} trend="可撤回或等待审阅" tone="teal" />
+          <MetricCard title="参数项总数" value={`${myRounds.reduce((total, round) => total + round.items.length, 0)}`} trend="包含单参数和多参数提交" tone="purple" />
+        </section>
       <section className="submission-history-layout">
         <aside className="history-panel" aria-label="我的提交轮次">
           <PanelHeader title="提交轮次" meta={`${myRounds.length} 轮`} />
@@ -189,6 +242,8 @@ export function ParameterSubmissionsPage({ state, dispatch, onNavigate, paramete
         }}
         onConfirm={() => void withdrawSelectedRound()}
       />
+        </>
+      )}
     </div>
   );
 }

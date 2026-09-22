@@ -74,6 +74,7 @@ function resolveRetainedUserName(
 export function ParameterReviewPage({
   state,
   dispatch,
+  onNavigate,
   search,
   parameterActions,
   runtime,
@@ -100,6 +101,7 @@ export function ParameterReviewPage({
   const [filterProjects, setFilterProjects] = useState<string[]>([]);
   const [filterStatuses, setFilterStatuses] = useState<string[]>([]);
   const contextQuery = useMemo(() => getContextQuery(search), [search]);
+  const requestedRequestId = useMemo(() => new URLSearchParams(search).get("request") ?? "", [search]);
   const reviewerRoleId = migrateLegacyRoleId(state.activeRoleId);
   const canonicalProjectId = contextQuery.projectId || state.activeProjectId;
   const currentUser = state.users.find((user) => user.id === state.currentUserId);
@@ -108,10 +110,19 @@ export function ParameterReviewPage({
       || (role.roleId === "admin" && role.projectId === null)
   ));
   const canReviewInitialization = canPerform(reviewerRoleId, "parameter.review");
-  const { pending: pendingRequests, history: historyRequests } = useMemo(
-    () => splitChangeRequestsForReviewQueue(reviewerRoleId, state.changeRequests),
-    [reviewerRoleId, state.changeRequests]
-  );
+  const { pending: pendingRequests, history: historyRequests } = useMemo(() => {
+    // API mode's canonical panel owns project-value requests. Keeping the
+    // legacy semantic queue here would duplicate pending work and expose its
+    // old actions beside the canonical workflow. Initialization reviews have
+    // a separate contract and remain visible below.
+    if (runtimeMode === "api") {
+      return {
+        pending: [],
+        history: splitChangeRequestsForReviewQueue(reviewerRoleId, state.changeRequests).history
+      };
+    }
+    return splitChangeRequestsForReviewQueue(reviewerRoleId, state.changeRequests);
+  }, [reviewerRoleId, runtimeMode, state.changeRequests]);
   const pendingInitializationRows = useMemo(
     () =>
       canReviewInitialization
@@ -356,12 +367,24 @@ export function ParameterReviewPage({
       return;
     }
     const params = new URLSearchParams(window.location.search);
+    // In API mode both canonical requests and terminal legacy rows use this
+    // query key. The canonical panel owns its value after a row is selected.
+    if (runtimeMode === "api" && params.get("request")) {
+      return;
+    }
+    const isLegacySelection = (runtimeMode !== "api" && state.changeRequests.some((request) => request.id === selectedId))
+      || state.parameterInitializationReviews.some((review) => review.id === selectedId);
+    // A canonical request is owned by the v2 panel. The legacy queue must not
+    // overwrite its shareable request id with the first legacy row.
+    if (params.get("request") && !isLegacySelection) {
+      return;
+    }
     if (params.get("request") === selectedId) {
       return;
     }
     params.set("request", selectedId);
     window.history.replaceState(null, "", `${window.location.pathname}?${params.toString()}`);
-  }, [selectedId]);
+  }, [runtimeMode, selectedId, state.changeRequests, state.parameterInitializationReviews]);
 
   useEffect(() => {
     if (!contextQuery.module && !contextQuery.projectId) {
@@ -654,6 +677,15 @@ export function ParameterReviewPage({
       })()
     : [];
 
+  const selectCanonicalRequest = useCallback((requestId: string) => {
+    const params = new URLSearchParams(search);
+    if (canonicalProjectId) {
+      params.set("project", canonicalProjectId);
+    }
+    params.set("request", requestId);
+    onNavigate(`/parameter-review?${params.toString()}`);
+  }, [canonicalProjectId, onNavigate, search]);
+
   return (
     <WorkbenchLayout title={reviewPageTitle}>
       {runtimeMode === "api" && canonicalProjectId ? (
@@ -663,6 +695,8 @@ export function ParameterReviewPage({
           repository={runtime?.parameterCatalogRepository}
           currentUserId={state.currentUserId}
           canReview={canReviewCanonical}
+          initialRequestId={requestedRequestId || undefined}
+          onSelectRequest={selectCanonicalRequest}
         />
       ) : null}
       <section className="review-queue" ref={queueRef} tabIndex={-1} aria-labelledby="review-queue-heading">
@@ -696,6 +730,9 @@ export function ParameterReviewPage({
             meta={reviewMeta}
           />
         </div>
+        {runtimeMode === "api" && reviewMode === "history" ? (
+          <p role="note">此处的旧版审阅记录仅作为只读归档，不能作为当前新版请求继续处理。</p>
+        ) : null}
         {reviewMode === "pending" && batchableRequests.length > 0 ? (
           <div className="review-batch-toolbar" role="toolbar" aria-label="批量审阅操作">
             <span className="review-batch-toolbar__hint">
