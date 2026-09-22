@@ -290,7 +290,7 @@ async function materializeSeedSourcesLocked(
         projectId: target.projectId,
         fileName: file.name,
         bytes: Buffer.from(file.content, "utf8")
-      });
+      }, {}, { legacyProjection: "skip" });
       fileIds.push(uploaded.file.id);
       const { role, sortOrder } = seedMemberRole(file, dtsSeen);
       await addConfigSetFile(root, auth, {
@@ -325,7 +325,7 @@ async function materializeSeedSourcesLocked(
           includeSearchPaths: ["."],
           overlayOrder,
           members
-        }, auth)
+        }, auth, { legacyProjection: "skip" })
       : null;
 
     const observed = snapshot && revision

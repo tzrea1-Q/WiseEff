@@ -14,6 +14,9 @@ import { createLocalObjectStore } from "../../logs/objectStore";
 import { addConfigSetFile, ensureDefaultConfigSet } from "../../parameter-files/configSetService";
 import { uploadProjectParameterFile } from "../../parameter-files/service";
 import { insertConfigRevision, insertConfigRevisionMembers } from "../../parameter-topology/repository";
+import { createParameterModule } from "../../parameters/parameterModuleRepository";
+import { upsertMatchedDriverSchema, upsertMatchedPropertySpec } from "../../parameter-specs/repository";
+import { getCachedSchemaRegistry } from "../../parameter-specs/schemaRegistryCache";
 import { planSeedRebuild, checkSeedRebuildState, rebuildSeedProjects, verifySeedRebuild, assertSeedPublicationIdle,
   captureSeedMaintenanceBaseline, verifySeedMaintenanceBaseline, type SeedRebuildState } from "../../../../scripts/lib/seedRebuild";
 import { verifySeedPreservation } from "../../../../scripts/lib/seedRebuildPreservation";
@@ -47,7 +50,15 @@ describe("reviewed example rebuild preflight on an adopted populated instance", 
   const input = { runId: "rebuild-test", organizationId: org, actorUserId: "rebuild-author", candidateSha: "a".repeat(40) };
   const oldAuroraSource = "/dts-v1/; / { old-aurora-property = <41>; };";
   const oldAtlasBoardSource = "/dts-v1/; / { old-atlas-property = <42>; };";
+  const oldNebulaSource = "/dts-v1/; / { old-nebula-property = <43>; };";
   const ctx = () => ({ db, store, repoRoot: process.cwd() });
+  type LegacyOverlapSnapshot = {
+    parameterSpec: Record<string, unknown>;
+    parameterSpecVersion: Record<string, unknown>;
+    dtsPropertySpec: Record<string, unknown>;
+    driverSchemaVersion: Record<string, unknown>;
+  };
+  let legacyOverlapSnapshot!: LegacyOverlapSnapshot;
 
   beforeAll(async () => {
     database = await createEphemeralTestDatabase("seedoperator");
@@ -149,6 +160,19 @@ describe("reviewed example rebuild preflight on an adopted populated instance", 
       "select id from dts_config_revision_members where config_revision_id='aurora-existing-revision'",
     )).rows[0]!.id;
 
+    const nebulaDefault = await ensureDefaultConfigSet(db, author, "nebula");
+    const oldNebula = await uploadProjectParameterFile(db, store, author, {
+      projectId: "nebula",
+      fileName: "board.dts",
+      bytes: Buffer.from(oldNebulaSource, "utf8"),
+    });
+    await addConfigSetFile(db, author, {
+      configSetId: nebulaDefault.id,
+      fileId: oldNebula.file.id,
+      role: "base",
+      sortOrder: 0,
+    });
+
     await db.query(`insert into dts_config_set (id,organization_id,project_id,name)
       values ('old-atlas-config',$1,'atlas','Previous parameters'),('custom-config',$1,'custom-preserved','Keep')`, [org]);
     await db.query(`insert into parameter_drafts (id,organization_id,project_id,target_value,reason)
@@ -185,6 +209,83 @@ describe("reviewed example rebuild preflight on an adopted populated instance", 
     });
     expect(adopted.ok).toBe(true);
     await enablePublicationPolicy(client, { publicationEnabled: true, lowRiskSingleActorPublish: false });
+
+    // The adopted instance can already contain legacy DTS definitions before the
+    // rebuild plan is captured. Keep one real vendor property in that state so
+    // materialization proves preservation against overlapping public spec rows.
+    const registry = getCachedSchemaRegistry(path.join(process.cwd(), "schemas/dts"));
+    const legacyProperty = registry.properties.find(
+      (property) => property.schemaNamespace === "vendor/huawei,charging_core" && property.propertyKey === "iin_max",
+    );
+    const legacyDriver = legacyProperty?.driverSchemaId
+      ? registry.drivers.find((driver) => driver.id === legacyProperty.driverSchemaId)
+      : undefined;
+    if (!legacyProperty || !legacyDriver) throw new Error("seed-rebuild-legacy-overlap-fixture-missing");
+    await db.transaction(async (tx) => {
+      const persistedDriver = await upsertMatchedDriverSchema(tx, legacyDriver);
+      const persisted = await upsertMatchedPropertySpec(tx, legacyProperty);
+      await tx.query(
+        `update parameter_specs
+            set attribution_subject_id=null,
+                property_key=null,
+                definition_lifecycle='draft'
+          where id=$1`,
+        [persisted.parameterSpecId],
+      );
+      await tx.query(
+        `update parameter_spec_versions
+            set description='legacy source definition',
+                lifecycle='draft',
+                version_status='draft'
+          where id=$1`,
+        [persisted.parameterSpecVersionId],
+      );
+      await tx.query(
+        `update dts_property_specs
+            set documentation='legacy documentation'
+          where parameter_spec_id=$1`,
+        [persisted.parameterSpecId],
+      );
+      const parameterSpec = await tx.query(
+        `select id, attribution_subject_id, property_key, definition_lifecycle
+           from parameter_specs
+          where id=$1`,
+        [persisted.parameterSpecId],
+      );
+      const parameterSpecVersion = await tx.query(
+        `select id, parameter_spec_id, version, description, lifecycle, version_status
+           from parameter_spec_versions
+          where id=$1`,
+        [persisted.parameterSpecVersionId],
+      );
+      const dtsPropertySpec = await tx.query(
+        `select id, parameter_spec_id, driver_schema_id, property_key, schema_namespace, documentation
+           from dts_property_specs
+          where parameter_spec_id=$1`,
+        [persisted.parameterSpecId],
+      );
+      const driverSchemaVersion = await tx.query(
+        `select id, driver_schema_id, parameter_spec_version_id, version
+           from driver_schema_versions
+          where id=$1`,
+        [persistedDriver.driverSchemaVersionId],
+      );
+      if (!parameterSpec.rows[0] || !parameterSpecVersion.rows[0] || !dtsPropertySpec.rows[0] || !driverSchemaVersion.rows[0]) {
+        throw new Error("seed-rebuild-legacy-overlap-snapshot-missing");
+      }
+      legacyOverlapSnapshot = {
+        parameterSpec: parameterSpec.rows[0],
+        parameterSpecVersion: parameterSpecVersion.rows[0],
+        dtsPropertySpec: dtsPropertySpec.rows[0],
+        driverSchemaVersion: driverSchemaVersion.rows[0],
+      };
+    });
+    await createParameterModule(db, {
+      organizationId: org,
+      name: "Existing charging driver group",
+      kind: "driver-group",
+      origin: "curated",
+    });
     const logins = await provisionPublicationRuntimeLogins(database.url, { mode: "lab", runToken: loginToken });
     manager = createPostgresDatabase(logins.managerUrl);
   }, 60_000);
@@ -371,6 +472,45 @@ describe("reviewed example rebuild preflight on an adopted populated instance", 
     expect(transitions.indexOf("materializing")).toBeLessThan(transitions.indexOf("disposing"));
     expect(plan.phase).toBe("verified");
     expect(parseSeedRebuildState(plan)).toEqual(plan);
+    expect((await db.query(
+      `select id, attribution_subject_id, property_key, definition_lifecycle
+         from parameter_specs
+        where id=$1`,
+      [legacyOverlapSnapshot.parameterSpec.id],
+    )).rows).toEqual([legacyOverlapSnapshot.parameterSpec]);
+    expect((await db.query(
+      `select id, parameter_spec_id, version, description, lifecycle, version_status
+         from parameter_spec_versions
+        where id=$1`,
+      [legacyOverlapSnapshot.parameterSpecVersion.id],
+    )).rows).toEqual([legacyOverlapSnapshot.parameterSpecVersion]);
+    expect((await db.query(
+      `select id, parameter_spec_id, driver_schema_id, property_key, schema_namespace, documentation
+         from dts_property_specs
+        where id=$1`,
+      [legacyOverlapSnapshot.dtsPropertySpec.id],
+    )).rows).toEqual([legacyOverlapSnapshot.dtsPropertySpec]);
+    expect((await db.query(
+      `select id, driver_schema_id, parameter_spec_version_id, version
+         from driver_schema_versions
+        where id=$1`,
+      [legacyOverlapSnapshot.driverSchemaVersion.id],
+    )).rows).toEqual([legacyOverlapSnapshot.driverSchemaVersion]);
+    expect((await db.query(
+      `select distinct b.project_id, r.status,
+         exists (select 1 from dts_logical_node_revisions n
+           where n.config_revision_id=r.id and n.driver_schema_version_id=$2) as retained_driver_version
+       from parameter_catalog.current_project_parameter_bindings b
+       join parameter_catalog.project_value_source_pins p
+         on p.binding_id=b.id and p.project_value_id=b.current_value_id
+       join dts_config_revisions r on r.id=p.config_revision_id
+       where b.organization_id=$1 order by b.project_id`,
+      [org, legacyOverlapSnapshot.driverSchemaVersion.id],
+    )).rows).toEqual([
+      { project_id: "atlas", status: "resolved", retained_driver_version: true },
+      { project_id: "aurora", status: "resolved", retained_driver_version: true },
+      { project_id: "nebula", status: "resolved", retained_driver_version: true },
+    ]);
     expect((await db.query("select id from parameter_drafts order by id")).rows).toEqual([{ id: "custom-draft" }]);
     expect((await db.query("select id from project_parameter_file_versions where id='old-atlas-version'")).rows).toEqual([]);
     expect((await db.query("select id from project_parameter_file_versions where id=$1", [oldAuroraFileVersionId])).rows)
