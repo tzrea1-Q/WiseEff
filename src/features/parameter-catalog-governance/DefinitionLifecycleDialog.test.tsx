@@ -76,6 +76,39 @@ describe("DefinitionLifecycleDialog", () => {
     expect(within(confirm).queryByText(/策略使用量暂不可用/)).not.toBeInTheDocument();
   });
 
+  it.each(["retire-definition", "restore-definition"] as const)(
+    "preserves the current revision content when it previews %s",
+    async (intent) => {
+      const user = userEvent.setup();
+      const schema = { type: "integer", minimum: 2, maximum: 9 };
+      const definition = {
+        ...activeDefinition,
+        currentRevision: {
+          ...activeDefinition.currentRevision,
+          valueShape: { kind: "json-schema" as const, schema },
+          unit: { kind: "symbol" as const, symbol: "mA" }
+        }
+      };
+      const { ports } = renderDialog(intent, definition);
+      const preview = vi.spyOn(ports.catalog, "createPublicationCandidate");
+
+      await user.type(screen.getByLabelText("原因"), `保留当前内容后${intent === "retire-definition" ? "弃用" : "恢复"}`);
+      await user.click(screen.getByRole("button", { name: "预演影响" }));
+
+      await waitFor(() => expect(preview).toHaveBeenCalledTimes(1));
+      expect(preview.mock.calls[0]?.[0]?.changeSet?.[0]).toMatchObject({
+        op: intent,
+        reason: `保留当前内容后${intent === "retire-definition" ? "弃用" : "恢复"}`,
+        content: {
+          displayName: activeDefinition.currentRevision.displayName,
+          documentation: activeDefinition.currentRevision.documentation,
+          unit: "mA",
+          valueSchema: schema
+        }
+      });
+    }
+  );
+
   it("captures the retire candidate, confirms the shared impact, and reports the effective result", async () => {
     const user = userEvent.setup();
     const { ports, onCompleted } = renderDialog("retire-definition");
