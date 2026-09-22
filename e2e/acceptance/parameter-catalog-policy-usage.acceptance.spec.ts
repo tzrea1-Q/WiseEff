@@ -13,7 +13,7 @@ import {
 import { ensureCatalogAcceptanceFixture } from "./helpers/catalogEvidence";
 import { acceptanceCast } from "./helpers/cast";
 import { loadOwnedRuntimeDescriptorFromEnv } from "./helpers/ownedRuntimeDescriptor";
-import { retiredPowerSubjectSuccessorBundle } from "../../server/modules/catalog-kernel/runtime/catalogChain.fixture";
+import { compileOrThrow, retiredPowerSubjectSuccessorBundle } from "../../server/modules/catalog-kernel/runtime/catalogChain.fixture";
 import { asQueryable } from "../../server/modules/catalog-kernel/install/publicationActivation";
 import { adoptPreexistingCatalog } from "../../server/modules/catalog-publication/runtime/adoption";
 import { inspectPublicationPolicy, revisePublicationPolicy } from "../../server/modules/catalog-publication/authorization/policy";
@@ -32,21 +32,23 @@ test.beforeAll(async () => {
   const fixture = await ensureCatalogAcceptanceFixture();
   const db = asQueryable(fixture.pool);
   const actorId = acceptanceCast.acceptanceAdmin.userId;
+  const bundle = retiredPowerSubjectSuccessorBundle();
+  const compiled = compileOrThrow(bundle);
   const adopted = await adoptPreexistingCatalog(fixture.pool, {
     expectedCurrent: fixture.chain.pinF,
     actorPrincipalId: actorId,
-    sourceBytes: Buffer.from(JSON.stringify(retiredPowerSubjectSuccessorBundle())),
+    sourceBytes: Buffer.from(JSON.stringify(bundle)),
     artifactDigest: fixture.chain.pinF.digest,
     evidenceKind: "synthetic-fixture",
     adoptionEvidence: {
       source_bundle_digest: fixture.chain.pinF.digest,
-      verification_digest: fixture.chain.pinF.digest,
+      verification_digest: compiled.materializationFingerprint,
       data_mode: "fresh",
       collected_at: new Date().toISOString(),
       approved_by: actorId,
     },
   });
-  expect(adopted.ok).toBe(true);
+  expect(adopted).toMatchObject({ ok: true });
   const snapshot = await inspectPublicationPolicy(db);
   const enabled = await revisePublicationPolicy(db, {
     trustedActor: createUserInvocation(await getAuthContext(db, actorId)),
@@ -64,7 +66,7 @@ test.beforeAll(async () => {
       expectedAdopted: snapshot.adopted,
     },
   });
-  expect(enabled.ok).toBe(true);
+  expect(enabled).toMatchObject({ ok: true });
 });
 
 test("shows unavailable Policy usage through real API details and lifecycle confirmation", async ({ page }, testInfo) => {
