@@ -13,6 +13,7 @@ export type BindingHistoryDiffEntry = {
   fromRawValue?: string | null;
   toRawValue?: string | null;
   definitionRevisionId?: string;
+  effectiveRevisionId?: string;
   currentValueId?: string | null;
   valueState?: "present" | "deleted";
   eventType?: string;
@@ -28,6 +29,20 @@ function displayRaw(value: string | null | undefined, valueState?: BindingHistor
   if (valueState === "deleted" && (value == null || value.trim() === "")) return "已删除";
   if (value == null || value.trim() === "") return "∅";
   return formatDtsRawValueForUi(value) || "∅";
+}
+
+function historyRevisionLabel(
+  entry: Pick<BindingHistoryDiffEntry, "definitionRevisionId" | "effectiveRevisionId">
+): string | null {
+  const definitionRevisionId = entry.definitionRevisionId?.trim() || null;
+  const effectiveRevisionId = entry.effectiveRevisionId?.trim() || null;
+  if (definitionRevisionId && effectiveRevisionId && definitionRevisionId === effectiveRevisionId) {
+    return `修订 ${definitionRevisionId}`;
+  }
+  return [
+    definitionRevisionId ? `值的固定修订 ${definitionRevisionId}` : null,
+    effectiveRevisionId ? `事件有效修订 ${effectiveRevisionId}` : null
+  ].filter(Boolean).join(" / ") || null;
 }
 
 export function DtsBindingHistoryDiffDialog({
@@ -59,11 +74,10 @@ export function DtsBindingHistoryDiffDialog({
 
         <div className="parameter-history-diff-list">
           {historyEntries.map((entry, index) => {
-            const eventLabel = entry.definitionRevisionId
-              ? `修订 ${entry.definitionRevisionId}`
-              : entry.currentValueId
+            const eventLabel = historyRevisionLabel(entry)
+              ?? (entry.currentValueId
                 ? `值 ${entry.currentValueId}`
-                : `历史事件 ${index + 1}`;
+                : `历史事件 ${index + 1}`);
             return (
               <article
                 className="parameter-history-diff-card"
@@ -78,7 +92,7 @@ export function DtsBindingHistoryDiffDialog({
                     <span>
                       <time dateTime={entry.changedAt}>{formatAuditAbsoluteTime(entry.changedAt)}</time>
                       {entry.eventType ? ` / ${entry.eventType}` : ""}
-                      {entry.definitionRevisionId ? ` / 修订 ${entry.definitionRevisionId}` : ""}
+                      {historyRevisionLabel(entry) ? ` / ${historyRevisionLabel(entry)}` : ""}
                       {entry.currentValueId ? ` / 值 ${entry.currentValueId}` : ""}
                       {entry.actor ? ` / ${entry.actor}` : ""}
                     </span>

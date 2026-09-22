@@ -676,15 +676,22 @@ describe("DtsParameterWorkbench", () => {
       documentation: "canonical",
       policyTarget: null
     });
-    renderWorkbench({ canEdit: false, loadParameterSpec });
+    const canonicalRows = effectiveRows.map((item) => item.bindingId === "binding-gpio-int"
+      ? {
+          ...item,
+          definitionId: "definition-gpio-int",
+          effectiveRevisionId: "effective-revision-gpio-int"
+        }
+      : item);
+    renderWorkbench({ canEdit: false, effectiveRows: canonicalRows, loadParameterSpec });
 
     fireEvent.click(screen.getByRole("button", {
       name: "查看 gpio_int（未分类 · sc8562 · sc8562@6E · sc8562）"
     }));
 
     await waitFor(() => expect(loadParameterSpec).toHaveBeenCalledWith(
-      "spec-binding-gpio-int",
-      "spec-version-binding-gpio-int",
+      "definition-gpio-int",
+      "effective-revision-gpio-int",
       "gpio_int"
     ));
   });

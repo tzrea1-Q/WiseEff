@@ -211,6 +211,36 @@ describe("DtsBindingDetailDialog", () => {
     expect(screen.getByRole("button", { name: "查看历史差异" })).toBeInTheDocument();
   });
 
+  it("labels fixed and effective revisions separately only when their identities differ", () => {
+    renderDialog({
+      historyEntries: [
+        {
+          id: "revision-only-update",
+          changedAt: "2026-01-03T00:00:00.000Z",
+          fromRawValue: "<1>",
+          toRawValue: "<2>",
+          definitionRevisionId: "definition-revision-12",
+          effectiveRevisionId: "effective-revision-13"
+        },
+        {
+          id: "revision-same",
+          changedAt: "2026-01-02T00:00:00.000Z",
+          fromRawValue: "<2>",
+          toRawValue: "<3>",
+          definitionRevisionId: "revision-14",
+          effectiveRevisionId: "revision-14"
+        }
+      ]
+    });
+
+    const entries = within(screen.getByRole("list", { name: "参数历史" })).getAllByRole("listitem");
+    expect(entries[0]).toHaveTextContent("值的固定修订 definition-revision-12");
+    expect(entries[0]).toHaveTextContent("事件有效修订 effective-revision-13");
+    expect(entries[1]).toHaveTextContent("修订 revision-14");
+    expect(entries[1]).not.toHaveTextContent("值的固定修订");
+    expect(entries[1]).not.toHaveTextContent("事件有效修订");
+  });
+
   it("opens history diff dialog with from→to DiffCodeBlock cards", () => {
     renderDialog({
       historyEntries: [

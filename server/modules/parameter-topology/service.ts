@@ -88,7 +88,7 @@ function requireCanView(auth: AuthContext) {
   }
 }
 
-function requireCanViewProject(auth: AuthContext, projectId: string) {
+export function requireCanViewProject(auth: AuthContext, projectId: string) {
   requireCanView(auth);
   if (!auth.roles.some((role) =>
     role.roleId === "admin" ||

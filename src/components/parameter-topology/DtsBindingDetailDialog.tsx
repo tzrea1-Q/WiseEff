@@ -122,6 +122,20 @@ function displayHistoryRaw(value: string | null | undefined, valueState?: Bindin
   return formatDtsRawValueForUi(value) || "∅";
 }
 
+function historyRevisionLabel(
+  entry: Pick<BindingHistoryEntry, "definitionRevisionId" | "effectiveRevisionId">
+): string | null {
+  const definitionRevisionId = entry.definitionRevisionId?.trim() || null;
+  const effectiveRevisionId = entry.effectiveRevisionId?.trim() || null;
+  if (definitionRevisionId && effectiveRevisionId && definitionRevisionId === effectiveRevisionId) {
+    return `修订 ${definitionRevisionId}`;
+  }
+  return [
+    definitionRevisionId ? `值的固定修订 ${definitionRevisionId}` : null,
+    effectiveRevisionId ? `事件有效修订 ${effectiveRevisionId}` : null
+  ].filter(Boolean).join(" / ") || null;
+}
+
 function BindingHistoryEntryItem({
   entry,
   eventLabel
@@ -141,7 +155,7 @@ function BindingHistoryEntryItem({
         <code tabIndex={0}>{displayHistoryRaw(entry.toRawValue, entry.valueState)}</code>
       </span>
       <small className="parameter-detail-history__meta">
-        {[entry.eventType, entry.definitionRevisionId ? `修订 ${entry.definitionRevisionId}` : null, ...metaParts]
+        {[entry.eventType, historyRevisionLabel(entry), ...metaParts]
           .filter(Boolean)
           .join(" / ")}
       </small>
@@ -341,11 +355,10 @@ export function DtsBindingDetailDialog({
                     <BindingHistoryEntryItem
                       key={entry.id}
                       entry={entry}
-                      eventLabel={entry.definitionRevisionId
-                        ? `修订 ${entry.definitionRevisionId}`
-                        : entry.currentValueId
+                      eventLabel={historyRevisionLabel(entry)
+                        ?? (entry.currentValueId
                           ? `值 ${entry.currentValueId}`
-                          : `历史事件 ${index + 1}`}
+                          : `历史事件 ${index + 1}`)}
                     />
                   ))}
                 </ul>

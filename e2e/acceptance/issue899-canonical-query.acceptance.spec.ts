@@ -324,13 +324,28 @@ test.describe("Issue 899 JSON query regression", () => {
     try { await runtime?.dispose(disposableRuntimeOutcomeFromTestInfo(info)); }
     finally { restoreProcessEnvFromDisposableRuntime(environment); }
   });
-  test("keeps canonical JSON detail, history and exact source export", async ({ page }, info) => {
+  test("keeps canonical JSON detail, history and exact source export", async ({ page, request }, info) => {
     await signInBrowserAsRole(page, "software-user", `${runtime.frontendUrl}/parameters?project=${projectId}`);
     const dismiss = page.getByRole("button", { name: "不再提示" });
     if (await dismiss.isVisible()) await dismiss.click();
     await page.getByRole("tab", { name: /JSON 参数/ }).click();
     const table = page.getByRole("table", { name: "JSON 参数列表" });
     await expect(table).toContainText("36.5");
+    await withPgClient(async client => {
+      const removed = await client.query("delete from user_role_bindings where id='issue899-json-reader'");
+      expect(removed.rowCount).toBe(1);
+    });
+    try {
+      for (const operation of ["change-history", "export"]) {
+        const denied = await request.get(apiRoute(`/api/v2/projects/${projectId}/parameter-bindings/${bindingId}/${operation}`), {
+          headers: authHeadersForRole("software-user")
+        });
+        expect(denied.status(), await denied.text()).toBe(403);
+      }
+    } finally {
+      await withPgClient(client => client.query(`insert into user_role_bindings(id,user_id,organization_id,project_id,role_id)
+        values ('issue899-json-reader',$1,'org-chargelab',$2,'software-user')`, [acceptanceCast.liuMin.userId, projectId]));
+    }
     await table.getByRole("button", { name: /^查看 / }).click();
     const detail = page.getByRole("dialog", { name: /参数详情/ });
     const history = page.waitForResponse(response => response.url().includes(`/parameter-bindings/${bindingId}/change-history`));
