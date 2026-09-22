@@ -1,5 +1,6 @@
 import "./helpers/loadAcceptanceEnvironment";
 import { expect, test } from "playwright/test";
+import pg from "pg";
 
 import { useBrowserDiagnostics } from "./helpers/browserDiagnostics";
 import {
@@ -10,10 +11,11 @@ import {
   openCatalogAt,
   waitForCatalogState,
 } from "./helpers/catalogBrowser";
-import { ensureCatalogAcceptanceFixture } from "./helpers/catalogEvidence";
+import { catalogLaneConnectionString } from "./helpers/catalogAcceptanceEnvironment";
 import { acceptanceCast } from "./helpers/cast";
+import { seedAcceptanceRoleMatrix } from "./helpers/roleFixtures";
 import { loadOwnedRuntimeDescriptorFromEnv } from "./helpers/ownedRuntimeDescriptor";
-import { compileOrThrow, retiredPowerSubjectSuccessorBundle } from "../../server/modules/catalog-kernel/runtime/catalogChain.fixture";
+import { documentationOnlySuccessorBundle, installPublishedCatalogChain } from "../../server/modules/catalog-kernel/runtime/catalogChain.fixture";
 import { asQueryable } from "../../server/modules/catalog-kernel/install/publicationActivation";
 import { adoptPreexistingCatalog } from "../../server/modules/catalog-publication/runtime/adoption";
 import { inspectPublicationPolicy, revisePublicationPolicy } from "../../server/modules/catalog-publication/authorization/policy";
@@ -26,23 +28,27 @@ useBrowserDiagnostics(test, {
   expectedApiFailures: [{ method: "GET", path: "/api/v1/parameters/projects", status: 404 }],
 });
 
+let pool: pg.Pool;
+test.afterAll(async () => { await pool?.end(); });
 test.beforeAll(async () => {
   // Publication setup is permitted only in a fully verified disposable owned runtime.
   expect(loadOwnedRuntimeDescriptorFromEnv(process.env)).toBeDefined();
-  const fixture = await ensureCatalogAcceptanceFixture();
-  const db = asQueryable(fixture.pool);
+  pool = new pg.Pool({ connectionString: await catalogLaneConnectionString() });
+  await seedAcceptanceRoleMatrix();
+  // The generic OP-08 fixture retires this subject; lifecycle preview needs the active C fixture.
+  const chain = await installPublishedCatalogChain(pool);
+  const db = asQueryable(pool);
   const actorId = acceptanceCast.acceptanceAdmin.userId;
-  const bundle = retiredPowerSubjectSuccessorBundle();
-  const compiled = compileOrThrow(bundle);
-  const adopted = await adoptPreexistingCatalog(fixture.pool, {
-    expectedCurrent: fixture.chain.pinF,
+  const bundle = documentationOnlySuccessorBundle();
+  const adopted = await adoptPreexistingCatalog(pool, {
+    expectedCurrent: chain.pinC,
     actorPrincipalId: actorId,
     sourceBytes: Buffer.from(JSON.stringify(bundle)),
-    artifactDigest: fixture.chain.pinF.digest,
+    artifactDigest: chain.pinC.digest,
     evidenceKind: "synthetic-fixture",
     adoptionEvidence: {
-      source_bundle_digest: fixture.chain.pinF.digest,
-      verification_digest: compiled.materializationFingerprint,
+      source_bundle_digest: chain.pinC.digest,
+      verification_digest: chain.compiledC.materializationFingerprint,
       data_mode: "fresh",
       collected_at: new Date().toISOString(),
       approved_by: actorId,
@@ -59,8 +65,8 @@ test.beforeAll(async () => {
     managedInstance: {
       confirmation: "managed-instance-policy-revision",
       expectedDatabaseOid: snapshot.databaseOid,
-      expectedCurrentId: fixture.chain.pinF.id,
-      expectedCurrentDigest: fixture.chain.pinF.digest,
+      expectedCurrentId: chain.pinC.id,
+      expectedCurrentDigest: chain.pinC.digest,
       expectedPolicyRevision: snapshot.policyRevision,
       expectedFrozen: snapshot.frozen,
       expectedAdopted: snapshot.adopted,
@@ -87,6 +93,7 @@ test("shows unavailable Policy usage through real API details and lifecycle conf
   const editor = page.getByRole("dialog");
   await editor.getByText("更多信息", { exact: true }).click();
   await expect(editor.getByText(/策略使用量暂不可用/).first()).toBeVisible();
+  await editor.getByText(/策略使用量暂不可用/).first().scrollIntoViewIfNeeded();
   await expect(editor).not.toContainText(/策略 (?:0|null)/u);
   await assertNoPageOverflow(page);
   await catalogScreenshot(page, testInfo, "policy-usage-editor");
@@ -96,6 +103,7 @@ test("shows unavailable Policy usage through real API details and lifecycle conf
   const lifecycle = page.getByRole("dialog");
   await expect(lifecycle).toContainText("策略使用量暂不可用");
   await lifecycle.getByLabel("原因").fill("Issue 815 unavailable usage verification");
+  await expect(lifecycle.getByRole("button", { name: "预演影响" })).toBeEnabled();
   await lifecycle.getByRole("button", { name: "预演影响" }).click();
   const confirmation = page.getByRole("dialog", { name: "确认弃用" });
   await expect(confirmation).toBeVisible();
