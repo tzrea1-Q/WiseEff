@@ -141,7 +141,7 @@ export type RegistrationProjectionPort = {
 };
 
 export type CatalogUsageSummary = {
-  readonly policyCount: number;
+  readonly policyCount: number | null;
   readonly projectCount: number;
   readonly currentValueCount: number;
 };

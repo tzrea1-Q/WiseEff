@@ -2,6 +2,20 @@
 
 > Chinese: [Chinese](../../zh-CN/exec-plans/active/2026-09-05-catalog-r2-delivery.md)
 
+## Current #815 scope — 2026-09-23
+
+The user approved the staged unavailable contract in [#815](https://github.com/tzrea1-Q/WiseEff/issues/815) and local implementation from `360bbc428f5eb4d279b1ba1e130e687ef8ea78c6`. Earlier dated checkpoints below remain historical; their statement that this scope was unapproved no longer describes #815. No PR, merge, closure, deployment or parent-program acceptance is implied.
+
+Risk R2: change `usageSummary.policyCount` to a nonnegative integer or `null`, with current production and mock aggregates returning `null`. All detail/editor/lifecycle/confirmation consumers must render Policy usage unavailable (exact copy in the Chinese companion), while numeric zero remains a known zero. Preserve trusted organization/project scope, effective current Binding and value-pointer semantics, placeholder exclusion, batch SQL budgets and structured query-failure behavior. No schema migration, Policy writer or inferred association is included. Real Policy nonzero/zero cases R2-POL-01/02 remain deferred to TD-055, not passed.
+
+| Cases | Required evidence | Owner |
+| --- | --- | --- |
+| R2-U01–U04 | Actual usage queries and root HTTP on isolated PostgreSQL: null Policy, real nonzero/zero project/value counts, isolation/currentness/placeholder rules, batch integrity/budgets, structured failures | Development agent |
+| R2-U05 | Nullable DTO/generated OpenAPI and API/mock parity; valid integers including zero accepted, negative/invalid values rejected | Development agent; coordinator generates contracts |
+| R2-U06–U07 | Component cases for null versus numeric zero; real API/PostgreSQL browser at 1440×900, editor and lifecycle confirmation, console/network evidence and inspected screenshots | Development agent; coordinator owns browser evidence |
+
+The development agent owns affected server/frontend implementation and tests. The coordinator owns generated artifacts, these bilingual docs, acceptance fixture/spec updates, final verification and independent Standards/Spec reviews. The exact #815 browser lane is added to the existing strict lane allowlist; no shared database or ownership guard is bypassed. Documentation Impact Matrix: API transition contract and example, TD-055 boundary, and this current checkpoint; English/Chinese companions stay aligned. Relevant native checks, build, contract and docs gates are required. Current implementation and verification are in progress; no new pass is claimed here.
+
 ## CI repair preflight — 2026-09-06
 
 Outcome before Hosted: code candidate `97d5e5bc7d7bce154b4ab6d673ea612e678e4aed`, tree `528b831ab20d40efbc892c1bb07b241d71b2720b`. Independent Standards and Spec each passed preflight, fixed `164b832f543433564b3f5cd75d6b9445a7b9bb8d` pre-seal review, and the final digest-only delta. Both independently computed record SHA-256 `fe2a8aa3e97193c98aafdfd06572335419e2e53854e80b33e172afa0e741e074`; it was materialized once. The new validator has 33 permanent cases. A one-collected-case behavioral Red preceded implementation; the earlier missing-module/zero-collected attempt is not counted as Red.

@@ -131,7 +131,7 @@ export const summarizeUsage = async (
         const row = byDefinition.get(definitionId);
         return {
           definitionId: ParameterDefinitionId(definitionId),
-          policyCount: 0,
+          policyCount: null,
           projectCount: Number(row?.project_count ?? 0),
           currentValueCount: Number(row?.current_value_count ?? 0),
         };

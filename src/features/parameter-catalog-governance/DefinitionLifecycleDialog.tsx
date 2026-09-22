@@ -243,7 +243,10 @@ export function DefinitionLifecycleDialog({
           <dd>{`修订 #${definition.currentRevision.revisionNumber}`}</dd>
           <dt>共享影响</dt>
           <dd>
-            {`策略 ${definition.usageSummary.policyCount} · 项目 ${definition.usageSummary.projectCount} · 当前值 ${definition.usageSummary.currentValueCount}`}
+            {definition.usageSummary.policyCount === null
+              ? "策略使用量暂不可用"
+              : `策略 ${definition.usageSummary.policyCount}`}
+            {` · 项目 ${definition.usageSummary.projectCount} · 当前值 ${definition.usageSummary.currentValueCount}`}
           </dd>
         </dl>
         <p role="note">{contentText.impact}</p>
@@ -311,7 +314,7 @@ function impactSummary(
   return [
     `将发布 1 个修订用于${intent === "retire-definition" ? "弃用" : "恢复"} ${definition.propertyKey}。`,
     `变更定义 ${changed} · 新增定义 ${added}。`,
-    `共享目录影响：策略 ${definition.usageSummary.policyCount} · 项目 ${definition.usageSummary.projectCount} · 当前值 ${definition.usageSummary.currentValueCount}。`,
+    `共享目录影响：${definition.usageSummary.policyCount === null ? "策略使用量暂不可用" : `策略 ${definition.usageSummary.policyCount}`} · 项目 ${definition.usageSummary.projectCount} · 当前值 ${definition.usageSummary.currentValueCount}。`,
     "已固定历史引用的项目不会自动改动。"
   ].join("\n");
 }

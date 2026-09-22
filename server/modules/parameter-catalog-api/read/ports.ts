@@ -61,13 +61,13 @@ export const unregisteredProjectionForTests: RegistrationProjectionPort = {
 /** @deprecated Test constructor. Use unregisteredProjectionForTests. */
 export const unregisteredProjection = unregisteredProjectionForTests;
 
-/** Test-only zero usage projection. Must not be the production pool default. */
+/** Test-only empty usage projection. Must not be the production pool default. */
 export const zeroUsageProjectionForTests: UsageProjectionPort = {
   async summarizeMany({ definitionIds }) {
-    return new Map(definitionIds.map((id) => [id, { policyCount: 0, projectCount: 0, currentValueCount: 0 }]));
+    return new Map(definitionIds.map((id) => [id, { policyCount: null, projectCount: 0, currentValueCount: 0 }]));
   },
   async summarize() {
-    return { policyCount: 0, projectCount: 0, currentValueCount: 0 };
+    return { policyCount: null, projectCount: 0, currentValueCount: 0 };
   },
 };
 

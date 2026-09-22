@@ -348,7 +348,7 @@ The client may show the 14 published definitions, but binding or value commands 
       "publishedInCatalogReleaseId": "crel_01K42"
     },
     "registration": { "status": "active", "id": "sreg_01KACME" },
-    "usageSummary": { "policyCount": 2, "projectCount": 6, "currentValueCount": 5 },
+    "usageSummary": { "policyCount": null, "projectCount": 6, "currentValueCount": 5 },
     "links": {
       "revisions": "/api/v2/catalog/definitions/pdef_01KGPIOINT/revisions",
       "timeline": "/api/v2/catalog/definitions/pdef_01KGPIOINT/timeline"
@@ -356,6 +356,8 @@ The client may show the 14 published definitions, but binding or value commands 
   }
 }
 ```
+
+`usageSummary.policyCount` is a nonnegative integer or `null`. Under [#815](https://github.com/tzrea1-Q/WiseEff/issues/815), production and mock reads return `null` until an authoritative Policy association and aggregate exist (TD-055). UI usage and lifecycle impact summaries render this as Policy usage unavailable (see the Chinese companion for the exact product copy); a numeric `0` still means a known zero. Project and current-value counts remain real scoped aggregates. Missing summaries or failed queries remain errors.
 
 A documentation-only revision changes `currentRevision.id` but does not rewrite a binding's `effectiveRevisionId` or a value's pinned `definitionRevisionId`.
 

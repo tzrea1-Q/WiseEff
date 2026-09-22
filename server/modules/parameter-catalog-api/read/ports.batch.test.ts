@@ -71,13 +71,13 @@ describe("R2-BATCH page usage port", () => {
   it("deduplicates a page and associates usage by stable ID, retaining the existing projection scope", async () => {
     const { port, summarize } = usageFixture();
     summarize.mockResolvedValue({ ok: true, value: { semantics: USAGE_CURRENT_PROJECTION_SEMANTICS, summaries: [
-      { definitionId: second, policyCount: 0, projectCount: 3, currentValueCount: 5 },
-      { definitionId: first, policyCount: 0, projectCount: 1, currentValueCount: 2 },
+      { definitionId: second, policyCount: null, projectCount: 3, currentValueCount: 5 },
+      { definitionId: first, policyCount: null, projectCount: 1, currentValueCount: 2 },
     ] } });
     const result = await port.summarizeMany({ ...input, definitionIds: [first, second, first] });
     expect(summarize).toHaveBeenCalledExactlyOnceWith({ organizationId: input.organizationId, definitionIds: [first, second], projectScope: { kind: "all" }, authScope: { organizationId: input.organizationId, principalId: input.principalId } });
-    expect(result.get(first)).toEqual({ policyCount: 0, projectCount: 1, currentValueCount: 2 });
-    expect(result.get(second)).toEqual({ policyCount: 0, projectCount: 3, currentValueCount: 5 });
+    expect(result.get(first)).toEqual({ policyCount: null, projectCount: 1, currentValueCount: 2 });
+    expect(result.get(second)).toEqual({ policyCount: null, projectCount: 3, currentValueCount: 5 });
     // Policy remains outside the project/current-value scope acceptance.
   });
   it("empty input issues no usage query", async () => {
@@ -88,10 +88,10 @@ describe("R2-BATCH page usage port", () => {
   });
   it.each([{ ids: ["project-a", "project-b", "project-a"] }, { ids: [] }])("forwards only scope $ids without promoting it to all", async ({ ids }) => {
     const { port, summarize } = usageFixture();
-    summarize.mockResolvedValue({ ok: true, value: { semantics: USAGE_CURRENT_PROJECTION_SEMANTICS, summaries: [{ definitionId: first, policyCount: 0, projectCount: 0, currentValueCount: 0 }] } });
+    summarize.mockResolvedValue({ ok: true, value: { semantics: USAGE_CURRENT_PROJECTION_SEMANTICS, summaries: [{ definitionId: first, policyCount: null, projectCount: 0, currentValueCount: 0 }] } });
     const result = await port.summarizeMany({ ...input, definitionIds: [first], projectScope: { kind: "only", ids } });
     expect(summarize).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ projectScope: { kind: "only", ids: [...new Set(ids)] } }));
-    expect(result.get(first)).toEqual({ policyCount: 0, projectCount: 0, currentValueCount: 0 });
+    expect(result.get(first)).toEqual({ policyCount: null, projectCount: 0, currentValueCount: 0 });
   });
   it.each([undefined, null, {}, { kind: "unknown" }, { kind: "only" }, { kind: "only", ids: null }, { kind: "only", ids: [undefined] }, { kind: "only", ids: [""] }, { kind: "only", ids: [" padded"] }, { kind: "only", ids: ["bad\u0000id"] }])("rejects malformed trusted project scope %j before querying", async (projectScope) => {
     const { port, summarize, sql } = usageFixture();

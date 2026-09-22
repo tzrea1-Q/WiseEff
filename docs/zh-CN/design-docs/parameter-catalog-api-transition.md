@@ -348,7 +348,7 @@ unknown 或 ambiguous evidence 不能直接解析成新 definition。人工选�
       "publishedInCatalogReleaseId": "crel_01K42"
     },
     "registration": { "status": "active", "id": "sreg_01KACME" },
-    "usageSummary": { "policyCount": 2, "projectCount": 6, "currentValueCount": 5 },
+    "usageSummary": { "policyCount": null, "projectCount": 6, "currentValueCount": 5 },
     "links": {
       "revisions": "/api/v2/catalog/definitions/pdef_01KGPIOINT/revisions",
       "timeline": "/api/v2/catalog/definitions/pdef_01KGPIOINT/timeline"
@@ -356,6 +356,8 @@ unknown 或 ambiguous evidence 不能直接解析成新 definition。人工选�
   }
 }
 ```
+
+`usageSummary.policyCount` 为非负整数或 `null`。按 [#815](https://github.com/tzrea1-Q/WiseEff/issues/815)，在权威 Policy 关联与聚合能力建成前（TD-055），生产与 mock 读取均返回 `null`。UI 使用量及生命周期影响摘要将其显示为“策略使用量暂不可用”；数字 `0` 仍表示已知为零。项目和当前值计数继续来自真实作用域聚合。缺失摘要或查询失败仍返回错误。
 
 只改文档的 revision 会改变 `currentRevision.id`，但不会重写 binding 的 `effectiveRevisionId` 或 value 固定的 `definitionRevisionId`。
 

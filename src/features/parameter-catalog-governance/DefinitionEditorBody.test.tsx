@@ -205,6 +205,9 @@ describe("DefinitionEditorBody", () => {
     const user = userEvent.setup();
     const { preview } = renderDialog();
 
+    await user.click(screen.getByText("更多信息"));
+    expect(screen.getByText(/策略使用量暂不可用/)).toBeInTheDocument();
+
     // Nothing changed yet: the content path is offered and the migration path is not.
     expect(screen.getByRole("button", { name: "保存内容修订" })).toBeDisabled();
     expect(screen.queryByRole("button", { name: "预演影响" })).not.toBeInTheDocument();
@@ -377,7 +380,7 @@ describe("DefinitionEditorBody", () => {
     );
   }, 30_000);
 
-  it("keeps identity facts and on-demand history readable without authoring", async () => {
+  it.each([null, 0])("keeps identity facts, policy count %s and on-demand history readable without authoring", async (policyCount) => {
     const user = userEvent.setup();
     const onRequestHistory = vi.fn();
     render(
@@ -390,7 +393,7 @@ describe("DefinitionEditorBody", () => {
         domainState={ready}
         catalog={createMockCatalogPorts({ scenario: "ready" }).catalog}
         catalogReleaseId={CATALOG_RELEASE_ID}
-        definition={activeDefinition}
+        definition={{ ...activeDefinition, usageSummary: { ...activeDefinition.usageSummary, policyCount } }}
         subjects={[registeredSubject]}
       />
     );
@@ -400,6 +403,8 @@ describe("DefinitionEditorBody", () => {
     expect(detail).toHaveTextContent(activeDefinition.id);
     expect(detail).toHaveTextContent(`修订 #${activeDefinition.currentRevision.revisionNumber}`);
     expect(screen.queryByRole("button", { name: "保存内容修订" })).not.toBeInTheDocument();
+
+    expect(screen.getByText(policyCount === null ? /策略使用量暂不可用/ : /策略 0/)).toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: /查看历史/ }));
     expect(onRequestHistory).toHaveBeenCalledOnce();

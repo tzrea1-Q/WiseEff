@@ -271,7 +271,7 @@ describe("CatalogPage", () => {
     expect(within(detail).getByText(CATALOG_SUBJECT_ID)).toBeInTheDocument();
     expect(within(detail).getByText(CATALOG_DEFINITION_ID)).toBeInTheDocument();
     expect(within(detail).getByText(/修订 #6/)).toBeInTheDocument();
-    expect(within(detail).getByText("策略 1 · 项目 2 · 当前值 2")).toBeInTheDocument();
+    expect(within(detail).getByText("策略使用量暂不可用 · 项目 2 · 当前值 2")).toBeInTheDocument();
     expect(within(detail).getByText(/已登记/)).toBeInTheDocument();
     expect(within(detail).getByText("Root")).toBeInTheDocument();
 

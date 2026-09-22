@@ -525,7 +525,7 @@ describe("CATFIX-QUERY real governance and usage projections", () => {
       definitionId: DEFINITION_ID,
       projectCount: 2,
       currentValueCount: 2,
-      policyCount: 0,
+      policyCount: null,
     });
   });
 

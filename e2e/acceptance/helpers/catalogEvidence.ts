@@ -100,7 +100,7 @@ export type CatalogAcceptanceFixture = {
       revisionNumber: 1;
     };
     usage: {
-      policyCount: 0;
+      policyCount: null;
       projectCount: 0;
       currentValueCount: 0;
     };
@@ -177,7 +177,7 @@ async function installCatalogAcceptanceFixture(): Promise<CatalogAcceptanceFixtu
         revisionNumber: 1
       },
       usage: {
-        policyCount: 0,
+        policyCount: null,
         projectCount: 0,
         currentValueCount: 0
       }
