@@ -58,6 +58,9 @@ export type FileSyncSummary = {
   unchanged: number;
   unmatched: number;
   skipped: boolean;
+  /** Canonical source checks are review-gated and do not create file drafts. */
+  sourceWorkflow?: "canonical";
+  message?: string;
   /** Count of sync keys matched via (name, module) fallback rather than source_* bind. */
   identityFallbackUses?: number;
   protectedReferencePin?: ParameterFileProtectedReferencePin;
@@ -283,6 +286,62 @@ export type DownloadParameterFileCandidateResult = {
   bytes: Uint8Array;
 };
 
+export type ParameterFileSourceReviewStatus = "pending" | "approved" | "rejected" | "withdrawn";
+
+export type ParameterFileSourceWorkflow = {
+  canonical: boolean;
+  configSetId?: string;
+  reason?: string;
+  bindingCount: number;
+  /** Server-frozen cohort/source-pin proof; present for canonical workflows. */
+  proofToken?: string;
+};
+
+export type ParameterFileSourcePreview = {
+  kind: "legacy" | "canonical";
+  canSubmit: boolean;
+  reason?: string;
+  candidateId: string;
+  fileId?: string;
+  format: string;
+  baseVersionId?: string;
+  bindingId?: string;
+  definitionId?: string;
+  baseCurrentValueId?: string;
+  configRevisionId?: string;
+  sourcePinId?: string;
+  locator?: string;
+  baseDigest?: string;
+  proposedDigest?: string;
+  /** Server-frozen cohort/source-pin proof; present for canonical previews. */
+  proofToken?: string;
+  before?: string;
+  after?: string;
+  request?: {
+    id: string;
+    status: ParameterFileSourceReviewStatus;
+  };
+};
+
+export type ParameterFileSourceReviewResult = {
+  requestId: string;
+  status: ParameterFileSourceReviewStatus;
+  replayed: boolean;
+};
+
+export type SubmitParameterFileSourceReviewInput = {
+  expectedCurrentVersionId: string;
+  expectedProofToken: string;
+  reason: string;
+};
+
+export type RollbackParameterFileSourceReviewInput = {
+  versionId: string;
+  expectedCurrentVersionId: string;
+  expectedProofToken: string;
+  reason: string;
+};
+
 
 export interface ParameterFileRepository {
   listFiles(projectId: string): Promise<ProjectParameterFile[]>;
@@ -300,6 +359,7 @@ export interface ParameterFileRepository {
   ): Promise<RollbackParameterFileVersionResult>;
   downloadVersion(projectId: string, fileId: string, versionId: string): Promise<DownloadParameterFileVersionResult>;
   syncFile(projectId: string, fileId: string): Promise<FileSyncSummary>;
+  getSourceWorkflow(projectId: string, fileId: string): Promise<ParameterFileSourceWorkflow>;
   listConflicts(projectId: string): Promise<ParameterFileSyncConflict[]>;
   resolveConflict(
     projectId: string,
@@ -326,4 +386,15 @@ export interface ParameterFileRepository {
     candidateId: string,
     input: ActivateParameterFileCandidateInput
   ): Promise<ActivateParameterFileCandidateResult>;
+  getCandidateSourcePreview(projectId: string, candidateId: string): Promise<ParameterFileSourcePreview>;
+  submitCandidateSourceReview(
+    projectId: string,
+    candidateId: string,
+    input: SubmitParameterFileSourceReviewInput
+  ): Promise<ParameterFileSourceReviewResult>;
+  rollbackVersionThroughSourceReview(
+    projectId: string,
+    fileId: string,
+    input: RollbackParameterFileSourceReviewInput
+  ): Promise<ParameterFileSourceReviewResult>;
 }
