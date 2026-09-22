@@ -284,5 +284,138 @@ describe("JsonBindingPanel", () => {
     );
     expect(screen.getByText("草稿")).toBeInTheDocument();
   });
+
+  it("renders header action buttons: 参数列表, JSON 源码, 导出当前结果", () => {
+    const handleExport = vi.fn();
+    render(
+      <JsonBindingPanel
+        bindings={[jsonBinding, secondBinding]}
+        moduleRegistry={moduleRegistry}
+        onExportRows={handleExport}
+      />
+    );
+
+    const group = screen.getByRole("group", { name: "结果模式" });
+    expect(within(group).getByRole("button", { name: "参数列表" })).toBeInTheDocument();
+    expect(within(group).getByRole("button", { name: "JSON 源码" })).toBeInTheDocument();
+    expect(within(group).getByRole("button", { name: "导出当前结果" })).toBeInTheDocument();
+
+    // Default mode is parameters list
+    expect(within(group).getByRole("button", { name: "参数列表" })).toHaveAttribute("aria-pressed", "true");
+    expect(within(group).getByRole("button", { name: "JSON 源码" })).toHaveAttribute("aria-pressed", "false");
+
+    // Clicking "导出当前结果" calls onExportRows with filtered bindings
+    fireEvent.click(within(group).getByRole("button", { name: "导出当前结果" }));
+    expect(handleExport).toHaveBeenCalledWith([jsonBinding, secondBinding]);
+  });
+
+  it("switches to JSON source view with loadPrimaryJsonSource, displays viewer and 下载 JSON button", async () => {
+    const loadPrimaryJsonSource = vi.fn().mockResolvedValue({
+      fileName: "custom-config.json",
+      versionNumber: 3,
+      text: '{\n  "charging-policy": {\n    "kind": "cells"\n  }\n}'
+    });
+
+    render(
+      <JsonBindingPanel
+        bindings={[jsonBinding, secondBinding]}
+        moduleRegistry={moduleRegistry}
+        loadPrimaryJsonSource={loadPrimaryJsonSource}
+      />
+    );
+
+    const group = screen.getByRole("group", { name: "结果模式" });
+    fireEvent.click(within(group).getByRole("button", { name: "JSON 源码" }));
+
+    // Verify view mode updated
+    expect(within(group).getByRole("button", { name: "JSON 源码" })).toHaveAttribute("aria-pressed", "true");
+    expect(within(group).getByRole("button", { name: "参数列表" })).toHaveAttribute("aria-pressed", "false");
+
+    // "下载 JSON" button appears in place of "导出当前结果"
+    expect(await within(group).findByRole("button", { name: "下载 JSON" })).toBeInTheDocument();
+    expect(within(group).queryByRole("button", { name: "导出当前结果" })).not.toBeInTheDocument();
+
+    // Search bar adapts to source code find mode
+    expect(screen.getByRole("searchbox", { name: "在 JSON 源码中查找" })).toBeInTheDocument();
+    expect(screen.getByPlaceholderText("在 JSON 文本中查找")).toBeInTheDocument();
+
+    // JSON source viewer renders with custom aria label and content
+    expect(await screen.findByLabelText("JSON 源码")).toBeInTheDocument();
+    expect(screen.getByLabelText("custom-config.json · v3")).toBeInTheDocument();
+    expect(loadPrimaryJsonSource).toHaveBeenCalledTimes(1);
+
+    // Switching back to "参数列表" restores table mode
+    fireEvent.click(within(group).getByRole("button", { name: "参数列表" }));
+    expect(within(group).getByRole("button", { name: "参数列表" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("region", { name: "JSON 参数列表" })).toBeInTheDocument();
+    expect(within(group).getByRole("button", { name: "导出当前结果" })).toBeInTheDocument();
+  });
+
+  it("synthesizes JSON source when loadPrimaryJsonSource is not provided", async () => {
+    render(
+      <JsonBindingPanel
+        bindings={[jsonBinding, secondBinding]}
+        moduleRegistry={moduleRegistry}
+        projectName="aurora"
+      />
+    );
+
+    const group = screen.getByRole("group", { name: "结果模式" });
+    fireEvent.click(within(group).getByRole("button", { name: "JSON 源码" }));
+
+    expect(await screen.findByLabelText("JSON 源码")).toBeInTheDocument();
+    expect(screen.getByLabelText("aurora.json · v1")).toBeInTheDocument();
+    expect(screen.getByText(/"charging-policy"/)).toBeInTheDocument();
+  });
+
+  it("jumps and highlights line when module node is clicked in JSON source mode", async () => {
+    const jsonText = '{\n  "header": true,\n  "charging-policy": {\n    "kind": "cells"\n  },\n  "battery-limits": {\n    "maxTemp": 45\n  }\n}';
+    render(
+      <JsonBindingPanel
+        bindings={[jsonBinding, secondBinding]}
+        moduleRegistry={moduleRegistry}
+        loadPrimaryJsonSource={async () => ({
+          fileName: "power.json",
+          versionNumber: 1,
+          text: jsonText
+        })}
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "JSON 源码" }));
+    expect(await screen.findByLabelText("JSON 源码")).toBeInTheDocument();
+
+    // Click module "充电管理" in module navigator
+    const moduleItem = screen.getByRole("treeitem", { name: /充电管理/ });
+    fireEvent.click(moduleItem);
+
+    // Line 3 contains "charging-policy" and should be focused
+    await waitFor(() => {
+      const lineGutter = screen.getByText("3", { selector: ".project-primary-dts-viewer__line-number" });
+      const row = lineGutter.closest(".project-primary-dts-viewer__line");
+      expect(row).toHaveClass("is-focused");
+    });
+  });
+
+  it("handles downloading JSON file via 下载 JSON button", async () => {
+    const createObjectURLMock = vi.fn().mockReturnValue("blob:mock-url");
+    const revokeObjectURLMock = vi.fn();
+    window.URL.createObjectURL = createObjectURLMock;
+    window.URL.revokeObjectURL = revokeObjectURLMock;
+
+    render(
+      <JsonBindingPanel
+        bindings={[jsonBinding]}
+        projectName="aurora"
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "JSON 源码" }));
+    const downloadBtn = await screen.findByRole("button", { name: "下载 JSON" });
+
+    fireEvent.click(downloadBtn);
+    expect(createObjectURLMock).toHaveBeenCalledTimes(1);
+    expect(revokeObjectURLMock).toHaveBeenCalledWith("blob:mock-url");
+  });
 });
 

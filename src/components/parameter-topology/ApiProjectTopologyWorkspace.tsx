@@ -7,6 +7,7 @@ import type {
 import { resolveDtsStructuredRepository } from "@/application/parameters/dtsStructuredRuntime";
 import { resolveParameterFileRepository } from "@/application/parameters/parameterFileRuntime";
 import { selectPrimaryProjectDtsFile } from "@/application/parameters/selectPrimaryProjectDtsFile";
+import { selectPrimaryProjectJsonFile } from "@/application/parameters/selectPrimaryProjectJsonFile";
 import type { ParameterFileRepository } from "@/application/ports/ParameterFileRepository";
 import type { ParameterTopologyRepository } from "@/application/ports/ParameterTopologyRepository";
 import type { ParameterCatalogRepository } from "@/application/ports/ParameterCatalogRepository";
@@ -50,6 +51,7 @@ import type { TrayHydrationDraft } from "@/application/parameters/canonicalDraft
 import { DtsParameterWorkbench } from "./DtsParameterWorkbench";
 import { buildDtsWorkbenchRows } from "@/application/parameters/buildDtsWorkbenchRows";
 import { downloadSemanticWorkbenchCsv } from "@/application/parameters/exportSemanticWorkbenchRows";
+import { downloadJsonWorkbenchCsv } from "@/application/parameters/exportJsonWorkbenchRows";
 import {
   clearUnsavedParameterWork,
   reportUnsavedParameterWork
@@ -59,7 +61,12 @@ import {
   partitionDanglingReferenceDiagnostics
 } from "@/domain/parameter-topology/toolchainDiagnostics";
 import { WorkbenchDiagnosticsSection } from "./WorkbenchDiagnosticsSection";
-import { JsonBindingPanel, type JsonBindingHistoryEntry } from "./JsonBindingPanel";
+import {
+  JsonBindingPanel,
+  synthesizeJsonSource,
+  type JsonBindingHistoryEntry,
+  type PrimaryJsonSource
+} from "./JsonBindingPanel";
 
 export type ApiProjectTopologyWorkspaceProps = {
   projectId: string;
@@ -1137,6 +1144,36 @@ export function ApiProjectTopologyWorkspace({
     };
   }, [parameterFileRepo, projectId]);
 
+  const loadPrimaryJsonSource = useCallback(async (): Promise<PrimaryJsonSource> => {
+    const readyBindings = loadState.kind === "ready" ? loadState.bindings : [];
+    try {
+      const files = await parameterFileRepo.listFiles(projectId);
+      const file = selectPrimaryProjectJsonFile(projectId, files);
+      if (!file?.currentVersionId || file.currentVersionNumber == null) {
+        return synthesizeJsonSource(
+          readyBindings.filter((b) => b.effectiveValue.kind === "json"),
+          projectId
+        );
+      }
+      const downloaded = await parameterFileRepo.downloadVersion(
+        projectId,
+        file.id,
+        file.currentVersionId
+      );
+      const text = new TextDecoder().decode(downloaded.bytes);
+      return {
+        fileName: downloaded.fileName ?? file.fileName,
+        versionNumber: file.currentVersionNumber,
+        text
+      };
+    } catch {
+      return synthesizeJsonSource(
+        readyBindings.filter((b) => b.effectiveValue.kind === "json"),
+        projectId
+      );
+    }
+  }, [loadState, parameterFileRepo, projectId]);
+
   const exportCanonicalBinding = useCallback(
     async (bindingId: string) => {
       if (!canonicalRepository?.getCanonicalBindingExport) {
@@ -1318,6 +1355,14 @@ export function ApiProjectTopologyWorkspace({
             onValidateEdit={handleValidateEdit}
             onExportBinding={canonicalRepository?.getCanonicalBindingExport ? exportCanonicalBinding : undefined}
             onLoadHistory={canonicalRepository?.getCanonicalBindingChangeHistory ? loadCanonicalBindingHistory : undefined}
+            loadPrimaryJsonSource={loadPrimaryJsonSource}
+            onExportRows={(bindings) => {
+              downloadJsonWorkbenchCsv(
+                bindings,
+                `json-parameters-${projectId}-${loadState.revisionId}.csv`
+              );
+            }}
+            projectName={projectId}
           />
         </div>
       ) : (

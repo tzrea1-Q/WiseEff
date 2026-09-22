@@ -1,5 +1,5 @@
-import { useEffect, useId, useMemo, useRef, useState } from "react";
-import { AlertCircle, CheckCircle2, CircleX, Download, Eye, History, Pencil } from "lucide-react";
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
+import { AlertCircle, Boxes, CheckCircle2, CircleX, Download, Eye, FileCode, History, Pencil } from "lucide-react";
 import type {
   ProjectParameterBinding,
   TopologyDiagnostic
@@ -12,6 +12,8 @@ import { presentError } from "@/infrastructure/http/presentError";
 import { formatRelativeOrAbsolute } from "@/domain/format/formatDateTime";
 import { buildModuleTree } from "@/application/parameters/buildModuleTree";
 import { DtsTopologyNavigator } from "./DtsTopologyNavigator";
+import { ProjectPrimaryDtsViewer } from "./ProjectPrimaryDtsViewer";
+import { downloadJsonWorkbenchCsv } from "@/application/parameters/exportJsonWorkbenchRows";
 import type { DtsWorkbenchTreeNode } from "@/application/parameters/buildDtsTopologyTree";
 
 export type BindingEditValidation = {
@@ -35,6 +37,12 @@ export type JsonBindingHistoryEntry = {
   valueState?: "present" | "deleted" | null;
 };
 
+export type PrimaryJsonSource = {
+  fileName: string;
+  versionNumber: number;
+  text: string;
+};
+
 export type JsonBindingPanelProps = {
   bindings: readonly ProjectParameterBinding[];
   moduleRegistry?: ParameterModuleRegistry | null;
@@ -46,6 +54,9 @@ export type JsonBindingPanelProps = {
     | Promise<BindingEditValidation>;
   onExportBinding?: (bindingId: string) => Promise<void>;
   onLoadHistory?: (bindingId: string) => Promise<readonly JsonBindingHistoryEntry[]>;
+  loadPrimaryJsonSource?: () => Promise<PrimaryJsonSource>;
+  onExportRows?: (bindings: readonly ProjectParameterBinding[]) => void;
+  projectName?: string;
 };
 
 function selectedSubtreeBindingIds(
@@ -83,6 +94,50 @@ function treeContainsNode(nodes: DtsWorkbenchTreeNode[], nodeId: string): boolea
   return false;
 }
 
+export function synthesizeJsonSource(
+  bindings: readonly ProjectParameterBinding[],
+  projectName?: string
+): PrimaryJsonSource {
+  const obj: Record<string, unknown> = {};
+  for (const b of bindings) {
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(b.rawValue);
+    } catch {
+      parsed = b.rawValue;
+    }
+    obj[b.propertyKey] = parsed;
+  }
+  return {
+    fileName: projectName ? `${projectName}.json` : "parameters.json",
+    versionNumber: 1,
+    text: JSON.stringify(obj, null, 2) + "\n"
+  };
+}
+
+function findEarliestJsonSourceLine(
+  text: string,
+  bindings: readonly ProjectParameterBinding[],
+  subtreeBindingIds: Set<string> | null
+): number | null {
+  if (!subtreeBindingIds || subtreeBindingIds.size === 0 || !text) return null;
+  const targetKeys = bindings
+    .filter((b) => subtreeBindingIds.has(b.id))
+    .map((b) => b.propertyKey);
+  if (targetKeys.length === 0) return null;
+
+  const lines = text.split("\n");
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    for (const key of targetKeys) {
+      if (line.includes(`"${key}"`) || line.includes(key)) {
+        return i + 1;
+      }
+    }
+  }
+  return null;
+}
+
 /** JSON bindings workbench matching DTS layout (Topology Navigator + Table + Modal Dialogs). */
 export function JsonBindingPanel({
   bindings,
@@ -92,14 +147,27 @@ export function JsonBindingPanel({
   currentEdits,
   onValidateEdit,
   onExportBinding,
-  onLoadHistory
+  onLoadHistory,
+  loadPrimaryJsonSource,
+  onExportRows,
+  projectName
 }: JsonBindingPanelProps) {
   const jsonBindings = useMemo(
     () => bindings.filter((binding) => binding.effectiveValue.kind === "json"),
     [bindings]
   );
+  const [resultsMode, setResultsMode] = useState<"parameters" | "jsonSource">("parameters");
   const [query, setQuery] = useState("");
+  const [jsonFindQuery, setJsonFindQuery] = useState("");
+  const [findNextToken, setFindNextToken] = useState(0);
+  const [findStatus, setFindStatus] = useState({ matchCount: 0, activeIndex: 0 });
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
+
+  // Source viewer states
+  const [jsonSourceStatus, setJsonSourceStatus] = useState<"idle" | "loading" | "ready" | "error">("idle");
+  const [jsonSource, setJsonSource] = useState<PrimaryJsonSource | null>(null);
+  const [jsonSourceErrorMessage, setJsonSourceErrorMessage] = useState<string | null>(null);
+  const [jsonSourceLoadToken, setJsonSourceLoadToken] = useState(0);
 
   // Dialog states
   const [viewingBindingId, setViewingBindingId] = useState<string | null>(null);
@@ -284,24 +352,173 @@ export function JsonBindingPanel({
       .finally(() => setExportingId(null));
   };
 
+  const loadJsonSource = useCallback(() => {
+    setJsonSourceStatus("loading");
+    setJsonSourceErrorMessage(null);
+    setJsonSourceLoadToken((current) => current + 1);
+  }, []);
+
+  useEffect(() => {
+    if (resultsMode !== "jsonSource" || jsonSourceLoadToken === 0) {
+      return undefined;
+    }
+    let cancelled = false;
+
+    if (!loadPrimaryJsonSource) {
+      setJsonSource(synthesizeJsonSource(jsonBindings, projectName));
+      setJsonSourceStatus("ready");
+      setJsonSourceErrorMessage(null);
+      return undefined;
+    }
+
+    void loadPrimaryJsonSource()
+      .then((source) => {
+        if (!cancelled) {
+          setJsonSource(source);
+          setJsonSourceStatus("ready");
+          setJsonSourceErrorMessage(null);
+        }
+      })
+      .catch((error: unknown) => {
+        if (!cancelled) {
+          setJsonSource(null);
+          setJsonSourceStatus("error");
+          setJsonSourceErrorMessage(presentError(error, "无法加载 JSON 源码，请稍后重试。"));
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [jsonBindings, jsonSourceLoadToken, loadPrimaryJsonSource, projectName, resultsMode]);
+
+  const enterJsonSourceMode = () => {
+    setResultsMode("jsonSource");
+    if (jsonSourceStatus !== "ready" || !jsonSource) {
+      loadJsonSource();
+    }
+  };
+
+  const downloadJsonSource = () => {
+    if (!jsonSource) return;
+    const blob = new Blob([jsonSource.text], { type: "application/json;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = jsonSource.fileName;
+    anchor.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const handleExportRows = () => {
+    if (onExportRows) {
+      onExportRows(filteredBindings);
+      return;
+    }
+    downloadJsonWorkbenchCsv(
+      filteredBindings,
+      projectName ? `json-parameters-${projectName}.csv` : "json-parameters-export.csv"
+    );
+  };
+
+  const moduleFocusLine = useMemo(() => {
+    if (resultsMode !== "jsonSource" || !jsonSource) return null;
+    return findEarliestJsonSourceLine(jsonSource.text, jsonBindings, subtreeBindingIds);
+  }, [jsonBindings, jsonSource, resultsMode, subtreeBindingIds]);
+
+  const moduleJumpStatus = useMemo(() => {
+    if (resultsMode !== "jsonSource" || subtreeBindingIds === null) return null;
+    if (moduleFocusLine !== null) return null;
+    return "当前模块暂无源码行定位";
+  }, [moduleFocusLine, resultsMode, subtreeBindingIds]);
+
   if (jsonBindings.length === 0) return null;
 
   return (
     <section className="dts-parameter-workbench json-parameter-workbench" role="region" aria-label="JSON 参数">
       <div className="dts-parameter-workbench__toolbar">
-        <div className="dts-parameter-workbench__search">
+        <label className="dts-parameter-workbench__search">
+          <span>{resultsMode === "jsonSource" ? "查找源码" : "搜索参数"}</span>
           <SearchField
-            value={query}
-            onValueChange={setQuery}
-            onClear={() => setQuery("")}
-            ariaLabel="搜索 JSON 参数"
-            placeholder="搜索参数名、所属模块、器件定位或取值…"
+            value={resultsMode === "jsonSource" ? jsonFindQuery : query}
+            onValueChange={resultsMode === "jsonSource" ? setJsonFindQuery : setQuery}
+            ariaLabel={resultsMode === "jsonSource" ? "在 JSON 源码中查找" : "搜索 JSON 参数"}
+            placeholder={
+              resultsMode === "jsonSource"
+                ? "在 JSON 文本中查找"
+                : "搜索参数名、所属模块、器件定位或取值…"
+            }
+            onKeyDown={(event) => {
+              if (resultsMode === "jsonSource" && event.key === "Enter") {
+                event.preventDefault();
+                setFindNextToken((current) => current + 1);
+              }
+            }}
+            onClear={() => {
+              if (resultsMode === "jsonSource") {
+                setJsonFindQuery("");
+              } else {
+                setQuery("");
+              }
+            }}
           />
+        </label>
+        {resultsMode === "jsonSource" ? (
+          <p role="status" aria-live="polite" className="dts-parameter-workbench__result-count">
+            {moduleJumpStatus
+              ?? (jsonFindQuery.trim()
+                ? `匹配 ${findStatus.activeIndex} / ${findStatus.matchCount}`
+                : null)}
+          </p>
+        ) : (
           <span className="dts-parameter-workbench__result-count">
             {query.trim() || effectiveSelectedNodeId
               ? `匹配 ${filteredBindings.length} / ${jsonBindings.length} 项`
               : `共 ${jsonBindings.length} 项`}
           </span>
+        )}
+        <div className="dts-parameter-workbench__toolbar-actions">
+          <div className="dts-parameter-workbench__header-actions" role="group" aria-label="结果模式">
+            <button
+              type="button"
+              className={`button subtle${resultsMode === "parameters" ? " is-active" : ""}`}
+              aria-pressed={resultsMode === "parameters"}
+              onClick={() => setResultsMode("parameters")}
+            >
+              <Boxes size={15} strokeWidth={1.9} aria-hidden="true" />
+              参数列表
+            </button>
+            <button
+              type="button"
+              className={`button subtle${resultsMode === "jsonSource" ? " is-active" : ""}`}
+              aria-pressed={resultsMode === "jsonSource"}
+              onClick={enterJsonSourceMode}
+            >
+              <FileCode size={15} strokeWidth={1.9} aria-hidden="true" />
+              JSON 源码
+            </button>
+            {resultsMode === "jsonSource" ? (
+              <button
+                type="button"
+                className="button subtle"
+                disabled={jsonSourceStatus !== "ready" || !jsonSource}
+                onClick={downloadJsonSource}
+              >
+                <Download size={15} strokeWidth={1.9} aria-hidden="true" />
+                下载 JSON
+              </button>
+            ) : (
+              <button
+                type="button"
+                className="button subtle"
+                disabled={filteredBindings.length === 0}
+                onClick={handleExportRows}
+              >
+                <Download size={15} strokeWidth={1.9} aria-hidden="true" />
+                导出当前结果
+              </button>
+            )}
+          </div>
         </div>
       </div>
 
@@ -341,99 +558,126 @@ export function JsonBindingPanel({
           />
         </div>
 
-        {/* Parameter List Table */}
+        {/* Parameter List Table or JSON Source Viewer */}
         <div
           className="dts-parameter-workbench__results dts-workbench-list"
           role="region"
-          aria-label="JSON 参数列表"
+          aria-label={resultsMode === "parameters" ? "JSON 参数列表" : "JSON 源码结果"}
         >
-          <div className="dts-workbench-list__scroll-x">
-            <div className="dts-workbench-list__scroll-y">
-              <table role="table" aria-label="JSON 参数列表" className="json-parameter-workbench-table">
-                <thead className="json-parameter-workbench-table__head">
-                  <tr>
-                    <th scope="col" className="json-parameter-workbench-table__th-property">参数名</th>
-                    <th scope="col" className="json-parameter-workbench-table__th-module">所属模块</th>
-                    <th scope="col" className="json-parameter-workbench-table__th-locator">器件 / 定位</th>
-                    <th scope="col" className="json-parameter-workbench-table__th-value">当前值</th>
-                    <th scope="col" className="json-parameter-workbench-table__th-actions">操作</th>
-                  </tr>
-                </thead>
-                <tbody className="json-parameter-workbench-table__body">
-                  {filteredBindings.length === 0 ? (
+          {resultsMode === "parameters" ? (
+            <div className="dts-workbench-list__scroll-x">
+              <div className="dts-workbench-list__scroll-y">
+                <table role="table" aria-label="JSON 参数列表" className="json-parameter-workbench-table">
+                  <thead className="json-parameter-workbench-table__head">
                     <tr>
-                      <td colSpan={5} className="json-parameter-workbench__empty">
-                        无匹配的 JSON 参数
-                      </td>
+                      <th scope="col" className="json-parameter-workbench-table__th-property">参数名</th>
+                      <th scope="col" className="json-parameter-workbench-table__th-module">所属模块</th>
+                      <th scope="col" className="json-parameter-workbench-table__th-locator">器件 / 定位</th>
+                      <th scope="col" className="json-parameter-workbench-table__th-value">当前值</th>
+                      <th scope="col" className="json-parameter-workbench-table__th-actions">操作</th>
                     </tr>
-                  ) : (
-                    filteredBindings.map((binding) => {
-                      const isDraft = draftBindingIds?.has(binding.id) ?? false;
-                      const isSelected = viewingBindingId === binding.id || editingBindingId === binding.id;
-                      const moduleLabel = binding.moduleId ?? binding.driverModule ?? "固定配置";
+                  </thead>
+                  <tbody className="json-parameter-workbench-table__body">
+                    {filteredBindings.length === 0 ? (
+                      <tr>
+                        <td colSpan={5} className="json-parameter-workbench__empty">
+                          无匹配的 JSON 参数
+                        </td>
+                      </tr>
+                    ) : (
+                      filteredBindings.map((binding) => {
+                        const isDraft = draftBindingIds?.has(binding.id) ?? false;
+                        const isSelected = viewingBindingId === binding.id || editingBindingId === binding.id;
+                        const moduleLabel = binding.moduleId ?? binding.driverModule ?? "固定配置";
 
-                      return (
-                        <tr
-                          key={binding.id}
-                          className={`json-parameter-workbench-table__row${isSelected ? " is-selected" : ""}${isDraft ? " is-draft" : ""}`}
-                          onClick={() => openDetail(binding.id)}
-                        >
-                          <td className="dts-parameter-workbench-table__property">
-                            <div className="json-parameter-workbench__property-cell">
-                              <code>{binding.propertyKey}</code>
-                              {isDraft ? (
-                                <span className="dts-parameter-workbench-table__draft-badge">草稿</span>
-                              ) : null}
-                            </div>
-                          </td>
-                          <td>
-                            <span className="dts-parameter-workbench-table__module">
-                              <strong>{moduleLabel}</strong>
-                            </span>
-                          </td>
-                          <td className="dts-parameter-workbench-table__identity">
-                            <div className="json-parameter-workbench__identity-cell">
-                              <strong>{binding.instanceName ?? "—"}</strong>
-                              {binding.locator ? <small>{binding.locator}</small> : null}
-                            </div>
-                          </td>
-                          <td>
-                            <code className="json-parameter-workbench-table__value-preview" title={binding.rawValue}>
-                              {binding.rawValue}
-                            </code>
-                          </td>
-                          <td className="json-parameter-workbench-table__th-actions" onClick={(e) => e.stopPropagation()}>
-                            <div className="dts-parameter-workbench-table__actions">
-                              <button
-                                type="button"
-                                className="button subtle dts-parameter-workbench-table__icon-action"
-                                title="查看"
-                                aria-label={`查看 ${binding.propertyKey}`}
-                                onClick={() => openDetail(binding.id)}
-                              >
-                                <Eye size={15} strokeWidth={1.9} aria-hidden="true" />
-                              </button>
-                              {canEdit ? (
+                        return (
+                          <tr
+                            key={binding.id}
+                            className={`json-parameter-workbench-table__row${isSelected ? " is-selected" : ""}${isDraft ? " is-draft" : ""}`}
+                            onClick={() => openDetail(binding.id)}
+                          >
+                            <td className="dts-parameter-workbench-table__property">
+                              <div className="json-parameter-workbench__property-cell">
+                                <code>{binding.propertyKey}</code>
+                                {isDraft ? (
+                                  <span className="dts-parameter-workbench-table__draft-badge">草稿</span>
+                                ) : null}
+                              </div>
+                            </td>
+                            <td>
+                              <span className="dts-parameter-workbench-table__module">
+                                <strong>{moduleLabel}</strong>
+                              </span>
+                            </td>
+                            <td className="dts-parameter-workbench-table__identity">
+                              <div className="json-parameter-workbench__identity-cell">
+                                <strong>{binding.instanceName ?? "—"}</strong>
+                                {binding.locator ? <small>{binding.locator}</small> : null}
+                              </div>
+                            </td>
+                            <td>
+                              <code className="json-parameter-workbench-table__value-preview" title={binding.rawValue}>
+                                {binding.rawValue}
+                              </code>
+                            </td>
+                            <td className="json-parameter-workbench-table__th-actions" onClick={(e) => e.stopPropagation()}>
+                              <div className="dts-parameter-workbench-table__actions">
                                 <button
                                   type="button"
                                   className="button subtle dts-parameter-workbench-table__icon-action"
-                                  title="编辑"
-                                  aria-label={`编辑 ${binding.propertyKey}`}
-                                  onClick={() => openDraft(binding.id)}
+                                  title="查看"
+                                  aria-label={`查看 ${binding.propertyKey}`}
+                                  onClick={() => openDetail(binding.id)}
                                 >
-                                  <Pencil size={15} strokeWidth={1.9} aria-hidden="true" />
+                                  <Eye size={15} strokeWidth={1.9} aria-hidden="true" />
                                 </button>
-                              ) : null}
-                            </div>
-                          </td>
-                        </tr>
-                      );
-                    })
-                  )}
-                </tbody>
-              </table>
+                                {canEdit ? (
+                                  <button
+                                    type="button"
+                                    className="button subtle dts-parameter-workbench-table__icon-action"
+                                    title="编辑"
+                                    aria-label={`编辑 ${binding.propertyKey}`}
+                                    onClick={() => openDraft(binding.id)}
+                                  >
+                                    <Pencil size={15} strokeWidth={1.9} aria-hidden="true" />
+                                  </button>
+                                ) : null}
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })
+                    )}
+                  </tbody>
+                </table>
+              </div>
             </div>
-          </div>
+          ) : jsonSourceStatus === "loading" ? (
+            <p className="dts-parameter-workbench__empty" role="status">正在加载 JSON 源码…</p>
+          ) : jsonSourceStatus === "error" ? (
+            <div className="dts-parameter-workbench__dts-source-error">
+              <p role="alert">无法加载 JSON 源码。</p>
+              {jsonSourceErrorMessage ? (
+                <p className="dts-parameter-workbench__dts-source-error-detail">{jsonSourceErrorMessage}</p>
+              ) : null}
+              <button type="button" className="button subtle" onClick={loadJsonSource}>
+                重试
+              </button>
+            </div>
+          ) : jsonSource ? (
+            <ProjectPrimaryDtsViewer
+              fileName={jsonSource.fileName}
+              versionNumber={jsonSource.versionNumber}
+              text={jsonSource.text}
+              focusLine={moduleFocusLine}
+              findQuery={jsonFindQuery}
+              findNextToken={findNextToken}
+              onFindStatusChange={setFindStatus}
+              bodyAriaLabel="JSON 源码"
+            />
+          ) : (
+            <p className="dts-parameter-workbench__empty" role="status">暂无 JSON 源码。</p>
+          )}
         </div>
       </div>
 
