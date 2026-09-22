@@ -120,6 +120,8 @@ function createScenarioFetch(scenario: CatalogMockScenario): typeof fetch {
       const definition = scenario === "retired" ? retiredDefinition : activeDefinition;
       return jsonResponse({
         items: [definition],
+        totalCount: 1,
+        hasMore: false,
         nextCursor: null,
         catalogReleaseId: CATALOG_RELEASE_ID
       });
@@ -203,6 +205,18 @@ function methodNames(value: object): string[] {
 }
 
 describe("catalog API and mock adapter parity", () => {
+  it("preserves unavailable policy usage in both list and detail reads", async () => {
+    const api = createApiCatalogPorts(createParameterCatalogClient({ baseUrl: "", fetchImpl: createScenarioFetch("ready") }));
+    const mock = createMockCatalogPorts({ scenario: "ready" });
+    for (const ports of [api, mock]) {
+      const list = await ports.catalog.listDefinitions();
+      expect(list.items.length).toBeGreaterThan(0);
+      for (const item of list.items) expect(item.usageSummary.policyCount).toBeNull();
+      const detail = await ports.catalog.getDefinition(activeDefinition.id);
+      expect(detail.item.usageSummary).toEqual({ policyCount: null, projectCount: 2, currentValueCount: 2 });
+    }
+  });
+
   it("covers every frozen canonical client method on exactly one port", () => {
     const client = createParameterCatalogClient({ baseUrl: "", fetchImpl: vi.fn() });
     const api = createApiCatalogPorts(client);

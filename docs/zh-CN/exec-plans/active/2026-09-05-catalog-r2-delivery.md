@@ -10,11 +10,15 @@
 
 | 用例 | 必需证据 | 负责人 |
 | --- | --- | --- |
-| R2-U01–U04 | 隔离 PostgreSQL 上的真实 usage 查询及 root HTTP：Policy 为 null，真实非零/零项目与值计数，隔离/当前态/占位规则，批量完整性/预算，结构化失败 | 开发子智能体 |
-| R2-U05 | 可空 DTO/生成 OpenAPI 与 API/mock 一致；接受含零在内的合法整数，拒绝负数/非法值 | 开发子智能体；主线程生成契约 |
-| R2-U06–U07 | 组件区分 null 与数字零；真实 API/PostgreSQL 的 1440×900 浏览器验证，编辑器及生命周期确认、控制台/网络证据和已检查截图 | 开发子智能体；主线程负责浏览器证据 |
+| R2-POL-U01–U04 | 隔离 PostgreSQL 上的真实 usage 查询及 root HTTP：Policy 为 null，真实非零/零项目与值计数，隔离/当前态/占位规则，批量完整性/预算，结构化失败 | 开发子智能体 |
+| R2-POL-U05 | 可空 DTO/生成 OpenAPI 与 API/mock 一致；接受含零在内的合法整数，拒绝负数/非法值 | 开发子智能体；主线程生成契约 |
+| R2-POL-U06–U07 | 组件区分 null 与数字零；真实 API/PostgreSQL 的 1440×900 浏览器验证，编辑器及生命周期确认、控制台/网络证据和已检查截图 | 开发子智能体；主线程负责浏览器证据 |
 
 开发子智能体负责涉及的服务端/前端实现与测试。主线程负责生成产物、本组双语文档、验收 fixture/spec、最终验证及独立 Standards/Spec 评审。将精确 #815 浏览器 lane 加入现有严格白名单，不绕过共享数据库或所有权保护。Documentation Impact Matrix：API 迁移契约与示例、TD-055 边界、当前检查点；中英文保持一致。须执行相关原生命令、build、contract 和 docs 检查。目前实现与验证进行中，此处不声明新的通过结果。
+
+本地检查点：实现 `4eb8e7a3fc67f3ea1af64a03fa01fb91bc8824b0` 及后续至 `aa1429a44014c34e2e309068d0fce860beee5735` 的浏览器 fixture 修正已在本地提交。聚焦组件 25、DTO 19、专用 PG/read 120、补充 HTTP/composition 9、lane guard 29 项通过。Build、生成契约、UI 规范和含 pgvector schema 验证的双语文档检查通过；lint 为 0 errors / 333 warnings。独立 Standards 和 Spec 审至 aa1429a44 无实现违规项，不代表验收完成。后续补充 API/mock 列表与详情的直接断言，完善测试用 collection envelope 后，与 HTTP client 合计 29 项通过。
+
+R2-POL-U07 仍受阻。aa1429a44 的 owned runtime 上，真实 API 返回 null，1440×900 编辑器/生命周期页面正确显示策略使用量暂不可用，无横向溢出，截图已人工检查。真实生命周期预演返回 HTTP 400 `VALIDATION_FAILED`：原有请求构造 `valueSchema: { description: "mixed" }`，缺少受支持的 type。基线提交已有相同构造，因此最终确认目前仅有组件测试证据。此前浏览器尝试分别失败于新 fixture adoption 指纹、行定位器及通用 fixture 的退役主体门禁，均不计为通过。未放宽门禁或超时；失败进程已停止，owned 取证资源按策略保留。是否扩展范围修复生命周期请求，等待用户决定。没有 PR、合并、关闭或部署。
 
 ## CI 修复就绪审查 — 2026-09-06
 
