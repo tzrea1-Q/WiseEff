@@ -25633,7 +25633,10 @@
                   "type": "object",
                   "properties": {
                     "policyCount": {
-                      "type": "number"
+                      "type": [
+                        "number",
+                        "null"
+                      ]
                     },
                     "projectCount": {
                       "type": "number"
@@ -25938,7 +25941,10 @@
                 "type": "object",
                 "properties": {
                   "policyCount": {
-                    "type": "number"
+                    "type": [
+                      "number",
+                      "null"
+                    ]
                   },
                   "projectCount": {
                     "type": "number"

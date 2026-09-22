@@ -133,7 +133,7 @@ describe("R2-SCOPE actual role bindings → root HTTP → PostgreSQL usage", () 
     const item = body.items?.find((entry: { id: string }) => entry.id === definitionId);
     records.push({ actor: actor.id, actualDatabaseRoleBindings: actualRoleBindings.get(actor.id), organizationId: actor.organizationId, expected: { projectCount: actor.projects, currentValueCount: actor.current }, actual: item?.usageSummary, status: listed.status, businessQueryCount: businessSql.length, usageParameters });
     expect(listed.status).toBe(200);
-    expect(item?.usageSummary).toMatchObject({ projectCount: actor.projects, currentValueCount: actor.current });
+    expect(item?.usageSummary).toMatchObject({ policyCount: null, projectCount: actor.projects, currentValueCount: actor.current });
     expect(businessSql).toHaveLength(5);
     expect(usageParameters).toHaveLength(1);
     const detail = await fetch(`${baseUrl}/api/v2/catalog/definitions/${definitionId}`, { headers });
@@ -149,7 +149,7 @@ describe("R2-SCOPE actual role bindings → root HTTP → PostgreSQL usage", () 
   it("R2-SCOPE-02 request fields cannot widen the actual database project binding", async () => {
     const response = await fetch(`${baseUrl}/api/v2/catalog/definitions/${definitionId}`, { headers: { authorization: "Bearer scope-only-a", "X-Role": "admin", "X-Project-Id": "scope-project-b", "X-Project-Scope": "all", "X-Actor-Kind": "platform-admin" } });
     expect(response.status).toBe(200);
-    expect((await response.json()).item.usageSummary).toMatchObject({ projectCount: 1, currentValueCount: 1 });
+    expect((await response.json()).item.usageSummary).toMatchObject({ policyCount: null, projectCount: 1, currentValueCount: 1 });
   });
 
   it("R2-SCOPE-03 identity-provider admin claims without a database grant do not permit a read", async () => {
@@ -178,7 +178,7 @@ describe("R2-SCOPE actual role bindings → root HTTP → PostgreSQL usage", () 
     try {
       const response = await fetch(`${baseUrl}/api/v2/catalog/definitions/${definitionId}`, { headers: { authorization: "Bearer scope-only-a" } });
       expect(response.status).toBe(200);
-      expect((await response.json()).item.usageSummary).toMatchObject({ projectCount: 1, currentValueCount: 2 });
+      expect((await response.json()).item.usageSummary).toMatchObject({ policyCount: null, projectCount: 1, currentValueCount: 2 });
     } finally {
       await pool.query("update public.user_role_bindings set project_id='scope-project-a' where id='scope-role-only-a-0'");
     }

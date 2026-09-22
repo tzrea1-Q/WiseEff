@@ -2,6 +2,30 @@
 
 > English: [English](../../../exec-plans/active/2026-09-05-catalog-r2-delivery.md)
 
+## 当前 #815 范围 — 2026-09-23
+
+本地验证已在 `7dfc86bfd360fac62dd10cabace1db992b36dae9` 完成（生产修复为 `86d53f5a7fae88c8bc2c44d2bf434de1403356dd`）。生命周期组件 7/7、既有 builder/preview 测试 9/9 通过；build、contract、UI、双语文档/schema 检查通过，lint 为 0 errors / 333 warnings。独立 Standards 与 Spec 无实现发现。真实 API/PostgreSQL 的 owned 浏览器运行 `full-20260922t170402326z-7dfc86bfd360-6a1f08f3` 通过 1 项业务用例及 1 项 warmup：预演 HTTP 201、提交与持久化候选完整保留 schema 和内容、编辑器及最终确认显示暂不可用，并成功取消。1440×900 截图在有限动画完成后已目视检查；诊断通过，明确允许原有 legacy projects GET 404。本地 U07 阻塞解除，不代表实际发布、Hosted、生产或父级计划验收。本轮进程已停止、专属数据库/object store 已删除。私有本地日志、截图和报告索引为 ignored `work/issue-815/local-verification.md`。未 push、提 PR、合并、部署或关闭 Issue。
+
+### 已批准契约与较早的本地检查点
+
+用户随后已同意在本项内修复原有生命周期预演阻塞。弃用/恢复请求须保留当前修订的完整 schema、显示名、说明和单位，替换强制构造的 mixed schema，两种操作共用修复。保留原授权、原因、显式确认和失败处理；禁止放宽解析器或丢失 schema 的降级。组件测试核对两种操作的提交内容及 schema 约束；真实 API/PostgreSQL 浏览器验证请求内容、预演成功和最终确认/取消。以本地 `60b632e665d992a0ca5ec473b3cd4e876cec4b64` 为修复起点；下方早于本次批准的结果保持为历史记录。仍不包含 PR、合并或部署。
+
+用户已批准 [#815](https://github.com/tzrea1-Q/WiseEff/issues/815) 的阶段性暂不可用契约，并从 `360bbc428f5eb4d279b1ba1e130e687ef8ea78c6` 开始本地实现。下方带日期的旧检查点保留为历史记录，其中“该范围尚未获批”的描述不再代表 #815 当前状态。这不代表 PR、合并、关闭、部署或父级计划验收。
+
+风险 R2：将 `usageSummary.policyCount` 改为非负整数或 `null`，当前生产与 mock 聚合返回 `null`。所有详情、编辑器、生命周期和最终确认的消费者须显示“策略使用量暂不可用”，数字零仍显示“策略 0”。保留可信组织/项目作用域、当前有效 Binding 与值指针语义、占位排除、批量 SQL 预算和结构化查询失败行为。不包含 schema 迁移、Policy 写入或推测关联。真实 Policy 非零/零用例 R2-POL-01/02 继续递延至 TD-055，不计为通过。
+
+| 用例 | 必需证据 | 负责人 |
+| --- | --- | --- |
+| R2-POL-U01–U04 | 隔离 PostgreSQL 上的真实 usage 查询及 root HTTP：Policy 为 null，真实非零/零项目与值计数，隔离/当前态/占位规则，批量完整性/预算，结构化失败 | 开发子智能体 |
+| R2-POL-U05 | 可空 DTO/生成 OpenAPI 与 API/mock 一致；接受含零在内的合法整数，拒绝负数/非法值 | 开发子智能体；主线程生成契约 |
+| R2-POL-U06–U07 | 组件区分 null 与数字零；真实 API/PostgreSQL 的 1440×900 浏览器验证，编辑器及生命周期确认、控制台/网络证据和已检查截图 | 开发子智能体；主线程负责浏览器证据 |
+
+开发子智能体负责涉及的服务端/前端实现与测试。主线程负责生成产物、本组双语文档、验收 fixture/spec、最终验证及独立 Standards/Spec 评审。将精确 #815 浏览器 lane 加入现有严格白名单，不绕过共享数据库或所有权保护。Documentation Impact Matrix：API 迁移契约与示例、TD-055 边界、当前检查点；中英文保持一致。须执行相关原生命令、build、contract 和 docs 检查。目前实现与验证进行中，此处不声明新的通过结果。
+
+本地检查点：实现 `4eb8e7a3fc67f3ea1af64a03fa01fb91bc8824b0` 及后续至 `aa1429a44014c34e2e309068d0fce860beee5735` 的浏览器 fixture 修正已在本地提交。聚焦组件 25、DTO 19、专用 PG/read 120、补充 HTTP/composition 9、lane guard 29 项通过。Build、生成契约、UI 规范和含 pgvector schema 验证的双语文档检查通过；lint 为 0 errors / 333 warnings。独立 Standards 和 Spec 审至 aa1429a44 无实现违规项，不代表验收完成。后续补充 API/mock 列表与详情的直接断言，完善测试用 collection envelope 后，与 HTTP client 合计 29 项通过。
+
+R2-POL-U07 仍受阻。aa1429a44 的 owned runtime 上，真实 API 返回 null，1440×900 编辑器/生命周期页面正确显示策略使用量暂不可用，无横向溢出，截图已人工检查。真实生命周期预演返回 HTTP 400 `VALIDATION_FAILED`：原有请求构造 `valueSchema: { description: "mixed" }`，缺少受支持的 type。基线提交已有相同构造，因此最终确认目前仅有组件测试证据。此前浏览器尝试分别失败于新 fixture adoption 指纹、行定位器及通用 fixture 的退役主体门禁，均不计为通过。未放宽门禁或超时；失败进程已停止，owned 取证资源按策略保留。是否扩展范围修复生命周期请求，等待用户决定。没有 PR、合并、关闭或部署。
+
 ## CI 修复就绪审查 — 2026-09-06
 
 Hosted 前结果：代码候选 `97d5e5bc7d7bce154b4ab6d673ea612e678e4aed`，tree `528b831ab20d40efbc892c1bb07b241d71b2720b`。Standards 与 Spec 分别完成就绪审查、固定 `164b832f543433564b3f5cd75d6b9445a7b9bb8d` 的封存前审查和最终摘要增量复核，均 PASS。两者独立计算记录 SHA-256 均为 `fe2a8aa3e97193c98aafdfd06572335419e2e53854e80b33e172afa0e741e074`，仅固化一次。验证器新增 33 个永久用例；实现前有实际收集 1 项的行为 Red，首次模块缺失／零收集不算 Red。

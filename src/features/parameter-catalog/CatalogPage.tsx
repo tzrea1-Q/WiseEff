@@ -1120,7 +1120,9 @@ function CatalogDetailBody({
         <dd>{revision.documentation ?? "无"}</dd>
         <dt>使用</dt>
         <dd>
-          策略 {definition.usageSummary.policyCount} · 项目 {definition.usageSummary.projectCount} · 当前值{" "}
+          {definition.usageSummary.policyCount === null
+            ? "策略使用量暂不可用"
+            : `策略 ${definition.usageSummary.policyCount}`} · 项目 {definition.usageSummary.projectCount} · 当前值{" "}
           {definition.usageSummary.currentValueCount}
         </dd>
         <dt>登记</dt>

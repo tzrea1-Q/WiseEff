@@ -361,7 +361,7 @@ export const catalogDefinitionDtoSchema = catalogObject({
   currentRevision: catalogDefinitionRevisionDtoSchema,
   registration: catalogRegistrationProjectionSchema,
   usageSummary: catalogObject({
-    policyCount: z.number().int().nonnegative(),
+    policyCount: z.number().int().nonnegative().nullable(),
     projectCount: z.number().int().nonnegative(),
     currentValueCount: z.number().int().nonnegative()
   }),

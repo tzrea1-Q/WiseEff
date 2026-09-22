@@ -343,7 +343,7 @@ describe("issue 847 collection contract", () => {
       snapshot,
       definition!,
       { status: "unregistered" },
-      { policyCount: 0, projectCount: 0, currentValueCount: 0 },
+      { policyCount: null, projectCount: 0, currentValueCount: 0 },
     );
     expect(mapped).not.toBeNull();
     // Regression guard: an unmapped display name or unit fails the DTO parse and

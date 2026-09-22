@@ -139,7 +139,7 @@ test.describe("canonical parameter catalog page", () => {
     await expect(detail).toContainText(fixture.oracle.xOnC.documentation);
     await expect(detail).toContainText(fixture.oracle.xOnC.publishedInReleaseId);
     await expect(detail).toContainText(
-      `策略 ${fixture.oracle.usage.policyCount} · 项目 ${fixture.oracle.usage.projectCount} · 当前值 ${fixture.oracle.usage.currentValueCount}`
+      `策略使用量暂不可用 · 项目 ${fixture.oracle.usage.projectCount} · 当前值 ${fixture.oracle.usage.currentValueCount}`
     );
     const definition = await catalogJson(page.request, "GET", `/api/v2/catalog/definitions/${fixture.xDefinitionId}?catalogReleaseId=${fixture.chain.pinC.id}`);
     expect(definition.status).toBe(200);

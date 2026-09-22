@@ -6,12 +6,13 @@ import type { ParameterCatalogRepository } from "@/application/ports/ParameterCa
 import { ConfirmDialog } from "@/components/common/ConfirmDialog";
 import { ModalDialog } from "@/components/common/ModalDialog";
 import type {
+  CatalogCreatePublicationCandidateRequest,
   CatalogDefinitionResponse,
   CatalogPublicationCandidateResponse,
   CatalogPublicationJobResponse
 } from "@/infrastructure/http/parameterCatalogDtos";
 
-import { canExecutePublicationAction, definitionContentOf, emptyPublicationDraft } from "./publicationState";
+import { canExecutePublicationAction } from "./publicationState";
 import { createGovernanceIdempotencyKey, createGovernanceSubmitGate } from "./governanceState";
 import { catalogFailureReason } from "@/infrastructure/http/parameterCatalogClient";
 
@@ -50,6 +51,21 @@ const copy = {
 
 function jobIsPending(status: string): boolean {
   return status === "queued" || status === "running";
+}
+
+type LifecycleContent = Extract<
+  CatalogCreatePublicationCandidateRequest["changeSet"][number],
+  { content: unknown }
+>["content"];
+
+function lifecycleContentOf(definition: CatalogDefinitionResponse["item"]): LifecycleContent {
+  const revision = definition.currentRevision;
+  return {
+    displayName: revision.displayName,
+    documentation: revision.documentation ?? "",
+    ...(revision.unit ? { unit: revision.unit.symbol } : {}),
+    valueSchema: revision.valueShape.schema as LifecycleContent["valueSchema"]
+  };
 }
 
 /**
@@ -118,21 +134,6 @@ export function DefinitionLifecycleDialog({
     setIdempotencyKey(null);
   }, [open]);
 
-  const lifecycleDraft = () => {
-    const draft = emptyPublicationDraft();
-    return {
-      ...draft,
-      mode: intent,
-      definitionId: definition.id,
-      reviseClass: "semantic" as const,
-      propertyKey: definition.propertyKey,
-      displayName: definition.currentRevision.displayName,
-      documentation: definition.currentRevision.documentation ?? "",
-      valueType: "mixed" as const,
-      reason
-    };
-  };
-
   const pollJob = async (jobId: string) => {
     try {
       const response = await catalog.getPublication(jobId);
@@ -163,9 +164,9 @@ export function DefinitionLifecycleDialog({
       setFieldError("请填写原因，用于审计。");
       return;
     }
+    const content = lifecycleContentOf(definition);
     setPending(true);
     try {
-      const draft = lifecycleDraft();
       const created = await catalog.createPublicationCandidate(
         {
           changeSet: [
@@ -174,7 +175,7 @@ export function DefinitionLifecycleDialog({
               definitionId: definition.id,
               class: "semantic",
               ...(reason.trim() ? { reason: reason.trim() } : {}),
-              content: definitionContentOf(draft)
+              content
             }
           ] as never
         },
@@ -243,7 +244,10 @@ export function DefinitionLifecycleDialog({
           <dd>{`修订 #${definition.currentRevision.revisionNumber}`}</dd>
           <dt>共享影响</dt>
           <dd>
-            {`策略 ${definition.usageSummary.policyCount} · 项目 ${definition.usageSummary.projectCount} · 当前值 ${definition.usageSummary.currentValueCount}`}
+            {definition.usageSummary.policyCount === null
+              ? "策略使用量暂不可用"
+              : `策略 ${definition.usageSummary.policyCount}`}
+            {` · 项目 ${definition.usageSummary.projectCount} · 当前值 ${definition.usageSummary.currentValueCount}`}
           </dd>
         </dl>
         <p role="note">{contentText.impact}</p>
@@ -311,7 +315,7 @@ function impactSummary(
   return [
     `将发布 1 个修订用于${intent === "retire-definition" ? "弃用" : "恢复"} ${definition.propertyKey}。`,
     `变更定义 ${changed} · 新增定义 ${added}。`,
-    `共享目录影响：策略 ${definition.usageSummary.policyCount} · 项目 ${definition.usageSummary.projectCount} · 当前值 ${definition.usageSummary.currentValueCount}。`,
+    `共享目录影响：${definition.usageSummary.policyCount === null ? "策略使用量暂不可用" : `策略 ${definition.usageSummary.policyCount}`} · 项目 ${definition.usageSummary.projectCount} · 当前值 ${definition.usageSummary.currentValueCount}。`,
     "已固定历史引用的项目不会自动改动。"
   ].join("\n");
 }

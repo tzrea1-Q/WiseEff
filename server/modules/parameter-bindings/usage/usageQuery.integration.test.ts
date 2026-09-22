@@ -242,7 +242,7 @@ describe("CATFIX-QUERY usage summaries", () => {
     expect(summarized.value.summaries[0]).toMatchObject({
       projectCount: 2,
       currentValueCount: 2,
-      policyCount: 0,
+      policyCount: null,
     });
 
     const otherOrg = await createUsageQueries(pool).summarize({

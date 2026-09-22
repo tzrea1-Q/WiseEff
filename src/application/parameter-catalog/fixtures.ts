@@ -109,7 +109,7 @@ export const activeDefinition: CatalogDefinitionResponse["item"] = {
   lifecycle: "active",
   currentRevision: revision,
   registration: registeredSubject.registration,
-  usageSummary: { policyCount: 1, projectCount: 2, currentValueCount: 2 },
+  usageSummary: { policyCount: null, projectCount: 2, currentValueCount: 2 },
   links: {
     revisions: `/api/v2/catalog/definitions/${CATALOG_DEFINITION_ID}/revisions`,
     timeline: `/api/v2/catalog/definitions/${CATALOG_DEFINITION_ID}/timeline`

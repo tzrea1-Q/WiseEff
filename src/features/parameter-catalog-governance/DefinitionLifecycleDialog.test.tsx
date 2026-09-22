@@ -17,7 +17,10 @@ import { DefinitionLifecycleDialog } from "./DefinitionLifecycleDialog";
 // PublicationDialog harness.
 const domainState = deriveCatalogDomainState({ document: readyCatalogDocument });
 
-function renderDialog(intent: "retire-definition" | "restore-definition") {
+function renderDialog(
+  intent: "retire-definition" | "restore-definition",
+  definition = activeDefinition
+) {
   const ports = createMockCatalogPorts({ scenario: "ready" });
   const onCompleted = vi.fn();
   const view = render(
@@ -30,7 +33,7 @@ function renderDialog(intent: "retire-definition" | "restore-definition") {
       catalog={ports.catalog}
       catalogReleaseId={CATALOG_RELEASE_ID}
       definition={{
-        ...activeDefinition,
+        ...definition,
         lifecycle: intent === "restore-definition" ? "retired" : "active"
       }}
       createIdempotencyKey={() => "idem-847-lifecycle"}
@@ -58,6 +61,54 @@ describe("DefinitionLifecycleDialog", () => {
     expect(preview).not.toHaveBeenCalled();
   });
 
+  it("keeps a known zero distinct from unavailable policy usage through final confirmation", async () => {
+    const user = userEvent.setup();
+    renderDialog("restore-definition", {
+      ...activeDefinition,
+      usageSummary: { ...activeDefinition.usageSummary, policyCount: 0 }
+    });
+
+    expect(screen.getByText(/策略 0/)).toBeInTheDocument();
+    await user.type(screen.getByLabelText("原因"), "恢复为活跃定义");
+    await user.click(screen.getByRole("button", { name: "预演影响" }));
+    const confirm = await screen.findByRole("dialog", { name: /确认恢复/ });
+    expect(within(confirm).getByText(/策略 0/)).toBeInTheDocument();
+    expect(within(confirm).queryByText(/策略使用量暂不可用/)).not.toBeInTheDocument();
+  });
+
+  it.each(["retire-definition", "restore-definition"] as const)(
+    "preserves the current revision content when it previews %s",
+    async (intent) => {
+      const user = userEvent.setup();
+      const schema = { type: "integer", minimum: 2, maximum: 9 };
+      const definition = {
+        ...activeDefinition,
+        currentRevision: {
+          ...activeDefinition.currentRevision,
+          valueShape: { kind: "json-schema" as const, schema },
+          unit: { kind: "symbol" as const, symbol: "mA" }
+        }
+      };
+      const { ports } = renderDialog(intent, definition);
+      const preview = vi.spyOn(ports.catalog, "createPublicationCandidate");
+
+      await user.type(screen.getByLabelText("原因"), `保留当前内容后${intent === "retire-definition" ? "弃用" : "恢复"}`);
+      await user.click(screen.getByRole("button", { name: "预演影响" }));
+
+      await waitFor(() => expect(preview).toHaveBeenCalledTimes(1));
+      expect(preview.mock.calls[0]?.[0]?.changeSet?.[0]).toMatchObject({
+        op: intent,
+        reason: `保留当前内容后${intent === "retire-definition" ? "弃用" : "恢复"}`,
+        content: {
+          displayName: activeDefinition.currentRevision.displayName,
+          documentation: activeDefinition.currentRevision.documentation,
+          unit: "mA",
+          valueSchema: schema
+        }
+      });
+    }
+  );
+
   it("captures the retire candidate, confirms the shared impact, and reports the effective result", async () => {
     const user = userEvent.setup();
     const { ports, onCompleted } = renderDialog("retire-definition");
@@ -74,6 +125,7 @@ describe("DefinitionLifecycleDialog", () => {
     });
 
     const confirm = await screen.findByRole("dialog", { name: /确认弃用/ });
+    expect(within(confirm).getByText(/策略使用量暂不可用/)).toBeInTheDocument();
     expect(within(confirm).getByText(/共享目录影响/)).toBeInTheDocument();
     await user.click(within(confirm).getByRole("button", { name: "确认弃用" }));
 
@@ -109,5 +161,7 @@ describe("DefinitionLifecycleDialog", () => {
       op: "restore-definition",
       definitionId: activeDefinition.id
     });
+    const confirm = await screen.findByRole("dialog", { name: /确认恢复/ });
+    expect(within(confirm).getByText(/策略使用量暂不可用/)).toBeInTheDocument();
   });
 });

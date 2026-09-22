@@ -36,7 +36,7 @@ describe("Catalog acceptance database authorization", () => {
     expect(owned.verify).not.toHaveBeenCalled();
   });
 
-  it.each([810, 819, 820, 847, 853])("accepts only the exact assigned lane %i", async (issue) => {
+  it.each([810, 815, 819, 820, 847, 853])("accepts only the exact assigned lane %i", async (issue) => {
     environment(lane(issue), String(issue));
     expect(await catalogLaneConnectionString()).toBe(lane(issue));
     expect(owned.verify).not.toHaveBeenCalled();

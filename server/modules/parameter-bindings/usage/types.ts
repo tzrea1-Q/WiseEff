@@ -24,13 +24,13 @@ export const USAGE_CURRENT_PROJECTION_SEMANTICS = {
   currentValueCount:
     "project_parameter_bindings.current_value_id pointing at a non-placeholder Binding current-value row",
   policyCount:
-    "0 until a Binding-owned Policy public-read aggregate keyed by ParameterDefinitionId exists; this query does not join public.parameter_policy_targets, review, or alias tables",
+    "null until a Binding-owned Policy public-read aggregate keyed by ParameterDefinitionId exists; this query does not join public.parameter_policy_targets, review, or alias tables",
   note: "Usage summaries are request-time organization aggregates and are not a historical Catalog-release snapshot.",
 } as const;
 
 export type UsageSummary = {
   readonly definitionId: ParameterDefinitionId;
-  readonly policyCount: number;
+  readonly policyCount: number | null;
   readonly projectCount: number;
   readonly currentValueCount: number;
 };

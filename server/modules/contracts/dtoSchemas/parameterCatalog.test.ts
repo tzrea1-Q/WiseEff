@@ -14,6 +14,7 @@ import {
   catalogApiFailureReasons,
   catalogCreateBindingDraftRequestSchema,
   catalogCreatePublicationCandidateRequestSchema,
+  catalogDefinitionDtoSchema,
   catalogDocumentResponseSchema,
   catalogFailureClientBehaviors,
   catalogKernelReadOperations,
@@ -39,6 +40,43 @@ import {
 } from "./parameterCatalog";
 
 const openApi = buildOpenApiDocument();
+
+describe("catalog definition usage summary", () => {
+  it("distinguishes unavailable policy usage from a known zero", () => {
+    const definition = {
+      id: "pdef_usage",
+      subject: { id: "csub_usage", type: "driver", canonicalName: "driver:usage" },
+      propertyKey: "usage",
+      lifecycle: "active",
+      currentRevision: {
+        id: "drev_usage",
+        definitionId: "pdef_usage",
+        revisionNumber: 1,
+        contentDigest: "sha256:usage",
+        displayName: "Usage",
+        valueShape: { kind: "json-schema", schema: { type: "integer" } },
+        constraints: { kind: "none" },
+        documentation: null,
+        unit: null,
+        publishedInCatalogReleaseId: "crel_usage"
+      },
+      registration: { status: "unregistered" },
+      links: { revisions: "/revisions", timeline: "/timeline" }
+    } as const;
+    const parse = (policyCount: number | null) =>
+      catalogDefinitionDtoSchema.parse({
+        ...definition,
+        usageSummary: { policyCount, projectCount: 2, currentValueCount: 1 }
+      });
+
+    expect(parse(null).usageSummary).toEqual({ policyCount: null, projectCount: 2, currentValueCount: 1 });
+    expect(parse(0).usageSummary.policyCount).toBe(0);
+    expect(parse(3).usageSummary.policyCount).toBe(3);
+    expect(catalogDefinitionDtoSchema.safeParse({ ...definition, usageSummary: { policyCount: 0.5, projectCount: 0, currentValueCount: 0 } }).success).toBe(false);
+    expect(catalogDefinitionDtoSchema.safeParse({ ...definition, usageSummary: { policyCount: -1, projectCount: 0, currentValueCount: 0 } }).success).toBe(false);
+    expect(catalogDefinitionDtoSchema.safeParse({ ...definition, usageSummary: { policyCount: "0", projectCount: 0, currentValueCount: 0 } }).success).toBe(false);
+  });
+});
 
 describe("canonical deletion wire contract", () => {
   it("preserves a JSON delete action without deriving it from an empty target", () => {

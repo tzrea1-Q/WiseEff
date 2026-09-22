@@ -536,7 +536,7 @@ describe("S8-READ nine canonical catalog read routes", () => {
     const body = catalogDefinitionResponseSchema.parse(response.body);
     expect(body.item.currentRevision.id).toBe("drev_acme_power_iin_max_1");
     expect(body.item.registration).toEqual({ status: "unregistered" });
-    expect(body.item.usageSummary).toEqual({ policyCount: 0, projectCount: 0, currentValueCount: 0 });
+    expect(body.item.usageSummary).toEqual({ policyCount: null, projectCount: 0, currentValueCount: 0 });
   });
 
   it("rejects legacy spec identity instead of using it as a fallback", async () => {

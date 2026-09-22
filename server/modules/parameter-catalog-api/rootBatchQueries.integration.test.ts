@@ -308,8 +308,8 @@ describe("R2-BATCH root HTTP SQL budget", () => {
     expect(items.map((item) => item.id).sort()).toEqual(["pdef_batch_0_0", "pdef_batch_0_1"]);
     // Three bindings in two projects, two current non-placeholder pointers and
     // four historical writes. Policy remains outside this acceptance claim.
-    expect(items.find((item) => item.id === "pdef_batch_0_0").usageSummary).toMatchObject({ projectCount: 2, currentValueCount: 2 });
-    expect(items.find((item) => item.id === "pdef_batch_0_1").usageSummary).toMatchObject({ projectCount: 0, currentValueCount: 0 });
+    expect(items.find((item) => item.id === "pdef_batch_0_0").usageSummary).toMatchObject({ policyCount: null, projectCount: 2, currentValueCount: 2 });
+    expect(items.find((item) => item.id === "pdef_batch_0_1").usageSummary).toMatchObject({ policyCount: null, projectCount: 0, currentValueCount: 0 });
     for (const item of items) {
       const detail = await fetch(`${baseUrl}/api/v2/catalog/definitions/${item.id}`, { headers });
       expect(detail.status).toBe(200);
@@ -330,7 +330,7 @@ describe("R2-BATCH root HTTP SQL budget", () => {
     expect(detail.status).toBe(200);
     const item = (await detail.json()).item;
     expect(item.registration.status).toBe("unregistered");
-    expect(item.usageSummary).toMatchObject({ projectCount: 0, currentValueCount: 0 });
+    expect(item.usageSummary).toMatchObject({ policyCount: null, projectCount: 0, currentValueCount: 0 });
   });
 
   it("R2-BATCH-07 duplicated review ingestion yields one review in list/detail and none across organizations", async () => {
@@ -403,7 +403,7 @@ describe("R2-BATCH root HTTP SQL budget", () => {
                 if (definition) {
                   for (const item of items) {
                     const populated = item.id === "pdef_batch_0_0";
-                    expect(item.usageSummary).toMatchObject({ projectCount: populated ? 2 : 0, currentValueCount: populated ? 2 : 0 });
+                    expect(item.usageSummary).toMatchObject({ policyCount: null, projectCount: populated ? 2 : 0, currentValueCount: populated ? 2 : 0 });
                     expect(item.currentRevision.id).toBe(populated && snapshot === "current" ? "drev_batch_0_0_2" : `drev_${item.id.slice("pdef_".length)}_1`);
                   }
                 } else {
