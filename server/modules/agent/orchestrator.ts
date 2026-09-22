@@ -7,7 +7,8 @@ import type { AuthContext } from "../auth/types";
 import { asAuditTx, withAuditedWrite, writeTrustedAuditEventInTx, type AuditTx } from "../audit/auditedWrite";
 import { createAgentInvocation, type TrustedInvocationContext } from "../auth/trustedInvocation";
 import { createTrustedRefusalAuditSink } from "../audit/trustedRefusalSink";
-import { createAgentToolRegistry } from "./toolRegistry";
+import { APPROVED_PARAMETER_PAYLOAD_KEY } from "./approvedParameterInvocation";
+import { createAgentToolRegistry, type AgentToolRegistry } from "./toolRegistry";
 import type { AgentToolExecutionContext } from "./toolRegistry";
 import {
   appendAgentMessage,
@@ -37,6 +38,7 @@ import type {
 type AgentRequestContext = {
   auth: AuthContext;
   requestId: string;
+  projectId?: string;
 };
 
 type ToolCallInput = AgentRequestContext & {
@@ -89,8 +91,6 @@ export type ApprovalResolveResult = {
   text: string;
 };
 
-type ToolRegistry = ReturnType<typeof createAgentToolRegistry>;
-
 function newId(prefix: string) {
   return `${prefix}-${randomUUID()}`;
 }
@@ -105,6 +105,12 @@ function staleTransition(message: string, details: Record<string, unknown>) {
 
 function resumeTargetMismatch(approvalId: string) {
   return staleTransition("Agent approval does not match the interrupted tool call.", { approvalId });
+}
+
+function recordPayload(value: unknown): Record<string, unknown> | undefined {
+  return typeof value === "object" && value !== null && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : undefined;
 }
 
 /**
@@ -123,7 +129,7 @@ function requireApprovalRequester(approval: { id: string; requestedByUserId: str
 
 export function createAgentOrchestrator(options: {
   db: Database;
-  toolRegistry?: ToolRegistry;
+  toolRegistry?: AgentToolRegistry;
   metrics?: Pick<MetricsRegistry, "recordAgentApproval" | "recordAgentToolResult" | "recordAuditWriteFailure">;
   tracing?: Pick<TracingBoundary, "withSpan">;
 }) {
@@ -131,8 +137,10 @@ export function createAgentOrchestrator(options: {
   const metrics = options.metrics;
   const tracing = options.tracing;
   const refusalAuditSink = isRootDatabase(db) ? createTrustedRefusalAuditSink(db) : undefined;
-  const registryFor = (database: Database) =>
-    options.toolRegistry ?? createAgentToolRegistry({ db: database, refusalAuditSink });
+  const registryFor = (database: Database): AgentToolRegistry =>
+    options.toolRegistry?.forDatabase?.(database) ??
+    options.toolRegistry ??
+    createAgentToolRegistry({ db: database, refusalAuditSink });
   const toolRegistry = registryFor(db);
 
   function toolMetricLabels(toolCall: Pick<AgentToolCallDto, "name">) {
@@ -404,7 +412,34 @@ export function createAgentOrchestrator(options: {
   ): Promise<AgentToolCallDto> {
     const definition = toolRegistry.require(request.name);
     const toolCallId = durableToolCallId?.trim() || newId("agent-tool");
-    const projectId = typeof request.payload.projectId === "string" ? request.payload.projectId : undefined;
+    const requestedProjectId = typeof request.payload.projectId === "string"
+      ? request.payload.projectId
+      : input.projectId;
+    if (definition.requiresApproval && definition.prepareApproval) {
+      toolRegistry.authorize(
+        request.name,
+        {
+          auth: input.auth,
+          requestId: input.requestId,
+          sessionId,
+          toolCallId,
+          projectId: requestedProjectId
+        },
+        request.payload
+      );
+    }
+    const payload = definition.prepareApproval
+      ? await definition.prepareApproval(
+          {
+            auth: input.auth,
+            requestId: input.requestId,
+            sessionId,
+            projectId: requestedProjectId
+          },
+          request.payload
+        )
+      : request.payload;
+    const projectId = typeof payload.projectId === "string" ? payload.projectId : requestedProjectId;
 
     await createAgentToolCall(db, {
       id: toolCallId,
@@ -413,7 +448,7 @@ export function createAgentOrchestrator(options: {
       projectId,
       name: request.name,
       label: request.label,
-      payload: request.payload,
+      payload,
       requiresApproval: definition.requiresApproval,
       status: "requested"
     });
@@ -478,6 +513,48 @@ export function createAgentOrchestrator(options: {
       }
       assertApprovalTarget(persistedApproval, persistedToolCall, input);
 
+      const txToolRegistry = registryFor(tx);
+      if (input.editedArgs !== undefined) {
+        let editedPayload = input.editedArgs;
+        const originalApproved = recordPayload(persistedToolCall.payload[APPROVED_PARAMETER_PAYLOAD_KEY]);
+        const originalProjectId = typeof persistedToolCall.payload.projectId === "string"
+          ? persistedToolCall.payload.projectId
+          : persistedToolCall.projectId;
+        const editedProjectId = typeof editedPayload.projectId === "string" ? editedPayload.projectId : undefined;
+        const originalBindingId = originalApproved && typeof originalApproved.bindingId === "string"
+          ? originalApproved.bindingId
+          : undefined;
+        const editedBindingId = typeof editedPayload.parameterId === "string" ? editedPayload.parameterId : undefined;
+        if (persistedToolCall.name === "action.submitParameterChange" && originalApproved) {
+          if (editedProjectId !== originalProjectId) {
+            throw resumeTargetMismatch(approval.id);
+          }
+          if (editedBindingId === originalBindingId) {
+            const originalTarget = recordPayload(originalApproved.target);
+            const targetFormat = originalApproved.sourceFormat;
+            const targetValue = editedPayload.targetValue;
+            if (originalTarget && (targetFormat === "dts" || targetFormat === "json") && typeof targetValue === "string") {
+              editedPayload = {
+                ...editedPayload,
+                [APPROVED_PARAMETER_PAYLOAD_KEY]: {
+                  ...originalApproved,
+                  target: { format: targetFormat, sourceText: targetValue }
+                }
+              };
+            }
+          } else {
+            throw resumeTargetMismatch(approval.id);
+          }
+        }
+        const updated = await updateAgentToolCall(tx, input.auth.organization.id, persistedToolCall.id, {
+          payload: editedPayload,
+          expectedStatus: "pending_approval"
+        });
+        if (!updated) {
+          throw staleTransition("Agent tool call payload could not be updated.", { toolCallId: persistedToolCall.id });
+        }
+      }
+
       const approved = await markAgentApprovalApproved(
         tx,
         input.auth.organization.id,
@@ -488,16 +565,6 @@ export function createAgentOrchestrator(options: {
         throw staleTransition("Agent approval was already decided.", { approvalId: approval.id });
       }
 
-      if (input.editedArgs !== undefined) {
-        const updated = await updateAgentToolCall(tx, input.auth.organization.id, persistedToolCall.id, {
-          payload: input.editedArgs,
-          expectedStatus: "pending_approval"
-        });
-        if (!updated) {
-          throw staleTransition("Agent tool call payload could not be updated.", { toolCallId: persistedToolCall.id });
-        }
-      }
-
       const executableToolCall = await getAgentToolCall(tx, input.auth.organization.id, persistedToolCall.id);
       if (!executableToolCall) {
         throw new ApiError("INTERNAL_ERROR", "Agent tool call disappeared before execution.", {
@@ -505,7 +572,6 @@ export function createAgentOrchestrator(options: {
         });
       }
       const executionContext = buildAgentExecutionContext(input, executableToolCall, persistedApproval.id);
-      const txToolRegistry = registryFor(tx);
       const authorization = txToolRegistry.authorize(
         executableToolCall.name,
         executionContext,
@@ -649,25 +715,26 @@ export function createAgentOrchestrator(options: {
     input: AgentRequestContext & { sessionId: string; request: AgentToolRequest; toolCallId?: string }
   ) {
     const existing = await getAgentSession(db, input.auth.organization.id, input.sessionId);
+    const sessionProjectId = input.projectId ?? existing?.projectId;
     if (!existing) {
       await createAgentSession(db, {
         id: input.sessionId,
         organizationId: input.auth.organization.id,
-        projectId: typeof input.request.payload.projectId === "string" ? input.request.payload.projectId : undefined,
+        projectId: typeof input.request.payload.projectId === "string" ? input.request.payload.projectId : sessionProjectId,
         actorUserId: input.auth.user.id,
         pageKey: "xiaoze",
         roleId: input.auth.roles[0]?.roleId,
         context: {
           path: "/",
           pageKey: "xiaoze",
-          projectId: typeof input.request.payload.projectId === "string" ? input.request.payload.projectId : undefined,
+          projectId: typeof input.request.payload.projectId === "string" ? input.request.payload.projectId : sessionProjectId,
           roleId: input.auth.roles[0]?.roleId
         },
         title: "Xiaoze Agent Session"
       });
     }
     await loadSessionOrThrow(input, input.sessionId);
-    return recordToolRequest(input, input.sessionId, input.request, input.toolCallId);
+    return recordToolRequest({ ...input, projectId: sessionProjectId }, input.sessionId, input.request, input.toolCallId);
   }
 
   async function ensureAgentSession(input: ApprovalBeginInput) {
@@ -700,7 +767,7 @@ export function createAgentOrchestrator(options: {
     await ensureAgentSession(input);
     await loadSessionOrThrow({ auth: input.auth, requestId: input.requestId }, input.sessionId);
     const toolCall = await recordToolRequest(
-      { auth: input.auth, requestId: input.requestId },
+      { auth: input.auth, requestId: input.requestId, projectId: input.projectId },
       input.sessionId,
       { name: input.toolName, label: definition.label, payload: input.payload },
       input.toolCallId

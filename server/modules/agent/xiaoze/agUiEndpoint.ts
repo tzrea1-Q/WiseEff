@@ -492,6 +492,7 @@ export function createXiaozeAgentFactory(options: {
         auth: requestContext.auth,
         requestId: requestContext.requestId,
         sessionId: requestContext.sessionId,
+        projectId: requestContext.projectId,
         toolCallId,
         request: {
           name: name as AgentToolName,
@@ -651,6 +652,7 @@ export function registerXiaozeRoutes(
           auth,
           requestId: request.requestId,
           sessionId: `suggest-${request.requestId}`,
+          projectId: typeof context.projectId === "string" ? context.projectId : undefined,
           request: {
             name: name as AgentToolName,
             label: getXiaozeToolLabel(name),

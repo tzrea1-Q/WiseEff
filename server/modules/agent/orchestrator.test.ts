@@ -17,7 +17,7 @@ function createToolDefinition(input: {
   requiresApproval: boolean;
   kind?: AgentToolDefinition["kind"];
 }): AgentToolDefinition {
-  return {
+  const definition: AgentToolDefinition = {
     name: input.name,
     label: input.name,
     kind: input.kind ?? "read",
@@ -25,6 +25,10 @@ function createToolDefinition(input: {
     requiresApproval: input.requiresApproval,
     run: vi.fn()
   };
+  if (input.name === "action.submitParameterChange") {
+    definition.prepareApproval = async (_context, payload) => payload;
+  }
+  return definition;
 }
 
 function createRegistry(
@@ -444,7 +448,11 @@ describe("agent orchestrator", () => {
 
   it("runToolCall rejects pending approval calls with an approval-required ApiError", async () => {
     const { db } = createMemoryDb();
-    const orchestrator = createAgentOrchestrator({ db });
+    const registry = createRegistry(
+      [createToolDefinition({ name: "action.submitParameterChange", kind: "mutating", requiresApproval: true })],
+      async () => ({ summary: "should not run", data: {}, citations: [] })
+    );
+    const orchestrator = createAgentOrchestrator({ db, toolRegistry: registry });
     const sessionId = await createTestSession(db);
     const toolCall = await orchestrator.recordToolRequest({
       auth: developmentAuthContext,
@@ -633,7 +641,7 @@ describe("agent orchestrator", () => {
       [createToolDefinition({ name: "action.submitParameterChange", kind: "mutating", requiresApproval: true })],
       async () => ({ summary: "should not run", data: {}, citations: [] })
     );
-    registry.authorize.mockImplementationOnce(() => {
+    registry.authorize.mockImplementationOnce(() => undefined).mockImplementationOnce(() => {
       throw new ApiError("FORBIDDEN", "Missing permission: parameter:edit.", { permission: "parameter:edit" });
     });
     const orchestrator = createAgentOrchestrator({ db, toolRegistry: registry });
@@ -658,7 +666,7 @@ describe("agent orchestrator", () => {
       })
     ).rejects.toMatchObject({ code: "FORBIDDEN", status: 403 });
 
-    expect(registry.authorize).toHaveBeenCalledTimes(1);
+    expect(registry.authorize).toHaveBeenCalledTimes(2);
     expect(registry.run).not.toHaveBeenCalled();
     expect(tables.approvals[0]).toMatchObject({ status: "pending", decided_by_user_id: null });
     expect(tables.toolCalls[0]).toMatchObject({ status: "pending_approval", error_message: null });
@@ -1003,7 +1011,7 @@ describe("agent approval chain (beginApproval / resolveApproval)", () => {
       editedArgs: { ...mutatingPayload, targetValue: "7777" }
     });
 
-    expect(registry.authorize).toHaveBeenCalledTimes(1);
+    expect(registry.authorize).toHaveBeenCalledTimes(2);
     expect(registry.run).toHaveBeenCalledWith(
       "action.submitParameterChange",
       expect.anything(),

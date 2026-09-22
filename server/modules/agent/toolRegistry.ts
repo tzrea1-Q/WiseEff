@@ -30,6 +30,12 @@ export type AgentToolExecutionContext = {
   approvalId?: string;
 };
 
+/** Context available while freezing server-owned approval pins, before approval exists. */
+export type AgentToolApprovalPreparationContext = Pick<
+  AgentToolExecutionContext,
+  "auth" | "requestId" | "sessionId" | "projectId"
+>;
+
 /** Server-owned proof that the exact tool/context/payload tuple passed authorization. */
 export type AgentToolAuthorization = {
   readonly [agentToolAuthorizationBrand]: true;
@@ -38,9 +44,33 @@ export type AgentToolAuthorization = {
   readonly payload: Record<string, unknown>;
 };
 
+export type AgentToolRegistry = {
+  list(): AgentToolDefinition[];
+  get(name: string): AgentToolDefinition | undefined;
+  require(name: string): AgentToolDefinition;
+  authorize(
+    name: AgentToolName,
+    context: AgentToolExecutionContext,
+    payload: Record<string, unknown>
+  ): AgentToolAuthorization;
+  run(
+    name: AgentToolName,
+    context: AgentToolExecutionContext,
+    payload: Record<string, unknown>,
+    authorization?: AgentToolAuthorization
+  ): Promise<AgentToolResult>;
+  /** Rebinds production tools to a transaction while retaining shared sinks/stores. */
+  forDatabase?(database: Database): AgentToolRegistry;
+};
+
 /** A registered tool is its metadata (single declaration in `toolMetadata.ts`) plus the runtime implementation. */
 export type AgentToolDefinition = AgentToolMetadata & {
   name: AgentToolName;
+  /** Optional durable payload preparation for approval-gated tools. */
+  prepareApproval?(
+    context: AgentToolApprovalPreparationContext,
+    payload: Record<string, unknown>
+  ): Promise<Record<string, unknown>>;
   run(context: AgentToolExecutionContext, payload: Record<string, unknown>): Promise<AgentToolResult>;
 };
 
@@ -72,7 +102,7 @@ export function createAgentToolRegistry(options: {
   objectStore?: ObjectStore;
   knowledgeEmbeddingClient?: KnowledgeEmbeddingClient;
   refusalAuditSink?: TrustedRefusalAuditSink;
-}) {
+}): AgentToolRegistry {
   const refusalAuditSink =
     options.refusalAuditSink ?? (isRootDatabase(options.db) ? createTrustedRefusalAuditSink(options.db) : undefined);
   const tools = [
@@ -127,6 +157,14 @@ export function createAgentToolRegistry(options: {
         authorizeTool(tool, context, payload);
       }
       return tool.run(context, payload);
+    },
+    forDatabase(database: Database) {
+      return createAgentToolRegistry({
+        db: database,
+        objectStore: options.objectStore,
+        knowledgeEmbeddingClient: options.knowledgeEmbeddingClient,
+        refusalAuditSink
+      });
     }
   };
 }

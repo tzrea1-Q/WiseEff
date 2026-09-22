@@ -50,6 +50,7 @@ export type CanonicalBindingPins = {
   currentValueId: string;
   configRevisionId: string;
   sourceRef: string;
+  sourcePinId: string;
   sourceFormat: "dts" | "json";
 };
 
@@ -67,6 +68,7 @@ export async function loadCanonicalBindingPins(
     current_value_id: string;
     config_revision_id: string | null;
     source_ref: string | null;
+    source_pin_id: string | null;
     source_format: "dts" | "json" | null;
   }>(
     `
@@ -79,6 +81,7 @@ export async function loadCanonicalBindingPins(
            b.current_value_id,
            value.config_revision_id,
            value.source_ref,
+           pin.id as source_pin_id,
            pin.format as source_format
       from parameter_catalog.project_parameter_bindings b
       left join parameter_catalog.project_parameter_values value
@@ -95,7 +98,7 @@ export async function loadCanonicalBindingPins(
     [input.organizationId, input.projectId, input.bindingId]
   );
   const row = result.rows[0];
-  if (!row || !row.config_revision_id || !row.source_ref || !row.source_format) return null;
+  if (!row || !row.config_revision_id || !row.source_ref || !row.source_pin_id || !row.source_format) return null;
   return {
     bindingId: row.binding_id,
     projectId: row.project_id,
@@ -106,6 +109,7 @@ export async function loadCanonicalBindingPins(
     currentValueId: row.current_value_id,
     configRevisionId: row.config_revision_id,
     sourceRef: row.source_ref,
+    sourcePinId: row.source_pin_id,
     sourceFormat: row.source_format
   };
 }

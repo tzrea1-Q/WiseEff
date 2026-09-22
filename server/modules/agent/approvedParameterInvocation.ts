@@ -207,6 +207,7 @@ export async function requireApprovedParameterInvocation(
     !toolCall ||
     toolCall.organizationId !== auth.organization.id ||
     toolCall.sessionId !== session.id ||
+    (toolCall.projectId !== undefined && toolCall.projectId !== input.projectId) ||
     toolCall.name !== "action.submitParameterChange" ||
     !toolCall.requiresApproval ||
     !["pending_approval", "running"].includes(toolCall.status)
@@ -218,6 +219,7 @@ export async function requireApprovedParameterInvocation(
   if (
     !approval ||
     approval.organizationId !== auth.organization.id ||
+    (approval.projectId !== undefined && approval.projectId !== input.projectId) ||
     approval.status !== "approved" ||
     approval.sessionId !== session.id ||
     approval.toolCallId !== toolCall.id ||
