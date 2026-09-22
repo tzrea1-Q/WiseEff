@@ -41,6 +41,7 @@ const serviceMocks = vi.hoisted(() => ({
   createSession: vi.fn(),
   getSession: vi.fn(),
   listSessionEvents: vi.fn(),
+  listRuntimeNodes: vi.fn(),
   readNode: vi.fn(),
   writeNode: vi.fn(),
   rollbackSnapshot: vi.fn(),
@@ -883,6 +884,83 @@ describe("debugging routes", () => {
     expect(response.status).toBe(200);
     expect(response.body).toEqual({ items: [operation] });
     expect(serviceMocks.listSessionEvents).toHaveBeenCalledWith(makeAuth(), { sessionId: "session-route" });
+  });
+
+  it("projects canonical operation pins without exposing source-owner rows", async () => {
+    const db = makeDb();
+    const gateway = makeGateway();
+    const operation = operationRecord({
+      canonicalBindingId: "binding-a",
+      canonicalProjectId: "project-a",
+      bindingId: "binding-a",
+      projectId: "project-a",
+      definitionId: "definition-a",
+      effectiveRevisionId: "revision-a",
+      currentValueId: "value-a",
+      sourcePinId: "source-pin-a",
+      configRevisionId: "config-revision-a",
+      protectedReferenceKind: "canonical-pin",
+      canonicalPin: {
+        protectedReferenceKind: "canonical-pin",
+        bindingId: "binding-a",
+        projectId: "project-a",
+        definitionId: "definition-a",
+        effectiveRevisionId: "revision-a",
+        currentValueId: "value-a",
+        sourcePinId: "source-pin-a",
+        configRevisionId: "config-revision-a",
+        sourcePin: { sourcePinId: "source-pin-a", locator: { path: "/private" } } as never
+      }
+    });
+
+    serviceMocks.listSessionEvents.mockResolvedValue([operation]);
+    const response = await requestJson<{ items: Record<string, unknown>[] }>(
+      makeServer({ db, gateway }),
+      "/api/v1/debugging/sessions/session-route/events"
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.body.items[0]).toMatchObject({
+      bindingId: "binding-a",
+      projectId: "project-a",
+      protectedReferenceKind: "canonical-pin",
+      canonicalPin: {
+        bindingId: "binding-a",
+        projectId: "project-a",
+        sourcePinId: "source-pin-a",
+        configRevisionId: "config-revision-a"
+      }
+    });
+    expect(response.body.items[0]).not.toHaveProperty("canonicalBindingId");
+    expect(response.body.items[0]).not.toHaveProperty("canonicalProjectId");
+    expect(response.body.items[0]).not.toHaveProperty("sourcePin");
+    expect(response.body.items[0].canonicalPin).not.toHaveProperty("sourcePin");
+  });
+
+  it("does not return storage canonical IDs for a typed-block node", async () => {
+    const db = makeDb();
+    const gateway = makeGateway();
+    serviceMocks.listRuntimeNodes.mockResolvedValue([
+      debugNodeWithBindingsRecord({
+        canonicalBindingId: "binding-foreign",
+        canonicalProjectId: "project-foreign",
+        protectedReferenceKind: "typed-block",
+        protectedReferenceReason: "project-scope"
+      })
+    ]);
+
+    const response = await requestJson<{ items: Record<string, unknown>[] }>(
+      makeServer({ db, gateway }),
+      "/api/v1/debugging/nodes?protocol=hdc"
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.body.items[0]).toMatchObject({
+      protectedReferenceKind: "typed-block",
+      protectedReferenceReason: "project-scope"
+    });
+    expect(response.body.items[0]).not.toHaveProperty("canonicalBindingId");
+    expect(response.body.items[0]).not.toHaveProperty("canonicalProjectId");
   });
 
   it("POST /api/v1/debugging/nodes/read returns an operation result", async () => {

@@ -5,22 +5,25 @@ import { createAgentInvocation, createUserInvocation } from "../auth/trustedInvo
 import type { ObjectStore, StoredObject } from "../logs/objectStore";
 import { ApiError } from "../../shared/http/errors";
 import {
-  createInMemoryTestDatabase,
+  createManagedInstanceTestDatabase,
   isTestDatabaseAvailable,
-  type InMemoryTestDatabase
+  type EphemeralTestDatabase
 } from "../../testing/testDatabase";
 import { seedCoreGraph } from "../../testing/fixtures";
+import { createPostgresDatabase, type RootDatabase } from "../../shared/database/client";
 import { closeTestRefusalAuditSink, testRefusalAuditSink } from "./testRefusalSink";
+import { createCanonicalServiceFixture } from "./testing/canonicalServiceFixture";
 
 vi.mock("../audit/repository", () => ({
   createAuditEvent: vi.fn(async () => undefined)
 }));
 
 import { createAuditEvent } from "../audit/repository";
-import { insertReloadRun, insertReloadRunTarget, readLibraryFingerprint } from "./repository";
+import { getReloadCandidateRow, insertReloadRun, insertReloadRunTarget, readLibraryFingerprint } from "./repository";
 import {
   getReloadRun,
   listReloadCandidates,
+  rowToCandidate,
   startReloadRun as startReloadRunService,
   type DtsReloadServiceContext
 } from "./service";
@@ -57,7 +60,8 @@ function makeObjectStore(files: Record<string, Buffer> = {}) {
     };
   });
   const get = vi.fn(async (storageKey: string) => {
-    const found = files[storageKey];
+    // Unit toolchain scenarios control source bytes; HTTP acceptance uses real storage.
+    const found = files[storageKey] ?? (storageKey.startsWith("org-1/dts-reload-") ? files["org-1/board.dts"] : undefined);
     if (!found) throw new Error(`missing ${storageKey}`);
     return found;
   });
@@ -80,14 +84,20 @@ function agentContext(principal: AuthContext, requestId: string): DtsReloadServi
   };
 }
 
-function startReloadRun(
+async function startReloadRun(
   db: Parameters<typeof startReloadRunService>[0],
   objectStore: Parameters<typeof startReloadRunService>[1],
   principal: Parameters<typeof startReloadRunService>[2],
   input: Parameters<typeof startReloadRunService>[3],
   context: Parameters<typeof startReloadRunService>[4] = userContext(principal, "req-dts-user")
 ) {
-  return startReloadRunService(db, objectStore, principal, input, context);
+  const targets = await Promise.all(input.targets.map(async (target) => {
+    const row = await getReloadCandidateRow(db, { organizationId: principal.organization.id, projectId: input.projectId, bindingId: target.bindingId });
+    if (!row) return target;
+    const { candidate } = rowToCandidate(row);
+    return { ...candidate.protectedReferencePin, ...candidate.writebackSourcePin, ...target };
+  }));
+  return startReloadRunService(db, objectStore, principal, { ...input, targets }, context);
 }
 
 const BASE_DTS = `/dts-v1/;
@@ -103,43 +113,28 @@ const BASE_DTS = `/dts-v1/;
 };
 `;
 
-// dts_property_specs refuses structural keys ("status", "reg", …). Reload
-// candidates fail closed without a dts_property_specs.property_key — they
-// must not fall back to the specification_key tail.
-const STRUCTURAL_PROPERTY_KEYS = new Set([
-  "compatible",
-  "device_type",
-  "gpio-controller",
-  "interrupt-controller",
-  "linux,phandle",
-  "phandle",
-  "ranges",
-  "reg",
-  "status"
-]);
-
 describe.skipIf(!databaseAvailable)("dts-reload service", () => {
-  let db: InMemoryTestDatabase;
+  let db: RootDatabase;
+  let database: EphemeralTestDatabase;
+  let canonicalFixture: Awaited<ReturnType<typeof createCanonicalServiceFixture>>;
 
   beforeEach(async () => {
     vi.mocked(createAuditEvent).mockClear();
-    db = await createInMemoryTestDatabase();
+    database = await createManagedInstanceTestDatabase("898svc");
+    db = createPostgresDatabase(database.url);
     await seedCoreGraph(db, {
       organization: { id: "org-1", name: "ChargeLab" },
       users: [{ id: "user-1", name: "Riley Chen", email: "riley@example.com" }],
       projects: [{ id: "project-1" }]
     });
+    canonicalFixture = await createCanonicalServiceFixture(db);
   });
 
   afterEach(async () => {
-    await db?.rollback();
+    await db?.close();
+    await database?.drop();
   });
 
-  /**
-   * Seed the parameter-library graph behind one reload candidate binding
-   * (module → spec → spec version → dts property spec → logical node → binding → revision).
-   * Defaults mirror the file's historical `candidateRow()` fixture.
-   */
   async function seedCandidate(input: {
     bindingId: string;
     propertyKey?: string;
@@ -153,93 +148,7 @@ describe.skipIf(!databaseAvailable)("dts-reload service", () => {
     unit?: string | null;
     constraints?: Record<string, unknown>;
   }) {
-    const propertyKey = input.propertyKey ?? "watchdog_time";
-    const nodePath = input.nodePath === undefined ? "/amba/i2c@FDF5E000/sc8562@6E" : input.nodePath;
-    const configRevisionId = input.configRevisionId ?? "rev-1";
-
-    await db.query(
-      `insert into parameter_modules (id, organization_id, name, path)
-       values ('mod-charger', 'org-1', 'charger', '/charger')
-       on conflict (id) do nothing`
-    );
-    await db.query(
-      `insert into dts_config_set (id, organization_id, project_id, name)
-       values ('cs-1', 'org-1', 'project-1', 'primary') on conflict (id) do nothing`
-    );
-    await db.query(
-      `insert into dts_config_revisions (id, organization_id, project_id, config_set_id, revision_number, status)
-       select $1, 'org-1', 'project-1', 'cs-1',
-              coalesce((select max(revision_number) from dts_config_revisions where config_set_id = 'cs-1'), 0) + 1,
-              'compiled'
-       where not exists (select 1 from dts_config_revisions where id = $1)`,
-      [configRevisionId]
-    );
-    await db.query(
-      `insert into parameter_specs (id, organization_id, source_kind, specification_key)
-       values ($1, 'org-1', 'dts', $2)`,
-      [`spec-${input.bindingId}`, `reload/${input.bindingId}/${propertyKey}`]
-    );
-    await db.query(
-      `insert into parameter_spec_versions (
-         id, parameter_spec_id, version, display_name, description, documentation, value_shape, units, lifecycle
-       ) values ($1, $2, 1, $3, '', $4, $5::jsonb, $6, 'active')`,
-      [
-        `psv-${input.bindingId}`,
-        `spec-${input.bindingId}`,
-        input.displayName ?? "Watchdog",
-        input.description === undefined ? "Watchdog timeout for charger safety." : input.description,
-        JSON.stringify(input.valueShape ?? { kind: "cells", bits: 32, cellsPerGroup: 1, groups: 1 }),
-        input.unit === undefined ? "ms" : input.unit
-      ]
-    );
-    if (!STRUCTURAL_PROPERTY_KEYS.has(propertyKey)) {
-      await db.query(
-        `insert into dts_property_specs (id, parameter_spec_id, property_key, schema_namespace, constraints)
-         values ($1, $2, $3, 'reload-test', $4::jsonb)`,
-        [
-          `dps-${input.bindingId}`,
-          `spec-${input.bindingId}`,
-          propertyKey,
-          JSON.stringify(input.constraints ?? { min: 0, max: 20000, cells: 1 })
-        ]
-      );
-    }
-    if (nodePath !== null) {
-      await db.query(
-        `insert into dts_logical_nodes (id, organization_id, project_id, config_set_id)
-         values ($1, 'org-1', 'project-1', 'cs-1')`,
-        [`node-${input.bindingId}`]
-      );
-      await db.query(
-        `insert into dts_logical_node_revisions (id, logical_node_id, config_revision_id, node_locator, name, compatible)
-         values ($1, $2, $3, $4, $5, $6)`,
-        [
-          `lnr-${input.bindingId}`,
-          `node-${input.bindingId}`,
-          configRevisionId,
-          nodePath,
-          nodePath.split("/").filter(Boolean).at(-1) ?? "node",
-          input.compatible === undefined ? "sc8562" : input.compatible
-        ]
-      );
-    }
-    await db.query(
-      `insert into project_parameter_bindings (id, organization_id, project_id, logical_node_id, parameter_spec_id, module_id)
-       values ($1, 'org-1', 'project-1', $2, $3, 'mod-charger')`,
-      [input.bindingId, nodePath === null ? null : `node-${input.bindingId}`, `spec-${input.bindingId}`]
-    );
-    await db.query(
-      `insert into project_parameter_binding_revisions (
-         id, binding_id, config_revision_id, parameter_spec_version_id, typed_value, raw_value
-       ) values ($1, $2, $3, $4, '{}'::jsonb, $5)`,
-      [
-        `bpr-${input.bindingId}`,
-        input.bindingId,
-        configRevisionId,
-        `psv-${input.bindingId}`,
-        input.baselineValue === undefined ? "<6000>" : input.baselineValue
-      ]
-    );
+    await canonicalFixture.seedCandidate(input);
   }
 
   /** Register `board.dts` as the project's base config-set member pointing at `org-1/board.dts`. */
@@ -323,7 +232,7 @@ describe.skipIf(!databaseAvailable)("dts-reload service", () => {
         bindingId: "binding-1",
         baselineValue: "<6000>",
         description: "Watchdog timeout for charger safety.",
-        constraints: { min: 0, max: 20000, cells: 1 },
+        constraints: { min: 0, max: 20000 },
         debuggable: true,
         sensitiveMatch: null,
         // Resolved shape is exposed so clients validate against the reload vocabulary.
@@ -405,7 +314,7 @@ describe.skipIf(!databaseAvailable)("dts-reload service", () => {
       const result = await listReloadCandidates(db, auth(), "project-1");
       expect(result.items[0]).toMatchObject({
         propertyKey: "gpio_int",
-        valueShapeKind: "mixed",
+        valueShapeKind: "phandle-cells",
         debuggable: true,
         baselineValue: "<&gpio13 29 0>"
       });
@@ -427,7 +336,7 @@ describe.skipIf(!databaseAvailable)("dts-reload service", () => {
       const result = await listReloadCandidates(db, auth(), "project-1");
       expect(result.items[0]).toMatchObject({
         propertyKey: "prevfod1_product_list",
-        valueShapeKind: "bytes",
+        valueShapeKind: "cells",
         debuggable: true,
         baselineValue: "/bits/ 8 <17>"
       });
@@ -510,6 +419,7 @@ describe.skipIf(!databaseAvailable)("dts-reload service", () => {
       await seedCandidate({
         bindingId: "binding-1",
         valueShape: { kind: "cells", bits: 32, cellsPerGroup: 3, groups: 1 },
+        baselineValue: "<1 2 3>",
         constraints: {}
       });
       const { objectStore, put } = makeObjectStore();
@@ -845,7 +755,7 @@ describe.skipIf(!databaseAvailable)("dts-reload service", () => {
       expect(Object.keys(files).some((key) => key.endsWith(".dtbo"))).toBe(true);
 
       const targets = await db.query<{ binding_id: string; debug_value: string }>(
-        "select binding_id, debug_value from dts_reload_run_targets where reload_run_id = $1 order by sort_order asc",
+        "select canonical_binding_id as binding_id, debug_value from dts_reload_run_targets where reload_run_id = $1 order by sort_order asc",
         [result.id]
       );
       expect(targets.rows).toEqual([
@@ -872,7 +782,7 @@ describe.skipIf(!databaseAvailable)("dts-reload service", () => {
       });
 
       expect(result.status).toBe("validated");
-      expect(result.configRevisionId).toBe("rev-1");
+      expect(result.configRevisionId).toBe(canonicalFixture.configRevisionId("binding-1"));
       expect(result.overlaySource).toContain('target-path = "/amba/i2c@FDF5E000/sc8562@6E"');
       expect(result.overlaySource).not.toMatch(/^&/m);
       expect(result.overlaySource).toContain("watchdog_time = <7000>");
@@ -1242,10 +1152,22 @@ describe.skipIf(!databaseAvailable)("dts-reload service", () => {
         createdByUserId: "user-1",
         completedAt: new Date().toISOString()
       });
+      const candidate = (await getReloadCandidateRow(db, { organizationId: "org-1", projectId: "project-1", bindingId: "binding-1" }))!;
       await insertReloadRunTarget(db, {
         id: "target-run-1-0",
         reloadRunId: "run-1",
-        bindingId: "binding-1",
+        bindingId: null,
+        canonicalBindingId: candidate.binding_id,
+        canonicalDefinitionId: candidate.definition_id,
+        canonicalDefinitionRevisionId: candidate.definition_revision_id,
+        canonicalCurrentValueId: candidate.current_value_id,
+        canonicalCatalogReleaseId: candidate.catalog_release_id,
+        canonicalSourcePinId: candidate.source_pin_id,
+        canonicalSourceOccurrenceId: candidate.source_occurrence_id,
+        canonicalConfigRevisionId: candidate.config_revision_id!,
+        canonicalSourceRef: candidate.source_ref,
+        canonicalSourceFormat: "dts",
+        canonicalSourceLocator: candidate.source_locator,
         nodePath: "/amba/i2c@1/dev@6E",
         propertyKey: "watchdog_time",
         baselineValue: "<6000>",

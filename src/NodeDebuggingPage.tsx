@@ -69,6 +69,16 @@ function isUnsupportedParameterError(message?: string) {
     || message.includes("绑定已禁用");
 }
 
+function canonicalAssociationLabel(row: Pick<RuntimeRow, "protectedReferenceKind" | "protectedReferenceReason">) {
+  if (row.protectedReferenceKind === "canonical-pin") return "参数关联：已关联";
+  if (row.protectedReferenceReason === "project-scope") return "参数关联：无项目访问权限";
+  if (row.protectedReferenceReason === "legacy-binding-id") return "参数关联：旧关联需重新配置";
+  if (row.protectedReferenceReason && row.protectedReferenceReason !== "missing-binding") {
+    return "参数关联：不可用";
+  }
+  return "参数关联：未关联";
+}
+
 function statusClass(status: RuntimeRow["runtimeStatus"]) {
   const classMap: Record<RuntimeRow["runtimeStatus"], string> = {
     "未检测": "node-status-untested",
@@ -668,6 +678,13 @@ export function NodeDebuggingPage({
                       </td>
                       <td data-label="参数名称">
                         <strong>{row.name}</strong>
+                        <small
+                          className="node-canonical-reference"
+                          data-testid={`node-canonical-reference-${row.id}`}
+                          aria-label={canonicalAssociationLabel(row)}
+                        >
+                          {canonicalAssociationLabel(row)}
+                        </small>
                         {subtitle ? <small>{subtitle}</small> : null}
                       </td>
                       <td data-label="模块">
