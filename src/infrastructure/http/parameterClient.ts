@@ -145,6 +145,7 @@ function buildChangeRequestsPath(query?: ChangeRequestListQuery) {
 function buildSubmissionRoundsPath(query?: SubmissionRoundListQuery) {
   const params = new URLSearchParams();
   if (query?.projectId) params.set("projectId", query.projectId);
+  if (query?.mine) params.set("mine", "true");
   for (const status of query?.status ?? []) params.append("status", submissionRoundStatusToDto[status]);
   return appendQuery("/api/v1/parameter-submission-rounds", params);
 }

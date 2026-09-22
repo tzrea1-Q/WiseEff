@@ -20,7 +20,7 @@ import type { ObjectStore } from "../logs/objectStore";
 import { resolveParameterIdentityMode, setParameterIdentityMode } from "../parameter-kernel/parameterIdentityMode";
 import { insertFileSyncConflict } from "./fileSyncConflictRepository";
 import { listParameterHistory } from "./repository";
-import { listReviewDecisions, updateChangeRequestStatus } from "./reviewWorkflowRepository";
+import { createSubmissionRound, listReviewDecisions, updateChangeRequestStatus } from "./reviewWorkflowRepository";
 import {
   listChangeRequests,
   listDrafts,
@@ -389,6 +389,32 @@ describe.skipIf(!databaseAvailable)("parameter review workflow behavior", () => 
     await db?.rollback();
     db = undefined;
     setParameterIdentityMode(null);
+  });
+
+  it("binds the personal submission archive to the authenticated user and authorized projects", async () => {
+    const own = await submitOne(db!, { parameterId: PPV_HIGH, targetValue: "3100" });
+    await createSubmissionRound(db!, {
+      id: "round-mine-other-project",
+      organizationId: ORG,
+      projectId: OTHER_PROJECT,
+      submitterUserId: USER,
+      status: "submitted",
+      summary: "Other project archive"
+    });
+    await seedUser(db!, "user-srw-other", "SRW Other");
+    await createSubmissionRound(db!, {
+      id: "round-other-user",
+      organizationId: ORG,
+      projectId: PROJECT,
+      submitterUserId: "user-srw-other",
+      status: "submitted",
+      summary: "Other user archive"
+    });
+
+    const rounds = await listSubmissionRounds(db!, editorAuth(), { mine: true });
+
+    expect(rounds.map((round) => round.id)).toEqual([own.round.id]);
+    expect(rounds[0]?.submitterUserId).toBe(USER);
   });
 
   describe("workflow assignee discovery", () => {

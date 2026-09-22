@@ -166,6 +166,8 @@ export type ParameterSubmissionRoundDto = {
   projectId: string;
   projectName: string;
   submitter: string;
+  /** Stable ownership identity; absent only for retained rows whose account was deleted. */
+  submitterUserId?: string;
   createdAt: string;
   status: ParameterSubmissionRoundStatus;
   summary: string;

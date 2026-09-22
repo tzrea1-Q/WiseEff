@@ -123,13 +123,13 @@ describe.skipIf(!databaseAvailable)("review workflow repository", () => {
   });
 
   async function createRound(
-    input: { id?: string; projectId?: string; status?: ParameterSubmissionRoundStatus; summary?: string } = {}
+    input: { id?: string; projectId?: string; submitterUserId?: string; status?: ParameterSubmissionRoundStatus; summary?: string } = {}
   ) {
     return createSubmissionRound(db, {
       id: input.id ?? `round-${randomUUID().slice(0, 8)}`,
       organizationId: ORG,
       projectId: input.projectId ?? PROJECT,
-      submitterUserId: "user-1",
+      submitterUserId: input.submitterUserId ?? "user-1",
       status: input.status ?? "submitted",
       summary: input.summary ?? "Tune charging parameters"
     });
@@ -292,6 +292,7 @@ describe.skipIf(!databaseAvailable)("review workflow repository", () => {
   it("lists submission rounds and change requests with project and status filters", async () => {
     await createRound({ id: "round-submitted" });
     await createRound({ id: "round-merged", status: "merged" });
+    await createRound({ id: "round-other-user", submitterUserId: "u-borealis" });
     await createRound({ id: "round-other-project", projectId: OTHER_PROJECT });
     await createRequest({ id: "request-submitted", roundId: "round-submitted", parameterId: "param-1" });
     await createRequest({
@@ -307,7 +308,14 @@ describe.skipIf(!databaseAvailable)("review workflow repository", () => {
       projectId: PROJECT,
       status: ["submitted"]
     });
-    expect(rounds.map((row) => row.id)).toEqual(["round-submitted"]);
+    expect(rounds.map((row) => row.id).sort()).toEqual(["round-other-user", "round-submitted"]);
+
+    const personalRounds = await listSubmissionRounds(db, {
+      organizationId: ORG,
+      submitterUserId: "user-1",
+      authorizedProjectIds: [PROJECT]
+    });
+    expect(personalRounds.map((row) => row.id).sort()).toEqual(["round-merged", "round-submitted"].sort());
 
     const requests = await listChangeRequests(db, {
       organizationId: ORG,

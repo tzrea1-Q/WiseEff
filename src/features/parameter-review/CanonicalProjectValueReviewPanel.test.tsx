@@ -32,7 +32,32 @@ const request = {
 };
 
 describe("CanonicalProjectValueReviewPanel", () => {
+  it("does not replace the new project's selection when an earlier withdrawal finishes", async () => {
+    let finishWithdrawal!: (value: unknown) => void;
+    const withdrawProjectValueChangeRequest = vi.fn().mockImplementation(() => new Promise((resolve) => { finishWithdrawal = resolve; }));
+    const onSelectRequest = vi.fn();
+    const repository = {
+      listProjectValueChangeRequests: vi.fn().mockImplementation(async (projectId: string) => ({
+        items: [{ ...request, id: projectId === "project-1" ? request.id : "project-2-request", projectId }]
+      })),
+      reviewProjectValueChangeRequest: vi.fn(),
+      withdrawProjectValueChangeRequest,
+      getProjectValueChangeSourceDiff: vi.fn().mockRejectedValue(new Error("source unavailable")),
+      getCatalog: vi.fn().mockResolvedValue({ item: { catalogReleaseId: "release-1" } })
+    } as unknown as ParameterCatalogRepository;
+    const { rerender } = render(<CanonicalProjectValueReviewPanel projectId="project-1" repository={repository} currentUserId="user-1" canReview={false} onSelectRequest={onSelectRequest} />);
+    fireEvent.click(await screen.findByRole("button", { name: "撤回我的提交" }));
+    await waitFor(() => expect(withdrawProjectValueChangeRequest).toHaveBeenCalled());
+    rerender(<CanonicalProjectValueReviewPanel projectId="project-2" repository={repository} currentUserId="user-1" canReview={false} onSelectRequest={onSelectRequest} />);
+    expect(await screen.findByText("project-2-request")).toBeInTheDocument();
+    finishWithdrawal({ item: { ...request, status: "withdrawn" } });
+    await waitFor(() => expect(screen.getByRole("button", { name: "撤回我的提交" })).toBeEnabled());
+    expect(screen.getByText("project-2-request")).toBeInTheDocument();
+    expect(onSelectRequest).not.toHaveBeenCalled();
+  });
+
   it("lets the submitter withdraw without review permission and retains access to history", async () => {
+    const onSelectRequest = vi.fn();
     const withdrawProjectValueChangeRequest = vi.fn().mockResolvedValue({ item: { ...request, status: "withdrawn" } });
     const repository = {
       listProjectValueChangeRequests: vi.fn().mockResolvedValue({ items: [request] }),
@@ -41,13 +66,14 @@ describe("CanonicalProjectValueReviewPanel", () => {
       getProjectValueChangeSourceDiff: vi.fn().mockRejectedValue(new Error("source unavailable")),
       getCatalog: vi.fn().mockResolvedValue({ item: { catalogReleaseId: "release-1" } })
     } as unknown as ParameterCatalogRepository;
-    render(<CanonicalProjectValueReviewPanel projectId="project-1" repository={repository} currentUserId="user-1" canReview={false} />);
+    render(<CanonicalProjectValueReviewPanel projectId="project-1" repository={repository} currentUserId="user-1" canReview={false} onSelectRequest={onSelectRequest} />);
     fireEvent.click(await screen.findByRole("button", { name: "撤回我的提交" }));
     await waitFor(() => expect(withdrawProjectValueChangeRequest).toHaveBeenCalledWith(
       "project-1", request.id, expect.objectContaining({ catalogReleaseId: "release-1", idempotencyKey: expect.any(String) })
     ));
     expect(repository.reviewProjectValueChangeRequest).not.toHaveBeenCalled();
     await waitFor(() => expect(screen.queryByRole("button", { name: "撤回我的提交" })).not.toBeInTheDocument());
+    expect(onSelectRequest).toHaveBeenLastCalledWith(null);
     fireEvent.click(screen.getByRole("tab", { name: "历史" }));
     await waitFor(() => expect(repository.listProjectValueChangeRequests).toHaveBeenLastCalledWith("project-1", undefined));
   });
@@ -77,6 +103,7 @@ describe("CanonicalProjectValueReviewPanel", () => {
   });
 
   it("lists canonical JSON requests and approves through the v2 software-review port", async () => {
+    const onSelectRequest = vi.fn();
     const nextRequest = { ...request,id: "request-json-2" };
     const listProjectValueChangeRequests = vi.fn().mockResolvedValue({ items: [request,nextRequest] });
     const reviewProjectValueChangeRequest = vi.fn().mockResolvedValue({ item: { ...request, status: "approved" } });
@@ -115,7 +142,7 @@ describe("CanonicalProjectValueReviewPanel", () => {
       getCatalog: vi.fn().mockResolvedValue({ item: { catalogReleaseId: "release-1" } })
     } as unknown as ParameterCatalogRepository;
 
-    render(<CanonicalProjectValueReviewPanel projectId="project-1" repository={repository} currentUserId="reviewer-1" />);
+    render(<CanonicalProjectValueReviewPanel projectId="project-1" repository={repository} currentUserId="reviewer-1" onSelectRequest={onSelectRequest} />);
     const panel = await screen.findByRole("region", { name: "软件配置审核" });
     expect(within(panel).getAllByText("JSON").length).toBeGreaterThan(0);
     expect(within(panel).getByLabelText("固定源目标内容")).toHaveTextContent("cells");
@@ -135,6 +162,7 @@ describe("CanonicalProjectValueReviewPanel", () => {
       );
     });
     await waitFor(() => expect(getProjectValueChangeSourceDiff).toHaveBeenCalledWith("project-1",nextRequest.id));
+    expect(onSelectRequest).toHaveBeenLastCalledWith(nextRequest.id);
     await waitFor(() => expect(within(panel).getByRole("button",{ name: "批准软件配置" })).toBeEnabled());
   });
 

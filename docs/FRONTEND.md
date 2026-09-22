@@ -257,6 +257,14 @@ Mock mode intentionally keeps the 12 legacy compatibility parameters for fast co
 
 The M1 API smoke lives in `e2e/parameter-management.api.spec.ts` and requires `DATABASE_URL` plus `db:migrate`, `db:seed:m0`, and `db:seed:m1`.
 
+## Canonical submission tracking
+
+In API mode, `/parameter-submissions` and `/parameter-review` share the existing canonical value-change request owner and its `pending`, `approved`, `rejected`, and `withdrawn` statuses. Personal tracking queries bind `mine=true` to the authenticated submitter ID; reviewer visibility and source-diff reads retain current project/tenant authorization. The panel displays the fixed source, decision, and apply result without synthesizing legacy submission rounds. Withdrawal uses the existing pending-request owner only.
+
+`?project=…&request=…` restores a canonical selection after reload; invalid or invisible IDs show an explicit unavailable state. Selection updates the URL without unmounting the focused row, and terminal actions update or clear the selected ID. Project switches discard old responses. Retained old requests use `legacyRequest` (known old `request` links remain recognized); legacy personal archives use exact `submitterUserId` plus a server-side own-record filter, never a display-name match. These records remain read-only and do not enter canonical pending work. The legacy batch workflow described above remains a mock/legacy concern, not the API canonical queue.
+
+`e2e/acceptance/canonical-value-workflow.acceptance.spec.ts` exercises the canonical-only real API lifecycle, personal/reviewer tracking, scope denial, stale links, keyboard focus, reload, and restart at 1440×900 in a disposable local runtime.
+
 ## Parameter Dashboard
 
 `ParameterDashboardRepository` is the read-only frontend port for `/parameter-home`. It is separate from `ParameterRepository` write flows. Page code calls `createParameterDashboardRuntime()` from `src/application/parameters/parameterDashboardRuntime.ts`, which dispatches partitioned dashboard state in `src/application/parameters/dashboardState.ts`.

@@ -16684,6 +16684,9 @@
               "submitter": {
                 "type": "string"
               },
+              "submitterUserId": {
+                "type": "string"
+              },
               "createdAt": {
                 "type": "string"
               },
@@ -16883,6 +16886,9 @@
                   "type": "string"
                 },
                 "submitter": {
+                  "type": "string"
+                },
+                "submitterUserId": {
                   "type": "string"
                 },
                 "createdAt": {

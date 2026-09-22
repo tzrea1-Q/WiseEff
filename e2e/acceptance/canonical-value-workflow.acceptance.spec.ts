@@ -326,6 +326,16 @@ test.describe("canonical value workflow on real sources", () => {
     expect(response.ok(), await response.text()).toBe(true);
     expect((await response.json()).item.status).toBe("approved");
     await assertTracking(approvedId, "approved");
+    const rejectedRow = page.getByRole("table", { name: "我的参数提交请求" }).getByRole("row").filter({ hasText: "已驳回" });
+    const selectRejected = rejectedRow.getByRole("button", { name: "查看请求", exact: true });
+    await selectRejected.focus();
+    await selectRejected.press("Enter");
+    await expect(page).toHaveURL(new RegExp(`request=${rejectedId}$`));
+    await expect(page.getByText(rejectedId, { exact: true })).toBeVisible();
+    await expect(page.getByLabel("固定源变更前")).toBeVisible();
+    await expect(selectRejected).toBeFocused();
+    await page.reload();
+    await expect(page.getByText(rejectedId, { exact: true })).toBeVisible();
     await signInBrowserAsRole(page, "software-user", `${runtime.frontendUrl}/parameter-submissions?project=${projectId}&request=missing-request`);
     await expect(page.getByRole("alert").filter({ hasText: /失效|不存在|不可用|无权/ })).toBeVisible();
     await expect(page.getByLabel("固定源变更前")).toHaveCount(0);

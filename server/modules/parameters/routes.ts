@@ -112,7 +112,8 @@ const listDraftsQuerySchema = z.object({
 
 const listSubmissionRoundsQuerySchema = z.object({
   projectId: z.string().min(1).optional(),
-  status: z.union([z.enum(parameterSubmissionRoundStatuses), z.array(z.enum(parameterSubmissionRoundStatuses))]).optional()
+  status: z.union([z.enum(parameterSubmissionRoundStatuses), z.array(z.enum(parameterSubmissionRoundStatuses))]).optional(),
+  mine: z.enum(["true", "false"]).optional()
 });
 
 const listChangeRequestsQuerySchema = z.object({
@@ -506,10 +507,11 @@ export function registerParameterRoutes(
   router.get("/api/v1/parameter-submission-rounds", async (request) => {
     const db = requireDb(options.db);
     const auth = await options.getCurrentAuthContext(request);
-    const query = parseWithSchema(listSubmissionRoundsQuerySchema, request.query);
+    const { mine, ...query } = parseWithSchema(listSubmissionRoundsQuerySchema, request.query);
     const items = await listSubmissionRounds(db, auth, {
       ...query,
-      status: normalizeArray(query.status)
+      status: normalizeArray(query.status),
+      ...(mine !== undefined ? { mine: mine === "true" } : {})
     });
 
     return { status: 200, body: { items } };

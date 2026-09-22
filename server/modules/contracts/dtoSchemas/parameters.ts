@@ -168,6 +168,7 @@ export const parameterSubmissionRoundDtoSchema = z.object({
   projectId: z.string(),
   projectName: z.string(),
   submitter: z.string(),
+  submitterUserId: z.string().optional(),
   createdAt: z.string(),
   status: parameterSubmissionRoundStatusSchema,
   summary: z.string(),

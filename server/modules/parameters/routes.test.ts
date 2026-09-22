@@ -107,6 +107,35 @@ describe("parameter routes", () => {
     expect(projectRepository.listProjects).toHaveBeenCalledWith(db, { organizationId: "org-1" });
   });
 
+  it("GET /api/v1/parameter-submission-rounds forwards the personal archive filter", async () => {
+    const db = makeDb();
+    const rounds = [{
+      id: "round-1",
+      projectId: "aurora",
+      projectName: "Aurora",
+      submitter: "Riley Chen",
+      submitterUserId: "user-1",
+      createdAt: "2026-09-23T00:00:00.000Z",
+      status: "submitted" as const,
+      summary: "Archived submission",
+      items: []
+    }];
+    vi.mocked(service.listSubmissionRounds).mockResolvedValue(rounds);
+
+    const response = await requestJson<{ items: typeof rounds }>(
+      makeServer({ db }),
+      "/api/v1/parameter-submission-rounds?projectId=aurora&mine=true"
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual({ items: rounds });
+    expect(service.listSubmissionRounds).toHaveBeenCalledWith(db, makeAuth(), {
+      projectId: "aurora",
+      status: undefined,
+      mine: true
+    });
+  });
+
   it("GET project workflow assignees returns service-filtered candidates", async () => {
     const db = makeDb();
     const candidates = {

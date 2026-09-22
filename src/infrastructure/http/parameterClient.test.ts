@@ -340,6 +340,20 @@ describe("createHttpParameterRepository", () => {
     );
   });
 
+  it("requests only the authenticated user's retained rounds when mine is enabled", async () => {
+    const fetchMock = fetchQueue({ items: [{ ...submissionRoundDto, submitterUserId: "user-1" }] });
+    const repository = createHttpParameterRepository(createApiClient({ baseUrl: "", fetchImpl: fetchMock }));
+
+    await expect(repository.listSubmissionRounds({ projectId: "aurora", mine: true })).resolves.toMatchObject([
+      { submitterUserId: "user-1" }
+    ]);
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/v1/parameter-submission-rounds?projectId=aurora&mine=true",
+      expect.objectContaining({ method: "GET" })
+    );
+  });
+
   it("creates and applies import batches through import endpoints", async () => {
     const appliedBatch = { ...importBatchDto, status: "applied" as const, appliedAt: "2026-05-25T03:00:00.000Z" };
     const fetchMock = fetchQueue({ item: importBatchDto }, { item: appliedBatch });
