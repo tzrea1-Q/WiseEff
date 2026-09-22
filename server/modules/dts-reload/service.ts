@@ -1040,7 +1040,8 @@ export async function startReloadRun(
   const overlayTargets = groupDebugOverlayTargets(resolved.map((item) => item.binding));
   const overlaySource = generateDebugOverlay(overlayTargets);
   const runId = randomUUID();
-  const configRevisionId = resolved[0]?.configRevisionId ?? null;
+  const configRevisionIds = [...new Set(resolved.map((target) => target.configRevisionId!))];
+  const configRevisionId = configRevisionIds.length === 1 ? configRevisionIds[0]! : null;
 
   const beforeFingerprint = await readLibraryFingerprint(db, {
     organizationId: auth.organization.id,
@@ -1083,8 +1084,7 @@ export async function startReloadRun(
 
   let baseSource: string;
   try {
-    ({ baseSource } = await loadBaseSource(db, objectStore, auth, input.projectId,
-      [...new Set(resolved.map((target) => target.configRevisionId!))]));
+    ({ baseSource } = await loadBaseSource(db, objectStore, auth, input.projectId, configRevisionIds));
   } catch (error) {
     const failureCode =
       error instanceof ApiError ? String(error.details?.code ?? "reload-base-missing") : "reload-base-missing";

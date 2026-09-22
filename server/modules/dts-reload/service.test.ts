@@ -747,6 +747,8 @@ describe.skipIf(!databaseAvailable)("dts-reload service", () => {
       expect(result.status).toBe("validated");
       expect(result.overlaySource).toContain("fragment@0");
       expect(result.overlaySource).toContain("fragment@1");
+      expect(result.configRevisionId).toBeNull();
+      expect(new Set(result.targets.map((target) => target.canonicalConfigRevisionId)).size).toBe(3);
       expect(result.overlaySource).toContain("watchdog_time = <7000>");
       expect(result.overlaySource).toContain("vout_ovp_mv = <0x1770>");
       expect(result.overlaySource).toContain("current-speed = <115200>");
