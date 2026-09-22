@@ -16,6 +16,8 @@ import { insertParameterFileCandidate } from "./candidateRepository";
 import { buildDtsParsedIndex, buildJsonParsedIndex } from "./parseIndex";
 import { serializeContract, type ContractJsonValue } from "../parameter-catalog-contract/index";
 import { loadExactSourceRevisionForProof, lockExactSourceRevisionsForProof, rethrowSourceTransactionError } from "./sourceVersion";
+import { loadCanonicalBindingPins } from "../parameter-bindings/drafts/repository";
+import { requireApprovedParameterInvocation } from "../agent/approvedParameterInvocation";
 import { discoverCurrentSourceRevisionPins, discoverDeletedSourceRevisionPins, loadDeletedSourceAnchors, loadSourceBindingCohort, loadOwnedProjectValueSourcePin, isCurrentGovernedSourceValue,
   type CanonicalValueSourcePin, type CanonicalSourceBindingPin } from "../parameter-bindings/values";
 export type { CanonicalSourceBindingPin } from "../parameter-bindings/values";
@@ -307,9 +309,39 @@ export async function preparePinnedSourceChange(
 ) {
   try {
   const security = { invocation: input.invocation, requestId: input.requestId, refusalSink: input.refusalSink } satisfies CanonicalSourceSecurityContext;
-  const invocation = await requireCanonicalUserInvocation(auth, security, {
-    projectId: input.projectId, operation: "canonical source prepare", targetType: "project-parameter-binding", targetId: input.bindingId
-  });
+  const operation = { projectId: input.projectId, operation: "canonical source prepare", targetType: "project-parameter-binding", targetId: input.bindingId };
+  let invocation: TrustedInvocationContext;
+  let approvedAgent: Awaited<ReturnType<typeof requireApprovedParameterInvocation>> | undefined;
+  if (!input.requestId.trim()) {
+    throw new TrustedInvocationContextError("canonical source prepare requires a non-empty requestId");
+  }
+  assertTrustedRefusalAuditSink(input.refusalSink);
+  if (input.invocation.initiator === "agent" && input.action === "delete") {
+    // The approved Agent payload has no delete pin; never let a set approval
+    // authorize a different source operation.
+    await requireCanonicalUserInvocation(auth, security, operation);
+    throw new TrustedInvocationContextError("approved Agent source deletion is not supported");
+  }
+  if (input.invocation.initiator === "agent") {
+    try {
+      approvedAgent = await requireApprovedParameterInvocation(db, auth, {
+        invocation: input.invocation,
+        projectId: input.projectId,
+        bindingId: input.bindingId,
+        target: input.target,
+        expectedValueId: input.expectedValueId
+      });
+      invocation = approvedAgent.invocation;
+    } catch (error) {
+      if (!(error instanceof TrustedInvocationContextError)) throw error;
+      // Keep invalid or unapproved Agent calls on the existing durable refusal
+      // path; only the helper-proven Agent may reach source preparation.
+      await requireCanonicalUserInvocation(auth, security, operation);
+      throw error;
+    }
+  } else {
+    invocation = await requireCanonicalUserInvocation(auth, security, operation);
+  }
   if (!canEditParameters(auth, input.projectId)) {
     await recordCanonicalPermissionRefusal(security, {
       projectId: input.projectId, operation: "canonical source prepare", targetType: "project-parameter-binding", targetId: input.bindingId,
@@ -326,11 +358,42 @@ export async function preparePinnedSourceChange(
   const sourceIdentity = await loadOwnedProjectValueSourcePin(db,{ organizationId: auth.organization.id,projectId: input.projectId,
     bindingId: input.bindingId,projectValueId: input.expectedValueId });
   if (!sourceIdentity) throw new ApiError("CONFLICT", "Source value has no exact owned pin.");
+  if (input.invocation.initiator === "agent") {
+    if (!approvedAgent) throw new TrustedInvocationContextError("approved Agent proof is missing");
+    const currentPins = await loadCanonicalBindingPins(db, {
+      organizationId: auth.organization.id,
+      projectId: input.projectId,
+      bindingId: input.bindingId
+    });
+    const pins = approvedAgent.pins;
+    if (!currentPins || currentPins.organizationId !== auth.organization.id
+      || currentPins.projectId !== input.projectId
+      || currentPins.bindingId !== input.bindingId
+      || currentPins.currentValueId !== input.expectedValueId
+      || currentPins.definitionId !== pins.definitionId
+      || currentPins.definitionRevisionId !== pins.definitionRevisionId
+      || currentPins.catalogReleaseId !== pins.catalogReleaseId
+      || currentPins.configRevisionId !== pins.configRevisionId
+      || currentPins.sourceRef !== pins.sourceRef
+      || currentPins.sourceFormat !== pins.sourceFormat
+      || sourceIdentity.sourcePinId !== pins.sourcePinId
+      || sourceIdentity.format !== pins.sourceFormat) {
+      throw new ApiError("CONFLICT", "Approved Agent source pins are stale or inconsistent.", { reason: "approved-source-pin-mismatch" });
+    }
+  }
   await lockCanonicalSourceCohort(db,sourceIdentity);
   const { manifest, files } = await loadCanonicalSourceSnapshot(db, objectStore, {
     organizationId: auth.organization.id, projectId: input.projectId, bindingId: input.bindingId, projectValueId: input.expectedValueId,
   });
   if (manifest.format !== input.target.format) throw new ApiError("VALIDATION_FAILED", "Source target format disagrees with its pin.");
+  if (input.invocation.initiator === "agent" && (!approvedAgent || approvedAgent.pins.projectId !== manifest.projectId
+    || approvedAgent.pins.bindingId !== manifest.bindingId
+    || approvedAgent.pins.expectedValueId !== manifest.projectValueId
+    || approvedAgent.pins.configRevisionId !== manifest.configRevisionId
+    || approvedAgent.pins.sourcePinId !== manifest.sourcePinId
+    || approvedAgent.pins.sourceFormat !== manifest.format)) {
+    throw new ApiError("CONFLICT", "Approved Agent source manifest is stale or inconsistent.", { reason: "approved-source-pin-mismatch" });
+  }
   await assertPinnedCanonicalSensitiveNodeWriteAllowed(db, auth, manifest, security);
   const currentMembers = await db.query<{ id: string; current_version_id: string; config_set_role: string; config_set_sort_order: number; format: string }>(
     `select id,current_version_id,config_set_role,config_set_sort_order,format from project_parameter_files where config_set_id=$1 order by id for update nowait`, [manifest.configSetId],
@@ -341,7 +404,13 @@ export async function preparePinnedSourceChange(
     throw new ApiError("CONFLICT", "Configuration membership or file versions changed; prepare from the current source.");
   }
   const bindings = await loadCanonicalSourceCohort(db, { organizationId: auth.organization.id, projectId: input.projectId, configSetId: manifest.configSetId });
-  if (!bindings.some((entry) => entry.bindingId === input.bindingId && entry.oldValueId === input.expectedValueId && entry.sourcePinId === manifest.sourcePinId)) {
+  const targetBinding = bindings.find((entry) => entry.bindingId === input.bindingId);
+  if (!targetBinding || targetBinding.oldValueId !== input.expectedValueId || targetBinding.sourcePinId !== manifest.sourcePinId
+    || (input.invocation.initiator === "agent" && (!approvedAgent
+      || targetBinding.definitionId !== approvedAgent.pins.definitionId
+      || targetBinding.effectiveRevisionId !== approvedAgent.pins.definitionRevisionId
+      || targetBinding.catalogReleaseId !== approvedAgent.pins.catalogReleaseId
+      || targetBinding.configSetId !== manifest.configSetId))) {
     throw new ApiError("CONFLICT", "Source cohort changed during preparation.");
   }
   const sourceIndex = manifest.members.findIndex((member) => member.fileId === manifest.fileId && member.fileVersionId === manifest.fileVersionId);
