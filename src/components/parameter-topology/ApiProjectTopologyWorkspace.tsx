@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { AlertCircle, Info, LoaderCircle } from "lucide-react";
+import { AlertCircle, FileJson, Info, LoaderCircle, SlidersHorizontal } from "lucide-react";
 import type {
   SubmitParameterChangesInput,
   WorkflowAssigneeCandidates
@@ -7,6 +7,7 @@ import type {
 import { resolveDtsStructuredRepository } from "@/application/parameters/dtsStructuredRuntime";
 import { resolveParameterFileRepository } from "@/application/parameters/parameterFileRuntime";
 import { selectPrimaryProjectDtsFile } from "@/application/parameters/selectPrimaryProjectDtsFile";
+import { selectPrimaryProjectJsonFile } from "@/application/parameters/selectPrimaryProjectJsonFile";
 import type { ParameterFileRepository } from "@/application/ports/ParameterFileRepository";
 import type { ParameterTopologyRepository } from "@/application/ports/ParameterTopologyRepository";
 import type { ParameterCatalogRepository } from "@/application/ports/ParameterCatalogRepository";
@@ -50,6 +51,7 @@ import type { TrayHydrationDraft } from "@/application/parameters/canonicalDraft
 import { DtsParameterWorkbench } from "./DtsParameterWorkbench";
 import { buildDtsWorkbenchRows } from "@/application/parameters/buildDtsWorkbenchRows";
 import { downloadSemanticWorkbenchCsv } from "@/application/parameters/exportSemanticWorkbenchRows";
+import { downloadJsonWorkbenchCsv } from "@/application/parameters/exportJsonWorkbenchRows";
 import {
   clearUnsavedParameterWork,
   reportUnsavedParameterWork
@@ -59,7 +61,12 @@ import {
   partitionDanglingReferenceDiagnostics
 } from "@/domain/parameter-topology/toolchainDiagnostics";
 import { WorkbenchDiagnosticsSection } from "./WorkbenchDiagnosticsSection";
-import { JsonBindingPanel, type JsonBindingHistoryEntry } from "./JsonBindingPanel";
+import {
+  JsonBindingPanel,
+  synthesizeJsonSource,
+  type JsonBindingHistoryEntry,
+  type PrimaryJsonSource
+} from "./JsonBindingPanel";
 
 export type ApiProjectTopologyWorkspaceProps = {
   projectId: string;
@@ -376,6 +383,7 @@ export function ApiProjectTopologyWorkspace({
   const [submitSuccessNotice, setSubmitSuccessNotice] = useState<string | null>(null);
   const [serverDrafts, setServerDrafts] = useState<readonly TrayHydrationDraft[] | null>(null);
   const [selectedDraftBindingIds, setSelectedDraftBindingIds] = useState<Set<string>>(new Set());
+  const [activeFormatTab, setActiveFormatTab] = useState<"dts" | "json">("dts");
   const [enablementDialogTarget, setEnablementDialogTarget] = useState<{
     logicalNodeId: string;
     nodeLabel: string;
@@ -435,6 +443,7 @@ export function ApiProjectTopologyWorkspace({
     setEnablementDialogError(null);
     setWorkflowCandidates(null);
     setWorkflowCandidatesError(null);
+    setActiveFormatTab("dts");
   }, [projectId]);
 
   useEffect(() => {
@@ -1135,6 +1144,36 @@ export function ApiProjectTopologyWorkspace({
     };
   }, [parameterFileRepo, projectId]);
 
+  const loadPrimaryJsonSource = useCallback(async (): Promise<PrimaryJsonSource> => {
+    const readyBindings = loadState.kind === "ready" ? loadState.bindings : [];
+    try {
+      const files = await parameterFileRepo.listFiles(projectId);
+      const file = selectPrimaryProjectJsonFile(projectId, files);
+      if (!file?.currentVersionId || file.currentVersionNumber == null) {
+        return synthesizeJsonSource(
+          readyBindings.filter((b) => b.effectiveValue.kind === "json"),
+          projectId
+        );
+      }
+      const downloaded = await parameterFileRepo.downloadVersion(
+        projectId,
+        file.id,
+        file.currentVersionId
+      );
+      const text = new TextDecoder().decode(downloaded.bytes);
+      return {
+        fileName: downloaded.fileName ?? file.fileName,
+        versionNumber: file.currentVersionNumber,
+        text
+      };
+    } catch {
+      return synthesizeJsonSource(
+        readyBindings.filter((b) => b.effectiveValue.kind === "json"),
+        projectId
+      );
+    }
+  }, [loadState, parameterFileRepo, projectId]);
+
   const exportCanonicalBinding = useCallback(
     async (bindingId: string) => {
       if (!canonicalRepository?.getCanonicalBindingExport) {
@@ -1268,64 +1307,117 @@ export function ApiProjectTopologyWorkspace({
     </section>
   ) : null;
 
+  const dtsBindingCount = loadState.bindings.filter((b) => b.effectiveValue.kind !== "json").length;
+  const jsonBindingCount = loadState.bindings.filter((b) => b.effectiveValue.kind === "json").length;
+
+  const formatSwitcher = jsonBindingCount > 0 ? (
+    <div className="parameter-workspace-format-switch" role="tablist" aria-label="参数配置格式">
+      <button
+        type="button"
+        role="tab"
+        id="format-tab-dts"
+        aria-selected={activeFormatTab === "dts"}
+        aria-controls="format-panel-dts"
+        className={`parameter-workspace-format-switch__tab${activeFormatTab === "dts" ? " is-active" : ""}`}
+        onClick={() => setActiveFormatTab("dts")}
+      >
+        <SlidersHorizontal size={14} aria-hidden="true" />
+        <span>DTS 设备树参数</span>
+        <span className="parameter-workspace-format-switch__badge">{dtsBindingCount}</span>
+      </button>
+      <button
+        type="button"
+        role="tab"
+        id="format-tab-json"
+        aria-selected={activeFormatTab === "json"}
+        aria-controls="format-panel-json"
+        className={`parameter-workspace-format-switch__tab${activeFormatTab === "json" ? " is-active" : ""}`}
+        onClick={() => setActiveFormatTab("json")}
+      >
+        <FileJson size={14} aria-hidden="true" />
+        <span>JSON 参数</span>
+        <span className="parameter-workspace-format-switch__badge">{jsonBindingCount}</span>
+      </button>
+    </div>
+  ) : null;
+
   return (
-    <>
-      <JsonBindingPanel
-        bindings={loadState.bindings}
-        canEdit={canEditSemantic}
-        onValidateEdit={handleValidateEdit}
-        onExportBinding={canonicalRepository?.getCanonicalBindingExport ? exportCanonicalBinding : undefined}
-        onLoadHistory={canonicalRepository?.getCanonicalBindingChangeHistory ? loadCanonicalBindingHistory : undefined}
-      />
-      <DtsParameterWorkbench
-        projectId={projectId}
-        configSetId={loadState.configSetId}
-        revisionId={loadState.revisionId}
-        layoutMode={layoutMode}
-        sourceNodes={loadState.sourceNodes}
-        effectiveNodes={loadState.effectiveNodes}
-        sourceRows={sourceRows}
-        effectiveRows={effectiveRows}
-        moduleRegistry={moduleRegistry}
-        draftBindingIds={draftBindingIds}
-        selectedBindingIds={selectedDraftBindingIds}
-        onSelectedBindingIdsChange={setSelectedDraftBindingIds}
-        canEdit={canEditSemantic}
-        onSelectBinding={handleSelectBinding}
-        onEditBinding={handleEditBinding}
-        onCreateDraft={handleValidateEdit}
-        onEditNodeEnablement={canEditSemantic ? handleOpenNodeEnablement : undefined}
-        loadBindingHistory={loadBindingHistory}
-        loadBindingCompare={loadBindingCompare}
-        loadParameterSpec={loadParameterSpec}
-        loadPrimaryDtsSource={loadPrimaryDtsSource}
-        currentEdits={currentEdits}
-        expandAllNodesByDefault
-        onExportRows={(rows) => {
-          downloadSemanticWorkbenchCsv(
-            rows,
-            `parameter-workbench-${projectId}-${loadState.revisionId}.csv`
-          );
-        }}
-        governanceContent={showGovernancePanel ? (
-          <>
-            {statusBanner ? (
-              <p className="project-topology-workspace__status" role="status">
-                {statusBanner}
-              </p>
-            ) : null}
-            {loadState.incompleteBase ? (
-              <p role="alert">缺少 base 配置，当前拓扑不完整；已阻止类型化编辑与校验。</p>
-            ) : null}
-            <WorkbenchDiagnosticsSection diagnostics={productDiagnostics} variant="other" />
-          </>
-        ) : undefined}
-        footerContent={
-          danglingSummary ? (
-            <WorkbenchDiagnosticsSection diagnostics={loadState.diagnostics} variant="dangling" />
-          ) : undefined
-        }
-      />
+    <div className="api-project-topology-workspace">
+      {formatSwitcher}
+      {activeFormatTab === "json" && jsonBindingCount > 0 ? (
+        <div id="format-panel-json" role="tabpanel" aria-labelledby="format-tab-json">
+          <JsonBindingPanel
+            bindings={loadState.bindings}
+            moduleRegistry={moduleRegistry}
+            canEdit={canEditSemantic}
+            draftBindingIds={draftBindingIds}
+            currentEdits={currentEdits}
+            onValidateEdit={handleValidateEdit}
+            onExportBinding={canonicalRepository?.getCanonicalBindingExport ? exportCanonicalBinding : undefined}
+            onLoadHistory={canonicalRepository?.getCanonicalBindingChangeHistory ? loadCanonicalBindingHistory : undefined}
+            loadPrimaryJsonSource={loadPrimaryJsonSource}
+            onExportRows={(bindings) => {
+              downloadJsonWorkbenchCsv(
+                bindings,
+                `json-parameters-${projectId}-${loadState.revisionId}.csv`
+              );
+            }}
+            projectName={projectId}
+          />
+        </div>
+      ) : (
+        <div id="format-panel-dts" role="tabpanel" aria-labelledby="format-tab-dts">
+          <DtsParameterWorkbench
+            projectId={projectId}
+            configSetId={loadState.configSetId}
+            revisionId={loadState.revisionId}
+            layoutMode={layoutMode}
+            sourceNodes={loadState.sourceNodes}
+            effectiveNodes={loadState.effectiveNodes}
+            sourceRows={sourceRows}
+            effectiveRows={effectiveRows}
+            moduleRegistry={moduleRegistry}
+            draftBindingIds={draftBindingIds}
+            selectedBindingIds={selectedDraftBindingIds}
+            onSelectedBindingIdsChange={setSelectedDraftBindingIds}
+            canEdit={canEditSemantic}
+            onSelectBinding={handleSelectBinding}
+            onEditBinding={handleEditBinding}
+            onCreateDraft={handleValidateEdit}
+            onEditNodeEnablement={canEditSemantic ? handleOpenNodeEnablement : undefined}
+            loadBindingHistory={loadBindingHistory}
+            loadBindingCompare={loadBindingCompare}
+            loadParameterSpec={loadParameterSpec}
+            loadPrimaryDtsSource={loadPrimaryDtsSource}
+            currentEdits={currentEdits}
+            expandAllNodesByDefault
+            onExportRows={(rows) => {
+              downloadSemanticWorkbenchCsv(
+                rows,
+                `parameter-workbench-${projectId}-${loadState.revisionId}.csv`
+              );
+            }}
+            governanceContent={showGovernancePanel ? (
+              <>
+                {statusBanner ? (
+                  <p className="project-topology-workspace__status" role="status">
+                    {statusBanner}
+                  </p>
+                ) : null}
+                {loadState.incompleteBase ? (
+                  <p role="alert">缺少 base 配置，当前拓扑不完整；已阻止类型化编辑与校验。</p>
+                ) : null}
+                <WorkbenchDiagnosticsSection diagnostics={productDiagnostics} variant="other" />
+              </>
+            ) : undefined}
+            footerContent={
+              danglingSummary ? (
+                <WorkbenchDiagnosticsSection diagnostics={loadState.diagnostics} variant="dangling" />
+              ) : undefined
+            }
+          />
+        </div>
+      )}
       {enablementDialogTarget ? (
         <DtsNodeEnablementDialog
           open
@@ -1342,6 +1434,6 @@ export function ApiProjectTopologyWorkspace({
           onConfirm={handleCreateEnablementDraft}
         />
       ) : null}
-    </>
+    </div>
   );
 }

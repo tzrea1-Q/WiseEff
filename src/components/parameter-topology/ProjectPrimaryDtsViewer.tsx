@@ -30,6 +30,7 @@ export type ProjectPrimaryDtsViewerProps = {
   /** Session-change gutter markers keyed by the same property identity as the task dock */
   sessionChangeMarkers?: readonly DtsViewerSessionChangeMarker[];
   className?: string;
+  bodyAriaLabel?: string;
 };
 
 type FindMatch = {
@@ -113,7 +114,8 @@ export function ProjectPrimaryDtsViewer({
   onFindStatusChange,
   onVisibleLineChange,
   sessionChangeMarkers = [],
-  className
+  className,
+  bodyAriaLabel
 }: ProjectPrimaryDtsViewerProps) {
   const lines = useMemo(() => text.split("\n"), [text]);
   const lineRefs = useRef(new Map<number, HTMLDivElement>());
@@ -209,7 +211,7 @@ export function ProjectPrimaryDtsViewer({
 
   return (
     <section className={rootClassName} aria-label={`${fileName} · v${versionNumber}`}>
-      <div ref={bodyRef} className="project-primary-dts-viewer__body" aria-label="DTS 源码" tabIndex={0}>
+      <div ref={bodyRef} className="project-primary-dts-viewer__body" aria-label={bodyAriaLabel ?? "DTS 源码"} tabIndex={0}>
         {lines.map((line, index) => {
           const lineNumber = index + 1;
           const isFocused =
