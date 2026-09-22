@@ -5,7 +5,7 @@
  * subtree filter against a real database. Asserts returned DTOs and
  * subsequent reads — never SQL text.
  */
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   createInMemoryTestDatabase,
@@ -18,11 +18,62 @@ import { listParameters } from "./repository";
 import {
   countParametersForModule,
   createParameterModule,
+  deleteParameterModule,
   getParameterModuleById,
   listParameterModules,
   moveParameterModule,
   reparentAutoParameterModule
 } from "./parameterModuleRepository";
+
+describe("deleteParameterModule canonical placement guard", () => {
+  it("returns a typed conflict before issuing the delete", async () => {
+    const query = vi.fn(async (text: string) => {
+      if (text.includes("from parameter_modules") && text.includes("limit 1")) {
+        return {
+          rows: [{
+            id: "module-1",
+            organization_id: "org-1",
+            parent_id: null,
+            name: "Driver",
+            path: "module-1",
+            depth: 1,
+            sort_order: 0,
+            description: "",
+            scope: "",
+            importance: "medium",
+            kind: "driver-group",
+            origin: "curated",
+            source_key: null,
+            attribution_subject_id: null,
+          }],
+        };
+      }
+      if (text.includes("parent_id = $2")) return { rows: [{ count: "0" }] };
+      if (text.includes("parameter_catalog.project_parameter_bindings")) {
+        return { rows: [{ count: "0" }] };
+      }
+      if (text.includes("parameter_catalog.subject_placements")) {
+        return { rows: [{ count: "1" }] };
+      }
+      if (text.trimStart().startsWith("delete from parameter_modules")) {
+        throw new Error("delete must be blocked before execution");
+      }
+      return { rows: [] };
+    });
+
+    await expect(
+      deleteParameterModule({ query } as never, {
+        organizationId: "org-1",
+        moduleId: "module-1",
+      }),
+    ).rejects.toMatchObject({
+      code: "CONFLICT",
+      status: 409,
+      details: { moduleId: "module-1", placementCount: 1 },
+    });
+    expect(query.mock.calls.some(([text]) => String(text).trimStart().startsWith("delete from parameter_modules"))).toBe(false);
+  });
+});
 
 const databaseAvailable = await isTestDatabaseAvailable();
 
@@ -349,12 +400,12 @@ describe.skipIf(!databaseAvailable)("listParameters semantic module tree filter"
     expect(parentOnly.map((row) => row.id)).toEqual(["binding-root"]);
   });
 
-  it("counts bindings on a module so non-empty deletes stay blocked", async () => {
+  it("does not fall back to legacy definitions for canonical binding counts", async () => {
     await expect(
       countParametersForModule(db, { organizationId: "org-1", moduleId: "pm-b" })
-    ).resolves.toBe(1);
+    ).resolves.toBe(0);
     await expect(
       countParametersForModule(db, { organizationId: "org-1", moduleId: "pm-a" })
-    ).resolves.toBe(1);
+    ).resolves.toBe(0);
   });
 });

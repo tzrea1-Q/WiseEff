@@ -103,7 +103,7 @@ describe("parameter module registry service", () => {
     expect(result.item.modules[0]?.name).toBe("充电策略");
   });
 
-  it("exposes subtree definitionCount and parameterCount as distinct facts", async () => {
+  it("does not synthesize definitions when the service has no installed Catalog", async () => {
     const query = vi.fn(async (text: string) => {
       if (text.includes("from parameter_modules") && !text.includes("select id from")) {
         return {
@@ -140,14 +140,14 @@ describe("parameter module registry service", () => {
           rowCount: 2
         };
       }
-      if (text.includes("parameter_spec_id") && text.includes("project_parameter_bindings")) {
+      if (text.includes("parameter_catalog.current_project_parameter_bindings")) {
         return {
           rows: [
-            { module_id: "m-leaf", parameter_spec_id: "spec-a" },
-            { module_id: "m-leaf", parameter_spec_id: "spec-a" },
-            { module_id: "m-leaf", parameter_spec_id: "spec-b" }
+            { module_id: "m-leaf", subject_id: "subject-1", binding_id: "binding-a" },
+            { module_id: "m-leaf", subject_id: "subject-1", binding_id: "binding-b" },
+            { module_id: "m-leaf", subject_id: "subject-1", binding_id: "binding-c" },
           ],
-          rowCount: 3
+          rowCount: 3,
         };
       }
       if (text.includes("from parameter_module_mappings")) {
@@ -164,10 +164,10 @@ describe("parameter module registry service", () => {
     const root = result.item.modules.find((module) => module.id === "m-root");
     const leaf = result.item.modules.find((module) => module.id === "m-leaf");
     expect(leaf).toEqual(
-      expect.objectContaining({ parameterCount: 3, definitionCount: 2 })
+      expect.objectContaining({ parameterCount: 3, definitionCount: 0 })
     );
     expect(root).toEqual(
-      expect.objectContaining({ parameterCount: 3, definitionCount: 2 })
+      expect.objectContaining({ parameterCount: 3, definitionCount: 0 })
     );
   });
 
@@ -552,5 +552,53 @@ describe("disbandDriverGroupModule", () => {
     });
     expect(deletedModules).toContain(groupId);
     expect(audits.some((row) => String(row.kind).includes("driver-group-disbanded"))).toBe(true);
+  });
+
+  it("blocks a canonical Placement before deleting mappings or reparking bindings", async () => {
+    const groupId = "dg-canonical";
+    const query = vi.fn(async (text: string) => {
+      if (text.includes("from parameter_modules") && text.includes("limit 1")) {
+        return {
+          rows: [{
+            id: groupId,
+            organization_id: "org-1",
+            parent_id: "biz-1",
+            name: "Canonical driver",
+            path: `biz-1/${groupId}`,
+            depth: 2,
+            sort_order: 0,
+            description: "",
+            scope: "org",
+            importance: null,
+            kind: "driver-group",
+            origin: "curated",
+            source_key: "compatible:canonical",
+          }],
+          rowCount: 1,
+        };
+      }
+      if (text.includes("select child.id")) {
+        return { rows: [{ id: groupId }], rowCount: 1 };
+      }
+      if (text.includes("from parameter_catalog.subject_placements")) {
+        return { rows: [{ count: "1" }], rowCount: 1 };
+      }
+      return { rows: [], rowCount: 0 };
+    });
+    const db = {
+      query,
+      transaction: vi.fn(async (fn) => fn({ query } as never)),
+    } as unknown as Database;
+
+    await expect(
+      disbandDriverGroupModule(db, makeAuth(), { moduleId: groupId }),
+    ).rejects.toMatchObject({
+      code: "CONFLICT",
+      status: 409,
+      details: { moduleId: groupId, placementCount: 1 },
+    });
+    const sql = query.mock.calls.map(([text]) => String(text));
+    expect(sql.some((text) => text.includes("delete from parameter_module_mappings"))).toBe(false);
+    expect(sql.some((text) => text.includes("update project_parameter_bindings"))).toBe(false);
   });
 });

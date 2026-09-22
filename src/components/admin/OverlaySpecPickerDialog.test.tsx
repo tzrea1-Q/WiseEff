@@ -123,4 +123,23 @@ describe("OverlaySpecPickerDialog", () => {
     expect(onBack).toHaveBeenCalledTimes(1);
     expect(onConfirm).not.toHaveBeenCalled();
   });
+
+  it("keeps a library load error distinct from an empty library and retries", () => {
+    const onRetryLoad = vi.fn();
+
+    render(
+      <OverlaySpecPickerDialog
+        specs={[]}
+        loadError="参数定义库加载失败，请重试。"
+        onRetryLoad={onRetryLoad}
+        onBack={vi.fn()}
+        onConfirm={vi.fn()}
+      />
+    );
+
+    const dialog = screen.getByRole("dialog", { name: "选择参数定义" });
+    expect(within(dialog).getByRole("alert")).toHaveTextContent("参数定义库加载失败");
+    fireEvent.click(within(dialog).getByRole("button", { name: "重试" }));
+    expect(onRetryLoad).toHaveBeenCalledTimes(1);
+  });
 });

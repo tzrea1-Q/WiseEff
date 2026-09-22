@@ -3,6 +3,13 @@ import { describe, expect, it } from "vitest";
 import { rollupSubtreeAttributionCounts } from "./subtreeCounts";
 
 describe("rollupSubtreeAttributionCounts", () => {
+  it("keeps current binding counts separate from active definition counts", () => {
+    const totals = rollupSubtreeAttributionCounts([{ id: "module", parentId: null }], [
+      { moduleId: "module", bindingId: "bound-retired-definition", parameterSpecId: null },
+      { moduleId: "module", bindingId: null, parameterSpecId: "active-unbound-definition" }
+    ]);
+    expect(totals.get("module")).toEqual({ parameterCount: 1, definitionCount: 1 });
+  });
   it("counts subtree bindings and distinct specs without summing overlapping definitions", () => {
     const modules = [
       { id: "business", parentId: null },

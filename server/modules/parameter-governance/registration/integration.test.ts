@@ -344,6 +344,33 @@ describe("guarded Registration and Placement", () => {
     });
     expect(retire.ok).toBe(true);
 
+    const beforeMove = await residue();
+    const moveWhileRetired = await service.execute({
+      kind: "move-placement",
+      organizationId: ORG_ID,
+      registrationId: registrationId as never,
+      expectedRelease: pin,
+      destinationModuleId: MODULE_ID_B,
+      idempotencyKey: `move-retired:${randomUUID()}`,
+      context: { actorKind: "org-admin", principalId: "user-org-admin" },
+    });
+    expect(moveWhileRetired).toEqual({
+      ok: false,
+      error: {
+        kind: "restore-required",
+        registrationId,
+      },
+    });
+    expect(await residue()).toEqual(beforeMove);
+    await expect(
+      pool.query<{ module_id: string }>(
+        `select module_id
+           from parameter_catalog.subject_placements
+          where registration_id = $1`,
+        [registrationId],
+      ),
+    ).resolves.toMatchObject({ rows: [{ module_id: MODULE_ID }] });
+
     const automatic = await service.execute(
       registerCommand({
         method: "automatic",
@@ -399,6 +426,80 @@ describe("guarded Registration and Placement", () => {
       [first.value.registrationId],
     );
     expect(placements.rows[0]?.count).toBe("1");
+  });
+
+  it("uses the locked Placement version for stale moves and replays before rechecking it", async () => {
+    const current = await pool.query<{
+      registration_id: string;
+      placement_id: string;
+      module_id: string;
+      version: string;
+    }>(
+      `select placement.registration_id, placement.id as placement_id, placement.module_id,
+              (extract(epoch from placement.updated_at) * 1000000)::bigint::text as version
+         from parameter_catalog.subject_placements placement
+        where placement.organization_id = $1
+        order by placement.id
+        limit 1`,
+      [ORG_ID],
+    );
+    const row = current.rows[0];
+    expect(row).toBeDefined();
+    if (!row) return;
+    const staleVersion = (BigInt(row.version) - 1n).toString();
+    const before = await residue();
+    const stale = await service.execute({
+      kind: "move-placement",
+      organizationId: ORG_ID,
+      registrationId: row.registration_id as never,
+      expectedRelease: pin,
+      destinationModuleId: MODULE_ID_B,
+      expectedPlacementVersion: staleVersion,
+      idempotencyKey: `move-stale:${randomUUID()}`,
+      context: { actorKind: "org-admin", principalId: "user-org-admin" },
+    });
+    expect(stale).toEqual({
+      ok: false,
+      error: {
+        kind: "placement-conflict",
+        registrationId: row.registration_id,
+        placementId: row.placement_id,
+      },
+    });
+    expect(await residue()).toEqual(before);
+    await expect(
+      pool.query<{ module_id: string }>(
+        `select module_id from parameter_catalog.subject_placements where id = $1`,
+        [row.placement_id],
+      ),
+    ).resolves.toMatchObject({ rows: [{ module_id: row.module_id }] });
+
+    const command = {
+      kind: "move-placement" as const,
+      organizationId: ORG_ID,
+      registrationId: row.registration_id as never,
+      expectedRelease: pin,
+      destinationModuleId: MODULE_ID_B,
+      expectedPlacementVersion: row.version,
+      idempotencyKey: `move-replay:${randomUUID()}`,
+      context: { actorKind: "org-admin" as const, principalId: "user-org-admin" },
+    };
+    const moved = await service.execute(command);
+    expect(moved.ok).toBe(true);
+    if (!moved.ok) return;
+    expect(moved.value.outcome).toBe("committed");
+    expect(moved.value.placementVersion).toBeDefined();
+    expect(moved.value.placementVersion).not.toBe(row.version);
+    const replayed = await service.execute(command);
+    expect(replayed).toEqual({ ok: true, value: { ...moved.value, outcome: "replayed" } });
+    const after = await pool.query<{ module_id: string; count: string }>(
+      `select module_id,
+              (select count(*)::text from parameter_catalog.subject_placements where registration_id = $2) as count
+         from parameter_catalog.subject_placements
+        where id = $1`,
+      [row.placement_id, row.registration_id],
+    );
+    expect(after.rows[0]).toEqual({ module_id: MODULE_ID_B, count: "1" });
   });
 
   it("maps a stale pin to PCA01 and writes no residue", async () => {

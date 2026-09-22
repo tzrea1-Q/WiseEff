@@ -1,6 +1,8 @@
 export type AttributionCountFact = {
   moduleId: string;
-  parameterSpecId: string;
+  parameterSpecId: string | null;
+  /** Null marks a definition-only fact; omitted keeps the legacy fact shape. */
+  bindingId?: string | null;
 };
 
 export type SubtreeAttributionCounts = {
@@ -11,7 +13,9 @@ export type SubtreeAttributionCounts = {
 /**
  * Registry subtree totals for D4 / TD-052.
  * `parameterCount` is bindings (measured occurrences). `definitionCount` is
- * distinct `parameter_spec_id` in the same subtree — a union, not a sum of children.
+ * distinct definition ids in the same subtree — a union, not a sum of children.
+ * Canonical registry reads also pass definition-only facts with `bindingId: null`
+ * so an active definition with no Binding still contributes to `definitionCount`.
  */
 export function rollupSubtreeAttributionCounts(
   modules: readonly { id: string; parentId: string | null }[],
@@ -55,8 +59,8 @@ export function rollupSubtreeAttributionCounts(
     const specIds = new Set<string>();
     for (const id of descendantsOf(module.id)) {
       for (const fact of factsByModule.get(id) ?? []) {
-        parameterCount += 1;
-        specIds.add(fact.parameterSpecId);
+        if (fact.bindingId !== null) parameterCount += 1;
+        if (fact.parameterSpecId !== null) specIds.add(fact.parameterSpecId);
       }
     }
     totals.set(module.id, { parameterCount, definitionCount: specIds.size });

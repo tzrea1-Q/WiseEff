@@ -142,6 +142,14 @@ Every route below is a target contract, not current implementation evidence.
 | Project drafts | Existing binding and node-enablement draft paths | Retained product behavior; inputs resolve through canonical binding/definition identity. |
 | Operator diagnostics | `/api/v2/operator/parameter-catalog/*` | Deployment-operator-only reconciliation and migration diagnostics; never linked from public DTOs. |
 
+### Shared module assignment
+
+Registration and Placement writes accept optional `destinationModuleId`, the exact ID of an existing module in the authenticated Organization. Driver targets require `driver-group`, NodeType targets require `node-type`, and ConfigurationSchema targets require `business`. Explicit invalid targets fail; they never fall back to a name match. Existing callers that omit the field retain the PlacementIntent contract.
+
+Placement GET returns an opaque versioned ETag, exposed to browser fetches from already-allowed CORS origins. Move commands check the submitted version while holding the owner's row lock. An authorized identical committed request uses the existing owner's replay path before checking the advanced version, without applying the move again; this owner reads the retained resource and does not promise an immutable first-response snapshot. Organization administrators can read registration `impact` with current Binding and distinct project counts. Other readers receive no cross-project impact aggregate. Moving a Placement changes navigation ownership, not parameter values.
+
+The shared `public.parameter_modules` tree remains authoritative. Module counts combine active Definitions from one captured Catalog Kernel snapshot with current canonical Bindings and organization-scoped Registration/Placement facts; unbound Definitions count, while archived semantic rows do not supply canonical counts. Retained Placement or Binding references block module deletion; rename/reparent preserves module identity. Overlay selection follows all canonical pages and keeps load errors distinct from empty results.
+
 ### Proposal replay execution contract
 
 The R2 implementation keeps create as draft and submit as an in-place transition. The author must remain an authorized Organization Admin for submit/withdraw; a different authorized Platform Admin reviews. Authentication, object scope, current role and release checks still apply to retries. There is no promise that an old request can replay after authorization or release changes.

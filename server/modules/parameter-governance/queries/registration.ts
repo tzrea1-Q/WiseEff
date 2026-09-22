@@ -42,6 +42,7 @@ type RegistrationJoinRow = {
   module_id: string | null;
   module_name: string | null;
   parent_placement_id: string | null;
+  placement_version: string;
 };
 
 const LIST_LIMIT_MAX = 100;
@@ -57,6 +58,7 @@ const registrationSelect = `
     registration.current_placement_id,
     registration.updated_at,
     placement.id as placement_id,
+    (extract(epoch from placement.updated_at) * 1000000)::bigint::text as placement_version,
     placement.module_id,
     module.name as module_name,
     parent_placement.id as parent_placement_id
@@ -427,7 +429,7 @@ export const getRegistration = async (
   if (!isUsableToken(query.registrationId) || !isUsableToken(query.observedCatalogReleaseId)) {
     return fail({ kind: "invalid-query", reason: "registrationId" });
   }
-  return runQuery(source, "getRegistration", async (client) => {
+  return runQuery<GovernanceRegistrationRecord>(source, "getRegistration", async (client) => {
     const result = await client.query<RegistrationJoinRow>(
       `${registrationSelect}
         where registration.organization_id = $1
@@ -438,7 +440,18 @@ export const getRegistration = async (
     if (!row) {
       return fail({ kind: "not-found", resource: "registration" });
     }
-    return mapRecord(row, query.observedCatalogReleaseId);
+    const registration = mapRecord(row, query.observedCatalogReleaseId);
+    if (!registration.ok) return registration;
+    const impact = await client.query<{ binding_count: number; project_count: number }>(
+      `select count(*)::int as binding_count, count(distinct project_id)::int as project_count
+         from parameter_catalog.current_project_parameter_bindings
+        where organization_id = $1 and registration_id = $2`,
+      [query.organizationId, query.registrationId],
+    );
+    return { ok: true, value: { ...registration.value, impact: {
+      bindingCount: impact.rows[0]!.binding_count,
+      projectCount: impact.rows[0]!.project_count,
+    } } };
   });
 };
 
@@ -446,12 +459,20 @@ export const getPlacement = async (
   source: import("pg").Pool | import("pg").PoolClient | GovernanceQueryable,
   query: GetPlacementQuery,
 ): Promise<Result<GovernancePlacementRecord, GovernanceQueryFailure>> => {
-  const registration = await getRegistration(source, query);
-  if (!registration.ok) {
-    if (registration.error.kind === "not-found") {
-      return fail({ kind: "not-found", resource: "placement" });
-    }
-    return registration;
+  const scoped = assertOrgScope(query.organizationId, query.authScope);
+  if (!scoped.ok) return scoped;
+  if (!isUsableToken(query.registrationId) || !isUsableToken(query.observedCatalogReleaseId)) {
+    return fail({ kind: "invalid-query", reason: "registrationId" });
   }
-  return { ok: true, value: registration.value.placement };
+  return runQuery<GovernancePlacementRecord>(source, "getPlacement", async (client) => {
+    const result = await client.query<RegistrationJoinRow>(
+      `${registrationSelect} where registration.organization_id = $1 and registration.id = $2`,
+      [query.organizationId, query.registrationId],
+    );
+    const row = result.rows[0];
+    if (!row) return fail({ kind: "not-found", resource: "placement" });
+    const placement = mapPlacement(row);
+    if (!placement.ok) return placement;
+    return { ok: true, value: { ...placement.value, version: row.placement_version } };
+  });
 };

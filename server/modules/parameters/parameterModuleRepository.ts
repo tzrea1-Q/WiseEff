@@ -2,6 +2,7 @@ import { LEGACY_IDENTITY_SQL } from "../parameter-kernel/legacyParameterIdentity
 import { parameterIdentityMode } from "../parameter-kernel/parameterIdentityMode";
 import { randomUUID } from "node:crypto";
 import type { Queryable } from "../../shared/database/client";
+import { ApiError } from "../../shared/http/errors";
 import { assertNoCycle, buildPath, depthOf } from "../shared/moduleTree";
 import type { ParameterModuleDto } from "./types";
 
@@ -210,26 +211,57 @@ export async function countParametersForModule(
   db: Queryable,
   query: { organizationId: string; moduleId: string }
 ) {
-  const result =
-    parameterIdentityMode() === "semantic"
-      ? await db.query<{ count: string }>(
-          `
-          select count(*)::text as count
-          from project_parameter_bindings
-          where organization_id = $1
-            and module_id = $2
-          `,
-          [query.organizationId, query.moduleId]
-        )
-      : await db.query<{ count: string }>(
-          `
-          select count(*)::text as count
-          from ${LEGACY_IDENTITY_SQL.definitionsTable}
-          where organization_id = $1
-            and parameter_module_id = $2
-          `,
-          [query.organizationId, query.moduleId]
-        );
+  const result = await db.query<{ count: string }>(
+    `
+    select count(*)::text as count
+    from parameter_catalog.project_parameter_bindings binding
+    join parameter_catalog.organization_subject_registrations registration
+      on registration.id = binding.registration_id
+     and registration.organization_id = binding.organization_id
+    join parameter_catalog.subject_placements placement
+      on placement.id = registration.current_placement_id
+     and placement.registration_id = registration.id
+     and placement.organization_id = registration.organization_id
+    where binding.organization_id = $1
+      and placement.module_id = $2
+    `,
+    [query.organizationId, query.moduleId]
+  );
+
+  return Number(result.rows[0]?.count ?? 0);
+}
+
+export async function countCanonicalPlacementsForModule(
+  db: Queryable,
+  query: { organizationId: string; moduleId: string }
+) {
+  const result = await db.query<{ count: string }>(
+    `
+    select count(*)::text as count
+    from parameter_catalog.subject_placements
+    where organization_id = $1
+      and module_id = $2
+    `,
+    [query.organizationId, query.moduleId]
+  );
+
+  return Number(result.rows[0]?.count ?? 0);
+}
+
+export async function countCanonicalPlacementsForModules(
+  db: Queryable,
+  query: { organizationId: string; moduleIds: string[] },
+) {
+  if (query.moduleIds.length === 0) return 0;
+  const result = await db.query<{ count: string }>(
+    `
+    select count(*)::text as count
+    from parameter_catalog.subject_placements
+    where organization_id = $1
+      and module_id = any($2::text[])
+    `,
+    [query.organizationId, query.moduleIds],
+  );
 
   return Number(result.rows[0]?.count ?? 0);
 }
@@ -563,6 +595,15 @@ export async function deleteParameterModule(
   const parameterCount = await countParametersForModule(db, input);
   if (parameterCount > 0) {
     throw new Error("Cannot delete parameter module referenced by parameters");
+  }
+
+  const placementCount = await countCanonicalPlacementsForModule(db, input);
+  if (placementCount > 0) {
+    throw new ApiError(
+      "CONFLICT",
+      "Cannot delete parameter module referenced by Catalog placements",
+      { moduleId: input.moduleId, placementCount },
+    );
   }
 
   const result = await db.query(
