@@ -2,8 +2,20 @@ import type { ParameterModule } from "@/domain/parameter-topology/moduleRegistry
 import type { DtsParameterWorkbenchRow } from "@/domain/parameter-topology/workbenchTypes";
 import type { DtsWorkbenchTreeNode } from "./buildDtsTopologyTree";
 
+export type ModuleTreeRow = {
+  bindingId: string;
+  moduleId: string;
+  moduleName: string;
+  moduleSortOrder: number;
+  driverModule: string | null;
+  compatible: string | null;
+  instanceName: string | null;
+  topologyPath: string | null;
+  governanceState?: DtsParameterWorkbenchRow["governanceState"] | "nominal" | string;
+};
+
 export type BuildModuleTreeInput = {
-  rows: DtsParameterWorkbenchRow[];
+  rows: ModuleTreeRow[];
   /**
    * Admin module registry. When provided, nesting follows `parentId` so the
    * navigator shows business roots → driver groups → node-type modules.
@@ -15,13 +27,13 @@ export type BuildModuleTreeInput = {
   groupByDevice?: boolean;
 };
 
-function deviceKey(row: DtsParameterWorkbenchRow): string {
+function deviceKey(row: ModuleTreeRow): string {
   const driver = row.driverModule ?? row.compatible ?? "未关联驱动";
   const instance = row.instanceName ?? row.topologyPath ?? "";
   return `${driver}\u0000${instance}`;
 }
 
-function deviceLabel(row: DtsParameterWorkbenchRow): string {
+function deviceLabel(row: ModuleTreeRow): string {
   const driver = row.driverModule ?? row.compatible ?? "未关联驱动";
   if (row.instanceName) {
     return row.instanceName === driver ? driver : `${row.instanceName} · ${driver}`;

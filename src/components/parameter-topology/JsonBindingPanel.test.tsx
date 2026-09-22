@@ -1,6 +1,7 @@
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import type { ProjectParameterBinding } from "@/domain/parameter-topology/types";
+import type { ParameterModuleRegistry } from "@/domain/parameter-topology/moduleRegistry";
 import { JsonBindingPanel } from "./JsonBindingPanel";
 
 const jsonBinding: ProjectParameterBinding = {
@@ -19,9 +20,137 @@ const jsonBinding: ProjectParameterBinding = {
   moduleId: "module-charging"
 };
 
+const secondBinding: ProjectParameterBinding = {
+  id: "binding-json-2",
+  parameterSpecId: "spec-json-2",
+  parameterSpecVersionId: "spec-json-v2",
+  propertyKey: "battery-limits",
+  driverModule: "bms",
+  logicalNodeId: "node-2",
+  instanceName: "bms0",
+  locator: "/bms0",
+  effectiveValue: { kind: "json", value: { maxTemp: 45 } },
+  rawValue: '{"maxTemp":45}',
+  schemaState: "valid",
+  policyState: "pass",
+  moduleId: "module-bms"
+};
+
+const moduleRegistry: ParameterModuleRegistry = {
+  modules: [
+    {
+      id: "module-charging",
+      name: "充电管理",
+      parentId: null,
+      sortOrder: 1,
+      description: "充电控制与策略",
+      scope: "system",
+      importance: "high",
+      kind: "business",
+      origin: "curated",
+      sourceKey: null,
+      effectiveImportance: "high",
+      parameterCount: 1,
+      definitionCount: 1
+    },
+    {
+      id: "module-bms",
+      name: "电池管理",
+      parentId: null,
+      sortOrder: 2,
+      description: "电池保护与状态监测",
+      scope: "system",
+      importance: "high",
+      kind: "business",
+      origin: "curated",
+      sourceKey: null,
+      effectiveImportance: "high",
+      parameterCount: 1,
+      definitionCount: 1
+    }
+  ]
+};
+
 describe("JsonBindingPanel", () => {
-  it("keeps JSON source text out of the DTS parser and exposes exact export/history actions", async () => {
+  it("renders module navigation, parameter table and no download buttons in table rows", () => {
+    render(
+      <JsonBindingPanel
+        bindings={[jsonBinding, secondBinding]}
+        moduleRegistry={moduleRegistry}
+        canEdit
+      />
+    );
+
+    expect(screen.getByRole("region", { name: "模块导航" })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "JSON 参数列表" })).toBeInTheDocument();
+
+    const table = screen.getByRole("table", { name: "JSON 参数列表" });
+    expect(within(table).getAllByRole("button", { name: /^查看 / })).toHaveLength(2);
+    expect(within(table).getAllByRole("button", { name: /^编辑 / })).toHaveLength(2);
+
+    // Requirement 3: table rows must NOT contain export/download options
+    expect(within(table).queryByRole("button", { name: /导出|下载/ })).not.toBeInTheDocument();
+  });
+
+  it("filters parameters when a module tree node is selected in module navigation", () => {
+    render(
+      <JsonBindingPanel
+        bindings={[jsonBinding, secondBinding]}
+        moduleRegistry={moduleRegistry}
+        canEdit
+      />
+    );
+
+    const table = screen.getByRole("table", { name: "JSON 参数列表" });
+    expect(within(table).getByText("charging-policy")).toBeInTheDocument();
+    expect(within(table).getByText("battery-limits")).toBeInTheDocument();
+
+    // Click on the "充电管理" tree item to filter
+    const moduleItem = screen.getByRole("treeitem", { name: /充电管理/ });
+    fireEvent.click(moduleItem);
+
+    expect(within(table).getByText("charging-policy")).toBeInTheDocument();
+    expect(within(table).queryByText("battery-limits")).not.toBeInTheDocument();
+  });
+
+  it("opens edit dialog on edit button click and validates draft submission", async () => {
     const onValidateEdit = vi.fn().mockResolvedValue({ valid: true, diagnostics: [] });
+
+    render(
+      <JsonBindingPanel
+        bindings={[jsonBinding]}
+        canEdit
+        onValidateEdit={onValidateEdit}
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "编辑 charging-policy" }));
+
+    const dialog = screen.getByRole("dialog", { name: "修改草稿" });
+    expect(dialog).toBeVisible();
+
+    fireEvent.change(within(dialog).getByLabelText("目标值"), {
+      target: { value: '{"kind":"cells","values":[4,5]}' }
+    });
+    fireEvent.change(within(dialog).getByLabelText("修改原因"), {
+      target: { value: "校准充电策略" }
+    });
+    fireEvent.click(within(dialog).getByRole("button", { name: "校验并创建草稿" }));
+
+    await waitFor(() => {
+      expect(onValidateEdit).toHaveBeenCalledWith({
+        bindingId: "binding-json-1",
+        rawValue: '{"kind":"cells","values":[4,5]}',
+        reason: "校准充电策略"
+      });
+    });
+
+    await waitFor(() => {
+      expect(screen.queryByRole("dialog", { name: "修改草稿" })).not.toBeInTheDocument();
+    });
+  });
+
+  it("opens detail dialog on view click, exposes history/export actions and transitions to draft dialog", async () => {
     const onExportBinding = vi.fn().mockResolvedValue(undefined);
     const onLoadHistory = vi.fn().mockResolvedValue([
       {
@@ -46,35 +175,30 @@ describe("JsonBindingPanel", () => {
       <JsonBindingPanel
         bindings={[jsonBinding]}
         canEdit
-        onValidateEdit={onValidateEdit}
         onExportBinding={onExportBinding}
         onLoadHistory={onLoadHistory}
       />
     );
 
-    const panel = screen.getByRole("region", { name: "JSON 参数" });
-    expect(within(panel).getAllByText("{\"kind\":\"cells\",\"values\":[1,2]}").length).toBeGreaterThan(0);
-    fireEvent.change(within(panel).getByLabelText("目标值"), {
-      target: { value: '{"kind":"cells","values":[4,5]}' }
-    });
-    fireEvent.change(within(panel).getByLabelText("修改原因"), {
-      target: { value: "校准充电策略" }
-    });
-    fireEvent.click(within(panel).getByRole("button", { name: "校验并创建草稿" }));
-    await waitFor(() => {
-      expect(onValidateEdit).toHaveBeenCalledWith({
-        bindingId: "binding-json-1",
-        rawValue: '{"kind":"cells","values":[4,5]}',
-        reason: "校准充电策略"
-      });
-    });
+    fireEvent.click(screen.getByRole("button", { name: "查看 charging-policy" }));
 
-    fireEvent.click(within(panel).getByRole("button", { name: "导出源文件" }));
+    const detailDialog = screen.getByRole("dialog", { name: "charging-policy 参数详情" });
+    expect(detailDialog).toBeVisible();
+
+    // Export action inside detail dialog
+    fireEvent.click(within(detailDialog).getByRole("button", { name: "导出源文件" }));
     await waitFor(() => expect(onExportBinding).toHaveBeenCalledWith("binding-json-1"));
-    fireEvent.click(within(panel).getByRole("button", { name: "查看固定值历史" }));
+
+    // History action inside detail dialog
+    fireEvent.click(within(detailDialog).getByRole("button", { name: "查看固定值历史" }));
     await waitFor(() => expect(onLoadHistory).toHaveBeenCalledWith("binding-json-1"));
-    expect(await within(panel).findByText("校准充电策略")).toBeVisible();
-    expect(await within(panel).findByText("删除属性", { exact: false })).toBeVisible();
+    expect(await within(detailDialog).findByText(/校准充电策略/)).toBeVisible();
+    expect(await within(detailDialog).findByText(/删除属性 · 移除过时属性/)).toBeVisible();
+
+    // Transition from detail to edit dialog
+    fireEvent.click(within(detailDialog).getByRole("button", { name: "编辑此参数" }));
+    expect(screen.queryByRole("dialog", { name: "charging-policy 参数详情" })).not.toBeInTheDocument();
+    expect(screen.getByRole("dialog", { name: "修改草稿" })).toBeVisible();
   });
 
   it("does not render DTS bindings in the JSON surface", () => {
@@ -83,7 +207,7 @@ describe("JsonBindingPanel", () => {
     expect(container).toBeEmptyDOMElement();
   });
 
-  it("creates a delete draft with a reason and no target value", async () => {
+  it("creates a delete draft with a reason and no target value from edit dialog", async () => {
     const onValidateEdit = vi.fn().mockResolvedValue({ valid: true, diagnostics: [] });
     render(
       <JsonBindingPanel
@@ -93,11 +217,13 @@ describe("JsonBindingPanel", () => {
       />
     );
 
-    const panel = screen.getByRole("region", { name: "JSON 参数" });
-    fireEvent.change(within(panel).getByLabelText("修改原因"), {
+    fireEvent.click(screen.getByRole("button", { name: "编辑 charging-policy" }));
+    const dialog = screen.getByRole("dialog", { name: "修改草稿" });
+
+    fireEvent.change(within(dialog).getByLabelText("修改原因"), {
       target: { value: "移除过时属性" }
     });
-    fireEvent.click(within(panel).getByRole("button", { name: "创建删除草稿" }));
+    fireEvent.click(within(dialog).getByRole("button", { name: "创建删除草稿" }));
 
     await waitFor(() => expect(onValidateEdit).toHaveBeenCalledWith({
       bindingId: "binding-json-1",
@@ -107,17 +233,56 @@ describe("JsonBindingPanel", () => {
     }));
   });
 
-  it("shows localized source errors linked to the JSON value input", async () => {
-    render(<JsonBindingPanel bindings={[jsonBinding]} canEdit onValidateEdit={async () => ({
-      valid: false,diagnostics: [{ code: "VALIDATION_FAILED",message: "JSON draft target is invalid or unsupported." }],
-    })} />);
-    fireEvent.change(screen.getByLabelText("目标值"),{ target: { value: "not-json" } });
-    fireEvent.change(screen.getByLabelText("修改原因"),{ target: { value: "校验错误提示" } });
-    fireEvent.click(screen.getByRole("button",{ name: "校验并创建草稿" }));
+  it("shows localized source errors linked to the JSON value input in edit dialog", async () => {
+    render(
+      <JsonBindingPanel
+        bindings={[jsonBinding]}
+        canEdit
+        onValidateEdit={async () => ({
+          valid: false,
+          diagnostics: [{ code: "VALIDATION_FAILED", message: "JSON draft target is invalid or unsupported." }]
+        })}
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "编辑 charging-policy" }));
+    const dialog = screen.getByRole("dialog", { name: "修改草稿" });
+
+    fireEvent.change(within(dialog).getByLabelText("目标值"), { target: { value: "not-json" } });
+    fireEvent.change(within(dialog).getByLabelText("修改原因"), { target: { value: "校验错误提示" } });
+    fireEvent.click(within(dialog).getByRole("button", { name: "校验并创建草稿" }));
+
     const alert = await screen.findByRole("alert");
     expect(alert).toHaveTextContent("目标值未通过校验");
     expect(alert).not.toHaveTextContent("JSON draft target");
-    expect(screen.getByLabelText("目标值")).toHaveAttribute("aria-describedby",alert.id);
-    expect(screen.getByLabelText("目标值")).toHaveAttribute("aria-invalid","true");
+    expect(within(dialog).getByLabelText("目标值")).toHaveAttribute("aria-describedby", alert.id);
+    expect(within(dialog).getByLabelText("目标值")).toHaveAttribute("aria-invalid", "true");
+  });
+
+  it("filters parameters via search input and shows match count badge", () => {
+    render(<JsonBindingPanel bindings={[jsonBinding, secondBinding]} />);
+
+    const table = screen.getByRole("table", { name: "JSON 参数列表" });
+    expect(screen.getByText("共 2 项")).toBeInTheDocument();
+    expect(within(table).getByText("charging-policy")).toBeInTheDocument();
+    expect(within(table).getByText("battery-limits")).toBeInTheDocument();
+
+    const searchInput = screen.getByRole("searchbox", { name: "搜索 JSON 参数" });
+    fireEvent.change(searchInput, { target: { value: "battery" } });
+
+    expect(screen.getByText("匹配 1 / 2 项")).toBeInTheDocument();
+    expect(within(table).getByText("battery-limits")).toBeInTheDocument();
+    expect(within(table).queryByText("charging-policy")).not.toBeInTheDocument();
+  });
+
+  it("renders draft badge when binding is present in draftBindingIds", () => {
+    render(
+      <JsonBindingPanel
+        bindings={[jsonBinding]}
+        draftBindingIds={new Set(["binding-json-1"])}
+      />
+    );
+    expect(screen.getByText("草稿")).toBeInTheDocument();
   });
 });
+

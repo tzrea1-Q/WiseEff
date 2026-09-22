@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
   Download,
-  Network,
+  FileCode,
   Boxes
 } from "lucide-react";
 import { SearchField } from "@/components/common/SearchField";
@@ -356,6 +356,20 @@ export function DtsParameterWorkbench({
     const rail = listScrollRailRef.current;
     if (!scroller || !rail) return;
 
+    const spacer = rail.firstElementChild as HTMLElement | null;
+    const syncSpacer = () => {
+      if (spacer && scroller) {
+        const targetWidth = Math.max(scroller.scrollWidth, 840);
+        spacer.style.width = `${targetWidth}px`;
+      }
+    };
+    syncSpacer();
+    const resizeObserver = typeof ResizeObserver === "function" ? new ResizeObserver(syncSpacer) : null;
+    resizeObserver?.observe(scroller);
+    if (scroller.firstElementChild) {
+      resizeObserver?.observe(scroller.firstElementChild);
+    }
+
     const syncFrom = (source: HTMLDivElement, target: HTMLDivElement) => {
       if (listScrollSyncing.current) return;
       listScrollSyncing.current = true;
@@ -368,6 +382,7 @@ export function DtsParameterWorkbench({
     scroller.addEventListener("scroll", onScrollerScroll, { passive: true });
     rail.addEventListener("scroll", onRailScroll, { passive: true });
     return () => {
+      resizeObserver?.disconnect();
       scroller.removeEventListener("scroll", onScrollerScroll);
       rail.removeEventListener("scroll", onRailScroll);
     };
@@ -629,7 +644,7 @@ export function DtsParameterWorkbench({
               onClick={() => setResultsMode("parameters")}
             >
               <Boxes size={15} strokeWidth={1.9} aria-hidden="true" />
-              模块导航
+              参数列表
             </button>
             <button
               type="button"
@@ -637,8 +652,8 @@ export function DtsParameterWorkbench({
               aria-pressed={resultsMode === "dtsSource"}
               onClick={enterDtsSourceMode}
             >
-              <Network size={15} strokeWidth={1.9} aria-hidden="true" />
-              技术视图
+              <FileCode size={15} strokeWidth={1.9} aria-hidden="true" />
+              DTS 源码
             </button>
             {resultsMode === "dtsSource" ? (
               <button
@@ -716,7 +731,7 @@ export function DtsParameterWorkbench({
         <div
           className="dts-parameter-workbench__results dts-workbench-list"
           role="region"
-          aria-label={resultsMode === "parameters" ? "DTS 参数列表" : "技术视图结果"}
+          aria-label={resultsMode === "parameters" ? "DTS 参数列表" : "DTS 源码结果"}
         >
           {resultsMode === "parameters" ? (
             <>

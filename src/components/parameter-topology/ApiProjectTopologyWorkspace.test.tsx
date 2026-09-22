@@ -8,6 +8,8 @@ import {
   TOPOLOGY_TEACHING_EFFECTIVE_NODES,
   TOPOLOGY_TEACHING_SOURCE_NODES
 } from "./topologyTeachingFixtures";
+import type { ProjectParameterBinding } from "@/domain/parameter-topology/types";
+import { driverFallbackModuleId } from "@/domain/parameter-topology/moduleRegistry";
 import { ApiProjectTopologyWorkspace as ProductionApiProjectTopologyWorkspace } from "./ApiProjectTopologyWorkspace";
 import {
   createTestModuleRegistryRepository,
@@ -1913,7 +1915,7 @@ describe("ApiProjectTopologyWorkspace", () => {
       expect(screen.getByRole("region", { name: "DTS 参数工作台" })).toBeInTheDocument();
     });
 
-    fireEvent.click(screen.getByRole("button", { name: "技术视图" }));
+    fireEvent.click(screen.getByRole("button", { name: "DTS 源码" }));
 
     await waitFor(() => expect(parameterFileRepository.listFiles).toHaveBeenCalledWith("aurora"));
     await waitFor(() =>
@@ -1924,4 +1926,64 @@ describe("ApiProjectTopologyWorkspace", () => {
     expect(screen.queryByText(/aurora-board\.dts · v2/)).not.toBeInTheDocument();
     expect(screen.getByLabelText("DTS 源码")).toBeInTheDocument();
   });
+
+  it("renders format switcher when JSON bindings exist and switches between DTS and JSON workbenches", async () => {
+    const jsonBinding: ProjectParameterBinding = {
+      id: "binding-json-camera",
+      parameterSpecId: "spec-cam-cfg",
+      parameterSpecVersionId: "specver-cam-cfg-1",
+      propertyKey: "camera_tuning",
+      driverModule: "camera",
+      logicalNodeId: "logical-cam",
+      instanceName: "camera@0",
+      locator: "system/camera/tuning.json",
+      effectiveValue: {
+        kind: "json",
+        raw: '{"exposure": 100, "iso": 400}',
+        parsed: { exposure: 100, iso: 400 }
+      },
+      rawValue: '{"exposure": 100, "iso": 400}',
+      schemaState: "valid",
+      policyState: "pass",
+      moduleId: driverFallbackModuleId("camera")
+    };
+    const bindings = [...TOPOLOGY_TEACHING_BINDINGS, jsonBinding];
+    const repository = createRepository({
+      listBindings: vi.fn().mockResolvedValue(bindings)
+    });
+    const listConfigSets = vi.fn().mockResolvedValue([{ id: "dcs-default-aurora", name: "default" }]);
+
+    render(
+      <ApiProjectTopologyWorkspace
+        projectId="aurora"
+        canEdit
+        topologyRepository={repository}
+        listConfigSets={listConfigSets}
+      />
+    );
+
+    await waitFor(() => {
+      expect(screen.getByRole("tablist", { name: "参数配置格式" })).toBeInTheDocument();
+    });
+
+    const dtsTab = screen.getByRole("tab", { name: /DTS 设备树参数/ });
+    const jsonTab = screen.getByRole("tab", { name: /JSON 参数/ });
+    expect(dtsTab).toHaveAttribute("aria-selected", "true");
+    expect(jsonTab).toHaveAttribute("aria-selected", "false");
+    expect(screen.getByRole("region", { name: "DTS 参数工作台" })).toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "JSON 参数工作台" })).not.toBeInTheDocument();
+
+    fireEvent.click(jsonTab);
+
+    expect(dtsTab).toHaveAttribute("aria-selected", "false");
+    expect(jsonTab).toHaveAttribute("aria-selected", "true");
+    expect(screen.queryByRole("region", { name: "DTS 参数工作台" })).not.toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "JSON 参数" })).toBeInTheDocument();
+    expect(screen.getAllByText("camera_tuning").length).toBeGreaterThan(0);
+
+    fireEvent.click(dtsTab);
+    expect(dtsTab).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByRole("region", { name: "DTS 参数工作台" })).toBeInTheDocument();
+  });
 });
+
