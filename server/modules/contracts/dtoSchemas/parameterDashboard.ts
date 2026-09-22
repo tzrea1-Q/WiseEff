@@ -65,4 +65,3 @@ export const parameterDashboardSummaryDtoSchema = z.object({
 });
 
 export const parameterDashboardSummaryResponseSchema = itemEnvelopeSchema(parameterDashboardSummaryDtoSchema);
-
