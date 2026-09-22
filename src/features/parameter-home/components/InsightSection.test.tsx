@@ -10,10 +10,13 @@ const summary: DashboardSummary = {
   projectId: null,
   kpis: {
     totalParameters: 10,
+    totalBindings: 10,
+    totalDefinitions: 8,
     managedProjects: 2,
     changeFrequency: 5,
     activeContributors: 3,
-    highRiskParameters: 2
+    highRiskParameters: null,
+    riskAvailability: "unavailable"
   },
   trend: [{ bucketStart: "2026-07-01T00:00:00Z", label: "7/1", changeCount: 2, workflowEventCount: 1 }],
   personalKpis: {
@@ -113,6 +116,7 @@ describe("InsightSection", () => {
       />
     );
     expect(screen.getByText("热榜失败")).toBeInTheDocument();
+    expect(screen.getByText("近 30 天 · 不可用")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "重试" }));
     expect(onHotspotsRetry).toHaveBeenCalledOnce();
   });

@@ -17790,6 +17790,277 @@
       },
       "ParameterDashboardSummaryResponse": {
         "type": "object",
+        "properties": {
+          "item": {
+            "type": "object",
+            "properties": {
+              "window": {
+                "type": "string",
+                "enum": [
+                  "7d",
+                  "30d",
+                  "180d"
+                ]
+              },
+              "windowLabel": {
+                "type": "string"
+              },
+              "projectId": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "kpis": {
+                "type": "object",
+                "properties": {
+                  "totalParameters": {
+                    "type": "number"
+                  },
+                  "totalBindings": {
+                    "type": "number"
+                  },
+                  "totalDefinitions": {
+                    "type": "number"
+                  },
+                  "managedProjects": {
+                    "type": "number"
+                  },
+                  "changeFrequency": {
+                    "type": "number"
+                  },
+                  "activeContributors": {
+                    "type": "number"
+                  },
+                  "highRiskParameters": {
+                    "type": [
+                      "number",
+                      "null"
+                    ]
+                  },
+                  "riskAvailability": {
+                    "type": "string",
+                    "enum": [
+                      "available",
+                      "unavailable"
+                    ]
+                  }
+                },
+                "required": [
+                  "totalParameters",
+                  "totalBindings",
+                  "totalDefinitions",
+                  "managedProjects",
+                  "changeFrequency",
+                  "activeContributors",
+                  "highRiskParameters",
+                  "riskAvailability"
+                ],
+                "additionalProperties": false
+              },
+              "trend": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "bucketStart": {
+                      "type": "string"
+                    },
+                    "label": {
+                      "type": "string"
+                    },
+                    "changeCount": {
+                      "type": "number"
+                    },
+                    "workflowEventCount": {
+                      "type": "number"
+                    }
+                  },
+                  "required": [
+                    "bucketStart",
+                    "label",
+                    "changeCount",
+                    "workflowEventCount"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "personalKpis": {
+                "type": "object",
+                "properties": {
+                  "contributionCount": {
+                    "type": "number"
+                  },
+                  "workflowCount": {
+                    "type": "number"
+                  },
+                  "openItemCount": {
+                    "type": "number"
+                  },
+                  "pendingTodoCount": {
+                    "type": "number"
+                  },
+                  "highRiskTouchCount": {
+                    "type": [
+                      "number",
+                      "null"
+                    ]
+                  },
+                  "riskAvailability": {
+                    "type": "string",
+                    "enum": [
+                      "available",
+                      "unavailable"
+                    ]
+                  }
+                },
+                "required": [
+                  "contributionCount",
+                  "workflowCount",
+                  "openItemCount",
+                  "pendingTodoCount",
+                  "highRiskTouchCount",
+                  "riskAvailability"
+                ],
+                "additionalProperties": false
+              },
+              "personalTrend": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "bucketStart": {
+                      "type": "string"
+                    },
+                    "label": {
+                      "type": "string"
+                    },
+                    "changeCount": {
+                      "type": "number"
+                    },
+                    "workflowEventCount": {
+                      "type": "number"
+                    }
+                  },
+                  "required": [
+                    "bucketStart",
+                    "label",
+                    "changeCount",
+                    "workflowEventCount"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "riskBuckets": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "projectId": {
+                      "type": "string"
+                    },
+                    "projectCode": {
+                      "type": "string"
+                    },
+                    "projectName": {
+                      "type": "string"
+                    },
+                    "high": {
+                      "type": [
+                        "number",
+                        "null"
+                      ]
+                    },
+                    "medium": {
+                      "type": [
+                        "number",
+                        "null"
+                      ]
+                    },
+                    "low": {
+                      "type": [
+                        "number",
+                        "null"
+                      ]
+                    },
+                    "total": {
+                      "type": [
+                        "number",
+                        "null"
+                      ]
+                    },
+                    "riskAvailability": {
+                      "type": "string",
+                      "enum": [
+                        "available",
+                        "unavailable"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "projectId",
+                    "projectCode",
+                    "projectName",
+                    "high",
+                    "medium",
+                    "low",
+                    "total",
+                    "riskAvailability"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "workbenchSignals": {
+                "type": "object",
+                "properties": {
+                  "reviewQueue": {
+                    "type": "number"
+                  },
+                  "myDrafts": {
+                    "type": "number"
+                  },
+                  "returnedChanges": {
+                    "type": "number"
+                  },
+                  "waitingMerge": {
+                    "type": "number"
+                  },
+                  "unappliedImportBatches": {
+                    "type": "number"
+                  },
+                  "inactiveAccounts": {
+                    "type": "number"
+                  }
+                },
+                "required": [
+                  "reviewQueue",
+                  "myDrafts",
+                  "returnedChanges",
+                  "waitingMerge",
+                  "unappliedImportBatches",
+                  "inactiveAccounts"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "required": [
+              "window",
+              "windowLabel",
+              "projectId",
+              "kpis",
+              "trend",
+              "personalKpis",
+              "personalTrend",
+              "riskBuckets",
+              "workbenchSignals"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "item"
+        ],
+        "additionalProperties": false,
         "x-wiseeff-schema": "ParameterDashboardSummaryResponse"
       },
       "ParameterDashboardHotspotsResponse": {

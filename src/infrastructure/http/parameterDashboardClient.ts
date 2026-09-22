@@ -2,16 +2,17 @@ import type { ParameterDashboardRepository } from "@/application/ports/Parameter
 import type { DashboardWindow, HotspotDimension } from "@/domain/parameters/dashboardTypes";
 import { createApiClient } from "./apiClient";
 import { createDefaultApiClient } from "./defaultApiClient";
+import { parseContractDto } from "./parseContractDto";
+import {
+  parameterDashboardHotspotsResponseSchema,
+  parameterDashboardSummaryResponseSchema
+} from "@wiseeff/dto-schemas";
 import {
   dashboardSummaryFromDto,
-  dashboardHotspotFromDto,
-  type DashboardSummaryDto,
-  type DashboardHotspotDto
+  dashboardHotspotFromDto
 } from "./parameterDashboardDtos";
 
 type ApiClient = ReturnType<typeof createApiClient>;
-type ItemEnvelope<T> = { item: T };
-type ItemsEnvelope<T> = { items: T[] };
 
 function summaryPath(input: { projectId?: string; window: DashboardWindow; perspectiveRoleId?: string }) {
   const params = new URLSearchParams();
@@ -32,11 +33,19 @@ function hotspotsPath(input: { projectId?: string; window: DashboardWindow; dime
 export function createHttpParameterDashboardRepository(apiClient: ApiClient = createDefaultApiClient()): ParameterDashboardRepository {
   return {
     async listDashboardSummary(input) {
-      const response = await apiClient.get<ItemEnvelope<DashboardSummaryDto>>(summaryPath(input));
+      const response = parseContractDto(
+        parameterDashboardSummaryResponseSchema,
+        await apiClient.get<unknown>(summaryPath(input)),
+        "ParameterDashboardSummaryResponse"
+      );
       return dashboardSummaryFromDto(response.item);
     },
     async listDashboardHotspots(input) {
-      const response = await apiClient.get<ItemsEnvelope<DashboardHotspotDto>>(hotspotsPath(input));
+      const response = parseContractDto(
+        parameterDashboardHotspotsResponseSchema,
+        await apiClient.get<unknown>(hotspotsPath(input)),
+        "ParameterDashboardHotspotsResponse"
+      );
       return response.items.map(dashboardHotspotFromDto);
     }
   };

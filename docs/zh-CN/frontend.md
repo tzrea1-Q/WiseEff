@@ -192,6 +192,14 @@ API mode 从 `/api/v1/parameter-modules` 与 `/api/v1/debugging/admin/modules` �
 mock mode 有意保留 12 个兼容参数，以保证组件测试与演示轻量。API mode 的 `db:seed:m1` 会在 seed 时从已提交的 `aurora-board.dts` 模板额外派生 228 个 DTS 来源参数；每个落库项目值都包含 `sourceFileName=aurora-board.dts` 和含属性名的 `sourceNodePath`。修改基础 DTS 或项目差异后，运行 `npm run dts:seed:generate` 重新生成三份项目主 DTS fixture。可选：`npm run dtc:seed:compile` 在 CI 中用钉扎工具链验证 seed 板——不是产品正确性叙事的前提（seed 板为 SoT）。
 - `/parameter-home`：参数看板首页。UI 位于 `src/features/parameter-home/`，通过 `ParameterDashboardRepository` 读取 `/api/v1/parameters/dashboard/summary` 与 `/api/v1/parameters/dashboard/hotspots`。页面内 `AnalysisContextControls` 负责时间窗口与热榜维度切换；`dashboardState` 为 `summary` 与 `hotspots` 维护独立异步分区（`idle | loading | ready | empty | error`）。`derivePersonalWorkbench.ts` 基于 `WorkbenchSignals` 与角色生成待办与场景入口。
 
+API 模式的参数指标读取 canonical Binding、值、草稿、请求和历史事件，不叠加旧 semantic 数量。活跃 Binding 必须具有 present 当前值及归属正确的固定来源；已替代 Binding、已删除值和仅表示身份的来源占位均不计入。“已绑定 Definition”是这些活跃 Binding 所引用 Definition 的去重数量，不是整个 Catalog 总数；`totalParameters` 仅保留为 Binding 数量的兼容别名。删除后历史事件保留，但不恢复活跃数量。
+
+趋势和热榜窗口为过去 7、30 或 180 个完整 UTC 日，起点包含、今日 UTC 零点不包含。草稿和待审数独立反映当前状态：只有 pending canonical 请求进入审核待办；rejected/withdrawn 留在历史，可编辑草稿只计一次。canonical 风险分类尚不可用，显示“不可用”，不伪装为零或低风险；行为热度也不等于风险等级。项目和账号治理指标保留原义。汇总失败、字段不可用和查询成功的真零分别展示，各异步分区丢弃被新请求替代的响应。
+
+展示视角可选择当前范围内实际持有的较低角色，不授予权限。全部项目聚合卡片进入单项目工作台或审核队列前，先明确选择项目。canonical 热点链接保留目标支持的项目上下文，不虚构旧 parameter/module 筛选，也不承诺目标页面尚不支持的 Binding 定位。
+
+`e2e/acceptance/canonical-dashboard.acceptance.spec.ts` 在隔离的真实 API、PostgreSQL 和对象存储上，以 1440×900 验证 canonical-only 项目的创建草稿、提交、拒绝、批准、删除及项目跳转。既有首页路径验收仍位于 `e2e/acceptance/parameter-home.acceptance.spec.ts`（`PARAM-HOME-001`）。
+
 日志分析：
 
 - `/logs`：上传日志、轮询任务、展示报告和证据。上传弹窗含可选「业务域」下拉（API mode 经 `logActions.listLogDomains()` 拉取活跃域；默认「未分类（通用分析）」，域选择绝不阻塞上传；mock mode 仅显示默认项）。结论卡按 additive 的 `analysisSource` / `degradedReason` 渲染来源徽标：`rules-fallback` 显示醒目的琥珀色「降级分析 · 规则回退」徽标与原因说明；P2 提前收敛的 agent 结论（`analysisSource: "agent"` 且带 `degradedReason`）显示「降级分析 · 提前收敛」徽标与说明，绝不冒充完整分析；完整 `agent` 结果显示轻量「Agent 分析」徽标，绑定业务域时显示业务域标签；无来源的历史规则报告不渲染徽标。置信度**数字始终展示**（`/logs` 结论卡 `ConfidenceBar`、`/log-admin` 表格与 `LogRecordDrawer`）；文案由 `src/domain/logs/confidenceProvenance.ts` 的 `confidenceCaption` 按 `analysisSource` 映射：`agent` →「模型自估」（未校准的模型自估）、`rules-fallback` →「规则评分」（确定性规则引擎分数），无来源的历史报告保留原有文案（`/logs` 为「AI置信度」，`/log-admin` 为「置信度」）。管理表失败行仍显示 `-`。不隐藏数字，也不改成分档-only 展示；来源徽标与该文案相互独立。任务轮询改为自适应退避（1s×30 → 2s×45 → 5s，计划轮询总时长上限约 5 分钟，对齐 p95 ≤ 3min SLO 加余量），并保留按日志的 generation 守卫。「反馈分析质量」对话框在 API 模式下经 `submitFeedback`（`POST /api/v1/logs/:id/feedback`）真实落库：评级映射高→`helpful`、其余→`not_helpful`，问题描述作为 `note`；对话框带提交中/内联错误态，服务端接受后才关闭（mock 模式保留本地通知）。

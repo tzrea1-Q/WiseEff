@@ -45,20 +45,19 @@ export function dashboardReducer(state: DashboardState, action: DashboardAction)
     case "DASHBOARD_SET_DIMENSION":
       return { ...state, dimension: action.dimension };
     case "DASHBOARD_SET_OVERVIEW_SCOPE":
-      return { ...state, overviewScope: action.scope };
+      return {
+        ...state,
+        overviewScope: action.scope,
+        summary: state.summary.data
+          ? { ...state.summary, status: "ready", error: null }
+          : state.summary
+      };
     case "DASHBOARD_SET_PROJECT":
       return { ...state, projectScope: action.projectId };
     case "DASHBOARD_SUMMARY_LOADING":
       return { ...state, summary: { ...state.summary, status: "loading", error: null } };
     case "DASHBOARD_SUMMARY_READY": {
-      const isTrendEmpty = (point: { changeCount: number; workflowEventCount: number }) =>
-        point.changeCount === 0 && point.workflowEventCount === 0;
-      const empty =
-        state.overviewScope === "personal"
-          ? Object.values(action.data.personalKpis).every((value) => value === 0) &&
-            action.data.personalTrend.every(isTrendEmpty)
-          : action.data.kpis.totalParameters === 0 && action.data.trend.every(isTrendEmpty);
-      return { ...state, summary: { status: empty ? "empty" : "ready", data: action.data, error: null } };
+      return { ...state, summary: { status: "ready", data: action.data, error: null } };
     }
     case "DASHBOARD_SUMMARY_ERROR":
       return { ...state, summary: { ...state.summary, status: "error", error: action.error } };

@@ -1,4 +1,5 @@
 import { Flame, LayoutDashboard } from "lucide-react";
+import type { SectionStatus } from "@/application/parameters/dashboardState";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { cn } from "@/lib/utils";
 import type { WorkbenchPage } from "../workbenchPage";
@@ -6,6 +7,7 @@ import type { WorkbenchPage } from "../workbenchPage";
 type WorkbenchPageToggleProps = {
   page: WorkbenchPage;
   hotspotCount?: number;
+  hotspotStatus?: SectionStatus;
   onPageChange: (page: WorkbenchPage) => void;
   placement?: "default" | "bar";
 };
@@ -13,10 +15,19 @@ type WorkbenchPageToggleProps = {
 export function WorkbenchPageToggle({
   page,
   hotspotCount = 0,
+  hotspotStatus,
   onPageChange,
   placement = "default"
 }: WorkbenchPageToggleProps) {
   const isBar = placement === "bar";
+  const hotspotCountLabel =
+    hotspotStatus === "loading" || hotspotStatus === "idle"
+      ? "加载中"
+      : hotspotStatus === "error"
+        ? "不可用"
+        : hotspotCount > 0
+          ? String(hotspotCount)
+          : null;
 
   return (
     <ToggleGroup
@@ -53,7 +64,7 @@ export function WorkbenchPageToggle({
       >
         {isBar ? <Flame aria-hidden size={15} strokeWidth={2.2} /> : null}
         热榜
-        {hotspotCount > 0 ? (
+        {hotspotCountLabel ? (
           <span
             className={cn(
               isBar
@@ -62,7 +73,7 @@ export function WorkbenchPageToggle({
             )}
             aria-hidden="true"
           >
-            {hotspotCount}
+            {hotspotCountLabel}
           </span>
         ) : null}
       </ToggleGroupItem>
