@@ -249,6 +249,40 @@ function createPorts() {
 }
 
 describe("CanonicalSubjectPlacementPanel", () => {
+  it("pages a large subject list and searches across every page", async () => {
+    const ports = createPorts();
+    ports.listSubjects.mockReset();
+    ports.listSubjects.mockResolvedValue({
+      items: Array.from({ length: 25 }, (_, index) => subject({
+        id: `subject-${index}`,
+        canonicalName: `vendor,subject-${index}`
+      })),
+      totalCount: 25,
+      hasMore: false,
+      nextCursor: null,
+      catalogReleaseId: CATALOG_RELEASE_ID
+    } as never);
+    render(
+      <CanonicalSubjectPlacementPanel
+        catalog={ports.catalog}
+        governance={ports.governance}
+        organizationId={CATALOG_ORGANIZATION_ID}
+        actor="org-admin"
+        canAdmin
+        modules={ports.modules}
+      />
+    );
+
+    expect(await screen.findByRole("navigation", { name: "规范主体分页" })).toHaveTextContent("第 1 / 3 页");
+    expect(screen.getAllByRole("listitem", { name: /vendor,subject-/ })).toHaveLength(10);
+    await userEvent.setup().click(screen.getByRole("button", { name: "下一页" }));
+    expect(screen.getByRole("navigation", { name: "规范主体分页" })).toHaveTextContent("第 2 / 3 页");
+    expect(screen.getByRole("listitem", { name: /vendor,subject-10/ })).toBeInTheDocument();
+    await userEvent.setup().type(screen.getByRole("searchbox", { name: "筛选规范主体" }), "subject-24");
+    expect(screen.getByRole("listitem", { name: /vendor,subject-24/ })).toBeInTheDocument();
+    expect(screen.queryByRole("navigation", { name: "规范主体分页" })).not.toBeInTheDocument();
+  });
+
   it("loads all subject pages, keeps identity visible, and loads all active definitions", async () => {
     const ports = createPorts();
     render(

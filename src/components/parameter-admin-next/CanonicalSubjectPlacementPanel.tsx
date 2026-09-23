@@ -44,6 +44,8 @@ const SUBJECT_KIND_MODULE_KIND: Record<
   "configuration-schema": "business"
 };
 
+const SUBJECTS_PER_PAGE = 10;
+
 type CatalogPage<T> = {
   items: readonly T[];
   nextCursor: string | null;
@@ -141,6 +143,7 @@ export function CanonicalSubjectPlacementPanel({
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [typeFilter, setTypeFilter] = useState<"all" | SubjectRow["type"]>("all");
+  const [subjectPage, setSubjectPage] = useState(0);
   const [expandedSubjectId, setExpandedSubjectId] = useState<string | null>(null);
   const [definitionStates, setDefinitionStates] = useState<Map<string, DefinitionState>>(
     () => new Map()
@@ -188,6 +191,7 @@ export function CanonicalSubjectPlacementPanel({
       setCatalogReleaseId(release);
       setSubjects(nextSubjects);
       setRegistrations(nextRegistrations);
+      setSubjectPage(0);
     } catch (error) {
       const nextState = catalogStateFromFailure(error);
       setDomainState(nextState);
@@ -222,6 +226,11 @@ export function CanonicalSubjectPlacementPanel({
         .includes(token);
     });
   }, [search, subjects, typeFilter]);
+  const visibleSubjects = filteredSubjects.slice(
+    subjectPage * SUBJECTS_PER_PAGE,
+    (subjectPage + 1) * SUBJECTS_PER_PAGE
+  );
+  const subjectPageCount = Math.max(1, Math.ceil(filteredSubjects.length / SUBJECTS_PER_PAGE));
 
   const moduleImpactById = useMemo(() => {
     const summary = new Map<string, { subjects: number; definitions: number }>();
@@ -449,7 +458,10 @@ export function CanonicalSubjectPlacementPanel({
                 <input
                   type="search"
                   value={search}
-                  onChange={(event) => setSearch(event.target.value)}
+                  onChange={(event) => {
+                    setSearch(event.target.value);
+                    setSubjectPage(0);
+                  }}
                   placeholder="名称、别名或主体 ID"
                   aria-label="筛选规范主体"
                 />
@@ -459,9 +471,10 @@ export function CanonicalSubjectPlacementPanel({
                 <select
                   aria-label="筛选主体身份"
                   value={typeFilter}
-                  onChange={(event) =>
-                    setTypeFilter(event.target.value as "all" | SubjectRow["type"])
-                  }
+                  onChange={(event) => {
+                    setTypeFilter(event.target.value as "all" | SubjectRow["type"]);
+                    setSubjectPage(0);
+                  }}
                 >
                   <option value="all">全部</option>
                   <option value="driver">Driver</option>
@@ -471,19 +484,22 @@ export function CanonicalSubjectPlacementPanel({
               </label>
             </div>
             {moduleSummary.size > 0 ? (
-              <ul aria-label="规范模块统计">
-                {[...moduleSummary.entries()].map(([moduleId, summary]) => {
-                  const module = modules.find((item) => item.id === moduleId);
-                  return (
-                    <li key={moduleId}>
-                      <strong>{module?.name ?? moduleId}</strong>
-                      <span>
-                        {summary.subjects} 个主体 · {summary.definitions} 个有效定义
-                      </span>
-                    </li>
-                  );
-                })}
-              </ul>
+              <details>
+                <summary>规范模块统计（{moduleSummary.size} 个模块）</summary>
+                <ul aria-label="规范模块统计">
+                  {[...moduleSummary.entries()].map(([moduleId, summary]) => {
+                    const module = modules.find((item) => item.id === moduleId);
+                    return (
+                      <li key={moduleId}>
+                        <strong>{module?.name ?? moduleId}</strong>
+                        <span>
+                          {summary.subjects} 个主体 · {summary.definitions} 个有效定义
+                        </span>
+                      </li>
+                    );
+                  })}
+                </ul>
+              </details>
             ) : null}
             {filteredSubjects.length === 0 ? (
               <p className="muted" role="status">
@@ -491,7 +507,7 @@ export function CanonicalSubjectPlacementPanel({
               </p>
             ) : (
               <ul aria-label="规范主体列表">
-                {filteredSubjects.map((subject) => {
+                {visibleSubjects.map((subject) => {
                   const registration = registrationBySubjectId.get(subject.id);
                   const placement =
                     registration?.placement ??
@@ -603,6 +619,27 @@ export function CanonicalSubjectPlacementPanel({
                 })}
               </ul>
             )}
+            {filteredSubjects.length > SUBJECTS_PER_PAGE ? (
+              <nav className="parameter-module-mapping-panel__actions" aria-label="规范主体分页">
+                <button
+                  type="button"
+                  className="button subtle"
+                  disabled={subjectPage === 0}
+                  onClick={() => setSubjectPage((page) => page - 1)}
+                >
+                  上一页
+                </button>
+                <span>第 {subjectPage + 1} / {subjectPageCount} 页 · 共 {filteredSubjects.length} 个主体</span>
+                <button
+                  type="button"
+                  className="button subtle"
+                  disabled={subjectPage + 1 >= subjectPageCount}
+                  onClick={() => setSubjectPage((page) => page + 1)}
+                >
+                  下一页
+                </button>
+              </nav>
+            ) : null}
           </>
         ) : null}
       </section>
