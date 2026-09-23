@@ -304,6 +304,11 @@ describe("#906 canonical JSON candidate workflow", () => {
       ]
     });
     expect(multiPreview.bindings).toHaveLength(2);
+    expect(multiPreview.before).toContain('"limit": 36.5');
+    expect(multiPreview.after).toContain('"limit": 50');
+    expect(multiPreview.bindings?.map((binding) => [binding.beforeText, binding.afterText])).toEqual(
+      expect.arrayContaining([["36.5", "50"], ["48", "60"]])
+    );
     expect(multiPreview.bindings!.map((binding) => binding.bindingId)).toEqual(
       [...multiPreview.bindings!.map((binding) => binding.bindingId)].sort()
     );
@@ -641,13 +646,13 @@ describe("#906 canonical JSON candidate workflow", () => {
 });
 
 describe("#906 canonical DTS candidate workflow", () => {
+  const source = `/dts-v1/;\n/ {\n  charger: device@0 {\n    compatible = "acme,power";\n    iin_max = <36>;\n  };\n  backup: device@1 {\n    compatible = "acme,power";\n    iin_max = <36>;\n  };\n};\n`;
   let database: Awaited<ReturnType<typeof createEphemeralTestDatabase>>;
   let db: ReturnType<typeof createPostgresDatabase>;
   let storage: ReturnType<typeof createLocalObjectStore>;
   let storageDirectory: string;
   let fileId: string;
   let versionId: string;
-  let bindingId: string;
 
   beforeAll(async () => {
     database = await createEphemeralTestDatabase("issue906-dts-workflow");
@@ -667,7 +672,6 @@ describe("#906 canonical DTS candidate workflow", () => {
       reason: "Issue 906 DTS workflow"
     });
     const set = await createConfigSet(db, admin, { projectId: DTS_PROJECT, name: "DTS workflow" });
-    const source = `/dts-v1/;\n/ {\n  charger: device@0 {\n    compatible = "acme,power";\n    iin_max = <36>;\n  };\n};\n`;
     const uploaded = await uploadProjectParameterFile(db, storage, admin, { projectId: DTS_PROJECT, fileName: "board.dts", bytes: Buffer.from(source) });
     fileId = uploaded.file.id;
     versionId = uploaded.version.id;
@@ -691,8 +695,7 @@ describe("#906 canonical DTS candidate workflow", () => {
       configRevisionId: revision.id
     }));
     const rows = await listCatalogBindingRowsForProject(db, admin, { projectId: DTS_PROJECT });
-    expect(rows).toHaveLength(1);
-    bindingId = rows[0]!.id;
+    expect(rows).toHaveLength(2);
   }, 120_000);
 
   afterAll(async () => {
@@ -701,12 +704,80 @@ describe("#906 canonical DTS candidate workflow", () => {
     if (storageDirectory) await rm(storageDirectory, { recursive: true, force: true });
   });
 
+  it("freezes two exact DTS targets without creating a batch request", async () => {
+    const candidate = await createCandidate(db, storage, admin, {
+      projectId: DTS_PROJECT,
+      fileId,
+      fileName: "board.dts",
+      bytes: Buffer.from(source.replaceAll("iin_max = <36>", "iin_max = <77>"))
+    });
+    const preview = await previewCanonicalCandidate(db, storage, admin, { projectId: DTS_PROJECT, candidateId: candidate.id });
+    expect(preview).toMatchObject({ kind: "canonical", canSubmit: false, reason: "canonical-batch-writer-unavailable", format: "dts" });
+    expect(preview.bindings).toHaveLength(2);
+    expect(preview.bindings?.map((binding) => [binding.beforeText, binding.afterText])).toEqual([
+      ["<36>", "<77>"], ["<36>", "<77>"]
+    ]);
+    const prepared = await db.transaction((tx) => prepareCanonicalCandidateBatchInTransaction(tx, storage, admin, {
+      projectId: DTS_PROJECT,
+      candidateId: candidate.id,
+      expectedProofToken: preview.proofToken!
+    }));
+    expect(prepared).toMatchObject({ kind: "canonical-source-batch", format: "dts", targets: [
+      expect.objectContaining({ action: "set", targetText: "<77>" }),
+      expect.objectContaining({ action: "set", targetText: "<77>" })
+    ] });
+    expect(new Set(prepared.targets.map((target) => target.bindingId)).size).toBe(2);
+    const deletedBoth = await createCandidate(db, storage, admin, {
+      projectId: DTS_PROJECT,
+      fileId,
+      fileName: "board.dts",
+      bytes: Buffer.from(source.replaceAll("iin_max = <36>;", "/delete-property/ iin_max;"))
+    });
+    const deletePreview = await previewCanonicalCandidate(db, storage, admin, {
+      projectId: DTS_PROJECT, candidateId: deletedBoth.id
+    });
+    expect(deletePreview).toMatchObject({ kind: "canonical", canSubmit: false, reason: "canonical-batch-writer-unavailable" });
+    expect(deletePreview.bindings).toHaveLength(2);
+    expect(deletePreview.bindings?.map((binding) => binding.action)).toEqual(["delete", "delete"]);
+    expect(deletePreview.bindings?.map((binding) => [binding.beforeText, binding.afterText])).toEqual([
+      ["<36>", undefined], ["<36>", undefined]
+    ]);
+    const deleteProof = await db.transaction((tx) => prepareCanonicalCandidateBatchInTransaction(tx, storage, admin, {
+      projectId: DTS_PROJECT, candidateId: deletedBoth.id, expectedProofToken: deletePreview.proofToken!
+    }));
+    expect(deleteProof.targets.map((target) => target.action)).toEqual(["delete", "delete"]);
+    const changedOutsideTargets = await createCandidate(db, storage, admin, {
+      projectId: DTS_PROJECT,
+      fileId,
+      fileName: "board.dts",
+      bytes: Buffer.from(source.replaceAll("iin_max = <36>", "iin_max = <77>")
+        .replace('compatible = "acme,power"', 'compatible = "other,power"'))
+    });
+    expect(await previewCanonicalCandidate(db, storage, admin, {
+      projectId: DTS_PROJECT, candidateId: changedOutsideTargets.id
+    })).toMatchObject({ kind: "canonical", canSubmit: false });
+    await expect(submitCanonicalCandidate(db, storage, admin, {
+      projectId: DTS_PROJECT,
+      candidateId: candidate.id,
+      expectedCurrentVersionId: versionId,
+      expectedProofToken: preview.proofToken!,
+      reason: "batch request schema unavailable",
+      requestId: "906-dts-batch-refused",
+      refusalSink: createTrustedRefusalAuditSink(db)
+    })).rejects.toMatchObject({ code: "CONFLICT", details: { reason: "canonical-batch-writer-unavailable" } });
+    const state = await db.query<{ current_version_id: string; request_count: number }>(
+      `select file.current_version_id,
+              (select count(*)::int from project_parameter_value_change_requests where candidate_id=$2) as request_count
+         from project_parameter_files file where file.id=$1`, [fileId, candidate.id]);
+    expect(state.rows[0]).toEqual({ current_version_id: versionId, request_count: 0 });
+  }, 120_000);
+
   it("submits and commits one DTS pinned property and rejects non-target bytes", async () => {
     const nonTargetCandidate = await createCandidate(db, storage, admin, {
       projectId: DTS_PROJECT,
       fileId,
       fileName: "board.dts",
-      bytes: Buffer.from(`/dts-v1/;\n/ {\n  charger: device@0 {\n    compatible = "other,power";\n    iin_max = <77>;\n  };\n};\n`)
+      bytes: Buffer.from(source.replace('compatible = "acme,power"', 'compatible = "other,power"').replace("iin_max = <36>", "iin_max = <77>"))
     });
     const nonTargetPreview = await previewCanonicalCandidate(db, storage, admin, { projectId: DTS_PROJECT, candidateId: nonTargetCandidate.id });
     expect(nonTargetPreview).toMatchObject({ kind: "canonical", canSubmit: false });
@@ -715,12 +786,13 @@ describe("#906 canonical DTS candidate workflow", () => {
       projectId: DTS_PROJECT,
       fileId,
       fileName: "board.dts",
-      bytes: Buffer.from(`/dts-v1/;\n/ {\n  charger: device@0 {\n    compatible = "acme,power";\n    iin_max = <77>;\n  };\n};\n`)
+      bytes: Buffer.from(source.replace("iin_max = <36>", "iin_max = <77>"))
     });
     const preview = await previewCanonicalCandidate(db, storage, admin, { projectId: DTS_PROJECT, candidateId: candidate.id });
     const repeatPreview = await previewCanonicalCandidate(db, storage, admin, { projectId: DTS_PROJECT, candidateId: candidate.id });
     if (repeatPreview.proofToken !== preview.proofToken) throw new Error(`DTS preview proof changed between identical reads: ${preview.proofToken} ${repeatPreview.proofToken}`);
-    expect(preview).toMatchObject({ kind: "canonical", canSubmit: true, bindingId, format: "dts" });
+    expect(preview).toMatchObject({ kind: "canonical", canSubmit: true, format: "dts" });
+    expect(preview.bindings).toHaveLength(1);
     expect(preview.before).toContain("iin_max = <36>");
     expect(preview.after).toContain("iin_max = <77>");
     const submitted = await submitCanonicalCandidate(db, storage, admin, {

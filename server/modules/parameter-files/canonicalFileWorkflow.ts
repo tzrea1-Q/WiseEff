@@ -23,6 +23,7 @@ import {
   loadCanonicalSourceCohort,
   loadCanonicalSourceSnapshot,
   loadPinnedDtsProperty,
+  readPinnedDtsSourceBatchChanges,
   readPinnedDtsSourceChange,
   lockCanonicalSourceCohort,
   validatePinnedDtsSourceDeletion
@@ -70,6 +71,8 @@ export type CanonicalSourcePreviewBindingDto = {
   baseDigest: string;
   proposedDigest: string;
   action: SourceAction;
+  beforeText: string;
+  afterText?: string;
 };
 
 export type CanonicalSourcePreviewDto = {
@@ -135,6 +138,8 @@ export type CanonicalSourceBatchTargetDto = Readonly<{
   baseDigest: string;
   proposedDigest: string;
   action: SourceAction;
+  beforeText: string;
+  afterText?: string;
   targetText?: string;
 }>;
 
@@ -145,7 +150,7 @@ export type CanonicalSourceBatchPrepareDto = Readonly<{
   projectId: string;
   candidateId: string;
   fileId: string;
-  format: "json";
+  format: "json" | "dts";
   baseVersionId: string;
   configSetId: string;
   baseDigest: string;
@@ -175,6 +180,7 @@ type SourceChange = {
   binding: CanonicalSourceBindingPin;
   pin: CanonicalValueSourcePin;
   action: SourceAction;
+  beforeTargetText: string;
   targetText?: string;
   targetValue?: DtsValue;
   baseText: string;
@@ -518,6 +524,23 @@ async function inspectCandidate(
   const jsonPatchPlans: Array<{ baseBytes: Buffer; pointer: string; rootPointer: string; action: SourceAction; targetText?: string }> = [];
   let jsonBaseBytes: Buffer | undefined;
   let dtsRenderProofFailed = false;
+  let dtsBatchChanges: Awaited<ReturnType<typeof readPinnedDtsSourceBatchChanges>> | null = null;
+  if (candidate.format === "dts" && matches.length > 1) {
+    const first = matches[0]!.source;
+    const index = first.manifest.members.findIndex((member) =>
+      member.fileId === candidate.fileId && member.fileVersionId === candidate.baseVersionId);
+    if (index >= 0 && matches.every((match) =>
+      match.source.manifest.configRevisionId === first.manifest.configRevisionId
+      && match.source.files[match.source.manifest.members.findIndex((member) =>
+        member.fileId === candidate.fileId && member.fileVersionId === candidate.baseVersionId)]?.content === first.files[index]?.content)) {
+      try {
+        dtsBatchChanges = await readPinnedDtsSourceBatchChanges(
+          db, matches.map((match) => match.source.manifest), first.files[index]!.content, candidateText);
+      } catch (error) {
+        if (!(error instanceof ApiError || error instanceof SyntaxError)) throw error;
+      }
+    }
+  }
   for (const match of matches) {
     const sourceIndex = match.source.manifest.members.findIndex((member) =>
       member.fileId === candidate.fileId && member.fileVersionId === candidate.baseVersionId
@@ -528,6 +551,7 @@ async function inspectCandidate(
     if (candidateBytes.equals(baseBytes)) continue;
     try {
       let action: SourceAction;
+      let beforeTargetText: string;
       let targetText: string | undefined;
       let targetValue: DtsValue | undefined;
       if (candidate.format === "json") {
@@ -545,6 +569,7 @@ async function inspectCandidate(
           candidateTarget = undefined;
         }
         const baseTarget = readJsonSourceText(baseBytes, pointer, rootPointer);
+        beforeTargetText = baseTarget;
         if (candidateTarget === undefined) {
           // Deletion is proved against the complete candidate below; this plan
           // only records the exact pinned locator for the reconstruction.
@@ -557,46 +582,54 @@ async function inspectCandidate(
           jsonPatchPlans.push({ baseBytes, pointer, rootPointer, action, targetText });
         }
       } else {
-        const deletion = (() => {
-          try {
-            const row = match.pin.locator;
-            if (row.kind !== "dts-property" || typeof row.propertyName !== "string") return null;
-            return validatePinnedDtsSourceDeletion(db, match.source.manifest, baseText, candidateText)
-              .then(() => true);
-          } catch {
-            return null;
-          }
-        })();
-        let isDeletion = false;
-        if (deletion) {
-          try {
-            await deletion;
-            isDeletion = true;
-          } catch {
-            isDeletion = false;
-          }
-        }
-        if (isDeletion) {
-          action = "delete";
+        beforeTargetText = (await loadPinnedDtsProperty(db, match.source.manifest)).raw_text;
+        const batchTarget = dtsBatchChanges?.get(match.pin.sourcePinId);
+        if (batchTarget) {
+          action = batchTarget.action;
+          targetText = batchTarget.rawText;
+          targetValue = batchTarget.value;
         } else {
-          const read = await readPinnedDtsSourceChange(db, match.source.manifest, baseText, candidateText);
-          const row = await loadPinnedDtsProperty(db, match.source.manifest);
-          const ownerRawText = renderDtsValue(read.value);
-          const exact = ensureOverlayProperty(baseText, {
-            propertyKey: row.property_name,
-            rawText: ownerRawText,
-            action: "set",
-            targetRef: row.node_locator,
-            expectedChecksum: match.source.manifest.members[sourceIndex]!.checksum.replace(/^sha256:/, ""),
-            occurrenceSpan: { start: row.start_offset, end: row.end_offset }
-          });
-          if (exact !== candidateText) {
-            dtsRenderProofFailed = true;
-            continue;
+          const deletion = (() => {
+            try {
+              const row = match.pin.locator;
+              if (row.kind !== "dts-property" || typeof row.propertyName !== "string") return null;
+              return validatePinnedDtsSourceDeletion(db, match.source.manifest, baseText, candidateText)
+                .then(() => true);
+            } catch {
+              return null;
+            }
+          })();
+          let isDeletion = false;
+          if (deletion) {
+            try {
+              await deletion;
+              isDeletion = true;
+            } catch {
+              isDeletion = false;
+            }
           }
-          action = "set";
-          targetText = read.rawText;
-          targetValue = read.value;
+          if (isDeletion) {
+            action = "delete";
+          } else {
+            const read = await readPinnedDtsSourceChange(db, match.source.manifest, baseText, candidateText);
+            const row = await loadPinnedDtsProperty(db, match.source.manifest);
+            const ownerRawText = renderDtsValue(read.value);
+            const exact = ensureOverlayProperty(baseText, {
+              propertyKey: row.property_name,
+              rawText: ownerRawText,
+              action: "set",
+              targetRef: row.node_locator,
+              expectedChecksum: match.source.manifest.members[sourceIndex]!.checksum.replace(/^sha256:/, ""),
+              occurrenceSpan: { start: row.start_offset, end: row.end_offset }
+            });
+            if (exact !== candidateText) {
+              dtsRenderProofFailed = true;
+              continue;
+            }
+            action = "set";
+            targetText = read.rawText;
+            targetValue = read.value;
+          }
         }
       }
       const baseDigest = digest(baseBytes);
@@ -619,6 +652,7 @@ async function inspectCandidate(
         binding: match.binding,
         pin: match.pin,
         action,
+        beforeTargetText,
         ...(targetText === undefined ? {} : { targetText }),
         ...(targetValue === undefined ? {} : { targetValue }),
         baseText,
@@ -688,7 +722,9 @@ function previewBinding(change: SourceChange): CanonicalSourcePreviewBindingDto 
     locator: sourceLocator(change.pin),
     baseDigest: change.baseDigest,
     proposedDigest: change.proposedDigest,
-    action: change.action
+    action: change.action,
+    beforeText: change.beforeTargetText,
+    ...(change.targetText === undefined ? {} : { afterText: change.targetText })
   };
 }
 
@@ -714,7 +750,9 @@ function previewFromInspection(inspection: SourceInspection, request?: RequestSt
       canSubmit: false,
       ...common,
       reason: inspection.reason ?? "canonical-batch-writer-unavailable",
-      bindings: inspection.changes.map(previewBinding)
+      bindings: inspection.changes.map(previewBinding),
+      before: inspection.changes[0]!.baseText,
+      after: inspection.changes[0]!.candidateText
     };
   }
   if (!change) {
@@ -810,8 +848,8 @@ export async function prepareCanonicalCandidateBatchInTransaction(
   if (!inspection.proofToken || inspection.proofToken !== input.expectedProofToken) {
     throw new ApiError("CONFLICT", "Canonical source proof changed after preview.", { reason: "source-proof-stale" });
   }
-  if (lockedCandidate.format !== "json" || !inspection.changes || inspection.changes.length < 2 || !inspection.workflow.configSetId || !inspection.workflow.proofToken) {
-    throw new ApiError("CONFLICT", "Candidate has no exact JSON multi-Binding source change.", {
+  if ((lockedCandidate.format !== "json" && lockedCandidate.format !== "dts") || !inspection.changes || inspection.changes.length < 2 || !inspection.workflow.configSetId || !inspection.workflow.proofToken) {
+    throw new ApiError("CONFLICT", "Candidate has no exact multi-Binding source change.", {
       reason: inspection.reason ?? "canonical-batch-writer-unavailable"
     });
   }
@@ -843,7 +881,7 @@ export async function prepareCanonicalCandidateBatchInTransaction(
     projectId: input.projectId,
     candidateId: lockedCandidate.id,
     fileId: lockedCandidate.fileId!,
-    format: "json" as const,
+    format: lockedCandidate.format,
     baseVersionId: lockedCandidate.baseVersionId!,
     configSetId: inspection.workflow.configSetId,
     baseDigest: changes[0]!.baseDigest,
