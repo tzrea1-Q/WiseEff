@@ -242,17 +242,12 @@ function buildRecommendationActions(
 }
 
 function recommendationTitleFor(roleView: WorkbenchRoleView, hotspot: DashboardHotspot) {
-  if (roleView === "committer") return `查看项目审阅队列：${hotspot.title}`;
   if (roleView === "admin") return `复核管理后台关注配置：${hotspot.title}`;
   return `查看热区所在项目：${hotspot.title}`;
 }
 
 function recommendationPathFor(roleView: WorkbenchRoleView, hotspot: DashboardHotspot) {
   const projectId = new URLSearchParams(hotspot.suggestedPath.split("?")[1] ?? "").get("project");
-  if (roleView === "committer") {
-    if (hotspot.suggestedPath.startsWith("/parameter-review")) return hotspot.suggestedPath;
-    return projectId ? `/parameter-review?project=${encodeURIComponent(projectId)}` : "/parameter-review";
-  }
   if (roleView === "admin") return "/parameter-admin";
   if (hotspot.suggestedPath.startsWith("/parameters")) return hotspot.suggestedPath;
   return projectId ? `/parameters?project=${encodeURIComponent(projectId)}` : "/parameters";

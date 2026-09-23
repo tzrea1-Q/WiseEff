@@ -123,6 +123,25 @@ describe("derivePersonalWorkbench", () => {
     expect(vm.nextActions.find((action) => action.source === "hotspot")?.path).toBe("/parameters?project=project-p");
   });
 
+  it("keeps historical hotspots out of an empty reviewer queue", () => {
+    const vm = derivePersonalWorkbench({
+      roleId: "software-committer", projectScope: null,
+      signals: { ...signals, reviewQueue: 0 }, projects: [],
+      hotspots: [{
+        id: "project:project-p", kind: "project", title: "Project P",
+        projectId: "project-p", projectCode: "P", module: "项目参数",
+        statusLabel: "正常", statusLevel: "normal", score: 5,
+        scoreBreakdown: { frequency: 0, scope: 0, workflow: 5, collaboration: 0 },
+        evidence: [], trendDelta: 0, trendDirection: "flat",
+        suggestedPath: "/parameter-review?project=project-p"
+      }]
+    });
+    expect(vm.nextActions.find((action) => action.source === "hotspot")).toMatchObject({
+      title: "查看热区所在项目：Project P",
+      path: "/parameters?project=project-p"
+    });
+  });
+
   it("guest gets read-only entries only", () => {
     const vm = derivePersonalWorkbench({
       roleId: "guest",
