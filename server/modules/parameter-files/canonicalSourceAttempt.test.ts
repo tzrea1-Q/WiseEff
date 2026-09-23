@@ -58,20 +58,22 @@ describe("canonical source attempt objects", () => {
     expect(await baseStore.get(existing.storageKey)).toEqual(bytes);
   });
 
-  it("requires delete support before exposing a wrapper that can put", () => {
+  it("allows no-write replay without delete but refuses a put before object creation", async () => {
     const put = vi.fn<ObjectStore["put"]>();
     const noDeleteStore: ObjectStore = {
       put,
       get: vi.fn<ObjectStore["get"]>(),
     };
 
-    let thrown: unknown;
-    try {
-      createCanonicalSourceAttempt(noDeleteStore);
-    } catch (error) {
-      thrown = error;
-    }
-    expect(thrown).toMatchObject({
+    const attempt = createCanonicalSourceAttempt(noDeleteStore);
+    expect(attempt.objectStore.delete).toBeUndefined();
+    await attempt.cleanupAfterConfirmedRollback();
+    await expect(attempt.objectStore.put({
+      organizationId: "org-attempt-test",
+      fileName: "settings.json",
+      contentType: "application/json",
+      bytes: Buffer.from("{}"),
+    })).rejects.toMatchObject({
       code: "INTERNAL_ERROR",
       details: { reason: "canonical-source-object-cleanup-unavailable" },
     });

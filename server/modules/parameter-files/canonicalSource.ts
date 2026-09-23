@@ -291,8 +291,13 @@ export async function assertPinnedCanonicalSensitiveNodeWriteAllowed(
   }
 }
 
-/** Repeat the immutable-base patch proof at preparation and at actual apply. */
-export async function validatePinnedDtsSourceChange(db: Queryable, manifest: CanonicalSourceManifest, beforeText: string, afterText: string) {
+/** Return the exact target token after proving every non-target DTS semantic is unchanged. */
+export async function readPinnedDtsSourceChange(
+  db: Queryable,
+  manifest: CanonicalSourceManifest,
+  beforeText: string,
+  afterText: string,
+) {
   const row = await loadPinnedDtsProperty(db, manifest);
   const before = parseDts(beforeText);
   const properties = dtsProperties(before);
@@ -303,7 +308,12 @@ export async function validatePinnedDtsSourceChange(db: Queryable, manifest: Can
   if (!target || dtsNonTargetShape(before, targetIndex) !== dtsNonTargetShape(after, targetIndex)) {
     throw new ApiError("CONFLICT", "DTS patch changed non-target semantics.");
   }
-  return parseDtsValue(target.name, target.rawText).value;
+  return { rawText: target.rawText, value: parseDtsValue(target.name, target.rawText).value };
+}
+
+/** Repeat the immutable-base patch proof at preparation and at actual apply. */
+export async function validatePinnedDtsSourceChange(db: Queryable, manifest: CanonicalSourceManifest, beforeText: string, afterText: string) {
+  return (await readPinnedDtsSourceChange(db, manifest, beforeText, afterText)).value;
 }
 
 /** Reproduce the exact pinned-span removal, preserving all non-target bytes. */

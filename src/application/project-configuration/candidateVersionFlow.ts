@@ -1,8 +1,11 @@
 import type {
   ActivateParameterFileCandidateResult,
   ParameterFileCandidate,
-  ParameterFileRepository
+  ParameterFileRepository,
+  ParameterFileSourcePreview,
+  ParameterFileSourceReviewResult
 } from "@/application/ports/ParameterFileRepository";
+import { sourceReviewReason } from "./sourceReviewReason";
 
 export type CandidateFileRepository = Pick<
   ParameterFileRepository,
@@ -12,7 +15,8 @@ export type CandidateFileRepository = Pick<
   | "recomputeCandidate"
   | "abandonCandidate"
   | "activateCandidate"
->;
+> &
+  Partial<Pick<ParameterFileRepository, "getCandidateSourcePreview">>;
 
 export type CandidateActivateRole = NonNullable<
   Parameters<ParameterFileRepository["activateCandidate"]>[2]["role"]
@@ -28,8 +32,15 @@ export type CandidateVersionFlowSnapshot = {
   abandoning: boolean;
   error: string;
   activateError: string;
+  sourcePreview: ParameterFileSourcePreview | null;
+  sourcePreviewLoading: boolean;
+  sourcePreviewError: string;
+  submittingSourceReview: boolean;
+  sourceReviewError: string;
+  sourceReviewResult: ParameterFileSourceReviewResult | null;
   activateRole: CandidateActivateRole;
   canActivate: boolean;
+  canSubmitSourceReview: boolean;
   canRecompute: boolean;
   canAbandon: boolean;
 };
@@ -40,7 +51,8 @@ export type CandidateVersionFlow = CandidateVersionFlowSnapshot & {
   load(
     projectId: string,
     candidateId: string | null,
-    repo: Pick<ParameterFileRepository, "getCandidate" | "downloadCandidate">
+    repo: Pick<ParameterFileRepository, "getCandidate" | "downloadCandidate"> &
+      Partial<Pick<ParameterFileRepository, "getCandidateSourcePreview">>
   ): Promise<void>;
   clear(): void;
   /** Leave candidate canvas without wiping candidate metadata (inspector may still show it). */
@@ -52,7 +64,8 @@ export type CandidateVersionFlow = CandidateVersionFlowSnapshot & {
   ): Promise<ParameterFileCandidate>;
   recompute(
     projectId: string,
-    repo: Pick<ParameterFileRepository, "recomputeCandidate">
+    repo: Pick<ParameterFileRepository, "recomputeCandidate"> &
+      Partial<Pick<ParameterFileRepository, "getCandidateSourcePreview">>
   ): Promise<ParameterFileCandidate>;
   abandon(
     projectId: string,
@@ -64,6 +77,11 @@ export type CandidateVersionFlow = CandidateVersionFlowSnapshot & {
     input: { configSetId?: string },
     repo: Pick<ParameterFileRepository, "activateCandidate" | "getCandidate">
   ): Promise<ActivateParameterFileCandidateResult>;
+  submitSourceReview(
+    projectId: string,
+    reason: string,
+    repo: Pick<ParameterFileRepository, "submitCandidateSourceReview">
+  ): Promise<ParameterFileSourceReviewResult>;
 };
 
 function decodeSourceBytes(bytes: Uint8Array): string {
@@ -84,12 +102,42 @@ function fileToContentBase64(file: File): Promise<string> {
   });
 }
 
-function deriveGates(candidate: ParameterFileCandidate | null) {
+function deriveGates(
+  candidate: ParameterFileCandidate | null,
+  sourcePreview: ParameterFileSourcePreview | null,
+  sourcePreviewError: string,
+  sourcePreviewLoading: boolean
+) {
   const status = candidate?.status;
+  const sourcePreviewReady =
+    Boolean(candidate) &&
+    !sourcePreviewLoading &&
+    !sourcePreviewError &&
+    sourcePreview?.candidateId === candidate?.id;
+  const sourceReviewLinked =
+    sourcePreviewReady &&
+    (sourcePreview?.request?.status === "pending" ||
+      sourcePreview?.request?.status === "approved");
   return {
-    canActivate: status === "ready",
-    canRecompute: status === "blocked" || status === "stale",
-    canAbandon: status === "ready" || status === "blocked" || status === "failed" || status === "stale"
+    canActivate:
+      status === "ready" &&
+      sourcePreviewReady &&
+      sourcePreview?.kind === "legacy",
+    canSubmitSourceReview:
+      status === "ready" &&
+      sourcePreviewReady &&
+      sourcePreview?.kind === "canonical" &&
+      sourcePreview.canSubmit === true &&
+      Boolean(sourcePreview.proofToken) &&
+      !sourceReviewLinked,
+    canRecompute:
+      sourcePreviewReady &&
+      !sourceReviewLinked &&
+      (status === "blocked" || status === "stale"),
+    canAbandon:
+      sourcePreviewReady &&
+      !sourceReviewLinked &&
+      (status === "ready" || status === "blocked" || status === "failed" || status === "stale")
   };
 }
 
@@ -104,8 +152,15 @@ function emptySnapshot(): CandidateVersionFlowSnapshot {
     abandoning: false,
     error: "",
     activateError: "",
+    sourcePreview: null,
+    sourcePreviewLoading: false,
+    sourcePreviewError: "",
+    submittingSourceReview: false,
+    sourceReviewError: "",
+    sourceReviewResult: null,
     activateRole: "overlay",
     canActivate: false,
+    canSubmitSourceReview: false,
     canRecompute: false,
     canAbandon: false
   };
@@ -123,6 +178,12 @@ export function createCandidateVersionFlow(): CandidateVersionFlow {
   let abandoning = false;
   let error = "";
   let activateError = "";
+  let sourcePreview: ParameterFileSourcePreview | null = null;
+  let sourcePreviewLoading = false;
+  let sourcePreviewError = "";
+  let submittingSourceReview = false;
+  let sourceReviewError = "";
+  let sourceReviewResult: ParameterFileSourceReviewResult | null = null;
   let activateRole: CandidateActivateRole = "overlay";
   let cachedSnapshot = emptySnapshot();
 
@@ -137,8 +198,14 @@ export function createCandidateVersionFlow(): CandidateVersionFlow {
       abandoning,
       error,
       activateError,
+      sourcePreview,
+      sourcePreviewLoading,
+      sourcePreviewError,
+      submittingSourceReview,
+      sourceReviewError,
+      sourceReviewResult,
       activateRole,
-      ...deriveGates(candidate)
+      ...deriveGates(candidate, sourcePreview, sourcePreviewError, sourcePreviewLoading)
     };
   }
 
@@ -175,11 +242,32 @@ export function createCandidateVersionFlow(): CandidateVersionFlow {
     get activateError() {
       return cachedSnapshot.activateError;
     },
+    get sourcePreview() {
+      return cachedSnapshot.sourcePreview;
+    },
+    get sourcePreviewLoading() {
+      return cachedSnapshot.sourcePreviewLoading;
+    },
+    get sourcePreviewError() {
+      return cachedSnapshot.sourcePreviewError;
+    },
+    get submittingSourceReview() {
+      return cachedSnapshot.submittingSourceReview;
+    },
+    get sourceReviewError() {
+      return cachedSnapshot.sourceReviewError;
+    },
+    get sourceReviewResult() {
+      return cachedSnapshot.sourceReviewResult;
+    },
     get activateRole() {
       return cachedSnapshot.activateRole;
     },
     get canActivate() {
       return cachedSnapshot.canActivate;
+    },
+    get canSubmitSourceReview() {
+      return cachedSnapshot.canSubmitSourceReview;
     },
     get canRecompute() {
       return cachedSnapshot.canRecompute;
@@ -204,30 +292,52 @@ export function createCandidateVersionFlow(): CandidateVersionFlow {
       if (!candidateId) {
         if (generation === loadGeneration) {
           sourceText = "";
+          sourcePreview = null;
+          sourcePreviewLoading = false;
+          sourcePreviewError = "";
+          sourceReviewResult = null;
           loading = false;
           emit();
         }
         return;
       }
       loading = true;
+      sourcePreviewLoading = Boolean(repo.getCandidateSourcePreview);
       error = "";
+      sourcePreview = null;
+      sourcePreviewError = "";
+      sourceReviewError = "";
+      sourceReviewResult = null;
       emit();
       try {
-        const [item, downloaded] = await Promise.all([
+        const [item, downloaded, previewResult] = await Promise.all([
           repo.getCandidate(projectId, candidateId),
-          repo.downloadCandidate(projectId, candidateId)
+          repo.downloadCandidate(projectId, candidateId),
+          repo.getCandidateSourcePreview
+            ? repo.getCandidateSourcePreview(projectId, candidateId).then(
+                (preview) => ({ preview, error: "" }),
+                (previewError: unknown) => ({
+                  preview: null,
+                  error: previewError instanceof Error ? previewError.message : "来源预览加载失败。"
+                })
+              )
+            : Promise.resolve({ preview: null, error: "" })
         ]);
         if (generation !== loadGeneration) return;
         candidate = item;
         sourceText = decodeSourceBytes(downloaded.bytes);
+        sourcePreview = previewResult.preview;
+        sourcePreviewError = previewResult.error;
       } catch (err: unknown) {
         if (generation !== loadGeneration) return;
         candidate = null;
         sourceText = "";
+        sourcePreview = null;
         error = err instanceof Error ? err.message : "候选加载失败。";
       } finally {
         if (generation === loadGeneration) {
           loading = false;
+          sourcePreviewLoading = false;
           emit();
         }
       }
@@ -237,6 +347,12 @@ export function createCandidateVersionFlow(): CandidateVersionFlow {
       loadGeneration += 1;
       candidate = null;
       sourceText = "";
+      sourcePreview = null;
+      sourcePreviewLoading = false;
+      sourcePreviewError = "";
+      submittingSourceReview = false;
+      sourceReviewError = "";
+      sourceReviewResult = null;
       loading = false;
       uploading = false;
       activating = false;
@@ -252,6 +368,12 @@ export function createCandidateVersionFlow(): CandidateVersionFlow {
       if (!sourceText && !loading) return;
       loadGeneration += 1;
       sourceText = "";
+      sourcePreview = null;
+      sourcePreviewLoading = false;
+      sourcePreviewError = "";
+      submittingSourceReview = false;
+      sourceReviewError = "";
+      sourceReviewResult = null;
       loading = false;
       emit();
     },
@@ -268,6 +390,9 @@ export function createCandidateVersionFlow(): CandidateVersionFlow {
           ...(input.fileId ? { fileId: input.fileId } : {})
         });
         candidate = created;
+        sourcePreview = null;
+        sourcePreviewError = "";
+        sourceReviewResult = null;
         emit();
         return created;
       } catch (err: unknown) {
@@ -282,12 +407,34 @@ export function createCandidateVersionFlow(): CandidateVersionFlow {
 
     async recompute(projectId, repo) {
       if (!candidate) throw new Error("没有可重算的候选。");
+      if (sourcePreview?.request?.status === "pending" || sourcePreview?.request?.status === "approved") {
+        const message =
+          sourcePreview.request.status === "approved"
+            ? "来源审核已通过，候选仍保留审核关联，不能重算。"
+            : "已有待处理的来源审核，不能重算候选。";
+        error = message;
+        emit();
+        throw new Error(message);
+      }
       recomputing = true;
       error = "";
+      sourcePreview = null;
+      sourcePreviewError = "";
+      sourceReviewError = "";
+      sourceReviewResult = null;
+      sourcePreviewLoading = Boolean(repo.getCandidateSourcePreview);
       emit();
       try {
         const updated = await repo.recomputeCandidate(projectId, candidate.id);
         candidate = updated;
+        if (repo.getCandidateSourcePreview) {
+          try {
+            sourcePreview = await repo.getCandidateSourcePreview(projectId, updated.id);
+          } catch (previewError: unknown) {
+            sourcePreviewError =
+              previewError instanceof Error ? previewError.message : "来源预览加载失败。";
+          }
+        }
         emit();
         return updated;
       } catch (err: unknown) {
@@ -295,6 +442,7 @@ export function createCandidateVersionFlow(): CandidateVersionFlow {
         emit();
         throw err instanceof Error ? err : new Error(error);
       } finally {
+        sourcePreviewLoading = false;
         recomputing = false;
         emit();
       }
@@ -302,12 +450,22 @@ export function createCandidateVersionFlow(): CandidateVersionFlow {
 
     async abandon(projectId, repo) {
       if (!candidate) throw new Error("没有可放弃的候选。");
+      if (sourcePreview?.request?.status === "pending" || sourcePreview?.request?.status === "approved") {
+        const message =
+          sourcePreview.request.status === "approved"
+            ? "来源审核已通过，候选仍保留审核关联，不能放弃。"
+            : "已有待处理的来源审核，不能放弃候选。";
+        error = message;
+        emit();
+        throw new Error(message);
+      }
       abandoning = true;
       error = "";
       emit();
       try {
         const abandoned = await repo.abandonCandidate(projectId, candidate.id);
         candidate = abandoned;
+        sourceReviewResult = null;
         emit();
         return abandoned;
       } catch (err: unknown) {
@@ -365,6 +523,58 @@ export function createCandidateVersionFlow(): CandidateVersionFlow {
         throw err instanceof Error ? err : new Error(message);
       } finally {
         activating = false;
+        emit();
+      }
+    },
+
+    async submitSourceReview(projectId, reason, repo) {
+      if (!candidate || candidate.status !== "ready") {
+        throw new Error("只有 ready 状态的候选可以提交来源审核。");
+      }
+      if (!sourcePreview || sourcePreview.kind !== "canonical" || !sourcePreview.canSubmit) {
+        const message = sourceReviewReason(sourcePreview?.reason);
+        sourceReviewError = message;
+        error = message;
+        emit();
+        throw new Error(message);
+      }
+      const expectedCurrentVersionId = sourcePreview.baseVersionId ?? candidate.baseVersionId;
+      if (!expectedCurrentVersionId || !sourcePreview.proofToken || !reason.trim()) {
+        const message = !expectedCurrentVersionId
+          ? "缺少来源基版本，不能提交审核。"
+          : !sourcePreview.proofToken
+            ? "缺少来源一致性证明，不能提交审核。"
+            : "请填写来源变更原因。";
+        sourceReviewError = message;
+        error = message;
+        emit();
+        throw new Error(message);
+      }
+      submittingSourceReview = true;
+      sourceReviewError = "";
+      error = "";
+      emit();
+      try {
+        const result = await repo.submitCandidateSourceReview(projectId, candidate.id, {
+          expectedCurrentVersionId,
+          expectedProofToken: sourcePreview.proofToken,
+          reason: reason.trim()
+        });
+        sourceReviewResult = result;
+        sourcePreview = {
+          ...sourcePreview,
+          canSubmit: false,
+          request: { id: result.requestId, status: result.status }
+        };
+        emit();
+        return result;
+      } catch (err: unknown) {
+        sourceReviewError = err instanceof Error ? err.message : "提交来源审核失败。";
+        error = sourceReviewError;
+        emit();
+        throw err instanceof Error ? err : new Error(sourceReviewError);
+      } finally {
+        submittingSourceReview = false;
         emit();
       }
     }

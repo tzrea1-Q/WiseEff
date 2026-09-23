@@ -127,6 +127,7 @@ function makeServer(options: { db?: Database; auth?: AuthContext } = {}) {
     objectStore: {
       put: async () => { throw new Error("Unexpected object write in route-only test"); },
       get: async () => { throw new Error("Unexpected object read in route-only test"); },
+      delete: async () => undefined,
     },
     getCurrentAuthContext: () => options.auth ?? makeAuth()
   });
