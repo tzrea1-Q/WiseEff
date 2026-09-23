@@ -21,8 +21,13 @@ import * as topologyService from "../parameter-topology/service";
 import * as configSetService from "../parameter-files/configSetService";
 import * as projects from "../projects/repository";
 import * as importStaging from "./drafts/importService";
+import * as sourceDiff from "../parameter-files/canonicalSourceDiff";
 
 vi.mock("./drafts/importService", () => ({ stageCanonicalImportBatch: vi.fn() }));
+vi.mock("../parameter-files/canonicalSourceDiff", async (importOriginal) => ({
+  ...await importOriginal<typeof import("../parameter-files/canonicalSourceDiff")>(),
+  readCanonicalBatchSourceDiff: vi.fn()
+}));
 afterEach(() => vi.restoreAllMocks());
 
 vi.mock("./catalogProjectValueSync", async (importOriginal) => {
@@ -89,6 +94,8 @@ vi.mock("./drafts", async (importOriginal) => {
     listCanonicalValueDraftsForUser: vi.fn(),
     removeCanonicalValueDraft: vi.fn(),
     listCanonicalValueChangesForAuth: vi.fn(),
+    approveCanonicalBatchValueChange: vi.fn(),
+    getCanonicalBatchValueChangeForReviewer: vi.fn(),
     reviewCanonicalValueChange: vi.fn(),
     submitCanonicalValueChange: vi.fn(),
     withdrawCanonicalValueChange: vi.fn()
@@ -981,7 +988,8 @@ describe("canonical value change request routes", () => {
   it("routes approval authorization to the shared audited owner", async () => {
     const db = makeDb();
     vi.mocked(catalogSync.loadPublishedCatalog).mockResolvedValue({} as never);
-    vi.mocked(db.query).mockResolvedValue({ rows: [{ format: "json", config_revision_id: "revision-1" }] });
+    vi.mocked(db.query).mockResolvedValueOnce({ rows: [{ request_kind: "single" }] } as never)
+      .mockResolvedValue({ rows: [{ format: "json", config_revision_id: "revision-1" }] });
     const viewer = makeAuth({ permissions: ["parameter:view", "parameter:review"] });
     vi.mocked(drafts.reviewCanonicalValueChange).mockRejectedValueOnce(new ApiError("FORBIDDEN", "Parameter edit permission is required."));
 
@@ -997,6 +1005,7 @@ describe("canonical value change request routes", () => {
 
   it("lets an editor reject a pending request without a sensitive-node check", async () => {
     const db = makeDb();
+    vi.mocked(db.query).mockResolvedValueOnce({ rows: [{ request_kind: "single" }] } as never);
     vi.mocked(drafts.reviewCanonicalValueChange).mockResolvedValue({
       ...changeRequest,
       status: "rejected",
@@ -1013,6 +1022,74 @@ describe("canonical value change request routes", () => {
     expect(response.status).toBe(200);
     expect(drafts.reviewCanonicalValueChange).toHaveBeenCalled();
     expect(sensitiveNode.assertTrustedSensitiveNodeWriteAllowed).not.toHaveBeenCalled();
+  });
+
+  it("routes one frozen batch proof to the whole-cohort reviewer transaction", async () => {
+    const db = makeDb();
+    const proof = "a".repeat(64);
+    const batch = { id: "pvcr-batch", status: "approved", batchProofDigest: proof,
+      targets: [{ ordinal: 0, bindingId: "binding-a" }, { ordinal: 1, bindingId: "binding-b" }] };
+    vi.mocked(db.query).mockResolvedValue({ rows: [{ request_kind: "batch" }] } as never);
+    vi.mocked(catalogSync.loadPublishedCatalog).mockResolvedValue({} as never);
+    vi.mocked(drafts.approveCanonicalBatchValueChange).mockResolvedValue(batch as never);
+    vi.mocked(drafts.getCanonicalBatchValueChangeForReviewer).mockResolvedValue(batch as never);
+
+    const response = await requestJson<{ item: typeof batch }>(
+      makeServer({ db }),
+      "/api/v2/projects/project-1/parameter-value-change-requests/pvcr-batch/review",
+      { method: "POST", body: JSON.stringify({ decision: "approve", batchProofDigest: proof }) }
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.body.item).toEqual(batch);
+    expect(drafts.approveCanonicalBatchValueChange).toHaveBeenCalledWith(
+      db, expect.anything(), expect.anything(), expect.anything(),
+      expect.objectContaining({ requestId: "pvcr-batch", batchProofDigest: proof })
+    );
+    expect(drafts.reviewCanonicalValueChange).not.toHaveBeenCalled();
+  });
+
+  it("returns the complete ordered batch only through the reviewer-scoped read", async () => {
+    const db = makeDb();
+    const batch = { id: "pvcr-batch", batchProofDigest: "a".repeat(64), status: "pending",
+      targets: [{ ordinal: 0, bindingId: "binding-a" }, { ordinal: 1, bindingId: "binding-b" }] };
+    vi.mocked(drafts.getCanonicalBatchValueChangeForReviewer).mockResolvedValue(batch as never);
+
+    const response = await requestJson<{ item: typeof batch }>(
+      makeServer({ db }), "/api/v2/projects/project-1/parameter-value-change-requests/pvcr-batch/batch"
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.body.item).toEqual(batch);
+    expect(drafts.getCanonicalBatchValueChangeForReviewer).toHaveBeenCalledWith(
+      db, expect.anything(), { projectId: "project-1", requestId: "pvcr-batch" }
+    );
+  });
+
+  it("reads the same frozen batch proof and ordered source targets for review", async () => {
+    const db = makeDb();
+    const proof = "a".repeat(64);
+    const diff = { requestId: "pvcr-batch", candidateId: "candidate-batch", kind: "batch", batchProofDigest: proof,
+      targets: [
+        { ordinal: 0, bindingId: "binding-a", sourcePinId: "pin-a", action: "set" },
+        { ordinal: 1, bindingId: "binding-b", sourcePinId: "pin-b", action: "set" }
+      ] };
+    vi.mocked(db.query).mockResolvedValue({ rows: [{ request_kind: "batch" }] } as never);
+    vi.mocked(drafts.getCanonicalBatchValueChangeForReviewer).mockResolvedValue({
+      id: "pvcr-batch", candidateId: "candidate-batch", batchProofDigest: proof, targets: diff.targets
+    } as never);
+    vi.mocked(sourceDiff.readCanonicalBatchSourceDiff).mockResolvedValue(diff as never);
+
+    const response = await requestJson<{ item: typeof diff }>(
+      makeServer({ db }),
+      "/api/v2/projects/project-1/parameter-value-change-requests/pvcr-batch/source-diff"
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.body.item).toEqual(diff);
+    expect(sourceDiff.readCanonicalBatchSourceDiff).toHaveBeenCalledWith(
+      db, expect.anything(), expect.anything(), { projectId: "project-1", requestId: "pvcr-batch" }
+    );
   });
 });
 

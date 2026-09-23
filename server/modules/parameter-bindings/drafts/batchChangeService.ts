@@ -2,6 +2,7 @@
 import { randomUUID } from "node:crypto";
 
 import { serializeContract, type ContractJsonValue } from "../../parameter-catalog-contract";
+import type { CatalogSnapshot } from "../../catalog-kernel/interface";
 import type { Database } from "../../../shared/database/client";
 import { ApiError } from "../../../shared/http/errors";
 import type { AuthContext } from "../../auth/types";
@@ -13,6 +14,7 @@ import { getProjectById } from "../../projects/repository";
 import { lockUserById } from "../../users/repository";
 import { hasCurrentCanonicalReviewRole, hasEligibleWorkflowAssignee, listEligibleWorkflowAssignees } from "../../parameters/reviewWorkflowRepository";
 import { prepareCanonicalCandidateBatchInTransaction } from "../../parameter-files/canonicalFileWorkflow";
+import { commitCanonicalSourceBatchRevision } from "../../parameter-files/canonicalSourceBatchCommit";
 import { parseJsonSource } from "../../parameter-files/jsonSource";
 import { recordCanonicalPermissionRefusal, requireCanonicalUserInvocation, type CanonicalSourceSecurityContext } from "../../parameter-files/canonicalSource";
 
@@ -319,18 +321,74 @@ export async function submitCanonicalBatchValueChange(
 
 /** B reviewer handoff: one request ID and all targets under a current DB role check. */
 export async function getCanonicalBatchValueChangeForReviewer(
-  db: Database, auth: AuthContext, input: { projectId: string; requestId: string }
+  db: Database, auth: AuthContext, input: { projectId: string; requestId: string },
+  security?: CanonicalSourceSecurityContext
 ): Promise<CanonicalBatchChangeRequestDto | null> {
+  if (security) await requireCanonicalUserInvocation(auth, security, {
+    projectId: input.projectId, operation: "canonical batch approve",
+    targetType: "project-parameter-value-change-request", targetId: input.requestId
+  });
   if (!await getProjectById(db, { organizationId: auth.organization.id, projectId: input.projectId })) {
     throw new ApiError("NOT_FOUND", "Project was not found for this organization.");
   }
-  if (!canReviewParameters(auth) || !canReviewParameterStage(auth, input.projectId, "software_review")) {
+  const denyReview = async () => {
+    if (security) await recordCanonicalPermissionRefusal(security, {
+      projectId: input.projectId, operation: "canonical batch approve",
+      targetType: "project-parameter-value-change-request", targetId: input.requestId,
+      details: { permission: "parameter:edit-and-review", reason: "current-review-role-required" }
+    });
     throw new ApiError("FORBIDDEN", "The software review role is required.");
+  };
+  if (!canReviewParameters(auth) || !canReviewParameterStage(auth, input.projectId, "software_review")
+    || (security && !canEditParameters(auth, input.projectId))) {
+    await denyReview();
   }
   return db.transaction(async (tx) => {
     if (!await hasCurrentCanonicalReviewRole(tx, {
       organizationId: auth.organization.id, projectId: input.projectId, userId: auth.user.id
-    })) throw new ApiError("FORBIDDEN", "The software review role is required.");
+    })) await denyReview();
     return loadBatchRequest(tx, auth.organization.id, input.projectId, input.requestId);
   });
+}
+
+/** Adapt the existing reviewer transaction to D's exact whole-cohort commit. */
+export async function approveCanonicalBatchValueChange(
+  tx: Database,
+  objectStore: ObjectStore,
+  auth: AuthContext,
+  snapshot: CatalogSnapshot,
+  input: {
+    projectId: string;
+    requestId: string;
+    batchProofDigest: string;
+    invocation: TrustedInvocationContext;
+    traceId: string;
+    refusalSink: TrustedRefusalAuditSink;
+    note?: string | null;
+  }
+): Promise<CanonicalBatchChangeRequestDto> {
+  const frozen = await getCanonicalBatchValueChangeForReviewer(tx, auth, input, {
+    invocation: input.invocation, requestId: input.traceId, refusalSink: input.refusalSink
+  });
+  if (!frozen) throw new ApiError("NOT_FOUND", "Canonical batch request was not found.");
+  if (!/^[0-9a-f]{64}$/.test(input.batchProofDigest)
+    || frozen.batchProofDigest !== input.batchProofDigest) {
+    throw new ApiError("CONFLICT", "Canonical batch review proof disagrees with the frozen request.", {
+      reason: "canonical-batch-proof-mismatch"
+    });
+  }
+  const applied = await commitCanonicalSourceBatchRevision(tx, objectStore, auth, snapshot, {
+    projectId: input.projectId, requestId: input.requestId,
+    invocation: input.invocation, traceId: input.traceId,
+    refusalSink: input.refusalSink, note: input.note ?? null
+  });
+  const result = await loadBatchRequest(tx, auth.organization.id, input.projectId, input.requestId);
+  if (applied.batchProofDigest !== input.batchProofDigest || !result
+    || result.status !== "approved" || result.batchProofDigest !== input.batchProofDigest
+    || result.targets.length < 2 || result.targets.some((target, ordinal) =>
+      target.ordinal !== ordinal || !target.appliedValueId || !target.appliedHistoryEventId
+      || !target.appliedSourcePinId || !target.appliedFileVersionId)) {
+    throw new ApiError("CONFLICT", "Canonical batch review has no complete ordered result.");
+  }
+  return result;
 }

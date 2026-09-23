@@ -45,6 +45,7 @@ export {
   type CanonicalValueChangeRequestRow
 } from "./changeRepository";
 export {
+  approveCanonicalBatchValueChange,
   getCanonicalBatchValueChangeForReviewer,
   submitCanonicalBatchValueChange,
   type CanonicalBatchChangeRequestDto

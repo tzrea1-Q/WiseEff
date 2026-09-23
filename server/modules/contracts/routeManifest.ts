@@ -645,6 +645,13 @@ export const routeManifest = [
     stability: "mvp"
   },
   {
+    id: "parameterTopology.getProjectValueBatchChangeRequest",
+    method: "GET",
+    path: "/api/v2/projects/:projectId/parameter-value-change-requests/:requestId/batch",
+    module: "parameters",
+    stability: "mvp"
+  },
+  {
     id: "parameterTopology.reviewProjectValueChangeRequest",
     method: "POST",
     path: "/api/v2/projects/:projectId/parameter-value-change-requests/:requestId/review",
