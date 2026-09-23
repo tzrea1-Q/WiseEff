@@ -316,6 +316,23 @@ async function verifyHistoricalRelocationRecord(
   }, config) };
 }
 
+/** Prove a complete fixed historical record; active-file subsets never apply to history. */
+export function verifyHistoricalRelocationProof(
+  repoRoot: string,
+  fixture: BoundaryViolationFixture,
+  allowances: readonly AllowlistEntry[],
+  fixedConfig: RelocationConfig,
+  provenance: { commit: string; tree: string },
+) {
+  return verifyHistoricalRelocationRecord(
+    repoRoot,
+    fixture,
+    allowances,
+    { ...fixedConfig, activeFiles: undefined },
+    provenance,
+  );
+}
+
 export function verifyHistoricalEditServiceVersionIndexRelocation(
   repoRoot: string, fixture: BoundaryViolationFixture, allowances: readonly AllowlistEntry[],
 ) {
