@@ -1244,7 +1244,7 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
     expect(nodeDebuggingCase).not.toContain("debuggingGateway={debuggingGateway}");
   });
 
-  it("requires an http(s) merge link before confirming software merge", async () => {
+  it("does not revive a legacy software-merge task in the canonical API queue", async () => {
     window.history.replaceState(null, "", "/parameter-review");
     const mergeRequest = {
       ...initialState.changeRequests.find((request) => request.status === "软件User合入")!,
@@ -1279,31 +1279,10 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
       />
     );
 
-    const reviewDetail = await screen.findByRole("complementary", { name: "审阅详情" });
-    const confirm = within(reviewDetail).getByRole("button", { name: "确认合入" });
-    expect(confirm).toBeDisabled();
-    const mergeLinkInput = reviewDetail.querySelector("#review-merge-link") as HTMLInputElement;
-    expect(mergeLinkInput).toBeTruthy();
-
-    fireEvent.change(mergeLinkInput, {
-      target: { value: "not-a-url" }
-    });
-    expect(confirm).toBeDisabled();
-
-    fireEvent.change(mergeLinkInput, {
-      target: { value: "https://example.com/mr/42" }
-    });
-    expect(confirm).toBeEnabled();
-    fireEvent.click(confirm);
-
-    await waitFor(() =>
-      expect(reviewChange).toHaveBeenCalledWith({
-        requestId: "merge-link-required",
-        decision: "advance",
-        note: "https://example.com/mr/42",
-        ...(mergeRequest.baseVersion !== undefined ? { expectedVersion: mergeRequest.baseVersion } : {})
-      })
-    );
+    await waitFor(() => expect(parameterRepository.listChangeRequests).toHaveBeenCalled());
+    expect(screen.queryByRole("button", { name: "确认合入" })).not.toBeInTheDocument();
+    expect(screen.queryByText(mergeRequest.title)).not.toBeInTheDocument();
+    expect(reviewChange).not.toHaveBeenCalled();
   });
 
   it("shows the merge link card and timeline link after software merge", async () => {
@@ -1402,7 +1381,7 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
     expect(reviewDetail.querySelector(".merge-link-card")).toBeNull();
   });
 
-  it("advances an API-hydrated review with the request baseVersion as expectedVersion", async () => {
+  it("keeps an API-hydrated legacy hardware review out of current canonical work", async () => {
     window.history.replaceState(null, "", "/parameter-review");
     const apiReview = {
       ...initialState.changeRequests[0],
@@ -1440,14 +1419,10 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
       />
     );
 
-    expect(await screen.findAllByText(apiReview.title)).not.toHaveLength(0);
-    fireEvent.click(within(screen.getByRole("complementary", { name: "审阅详情" })).getByRole("button", { name: "推进流程" }));
-
-    await waitFor(() => expect(parameterRepository.reviewChange).toHaveBeenCalledWith({
-      requestId: "api-review-with-version",
-      decision: "advance",
-      expectedVersion: 7
-    }));
+    await waitFor(() => expect(parameterRepository.listChangeRequests).toHaveBeenCalled());
+    expect(screen.queryByText(apiReview.title)).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "推进流程" })).not.toBeInTheDocument();
+    expect(parameterRepository.reviewChange).not.toHaveBeenCalled();
   });
 
   it("hydrates parameter runtime state while preserving unrelated local state", () => {
@@ -1477,27 +1452,8 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
     expect(next.parameters).toEqual([apiParameter]);
     expect(next.changeRequests).toEqual([]);
     expect(next.parameterDrafts).toEqual([apiDraft]);
-    expect(next.parameterSubmissionRounds).toEqual([
-      expect.objectContaining({
-        id: "draft-api-draft-1",
-        projectId: apiProject.id,
-        projectName: apiProject.name,
-        createdAt: apiDraft.updatedAt,
-        status: "\u5df2\u6682\u5b58",
-        items: [
-          expect.objectContaining({
-            parameterId: apiParameter.id,
-            name: apiParameter.name,
-            module: apiParameter.module,
-            currentValue: apiParameter.currentValue,
-            targetValue: apiDraft.targetValue,
-            unit: apiParameter.unit,
-            risk: apiParameter.risk,
-            reason: apiDraft.reason
-          })
-        ]
-      })
-    ]);
+    // API drafts retain their owner identity and never become legacy rounds.
+    expect(next.parameterSubmissionRounds).toEqual([]);
     expect(next.configDraft.projects).toEqual([apiProject]);
     expect(next.activeProjectId).toBe(state.activeProjectId);
     expect(next.activeRoleId).toBe(state.activeRoleId);

@@ -102,6 +102,50 @@ describe("ParameterReviewPage deep link", () => {
       expect(new URLSearchParams(window.location.search).get("request")).toBe(target!.id);
     });
   });
+
+  it("keeps an API legacy terminal deep link in read-only history", async () => {
+    const state = hardwareCommitterState();
+    const legacy = {
+      ...state.changeRequests[0],
+      id: "legacy-terminal-request",
+      status: "已合入" as const
+    };
+    const listProjectValueChangeRequests = vi.fn().mockResolvedValue({ items: [] });
+    const getProjectValueChangeSourceDiff = vi.fn();
+    const runtime = {
+      parameterCatalogRepository: {
+        listProjectValueChangeRequests,
+        getProjectValueChangeSourceDiff,
+        reviewProjectValueChangeRequest: vi.fn()
+      }
+    } as unknown as AppRuntime;
+
+    window.history.replaceState(null, "", `/parameter-review?project=aurora&request=${legacy.id}`);
+    render(
+      <TopBarActionsContext.Provider value={{ setActions: () => {} }}>
+        <ParameterReviewPage
+          state={{ ...state, changeRequests: [legacy] }}
+          dispatch={vi.fn()}
+          onNavigate={() => {}}
+          search={`?project=aurora&request=${legacy.id}`}
+          runtime={runtime}
+          runtimeMode="api"
+        />
+      </TopBarActionsContext.Provider>
+    );
+
+    const panel = await screen.findByRole("region", { name: "软件配置审核" });
+    await waitFor(() => expect(listProjectValueChangeRequests).toHaveBeenCalledWith("aurora", { status: "pending" }));
+    expect(within(panel).queryByRole("alert")).not.toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "历史审阅" })).toHaveAttribute("aria-selected", "true");
+    expect(document.querySelector("tr.selected-row")?.textContent ?? "").toContain(legacy.title);
+    await waitFor(() => {
+      const params = new URLSearchParams(window.location.search);
+      expect(params.get("legacyRequest")).toBe(legacy.id);
+      expect(params.get("request")).toBeNull();
+    });
+    expect(getProjectValueChangeSourceDiff).not.toHaveBeenCalled();
+  });
 });
 
 describe("ParameterReviewPage batch advance", () => {

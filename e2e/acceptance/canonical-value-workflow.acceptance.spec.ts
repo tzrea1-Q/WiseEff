@@ -10,7 +10,7 @@ import { installConfigurationSourceFixture } from "../../server/testing/paramete
 import { makeTestAuthContext } from "../../server/testing/authContext";
 import { catalogBindingExportResponseSchema } from "../../server/modules/contracts/dtoSchemas/parameterCatalog";
 import { createPostgresDatabase } from "../../server/shared/database/client";
-import { authHeadersForRole, signInBrowserAsRole } from "./helpers/bearerAuth";
+import { authHeadersForRole, authHeadersForUser, signInBrowserAsRole } from "./helpers/bearerAuth";
 import { acceptanceCast } from "./helpers/cast";
 import { withPgClient } from "./helpers/database";
 import { apiRoute } from "./helpers/runtime";
@@ -180,6 +180,19 @@ test.describe("canonical value workflow on real sources", () => {
     expect(rows).toHaveLength(1);
     bindingId = rows[0].id;
     initialValueId = rows[0].currentValueId;
+    await withPgClient(async (client) => {
+      expect((await client.query(`select id from project_parameter_bindings where project_id=$1`, [projectId])).rows).toEqual([]);
+      expect((await client.query(`select id from parameter_submission_rounds where project_id=$1`, [projectId])).rows).toEqual([]);
+      await client.query(`insert into user_role_bindings(id,user_id,organization_id,project_id,role_id)
+        values ('tracking-nonowner',$1,$2,$3,'hardware-user')`, [acceptanceCast.zhaoHeng.userId, organizationId, projectId]);
+      await client.query(`insert into organizations(id,name) values ('tracking-foreign-org','Tracking foreign tenant')`);
+      await client.query(`insert into projects(id,organization_id,name,code,status)
+        values ('tracking-foreign-project','tracking-foreign-org','Foreign','TRACKFOREIGN','initialized')`);
+      await client.query(`insert into users(id,organization_id,name,email,title)
+        values ('tracking-scoped-user',$1,'Tracking scoped','tracking-scoped@example.test','Software')`, [organizationId]);
+      await client.query(`insert into user_role_bindings(id,user_id,organization_id,project_id,role_id)
+        values ('tracking-scoped-role','tracking-scoped-user',$1,$2,'software-user')`, [organizationId, projectId]);
+    });
   });
 
   test.afterAll(async ({}, info) => {
@@ -252,7 +265,7 @@ test.describe("canonical value workflow on real sources", () => {
     await page.reload();
     await expect(page.getByRole("heading", { name: "本轮已修改" })).toHaveCount(0);
     await createDraft();
-    await submit();
+    const withdrawnId = await submit();
     const reloadedDrafts = page.waitForResponse(r => r.request().method() === "GET"
       && r.url().endsWith(`/projects/${projectId}/parameter-value-drafts`));
     await page.reload();
@@ -265,14 +278,45 @@ test.describe("canonical value workflow on real sources", () => {
     const withdrawn = page.waitForResponse(r => r.request().method() === "POST" && r.url().endsWith("/withdraw"));
     await review.getByRole("button", { name: "撤回我的提交" }).click();
     expect((await withdrawn).ok()).toBe(true);
+    const assertTracking = async (requestId: string, status: string) => {
+      const listed = await request.get(apiRoute(`/api/v2/projects/${projectId}/parameter-value-change-requests?mine=true`), {
+        headers: authHeadersForRole("software-user")
+      });
+      expect(listed.status(), await listed.text()).toBe(200);
+      expect((await listed.json()).items).toContainEqual(expect.objectContaining({ id: requestId, status, submitterUserId: acceptanceCast.liuMin.userId }));
+      await signInBrowserAsRole(page, "software-user", `${runtime.frontendUrl}/parameter-submissions?project=${projectId}&request=${requestId}`);
+      await expect(page.getByRole("combobox", { name: "项目", exact: true })).toContainText("Canonical review local");
+      await expect(page.getByText(requestId, { exact: true }).first()).toBeVisible();
+      await expect(page.getByLabel("固定源变更前")).toBeVisible();
+      await page.reload();
+      await expect(page.getByText(requestId, { exact: true }).first()).toBeVisible();
+      await expect(page.getByLabel("固定源变更前")).toBeVisible();
+      await page.screenshot({ path: info.outputPath(`tracking-${status}.png`), animations: "disabled" });
+    };
+    await assertTracking(withdrawnId, "withdrawn");
     await openParameters();
-    await submit();
+    const rejectedId = await submit();
     review = await openReview("software-committer");
     const rejected = page.waitForResponse(r => r.request().method() === "POST" && r.url().endsWith("/review"));
     await review.getByRole("button", { name: "驳回", exact: true }).click();
     expect((await rejected).ok()).toBe(true);
+    await assertTracking(rejectedId, "rejected");
     await openParameters();
-    await submit();
+    const approvedId = await submit();
+    const nonownerHeaders = authHeadersForUser(acceptanceCast.zhaoHeng.userId, acceptanceCast.zhaoHeng.email, acceptanceCast.zhaoHeng.name);
+    const nonowner = await request.get(apiRoute(`/api/v2/projects/${projectId}/parameter-value-change-requests`), { headers: nonownerHeaders });
+    expect(nonowner.status(), await nonowner.text()).toBe(200);
+    expect((await nonowner.json()).items).toEqual([]);
+    const hiddenDiff = await request.get(apiRoute(`/api/v2/projects/${projectId}/parameter-value-change-requests/${approvedId}/source-diff`), { headers: nonownerHeaders });
+    expect(hiddenDiff.status()).toBe(404);
+    const crossProject = await request.get(apiRoute(`/api/v2/projects/aurora/parameter-value-change-requests/${approvedId}/source-diff`), { headers: authHeadersForRole("software-user") });
+    expect(crossProject.status()).toBe(404);
+    const foreign = await request.get(apiRoute("/api/v2/projects/tracking-foreign-project/parameter-value-change-requests?mine=true"), { headers: authHeadersForRole("admin") });
+    expect(foreign.status()).toBe(404);
+    const outsideScope = await request.get(apiRoute("/api/v2/projects/aurora/parameter-value-change-requests?mine=true"), {
+      headers: authHeadersForUser("tracking-scoped-user", "tracking-scoped@example.test", "Tracking scoped")
+    });
+    expect(outsideScope.status()).toBe(403);
     review = await openReview("software-committer");
     await expect(review.getByLabel("固定源变更后")).toContainText("1200");
     await page.screenshot({ path: info.outputPath("canonical-software-review.png"), animations: "disabled" });
@@ -281,6 +325,24 @@ test.describe("canonical value workflow on real sources", () => {
     const response = await approved;
     expect(response.ok(), await response.text()).toBe(true);
     expect((await response.json()).item.status).toBe("approved");
+    await assertTracking(approvedId, "approved");
+    const rejectedRow = page.getByRole("table", { name: "我的参数提交请求" }).getByRole("row").filter({ hasText: "已驳回" });
+    const selectRejected = rejectedRow.getByRole("button", { name: "查看请求", exact: true });
+    await selectRejected.focus();
+    await selectRejected.press("Enter");
+    await expect(page).toHaveURL(new RegExp(`request=${rejectedId}$`));
+    await expect(page.getByText(rejectedId, { exact: true })).toBeVisible();
+    await expect(page.getByLabel("固定源变更前")).toBeVisible();
+    await expect(selectRejected).toBeFocused();
+    await page.reload();
+    await expect(page.getByText(rejectedId, { exact: true })).toBeVisible();
+    await signInBrowserAsRole(page, "software-user", `${runtime.frontendUrl}/parameter-submissions?project=${projectId}&request=missing-request`);
+    await expect(page.getByRole("alert").filter({ hasText: /失效|不存在|不可用|无权/ })).toBeVisible();
+    await expect(page.getByLabel("固定源变更前")).toHaveCount(0);
+    await page.getByRole("combobox", { name: "项目", exact: true }).click();
+    await page.getByRole("option", { name: /Aurora disposable/ }).click();
+    await expect(page).toHaveURL(/parameter-submissions\?project=aurora$/);
+    await expect(page.getByLabel("固定源变更前")).toHaveCount(0);
     const approvedBinding = (await bindings(request))[0];
     expect(approvedBinding).toMatchObject({ id: bindingId, rawValue: "<1200>" });
     expect(approvedBinding.currentValueId).not.toBe(initialValueId);
@@ -313,6 +375,7 @@ test.describe("canonical value workflow on real sources", () => {
     expect(restart.replacementProcessIdentity.commandSha256).toMatch(/^[a-f0-9]{64}$/);
     const afterRestartBinding = (await bindings(request))[0];
     expect(afterRestartBinding).toEqual(approvedBinding);
+    await assertTracking(approvedId, "approved");
     const exportedAfterRestart = await request.get(apiRoute(`/api/v2/projects/${projectId}/parameter-bindings/${bindingId}/export`), {
       headers: authHeadersForRole("software-user")
     });
