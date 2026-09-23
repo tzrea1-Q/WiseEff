@@ -3,41 +3,41 @@ import { randomUUID } from "node:crypto";
 import pg from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
-import { compileCatalogRelease } from "../catalog-kernel/compiler/index";
+import { compileCatalogRelease } from "../../catalog-kernel/compiler/index";
 import {
   refreshAuthoritativeSource,
   validCatalogReleaseBundle,
-} from "../catalog-kernel/compiler/__fixtures__/catalogReleaseBundle";
-import type { CatalogReleaseBundle, CatalogReleaseDefinitionDocument } from "../catalog-kernel/compiler/types";
+} from "../../catalog-kernel/compiler/__fixtures__/catalogReleaseBundle";
+import type { CatalogReleaseBundle, CatalogReleaseDefinitionDocument } from "../../catalog-kernel/compiler/types";
 import {
   createCatalogKernel,
   jsonCatalogReleaseSource,
   type CatalogSnapshot,
-} from "../catalog-kernel/interface";
-import { installPublishedRelease } from "../catalog-kernel/install/installer";
+} from "../../catalog-kernel/interface";
+import { installPublishedRelease } from "../../catalog-kernel/install/installer";
 import {
   CatalogSubjectId,
   DefinitionRevisionId,
   ParameterDefinitionId,
   type CatalogReleasePin,
-} from "../parameter-catalog-contract/index";
-import type { RegisterSubjectCommand } from "../parameter-governance/registration/command";
-import { writeGuardedRegistration } from "../parameter-governance/registration/internalGuardedRegistrationWriter";
+} from "../../parameter-catalog-contract/index";
+import type { RegisterSubjectCommand } from "../../parameter-governance/registration/command";
+import { writeGuardedRegistration } from "../../parameter-governance/registration/internalGuardedRegistrationWriter";
 import {
   createEphemeralTestDatabase,
   isTestDatabaseAvailable,
   type EphemeralTestDatabase,
-} from "../../testing/testDatabase";
-import { makeTestAuthContext } from "../../testing/authContext";
-import { createPostgresDatabase, type RootDatabase } from "../../shared/database/client";
+} from "../../../testing/testDatabase";
+import { makeTestAuthContext } from "../../../testing/authContext";
+import { createPostgresDatabase, type RootDatabase } from "../../../shared/database/client";
 import {
   dropLabRuntimeLogins,
   provisionPublicationRuntimeLogins,
   type ProvisionedRuntimeLogins,
-} from "../catalog-publication/runtime/provisionRuntimeLogins";
-import { casEffectiveRevision } from "../parameter-bindings/binding/repositories";
-import { appendSourceCommittedValue, createSourceBackedBindingService } from "../parameter-bindings/binding/__fixtures__/sourceBackedBinding";
-import { getBindingCompare, getBindingHistory } from "./service";
+} from "../../catalog-publication/runtime/provisionRuntimeLogins";
+import { casEffectiveRevision } from "../binding/repositories";
+import { appendSourceCommittedValue, createSourceBackedBindingService } from "../binding/__fixtures__/sourceBackedBinding";
+import { getBindingCompare, getBindingHistory } from "../../parameter-topology/service";
 
 const databaseAvailable = await isTestDatabaseAvailable();
 if (!databaseAvailable) {
