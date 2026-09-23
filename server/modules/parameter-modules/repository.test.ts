@@ -5,54 +5,46 @@ import { readRegistry, type RegistryCatalogSnapshot } from "./repository";
 
 describe("parameter module canonical registry counts", () => {
   it("counts canonical bindings and active registered definitions, including unbound definitions", async () => {
-    const query = vi.fn(async (text: string) => {
-      if (text.includes("from parameter_modules pm")) {
-        return {
-          rows: [
-            {
-              id: "module-root",
-              name: "Root",
-              parent_id: null,
-              sort_order: 0,
-              description: "",
-              scope: "",
-              importance: "medium",
-              kind: "business",
-              origin: "curated",
-              source_key: null,
-              attribution_subject_id: null,
-              path: "module-root",
-            },
-            {
-              id: "module-leaf",
-              name: "Leaf",
-              parent_id: "module-root",
-              sort_order: 0,
-              description: "",
-              scope: "",
-              importance: "medium",
-              kind: "driver-group",
-              origin: "curated",
-              source_key: null,
-              attribution_subject_id: "subject-1",
-              path: "module-root/module-leaf",
-            },
-          ],
-        };
-      }
-      if (text.includes("parameter_catalog.current_project_parameter_bindings")) {
-        return {
-          rows: [
-            { module_id: "module-leaf", subject_id: "subject-1", binding_id: "binding-1" },
-            { module_id: "module-leaf", subject_id: "subject-1", binding_id: "binding-2" },
-          ],
-        };
-      }
-      if (text.includes("from parameter_module_mappings")) {
-        return { rows: [] };
-      }
-      return { rows: [] };
-    });
+    const query = vi.fn()
+      .mockResolvedValueOnce({
+        rows: [
+          {
+            id: "module-root",
+            name: "Root",
+            parent_id: null,
+            sort_order: 0,
+            description: "",
+            scope: "",
+            importance: "medium",
+            kind: "business",
+            origin: "curated",
+            source_key: null,
+            attribution_subject_id: null,
+            path: "module-root",
+          },
+          {
+            id: "module-leaf",
+            name: "Leaf",
+            parent_id: "module-root",
+            sort_order: 0,
+            description: "",
+            scope: "",
+            importance: "medium",
+            kind: "driver-group",
+            origin: "curated",
+            source_key: null,
+            attribution_subject_id: "subject-1",
+            path: "module-root/module-leaf",
+          },
+        ],
+      })
+      .mockResolvedValueOnce({
+        rows: [
+          { module_id: "module-leaf", subject_id: "subject-1", binding_id: "binding-1" },
+          { module_id: "module-leaf", subject_id: "subject-1", binding_id: "binding-2" },
+        ],
+      })
+      .mockResolvedValueOnce({ rows: [] });
 
     const catalog = {
       listDefinitions: vi.fn(() => ({
@@ -80,19 +72,17 @@ describe("parameter module canonical registry counts", () => {
         lifecycles: ["active"],
       }),
     );
-    const canonicalSql = vi.mocked(query).mock.calls.find(([text]) =>
-      String(text).includes("current_project_parameter_bindings"),
-    )?.[0] as string;
-    expect(canonicalSql).not.toContain("catalog_state");
-    expect(canonicalSql).not.toContain("catalog_release_subjects");
-    expect(canonicalSql).not.toContain("definition_revisions");
+    const registrySql = String(query.mock.calls[1]?.[0] ?? "");
+    expect(registrySql).not.toContain("catalog_state");
+    expect(registrySql).not.toContain("catalog_release_subjects");
+    expect(registrySql).not.toContain("definition_revisions");
+    expect(query).toHaveBeenCalledTimes(3);
   });
 
   it("returns zero definition facts only when the caller explicitly has no Catalog", async () => {
-    const query = vi.fn(async (text: string) => {
-      if (text.includes("from parameter_modules pm")) {
-        return {
-          rows: [{
+    const query = vi.fn()
+      .mockResolvedValueOnce({
+        rows: [{
             id: "module",
             name: "Module",
             parent_id: null,
@@ -106,13 +96,11 @@ describe("parameter module canonical registry counts", () => {
             attribution_subject_id: null,
             path: "module",
           }],
-        };
-      }
-      if (text.includes("current_project_parameter_bindings")) {
-        return { rows: [{ module_id: "module", subject_id: "subject-1", binding_id: "binding-1" }] };
-      }
-      return { rows: [] };
-    });
+      })
+      .mockResolvedValueOnce({
+        rows: [{ module_id: "module", subject_id: "subject-1", binding_id: "binding-1" }],
+      })
+      .mockResolvedValueOnce({ rows: [] });
 
     const registry = await readRegistry({ query } as unknown as Queryable, "org-1", null);
     expect(registry.modules[0]).toEqual(
@@ -121,10 +109,9 @@ describe("parameter module canonical registry counts", () => {
   });
 
   it("does not turn a captured Catalog read failure into zero definitions", async () => {
-    const query = vi.fn(async (text: string) => {
-      if (text.includes("from parameter_modules pm")) {
-        return {
-          rows: [{
+    const query = vi.fn()
+      .mockResolvedValueOnce({
+        rows: [{
             id: "module",
             name: "Module",
             parent_id: null,
@@ -138,13 +125,10 @@ describe("parameter module canonical registry counts", () => {
             attribution_subject_id: null,
             path: "module",
           }],
-        };
-      }
-      if (text.includes("current_project_parameter_bindings")) {
-        return { rows: [{ module_id: "module", subject_id: "subject-1", binding_id: "binding-1" }] };
-      }
-      return { rows: [] };
-    });
+      })
+      .mockResolvedValueOnce({
+        rows: [{ module_id: "module", subject_id: "subject-1", binding_id: "binding-1" }],
+      });
     const catalog = {
       listDefinitions: vi.fn(() => ({
         status: "invalid-page",

@@ -1,5 +1,10 @@
 export { handleCatalogGovernance, matchCatalogGovernanceRoute } from "./handlers";
-export { listModuleRegistryFacts, type ModuleRegistryFact } from "../../parameter-governance/queries/registration";
+export {
+  countCurrentBindingsForModule,
+  countSubjectPlacementsForModules,
+  listModuleRegistryFacts,
+  type ModuleRegistryFact,
+} from "../../parameter-governance/queries/registration";
 export {
   catalogGovernanceCommandByRouteId,
   catalogGovernanceRouteIds,

@@ -27,39 +27,28 @@ import {
 
 describe("deleteParameterModule canonical placement guard", () => {
   it("returns a typed conflict before issuing the delete", async () => {
-    const query = vi.fn(async (text: string) => {
-      if (text.includes("from parameter_modules") && text.includes("limit 1")) {
-        return {
-          rows: [{
-            id: "module-1",
-            organization_id: "org-1",
-            parent_id: null,
-            name: "Driver",
-            path: "module-1",
-            depth: 1,
-            sort_order: 0,
-            description: "",
-            scope: "",
-            importance: "medium",
-            kind: "driver-group",
-            origin: "curated",
-            source_key: null,
-            attribution_subject_id: null,
-          }],
-        };
-      }
-      if (text.includes("parent_id = $2")) return { rows: [{ count: "0" }] };
-      if (text.includes("parameter_catalog.project_parameter_bindings")) {
-        return { rows: [{ count: "0" }] };
-      }
-      if (text.includes("parameter_catalog.subject_placements")) {
-        return { rows: [{ count: "1" }] };
-      }
-      if (text.trimStart().startsWith("delete from parameter_modules")) {
-        throw new Error("delete must be blocked before execution");
-      }
-      return { rows: [] };
-    });
+    const query = vi.fn()
+      .mockResolvedValueOnce({
+        rows: [{
+          id: "module-1",
+          organization_id: "org-1",
+          parent_id: null,
+          name: "Driver",
+          path: "module-1",
+          depth: 1,
+          sort_order: 0,
+          description: "",
+          scope: "",
+          importance: "medium",
+          kind: "driver-group",
+          origin: "curated",
+          source_key: null,
+          attribution_subject_id: null,
+        }],
+      })
+      .mockResolvedValueOnce({ rows: [{ count: "0" }] })
+      .mockResolvedValueOnce({ rows: [{ count: "0" }] })
+      .mockResolvedValueOnce({ rows: [{ count: "1" }] });
 
     await expect(
       deleteParameterModule({ query } as never, {
@@ -71,7 +60,11 @@ describe("deleteParameterModule canonical placement guard", () => {
       status: 409,
       details: { moduleId: "module-1", placementCount: 1 },
     });
-    expect(query.mock.calls.some(([text]) => String(text).trimStart().startsWith("delete from parameter_modules"))).toBe(false);
+    expect(query).toHaveBeenCalledTimes(4);
+    expect(query.mock.calls.every(([text]) =>
+      /^\s*(select|with)\b/i.test(String(text)) &&
+      !/\b(insert|update|delete|merge)\b/i.test(String(text)),
+    )).toBe(true);
   });
 });
 

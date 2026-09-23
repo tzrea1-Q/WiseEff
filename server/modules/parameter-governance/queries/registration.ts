@@ -55,6 +55,45 @@ export type ModuleRegistryFact = {
   binding_id: string | null;
 };
 
+/** Current Binding references for one module, scoped to its current Registration Placement. */
+export async function countCurrentBindingsForModule(
+  client: Queryable,
+  query: { organizationId: string; moduleId: string },
+): Promise<number> {
+  const result = await client.query<{ count: string }>(
+    `select count(*)::text as count
+       from parameter_catalog.organization_subject_registrations registration
+       join parameter_catalog.subject_placements placement
+         on placement.id = registration.current_placement_id
+        and placement.registration_id = registration.id
+        and placement.organization_id = registration.organization_id
+       join parameter_catalog.current_project_parameter_bindings binding
+         on binding.registration_id = registration.id
+        and binding.organization_id = registration.organization_id
+      where registration.organization_id = $1
+        and registration.status = 'active'
+        and placement.module_id = $2`,
+    [query.organizationId, query.moduleId],
+  );
+  return Number(result.rows[0]?.count ?? 0);
+}
+
+/** All Placement rows keep their module reference until the Placement is removed. */
+export async function countSubjectPlacementsForModules(
+  client: Queryable,
+  query: { organizationId: string; moduleIds: readonly string[] },
+): Promise<number> {
+  if (query.moduleIds.length === 0) return 0;
+  const result = await client.query<{ count: string }>(
+    `select count(*)::text as count
+       from parameter_catalog.subject_placements
+      where organization_id = $1
+        and module_id = any($2::text[])`,
+    [query.organizationId, [...query.moduleIds]],
+  );
+  return Number(result.rows[0]?.count ?? 0);
+}
+
 /** Current registration, placement, and Binding facts for the shared module tree. */
 export async function listModuleRegistryFacts(
   client: Queryable,

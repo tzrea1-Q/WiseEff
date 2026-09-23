@@ -556,35 +556,27 @@ describe("disbandDriverGroupModule", () => {
 
   it("blocks a canonical Placement before deleting mappings or reparking bindings", async () => {
     const groupId = "dg-canonical";
-    const query = vi.fn(async (text: string) => {
-      if (text.includes("from parameter_modules") && text.includes("limit 1")) {
-        return {
-          rows: [{
-            id: groupId,
-            organization_id: "org-1",
-            parent_id: "biz-1",
-            name: "Canonical driver",
-            path: `biz-1/${groupId}`,
-            depth: 2,
-            sort_order: 0,
-            description: "",
-            scope: "org",
-            importance: null,
-            kind: "driver-group",
-            origin: "curated",
-            source_key: "compatible:canonical",
-          }],
-          rowCount: 1,
-        };
-      }
-      if (text.includes("select child.id")) {
-        return { rows: [{ id: groupId }], rowCount: 1 };
-      }
-      if (text.includes("from parameter_catalog.subject_placements")) {
-        return { rows: [{ count: "1" }], rowCount: 1 };
-      }
-      return { rows: [], rowCount: 0 };
-    });
+    const query = vi.fn()
+      .mockResolvedValueOnce({
+        rows: [{
+          id: groupId,
+          organization_id: "org-1",
+          parent_id: "biz-1",
+          name: "Canonical driver",
+          path: `biz-1/${groupId}`,
+          depth: 2,
+          sort_order: 0,
+          description: "",
+          scope: "org",
+          importance: null,
+          kind: "driver-group",
+          origin: "curated",
+          source_key: "compatible:canonical",
+        }],
+        rowCount: 1,
+      })
+      .mockResolvedValueOnce({ rows: [{ id: groupId }], rowCount: 1 })
+      .mockResolvedValueOnce({ rows: [{ count: "1" }], rowCount: 1 });
     const db = {
       query,
       transaction: vi.fn(async (fn) => fn({ query } as never)),
@@ -597,8 +589,10 @@ describe("disbandDriverGroupModule", () => {
       status: 409,
       details: { moduleId: groupId, placementCount: 1 },
     });
-    const sql = query.mock.calls.map(([text]) => String(text));
-    expect(sql.some((text) => text.includes("delete from parameter_module_mappings"))).toBe(false);
-    expect(sql.some((text) => text.includes("update project_parameter_bindings"))).toBe(false);
+    expect(query).toHaveBeenCalledTimes(3);
+    expect(query.mock.calls.every(([text]) =>
+      /^\s*(select|with)\b/i.test(String(text)) &&
+      !/\b(insert|update|delete|merge)\b/i.test(String(text)),
+    )).toBe(true);
   });
 });
