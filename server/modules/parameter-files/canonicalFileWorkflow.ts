@@ -1,4 +1,4 @@
-import { createHash, randomUUID } from "node:crypto";
+import { createHash } from "node:crypto";
 
 import type { Database, Queryable } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
@@ -28,6 +28,8 @@ import {
   validatePinnedDtsSourceDeletion
 } from "./canonicalSource";
 import { loadExactSourceRevisionForProof, rethrowSourceTransactionError } from "./sourceVersion";
+import { withCanonicalSourceAttemptTransaction } from "./canonicalSourceAttemptTransaction";
+import type { CanonicalSourceAttempt } from "./canonicalSourceAttempt";
 import {
   deleteJsonSourceMember,
   MAX_PARAMETER_SOURCE_BYTES,
@@ -232,7 +234,7 @@ async function getBoundedObject(objectStore: ObjectStore, storageKey: string) {
   return bytes;
 }
 
-function exactCandidateObjectStore(objectStore: ObjectStore, expected: Buffer, attemptKeys: string[] = []): ObjectStore {
+function exactCandidateObjectStore(objectStore: ObjectStore, expected: Buffer): ObjectStore {
   const store: ObjectStore = {
     async put(input): Promise<StoredObject> {
       if (!input.bytes.equals(expected)) {
@@ -240,53 +242,13 @@ function exactCandidateObjectStore(objectStore: ObjectStore, expected: Buffer, a
           reason: "candidate-bytes-not-preserved"
         });
       }
-      const stored = await objectStore.put({
-        ...input,
-        fileName: `.canonical-source-${randomUUID()}-${input.fileName}`
-      });
-      attemptKeys.push(stored.storageKey);
-      return stored;
+      return objectStore.put(input);
     },
     get: (storageKey) => objectStore.get(storageKey)
   };
   if (objectStore.getBounded) store.getBounded = (storageKey, maxBytes) => objectStore.getBounded!(storageKey, maxBytes);
   if (objectStore.delete) store.delete = (storageKey) => objectStore.delete!(storageKey);
   return store;
-}
-
-function attemptObjectStore(objectStore: ObjectStore, attemptKeys: string[]): ObjectStore {
-  const store: ObjectStore = {
-    put: async (input) => {
-      const stored = await objectStore.put({
-        ...input,
-        fileName: `.canonical-rollback-${randomUUID()}-${input.fileName}`
-      });
-      attemptKeys.push(stored.storageKey);
-      return stored;
-    },
-    get: (storageKey) => objectStore.get(storageKey)
-  };
-  if (objectStore.getBounded) store.getBounded = (storageKey, maxBytes) => objectStore.getBounded!(storageKey, maxBytes);
-  if (objectStore.delete) store.delete = (storageKey) => objectStore.delete!(storageKey);
-  return store;
-}
-
-async function cleanAttemptObjects(objectStore: ObjectStore, keys: readonly string[]) {
-  if (!keys.length) return;
-  if (!objectStore.delete) {
-    throw new ApiError("INTERNAL_ERROR", "Canonical source cleanup requires an object-store delete operation.", {
-      reason: "canonical-source-object-cleanup-unavailable",
-      objectCount: keys.length
-    });
-  }
-  const results = await Promise.allSettled(keys.map((key) => objectStore.delete!(key)));
-  const failed = results.filter((result): result is PromiseRejectedResult => result.status === "rejected");
-  if (failed.length) {
-    throw new ApiError("INTERNAL_ERROR", "Canonical source object cleanup failed.", {
-      reason: "canonical-source-object-cleanup-failed",
-      objectCount: failed.length
-    });
-  }
 }
 
 async function loadRequestForCandidate(
@@ -852,13 +814,7 @@ async function submitInspectedCandidate(
   }
 
   const invocation = createUserInvocation(auth);
-  const attemptKeys: string[] = [];
-  if (!objectStore.delete) {
-    throw new ApiError("INTERNAL_ERROR", "Canonical source submit requires an object-store delete operation.", {
-      reason: "canonical-source-object-cleanup-unavailable"
-    });
-  }
-  try {
+  {
     const draft: CanonicalValueDraftDto = reused.draftId
       ? await (async () => {
           const existing = await db.query<{ id: string }>(`select id from project_parameter_value_drafts where organization_id=$1 and project_id=$2 and id=$3`, [auth.organization.id, change.pin.projectId, reused.draftId]);
@@ -879,7 +835,7 @@ async function submitInspectedCandidate(
           baseRevisionId: change.pin.configRevisionId,
           baseCurrentValueId: change.pin.projectValueId
         }, {
-          objectStore: exactCandidateObjectStore(objectStore, change.candidateBytes, attemptKeys),
+          objectStore: exactCandidateObjectStore(objectStore, change.candidateBytes),
           invocation,
           requestId,
           refusalSink
@@ -910,9 +866,6 @@ async function submitInspectedCandidate(
     });
     if (!linked) throw new ApiError("CONFLICT", "Canonical source candidate link was not retained.");
     return { requestId: submitted.id, status: submitted.status, replayed: false };
-  } catch (error) {
-    await cleanAttemptObjects(objectStore, attemptKeys);
-    throw error;
   }
 }
 
@@ -947,13 +900,15 @@ export async function submitCanonicalCandidate(
     reason: string;
     requestId: string;
     refusalSink: TrustedRefusalAuditSink;
-  }
+  },
+  /** Internal rollback path shares the enclosing transaction and its object attempt. */
+  parentAttempt?: CanonicalSourceAttempt
 ): Promise<CanonicalSourceSubmitDto> {
   if (!canAdminParameters(auth) || !canEditParameters(auth, input.projectId)) {
     throw new ApiError("FORBIDDEN", "Parameter administration and project edit permission are required.");
   }
   if (!input.reason.trim()) throw new ApiError("VALIDATION_FAILED", "A source review reason is required.");
-  return db.transaction(async (tx) => {
+  const submit = async (tx: Database, attempt: CanonicalSourceAttempt) => {
     const candidate = await getParameterFileCandidateByIdForUpdate(tx, {
       organizationId: auth.organization.id,
       projectId: input.projectId,
@@ -1008,8 +963,12 @@ export async function submitCanonicalCandidate(
         reason: "source-proof-stale"
       });
     }
-    return submitInspectedCandidate(tx, objectStore, auth, lockedInspection.change, input.reason.trim(), input.requestId, input.refusalSink);
-  }).catch((error) => rethrowSourceTransactionError(error));
+    return submitInspectedCandidate(tx, attempt.objectStore, auth, lockedInspection.change, input.reason.trim(), input.requestId, input.refusalSink);
+  };
+  return (parentAttempt
+    ? submit(db, parentAttempt)
+    : withCanonicalSourceAttemptTransaction(db, objectStore, submit)
+  ).catch((error) => rethrowSourceTransactionError(error));
 }
 
 export async function rollbackCanonicalSource(
@@ -1022,7 +981,7 @@ export async function rollbackCanonicalSource(
     throw new ApiError("FORBIDDEN", "Parameter administration and project edit permission are required.");
   }
   if (!input.reason.trim()) throw new ApiError("VALIDATION_FAILED", "A source rollback reason is required.");
-  return db.transaction(async (tx) => {
+  return withCanonicalSourceAttemptTransaction(db, objectStore, async (tx, attempt) => {
     const file = await getProjectParameterFileById(tx, { organizationId: auth.organization.id, fileId: input.fileId });
     if (!file || file.projectId !== input.projectId) throw new ApiError("NOT_FOUND", "Project parameter file was not found.");
     const target = await getFileVersionById(tx, { versionId: input.versionId });
@@ -1081,7 +1040,7 @@ export async function rollbackCanonicalSource(
       });
       if (inspection.change?.proposedDigest === targetDigest) {
         if (!inspection.proofToken) throw new ApiError("CONFLICT", "Rollback candidate has no source proof.", { reason: "source-proof-missing" });
-        return await submitCanonicalCandidate(tx, objectStore, auth, {
+        return await submitCanonicalCandidate(tx, attempt.objectStore, auth, {
           projectId: input.projectId,
           candidateId: candidate.id,
           expectedCurrentVersionId: input.expectedCurrentVersionId,
@@ -1090,17 +1049,11 @@ export async function rollbackCanonicalSource(
           reason: input.reason,
           requestId: input.requestId,
           refusalSink: input.refusalSink
-        });
+        }, attempt);
       }
     }
-    const attemptKeys: string[] = [];
-    if (!objectStore.delete) {
-      throw new ApiError("INTERNAL_ERROR", "Canonical source rollback requires an object-store delete operation.", {
-        reason: "canonical-source-object-cleanup-unavailable"
-      });
-    }
-    try {
-      const candidate = await createCandidate(tx, attemptObjectStore(objectStore, attemptKeys), auth, {
+    {
+      const candidate = await createCandidate(tx, attempt.objectStore, auth, {
         projectId: input.projectId,
         fileId: file.id,
         fileName: file.fileName,
@@ -1115,7 +1068,7 @@ export async function rollbackCanonicalSource(
           reason: candidateInspection.reason ?? "source-proof-missing"
         });
       }
-      return await submitCanonicalCandidate(tx, objectStore, auth, {
+      return await submitCanonicalCandidate(tx, attempt.objectStore, auth, {
         projectId: input.projectId,
         candidateId: candidate.id,
         expectedCurrentVersionId: input.expectedCurrentVersionId,
@@ -1124,10 +1077,7 @@ export async function rollbackCanonicalSource(
         reason: input.reason,
         requestId: input.requestId,
         refusalSink: input.refusalSink
-      });
-    } catch (error) {
-      await cleanAttemptObjects(objectStore, attemptKeys);
-      throw error;
+      }, attempt);
     }
   }).catch((error) => rethrowSourceTransactionError(error));
 }
