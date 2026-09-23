@@ -6,7 +6,8 @@ import type { AuthContext } from "../auth/types";
 import { createUserInvocation } from "../auth/trustedInvocation";
 import type { TrustedRefusalAuditSink } from "../audit/trustedRefusalSink";
 import type { ObjectStore, StoredObject } from "../logs/objectStore";
-import { canAdminParameters, canEditParameters } from "../parameter-kernel/policy";
+import { canAdminParameters, canEditParameters, canReviewParameters, canReviewParameterStage } from "../parameter-kernel/policy";
+import { hasCurrentCanonicalReviewRole } from "../parameters/reviewWorkflowRepository";
 import type { DtsValue } from "../dts/types";
 import { renderDtsValue } from "../dts/valueAst";
 import {
@@ -814,6 +815,15 @@ export async function prepareCanonicalCandidateBatchInTransaction(
   if (!canAdminParameters(auth) || !canEditParameters(auth, input.projectId)) {
     throw new ApiError("FORBIDDEN", "Parameter administration and project edit permission are required.");
   }
+  return prepareCanonicalCandidateBatchLocked(tx, objectStore, auth, input);
+}
+
+async function prepareCanonicalCandidateBatchLocked(
+  tx: Database,
+  objectStore: ObjectStore,
+  auth: AuthContext,
+  input: { projectId: string; candidateId: string; expectedProofToken: string }
+): Promise<CanonicalSourceBatchPrepareDto> {
   const candidate = await getParameterFileCandidateById(tx, {
     organizationId: auth.organization.id,
     projectId: input.projectId,
@@ -897,6 +907,23 @@ export async function prepareCanonicalCandidateBatchInTransaction(
     targets
   };
   return { ...frozen, batchProofDigest: proofDigest(frozen) };
+}
+
+/** Reviewer proof recheck under the same source locks, before the request row is locked. */
+export async function recheckCanonicalCandidateBatchForReviewInTransaction(
+  tx: Database,
+  objectStore: ObjectStore,
+  auth: AuthContext,
+  input: { projectId: string; candidateId: string; expectedProofToken: string }
+): Promise<CanonicalSourceBatchPrepareDto> {
+  if (!canReviewParameters(auth) || !canEditParameters(auth, input.projectId)
+    || !canReviewParameterStage(auth, input.projectId, "software_review")
+    || !await hasCurrentCanonicalReviewRole(tx, {
+      organizationId: auth.organization.id, projectId: input.projectId, userId: auth.user.id
+    })) {
+    throw new ApiError("FORBIDDEN", "Project software review authorization is required.");
+  }
+  return prepareCanonicalCandidateBatchLocked(tx, objectStore, auth, input);
 }
 
 /** Freeze the locked source proof for the request owner without creating a request or changing values. */

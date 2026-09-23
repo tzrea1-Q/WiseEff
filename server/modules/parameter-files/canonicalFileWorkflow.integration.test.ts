@@ -30,6 +30,8 @@ import {
 import { reviewCanonicalValueChange } from "../parameter-bindings/drafts/changeService";
 import { createCanonicalValueDraft } from "../parameter-bindings/drafts/service";
 import { submitCanonicalBatchValueChange } from "../parameter-bindings/drafts/batchChangeService";
+import { commitCanonicalSourceBatchRevision } from "./canonicalSourceBatchCommit";
+import { readCanonicalBatchSourceDiff } from "./canonicalSourceDiff";
 import type { ConfigRevisionManifest } from "../parameter-topology/types";
 
 const ORG = "org-906-workflow";
@@ -109,6 +111,7 @@ describe("#906 canonical JSON candidate workflow", () => {
   let versionId: string;
   let configSetId: string;
   let bindings: Array<{ id: string; currentValueId: string }>;
+  let pendingBatch: { requestId: string; proofDigest: string; baseVersionId: string; valueTips: Array<{ id: string; current_value_id: string }> };
 
   beforeAll(async () => {
     database = await createEphemeralTestDatabase("issue906-json-workflow");
@@ -386,6 +389,23 @@ describe("#906 canonical JSON candidate workflow", () => {
       candidateId: changedBoth.id,
       expectedProofToken: "stale-proof"
     }))).rejects.toMatchObject({ code: "CONFLICT", details: { reason: "source-proof-stale" } });
+    const rollbackCandidate = await createCandidate(db, storage, admin, {
+      projectId: JSON_PROJECT, fileId, fileName: "settings.json",
+      bytes: Buffer.from('{ "settings": { "limit": 50, "keep": true }, "other": { "limit": 60 } }\n')
+    });
+    const rollbackPreview = await previewCanonicalCandidate(db, storage, admin, {
+      projectId: JSON_PROJECT, candidateId: rollbackCandidate.id
+    });
+    await expect(db.transaction(async (tx) => {
+      await freezeCanonicalCandidateBatchSnapshotInTransaction(tx, storage, admin, {
+        projectId: JSON_PROJECT, candidateId: rollbackCandidate.id,
+        expectedProofToken: rollbackPreview.proofToken!
+      });
+      throw new Error("simulate confirmed rollback after snapshot");
+    })).rejects.toThrow("simulate confirmed rollback after snapshot");
+    expect((await db.query<{ base_digest: string | null }>(
+      "select base_digest from project_parameter_file_candidates where id=$1", [rollbackCandidate.id]
+    )).rows[0]!.base_digest).toBeNull();
 
     const changedNonTarget = await createCandidate(db, storage, admin, {
       projectId: JSON_PROJECT,
@@ -687,7 +707,9 @@ describe("#906 canonical JSON candidate workflow", () => {
       select id,current_value_id from parameter_catalog.project_parameter_bindings
       where organization_id=$1 and project_id=$2 order by id`, [ORG, JSON_PROJECT])).rows;
     const before = (await storage.getBounded!(current.storage_key, 1024 * 1024)).toString();
-    const after = before.replace('"limit": 36.5', '"limit": 50').replace(/"limit": 6[34]/, '"limit": 70');
+    const after = before
+      .replace(/("settings": \{ "limit": )\d+(?:\.\d+)?/, (_match, prefix: string) => `${prefix}50`)
+      .replace(/("other": \{ "limit": )\d+(?:\.\d+)?/, (_match, prefix: string) => `${prefix}70`);
     expect(after).not.toBe(before);
     const candidate = await createCandidate(db, storage, admin, {
       projectId: JSON_PROJECT, fileId, fileName: "settings.json", bytes: Buffer.from(after)
@@ -707,12 +729,79 @@ describe("#906 canonical JSON candidate workflow", () => {
     });
     expect(request).toMatchObject({ status: "pending", batchProofDigest: proof.batchProofDigest });
     expect(request.targets).toHaveLength(preview.bindings!.length);
+    const frozenDiff = await readCanonicalBatchSourceDiff(db, storage, jsonReviewer, {
+      projectId: JSON_PROJECT, requestId: request.id
+    });
+    expect(frozenDiff).toMatchObject({
+      requestId: request.id, kind: "batch", batchProofDigest: proof.batchProofDigest,
+      before, after, baseDigest: proof.baseDigest, proposedDigest: proof.proposedDigest,
+      targets: expect.arrayContaining(request.targets.map((target) => expect.objectContaining({
+        bindingId: target.bindingId, action: target.action
+      })))
+    });
+    expect(frozenDiff.targets).toHaveLength(request.targets.length);
+    await expect(readCanonicalBatchSourceDiff(db, {
+      ...storage, getBounded: async () => Buffer.from("tampered")
+    }, jsonReviewer, { projectId: JSON_PROJECT, requestId: request.id }))
+      .rejects.toMatchObject({ code: "CONFLICT" });
+    await expect(readCanonicalBatchSourceDiff(db, storage, foreignAdmin, {
+      projectId: JSON_PROJECT, requestId: request.id
+    })).rejects.toMatchObject({ code: "NOT_FOUND" });
+    const catalog = await loadPublishedCatalog(getRootPostgresPool(db)!);
+    if (!catalog) throw new Error("Published Catalog fixture is unavailable");
+    await expect(db.transaction((tx) => commitCanonicalSourceBatchRevision(tx, storage, otherEditor, catalog, {
+      projectId: JSON_PROJECT, requestId: request.id,
+      invocation: createUserInvocation(otherEditor), traceId: "906-json-batch-forbidden",
+      refusalSink: createTrustedRefusalAuditSink(db)
+    }))).rejects.toMatchObject({ code: "FORBIDDEN" });
     expect((await db.query<{ current_version_id: string }>(
       "select current_version_id from project_parameter_files where id=$1", [fileId]
     )).rows[0]!.current_version_id).toBe(current.current_version_id);
     expect((await db.query<{ id: string; current_value_id: string }>(`
       select id,current_value_id from parameter_catalog.project_parameter_bindings
       where organization_id=$1 and project_id=$2 order by id`, [ORG, JSON_PROJECT])).rows).toEqual(valueTips);
+    pendingBatch = {
+      requestId: request.id, proofDigest: proof.batchProofDigest,
+      baseVersionId: current.current_version_id, valueTips
+    };
+  }, 120_000);
+
+  it("commits all JSON batch targets as one source revision", async () => {
+    const catalog = await loadPublishedCatalog(getRootPostgresPool(db)!);
+    if (!catalog) throw new Error("Published Catalog fixture is unavailable");
+    let applied;
+    try {
+      applied = await db.transaction((tx) => commitCanonicalSourceBatchRevision(tx, storage, jsonReviewer, catalog, {
+        projectId: JSON_PROJECT, requestId: pendingBatch.requestId,
+        invocation: createUserInvocation(jsonReviewer), traceId: "906-json-real-batch-approve",
+        refusalSink: createTrustedRefusalAuditSink(db)
+      }));
+    } catch (error) {
+      // C #923's 0165 currently compares the frozen base revision with the new
+      // applied revision. Keep this positive test red, but prove rollback is whole.
+      expect((await db.query<{ current_version_id: string }>(
+        "select current_version_id from project_parameter_files where id=$1", [fileId]
+      )).rows[0]!.current_version_id).toBe(pendingBatch.baseVersionId);
+      expect((await db.query<{ id: string; current_value_id: string }>(`
+        select id,current_value_id from parameter_catalog.project_parameter_bindings
+        where organization_id=$1 and project_id=$2 order by id`, [ORG, JSON_PROJECT])).rows).toEqual(pendingBatch.valueTips);
+      expect((await db.query<{ status: string }>(
+        "select status from project_parameter_value_change_requests where id=$1", [pendingBatch.requestId]
+      )).rows[0]!.status).toBe("pending");
+      expect((await db.query<{ count: number }>(`
+        select count(*)::int as count from project_parameter_value_change_targets
+        where request_id=$1 and applied_value_id is not null`, [pendingBatch.requestId])).rows[0]!.count).toBe(0);
+      throw error;
+    }
+    expect(applied).toMatchObject({ requestId: pendingBatch.requestId, status: "approved", batchProofDigest: pendingBatch.proofDigest });
+    expect((await db.query<{ current_version_id: string }>(
+      "select current_version_id from project_parameter_files where id=$1", [fileId]
+    )).rows[0]!.current_version_id).not.toBe(pendingBatch.baseVersionId);
+    const movedTips = (await db.query<{ id: string; current_value_id: string }>(`
+      select id,current_value_id from parameter_catalog.project_parameter_bindings
+      where organization_id=$1 and project_id=$2 order by id`, [ORG, JSON_PROJECT])).rows;
+    expect(movedTips).toHaveLength(pendingBatch.valueTips.length);
+    expect(movedTips.every((entry, index) => entry.current_value_id !== pendingBatch.valueTips[index]!.current_value_id)).toBe(true);
   }, 120_000);
 });
 
@@ -797,6 +886,9 @@ describe("#906 canonical DTS candidate workflow", () => {
       expect.objectContaining({ action: "set", targetText: "<77>" }),
       expect.objectContaining({ action: "set", targetText: "<77>" })
     ] });
+    expect(await db.transaction((tx) => freezeCanonicalCandidateBatchSnapshotInTransaction(tx, storage, admin, {
+      projectId: DTS_PROJECT, candidateId: candidate.id, expectedProofToken: preview.proofToken!
+    }))).toEqual(prepared);
     expect(new Set(prepared.targets.map((target) => target.bindingId)).size).toBe(2);
     const currentBindings = await listCatalogBindingRowsForProject(db, admin, { projectId: DTS_PROJECT });
     const sourceSnapshot = await loadCanonicalSourceSnapshot(db, storage, {
@@ -828,6 +920,9 @@ describe("#906 canonical DTS candidate workflow", () => {
       projectId: DTS_PROJECT, candidateId: deletedBoth.id, expectedProofToken: deletePreview.proofToken!
     }));
     expect(deleteProof.targets.map((target) => target.action)).toEqual(["delete", "delete"]);
+    expect(await db.transaction((tx) => freezeCanonicalCandidateBatchSnapshotInTransaction(tx, storage, admin, {
+      projectId: DTS_PROJECT, candidateId: deletedBoth.id, expectedProofToken: deletePreview.proofToken!
+    }))).toEqual(deleteProof);
     const changedOutsideTargets = await createCandidate(db, storage, admin, {
       projectId: DTS_PROJECT,
       fileId,
