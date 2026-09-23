@@ -7,7 +7,7 @@ import { canViewParameters } from "../parameter-kernel/policy";
 import { getCanonicalValueChangeRequest } from "../parameter-bindings/drafts/changeRepository";
 import { serializeContract, type ContractJsonValue } from "../parameter-catalog-contract";
 import { loadCanonicalSourceSnapshot } from "./canonicalSource";
-import { MAX_PARAMETER_SOURCE_BYTES } from "./jsonSource";
+import { MAX_PARAMETER_SOURCE_BYTES, proveJsonSourceMemberAbsent, readJsonSourceText } from "./jsonSource";
 
 const digest = (value: string | Buffer) => createHash("sha256").update(value).digest("hex");
 const same = (left: unknown, right: unknown) => serializeContract(left as ContractJsonValue) === serializeContract(right as ContractJsonValue);
@@ -150,15 +150,45 @@ export async function readCanonicalBatchSourceDiff(
     || !bindings.some((binding) => binding.bindingId === target.binding_id && binding.sourcePinId === target.source_pin_id))) {
     throw new ApiError("CONFLICT", "Submitted batch targets are inconsistent.");
   }
+  if (candidate.format !== "json") throw new ApiError("CONFLICT", "DTS batch source diff is not available for review.");
+  const targets = [];
+  for (const target of targetRows) {
+    const pinned = await loadCanonicalSourceSnapshot(db, storage, {
+      organizationId: auth.organization.id, projectId: input.projectId,
+      bindingId: target.binding_id,
+      projectValueId: bindings.find((binding) => binding.bindingId === target.binding_id)!.oldValueId
+    });
+    const locator = pinned.manifest.locator;
+    if (pinned.manifest.configRevisionId !== manifest.configRevisionId
+      || pinned.manifest.sourcePinId !== target.source_pin_id
+      || pinned.manifest.fileId !== request.batch_file_id
+      || pinned.manifest.rootPointer === null || locator.kind !== "json-pointer"
+      || typeof locator.pointer !== "string") {
+      throw new ApiError("CONFLICT", "Submitted batch target lost its exact JSON locator.");
+    }
+    const pointer = locator.pointer;
+    const rootPointer = pinned.manifest.rootPointer;
+    const beforeText = readJsonSourceText(before, pointer, rootPointer);
+    let afterText: string | undefined;
+    if (target.action === "delete") {
+      if (target.target_text !== null) throw new ApiError("CONFLICT", "Deleted batch target has replacement text.");
+      proveJsonSourceMemberAbsent(after, pointer, rootPointer);
+    } else {
+      afterText = readJsonSourceText(after, pointer, rootPointer);
+      if (target.target_text !== afterText) throw new ApiError("CONFLICT", "Submitted batch target differs from frozen source bytes.");
+    }
+    targets.push({
+      ordinal: target.ordinal, bindingId: target.binding_id,
+      sourcePinId: target.source_pin_id, action: target.action,
+      beforeText, ...(afterText === undefined ? {} : { afterText })
+    });
+  }
   return {
     kind: "batch" as const, requestId: request.id, candidateId: request.candidate_id,
     batchProofDigest: request.batch_proof_digest, format: candidate.format,
     sourceName: source.name, baseDigest: candidate.base_digest,
     proposedDigest: candidate.proposed_digest, diffDigest: candidate.diff_digest,
     before, after, bindings,
-    targets: targetRows.map((target) => ({
-      ordinal: target.ordinal, bindingId: target.binding_id,
-      sourcePinId: target.source_pin_id, action: target.action, targetText: target.target_text
-    }))
+    targets
   };
 }

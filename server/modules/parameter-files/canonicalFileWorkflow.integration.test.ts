@@ -740,6 +740,10 @@ describe("#906 canonical JSON candidate workflow", () => {
       })))
     });
     expect(frozenDiff.targets).toHaveLength(request.targets.length);
+    expect(frozenDiff.targets.map((target) => target.afterText)).toEqual(
+      expect.arrayContaining(["50", "70"])
+    );
+    expect(frozenDiff.targets.every((target) => target.beforeText !== target.afterText)).toBe(true);
     await expect(readCanonicalBatchSourceDiff(db, {
       ...storage, getBounded: async () => Buffer.from("tampered")
     }, jsonReviewer, { projectId: JSON_PROJECT, requestId: request.id }))
@@ -764,6 +768,44 @@ describe("#906 canonical JSON candidate workflow", () => {
       requestId: request.id, proofDigest: proof.batchProofDigest,
       baseVersionId: current.current_version_id, valueTips
     };
+  }, 120_000);
+
+  it("rolls back every batch effect when a later source-pin write fails", async () => {
+    const catalog = await loadPublishedCatalog(getRootPostgresPool(db)!);
+    if (!catalog) throw new Error("Published Catalog fixture is unavailable");
+    const versionsBefore = (await db.query<{ count: number }>(
+      "select count(*)::int as count from project_parameter_file_versions where file_id=$1", [fileId]
+    )).rows[0]!.count;
+    let pinInserts = 0;
+    await expect(db.transaction((tx) => commitCanonicalSourceBatchRevision({
+      ...tx,
+      query: async <Row,>(statement: string, values?: unknown[]) => {
+        if (statement.includes("insert into parameter_catalog.project_value_source_pins") && ++pinInserts === 2) {
+          throw new Error("injected second batch pin write failure");
+        }
+        return tx.query<Row>(statement, values);
+      }
+    }, storage, jsonReviewer, catalog, {
+      projectId: JSON_PROJECT, requestId: pendingBatch.requestId,
+      invocation: createUserInvocation(jsonReviewer), traceId: "906-json-batch-fault",
+      refusalSink: createTrustedRefusalAuditSink(db)
+    }))).rejects.toThrow("injected second batch pin write failure");
+    expect(pinInserts).toBe(2);
+    expect((await db.query<{ count: number }>(
+      "select count(*)::int as count from project_parameter_file_versions where file_id=$1", [fileId]
+    )).rows[0]!.count).toBe(versionsBefore);
+    expect((await db.query<{ current_version_id: string }>(
+      "select current_version_id from project_parameter_files where id=$1", [fileId]
+    )).rows[0]!.current_version_id).toBe(pendingBatch.baseVersionId);
+    expect((await db.query<{ id: string; current_value_id: string }>(`
+      select id,current_value_id from parameter_catalog.project_parameter_bindings
+      where organization_id=$1 and project_id=$2 order by id`, [ORG, JSON_PROJECT])).rows).toEqual(pendingBatch.valueTips);
+    expect((await db.query<{ status: string }>(
+      "select status from project_parameter_value_change_requests where id=$1", [pendingBatch.requestId]
+    )).rows[0]!.status).toBe("pending");
+    expect((await db.query<{ count: number }>(`
+      select count(*)::int as count from project_parameter_value_change_targets
+      where request_id=$1 and applied_value_id is not null`, [pendingBatch.requestId])).rows[0]!.count).toBe(0);
   }, 120_000);
 
   it("commits all JSON batch targets as one source revision", async () => {
