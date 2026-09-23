@@ -444,6 +444,7 @@ describe.skipIf(!databaseAvailable)(
     let fixture: CanonicalParameterFixture;
     let objectStore: ObjectStore;
     let storageRoot: string;
+    const objectStoreWriteKeys = new Set<string>();
     let catalogLease: { release: () => void } | undefined;
 
     beforeAll(async () => {
@@ -468,8 +469,17 @@ describe.skipIf(!databaseAvailable)(
         connectionString: database.url,
       });
       storageRoot = await mkdtemp(`${tmpdir()}/wiseeff-905-agent-`);
-      objectStore = createLocalObjectStore(storageRoot);
+      const localObjectStore = createLocalObjectStore(storageRoot);
+      objectStore = {
+        ...localObjectStore,
+        put: async (input) => {
+          const stored = await localObjectStore.put(input);
+          objectStoreWriteKeys.add(stored.storageKey);
+          return stored;
+        },
+      };
       fixture = await seedCanonicalParameterFixture(root, objectStore);
+      objectStoreWriteKeys.clear();
       await root.query(`insert into parameter_identity_migration_runs (
           id, mode, status, report, db_snapshot_id, object_snapshot_id, write_lock_confirmed, completed_at
         ) values ('migration-905-agent-post-cutover', 'apply', 'completed', '{}'::jsonb,
@@ -1315,6 +1325,7 @@ describe.skipIf(!databaseAvailable)(
     it("rolls back the canonical draft and submission when approval audit fails", async () => {
       const pool = getRootPostgresPool(root)!;
       const before = await canonicalState(root, fixture);
+      objectStoreWriteKeys.clear();
       const pending = await startAction({
         root,
         connectionString: database.url,
@@ -1363,11 +1374,22 @@ describe.skipIf(!databaseAvailable)(
       expect(after.binding?.current_value_id).toBe(
         before.binding?.current_value_id,
       );
-      expect(after.drafts).toHaveLength(0);
+      expect(after.drafts).toEqual(before.drafts);
       expect(after.candidateCount).toBe(before.candidateCount);
+      expect(after.requests).toEqual(before.requests);
+      expect(objectStoreWriteKeys.size).toBe(1);
+      const [attemptKey] = [...objectStoreWriteKeys];
+      if (!attemptKey) throw new Error("The rollback path did not write a source attempt object.");
+      await expect(objectStore.get(attemptKey)).rejects.toThrow();
       expect(
-        after.requests.filter((request) => request.status === "pending"),
-      ).toHaveLength(0);
+        (
+          await pool.query(
+            `select kind,action,target_id from audit_events
+             where organization_id=$1 and trace_id=$2`,
+            [fixture.organizationId, `resume-${pending.threadId}`],
+          )
+        ).rows,
+      ).toEqual([]);
       expect(
         await getAgentToolCall(
           root,
