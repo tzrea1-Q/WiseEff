@@ -752,6 +752,8 @@ function previewFromInspection(inspection: SourceInspection, request?: RequestSt
       canSubmit: false,
       ...common,
       reason: inspection.reason ?? "canonical-batch-writer-unavailable",
+      baseDigest: inspection.changes[0]!.baseDigest,
+      proposedDigest: inspection.changes[0]!.proposedDigest,
       bindings: inspection.changes.map(previewBinding),
       before: inspection.changes[0]!.baseText,
       after: inspection.changes[0]!.candidateText

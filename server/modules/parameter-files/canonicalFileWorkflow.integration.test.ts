@@ -305,6 +305,8 @@ describe("#906 canonical JSON candidate workflow", () => {
       ]
     });
     expect(multiPreview.bindings).toHaveLength(2);
+    expect(multiPreview.baseDigest).toBe(multiPreview.bindings![0]!.baseDigest);
+    expect(multiPreview.proposedDigest).toBe(multiPreview.bindings![0]!.proposedDigest);
     expect(multiPreview.before).toContain('"limit": 36.5');
     expect(multiPreview.after).toContain('"limit": 50');
     expect(multiPreview.bindings?.map((binding) => [binding.beforeText, binding.afterText])).toEqual(
