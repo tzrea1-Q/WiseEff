@@ -21,6 +21,7 @@ import { loadOwnedProjectValueSourcePin, loadSourceBindingCohortReadOnly } from 
 import { createCandidate } from "./candidateService";
 import {
   getCanonicalSourceWorkflow,
+  freezeCanonicalCandidateBatchSnapshotInTransaction,
   prepareCanonicalCandidateBatchInTransaction,
   previewCanonicalCandidate,
   rollbackCanonicalSource,
@@ -28,6 +29,7 @@ import {
 } from "./canonicalFileWorkflow";
 import { reviewCanonicalValueChange } from "../parameter-bindings/drafts/changeService";
 import { createCanonicalValueDraft } from "../parameter-bindings/drafts/service";
+import { submitCanonicalBatchValueChange } from "../parameter-bindings/drafts/batchChangeService";
 import type { ConfigRevisionManifest } from "../parameter-topology/types";
 
 const ORG = "org-906-workflow";
@@ -356,6 +358,35 @@ describe("#906 canonical JSON candidate workflow", () => {
     };
     expect(afterMultiPreview).toEqual(beforeMultiPreview);
 
+    const frozen = await db.transaction((tx) => freezeCanonicalCandidateBatchSnapshotInTransaction(tx, storage, admin, {
+      projectId: JSON_PROJECT,
+      candidateId: changedBoth.id,
+      expectedProofToken: multiPreview.proofToken!
+    }));
+    expect(frozen).toEqual(preparedBatch);
+    expect(await db.transaction((tx) => freezeCanonicalCandidateBatchSnapshotInTransaction(tx, storage, admin, {
+      projectId: JSON_PROJECT,
+      candidateId: changedBoth.id,
+      expectedProofToken: multiPreview.proofToken!
+    }))).toEqual(frozen);
+    const snapshotRow = (await db.query<{
+      base_digest: string; proposed_digest: string; diff_digest: string;
+      frozen_member_manifest: unknown; frozen_binding_manifest: unknown;
+    }>(`select base_digest,proposed_digest,diff_digest,frozen_member_manifest,frozen_binding_manifest
+      from project_parameter_file_candidates where id=$1`, [changedBoth.id])).rows[0]!;
+    expect(snapshotRow).toEqual({
+      base_digest: frozen.baseDigest,
+      proposed_digest: frozen.proposedDigest,
+      diff_digest: frozen.batchProofDigest,
+      frozen_member_manifest: frozen.members,
+      frozen_binding_manifest: frozen.cohort
+    });
+    await expect(db.transaction((tx) => freezeCanonicalCandidateBatchSnapshotInTransaction(tx, storage, admin, {
+      projectId: JSON_PROJECT,
+      candidateId: changedBoth.id,
+      expectedProofToken: "stale-proof"
+    }))).rejects.toMatchObject({ code: "CONFLICT", details: { reason: "source-proof-stale" } });
+
     const changedNonTarget = await createCandidate(db, storage, admin, {
       projectId: JSON_PROJECT,
       fileId,
@@ -645,6 +676,43 @@ describe("#906 canonical JSON candidate workflow", () => {
     expect(rejected[0]).toMatchObject({ reason: { code: "CONFLICT" } });
     expect(fulfilled[0]!.value.status).toBe("pending");
     await review(db, jsonReviewer, JSON_PROJECT, fulfilled[0]!.value.requestId, storage);
+  }, 120_000);
+
+  it("freezes a real candidate snapshot for C's single multi-target request", async () => {
+    const current = (await db.query<{ current_version_id: string; storage_key: string }>(`
+      select file.current_version_id,version.storage_key from project_parameter_files file
+      join project_parameter_file_versions version on version.id=file.current_version_id
+      where file.id=$1`, [fileId])).rows[0]!;
+    const valueTips = (await db.query<{ id: string; current_value_id: string }>(`
+      select id,current_value_id from parameter_catalog.project_parameter_bindings
+      where organization_id=$1 and project_id=$2 order by id`, [ORG, JSON_PROJECT])).rows;
+    const before = (await storage.getBounded!(current.storage_key, 1024 * 1024)).toString();
+    const after = before.replace('"limit": 36.5', '"limit": 50').replace(/"limit": 6[34]/, '"limit": 70');
+    expect(after).not.toBe(before);
+    const candidate = await createCandidate(db, storage, admin, {
+      projectId: JSON_PROJECT, fileId, fileName: "settings.json", bytes: Buffer.from(after)
+    });
+    const preview = await previewCanonicalCandidate(db, storage, admin, {
+      projectId: JSON_PROJECT, candidateId: candidate.id
+    });
+    expect(preview.bindings!.length).toBeGreaterThanOrEqual(2);
+    const proof = await db.transaction((tx) => freezeCanonicalCandidateBatchSnapshotInTransaction(tx, storage, admin, {
+      projectId: JSON_PROJECT, candidateId: candidate.id, expectedProofToken: preview.proofToken!
+    }));
+    const request = await submitCanonicalBatchValueChange(db, storage, admin, {
+      projectId: JSON_PROJECT, candidateId: candidate.id, expectedProofToken: proof.proofToken,
+      reason: "Review two exact source targets together", assignedToUserId: REVIEWER,
+      invocation: createUserInvocation(admin), requestId: "906-json-real-batch-submit",
+      refusalSink: createTrustedRefusalAuditSink(db)
+    });
+    expect(request).toMatchObject({ status: "pending", batchProofDigest: proof.batchProofDigest });
+    expect(request.targets).toHaveLength(preview.bindings!.length);
+    expect((await db.query<{ current_version_id: string }>(
+      "select current_version_id from project_parameter_files where id=$1", [fileId]
+    )).rows[0]!.current_version_id).toBe(current.current_version_id);
+    expect((await db.query<{ id: string; current_value_id: string }>(`
+      select id,current_value_id from parameter_catalog.project_parameter_bindings
+      where organization_id=$1 and project_id=$2 order by id`, [ORG, JSON_PROJECT])).rows).toEqual(valueTips);
   }, 120_000);
 });
 

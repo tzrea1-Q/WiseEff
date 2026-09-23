@@ -899,6 +899,39 @@ export async function prepareCanonicalCandidateBatchInTransaction(
   return { ...frozen, batchProofDigest: proofDigest(frozen) };
 }
 
+/** Freeze the locked source proof for the request owner without creating a request or changing values. */
+export async function freezeCanonicalCandidateBatchSnapshotInTransaction(
+  tx: Database,
+  objectStore: ObjectStore,
+  auth: AuthContext,
+  input: { projectId: string; candidateId: string; expectedProofToken: string }
+): Promise<CanonicalSourceBatchPrepareDto> {
+  const proof = await prepareCanonicalCandidateBatchInTransaction(tx, objectStore, auth, input);
+  const snapshot = (await tx.query<{
+    base_digest: string | null; proposed_digest: string | null; diff_digest: string | null;
+    frozen_member_manifest: unknown; frozen_binding_manifest: unknown;
+  }>(`select base_digest,proposed_digest,diff_digest,frozen_member_manifest,frozen_binding_manifest
+      from project_parameter_file_candidates
+     where id=$1 and organization_id=$2 and project_id=$3 for update`,
+    [proof.candidateId, proof.organizationId, proof.projectId])).rows[0];
+  if (!snapshot) throw new ApiError("NOT_FOUND", "Canonical source candidate was not found.");
+  if (snapshot.base_digest === null) {
+    await tx.query(`update project_parameter_file_candidates
+        set base_digest=$4,proposed_digest=$5,diff_digest=$6,
+            frozen_member_manifest=$7::jsonb,frozen_binding_manifest=$8::jsonb
+        where id=$1 and organization_id=$2 and project_id=$3`,
+      [proof.candidateId, proof.organizationId, proof.projectId, proof.baseDigest,
+        proof.proposedDigest, proof.batchProofDigest, JSON.stringify(proof.members), JSON.stringify(proof.cohort)]);
+  } else if (snapshot.base_digest !== proof.baseDigest
+    || snapshot.proposed_digest !== proof.proposedDigest
+    || snapshot.diff_digest !== proof.batchProofDigest
+    || JSON.stringify(stableProofValue(snapshot.frozen_member_manifest)) !== JSON.stringify(stableProofValue(proof.members))
+    || JSON.stringify(stableProofValue(snapshot.frozen_binding_manifest)) !== JSON.stringify(stableProofValue(proof.cohort))) {
+    throw new ApiError("CONFLICT", "Candidate snapshot disagrees with the locked batch proof.", { reason: "candidate-snapshot-stale" });
+  }
+  return proof;
+}
+
 async function findExistingDraft(
   db: Queryable,
   input: { organizationId: string; projectId: string; bindingId: string; sourcePinId: string; baseValueId: string; configRevisionId: string; baseDigest: string; proposedDigest: string; action: SourceAction }
