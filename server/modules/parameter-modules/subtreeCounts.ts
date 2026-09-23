@@ -1,6 +1,6 @@
 export type AttributionCountFact = {
   moduleId: string;
-  parameterSpecId: string | null;
+  definitionId: string | null;
   /** Null marks a definition-only fact; omitted keeps the legacy fact shape. */
   bindingId?: string | null;
 };
@@ -60,7 +60,7 @@ export function rollupSubtreeAttributionCounts(
     for (const id of descendantsOf(module.id)) {
       for (const fact of factsByModule.get(id) ?? []) {
         if (fact.bindingId !== null) parameterCount += 1;
-        if (fact.parameterSpecId !== null) specIds.add(fact.parameterSpecId);
+        if (fact.definitionId !== null) specIds.add(fact.definitionId);
       }
     }
     totals.set(module.id, { parameterCount, definitionCount: specIds.size });

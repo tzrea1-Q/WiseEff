@@ -80,7 +80,7 @@ export type RegistryCatalogSnapshot = Pick<CatalogSnapshot, "listDefinitions">;
 function definitionFactsFromCatalog(
   catalog: RegistryCatalogSnapshot | null,
   registrations: readonly ModuleRegistryFact[],
-): Array<{ moduleId: string; parameterSpecId: string; bindingId: null }> {
+): Array<{ moduleId: string; definitionId: string; bindingId: null }> {
   if (!catalog) return [];
 
   const moduleIdsBySubject = new Map<string, Set<string>>();
@@ -111,10 +111,10 @@ function definitionFactsFromCatalog(
     throw new Error(`Captured Catalog definition read failed: ${result.status}`);
   }
 
-  const facts: Array<{ moduleId: string; parameterSpecId: string; bindingId: null }> = [];
+  const facts: Array<{ moduleId: string; definitionId: string; bindingId: null }> = [];
   for (const definition of result.page.items) {
     for (const moduleId of moduleIdsBySubject.get(definition.subjectId) ?? []) {
-      facts.push({ moduleId, parameterSpecId: definition.id, bindingId: null });
+      facts.push({ moduleId, definitionId: definition.id, bindingId: null });
     }
   }
   return facts;
@@ -152,7 +152,7 @@ export async function readRegistry(
   const canonicalFacts = [
     ...canonicalRegistrations.map((row) => ({
       moduleId: row.module_id,
-      parameterSpecId: null,
+      definitionId: null,
       bindingId: row.binding_id,
     })),
     ...definitionFactsFromCatalog(catalog, canonicalRegistrations),

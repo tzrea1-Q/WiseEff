@@ -5,12 +5,12 @@ import { rollupSubtreeAttributionCounts } from "./subtreeCounts";
 describe("rollupSubtreeAttributionCounts", () => {
   it("keeps current binding counts separate from active definition counts", () => {
     const totals = rollupSubtreeAttributionCounts([{ id: "module", parentId: null }], [
-      { moduleId: "module", bindingId: "bound-retired-definition", parameterSpecId: null },
-      { moduleId: "module", bindingId: null, parameterSpecId: "active-unbound-definition" }
+      { moduleId: "module", bindingId: "bound-retired-definition", definitionId: null },
+      { moduleId: "module", bindingId: null, definitionId: "active-unbound-definition" }
     ]);
     expect(totals.get("module")).toEqual({ parameterCount: 1, definitionCount: 1 });
   });
-  it("counts subtree bindings and distinct specs without summing overlapping definitions", () => {
+  it("counts subtree bindings and distinct definitions without summing overlapping definitions", () => {
     const modules = [
       { id: "business", parentId: null },
       { id: "group", parentId: "business" },
@@ -18,11 +18,11 @@ describe("rollupSubtreeAttributionCounts", () => {
       { id: "node-b", parentId: "group" }
     ];
     const facts = [
-      { moduleId: "node-a", parameterSpecId: "spec-shared" },
-      { moduleId: "node-a", parameterSpecId: "spec-shared" },
-      { moduleId: "node-b", parameterSpecId: "spec-shared" },
-      { moduleId: "node-b", parameterSpecId: "spec-other" },
-      { moduleId: "group", parameterSpecId: "spec-group" }
+      { moduleId: "node-a", definitionId: "spec-shared" },
+      { moduleId: "node-a", definitionId: "spec-shared" },
+      { moduleId: "node-b", definitionId: "spec-shared" },
+      { moduleId: "node-b", definitionId: "spec-other" },
+      { moduleId: "group", definitionId: "spec-group" }
     ];
 
     const totals = rollupSubtreeAttributionCounts(modules, facts);
