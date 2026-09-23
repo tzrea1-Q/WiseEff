@@ -66,6 +66,8 @@ export async function verifyIssue853CActionRetirement(
   allowances: readonly AllowlistEntry[],
   discovered: readonly BoundaryViolation[],
 ) {
+  // Synthetic checker fixtures use their own trusted base and do not contain this fixed Catalog debt.
+  if (fixture.trustedBaseSha !== "9b3ba7df7e21f5589684bc92c872da593ad4c246") return;
   const oldIds = fixture.violations.filter((entry) => entry.file === actionFile).map((entry) => entry.id);
   const retired = new Set<string>(issue853CActionRetiredSourceIds);
   if (

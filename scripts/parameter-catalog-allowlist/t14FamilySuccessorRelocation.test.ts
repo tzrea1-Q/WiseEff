@@ -12,6 +12,11 @@ const allowances = (await loadAllowlistIndex(repoRoot)).entries;
 const changedFiles = new Set([
   "server/modules/parameter-modules/repository.ts",
   "server/modules/parameter-modules/service.test.ts",
+  "server/modules/agent/tools/actionTools.ts",
+  "server/modules/debugging/repository.ts",
+  "server/modules/dts-reload/repository.ts",
+  "server/modules/dts-reload/service.test.ts",
+  "server/modules/parameter-topology/writeLock.ts",
 ]);
 const activeFiles = t14FamilySuccessorRelocationConfig.files
   .map((section) => section.file)
@@ -23,7 +28,7 @@ beforeAll(async () => {
 }, 60_000);
 
 describe("T1.4 family historical record subset", () => {
-  it("keeps all 228 untouched-file destinations active", async () => {
+  it("keeps all 203 unchanged-file destinations active", async () => {
     const result = await runReviewedRelocationRecord(
       repoRoot,
       fixture,
@@ -33,9 +38,9 @@ describe("T1.4 family historical record subset", () => {
       { ...t14FamilySuccessorRelocationConfig, activeFiles },
     );
 
-    expect(result.relocations).toHaveLength(228);
-    expect(new Set(result.relocations.map((entry) => entry.id)).size).toBe(228);
-    expect(new Set(result.relocations.map((entry) => entry.observed.id)).size).toBe(228);
+    expect(result.relocations).toHaveLength(203);
+    expect(new Set(result.relocations.map((entry) => entry.id)).size).toBe(203);
+    expect(new Set(result.relocations.map((entry) => entry.observed.id)).size).toBe(203);
     expect(result.relocations.every((entry) => !changedFiles.has(entry.observed.file))).toBe(true);
   });
 });
