@@ -73,7 +73,7 @@ test.describe("parameter-home production dashboard", () => {
 
       expect(fabOverlapsLastHotspot).toBe(false);
     } else {
-      await expect(page.getByText("暂无可展示的热区。", { exact: true })).toBeVisible();
+      await expect(page.getByText("当前维度暂无热区数据", { exact: true })).toBeVisible();
     }
 
     await recordOperationEvidence({
