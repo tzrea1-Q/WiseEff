@@ -1,0 +1,233 @@
+{
+  "schemaVersion": 1,
+  "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
+  "fixtureSha256": "fe3cd2abe9181517332612938f00082db864d66f6f9b284d5f43b3051b5fe951",
+  "files": [
+    {
+      "file": "server/modules/parameter-files/candidateRepository.ts",
+      "sourceBlobOid": "469b843baddaa557b938c425ea7a1eda5cc963ec",
+      "destinationBlobOid": "1c92cc96c1d84e23fcb5e76e2f89f5168e1a1f65",
+      "pairs": [
+        {
+          "old": {
+            "id": "S12-FIL:unresolved-boundary-expression:0b2d3f3f9efa71be:fd8c02b977df64bf",
+            "rule": "unresolved-boundary-expression",
+            "file": "server/modules/parameter-files/candidateRepository.ts",
+            "reason": "A database, route, or module-loader boundary expression cannot be resolved statically.",
+            "family": "S12-FIL",
+            "line": 172,
+            "column": 47,
+            "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
+            "trustedBlobOid": "469b843baddaa557b938c425ea7a1eda5cc963ec",
+            "byteStart": 5986,
+            "byteEnd": 5989,
+            "token": "unresolved:database",
+            "evidence": "database: sql"
+          },
+          "new": {
+            "id": "S12-FIL:unresolved-boundary-expression:0b2d3f3f9efa71be:e557273710d2f354",
+            "family": "S12-FIL",
+            "rule": "unresolved-boundary-expression",
+            "file": "server/modules/parameter-files/candidateRepository.ts",
+            "line": 221,
+            "column": 47,
+            "byteStart": 7745,
+            "byteEnd": 7748,
+            "token": "unresolved:database",
+            "evidence": "database: sql",
+            "reason": "A database, route, or module-loader boundary expression cannot be resolved statically.",
+            "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
+            "trustedBlobOid": "1c92cc96c1d84e23fcb5e76e2f89f5168e1a1f65"
+          },
+          "sliceSha256": "4ec7c53222c8a758c722e2111541035ce700d5ae7bd0898c5f1b1a743e6450fd"
+        }
+      ]
+    },
+    {
+      "file": "server/modules/parameter-files/conflictService.ts",
+      "sourceBlobOid": "cd01ad6c5c70b6fe152415e12ebf3a9211133ef6",
+      "destinationBlobOid": "9c8e50361cdeafd9adf42a63c5aae53a87498e01",
+      "pairs": [
+        {
+          "old": {
+            "id": "S12-FIL:legacy-parameter-spec-identifier:46a4dd8af441804d:d7396c6c74c09547",
+            "rule": "legacy-parameter-spec-identifier",
+            "file": "server/modules/parameter-files/conflictService.ts",
+            "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation.",
+            "family": "S12-FIL",
+            "line": 28,
+            "column": 3,
+            "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
+            "trustedBlobOid": "cd01ad6c5c70b6fe152415e12ebf3a9211133ef6",
+            "byteStart": 1075,
+            "byteEnd": 1090,
+            "token": "parameterSpecId",
+            "evidence": "parameterSpecId"
+          },
+          "new": {
+            "id": "S12-FIL:legacy-parameter-spec-identifier:46a4dd8af441804d:c4b7ac8591a36d01",
+            "family": "S12-FIL",
+            "rule": "legacy-parameter-spec-identifier",
+            "file": "server/modules/parameter-files/conflictService.ts",
+            "line": 29,
+            "column": 3,
+            "byteStart": 1141,
+            "byteEnd": 1156,
+            "token": "parameterSpecId",
+            "evidence": "parameterSpecId",
+            "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation.",
+            "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
+            "trustedBlobOid": "9c8e50361cdeafd9adf42a63c5aae53a87498e01"
+          },
+          "sliceSha256": "7a3053e4a80662e27c0866024a253e904b8270e6464c30e625cf3481433c260b"
+        },
+        {
+          "old": {
+            "id": "S12-FIL:legacy-parameter-spec-identifier:00efb15850559a22:225705861a2fe93a",
+            "rule": "legacy-parameter-spec-identifier",
+            "file": "server/modules/parameter-files/conflictService.ts",
+            "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation.",
+            "family": "S12-FIL",
+            "line": 69,
+            "column": 7,
+            "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
+            "trustedBlobOid": "cd01ad6c5c70b6fe152415e12ebf3a9211133ef6",
+            "byteStart": 2612,
+            "byteEnd": 2627,
+            "token": "parameterSpecId",
+            "evidence": "parameterSpecId"
+          },
+          "new": {
+            "id": "S12-FIL:legacy-parameter-spec-identifier:00efb15850559a22:f8ceceb125a8ab1c",
+            "family": "S12-FIL",
+            "rule": "legacy-parameter-spec-identifier",
+            "file": "server/modules/parameter-files/conflictService.ts",
+            "line": 70,
+            "column": 7,
+            "byteStart": 2678,
+            "byteEnd": 2693,
+            "token": "parameterSpecId",
+            "evidence": "parameterSpecId",
+            "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation.",
+            "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
+            "trustedBlobOid": "9c8e50361cdeafd9adf42a63c5aae53a87498e01"
+          },
+          "sliceSha256": "7a3053e4a80662e27c0866024a253e904b8270e6464c30e625cf3481433c260b"
+        }
+      ]
+    },
+    {
+      "file": "server/modules/parameter-files/syncService.ts",
+      "sourceBlobOid": "75160690ea719da4cd3eac634613af84e0be9d93",
+      "destinationBlobOid": "d42cd66c1dc28dd3e808a7332956ae9bd96f3b79",
+      "pairs": [
+        {
+          "old": {
+            "id": "S12-FIL:legacy-parameter-spec-identifier:96541f156b26ee23:cdea9be76914ca75",
+            "rule": "legacy-parameter-spec-identifier",
+            "file": "server/modules/parameter-files/syncService.ts",
+            "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation.",
+            "family": "S12-FIL",
+            "line": 78,
+            "column": 39,
+            "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
+            "trustedBlobOid": "75160690ea719da4cd3eac634613af84e0be9d93",
+            "byteStart": 2761,
+            "byteEnd": 2776,
+            "token": "parameterSpecId",
+            "evidence": "parameterSpecId"
+          },
+          "new": {
+            "id": "S12-FIL:legacy-parameter-spec-identifier:96541f156b26ee23:c40765ddb140951f",
+            "family": "S12-FIL",
+            "rule": "legacy-parameter-spec-identifier",
+            "file": "server/modules/parameter-files/syncService.ts",
+            "line": 82,
+            "column": 39,
+            "byteStart": 3010,
+            "byteEnd": 3025,
+            "token": "parameterSpecId",
+            "evidence": "parameterSpecId",
+            "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation.",
+            "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
+            "trustedBlobOid": "d42cd66c1dc28dd3e808a7332956ae9bd96f3b79"
+          },
+          "sliceSha256": "7a3053e4a80662e27c0866024a253e904b8270e6464c30e625cf3481433c260b"
+        }
+      ]
+    },
+    {
+      "file": "src/infrastructure/http/parameterFileClient.ts",
+      "sourceBlobOid": "fa5ba70d4f7641b03157100b2cc687e83f9e2445",
+      "destinationBlobOid": "7c7751d491433d31ed9b313bc3c0b6738c33d672",
+      "pairs": [
+        {
+          "old": {
+            "id": "S12-FIL:unresolved-boundary-expression:b9317dad8c7bdc7a:919fe92746450d9e",
+            "rule": "unresolved-boundary-expression",
+            "file": "src/infrastructure/http/parameterFileClient.ts",
+            "reason": "A database, route, or module-loader boundary expression cannot be resolved statically.",
+            "family": "S12-FIL",
+            "line": 124,
+            "column": 41,
+            "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
+            "trustedBlobOid": "fa5ba70d4f7641b03157100b2cc687e83f9e2445",
+            "byteStart": 4644,
+            "byteEnd": 4693,
+            "token": "unresolved:database",
+            "evidence": "database: routeVersionContent(projectId, fileId, versionId)"
+          },
+          "new": {
+            "id": "S12-FIL:unresolved-boundary-expression:b9317dad8c7bdc7a:fec3bd7c4adfb85d",
+            "family": "S12-FIL",
+            "rule": "unresolved-boundary-expression",
+            "file": "src/infrastructure/http/parameterFileClient.ts",
+            "line": 137,
+            "column": 41,
+            "byteStart": 5132,
+            "byteEnd": 5181,
+            "token": "unresolved:database",
+            "evidence": "database: routeVersionContent(projectId, fileId, versionId)",
+            "reason": "A database, route, or module-loader boundary expression cannot be resolved statically.",
+            "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
+            "trustedBlobOid": "7c7751d491433d31ed9b313bc3c0b6738c33d672"
+          },
+          "sliceSha256": "b3265f100155ce8f741dd3757aae6f6de33482b5ced42a077100f65ecc3058d7"
+        },
+        {
+          "old": {
+            "id": "S12-FIL:unresolved-boundary-expression:318e9b7df5e94a6d:9a3a6eaca35587b7",
+            "rule": "unresolved-boundary-expression",
+            "file": "src/infrastructure/http/parameterFileClient.ts",
+            "reason": "A database, route, or module-loader boundary expression cannot be resolved statically.",
+            "family": "S12-FIL",
+            "line": 194,
+            "column": 41,
+            "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
+            "trustedBlobOid": "fa5ba70d4f7641b03157100b2cc687e83f9e2445",
+            "byteStart": 7979,
+            "byteEnd": 8030,
+            "token": "unresolved:database",
+            "evidence": "database: `${routeCandidate(projectId, candidateId)}/content`"
+          },
+          "new": {
+            "id": "S12-FIL:unresolved-boundary-expression:318e9b7df5e94a6d:dcf61d8aa1b8b923",
+            "family": "S12-FIL",
+            "rule": "unresolved-boundary-expression",
+            "file": "src/infrastructure/http/parameterFileClient.ts",
+            "line": 213,
+            "column": 41,
+            "byteStart": 8707,
+            "byteEnd": 8758,
+            "token": "unresolved:database",
+            "evidence": "database: `${routeCandidate(projectId, candidateId)}/content`",
+            "reason": "A database, route, or module-loader boundary expression cannot be resolved statically.",
+            "trustedBaseSha": "9b3ba7df7e21f5589684bc92c872da593ad4c246",
+            "trustedBlobOid": "7c7751d491433d31ed9b313bc3c0b6738c33d672"
+          },
+          "sliceSha256": "1175b031aabfb312ab7351eb6804f7a8aadeb95b84793186419acc3561031776"
+        }
+      ]
+    }
+  ]
+}

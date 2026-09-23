@@ -15,11 +15,11 @@ const inventory = JSON.parse(await readFile(join(
 ), "utf8")) as { retiredIds: string[]; unmatchedNewIds: string[]; absentAtCombinedHead: string[] };
 
 describe("Issue #853 D exact Catalog handoff", () => {
-  it("keeps 19 exact pairs, 22 retirements, 23 unmatched observations, and five fixed-file aliases distinct", async () => {
+  it("keeps 19 exact pairs, 22 retirements, 23 unmatched observations, and 11 fixed-file aliases distinct", async () => {
     await expect(verifyIssue853DInventory(root, fixture, allowances, discovered)).resolves.toBeDefined();
     const result = await applyReviewedIssue853DRelocation(root, fixture, allowances, discovered, []);
-    expect(result.relocations).toHaveLength(24);
-    expect(new Set(result.relocations.map((pair) => pair.id)).size).toBe(24);
+    expect(result.relocations).toHaveLength(30);
+    expect(new Set(result.relocations.map((pair) => pair.id)).size).toBe(30);
     expect(inventory.retiredIds).toHaveLength(22);
     expect(inventory.unmatchedNewIds).toHaveLength(23);
     expect(inventory.absentAtCombinedHead).toHaveLength(1);

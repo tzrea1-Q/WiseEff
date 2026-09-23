@@ -43,6 +43,21 @@ const fixedConfig: RelocationConfig = {
   requireStableByteOrder: true,
 };
 
+const additionalFixedConfig: RelocationConfig = {
+  recordPath: "scripts/fixtures/parameter-catalog-allowlist/issue-853-d-additional-fixed-successor.json",
+  recordSha256: "ab50f316281e61ccdd8d4e55ab245ef750f0a38b2b309751706d0df2d3b34640",
+  files: [
+    { file: "server/modules/parameter-files/candidateRepository.ts", pairs: 1 },
+    { file: "server/modules/parameter-files/conflictService.ts", pairs: 2 },
+    { file: "server/modules/parameter-files/syncService.ts", pairs: 1 },
+    { file: "src/infrastructure/http/parameterFileClient.ts", pairs: 2 },
+  ],
+  totalPairs: 6,
+  rejectAllowanceGrowth: true,
+  requireStableStructuralAnchor: true,
+  requireStableByteOrder: true,
+};
+
 type Inventory = {
   schemaVersion: 1;
   sourcePullRequest: 910;
@@ -127,9 +142,13 @@ export async function applyReviewedIssue853DRelocation(
   requireD(fixedUnmatched.length === fixedNewIds.length
     && fixedNewIds.every((id) => fixedUnmatched.some((entry) => entry.id === id)),
   "three newly introduced fixed-file observations remain unallowed");
+  const additional = await runReviewedRelocationRecord(
+    repoRoot, fixture, allowances, fixed.violations,
+    [...prior, ...exact.relocations, ...fixed.relocations], additionalFixedConfig,
+  );
   return {
-    violations: fixed.violations,
-    relocations: [...exact.relocations, ...fixed.relocations],
+    violations: additional.violations,
+    relocations: [...exact.relocations, ...fixed.relocations, ...additional.relocations],
   };
 }
 
