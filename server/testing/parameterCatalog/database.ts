@@ -18,11 +18,11 @@ export const S2_SCH_CONTRACT_FINGERPRINT =
   "7bc944915eabc1689a9976332864bae3bc602fd9c407e91ed826340dbe0f69e1";
 
 /**
- * Current schema through 0166, including canonical DTS/debug pins and batch
- * request/applied-revision storage. The historical S2-SCH pins above are unchanged.
+ * Current schema through 0168, including canonical member-removal tombstones
+ * and the pinned file-version trigger repair. Historical S2-SCH pins are unchanged.
  */
 export const S2_SCH_LIVE_FINGERPRINT =
-  "091f204fef70fbd7fd18f357bb15db14b75b15ee833628b14babeba75fa5bc42";
+  "cefd5fb074ae77245214e9539f174e469dbc4c94a3ace175d1c6d77aa7bb2bb0";
 
 const CATALOG_DATABASE_PREFIX = "wiseeff_pcat_";
 const FAKE_ENGINE_PATTERN = /pglite|postgres-js|pg-mem|sqlite|:memory:|memory:\/\//i;
