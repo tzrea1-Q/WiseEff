@@ -302,24 +302,6 @@
       "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
     },
     {
-      "id": "S12-PRJ:legacy-catalog-raw-read:615b4d45f7059ed1:11d2249984064946",
-      "rule": "legacy-catalog-raw-read",
-      "file": "server/modules/parameters/dashboard/hotspotRepository.ts",
-      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
-    },
-    {
-      "id": "S12-PRJ:legacy-catalog-raw-read:615b4d45f7059ed1:24f362f0f6789ba5",
-      "rule": "legacy-catalog-raw-read",
-      "file": "server/modules/parameters/dashboard/hotspotRepository.ts",
-      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
-    },
-    {
-      "id": "S12-PRJ:legacy-catalog-raw-read:615b4d45f7059ed1:4191961ca82a308b",
-      "rule": "legacy-catalog-raw-read",
-      "file": "server/modules/parameters/dashboard/hotspotRepository.ts",
-      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
-    },
-    {
       "id": "S12-PRJ:legacy-catalog-raw-read:62f424d8c2ac0154:a6f63e60236e8287",
       "rule": "legacy-catalog-raw-read",
       "file": "server/modules/parameters/reviewWorkflowRepository.ts",
@@ -2246,24 +2228,6 @@
       "reason": "A database, route, or module-loader boundary expression cannot be resolved statically."
     },
     {
-      "id": "S12-PRJ:unresolved-boundary-expression:14051fd83ba05053:1672137d914581a2",
-      "rule": "unresolved-boundary-expression",
-      "file": "server/modules/parameters/dashboard/hotspotRepository.ts",
-      "reason": "A database, route, or module-loader boundary expression cannot be resolved statically."
-    },
-    {
-      "id": "S12-PRJ:unresolved-boundary-expression:14051fd83ba05053:60fd11904b6411f3",
-      "rule": "unresolved-boundary-expression",
-      "file": "server/modules/parameters/dashboard/hotspotRepository.ts",
-      "reason": "A database, route, or module-loader boundary expression cannot be resolved statically."
-    },
-    {
-      "id": "S12-PRJ:unresolved-boundary-expression:14051fd83ba05053:76d7ca2a986549f6",
-      "rule": "unresolved-boundary-expression",
-      "file": "server/modules/parameters/dashboard/hotspotRepository.ts",
-      "reason": "A database, route, or module-loader boundary expression cannot be resolved statically."
-    },
-    {
       "id": "S12-PRJ:unresolved-boundary-expression:23adba586869891c:0b7b17a95ea5e64e",
       "rule": "unresolved-boundary-expression",
       "file": "server/modules/parameter-drafts/repository.ts",
@@ -2306,42 +2270,6 @@
       "reason": "A database, route, or module-loader boundary expression cannot be resolved statically."
     },
     {
-      "id": "S12-PRJ:unresolved-boundary-expression:3a9bcfb508ae1391:5cdab7ab69a983fc",
-      "rule": "unresolved-boundary-expression",
-      "file": "server/modules/parameters/dashboard/repository.ts",
-      "reason": "A database, route, or module-loader boundary expression cannot be resolved statically."
-    },
-    {
-      "id": "S12-PRJ:unresolved-boundary-expression:3a9bcfb508ae1391:6a83c33633ffb34a",
-      "rule": "unresolved-boundary-expression",
-      "file": "server/modules/parameters/dashboard/repository.ts",
-      "reason": "A database, route, or module-loader boundary expression cannot be resolved statically."
-    },
-    {
-      "id": "S12-PRJ:unresolved-boundary-expression:3a9bcfb508ae1391:7c970e0e46f009e5",
-      "rule": "unresolved-boundary-expression",
-      "file": "server/modules/parameters/dashboard/repository.ts",
-      "reason": "A database, route, or module-loader boundary expression cannot be resolved statically."
-    },
-    {
-      "id": "S12-PRJ:unresolved-boundary-expression:3a9bcfb508ae1391:91fd71c28e340b15",
-      "rule": "unresolved-boundary-expression",
-      "file": "server/modules/parameters/dashboard/repository.ts",
-      "reason": "A database, route, or module-loader boundary expression cannot be resolved statically."
-    },
-    {
-      "id": "S12-PRJ:unresolved-boundary-expression:3a9bcfb508ae1391:9a95911be58d9752",
-      "rule": "unresolved-boundary-expression",
-      "file": "server/modules/parameters/dashboard/repository.ts",
-      "reason": "A database, route, or module-loader boundary expression cannot be resolved statically."
-    },
-    {
-      "id": "S12-PRJ:unresolved-boundary-expression:3a9bcfb508ae1391:9d7d1c15d5cd9b9b",
-      "rule": "unresolved-boundary-expression",
-      "file": "server/modules/parameters/dashboard/repository.ts",
-      "reason": "A database, route, or module-loader boundary expression cannot be resolved statically."
-    },
-    {
       "id": "S12-PRJ:unresolved-boundary-expression:3a9bcfb508ae1391:a97b6df63bfa1075",
       "rule": "unresolved-boundary-expression",
       "file": "server/modules/parameters/dashboard/repository.ts",
@@ -2349,12 +2277,6 @@
     },
     {
       "id": "S12-PRJ:unresolved-boundary-expression:3a9bcfb508ae1391:e87d7ebd4f61b676",
-      "rule": "unresolved-boundary-expression",
-      "file": "server/modules/parameters/dashboard/repository.ts",
-      "reason": "A database, route, or module-loader boundary expression cannot be resolved statically."
-    },
-    {
-      "id": "S12-PRJ:unresolved-boundary-expression:3a9bcfb508ae1391:ea846d21dd7ac3d3",
       "rule": "unresolved-boundary-expression",
       "file": "server/modules/parameters/dashboard/repository.ts",
       "reason": "A database, route, or module-loader boundary expression cannot be resolved statically."

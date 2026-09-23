@@ -328,6 +328,7 @@ describe("M5.12 acceptance CI configuration", () => {
     const helperlessPaths = sources.filter(({ path }) => !loaded.has(path)).map(({ path }) => path);
     expect(helperlessPaths).toEqual(requiredAcceptanceEnvironmentHelperExceptions);
     expect(findMissingAcceptanceEnvironmentHelperLoads(sources)).toEqual([]);
+    expect(loaded.has("e2e/acceptance/canonical-dashboard.acceptance.spec.ts")).toBe(true);
   });
 
   it("routes both Playwright acceptance configs through the same owned-runtime-aware helper", () => {

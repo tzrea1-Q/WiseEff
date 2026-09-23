@@ -1786,12 +1786,12 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
     expect(screen.queryByText("参数运营中枢")).not.toBeInTheDocument();
     expect(screen.getByRole("group", { name: "工作台视图" })).toBeInTheDocument();
     expect(screen.queryByRole("region", { name: "热榜" })).not.toBeInTheDocument();
-    expect(screen.getByRole("region", { name: "个人工作台" })).toBeInTheDocument();
-    expect(screen.getByRole("region", { name: "待办事项" })).toBeInTheDocument();
-    expect(screen.getByRole("region", { name: "主要功能" })).toBeInTheDocument();
+    expect(await screen.findByRole("region", { name: "个人工作台" })).toBeInTheDocument();
+    expect(await screen.findByRole("region", { name: "待办事项" })).toBeInTheDocument();
+    expect(await screen.findByRole("region", { name: "主要功能" })).toBeInTheDocument();
     expect(screen.queryByText("管理视角")).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /打开 管理后台/ })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /打开 新建项目/ })).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: /打开 管理后台/ })).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: /打开 新建项目/ })).toBeInTheDocument();
     expect(screen.queryByText("我要治理")).not.toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "概览" })).toBeInTheDocument();
     expect(screen.queryByText("各项目参数风险分布")).not.toBeInTheDocument();
@@ -1968,14 +1968,14 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
     expect(firstTab).toHaveAttribute("aria-selected", "true");
   });
 
-  it("navigates from parameter homepage entries into parameter management routes", () => {
+  it("navigates from parameter homepage entries into parameter management routes", async () => {
     window.history.replaceState(null, "", "/parameter-home");
 
     renderAppForCurrentPath();
 
     expect(screen.queryByRole("navigation", { name: "参数管理快捷入口" })).not.toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("button", { name: /打开 管理后台/ }));
+    fireEvent.click(await screen.findByRole("button", { name: /打开 管理后台/ }));
     expect(window.location.pathname).toBe("/parameter-admin/specs");
 
     window.history.replaceState(null, "", "/parameter-home");
@@ -1984,8 +1984,8 @@ describe("WiseEff app shell", { timeout: 20_000 }, () => {
 
     expect(screen.queryByRole("navigation", { name: "参数管理快捷入口" })).not.toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("button", { name: /打开 新建项目/ }));
-    expect(screen.getByRole("dialog", { name: "新项目参数初始化" })).toBeInTheDocument();
+    fireEvent.click(await screen.findByRole("button", { name: /打开 新建项目/ }));
+    expect(await screen.findByRole("dialog", { name: "新项目参数初始化" })).toBeInTheDocument();
     expect(screen.getByLabelText("项目信息")).toHaveClass("project-init-form-card");
   });
 

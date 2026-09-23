@@ -18,22 +18,31 @@ function formatError(error: unknown): string {
 }
 
 export function createParameterDashboardRuntime({ repository, dispatch }: Options) {
+  let summaryGeneration = 0;
+  let hotspotsGeneration = 0;
+
   return {
     async loadSummary(input: { projectId?: string; window: DashboardWindow; perspectiveRoleId?: string }) {
+      const generation = ++summaryGeneration;
       dispatch({ type: "DASHBOARD_SUMMARY_LOADING" });
       try {
         const data = await repository.listDashboardSummary(input);
+        if (generation !== summaryGeneration) return;
         dispatch({ type: "DASHBOARD_SUMMARY_READY", data });
       } catch (error) {
+        if (generation !== summaryGeneration) return;
         dispatch({ type: "DASHBOARD_SUMMARY_ERROR", error: formatError(error) });
       }
     },
     async loadHotspots(input: { projectId?: string; window: DashboardWindow; dimension: HotspotDimension }) {
+      const generation = ++hotspotsGeneration;
       dispatch({ type: "DASHBOARD_HOTSPOTS_LOADING" });
       try {
         const data = await repository.listDashboardHotspots(input);
+        if (generation !== hotspotsGeneration) return;
         dispatch({ type: "DASHBOARD_HOTSPOTS_READY", data });
       } catch (error) {
+        if (generation !== hotspotsGeneration) return;
         dispatch({ type: "DASHBOARD_HOTSPOTS_ERROR", error: formatError(error) });
       }
     }

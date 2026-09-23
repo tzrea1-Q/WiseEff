@@ -36,16 +36,16 @@ describe("projectHotspotScoring", () => {
 
   it("builds evidence without risk or drift", () => {
     const evidence = buildBehavioralHotspotEvidence(baseInput);
-    expect(evidence[0]).toContain("累计修改 30 / 200");
+    expect(evidence[0]).toContain("已有已提交变更记录的参数绑定 30 / 200");
     expect(evidence[1]).toContain("窗口内 12 次参数变更");
     expect(evidence[2]).toContain("待处理流程 2 项");
   });
 
-  it("builds parameter evidence with project modification scope", () => {
+  it("builds parameter evidence from the Binding history state", () => {
     const evidence = buildBehavioralHotspotEvidence(
       { ...baseInput, modifiedParamCount: 2, totalParamCount: 5 },
       "parameter"
     );
-    expect(evidence[0]).toContain("已在 2 / 5 个项目中修改（40%）");
+    expect(evidence[0]).toBe("该参数绑定已有已提交变更记录（含来源修订传播）");
   });
 });

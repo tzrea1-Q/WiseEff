@@ -50,7 +50,7 @@ describe("mock parameter dashboard repository", () => {
     const hotspots = await repo.listDashboardHotspots({ window: "30d", dimension: "parameter" });
     expect(hotspots.length).toBeGreaterThan(0);
     expect(Object.keys(hotspots[0].scoreBreakdown)).toEqual(["frequency", "scope", "workflow", "collaboration"]);
-    expect(hotspots[0].evidence[0]).toMatch(/个项目中修改/);
+    expect(hotspots[0].evidence[0]).toBe("该参数绑定已有已提交变更记录（含来源修订传播）");
   });
 
 });

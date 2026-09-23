@@ -22,4 +22,23 @@ describe("charts", () => {
     );
     expect(screen.getByRole("img", { name: /各项目参数风险分布/ })).toBeInTheDocument();
   });
+
+  it("shows an explicit unavailable state when canonical risk is absent", () => {
+    render(
+      <ProjectRiskChart
+        buckets={[{
+          projectId: "aurora",
+          projectCode: "AUR-Prod",
+          projectName: "Aurora",
+          high: null,
+          medium: null,
+          low: null,
+          total: null,
+          riskAvailability: "unavailable"
+        }]}
+      />
+    );
+    expect(screen.getByText(/风险分类数据（不可用）/)).toBeInTheDocument();
+    expect(screen.getAllByText("不可用")).toHaveLength(1);
+  });
 });
