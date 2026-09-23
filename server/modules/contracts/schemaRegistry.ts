@@ -949,11 +949,20 @@ export const schemaRegistry: Record<string, ContractSchemaRef> = {
       "404": "ErrorResponse"
     }
   },
+  "parameterTopology.getProjectValueBatchChangeRequest": {
+    summary: "Read one frozen canonical batch request with its ordered targets for software review",
+    tags: ["parameters"],
+    responseBody: "ProjectValueBatchChangeRequestResponse",
+    additionalResponses: {
+      "403": "ErrorResponse",
+      "404": "ErrorResponse"
+    }
+  },
   "parameterTopology.reviewProjectValueChangeRequest": {
-    summary: "Approve (apply) or reject one pending canonical value change request",
+    summary: "Review one canonical value request; batch approval requires its frozen proof digest",
     tags: ["parameters"],
     requestBody: "ReviewProjectValueChangeRequest",
-    responseBody: "ProjectValueChangeRequestResponse",
+    responseBody: "ProjectValueChangeReviewResponse",
     additionalResponses: {
       "400": "ErrorResponse",
       "403": "ErrorResponse",
