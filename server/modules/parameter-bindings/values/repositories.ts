@@ -449,6 +449,21 @@ export const casCurrentTip = async (
               and (request.binding_id<>binding.id or request.base_current_value_id=$2)
               and next_value.value_state=case when request.binding_id=binding.id and request.action='delete' then 'deleted' else 'present' end
               and request.candidate_binding_manifest @> jsonb_build_array(jsonb_build_object('bindingId',binding.id,'oldValueId',$2::text)))
+          or exists (select 1 from public.project_parameter_value_change_requests request
+            join parameter_catalog.project_value_source_pins base_pin
+              on base_pin.binding_id=binding.id and base_pin.project_value_id=$2
+             and base_pin.organization_id=request.organization_id and base_pin.project_id=request.project_id
+             and base_pin.value_state='present'
+            join parameter_catalog.${projectParameterValues} next_value
+              on next_value.id=$3 and next_value.binding_id=binding.id
+            left join public.project_parameter_value_change_targets target
+              on target.request_id=request.id and target.binding_id=binding.id
+            where request.id=$4 and request.organization_id=binding.organization_id
+              and request.project_id=binding.project_id and request.status='pending'
+              and request.request_kind='batch'
+              and request.candidate_binding_manifest @> jsonb_build_array(jsonb_build_object('bindingId',binding.id,'oldValueId',$2::text))
+              and (target.id is null or (target.base_current_value_id=$2 and target.source_pin_id=base_pin.id))
+              and next_value.value_state=case when target.action='delete' then 'deleted' else 'present' end)
         )`,
     [input.bindingId, input.expectedTip, input.nextTip, input.sourceCommitRequestId ?? null],
   );
