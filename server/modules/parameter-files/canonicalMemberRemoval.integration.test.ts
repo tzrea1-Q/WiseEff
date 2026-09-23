@@ -345,6 +345,63 @@ describe("#906 reviewed canonical member removal cohort", () => {
       .toBe(configSetId);
   }, 120_000);
 
+  it("leaves the reviewed request and source cohort untouched when object storage fails", async () => {
+    const frozen = await db.transaction((tx) => prepareCanonicalMemberRemoval(tx, storage, admin, {
+      projectId, configSetId, fileId: removedFileId,
+      invocation: createUserInvocation(admin), traceId: "prepare-member-storage-fault",
+      refusalSink: createTrustedRefusalAuditSink(db)
+    }));
+    const review = { requestId: "reviewed-member-storage-fault", submitterUserId: adminId,
+      reviewerUserId: reviewerId, decision: "approve" as const, frozen };
+    await submitReview(review);
+    const snapshot = await loadPublishedCatalog(getRootPostgresPool(db)!);
+    if (!snapshot) throw new Error("Published Catalog fixture is unavailable");
+    const before = (await db.query<{ values: number; pins: number; history: number; revisions: number }>(`
+      select (select count(*)::int from parameter_catalog.project_parameter_values) as values,
+        (select count(*)::int from parameter_catalog.project_value_source_pins) as pins,
+        (select count(*)::int from parameter_catalog.binding_history_events) as history,
+        (select count(*)::int from dts_config_revisions where config_set_id=$1) as revisions`,
+    [configSetId])).rows[0]!;
+    const cohortQuery = `select binding.id,binding.current_value_id,pin.id as pin_id,
+        pin.config_revision_id,pin.file_version_id,file.config_set_id,file.current_version_id
+      from parameter_catalog.current_project_parameter_bindings binding
+      join parameter_catalog.project_parameter_source_occurrences occurrence
+        on occurrence.id=binding.source_occurrence_id
+      join parameter_catalog.project_value_source_pins pin
+        on pin.binding_id=binding.id and pin.project_value_id=binding.current_value_id
+      join public.project_parameter_files file on file.id=occurrence.file_id
+      where binding.organization_id=$1 and binding.project_id=$2
+        and occurrence.config_set_id=$3 order by binding.id`;
+    const cohortBefore = (await db.query(cohortQuery,
+      [organizationId, projectId, configSetId])).rows;
+    expect(cohortBefore).toHaveLength(3);
+    let reads = 0;
+    const failingStorage = { ...storage, getBounded: async (key: string, maxBytes: number) => {
+      if (++reads === 2) throw new Error("injected-object-store-read-failure");
+      return storage.getBounded!(key, maxBytes);
+    } };
+    await expect(db.transaction((tx) => applyReviewedCanonicalMemberRemoval(
+      tx, failingStorage, reviewer, snapshot, review, {
+        invocation: createUserInvocation(reviewer), traceId: review.requestId,
+        refusalSink: createTrustedRefusalAuditSink(db)
+      }))).rejects.toMatchObject({ code: "CONFLICT" });
+    expect(reads).toBe(2);
+    expect((await db.query<typeof before>(`
+      select (select count(*)::int from parameter_catalog.project_parameter_values) as values,
+        (select count(*)::int from parameter_catalog.project_value_source_pins) as pins,
+        (select count(*)::int from parameter_catalog.binding_history_events) as history,
+        (select count(*)::int from dts_config_revisions where config_set_id=$1) as revisions`,
+    [configSetId])).rows[0]).toEqual(before);
+    expect((await db.query(cohortQuery,
+      [organizationId, projectId, configSetId])).rows).toEqual(cohortBefore);
+    expect((await db.query<{ status: string; applied_at: Date | null }>(`
+      select status,applied_at from project_parameter_value_change_requests where id=$1`,
+    [review.requestId])).rows).toEqual([{ status: "pending", applied_at: null }]);
+    expect((await db.query<{ count: number }>(`
+      select count(*)::int as count from parameter_catalog.project_source_member_tombstones
+      where file_id=$1`, [removedFileId])).rows[0]!.count).toBe(0);
+  }, 120_000);
+
   it("commits one reviewed removal with every surviving Value, pin, history and tombstone", async () => {
     const frozen = await db.transaction((tx) => prepareCanonicalMemberRemoval(tx, storage, admin, {
       projectId, configSetId, fileId: removedFileId,
