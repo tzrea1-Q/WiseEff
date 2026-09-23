@@ -107,6 +107,9 @@ describe("Issue #900 dashboard Catalog boundary proof", () => {
     ]);
     const baseShard = JSON.parse(baseShardBytes.toString("utf8")) as { entries: RetirementRecord["retiredAllowlistEntries"] };
     const currentShard = JSON.parse(currentShardBytes.toString("utf8")) as { entries: RetirementRecord["retiredAllowlistEntries"] };
+    const issue853DRetiredIds = (JSON.parse(await readFile(join(
+      repoRoot, "scripts/fixtures/parameter-catalog-allowlist/issue-853-d-902-inventory.json",
+    ), "utf8")) as { retiredIds: string[] }).retiredIds;
 
     expect(sha256(manifestBytes)).toBe(retirementRecordSha256);
     expect(manifest).toMatchObject({
@@ -129,8 +132,12 @@ describe("Issue #900 dashboard Catalog boundary proof", () => {
     expect(issue913ModuleIds.size).toBe(2);
     expect([...issue913ModuleIds].filter((id) => retiredIds.includes(id))).toEqual([]);
     expect(baseShard.entries.filter((entry) => issue913ModuleIds.has(entry.id))).toHaveLength(2);
+    expect(issue853DRetiredIds).toHaveLength(22);
+    expect(baseShard.entries.filter((entry) => issue853DRetiredIds.includes(entry.id)).map((entry) => entry.id).sort())
+      .toEqual([...issue853DRetiredIds].sort());
     expect(currentShard.entries).toEqual(baseShard.entries.filter((entry) =>
-      !retiredIds.includes(entry.id) && !issue913ModuleIds.has(entry.id)));
+      !retiredIds.includes(entry.id) && !issue913ModuleIds.has(entry.id)
+      && !issue853DRetiredIds.includes(entry.id)));
 
     const fixtureById = new Map(fixture.violations.map((entry) => [entry.id, entry]));
     const retiredById = new Map(retiredEntries.map((entry) => [entry.id, entry]));
