@@ -8,7 +8,7 @@ import type { CatalogSnapshot } from "../catalog-kernel/interface";
 import { getCanonicalValueChangeRequest, getCanonicalValueChangeRequestForUpdate, type CanonicalValueChangeRequestRow } from "../parameter-bindings/drafts/changeRepository";
 import { readSourceRegistrationAgreement } from "../parameter-bindings/binding";
 import { canEditParameters, canReviewParameters, canReviewParameterStage } from "../parameter-kernel/policy";
-import { assertPinnedCanonicalSensitiveNodeWriteAllowed, lockCanonicalSourceCohort, loadCanonicalSourceCohort, loadCanonicalSourceSnapshot, requireCanonicalUserInvocation, recordCanonicalPermissionRefusal, validatePinnedDtsSourceChange, validatePinnedDtsSourceDeletion, type CanonicalSourceBindingPin, type CanonicalSourceManifest, type CanonicalSourceSecurityContext } from "./canonicalSource";
+import { assertPinnedCanonicalSensitiveNodeWriteAllowed, canonicalSourceMemberMatchesCurrentFile, lockCanonicalSourceCohort, loadCanonicalSourceCohort, loadCanonicalSourceSnapshot, requireCanonicalUserInvocation, recordCanonicalPermissionRefusal, validatePinnedDtsSourceChange, validatePinnedDtsSourceDeletion, type CanonicalSourceBindingPin, type CanonicalSourceManifest, type CanonicalSourceCurrentMember, type CanonicalSourceSecurityContext } from "./canonicalSource";
 import type { TrustedRefusalAuditSink } from "../audit/trustedRefusalSink";
 import { MAX_PARAMETER_SOURCE_BYTES, deleteJsonSourceMember, parseJsonSource, proveJsonSourceMemberAbsent, readJsonSourceValue } from "./jsonSource";
 import { insertFileVersion } from "./repository";
@@ -224,7 +224,7 @@ export async function commitCanonicalSourceRevision(
   });
   const manifest = base.manifest;
   await assertPinnedCanonicalSensitiveNodeWriteAllowed(db, auth, manifest, security);
-  const current = await db.query<{ id: string; current_version_id: string; config_set_role: string; config_set_sort_order: number; format: string }>(
+  const current = await db.query<CanonicalSourceCurrentMember>(
     `select id,current_version_id,config_set_role,config_set_sort_order,format from project_parameter_files where config_set_id=$1 order by id for update nowait`, [manifest.configSetId]);
   const cohort = await loadCanonicalSourceCohort(db,{ organizationId: auth.organization.id,projectId: input.projectId,configSetId: manifest.configSetId });
   const request = await readRequest(true);
@@ -238,7 +238,7 @@ export async function commitCanonicalSourceRevision(
   }
   if (request.status !== "pending" || !same(request.candidate_binding_manifest,cohort)) conflict("Source Binding cohort is stale; prepare and review again.");
   if (current.rows.length !== manifest.members.length || current.rows.some((file) => !manifest.members.some((member) =>
-    member.fileId === file.id && member.fileVersionId === file.current_version_id && member.role === file.config_set_role && member.sortOrder === file.config_set_sort_order && member.format === file.format))) {
+    canonicalSourceMemberMatchesCurrentFile(member, file)))) {
     conflict("Source member set or file versions are stale; prepare and review again.");
   }
   const frozenMembers = manifest.members.map((member) => ({ ...member,configSetId: manifest.configSetId,isCandidateFile: member.fileId === manifest.fileId }))
