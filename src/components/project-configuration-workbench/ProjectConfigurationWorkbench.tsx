@@ -8,6 +8,7 @@ import type {
 import type { ParameterTopologyRepository } from "@/application/ports/ParameterTopologyRepository";
 import type {
   ParameterFileRepository,
+  ParameterFileSourceWorkflow,
   ProjectParameterFileVersion
 } from "@/application/ports/ParameterFileRepository";
 import { useToast } from "@/components/common/toast/ToastProvider";
@@ -20,6 +21,8 @@ import {
 import { WorkbenchCommandBar } from "./WorkbenchCommandBar";
 import { WorkbenchBaselineDialogs } from "./WorkbenchBaselineDialogs";
 import { WorkbenchCandidateActivateDialog } from "./WorkbenchCandidateActivateDialog";
+import { WorkbenchCandidateSourceReviewDialog } from "./WorkbenchCandidateSourceReviewDialog";
+import { WorkbenchSourceRollbackDialog } from "./WorkbenchSourceRollbackDialog";
 import { WorkbenchShellChrome } from "./WorkbenchShellChrome";
 import { isCriticalDtsNodePath } from "@/components/parameters/dtsCriticalPath";
 import type { StructuredValueChange } from "@/components/parameters/StructuredValueEditor";
@@ -176,6 +179,17 @@ export function ProjectConfigurationWorkbench({
   const [versionsLoading, setVersionsLoading] = useState(false);
   const [versionsError, setVersionsError] = useState("");
   const [versionsReloadToken, setVersionsReloadToken] = useState(0);
+  const [sourceWorkflowsByFileId, setSourceWorkflowsByFileId] = useState<
+    Record<string, ParameterFileSourceWorkflow>
+  >({});
+  const [sourceWorkflowErrorsByFileId, setSourceWorkflowErrorsByFileId] = useState<
+    Record<string, string>
+  >({});
+  const [sourceWorkflowLoading, setSourceWorkflowLoading] = useState(false);
+  const [sourceWorkflowReloadToken, setSourceWorkflowReloadToken] = useState(0);
+  const [rollbackReviewVersion, setRollbackReviewVersion] = useState<ProjectParameterFileVersion | null>(null);
+  const [rollbackReviewPending, setRollbackReviewPending] = useState(false);
+  const [rollbackReviewError, setRollbackReviewError] = useState("");
   const {
     flow: candidateFlow,
     candidate: activeCandidate,
@@ -185,8 +199,15 @@ export function ProjectConfigurationWorkbench({
     activating: activatingCandidate,
     error: candidateError,
     activateError,
+    sourcePreview,
+    sourcePreviewLoading,
+    sourcePreviewError,
+    submittingSourceReview,
+    sourceReviewError,
+    sourceReviewResult,
     activateRole,
     canActivate,
+    canSubmitSourceReview,
     canRecompute,
     canAbandon
   } = useCandidateVersionFlow();
@@ -329,6 +350,10 @@ export function ProjectConfigurationWorkbench({
     membersLoading ||
     (selectedConfigSet != null && membersBoundConfigSetId !== selectedConfigSet.id);
 
+  const sourceWorkflowMemberVersionKey = selectedMembers
+    .map((member) => `${member.fileId}:${member.currentVersionId ?? ""}`)
+    .join("|");
+
   const selectedMember = useMemo(
     () =>
       navigationSession.resolveSelectedMember(
@@ -469,6 +494,90 @@ export function ProjectConfigurationWorkbench({
     };
   }, [fileRepository, inspectorOpen, project.id, selectedMember, versionsReloadToken]);
 
+  useEffect(() => {
+    if (filesLoading) {
+      setSourceWorkflowsByFileId({});
+      setSourceWorkflowErrorsByFileId({});
+      setSourceWorkflowLoading(true);
+      return;
+    }
+    const fileIds = projectFiles.map((file) => file.id);
+    if (fileIds.length === 0) {
+      setSourceWorkflowsByFileId({});
+      setSourceWorkflowErrorsByFileId({});
+      setSourceWorkflowLoading(false);
+      return;
+    }
+    let cancelled = false;
+    setSourceWorkflowsByFileId({});
+    setSourceWorkflowErrorsByFileId({});
+    setSourceWorkflowLoading(true);
+    void (async () => {
+      const workflows: Record<string, ParameterFileSourceWorkflow> = {};
+      const errors: Record<string, string> = {};
+      // Keep the refresh deterministic so every project file gets one proof snapshot.
+      for (const fileId of fileIds) {
+        try {
+          workflows[fileId] = await fileRepository.getSourceWorkflow(project.id, fileId);
+        } catch (error: unknown) {
+          errors[fileId] = presentError(error, "来源工作流加载失败，已禁用受保护操作。");
+        }
+      }
+      if (cancelled) return;
+      setSourceWorkflowsByFileId(workflows);
+      setSourceWorkflowErrorsByFileId(errors);
+      setSourceWorkflowLoading(false);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    fileRepository,
+    filesLoading,
+    membersRetry,
+    project.id,
+    projectFiles,
+    selectedConfigSet?.id,
+    sourceWorkflowMemberVersionKey,
+    sourceWorkflowReloadToken
+  ]);
+
+  const sourceWorkflow = selectedMember
+    ? sourceWorkflowsByFileId[selectedMember.fileId] ?? null
+    : null;
+  const sourceWorkflowError = selectedMember
+    ? sourceWorkflowErrorsByFileId[selectedMember.fileId] ?? ""
+    : "";
+  const legacySourceWorkflowConfirmed =
+    Boolean(sourceWorkflow) &&
+    sourceWorkflow?.canonical === false &&
+    !sourceWorkflowLoading &&
+    !sourceWorkflowError;
+  const sourceWorkflowByFileId = useMemo(() => {
+    const result: Record<string, ParameterFileSourceWorkflow | null> = {};
+    for (const file of projectFiles) {
+      result[file.id] = sourceWorkflowsByFileId[file.id] ?? null;
+    }
+    return result;
+  }, [projectFiles, sourceWorkflowsByFileId]);
+  const sourceWorkflowSetCanonical = selectedMembers.some(
+    (member) => sourceWorkflowsByFileId[member.fileId]?.canonical === true
+  );
+  const sourceWorkflowSetError = selectedMembers
+    .map((member) => sourceWorkflowErrorsByFileId[member.fileId])
+    .find(Boolean) ?? "";
+  const sourceWorkflowSetReady =
+    !membersListLoading &&
+    !filesLoading &&
+    selectedMembers.length > 0 &&
+    selectedMembers.every(
+      (member) =>
+        Boolean(sourceWorkflowsByFileId[member.fileId]) ||
+        Boolean(sourceWorkflowErrorsByFileId[member.fileId])
+    ) &&
+    !sourceWorkflowSetError;
+  const sourceWorkflowSetLoading =
+    sourceWorkflowLoading || filesLoading || membersListLoading;
   useEffect(() => {
     if (
       canvasMode !== "working" &&
@@ -717,7 +826,20 @@ export function ProjectConfigurationWorkbench({
   const handleRequestRollbackVersion = useCallback(
     (version: ProjectParameterFileVersion) => {
       if (!canAdmin || !selectedMember) return;
+      if (sourceWorkflowLoading || sourceWorkflowError || !sourceWorkflow) {
+        showToast(sourceWorkflowError || "来源工作流仍在加载，暂不能执行版本回滚。");
+        return;
+      }
       const fileId = selectedMember.fileId;
+      if (sourceWorkflow.canonical) {
+        if (!sourceWorkflow.proofToken) {
+          showToast("来源一致性证明缺失，暂不能提交来源回滚审核。");
+          return;
+        }
+        setRollbackReviewError("");
+        setRollbackReviewVersion(version);
+        return;
+      }
       setConfirmation({
         key: "rollback-file-version",
         title: "恢复为当前版本",
@@ -741,7 +863,69 @@ export function ProjectConfigurationWorkbench({
         }
       });
     },
-    [canAdmin, fileRepository, notifyMutation, project.id, selectedMember, workspaceLoadSession]
+    [
+      canAdmin,
+      fileRepository,
+      notifyMutation,
+      project.id,
+      selectedMember,
+      setRollbackReviewVersion,
+      showToast,
+      sourceWorkflow,
+      sourceWorkflowError,
+      sourceWorkflowLoading,
+      workspaceLoadSession
+    ]
+  );
+
+  const handleConfirmSourceRollback = useCallback(
+    async (reason: string) => {
+      if (!selectedMember || !rollbackReviewVersion || !sourceWorkflow?.canonical) return;
+      const currentVersionId = selectedMember.currentVersionId;
+      const proofToken = sourceWorkflow.proofToken;
+      if (!proofToken) {
+        setRollbackReviewError("来源一致性证明缺失，请刷新后重试。");
+        return;
+      }
+      if (!currentVersionId) {
+        setRollbackReviewError("当前文件没有可校验的活跃版本。");
+        return;
+      }
+      setRollbackReviewPending(true);
+      setRollbackReviewError("");
+      try {
+        const result = await fileRepository.rollbackVersionThroughSourceReview(
+          project.id,
+          selectedMember.fileId,
+          {
+            versionId: rollbackReviewVersion.id,
+            expectedCurrentVersionId: currentVersionId,
+            expectedProofToken: proofToken,
+            reason
+          }
+        );
+        setRollbackReviewVersion(null);
+        notifyMutation(
+          `来源回滚审核已提交（${result.status}）。审核通过前活跃版本不变。`
+        );
+        setSourceWorkflowReloadToken((value) => value + 1);
+        setVersionsReloadToken((value) => value + 1);
+        onNavigate(`/parameter-review?projectId=${encodeURIComponent(project.id)}`);
+      } catch (error: unknown) {
+        setRollbackReviewError(presentError(error, "提交来源回滚审核失败。"));
+      } finally {
+        setRollbackReviewPending(false);
+      }
+    },
+    [
+      fileRepository,
+      notifyMutation,
+      onNavigate,
+      project.id,
+      rollbackReviewVersion,
+      selectedMember,
+      sourceWorkflow
+    ]
   );
 
   const {
@@ -882,6 +1066,26 @@ export function ProjectConfigurationWorkbench({
     setInspectorOpen,
     setBaselinesRetry
   });
+
+  const [sourceReviewDialogOpen, setSourceReviewDialogOpen] = useState(false);
+  const handleOpenSourceReview = useCallback(() => {
+    if (canSubmitSourceReview) setSourceReviewDialogOpen(true);
+  }, [canSubmitSourceReview]);
+  const handleConfirmSourceReview = useCallback(
+    async (reason: string) => {
+      try {
+        const result = await candidateFlow.submitSourceReview(project.id, reason, fileRepository);
+        setSourceReviewDialogOpen(false);
+        notifyMutation(
+          `来源变更审核已提交（${result.status}）。审核通过前候选不会成为活跃版本。`
+        );
+        setSourceWorkflowReloadToken((value) => value + 1);
+      } catch {
+        // candidateFlow.sourceReviewError is projected in the dialog.
+      }
+    },
+    [candidateFlow, fileRepository, notifyMutation, project.id]
+  );
 
   useWorkbenchKeyboardShortcuts({
     searchInputRef,
@@ -1217,7 +1421,7 @@ export function ProjectConfigurationWorkbench({
                     ? { kind: "cells", bits: 32, groups: [[{ kind: "integer", raw: integer, value: integer }]] }
                     : { kind: "strings", values: [integer] }
                 });
-                if (saved.writeTarget.role !== "canonical-project-value") {
+                if (!saved.writeTarget.role.startsWith("canonical-project-value")) {
                   throw new Error("工作台保存未写入正式项目值。");
                 }
                 savedKeys.push(row.key);
@@ -1336,6 +1540,10 @@ export function ProjectConfigurationWorkbench({
             membersLoading={membersListLoading}
             membersError={membersError}
             onMembersRetry={() => workspaceLoadSession.retryMembers()}
+            sourceWorkflowSetLoading={sourceWorkflowSetLoading}
+            sourceWorkflowSetReady={sourceWorkflowSetReady}
+            sourceWorkflowSetCanonical={sourceWorkflowSetCanonical}
+            sourceWorkflowSetError={sourceWorkflowSetError}
             selectedMembers={selectedMembers}
             selectedMember={selectedMember ?? null}
             onSelectMember={selectMember}
@@ -1429,8 +1637,19 @@ export function ProjectConfigurationWorkbench({
               onExitBaselineCompare={exitBaselineCompare}
               onSelectBaselineCompareMember={selectBaselineCompareMember}
               activeCandidate={activeCandidate}
+              sourcePreview={sourcePreview}
+              sourcePreviewLoading={sourcePreviewLoading}
+              sourcePreviewError={sourcePreviewError}
+              canSubmitSourceReview={canSubmitSourceReview}
+              submittingSourceReview={submittingSourceReview}
+              sourceReviewError={sourceReviewError}
+              sourceReviewResult={sourceReviewResult}
+              onSubmitSourceReview={handleOpenSourceReview}
+              onOpenReview={() =>
+                onNavigate(`/parameter-review?projectId=${encodeURIComponent(project.id)}`)
+              }
               canRecompute={canRecompute}
-              canActivate={canActivate}
+              canActivate={canActivate && legacySourceWorkflowConfirmed}
               canAbandon={canAbandon}
               onRecomputeCandidate={handleRecomputeCandidate}
               onActivateCandidate={handleOpenActivateCandidate}
@@ -1457,6 +1676,14 @@ export function ProjectConfigurationWorkbench({
               }
               onRequestRemoveMember={requestRemoveMember}
               onSyncFile={() => void runAction("sync-file", syncSelectedFile)}
+              sourceWorkflow={sourceWorkflow}
+              sourceWorkflowLoading={sourceWorkflowLoading}
+              sourceWorkflowError={sourceWorkflowError}
+              sourceWorkflowSetLoading={sourceWorkflowSetLoading}
+              sourceWorkflowSetReady={sourceWorkflowSetReady}
+              sourceWorkflowSetCanonical={sourceWorkflowSetCanonical}
+              sourceWorkflowSetError={sourceWorkflowSetError}
+              onRetrySourceWorkflow={() => setSourceWorkflowReloadToken((value) => value + 1)}
               fileVersions={fileVersions}
               versionsLoading={versionsLoading}
               versionsError={versionsError}
@@ -1509,6 +1736,30 @@ export function ProjectConfigurationWorkbench({
         onConfirm={handleConfirmActivateCandidate}
       />
 
+      <WorkbenchCandidateSourceReviewDialog
+        open={sourceReviewDialogOpen}
+        activeCandidate={activeCandidate}
+        sourcePreview={sourcePreview}
+        submitting={submittingSourceReview}
+        error={sourceReviewError}
+        onCancel={() => {
+          if (!submittingSourceReview) setSourceReviewDialogOpen(false);
+        }}
+        onConfirm={(reason) => void handleConfirmSourceReview(reason)}
+      />
+
+      <WorkbenchSourceRollbackDialog
+        open={Boolean(rollbackReviewVersion)}
+        version={rollbackReviewVersion}
+        currentVersionId={selectedMember?.currentVersionId}
+        pending={rollbackReviewPending}
+        error={rollbackReviewError}
+        onCancel={() => {
+          if (!rollbackReviewPending) setRollbackReviewVersion(null);
+        }}
+        onConfirm={(reason) => void handleConfirmSourceRollback(reason)}
+      />
+
       <WorkbenchTaskDock
         tasksOpen={tasksOpen}
         onTasksOpenChange={setTasksOpen}
@@ -1540,6 +1791,8 @@ export function ProjectConfigurationWorkbench({
         submitError={submitError}
         projectId={project.id}
         fileRepository={fileRepository}
+        sourceWorkflowByFileId={sourceWorkflowByFileId}
+        sourceWorkflowLoading={sourceWorkflowLoading || filesLoading}
         onConflictsChange={(next) => conflictLocateFacade.setOpenConflicts(next)}
         onLocateConflict={(conflict) => {
           const target = conflictLocateFacade.locate(conflict);

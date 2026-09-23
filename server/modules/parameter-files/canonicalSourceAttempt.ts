@@ -23,19 +23,16 @@ export type CanonicalSourceAttempt = {
 export function createCanonicalSourceAttempt(
   objectStore: ObjectStore,
 ): CanonicalSourceAttempt {
-  if (!objectStore.delete) {
-    throw new ApiError(
-      "INTERNAL_ERROR",
-      "Canonical source attempt cleanup requires an object-store delete operation.",
-      {
-        reason: "canonical-source-object-cleanup-unavailable",
-      },
-    );
-  }
-
   const storageKeys: string[] = [];
   const attemptObjectStore: ObjectStore = {
     async put(input) {
+      if (!objectStore.delete) {
+        throw new ApiError(
+          "INTERNAL_ERROR",
+          "Canonical source attempt cleanup requires an object-store delete operation.",
+          { reason: "canonical-source-object-cleanup-unavailable" },
+        );
+      }
       const stored = await objectStore.put({
         ...input,
         fileName: `canonical-source-attempt-${randomUUID()}-${input.fileName}`,
@@ -49,7 +46,9 @@ export function createCanonicalSourceAttempt(
     attemptObjectStore.getBounded = (storageKey, maxBytes) =>
       objectStore.getBounded!(storageKey, maxBytes);
   }
-  attemptObjectStore.delete = (storageKey) => objectStore.delete!(storageKey);
+  if (objectStore.delete) {
+    attemptObjectStore.delete = (storageKey) => objectStore.delete!(storageKey);
+  }
 
   return {
     objectStore: attemptObjectStore,

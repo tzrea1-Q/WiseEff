@@ -20,6 +20,7 @@ import type { ObjectStore } from "../logs/objectStore";
 import type { RouteRequest, WiseEffRouter } from "../../shared/http/router";
 import { uploadProjectParameterFile } from "../parameter-files/service";
 import { readCanonicalSourceDiff } from "../parameter-files/canonicalSourceDiff";
+import { withCanonicalSourceAttemptTransaction } from "../parameter-files/canonicalSourceAttemptTransaction";
 import { loadPublishedCatalog } from "./catalogProjectValueSync";
 import { listConfigSets } from "../parameter-files/configSetService";
 import { getLatestConfigRevision } from "../parameter-topology/repository";
@@ -504,64 +505,68 @@ export function registerCatalogProjectValueConsumerRoutes(
     // A draft is pending work. It records the canonical binding/definition/revision
     // pins plus the exact base value/config-revision pins and leaves the current
     // ProjectValue, its history tip and the active source revision untouched.
-    const item = await withAuditedWrite(db, auth, { requestId: request.requestId }, async (tx) => {
-      const draft = await createCanonicalValueDraft(tx, auth, {
-        projectId: params.projectId,
-        bindingId: params.bindingId,
-        action: body.action ?? "set",
-        targetValue,
-        sourceTarget: body.sourceTarget,
-        reason: body.reason,
-        baseRevisionId: body.baseRevisionId
-      }, {
-        objectStore: options.objectStore,
-        invocation: createUserInvocation(auth),
-        requestId: request.requestId,
-        refusalSink: canonicalRefusalAuditSink
-      });
-      await writeTrustedGovernanceAudit(
-        asAuditTx(tx),
-        createUserInvocation(auth),
-        {
-          action: "value-drafted",
-          organizationId: auth.organization.id,
+    const item = await withCanonicalSourceAttemptTransaction(
+      db,
+      options.objectStore,
+      async (outerTx, attempt) => withAuditedWrite(outerTx, auth, { requestId: request.requestId }, async (tx) => {
+        const draft = await createCanonicalValueDraft(tx, auth, {
           projectId: params.projectId,
-          targetType: "project-parameter-binding",
-          targetId: params.bindingId,
-          metadata: {
+          bindingId: params.bindingId,
+          action: body.action ?? "set",
+          targetValue,
+          sourceTarget: body.sourceTarget,
+          reason: body.reason,
+          baseRevisionId: body.baseRevisionId
+        }, {
+          objectStore: attempt.objectStore,
+          invocation: createUserInvocation(auth),
+          requestId: request.requestId,
+          refusalSink: canonicalRefusalAuditSink
+        });
+        await writeTrustedGovernanceAudit(
+          asAuditTx(tx),
+          createUserInvocation(auth),
+          {
+            action: "value-drafted",
+            organizationId: auth.organization.id,
+            projectId: params.projectId,
+            targetType: "project-parameter-binding",
+            targetId: params.bindingId,
+            metadata: {
+              draftId: draft.id,
+              definitionId: draft.definitionId,
+              effectiveRevisionId: draft.effectiveRevisionId,
+              baseCurrentValueId: draft.currentValueId,
+              configRevisionId: body.baseRevisionId,
+              writeTargetRole: "canonical-project-value-draft",
+              reason: body.reason
+            }
+          },
+          request.requestId
+        );
+        return {
+          result: {
             draftId: draft.id,
+            parameterId: draft.bindingId,
+            candidateRevisionId: body.baseRevisionId,
+            workingCandidateRevisionId: body.baseRevisionId,
+            rebasedDraftIds: [] as string[],
+            rawText: draft.targetValue,
+            action: (body.action ?? "set") as "set" | "delete",
+            parameterSpecId: draft.definitionId,
+            projectParameterBindingId: draft.bindingId,
+            writeTarget: { role: "canonical-project-value-draft", propertyKey: catalogBinding.definition_id },
+            overlayFileId: "",
+            overlayFileName: "",
             definitionId: draft.definitionId,
             effectiveRevisionId: draft.effectiveRevisionId,
-            baseCurrentValueId: draft.currentValueId,
-            configRevisionId: body.baseRevisionId,
-            writeTargetRole: "canonical-project-value-draft",
-            reason: body.reason
-          }
-        },
-        request.requestId
-      );
-      return {
-        result: {
-          draftId: draft.id,
-          parameterId: draft.bindingId,
-          candidateRevisionId: body.baseRevisionId,
-          workingCandidateRevisionId: body.baseRevisionId,
-          rebasedDraftIds: [] as string[],
-          rawText: draft.targetValue,
-          action: (body.action ?? "set") as "set" | "delete",
-          parameterSpecId: draft.definitionId,
-          projectParameterBindingId: draft.bindingId,
-          writeTarget: { role: "canonical-project-value-draft", propertyKey: catalogBinding.definition_id },
-          overlayFileId: "",
-          overlayFileName: "",
-          definitionId: draft.definitionId,
-          effectiveRevisionId: draft.effectiveRevisionId,
-          currentValueId: draft.currentValueId,
-          pending: true as const
-        },
-        audit: null
-      };
-    });
+            currentValueId: draft.currentValueId,
+            pending: true as const
+          },
+          audit: null
+        };
+      }),
+    );
     return { status: 201, body: { item } };
   });
 

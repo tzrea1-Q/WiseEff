@@ -26,12 +26,6 @@
       "reason": "Consumer code still imports the legacy parameter-specs module."
     },
     {
-      "id": "S12-PRJ:legacy-catalog-module-import:efa83e3e8e390daa:f6fb2c262ab929ef",
-      "rule": "legacy-catalog-module-import",
-      "file": "server/modules/parameters/initializationService.ts",
-      "reason": "Consumer code still imports the legacy parameter-specs module."
-    },
-    {
       "id": "S12-PRJ:legacy-catalog-raw-read:07f5b008a7298b0d:ab6c0a0485552b54",
       "rule": "legacy-catalog-raw-read",
       "file": "server/modules/parameters/repository.ts",
@@ -113,12 +107,6 @@
       "id": "S12-PRJ:legacy-catalog-raw-read:23662091f62e1d56:1d141271b730574c",
       "rule": "legacy-catalog-raw-read",
       "file": "server/modules/parameters/repository.ts",
-      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
-    },
-    {
-      "id": "S12-PRJ:legacy-catalog-raw-read:2bb0408e61c36ff3:b253ae1d933881fb",
-      "rule": "legacy-catalog-raw-read",
-      "file": "server/modules/parameters/initializationRepository.ts",
       "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
     },
     {
@@ -350,12 +338,6 @@
       "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
     },
     {
-      "id": "S12-PRJ:legacy-catalog-raw-read:72337a91c3e1dd63:2bf04121d0be0f5d",
-      "rule": "legacy-catalog-raw-read",
-      "file": "server/modules/parameters/initializationRepository.ts",
-      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
-    },
-    {
       "id": "S12-PRJ:legacy-catalog-raw-read:733e53defe486592:a99be9daa33cb37b",
       "rule": "legacy-catalog-raw-read",
       "file": "server/modules/parameter-drafts/repository.ts",
@@ -377,12 +359,6 @@
       "id": "S12-PRJ:legacy-catalog-raw-read:7905f8c93ab28826:bb813634ba001d89",
       "rule": "legacy-catalog-raw-read",
       "file": "server/modules/parameters/importBatchRepository.ts",
-      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
-    },
-    {
-      "id": "S12-PRJ:legacy-catalog-raw-read:7ca0a5b126dc0d1e:cd1711918d7e35c6",
-      "rule": "legacy-catalog-raw-read",
-      "file": "server/modules/parameters/initializationRepository.ts",
       "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
     },
     {
@@ -542,12 +518,6 @@
       "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
     },
     {
-      "id": "S12-PRJ:legacy-catalog-raw-read:b2fb856134267f3e:1247bf6217ee95b9",
-      "rule": "legacy-catalog-raw-read",
-      "file": "server/modules/parameters/initializationRepository.ts",
-      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
-    },
-    {
       "id": "S12-PRJ:legacy-catalog-raw-read:b3ec56550f370ddc:3518f6dd5b83cd24",
       "rule": "legacy-catalog-raw-read",
       "file": "server/modules/parameters/specVersionSelection.ts",
@@ -563,12 +533,6 @@
       "id": "S12-PRJ:legacy-catalog-raw-read:bdfeb56852f7a659:ff6cf26bfbb47ea2",
       "rule": "legacy-catalog-raw-read",
       "file": "server/modules/parameters/parameterModuleRepository.ts",
-      "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
-    },
-    {
-      "id": "S12-PRJ:legacy-catalog-raw-read:bee7facb82599ee3:4b6c528c29527f9f",
-      "rule": "legacy-catalog-raw-read",
-      "file": "server/modules/parameters/initializationRepository.ts",
       "reason": "Direct legacy Catalog table read remains pending the owning consumer migration."
     },
     {
@@ -1274,12 +1238,6 @@
       "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
     },
     {
-      "id": "S12-PRJ:legacy-parameter-spec-identifier:0b57bc3820da4a8c:f8db57dd62441a99",
-      "rule": "legacy-parameter-spec-identifier",
-      "file": "server/modules/parameters/initializationRepository.ts",
-      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
-    },
-    {
       "id": "S12-PRJ:legacy-parameter-spec-identifier:0b65301400f94bf6:d9f713dabb546e54",
       "rule": "legacy-parameter-spec-identifier",
       "file": "server/modules/parameter-drafts/repository.ts",
@@ -1340,21 +1298,9 @@
       "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
     },
     {
-      "id": "S12-PRJ:legacy-parameter-spec-identifier:18361ad392c6c579:482d2a1b53950e9f",
-      "rule": "legacy-parameter-spec-identifier",
-      "file": "server/modules/parameters/initializationService.ts",
-      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
-    },
-    {
       "id": "S12-PRJ:legacy-parameter-spec-identifier:195864d11ba1a328:10f6d39753333dec",
       "rule": "legacy-parameter-spec-identifier",
       "file": "server/modules/parameters/reviewWorkflowRepository.ts",
-      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
-    },
-    {
-      "id": "S12-PRJ:legacy-parameter-spec-identifier:1b1b2fc7dcf55970:924d6a8a00ef01f3",
-      "rule": "legacy-parameter-spec-identifier",
-      "file": "server/modules/parameters/initializationRepository.ts",
       "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
     },
     {
@@ -1367,12 +1313,6 @@
       "id": "S12-PRJ:legacy-parameter-spec-identifier:1e0f2eda2287d6b2:76b9303d488a6f65",
       "rule": "legacy-parameter-spec-identifier",
       "file": "server/modules/parameters/importBatch.postCutover.integration.test.ts",
-      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
-    },
-    {
-      "id": "S12-PRJ:legacy-parameter-spec-identifier:1ea62538822b94d1:e1b1863845b02493",
-      "rule": "legacy-parameter-spec-identifier",
-      "file": "server/modules/parameters/mergeInitializationBindings.ts",
       "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
     },
     {
@@ -1430,12 +1370,6 @@
       "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
     },
     {
-      "id": "S12-PRJ:legacy-parameter-spec-identifier:331856951b2a66d4:592045a41e1cd666",
-      "rule": "legacy-parameter-spec-identifier",
-      "file": "server/modules/parameters/initializationRepository.ts",
-      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
-    },
-    {
       "id": "S12-PRJ:legacy-parameter-spec-identifier:3599f5b664ecd6f0:54d5f47ab66dc394",
       "rule": "legacy-parameter-spec-identifier",
       "file": "server/modules/parameters/routes.test.ts",
@@ -1445,12 +1379,6 @@
       "id": "S12-PRJ:legacy-parameter-spec-identifier:394625b93aad4e64:e06847f4f85de083",
       "rule": "legacy-parameter-spec-identifier",
       "file": "server/modules/parameters/service.ts",
-      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
-    },
-    {
-      "id": "S12-PRJ:legacy-parameter-spec-identifier:39b96eff039157c2:afe082dd96073995",
-      "rule": "legacy-parameter-spec-identifier",
-      "file": "server/modules/parameters/initializationRepository.ts",
       "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
     },
     {
@@ -1514,18 +1442,6 @@
       "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
     },
     {
-      "id": "S12-PRJ:legacy-parameter-spec-identifier:4848fa6bb2f4a579:e27867d926a47e7d",
-      "rule": "legacy-parameter-spec-identifier",
-      "file": "server/modules/parameters/initializationRepository.ts",
-      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
-    },
-    {
-      "id": "S12-PRJ:legacy-parameter-spec-identifier:48e5d2441dc5259f:bceb1b3d76b26065",
-      "rule": "legacy-parameter-spec-identifier",
-      "file": "server/modules/parameters/initializationService.ts",
-      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
-    },
-    {
       "id": "S12-PRJ:legacy-parameter-spec-identifier:4fb7abbca49d1b98:4fabb588d808c258",
       "rule": "legacy-parameter-spec-identifier",
       "file": "server/modules/parameters/mergeInitializationBindings.test.ts",
@@ -1547,12 +1463,6 @@
       "id": "S12-PRJ:legacy-parameter-spec-identifier:53f9bc7acc4721eb:e6248225ab0a05b5",
       "rule": "legacy-parameter-spec-identifier",
       "file": "server/modules/parameters/lifecycleRanking.integration.test.ts",
-      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
-    },
-    {
-      "id": "S12-PRJ:legacy-parameter-spec-identifier:5635fa3b6e75c568:746e102ddc5d5f2d",
-      "rule": "legacy-parameter-spec-identifier",
-      "file": "server/modules/parameters/initializationService.ts",
       "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
     },
     {
@@ -1622,12 +1532,6 @@
       "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
     },
     {
-      "id": "S12-PRJ:legacy-parameter-spec-identifier:71859497f3ee4b32:aafac90936881c4f",
-      "rule": "legacy-parameter-spec-identifier",
-      "file": "server/modules/parameters/initializationRepository.ts",
-      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
-    },
-    {
       "id": "S12-PRJ:legacy-parameter-spec-identifier:71f52ded193b8aa6:3559bbbdd2da3f81",
       "rule": "legacy-parameter-spec-identifier",
       "file": "server/modules/parameters/service.ts",
@@ -1655,12 +1559,6 @@
       "id": "S12-PRJ:legacy-parameter-spec-identifier:72a19ce24b2777c6:8af60293b42f5596",
       "rule": "legacy-parameter-spec-identifier",
       "file": "server/modules/parameter-drafts/repository.ts",
-      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
-    },
-    {
-      "id": "S12-PRJ:legacy-parameter-spec-identifier:756d58616ef7ea3f:e8f9d8e82ae8cfda",
-      "rule": "legacy-parameter-spec-identifier",
-      "file": "server/modules/parameters/initializationService.ts",
       "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
     },
     {
@@ -1868,12 +1766,6 @@
       "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
     },
     {
-      "id": "S12-PRJ:legacy-parameter-spec-identifier:bda8457ac9f07c04:774b52cc8d54a0cc",
-      "rule": "legacy-parameter-spec-identifier",
-      "file": "server/modules/parameters/initializationService.ts",
-      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
-    },
-    {
       "id": "S12-PRJ:legacy-parameter-spec-identifier:c05a748b77e40dac:0e5b04db212325ca",
       "rule": "legacy-parameter-spec-identifier",
       "file": "server/modules/parameters/reviewWorkflowRepository.ts",
@@ -1940,12 +1832,6 @@
       "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
     },
     {
-      "id": "S12-PRJ:legacy-parameter-spec-identifier:d07cde452d360641:76f9705eb4a81af8",
-      "rule": "legacy-parameter-spec-identifier",
-      "file": "server/modules/parameters/initializationService.ts",
-      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
-    },
-    {
       "id": "S12-PRJ:legacy-parameter-spec-identifier:d354df38ab5128c1:1a4bab1918e7a3d8",
       "rule": "legacy-parameter-spec-identifier",
       "file": "server/modules/parameters/initializationService.ts",
@@ -1985,12 +1871,6 @@
       "id": "S12-PRJ:legacy-parameter-spec-identifier:df787f116fd07833:7587e84236c08070",
       "rule": "legacy-parameter-spec-identifier",
       "file": "server/modules/parameters/structuredEditSubmit.integration.test.ts",
-      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
-    },
-    {
-      "id": "S12-PRJ:legacy-parameter-spec-identifier:e2326d8b1f569f4b:e44ea5e1f1d02a2b",
-      "rule": "legacy-parameter-spec-identifier",
-      "file": "server/modules/parameters/initializationService.ts",
       "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
     },
     {
@@ -2069,12 +1949,6 @@
       "id": "S12-PRJ:legacy-parameter-spec-identifier:fbb918d8ca1ac3bf:05ac7622a6a92697",
       "rule": "legacy-parameter-spec-identifier",
       "file": "server/modules/parameters/service.ts",
-      "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
-    },
-    {
-      "id": "S12-PRJ:legacy-parameter-spec-identifier:fcf9baa3a2549410:8f8fe49821739a7f",
-      "rule": "legacy-parameter-spec-identifier",
-      "file": "server/modules/parameters/initializationService.ts",
       "reason": "Legacy parameterSpecId identity remains pending canonical Definition or Binding adaptation."
     },
     {
@@ -2339,12 +2213,6 @@
       "id": "S12-PRJ:unresolved-boundary-expression:919ccfa63caaf008:e59e888c99d1fa72",
       "rule": "unresolved-boundary-expression",
       "file": "server/modules/parameters/moduleParentRepairMigration.test.ts",
-      "reason": "A database, route, or module-loader boundary expression cannot be resolved statically."
-    },
-    {
-      "id": "S12-PRJ:unresolved-boundary-expression:9ecad7cb02c2a54c:0e7e98887cd5a468",
-      "rule": "unresolved-boundary-expression",
-      "file": "server/modules/parameters/initializationRepository.ts",
       "reason": "A database, route, or module-loader boundary expression cannot be resolved statically."
     },
     {

@@ -29,17 +29,21 @@ const issue900RetiredIds = new Set((JSON.parse(await readFile(
   `${repoRoot}/scripts/fixtures/parameter-catalog-allowlist/issue-900-dashboard-retirement.json`, "utf8",
 )) as { retiredAllowlistEntries: Array<{ id: string }> }).retiredAllowlistEntries.map((entry) => entry.id));
 const issue853CRemainderRetiredIds = await loadIssue853CRemainderRetiredSourceIds(repoRoot);
+const issue853DRetiredIds = (JSON.parse(await readFile(
+  `${repoRoot}/scripts/fixtures/parameter-catalog-allowlist/issue-853-d-902-inventory.json`, "utf8",
+)) as { retiredIds: string[] }).retiredIds;
 
 function expectCurrentRemovedPartition(removed: readonly BoundaryViolation[]) {
   const retired = new Set<string>([...issue913RetiredSourceIds, ...issue900RetiredIds,
-    ...issue853CActionRetiredSourceIds, ...issue853CRemainderRetiredIds]);
+    ...issue853CActionRetiredSourceIds, ...issue853CRemainderRetiredIds, ...issue853DRetiredIds]);
   expect(issue900RetiredIds.size).toBe(13);
   expect(issue913StaleRetiredSourceIds).toHaveLength(17);
   expect(issue913T14RetiredSourceIds).toHaveLength(4);
   expect(issue853CRemainderRetiredIds).toHaveLength(42);
-  expect(retired.size).toBe(78);
-  expect(fixture.violations.filter((entry) => retired.has(entry.id))).toHaveLength(78);
-  expect(removed).toHaveLength(28 + 13 + 17 + 4 + 2 + 42);
+  expect(issue853DRetiredIds).toHaveLength(22);
+  expect(retired.size).toBe(100);
+  expect(fixture.violations.filter((entry) => retired.has(entry.id))).toHaveLength(100);
+  expect(removed).toHaveLength(28 + 13 + 17 + 4 + 2 + 42 + 22);
   expect(removed.filter((entry) => retired.has(entry.id)).map((entry) => entry.id).sort())
     .toEqual([...retired].sort());
   expect(removed.filter((entry) => !retired.has(entry.id))).toHaveLength(28);
@@ -65,7 +69,7 @@ describe("exact reviewed Catalog occurrence relocation", () => {
     expect(result[0]).toEqual(record.pairs[0]);
     expect(fixture.violations).toHaveLength(3519);
     expect(fixture.violations.length - 28).toBe(3491);
-    expect(allowlist.entries).toHaveLength(3491 - 13 - 17 - 4 - 2 - 42);
+    expect(allowlist.entries).toHaveLength(3491 - 13 - 17 - 4 - 2 - 42 - 22);
   });
 
   it.each([

@@ -20,6 +20,7 @@ import { loadCanonicalBindingPins } from "../parameter-bindings/drafts/repositor
 import { requireApprovedParameterInvocation } from "../agent/approvedParameterInvocation";
 import { discoverCurrentSourceRevisionPins, discoverDeletedSourceRevisionPins, loadDeletedSourceAnchors, loadSourceBindingCohort, loadOwnedProjectValueSourcePin, isCurrentGovernedSourceValue,
   type CanonicalValueSourcePin, type CanonicalSourceBindingPin } from "../parameter-bindings/values";
+import type { ConfigSetRole } from "./types";
 export type { CanonicalSourceBindingPin } from "../parameter-bindings/values";
 
 export type CanonicalSourceManifest = CanonicalValueSourcePin & {
@@ -28,6 +29,34 @@ export type CanonicalSourceManifest = CanonicalValueSourcePin & {
     format: "dts" | "json"; role: string; sortOrder: number; checksum: string; sizeBytes: number;
   }>;
 };
+
+export type CanonicalSourceCurrentMember = {
+  id: string;
+  current_version_id: string | null;
+  config_set_role: string | null;
+  config_set_sort_order: number;
+  format: string;
+};
+
+/** Map only the DTS revision include role to its persisted config-set role. */
+export function canonicalSourceConfigSetRole(role: string): ConfigSetRole {
+  if (role === "include") return "misc";
+  if (role === "base" || role === "overlay" || role === "charging" || role === "thermal" || role === "misc") {
+    return role;
+  }
+  throw new ApiError("CONFLICT", "Canonical source member has an unsupported role.", { role });
+}
+
+export function canonicalSourceMemberMatchesCurrentFile(
+  member: Pick<CanonicalSourceManifest["members"][number], "fileId" | "fileVersionId" | "role" | "sortOrder" | "format">,
+  current: CanonicalSourceCurrentMember,
+): boolean {
+  return member.fileId === current.id
+    && member.fileVersionId === current.current_version_id
+    && canonicalSourceConfigSetRole(member.role) === current.config_set_role
+    && member.sortOrder === current.config_set_sort_order
+    && member.format === current.format;
+}
 
 /** Fence the whole current cohort before any Binding lock or authoritative source read. */
 export async function lockCanonicalSourceCohort(db: Queryable, source: CanonicalValueSourcePin) {
@@ -264,8 +293,13 @@ export async function assertPinnedCanonicalSensitiveNodeWriteAllowed(
   }
 }
 
-/** Repeat the immutable-base patch proof at preparation and at actual apply. */
-export async function validatePinnedDtsSourceChange(db: Queryable, manifest: CanonicalSourceManifest, beforeText: string, afterText: string) {
+/** Return the exact target token after proving every non-target DTS semantic is unchanged. */
+export async function readPinnedDtsSourceChange(
+  db: Queryable,
+  manifest: CanonicalSourceManifest,
+  beforeText: string,
+  afterText: string,
+) {
   const row = await loadPinnedDtsProperty(db, manifest);
   const before = parseDts(beforeText);
   const properties = dtsProperties(before);
@@ -276,7 +310,12 @@ export async function validatePinnedDtsSourceChange(db: Queryable, manifest: Can
   if (!target || dtsNonTargetShape(before, targetIndex) !== dtsNonTargetShape(after, targetIndex)) {
     throw new ApiError("CONFLICT", "DTS patch changed non-target semantics.");
   }
-  return parseDtsValue(target.name, target.rawText).value;
+  return { rawText: target.rawText, value: parseDtsValue(target.name, target.rawText).value };
+}
+
+/** Repeat the immutable-base patch proof at preparation and at actual apply. */
+export async function validatePinnedDtsSourceChange(db: Queryable, manifest: CanonicalSourceManifest, beforeText: string, afterText: string) {
+  return (await readPinnedDtsSourceChange(db, manifest, beforeText, afterText)).value;
 }
 
 /** Reproduce the exact pinned-span removal, preserving all non-target bytes. */
@@ -395,12 +434,11 @@ export async function preparePinnedSourceChange(
     throw new ApiError("CONFLICT", "Approved Agent source manifest is stale or inconsistent.", { reason: "approved-source-pin-mismatch" });
   }
   await assertPinnedCanonicalSensitiveNodeWriteAllowed(db, auth, manifest, security);
-  const currentMembers = await db.query<{ id: string; current_version_id: string; config_set_role: string; config_set_sort_order: number; format: string }>(
+  const currentMembers = await db.query<CanonicalSourceCurrentMember>(
     `select id,current_version_id,config_set_role,config_set_sort_order,format from project_parameter_files where config_set_id=$1 order by id for update nowait`, [manifest.configSetId],
   );
   if (currentMembers.rows.length !== manifest.members.length || currentMembers.rows.some((current) =>
-    !manifest.members.some((member) => member.fileId === current.id && member.fileVersionId === current.current_version_id
-      && member.role === current.config_set_role && member.sortOrder === current.config_set_sort_order && member.format === current.format))) {
+    !manifest.members.some((member) => canonicalSourceMemberMatchesCurrentFile(member, current)))) {
     throw new ApiError("CONFLICT", "Configuration membership or file versions changed; prepare from the current source.");
   }
   const bindings = await loadCanonicalSourceCohort(db, { organizationId: auth.organization.id, projectId: input.projectId, configSetId: manifest.configSetId });
