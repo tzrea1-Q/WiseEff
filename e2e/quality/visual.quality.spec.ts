@@ -102,8 +102,15 @@ test.describe("M5.11 visual quality gate", () => {
         await expectLocalizedVisualReviewFixture(page);
       }
 
+      const masks = stableMasks(page, route.path);
+      if (route.path === "/parameter-review") {
+        expect(masks.slice(-6)).toHaveLength(6);
+        for (const mask of masks.slice(-6)) {
+          await expect(mask).toHaveCount(1);
+        }
+      }
       await expect(page.locator("main, .main-content").first()).toHaveScreenshot(`${route.name}.png`, {
-        mask: stableMasks(page, route.path)
+        mask: masks
       });
     });
   }

@@ -266,8 +266,8 @@ export function stableMasks(page: Page, routePath = ""): Locator[] {
       masks.push(
         details
           .locator("dl > div")
-          .filter({ has: details.getByText(label, { exact: true }) })
-          .locator("dd")
+          .filter({ hasText: label })
+          .locator("dd code, dd time")
       );
     }
   }

@@ -306,8 +306,8 @@ export function CanonicalProjectValueReviewPanel({
                 <div><dt>提交人 ID</dt><dd><code>{selected.submitterUserId ?? "—"}</code></dd></div>
                 <div><dt>指定审核人 ID</dt><dd><code>{selected.assignedToUserId ?? "—"}</code></dd></div>
                 <div><dt>{selected.status === "withdrawn" ? "撤回操作人 ID" : "实际审核人 ID"}</dt><dd><code>{selected.reviewerUserId ?? "—"}</code></dd></div>
-                <div><dt>提交时间</dt><dd>{selected.createdAt}</dd></div>
-                <div><dt>状态更新时间</dt><dd>{selected.updatedAt}</dd></div>
+                <div><dt>提交时间</dt><dd><time dateTime={selected.createdAt}>{selected.createdAt}</time></dd></div>
+                <div><dt>状态更新时间</dt><dd><time dateTime={selected.updatedAt}>{selected.updatedAt}</time></dd></div>
                 <div><dt>审核结果</dt><dd>{selected.reviewerNote ?? canonicalStatusLabels[selected.status]}</dd></div>
                 <div><dt>应用结果</dt><dd>{selected.applyOutcome === "committed" ? "已应用" : selected.applyOutcome === "replayed" ? "已应用（幂等重放）" : "—"}</dd></div>
               </dl>
