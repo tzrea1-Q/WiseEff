@@ -16,6 +16,7 @@ import { uploadProjectParameterFile } from "./service";
 import { ingestConfigRevision } from "../parameter-topology/ingestService";
 import { asValueClient, loadPublishedCatalog, listCatalogBindingRowsForProject, syncPublishedCatalogProjectValuesInTransaction } from "../parameter-bindings/catalogProjectValueSync";
 import { registerCanonicalJsonSource } from "./canonicalJsonSource";
+import { loadCanonicalSourceSnapshot, readPinnedDtsSourceBatchChanges } from "./canonicalSource";
 import { loadOwnedProjectValueSourcePin, loadSourceBindingCohortReadOnly } from "../parameter-bindings/values";
 import { createCandidate } from "./candidateService";
 import {
@@ -727,6 +728,17 @@ describe("#906 canonical DTS candidate workflow", () => {
       expect.objectContaining({ action: "set", targetText: "<77>" })
     ] });
     expect(new Set(prepared.targets.map((target) => target.bindingId)).size).toBe(2);
+    const currentBindings = await listCatalogBindingRowsForProject(db, admin, { projectId: DTS_PROJECT });
+    const sourceSnapshot = await loadCanonicalSourceSnapshot(db, storage, {
+      organizationId: ORG,
+      projectId: DTS_PROJECT,
+      bindingId: currentBindings[0]!.id,
+      projectValueId: currentBindings[0]!.currentValueId!
+    });
+    await expect(readPinnedDtsSourceBatchChanges(db,
+      [sourceSnapshot.manifest, sourceSnapshot.manifest], source,
+      source.replace("iin_max = <36>", "iin_max = <77>")))
+      .rejects.toMatchObject({ code: "CONFLICT" });
     const deletedBoth = await createCandidate(db, storage, admin, {
       projectId: DTS_PROJECT,
       fileId,

@@ -529,16 +529,18 @@ async function inspectCandidate(
     const first = matches[0]!.source;
     const index = first.manifest.members.findIndex((member) =>
       member.fileId === candidate.fileId && member.fileVersionId === candidate.baseVersionId);
-    if (index >= 0 && matches.every((match) =>
+    if (index < 0 || !matches.every((match) =>
       match.source.manifest.configRevisionId === first.manifest.configRevisionId
       && match.source.files[match.source.manifest.members.findIndex((member) =>
         member.fileId === candidate.fileId && member.fileVersionId === candidate.baseVersionId)]?.content === first.files[index]?.content)) {
-      try {
-        dtsBatchChanges = await readPinnedDtsSourceBatchChanges(
-          db, matches.map((match) => match.source.manifest), first.files[index]!.content, candidateText);
-      } catch (error) {
-        if (!(error instanceof ApiError || error instanceof SyntaxError)) throw error;
-      }
+      return { workflow, candidate, reason: "dts-batch-source-proof-failed" };
+    }
+    try {
+      dtsBatchChanges = await readPinnedDtsSourceBatchChanges(
+        db, matches.map((match) => match.source.manifest), first.files[index]!.content, candidateText);
+    } catch (error) {
+      if (!(error instanceof ApiError || error instanceof SyntaxError)) throw error;
+      return { workflow, candidate, reason: "dts-batch-source-proof-failed" };
     }
   }
   for (const match of matches) {
