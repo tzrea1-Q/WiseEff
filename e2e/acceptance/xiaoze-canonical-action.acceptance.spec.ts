@@ -298,6 +298,12 @@ test("canonical JSON Agent search, edited approval, refresh, product review and 
   expect(pending.candidate_binding_manifest).toEqual(expect.arrayContaining([
     expect.objectContaining({ bindingId: fixture.bindingId, oldValueId: before, sourcePinId: fixture.sourcePinId })
   ]));
+  const reviewLink = popup.getByRole("link", { name: `Change request ${pending.id}` });
+  await expect(reviewLink).toHaveAttribute("href", `/parameter-review?request=${pending.id}&project=${fixture.projectId}`);
+  await reviewLink.click();
+  await expect(page).toHaveURL(new RegExp(`/parameter-review\\?request=${pending.id}&project=${fixture.projectId}$`));
+  await page.goBack();
+  await expect(page).toHaveURL(new RegExp(`/parameters\\?project=${fixture.projectId}$`));
   const drafts = await draftRows();
   expect(drafts).toHaveLength(1);
   expect(drafts[0]).toMatchObject({ binding_id: fixture.bindingId, definition_id: fixture.definitionId,

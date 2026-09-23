@@ -98,7 +98,8 @@ describe("createPlanningAgent", () => {
   it("resumes the plan after approval and observes the result", async () => {
     const checkpointer = createXiaozeCheckpointer();
     const approvalResolver = {
-      resolveApproval: vi.fn().mockResolvedValue({ text: "change request cr-1 created" })
+      resolveApproval: vi.fn().mockResolvedValue({ text: "change request cr-1 created",
+        citations: [{ type: "parameter", id: "cr-1", label: "Change request cr-1", href: "/parameter-review?request=cr-1&project=p1" }] })
     };
     const runTool = vi.fn().mockResolvedValue({ summary: "overview", data: {}, citations: [] });
     const model = fakeModelSequence([
@@ -147,6 +148,9 @@ describe("createPlanningAgent", () => {
       })
     );
     expect(resumed.text).toContain("cr-1");
+    expect(resumed.citations).toEqual([{
+      type: "parameter", id: "cr-1", label: "Change request cr-1", href: "/parameter-review?request=cr-1&project=p1"
+    }]);
   });
 
   it("keeps request-local auth and invocation data out of checkpoint channel state", async () => {

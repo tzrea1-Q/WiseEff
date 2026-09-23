@@ -91,6 +91,7 @@ export type ApprovalResolveInput = {
 
 export type ApprovalResolveResult = {
   text: string;
+  citations?: AgentCitation[];
 };
 
 function newId(prefix: string) {
@@ -841,7 +842,10 @@ export function createAgentOrchestrator(options: {
       reason: input.reason ?? "Approved from Xiaoze chat."
     });
     const executed = turn.toolCalls.find((call) => call.approvalId === input.approvalId) ?? turn.toolCalls.at(-1);
-    return { text: executed?.result?.summary ?? "The proposed action was approved and executed." };
+    return {
+      text: executed?.result?.summary ?? "The proposed action was approved and executed.",
+      citations: executed?.result?.citations ?? []
+    };
   }
 
   return {

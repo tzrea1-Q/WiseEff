@@ -48,7 +48,7 @@ function submissionCitation(changeRequestId: string, projectId: string, targetVa
       type: "parameter" as const,
       id: changeRequestId,
       label: `Change request ${changeRequestId}`,
-      href: `/parameters/review?changeRequestId=${encodeURIComponent(changeRequestId)}`,
+      href: `/parameter-review?request=${encodeURIComponent(changeRequestId)}&project=${encodeURIComponent(projectId)}`,
       snippet: `${targetValue} pending review for ${projectId}.`
     }
   ];

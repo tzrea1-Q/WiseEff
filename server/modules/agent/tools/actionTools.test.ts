@@ -227,6 +227,7 @@ describe("action.submitParameterChange", () => {
     });
     expect(result.data).toMatchObject({ changeRequestId: "cr-9", targetValue: "<3600>", draftId: "draft-1" });
     expect(result.citations[0]?.id).toBe("cr-9");
+    expect(result.citations[0]?.href).toBe("/parameter-review?request=cr-9&project=p1");
     expect(dbMock.transaction).toHaveBeenCalledTimes(1);
   });
 
