@@ -269,6 +269,7 @@ export const initializationSnapshotItemSchema = z.object({
   id: nonEmptyString,
   sourceProjectId: nonEmptyString,
   sourceProjectParameterBindingId: nonEmptyString,
+  sourceProjectValueId: nonEmptyString,
   sourceRole: z.enum(["primary", "supplement"]),
   parameterSpecId: nonEmptyString,
   parameterSpecVersionId: nonEmptyString,
@@ -279,6 +280,13 @@ export const initializationSnapshotItemSchema = z.object({
   rawValue: z.string(),
   currentValueState: z.literal("pending_project_confirmation"),
   alternativeSourceBindingIds: z.array(nonEmptyString),
+  alternativeSourceValueIds: z.array(nonEmptyString).optional(),
+  sourceConfigSetId: nonEmptyString.optional(),
+  sourceConfigRevisionId: nonEmptyString.optional(),
+  sourceOccurrenceId: nonEmptyString.optional(),
+  sourceFormat: z.enum(["dts", "json"]).optional(),
+  sourceName: z.string().optional(),
+  sourceLocatorLabel: z.string().optional(),
   needsEffectiveValueConfirmation: z.boolean(),
   notes: z.string().optional()
 });

@@ -7,7 +7,8 @@ import {
   type TrustedRefusalAuditSink
 } from "../audit/trustedRefusalSink";
 import type { ObjectStore } from "../logs/objectStore";
-import { isRootDatabase, type Database, type Queryable } from "../../shared/database/client";
+import { getRootPostgresPool, isRootDatabase, type Database, type Queryable } from "../../shared/database/client";
+import { loadPublishedCatalog } from "../parameter-bindings/catalogProjectValueSync";
 import { ApiError } from "../../shared/http/errors";
 import type { RouteRequest, WiseEffRouter } from "../../shared/http/router";
 import {
@@ -710,7 +711,15 @@ export function registerParameterRoutes(
     const db = requireDb(options.db);
     const auth = await options.getCurrentAuthContext(request);
     const params = parseWithSchema(paramsWithInitializationReviewIdSchema, request.params);
-    const item = await approveReview(db, auth, { reviewId: params.reviewId }, { requestId: request.requestId });
+    const pool = getRootPostgresPool(db);
+    const catalogSnapshot = pool ? await loadPublishedCatalog(pool) : null;
+    const item = await approveReview(db, auth, { reviewId: params.reviewId }, {
+      requestId: request.requestId,
+      invocation: createUserInvocation(auth),
+      refusalSink: refusalAuditSink,
+      objectStore: options.objectStore,
+      catalogSnapshot: catalogSnapshot ?? undefined
+    });
     return { status: 200, body: { item } };
   });
 
