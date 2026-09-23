@@ -97,6 +97,68 @@ export type CanonicalSourcePreviewDto = {
   request?: { id: string; status: CanonicalChangeRequestStatus };
 };
 
+export type CanonicalSourceBatchMemberDto = Readonly<{
+  memberId: string;
+  fileId: string;
+  fileVersionId: string;
+  sourceName: string;
+  format: ParameterFileFormat;
+  role: string;
+  sortOrder: number;
+  checksum: string;
+  sizeBytes: number;
+  configSetId: string;
+  isCandidateFile: boolean;
+}>;
+
+export type CanonicalSourceBatchCohortDto = Readonly<{
+  bindingId: string;
+  oldValueId: string;
+  sourcePinId: string;
+  sourceOccurrenceId: string;
+  definitionId: string;
+  effectiveRevisionId: string;
+  catalogReleaseId: string;
+  locator: CanonicalSourceBindingPin["locator"];
+  valueKind: string;
+  valueDigest: string;
+  configSetId: string;
+}>;
+
+export type CanonicalSourceBatchTargetDto = Readonly<{
+  bindingId: string;
+  definitionId: string;
+  baseCurrentValueId: string;
+  configRevisionId: string;
+  sourcePinId: string;
+  locator: CanonicalSourceBindingPin["locator"];
+  baseDigest: string;
+  proposedDigest: string;
+  action: SourceAction;
+  targetText?: string;
+}>;
+
+/** Read-only proof frozen for a future single-request batch owner. */
+export type CanonicalSourceBatchPrepareDto = Readonly<{
+  kind: "canonical-source-batch";
+  organizationId: string;
+  projectId: string;
+  candidateId: string;
+  fileId: string;
+  format: "json";
+  baseVersionId: string;
+  configSetId: string;
+  baseDigest: string;
+  proposedDigest: string;
+  cohortProofToken: string;
+  /** Existing candidate-specific proof token; its single-target meaning is unchanged. */
+  proofToken: string;
+  batchProofDigest: string;
+  members: readonly CanonicalSourceBatchMemberDto[];
+  cohort: readonly CanonicalSourceBatchCohortDto[];
+  targets: readonly CanonicalSourceBatchTargetDto[];
+}>;
+
 export type CanonicalSourceSubmitDto = {
   requestId: string;
   status: CanonicalChangeRequestStatus;
@@ -698,6 +760,101 @@ export async function previewCanonicalCandidate(
     candidateId: input.candidateId
   });
   return previewFromInspection(inspection, candidateRequest ? { id: candidateRequest.id, status: candidateRequest.status } : null);
+}
+
+/** Caller-owned transaction; the returned proof is trusted only while these locks are held. */
+export async function prepareCanonicalCandidateBatchInTransaction(
+  tx: Database,
+  objectStore: ObjectStore,
+  auth: AuthContext,
+  input: { projectId: string; candidateId: string; expectedProofToken: string }
+): Promise<CanonicalSourceBatchPrepareDto> {
+  if (!canAdminParameters(auth) || !canEditParameters(auth, input.projectId)) {
+    throw new ApiError("FORBIDDEN", "Parameter administration and project edit permission are required.");
+  }
+  const candidate = await getParameterFileCandidateById(tx, {
+    organizationId: auth.organization.id,
+    projectId: input.projectId,
+    candidateId: input.candidateId
+  });
+  if (!candidate?.fileId || !candidate.baseVersionId) {
+    throw new ApiError("NOT_FOUND", "Canonical source candidate has no owned existing file.");
+  }
+  const workflow = await fileWorkflow(tx, auth, { projectId: input.projectId, fileId: candidate.fileId });
+  if (!workflow.canonical || !workflow.configSetId) {
+    throw new ApiError("CONFLICT", "Candidate is not attached to a canonical source.", { reason: "file-is-not-canonical" });
+  }
+  const cohortBeforeLock = await loadSourceBindingCohortReadOnly(tx, {
+    organizationId: auth.organization.id,
+    projectId: input.projectId,
+    configSetId: workflow.configSetId
+  });
+  const first = cohortBeforeLock.find((entry) => entry.sourcePinId && entry.oldValueId);
+  const pin = first && await loadOwnedProjectValueSourcePin(tx, {
+    organizationId: auth.organization.id,
+    projectId: input.projectId,
+    bindingId: first.bindingId,
+    projectValueId: first.oldValueId
+  });
+  if (!pin) throw new ApiError("CONFLICT", "Canonical source cohort has no owned pin.", { reason: "source-pin-missing" });
+  await lockCanonicalSourceScope(tx, pin, workflow.configSetId);
+  const lockedCandidate = await getParameterFileCandidateByIdForUpdate(tx, {
+    organizationId: auth.organization.id,
+    projectId: input.projectId,
+    candidateId: input.candidateId
+  });
+  if (!lockedCandidate || lockedCandidate.status !== "ready") {
+    throw new ApiError("CONFLICT", "Canonical source candidate is not ready.", { reason: "candidate-is-not-reviewable" });
+  }
+  const inspection = await inspectCandidate(tx, objectStore, auth, input);
+  if (!inspection.proofToken || inspection.proofToken !== input.expectedProofToken) {
+    throw new ApiError("CONFLICT", "Canonical source proof changed after preview.", { reason: "source-proof-stale" });
+  }
+  if (lockedCandidate.format !== "json" || !inspection.changes || inspection.changes.length < 2 || !inspection.workflow.configSetId || !inspection.workflow.proofToken) {
+    throw new ApiError("CONFLICT", "Candidate has no exact JSON multi-Binding source change.", {
+      reason: inspection.reason ?? "canonical-batch-writer-unavailable"
+    });
+  }
+  const changes = inspection.changes;
+  const source = await loadCanonicalSourceSnapshot(tx, objectStore, {
+    organizationId: auth.organization.id,
+    projectId: input.projectId,
+    bindingId: changes[0]!.binding.bindingId,
+    projectValueId: changes[0]!.pin.projectValueId
+  });
+  const cohort = await loadCanonicalSourceCohort(tx, {
+    organizationId: auth.organization.id,
+    projectId: input.projectId,
+    configSetId: inspection.workflow.configSetId
+  });
+  const members = source.manifest.members.map((member) => ({
+    ...member,
+    configSetId: inspection.workflow.configSetId!,
+    isCandidateFile: member.fileId === lockedCandidate.fileId
+  })).sort((left, right) => left.fileId.localeCompare(right.fileId));
+  const targets = changes.map((change) => ({
+    ...previewBinding(change),
+    locator: change.pin.locator,
+    ...(change.targetText === undefined ? {} : { targetText: change.targetText })
+  }));
+  const frozen = {
+    kind: "canonical-source-batch" as const,
+    organizationId: auth.organization.id,
+    projectId: input.projectId,
+    candidateId: lockedCandidate.id,
+    fileId: lockedCandidate.fileId!,
+    format: "json" as const,
+    baseVersionId: lockedCandidate.baseVersionId!,
+    configSetId: inspection.workflow.configSetId,
+    baseDigest: changes[0]!.baseDigest,
+    proposedDigest: changes[0]!.proposedDigest,
+    cohortProofToken: inspection.workflow.proofToken,
+    proofToken: inspection.proofToken,
+    members,
+    cohort,
+    targets
+  };
+  return { ...frozen, batchProofDigest: proofDigest(frozen) };
 }
 
 async function findExistingDraft(

@@ -20,6 +20,7 @@ import { loadOwnedProjectValueSourcePin, loadSourceBindingCohortReadOnly } from 
 import { createCandidate } from "./candidateService";
 import {
   getCanonicalSourceWorkflow,
+  prepareCanonicalCandidateBatchInTransaction,
   previewCanonicalCandidate,
   rollbackCanonicalSource,
   submitCanonicalCandidate
@@ -221,8 +222,51 @@ describe("#906 canonical JSON candidate workflow", () => {
     };
     const multiPreview = await previewCanonicalCandidate(db, storage, admin, { projectId: JSON_PROJECT, candidateId: changedBoth.id });
     const repeatedMultiPreview = await previewCanonicalCandidate(db, storage, admin, { projectId: JSON_PROJECT, candidateId: changedBoth.id });
+    const preparedBatch = await db.transaction((tx) => prepareCanonicalCandidateBatchInTransaction(tx, storage, admin, {
+      projectId: JSON_PROJECT,
+      candidateId: changedBoth.id,
+      expectedProofToken: multiPreview.proofToken!
+    }));
+    const repeatedPreparedBatch = await db.transaction((tx) => prepareCanonicalCandidateBatchInTransaction(tx, storage, admin, {
+      projectId: JSON_PROJECT,
+      candidateId: changedBoth.id,
+      expectedProofToken: multiPreview.proofToken!
+    }));
 
     expect(repeatedMultiPreview).toEqual(multiPreview);
+    expect(repeatedPreparedBatch).toEqual(preparedBatch);
+    expect(preparedBatch).toMatchObject({
+      kind: "canonical-source-batch",
+      organizationId: ORG,
+      projectId: JSON_PROJECT,
+      candidateId: changedBoth.id,
+      fileId,
+      format: "json",
+      baseVersionId: versionId,
+      configSetId,
+      proofToken: multiPreview.proofToken,
+      cohortProofToken: multiPreview.cohortProofToken,
+      batchProofDigest: expect.stringMatching(/^[0-9a-f]{64}$/),
+      targets: expect.arrayContaining([
+        expect.objectContaining({ bindingId: bindings[0]!.id, targetText: "50", action: "set" }),
+        expect.objectContaining({ bindingId: bindings[1]!.id, targetText: "60", action: "set" })
+      ])
+    });
+    expect(preparedBatch.members).toHaveLength(1);
+    expect(preparedBatch.cohort).toHaveLength(2);
+    expect(preparedBatch.targets.map((target) => target.bindingId)).toEqual(
+      [...preparedBatch.targets.map((target) => target.bindingId)].sort()
+    );
+    await expect(db.transaction((tx) => prepareCanonicalCandidateBatchInTransaction(tx, storage, otherEditor, {
+      projectId: JSON_PROJECT,
+      candidateId: changedBoth.id,
+      expectedProofToken: multiPreview.proofToken!
+    }))).rejects.toMatchObject({ code: "FORBIDDEN" });
+    await expect(db.transaction((tx) => prepareCanonicalCandidateBatchInTransaction(tx, storage, foreignAdmin, {
+      projectId: JSON_PROJECT,
+      candidateId: changedBoth.id,
+      expectedProofToken: multiPreview.proofToken!
+    }))).rejects.toMatchObject({ code: "NOT_FOUND" });
     expect(multiPreview).toMatchObject({
       kind: "canonical",
       canSubmit: false,
@@ -375,6 +419,11 @@ describe("#906 canonical JSON candidate workflow", () => {
       requestId: "906-json-repin-stale",
       refusalSink: createTrustedRefusalAuditSink(db)
     })).rejects.toMatchObject({ code: "CONFLICT", details: { reason: "source-proof-stale" } });
+    await expect(db.transaction((tx) => prepareCanonicalCandidateBatchInTransaction(tx, storage, admin, {
+      projectId: JSON_PROJECT,
+      candidateId: changedBoth.id,
+      expectedProofToken: multiPreview.proofToken!
+    }))).rejects.toMatchObject({ code: "CONFLICT", details: { reason: "source-proof-stale" } });
     const draftCountAfterDrift = await db.query<{ count: number }>("select count(*)::int as count from project_parameter_value_drafts where organization_id=$1 and project_id=$2", [ORG, JSON_PROJECT]);
     expect(draftCountAfterDrift.rows[0]!.count).toBe(1);
   }, 120_000);
