@@ -19,9 +19,10 @@ import { registerCanonicalJsonSource } from "../../parameter-files/canonicalJson
 import { loadCanonicalSourceSnapshot } from "../../parameter-files/canonicalSource";
 import { createCandidate } from "../../parameter-files/candidateService";
 import { previewCanonicalCandidate, submitCanonicalCandidate } from "../../parameter-files/canonicalFileWorkflow";
+import { reviewCanonicalValueChange } from "./changeService";
 import { uploadProjectParameterFile } from "../../parameter-files/service";
 import { createLocalObjectStore, type ObjectStore } from "../../logs/objectStore";
-import { loadPublishedCatalog } from "../catalogProjectValueSync";
+import { exportCanonicalBindingSource, listCatalogBindingRowsForProject, loadPublishedCatalog } from "../catalogProjectValueSync";
 import { registerCatalogProjectValueConsumerRoutes } from "../catalogProjectValueRoutes";
 
 const ORG = "org-906-non-agent";
@@ -307,5 +308,76 @@ describe("non-Agent canonical source attempt transactions", () => {
       await pool.query(`drop function public.t906_fail_import_audit()`);
       await db.query(`delete from parameter_import_batches where id=$1`, [batchId]);
     }
+  });
+
+  it("rejects a prepared candidate after another reviewed source change and permits exact reprepare", async () => {
+    const source = (value: string) => Buffer.from(SOURCE.replace("36.5", value));
+    const stale = await createCandidate(db, storage, auth, {
+      projectId: PROJECT, fileId, fileName: "settings.json", bytes: source("38.5"),
+    });
+    const stalePreview = await previewCanonicalCandidate(db, storage, auth, { projectId: PROJECT, candidateId: stale.id });
+    expect(stalePreview.canSubmit).toBe(true);
+    const winner = await createCandidate(db, storage, auth, {
+      projectId: PROJECT, fileId, fileName: "settings.json", bytes: source("37.5"),
+    });
+    const winnerPreview = await previewCanonicalCandidate(db, storage, auth, { projectId: PROJECT, candidateId: winner.id });
+    const submitted = await submitCanonicalCandidate(db, storage, auth, {
+      projectId: PROJECT, candidateId: winner.id, expectedCurrentVersionId: fileVersionId,
+      expectedProofToken: winnerPreview.proofToken!, reason: "advance source independently",
+      requestId: "t906-drift-winner", refusalSink: createTrustedRefusalAuditSink(db),
+    });
+    const reviewerAuth = makeTestAuthContext({
+      userId: REVIEWER, organizationId: ORG, name: "Non-Agent reviewer",
+      organizationName: "Non-Agent org", permissions: ["parameter:view", "parameter:edit", "parameter:review"],
+      roles: [{ roleId: "software-committer", projectId: PROJECT }],
+    });
+    const snapshot = await loadPublishedCatalog(pool);
+    if (!snapshot) throw new Error("Published fixture is unavailable");
+    await reviewCanonicalValueChange(db, reviewerAuth, {
+      projectId: PROJECT, requestId: submitted.requestId, decision: "approve",
+    }, {
+      objectStore: storage, snapshot, invocation: createUserInvocation(reviewerAuth),
+      traceId: "t906-drift-review", refusalSink: createTrustedRefusalAuditSink(db),
+    });
+    const before = (await db.query<{ current_version_id: string }>(
+      `select current_version_id from project_parameter_files where id=$1`, [fileId],
+    )).rows[0]!.current_version_id;
+    expect(before).not.toBe(fileVersionId);
+    let unexpectedPuts = 0;
+    const observedStorage: ObjectStore = {
+      ...storage, put: async (input) => { unexpectedPuts += 1; return storage.put(input); },
+    };
+    await expect(submitCanonicalCandidate(db, observedStorage, auth, {
+      projectId: PROJECT, candidateId: stale.id, expectedCurrentVersionId: fileVersionId,
+      expectedProofToken: stalePreview.proofToken!, reason: "must reject stale source",
+      requestId: "t906-drift-stale", refusalSink: createTrustedRefusalAuditSink(db),
+    })).rejects.toMatchObject({ code: "CONFLICT", details: { reason: "stale-base" } });
+    expect(unexpectedPuts).toBe(0);
+    expect((await db.query(`select current_version_id from project_parameter_files where id=$1`, [fileId])).rows[0]!.current_version_id).toBe(before);
+    expect((await db.query(`select count(*)::int as count from project_parameter_value_change_requests where organization_id=$1 and project_id=$2`, [ORG, PROJECT])).rows[0]!.count).toBe(1);
+
+    const fresh = await createCandidate(db, storage, auth, {
+      projectId: PROJECT, fileId, fileName: "settings.json", bytes: source("38.5"),
+    });
+    const freshPreview = await previewCanonicalCandidate(db, storage, auth, { projectId: PROJECT, candidateId: fresh.id });
+    expect(freshPreview).toMatchObject({ canSubmit: true, baseVersionId: before });
+    const resubmitted = await submitCanonicalCandidate(db, storage, auth, {
+      projectId: PROJECT, candidateId: fresh.id, expectedCurrentVersionId: before,
+      expectedProofToken: freshPreview.proofToken!, reason: "reprepare against current source",
+      requestId: "t906-drift-reprepared", refusalSink: createTrustedRefusalAuditSink(db),
+    });
+    await reviewCanonicalValueChange(db, reviewerAuth, {
+      projectId: PROJECT, requestId: resubmitted.requestId, decision: "approve",
+    }, {
+      objectStore: storage, snapshot, invocation: createUserInvocation(reviewerAuth),
+      traceId: "t906-drift-reprepared-review", refusalSink: createTrustedRefusalAuditSink(db),
+    });
+    const current = (await listCatalogBindingRowsForProject(db, auth, { projectId: PROJECT }))
+      .find((row) => row.id === bindingId);
+    const pinned = await exportCanonicalBindingSource(db, storage, auth, { projectId: PROJECT, bindingId });
+    expect(current?.typedValue).toEqual({ kind: "json", value: 38.5 });
+    expect(pinned?.manifest.members.find((member) => member.fileId === fileId)?.fileVersionId)
+      .toBe((await db.query(`select current_version_id from project_parameter_files where id=$1`, [fileId])).rows[0]!.current_version_id);
+    expect((await db.query(`select count(*)::int as count from public.project_parameter_bindings where organization_id=$1 and project_id=$2`, [ORG, PROJECT])).rows[0]!.count).toBe(0);
   });
 });
